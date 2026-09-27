@@ -19,20 +19,30 @@ export function claimCaseText(c: ClaimLike): string {
   const item = `SKU ${c.sku ?? "–"}${c.fnsku ? `, FNSKU ${c.fnsku}` : ""}${c.asin ? `, ASIN ${c.asin}` : ""}`;
   const proof = c.evidence.map((e) => `- ${e.label}: ${e.value}`).join("\n");
   const intro = "Guten Tag,\n\n";
-  const outro = `\n\nNachweise:\n${proof}\n\nBitte prüfen Sie den Vorgang und erstatten Sie die betroffenen Einheiten. Eine Rechnung über den Einkaufspreis (${eur(c.unitCost)} netto je Einheit) liegt vor und kann nachgereicht werden.\n\nVielen Dank und freundliche Grüße`;
+  const outro = `\n\nNachweise:\n${proof}\n\nBitte prüfen Sie den Vorgang und erstatten Sie die betroffenen Einheiten.${c.unitCost === null ? "" : ` Eine Rechnung über den Einkaufspreis (${eur(c.unitCost)} netto je Einheit) liegt vor und kann nachgereicht werden.`}\n\nVielen Dank und freundliche Grüße`;
+  const date = c.eventDate ? c.eventDate.slice(0, 10).split("-").reverse().join(".") : null;
+  const ev = (label: string) => c.evidence.find((e) => e.label === label)?.value ?? "–";
   switch (c.type) {
     case "inbound_shortage":
       return `${intro}in der Sendung ${c.reference ?? "[Sendungs-ID]"} wurden laut unserem Scan-Protokoll mehr Einheiten von ${item} verschickt als eingebucht. Es fehlen ${c.quantity} Einheiten.${outro}`;
     case "lost_warehouse":
-      return `${intro}laut Bestandsprotokoll sind ${c.quantity} Einheiten von ${item} seit ${c.eventDate ?? "[Datum]"} im Versandzentrum als verloren gebucht und bisher weder wiedergefunden noch erstattet worden.${outro}`;
+      return `${intro}laut Bestandsprotokoll sind ${c.quantity} Einheiten von ${item} seit ${date ?? "[Datum]"} im Versandzentrum als verloren gebucht und bisher weder wiedergefunden noch erstattet worden.${outro}`;
     case "damaged_warehouse":
-      return `${intro}laut Bestandsprotokoll wurden ${c.quantity} Einheiten von ${item} im Versandzentrum beschädigt (seit ${c.eventDate ?? "[Datum]"}). Eine Erstattung ist bisher nicht erfolgt.${outro}`;
+      return `${intro}laut Bestandsprotokoll wurden ${c.quantity} Einheiten von ${item} im Versandzentrum beschädigt (seit ${date ?? "[Datum]"}). Eine Erstattung ist bisher nicht erfolgt.${outro}`;
     case "reimbursed_below_cost":
       return `${intro}für die Erstattung ${c.reference ?? "[Erstattungs-ID]"} (${item}) wurde ein Betrag unter unserem Einkaufspreis erstattet. Wir bitten um Prüfung und Nachzahlung der Differenz auf Basis des nachweisbaren Einkaufspreises.${outro}`;
     case "return_not_received":
-      return `${intro}für die Bestellung ${c.reference ?? "[Bestellnummer]"} (${item}) wurde der Kunde am ${c.eventDate ?? "[Datum]"} erstattet. Die Rücksendung ist bis heute nicht im Versandzentrum eingegangen.${outro}`;
+      return `${intro}für die Bestellung ${c.reference ?? "[Bestellnummer]"} (${item}) wurde der Kunde am ${date ?? "[Datum]"} erstattet. Die Rücksendung ist bis heute nicht im Versandzentrum eingegangen.${outro}`;
+    case "return_damaged":
+      return `Betreff: Retoure bei Amazon beschädigt, Bestellung ${c.reference ?? "[Bestellnummer]"}\n\n${intro}die Kundenretoure zur Bestellung ${c.reference ?? "[Bestellnummer]"} (${item}) wurde im Logistikzentrum als beschädigt erfasst (Eingang: ${ev("Rücksendung eingegangen")}). Die Beschädigung ist demnach beim Transport oder im Logistikzentrum entstanden, nicht beim Kunden. Eine Entschädigung finden wir im Erstattungsbericht nicht.${outro}`;
+    case "return_wrong_item":
+      return `Betreff: Falscher Artikel zurückgesendet, Bestellung ${c.reference ?? "[Bestellnummer]"}\n\n${intro}zur Bestellung ${c.reference ?? "[Bestellnummer]"} (${item}) hat der Kunde laut Retourenbericht einen anderen Artikel zurückgeschickt (Grund: ${ev("Rücksendegrund")}). Der Kunde wurde trotzdem erstattet (${ev("Kunde erstattet am")}).${outro}`;
+    case "refund_too_high":
+      return `Betreff: Zu hohe Erstattung, Bestellung ${c.reference ?? "[Bestellnummer]"}\n\n${intro}für die Bestellung ${c.reference ?? "[Bestellnummer]"} (${item}) wurde dem Kunden mehr erstattet, als er bezahlt hat. Der Mehrbetrag liegt bei ${ev("Mehr erstattet als bezahlt")}.\n\nBitte prüfen Sie die Erstattung und schreiben Sie uns den zu viel erstatteten Betrag gut.\n\nVielen Dank und freundliche Grüße`;
+    case "fbm_safet":
+      return `SAFE-T-Antrag, Bestellung ${c.reference ?? "[Bestellnummer]"}\n\nFür die Bestellung ${c.reference ?? "[Bestellnummer]"} (${item}) wurde dem Kunden ein Betrag erstattet (Rücksendung angefragt am ${ev("Rücksendung angefragt am")}), bevor die Ware bei mir eingegangen ist. ${ev("Sendungsnummer") === "keine" ? "Für die Rücksendung liegt keine Sendungsnummer vor." : `Die Sendungsnummer ${ev("Sendungsnummer")} zeigt keine Zustellung an mich.`} Bis heute habe ich den Artikel nicht zurückerhalten.\n\nIch bitte um Erstattung des Betrags über SAFE-T.`;
     case "disposed_without_order":
-      return `${intro}laut Bestandsprotokoll wurden am ${c.eventDate ?? "[Datum]"} ${c.quantity} Einheiten von ${item} entsorgt. Einen Entsorgungsauftrag haben wir dafür nicht erteilt.${outro}`;
+      return `${intro}laut Bestandsprotokoll wurden am ${date ?? "[Datum]"} ${c.quantity} Einheiten von ${item} entsorgt. Einen Entsorgungsauftrag haben wir dafür nicht erteilt.${outro}`;
     case "removal_incomplete":
       return `${intro}beim Remissionsauftrag ${c.reference ?? "[Auftragsnummer]"} (${item}) fehlen ${c.quantity} Einheiten: Sie sind weder bei uns angekommen noch als storniert oder entsorgt ausgewiesen.${outro}`;
     default:

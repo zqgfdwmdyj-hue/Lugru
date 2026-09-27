@@ -18,16 +18,32 @@ export function decodeText(bytes: Uint8Array): string {
   }
 }
 
-function detectDelimiter(firstLine: string): string {
-  const counts = ["\t", ";", ",", "|"].map((d) => [d, firstLine.split(d).length - 1] as const);
-  counts.sort((a, b) => b[1] - a[1]);
-  return counts[0][1] > 0 ? counts[0][0] : ",";
+/** Trennzeichen außerhalb von Anführungszeichen zählen. */
+function countOutsideQuotes(line: string, d: string) {
+  let n = 0;
+  let q = false;
+  for (const c of line) {
+    if (c === '"') q = !q;
+    else if (c === d && !q) n++;
+  }
+  return n;
+}
+
+/**
+ * Trennzeichen aus der ersten Zeile, die eines enthält. Manche Reports (Transaktionsbericht)
+ * haben vor der Kopfzeile Hinweiszeilen in Anführungszeichen.
+ */
+function detectDelimiter(head: string): string {
+  for (const line of head.split(/\r?\n/).slice(0, 20)) {
+    const counts = ["\t", ";", ",", "|"].map((d) => [d, countOutsideQuotes(line, d)] as const).sort((a, b) => b[1] - a[1]);
+    if (counts[0][1] > 0) return counts[0][0];
+  }
+  return ",";
 }
 
 /** CSV/TSV mit Anführungszeichen, doppelten Anführungszeichen und Zeilenumbrüchen in Feldern. */
 export function parseDelimited(text: string, delimiter?: string): string[][] {
-  const firstLine = text.slice(0, text.search(/\r?\n/) === -1 ? text.length : text.search(/\r?\n/));
-  const d = delimiter ?? detectDelimiter(firstLine);
+  const d = delimiter ?? detectDelimiter(text.slice(0, 20000));
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -75,7 +91,21 @@ export function readTable(data: ArrayBuffer | Uint8Array): Table {
     matrix = parseDelimited(decodeText(bytes)).map((r) => r.map((v) => v.trim()));
   }
   if (matrix.length === 0) return { headers: [], rows: [] };
-  return { headers: matrix[0], rows: matrix.slice(1) };
+  const h = headerRow(matrix);
+  return { headers: matrix[h], rows: matrix.slice(h + 1) };
+}
+
+/**
+ * Index der Kopfzeile. Normalerweise die erste Zeile; Amazons Transaktionsbericht hat
+ * davor einige Hinweiszeilen mit nur einem Feld.
+ */
+function headerRow(matrix: string[][]): number {
+  const filled = (r: string[]) => r.filter((v) => v !== "").length;
+  if (filled(matrix[0]) >= 3) return 0;
+  const head = matrix.slice(0, 20);
+  const max = Math.max(...head.map(filled));
+  const i = head.findIndex((r) => filled(r) >= Math.max(3, max * 0.6));
+  return i < 0 ? 0 : i;
 }
 
 /** Vereinheitlicht Spaltennamen: "Event Type" / "event-type" / "event_type" → "event-type". */

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { detectClaims, type ClaimData } from "@/lib/claims/rules";
-import type { ClaimType } from "@/db/schema";
+import { CLAIM_TYPES, type ClaimType } from "@/db/schema";
 
 const windowDays = Object.fromEntries(
-  ["inbound_shortage", "lost_warehouse", "damaged_warehouse", "reimbursed_below_cost", "return_not_received", "disposed_without_order", "removal_incomplete", "other"].map((t) => [t, 60]),
+  CLAIM_TYPES.map((t) => [t, 60]),
 ) as Record<ClaimType, number>;
 const settings = { windowDays, minAmount: 1 };
 const today = "2026-09-27";
@@ -12,8 +12,7 @@ const base = (): ClaimData => ({
   adjustments: [],
   receipts: [],
   reimbursements: [],
-  refunds: [],
-  customerReturns: [],
+  returnClaims: [],
   removals: [],
   inbound: [],
   costBySku: new Map([["SKU-1", 10]]),
@@ -89,16 +88,15 @@ describe("detectClaims", () => {
     expect(c[0]).toMatchObject({ type: "reimbursed_below_cost", expectedAmount: 5.9 });
   });
 
-  it("Retoure erstattet, aber nicht zurück – nach 45 Tagen", () => {
+  it("Retouren-Abgleich: mit EK bewertet, ohne EK mit dem erstatteten Betrag", () => {
     const d = base();
-    d.refunds = [
-      { orderId: "302-1", sku: "SKU-1", date: "2026-07-01", quantity: 1 },
-      { orderId: "302-2", sku: "SKU-1", date: "2026-07-01", quantity: 1 },
-      { orderId: "302-3", sku: "SKU-1", date: "2026-09-01", quantity: 1 },
-    ];
-    d.customerReturns = [{ orderId: "302-2", sku: "SKU-1", quantity: 1 }];
+    const claim = (sku: string) => ({ key: `retnr:302-1:${sku}`, type: "return_not_received" as const, title: "t", sku, quantity: 2, refundValue: 49.8, moneyOnly: false, reference: "302-1", eventDate: "2026-07-01", evidence: [] });
+    d.returnClaims = [claim("SKU-1"), claim("SKU-X")];
     const c = detectClaims(d, settings, today);
-    expect(c.map((x) => x.reference)).toEqual(["302-1"]);
+    expect(c.map((x) => [x.sku, x.expectedAmount, x.deadline])).toEqual([
+      ["SKU-1", 20, "2026-08-30"],
+      ["SKU-X", 49.8, "2026-08-30"],
+    ]);
   });
 
   it("Remission: Differenz zwischen versendet und angekommen", () => {

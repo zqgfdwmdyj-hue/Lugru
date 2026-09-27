@@ -5,14 +5,52 @@ import { CHANNELS, RETURN_STATUSES } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, RETURN_STATUS_LABEL } from "@/lib/labels";
 import { formatDate, formatEuro } from "@/lib/numbers";
+import { getSettings } from "@/lib/settings";
+import { skuStats } from "@/lib/returns/reconcile";
+import { loadReturnRows } from "@/lib/returns/service";
+import { Abgleich } from "./abgleich";
+import { Artikel } from "./artikel";
 import { createReturn, updateReturn } from "./actions";
 
 const CONDITION: Record<string, string> = { sellable: "verkäuflich", damaged: "beschädigt", missing: "fehlt/leer", wrong_item: "falscher Artikel" };
 
-export default async function RetourenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; id?: string }> }) {
+const NAV: [string, string][] = [
+  ["abgleich", "Abgleich"],
+  ["artikel", "Artikel"],
+  ["offen", "Eigener Versand – offen"],
+  ["erledigt", "Eigener Versand – erledigt"],
+  ["fba", "FBA-Rücksendungen"],
+];
+
+type Search = { ansicht?: string; id?: string; modus?: string; filter?: string; q?: string; sort?: string; dir?: string };
+
+export default async function RetourenPage({ searchParams }: { searchParams: Promise<Search> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const view = sp.ansicht === "fba" ? "fba" : sp.ansicht === "erledigt" ? "erledigt" : "offen";
+  const ansicht = NAV.some(([k]) => k === sp.ansicht) ? sp.ansicht! : "abgleich";
+  const head = (
+    <div className="page-head">
+      <div><div className="crumb">Service</div><h1>Retouren</h1></div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {NAV.map(([k, label]) => <Link key={k} className={`chip${ansicht === k ? " active" : ""}`} href={`/retouren?ansicht=${k}`}>{label}</Link>)}
+      </div>
+    </div>
+  );
+  if (ansicht === "abgleich" || ansicht === "artikel") {
+    const mode = sp.modus === "fbm" ? "fbm" : "fba";
+    const [data, settings] = await Promise.all([loadReturnRows(session.tenantId, mode), getSettings(session.tenantId)]);
+    return (
+      <>
+        {head}
+        {ansicht === "abgleich" ? (
+          <Abgleich view={data} mode={mode} filter={sp.filter ?? "action"} q={sp.q ?? ""} marketplace={settings.returns.marketplace} />
+        ) : (
+          <Artikel stats={skuStats(data.rows, data.tx, mode, data.reasons)} mode={mode} sort={sp.sort ?? "rate"} dir={sp.dir === "1" ? 1 : -1} q={sp.q ?? ""} />
+        )}
+      </>
+    );
+  }
+  const view = ansicht as "offen" | "erledigt" | "fba";
   const R = schema.customerReturns;
   const own = view === "fba" ? [] : await db.select().from(R).where(and(eq(R.tenantId, session.tenantId), view === "offen" ? inArray(R.status, ["announced", "received"]) : inArray(R.status, ["refunded", "rejected", "closed"]))).orderBy(desc(R.createdAt)).limit(300);
   const fba = view === "fba"
@@ -27,14 +65,7 @@ export default async function RetourenPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <div className="page-head">
-        <div><div className="crumb">Service</div><h1>Retouren</h1></div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${view === "offen" ? " active" : ""}`} href="/retouren">Eigener Versand – offen</Link>
-          <Link className={`chip${view === "erledigt" ? " active" : ""}`} href="/retouren?ansicht=erledigt">Erledigt</Link>
-          <Link className={`chip${view === "fba" ? " active" : ""}`} href="/retouren?ansicht=fba">FBA-Rücksendungen</Link>
-        </div>
-      </div>
+      {head}
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           {fba ? (
@@ -63,7 +94,7 @@ export default async function RetourenPage({ searchParams }: { searchParams: Pro
                 {own.map((r) => (
                   <tr key={r.id} style={{ background: current?.id === r.id ? "var(--accent-soft)" : undefined }}>
                     <td>{CHANNEL_LABEL[r.channel]}</td>
-                    <td className="num"><Link href={`/retouren?${view === "erledigt" ? "ansicht=erledigt&" : ""}id=${r.id}`}>{r.orderRef}</Link></td>
+                    <td className="num"><Link href={`/retouren?ansicht=${view}&id=${r.id}`}>{r.orderRef}</Link></td>
                     <td className="num small">{r.sku ?? "–"}</td>
                     <td className="num right">{r.quantity}</td>
                     <td className="small">{r.reason ?? "–"}</td>

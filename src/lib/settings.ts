@@ -11,6 +11,10 @@ export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   return_not_received: "Retoure erstattet, nie angekommen",
   disposed_without_order: "Entsorgt ohne Auftrag",
   removal_incomplete: "Remission unvollständig",
+  return_damaged: "Retoure bei Amazon beschädigt",
+  return_wrong_item: "Anderer Artikel zurück",
+  refund_too_high: "Zu viel erstattet",
+  fbm_safet: "SAFE-T (Händlerversand)",
   other: "Sonstiges",
 };
 
@@ -30,6 +34,10 @@ export const DEFAULT_SETTINGS = {
       return_not_received: 60,
       disposed_without_order: 60,
       removal_incomplete: 60,
+      return_damaged: 60,
+      return_wrong_item: 60,
+      refund_too_high: 60,
+      fbm_safet: 60,
       other: 60,
     } as Record<ClaimType, number>,
   },
@@ -45,6 +53,8 @@ export const DEFAULT_SETTINGS = {
   pricing: { referralRate: 0.15, minProfit: 1, maxPriceFactor: 2, defaultFbaFee: 3.5 },
   aging: { unsellableWarnDays: 30, noSaleWarnDays: 180 },
   drive: { folderId: "" },
+  /** Wie im bisherigen Retouren-Tool: Rücksendefrist FBA 45 Tage, Amazon zahlt bis Tag 60, FBM 21 Tage. */
+  returns: { graceFba: 45, claimFba: 60, graceFbm: 21, marketplace: "sellercentral.amazon.de" },
 };
 
 export type ResolvedSettings = typeof DEFAULT_SETTINGS;
@@ -65,6 +75,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     pricing: { ...d.pricing, ...(s.pricing ?? {}) },
     aging: { ...d.aging, ...(s.aging ?? {}) },
     drive: { ...d.drive, ...(s.drive ?? {}) },
+    returns: { ...d.returns, ...(s.returns ?? {}) },
   };
 }
 

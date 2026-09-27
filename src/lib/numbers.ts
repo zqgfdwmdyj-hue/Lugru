@@ -46,8 +46,18 @@ export function parseDate(value: unknown): string | null {
   }
   m = /^(\d{4})\/(\d{2})\/(\d{2})/.exec(s);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  // Monatsnamen: "Jul 28, 2026 10:51:00 AM PDT" (englische Reports), "28. Juli 2026", "28 Jul 2026".
+  m = /^([A-Za-zÄä]{3,})\.? (\d{1,2}), (\d{4})/.exec(s);
+  const month = (name: string) => MONTHS[name.toLowerCase().replace("ä", "a").slice(0, 3)];
+  if (m && month(m[1])) return `${m[3]}-${String(month(m[1])).padStart(2, "0")}-${m[2].padStart(2, "0")}`;
+  m = /^(\d{1,2})\.? ([A-Za-zÄä]{3,})\.? (\d{4})/.exec(s);
+  if (m && month(m[2])) return `${m[3]}-${String(month(m[2])).padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   return null;
 }
+
+const MONTHS: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, mrz: 3, apr: 4, may: 5, mai: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, okt: 10, nov: 11, dec: 12, dez: 12,
+};
 
 /** Zeitpunkt aus ISO oder "27.09.2026 10:11:12 UTC"; ohne Zone als UTC. */
 export function parseDateTime(value: unknown): Date | null {

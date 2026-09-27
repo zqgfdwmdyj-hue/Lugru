@@ -1,0 +1,3 @@
+approval-date	reimbursement-id	case-id	amazon-order-id	reason	sku	fnsku	asin	product-name	condition	currency-unit	amount-per-unit	amount-total	quantity-reimbursed-cash	quantity-reimbursed-inventory	quantity-reimbursed-total
+2026-08-11	2841011734		306-7730021-4410982	CustomerReturn	LG-HOOD-BLK-L	X00SAMPLE0	B0SAMPLE00	Kapuzenpullover schwarz, L	Sellable	EUR	36.40	36.40	1	0	1
+2026-09-24	2841009921		305-2294718-6600125	CustomerReturn	LG-TSH-WHT-S	X00SAMPLE0	B0SAMPLE00	Bio-Baumwoll-Shirt weiß, S	Sellable	EUR	18.20	18.20	1	0	1

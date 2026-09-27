@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES, type TenantSettings } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
+import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
 
 const num = (fd: FormData, key: string) => {
@@ -68,12 +69,21 @@ export async function saveSettings(fd: FormData) {
       unsellableWarnDays: num(fd, "unsellableWarnDays"),
       noSaleWarnDays: num(fd, "noSaleWarnDays"),
     },
+    returns: {
+      graceFba: num(fd, "returns_graceFba"),
+      claimFba: num(fd, "returns_claimFba"),
+      graceFbm: num(fd, "returns_graceFbm"),
+      marketplace: [str(fd, "returns_marketplace")].find((m) => m && /^sellercentral[a-z-]*\.amazon\.[a-z.]+$/.test(m)),
+    },
   };
   const name = str(fd, "tenantName");
   await db
     .update(schema.tenants)
-    .set({ settings: JSON.parse(JSON.stringify(settings)), ...(name ? { name } : {}) })
+    // Nur die Bereiche dieses Formulars ersetzen – Drive-Ordner, Kontostand usw. bleiben erhalten.
+    .set({ settings: sql`${schema.tenants.settings} || ${JSON.stringify(settings)}::jsonb`, ...(name ? { name } : {}) })
     .where(eq(schema.tenants.id, session.tenantId));
+  // Fristen können sich geändert haben – Ansprüche neu berechnen.
+  await syncClaims(session.tenantId);
   revalidatePath("/", "layout");
 }
 

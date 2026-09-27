@@ -12,6 +12,8 @@ const SOURCES: { name: string; where: string }[] = [
   { name: `${REPORT_KINDS.removalOrders} und ${REPORT_KINDS.removalShipments}`, where: "Berichte → Versand durch Amazon → Remissionen" },
   { name: REPORT_KINDS.inventory, where: "Berichte → Versand durch Amazon → Bestand → Bestand verwalten (FBA)" },
   { name: REPORT_KINDS.fees, where: "Berichte → Versand durch Amazon → Zahlungen → Gebührenvorschau" },
+  { name: REPORT_KINDS.transactions, where: "Berichte → Zahlungen → Berichts-Repository → Berichtstyp „Transaktion“ (Datumsbereich) – am einfachsten jeden Monat den Vormonat" },
+  { name: REPORT_KINDS.fbmReturns, where: "Berichte → Retourenberichte → Bericht anfordern (letzte 2–3 Monate)" },
   { name: REPORT_KINDS.settlement, where: "Berichte → Zahlungen → Alle Abrechnungen → Flat File V2 herunterladen" },
   { name: REPORT_KINDS.orders, where: "Berichte → Versand durch Amazon → Verkäufe → Alle Bestellungen" },
   { name: REPORT_KINDS.feedback, where: "Leistung → Feedback → Feedback-Manager → Bericht herunterladen" },

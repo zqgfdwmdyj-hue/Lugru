@@ -4,6 +4,7 @@
 
 import type { ClaimType } from "@/db/schema";
 import { addDaysIso } from "@/lib/dates";
+import type { ReturnClaim } from "@/lib/returns/reconcile";
 
 export type LedgerAdjustment = {
   rowHash: string;
@@ -31,8 +32,6 @@ export type Reimbursement = {
   quantityTotal: number;
 };
 
-export type Refund = { orderId: string; sku: string; date: string; quantity: number };
-export type CustomerReturnRef = { orderId: string; sku: string | null; quantity: number };
 export type RemovalOrder = {
   orderId: string;
   orderType: string | null;
@@ -60,8 +59,8 @@ export type ClaimData = {
   adjustments: LedgerAdjustment[];
   receipts: { referenceId: string; fnsku: string | null; sku: string | null; quantity: number; date: string }[];
   reimbursements: Reimbursement[];
-  refunds: Refund[];
-  customerReturns: CustomerReturnRef[];
+  /** Aus dem Retouren-Abgleich (Erstattung ↔ Rücksendung ↔ Zahlung von Amazon). */
+  returnClaims: ReturnClaim[];
   removals: RemovalOrder[];
   inbound: InboundShipment[];
   costBySku: Map<string, number>;
@@ -250,48 +249,24 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
     });
   }
 
-  // --- Retoure erstattet, aber nie zurückgekommen -------------------------------------
-  const returned = new Map<string, number>();
-  for (const r of d.customerReturns) {
-    const k = `${r.orderId}|${r.sku ?? ""}`;
-    returned.set(k, (returned.get(k) ?? 0) + r.quantity);
-    returned.set(`${r.orderId}|*`, (returned.get(`${r.orderId}|*`) ?? 0) + r.quantity);
-  }
-  const reimbursedOrders = new Map<string, number>();
-  for (const r of d.reimbursements) {
-    if (!r.orderId) continue;
-    reimbursedOrders.set(`${r.orderId}|${r.sku ?? ""}`, (reimbursedOrders.get(`${r.orderId}|${r.sku ?? ""}`) ?? 0) + r.quantityTotal);
-  }
-  const refundsByKey = new Map<string, Refund>();
-  for (const f of d.refunds) {
-    const k = `${f.orderId}|${f.sku}`;
-    const prev = refundsByKey.get(k);
-    refundsByKey.set(k, prev ? { ...prev, quantity: prev.quantity + f.quantity, date: prev.date < f.date ? prev.date : f.date } : f);
-  }
-  for (const [k, f] of refundsByKey) {
-    if (addDaysIso(f.date, GRACE_DAYS.returns) > today) continue;
-    const back = returned.get(k) ?? 0;
-    const skuMissing = d.customerReturns.some((r) => r.orderId === f.orderId && !r.sku) ? (returned.get(`${f.orderId}|*`) ?? 0) : 0;
-    const open = f.quantity - back - skuMissing - (reimbursedOrders.get(k) ?? 0);
-    if (open <= 0) continue;
-    const cost = unitCost(d, f.sku, null);
+  // --- Retouren: erstattet, aber nicht zurück / beschädigt / falscher Artikel / zu viel erstattet
+  for (const r of d.returnClaims) {
+    const asin = r.sku ? (d.asinBySku.get(r.sku) ?? null) : null;
+    const cost = r.moneyOnly ? null : unitCost(d, r.sku, asin);
     push({
-      key: `retnr:${f.orderId}:${f.sku}`,
-      type: "return_not_received",
-      title: `Erstattet, nie zurückgekommen – Bestellung ${f.orderId}`,
-      sku: f.sku,
+      key: r.key,
+      type: r.type,
+      title: r.title,
+      sku: r.sku,
       fnsku: null,
-      asin: d.asinBySku.get(f.sku) ?? null,
-      quantity: open,
+      asin,
+      quantity: r.quantity,
       unitCost: cost,
-      expectedAmount: cost === null ? null : round2(cost * open),
-      reference: f.orderId,
-      eventDate: f.date,
-      evidence: [
-        { label: "Kunde erstattet am", value: f.date, source: "Abrechnung" },
-        { label: "Rücksendung eingegangen", value: `${back} von ${f.quantity}`, source: "FBA-Kundenrücksendungen" },
-        { label: "Bereits von Amazon erstattet", value: `${reimbursedOrders.get(k) ?? 0}`, source: "Erstattungen" },
-      ],
+      // Mit EK bewertet wie die übrigen Ansprüche; ohne EK (oder bei Geldbeträgen) der erstattete Betrag.
+      expectedAmount: cost === null ? r.refundValue : round2(cost * r.quantity),
+      reference: r.reference,
+      eventDate: r.eventDate,
+      evidence: r.evidence,
     });
   }
 

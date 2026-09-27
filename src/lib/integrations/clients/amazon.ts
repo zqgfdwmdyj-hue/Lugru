@@ -72,11 +72,13 @@ export const REPORT_TYPES: Record<Exclude<ReportKind, "settlement">, string> = {
   orders: "GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL",
   feedback: "GET_SELLER_FEEDBACK_DATA",
   fees: "GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA",
+  transactions: "GET_DATE_RANGE_FINANCIAL_TRANSACTION_DATA",
+  fbmReturns: "GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE",
 };
 const KIND_BY_TYPE = new Map<string, ReportKind>([...Object.entries(REPORT_TYPES).map(([k, v]) => [v, k as ReportKind] as const), ["GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2", "settlement"]]);
 
 /** Wie viele Tage rückwirkend je Report angefordert werden. */
-const LOOKBACK: Partial<Record<ReportKind, number>> = { ledger: 45, reimbursements: 90, customerReturns: 90, removalOrders: 120, removalShipments: 120, orders: 30, feedback: 90 };
+const LOOKBACK: Partial<Record<ReportKind, number>> = { ledger: 45, reimbursements: 90, customerReturns: 90, removalOrders: 120, removalShipments: 120, orders: 30, feedback: 90, transactions: 90, fbmReturns: 90 };
 
 export async function requestReport(tenantId: string, kind: Exclude<ReportKind, "settlement">) {
   const c = await creds(tenantId);
@@ -146,7 +148,7 @@ export async function fetchSettlements(tenantId: string) {
 export async function scheduleReports(tenantId: string) {
   if (!(await creds(tenantId))) return;
   const plan: [Exclude<ReportKind, "settlement">, number][] = [
-    ["inventory", 4], ["ledger", 24], ["reimbursements", 24], ["customerReturns", 24], ["removalOrders", 24], ["removalShipments", 24], ["fees", 72], ["feedback", 72],
+    ["inventory", 4], ["ledger", 24], ["reimbursements", 24], ["customerReturns", 24], ["removalOrders", 24], ["removalShipments", 24], ["fees", 72], ["feedback", 72], ["transactions", 24], ["fbmReturns", 24],
   ];
   for (const [kind, hours] of plan) {
     const [recent] = await db

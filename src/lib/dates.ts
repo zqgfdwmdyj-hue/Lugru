@@ -35,3 +35,8 @@ export function dueLabel(iso: string, today: string): string {
   if (diff < 7) return new Intl.DateTimeFormat("de-DE", { weekday: "short", timeZone: "UTC" }).format(d);
   return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
 }
+
+/** Tage von `from` bis `to` (beides JJJJ-MM-TT). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to.slice(0, 10)}T12:00:00Z`) - Date.parse(`${from.slice(0, 10)}T12:00:00Z`)) / 86400_000);
+}

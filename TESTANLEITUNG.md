@@ -37,6 +37,7 @@ Stoppen: `docker compose down` (die Daten bleiben erhalten). Alles löschen: `do
 | **Bestand & Inventur** | FBA-Bestandsbericht importieren, eigenes Lager buchen, Inventur mit Scanner. |
 | **Repricer** | Gebührenvorschau + Bestand importieren → Mindest-/Maximalpreise → BQool-CSV. |
 | **Lieferanten-Feeds** | Preisliste (CSV/Excel) hochladen, Spalten zuordnen → Gewinn je Angebot. |
+| **Retouren-Abgleich** | Aus dem bisherigen Retouren-Tool übernommen. Transaktionsbericht, FBA-Kundenrücksendungen, Erstattungen und Retourenbericht (Händlerversand) hochladen → Retouren → Abgleich (FBA / Händlerversand) und Artikel (Retourenquote). Was Amazon zahlen muss, wird automatisch ein Anspruch mit fertigem Text. Zum Ausprobieren: `tests/fixtures/retouren/` (erfundene Daten). |
 | **Fälle, Retouren, Bewertungen** | Von Hand anlegen bzw. Feedback-Bericht importieren. |
 | **Wissen & To-dos** | Einträge anlegen, suchen; eigene Aufgaben auf der Startseite. |
 
@@ -59,6 +60,7 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 - **BQool-CSV**: Spalten „SKU, Min Price, Max Price“ – bitte mit der BQool-Importvorlage vergleichen.
 - **DHL-Kleinpaket**: Produktcode `V62KP` – bei Fehlern im Label `V62WP` probieren.
 - **Amazon-Reports**: Getestet mit den englischen Spaltennamen. Falls ein Report „nicht erkannt“ wird, zeigt der Import die gefundenen Spalten – dann bitte die Datei (ohne vertrauliche Daten) schicken.
+- **Retouren-Abgleich**: Rücksendefrist FBA 45 Tage, Amazon-Zahlung bis Tag 60, Händlerversand 21 Tage – wie im bisherigen Tool, einstellbar unter Einstellungen → Retouren-Abgleich.
 - **Gewinn**: Umsatz netto mit Standard-MwSt; erstattete Einheiten gelten als wieder im Bestand.
 
 ## 5. Drucken

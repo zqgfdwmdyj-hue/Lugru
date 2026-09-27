@@ -247,3 +247,70 @@ export const apiReportRequests = pgTable(
   },
   (t) => [uniqueIndex("api_report_uq").on(t.tenantId, t.reportId), index("api_report_status_idx").on(t.tenantId, t.status)],
 );
+
+/**
+ * Transaktionsbericht (Datumsbereich, Berichte → Zahlungen → Berichts-Repository).
+ * Enthält Verkäufe, Erstattungen an Kunden und Zahlungen von Amazon an dich – auch für
+ * Zeiträume, zu denen noch keine Abrechnung vorliegt.
+ */
+export const amazonTransactions = pgTable(
+  "amazon_transactions",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    rowHash: text("row_hash").notNull(),
+    date: date("date", { mode: "string" }),
+    /** sale, refund, reimb (Entschädigung von Amazon), safet, other */
+    kind: text("kind").notNull(),
+    type: text("type"),
+    settlementId: text("settlement_id"),
+    orderId: text("order_id"),
+    sku: text("sku"),
+    description: text("description"),
+    quantity: integer("quantity").notNull().default(0),
+    /** fba, fbm oder leer */
+    channel: text("channel").notNull().default(""),
+    productSales: money("product_sales"),
+    shippingCredits: money("shipping_credits"),
+    sellingFees: money("selling_fees"),
+    fbaFees: money("fba_fees"),
+    total: money("total"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("amz_tx_hash_uq").on(t.tenantId, t.rowHash),
+    index("amz_tx_order_idx").on(t.tenantId, t.orderId),
+    index("amz_tx_kind_idx").on(t.tenantId, t.kind, t.date),
+  ],
+);
+
+/** Retourenbericht Händlerversand (Rücksendeanfragen mit Sendungsnummer, Zustellung, Erstattung). */
+export const amazonFbmReturns = pgTable(
+  "amazon_fbm_returns",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Bestellung + RMA + SKU – ein neuer Report aktualisiert die Zeile. */
+    rowKey: text("row_key").notNull(),
+    orderId: text("order_id").notNull(),
+    orderDate: date("order_date", { mode: "string" }),
+    rma: text("rma"),
+    sku: text("sku"),
+    asin: text("asin"),
+    title: text("title"),
+    requestDate: date("request_date", { mode: "string" }),
+    status: text("status"),
+    labelType: text("label_type"),
+    tracking: text("tracking"),
+    deliveryDate: date("delivery_date", { mode: "string" }),
+    quantity: integer("quantity").notNull().default(1),
+    reason: text("reason"),
+    resolution: text("resolution"),
+    orderAmount: money("order_amount"),
+    refundedAmount: money("refunded_amount"),
+    safetClaimId: text("safet_claim_id"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("amz_fbm_ret_uq").on(t.tenantId, t.rowKey), index("amz_fbm_ret_order_idx").on(t.tenantId, t.orderId)],
+);

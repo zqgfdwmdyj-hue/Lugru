@@ -4,12 +4,13 @@ import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { getSettings, type ResolvedSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
+import { loadReturnClaims } from "@/lib/returns/service";
 import { detectClaims, type ClaimData } from "./rules";
 
 async function loadClaimData(tenantId: string): Promise<ClaimData> {
   const t = tenantId;
   const L = schema.amazonLedgerEvents;
-  const [adjustments, receipts, reimbursements, refunds, returns, removals, lots, inbound] = await Promise.all([
+  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound] = await Promise.all([
     db
       .select({ rowHash: L.rowHash, date: L.eventDate, sku: L.sku, fnsku: L.fnsku, asin: L.asin, quantity: L.quantity, reason: L.reason, fulfillmentCenter: L.fulfillmentCenter, referenceId: L.referenceId })
       .from(L)
@@ -19,15 +20,7 @@ async function loadClaimData(tenantId: string): Promise<ClaimData> {
       .from(L)
       .where(and(eq(L.tenantId, t), sql`lower(${L.eventType}) like 'receipt%'`, isNotNull(L.referenceId))),
     db.select().from(schema.amazonReimbursements).where(eq(schema.amazonReimbursements.tenantId, t)),
-    db.execute<{ order_id: string; sku: string; date: string; quantity: number }>(sql`
-      select order_id, sku, min(posted_date)::text as date, count(distinct coalesce(adjustment_id, row_hash))::int as quantity
-        from amazon_settlement_lines
-       where tenant_id = ${t} and lower(transaction_type) like 'refund%'
-         and order_id is not null and sku is not null and posted_date is not null
-         and coalesce(fulfillment_id, 'AFN') = 'AFN'
-         and amount_type = 'ItemPrice'
-       group by order_id, sku`),
-    db.select({ orderId: schema.amazonCustomerReturns.orderId, sku: schema.amazonCustomerReturns.sku, quantity: schema.amazonCustomerReturns.quantity }).from(schema.amazonCustomerReturns).where(eq(schema.amazonCustomerReturns.tenantId, t)),
+    loadReturnClaims(t),
     db.select().from(schema.amazonRemovalOrders).where(eq(schema.amazonRemovalOrders.tenantId, t)),
     db
       .select({ sku: schema.lots.sku, cost: schema.lots.unitCostNet, asin: schema.products.asin })
@@ -76,8 +69,7 @@ async function loadClaimData(tenantId: string): Promise<ClaimData> {
       quantityCash: r.quantityCash,
       quantityTotal: r.quantityTotal,
     })),
-    refunds: refunds.rows.map((r) => ({ orderId: r.order_id, sku: r.sku, date: r.date, quantity: r.quantity })),
-    customerReturns: returns.filter((r) => r.orderId).map((r) => ({ orderId: r.orderId!, sku: r.sku, quantity: r.quantity })),
+    returnClaims,
     removals: removals.map((r) => ({
       orderId: r.orderId,
       orderType: r.orderType,
@@ -163,10 +155,12 @@ export async function syncClaims(tenantId: string) {
       }
     }
 
-    // Nicht mehr erkannte, noch nicht eingereichte Ansprüche: von Amazon erledigt.
+    // Nicht mehr erkannte, noch nicht eingereichte Ansprüche: Amazon hat erstattet, die Ware
+    // ist wieder da – oder die Fristen wurden geändert. Nie angefasste Ansprüche verschwinden
+    // einfach; vorgemerkte werden als erledigt markiert, damit die Historie bleibt.
     const keys = candidates.map((c) => c.key);
     const stale = await tx
-      .select({ id: C.id })
+      .select({ id: C.id, status: C.status })
       .from(C)
       .where(
         and(
@@ -177,7 +171,11 @@ export async function syncClaims(tenantId: string) {
         ),
       );
     for (const s of stale) {
-      await tx.update(C).set({ status: "reimbursed", resolvedAt: new Date(), updatedAt: new Date(), notes: sql`coalesce(${C.notes} || E'\\n', '') || 'Automatisch erledigt: Amazon hat erstattet oder die Ware wiedergefunden.'` }).where(eq(C.id, s.id));
+      if (s.status === "detected") {
+        await tx.delete(C).where(eq(C.id, s.id));
+        continue;
+      }
+      await tx.update(C).set({ status: "reimbursed", resolvedAt: new Date(), updatedAt: new Date(), notes: sql`coalesce(${C.notes} || E'\\n', '') || 'Automatisch erledigt: laut aktuellen Reports nicht mehr offen (erstattet, wiedergefunden oder zurückgekommen).'` }).where(eq(C.id, s.id));
       await tx.insert(schema.claimEvents).values({ tenantId, claimId: s.id, action: "automatisch erledigt", note: "Nicht mehr offen laut aktuellen Reports" });
     }
 
@@ -231,6 +229,29 @@ async function refreshClaimTasks(tenantId: string, settings: ResolvedSettings) {
     });
   } else {
     await resolveSystemTask(db, tenantId, "claims-deadline");
+  }
+
+  // Eingereicht und seit einer Woche keine Antwort: bei Amazon nachfragen.
+  const [stale] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(C)
+    .where(
+      and(
+        eq(C.tenantId, tenantId),
+        eq(C.status, "submitted"),
+        sql`${C.submittedAt} < now() - interval '7 days'`,
+        // Eine eigene Notiz (z. B. „nachgefragt“) setzt die Woche neu.
+        sql`not exists (select 1 from claim_events e where e.claim_id = ${C.id} and e.user_id is not null and e.created_at > now() - interval '7 days')`,
+      ),
+    );
+  if (stale.n > 0) {
+    await upsertSystemTask(db, tenantId, "claims-followup", {
+      title: `${stale.n} eingereichte Fälle seit über 7 Tagen ohne Antwort – nachfragen`,
+      category: "geld",
+      link: "/ansprueche?ansicht=eingereicht",
+    });
+  } else {
+    await resolveSystemTask(db, tenantId, "claims-followup");
   }
 
   const [expired] = await db

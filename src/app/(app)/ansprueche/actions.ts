@@ -24,8 +24,9 @@ async function setStatus(fd: FormData, status: (typeof schema.claims.$inferSelec
   await db
     .update(schema.claims)
     .set({ status, updatedAt: new Date(), ...extra })
-    .where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)));
-  await log(session.tenantId, id, session.userId, action ?? status, note);
+    .where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)))
+    .returning({ id: schema.claims.id })
+    .then(async (r) => { if (r.length) await log(session.tenantId, id, session.userId, action ?? status, note); });
   revalidatePath("/", "layout");
 }
 
@@ -63,7 +64,9 @@ export async function saveClaimNotes(fd: FormData) {
   await db
     .update(schema.claims)
     .set({ notes: String(fd.get("notes") ?? ""), amazonCaseId: String(fd.get("caseId") ?? "").trim() || null, updatedAt: new Date() })
-    .where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)));
+    .where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)))
+    .returning({ id: schema.claims.id })
+    .then(async (r) => { if (r.length) await log(session.tenantId, id, session.userId, "Notiz gespeichert"); });
   revalidatePath(`/ansprueche/${id}`);
 }
 

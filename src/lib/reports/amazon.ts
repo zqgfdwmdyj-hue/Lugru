@@ -16,6 +16,8 @@ export const REPORT_KINDS = {
   orders: "Alle Bestellungen",
   feedback: "Verkäuferbewertungen",
   fees: "FBA-Gebührenvorschau",
+  transactions: "Transaktionen (Datumsbereich)",
+  fbmReturns: "Retourenbericht Händlerversand",
 } as const;
 export type ReportKind = keyof typeof REPORT_KINDS;
 
@@ -30,6 +32,8 @@ export function detectReport(table: Table): ReportKind | null {
   if (a.has("shipment-date") && a.has("tracking-number") && a.hasAny("removal-order-type", "shipped-quantity")) return "removalShipments";
   if (a.has("afn-fulfillable-quantity")) return "inventory";
   if (a.has("settlement-id") && a.has("amount-type")) return "settlement";
+  if (a.hasAny(...TX.type) && a.hasAny(...TX.total) && a.hasAny(...TX.order) && a.hasAny(...TX.date) && a.hasAny(...TX.settlement)) return "transactions";
+  if (a.hasAny(...FBM.order) && a.hasAny(...FBM.rma) && a.hasAny(...FBM.requestDate)) return "fbmReturns";
   if (a.has("amazon-order-id") && a.has("fulfillment-channel")) return "orders";
   if (a.has("rating") && a.hasAny("comments", "order-id")) return "feedback";
   if (a.hasAny("expected-fulfillment-fee-per-unit", "estimated-fee-total")) return "fees";
@@ -335,6 +339,134 @@ export function parseFees(table: Table) {
       sku: orNull(a.get(r, "sku")),
       fbaFee: parseAmount(a.get(r, "expected-fulfillment-fee-per-unit", "expected-domestic-fulfilment-fee-per-unit")),
       referralRate: price && referral ? Math.round((referral / price) * 10000) / 10000 : null,
+    };
+  });
+}
+
+// --- Transaktionsbericht ----------------------------------------------------------------
+// Spaltennamen deutsch und englisch (Download aus Seller Central bzw. SP-API).
+
+const TX = {
+  date: ["datum/uhrzeit", "date/time", "datum", "date"],
+  settlement: ["abrechnungsnummer", "settlement-id"],
+  type: ["typ", "type", "transaktionstyp"],
+  order: ["bestellnummer", "order-id", "amazon-order-id"],
+  sku: ["sku"],
+  description: ["beschreibung", "description", "produktname"],
+  quantity: ["menge", "quantity"],
+  fulfillment: ["versand", "fulfillment", "fulfilment", "versandart"],
+  productSales: ["umsätze", "umsatze", "product-sales", "umsatz", "produktumsätze"],
+  shippingCredits: ["gutschrift-für-versandkosten", "shipping-credits", "versandgutschriften", "versandkostengutschrift"],
+  sellingFees: ["verkaufsgebühren", "selling-fees"],
+  fbaFees: ["gebühren-zu-versand-durch-amazon", "fba-fees", "versand-durch-amazon-gebühren"],
+  total: ["gesamt", "total", "summe", "gesamtbetrag"],
+};
+
+/** Vereinfachter Text zum Vergleichen: klein, ohne Akzente und Sonderzeichen. */
+const plain = (v: string) =>
+  v
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-z0-9]/g, "");
+
+const REIMB_TEXT = /reimburs|customerreturn|kundenruck|entschadig/;
+const REVERSAL_TEXT = /reversal|ruckbuch|storn/;
+
+/** Ordnet eine Zeile des Transaktionsberichts ein (wie im bisherigen Retouren-Tool). */
+export function classifyTransaction(type: string, description: string): "sale" | "refund" | "reimb" | "safet" | "other" {
+  const t = plain(type);
+  const d = plain(description);
+  if (t.includes("safet") || (d.includes("safet") && (t.includes("erstatt") || t.includes("reimburs")))) return "safet";
+  if ((t.includes("anpassung") || t.includes("adjustment") || REIMB_TEXT.test(t)) && REIMB_TEXT.test(d)) return "reimb";
+  if ((t.includes("erstatt") || t.includes("refund")) && !REVERSAL_TEXT.test(t)) return "refund";
+  if (t === "bestellung" || t === "order") return "sale";
+  return "other";
+}
+
+export function channelOf(value: string): "fba" | "fbm" | "" {
+  const v = plain(value);
+  if (v.includes("amazon")) return "fba";
+  if (["verkaufer", "seller", "handler", "merchant"].some((x) => v.includes(x))) return "fbm";
+  return "";
+}
+
+export function parseTransactions(table: Table) {
+  const h = hasher("tx");
+  return each(table, (r, a) => {
+    const type = a.get(r, ...TX.type);
+    const total = parseAmount(a.get(r, ...TX.total));
+    if (!type && total === null) return null;
+    const description = a.get(r, ...TX.description);
+    return {
+      rowHash: h(r),
+      date: parseDate(a.get(r, ...TX.date)),
+      kind: classifyTransaction(type, description),
+      type: orNull(type),
+      settlementId: orNull(a.get(r, ...TX.settlement)),
+      orderId: orNull(a.get(r, ...TX.order)),
+      sku: orNull(a.get(r, ...TX.sku)),
+      description: orNull(description),
+      quantity: Math.abs(int(a.get(r, ...TX.quantity))),
+      channel: channelOf(a.get(r, ...TX.fulfillment)),
+      productSales: parseAmount(a.get(r, ...TX.productSales)),
+      shippingCredits: parseAmount(a.get(r, ...TX.shippingCredits)),
+      sellingFees: parseAmount(a.get(r, ...TX.sellingFees)),
+      fbaFees: parseAmount(a.get(r, ...TX.fbaFees)),
+      total,
+    };
+  });
+}
+
+// --- Retourenbericht Händlerversand ------------------------------------------------------
+
+const FBM = {
+  order: ["order-id", "bestellnummer"],
+  orderDate: ["order-date", "bestelldatum"],
+  rma: ["amazon-rma-id", "amazon-rma-nummer"],
+  sku: ["merchant-sku", "händler-sku", "sku"],
+  asin: ["asin"],
+  title: ["item-name", "artikelname", "produktname"],
+  requestDate: ["return-request-date", "rücksendeanforderungsdatum", "datum-der-rücksendeanforderung"],
+  status: ["return-request-status", "status-der-rücksendeanforderung"],
+  labelType: ["label-type", "etikettentyp"],
+  tracking: ["tracking-id", "sendungsnummer", "trackingnummer"],
+  delivery: ["return-delivery-date", "zustelldatum-der-rücksendung", "rücksendezustelldatum"],
+  quantity: ["return-quantity", "rücksendemenge"],
+  reason: ["return-reason", "rücksendegrund"],
+  resolution: ["resolution", "lösung"],
+  orderAmount: ["order-amount", "bestellbetrag"],
+  refunded: ["refunded-amount", "erstatteter-betrag", "erstattungsbetrag"],
+  safet: ["safet-claim-id", "safe-t-claim-id", "safe-t-antrags-id"],
+};
+
+export function parseFbmReturns(table: Table) {
+  return each(table, (r, a) => {
+    const orderId = a.get(r, ...FBM.order);
+    if (!orderId) return null;
+    const rma = orNull(a.get(r, ...FBM.rma));
+    const sku = orNull(a.get(r, ...FBM.sku));
+    const requestDate = parseDate(a.get(r, ...FBM.requestDate));
+    return {
+      rowKey: rma ? `${orderId}|${rma}|${sku ?? ""}` : `${orderId}|${sku ?? ""}|${requestDate ?? ""}`,
+      orderId,
+      orderDate: parseDate(a.get(r, ...FBM.orderDate)),
+      rma,
+      sku,
+      asin: orNull(a.get(r, ...FBM.asin)),
+      title: orNull(a.get(r, ...FBM.title)),
+      requestDate,
+      status: orNull(a.get(r, ...FBM.status)),
+      labelType: orNull(a.get(r, ...FBM.labelType)),
+      tracking: orNull(a.get(r, ...FBM.tracking)),
+      deliveryDate: parseDate(a.get(r, ...FBM.delivery)),
+      quantity: int(a.get(r, ...FBM.quantity)) || 1,
+      reason: orNull(a.get(r, ...FBM.reason)),
+      resolution: orNull(a.get(r, ...FBM.resolution)),
+      orderAmount: parseAmount(a.get(r, ...FBM.orderAmount)),
+      refundedAmount: parseAmount(a.get(r, ...FBM.refunded)),
+      safetClaimId: orNull(a.get(r, ...FBM.safet)),
     };
   });
 }

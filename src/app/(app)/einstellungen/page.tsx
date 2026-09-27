@@ -66,6 +66,22 @@ export default async function EinstellungenPage() {
         </section>
 
         <section className="card card-pad stack" style={{ gap: 14 }}>
+          <h2>Retouren-Abgleich</h2>
+          <div style={grid}>
+            <Field label="FBA: Rücksendefrist nach der Erstattung" name="returns_graceFba" value={s.returns.graceFba} suffix="Tage" width={80} />
+            <Field label="FBA: Amazon-Zahlung erwartet bis Tag" name="returns_claimFba" value={s.returns.claimFba} width={80} />
+            <Field label="Händlerversand: Rücksendefrist nach der Anfrage" name="returns_graceFbm" value={s.returns.graceFbm} suffix="Tage" width={80} />
+            <div className="field">
+              <label className="label" htmlFor="returns_marketplace">Seller Central für Links</label>
+              <select className="select" id="returns_marketplace" name="returns_marketplace" defaultValue={s.returns.marketplace} style={{ width: 260 }}>
+                {["sellercentral.amazon.de", "sellercentral-europe.amazon.com", "sellercentral.amazon.co.uk", "sellercentral.amazon.com"].map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="small muted">Amazon ändert diese Fristen immer wieder. Prüfe die aktuelle Richtlinie in Seller Central.</div>
+        </section>
+
+        <section className="card card-pad stack" style={{ gap: 14 }}>
           <h2>Preise & Repricer</h2>
           <div style={grid}>
             <Field label="Verkaufsprovision (Standard)" name="referralRate" value={pct(s.pricing.referralRate)} suffix="%" width={80} />

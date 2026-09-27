@@ -5,6 +5,8 @@ import type { Table } from "@/lib/tabular";
 import { todayIso } from "@/lib/dates";
 import {
   parseCustomerReturns,
+  parseFbmReturns,
+  parseTransactions,
   parseFees,
   parseFeedback,
   parseInventory,
@@ -57,6 +59,39 @@ export async function applyReport(opts: {
       const parsed = parseReimbursements(table);
       rows = parsed.length;
       inserted = await insertIgnore(schema.amazonReimbursements, withTenant(parsed));
+      break;
+    }
+    case "transactions": {
+      const parsed = parseTransactions(table);
+      rows = parsed.length;
+      inserted = await insertIgnore(schema.amazonTransactions, withTenant(parsed));
+      const kinds = parsed.reduce<Record<string, number>>((m, p) => ({ ...m, [p.kind]: (m[p.kind] ?? 0) + 1 }), {});
+      message = `${kinds.sale ?? 0} Verkäufe, ${kinds.refund ?? 0} Erstattungen an Kunden, ${(kinds.reimb ?? 0) + (kinds.safet ?? 0)} Zahlungen von Amazon`;
+      break;
+    }
+    case "fbmReturns": {
+      const parsed = parseFbmReturns(table);
+      rows = parsed.length;
+      const F = schema.amazonFbmReturns;
+      for (const part of chunks(withTenant(parsed))) {
+        const res = await db
+          .insert(F)
+          .values(part)
+          .onConflictDoUpdate({
+            target: [F.tenantId, F.rowKey],
+            set: {
+              status: sql`excluded.status`,
+              tracking: sql`coalesce(excluded.tracking, ${F.tracking})`,
+              deliveryDate: sql`coalesce(excluded.delivery_date, ${F.deliveryDate})`,
+              refundedAmount: sql`excluded.refunded_amount`,
+              resolution: sql`excluded.resolution`,
+              safetClaimId: sql`coalesce(excluded.safet_claim_id, ${F.safetClaimId})`,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning({ inserted: sql<boolean>`(xmax = 0)` });
+        inserted += res.filter((r) => r.inserted).length;
+      }
       break;
     }
     case "customerReturns": {

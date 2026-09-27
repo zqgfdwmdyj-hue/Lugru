@@ -47,6 +47,10 @@ export const CLAIM_TYPES = [
   "return_not_received",
   "disposed_without_order",
   "removal_incomplete",
+  "return_damaged",
+  "return_wrong_item",
+  "refund_too_high",
+  "fbm_safet",
   "other",
 ] as const;
 export type ClaimType = (typeof CLAIM_TYPES)[number];
@@ -98,6 +102,8 @@ export type TenantSettings = {
     noSaleWarnDays?: number;
   };
   drive?: { folderId?: string };
+  /** Retouren-Abgleich: Wartezeiten in Tagen. */
+  returns?: { graceFba?: number; claimFba?: number; graceFbm?: number; marketplace?: string };
   cash?: { startBalance?: number; asOf?: string };
 };
 
