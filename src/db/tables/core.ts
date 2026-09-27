@@ -98,6 +98,7 @@ export type TenantSettings = {
     noSaleWarnDays?: number;
   };
   drive?: { folderId?: string };
+  cash?: { startBalance?: number; asOf?: string };
 };
 
 export const tenants = pgTable("tenants", {
