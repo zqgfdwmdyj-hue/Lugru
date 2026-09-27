@@ -49,6 +49,16 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
         )}
       </section>
       <div className="stack" style={{ gap: 14 }}>
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <h2>eBay</h2>
+              <div className="small muted" style={{ marginTop: 2 }}>Artikel einstellen, Rechnungen, Bestellungen abholen, Sendungsnummer zurückmelden.</div>
+            </div>
+            <a className="btn btn-small" href="/ebay?ansicht=einstellungen">Zu den eBay-Einstellungen</a>
+          </div>
+          <div className="card-pad small muted">Die eBay-Verbindung wird im eBay-Bereich eingerichtet (Zugang, Anmeldung, Verkaufsprofile, Artikelstandort) und gilt für alles, was mit eBay zu tun hat.</div>
+        </section>
         {INTEGRATIONS.map((def) => {
           const st = status.get(def.provider);
           const open = p === def.provider;

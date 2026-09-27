@@ -1,0 +1,55 @@
+{
+  "itemId": "v1|110588014268|0",
+  "title": "TOP Bosch GSR 12V-15 Schrauber BLITZVERSAND vom Händler",
+  "itemWebUrl": "https://www.ebay.de/itm/110588014268",
+  "price": { "value": "89.99", "currency": "EUR" },
+  "epid": "27000723598",
+  "leafCategoryIds": ["71283"],
+  "image": { "imageUrl": "https://i.ebayimg.com/images/g/SELLERPHOTO/s-l1600.jpg" },
+  "description": "<p>Verkäufer-HTML, darf nie übernommen werden</p>",
+  "localizedAspects": [
+    { "type": "STRING", "name": "Marke", "value": "Bosch" },
+    { "type": "STRING", "name": "Farbe", "value": "Blau" }
+  ],
+  "product": {
+    "title": "Bosch Professional GSR 12V-15 Akku-Bohrschrauber 12 V mit 2 Akkus",
+    "description": "Der GSR 12V-15 ist der kompakte Akku-Bohrschrauber für vielseitige Anwendungen.",
+    "brand": "Bosch",
+    "gtins": ["3165140776649"],
+    "image": { "imageUrl": "https://i.ebayimg.com/images/g/main/s-l500.jpg" },
+    "additionalImages": [
+      { "imageUrl": "https://i.ebayimg.com/images/g/two/s-l500.jpg" },
+      { "imageUrl": "https://i.ebayimg.com/images/g/three/s-l500.jpg" }
+    ],
+    "aspectGroups": [
+      {
+        "localizedGroupName": "Produktmerkmale",
+        "aspects": [
+          { "localizedName": "Marke", "localizedValues": ["Bosch"] },
+          { "localizedName": "Spannung", "localizedValues": ["12 V"] },
+          { "localizedName": "Produktart", "localizedValues": ["Bohrschrauber", "Schrauber"] }
+        ]
+      }
+    ]
+  },
+  "manufacturer": {
+    "companyName": "Robert Bosch Power Tools GmbH",
+    "addressLine1": "Max-Lang-Straße 40-46",
+    "city": "Leinfelden-Echterdingen",
+    "postalCode": "70771",
+    "country": "DE",
+    "email": "service.werkzeuge@bosch.de",
+    "phone": "+49 711 40040460"
+  },
+  "responsiblePersons": [
+    {
+      "companyName": "Robert Bosch Power Tools GmbH",
+      "addressLine1": "Max-Lang-Straße 40-46",
+      "city": "Leinfelden-Echterdingen",
+      "postalCode": "70771",
+      "country": "DE",
+      "email": "service.werkzeuge@bosch.de",
+      "types": ["EU_RESPONSIBLE_PERSON"]
+    }
+  ]
+}

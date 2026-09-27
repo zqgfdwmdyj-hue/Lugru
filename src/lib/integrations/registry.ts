@@ -38,27 +38,6 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
-    provider: "ebay",
-    name: "eBay",
-    purpose: "Bestellungen abholen, Sendungsnummer zurückmelden, Artikel einstellen.",
-    fields: [
-      { key: "clientId", label: "App-ID (Client-ID)" },
-      { key: "clientSecret", label: "Cert-ID (Client-Secret)", secret: true },
-      { key: "refreshToken", label: "User Refresh-Token", secret: true },
-      { key: "environment", label: "Umgebung", placeholder: "production oder sandbox" },
-      { key: "marketplaceId", label: "Marktplatz", placeholder: "EBAY_DE" },
-      { key: "fulfillmentPolicyId", label: "Versand-Richtlinie (ID)", help: "Nur zum Einstellen von Artikeln nötig. IDs stehen im eBay-Konto unter Geschäftsrichtlinien." },
-      { key: "paymentPolicyId", label: "Zahlungs-Richtlinie (ID)" },
-      { key: "returnPolicyId", label: "Rücknahme-Richtlinie (ID)" },
-      { key: "merchantLocationKey", label: "Artikelstandort (Schlüssel)", placeholder: "z. B. lager1" },
-    ],
-    setup: [
-      "developer.ebay.com → Konto anlegen → Application Keys für Production erzeugen.",
-      "User Tokens → „Get a Token from eBay via Your Application“ mit den Scopes sell.fulfillment, sell.inventory, sell.account → Refresh-Token kopieren.",
-      "Hier eintragen und testen.",
-    ],
-  },
-  {
     provider: "dhl",
     name: "DHL Geschäftskunden (Parcel DE Shipping)",
     purpose: "Versandlabels für Paket und Kleinpaket erstellen.",

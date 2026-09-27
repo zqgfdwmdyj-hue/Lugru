@@ -6,3 +6,6 @@ next-env.d.ts
 .env.local
 /uploads
 /private-data
+
+# Datensicherungen (enthalten Geschäftsdaten)
+/backups/

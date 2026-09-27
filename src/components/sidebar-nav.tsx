@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number };
 
@@ -10,6 +10,7 @@ type Group = { head?: string; items: Item[] };
 
 export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: boolean }) {
   const pathname = usePathname();
+  const search = useSearchParams();
   const groups: Group[] = [
     {
       items: [
@@ -26,6 +27,16 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
         { href: "/bestand", label: "Bestand & Inventur" },
         { href: "/listings", label: "Listings" },
         { href: "/lieferanten", label: "Lieferanten-Feeds" },
+      ],
+    },
+    {
+      head: "eBay",
+      items: [
+        { href: "/ebay", label: "Neues Angebot" },
+        { href: "/ebay?ansicht=artikel", label: "Artikel & Gewinn" },
+        { href: "/ebay?ansicht=verlauf", label: "Verlauf" },
+        { href: "/ebay?ansicht=rechnungen", label: "Rechnungen (eBay)" },
+        ...(isOwner ? [{ href: "/ebay?ansicht=einstellungen", label: "eBay-Einstellungen" }] : []),
       ],
     },
     {
@@ -62,7 +73,15 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
     },
   ];
 
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/"));
+  const isActive = (href: string) => {
+    if (href.includes("?")) {
+      // Menüpunkte mit Ansicht (eBay): Pfad und Ansicht müssen passen.
+      const [p, q] = href.split("?");
+      return pathname === p && new URLSearchParams(q).get("ansicht") === search.get("ansicht");
+    }
+    if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
+    return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+  };
 
   return (
     <nav aria-label="Hauptnavigation">

@@ -8,3 +8,4 @@ export * from "./tables/invoices";
 export * from "./tables/money";
 export * from "./tables/stock";
 export * from "./tables/service";
+export * from "./tables/ebay";

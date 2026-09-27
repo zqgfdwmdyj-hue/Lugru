@@ -4,7 +4,11 @@ import { syncClaims } from "@/lib/claims/service";
 import { syncAllMailboxes } from "@/lib/inbox/service";
 import { syncDrive, refreshInvoiceTasks } from "@/lib/invoices/service";
 import { fetchSettlements, processPendingReports, scheduleReports, syncFbmOrders } from "@/lib/integrations/clients/amazon";
-import { syncEbayOrders } from "@/lib/integrations/clients/ebay";
+import { ebayConnected, syncEbayOrders } from "@/lib/integrations/clients/ebay";
+import { ebayDb } from "@/lib/ebay/db/pg";
+import { runIdealoDaily } from "@/lib/ebay/idealo/scheduler";
+import { runInvoiceAutomation } from "@/lib/ebay/invoices/scheduler";
+import { invoiceDeps } from "@/lib/ebay/routes/invoices";
 import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
@@ -47,7 +51,15 @@ export async function runScheduledJobs(force = false) {
         }
         if (force || due(`${t}:amz-settlements`, 180)) await step("Abrechnungen", () => fetchSettlements(t));
       }
-      if (await has("ebay")) if (force || due(`${t}:ebay`, 14)) await step("eBay-Bestellungen", () => syncEbayOrders(t));
+      if (await ebayConnected(t)) {
+        if (force || due(`${t}:ebay`, 14)) {
+          await step("eBay-Bestellungen", () => syncEbayOrders(t));
+          const edb = ebayDb(t);
+          await step("eBay-Rechnungen", () => runInvoiceAutomation(edb, invoiceDeps(edb)));
+        }
+        // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
+        if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));
+      }
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step("Rechnungen", () => syncDrive(t, 100));
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);

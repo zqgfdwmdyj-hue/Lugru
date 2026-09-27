@@ -28,5 +28,24 @@ services:
       APP_SECRET: ${APP_SECRET:?APP_SECRET fehlt – siehe TESTANLEITUNG.md}
       APP_URL: ${APP_URL:-http://localhost:3000}
       CRON_SECRET: ${CRON_SECRET:-}
+      BACKUP_DIR: /backups
+    volumes:
+      - ./backups:/backups
+  # Tägliche Sicherung der ganzen Datenbank nach ./backups (siehe deploy/backup.sh).
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: seller
+      PGPASSWORD: seller
+      PGDATABASE: seller
+    volumes:
+      - ./backups:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: ["sh", "/backup.sh"]
 volumes:
   dbdata:
