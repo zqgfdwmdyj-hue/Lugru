@@ -11,3 +11,6 @@ import { refreshStockWarnings } from "./stock/warnings";
 onAfterImport("bestandswarnungen", refreshStockWarnings);
 
 import "./orders/csv";
+
+import { refreshServiceTasks } from "./service/tasks";
+onAfterImport("service", refreshServiceTasks);

@@ -40,3 +40,30 @@ export const MAIL_CATEGORY_LABEL: Record<string, [string, string]> = {
   info: ["INFO", "tag-info"],
   noise: ["UNWICHTIG", "tag-neutral"],
 };
+
+export const CASE_TYPE_LABEL: Record<string, string> = {
+  a_to_z: "A-bis-Z-Garantie",
+  chargeback: "Rückbelastung",
+  ebay_not_received: "eBay: nicht erhalten",
+  ebay_not_as_described: "eBay: nicht wie beschrieben",
+  return_request: "Rücksendeanfrage",
+  buyer_message: "Käufernachricht",
+  account_health: "Kontozustand",
+  other: "Sonstiges",
+};
+
+export const CASE_STATUS_LABEL: Record<string, [string, string]> = {
+  open: ["OFFEN", "tag-warn"],
+  waiting: ["WARTET", "tag-info"],
+  won: ["GEWONNEN", "tag-ok"],
+  lost: ["VERLOREN", "tag-critical"],
+  closed: ["ERLEDIGT", "tag-neutral"],
+};
+
+export const RETURN_STATUS_LABEL: Record<string, string> = {
+  announced: "Angekündigt",
+  received: "Eingegangen",
+  refunded: "Erstattet",
+  rejected: "Abgelehnt",
+  closed: "Abgeschlossen",
+};
