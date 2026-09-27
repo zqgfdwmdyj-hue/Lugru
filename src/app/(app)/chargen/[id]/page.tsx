@@ -27,7 +27,7 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
     .where(and(eq(L.id, id), eq(L.tenantId, session.tenantId)));
   if (!lot) notFound();
 
-  const [observations, siblings] = await Promise.all([
+  const [observations, siblings, invoices] = await Promise.all([
     db
       .select()
       .from(schema.costObservations)
@@ -38,6 +38,11 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
       .from(L)
       .where(and(eq(L.tenantId, session.tenantId), eq(L.productId, lot.productId)))
       .orderBy(asc(L.purchaseDate)),
+    db
+      .select({ id: schema.invoices.id, fileName: schema.invoices.fileName, date: schema.invoices.invoiceDate })
+      .from(schema.invoiceLots)
+      .innerJoin(schema.invoices, eq(schema.invoices.id, schema.invoiceLots.invoiceId))
+      .where(eq(schema.invoiceLots.lotId, id)),
   ]);
   const l = lot.lot;
   const parentSku = l.parentLotId ? siblings.find((s) => s.id === l.parentLotId)?.sku : undefined;
@@ -49,6 +54,7 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
     [l.kind === "return" ? "Retourendatum" : "Einkaufsdatum", `${formatDate(l.kind === "return" ? l.returnDate : l.purchaseDate)}${l.purchaseDateEstimated ? " (Jahr geschätzt)" : ""}`],
     ["FNSKU", l.fnsku ?? "–"],
     ["Menge", l.quantity ?? "–"],
+    ["Rechnung", invoices.length ? invoices.map((i) => <Link key={i.id} href={`/rechnungen/${i.id}`} style={{ marginRight: 8 }}>{i.fileName}</Link>) : "keine verknüpft"],
   ];
   if (l.kind === "return") {
     info.push(["LPN", l.returnLpn ?? "–"], ["Retouren-Code", l.returnCode ?? "–"], ["Kanal", l.returnChannel ?? "–"]);

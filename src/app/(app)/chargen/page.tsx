@@ -12,6 +12,7 @@ const FILTERS = {
   "ohne-ek": "Ohne EK",
   abweichung: "EK-Abweichung",
   geschaetzt: "Jahr geschätzt",
+  "ohne-rechnung": "Ohne Rechnung",
 } as const;
 type Filter = keyof typeof FILTERS;
 
@@ -37,6 +38,7 @@ export default async function ChargenPage({
   if (filter === "retouren") where.push(eq(L.kind, "return"));
   if (filter === "ohne-ek") where.push(isNull(L.unitCostNet));
   if (filter === "geschaetzt") where.push(eq(L.purchaseDateEstimated, true));
+  if (filter === "ohne-rechnung") where.push(eq(L.kind, "purchase"), sql`not exists (select 1 from invoice_lots il where il.lot_id = ${L.id})`);
   if (filter === "abweichung") {
     where.push(sql`${L.id} in (select lot_id from cost_observations where tenant_id = ${session.tenantId} group by lot_id having max(value_net) - min(value_net) > 0.02)`);
   }
