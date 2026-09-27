@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file=.env scripts/migrate.ts",
-    "user:create": "tsx --env-file=.env scripts/create-user.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts",
+    "user:create": "tsx --env-file-if-exists=.env scripts/create-user.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

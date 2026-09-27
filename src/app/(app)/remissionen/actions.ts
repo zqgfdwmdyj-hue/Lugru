@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { syncClaims } from "@/lib/claims/service";
+import { refreshStockWarnings } from "@/lib/stock/warnings";
 
 export async function confirmRemovalReceipt(fd: FormData) {
   const session = await requireSession();
@@ -17,5 +18,6 @@ export async function confirmRemovalReceipt(fd: FormData) {
     .set({ receivedQuantity: qty, receivedAt: new Date(), updatedAt: new Date() })
     .where(and(eq(schema.amazonRemovalOrders.id, id), eq(schema.amazonRemovalOrders.tenantId, session.tenantId)));
   await syncClaims(session.tenantId);
+  await refreshStockWarnings(session.tenantId);
   revalidatePath("/", "layout");
 }

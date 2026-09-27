@@ -96,6 +96,8 @@ export function ScanPanel({ shipmentId, boxes, disabled }: { shipmentId: string;
             className="input"
             style={{ fontFamily: "var(--mono)", fontSize: 24, padding: "10px 14px", background: "var(--surface-2)" }}
           />
+          {/* Enter im Scanfeld braucht bei zwei Feldern einen Absende-Knopf */}
+          <button type="submit" className="sr-only" tabIndex={-1}>Buchen</button>
         </div>
       </form>
 

@@ -14,6 +14,8 @@ export function CountScan({ countId }: { countId: string }) {
       <div style={{ display: "flex", gap: 8 }}>
         <input className="input num" name="quantity" defaultValue="1" aria-label="Menge" style={{ width: 70, fontSize: 20, textAlign: "center" }} />
         <input ref={ref} id="cc" name="code" className="input num" autoFocus autoComplete="off" disabled={pending} style={{ fontSize: 20 }} />
+          {/* Enter im Scanfeld braucht bei zwei Feldern einen Absende-Knopf */}
+          <button type="submit" className="sr-only" tabIndex={-1}>Buchen</button>
       </div>
       {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-error"}`} style={{ marginTop: 10 }}>{state.message}</div>}
     </form>

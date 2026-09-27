@@ -127,7 +127,10 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
                   <td className="num right">{c.quantity}</td>
                   <td className="num right">{formatEuro(c.expectedAmount)}</td>
                   <td className="num">{formatDate(c.eventDate)}</td>
-                  <td className="num" style={{ color: urgent ? "var(--danger)" : undefined, fontWeight: urgent ? 600 : undefined }}>{formatDate(c.deadline)}</td>
+                  <td className="num" style={{ color: urgent ? "var(--danger)" : undefined, fontWeight: urgent ? 600 : undefined }}>
+                    {formatDate(c.deadline)}
+                    {c.deadline && c.deadline < today && ["detected", "queued"].includes(c.status) && <div className="small">abgelaufen?</div>}
+                  </td>
                   <td><span className={`tag ${cls}`}>{label}</span></td>
                 </tr>
               );

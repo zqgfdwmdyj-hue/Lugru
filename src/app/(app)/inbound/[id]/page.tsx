@@ -94,7 +94,7 @@ export default async function ShipmentPage({ params }: { params: Promise<{ id: s
                       ) : <span className="num">{item.plannedQuantity || "–"}</span>}
                     </td>
                     <td className="num right" style={{ fontWeight: 600, fontSize: 15 }}>{item.scannedQuantity}</td>
-                    <td>
+                    <td style={{ minWidth: 170 }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                         {item.checks.map((c, k) => <span key={k} className={`tag ${TAG[c.level]}`} style={{ whiteSpace: "normal" }}>{c.message}</span>)}
                       </div>

@@ -115,14 +115,19 @@ export async function cancelDhlLabel(creds: DhlCreds, sandbox: boolean, shipment
 }
 
 registerTester("dhl", async (v) => {
-  // Die Versions-Abfrage prüft den API-Key; die Benutzerdaten werden erst beim Label geprüft.
+  // Eine Prüf-Anfrage ohne Sendungen: 401/403 = Zugang falsch, 400 = Zugang ok (nur Daten fehlen).
+  const results: string[] = [];
   for (const sandbox of [false, true]) {
-    const res = await fetch(`${base(sandbox)}/`, { headers: headers({ apiKey: v.apiKey, username: v.username ?? "", password: v.password ?? "" }) });
-    if (res.ok) {
-      const info = (await res.json().catch(() => ({}))) as { amp?: { version?: string } };
-      return `API erreichbar (${sandbox ? "Sandbox" : "Produktion"}${info.amp?.version ? `, Version ${info.amp.version}` : ""}). Benutzer und Abrechnungsnummer werden beim ersten Label geprüft.`;
+    const url = new URL(`${base(sandbox)}/orders`);
+    url.searchParams.set("validate", "true");
+    const res = await fetch(url, { method: "POST", headers: headers({ apiKey: v.apiKey, username: v.username ?? "", password: v.password ?? "" }), body: JSON.stringify({ profile: "STANDARD_GRUPPENPROFIL", shipments: [] }) });
+    const env = sandbox ? "Sandbox" : "Produktion";
+    if (res.status === 401 || res.status === 403) {
+      const j = (await res.json().catch(() => ({}))) as { detail?: string; title?: string };
+      results.push(`${env}: abgelehnt (${j.detail ?? j.title ?? res.status})`);
+      continue;
     }
-    if (res.status === 401 || res.status === 403) continue;
+    return `Zugang von DHL akzeptiert (${env}). Die Abrechnungsnummer wird beim ersten Label geprüft.`;
   }
-  throw new Error("API-Key wird von DHL nicht akzeptiert (weder Produktion noch Sandbox).");
+  throw new Error(`DHL lehnt den Zugang ab – API-Key, Benutzer oder Passwort prüfen. ${results.join(" · ")}`);
 });

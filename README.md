@@ -4,23 +4,25 @@ Ein System für Einkauf, Bestand, FBA, Ansprüche und To-dos – statt vieler Ei
 Grundsatz: **gebaut für viele, genutzt erst mal von einem.** Jeder Datensatz gehört einem
 Mandanten (Firma); heute gibt es nur einen.
 
-## Was schon geht (Ausbaustufe 1: Fundament)
+## Module
 
-- **Login** mit Sitzungen (Passwörter mit bcrypt, Sitzungs-Token nur als Hash gespeichert)
-- **Hauptseite** mit To-dos: eigene Aufgaben plus vom System erkannte Aufgaben
-  (z. B. Erinnerung an den Arbitrage-One-Import, Retouren ohne EK, EK-Abweichungen)
-- **Wissensdatenbank** mit Bereichen, Textbausteinen, Schlagwörtern und Volltextsuche
-- **Import aus Arbitrage One**: Sellerboard-Export (.xls), AccountOne COG (.csv) und die
-  eigene Vorlage „Tool“ (.csv) – doppelte Zeilen sind egal
-- **SKU-Parser** für alle Schemata (A, B, C, Retouren inkl. älterer Retouren-SKUs)
-- **Chargen**: eine SKU = ein Einkauf; genau ein gültiger EK je Charge
-  (Vorrang: manuell › Vorlage › AccountOne › Sellerboard)
-- **Retouren erben den EK** der passenden Einkaufs-Charge statt 0,01 €/0,10 € Platzhalter
-- **COG-Export für AccountOne** im Originalformat – vollständig inkl. Retouren
-- **Suche** über Chargen, Wissen und Aufgaben
+- **Start**: To-dos (eigene + automatisch erkannte), Schnellzugriff, Fristen, Suche über alles
+- **Posteingang**: Gmail/Outlook per OAuth, Einordnung von Marktplatz-Mails, To-dos und Fälle
+- **Wissen**: Anleitungen und Textbausteine mit Volltextsuche
+- **WaWi**: Aufträge aller Kanäle mit DHL-Labels und Sendungsnummer-Meldung, Chargen, Bestand &
+  Inventur, Listings (eBay-Veröffentlichung), Lieferanten-Feeds
+- **Amazon FBA**: Inbound mit Scan-Ablauf und FNSKU-Etiketten, Ansprüche (7 Erkennungsregeln,
+  Warteschlange mit Tageslimit, Nachweis-Mappe), Remissionen
+- **Einkauf & Buchhaltung**: Rechnungen (Google Drive, PDF-Auslesen, Zuordnung), COG-Export
+  für AccountOne, Repricer-Export für BQool
+- **Service**: Fälle & A-bis-Z, Retouren, Bewertungen
+- **Geld**: Gewinn je SKU/Kanal, Cash-Flow-Vorschau
+- **System**: Import aller Dateien, Einstellungen, Anbindungen (verschlüsselt), Hintergrund-Abrufe
 
-Noch nicht gebaut (im Menü als „bald“): Posteingang/Amazon-Mails, Aufträge & DHL-Versand,
-FBA-Inbound mit Scan, Ansprüche, Bestand/Listings, Service, Gewinn & Cash Flow.
+Schnittstellen: Amazon SP-API, eBay, DHL Parcel DE, Gmail, Microsoft Graph, Google Drive.
+TikTok Shop und Temu sind vorbereitet (bis dahin CSV-Import).
+
+**Testen:** siehe [TESTANLEITUNG.md](TESTANLEITUNG.md) – Start mit `docker compose up -d --build`.
 
 ## Technik
 

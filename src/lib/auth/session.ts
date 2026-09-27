@@ -26,7 +26,8 @@ export async function createSession(userId: string, tenantId: string) {
   await db.insert(schema.sessions).values({ id: hash(token), userId, tenantId, expiresAt });
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // Über https immer „secure“; lokal über http (z. B. Docker auf dem eigenen PC) geht es sonst in Safari nicht.
+    secure: (process.env.APP_URL ?? "").startsWith("https://"),
     sameSite: "lax",
     path: "/",
     expires: expiresAt,

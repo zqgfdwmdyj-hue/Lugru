@@ -216,11 +216,11 @@ async function refreshClaimTasks(tenantId: string, settings: ResolvedSettings) {
     await resolveSystemTask(db, tenantId, "claims-open");
   }
 
-  const soon = todayIso();
+  const today = todayIso();
   const [urgent] = await db
     .select({ n: sql<number>`count(*)::int`, first: sql<string | null>`min(${C.deadline})::text` })
     .from(C)
-    .where(and(eq(C.tenantId, tenantId), inArray(C.status, ["detected", "queued"]), sql`${C.deadline} <= (${soon}::date + 7)`));
+    .where(and(eq(C.tenantId, tenantId), inArray(C.status, ["detected", "queued"]), sql`${C.deadline} between ${today}::date and (${today}::date + 7)`));
   if (urgent.n > 0) {
     await upsertSystemTask(db, tenantId, "claims-deadline", {
       title: `${urgent.n} Ansprüche laufen in den nächsten 7 Tagen ab`,
@@ -231,6 +231,22 @@ async function refreshClaimTasks(tenantId: string, settings: ResolvedSettings) {
     });
   } else {
     await resolveSystemTask(db, tenantId, "claims-deadline");
+  }
+
+  const [expired] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(C)
+    .where(and(eq(C.tenantId, tenantId), inArray(C.status, ["detected", "queued"]), sql`${C.deadline} < ${today}::date`));
+  if (expired.n > 0) {
+    await upsertSystemTask(db, tenantId, "claims-expired", {
+      title: `${expired.n} Ansprüche über der hinterlegten Frist – trotzdem versuchen oder verwerfen`,
+      notes: "Die Fristen in den Einstellungen sind Platzhalter – bitte mit den aktuellen Amazon-Richtlinien abgleichen.",
+      category: "geld",
+      priority: "low",
+      link: "/ansprueche?ansicht=fristen",
+    });
+  } else {
+    await resolveSystemTask(db, tenantId, "claims-expired");
   }
 }
 

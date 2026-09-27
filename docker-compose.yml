@@ -1,0 +1,32 @@
+# Startet App + Datenbank:  docker compose up -d --build
+# Danach Benutzer anlegen:  docker compose exec app npm run user:create -- --email du@firma.de --firma "Deine Firma"
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: seller
+      POSTGRES_PASSWORD: seller
+      POSTGRES_DB: seller
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seller"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://seller:seller@db:5432/seller
+      # Bitte in einer .env-Datei neben dieser Datei setzen (mind. 32 zufällige Zeichen):
+      APP_SECRET: ${APP_SECRET:?APP_SECRET fehlt – siehe TESTANLEITUNG.md}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      CRON_SECRET: ${CRON_SECRET:-}
+volumes:
+  dbdata:

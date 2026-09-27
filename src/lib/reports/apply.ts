@@ -133,6 +133,12 @@ export async function applyReport(opts: {
           .returning({ inserted: sql<boolean>`(xmax = 0)` });
         inserted += res.filter((r) => r.inserted).length;
       }
+      // Titel in die Artikel übernehmen, wo er noch fehlt.
+      await db.execute(sql`
+        update products p set title = i.title
+          from amazon_inventory i
+         where i.tenant_id = ${tenantId} and p.tenant_id = ${tenantId}
+           and p.asin = i.asin and p.title is null and i.title is not null`);
       // FNSKU in die Chargen übernehmen, wo sie noch fehlt.
       await db.execute(sql`
         update lots l set fnsku = i.fnsku, updated_at = now()
