@@ -9,3 +9,5 @@ onAfterImport("ansprueche", async (tenantId) => {
 
 import { refreshStockWarnings } from "./stock/warnings";
 onAfterImport("bestandswarnungen", refreshStockWarnings);
+
+import "./orders/csv";
