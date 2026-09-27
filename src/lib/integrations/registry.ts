@@ -47,6 +47,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
       { key: "refreshToken", label: "User Refresh-Token", secret: true },
       { key: "environment", label: "Umgebung", placeholder: "production oder sandbox" },
       { key: "marketplaceId", label: "Marktplatz", placeholder: "EBAY_DE" },
+      { key: "fulfillmentPolicyId", label: "Versand-Richtlinie (ID)", help: "Nur zum Einstellen von Artikeln nötig. IDs stehen im eBay-Konto unter Geschäftsrichtlinien." },
+      { key: "paymentPolicyId", label: "Zahlungs-Richtlinie (ID)" },
+      { key: "returnPolicyId", label: "Rücknahme-Richtlinie (ID)" },
+      { key: "merchantLocationKey", label: "Artikelstandort (Schlüssel)", placeholder: "z. B. lager1" },
     ],
     setup: [
       "developer.ebay.com → Konto anlegen → Application Keys für Production erzeugen.",

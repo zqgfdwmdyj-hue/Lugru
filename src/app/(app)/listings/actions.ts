@@ -35,10 +35,14 @@ export async function saveListing(fd: FormData) {
       condition: String(fd.get("condition") ?? "NEW"),
       price: parseAmount(fd.get("price")),
       quantity: Math.max(0, Math.round(parseAmount(fd.get("quantity")) ?? 1)),
+      payload: {
+        categoryId: String(fd.get("categoryId") ?? "").trim() || undefined,
+        imageUrls: String(fd.get("imageUrls") ?? "").split(/\s+/).filter((u) => /^https:\/\//.test(u)),
+      },
     })
     .onConflictDoUpdate({
       target: [schema.listings.tenantId, schema.listings.channel, schema.listings.sku],
-      set: { title: sql`excluded.title`, description: sql`excluded.description`, ean: sql`excluded.ean`, condition: sql`excluded.condition`, price: sql`excluded.price`, quantity: sql`excluded.quantity`, updatedAt: new Date() },
+      set: { payload: sql`excluded.payload`, title: sql`excluded.title`, description: sql`excluded.description`, ean: sql`excluded.ean`, condition: sql`excluded.condition`, price: sql`excluded.price`, quantity: sql`excluded.quantity`, updatedAt: new Date() },
     });
   revalidatePath("/listings");
 }

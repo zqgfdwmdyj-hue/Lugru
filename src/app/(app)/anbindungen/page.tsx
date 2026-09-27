@@ -1,13 +1,17 @@
 import { requireOwner } from "@/lib/auth/session";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { integrationStatus } from "@/lib/integrations/store";
-import { deleteIntegrationAction, saveIntegrationAction } from "./actions";
+import { desc, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { REPORT_KINDS } from "@/lib/reports/amazon";
+import { deleteIntegrationAction, requestAmazonReport, runAllNow, saveIntegrationAction } from "./actions";
 import { TestButton } from "./test-button";
 
 export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
   const session = await requireOwner();
   const { p } = await searchParams;
   const status = await integrationStatus(session.tenantId);
+  const reports = await db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12);
 
   return (
     <>
@@ -21,6 +25,29 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
         Zugangsdaten werden verschlüsselt gespeichert. Geheime Felder werden nie wieder angezeigt – leer lassen, um den gespeicherten Wert zu behalten.
         Bis eine Anbindung steht, lassen sich die meisten Daten auch als Datei importieren.
       </p>
+      <section className="card card-pad stack">
+        <div className="between">
+          <h2>Hintergrund-Abrufe</h2>
+          <form action={runAllNow}><button className="btn btn-small" type="submit">Jetzt alles abrufen</button></form>
+        </div>
+        <div className="small muted">Postfächer, Amazon- und eBay-Bestellungen alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich), Rechnungen stündlich.</div>
+        {status.get("amazon_sp") && (
+          <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <label htmlFor="rk" className="small">Amazon-Report sofort anfordern:</label>
+            <select className="select" id="rk" name="kind" style={{ width: 280 }}>{Object.entries(REPORT_KINDS).filter(([k]) => k !== "settlement").map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <button className="btn btn-small" type="submit">Anfordern</button>
+          </form>
+        )}
+        {reports.length > 0 && (
+          <table className="table">
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.id}><td className="num small">{r.requestedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</td><td className="small">{r.reportType}</td><td className="small">{r.status === "pending" ? "wartet auf Amazon" : r.status === "done" ? "übernommen" : `Fehler: ${r.error ?? ""}`}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
       <div className="stack" style={{ gap: 14 }}>
         {INTEGRATIONS.map((def) => {
           const st = status.get(def.provider);

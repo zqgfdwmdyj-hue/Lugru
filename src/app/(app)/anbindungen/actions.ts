@@ -29,3 +29,19 @@ export async function testIntegrationAction(_prev: TestState, formData: FormData
   const session = await requireOwner();
   return testIntegration(session.tenantId, String(formData.get("provider")));
 }
+
+export async function runAllNow(): Promise<void> {
+  await requireOwner();
+  const { runScheduledJobs } = await import("@/lib/scheduler");
+  await runScheduledJobs(true);
+  revalidatePath("/", "layout");
+}
+
+export async function requestAmazonReport(fd: FormData) {
+  const session = await requireOwner();
+  const { requestReport, REPORT_TYPES } = await import("@/lib/integrations/clients/amazon");
+  const kind = String(fd.get("kind")) as keyof typeof REPORT_TYPES;
+  if (!(kind in REPORT_TYPES)) return;
+  await requestReport(session.tenantId, kind);
+  revalidatePath("/anbindungen");
+}

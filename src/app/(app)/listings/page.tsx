@@ -70,6 +70,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                   </div>
                   <div className="field"><label className="label" htmlFor="l-e">EAN</label><input className="input num" id="l-e" name="ean" defaultValue={cur?.ean ?? ""} /></div>
                   <div className="field"><label className="label" htmlFor="l-c">Zustand</label><select className="select" id="l-c" name="condition" defaultValue={cur?.condition ?? "NEW"}><option value="NEW">Neu</option><option value="LIKE_NEW">Wie neu</option><option value="USED_EXCELLENT">Gebraucht – sehr gut</option><option value="USED_GOOD">Gebraucht – gut</option></select></div>
+                  <div className="field"><label className="label" htmlFor="l-cat">eBay-Kategorie-ID</label><input className="input num" id="l-cat" name="categoryId" defaultValue={(cur?.payload as { categoryId?: string } | undefined)?.categoryId ?? ""} /></div>
+                  <div className="field"><label className="label" htmlFor="l-img">Bild-Links (https, eins pro Zeile)</label><textarea className="textarea" id="l-img" name="imageUrls" defaultValue={((cur?.payload as { imageUrls?: string[] } | undefined)?.imageUrls ?? []).join("\n")} style={{ minHeight: 60 }} /></div>
                   <div className="field"><label className="label" htmlFor="l-d">Beschreibung</label><textarea className="textarea" id="l-d" name="description" defaultValue={cur?.description ?? ""} style={{ minHeight: 100 }} /></div>
                   <button className="btn btn-primary" type="submit">Speichern</button>
                 </>

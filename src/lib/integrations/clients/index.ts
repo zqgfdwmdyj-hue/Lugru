@@ -2,3 +2,6 @@
 import "./dhl";
 import "./mail";
 import "./drive";
+import "./amazon";
+import "./ebay";
+import "./marketplaces-other";

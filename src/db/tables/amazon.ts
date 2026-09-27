@@ -231,3 +231,19 @@ export const reportImports = pgTable("report_imports", {
   message: text("message"),
   createdAt: createdAt(),
 });
+
+/** Per SP-API angeforderte Reports, die noch abgeholt werden müssen. */
+export const apiReportRequests = pgTable(
+  "api_report_requests",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reportType: text("report_type").notNull(),
+    reportId: text("report_id").notNull(),
+    status: text("status", { enum: ["pending", "done", "error"] }).notNull().default("pending"),
+    error: text("error"),
+    requestedAt: createdAt(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("api_report_uq").on(t.tenantId, t.reportId), index("api_report_status_idx").on(t.tenantId, t.status)],
+);
