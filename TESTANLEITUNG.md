@@ -66,3 +66,18 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 - **FNSKU-Etiketten** (QL-800): Papier 62 × 29 mm, Ränder „keine“, Skalierung 100 %.
 - **DHL-Labels** (QL-1100): Labelformat 910-300-700 (103 × 199 mm).
 - Der Browser zeigt vor dem Druck einen Dialog. Für Druck ganz ohne Dialog ist ein kleines Druckprogramm auf dem PC nötig (z. B. QZ Tray) – kommt in einer späteren Ausbaustufe.
+
+## 6. Online auf Hetzner
+
+1. **console.hetzner.cloud** → Projekt anlegen → **Server hinzufügen**: Standort Falkenstein/Nürnberg, Image **Ubuntu 24.04**, Typ **CX22** (2 vCPU, 4 GB RAM, ca. 4–5 €/Monat), unter „Backups“ die tägliche Sicherung aktivieren. SSH-Schlüssel hinterlegen oder das Root-Passwort per Mail nutzen.
+2. Mit dem Server verbinden: `ssh root@<IP-Adresse>`
+3. Einrichten (bei privatem Repository mit Lese-Token von github.com → Settings → Developer settings → Fine-grained tokens):
+   ```
+   curl -fsSL https://raw.githubusercontent.com/zqgfdwmdyj-hue/Lugru/main/deploy/install.sh -o install.sh
+   bash install.sh https://<TOKEN>@github.com/zqgfdwmdyj-hue/Lugru.git
+   ```
+   Ohne eigene Domain gibt es automatisch eine Adresse der Form `https://1-2-3-4.sslip.io` mit HTTPS. Mit eigener Domain: DNS-A-Eintrag auf die Server-IP setzen und die Domain als zweiten Parameter angeben.
+4. Benutzer anlegen (Befehl steht am Ende der Ausgabe).
+5. Updates später: `bash /opt/seller-system/deploy/update.sh`
+
+Bei privatem Repository ist die `install.sh` nicht per `raw.githubusercontent.com` abrufbar – dann den Inhalt der Datei kopieren oder zuerst `git clone` mit Token ausführen und `bash deploy/install.sh <url>` starten.
