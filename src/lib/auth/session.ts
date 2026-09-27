@@ -73,3 +73,10 @@ export async function requireSession(): Promise<Session> {
   if (!session) redirect("/login");
   return session;
 }
+
+/** Nur für Inhaber (Einstellungen, Anbindungen, Benutzer). */
+export async function requireOwner(): Promise<Session> {
+  const session = await requireSession();
+  if (session.role !== "owner") redirect("/");
+  return session;
+}

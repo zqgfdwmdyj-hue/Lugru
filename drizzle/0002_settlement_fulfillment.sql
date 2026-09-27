@@ -1,0 +1,1 @@
+ALTER TABLE "amazon_settlement_lines" ADD COLUMN "fulfillment_id" text;

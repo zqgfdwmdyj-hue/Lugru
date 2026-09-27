@@ -76,7 +76,7 @@ export async function refreshImportReminder(tenantId: string, reminderDays: numb
         ? `Letzter Import am ${lastAt.toLocaleDateString("de-DE")}. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.`
         : "Noch kein Import. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.",
       category: "einkauf",
-      link: "/einkauf",
+      link: "/import",
       dueDate: new Date().toISOString().slice(0, 10),
     });
   } else {

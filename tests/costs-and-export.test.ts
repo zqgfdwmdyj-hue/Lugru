@@ -77,3 +77,15 @@ describe("Zahlen und Datum", () => {
     expect(parseDate(46292)).toBe("2026-09-27");
   });
 });
+
+describe("Datumsformate aus Reports", () => {
+  it("versteht die gängigen Formate", async () => {
+    const { parseDate, parseDateTime } = await import("@/lib/numbers");
+    expect(parseDate("09/27/2026")).toBe("2026-09-27");
+    expect(parseDate("27/09/2026")).toBe("2026-09-27");
+    expect(parseDate("27.09.2026 10:11:12 UTC")).toBe("2026-09-27");
+    expect(parseDate("2026-09-27T10:11:12+00:00")).toBe("2026-09-27");
+    expect(parseDateTime("27.09.2026 10:11:12 UTC")?.toISOString()).toBe("2026-09-27T10:11:12.000Z");
+    expect(parseDateTime("2026-09-27T10:11:12+02:00")?.toISOString()).toBe("2026-09-27T08:11:12.000Z");
+  });
+});

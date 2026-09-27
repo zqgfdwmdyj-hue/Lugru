@@ -207,7 +207,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           <section className="card card-pad">
             <h2 style={{ marginBottom: 12 }}>Schnellzugriff</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-              <Link className="btn" href="/einkauf">Export hochladen</Link>
+              <Link className="btn" href="/import">Daten importieren</Link>
               <Link className="btn" href="/export">COG-Export</Link>
               <Link className="btn" href="/chargen">Chargen</Link>
               <Link className="btn" href="/wissen/neu">Wissen notieren</Link>

@@ -32,12 +32,37 @@ export function parseDate(value: unknown): string | null {
   const s = value.trim();
   let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = /^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/.exec(s);
+  m = /^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})(?:[ T].*)?$/.exec(s);
   if (m) {
     const y = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
     return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   }
+  // Amerikanisch (Amazon-Reports): MM/DD/YYYY – außer der erste Teil ist > 12.
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T].*)?$/.exec(s);
+  if (m) {
+    let [mo, d] = [Number(m[1]), Number(m[2])];
+    if (mo > 12) [mo, d] = [d, mo];
+    return `${m[3]}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+  m = /^(\d{4})\/(\d{2})\/(\d{2})/.exec(s);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
   return null;
+}
+
+/** Zeitpunkt aus ISO oder "27.09.2026 10:11:12 UTC"; ohne Zone als UTC. */
+export function parseDateTime(value: unknown): Date | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const s = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const day = parseDate(s);
+  if (!day) return null;
+  const t = /(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(s.slice(8));
+  const time = t ? `${t[1].padStart(2, "0")}:${t[2]}:${t[3] ?? "00"}` : "00:00:00";
+  const d = new Date(`${day}T${time}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export function formatEuro(value: number | string | null | undefined): string {
