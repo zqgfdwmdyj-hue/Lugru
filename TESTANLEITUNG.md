@@ -39,6 +39,7 @@ Stoppen: `docker compose down` (die Daten bleiben erhalten). Alles löschen: `do
 | **Lieferanten-Feeds** | Preisliste (CSV/Excel) hochladen, Spalten zuordnen → Gewinn je Angebot. |
 | **Retouren-Abgleich** | Aus dem bisherigen Retouren-Tool übernommen. Transaktionsbericht, FBA-Kundenrücksendungen, Erstattungen und Retourenbericht (Händlerversand) hochladen → Retouren → Abgleich (FBA / Händlerversand) und Artikel (Retourenquote). Was Amazon zahlen muss, wird automatisch ein Anspruch mit fertigem Text. Zum Ausprobieren: `tests/fixtures/retouren/` (erfundene Daten). |
 | **eBay (Listing-Tool)** | Aus dem bisherigen LuGru eBay-Tool übernommen: Menü **eBay**. Suchen → Listing wählen → Einkauf & Preis → Vorschau → veröffentlichen, dazu Artikel & Gewinn, Verlauf, Rechnungen, idealo-Preisvergleich, Keepa-Bilder. Ohne eBay-Zugang lassen sich Einstellungen, Kalkulation und die Datenübernahme testen (siehe Abschnitt 7). |
+| **Themen-Recherche** | Wissen → Themen-Recherche: Themen eintragen (E-Commerce, Amazon Private Label, Immobilien, Aktien …), „Jetzt suchen“. Danach läuft sie alle 3 Tage von selbst; je Thema entsteht ein Eintrag unter Wissen → Recherche. Mit Claude-API-Schlüssel (Anbindungen → KI) steht darüber eine Zusammenfassung. |
 | **Fälle, Retouren, Bewertungen** | Von Hand anlegen bzw. Feedback-Bericht importieren. |
 | **Wissen & To-dos** | Einträge anlegen, suchen; eigene Aufgaben auf der Startseite. |
 
@@ -52,6 +53,7 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 | DHL Geschäftskunden | Labels Paket/Kleinpaket | Erst mit **Sandbox** testen (Einstellungen → Versand). Abrechnungsnummern eintragen. |
 | eBay | Artikel einstellen, Rechnungen, Bestellungen, Sendungsnummer | Eingerichtet wird unter **eBay → eBay-Einstellungen → Verbindung** (Client ID, Client Secret, RuName, dann „Mit eBay verbinden“). Eine übernommene Verbindung aus dem bisherigen Tool darf Bestellungen nur lesen – für das Zurückmelden der Sendungsnummer einmal neu verbinden. |
 | Google / Microsoft | Postfächer | Weiterleitungs-URI muss zur Adresse der App passen (`APP_URL`). |
+| Apple-Kalender | Fälligkeiten in den Kalender, eigene Termine auf die Startseite | Apple-ID + **app-spezifisches Passwort** (appleid.apple.com → Anmelden und Sicherheit). Es entsteht der Kalender „Seller-System“. Im Kalender verschieben = neues Fälligkeitsdatum, löschen = erledigt, neuer Termin dort = neue Aufgabe. |
 | Google Drive | Rechnungsordner von Invoice Fetcher | Ordner für das Dienstkonto freigeben. |
 
 ## 4. Bekannte Platzhalter – bitte prüfen

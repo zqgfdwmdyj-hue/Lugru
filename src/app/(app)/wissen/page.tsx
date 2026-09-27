@@ -56,6 +56,7 @@ export default async function WissenPage({
           <label htmlFor="wq" className="sr-only">Wissen durchsuchen</label>
           <input id="wq" name="q" type="search" className="input" defaultValue={query} placeholder="Durchsuchen: „fehlende Einheiten“, „Kleinpaket“, „A-bis-Z“ …" style={{ height: 46, fontSize: 15, borderWidth: 2, borderColor: "var(--accent)" }} />
         </form>
+        <Link className="btn" href="/wissen/recherche" style={{ height: 46 }}>Themen-Recherche</Link>
         <Link className="btn btn-primary" href="/wissen/neu" style={{ height: 46 }}>+ Neuer Eintrag</Link>
       </div>
 
@@ -91,7 +92,7 @@ export default async function WissenPage({
                 <span className={`tag ${e.kind === "snippet" ? "tag-info" : "tag-neutral"}`}>{e.kind === "snippet" ? "TEXTBAUSTEIN" : e.category.toUpperCase()}</span>
               </div>
               <div className="small muted" style={{ marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {e.body.replace(/\s+/g, " ").slice(0, 180) || "–"}
+                {e.body.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").slice(0, 180) || "–"}
               </div>
               <div className="small muted" style={{ marginTop: 4 }}>
                 {e.category} · aktualisiert {formatDate(e.updatedAt.toISOString())}

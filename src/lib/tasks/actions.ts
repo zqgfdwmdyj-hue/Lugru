@@ -5,6 +5,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
+import { syncCalendar } from "@/lib/calendar/sync";
+
+/** Kalender im Hintergrund nachziehen, damit neue oder erledigte Aufgaben gleich dort stehen. */
+function syncSoon(tenantId: string) {
+  void syncCalendar(tenantId).catch(() => {});
+}
 
 const newTask = z.object({
   title: z.string().trim().min(1).max(300),
@@ -30,6 +36,7 @@ export async function createTask(formData: FormData) {
     priority: parsed.data.critical ? "critical" : "normal",
     createdBy: session.userId,
   });
+  syncSoon(session.tenantId);
   revalidatePath("/", "layout");
 }
 
@@ -46,6 +53,7 @@ export async function toggleTask(formData: FormData) {
     .update(schema.tasks)
     .set({ status: done ? "done" : "open", completedAt: done ? new Date() : null })
     .where(and(eq(schema.tasks.id, id), eq(schema.tasks.tenantId, session.tenantId)));
+  syncSoon(session.tenantId);
   revalidatePath("/", "layout");
 }
 
@@ -55,5 +63,6 @@ export async function deleteTask(formData: FormData) {
   await db
     .delete(schema.tasks)
     .where(and(eq(schema.tasks.id, id), eq(schema.tasks.tenantId, session.tenantId)));
+  syncSoon(session.tenantId);
   revalidatePath("/", "layout");
 }

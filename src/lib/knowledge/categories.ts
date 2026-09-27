@@ -8,6 +8,7 @@ export const KNOWLEDGE_CATEGORIES = [
   "Lieferanten",
   "Steuer & Buchhaltung",
   "Tools & Abläufe",
+  "Recherche",
   "Eigene Notizen",
 ] as const;
 

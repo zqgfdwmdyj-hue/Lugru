@@ -134,6 +134,19 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
     .orderBy(asc(T.dueDate))
     .limit(5);
 
+  const E = schema.calendarEvents;
+  const [appointments, [calendarLink]] = await Promise.all([
+    db
+      .select()
+      .from(E)
+      .where(and(eq(E.tenantId, session.tenantId), sql`${E.day} between ${today}::date and ${addDaysIso(today, 7)}::date`))
+      .orderBy(asc(E.day), desc(E.allDay), asc(E.startsAt))
+      .limit(12),
+    db.select({ n: count() }).from(schema.integrations).where(and(eq(schema.integrations.tenantId, session.tenantId), eq(schema.integrations.provider, "apple_calendar"))),
+  ]);
+  const calState = tenant.settings.calendar;
+  const timeOf = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
+
   const section = (label: string, color: string, items: Task[]) =>
     items.length > 0 && (
       <>
@@ -204,6 +217,36 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
         </section>
 
         <div className="col-side">
+          <section className="card card-pad">
+            <div className="between" style={{ marginBottom: 12 }}>
+              <h2>Termine</h2>
+              {calendarLink.n > 0 && calState?.lastSync && <span className="small muted">Kalender {new Date(calState.lastSync).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })}</span>}
+            </div>
+            {calendarLink.n === 0 ? (
+              <div className="small muted">
+                Apple-Kalender verbinden, dann stehen hier deine Termine – und alle Fälligkeiten des Systems in deinem Kalender.{" "}
+                {session.role === "owner" && <Link href="/anbindungen?p=apple_calendar#apple_calendar">Jetzt verbinden</Link>}
+              </div>
+            ) : calState?.lastError ? (
+              <div className="small" style={{ color: "var(--danger)" }}>Kalender: {calState.lastError}</div>
+            ) : appointments.length === 0 ? (
+              <div className="small muted">Keine Termine in den nächsten 7 Tagen.</div>
+            ) : (
+              <div className="stack" style={{ fontSize: 13 }}>
+                {appointments.map((a) => (
+                  <div key={a.id} style={{ display: "flex", gap: 10 }}>
+                    <span className="num" style={{ width: 64, flexShrink: 0 }}>{dueLabel(a.day, today)}</span>
+                    <span style={{ minWidth: 0 }}>
+                      {!a.allDay && <span className="num muted">{timeOf(a.startsAt)} </span>}
+                      {a.title}
+                      {a.location && <span className="muted"> · {a.location}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
           <section className="card card-pad">
             <h2 style={{ marginBottom: 12 }}>Schnellzugriff</h2>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>

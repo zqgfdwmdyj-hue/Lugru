@@ -9,6 +9,8 @@ import { ebayDb } from "@/lib/ebay/db/pg";
 import { runIdealoDaily } from "@/lib/ebay/idealo/scheduler";
 import { runInvoiceAutomation } from "@/lib/ebay/invoices/scheduler";
 import { invoiceDeps } from "@/lib/ebay/routes/invoices";
+import { syncCalendar } from "@/lib/calendar/sync";
+import { runResearchIfDue } from "@/lib/research/service";
 import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
@@ -60,6 +62,8 @@ export async function runScheduledJobs(force = false) {
         // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
         if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));
       }
+      if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));
+      if (force || due(`${t}:research`, 59)) await step("Themen-Recherche", () => runResearchIfDue(t));
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step("Rechnungen", () => syncDrive(t, 100));
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);

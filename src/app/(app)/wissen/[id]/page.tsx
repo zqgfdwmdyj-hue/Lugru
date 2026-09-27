@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Linkify } from "@/components/linkify";
 import { notFound } from "next/navigation";
 import { and, arrayOverlaps, eq, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -54,7 +55,7 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
             </div>
           )}
           <div className={entry.kind === "snippet" ? "snippet article-body" : "article-body"} style={{ marginTop: 18 }}>
-            {entry.body || <span className="muted">Noch kein Inhalt.</span>}
+            {entry.body ? <Linkify text={entry.body} /> : <span className="muted">Noch kein Inhalt.</span>}
           </div>
           <form action={deleteEntry} style={{ marginTop: 28 }}>
             <input type="hidden" name="id" value={entry.id} />

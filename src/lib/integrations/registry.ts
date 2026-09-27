@@ -122,10 +122,30 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["Zugang über das Temu Seller Center / Partner-Programm beantragen. Verfügbarkeit vorab prüfen."],
   },
   {
+    provider: "apple_calendar",
+    name: "Apple-Kalender (iCloud)",
+    purpose: "Fälligkeiten in den Kalender „Seller-System“: Aufgaben, Fristen von Fällen und Ansprüchen, Versand, geplante Zahlungen – und eigene Termine auf der Startseite. Verschieben oder Löschen im Kalender wirkt zurück auf die Aufgaben.",
+    fields: [
+      { key: "appleId", label: "Apple-ID (E-Mail)", placeholder: "name@icloud.com" },
+      { key: "appPassword", label: "App-spezifisches Passwort", secret: true, placeholder: "abcd-efgh-ijkl-mnop" },
+      { key: "calendarName", label: "Name des Kalenders für das System", placeholder: "Seller-System", help: "Wird angelegt, wenn es ihn noch nicht gibt." },
+      { key: "readCalendars", label: "Eigene Kalender anzeigen (Komma, leer = alle)", placeholder: "Privat, Arbeit" },
+      { key: "server", label: "CalDAV-Server (nur wenn nicht iCloud)", placeholder: "https://caldav.icloud.com" },
+    ],
+    setup: [
+      "appleid.apple.com → Anmelden und Sicherheit → App-spezifische Passwörter → „+“ → Name z. B. „Seller-System“ → Passwort kopieren.",
+      "Hier Apple-ID und das App-Passwort eintragen (nicht das normale Apple-Passwort) und „Verbindung testen“.",
+      "Der Kalender „Seller-System“ erscheint danach auf iPhone, iPad und Mac (Kalender-App → Kalender → iCloud). Abgleich alle 15 Minuten.",
+    ],
+  },
+  {
     provider: "anthropic",
     name: "KI (Claude) – optional",
-    purpose: "Liest Rechnungspositionen aus PDFs und hilft beim Einordnen unklarer Mails.",
-    fields: [{ key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-ant-…" }],
+    purpose: "Fasst bei der Themen-Recherche für die Wissensdatenbank die neuen Artikel zusammen.",
+    fields: [
+      { key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-ant-…" },
+      { key: "model", label: "Modell (optional)", placeholder: "claude-sonnet-5" },
+    ],
     setup: ["console.anthropic.com → API Keys → neuen Schlüssel anlegen und hier eintragen."],
   },
 ];

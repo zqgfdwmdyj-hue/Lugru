@@ -105,6 +105,10 @@ export type TenantSettings = {
   /** Retouren-Abgleich: Wartezeiten in Tagen. */
   returns?: { graceFba?: number; claimFba?: number; graceFbm?: number; marketplace?: string };
   cash?: { startBalance?: number; asOf?: string };
+  /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
+  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[] };
+  /** Themen-Recherche für die Wissensdatenbank. */
+  research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
 };
 
 export const tenants = pgTable("tenants", {

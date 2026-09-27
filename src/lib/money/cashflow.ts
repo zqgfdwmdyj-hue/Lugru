@@ -16,7 +16,7 @@ export function weekStart(iso: string) {
   return d.toISOString().slice(0, 10);
 }
 
-function addMonthsIso(iso: string, n: number) {
+export function addMonthsIso(iso: string, n: number) {
   const d = new Date(`${iso}T12:00:00Z`);
   const day = d.getUTCDate();
   d.setUTCDate(1);

@@ -43,6 +43,20 @@
       "when": 1790523491625,
       "tag": "0005_ebay_tool",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790524868530,
+      "tag": "0006_kalender",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790525143073,
+      "tag": "0007_recherche",
+      "breakpoints": true
     }
   ]
 }
