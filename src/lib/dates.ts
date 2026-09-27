@@ -1,7 +1,7 @@
 const TZ = "Europe/Berlin";
 
 /** Heutiges Datum in deutscher Zeit als JJJJ-MM-TT. */
-export function todayIso(now = new Date()): string {
+export function todayIso(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: TZ }).format(now);
 }
 

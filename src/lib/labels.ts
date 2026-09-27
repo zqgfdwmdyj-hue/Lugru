@@ -33,3 +33,10 @@ export const ORDER_STATUS_LABEL: Record<string, string> = {
   cancelled: "Storniert",
   returned: "Retour",
 };
+
+export const MAIL_CATEGORY_LABEL: Record<string, [string, string]> = {
+  critical: ["KRITISCH", "tag-critical"],
+  action: ["HANDELN", "tag-warn"],
+  info: ["INFO", "tag-info"],
+  noise: ["UNWICHTIG", "tag-neutral"],
+};

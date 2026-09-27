@@ -1,0 +1,75 @@
+"use server";
+
+import { and, eq, inArray } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import { db, schema } from "@/db";
+import { MAIL_CATEGORIES } from "@/db/schema";
+import { requireSession } from "@/lib/auth/session";
+import { ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
+
+export type InboxState = { ok: boolean; message: string } | null;
+const uuid = z.string().uuid();
+
+export async function uploadEml(_prev: InboxState, fd: FormData): Promise<InboxState> {
+  const session = await requireSession();
+  const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (!files.length) return { ok: false, message: "Bitte .eml-Dateien auswählen." };
+  let [box] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.tenantId, session.tenantId), eq(schema.mailboxes.provider, "upload")));
+  if (!box) [box] = await db.insert(schema.mailboxes).values({ tenantId: session.tenantId, provider: "upload", address: "Hochgeladene Mails" }).returning();
+  const counts = { new: 0, duplicate: 0, ignored: 0 };
+  for (const f of files) {
+    try {
+      counts[await ingestMail(session.tenantId, box.id, await parseRaw(Buffer.from(await f.arrayBuffer())))]++;
+    } catch {
+      counts.ignored++;
+    }
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: `${counts.new} neu, ${counts.duplicate} schon bekannt, ${counts.ignored} nicht von Marktplätzen/ignoriert.` };
+}
+
+export async function syncNow(_prev: InboxState): Promise<InboxState> {
+  const session = await requireSession();
+  const res = await syncAllMailboxes(session.tenantId);
+  revalidatePath("/", "layout");
+  if (!res.length) return { ok: false, message: "Noch kein Postfach verbunden." };
+  return { ok: res.every((r) => !r.error), message: res.map((r) => (r.error ? `${r.address}: ${r.error}` : `${r.address}: ${r.new} neu`)).join(" · ") };
+}
+
+export async function setCategory(fd: FormData) {
+  const session = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const category = z.enum(MAIL_CATEGORIES).parse(fd.get("category"));
+  await db.update(schema.emails).set({ category, matchedRule: "von Hand" }).where(and(eq(schema.emails.id, id), eq(schema.emails.tenantId, session.tenantId)));
+  revalidatePath("/posteingang", "layout");
+}
+
+export async function archiveMails(fd: FormData) {
+  const session = await requireSession();
+  const ids = fd.getAll("ids").map(String).filter((s) => uuid.safeParse(s).success);
+  const one = fd.get("id");
+  if (one && uuid.safeParse(one).success) ids.push(String(one));
+  if (!ids.length) return;
+  await db.update(schema.emails).set({ archived: true }).where(and(eq(schema.emails.tenantId, session.tenantId), inArray(schema.emails.id, ids)));
+  revalidatePath("/", "layout");
+}
+
+export async function createTaskFromMail(fd: FormData) {
+  const session = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const [m] = await db.select().from(schema.emails).where(and(eq(schema.emails.id, id), eq(schema.emails.tenantId, session.tenantId)));
+  if (!m || m.taskId) return;
+  const [t] = await db.insert(schema.tasks).values({ tenantId: session.tenantId, title: (m.subject ?? "Mail").slice(0, 280), notes: m.fromAddress, category: "support", link: `/posteingang/${m.id}`, createdBy: session.userId }).returning({ id: schema.tasks.id });
+  await db.update(schema.emails).set({ taskId: t.id }).where(eq(schema.emails.id, m.id));
+  revalidatePath("/", "layout");
+}
+
+export async function toggleMailbox(fd: FormData) {
+  const session = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const [mb] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
+  if (!mb) return;
+  await db.update(schema.mailboxes).set({ active: !mb.active, updatedAt: new Date() }).where(eq(schema.mailboxes.id, id));
+  revalidatePath("/posteingang");
+}
