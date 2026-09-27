@@ -2,5 +2,5 @@
 # kein eigener Webserver, App nur auf der angegebenen Adresse und dem Port erreichbar.
 services:
   app:
-    ports: !reset
+    ports: !override
       - "${BIND_IP:-127.0.0.1}:${APP_PORT:-3020}:3000"
