@@ -25,13 +25,15 @@ export const calendarItems = pgTable(
   (t) => [uniqueIndex("calendar_items_key_uq").on(t.tenantId, t.sourceKey), uniqueIndex("calendar_items_uid_uq").on(t.tenantId, t.uid)],
 );
 
-/** Eigene Termine aus den übrigen Kalendern (nur lesen) – für die Startseite. */
+/** Eigene Termine aus den übrigen Kalendern (nur lesen) – für Startseite und Kalenderansicht. */
 export const calendarEvents = pgTable(
   "calendar_events",
   {
     id: id(),
     tenantId: tenantId(),
     calendarName: text("calendar_name").notNull(),
+    /** Farbe des Kalenders wie in Apple Kalender (#RRGGBB). */
+    color: text("color"),
     uid: text("uid").notNull(),
     title: text("title").notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),

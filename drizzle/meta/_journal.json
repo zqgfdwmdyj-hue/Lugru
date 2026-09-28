@@ -57,6 +57,13 @@
       "when": 1790525143073,
       "tag": "0007_recherche",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790584228511,
+      "tag": "0008_kalender_farbe",
+      "breakpoints": true
     }
   ]
 }

@@ -147,10 +147,10 @@ async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeo
     removed++;
   }
 
-  // 4. Eigene Termine der übrigen Kalender lesen (nächste 60 Tage).
+  // 4. Eigene Termine der übrigen Kalender lesen (3 Monate zurück bis 1 Jahr voraus – für die Kalenderansicht).
   const readable = eventCalendars.filter((k) => k.href !== sysHref && (c.readOnly.length === 0 || c.readOnly.includes(k.name.toLowerCase())));
   const today = todayIso();
-  const range = { from: new Date(`${addDaysIso(today, -1)}T00:00:00Z`), to: new Date(`${addDaysIso(today, 60)}T00:00:00Z`) };
+  const range = { from: new Date(`${addDaysIso(today, -92)}T00:00:00Z`), to: new Date(`${addDaysIso(today, 366)}T00:00:00Z`) };
   const E = schema.calendarEvents;
   const rows: (typeof E.$inferInsert)[] = [];
   for (const k of readable) {
@@ -167,8 +167,8 @@ async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeo
         const day = ev.allDay ? ev.start : berlinDay(ev.start);
         // Nicht aufgelöste Serien: nur der erste Termin – besser als nichts.
         if (!ev.allDay && ev.end && new Date(ev.end) < range.from) continue;
-        if (ev.allDay && (ev.end ?? addDaysIso(ev.start, 1)) <= addDaysIso(today, -1)) continue;
-        rows.push({ tenantId, calendarName: k.name, uid: ev.uid, title: ev.title, startsAt: starts, endsAt: ev.end ? (ev.allDay ? new Date(`${ev.end}T00:00:00Z`) : new Date(ev.end)) : null, allDay: ev.allDay, day, location: ev.location, notes: ev.description?.slice(0, 2000) ?? null });
+        if (ev.allDay && (ev.end ?? addDaysIso(ev.start, 1)) <= addDaysIso(today, -92)) continue;
+        rows.push({ tenantId, calendarName: k.name, color: calendarColor(k.color), uid: ev.uid, title: ev.title, startsAt: starts, endsAt: ev.end ? (ev.allDay ? new Date(`${ev.end}T00:00:00Z`) : new Date(ev.end)) : null, allDay: ev.allDay, day, location: ev.location, notes: ev.description?.slice(0, 2000) ?? null });
       }
     }
   }
@@ -178,6 +178,12 @@ async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeo
   });
 
   return { created, updated, removed, fromCalendar: changes.created.length + changes.moved.length + changes.deleted.filter((d) => d.taskId).length, appointments: rows.length };
+}
+
+/** Apple liefert Farben als #RRGGBBAA – für die Anzeige reicht #RRGGBB. */
+export function calendarColor(c: string | null): string | null {
+  const m = c?.trim().match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i);
+  return m ? `#${m[1].toUpperCase()}` : null;
 }
 
 function absoluteLink(link: string) {

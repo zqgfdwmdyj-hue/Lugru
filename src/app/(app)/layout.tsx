@@ -22,6 +22,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="brand-mark">S</span>
           Seller-System
         </div>
+        <input type="checkbox" id="nav-toggle" className="nav-toggle" aria-hidden="true" />
+        <label htmlFor="nav-toggle" className="nav-burger">☰ Menü</label>
         <SidebarNav
           counts={{ tasks: tasks.n, inbox: inbox.n, orders: orders.n, claims: claims.n, invoices: invoices.n }}
           isOwner={session.role === "owner"}

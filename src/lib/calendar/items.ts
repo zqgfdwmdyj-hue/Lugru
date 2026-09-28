@@ -24,10 +24,13 @@ const COVERED_BY_CALENDAR = ["claims-deadline", "claims-expired", "claims-open",
 const berlinDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 
 /** Alles mit Datum, was ansteht: Aufgaben, Fristen, Versand, Ansprüche, geplante Zahlungen. */
-export async function collectDesired(tenantId: string, today = todayIso()): Promise<Desired[]> {
+export async function collectDesired(tenantId: string, today = todayIso(), view?: { from: string; to: string }): Promise<Desired[]> {
   const t = tenantId;
-  const from = addDaysIso(today, -60);
-  const to = addDaysIso(today, 180);
+  // Für den Kalender-Abgleich ein festes Fenster; die Kalenderansicht fragt genau ihren Monat ab.
+  const from = view?.from ?? addDaysIso(today, -60);
+  const to = view?.to ?? addDaysIso(today, 180);
+  const cashFrom = view ? view.from : today;
+  const cashTo = view ? view.to : addDaysIso(today, 60);
   const out: Desired[] = [];
 
   const T = schema.tasks;
@@ -111,17 +114,17 @@ export async function collectDesired(tenantId: string, today = todayIso()): Prom
   }
 
   const M = schema.cashItems;
-  const cash = await db.select().from(M).where(and(eq(M.tenantId, t), lte(M.date, addDaysIso(today, 60))));
+  const cash = await db.select().from(M).where(and(eq(M.tenantId, t), lte(M.date, cashTo)));
   for (const c of cash) {
     const dates: string[] = [];
     if (c.recurrence === "none") {
-      if (c.date >= today) dates.push(c.date);
+      if (c.date >= cashFrom && c.date <= cashTo) dates.push(c.date);
     } else {
       // Wiederkehrende Posten: die Termine der nächsten 60 Tage (wie im Cash Flow gerechnet).
       for (let n = 0; n < 1000; n++) {
         const d = c.recurrence === "weekly" ? addDaysIso(c.date, 7 * n) : addMonthsIso(c.date, n);
-        if (d > addDaysIso(today, 60) || (c.endDate && d > c.endDate)) break;
-        if (d >= today) dates.push(d);
+        if (d > cashTo || (c.endDate && d > c.endDate)) break;
+        if (d >= cashFrom) dates.push(d);
       }
     }
     for (const d of dates) {

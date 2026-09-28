@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildEvent, parseDateValue, parseEvents } from "@/lib/calendar/ics";
 import { hashDesired, planCalendarChanges, planPush, uidFor, type DesiredItem, type StoredItem } from "@/lib/calendar/plan";
 import { parseMultistatus } from "@/lib/calendar/xml";
+import { monthGrid, parseMonth, shiftMonth, spreadDays } from "@/lib/calendar/month";
 
 const desired = (over: Partial<DesiredItem> = {}): DesiredItem => ({ key: "task:1", title: "Rechnung anfordern", date: "2026-10-02", description: "", link: "/", category: "Aufgabe", taskId: "t1", remind: true, ...over });
 const stored = (over: Partial<StoredItem> = {}): StoredItem => ({ id: "s1", sourceKey: "task:1", uid: "u1", href: "/cal/u1.ics", etag: '"1"', hash: hashDesired(desired()), date: "2026-10-02", title: "Rechnung anfordern", taskId: "t1", ...over });
@@ -86,5 +87,24 @@ describe("Abgleich-Plan", () => {
     expect(uidFor("a", "task:1")).toBe(uidFor("a", "task:1"));
     expect(uidFor("a", "task:1")).not.toBe(uidFor("b", "task:1"));
     expect(uidFor("a", "task:1")).toMatch(/^seller-[0-9a-f]{24}@seller-system$/);
+  });
+});
+
+describe("Monatsansicht", () => {
+  it("baut das Raster von Montag bis Sonntag", () => {
+    const g = monthGrid("2026-10"); // 1. Oktober 2026 ist ein Donnerstag
+    expect(g[0]).toBe("2026-09-28");
+    expect(g[g.length - 1]).toBe("2026-11-01");
+    expect(g.length % 7).toBe(0);
+    expect(monthGrid("2027-02")).toHaveLength(28); // Feb 2027 beginnt Montag, endet Sonntag
+  });
+
+  it("blättert über Jahresgrenzen und verteilt mehrtägige Termine", () => {
+    expect(shiftMonth("2026-12", 1)).toBe("2027-01");
+    expect(shiftMonth("2026-01", -1)).toBe("2025-12");
+    expect(parseMonth("2026-13", "2026-09-28")).toBe("2026-09");
+    expect(spreadDays("2026-09-30", "2026-10-03", "2026-09-28", "2026-11-01")).toEqual(["2026-09-30", "2026-10-01", "2026-10-02"]);
+    expect(spreadDays("2026-09-20", "2026-09-30", "2026-09-28", "2026-11-01")).toEqual(["2026-09-28", "2026-09-29"]);
+    expect(spreadDays("2026-10-05", null, "2026-09-28", "2026-11-01")).toEqual(["2026-10-05"]);
   });
 });

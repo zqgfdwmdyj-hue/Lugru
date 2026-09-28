@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number };
@@ -11,11 +12,17 @@ type Group = { head?: string; items: Item[] };
 export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: boolean }) {
   const pathname = usePathname();
   const search = useSearchParams();
+  // Auf dem Handy das aufgeklappte Menü nach dem Seitenwechsel wieder schließen.
+  useEffect(() => {
+    const t = document.getElementById("nav-toggle") as HTMLInputElement | null;
+    if (t) t.checked = false;
+  }, [pathname, search]);
   const groups: Group[] = [
     {
       items: [
         { href: "/", label: "Start", badge: counts.tasks, alert: true },
         { href: "/posteingang", label: "Posteingang", badge: counts.inbox, alert: true },
+        { href: "/kalender", label: "Kalender" },
         { href: "/wissen", label: "Wissen" },
       ],
     },
