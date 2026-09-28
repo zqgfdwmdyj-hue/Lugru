@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildEvent, parseDateValue, parseEvents } from "@/lib/calendar/ics";
 import { hashDesired, planCalendarChanges, planPush, uidFor, type DesiredItem, type StoredItem } from "@/lib/calendar/plan";
 import { parseMultistatus } from "@/lib/calendar/xml";
+import { expandCalendar } from "@/lib/calendar/recur";
+import { parseFeedList } from "@/lib/calendar/feeds";
 import { monthGrid, parseMonth, shiftMonth, spreadDays } from "@/lib/calendar/month";
 
 const desired = (over: Partial<DesiredItem> = {}): DesiredItem => ({ key: "task:1", title: "Rechnung anfordern", date: "2026-10-02", description: "", link: "/", category: "Aufgabe", taskId: "t1", remind: true, ...over });
@@ -106,5 +108,52 @@ describe("Monatsansicht", () => {
     expect(spreadDays("2026-09-30", "2026-10-03", "2026-09-28", "2026-11-01")).toEqual(["2026-09-30", "2026-10-01", "2026-10-02"]);
     expect(spreadDays("2026-09-20", "2026-09-30", "2026-09-28", "2026-11-01")).toEqual(["2026-09-28", "2026-09-29"]);
     expect(spreadDays("2026-10-05", null, "2026-09-28", "2026-11-01")).toEqual(["2026-10-05"]);
+  });
+});
+
+describe("Serientermine", () => {
+  const ics = (lines: string[]) => ["BEGIN:VCALENDAR", ...lines, "END:VCALENDAR"].join("\r\n");
+  const range = { from: new Date("2026-09-01T00:00:00Z"), to: new Date("2026-11-01T00:00:00Z") };
+
+  it("wöchentlich zur gleichen Ortszeit über die Zeitumstellung, mit Ausnahme und geändertem Termin", () => {
+    const evs = parseEvents(ics([
+      "BEGIN:VEVENT", "UID:jf", "SUMMARY:Jourfix", "DTSTART;TZID=Europe/Berlin:20260803T100000", "DTEND;TZID=Europe/Berlin:20260803T110000",
+      "RRULE:FREQ=WEEKLY;BYDAY=MO", "EXDATE;TZID=Europe/Berlin:20260914T100000", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:jf", "SUMMARY:Jourfix (verschoben)", "RECURRENCE-ID;TZID=Europe/Berlin:20260921T100000", "DTSTART;TZID=Europe/Berlin:20260922T150000", "DTEND;TZID=Europe/Berlin:20260922T160000", "END:VEVENT",
+    ]));
+    const out = expandCalendar(evs, range);
+    const starts = out.map((o) => `${o.start} ${o.title}`);
+    expect(starts).toContain("2026-09-07T08:00:00.000Z Jourfix");
+    expect(starts).not.toContain("2026-09-14T08:00:00.000Z Jourfix"); // EXDATE
+    expect(starts).not.toContain("2026-09-21T08:00:00.000Z Jourfix"); // ersetzt …
+    expect(starts).toContain("2026-09-22T13:00:00.000Z Jourfix (verschoben)"); // … durch den geänderten
+    expect(starts).toContain("2026-10-26T09:00:00.000Z Jourfix"); // nach der Zeitumstellung weiter 10 Uhr
+    expect(out.filter((o) => o.title === "Jourfix")).toHaveLength(6); // 8 Montage − Ausnahme − verschobener
+    expect(out.find((o) => o.start === "2026-09-07T08:00:00.000Z")?.end).toBe("2026-09-07T09:00:00.000Z");
+  });
+
+  it("jährliche Geburtstage, monatlich „letzter Freitag“, COUNT und UNTIL", () => {
+    const evs = parseEvents(ics([
+      "BEGIN:VEVENT", "UID:gb", "SUMMARY:Geburtstag Tini", "DTSTART;VALUE=DATE:19900916", "DTEND;VALUE=DATE:19900917", "RRULE:FREQ=YEARLY", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:lf", "SUMMARY:Abrechnung", "DTSTART;VALUE=DATE:20260130", "RRULE:FREQ=MONTHLY;BYDAY=-1FR", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:c", "SUMMARY:Kurs", "DTSTART;VALUE=DATE:20260901", "RRULE:FREQ=DAILY;INTERVAL=2;COUNT=3", "END:VEVENT",
+      "BEGIN:VEVENT", "UID:u", "SUMMARY:Therapie", "DTSTART:20260904T120000Z", "RRULE:FREQ=WEEKLY;UNTIL=20260918T120000Z", "END:VEVENT",
+    ]));
+    const out = expandCalendar(evs, range);
+    const of = (t: string) => out.filter((o) => o.title === t).map((o) => o.start);
+    expect(of("Geburtstag Tini")).toEqual(["2026-09-16"]);
+    expect(of("Abrechnung")).toEqual(["2026-09-25", "2026-10-30"]);
+    expect(of("Kurs")).toEqual(["2026-09-01", "2026-09-03", "2026-09-05"]);
+    expect(of("Therapie")).toEqual(["2026-09-04T12:00:00.000Z", "2026-09-11T12:00:00.000Z", "2026-09-18T12:00:00.000Z"]);
+  });
+});
+
+describe("Kalender per Link", () => {
+  it("liest die Liste mit und ohne Namen, webcal wird https", () => {
+    const f = parseFeedList("Familie | webcal://calendar.google.com/x/basic.ics\n\n# Kommentar\nhttps://outlook.office365.com/owa/calendar/y/calendar.ics\nkein Link");
+    expect(f).toEqual([
+      { name: "Familie", url: "https://calendar.google.com/x/basic.ics", color: "#F59E0B" },
+      { name: null, url: "https://outlook.office365.com/owa/calendar/y/calendar.ics", color: "#8B5CF6" },
+    ]);
   });
 });

@@ -106,7 +106,7 @@ export type TenantSettings = {
   returns?: { graceFba?: number; claimFba?: number; graceFbm?: number; marketplace?: string };
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
-  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[] };
+  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[] };
   /** E-Mail-Versand: Standard-Absenderpostfach (Rechnungen, Nachrichten). */
   mail?: { defaultSenderId?: string };
   /** Themen-Recherche für die Wissensdatenbank. */

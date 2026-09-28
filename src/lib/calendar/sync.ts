@@ -5,6 +5,8 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { CalDavClient, type Calendar } from "./caldav";
 import { buildEvent, parseEvents } from "./ics";
+import { parseFeedList } from "./feeds";
+import { expandCalendar } from "./recur";
 import { collectDesired } from "./items";
 import { hashDesired, planCalendarChanges, planPush, uidFor, type DesiredItem, type RemoteItem, type StoredItem } from "./plan";
 
@@ -21,6 +23,12 @@ export async function calendarClient(tenantId: string) {
   };
 }
 
+/** Kalender per Link (Google „Privatadresse im iCal-Format“, Outlook, abonnierte Kalender …). */
+export async function calendarFeeds(tenantId: string) {
+  const cfg = await getIntegration(tenantId, "apple_calendar");
+  return parseFeedList(cfg?.icsUrls ?? "");
+}
+
 async function saveState(tenantId: string, state: Record<string, unknown>) {
   await db
     .update(schema.tenants)
@@ -28,7 +36,67 @@ async function saveState(tenantId: string, state: Record<string, unknown>) {
     .where(eq(schema.tenants.id, tenantId));
 }
 
-export type SyncResult = { created: number; updated: number; removed: number; fromCalendar: number; appointments: number };
+export type CalendarRead = { name: string; events: number; error?: string };
+export type SyncResult = {
+  created: number;
+  updated: number;
+  removed: number;
+  fromCalendar: number;
+  appointments: number;
+  /** Gelesene eigene Kalender mit Anzahl der Termine. */
+  read: CalendarRead[];
+  /** Kalendernamen aus „Eigene Kalender anzeigen“, die es nicht gibt. */
+  unknownNames: string[];
+  /** Alle gefundenen iCloud-Kalender. */
+  available: string[];
+};
+
+type EventRow = typeof schema.calendarEvents.$inferInsert;
+
+function ownRange() {
+  const today = todayIso();
+  return { from: new Date(`${addDaysIso(today, -92)}T00:00:00Z`), to: new Date(`${addDaysIso(today, 366)}T00:00:00Z`) };
+}
+
+/** Termine eines Kalenders (ICS-Texte) als Zeilen – Serien aufgelöst. */
+function toRows(tenantId: string, calendarName: string, color: string | null, icsTexts: string[], range: { from: Date; to: Date }): EventRow[] {
+  const rows: EventRow[] = [];
+  for (const ev of expandCalendar(icsTexts.flatMap((t) => parseEvents(t)), range)) {
+    const starts = ev.allDay ? new Date(`${ev.start}T00:00:00Z`) : new Date(ev.start);
+    rows.push({ tenantId, calendarName, color, uid: ev.uid, title: ev.title, startsAt: starts, endsAt: ev.end ? (ev.allDay ? new Date(`${ev.end}T00:00:00Z`) : new Date(ev.end)) : null, allDay: ev.allDay, day: ev.allDay ? ev.start : berlinDay(ev.start), location: ev.location, notes: ev.description?.slice(0, 2000) ?? null });
+  }
+  return rows;
+}
+
+async function readFeeds(tenantId: string, range: { from: Date; to: Date }): Promise<{ rows: EventRow[]; read: CalendarRead[] }> {
+  const rows: EventRow[] = [];
+  const read: CalendarRead[] = [];
+  for (const f of await calendarFeeds(tenantId)) {
+    try {
+      const res = await fetch(f.url, { headers: { "User-Agent": "Seller-System Kalender", Accept: "text/calendar, */*" }, signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}${res.status === 404 ? " – Link ungültig oder zurückgesetzt" : ""}`);
+      const text = await res.text();
+      if (!/BEGIN:VCALENDAR/i.test(text)) throw new Error("Unter dem Link liegt kein Kalender (iCal).");
+      const name = f.name ?? (/^X-WR-CALNAME:(.+)$/im.exec(text)?.[1]?.trim() || new URL(f.url).hostname);
+      const r = toRows(tenantId, name, f.color, [text], range);
+      rows.push(...r);
+      read.push({ name, events: r.length });
+    } catch (e) {
+      const cause = (e as { cause?: { code?: string } })?.cause?.code;
+      const msg = e instanceof Error ? (e.message === "fetch failed" ? `nicht erreichbar${cause ? ` (${cause})` : ""} – Link prüfen` : e.message) : String(e);
+      read.push({ name: f.name ?? f.url.replace(/^https?:\/\//, "").slice(0, 40), events: 0, error: msg });
+    }
+  }
+  return { rows, read };
+}
+
+async function replaceEvents(tenantId: string, rows: EventRow[]) {
+  const E = schema.calendarEvents;
+  await db.transaction(async (tx) => {
+    await tx.delete(E).where(eq(E.tenantId, tenantId));
+    for (let i = 0; i < rows.length; i += 300) await tx.insert(E).values(rows.slice(i, i + 300)).onConflictDoNothing();
+  });
+}
 
 const running = new Map<string, Promise<SyncResult | null>>();
 const again = new Set<string>();
@@ -53,10 +121,26 @@ export async function syncCalendar(tenantId: string): Promise<SyncResult | null>
 
 async function syncOnce(tenantId: string): Promise<SyncResult | null> {
   const c = await calendarClient(tenantId);
-  if (!c) return null;
+  const hasFeeds = (await calendarFeeds(tenantId)).length > 0;
+  if (!c && !hasFeeds) return null;
   try {
-    const r = await runSync(tenantId, c);
-    await saveState(tenantId, { lastSync: new Date().toISOString(), lastError: null });
+    const range = ownRange();
+    const apple = c ? await runSync(tenantId, c, range) : null;
+    const feeds = await readFeeds(tenantId, range);
+    await replaceEvents(tenantId, [...(apple?.rows ?? []), ...feeds.rows]);
+    const read = [...(apple?.read ?? []), ...feeds.read];
+    const r: SyncResult = {
+      created: apple?.created ?? 0,
+      updated: apple?.updated ?? 0,
+      removed: apple?.removed ?? 0,
+      fromCalendar: apple?.fromCalendar ?? 0,
+      appointments: read.reduce((n, x) => n + x.events, 0),
+      read,
+      unknownNames: apple?.unknownNames ?? [],
+      available: apple?.available ?? [],
+    };
+    const failed = read.filter((x) => x.error).map((x) => `${x.name}: ${x.error}`);
+    await saveState(tenantId, { lastSync: new Date().toISOString(), lastError: failed.length ? failed.join(" · ") : null, read });
     return r;
   } catch (e) {
     await saveState(tenantId, { lastError: e instanceof Error ? e.message : String(e) });
@@ -64,7 +148,7 @@ async function syncOnce(tenantId: string): Promise<SyncResult | null> {
   }
 }
 
-async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeof calendarClient>>>): Promise<SyncResult> {
+async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeof calendarClient>>>, range: { from: Date; to: Date }) {
   const { client } = c;
   const [tenant] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
   const state = tenant?.settings.calendar ?? {};
@@ -148,36 +232,36 @@ async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeo
   }
 
   // 4. Eigene Termine der übrigen Kalender lesen (3 Monate zurück bis 1 Jahr voraus – für die Kalenderansicht).
-  const readable = eventCalendars.filter((k) => k.href !== sysHref && (c.readOnly.length === 0 || c.readOnly.includes(k.name.toLowerCase())));
-  const today = todayIso();
-  const range = { from: new Date(`${addDaysIso(today, -92)}T00:00:00Z`), to: new Date(`${addDaysIso(today, 366)}T00:00:00Z`) };
-  const E = schema.calendarEvents;
-  const rows: (typeof E.$inferInsert)[] = [];
+  //    Unbekannte Namen in „Eigene Kalender anzeigen" werden gemeldet; passt keiner, werden alle gelesen.
+  const others = eventCalendars.filter((k) => k.href !== sysHref);
+  const known = new Set(others.map((k) => k.name.toLowerCase()));
+  const unknownNames = c.readOnly.filter((n) => !known.has(n));
+  const wanted = c.readOnly.filter((n) => known.has(n));
+  const readable = others.filter((k) => wanted.length === 0 || wanted.includes(k.name.toLowerCase()));
+  const rows: EventRow[] = [];
+  const read: CalendarRead[] = [];
   for (const k of readable) {
-    let evs;
     try {
-      evs = await client.events(k.href, range);
-    } catch {
-      continue; // einzelne Kalender (z. B. abonnierte Feiertage) dürfen fehlschlagen
-    }
-    for (const r of evs) {
-      for (const ev of parseEvents(r.ics)) {
-        const starts = ev.allDay ? new Date(`${ev.start}T00:00:00Z`) : new Date(ev.start);
-        if (starts > range.to) continue;
-        const day = ev.allDay ? ev.start : berlinDay(ev.start);
-        // Nicht aufgelöste Serien: nur der erste Termin – besser als nichts.
-        if (!ev.allDay && ev.end && new Date(ev.end) < range.from) continue;
-        if (ev.allDay && (ev.end ?? addDaysIso(ev.start, 1)) <= addDaysIso(today, -92)) continue;
-        rows.push({ tenantId, calendarName: k.name, color: calendarColor(k.color), uid: ev.uid, title: ev.title, startsAt: starts, endsAt: ev.end ? (ev.allDay ? new Date(`${ev.end}T00:00:00Z`) : new Date(ev.end)) : null, allDay: ev.allDay, day, location: ev.location, notes: ev.description?.slice(0, 2000) ?? null });
-      }
+      const evs = await client.events(k.href, range);
+      const r = toRows(tenantId, k.name, calendarColor(k.color), evs.map((e) => e.ics), range);
+      rows.push(...r);
+      read.push({ name: k.name, events: r.length });
+    } catch (e) {
+      // einzelne Kalender (z. B. abonnierte Feiertage) dürfen fehlschlagen
+      read.push({ name: k.name, events: 0, error: e instanceof Error ? e.message : String(e) });
     }
   }
-  await db.transaction(async (tx) => {
-    await tx.delete(E).where(eq(E.tenantId, tenantId));
-    for (let i = 0; i < rows.length; i += 300) await tx.insert(E).values(rows.slice(i, i + 300)).onConflictDoNothing();
-  });
 
-  return { created, updated, removed, fromCalendar: changes.created.length + changes.moved.length + changes.deleted.filter((d) => d.taskId).length, appointments: rows.length };
+  return {
+    created,
+    updated,
+    removed,
+    fromCalendar: changes.created.length + changes.moved.length + changes.deleted.filter((d) => d.taskId).length,
+    rows,
+    read,
+    unknownNames,
+    available: others.map((k) => k.name),
+  };
 }
 
 /** Apple liefert Farben als #RRGGBBAA – für die Anzeige reicht #RRGGBB. */

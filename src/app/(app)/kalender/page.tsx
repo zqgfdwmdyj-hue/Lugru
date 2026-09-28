@@ -47,7 +47,8 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
       .orderBy(E.allDay, E.startsAt),
     collectDesired(session.tenantId, today, { from, to }),
   ]);
-  const connected = Boolean(cal?.appleId && cal.appPassword);
+  const connected = Boolean((cal?.appleId && cal.appPassword) || cal?.icsUrls);
+  const appleConnected = Boolean(cal?.appleId && cal.appPassword);
   const calState = tenant[0]?.settings.calendar;
 
   // Einträge je Tag sammeln: ganztägige zuerst, dann nach Uhrzeit, Systemeinträge dahinter.
@@ -109,11 +110,16 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
 
       {!connected ? (
         <div className="notice notice-info small">
-          Hier stehen alle Fälligkeiten des Systems. Mit verbundenem Apple-Kalender kommen deine eigenen Termine dazu – und die Fälligkeiten stehen auch auf dem iPhone.{" "}
-          {session.role === "owner" && <Link href="/anbindungen?p=apple_calendar#apple_calendar">Apple-Kalender verbinden</Link>}
+          Hier stehen alle Fälligkeiten des Systems. Verbinde deine Kalender (iCloud, Google, Outlook), dann kommen deine eigenen Termine dazu – und die Fälligkeiten stehen auch auf dem iPhone.{" "}
+          {session.role === "owner" && <Link href="/anbindungen?p=apple_calendar#apple_calendar">Kalender verbinden</Link>}
         </div>
       ) : calState?.lastError ? (
-        <div className="notice notice-warn small">Letzter Abgleich fehlgeschlagen: {calState.lastError}</div>
+        <div className="notice notice-warn small">Beim letzten Abgleich gab es ein Problem: {calState.lastError}</div>
+      ) : calState?.read && calState.read.every((r) => r.events === 0) ? (
+        <div className="notice notice-info small">
+          In den verbundenen Kalendern ({calState.read.map((r) => r.name).join(", ") || "keine"}) wurden keine eigenen Termine gefunden. Liegen deine Termine z. B. in einem Google-Kalender, dessen iCal-Link unter{" "}
+          <Link href="/anbindungen?p=apple_calendar#apple_calendar">Anbindungen → Kalender</Link> eintragen.
+        </div>
       ) : null}
 
       <div className="row" style={{ alignItems: "flex-start" }}>
@@ -187,12 +193,12 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                 <input type="checkbox" name="critical" /> wichtig
               </label>
               <div><button className="btn btn-primary btn-small" type="submit">Eintragen</button></div>
-              {connected && <span className="small muted">Erscheint auch im Apple-Kalender „{cal?.calendarName || "Seller-System"}“.</span>}
+              {appleConnected && <span className="small muted">Erscheint auch im Apple-Kalender „{cal?.calendarName || "Seller-System"}“.</span>}
             </form>
           </section>
           {connected && calState?.lastSync && (
             <div className="small muted" style={{ padding: "0 4px" }}>
-              Zuletzt abgeglichen {new Date(calState.lastSync).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · eigene Termine werden 3 Monate zurück bis 1 Jahr voraus gelesen, alle 15 Minuten.
+              {calState.read?.length ? `Gelesen: ${calState.read.map((r) => `${r.name} (${r.error ? "Fehler" : r.events})`).join(", ")} · ` : ""}Zuletzt abgeglichen {new Date(calState.lastSync).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · eigene Termine werden 3 Monate zurück bis 1 Jahr voraus gelesen, alle 15 Minuten.
             </div>
           )}
         </aside>

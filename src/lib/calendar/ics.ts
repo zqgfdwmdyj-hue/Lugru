@@ -26,6 +26,10 @@ export type InEvent = {
   description: string | null;
   recurrenceId: string | null;
   rrule: string | null;
+  /** Ausgelassene Termine einer Serie (ISO wie start). */
+  exdates: string[];
+  /** Zeitzone des Beginns – Serien wiederholen sich zur gleichen Ortszeit. */
+  tzid: string | null;
 };
 
 function escapeText(s: string) {
@@ -129,7 +133,7 @@ function tzOffsetMinutes(timeZone: string, utc: Date): number {
 }
 
 /** Ortszeit in einer Zeitzone → UTC. */
-function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, s: number, timeZone: string): Date {
+export function zonedToUtc(y: number, mo: number, d: number, h: number, mi: number, s: number, timeZone: string): Date {
   const guess = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
   const off1 = tzOffsetMinutes(timeZone, guess);
   const t = new Date(guess.getTime() - off1 * 60000);
@@ -193,6 +197,11 @@ export function parseEvents(ics: string): InEvent[] {
           description: get("DESCRIPTION") ? unescapeText(get("DESCRIPTION")!.value) : null,
           recurrenceId: rid ? (parseDateValue(rid.value, rid.params)?.iso ?? rid.value) : null,
           rrule: get("RRULE")?.value ?? null,
+          exdates: cur!
+            .filter((x) => x.name === "EXDATE")
+            .flatMap((x) => x.value.split(",").map((v) => parseDateValue(v, x.params)?.iso))
+            .filter((v): v is string => Boolean(v)),
+          tzid: get("DTSTART")!.params.TZID?.replace(/^\/+/, "") || (/Z$/.test(get("DTSTART")!.value.trim()) ? "UTC" : null),
         });
       }
       cur = null;

@@ -224,7 +224,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
             </div>
             {calendarLink.n === 0 ? (
               <div className="small muted">
-                Apple-Kalender verbinden, dann stehen hier deine Termine – und alle Fälligkeiten des Systems in deinem Kalender.{" "}
+                Kalender verbinden (iCloud, Google, Outlook), dann stehen hier deine Termine – und alle Fälligkeiten des Systems in deinem Kalender.{" "}
                 {session.role === "owner" && <Link href="/anbindungen?p=apple_calendar#apple_calendar">Jetzt verbinden</Link>}
               </div>
             ) : calState?.lastError ? (
