@@ -86,16 +86,17 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "google_drive",
     name: "Google Drive (Rechnungsordner)",
-    purpose: "Rechnungs-PDFs aus dem Ordner lesen, in den Invoice Fetcher exportiert.",
+    purpose: "Rechnungs-PDFs aus dem Ordner lesen, in den Invoice Fetcher exportiert – einfach über den Freigabelink.",
     fields: [
-      { key: "serviceAccountJson", label: "Service-Account-Schlüssel (JSON)", secret: true, multiline: true },
-      { key: "folderId", label: "Ordner-ID", placeholder: "aus der Ordner-URL: …/folders/<ID>" },
+      { key: "folderLink", label: "Ordner-Link", placeholder: "https://drive.google.com/drive/folders/…?usp=sharing", help: "Link aus „Freigeben → Link kopieren“. Unterordner werden mitgelesen." },
+      { key: "apiKey", label: "Google-API-Schlüssel (optional)", secret: true, help: "Nur nötig, wenn ein Ordner mehr als ca. 50 Dateien direkt enthält." },
+      { key: "serviceAccountJson", label: "Service-Account-Schlüssel (JSON, optional)", secret: true, multiline: true, help: "Nur für nicht öffentlich freigegebene Ordner." },
+      { key: "folderId", label: "Ordner-ID (nur mit Dienstkonto)", placeholder: "aus der Ordner-URL: …/folders/<ID>" },
     ],
     setup: [
-      "console.cloud.google.com → „Google Drive API“ aktivieren.",
-      "IAM → Dienstkonten → Dienstkonto anlegen → Schlüssel (JSON) erzeugen und hier einfügen.",
-      "Den Drive-Ordner „rechnungen“ für die E-Mail-Adresse des Dienstkontos freigeben (Betrachter).",
-      "Ordner-ID aus der URL hier eintragen.",
+      "In Google Drive beim Ordner „rechnungen“ auf „Freigeben“ → Allgemeiner Zugriff: „Jeder, der über den Link verfügt“ → Rolle „Betrachter“ (Mitbearbeiter ist nicht nötig und erlaubt Fremden das Löschen).",
+      "„Link kopieren“ und oben als Ordner-Link einfügen → Speichern → „Verbindung testen“.",
+      "Alternative ohne öffentlichen Link: Dienstkonto in console.cloud.google.com anlegen, Ordner für dessen E-Mail freigeben, JSON-Schlüssel und Ordner-ID eintragen.",
     ],
   },
   {

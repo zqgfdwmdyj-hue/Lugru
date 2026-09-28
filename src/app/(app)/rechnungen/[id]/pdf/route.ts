@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getSession } from "@/lib/auth/session";
-import { downloadFile, driveToken } from "@/lib/integrations/clients/drive";
+import { driveAccess } from "@/lib/integrations/clients/drive";
 import { getIntegration } from "@/lib/integrations/store";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +17,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     bytes = f?.data ?? null;
   } else if (inv.source === "drive" && inv.externalId) {
     const cfg = await getIntegration(session.tenantId, "google_drive");
-    if (cfg?.serviceAccountJson) bytes = await downloadFile(await driveToken(cfg.serviceAccountJson), inv.externalId);
+    const access = await driveAccess(cfg);
+    if (access) bytes = await access.download(inv.externalId);
   }
   if (!bytes) return new Response("PDF nicht verfügbar", { status: 404 });
   return new Response(new Uint8Array(bytes), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="${inv.fileName.replace(/"/g, "")}"`, "Cache-Control": "private, max-age=3600" } });

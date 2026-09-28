@@ -54,7 +54,7 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 | eBay | Artikel einstellen, Rechnungen, Bestellungen, Sendungsnummer | Eingerichtet wird unter **eBay → eBay-Einstellungen → Verbindung** (Client ID, Client Secret, RuName, dann „Mit eBay verbinden“). Eine übernommene Verbindung aus dem bisherigen Tool darf Bestellungen nur lesen – für das Zurückmelden der Sendungsnummer einmal neu verbinden. |
 | Google / Microsoft | Postfächer | Weiterleitungs-URI muss zur Adresse der App passen (`APP_URL`). |
 | Apple-Kalender | Fälligkeiten in den Kalender, eigene Termine auf die Startseite | Apple-ID + **app-spezifisches Passwort** (appleid.apple.com → Anmelden und Sicherheit). Es entsteht der Kalender „Seller-System“. Im Kalender verschieben = neues Fälligkeitsdatum, löschen = erledigt, neuer Termin dort = neue Aufgabe. |
-| Google Drive | Rechnungsordner von Invoice Fetcher | Ordner für das Dienstkonto freigeben. |
+| Google Drive | Rechnungsordner von Invoice Fetcher | Freigabelink des Ordners eintragen (Jeder mit dem Link → Betrachter); Unterordner werden mitgelesen. |
 
 ## 4. Bekannte Platzhalter – bitte prüfen
 

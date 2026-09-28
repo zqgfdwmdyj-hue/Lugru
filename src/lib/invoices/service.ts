@@ -3,7 +3,7 @@ import { and, eq, gte, inArray, lte, notExists, sql } from "drizzle-orm";
 import { extractText, getDocumentProxy } from "unpdf";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
-import { downloadFile, driveToken, listPdfs } from "@/lib/integrations/clients/drive";
+import { driveAccess } from "@/lib/integrations/clients/drive";
 import { getIntegration } from "@/lib/integrations/store";
 import { storeFile } from "@/lib/orders/service";
 import { getSettings } from "@/lib/settings";
@@ -96,9 +96,9 @@ export async function autoMatch(tenantId: string, invoiceId: string, asinsFromTe
 
 export async function syncDrive(tenantId: string, max = 150) {
   const cfg = await getIntegration(tenantId, "google_drive");
-  if (!cfg?.serviceAccountJson || !cfg.folderId) throw new Error("Google Drive ist noch nicht eingerichtet (Anbindungen).");
-  const token = await driveToken(cfg.serviceAccountJson);
-  const files = await listPdfs(token, cfg.folderId);
+  const access = await driveAccess(cfg);
+  if (!access) throw new Error("Google Drive ist noch nicht eingerichtet (Anbindungen → Ordner-Link).");
+  const files = await access.list();
   const known = new Set(
     (await db.select({ id: schema.invoices.externalId }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.source, "drive")))).map((r) => r.id),
   );
@@ -106,7 +106,7 @@ export async function syncDrive(tenantId: string, max = 150) {
   let created = 0;
   for (const f of todo) {
     try {
-      const bytes = await downloadFile(token, f.id);
+      const bytes = await access.download(f.id);
       const r = await ingestInvoice({ tenantId, source: "drive", externalId: f.id, fileName: f.name, bytes, storeBytes: false });
       if (r.created) created++;
     } catch (e) {
