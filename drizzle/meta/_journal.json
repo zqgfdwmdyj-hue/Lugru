@@ -64,6 +64,13 @@
       "when": 1790584228511,
       "tag": "0008_kalender_farbe",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790586482305,
+      "tag": "0009_einkauf",
+      "breakpoints": true
     }
   ]
 }

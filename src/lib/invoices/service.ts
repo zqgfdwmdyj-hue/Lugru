@@ -1,11 +1,12 @@
 import "server-only";
-import { and, eq, gte, inArray, lte, notExists, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, notExists, sql } from "drizzle-orm";
 import { extractText, getDocumentProxy } from "unpdf";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { driveAccess } from "@/lib/integrations/clients/drive";
 import { getIntegration } from "@/lib/integrations/store";
 import { storeFile } from "@/lib/orders/service";
+import { linkInvoiceByOrderNo } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { extractInvoiceFacts, guessKind, matchBySum, parseInvoiceFileName } from "./parse";
@@ -56,6 +57,7 @@ export async function ingestInvoice(opts: { tenantId: string; source: "drive" | 
     .returning({ id: schema.invoices.id });
   if (kind === "goods") await autoMatch(tenantId, row.id, facts.asins);
   else if (kind === "unknown") await db.update(schema.invoices).set({ status: "review" }).where(eq(schema.invoices.id, row.id));
+  if (facts.orderNumber) await linkPurchaseOrders(tenantId, facts.orderNumber);
   return { id: row.id, created: true };
 }
 
@@ -139,3 +141,12 @@ export async function refreshInvoiceTasks(tenantId: string) {
   }
 }
 
+/** Einkaufs-Bestellungen mit derselben Shop-Bestellnummer bekommen die neue Rechnung zugeordnet. */
+async function linkPurchaseOrders(tenantId: string, orderNumber: string) {
+  const PO = schema.purchaseOrders;
+  const pos = await db
+    .select({ id: PO.id })
+    .from(PO)
+    .where(and(eq(PO.tenantId, tenantId), isNull(PO.invoiceId), sql`regexp_replace(lower(${PO.supplierOrderNo}), '[^a-z0-9]', '', 'g') = regexp_replace(lower(${orderNumber}), '[^a-z0-9]', '', 'g')`));
+  for (const po of pos) await linkInvoiceByOrderNo(tenantId, po.id);
+}

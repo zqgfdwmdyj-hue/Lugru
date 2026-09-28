@@ -186,3 +186,7 @@ h2 { font-size: 16px; margin: 0; }
   .cal-dots { display: flex; }
   .cal-legend { display: none; }
 }
+
+/* ---- Einkauf ---- */
+.po-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) 80px 100px 80px 100px auto; gap: 8px; }
+@media (max-width: 900px) { .po-add { grid-template-columns: 1fr 1fr; } }

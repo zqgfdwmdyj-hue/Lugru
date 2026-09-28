@@ -30,6 +30,7 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
       head: "WaWi",
       items: [
         { href: "/auftraege", label: "Aufträge & Versand", badge: counts.orders },
+        { href: "/einkauf", label: "Einkauf" },
         { href: "/chargen", label: "Chargen & Artikel" },
         { href: "/bestand", label: "Bestand & Inventur" },
         { href: "/listings", label: "Listings" },

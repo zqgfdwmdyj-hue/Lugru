@@ -58,6 +58,8 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 
 **Kalender** (Menü links): Monatsansicht wie auf dem iPhone – eigene Termine in der Farbe ihres Apple-Kalenders plus alles mit Datum aus dem System (Aufgaben, Fristen, Versand, Ansprüche, geplante Zahlungen). Tag antippen → Liste des Tages und neue Aufgabe für diesen Tag. Funktioniert auch ohne Apple-Verbindung (dann nur Systemtermine).
 
+**Einkauf** (WaWi → Einkauf, nach JTL-Vorbild): Neue Bestellung mit Shop-Kürzel (z. B. KAUFL) und Shop-Bestellnummer → Positionen mit ASIN, Menge, EK brutto, geplantem VK → „Als bestellt markieren“ (erscheint am erwarteten Liefertag als Aufgabe und im Kalender) → „Wareneingang buchen“ (auch Teillieferungen). Dabei entsteht je Artikel eine Charge mit SKU `SHOP_TTMONJJ_ASIN_EK_VK` und der Bestand im eigenen Lager steigt. Eine Rechnung mit derselben Bestellnummer wird automatisch zugeordnet. **Bestellvorschläge**: Abverkauf 30/90 Tage gegen Bestand (FBA, unterwegs, Lager, bestellt) – ankreuzen → Bestellentwurf je Lieferant.
+
 **eBay-Rechnungen per E-Mail:** Der eigene SMTP-Zugang im eBay-Tool ist entfallen. Rechnungen gehen über ein verbundenes Postfach raus (eBay-Einstellungen → Rechnungen → Absender-Postfach); eine Kopie liegt im Ordner „Gesendet“.
 
 ## 4. Bekannte Platzhalter – bitte prüfen
