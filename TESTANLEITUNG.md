@@ -115,6 +115,14 @@ Das bisherige LuGru eBay-Tool ist komplett im Seller-System enthalten. Die Daten
 
 ## 8. Datensicherung
 
+**Updates behalten alle Daten und Anbindungen.** Alles liegt in der Datenbank (Docker-Volume `seller-system_dbdata`); ein Update tauscht nur das Programm aus, neue Tabellen/Felder werden beim Start ergänzt. Die gespeicherten Zugangsdaten sind mit `APP_SECRET` aus `/opt/seller-system/.env` verschlüsselt. `update.sh` sichert deshalb vor jedem Update:
+- die Datenbank nach `backups/sellersystem-vor-update-….dump` (die letzten 5 bleiben),
+- die `.env` nach `backups/env-sicherung`,
+- und bricht ab, wenn `.env` fehlt oder sich `APP_SECRET` geändert hat.
+
+Nicht machen: `docker compose down -v` (das `-v` löscht die Datenbank), den Ordner `/opt/seller-system` samt `backups` löschen oder `APP_SECRET` ändern. `docker compose down` / `restart` ohne `-v` sind unbedenklich.
+
+
 Der Container `backup` sichert täglich die ganze Datenbank nach `/opt/seller-system/backups` (Standard: die letzten 30). Status, „Jetzt sichern“ und die Anzahl stehen unter *eBay-Einstellungen → Datensicherung*. Zusätzlich die Server-Backups in der Hetzner-Konsole einschalten.
 
 **Zurückspielen** (überschreibt den aktuellen Stand):

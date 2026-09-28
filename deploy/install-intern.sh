@@ -21,6 +21,12 @@ command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
 if [ -d "$DIR/.git" ]; then git -C "$DIR" pull --ff-only; else git clone "$REPO" "$DIR"; fi
 cd "$DIR"
 
+# Bei einer Neuinstallation den alten Schlüssel weiterverwenden – sonst wären die gespeicherten
+# Zugangsdaten in der (erhalten gebliebenen) Datenbank nicht mehr lesbar.
+if [ ! -f .env ] && [ -f backups/env-sicherung ]; then
+  cp backups/env-sicherung .env && chmod 600 .env
+  echo "==> Vorhandene Einstellungen (.env) aus backups/env-sicherung übernommen."
+fi
 if [ ! -f .env ]; then
   cat > .env <<EOT
 APP_SECRET=$(openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-48)
@@ -33,6 +39,8 @@ COMPOSE_FILE=docker-compose.yml:deploy/docker-compose.intern.yml
 EOT
   chmod 600 .env
 fi
+
+mkdir -p backups && cp .env backups/env-sicherung && chmod 600 backups/env-sicherung
 
 echo "==> Starten (der erste Build dauert einige Minuten)"
 docker compose up -d --build
