@@ -7,7 +7,7 @@ export type MailCategory = (typeof MAIL_CATEGORIES)[number];
 export const mailboxes = pgTable("mailboxes", {
   id: id(),
   tenantId: tenantId(),
-  provider: text("provider", { enum: ["gmail", "outlook", "upload"] }).notNull(),
+  provider: text("provider", { enum: ["gmail", "outlook", "imap", "upload"] }).notNull(),
   address: text("address").notNull(),
   label: text("label"),
   integrationId: uuid("integration_id").references(() => integrations.id, { onDelete: "set null" }),

@@ -202,9 +202,13 @@ describe('mergeInvoiceSettings', () => {
     expect(mergeInvoiceSettings(a, { autoCreate: true }, new Date('2027-01-01')).startDate).toBe(now.toISOString());
   });
 
-  it('behält das maskierte SMTP-Passwort und prüft Eingaben', async () => {
-    const cur: InvoiceSettings = { smtp: { host: 'h', pass: 'geheim' } };
-    expect(mergeInvoiceSettings(cur, { smtp: { host: 'mail.x.de', port: '465', pass: '***' } }).smtp).toMatchObject({ host: 'mail.x.de', port: 465, pass: 'geheim' });
+  it('übernimmt das Absender-Postfach, verwirft den alten SMTP-Zugang und prüft Eingaben', async () => {
+    // Der frühere eigene SMTP-Zugang fällt beim Speichern weg – versendet wird über die Postfächer des Hauptsystems.
+    const cur: InvoiceSettings = { smtp: { host: 'h', pass: 'geheim' }, companyName: 'A' };
+    const next = mergeInvoiceSettings(cur, { senderMailboxId: ' 7f1c ' });
+    expect(next.smtp).toBeUndefined();
+    expect(next).toMatchObject({ senderMailboxId: '7f1c', companyName: 'A' });
+    expect(mergeInvoiceSettings(next, { senderMailboxId: '' }).senderMailboxId).toBeUndefined();
     expect(() => mergeInvoiceSettings({}, { vatRate: 150 })).toThrow(/USt-Satz/);
     expect(() => mergeInvoiceSettings({}, { prefix: 'RE/' })).toThrow(/Präfix/);
     expect(mergeInvoiceSettings({}, { startNumber: '42' }, now)).toMatchObject({ startNumber: 42, startNumberYear: 2026 });

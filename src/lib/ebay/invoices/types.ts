@@ -32,18 +32,10 @@ export interface InvoiceSettings {
   startDate?: string;
   emailSubject?: string;
   emailText?: string;
-  smtp?: SmtpSettings;
-}
-
-export interface SmtpSettings {
-  host?: string;
-  port?: number;
-  /** true = SSL/TLS ab Verbindungsbeginn (Port 465), false = STARTTLS (Port 587). */
-  secure?: boolean;
-  user?: string;
-  pass?: string;
-  /** Absenderadresse; ohne Angabe die Absender-E-Mail aus den Rechnungsdaten. */
-  from?: string;
+  /** Postfach des Hauptsystems, über das Rechnungen verschickt werden (leer = Standard-Absender). */
+  senderMailboxId?: string;
+  /** Früher eigener SMTP-Zugang im eBay-Tool – wird beim nächsten Speichern entfernt. */
+  smtp?: unknown;
 }
 
 export interface Address {

@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
 
-interface Smtp { host?: string; port?: number; secure?: boolean; user?: string; pass?: string; from?: string }
 interface Form {
   companyName?: string; ownerName?: string; street?: string; postalCode?: string; city?: string; country?: string;
   email?: string; phone?: string; taxNumber?: string; vatId?: string; kleinunternehmer?: boolean; vatRate?: number;
   prefix?: string; startNumber?: number; footerText?: string; autoCreate?: boolean; autoSend?: boolean; startDate?: string;
-  emailSubject?: string; emailText?: string; smtp?: Smtp;
+  emailSubject?: string; emailText?: string; senderMailboxId?: string;
 }
-interface Info { settings: Form; missing: string[]; vatRate: number; defaults: { emailSubject: string; emailText: string } }
+interface Sender { id: string; address: string; isDefault: boolean }
+interface Info { settings: Form; missing: string[]; vatRate: number; defaults: { emailSubject: string; emailText: string }; senders: Sender[] }
 
-/** Absenderdaten, Nummernkreis, Automatik und E-Mail-Versand für Rechnungen. */
+/** Absenderdaten, Nummernkreis, Automatik und E-Mail-Versand (über die Postfächer des Hauptsystems). */
 export function InvoicesTab() {
   const [info, setInfo] = useState<Info | null>(null);
   const [f, setF] = useState<Form>({});
@@ -22,13 +22,12 @@ export function InvoicesTab() {
   const load = () =>
     api<Info>('/invoice-settings').then((i) => {
       setInfo(i);
-      setF({ prefix: 'RE-', ...i.settings, smtp: { ...i.settings.smtp } });
+      setF({ prefix: 'RE-', ...i.settings });
       setDirty(false);
     }).catch((e) => setError(e.message));
   useEffect(() => { void load(); }, []);
 
   const set = (patch: Partial<Form>) => { setF({ ...f, ...patch }); setDirty(true); setMsg(''); };
-  const setSmtp = (patch: Partial<Smtp>) => set({ smtp: { ...f.smtp, ...patch } });
 
   async function run(fn: () => Promise<void>, success: string) {
     setError('');
@@ -124,7 +123,7 @@ export function InvoicesTab() {
         Für neue bezahlte eBay-Bestellungen automatisch Rechnungen erstellen
       </label>
       <p className="muted">
-        Läuft alle 15 Minuten, solange das Tool geöffnet ist.
+        Läuft alle 15 Minuten im Hintergrund.
         {f.startDate ? ` Abgerechnet werden Bestellungen ab ${new Date(f.startDate).toLocaleString('de-DE')}.` : ' Beim Einschalten zählen nur Bestellungen ab diesem Zeitpunkt — ältere lassen sich auf der Seite Rechnungen einzeln abrechnen.'}
       </p>
       <label className="check">
@@ -134,49 +133,21 @@ export function InvoicesTab() {
 
       <h3>E-Mail-Versand</h3>
       <p className="muted">
-        Rechnungen gehen über dein eigenes E-Mail-Postfach raus. Die Zugangsdaten stehen bei deinem Anbieter,
-        z.B. GMX: mail.gmx.net, Port 465 · Web.de: smtp.web.de, Port 465 · Gmail: smtp.gmail.com, Port 465 mit App-Passwort.
+        Rechnungen gehen über ein Postfach des Hauptsystems raus – dasselbe, das auch der Posteingang abruft.
+        Postfächer verbindest du unter <a href="/posteingang/verbinden">Posteingang → Postfach verbinden</a>.
       </p>
-      <div className="row">
+      {info.senders.length === 0 ? (
+        <p className="error">Noch kein Postfach verbunden – bis dahin werden Rechnungen erstellt, aber nicht verschickt.</p>
+      ) : (
         <label>
-          SMTP-Server
-          <input value={f.smtp?.host ?? ''} placeholder="z.B. smtp.web.de" onChange={(e) => setSmtp({ host: e.target.value })} />
-        </label>
-        <label>
-          Port
-          <input type="number" value={f.smtp?.port ?? ''} placeholder="465" onChange={(e) => setSmtp({ port: e.target.value === '' ? undefined : Number(e.target.value) })} />
-        </label>
-        <label>
-          Verschlüsselung
-          <select
-            value={f.smtp?.secure === false ? 'starttls' : 'ssl'}
-            onChange={(e) => setSmtp({ secure: e.target.value === 'ssl' })}
-          >
-            <option value="ssl">SSL/TLS (465)</option>
-            <option value="starttls">STARTTLS (587)</option>
+          Absender-Postfach
+          <select value={f.senderMailboxId ?? ''} onChange={(e) => set({ senderMailboxId: e.target.value || undefined })}>
+            <option value="">Standard-Absender ({info.senders.find((x) => x.isDefault)?.address ?? info.senders[0].address})</option>
+            {info.senders.map((x) => <option key={x.id} value={x.id}>{x.address}</option>)}
           </select>
         </label>
-      </div>
-      <div className="row">
-        <label>
-          Benutzername
-          <input value={f.smtp?.user ?? ''} autoComplete="off" onChange={(e) => setSmtp({ user: e.target.value })} />
-        </label>
-        <label>
-          Passwort
-          <input
-            type="password" autoComplete="new-password"
-            value={f.smtp?.pass ?? ''}
-            placeholder={f.smtp?.pass === '***' ? 'gespeichert' : ''}
-            onFocus={() => { if (f.smtp?.pass === '***') setSmtp({ pass: '' }); }}
-            onChange={(e) => setSmtp({ pass: e.target.value })}
-          />
-        </label>
-        <label>
-          Absenderadresse
-          <input value={f.smtp?.from ?? ''} placeholder={f.email || 'shop@beispiel.de'} onChange={(e) => setSmtp({ from: e.target.value })} />
-        </label>
-      </div>
+      )}
+      <p className="muted">Antworten der Käufer gehen an die Absender-E-Mail aus den Rechnungsdaten{f.email ? ` (${f.email})` : ''}.</p>
       <label>
         Betreff
         <input value={f.emailSubject ?? ''} placeholder={info.defaults.emailSubject} onChange={(e) => set({ emailSubject: e.target.value })} />
@@ -191,11 +162,7 @@ export function InvoicesTab() {
         <button
           className="primary"
           disabled={!dirty}
-          onClick={() => {
-            // Ein leer gelassenes Passwortfeld nach dem Fokussieren heißt: altes behalten.
-            if (f.smtp && f.smtp.pass === '' && info.settings.smtp?.pass === '***') f.smtp.pass = '***';
-            void save();
-          }}
+          onClick={() => void save()}
         >
           Speichern
         </button>

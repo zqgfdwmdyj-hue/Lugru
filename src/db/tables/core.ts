@@ -107,6 +107,8 @@ export type TenantSettings = {
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
   calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[] };
+  /** E-Mail-Versand: Standard-Absenderpostfach (Rechnungen, Nachrichten). */
+  mail?: { defaultSenderId?: string };
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
 };

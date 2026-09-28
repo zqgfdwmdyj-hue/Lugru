@@ -52,9 +52,13 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 | Amazon SP-API | Bestellungen mit Adresse, Reports automatisch, Versandbestätigung | Als „Private Developer“ in Seller Central registrieren. Für Adressen braucht die App die Rolle „Direkter Versand zum Kunden“. |
 | DHL Geschäftskunden | Labels Paket/Kleinpaket | Erst mit **Sandbox** testen (Einstellungen → Versand). Abrechnungsnummern eintragen. |
 | eBay | Artikel einstellen, Rechnungen, Bestellungen, Sendungsnummer | Eingerichtet wird unter **eBay → eBay-Einstellungen → Verbindung** (Client ID, Client Secret, RuName, dann „Mit eBay verbinden“). Eine übernommene Verbindung aus dem bisherigen Tool darf Bestellungen nur lesen – für das Zurückmelden der Sendungsnummer einmal neu verbinden. |
-| Google / Microsoft | Postfächer | Weiterleitungs-URI muss zur Adresse der App passen (`APP_URL`). |
-| Apple-Kalender | Fälligkeiten in den Kalender, eigene Termine auf die Startseite | Apple-ID + **app-spezifisches Passwort** (appleid.apple.com → Anmelden und Sicherheit). Es entsteht der Kalender „Seller-System“. Im Kalender verschieben = neues Fälligkeitsdatum, löschen = erledigt, neuer Termin dort = neue Aufgabe. |
+| Postfächer | Mails abrufen **und** senden (z. B. eBay-Rechnungen) | **Posteingang → Postfach verbinden.** Am einfachsten mit E-Mail + Passwort; die Server werden automatisch erkannt. Google/Workspace (auch lugru.de) und iCloud brauchen ein **App-Passwort**. Danach „Test-Mail“ und ggf. „Als Absender“. Alternativ „Mit Google/Microsoft anmelden“: App unter Anbindungen eintragen (Weiterleitungs-URI `http://localhost`), anmelden, die nicht ladende localhost-Adresse kopieren und einfügen – wie bei eBay. |
+| Apple-Kalender | Fälligkeiten in den Kalender, eigene Termine auf Startseite und unter **Kalender** | Apple-ID + **app-spezifisches Passwort** (appleid.apple.com → Anmelden und Sicherheit). Es entsteht der Kalender „Seller-System“. Im Kalender verschieben = neues Fälligkeitsdatum, löschen = erledigt, neuer Termin dort = neue Aufgabe. |
 | Google Drive | Rechnungsordner von Invoice Fetcher | Freigabelink des Ordners eintragen (Jeder mit dem Link → Betrachter); Unterordner werden mitgelesen. |
+
+**Kalender** (Menü links): Monatsansicht wie auf dem iPhone – eigene Termine in der Farbe ihres Apple-Kalenders plus alles mit Datum aus dem System (Aufgaben, Fristen, Versand, Ansprüche, geplante Zahlungen). Tag antippen → Liste des Tages und neue Aufgabe für diesen Tag. Funktioniert auch ohne Apple-Verbindung (dann nur Systemtermine).
+
+**eBay-Rechnungen per E-Mail:** Der eigene SMTP-Zugang im eBay-Tool ist entfallen. Rechnungen gehen über ein verbundenes Postfach raus (eBay-Einstellungen → Rechnungen → Absender-Postfach); eine Kopie liegt im Ordner „Gesendet“.
 
 ## 4. Bekannte Platzhalter – bitte prüfen
 

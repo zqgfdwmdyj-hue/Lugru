@@ -7,6 +7,7 @@ import { db, schema } from "@/db";
 import { MAIL_CATEGORIES } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
+import { sendMail, setDefaultSender } from "@/lib/mail/accounts";
 
 export type InboxState = { ok: boolean; message: string } | null;
 const uuid = z.string().uuid();
@@ -72,4 +73,37 @@ export async function toggleMailbox(fd: FormData) {
   if (!mb) return;
   await db.update(schema.mailboxes).set({ active: !mb.active, updatedAt: new Date() }).where(eq(schema.mailboxes.id, id));
   revalidatePath("/posteingang");
+}
+
+export async function setDefaultSenderAction(fd: FormData) {
+  const session = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const [box] = await db.select({ id: schema.mailboxes.id }).from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
+  if (!box) return;
+  await setDefaultSender(session.tenantId, box.id);
+  revalidatePath("/posteingang");
+}
+
+export async function sendTestMail(_prev: InboxState, fd: FormData): Promise<InboxState> {
+  const session = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const [box] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
+  if (!box) return { ok: false, message: "Postfach nicht gefunden." };
+  try {
+    await sendMail(session.tenantId, { to: box.address, subject: "Test-E-Mail vom Seller-System", text: "Der E-Mail-Versand über dieses Postfach funktioniert.\n\nAb jetzt können Rechnungen und Nachrichten darüber verschickt werden." }, { mailboxId: box.id });
+    return { ok: true, message: `Gesendet an ${box.address} – bitte im Postfach nachsehen.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function removeMailbox(fd: FormData) {
+  const session = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const [box] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
+  if (!box) return;
+  // Die abgerufenen Mails bleiben; nur Zugang und Postfach werden entfernt.
+  await db.delete(schema.mailboxes).where(and(eq(schema.mailboxes.id, box.id), eq(schema.mailboxes.tenantId, session.tenantId)));
+  if (box.integrationId) await db.delete(schema.integrations).where(and(eq(schema.integrations.id, box.integrationId), eq(schema.integrations.tenantId, session.tenantId)));
+  revalidatePath("/", "layout");
 }

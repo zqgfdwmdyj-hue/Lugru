@@ -4,8 +4,9 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
-import { archiveMails, toggleMailbox } from "./actions";
-import { EmlUpload, SyncButton } from "./inbox-forms";
+import { senderMailboxes } from "@/lib/mail/accounts";
+import { archiveMails, removeMailbox, setDefaultSenderAction, toggleMailbox } from "./actions";
+import { EmlUpload, SyncButton, TestMailButton } from "./inbox-forms";
 
 const VIEWS = { wichtig: "Wichtig", kritisch: "Kritisch", handeln: "Handeln", info: "Info", unwichtig: "Unwichtig", archiv: "Archiv" } as const;
 type View = keyof typeof VIEWS;
@@ -18,10 +19,12 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
   const where: SQL[] = [eq(E.tenantId, session.tenantId), eq(E.archived, view === "archiv")];
   const cat = { wichtig: ["critical", "action"], kritisch: ["critical"], handeln: ["action"], info: ["info"], unwichtig: ["noise"], archiv: null }[view];
   if (cat) where.push(inArray(E.category, cat as ("critical" | "action" | "info" | "noise")[]));
-  const [mails, boxes] = await Promise.all([
+  const [mails, boxes, senders] = await Promise.all([
     db.select().from(E).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200),
-    db.select().from(schema.mailboxes).where(eq(schema.mailboxes.tenantId, session.tenantId)),
+    db.select().from(schema.mailboxes).where(eq(schema.mailboxes.tenantId, session.tenantId)).orderBy(schema.mailboxes.createdAt),
+    senderMailboxes(session.tenantId),
   ]);
+  const PROVIDER_TAG = { gmail: "GOOGLE", outlook: "MICROSOFT", imap: "IMAP", upload: "" } as const;
 
   return (
     <>
@@ -64,17 +67,25 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
             {boxes.filter((b) => b.provider !== "upload").length === 0 && <div className="small muted">Noch keins verbunden.</div>}
             {boxes.filter((b) => b.provider !== "upload").map((b) => (
               <div key={b.id} style={{ fontSize: 13, borderBottom: "1px solid var(--row)", paddingBottom: 8 }}>
-                <div className="between"><strong>{b.address}</strong><span className="tag tag-neutral">{b.provider === "gmail" ? "GMAIL" : "OUTLOOK"}</span></div>
+                <div className="between" style={{ gap: 8 }}>
+                  <strong style={{ overflowWrap: "anywhere" }}>{b.address}</strong>
+                  <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    {senders.defaultId === b.id && <span className="tag tag-ok">ABSENDER</span>}
+                    <span className="tag tag-neutral">{PROVIDER_TAG[b.provider]}</span>
+                  </span>
+                </div>
                 <div className="small muted">{b.lastSyncAt ? `Zuletzt: ${b.lastSyncAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}` : "Noch nicht abgerufen"}{!b.active && " · pausiert"}</div>
                 {b.lastError && <div className="small" style={{ color: "var(--danger)" }}>{b.lastError}</div>}
-                <form action={toggleMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">{b.active ? "Pausieren" : "Aktivieren"}</button></form>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+                  <form action={toggleMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">{b.active ? "Pausieren" : "Aktivieren"}</button></form>
+                  {b.active && senders.defaultId !== b.id && <form action={setDefaultSenderAction}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">Als Absender</button></form>}
+                  {b.active && <TestMailButton id={b.id} />}
+                  <form action={removeMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>Entfernen</button></form>
+                </div>
               </div>
             ))}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <a className="btn btn-small" href="/api/oauth/google/start">+ Gmail verbinden</a>
-              <a className="btn btn-small" href="/api/oauth/microsoft/start">+ Outlook verbinden</a>
-            </div>
-            <div className="small muted">Vorher unter Anbindungen die Google- bzw. Microsoft-App eintragen. Neue Mails werden automatisch alle 15 Minuten abgerufen.</div>
+            <div><Link className="btn btn-small btn-primary" href="/posteingang/verbinden">+ Postfach verbinden</Link></div>
+            <div className="small muted">Mit Passwort/App-Passwort oder per Google-/Microsoft-Anmeldung. Neue Mails werden alle 15 Minuten abgerufen; über das Absender-Postfach verschickt das System E-Mails (z. B. eBay-Rechnungen).</div>
             <SyncButton />
           </section>
           <section className="card card-pad"><EmlUpload /></section>

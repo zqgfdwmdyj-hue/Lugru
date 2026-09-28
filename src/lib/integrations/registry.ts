@@ -56,31 +56,31 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "google",
     name: "Google (Gmail-Postfächer)",
-    purpose: "Gmail- und Google-Workspace-Postfächer lesen (nur lesend).",
+    purpose: "Nur nötig für „Mit Google anmelden“ – einfacher geht es mit App-Passwort unter Posteingang → Postfach verbinden.",
     fields: [
       { key: "clientId", label: "OAuth Client-ID" },
       { key: "clientSecret", label: "OAuth Client-Secret", secret: true },
     ],
     setup: [
       "console.cloud.google.com → Projekt anlegen → „Gmail API“ aktivieren.",
-      "OAuth-Zustimmungsbildschirm: Typ „Extern“, dich als Testnutzer eintragen, danach auf „In Produktion“ stellen (sonst laufen Logins nach 7 Tagen ab).",
-      "Anmeldedaten → OAuth-Client-ID (Webanwendung) → Weiterleitungs-URI: <deine Adresse>/api/oauth/google/callback",
-      "Client-ID und -Secret hier eintragen, dann unter Posteingang Postfächer verbinden.",
+      "OAuth-Zustimmungsbildschirm: bei Google Workspace Typ „Intern“ (dann keine Prüfung nötig), sonst „Extern“ mit dir als Testnutzer und danach „In Produktion“ (sonst laufen Logins nach 7 Tagen ab).",
+      "Anmeldedaten → OAuth-Client-ID (Webanwendung) → autorisierte Weiterleitungs-URI: http://localhost (und, falls die App über https erreichbar ist, zusätzlich <deine Adresse>/api/oauth/google/callback).",
+      "Client-ID und -Secret hier eintragen, dann unter Posteingang → Postfach verbinden → „Mit Google anmelden“ (Link einfügen wie bei eBay).",
     ],
   },
   {
     provider: "microsoft",
     name: "Microsoft (Outlook-Postfächer)",
-    purpose: "Outlook.com- und Microsoft-365-Postfächer lesen (nur lesend).",
+    purpose: "Outlook.com- und Microsoft-365-Postfächer abrufen und darüber senden („Mit Microsoft anmelden“).",
     fields: [
       { key: "clientId", label: "Anwendungs-ID (Client-ID)" },
       { key: "clientSecret", label: "Geheimer Clientschlüssel", secret: true },
     ],
     setup: [
       "portal.azure.com → App-Registrierungen → Neue Registrierung → Kontotypen: „Konten in allen Organisationsverzeichnissen und persönliche Microsoft-Konten“.",
-      "Umleitungs-URI (Web): <deine Adresse>/api/oauth/microsoft/callback",
-      "API-Berechtigungen: Microsoft Graph → Delegiert → Mail.Read, offline_access, User.Read.",
-      "Zertifikate & Geheimnisse → neuer geheimer Clientschlüssel → hier eintragen.",
+      "Umleitungs-URI (Web): http://localhost (und bei https-Adresse zusätzlich <deine Adresse>/api/oauth/microsoft/callback).",
+      "API-Berechtigungen: Microsoft Graph → Delegiert → Mail.Read, Mail.Send, offline_access, User.Read.",
+      "Zertifikate & Geheimnisse → neuer geheimer Clientschlüssel → hier eintragen, dann unter Posteingang → Postfach verbinden.",
     ],
   },
   {

@@ -4,7 +4,7 @@ import type { Settings } from '../types';
 import {
   buildInvoiceData, buildStornoData, DEFAULT_EMAIL_SUBJECT, DEFAULT_EMAIL_TEXT, effectiveVatRate, fillTemplate, missingSellerData,
 } from './build';
-import { makeSmtpSender, type MailSender } from './mail';
+import type { MailSender } from './mail';
 import { renderInvoicePdf } from './pdf';
 import {
   getInvoice, getInvoiceSettings, insertInvoice, invoicedOrderIds, markEmailError, markEmailed, saveSyncStatus, type SyncStatus,
@@ -13,9 +13,11 @@ import type { InvoiceRecord, OrderForInvoice } from './types';
 
 export interface InvoiceDeps {
   fetchOrders: (since: string) => Promise<OrderForInvoice[]>;
-  /** Wird erst beim ersten Versand gebaut — ohne SMTP-Daten soll das Erstellen trotzdem gehen. */
+  /** Wird erst beim ersten Versand gebaut — ohne verbundenes Postfach soll das Erstellen trotzdem gehen. */
   mailer?: () => MailSender | Promise<MailSender>;
   now?: () => Date;
+  /** Postfächer des Hauptsystems, über die gesendet werden kann. */
+  senders?: () => Promise<{ id: string; address: string; isDefault: boolean }[]>;
 }
 
 /** Wie weit zurück „offene Bestellungen" reichen, wenn die Automatik nie eingeschaltet war. */
@@ -135,11 +137,4 @@ export async function syncInvoices(db: Db, deps: InvoiceDeps): Promise<SyncStatu
   }
   await saveSyncStatus(db, status);
   return status;
-}
-
-export function defaultMailer(db: Db): () => Promise<MailSender> {
-  return async () => {
-    const s = await getInvoiceSettings(db);
-    return makeSmtpSender(s.smtp ?? {}, s.email);
-  };
 }

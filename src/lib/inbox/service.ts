@@ -4,15 +4,9 @@ import { and, eq } from "drizzle-orm";
 import { simpleParser } from "mailparser";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
-import { encryptSecret, decryptSecret } from "@/lib/crypto";
-import { getIntegration } from "@/lib/integrations/store";
-import {
-  gmailFetchRaw,
-  googleToken,
-  graphFetch,
-  microsoftToken,
-  type GraphMessage,
-} from "@/lib/integrations/clients/mail";
+import { gmailFetchRaw, graphFetch, type GraphMessage } from "@/lib/integrations/clients/mail";
+import { mailboxCredentials } from "@/lib/mail/accounts";
+import { imapFetchRaw } from "@/lib/mail/connect";
 import { classifyMail, TOPIC_LABEL, type Topic } from "./classify";
 
 export type ParsedMail = {
@@ -147,32 +141,19 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
 
 // --- Postfächer abrufen ---------------------------------------------------------------
 
-async function mailboxToken(tenantId: string, mailbox: typeof schema.mailboxes.$inferSelect) {
-  if (!mailbox.integrationId) throw new Error("Postfach ist nicht verbunden.");
-  const [integ] = await db.select().from(schema.integrations).where(eq(schema.integrations.id, mailbox.integrationId));
-  if (!integ?.secretEncrypted) throw new Error("Anmeldung fehlt – Postfach neu verbinden.");
-  const { refreshToken } = JSON.parse(decryptSecret(integ.secretEncrypted)) as { refreshToken: string };
-  const app = await getIntegration(tenantId, mailbox.provider === "gmail" ? "google" : "microsoft");
-  if (!app?.clientId || !app.clientSecret) throw new Error("App-Zugang fehlt (Anbindungen).");
-  const params = { client_id: app.clientId, client_secret: app.clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" };
-  const tok = mailbox.provider === "gmail" ? await googleToken(params) : await microsoftToken({ ...params, scope: "offline_access Mail.Read User.Read" });
-  if (tok.refresh_token && tok.refresh_token !== refreshToken) {
-    await db.update(schema.integrations).set({ secretEncrypted: encryptSecret(JSON.stringify({ refreshToken: tok.refresh_token })), updatedAt: new Date() }).where(eq(schema.integrations.id, integ.id));
-  }
-  return tok.access_token;
-}
-
 export async function syncMailbox(tenantId: string, mailboxId: string) {
   const [mb] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, mailboxId), eq(schema.mailboxes.tenantId, tenantId)));
   if (!mb || mb.provider === "upload" || !mb.active) return { new: 0 };
   const since = mb.lastSyncAt ? new Date(mb.lastSyncAt.getTime() - 3600_000) : new Date(Date.now() - 14 * 86400_000);
   let count = 0;
   try {
-    const token = await mailboxToken(tenantId, mb);
+    const creds = await mailboxCredentials(mb);
     const mails =
-      mb.provider === "gmail"
-        ? await Promise.all((await gmailFetchRaw(token, Math.floor(since.getTime() / 1000))).map((r) => parseRaw(r.raw, r.id)))
-        : (await graphFetch(token, since)).map(fromGraph);
+      creds.kind === "gmail"
+        ? await Promise.all((await gmailFetchRaw(creds.accessToken, Math.floor(since.getTime() / 1000))).map((r) => parseRaw(r.raw, r.id)))
+        : creds.kind === "outlook"
+          ? (await graphFetch(creds.accessToken, since)).map(fromGraph)
+          : await Promise.all((await imapFetchRaw(creds.account, since)).map((r) => parseRaw(r.raw, r.id)));
     for (const m of mails) if ((await ingestMail(tenantId, mb.id, m)) === "new") count++;
     await db.update(schema.mailboxes).set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
   } catch (e) {

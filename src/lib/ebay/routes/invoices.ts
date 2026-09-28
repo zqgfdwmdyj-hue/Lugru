@@ -2,22 +2,21 @@ import { h, Router } from './router';
 import type { Db } from '../db/db';
 import { getSettings } from '../db/db';
 import { DEFAULT_EMAIL_SUBJECT, DEFAULT_EMAIL_TEXT, effectiveVatRate, missingSellerData } from '../invoices/build';
-import { makeSmtpSender } from '../invoices/mail';
 import { fetchOrders } from '../invoices/orders';
 import { renderInvoicePdf } from '../invoices/pdf';
 import {
-  cancelInvoice, createInvoice, defaultMailer, openOrders, pdfFilename, sendInvoice, syncInvoices, type InvoiceDeps,
+  cancelInvoice, createInvoice, openOrders, pdfFilename, sendInvoice, syncInvoices, type InvoiceDeps,
 } from '../invoices/service';
 import { getInvoice, getInvoiceSettings, getSyncStatus, listInvoices, saveInvoiceSettings } from '../invoices/store';
 import type { InvoiceRecord, InvoiceSettings } from '../invoices/types';
 
 
-export function invoiceDeps(db: Db): InvoiceDeps {
-  return {
-    fetchOrders: async (since) => fetchOrders(db, await getSettings(db), since),
-    mailer: defaultMailer(db),
-  };
+/** Bestellabruf bei eBay; Versand und Absender liefert das Hauptsystem (src/lib/ebay/invoices/deps.ts). */
+export function baseInvoiceDeps(db: Db): InvoiceDeps {
+  return { fetchOrders: async (since) => fetchOrders(db, await getSettings(db), since) };
 }
+
+const NO_MAILER = 'Kein Postfach zum Senden verbunden — bitte im Hauptsystem unter Posteingang → Postfach verbinden.';
 
 function summary(inv: InvoiceRecord, all: InvoiceRecord[]) {
   return {
@@ -73,30 +72,20 @@ export function mergeInvoiceSettings(current: InvoiceSettings, body: Record<stri
     next.startNumber = v;
     next.startNumberYear = v === undefined ? undefined : now.getFullYear();
   }
-  if (body.smtp && typeof body.smtp === 'object') {
-    const b = body.smtp as Record<string, unknown>;
-    const port = b.port === '' || b.port == null ? undefined : Number(b.port);
-    if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error('Ungültiger SMTP-Port.');
-    next.smtp = {
-      host: String(b.host ?? '').trim() || undefined,
-      port,
-      secure: b.secure === undefined ? undefined : Boolean(b.secure),
-      user: String(b.user ?? '').trim() || undefined,
-      pass: b.pass === '***' ? current.smtp?.pass : String(b.pass ?? '') || undefined,
-      from: String(b.from ?? '').trim() || undefined,
-    };
-  }
+  if ('senderMailboxId' in body) next.senderMailboxId = String(body.senderMailboxId ?? '').trim() || undefined;
+  delete next.smtp;
   return next;
 }
 
-export function invoiceRouter(db: Db, deps: InvoiceDeps = invoiceDeps(db)): Router {
+export function invoiceRouter(db: Db, deps: InvoiceDeps = baseInvoiceDeps(db)): Router {
   const r = new Router();
 
   r.get('/invoice-settings', h(async (_req, res) => {
     const s = await getInvoiceSettings(db);
     const settings = await getSettings(db);
     res.json({
-      settings: { ...s, smtp: s.smtp ? { ...s.smtp, pass: s.smtp.pass ? '***' : '' } : undefined },
+      settings: { ...s, smtp: undefined },
+      senders: (await deps.senders?.()) ?? [],
       missing: missingSellerData(s),
       env: settings.env,
       vatRate: effectiveVatRate({ ...s, kleinunternehmer: false }, settings.vatPercentage),
@@ -114,9 +103,10 @@ export function invoiceRouter(db: Db, deps: InvoiceDeps = invoiceDeps(db)): Rout
     const s = await getInvoiceSettings(db);
     const to = String(req.body?.to ?? s.email ?? '').trim();
     if (!to) throw new Error('Bitte eine Empfängeradresse für die Test-E-Mail angeben.');
-    await makeSmtpSender(s.smtp ?? {}, s.email)({
+    if (!deps.mailer) throw new Error(NO_MAILER);
+    await (await deps.mailer())({
       to,
-      subject: 'Test-E-Mail vom LuGru eBay-Tool',
+      subject: 'Test-E-Mail: Rechnungsversand eBay',
       text: 'Der E-Mail-Versand für Rechnungen funktioniert.',
     });
     res.json({ ok: true, to });
@@ -154,7 +144,7 @@ export function invoiceRouter(db: Db, deps: InvoiceDeps = invoiceDeps(db)): Rout
 
   r.post('/invoices/:id/send', h(async (req, res) => {
     const to = req.body?.to ? String(req.body.to) : undefined;
-    const inv = await sendInvoice(db, Number(req.params.id), to, await (deps.mailer ?? defaultMailer(db))());
+    const inv = await sendInvoice(db, Number(req.params.id), to, await (deps.mailer ?? (() => { throw new Error(NO_MAILER); }))());
     res.json(summary(inv, await listInvoices(db)));
   }));
 

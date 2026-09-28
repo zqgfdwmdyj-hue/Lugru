@@ -1,9 +1,11 @@
 import "server-only";
 
-// Gmail API und Microsoft Graph: OAuth und Nachrichtenabruf (nur lesend).
+// Gmail API und Microsoft Graph: OAuth, Nachrichtenabruf und Versand.
 
-export const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "openid", "email"];
-export const MS_SCOPES = ["offline_access", "Mail.Read", "User.Read"];
+export const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send", "openid", "email"];
+export const MS_SCOPES = ["offline_access", "Mail.Read", "Mail.Send", "User.Read"];
+/** Ältere Verbindungen wurden nur lesend angelegt. */
+export const MS_SCOPES_READONLY = ["offline_access", "Mail.Read", "User.Read"];
 
 export function googleAuthUrl(clientId: string, redirectUri: string, state: string) {
   const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -29,7 +31,7 @@ export function microsoftAuthUrl(clientId: string, redirectUri: string, state: s
   return u.toString();
 }
 
-type TokenResponse = { access_token: string; refresh_token?: string; expires_in: number; id_token?: string; error?: string; error_description?: string };
+type TokenResponse = { access_token: string; refresh_token?: string; expires_in: number; id_token?: string; scope?: string; error?: string; error_description?: string };
 
 async function tokenRequest(url: string, params: Record<string, string>): Promise<TokenResponse> {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(params) });
@@ -75,6 +77,17 @@ export async function gmailFetchRaw(accessToken: string, sinceUnix: number, max 
   return out;
 }
 
+/** Sendet eine fertige Nachricht (RFC 822) über Gmail – landet automatisch unter „Gesendet“. */
+export async function gmailSend(accessToken: string, raw: Buffer): Promise<void> {
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: raw.toString("base64url") }),
+  });
+  if (res.status === 403) throw new Error("Gmail erlaubt diesem Postfach das Senden noch nicht – bitte unter Posteingang neu mit Google anmelden (Senden-Berechtigung).");
+  if (!res.ok) throw new Error(`Gmail-Versand fehlgeschlagen (${res.status}): ${(await res.text()).slice(0, 200)}`);
+}
+
 // --- Microsoft Graph ------------------------------------------------------------------
 
 export async function graphMe(accessToken: string): Promise<string> {
@@ -108,6 +121,17 @@ export async function graphFetch(accessToken: string, since: Date, max = 150): P
   return out.slice(0, max);
 }
 
+/** Sendet eine fertige Nachricht (MIME) über Microsoft Graph – wird unter „Gesendete Elemente“ gespeichert. */
+export async function graphSend(accessToken: string, raw: Buffer): Promise<void> {
+  const res = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "text/plain" },
+    body: raw.toString("base64"),
+  });
+  if (res.status === 403) throw new Error("Outlook erlaubt diesem Postfach das Senden noch nicht – bitte unter Posteingang neu mit Microsoft anmelden (Mail.Send).");
+  if (!res.ok) throw new Error(`Outlook-Versand fehlgeschlagen (${res.status}): ${(await res.text()).slice(0, 200)}`);
+}
+
 // Verbindungstest: Ein Tausch mit ungültigem Code verrät, ob Client-ID/Secret stimmen.
 import { registerTester } from "../test";
 
@@ -120,11 +144,11 @@ async function probe(url: string, params: Record<string, string>) {
 registerTester("google", async (v) => {
   const err = await probe("https://oauth2.googleapis.com/token", { code: "test", client_id: v.clientId, client_secret: v.clientSecret, redirect_uri: "http://localhost", grant_type: "authorization_code" });
   if (err === "invalid_client" || err === "unauthorized_client") throw new Error("Client-ID oder Secret stimmt nicht.");
-  return "Google-App erkannt. Jetzt unter Posteingang Gmail-Postfächer verbinden.";
+  return "Google-App erkannt. Jetzt unter Posteingang → Postfach verbinden → „Mit Google anmelden“.";
 });
 
 registerTester("microsoft", async (v) => {
   const err = await probe("https://login.microsoftonline.com/common/oauth2/v2.0/token", { code: "test", client_id: v.clientId, client_secret: v.clientSecret, redirect_uri: "http://localhost", grant_type: "authorization_code", scope: "User.Read" });
   if (/invalid_client|unauthorized_client/.test(err)) throw new Error("Anwendungs-ID oder geheimer Schlüssel stimmt nicht.");
-  return "Microsoft-App erkannt. Jetzt unter Posteingang Outlook-Postfächer verbinden.";
+  return "Microsoft-App erkannt. Jetzt unter Posteingang → Postfach verbinden → „Mit Microsoft anmelden“.";
 });

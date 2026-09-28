@@ -4,6 +4,7 @@ import { ebayDb } from "./db/pg";
 import { backupDir } from "./backup/backup";
 import { apiRouter } from "./routes/api";
 import { invoiceRouter } from "./routes/invoices";
+import { invoiceDeps } from "./invoices/deps";
 import { maintenanceRouter } from "./routes/maintenance";
 import { dispatch } from "./routes/dispatch";
 import type { Router } from "./routes/router";
@@ -19,8 +20,8 @@ const OWNER_ONLY: [string, RegExp][] = [
   ["POST", /^\/backup\/run$/],
 ];
 
-function routersFor(db: Db): Router[] {
-  return [apiRouter(db), invoiceRouter(db), maintenanceRouter(db, backupDir())];
+function routersFor(db: Db, tenantId: string): Router[] {
+  return [apiRouter(db), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
 }
 
 /** Führt einen Aufruf der eBay-API des Tools für einen Mandanten aus (wie der Express-Server im bisherigen Tool). */
@@ -37,5 +38,5 @@ export async function handleEbayApi(opts: {
     return Response.json({ error: "Nur der Inhaber darf das ändern." }, { status: 403 });
   }
   const db = ebayDb(opts.tenantId);
-  return dispatch(routersFor(db), { method, path, query: opts.query, body: opts.body });
+  return dispatch(routersFor(db, opts.tenantId), { method, path, query: opts.query, body: opts.body });
 }
