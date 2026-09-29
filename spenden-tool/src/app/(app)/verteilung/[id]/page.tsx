@@ -10,6 +10,7 @@ import { PriceCheckChip } from "@/components/price-check";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
+import { QuickPhotos } from "@/components/quick-photos";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
@@ -43,7 +44,8 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           <div className="small muted">{event.title} · {rows.length} Produkte{value ? ` · Warenwert ${formatEuro(value)}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Link href={`/verteilung/${id}/collage`} className="btn btn-primary">Collage erstellen</Link>
+          <QuickPhotos eventId={id} action={uploadPhotos} />
+          <Link href={`/verteilung/${id}/collage`} className="btn">Collage erstellen</Link>
           <Link href={`/aushang/${id}`} className="btn" target="_blank">Aushang drucken</Link>
         </div>
       </div>
@@ -70,7 +72,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                 <tr><th></th><th>Produkt</th><th>Preis €</th><th>Text · Menge</th><th title="Auf Collage / im Aushang">Zeigen</th><th></th></tr>
               </thead>
               <tbody>
-                {rows.length === 0 && <tr><td colSpan={6} className="muted">Noch keine Produkte. Rechts Fotos hochladen oder aus der Datenbank übernehmen.</td></tr>}
+                {rows.length === 0 && <tr><td colSpan={6} className="muted">Noch keine Produkte. Oben auf „📷 Fotos hinzufügen“ tippen – am Handy geht dabei direkt die Kamera oder die Fotomediathek auf.</td></tr>}
                 {rows.map(({ item, product }, i) => (
                   <tr key={item.id}>
                     <td>

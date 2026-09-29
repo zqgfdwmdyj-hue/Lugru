@@ -157,3 +157,5 @@ h2 { font-size: 16px; margin: 0; }
   .spenden-items td:nth-child(3) input, .spenden-items td:nth-child(4) input { width: 100% !important; }
   .spenden-items td:nth-child(6) > div { grid-template-columns: repeat(3, auto) !important; }
 }
+.quick-photos { font-size: 15px; }
+@media (max-width: 760px) { .quick-photos-wrap { flex: 1 1 100%; } .quick-photos { width: 100%; justify-content: center; padding: 14px; font-size: 17px; } }

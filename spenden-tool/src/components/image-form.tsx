@@ -5,7 +5,7 @@ import { useRef, useState, useTransition } from "react";
 const MAX_SIDE = 1600;
 
 /** Verkleinert Handyfotos vor dem Hochladen (lange Seite max. 1600 px, JPEG). */
-async function shrink(file: File): Promise<File> {
+export async function shrink(file: File): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
   try {
     const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
