@@ -1,5 +1,7 @@
 # Spenden-Tool starten (App + eigene Datenbank):  docker compose up -d --build
 # Vorher .env anlegen (siehe .env.example) – mindestens APP_PASSWORD und APP_SECRET.
+# Eigener Projektname: Container, Netz und Datenbank-Volume sind vom Seller-Tool getrennt.
+name: spenden-tool
 services:
   db:
     image: postgres:16
@@ -21,7 +23,8 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "3100:3100"
+      # Außen-Port über PORT in der .env (Server-Test: 3021)
+      - "${PORT:-3100}:3100"
     environment:
       DATABASE_URL: postgres://spenden:spenden@db:5432/spenden
       APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD fehlt – siehe .env.example}
