@@ -72,6 +72,13 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
         { href: "/bewertungen", label: "Bewertungen" },
       ],
     },
+    {
+      head: "Spenden & Verteilung",
+      items: [
+        { href: "/spenden", label: "Verteilungen" },
+        { href: "/spenden/produkte", label: "Spenden-Produkte" },
+      ],
+    },
     { head: "Geld", items: [{ href: "/gewinn", label: "Gewinn" }, { href: "/cashflow", label: "Cash Flow" }] },
     {
       head: "System",
@@ -89,6 +96,7 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
       return pathname === p && new URLSearchParams(q).get("ansicht") === search.get("ansicht");
     }
     if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
+    if (href === "/spenden" && pathname.startsWith("/spenden/produkte")) return false;
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
   };
 

@@ -78,6 +78,13 @@
       "when": 1790676274271,
       "tag": "0010_amazon_todos",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790698490565,
+      "tag": "0011_spenden",
+      "breakpoints": true
     }
   ]
 }

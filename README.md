@@ -17,6 +17,9 @@ Mandanten (Firma); heute gibt es nur einen.
   für AccountOne, Repricer-Export für BQool
 - **Service**: Fälle & A-bis-Z, Retouren, Bewertungen
 - **Geld**: Gewinn je SKU/Kanal, Cash-Flow-Vorschau
+- **Spenden & Verteilung**: Produktdatenbank mit Fotos und Preisverlauf, Verteilungen (Fotos in einem
+  Rutsch hochladen, letzte Verteilung übernehmen), Collage-Bilder zum Teilen, A4-Aushang
+  „Spendenempfehlungen“, fertiger Text für WhatsApp/Signal/Telegram
 - **System**: Import aller Dateien, Einstellungen, Anbindungen (verschlüsselt), Hintergrund-Abrufe
 
 Schnittstellen: Amazon SP-API, eBay, DHL Parcel DE, Gmail, Microsoft Graph, Google Drive.
