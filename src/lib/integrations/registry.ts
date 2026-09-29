@@ -150,9 +150,16 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "discord",
+    name: "Discord (Meldungen) – optional",
+    purpose: "Neue Amazon-ToDos mit hoher Priorität sofort in einen Discord-Kanal melden.",
+    fields: [{ key: "webhookUrl", label: "Webhook-URL", secret: true, placeholder: "https://discord.com/api/webhooks/…" }],
+    setup: ["Discord → Server-Einstellungen → Integrationen → Webhooks → „Neuer Webhook“ → Kanal wählen (z. B. „todo“) → „Webhook-URL kopieren“ → hier einfügen und testen."],
+  },
+  {
     provider: "anthropic",
     name: "KI (Claude) – optional",
-    purpose: "Fasst bei der Themen-Recherche für die Wissensdatenbank die neuen Artikel zusammen.",
+    purpose: "Stuft Amazon-Systemmails ein (Amazon-ToDos: Kategorie, Priorität, Frist, ASINs) und fasst bei der Themen-Recherche neue Artikel zusammen. Ohne Schlüssel arbeiten beide mit festen Regeln.",
     fields: [
       { key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-ant-…" },
       { key: "model", label: "Modell (optional)", placeholder: "claude-sonnet-5" },

@@ -71,6 +71,13 @@
       "when": 1790586482305,
       "tag": "0009_einkauf",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790676274271,
+      "tag": "0010_amazon_todos",
+      "breakpoints": true
     }
   ]
 }

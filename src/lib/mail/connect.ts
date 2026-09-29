@@ -96,9 +96,17 @@ export async function imapFetchRaw(a: Account, since: Date, max = 150): Promise<
   }
   const out: { id: string; raw: Buffer }[] = [];
   try {
-    const lock = await c.getMailboxLock("INBOX");
+    // Google: „Alle Nachrichten“, damit auch archivierte oder per Filter einsortierte Mails ankommen.
+    let folder = "INBOX";
+    if (/gmail\.com$/i.test(a.imapHost)) {
+      const all = (await c.list()).find((b) => b.specialUse === "\\All" || /^(\[gmail\]\/)?(alle nachrichten|all mail)$/i.test(b.path));
+      if (all) folder = all.path;
+    }
+    const lock = await c.getMailboxLock(folder);
     try {
-      const uids = ((await c.search({ since }, { uid: true })) || []).sort((x, y) => y - x).slice(0, max);
+      // Nur Mails von Marktplätzen und Versanddiensten – der Posteingang wertet ohnehin nur diese aus.
+      const senders = ["amazon", "ebay", "tiktok", "temu", "kuajing", "dhl"].map((from) => ({ from }));
+      const uids = ((await c.search({ since, or: senders }, { uid: true })) || []).sort((x, y) => y - x).slice(0, max);
       if (uids.length > 0) {
         for await (const m of c.fetch(uids, { uid: true, source: true }, { uid: true })) {
           if (m.source) out.push({ id: `imap:${m.uid}`, raw: m.source });

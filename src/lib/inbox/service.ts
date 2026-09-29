@@ -8,6 +8,7 @@ import { gmailFetchRaw, graphFetch, type GraphMessage } from "@/lib/integrations
 import { mailboxCredentials } from "@/lib/mail/accounts";
 import { imapFetchRaw } from "@/lib/mail/connect";
 import { classifyMail, TOPIC_LABEL, type Topic } from "./classify";
+import { noiseReason } from "@/lib/amazon-todos/logic";
 
 export type ParsedMail = {
   messageKey: string;
@@ -75,6 +76,9 @@ const CASE_TYPE: Partial<Record<Topic, (typeof schema.CASE_TYPES)[number]>> = {
 };
 
 /** Speichert eine Mail (Dubletten über alle Postfächer hinweg erkannt) und legt Aufgaben an. */
+/** Amazon-Mails, die weiter als Einzelaufgabe/Fall laufen (Fälle-Modul). */
+const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message"]);
+
 export async function ingestMail(tenantId: string, mailboxId: string | null, m: ParsedMail): Promise<"new" | "duplicate" | "ignored"> {
   const c = classifyMail({ from: `${m.fromName ?? ""} <${m.fromAddress}>`, subject: m.subject, body: m.text });
   if (!c.relevant) return "ignored";
@@ -100,7 +104,11 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     .returning();
   if (!row) return "duplicate";
 
-  if (c.category === "critical" || c.category === "action") {
+  // Amazon-Systemmails (Produktsicherheit, Reaktivierung, Echtheitsprüfung …) führt das Modul
+  // Amazon-ToDos mit Frist und KI-Einstufung – hier keine zusätzliche Einzelaufgabe.
+  const fromLine = `${m.fromName ?? ""} <${m.fromAddress}>`;
+  const handledByTodos = noiseReason({ from: fromLine, subject: m.subject }) === null && !KEEP_AS_TASK.has(c.topic);
+  if ((c.category === "critical" || c.category === "action") && !handledByTodos) {
     const refs = Object.values(c.references).join(" · ");
     const due = c.dueInDays !== null ? addDaysIso(todayIso(m.receivedAt), c.dueInDays) : null;
     const [task] = await db

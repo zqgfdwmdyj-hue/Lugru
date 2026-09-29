@@ -1,7 +1,9 @@
 // Optionale KI-Zusammenfassung der neuen Artikel eines Themas (Anthropic Messages API).
 // Ohne API-Schlüssel entfällt sie – die Einträge enthalten dann nur die Artikelliste.
 
-export const DEFAULT_MODEL = "claude-sonnet-5";
+import { askClaude, DEFAULT_MODEL } from "@/lib/ai/claude";
+
+export { DEFAULT_MODEL };
 
 export type SummaryInput = { topic: string; items: { title: string; source: string | null; snippet: string; published: string | null }[] };
 
@@ -24,13 +26,9 @@ export function summaryPrompt(input: SummaryInput): string {
 }
 
 export async function summarize(apiKey: string, input: SummaryInput, model = DEFAULT_MODEL): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: 900, messages: [{ role: "user", content: summaryPrompt(input) }] }),
-    signal: AbortSignal.timeout(60_000),
-  });
-  const json = (await res.json().catch(() => ({}))) as { content?: { type: string; text?: string }[]; error?: { message?: string } };
-  if (!res.ok) throw new Error(`KI-Zusammenfassung fehlgeschlagen: ${json.error?.message ?? `HTTP ${res.status}`}`);
-  return (json.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n").trim();
+  try {
+    return (await askClaude(apiKey, summaryPrompt(input), { model, maxTokens: 900, timeoutMs: 60_000 })).text;
+  } catch (e) {
+    throw new Error((e instanceof Error ? e.message : String(e)).replace("KI-Aufruf fehlgeschlagen", "KI-Zusammenfassung fehlgeschlagen"));
+  }
 }

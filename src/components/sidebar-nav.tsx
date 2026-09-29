@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
-export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number };
+export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number };
 
 type Item = { href: string; label: string; badge?: number; alert?: boolean };
 type Group = { head?: string; items: Item[] };
@@ -50,6 +50,7 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
     {
       head: "Amazon FBA",
       items: [
+        ...(isOwner ? [{ href: "/amazon-todos", label: "Amazon-ToDos", badge: counts.amazonTodos, alert: true }] : []),
         { href: "/inbound", label: "Inbound" },
         { href: "/ansprueche", label: "Ansprüche", badge: counts.claims },
         { href: "/remissionen", label: "Remissionen" },

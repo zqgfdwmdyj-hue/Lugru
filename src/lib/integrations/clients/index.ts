@@ -6,3 +6,4 @@ import "./amazon";
 import "./ebay";
 import "./marketplaces-other";
 import "./calendar";
+import "./discord";

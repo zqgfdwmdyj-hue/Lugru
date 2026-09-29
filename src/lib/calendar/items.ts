@@ -4,6 +4,8 @@ import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { addMonthsIso } from "@/lib/money/cashflow";
 import { formatEuro } from "@/lib/numbers";
+import { categoryLabel } from "@/lib/amazon-todos/logic";
+import { todoDeadlines } from "@/lib/amazon-todos/service";
 
 /** Ein Termin, den das System im Kalender haben möchte. */
 export type Desired = {
@@ -19,7 +21,7 @@ export type Desired = {
 };
 
 /** System-Aufgaben, die im Kalender schon genauer stehen (je Tag statt „in den nächsten 7 Tagen"). */
-const COVERED_BY_CALENDAR = ["claims-deadline", "claims-expired", "claims-open", "cases-deadline"];
+const COVERED_BY_CALENDAR = ["claims-deadline", "claims-expired", "claims-open", "cases-deadline", "amazon-todos"];
 
 const berlinDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 
@@ -138,6 +140,28 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
         remind: c.amount < 0,
       });
     }
+  }
+
+  // Fristen der Amazon-ToDos – je Tag ein Sammeltermin.
+  const todoDays = new Map<string, { n: number; high: number; cats: Map<string, number> }>();
+  for (const r of await todoDeadlines(t, view?.from ?? today, to)) {
+    const d = todoDays.get(r.deadline!) ?? { n: 0, high: 0, cats: new Map() };
+    d.n += r.n;
+    d.high += r.high;
+    d.cats.set(r.category, (d.cats.get(r.category) ?? 0) + r.n);
+    todoDays.set(r.deadline!, d);
+  }
+  for (const [date, d] of todoDays) {
+    const cats = [...d.cats].sort((a, b) => b[1] - a[1]).map(([c, n]) => `${n}× ${categoryLabel(c)}`).join(", ");
+    out.push({
+      key: `amazon-todo:${date}`,
+      title: `${d.high ? "‼ " : ""}Amazon-Frist: ${cats}`,
+      date,
+      description: `${d.n} offene Amazon-ToDo${d.n === 1 ? "" : "s"} mit Frist an diesem Tag. Im Seller Central erledigen und in der Liste abhaken.`,
+      link: "/amazon-todos?sort=frist",
+      category: "Fall",
+      remind: true,
+    });
   }
 
   return out;

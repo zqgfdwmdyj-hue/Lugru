@@ -2,6 +2,7 @@ import "server-only";
 import { db, schema } from "@/db";
 import { syncClaims } from "@/lib/claims/service";
 import { syncAllMailboxes } from "@/lib/inbox/service";
+import { runAmazonTodos } from "@/lib/amazon-todos/service";
 import { syncDrive, refreshInvoiceTasks } from "@/lib/invoices/service";
 import { fetchSettlements, processPendingReports, scheduleReports, syncFbmOrders } from "@/lib/integrations/clients/amazon";
 import { ebayConnected, syncEbayOrders } from "@/lib/integrations/clients/ebay";
@@ -44,7 +45,10 @@ export async function runScheduledJobs(force = false) {
     const tenants = await db.select({ id: schema.tenants.id }).from(schema.tenants);
     for (const { id: t } of tenants) {
       const has = async (p: string) => Boolean(await getIntegration(t, p));
-      if (force || due(`${t}:mail`, 14)) await step("Postfächer", () => syncAllMailboxes(t));
+      if (force || due(`${t}:mail`, 14)) {
+        await step("Postfächer", () => syncAllMailboxes(t));
+        await step("Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
+      }
       if (await has("amazon_sp")) {
         if (force || due(`${t}:amz-orders`, 14)) await step("Amazon-Bestellungen", () => syncFbmOrders(t));
         if (force || due(`${t}:amz-reports`, 14)) {
