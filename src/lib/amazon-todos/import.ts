@@ -7,13 +7,16 @@ import { refreshTodoTask } from "./service";
 import { mapLegacyTodo, normalizeMessageKey, type LegacyRow } from "./legacy";
 
 /** Liest amazon_todos und amazon_mail_seen aus der app.db des Retouren-Tools. */
-async function readLegacy(bytes: Uint8Array) {
+async function readLegacy(bytes: Uint8Array, wal?: Uint8Array) {
   const { DatabaseSync } = await import("node:sqlite");
   const dir = mkdtempSync(join(tmpdir(), "todos-"));
   const file = join(dir, "app.db");
   writeFileSync(file, bytes);
+  // Im laufenden Betrieb stehen die neuesten Einträge noch in app.db-wal – mit dazulegen,
+  // SQLite übernimmt sie beim Öffnen. Deshalb nicht schreibgeschützt öffnen (nur die Kopie).
+  if (wal?.length) writeFileSync(`${file}-wal`, wal);
   try {
-    const d = new DatabaseSync(file, { readOnly: true });
+    const d = new DatabaseSync(file);
     const tables = new Set((d.prepare("select name from sqlite_master where type = 'table'").all() as LegacyRow[]).map((r) => String(r.name)));
     if (!tables.has("amazon_todos")) throw new Error("In der Datei gibt es keine Tabelle amazon_todos – ist das die app.db des Retouren-Tools?");
     const todos = d.prepare("select * from amazon_todos").all() as LegacyRow[];
@@ -25,12 +28,15 @@ async function readLegacy(bytes: Uint8Array) {
   }
 }
 
-export type ImportResult = { todos: number; skipped: number; seen: number; open: number };
+export type ImportResult = { todos: number; skipped: number; seen: number; open: number; total: number };
 
 /** Übernimmt Aufgaben mit Status und Notiz; schon vorhandene (gleiche Message-ID) bleiben unverändert. */
-export async function importLegacyTodos(tenantId: string, bytes: Uint8Array): Promise<ImportResult> {
-  const { todos, seen } = await readLegacy(bytes);
+export async function importLegacyTodos(tenantId: string, bytes: Uint8Array, wal?: Uint8Array): Promise<ImportResult> {
+  const { todos, seen } = await readLegacy(bytes, wal);
   const rows = todos.map(mapLegacyTodo).filter((r): r is NonNullable<typeof r> => r !== null);
+  if (rows.length === 0) {
+    throw new Error(wal ? "In der Datei stehen keine Amazon-ToDos." : "In der app.db stehen (noch) keine Amazon-ToDos. Liegt im selben Ordner eine Datei app.db-wal? Dann beide zusammen auswählen – darin stehen die neuesten Einträge.");
+  }
   let inserted = 0;
   for (let i = 0; i < rows.length; i += 200) {
     const res = await db
@@ -47,5 +53,5 @@ export async function importLegacyTodos(tenantId: string, bytes: Uint8Array): Pr
     seenCount += res.length;
   }
   await refreshTodoTask(tenantId);
-  return { todos: inserted, skipped: rows.length - inserted, seen: seenCount, open: rows.filter((r) => r.status === "open").length };
+  return { todos: inserted, skipped: rows.length - inserted, seen: seenCount, open: rows.filter((r) => r.status === "open").length, total: rows.length };
 }

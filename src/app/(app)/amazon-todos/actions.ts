@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireOwner } from "@/lib/auth/session";
-import { importLegacyTodos } from "@/lib/amazon-todos/import";
 import { isRunning, runAmazonTodos, setTodoNote, setTodoStatus } from "@/lib/amazon-todos/service";
 
 export type TodoState = { ok: boolean; message: string } | null;
@@ -33,19 +32,6 @@ export async function refreshAction(_prev: TodoState): Promise<TodoState> {
     if (!r.ai) parts.push("ohne KI eingestuft (kein Claude-Schlüssel unter Anbindungen)");
     if (r.errors.length) parts.push(`Fehler: ${r.errors[0]}`);
     return { ok: r.errors.length === 0, message: `${parts.join(" · ")}. Postfächer vorher unter Posteingang abrufen, falls neue Mails fehlen.` };
-  } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-export async function importAction(_prev: TodoState, fd: FormData): Promise<TodoState> {
-  const session = await requireOwner();
-  const file = fd.get("file");
-  if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Bitte die app.db des Retouren-Tools auswählen." };
-  try {
-    const r = await importLegacyTodos(session.tenantId, new Uint8Array(await file.arrayBuffer()));
-    revalidatePath("/", "layout");
-    return { ok: true, message: `${r.todos} Aufgaben übernommen (davon ${r.open} offen), ${r.skipped} waren schon da, ${r.seen} verworfene Mails gemerkt.` };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
