@@ -28,6 +28,10 @@ docker compose up -d --build
 Danach ist die App unter http://localhost:3100 erreichbar. Die Anmeldung erfolgt mit dem Team-Passwort.
 Eine tägliche Datensicherung mit allen Fotos landet in `./backups`.
 
+## Auf dem Server (Hetzner)
+
+Siehe [deploy/README.md](deploy/README.md): eigener Ordner, eigene Container und Datenbank, Test auf Port 3021.
+
 ## KI-Preisrecherche einrichten
 
 1. Auf https://platform.claude.com einen API-Schlüssel anlegen und Guthaben aufladen.
