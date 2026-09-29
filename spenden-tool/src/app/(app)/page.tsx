@@ -42,7 +42,7 @@ export default async function SpendenPage() {
               {events.length === 0 && <tr><td colSpan={5} className="muted">Noch keine Verteilung. Rechts die erste anlegen – danach Fotos hochladen, Preise eintragen, Collage und Aushang erzeugen.</td></tr>}
               {events.map(({ e, items, value }) => (
                 <tr key={e.id}>
-                  <td className="num">{weekday(e.eventDate)} {formatDate(e.eventDate)}{e.eventTime ? <span className="muted"> · {e.eventTime}</span> : null}{e.eventDate >= today ? <span className="chip" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 11 }}>geplant</span> : null}</td>
+                  <td className="num" style={{ whiteSpace: "nowrap" }}>{weekday(e.eventDate)} {formatDate(e.eventDate)}{e.eventTime ? <div className="muted small">{e.eventTime}</div> : null}{e.eventDate >= today ? <span className="chip" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 11 }}>geplant</span> : null}</td>
                   <td><Link href={`/verteilung/${e.id}`}>{e.title}</Link>{e.location ? <span className="small muted"> · {e.location}</span> : null}</td>
                   <td className="num right">{items}</td>
                   <td className="num right">{value ? formatEuro(value) : "–"}</td>
