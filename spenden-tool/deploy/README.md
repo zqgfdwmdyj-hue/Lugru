@@ -14,10 +14,13 @@ Das Spenden-Tool läuft auf demselben Server wie das Seller-Tool, ist aber volls
 Solange der Pull Request noch nicht in `main` ist, den Branch `spenden-verteilung` angeben:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zqgfdwmdyj-hue/Lugru/spenden-verteilung/spenden-tool/deploy/install-server.sh -o /tmp/install-spenden.sh
-# oder die Datei aus dem Repo kopieren – bei einem privaten Repo mit Zugangsdaten wie beim Seller-Tool
+# Skript über den vorhandenen Seller-Tool-Checkout holen (funktioniert auch bei privatem Repo)
+git -C /opt/seller-system fetch origin spenden-verteilung
+git -C /opt/seller-system show origin/spenden-verteilung:spenden-tool/deploy/install-server.sh > /tmp/install-spenden.sh
 bash /tmp/install-spenden.sh 3021 spenden-verteilung
 ```
+
+Das ändert nichts am Seller-Tool selbst: `fetch` lädt nur den Branch herunter, der laufende Stand bleibt unverändert.
 
 Parameter: `[port] [branch] [repo-url]`. Standardmäßig wird die Repo-Adresse aus `/opt/seller-system` übernommen,
 also mit denselben Git-Zugangsdaten. Nach dem Merge reicht `bash install-server.sh 3021`.
