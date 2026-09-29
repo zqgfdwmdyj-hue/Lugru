@@ -191,12 +191,3 @@ h2 { font-size: 16px; margin: 0; }
 /* ---- Einkauf ---- */
 .po-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) 80px 100px 80px 100px auto; gap: 8px; }
 @media (max-width: 900px) { .po-add { grid-template-columns: 1fr 1fr; } }
-
-/* ---- Spenden & Verteilung ---- */
-.input-compact { padding: 5px 8px; font-size: 13px; }
-.spenden-items td { vertical-align: top; padding: 8px 6px; }
-.spenden-items th { padding: 10px 8px; }
-.spenden-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
-.spenden-tile { display: flex; flex-direction: column; text-decoration: none; color: var(--ink); overflow: hidden; }
-.spenden-tile img, .spenden-tile .spenden-noimg { width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--row); display: grid; place-items: center; color: var(--muted); font-size: 12px; }
-.spenden-tile:hover { border-color: var(--accent); color: var(--ink); }
