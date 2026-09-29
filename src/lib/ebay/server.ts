@@ -16,6 +16,7 @@ const OWNER_ONLY: [string, RegExp][] = [
   ["GET", /^\/auth\/url$/],
   ["PUT", /^\/invoice-settings$/],
   ["POST", /^\/invoice-settings\/test-mail$/],
+  ["POST", /^\/invoice-settings\/legacy$/],
   ["PUT", /^\/backup$/],
   ["POST", /^\/backup\/run$/],
 ];

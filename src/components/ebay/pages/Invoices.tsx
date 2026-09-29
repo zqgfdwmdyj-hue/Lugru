@@ -34,6 +34,8 @@ interface SyncStatus { at: string; created: number; sent: number; error?: string
 
 interface InvoiceInfo {
   settings: { autoCreate?: boolean; autoSend?: boolean };
+  legacy: 'imported' | 'fresh' | null;
+  since: string | null;
   missing: string[];
   env: string;
   lastSync: SyncStatus | null;
@@ -44,7 +46,7 @@ function orderTotal(o: OpenOrder): number {
 }
 
 /** Rechnungen zu eBay-Bestellungen: offene Bestellungen, erstellte Rechnungen, Versand und Storno. */
-export function Invoices({ onSettings }: { onSettings: () => void }) {
+export function Invoices({ onSettings, onImport }: { onSettings: () => void; onImport: () => void }) {
   const [info, setInfo] = useState<InvoiceInfo | null>(null);
   const [invoices, setInvoices] = useState<InvoiceSummary[] | null>(null);
   const [orders, setOrders] = useState<OpenOrder[] | null>(null);
@@ -117,9 +119,32 @@ export function Invoices({ onSettings }: { onSettings: () => void }) {
           <button className="linklike" onClick={onSettings}>Jetzt eintragen</button>
         </div>
       )}
+      {info && info.legacy === null && (
+        <div className="banner warn">
+          <strong>Erst die Daten aus dem bisherigen eBay-Tool übernehmen.</strong> Bis dahin ruht die Rechnungs-Automatik – sonst würden
+          Bestellungen doppelt abgerechnet (altes Tool und hier) und Rechnungsnummern doppelt vergeben. Die Übernahme bringt alle bisherigen
+          Rechnungen, Artikel und die Nummernfolge mit.
+          <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <button className="primary" onClick={onImport}>Jetzt übernehmen (lugru.db)</button>
+            <button
+              disabled={busy !== ''}
+              onClick={() =>
+                act('legacy', async () => {
+                  if (!window.confirm('Wirklich ohne die alten Rechnungen starten? Die Übernahme ist danach nicht mehr möglich, sobald hier Rechnungen entstehen.')) return '';
+                  await api('/invoice-settings/legacy', { method: 'POST', body: JSON.stringify({ decision: 'fresh' }) });
+                  loadInvoices();
+                  return 'Rechnungen starten ohne Übernahme.';
+                })
+              }
+            >
+              Ohne alte Daten starten
+            </button>
+          </div>
+        </div>
+      )}
       {info && (
         <p className="muted">
-          Automatik: {info.settings.autoCreate ? `an${info.settings.autoSend ? ', mit E-Mail-Versand' : ', ohne E-Mail-Versand'}` : 'aus'}
+          Automatik: {info.settings.autoCreate ? (info.legacy === null ? 'an, aber pausiert (siehe oben)' : `an${info.settings.autoSend ? ', mit E-Mail-Versand' : ', ohne E-Mail-Versand'}`) : 'aus'}
           {info.lastSync && <> · letzter Abruf {formatDate(info.lastSync.at)}{info.lastSync.error ? ` — Fehler: ${info.lastSync.error}` : ''}</>}
           {' · '}<button className="linklike" onClick={onSettings}>Einstellungen</button>
         </p>
@@ -128,6 +153,13 @@ export function Invoices({ onSettings }: { onSettings: () => void }) {
       {error && <div className="banner error">{error}</div>}
 
       <h3>Bezahlte Bestellungen ohne Rechnung</h3>
+      {info && (
+        <p className="muted small">
+          {info.since
+            ? `Berücksichtigt werden Bestellungen ab ${formatDate(info.since)} (Zeitpunkt, an dem die Automatik eingeschaltet wurde).`
+            : 'Berücksichtigt werden Bestellungen der letzten 30 Tage.'}
+        </p>
+      )}
       {ordersError ? (
         <div className="banner error">{ordersError}</div>
       ) : orders === null ? (

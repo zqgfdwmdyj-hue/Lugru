@@ -89,6 +89,7 @@ export async function importLugruDb(tenantId: string, bytes: Uint8Array): Promis
     const legacy = settings.get("production.vatPercentage") || settings.get("sandbox.vatPercentage");
     if (legacy) settings.set("vatPercentage", legacy);
   }
+  settings.set("legacyDecision", "imported");
   let automationWasOn = false;
   const inv = settings.get("invoiceSettings");
   if (inv) {

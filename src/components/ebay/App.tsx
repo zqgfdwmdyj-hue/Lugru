@@ -35,7 +35,7 @@ export function App({ initial }: { initial?: View }) {
   return (
     <div className="shell">
       <header className="topbar">
-        <button className="brand" onClick={home}>LuGru <span>eBay-Tool</span></button>
+        <button className="brand" onClick={home}>eBay</button>
         <nav className="icon-nav">
           {icon('articles', 'Artikel', <BoxIcon />)}
           {icon('history', 'Verlauf', <HistoryIcon />)}
@@ -60,7 +60,7 @@ export function App({ initial }: { initial?: View }) {
           />
         )}
         {view.page === 'settings' && <SettingsPage initialTab={view.tab} />}
-        {view.page === 'invoices' && <Invoices onSettings={() => setView({ page: 'settings', tab: 'invoices' })} />}
+        {view.page === 'invoices' && <Invoices onSettings={() => setView({ page: 'settings', tab: 'invoices' })} onImport={() => setView({ page: 'settings', tab: 'backup' })} />}
       </main>
     </div>
   );

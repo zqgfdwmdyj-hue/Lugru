@@ -9,6 +9,7 @@ import {
 } from '../invoices/service';
 import { getInvoice, getInvoiceSettings, getSyncStatus, listInvoices, saveInvoiceSettings } from '../invoices/store';
 import type { InvoiceRecord, InvoiceSettings } from '../invoices/types';
+import { legacyDecision, requireLegacyDecision, setLegacyDecision } from '../invoices/legacy';
 
 
 /** Bestellabruf bei eBay; Versand und Absender liefert das Hauptsystem (src/lib/ebay/invoices/deps.ts). */
@@ -86,6 +87,8 @@ export function invoiceRouter(db: Db, deps: InvoiceDeps = baseInvoiceDeps(db)): 
     res.json({
       settings: { ...s, smtp: undefined },
       senders: (await deps.senders?.()) ?? [],
+      legacy: await legacyDecision(db),
+      since: s.startDate ?? null,
       missing: missingSellerData(s),
       env: settings.env,
       vatRate: effectiveVatRate({ ...s, kleinunternehmer: false }, settings.vatPercentage),
@@ -96,6 +99,13 @@ export function invoiceRouter(db: Db, deps: InvoiceDeps = baseInvoiceDeps(db)): 
 
   r.put('/invoice-settings', h(async (req, res) => {
     await saveInvoiceSettings(db, mergeInvoiceSettings(await getInvoiceSettings(db), (req.body ?? {}) as Record<string, unknown>));
+    res.json({ ok: true });
+  }));
+
+  r.post('/invoice-settings/legacy', h(async (req, res) => {
+    if (req.body?.decision !== 'fresh') throw new Error('Unbekannte Entscheidung.');
+    if (await legacyDecision(db)) throw new Error('Ist schon entschieden.');
+    await setLegacyDecision(db, 'fresh');
     res.json({ ok: true });
   }));
 
@@ -122,10 +132,12 @@ export function invoiceRouter(db: Db, deps: InvoiceDeps = baseInvoiceDeps(db)): 
   }));
 
   r.post('/invoices/sync', h(async (_req, res) => {
+    await requireLegacyDecision(db);
     res.json(await syncInvoices(db, deps));
   }));
 
   r.post('/invoices/from-order', h(async (req, res) => {
+    await requireLegacyDecision(db);
     const orderId = String(req.body?.orderId ?? '');
     const order = (await openOrders(db, deps)).find((o) => o.orderId === orderId);
     if (!order) throw new Error('Bestellung nicht gefunden oder bereits abgerechnet.');
