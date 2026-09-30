@@ -47,7 +47,7 @@ export const IDEA_KINDS = ["box", "product", "other"] as const;
 export type ChecklistItem = { text: string; done: boolean };
 
 export type MarketProduct = { asin: string; title: string; price: number | null; fbaFee: number | null; referralPct: number | null; monthlySold: number | null; salesRank: number | null; reviews: number | null };
-export type MarketData = { source: "keepa" | "helium10"; term: string; fetchedAt: string; products: MarketProduct[] };
+export type MarketData = { source: "keepa" | "helium10"; term: string; fetchedAt: string; products: MarketProduct[]; /** Gewähltes Vergleichsprodukt: dessen FBA-Gebühr/Provision statt Median. */ referenceAsin?: string };
 
 export const ideas = pgTable(
   "ideas",

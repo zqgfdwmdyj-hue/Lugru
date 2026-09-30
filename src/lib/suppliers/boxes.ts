@@ -66,7 +66,7 @@ export function parseBoxes(text: string, catalog: CatalogItem[]): BoxDraft[] {
 export type BoxCalc = { goods: number; cost: number; units: number; lines: string[]; profit: ReturnType<typeof calcProfit> | null };
 
 /** Exakte Kalkulation: Einkauf aus Einzelpreisen + Verpackung, Gewinn nach Amazon-Provision und FBA. */
-export function calcBox(box: BoxDraft, catalog: CatalogItem[], opts: { packaging: number; vatRate: number; fbaFee: number; referralPct?: number }): BoxCalc {
+export function calcBox(box: BoxDraft, catalog: CatalogItem[], opts: { packaging: number; vatRate: number; fbaFee: number; referralPct?: number; storageFee?: number }): BoxCalc {
   const byNr = new Map(catalog.map((c) => [c.nr, c]));
   let goods = 0;
   let units = 0;
@@ -79,7 +79,7 @@ export function calcBox(box: BoxDraft, catalog: CatalogItem[], opts: { packaging
   }
   goods = Math.round(goods * 100) / 100;
   const cost = Math.round((goods + opts.packaging) * 100) / 100;
-  const profit = box.targetPrice ? calcProfit({ price: box.targetPrice, cost, vatRate: opts.vatRate, referralPct: opts.referralPct ?? 15, fbaFee: opts.fbaFee }, "fba") : null;
+  const profit = box.targetPrice ? calcProfit({ price: box.targetPrice, cost, vatRate: opts.vatRate, referralPct: opts.referralPct ?? 15, fbaFee: opts.fbaFee, storageFee: opts.storageFee }, "fba") : null;
   return { goods, cost, units, lines, profit };
 }
 

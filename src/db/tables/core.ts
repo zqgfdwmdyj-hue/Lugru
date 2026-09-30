@@ -96,6 +96,10 @@ export type TenantSettings = {
     minProfit?: number;
     maxPriceFactor?: number;
     defaultFbaFee?: number;
+    /** Lagerkosten je Einheit (geschätzt, wie ProfitGo/SellerAmp). */
+    storageFee?: number;
+    /** Mindest-ROI für „Max. EK“ (0,2 = 20 %). */
+    minRoi?: number;
   };
   aging?: {
     unsellableWarnDays?: number;

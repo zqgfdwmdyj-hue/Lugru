@@ -90,6 +90,8 @@ export default async function EinstellungenPage() {
             <Field label="Mindestgewinn je Einheit" name="minProfit" value={dec(s.pricing.minProfit)} suffix="€" width={80} />
             <Field label="Maximalpreis = Mindestpreis ×" name="maxPriceFactor" value={dec(s.pricing.maxPriceFactor)} width={80} />
             <Field label="FBA-Gebühr, wenn unbekannt" name="defaultFbaFee" value={dec(s.pricing.defaultFbaFee)} suffix="€" width={80} />
+            <Field label="Lagerkosten je Einheit (geschätzt)" name="storageFee" value={dec(s.pricing.storageFee)} suffix="€" width={80} />
+            <Field label="Mindest-ROI für „Max. EK“" name="minRoi" value={pct(s.pricing.minRoi)} suffix="%" width={80} />
           </div>
         </section>
 

@@ -116,18 +116,50 @@ export function summarizeMarket(products: MarketProduct[]): MarketSummary {
   };
 }
 
-export type Calc = { netPrice: number; referral: number; fulfilment: number; profit: number; margin: number; roi: number | null };
+export type Calc = {
+  netPrice: number;
+  referral: number;
+  fulfilment: number;
+  storage: number;
+  profit: number;
+  margin: number;
+  roi: number | null;
+  /** VK, bei dem der Gewinn 0 ist. */
+  breakEven: number;
+  /** Höchster EK, bei dem noch der Mindest-ROI erreicht wird. */
+  maxCost: number;
+};
 
 /**
  * Gewinn je Stück. FBA: Provision + FBA-Gebühr (aus Vergleichsprodukten, sonst Schätzung).
  * FBM: Provision + eigener Versand/Verpackung.
  */
-export function calcProfit(input: { price: number; cost: number | null; vatRate: number; referralPct?: number | null; fbaFee?: number | null; fbmShipping?: number }, mode: "fba" | "fbm"): Calc {
-  const net = input.price / (1 + input.vatRate / 100);
+export function calcProfit(
+  input: { price: number; cost: number | null; vatRate: number; referralPct?: number | null; fbaFee?: number | null; fbmShipping?: number; storageFee?: number; minRoi?: number },
+  mode: "fba" | "fbm",
+): Calc {
+  const vatFactor = 1 / (1 + input.vatRate / 100);
+  const refRate = (input.referralPct ?? 15) / 100;
+  const net = input.price * vatFactor;
   // Amazon berechnet die Provision vom Bruttopreis; ohne Vergleichswert 15 %.
-  const referral = input.price * ((input.referralPct ?? 15) / 100);
+  const referral = input.price * refRate;
   const fulfilment = mode === "fba" ? (input.fbaFee ?? 4.5) : (input.fbmShipping ?? 4.5);
-  const profit = net - (input.cost ?? 0) - referral - fulfilment;
+  // Lagerkosten fallen nur bei FBA an (bei FBM im eigenen Lager).
+  const storage = mode === "fba" ? (input.storageFee ?? 0) : 0;
+  const cost = input.cost ?? 0;
+  const profit = net - cost - referral - fulfilment - storage;
   const r2 = (n: number) => Math.round(n * 100) / 100;
-  return { netPrice: r2(net), referral: r2(referral), fulfilment: r2(fulfilment), profit: r2(profit), margin: r2((profit / input.price) * 100), roi: input.cost ? r2((profit / input.cost) * 100) : null };
+  const perEuro = vatFactor - refRate;
+  const beforeCost = net - referral - fulfilment - storage;
+  return {
+    netPrice: r2(net),
+    referral: r2(referral),
+    fulfilment: r2(fulfilment),
+    storage: r2(storage),
+    profit: r2(profit),
+    margin: r2((profit / input.price) * 100),
+    roi: input.cost ? r2((profit / input.cost) * 100) : null,
+    breakEven: perEuro > 0 ? r2((fulfilment + storage + cost) / perEuro) : 0,
+    maxCost: r2(Math.max(0, beforeCost / (1 + (input.minRoi ?? 0.2)))),
+  };
 }

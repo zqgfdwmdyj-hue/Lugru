@@ -270,3 +270,15 @@ export async function ideaToArticleAction(fd: FormData) {
   const articleId = await createFromIdea(s.tenantId, id);
   redirect(`/artikel/${articleId}`);
 }
+
+/** Vergleichsprodukt als Referenz für FBA-Gebühr und Provision wählen (oder zurück zum Median). */
+export async function setReferenceAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const id = uuid.parse(fd.get("id"));
+  const idea = await ownIdea(s, id);
+  if (!idea.market) return;
+  const asin = String(fd.get("asin") ?? "").trim().toUpperCase();
+  const referenceAsin = /^[A-Z0-9]{10}$/.test(asin) && idea.market.products.some((p) => p.asin === asin) ? asin : undefined;
+  await db.update(schema.ideas).set({ market: { ...idea.market, referenceAsin }, updatedAt: new Date() }).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+  revalidatePath(`/marken/ideen/${id}`);
+}

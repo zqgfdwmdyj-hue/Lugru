@@ -38,7 +38,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
   const lc = a.amazon.lastCheck;
   const ready = Boolean(lc && lc.mode === "pruefen" && !lc.issues.some((i) => i.severity === "ERROR"));
   const referralPct = d.vatRate === 7 && (d.price ?? 0) <= 10 ? 8 : 15;
-  const calc = d.price ? calcProfit({ price: d.price, cost: d.costPrice, vatRate: d.vatRate, referralPct, fbaFee: settings.pricing.defaultFbaFee }, "fba") : null;
+  const calc = d.price ? calcProfit({ price: d.price, cost: d.costPrice, vatRate: d.vatRate, referralPct, fbaFee: settings.pricing.defaultFbaFee, storageFee: settings.pricing.storageFee, minRoi: settings.pricing.minRoi }, "fba") : null;
   const canEbay = canAccess(session, "ebay");
 
   return (

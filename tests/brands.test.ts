@@ -133,3 +133,19 @@ describe("Buy Box und Bewertungen (Keepa mit buybox=1, rating=1)", () => {
     expect(buyBoxHolder(d, { sellerId: null, sellerName: null })?.level).toBe("info");
   });
 });
+
+import { calcProfit as cp } from "@/lib/brands/market";
+
+describe("Kalkulation wie ProfitGo", () => {
+  it("VK 24,95 / EK 8,55 / 19 % / 14,99 % / FBA 3,75 / Lager 0,09 → 4,84 € Gewinn", () => {
+    const c = cp({ price: 24.95, cost: 8.55, vatRate: 19, referralPct: 14.99, fbaFee: 3.75, storageFee: 0.09, minRoi: 0.2 }, "fba");
+    expect(c.profit).toBe(4.84);
+    expect(c.margin).toBeCloseTo(19.4, 1);
+    expect(c.roi).toBeCloseTo(56.6, 1);
+    expect(c.maxCost).toBe(11.16);
+    expect(c.breakEven).toBeCloseTo(17.94, 1);
+  });
+  it("mit 7 % USt (Lebensmittel) deutlich mehr", () => {
+    expect(cp({ price: 24.95, cost: 8.55, vatRate: 7, referralPct: 14.99, fbaFee: 3.75, storageFee: 0.09 }, "fba").profit).toBe(7.19);
+  });
+});

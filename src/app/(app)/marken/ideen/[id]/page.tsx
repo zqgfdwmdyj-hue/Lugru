@@ -7,9 +7,10 @@ import { brandAllowed } from "@/lib/auth/areas";
 import { CONTENT_STATUS_LABEL, IDEA_STATUS_LABEL } from "@/lib/brands/ai";
 import { OCCASIONS, occasionByKey } from "@/lib/brands/occasions";
 import { formatEuro } from "@/lib/numbers";
-import { checklistAction, deleteIdeaAction, setIdeaStatusAction, ideaToArticleAction } from "../../actions";
+import { checklistAction, deleteIdeaAction, setIdeaStatusAction, ideaToArticleAction, setReferenceAction } from "../../actions";
 import { MarketForms, SaveForm, SuggestContent } from "../../forms";
 import { calcProfit, summarizeMarket } from "@/lib/brands/market";
+import { getSettings } from "@/lib/settings";
 
 const pct = (n: number) => `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`;
 
@@ -43,10 +44,17 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
   // Ohne eigenen Preis: Median der Vergleichsprodukte.
   const vk = i.targetPrice ? Number(i.targetPrice) : (summary?.price ?? null);
   const vatRate = Number(b.vatRate);
+  const settings = await getSettings(t);
+  // Referenzprodukt (gewählt) schlägt den Median der Vergleichsprodukte – so rechnen auch ProfitGo & Co.
+  const ref = market?.referenceAsin ? market.products.find((p) => p.asin === market.referenceAsin) : undefined;
+  const fees = { referralPct: ref?.referralPct ?? summary?.referralPct, fbaFee: ref?.fbaFee ?? summary?.fbaFee ?? settings.pricing.defaultFbaFee };
+  const base = { cost: ek, referralPct: fees.referralPct, storageFee: settings.pricing.storageFee, minRoi: settings.pricing.minRoi };
   const calc = vk
     ? {
-        fba: calcProfit({ price: vk, cost: ek, vatRate, referralPct: summary?.referralPct, fbaFee: summary?.fbaFee }, "fba"),
-        fbm: calcProfit({ price: vk, cost: ek, vatRate, referralPct: summary?.referralPct, fbmShipping: 4.5 }, "fbm"),
+        fba: calcProfit({ price: vk, vatRate, fbaFee: fees.fbaFee, ...base }, "fba"),
+        fbm: calcProfit({ price: vk, vatRate, fbmShipping: 4.5, ...base }, "fbm"),
+        // Gegenprobe mit 19 % – so rechnen Tools wie ProfitGo, solange dort nichts anderes eingestellt ist.
+        fba19: vatRate !== 19 ? calcProfit({ price: vk, vatRate: 19, fbaFee: fees.fbaFee, ...base }, "fba") : null,
       }
     : null;
   const done = i.checklist.filter((c) => c.done).length;
@@ -108,7 +116,7 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
                 </div>
                 <div style={{ overflow: "auto" }}>
                   <table className="table" style={{ fontSize: 13 }}>
-                    <thead><tr><th>Produkt</th><th className="right">Preis</th><th className="right">FBA</th><th className="right">Verk./Monat</th><th className="right">Rang</th><th className="right">Bew.</th></tr></thead>
+                    <thead><tr><th>Produkt</th><th className="right">Preis</th><th className="right">FBA</th><th className="right">Verk./Monat</th><th className="right">Rang</th><th className="right">Bew.</th><th></th></tr></thead>
                     <tbody>
                       {market.products.slice(0, 15).map((p) => (
                         <tr key={p.asin}>
@@ -118,6 +126,13 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
                           <td className="num right">{p.monthlySold ?? "–"}</td>
                           <td className="num right">{p.salesRank?.toLocaleString("de-DE") ?? "–"}</td>
                           <td className="num right">{p.reviews?.toLocaleString("de-DE") ?? "–"}</td>
+                          <td>
+                            <form action={setReferenceAction}>
+                              <input type="hidden" name="id" value={i.id} />
+                              <input type="hidden" name="asin" value={market.referenceAsin === p.asin ? "" : p.asin} />
+                              <button className={`btn btn-small${market.referenceAsin === p.asin ? " btn-primary" : ""}`} type="submit" title="Gebühren dieses Produkts für die Kalkulation nutzen">{market.referenceAsin === p.asin ? "Referenz ✓" : "Referenz"}</button>
+                            </form>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -170,15 +185,24 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
                   <tr><td>VK brutto{!i.targetPrice && summary?.price ? " (Markt)" : ""}</td><td className="num right" colSpan={2}>{formatEuro(vk)}</td></tr>
                   <tr><td>VK netto ({vatRate} % USt)</td><td className="num right" colSpan={2}>{formatEuro(calc.fba.netPrice)}</td></tr>
                   <tr><td>Einkauf netto</td><td className="num right" colSpan={2}>{ek ? formatEuro(-ek) : "–"}</td></tr>
-                  <tr><td>Provision {summary?.referralPct ? `${summary.referralPct} %` : "ca. 15 %"}</td><td className="num right" colSpan={2}>{formatEuro(-calc.fba.referral)}</td></tr>
-                  <tr><td>{summary?.fbaFee ? "FBA-Gebühr (Markt) / Versand" : "FBA-Gebühr / Versand (Schätzung)"}</td><td className="num right">{formatEuro(-calc.fba.fulfilment)}</td><td className="num right">{formatEuro(-calc.fbm.fulfilment)}</td></tr>
+                  <tr><td>Provision {fees.referralPct ? `${fees.referralPct} %` : "ca. 15 %"}</td><td className="num right" colSpan={2}>{formatEuro(-calc.fba.referral)}</td></tr>
+                  <tr><td>{ref ? `FBA-Gebühr (Referenz ${ref.asin}) / Versand` : summary?.fbaFee ? "FBA-Gebühr (Median) / Versand" : "FBA-Gebühr / Versand (Schätzung)"}</td><td className="num right">{formatEuro(-calc.fba.fulfilment)}</td><td className="num right">{formatEuro(-calc.fbm.fulfilment)}</td></tr>
+                  <tr><td>Lagerkosten (geschätzt)</td><td className="num right">{formatEuro(-calc.fba.storage)}</td><td className="num right">–</td></tr>
                   <tr style={{ fontWeight: 600 }}><td>Gewinn</td>
                     <td className="num right" style={{ color: calc.fba.profit < 0 ? "var(--danger)" : undefined }}>{formatEuro(calc.fba.profit)}</td>
                     <td className="num right" style={{ color: calc.fbm.profit < 0 ? "var(--danger)" : undefined }}>{formatEuro(calc.fbm.profit)}</td></tr>
                   <tr><td>Marge / ROI</td><td className="num right">{pct(calc.fba.margin)}{calc.fba.roi !== null ? ` / ${pct(calc.fba.roi)}` : ""}</td><td className="num right">{pct(calc.fbm.margin)}{calc.fbm.roi !== null ? ` / ${pct(calc.fbm.roi)}` : ""}</td></tr>
+                  <tr><td>Break-even VK</td><td className="num right">{formatEuro(calc.fba.breakEven)}</td><td className="num right">{formatEuro(calc.fbm.breakEven)}</td></tr>
+                  <tr><td>Max. EK (ROI {Math.round(settings.pricing.minRoi * 100)} %)</td><td className="num right">{formatEuro(calc.fba.maxCost)}</td><td className="num right">{formatEuro(calc.fbm.maxCost)}</td></tr>
+                  {calc.fba19 && (
+                    <tr className="muted"><td>zum Vergleich mit 19 % USt</td><td className="num right">{formatEuro(calc.fba19.profit)} · {pct(calc.fba19.margin)}</td><td></td></tr>
+                  )}
                 </tbody>
               </table>
-              <div className="muted">{summary ? `Gebühren aus ${summary.count} Vergleichsprodukten (Median).` : "Mit Vergleichsprodukten (Keepa) werden FBA-Gebühr und Provision genauer."} Ohne Lagergebühren und Werbung.</div>
+              <div className="muted">
+                {ref ? `Gebühren vom Referenzprodukt ${ref.asin}.` : summary ? `Gebühren aus ${summary.count} Vergleichsprodukten (Median) – in der Tabelle links ein Produkt als „Referenz“ wählen, dann wie ProfitGo.` : "Mit Vergleichsprodukten (Keepa) werden FBA-Gebühr und Provision genauer."}{" "}
+                USt {vatRate} % aus dem Markenprofil. Lagerkosten und Mindest-ROI unter Einstellungen → Preise. Ohne Werbung und Retouren.
+              </div>
             </section>
           )}
 

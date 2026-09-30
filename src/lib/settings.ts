@@ -50,7 +50,7 @@ export const DEFAULT_SETTINGS = {
     labelFormat: "910-300-700",
     kleinpaketMaxKg: 1,
   },
-  pricing: { referralRate: 0.15, minProfit: 1, maxPriceFactor: 2, defaultFbaFee: 3.5 },
+  pricing: { referralRate: 0.15, minProfit: 1, maxPriceFactor: 2, defaultFbaFee: 3.5, storageFee: 0.1, minRoi: 0.2 },
   aging: { unsellableWarnDays: 30, noSaleWarnDays: 180 },
   drive: { folderId: "" },
   /** Wie im bisherigen Retouren-Tool: Rücksendefrist FBA 45 Tage, Amazon zahlt bis Tag 60, FBM 21 Tage. */

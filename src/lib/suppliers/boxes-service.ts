@@ -65,6 +65,7 @@ export async function suggestBoxes(tenantId: string, userId: string | null, o: B
   const launch = upcoming ? addDaysIso(upcoming.date, -14) : null;
   const feedNames = [...new Set(rows.map((x) => x.feedName))].join(", ");
   const keepa = await keepaKey(tenantId);
+  const storageFee = (await getSettings(tenantId)).pricing.storageFee;
   // Amazon-Vergleich je Suchbegriff einmal (Keepa, ca. 10 Tokens je Suche).
   const markets = new Map<string, MarketData | null>();
   const marketFor = async (term: string) => {
@@ -79,7 +80,7 @@ export async function suggestBoxes(tenantId: string, userId: string | null, o: B
     const m = market?.products.length ? summarizeMarket(market.products) : null;
     const pr = pricingFor(b.targetPrice, m, o.fbaFee);
     const box = { ...b, searchTerm: term, targetPrice: pr.price };
-    const c = calcBox(box, catalog, { packaging: o.packaging, vatRate: vat, fbaFee: pr.fbaFee, referralPct: pr.referralPct });
+    const c = calcBox(box, catalog, { packaging: o.packaging, vatRate: vat, fbaFee: pr.fbaFee, referralPct: pr.referralPct, storageFee });
     return { box, market, m, pr, c };
   };
   const MIN_MARGIN = 20;

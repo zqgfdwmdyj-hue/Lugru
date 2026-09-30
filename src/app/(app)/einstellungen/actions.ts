@@ -64,6 +64,8 @@ export async function saveSettings(fd: FormData) {
       minProfit: num(fd, "minProfit"),
       maxPriceFactor: num(fd, "maxPriceFactor"),
       defaultFbaFee: num(fd, "defaultFbaFee"),
+      storageFee: num(fd, "storageFee"),
+      minRoi: pct(fd, "minRoi"),
     },
     aging: {
       unsellableWarnDays: num(fd, "unsellableWarnDays"),
