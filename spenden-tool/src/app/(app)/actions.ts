@@ -9,7 +9,7 @@ import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME } from "@/lib/layout";
-import { addProductsToEvent, loadEvent, productByImage, storeImage } from "@/lib/service";
+import { addProductsToEvent, latestPriceChecks, loadEvent, productByImage, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
@@ -369,4 +369,22 @@ export async function applySuggestion(checkId: string, eventId: string) {
   fd.set("checkId", uuid.parse(checkId));
   fd.set("eventId", uuid.parse(eventId));
   await doApply(fd);
+}
+
+/** Alle fertigen KI-Vorschläge einer Verteilung als Preis eintragen (nur Produkte ohne Preis). */
+export async function applyAllSuggestions(eventId: string, fd: FormData) {
+  await requireLogin();
+  const id = uuid.parse(eventId);
+  // Erst die Eingaben der Liste speichern, damit nichts verloren geht.
+  await saveItems(fd);
+  const items = await db.select({ id: I.id, productId: I.productId }).from(I).where(and(eq(I.eventId, id), sql`${I.price} is null`));
+  if (items.length === 0) return;
+  const checks = await latestPriceChecks(items.map((i) => i.productId));
+  for (const it of items) {
+    const c = checks.get(it.productId);
+    if (c?.status !== "done" || c.suggestedPrice === null) continue;
+    await db.update(I).set({ price: c.suggestedPrice }).where(eq(I.id, it.id));
+    await db.update(P).set({ price: c.suggestedPrice, updatedAt: new Date() }).where(eq(P.id, it.productId));
+  }
+  revalidatePath(`/verteilung/${id}`);
 }

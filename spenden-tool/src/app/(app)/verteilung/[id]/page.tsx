@@ -11,7 +11,7 @@ import { aiCostUsd } from "@/lib/ai-modes";
 import { db, schema } from "@/db";
 import { inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { addToEvent, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
+import { addToEvent, applyAllSuggestions, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
 import { CategorySelect } from "@/components/category-select";
@@ -19,10 +19,11 @@ import { CategorySelect } from "@/components/category-select";
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
 
-export default async function SpendenAktionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string }> }) {
+export default async function SpendenAktionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string; zeige?: string; kat?: string }> }) {
   await requireLogin();
   const { id } = await params;
-  const q = ((await searchParams).q ?? "").trim().slice(0, 80);
+  const sp = await searchParams;
+  const q = (sp.q ?? "").trim().slice(0, 80);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const event = await loadEvent(id);
   if (!event) notFound();
@@ -38,6 +39,32 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   const ai = aiConfigured();
   const allChecks = rows.length ? await db.select().from(schema.priceChecks).where(inArray(schema.priceChecks.productId, rows.map((r) => r.product.id))) : [];
   const aiCost = allChecks.reduce((n, c) => n + aiCostUsd(c.mode, c.inputTokens, c.outputTokens, c.searches), 0);
+  // Filter über der Liste: nur bestimmte Produkte anzeigen (z. B. die 6 ohne Namen unter 100).
+  const suggestionReady = (r: (typeof rows)[number]) => {
+    const c = checks.get(r.product.id);
+    return c?.status === "done" && c.suggestedPrice !== null && r.item.price === null;
+  };
+  const FILTERS: { key: string; label: string; test: (r: (typeof rows)[number]) => boolean }[] = [
+    { key: "ohne-namen", label: "Ohne Namen", test: (r) => isPlaceholderName(r.product.name) },
+    { key: "ohne-preis", label: "Ohne Preis", test: (r) => r.item.price === null },
+    { key: "ki-vorschlag", label: "KI-Vorschlag da", test: suggestionReady },
+    { key: "ohne-foto", label: "Ohne Foto", test: (r) => !r.product.imageFileId },
+    { key: "ohne-mhd", label: "Ohne MHD", test: (r) => !r.item.bestBefore },
+  ];
+  const filter = FILTERS.find((f) => f.key === sp.zeige);
+  const kat = categories.includes(sp.kat ?? "") ? sp.kat! : "";
+  const shown = rows.filter((r) => (!filter || filter.test(r)) && (!kat || r.product.category === kat));
+  const usedCats = [...new Set(rows.map((r) => r.product.category))].sort((a, b) => a.localeCompare(b, "de"));
+  const suggestions = rows.filter(suggestionReady).length;
+  const link = (o: { zeige?: string; kat?: string }) => {
+    const u = new URLSearchParams();
+    const z = "zeige" in o ? o.zeige : filter?.key;
+    const k = "kat" in o ? o.kat : kat;
+    if (z) u.set("zeige", z);
+    if (k) u.set("kat", k);
+    const str = u.toString();
+    return `/verteilung/${id}${str ? `?${str}` : ""}`;
+  };
   const value = rows.reduce((s, r) => s + (r.item.price ?? 0) * (r.item.quantity ?? 0), 0);
 
   return (
@@ -57,8 +84,10 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
       </div>
 
       {(missingPrice > 0 || missingImage > 0 || unnamed > 0) && (
-        <div className="notice notice-warn">
-          {[unnamed && `${unnamed} Produkt(e) noch ohne Namen`, missingPrice && `${missingPrice} ohne Preis`, missingImage && `${missingImage} ohne Foto (erscheinen auf der Collage als Textkachel)`].filter(Boolean).join(" · ")}
+        <div className="notice notice-warn" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+          {unnamed > 0 && <Link href={link({ zeige: "ohne-namen", kat: "" })}>{unnamed} Produkt(e) noch ohne Namen</Link>}
+          {missingPrice > 0 && <Link href={link({ zeige: "ohne-preis", kat: "" })}>{missingPrice} ohne Preis</Link>}
+          {missingImage > 0 && <Link href={link({ zeige: "ohne-foto", kat: "" })}>{missingImage} ohne Foto</Link>}
         </div>
       )}
 
@@ -73,13 +102,32 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                 <button className="btn btn-small btn-primary" type="submit" name="op" value="save">Speichern</button>
               </div>
             </div>
+            <div className="filter-bar">
+              <Link href={link({ zeige: "", kat: "" })} className={`chip${!filter && !kat ? " active" : ""}`}>Alle ({rows.length})</Link>
+              {FILTERS.map((f) => {
+                const n = rows.filter(f.test).length;
+                return <Link key={f.key} href={link({ zeige: filter?.key === f.key ? "" : f.key })} className={`chip${filter?.key === f.key ? " active" : ""}`}>{f.label} ({n})</Link>;
+              })}
+              {usedCats.length > 1 && usedCats.map((c) => (
+                <Link key={c} href={link({ kat: kat === c ? "" : c })} className={`chip chip-cat${kat === c ? " active" : ""}`}>{c}</Link>
+              ))}
+            </div>
+            {suggestions > 0 && (
+              <div style={{ padding: "0 14px 10px" }}>
+                <button className="btn btn-small" type="submit" formAction={applyAllSuggestions.bind(null, id)} title="Für alle Produkte ohne Preis den fertigen KI-Vorschlag eintragen">
+                  Alle {suggestions} KI-Vorschläge als Preis übernehmen
+                </button>
+              </div>
+            )}
+            {(filter || kat) && <div className="small muted" style={{ padding: "0 14px 8px" }}>{shown.length} von {rows.length} Produkten angezeigt. <Link href={link({ zeige: "", kat: "" })}>Alle anzeigen</Link></div>}
             <table className="table spenden-items">
               <thead>
                 <tr><th></th><th>Produkt</th><th>Preis €</th><th>Text · Menge · MHD</th><th title="Auf Collage / im Aushang">Zeigen</th><th></th></tr>
               </thead>
               <tbody>
                 {rows.length === 0 && <tr><td colSpan={6} className="muted">Noch keine Produkte. Oben auf „📷 Fotos hinzufügen“ tippen – am Handy geht dabei direkt die Kamera oder die Fotomediathek auf.</td></tr>}
-                {rows.map(({ item, product }, i) => (
+                {(filter || kat) && shown.length === 0 && <tr><td colSpan={6} className="muted">Keine Produkte für diesen Filter – alles erledigt.</td></tr>}
+                {shown.map(({ item, product }) => { const i = rows.findIndex((r) => r.item.id === item.id); return (
                   <tr key={item.id}>
                     <td>
                       <Link href={`/produkte/${product.id}?zurueck=${id}`} title="Produkt bearbeiten / Foto ändern">
@@ -129,7 +177,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                       </div>
                     </td>
                   </tr>
-                ))}
+                ); })}
               </tbody>
             </table>
             {rows.length > 0 && <div style={{ padding: "10px 14px", display: "flex", justifyContent: "flex-end" }}><button className="btn btn-primary" type="submit" name="op" value="save">Speichern</button></div>}
@@ -169,6 +217,8 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
             <h2>Aus der Datenbank</h2>
             <div style={{ display: "flex", gap: 6 }}>
               <input className="input" name="q" defaultValue={q} placeholder="Suchen …" aria-label="Produkte suchen" />
+              {filter && <input type="hidden" name="zeige" value={filter.key} />}
+              {kat && <input type="hidden" name="kat" value={kat} />}
               <button className="btn" type="submit" formAction={`/verteilung/${id}`} formMethod="get">Suchen</button>
             </div>
             <div style={{ maxHeight: 420, overflow: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
