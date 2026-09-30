@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { IDEA_STATUS_LABEL } from "@/lib/brands/ai";
 import { occasionByKey, upcomingOccasions } from "@/lib/brands/occasions";
-import { listBrands } from "@/lib/brands/service";
+import { visibleBrands } from "@/lib/brands/access";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { formatDate, formatEuro } from "@/lib/numbers";
@@ -14,14 +14,14 @@ import { SuggestIdeas } from "./forms";
 const COLUMNS = ["idea", "review", "planned", "in_progress", "live"] as const;
 
 export default async function MarkenPage({ searchParams }: { searchParams: Promise<{ marke?: string; anlass?: string; verworfen?: string }> }) {
-  const session = await requireSession();
+  const session = await requireArea("marken");
   const sp = await searchParams;
   const t = session.tenantId;
-  const brands = await listBrands(t);
+  const brands = await visibleBrands(session);
   const brand = brands.find((b) => b.id === sp.marke) ?? null;
   const today = todayIso();
   const I = schema.ideas;
-  const where: SQL[] = [eq(I.tenantId, t)];
+  const where: SQL[] = [eq(I.tenantId, t), inArray(I.brandId, brands.length ? brands.map((b) => b.id) : ["00000000-0000-0000-0000-000000000000"])];
   if (brand) where.push(eq(I.brandId, brand.id));
   if (sp.anlass) where.push(eq(I.occasion, sp.anlass));
   where.push(inArray(I.status, sp.verworfen ? ["rejected"] : [...COLUMNS]));

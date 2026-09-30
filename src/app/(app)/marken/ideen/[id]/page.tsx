@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
+import { brandAllowed } from "@/lib/auth/areas";
 import { CONTENT_STATUS_LABEL, IDEA_STATUS_LABEL } from "@/lib/brands/ai";
 import { OCCASIONS, occasionByKey } from "@/lib/brands/occasions";
 import { formatEuro } from "@/lib/numbers";
@@ -22,7 +23,7 @@ const NEXT: Record<string, [string, string][]> = {
 };
 
 export default async function IdeaPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSession();
+  const session = await requireArea("marken");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const t = session.tenantId;
@@ -33,6 +34,7 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
     .where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, t)));
   if (!row) notFound();
   const { idea: i, brand: b } = row;
+  if (!brandAllowed(session.brandIds, session.role, b.id)) notFound();
   const posts = await db.select().from(schema.contentPosts).where(and(eq(schema.contentPosts.tenantId, t), eq(schema.contentPosts.ideaId, i.id))).orderBy(desc(schema.contentPosts.createdAt));
   const [label, cls] = IDEA_STATUS_LABEL[i.status];
   const market = i.market ?? null;

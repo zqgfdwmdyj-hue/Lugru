@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { syncCalendar } from "@/lib/calendar/sync";
 
 export type SyncState = { ok: boolean; message: string } | null;
 
 export async function syncCalendarNow(_prev: SyncState): Promise<SyncState> {
-  const session = await requireSession();
+  const session = await requireArea("kalender");
   try {
     const r = await syncCalendar(session.tenantId);
     revalidatePath("/kalender");

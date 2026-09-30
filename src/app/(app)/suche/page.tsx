@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -6,6 +7,8 @@ import { formatEuro } from "@/lib/numbers";
 
 export default async function SuchePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const session = await requireSession();
+  // Die Suche geht über alle Bereiche – nur für Inhaber und Mitarbeiter ohne Einschränkung.
+  if (session.role === "staff" && session.areas !== null) redirect("/kein-zugriff");
   const q = ((await searchParams).q ?? "").trim();
   const like = `%${q}%`;
   const L = schema.lots;

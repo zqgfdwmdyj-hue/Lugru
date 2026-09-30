@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
-import { listBrands } from "@/lib/brands/service";
+import { requireArea } from "@/lib/auth/session";
+import { visibleBrands } from "@/lib/brands/access";
 import { latestTikTokImport, productHistory } from "@/lib/brands/shop-service";
 import { productHints } from "@/lib/brands/shop";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
@@ -14,12 +14,12 @@ import { AddProduct, ListingButton, RefreshButton, TikTokImport } from "./forms"
 const HINT_COLOR = { warn: "var(--danger)", info: "var(--ink-2)", ok: "var(--ok)" } as const;
 
 export default async function ShopPage({ searchParams }: { searchParams: Promise<{ marke?: string; sort?: string }> }) {
-  const session = await requireSession();
+  const session = await requireArea("marken");
   const sp = await searchParams;
   const t = session.tenantId;
-  const brands = await listBrands(t);
+  const brands = await visibleBrands(session);
   const brand = brands.find((b) => b.id === sp.marke) ?? brands[0];
-  if (!brand) return null;
+  if (!brand) return <div className="card card-pad muted">Keine Marke freigegeben.</div>;
   const [products, tiktok, hasKeepa] = await Promise.all([
     db.select().from(schema.brandProducts).where(and(eq(schema.brandProducts.tenantId, t), eq(schema.brandProducts.brandId, brand.id))).orderBy(asc(schema.brandProducts.createdAt)),
     latestTikTokImport(t, brand.id),

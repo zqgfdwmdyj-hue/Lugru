@@ -1,13 +1,13 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { OCCASIONS } from "@/lib/brands/occasions";
-import { listBrands } from "@/lib/brands/service";
+import { visibleBrands } from "@/lib/brands/access";
 import { createBrandAction } from "../actions";
 import { SaveForm } from "../forms";
 
 export default async function ProfilePage() {
-  const session = await requireSession();
-  const brands = await listBrands(session.tenantId);
+  const session = await requireArea("marken");
+  const brands = await visibleBrands(session);
   return (
     <>
       <div className="page-head">

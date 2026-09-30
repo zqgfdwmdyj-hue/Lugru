@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -18,7 +18,7 @@ async function log(tenantId: string, claimId: string, userId: string, action: st
 }
 
 async function setStatus(fd: FormData, status: (typeof schema.claims.$inferSelect)["status"], extra: Partial<typeof schema.claims.$inferInsert> = {}, action?: string) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("id"));
   const note = String(fd.get("note") ?? "").trim() || null;
   await db
@@ -59,7 +59,7 @@ export async function escalateClaim(fd: FormData) {
 }
 
 export async function saveClaimNotes(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("id"));
   await db
     .update(schema.claims)
@@ -71,7 +71,7 @@ export async function saveClaimNotes(fd: FormData) {
 }
 
 export async function queueAllDetected() {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const rows = await db
     .update(schema.claims)
     .set({ status: "queued", updatedAt: new Date() })
@@ -82,13 +82,13 @@ export async function queueAllDetected() {
 }
 
 export async function redetect() {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   await syncClaims(session.tenantId);
   revalidatePath("/", "layout");
 }
 
 export async function createManualClaim(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const settings = await getSettings(session.tenantId);
   const type = z.enum(CLAIM_TYPES).parse(fd.get("type"));
   const title = String(fd.get("title") ?? "").trim();
@@ -117,7 +117,7 @@ export async function createManualClaim(fd: FormData) {
 }
 
 export async function bulkStatus(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const ids = fd.getAll("ids").map(String).filter((s) => uuid.safeParse(s).success);
   const action = String(fd.get("bulk"));
   if (ids.length === 0) return;

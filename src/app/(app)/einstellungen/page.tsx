@@ -5,7 +5,8 @@ import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
 import { removeUser, saveSettings, saveSupplierName } from "./actions";
-import { AddUserForm, PasswordForm } from "./user-forms";
+import { AccessForm, AddUserForm, PasswordForm } from "./user-forms";
+import { AREAS } from "@/lib/auth/areas";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -28,8 +29,9 @@ export default async function EinstellungenPage() {
   const s = await getSettings(session.tenantId);
   const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
+  const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.memberships.role })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -147,11 +149,22 @@ export default async function EinstellungenPage() {
       <section className="card card-pad stack" style={{ gap: 14 }}>
         <h2>Benutzer</h2>
         <table className="table">
-          <thead><tr><th>E-Mail</th><th>Name</th><th>Rolle</th><th></th></tr></thead>
+          <thead><tr><th>E-Mail</th><th>Name</th><th>Rolle / Zugriff</th><th></th></tr></thead>
           <tbody>
             {members.map((m) => (
               <tr key={m.userId}>
-                <td>{m.email}</td><td>{m.name ?? "–"}</td><td>{m.role === "owner" ? "Inhaber" : "Mitarbeiter"}</td>
+                <td>{m.email}</td><td>{m.name ?? "–"}</td>
+                <td>
+                  {m.role === "owner" ? "Inhaber (alles)" : (
+                    <details>
+                      <summary style={{ cursor: "pointer" }}>
+                        Mitarbeiter · {m.areas === null ? "alle Bereiche" : m.areas.length ? AREAS.filter((a) => m.areas!.includes(a.key)).map((a) => a.label.split(" (")[0]).join(", ") : "kein Bereich"}
+                        {m.brandIds !== null && ` · Marken: ${brands.filter((b) => m.brandIds!.includes(b.id)).map((b) => b.name).join(", ") || "keine"}`}
+                      </summary>
+                      <AccessForm userId={m.userId} areas={m.areas} brandIds={m.brandIds} allAreas={AREAS.map((a) => ({ key: a.key, label: a.label }))} brands={brands} />
+                    </details>
+                  )}
+                </td>
                 <td className="right">
                   {m.userId !== session.userId && (
                     <form action={removeUser}><input type="hidden" name="userId" value={m.userId} /><button className="btn-link small" style={{ color: "var(--danger)" }}>Entfernen</button></form>

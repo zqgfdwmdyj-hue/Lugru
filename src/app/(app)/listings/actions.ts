@@ -5,14 +5,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CHANNELS } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { publishListing } from "@/lib/listings/publish";
 import { parseAmount } from "@/lib/numbers";
 
 const uuid = z.string().uuid();
 
 export async function saveListing(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const channel = z.enum(CHANNELS).parse(fd.get("channel"));
   const sku = String(fd.get("sku") ?? "").trim();
   if (!sku) return;
@@ -48,21 +48,21 @@ export async function saveListing(fd: FormData) {
 }
 
 export async function publishAction(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const [l] = await db.select().from(schema.listings).where(and(eq(schema.listings.id, uuid.parse(fd.get("id"))), eq(schema.listings.tenantId, session.tenantId)));
   if (l) await publishListing(session.tenantId, l);
   revalidatePath("/listings");
 }
 
 export async function deleteListing(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   await db.delete(schema.listings).where(and(eq(schema.listings.id, uuid.parse(fd.get("id"))), eq(schema.listings.tenantId, session.tenantId)));
   revalidatePath("/listings");
 }
 
 /** Entwürfe für alle SKUs im eigenen Lager, die auf dem Kanal noch fehlen. */
 export async function draftsFromOwnStock(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const channel = z.enum(CHANNELS).parse(fd.get("channel"));
   await db.execute(sql`
     insert into listings (tenant_id, channel, sku, product_id, title, ean, price, quantity)

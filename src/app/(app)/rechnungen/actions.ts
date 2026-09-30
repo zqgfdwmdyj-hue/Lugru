@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { INVOICE_KINDS } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { parseAmount, parseDate } from "@/lib/numbers";
 import { autoMatch, ingestInvoice, refreshInvoiceTasks, syncDrive } from "@/lib/invoices/service";
 
@@ -13,7 +13,7 @@ export type InvState = { ok: boolean; message: string } | null;
 const uuid = z.string().uuid();
 
 export async function syncDriveAction(_prev: InvState): Promise<InvState> {
-  const session = await requireSession();
+  const session = await requireArea("buchhaltung");
   try {
     const r = await syncDrive(session.tenantId);
     revalidatePath("/", "layout");
@@ -24,7 +24,7 @@ export async function syncDriveAction(_prev: InvState): Promise<InvState> {
 }
 
 export async function uploadInvoices(_prev: InvState, fd: FormData): Promise<InvState> {
-  const session = await requireSession();
+  const session = await requireArea("buchhaltung");
   const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   let created = 0;
   for (const f of files) {
@@ -45,7 +45,7 @@ async function own(tenantId: string, id: string) {
 }
 
 export async function saveInvoice(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("buchhaltung");
   const id = uuid.parse(fd.get("id"));
   const inv = await own(session.tenantId, id);
   const kind = z.enum(INVOICE_KINDS).parse(fd.get("kind"));
@@ -81,7 +81,7 @@ export async function saveInvoice(fd: FormData) {
 }
 
 export async function linkLot(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("buchhaltung");
   const id = uuid.parse(fd.get("id"));
   await own(session.tenantId, id);
   const lotId = uuid.parse(fd.get("lotId"));
@@ -92,7 +92,7 @@ export async function linkLot(fd: FormData) {
 }
 
 export async function unlinkLot(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("buchhaltung");
   const id = uuid.parse(fd.get("id"));
   await own(session.tenantId, id);
   await db.delete(schema.invoiceLots).where(and(eq(schema.invoiceLots.invoiceId, id), eq(schema.invoiceLots.lotId, uuid.parse(fd.get("lotId")))));
@@ -100,7 +100,7 @@ export async function unlinkLot(fd: FormData) {
 }
 
 export async function ignoreInvoice(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("buchhaltung");
   const id = uuid.parse(fd.get("id"));
   await own(session.tenantId, id);
   await db.update(schema.invoices).set({ status: "ignored", updatedAt: new Date() }).where(eq(schema.invoices.id, id));

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { addScan, resolveCode, splitQuantity, type ResolvedItem } from "@/lib/inbound/service";
 import { parseAmount } from "@/lib/numbers";
 
@@ -18,7 +18,7 @@ async function ownShipment(tenantId: string, id: string) {
 }
 
 export async function createShipment(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const name = String(fd.get("name") ?? "").trim() || `Sendung ${new Date().toLocaleDateString("de-DE")}`;
   const [row] = await db.insert(schema.inboundShipments).values({ tenantId: session.tenantId, name, createdBy: session.userId }).returning({ id: schema.inboundShipments.id });
   await db.insert(schema.inboundBoxes).values({ tenantId: session.tenantId, shipmentId: row.id, number: 1 });
@@ -36,7 +36,7 @@ export type ScanState = {
 } | null;
 
 export async function scanAction(prev: ScanState, fd: FormData): Promise<ScanState> {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const shipmentId = uuid.parse(fd.get("shipmentId"));
   const shipment = await ownShipment(session.tenantId, shipmentId);
   const seq = (prev?.seq ?? 0) + 1;
@@ -65,7 +65,7 @@ export async function scanAction(prev: ScanState, fd: FormData): Promise<ScanSta
 }
 
 export async function undoLastScan(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const shipmentId = uuid.parse(fd.get("shipmentId"));
   await ownShipment(session.tenantId, shipmentId);
   const [last] = await db
@@ -84,7 +84,7 @@ export async function undoLastScan(fd: FormData) {
 }
 
 export async function addBox(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const shipmentId = uuid.parse(fd.get("shipmentId"));
   await ownShipment(session.tenantId, shipmentId);
   const [{ n }] = await db.select({ n: max(schema.inboundBoxes.number) }).from(schema.inboundBoxes).where(eq(schema.inboundBoxes.shipmentId, shipmentId));
@@ -93,7 +93,7 @@ export async function addBox(fd: FormData) {
 }
 
 export async function updateBox(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("boxId"));
   const v = (k: string) => {
     const n = parseAmount(fd.get(k));
@@ -108,7 +108,7 @@ export async function updateBox(fd: FormData) {
 }
 
 export async function setPlanned(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("itemId"));
   const qty = Math.max(0, Math.round(parseAmount(fd.get("planned")) ?? 0));
   const [item] = await db
@@ -120,7 +120,7 @@ export async function setPlanned(fd: FormData) {
 }
 
 export async function removeItem(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("itemId"));
   const [item] = await db
     .delete(schema.inboundItems)
@@ -130,7 +130,7 @@ export async function removeItem(fd: FormData) {
 }
 
 export async function saveProductData(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const productId = uuid.parse(fd.get("productId"));
   const n = (k: string) => {
     const x = parseAmount(fd.get(k));
@@ -164,7 +164,7 @@ export async function saveProductData(fd: FormData) {
 }
 
 export async function updateShipmentStatus(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("shipmentId"));
   await ownShipment(session.tenantId, id);
   const status = z.enum(schema.INBOUND_STATUSES).parse(fd.get("status"));
@@ -183,7 +183,7 @@ export async function updateShipmentStatus(fd: FormData) {
 }
 
 export async function deleteShipment(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const id = uuid.parse(fd.get("shipmentId"));
   const s = await ownShipment(session.tenantId, id);
   if (s.status !== "draft") return;

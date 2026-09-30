@@ -6,14 +6,14 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import type { FeedMapping } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { readTable } from "@/lib/tabular";
 
 const uuid = z.string().uuid();
 
 export async function createFeed(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const name = String(fd.get("name") ?? "").trim();
   if (!name) return;
   const supplierId = uuid.safeParse(fd.get("supplierId")).success ? String(fd.get("supplierId")) : null;
@@ -24,7 +24,7 @@ export async function createFeed(fd: FormData) {
 export type FeedState = { ok: boolean; message: string; headers?: string[] } | null;
 
 export async function uploadFeed(_prev: FeedState, fd: FormData): Promise<FeedState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const feedId = uuid.parse(fd.get("feedId"));
   const [feed] = await db.select().from(schema.supplierFeeds).where(and(eq(schema.supplierFeeds.id, feedId), eq(schema.supplierFeeds.tenantId, session.tenantId)));
   if (!feed) return { ok: false, message: "Feed nicht gefunden." };
@@ -65,7 +65,7 @@ export async function uploadFeed(_prev: FeedState, fd: FormData): Promise<FeedSt
 }
 
 export async function offerToListing(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const id = uuid.parse(fd.get("offerId"));
   const [o] = await db.select().from(schema.supplierOffers).where(and(eq(schema.supplierOffers.id, id), eq(schema.supplierOffers.tenantId, session.tenantId)));
   if (!o) return;

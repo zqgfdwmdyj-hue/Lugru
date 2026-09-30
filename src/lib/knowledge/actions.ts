@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 
 const entry = z.object({
   title: z.string().trim().min(1, "Titel fehlt").max(200),
@@ -29,7 +29,7 @@ const splitTags = (s: string) =>
   [...new Set(s.split(",").map((t) => t.trim()).filter(Boolean))].slice(0, 20);
 
 export async function createEntry(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wissen");
   const data = read(formData);
   const [row] = await db
     .insert(schema.knowledgeEntries)
@@ -40,7 +40,7 @@ export async function createEntry(formData: FormData) {
 }
 
 export async function updateEntry(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wissen");
   const id = z.string().uuid().parse(formData.get("id"));
   const data = read(formData);
   await db
@@ -52,7 +52,7 @@ export async function updateEntry(formData: FormData) {
 }
 
 export async function deleteEntry(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wissen");
   const id = z.string().uuid().parse(formData.get("id"));
   await db
     .delete(schema.knowledgeEntries)

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { MAIL_CATEGORIES } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
 import { sendMail, setDefaultSender } from "@/lib/mail/accounts";
 
@@ -13,7 +13,7 @@ export type InboxState = { ok: boolean; message: string } | null;
 const uuid = z.string().uuid();
 
 export async function uploadEml(_prev: InboxState, fd: FormData): Promise<InboxState> {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const files = fd.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   if (!files.length) return { ok: false, message: "Bitte .eml-Dateien auswählen." };
   let [box] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.tenantId, session.tenantId), eq(schema.mailboxes.provider, "upload")));
@@ -31,7 +31,7 @@ export async function uploadEml(_prev: InboxState, fd: FormData): Promise<InboxS
 }
 
 export async function syncNow(_prev: InboxState): Promise<InboxState> {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const res = await syncAllMailboxes(session.tenantId);
   revalidatePath("/", "layout");
   if (!res.length) return { ok: false, message: "Noch kein Postfach verbunden." };
@@ -39,7 +39,7 @@ export async function syncNow(_prev: InboxState): Promise<InboxState> {
 }
 
 export async function setCategory(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const category = z.enum(MAIL_CATEGORIES).parse(fd.get("category"));
   await db.update(schema.emails).set({ category, matchedRule: "von Hand" }).where(and(eq(schema.emails.id, id), eq(schema.emails.tenantId, session.tenantId)));
@@ -47,7 +47,7 @@ export async function setCategory(fd: FormData) {
 }
 
 export async function archiveMails(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const ids = fd.getAll("ids").map(String).filter((s) => uuid.safeParse(s).success);
   const one = fd.get("id");
   if (one && uuid.safeParse(one).success) ids.push(String(one));
@@ -57,7 +57,7 @@ export async function archiveMails(fd: FormData) {
 }
 
 export async function createTaskFromMail(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const [m] = await db.select().from(schema.emails).where(and(eq(schema.emails.id, id), eq(schema.emails.tenantId, session.tenantId)));
   if (!m || m.taskId) return;
@@ -67,7 +67,7 @@ export async function createTaskFromMail(fd: FormData) {
 }
 
 export async function toggleMailbox(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const [mb] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
   if (!mb) return;
@@ -76,7 +76,7 @@ export async function toggleMailbox(fd: FormData) {
 }
 
 export async function setDefaultSenderAction(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const [box] = await db.select({ id: schema.mailboxes.id }).from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
   if (!box) return;
@@ -85,7 +85,7 @@ export async function setDefaultSenderAction(fd: FormData) {
 }
 
 export async function sendTestMail(_prev: InboxState, fd: FormData): Promise<InboxState> {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const [box] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
   if (!box) return { ok: false, message: "Postfach nicht gefunden." };
@@ -98,7 +98,7 @@ export async function sendTestMail(_prev: InboxState, fd: FormData): Promise<Inb
 }
 
 export async function removeMailbox(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const [box] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
   if (!box) return;

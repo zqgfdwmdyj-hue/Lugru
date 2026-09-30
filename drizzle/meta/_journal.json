@@ -99,6 +99,13 @@
       "when": 1790747711033,
       "tag": "0013_shop_analyse",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1790751359598,
+      "tag": "0014_rechte",
+      "breakpoints": true
     }
   ]
 }

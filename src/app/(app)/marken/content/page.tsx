@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { CONTENT_STATUS_LABEL } from "@/lib/brands/ai";
-import { listBrands } from "@/lib/brands/service";
+import { visibleBrands } from "@/lib/brands/access";
 import { formatDate } from "@/lib/numbers";
 import { deletePostAction, updatePostAction } from "../actions";
 import { CopyButton, SuggestContent } from "../forms";
@@ -11,13 +11,13 @@ import { CopyButton, SuggestContent } from "../forms";
 const PLATFORM = { tiktok: "TikTok", youtube: "YouTube", instagram: "Instagram" } as const;
 
 export default async function ContentPage({ searchParams }: { searchParams: Promise<{ marke?: string; status?: string }> }) {
-  const session = await requireSession();
+  const session = await requireArea("marken");
   const sp = await searchParams;
   const t = session.tenantId;
-  const brands = await listBrands(t);
+  const brands = await visibleBrands(session);
   const brand = brands.find((b) => b.id === sp.marke) ?? null;
   const C = schema.contentPosts;
-  const where: SQL[] = [eq(C.tenantId, t)];
+  const where: SQL[] = [eq(C.tenantId, t), inArray(C.brandId, brands.length ? brands.map((b) => b.id) : ["00000000-0000-0000-0000-000000000000"])];
   if (brand) where.push(eq(C.brandId, brand.id));
   if (sp.status && sp.status in CONTENT_STATUS_LABEL) where.push(eq(C.status, sp.status as (typeof schema.CONTENT_STATUSES)[number]));
   else where.push(sql`${C.status} <> 'published'`);

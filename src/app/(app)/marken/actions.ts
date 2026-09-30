@@ -6,10 +6,12 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CONTENT_STATUSES, IDEA_KINDS, IDEA_STATUSES, type ChecklistItem } from "@/db/tables/brands";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { checklistFor } from "@/lib/brands/ai";
 import { OCCASIONS } from "@/lib/brands/occasions";
 import { generateContent, generateIdeas, refreshBrandPlanning } from "@/lib/brands/service";
+import { assertBrand } from "@/lib/brands/access";
+import type { Session } from "@/lib/auth/session";
 
 export type BrandState = { ok: boolean; message: string } | null;
 const uuid = z.string().uuid();
@@ -23,8 +25,9 @@ const lines = (v: string) => v.split(/\r?\n/).map((s) => s.trim()).filter(Boolea
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function suggestIdeasAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   try {
+    assertBrand(s, uuid.parse(fd.get("brandId")));
     const n = await generateIdeas(s.tenantId, s.userId, uuid.parse(fd.get("brandId")), { occasion: str(fd, "occasion") || null, wish: str(fd, "wish") || undefined, count: 5 });
     await refreshBrandPlanning(s.tenantId).catch(() => {});
     revalidatePath("/", "layout");
@@ -35,11 +38,12 @@ export async function suggestIdeasAction(_prev: BrandState, fd: FormData): Promi
 }
 
 export async function createIdeaAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const brandId = uuid.parse(fd.get("brandId"));
   const kind = z.enum(IDEA_KINDS).parse(fd.get("kind") || "box");
   const title = str(fd, "title");
   if (!title) return;
+  assertBrand(s, brandId);
   const [b] = await db.select({ id: schema.brands.id }).from(schema.brands).where(and(eq(schema.brands.id, brandId), eq(schema.brands.tenantId, s.tenantId)));
   if (!b) return;
   const [row] = await db
@@ -49,16 +53,17 @@ export async function createIdeaAction(fd: FormData) {
   redirect(`/marken/ideen/${row.id}`);
 }
 
-async function ownIdea(tenantId: string, id: string) {
-  const [i] = await db.select().from(schema.ideas).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, tenantId)));
+async function ownIdea(session: Session, id: string) {
+  const [i] = await db.select().from(schema.ideas).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, session.tenantId)));
   if (!i) throw new Error("Idee nicht gefunden.");
+  assertBrand(session, i.brandId);
   return i;
 }
 
 export async function saveIdeaAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
-  await ownIdea(s.tenantId, id);
+  await ownIdea(s, id);
   const occasion = str(fd, "occasion");
   await db
     .update(schema.ideas)
@@ -81,18 +86,18 @@ export async function saveIdeaAction(_prev: BrandState, fd: FormData): Promise<B
 }
 
 export async function setIdeaStatusAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
-  await ownIdea(s.tenantId, id);
+  await ownIdea(s, id);
   await db.update(schema.ideas).set({ status: z.enum(IDEA_STATUSES).parse(fd.get("status")), updatedAt: new Date() }).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
   await refreshBrandPlanning(s.tenantId).catch(() => {});
   revalidatePath("/", "layout");
 }
 
 export async function checklistAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
-  const idea = await ownIdea(s.tenantId, id);
+  const idea = await ownIdea(s, id);
   let list: ChecklistItem[] = [...idea.checklist];
   const op = str(fd, "op");
   const idx = Number(fd.get("index"));
@@ -109,15 +114,18 @@ export async function checklistAction(fd: FormData) {
 }
 
 export async function deleteIdeaAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
+  await ownIdea(s, uuid.parse(fd.get("id")));
   await db.delete(schema.ideas).where(and(eq(schema.ideas.id, uuid.parse(fd.get("id"))), eq(schema.ideas.tenantId, s.tenantId)));
   revalidatePath("/marken", "layout");
   redirect("/marken");
 }
 
 export async function suggestContentAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   try {
+    assertBrand(s, uuid.parse(fd.get("brandId")));
+    if (str(fd, "ideaId")) await ownIdea(s, uuid.parse(fd.get("ideaId")));
     const n = await generateContent(s.tenantId, {
       brandId: uuid.parse(fd.get("brandId")),
       ideaId: str(fd, "ideaId") ? uuid.parse(fd.get("ideaId")) : undefined,
@@ -131,9 +139,16 @@ export async function suggestContentAction(_prev: BrandState, fd: FormData): Pro
   }
 }
 
+async function ownPost(session: Session, id: string) {
+  const [p] = await db.select().from(schema.contentPosts).where(and(eq(schema.contentPosts.id, id), eq(schema.contentPosts.tenantId, session.tenantId)));
+  if (!p) throw new Error("Beitrag nicht gefunden.");
+  assertBrand(session, p.brandId);
+}
+
 export async function updatePostAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
+  await ownPost(s, id);
   const status = z.enum(CONTENT_STATUSES).parse(fd.get("status"));
   const planned = str(fd, "plannedFor");
   await db
@@ -150,14 +165,16 @@ export async function updatePostAction(fd: FormData) {
 }
 
 export async function deletePostAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
+  await ownPost(s, uuid.parse(fd.get("id")));
   await db.delete(schema.contentPosts).where(and(eq(schema.contentPosts.id, uuid.parse(fd.get("id"))), eq(schema.contentPosts.tenantId, s.tenantId)));
   revalidatePath("/marken", "layout");
 }
 
 export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
+  assertBrand(s, id);
   const occasions: Record<string, number> = {};
   for (const o of OCCASIONS) {
     if (fd.get(`occ:${o.key}`) === "on") occasions[o.key] = Math.min(52, Math.max(1, Number(fd.get(`lead:${o.key}`)) || o.leadWeeks));
@@ -183,17 +200,17 @@ export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<
 }
 
 export async function createBrandAction(fd: FormData) {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const name = str(fd, "name").slice(0, 60);
-  if (!name) return;
+  if (!name || (s.role !== "owner" && s.brandIds !== null)) return;
   await db.insert(schema.brands).values({ tenantId: s.tenantId, name }).onConflictDoNothing();
   revalidatePath("/marken", "layout");
 }
 
 export async function marketKeepaAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
-  await ownIdea(s.tenantId, id);
+  await ownIdea(s, id);
   const term = str(fd, "term");
   if (term.length < 3) return { ok: false, message: "Bitte einen Suchbegriff eingeben, z. B. „Halloween Süßigkeiten Box“." };
   const { keepaKey, keepaSearch } = await import("@/lib/integrations/clients/keepa");
@@ -214,9 +231,9 @@ export async function marketKeepaAction(_prev: BrandState, fd: FormData): Promis
 }
 
 export async function marketHelium10Action(_prev: BrandState, fd: FormData): Promise<BrandState> {
-  const s = await requireSession();
+  const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
-  await ownIdea(s.tenantId, id);
+  await ownIdea(s, id);
   const file = fd.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Bitte den Xray-Export (CSV oder Excel) auswählen." };
   try {

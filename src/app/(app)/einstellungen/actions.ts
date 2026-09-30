@@ -142,3 +142,21 @@ export async function changePassword(_prev: UserState, fd: FormData): Promise<Us
   await db.update(schema.users).set({ passwordHash: await bcrypt.hash(pw, 12) }).where(eq(schema.users.id, session.userId));
   return { ok: true, message: "Passwort geändert." };
 }
+
+/** Bereiche und Marken eines Mitarbeiters festlegen. */
+export async function updateAccess(_prev: UserState, fd: FormData): Promise<UserState> {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  if (userId === session.userId) return { ok: false, message: "Die eigenen Rechte lassen sich nicht ändern." };
+  const { AREA_KEYS } = await import("@/lib/auth/areas");
+  const areas = fd.get("areaMode") === "all" ? null : fd.getAll("areas").map(String).filter((a) => (AREA_KEYS as string[]).includes(a));
+  const brandRows = await db.select({ id: schema.brands.id }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId));
+  const valid = new Set(brandRows.map((b) => b.id));
+  const brandIds = fd.get("brandMode") === "all" ? null : fd.getAll("brands").map(String).filter((b) => valid.has(b));
+  await db
+    .update(schema.memberships)
+    .set({ areas, brandIds })
+    .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId), eq(schema.memberships.role, "staff")));
+  revalidatePath("/einstellungen");
+  return { ok: true, message: areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.` };
+}

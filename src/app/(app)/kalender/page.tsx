@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { and, eq, gte, lte, or } from "drizzle-orm";
+import { and, eq, gte, lte, notInArray, or } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
+import { linkAllowed } from "@/lib/auth/areas";
 import { collectDesired } from "@/lib/calendar/items";
 import { monthGrid, monthTitle, parseMonth, shiftMonth, spreadDays, type DayEntry } from "@/lib/calendar/month";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -27,7 +28,7 @@ const berlinDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Eur
 const berlinTime = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
 
 export default async function KalenderPage({ searchParams }: { searchParams: Promise<{ monat?: string; tag?: string }> }) {
-  const session = await requireSession();
+  const session = await requireArea("kalender");
   const sp = await searchParams;
   const today = todayIso();
   const month = parseMonth(sp.monat, today);
@@ -59,7 +60,20 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
     byDay.set(day, list);
   };
   const calendars = new Map<string, string>();
-  for (const ev of events) {
+  // Eingeschränkte Mitarbeiter: keine privaten Termine, nur Fälligkeiten aus freigegebenen Bereichen.
+  const restricted = session.role === "staff" && session.areas !== null;
+  // Ideen und Posts von nicht freigegebenen Marken ausblenden.
+  const hiddenIdeas = new Set<string>();
+  if (session.role === "staff" && session.brandIds !== null) {
+    const allow = session.brandIds.length ? session.brandIds : ["00000000-0000-0000-0000-000000000000"];
+    const [ideaRows, postRows] = await Promise.all([
+      db.select({ id: schema.ideas.id }).from(schema.ideas).where(and(eq(schema.ideas.tenantId, session.tenantId), notInArray(schema.ideas.brandId, allow))),
+      db.select({ id: schema.contentPosts.id }).from(schema.contentPosts).where(and(eq(schema.contentPosts.tenantId, session.tenantId), notInArray(schema.contentPosts.brandId, allow))),
+    ]);
+    for (const r of ideaRows) hiddenIdeas.add(`idea:${r.id}`);
+    for (const r of postRows) hiddenIdeas.add(`post:${r.id}`);
+  }
+  for (const ev of restricted ? [] : events) {
     const color = ev.color ?? "#6E6E73";
     calendars.set(ev.calendarName, color);
     const endDay = ev.endsAt ? (ev.allDay ? ev.endsAt.toISOString().slice(0, 10) : addDaysIso(berlinDay(new Date(ev.endsAt.getTime() - 1)), 1)) : null;
@@ -77,6 +91,8 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
     );
   }
   for (const d of desired) {
+    if (session.role === "staff" && (restricted || session.brandIds !== null) && !linkAllowed(session, d.link)) continue;
+    if (hiddenIdeas.has(d.key)) continue;
     if (d.date < from || d.date > to) continue;
     push(d.date, {
       id: d.key,
@@ -189,6 +205,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
               <label className="label" htmlFor="cal-title">Neue Aufgabe an diesem Tag</label>
               <input className="input" id="cal-title" name="title" required maxLength={300} placeholder="z. B. Ware bei Lieferant bestellen" />
               <input type="hidden" name="dueDate" value={selected} />
+              <input type="hidden" name="link" value="/kalender" />
               <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <input type="checkbox" name="critical" /> wichtig
               </label>

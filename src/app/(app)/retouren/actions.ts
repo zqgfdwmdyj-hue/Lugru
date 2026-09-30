@@ -5,13 +5,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CHANNELS, RETURN_STATUSES } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 
 const uuid = z.string().uuid();
 
 export async function createReturn(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("service");
   const orderRef = String(fd.get("orderRef") ?? "").trim();
   if (!orderRef) return;
   const channel = z.enum(CHANNELS).parse(fd.get("channel"));
@@ -30,7 +30,7 @@ export async function createReturn(fd: FormData) {
 }
 
 export async function updateReturn(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("service");
   const id = uuid.parse(fd.get("id"));
   const [r] = await db.select().from(schema.customerReturns).where(and(eq(schema.customerReturns.id, id), eq(schema.customerReturns.tenantId, session.tenantId)));
   if (!r) return;

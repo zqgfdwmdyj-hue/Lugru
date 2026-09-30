@@ -4,11 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { parseAmount, parseDate } from "@/lib/numbers";
 
 export async function addCashItem(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("geld");
   const amount = parseAmount(fd.get("amount"));
   const date = parseDate(String(fd.get("date") ?? ""));
   const description = String(fd.get("description") ?? "").trim();
@@ -27,13 +27,13 @@ export async function addCashItem(fd: FormData) {
 }
 
 export async function deleteCashItem(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("geld");
   await db.delete(schema.cashItems).where(and(eq(schema.cashItems.id, z.string().uuid().parse(fd.get("id"))), eq(schema.cashItems.tenantId, session.tenantId)));
   revalidatePath("/cashflow");
 }
 
 export async function saveStartBalance(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("geld");
   const [t] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
   const v = parseAmount(fd.get("balance"));
   await db

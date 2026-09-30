@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { runAfterImport } from "@/lib/hooks";
 import { importAnyFile, type FileResult } from "@/lib/imports/dispatch";
 
@@ -9,7 +9,7 @@ export type ImportAllState = { results: FileResult[] } | null;
 const MAX_BYTES = 25 * 1024 * 1024;
 
 export async function importFiles(_prev: ImportAllState, formData: FormData): Promise<ImportAllState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) return { results: [{ fileName: "–", ok: false, summary: "Bitte mindestens eine Datei auswählen." }] };
   const results: FileResult[] = [];

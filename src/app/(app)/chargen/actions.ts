@@ -4,12 +4,12 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { applyCostPriority, recomputeReturnCosts } from "@/lib/imports/apply";
 import { parseAmount } from "@/lib/numbers";
 
 export async function setManualCost(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const id = z.string().uuid().parse(formData.get("id"));
   const value = parseAmount(formData.get("cost"));
   if (value === null || value < 0) return;
@@ -24,7 +24,7 @@ export async function setManualCost(formData: FormData) {
 }
 
 export async function resetCost(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const id = z.string().uuid().parse(formData.get("id"));
   await db.transaction(async (tx) => {
     await tx

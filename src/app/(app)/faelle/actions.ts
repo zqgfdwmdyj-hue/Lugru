@@ -5,13 +5,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CASE_STATUSES, CASE_TYPES, CHANNELS } from "@/db/schema";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { parseAmount, parseDate } from "@/lib/numbers";
 
 const uuid = z.string().uuid();
 
 export async function createCase(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("service");
   const title = String(fd.get("title") ?? "").trim();
   if (!title) return;
   await db.insert(schema.cases).values({
@@ -29,7 +29,7 @@ export async function createCase(fd: FormData) {
 }
 
 export async function updateCase(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("service");
   const id = uuid.parse(fd.get("id"));
   const status = z.enum(CASE_STATUSES).parse(fd.get("status"));
   await db

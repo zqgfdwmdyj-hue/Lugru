@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { syncMailbox } from "@/lib/inbox/service";
 import { saveImapMailbox } from "@/lib/mail/accounts";
 import { detectServers, testAccount, type Account } from "@/lib/mail/connect";
@@ -21,7 +21,7 @@ export async function connectImap(prev: ConnectState, fd: FormData): Promise<Con
 }
 
 async function tryConnect(fd: FormData): Promise<ConnectState> {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const address = str(fd, "address").toLowerCase();
   // Google zeigt App-Passwörter in Vierergruppen („abcd efgh ijkl mnop“) – die Leerzeichen gehören nicht dazu.
   const rawPassword = String(fd.get("password") ?? "");
@@ -76,7 +76,7 @@ async function tryConnect(fd: FormData): Promise<ConnectState> {
 export type PasteState = { ok: boolean; message: string } | null;
 
 export async function finishPaste(_prev: PasteState, fd: FormData): Promise<PasteState> {
-  const session = await requireSession();
+  const session = await requireArea("posteingang");
   const { code, state, error } = parsePastedRedirect(String(fd.get("url") ?? ""));
   if (error) return { ok: false, message: `Anmeldung abgelehnt: ${error}` };
   if (!code || !state) return { ok: false, message: "Bitte die komplette Adresse aus der Browserzeile einfügen (beginnt mit http://localhost/?…code=…)." };

@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { syncCalendar } from "@/lib/calendar/sync";
 
 /** Kalender im Hintergrund nachziehen, damit neue oder erledigte Aufgaben gleich dort stehen. */
@@ -17,15 +17,18 @@ const newTask = z.object({
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   category: z.enum(schema.TASK_CATEGORIES).default("eigene"),
   critical: z.literal("on").optional(),
+  /** Herkunft, z. B. /kalender – damit Mitarbeiter mit Kalender-Freigabe ihre Aufgaben dort sehen. */
+  link: z.enum(["/kalender"]).optional(),
 });
 
 export async function createTask(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("start", "kalender");
   const parsed = newTask.safeParse({
     title: formData.get("title"),
     dueDate: formData.get("dueDate") ?? "",
     category: formData.get("category") || undefined,
     critical: formData.get("critical") ?? undefined,
+    link: formData.get("link") || undefined,
   });
   if (!parsed.success) return;
   await db.insert(schema.tasks).values({
@@ -34,6 +37,7 @@ export async function createTask(formData: FormData) {
     dueDate: parsed.data.dueDate || null,
     category: parsed.data.category,
     priority: parsed.data.critical ? "critical" : "normal",
+    link: parsed.data.link ?? null,
     createdBy: session.userId,
   });
   syncSoon(session.tenantId);
@@ -41,7 +45,7 @@ export async function createTask(formData: FormData) {
 }
 
 export async function toggleTask(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("start", "kalender");
   const id = z.string().uuid().parse(formData.get("id"));
   const [task] = await db
     .select({ status: schema.tasks.status })
@@ -58,7 +62,7 @@ export async function toggleTask(formData: FormData) {
 }
 
 export async function deleteTask(formData: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("start", "kalender");
   const id = z.string().uuid().parse(formData.get("id"));
   await db
     .delete(schema.tasks)

@@ -1,3 +1,4 @@
+import { canAccess } from "@/lib/auth/areas";
 import { getSession } from "@/lib/auth/session";
 import { handleEbayApi } from "@/lib/ebay/server";
 
@@ -8,6 +9,7 @@ export const dynamic = "force-dynamic";
 async function handle(request: Request, ctx: { params: Promise<{ path: string[] }> }) {
   const session = await getSession();
   if (!session) return Response.json({ error: "Nicht angemeldet." }, { status: 401 });
+  if (!canAccess(session, "ebay")) return Response.json({ error: "Kein Zugriff auf den eBay-Bereich." }, { status: 403 });
   const { path } = await ctx.params;
   const url = new URL(request.url);
   let body: unknown = undefined;

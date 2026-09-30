@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db, schema } from "@/db";
+import { canAccess, homeFor, type AreaKey } from "./areas";
 
 export const SESSION_COOKIE = "session";
 const SESSION_DAYS = 30;
@@ -15,6 +16,9 @@ export type Session = {
   userId: string;
   tenantId: string;
   role: "owner" | "staff";
+  /** Freigegebene Bereiche (null = alle) und Marken (null = alle). */
+  areas: string[] | null;
+  brandIds: string[] | null;
   email: string;
   name: string | null;
   tenantName: string;
@@ -53,6 +57,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
       tenantId: schema.tenants.id,
       tenantName: schema.tenants.name,
       role: schema.memberships.role,
+      areas: schema.memberships.areas,
+      brandIds: schema.memberships.brandIds,
     })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
@@ -72,6 +78,16 @@ export const getSession = cache(async (): Promise<Session | null> => {
 export async function requireSession(): Promise<Session> {
   const session = await getSession();
   if (!session) redirect("/login");
+  return session;
+}
+
+/**
+ * Für Seiten und Server Actions eines Bereichs: Mitarbeiter ohne Freigabe landen auf ihrer
+ * Startseite. Mehrere Bereiche = einer davon genügt.
+ */
+export async function requireArea(...areas: AreaKey[]): Promise<Session> {
+  const session = await requireSession();
+  if (!areas.some((a) => canAccess(session, a))) redirect(`${homeFor(session)}?gesperrt=1`);
   return session;
 }
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { areaForPath, canAccess } from "@/lib/auth/areas";
 import { usePathname, useSearchParams } from "next/navigation";
 
 export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number };
@@ -9,9 +10,10 @@ export type NavCounts = { tasks: number; inbox: number; orders: number; claims: 
 type Item = { href: string; label: string; badge?: number; alert?: boolean };
 type Group = { head?: string; items: Item[] };
 
-export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: boolean }) {
+export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOwner: boolean; areas: string[] | null }) {
   const pathname = usePathname();
   const search = useSearchParams();
+  const gesperrt = search.get("gesperrt") === "1";
   // Auf dem Handy das aufgeklappte Menü nach dem Seitenwechsel wieder schließen.
   useEffect(() => {
     const t = document.getElementById("nav-toggle") as HTMLInputElement | null;
@@ -102,9 +104,15 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
   };
 
+  // Mitarbeiter sehen nur freigegebene Bereiche.
+  const visible = groups
+    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess({ role: isOwner ? "owner" : "staff", areas }, areaForPath(it.href.split("?")[0]))) }))
+    .filter((g) => g.items.length > 0);
+
   return (
     <nav aria-label="Hauptnavigation">
-      {groups.map((g, i) => (
+      {gesperrt && <div className="nav-locked">Dieser Bereich ist für dich nicht freigegeben.</div>}
+      {visible.map((g, i) => (
         <div key={i}>
           {g.head && <div className="nav-head">{g.head}</div>}
           {g.items.map((item) => (

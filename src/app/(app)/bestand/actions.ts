@@ -5,13 +5,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 
 const uuid = z.string().uuid();
 
 export async function setOwnStock(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const sku = String(fd.get("sku") ?? "").trim();
   const qty = Math.round(parseAmount(fd.get("quantity")) ?? NaN);
   if (!sku || !Number.isFinite(qty)) return;
@@ -26,7 +26,7 @@ export async function setOwnStock(fd: FormData) {
 }
 
 export async function createCount(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const name = String(fd.get("name") ?? "").trim() || `Inventur ${new Date().toLocaleDateString("de-DE")}`;
   const [c] = await db.insert(schema.inventoryCounts).values({ tenantId: session.tenantId, name, createdBy: session.userId }).returning();
   const stock = await db.select().from(schema.ownStock).where(eq(schema.ownStock.tenantId, session.tenantId));
@@ -37,7 +37,7 @@ export async function createCount(fd: FormData) {
 export type CountState = { ok: boolean; message: string; seq: number } | null;
 
 export async function countScan(prev: CountState, fd: FormData): Promise<CountState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const countId = uuid.parse(fd.get("countId"));
   const seq = (prev?.seq ?? 0) + 1;
   const [c] = await db.select().from(schema.inventoryCounts).where(and(eq(schema.inventoryCounts.id, countId), eq(schema.inventoryCounts.tenantId, session.tenantId)));
@@ -65,7 +65,7 @@ export async function countScan(prev: CountState, fd: FormData): Promise<CountSt
 }
 
 export async function setCounted(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const id = uuid.parse(fd.get("lineId"));
   const counted = Math.max(0, Math.round(parseAmount(fd.get("counted")) ?? 0));
   const [l] = await db.update(schema.inventoryCountLines).set({ counted, updatedAt: new Date() }).where(and(eq(schema.inventoryCountLines.id, id), eq(schema.inventoryCountLines.tenantId, session.tenantId))).returning();
@@ -73,7 +73,7 @@ export async function setCounted(fd: FormData) {
 }
 
 export async function bookCount(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const countId = uuid.parse(fd.get("countId"));
   const [c] = await db.select().from(schema.inventoryCounts).where(and(eq(schema.inventoryCounts.id, countId), eq(schema.inventoryCounts.tenantId, session.tenantId)));
   if (!c || c.status !== "open") return;

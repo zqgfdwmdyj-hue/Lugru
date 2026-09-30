@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { addItem, createDraftsFromSuggestions, createPurchaseOrder, receiveGoods, removeItem, updatePurchaseOrder } from "@/lib/purchasing/service";
 
 export type PoState = { ok: boolean; message: string } | null;
@@ -14,7 +14,7 @@ const num = (v: string) => (v === "" ? null : Number(v.replace(/\s/g, "").replac
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export async function createPoAction(_prev: PoState, fd: FormData): Promise<PoState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   let id: string;
   try {
     id = await createPurchaseOrder(session.tenantId, session.userId, {
@@ -30,7 +30,7 @@ export async function createPoAction(_prev: PoState, fd: FormData): Promise<PoSt
 }
 
 export async function addItemAction(_prev: PoState, fd: FormData): Promise<PoState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const poId = uuid.parse(fd.get("poId"));
   try {
     await addItem(session.tenantId, poId, {
@@ -49,13 +49,13 @@ export async function addItemAction(_prev: PoState, fd: FormData): Promise<PoSta
 }
 
 export async function removeItemAction(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   await removeItem(session.tenantId, uuid.parse(fd.get("id")));
   revalidatePath("/einkauf", "layout");
 }
 
 export async function updatePoAction(_prev: PoState, fd: FormData): Promise<PoState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const poId = uuid.parse(fd.get("poId"));
   try {
     const status = str(fd, "status");
@@ -81,13 +81,13 @@ export async function updatePoAction(_prev: PoState, fd: FormData): Promise<PoSt
 }
 
 export async function setStatusAction(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   await updatePurchaseOrder(session.tenantId, uuid.parse(fd.get("poId")), { status: str(fd, "status") });
   revalidatePath("/", "layout");
 }
 
 export async function receiveAction(_prev: PoState, fd: FormData): Promise<PoState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const poId = uuid.parse(fd.get("poId"));
   const quantities: Record<string, number> = {};
   for (const [k, v] of fd.entries()) {
@@ -103,7 +103,7 @@ export async function receiveAction(_prev: PoState, fd: FormData): Promise<PoSta
 }
 
 export async function draftsFromSuggestions(_prev: PoState, fd: FormData): Promise<PoState> {
-  const session = await requireSession();
+  const session = await requireArea("wawi");
   const picks = fd.getAll("pick").map(String).map((asin) => ({
     asin,
     quantity: num(str(fd, `qty:${asin}`)) ?? 0,

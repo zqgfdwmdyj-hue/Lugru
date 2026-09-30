@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { runResearch, saveResearchSettings } from "@/lib/research/service";
 
 const lines = (v: FormDataEntryValue | null) =>
@@ -11,7 +11,7 @@ const lines = (v: FormDataEntryValue | null) =>
     .filter(Boolean);
 
 export async function saveResearch(fd: FormData) {
-  const session = await requireSession();
+  const session = await requireArea("wissen");
   const topics = [...new Set(lines(fd.get("topics")))].slice(0, 30);
   const feeds = [...new Set(lines(fd.get("feeds")).filter((u) => /^https?:\/\//i.test(u)))].slice(0, 30);
   const days = Math.round(Number(fd.get("intervalDays")));
@@ -22,7 +22,7 @@ export async function saveResearch(fd: FormData) {
 export type RunState = { message: string; ok: boolean } | null;
 
 export async function runResearchNow(_prev: RunState, _fd: FormData): Promise<RunState> {
-  const session = await requireSession();
+  const session = await requireArea("wissen");
   try {
     const r = await runResearch(session.tenantId);
     revalidatePath("/wissen", "layout");

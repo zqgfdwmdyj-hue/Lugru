@@ -2,6 +2,7 @@ import Link from "next/link";
 import { and, asc, count, desc, eq, max, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
+import { linkAllowed } from "@/lib/auth/areas";
 import { addDaysIso, dueLabel, greeting, longDate, todayIso } from "@/lib/dates";
 import { formatDate } from "@/lib/numbers";
 import { createTask, deleteTask, toggleTask } from "@/lib/tasks/actions";
@@ -104,6 +105,14 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
       .orderBy(desc(T.completedAt))
       .limit(3),
   ]);
+
+  // Eingeschränkte Mitarbeiter: nur Aufgaben aus freigegebenen Bereichen und eigene.
+  const restricted = session.role === "staff" && session.areas !== null;
+  const brandLimited = session.role === "staff" && session.brandIds !== null;
+  const visibleTask = (t: Task) => (!restricted && !brandLimited) || (t.link ? linkAllowed(session, t.link) : !restricted || t.createdBy === session.userId);
+  if (restricted || brandLimited) {
+    for (const list of [open, recentlyDone]) list.splice(0, list.length, ...list.filter(visibleTask));
+  }
 
   const weekEnd = addDaysIso(today, 7);
   const now = open.filter((t) => t.priority === "critical" || (t.dueDate !== null && t.dueDate <= today));
@@ -217,6 +226,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           )}
         </section>
 
+        {!restricted && (
         <div className="col-side">
           <section className="card card-pad">
             <div className="between" style={{ marginBottom: 12 }}>
@@ -290,6 +300,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
             )}
           </section>
         </div>
+        )}
       </div>
     </>
   );

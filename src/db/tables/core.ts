@@ -140,6 +140,10 @@ export const memberships = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     role: text("role", { enum: ["owner", "staff"] }).notNull().default("staff"),
+    /** Freigegebene Bereiche für Mitarbeiter (siehe src/lib/auth/areas.ts); null = alle. */
+    areas: jsonb("areas").$type<string[] | null>(),
+    /** Nur diese Marken im Bereich „Marken“; null = alle. */
+    brandIds: jsonb("brand_ids").$type<string[] | null>(),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
