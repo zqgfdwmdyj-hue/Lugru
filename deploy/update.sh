@@ -50,4 +50,6 @@ fi
 git pull --ff-only
 compose up -d --build
 docker image prune -f >/dev/null
+# Build-Reste älter als 3 Tage wegräumen (neuere bleiben, damit das nächste Update schnell baut).
+docker builder prune -f --filter until=72h >/dev/null 2>&1 || true
 echo "Aktualisiert. Daten und Anbindungen sind unverändert."
