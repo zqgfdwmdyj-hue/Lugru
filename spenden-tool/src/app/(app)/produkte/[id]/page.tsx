@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
+import { isPlaceholderName } from "@/lib/layout";
 import { knownCategories, latestPriceChecks, productHistory } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -58,7 +59,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
                   </form>
                 </>
               )}
-              {check && <PriceCheckBox check={check} eventId={/^[0-9a-f-]{36}$/i.test(zurueck) ? zurueck : undefined} />}
+              {check && <PriceCheckBox check={check} eventId={/^[0-9a-f-]{36}$/i.test(zurueck) ? zurueck : undefined} unnamed={isPlaceholderName(product.name)} />}
             </div>
           </section>
           <section className="card" style={{ overflow: "auto" }}>

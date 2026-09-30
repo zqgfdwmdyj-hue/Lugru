@@ -1,5 +1,5 @@
 import type { schema } from "@/db";
-import { applyPriceCheck } from "@/app/(app)/actions";
+import { ApplyForm } from "./apply-form";
 import { formatEuro } from "@/lib/numbers";
 import { donationShare } from "@/lib/pricing";
 import { AI_MODE_INFO, AI_MODES, aiCostUsd, defaultAiMode, isAiMode } from "@/lib/ai-modes";
@@ -24,7 +24,7 @@ export function PriceCheckChip({ check }: { check: Check | undefined }) {
 }
 
 /** Ausführliches Ergebnis mit Angeboten und Übernehmen-Knopf. */
-export function PriceCheckBox({ check, eventId }: { check: Check; eventId?: string }) {
+export function PriceCheckBox({ check, eventId, unnamed = false }: { check: Check; eventId?: string; unnamed?: boolean }) {
   if (check.status === "pending" || check.status === "running") {
     return <div className="ai-box small">KI erkennt das Produkt und sucht Preise im Internet … (dauert meist 30–90 Sekunden)</div>;
   }
@@ -46,7 +46,7 @@ export function PriceCheckBox({ check, eventId }: { check: Check; eventId?: stri
           ))}
         </div>
       ) : <div className="small muted">{check.mode === "erkennen" ? "Nur erkannt – für Preise „Preis suchen“ wählen." : "Keine Angebote gefunden."}</div>}
-      <form action={applyPriceCheck} className="stack" style={{ gap: 6 }}>
+      <ApplyForm>
         <input type="hidden" name="checkId" value={check.id} />
         {eventId && <input type="hidden" name="eventId" value={eventId} />}
         {check.mode === "erkennen" ? (
@@ -61,11 +61,12 @@ export function PriceCheckBox({ check, eventId }: { check: Check; eventId?: stri
               <input className="input input-compact num" id={`sp-${check.id}`} name="price" defaultValue={shortPrice(check.suggestedPrice)} inputMode="decimal" style={{ width: 80 }} />
               <button className="btn btn-small btn-primary" type="submit">Übernehmen</button>
             </div>
-            {check.suggestedPrice !== null && <div className="small muted">Vorschlag: {Math.round(donationShare() * 100)} % vom günstigsten Preis, auf 10 Cent gerundet.</div>}
-            <label className="small"><input type="checkbox" name="withName" /> Auch erkannten Namen übernehmen</label>
+            {!eventId && <div className="small muted">Der Preis wird auch in kommende Verteilungen mit diesem Produkt eingetragen.</div>}
+        {check.suggestedPrice !== null && <div className="small muted">Vorschlag: {Math.round(donationShare() * 100)} % vom günstigsten Preis, auf 10 Cent gerundet.</div>}
+            <label className="small"><input type="checkbox" name="withName" defaultChecked={unnamed} /> Auch erkannten Namen übernehmen</label>
           </>
         )}
-      </form>
+      </ApplyForm>
       <div className="small muted">
         {isAiMode(check.mode) ? AI_MODE_INFO[check.mode].label : check.mode} · {check.searches ?? 0} Suchen · ca. {usd(aiCostUsd(check.mode, check.inputTokens, check.outputTokens, check.searches))}{check.mode !== "erkennen" ? " · Preise ohne Gewähr, bitte kurz prüfen." : ""}
       </div>

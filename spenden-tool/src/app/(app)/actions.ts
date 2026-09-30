@@ -317,17 +317,19 @@ export async function researchEvent(fd: FormData) {
   revalidatePath(`/verteilung/${eventId}`);
 }
 
+export type ApplyState = { ok: boolean; message: string } | null;
+
 /**
- * Ergebnis übernehmen: Preisvorschlag (und auf Wunsch den erkannten Namen) ins Produkt schreiben,
- * bei Aufruf aus einer Verteilung auch in deren Zeile.
+ * Ergebnis übernehmen: Preis (und auf Wunsch den erkannten Namen) ins Produkt schreiben und in die Verteilung
+ * eintragen – bei Aufruf aus einer Verteilung in diese, sonst in alle kommenden Verteilungen mit dem Produkt.
  */
-export async function applyPriceCheck(fd: FormData) {
-  await requireLogin();
+async function doApply(fd: FormData): Promise<ApplyState> {
   const checkId = uuid.parse(fd.get("checkId"));
   const [check] = await db.select().from(schema.priceChecks).where(eq(schema.priceChecks.id, checkId));
-  if (!check || check.status !== "done") return;
+  if (!check || check.status !== "done") return { ok: false, message: "Ergebnis nicht gefunden." };
   const chosen = price(fd, "price") ?? check.suggestedPrice;
   const withName = fd.get("withName") === "on" && check.recognizedName;
+  if (chosen === null && !withName) return { ok: false, message: "Bitte einen Preis eintragen." };
   await db
     .update(P)
     .set({
@@ -336,12 +338,28 @@ export async function applyPriceCheck(fd: FormData) {
       updatedAt: new Date(),
     })
     .where(eq(P.id, check.productId));
-  const eventId = uuid.safeParse(fd.get("eventId"));
-  if (eventId.success && chosen !== null) {
-    await db.update(I).set({ price: chosen }).where(and(eq(I.eventId, eventId.data), eq(I.productId, check.productId)));
-    revalidatePath(`/verteilung/${eventId.data}`);
+  let events = 0;
+  if (chosen !== null) {
+    const eventId = uuid.safeParse(fd.get("eventId"));
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+    const target = eventId.success
+      ? [eventId.data]
+      : (await db.select({ id: E.id }).from(E).innerJoin(I, eq(I.eventId, E.id)).where(and(eq(I.productId, check.productId), sql`${E.eventDate} >= ${today}`))).map((r) => r.id);
+    if (target.length) {
+      const updated = await db.update(I).set({ price: chosen }).where(and(inArray(I.eventId, target), eq(I.productId, check.productId))).returning({ id: I.id });
+      events = updated.length;
+    }
+    for (const id of target) revalidatePath(`/verteilung/${id}`);
   }
   revalidatePath(`/produkte/${check.productId}`);
+  const parts = [chosen !== null ? `Preis ${chosen.toFixed(2).replace(".", ",")} € übernommen` : "", withName ? `Name „${check.recognizedName}“ übernommen` : ""].filter(Boolean);
+  const where = chosen === null ? "" : events ? ` – eingetragen in ${events === 1 ? "1 Verteilung" : `${events} Verteilungen`}` : " – gilt als Vorschlag für die nächste Verteilung";
+  return { ok: true, message: `${parts.join(", ")}${where}.` };
+}
+
+export async function applyPriceCheck(_prev: ApplyState, fd: FormData): Promise<ApplyState> {
+  await requireLogin();
+  return doApply(fd);
 }
 
 /** Knopf in der Tabelle einer Verteilung: KI-Vorschlag direkt als Preis übernehmen. */
@@ -350,5 +368,5 @@ export async function applySuggestion(checkId: string, eventId: string) {
   const fd = new FormData();
   fd.set("checkId", uuid.parse(checkId));
   fd.set("eventId", uuid.parse(eventId));
-  await applyPriceCheck(fd);
+  await doApply(fd);
 }
