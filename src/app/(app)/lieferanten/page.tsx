@@ -19,7 +19,7 @@ export default async function LieferantenPage() {
           <table className="table">
             <thead><tr><th>Feed</th><th className="right">Angebote</th><th>Letzter Import</th></tr></thead>
             <tbody>
-              {feeds.length === 0 && <tr><td colSpan={3} className="muted">Noch keine Feeds. Großhändler-Preislisten (CSV/Excel) hier anlegen.</td></tr>}
+              {feeds.length === 0 && <tr><td colSpan={3} className="muted">Noch keine Feeds. Rechts einen anlegen – danach Preislisten (CSV/Excel) hochladen oder Shop-Seiten, Fotos und PDFs scannen.</td></tr>}
               {feeds.map(({ f, offers }) => (
                 <tr key={f.id}><td><Link href={`/lieferanten/${f.id}`}>{f.name}</Link></td><td className="num right">{offers}</td><td className="num">{f.lastImportAt?.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) ?? "–"}</td></tr>
               ))}

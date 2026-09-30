@@ -29,7 +29,7 @@ export function FeedUpload({ feedId, mapping }: { feedId: string; mapping: FeedM
       )}
       <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Lese …" : headers ? "Mit dieser Zuordnung importieren (Datei erneut wählen)" : "Hochladen"}</button>
       {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-warn"}`}>{state.message}</div>}
-      {Object.values(mapping).some(Boolean) && <div className="small muted">Gespeicherte Zuordnung: {FIELDS.filter(([k]) => mapping[k]).map(([k, l]) => `${l.replace(" *", "")} = „${mapping[k]}“`).join(", ")}</div>}
+      {FIELDS.some(([k]) => mapping[k]) && <div className="small muted">Gespeicherte Zuordnung: {FIELDS.filter(([k]) => mapping[k]).map(([k, l]) => `${l.replace(" *", "")} = „${mapping[k]}“`).join(", ")}</div>}
     </form>
   );
 }

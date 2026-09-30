@@ -2,77 +2,168 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import type { OfferMarket } from "@/db/schema";
+import { requireArea } from "@/lib/auth/session";
+import { eurRates } from "@/lib/fx/ecb";
+import { getIntegration } from "@/lib/integrations/store";
+import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
 import { getSettings } from "@/lib/settings";
-import { offerToListing } from "../actions";
+import { clearFeedAction, feedCostAction, offerToListing } from "../actions";
+import { KeepaCheck, ScanForm } from "./scan-form";
 import { FeedUpload } from "./upload-form";
 
-type Row = { id: string; supplier_sku: string; ean: string | null; asin: string | null; title: string | null; price: number | null; stock: number | null; amz_price: number | null; our_asin: string | null; fee: number | null; ref: number | null };
+type Row = {
+  id: string; supplier_sku: string; ean: string | null; asin: string | null; title: string | null; price: number | null; stock: number | null;
+  price_orig: number | null; currency: string | null; url: string | null; image_url: string | null; pack: string | null; market: OfferMarket | null;
+  amz_price: number | null; our_asin: string | null; fee: number | null; ref: number | null;
+};
 
-export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string }> }) {
-  const session = await requireSession();
+const SYM: Record<string, string> = { USD: "$", GBP: "£" };
+
+export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string }> }) {
+  const session = await requireArea("wawi");
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const [feed] = await db.select().from(schema.supplierFeeds).where(and(eq(schema.supplierFeeds.id, id), eq(schema.supplierFeeds.tenantId, session.tenantId)));
+  const t = session.tenantId;
+  const [feed] = await db.select().from(schema.supplierFeeds).where(and(eq(schema.supplierFeeds.id, id), eq(schema.supplierFeeds.tenantId, t)));
   if (!feed) notFound();
-  const s = await getSettings(session.tenantId);
+  const [s, rates, ai, keepa] = await Promise.all([getSettings(t), eurRates(), getIntegration(t, "anthropic"), keepaKey(t)]);
   const res = await db.execute<Row>(sql`
-    select o.id, o.supplier_sku, o.ean, o.asin, o.title, o.price::float, o.stock,
+    select o.id, o.supplier_sku, o.ean, o.asin, o.title, o.price::float, o.stock, o.price_orig::float, o.currency, o.url, o.image_url, o.pack, o.market,
            (select max(i.price)::float from amazon_inventory i where i.tenant_id = o.tenant_id and i.asin = coalesce(o.asin, p.asin)) as amz_price,
            p.asin as our_asin, p.fba_fee::float as fee, p.referral_rate::float as ref
       from supplier_offers o
       left join products p on p.tenant_id = o.tenant_id and ((o.asin is not null and p.asin = o.asin) or (o.ean is not null and p.ean = o.ean))
-     where o.feed_id = ${id}
-     order by o.supplier_sku
-     limit 3000`);
+     where o.feed_id = ${id} and o.tenant_id = ${t}
+     order by o.title nulls last, o.supplier_sku
+     limit 5000`);
+  const costPct = Number(feed.mapping.costPct || 0);
+  const vatRate = feed.mapping.vatPct ? Number(feed.mapping.vatPct) / 100 : s.vatRate;
   const rows = res.rows.map((r) => {
-    const profit = r.price !== null && r.amz_price !== null ? profitAt(r.amz_price, { unitCost: r.price, fbaFee: r.fee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? s.pricing.referralRate, vatRate: s.vatRate }) : null;
-    return { ...r, profit };
+    const m = r.market;
+    const sale = r.amz_price ?? m?.price ?? null;
+    const cost = r.price !== null ? Math.round(r.price * (1 + costPct / 100) * 100) / 100 : null;
+    const profit = sale !== null && cost !== null
+      ? profitAt(sale, { unitCost: cost, fbaFee: r.fee ?? m?.fbaFee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? (m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate), vatRate })
+      : null;
+    return { ...r, sale, cost, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null };
   });
-  const shown = sp.nur === "treffer" ? rows.filter((r) => r.our_asin) : sp.nur === "gewinn" ? rows.filter((r) => (r.profit ?? -1) > 0).sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0)) : rows;
+  const q = sp.q?.trim().toLowerCase();
+  let shown = q ? rows.filter((r) => `${r.title} ${r.supplier_sku} ${r.ean} ${r.asin}`.toLowerCase().includes(q)) : rows;
+  if (sp.nur === "treffer") shown = shown.filter((r) => r.our_asin);
+  if (sp.nur === "amazon") shown = shown.filter((r) => r.market?.asin);
+  if (sp.nur === "gewinn") shown = shown.filter((r) => (r.profit ?? -1) > 0).sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0));
+  const withEan = rows.filter((r) => r.ean).length;
+  const onAmazon = rows.filter((r) => r.market?.asin).length;
+  const chip = (nur?: string) => `/lieferanten/${id}${nur || q ? `?${new URLSearchParams({ ...(nur ? { nur } : {}), ...(q ? { q } : {}) })}` : ""}`;
 
   return (
     <>
       <div className="crumb"><Link href="/lieferanten">Lieferanten-Feeds</Link></div>
-      <div className="page-head"><div><h1>{feed.name}</h1><div className="small muted">{rows.length} Angebote · {rows.filter((r) => r.our_asin).length} passen zu deinen Artikeln</div></div></div>
-      <div className="row">
-        <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
-          <div style={{ display: "flex", gap: 6 }}>
-            <Link href={`/lieferanten/${id}`} className={`chip${!sp.nur ? " active" : ""}`}>Alle</Link>
-            <Link href={`/lieferanten/${id}?nur=treffer`} className={`chip${sp.nur === "treffer" ? " active" : ""}`}>Passt zu meinen Artikeln</Link>
-            <Link href={`/lieferanten/${id}?nur=gewinn`} className={`chip${sp.nur === "gewinn" ? " active" : ""}`}>Mit Gewinn</Link>
+      <div className="page-head">
+        <div>
+          <h1>{feed.name}</h1>
+          <div className="small muted">{rows.length} Artikel · {withEan} mit EAN/UPC · {onAmazon} auf amazon.de gefunden · {rows.filter((r) => r.our_asin).length} passen zu deinen Artikeln</div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
+          <ScanForm feedId={feed.id} usdRate={rates.USD ?? null} hasAi={Boolean(ai?.apiKey)} />
+          <KeepaCheck feedId={feed.id} hasKeepa={Boolean(keepa)} withEan={withEan} withoutEan={rows.filter((r) => !r.ean && !r.market).length} />
+          <form action={feedCostAction} className="card card-pad stack" style={{ gap: 8 }}>
+            <input type="hidden" name="feedId" value={feed.id} />
+            <h2>Kalkulation</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div className="field">
+                <label className="label" htmlFor="costPct">Nebenkosten %</label>
+                <input className="input" id="costPct" name="costPct" inputMode="decimal" defaultValue={feed.mapping.costPct ?? ""} placeholder="z. B. 35" />
+              </div>
+              <div className="field">
+                <label className="label" htmlFor="vatPct">USt %</label>
+                <input className="input" id="vatPct" name="vatPct" inputMode="decimal" defaultValue={feed.mapping.vatPct ?? ""} placeholder={String(Math.round(s.vatRate * 100))} />
+              </div>
+            </div>
+            <div className="small muted">Aufschlag auf den EK für Fracht, Zoll und Einfuhrkosten (US-Ware grob 30–50 %). Süßigkeiten: 7 % USt. Achtung: Großhandelspreise gelten oft je Karton („24 Stk“) – der Gewinn vergleicht mit dem Amazon-Preis des gefundenen Angebots, darunter steht der EK je Stück.</div>
+            <button className="btn btn-small" type="submit">Speichern</button>
+          </form>
+          <FeedUpload feedId={feed.id} mapping={feed.mapping} />
+          {rows.length > 0 && (
+            <form action={clearFeedAction}>
+              <input type="hidden" name="feedId" value={feed.id} />
+              <button className="btn-link small muted" type="submit">Alle {rows.length} Artikel dieses Feeds löschen</button>
+            </form>
+          )}
+      </div>
+      <div className="stack">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <Link href={chip()} className={`chip${!sp.nur ? " active" : ""}`}>Alle</Link>
+            <Link href={chip("amazon")} className={`chip${sp.nur === "amazon" ? " active" : ""}`}>Auf Amazon</Link>
+            <Link href={chip("gewinn")} className={`chip${sp.nur === "gewinn" ? " active" : ""}`}>Mit Gewinn</Link>
+            <Link href={chip("treffer")} className={`chip${sp.nur === "treffer" ? " active" : ""}`}>Passt zu meinen Artikeln</Link>
+            <form style={{ marginLeft: "auto" }}>
+              {sp.nur && <input type="hidden" name="nur" value={sp.nur} />}
+              <input className="input" name="q" defaultValue={sp.q ?? ""} placeholder="Suchen …" style={{ width: 180 }} />
+            </form>
           </div>
           <section className="card" style={{ overflow: "auto" }}>
             <table className="table">
-              <thead><tr><th>Art.-Nr.</th><th>Titel</th><th>EAN / ASIN</th><th className="right">EK</th><th className="right">Bestand</th><th className="right">Dein Amazon-Preis</th><th className="right">Gewinn/Stk</th><th></th></tr></thead>
+              <thead>
+                <tr><th></th><th>Artikel</th><th>EAN / ASIN</th><th className="right">EK</th><th className="right">Amazon.de</th><th className="right">Verk./Mon.</th><th className="right">Gewinn/Stk</th><th></th></tr>
+              </thead>
               <tbody>
-                {shown.length === 0 && <tr><td colSpan={8} className="muted">Keine Angebote.</td></tr>}
+                {shown.length === 0 && <tr><td colSpan={8} className="muted">Keine Artikel. Rechts eine Liste hochladen oder eine Seite scannen.</td></tr>}
                 {shown.slice(0, 500).map((r) => (
                   <tr key={r.id}>
-                    <td className="num small">{r.supplier_sku}</td>
-                    <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title ?? "–"}</td>
-                    <td className="num small">{r.ean ?? "–"}{r.our_asin ? <div><Link href={`/chargen?q=${r.our_asin}`}>{r.our_asin}</Link></div> : null}</td>
-                    <td className="num right">{formatEuro(r.price)}</td>
-                    <td className="num right">{r.stock ?? "–"}</td>
-                    <td className="num right">{formatEuro(r.amz_price)}</td>
-                    <td className="num right" style={{ color: (r.profit ?? 0) < 0 ? "var(--danger)" : r.profit ? "var(--ok)" : undefined }}>{formatEuro(r.profit)}</td>
+                    <td style={{ width: 44 }}>{r.image_url && <img src={r.image_url} alt="" width={40} height={40} loading="lazy" style={{ objectFit: "contain", borderRadius: 6, background: "#fff" }} />}</td>
+                    <td style={{ maxWidth: 320 }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? ""}>
+                        {r.url ? <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title ?? r.supplier_sku}</a> : (r.title ?? "–")}
+                      </div>
+                      <div className="small muted num">{r.supplier_sku}{r.pack ? ` · ${r.pack}` : ""}{r.stock === 0 ? " · ausverkauft" : r.stock ? ` · ${r.stock} verfügbar` : ""}</div>
+                    </td>
+                    <td className="num small">
+                      {r.ean ?? "–"}
+                      {(r.our_asin || r.market?.asin) && (
+                        <div>
+                          {r.our_asin ? <Link href={`/chargen?q=${r.our_asin}`}>{r.our_asin}</Link> : <a href={`https://www.amazon.de/dp/${r.market!.asin}`} target="_blank" rel="noopener noreferrer" title={r.market!.title}>{r.market!.asin}</a>}
+                          {!r.our_asin && r.market?.byTitle && <div className="tag tag-warn" title={r.market.title}>per Titel – prüfen</div>}
+                        </div>
+                      )}
+                      {r.market && !r.market.asin && <div className="muted">nicht auf amazon.de</div>}
+                    </td>
+                    <td className="num right" style={{ whiteSpace: "nowrap" }}>
+                      {formatEuro(r.price)}
+                      {r.price_orig !== null && r.currency && r.currency !== "EUR" && <span className="small muted"> ({SYM[r.currency] ?? `${r.currency} `}{r.price_orig.toFixed(2)})</span>}
+                      {(() => {
+                        const n = Number(r.pack?.match(/^(\d+) Stk/)?.[1] ?? 0);
+                        const parts = [costPct > 0 && r.cost !== null ? `mit NK ${formatEuro(r.cost)}` : null, r.cost !== null && n > 1 ? `${formatEuro(r.cost / n)}/Stk` : null].filter(Boolean);
+                        return parts.length ? <div className="small muted">{parts.join(" · ")}</div> : null;
+                      })()}
+                    </td>
+                    <td className="num right" style={{ whiteSpace: "nowrap" }}>
+                      {formatEuro(r.sale)}
+                      {r.market?.offers ? <div className="small muted">{r.market.offers} Anbieter</div> : null}
+                    </td>
+                    <td className="num right">{r.market?.monthlySold ? `${r.market.monthlySold}+` : r.market?.salesRank ? <span className="small muted">#{r.market.salesRank.toLocaleString("de-DE")}</span> : "–"}</td>
+                    <td className="num right" style={{ whiteSpace: "nowrap", color: (r.profit ?? 0) < 0 ? "var(--danger)" : r.profit ? "var(--ok)" : undefined }}>
+                      {formatEuro(r.profit)}
+                      {r.margin !== null && <div className="small muted">{r.margin.toLocaleString("de-DE")} %</div>}
+                    </td>
                     <td>
                       <form action={offerToListing} style={{ display: "flex", gap: 4 }}>
                         <input type="hidden" name="offerId" value={r.id} />
-                        <input type="hidden" name="price" value={r.amz_price ?? ""} />
-                        <button className="btn btn-small" type="submit" title="eBay-Listing-Entwurf anlegen">→ eBay</button>
+                        <input type="hidden" name="price" value={r.sale ?? ""} />
+                        <button className="btn btn-small" type="submit" title="eBay-Listing-Entwurf anlegen" style={{ whiteSpace: "nowrap" }}>→ eBay</button>
                       </form>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {shown.length > 500 && <div className="card-pad small muted">Die ersten 500 von {shown.length} – Suche oder Filter nutzen.</div>}
           </section>
-        </div>
-        <aside className="col-side"><FeedUpload feedId={feed.id} mapping={feed.mapping} /></aside>
       </div>
     </>
   );

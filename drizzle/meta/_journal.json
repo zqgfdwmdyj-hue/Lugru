@@ -106,6 +106,13 @@
       "when": 1790751359598,
       "tag": "0014_rechte",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1790755578678,
+      "tag": "0015_lieferanten_scan",
+      "breakpoints": true
     }
   ]
 }

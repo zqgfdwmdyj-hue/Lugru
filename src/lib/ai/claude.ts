@@ -24,7 +24,12 @@ export function modelFor(cfg: { tier?: string; model?: string } | null | undefin
  * Sonnet/Opus ab Generation 5 denken immer mit (kostet Ausgabe-Tokens). Mit niedriger „effort“ bleibt das
  * knapp; Haiku 4.5 und ältere Modelle kennen den Parameter nicht.
  */
-export function requestBody(model: string, prompt: string, maxTokens: number, task: AiTask) {
+/** Text oder Bausteine mit Bild/PDF (Base64) – Haiku und Sonnet lesen beides. */
+export type AiContent =
+  | string
+  | ({ type: "text"; text: string } | { type: "image"; source: { type: "base64"; media_type: string; data: string } } | { type: "document"; source: { type: "base64"; media_type: "application/pdf"; data: string } })[];
+
+export function requestBody(model: string, prompt: AiContent, maxTokens: number, task: AiTask) {
   const thinks = /^claude-(sonnet|opus|fable)-5/.test(model);
   return {
     model,
@@ -35,7 +40,7 @@ export function requestBody(model: string, prompt: string, maxTokens: number, ta
   };
 }
 
-export async function askClaude(apiKey: string, prompt: string, opts: { model?: string; task?: AiTask; maxTokens?: number; timeoutMs?: number } = {}): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
+export async function askClaude(apiKey: string, prompt: AiContent, opts: { model?: string; task?: AiTask; maxTokens?: number; timeoutMs?: number } = {}): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   const model = opts.model || DEFAULT_MODEL;
   const res = await fetch(`${(process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "")}/v1/messages`, {
     method: "POST",

@@ -49,3 +49,10 @@ export async function keepaProducts(apiKey: string, asins: string[]): Promise<{ 
   const json = await keepaGet(url);
   return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: typeof json.tokensLeft === "number" ? json.tokensLeft : null };
 }
+
+/** Produkte per EAN/UPC (bis 100 je Aufruf). Keepa nennt die Codes je Produkt in eanList/upcList. */
+export async function keepaByCode(apiKey: string, codes: string[]): Promise<{ products: Record<string, unknown>[]; tokensLeft: number | null }> {
+  const url = `${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&code=${codes.map(encodeURIComponent).join(",")}&stats=90&history=0`;
+  const json = await keepaGet(url);
+  return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: typeof json.tokensLeft === "number" ? json.tokensLeft : null };
+}

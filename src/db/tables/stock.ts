@@ -92,6 +92,24 @@ export type FeedMapping = {
   title?: string;
   price?: string;
   stock?: string;
+  /** Aufschlag in % auf den EK für Versand, Zoll, Einfuhr-USt-Vorfinanzierung (nur für die Gewinnrechnung). */
+  costPct?: string;
+  /** USt-Satz der Artikel in % (Süßigkeiten 7) – sonst der allgemeine aus den Einstellungen. */
+  vatPct?: string;
+};
+
+export type OfferMarket = {
+  checkedAt: string;
+  asin: string | null;
+  title?: string;
+  price: number | null;
+  fbaFee: number | null;
+  referralPct: number | null;
+  monthlySold: number | null;
+  salesRank: number | null;
+  offers?: number | null;
+  /** Ohne EAN per Titelsuche gefunden – kann ein anderes Produkt sein. */
+  byTitle?: boolean;
 };
 
 export const supplierFeeds = pgTable("supplier_feeds", {
@@ -118,6 +136,14 @@ export const supplierOffers = pgTable(
     title: text("title"),
     price: money("price"),
     stock: integer("stock"),
+    // Aus Scan/Seite: Originalpreis in Fremdwährung (price ist dann in EUR umgerechnet), Link, Bild, Packungsgröße.
+    priceOrig: money("price_orig"),
+    currency: text("currency"),
+    url: text("url"),
+    imageUrl: text("image_url"),
+    pack: text("pack"),
+    /** Amazon.de laut Keepa (per EAN gesucht). */
+    market: jsonb("market").$type<OfferMarket>(),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("offers_uq").on(t.feedId, t.supplierSku), index("offers_ean_idx").on(t.tenantId, t.ean)],
