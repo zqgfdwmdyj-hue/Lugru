@@ -43,12 +43,17 @@ Drei Stufen, jeweils beim Start wählbar:
 | Stufe | Was passiert | Kosten je Produkt (Schätzung) |
 |---|---|---|
 | Nur Namen erkennen | Claude Haiku liest das Foto, keine Websuche | deutlich unter 1 Cent |
+| Preis suchen – minimal | Claude Haiku, genau 1 Websuche | etwa 2–3 Cent |
 | Preis suchen – sparsam (Standard) | Claude Haiku, höchstens 2 Websuchen | etwa 3–6 Cent |
 | Preis suchen – genau | Claude Sonnet, bis zu 4 Websuchen | etwa 10–20 Cent |
 
 Die tatsächlichen Kosten jeder Recherche stehen auf der Produktseite, die Summe je Verteilung auf der
 Verteilungsseite. Produkte mit einem Ergebnis aus den letzten 60 Tagen werden beim Sammelstart übersprungen –
 wiederkehrende Produkte kosten also nur einmal. Die Standard-Stufe lässt sich mit `KI_MODUS` in der `.env` ändern.
+Kostenlos geht es auch ohne KI: Neben jedem Preisfeld öffnen die Links „idealo“ und „Google“ den Preisvergleich
+mit dem Produktnamen. Günstigster Ablauf: erst „Nur Namen erkennen“, dann Preise selbst nachschauen oder nur für
+unklare Produkte die KI suchen lassen.
+
 Ohne Schlüssel funktioniert alles andere normal, nur die KI-Knöpfe sind dann aus.
 
 ## Entwicklung

@@ -99,6 +99,7 @@ describe("KI-Stufen", () => {
     expect(aiCostUsd("sparsam", 20000, 1000, 2)).toBeCloseTo(0.02 + 0.005 + 0.02);
     expect(aiCostUsd("genau", 20000, 1000, 4)).toBeCloseTo(0.04 + 0.01 + 0.04);
     expect(aiCostUsd("erkennen", 2000, 300, 0)).toBeLessThan(0.01);
+    expect(aiCostUsd("minimal", 12000, 800, 1)).toBeCloseTo(0.012 + 0.004 + 0.01);
     expect(defaultAiMode()).toBe("sparsam");
   });
 });

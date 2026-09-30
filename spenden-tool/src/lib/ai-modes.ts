@@ -1,7 +1,7 @@
 // Drei Stufen für die KI-Recherche – vom fast kostenlosen Erkennen bis zur genauen Preissuche.
 // Preise: US-Dollar je Million Token (Eingabe/Ausgabe), Websuche 10 $ je 1000 Suchen.
 
-export const AI_MODES = ["erkennen", "sparsam", "genau"] as const;
+export const AI_MODES = ["erkennen", "minimal", "sparsam", "genau"] as const;
 export type AiMode = (typeof AI_MODES)[number];
 
 export const AI_MODE_INFO: Record<AiMode, { label: string; hint: string; model: string; inPrice: number; outPrice: number; searches: number }> = {
@@ -12,6 +12,14 @@ export const AI_MODE_INFO: Record<AiMode, { label: string; hint: string; model: 
     inPrice: 1,
     outPrice: 5,
     searches: 0,
+  },
+  minimal: {
+    label: "Preis suchen – minimal",
+    hint: "Kleines Modell, nur 1 Suche – am günstigsten, findet seltener das exakte Produkt",
+    model: "claude-haiku-4-5",
+    inPrice: 1,
+    outPrice: 5,
+    searches: 1,
   },
   sparsam: {
     label: "Preis suchen – sparsam",

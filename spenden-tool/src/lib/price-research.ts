@@ -87,7 +87,7 @@ async function research(mode: AiMode, product: { name: string; variant: string |
     text:
       mode === "erkennen"
         ? `Welches Produkt ist das? ${known}`
-        : `${image ? "Das Foto zeigt ein Spendenprodukt." : "Kein Foto vorhanden."} ${known} Finde den günstigsten aktuellen Preis im deutschen Handel.${mode === "sparsam" ? " Du hast höchstens zwei Suchen – wähle die Suchbegriffe gezielt (Marke, Name, Größe)." : ""}`,
+        : `${image ? "Das Foto zeigt ein Spendenprodukt." : "Kein Foto vorhanden."} ${known} Finde den günstigsten aktuellen Preis im deutschen Handel.${mode === "sparsam" ? " Du hast höchstens zwei Suchen – wähle die Suchbegriffe gezielt (Marke, Name, Größe)." : mode === "minimal" ? " Du hast genau eine Suche – nimm Marke, Produktname und Größe als Suchbegriff." : ""}`,
   });
 
   // Je Stufe: Modell, Suche und Einstellungen. Haiku kennt nur die einfache Websuche und kein effort.
@@ -107,7 +107,7 @@ async function research(mode: AiMode, product: { name: string; variant: string |
           model: info.model,
           max_tokens: 8000,
           system: mode === "erkennen" ? RECOGNIZE_SYSTEM : SYSTEM,
-          ...(mode === "sparsam" ? { tools: [{ type: "web_search_20250305" as const, name: "web_search" as const, max_uses: info.searches, user_location: LOCATION }] } : {}),
+          ...(mode === "sparsam" || mode === "minimal" ? { tools: [{ type: "web_search_20250305" as const, name: "web_search" as const, max_uses: info.searches, user_location: LOCATION }] } : {}),
           messages: [],
         };
 

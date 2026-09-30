@@ -14,6 +14,7 @@ import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyAllSuggestions, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
+import { PriceLinks } from "@/components/price-links";
 import { CategorySelect } from "@/components/category-select";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
@@ -150,6 +151,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                         return (
                           <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
                             <PriceCheckChip check={c} />
+                            {!isPlaceholderName(product.name) && <span className="small muted">selbst suchen: <PriceLinks name={product.name} variant={product.variant} /></span>}
                             {c?.status === "done" && c.suggestedPrice !== null && c.suggestedPrice !== item.price && (
                               <button className="btn-link small" type="submit" formAction={applySuggestion.bind(null, c.id, id)} title="Vorschlag der KI als Spendenpreis übernehmen" style={{ whiteSpace: "nowrap" }}>{priceText(c.suggestedPrice)} € übernehmen</button>
                             )}

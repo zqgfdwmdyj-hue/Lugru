@@ -11,6 +11,7 @@ import { AiModeSelect, PriceCheckBox } from "@/components/price-check";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
+import { PriceLinks } from "@/components/price-links";
 import { CategorySelect } from "@/components/category-select";
 
 export default async function SpendenProduktPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ zurueck?: string }> }) {
@@ -47,6 +48,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
               : <div className="muted" style={{ width: 240, height: 180, display: "grid", placeItems: "center", background: "var(--row)", borderRadius: 8 }}>noch kein Foto</div>}
             <div className="stack" style={{ flex: "1 1 260px", gap: 8 }}>
               <h2>Preis im Internet</h2>
+              {!isPlaceholderName(product.name) && <div className="small">Kostenlos selbst nachschauen: <PriceLinks name={product.name} variant={product.variant} small={false} /></div>}
               <AutoRefresh active={busy} />
               {!aiConfigured() ? (
                 <div className="small muted">Für die KI-Preisrecherche muss auf dem Server ANTHROPIC_API_KEY gesetzt sein (siehe README).</div>
