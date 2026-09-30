@@ -162,13 +162,27 @@ export async function receiveGoods(tenantId: string, userId: string, poId: strin
       const gross = Number(it.unitCostGross);
       const vat = Number(it.vatRate);
       const net = netFromGross(gross, vat);
-      const sku = it.sku ?? buildSku(sup?.code ?? "EK", po.orderDate ?? todayIso(), it.asin, gross, it.targetPrice == null ? null : Number(it.targetPrice));
+      if (!it.asin) {
+        // Box-Bestandteil ohne Amazon-Angebot: nur Lagerbestand unter eigener Komponenten-SKU, keine Charge.
+        const csku = it.sku ?? `KOMP-${(it.supplierSku ?? it.id.slice(0, 8)).replace(/[^A-Za-z0-9-]/g, "-").slice(0, 40)}`;
+        await tx
+          .insert(schema.ownStock)
+          .values({ tenantId, sku: csku, productId: null, quantity: qty, location: location || null })
+          .onConflictDoUpdate({ target: [schema.ownStock.tenantId, schema.ownStock.sku], set: { quantity: sql`${schema.ownStock.quantity} + excluded.quantity`, location: sql`coalesce(excluded.location, ${schema.ownStock.location})`, updatedAt: new Date() } });
+        await tx.insert(schema.stockMovements).values({ tenantId, sku: csku, delta: qty, reason: "Wareneingang (Box-Bestandteil)", reference: po.number, userId });
+        await tx.update(POI).set({ received: it.received + qty, sku: csku }).where(eq(POI.id, it.id));
+        it.received += qty;
+        booked += qty;
+        continue;
+      }
+      const asin = it.asin;
+      const sku = it.sku ?? buildSku(sup?.code ?? "EK", po.orderDate ?? todayIso(), asin, gross, it.targetPrice == null ? null : Number(it.targetPrice));
 
       let productId = it.productId;
       if (!productId) {
         const [p] = await tx
           .insert(schema.products)
-          .values({ tenantId, asin: it.asin, title: it.title, ean: it.ean })
+          .values({ tenantId, asin, title: it.title, ean: it.ean })
           .onConflictDoUpdate({ target: [schema.products.tenantId, schema.products.asin], set: { title: sql`coalesce(${schema.products.title}, excluded.title)`, ean: sql`coalesce(${schema.products.ean}, excluded.ean)` } })
           .returning({ id: schema.products.id });
         productId = p.id;
@@ -352,4 +366,21 @@ export async function createDraftsFromSuggestions(tenantId: string, userId: stri
 export async function openPoCount(tenantId: string) {
   const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(PO).where(and(eq(PO.tenantId, tenantId), inArray(PO.status, [...OPEN_STATUSES]), notInArray(PO.status, ["draft"])));
   return r?.n ?? 0;
+}
+
+/** Box-Bestandteil (ohne ASIN) aus einem Lieferanten-Feed in eine Bestellung. */
+export async function addComponentItem(tenantId: string, poId: string, item: { supplierSku: string; title: string; quantity: number; unitCostGross: number; vatRate: number; url: string | null }) {
+  if (!(item.quantity > 0)) throw new Error("Die Menge muss größer als 0 sein.");
+  await db.insert(POI).values({
+    tenantId,
+    poId,
+    asin: null,
+    supplierSku: item.supplierSku.slice(0, 80),
+    url: item.url,
+    title: item.title.slice(0, 300),
+    quantity: Math.round(item.quantity),
+    unitCostGross: String(Math.round(item.unitCostGross * 10000) / 10000),
+    vatRate: String(item.vatRate),
+  });
+  await touch(poId);
 }

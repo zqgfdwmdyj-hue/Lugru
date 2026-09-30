@@ -13,7 +13,7 @@ import { upsertSystemTask } from "@/lib/tasks/system";
 import { boxPrompt, calcBox, goodsBudget, parseBoxes, pricingFor, repairPrompt, type BoxDraft, type CatalogItem } from "./boxes";
 import { summarizeMarket } from "@/lib/brands/market";
 import { keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
-import type { MarketData } from "@/db/tables/brands";
+import type { BoxComponent, MarketData } from "@/db/tables/brands";
 import { packInfo } from "./scan";
 
 const O = schema.supplierOffers;
@@ -33,7 +33,7 @@ export async function suggestBoxes(tenantId: string, userId: string | null, o: B
   if (!brand) throw new Error("Marke nicht gefunden.");
 
   const rows = await db
-    .select({ id: O.id, title: O.title, url: O.url, price: O.price, stock: O.stock, market: O.market, mapping: F.mapping, feedName: F.name })
+    .select({ id: O.id, title: O.title, url: O.url, price: O.price, stock: O.stock, market: O.market, supplierSku: O.supplierSku, feedId: O.feedId, mapping: F.mapping, feedName: F.name })
     .from(O)
     .innerJoin(F, eq(F.id, O.feedId))
     .where(and(eq(O.tenantId, tenantId), isNotNull(O.price), isNotNull(O.title), ...(o.allFeeds || !o.feedId ? [] : [eq(O.feedId, o.feedId)])))
@@ -46,6 +46,15 @@ export async function suggestBoxes(tenantId: string, userId: string | null, o: B
       return { nr: n + 1, offerId: r.id, title: r.title!.slice(0, 100), unitCost: Math.round((withCosts / p.caseQty) * 100) / 100, unitSize: p.unitSize, amazonPrice: r.market?.price ?? null, monthlySold: r.market?.monthlySold ?? null };
     })
     .slice(0, 300);
+  // Details je Katalog-Nr für die Einkaufsliste der Box.
+  const byOffer = new Map(rows.map((r) => [r.id, r]));
+  const componentsOf = (items: { nr: number; qty: number }[]): BoxComponent[] =>
+    items.flatMap(({ nr, qty }) => {
+      const c = catalog.find((x) => x.nr === nr);
+      const r = c ? byOffer.get(c.offerId) : undefined;
+      if (!c || !r) return [];
+      return [{ offerId: r.id, qty, title: r.title!, unitCost: c.unitCost, caseQty: packInfo(r.title!, r.url).caseQty, casePrice: r.price === null ? null : Number(r.price), url: r.url, supplierSku: r.supplierSku, feedId: r.feedId, feedName: r.feedName }];
+    });
   if (catalog.length < 3) throw new Error("Zu wenige Artikel mit Preis – erst eine Liste oder Seite scannen.");
 
   const occ = o.occasion ? occasionByKey(o.occasion) : null;
@@ -143,6 +152,7 @@ export async function suggestBoxes(tenantId: string, userId: string | null, o: B
       title: box.title,
       concept: box.concept || null,
       contents: c.lines,
+      components: componentsOf(box.items),
       targetPrice: box.targetPrice == null ? null : String(box.targetPrice),
       costEstimate: String(c.cost),
       why: box.why || null,

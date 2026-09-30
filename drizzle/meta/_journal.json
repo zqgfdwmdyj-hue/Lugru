@@ -134,6 +134,13 @@
       "when": 1790771963422,
       "tag": "0018_box_automatik",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790774302959,
+      "tag": "0019_box_einkauf",
+      "breakpoints": true
     }
   ]
 }

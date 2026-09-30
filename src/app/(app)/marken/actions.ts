@@ -12,6 +12,8 @@ import { OCCASIONS } from "@/lib/brands/occasions";
 import { generateContent, generateIdeas, refreshBrandPlanning } from "@/lib/brands/service";
 import { assertBrand } from "@/lib/brands/access";
 import { createFromIdea } from "@/lib/articles/service";
+import { purchaseForIdea } from "@/lib/suppliers/box-purchase";
+import { canAccess } from "@/lib/auth/areas";
 import type { Session } from "@/lib/auth/session";
 
 export type BrandState = { ok: boolean; message: string } | null;
@@ -281,4 +283,21 @@ export async function setReferenceAction(fd: FormData) {
   const referenceAsin = /^[A-Z0-9]{10}$/.test(asin) && idea.market.products.some((p) => p.asin === asin) ? asin : undefined;
   await db.update(schema.ideas).set({ market: { ...idea.market, referenceAsin }, updatedAt: new Date() }).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
   revalidatePath(`/marken/ideen/${id}`);
+}
+
+/** Box einkaufen: Bestellung(en) im Einkauf anlegen (je Lieferant, ganze Kartons) und dorthin wechseln. */
+export async function purchaseIdeaAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireArea("marken");
+  let target = "";
+  try {
+    if (!canAccess(s, "wawi")) throw new Error("Für Bestellungen braucht es Zugriff auf die WaWi (Einkauf).");
+    const idea = await ownIdea(s, uuid.parse(fd.get("id")));
+    const boxes = Math.min(10000, Math.max(1, Math.round(Number(fd.get("boxes")) || 1)));
+    const [brand] = await db.select({ vatRate: schema.brands.vatRate }).from(schema.brands).where(eq(schema.brands.id, idea.brandId));
+    const ids = await purchaseForIdea(s.tenantId, s.userId, idea, boxes, Number(brand?.vatRate ?? 19));
+    target = ids.length === 1 ? `/einkauf/${ids[0]}` : "/einkauf?ansicht=entwuerfe";
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
+  redirect(target);
 }

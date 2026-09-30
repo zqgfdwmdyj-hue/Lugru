@@ -11,6 +11,9 @@ import { checklistAction, deleteIdeaAction, setIdeaStatusAction, ideaToArticleAc
 import { MarketForms, SaveForm, SuggestContent } from "../../forms";
 import { calcProfit, summarizeMarket } from "@/lib/brands/market";
 import { getSettings } from "@/lib/settings";
+import { componentsFor } from "@/lib/suppliers/box-purchase";
+import { shoppingList, shoppingText } from "@/lib/suppliers/shopping";
+import { PurchaseButton, ShoppingTools } from "./shopping";
 
 const pct = (n: number) => `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`;
 
@@ -23,7 +26,7 @@ const NEXT: Record<string, [string, string][]> = {
   rejected: [["idea", "Wieder aufnehmen"]],
 };
 
-export default async function IdeaPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function IdeaPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ boxen?: string }> }) {
   const session = await requireArea("marken");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -53,11 +56,13 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
     ? {
         fba: calcProfit({ price: vk, vatRate, fbaFee: fees.fbaFee, ...base }, "fba"),
         fbm: calcProfit({ price: vk, vatRate, fbmShipping: 4.5, ...base }, "fbm"),
-        // Gegenprobe mit 19 % – so rechnen Tools wie ProfitGo, solange dort nichts anderes eingestellt ist.
-        fba19: vatRate !== 19 ? calcProfit({ price: vk, vatRate: 19, fbaFee: fees.fbaFee, ...base }, "fba") : null,
       }
     : null;
   const done = i.checklist.filter((c) => c.done).length;
+  // Einkauf: Bestandteile aus Lieferanten-Feeds, Stückzahl Boxen aus der Adresse (?boxen=…).
+  const boxes = Math.min(10000, Math.max(1, Math.round(Number((await searchParams).boxen) || 20)));
+  const shop = i.kind === "box" ? await componentsFor(t, i) : { components: [], unmatched: [] };
+  const list = shop.components.length ? shoppingList(shop.components, boxes) : null;
   const [article] = await db.select({ id: schema.articles.id, sku: schema.articles.sku, status: schema.articles.status }).from(schema.articles).where(and(eq(schema.articles.tenantId, t), eq(schema.articles.ideaId, i.id)));
 
   return (
@@ -143,6 +148,46 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
             )}
           </section>
 
+          {list && (
+            <section className="card card-pad stack" id="einkauf">
+              <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+                <h2>Einkauf für diese Box</h2>
+                <form style={{ display: "flex", gap: 6, alignItems: "center" }} action={`#einkauf`}>
+                  <label className="small" htmlFor="boxen">Boxen</label>
+                  <input className="input num" id="boxen" name="boxen" type="number" min={1} defaultValue={boxes} style={{ width: 90 }} />
+                  <button className="btn btn-small" type="submit">Rechnen</button>
+                </form>
+              </div>
+              <div style={{ overflow: "auto" }}>
+                <table className="table" style={{ fontSize: 13 }}>
+                  <thead><tr><th>Artikel</th><th className="right">je Box</th><th className="right">benötigt</th><th className="right">Kartons</th><th className="right">Karton</th><th className="right">Summe</th></tr></thead>
+                  <tbody>
+                    {list.rows.map((r) => (
+                      <tr key={r.offerId}>
+                        <td style={{ maxWidth: 380 }}>
+                          {r.url ? <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title} ↗</a> : r.title}
+                          <div className="small muted num">{r.feedName} · {r.supplierSku} · {r.caseQty} je Karton</div>
+                        </td>
+                        <td className="num right">{r.qty}</td>
+                        <td className="num right">{r.unitsNeeded}</td>
+                        <td className="num right"><strong>{r.cases}</strong><div className="small muted">= {r.orderUnits} Stk</div></td>
+                        <td className="num right">{formatEuro(r.casePrice)}</td>
+                        <td className="num right">{formatEuro(r.cost)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot><tr style={{ fontWeight: 600 }}><td colSpan={5}>Gesamt ({Object.entries(list.bySupplier).map(([k, v]) => `${k}: ${formatEuro(v)}`).join(" · ")})</td><td className="num right">{formatEuro(list.total)}</td></tr></tfoot>
+                </table>
+              </div>
+              {shop.unmatched.length > 0 && <div className="small muted">Ohne Lieferanten-Artikel (bitte selbst besorgen): {shop.unmatched.join(" · ")}</div>}
+              <div className="small muted">Bestellt wird in ganzen Kartons – Rest bleibt für weitere Boxen im Lager. Preise ohne Versand/Zoll (Nebenkosten stehen in der Kalkulation).</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+                <ShoppingTools urls={list.rows.map((r) => r.url).filter((u): u is string => Boolean(u))} text={shoppingText(i.title, boxes, list.rows)} />
+                <PurchaseButton id={i.id} boxes={boxes} />
+              </div>
+            </section>
+          )}
+
           <section className="card card-pad stack">
             <h2>Video-Ideen zu dieser {i.kind === "product" ? "Produktidee" : "Box"}</h2>
             <SuggestContent brandId={b.id} ideaId={i.id} />
@@ -194,9 +239,6 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
                   <tr><td>Marge / ROI</td><td className="num right">{pct(calc.fba.margin)}{calc.fba.roi !== null ? ` / ${pct(calc.fba.roi)}` : ""}</td><td className="num right">{pct(calc.fbm.margin)}{calc.fbm.roi !== null ? ` / ${pct(calc.fbm.roi)}` : ""}</td></tr>
                   <tr><td>Break-even VK</td><td className="num right">{formatEuro(calc.fba.breakEven)}</td><td className="num right">{formatEuro(calc.fbm.breakEven)}</td></tr>
                   <tr><td>Max. EK (ROI {Math.round(settings.pricing.minRoi * 100)} %)</td><td className="num right">{formatEuro(calc.fba.maxCost)}</td><td className="num right">{formatEuro(calc.fbm.maxCost)}</td></tr>
-                  {calc.fba19 && (
-                    <tr className="muted"><td>zum Vergleich mit 19 % USt</td><td className="num right">{formatEuro(calc.fba19.profit)} · {pct(calc.fba19.margin)}</td><td></td></tr>
-                  )}
                 </tbody>
               </table>
               <div className="muted">

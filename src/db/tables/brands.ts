@@ -47,6 +47,8 @@ export const IDEA_KINDS = ["box", "product", "other"] as const;
 export type ChecklistItem = { text: string; done: boolean };
 
 export type MarketProduct = { asin: string; title: string; price: number | null; fbaFee: number | null; referralPct: number | null; monthlySold: number | null; salesRank: number | null; reviews: number | null };
+export type BoxComponent = { offerId: string; qty: number; title: string; unitCost: number; caseQty: number; casePrice: number | null; url: string | null; supplierSku: string; feedId: string; feedName: string };
+
 export type MarketData = { source: "keepa" | "helium10"; term: string; fetchedAt: string; products: MarketProduct[]; /** Gewähltes Vergleichsprodukt: dessen FBA-Gebühr/Provision statt Median. */ referenceAsin?: string };
 
 export const ideas = pgTable(
@@ -74,6 +76,8 @@ export const ideas = pgTable(
     checklist: jsonb("checklist").$type<ChecklistItem[]>().notNull().default([]),
     /** Vergleichsprodukte (Keepa oder Helium-10-Export) für die Kalkulation. */
     market: jsonb("market").$type<MarketData | null>(),
+    /** Bestandteile aus Lieferanten-Feeds (bei Box-Vorschlägen) – für Einkaufsliste und Bestellung. */
+    components: jsonb("components").$type<BoxComponent[]>().notNull().default([]),
     notes: text("notes"),
     source: text("source", { enum: ["ai", "manual"] }).notNull().default("manual"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),

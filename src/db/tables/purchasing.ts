@@ -43,7 +43,11 @@ export const purchaseOrderItems = pgTable(
       .notNull()
       .references(() => purchaseOrders.id, { onDelete: "cascade" }),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
-    asin: text("asin").notNull(),
+    /** Leer bei Box-Bestandteilen ohne eigenes Amazon-Angebot (dann Lieferanten-Artikelnummer). */
+    asin: text("asin"),
+    supplierSku: text("supplier_sku"),
+    /** Produktseite beim Lieferanten. */
+    url: text("url"),
     title: text("title"),
     ean: text("ean"),
     quantity: integer("quantity").notNull(),

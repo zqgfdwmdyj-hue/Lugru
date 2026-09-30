@@ -27,7 +27,7 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
   const totalGross = items.reduce((s, i) => s + i.quantity * Number(i.unitCostGross), 0) + (po.shippingCostGross ?? 0);
   const totalNet = items.reduce((s, i) => s + i.quantity * netFromGross(Number(i.unitCostGross), Number(i.vatRate)), 0);
   const editable = po.status !== "received" && po.status !== "cancelled";
-  const open = items.filter((i) => i.received < i.quantity).map((i) => ({ id: i.id, asin: i.asin, title: i.title, open: i.quantity - i.received }));
+  const open = items.filter((i) => i.received < i.quantity).map((i) => ({ id: i.id, asin: i.asin ?? i.supplierSku ?? "Bestandteil", title: i.title, open: i.quantity - i.received }));
   const statusBtn = (status: string, text: string, primary = false) => (
     <form action={setStatusAction}><input type="hidden" name="poId" value={po.id} /><input type="hidden" name="status" value={status} /><button className={`btn${primary ? " btn-primary" : ""}`} type="submit">{text}</button></form>
   );
@@ -58,8 +58,8 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
                 {items.length === 0 && <tr><td colSpan={9} className="muted">Noch keine Positionen – unten ASIN, Menge und Einkaufspreis eintragen.</td></tr>}
                 {items.map((i) => (
                   <tr key={i.id}>
-                    <td className="num">{i.asin}</td>
-                    <td style={{ maxWidth: 280 }}>{i.title ?? <span className="muted">–</span>}</td>
+                    <td className="num">{i.asin ?? <span className="small muted">Bestandteil<br />{i.supplierSku}</span>}</td>
+                    <td style={{ maxWidth: 280 }}>{i.url ? <a href={i.url} target="_blank" rel="noopener noreferrer">{i.title ?? i.url} ↗</a> : (i.title ?? <span className="muted">–</span>)}</td>
                     <td className="num right">{i.quantity}</td>
                     <td className="num right" style={{ color: i.received >= i.quantity ? "var(--ok)" : i.received > 0 ? "var(--warn)" : undefined }}>{i.received}</td>
                     <td className="num right">{formatEuro(Number(i.unitCostGross))}<div className="small muted">{Number(i.vatRate)} %</div></td>
