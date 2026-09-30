@@ -15,6 +15,13 @@
       "when": 1790746236291,
       "tag": "0001_ki_stufen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790749864512,
+      "tag": "0002_mhd",
+      "breakpoints": true
     }
   ]
 }

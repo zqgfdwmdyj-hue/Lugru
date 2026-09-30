@@ -47,7 +47,7 @@ describe("Spenden: Raster", () => {
 describe("Spenden: Aushang", () => {
   const items = [
     { name: "Getrocknete Tomaten", variant: "2kg", category: "Lebensmittel", price: 5 },
-    { name: "Getrocknete Tomaten", variant: "5kg", category: "Lebensmittel", price: 10 },
+    { name: "Getrocknete Tomaten", variant: "5kg", category: "Lebensmittel", price: 10, bestBefore: "2026-10-12" },
     { name: "Kindergrieß", variant: null, category: "Babyprodukte", price: 0.3 },
     { name: "DVDs", variant: null, category: "Sonstiges", price: 1 },
     { name: "Red Bull Organics", variant: "24er Pack 0,25L", category: "Getränke inkl. Pfand", price: 14 },
@@ -56,15 +56,15 @@ describe("Spenden: Aushang", () => {
   it("gruppiert Varianten und sortiert Kategorien", () => {
     const s = flyerSections(items);
     expect(s.map((x) => x.category)).toEqual(["Babyprodukte", "Lebensmittel", "Getränke inkl. Pfand", "Deko", "Sonstiges"]);
-    expect(s[1].lines[0]).toEqual({ text: "Getrocknete Tomaten", price: "", sub: [{ text: "2kg", price: "5€" }, { text: "5kg", price: "10€" }] });
-    expect(s[2].lines[0]).toEqual({ text: "Red Bull Organics", price: "14€", sub: [{ text: "24er Pack 0,25L", price: "" }] });
+    expect(s[1].lines[0]).toEqual({ text: "Getrocknete Tomaten", price: "", mhd: "", sub: [{ text: "2kg", price: "5€", mhd: "" }, { text: "5kg", price: "10€", mhd: "MHD 12.10.26" }] });
+    expect(s[2].lines[0]).toEqual({ text: "Red Bull Organics", price: "14€", mhd: "", sub: [{ text: "24er Pack 0,25L", price: "", mhd: "" }] });
     expect(s[3].lines[0].price).toBe("je 0,50€");
   });
   it("Messenger-Text", () => {
     const t = messengerText({ title: "Unsere Spendenempfehlungen", dateLabel: "Sa, 12.09.2026", eventTime: "11 Uhr" }, flyerSections(items));
     expect(t).toContain("*Unsere Spendenempfehlungen*");
     expect(t).toContain("📅 Sa, 12.09.2026, 11 Uhr");
-    expect(t).toContain("• Getrocknete Tomaten\n   ◦ 2kg 5€");
+    expect(t).toContain("• Getrocknete Tomaten\n   ◦ 2kg 5€\n   ◦ 5kg 10€ (MHD 12.10.26)");
   });
 });
 

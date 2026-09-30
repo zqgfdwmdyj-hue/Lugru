@@ -16,7 +16,7 @@ export default async function AushangPage({ params, searchParams }: { params: Pr
   const event = await loadEvent(id);
   if (!event) notFound();
   const rows = await loadEventItems(id);
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote })));
+  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
   const cols = [1, 2, 3, 4].includes(Number(sp.spalten)) ? Number(sp.spalten) : 3;
   // „auto“: so groß wie möglich (bis 26 px), sonst höchstens die gewählte Größe.
   const fixed = [12, 14, 16, 18, 20].includes(Number(sp.groesse)) ? Number(sp.groesse) : 0;
@@ -56,8 +56,8 @@ export default async function AushangPage({ params, searchParams }: { params: Pr
             <ul style={{ columnCount: cols }}>
               {s.lines.map((l, i) => (
                 <li key={i}>
-                  {l.text}{l.price ? ` ${l.price}` : ""}
-                  {l.sub.length > 0 && <ul>{l.sub.map((x, j) => <li key={j}>{x.text}{x.price ? ` ${x.price}` : ""}</li>)}</ul>}
+                  {l.text}{l.price ? ` ${l.price}` : ""}{l.mhd && <>{" "}<span className="fl-mhd">({l.mhd})</span></>}
+                  {l.sub.length > 0 && <ul>{l.sub.map((x, j) => <li key={j}>{x.text}{x.price ? ` ${x.price}` : ""}{x.mhd && <>{" "}<span className="fl-mhd">({x.mhd})</span></>}</li>)}</ul>}
                 </li>
               ))}
             </ul>
@@ -88,6 +88,7 @@ const CSS = `
 .fl-sec h2 { font-family: "Archivo Black", "Arial Black", sans-serif; text-transform: uppercase; font-size: calc(var(--fs) * 1.15); letter-spacing: .03em; margin: 0 0 calc(var(--fs) * .35); }
 .fl-sec > ul { margin: 0; padding: 0 0 0 1.1em; column-gap: 1.6em; }
 .fl-sec li { break-inside: avoid; letter-spacing: .02em; }
+.fl-mhd { font-size: .78em; font-weight: 600; color: #555; white-space: nowrap; }
 .fl-sec ul ul { padding-left: 1.2em; list-style: circle; font-size: .88em; }
 @page { size: A4; margin: 0; }
 @media print {

@@ -97,8 +97,14 @@ export function balancedPages<T>(items: T[], perPage: number): T[][] {
   return pages;
 }
 
-export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null };
-export type FlyerLine = { text: string; price: string; sub: { text: string; price: string }[] };
+export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; bestBefore?: string | null };
+export type FlyerLine = { text: string; price: string; mhd: string; sub: { text: string; price: string; mhd: string }[] };
+
+/** „MHD 12.10.26“ aus „2026-10-12“; leer, wenn kein Datum. */
+export function mhdLabel(iso: string | null | undefined): string {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null;
+  return m ? `MHD ${m[3]}.${m[2]}.${m[1].slice(2)}` : "";
+}
 export type FlyerSection = { category: string; lines: FlyerLine[] };
 
 /**
@@ -129,9 +135,9 @@ export function flyerSections(items: FlyerItem[]): FlyerSection[] {
       const withPrice = (it: FlyerItem) => [it.priceNote?.trim(), flyerPrice(it.price)].filter(Boolean).join(" ");
       if (group.length === 1) {
         const it = group[0];
-        return { text: it.name.trim(), price: withPrice(it), sub: it.variant?.trim() ? [{ text: it.variant.trim(), price: "" }] : [] };
+        return { text: it.name.trim(), price: withPrice(it), mhd: mhdLabel(it.bestBefore), sub: it.variant?.trim() ? [{ text: it.variant.trim(), price: "", mhd: "" }] : [] };
       }
-      return { text: group[0].name.trim(), price: "", sub: group.map((it) => ({ text: it.variant?.trim() || "–", price: withPrice(it) })) };
+      return { text: group[0].name.trim(), price: "", mhd: "", sub: group.map((it) => ({ text: it.variant?.trim() || "–", price: withPrice(it), mhd: mhdLabel(it.bestBefore) })) };
     }),
   }));
 }
@@ -151,8 +157,8 @@ export function messengerText(event: { title: string; subtitle?: string | null; 
   for (const s of sections) {
     out.push("", `*${s.category}*`);
     for (const l of s.lines) {
-      out.push(`• ${l.text}${l.price ? ` ${l.price}` : ""}`);
-      for (const sub of l.sub) out.push(`   ◦ ${sub.text}${sub.price ? ` ${sub.price}` : ""}`);
+      out.push(`• ${l.text}${l.price ? ` ${l.price}` : ""}${l.mhd ? ` (${l.mhd})` : ""}`);
+      for (const sub of l.sub) out.push(`   ◦ ${sub.text}${sub.price ? ` ${sub.price}` : ""}${sub.mhd ? ` (${sub.mhd})` : ""}`);
     }
   }
   return out.join("\n");

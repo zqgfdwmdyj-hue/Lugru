@@ -64,15 +64,16 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
           <section className="card" style={{ overflow: "auto" }}>
             <div className="card-head"><h2>Verlauf</h2><span className="small muted">{history.length}× verteilt</span></div>
             <table className="table">
-              <thead><tr><th>Datum</th><th>Verteilung</th><th className="right">Preis</th><th className="right">Menge</th></tr></thead>
+              <thead><tr><th>Datum</th><th>Verteilung</th><th className="right">Preis</th><th className="right">Menge</th><th>MHD</th></tr></thead>
               <tbody>
-                {history.length === 0 && <tr><td colSpan={4} className="muted">Noch in keiner Verteilung.</td></tr>}
+                {history.length === 0 && <tr><td colSpan={5} className="muted">Noch in keiner Verteilung.</td></tr>}
                 {history.map((h) => (
                   <tr key={h.eventId}>
                     <td className="num">{formatDate(h.eventDate)}</td>
                     <td><Link href={`/verteilung/${h.eventId}`}>{h.title}</Link></td>
                     <td className="num right">{h.priceNote ? `${h.priceNote} ` : ""}{formatEuro(h.price)}</td>
                     <td className="num right">{h.quantity ?? "–"}</td>
+                    <td className="num">{formatDate(h.bestBefore)}</td>
                   </tr>
                 ))}
               </tbody>

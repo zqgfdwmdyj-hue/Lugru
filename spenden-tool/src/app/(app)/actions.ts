@@ -108,6 +108,7 @@ export async function saveItems(fd: FormData) {
         priceNote: opt(fd, `note_${it.id}`),
         caption: opt(fd, `caption_${it.id}`),
         quantity: qty === null ? null : Math.max(0, Math.round(qty)),
+        bestBefore: parseIsoDate(str(fd, `mhd_${it.id}`)),
         inCollage: fd.get(`col_${it.id}`) === "on",
         inFlyer: fd.get(`fly_${it.id}`) === "on",
       })

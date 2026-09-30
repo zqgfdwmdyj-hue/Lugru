@@ -105,7 +105,7 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
 /** Wann und zu welchem Preis ein Produkt dabei war. */
 export async function productHistory(productId: string) {
   return db
-    .select({ eventId: E.id, eventDate: E.eventDate, title: E.title, price: I.price, priceNote: I.priceNote, quantity: I.quantity })
+    .select({ eventId: E.id, eventDate: E.eventDate, title: E.title, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore })
     .from(I)
     .innerJoin(E, eq(E.id, I.eventId))
     .where(eq(I.productId, productId))

@@ -27,7 +27,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   if (!event) notFound();
   const [rows, picker, categories] = await Promise.all([loadEventItems(id), productPicker(id, q), knownCategories()]);
 
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote })));
+  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
   const text = messengerText({ ...event, dateLabel: eventDateLabel(event.eventDate) }, sections);
   const missingPrice = rows.filter((r) => r.item.price === null).length;
   const missingImage = rows.filter((r) => r.item.inCollage && !r.product.imageFileId).length;
@@ -74,7 +74,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
             </div>
             <table className="table spenden-items">
               <thead>
-                <tr><th></th><th>Produkt</th><th>Preis €</th><th>Text · Menge</th><th title="Auf Collage / im Aushang">Zeigen</th><th></th></tr>
+                <tr><th></th><th>Produkt</th><th>Preis €</th><th>Text · Menge · MHD</th><th title="Auf Collage / im Aushang">Zeigen</th><th></th></tr>
               </thead>
               <tbody>
                 {rows.length === 0 && <tr><td colSpan={6} className="muted">Noch keine Produkte. Oben auf „📷 Fotos hinzufügen“ tippen – am Handy geht dabei direkt die Kamera oder die Fotomediathek auf.</td></tr>}
@@ -114,6 +114,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                     <td>
                       <input className="input input-compact" name={`caption_${item.id}`} defaultValue={item.caption ?? ""} placeholder="Text auf dem Bild" style={{ width: 130 }} aria-label="Collage-Text" />
                       <input className="input input-compact num" name={`qty_${item.id}`} defaultValue={item.quantity ?? ""} inputMode="numeric" placeholder="Menge" title="Wie viel da ist (optional)" style={{ width: 70, marginTop: 4, display: "block" }} aria-label="Menge" />
+                      <input className="input input-compact num" type="date" name={`mhd_${item.id}`} defaultValue={item.bestBefore ?? ""} title="Mindesthaltbarkeitsdatum – steht im Aushang, nicht auf der Collage" style={{ width: 150, marginTop: 4, display: "block" }} aria-label="MHD" />
                     </td>
                     <td className="small" style={{ whiteSpace: "nowrap" }}>
                       <label style={{ display: "block" }}><input type="checkbox" name={`col_${item.id}`} defaultChecked={item.inCollage} aria-label="Auf der Collage" /> Collage</label>

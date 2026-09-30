@@ -91,6 +91,8 @@ export const eventItems = pgTable(
     /** Zusatztext auf der Collage. */
     caption: text("caption"),
     quantity: integer("quantity"),
+    /** Mindesthaltbarkeitsdatum dieser Charge – steht im Aushang, nicht auf der Collage. */
+    bestBefore: date("best_before", { mode: "string" }),
     inCollage: boolean("in_collage").notNull().default(true),
     inFlyer: boolean("in_flyer").notNull().default(true),
     sort: integer("sort").notNull().default(0),
