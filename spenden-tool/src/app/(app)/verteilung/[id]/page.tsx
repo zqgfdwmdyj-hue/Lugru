@@ -80,6 +80,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <PhotoUpload eventId={id} action={uploadPhotos} categories={categories} />
           <Link href={`/verteilung/${id}/collage`} className="btn">Collage erstellen</Link>
+          <Link href={`/verteilung/${id}/social`} className="btn">Social Media</Link>
           <Link href={`/aushang/${id}`} className="btn" target="_blank">Aushang drucken</Link>
         </div>
       </div>

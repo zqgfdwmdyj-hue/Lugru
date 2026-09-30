@@ -4,77 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollageSettings } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
+import { BAND, drawImage, fitFont, FONT, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
 
 export type CollageTile = { id: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null };
-
-const FONT = '"Archivo Black", "Arial Black", Impact, sans-serif';
-const BAND = "#bfe3ef";
-
-type Loaded = Map<string, HTMLImageElement>;
-
-async function loadImages(tiles: CollageTile[]): Promise<Loaded> {
-  const map: Loaded = new Map();
-  await Promise.all(
-    tiles
-      .filter((t) => t.image)
-      .map(async (t) => {
-        const img = new Image();
-        img.src = t.image!;
-        try {
-          await img.decode();
-          map.set(t.image!, img);
-        } catch {
-          // Bild fehlt oder ist kaputt – Kachel wird als Text gezeichnet.
-        }
-      }),
-  );
-  return map;
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
-}
-
-/** Bild in ein Rechteck zeichnen: „cover“ füllt (schneidet ab), „contain“ zeigt es ganz. */
-function drawImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, mode: "cover" | "contain") {
-  const s = mode === "cover" ? Math.max(w / img.naturalWidth, h / img.naturalHeight) : Math.min(w / img.naturalWidth, h / img.naturalHeight);
-  const dw = img.naturalWidth * s;
-  const dh = img.naturalHeight * s;
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-}
-
-/** Schriftgröße so wählen, dass der Text in die Breite passt. */
-function fitFont(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, size: number, weight = "") {
-  let s = size;
-  ctx.font = `${weight} ${s}px ${FONT}`;
-  while (s > 10 && ctx.measureText(text).width > maxWidth) {
-    s = Math.floor(s * 0.92);
-    ctx.font = `${weight} ${s}px ${FONT}`;
-  }
-  return s;
-}
-
-function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let line = "";
-  for (const w of words) {
-    const next = line ? `${line} ${w}` : w;
-    if (ctx.measureText(next).width <= maxWidth || !line) line = next;
-    else {
-      lines.push(line);
-      line = w;
-    }
-  }
-  if (line) lines.push(line);
-  if (lines.length > maxLines) {
-    const cut = lines.slice(0, maxLines);
-    cut[maxLines - 1] = cut[maxLines - 1].replace(/\s*\S*$/, "") + " …";
-    return cut;
-  }
-  return lines;
-}
 
 function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLImageElement | undefined, x: number, y: number, w: number, h: number, s: CollageSettings) {
   const side = Math.min(w, h);
@@ -204,7 +136,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       try {
         await Promise.race([document.fonts.load(`40px "Archivo Black"`), new Promise((r) => setTimeout(r, 2500))]);
       } catch {}
-      const loaded = await loadImages(tiles);
+      const loaded = await loadImages(tiles.map((t) => t.image));
       if (alive) setImages(loaded);
     })();
     return () => {

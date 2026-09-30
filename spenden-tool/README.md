@@ -16,6 +16,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   einstellbar (4 bis 20), in den Formaten 4:5, 9:16, 1:1 oder A4. Der Preis steht auf dem Foto.
 - **Aushang:** A4 „Unsere Spendenempfehlungen“, die Schrift passt sich automatisch der Seite an.
 - **Messenger-Text:** dieselbe Liste als Text zum Kopieren.
+- **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
+  Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
+  automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten.
 
 ## Starten (Docker)
 

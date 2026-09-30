@@ -103,3 +103,27 @@ describe("KI-Stufen", () => {
     expect(defaultAiMode()).toBe("sparsam");
   });
 });
+
+describe("Social-Media-Texte", () => {
+  const ev = { title: "Spenden-Verteilung", dateLabel: "Sa, 12.10.2026", weekdayLong: "Samstag", eventTime: "11 Uhr", location: "Musterstadt Süd" };
+  const products = [
+    { name: "Kimchi", variant: "500 g", price: 0.8, priceNote: null },
+    { name: "Kerzen", variant: null, price: 0.5, priceNote: "je" },
+    { name: "Tee", variant: null, price: null, priceNote: null },
+  ];
+  it("Instagram mit Liste, Ort und Hashtags", async () => {
+    const { instagramCaption, whenWhere, hashtag } = await import("@/lib/social");
+    expect(whenWhere(ev)).toBe("Samstag, 12.10. um 11 Uhr in Musterstadt Süd");
+    expect(hashtag("Musterstadt Süd")).toBe("#musterstadtsüd");
+    const t = instagramCaption(ev, products, [], 2);
+    expect(t).toContain("• Kimchi 500 g – 80 Cent");
+    expect(t).toContain("• Kerzen – je 50 Cent");
+    expect(t).toContain("…und 1 weitere Produkte.");
+    expect(t).toContain("#foodsharing");
+    expect(t).toContain("#musterstadtsüd");
+  });
+  it("TikTok kurz", async () => {
+    const { tiktokCaption } = await import("@/lib/social");
+    expect(tiktokCaption(ev, products)).toMatch(/^Samstag, 12\.10\. um 11 Uhr in Musterstadt Süd: 3 gerettete Produkte/);
+  });
+});
