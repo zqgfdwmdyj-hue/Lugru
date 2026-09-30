@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { IDEA_STATUS_LABEL } from "@/lib/brands/ai";
@@ -10,6 +10,8 @@ import { getIntegration } from "@/lib/integrations/store";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { createIdeaAction } from "./actions";
 import { SuggestIdeas } from "./forms";
+import { BoxSuggest } from "../lieferanten/[id]/scan-form";
+import { getSettings } from "@/lib/settings";
 
 const COLUMNS = ["idea", "review", "planned", "in_progress", "live"] as const;
 
@@ -25,7 +27,12 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
   if (brand) where.push(eq(I.brandId, brand.id));
   if (sp.anlass) where.push(eq(I.occasion, sp.anlass));
   where.push(inArray(I.status, sp.verworfen ? ["rejected"] : [...COLUMNS]));
-  const [ideas, ai] = await Promise.all([db.select().from(I).where(and(...where)).orderBy(desc(I.updatedAt)).limit(400), getIntegration(t, "anthropic")]);
+  const [ideas, ai, offerCount, settings] = await Promise.all([
+    db.select().from(I).where(and(...where)).orderBy(desc(I.updatedAt)).limit(400),
+    getIntegration(t, "anthropic"),
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.supplierOffers).where(and(eq(schema.supplierOffers.tenantId, t), isNotNull(schema.supplierOffers.price))).then((r) => r[0]?.n ?? 0),
+    getSettings(t),
+  ]);
   const brandById = new Map(brands.map((b) => [b.id, b]));
   const shown = brand ? [brand] : brands;
   const href = (p: Record<string, string | undefined>) => {
@@ -105,6 +112,16 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
               <div><button className="btn btn-primary btn-small" type="submit">Anlegen</button></div>
             </form>
           </section>
+          {offerCount > 0 && (
+            <BoxSuggest
+              feedId={null}
+              offerCount={offerCount}
+              brands={(brand ? [brand, ...brands.filter((x) => x.id !== brand.id)] : brands).map((x) => ({ id: x.id, name: x.name }))}
+              occasions={upcomingOccasions(today).map((o) => ({ key: o.key, name: o.name }))}
+              hasAi={Boolean(ai?.apiKey)}
+              defaultFba={settings.pricing.defaultFbaFee + 1.5}
+            />
+          )}
           {ai?.apiKey && (
             <section className="card card-pad stack">
               <h2>Ideen auf Zuruf</h2>

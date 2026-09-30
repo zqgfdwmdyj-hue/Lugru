@@ -13,6 +13,7 @@ import { invoiceDeps } from "@/lib/ebay/invoices/deps";
 import { syncCalendar } from "@/lib/calendar/sync";
 import { runResearchIfDue } from "@/lib/research/service";
 import { refreshBrandPlanning } from "@/lib/brands/service";
+import { autoBoxes } from "@/lib/suppliers/boxes-service";
 import { refreshOwnProducts } from "@/lib/brands/shop-service";
 import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
@@ -50,6 +51,7 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:brands`, 360)) {
         await step("Marken-Planung", () => refreshBrandPlanning(t));
         await step("Eigene Produkte (Keepa)", () => refreshOwnProducts(t));
+        await step("Box-Vorschläge", () => autoBoxes(t));
       }
       if (force || due(`${t}:mail`, 14)) {
         await step("Postfächer", () => syncAllMailboxes(t));

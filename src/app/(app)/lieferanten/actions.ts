@@ -130,16 +130,17 @@ export type BoxState = { ok: boolean; message: string; brandId?: string } | null
 
 /** Aus den Artikeln Boxen vorschlagen lassen → Ideen im Marken-Board (mit exakter Kalkulation). */
 export async function suggestBoxesAction(_prev: BoxState, fd: FormData): Promise<BoxState> {
-  const session = await requireArea("lieferanten");
+  const session = await requireArea("lieferanten", "marken");
   try {
     if (!canAccess(session, "marken")) throw new Error("Für Box-Vorschläge braucht es Zugriff auf den Bereich Marken.");
-    const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
+    // Aus dem Ideen-Board ohne Feed: alle Lieferanten-Artikel.
+    const feedId = fd.get("feedId") ? await ownFeed(session.tenantId, fd.get("feedId")) : null;
     const brandId = uuid.parse(fd.get("brandId"));
     assertBrand(session, brandId);
     const count = Math.min(8, Math.max(1, Number(fd.get("count") ?? 4) || 4));
     const r = await suggestBoxes(session.tenantId, session.userId, {
       feedId,
-      allFeeds: fd.get("allFeeds") === "on",
+      allFeeds: !feedId || fd.get("allFeeds") === "on",
       brandId,
       occasion: String(fd.get("occasion") ?? "") || null,
       count,
@@ -148,8 +149,8 @@ export async function suggestBoxesAction(_prev: BoxState, fd: FormData): Promise
       fbaFee: parseAmount(fd.get("fbaFee")) ?? 5,
     });
     revalidatePath("/marken");
-    const top = r.best.map((b) => `${b.title}${b.profit !== null ? ` (${b.profit.toFixed(2).replace(".", ",")} € Gewinn)` : ""}`).join(" · ");
-    return { ok: true, message: `${r.count} Boxen als Ideen angelegt: ${top}`, brandId: r.brandId };
+    const top = r.best.map((b) => `${b.title}${b.profit !== null ? ` (${b.profit.toFixed(2).replace(".", ",")} € Gewinn${b.margin !== null ? `, ${b.margin.toLocaleString("de-DE")} %` : ""}${b.compared ? `, ${b.compared} Vergleichsprodukte` : ""})` : ""}`).join(" · ");
+    return { ok: true, message: `${r.count} rentable Boxen als Ideen angelegt${r.repaired ? ` (${r.repaired} nachgebessert)` : ""}${r.dropped ? `, ${r.dropped} unrentable verworfen` : ""}: ${top}`, brandId: r.brandId };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

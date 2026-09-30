@@ -1,4 +1,4 @@
-import { date, index, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, updatedAt, users } from "./core";
 
 // Eigene Marken (z. B. Grulu: Schultüten, US-Süßigkeiten, Themenboxen · Zeitlux: Uhren-Zubehör),
@@ -30,6 +30,9 @@ export const brands = pgTable(
     sellerId: text("seller_id"),
     /** Welches Amazon-Konto die Marke nutzt: Hauptkonto oder zweites Konto (Anbindungen → Amazon, zweites Konto). */
     amazonAccount: text("amazon_account", { enum: ["haupt", "zweit"] }).notNull().default("haupt"),
+    /** Box-Vorschläge aus Lieferanten-Artikeln selbstständig (wöchentlich, wenn neue Artikel da sind). */
+    boxAuto: boolean("box_auto").notNull().default(false),
+    lastBoxRunAt: timestamp("last_box_run_at", { withTimezone: true }),
     /** Hersteller-/Verantwortlichen-Angaben (GPSR) – Vorlage für neue Artikel. */
     gpsr: jsonb("gpsr").$type<{ companyName?: string; addressLine1?: string; postalCode?: string; city?: string; country?: string; email?: string; phone?: string }>().notNull().default({}),
     createdAt: createdAt(),

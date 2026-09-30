@@ -112,15 +112,15 @@ export function KeepaCheck({ feedId, hasKeepa, withEan, withoutEan }: { feedId: 
   );
 }
 
-export function BoxSuggest({ feedId, brands, occasions, hasAi, defaultFba }: { feedId: string; brands: { id: string; name: string }[]; occasions: { key: string; name: string }[]; hasAi: boolean; defaultFba: number }) {
+export function BoxSuggest({ feedId, brands, occasions, hasAi, defaultFba, offerCount }: { feedId: string | null; offerCount?: number; brands: { id: string; name: string }[]; occasions: { key: string; name: string }[]; hasAi: boolean; defaultFba: number }) {
   const [state, action, pending] = useActionState<BoxState, FormData>(suggestBoxesAction, null);
   return (
     <form action={action} className="card card-pad stack" style={{ gap: 8 }}>
-      <input type="hidden" name="feedId" value={feedId} />
-      <h2>Boxen daraus bauen</h2>
+      {feedId && <input type="hidden" name="feedId" value={feedId} />}
+      <h2>{feedId ? "Boxen daraus bauen" : "Boxen aus Lieferanten-Artikeln"}</h2>
       <div className="small muted">
         Die KI stellt aus den Artikeln Themenboxen für Amazon zusammen – passend zur Marke, zum Anlass und zu den TikTok-Bestsellern (Shop-Analyse).
-        Einkauf und Gewinn rechnet das System exakt mit den Einzelpreisen; die Boxen landen als Ideen im Marken-Board.
+        Einkauf rechnet das System exakt mit den Einzelpreisen; Verkaufspreis, FBA-Gebühr und Provision kommen aus vergleichbaren Boxen auf amazon.de (Keepa, ca. 10 Tokens je Box). Die Boxen landen als Ideen im Board{offerCount !== undefined ? ` – ${offerCount} Artikel verfügbar` : ""}.
       </div>
       {!hasAi && <div className="notice notice-info small">Braucht den KI-Schlüssel (Anbindungen → KI).</div>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -138,7 +138,7 @@ export function BoxSuggest({ feedId, brands, occasions, hasAi, defaultFba }: { f
         <label className="field"><span className="label">Verpackung €</span><input className="input" name="packaging" inputMode="decimal" defaultValue="2,50" /></label>
         <label className="field"><span className="label">FBA-Gebühr €</span><input className="input" name="fbaFee" inputMode="decimal" defaultValue={defaultFba.toFixed(2).replace(".", ",")} /></label>
       </div>
-      <label className="small" style={{ display: "flex", gap: 6 }}><input type="checkbox" name="allFeeds" /> Artikel aus allen Lieferanten-Feeds verwenden</label>
+      {feedId && <label className="small" style={{ display: "flex", gap: 6 }}><input type="checkbox" name="allFeeds" /> Artikel aus allen Lieferanten-Feeds verwenden</label>}
       <button className="btn btn-primary" type="submit" disabled={pending || !hasAi || !brands.length}>{pending ? "Stelle Boxen zusammen … (bis 1–2 Minuten)" : "Boxen vorschlagen"}</button>
       {state && (
         <div className={`notice ${state.ok ? "notice-ok" : "notice-warn"}`}>

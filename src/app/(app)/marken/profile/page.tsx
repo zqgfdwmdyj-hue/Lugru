@@ -37,6 +37,10 @@ export default async function ProfilePage() {
                   <div className="field"><label className="label">Verkäuferkonto auf Amazon</label><input className="input" name="sellerName" defaultValue={b.sellerName ?? ""} placeholder="z. B. Firma GmbH" /></div>
                   <div className="field"><label className="label">Händlerkennung (Seller-ID)</label><input className="input" name="sellerId" defaultValue={b.sellerId ?? ""} placeholder="A1B2C3D4E5F6G7" style={{ fontFamily: "var(--mono)" }} /></div>
                 </div>
+                <label className="small" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+                  <input type="checkbox" name="boxAuto" defaultChecked={b.boxAuto} />
+                  <span><strong>Boxen selbstständig vorschlagen</strong> – einmal pro Woche aus neuen Lieferanten-Artikeln (mit TikTok-Trends, Keepa-Vergleich und Gewinnrechnung). Es entsteht eine Aufgabe, die Boxen stehen im Ideen-Board.{b.lastBoxRunAt ? ` Zuletzt: ${b.lastBoxRunAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}.` : ""}</span>
+                </label>
                 <div className="field"><label className="label">Amazon-Konto für den Artikelstamm</label>
                   <select className="input" name="amazonAccount" defaultValue={b.amazonAccount} style={{ width: "auto" }}>
                     <option value="haupt">Hauptkonto (Anbindungen → Amazon Seller Central)</option>

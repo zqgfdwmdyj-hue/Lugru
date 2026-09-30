@@ -197,6 +197,7 @@ export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<
       sellerName: str(fd, "sellerName").slice(0, 120) || null,
       sellerId: /^[A-Z0-9]{8,20}$/.test(str(fd, "sellerId").toUpperCase()) ? str(fd, "sellerId").toUpperCase() : null,
       amazonAccount: fd.get("amazonAccount") === "zweit" ? "zweit" : "haupt",
+      boxAuto: fd.get("boxAuto") === "on",
       gpsr: Object.fromEntries(["companyName", "addressLine1", "postalCode", "city", "country", "email", "phone"].map((k) => [k, str(fd, `gpsr_${k}`).slice(0, 200)])),
       occasions,
       updatedAt: new Date(),
