@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { saveBrandAction, saveIdeaAction, suggestContentAction, suggestIdeasAction, type BrandState } from "./actions";
+import { marketHelium10Action, marketKeepaAction, saveBrandAction, saveIdeaAction, suggestContentAction, suggestIdeasAction, type BrandState } from "./actions";
 
 function Notice({ state }: { state: BrandState }) {
   if (!state) return null;
@@ -69,5 +69,29 @@ export function SaveForm({ children, kind }: { children: React.ReactNode; kind: 
         <Notice state={state} />
       </div>
     </form>
+  );
+}
+
+export function MarketForms({ ideaId, term }: { ideaId: string; term: string }) {
+  const [kState, kAction, kPending] = useActionState<BrandState, FormData>(marketKeepaAction, null);
+  const [hState, hAction, hPending] = useActionState<BrandState, FormData>(marketHelium10Action, null);
+  return (
+    <div className="stack" style={{ gap: 10 }}>
+      <form action={kAction} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <input type="hidden" name="id" value={ideaId} />
+        <input className="input" name="term" defaultValue={term} placeholder="Suchbegriff wie auf Amazon" style={{ flex: "1 1 240px" }} aria-label="Suchbegriff" />
+        <button className="btn btn-small" type="submit" disabled={kPending}>{kPending ? "Frage Keepa …" : "Ähnliche Produkte (Keepa)"}</button>
+      </form>
+      <Notice state={kState} />
+      <details className="small">
+        <summary style={{ cursor: "pointer" }}>Oder Helium-10-Export hochladen (Xray → Export)</summary>
+        <form action={hAction} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+          <input type="hidden" name="id" value={ideaId} />
+          <input className="input" name="file" type="file" accept=".csv,.xlsx,.xls" required style={{ flex: "1 1 240px" }} />
+          <button className="btn btn-small" type="submit" disabled={hPending}>{hPending ? "Lese …" : "Übernehmen"}</button>
+        </form>
+        <Notice state={hState} />
+      </details>
+    </div>
   );
 }

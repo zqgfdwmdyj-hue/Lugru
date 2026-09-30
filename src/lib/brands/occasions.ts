@@ -83,6 +83,6 @@ export function upcomingOccasions(today: string, leads?: Record<string, number>,
 
 /** Vorschlag, welche Anlässe zu einer Marke passen (Vorbelegung beim Anlegen). */
 export const DEFAULT_OCCASIONS: Record<string, Record<string, number>> = {
-  kulu: { einschulung: 20, halloween: 10, advent: 14, nikolaus: 8, weihnachten: 12, valentinstag: 8, ostern: 10, muttertag: 8, vatertag: 6, superbowl: 6, "4th-july": 6, thanksgiving: 6, "black-friday": 8, karneval: 6 },
+  grulu: { einschulung: 20, halloween: 10, advent: 14, nikolaus: 8, weihnachten: 12, valentinstag: 8, ostern: 10, muttertag: 8, vatertag: 6, superbowl: 6, "4th-july": 6, thanksgiving: 6, "black-friday": 8, karneval: 6 },
   zeitlux: { weihnachten: 12, "black-friday": 8, vatertag: 8, valentinstag: 6, muttertag: 6 },
 };

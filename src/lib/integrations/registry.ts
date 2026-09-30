@@ -150,6 +150,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "keepa",
+    name: "Keepa (Amazon-Marktdaten)",
+    purpose: "Für Ideen und Kalkulationen: ähnliche Produkte auf amazon.de mit Preis, FBA-Gebühr, Provision und Verkäufen im Monat. Auch für Amazon-Bilder im eBay-Tool.",
+    fields: [{ key: "apiKey", label: "Keepa-API-Schlüssel", secret: true, help: "Leer lassen, wenn er schon im eBay-Tool (Einstellungen → Bildquellen) steht – dann wird der genommen." }],
+    setup: ["keepa.com → Anmelden → API (Datenzugriff) buchen → „API Key“ kopieren und hier eintragen, „Verbindung testen“ zeigt die verfügbaren Tokens."],
+  },
+  {
     provider: "discord",
     name: "Discord (Meldungen) – optional",
     purpose: "Neue Amazon-ToDos mit hoher Priorität sofort in einen Discord-Kanal melden.",

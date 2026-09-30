@@ -7,7 +7,10 @@ import { CONTENT_STATUS_LABEL, IDEA_STATUS_LABEL } from "@/lib/brands/ai";
 import { OCCASIONS, occasionByKey } from "@/lib/brands/occasions";
 import { formatEuro } from "@/lib/numbers";
 import { checklistAction, deleteIdeaAction, setIdeaStatusAction } from "../../actions";
-import { SaveForm, SuggestContent } from "../../forms";
+import { MarketForms, SaveForm, SuggestContent } from "../../forms";
+import { calcProfit, summarizeMarket } from "@/lib/brands/market";
+
+const pct = (n: number) => `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`;
 
 const NEXT: Record<string, [string, string][]> = {
   idea: [["review", "Prüfen"], ["planned", "Umsetzen (geplant)"], ["rejected", "Verwerfen"]],
@@ -32,13 +35,18 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
   const { idea: i, brand: b } = row;
   const posts = await db.select().from(schema.contentPosts).where(and(eq(schema.contentPosts.tenantId, t), eq(schema.contentPosts.ideaId, i.id))).orderBy(desc(schema.contentPosts.createdAt));
   const [label, cls] = IDEA_STATUS_LABEL[i.status];
-  const vk = i.targetPrice ? Number(i.targetPrice) : null;
+  const market = i.market ?? null;
+  const summary = market ? summarizeMarket(market.products) : null;
   const ek = i.costEstimate ? Number(i.costEstimate) : null;
-  // Grobe Kalkulation: Netto-VK (19 % bzw. 7 % bei Lebensmitteln), ca. 15 % Marktplatzgebühr, Versand/Verpackung pauschal.
-  const vat = i.kind === "box" && /kulu/i.test(b.name) ? 0.07 : 0.19;
-  const netVk = vk ? vk / (1 + vat) : null;
-  const fees = vk ? vk * 0.15 : null;
-  const profit = netVk !== null && ek !== null && fees !== null ? netVk - ek - fees - 4.5 : null;
+  // Ohne eigenen Preis: Median der Vergleichsprodukte.
+  const vk = i.targetPrice ? Number(i.targetPrice) : (summary?.price ?? null);
+  const vatRate = Number(b.vatRate);
+  const calc = vk
+    ? {
+        fba: calcProfit({ price: vk, cost: ek, vatRate, referralPct: summary?.referralPct, fbaFee: summary?.fbaFee }, "fba"),
+        fbm: calcProfit({ price: vk, cost: ek, vatRate, referralPct: summary?.referralPct, fbmShipping: 4.5 }, "fbm"),
+      }
+    : null;
   const done = i.checklist.filter((c) => c.done).length;
 
   return (
@@ -80,6 +88,39 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
           </section>
 
           <section className="card card-pad stack">
+            <h2>Markt: ähnliche Produkte auf Amazon</h2>
+            <MarketForms ideaId={i.id} term={market?.source === "keepa" ? market.term : i.title.replace(/[„“"]/g, "")} />
+            {summary && market && (
+              <>
+                <div className="grid-kpi" style={{ gap: 10 }}>
+                  <div className="card card-pad"><div className="small muted">Preis (Median)</div><div className="num" style={{ fontSize: 20, fontWeight: 600 }}>{summary.price ? formatEuro(summary.price) : "–"}</div><div className="small muted">{summary.priceLow && summary.priceHigh ? `meist ${formatEuro(summary.priceLow)}–${formatEuro(summary.priceHigh)}` : ""}</div></div>
+                  <div className="card card-pad"><div className="small muted">FBA-Gebühr</div><div className="num" style={{ fontSize: 20, fontWeight: 600 }}>{summary.fbaFee ? formatEuro(summary.fbaFee) : "–"}</div></div>
+                  <div className="card card-pad"><div className="small muted">Provision</div><div className="num" style={{ fontSize: 20, fontWeight: 600 }}>{summary.referralPct ? `${summary.referralPct} %` : "–"}</div></div>
+                  <div className="card card-pad"><div className="small muted">Verkäufe / Monat (alle)</div><div className="num" style={{ fontSize: 20, fontWeight: 600 }}>{summary.monthlySold ?? "–"}</div></div>
+                </div>
+                <div style={{ overflow: "auto" }}>
+                  <table className="table" style={{ fontSize: 13 }}>
+                    <thead><tr><th>Produkt</th><th className="right">Preis</th><th className="right">FBA</th><th className="right">Verk./Monat</th><th className="right">Rang</th><th className="right">Bew.</th></tr></thead>
+                    <tbody>
+                      {market.products.slice(0, 15).map((p) => (
+                        <tr key={p.asin}>
+                          <td style={{ maxWidth: 360 }}><a href={`https://www.amazon.de/dp/${p.asin}`} target="_blank" rel="noopener">{p.title}</a><div className="small muted num">{p.asin}</div></td>
+                          <td className="num right">{p.price ? formatEuro(p.price) : "–"}</td>
+                          <td className="num right">{p.fbaFee ? formatEuro(p.fbaFee) : "–"}</td>
+                          <td className="num right">{p.monthlySold ?? "–"}</td>
+                          <td className="num right">{p.salesRank?.toLocaleString("de-DE") ?? "–"}</td>
+                          <td className="num right">{p.reviews?.toLocaleString("de-DE") ?? "–"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="small muted">Quelle: {market.source === "keepa" ? `Keepa, Suche „${market.term}“` : `Helium 10 (${market.term})`} · {new Date(market.fetchedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</div>
+              </>
+            )}
+          </section>
+
+          <section className="card card-pad stack">
             <h2>Video-Ideen zu dieser {i.kind === "product" ? "Produktidee" : "Box"}</h2>
             <SuggestContent brandId={b.id} ideaId={i.id} />
             {posts.length === 0 && <div className="small muted">Noch keine. Die KI schreibt Hook, Ablauf, Szenen, Caption und Hashtags – drehen mit dem Handy.</div>}
@@ -112,16 +153,24 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
             <Link className="small" href="/einkauf">→ Ware im Einkauf bestellen</Link>
           </section>
 
-          {(vk || ek) && (
+          {calc && vk && (
             <section className="card card-pad stack small">
-              <h2>Grobe Kalkulation</h2>
-              <div className="between"><span>VK brutto</span><span className="num">{vk ? formatEuro(vk) : "–"}</span></div>
-              <div className="between"><span>VK netto ({Math.round(vat * 100)} % USt)</span><span className="num">{netVk ? formatEuro(netVk) : "–"}</span></div>
-              <div className="between"><span>Einkauf netto</span><span className="num">{ek ? formatEuro(-ek) : "–"}</span></div>
-              <div className="between"><span>Gebühren ca. 15 %</span><span className="num">{fees ? formatEuro(-fees) : "–"}</span></div>
-              <div className="between"><span>Versand/Verpackung pauschal</span><span className="num">{formatEuro(-4.5)}</span></div>
-              <div className="between" style={{ borderTop: "1px solid var(--border)", paddingTop: 6, fontWeight: 600 }}><span>Gewinn je Stück ca.</span><span className="num" style={{ color: profit !== null && profit < 0 ? "var(--danger)" : undefined }}>{profit !== null ? formatEuro(profit) : "–"}</span></div>
-              <div className="muted">Nur zur Orientierung – genaue Werte nach Einkauf unter Gewinn.</div>
+              <h2>Kalkulation je Stück</h2>
+              <table className="table" style={{ fontSize: 13 }}>
+                <thead><tr><th></th><th className="right">FBA</th><th className="right">FBM</th></tr></thead>
+                <tbody>
+                  <tr><td>VK brutto{!i.targetPrice && summary?.price ? " (Markt)" : ""}</td><td className="num right" colSpan={2}>{formatEuro(vk)}</td></tr>
+                  <tr><td>VK netto ({vatRate} % USt)</td><td className="num right" colSpan={2}>{formatEuro(calc.fba.netPrice)}</td></tr>
+                  <tr><td>Einkauf netto</td><td className="num right" colSpan={2}>{ek ? formatEuro(-ek) : "–"}</td></tr>
+                  <tr><td>Provision {summary?.referralPct ? `${summary.referralPct} %` : "ca. 15 %"}</td><td className="num right" colSpan={2}>{formatEuro(-calc.fba.referral)}</td></tr>
+                  <tr><td>{summary?.fbaFee ? "FBA-Gebühr (Markt) / Versand" : "FBA-Gebühr / Versand (Schätzung)"}</td><td className="num right">{formatEuro(-calc.fba.fulfilment)}</td><td className="num right">{formatEuro(-calc.fbm.fulfilment)}</td></tr>
+                  <tr style={{ fontWeight: 600 }}><td>Gewinn</td>
+                    <td className="num right" style={{ color: calc.fba.profit < 0 ? "var(--danger)" : undefined }}>{formatEuro(calc.fba.profit)}</td>
+                    <td className="num right" style={{ color: calc.fbm.profit < 0 ? "var(--danger)" : undefined }}>{formatEuro(calc.fbm.profit)}</td></tr>
+                  <tr><td>Marge / ROI</td><td className="num right">{pct(calc.fba.margin)}{calc.fba.roi !== null ? ` / ${pct(calc.fba.roi)}` : ""}</td><td className="num right">{pct(calc.fbm.margin)}{calc.fbm.roi !== null ? ` / ${pct(calc.fbm.roi)}` : ""}</td></tr>
+                </tbody>
+              </table>
+              <div className="muted">{summary ? `Gebühren aus ${summary.count} Vergleichsprodukten (Median).` : "Mit Vergleichsprodukten (Keepa) werden FBA-Gebühr und Provision genauer."} Ohne Lagergebühren und Werbung.</div>
             </section>
           )}
 

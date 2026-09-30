@@ -1,7 +1,7 @@
 import { date, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, updatedAt, users } from "./core";
 
-// Eigene Marken (z. B. Kulu: Schultüten, US-Süßigkeiten, Themenboxen · Zeitlux: Uhren-Zubehör),
+// Eigene Marken (z. B. Grulu: Schultüten, US-Süßigkeiten, Themenboxen · Zeitlux: Uhren-Zubehör),
 // Ideen bis zum Launch und Content-Planung (TikTok, YouTube, Instagram).
 
 export const brands = pgTable(
@@ -23,6 +23,8 @@ export const brands = pgTable(
     /** Suchbegriffe für aktuelle Trends (Google News), eine pro Zeile. */
     trendTopics: text("trend_topics"),
     color: text("color"),
+    /** Umsatzsteuer der Produkte in Prozent (Lebensmittel 7, sonst 19) – für die Kalkulation. */
+    vatRate: numeric("vat_rate", { precision: 5, scale: 2 }).notNull().default("19"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -33,6 +35,9 @@ export const IDEA_STATUSES = ["idea", "review", "planned", "in_progress", "live"
 export const IDEA_KINDS = ["box", "product", "other"] as const;
 
 export type ChecklistItem = { text: string; done: boolean };
+
+export type MarketProduct = { asin: string; title: string; price: number | null; fbaFee: number | null; referralPct: number | null; monthlySold: number | null; salesRank: number | null; reviews: number | null };
+export type MarketData = { source: "keepa" | "helium10"; term: string; fetchedAt: string; products: MarketProduct[] };
 
 export const ideas = pgTable(
   "ideas",
@@ -57,6 +62,8 @@ export const ideas = pgTable(
     status: text("status", { enum: IDEA_STATUSES }).notNull().default("idea"),
     launchDate: date("launch_date", { mode: "string" }),
     checklist: jsonb("checklist").$type<ChecklistItem[]>().notNull().default([]),
+    /** Vergleichsprodukte (Keepa oder Helium-10-Export) für die Kalkulation. */
+    market: jsonb("market").$type<MarketData | null>(),
     notes: text("notes"),
     source: text("source", { enum: ["ai", "manual"] }).notNull().default("manual"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),

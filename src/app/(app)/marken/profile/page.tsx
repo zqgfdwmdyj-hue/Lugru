@@ -29,6 +29,10 @@ export default async function ProfilePage() {
                   <div className="field"><label className="label">Preisrahmen</label><input className="input" name="priceRange" defaultValue={b.priceRange ?? ""} /></div>
                   <div className="field"><label className="label">Tonalität</label><input className="input" name="tone" defaultValue={b.tone ?? ""} /></div>
                 </div>
+                <div className="field"><label className="label">Umsatzsteuer der Produkte</label>
+                  <select className="input" name="vatRate" defaultValue={String(Number(b.vatRate))} style={{ width: "auto" }}>
+                    <option value="7">7 % (Lebensmittel, Süßigkeiten)</option><option value="19">19 % (Standard)</option><option value="0">0 %</option>
+                  </select></div>
                 <div className="field"><label className="label">Links (Shop, TikTok, YouTube, Instagram) – einer pro Zeile</label><textarea className="textarea" name="links" defaultValue={b.links ?? ""} style={{ minHeight: 70, fontFamily: "var(--mono)", fontSize: 12 }} /></div>
                 {b.links && (
                   <div className="small" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

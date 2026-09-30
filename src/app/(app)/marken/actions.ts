@@ -172,6 +172,7 @@ export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<
       tone: str(fd, "tone") || null,
       links: str(fd, "links") || null,
       trendTopics: str(fd, "trendTopics") || null,
+      vatRate: ["0", "7", "19"].includes(str(fd, "vatRate")) ? str(fd, "vatRate") : "19",
       occasions,
       updatedAt: new Date(),
     })
@@ -187,4 +188,50 @@ export async function createBrandAction(fd: FormData) {
   if (!name) return;
   await db.insert(schema.brands).values({ tenantId: s.tenantId, name }).onConflictDoNothing();
   revalidatePath("/marken", "layout");
+}
+
+export async function marketKeepaAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  await ownIdea(s.tenantId, id);
+  const term = str(fd, "term");
+  if (term.length < 3) return { ok: false, message: "Bitte einen Suchbegriff eingeben, z. B. „Halloween Süßigkeiten Box“." };
+  const { keepaKey, keepaSearch } = await import("@/lib/integrations/clients/keepa");
+  const key = await keepaKey(s.tenantId);
+  if (!key) return { ok: false, message: "Kein Keepa-Schlüssel – unter Anbindungen → Keepa eintragen (oder im eBay-Tool unter Bildquellen)." };
+  try {
+    const r = await keepaSearch(key, term);
+    if (!r.products.length) return { ok: false, message: `Keepa hat zu „${term}“ nichts gefunden – anderen Begriff versuchen.` };
+    await db
+      .update(schema.ideas)
+      .set({ market: { source: "keepa", term, fetchedAt: new Date().toISOString(), products: r.products.slice(0, 30) }, updatedAt: new Date() })
+      .where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+    revalidatePath(`/marken/ideen/${id}`);
+    return { ok: true, message: `${r.products.length} Vergleichsprodukte geladen${r.tokensLeft !== null ? ` · noch ${r.tokensLeft} Keepa-Tokens` : ""}.` };
+  } catch (e) {
+    return { ok: false, message: msg(e) };
+  }
+}
+
+export async function marketHelium10Action(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  await ownIdea(s.tenantId, id);
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Bitte den Xray-Export (CSV oder Excel) auswählen." };
+  try {
+    const { readTable } = await import("@/lib/tabular");
+    const { parseHelium10 } = await import("@/lib/brands/market");
+    const t = readTable(new Uint8Array(await file.arrayBuffer()));
+    const products = parseHelium10([t.headers, ...t.rows]);
+    if (!products.length) return { ok: false, message: "In der Datei wurden keine Produkte mit ASIN gefunden." };
+    await db
+      .update(schema.ideas)
+      .set({ market: { source: "helium10", term: file.name, fetchedAt: new Date().toISOString(), products }, updatedAt: new Date() })
+      .where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+    revalidatePath(`/marken/ideen/${id}`);
+    return { ok: true, message: `${products.length} Produkte aus Helium 10 übernommen.` };
+  } catch (e) {
+    return { ok: false, message: msg(e) };
+  }
 }

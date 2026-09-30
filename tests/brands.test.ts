@@ -33,7 +33,7 @@ describe("KI für Marken", () => {
     const r = parseIdeas(text);
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ title: "Gruselbox „Monster-Snacks“", kind: "box", targetPrice: 29.99, costEstimate: 11, contents: ["Candy Corn", "Reese’s Pumpkins"] });
-    const p = ideasPrompt({ brand: { name: "Kulu", description: "Schultüten", audience: null, priceRange: null, tone: null }, occasion: { name: "Halloween", date: "2026-10-31" }, existing: ["Alte Idee"], trends: ["Dubai-Schokolade boomt"], count: 5 });
+    const p = ideasPrompt({ brand: { name: "Grulu", description: "Schultüten", audience: null, priceRange: null, tone: null }, occasion: { name: "Halloween", date: "2026-10-31" }, existing: ["Alte Idee"], trends: ["Dubai-Schokolade boomt"], count: 5 });
     expect(p).toContain("Halloween am 2026-10-31");
     expect(p).toContain("- Alte Idee");
     expect(p).toContain("Dubai-Schokolade");
@@ -44,5 +44,36 @@ describe("KI für Marken", () => {
     const r = parseContent('[{"format":"Unboxing","hook":"Das hier gibt es in Deutschland fast nicht!","skript":"…","szenen":["Box auf Tisch","Öffnen"],"caption":"Welche zuerst?","hashtags":"#americancandy #kulu","sound":"Trend-Sound"},{"hook":""}]');
     expect(r).toEqual([{ format: "Unboxing", hook: "Das hier gibt es in Deutschland fast nicht!", script: "…", shots: ["Box auf Tisch", "Öffnen"], caption: "Welche zuerst?", hashtags: "#americancandy #kulu", soundIdea: "Trend-Sound" }]);
     expect(checklistFor("product").some((c) => /YouTube/.test(c.text))).toBe(true);
+  });
+});
+
+describe("Marktdaten", () => {
+  it("liest Keepa-Produkte (Preise in Cent, -1 = keine Angabe)", async () => {
+    const { parseKeepaProduct } = await import("@/lib/brands/market");
+    const cur = Array(20).fill(-1);
+    cur[1] = 2499; cur[3] = 1520; cur[17] = 312; cur[18] = 2599;
+    expect(parseKeepaProduct({ asin: "B0TEST0001", title: "Halloween Candy Box", stats: { current: cur }, fbaFees: { pickAndPackFee: 385 }, referralFeePercentage: 15, monthlySold: 200 })).toEqual({
+      asin: "B0TEST0001", title: "Halloween Candy Box", price: 25.99, fbaFee: 3.85, referralPct: 15, monthlySold: 200, salesRank: 1520, reviews: 312,
+    });
+    const avg = Array(20).fill(-1);
+    avg[1] = 1999;
+    expect(parseKeepaProduct({ asin: "B0TEST0002", stats: { current: Array(20).fill(-1), avg90: avg } })).toMatchObject({ price: 19.99, fbaFee: null, monthlySold: null });
+  });
+
+  it("liest einen Helium-10-Xray-Export mit erkannten Spalten", async () => {
+    const { parseHelium10 } = await import("@/lib/brands/market");
+    const rows = [["#", "Product Details", "ASIN", "Brand", "Price  €", "ASIN Sales", "BSR", "Review Count", "FBA Fees"], ["1", "US Candy Box XL", "B0TEST0003", "X", "29,99", "1.250", "830", "4.100", "4,12"], ["2", "Summe", "", "", "", "", "", "", ""]];
+    expect(parseHelium10(rows)).toEqual([{ asin: "B0TEST0003", title: "US Candy Box XL", price: 29.99, fbaFee: 4.12, referralPct: null, monthlySold: 1250, salesRank: 830, reviews: 4100 }]);
+    expect(() => parseHelium10([["Titel", "Preis"]])).toThrow(/ASIN/);
+  });
+
+  it("fasst zusammen und rechnet FBA und FBM", async () => {
+    const { summarizeMarket, calcProfit } = await import("@/lib/brands/market");
+    const p = (price: number | null, fbaFee: number | null, monthlySold: number | null) => ({ asin: "B0TEST0000", title: "", price, fbaFee, referralPct: 15, monthlySold, salesRank: null, reviews: null });
+    const s = summarizeMarket([p(20, 3, 100), p(30, 4, null), p(25, 5, 50), p(40, null, 10)]);
+    expect(s).toMatchObject({ count: 4, price: 27.5, priceLow: 20, priceHigh: 30, fbaFee: 4, referralPct: 15, monthlySold: 160 });
+    const fba = calcProfit({ price: 29.99, cost: 11.5, vatRate: 7, referralPct: 15, fbaFee: 4 }, "fba");
+    expect(fba).toMatchObject({ netPrice: 28.03, referral: 4.5, fulfilment: 4, profit: 8.03 });
+    expect(calcProfit({ price: 29.99, cost: 11.5, vatRate: 7, fbmShipping: 5.49 }, "fbm").profit).toBe(6.54);
   });
 });

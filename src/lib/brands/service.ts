@@ -25,12 +25,13 @@ export async function ensureDefaultBrands(tenantId: string) {
     .values([
       {
         tenantId,
-        name: "Kulu",
+        name: "Grulu",
         description: "Schultüten (gefüllt und ungefüllt), amerikanische Süßigkeiten und Themenboxen zu Anlässen wie Halloween, Weihnachten, Ostern, Einschulung.",
         audience: "Eltern und Großeltern (Einschulung, Geschenke), Jugendliche und junge Erwachsene (US-Candy, Trends)",
         priceRange: "15–50 €",
         tone: "bunt, verspielt, überraschend, familienfreundlich",
-        occasions: DEFAULT_OCCASIONS.kulu,
+        occasions: DEFAULT_OCCASIONS.grulu,
+        vatRate: "7",
         trendTopics: "amerikanische Süßigkeiten Trend\nSüßigkeiten TikTok Trend\nSchultüte Trend\nSnack Box Geschenk",
         color: "#F59E0B",
       },
@@ -87,7 +88,7 @@ export async function generateIdeas(tenantId: string, userId: string | null, bra
   const upcoming = occ ? upcomingOccasions(todayIso(), { [occ.key]: b.occasions[occ.key] ?? occ.leadWeeks })[0] : null;
   const existing = (await db.select({ title: I.title }).from(I).where(and(eq(I.tenantId, tenantId), eq(I.brandId, b.id)))).map((r) => r.title);
   const topics = (b.trendTopics ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-  if (occ) topics.unshift(`${occ.name} ${b.name === "Kulu" ? "Süßigkeiten" : ""} Trend`.replace(/\s+/g, " ").trim());
+  if (occ) topics.unshift(`${occ.name} ${topics[0] ?? b.name}`.replace(/\bTrend\b/gi, "").replace(/\s+/g, " ").trim() + " Trend");
   const trends = await trendHeadlines(topics);
   const r = await askClaude(key, ideasPrompt({ brand: b as BrandProfile, occasion: upcoming ? { name: upcoming.name, date: upcoming.date } : null, existing, trends, count: opts.count ?? 5, wish: opts.wish }), { model, maxTokens: 4000 });
   const drafts = parseIdeas(r.text);
