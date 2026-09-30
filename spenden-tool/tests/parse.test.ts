@@ -36,3 +36,27 @@ describe("Bildprüfung", () => {
     expect(looksLikeImage(new TextEncoder().encode("hallo"))).toBe(false);
   });
 });
+
+describe("KI-Antwort tolerant", () => {
+  it("sortiert kaputte Angebote aus und liest Preise als Text", async () => {
+    const { parseResearch } = await import("@/lib/price-research");
+    const r = parseResearch('{"name":"Kaugummi","offers":[{"shop":"dm","title":"x","price":"1,49 €","url":"https://dm.de/a"},{"shop":"B","price":2,"url":"kein link"},{"shop":"C"}]}');
+    expect(r.offers).toEqual([{ shop: "dm", title: "x", price: 1.49, url: "https://dm.de/a" }]);
+    expect(parseResearch('```json\n{"name":"X","offers":null}\n```').offers).toEqual([]);
+  });
+});
+
+describe("Kameranamen", () => {
+  it("iPhone-UUIDs und Kameranamen gelten als ohne Namen", async () => {
+    const { isPlaceholderName, nameFromFilename } = await import("@/lib/layout");
+    expect(nameFromFilename("21B33D03-B668-4E79-AB60-841D27E9D8BC.jpeg")).toBe("");
+    expect(nameFromFilename("IMG_E1234.HEIC")).toBe("");
+    expect(nameFromFilename("20260930_101112.jpg")).toBe("");
+    expect(nameFromFilename("Bildschirmfoto 2026-09-30 um 10.11.12.png")).toBe("");
+    expect(nameFromFilename("kimchi-organics.jpg")).toBe("Kimchi organics");
+    expect(isPlaceholderName("21b33d03 b668 4e79 ab60 841d27e9d8bc")).toBe(true);
+    expect(isPlaceholderName("Neues Produkt")).toBe(true);
+    expect(isPlaceholderName("Kaugummi")).toBe(false);
+    expect(isPlaceholderName("7Up")).toBe(false);
+  });
+});

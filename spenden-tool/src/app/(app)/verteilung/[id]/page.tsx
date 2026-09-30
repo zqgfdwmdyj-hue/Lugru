@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
 import { CopyButton } from "@/components/copy-button";
-import { eventDateLabel, flyerSections, messengerText } from "@/lib/layout";
+import { eventDateLabel, flyerSections, isPlaceholderName, messengerText } from "@/lib/layout";
 import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, productPicker } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -31,7 +31,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   const text = messengerText({ ...event, dateLabel: eventDateLabel(event.eventDate) }, sections);
   const missingPrice = rows.filter((r) => r.item.price === null).length;
   const missingImage = rows.filter((r) => r.item.inCollage && !r.product.imageFileId).length;
-  const unnamed = rows.filter((r) => r.product.name === "Neues Produkt").length;
+  const unnamed = rows.filter((r) => isPlaceholderName(r.product.name)).length;
   const checks = await latestPriceChecks(rows.map((r) => r.product.id));
   const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running");
   const ai = aiConfigured();
@@ -86,7 +86,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                       </Link>
                     </td>
                     <td style={{ minWidth: 150 }}>
-                      <input className="input input-compact" name={`name_${product.id}`} defaultValue={product.name === "Neues Produkt" ? "" : product.name} placeholder="Name eintragen" aria-label="Name" />
+                      <input className="input input-compact" name={`name_${product.id}`} defaultValue={isPlaceholderName(product.name) ? "" : product.name} placeholder="Name eintragen" aria-label="Name" />
                       <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
                         <input className="input input-compact" name={`variant_${product.id}`} defaultValue={product.variant ?? ""} placeholder="Variante (z. B. 5kg)" aria-label="Variante" />
                         <input className="input input-compact" name={`cat_${product.id}`} defaultValue={product.category} list="spenden-kategorien" aria-label="Kategorie" />

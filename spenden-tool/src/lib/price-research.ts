@@ -3,8 +3,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { DONATION_CATEGORIES } from "@/lib/layout";
+import { DONATION_CATEGORIES, isPlaceholderName } from "@/lib/layout";
 import { suggestDonationPrice } from "@/lib/pricing";
+import { parseAmount } from "@/lib/numbers";
 import { AI_MODE_INFO, type AiMode, isAiMode } from "@/lib/ai-modes";
 
 // KI-Preisrecherche: Claude erkennt das Produkt auf dem Foto und sucht im Internet,
@@ -16,21 +17,24 @@ export function aiConfigured() {
   return !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 }
 
+const Offer = z.object({
+  shop: z.string().min(1),
+  title: z.string().default(""),
+  // „1,49“, „1.49 €“ oder 1.49 – alles wird zur Zahl
+  price: z.preprocess((v) => (typeof v === "string" ? parseAmount(v) : v), z.number().positive()),
+  unit: z.string().nullish(),
+  url: z.string().url(),
+});
+
 const Result = z.object({
   name: z.string().min(1),
   variant: z.string().nullish(),
   category: z.string().nullish(),
+  // Einzelne fehlerhafte Angebote werden aussortiert statt das ganze Ergebnis zu verwerfen.
   offers: z
-    .array(
-      z.object({
-        shop: z.string(),
-        title: z.string(),
-        price: z.number().positive(),
-        unit: z.string().nullish(),
-        url: z.string().url(),
-      }),
-    )
-    .default([]),
+    .array(z.unknown())
+    .nullish()
+    .transform((list) => (list ?? []).flatMap((o) => { const r = Offer.safeParse(o); return r.success ? [r.data] : []; })),
   summary: z.string().nullish(),
 });
 export type ResearchResult = z.infer<typeof Result>;
@@ -72,7 +76,7 @@ const LOCATION = { type: "approximate" as const, country: "DE", timezone: "Europ
 async function research(mode: AiMode, product: { name: string; variant: string | null }, image: { mimeType: string; data: Buffer } | null) {
   const client = new Anthropic();
   const info = AI_MODE_INFO[mode];
-  const known = product.name && product.name !== "Neues Produkt" ? `Bekannt: ${product.name}${product.variant ? ` (${product.variant})` : ""}.` : "Name noch unbekannt.";
+  const known = !isPlaceholderName(product.name) ? `Bekannt: ${product.name}${product.variant ? ` (${product.variant})` : ""}.` : "Name noch unbekannt.";
   if (mode === "erkennen" && !image) throw new Error("Zum Erkennen wird ein Foto gebraucht.");
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (image) {
@@ -101,7 +105,7 @@ async function research(mode: AiMode, product: { name: string; variant: string |
         }
       : {
           model: info.model,
-          max_tokens: 4000,
+          max_tokens: 8000,
           system: mode === "erkennen" ? RECOGNIZE_SYSTEM : SYSTEM,
           ...(mode === "sparsam" ? { tools: [{ type: "web_search_20250305" as const, name: "web_search" as const, max_uses: info.searches, user_location: LOCATION }] } : {}),
           messages: [],
@@ -117,6 +121,7 @@ async function research(mode: AiMode, product: { name: string; variant: string |
     outputTokens += response.usage.output_tokens;
     searches += response.usage.server_tool_use?.web_search_requests ?? 0;
     if (response.stop_reason === "refusal") throw new Error("Die KI hat die Anfrage abgelehnt.");
+    if (response.stop_reason === "max_tokens") throw new Error("Antwort der KI war zu lang – bitte „genau“ versuchen.");
     if (response.stop_reason === "pause_turn") {
       // Suche läuft noch – dieselbe Unterhaltung erneut senden, der Server macht weiter.
       messages.splice(1, messages.length - 1, { role: "assistant", content: response.content });
@@ -156,7 +161,7 @@ async function runOne(checkId: string) {
       })
       .where(eq(C.id, checkId));
     // Noch namenlose Produkte (nach dem Foto-Upload) bekommen den erkannten Namen direkt.
-    if (product.name === "Neues Produkt") {
+    if (isPlaceholderName(product.name)) {
       await db
         .update(schema.products)
         .set({

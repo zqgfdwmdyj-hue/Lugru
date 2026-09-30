@@ -164,9 +164,28 @@ export function messengerText(event: { title: string; subtitle?: string | null; 
   return out.join("\n");
 }
 
-/** Aus einem Dateinamen wie „IMG_1234.jpg“ oder „kimchi-organics.jpeg“ einen Produktnamen raten. */
+export const PLACEHOLDER_NAME = "Neues Produkt";
+
+/** Kamera- oder Systemnamen, die nichts über das Produkt sagen (IMG_1234, UUIDs vom iPhone, Zeitstempel …). */
+function isCameraName(base: string): boolean {
+  const compact = base.replace(/[\s_.-]+/g, "");
+  if (/^[0-9a-f]{16,}$/i.test(compact) && /\d/.test(compact)) return true; // z. B. 21B33D03-B668-4E79-…
+  if (/^\d+$/.test(compact)) return true; // nur Ziffern / Zeitstempel
+  if (/^(img|image|photo|foto|bild|dsc|dscn|dcim|pxl|mvimg)[\s\d._e-]*$/i.test(base)) return true;
+  if (/^(whatsapp|signal|telegram) (image|bild|foto)/i.test(base)) return true;
+  if (/^(screenshot|bildschirmfoto)\b/i.test(base)) return true;
+  return false;
+}
+
+/** Aus einem Dateinamen wie „kimchi-organics.jpeg“ einen Produktnamen raten – leer, wenn es ein Kameraname ist. */
 export function nameFromFilename(filename: string): string {
   const base = filename.replace(/\.[a-z0-9]{2,5}$/i, "").replace(/[_-]+/g, " ").trim();
-  if (!base || /^(img|image|photo|foto|dsc|pxl)[\s\d.]*$/i.test(base) || /^whatsapp (image|bild)/i.test(base)) return "";
+  if (!base || isCameraName(base)) return "";
   return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+/** Hat das Produkt noch keinen echten Namen? (Platzhalter oder ein früher übernommener Kameraname) */
+export function isPlaceholderName(name: string | null | undefined): boolean {
+  const n = (name ?? "").trim();
+  return !n || n === PLACEHOLDER_NAME || isCameraName(n);
 }

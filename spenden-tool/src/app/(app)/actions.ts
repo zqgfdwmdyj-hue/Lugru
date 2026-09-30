@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
-import { collageSettings, nameFromFilename } from "@/lib/layout";
+import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME } from "@/lib/layout";
 import { addProductsToEvent, loadEvent, productByImage, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -194,7 +194,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     }
     const [p] = await db
       .insert(P)
-      .values({ name: nameFromFilename(file.name) || "Neues Produkt", category, imageFileId: fileId })
+      .values({ name: nameFromFilename(file.name) || PLACEHOLDER_NAME, category, imageFileId: fileId })
       .returning({ id: P.id });
     ids.push(p.id);
     result.added++;
@@ -312,7 +312,7 @@ export async function researchEvent(fd: FormData) {
   const rows = await db.select({ productId: I.productId, price: I.price, name: P.name }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.eventId, eventId)).orderBy(I.sort);
   const mode = stufe(fd);
   const all = fd.get("umfang") === "alle";
-  const wanted = rows.filter((r) => all || (mode === "erkennen" ? r.name === "Neues Produkt" : r.price === null || r.name === "Neues Produkt"));
+  const wanted = rows.filter((r) => all || (mode === "erkennen" ? isPlaceholderName(r.name) : r.price === null || isPlaceholderName(r.name)));
   await startChecks(wanted.map((r) => r.productId), mode, { skipRecent: true });
   revalidatePath(`/verteilung/${eventId}`);
 }
