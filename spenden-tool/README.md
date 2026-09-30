@@ -38,9 +38,18 @@ Siehe [deploy/README.md](deploy/README.md): eigener Ordner, eigene Container und
 2. Den Schlüssel in der `.env` als `ANTHROPIC_API_KEY=` eintragen und mit
    `docker compose up -d` neu starten.
 
-Kosten: je Produkt grob 10 bis 25 Cent, je nach Anzahl der Suchen (Modell Claude Opus 5.5 mit Websuche). Die ungefähren Kosten
-jeder Recherche stehen auf der Produktseite. Ohne Schlüssel funktioniert alles andere normal, nur die
-KI-Knöpfe sind dann aus.
+Drei Stufen, jeweils beim Start wählbar:
+
+| Stufe | Was passiert | Kosten je Produkt (Schätzung) |
+|---|---|---|
+| Nur Namen erkennen | Claude Haiku liest das Foto, keine Websuche | deutlich unter 1 Cent |
+| Preis suchen – sparsam (Standard) | Claude Haiku, höchstens 2 Websuchen | etwa 3–6 Cent |
+| Preis suchen – genau | Claude Sonnet, bis zu 4 Websuchen | etwa 10–20 Cent |
+
+Die tatsächlichen Kosten jeder Recherche stehen auf der Produktseite, die Summe je Verteilung auf der
+Verteilungsseite. Produkte mit einem Ergebnis aus den letzten 60 Tagen werden beim Sammelstart übersprungen –
+wiederkehrende Produkte kosten also nur einmal. Die Standard-Stufe lässt sich mit `KI_MODUS` in der `.env` ändern.
+Ohne Schlüssel funktioniert alles andere normal, nur die KI-Knöpfe sind dann aus.
 
 ## Entwicklung
 

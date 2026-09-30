@@ -109,6 +109,8 @@ export const priceChecks = pgTable(
     id: id(),
     productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
     status: text("status", { enum: PRICE_CHECK_STATUSES }).notNull().default("pending"),
+    /** erkennen | sparsam | genau – siehe src/lib/ai-modes.ts */
+    mode: text("mode").notNull().default("genau"),
     /** Was die KI auf dem Foto erkannt hat. */
     recognizedName: text("recognized_name"),
     recognizedVariant: text("recognized_variant"),

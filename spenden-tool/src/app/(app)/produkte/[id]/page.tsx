@@ -6,7 +6,7 @@ import { requireLogin } from "@/lib/auth";
 import { knownCategories, latestPriceChecks, productHistory } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { PriceCheckBox } from "@/components/price-check";
+import { AiModeSelect, PriceCheckBox } from "@/components/price-check";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
@@ -51,8 +51,9 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
               ) : (
                 <>
                   <div className="small muted">Die KI erkennt das Produkt auf dem Foto und sucht den günstigsten aktuellen Preis bei deutschen Händlern.</div>
-                  <form action={researchProduct}>
+                  <form action={researchProduct} className="stack" style={{ gap: 6 }}>
                     <input type="hidden" name="productId" value={id} />
+                    <AiModeSelect compact />
                     <button className="btn btn-small" type="submit" disabled={busy}>{check ? "Neu recherchieren" : "Preis recherchieren"}</button>
                   </form>
                 </>

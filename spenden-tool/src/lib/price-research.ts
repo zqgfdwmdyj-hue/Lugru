@@ -5,11 +5,11 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { DONATION_CATEGORIES } from "@/lib/layout";
 import { suggestDonationPrice } from "@/lib/pricing";
+import { AI_MODE_INFO, type AiMode, isAiMode } from "@/lib/ai-modes";
 
 // KI-Preisrecherche: Claude erkennt das Produkt auf dem Foto und sucht im Internet,
 // was es aktuell im deutschen Handel kostet. Läuft im Hintergrund (siehe startPriceChecks).
 
-const MODEL = "claude-opus-5-5";
 const C = schema.priceChecks;
 
 export function aiConfigured() {
@@ -62,31 +62,57 @@ export function parseResearch(text: string): ResearchResult {
   return data;
 }
 
-async function research(product: { name: string; variant: string | null }, image: { mimeType: string; data: Buffer } | null) {
+const RECOGNIZE_SYSTEM = `Du hilfst einer ehrenamtlichen Foodsharing-Gruppe in Deutschland. Erkenne das Produkt auf dem Foto: Marke, Produktname, Sorte, Packungsgröße. Keine Preissuche.
+
+Antworte ausschließlich mit einem JSON-Objekt in einem \`\`\`json-Block:
+{ "name": "Produktname ohne Packungsgröße", "variant": "Packungsgröße/Sorte oder null", "category": "eine von: ${DONATION_CATEGORIES.join(", ")}", "offers": [], "summary": "ein kurzer Satz, was es ist" }`;
+
+const LOCATION = { type: "approximate" as const, country: "DE", timezone: "Europe/Berlin" };
+
+async function research(mode: AiMode, product: { name: string; variant: string | null }, image: { mimeType: string; data: Buffer } | null) {
   const client = new Anthropic();
+  const info = AI_MODE_INFO[mode];
   const known = product.name && product.name !== "Neues Produkt" ? `Bekannt: ${product.name}${product.variant ? ` (${product.variant})` : ""}.` : "Name noch unbekannt.";
+  if (mode === "erkennen" && !image) throw new Error("Zum Erkennen wird ein Foto gebraucht.");
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (image) {
     content.push({ type: "image", source: { type: "base64", media_type: image.mimeType as "image/jpeg", data: image.data.toString("base64") } });
   }
-  content.push({ type: "text", text: `${image ? "Das Foto zeigt ein Spendenprodukt." : "Kein Foto vorhanden."} ${known} Finde den günstigsten aktuellen Preis im deutschen Handel.` });
+  content.push({
+    type: "text",
+    text:
+      mode === "erkennen"
+        ? `Welches Produkt ist das? ${known}`
+        : `${image ? "Das Foto zeigt ein Spendenprodukt." : "Kein Foto vorhanden."} ${known} Finde den günstigsten aktuellen Preis im deutschen Handel.${mode === "sparsam" ? " Du hast höchstens zwei Suchen – wähle die Suchbegriffe gezielt (Marke, Name, Größe)." : ""}`,
+  });
+
+  // Je Stufe: Modell, Suche und Einstellungen. Haiku kennt nur die einfache Websuche und kein effort.
+  const params: Anthropic.Beta.MessageCreateParamsNonStreaming =
+    mode === "genau"
+      ? {
+          model: info.model,
+          max_tokens: 16000,
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+          output_config: { effort: "low" },
+          system: SYSTEM,
+          tools: [{ type: "web_search_20260209", name: "web_search", max_uses: info.searches, user_location: LOCATION }],
+          messages: [],
+        }
+      : {
+          model: info.model,
+          max_tokens: 4000,
+          system: mode === "erkennen" ? RECOGNIZE_SYSTEM : SYSTEM,
+          ...(mode === "sparsam" ? { tools: [{ type: "web_search_20250305" as const, name: "web_search" as const, max_uses: info.searches, user_location: LOCATION }] } : {}),
+          messages: [],
+        };
 
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content }];
   let inputTokens = 0;
   let outputTokens = 0;
   let searches = 0;
   for (let round = 0; round < 5; round++) {
-    const response = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      thinking: { type: "adaptive" },
-      output_config: { effort: "medium" },
-      system: SYSTEM,
-      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6, user_location: { type: "approximate", country: "DE", timezone: "Europe/Berlin" } }],
-      messages,
-    });
+    const response = await client.beta.messages.create({ ...params, messages });
     inputTokens += response.usage.input_tokens;
     outputTokens += response.usage.output_tokens;
     searches += response.usage.server_tool_use?.web_search_requests ?? 0;
@@ -109,7 +135,8 @@ async function runOne(checkId: string) {
     const [product] = await db.select().from(schema.products).where(eq(schema.products.id, claimed.productId));
     if (!product) throw new Error("Produkt nicht gefunden.");
     const [file] = product.imageFileId ? await db.select().from(schema.files).where(eq(schema.files.id, product.imageFileId)) : [];
-    const { result, inputTokens, outputTokens, searches } = await research(product, file ? { mimeType: file.mimeType, data: file.data } : null);
+    const mode = isAiMode(claimed.mode) ? claimed.mode : "genau";
+    const { result, inputTokens, outputTokens, searches } = await research(mode, product, file ? { mimeType: file.mimeType, data: file.data } : null);
     const lowest = result.offers[0]?.price ?? null;
     await db
       .update(C)
@@ -153,14 +180,26 @@ async function runOne(checkId: string) {
   }
 }
 
-/** Legt Recherchen an. Laufende/wartende für dieselben Produkte werden nicht doppelt angelegt. */
-export async function queuePriceChecks(productIds: string[]): Promise<string[]> {
+/**
+ * Legt Recherchen an. Laufende/wartende für dieselben Produkte werden nicht doppelt angelegt.
+ * Mit skipRecent werden Produkte übersprungen, für die es schon ein Ergebnis aus den letzten 60 Tagen gibt –
+ * wiederkehrende Produkte kosten so nur beim ersten Mal.
+ */
+export async function queuePriceChecks(productIds: string[], mode: AiMode, opts: { skipRecent?: boolean } = {}): Promise<string[]> {
   if (productIds.length === 0) return [];
   const busy = await db.select({ productId: C.productId }).from(C).where(and(inArray(C.productId, productIds), inArray(C.status, ["pending", "running"])));
   const skip = new Set(busy.map((b) => b.productId));
+  if (opts.skipRecent) {
+    // Ein Preis-Ergebnis zählt für jede Stufe, ein reines Erkennen nur fürs Erkennen.
+    const recent = await db
+      .select({ productId: C.productId, mode: C.mode })
+      .from(C)
+      .where(and(inArray(C.productId, productIds), eq(C.status, "done"), sql`${C.createdAt} > now() - interval '60 days'`));
+    for (const r of recent) if (mode === "erkennen" || r.mode !== "erkennen") skip.add(r.productId);
+  }
   const todo = productIds.filter((id) => !skip.has(id));
   if (todo.length === 0) return [];
-  const rows = await db.insert(C).values(todo.map((productId) => ({ productId }))).returning({ id: C.id });
+  const rows = await db.insert(C).values(todo.map((productId) => ({ productId, mode }))).returning({ id: C.id });
   return rows.map((r) => r.id);
 }
 

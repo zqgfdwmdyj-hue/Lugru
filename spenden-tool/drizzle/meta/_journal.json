@@ -8,6 +8,13 @@
       "when": 1790699670526,
       "tag": "0000_start",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790746236291,
+      "tag": "0001_ki_stufen",
+      "breakpoints": true
     }
   ]
 }

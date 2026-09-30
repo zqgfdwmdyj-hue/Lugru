@@ -6,7 +6,10 @@ import { eventDateLabel, flyerSections, messengerText } from "@/lib/layout";
 import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, productPicker } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { PriceCheckChip } from "@/components/price-check";
+import { AiModeSelect, PriceCheckChip, usd } from "@/components/price-check";
+import { aiCostUsd } from "@/lib/ai-modes";
+import { db, schema } from "@/db";
+import { inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
@@ -32,6 +35,8 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   const checks = await latestPriceChecks(rows.map((r) => r.product.id));
   const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running");
   const ai = aiConfigured();
+  const allChecks = rows.length ? await db.select().from(schema.priceChecks).where(inArray(schema.priceChecks.productId, rows.map((r) => r.product.id))) : [];
+  const aiCost = allChecks.reduce((n, c) => n + aiCostUsd(c.mode, c.inputTokens, c.outputTokens, c.searches), 0);
   const value = rows.reduce((s, r) => s + (r.item.price ?? 0) * (r.item.quantity ?? 0), 0);
 
   return (
@@ -142,12 +147,14 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           {ai ? (
             <form action={researchEvent} className="card card-pad stack" style={{ gap: 8 }}>
               <input type="hidden" name="eventId" value={id} />
-              <h2>Preise per KI recherchieren</h2>
-              <div className="small muted">Die KI erkennt die Produkte auf den Fotos, trägt fehlende Namen ein und sucht den günstigsten Preis im deutschen Handel. Dauert je Produkt etwa eine Minute, läuft im Hintergrund.</div>
+              <h2>KI: erkennen & Preise suchen</h2>
+              <div className="small muted">Die KI erkennt die Produkte auf den Fotos, trägt fehlende Namen ein und sucht auf Wunsch den günstigsten Preis im deutschen Handel. Läuft im Hintergrund.</div>
+              <AiModeSelect />
+              <div className="small muted">Produkte mit einem Ergebnis aus den letzten 60 Tagen werden übersprungen – wiederkehrende Produkte kosten nur einmal.{aiCost > 0 ? ` Bisher für diese Produkte: ca. ${usd(aiCost)}.` : ""}</div>
               {busy && <div className="notice notice-info">KI sucht gerade … die Seite aktualisiert sich von selbst.</div>}
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button className="btn btn-primary" type="submit" name="mode" value="fehlend" disabled={busy}>Ohne Preis/Namen</button>
-                <button className="btn" type="submit" name="mode" value="alle" disabled={busy}>Alle</button>
+                <button className="btn btn-primary" type="submit" name="umfang" value="fehlend" disabled={busy}>Nur fehlende</button>
+                <button className="btn" type="submit" name="umfang" value="alle" disabled={busy}>Alle</button>
               </div>
             </form>
           ) : (

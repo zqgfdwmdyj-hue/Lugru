@@ -92,3 +92,13 @@ describe("Spenden: Preisvorschlag und KI-Antwort", () => {
     expect(suggestDonationPrice(null)).toBe(null);
   });
 });
+
+describe("KI-Stufen", () => {
+  it("rechnet Kosten je Stufe", async () => {
+    const { aiCostUsd, defaultAiMode } = await import("@/lib/ai-modes");
+    expect(aiCostUsd("sparsam", 20000, 1000, 2)).toBeCloseTo(0.02 + 0.005 + 0.02);
+    expect(aiCostUsd("genau", 20000, 1000, 4)).toBeCloseTo(0.04 + 0.01 + 0.04);
+    expect(aiCostUsd("erkennen", 2000, 300, 0)).toBeLessThan(0.01);
+    expect(defaultAiMode()).toBe("sparsam");
+  });
+});

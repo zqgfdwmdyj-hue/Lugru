@@ -12,6 +12,7 @@ import { collageSettings, nameFromFilename } from "@/lib/layout";
 import { addProductsToEvent, loadEvent, productByImage, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
+import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 
 const uuid = z.string().uuid();
 const P = schema.products;
@@ -140,7 +141,7 @@ export async function saveItems(fd: FormData) {
       for (let k = 0; k < order.length; k++) await db.update(I).set({ sort: (k + 1) * 10 }).where(eq(I.id, order[k]));
     }
   } else if (op === "ai" && idx >= 0) {
-    await startChecks([items[idx].productId]);
+    await startChecks([items[idx].productId], defaultAiMode());
   } else if (op === "sort") {
     // Nach Kategorie und Name ordnen – so wie im Aushang.
     const rows = await db.select({ id: I.id, cat: P.category, name: P.name, variant: P.variant }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.eventId, eventId));
@@ -268,27 +269,37 @@ export async function mergeProducts(fd: FormData) {
 // ---------- KI-Preisrecherche ----------
 
 /** Recherchen anlegen und nach der Antwort im Hintergrund abarbeiten. */
-async function startChecks(productIds: string[]) {
+async function startChecks(productIds: string[], mode: AiMode, opts: { skipRecent?: boolean } = {}) {
   if (!aiConfigured() || productIds.length === 0) return;
   await failStaleChecks();
-  const ids = await queuePriceChecks(productIds);
+  const ids = await queuePriceChecks(productIds, mode, opts);
   if (ids.length) after(() => runPriceChecks(ids));
 }
+
+const stufe = (fd: FormData): AiMode => {
+  const v = fd.get("stufe");
+  return isAiMode(v) ? v : defaultAiMode();
+};
 
 export async function researchProduct(fd: FormData) {
   await requireLogin();
   const id = uuid.parse(fd.get("productId"));
-  await startChecks([id]);
+  await startChecks([id], stufe(fd));
   revalidatePath(`/produkte/${id}`);
 }
 
-/** Für eine Verteilung: nur Produkte ohne Preis/Namen oder alle. */
+/**
+ * Für eine Verteilung: nur Produkte ohne Preis/Namen oder alle. Produkte mit einem Ergebnis aus den
+ * letzten 60 Tagen werden übersprungen (kostet nichts extra).
+ */
 export async function researchEvent(fd: FormData) {
   await requireLogin();
   const eventId = uuid.parse(fd.get("eventId"));
   const rows = await db.select({ productId: I.productId, price: I.price, name: P.name }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.eventId, eventId)).orderBy(I.sort);
-  const all = fd.get("mode") === "alle";
-  await startChecks(rows.filter((r) => all || r.price === null || r.name === "Neues Produkt").map((r) => r.productId));
+  const mode = stufe(fd);
+  const all = fd.get("umfang") === "alle";
+  const wanted = rows.filter((r) => all || (mode === "erkennen" ? r.name === "Neues Produkt" : r.price === null || r.name === "Neues Produkt"));
+  await startChecks(wanted.map((r) => r.productId), mode, { skipRecent: true });
   revalidatePath(`/verteilung/${eventId}`);
 }
 

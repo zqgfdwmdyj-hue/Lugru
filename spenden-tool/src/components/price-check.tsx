@@ -2,6 +2,7 @@ import type { schema } from "@/db";
 import { applyPriceCheck } from "@/app/(app)/actions";
 import { formatEuro } from "@/lib/numbers";
 import { donationShare } from "@/lib/pricing";
+import { AI_MODE_INFO, AI_MODES, aiCostUsd, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 
 type Check = typeof schema.priceChecks.$inferSelect;
 
@@ -12,6 +13,7 @@ export function PriceCheckChip({ check }: { check: Check | undefined }) {
   if (!check) return null;
   if (check.status === "pending" || check.status === "running") return <span className="ai-chip">KI sucht …</span>;
   if (check.status === "error") return <span className="ai-chip" style={{ background: "var(--danger-soft)", color: "#7a1a12" }} title={check.error ?? ""}>KI: Fehler</span>;
+  if (check.mode === "erkennen") return <span className="ai-chip" title={check.summary ?? ""}>KI: erkannt</span>;
   if (check.lowestPrice === null) return <span className="ai-chip" title={check.summary ?? ""}>KI: kein Preis</span>;
   const best = check.offers[0];
   return (
@@ -43,27 +45,47 @@ export function PriceCheckBox({ check, eventId }: { check: Check; eventId?: stri
             </div>
           ))}
         </div>
-      ) : <div className="small muted">Keine Angebote gefunden.</div>}
+      ) : <div className="small muted">{check.mode === "erkennen" ? "Nur erkannt – für Preise „Preis suchen“ wählen." : "Keine Angebote gefunden."}</div>}
       <form action={applyPriceCheck} className="stack" style={{ gap: 6 }}>
         <input type="hidden" name="checkId" value={check.id} />
         {eventId && <input type="hidden" name="eventId" value={eventId} />}
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <label className="small" htmlFor={`sp-${check.id}`}>Spendenpreis €</label>
-          <input className="input input-compact num" id={`sp-${check.id}`} name="price" defaultValue={shortPrice(check.suggestedPrice)} inputMode="decimal" style={{ width: 80 }} />
-          <button className="btn btn-small btn-primary" type="submit">Übernehmen</button>
-        </div>
-        {check.suggestedPrice !== null && <div className="small muted">Vorschlag: {Math.round(donationShare() * 100)} % vom günstigsten Preis, auf 10 Cent gerundet.</div>}
-        <label className="small"><input type="checkbox" name="withName" /> Auch erkannten Namen übernehmen</label>
+        {check.mode === "erkennen" ? (
+          <div>
+            <input type="hidden" name="withName" value="on" />
+            <button className="btn btn-small btn-primary" type="submit">Namen übernehmen</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <label className="small" htmlFor={`sp-${check.id}`}>Spendenpreis €</label>
+              <input className="input input-compact num" id={`sp-${check.id}`} name="price" defaultValue={shortPrice(check.suggestedPrice)} inputMode="decimal" style={{ width: 80 }} />
+              <button className="btn btn-small btn-primary" type="submit">Übernehmen</button>
+            </div>
+            {check.suggestedPrice !== null && <div className="small muted">Vorschlag: {Math.round(donationShare() * 100)} % vom günstigsten Preis, auf 10 Cent gerundet.</div>}
+            <label className="small"><input type="checkbox" name="withName" /> Auch erkannten Namen übernehmen</label>
+          </>
+        )}
       </form>
       <div className="small muted">
-        {check.searches ?? 0} Suchen · ca. {estimateCost(check)} · Preise ohne Gewähr, bitte kurz prüfen.
+        {isAiMode(check.mode) ? AI_MODE_INFO[check.mode].label : check.mode} · {check.searches ?? 0} Suchen · ca. {usd(aiCostUsd(check.mode, check.inputTokens, check.outputTokens, check.searches))}{check.mode !== "erkennen" ? " · Preise ohne Gewähr, bitte kurz prüfen." : ""}
       </div>
     </div>
   );
 }
 
-/** Grobe Kosten der Recherche (Opus: 4 $/20 $ je Mio. Token, Websuche 10 $ je 1000). */
-function estimateCost(c: Check) {
-  const usd = ((c.inputTokens ?? 0) * 4 + (c.outputTokens ?? 0) * 20) / 1e6 + (c.searches ?? 0) * 0.01;
-  return `${usd.toFixed(2).replace(".", ",")} $`;
+export const usd = (v: number) => `${v < 0.01 && v > 0 ? "<0,01" : v.toFixed(2).replace(".", ",")} $`;
+
+/** Auswahl der KI-Stufe (für Formulare mit name="stufe"). */
+export function AiModeSelect({ compact = false }: { compact?: boolean }) {
+  const def = defaultAiMode();
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      {AI_MODES.map((m) => (
+        <label key={m} className="small" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+          <input type="radio" name="stufe" value={m} defaultChecked={m === def} style={{ marginTop: 3 }} />
+          <span><strong>{AI_MODE_INFO[m].label}</strong>{!compact && <span className="muted"> – {AI_MODE_INFO[m].hint}</span>}</span>
+        </label>
+      ))}
+    </div>
+  );
 }
