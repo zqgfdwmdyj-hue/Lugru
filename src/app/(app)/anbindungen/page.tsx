@@ -85,7 +85,11 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                           <label className="label" htmlFor={`${def.provider}-${f.key}`}>
                             {f.label} {f.secret && has && <span className="tag tag-ok" style={{ marginLeft: 6 }}>GESPEICHERT</span>}
                           </label>
-                          {f.multiline ? (
+                          {f.options ? (
+                            <select className="input" id={`${def.provider}-${f.key}`} name={f.key} defaultValue={st?.config[f.key] || f.options[0].value}>
+                              {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          ) : f.multiline ? (
                             <textarea className="textarea" style={{ minHeight: 120, fontFamily: "var(--mono)", fontSize: 12 }} id={`${def.provider}-${f.key}`} name={f.key} placeholder={f.secret && has ? "•••••• (unverändert)" : f.placeholder} />
                           ) : (
                             <input className="input" id={`${def.provider}-${f.key}`} name={f.key} type={f.secret ? "password" : "text"} autoComplete="off" defaultValue={f.secret ? "" : (st?.config[f.key] ?? "")} placeholder={f.secret && has ? "•••••• (unverändert)" : f.placeholder} />

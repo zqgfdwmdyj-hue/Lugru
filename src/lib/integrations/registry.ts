@@ -7,6 +7,8 @@ export type IntegrationField = {
   placeholder?: string;
   help?: string;
   multiline?: boolean;
+  /** Auswahlliste statt Freitext; erster Eintrag = Vorgabe. */
+  options?: { value: string; label: string }[];
 };
 
 export type IntegrationDef = {
@@ -166,12 +168,25 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "anthropic",
     name: "KI (Claude) – optional",
-    purpose: "Stuft Amazon-Systemmails ein (Amazon-ToDos: Kategorie, Priorität, Frist, ASINs) und fasst bei der Themen-Recherche neue Artikel zusammen. Ohne Schlüssel arbeiten beide mit festen Regeln.",
+    purpose: "Stuft Amazon-Systemmails ein, fasst die Themen-Recherche zusammen und schreibt Marken-Ideen, Video-Skripte und Listing-Vorschläge. Ohne Schlüssel arbeiten Mails und Recherche mit festen Regeln.",
     fields: [
       { key: "apiKey", label: "API-Key", secret: true, placeholder: "sk-ant-…" },
-      { key: "model", label: "Modell (optional)", placeholder: "claude-sonnet-5" },
+      {
+        key: "tier",
+        label: "Kosten / Qualität",
+        options: [
+          { value: "ausgewogen", label: "Ausgewogen – Haiku für Mails und Recherche, Sonnet für Ideen und Content (empfohlen)" },
+          { value: "sparsam", label: "Sparsam – überall Haiku (am günstigsten)" },
+          { value: "qualitaet", label: "Qualität – überall Sonnet" },
+        ],
+        help: "Haiku kostet etwa die Hälfte von Sonnet und reicht für das Einstufen von Mails völlig. Ideen und Skripte klingen mit Sonnet meist besser.",
+      },
+      { key: "model", label: "Eigenes Modell (optional)", placeholder: "leer lassen", help: "Nur ausfüllen, wenn ein bestimmtes Modell überall genutzt werden soll (z. B. claude-haiku-4-5) – überschreibt die Auswahl oben." },
     ],
-    setup: ["console.anthropic.com → API Keys → neuen Schlüssel anlegen und hier eintragen."],
+    setup: [
+      "console.anthropic.com → API Keys → neuen Schlüssel anlegen und hier eintragen.",
+      "Tipp: Unter Settings → Limits ein Monatslimit setzen (z. B. 10 $) – dann kann es nie teurer werden.",
+    ],
   },
 ];
 

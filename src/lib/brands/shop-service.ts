@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { askClaude } from "@/lib/ai/claude";
+import { askClaude, modelFor } from "@/lib/ai/claude";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
@@ -108,6 +108,6 @@ export async function suggestListing(tenantId: string, productId: string) {
   const ai = await getIntegration(tenantId, "anthropic");
   if (!ai?.apiKey) throw new Error("Für Listing-Vorschläge unter Anbindungen → „KI (Claude)“ einen Schlüssel eintragen.");
   const top = (await tiktokTopSellers(tenantId, row.b.id, 10)).map((t) => t.replace(/^TikTok-Shop-Bestseller: /, ""));
-  const r = await askClaude(ai.apiKey, listingPrompt({ brand: row.b.name, tone: row.b.tone, d: row.p.data, tiktokTop: top }), { model: ai.model || undefined, maxTokens: 2000 });
+  const r = await askClaude(ai.apiKey, listingPrompt({ brand: row.b.name, tone: row.b.tone, d: row.p.data, tiktokTop: top }), { model: modelFor(ai, "creative"), task: "creative", maxTokens: 2000 });
   await db.update(P).set({ aiListing: r.text }).where(eq(P.id, productId));
 }

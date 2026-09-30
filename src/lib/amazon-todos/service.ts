@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, notExists, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { askClaude } from "@/lib/ai/claude";
+import { askClaude, modelFor } from "@/lib/ai/claude";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { notifyDiscord } from "@/lib/integrations/clients/discord";
 import { getIntegration } from "@/lib/integrations/store";
@@ -72,7 +72,7 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
     for (let i = 0; i < mails.length; i += BATCH_SIZE) {
       const batch = mails.slice(i, i + BATCH_SIZE);
       try {
-        const r = await askClaude(ai.apiKey, triagePrompt(batch), { model: ai.model || undefined, maxTokens: MAX_TOKENS });
+        const r = await askClaude(ai.apiKey, triagePrompt(batch), { model: modelFor(ai, "simple"), task: "simple", maxTokens: MAX_TOKENS });
         const parsed = parseTriage(r.text, batch);
         if (parsed.length < batch.length) console.warn(`[Amazon-ToDos] KI-Block unvollständig: ${parsed.length}/${batch.length} – Rest beim nächsten Lauf.`);
         results.push(...parsed);

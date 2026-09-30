@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { askClaude } from "@/lib/ai/claude";
+import { askClaude, modelFor } from "@/lib/ai/claude";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { googleNewsUrl } from "@/lib/research/feeds";
@@ -66,7 +66,7 @@ async function brandOf(tenantId: string, brandId: string) {
 async function aiKey(tenantId: string) {
   const ai = await getIntegration(tenantId, "anthropic");
   if (!ai?.apiKey) throw new Error("Für KI-Vorschläge unter Anbindungen → „KI (Claude)“ einen API-Schlüssel eintragen. Ideen lassen sich auch von Hand anlegen.");
-  return { key: ai.apiKey, model: ai.model || undefined };
+  return { key: ai.apiKey, model: modelFor(ai, "creative") };
 }
 
 /** Aktuelle Schlagzeilen zu den Trend-Begriffen der Marke (und zum Anlass). */
@@ -92,7 +92,7 @@ export async function generateIdeas(tenantId: string, userId: string | null, bra
   const topics = (b.trendTopics ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   if (occ) topics.unshift(`${occ.name} ${topics[0] ?? b.name}`.replace(/\bTrend\b/gi, "").replace(/\s+/g, " ").trim() + " Trend");
   const trends = [...(await tiktokTopSellers(tenantId, b.id, 12)), ...(await trendHeadlines(topics))];
-  const r = await askClaude(key, ideasPrompt({ brand: b as BrandProfile, occasion: upcoming ? { name: upcoming.name, date: upcoming.date } : null, existing, trends, count: opts.count ?? 5, wish: opts.wish }), { model, maxTokens: 4000 });
+  const r = await askClaude(key, ideasPrompt({ brand: b as BrandProfile, occasion: upcoming ? { name: upcoming.name, date: upcoming.date } : null, existing, trends, count: opts.count ?? 5, wish: opts.wish }), { model, task: "creative", maxTokens: 4000 });
   const drafts = parseIdeas(r.text);
   if (!drafts.length) throw new Error("Die KI hat keine lesbaren Ideen geliefert – bitte noch einmal versuchen.");
   const launch = upcoming ? addDaysIso(upcoming.date, -14) : null;
@@ -129,7 +129,7 @@ export async function generateContent(tenantId: string, input: { ideaId?: string
     subject = { title: idea.title, concept: idea.concept, contents: idea.contents };
     occasion = idea.occasion ? (occasionByKey(idea.occasion)?.name ?? null) : null;
   }
-  const r = await askClaude(key, contentPrompt({ brand: b as BrandProfile, subject, platform: input.platform, count: input.count ?? 4, occasion }), { model, maxTokens: 4000 });
+  const r = await askClaude(key, contentPrompt({ brand: b as BrandProfile, subject, platform: input.platform, count: input.count ?? 4, occasion }), { model, task: "creative", maxTokens: 4000 });
   const drafts = parseContent(r.text);
   if (!drafts.length) throw new Error("Die KI hat keine lesbaren Content-Ideen geliefert – bitte noch einmal versuchen.");
   await db.insert(C).values(drafts.map((d) => ({ tenantId, brandId: b.id, ideaId: input.ideaId ?? null, platform: input.platform, format: d.format || null, hook: d.hook, script: d.script || null, shots: d.shots, caption: d.caption || null, hashtags: d.hashtags || null, soundIdea: d.soundIdea || null, source: "ai" as const })));

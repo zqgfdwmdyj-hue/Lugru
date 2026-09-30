@@ -2,6 +2,7 @@ import "server-only";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getIntegration } from "@/lib/integrations/store";
+import { modelFor } from "@/lib/ai/claude";
 import { upsertSystemTask } from "@/lib/tasks/system";
 import { googleNewsUrl, parseFeed, titleKey, type FeedItem } from "./feeds";
 import { summarize } from "./summary";
@@ -104,7 +105,7 @@ export async function runResearch(tenantId: string, fetcher = fetchFeed): Promis
     let summary = "";
     if (ai?.apiKey) {
       try {
-        summary = await summarize(ai.apiKey, { topic, items: fresh }, ai.model || undefined);
+        summary = await summarize(ai.apiKey, { topic, items: fresh }, modelFor(ai, "simple"));
       } catch (e) {
         result.errors.push(e instanceof Error ? e.message : String(e));
       }
