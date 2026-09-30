@@ -8,7 +8,7 @@ import { eurRates } from "@/lib/fx/ecb";
 import { getIntegration } from "@/lib/integrations/store";
 import { keepaByCode, keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
 import { stripHtml } from "@/lib/research/feeds";
-import { chunkText, currencyOf, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, parseCapture, parseScan, scanPromptForText, SCAN_INSTRUCTIONS, toEur, type ScannedItem } from "./scan";
+import { chunkText, currencyOf, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, parseCapture, parseScan, scanPromptForText, SCAN_INSTRUCTIONS, searchTerm, toEur, type ScannedItem } from "./scan";
 
 const O = schema.supplierOffers;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
@@ -211,8 +211,7 @@ export async function checkFeedWithKeepa(tenantId: string, feedId: string, opts:
       .where(and(eq(O.tenantId, tenantId), eq(O.feedId, feedId), isNull(O.ean), isNull(O.market), isNotNull(O.title)))
       .limit(opts.titleLimit ?? 20);
     for (const r of noEan) {
-      // Packungsangaben stören die Suche auf amazon.de.
-      const term = r.title!.replace(/\s*[-–|]\s*\d+\s?(ct|count|pack|pk)\b.*$/i, "").replace(/\b\d+(\.\d+)?\s?oz\b/gi, "").trim().slice(0, 80);
+      const term = searchTerm(r.title!);
       const res = await keepaSearch(key, term);
       tokensLeft = res.tokensLeft;
       const mp = res.products[0];

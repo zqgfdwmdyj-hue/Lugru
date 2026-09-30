@@ -57,9 +57,48 @@ export function priceOf(v: unknown): number | null {
   return Number.isFinite(n) && n > 0 && n < 100000 ? Math.round(n * 100) / 100 : null;
 }
 
-export function packOf(title: string): string | null {
-  const m = title.match(/(\d+)\s?(?:ct|count|pcs|pieces|pack|pk|stk|stück|er[- ]?pack)\b|\b(?:pack|box|case) of (\d+)/i);
-  return m ? `${m[1] ?? m[2]} Stk` : null;
+export type PackInfo = {
+  /** Verkaufseinheiten je Karton/Lieferung (EK gilt für den ganzen Karton). */
+  caseQty: number;
+  /** Inhalt einer Verkaufseinheit (z. B. 5 Riegel im „5 Pack“) – nur Info. */
+  inner: number | null;
+  /** Größe einer Einheit, z. B. „9g“. */
+  unitSize: string | null;
+};
+
+/**
+ * Kartongröße aus Titel/Link lesen. „(24 x 9g)“, „box of 24“, „case-of-12“, „24ct“ = 24 Einheiten im Karton;
+ * „5 Pack“ / „60 Pack (936g)“ = Inhalt einer Einheit (der Karton hat dann 1 Einheit, falls sonst nichts dasteht).
+ */
+export function packInfo(title: string, url?: string | null): PackInfo {
+  const slug = url ? decodeURIComponent(url.split("?")[0].split("/").pop() ?? "").replace(/-/g, " ") : "";
+  const text = `${title} ${slug}`;
+  const times = title.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|oz|cl))\b/i);
+  const caseOf = text.match(/\b(?:box|case|pack|karton|packung) of (\d+)\b/i) ?? text.match(/\b(\d+)\s?(?:ct|count)\b/i) ?? text.match(/\b(\d+)\s?(?:stk|stück)\b/i);
+  const inner = title.match(/\b(\d+)\s?(?:pack|pk|er[- ]?pack|pcs|pieces)\b/i);
+  const size = times?.[2] ?? title.match(/\((\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|oz))\)/i)?.[1] ?? null;
+  const n = Number(times?.[1] ?? caseOf?.[1] ?? 1);
+  return { caseQty: n > 0 && n < 10000 ? n : 1, inner: inner ? Number(inner[1]) : null, unitSize: size ? size.replace(/\s/g, "") : null };
+}
+
+/** Kurztext für die Spalte „pack“: „24 × 9g“, „Karton 18 · je 5er-Pack“. */
+export function packOf(title: string, url?: string | null): string | null {
+  const p = packInfo(title, url);
+  if (p.caseQty <= 1 && !p.inner) return null;
+  const parts = [p.caseQty > 1 ? (p.unitSize ? `${p.caseQty} × ${p.unitSize}` : `${p.caseQty} Einheiten`) : null, p.inner ? `je ${p.inner}er-Pack` : null].filter(Boolean);
+  return parts.join(" · ");
+}
+
+/** Suchbegriff für amazon.de: ohne Karton-/Größenangaben. */
+export function searchTerm(title: string): string {
+  return title
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s*[-–|]\s*\d+\s?(ct|count|pack|pk)\b.*$/i, "")
+    .replace(/\b(box|case|pack) of \d+\b/gi, "")
+    .replace(/\b\d+(\.\d+)?\s?(oz|g|ml)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
 }
 
 const slug = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
@@ -98,7 +137,7 @@ function item(p: Omit<Partial<ScannedItem>, "ean"> & { title: string; ean?: unkn
     ean,
     price: p.price ?? null,
     currency: p.currency || fallbackCurrency,
-    pack: p.pack ?? packOf(title),
+    pack: p.pack ?? packOf(title, p.url),
     url: p.url ?? null,
     imageUrl: p.imageUrl ?? null,
     stock: p.stock ?? null,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOOKMARKLET_SOURCE, chunkText, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, normalizeEan, packOf, parseCapture, parseEcb, parseScan, priceOf, skuFor, toEur } from "@/lib/suppliers/scan";
+import { BOOKMARKLET_SOURCE, chunkText, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, normalizeEan, packInfo, packOf, parseCapture, searchTerm, parseEcb, parseScan, priceOf, skuFor, toEur } from "@/lib/suppliers/scan";
 
 describe("Lieferanten-Scan", () => {
   it("UPC-12 wird zu EAN-13, Unsinn zu null", () => {
@@ -16,8 +16,8 @@ describe("Lieferanten-Scan", () => {
     expect(priceOf("free")).toBeNull();
   });
   it("Packungsgröße und Artikelnummer", () => {
-    expect(packOf("Nerds Rope Rainbow 0.92oz - 24ct")).toBe("24 Stk");
-    expect(packOf("Box of 12 Airheads")).toBe("12 Stk");
+    expect(packOf("Nerds Rope Rainbow 0.92oz - 24ct")).toBe("24 Einheiten");
+    expect(packOf("Box of 12 Airheads")).toBe("12 Einheiten");
     expect(skuFor({ title: "X", url: "https://shop.test/products/nerds-rope-24ct?variant=1" })).toBe("nerds-rope-24ct");
     expect(skuFor({ title: "Warheads Sour", ean: "0012345678905" })).toBe("0012345678905");
   });
@@ -26,7 +26,7 @@ describe("Lieferanten-Scan", () => {
       <script type="application/ld+json">{"@graph":[{"@type":"ItemList","itemListElement":[{"@type":"ListItem","item":{"@type":"Product","name":"Other Candy","offers":{"price":3.5,"priceCurrency":"USD","availability":"OutOfStock"}}}]}]}</script>`;
     const items = fromJsonLd(jsonLdFromHtml(html), "https://shop.test/p/1");
     expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ sku: "TC-1", ean: "0012345678905", price: 24.99, currency: "USD", pack: "36 Stk", imageUrl: "https://shop.test/img/a.jpg" });
+    expect(items[0]).toMatchObject({ sku: "TC-1", ean: "0012345678905", price: 24.99, currency: "USD", pack: "36 Einheiten", imageUrl: "https://shop.test/img/a.jpg" });
     expect(items[1]).toMatchObject({ title: "Other Candy", price: 3.5, stock: 0 });
   });
   it("Shopify-Katalog mit Varianten", () => {
@@ -41,7 +41,7 @@ describe("Lieferanten-Scan", () => {
     expect(cap).not.toBeNull();
     const items = fromCards(cap!.items!, cap!.text);
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ title: "Jolly Rancher Hard Candy 14oz Bag - 12ct", price: 38.99, currency: "USD", pack: "12 Stk", sku: "a", imageUrl: "https://candy.test/a.jpg" });
+    expect(items[0]).toMatchObject({ title: "Jolly Rancher Hard Candy 14oz Bag - 12ct", price: 38.99, currency: "USD", pack: "12 Einheiten", sku: "a", imageUrl: "https://candy.test/a.jpg" });
     expect(parseCapture("einfach Text")).toBeNull();
   });
   it("KI-Antwort einlesen, Dubletten zusammenfassen", () => {
@@ -63,5 +63,14 @@ describe("Lieferanten-Scan", () => {
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.every((p) => p.length <= 25000)).toBe(true);
     expect(() => new Function(BOOKMARKLET_SOURCE)).not.toThrow();
+  });
+  it("CandyHero-Titel: Karton vs. Inhalt", () => {
+    expect(packInfo("Aftershocks Popping Candy Blue Raspberry (24 x 9g)", "https://candyhero.com/products/aftershocks-popping-candy-blue-raspberry-9g-box-of-24")).toEqual({ caseQty: 24, inner: null, unitSize: "9g" });
+    expect(packInfo("Airheads Bars Assorted 5 Pack (18 x 78g)")).toEqual({ caseQty: 18, inner: 5, unitSize: "78g" });
+    expect(packInfo("Airheads Bars Assorted 60 Pack (936g)")).toEqual({ caseQty: 1, inner: 60, unitSize: "936g" });
+    expect(packInfo("Airheads Bars Assorted 6 Pack", "https://x/products/airheads-bars-assorted-6-pack-94g-case-of-12").caseQty).toBe(12);
+    expect(packInfo("Aftershocks Watermelon (16 x 30g)", "https://x/products/aftershocks-30g-box-").caseQty).toBe(16);
+    expect(packOf("Airheads Bars Assorted 5 Pack (18 x 78g)")).toBe("18 × 78g · je 5er-Pack");
+    expect(searchTerm("Airheads Bars Assorted 5 Pack (18 x 78g)")).toBe("Airheads Bars Assorted 5 Pack");
   });
 });

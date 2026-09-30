@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { bookmarkletHref } from "@/lib/suppliers/scan";
-import { keepaFeedAction, scanFeedAction, type ScanState } from "../actions";
+import { keepaFeedAction, scanFeedAction, suggestBoxesAction, type BoxState, type ScanState } from "../actions";
 
 type Mode = "link" | "einfuegen" | "datei";
 
@@ -108,6 +108,44 @@ export function KeepaCheck({ feedId, hasKeepa, withEan, withoutEan }: { feedId: 
       )}
       <button className="btn" type="submit" disabled={pending || !hasKeepa || !(withEan || withoutEan)}>{pending ? "Prüfe …" : "Mit Keepa prüfen"}</button>
       {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-warn"}`}>{state.message}</div>}
+    </form>
+  );
+}
+
+export function BoxSuggest({ feedId, brands, occasions, hasAi, defaultFba }: { feedId: string; brands: { id: string; name: string }[]; occasions: { key: string; name: string }[]; hasAi: boolean; defaultFba: number }) {
+  const [state, action, pending] = useActionState<BoxState, FormData>(suggestBoxesAction, null);
+  return (
+    <form action={action} className="card card-pad stack" style={{ gap: 8 }}>
+      <input type="hidden" name="feedId" value={feedId} />
+      <h2>Boxen daraus bauen</h2>
+      <div className="small muted">
+        Die KI stellt aus den Artikeln Themenboxen für Amazon zusammen – passend zur Marke, zum Anlass und zu den TikTok-Bestsellern (Shop-Analyse).
+        Einkauf und Gewinn rechnet das System exakt mit den Einzelpreisen; die Boxen landen als Ideen im Marken-Board.
+      </div>
+      {!hasAi && <div className="notice notice-info small">Braucht den KI-Schlüssel (Anbindungen → KI).</div>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <select className="select" name="brandId" aria-label="Marke" defaultValue={brands[0]?.id}>
+          {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <select className="select" name="occasion" aria-label="Anlass" defaultValue="">
+          <option value="">ganzjährig</option>
+          {occasions.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}
+        </select>
+      </div>
+      <input className="input" name="wish" placeholder="Wunsch (optional), z. B. „Sauer-Challenge“, „unter 25 €“" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+        <label className="field"><span className="label">Anzahl</span><input className="input" name="count" type="number" min={1} max={8} defaultValue={4} /></label>
+        <label className="field"><span className="label">Verpackung €</span><input className="input" name="packaging" inputMode="decimal" defaultValue="2,50" /></label>
+        <label className="field"><span className="label">FBA-Gebühr €</span><input className="input" name="fbaFee" inputMode="decimal" defaultValue={defaultFba.toFixed(2).replace(".", ",")} /></label>
+      </div>
+      <label className="small" style={{ display: "flex", gap: 6 }}><input type="checkbox" name="allFeeds" /> Artikel aus allen Lieferanten-Feeds verwenden</label>
+      <button className="btn btn-primary" type="submit" disabled={pending || !hasAi || !brands.length}>{pending ? "Stelle Boxen zusammen … (bis 1–2 Minuten)" : "Boxen vorschlagen"}</button>
+      {state && (
+        <div className={`notice ${state.ok ? "notice-ok" : "notice-warn"}`}>
+          {state.message}
+          {state.ok && state.brandId && <> – <a href={`/marken?marke=${state.brandId}`}>im Ideen-Board ansehen</a></>}
+        </div>
+      )}
     </form>
   );
 }

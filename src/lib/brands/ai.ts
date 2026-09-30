@@ -18,7 +18,7 @@ export type IdeaDraft = {
 
 export type ContentDraft = { format: string; hook: string; script: string; shots: string[]; caption: string; hashtags: string; soundIdea: string };
 
-const profile = (b: BrandProfile) =>
+export const profile = (b: BrandProfile) =>
   [`Marke: ${b.name}`, b.description && `Sortiment/Positionierung: ${b.description}`, b.audience && `Zielgruppe: ${b.audience}`, b.priceRange && `Preisrahmen: ${b.priceRange}`, b.tone && `Tonalität: ${b.tone}`]
     .filter(Boolean)
     .join("\n");

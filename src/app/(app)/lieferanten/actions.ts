@@ -10,6 +10,9 @@ import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { readTable } from "@/lib/tabular";
 import { checkFeedWithKeepa, saveScanned, scan } from "@/lib/suppliers/scan-service";
+import { suggestBoxes } from "@/lib/suppliers/boxes-service";
+import { canAccess } from "@/lib/auth/areas";
+import { assertBrand } from "@/lib/brands/access";
 
 const uuid = z.string().uuid();
 
@@ -134,4 +137,33 @@ export async function clearFeedAction(fd: FormData) {
   const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
   await db.delete(schema.supplierOffers).where(and(eq(schema.supplierOffers.feedId, feedId), eq(schema.supplierOffers.tenantId, session.tenantId)));
   revalidatePath(`/lieferanten/${feedId}`);
+}
+
+export type BoxState = { ok: boolean; message: string; brandId?: string } | null;
+
+/** Aus den Artikeln Boxen vorschlagen lassen → Ideen im Marken-Board (mit exakter Kalkulation). */
+export async function suggestBoxesAction(_prev: BoxState, fd: FormData): Promise<BoxState> {
+  const session = await requireArea("wawi");
+  try {
+    if (!canAccess(session, "marken")) throw new Error("Für Box-Vorschläge braucht es Zugriff auf den Bereich Marken.");
+    const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
+    const brandId = uuid.parse(fd.get("brandId"));
+    assertBrand(session, brandId);
+    const count = Math.min(8, Math.max(1, Number(fd.get("count") ?? 4) || 4));
+    const r = await suggestBoxes(session.tenantId, session.userId, {
+      feedId,
+      allFeeds: fd.get("allFeeds") === "on",
+      brandId,
+      occasion: String(fd.get("occasion") ?? "") || null,
+      count,
+      wish: String(fd.get("wish") ?? "").trim().slice(0, 300) || undefined,
+      packaging: parseAmount(fd.get("packaging")) ?? 2.5,
+      fbaFee: parseAmount(fd.get("fbaFee")) ?? 5,
+    });
+    revalidatePath("/marken");
+    const top = r.best.map((b) => `${b.title}${b.profit !== null ? ` (${b.profit.toFixed(2).replace(".", ",")} € Gewinn)` : ""}`).join(" · ");
+    return { ok: true, message: `${r.count} Boxen als Ideen angelegt: ${top}`, brandId: r.brandId };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }
