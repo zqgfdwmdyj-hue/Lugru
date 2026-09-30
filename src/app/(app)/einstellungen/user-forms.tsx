@@ -43,7 +43,7 @@ export function AccessForm({ userId, areas, brandIds, allAreas, brands }: { user
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 4, paddingLeft: 22 }}>
           {allAreas.map((a) => (
             <label key={a.key} className="small" style={{ display: "flex", gap: 6 }}>
-              <input type="checkbox" name="areas" value={a.key} defaultChecked={areas?.includes(a.key) || (a.key === "lieferanten" && areas?.includes("wawi"))} /> {a.label}
+              <input type="checkbox" name="areas" value={a.key} defaultChecked={areas?.includes(a.key) || ((a.key === "lieferanten" || a.key === "artikel") && areas?.includes("wawi"))} /> {a.label}
             </label>
           ))}
         </div>

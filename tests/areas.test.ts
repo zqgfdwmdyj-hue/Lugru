@@ -49,3 +49,12 @@ describe("Lieferanten-Feeds als eigener Bereich", () => {
     expect(ca({ role: "staff", areas: ["marken"] }, "lieferanten")).toBe(false);
   });
 });
+
+describe("Artikelstamm als Bereich", () => {
+  it("eigener Pfad, WaWi sieht ihn mit", () => {
+    expect(afp("/artikel/abc")).toBe("artikel");
+    expect(ca({ role: "staff", areas: ["wawi"] }, "artikel")).toBe(true);
+    expect(ca({ role: "staff", areas: ["marken", "artikel"] }, "artikel")).toBe(true);
+    expect(ca({ role: "staff", areas: ["marken"] }, "artikel")).toBe(false);
+  });
+});

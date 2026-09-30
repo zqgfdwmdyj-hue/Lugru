@@ -37,6 +37,22 @@ export default async function ProfilePage() {
                   <div className="field"><label className="label">Verkäuferkonto auf Amazon</label><input className="input" name="sellerName" defaultValue={b.sellerName ?? ""} placeholder="z. B. Firma GmbH" /></div>
                   <div className="field"><label className="label">Händlerkennung (Seller-ID)</label><input className="input" name="sellerId" defaultValue={b.sellerId ?? ""} placeholder="A1B2C3D4E5F6G7" style={{ fontFamily: "var(--mono)" }} /></div>
                 </div>
+                <div className="field"><label className="label">Amazon-Konto für den Artikelstamm</label>
+                  <select className="input" name="amazonAccount" defaultValue={b.amazonAccount} style={{ width: "auto" }}>
+                    <option value="haupt">Hauptkonto (Anbindungen → Amazon Seller Central)</option>
+                    <option value="zweit">Zweites Konto (Anbindungen → Amazon – zweites Verkäuferkonto)</option>
+                  </select></div>
+                <details>
+                  <summary className="label" style={{ cursor: "pointer" }}>Hersteller / Verantwortlicher (GPSR) – Vorlage für neue Artikel</summary>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
+                    <input className="input" name="gpsr_companyName" defaultValue={b.gpsr.companyName ?? b.sellerName ?? ""} placeholder="Firma" />
+                    <input className="input" name="gpsr_addressLine1" defaultValue={b.gpsr.addressLine1 ?? ""} placeholder="Straße und Nr." />
+                    <input className="input" name="gpsr_postalCode" defaultValue={b.gpsr.postalCode ?? ""} placeholder="PLZ" />
+                    <input className="input" name="gpsr_city" defaultValue={b.gpsr.city ?? ""} placeholder="Ort" />
+                    <input className="input" name="gpsr_country" defaultValue={b.gpsr.country ?? "DE"} placeholder="Land (ISO)" />
+                    <input className="input" name="gpsr_email" defaultValue={b.gpsr.email ?? ""} placeholder="E-Mail" />
+                  </div>
+                </details>
                 <div className="small muted" style={{ marginTop: -6 }}>Für den Buy-Box-Abgleich in der Shop-Analyse. Die Kennung steht in Seller Central → Einstellungen → Kontoinformationen → Händlerkennung – oder dort mit „Ja, das sind wir“ übernehmen.</div>
                 <div className="field"><label className="label">Links (Shop, TikTok, YouTube, Instagram) – einer pro Zeile</label><textarea className="textarea" name="links" defaultValue={b.links ?? ""} style={{ minHeight: 70, fontFamily: "var(--mono)", fontSize: 12 }} /></div>
                 {b.links && (

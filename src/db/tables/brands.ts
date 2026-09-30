@@ -28,6 +28,10 @@ export const brands = pgTable(
     /** Verkäuferkonto, über das die Marke auf Amazon verkauft (z. B. eine eigene GmbH) – für den Buy-Box-Abgleich. */
     sellerName: text("seller_name"),
     sellerId: text("seller_id"),
+    /** Welches Amazon-Konto die Marke nutzt: Hauptkonto oder zweites Konto (Anbindungen → Amazon, zweites Konto). */
+    amazonAccount: text("amazon_account", { enum: ["haupt", "zweit"] }).notNull().default("haupt"),
+    /** Hersteller-/Verantwortlichen-Angaben (GPSR) – Vorlage für neue Artikel. */
+    gpsr: jsonb("gpsr").$type<{ companyName?: string; addressLine1?: string; postalCode?: string; city?: string; country?: string; email?: string; phone?: string }>().notNull().default({}),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

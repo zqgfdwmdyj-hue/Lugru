@@ -35,6 +35,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/einkauf", label: "Einkauf" },
         { href: "/chargen", label: "Chargen & Artikel" },
         { href: "/bestand", label: "Bestand & Inventur" },
+        { href: "/artikel", label: "Artikelstamm" },
         { href: "/listings", label: "Listings" },
         { href: "/lieferanten", label: "Lieferanten-Feeds" },
       ],

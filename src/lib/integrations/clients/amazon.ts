@@ -12,22 +12,31 @@ import { registerTester } from "../test";
 
 // Amazon Selling Partner API (Europa). Seit 2023 genügt das LWA-Token, keine AWS-Signatur.
 
-const ENDPOINT = "https://sellingpartnerapi-eu.amazon.com";
+const ENDPOINT = () => (process.env.AMAZON_SP_BASE_URL || "https://sellingpartnerapi-eu.amazon.com").replace(/\/$/, "");
+const LWA_URL = () => process.env.AMAZON_LWA_URL || "https://api.amazon.com/auth/o2/token";
 const tokenCache = new Map<string, { token: string; until: number }>();
 
-type Creds = { clientId: string; clientSecret: string; refreshToken: string; marketplaceIds: string[] };
+type Creds = { clientId: string; clientSecret: string; refreshToken: string; marketplaceIds: string[]; sellerId: string | null; publicImageBase: string | null };
 
-async function creds(tenantId: string): Promise<Creds | null> {
-  const v = await getIntegration(tenantId, "amazon_sp");
+/** Hauptkonto (amazon_sp) oder zweites Verkäuferkonto (amazon_sp_2, z. B. die GmbH einer Marke). */
+async function creds(tenantId: string, provider: "amazon_sp" | "amazon_sp_2" = "amazon_sp"): Promise<Creds | null> {
+  const v = await getIntegration(tenantId, provider);
   if (!v?.clientId || !v.clientSecret || !v.refreshToken) return null;
-  return { clientId: v.clientId, clientSecret: v.clientSecret, refreshToken: v.refreshToken, marketplaceIds: (v.marketplaceIds || "A1PA6795UKMFR9").split(/[,\s]+/).filter(Boolean) };
+  return {
+    clientId: v.clientId,
+    clientSecret: v.clientSecret,
+    refreshToken: v.refreshToken,
+    marketplaceIds: (v.marketplaceIds || "A1PA6795UKMFR9").split(/[,\s]+/).filter(Boolean),
+    sellerId: v.sellerId?.trim() || null,
+    publicImageBase: v.publicImageBase?.trim().replace(/\/$/, "") || null,
+  };
 }
 
 async function lwaToken(c: Creds): Promise<string> {
   const key = `${c.clientId}:${c.refreshToken.slice(-12)}`;
   const hit = tokenCache.get(key);
   if (hit && hit.until > Date.now()) return hit.token;
-  const res = await fetch("https://api.amazon.com/auth/o2/token", {
+  const res = await fetch(LWA_URL(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: c.refreshToken, client_id: c.clientId, client_secret: c.clientSecret }),
@@ -40,7 +49,7 @@ async function lwaToken(c: Creds): Promise<string> {
 
 async function sp<T>(c: Creds, method: string, path: string, body?: unknown, token?: string): Promise<T> {
   for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(`${ENDPOINT}${path}`, {
+    const res = await fetch(`${ENDPOINT()}${path}`, {
       method,
       headers: { "x-amz-access-token": token ?? (await lwaToken(c)), "Content-Type": "application/json", Accept: "application/json" },
       body: body ? JSON.stringify(body) : undefined,
@@ -238,8 +247,8 @@ registerTrackingUploader("amazon", async (tenantId, order, items) => {
   });
 });
 
-registerTester("amazon_sp", async (v, tenantId) => {
-  const c = await creds(tenantId);
+for (const provider of ["amazon_sp", "amazon_sp_2"] as const) registerTester(provider, async (v, tenantId) => {
+  const c = await creds(tenantId, provider);
   if (!c) throw new Error("Client-ID, Secret und Refresh-Token angeben.");
   const r = await sp<{ payload: { marketplace: { id: string; countryCode: string } ; participation: { isParticipating: boolean } }[] }>(c, "GET", "/sellers/v1/marketplaceParticipations");
   const active = r.payload.filter((p) => p.participation.isParticipating).map((p) => p.marketplace.countryCode);
@@ -248,3 +257,22 @@ registerTester("amazon_sp", async (v, tenantId) => {
 });
 
 
+
+// --- Listings (Artikel anlegen/ändern) ------------------------------------------------
+
+export type ListingsAccount = "haupt" | "zweit";
+
+/** Verbindung für das Listings-API: Konto wählen, Verkäufer-ID und Marktplatz prüfen. */
+export async function listingsConn(tenantId: string, account: ListingsAccount) {
+  const provider = account === "zweit" ? "amazon_sp_2" : "amazon_sp";
+  const c = await creds(tenantId, provider);
+  const where = account === "zweit" ? "Anbindungen → „Amazon – zweites Verkäuferkonto“" : "Anbindungen → „Amazon Seller Central“";
+  if (!c) throw new Error(`Amazon-Konto nicht verbunden (${where}).`);
+  if (!c.sellerId) throw new Error(`Händler-ID (Merchant Token) fehlt (${where}).`);
+  return {
+    sellerId: c.sellerId,
+    marketplaceId: c.marketplaceIds[0] ?? "A1PA6795UKMFR9",
+    publicImageBase: c.publicImageBase,
+    call: <T>(method: string, path: string, body?: unknown) => sp<T>(c, method, path, body),
+  };
+}

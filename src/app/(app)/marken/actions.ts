@@ -11,6 +11,7 @@ import { checklistFor } from "@/lib/brands/ai";
 import { OCCASIONS } from "@/lib/brands/occasions";
 import { generateContent, generateIdeas, refreshBrandPlanning } from "@/lib/brands/service";
 import { assertBrand } from "@/lib/brands/access";
+import { createFromIdea } from "@/lib/articles/service";
 import type { Session } from "@/lib/auth/session";
 
 export type BrandState = { ok: boolean; message: string } | null;
@@ -89,7 +90,10 @@ export async function setIdeaStatusAction(fd: FormData) {
   const s = await requireArea("marken");
   const id = uuid.parse(fd.get("id"));
   await ownIdea(s, id);
-  await db.update(schema.ideas).set({ status: z.enum(IDEA_STATUSES).parse(fd.get("status")), updatedAt: new Date() }).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+  const status = z.enum(IDEA_STATUSES).parse(fd.get("status"));
+  await db.update(schema.ideas).set({ status, updatedAt: new Date() }).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+  // Ab „Umsetzen“ bekommt die Idee einen Artikel im Artikelstamm (Bilder, Texte, Kanäle an einem Ort).
+  if (status === "in_progress" || status === "live") await createFromIdea(s.tenantId, id);
   await refreshBrandPlanning(s.tenantId).catch(() => {});
   revalidatePath("/", "layout");
 }
@@ -192,6 +196,8 @@ export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<
       vatRate: ["0", "7", "19"].includes(str(fd, "vatRate")) ? str(fd, "vatRate") : "19",
       sellerName: str(fd, "sellerName").slice(0, 120) || null,
       sellerId: /^[A-Z0-9]{8,20}$/.test(str(fd, "sellerId").toUpperCase()) ? str(fd, "sellerId").toUpperCase() : null,
+      amazonAccount: fd.get("amazonAccount") === "zweit" ? "zweit" : "haupt",
+      gpsr: Object.fromEntries(["companyName", "addressLine1", "postalCode", "city", "country", "email", "phone"].map((k) => [k, str(fd, `gpsr_${k}`).slice(0, 200)])),
       occasions,
       updatedAt: new Date(),
     })
@@ -253,4 +259,13 @@ export async function marketHelium10Action(_prev: BrandState, fd: FormData): Pro
   } catch (e) {
     return { ok: false, message: msg(e) };
   }
+}
+
+/** Idee jederzeit in den Artikelstamm übernehmen und dorthin wechseln. */
+export async function ideaToArticleAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const id = uuid.parse(fd.get("id"));
+  await ownIdea(s, id);
+  const articleId = await createFromIdea(s.tenantId, id);
+  redirect(`/artikel/${articleId}`);
 }

@@ -2,7 +2,7 @@
 // alles oder nur die freigegebenen Bereiche (und bei „Marken“ ggf. nur bestimmte Marken).
 // Ohne Server-Abhängigkeiten – wird in proxy.ts, Seiten und Server Actions genutzt.
 
-export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld";
+export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld";
 
 export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string }[] = [
   { key: "start", label: "Start & Aufgaben", paths: ["/"], home: "/" },
@@ -10,6 +10,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "kalender", label: "Kalender", paths: ["/kalender"], home: "/kalender" },
   { key: "wissen", label: "Wissen", paths: ["/wissen"], home: "/wissen" },
   { key: "wawi", label: "WaWi (Aufträge, Einkauf, Chargen, Bestand, Listings, Import)", paths: ["/auftraege", "/einkauf", "/chargen", "/bestand", "/listings", "/import"], home: "/auftraege" },
+  { key: "artikel", label: "Artikelstamm (eigene Produkte, Bilder, Texte, Amazon/eBay)", paths: ["/artikel"], home: "/artikel" },
   { key: "lieferanten", label: "Lieferanten-Feeds (Scannen, Keepa-Prüfung, Boxen)", paths: ["/lieferanten"], home: "/lieferanten" },
   { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse)", paths: ["/marken"], home: "/marken" },
   { key: "ebay", label: "eBay", paths: ["/ebay", "/api/ebay"], home: "/ebay" },
@@ -36,8 +37,8 @@ export type Access = { role: "owner" | "staff"; areas: string[] | null };
 /** Inhaber und Mitarbeiter ohne Einschränkung dürfen alles. */
 export function canAccess(a: Access, area: AreaKey | null): boolean {
   if (area === null || a.role === "owner" || a.areas === null) return true;
-  // Lieferanten-Feeds gehörten früher zur WaWi – wer WaWi hat, behält sie.
-  return a.areas.includes(area) || (area === "lieferanten" && a.areas.includes("wawi"));
+  // Lieferanten-Feeds und Artikelstamm hängen an der WaWi – wer WaWi hat, sieht sie mit.
+  return a.areas.includes(area) || ((area === "lieferanten" || area === "artikel") && a.areas.includes("wawi"));
 }
 
 /** Wohin nach dem Login bzw. bei einem gesperrten Bereich? */

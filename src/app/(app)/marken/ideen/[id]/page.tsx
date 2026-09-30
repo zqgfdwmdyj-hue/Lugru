@@ -7,7 +7,7 @@ import { brandAllowed } from "@/lib/auth/areas";
 import { CONTENT_STATUS_LABEL, IDEA_STATUS_LABEL } from "@/lib/brands/ai";
 import { OCCASIONS, occasionByKey } from "@/lib/brands/occasions";
 import { formatEuro } from "@/lib/numbers";
-import { checklistAction, deleteIdeaAction, setIdeaStatusAction } from "../../actions";
+import { checklistAction, deleteIdeaAction, setIdeaStatusAction, ideaToArticleAction } from "../../actions";
 import { MarketForms, SaveForm, SuggestContent } from "../../forms";
 import { calcProfit, summarizeMarket } from "@/lib/brands/market";
 
@@ -50,6 +50,7 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
       }
     : null;
   const done = i.checklist.filter((c) => c.done).length;
+  const [article] = await db.select({ id: schema.articles.id, sku: schema.articles.sku, status: schema.articles.status }).from(schema.articles).where(and(eq(schema.articles.tenantId, t), eq(schema.articles.ideaId, i.id)));
 
   return (
     <>
@@ -59,6 +60,11 @@ export default async function IdeaPage({ params }: { params: Promise<{ id: strin
           <h1 style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>{i.title} <span className={`tag ${cls}`}>{label}</span>{i.source === "ai" && <span className="tag tag-neutral">KI-Vorschlag</span>}</h1>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {article ? (
+            <Link className="btn" href={`/artikel/${article.id}`}>Artikelstamm: {article.sku}</Link>
+          ) : (
+            <form action={ideaToArticleAction}><input type="hidden" name="id" value={i.id} /><button className="btn" type="submit">In Artikelstamm übernehmen</button></form>
+          )}
           {(NEXT[i.status] ?? []).map(([s, text], n) => (
             <form key={s} action={setIdeaStatusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={s} /><button className={`btn${n === 0 ? " btn-primary" : ""}`} type="submit">{text}</button></form>
           ))}
