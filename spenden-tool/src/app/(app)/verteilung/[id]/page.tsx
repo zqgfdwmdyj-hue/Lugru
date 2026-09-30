@@ -14,6 +14,7 @@ import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
+import { CategorySelect } from "@/components/category-select";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
@@ -49,7 +50,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           <div className="small muted">{event.title} · {rows.length} Produkte{value ? ` · Warenwert ${formatEuro(value)}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <PhotoUpload eventId={id} action={uploadPhotos} />
+          <PhotoUpload eventId={id} action={uploadPhotos} categories={categories} />
           <Link href={`/verteilung/${id}/collage`} className="btn">Collage erstellen</Link>
           <Link href={`/aushang/${id}`} className="btn" target="_blank">Aushang drucken</Link>
         </div>
@@ -89,7 +90,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                       <input className="input input-compact" name={`name_${product.id}`} defaultValue={isPlaceholderName(product.name) ? "" : product.name} placeholder="Name eintragen" aria-label="Name" />
                       <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
                         <input className="input input-compact" name={`variant_${product.id}`} defaultValue={product.variant ?? ""} placeholder="Variante (z. B. 5kg)" aria-label="Variante" />
-                        <input className="input input-compact" name={`cat_${product.id}`} defaultValue={product.category} list="spenden-kategorien" aria-label="Kategorie" />
+                        <CategorySelect compact name={`cat_${product.id}`} value={product.category} categories={categories} />
                       </div>
                     </td>
                     <td>
@@ -161,7 +162,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           ) : (
             <div className="card card-pad small muted">KI-Preisrecherche ist aus – dafür auf dem Server <code>ANTHROPIC_API_KEY</code> setzen (siehe README).</div>
           )}
-          <PhotoUpload eventId={id} action={uploadPhotos} variant="card" />
+          <PhotoUpload eventId={id} action={uploadPhotos} variant="card" categories={categories} />
 
           <form action={addToEvent} className="card card-pad stack" style={{ gap: 8 }}>
             <input type="hidden" name="eventId" value={id} />
@@ -195,7 +196,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
               <div className="field"><label className="label" htmlFor="nv">Variante</label><input className="input" id="nv" name="variant" placeholder="z. B. 5kg" /></div>
               <div className="field"><label className="label" htmlFor="np">Preis €</label><input className="input" id="np" name="price" inputMode="decimal" placeholder="0,50" /></div>
             </div>
-            <div className="field"><label className="label" htmlFor="nc">Kategorie</label><input className="input" id="nc" name="category" list="spenden-kategorien" defaultValue="Lebensmittel" /></div>
+            <div className="field"><label className="label" htmlFor="nc">Kategorie</label><CategorySelect id="nc" name="category" value="Lebensmittel" categories={categories} /></div>
             <input className="input" name="image" type="file" accept="image/*" aria-label="Foto" />
             <button className="btn btn-primary" type="submit">Anlegen und hinzufügen</button>
           </ImageForm>

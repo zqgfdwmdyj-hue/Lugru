@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { UploadResult } from "@/app/(app)/actions";
 import { shrink } from "./image-form";
+import { CategorySelect } from "./category-select";
 
 const BATCH = 4;
 
@@ -12,9 +13,9 @@ const BATCH = 4;
  * in Portionen zu je 4 hochgeladen – so geht auch eine große Auswahl (50+ Fotos) durch, ohne dass
  * das Handy den Speicher sprengt oder eine einzelne riesige Anfrage abbricht.
  */
-export function PhotoUpload({ eventId, action, variant = "button" }: { eventId: string; action: (fd: FormData) => Promise<UploadResult>; variant?: "button" | "card" }) {
+export function PhotoUpload({ eventId, action, variant = "button", categories = [] }: { eventId: string; action: (fd: FormData) => Promise<UploadResult>; variant?: "button" | "card"; categories?: string[] }) {
   const input = useRef<HTMLInputElement>(null);
-  const category = useRef<HTMLInputElement>(null);
+  const categoryBox = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [status, setStatus] = useState("");
   const [report, setReport] = useState<{ ok: boolean; text: string } | null>(null);
@@ -30,7 +31,7 @@ export function PhotoUpload({ eventId, action, variant = "button" }: { eventId: 
       const part = files.slice(i, i + BATCH);
       const fd = new FormData();
       fd.set("eventId", eventId);
-      fd.set("category", category.current?.value || "Lebensmittel");
+      fd.set("category", categoryBox.current?.querySelector<HTMLInputElement | HTMLSelectElement>("[name=category]")?.value || "Lebensmittel");
       for (let j = 0; j < part.length; j++) {
         setStatus(`Foto ${i + j + 1} von ${total} wird vorbereitet …`);
         fd.append("photos", await shrink(part[j]));
@@ -95,7 +96,7 @@ export function PhotoUpload({ eventId, action, variant = "button" }: { eventId: 
         {picker}
         <h2>Fotos hochladen</h2>
         <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Schon einmal hochgeladene Fotos werden wiedererkannt.</div>
-        <div className="field"><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><input ref={category} className="input" id="pc" list="spenden-kategorien" defaultValue="Lebensmittel" /></div>
+        <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><CategorySelect id="pc" name="category" value="Lebensmittel" categories={categories} /></div>
         <button className="btn btn-primary" type="button" disabled={busy} onClick={() => input.current?.click()}>Fotos auswählen</button>
         {message}
       </div>

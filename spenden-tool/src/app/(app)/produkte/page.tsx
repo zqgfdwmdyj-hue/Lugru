@@ -4,6 +4,7 @@ import { knownCategories, searchProducts } from "@/lib/service";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { createProduct } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
+import { CategorySelect } from "@/components/category-select";
 
 export default async function SpendenProduktePage({ searchParams }: { searchParams: Promise<{ q?: string; kat?: string; archiv?: string }> }) {
   await requireLogin();
@@ -68,7 +69,7 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
               <div className="field"><label className="label" htmlFor="nv">Variante</label><input className="input" id="nv" name="variant" placeholder="z. B. 8er Pack" /></div>
               <div className="field"><label className="label" htmlFor="np">Preis €</label><input className="input" id="np" name="price" inputMode="decimal" /></div>
             </div>
-            <div className="field"><label className="label" htmlFor="nc">Kategorie</label><input className="input" id="nc" name="category" list="spenden-kategorien" defaultValue={kat || "Lebensmittel"} /></div>
+            <div className="field"><label className="label" htmlFor="nc">Kategorie</label><CategorySelect id="nc" name="category" value={kat || "Lebensmittel"} categories={categories} /></div>
             <input className="input" name="image" type="file" accept="image/*" aria-label="Foto" />
             <button className="btn btn-primary" type="submit">Anlegen</button>
           </ImageForm>
