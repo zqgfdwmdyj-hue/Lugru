@@ -134,7 +134,7 @@ export function BoxSuggest({ feedId, brands, occasions, hasAi, defaultFba, offer
       </div>
       <input className="input" name="wish" placeholder="Wunsch (optional), z. B. „Sauer-Challenge“, „unter 25 €“" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-        <label className="field"><span className="label">Anzahl</span><input className="input" name="count" type="number" min={1} max={8} defaultValue={4} /></label>
+        <label className="field"><span className="label">Anzahl Boxen</span><input className="input" name="count" type="number" min={1} max={8} defaultValue={4} title="Wie viele verschiedene Box-Vorschläge die KI erstellen soll (1–8)" /></label>
         <label className="field"><span className="label">Verpackung €</span><input className="input" name="packaging" inputMode="decimal" defaultValue="2,50" /></label>
         <label className="field"><span className="label">FBA-Gebühr €</span><input className="input" name="fbaFee" inputMode="decimal" defaultValue={defaultFba.toFixed(2).replace(".", ",")} /></label>
       </div>
