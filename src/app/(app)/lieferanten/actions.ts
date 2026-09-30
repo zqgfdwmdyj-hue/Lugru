@@ -17,7 +17,7 @@ import { assertBrand } from "@/lib/brands/access";
 const uuid = z.string().uuid();
 
 export async function createFeed(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   const name = String(fd.get("name") ?? "").trim();
   if (!name) return;
   const supplierId = uuid.safeParse(fd.get("supplierId")).success ? String(fd.get("supplierId")) : null;
@@ -28,7 +28,7 @@ export async function createFeed(fd: FormData) {
 export type FeedState = { ok: boolean; message: string; headers?: string[] } | null;
 
 export async function uploadFeed(_prev: FeedState, fd: FormData): Promise<FeedState> {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   const feedId = uuid.parse(fd.get("feedId"));
   const [feed] = await db.select().from(schema.supplierFeeds).where(and(eq(schema.supplierFeeds.id, feedId), eq(schema.supplierFeeds.tenantId, session.tenantId)));
   if (!feed) return { ok: false, message: "Feed nicht gefunden." };
@@ -68,19 +68,6 @@ export async function uploadFeed(_prev: FeedState, fd: FormData): Promise<FeedSt
   return { ok: true, message: `${values.length} Angebote übernommen.` };
 }
 
-export async function offerToListing(fd: FormData) {
-  const session = await requireArea("wawi");
-  const id = uuid.parse(fd.get("offerId"));
-  const [o] = await db.select().from(schema.supplierOffers).where(and(eq(schema.supplierOffers.id, id), eq(schema.supplierOffers.tenantId, session.tenantId)));
-  if (!o) return;
-  const price = parseAmount(fd.get("price"));
-  await db
-    .insert(schema.listings)
-    .values({ tenantId: session.tenantId, channel: "ebay", sku: `L-${o.supplierSku}`.slice(0, 50), title: (o.title ?? o.supplierSku).slice(0, 80), ean: o.ean, price, quantity: Math.max(0, o.stock ?? 0), payload: { supplierOfferId: o.id } })
-    .onConflictDoNothing();
-  redirect(`/listings?kanal=ebay&sku=${encodeURIComponent(`L-${o.supplierSku}`.slice(0, 50))}`);
-}
-
 export type ScanState = { ok: boolean; message: string } | null;
 
 async function ownFeed(tenantId: string, raw: FormDataEntryValue | null) {
@@ -92,7 +79,7 @@ async function ownFeed(tenantId: string, raw: FormDataEntryValue | null) {
 
 /** Seite, Link, Text, Foto oder PDF scannen und als Angebote übernehmen. */
 export async function scanFeedAction(_prev: ScanState, fd: FormData): Promise<ScanState> {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   try {
     const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
     const file = fd.get("file");
@@ -109,7 +96,7 @@ export async function scanFeedAction(_prev: ScanState, fd: FormData): Promise<Sc
 }
 
 export async function keepaFeedAction(_prev: ScanState, fd: FormData): Promise<ScanState> {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   try {
     const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
     const r = await checkFeedWithKeepa(session.tenantId, feedId, { byTitle: fd.get("byTitle") === "on" });
@@ -122,7 +109,7 @@ export async function keepaFeedAction(_prev: ScanState, fd: FormData): Promise<S
 }
 
 export async function feedCostAction(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
   const pct = parseAmount(fd.get("costPct"));
   const vat = parseAmount(fd.get("vatPct"));
@@ -133,7 +120,7 @@ export async function feedCostAction(fd: FormData) {
 }
 
 export async function clearFeedAction(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
   await db.delete(schema.supplierOffers).where(and(eq(schema.supplierOffers.feedId, feedId), eq(schema.supplierOffers.tenantId, session.tenantId)));
   revalidatePath(`/lieferanten/${feedId}`);
@@ -143,7 +130,7 @@ export type BoxState = { ok: boolean; message: string; brandId?: string } | null
 
 /** Aus den Artikeln Boxen vorschlagen lassen → Ideen im Marken-Board (mit exakter Kalkulation). */
 export async function suggestBoxesAction(_prev: BoxState, fd: FormData): Promise<BoxState> {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   try {
     if (!canAccess(session, "marken")) throw new Error("Für Box-Vorschläge braucht es Zugriff auf den Bereich Marken.");
     const feedId = await ownFeed(session.tenantId, fd.get("feedId"));

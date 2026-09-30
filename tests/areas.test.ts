@@ -37,3 +37,15 @@ describe("Einträge mit Links", () => {
     expect(linkAllowed(a, "/kalender")).toBe(true);
   });
 });
+
+import { areaForPath as afp, canAccess as ca } from "@/lib/auth/areas";
+
+describe("Lieferanten-Feeds als eigener Bereich", () => {
+  it("eigener Pfad, eigene Freigabe, WaWi behält Zugriff", () => {
+    expect(afp("/lieferanten/abc")).toBe("lieferanten");
+    expect(ca({ role: "staff", areas: ["marken", "lieferanten"] }, "lieferanten")).toBe(true);
+    expect(ca({ role: "staff", areas: ["marken", "lieferanten"] }, "wawi")).toBe(false);
+    expect(ca({ role: "staff", areas: ["wawi"] }, "lieferanten")).toBe(true);
+    expect(ca({ role: "staff", areas: ["marken"] }, "lieferanten")).toBe(false);
+  });
+});

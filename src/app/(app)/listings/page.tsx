@@ -5,6 +5,7 @@ import { CHANNELS } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
+import { ebayToolLink } from "@/lib/ebay/tool-link";
 import { deleteListing, draftsFromOwnStock, publishAction, saveListing } from "./actions";
 
 const STATUS: Record<string, [string, string]> = { draft: ["ENTWURF", "tag-neutral"], active: ["AKTIV", "tag-ok"], ended: ["BEENDET", "tag-neutral"], error: ["FEHLER", "tag-critical"] };
@@ -45,7 +46,12 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                   <td className="num right">{l.quantity}</td>
                   <td><span className={`tag ${STATUS[l.status][1]}`}>{STATUS[l.status][0]}</span>{l.externalId && <div className="small muted num">{l.externalId}</div>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <form action={publishAction} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit">{l.status === "active" ? "Aktualisieren" : "Einstellen"}</button></form>
+                    {l.channel === "ebay" && l.status !== "active" ? (
+                      // eBay-Angebote entstehen im eBay-Tool (Katalog, Bilder, HTML-Vorlage, Keepa) – vorausgefüllt.
+                      <Link className="btn btn-small" href={ebayToolLink({ q: l.ean || l.title, vk: l.price })}>Im eBay-Tool einstellen</Link>
+                    ) : (
+                      <form action={publishAction} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit">{l.status === "active" ? "Aktualisieren" : "Einstellen"}</button></form>
+                    )}
                     <Link className="btn-link small" href={`/listings?sku=${encodeURIComponent(l.sku)}&kanal=${l.channel}`} style={{ marginLeft: 8 }}>bearbeiten</Link>
                     <form action={deleteListing} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 8, color: "var(--muted)" }}>×</button></form>
                   </td>
@@ -55,13 +61,20 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
           </table>
         </section>
         <aside className="col-side">
+          {!sp.sku && (
+            <section className="card card-pad stack" style={{ gap: 8 }}>
+              <h2>Neues eBay-Angebot</h2>
+              <div className="small muted">Im eBay-Tool: EAN oder Titel suchen – Katalogdaten, Bilder, HTML-Vorlage, Keepa und Gewinnrechnung sind dort hinterlegt.</div>
+              <Link className="btn btn-primary" href="/ebay">Zum eBay-Tool</Link>
+            </section>
+          )}
           <form action={saveListing} className="card card-pad stack" style={{ gap: 8 }}>
-            <h2>{sp.sku ? "Listing bearbeiten" : "Neues Listing"}</h2>
+            <h2>{sp.sku ? "Listing bearbeiten" : "Neues Listing (andere Kanäle)"}</h2>
             {(() => {
               const cur = sp.sku ? rows.find((r) => r.sku === sp.sku && (!sp.kanal || r.channel === sp.kanal)) : undefined;
               return (
                 <>
-                  <div className="field"><label className="label" htmlFor="l-ch">Kanal</label><select className="select" id="l-ch" name="channel" defaultValue={cur?.channel ?? "ebay"}>{CHANNELS.filter((c) => c !== "manual").map((c) => <option key={c} value={c}>{CHANNEL_LABEL[c]}</option>)}</select></div>
+                  <div className="field"><label className="label" htmlFor="l-ch">Kanal</label><select className="select" id="l-ch" name="channel" defaultValue={cur?.channel ?? "amazon"}>{CHANNELS.filter((c) => c !== "manual" && (c !== "ebay" || cur?.channel === "ebay")).map((c) => <option key={c} value={c}>{CHANNEL_LABEL[c]}</option>)}</select></div>
                   <div className="field"><label className="label" htmlFor="l-sku">SKU</label><input className="input" id="l-sku" name="sku" defaultValue={cur?.sku ?? sp.sku ?? ""} required /></div>
                   <div className="field"><label className="label" htmlFor="l-t">Titel (max. 80 Zeichen)</label><input className="input" id="l-t" name="title" maxLength={80} defaultValue={cur?.title ?? ""} placeholder="leer = Titel aus dem Artikel" /></div>
                   <div style={{ display: "flex", gap: 8 }}>

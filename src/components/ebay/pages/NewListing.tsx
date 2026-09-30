@@ -24,18 +24,21 @@ type VatMode = 'net' | 'gross';
  * Der Entwurf entsteht erst beim Absenden von Schritt 3 — vorher wird nichts
  * gespeichert.
  */
-export function NewListing({ onCreated }: { onCreated: (id: number) => void }) {
-  const [query, setQuery] = useState('');
+/** Vorbelegung aus dem Seller-System (z. B. Lieferanten-Feed → „→ eBay“): Suche startet sofort. */
+export type ListingPrefill = { q: string; ek?: string; vk?: string; quelle?: string; menge?: string };
+
+export function NewListing({ onCreated, prefill }: { onCreated: (id: number) => void; prefill?: ListingPrefill }) {
+  const [query, setQuery] = useState(prefill?.q ?? '');
   const [searched, setSearched] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [selected, setSelected] = useState<SearchResult | null>(null);
-  const [targetPrice, setTargetPrice] = useState('');
+  const [targetPrice, setTargetPrice] = useState(prefill?.vk ?? '');
   const [quantity, setQuantity] = useState('1');
-  const [purchasedUnits, setPurchasedUnits] = useState('');
-  const [purchasePrice, setPurchasePrice] = useState('');
+  const [purchasedUnits, setPurchasedUnits] = useState(prefill?.menge ?? '');
+  const [purchasePrice, setPurchasePrice] = useState(prefill?.ek ?? '');
   const [purchasePriceMode, setPurchasePriceMode] = useState<PriceMode>('unit');
   const [purchasePriceVat, setPurchasePriceVat] = useState<VatMode>('net');
-  const [purchaseSource, setPurchaseSource] = useState('');
+  const [purchaseSource, setPurchaseSource] = useState(prefill?.quelle ?? '');
   const [condition, setCondition] = useState<Condition>('NEW');
   const [feeSettings, setFeeSettings] = useState<FeeSettings | null>(null);
   const [settingsError, setSettingsError] = useState('');
@@ -49,14 +52,20 @@ export function NewListing({ onCreated }: { onCreated: (id: number) => void }) {
       .catch((err) => setSettingsError(err instanceof Error ? err.message : String(err)));
   }, []);
 
+  // Mit Vorbelegung gleich suchen – einmal beim Öffnen.
+  useEffect(() => {
+    if (prefill?.q && prefill.q.trim().length >= 2) void search();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const step: Step = selected ? 'Daten' : results ? 'Auswählen' : 'Suchen';
 
   function fail(err: unknown) {
     setError(err instanceof Error ? err.message : String(err));
   }
 
-  async function search(e: FormEvent) {
-    e.preventDefault();
+  async function search(e?: FormEvent) {
+    e?.preventDefault();
     const q = query.trim();
     if (q.length < 2) return;
     setError('');

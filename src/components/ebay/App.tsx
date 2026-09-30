@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type JSX } from 'react';
-import { NewListing } from './pages/NewListing';
+import { NewListing, type ListingPrefill } from './pages/NewListing';
 import { Preview } from './pages/Preview';
 import { History } from './pages/History';
 import { Articles, ArticleView } from './pages/Articles';
@@ -13,7 +13,7 @@ import type { View } from './view';
 
 export type { View };
 
-export function App({ initial }: { initial?: View }) {
+export function App({ initial, prefill }: { initial?: View; prefill?: ListingPrefill }) {
   const [view, setView] = useState<View>(initial ?? { page: 'search' });
   const home = () => setView({ page: 'search' });
 
@@ -48,7 +48,7 @@ export function App({ initial }: { initial?: View }) {
         {(view.page === 'history' || view.page === 'articles' || view.page === 'settings' || view.page === 'invoices') && (
           <button className="back" onClick={home}><ArrowLeftIcon size={16} /> Zur Suche</button>
         )}
-        {view.page === 'search' && <NewListing onCreated={(id) => setView({ page: 'preview', id })} />}
+        {view.page === 'search' && <NewListing prefill={prefill} onCreated={(id) => setView({ page: 'preview', id })} />}
         {view.page === 'preview' && <Preview id={view.id} onBack={home} />}
         {view.page === 'history' && <History onOpen={(id) => setView({ page: 'preview', id })} />}
         {view.page === 'articles' && <Articles onOpen={(key) => setView({ page: 'article', key })} />}

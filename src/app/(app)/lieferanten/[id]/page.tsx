@@ -9,9 +9,10 @@ import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
-import { packInfo, packOf } from "@/lib/suppliers/scan";
+import { packInfo, packOf, searchTerm } from "@/lib/suppliers/scan";
 import { getSettings } from "@/lib/settings";
-import { clearFeedAction, feedCostAction, offerToListing } from "../actions";
+import { clearFeedAction, feedCostAction } from "../actions";
+import { ebayToolLink } from "@/lib/ebay/tool-link";
 import { BoxSuggest, KeepaCheck, ScanForm } from "./scan-form";
 import { visibleBrands } from "@/lib/brands/access";
 import { upcomingOccasions } from "@/lib/brands/occasions";
@@ -28,7 +29,7 @@ type Row = {
 const SYM: Record<string, string> = { USD: "$", GBP: "£" };
 
 export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string }> }) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("lieferanten");
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -46,6 +47,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
      order by o.title nulls last, o.supplier_sku
      limit 5000`);
   const costPct = Number(feed.mapping.costPct || 0);
+  const canEbay = canAccess(session, "ebay");
   const vatRate = feed.mapping.vatPct ? Number(feed.mapping.vatPct) / 100 : s.vatRate;
   const rows = res.rows.map((r) => {
     const m = r.market;
@@ -163,11 +165,9 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                       {r.margin !== null && <div className="small muted">{r.margin.toLocaleString("de-DE")} %</div>}
                     </td>
                     <td>
-                      <form action={offerToListing} style={{ display: "flex", gap: 4 }}>
-                        <input type="hidden" name="offerId" value={r.id} />
-                        <input type="hidden" name="price" value={r.sale ?? ""} />
-                        <button className="btn btn-small" type="submit" title="eBay-Listing-Entwurf anlegen" style={{ whiteSpace: "nowrap" }}>→ eBay</button>
-                      </form>
+                      {canEbay && (
+                        <Link className="btn btn-small" style={{ whiteSpace: "nowrap" }} title="Im eBay-Tool öffnen – EAN/Titel, EK je Einheit und Lieferant sind vorausgefüllt" href={ebayToolLink({ q: r.ean ?? searchTerm(r.title ?? r.supplier_sku), ek: r.unitCost, quelle: feed.name, menge: r.caseQty > 1 ? r.caseQty : null })}>→ eBay</Link>
+                      )}
                     </td>
                   </tr>
                 ))}
