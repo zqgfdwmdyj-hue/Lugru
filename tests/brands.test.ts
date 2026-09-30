@@ -110,3 +110,26 @@ describe("Shop-Analyse", () => {
     expect(text).toMatch(/verschlechtert/);
   });
 });
+
+import { buyBoxHolder, parseKeepaOwn as parseOwn2 } from "@/lib/brands/shop";
+
+describe("Buy Box und Bewertungen (Keepa mit buybox=1, rating=1)", () => {
+  const cur = Array(20).fill(-1);
+  cur[16] = 47; cur[17] = 38; cur[3] = 18123;
+  const raw = { asin: "B0TEST0001", title: "Grulu Test", stats: { current: cur, buyBoxPrice: 1499, buyBoxSellerId: "A1KULU00TEST", buyBoxIsFBA: true } };
+  it("liest Buy-Box-Preis, -Verkäufer, Sterne und Anzahl", () => {
+    const d = parseOwn2(raw)!;
+    expect(d).toMatchObject({ price: 14.99, hasBuyBox: true, buyBoxSellerId: "A1KULU00TEST", buyBoxIsFBA: true, rating: 4.7, reviews: 38 });
+  });
+  it("ohne Buy-Box-Daten: unbekannt statt „keine Buy Box“", () => {
+    expect(parseOwn2({ asin: "B0TEST0002", title: "x", stats: { current: Array(20).fill(-1) } })!.hasBuyBox).toBeNull();
+    expect(parseOwn2({ asin: "B0TEST0003", title: "x", stats: { current: Array(20).fill(-1), buyBoxPrice: -1 } })!.hasBuyBox).toBe(false);
+  });
+  it("vergleicht mit dem Verkäuferkonto der Marke (ID oder Name)", () => {
+    const d = { ...parseOwn2(raw)!, buyBoxSellerName: "Wittmann und Kulu GmbH" };
+    expect(buyBoxHolder(d, { sellerId: "A1KULU00TEST", sellerName: null })?.level).toBe("ok");
+    expect(buyBoxHolder(d, { sellerId: "A9ANDERE0000", sellerName: null })).toMatchObject({ level: "warn", text: expect.stringContaining("Wittmann und Kulu GmbH") });
+    expect(buyBoxHolder(d, { sellerId: null, sellerName: "Wittmann & Kulu GmbH" })?.level).toBe("ok");
+    expect(buyBoxHolder(d, { sellerId: null, sellerName: null })?.level).toBe("info");
+  });
+});

@@ -78,3 +78,18 @@ export async function tiktokImportAction(_prev: ShopState, fd: FormData): Promis
     return { ok: false, message: msg(e) };
   }
 }
+
+/** Verkäuferkonto der Marke festlegen (aus der Buy Box übernommen). */
+export async function setSellerAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const brandId = uuid.safeParse(fd.get("brandId"));
+  if (!brandId.success) return;
+  assertBrand(s, brandId.data);
+  const sellerId = String(fd.get("sellerId") ?? "").trim();
+  if (!/^[A-Z0-9]{8,20}$/.test(sellerId)) return;
+  await db
+    .update(schema.brands)
+    .set({ sellerId, sellerName: String(fd.get("sellerName") ?? "").trim().slice(0, 120) || null, updatedAt: new Date() })
+    .where(and(eq(schema.brands.id, brandId.data), eq(schema.brands.tenantId, s.tenantId)));
+  revalidatePath("/marken/shop");
+}

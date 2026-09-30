@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { askClaude, modelFor } from "@/lib/ai/claude";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
-import { keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
+import { keepaKey, keepaProducts, keepaSellerNames } from "@/lib/integrations/clients/keepa";
 import { asinFrom, listingPrompt, parseKeepaOwn, parseTikTokExport } from "./shop";
 
 const P = schema.brandProducts;
@@ -51,10 +51,18 @@ export async function refreshOwnProducts(tenantId: string, force = false) {
   for (let i = 0; i < due.length; i += 50) {
     const batch = due.slice(i, i + 50);
     try {
-      const r = await keepaProducts(key, batch.map((p) => p.asin));
-      for (const row of batch) {
+      const r = await keepaProducts(key, batch.map((p) => p.asin), { buybox: true, rating: true });
+      const parsed = new Map(batch.map((row) => {
         const raw = r.products.find((p) => p.asin === row.asin);
-        const d = raw ? parseKeepaOwn(raw) : null;
+        return [row.id, raw ? parseKeepaOwn(raw) : null] as const;
+      }));
+      // Namen der Buy-Box-Verkäufer (bekannte aus dem letzten Abruf wiederverwenden – spart Tokens).
+      const known = new Map(batch.flatMap((row) => (row.data?.buyBoxSellerId && row.data.buyBoxSellerName ? [[row.data.buyBoxSellerId, row.data.buyBoxSellerName] as const] : [])));
+      const missing = [...new Set([...parsed.values()].map((d) => d?.buyBoxSellerId).filter((x): x is string => Boolean(x) && !known.has(x!)))];
+      const names = missing.length ? await keepaSellerNames(key, missing).catch(() => ({}) as Record<string, string>) : {};
+      for (const row of batch) {
+        const d = parsed.get(row.id) ?? null;
+        if (d?.buyBoxSellerId) d.buyBoxSellerName = known.get(d.buyBoxSellerId) ?? names[d.buyBoxSellerId] ?? null;
         if (!d) {
           await db.update(P).set({ lastError: "Keepa kennt diese ASIN nicht.", fetchedAt: new Date() }).where(eq(P.id, row.id));
           continue;

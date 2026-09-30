@@ -113,6 +113,13 @@
       "when": 1790755578678,
       "tag": "0015_lieferanten_scan",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790762171286,
+      "tag": "0016_marken_verkaeufer",
+      "breakpoints": true
     }
   ]
 }

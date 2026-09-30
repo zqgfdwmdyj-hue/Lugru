@@ -16,17 +16,41 @@ export function asinFrom(input: string): string | null {
 export function parseKeepaOwn(p: Record<string, unknown>): OwnProductData | null {
   const base = parseKeepaProduct(p);
   if (!base) return null;
-  const cur = ((p.stats ?? {}) as { current?: number[] }).current ?? [];
+  const stats = (p.stats ?? {}) as { current?: number[]; buyBoxPrice?: number; buyBoxSellerId?: string | null; buyBoxIsAmazon?: boolean; buyBoxIsFBA?: boolean };
+  const cur = stats.current ?? [];
   const rating = typeof cur[K_RATING] === "number" && cur[K_RATING] > 0 ? cur[K_RATING] / 10 : null;
   const images = Array.isArray(p.images) ? (p.images as { l?: string; m?: string }[]) : [];
   const img = images[0]?.l ?? images[0]?.m ?? (typeof p.imagesCSV === "string" ? p.imagesCSV.split(",")[0] : null);
+  // Buy Box: mit buybox=1 liefert Keepa buyBoxPrice (−1 = keine Buy Box, −2 = unterdrückt) und den Verkäufer.
+  const hasBuyBox = typeof stats.buyBoxPrice === "number" ? stats.buyBoxPrice > 0 : typeof cur[18] === "number" && cur[18] > 0 ? true : null;
   return {
     ...base,
+    price: typeof stats.buyBoxPrice === "number" && stats.buyBoxPrice > 0 ? Math.round(stats.buyBoxPrice) / 100 : base.price,
     rating,
-    hasBuyBox: typeof cur[18] === "number" && cur[18] > 0,
+    hasBuyBox,
+    buyBoxSellerId: typeof stats.buyBoxSellerId === "string" && stats.buyBoxSellerId ? stats.buyBoxSellerId : null,
+    buyBoxIsAmazon: stats.buyBoxIsAmazon === true,
+    buyBoxIsFBA: stats.buyBoxIsFBA === true,
     features: Array.isArray(p.features) ? (p.features as unknown[]).map(String).slice(0, 10) : [],
     imageUrl: img ? (img.startsWith("http") ? img : `https://m.media-amazon.com/images/I/${img}`) : null,
   };
+}
+
+/** Wer hat die Buy Box – ihr, Amazon oder jemand anderes? */
+export function buyBoxHolder(d: OwnProductData, own: { sellerId: string | null; sellerName: string | null }): { level: "ok" | "warn" | "info"; text: string } | null {
+  if (d.hasBuyBox === null) return null;
+  if (d.hasBuyBox === false) return { level: "warn", text: "Keine Buy Box – Angebot prüfen (Bestand, Preis, Sperre?)." };
+  if (d.buyBoxIsAmazon) return { level: "warn", text: "Die Buy Box hält Amazon selbst." };
+  const name = d.buyBoxSellerName ?? d.buyBoxSellerId ?? "unbekannt";
+  if (!d.buyBoxSellerId) return { level: "ok", text: "Buy Box vorhanden." };
+  const norm = (x: string) => x.toLowerCase().replace(/gmbh|ug|&|und|\s|[.,-]/g, "");
+  const byName = !own.sellerId && own.sellerName && d.buyBoxSellerName ? norm(own.sellerName) === norm(d.buyBoxSellerName) : null;
+  if (own.sellerId || byName !== null) {
+    return (own.sellerId ? own.sellerId === d.buyBoxSellerId : byName)
+      ? { level: "ok", text: `Buy Box bei euch (${own.sellerName ?? name}${d.buyBoxIsFBA ? ", FBA" : ""}).` }
+      : { level: "warn", text: `Die Buy Box hält ein anderer Verkäufer: ${name}${d.buyBoxIsFBA ? " (FBA)" : ""}.` };
+  }
+  return { level: "info", text: `Buy Box hält: ${name}${d.buyBoxIsFBA ? " (FBA)" : ""}.` };
 }
 
 // ---- Helium 10 TikTok-Erweiterung (CSV-Export) ---------------------------------------------
@@ -98,11 +122,12 @@ export function parseTikTokExport(rows: string[][]): TikTokMarketItem[] {
 export type Snapshot = { day: string; price: number | null; salesRank: number | null; reviews: number | null; rating: number | null };
 export type Hint = { level: "warn" | "info" | "ok"; text: string };
 
-export function productHints(d: OwnProductData, history: Snapshot[], competitorPrice: number | null): Hint[] {
+export function productHints(d: OwnProductData, history: Snapshot[], competitorPrice: number | null, own: { sellerId: string | null; sellerName: string | null } = { sellerId: null, sellerName: null }): Hint[] {
   const out: Hint[] = [];
-  if (!d.hasBuyBox) out.push({ level: "warn", text: "Keine Buy Box – Angebot prüfen (Bestand, Preis, Sperre?)." });
+  const bb = buyBoxHolder(d, own);
+  if (bb && bb.level !== "ok") out.push(bb);
   if (d.rating !== null && d.rating < 4.2) out.push({ level: "warn", text: `Bewertung nur ${d.rating.toLocaleString("de-DE")} Sterne – Kritik in den Rezensionen lesen und Produkt/Beschreibung anpassen.` });
-  if ((d.reviews ?? 0) < 20) out.push({ level: "info", text: `Erst ${d.reviews ?? 0} Bewertungen – Amazon Vine oder Einleger mit Bitte um Bewertung (ohne Anreiz) nutzen.` });
+  if (d.reviews !== null && d.reviews < 20) out.push({ level: "info", text: `Erst ${d.reviews ?? 0} Bewertungen – Amazon Vine oder Einleger mit Bitte um Bewertung (ohne Anreiz) nutzen.` });
   if (d.title.length < 80) out.push({ level: "info", text: "Titel ist kurz – wichtige Suchbegriffe (Anlass, Menge, Sorten, „Geschenk“) ergänzen." });
   if (d.title.length > 180) out.push({ level: "info", text: "Titel ist sehr lang – Amazon kürzt auf dem Handy; das Wichtigste nach vorn." });
   if (d.features.length < 5) out.push({ level: "info", text: `Nur ${d.features.length} Stichpunkte – fünf aussagekräftige Stichpunkte nutzen.` });
@@ -113,6 +138,7 @@ export function productHints(d: OwnProductData, history: Snapshot[], competitorP
     if (change > 1.5) out.push({ level: "warn", text: `Verkaufsrang hat sich in 4 Wochen deutlich verschlechtert (${old.salesRank.toLocaleString("de-DE")} → ${d.salesRank.toLocaleString("de-DE")}).` });
     else if (change < 0.67) out.push({ level: "ok", text: `Verkaufsrang hat sich in 4 Wochen deutlich verbessert (${old.salesRank.toLocaleString("de-DE")} → ${d.salesRank.toLocaleString("de-DE")}).` });
   }
+  if (bb?.level === "ok") out.unshift(bb);
   if (!out.some((h) => h.level === "warn")) out.push({ level: "ok", text: "Keine Auffälligkeiten." });
   return out;
 }

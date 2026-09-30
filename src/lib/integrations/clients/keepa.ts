@@ -44,8 +44,11 @@ registerTester("keepa", async (v) => {
 });
 
 /** Produkte per ASIN (bis 100 je Aufruf, 1 Token je ASIN) mit Kennzahlen der letzten 90 Tage. */
-export async function keepaProducts(apiKey: string, asins: string[]): Promise<{ products: Record<string, unknown>[]; tokensLeft: number | null }> {
-  const url = `${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&asin=${asins.map(encodeURIComponent).join(",")}&stats=90&history=0`;
+export async function keepaProducts(apiKey: string, asins: string[], opts: { buybox?: boolean; rating?: boolean } = {}): Promise<{ products: Record<string, unknown>[]; tokensLeft: number | null }> {
+  // buybox=1 (Buy-Box-Preis und -Verkäufer, +2 Tokens) und rating=1 (Sterne und Anzahl Bewertungen, +1 Token)
+  // liefert Keepa nur auf Anfrage – ohne sie fehlen diese Werte.
+  const extra = `${opts.buybox ? "&buybox=1" : ""}${opts.rating ? "&rating=1" : ""}`;
+  const url = `${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&asin=${asins.map(encodeURIComponent).join(",")}&stats=90&history=0${extra}`;
   const json = await keepaGet(url);
   return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: typeof json.tokensLeft === "number" ? json.tokensLeft : null };
 }
@@ -55,4 +58,13 @@ export async function keepaByCode(apiKey: string, codes: string[]): Promise<{ pr
   const url = `${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&code=${codes.map(encodeURIComponent).join(",")}&stats=90&history=0`;
   const json = await keepaGet(url);
   return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: typeof json.tokensLeft === "number" ? json.tokensLeft : null };
+}
+
+/** Verkäufernamen zu Keepa-Verkäufer-IDs (1 Token je Verkäufer). */
+export async function keepaSellerNames(apiKey: string, ids: string[]): Promise<Record<string, string>> {
+  if (!ids.length) return {};
+  const json = await keepaGet(`${BASE()}/seller?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&seller=${ids.map(encodeURIComponent).join(",")}`);
+  const out: Record<string, string> = {};
+  for (const [id, v] of Object.entries((json.sellers ?? {}) as Record<string, { sellerName?: string }>)) if (v?.sellerName) out[id] = v.sellerName;
+  return out;
 }

@@ -190,6 +190,8 @@ export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<
       links: str(fd, "links") || null,
       trendTopics: str(fd, "trendTopics") || null,
       vatRate: ["0", "7", "19"].includes(str(fd, "vatRate")) ? str(fd, "vatRate") : "19",
+      sellerName: str(fd, "sellerName").slice(0, 120) || null,
+      sellerId: /^[A-Z0-9]{8,20}$/.test(str(fd, "sellerId").toUpperCase()) ? str(fd, "sellerId").toUpperCase() : null,
       occasions,
       updatedAt: new Date(),
     })

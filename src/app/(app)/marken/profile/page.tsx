@@ -33,6 +33,11 @@ export default async function ProfilePage() {
                   <select className="input" name="vatRate" defaultValue={String(Number(b.vatRate))} style={{ width: "auto" }}>
                     <option value="7">7 % (Lebensmittel, Süßigkeiten)</option><option value="19">19 % (Standard)</option><option value="0">0 %</option>
                   </select></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div className="field"><label className="label">Verkäuferkonto auf Amazon</label><input className="input" name="sellerName" defaultValue={b.sellerName ?? ""} placeholder="z. B. Firma GmbH" /></div>
+                  <div className="field"><label className="label">Händlerkennung (Seller-ID)</label><input className="input" name="sellerId" defaultValue={b.sellerId ?? ""} placeholder="A1B2C3D4E5F6G7" style={{ fontFamily: "var(--mono)" }} /></div>
+                </div>
+                <div className="small muted" style={{ marginTop: -6 }}>Für den Buy-Box-Abgleich in der Shop-Analyse. Die Kennung steht in Seller Central → Einstellungen → Kontoinformationen → Händlerkennung – oder dort mit „Ja, das sind wir“ übernehmen.</div>
                 <div className="field"><label className="label">Links (Shop, TikTok, YouTube, Instagram) – einer pro Zeile</label><textarea className="textarea" name="links" defaultValue={b.links ?? ""} style={{ minHeight: 70, fontFamily: "var(--mono)", fontSize: 12 }} /></div>
                 {b.links && (
                   <div className="small" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>

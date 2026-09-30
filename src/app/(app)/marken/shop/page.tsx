@@ -8,7 +8,7 @@ import { productHints } from "@/lib/brands/shop";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
 import { CopyButton } from "../forms";
-import { removeProductAction } from "./actions";
+import { removeProductAction, setSellerAction } from "./actions";
 import { AddProduct, ListingButton, RefreshButton, TikTokImport } from "./forms";
 
 const HINT_COLOR = { warn: "var(--danger)", info: "var(--ink-2)", ok: "var(--ok)" } as const;
@@ -50,7 +50,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
           {products.map((p) => {
             const d = p.data;
             const hist = (histories.get(p.id) ?? []).map((h) => ({ day: h.day, price: h.price ? Number(h.price) : null, salesRank: h.salesRank ? Number(h.salesRank) : null, reviews: h.reviews ? Number(h.reviews) : null, rating: h.rating ? Number(h.rating) : null }));
-            const hints = d ? productHints(d, hist, null) : [];
+            const hints = d ? productHints(d, hist, null, { sellerId: brand.sellerId, sellerName: brand.sellerName }) : [];
             const ranks = hist.map((h) => h.salesRank).filter((x): x is number => x !== null);
             return (
               <article key={p.id} className="card card-pad stack" style={{ gap: 10 }}>
@@ -65,12 +65,21 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
                 </div>
                 {d && (
                   <div className="shop-kpis">
-                    <div><span className="small muted">Preis</span><strong className="num">{d.price ? formatEuro(d.price) : "–"}</strong><span className="small muted">{d.hasBuyBox ? "Buy Box" : "keine Buy Box"}</span></div>
+                    <div><span className="small muted">Preis</span><strong className="num">{d.price ? formatEuro(d.price) : "–"}</strong><span className="small muted">{d.hasBuyBox === null ? "Buy Box: nach nächstem Abruf" : d.hasBuyBox ? `Buy Box${d.buyBoxIsAmazon ? ": Amazon" : d.buyBoxSellerName ? `: ${d.buyBoxSellerName}` : ""}` : "keine Buy Box"}</span></div>
                     <div><span className="small muted">Verkaufsrang</span><strong className="num">{fmtN(d.salesRank)}</strong><span className="small muted">{ranks.length > 1 ? `beste ${fmtN(Math.min(...ranks))} · 120 T.` : ""}</span></div>
                     <div><span className="small muted">Verkäufe/Monat</span><strong className="num">{d.monthlySold ? `${fmtN(d.monthlySold)}+` : "–"}</strong><span className="small muted">laut Amazon</span></div>
                     <div><span className="small muted">Bewertungen</span><strong className="num">{d.rating ? `${d.rating.toLocaleString("de-DE")} ★` : "–"}</strong><span className="small muted">{fmtN(d.reviews)} Stück</span></div>
                     <div><span className="small muted">FBA-Gebühr</span><strong className="num">{d.fbaFee ? formatEuro(d.fbaFee) : "–"}</strong><span className="small muted">{d.referralPct ? `Provision ${d.referralPct} %` : ""}</span></div>
                   </div>
+                )}
+                {d?.buyBoxSellerId && !d.buyBoxIsAmazon && !brand.sellerId && (
+                  <form action={setSellerAction} className="small" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input type="hidden" name="brandId" value={brand.id} />
+                    <input type="hidden" name="sellerId" value={d.buyBoxSellerId} />
+                    <input type="hidden" name="sellerName" value={d.buyBoxSellerName ?? brand.sellerName ?? ""} />
+                    <span className="muted">Ist {d.buyBoxSellerName ?? d.buyBoxSellerId} euer Verkäuferkonto für {brand.name}?</span>
+                    <button className="btn btn-small" type="submit">Ja, das sind wir</button>
+                  </form>
                 )}
                 {hints.length > 0 && (
                   <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>

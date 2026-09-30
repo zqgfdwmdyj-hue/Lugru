@@ -25,6 +25,9 @@ export const brands = pgTable(
     color: text("color"),
     /** Umsatzsteuer der Produkte in Prozent (Lebensmittel 7, sonst 19) – für die Kalkulation. */
     vatRate: numeric("vat_rate", { precision: 5, scale: 2 }).notNull().default("19"),
+    /** Verkäuferkonto, über das die Marke auf Amazon verkauft (z. B. eine eigene GmbH) – für den Buy-Box-Abgleich. */
+    sellerName: text("seller_name"),
+    sellerId: text("seller_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -105,7 +108,17 @@ export const contentPosts = pgTable(
 );
 
 /** Eigene Produkte einer Marke (Amazon), täglich per Keepa aktualisiert. */
-export type OwnProductData = MarketProduct & { rating: number | null; hasBuyBox: boolean; features: string[]; imageUrl: string | null };
+export type OwnProductData = MarketProduct & {
+  rating: number | null;
+  /** null = Keepa hat keine Buy-Box-Daten geliefert. */
+  hasBuyBox: boolean | null;
+  features: string[];
+  imageUrl: string | null;
+  buyBoxSellerId?: string | null;
+  buyBoxSellerName?: string | null;
+  buyBoxIsAmazon?: boolean;
+  buyBoxIsFBA?: boolean;
+};
 
 export const brandProducts = pgTable(
   "brand_products",
