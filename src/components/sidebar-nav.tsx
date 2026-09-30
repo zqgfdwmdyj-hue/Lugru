@@ -42,6 +42,7 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
       items: [
         { href: "/marken", label: "Ideen & Saison" },
         { href: "/marken/content", label: "Content-Plan" },
+        { href: "/marken/shop", label: "Shop-Analyse" },
         { href: "/marken/profile", label: "Markenprofile" },
       ],
     },

@@ -13,6 +13,7 @@ import { invoiceDeps } from "@/lib/ebay/invoices/deps";
 import { syncCalendar } from "@/lib/calendar/sync";
 import { runResearchIfDue } from "@/lib/research/service";
 import { refreshBrandPlanning } from "@/lib/brands/service";
+import { refreshOwnProducts } from "@/lib/brands/shop-service";
 import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
@@ -46,7 +47,10 @@ export async function runScheduledJobs(force = false) {
     const tenants = await db.select({ id: schema.tenants.id }).from(schema.tenants);
     for (const { id: t } of tenants) {
       const has = async (p: string) => Boolean(await getIntegration(t, p));
-      if (force || due(`${t}:brands`, 360)) await step("Marken-Planung", () => refreshBrandPlanning(t));
+      if (force || due(`${t}:brands`, 360)) {
+        await step("Marken-Planung", () => refreshBrandPlanning(t));
+        await step("Eigene Produkte (Keepa)", () => refreshOwnProducts(t));
+      }
       if (force || due(`${t}:mail`, 14)) {
         await step("Postfächer", () => syncAllMailboxes(t));
         await step("Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));

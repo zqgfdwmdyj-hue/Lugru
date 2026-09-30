@@ -9,6 +9,7 @@ import { fetchFeed } from "@/lib/research/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { checklistFor, contentPrompt, ideasPrompt, parseContent, parseIdeas, type BrandProfile } from "./ai";
 import { DEFAULT_OCCASIONS, occasionByKey, upcomingOccasions } from "./occasions";
+import { tiktokTopSellers } from "./shop-service";
 
 // Marken & Ideen: Markenprofile, KI-Ideen je Anlass, Content-Entwürfe, Planungsaufgaben.
 
@@ -44,6 +45,7 @@ export async function ensureDefaultBrands(tenantId: string) {
         tone: "sachkundig, hochwertig, ehrlich, nahbar",
         occasions: DEFAULT_OCCASIONS.zeitlux,
         trendTopics: "Uhren Trend\nUhrenarmband\nUhrenbox Reise\nWatches and Wonders",
+        links: "https://www.youtube.com/@zeitlux1",
         color: "#1F5FAE",
       },
     ])
@@ -89,7 +91,7 @@ export async function generateIdeas(tenantId: string, userId: string | null, bra
   const existing = (await db.select({ title: I.title }).from(I).where(and(eq(I.tenantId, tenantId), eq(I.brandId, b.id)))).map((r) => r.title);
   const topics = (b.trendTopics ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   if (occ) topics.unshift(`${occ.name} ${topics[0] ?? b.name}`.replace(/\bTrend\b/gi, "").replace(/\s+/g, " ").trim() + " Trend");
-  const trends = await trendHeadlines(topics);
+  const trends = [...(await tiktokTopSellers(tenantId, b.id, 12)), ...(await trendHeadlines(topics))];
   const r = await askClaude(key, ideasPrompt({ brand: b as BrandProfile, occasion: upcoming ? { name: upcoming.name, date: upcoming.date } : null, existing, trends, count: opts.count ?? 5, wish: opts.wish }), { model, maxTokens: 4000 });
   const drafts = parseIdeas(r.text);
   if (!drafts.length) throw new Error("Die KI hat keine lesbaren Ideen geliefert – bitte noch einmal versuchen.");

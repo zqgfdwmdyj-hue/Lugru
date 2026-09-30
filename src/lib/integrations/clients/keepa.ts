@@ -42,3 +42,10 @@ registerTester("keepa", async (v) => {
   const json = await keepaGet(`${BASE()}/token?key=${encodeURIComponent(v.apiKey)}`);
   return `Verbunden – ${json.tokensLeft ?? "?"} Tokens verfügbar (je Suche ca. 10–20).`;
 });
+
+/** Produkte per ASIN (bis 100 je Aufruf, 1 Token je ASIN) mit Kennzahlen der letzten 90 Tage. */
+export async function keepaProducts(apiKey: string, asins: string[]): Promise<{ products: Record<string, unknown>[]; tokensLeft: number | null }> {
+  const url = `${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&asin=${asins.map(encodeURIComponent).join(",")}&stats=90&history=0`;
+  const json = await keepaGet(url);
+  return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: typeof json.tokensLeft === "number" ? json.tokensLeft : null };
+}

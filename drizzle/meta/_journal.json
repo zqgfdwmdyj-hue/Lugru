@@ -92,6 +92,13 @@
       "when": 1790747341780,
       "tag": "0012_grulu_markt",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790747711033,
+      "tag": "0013_shop_analyse",
+      "breakpoints": true
     }
   ]
 }

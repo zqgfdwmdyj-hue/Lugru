@@ -1,4 +1,4 @@
-import { date, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, updatedAt, users } from "./core";
 
 // Eigene Marken (z. B. Grulu: Schultüten, US-Süßigkeiten, Themenboxen · Zeitlux: Uhren-Zubehör),
@@ -102,4 +102,63 @@ export const contentPosts = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
   },
   (t) => [index("content_brand_idx").on(t.tenantId, t.brandId, t.status)],
+);
+
+/** Eigene Produkte einer Marke (Amazon), täglich per Keepa aktualisiert. */
+export type OwnProductData = MarketProduct & { rating: number | null; hasBuyBox: boolean; features: string[]; imageUrl: string | null };
+
+export const brandProducts = pgTable(
+  "brand_products",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "cascade" }),
+    asin: text("asin").notNull(),
+    data: jsonb("data").$type<OwnProductData | null>(),
+    lastError: text("last_error"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** Letzter KI-Vorschlag für Titel und Stichpunkte. */
+    aiListing: text("ai_listing"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("brand_products_asin_uq").on(t.tenantId, t.asin)],
+);
+
+/** Tageswerte je eigenem Produkt – für Verläufe (Rang, Preis, Bewertungen). */
+export const productSnapshots = pgTable(
+  "product_snapshots",
+  {
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => brandProducts.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    price: numeric("price", { precision: 10, scale: 2 }),
+    salesRank: numeric("sales_rank", { precision: 12, scale: 0 }),
+    monthlySold: numeric("monthly_sold", { precision: 12, scale: 0 }),
+    reviews: numeric("reviews", { precision: 12, scale: 0 }),
+    rating: numeric("rating", { precision: 3, scale: 1 }),
+  },
+  (t) => [primaryKey({ columns: [t.productId, t.day] })],
+);
+
+export type TikTokMarketItem = { title: string; shop: string | null; price: number | null; sales: number | null; revenue: number | null; rating: number | null; reviews: number | null; videos: number | null; creators: number | null; url: string | null };
+
+/** Importe aus Helium 10 (TikTok-Erweiterung), je Marke – Grundlage für Ideen und Shop-Optimierung. */
+export const marketImports = pgTable(
+  "market_imports",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => brands.id, { onDelete: "cascade" }),
+    source: text("source").notNull(),
+    fileName: text("file_name"),
+    items: jsonb("items").$type<TikTokMarketItem[]>().notNull().default([]),
+    createdAt: createdAt(),
+  },
+  (t) => [index("market_imports_brand_idx").on(t.tenantId, t.brandId, t.createdAt)],
 );

@@ -203,3 +203,7 @@ h2 { font-size: 16px; margin: 0; }
 @media (max-width: 760px) { .idea-board { grid-template-columns: repeat(5, 78vw); } }
 @media (max-width: 900px) { .profile-grid { grid-template-columns: minmax(0, 1fr) !important; } }
 .brand-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.shop-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.shop-kpis > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+.shop-kpis strong { font-size: 17px; }
+@media (max-width: 900px) { .shop-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

@@ -77,3 +77,36 @@ describe("Marktdaten", () => {
     expect(calcProfit({ price: 29.99, cost: 11.5, vatRate: 7, fbmShipping: 5.49 }, "fbm").profit).toBe(6.54);
   });
 });
+
+describe("Shop-Analyse", () => {
+  it("erkennt ASINs in Links und liest eigene Produkte", async () => {
+    const { asinFrom, parseKeepaOwn } = await import("@/lib/brands/shop");
+    expect(asinFrom("https://www.amazon.de/dp/B0TEST0009?ref=x")).toBe("B0TEST0009");
+    expect(asinFrom("https://www.amazon.de/Grulu-Box/dp/b0test0009/")).toBe("B0TEST0009");
+    expect(asinFrom("B0TEST0009")).toBe("B0TEST0009");
+    expect(asinFrom("https://amzn.eu/d/abc")).toBeNull();
+    const cur = Array(20).fill(-1);
+    cur[18] = 1499; cur[16] = 46; cur[17] = 12; cur[3] = 3400;
+    expect(parseKeepaOwn({ asin: "B0TEST0009", title: "Grulu Box", stats: { current: cur }, features: ["A", "B"], images: [{ l: "abc.jpg" }] })).toMatchObject({ price: 14.99, rating: 4.6, reviews: 12, hasBuyBox: true, features: ["A", "B"], imageUrl: "https://m.media-amazon.com/images/I/abc.jpg" });
+  });
+
+  it("liest den TikTok-Export aus Helium 10 mit k-Angaben", async () => {
+    const { parseTikTokExport } = await import("@/lib/brands/shop");
+    const rows = [["Product Name", "Shop Name", "Price", "Units Sold", "Revenue", "Rating", "Videos"], ["Nerds Gummy Clusters Box", "CandyWorld", "€12,99", "3,4k", "€44.166,60", "4.8", "120"]];
+    expect(parseTikTokExport(rows)).toEqual([{ title: "Nerds Gummy Clusters Box", shop: "CandyWorld", price: 12.99, sales: 3400, revenue: 44166.6, rating: 4.8, reviews: null, videos: 120, creators: null, url: null }]);
+    expect(() => parseTikTokExport([["Preis"]])).toThrow(/Produktnamen/);
+  });
+
+  it("gibt Hinweise zur Optimierung", async () => {
+    const { productHints } = await import("@/lib/brands/shop");
+    const d = { asin: "B0TEST0009", title: "Grulu Box", price: 20, fbaFee: null, referralPct: null, monthlySold: null, salesRank: 9000, reviews: 3, rating: 4.0, hasBuyBox: false, features: ["a"], imageUrl: null };
+    const h = productHints(d, [{ day: "2026-08-01", price: 20, salesRank: 3000, reviews: 1, rating: 4 }], 14);
+    const text = h.map((x) => x.text).join(" | ");
+    expect(text).toMatch(/Keine Buy Box/);
+    expect(text).toMatch(/4 Sterne/);
+    expect(text).toMatch(/Erst 3 Bewertungen/);
+    expect(text).toMatch(/Titel ist kurz/);
+    expect(text).toMatch(/über vergleichbaren/);
+    expect(text).toMatch(/verschlechtert/);
+  });
+});
