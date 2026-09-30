@@ -165,29 +165,42 @@ export async function addToEvent(fd: FormData) {
  * Viele Fotos auf einmal: Jedes Foto wird ein neues Produkt (Name aus dem Dateinamen, sonst leer
  * zum Nachtragen) und landet direkt in der Aktion.
  */
-export async function uploadPhotos(fd: FormData) {
+export type UploadResult = { added: number; reused: number; rejected: string[] };
+
+/**
+ * Fotos hochladen – der Browser schickt sie in kleinen Portionen (siehe PhotoUpload), damit auch 50+ Fotos
+ * vom Handy ohne Absturz durchgehen. Gibt zurück, was angelegt, wiedererkannt oder abgelehnt wurde.
+ */
+export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   await requireLogin();
+  const result: UploadResult = { added: 0, reused: 0, rejected: [] };
   const eventId = uuid.parse(fd.get("eventId"));
-  if (!(await loadEvent(eventId))) return;
+  if (!(await loadEvent(eventId))) return result;
   const category = str(fd, "category") || "Lebensmittel";
   const ids: string[] = [];
-  for (const file of images(fd, "photos").slice(0, 60)) {
+  for (const file of images(fd, "photos").slice(0, 20)) {
     // Dasselbe Foto schon einmal hochgeladen? Dann das vorhandene Produkt nehmen statt ein doppeltes anzulegen.
     const existing = await productByImage(file);
     if (existing) {
       ids.push(existing);
+      result.reused++;
       continue;
     }
     const fileId = await storeImage(file);
-    if (!fileId) continue;
+    if (!fileId) {
+      result.rejected.push(file.name);
+      continue;
+    }
     const [p] = await db
       .insert(P)
       .values({ name: nameFromFilename(file.name) || "Neues Produkt", category, imageFileId: fileId })
       .returning({ id: P.id });
     ids.push(p.id);
+    result.added++;
   }
   await addProductsToEvent(eventId, ids);
   revalidatePath(`/verteilung/${eventId}`);
+  return result;
 }
 
 // ---------- Produkte ----------

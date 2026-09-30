@@ -13,7 +13,7 @@ import { inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
-import { QuickPhotos } from "@/components/quick-photos";
+import { PhotoUpload } from "@/components/photo-upload";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
@@ -49,7 +49,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           <div className="small muted">{event.title} · {rows.length} Produkte{value ? ` · Warenwert ${formatEuro(value)}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <QuickPhotos eventId={id} action={uploadPhotos} />
+          <PhotoUpload eventId={id} action={uploadPhotos} />
           <Link href={`/verteilung/${id}/collage`} className="btn">Collage erstellen</Link>
           <Link href={`/aushang/${id}`} className="btn" target="_blank">Aushang drucken</Link>
         </div>
@@ -160,14 +160,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           ) : (
             <div className="card card-pad small muted">KI-Preisrecherche ist aus – dafür auf dem Server <code>ANTHROPIC_API_KEY</code> setzen (siehe README).</div>
           )}
-          <ImageForm action={uploadPhotos} className="card card-pad stack" style={{ gap: 8 }}>
-            <input type="hidden" name="eventId" value={id} />
-            <h2>Fotos hochladen</h2>
-            <div className="small muted">Mehrere Fotos auf einmal – jedes wird ein neues Produkt in dieser Verteilung. Namen und Preise danach links eintragen.</div>
-            <input className="input" name="photos" type="file" accept="image/*" multiple required aria-label="Fotos" />
-            <div className="field"><label className="label" htmlFor="pc">Kategorie</label><input className="input" id="pc" name="category" list="spenden-kategorien" defaultValue="Lebensmittel" /></div>
-            <button className="btn btn-primary" type="submit">Hochladen</button>
-          </ImageForm>
+          <PhotoUpload eventId={id} action={uploadPhotos} variant="card" />
 
           <form action={addToEvent} className="card card-pad stack" style={{ gap: 8 }}>
             <input type="hidden" name="eventId" value={id} />

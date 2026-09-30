@@ -7,24 +7,29 @@ const MAX_SIDE = 1600;
 /** Verkleinert Handyfotos vor dem Hochladen (lange Seite max. 1600 px, JPEG). */
 export async function shrink(file: File): Promise<File> {
   if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  let bmp: ImageBitmap | null = null;
+  const canvas = document.createElement("canvas");
   try {
-    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
     const scale = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
-    const w = Math.round(bmp.width * scale);
-    const h = Math.round(bmp.height * scale);
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
     const ctx = canvas.getContext("2d")!;
     ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(bmp, 0, 0, w, h);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
     bmp.close();
-    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.86));
+    bmp = null;
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/jpeg", 0.85));
     if (!blob || (blob.size >= file.size && file.type === "image/jpeg")) return file;
     return new File([blob], file.name.replace(/\.[a-z0-9]+$/i, "") + ".jpg", { type: "image/jpeg" });
   } catch {
     return file;
+  } finally {
+    // Speicher sofort freigeben – iPhones brechen sonst bei vielen Fotos die Seite ab.
+    bmp?.close();
+    canvas.width = 0;
+    canvas.height = 0;
   }
 }
 
@@ -33,7 +38,7 @@ export async function shrink(file: File): Promise<File> {
  * geschickt. Nach dem Absenden wird das Formular geleert.
  */
 export function ImageForm({ action, children, className, style, busyLabel = "Lade hoch …", reset = true }: {
-  action: (fd: FormData) => Promise<void>;
+  action: (fd: FormData) => Promise<unknown>;
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;

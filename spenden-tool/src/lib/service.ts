@@ -14,9 +14,21 @@ export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
 
+/** Prüft die ersten Bytes – der Dateityp allein sagt nichts (z. B. HEIC mit falscher Endung). */
+export function looksLikeImage(data: Uint8Array): boolean {
+  const ascii = (from: number, to: number) => String.fromCharCode(...data.subarray(from, to));
+  return (
+    (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) ||
+    (data[0] === 0x89 && ascii(1, 4) === "PNG") ||
+    ascii(0, 4) === "GIF8" ||
+    (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP")
+  );
+}
+
 export async function storeImage(file: File): Promise<string | null> {
   if (!file.size || file.size > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(file.type)) return null;
   const data = Buffer.from(await file.arrayBuffer());
+  if (!looksLikeImage(data)) return null;
   const [f] = await db
     .insert(schema.files)
     .values({ name: file.name || "foto.jpg", mimeType: file.type, size: data.length, sha256: sha256(data), data })

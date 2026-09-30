@@ -26,3 +26,13 @@ describe("KI-Antwort lesen", () => {
     expect(() => parseResearch("keine Ahnung")).toThrow();
   });
 });
+
+describe("Bildprüfung", () => {
+  it("erkennt JPG/PNG und lehnt anderes ab", async () => {
+    const { looksLikeImage } = await import("@/lib/service");
+    expect(looksLikeImage(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe(true);
+    expect(looksLikeImage(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d]))).toBe(true);
+    expect(looksLikeImage(new TextEncoder().encode("\0\0\0\x18ftypheic"))).toBe(false);
+    expect(looksLikeImage(new TextEncoder().encode("hallo"))).toBe(false);
+  });
+});
