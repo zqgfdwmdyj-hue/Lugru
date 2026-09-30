@@ -1,0 +1,190 @@
+"use server";
+
+import { and, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import { db, schema } from "@/db";
+import { CONTENT_STATUSES, IDEA_KINDS, IDEA_STATUSES, type ChecklistItem } from "@/db/tables/brands";
+import { requireSession } from "@/lib/auth/session";
+import { checklistFor } from "@/lib/brands/ai";
+import { OCCASIONS } from "@/lib/brands/occasions";
+import { generateContent, generateIdeas, refreshBrandPlanning } from "@/lib/brands/service";
+
+export type BrandState = { ok: boolean; message: string } | null;
+const uuid = z.string().uuid();
+const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+const money = (v: string) => {
+  if (!v) return null;
+  const n = Number(v.replace(/\s|€/g, "").replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? String(Math.round(n * 100) / 100) : null;
+};
+const lines = (v: string) => v.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+export async function suggestIdeasAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireSession();
+  try {
+    const n = await generateIdeas(s.tenantId, s.userId, uuid.parse(fd.get("brandId")), { occasion: str(fd, "occasion") || null, wish: str(fd, "wish") || undefined, count: 5 });
+    await refreshBrandPlanning(s.tenantId).catch(() => {});
+    revalidatePath("/", "layout");
+    return { ok: true, message: `${n} neue Ideen im Board (Spalte „Idee“).` };
+  } catch (e) {
+    return { ok: false, message: msg(e) };
+  }
+}
+
+export async function createIdeaAction(fd: FormData) {
+  const s = await requireSession();
+  const brandId = uuid.parse(fd.get("brandId"));
+  const kind = z.enum(IDEA_KINDS).parse(fd.get("kind") || "box");
+  const title = str(fd, "title");
+  if (!title) return;
+  const [b] = await db.select({ id: schema.brands.id }).from(schema.brands).where(and(eq(schema.brands.id, brandId), eq(schema.brands.tenantId, s.tenantId)));
+  if (!b) return;
+  const [row] = await db
+    .insert(schema.ideas)
+    .values({ tenantId: s.tenantId, brandId, kind, title: title.slice(0, 200), occasion: str(fd, "occasion") || null, checklist: checklistFor(kind), createdBy: s.userId })
+    .returning({ id: schema.ideas.id });
+  redirect(`/marken/ideen/${row.id}`);
+}
+
+async function ownIdea(tenantId: string, id: string) {
+  const [i] = await db.select().from(schema.ideas).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, tenantId)));
+  if (!i) throw new Error("Idee nicht gefunden.");
+  return i;
+}
+
+export async function saveIdeaAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  await ownIdea(s.tenantId, id);
+  const occasion = str(fd, "occasion");
+  await db
+    .update(schema.ideas)
+    .set({
+      title: str(fd, "title").slice(0, 200) || "Ohne Titel",
+      kind: z.enum(IDEA_KINDS).parse(fd.get("kind") || "box"),
+      occasion: OCCASIONS.some((o) => o.key === occasion) ? occasion : null,
+      concept: str(fd, "concept") || null,
+      contents: lines(str(fd, "contents")),
+      targetPrice: money(str(fd, "targetPrice")),
+      costEstimate: money(str(fd, "costEstimate")),
+      sourcing: str(fd, "sourcing") || null,
+      notes: str(fd, "notes") || null,
+      launchDate: /^\d{4}-\d{2}-\d{2}$/.test(str(fd, "launchDate")) ? str(fd, "launchDate") : null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+  revalidatePath("/marken", "layout");
+  return { ok: true, message: "Gespeichert." };
+}
+
+export async function setIdeaStatusAction(fd: FormData) {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  await ownIdea(s.tenantId, id);
+  await db.update(schema.ideas).set({ status: z.enum(IDEA_STATUSES).parse(fd.get("status")), updatedAt: new Date() }).where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+  await refreshBrandPlanning(s.tenantId).catch(() => {});
+  revalidatePath("/", "layout");
+}
+
+export async function checklistAction(fd: FormData) {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const idea = await ownIdea(s.tenantId, id);
+  let list: ChecklistItem[] = [...idea.checklist];
+  const op = str(fd, "op");
+  const idx = Number(fd.get("index"));
+  if (op === "toggle" && list[idx]) list[idx] = { ...list[idx], done: !list[idx].done };
+  if (op === "remove" && list[idx]) list = list.filter((_, i) => i !== idx);
+  if (op === "add" && str(fd, "text")) list.push({ text: str(fd, "text").slice(0, 200), done: false });
+  const allDone = list.length > 0 && list.every((c) => c.done);
+  await db
+    .update(schema.ideas)
+    .set({ checklist: list, status: idea.status === "planned" && list.some((c) => c.done) ? "in_progress" : idea.status, updatedAt: new Date() })
+    .where(and(eq(schema.ideas.id, id), eq(schema.ideas.tenantId, s.tenantId)));
+  revalidatePath(`/marken/ideen/${id}`);
+  if (allDone) revalidatePath("/marken");
+}
+
+export async function deleteIdeaAction(fd: FormData) {
+  const s = await requireSession();
+  await db.delete(schema.ideas).where(and(eq(schema.ideas.id, uuid.parse(fd.get("id"))), eq(schema.ideas.tenantId, s.tenantId)));
+  revalidatePath("/marken", "layout");
+  redirect("/marken");
+}
+
+export async function suggestContentAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireSession();
+  try {
+    const n = await generateContent(s.tenantId, {
+      brandId: uuid.parse(fd.get("brandId")),
+      ideaId: str(fd, "ideaId") ? uuid.parse(fd.get("ideaId")) : undefined,
+      platform: z.enum(["tiktok", "youtube", "instagram"]).parse(fd.get("platform") || "tiktok"),
+      topic: str(fd, "topic") || undefined,
+    });
+    revalidatePath("/marken", "layout");
+    return { ok: true, message: `${n} Content-Ideen angelegt – im Content-Plan zu finden.` };
+  } catch (e) {
+    return { ok: false, message: msg(e) };
+  }
+}
+
+export async function updatePostAction(fd: FormData) {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const status = z.enum(CONTENT_STATUSES).parse(fd.get("status"));
+  const planned = str(fd, "plannedFor");
+  await db
+    .update(schema.contentPosts)
+    .set({
+      status,
+      plannedFor: /^\d{4}-\d{2}-\d{2}$/.test(planned) ? planned : null,
+      publishedUrl: str(fd, "publishedUrl") || null,
+      publishedAt: status === "published" ? new Date() : null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.contentPosts.id, id), eq(schema.contentPosts.tenantId, s.tenantId)));
+  revalidatePath("/marken", "layout");
+}
+
+export async function deletePostAction(fd: FormData) {
+  const s = await requireSession();
+  await db.delete(schema.contentPosts).where(and(eq(schema.contentPosts.id, uuid.parse(fd.get("id"))), eq(schema.contentPosts.tenantId, s.tenantId)));
+  revalidatePath("/marken", "layout");
+}
+
+export async function saveBrandAction(_prev: BrandState, fd: FormData): Promise<BrandState> {
+  const s = await requireSession();
+  const id = uuid.parse(fd.get("id"));
+  const occasions: Record<string, number> = {};
+  for (const o of OCCASIONS) {
+    if (fd.get(`occ:${o.key}`) === "on") occasions[o.key] = Math.min(52, Math.max(1, Number(fd.get(`lead:${o.key}`)) || o.leadWeeks));
+  }
+  await db
+    .update(schema.brands)
+    .set({
+      name: str(fd, "name").slice(0, 60) || "Marke",
+      description: str(fd, "description") || null,
+      audience: str(fd, "audience") || null,
+      priceRange: str(fd, "priceRange") || null,
+      tone: str(fd, "tone") || null,
+      links: str(fd, "links") || null,
+      trendTopics: str(fd, "trendTopics") || null,
+      occasions,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.brands.id, id), eq(schema.brands.tenantId, s.tenantId)));
+  await refreshBrandPlanning(s.tenantId).catch(() => {});
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Markenprofil gespeichert." };
+}
+
+export async function createBrandAction(fd: FormData) {
+  const s = await requireSession();
+  const name = str(fd, "name").slice(0, 60);
+  if (!name) return;
+  await db.insert(schema.brands).values({ tenantId: s.tenantId, name }).onConflictDoNothing();
+  revalidatePath("/marken", "layout");
+}

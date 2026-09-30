@@ -3,7 +3,7 @@
 export const DEFAULT_MODEL = "claude-sonnet-5";
 
 export async function askClaude(apiKey: string, prompt: string, opts: { model?: string; maxTokens?: number; timeoutMs?: number } = {}): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch(`${(process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "")}/v1/messages`, {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: opts.model || DEFAULT_MODEL, max_tokens: opts.maxTokens ?? 1000, messages: [{ role: "user", content: prompt }] }),

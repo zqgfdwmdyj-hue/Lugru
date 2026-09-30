@@ -43,7 +43,7 @@ export async function saveResearchSettings(tenantId: string, patch: Partial<Rese
     .where(eq(schema.tenants.id, tenantId));
 }
 
-async function fetchFeed(url: string): Promise<{ title: string | null; items: FeedItem[] }> {
+export async function fetchFeed(url: string): Promise<{ title: string | null; items: FeedItem[] }> {
   const res = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0 (Seller-System Recherche)", Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" },
     signal: AbortSignal.timeout(20_000),

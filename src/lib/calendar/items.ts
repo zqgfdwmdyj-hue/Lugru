@@ -142,6 +142,24 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
     }
   }
 
+  // Marken: Launch-Termine der Ideen in Arbeit und geplante Posts.
+  const brandNames = new Map((await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, t))).map((b) => [b.id, b.name]));
+  const ideaRows = await db
+    .select()
+    .from(schema.ideas)
+    .where(and(eq(schema.ideas.tenantId, t), inArray(schema.ideas.status, ["planned", "in_progress"]), isNotNull(schema.ideas.launchDate), gte(schema.ideas.launchDate, from), lte(schema.ideas.launchDate, to)));
+  for (const i of ideaRows) {
+    const open = i.checklist.filter((c) => !c.done).length;
+    out.push({ key: `idea:${i.id}`, title: `Launch ${brandNames.get(i.brandId) ?? ""}: ${i.title}`.replace(/\s+/g, " "), date: i.launchDate!, description: open ? `Noch offen: ${i.checklist.filter((c) => !c.done).map((c) => c.text).join(", ")}` : "Alles erledigt – bereit für den Launch.", link: `/marken/ideen/${i.id}`, category: "Aufgabe", remind: true });
+  }
+  const posts = await db
+    .select()
+    .from(schema.contentPosts)
+    .where(and(eq(schema.contentPosts.tenantId, t), inArray(schema.contentPosts.status, ["idea", "filmed", "edited", "scheduled"]), isNotNull(schema.contentPosts.plannedFor), gte(schema.contentPosts.plannedFor, from), lte(schema.contentPosts.plannedFor, to)));
+  for (const p of posts) {
+    out.push({ key: `post:${p.id}`, title: `${p.platform === "youtube" ? "YouTube" : p.platform === "instagram" ? "Instagram" : "TikTok"} (${brandNames.get(p.brandId) ?? ""}): ${p.hook}`.slice(0, 200), date: p.plannedFor!, description: [p.caption, p.hashtags].filter(Boolean).join("\n\n"), link: `/marken/content`, category: "Aufgabe", remind: true });
+  }
+
   // Fristen der Amazon-ToDos – je Tag ein Sammeltermin.
   const todoDays = new Map<string, { n: number; high: number; cats: Map<string, number> }>();
   for (const r of await todoDeadlines(t, view?.from ?? today, to)) {

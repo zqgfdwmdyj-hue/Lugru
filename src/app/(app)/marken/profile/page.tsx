@@ -1,0 +1,62 @@
+import Link from "next/link";
+import { requireSession } from "@/lib/auth/session";
+import { OCCASIONS } from "@/lib/brands/occasions";
+import { listBrands } from "@/lib/brands/service";
+import { createBrandAction } from "../actions";
+import { SaveForm } from "../forms";
+
+export default async function ProfilePage() {
+  const session = await requireSession();
+  const brands = await listBrands(session.tenantId);
+  return (
+    <>
+      <div className="page-head">
+        <div><div className="crumb"><Link href="/marken">Marken</Link></div><h1>Markenprofile</h1></div>
+      </div>
+      <p className="muted" style={{ margin: 0, maxWidth: 860 }}>
+        Je genauer das Profil, desto passender die KI-Ideen und Skripte. Bei „Anlässe“ ankreuzen, was zur Marke passt, und wie viele Wochen vorher die Planung beginnen soll – dann erscheint rechtzeitig eine Aufgabe (auch im Kalender) und, mit KI-Schlüssel, fünf fertige Ideen.
+      </p>
+      {brands.map((b) => (
+        <section key={b.id} className="card card-pad" style={{ borderTop: `4px solid ${b.color ?? "var(--accent)"}` }}>
+          <SaveForm kind="brand">
+            <input type="hidden" name="id" value={b.id} />
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12 }} className="profile-grid">
+              <div className="stack" style={{ gap: 10 }}>
+                <div className="field"><label className="label">Name</label><input className="input" name="name" defaultValue={b.name} /></div>
+                <div className="field"><label className="label">Sortiment / Positionierung</label><textarea className="textarea" name="description" defaultValue={b.description ?? ""} style={{ minHeight: 80 }} /></div>
+                <div className="field"><label className="label">Zielgruppe</label><input className="input" name="audience" defaultValue={b.audience ?? ""} /></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div className="field"><label className="label">Preisrahmen</label><input className="input" name="priceRange" defaultValue={b.priceRange ?? ""} /></div>
+                  <div className="field"><label className="label">Tonalität</label><input className="input" name="tone" defaultValue={b.tone ?? ""} /></div>
+                </div>
+                <div className="field"><label className="label">Links (Shop, TikTok, YouTube, Instagram) – einer pro Zeile</label><textarea className="textarea" name="links" defaultValue={b.links ?? ""} style={{ minHeight: 70, fontFamily: "var(--mono)", fontSize: 12 }} /></div>
+                {b.links && (
+                  <div className="small" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {b.links.split(/\r?\n/).filter((l) => /^https?:\/\//.test(l.trim())).map((l) => <a key={l} href={l.trim()} target="_blank" rel="noopener">{new URL(l.trim()).hostname} ↗</a>)}
+                  </div>
+                )}
+                <div className="field"><label className="label">Trend-Suchbegriffe (Google News) – einer pro Zeile</label><textarea className="textarea" name="trendTopics" defaultValue={b.trendTopics ?? ""} style={{ minHeight: 70 }} /></div>
+              </div>
+              <div className="field">
+                <label className="label">Anlässe und Vorlauf (Wochen)</label>
+                <div className="stack" style={{ gap: 4 }}>
+                  {OCCASIONS.map((o) => (
+                    <div key={o.key} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14 }}>
+                      <input type="checkbox" id={`${b.id}-${o.key}`} name={`occ:${o.key}`} defaultChecked={o.key in b.occasions} />
+                      <label htmlFor={`${b.id}-${o.key}`} style={{ flex: 1 }}>{o.name}{o.hint ? <span className="small muted"> · {o.hint}</span> : null}</label>
+                      <input className="input" name={`lead:${o.key}`} type="number" min={1} max={52} defaultValue={b.occasions[o.key] ?? o.leadWeeks} style={{ width: 70 }} aria-label={`Vorlauf ${o.name}`} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </SaveForm>
+        </section>
+      ))}
+      <form action={createBrandAction} className="card card-pad" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input className="input" name="name" placeholder="Weitere Marke anlegen" style={{ flex: "1 1 200px" }} />
+        <button className="btn" type="submit">Anlegen</button>
+      </form>
+    </>
+  );
+}

@@ -305,6 +305,7 @@ export const TASK_CATEGORIES = [
   "geld",
   "support",
   "eigene",
+  "marken",
   "system",
 ] as const;
 

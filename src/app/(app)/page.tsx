@@ -15,10 +15,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   geld: "Geld",
   support: "Support",
   eigene: "Eigene",
+  marken: "Marken",
   system: "System",
 };
 
-const FILTERS = ["alle", "einkauf", "amazon", "ebay", "geld", "eigene"] as const;
+const FILTERS = ["alle", "einkauf", "amazon", "ebay", "geld", "marken", "eigene"] as const;
 
 type Task = typeof schema.tasks.$inferSelect;
 

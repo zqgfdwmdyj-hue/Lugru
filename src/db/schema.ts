@@ -12,3 +12,4 @@ export * from "./tables/ebay";
 export * from "./tables/calendar";
 export * from "./tables/purchasing";
 export * from "./tables/amazon-todos";
+export * from "./tables/brands";

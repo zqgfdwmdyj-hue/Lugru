@@ -191,3 +191,15 @@ h2 { font-size: 16px; margin: 0; }
 /* ---- Einkauf ---- */
 .po-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) 80px 100px 80px 100px auto; gap: 8px; }
 @media (max-width: 900px) { .po-add { grid-template-columns: 1fr 1fr; } }
+
+/* ---- Marken & Ideen ---- */
+.season-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.season-card { border: 1px solid var(--border); border-top: 4px solid var(--accent); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); }
+.idea-board { display: grid; grid-template-columns: repeat(5, minmax(200px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.idea-col { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.idea-col-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.idea-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.idea-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.08); text-decoration: none; }
+@media (max-width: 760px) { .idea-board { grid-template-columns: repeat(5, 78vw); } }
+@media (max-width: 900px) { .profile-grid { grid-template-columns: minmax(0, 1fr) !important; } }
+.brand-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }

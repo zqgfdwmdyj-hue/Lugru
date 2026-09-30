@@ -65,6 +65,12 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 Umzug: rechts „Aus dem Retouren-Tool übernehmen“ → aus `backend\data` des Retouren-Tools `app.db` **und, falls vorhanden, `app.db-wal`** zusammen auswählen (Strg gedrückt halten) und hochladen – alle Aufgaben mit Status und Notiz sowie die Liste verworfener Mails kommen mit, Doppelte werden übersprungen. Danach im Retouren-Tool den stündlichen Lauf abschalten, sonst laufen zwei Systeme parallel (doppelte KI-Kosten und Discord-Meldungen).
 Bei Google-Postfächern wird „Alle Nachrichten“ gelesen, damit auch archivierte oder per Filter einsortierte Amazon-Mails ankommen.
 
+**Marken & Ideen** (Menü „Marken“): Kulu und Zeitlux sind vorbelegt (Markenprofile anpassen, Links eintragen).
+- *Ideen & Saison*: Anlässe mit Planungsvorlauf je Marke (Halloween, Adventskalender, Weihnachten, Einschulung/Schultüten, Ostern, Valentinstag, Super Bowl, 4th of July, Black Friday …). Beginnt die Planungszeit, entsteht eine Aufgabe (auch im Kalender) und – mit Claude-Schlüssel – einmalig fünf Ideen inkl. Inhalt, VK, EK-Schätzung, Beschaffung. „KI-Ideen“ und „Ideen auf Zuruf“ jederzeit.
+- *Ideen-Board*: Idee → Prüfen → Geplant → In Umsetzung → Live. Jede Idee mit Checkliste bis zum Launch, grober Kalkulation und Launch-Datum (im Kalender).
+- *Content-Plan*: KI schreibt Video-Ideen (Hook, Ablauf, Szenen, Caption, Hashtags, Sound) für TikTok, YouTube/Shorts, Instagram; Status und Datum pflegen, Caption mit einem Klick kopieren.
+- *Automatisch auf TikTok hochladen*: noch nicht. TikTok erlaubt das nur über eine eigene Entwickler-App mit „Content Posting API“; öffentliches Posten erst nach Prüfung durch TikTok (vorher nur privat bzw. als Entwurf im Postfach der TikTok-App).
+
 **eBay-Rechnungen per E-Mail:** Der eigene SMTP-Zugang im eBay-Tool ist entfallen. Rechnungen gehen über ein verbundenes Postfach raus (eBay-Einstellungen → Rechnungen → Absender-Postfach); eine Kopie liegt im Ordner „Gesendet“.
 
 ## 4. Bekannte Platzhalter – bitte prüfen

@@ -38,6 +38,14 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
       ],
     },
     {
+      head: "Marken",
+      items: [
+        { href: "/marken", label: "Ideen & Saison" },
+        { href: "/marken/content", label: "Content-Plan" },
+        { href: "/marken/profile", label: "Markenprofile" },
+      ],
+    },
+    {
       head: "eBay",
       items: [
         { href: "/ebay", label: "Neues Angebot" },
@@ -89,6 +97,7 @@ export function SidebarNav({ counts, isOwner }: { counts: NavCounts; isOwner: bo
       return pathname === p && new URLSearchParams(q).get("ansicht") === search.get("ansicht");
     }
     if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
+    if (href === "/marken") return pathname === "/marken" || pathname.startsWith("/marken/ideen");
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
   };
 
