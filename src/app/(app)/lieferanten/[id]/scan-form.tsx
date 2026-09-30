@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useState } from "react";
 import { bookmarkletHref } from "@/lib/suppliers/scan";
 import { keepaFeedAction, scanFeedAction, type ScanState } from "../actions";
 
@@ -9,9 +9,24 @@ type Mode = "link" | "einfuegen" | "datei";
 export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: number | null; hasAi: boolean }) {
   const [state, action, pending] = useActionState<ScanState, FormData>(scanFeedAction, null);
   const [mode, setMode] = useState<Mode>("einfuegen");
-  const link = useRef<HTMLAnchorElement>(null);
-  // React setzt javascript:-Links nicht über Props – deshalb direkt am Element.
-  useEffect(() => link.current?.setAttribute("href", bookmarkletHref()), []);
+  const [copied, setCopied] = useState(false);
+  // React setzt javascript:-Links nicht über Props – deshalb direkt am Element, bei jedem Einblenden neu
+  // (der Kasten wird beim Wechsel der Reiter neu aufgebaut).
+  const bookmarkRef = (el: HTMLAnchorElement | null) => el?.setAttribute("href", bookmarkletHref());
+  const copyCode = async () => {
+    const code = bookmarkletHref();
+    // Über http (ohne https) gibt es navigator.clipboard nicht – dann der alte Weg.
+    const ok = await navigator.clipboard?.writeText(code).then(() => true, () => false);
+    if (!ok) {
+      const t = document.createElement("textarea");
+      t.value = code;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    setCopied(true);
+  };
 
   return (
     <form action={action} className="card card-pad stack" style={{ gap: 10 }}>
@@ -31,12 +46,23 @@ export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: 
 
       {mode === "einfuegen" && (
         <>
-          <div className="small muted">
-            Für Shops mit Bot-Schutz (z. B. CandyHero): Lesezeichen{" "}
-            <a ref={link} className="btn btn-small" draggable onClick={(e) => e.preventDefault()} title="In die Lesezeichenleiste ziehen">→ Seller-System</a>{" "}
-            in die Lesezeichenleiste ziehen. Dann im Shop eine Kategorie- oder Produktseite öffnen, aufs Lesezeichen klicken – die Produkte sind kopiert – und hier einfügen.
-            Alternativ: Seite markieren (Strg+A), kopieren (Strg+C) und einfügen{hasAi ? "" : " (braucht den KI-Schlüssel)"}.
-          </div>
+          <details className="small" open>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Shops mit Bot-Schutz (z. B. CandyHero): Lesezeichen einrichten – einmalig</summary>
+            <ol style={{ margin: "6px 0 0", paddingLeft: 18, lineHeight: 1.6 }}>
+              <li>Lesezeichenleiste einblenden: <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>B</kbd></li>
+              <li>
+                Diesen Knopf mit gedrückter Maustaste in die Leiste <strong>ziehen</strong>:{" "}
+                <a ref={bookmarkRef} className="btn btn-small" draggable onClick={(e) => e.preventDefault()} title="In die Lesezeichenleiste ziehen – nicht klicken">→ Seller-System</a>
+              </li>
+              <li>
+                Klappt das Ziehen nicht: <button type="button" className="btn btn-small" onClick={copyCode}>{copied ? "Code kopiert ✓" : "Code kopieren"}</button> → Rechtsklick auf die Lesezeichenleiste → „Seite hinzufügen …“ → Name „→ Seller-System“, bei URL den Code einfügen → Speichern.
+              </li>
+            </ol>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Benutzen: im Shop eine Kategorie- oder Produktseite öffnen → Lesezeichen in der Leiste anklicken → Meldung „… Produkte erfasst und kopiert“ → hier einfügen (Strg+V) → „Scannen und übernehmen“.
+              Alternativ Seite markieren (Strg+A), kopieren (Strg+C) und einfügen{hasAi ? "" : " (braucht den KI-Schlüssel)"}.
+            </div>
+          </details>
           <textarea className="textarea" name="text" rows={4} placeholder="Hier einfügen (Strg+V) …" style={{ fontSize: 12, minHeight: 90 }} />
         </>
       )}
