@@ -13,6 +13,7 @@ import { addProductsToEvent, latestPriceChecks, loadEvent, productByImage, store
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
+import { readBestBefore } from "@/lib/mhd";
 
 const uuid = z.string().uuid();
 const P = schema.products;
@@ -387,4 +388,39 @@ export async function applyAllSuggestions(eventId: string, fd: FormData) {
     await db.update(P).set({ price: c.suggestedPrice, updatedAt: new Date() }).where(eq(P.id, it.productId));
   }
   revalidatePath(`/verteilung/${id}`);
+}
+
+// ---------- MHD-Foto ----------
+
+export type MhdState = { ok: boolean; message: string; date?: string | null; fileId?: string } | null;
+
+/**
+ * MHD-Foto zu einer Zeile hochladen: wird getrennt vom Produktfoto gespeichert (nie auf Collage/Social Media)
+ * und – wenn die KI eingerichtet ist – sofort abgelesen.
+ */
+export async function uploadMhdPhoto(itemId: string, fd: FormData): Promise<MhdState> {
+  await requireLogin();
+  const id = uuid.parse(itemId);
+  const [item] = await db.select({ id: I.id, eventId: I.eventId }).from(I).where(eq(I.id, id));
+  if (!item) return { ok: false, message: "Zeile nicht gefunden." };
+  const file = images(fd, "photo")[0];
+  if (!file) return { ok: false, message: "Kein Foto ausgewählt." };
+  const fileId = await storeImage(file);
+  if (!fileId) return { ok: false, message: "Foto nicht lesbar – bitte als JPG/PNG." };
+  await db.update(I).set({ bestBeforeFileId: fileId }).where(eq(I.id, id));
+  let result: MhdState = { ok: true, message: "MHD-Foto gespeichert – Datum bitte selbst eintragen.", fileId, date: null };
+  if (aiConfigured()) {
+    try {
+      const reading = await readBestBefore({ mimeType: file.type, data: Buffer.from(await file.arrayBuffer()) });
+      if (reading.date) {
+        await db.update(I).set({ bestBefore: reading.date }).where(eq(I.id, id));
+        result = { ok: true, message: `MHD erkannt: ${reading.raw ?? reading.date}`, fileId, date: reading.date };
+      } else result = { ok: false, message: "Kein Datum lesbar – bitte schärfer fotografieren oder selbst eintragen.", fileId, date: null };
+    } catch (e) {
+      console.error("MHD lesen fehlgeschlagen", e);
+      result = { ok: false, message: "KI nicht erreichbar – Datum bitte selbst eintragen.", fileId, date: null };
+    }
+  }
+  revalidatePath(`/verteilung/${item.eventId}`);
+  return result;
 }

@@ -60,3 +60,19 @@ describe("Kameranamen", () => {
     expect(isPlaceholderName("7Up")).toBe(false);
   });
 });
+
+describe("MHD lesen", () => {
+  it("versteht übliche Schreibweisen", async () => {
+    const { normalizeMhd } = await import("@/lib/mhd-parse");
+    expect(normalizeMhd("12.10.26")).toBe("2026-10-12");
+    expect(normalizeMhd("mindestens haltbar bis: 12.10.2026 L1234")).toBe("2026-10-12");
+    expect(normalizeMhd("2026-10-12")).toBe("2026-10-12");
+    expect(normalizeMhd("12/10/2026")).toBe("2026-10-12");
+    expect(normalizeMhd("10.2026")).toBe("2026-10-31");
+    expect(normalizeMhd("02/27")).toBe("2027-02-28");
+    expect(normalizeMhd("OKT 2026")).toBe("2026-10-31");
+    expect(normalizeMhd("12 OCT 26")).toBe("2026-10-12");
+    expect(normalizeMhd("31.02.2026")).toBe(null);
+    expect(normalizeMhd("keine Angabe")).toBe(null);
+  });
+});

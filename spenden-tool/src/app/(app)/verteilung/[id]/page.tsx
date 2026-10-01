@@ -11,10 +11,11 @@ import { aiCostUsd } from "@/lib/ai-modes";
 import { db, schema } from "@/db";
 import { inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { addToEvent, applyAllSuggestions, applySuggestion, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
+import { addToEvent, applyAllSuggestions, applySuggestion, uploadMhdPhoto, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
 import { PriceLinks } from "@/components/price-links";
+import { MhdPhoto } from "@/components/mhd-photo";
 import { CategorySelect } from "@/components/category-select";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
@@ -167,6 +168,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                       <input className="input input-compact" name={`caption_${item.id}`} defaultValue={item.caption ?? ""} placeholder="Text auf dem Bild" style={{ width: 130 }} aria-label="Collage-Text" />
                       <input className="input input-compact num" name={`qty_${item.id}`} defaultValue={item.quantity ?? ""} inputMode="numeric" placeholder="Menge" title="Wie viel da ist (optional)" style={{ width: 70, marginTop: 4, display: "block" }} aria-label="Menge" />
                       <input className="input input-compact num" type="date" name={`mhd_${item.id}`} defaultValue={item.bestBefore ?? ""} title="Mindesthaltbarkeitsdatum – steht im Aushang, nicht auf der Collage" style={{ width: 150, marginTop: 4, display: "block" }} aria-label="MHD" />
+                      <MhdPhoto itemId={item.id} fileId={item.bestBeforeFileId} action={uploadMhdPhoto.bind(null, item.id)} />
                     </td>
                     <td className="small" style={{ whiteSpace: "nowrap" }}>
                       <label style={{ display: "block" }}><input type="checkbox" name={`col_${item.id}`} defaultChecked={item.inCollage} aria-label="Auf der Collage" /> Collage</label>

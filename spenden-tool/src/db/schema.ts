@@ -93,6 +93,8 @@ export const eventItems = pgTable(
     quantity: integer("quantity"),
     /** Mindesthaltbarkeitsdatum dieser Charge – steht im Aushang, nicht auf der Collage. */
     bestBefore: date("best_before", { mode: "string" }),
+    /** Foto vom aufgedruckten MHD – nur zum Ablesen, erscheint nie auf Collage oder Social Media. */
+    bestBeforeFileId: uuid("best_before_file_id").references(() => files.id, { onDelete: "set null" }),
     inCollage: boolean("in_collage").notNull().default(true),
     inFlyer: boolean("in_flyer").notNull().default(true),
     sort: integer("sort").notNull().default(0),
