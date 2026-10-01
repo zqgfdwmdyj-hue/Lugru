@@ -50,7 +50,9 @@ h2 { font-size: 16px; margin: 0; }
 .nav-link.active { background: var(--surface); color: var(--ink); font-weight: 600; }
 .nav-link.soon { color: #8b9096; cursor: default; }
 .nav-link.soon:hover { background: none; color: #8b9096; }
-.nav-head { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #6a7076; padding: 14px 12px 4px; }
+.nav-group { margin: 6px 0; padding: 2px 0 4px 6px; border-left: 4px solid var(--g, #8a8f95); border-radius: 6px; background: color-mix(in srgb, var(--g, #8a8f95) 7%, transparent); }
+.nav-head { font-size: 13px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #111; padding: 10px 12px 4px; }
+.nav-group .nav-link.active { box-shadow: inset 3px 0 0 var(--g, var(--accent)); }
 .nav-badge { font-family: var(--mono); font-size: 12px; border-radius: 10px; padding: 0 7px; background: var(--danger); color: #fff; }
 .nav-soon { font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 .sidebar-foot { margin-top: auto; padding: 16px 12px 0; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }

@@ -10,6 +10,19 @@ export type NavCounts = { tasks: number; inbox: number; orders: number; claims: 
 type Item = { href: string; label: string; badge?: number; alert?: boolean };
 type Group = { head?: string; items: Item[] };
 
+/** Farbe je Bereich – Streifen links und leichte Tönung, damit man die Gruppen auf einen Blick trennt. */
+const GROUP_COLOR: Record<string, string> = {
+  "": "#5b6670",
+  WaWi: "#1f7a5c",
+  Marken: "#c2410c",
+  eBay: "#2563eb",
+  "Amazon FBA": "#d97706",
+  "Einkauf & Buchhaltung": "#7c3aed",
+  Service: "#db2777",
+  Geld: "#15803d",
+  System: "#475569",
+};
+
 export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOwner: boolean; areas: string[] | null }) {
   const pathname = usePathname();
   const search = useSearchParams();
@@ -114,7 +127,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
     <nav aria-label="Hauptnavigation">
       {gesperrt && <div className="nav-locked">Dieser Bereich ist für dich nicht freigegeben.</div>}
       {visible.map((g, i) => (
-        <div key={i}>
+        <div key={i} className="nav-group" style={{ ["--g" as string]: GROUP_COLOR[g.head ?? ""] ?? "#8a8f95" }}>
           {g.head && <div className="nav-head">{g.head}</div>}
           {g.items.map((item) => (
             <Link key={item.href} href={item.href} className={`nav-link${isActive(item.href) ? " active" : ""}`}>
