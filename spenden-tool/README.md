@@ -34,6 +34,14 @@ docker compose up -d --build
 Danach ist die App unter http://localhost:3100 erreichbar. Die Anmeldung erfolgt mit dem Team-Passwort.
 Eine tägliche Datensicherung mit allen Fotos landet in `./backups`.
 
+## Als App aufs iPhone (und Android)
+
+Das Tool ist eine installierbare Web-App: eigenes Symbol, Vollbild ohne Browserleiste, Updates automatisch.
+- **iPhone/iPad:** in Safari öffnen → Teilen → „Zum Home-Bildschirm“ (die Seite zeigt diesen Hinweis selbst an)
+- **Android:** in Chrome „App installieren“
+
+Voraussetzung für den Dauerbetrieb: eigene Subdomain mit HTTPS (siehe deploy/README.md).
+
 ## Auf dem Server (Hetzner)
 
 Siehe [deploy/README.md](deploy/README.md): eigener Ordner, eigene Container und Datenbank, Test auf Port 3021.

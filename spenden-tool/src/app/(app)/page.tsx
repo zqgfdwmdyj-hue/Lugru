@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { createEvent } from "./actions";
+import { InstallHint } from "@/components/install-hint";
 
 export default async function SpendenPage() {
   await requireLogin();
@@ -34,6 +35,7 @@ export default async function SpendenPage() {
         <div><div className="crumb">Lebensmittelverteilung</div><h1>Verteilungen</h1></div>
         <Link href="/produkte" className="btn">Produkte ({stats.products})</Link>
       </div>
+      <InstallHint />
       <div className="row">
         <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
           <table className="table">
