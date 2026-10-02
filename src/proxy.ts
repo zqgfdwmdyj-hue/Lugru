@@ -49,5 +49,5 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // api/ebay und api/import ohne Proxy (große Uploads würden sonst gekürzt) – sie prüfen Sitzung und Bereich selbst.
-  matcher: ["/((?!login|api/oauth|api/cron|api/ebay|api/import|api/public|_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  matcher: ["/((?!login|api/oauth|api/cron|api/ebay|api/import|api/public|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
 };
