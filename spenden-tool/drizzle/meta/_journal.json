@@ -1,0 +1,41 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790699670526,
+      "tag": "0000_start",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790746236291,
+      "tag": "0001_ki_stufen",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790749864512,
+      "tag": "0002_mhd",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790752140318,
+      "tag": "0003_iphone_namen_reparieren",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790877056210,
+      "tag": "0004_mhd_foto",
+      "breakpoints": true
+    }
+  ]
+}

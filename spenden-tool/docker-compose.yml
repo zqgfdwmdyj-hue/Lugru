@@ -1,0 +1,55 @@
+# Spenden-Tool starten (App + eigene Datenbank):  docker compose up -d --build
+# Vorher .env anlegen (siehe .env.example) – mindestens APP_PASSWORD und APP_SECRET.
+# Eigener Projektname: Container, Netz und Datenbank-Volume sind vom Seller-Tool getrennt.
+name: spenden-tool
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: spenden
+      POSTGRES_PASSWORD: spenden
+      POSTGRES_DB: spenden
+    volumes:
+      - spendendata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spenden"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Außen-Port über PORT in der .env (Server-Test: 3021, mit Domain: 127.0.0.1:3021)
+      - "${PORT:-3100}:3100"
+    networks:
+      default:
+        # fester Name für den Caddy des Servers (siehe deploy/domain-einrichten.sh)
+        aliases: [spenden-app]
+    environment:
+      DATABASE_URL: postgres://spenden:spenden@db:5432/spenden
+      APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD fehlt – siehe .env.example}
+      APP_SECRET: ${APP_SECRET:?APP_SECRET fehlt – siehe .env.example}
+      APP_URL: ${APP_URL:-http://localhost:3100}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      PREISVORSCHLAG_ANTEIL: ${PREISVORSCHLAG_ANTEIL:-0.25}
+  # Tägliche Sicherung der Datenbank (inkl. Fotos) nach ./backups, 14 Tage aufbewahrt
+  backup:
+    image: postgres:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: spenden
+      PGPASSWORD: spenden
+      PGDATABASE: spenden
+    volumes:
+      - ./backups:/backups
+    entrypoint: ["sh", "-c", "while true; do pg_dump -Fc > /backups/spenden-$$(date +%F).dump && find /backups -name 'spenden-*.dump' -mtime +14 -delete; sleep 86400; done"]
+volumes:
+  spendendata:
