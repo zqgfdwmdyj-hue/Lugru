@@ -23,8 +23,12 @@ services:
       db:
         condition: service_healthy
     ports:
-      # Außen-Port über PORT in der .env (Server-Test: 3021)
+      # Außen-Port über PORT in der .env (Server-Test: 3021, mit Domain: 127.0.0.1:3021)
       - "${PORT:-3100}:3100"
+    networks:
+      default:
+        # fester Name für den Caddy des Servers (siehe deploy/domain-einrichten.sh)
+        aliases: [spenden-app]
     environment:
       DATABASE_URL: postgres://spenden:spenden@db:5432/spenden
       APP_PASSWORD: ${APP_PASSWORD:?APP_PASSWORD fehlt – siehe .env.example}

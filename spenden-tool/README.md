@@ -40,7 +40,7 @@ Das Tool ist eine installierbare Web-App: eigenes Symbol, Vollbild ohne Browserl
 - **iPhone/iPad:** in Safari öffnen → Teilen → „Zum Home-Bildschirm“ (die Seite zeigt diesen Hinweis selbst an)
 - **Android:** in Chrome „App installieren“
 
-Voraussetzung für den Dauerbetrieb: eigene Subdomain mit HTTPS (siehe deploy/README.md).
+Voraussetzung: eigene Domain mit HTTPS, z. B. https://lugrspende.de (Einrichtung siehe deploy/README.md).
 
 ## Auf dem Server (Hetzner)
 

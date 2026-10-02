@@ -58,9 +58,42 @@ cd /opt/spenden-tool/spenden-tool
 docker compose exec -T db pg_restore -U spenden -d spenden --clean < backups/spenden-2026-10-01.dump
 ```
 
-## Später: eigene Subdomain mit HTTPS
+## Eigene Domain mit HTTPS (z. B. lugrspende.de)
 
-Die Test-Adresse läuft über unverschlüsseltes HTTP, das Passwort wird also im Klartext übertragen. Für den
-Dauerbetrieb die Subdomain per DNS auf den Server zeigen lassen und im vorhandenen Caddy (Seller-Tool) einen
-zweiten Block ergänzen, der auf `host.docker.internal:3021` oder die Server-IP weiterleitet. Anschließend in der
-`.env` `APP_URL=https://spenden.…` setzen und Port 3021 in der Firewall wieder schließen.
+1. **DNS beim Domain-Anbieter** (z. B. All-Inkl/KAS, IONOS, Strato): zwei A-Einträge anlegen
+
+   | Name | Typ | Wert |
+   |---|---|---|
+   | `@` (die Domain selbst) | A | `91.99.29.165` |
+   | `www` | A | `91.99.29.165` |
+
+   Vorhandene A- oder AAAA-Einträge auf eine Parkseite des Anbieters löschen. Prüfen: `getent hosts lugrspende.de`
+   muss `91.99.29.165` zeigen (dauert je nach Anbieter einige Minuten bis Stunden).
+
+2. **Auf dem Server** (als root), zuerst den neuen Stand holen, dann die Domain einrichten:
+
+   ```bash
+   bash /opt/spenden-tool/spenden-tool/deploy/update-server.sh
+   bash /opt/spenden-tool/spenden-tool/deploy/domain-einrichten.sh lugrspende.de
+   ```
+
+Das Skript
+- schreibt den Caddy-Eintrag für die Domain (`deploy/server/spenden.caddy`, mit `www`, falls es auf den Server zeigt),
+- setzt in der `.env` des Spenden-Tools `APP_URL=https://lugrspende.de` und `PORT=127.0.0.1:3021` (Port 3021 ist
+  danach von außen zu, ufw-Regel wird entfernt),
+- bindet über `COMPOSE_FILE` in `/opt/seller-system/.env` die Datei `deploy/caddy-seller.yml` ein: Der vorhandene
+  Caddy liest zusätzlich die Spenden-Domain und ist mit dem Netz des Spenden-Tools verbunden. Die Dateien des
+  Seller-Tools bleiben unverändert, die alte `.env` wird vorher gesichert. Caddy wird einmal neu gestartet
+  (wenige Sekunden), die Seller-App läuft weiter.
+- holt das HTTPS-Zertifikat (Let's Encrypt, kostenlos, verlängert sich selbst) und prüft die Adresse.
+
+In der Hetzner-Cloud-Firewall die Freigabe für TCP 3021 danach entfernen; 80 und 443 sind ohnehin offen.
+
+Danach auf dem iPhone `https://lugrspende.de` in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
+
+**Hinweis:** Das Spenden-Tool nicht mit `docker compose down` stoppen, solange die Domain eingerichtet ist. Dabei
+verschwindet sein Netz, und Caddy (also auch das Seller-Tool) startet nach einem Neustart des Servers erst wieder,
+wenn das Spenden-Tool läuft. Für Updates immer `update-server.sh` nehmen.
+
+**Rückgängig machen:** In `/opt/seller-system/.env` die Zeile `COMPOSE_FILE=…` entfernen bzw. die Sicherung
+zurückkopieren, dann `cd /opt/seller-system && docker compose -f docker-compose.yml -f deploy/docker-compose.hetzner.yml up -d caddy`.
