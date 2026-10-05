@@ -8,6 +8,7 @@ import { claimCaseText } from "@/lib/claims/texts";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { CLAIM_TYPE_LABEL } from "@/lib/settings";
 import { CopyButton } from "@/components/copy-button";
+import { AiCaseText } from "./ai-text";
 import { dismissClaim, escalateClaim, queueClaim, reopenClaim, resolveClaim, saveClaimNotes, submitClaim } from "../actions";
 
 export default async function ClaimPage({ params }: { params: Promise<{ id: string }> }) {
@@ -83,6 +84,7 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
           <section className="card card-pad stack">
             <div className="between"><h2>Text für den Amazon-Fall</h2><CopyButton text={text} /></div>
             <div className="snippet article-body" style={{ fontSize: 14 }}>{text}</div>
+            <AiCaseText id={claim.id} />
           </section>
         </div>
 

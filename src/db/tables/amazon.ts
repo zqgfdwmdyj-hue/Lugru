@@ -314,3 +314,20 @@ export const amazonFbmReturns = pgTable(
   },
   (t) => [uniqueIndex("amz_fbm_ret_uq").on(t.tenantId, t.rowKey), index("amz_fbm_ret_order_idx").on(t.tenantId, t.orderId)],
 );
+
+/** Eigene Einordnung einer Remissionssendung (je Auftrag + Sendungsnummer): angekommen oder verloren. */
+export const amazonRemovalShipmentMarks = pgTable(
+  "amazon_removal_shipment_marks",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    orderId: text("order_id").notNull(),
+    trackingNumber: text("tracking_number").notNull(),
+    /** received = bei dir angekommen, lost = nie angekommen → Anspruch */
+    status: text("status", { enum: ["received", "lost"] }).notNull(),
+    note: text("note"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("removal_ship_mark_uq").on(t.tenantId, t.orderId, t.trackingNumber)],
+);

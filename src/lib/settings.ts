@@ -11,6 +11,7 @@ export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   return_not_received: "Retoure erstattet, nie angekommen",
   disposed_without_order: "Entsorgt ohne Auftrag",
   removal_incomplete: "Remission unvollständig",
+  removal_shipment_stuck: "Remission: Sendung hängt",
   return_damaged: "Retoure bei Amazon beschädigt",
   return_wrong_item: "Anderer Artikel zurück",
   refund_too_high: "Zu viel erstattet",
@@ -26,6 +27,7 @@ export const DEFAULT_SETTINGS = {
     dailyLimit: 15,
     resetHour: 14,
     minAmount: 1,
+    problemCarriers: "TENDRON",
     windowDays: {
       inbound_shortage: 60,
       lost_warehouse: 60,
@@ -34,6 +36,8 @@ export const DEFAULT_SETTINGS = {
       return_not_received: 60,
       disposed_without_order: 60,
       removal_incomplete: 60,
+      // Laut Amazon-Richtlinie: ab Tag 15 bis Tag 75 nach Erstellung des Remissionsauftrags.
+      removal_shipment_stuck: 75,
       return_damaged: 60,
       return_wrong_item: 60,
       refund_too_high: 60,
@@ -68,6 +72,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
       dailyLimit: s.claims?.dailyLimit ?? d.claims.dailyLimit,
       resetHour: s.claims?.resetHour ?? d.claims.resetHour,
       minAmount: s.claims?.minAmount ?? d.claims.minAmount,
+      problemCarriers: s.claims?.problemCarriers ?? d.claims.problemCarriers,
       windowDays: { ...d.claims.windowDays, ...(s.claims?.windowDays ?? {}) },
     },
     shipper: { ...d.shipper, ...(s.shipper ?? {}) },

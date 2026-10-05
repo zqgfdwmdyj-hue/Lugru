@@ -141,6 +141,13 @@
       "when": 1790774302959,
       "tag": "0019_box_einkauf",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791223514604,
+      "tag": "0020_remission_sendungen",
+      "breakpoints": true
     }
   ]
 }

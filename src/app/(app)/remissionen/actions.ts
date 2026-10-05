@@ -21,3 +21,21 @@ export async function confirmRemovalReceipt(fd: FormData) {
   await refreshStockWarnings(session.tenantId);
   revalidatePath("/", "layout");
 }
+
+/** Paket einer Remission als angekommen / verloren markieren (oder Markierung zurücknehmen). */
+export async function markRemovalShipment(fd: FormData) {
+  const session = await requireArea("amazon");
+  const orderId = z.string().trim().min(1).max(80).parse(fd.get("orderId"));
+  const trackingNumber = z.string().trim().min(1).max(120).parse(fd.get("tracking"));
+  const status = z.enum(["received", "lost", "clear"]).parse(fd.get("status"));
+  const M = schema.amazonRemovalShipmentMarks;
+  const where = and(eq(M.tenantId, session.tenantId), eq(M.orderId, orderId), eq(M.trackingNumber, trackingNumber));
+  if (status === "clear") await db.delete(M).where(where);
+  else
+    await db
+      .insert(M)
+      .values({ tenantId: session.tenantId, orderId, trackingNumber, status })
+      .onConflictDoUpdate({ target: [M.tenantId, M.orderId, M.trackingNumber], set: { status, updatedAt: new Date() } });
+  await syncClaims(session.tenantId);
+  revalidatePath("/", "layout");
+}

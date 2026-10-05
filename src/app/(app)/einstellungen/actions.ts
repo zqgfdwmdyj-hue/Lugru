@@ -38,6 +38,7 @@ export async function saveSettings(fd: FormData) {
       dailyLimit: num(fd, "dailyLimit"),
       resetHour: num(fd, "resetHour"),
       minAmount: num(fd, "minAmount"),
+      problemCarriers: str(fd, "problemCarriers") ?? "",
       windowDays,
     },
     shipper: {

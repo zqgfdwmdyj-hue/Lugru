@@ -47,6 +47,7 @@ export const CLAIM_TYPES = [
   "return_not_received",
   "disposed_without_order",
   "removal_incomplete",
+  "removal_shipment_stuck",
   "return_damaged",
   "return_wrong_item",
   "refund_too_high",
@@ -81,6 +82,8 @@ export type TenantSettings = {
     windowDays?: Partial<Record<ClaimType, number>>;
     /** Ab welchem Betrag ein Anspruch angelegt wird (Cent-Beträge ignorieren). */
     minAmount?: number;
+    /** Versanddienstleister, deren Remissionssendungen oft hängen (z. B. TENDRON) – Komma-getrennt. */
+    problemCarriers?: string;
   };
   shipper?: Address;
   dhl?: {

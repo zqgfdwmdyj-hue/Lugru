@@ -47,6 +47,18 @@ export type RemovalOrder = {
   inProcessQuantity: number;
   receivedQuantity: number | null;
 };
+export type RemovalShipmentRow = {
+  orderId: string;
+  requestDate: string | null;
+  shipmentDate: string | null;
+  sku: string | null;
+  fnsku: string | null;
+  quantity: number;
+  carrier: string | null;
+  trackingNumber: string | null;
+};
+export type RemovalShipmentMark = { orderId: string; trackingNumber: string; status: "received" | "lost" };
+
 export type InboundShipment = {
   id: string;
   name: string;
@@ -62,6 +74,9 @@ export type ClaimData = {
   /** Aus dem Retouren-Abgleich (Erstattung ↔ Rücksendung ↔ Zahlung von Amazon). */
   returnClaims: ReturnClaim[];
   removals: RemovalOrder[];
+  /** Einzelne Pakete der Remissionen (Report „Remissionssendungen“) und deine Einordnung. */
+  removalShipments?: RemovalShipmentRow[];
+  removalShipmentMarks?: RemovalShipmentMark[];
   inbound: InboundShipment[];
   costBySku: Map<string, number>;
   costByAsin: Map<string, number>;
@@ -71,6 +86,8 @@ export type ClaimData = {
 export type ClaimSettings = {
   windowDays: Record<ClaimType, number>;
   minAmount: number;
+  /** Kommagetrennt, z. B. „TENDRON“ – Sendungen dieser Versender bleiben oft hängen. */
+  problemCarriers?: string;
 };
 
 export type ClaimCandidate = {
@@ -91,6 +108,67 @@ export type ClaimCandidate = {
 
 /** Wartezeit, in der Amazon häufig selbst erstattet oder Ware wiederfindet. */
 export const GRACE_DAYS = { warehouse: 30, returns: 45, removal: 30, inbound: 30 };
+
+/** Remissionssendung hängt: Fall laut Amazon frühestens ab Tag 15 nach Auftrag, Paket mind. 10 Tage unterwegs. */
+export const STUCK_REMOVAL = { fromDay: 15, minTransitDays: 10 };
+
+export function carrierList(s: string | undefined | null): string[] {
+  return (s ?? "").split(/[,;\n]/).map((c) => c.trim().toLowerCase()).filter(Boolean);
+}
+
+export type RemovalParcel = {
+  key: string;
+  orderId: string;
+  trackingNumber: string;
+  carrier: string | null;
+  requestDate: string | null;
+  shipmentDate: string | null;
+  lines: { sku: string | null; fnsku: string | null; quantity: number }[];
+  quantity: number;
+  problemCarrier: boolean;
+  mark: "received" | "lost" | null;
+  /** Bei allen Positionen des Auftrags schon „Angekommen“ bestätigt. */
+  confirmed: boolean;
+  claimFrom: string | null;
+  claimUntil: string | null;
+};
+
+/** Fasst die Report-Zeilen zu Paketen (Auftrag + Sendungsnummer) zusammen. */
+export function removalParcels(d: Pick<ClaimData, "removals" | "removalShipments" | "removalShipmentMarks">, problemCarriers: string[], windowDays: number): RemovalParcel[] {
+  const marks = new Map((d.removalShipmentMarks ?? []).map((m) => [`${m.orderId}|${m.trackingNumber}`, m.status]));
+  const parcels = new Map<string, RemovalParcel>();
+  for (const r of d.removalShipments ?? []) {
+    const tracking = r.trackingNumber?.trim();
+    if (!tracking) continue;
+    const key = `${r.orderId}|${tracking}`;
+    const p =
+      parcels.get(key) ??
+      ({ key, orderId: r.orderId, trackingNumber: tracking, carrier: r.carrier, requestDate: r.requestDate, shipmentDate: r.shipmentDate, lines: [], quantity: 0, problemCarrier: false, mark: marks.get(key) ?? null, confirmed: false, claimFrom: null, claimUntil: null } satisfies RemovalParcel);
+    const line = p.lines.find((l) => (l.fnsku ?? l.sku) === (r.fnsku ?? r.sku));
+    if (line) line.quantity += r.quantity;
+    else p.lines.push({ sku: r.sku, fnsku: r.fnsku, quantity: r.quantity });
+    p.quantity += r.quantity;
+    if (!p.shipmentDate || (r.shipmentDate && r.shipmentDate < p.shipmentDate)) p.shipmentDate = r.shipmentDate ?? p.shipmentDate;
+    p.requestDate ??= r.requestDate;
+    p.carrier ??= r.carrier;
+    parcels.set(key, p);
+  }
+  return [...parcels.values()].map((p) => {
+    const orderLines = d.removals.filter((o) => o.orderId === p.orderId);
+    const requestDate = p.requestDate ?? orderLines[0]?.requestDate ?? null;
+    const skus = p.lines.map((l) => l.sku).filter(Boolean);
+    const relevant = orderLines.filter((o) => !skus.length || skus.includes(o.sku));
+    const carrier = (p.carrier ?? "").toLowerCase();
+    return {
+      ...p,
+      requestDate,
+      problemCarrier: problemCarriers.some((c) => carrier.includes(c)),
+      confirmed: relevant.length > 0 && relevant.every((o) => o.receivedQuantity !== null),
+      claimFrom: requestDate ? addDaysIso(requestDate, STUCK_REMOVAL.fromDay) : null,
+      claimUntil: requestDate ? addDaysIso(requestDate, windowDays) : null,
+    };
+  });
+}
 
 const LOST_CODES = new Set(["M"]);
 const FOUND_CODES = new Set(["F"]);
@@ -299,6 +377,41 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
         { label: "Angefordert / storniert", value: `${r.requestedQuantity} / ${r.cancelledQuantity}`, source: "Remissionsaufträge" },
         { label: "Versandt / entsorgt", value: `${r.shippedQuantity} / ${r.disposedQuantity}`, source: "Remissionsaufträge" },
         { label: "Bei dir angekommen", value: r.receivedQuantity === null ? "nicht bestätigt" : String(r.receivedQuantity), source: "Remissionen (eigene Bestätigung)" },
+      ],
+    });
+  }
+
+  // --- Remissionssendung hängt (z. B. TENDRON) ------------------------------------------
+  const stuckWindow = s.windowDays.removal_shipment_stuck ?? 75;
+  for (const p of removalParcels(d, carrierList(s.problemCarriers), stuckWindow)) {
+    if (p.mark === "received" || p.confirmed || !p.requestDate) continue;
+    if (!p.problemCarrier && p.mark !== "lost") continue;
+    // Amazon nimmt den Fall erst ab Tag 15 an. Ohne eigene Markierung zusätzlich: Paket mind. 10 Tage unterwegs.
+    if (p.claimFrom! > today) continue;
+    if (p.mark !== "lost" && p.shipmentDate && addDaysIso(p.shipmentDate, STUCK_REMOVAL.minTransitDays) > today) continue;
+    const costs = p.lines.map((l) => (l.sku ? unitCost(d, l.sku, null) : null));
+    const known = costs.every((c) => c !== null);
+    const amount = known ? round2(p.lines.reduce((n, l, i) => n + costs[i]! * l.quantity, 0)) : null;
+    const first = p.lines[0];
+    push({
+      key: `removal-ship:${p.orderId}:${p.trackingNumber}`,
+      type: "removal_shipment_stuck",
+      title: `Remission ${p.orderId}: Paket ${p.trackingNumber}${p.carrier ? ` (${p.carrier})` : ""} nicht angekommen – ${p.quantity} Einheiten`,
+      sku: p.lines.length === 1 ? first.sku : null,
+      fnsku: p.lines.length === 1 ? first.fnsku : null,
+      asin: p.lines.length === 1 && first.sku ? (d.asinBySku.get(first.sku) ?? null) : null,
+      quantity: p.quantity,
+      unitCost: p.lines.length === 1 ? costs[0] : null,
+      expectedAmount: amount,
+      reference: p.orderId,
+      eventDate: p.requestDate,
+      evidence: [
+        { label: "Remissionsauftrag", value: `${p.orderId} vom ${p.requestDate.split("-").reverse().join(".")}`, source: "Remissionsaufträge" },
+        { label: "Versanddienst", value: p.carrier ?? "–", source: "Remissionssendungen" },
+        { label: "Sendungsnummer", value: p.trackingNumber, source: "Remissionssendungen" },
+        { label: "Versandt am", value: p.shipmentDate ? p.shipmentDate.split("-").reverse().join(".") : "–", source: "Remissionssendungen" },
+        { label: "Artikel (FNSKU × Anzahl)", value: p.lines.map((l) => `${l.fnsku ?? l.sku ?? "?"} × ${l.quantity}`).join(", "), source: "Remissionssendungen" },
+        { label: "Bei uns angekommen", value: p.mark === "lost" ? "nein – als verloren markiert" : "nein (keine Zustellung, keine Bestätigung)", source: "Remissionen (eigene Prüfung)" },
       ],
     });
   }

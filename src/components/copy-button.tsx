@@ -9,7 +9,16 @@ export function CopyButton({ text, label = "Kopieren" }: { text: string; label?:
       type="button"
       className="btn btn-small"
       onClick={async () => {
-        await navigator.clipboard.writeText(text);
+        const ok = await navigator.clipboard?.writeText(text).then(() => true, () => false);
+        if (!ok) {
+          // Ohne https gibt es navigator.clipboard nicht.
+          const t = document.createElement("textarea");
+          t.value = text;
+          document.body.appendChild(t);
+          t.select();
+          document.execCommand("copy");
+          t.remove();
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
       }}

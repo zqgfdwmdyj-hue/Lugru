@@ -29,6 +29,8 @@ Stoppen: `docker compose down` (die Daten bleiben erhalten). Alles löschen: `do
 | **Chargen** | Nach dem Import: EK je SKU, Retouren mit geerbtem EK, Filter „Ohne EK“, „EK-Abweichung“. |
 | **Ansprüche** | Nach dem Import von Bestandsprotokoll, Erstattungen, Kundenrücksendungen, Remissionen und Abrechnungen. Warteschlange, Tageslimit, Nachweis-Mappe, Text für den Amazon-Fall. |
 | **Remissionen** | Eingang bestätigen → Fehlmengen werden zum Anspruch. |
+| **Remissionen → Hängende Sendungen** | Grundlage: Bericht „Remissionssendungen“ (holt die Amazon-Anbindung, sonst hochladen). Pakete von Problem-Versendern (Standard **TENDRON**, änderbar unter Einstellungen → Ansprüche) werden je Auftrag + Sendungsnummer mit FNSKU × Anzahl gelistet. Ab **Tag 15** nach Auftrag (Paket mind. 10 Tage unterwegs) entsteht automatisch ein Anspruch „Remission: Sendung hängt“, Frist **Tag 75**. „Angekommen“ blendet das Paket aus und entfernt den Anspruch, „Fehlt“ macht auch andere Pakete zum Anspruch. „Liste kopieren“ = Auftrag, Versender, Sendungsnummer, FNSKUs als Tabelle. |
+| **Ansprüche → Fall** | Neben der Textvorlage: „Mit KI formulieren“ (Deutsch oder Englisch), nutzt nur die hinterlegten Nachweise. |
 | **Inbound** | Neue Sendung → mit dem Handscanner FNSKU/EAN/SKU scannen (Menge davor: `6*X00…`), Kartons, Prüfungen, FNSKU-Etiketten (QL-800, 62 × 29 mm), Packliste. |
 | **Aufträge** | CSV-Vorlage herunterladen, ausfüllen, unter „Daten importieren“ hochladen. Amazon-FBM-Aufträge kommen über den Report „Alle Bestellungen“ (ohne Adresse) oder die SP-API (mit Adresse). |
 | **Posteingang** | Mails aus Gmail/Outlook als `.eml` speichern und hochladen → Einordnung, To-dos, Fälle. |

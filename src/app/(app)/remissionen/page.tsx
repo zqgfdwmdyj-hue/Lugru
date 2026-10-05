@@ -5,7 +5,9 @@ import { requireSession } from "@/lib/auth/session";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
-import { confirmRemovalReceipt } from "./actions";
+import { carrierList, removalParcels } from "@/lib/claims/rules";
+import { CopyButton } from "@/components/copy-button";
+import { confirmRemovalReceipt, markRemovalShipment } from "./actions";
 
 export default async function RemissionenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string }> }) {
   const session = await requireSession();
@@ -26,6 +28,33 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
     const k = `${s.orderId}|${s.sku}`;
     tracking.set(k, [...new Set([...(tracking.get(k) ?? []), `${s.carrier ?? ""} ${s.trackingNumber}`.trim()])]);
   }
+
+  // Pakete je Auftrag + Sendungsnummer (Discord-Ablauf: abgeschlossene Remissionen, Versender TENDRON, nie angekommen).
+  const allOrders = view === "offen" ? await db.select().from(R).where(eq(R.tenantId, t)) : orders;
+  const marks = await db.select().from(schema.amazonRemovalShipmentMarks).where(eq(schema.amazonRemovalShipmentMarks.tenantId, t));
+  const today = todayIso();
+  const stuckWindow = settings.claims.windowDays.removal_shipment_stuck;
+  const parcels = removalParcels(
+    {
+      removals: allOrders,
+      removalShipments: shipments.map((s) => ({ ...s, quantity: s.shippedQuantity })),
+      removalShipmentMarks: marks,
+    },
+    carrierList(settings.claims.problemCarriers),
+    stuckWindow,
+  )
+    .filter((p) => !p.confirmed && p.mark !== "received" && (p.problemCarrier || p.mark === "lost"))
+    .sort((a, b) => (a.claimUntil ?? "").localeCompare(b.claimUntil ?? ""));
+  const claimRows = parcels.length
+    ? await db
+        .select({ id: schema.claims.id, key: schema.claims.detectionKey, status: schema.claims.status })
+        .from(schema.claims)
+        .where(and(eq(schema.claims.tenantId, t), sql`${schema.claims.detectionKey} like 'removal-ship:%'`))
+    : [];
+  const claimByKey = new Map(claimRows.map((c) => [c.key, c]));
+  const summary = parcels
+    .map((p) => `${p.orderId}\t${p.carrier ?? ""}\t${p.trackingNumber}\t${p.lines.map((l) => `${l.fnsku ?? l.sku} x ${l.quantity}`).join(", ")}`)
+    .join("\n");
 
   const I = schema.amazonInventory;
   const warnBefore = addDaysIso(todayIso(), -settings.aging.unsellableWarnDays);
@@ -78,6 +107,57 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="card" style={{ overflow: "auto" }} id="haengend">
+        <div className="card-head">
+          <h2>Hängende Sendungen{parcels.length ? ` (${parcels.length})` : ""}</h2>
+          <span className="small muted" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            Problem-Versender: {settings.claims.problemCarriers || "–"} · Fall ab Tag 15 bis Tag {stuckWindow} nach Auftrag
+            {parcels.length > 0 && <CopyButton text={`Auftrag\tVersender\tSendungsnummer\tFNSKU x Anzahl\n${summary}`} label="Liste kopieren" />}
+          </span>
+        </div>
+        <table className="table">
+          <thead><tr><th>Auftrag</th><th>Versender / Sendung</th><th>FNSKU × Anzahl</th><th>Fall-Fenster</th><th>Anspruch</th><th>Bei dir?</th></tr></thead>
+          <tbody>
+            {parcels.length === 0 && <tr><td colSpan={6} className="muted">Keine hängenden Pakete. Grundlage ist der Bericht „Remissionssendungen“ (holt die Amazon-Anbindung automatisch, sonst unter „Daten importieren“ hochladen).</td></tr>}
+            {parcels.map((p) => {
+              const claim = claimByKey.get(`removal-ship:${p.orderId}:${p.trackingNumber}`);
+              const early = p.claimFrom !== null && p.claimFrom > today;
+              const late = p.claimUntil !== null && p.claimUntil < today;
+              return (
+                <tr key={p.key} data-testid="stuck-parcel">
+                  <td className="num">{p.orderId}<div className="small muted">{formatDate(p.requestDate)}</div></td>
+                  <td>
+                    {p.problemCarrier ? <span className="tag tag-warn">{p.carrier}</span> : <span className="small">{p.carrier ?? "–"}</span>}
+                    <div className="num small">{p.trackingNumber}</div>
+                    <div className="small muted">versandt {formatDate(p.shipmentDate)}</div>
+                  </td>
+                  <td className="small num">{p.lines.map((l) => <div key={l.fnsku ?? l.sku}>{l.fnsku ?? l.sku} × {l.quantity}</div>)}</td>
+                  <td className="small num" style={{ color: late ? "var(--danger)" : undefined }}>
+                    {formatDate(p.claimFrom)} – {formatDate(p.claimUntil)}
+                    <div className="muted">{early ? "noch zu früh" : late ? "Frist abgelaufen" : "jetzt einreichen"}</div>
+                  </td>
+                  <td className="small">{claim ? <Link href={`/ansprueche/${claim.id}`}>Fall öffnen</Link> : early ? "kommt ab Tag 15" : "–"}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {(["received", "lost"] as const).map((st) => (
+                        <form key={st} action={markRemovalShipment}>
+                          <input type="hidden" name="orderId" value={p.orderId} />
+                          <input type="hidden" name="tracking" value={p.trackingNumber} />
+                          <input type="hidden" name="status" value={p.mark === st ? "clear" : st} />
+                          <button className={`btn btn-small${p.mark === st ? " btn-primary" : ""}`} type="submit" title={st === "lost" ? "Nie angekommen – sofort als Anspruch" : "Paket ist bei dir angekommen"}>
+                            {st === "received" ? "Angekommen" : p.mark === "lost" ? "Fehlt ✓" : "Fehlt"}
+                          </button>
+                        </form>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </section>

@@ -45,7 +45,25 @@ export function claimCaseText(c: ClaimLike): string {
       return `${intro}laut Bestandsprotokoll wurden am ${date ?? "[Datum]"} ${c.quantity} Einheiten von ${item} entsorgt. Einen Entsorgungsauftrag haben wir dafür nicht erteilt.${outro}`;
     case "removal_incomplete":
       return `${intro}beim Remissionsauftrag ${c.reference ?? "[Auftragsnummer]"} (${item}) fehlen ${c.quantity} Einheiten: Sie sind weder bei uns angekommen noch als storniert oder entsorgt ausgewiesen.${outro}`;
+    case "removal_shipment_stuck":
+      return `Betreff: Remissionsauftrag ${c.reference ?? "[Auftragsnummer]"} – Sendung nie angekommen\n\n${intro}unser Remissionsauftrag ${c.reference ?? "[Auftragsnummer]"} wurde laut Bericht „Remissionssendungen“ am ${ev("Versandt am")} mit ${ev("Versanddienst")} unter der Sendungsnummer ${ev("Sendungsnummer")} versandt. Die Sendung ist bis heute nicht bei uns angekommen, die Sendungsverfolgung zeigt keine Zustellung. Der Auftrag ist bei Ihnen trotzdem als abgeschlossen ausgewiesen.\n\nBetroffene Artikel (FNSKU × Anzahl): ${ev("Artikel (FNSKU × Anzahl)")} – insgesamt ${c.quantity} Einheiten.\n\nDa der Versand durch einen von Amazon beauftragten Dienstleister erfolgte, bitten wir um Nachforschung beim Versanddienst und um Erstattung der nicht zugestellten Einheiten.${outro.replace(/Bitte prüfen Sie den Vorgang und erstatten Sie die betroffenen Einheiten\. ?/, "").replace(/\n{3,}/g, "\n\n")}`;
     default:
       return `${intro}wir bitten um Prüfung des folgenden Vorgangs zu ${item}.${outro}`;
   }
+}
+
+/** Auftrag an die KI: den Vorlagen-Text für Seller Support überzeugend formulieren – ohne neue Fakten. */
+export function aiCaseTextPrompt(c: ClaimLike & { title?: string }, lang: "de" | "en"): string {
+  const facts = c.evidence.map((e) => `- ${e.label}: ${e.value}`).join("\n");
+  return [
+    `Du schreibst für einen Amazon-Verkäufer einen Fall (Case) an den Amazon Seller Support, ${lang === "en" ? "auf Englisch" : "auf Deutsch"}.`,
+    "Ziel: Erstattung der betroffenen Einheiten. Sachlich, höflich, knapp, mit allen Nummern so, dass der Support den Vorgang ohne Rückfrage prüfen kann.",
+    "Regeln: Nutze ausschließlich die Fakten unten – erfinde keine Daten, Nummern, Beträge oder Zusagen. Fehlt etwas, lass es weg.",
+    "Struktur: Betreffzeile, kurze Darstellung, Auflistung der Nummern (Auftrag, Sendungsnummer, FNSKU × Anzahl), konkrete Bitte. Keine Einleitung wie „Hier ist der Text“ – nur den fertigen Text ausgeben.",
+    c.title ? `\nVorgang: ${c.title}` : "",
+    `\nFakten:\n${facts}`,
+    `\nMenge gesamt: ${c.quantity}`,
+    c.unitCost !== null ? `Einkaufspreis netto je Einheit: ${eur(c.unitCost)} (Rechnung kann nachgereicht werden)` : "",
+    `\nVorlage (als Ausgangspunkt):\n${claimCaseText(c)}`,
+  ].filter(Boolean).join("\n");
 }

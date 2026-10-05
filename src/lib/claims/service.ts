@@ -7,10 +7,11 @@ import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { loadReturnClaims } from "@/lib/returns/service";
 import { detectClaims, type ClaimData } from "./rules";
 
-async function loadClaimData(tenantId: string): Promise<ClaimData> {
+export async function loadClaimData(tenantId: string): Promise<ClaimData> {
   const t = tenantId;
   const L = schema.amazonLedgerEvents;
-  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound] = await Promise.all([
+  const RS = schema.amazonRemovalShipments;
+  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound, removalShipments, removalShipmentMarks] = await Promise.all([
     db
       .select({ rowHash: L.rowHash, date: L.eventDate, sku: L.sku, fnsku: L.fnsku, asin: L.asin, quantity: L.quantity, reason: L.reason, fulfillmentCenter: L.fulfillmentCenter, referenceId: L.referenceId })
       .from(L)
@@ -32,6 +33,14 @@ async function loadClaimData(tenantId: string): Promise<ClaimData> {
       .from(schema.inboundShipments)
       .innerJoin(schema.inboundItems, eq(schema.inboundItems.shipmentId, schema.inboundShipments.id))
       .where(and(eq(schema.inboundShipments.tenantId, t), isNotNull(schema.inboundShipments.amazonShipmentId), inArray(schema.inboundShipments.status, ["transmitted", "shipped", "receiving", "closed"]))),
+    db
+      .select({ orderId: RS.orderId, requestDate: RS.requestDate, shipmentDate: RS.shipmentDate, sku: RS.sku, fnsku: RS.fnsku, quantity: RS.shippedQuantity, carrier: RS.carrier, trackingNumber: RS.trackingNumber })
+      .from(RS)
+      .where(and(eq(RS.tenantId, t), isNotNull(RS.trackingNumber))),
+    db
+      .select({ orderId: schema.amazonRemovalShipmentMarks.orderId, trackingNumber: schema.amazonRemovalShipmentMarks.trackingNumber, status: schema.amazonRemovalShipmentMarks.status })
+      .from(schema.amazonRemovalShipmentMarks)
+      .where(eq(schema.amazonRemovalShipmentMarks.tenantId, t)),
   ]);
 
   const costBySku = new Map<string, number>();
@@ -85,6 +94,8 @@ async function loadClaimData(tenantId: string): Promise<ClaimData> {
       inProcessQuantity: r.inProcessQuantity,
       receivedQuantity: r.receivedQuantity,
     })),
+    removalShipments,
+    removalShipmentMarks,
     inbound: [...shipments.values()],
     costBySku,
     costByAsin,

@@ -60,7 +60,9 @@ export default async function EinstellungenPage() {
             <Field label="Fälle pro Tag (Amazon-Limit)" name="dailyLimit" value={s.claims.dailyLimit} width={80} />
             <Field label="Limit wird zurückgesetzt um" name="resetHour" value={s.claims.resetHour} suffix="Uhr" width={80} />
             <Field label="Ansprüche erst ab" name="minAmount" value={dec(s.claims.minAmount)} suffix="€" width={80} />
+            <Field label="Problem-Versender Remission" name="problemCarriers" value={s.claims.problemCarriers} width={160} />
           </div>
+          <div className="small muted">Remissionspakete dieser Versender (kommagetrennt, z. B. „TENDRON“) werden ab Tag 15 nach Auftrag automatisch zum Anspruch, solange du sie nicht als angekommen markierst.</div>
           <div className="small muted">Fristen je Art in Tagen ab dem Ereignis. <strong>Bitte mit den aktuellen Amazon-Richtlinien abgleichen</strong> – die Standardwerte sind nur Platzhalter.</div>
           <div style={grid}>
             {CLAIM_TYPES.map((t) => <Field key={t} label={CLAIM_TYPE_LABEL[t]} name={`window_${t}`} value={s.claims.windowDays[t]} suffix="Tage" width={80} />)}

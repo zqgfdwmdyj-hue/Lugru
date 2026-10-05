@@ -10,6 +10,9 @@ import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
+import { askClaude, modelFor } from "@/lib/ai/claude";
+import { aiCaseTextPrompt } from "@/lib/claims/texts";
+import { getIntegration } from "@/lib/integrations/store";
 
 const uuid = z.string().uuid();
 
@@ -129,4 +132,23 @@ export async function bulkStatus(fd: FormData) {
     .where(and(eq(schema.claims.tenantId, session.tenantId), inArray(schema.claims.id, ids)));
   for (const id of ids) await log(session.tenantId, id, session.userId, status === "queued" ? "vorgemerkt" : "verworfen");
   revalidatePath("/", "layout");
+}
+
+export type AiCaseState = { ok: boolean; text?: string; message?: string } | null;
+
+/** Fall-Text von der KI formulieren lassen (Discord-Tipp: „am besten KI die Texte schreiben lassen“). */
+export async function aiCaseTextAction(_prev: AiCaseState, fd: FormData): Promise<AiCaseState> {
+  const session = await requireArea("amazon");
+  const id = uuid.parse(fd.get("id"));
+  const lang = fd.get("lang") === "en" ? "en" : "de";
+  const [claim] = await db.select().from(schema.claims).where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)));
+  if (!claim) return { ok: false, message: "Anspruch nicht gefunden." };
+  const ai = await getIntegration(session.tenantId, "anthropic");
+  if (!ai?.apiKey) return { ok: false, message: "Für KI-Texte unter Anbindungen → KI (Claude) einen Schlüssel eintragen." };
+  try {
+    const r = await askClaude(ai.apiKey, aiCaseTextPrompt(claim, lang), { model: modelFor(ai, "simple"), task: "simple", maxTokens: 1500 });
+    return { ok: true, text: r.text.trim() };
+  } catch (e) {
+    return { ok: false, message: `KI nicht erreichbar: ${(e as Error).message}` };
+  }
 }
