@@ -29,7 +29,7 @@ export function detectReport(table: Table): ReportKind | null {
   if (a.has("reimbursement-id")) return "reimbursements";
   if (a.has("return-date") && a.hasAny("license-plate-number", "detailed-disposition")) return "customerReturns";
   if (a.has("requested-quantity") && a.has("disposed-quantity")) return "removalOrders";
-  if (a.has("shipment-date") && a.has("tracking-number") && a.hasAny("removal-order-type", "shipped-quantity")) return "removalShipments";
+  if (a.hasAny(...RS.orderId) && a.hasAny(...RS.shipDate) && a.hasAny(...RS.tracking) && (a.hasAny(...RS.type) || a.has("shipped-quantity"))) return "removalShipments";
   if (a.has("afn-fulfillable-quantity")) return "inventory";
   if (a.has("settlement-id") && a.has("amount-type")) return "settlement";
   if (a.hasAny(...TX.type) && a.hasAny(...TX.total) && a.hasAny(...TX.order) && a.hasAny(...TX.date) && a.hasAny(...TX.settlement)) return "transactions";
@@ -172,23 +172,45 @@ export function parseRemovalOrders(table: Table) {
   });
 }
 
+/** Spaltennamen des Berichts „Remissionssendungen“ – englisch (Flatfile) und deutsch (Seller Central). */
+const RS = {
+  orderId: ["order-id", "Auftragsnummer", "Remissionsauftragsnummer", "Bestellnummer", "Auftrags-ID"],
+  requestDate: ["request-date", "Anforderungsdatum", "Anfragedatum", "Erstellungsdatum"],
+  shipDate: ["shipment-date", "Versanddatum", "Sendungsdatum"],
+  sku: ["sku", "Händler-SKU", "SKU"],
+  fnsku: ["fnsku", "FNSKU"],
+  disposition: ["disposition", "Zustand"],
+  qty: ["shipped-quantity", "Versandte Menge", "Versandte Einheiten"],
+  carrier: ["carrier", "Versandunternehmen", "Transportunternehmen", "Versanddienst", "Spediteur"],
+  tracking: ["tracking-number", "Sendungsnummer", "Sendungsverfolgungsnummer", "Trackingnummer", "Tracking-Nummer"],
+  type: ["removal-order-type", "Art des Remissionsauftrags", "Remissionsauftragstyp", "Auftragsart"],
+};
+
+/** Versender, die im Bericht oft nicht in der Versender-Spalte stehen: Stichwort in der ganzen Zeile suchen. */
+const KEYWORD_CARRIERS = [{ re: /tendron/i, name: "TENDRON" }];
+
 export function parseRemovalShipments(table: Table) {
   const h = hasher("removalship");
   return each(table, (r, a) => {
-    const orderId = a.get(r, "order-id");
+    const orderId = a.get(r, ...RS.orderId);
     if (!orderId) return null;
+    let carrier = orNull(a.get(r, ...RS.carrier));
+    if (!carrier || !KEYWORD_CARRIERS.some((k) => k.re.test(carrier!))) {
+      const hit = KEYWORD_CARRIERS.find((k) => r.some((cell) => k.re.test(cell ?? "")));
+      if (hit) carrier = carrier ? `${hit.name} (${carrier})` : hit.name;
+    }
     return {
       rowHash: h(r),
-      requestDate: parseDate(a.get(r, "request-date")),
+      requestDate: parseDate(a.get(r, ...RS.requestDate)),
       orderId,
-      shipmentDate: parseDate(a.get(r, "shipment-date")),
-      sku: orNull(a.get(r, "sku")),
-      fnsku: orNull(a.get(r, "fnsku")),
-      disposition: orNull(a.get(r, "disposition")),
-      shippedQuantity: int(a.get(r, "shipped-quantity")),
-      carrier: orNull(a.get(r, "carrier")),
-      trackingNumber: orNull(a.get(r, "tracking-number")),
-      orderType: orNull(a.get(r, "removal-order-type")),
+      shipmentDate: parseDate(a.get(r, ...RS.shipDate)),
+      sku: orNull(a.get(r, ...RS.sku)),
+      fnsku: orNull(a.get(r, ...RS.fnsku)),
+      disposition: orNull(a.get(r, ...RS.disposition)),
+      shippedQuantity: int(a.get(r, ...RS.qty)),
+      carrier,
+      trackingNumber: orNull(a.get(r, ...RS.tracking)),
+      orderType: orNull(a.get(r, ...RS.type)),
     };
   });
 }

@@ -9,9 +9,11 @@ import { carrierList, removalParcels } from "@/lib/claims/rules";
 import { CopyButton } from "@/components/copy-button";
 import { confirmRemovalReceipt, markRemovalShipment } from "./actions";
 
-export default async function RemissionenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string }> }) {
+export default async function RemissionenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; suche?: string }> }) {
   const session = await requireSession();
-  const view = (await searchParams).ansicht === "alle" ? "alle" : "offen";
+  const sp = await searchParams;
+  const view = sp.ansicht === "alle" ? "alle" : "offen";
+  const search = (sp.suche ?? "").trim().slice(0, 60);
   const t = session.tenantId;
   const settings = await getSettings(t);
   const R = schema.amazonRemovalOrders;
@@ -55,6 +57,15 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
   const summary = parcels
     .map((p) => `${p.orderId}\t${p.carrier ?? ""}\t${p.trackingNumber}\t${p.lines.map((l) => `${l.fnsku ?? l.sku} x ${l.quantity}`).join(", ")}`)
     .join("\n");
+
+  // Stichwortsuche in allen Remissionssendungen (Versender, Sendungsnummer, Auftrag, SKU, FNSKU).
+  const q = search.toLowerCase();
+  const hits = q
+    ? shipments
+        .filter((s) => [s.carrier, s.trackingNumber, s.orderId, s.sku, s.fnsku].some((v) => (v ?? "").toLowerCase().includes(q)))
+        .sort((a, b) => (b.requestDate ?? "").localeCompare(a.requestDate ?? ""))
+    : [];
+  const hitCsv = hits.map((s) => `${s.orderId}\t${formatDate(s.requestDate)}\t${s.carrier ?? ""}\t${s.trackingNumber ?? ""}\t${s.fnsku ?? s.sku ?? ""}\t${s.shippedQuantity}`).join("\n");
 
   const I = schema.amazonInventory;
   const warnBefore = addDaysIso(todayIso(), -settings.aging.unsellableWarnDays);
@@ -111,11 +122,50 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
         </table>
       </section>
 
+      <section className="card card-pad stack" style={{ gap: 10 }} id="suche">
+        <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+          <h2>Remissionssendungen durchsuchen</h2>
+          <form method="get" action="/remissionen#suche" style={{ display: "flex", gap: 6 }}>
+            {view === "alle" && <input type="hidden" name="ansicht" value="alle" />}
+            <label className="sr-only" htmlFor="suche">Stichwort</label>
+            <input className="input" id="suche" name="suche" defaultValue={search} placeholder="Stichwort, z. B. tendron" style={{ width: 220 }} />
+            <button className="btn" type="submit">Suchen</button>
+            <Link className="btn btn-primary" href="/remissionen?suche=tendron#suche">Tendron</Link>
+          </form>
+        </div>
+        {q && (
+          <>
+            <div className="between small">
+              <span>{hits.length} Sendungszeilen mit „{search}“ (Auftrag, Sendungsnummer, FNSKU, Anzahl)</span>
+              {hits.length > 0 && <CopyButton text={`Auftrag\tAuftragsdatum\tVersender\tSendungsnummer\tFNSKU\tAnzahl\n${hitCsv}`} label="Treffer kopieren" />}
+            </div>
+            <div style={{ overflow: "auto" }}>
+              <table className="table" data-testid="search-hits">
+                <thead><tr><th>Auftrag</th><th>Auftragsdatum</th><th>Versender</th><th>Sendungsnummer</th><th>FNSKU / SKU</th><th className="right">Anzahl</th></tr></thead>
+                <tbody>
+                  {hits.length === 0 && <tr><td colSpan={6} className="muted">Keine Treffer. Bericht „Remissionssendungen“ importiert?</td></tr>}
+                  {hits.map((s) => (
+                    <tr key={s.id}>
+                      <td className="num">{s.orderId}</td>
+                      <td className="num">{formatDate(s.requestDate)}</td>
+                      <td>{/tendron/i.test(s.carrier ?? "") ? <span className="tag tag-warn">{s.carrier}</span> : s.carrier ?? "–"}</td>
+                      <td className="num">{s.trackingNumber ?? "–"}</td>
+                      <td className="num small">{s.fnsku ?? "–"}<div className="muted">{s.sku}</div></td>
+                      <td className="num right">{s.shippedQuantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
+
       <section className="card" style={{ overflow: "auto" }} id="haengend">
         <div className="card-head">
-          <h2>Hängende Sendungen{parcels.length ? ` (${parcels.length})` : ""}</h2>
+          <h2>Hängende Sendungen – Stichwort {settings.claims.problemCarriers || "TENDRON"}{parcels.length ? ` (${parcels.length})` : ""}</h2>
           <span className="small muted" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            Problem-Versender: {settings.claims.problemCarriers || "–"} · Fall ab Tag 15 bis Tag {stuckWindow} nach Auftrag
+            Fall ab Tag 15 bis Tag {stuckWindow} nach Auftrag
             {parcels.length > 0 && <CopyButton text={`Auftrag\tVersender\tSendungsnummer\tFNSKU x Anzahl\n${summary}`} label="Liste kopieren" />}
           </span>
         </div>

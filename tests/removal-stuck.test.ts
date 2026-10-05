@@ -73,3 +73,26 @@ describe("hängende Remissionssendungen (TENDRON)", () => {
     expect(aiCaseTextPrompt(c, "en")).toContain("auf Englisch");
   });
 });
+
+describe("Bericht Remissionssendungen: Stichwort Tendron", () => {
+  it("erkennt Tendron auch außerhalb der Versender-Spalte und deutsche Spalten", async () => {
+    const { detectReport, parseRemovalShipments } = await import("@/lib/reports/amazon");
+    const de = {
+      headers: ["Anforderungsdatum", "Auftragsnummer", "Versanddatum", "Händler-SKU", "FNSKU", "Zustand", "Versandte Menge", "Versandunternehmen", "Sendungsnummer", "Art des Remissionsauftrags"],
+      rows: [
+        ["2026-08-01", "RM-7", "2026-08-03", "SKU-1", "X001A", "Sellable", "3", "", "123456789", "Return via Tendron Logistics"],
+        ["2026-08-01", "RM-8", "2026-08-03", "SKU-1", "X001A", "Sellable", "1", "DHL", "00340434", "Return"],
+      ],
+    };
+    expect(detectReport(de)).toBe("removalShipments");
+    const rows = parseRemovalShipments(de);
+    expect(rows[0]).toMatchObject({ orderId: "RM-7", carrier: "TENDRON", trackingNumber: "123456789", fnsku: "X001A", shippedQuantity: 3 });
+    expect(rows[1].carrier).toBe("DHL");
+  });
+
+  it("Stichwort trifft auch in der Sendungsnummer", () => {
+    const d = base();
+    d.removalShipments = [ship({ carrier: "", trackingNumber: "TENDRON-123456789" })];
+    expect(stuck(d, "2026-09-01")).toHaveLength(1);
+  });
+});

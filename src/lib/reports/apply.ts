@@ -104,6 +104,11 @@ export async function applyReport(opts: {
       const parsed = parseRemovalShipments(table);
       rows = parsed.length;
       inserted = await insertIgnore(schema.amazonRemovalShipments, withTenant(parsed));
+      // Ältere Importe nachziehen: Stichwort-Versender (z. B. TENDRON) wird erst seit dem Zeilen-Scan erkannt.
+      const S = schema.amazonRemovalShipments;
+      for (const p of parsed.filter((x) => x.carrier && /tendron/i.test(x.carrier))) {
+        await db.update(S).set({ carrier: p.carrier }).where(and(eq(S.tenantId, opts.tenantId), eq(S.rowHash, p.rowHash), sql`coalesce(${S.carrier}, '') not ilike '%tendron%'`));
+      }
       break;
     }
     case "removalOrders": {

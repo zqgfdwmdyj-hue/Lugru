@@ -158,7 +158,8 @@ export function removalParcels(d: Pick<ClaimData, "removals" | "removalShipments
     const requestDate = p.requestDate ?? orderLines[0]?.requestDate ?? null;
     const skus = p.lines.map((l) => l.sku).filter(Boolean);
     const relevant = orderLines.filter((o) => !skus.length || skus.includes(o.sku));
-    const carrier = (p.carrier ?? "").toLowerCase();
+    // Stichwort (z. B. „tendron“) in Versender oder Sendungsnummer – wie die Suche im Bericht.
+    const carrier = `${p.carrier ?? ""} ${p.trackingNumber}`.toLowerCase();
     return {
       ...p,
       requestDate,
