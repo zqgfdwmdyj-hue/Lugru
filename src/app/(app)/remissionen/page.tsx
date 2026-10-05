@@ -83,6 +83,7 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
         <div style={{ display: "flex", gap: 6 }}>
           <Link className={`chip${view === "offen" ? " active" : ""}`} href="/remissionen">Eingang offen</Link>
           <Link className={`chip${view === "alle" ? " active" : ""}`} href="/remissionen?ansicht=alle">Alle Aufträge</Link>
+          <Link className="btn btn-primary btn-small" href="/remissionen/erfassen">Tendron-Pakete aus Seller Central holen</Link>
         </div>
       </div>
 
@@ -170,9 +171,9 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
           </span>
         </div>
         <table className="table">
-          <thead><tr><th>Auftrag</th><th>Versender / Sendung</th><th>FNSKU × Anzahl</th><th>Fall-Fenster</th><th>Anspruch</th><th>Bei dir?</th></tr></thead>
+          <thead><tr><th>Auftrag</th><th>Versender / Sendung</th><th>FNSKU × Anzahl</th><th>Sendungsverfolgung</th><th>Fall-Fenster</th><th>Anspruch</th><th>Bei dir?</th></tr></thead>
           <tbody>
-            {parcels.length === 0 && <tr><td colSpan={6} className="muted">Keine hängenden Pakete. Grundlage ist der Bericht „Remissionssendungen“ (holt die Amazon-Anbindung automatisch, sonst unter „Daten importieren“ hochladen).</td></tr>}
+            {parcels.length === 0 && <tr><td colSpan={7} className="muted">Keine hängenden Pakete. Über „Tendron-Pakete aus Seller Central holen“ die Auftragsseiten einlesen – oder den Bericht „Remissionssendungen“ importieren.</td></tr>}
             {parcels.map((p) => {
               const claim = claimByKey.get(`removal-ship:${p.orderId}:${p.trackingNumber}`);
               const early = p.claimFrom !== null && p.claimFrom > today;
@@ -186,6 +187,14 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
                     <div className="small muted">versandt {formatDate(p.shipmentDate)}</div>
                   </td>
                   <td className="small num">{p.lines.map((l) => <div key={l.fnsku ?? l.sku}>{l.fnsku ?? l.sku} × {l.quantity}</div>)}</td>
+                  <td className="small" style={{ maxWidth: 240 }}>
+                    {p.lastEventAt ? (
+                      <>
+                        <span className="num">{formatDate(p.lastEventAt)}</span>
+                        <div className="muted">{p.lastEvent}</div>
+                      </>
+                    ) : <span className="muted">–</span>}
+                  </td>
                   <td className="small num" style={{ color: late ? "var(--danger)" : undefined }}>
                     {formatDate(p.claimFrom)} – {formatDate(p.claimUntil)}
                     <div className="muted">{early ? "noch zu früh" : late ? "Frist abgelaufen" : "jetzt einreichen"}</div>

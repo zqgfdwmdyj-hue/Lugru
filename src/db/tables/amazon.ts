@@ -139,6 +139,11 @@ export const amazonRemovalShipments = pgTable(
     carrier: text("carrier"),
     trackingNumber: text("tracking_number"),
     orderType: text("order_type"),
+    /** Letzter Eintrag der Sendungsverfolgung (aus Seller Central gelesen). */
+    lastEvent: text("last_event"),
+    lastEventAt: date("last_event_at", { mode: "string" }),
+    /** report = Amazon-Bericht, seller_central = vom Lesezeichen auf den Auftragsseiten gelesen */
+    source: text("source").notNull().default("report"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("removal_ship_hash_uq").on(t.tenantId, t.rowHash)],

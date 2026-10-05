@@ -34,7 +34,7 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
       .innerJoin(schema.inboundItems, eq(schema.inboundItems.shipmentId, schema.inboundShipments.id))
       .where(and(eq(schema.inboundShipments.tenantId, t), isNotNull(schema.inboundShipments.amazonShipmentId), inArray(schema.inboundShipments.status, ["transmitted", "shipped", "receiving", "closed"]))),
     db
-      .select({ orderId: RS.orderId, requestDate: RS.requestDate, shipmentDate: RS.shipmentDate, sku: RS.sku, fnsku: RS.fnsku, quantity: RS.shippedQuantity, carrier: RS.carrier, trackingNumber: RS.trackingNumber })
+      .select({ orderId: RS.orderId, requestDate: RS.requestDate, shipmentDate: RS.shipmentDate, sku: RS.sku, fnsku: RS.fnsku, quantity: RS.shippedQuantity, carrier: RS.carrier, trackingNumber: RS.trackingNumber, lastEvent: RS.lastEvent, lastEventAt: RS.lastEventAt })
       .from(RS)
       .where(and(eq(RS.tenantId, t), isNotNull(RS.trackingNumber))),
     db

@@ -56,6 +56,8 @@ export type RemovalShipmentRow = {
   quantity: number;
   carrier: string | null;
   trackingNumber: string | null;
+  lastEvent?: string | null;
+  lastEventAt?: string | null;
 };
 export type RemovalShipmentMark = { orderId: string; trackingNumber: string; status: "received" | "lost" };
 
@@ -110,7 +112,7 @@ export type ClaimCandidate = {
 export const GRACE_DAYS = { warehouse: 30, returns: 45, removal: 30, inbound: 30 };
 
 /** Remissionssendung hängt: Fall laut Amazon frühestens ab Tag 15 nach Auftrag, Paket mind. 10 Tage unterwegs. */
-export const STUCK_REMOVAL = { fromDay: 15, minTransitDays: 10 };
+export const STUCK_REMOVAL = { fromDay: 15, minTransitDays: 10, noMovementDays: 10 };
 
 export function carrierList(s: string | undefined | null): string[] {
   return (s ?? "").split(/[,;\n]/).map((c) => c.trim().toLowerCase()).filter(Boolean);
@@ -125,6 +127,8 @@ export type RemovalParcel = {
   shipmentDate: string | null;
   lines: { sku: string | null; fnsku: string | null; quantity: number }[];
   quantity: number;
+  lastEvent: string | null;
+  lastEventAt: string | null;
   problemCarrier: boolean;
   mark: "received" | "lost" | null;
   /** Bei allen Positionen des Auftrags schon „Angekommen“ bestätigt. */
@@ -143,11 +147,15 @@ export function removalParcels(d: Pick<ClaimData, "removals" | "removalShipments
     const key = `${r.orderId}|${tracking}`;
     const p =
       parcels.get(key) ??
-      ({ key, orderId: r.orderId, trackingNumber: tracking, carrier: r.carrier, requestDate: r.requestDate, shipmentDate: r.shipmentDate, lines: [], quantity: 0, problemCarrier: false, mark: marks.get(key) ?? null, confirmed: false, claimFrom: null, claimUntil: null } satisfies RemovalParcel);
+      ({ key, orderId: r.orderId, trackingNumber: tracking, carrier: r.carrier, requestDate: r.requestDate, shipmentDate: r.shipmentDate, lines: [], quantity: 0, lastEvent: null, lastEventAt: null, problemCarrier: false, mark: marks.get(key) ?? null, confirmed: false, claimFrom: null, claimUntil: null } satisfies RemovalParcel);
     const line = p.lines.find((l) => (l.fnsku ?? l.sku) === (r.fnsku ?? r.sku));
     if (line) line.quantity += r.quantity;
     else p.lines.push({ sku: r.sku, fnsku: r.fnsku, quantity: r.quantity });
     p.quantity += r.quantity;
+    if (r.lastEventAt && (!p.lastEventAt || r.lastEventAt > p.lastEventAt)) {
+      p.lastEventAt = r.lastEventAt;
+      p.lastEvent = r.lastEvent ?? null;
+    }
     if (!p.shipmentDate || (r.shipmentDate && r.shipmentDate < p.shipmentDate)) p.shipmentDate = r.shipmentDate ?? p.shipmentDate;
     p.requestDate ??= r.requestDate;
     p.carrier ??= r.carrier;
@@ -390,6 +398,8 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
     // Amazon nimmt den Fall erst ab Tag 15 an. Ohne eigene Markierung zusätzlich: Paket mind. 10 Tage unterwegs.
     if (p.claimFrom! > today) continue;
     if (p.mark !== "lost" && p.shipmentDate && addDaysIso(p.shipmentDate, STUCK_REMOVAL.minTransitDays) > today) continue;
+    // Sendungsverfolgung bewegt sich noch → abwarten.
+    if (p.mark !== "lost" && p.lastEventAt && addDaysIso(p.lastEventAt, STUCK_REMOVAL.noMovementDays) > today) continue;
     const costs = p.lines.map((l) => (l.sku ? unitCost(d, l.sku, null) : null));
     const known = costs.every((c) => c !== null);
     const amount = known ? round2(p.lines.reduce((n, l, i) => n + costs[i]! * l.quantity, 0)) : null;
@@ -411,6 +421,9 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
         { label: "Versanddienst", value: p.carrier ?? "–", source: "Remissionssendungen" },
         { label: "Sendungsnummer", value: p.trackingNumber, source: "Remissionssendungen" },
         { label: "Versandt am", value: p.shipmentDate ? p.shipmentDate.split("-").reverse().join(".") : "–", source: "Remissionssendungen" },
+        ...(p.lastEventAt
+          ? [{ label: "Letzte Sendungsverfolgung", value: `${p.lastEventAt.split("-").reverse().join(".")}${p.lastEvent ? ` – ${p.lastEvent}` : ""} (seitdem keine Bewegung)`, source: "Seller Central, Sendungsverfolgung" }]
+          : []),
         { label: "Artikel (FNSKU × Anzahl)", value: p.lines.map((l) => `${l.fnsku ?? l.sku ?? "?"} × ${l.quantity}`).join(", "), source: "Remissionssendungen" },
         { label: "Bei uns angekommen", value: p.mark === "lost" ? "nein – als verloren markiert" : "nein (keine Zustellung, keine Bestätigung)", source: "Remissionen (eigene Prüfung)" },
       ],
