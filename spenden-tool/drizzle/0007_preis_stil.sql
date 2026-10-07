@@ -1,0 +1,1 @@
+ALTER TABLE "products" ADD COLUMN "collage_style" jsonb DEFAULT '{}'::jsonb NOT NULL;

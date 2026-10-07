@@ -50,6 +50,13 @@
       "when": 1791367768579,
       "tag": "0006_foto_fingerabdruck",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791394493933,
+      "tag": "0007_preis_stil",
+      "breakpoints": true
     }
   ]
 }

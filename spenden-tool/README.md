@@ -17,7 +17,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   den günstigsten aktuellen Preis bei deutschen Händlern, mit Links. Daraus wird ein Spendenpreis
   vorgeschlagen (Standard: 25 % vom günstigsten Preis). Das läuft im Hintergrund.
 - **Collage:** Bilder zum Teilen im Messenger. Das Raster passt sich an, die Anzahl pro Bild ist
-  einstellbar (4 bis 20), in den Formaten 4:5, 9:16, 1:1 oder A4. Der Preis steht auf dem Foto.
+  einstellbar (4 bis 20), in den Formaten 4:5, 9:16, 1:1 oder A4. Der Preis steht auf dem Foto. Auf ein Produkt
+  in der Collage tippen, um Lage (9 Stellen) und Farbe des Preises festzulegen – das gilt für dieses Produkt auch
+  bei späteren Verteilungen („Automatisch“ setzt es zurück, „Für alle Bilder“ übernimmt es für die ganze Collage).
 - **Aushang:** A4 „Unsere Spendenempfehlungen“, die Schrift passt sich automatisch der Seite an.
 - **Messenger-Text:** dieselbe Liste als Text zum Kopieren.
 - **MHD-Foto:** pro Produkt ein Foto vom aufgedruckten Datum – die KI liest es ab und trägt es ein

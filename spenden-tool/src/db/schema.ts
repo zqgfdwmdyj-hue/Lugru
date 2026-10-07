@@ -67,6 +67,8 @@ export const products = pgTable(
     /** Zuletzt verwendeter Spendenpreis – Vorschlag für die nächste Verteilung. */
     price: money("price"),
     imageFileId: uuid("image_file_id").references(() => files.id, { onDelete: "set null" }),
+    /** Lage und Farbe des Preises auf der Collage (siehe TileStyle in lib/layout.ts). */
+    collageStyle: jsonb("collage_style").$type<{ pos?: string; color?: string }>().notNull().default({}),
     note: text("note"),
     archived: boolean("archived").notNull().default(false),
     createdAt: createdAt(),

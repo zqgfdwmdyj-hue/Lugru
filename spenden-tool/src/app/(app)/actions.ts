@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
-import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME } from "@/lib/layout";
+import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, type TileStyle, tileStyle } from "@/lib/layout";
 import { addProductsToEvent, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -89,6 +89,15 @@ export async function saveCollageSettings(eventId: string, settings: CollageSett
   await requireLogin();
   const id = uuid.parse(eventId);
   await db.update(E).set({ collage: collageSettings(settings) }).where(eq(E.id, id));
+}
+
+/** Lage/Farbe des Preises für ein oder mehrere Produkte festlegen; null = wieder automatisch. */
+export async function saveTileStyles(productIds: string[], style: TileStyle | null) {
+  await requireLogin();
+  const ids = z.array(uuid).max(500).parse(productIds);
+  if (ids.length === 0) return;
+  const t = tileStyle(style);
+  await db.update(P).set({ collageStyle: style && t.custom ? { pos: t.pos, color: t.color } : {} }).where(inArray(P.id, ids));
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { balancedPages, bestGrid, collagePrice, collageSettings, flyerPrice, flyerSections, messengerText, nameFromFilename, paginate } from "@/lib/layout";
+import { balancedPages, bestGrid, collagePrice, collageSettings, flyerPrice, flyerSections, messengerText, nameFromFilename, paginate, tileStyle } from "@/lib/layout";
 
 describe("Spenden: Preise", () => {
   it("Collage: Cent unter 1 €, sonst Euro", () => {
@@ -125,5 +125,14 @@ describe("Social-Media-Texte", () => {
   it("TikTok kurz", async () => {
     const { tiktokCaption } = await import("@/lib/social");
     expect(tiktokCaption(ev, products)).toMatch(/^Samstag, 12\.10\. um 11 Uhr in Musterstadt Süd: 3 gerettete Produkte/);
+  });
+});
+
+describe("Preis-Lage und -Farbe je Produkt", () => {
+  it("nimmt gültige Werte und fällt sonst auf automatisch zurück", () => {
+    expect(tileStyle({})).toEqual({ pos: "um", color: "weiss", custom: false });
+    expect(tileStyle({ pos: "ol", color: "gelb" })).toEqual({ pos: "ol", color: "gelb", custom: true });
+    expect(tileStyle({ pos: "xx", color: "lila" }).custom).toBe(false);
+    expect(tileStyle(null).custom).toBe(false);
   });
 });

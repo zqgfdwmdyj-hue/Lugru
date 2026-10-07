@@ -23,6 +23,34 @@ export function collageSettings(saved: Partial<CollageSettings> | null | undefin
   return s;
 }
 
+/** Lage des Preises (und der übrigen Schrift) auf einer Collage-Kachel: o/m/u = oben/Mitte/unten, l/m/r = links/Mitte/rechts. */
+export const TILE_POSITIONS = ["ol", "om", "or", "ml", "mm", "mr", "ul", "um", "ur"] as const;
+export type TilePosition = (typeof TILE_POSITIONS)[number];
+
+/** Schriftfarben auf der Kachel; „…-feld“ setzt den Preis auf ein farbiges Feld. */
+export const TILE_COLORS = {
+  weiss: { label: "Weiß", text: "#ffffff", shadow: "rgba(0,0,0,0.6)", veil: "dark", field: null },
+  schwarz: { label: "Schwarz", text: "#1b1d1f", shadow: "rgba(255,255,255,0.75)", veil: "light", field: null },
+  gelb: { label: "Gelb", text: "#ffd60a", shadow: "rgba(0,0,0,0.7)", veil: "dark", field: null },
+  rot: { label: "Rot", text: "#e5383b", shadow: "rgba(255,255,255,0.8)", veil: "light", field: null },
+  gruen: { label: "Grün", text: "#2fae66", shadow: "rgba(0,0,0,0.7)", veil: "dark", field: null },
+  "gruen-feld": { label: "Weiß auf Grün", text: "#ffffff", shadow: "rgba(0,0,0,0)", veil: "none", field: "#1f7a4d" },
+  "rot-feld": { label: "Weiß auf Rot", text: "#ffffff", shadow: "rgba(0,0,0,0)", veil: "none", field: "#c62828" },
+  "weiss-feld": { label: "Schwarz auf Weiß", text: "#1b1d1f", shadow: "rgba(0,0,0,0)", veil: "none", field: "#ffffff" },
+} as const;
+export type TileColor = keyof typeof TILE_COLORS;
+
+/** Pro Produkt gespeichert – gilt auf jeder Collage, auf der das Produktfoto vorkommt. */
+export type TileStyle = { pos?: TilePosition; color?: TileColor };
+
+/** Gespeicherten Stil prüfen; `custom` sagt, ob jemand ihn festgelegt hat (sonst wählt die Collage selbst). */
+export function tileStyle(saved: unknown): { pos: TilePosition; color: TileColor; custom: boolean } {
+  const s = (saved && typeof saved === "object" ? saved : {}) as Record<string, unknown>;
+  const pos = (TILE_POSITIONS as readonly string[]).includes(String(s.pos)) ? (s.pos as TilePosition) : null;
+  const color = String(s.color) in TILE_COLORS ? (s.color as TileColor) : null;
+  return { pos: pos ?? "um", color: color ?? "weiss", custom: !!pos || !!color };
+}
+
 /**
  * Preis für die Collage: unter 1 € in Cent („60 Cent“), sonst in Euro („2 €“, „2,50 €“).
  * So steht es auch auf den bisherigen Bildern.

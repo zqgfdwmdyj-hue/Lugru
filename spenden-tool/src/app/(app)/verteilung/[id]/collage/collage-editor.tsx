@@ -4,12 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollageSettings } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
+import { saveTileStyles } from "@/app/(app)/actions";
+import { TILE_COLORS, TILE_POSITIONS, type TileColor, type TilePosition, type TileStyle, tileStyle } from "@/lib/layout";
 import { BAND, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
 import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
 
-export type CollageTile = { id: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo };
+export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo; style: TileStyle };
+type Rect = { productId: string; x: number; y: number; w: number; h: number };
 
 function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLImageElement | undefined, x: number, y: number, w: number, h: number, s: CollageSettings) {
+  const st = tileStyle(tile.style);
+  const colors = TILE_COLORS[st.color];
   const side = Math.min(w, h);
   ctx.save();
   roundRect(ctx, x, y, w, h, side * 0.035);
@@ -41,53 +46,91 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     if (vis < 0.8) plan = "normal";
   }
   const priceLine = plan === "normal" ? fullPrice : "";
-  // Alter Preis unten im Foto: Name und Text nach oben, damit nichts übereinanderliegt.
-  const top = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
+  // Lage der Schrift: festgelegt pro Produkt – sonst unten, bzw. oben, wenn unten schon ein Preis im Foto steht.
+  const autoTop = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
+  const vert = !img ? "m" : st.custom ? st.pos[0] : autoTop ? "o" : "u";
+  const horiz = st.custom ? st.pos[1] : "m";
   const pad = w * 0.06;
   const maxW = w - pad * 2;
 
-  const lines: { text: string; size: number; weight?: string }[] = [];
+  const lines: { text: string; size: number; isPrice?: boolean }[] = [];
   if (!img || s.showName) {
     ctx.font = `${Math.round(side * (img ? 0.06 : 0.085))}px ${FONT}`;
     for (const l of wrap(ctx, tile.name, maxW, img ? 2 : 4)) lines.push({ text: l, size: side * (img ? 0.06 : 0.085) });
   }
   if (note && !inline && plan === "normal") lines.push({ text: note, size: side * 0.09 });
-  if (priceLine) lines.push({ text: priceLine, size: side * 0.16 });
+  if (priceLine) lines.push({ text: priceLine, size: side * 0.16, isPrice: true });
   if (tile.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
     for (const l of wrap(ctx, tile.caption, maxW, 3)) lines.push({ text: l, size: side * 0.055 });
   }
-  const sized = lines.map((l) => ({ ...l, size: fitFont(ctx, l.text, maxW, Math.round(l.size)) }));
-  const total = sized.reduce((n, l) => n + l.size * 1.12, 0);
+  const field = img ? colors.field : null;
+  // Mit farbigem Feld etwas kleiner, damit das Feld in die Kachel passt.
+  const sized = lines.map((l) => ({ ...l, size: fitFont(ctx, l.text, maxW - (field && l.isPrice ? l.size * 0.6 : 0), Math.round(l.size * (field && l.isPrice ? 0.85 : 1))) }));
+  const lineH = (l: { size: number; isPrice?: boolean }) => l.size * (field && l.isPrice ? 1.45 : 1.12);
+  const total = sized.reduce((n, l) => n + lineH(l), 0);
 
-  if (img && total > 0) {
-    // Dunkler Verlauf (unten, bzw. oben), damit die Schrift auf jedem Foto lesbar ist.
+  if (img && total > 0 && colors.veil !== "none") {
+    // Verlauf hinter der Schrift, damit sie auf jedem Foto lesbar ist (dunkel für helle Schrift, hell für dunkle).
+    const tint = colors.veil === "dark" ? "0,0,0" : "255,255,255";
     const gh = Math.min(h, total + h * 0.25);
-    const g = top ? ctx.createLinearGradient(0, y + gh, 0, y) : ctx.createLinearGradient(0, y + h - gh, 0, y + h);
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(0,0,0,0.62)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, top ? y : y + h - gh, w, gh);
+    if (vert === "m") {
+      const g = ctx.createLinearGradient(0, y + (h - gh) / 2, 0, y + (h + gh) / 2);
+      g.addColorStop(0, `rgba(${tint},0)`);
+      g.addColorStop(0.5, `rgba(${tint},0.5)`);
+      g.addColorStop(1, `rgba(${tint},0)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y + (h - gh) / 2, w, gh);
+    } else {
+      const g = vert === "o" ? ctx.createLinearGradient(0, y + gh, 0, y) : ctx.createLinearGradient(0, y + h - gh, 0, y + h);
+      g.addColorStop(0, `rgba(${tint},0)`);
+      g.addColorStop(1, `rgba(${tint},0.62)`);
+      ctx.fillStyle = g;
+      ctx.fillRect(x, vert === "o" ? y : y + h - gh, w, gh);
+    }
   }
 
-  let ty = !img ? y + (h - total) / 2 : top ? y + pad * 0.8 : y + h - pad * 0.8 - total;
-  ctx.textAlign = "center";
+  let ty = vert === "m" ? y + (h - total) / 2 : vert === "o" ? y + pad * 0.8 : y + h - pad * 0.8 - total;
+  const align = horiz === "l" ? "left" : horiz === "r" ? "right" : "center";
+  const tx = horiz === "l" ? x + pad : horiz === "r" ? x + w - pad : x + w / 2;
+  ctx.textAlign = align;
   ctx.textBaseline = "top";
   for (const l of sized) {
     ctx.font = `${l.size}px ${FONT}`;
-    if (img) {
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "rgba(0,0,0,0.55)";
-      ctx.shadowBlur = l.size * 0.25;
-      ctx.shadowOffsetY = l.size * 0.04;
-    } else ctx.fillStyle = "#1b1d1f";
-    ctx.fillText(l.text, x + w / 2, ty);
-    ty += l.size * 1.12;
+    const lh = lineH(l);
+    if (field && l.isPrice) {
+      // Preis auf farbigem Feld
+      const tw = ctx.measureText(l.text).width;
+      const fw = tw + l.size * 0.7;
+      const fx = align === "left" ? tx - l.size * 0.35 : align === "right" ? tx - tw - l.size * 0.35 : tx - fw / 2;
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.3)";
+      ctx.shadowBlur = l.size * 0.3;
+      ctx.fillStyle = field;
+      roundRect(ctx, Math.max(x + 2, fx), ty, Math.min(fw, w - 4), l.size * 1.32, l.size * 0.25);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = colors.text;
+      ctx.fillText(l.text, tx, ty + l.size * 0.2);
+    } else {
+      if (img) {
+        // Name und Zusatz bei Feld-Farben weiß mit Schatten, sonst in der gewählten Farbe.
+        const plain = colors.field !== null;
+        ctx.fillStyle = plain ? "#fff" : colors.text;
+        ctx.shadowColor = plain ? "rgba(0,0,0,0.6)" : colors.shadow;
+        ctx.shadowBlur = l.size * 0.25;
+        ctx.shadowOffsetY = l.size * 0.04;
+      } else ctx.fillStyle = "#1b1d1f";
+      ctx.fillText(l.text, tx, ty);
+      ctx.shadowColor = "transparent";
+    }
+    ty += lh;
   }
   ctx.restore();
 }
 
-function drawPage(canvas: HTMLCanvasElement, tiles: CollageTile[], images: Loaded, s: CollageSettings, header: { title: string; date: string }, pageLabel: string) {
+function drawPage(canvas: HTMLCanvasElement, tiles: CollageTile[], images: Loaded, s: CollageSettings, header: { title: string; date: string }, pageLabel: string): Rect[] {
+  const rects: Rect[] = [];
   const { width: W, height: H } = COLLAGE_FORMATS[s.format];
   canvas.width = W;
   canvas.height = H;
@@ -125,7 +168,9 @@ function drawPage(canvas: HTMLCanvasElement, tiles: CollageTile[], images: Loade
     const x = pad + offset + c * (tw + gap);
     const y = top + r * (th + gap);
     drawTile(ctx, tile, tile.image ? images.get(tile.image) : undefined, x, y, tw, th, s);
+    rects.push({ productId: tile.productId, x: x / W, y: y / H, w: tw / W, h: th / H });
   });
+  return rects;
 }
 
 function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -137,7 +182,12 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
   const [images, setImages] = useState<Loaded | null>(null);
   const [message, setMessage] = useState("");
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
-  const pages = useMemo(() => balancedPages(tiles, s.perPage), [tiles, s.perPage]);
+  // Preis-Lage und -Farbe je Produkt (auf ein Bild tippen → einstellen).
+  const [styles, setStyles] = useState<Record<string, TileStyle>>(() => Object.fromEntries(tiles.map((t) => [t.productId, t.style ?? {}])));
+  const [selected, setSelected] = useState<string | null>(null);
+  const [rects, setRects] = useState<Rect[][]>([]);
+  const styled = useMemo(() => tiles.map((t) => ({ ...t, style: styles[t.productId] ?? {} })), [tiles, styles]);
+  const pages = useMemo(() => balancedPages(styled, s.perPage), [styled, s.perPage]);
   const [canShare, setCanShare] = useState(false);
   useEffect(() => setCanShare("canShare" in navigator && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)), []);
 
@@ -158,10 +208,10 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
 
   useEffect(() => {
     if (!images) return;
-    pages.forEach((p, i) => {
+    setRects(pages.map((p, i) => {
       const c = canvases.current[i];
-      if (c) drawPage(c, p, images, s, header, pages.length > 1 ? `${i + 1}/${pages.length}` : "");
-    });
+      return c ? drawPage(c, p, images, s, header, pages.length > 1 ? `${i + 1}/${pages.length}` : "") : [];
+    }));
   }, [images, pages, s, header]);
 
   // Einstellungen an der Verteilung merken (leicht verzögert).
@@ -207,6 +257,19 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       // Abgebrochen
     }
   };
+  const pick = (page: number, e: React.MouseEvent<HTMLCanvasElement>) => {
+    const box = e.currentTarget.getBoundingClientRect();
+    const fx = (e.clientX - box.left) / box.width;
+    const fy = (e.clientY - box.top) / box.height;
+    const hit = rects[page]?.find((r) => fx >= r.x && fx <= r.x + r.w && fy >= r.y && fy <= r.y + r.h);
+    setSelected(hit && hit.productId !== selected ? hit.productId : null);
+  };
+  const changeStyle = (ids: string[], style: TileStyle | null) => {
+    setStyles((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, style ?? {}])) }));
+    void saveTileStyles(ids, style).catch(() => setMessage("Einstellung konnte nicht gespeichert werden – bitte Seite neu laden."));
+  };
+  const sel = selected ? tiles.find((t) => t.productId === selected) : null;
+  const selStyle = selected ? tileStyle(styles[selected]) : null;
   const set = <K extends keyof CollageSettings>(k: K, v: CollageSettings[K]) => setS((prev) => ({ ...prev, [k]: v }));
   const fmt = COLLAGE_FORMATS[s.format];
 
@@ -242,11 +305,54 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
         </div>
       </section>
       {message && <div className="notice notice-warn">{message}</div>}
+      {images && !sel && <div className="small muted">Tipp: Auf ein Produkt in der Collage tippen, um dort Lage und Farbe des Preises festzulegen.</div>}
+      {sel && selStyle && (
+        <section className="card card-pad tile-style" style={{ position: "sticky", top: 8, zIndex: 5, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ minWidth: 160 }}>
+            <div className="label">Preis bei</div>
+            <strong>{sel.name}</strong>
+            {sel.printed && <div className="small muted" style={{ maxWidth: 220 }}>Preis steht schon im Foto ({sel.printed.text}) – die Einstellung gilt für Name und Text.</div>}
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              <button className="btn btn-small" type="button" onClick={() => changeStyle([sel.productId], null)} disabled={!selStyle.custom}>Automatisch</button>
+              <button className="btn btn-small" type="button" onClick={() => changeStyle(tiles.map((t) => t.productId), { pos: selStyle.pos, color: selStyle.color })} title="Diese Lage und Farbe für alle Bilder der Collage">Für alle Bilder</button>
+              <button className="btn btn-small" type="button" onClick={() => setSelected(null)}>Fertig</button>
+            </div>
+          </div>
+          <div>
+            <div className="label">Lage</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 36px)", gap: 4 }}>
+              {TILE_POSITIONS.map((p) => (
+                <button key={p} type="button" aria-label={`Lage ${p}`} aria-pressed={selStyle.custom && selStyle.pos === p} onClick={() => changeStyle([sel.productId], { pos: p as TilePosition, color: selStyle.color })}
+                  style={{ width: 36, height: 30, borderRadius: 6, border: "1px solid #8a949c", cursor: "pointer", background: selStyle.pos === p ? "#1f7a4d" : "#fff" }} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="label">Farbe</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 400 }}>
+              {(Object.keys(TILE_COLORS) as TileColor[]).map((c) => {
+                const col = TILE_COLORS[c];
+                return (
+                  <button key={c} type="button" title={col.label} aria-label={`Farbe ${col.label}`} aria-pressed={selStyle.color === c} onClick={() => changeStyle([sel.productId], { pos: selStyle.pos, color: c })}
+                    style={{ minWidth: 40, height: 30, padding: "0 8px", borderRadius: 6, cursor: "pointer", fontWeight: 800, fontSize: 13, color: col.text, background: col.field ?? (col.veil === "dark" ? "#55606a" : "#e9e6dd"), border: selStyle.color === c ? "3px solid #ffd60a" : "1px solid #8a949c", boxShadow: selStyle.color === c ? "0 0 0 1px #1b1d1f" : "none" }}>
+                    Aa
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
       {!images && <div className="notice notice-info">Lade Fotos …</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
         {pages.map((p, i) => (
           <figure key={`${s.perPage}-${i}`} className="card" style={{ margin: 0, padding: 10 }}>
-            <canvas ref={(el) => { canvases.current[i] = el; }} style={{ width: "100%", aspectRatio: `${fmt.width} / ${fmt.height}`, display: "block", borderRadius: 6, background: "var(--row)" }} />
+            <div style={{ position: "relative" }}>
+              <canvas ref={(el) => { canvases.current[i] = el; }} onClick={(e) => pick(i, e)} style={{ width: "100%", aspectRatio: `${fmt.width} / ${fmt.height}`, display: "block", borderRadius: 6, background: "var(--row)", cursor: "pointer" }} />
+              {rects[i]?.filter((r) => r.productId === selected).map((r) => (
+                <div key={r.productId} style={{ position: "absolute", left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%`, outline: "3px solid #ffd60a", borderRadius: 6, pointerEvents: "none", boxShadow: "0 0 0 2px #1b1d1f" }} />
+              ))}
+            </div>
             <figcaption style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }} className="small muted">
               <span>Bild {i + 1} · {p.length} Produkte</span>
               <button className="btn btn-small" type="button" onClick={() => download(i)} disabled={!images}>Speichern</button>
