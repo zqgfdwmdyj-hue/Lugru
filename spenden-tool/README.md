@@ -9,6 +9,10 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Preis, dazu der Verlauf, wann ein Produkt zu welchem Preis dabei war.
 - **Verteilungen:** Datum und Uhrzeit, viele Handyfotos auf einmal hochladen (jedes Foto wird ein
   Produkt), frühere Verteilung übernehmen, Preise direkt in der Liste eintragen.
+- **Doppelte Fotos:** Jedes Foto bekommt einen Fingerabdruck. Dasselbe Foto wird wiedererkannt – auch verkleinert,
+  neu gespeichert, per WhatsApp verschickt oder als PNG/HEIC – und weder doppelt angelegt noch doppelt von der KI
+  ausgewertet. Nur ähnliche Fotos werden nicht automatisch zusammengelegt, sondern unter Produkte → „Mögliche
+  Doppelte“ zum Prüfen und Zusammenführen angezeigt (dort auch Doppelte aus der Zeit vor dieser Funktion).
 - **KI-Preisrecherche (Claude):** erkennt das Produkt auf dem Foto, trägt fehlende Namen ein und sucht
   den günstigsten aktuellen Preis bei deutschen Händlern, mit Links. Daraus wird ein Spendenpreis
   vorgeschlagen (Standard: 25 % vom günstigsten Preis). Das läuft im Hintergrund.

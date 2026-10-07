@@ -43,6 +43,13 @@
       "when": 1791351559128,
       "tag": "0005_preis_im_foto",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791367768579,
+      "tag": "0006_foto_fingerabdruck",
+      "breakpoints": true
     }
   ]
 }

@@ -36,6 +36,8 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
     const total = files.length;
     let added = 0;
     let reused = 0;
+    let already = 0;
+    let similar = 0;
     const rejected: string[] = [];
     const failed: string[] = [];
     for (let i = 0; i < total; i += BATCH) {
@@ -61,13 +63,17 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
       if (res) {
         added += res.added;
         reused += res.reused;
+        already += res.alreadyInEvent;
+        similar += res.similar;
         rejected.push(...res.rejected);
       } else failed.push(...part.map((f) => f.name));
     }
     setStatus("");
     router.refresh();
     const parts = [`${added} neu`];
-    if (reused) parts.push(`${reused} schon vorhanden (wiedererkannt, nicht doppelt angelegt)`);
+    if (reused) parts.push(`${reused} schon in der Datenbank (wiedererkannt, nicht doppelt angelegt)`);
+    if (already) parts.push(`${already} doppelt – schon in dieser Verteilung, übersprungen`);
+    if (similar) parts.push(`${similar} ähnlich wie ein vorhandenes Foto – bitte prüfen (Produkte → Mögliche Doppelte)`);
     if (rejected.length) parts.push(`${rejected.length} nicht lesbar – bitte als JPG/PNG: ${rejected.slice(0, 3).join(", ")}${rejected.length > 3 ? " …" : ""}`);
     if (failed.length) parts.push(`${failed.length} nicht hochgeladen (Verbindung?) – bitte diese erneut auswählen`);
     if (ai && readFlag() && added + reused) parts.push("Preise auf den Fotos werden im Hintergrund abgelesen");
@@ -108,7 +114,7 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
       <div className="card card-pad stack" style={{ gap: 8 }}>
         {picker}
         <h2>Fotos hochladen</h2>
-        <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Schon einmal hochgeladene Fotos werden wiedererkannt.</div>
+        <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Doppelte Fotos werden erkannt – auch verkleinert, neu gespeichert oder per WhatsApp verschickt – und nicht doppelt angelegt oder ausgewertet.</div>
         <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><CategorySelect id="pc" name="category" value="Lebensmittel" categories={categories} /></div>
         {ai && (
           <label className="small" title="Für alte Fotos aus früheren Collagen: Die KI liest den Preis ab und trägt ihn ein. Die Collage druckt dann keinen zweiten Preis darüber.">

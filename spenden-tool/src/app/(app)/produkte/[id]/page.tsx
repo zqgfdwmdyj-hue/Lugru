@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
 import { isPlaceholderName } from "@/lib/layout";
-import { knownCategories, latestPriceChecks, productHistory } from "@/lib/service";
+import { knownCategories, latestPriceChecks, productHistory, productsWithSamePhoto } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckBox } from "@/components/price-check";
@@ -31,6 +31,15 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
       .where(and(ne(P.id, id), sql`lower(${P.name}) = lower(${product.name})`, sql`coalesce(lower(${P.variant}), '') = coalesce(lower(${product.variant}), '')`)),
     latestPriceChecks([id]),
   ]);
+  // Dazu Produkte mit (fast) demselben Foto, auch wenn sie anders heißen.
+  const samePhoto = await productsWithSamePhoto(id);
+  const known = new Set(twins.map((t) => t.id));
+  const photoTwins = samePhoto.filter((s) => !known.has(s.productId));
+  if (photoTwins.length) {
+    const more = await db.select({ id: P.id, name: P.name, variant: P.variant, imageFileId: P.imageFileId }).from(P).where(inArray(P.id, photoTwins.map((s) => s.productId)));
+    twins.push(...more);
+  }
+  const photoNote = new Map(samePhoto.map((s) => [s.productId, s.match === "gleich" ? "gleiches Foto" : "ähnliches Foto"]));
   const check = checks.get(id);
   const busy = check?.status === "pending" || check?.status === "running";
   const back = /^[0-9a-f-]{36}$/i.test(zurueck) ? `/verteilung/${zurueck}` : "";
@@ -87,12 +96,13 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
             <form action={mergeProducts} className="card card-pad stack" style={{ gap: 8 }}>
               <input type="hidden" name="productId" value={id} />
               <h2>Doppelt angelegt?</h2>
-              <div className="small muted">Diese Produkte heißen genauso. Zusammenführen übernimmt deren Verlauf in dieses Produkt und löscht die Doppelten.</div>
+              <div className="small muted">Diese Produkte heißen genauso oder haben (fast) dasselbe Foto. Zusammenführen übernimmt deren Verlauf in dieses Produkt und löscht die Doppelten. Nur anhaken, was wirklich dasselbe Produkt ist.</div>
               {twins.map((w) => (
                 <label key={w.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input type="checkbox" name="mergeId" value={w.id} defaultChecked />
+                  <input type="checkbox" name="mergeId" value={w.id} defaultChecked={photoNote.get(w.id) !== "ähnliches Foto"} />
                   {w.imageFileId && <img src={`/datei/${w.imageFileId}`} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 4 }} />}
                   <Link href={`/produkte/${w.id}`}>{w.name}{w.variant ? ` · ${w.variant}` : ""}</Link>
+                  {photoNote.has(w.id) && <span className="small muted">{photoNote.get(w.id)}</span>}
                 </label>
               ))}
               <div><button className="btn" type="submit">Zusammenführen</button></div>

@@ -39,6 +39,8 @@ export const files = pgTable(
     size: integer("size").notNull(),
     sha256: text("sha256").notNull(),
     data: bytea("data").notNull(),
+    /** Fingerabdruck zum Wiedererkennen desselben Fotos (auch verkleinert/neu gespeichert), siehe lib/image-hash.ts. */
+    phash: text("phash"),
     /**
      * Preis, der schon auf dem Foto steht (z. B. alte Collage-Bilder mit „60 Cent“). Dann druckt die Collage
      * keinen zweiten Preis darüber – bei abweichendem Preis wird der alte an dieser Stelle überdeckt.

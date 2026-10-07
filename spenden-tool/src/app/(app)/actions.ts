@@ -9,7 +9,7 @@ import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME } from "@/lib/layout";
-import { addProductsToEvent, latestPriceChecks, loadEvent, productByImage, storeImage } from "@/lib/service";
+import { addProductsToEvent, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
@@ -168,7 +168,8 @@ export async function addToEvent(fd: FormData) {
  * Viele Fotos auf einmal: Jedes Foto wird ein neues Produkt (Name aus dem Dateinamen, sonst leer
  * zum Nachtragen) und landet direkt in der Aktion.
  */
-export type UploadResult = { added: number; reused: number; rejected: string[] };
+/** reused: schon in der Datenbank, jetzt in die Verteilung übernommen; alreadyInEvent: war schon drin; similar: neu, aber ähnlich wie ein vorhandenes. */
+export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; rejected: string[] };
 
 /**
  * Fotos hochladen – der Browser schickt sie in kleinen Portionen (siehe PhotoUpload), damit auch 50+ Fotos
@@ -176,30 +177,40 @@ export type UploadResult = { added: number; reused: number; rejected: string[] }
  */
 export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   await requireLogin();
-  const result: UploadResult = { added: 0, reused: 0, rejected: [] };
+  const result: UploadResult = { added: 0, reused: 0, alreadyInEvent: 0, similar: 0, rejected: [] };
   const eventId = uuid.parse(fd.get("eventId"));
   if (!(await loadEvent(eventId))) return result;
   const category = str(fd, "category") || "Lebensmittel";
   const ids: string[] = [];
+  const index = await photoIndex();
+  const inEvent = new Set((await db.select({ id: I.productId }).from(I).where(eq(I.eventId, eventId))).map((r) => r.id));
   for (const file of images(fd, "photos").slice(0, 20)) {
-    // Dasselbe Foto schon einmal hochgeladen? Dann das vorhandene Produkt nehmen statt ein doppeltes anzulegen.
-    const existing = await productByImage(file);
-    if (existing) {
-      ids.push(existing);
-      result.reused++;
-      continue;
-    }
-    const fileId = await storeImage(file);
-    if (!fileId) {
+    const img = await checkImage(file);
+    if (!img) {
       result.rejected.push(file.name);
       continue;
     }
+    // Dasselbe Foto schon einmal hochgeladen (auch verkleinert, per WhatsApp o. ä.)? Dann das vorhandene Produkt
+    // nehmen – kein doppeltes Produkt, keine doppelte KI-Auswertung.
+    const found = findPhoto(img, index);
+    if (found && found.how !== "ähnlich") {
+      if (inEvent.has(found.productId) || ids.includes(found.productId)) result.alreadyInEvent++;
+      else {
+        ids.push(found.productId);
+        result.reused++;
+      }
+      continue;
+    }
+    const fileId = await storeChecked(img);
     const [p] = await db
       .insert(P)
       .values({ name: nameFromFilename(file.name) || PLACEHOLDER_NAME, category, imageFileId: fileId })
-      .returning({ id: P.id });
+      .returning({ id: P.id, createdAt: P.createdAt });
+    // Auch innerhalb derselben Auswahl doppelte Fotos erkennen.
+    index.push({ productId: p.id, sha: img.sha, hash: img.hash, createdAt: p.createdAt });
     ids.push(p.id);
     result.added++;
+    if (found) result.similar++;
   }
   await addProductsToEvent(eventId, ids);
   // Alte Fotos mit Preis darauf: Preis im Hintergrund ablesen und eintragen.
@@ -306,6 +317,7 @@ export async function mergeProducts(fd: FormData) {
        and not exists (select 1 from event_items j where j.event_id = i.event_id and j.product_id = ${keep})`);
   await db.delete(P).where(inArray(P.id, dropIds));
   revalidatePath(`/produkte/${keep}`);
+  revalidatePath("/produkte");
 }
 
 // ---------- KI-Preisrecherche ----------

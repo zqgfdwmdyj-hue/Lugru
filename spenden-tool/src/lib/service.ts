@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
 import type { PrintedInfo } from "@/lib/printed-price";
 import { DONATION_CATEGORIES } from "@/lib/layout";
+import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
 const P = schema.products;
 const E = schema.events;
@@ -27,28 +28,87 @@ export function looksLikeImage(data: Uint8Array): boolean {
   );
 }
 
-export async function storeImage(file: File): Promise<string | null> {
+/** Geprüftes Bild mit Prüfsumme und Fingerabdruck – noch nicht gespeichert. */
+export type CheckedImage = { name: string; mimeType: string; data: Buffer; sha: string; hash: string | null };
+
+export async function checkImage(file: File): Promise<CheckedImage | null> {
   if (!file.size || file.size > MAX_IMAGE_BYTES || !IMAGE_TYPES.has(file.type)) return null;
   const data = Buffer.from(await file.arrayBuffer());
   if (!looksLikeImage(data)) return null;
+  return { name: file.name || "foto.jpg", mimeType: file.type, data, sha: sha256(data), hash: await photoHash(data) };
+}
+
+export async function storeChecked(img: CheckedImage): Promise<string> {
   const [f] = await db
     .insert(schema.files)
-    .values({ name: file.name || "foto.jpg", mimeType: file.type, size: data.length, sha256: sha256(data), data })
+    .values({ name: img.name, mimeType: img.mimeType, size: img.data.length, sha256: img.sha, phash: img.hash, data: img.data })
     .returning({ id: schema.files.id });
   return f.id;
 }
 
-/** Produkt, dessen Foto genau dieses Bild ist (gleiche Datei erneut hochgeladen). */
-export async function productByImage(file: File): Promise<string | null> {
-  const hash = sha256(Buffer.from(await file.arrayBuffer()));
-  const [row] = await db
-    .select({ id: P.id })
+export async function storeImage(file: File): Promise<string | null> {
+  const img = await checkImage(file);
+  return img ? storeChecked(img) : null;
+}
+
+/** Fingerabdrücke für ältere Fotos nachtragen (vor dieser Funktion hochgeladen). */
+export async function backfillPhotoHashes(limit = 300) {
+  const rows = await db.select({ id: schema.files.id, data: schema.files.data }).from(schema.files).where(sql`${schema.files.phash} is null`).limit(limit);
+  for (const r of rows) {
+    // Nicht lesbare Bilder bekommen "" – so werden sie nicht bei jedem Aufruf erneut versucht.
+    await db.update(schema.files).set({ phash: (await photoHash(r.data)) ?? "" }).where(eq(schema.files.id, r.id));
+  }
+  return rows.length;
+}
+
+export type PhotoEntry = { productId: string; sha: string; hash: string | null; createdAt: Date };
+
+/** Alle Produktfotos mit Prüfsumme und Fingerabdruck – zum Wiedererkennen beim Hochladen. */
+export async function photoIndex(): Promise<PhotoEntry[]> {
+  await backfillPhotoHashes();
+  return db
+    .select({ productId: P.id, sha: schema.files.sha256, hash: schema.files.phash, createdAt: P.createdAt })
     .from(P)
     .innerJoin(schema.files, eq(schema.files.id, P.imageFileId))
-    .where(eq(schema.files.sha256, hash))
-    .orderBy(asc(P.createdAt))
-    .limit(1);
-  return row?.id ?? null;
+    .orderBy(asc(P.createdAt));
+}
+
+/**
+ * Gibt es dieses Foto schon? „gleich“: dieselbe Datei; „wiedererkannt“: dasselbe Foto verkleinert/neu gespeichert
+ * (vorhandenes Produkt wird genommen); „ähnlich“: nur ähnlich – wird neu angelegt, aber als mögliches Doppel markiert.
+ */
+export function findPhoto(img: CheckedImage, index: PhotoEntry[]): { productId: string; how: "gleich" | "wiedererkannt" | "ähnlich" } | null {
+  const exact = index.find((e) => e.sha === img.sha);
+  if (exact) return { productId: exact.productId, how: "gleich" };
+  const near = closestPhoto(img.hash, index);
+  if (!near) return null;
+  return { productId: near.productId, how: near.match === "gleich" ? "wiedererkannt" : "ähnlich" };
+}
+
+/** Produkte mit (fast) demselben Foto wie dieses – für „Doppelt angelegt?“. */
+export async function productsWithSamePhoto(productId: string) {
+  const index = await photoIndex();
+  const me = index.find((e) => e.productId === productId);
+  if (!me) return [];
+  return index
+    .filter((e) => e.productId !== productId)
+    .map((e) => ({ productId: e.productId, match: e.sha === me.sha ? ("gleich" as const) : photoMatch(me.hash, e.hash) }))
+    .filter((e): e is { productId: string; match: "gleich" | "ähnlich" } => e.match !== null);
+}
+
+/**
+ * Gruppen von Produkten mit (fast) demselben Foto – für „Mögliche Doppelte“. Jede Gruppe hat das älteste Produkt
+ * als Anker; nur was zum Anker passt, kommt dazu (keine Ketten aus jeweils leicht ähnlichen Fotos).
+ */
+export async function duplicatePhotoGroups(): Promise<string[][]> {
+  const index = await photoIndex();
+  const groups: { anchor: PhotoEntry; ids: string[] }[] = [];
+  for (const e of index) {
+    const g = groups.find((g) => g.anchor.sha === e.sha || photoMatch(g.anchor.hash, e.hash));
+    if (g) g.ids.push(e.productId);
+    else groups.push({ anchor: e, ids: [e.productId] });
+  }
+  return groups.map((g) => g.ids).filter((ids) => ids.length > 1);
 }
 
 export async function loadEvent(id: string) {
