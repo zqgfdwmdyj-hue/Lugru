@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CollageSettings } from "@/db/schema";
+import type { CollageSettings, PriceBox } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
 import { saveTileStyles } from "@/app/(app)/actions";
@@ -11,6 +11,27 @@ import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
 
 export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo; style: TileStyle };
 type Rect = { productId: string; x: number; y: number; w: number; h: number };
+
+/**
+ * Der unscharfe Hintergrund ist das Teuerste beim Zeichnen – darum je Foto und Kachelgröße nur einmal
+ * berechnen und danach wiederverwenden (z. B. beim Ändern von Preis-Lage oder -Farbe).
+ */
+const bgCache = new Map<string, HTMLCanvasElement>();
+function blurredBackground(img: HTMLImageElement, w: number, h: number, avoid: PriceBox | null | undefined) {
+  const cw = Math.round(w);
+  const ch = Math.round(h);
+  const key = `${img.src}|${cw}x${ch}|${avoid ? `${avoid.x},${avoid.y},${avoid.w},${avoid.h}` : ""}`;
+  let c = bgCache.get(key);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = cw;
+    c.height = ch;
+    drawBlurBackground(c.getContext("2d")!, img, 0, 0, cw, ch, "blur(24px) brightness(0.85)", avoid);
+    if (bgCache.size > 400) bgCache.delete(bgCache.keys().next().value!);
+    bgCache.set(key, c);
+  }
+  return c;
+}
 
 function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLImageElement | undefined, x: number, y: number, w: number, h: number, s: CollageSettings) {
   const st = tileStyle(tile.style);
@@ -22,7 +43,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   if (img) {
     if (s.fit === "contain") {
       // Hintergrund: dasselbe Foto unscharf und abgedunkelt, darüber das ganze Foto.
-      drawBlurBackground(ctx, img, x, y, w, h, "blur(24px) brightness(0.85)", tile.printed?.box);
+      ctx.drawImage(blurredBackground(img, w, h, tile.printed?.box), x, y, w, h);
       drawImage(ctx, img, x, y, w, h, "contain");
     } else drawImage(ctx, img, x, y, w, h, "cover");
   } else {
@@ -186,6 +207,8 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
   const [styles, setStyles] = useState<Record<string, TileStyle>>(() => Object.fromEntries(tiles.map((t) => [t.productId, t.style ?? {}])));
   const [selected, setSelected] = useState<string | null>(null);
   const [rects, setRects] = useState<Rect[][]>([]);
+  const rectsRef = useRef<Rect[][]>([]);
+  const drawn = useRef(new WeakMap<HTMLCanvasElement, string>());
   const styled = useMemo(() => tiles.map((t) => ({ ...t, style: styles[t.productId] ?? {} })), [tiles, styles]);
   const pages = useMemo(() => balancedPages(styled, s.perPage), [styled, s.perPage]);
   const [canShare, setCanShare] = useState(false);
@@ -208,10 +231,22 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
 
   useEffect(() => {
     if (!images) return;
-    setRects(pages.map((p, i) => {
+    // Nur Bilder neu zeichnen, die sich geändert haben – beim Ändern eines Preises also genau eins.
+    let changed = false;
+    const next = pages.map((p, i) => {
       const c = canvases.current[i];
-      return c ? drawPage(c, p, images, s, header, pages.length > 1 ? `${i + 1}/${pages.length}` : "") : [];
-    }));
+      if (!c) return [];
+      const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.style, t.price, t.priceNote, t.caption, t.name, t.printed?.text])]);
+      if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
+      drawn.current.set(c, key);
+      changed = true;
+      return drawPage(c, p, images, s, header, label);
+    });
+    if (changed || next.length !== rectsRef.current.length) {
+      rectsRef.current = next;
+      setRects(next);
+    }
   }, [images, pages, s, header]);
 
   // Einstellungen an der Verteilung merken (leicht verzögert).
