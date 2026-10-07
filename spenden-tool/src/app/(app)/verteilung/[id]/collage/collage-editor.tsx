@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollageSettings } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
-import { BAND, drawImage, fitFont, FONT, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
+import { BAND, coverPrintedPrice, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
+import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
 
-export type CollageTile = { id: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null };
+export type CollageTile = { id: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo };
 
 function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLImageElement | undefined, x: number, y: number, w: number, h: number, s: CollageSettings) {
   const side = Math.min(w, h);
@@ -16,9 +17,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   if (img) {
     if (s.fit === "contain") {
       // Hintergrund: dasselbe Foto unscharf und abgedunkelt, darüber das ganze Foto.
-      ctx.filter = "blur(24px) brightness(0.85)";
-      drawImage(ctx, img, x - 30, y - 30, w + 60, h + 60, "cover");
-      ctx.filter = "none";
+      drawBlurBackground(ctx, img, x, y, w, h, "blur(24px) brightness(0.85)", tile.printed?.box);
       drawImage(ctx, img, x, y, w, h, "contain");
     } else drawImage(ctx, img, x, y, w, h, "cover");
   } else {
@@ -30,7 +29,23 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   const note = tile.priceNote?.trim() ?? "";
   // Kurzer Zusatz („je“) in dieselbe Zeile, längerer („3er Packung“) darüber.
   const inline = note && note.length <= 4;
-  const priceLine = inline ? `${note.charAt(0).toUpperCase()}${note.slice(1)} ${price}` : price;
+  const fullPrice = inline ? `${note.charAt(0).toUpperCase()}${note.slice(1)} ${price}` : price;
+  // Steht der Preis schon im Foto, nicht doppelt drucken – bei neuem Preis den alten überdecken.
+  let plan = img ? printedPlan(tile.printed, tile.price) : "normal";
+  if (img && plan === "keep" && tile.printed?.box && s.fit === "cover" && fullPrice) {
+    // „Kachel füllen“ schneidet Ränder ab – ist der alte Preis dadurch angeschnitten, neu drucken.
+    const r = imageRect(img, x, y, w, h, "cover");
+    const b = tile.printed.box;
+    const bx = r.x + b.x * r.w, by = r.y + b.y * r.h, bw = b.w * r.w, bh = b.h * r.h;
+    const vis = (Math.max(0, Math.min(bx + bw, x + w) - Math.max(bx, x)) * Math.max(0, Math.min(by + bh, y + h) - Math.max(by, y))) / (bw * bh);
+    if (vis < 0.8) plan = "cover";
+  }
+  const priceLine = plan === "normal" ? fullPrice : "";
+  if (img && plan === "cover" && tile.printed?.box && fullPrice) {
+    coverPrintedPrice(ctx, fullPrice, imageRect(img, x, y, w, h, s.fit), tile.printed.box, { x, y, w, h });
+  }
+  // Alter Preis unten im Foto: Name und Text nach oben, damit nichts übereinanderliegt.
+  const top = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
   const pad = w * 0.06;
   const maxW = w - pad * 2;
 
@@ -39,7 +54,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     ctx.font = `${Math.round(side * (img ? 0.06 : 0.085))}px ${FONT}`;
     for (const l of wrap(ctx, tile.name, maxW, img ? 2 : 4)) lines.push({ text: l, size: side * (img ? 0.06 : 0.085) });
   }
-  if (note && !inline) lines.push({ text: note, size: side * 0.09 });
+  if (note && !inline && plan === "normal") lines.push({ text: note, size: side * 0.09 });
   if (priceLine) lines.push({ text: priceLine, size: side * 0.16 });
   if (tile.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
@@ -49,16 +64,16 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   const total = sized.reduce((n, l) => n + l.size * 1.12, 0);
 
   if (img && total > 0) {
-    // Dunkler Verlauf unten, damit die Schrift auf jedem Foto lesbar ist.
+    // Dunkler Verlauf (unten, bzw. oben), damit die Schrift auf jedem Foto lesbar ist.
     const gh = Math.min(h, total + h * 0.25);
-    const g = ctx.createLinearGradient(0, y + h - gh, 0, y + h);
+    const g = top ? ctx.createLinearGradient(0, y + gh, 0, y) : ctx.createLinearGradient(0, y + h - gh, 0, y + h);
     g.addColorStop(0, "rgba(0,0,0,0)");
     g.addColorStop(1, "rgba(0,0,0,0.62)");
     ctx.fillStyle = g;
-    ctx.fillRect(x, y + h - gh, w, gh);
+    ctx.fillRect(x, top ? y : y + h - gh, w, gh);
   }
 
-  let ty = img ? y + h - pad * 0.8 - total : y + (h - total) / 2;
+  let ty = !img ? y + (h - total) / 2 : top ? y + pad * 0.8 : y + h - pad * 0.8 - total;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   for (const l of sized) {

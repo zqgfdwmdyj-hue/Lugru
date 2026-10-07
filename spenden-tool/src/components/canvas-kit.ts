@@ -40,23 +40,91 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
   ctx.roundRect(x, y, w, h, r);
 }
 
-/** Bild in ein Rechteck zeichnen: „cover“ füllt (schneidet ab), „contain“ zeigt es ganz. */
-export function drawImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, mode: "cover" | "contain") {
+/** Wo das Bild im Rechteck landet: „cover“ füllt (schneidet ab), „contain“ zeigt es ganz. */
+export function imageRect(img: HTMLImageElement, x: number, y: number, w: number, h: number, mode: "cover" | "contain") {
   const s = mode === "cover" ? Math.max(w / img.naturalWidth, h / img.naturalHeight) : Math.min(w / img.naturalWidth, h / img.naturalHeight);
   const dw = img.naturalWidth * s;
   const dh = img.naturalHeight * s;
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  return { x: x + (w - dw) / 2, y: y + (h - dh) / 2, w: dw, h: dh };
+}
+
+export function drawImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, mode: "cover" | "contain") {
+  const r = imageRect(img, x, y, w, h, mode);
+  ctx.drawImage(img, r.x, r.y, r.w, r.h);
+}
+
+/**
+ * Alten, ins Foto gedruckten Preis mit dem neuen überdecken. `photo` ist die Stelle, an der das Foto gezeichnet
+ * wurde (imageRect), `box` die Lage des alten Preises im Foto (Anteile), `clip` der sichtbare Bereich (Kachel).
+ */
+export function coverPrintedPrice(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  photo: { x: number; y: number; w: number; h: number },
+  box: { x: number; y: number; w: number; h: number },
+  clip: { x: number; y: number; w: number; h: number },
+) {
+  let bx = photo.x + box.x * photo.w;
+  let by = photo.y + box.y * photo.h;
+  let bw = box.w * photo.w;
+  let bh = box.h * photo.h;
+  // Schrift so groß wie der alte Preis, aber höchstens so breit wie die Kachel.
+  const size = fitFont(ctx, text, clip.w * 0.86, Math.round(Math.min(bh * 0.62, clip.h * 0.2)));
+  const need = ctx.measureText(text).width + size * 1.1;
+  if (need > bw) {
+    bx -= (need - bw) / 2;
+    bw = need;
+  }
+  // In der Kachel halten.
+  bx = Math.max(clip.x, Math.min(bx, clip.x + clip.w - bw));
+  by = Math.max(clip.y, Math.min(by, clip.y + clip.h - bh));
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,.3)";
+  ctx.shadowBlur = size * 0.35;
+  ctx.fillStyle = GREEN;
+  roundRect(ctx, bx, by, bw, bh, Math.min(bh / 2, size * 0.6));
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${size}px ${FONT}`;
+  ctx.fillText(text, bx + bw / 2, by + bh / 2 + size * 0.05);
+}
+
+type Box = { x: number; y: number; w: number; h: number };
+
+/**
+ * Unscharfer Hintergrund aus demselben Foto. Mit `avoid` (Lage eines ins Foto gedruckten Preises) wird nur der
+ * Teil des Fotos oberhalb bzw. unterhalb davon genommen – sonst schimmert der alte Preis verwischt durch.
+ */
+export function drawBlurBackground(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, filter: string, avoid?: Box | null) {
+  let sy = 0;
+  let sh = img.naturalHeight;
+  if (avoid) {
+    const above = avoid.y;
+    const below = 1 - (avoid.y + avoid.h);
+    if (Math.max(above, below) > 0.15) {
+      sy = above >= below ? 0 : (avoid.y + avoid.h) * img.naturalHeight;
+      sh = Math.max(above, below) * img.naturalHeight;
+    }
+  }
+  const pad = Math.max(w, h) * 0.05;
+  const s = Math.max((w + pad * 2) / img.naturalWidth, (h + pad * 2) / sh);
+  const dw = img.naturalWidth * s;
+  const dh = sh * s;
+  ctx.filter = filter;
+  ctx.drawImage(img, 0, sy, img.naturalWidth, sh, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+  ctx.filter = "none";
 }
 
 /** Foto ganz zeigen, dahinter dasselbe Foto unscharf als Hintergrund. */
-export function drawPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+export function drawPhoto(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, avoid?: Box | null) {
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.clip();
-  ctx.filter = "blur(28px) brightness(0.9)";
-  drawImage(ctx, img, x - 40, y - 40, w + 80, h + 80, "cover");
-  ctx.filter = "none";
+  drawBlurBackground(ctx, img, x, y, w, h, "blur(28px) brightness(0.9)", avoid);
   drawImage(ctx, img, x, y, w, h, "contain");
   ctx.restore();
 }

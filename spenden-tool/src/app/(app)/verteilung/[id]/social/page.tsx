@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
 import { eventDateLabel, flyerSections } from "@/lib/layout";
-import { loadEvent, loadEventItems } from "@/lib/service";
+import { loadEvent, loadEventItems, printedInfo } from "@/lib/service";
 import { SocialStudio, type SocialData, type SocialItem } from "./social-studio";
 
 const WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -16,7 +16,7 @@ export default async function SocialPage({ params }: { params: Promise<{ id: str
   const rows = await loadEventItems(id);
   const items: SocialItem[] = rows
     .filter((r) => r.item.inCollage)
-    .map(({ item, product }) => ({ id: item.id, image: product.imageFileId ? `/datei/${product.imageFileId}` : null, name: product.name, variant: product.variant, price: item.price, priceNote: item.priceNote, caption: item.caption }));
+    .map(({ item, product, photo }) => ({ id: item.id, image: product.imageFileId ? `/datei/${product.imageFileId}` : null, name: product.name, variant: product.variant, price: item.price, priceNote: item.priceNote, caption: item.caption, printed: printedInfo(photo) }));
   const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
   const [y, m, d] = event.eventDate.split("-").map(Number);
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();

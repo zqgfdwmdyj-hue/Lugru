@@ -19,6 +19,11 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **MHD-Foto:** pro Produkt ein Foto vom aufgedruckten Datum – die KI liest es ab und trägt es ein
   (Claude Haiku, ohne Websuche, Bruchteil eines Cents). Das Foto wird getrennt gespeichert und erscheint
   nie auf Collage oder Social Media.
+- **Alte Fotos mit Preis darauf** (z. B. aus früheren Collagen): Beim Hochladen „Preis steht schon auf den Fotos“
+  ankreuzen oder auf der Verteilungsseite „Preise aus alten Fotos“ starten. Die KI (Claude Haiku, ca. 0,2 Cent je Foto)
+  liest den Preis ab, trägt ihn ein, wo noch keiner steht, und merkt sich, wo er im Bild steht. Collage und Social Media
+  drucken dann keinen zweiten Preis: Bei gleichem Preis bleibt das Foto wie es ist, bei geändertem Preis wird der alte
+  mit dem neuen überdeckt. Falsch erkannt? In der Produktzeile auf „falsch erkannt“ tippen.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
   automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten.

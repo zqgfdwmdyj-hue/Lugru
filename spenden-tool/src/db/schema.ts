@@ -17,6 +17,10 @@ const id = () => uuid("id").primaryKey().defaultRandom();
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
+/** Lage eines aufgedruckten Preises im Foto, als Anteil von Breite/Höhe (0–1). */
+export type PriceBox = { x: number; y: number; w: number; h: number };
+export const PRINTED_STATUSES = ["pending", "done", "error"] as const;
+
 export type CollageSettings = {
   perPage: number;
   format: "4:5" | "9:16" | "1:1" | "a4";
@@ -35,6 +39,15 @@ export const files = pgTable(
     size: integer("size").notNull(),
     sha256: text("sha256").notNull(),
     data: bytea("data").notNull(),
+    /**
+     * Preis, der schon auf dem Foto steht (z. B. alte Collage-Bilder mit „60 Cent“). Dann druckt die Collage
+     * keinen zweiten Preis darüber – bei abweichendem Preis wird der alte an dieser Stelle überdeckt.
+     */
+    printedStatus: text("printed_status", { enum: PRINTED_STATUSES }),
+    printedPrice: money("printed_price"),
+    printedPriceText: text("printed_price_text"),
+    printedPriceBox: jsonb("printed_price_box").$type<PriceBox>(),
+    printedScannedAt: timestamp("printed_scanned_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index("files_sha_idx").on(t.sha256)],

@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
 import { CopyButton } from "@/components/copy-button";
 import { eventDateLabel, flyerSections, isPlaceholderName, messengerText } from "@/lib/layout";
-import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, productPicker } from "@/lib/service";
+import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, printedInfo, productPicker } from "@/lib/service";
+import { printedPlan } from "@/lib/printed-price";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckChip, usd } from "@/components/price-check";
@@ -11,7 +12,7 @@ import { aiCostUsd } from "@/lib/ai-modes";
 import { db, schema } from "@/db";
 import { inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { addToEvent, applyAllSuggestions, applySuggestion, uploadMhdPhoto, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
+import { addToEvent, clearPrintedPrice, scanEventPhotoPrices, applyAllSuggestions, applySuggestion, uploadMhdPhoto, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
 import { PriceLinks } from "@/components/price-links";
@@ -37,7 +38,9 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   const missingImage = rows.filter((r) => r.item.inCollage && !r.product.imageFileId).length;
   const unnamed = rows.filter((r) => isPlaceholderName(r.product.name)).length;
   const checks = await latestPriceChecks(rows.map((r) => r.product.id));
-  const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running");
+  const reading = rows.filter((r) => r.photo?.status === "pending").length;
+  const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running") || reading > 0;
+  const unread = rows.filter((r) => r.product.imageFileId && (!r.photo?.status || r.photo.status === "error")).length;
   const ai = aiConfigured();
   const allChecks = rows.length ? await db.select().from(schema.priceChecks).where(inArray(schema.priceChecks.productId, rows.map((r) => r.product.id))) : [];
   const aiCost = allChecks.reduce((n, c) => n + aiCostUsd(c.mode, c.inputTokens, c.outputTokens, c.searches), 0);
@@ -52,6 +55,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
     { key: "ki-vorschlag", label: "KI-Vorschlag da", test: suggestionReady },
     { key: "ohne-foto", label: "Ohne Foto", test: (r) => !r.product.imageFileId },
     { key: "ohne-mhd", label: "Ohne MHD", test: (r) => !r.item.bestBefore },
+    { key: "preis-im-foto", label: "Preis im Foto", test: (r) => !!r.photo?.text },
   ];
   const filter = FILTERS.find((f) => f.key === sp.zeige);
   const kat = categories.includes(sp.kat ?? "") ? sp.kat! : "";
@@ -79,7 +83,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           <div className="small muted">{event.title} · {rows.length} Produkte{value ? ` · Warenwert ${formatEuro(value)}` : ""}</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <PhotoUpload eventId={id} action={uploadPhotos} categories={categories} />
+          <PhotoUpload eventId={id} action={uploadPhotos} categories={categories} ai={ai} />
           <Link href={`/verteilung/${id}/collage`} className="btn">Collage erstellen</Link>
           <Link href={`/verteilung/${id}/social`} className="btn">Social Media</Link>
           <Link href={`/aushang/${id}`} className="btn" target="_blank">Aushang drucken</Link>
@@ -130,7 +134,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
               <tbody>
                 {rows.length === 0 && <tr><td colSpan={6} className="muted">Noch keine Produkte. Oben auf „📷 Fotos hinzufügen“ tippen – am Handy geht dabei direkt die Kamera oder die Fotomediathek auf.</td></tr>}
                 {(filter || kat) && shown.length === 0 && <tr><td colSpan={6} className="muted">Keine Produkte für diesen Filter – alles erledigt.</td></tr>}
-                {shown.map(({ item, product }) => { const i = rows.findIndex((r) => r.item.id === item.id); return (
+                {shown.map(({ item, product, photo }) => { const i = rows.findIndex((r) => r.item.id === item.id); return (
                   <tr key={item.id}>
                     <td>
                       <Link href={`/produkte/${product.id}?zurueck=${id}`} title="Produkt bearbeiten / Foto ändern">
@@ -153,6 +157,20 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                         return (
                           <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
                             <PriceCheckChip check={c} />
+                            {(() => {
+                              const printed = printedInfo(product.imageFileId ? photo : null);
+                              if (photo?.status === "pending") return <span className="small muted">📷 Preis im Foto wird gelesen …</span>;
+                              if (!printed) return null;
+                              const plan = printedPlan(printed, item.price);
+                              return (
+                                <span className="small" title="Dieser Preis steht schon im Foto. Die Collage druckt ihn nicht ein zweites Mal.">
+                                  📷 Im Foto: <strong>{printed.text}</strong>
+                                  {plan === "cover" && <span className="muted"> · Collage überdeckt ihn mit dem neuen Preis</span>}
+                                  {plan === "normal" && <span style={{ color: "var(--danger)" }}> · weicht ab, Stelle unbekannt – zwei Preise auf der Collage</span>}
+                                  {" "}<button className="btn-link small" type="submit" formAction={clearPrintedPrice.bind(null, product.imageFileId!, `/verteilung/${id}`)} title="Kein Preis im Foto – Collage druckt den Preis wieder normal">falsch erkannt</button>
+                                </span>
+                              );
+                            })()}
                             {!isPlaceholderName(product.name) && <span className="small muted">selbst suchen: <PriceLinks name={product.name} variant={product.variant} /></span>}
                             {c?.status === "done" && c.suggestedPrice !== null && c.suggestedPrice !== item.price && (
                               <button className="btn-link small" type="submit" formAction={applySuggestion.bind(null, c.id, id)} title="Vorschlag der KI als Spendenpreis übernehmen" style={{ whiteSpace: "nowrap" }}>{priceText(c.suggestedPrice)} € übernehmen</button>
@@ -215,7 +233,18 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           ) : (
             <div className="card card-pad small muted">KI-Preisrecherche ist aus – dafür auf dem Server <code>ANTHROPIC_API_KEY</code> setzen (siehe README).</div>
           )}
-          <PhotoUpload eventId={id} action={uploadPhotos} variant="card" categories={categories} />
+          <PhotoUpload eventId={id} action={uploadPhotos} variant="card" categories={categories} ai={ai} />
+          {ai && rows.length > 0 && (
+            <form action={scanEventPhotoPrices.bind(null, id)} className="card card-pad stack" style={{ gap: 8 }}>
+              <h2>Preise aus alten Fotos</h2>
+              <div className="small muted">Für Fotos, auf denen der Preis schon steht (z. B. aus früheren Collagen): Die KI liest ihn ab und trägt ihn ein, wo noch keiner steht. Collage und Social Media drucken dann keinen zweiten Preis darüber – bei geändertem Preis wird der alte überdeckt. Kostet ca. 0,2 Cent pro Foto.</div>
+              {reading > 0 && <div className="notice notice-info">{reading} Foto(s) werden gelesen …</div>}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button className="btn" type="submit" name="umfang" value="neu" disabled={reading > 0 || unread === 0}>{unread ? `${unread} ungelesene Fotos` : "Alle Fotos gelesen"}</button>
+                <button className="btn btn-small" type="submit" name="umfang" value="alle" disabled={reading > 0}>Alle neu lesen</button>
+              </div>
+            </form>
+          )}
 
           <form action={addToEvent} className="card card-pad stack" style={{ gap: 8 }}>
             <input type="hidden" name="eventId" value={id} />

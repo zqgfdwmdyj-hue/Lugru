@@ -14,6 +14,7 @@ import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 import { readBestBefore } from "@/lib/mhd";
+import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 
 const uuid = z.string().uuid();
 const P = schema.products;
@@ -201,8 +202,34 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     result.added++;
   }
   await addProductsToEvent(eventId, ids);
+  // Alte Fotos mit Preis darauf: Preis im Hintergrund ablesen und eintragen.
+  if (fd.get("preisImFoto") === "1") await startPhotoPrices(eventId, ids);
   revalidatePath(`/verteilung/${eventId}`);
   return result;
+}
+
+async function startPhotoPrices(eventId: string, productIds: string[], opts: { again?: boolean } = {}) {
+  if (!aiConfigured() || productIds.length === 0) return;
+  await failStalePhotoPrices();
+  const fileIds = await queuePhotoPrices(productIds, opts);
+  if (fileIds.length) after(() => runPhotoPrices(fileIds, eventId));
+}
+
+/** „Preise aus Fotos lesen“: alle Fotos der Verteilung, die noch nicht gelesen wurden (bzw. alle erneut). */
+export async function scanEventPhotoPrices(eventId: string, fd: FormData) {
+  await requireLogin();
+  const id = uuid.parse(eventId);
+  const rows = await db.select({ productId: I.productId }).from(I).where(eq(I.eventId, id));
+  await startPhotoPrices(id, rows.map((r) => r.productId), { again: fd.get("umfang") === "alle" });
+  revalidatePath(`/verteilung/${id}`);
+}
+
+/** Falsch erkannt: Foto gilt als „ohne Preis“, die Collage druckt den Preis wieder normal. */
+export async function clearPrintedPrice(fileId: string, back: string) {
+  await requireLogin();
+  const id = uuid.parse(fileId);
+  await db.update(schema.files).set({ printedStatus: "done", printedPrice: null, printedPriceText: null, printedPriceBox: null, printedScannedAt: new Date() }).where(eq(schema.files.id, id));
+  revalidatePath(back.startsWith("/") ? back : "/");
 }
 
 // ---------- Produkte ----------

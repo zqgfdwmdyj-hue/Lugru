@@ -2,6 +2,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { PriceBox } from "@/db/schema";
+import type { PrintedInfo } from "@/lib/printed-price";
 import { DONATION_CATEGORIES } from "@/lib/layout";
 
 const P = schema.products;
@@ -54,8 +56,23 @@ export async function loadEvent(id: string) {
   return event ?? null;
 }
 
+const F = schema.files;
+/** Was über das Produktfoto bekannt ist – ohne die Bilddaten selbst. */
+const photoInfo = { status: F.printedStatus, price: F.printedPrice, text: F.printedPriceText, box: F.printedPriceBox };
+
 export async function loadEventItems(eventId: string) {
-  return db.select({ item: I, product: P }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.eventId, eventId)).orderBy(asc(I.sort), asc(I.createdAt));
+  return db
+    .select({ item: I, product: P, photo: photoInfo })
+    .from(I)
+    .innerJoin(P, eq(P.id, I.productId))
+    .leftJoin(F, eq(F.id, P.imageFileId))
+    .where(eq(I.eventId, eventId))
+    .orderBy(asc(I.sort), asc(I.createdAt));
+}
+
+/** Preis, der schon im Foto steht – null, wenn keiner (oder noch nicht gelesen). */
+export function printedInfo(photo: { price: number | null; text: string | null; box: unknown } | null): PrintedInfo {
+  return photo?.text ? { price: photo.price, text: photo.text, box: (photo.box as PriceBox | null) ?? null } : null;
 }
 
 /** Zuletzt verwendeter Preis je Produkt (aus früheren Verteilungen). */
