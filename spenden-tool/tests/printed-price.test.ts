@@ -33,27 +33,24 @@ describe("Preis im Foto", () => {
 
   it("entscheidet, was die Collage druckt", () => {
     const box = { x: 0.2, y: 0.75, w: 0.6, h: 0.2 };
-    expect(printedPlan(null, 0.5)).toBe("normal");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box }, 0.6)).toBe("keep");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box }, null)).toBe("keep");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box }, 0.5)).toBe("cover");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: null }, 0.5)).toBe("normal");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: null }, 0.6)).toBe("keep");
+    expect(printedPlan(null)).toBe("normal");
+    expect(printedPlan({ price: 0.6, text: "60 Cent", box })).toBe("keep");
+    expect(printedPlan({ price: 0.6, text: "60 Cent", box: null })).toBe("keep");
   });
 });
 
-describe("Preis im Foto – Schutz vor großen Überdeckungen", () => {
+describe("Preis im Foto – nie etwas übers Foto zeichnen", () => {
   it("erkennt Staffelpreise und überdeckt sie nie", () => {
     expect(hasSeveralPrices("2kg - 5€ 5kg - 10€ 10kg - 18€")).toBe(true);
     expect(hasSeveralPrices("3 Stück 40 Cent")).toBe(false);
-    expect(printedPlan({ price: 5, text: "2kg - 5€ 5kg - 10€ 10kg - 18€", box: { x: 0.1, y: 0.6, w: 0.8, h: 0.25 } }, 0.5)).toBe("keep");
+    expect(printedPlan({ price: 5, text: "2kg - 5€ 5kg - 10€ 10kg - 18€", box: { x: 0.1, y: 0.6, w: 0.8, h: 0.25 } })).toBe("keep");
     expect(differsFromPhoto({ price: 5, text: "2kg - 5€ 5kg - 10€", box: null }, 0.5)).toBe(false);
   });
 
-  it("überdeckt nicht, wenn die gemeldete Stelle viel zu groß ist", () => {
+  it("lässt das Foto unverändert und meldet nur Abweichungen", () => {
     expect(normalizeBox([5, 20, 95, 98])).toBeNull();
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0, y: 0.2, w: 1, h: 0.8 } }, 5.4)).toBe("normal");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0.1, y: 0.05, w: 0.8, h: 0.15 } }, 0.5)).toBe("cover");
+    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0, y: 0.2, w: 1, h: 0.8 } })).toBe("keep");
+    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0.1, y: 0.05, w: 0.8, h: 0.15 } })).toBe("keep");
     expect(differsFromPhoto({ price: 0.6, text: "60 Cent", box: null }, 0.5)).toBe(true);
     expect(differsFromPhoto({ price: 0.6, text: "60 Cent", box: null }, 0.6)).toBe(false);
   });

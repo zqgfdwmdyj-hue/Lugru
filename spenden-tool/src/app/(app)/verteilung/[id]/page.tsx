@@ -4,7 +4,7 @@ import { requireLogin } from "@/lib/auth";
 import { CopyButton } from "@/components/copy-button";
 import { eventDateLabel, flyerSections, isPlaceholderName, messengerText } from "@/lib/layout";
 import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, printedInfo, productPicker } from "@/lib/service";
-import { differsFromPhoto, printedPlan } from "@/lib/printed-price";
+import { differsFromPhoto } from "@/lib/printed-price";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckChip, usd } from "@/components/price-check";
@@ -108,7 +108,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
       )}
       {differ > 0 && (
         <form action={applyPhotoPrices.bind(null, id, null)} className="notice notice-warn" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span>Bei {differ} Produkt(en) steht im Foto ein anderer Preis als eingetragen – auf der Collage stünden sonst zwei verschiedene Preise.</span>
+          <span>Bei {differ} Produkt(en) steht im Foto ein anderer Preis als eingetragen – die Collage zeigt den Preis aus dem Foto.</span>
           <button className="btn btn-small btn-primary" type="submit">Preise vom Foto übernehmen</button>
           <Link href={link({ zeige: "preis-im-foto", kat: "" })} className="small">ansehen</Link>
         </form>
@@ -178,13 +178,11 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                               const printed = printedInfo(product.imageFileId ? photo : null);
                               if (photo?.status === "pending") return <span className="small muted">📷 Preis im Foto wird gelesen …</span>;
                               if (!printed) return null;
-                              const plan = printedPlan(printed, item.price);
                               return (
                                 <span className="small" title="Dieser Preis steht schon im Foto. Die Collage druckt ihn nicht ein zweites Mal.">
                                   📷 Im Foto: <strong>{printed.text}</strong>
-                                  {plan === "cover" && <span className="muted"> · weicht ab, Collage überdeckt ihn</span>}
+                                  {differsFromPhoto(printed, item.price) && <span style={{ color: "var(--danger)" }}> · weicht vom eingetragenen Preis ab</span>}
                                   {differsFromPhoto(printed, item.price) && <>{" "}<button className="btn-link small" type="submit" formAction={applyPhotoPrices.bind(null, id, item.id)} title="Den Preis aus dem Foto eintragen">Foto-Preis übernehmen</button></>}
-                                  {plan === "normal" && <span style={{ color: "var(--danger)" }}> · weicht ab, Stelle unbekannt – zwei Preise auf der Collage</span>}
                                   {" "}<button className="btn-link small" type="submit" formAction={clearPrintedPrice.bind(null, product.imageFileId!, `/verteilung/${id}`)} title="Kein Preis im Foto – Collage druckt den Preis wieder normal">falsch erkannt</button>
                                 </span>
                               );

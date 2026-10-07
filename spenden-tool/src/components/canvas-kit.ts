@@ -53,50 +53,6 @@ export function drawImage(ctx: CanvasRenderingContext2D, img: HTMLImageElement, 
   ctx.drawImage(img, r.x, r.y, r.w, r.h);
 }
 
-/**
- * Alten, ins Foto gedruckten Preis mit dem neuen überdecken. `photo` ist die Stelle, an der das Foto gezeichnet
- * wurde (imageRect), `box` die Lage des alten Preises im Foto (Anteile), `clip` der sichtbare Bereich (Kachel).
- */
-export function coverPrintedPrice(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  photo: { x: number; y: number; w: number; h: number },
-  box: { x: number; y: number; w: number; h: number },
-  clip: { x: number; y: number; w: number; h: number },
-) {
-  let bx = photo.x + box.x * photo.w;
-  let by = photo.y + box.y * photo.h;
-  let bw = box.w * photo.w;
-  let bh = box.h * photo.h;
-  // Nie mehr als ein schmales Band der Kachel überdecken – das Produkt bleibt sichtbar.
-  if (bh > clip.h * 0.3) {
-    by += (bh - clip.h * 0.3) / 2;
-    bh = clip.h * 0.3;
-  }
-  // Schrift so groß wie der alte Preis, aber höchstens so breit wie die Kachel.
-  const size = fitFont(ctx, text, clip.w * 0.86, Math.round(Math.min(bh * 0.62, clip.h * 0.16)));
-  const need = ctx.measureText(text).width + size * 1.1;
-  if (need > bw) {
-    bx -= (need - bw) / 2;
-    bw = need;
-  }
-  // In der Kachel halten.
-  bx = Math.max(clip.x, Math.min(bx, clip.x + clip.w - bw));
-  by = Math.max(clip.y, Math.min(by, clip.y + clip.h - bh));
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,.3)";
-  ctx.shadowBlur = size * 0.35;
-  ctx.fillStyle = GREEN;
-  roundRect(ctx, bx, by, bw, bh, Math.min(bh / 2, size * 0.6));
-  ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = `${size}px ${FONT}`;
-  ctx.fillText(text, bx + bw / 2, by + bh / 2 + size * 0.05);
-}
-
 type Box = { x: number; y: number; w: number; h: number };
 
 /**

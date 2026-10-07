@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, eventDateLabel } from "@/lib/layout";
 import { loadEvent, loadEventItems, printedInfo } from "@/lib/service";
-import { printedPlan } from "@/lib/printed-price";
+import { differsFromPhoto } from "@/lib/printed-price";
 import { CollageEditor, type CollageTile } from "./collage-editor";
 
 export default async function CollagePage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,16 +24,16 @@ export default async function CollagePage({ params }: { params: Promise<{ id: st
       caption: item.caption,
       printed: printedInfo(photo),
     }));
-  // Preis im Foto weicht ab, aber die Stelle ist unbekannt – dann stünden zwei Preise auf der Kachel.
-  const clash = tiles.filter((t) => t.printed && t.image && printedPlan(t.printed, t.price) === "normal");
+  // Eingetragener Preis weicht vom Preis im Foto ab – die Collage zeigt das Foto unverändert, also den alten Preis.
+  const clash = tiles.filter((t) => t.image && differsFromPhoto(t.printed, t.price));
   return (
     <>
       <div className="crumb"><Link href={`/verteilung/${id}`}>Zurück zur Verteilung</Link></div>
       <div className="page-head"><div><h1>Collage</h1><div className="small muted">{eventDateLabel(event.eventDate)} · {tiles.length} Produkte</div></div></div>
       {clash.length > 0 && (
         <div className="notice notice-warn">
-          Auf {clash.length === 1 ? "einem Foto" : `${clash.length} Fotos`} steht schon ein anderer Preis, dessen Stelle nicht erkannt wurde – dort stehen jetzt zwei Preise: {clash.map((t) => `${t.name} (Foto: ${t.printed!.text})`).join(", ")}.
-          {" "}Preis in der Verteilung angleichen oder das Foto ersetzen.
+          Bei {clash.length === 1 ? "einem Produkt" : `${clash.length} Produkten`} steht im Foto ein anderer Preis als eingetragen. Die Collage zeigt das Foto unverändert, also den Preis aus dem Foto: {clash.map((t) => `${t.name} (Foto: ${t.printed!.text})`).join(", ")}.
+          {" "}Auf der Verteilungsseite „Preise vom Foto übernehmen“ – oder ein Foto ohne Preis hochladen.
         </div>
       )}
       {tiles.length === 0

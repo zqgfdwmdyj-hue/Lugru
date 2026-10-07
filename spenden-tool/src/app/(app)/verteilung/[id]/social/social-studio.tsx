@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
-import { BAND, BODY_FONT, brushBand, downloadFiles, coverPrintedPrice, drawPhoto, fitFont, FONT, GREEN, imageRect, INK, type Loaded, loadFonts, loadImages, PINK, roundRect, shareFiles, toBlob, wrap } from "@/components/canvas-kit";
+import { BAND, BODY_FONT, brushBand, downloadFiles, drawPhoto, fitFont, FONT, GREEN, INK, type Loaded, loadFonts, loadImages, PINK, roundRect, shareFiles, toBlob, wrap } from "@/components/canvas-kit";
 import type { FlyerSection } from "@/lib/layout";
 import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
 import { instagramCaption, priceLabel, tiktokCaption, type SocialEvent } from "@/lib/social";
@@ -62,9 +62,7 @@ function tile(ctx: Ctx, p: SocialItem, img: HTMLImageElement | undefined, x: num
   }
   ctx.restore();
   // Preis schon im Foto: nicht doppelt – bei neuem Preis den alten überdecken.
-  const plan = img ? printedPlan(p.printed, p.price) : "normal";
-  if (plan === "cover" && img && p.printed?.box) coverPrintedPrice(ctx, priceLabel(p), imageRect(img, x, y, w, h, "contain"), p.printed.box, { x, y, w, h });
-  else if (plan === "normal") priceBadge(ctx, priceLabel(p), x + w / 2, y + h - Math.min(w, h) * 0.1, Math.round(Math.min(w, h) * 0.1), w * 0.9);
+  if ((img ? printedPlan(p.printed) : "normal") === "normal") priceBadge(ctx, priceLabel(p), x + w / 2, y + h - Math.min(w, h) * 0.1, Math.round(Math.min(w, h) * 0.1), w * 0.9);
 }
 
 /** Kopf mit Farbband, Titel und Datum – für Story und Feed. */
@@ -155,7 +153,7 @@ function drawProduct(ctx: Ctx, d: SocialData, p: SocialItem, img: HTMLImageEleme
   const nameSize = Math.round(W * (story ? 0.07 : 0.06));
   ctx.font = `${nameSize}px ${FONT}`;
   const nameLines = wrap(ctx, p.name, W * 0.88, 2);
-  const plan = img ? printedPlan(p.printed, p.price) : "normal";
+  const plan = img ? printedPlan(p.printed) : "normal";
   // Steht der Preis schon im Foto, keine zweite Plakette darunter.
   const price = plan === "normal" ? priceLabel(p) : "";
   const badge = Math.round(W * (story ? 0.085 : 0.066));
@@ -189,7 +187,6 @@ function drawProduct(ctx: Ctx, d: SocialData, p: SocialItem, img: HTMLImageEleme
   const photoH = Math.max(H * 0.3, bottom - gap - barH);
   if (img) {
     drawPhoto(ctx, img, 0, barH, W, photoH, p.printed?.box);
-    if (plan === "cover" && p.printed?.box) coverPrintedPrice(ctx, priceLabel(p), imageRect(img, 0, barH, W, photoH, "contain"), p.printed.box, { x: 0, y: barH, w: W, h: photoH });
   } else {
     ctx.fillStyle = "#eef3f5";
     ctx.fillRect(0, barH, W, photoH);

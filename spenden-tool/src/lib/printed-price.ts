@@ -63,18 +63,14 @@ export function normalizeBox(raw: unknown): PriceBox | null {
 export type PrintedInfo = { price: number | null; text: string; box: PriceBox | null } | null;
 
 /**
- * Was die Collage mit dem Preis macht:
- *  - „keep“: Im Foto steht schon derselbe Preis (oder es gibt keinen neuen) → nichts zusätzlich drucken.
- *  - „cover“: Neuer Preis weicht ab, die Stelle ist bekannt → alten Preis mit dem neuen überdecken.
- *  - „normal“: kein Preis im Foto, oder Stelle unbekannt → Preis wie sonst drucken.
+ * Was die Collage mit dem Preis macht – über einen Preis im Foto wird nie etwas gezeichnet, das Produkt bleibt
+ * immer ganz zu sehen:
+ *  - „keep“: Im Foto steht schon ein Preis → Foto unverändert, kein zweiter Preis. Weicht der eingetragene Preis ab,
+ *    gibt es nur einen Hinweis (differsFromPhoto) mit „Preise vom Foto übernehmen“.
+ *  - „normal“: kein Preis im Foto → Preis wie sonst drucken.
  */
-export function printedPlan(printed: PrintedInfo, price: number | null): "keep" | "cover" | "normal" {
-  if (!printed || price === null) return printed ? "keep" : "normal";
-  if (printed.price !== null && Math.abs(printed.price - price) < 0.005) return "keep";
-  // Mehrere Preise im Foto (Staffel): Foto bleibt unverändert, die Preise darin gelten.
-  if (hasSeveralPrices(printed.text)) return "keep";
-  // Abweichend (oder Betrag im Foto unlesbar): nur überdecken, wenn die Stelle sicher bekannt ist.
-  return plausibleBox(printed.box) ? "cover" : "normal";
+export function printedPlan(printed: PrintedInfo): "keep" | "normal" {
+  return printed ? "keep" : "normal";
 }
 
 /** Weicht der eingetragene Preis vom Preis im Foto ab (dann stünde ein anderer Preis auf der Collage)? */
