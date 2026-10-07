@@ -15,6 +15,7 @@ import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from 
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 import { readBestBefore } from "@/lib/mhd";
 import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
+import { hasSeveralPrices } from "@/lib/printed-price";
 
 const uuid = z.string().uuid();
 const P = schema.products;
@@ -421,14 +422,42 @@ export async function applyAllSuggestions(eventId: string, fd: FormData) {
   const id = uuid.parse(eventId);
   // Erst die Eingaben der Liste speichern, damit nichts verloren geht.
   await saveItems(fd);
-  const items = await db.select({ id: I.id, productId: I.productId }).from(I).where(and(eq(I.eventId, id), sql`${I.price} is null`));
+  const items = await db
+    .select({ id: I.id, productId: I.productId, photoText: schema.files.printedPriceText })
+    .from(I)
+    .innerJoin(P, eq(P.id, I.productId))
+    .leftJoin(schema.files, eq(schema.files.id, P.imageFileId))
+    .where(and(eq(I.eventId, id), sql`${I.price} is null`));
   if (items.length === 0) return;
   const checks = await latestPriceChecks(items.map((i) => i.productId));
   for (const it of items) {
+    // Steht der Preis schon im Foto, gilt der – nicht die Schätzung der KI.
+    if (it.photoText) continue;
     const c = checks.get(it.productId);
     if (c?.status !== "done" || c.suggestedPrice === null) continue;
     await db.update(I).set({ price: c.suggestedPrice }).where(eq(I.id, it.id));
     await db.update(P).set({ price: c.suggestedPrice, updatedAt: new Date() }).where(eq(P.id, it.productId));
+  }
+  revalidatePath(`/verteilung/${id}`);
+}
+
+/** Für alle Produkte, deren Foto schon einen Preis zeigt, genau diesen Preis eintragen (statt KI-Vorschlag o. ä.). */
+export async function applyPhotoPrices(eventId: string, itemId: string | null, fd: FormData) {
+  await requireLogin();
+  const id = uuid.parse(eventId);
+  // Aus der Produktliste heraus: erst deren Eingaben speichern.
+  if (fd.has("eventId")) await saveItems(fd);
+  const only = uuid.safeParse(itemId);
+  const rows = await db
+    .select({ id: I.id, productId: I.productId, price: I.price, photoPrice: schema.files.printedPrice, photoText: schema.files.printedPriceText })
+    .from(I)
+    .innerJoin(P, eq(P.id, I.productId))
+    .innerJoin(schema.files, eq(schema.files.id, P.imageFileId))
+    .where(and(eq(I.eventId, id), only.success ? eq(I.id, only.data) : undefined));
+  for (const r of rows) {
+    if (r.photoPrice === null || hasSeveralPrices(r.photoText) || r.price === r.photoPrice) continue;
+    await db.update(I).set({ price: r.photoPrice }).where(eq(I.id, r.id));
+    await db.update(P).set({ price: r.photoPrice, updatedAt: new Date() }).where(eq(P.id, r.productId));
   }
   revalidatePath(`/verteilung/${id}`);
 }

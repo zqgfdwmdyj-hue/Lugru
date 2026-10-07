@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBox, parsePrintedPrice, parsePrintedReading, printedPlan } from "@/lib/printed-price";
+import { differsFromPhoto, hasSeveralPrices, normalizeBox, parsePrintedPrice, parsePrintedReading, printedPlan } from "@/lib/printed-price";
 
 describe("Preis im Foto", () => {
   it("liest übliche Schreibweisen", () => {
@@ -39,5 +39,22 @@ describe("Preis im Foto", () => {
     expect(printedPlan({ price: 0.6, text: "60 Cent", box }, 0.5)).toBe("cover");
     expect(printedPlan({ price: 0.6, text: "60 Cent", box: null }, 0.5)).toBe("normal");
     expect(printedPlan({ price: 0.6, text: "60 Cent", box: null }, 0.6)).toBe("keep");
+  });
+});
+
+describe("Preis im Foto – Schutz vor großen Überdeckungen", () => {
+  it("erkennt Staffelpreise und überdeckt sie nie", () => {
+    expect(hasSeveralPrices("2kg - 5€ 5kg - 10€ 10kg - 18€")).toBe(true);
+    expect(hasSeveralPrices("3 Stück 40 Cent")).toBe(false);
+    expect(printedPlan({ price: 5, text: "2kg - 5€ 5kg - 10€ 10kg - 18€", box: { x: 0.1, y: 0.6, w: 0.8, h: 0.25 } }, 0.5)).toBe("keep");
+    expect(differsFromPhoto({ price: 5, text: "2kg - 5€ 5kg - 10€", box: null }, 0.5)).toBe(false);
+  });
+
+  it("überdeckt nicht, wenn die gemeldete Stelle viel zu groß ist", () => {
+    expect(normalizeBox([5, 20, 95, 98])).toBeNull();
+    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0, y: 0.2, w: 1, h: 0.8 } }, 5.4)).toBe("normal");
+    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0.1, y: 0.05, w: 0.8, h: 0.15 } }, 0.5)).toBe("cover");
+    expect(differsFromPhoto({ price: 0.6, text: "60 Cent", box: null }, 0.5)).toBe(true);
+    expect(differsFromPhoto({ price: 0.6, text: "60 Cent", box: null }, 0.6)).toBe(false);
   });
 });

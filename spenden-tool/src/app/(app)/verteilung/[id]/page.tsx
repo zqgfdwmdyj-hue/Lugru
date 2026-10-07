@@ -4,7 +4,7 @@ import { requireLogin } from "@/lib/auth";
 import { CopyButton } from "@/components/copy-button";
 import { eventDateLabel, flyerSections, isPlaceholderName, messengerText } from "@/lib/layout";
 import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, printedInfo, productPicker } from "@/lib/service";
-import { printedPlan } from "@/lib/printed-price";
+import { differsFromPhoto, printedPlan } from "@/lib/printed-price";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckChip, usd } from "@/components/price-check";
@@ -12,7 +12,7 @@ import { aiCostUsd } from "@/lib/ai-modes";
 import { db, schema } from "@/db";
 import { inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { addToEvent, clearPrintedPrice, scanEventPhotoPrices, applyAllSuggestions, applySuggestion, uploadMhdPhoto, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
+import { addToEvent, applyPhotoPrices, clearPrintedPrice, scanEventPhotoPrices, applyAllSuggestions, applySuggestion, uploadMhdPhoto, createProduct, deleteEvent, researchEvent, saveItems, updateEvent, uploadPhotos } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
 import { PriceLinks } from "@/components/price-links";
@@ -40,6 +40,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   const checks = await latestPriceChecks(rows.map((r) => r.product.id));
   const reading = rows.filter((r) => r.photo?.status === "pending").length;
   const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running") || reading > 0;
+  const differ = rows.filter((r) => r.product.imageFileId && differsFromPhoto(printedInfo(r.photo), r.item.price)).length;
   const unread = rows.filter((r) => r.product.imageFileId && (!r.photo?.status || r.photo.status === "error")).length;
   const ai = aiConfigured();
   const allChecks = rows.length ? await db.select().from(schema.priceChecks).where(inArray(schema.priceChecks.productId, rows.map((r) => r.product.id))) : [];
@@ -47,7 +48,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   // Filter über der Liste: nur bestimmte Produkte anzeigen (z. B. die 6 ohne Namen unter 100).
   const suggestionReady = (r: (typeof rows)[number]) => {
     const c = checks.get(r.product.id);
-    return c?.status === "done" && c.suggestedPrice !== null && r.item.price === null;
+    return c?.status === "done" && c.suggestedPrice !== null && r.item.price === null && !r.photo?.text;
   };
   const FILTERS: { key: string; label: string; test: (r: (typeof rows)[number]) => boolean }[] = [
     { key: "ohne-namen", label: "Ohne Namen", test: (r) => isPlaceholderName(r.product.name) },
@@ -103,6 +104,13 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           <span>{unread} Foto(s) wurden noch nicht auf einen aufgedruckten Preis geprüft (z. B. „30 Cent“ aus alten Collagen).</span>
           <button className="btn btn-small btn-primary" type="submit" name="umfang" value="neu">Preise aus Fotos lesen</button>
           <span className="small muted">ca. 0,2 Cent pro Foto</span>
+        </form>
+      )}
+      {differ > 0 && (
+        <form action={applyPhotoPrices.bind(null, id, null)} className="notice notice-warn" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span>Bei {differ} Produkt(en) steht im Foto ein anderer Preis als eingetragen – auf der Collage stünden sonst zwei verschiedene Preise.</span>
+          <button className="btn btn-small btn-primary" type="submit">Preise vom Foto übernehmen</button>
+          <Link href={link({ zeige: "preis-im-foto", kat: "" })} className="small">ansehen</Link>
         </form>
       )}
       {reading > 0 && <div className="notice notice-info">📷 {reading} Foto(s) werden auf aufgedruckte Preise geprüft … die Seite aktualisiert sich von selbst.</div>}
@@ -174,14 +182,15 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                               return (
                                 <span className="small" title="Dieser Preis steht schon im Foto. Die Collage druckt ihn nicht ein zweites Mal.">
                                   📷 Im Foto: <strong>{printed.text}</strong>
-                                  {plan === "cover" && <span className="muted"> · Collage überdeckt ihn mit dem neuen Preis</span>}
+                                  {plan === "cover" && <span className="muted"> · weicht ab, Collage überdeckt ihn</span>}
+                                  {differsFromPhoto(printed, item.price) && <>{" "}<button className="btn-link small" type="submit" formAction={applyPhotoPrices.bind(null, id, item.id)} title="Den Preis aus dem Foto eintragen">Foto-Preis übernehmen</button></>}
                                   {plan === "normal" && <span style={{ color: "var(--danger)" }}> · weicht ab, Stelle unbekannt – zwei Preise auf der Collage</span>}
                                   {" "}<button className="btn-link small" type="submit" formAction={clearPrintedPrice.bind(null, product.imageFileId!, `/verteilung/${id}`)} title="Kein Preis im Foto – Collage druckt den Preis wieder normal">falsch erkannt</button>
                                 </span>
                               );
                             })()}
                             {!isPlaceholderName(product.name) && <span className="small muted">selbst suchen: <PriceLinks name={product.name} variant={product.variant} /></span>}
-                            {c?.status === "done" && c.suggestedPrice !== null && c.suggestedPrice !== item.price && (
+                            {c?.status === "done" && c.suggestedPrice !== null && c.suggestedPrice !== item.price && !photo?.text && (
                               <button className="btn-link small" type="submit" formAction={applySuggestion.bind(null, c.id, id)} title="Vorschlag der KI als Spendenpreis übernehmen" style={{ whiteSpace: "nowrap" }}>{priceText(c.suggestedPrice)} € übernehmen</button>
                             )}
                             {ai && c?.status !== "pending" && c?.status !== "running" && (

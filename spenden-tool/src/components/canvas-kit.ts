@@ -68,8 +68,13 @@ export function coverPrintedPrice(
   let by = photo.y + box.y * photo.h;
   let bw = box.w * photo.w;
   let bh = box.h * photo.h;
+  // Nie mehr als ein schmales Band der Kachel überdecken – das Produkt bleibt sichtbar.
+  if (bh > clip.h * 0.3) {
+    by += (bh - clip.h * 0.3) / 2;
+    bh = clip.h * 0.3;
+  }
   // Schrift so groß wie der alte Preis, aber höchstens so breit wie die Kachel.
-  const size = fitFont(ctx, text, clip.w * 0.86, Math.round(Math.min(bh * 0.62, clip.h * 0.2)));
+  const size = fitFont(ctx, text, clip.w * 0.86, Math.round(Math.min(bh * 0.62, clip.h * 0.16)));
   const need = ctx.measureText(text).width + size * 1.1;
   if (need > bw) {
     bx -= (need - bw) / 2;

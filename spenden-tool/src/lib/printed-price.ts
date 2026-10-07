@@ -7,6 +7,20 @@ import { parseAmount } from "@/lib/numbers";
  * Preis aus einem aufgedruckten Text wie „60 Cent“, „je 50 ct“, „2,50 €“, „1€“, „€ 1,99“.
  * Bei mehreren Beträgen zählt der erste. Gibt null zurück, wenn kein Betrag erkennbar ist.
  */
+/** Mehrere Preise im Foto, z. B. „2kg – 5€ / 5kg – 10€ / 10kg – 18€“? Dann nie überdecken. */
+export function hasSeveralPrices(text: string | null | undefined): boolean {
+  if (!text) return false;
+  return (text.match(/\d+(?:[.,]\d{1,2})?\s*(?:€|euro|eur|cent|ct)/gi) ?? []).length >= 2;
+}
+
+/**
+ * Ist die Lage des alten Preises glaubwürdig genug zum Überdecken? Ein Preisschriftzug ist ein schmales Band –
+ * meldet die KI ein riesiges Feld, stimmt die Angabe nicht, und ein Überdecken würde das Produkt verdecken.
+ */
+export function plausibleBox(b: PriceBox | null | undefined): b is PriceBox {
+  return !!b && b.h <= 0.3 && b.w * b.h <= 0.18 && b.w >= 0.05 && b.h >= 0.03;
+}
+
 export function parsePrintedPrice(text: string | null | undefined): number | null {
   if (!text) return null;
   const t = text.replace(/\s+/g, " ");
@@ -35,12 +49,14 @@ export function normalizeBox(raw: unknown): PriceBox | null {
   if (y1 < y0) [y0, y1] = [y1, y0];
   const w = x1 - x0;
   const h = y1 - y0;
-  if (w < 0.02 || h < 0.01 || w * h > 0.6) return null;
-  const padX = Math.max(w * 0.15, 0.03);
-  const padY = Math.max(h * 0.3, 0.025);
+  if (w < 0.02 || h < 0.01) return null;
+  // Etwas Rand dazu, damit vom alten Preis nichts hervorschaut – aber nicht mehr als nötig.
+  const padX = Math.max(w * 0.08, 0.015);
+  const padY = Math.max(h * 0.15, 0.012);
   const x = Math.max(0, x0 - padX);
   const y = Math.max(0, y0 - padY);
-  return { x, y, w: Math.min(1, x1 + padX) - x, h: Math.min(1, y1 + padY) - y };
+  const box = { x, y, w: Math.min(1, x1 + padX) - x, h: Math.min(1, y1 + padY) - y };
+  return plausibleBox(box) ? box : null;
 }
 
 /** Preis, der schon im Foto steht (für Collage/Social Media); null = keiner. */
@@ -55,8 +71,15 @@ export type PrintedInfo = { price: number | null; text: string; box: PriceBox | 
 export function printedPlan(printed: PrintedInfo, price: number | null): "keep" | "cover" | "normal" {
   if (!printed || price === null) return printed ? "keep" : "normal";
   if (printed.price !== null && Math.abs(printed.price - price) < 0.005) return "keep";
-  // Abweichend (oder Betrag im Foto unlesbar): überdecken, wenn die Stelle bekannt ist.
-  return printed.box ? "cover" : "normal";
+  // Mehrere Preise im Foto (Staffel): Foto bleibt unverändert, die Preise darin gelten.
+  if (hasSeveralPrices(printed.text)) return "keep";
+  // Abweichend (oder Betrag im Foto unlesbar): nur überdecken, wenn die Stelle sicher bekannt ist.
+  return plausibleBox(printed.box) ? "cover" : "normal";
+}
+
+/** Weicht der eingetragene Preis vom Preis im Foto ab (dann stünde ein anderer Preis auf der Collage)? */
+export function differsFromPhoto(printed: PrintedInfo, price: number | null): boolean {
+  return !!printed && printed.price !== null && price !== null && !hasSeveralPrices(printed.text) && Math.abs(printed.price - price) >= 0.005;
 }
 
 export type PrintedReading = { found: boolean; price: number | null; text: string | null; box: PriceBox | null };

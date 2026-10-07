@@ -5,7 +5,7 @@ import type { CollageSettings } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
 import { BAND, coverPrintedPrice, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
-import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
+import { plausibleBox, type PrintedInfo, printedPlan } from "@/lib/printed-price";
 
 export type CollageTile = { id: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo };
 
@@ -38,7 +38,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     const b = tile.printed.box;
     const bx = r.x + b.x * r.w, by = r.y + b.y * r.h, bw = b.w * r.w, bh = b.h * r.h;
     const vis = (Math.max(0, Math.min(bx + bw, x + w) - Math.max(bx, x)) * Math.max(0, Math.min(by + bh, y + h) - Math.max(by, y))) / (bw * bh);
-    if (vis < 0.8) plan = "cover";
+    if (vis < 0.8 && plausibleBox(b)) plan = "cover";
   }
   const priceLine = plan === "normal" ? fullPrice : "";
   if (img && plan === "cover" && tile.printed?.box && fullPrice) {
