@@ -98,6 +98,15 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
         </div>
       )}
 
+      {ai && unread > 0 && reading === 0 && (
+        <form action={scanEventPhotoPrices.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span>{unread} Foto(s) wurden noch nicht auf einen aufgedruckten Preis geprüft (z. B. „30 Cent“ aus alten Collagen).</span>
+          <button className="btn btn-small btn-primary" type="submit" name="umfang" value="neu">Preise aus Fotos lesen</button>
+          <span className="small muted">ca. 0,2 Cent pro Foto</span>
+        </form>
+      )}
+      {reading > 0 && <div className="notice notice-info">📷 {reading} Foto(s) werden auf aufgedruckte Preise geprüft … die Seite aktualisiert sich von selbst.</div>}
+
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <form action={saveItems} className="card" style={{ overflow: "auto" }}>

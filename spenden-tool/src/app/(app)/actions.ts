@@ -145,6 +145,7 @@ export async function saveItems(fd: FormData) {
     }
   } else if (op === "ai" && idx >= 0) {
     await startChecks([items[idx].productId], defaultAiMode());
+    await startPhotoPrices(eventId, [items[idx].productId]);
   } else if (op === "sort") {
     // Nach Kategorie und Name ordnen – so wie im Aushang.
     const rows = await db.select({ id: I.id, cat: P.category, name: P.name, variant: P.variant }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.eventId, eventId));
@@ -213,8 +214,9 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     if (found) result.similar++;
   }
   await addProductsToEvent(eventId, ids);
-  // Alte Fotos mit Preis darauf: Preis im Hintergrund ablesen und eintragen.
-  if (fd.get("preisImFoto") === "1") await startPhotoPrices(eventId, ids);
+  // Steht schon ein Preis auf dem Foto (alte Collage-Bilder)? Im Hintergrund ablesen und eintragen – jedes Foto
+  // nur einmal, wiedererkannte Fotos gar nicht erneut.
+  await startPhotoPrices(eventId, ids);
   revalidatePath(`/verteilung/${eventId}`);
   return result;
 }
@@ -354,6 +356,8 @@ export async function researchEvent(fd: FormData) {
   const all = fd.get("umfang") === "alle";
   const wanted = rows.filter((r) => all || (mode === "erkennen" ? isPlaceholderName(r.name) : r.price === null || isPlaceholderName(r.name)));
   await startChecks(wanted.map((r) => r.productId), mode, { skipRecent: true });
+  // Dabei auch Preise ablesen, die schon auf den Fotos stehen (jedes Foto nur einmal).
+  await startPhotoPrices(eventId, rows.map((r) => r.productId));
   revalidatePath(`/verteilung/${eventId}`);
 }
 

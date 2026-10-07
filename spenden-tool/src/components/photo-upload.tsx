@@ -7,14 +7,6 @@ import { shrink } from "./image-form";
 import { CategorySelect } from "./category-select";
 
 const BATCH = 4;
-const PRICE_KEY = "spenden-preis-im-foto";
-const readFlag = () => {
-  try {
-    return localStorage.getItem(PRICE_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
 
 /**
  * Fotos hinzufügen: öffnet am Handy Kamera oder Fotomediathek. Die Fotos werden einzeln verkleinert und
@@ -27,9 +19,6 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
   const router = useRouter();
   const [status, setStatus] = useState("");
   const [report, setReport] = useState<{ ok: boolean; text: string } | null>(null);
-  // „Auf den Fotos steht schon der Preis“ – gilt für beide Knöpfe und bleibt auf diesem Gerät gespeichert.
-  const [withPrice, setWithPrice] = useState(false);
-  useEffect(() => setWithPrice(readFlag()), []);
 
   async function upload(files: File[]) {
     setReport(null);
@@ -45,7 +34,6 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
       const fd = new FormData();
       fd.set("eventId", eventId);
       fd.set("category", categoryBox.current?.querySelector<HTMLInputElement | HTMLSelectElement>("[name=category]")?.value || "Lebensmittel");
-      if (ai && readFlag()) fd.set("preisImFoto", "1");
       for (let j = 0; j < part.length; j++) {
         setStatus(`Foto ${i + j + 1} von ${total} wird vorbereitet …`);
         fd.append("photos", await shrink(part[j]));
@@ -76,7 +64,7 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
     if (similar) parts.push(`${similar} ähnlich wie ein vorhandenes Foto – bitte prüfen (Produkte → Mögliche Doppelte)`);
     if (rejected.length) parts.push(`${rejected.length} nicht lesbar – bitte als JPG/PNG: ${rejected.slice(0, 3).join(", ")}${rejected.length > 3 ? " …" : ""}`);
     if (failed.length) parts.push(`${failed.length} nicht hochgeladen (Verbindung?) – bitte diese erneut auswählen`);
-    if (ai && readFlag() && added + reused) parts.push("Preise auf den Fotos werden im Hintergrund abgelesen");
+    if (ai && added) parts.push("aufgedruckte Preise werden im Hintergrund abgelesen");
     setReport({ ok: !rejected.length && !failed.length, text: `${total} Fotos: ${parts.join(" · ")}` });
   }
 
@@ -116,21 +104,6 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
         <h2>Fotos hochladen</h2>
         <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Doppelte Fotos werden erkannt – auch verkleinert, neu gespeichert oder per WhatsApp verschickt – und nicht doppelt angelegt oder ausgewertet.</div>
         <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><CategorySelect id="pc" name="category" value="Lebensmittel" categories={categories} /></div>
-        {ai && (
-          <label className="small" title="Für alte Fotos aus früheren Collagen: Die KI liest den Preis ab und trägt ihn ein. Die Collage druckt dann keinen zweiten Preis darüber.">
-            <input
-              type="checkbox"
-              checked={withPrice}
-              onChange={(e) => {
-                setWithPrice(e.target.checked);
-                try {
-                  localStorage.setItem(PRICE_KEY, e.target.checked ? "1" : "0");
-                } catch {}
-              }}
-            />{" "}
-            Preis steht schon auf den Fotos (alte Collage-Bilder) – ablesen und übernehmen
-          </label>
-        )}
         <button className="btn btn-primary" type="button" disabled={busy} onClick={() => input.current?.click()}>Fotos auswählen</button>
         {message}
       </div>
