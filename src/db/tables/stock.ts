@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, money, products, suppliers, tenantId, updatedAt, users } from "./core";
 import { CHANNELS } from "./orders";
 
@@ -79,10 +79,19 @@ export const listings = pgTable(
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
     lastError: text("last_error"),
     lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
+    /** Wawi-SKU im eigenen Lager, wenn der Kanal eine andere SKU führt (z. B. eBay „LG-…“). Leer = `sku`. */
+    stockSku: text("stock_sku"),
+    /** Menge im Kanal folgt dem verfügbaren Wawi-Bestand. */
+    stockSync: boolean("stock_sync").notNull().default(true),
+    /** Höchstens so viele im Kanal zeigen (leer = alles Verfügbare). */
+    maxQuantity: integer("max_quantity"),
+    /** Zuletzt an den Kanal gemeldete Menge. */
+    pushedQuantity: integer("pushed_quantity"),
+    pushedAt: timestamp("pushed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("listings_uq").on(t.tenantId, t.channel, t.sku)],
+  (t) => [uniqueIndex("listings_uq").on(t.tenantId, t.channel, t.sku), index("listings_stock_sku_idx").on(t.tenantId, t.stockSku)],
 );
 
 export type FeedMapping = {

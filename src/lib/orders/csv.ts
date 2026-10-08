@@ -5,6 +5,7 @@ import { CHANNELS, type Channel } from "@/db/schema";
 import { registerOwnImport } from "@/lib/imports/own-formats";
 import { parseAmount, parseDateTime } from "@/lib/numbers";
 import { splitStreet } from "@/lib/shipping/countries";
+import { syncSoon } from "@/lib/stock/channel-sync";
 import { columnAccessor } from "@/lib/tabular";
 
 // Eigene CSV-Vorlage für Aufträge aus beliebigen Kanälen (eBay, TikTok, Temu, Shop …).
@@ -68,6 +69,8 @@ registerOwnImport({
       await db.delete(schema.orderItems).where(eq(schema.orderItems.orderId, row.id));
       if (o.items.length) await db.insert(schema.orderItems).values(o.items.map((i) => ({ ...i, tenantId, orderId: row.id })));
     }
+    // Neue Aufträge reservieren Ware – andere Kanäle sofort herunterzählen.
+    if (created) syncSoon(tenantId);
     return {
       fileName,
       ok: true,

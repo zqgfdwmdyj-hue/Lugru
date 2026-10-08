@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
+import { syncSoon } from "@/lib/stock/channel-sync";
 
 const uuid = z.string().uuid();
 
@@ -22,6 +23,7 @@ export async function setOwnStock(fd: FormData) {
     .values({ tenantId: session.tenantId, sku, quantity: qty, location: String(fd.get("location") ?? "").trim() || null })
     .onConflictDoUpdate({ target: [schema.ownStock.tenantId, schema.ownStock.sku], set: { quantity: qty, location: sql`coalesce(excluded.location, ${schema.ownStock.location})`, updatedAt: new Date() } });
   if (delta) await db.insert(schema.stockMovements).values({ tenantId: session.tenantId, sku, delta, reason: String(fd.get("reason") ?? "Korrektur") || "Korrektur", userId: session.userId });
+  syncSoon(session.tenantId, [sku]);
   revalidatePath("/bestand");
 }
 
@@ -85,5 +87,6 @@ export async function bookCount(fd: FormData) {
     if (delta) await db.insert(schema.stockMovements).values({ tenantId: session.tenantId, sku: l.sku, delta, reason: "Inventur", reference: c.name, userId: session.userId });
   }
   await db.update(schema.inventoryCounts).set({ status: "booked", bookedAt: new Date() }).where(eq(schema.inventoryCounts.id, countId));
+  syncSoon(session.tenantId);
   revalidatePath("/bestand", "layout");
 }

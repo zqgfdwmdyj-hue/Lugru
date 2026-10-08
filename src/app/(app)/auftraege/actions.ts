@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CHANNELS } from "@/db/schema";
+import { syncChannelStock, syncSoon } from "@/lib/stock/channel-sync";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { cancelLabel, createLabel, estimateWeightKg, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
@@ -103,6 +104,8 @@ export async function cancelOrder(fd: FormData) {
   const session = await requireArea("wawi");
   const id = uuid.parse(fd.get("orderId"));
   await db.update(schema.orders).set({ status: "cancelled", updatedAt: new Date() }).where(and(eq(schema.orders.id, id), eq(schema.orders.tenantId, session.tenantId)));
+  // Storniert = nicht mehr reserviert → Menge in den Kanälen wieder hoch.
+  syncSoon(session.tenantId);
   revalidatePath("/", "layout");
 }
 
@@ -117,4 +120,26 @@ export async function createManualOrder(fd: FormData) {
   const sku = String(fd.get("sku") ?? "").trim();
   if (sku) await db.insert(schema.orderItems).values({ tenantId: session.tenantId, orderId: row.id, sku, quantity: Math.max(1, Math.round(parseAmount(fd.get("quantity")) ?? 1)) });
   redirect(`/auftraege/${row.id}`);
+}
+
+/** Bestellungen sofort holen (statt auf den 5-Minuten-Takt zu warten) und alle Kanäle abgleichen. */
+export async function fetchOrdersNow() {
+  const session = await requireArea("wawi");
+  const t = session.tenantId;
+  const { ebayConnected, syncEbayOrders } = await import("@/lib/integrations/clients/ebay");
+  const { syncFbmOrders } = await import("@/lib/integrations/clients/amazon");
+  const { getIntegration } = await import("@/lib/integrations/store");
+  const msgs: string[] = [];
+  const run = async (name: string, fn: () => Promise<{ orders: number }>) => {
+    try {
+      msgs.push(`${name}: ${(await fn()).orders} neu`);
+    } catch (e) {
+      msgs.push(`${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  if (await ebayConnected(t)) await run("eBay", () => syncEbayOrders(t));
+  if (await getIntegration(t, "amazon_sp")) await run("Amazon FBM", () => syncFbmOrders(t));
+  const r = await syncChannelStock(t);
+  msgs.push(`Bestandsabgleich: ${r.pushed} Mengen übertragen${r.manual ? `, ${r.manual} von Hand` : ""}${r.oversold.length ? `, ÜBERVERKAUF ${r.oversold.join(", ")}` : ""}`);
+  redirect(`/auftraege?${new URLSearchParams({ meldung: msgs.join(" · ") })}`);
 }

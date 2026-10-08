@@ -6,6 +6,7 @@ import type { ReportKind } from "@/lib/reports/amazon";
 import { applyReport, mapAmazonStatus } from "@/lib/reports/apply";
 import { readTable } from "@/lib/tabular";
 import { splitStreet } from "@/lib/shipping/countries";
+import { registerStockPusher } from "@/lib/stock/channel-sync";
 import { registerTrackingUploader } from "@/lib/orders/service";
 import { getIntegration } from "../store";
 import { registerTester } from "../test";
@@ -276,3 +277,40 @@ export async function listingsConn(tenantId: string, account: ListingsAccount) {
     call: <T>(method: string, path: string, body?: unknown) => sp<T>(c, method, path, body),
   };
 }
+
+// --- Bestandsabgleich (FBM-Menge) --------------------------------------------------------
+
+class SyncOffError extends Error {
+  /** Angebot nicht abgleichen (z. B. FBA – den Bestand führt Amazon). */
+  disableSync = true;
+}
+
+/**
+ * Setzt die FBM-Menge eines Angebots über die Listings-API. Beim ersten Mal wird der
+ * Produkttyp gelesen und geprüft, dass es kein FBA-Angebot ist – das würde sonst auf
+ * Eigenversand umgestellt.
+ */
+registerStockPusher("amazon", async (tenantId, l, quantity) => {
+  const p = (l.payload ?? {}) as { account?: ListingsAccount; productType?: string; fbmChecked?: boolean };
+  const c = await listingsConn(tenantId, p.account ?? "haupt");
+  const path = `/listings/2021-08-01/items/${encodeURIComponent(c.sellerId)}/${encodeURIComponent(l.sku)}`;
+  let productType = p.productType;
+  if (!productType || !p.fbmChecked) {
+    const item = await c.call<{ summaries?: { productType?: string }[]; fulfillmentAvailability?: { fulfillmentChannelCode?: string }[] }>(
+      "GET",
+      `${path}?marketplaceIds=${c.marketplaceId}&includedData=summaries,fulfillmentAvailability`,
+    );
+    productType = item.summaries?.[0]?.productType;
+    if (!productType) throw new Error("Angebot bei Amazon nicht gefunden (SKU prüfen).");
+    const fba = (item.fulfillmentAvailability ?? []).some((f) => f.fulfillmentChannelCode && f.fulfillmentChannelCode !== "DEFAULT");
+    if (fba) throw new SyncOffError("FBA-Angebot – den Bestand führt Amazon. Abgleich für dieses Angebot ausgeschaltet.");
+  }
+  const r = await c.call<{ status?: string; issues?: { severity?: string; message?: string }[] }>("PATCH", `${path}?marketplaceIds=${c.marketplaceId}`, {
+    productType,
+    patches: [{ op: "replace", path: "/attributes/fulfillment_availability", value: [{ fulfillment_channel_code: "DEFAULT", quantity }] }],
+  });
+  if (r.status && r.status !== "ACCEPTED") {
+    throw new Error((r.issues ?? []).filter((i) => i.severity === "ERROR").map((i) => i.message).join("; ") || `Amazon-Status ${r.status}`);
+  }
+  return { payload: { productType, fbmChecked: true } };
+});

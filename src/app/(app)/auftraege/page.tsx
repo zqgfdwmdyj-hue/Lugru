@@ -5,13 +5,13 @@ import { CHANNELS } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
-import { createManualOrder, markAllLabeledShipped } from "./actions";
+import { createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
 import { BatchForm } from "./batch-form";
 
 const VIEWS = { offen: "Zu versenden", label: "Label erstellt", versendet: "Versendet", fehler: "Meldung offen", fba: "FBA", alle: "Alle" } as const;
 type View = keyof typeof VIEWS;
 
-export default async function AuftraegePage({ searchParams }: { searchParams: Promise<{ ansicht?: string; kanal?: string }> }) {
+export default async function AuftraegePage({ searchParams }: { searchParams: Promise<{ ansicht?: string; kanal?: string; meldung?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "offen";
@@ -69,11 +69,13 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     <>
       <div className="page-head">
         <div><div className="crumb">WaWi</div><h1>Aufträge & Versand</h1></div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <form action={fetchOrdersNow}><button className="btn btn-primary" type="submit" title="eBay- und Amazon-FBM-Bestellungen holen, danach Bestand in allen Kanälen abgleichen">Bestellungen jetzt abrufen</button></form>
           <a className="btn" href="/auftraege/vorlage">CSV-Vorlage</a>
           <a className="btn" href="/auftraege/versandbestaetigung">Amazon-Versandbestätigung (Datei)</a>
         </div>
       </div>
+      {sp.meldung && <div className="notice notice-info" data-testid="orders-msg">{sp.meldung}</div>}
       <div className="grid-kpi">
         {(["amazon", "ebay", "tiktok", "temu"] as const).map((c) => (
           <Link key={c} href={`/auftraege?ansicht=offen&kanal=${c}`} className="card card-pad" style={{ textDecoration: "none", color: "inherit" }}>

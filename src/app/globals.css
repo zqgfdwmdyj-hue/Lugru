@@ -219,3 +219,6 @@ h2 { font-size: 16px; margin: 0; }
 @media (display-mode: standalone) and (max-width: 760px) {
   .sidebar { top: env(safe-area-inset-top); }
 }
+
+/* Listings: Formulare unter der breiten Tabelle */
+.listing-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }

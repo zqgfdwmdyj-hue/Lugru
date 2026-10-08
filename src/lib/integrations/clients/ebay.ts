@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { registerListingPublisher } from "@/lib/listings/publish";
 import { registerTrackingUploader } from "@/lib/orders/service";
+import { registerStockPusher } from "@/lib/stock/channel-sync";
 import { splitStreet } from "@/lib/shipping/countries";
 import { getSettings, getToken } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
@@ -127,6 +128,27 @@ registerListingPublisher("ebay", async (tenantId, l) => {
   else offerId = (await api<{ offerId: string }>(c, "POST", "/sell/inventory/v1/offer", offer)).offerId;
   const pub = await api<{ listingId: string }>(c, "POST", `/sell/inventory/v1/offer/${offerId}/publish`);
   return { externalId: pub.listingId };
+});
+
+/**
+ * Menge eines Angebots setzen (Bestandsabgleich der Wawi). Inventory-API-Angebote: Bestand des
+ * Artikels und – falls bekannt – die Angebotsmenge in einem Aufruf.
+ */
+registerStockPusher("ebay", async (tenantId, l, quantity) => {
+  const c = await cfg(tenantId);
+  if (!c) throw new Error("eBay ist nicht verbunden.");
+  const payload = (l.payload ?? {}) as { offerId?: string };
+  let offerId = payload.offerId;
+  if (!offerId) {
+    const r = await api<{ offers?: { offerId: string }[] }>(c, "GET", `/sell/inventory/v1/offer?sku=${encodeURIComponent(l.sku)}`).catch(() => null);
+    offerId = r?.offers?.[0]?.offerId;
+  }
+  const res = await api<{ responses?: { statusCode: number; sku?: string; offerId?: string; errors?: { message?: string; longMessage?: string }[] }[] }>(c, "POST", "/sell/inventory/v1/bulk_update_price_quantity", {
+    requests: [{ sku: l.sku, shipToLocationAvailability: { quantity }, ...(offerId ? { offers: [{ offerId, availableQuantity: quantity }] } : {}) }],
+  });
+  const bad = (res.responses ?? []).find((r) => r.statusCode >= 300);
+  if (bad) throw new Error((bad.errors ?? []).map((e) => e.longMessage ?? e.message).filter(Boolean).join("; ") || `eBay-Status ${bad.statusCode}`);
+  return offerId && offerId !== payload.offerId ? { payload: { offerId } } : undefined;
 });
 
 registerTester("ebay", async (_v, tenantId) => {

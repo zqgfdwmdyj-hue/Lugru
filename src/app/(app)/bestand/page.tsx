@@ -5,6 +5,9 @@ import { requireSession } from "@/lib/auth/session";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
+import { CHANNEL_LABEL } from "@/lib/labels";
+import { availableOf } from "@/lib/stock/channel-logic";
+import { listingsBySku, stockLevels } from "@/lib/stock/channel-sync";
 import { createCount, setOwnStock } from "./actions";
 
 const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Unverkäuflich", ladenhueter: "Ladenhüter" } as const;
@@ -60,6 +63,9 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
   const value = res.rows.reduce((n, r) => n + (r.fba + r.reserved + r.inbound + r.own) * (r.cost ?? 0), 0);
   const units = res.rows.reduce((n, r) => n + r.fba + r.reserved + r.inbound, 0);
   const own = res.rows.reduce((n, r) => n + r.own, 0);
+  const levels = await stockLevels(t);
+  const channelRows = await listingsBySku(t, rows.slice(0, 500).filter((r) => r.own !== 0 || levels.has(r.sku)).map((r) => r.sku));
+  const reservedTotal = [...levels.values()].reduce((n, l) => n + l.reserved, 0);
   const counts = await db.select().from(schema.inventoryCounts).where(eq(schema.inventoryCounts.tenantId, t)).orderBy(desc(schema.inventoryCounts.createdAt)).limit(5);
 
   return (
@@ -71,7 +77,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       <div className="grid-kpi">
         <div className="card card-pad"><div className="kpi-label">Warenwert (EK)</div><div className="kpi-value">{formatEuro(value)}</div></div>
         <div className="card card-pad"><div className="kpi-label">Bei Amazon</div><div className="kpi-value">{units}</div><div className="small muted">verfügbar, reserviert, unterwegs</div></div>
-        <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value">{own}</div></div>
+        <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value">{own}</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}</div>
         <div className="card card-pad"><div className="kpi-label">Ladenhüter</div><div className="kpi-value">{res.rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore)).length}</div><div className="small muted">ohne Verkauf seit {settings.aging.noSaleWarnDays} Tagen</div></div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -80,9 +86,9 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           <table className="table">
-            <thead><tr><th>SKU</th><th>Artikel</th><th className="right">FBA</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Artikel</th><th className="right">FBA</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={8} className="muted">Keine Einträge. FBA-Bestandsbericht importieren oder eigenen Bestand eintragen.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={9} className="muted">Keine Einträge. FBA-Bestandsbericht importieren oder eigenen Bestand eintragen.</td></tr>}
               {rows.slice(0, 500).map((r) => (
                 <tr key={r.sku}>
                   <td className="num small">{r.sku}</td>
@@ -90,7 +96,22 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                   <td className="num right">{r.fba}</td>
                   <td className="num right" style={{ color: r.unsellable ? "var(--danger)" : undefined }}>{r.unsellable || ""}</td>
                   <td className="num right">{r.inbound || ""}</td>
-                  <td className="num right">{r.own || ""}{r.location ? <div className="small muted">{r.location}</div> : null}</td>
+                  <td className="num right">
+                    {r.own || ""}
+                    {(levels.get(r.sku)?.reserved ?? 0) > 0 && (
+                      <div className="small" style={{ color: (levels.get(r.sku)!.reserved > r.own) ? "var(--danger)" : "var(--muted)" }}>
+                        {levels.get(r.sku)!.reserved} reserviert · {availableOf(levels.get(r.sku))} frei
+                      </div>
+                    )}
+                    {r.location ? <div className="small muted">{r.location}</div> : null}
+                  </td>
+                  <td className="small" data-testid="stock-channels">
+                    {(channelRows.get(r.sku) ?? []).filter((l) => l.status === "active").map((l) => (
+                      <Link key={l.id} href={`/listings?kanal=${l.channel}`} className={`tag ${!l.stockSync ? "tag-neutral" : l.lastError ? "tag-warn" : "tag-ok"}`} style={{ marginRight: 4, textDecoration: "none" }} title={l.lastError ?? (l.stockSync ? "Menge wird abgeglichen" : "Abgleich aus")}>
+                        {CHANNEL_LABEL[l.channel]} {l.stockSync ? (l.pushedQuantity ?? l.quantity) : "· Abgleich aus"}
+                      </Link>
+                    ))}
+                  </td>
                   <td className="num right">{r.cost !== null ? formatEuro((r.fba + r.reserved + r.inbound + r.own) * r.cost) : "–"}</td>
                   <td className="num small" style={{ color: !r.lastSale || r.lastSale < noSaleBefore ? "var(--warn)" : undefined }}>{formatDate(r.lastSale)}</td>
                 </tr>

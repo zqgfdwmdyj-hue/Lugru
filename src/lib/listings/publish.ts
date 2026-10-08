@@ -20,7 +20,7 @@ export async function publishListing(tenantId: string, listing: Listing) {
   }
   try {
     const r = await fn(tenantId, listing);
-    await db.update(schema.listings).set({ status: "active", externalId: r.externalId, lastError: null, lastSyncAt: new Date(), updatedAt: new Date() }).where(eq(schema.listings.id, listing.id));
+    await db.update(schema.listings).set({ status: "active", externalId: r.externalId, lastError: null, lastSyncAt: new Date(), pushedQuantity: listing.quantity, pushedAt: new Date(), updatedAt: new Date() }).where(eq(schema.listings.id, listing.id));
     return true;
   } catch (e) {
     await db.update(schema.listings).set({ status: "error", lastError: e instanceof Error ? e.message : String(e), updatedAt: new Date() }).where(eq(schema.listings.id, listing.id));

@@ -18,6 +18,8 @@ import { refreshOwnProducts } from "@/lib/brands/shop-service";
 import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
+import { syncChannelStock } from "@/lib/stock/channel-sync";
+import { adoptEbayAttempts } from "@/lib/stock/ebay-link";
 import { getSettings } from "@/lib/settings";
 import { refreshImportReminder } from "@/lib/tasks/system";
 
@@ -58,7 +60,7 @@ export async function runScheduledJobs(force = false) {
         await step("Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
       }
       if (await has("amazon_sp")) {
-        if (force || due(`${t}:amz-orders`, 14)) await step("Amazon-Bestellungen", () => syncFbmOrders(t));
+        if (force || due(`${t}:amz-orders`, 4)) await step("Amazon-Bestellungen", () => syncFbmOrders(t));
         if (force || due(`${t}:amz-reports`, 14)) {
           await step("Amazon-Reports abholen", () => processPendingReports(t));
           await step("Amazon-Reports anfordern", () => scheduleReports(t));
@@ -66,14 +68,17 @@ export async function runScheduledJobs(force = false) {
         if (force || due(`${t}:amz-settlements`, 180)) await step("Abrechnungen", () => fetchSettlements(t));
       }
       if (await ebayConnected(t)) {
+        if (force || due(`${t}:ebay-orders`, 4)) await step("eBay-Bestellungen", () => syncEbayOrders(t));
         if (force || due(`${t}:ebay`, 14)) {
-          await step("eBay-Bestellungen", () => syncEbayOrders(t));
           const edb = ebayDb(t);
           await step("eBay-Rechnungen", () => runInvoiceAutomation(edb, invoiceDeps(edb, t)));
+          await step("eBay-Angebote in die Wawi", () => adoptEbayAttempts(t));
         }
         // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
         if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));
       }
+      // Nach dem Bestellabruf: neue Aufträge reservieren Ware → alle Kanäle auf den verfügbaren Bestand.
+      if (force || due(`${t}:stock-sync`, 4)) await step("Bestandsabgleich Kanäle", () => syncChannelStock(t));
       if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));
       if (force || due(`${t}:research`, 59)) await step("Themen-Recherche", () => runResearchIfDue(t));
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step("Rechnungen", () => syncDrive(t, 100));
@@ -98,6 +103,7 @@ export function startScheduler() {
   started = true;
   const tick = () => void runScheduledJobs().catch((e) => console.error("[Hintergrund]", e));
   setTimeout(tick, 60_000);
-  setInterval(tick, 15 * 60_000);
-  console.log("[Hintergrund] Abrufe aktiv (alle 15 Minuten).");
+  // Alle 5 Minuten: Bestellungen und Bestandsabgleich (gegen Überverkauf); die übrigen Abrufe haben eigene Abstände.
+  setInterval(tick, 5 * 60_000);
+  console.log("[Hintergrund] Abrufe aktiv (alle 5 Minuten).");
 }

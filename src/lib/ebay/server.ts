@@ -7,6 +7,7 @@ import { invoiceRouter } from "./routes/invoices";
 import { invoiceDeps } from "./invoices/deps";
 import { maintenanceRouter } from "./routes/maintenance";
 import { dispatch } from "./routes/dispatch";
+import { linkEbayAttempt } from "@/lib/stock/ebay-link";
 import type { Router } from "./routes/router";
 
 /** Routen, die nur der Inhaber aufrufen darf: Zugangsdaten, Verbindung, Rechnungsabsender, Sicherung. */
@@ -22,7 +23,11 @@ const OWNER_ONLY: [string, RegExp][] = [
 ];
 
 function routersFor(db: Db, tenantId: string): Router[] {
-  return [apiRouter(db), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
+  const hooks = {
+    // Jedes veröffentlichte Angebot landet in der Wawi und nimmt am Bestandsabgleich teil.
+    onPublished: async (attempt: Parameters<typeof linkEbayAttempt>[1]) => (await linkEbayAttempt(tenantId, attempt, { bookStock: true }))?.note,
+  };
+  return [apiRouter(db, hooks), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
 }
 
 /** Führt einen Aufruf der eBay-API des Tools für einen Mandanten aus (wie der Express-Server im bisherigen Tool). */

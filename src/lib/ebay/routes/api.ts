@@ -134,7 +134,13 @@ async function categoryAspects(db: Db, settings: Settings, categoryId?: string):
   }
 }
 
-export function apiRouter(db: Db): Router {
+/** Anschluss an das Seller-System (Wawi) – im eigenständigen Betrieb leer. */
+export interface ApiHooks {
+  /** Nach erfolgreichem Veröffentlichen: Angebot in die Wawi übernehmen, Hinweis für die Vorschau. */
+  onPublished?: (attempt: ListingAttempt) => Promise<string | undefined>;
+}
+
+export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   const r = new Router();
 
   // --- Listing-Versuche ---
@@ -430,7 +436,14 @@ export function apiRouter(db: Db): Router {
     const attempt = await publishAttempt(db, inv, settings, Number(req.params.id), (name, data) =>
       uploadPictureToEps(db, settings, name, data)
     );
-    res.json(decorate(settings, attempt));
+    let wawiNote: string | undefined;
+    if (attempt.status === 'published' && hooks.onPublished) {
+      // Das Angebot ist live – ein Fehler bei der Wawi-Übernahme darf das nicht verdecken.
+      wawiNote = await hooks.onPublished(attempt).catch(
+        (err) => `Wawi-Übernahme fehlgeschlagen: ${err instanceof Error ? err.message : String(err)} – unter Listings „eBay-Angebote übernehmen“ nachholen.`
+      );
+    }
+    res.json({ ...decorate(settings, attempt), wawiNote });
   }));
 
   // --- Einstellungen ---

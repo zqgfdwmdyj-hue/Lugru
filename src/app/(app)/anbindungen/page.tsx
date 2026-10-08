@@ -30,7 +30,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           <h2>Hintergrund-Abrufe</h2>
           <form action={runAllNow}><button className="btn btn-small" type="submit">Jetzt alles abrufen</button></form>
         </div>
-        <div className="small muted">Postfächer, Amazon- und eBay-Bestellungen alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich), Rechnungen stündlich.</div>
+        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich), Rechnungen stündlich.</div>
         {status.get("amazon_sp") && (
           <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <label htmlFor="rk" className="small">Amazon-Report sofort anfordern:</label>

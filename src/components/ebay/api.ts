@@ -19,6 +19,8 @@ export interface Profit {
 
 export type Attempt = ListingAttempt & {
   listingUrl?: string;
+  /** Nach dem Veröffentlichen: was in der Wawi passiert ist (Bestand gebucht, verknüpft …). */
+  wawiNote?: string;
   /** Geschätzte eBay-Gebühr für diesen Verkaufspreis. */
   fee?: number;
   feePercent?: number;

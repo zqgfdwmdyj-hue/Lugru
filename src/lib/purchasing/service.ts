@@ -1,5 +1,6 @@
 import "server-only";
 import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { syncSoon } from "@/lib/stock/channel-sync";
 import { db, schema, type Tx } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
@@ -224,6 +225,7 @@ export async function receiveGoods(tenantId: string, userId: string, poId: strin
     return { booked, status };
   });
   await refreshPoTask(tenantId, poId);
+  syncSoon(tenantId);
   return result;
 }
 

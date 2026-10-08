@@ -259,6 +259,12 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
             )}
           </div>
         )}
+        {attempt.status === 'published' && attempt.wawiNote && (
+          <div className="banner success" data-testid="wawi-note">
+            {attempt.wawiNote}{' '}
+            <a href={`/listings?kanal=ebay`}>In der Wawi ansehen</a>
+          </div>
+        )}
         {attempt.errorMessage && attempt.status !== 'published' && (
           <div className="banner error">{attempt.errorMessage}</div>
         )}
