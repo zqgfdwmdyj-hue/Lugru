@@ -11,7 +11,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "wissen", label: "Wissen", paths: ["/wissen"], home: "/wissen" },
   { key: "wawi", label: "WaWi (Aufträge, Einkauf, Chargen, Bestand, Listings, Import)", paths: ["/auftraege", "/einkauf", "/chargen", "/bestand", "/listings", "/import"], home: "/auftraege" },
   { key: "artikel", label: "Artikelstamm (eigene Produkte, Bilder, Texte, Amazon/eBay)", paths: ["/artikel"], home: "/artikel" },
-  { key: "lieferanten", label: "Lieferanten-Feeds (Scannen, Keepa-Prüfung, Boxen)", paths: ["/lieferanten"], home: "/lieferanten" },
+  { key: "lieferanten", label: "Lieferanten-Feeds und Großhändler finden (Scannen, Keepa-Prüfung, Boxen, Einkaufsanfragen)", paths: ["/lieferanten"], home: "/lieferanten" },
   { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse)", paths: ["/marken"], home: "/marken" },
   { key: "ebay", label: "eBay", paths: ["/ebay", "/api/ebay"], home: "/ebay" },
   { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen)", paths: ["/amazon-todos", "/inbound", "/ansprueche", "/remissionen"], home: "/amazon-todos" },

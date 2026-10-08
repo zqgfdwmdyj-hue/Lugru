@@ -1,0 +1,46 @@
+CREATE TABLE "supplier_leads" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid NOT NULL,
+	"source" text DEFAULT 'lucid' NOT NULL,
+	"source_id" text NOT NULL,
+	"search_brands" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"company_name" text NOT NULL,
+	"register_number" text,
+	"street" text,
+	"zip" text,
+	"city" text,
+	"country" text,
+	"phone" text,
+	"registered_at" text,
+	"registration_end" text,
+	"is_foreign" boolean DEFAULT false NOT NULL,
+	"brands" jsonb,
+	"score" integer DEFAULT 0 NOT NULL,
+	"kind" text DEFAULT 'unklar' NOT NULL,
+	"status" text DEFAULT 'neu' NOT NULL,
+	"website" text,
+	"email" text,
+	"b2b_url" text,
+	"sells_brand" boolean,
+	"summary" text,
+	"evidence" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"checked_at" timestamp with time zone,
+	"check_error" text,
+	"busy" text,
+	"mail_language" text,
+	"mail_subject" text,
+	"mail_body" text,
+	"mailed_at" timestamp with time zone,
+	"mailed_to" text,
+	"mail_error" text,
+	"replied_at" timestamp with time zone,
+	"supplier_id" uuid,
+	"notes" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "supplier_leads" ADD CONSTRAINT "supplier_leads_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "supplier_leads" ADD CONSTRAINT "supplier_leads_supplier_id_suppliers_id_fk" FOREIGN KEY ("supplier_id") REFERENCES "public"."suppliers"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "supplier_leads_src_uq" ON "supplier_leads" USING btree ("tenant_id","source","source_id");--> statement-breakpoint
+CREATE INDEX "supplier_leads_status_idx" ON "supplier_leads" USING btree ("tenant_id","status");
