@@ -250,6 +250,7 @@ export async function createAttempt(
 }
 
 const PATCH_COLUMNS: Record<string, keyof AttemptRow> = {
+  ean: 'ean',
   price: 'price',
   quantity: 'quantity',
   condition: 'condition',

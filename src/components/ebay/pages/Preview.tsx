@@ -11,6 +11,7 @@ import { ProfitTable } from '../components/ProfitTable';
 import { ShippingSelect } from '../components/ShippingSelect';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IdealoPanel } from '../components/IdealoPanel';
+import { AspectEditor } from '../components/AspectEditor';
 import {
   asInput, fieldAfterToggle, placeholderFor, planPurchaseSave, type PriceMode, type VatMode,
 } from '../purchaseEntry';
@@ -37,6 +38,8 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
   const [rateInput, setRateInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  /** Pflicht-Merkmale ohne Wert — solange welche fehlen, bleibt „Listing erstellen" gesperrt. */
+  const [missingAspects, setMissingAspects] = useState<string[]>([]);
   const purchasePriceInput = useRef<HTMLInputElement>(null);
   // Speichern läuft nacheinander: zwei schnelle Blur-Events dürfen sich nicht überholen.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -497,17 +500,8 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
             )}
           </section>
 
-          {Object.keys(attempt.aspects ?? {}).length > 0 && (
-            <details>
-              <summary>Artikelmerkmale ({Object.keys(attempt.aspects!).length})</summary>
-              <table className="aspects">
-                <tbody>
-                  {Object.entries(attempt.aspects!).map(([k, v]) => (
-                    <tr key={k}><th>{k}</th><td>{v.join(', ')}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </details>
+          {attempt.status !== 'no_catalog_match' && (
+            <AspectEditor attempt={attempt} editable={editable} onPatch={patch} onMissing={setMissingAspects} />
           )}
 
           <DescriptionEditor
@@ -525,11 +519,13 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
           </div>
 
           {editable && (
-            <button className="primary big" onClick={publish} disabled={busy || title.trim() === ''}>
+            <button className="primary big" onClick={publish} disabled={busy || title.trim() === '' || missingAspects.length > 0}>
               {busy
                 ? 'Wird bei eBay erstellt …'
                 : title.trim() === ''
                   ? 'Titel eingeben, um das Listing zu erstellen'
+                  : missingAspects.length > 0
+                    ? `Erst Pflichtangaben ausfüllen: ${missingAspects.join(', ')}`
                   : `${attempt.status === 'publish_failed' ? 'Erneut erstellen' : 'Listing erstellen'} — ${formatPrice(attempt.price)}`}
             </button>
           )}

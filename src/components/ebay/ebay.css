@@ -359,3 +359,19 @@
 .ebt .shell { display: block; min-height: 0; }
 .ebt .row { align-items: stretch; }
 .ebt .brand { display: inline; padding: 0; gap: 0; }
+
+/* Artikelmerkmale-Editor in der Vorschau */
+.ebt .aspect-box h3 { margin-top: 4px; }
+.ebt .aspect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 12px; margin: 8px 0; }
+.ebt .aspect-field { min-width: 0; }
+.ebt .aspect-field.missing input, .ebt .aspect-field.missing select { border-color: var(--red); background: var(--red-bg); }
+.ebt .aspect-field.missing .aspect-name { color: var(--red); }
+.ebt .aspect-name { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.ebt .aspect-remove { border: none; background: none; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 4px; cursor: pointer; }
+.ebt .aspect-error { color: var(--red); font-weight: 400; font-size: 12.5px; }
+.ebt .aspect-add { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.ebt .aspect-add input { flex: 1 1 140px; min-width: 0; }
+.ebt .aspect-box details { margin-top: 8px; }
+.ebt .aspect-box summary { cursor: pointer; font-weight: 600; font-size: 14px; padding: 4px 0; }
+@media (max-width: 560px) { .ebt .aspect-grid { grid-template-columns: 1fr; } }
+.ebt .aspect-field .muted { font-weight: 400; font-size: 12.5px; }

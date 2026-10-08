@@ -1,7 +1,7 @@
 import type { Db } from '../db/db';
 import type { Settings } from '../types';
 import { getUserAccessToken } from './auth';
-import { ACCEPT_LANGUAGE } from './config';
+import { ACCEPT_LANGUAGE, apiBase } from './config';
 
 function escXml(s: string): string {
   return s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -28,7 +28,7 @@ export function parseUploadResponse(xml: string): string {
 }
 
 function tradingApiUrl(settings: Settings): string {
-  return settings.env === 'production' ? 'https://api.ebay.com/ws/api.dll' : 'https://api.sandbox.ebay.com/ws/api.dll';
+  return `${apiBase(settings.env)}/ws/api.dll`;
 }
 
 /**

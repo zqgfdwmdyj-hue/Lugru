@@ -31,6 +31,8 @@ import { parseSource } from '../pipeline/source';
 import { uploadPictureToEps } from '../ebay/pictures';
 import { parseEbayItemUrl, parseSearchInputAsItemUrl } from '../pipeline/itemUrl';
 import { publishAttempt } from '../pipeline/publish';
+import { aspectProblems, aspectsFromError, missingRequired, normalizeAspects, parseEan, type CategoryAspect } from '../pipeline/aspects';
+import { getCategoryAspects } from '../ebay/taxonomy';
 import { truncateTitle } from '../pipeline/title';
 import type { Condition, Env, ListingAttempt, Settings } from '../types';
 
@@ -120,6 +122,16 @@ function decorate(settings: Settings, a: ListingAttempt) {
     }),
     source: a.purchaseSource ? parseSource(a.purchaseSource) : null,
   };
+}
+
+/** Merkmale der Kategorie — ohne Kategorie oder eBay-Verbindung eine leere Liste plus Grund. */
+async function categoryAspects(db: Db, settings: Settings, categoryId?: string): Promise<{ aspects: CategoryAspect[]; error?: string }> {
+  if (!categoryId) return { aspects: [], error: 'Noch keine Kategorie — die Merkmale der Kategorie kommen, sobald ein Katalogtreffer gewählt ist.' };
+  try {
+    return { aspects: await getCategoryAspects(db, settings, categoryId) };
+  } catch (err) {
+    return { aspects: [], error: `Merkmale der Kategorie nicht abrufbar: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 export function apiRouter(db: Db): Router {
@@ -276,7 +288,7 @@ export function apiRouter(db: Db): Router {
 
     if (attempt.status === 'published') throw new Error('Veröffentlichte Listings können hier nicht mehr geändert werden.');
 
-    const { title, price, quantity, condition, ref, url, epid, description, resetDescription, fulfillmentPolicyId } =
+    const { title, price, quantity, condition, ref, url, epid, description, resetDescription, fulfillmentPolicyId, aspects, ean } =
       req.body ?? {};
     if (url) {
       const legacyId = parseEbayItemUrl(String(url));
@@ -300,12 +312,37 @@ export function apiRouter(db: Db): Router {
     if (resetDescription === true) {
       patch.description = buildDescription(patch.title ?? attempt.title ?? '', attempt.aspects ?? {});
     }
+    if (aspects !== undefined) {
+      const defs = (await categoryAspects(db, settings, attempt.categoryId)).aspects;
+      patch.aspects = normalizeAspects(aspects, defs);
+    }
+    if (ean !== undefined) patch.ean = parseEan(ean);
     if (fulfillmentPolicyId !== undefined) {
       // Leer heißt: wieder das Standard-Versandprofil aus den Einstellungen.
       const v = String(fulfillmentPolicyId ?? '').trim();
       patch.fulfillmentPolicyId = v === '' ? undefined : v;
     }
     res.json(decorate(settings, (await updateAttempt(db, id, patch))!));
+  }));
+
+  /**
+   * Artikelmerkmale der Kategorie für den Editor in der Vorschau: Pflicht, empfohlen,
+   * erlaubte Werte — und was am Entwurf noch fehlt (auch aus eBays letzter Fehlermeldung).
+   */
+  r.get('/attempts/:id/aspects', h(async (req, res) => {
+    const attempt = await getAttempt(db, Number(req.params.id));
+    if (!attempt) throw new Error('Listing-Versuch nicht gefunden.');
+    const settings = await getSettings(db);
+    const { aspects, error } = await categoryAspects(db, settings, attempt.categoryId);
+    const current = attempt.aspects ?? {};
+    const fromError = aspectsFromError(attempt.errorMessage).filter((n) => !Object.keys(current).some((k) => k.toLowerCase() === n.toLowerCase()));
+    res.json({
+      aspects,
+      error,
+      missing: [...new Set([...missingRequired(aspects, current, attempt.ean), ...fromError])],
+      fromError,
+      problems: aspectProblems(aspects, current),
+    });
   }));
 
   /** Preisvergleich bei idealo — per EAN, ohne EAN per Titel. */
@@ -380,6 +417,15 @@ export function apiRouter(db: Db): Router {
 
   r.post('/attempts/:id/publish', h(async (req, res) => {
     const settings = await getSettings(db);
+    const draft = await getAttempt(db, Number(req.params.id));
+    if (draft && draft.status !== 'published') {
+      // Pflicht-Merkmale vorab prüfen — spart den Umweg über eBays Fehlermeldung.
+      const { aspects } = await categoryAspects(db, settings, draft.categoryId);
+      const missing = missingRequired(aspects, draft.aspects ?? {}, draft.ean);
+      if (missing.length) throw new Error(`Bitte zuerst die Pflicht-Merkmale ausfüllen: ${missing.join(', ')}.`);
+      const problems = aspectProblems(aspects, draft.aspects ?? {});
+      if (problems.length) throw new Error(`Artikelmerkmale prüfen: ${problems.join(' ')}`);
+    }
     const inv = makeInventoryApi(db, settings);
     const attempt = await publishAttempt(db, inv, settings, Number(req.params.id), (name, data) =>
       uploadPictureToEps(db, settings, name, data)

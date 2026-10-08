@@ -34,6 +34,8 @@ export const SCOPES_USER_READONLY = [
 export const SCOPES_USER = [...SCOPES_USER_LEGACY, 'https://api.ebay.com/oauth/api_scope/sell.fulfillment'];
 
 export function apiBase(env: Env): string {
+  // Nur für Tests: eBay-Aufrufe auf einen Mock umleiten. In Betrieb nicht gesetzt.
+  if (process.env.EBAY_API_BASE_URL) return process.env.EBAY_API_BASE_URL;
   return env === 'production' ? 'https://api.ebay.com' : 'https://api.sandbox.ebay.com';
 }
 
