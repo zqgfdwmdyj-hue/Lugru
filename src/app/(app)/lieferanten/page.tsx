@@ -13,15 +13,22 @@ export default async function LieferantenPage() {
   ]);
   return (
     <>
-      <div className="page-head"><div><div className="crumb">WaWi</div><h1>Lieferanten-Feeds</h1></div></div>
+      <div className="page-head">
+        <div><div className="crumb">WaWi</div><h1>Lieferanten-Feeds</h1></div>
+        <div className="row" style={{ gap: 8 }}>
+          <Link className="btn" href="/lieferanten/abfrage">EAN-Abfrage</Link>
+          <Link className="btn btn-primary" href="/lieferanten/chancen">Chancen</Link>
+        </div>
+      </div>
       <div className="row">
         <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
           <table className="table">
-            <thead><tr><th>Feed</th><th className="right">Angebote</th><th>Letzter Import</th></tr></thead>
+            <thead><tr><th>Feed</th><th className="right">Angebote</th><th>Letzter Import</th><th>Abruf</th></tr></thead>
             <tbody>
-              {feeds.length === 0 && <tr><td colSpan={3} className="muted">Noch keine Feeds. Rechts einen anlegen – danach Preislisten (CSV/Excel) hochladen oder Shop-Seiten, Fotos und PDFs scannen.</td></tr>}
+              {feeds.length === 0 && <tr><td colSpan={4} className="muted">Noch keine Feeds. Rechts einen anlegen – danach Preislisten (CSV/Excel) hochladen oder Shop-Seiten, Fotos und PDFs scannen.</td></tr>}
               {feeds.map(({ f, offers }) => (
-                <tr key={f.id}><td><Link href={`/lieferanten/${f.id}`}>{f.name}</Link></td><td className="num right">{offers}</td><td className="num">{f.lastImportAt?.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) ?? "–"}</td></tr>
+                <tr key={f.id}><td><Link href={`/lieferanten/${f.id}`}>{f.name}</Link></td><td className="num right">{offers}</td><td className="num">{f.lastImportAt?.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) ?? "–"}</td>
+                  <td>{f.lastPullError ? <span className="tag tag-danger" title={f.lastPullError}>Fehler</span> : f.autoPull && f.sourceUrl ? <span className="tag tag-ok">alle {f.pullEveryHours} h</span> : <span className="muted">manuell</span>}</td></tr>
               ))}
             </tbody>
           </table>

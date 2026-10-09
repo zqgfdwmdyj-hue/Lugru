@@ -10,6 +10,8 @@ import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { readTable } from "@/lib/tabular";
 import { checkFeedWithKeepa, saveScanned, scan } from "@/lib/suppliers/scan-service";
+import { importTable, pullFeed, refreshMarket } from "@/lib/suppliers/feed-service";
+import { encryptSecret } from "@/lib/crypto";
 import { suggestBoxes } from "@/lib/suppliers/boxes-service";
 import { canAccess } from "@/lib/auth/areas";
 import { assertBrand } from "@/lib/brands/access";
@@ -35,37 +37,17 @@ export async function uploadFeed(_prev: FeedState, fd: FormData): Promise<FeedSt
   const file = fd.get("file");
   if (!(file instanceof File) || !file.size) return { ok: false, message: "Bitte Datei wählen." };
   const table = readTable(new Uint8Array(await file.arrayBuffer()));
-  const pick = (k: keyof FeedMapping) => String(fd.get(`map_${k}`) ?? "") || feed.mapping[k] || "";
-  const mapping: FeedMapping = { ...feed.mapping, ean: pick("ean"), asin: pick("asin"), supplierSku: pick("supplierSku"), title: pick("title"), price: pick("price"), stock: pick("stock") };
-  if (!mapping.supplierSku || !table.headers.includes(mapping.supplierSku)) {
-    return { ok: false, message: "Bitte die Spalten zuordnen (mindestens Lieferanten-Artikelnummer).", headers: table.headers };
+  // Von Hand gewählte Spalten gehen vor; sonst erkennt das System sie selbst.
+  const manual: FeedMapping = {};
+  for (const k of ["ean", "asin", "supplierSku", "title", "price", "stock", "moq"] as const) {
+    const v = String(fd.get(`map_${k}`) ?? "");
+    if (v) manual[k] = v;
   }
-  const idx = (h?: string) => (h ? table.headers.indexOf(h) : -1);
-  const col = { ean: idx(mapping.ean), asin: idx(mapping.asin), sku: idx(mapping.supplierSku), title: idx(mapping.title), price: idx(mapping.price), stock: idx(mapping.stock) };
-  const values = table.rows
-    .map((r) => ({
-      tenantId: session.tenantId,
-      feedId,
-      supplierSku: (r[col.sku] ?? "").trim(),
-      ean: col.ean >= 0 ? (r[col.ean] ?? "").replace(/\D/g, "") || null : null,
-      asin: col.asin >= 0 ? (r[col.asin] ?? "").trim().toUpperCase() || null : null,
-      title: col.title >= 0 ? (r[col.title] ?? "").trim() || null : null,
-      price: col.price >= 0 ? parseAmount(r[col.price]) : null,
-      stock: col.stock >= 0 ? Math.round(parseAmount(r[col.stock]) ?? 0) : null,
-    }))
-    .filter((v) => v.supplierSku);
-  for (let i = 0; i < values.length; i += 500) {
-    await db
-      .insert(schema.supplierOffers)
-      .values(values.slice(i, i + 500))
-      .onConflictDoUpdate({
-        target: [schema.supplierOffers.feedId, schema.supplierOffers.supplierSku],
-        set: { ean: sql`excluded.ean`, asin: sql`excluded.asin`, title: sql`excluded.title`, price: sql`excluded.price`, stock: sql`excluded.stock`, updatedAt: new Date() },
-      });
-  }
-  await db.update(schema.supplierFeeds).set({ mapping, lastImportAt: new Date() }).where(eq(schema.supplierFeeds.id, feedId));
+  const r = await importTable(session.tenantId, feed, table, { mapping: manual, full: fd.get("full") === "on" });
   revalidatePath(`/lieferanten/${feedId}`);
-  return { ok: true, message: `${values.length} Angebote übernommen.` };
+  if (!r.ok) return { ok: false, message: r.message, headers: r.headers };
+  if (fd.get("keepa") === "on") void refreshMarket(session.tenantId).catch(() => undefined);
+  return { ok: true, message: r.message };
 }
 
 export type ScanState = { ok: boolean; message: string } | null;
@@ -154,4 +136,46 @@ export async function suggestBoxesAction(_prev: BoxState, fd: FormData): Promise
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Automatischer Abruf: Link, Zugang (verschlüsselt), Takt, netto/brutto. */
+/** Link, Zugang und Takt aus dem Formular speichern – gemeinsam für „Speichern“ und „Jetzt abrufen“. */
+async function saveSource(tenantId: string, fd: FormData) {
+  const feedId = uuid.parse(fd.get("feedId"));
+  const url = String(fd.get("sourceUrl") ?? "").trim();
+  if (url && !/^https?:\/\//i.test(url)) redirect(`/lieferanten/${feedId}?abruf=${encodeURIComponent("Bitte einen http(s)-Link eintragen.")}`);
+  const auth = String(fd.get("sourceAuth") ?? "").trim();
+  const hours = Math.min(168, Math.max(1, Math.round(parseAmount(fd.get("pullEveryHours")) ?? 24)));
+  await db
+    .update(schema.supplierFeeds)
+    .set({
+      sourceUrl: url || null,
+      // Leeres Feld = gespeicherten Zugang behalten; „-“ löscht ihn.
+      ...(auth === "-" ? { sourceAuth: null } : auth ? { sourceAuth: encryptSecret(auth) } : {}),
+      autoPull: Boolean(url) && fd.get("autoPull") === "on",
+      pullEveryHours: hours,
+      pricesGross: fd.get("pricesGross") === "on",
+    })
+    .where(and(eq(schema.supplierFeeds.id, feedId), eq(schema.supplierFeeds.tenantId, tenantId)));
+  return feedId;
+}
+
+export async function saveFeedSourceAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const feedId = await saveSource(session.tenantId, fd);
+  redirect(`/lieferanten/${feedId}?abruf=${encodeURIComponent("Gespeichert.")}`);
+}
+
+export async function pullNowAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const feedId = await saveSource(session.tenantId, fd);
+  let msg: string;
+  try {
+    msg = await pullFeed(session.tenantId, feedId);
+    void refreshMarket(session.tenantId).catch(() => undefined);
+    msg += " Keepa prüft neue und geänderte Preise im Hintergrund.";
+  } catch (e) {
+    msg = e instanceof Error ? e.message : String(e);
+  }
+  redirect(`/lieferanten/${feedId}?abruf=${encodeURIComponent(msg)}`);
 }

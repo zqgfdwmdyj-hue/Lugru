@@ -169,6 +169,20 @@
       "when": 1791490795268,
       "tag": "0023_grosshaendler_finden",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791522139442,
+      "tag": "0024_ek_verlauf",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791522253158,
+      "tag": "0025_ek_aenderung",
+      "breakpoints": true
     }
   ]
 }

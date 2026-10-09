@@ -51,6 +51,8 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/artikel", label: "Artikelstamm" },
         { href: "/listings", label: "Listings" },
         { href: "/lieferanten", label: "Lieferanten-Feeds" },
+        { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
+        { href: "/lieferanten/chancen", label: "Chancen" },
         { href: "/lieferanten/finden", label: "Großhändler finden" },
       ],
     },
@@ -116,7 +118,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
     }
     if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
     if (href === "/marken") return pathname === "/marken" || pathname.startsWith("/marken/ideen");
-    if (href === "/lieferanten") return pathname === "/lieferanten" || (pathname.startsWith("/lieferanten/") && !pathname.startsWith("/lieferanten/finden"));
+    if (href === "/lieferanten") return pathname === "/lieferanten" || (pathname.startsWith("/lieferanten/") && !/^\/lieferanten\/(finden|abfrage|chancen)(\/|$)/.test(pathname));
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
   };
 

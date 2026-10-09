@@ -21,6 +21,7 @@ import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
 import { adoptEbayAttempts } from "@/lib/stock/ebay-link";
 import { detectReplies } from "@/lib/leads/service";
+import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
 import { getSettings } from "@/lib/settings";
 import { refreshImportReminder } from "@/lib/tasks/system";
 
@@ -79,6 +80,9 @@ export async function runScheduledJobs(force = false) {
         // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
         if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));
       }
+      // Preislisten per Link (alle X Std je Feed), danach Amazon-Daten für Neues/Geändertes – im Keepa-Budget.
+      if (force || due(`${t}:feeds`, 29)) await step("Lieferanten-Preislisten", () => pullDueFeeds(t));
+      if (force || due(`${t}:keepa-feeds`, 59)) await step("Keepa-Abgleich Lieferanten", () => refreshMarket(t));
       // Nach dem Bestellabruf: neue Aufträge reservieren Ware → alle Kanäle auf den verfügbaren Bestand.
       if (force || due(`${t}:stock-sync`, 4)) await step("Bestandsabgleich Kanäle", () => syncChannelStock(t));
       if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));

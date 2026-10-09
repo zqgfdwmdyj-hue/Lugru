@@ -11,7 +11,7 @@ import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
 import { packInfo, packOf, searchTerm } from "@/lib/suppliers/scan";
 import { getSettings } from "@/lib/settings";
-import { clearFeedAction, feedCostAction } from "../actions";
+import { clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction } from "../actions";
 import { ebayToolLink } from "@/lib/ebay/tool-link";
 import { BoxSuggest, KeepaCheck, ScanForm } from "./scan-form";
 import { visibleBrands } from "@/lib/brands/access";
@@ -28,7 +28,7 @@ type Row = {
 
 const SYM: Record<string, string> = { USD: "$", GBP: "£" };
 
-export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string }> }) {
+export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string }> }) {
   const session = await requireArea("lieferanten");
   const { id } = await params;
   const sp = await searchParams;
@@ -54,7 +54,8 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
     const sale = r.amz_price ?? m?.price ?? null;
     // Großhandel: Preis gilt für den Karton – gerechnet wird je Verkaufseinheit.
     const pack = packInfo(r.title ?? "", r.url);
-    const cost = r.price !== null ? Math.round(r.price * (1 + costPct / 100) * 100) / 100 : null;
+    // Brutto-Listen: netto rechnen (USt des Artikels).
+    const cost = r.price !== null ? Math.round((feed.pricesGross ? r.price / (1 + vatRate) : r.price) * (1 + costPct / 100) * 100) / 100 : null;
     const unitCost = cost !== null ? Math.round((cost / pack.caseQty) * 100) / 100 : null;
     const profit = sale !== null && unitCost !== null
       ? profitAt(sale, { unitCost, fbaFee: r.fee ?? m?.fbaFee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? (m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate), vatRate })
@@ -85,6 +86,28 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           {brands.length > 0 && rows.length > 0 && (
             <BoxSuggest feedId={feed.id} brands={brands.map((b) => ({ id: b.id, name: b.name }))} occasions={upcomingOccasions(todayIso()).map((o) => ({ key: o.key, name: o.name }))} hasAi={Boolean(ai?.apiKey)} defaultFba={s.pricing.defaultFbaFee + 1.5} />
           )}
+          <section className="card card-pad stack" style={{ gap: 8 }} data-testid="feed-source">
+            <h2>Automatischer Abruf</h2>
+            <div className="small muted">Download-Link der Preisliste (CSV/Excel) aus dem B2B-Shop des Großhändlers oder dem Qogita-Katalog-Export. Das System holt sie im eingestellten Takt, merkt sich jeden Preis (EK-Verlauf) und prüft neue/geänderte Preise mit Keepa.</div>
+            {sp.abruf && <div className="notice notice-info small" data-testid="pull-msg">{sp.abruf}</div>}
+            {feed.lastPullError && !sp.abruf && <div className="notice notice-warn small">Letzter Abruf: {feed.lastPullError}</div>}
+            <form action={saveFeedSourceAction} className="stack" style={{ gap: 8 }}>
+              <input type="hidden" name="feedId" value={feed.id} />
+              <div className="field"><label className="label" htmlFor="src-url">Link zur Preisliste</label><input className="input" id="src-url" name="sourceUrl" type="url" defaultValue={feed.sourceUrl ?? ""} placeholder="https://…/export.csv" /></div>
+              <div className="field"><label className="label" htmlFor="src-auth">Zugang (optional)</label><input className="input" id="src-auth" name="sourceAuth" type="password" autoComplete="off" placeholder={feed.sourceAuth ? "gespeichert – leer lassen zum Behalten, „-“ löscht" : "Token, „Benutzer:Passwort“ oder „Kopfzeile: Wert“"} /></div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="autoPull" defaultChecked={feed.autoPull} /> automatisch alle</label>
+                <input className="input num" name="pullEveryHours" aria-label="Stunden" defaultValue={feed.pullEveryHours} style={{ width: 60 }} />
+                <span className="small">Std.</span>
+                <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="pricesGross" defaultChecked={feed.pricesGross} /> Preise sind brutto</label>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn" type="submit">Speichern</button>
+                <button className="btn btn-primary" type="submit" formAction={pullNowAction}>Speichern &amp; jetzt abrufen</button>
+              </div>
+            </form>
+            {feed.lastPullAt && <div className="small muted">Zuletzt abgerufen {feed.lastPullAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</div>}
+          </section>
           <form action={feedCostAction} className="card card-pad stack" style={{ gap: 8 }}>
             <input type="hidden" name="feedId" value={feed.id} />
             <h2>Kalkulation</h2>

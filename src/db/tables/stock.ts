@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, money, products, suppliers, tenantId, updatedAt, users } from "./core";
 import { CHANNELS } from "./orders";
 
@@ -105,6 +105,10 @@ export type FeedMapping = {
   costPct?: string;
   /** USt-Satz der Artikel in % (Süßigkeiten 7) – sonst der allgemeine aus den Einstellungen. */
   vatPct?: string;
+  /** Spalte Mindestabnahme (MOQ). */
+  moq?: string;
+  /** Spalte Produktlink. */
+  url?: string;
 };
 
 export type OfferMarket = {
@@ -128,6 +132,16 @@ export const supplierFeeds = pgTable("supplier_feeds", {
   supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
   mapping: jsonb("mapping").$type<FeedMapping>().notNull().default({}),
   lastImportAt: timestamp("last_import_at", { withTimezone: true }),
+  /** Preise in der Liste sind brutto (inkl. USt) – gerechnet wird netto. */
+  pricesGross: boolean("prices_gross").notNull().default(false),
+  /** Automatischer Abruf: Download-Link der Preisliste (CSV/Excel), z. B. aus dem B2B-Shop oder Qogita-Export. */
+  sourceUrl: text("source_url"),
+  /** Zugang für den Link, verschlüsselt („Bearer …“, „Basic …“ oder Kopfzeile „Name: Wert“). */
+  sourceAuth: text("source_auth"),
+  autoPull: boolean("auto_pull").notNull().default(false),
+  pullEveryHours: integer("pull_every_hours").notNull().default(24),
+  lastPullAt: timestamp("last_pull_at", { withTimezone: true }),
+  lastPullError: text("last_pull_error"),
   createdAt: createdAt(),
 });
 
@@ -153,7 +167,47 @@ export const supplierOffers = pgTable(
     pack: text("pack"),
     /** Amazon.de laut Keepa (per EAN gesucht). */
     market: jsonb("market").$type<OfferMarket>(),
+    /** Mindestabnahme laut Liste. */
+    moq: integer("moq"),
+    /** In der letzten vollständigen Liste enthalten? Verschwundene bleiben für den Verlauf, zählen aber nicht. */
+    active: boolean("active").notNull().default(true),
+    /** Wann sich der EK zuletzt geändert hat – geänderte Preise werden bei Keepa zuerst neu geprüft. */
+    priceChangedAt: timestamp("price_changed_at", { withTimezone: true }),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("offers_uq").on(t.feedId, t.supplierSku), index("offers_ean_idx").on(t.tenantId, t.ean)],
+);
+
+/** EK-Verlauf: ein Stand je Angebot und Tag (letzter Preis/Bestand des Tages). */
+export const supplierOfferHistory = pgTable(
+  "supplier_offer_history",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    offerId: uuid("offer_id")
+      .notNull()
+      .references(() => supplierOffers.id, { onDelete: "cascade" }),
+    day: date("day", { mode: "string" }).notNull(),
+    price: money("price"),
+    stock: integer("stock"),
+  },
+  (t) => [uniqueIndex("offer_hist_uq").on(t.offerId, t.day), index("offer_hist_tenant_idx").on(t.tenantId, t.day)],
+);
+
+/** VK-Verlauf: Amazon-Preis, Rang und Anbieter je ASIN und Tag (aus den Keepa-Abfragen). */
+export const marketHistory = pgTable(
+  "market_history",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    asin: text("asin").notNull(),
+    day: date("day", { mode: "string" }).notNull(),
+    price: money("price"),
+    salesRank: integer("sales_rank"),
+    monthlySold: integer("monthly_sold"),
+    offers: integer("offers"),
+  },
+  (t) => [uniqueIndex("market_hist_uq").on(t.tenantId, t.asin, t.day)],
 );

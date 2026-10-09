@@ -6,7 +6,8 @@ import { askClaude, modelFor } from "@/lib/ai/claude";
 import { parseKeepaProduct } from "@/lib/brands/market";
 import { eurRates } from "@/lib/fx/ecb";
 import { getIntegration } from "@/lib/integrations/store";
-import { keepaByCode, keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
+import { keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
+import { recordHistory, refreshMarket, shareMarket } from "./feed-service";
 import { stripHtml } from "@/lib/research/feeds";
 import { chunkText, currencyOf, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, parseCapture, parseScan, scanPromptForText, SCAN_INSTRUCTIONS, searchTerm, toEur, type ScannedItem } from "./scan";
 
@@ -124,6 +125,7 @@ export async function scan(tenantId: string, input: ScanInput): Promise<ScanResu
 
 /** Gescannte Artikel als Angebote speichern (Preis in EUR umgerechnet, Original bleibt stehen). */
 export async function saveScanned(tenantId: string, feedId: string, items: ScannedItem[], manualRates?: Record<string, number>) {
+  const started = new Date(Date.now() - 1000);
   const rates = { ...(await eurRates()), ...manualRates };
   const missing = new Set(items.filter((i) => i.price !== null && i.currency !== "EUR" && !rates[i.currency]).map((i) => i.currency));
   const values = items.map((i) => ({
@@ -149,6 +151,7 @@ export async function saveScanned(tenantId: string, feedId: string, items: Scann
         set: {
           title: sql`excluded.title`,
           ean: sql`coalesce(excluded.ean, ${O.ean})`,
+          priceChangedAt: sql`case when excluded.price is not null and ${O.price} is distinct from excluded.price then now() else ${O.priceChangedAt} end`,
           price: sql`coalesce(excluded.price, ${O.price})`,
           priceOrig: sql`excluded.price_orig`,
           currency: sql`excluded.currency`,
@@ -156,10 +159,14 @@ export async function saveScanned(tenantId: string, feedId: string, items: Scann
           imageUrl: sql`coalesce(excluded.image_url, ${O.imageUrl})`,
           pack: sql`coalesce(excluded.pack, ${O.pack})`,
           stock: sql`excluded.stock`,
+          active: true,
+          lastSeenAt: new Date(),
           updatedAt: new Date(),
         },
       });
   }
+  await recordHistory(tenantId, feedId, started);
+  await shareMarket(tenantId, feedId);
   await db.update(schema.supplierFeeds).set({ lastImportAt: new Date() }).where(and(eq(schema.supplierFeeds.id, feedId), eq(schema.supplierFeeds.tenantId, tenantId)));
   return { saved: values.length, withEan: values.filter((v) => v.ean).length, rate: rates.USD ?? null, missingRates: [...missing] };
 }
@@ -177,31 +184,10 @@ export async function checkFeedWithKeepa(tenantId: string, feedId: string, opts:
     .from(O)
     .where(and(eq(O.tenantId, tenantId), eq(O.feedId, feedId), isNotNull(O.ean), sql`(${O.market} is null or (${O.market}->>'checkedAt')::timestamptz < now() - interval '7 days')`))
     .limit(limit);
-  let found = 0;
-  let tokensLeft: number | null = null;
-  for (let n = 0; n < rows.length; n += 100) {
-    const batch = rows.slice(n, n + 100);
-    const res = await keepaByCode(key, batch.map((r) => r.ean!));
-    tokensLeft = res.tokensLeft;
-    const byCode = new Map<string, Record<string, unknown>>();
-    for (const p of res.products) {
-      for (const c of [...((p.eanList as string[] | undefined) ?? []), ...((p.upcList as string[] | undefined) ?? [])]) {
-        const e = String(c).replace(/\D/g, "");
-        byCode.set(e.length === 12 ? `0${e}` : e, p);
-      }
-    }
-    const now = new Date().toISOString();
-    for (const r of batch) {
-      const p = byCode.get(r.ean!);
-      const mp = p ? parseKeepaProduct(p) : null;
-      const cur = ((p?.stats ?? {}) as { current?: number[] }).current ?? [];
-      const market: OfferMarket = mp
-        ? { checkedAt: now, asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, offers: typeof cur[11] === "number" && cur[11] >= 0 ? cur[11] : null }
-        : { checkedAt: now, asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null };
-      if (mp) found++;
-      await db.update(O).set({ market, ...(mp ? { asin: sql`coalesce(${O.asin}, ${mp.asin})` } : {}) }).where(and(eq(O.id, r.id), eq(O.tenantId, tenantId)));
-    }
-  }
+  // Je EAN nur einmal – das Ergebnis gilt für alle Feeds mit dieser EAN, mit VK-Verlauf.
+  const r = await refreshMarket(tenantId, { eans: [...new Set(rows.map((x) => x.ean!))] });
+  const found = r.found;
+  let tokensLeft = r.tokensLeft;
   // Ohne EAN: Titelsuche (je Suche ca. 10 Tokens) – nur auf Wunsch und begrenzt.
   let byTitle = 0;
   if (opts.byTitle) {
