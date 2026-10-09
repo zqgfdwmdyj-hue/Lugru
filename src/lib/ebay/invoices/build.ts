@@ -1,4 +1,5 @@
 import { roundCents } from '../pipeline/money';
+import { negateB2b } from './b2b';
 import type { InvoiceData, InvoiceLine, InvoiceSettings, OrderForInvoice } from './types';
 
 /** Was für eine Rechnung nach §14 UStG fehlt — leer heißt: alles da. */
@@ -96,6 +97,7 @@ export function buildStornoData(original: InvoiceData, opts: { number: string; d
     totalGross: neg(original.totalGross),
     totalNet: neg(original.totalNet),
     totalVat: neg(original.totalVat),
+    ...(original.b2b ? { b2b: negateB2b(original.b2b) } : {}),
   };
 }
 

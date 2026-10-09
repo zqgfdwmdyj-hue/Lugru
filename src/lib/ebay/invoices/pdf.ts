@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { COUNTRY_NAMES, taxNote } from './b2b';
 import type { InvoiceData } from './types';
 
 /**
@@ -37,7 +38,7 @@ export function formatDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
+export function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
   const words = safe(text).split(' ');
   const lines: string[] = [];
   let line = '';
@@ -108,13 +109,24 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
   }
 
   // --- Rechnungsdaten rechts ---
-  const meta: [string, string][] = [
-    [inv.kind === 'storno' ? 'Stornonummer' : 'Rechnungsnummer', inv.number],
-    ['Rechnungsdatum', formatDate(inv.date)],
-    ['Lieferdatum', 'wie Rechnungsdatum'],
-    ['eBay-Bestellnummer', inv.orderId],
-    ['Bestelldatum', formatDate(inv.orderDate)],
-  ];
+  const b2b = inv.b2b;
+  const meta: [string, string][] = b2b
+    ? [
+        [inv.kind === 'storno' ? 'Stornonummer' : 'Rechnungsnummer', inv.number],
+        ['Rechnungsdatum', formatDate(inv.date)],
+        [b2b.serviceDateTo ? 'Leistungszeitraum' : 'Liefer-/Leistungsdatum', b2b.serviceDateTo ? `${formatDate(b2b.serviceDate)} – ${formatDate(b2b.serviceDateTo)}` : formatDate(b2b.serviceDate)],
+        ...(b2b.customerNumber ? [['Kundennummer', b2b.customerNumber] as [string, string]] : []),
+        ...(b2b.reference ? [['Ihre Referenz', b2b.reference] as [string, string]] : []),
+        ...(b2b.buyerVatId ? [['USt-IdNr. Kunde', b2b.buyerVatId] as [string, string]] : []),
+        ...(inv.kind === 'invoice' ? [['Fällig am', formatDate(b2b.dueDate)] as [string, string]] : []),
+      ]
+    : [
+        [inv.kind === 'storno' ? 'Stornonummer' : 'Rechnungsnummer', inv.number],
+        ['Rechnungsdatum', formatDate(inv.date)],
+        ['Lieferdatum', 'wie Rechnungsdatum'],
+        ['eBay-Bestellnummer', inv.orderId],
+        ['Bestelldatum', formatDate(inv.orderDate)],
+      ];
   if (inv.buyerUsername) meta.push(['eBay-Mitglied', inv.buyerUsername]);
   let my = A4.h - 166;
   for (const [k, v] of meta) {
@@ -133,15 +145,16 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
   }
   y -= 10;
 
-  // --- Positionen ---
-  const col = { pos: M.left, qty: M.left + 30, desc: M.left + 70, unit: right - 80, total: right };
-  const descW = col.unit - 60 - col.desc;
+  // --- Positionen (B2B: netto, mit USt-Spalte) ---
+  const col = { pos: M.left, qty: M.left + 30, desc: M.left + (b2b ? 78 : 70), vat: right - 150, unit: right - 80, total: right };
+  const descW = (b2b ? col.vat - 36 : col.unit - 60) - col.desc;
   const header = () => {
     text('Pos.', col.pos, y, { size: 8.5, f: bold, color: MUTED });
     text('Menge', col.qty, y, { size: 8.5, f: bold, color: MUTED });
     text('Bezeichnung', col.desc, y, { size: 8.5, f: bold, color: MUTED });
-    text('Einzelpreis', col.unit, y, { size: 8.5, f: bold, color: MUTED, alignRight: true });
-    text('Gesamt', col.total, y, { size: 8.5, f: bold, color: MUTED, alignRight: true });
+    if (b2b) text('USt', col.vat, y, { size: 8.5, f: bold, color: MUTED, alignRight: true });
+    text(b2b ? 'Preis netto' : 'Einzelpreis', col.unit, y, { size: 8.5, f: bold, color: MUTED, alignRight: true });
+    text(b2b ? 'Gesamt netto' : 'Gesamt', col.total, y, { size: 8.5, f: bold, color: MUTED, alignRight: true });
     y -= 7;
     page.drawLine({ start: { x: M.left, y }, end: { x: right, y }, thickness: 0.8, color: LINE });
     y -= 14;
@@ -154,7 +167,22 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
   };
   header();
 
-  inv.lines.forEach((l, i) => {
+  const qtyText = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 3 });
+  if (b2b) {
+    b2b.lines.forEach((l, i) => {
+      const descLines = wrap(l.description, font, 9.5, descW);
+      const h = descLines.length * 12 + 6;
+      if (y - h < M.bottom + 90) newPage();
+      text(String(i + 1), col.pos, y, { size: 9.5 });
+      text(`${qtyText(l.quantity)} ${l.unit}`, col.qty, y, { size: 9.5 });
+      descLines.forEach((d, j) => text(d, col.desc, y - j * 12, { size: 9.5 }));
+      text(`${l.vatRate.toLocaleString('de-DE')} %`, col.vat, y, { size: 9.5, alignRight: true });
+      text(formatEuro(l.unitNet, inv.currency), col.unit, y, { size: 9.5, alignRight: true });
+      text(formatEuro(l.totalNet, inv.currency), col.total, y, { size: 9.5, alignRight: true });
+      y -= h;
+    });
+  }
+  if (!b2b) inv.lines.forEach((l, i) => {
     const descLines = wrap(l.description, font, 9.5, descW);
     const h = descLines.length * 12 + 6;
     if (y - h < M.bottom + 90) newPage();
@@ -175,7 +203,17 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
     text(value, right, y, { size: strong ? 11 : 9.5, f: strong ? bold : font, alignRight: true });
     y -= strong ? 18 : 14;
   };
-  if (inv.kleinunternehmer) {
+  if (b2b) {
+    sum('Nettobetrag', formatEuro(inv.totalNet, inv.currency));
+    if (!inv.kleinunternehmer) {
+      for (const v of b2b.vat) {
+        sum(v.rate > 0 ? `zzgl. USt ${v.rate.toLocaleString('de-DE')} % auf ${formatEuro(v.net, inv.currency)}` : 'Umsatzsteuer (steuerfrei)', formatEuro(v.vat, inv.currency));
+      }
+    }
+    page.drawLine({ start: { x: right - 190, y: y + 8 }, end: { x: right, y: y + 8 }, thickness: 0.8, color: LINE });
+    y -= 4;
+    sum('Rechnungsbetrag', formatEuro(inv.totalGross, inv.currency), true);
+  } else if (inv.kleinunternehmer) {
     sum('Gesamtbetrag', formatEuro(inv.totalGross, inv.currency), true);
   } else {
     sum('Nettobetrag', formatEuro(inv.totalNet, inv.currency));
@@ -188,9 +226,20 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
 
   // --- Hinweise ---
   const notes: string[] = [];
-  if (inv.kleinunternehmer) notes.push('Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.');
-  if (inv.kind === 'invoice') {
-    notes.push(inv.paidAt ? `Der Betrag wurde am ${formatDate(inv.paidAt)} über eBay bezahlt.` : 'Die Zahlung erfolgt über eBay.');
+  if (b2b) {
+    const tn = taxNote(b2b.taxCase, inv.kleinunternehmer);
+    if (tn) notes.push(tn);
+    if (b2b.taxCase === 'eu_supply' || b2b.taxCase === 'reverse_charge') notes.push(`USt-IdNr. Leistender: ${inv.seller.vatId ?? '–'} · USt-IdNr. Empfänger: ${b2b.buyerVatId ?? '–'} (${COUNTRY_NAMES[b2b.buyerCountry] ?? b2b.buyerCountry})`);
+    if (inv.kind === 'invoice') {
+      notes.push(b2b.paymentDays === 0 ? 'Zahlbar sofort ohne Abzug.' : `Zahlbar ohne Abzug bis ${formatDate(b2b.dueDate)} (${b2b.paymentDays} Tage).`);
+      if (b2b.bank?.iban) notes.push(`Bankverbindung: ${[b2b.bank.bankName, `IBAN ${b2b.bank.iban.replace(/(.{4})/g, '$1 ').trim()}`, b2b.bank.bic ? `BIC ${b2b.bank.bic}` : ''].filter(Boolean).join(' · ')} – Verwendungszweck: ${inv.number}`);
+    }
+    if (b2b.note) notes.push(...b2b.note.split(/\r?\n/));
+  } else {
+    if (inv.kleinunternehmer) notes.push('Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.');
+    if (inv.kind === 'invoice') {
+      notes.push(inv.paidAt ? `Der Betrag wurde am ${formatDate(inv.paidAt)} über eBay bezahlt.` : 'Die Zahlung erfolgt über eBay.');
+    }
   }
   for (const n of notes) {
     for (const l of wrap(n, font, 9.5, contentW)) {

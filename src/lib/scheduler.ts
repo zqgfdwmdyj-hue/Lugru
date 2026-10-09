@@ -20,6 +20,7 @@ import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
 import { adoptEbayAttempts, ensureEbayStock } from "@/lib/stock/ebay-link";
+import { sendPendingToStotax } from "@/lib/invoices/stotax";
 import { detectReplies, loadMissingBrands } from "@/lib/leads/service";
 import { autoFollowUps } from "@/lib/board/service";
 import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
@@ -94,6 +95,8 @@ export async function runScheduledJobs(force = false) {
       if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));
       if (force || due(`${t}:research`, 59)) await step("Themen-Recherche", () => runResearchIfDue(t));
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step("Rechnungen", () => syncDrive(t, 100));
+      // Ausgangsrechnungen (eBay + B2B) an Stotax Select – neue sofort, Fehlgeschlagene nach einer Stunde erneut.
+      if (await has("stotax")) if (force || due(`${t}:stotax`, 14)) await step("Rechnungen an Stotax", () => sendPendingToStotax(t));
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);
         await step("Ansprüche", () => syncClaims(t));

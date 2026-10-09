@@ -94,6 +94,10 @@ export const ebayInvoices = pgTable(
     emailTo: text("email_to"),
     emailError: text("email_error"),
     importedAt: timestamp("imported_at", { withTimezone: true }),
+    /** An Stotax Select (Mail2Select) übertragen – Beleg liegt beim Steuerberater. */
+    stotaxSentAt: timestamp("stotax_sent_at", { withTimezone: true }),
+    stotaxTriedAt: timestamp("stotax_tried_at", { withTimezone: true }),
+    stotaxError: text("stotax_error"),
   },
   (t) => [
     uniqueIndex("ebay_invoices_number_uq").on(t.tenantId, t.number),

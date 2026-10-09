@@ -180,6 +180,28 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["keepa.com → Anmelden → API (Datenzugriff) buchen → „API Key“ kopieren und hier eintragen, „Verbindung testen“ zeigt die verfügbaren Tokens."],
   },
   {
+    provider: "stotax",
+    name: "Stotax Select (Steuerberater)",
+    purpose: "Jede Rechnung aus dem System – eBay und B2B, auch Stornos – geht automatisch als PDF in deine Stotax-Belegablage (über Mail2Select). Rechnungen schreibst du unter WaWi → Ausgangsrechnungen.",
+    fields: [
+      { key: "address", label: "Mail2Select-Adresse", placeholder: "deinefirma@mail2select.de", help: "Deine persönliche Adresse aus Stotax Select (endet auf @mail2select.de)." },
+      {
+        key: "auto",
+        label: "Neue Rechnungen",
+        options: [
+          { value: "ja", label: "Automatisch senden – jede neue Rechnung sofort" },
+          { value: "nein", label: "Nur per Knopf unter Ausgangsrechnungen" },
+        ],
+      },
+    ],
+    setup: [
+      "In Stotax Select (stotax-select.de) den E-Mail-Service „Mail2Select“ einmalig aktivieren und eine Adresse festlegen – sie endet auf @mail2select.de.",
+      "Die Adresse hier eintragen und speichern. Ab dann geht jede neue Rechnung als PDF dorthin; ältere unter WaWi → Ausgangsrechnungen „Nachsenden“.",
+      "Gesendet wird über dein Absender-Postfach (Posteingang). Nimmt Stotax nur bestimmte Absender an, diese Adresse dort freigeben.",
+      "„Verbindung testen“ prüft Adresse und Postfach – ohne einen Beleg in Stotax anzulegen.",
+    ],
+  },
+  {
     provider: "discord",
     name: "Discord (Meldungen) – optional",
     purpose: "Neue Amazon-ToDos mit hoher Priorität sofort in einen Discord-Kanal melden.",

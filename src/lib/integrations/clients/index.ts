@@ -8,3 +8,4 @@ import "./marketplaces-other";
 import "./calendar";
 import "./discord";
 import "./keepa";
+import "./stotax";

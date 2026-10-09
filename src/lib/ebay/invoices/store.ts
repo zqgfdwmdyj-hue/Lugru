@@ -1,6 +1,6 @@
 import type { Db, InvoiceRow } from '../db/db';
 import { getSetting, setSetting } from '../db/db';
-import { formatInvoiceNumber } from './build';
+import { formatNumber, yearlyNumbers } from './numbering';
 import type { InvoiceData, InvoiceRecord, InvoiceSettings } from './types';
 
 /*
@@ -82,10 +82,14 @@ export async function invoicedOrderIds(db: Db): Promise<Set<string>> {
   return new Set(rows.filter((r) => r.kind === 'invoice' && r.cancelled_by_id === null).map((r) => r.order_id));
 }
 
-/** Nächste freie Nummer im Jahr — lückenlos, beginnend bei 1 oder der eingestellten Startnummer. */
+/**
+ * Nächste freie Nummer — lückenlos, beginnend bei 1 oder der eingestellten Startnummer. Jährlich
+ * neu (Standard) oder über die Jahre durchlaufend, wenn das übernommene Format kein Jahr enthält.
+ */
 export async function nextSeq(db: Db, year: number, s: InvoiceSettings): Promise<number> {
-  const m = await db.maxInvoiceSeq(year);
-  const start = s.startNumberYear === year && s.startNumber && s.startNumber > 0 ? s.startNumber : 1;
+  const yearly = yearlyNumbers(s);
+  const m = await db.maxInvoiceSeq(yearly ? year : null);
+  const start = s.startNumber && s.startNumber > 0 && (!yearly || s.startNumberYear === year) ? s.startNumber : 1;
   return Math.max(m ?? 0, start - 1) + 1;
 }
 
@@ -109,7 +113,7 @@ export async function insertInvoice(
   const year = opts.date.getFullYear();
   const id = await db.transaction(async (tx) => {
     const seq = await nextSeq(tx, year, opts.settings);
-    const number = formatInvoiceNumber(opts.settings.prefix ?? 'RE-', year, seq);
+    const number = formatNumber(opts.settings, year, seq);
     const data = opts.build(number);
     const newId = await tx.insertInvoice({
       env: opts.env,

@@ -4,11 +4,11 @@ import { api } from '../../api';
 interface Form {
   companyName?: string; ownerName?: string; street?: string; postalCode?: string; city?: string; country?: string;
   email?: string; phone?: string; taxNumber?: string; vatId?: string; kleinunternehmer?: boolean; vatRate?: number;
-  prefix?: string; startNumber?: number; footerText?: string; autoCreate?: boolean; autoSend?: boolean; startDate?: string;
+  prefix?: string; numberFormat?: string; startNumber?: number; footerText?: string; autoCreate?: boolean; autoSend?: boolean; startDate?: string;
   emailSubject?: string; emailText?: string; senderMailboxId?: string;
 }
 interface Sender { id: string; address: string; isDefault: boolean }
-interface Info { settings: Form; missing: string[]; vatRate: number; defaults: { emailSubject: string; emailText: string }; senders: Sender[] }
+interface Info { settings: Form; missing: string[]; vatRate: number; defaults: { emailSubject: string; emailText: string }; senders: Sender[]; nextNumber?: string }
 
 /** Absenderdaten, Nummernkreis, Automatik und E-Mail-Versand (über die Postfächer des Hauptsystems). */
 export function InvoicesTab() {
@@ -100,6 +100,12 @@ export function InvoicesTab() {
       </label>
 
       <h3>Rechnungsnummern</h3>
+      {f.numberFormat ? (
+        <p className="muted">
+          Format aus dem bisherigen Programm übernommen: <strong>{f.numberFormat}</strong> – nächste Nummer <strong>{info.nextNumber}</strong>.
+          Gilt auch für B2B-Rechnungen; ändern unter WaWi → Ausgangsrechnungen.
+        </p>
+      ) : (<>
       <div className="row">
         {text('prefix', 'Präfix', 'RE-')}
         <label>
@@ -116,6 +122,7 @@ export function InvoicesTab() {
         Beispiel: {(f.prefix ?? 'RE-')}{year}-{String(f.startNumber ?? 1).padStart(4, '0')}. Die Nummern laufen lückenlos weiter und
         beginnen jedes Jahr neu. Die erste Nummer nur ändern, wenn du bisher mit einem anderen Programm Rechnungen geschrieben hast.
       </p>
+      </>)}
 
       <h3>Automatik</h3>
       <label className="check">

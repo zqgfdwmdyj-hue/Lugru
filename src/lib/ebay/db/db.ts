@@ -77,7 +77,8 @@ export interface Db {
 
   listInvoices(): Promise<InvoiceRow[]>;
   getInvoice(id: number): Promise<InvoiceRow | null>;
-  maxInvoiceSeq(year: number): Promise<number | null>;
+  /** Höchste laufende Nummer im Jahr; `null` = über alle Jahre (durchlaufende Nummern). */
+  maxInvoiceSeq(year: number | null): Promise<number | null>;
   insertInvoice(row: Omit<InvoiceRow, 'id'>): Promise<number>;
   updateInvoice(id: number, columns: Partial<Pick<InvoiceRow, 'cancelled_by_id' | 'emailed_at' | 'email_to' | 'email_error'>>): Promise<void>;
 

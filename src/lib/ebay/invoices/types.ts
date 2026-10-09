@@ -19,6 +19,14 @@ export interface InvoiceSettings {
   vatRate?: number;
   /** Präfix der Rechnungsnummer, z.B. „RE-" → RE-2026-0001. */
   prefix?: string;
+  /** Übernommenes Format (statt Präfix), z.B. „{JJJJ}-{NR:4}“ – siehe numbering.ts. */
+  numberFormat?: string;
+  /** Für B2B-Rechnungen: Bankverbindung (erscheint auf der Rechnung und in der E-Rechnung). */
+  iban?: string;
+  bic?: string;
+  bankName?: string;
+  /** Zahlungsziel in Tagen für B2B-Rechnungen (Vorgabe 14). */
+  paymentDays?: number;
   /** Erste Nummer im Jahr `startNumberYear` — für den Umstieg von einem anderen Programm. */
   startNumber?: number;
   startNumberYear?: number;
@@ -101,6 +109,44 @@ export interface InvoiceData {
   totalGross: number;
   totalNet: number;
   totalVat: number;
+  /** Nur bei B2B-Rechnungen (aus der WaWi geschrieben). */
+  b2b?: B2bDetails;
+}
+
+/** Steuerfall einer B2B-Rechnung. */
+export type TaxCase = 'domestic' | 'eu_supply' | 'reverse_charge' | 'export';
+
+export interface B2bLine {
+  description: string;
+  quantity: number;
+  /** Einheit, z.B. „Stk“. */
+  unit: string;
+  unitNet: number;
+  vatRate: number;
+  totalNet: number;
+}
+
+/** Zusatzangaben einer frei geschriebenen Rechnung an Firmenkunden (Preise netto). */
+export interface B2bDetails {
+  taxCase: TaxCase;
+  /** Liefer-/Leistungsdatum (YYYY-MM-DD), ggf. Zeitraum bis `serviceDateTo`. */
+  serviceDate: string;
+  serviceDateTo?: string;
+  dueDate: string;
+  paymentDays: number;
+  reference?: string;
+  customerNumber?: string;
+  buyerVatId?: string;
+  /** ISO-Ländercode des Kunden. */
+  buyerCountry: string;
+  /** Anschrift einzeln (für die E-Rechnung). */
+  buyerAddress?: { street: string; zip: string; city: string; contact?: string };
+  buyerEmail?: string;
+  note?: string;
+  lines: B2bLine[];
+  /** Umsatzsteuer je Satz – Grundlage aller Summen. */
+  vat: { rate: number; net: number; vat: number }[];
+  bank?: { iban?: string; bic?: string; bankName?: string };
 }
 
 export interface InvoiceRecord {

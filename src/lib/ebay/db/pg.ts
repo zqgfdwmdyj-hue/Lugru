@@ -143,7 +143,7 @@ export function ebayDb(tenantId: string, conn: Conn = rootDb, inTx = false): Db 
       return r ? fromInvoice(r) : null;
     },
     async maxInvoiceSeq(year) {
-      const [r] = await conn.select({ m: max(I.seq) }).from(I).where(and(eq(I.tenantId, tenantId), eq(I.year, year)));
+      const [r] = await conn.select({ m: max(I.seq) }).from(I).where(and(eq(I.tenantId, tenantId), ...(year === null ? [] : [eq(I.year, year)])));
       return r?.m ?? null;
     },
     async insertInvoice(row) {

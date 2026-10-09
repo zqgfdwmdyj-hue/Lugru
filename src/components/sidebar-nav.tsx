@@ -88,7 +88,8 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
     {
       head: "Einkauf & Buchhaltung",
       items: [
-        { href: "/rechnungen", label: "Rechnungen", badge: counts.invoices },
+        { href: "/rechnungen", label: "Eingangsrechnungen", badge: counts.invoices },
+        { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
         { href: "/export", label: "COG-Export" },
         { href: "/repricer", label: "Repricer (BQool)" },
       ],
@@ -118,6 +119,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
       return pathname === p && new URLSearchParams(q).get("ansicht") === search.get("ansicht");
     }
     if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
+    if (href === "/rechnungen") return pathname === "/rechnungen" || (pathname.startsWith("/rechnungen/") && !pathname.startsWith("/rechnungen/ausgang"));
     if (href === "/marken") return pathname === "/marken" || pathname.startsWith("/marken/ideen");
     if (href === "/lieferanten") return pathname === "/lieferanten" || (pathname.startsWith("/lieferanten/") && !/^\/lieferanten\/(finden|abfrage|chancen)(\/|$)/.test(pathname));
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");

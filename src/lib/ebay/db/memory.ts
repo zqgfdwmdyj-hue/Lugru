@@ -52,7 +52,7 @@ export function openMemoryDb(): Db {
       return row ? clone(row) : null;
     },
     async maxInvoiceSeq(year) {
-      const seqs = [...invoices.values()].filter((i) => i.year === year).map((i) => i.seq);
+      const seqs = [...invoices.values()].filter((i) => year === null || i.year === year).map((i) => i.seq);
       return seqs.length ? Math.max(...seqs) : null;
     },
     async insertInvoice(row) {

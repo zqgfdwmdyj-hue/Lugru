@@ -7,7 +7,8 @@ import { renderInvoicePdf } from '../invoices/pdf';
 import {
   cancelInvoice, createInvoice, openOrders, pdfFilename, sendInvoice, syncInvoices, type InvoiceDeps,
 } from '../invoices/service';
-import { getInvoice, getInvoiceSettings, getSyncStatus, listInvoices, saveInvoiceSettings } from '../invoices/store';
+import { getInvoice, getInvoiceSettings, getSyncStatus, listInvoices, nextSeq, saveInvoiceSettings } from '../invoices/store';
+import { formatNumber } from '../invoices/numbering';
 import type { InvoiceRecord, InvoiceSettings } from '../invoices/types';
 import { legacyDecision, requireLegacyDecision, setLegacyDecision } from '../invoices/legacy';
 
@@ -55,6 +56,8 @@ export function mergeInvoiceSettings(current: InvoiceSettings, body: Record<stri
   if ('prefix' in body && next.prefix !== undefined && !/^[\w-]{0,12}$/.test(next.prefix)) {
     throw new Error('Das Präfix darf nur Buchstaben, Ziffern, - und _ enthalten (höchstens 12 Zeichen).');
   }
+  // Präfix bewusst geändert → eigenes Schema statt des übernommenen Formats.
+  if ('prefix' in body && (next.prefix ?? 'RE-') !== (current.prefix ?? 'RE-')) delete next.numberFormat;
   if ('kleinunternehmer' in body) next.kleinunternehmer = Boolean(body.kleinunternehmer);
   if ('autoSend' in body) next.autoSend = Boolean(body.autoSend);
   if ('autoCreate' in body) {
@@ -70,8 +73,11 @@ export function mergeInvoiceSettings(current: InvoiceSettings, body: Record<stri
   if ('startNumber' in body) {
     const v = body.startNumber === '' || body.startNumber == null ? undefined : Number(body.startNumber);
     if (v !== undefined && !(Number.isInteger(v) && v >= 1)) throw new Error('Die Startnummer muss eine ganze Zahl ab 1 sein.');
-    next.startNumber = v;
-    next.startNumberYear = v === undefined ? undefined : now.getFullYear();
+    // Nur bei echter Änderung neu datieren – sonst würde jedes Speichern die Startnummer ins neue Jahr ziehen.
+    if (v !== current.startNumber) {
+      next.startNumber = v;
+      next.startNumberYear = v === undefined ? undefined : now.getFullYear();
+    }
   }
   if ('senderMailboxId' in body) next.senderMailboxId = String(body.senderMailboxId ?? '').trim() || undefined;
   delete next.smtp;
@@ -94,6 +100,7 @@ export function invoiceRouter(db: Db, deps: InvoiceDeps = baseInvoiceDeps(db)): 
       vatRate: effectiveVatRate({ ...s, kleinunternehmer: false }, settings.vatPercentage),
       lastSync: await getSyncStatus(db),
       defaults: { emailSubject: DEFAULT_EMAIL_SUBJECT, emailText: DEFAULT_EMAIL_TEXT },
+      nextNumber: formatNumber(s, new Date().getFullYear(), await nextSeq(db, new Date().getFullYear(), s)),
     });
   }));
 
