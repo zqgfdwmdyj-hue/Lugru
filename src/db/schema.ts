@@ -16,3 +16,4 @@ export * from "./tables/brands";
 export * from "./tables/articles";
 export * from "./tables/leads";
 export * from "./tables/customers";
+export * from "./tables/exports";

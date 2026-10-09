@@ -11,5 +11,5 @@ registerTester("stotax", async (v, tenantId) => {
   const { boxes, defaultId } = await senderMailboxes(tenantId);
   const box = boxes.find((b) => b.id === defaultId);
   if (!box) throw new Error("Kein Absender-Postfach verbunden – bitte unter Posteingang ein Postfach verbinden.");
-  return `Bereit: Rechnungen gehen als PDF an ${address} (Absender ${box.address}${v.auto === "nein" ? ", nur per Knopf" : ", automatisch"}).`;
+  return `Bereit: Rechnungen gehen als PDF an ${address} (Absender ${box.address}${v.auto === "nein" ? ", nur per Knopf" : ", automatisch"}${v.scope === "b2b" ? ", nur B2B" : ""}).`;
 });

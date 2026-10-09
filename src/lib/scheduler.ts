@@ -21,6 +21,7 @@ import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
 import { adoptEbayAttempts, ensureEbayStock } from "@/lib/stock/ebay-link";
 import { sendPendingToStotax } from "@/lib/invoices/stotax";
+import { cogReminder } from "@/lib/exports/cog";
 import { detectReplies, loadMissingBrands } from "@/lib/leads/service";
 import { autoFollowUps } from "@/lib/board/service";
 import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
@@ -95,6 +96,8 @@ export async function runScheduledJobs(force = false) {
       if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));
       if (force || due(`${t}:research`, 59)) await step("Themen-Recherche", () => runResearchIfDue(t));
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step("Rechnungen", () => syncDrive(t, 100));
+      // EK-Liste für AccountOne (tax.fish braucht die EKs für PAN-EU-Verbringungen): Erinnerung bei Neuem, höchstens alle 4 Wochen.
+      if (force || due(`${t}:cog-reminder`, 720)) await step("EK-Liste AccountOne", () => cogReminder(t));
       // Ausgangsrechnungen (eBay + B2B) an Stotax Select – neue sofort, Fehlgeschlagene nach einer Stunde erneut.
       if (await has("stotax")) if (force || due(`${t}:stotax`, 14)) await step("Rechnungen an Stotax", () => sendPendingToStotax(t));
       if (force || due(`${t}:tasks`, 59)) {

@@ -193,6 +193,15 @@ export const INTEGRATIONS: IntegrationDef[] = [
           { value: "nein", label: "Nur per Knopf unter Ausgangsrechnungen" },
         ],
       },
+      {
+        key: "scope",
+        label: "Welche Rechnungen",
+        help: "Bucht dein Steuerberater die eBay-Umsätze schon über AccountOne (eBay-Schnittstelle), nur B2B senden – sonst landet eBay doppelt.",
+        options: [
+          { value: "alle", label: "Alle Rechnungen – eBay und B2B" },
+          { value: "b2b", label: "Nur B2B-Rechnungen – eBay bucht AccountOne" },
+        ],
+      },
     ],
     setup: [
       "In Stotax Select (stotax-select.de) den E-Mail-Service „Mail2Select“ einmalig aktivieren und eine Adresse festlegen – sie endet auf @mail2select.de.",

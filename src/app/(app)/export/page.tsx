@@ -10,7 +10,7 @@ export default async function ExportPage() {
       <div className="page-head">
         <div>
           <div className="crumb">Buchhaltung</div>
-          <h1>COG-Export für AccountOne</h1>
+          <h1>EK-Liste für AccountOne</h1>
         </div>
       </div>
       <div className="row">
@@ -19,6 +19,17 @@ export default async function ExportPage() {
             Gleiches Format wie der AccountOne-COG-Export aus Arbitrage One, aber vollständig: Retouren bekommen den EK ihrer
             Ursprungs-Charge statt 0,01 € bzw. statt zu fehlen, und je SKU gilt genau ein EK.
           </p>
+          <p className="small muted" style={{ margin: 0, maxWidth: 640 }}>
+            Wofür: AccountOne braucht den Einkaufspreis netto je SKU – tax.fish bewertet damit die <strong>PAN-EU-Verbringungen</strong>
+            (Pro-forma-Rechnungen für Ware in Amazon-Lagern im EU-Ausland). Fehlt der EK, stimmt die Meldung nicht. Hochladen in AccountOne
+            unter Benutzer → Artikelstammdaten → Einkaufspreis („EK Netto Liste hochladen“, Jahr eintragen). Sind seit dem letzten Download
+            neue EKs dazugekommen, erinnert eine Aufgabe höchstens alle 4 Wochen daran.
+          </p>
+          <div className={`notice ${s.changedSinceExport ? "notice-warn" : "notice-ok"} small`} data-testid="cog-status">
+            {s.lastExportAt
+              ? `Zuletzt heruntergeladen am ${s.lastExportAt.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}${s.changedSinceExport ? ` – seitdem ${s.changedSinceExport} neue/geänderte SKUs mit EK, bitte neu hochladen.` : " – seitdem nichts Neues."}`
+              : `Noch nie heruntergeladen – ${s.changedSinceExport} SKUs mit EK bereit.`}
+          </div>
           <form action="/export/accountone" method="get" className="stack" style={{ gap: 12, maxWidth: 460 }}>
             <div className="field">
               <label className="label" htmlFor="account">AccountOne-Konto-ID (source_account_id, optional)</label>

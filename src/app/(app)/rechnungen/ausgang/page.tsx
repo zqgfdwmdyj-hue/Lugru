@@ -5,7 +5,7 @@ import { missingSellerData } from "@/lib/ebay/invoices/build";
 import { formatNumber } from "@/lib/ebay/invoices/numbering";
 import { getInvoiceSettings, nextSeq } from "@/lib/ebay/invoices/store";
 import { listOutgoing } from "@/lib/invoices/outgoing";
-import { stotaxBacklog, stotaxConfig } from "@/lib/invoices/stotax";
+import { inStotaxScope, stotaxBacklog, stotaxConfig } from "@/lib/invoices/stotax";
 import { formatEuro } from "@/lib/numbers";
 import { bankAction, cancelAction, mailAction, numberingAction, stotaxPendingAction, stotaxSendAction } from "./actions";
 
@@ -18,7 +18,8 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
   const edb = ebayDb(t);
   const s = await getInvoiceSettings(edb);
   const year = new Date().getFullYear();
-  const [rows, cfg, backlog, seq] = await Promise.all([listOutgoing(t, { q: sp.q }), stotaxConfig(t), stotaxBacklog(t), nextSeq(edb, year, s)]);
+  const [rows, cfg, seq] = await Promise.all([listOutgoing(t, { q: sp.q }), stotaxConfig(t), nextSeq(edb, year, s)]);
+  const backlog = await stotaxBacklog(t, cfg);
   const missing = missingSellerData(s);
   const pendingSince = cfg ? backlog.filter((b) => new Date(b.createdAt) >= cfg.since).length : 0;
   const older = cfg ? backlog.length - pendingSince : 0;
@@ -49,8 +50,11 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
           ) : (
             <>
               <div className="small">
-                An <strong>{cfg.address}</strong> · {cfg.auto ? "neue Rechnungen automatisch" : "nur per Knopf"} · eingerichtet am {fmtDate(cfg.since)}
+                An <strong>{cfg.address}</strong> · {cfg.auto ? "neue Rechnungen automatisch" : "nur per Knopf"} · {cfg.scope === "b2b" ? "nur B2B (eBay bucht AccountOne)" : "eBay und B2B"} · eingerichtet am {fmtDate(cfg.since)}
               </div>
+              {cfg.scope === "alle" && (
+                <div className="small muted">Bucht dein Steuerberater die eBay-Umsätze schon über AccountOne? Dann unter <Link href="/anbindungen?p=stotax#stotax">Anbindungen</Link> auf „Nur B2B“ stellen, damit eBay nicht doppelt ankommt.</div>
+              )}
               <div className="small" data-testid="stotax-backlog">
                 {pendingSince ? <span className="tag tag-warn">{pendingSince} noch nicht übertragen</span> : <span className="tag tag-ok">alles übertragen</span>}
                 {older > 0 && <span className="muted"> · {older} ältere (vor dem Einrichten) nicht übertragen</span>}
@@ -115,6 +119,8 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
                 <td className="small">
                   {r.stotaxSentAt ? (
                     <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE")}`}>übertragen</span>
+                  ) : cfg && !inStotaxScope(cfg, r.source) ? (
+                    <span className="muted" title="eBay-Umsätze bucht AccountOne – nicht an Stotax">über AccountOne</span>
                   ) : cfg ? (
                     <form action={stotaxSendAction} style={{ display: "inline" }}>
                       <input type="hidden" name="id" value={r.id} />

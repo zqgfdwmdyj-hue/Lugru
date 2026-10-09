@@ -211,6 +211,13 @@
       "when": 1791536070949,
       "tag": "0029_rechnungen_stotax",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791537856218,
+      "tag": "0030_ek_liste_accountone",
+      "breakpoints": true
     }
   ]
 }
