@@ -2,10 +2,12 @@
 
 import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { MAIL_CATEGORIES } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
+import { rememberLeadSender } from "@/lib/leads/service";
 import { ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
 import { sendMail, setDefaultSender } from "@/lib/mail/accounts";
 
@@ -82,6 +84,20 @@ export async function setDefaultSenderAction(fd: FormData) {
   if (!box) return;
   await setDefaultSender(session.tenantId, box.id);
   revalidatePath("/posteingang");
+}
+
+/** Absendername und Signatur eines Postfachs speichern. */
+export async function saveMailboxProfileAction(fd: FormData) {
+  const session = await requireArea("posteingang");
+  const id = uuid.parse(fd.get("id"));
+  const [box] = await db.select({ id: schema.mailboxes.id }).from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
+  if (!box) return;
+  const fromName = String(fd.get("fromName") ?? "").replace(/[\r\n<>"]+/g, " ").trim().slice(0, 80) || null;
+  const signature = String(fd.get("signature") ?? "").replace(/\r\n/g, "\n").trim().slice(0, 2000) || null;
+  await db.update(schema.mailboxes).set({ fromName, signature, updatedAt: new Date() }).where(eq(schema.mailboxes.id, box.id));
+  if (fd.get("leadDefault") === "on") await rememberLeadSender(session.tenantId, box.id);
+  revalidatePath("/posteingang");
+  redirect(`/posteingang/postfaecher/${box.id}?meldung=${encodeURIComponent("Gespeichert.")}`);
 }
 
 export async function sendTestMail(_prev: InboxState, fd: FormData): Promise<InboxState> {

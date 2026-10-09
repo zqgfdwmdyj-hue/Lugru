@@ -54,7 +54,8 @@ export function needsFollowUp(l: { status: string; mailedAt: Date | null; replie
 }
 
 /** Kurze Nachfass-Mail ohne KI – Bezug auf die erste Anfrage, mit Zitat. */
-export function followUpMail(l: { mailSubject: string | null; mailBody: string | null; mailedAt: Date | null; mailLanguage: string | null }): { subject: string; body: string } {
+/** Nachfass-Mail: kurze Erinnerung, dann die Signatur des Absender-Postfachs, darunter die erste Anfrage als Zitat. */
+export function followUpMail(l: { mailSubject: string | null; mailBody: string | null; mailedAt: Date | null; mailLanguage: string | null }, signature?: string | null): { subject: string; body: string } {
   const en = l.mailLanguage === "en";
   const date = l.mailedAt ? l.mailedAt.toLocaleDateString(en ? "en-GB" : "de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" }) : "";
   const subject = `${/^(re|aw):/i.test(l.mailSubject ?? "") ? "" : en ? "Re: " : "AW: "}${l.mailSubject ?? (en ? "Our inquiry" : "Unsere Anfrage")}`;
@@ -62,7 +63,7 @@ export function followUpMail(l: { mailSubject: string | null; mailBody: string |
     ? `Hello,\n\nI wanted to briefly follow up on my inquiry from ${date} below. Could you send us your price list and trade conditions (incl. minimum order quantity)?\n\nIf you are not interested, a short reply is enough and we will not contact you again.`
     : `Guten Tag,\n\nich wollte kurz an meine Anfrage vom ${date} (unten) erinnern. Könnten Sie uns Ihre Preisliste und Händlerkonditionen (inkl. Mindestbestellmenge) senden?\n\nFalls kein Interesse besteht, genügt eine kurze Antwort – dann melden wir uns nicht erneut.`;
   const quoted = (l.mailBody ?? "").split("\n").map((x) => `> ${x}`).join("\n");
-  return { subject, body: `${intro}\n\n${quoted}` };
+  return { subject, body: `${intro}${signature ? `\n\n${signature}` : ""}\n\n${quoted}` };
 }
 
 export type TaskColumnKey = "offen" | "in_arbeit" | "warten" | "erledigt";

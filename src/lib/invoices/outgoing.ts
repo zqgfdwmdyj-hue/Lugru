@@ -10,6 +10,7 @@ import { cancelInvoice } from "@/lib/ebay/invoices/service";
 import { getInvoice, getInvoiceSettings, insertInvoice, markEmailError, markEmailed } from "@/lib/ebay/invoices/store";
 import type { InvoiceData, InvoiceRecord } from "@/lib/ebay/invoices/types";
 import { sendMail } from "@/lib/mail/accounts";
+import { upsertCustomerByName } from "./customers";
 import { invoiceFileName, sendToStotaxSoon } from "./stotax";
 
 // Ausgangsrechnungen: eBay-Rechnungen (Automatik im eBay-Tool) und frei geschriebene
@@ -32,7 +33,7 @@ export async function createB2bInvoice(tenantId: string, input: B2bInput, opts: 
     orderId,
     build: (number) => buildB2bInvoiceData(input, s, { number, date: now.toISOString(), orderId }),
   });
-  if (opts.saveCustomer !== false) await saveCustomer(tenantId, input.buyer);
+  if (opts.saveCustomer !== false) await upsertCustomerByName(tenantId, input.buyer);
   sendToStotaxSoon(tenantId, inv.id);
   return inv;
 }
@@ -133,28 +134,4 @@ export async function listOutgoing(tenantId: string, opts: { q?: string; limit?:
   });
 }
 
-type CustomerInput = B2bInput["buyer"];
-
-async function saveCustomer(tenantId: string, b: CustomerInput) {
-  const C = schema.customers;
-  const values = {
-    tenantId,
-    name: b.name.trim(),
-    contact: b.contact?.trim() || null,
-    street: b.street.trim(),
-    zip: b.zip.trim(),
-    city: b.city.trim(),
-    country: b.country.trim().toUpperCase(),
-    vatId: b.vatId?.replace(/\s+/g, "").toUpperCase() || null,
-    email: b.email?.trim() || null,
-    customerNumber: b.customerNumber?.trim() || null,
-  };
-  await db
-    .insert(C)
-    .values(values)
-    .onConflictDoUpdate({ target: [C.tenantId, C.name], set: { ...values, updatedAt: new Date() } });
-}
-
-export async function listCustomers(tenantId: string) {
-  return db.select().from(schema.customers).where(eq(schema.customers.tenantId, tenantId)).orderBy(schema.customers.name);
-}
+export { listCustomers } from "./customers";

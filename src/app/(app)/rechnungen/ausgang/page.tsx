@@ -29,6 +29,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
         <div><div className="crumb">Einkauf & Buchhaltung</div><h1>Ausgangsrechnungen</h1></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Link className="btn btn-primary" href="/rechnungen/ausgang/neu">Neue B2B-Rechnung</Link>
+          <Link className="btn" href="/rechnungen/kunden">Kunden</Link>
           <Link className="btn" href="/ebay?ansicht=rechnungen">eBay-Rechnungen</Link>
         </div>
       </div>

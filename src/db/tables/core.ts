@@ -115,7 +115,8 @@ export type TenantSettings = {
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
   calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[] };
   /** E-Mail-Versand: Standard-Absenderpostfach (Rechnungen, Nachrichten). */
-  mail?: { defaultSenderId?: string };
+  /** `leadSenderId`: zuletzt benutztes Postfach für Einkaufsanfragen (Vorgabe im Schreibfenster). */
+  mail?: { defaultSenderId?: string; leadSenderId?: string };
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
 };

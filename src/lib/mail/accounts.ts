@@ -129,7 +129,8 @@ export async function sendMail(tenantId: string, mail: OutgoingMail, opts: { mai
   if (!box) {
     throw new Error(boxes.length === 0 ? "Kein Postfach zum Senden verbunden – bitte unter Posteingang ein Postfach verbinden." : "Das gewählte Absender-Postfach ist nicht mehr verbunden.");
   }
-  const raw = await buildRaw({ name: opts.fromName, address: box.address }, mail);
+  // Anzeigename: ausdrücklich übergeben (z. B. Firmenname bei Rechnungen), sonst der des Postfachs.
+  const raw = await buildRaw({ name: opts.fromName || box.fromName || undefined, address: box.address }, mail);
   const creds = await mailboxCredentials(box);
   if (creds.kind === "gmail") await gmailSend(creds.accessToken, raw);
   else if (creds.kind === "outlook") await graphSend(creds.accessToken, raw);

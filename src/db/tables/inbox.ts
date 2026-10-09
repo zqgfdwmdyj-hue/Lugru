@@ -14,6 +14,10 @@ export const mailboxes = pgTable("mailboxes", {
   active: boolean("active").notNull().default(true),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   lastError: text("last_error"),
+  /** Anzeigename beim Versand („Ludwig Grund – BlueQ“). */
+  fromName: text("from_name"),
+  /** Eigene Signatur – wird an Einkaufsanfragen und Nachfass-Mails angehängt. */
+  signature: text("signature"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

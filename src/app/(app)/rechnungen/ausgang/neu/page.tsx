@@ -9,7 +9,7 @@ import { stotaxConfig } from "@/lib/invoices/stotax";
 import { createB2bAction } from "../actions";
 import { B2bForm } from "./b2b-form";
 
-export default async function NeueRechnungPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
+export default async function NeueRechnungPage({ searchParams }: { searchParams: Promise<{ meldung?: string; kunde?: string }> }) {
   const session = await requireArea("buchhaltung");
   const sp = await searchParams;
   const edb = ebayDb(session.tenantId);
@@ -21,6 +21,7 @@ export default async function NeueRechnungPage({ searchParams }: { searchParams:
     <>
       <div className="page-head">
         <div><div className="crumb"><Link href="/rechnungen/ausgang">Ausgangsrechnungen</Link></div><h1>Neue B2B-Rechnung</h1></div>
+        <Link className="btn" href="/rechnungen/kunden">Kunden verwalten</Link>
       </div>
       {sp.meldung && <div className="notice notice-error" data-testid="form-msg">{sp.meldung}</div>}
       {missing.length > 0 && (
@@ -37,6 +38,7 @@ export default async function NeueRechnungPage({ searchParams }: { searchParams:
         sellerVatId={s.vatId ?? ""}
         stotax={cfg ? (cfg.auto ? `geht automatisch an Stotax (${cfg.address})` : "an Stotax per Knopf in der Übersicht") : null}
         hasIban={Boolean(s.iban)}
+        initialCustomerId={customers.some((c) => c.id === sp.kunde) ? sp.kunde : undefined}
       />
     </>
   );

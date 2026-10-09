@@ -3,7 +3,8 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, ne, notInArray, sql } f
 import { db, schema } from "@/db";
 import { askClaude, askClaudeWithWeb, modelFor } from "@/lib/ai/claude";
 import { getIntegration } from "@/lib/integrations/store";
-import { sendMail } from "@/lib/mail/accounts";
+import { sendMail, senderMailboxes } from "@/lib/mail/accounts";
+import { signatureFor, withSignature } from "@/lib/mail/signature";
 import { ensureSupplier } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { upsertSystemTask } from "@/lib/tasks/system";
@@ -369,9 +370,9 @@ export async function researchOne(tenantId: string, id: string) {
 
 type Sender = { company: string; person: string; address: string; email: string; phone: string; about: string };
 
-export async function senderInfo(tenantId: string, userId: string): Promise<Sender> {
+export async function senderInfo(tenantId: string, userId?: string | null): Promise<Sender> {
   const s = await getSettings(tenantId);
-  const [u] = await db.select({ name: schema.users.name, email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId));
+  const [u] = userId ? await db.select({ name: schema.users.name, email: schema.users.email }).from(schema.users).where(eq(schema.users.id, userId)) : [];
   const a = s.shipper;
   return {
     company: [a.name1, a.name2].filter(Boolean).join(" ") || "",
@@ -411,6 +412,32 @@ export function signature(sender: Sender, lang: "de" | "en"): string {
     .join("\n");
 }
 
+export type LeadSender = { id: string; address: string; label: string | null; fromName: string | null; signature: string | null };
+
+/** Postfächer zum Senden und die Vorgabe für Einkaufsanfragen (zuletzt benutzt, sonst Standard-Absender). */
+export async function leadSenders(tenantId: string): Promise<{ boxes: LeadSender[]; defaultId: string | null }> {
+  const { boxes, defaultId } = await senderMailboxes(tenantId);
+  const [t] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
+  const last = t?.settings.mail?.leadSenderId;
+  return {
+    boxes: boxes.map((b) => ({ id: b.id, address: b.address, label: b.label, fromName: b.fromName, signature: b.signature })),
+    defaultId: last && boxes.some((b) => b.id === last) ? last : defaultId,
+  };
+}
+
+/** Zuletzt gewähltes Postfach merken – es ist beim nächsten Mal vorausgewählt. */
+export async function rememberLeadSender(tenantId: string, mailboxId: string) {
+  await db
+    .update(schema.tenants)
+    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('mail', coalesce(${schema.tenants.settings}->'mail', '{}'::jsonb) || ${JSON.stringify({ leadSenderId: mailboxId })}::jsonb)` })
+    .where(eq(schema.tenants.id, tenantId));
+}
+
+/** Signatur für eine Anfrage: die eigene des Postfachs, sonst aus den Absenderdaten (Einstellungen → Versand). */
+export async function leadSignature(tenantId: string, box: Pick<LeadSender, "signature"> | null, lang: "de" | "en", userId?: string | null): Promise<string> {
+  return signatureFor(box?.signature, lang) ?? signature(await senderInfo(tenantId, userId), lang);
+}
+
 /** Entwürfe im Hintergrund erstellen – versendet wird erst nach Freigabe. */
 export async function startDrafts(tenantId: string, userId: string, ids: string[], wish: string) {
   const ai = await aiConfig(tenantId);
@@ -432,7 +459,8 @@ export async function startDrafts(tenantId: string, userId: string, ids: string[
       if (!j.subject || !j.body) throw new Error("Entwurf unvollständig.");
       await db
         .update(L)
-        .set({ mailLanguage: lang, mailSubject: j.subject.slice(0, 200), mailBody: `${j.body.trim()}\n\n${signature(sender, lang)}`, status: l.status === "neu" || l.status === "geprueft" ? "entwurf" : l.status, busy: null, updatedAt: new Date() })
+        // Ohne Signatur – die kommt beim Senden vom gewählten Postfach dazu.
+        .set({ mailLanguage: lang, mailSubject: j.subject.slice(0, 200), mailBody: j.body.trim(), status: l.status === "neu" || l.status === "geprueft" ? "entwurf" : l.status, busy: null, updatedAt: new Date() })
         .where(eq(L.id, id));
     } catch (e) {
       await db.update(L).set({ busy: null, mailError: `Entwurf: ${e instanceof Error ? e.message : String(e)}` }).where(eq(L.id, id));
@@ -469,10 +497,15 @@ export async function sentToday(tenantId: string) {
   return r?.n ?? 0;
 }
 
-/** Freigegebene Entwürfe senden – nie doppelt, nie an gesperrte Kontakte, mit Tageslimit. */
-export async function sendDrafts(tenantId: string, ids: string[]) {
+/**
+ * Freigegebene Entwürfe senden – nie doppelt, nie an gesperrte Kontakte, mit Tageslimit. Absender: im
+ * Schreibfenster gewähltes Postfach, sonst die Vorgabe; dessen Signatur wird angehängt.
+ */
+export async function sendDrafts(tenantId: string, ids: string[], opts: { userId?: string | null } = {}) {
   const rows = await db.select().from(L).where(and(eq(L.tenantId, tenantId), inArray(L.id, ids)));
   const ctx = await contactContext(tenantId);
+  const senders = await leadSenders(tenantId);
+  let lastBox: string | null = null;
   let sent = 0;
   const skipped: string[] = [];
   let left = DAILY_MAIL_LIMIT - (await sentToday(tenantId));
@@ -486,12 +519,20 @@ export async function sendDrafts(tenantId: string, ids: string[]) {
       skipped.push(`${l.companyName}: Tageslimit (${DAILY_MAIL_LIMIT}) erreicht`);
       continue;
     }
+    const box = senders.boxes.find((b) => b.id === l.mailFromId) ?? senders.boxes.find((b) => b.id === senders.defaultId);
+    if (!box) {
+      skipped.push(`${l.companyName}: kein Postfach zum Senden verbunden (Posteingang → Postfach verbinden)`);
+      continue;
+    }
+    const text = withSignature(l.mailBody, await leadSignature(tenantId, box, l.mailLanguage === "en" ? "en" : "de", opts.userId));
     // Erst sperren, dann senden – ein zweiter Klick schickt nichts doppelt.
     const [claimed] = await db.update(L).set({ mailedAt: new Date(), mailedTo: l.email }).where(and(eq(L.id, l.id), isNull(L.mailedAt))).returning({ id: L.id });
     if (!claimed) continue;
     try {
-      await sendMail(tenantId, { to: l.email!, subject: l.mailSubject, text: l.mailBody });
-      await db.update(L).set({ status: "angeschrieben", mailError: null, updatedAt: new Date() }).where(eq(L.id, l.id));
+      await sendMail(tenantId, { to: l.email!, subject: l.mailSubject, text }, { mailboxId: box.id });
+      // So gesendet, wie es rausging (mit Signatur) – Grundlage fürs Nachfassen.
+      await db.update(L).set({ status: "angeschrieben", mailBody: text, mailFromId: box.id, mailFrom: box.address, mailError: null, updatedAt: new Date() }).where(eq(L.id, l.id));
+      lastBox = box.id;
       // Gleiche Firma in derselben Auswahl (andere Marke/Quelle) nicht noch einmal.
       ctx.contacted.push({ ...l, mailedAt: new Date(), mailedTo: l.email });
       sent++;
@@ -501,6 +542,7 @@ export async function sendDrafts(tenantId: string, ids: string[]) {
       skipped.push(`${l.companyName}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  if (lastBox) await rememberLeadSender(tenantId, lastBox);
   return { sent, skipped };
 }
 

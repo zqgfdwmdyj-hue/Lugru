@@ -7,7 +7,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { LEAD_KINDS, LEAD_SOURCES, LEAD_STATUSES, type LeadSource } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
-import { importLucidPayload, leadToSupplier, sendDrafts, startBrandLoading, startDrafts, startResearch } from "@/lib/leads/service";
+import { importLucidPayload, leadSenders, leadToSupplier, sendDrafts, startBrandLoading, startDrafts, startResearch } from "@/lib/leads/service";
 import { startBrandSearch } from "@/lib/leads/sources";
 import { sendFollowUp } from "@/lib/board/service";
 import { importFairData, startFairImport } from "@/lib/leads/messe-service";
@@ -92,7 +92,7 @@ export async function draftAction(fd: FormData) {
 export async function sendAction(fd: FormData) {
   const session = await requireArea("lieferanten");
   if (fd.get("confirm") !== "on") back({ ansicht: "entwurf", meldung: "Bitte bestätigen, dass die Entwürfe geprüft sind." });
-  const r = await sendDrafts(session.tenantId, ids(fd));
+  const r = await sendDrafts(session.tenantId, ids(fd), { userId: session.userId });
   back({ ansicht: "angeschrieben", meldung: `${r.sent} Anfragen gesendet.${r.skipped.length ? ` Übersprungen: ${r.skipped.join(" · ")}` : ""}` });
 }
 
@@ -214,10 +214,14 @@ export async function autoDraftAction(id: string) {
 async function saveCompose(tenantId: string, fd: FormData) {
   const id = uuid.parse(fd.get("id"));
   const email = String(fd.get("email") ?? "").trim().toLowerCase() || null;
+  // Gewähltes Absender-Postfach – nur eigene, aktive Postfächer des Mandanten.
+  const fromRaw = String(fd.get("fromId") ?? "");
+  const fromId = fromRaw && (await leadSenders(tenantId)).boxes.some((b) => b.id === fromRaw) ? fromRaw : undefined;
   await db
     .update(L)
     .set({
       email,
+      ...(fromId ? { mailFromId: fromId } : {}),
       mailSubject: String(fd.get("mailSubject") ?? "").trim() || null,
       mailBody: String(fd.get("mailBody") ?? "").trim() || null,
       updatedAt: new Date(),
@@ -230,7 +234,7 @@ async function saveCompose(tenantId: string, fd: FormData) {
 export async function composeSendAction(fd: FormData) {
   const session = await requireArea("lieferanten");
   const id = await saveCompose(session.tenantId, fd);
-  const r = await sendDrafts(session.tenantId, [id]);
+  const r = await sendDrafts(session.tenantId, [id], { userId: session.userId });
   redirect(`/lieferanten/finden/${id}?meldung=${encodeURIComponent(r.sent ? "Anfrage gesendet." : `Nicht gesendet: ${r.skipped.join(" · ")}`)}`);
 }
 

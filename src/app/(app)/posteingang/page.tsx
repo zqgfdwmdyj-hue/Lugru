@@ -74,12 +74,14 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
                     <span className="tag tag-neutral">{PROVIDER_TAG[b.provider]}</span>
                   </span>
                 </div>
+                {(b.fromName || b.signature) && <div className="small muted">{b.fromName ?? ""}{b.fromName && b.signature ? " · " : ""}{b.signature ? "mit Signatur" : ""}</div>}
                 <div className="small muted">{b.lastSyncAt ? `Zuletzt: ${b.lastSyncAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}` : "Noch nicht abgerufen"}{!b.active && " · pausiert"}</div>
                 {b.lastError && <div className="small" style={{ color: "var(--danger)" }}>{b.lastError}</div>}
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
                   <form action={toggleMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">{b.active ? "Pausieren" : "Aktivieren"}</button></form>
                   {b.active && senders.defaultId !== b.id && <form action={setDefaultSenderAction}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">Als Absender</button></form>}
                   {b.active && <TestMailButton id={b.id} />}
+                  <Link className="btn-link small" href={`/posteingang/postfaecher/${b.id}`} data-testid="mailbox-profile">Name & Signatur</Link>
                   <form action={removeMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>Entfernen</button></form>
                 </div>
               </div>

@@ -6,12 +6,14 @@ import { LEAD_KINDS } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { KIND_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
 import { brandMatches, isBrandNote, validEmail } from "@/lib/leads/logic";
-import { contactContext, DAILY_MAIL_LIMIT, sendBlocker } from "@/lib/leads/service";
+import { canAccess } from "@/lib/auth/areas";
+import { contactContext, DAILY_MAIL_LIMIT, leadSenders, leadSignature, sendBlocker } from "@/lib/leads/service";
 import { daysSince, followUpMail } from "@/lib/board/logic";
 import { composeSaveAction, composeSendAction, followUpAction, redraftAction, searchEmailAction, researchAction, saveLeadAction, setStatusAction, toSupplierAction } from "../actions";
 import { AutoRefresh } from "../refresh";
 import { AutoDraft } from "./auto-draft";
 import { AutoFindEmail } from "./auto-find-email";
+import { SenderPicker, type SenderOption } from "./sender-picker";
 
 export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("lieferanten");
@@ -30,7 +32,20 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const autoFind = !l.mailedAt && !hardBlock && !validEmail(l.email) && !l.emailSearchedAt && !l.busy;
   const emailFound = l.evidence.find((e) => e.label === "E-Mail gefunden");
   const emailMissing = l.evidence.find((e) => e.label === "E-Mail-Suche");
-  const followUp = followUpMail(l);
+  const lang = l.mailLanguage === "en" ? "en" : "de";
+  const senders = await leadSenders(session.tenantId);
+  const senderOptions: SenderOption[] = await Promise.all(
+    senders.boxes.map(async (b) => ({
+      id: b.id,
+      address: b.address,
+      label: b.fromName ? `${b.fromName} <${b.address}>` : b.label ? `${b.address} (${b.label})` : b.address,
+      signature: await leadSignature(session.tenantId, b, lang, session.userId),
+      own: Boolean(b.signature?.trim()),
+    })),
+  );
+  const fromBox = senders.boxes.find((b) => b.id === l.mailFromId) ?? null;
+  // Nachfassen vom selben Postfach – mit dessen Signatur.
+  const followUp = followUpMail(l, l.mailedAt ? await leadSignature(session.tenantId, fromBox ?? senders.boxes.find((b) => b.id === senders.defaultId) ?? null, lang, session.userId) : null);
 
   return (
     <>
@@ -53,7 +68,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             {autoDraft && <AutoDraft id={l.id} />}
             {l.mailedAt ? (
               <div className="small" data-testid="compose-sent">
-                Gesendet am {l.mailedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} an {l.mailedTo}.
+                Gesendet am {l.mailedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} an {l.mailedTo}{l.mailFrom ? ` von ${l.mailFrom}` : ""}.
                 {l.repliedAt ? <><br /><strong>Antwort erhalten</strong> am {l.repliedAt.toLocaleDateString("de-DE")} – siehe Posteingang.</> : " Antworten werden automatisch erkannt."}
               </div>
             ) : hardBlock ? (
@@ -81,12 +96,13 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
                 </div>
                 <div className="field"><label className="label" htmlFor="c-subj">Betreff</label><input className="input" id="c-subj" name="mailSubject" defaultValue={l.mailSubject ?? ""} /></div>
                 <div className="field"><label className="label" htmlFor="c-body">Text</label><textarea className="textarea" id="c-body" name="mailBody" defaultValue={l.mailBody ?? ""} style={{ minHeight: 260 }} /></div>
+                <SenderPicker options={senderOptions} defaultId={l.mailFromId && senders.boxes.some((b) => b.id === l.mailFromId) ? l.mailFromId : senders.defaultId} canEdit={canAccess(session, "posteingang")} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <button className="btn btn-primary" type="submit">Gelesen – jetzt senden</button>
                   <button className="btn" type="submit" formAction={composeSaveAction}>Speichern</button>
                   <button className="btn" type="submit" formAction={redraftAction}>Neu formulieren (KI)</button>
                 </div>
-                <div className="small muted">Geht über dein Standard-Postfach · höchstens {DAILY_MAIL_LIMIT} pro Tag · nie doppelt an dieselbe Firma (auch nicht über eine andere Marke).</div>
+                <div className="small muted">Geht über das gewählte Postfach (beim nächsten Mal wieder vorausgewählt) · höchstens {DAILY_MAIL_LIMIT} pro Tag · nie doppelt an dieselbe Firma (auch nicht über eine andere Marke).</div>
               </form>
             )}
             {l.mailError && <div className="notice notice-warn small" data-testid="compose-error">{l.mailError}</div>}
@@ -100,7 +116,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               ) : (
                 <form action={followUpAction} className="stack" style={{ gap: 8 }}>
                   <input type="hidden" name="id" value={l.id} />
-                  <div className="small muted">Seit {daysSince(l.mailedAt)} Tagen keine Antwort. Kurze Erinnerung an {l.mailedTo} – mit der ersten Anfrage als Zitat:</div>
+                  <div className="small muted">Seit {daysSince(l.mailedAt)} Tagen keine Antwort. Kurze Erinnerung an {l.mailedTo}{l.mailFrom ? ` – von ${l.mailFrom}, wie die erste Anfrage` : ""} – mit Signatur und der ersten Anfrage als Zitat:</div>
                   <div className="field"><label className="label" htmlFor="fu-subj">Betreff</label><input className="input" id="fu-subj" name="subject" defaultValue={followUp.subject} /></div>
                   <div className="field"><label className="label" htmlFor="fu-body">Text</label><textarea className="textarea" id="fu-body" name="body" defaultValue={followUp.body} style={{ minHeight: 200 }} /></div>
                   <div><button className="btn btn-primary" type="submit">Nachfass-Mail senden</button></div>

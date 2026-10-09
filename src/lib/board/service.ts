@@ -74,7 +74,8 @@ export async function sendFollowUp(tenantId: string, id: string, subject: string
   const [claimed] = await db.update(L).set({ followUpAt: new Date() }).where(and(eq(L.id, id), isNull(L.followUpAt))).returning({ id: L.id });
   if (!claimed) throw new Error("Es wurde schon nachgefasst.");
   try {
-    await sendMail(tenantId, { to: l.mailedTo, subject: subject.trim(), text: body.trim() });
+    // Vom selben Postfach wie die erste Anfrage (falls noch verbunden), sonst vom Standard-Absender.
+    await sendMail(tenantId, { to: l.mailedTo, subject: subject.trim(), text: body.trim() }, { mailboxId: l.mailFromId });
   } catch (e) {
     await db.update(L).set({ followUpAt: null }).where(eq(L.id, id));
     throw e;

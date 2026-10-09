@@ -1,5 +1,6 @@
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, suppliers, tenantId, updatedAt } from "./core";
+import { mailboxes } from "./inbox";
 
 /** Wo ein Kontakt gerade steht – vom Registerfund bis zur Antwort. */
 export const LEAD_STATUSES = ["neu", "geprueft", "entwurf", "angeschrieben", "antwort", "follow_up", "preisliste", "abgeschlossen", "kein_interesse", "ausgeschlossen"] as const;
@@ -57,6 +58,10 @@ export const supplierLeads = pgTable(
     mailBody: text("mail_body"),
     mailedAt: timestamp("mailed_at", { withTimezone: true }),
     mailedTo: text("mailed_to"),
+    /** Absender-Postfach der Anfrage (im Schreibfenster gewählt) – Nachfassen geht vom selben. */
+    mailFromId: uuid("mail_from_id").references(() => mailboxes.id, { onDelete: "set null" }),
+    /** Absenderadresse, mit der tatsächlich gesendet wurde. */
+    mailFrom: text("mail_from"),
     mailError: text("mail_error"),
     repliedAt: timestamp("replied_at", { withTimezone: true }),
     /** Nachfass-Mail gesendet. */

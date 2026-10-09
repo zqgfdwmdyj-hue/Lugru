@@ -90,6 +90,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
       items: [
         { href: "/rechnungen", label: "Eingangsrechnungen", badge: counts.invoices },
         { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
+        { href: "/rechnungen/kunden", label: "Kunden" },
         { href: "/export", label: "COG-Export" },
         { href: "/repricer", label: "Repricer (BQool)" },
       ],
@@ -119,7 +120,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
       return pathname === p && new URLSearchParams(q).get("ansicht") === search.get("ansicht");
     }
     if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
-    if (href === "/rechnungen") return pathname === "/rechnungen" || (pathname.startsWith("/rechnungen/") && !pathname.startsWith("/rechnungen/ausgang"));
+    if (href === "/rechnungen") return pathname === "/rechnungen" || (pathname.startsWith("/rechnungen/") && !/^\/rechnungen\/(ausgang|kunden)(\/|$)/.test(pathname));
     if (href === "/marken") return pathname === "/marken" || pathname.startsWith("/marken/ideen");
     if (href === "/lieferanten") return pathname === "/lieferanten" || (pathname.startsWith("/lieferanten/") && !/^\/lieferanten\/(finden|abfrage|chancen)(\/|$)/.test(pathname));
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");

@@ -33,9 +33,12 @@ export function B2bForm(props: {
   sellerVatId: string;
   stotax: string | null;
   hasIban: boolean;
+  /** Aus der Kundenliste „Rechnung schreiben“ – Kunde vorausgewählt. */
+  initialCustomerId?: string;
 }) {
-  const [c, setC] = useState<Omit<Customer, "id">>(EMPTY);
-  const [taxCase, setTaxCase] = useState<TaxCase>("domestic");
+  const initial = props.customers.find((x) => x.id === props.initialCustomerId);
+  const [c, setC] = useState<Omit<Customer, "id">>(initial ? { ...EMPTY, ...initial } : EMPTY);
+  const [taxCase, setTaxCase] = useState<TaxCase>(initial ? suggestTaxCase(initial.country, initial.vatId) : "domestic");
   const [manualTax, setManualTax] = useState(false);
   const [lines, setLines] = useState<Line[]>([{ key: 1, desc: "", qty: "1", unit: "Stk", price: "", vat: "19", device: false }]);
   const [rcWhole, setRcWhole] = useState(false);
@@ -83,7 +86,7 @@ export function B2bForm(props: {
           {props.customers.length > 0 && (
             <div className="field" style={{ minWidth: 220 }}>
               <label className="label" htmlFor="c-pick">Gespeicherter Kunde</label>
-              <select className="select" id="c-pick" defaultValue="" onChange={(e) => pick(e.target.value)}>
+              <select className="select" id="c-pick" defaultValue={initial?.id ?? ""} onChange={(e) => pick(e.target.value)}>
                 <option value="">– neu –</option>
                 {props.customers.map((x) => <option key={x.id} value={x.id}>{x.name}{x.city ? `, ${x.city}` : ""}</option>)}
               </select>
