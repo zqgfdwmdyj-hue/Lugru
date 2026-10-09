@@ -83,8 +83,17 @@ export async function syncChannelStock(tenantId: string, opts: { skus?: string[]
     for (const d of plan) {
       const l = rows.find((r) => r.id === d.listingId)!;
       if (d.action === "skip") {
-        if (d.reason === "kein Wawi-Bestand" && l.stockSync)
-          await db.update(L).set({ lastError: `Kein Wawi-Bestand für SKU ${d.stockSku} – Menge im Kanal wird nicht abgeglichen. Unter Bestand eintragen oder Wawi-SKU zuordnen.` }).where(eq(L.id, l.id));
+        // Ein genauerer Grund (eBay-Menge nicht abrufbar) bleibt stehen.
+        if (d.reason === "kein Wawi-Bestand" && l.stockSync && !/^Wawi-Bestand nicht angelegt/.test(l.lastError ?? ""))
+          await db
+            .update(L)
+            .set({
+              lastError:
+                l.channel === "ebay"
+                  ? `Kein Wawi-Bestand für SKU ${d.stockSku} – wird aus der eBay-Menge angelegt („Bestand aus eBay anlegen“).`
+                  : `Kein Wawi-Bestand für SKU ${d.stockSku} – Menge im Kanal wird nicht abgeglichen. Unter Bestand eintragen oder Wawi-SKU zuordnen.`,
+            })
+            .where(eq(L.id, l.id));
         continue;
       }
       if (d.action === "none") continue;

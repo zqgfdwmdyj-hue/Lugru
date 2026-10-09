@@ -25,7 +25,7 @@ const OWNER_ONLY: [string, RegExp][] = [
 function routersFor(db: Db, tenantId: string): Router[] {
   const hooks = {
     // Jedes veröffentlichte Angebot landet in der Wawi und nimmt am Bestandsabgleich teil.
-    onPublished: async (attempt: Parameters<typeof linkEbayAttempt>[1]) => (await linkEbayAttempt(tenantId, attempt, { bookStock: true }))?.note,
+    onPublished: async (attempt: Parameters<typeof linkEbayAttempt>[1]) => (await linkEbayAttempt(tenantId, attempt))?.note,
   };
   return [apiRouter(db, hooks), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
 }

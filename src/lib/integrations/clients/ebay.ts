@@ -151,6 +151,28 @@ registerStockPusher("ebay", async (tenantId, l, quantity) => {
   return offerId && offerId !== payload.offerId ? { payload: { offerId } } : undefined;
 });
 
+/**
+ * Was eBay gerade für eine SKU anbietet – nach allen Verkäufen (eBay zieht verkaufte Stück
+ * selbst ab): Bestand des Inventory-Artikels, sonst die Angebotsmenge.
+ */
+export async function ebayQuantity(tenantId: string, sku: string): Promise<number> {
+  const c = await cfg(tenantId);
+  if (!c) throw new Error("eBay ist nicht verbunden (eBay → eBay-Einstellungen → Verbindung).");
+  const s = encodeURIComponent(sku);
+  try {
+    const item = await api<{ availability?: { shipToLocationAvailability?: { quantity?: number } } }>(c, "GET", `/sell/inventory/v1/inventory_item/${s}`);
+    const q = item.availability?.shipToLocationAvailability?.quantity;
+    if (typeof q === "number") return Math.max(0, q);
+  } catch (e) {
+    if (!/→ 404/.test(e instanceof Error ? e.message : "")) throw e;
+    throw new Error("eBay kennt die SKU nicht (nicht übers eBay-Tool eingestellt) – Bestand bitte von Hand eintragen.");
+  }
+  const r = await api<{ offers?: { availableQuantity?: number }[] }>(c, "GET", `/sell/inventory/v1/offer?sku=${s}`);
+  const q = r.offers?.find((o) => typeof o.availableQuantity === "number")?.availableQuantity;
+  if (typeof q !== "number") throw new Error(`eBay nennt für ${sku} keine Menge.`);
+  return Math.max(0, q);
+}
+
 registerTester("ebay", async (_v, tenantId) => {
   const c = await cfg(tenantId);
   if (!c) throw new Error("eBay ist noch nicht verbunden – unter eBay → eBay-Einstellungen → Verbindung einrichten.");

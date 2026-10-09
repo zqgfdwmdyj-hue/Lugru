@@ -19,7 +19,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
-import { adoptEbayAttempts } from "@/lib/stock/ebay-link";
+import { adoptEbayAttempts, ensureEbayStock } from "@/lib/stock/ebay-link";
 import { detectReplies, loadMissingBrands } from "@/lib/leads/service";
 import { autoFollowUps } from "@/lib/board/service";
 import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
@@ -78,6 +78,8 @@ export async function runScheduledJobs(force = false) {
           const edb = ebayDb(t);
           await step("eBay-Rechnungen", () => runInvoiceAutomation(edb, invoiceDeps(edb, t)));
           await step("eBay-Angebote in die Wawi", () => adoptEbayAttempts(t));
+          // Laufende eBay-Angebote ohne Wawi-Bestand: Bestand aus der eBay-Menge anlegen.
+          await step("eBay-Bestand in die Wawi", () => ensureEbayStock(t));
         }
         // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
         if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));

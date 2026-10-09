@@ -10,7 +10,7 @@ import { requireArea } from "@/lib/auth/session";
 import { publishListing } from "@/lib/listings/publish";
 import { parseAmount } from "@/lib/numbers";
 import { confirmManualStock, syncChannelStock } from "@/lib/stock/channel-sync";
-import { adoptEbayAttempts } from "@/lib/stock/ebay-link";
+import { adoptEbayAttempts, ensureEbayStock, UNKNOWN_SKU, type EnsureResult } from "@/lib/stock/ebay-link";
 
 const uuid = z.string().uuid();
 
@@ -117,11 +117,49 @@ export async function syncNowAction(fd: FormData) {
   back(parts.join(" · "), String(fd.get("kanal") ?? "") || null);
 }
 
-/** Bisher im eBay-Tool veröffentlichte Angebote in die Wawi holen (ohne Abgleich, bis der Bestand geprüft ist). */
+function ensureText(r: EnsureResult) {
+  const unknown = r.failed.filter((f) => UNKNOWN_SKU.test(f.error));
+  return [
+    ...r.done.map((d) => (d.booked === null ? `${d.sku}: mit Wawi-SKU ${d.stockSku} verknüpft` : `${d.sku}: ${(d.ebay ?? 0) + (d.reserved ?? 0)} Stück gebucht (${d.ebay} auf eBay${d.reserved ? ` + ${d.reserved} verkauft, nicht versandt` : ""})`)),
+    ...(unknown.length > 1 ? [`Nicht übers eBay-Tool eingestellt – Bestand bitte in der Zeile eintragen: ${unknown.map((f) => f.sku).join(", ")}`] : unknown.map((f) => `${f.sku}: ${f.error}`)),
+    ...r.failed.filter((f) => !UNKNOWN_SKU.test(f.error)).map((f) => `${f.sku}: ${f.error}`),
+  ].join(" · ");
+}
+
+/** Bisher im eBay-Tool veröffentlichte Angebote in die Wawi holen – Bestand aus der aktuellen eBay-Menge. */
 export async function adoptEbayAction() {
   const session = await requireArea("wawi");
   const r = await adoptEbayAttempts(session.tenantId);
-  back(r.adopted ? `${r.adopted} eBay-Angebote übernommen – Bestand prüfen und je Angebot den Abgleich einschalten.` : "Alle eBay-Angebote aus dem Tool sind schon in der Wawi.", "ebay");
+  const e = await ensureEbayStock(session.tenantId);
+  const parts = [r.adopted ? `${r.adopted} eBay-Angebote übernommen` : "Alle eBay-Angebote aus dem Tool sind schon in der Wawi"];
+  if (r.booked || e.done.length) parts.push(`Wawi-Bestand für ${r.booked + e.done.length} angelegt, Abgleich an`);
+  if (e.done.length || e.failed.length) parts.push(ensureText(e));
+  back(parts.join(" · "), "ebay");
+}
+
+/** Je Zeile: Wawi-Bestand eines laufenden eBay-Angebots aus der eBay-Menge anlegen. */
+export async function ebayStockAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const r = await ensureEbayStock(session.tenantId, [uuid.parse(fd.get("id"))]);
+  back(ensureText(r) || "Für dieses Angebot gibt es schon Wawi-Bestand.", String(fd.get("kanal") ?? "") || null);
+}
+
+/** Je Zeile: Wawi-Bestand eines Angebots ohne eigenen Lagereintrag von Hand setzen und abgleichen. */
+export async function setListingStockAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const L = schema.listings;
+  const [l] = await db.select().from(L).where(and(eq(L.id, uuid.parse(fd.get("id"))), eq(L.tenantId, session.tenantId)));
+  const qty = Math.round(parseAmount(fd.get("quantity")) ?? NaN);
+  if (!l || !Number.isFinite(qty) || qty < 0) back("Bitte eine Menge (0 oder mehr) eintragen.", String(fd.get("kanal") ?? "") || null);
+  const sku = l!.stockSku?.trim() || l!.sku;
+  const S = schema.ownStock;
+  const [cur] = await db.select().from(S).where(and(eq(S.tenantId, session.tenantId), eq(S.sku, sku)));
+  await db.insert(S).values({ tenantId: session.tenantId, sku, quantity: qty }).onConflictDoUpdate({ target: [S.tenantId, S.sku], set: { quantity: qty, updatedAt: new Date() } });
+  const delta = qty - (cur?.quantity ?? 0);
+  if (delta) await db.insert(schema.stockMovements).values({ tenantId: session.tenantId, sku, delta, reason: "Anfangsbestand (Listings)", reference: `${l!.channel} ${l!.sku}`, userId: session.userId });
+  await db.update(L).set({ stockSync: true, lastError: null, updatedAt: new Date() }).where(eq(L.id, l!.id));
+  await syncChannelStock(session.tenantId, { skus: [sku] });
+  back(`${sku}: Wawi-Bestand ${qty} eingetragen – Abgleich an.`, String(fd.get("kanal") ?? "") || null);
 }
 
 /**
@@ -155,6 +193,8 @@ export async function toggleSyncAction(fd: FormData) {
   const id = uuid.parse(fd.get("id"));
   const on = fd.get("on") === "1";
   await db.update(schema.listings).set({ stockSync: on, lastError: null, updatedAt: new Date() }).where(and(eq(schema.listings.id, id), eq(schema.listings.tenantId, session.tenantId)));
+  // eBay ohne Wawi-Bestand: Bestand aus der eBay-Menge anlegen, statt mit „kein Bestand“ stehen zu bleiben.
+  if (on) await ensureEbayStock(session.tenantId, [id]);
   if (on) await syncChannelStock(session.tenantId);
   revalidatePath("/listings");
 }
