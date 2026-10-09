@@ -372,7 +372,7 @@ export function parseDistributors(text: string): Distributor[] {
 export type LucidImportProducer = LucidProducer & { brands: string[] | null; brandsComplete: boolean };
 
 /** Daten vom Register-Lesezeichen prüfen – kommen aus dem Browser, also nichts ungeprüft übernehmen. */
-export function parseLucidPayload(raw: string): { ok: true; brand: string; total: number; producers: LucidImportProducer[] } | { ok: false; message: string } {
+export function parseLucidPayload(raw: string): { ok: true; mode: "full" | "brands"; brand: string; total: number; producers: LucidImportProducer[] } | { ok: false; message: string } {
   let o: Record<string, unknown>;
   try {
     o = JSON.parse(raw.trim());
@@ -380,15 +380,17 @@ export function parseLucidPayload(raw: string): { ok: true; brand: string; total
     return { ok: false, message: "Keine gültigen Register-Daten (bitte das Lesezeichen erneut auf der Registerseite klicken)." };
   }
   if (o.lucidImport !== 1) return { ok: false, message: "Das sind keine Daten vom Register-Lesezeichen." };
-  const brand = str(o.brand, 80);
-  if (!brand || brand.length < 2) return { ok: false, message: "Marke fehlt." };
+  // „brands“: nur Markenlisten zu schon bekannten Firmen (fehlende nachladen).
+  const mode = o.mode === "brands" ? "brands" : "full";
+  const brand = str(o.brand, 80) ?? "";
+  if (mode === "full" && brand.length < 2) return { ok: false, message: "Marke fehlt." };
   if (!Array.isArray(o.producers)) return { ok: false, message: "Keine Firmen in den Daten." };
   const s = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) || null : typeof v === "number" ? String(v) : null);
   const producers: LucidImportProducer[] = o.producers.slice(0, 2000).flatMap((x) => {
     const p = x as Record<string, unknown>;
     const id = s(p.ManufacturerId, 80);
-    const name = s(p.CompanyName, 300);
-    if (!id || !name) return [];
+    const name = s(p.CompanyName, 300) ?? (mode === "brands" ? "" : null);
+    if (!id || name === null) return [];
     const brands = Array.isArray(p.brands) ? [...new Set(p.brands.filter((b): b is string => typeof b === "string").map((b) => b.trim().slice(0, 150)).filter(Boolean))].slice(0, 5000) : null;
     return [{
       ManufacturerId: id,
@@ -408,17 +410,22 @@ export function parseLucidPayload(raw: string): { ok: true; brand: string; total
     }];
   });
   const total = typeof o.total === "number" && o.total >= 0 ? Math.round(o.total) : producers.length;
-  return { ok: true, brand, total, producers };
+  return { ok: true, mode, brand, total, producers };
 }
 
 // ---- Verpackungsregister nicht erreichbar ------------------------------------------------------
 
-const VIA_BROWSER = "Lösung: unten „Verpackungsregister über deinen Browser abfragen“ – das funktioniert trotzdem.";
+const VIA_BROWSER = "Sofort geht es unten über „Verpackungsregister über deinen Browser abfragen“.";
+
+/** Hinweis an Kontakten, deren Markenliste noch fehlt, weil das Register drosselt. */
+export const BRANDS_WAITING = "Markenliste wartet: Das Verpackungsregister drosselt gerade – sie wird automatisch nachgeladen.";
+/** Fehlertext zur Markenliste (alt: „Marken nicht geladen: …“) – wird beim erfolgreichen Nachladen gelöscht. */
+export const isBrandNote = (s: string | null | undefined) => !!s && /^Marken(liste)? /.test(s);
 
 /** Verständliche Meldung, warum das Register nicht antwortet – mit dem Weg über den Browser. */
 export function lucidFailureMessage(status: number | null, cause?: unknown): string {
   if (status === 401 || status === 403) return `Das Verpackungsregister lehnt Anfragen von diesem Server ab (HTTP ${status}) – Rechenzentrums-Adressen werden dort offenbar gesperrt. ${VIA_BROWSER}`;
-  if (status === 429) return `Das Verpackungsregister meldet zu viele Anfragen (HTTP 429) – in ein paar Minuten erneut versuchen. ${VIA_BROWSER}`;
+  if (status === 429 || status === 503) return `Das Verpackungsregister drosselt gerade die Anfragen dieses Servers (HTTP ${status}) – nach vielen Abfragen in kurzer Zeit sperrt es für eine Weile (meist 15–60 Minuten). ${VIA_BROWSER}`;
   if (status !== null && status >= 500) return `Das Verpackungsregister meldet einen Serverfehler (HTTP ${status}) – oft Wartung, später erneut versuchen. ${VIA_BROWSER}`;
   if (status !== null) return `Verpackungsregister nicht erreichbar (HTTP ${status}). ${VIA_BROWSER}`;
   const c = cause as { name?: string; message?: string; cause?: { code?: string; message?: string } } | undefined;

@@ -77,7 +77,8 @@ describe("Weitere Quellen – Auswertung", () => {
 describe("Verpackungsregister nicht erreichbar", () => {
   it("klare Meldung mit Ausweg", () => {
     expect(lucidFailureMessage(403)).toMatch(/lehnt Anfragen von diesem Server ab \(HTTP 403\).*Browser/);
-    expect(lucidFailureMessage(503)).toMatch(/Serverfehler \(HTTP 503\)/);
+    expect(lucidFailureMessage(503)).toMatch(/drosselt gerade die Anfragen dieses Servers \(HTTP 503\)/);
+    expect(lucidFailureMessage(502)).toMatch(/Serverfehler \(HTTP 502\)/);
     expect(lucidFailureMessage(null, Object.assign(new Error("fetch failed"), { cause: { code: "ETIMEDOUT" } }))).toMatch(/Zeitüberschreitung/);
     expect(lucidFailureMessage(null, Object.assign(new Error("fetch failed"), { cause: { code: "ENOTFOUND" } }))).toMatch(/DNS/);
   });

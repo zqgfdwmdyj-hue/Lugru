@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { askClaude, askClaudeWithWeb, modelFor } from "@/lib/ai/claude";
 import { getIntegration } from "@/lib/integrations/store";
@@ -8,8 +8,8 @@ import { ensureSupplier } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { upsertSystemTask } from "@/lib/tasks/system";
 import type { LeadFinding } from "@/db/schema";
-import { contactBlocker, mailLanguageFor, parseLucidPayload, parseResearch, preAssess, validEmail, type LucidImportProducer } from "./logic";
-import { brandsOf, PAUSE_MS, searchProducers, sleep, type LucidProducer } from "./lucid";
+import { BRANDS_WAITING, contactBlocker, isBrandNote, mailLanguageFor, parseLucidPayload, parseResearch, preAssess, validEmail, type LucidImportProducer } from "./logic";
+import { brandsOf, LucidSessionError, LucidThrottledError, LucidUnavailableError, openSession, PAUSE_MS, searchProducers, sleep, type LucidProducer, type Session } from "./lucid";
 
 type Lead = typeof schema.supplierLeads.$inferSelect;
 const L = schema.supplierLeads;
@@ -31,7 +31,7 @@ export async function importFromLucid(tenantId: string, brand: string, opts: { o
   const { producers, total, session } = await searchProducers({ brand: b });
   const r = await storeProducers(tenantId, b, producers.map((p) => ({ ...p, brands: null, brandsComplete: false })), opts);
   // Markenlisten im Hintergrund – die Seite zeigt den Fortschritt.
-  void loadBrands(tenantId, b, session).catch((e) => console.error("[Großhändler] Marken:", e instanceof Error ? e.message : e));
+  void loadMissingBrands(tenantId, { session, force: true }).catch((e) => console.error("[Großhändler] Marken:", e instanceof Error ? e.message : e));
   return { total, read: producers.length, ...r };
 }
 
@@ -39,6 +39,18 @@ export async function importFromLucid(tenantId: string, brand: string, opts: { o
 export async function importLucidPayload(tenantId: string, raw: string, opts: { onlyActive: boolean }) {
   const parsed = parseLucidPayload(raw);
   if (!parsed.ok) throw new Error(parsed.message);
+  if (parsed.mode === "brands") {
+    // Nur fehlende Markenlisten zu vorhandenen Kontakten.
+    let updated = 0;
+    for (const p of parsed.producers) {
+      if (!p.brands) continue;
+      const [l] = await db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.source, "lucid"), eq(L.sourceId, p.ManufacturerId)));
+      if (!l) continue;
+      await applyBrands(l, p.brands, p.brandsComplete);
+      updated++;
+    }
+    return { mode: "brands" as const, brand: "", total: parsed.producers.length, read: parsed.producers.length, stored: updated, created: 0 };
+  }
   const r = await storeProducers(tenantId, parsed.brand, parsed.producers, opts);
   await db.insert(schema.supplierLeadSearches).values({
     tenantId,
@@ -50,7 +62,7 @@ export async function importLucidPayload(tenantId: string, raw: string, opts: { 
     created: r.created,
     finishedAt: new Date(),
   });
-  return { brand: parsed.brand, total: parsed.total, read: parsed.producers.length, ...r };
+  return { mode: "full" as const, brand: parsed.brand, total: parsed.total, read: parsed.producers.length, ...r };
 }
 
 async function storeProducers(tenantId: string, b: string, producers: LucidImportProducer[], opts: { onlyActive: boolean }) {
@@ -89,9 +101,6 @@ async function storeProducers(tenantId: string, b: string, producers: LucidImpor
     ids.push(row.id);
     if (row.inserted) created++;
   }
-  if (producers.some((p) => p.brands === null)) {
-    await db.update(L).set({ busy: "marken" }).where(and(eq(L.tenantId, tenantId), inArray(L.id, ids), isNull(L.brands)));
-  }
   return { stored: ids.length, created };
 }
 
@@ -110,32 +119,122 @@ function fieldsOf(p: LucidProducer) {
   };
 }
 
-async function loadBrands(tenantId: string, brand: string, session: Parameters<typeof brandsOf>[0]) {
-  const todo = await db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.busy, "marken")));
-  for (const l of todo) {
-    try {
-      const { brands, complete } = await brandsOf(session, l.sourceId);
-      const searchBrand = l.searchBrands.find((s) => s.toLowerCase() === brand.toLowerCase()) ?? brand;
-      const pre = preAssess({ companyName: l.companyName, brands, searchBrand, registrationEnd: l.registrationEnd, brandsComplete: complete });
-      await db
-        .update(L)
-        .set({
-          brands,
-          score: pre.score,
-          // Eine schon per Websuche geprüfte Einstufung bleibt.
-          kind: l.checkedAt ? l.kind : pre.kind,
-          // „Wella“ nur als Wortteil (z. B. „Pawella“): kein Treffer für die Suche.
-          status: pre.exactBrand === false && l.status === "neu" ? "ausgeschlossen" : l.status,
-          notes: pre.exactBrand === false && !l.notes ? pre.reasons[0] : l.notes,
-          busy: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(L.id, l.id));
-    } catch (e) {
-      await db.update(L).set({ busy: null, checkError: `Marken nicht geladen: ${e instanceof Error ? e.message : String(e)}` }).where(eq(L.id, l.id));
+// ---- Markenlisten nachladen ---------------------------------------------------------------
+// Je Firma eine Abfrage. Das Register drosselt nach vielen schnellen Abfragen (HTTP 503) – dann
+// nicht weiter nachfragen, sondern pausieren und später (Hintergrund-Lauf alle 30 Min) weitermachen.
+
+/** So lange nach einer Drosselung keine neuen Versuche. */
+export const THROTTLE_PAUSE_MS = 20 * 60_000;
+type BrandLoadState = { running: boolean; throttledUntil: number; pauseMs: number };
+// Prozessweit (globalThis): Seite, Knöpfe und Hintergrund-Lauf können in getrennten Bundles laufen.
+const g = globalThis as typeof globalThis & { __lucidBrandLoad?: Map<string, BrandLoadState> };
+const brandLoad = (g.__lucidBrandLoad ??= new Map<string, BrandLoadState>());
+const freshState = (): BrandLoadState => ({ running: false, throttledUntil: 0, pauseMs: PAUSE_MS });
+export const brandLoadStatus = (tenantId: string) => brandLoad.get(tenantId) ?? freshState();
+
+const missingBrandsWhere = (tenantId: string) =>
+  and(eq(L.tenantId, tenantId), eq(L.source, "lucid"), isNull(L.brands), notInArray(L.status, ["ausgeschlossen", "kein_interesse"]));
+
+export async function missingBrandCount(tenantId: string) {
+  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(L).where(missingBrandsWhere(tenantId));
+  return r?.n ?? 0;
+}
+
+/** Kennungen der Firmen ohne Markenliste (für das Lesezeichen im Browser). */
+export async function missingBrandIds(tenantId: string, limit = 400) {
+  const rows = await db.select({ id: L.sourceId }).from(L).where(missingBrandsWhere(tenantId)).orderBy(desc(L.score)).limit(limit);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Fehlende Markenlisten nachladen (nacheinander, mit Pause). Läuft je Mandant nur einmal gleichzeitig.
+ * `force`: auch kurz nach einer Drosselung versuchen (Knopf „Jetzt nachladen“).
+ */
+export async function loadMissingBrands(tenantId: string, opts: { session?: Session; limit?: number; force?: boolean } = {}) {
+  const state = brandLoad.get(tenantId) ?? freshState();
+  if (state.running) return { loaded: 0, left: await missingBrandCount(tenantId), note: "läuft schon" };
+  if (!opts.force && state.throttledUntil > Date.now()) return { loaded: 0, left: await missingBrandCount(tenantId), note: "Register drosselt noch" };
+  state.running = true;
+  brandLoad.set(tenantId, state);
+  let loaded = 0;
+  let note: string | null = null;
+  try {
+    const todo = await db.select().from(L).where(missingBrandsWhere(tenantId)).orderBy(desc(L.score), L.createdAt).limit(opts.limit ?? 300);
+    if (!todo.length) return { loaded: 0, left: 0, note: null };
+    await db.update(L).set({ busy: "marken" }).where(inArray(L.id, todo.map((l) => l.id)));
+    let session = opts.session ?? null;
+    let failures = 0;
+    for (let i = 0; i < todo.length; i++) {
+      const l = todo[i];
+      try {
+        session ??= await openSession();
+        let r: { brands: string[]; complete: boolean };
+        try {
+          r = await brandsOf(session, l.sourceId);
+        } catch (e) {
+          if (!(e instanceof LucidSessionError)) throw e;
+          session = await openSession();
+          r = await brandsOf(session, l.sourceId);
+        }
+        await applyBrands(l, r.brands, r.complete);
+        loaded++;
+        failures = 0;
+      } catch (e) {
+        if (e instanceof LucidUnavailableError) {
+          // Gedrosselt oder gesperrt: aufhören, Rest bleibt für später – und künftig langsamer fragen.
+          state.throttledUntil = Date.now() + THROTTLE_PAUSE_MS;
+          if (e instanceof LucidThrottledError) state.pauseMs = Math.min(12_000, state.pauseMs * 2);
+          note = e.message;
+          const rest = todo.slice(i).map((x) => x.id);
+          await db.update(L).set({ busy: null, checkError: e instanceof LucidThrottledError ? BRANDS_WAITING : `Markenliste nicht geladen: ${e.message}` }).where(inArray(L.id, rest));
+          break;
+        }
+        failures++;
+        await db.update(L).set({ busy: null, checkError: `Markenliste nicht geladen: ${e instanceof Error ? e.message : String(e)}` }).where(eq(L.id, l.id));
+        if (failures >= 3) {
+          await db.update(L).set({ busy: null }).where(inArray(L.id, todo.slice(i + 1).map((x) => x.id)));
+          note = "mehrere Fehler hintereinander – später erneut";
+          break;
+        }
+      }
+      if (i < todo.length - 1) await sleep(state.pauseMs);
     }
-    await sleep(PAUSE_MS);
+  } finally {
+    state.running = false;
+    // Was nicht mehr drankam (z. B. Abbruch), nicht ewig als „lädt“ markieren.
+    await db.update(L).set({ busy: null }).where(and(eq(L.tenantId, tenantId), eq(L.busy, "marken")));
   }
+  return { loaded, left: await missingBrandCount(tenantId), note };
+}
+
+async function applyBrands(l: Lead, brands: string[], complete: boolean) {
+  const searchBrand = l.searchBrands[0] ?? "";
+  const pre = preAssess({ companyName: l.companyName, brands, searchBrand, registrationEnd: l.registrationEnd, brandsComplete: complete });
+  await db
+    .update(L)
+    .set({
+      brands,
+      score: pre.score,
+      // Eine schon per Websuche geprüfte oder anderswo eindeutige Einstufung bleibt.
+      kind: l.checkedAt ? l.kind : pre.kind,
+      // „Wella“ nur als Wortteil (z. B. „Pawella“): kein Treffer für die Suche.
+      status: pre.exactBrand === false && l.status === "neu" ? "ausgeschlossen" : l.status,
+      notes: pre.exactBrand === false && !l.notes ? pre.reasons[0] : l.notes,
+      checkError: isBrandNote(l.checkError) ? null : l.checkError,
+      busy: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(L.id, l.id));
+}
+
+/** Knopf „Jetzt nachladen“ und Hintergrund-Lauf: startet das Nachladen, ohne zu warten. */
+export async function startBrandLoading(tenantId: string, force: boolean) {
+  const left = await missingBrandCount(tenantId);
+  if (!left) return "Alle Markenlisten sind da.";
+  const st = brandLoadStatus(tenantId);
+  if (st.running) return "Die Markenlisten werden schon geladen.";
+  void loadMissingBrands(tenantId, { force }).catch((e) => console.error("[Großhändler] Marken:", e instanceof Error ? e.message : e));
+  return `${left} Markenlisten werden nacheinander geladen (ca. ${Math.max(1, Math.round((Math.min(left, 300) * (st.pauseMs + 700)) / 60_000))} Min). Drosselt das Register, geht es automatisch später weiter.`;
 }
 
 // ---- 2. Per Websuche prüfen ---------------------------------------------------------------

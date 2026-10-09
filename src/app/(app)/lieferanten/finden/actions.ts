@@ -7,7 +7,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { LEAD_KINDS, LEAD_SOURCES, LEAD_STATUSES, type LeadSource } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
-import { importLucidPayload, leadToSupplier, sendDrafts, startDrafts, startResearch } from "@/lib/leads/service";
+import { importLucidPayload, leadToSupplier, sendDrafts, startBrandLoading, startDrafts, startResearch } from "@/lib/leads/service";
 import { startBrandSearch } from "@/lib/leads/sources";
 
 const uuid = z.string().uuid();
@@ -37,6 +37,12 @@ export async function searchBrandAction(fd: FormData) {
   back({ marke: brand, meldung: msg, ...(failed ? { register: "browser" } : {}) });
 }
 
+/** Fehlende Markenlisten jetzt nachladen (Server, nacheinander). */
+export async function loadBrandsAction() {
+  const session = await requireArea("lieferanten");
+  back({ meldung: await startBrandLoading(session.tenantId, true) });
+}
+
 /** Daten vom Register-Lesezeichen (Abfrage im eigenen Browser). */
 export async function importRegisterDataAction(fd: FormData) {
   const session = await requireArea("lieferanten");
@@ -45,7 +51,10 @@ export async function importRegisterDataAction(fd: FormData) {
   try {
     const r = await importLucidPayload(session.tenantId, String(fd.get("data") ?? ""), { onlyActive: fd.get("onlyActive") === "on" });
     brand = r.brand;
-    msg = `Verpackungsregister (über deinen Browser): ${r.total} Einträge zu „${r.brand}“, ${r.stored} übernommen (${r.created} neu) – inklusive Markenlisten.`;
+    msg =
+      r.mode === "brands"
+        ? `Verpackungsregister (über deinen Browser): ${r.stored} von ${r.total} fehlenden Markenlisten übernommen.`
+        : `Verpackungsregister (über deinen Browser): ${r.total} Einträge zu „${r.brand}“, ${r.stored} übernommen (${r.created} neu) – inklusive Markenlisten.`;
   } catch (e) {
     msg = e instanceof Error ? e.message : String(e);
   }

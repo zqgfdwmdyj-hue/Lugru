@@ -37,7 +37,7 @@ export function RegisterReceiver({ allowedOrigin }: { allowedOrigin: string }) {
   return (
     <form ref={form} action={importRegisterDataAction} onSubmit={() => setPending(true)} className="stack" style={{ gap: 8 }} data-testid="register-receiver">
       <label className="label" htmlFor="reg-data">Daten einfügen (falls sie nicht von selbst kommen)</label>
-      <textarea className="textarea" id="reg-data" name="data" rows={3} value={data} onChange={(e) => setData(e.target.value)} placeholder="Strg+V – Daten vom Lesezeichen" style={{ fontSize: 12 }} />
+      <textarea className="textarea" id="reg-data" name="data" rows={3} value={data} onChange={(e) => setData(e.target.value)} placeholder="Strg+V – Daten vom Lesezeichen" style={{ fontSize: 12, minHeight: 56, height: 64 }} />
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <input type="checkbox" name="onlyActive" value="on" defaultChecked /> nur aktive Registrierungen

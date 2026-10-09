@@ -8,11 +8,11 @@ import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, contactBlocker } from "@/lib/leads/logic";
+import { brandMatches, contactBlocker, isBrandNote } from "@/lib/leads/logic";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
-import { DAILY_MAIL_LIMIT, sentToday } from "@/lib/leads/service";
+import { brandLoadStatus, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
-import { draftAction, excludeAction, reincludeAction, researchAction, searchBrandAction, sendAction } from "./actions";
+import { draftAction, excludeAction, loadBrandsAction, reincludeAction, researchAction, searchBrandAction, sendAction } from "./actions";
 import { AutoRefresh, SelectAll } from "./refresh";
 import { RegisterBookmark, RegisterReceiver } from "./register-import";
 import { FINDING_LABEL, KIND_LABEL, SEARCH_SOURCE_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
@@ -48,8 +48,10 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
     })
     .from(L)
     .where(eq(L.tenantId, t));
-  const [today, searches, keepa, ebay, ai] = await Promise.all([
+  const [today, missing, missingIds, searches, keepa, ebay, ai] = await Promise.all([
     sentToday(t),
+    missingBrandCount(t),
+    missingBrandIds(t),
     recentSearches(t),
     keepaKey(t),
     ebaySettings(ebayDb(t)).catch(() => null),
@@ -57,7 +59,10 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
   ]);
   const now = Date.now();
   const running = searches.filter((r) => r.status === "laeuft" && now - r.startedAt.getTime() < SEARCH_STALE_MS);
-  const busy = counts.busyBrands + counts.busyCheck + counts.busyDraft > 0 || running.length > 0;
+  const brandState = brandLoadStatus(t);
+  // „Markenliste lädt“ nur, solange der Lader wirklich läuft (nach einem Neustart sonst endlos).
+  const busyBrands = brandState.running ? counts.busyBrands : 0;
+  const busy = busyBrands + counts.busyCheck + counts.busyDraft > 0 || running.length > 0 || brandState.running;
   const lastLucid = searches.find((r) => r.source === "lucid");
   const registerBlocked = sp.register === "browser" || lastLucid?.status === "fehler";
   const h = await headers();
@@ -138,7 +143,24 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
       {sp.meldung && <div className="notice notice-info" data-testid="leads-msg">{sp.meldung}</div>}
       {busy && (
         <div className="notice notice-info small" data-testid="leads-busy">
-          Läuft im Hintergrund: {[counts.busyBrands && `${counts.busyBrands} Markenlisten`, counts.busyCheck && `${counts.busyCheck} Websuchen`, counts.busyDraft && `${counts.busyDraft} Entwürfe`].filter(Boolean).join(", ")} – die Liste aktualisiert sich von selbst.
+          Läuft im Hintergrund: {[busyBrands && `${busyBrands} Markenlisten`, counts.busyCheck && `${counts.busyCheck} Websuchen`, counts.busyDraft && `${counts.busyDraft} Entwürfe`].filter(Boolean).join(", ")} – die Liste aktualisiert sich von selbst.
+        </div>
+      )}
+
+      {missing > 0 && (
+        <div className="notice notice-info small" data-testid="brands-missing" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <span>
+            <strong>{missing} Markenlisten aus dem Verpackungsregister fehlen noch.</strong>{" "}
+            {brandState.running
+              ? "Sie werden gerade nacheinander geladen."
+              : brandState.throttledUntil > now
+                ? `Das Register drosselt gerade – nächster automatischer Versuch ab ${new Date(brandState.throttledUntil).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr.`
+                : "Sie werden automatisch alle 30 Minuten langsam nachgeladen."}{" "}
+            Ohne Markenliste sind Score und Einstufung nur vorläufig.
+          </span>
+          <form action={loadBrandsAction}><button className="btn btn-small" type="submit" disabled={brandState.running}>Jetzt nachladen</button></form>
+          <a className="btn btn-small" href={`${registerBase}/Producer#ids=${encodeURIComponent(missingIds.join(","))}`} target="_blank" rel="noreferrer" data-testid="brands-browser-link">Über deinen Browser laden ↗</a>
+          <span className="muted">(mit dem Lesezeichen unten: Seite öffnen → Lesezeichen klicken)</span>
         </div>
       )}
 
@@ -189,7 +211,9 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                     </td>
                     <td className="small" style={{ maxWidth: 300 }}>
                       {l.brands === null ? (
-                        l.busy === "marken" ? <span className="muted">wird geladen …</span> : (
+                        l.busy === "marken" && brandState.running ? <span className="muted">wird geladen …</span> : l.source === "lucid" && !l.findings.some((f) => f.source !== "lucid") ? (
+                          <span className="muted" title={l.checkError ?? undefined}>Markenliste folgt</span>
+                        ) : (
                           <div className="muted">
                             {l.findings.filter((f) => f.source !== "lucid").slice(-3).map((f, i) => (
                               <div key={i}>{f.label}{f.detail ? `: ${f.detail}` : ""}{f.url && <> · <a href={f.url} target="_blank" rel="noreferrer">ansehen</a></>}</div>
@@ -211,7 +235,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                       <span className={`tag ${KIND_LABEL[l.kind][1]}`}>{KIND_LABEL[l.kind][0]}</span>
                       {l.checkedAt ? <span className="muted"> · geprüft</span> : l.busy === "pruefen" ? <span className="muted"> · prüft …</span> : null}
                       {l.summary && <div className="muted" style={{ maxWidth: 260 }}>{l.summary}</div>}
-                      {l.checkError && <div style={{ color: "var(--danger)" }}>{l.checkError}</div>}
+                      {l.checkError && !isBrandNote(l.checkError) && <div style={{ color: "var(--danger)" }}>{l.checkError}</div>}
                     </td>
                     <td className="small" style={{ maxWidth: 220, wordBreak: "break-all" }}>
                       {l.website && <div><a href={l.website} target="_blank" rel="noreferrer">{new URL(l.website).hostname}</a></div>}

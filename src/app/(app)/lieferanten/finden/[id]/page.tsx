@@ -5,7 +5,7 @@ import { db, schema } from "@/db";
 import { LEAD_KINDS } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { KIND_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
-import { brandMatches, contactBlocker } from "@/lib/leads/logic";
+import { brandMatches, contactBlocker, isBrandNote } from "@/lib/leads/logic";
 import { draftAction, researchAction, saveLeadAction, sendOneAction, setStatusAction, toSupplierAction } from "../actions";
 import { AutoRefresh } from "../refresh";
 
@@ -50,10 +50,10 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
                 <li key={i}><strong>{f.label}</strong>{f.brand ? ` („${f.brand}“)` : ""}{f.detail ? `: ${f.detail}` : ""}{f.url && <> – <a href={f.url} target="_blank" rel="noreferrer">ansehen</a></>}</li>
               ))}
             </ul>
-            {(l.brands !== null || l.busy === "marken") && (
+            {(l.brands !== null || l.source === "lucid") && (
               <div className="small">
                 <div className="muted" style={{ marginBottom: 4 }}>Im Verpackungsregister gemeldete Marken:</div>
-                {l.brands === null ? <span className="muted">Markenliste wird geladen …</span> : l.brands.map((b) => (
+                {l.brands === null ? <span className="muted">{l.busy === "marken" ? "Markenliste wird geladen …" : (l.checkError ?? "Markenliste fehlt noch – wird automatisch nachgeladen.")}</span> : l.brands.map((b) => (
                   <span key={b} className={`tag ${brandMatches([b], brand) ? "tag-ok" : "tag-neutral"}`} style={{ marginRight: 4, marginBottom: 4, display: "inline-block" }}>{b}</span>
                 ))}
               </div>
@@ -67,7 +67,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               <form action={researchAction}><input type="hidden" name="ids" value={l.id} /><input type="hidden" name="back" value={`/lieferanten/finden/${l.id}`} /><button className="btn btn-small" type="submit" disabled={Boolean(l.busy)}>{l.checkedAt ? "Neu prüfen" : "Jetzt prüfen"}</button></form>
             </div>
             {!l.checkedAt && !l.checkError && <div className="small muted">Noch nicht geprüft.</div>}
-            {l.checkError && <div className="notice notice-warn small">{l.checkError}</div>}
+            {l.checkError && !isBrandNote(l.checkError) && <div className="notice notice-warn small">{l.checkError}</div>}
             {l.summary && <div>{l.summary}</div>}
             <div className="small" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               {l.website && <a href={l.website} target="_blank" rel="noreferrer">Website ↗</a>}
