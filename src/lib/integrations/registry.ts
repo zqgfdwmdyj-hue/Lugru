@@ -182,7 +182,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "stotax",
     name: "Stotax Select (Steuerberater)",
-    purpose: "Jede Rechnung aus dem System – eBay und B2B, auch Stornos – geht automatisch als PDF in deine Stotax-Belegablage (über Mail2Select). Rechnungen schreibst du unter WaWi → Ausgangsrechnungen.",
+    purpose: "Jede B2B-Rechnung aus dem System (auch Stornos) geht automatisch als PDF in deine Stotax-Belegablage (über Mail2Select); eBay-Rechnungen nur auf Wunsch, da AccountOne die eBay-Umsätze bucht. Rechnungen schreibst du unter Einkauf & Buchhaltung → Ausgangsrechnungen.",
     fields: [
       { key: "address", label: "Mail2Select-Adresse", placeholder: "deinefirma@mail2select.de", help: "Deine persönliche Adresse aus Stotax Select (endet auf @mail2select.de)." },
       {
@@ -196,10 +196,10 @@ export const INTEGRATIONS: IntegrationDef[] = [
       {
         key: "scope",
         label: "Welche Rechnungen",
-        help: "Bucht dein Steuerberater die eBay-Umsätze schon über AccountOne (eBay-Schnittstelle), nur B2B senden – sonst landet eBay doppelt.",
+        help: "Vorgabe „Nur B2B“: Die eBay-Umsätze bucht AccountOne über die eBay-Schnittstelle – sonst kämen sie doppelt an. „Alle“ nur, wenn eBay nicht in AccountOne angebunden ist.",
         options: [
-          { value: "alle", label: "Alle Rechnungen – eBay und B2B" },
           { value: "b2b", label: "Nur B2B-Rechnungen – eBay bucht AccountOne" },
+          { value: "alle", label: "Alle Rechnungen – eBay und B2B" },
         ],
       },
     ],

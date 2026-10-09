@@ -44,7 +44,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
           <h2>Stotax Select</h2>
           {!cfg ? (
             <>
-              <div className="small muted">Noch nicht eingerichtet. Mit Mail2Select geht jede Rechnung (eBay und B2B, auch Stornos) automatisch als PDF in deine Stotax-Belegablage – du musst nichts mehr abtippen.</div>
+              <div className="small muted">Noch nicht eingerichtet. Mit Mail2Select geht jede B2B-Rechnung (auch Stornos) automatisch als PDF in deine Stotax-Belegablage – du musst nichts mehr abtippen. eBay-Umsätze bucht AccountOne.</div>
               <Link className="btn" href="/anbindungen?p=stotax#stotax">Stotax Select einrichten</Link>
             </>
           ) : (
@@ -53,7 +53,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
                 An <strong>{cfg.address}</strong> · {cfg.auto ? "neue Rechnungen automatisch" : "nur per Knopf"} · {cfg.scope === "b2b" ? "nur B2B (eBay bucht AccountOne)" : "eBay und B2B"} · eingerichtet am {fmtDate(cfg.since)}
               </div>
               {cfg.scope === "alle" && (
-                <div className="small muted">Bucht dein Steuerberater die eBay-Umsätze schon über AccountOne? Dann unter <Link href="/anbindungen?p=stotax#stotax">Anbindungen</Link> auf „Nur B2B“ stellen, damit eBay nicht doppelt ankommt.</div>
+                <div className="small muted">Auch eBay-Rechnungen gehen an Stotax. Bucht AccountOne die eBay-Umsätze, unter <Link href="/anbindungen?p=stotax#stotax">Anbindungen</Link> auf „Nur B2B“ stellen, damit eBay nicht doppelt ankommt.</div>
               )}
               <div className="small" data-testid="stotax-backlog">
                 {pendingSince ? <span className="tag tag-warn">{pendingSince} noch nicht übertragen</span> : <span className="tag tag-ok">alles übertragen</span>}

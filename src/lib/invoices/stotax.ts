@@ -16,7 +16,7 @@ const I = schema.ebayInvoices;
 export const MAIL2SELECT = /^[^@\s]+@mail2select\.de$/i;
 const RETRY_MS = 60 * 60 * 1000;
 
-/** `scope`: „b2b“ = eBay-Rechnungen nicht senden (die eBay-Umsätze bucht AccountOne). */
+/** `scope`: „b2b“ (Vorgabe) = eBay-Rechnungen nicht senden, die eBay-Umsätze bucht AccountOne; „alle“ = auch eBay. */
 export type StotaxConfig = { address: string; auto: boolean; scope: "alle" | "b2b"; since: Date };
 
 export async function stotaxConfig(tenantId: string): Promise<StotaxConfig | null> {
@@ -27,7 +27,7 @@ export async function stotaxConfig(tenantId: string): Promise<StotaxConfig | nul
     .select({ createdAt: schema.integrations.createdAt })
     .from(schema.integrations)
     .where(and(eq(schema.integrations.tenantId, tenantId), eq(schema.integrations.provider, "stotax")));
-  return { address, auto: v?.auto !== "nein", scope: v?.scope === "b2b" ? "b2b" : "alle", since: row?.createdAt ?? new Date() };
+  return { address, auto: v?.auto !== "nein", scope: v?.scope === "alle" ? "alle" : "b2b", since: row?.createdAt ?? new Date() };
 }
 
 const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
