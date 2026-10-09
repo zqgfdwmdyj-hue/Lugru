@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { COUNTRY_NAMES, taxNote } from './b2b';
+import { COUNTRY_NAMES, RC13B_NOTE, taxNote } from './b2b';
 import type { InvoiceData } from './types';
 
 /**
@@ -176,7 +176,7 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
       text(String(i + 1), col.pos, y, { size: 9.5 });
       text(`${qtyText(l.quantity)} ${l.unit}`, col.qty, y, { size: 9.5 });
       descLines.forEach((d, j) => text(d, col.desc, y - j * 12, { size: 9.5 }));
-      text(`${l.vatRate.toLocaleString('de-DE')} %`, col.vat, y, { size: 9.5, alignRight: true });
+      text(l.rc ? 'RC' : `${l.vatRate.toLocaleString('de-DE')} %`, col.vat, y, { size: 9.5, alignRight: true });
       text(formatEuro(l.unitNet, inv.currency), col.unit, y, { size: 9.5, alignRight: true });
       text(formatEuro(l.totalNet, inv.currency), col.total, y, { size: 9.5, alignRight: true });
       y -= h;
@@ -198,19 +198,23 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
 
   // --- Summen ---
   if (y < M.bottom + 90) newPage();
+  const vatLabels = b2b && !inv.kleinunternehmer
+    ? b2b.vat.map((v) => ({
+        label: v.rc ? `Reverse Charge § 13b auf ${formatEuro(v.net, inv.currency)}` : v.rate > 0 ? `zzgl. USt ${v.rate.toLocaleString('de-DE')} % auf ${formatEuro(v.net, inv.currency)}` : 'Umsatzsteuer (steuerfrei)',
+        value: formatEuro(v.vat, inv.currency),
+      }))
+    : [];
+  // Summenblock so breit wie die längste Zeile (mind. 190 pt), damit nichts übereinanderläuft.
+  const sumW = Math.max(190, ...vatLabels.map((v) => font.widthOfTextAtSize(safe(v.label), 9.5) + font.widthOfTextAtSize(safe(v.value), 9.5) + 16));
   const sum = (label: string, value: string, strong = false) => {
-    text(label, right - 190, y, { size: strong ? 11 : 9.5, f: strong ? bold : font });
+    text(label, right - sumW, y, { size: strong ? 11 : 9.5, f: strong ? bold : font });
     text(value, right, y, { size: strong ? 11 : 9.5, f: strong ? bold : font, alignRight: true });
     y -= strong ? 18 : 14;
   };
   if (b2b) {
     sum('Nettobetrag', formatEuro(inv.totalNet, inv.currency));
-    if (!inv.kleinunternehmer) {
-      for (const v of b2b.vat) {
-        sum(v.rate > 0 ? `zzgl. USt ${v.rate.toLocaleString('de-DE')} % auf ${formatEuro(v.net, inv.currency)}` : 'Umsatzsteuer (steuerfrei)', formatEuro(v.vat, inv.currency));
-      }
-    }
-    page.drawLine({ start: { x: right - 190, y: y + 8 }, end: { x: right, y: y + 8 }, thickness: 0.8, color: LINE });
+    for (const v of vatLabels) sum(v.label, v.value);
+    page.drawLine({ start: { x: right - sumW, y: y + 8 }, end: { x: right, y: y + 8 }, thickness: 0.8, color: LINE });
     y -= 4;
     sum('Rechnungsbetrag', formatEuro(inv.totalGross, inv.currency), true);
   } else if (inv.kleinunternehmer) {
@@ -229,6 +233,7 @@ export async function renderInvoicePdf(inv: InvoiceData): Promise<Uint8Array> {
   if (b2b) {
     const tn = taxNote(b2b.taxCase, inv.kleinunternehmer);
     if (tn) notes.push(tn);
+    if (b2b.domesticRc) notes.push(`${RC13B_NOTE} Die mit „RC“ gekennzeichneten Positionen werden ohne Umsatzsteuer berechnet; USt-IdNr. Leistungsempfänger: ${b2b.buyerVatId ?? '–'}.`);
     if (b2b.taxCase === 'eu_supply' || b2b.taxCase === 'reverse_charge') notes.push(`USt-IdNr. Leistender: ${inv.seller.vatId ?? '–'} · USt-IdNr. Empfänger: ${b2b.buyerVatId ?? '–'} (${COUNTRY_NAMES[b2b.buyerCountry] ?? b2b.buyerCountry})`);
     if (inv.kind === 'invoice') {
       notes.push(b2b.paymentDays === 0 ? 'Zahlbar sofort ohne Abzug.' : `Zahlbar ohne Abzug bis ${formatDate(b2b.dueDate)} (${b2b.paymentDays} Tage).`);

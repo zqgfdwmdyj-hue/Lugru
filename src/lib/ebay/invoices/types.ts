@@ -124,6 +124,10 @@ export interface B2bLine {
   unitNet: number;
   vatRate: number;
   totalNet: number;
+  /** Ware nach § 13b Abs. 2 Nr. 10 UStG (Handy, Tablet, Spielekonsole, integrierter Schaltkreis). */
+  device?: boolean;
+  /** Für diese Zeile schuldet der Kunde die Steuer (Reverse Charge, 0 %). */
+  rc?: boolean;
 }
 
 /** Zusatzangaben einer frei geschriebenen Rechnung an Firmenkunden (Preise netto). */
@@ -144,8 +148,10 @@ export interface B2bDetails {
   buyerEmail?: string;
   note?: string;
   lines: B2bLine[];
-  /** Umsatzsteuer je Satz – Grundlage aller Summen. */
-  vat: { rate: number; net: number; vat: number }[];
+  /** Umsatzsteuer je Satz – Grundlage aller Summen. `rc`: Anteil mit Steuerschuld beim Kunden (§ 13b). */
+  vat: { rate: number; net: number; vat: number; rc?: boolean }[];
+  /** § 13b Abs. 2 Nr. 10 im Inland angewendet (Handys/Tablets/Konsolen/Chips ab 5.000 €). */
+  domesticRc?: boolean;
   bank?: { iban?: string; bic?: string; bankName?: string };
 }
 

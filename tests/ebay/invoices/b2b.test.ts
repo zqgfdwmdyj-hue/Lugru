@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { openMemoryDb } from '@/lib/ebay/db/memory';
-import { buildB2bInvoiceData, checkB2bInput, computeB2b, suggestTaxCase, type B2bInput } from '@/lib/ebay/invoices/b2b';
+import { buildB2bInvoiceData, checkB2bInput, computeB2b, looksLikeRc13bGoods, suggestTaxCase, type B2bInput } from '@/lib/ebay/invoices/b2b';
 import { buildStornoData } from '@/lib/ebay/invoices/build';
 import { buildCiiXml, unitCode } from '@/lib/ebay/invoices/einvoice';
 import { deriveNumbering, formatNumber, validNumberFormat, yearlyNumbers } from '@/lib/ebay/invoices/numbering';
@@ -202,5 +202,83 @@ describe('PDF der B2B-Rechnung', () => {
     const t = (Array.isArray(text) ? text.join(' ') : text).replace(/\s+/g, ' ');
     expect(t).toContain('Steuerfreie innergemeinschaftliche Lieferung gemäß § 4 Nr. 1 Buchst. b');
     expect(t).toContain('USt-IdNr. Empfänger: ATU12345678 (Österreich)');
+  });
+});
+
+describe('§ 13b Abs. 2 Nr. 10 (Handys, Tablets, Konsolen, Chips ab 5.000 €)', () => {
+  const consoles = (qty: number, extra: Partial<B2bInput> = {}) =>
+    input({
+      buyer: { ...input().buyer, vatId: 'DE987654321' },
+      lines: [
+        { description: 'Spielekonsole PS5 Slim', quantity: qty, unit: 'Stk', unitNet: 450, vatRate: 19, device: true },
+        { description: 'Controller DualSense', quantity: 10, unit: 'Stk', unitNet: 55, vatRate: 19 },
+      ],
+      ...extra,
+    });
+
+  it('schlägt passende Positionen vor – Zubehör und Spiele nicht', () => {
+    for (const d of ['Apple iPhone 15 128 GB', 'Samsung Galaxy S24', 'iPad Air 11"', 'PlayStation 5 Slim', 'PS5 Pro', 'Xbox Series X', 'Nintendo Switch OLED', 'Spielekonsole', 'Tablet 10 Zoll', 'AMD Ryzen 7 Prozessor', 'Steam Deck OLED']) expect(looksLikeRc13bGoods(d), d).toBe(true);
+    for (const d of ['iPhone 15 Hülle', 'PS5 Controller DualSense', 'PS5 Spiel FIFA', 'Ladekabel USB-C für Handy', 'Tablett aus Holz', 'Haarshampoo', 'Panzerglas iPad']) expect(looksLikeRc13bGoods(d), d).toBe(false);
+  });
+
+  it('ab 5.000 € netto: nur die § 13b-Ware ohne USt, der Rest normal', () => {
+    const c = computeB2b(consoles(12), false);
+    expect(c.rc13b).toEqual({ applies: true, deviceNet: 5400 });
+    expect(c.lines[0]).toMatchObject({ vatRate: 0, rc: true, device: true, totalNet: 5400 });
+    expect(c.lines[1]).toMatchObject({ vatRate: 19, totalNet: 550 });
+    expect(c.lines[1].rc).toBeUndefined();
+    expect(c.vat).toEqual([{ rate: 19, net: 550, vat: 104.5 }, { rate: 0, net: 5400, vat: 0, rc: true }]);
+    expect(c).toMatchObject({ totalNet: 5950, totalVat: 104.5, totalGross: 6054.5 });
+  });
+
+  it('genau 5.000 € zählt, 4.999,99 € nicht; Zubehör zählt nicht zur Schwelle', () => {
+    expect(computeB2b(input({ lines: [{ description: 'iPhone', quantity: 1, unitNet: 5000, vatRate: 19, device: true }] }), false).rc13b.applies).toBe(true);
+    expect(computeB2b(input({ lines: [{ description: 'iPhone', quantity: 1, unitNet: 4999.99, vatRate: 19, device: true }, { description: 'Hüllen', quantity: 100, unitNet: 10, vatRate: 19 }] }), false).rc13b).toEqual({ applies: false, deviceNet: 4999.99 });
+  });
+
+  it('Teil eines größeren Vorgangs: auch unter 5.000 €', () => {
+    const c = computeB2b(consoles(4, { rcWhole: true }), false);
+    expect(c.rc13b).toEqual({ applies: true, deviceNet: 1800 });
+    expect(c.lines[0].rc).toBe(true);
+  });
+
+  it('nicht bei Kleinunternehmern und nicht bei EU-Lieferungen', () => {
+    expect(computeB2b(consoles(12), true).rc13b.applies).toBe(false);
+    expect(computeB2b(consoles(12, { taxCase: 'eu_supply' }), false).rc13b.applies).toBe(false);
+  });
+
+  it('USt-IdNr. des Kunden ist Pflicht', () => {
+    const noVat = consoles(12, { buyer: { ...input().buyer, vatId: undefined } });
+    expect(checkB2bInput(noVat, SELLER).join(' ')).toMatch(/§ 13b .* USt-IdNr\. des Kunden muss auf die Rechnung/);
+    expect(checkB2bInput(consoles(12), SELLER)).toEqual([]);
+  });
+
+  it('PDF: RC je Zeile, Hinweis mit Paragraph und USt-IdNr. des Kunden', async () => {
+    const d = buildB2bInvoiceData(consoles(12), SELLER, { number: '2026-0900', date: '2026-10-09T09:00:00Z', orderId: 'B2B-rc' });
+    expect(d.b2b!.domesticRc).toBe(true);
+    const { text } = await extractText(await getDocumentProxy(await renderInvoicePdf(d)), { mergePages: true });
+    const t = (Array.isArray(text) ? text.join(' ') : text).replace(/\s+/g, ' ');
+    expect(t).toContain('RC');
+    expect(t).toContain('Reverse Charge § 13b auf 5.400,00 €');
+    expect(t).toContain('zzgl. USt 19 % auf 550,00 €');
+    expect(t).toContain('Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b Abs. 2 Nr. 10 UStG.');
+    expect(t).toContain('USt-IdNr. Leistungsempfänger: DE987654321');
+    expect(t).toContain('6.054,50 €');
+  });
+
+  it('E-Rechnung: Kategorie AE für die § 13b-Zeilen, S für den Rest', () => {
+    const x = buildCiiXml(buildB2bInvoiceData(consoles(12), SELLER, { number: '2026-0900', date: '2026-10-09T09:00:00Z', orderId: 'B2B-rc' }));
+    expect(x).toContain('<ram:CategoryCode>AE</ram:CategoryCode><ram:RateApplicablePercent>0.00</ram:RateApplicablePercent>');
+    expect(x).toContain('<ram:CalculatedAmount>0.00</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:ExemptionReason>Steuerschuldnerschaft des Leistungsempfängers (§ 13b Abs. 2 Nr. 10 UStG)</ram:ExemptionReason><ram:BasisAmount>5400.00</ram:BasisAmount><ram:CategoryCode>AE</ram:CategoryCode><ram:ExemptionReasonCode>VATEX-EU-AE</ram:ExemptionReasonCode>');
+    expect(x).toContain('<ram:CalculatedAmount>104.50</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>550.00</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode>');
+    expect(x).toContain('<ram:ID schemeID="VA">DE987654321</ram:ID>');
+    expect(x).toContain('<ram:GrandTotalAmount>6054.50</ram:GrandTotalAmount>');
+  });
+
+  it('Storno behält die Aufteilung', () => {
+    const d = buildB2bInvoiceData(consoles(12), SELLER, { number: '2026-0900', date: '2026-10-09T09:00:00Z', orderId: 'B2B-rc' });
+    const s = buildStornoData(d, { number: '2026-0901', date: '2026-10-10T09:00:00Z' });
+    expect(s.b2b!.vat).toEqual([{ rate: 19, net: -550, vat: -104.5 }, { rate: 0, net: -5400, vat: 0, rc: true }]);
+    expect(buildCiiXml(s)).toContain('<ram:BasisAmount>5400.00</ram:BasisAmount><ram:CategoryCode>AE</ram:CategoryCode>');
   });
 });

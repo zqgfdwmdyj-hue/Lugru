@@ -1,4 +1,4 @@
-import { COUNTRY_NAMES, taxNote } from './b2b';
+import { COUNTRY_NAMES, RC13B_NOTE, taxNote } from './b2b';
 import type { InvoiceData, TaxCase } from './types';
 
 /*
@@ -31,8 +31,9 @@ export function unitCode(unit: string): string {
 
 type Category = { code: 'S' | 'Z' | 'E' | 'K' | 'AE' | 'G'; reason?: string; reasonCode?: string };
 
-export function vatCategory(taxCase: TaxCase, kleinunternehmer: boolean, rate: number): Category {
+export function vatCategory(taxCase: TaxCase, kleinunternehmer: boolean, rate: number, rc = false): Category {
   if (kleinunternehmer) return { code: 'E', reason: 'Kleinunternehmer gemäß § 19 UStG' };
+  if (rc) return { code: 'AE', reason: 'Steuerschuldnerschaft des Leistungsempfängers (§ 13b Abs. 2 Nr. 10 UStG)', reasonCode: 'VATEX-EU-AE' };
   if (taxCase === 'eu_supply') return { code: 'K', reason: 'Steuerfreie innergemeinschaftliche Lieferung', reasonCode: 'VATEX-EU-IC' };
   if (taxCase === 'reverse_charge') return { code: 'AE', reason: 'Umkehrung der Steuerschuldnerschaft', reasonCode: 'VATEX-EU-AE' };
   if (taxCase === 'export') return { code: 'G', reason: 'Steuerfreie Ausfuhrlieferung', reasonCode: 'VATEX-EU-G' };
@@ -56,7 +57,7 @@ export function buildCiiXml(inv: InvoiceData): string {
   const [sellerZip, ...sellerCity] = (s.addressLines[1] ?? '').split(' ');
   const sellerCountry = countryIso(s.addressLines[2]);
   const a = b.buyerAddress;
-  const notes = [taxNote(b.taxCase, inv.kleinunternehmer), storno && inv.cancels ? `Storno zur Rechnung ${inv.cancels}.` : null, b.note ?? null].filter((x): x is string => Boolean(x));
+  const notes = [taxNote(b.taxCase, inv.kleinunternehmer), b.domesticRc ? RC13B_NOTE : null, storno && inv.cancels ? `Storno zur Rechnung ${inv.cancels}.` : null, b.note ?? null].filter((x): x is string => Boolean(x));
 
   const lines = b.lines
     .map((l, i) => {
@@ -67,7 +68,7 @@ export function buildCiiXml(inv: InvoiceData): string {
         price = -price;
         q = -q;
       }
-      const cat = vatCategory(b.taxCase, inv.kleinunternehmer, l.vatRate);
+      const cat = vatCategory(b.taxCase, inv.kleinunternehmer, l.vatRate, l.rc);
       return `<ram:IncludedSupplyChainTradeLineItem>
 <ram:AssociatedDocumentLineDocument><ram:LineID>${i + 1}</ram:LineID></ram:AssociatedDocumentLineDocument>
 <ram:SpecifiedTradeProduct><ram:Name>${esc(l.description)}</ram:Name></ram:SpecifiedTradeProduct>
@@ -83,7 +84,7 @@ export function buildCiiXml(inv: InvoiceData): string {
 
   const taxes = b.vat
     .map((v) => {
-      const cat = vatCategory(b.taxCase, inv.kleinunternehmer, v.rate);
+      const cat = vatCategory(b.taxCase, inv.kleinunternehmer, v.rate, v.rc);
       return `<ram:ApplicableTradeTax><ram:CalculatedAmount>${amt(v.vat * sg)}</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode>${cat.reason ? `<ram:ExemptionReason>${esc(cat.reason)}</ram:ExemptionReason>` : ''}<ram:BasisAmount>${amt(v.net * sg)}</ram:BasisAmount><ram:CategoryCode>${cat.code}</ram:CategoryCode>${cat.reasonCode ? `<ram:ExemptionReasonCode>${cat.reasonCode}</ram:ExemptionReasonCode>` : ''}<ram:RateApplicablePercent>${amt(v.rate)}</ram:RateApplicablePercent></ram:ApplicableTradeTax>`;
     })
     .join('\n');

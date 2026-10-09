@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { computeB2b, suggestTaxCase, TAX_CASE_LABEL, COUNTRY_NAMES, EU_COUNTRIES } from "@/lib/ebay/invoices/b2b";
+import { computeB2b, looksLikeRc13bGoods, RC13B_THRESHOLD, suggestTaxCase, TAX_CASE_LABEL, COUNTRY_NAMES, EU_COUNTRIES } from "@/lib/ebay/invoices/b2b";
 import type { TaxCase } from "@/lib/ebay/invoices/types";
 import { parseAmount } from "@/lib/numbers";
 
 type Customer = { id: string; name: string; contact: string; street: string; zip: string; city: string; country: string; vatId: string; email: string; customerNumber: string };
-type Line = { key: number; desc: string; qty: string; unit: string; price: string; vat: string };
+/** `device`: § 13b-Ware; `deviceSet`: von Hand gesetzt – dann kein automatischer Vorschlag mehr. */
+type Line = { key: number; desc: string; qty: string; unit: string; price: string; vat: string; device: boolean; deviceSet?: boolean };
 
 const today = () => new Date().toISOString().slice(0, 10);
 const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
@@ -36,7 +37,8 @@ export function B2bForm(props: {
   const [c, setC] = useState<Omit<Customer, "id">>(EMPTY);
   const [taxCase, setTaxCase] = useState<TaxCase>("domestic");
   const [manualTax, setManualTax] = useState(false);
-  const [lines, setLines] = useState<Line[]>([{ key: 1, desc: "", qty: "1", unit: "Stk", price: "", vat: "19" }]);
+  const [lines, setLines] = useState<Line[]>([{ key: 1, desc: "", qty: "1", unit: "Stk", price: "", vat: "19", device: false }]);
+  const [rcWhole, setRcWhole] = useState(false);
 
   const setField = (k: keyof typeof EMPTY, v: string) => {
     const next = { ...c, [k]: v };
@@ -49,18 +51,21 @@ export function B2bForm(props: {
     setC(next);
     if (!manualTax) setTaxCase(suggestTaxCase(next.country, next.vatId));
   };
-  const setLine = (key: number, patch: Partial<Line>) => setLines(lines.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  // Bezeichnung geändert → § 13b-Ware vorschlagen, solange der Haken nicht von Hand gesetzt wurde.
+  const setLine = (key: number, patch: Partial<Line>) =>
+    setLines(lines.map((l) => (l.key === key ? { ...l, ...patch, ...(patch.desc !== undefined && !l.deviceSet ? { device: looksLikeRc13bGoods(patch.desc) } : {}) } : l)));
 
   const totals = useMemo(
     () =>
       computeB2b(
         {
           taxCase,
-          lines: lines.map((l) => ({ description: l.desc, quantity: parseAmount(l.qty) ?? 0, unitNet: parseAmount(l.price) ?? 0, vatRate: Number(l.vat) })),
+          rcWhole,
+          lines: lines.map((l) => ({ description: l.desc, quantity: parseAmount(l.qty) ?? 0, unitNet: parseAmount(l.price) ?? 0, vatRate: Number(l.vat), device: l.device })),
         },
         props.kleinunternehmer,
       ),
-    [lines, taxCase, props.kleinunternehmer],
+    [lines, taxCase, rcWhole, props.kleinunternehmer],
   );
   const free = props.kleinunternehmer || taxCase !== "domestic";
   const field = (k: keyof typeof EMPTY, label: string, opts: { req?: boolean; width?: string; placeholder?: string; type?: string } = {}) => (
@@ -143,15 +148,32 @@ export function B2bForm(props: {
               </select>
               {free && <input type="hidden" name="l_vat" value="0" />}
             </div>
+            <label className="small" style={{ display: "flex", gap: 4, alignItems: "center", paddingBottom: 8 }} title="§ 13b Abs. 2 Nr. 10 UStG: Mobilfunkgeräte, Tablets, Spielekonsolen, integrierte Schaltkreise (z. B. Prozessoren)">
+              <input type="checkbox" checked={l.device} onChange={(e) => setLines(lines.map((x) => (x.key === l.key ? { ...x, device: e.target.checked, deviceSet: true } : x)))} data-testid="line-rc" />
+              § 13b-Ware
+            </label>
+            <input type="hidden" name="l_rc" value={l.device ? "1" : "0"} />
             {lines.length > 1 && <button type="button" className="btn-link small" style={{ color: "var(--muted)", paddingBottom: 8 }} onClick={() => setLines(lines.filter((x) => x.key !== l.key))} aria-label={`Position ${i + 1} entfernen`}>entfernen</button>}
           </div>
         ))}
         <div>
-          <button type="button" className="btn btn-small" onClick={() => setLines([...lines, { key: Math.max(...lines.map((x) => x.key)) + 1, desc: "", qty: "1", unit: "Stk", price: "", vat: lines[lines.length - 1]?.vat ?? "19" }])}>+ Position</button>
+          <button type="button" className="btn btn-small" onClick={() => setLines([...lines, { key: Math.max(...lines.map((x) => x.key)) + 1, desc: "", qty: "1", unit: "Stk", price: "", vat: lines[lines.length - 1]?.vat ?? "19", device: false }])}>+ Position</button>
         </div>
+        {taxCase === "domestic" && !props.kleinunternehmer && lines.some((l) => l.device) && (
+          <div className={`notice ${totals.rc13b.applies ? "notice-info" : "notice-warn"} small`} data-testid="rc-hint">
+            {totals.rc13b.applies
+              ? `§ 13b Abs. 2 Nr. 10: Handys/Tablets/Konsolen/Chips zusammen ${euro(totals.rc13b.deviceNet)} netto${totals.rc13b.deviceNet < RC13B_THRESHOLD ? " (Teil eines Vorgangs ab 5.000 €)" : ""} – diese Positionen ohne USt („RC“), der Kunde schuldet die Steuer. Hinweis und USt-IdNr. des Kunden kommen auf die Rechnung.`
+              : `§ 13b-Ware zusammen ${euro(totals.rc13b.deviceNet)} netto – unter 5.000 €, daher normale Umsatzsteuer.`}
+            <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+              <input type="checkbox" name="rcWhole" checked={rcWhole} onChange={(e) => setRcWhole(e.target.checked)} />
+              Gehört zu einer Bestellung, bei der diese Waren insgesamt ≥ 5.000 € netto ausmachen (z. B. Teillieferung)
+            </label>
+          </div>
+        )}
         <div className="small" style={{ alignSelf: "flex-end", textAlign: "right" }} data-testid="totals">
           <div>Netto: <strong className="num">{euro(totals.totalNet)}</strong></div>
           {totals.vat.filter((v) => v.rate > 0).map((v) => <div key={v.rate}>USt {v.rate} %: <span className="num">{euro(v.vat)}</span></div>)}
+          {totals.vat.filter((v) => v.rc).map((v) => <div key="rc">§ 13b (Steuer schuldet der Kunde) auf <span className="num">{euro(v.net)}</span>: <span className="num">0,00 €</span></div>)}
           {free && <div className="muted">ohne Umsatzsteuer ({props.kleinunternehmer ? "§ 19 UStG" : TAX_CASE_LABEL[taxCase]})</div>}
           <div style={{ fontSize: 15 }}>Rechnungsbetrag: <strong className="num">{euro(totals.totalGross)}</strong></div>
         </div>

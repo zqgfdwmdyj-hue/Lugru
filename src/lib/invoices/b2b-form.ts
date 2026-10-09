@@ -12,6 +12,7 @@ export function b2bInputFromForm(fd: FormData): B2bInput & { saveCustomer: boole
   const unit = fd.getAll("l_unit").map(String);
   const price = fd.getAll("l_price").map(String);
   const vat = fd.getAll("l_vat").map(String);
+  const rc = fd.getAll("l_rc").map(String);
   const taxCase = str(fd, "taxCase") as TaxCase;
   const days = parseAmount(str(fd, "paymentDays"));
   return {
@@ -32,6 +33,7 @@ export function b2bInputFromForm(fd: FormData): B2bInput & { saveCustomer: boole
     paymentDays: days === null ? 14 : Math.round(days),
     reference: str(fd, "reference") || undefined,
     note: str(fd, "note") || undefined,
+    rcWhole: fd.get("rcWhole") === "on",
     lines: desc
       .map((d, i) => ({
         description: d.trim(),
@@ -39,6 +41,7 @@ export function b2bInputFromForm(fd: FormData): B2bInput & { saveCustomer: boole
         unit: (unit[i] ?? "").trim() || "Stk",
         unitNet: parseAmount(price[i] ?? "") ?? NaN,
         vatRate: Number(vat[i] ?? 19),
+        device: rc[i] === "1",
       }))
       .filter((l) => l.description || Number.isFinite(l.unitNet)),
     saveCustomer: fd.get("saveCustomer") === "on",

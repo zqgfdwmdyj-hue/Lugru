@@ -33,6 +33,21 @@ export function taxNote(taxCase: TaxCase, kleinunternehmer: boolean): string | n
   return null;
 }
 
+/*
+ * § 13b Abs. 2 Nr. 10 UStG: Lieferungen von Mobilfunkgeräten, Tablet-Computern, Spielekonsolen und
+ * integrierten Schaltkreisen (vor Einbau) an Unternehmer im Inland – ab 5.000 € netto für diese
+ * Waren in einem wirtschaftlichen Vorgang schuldet der Kunde die Steuer. Andere Positionen derselben
+ * Rechnung bleiben normal besteuert. Nicht für Kleinunternehmer.
+ */
+export const RC13B_THRESHOLD = 5000;
+export const RC13B_NOTE = 'Steuerschuldnerschaft des Leistungsempfängers gemäß § 13b Abs. 2 Nr. 10 UStG.';
+
+/** Vorschlag: Bezeichnung klingt nach Handy, Tablet, Spielekonsole oder Prozessor – nicht nach Zubehör oder Spielen. */
+export function looksLikeRc13bGoods(description: string): boolean {
+  if (/(hülle|huelle|case\b|cover|kabel|ladeger|netzteil|panzerglas|schutzfolie|folie|halter|controller|spiel(?!ekonsole)|headset|tasche|ständer|staender|ladestation|adapter)/i.test(description)) return false;
+  return /\b(i ?phone|smartphones?|handys?|mobiltelefon\w*|galaxy [asz]\d+|pixel \d+|ipad|tablets?|playstation|ps[45]\b|xbox|nintendo switch|switch (oled|lite|2)|spielekonsolen?|konsolen?|steam deck|prozessor\w*|cpu)\b/i.test(description);
+}
+
 /** Vorschlag für den Steuerfall aus Land und USt-IdNr. des Kunden. */
 export function suggestTaxCase(country: string, buyerVatId?: string | null): TaxCase {
   const c = country.trim().toUpperCase();
@@ -49,7 +64,9 @@ export interface B2bInput {
   paymentDays: number;
   reference?: string;
   note?: string;
-  lines: { description: string; quantity: number; unit?: string; unitNet: number; vatRate: number }[];
+  lines: { description: string; quantity: number; unit?: string; unitNet: number; vatRate: number; device?: boolean }[];
+  /** Teil eines größeren Vorgangs (z. B. Teillieferung), der für § 13b-Ware insgesamt ≥ 5.000 € netto hat. */
+  rcWhole?: boolean;
 }
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
@@ -84,15 +101,21 @@ export function checkB2bInput(input: B2bInput, s: InvoiceSettings): string[] {
     if (!s.vatId?.trim()) p.push('Für die steuerfreie EU-Rechnung ist deine eigene USt-IdNr. Pflicht (Einstellungen → Rechnungen).');
   }
   if (input.taxCase === 'export' && EU_COUNTRIES.includes(country)) p.push('Ausfuhrlieferung nur für Kunden außerhalb der EU.');
+  if (computeB2b(input, Boolean(s.kleinunternehmer)).rc13b.applies && !vat) {
+    p.push('§ 13b (Handys/Tablets/Konsolen ab 5.000 €): die USt-IdNr. des Kunden muss auf die Rechnung.');
+  }
   return p;
 }
 
 /** Steuersatz je Position nach Steuerfall (steuerfrei → 0 %). */
 const effectiveRate = (rate: number, taxCase: TaxCase, kleinunternehmer: boolean) => (kleinunternehmer || taxCase !== 'domestic' ? 0 : rate);
 
-/** Positionen und Summen: Netto je Zeile, Umsatzsteuer je Satz aus der Summe (keine Rundungscents). */
-export function computeB2b(input: Pick<B2bInput, 'lines' | 'taxCase'>, kleinunternehmer: boolean) {
-  const lines: B2bLine[] = input.lines
+/**
+ * Positionen und Summen: Netto je Zeile, Umsatzsteuer je Satz aus der Summe (keine Rundungscents).
+ * § 13b-Ware im Inland ab 5.000 € (oder als Teil eines solchen Vorgangs): diese Zeilen 0 %, Kunde schuldet die Steuer.
+ */
+export function computeB2b(input: Pick<B2bInput, 'lines' | 'taxCase' | 'rcWhole'>, kleinunternehmer: boolean) {
+  const base = input.lines
     .filter((l) => l.description.trim() || l.unitNet)
     .map((l) => ({
       description: l.description.trim(),
@@ -101,15 +124,23 @@ export function computeB2b(input: Pick<B2bInput, 'lines' | 'taxCase'>, kleinunte
       unitNet: roundCents(l.unitNet),
       vatRate: effectiveRate(l.vatRate, input.taxCase, kleinunternehmer),
       totalNet: roundCents(l.quantity * roundCents(l.unitNet)),
+      device: Boolean(l.device),
     }));
-  const rates = [...new Set(lines.map((l) => l.vatRate))].sort((a, b) => b - a);
-  const vat = rates.map((rate) => {
-    const net = roundCents(lines.filter((l) => l.vatRate === rate).reduce((s, l) => s + l.totalNet, 0));
-    return { rate, net, vat: roundCents((net * rate) / 100) };
+  const deviceNet = roundCents(base.filter((l) => l.device).reduce((s, l) => s + l.totalNet, 0));
+  const applies = input.taxCase === 'domestic' && !kleinunternehmer && deviceNet > 0 && (deviceNet >= RC13B_THRESHOLD || Boolean(input.rcWhole));
+  const lines: B2bLine[] = base.map(({ device, ...l }) => ({
+    ...l,
+    ...(device ? { device: true } : {}),
+    ...(device && applies ? { vatRate: 0, rc: true } : {}),
+  }));
+  const groups = [...new Map(lines.map((l) => [`${l.vatRate}|${l.rc ? 1 : 0}`, { rate: l.vatRate, rc: Boolean(l.rc) }])).values()].sort((a, b) => b.rate - a.rate || Number(a.rc) - Number(b.rc));
+  const vat = groups.map(({ rate, rc }) => {
+    const net = roundCents(lines.filter((l) => l.vatRate === rate && Boolean(l.rc) === rc).reduce((s, l) => s + l.totalNet, 0));
+    return { rate, net, vat: roundCents((net * rate) / 100), ...(rc ? { rc: true } : {}) };
   });
   const totalNet = roundCents(vat.reduce((s, v) => s + v.net, 0));
   const totalVat = roundCents(vat.reduce((s, v) => s + v.vat, 0));
-  return { lines, vat, totalNet, totalVat, totalGross: roundCents(totalNet + totalVat) };
+  return { lines, vat, totalNet, totalVat, totalGross: roundCents(totalNet + totalVat), rc13b: { applies, deviceNet } };
 }
 
 export function buildB2bInvoiceData(input: B2bInput, s: InvoiceSettings, opts: { number: string; date: string; orderId: string }): InvoiceData {
@@ -141,6 +172,7 @@ export function buildB2bInvoiceData(input: B2bInput, s: InvoiceSettings, opts: {
     ...(input.note?.trim() ? { note: input.note.trim() } : {}),
     lines: c.lines,
     vat: c.vat,
+    ...(c.rc13b.applies ? { domesticRc: true } : {}),
     ...(s.iban?.trim() ? { bank: { iban: s.iban.replace(/\s+/g, '').toUpperCase(), bic: s.bic?.trim() || undefined, bankName: s.bankName?.trim() || undefined } } : {}),
   };
   return {
