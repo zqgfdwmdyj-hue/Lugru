@@ -124,6 +124,12 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
                   <td style={{ maxWidth: 300 }}>
                     <Link href={`/lieferanten/abfrage?q=${encodeURIComponent(r.ean ?? r.market?.asin ?? r.title ?? "")}`}><strong>{r.market?.title ?? r.title ?? r.supplier_sku}</strong></Link>
                     <div className="small muted">{r.ean ?? "–"}{r.market?.asin && <> · <a href={`https://www.amazon.de/dp/${r.market.asin}`} target="_blank" rel="noreferrer">{r.market.asin}</a></>}</div>
+                    {(r.market?.sellable || r.market?.amazonSells) && (
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
+                        {r.market?.sellable && (r.market.sellable.ok ? <span className="tag tag-ok">verkaufbar</span> : <span className="tag tag-danger">{r.market.sellable.reason ?? "gesperrt"}</span>)}
+                        {r.market?.amazonSells && <span className="tag tag-warn">Amazon verkauft selbst</span>}
+                      </div>
+                    )}
                   </td>
                   <td className="small">
                     <strong>{r.feed_name}</strong>{alt > 0 && <span className="muted"> · +{alt} weitere</span>}

@@ -8,19 +8,21 @@ import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, contactBlocker, isBrandNote } from "@/lib/leads/logic";
+import { brandMatches, isBrandNote, priorContact } from "@/lib/leads/logic";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
-import { brandLoadStatus, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sentToday } from "@/lib/leads/service";
+import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
-import { draftAction, excludeAction, loadBrandsAction, reincludeAction, researchAction, searchBrandAction, sendAction } from "./actions";
+import { draftAction, excludeAction, fairImportAction, loadBrandsAction, reincludeAction, researchAction, searchBrandAction, sendAction, toBoardAction } from "./actions";
 import { AutoRefresh, SelectAll } from "./refresh";
 import { RegisterBookmark, RegisterReceiver } from "./register-import";
+import { MesseBookmark, MesseReceiver } from "./messe-import";
+import { messeBookmarkletHref } from "@/lib/leads/messe-bookmarklet";
 import { FINDING_LABEL, KIND_LABEL, SEARCH_SOURCE_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
 
 const VIEWS = { offen: "Offen", grosshandel: "Großhändler", entwurf: "Entwürfe", angeschrieben: "Angeschrieben", ausgeschlossen: "Ausgeschlossen" } as const;
 type View = keyof typeof VIEWS;
 
-const QUELLEN: LeadSource[] = ["lucid", "amazon", "ebay", "gpsr", "web"];
+const QUELLEN: LeadSource[] = ["lucid", "amazon", "ebay", "gpsr", "web", "messe"];
 
 export default async function GrosshaendlerFindenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; marke?: string; meldung?: string; quelle?: string; register?: string; import?: string }> }) {
   const session = await requireArea("lieferanten");
@@ -48,8 +50,9 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
     })
     .from(L)
     .where(eq(L.tenantId, t));
-  const [today, missing, missingIds, searches, keepa, ebay, ai] = await Promise.all([
+  const [today, ctx, missing, missingIds, searches, keepa, ebay, ai] = await Promise.all([
     sentToday(t),
+    contactContext(t),
     missingBrandCount(t),
     missingBrandIds(t),
     recentSearches(t),
@@ -127,6 +130,25 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
         )}
       </section>
 
+      <details className="card card-pad" open={sp.import === "messe" || quelle === "messe"} data-testid="messe-import">
+        <summary style={{ cursor: "pointer" }}><strong>Messe-Ausstellerliste auslesen</strong> <span className="small muted">– z. B. IAW Köln: Importeure, Großhändler, Aktionsware</span></summary>
+        <div className="stack small" style={{ gap: 10, marginTop: 10 }}>
+          <form action={fairImportAction} className="stack" style={{ gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input className="input" name="url" type="url" required placeholder="Link zur Ausstellerliste, z. B. https://iaw-messe.de/besucher/ausstellerverzeichnis/" style={{ flex: "1 1 320px" }} aria-label="Link zur Ausstellerliste" />
+              <input className="input" name="fair" placeholder="Messe (optional)" style={{ maxWidth: 180 }} aria-label="Messe" />
+              <input className="input" name="categories" placeholder="nur Kategorien, z. B. Drogerie, Lebensmittel" style={{ maxWidth: 280 }} aria-label="Kategorien" />
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="details" defaultChecked /> Detailseiten laden (Anschrift, Website, Kontakt-E-Mail, Kategorien – ca. 1 Sek. je Aussteller)</label>
+              <button className="btn btn-primary" type="submit">Auslesen</button>
+            </div>
+          </form>
+          <div className="muted">Die IAW wird direkt gelesen (alle Seiten, kostenlos). Andere Messen liest die KI (wenige Cent je Liste). Lädt eine Messeseite ihre Aussteller erst im Browser („Mehr laden“, Scrollen): Lesezeichen <MesseBookmark href={messeBookmarkletHref(origin)} /> in die Lesezeichenleiste ziehen, auf der Ausstellerliste klicken → „An Seller-System senden“.</div>
+          <MesseReceiver />
+        </div>
+      </details>
+
       <details className="card card-pad" open={registerBlocked || sp.import === "register"} data-testid="register-browser">
         <summary style={{ cursor: "pointer" }}><strong>Verpackungsregister über deinen Browser abfragen</strong> <span className="small muted">– wenn das Register Anfragen vom Server ablehnt</span></summary>
         <div className="stack small" style={{ gap: 8, marginTop: 10 }}>
@@ -198,7 +220,8 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
               {rows.length === 0 && <tr><td colSpan={7} className="muted">Keine Einträge in dieser Ansicht. Oben eine Marke im Register suchen.</td></tr>}
               {rows.map((l) => {
                 const brand = l.searchBrands[0] ?? "";
-                const block = contactBlocker(l);
+                const block = l.mailedAt ? null : sendBlocker(l, ctx);
+                const dup = l.mailedAt ? null : priorContact(l, ctx.contacted, ctx.suppliers);
                 return (
                   <tr key={l.id} data-testid="lead-row" data-name={l.companyName}>
                     <td><input type="checkbox" name="ids" value={l.id} aria-label={`${l.companyName} auswählen`} /></td>
@@ -247,7 +270,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                       <span className={`tag ${l.status === "antwort" ? "tag-ok" : l.status === "angeschrieben" ? "tag-info" : "tag-neutral"}`}>{STATUS_LABEL[l.status]}</span>
                       {l.busy === "entwurf" && <div className="muted">schreibt …</div>}
                       {view === "entwurf" && l.mailSubject && <div className="muted" style={{ maxWidth: 260 }}>{l.mailSubject}</div>}
-                      {view === "entwurf" && block && <div style={{ color: "var(--danger)" }}>{block}</div>}
+                      {dup ? <div style={{ color: "var(--danger)" }} data-testid="lead-dup">{dup}</div> : view === "entwurf" && block && <div style={{ color: "var(--danger)" }}>{block}</div>}
                       {l.mailError && <div style={{ color: "var(--danger)" }}>{l.mailError}</div>}
                     </td>
                   </tr>
@@ -261,6 +284,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
           <h2>Mit der Auswahl</h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button className="btn" type="submit" formAction={researchAction}>Per Websuche prüfen</button>
+            <button className="btn" type="submit" formAction={toBoardAction}>Aufs Board</button>
             <button className="btn" type="submit" formAction={excludeAction}>Ausschließen</button>
             {view === "ausgeschlossen" && <button className="btn" type="submit" formAction={reincludeAction}>Wieder aufnehmen</button>}
           </div>

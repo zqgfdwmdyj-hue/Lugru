@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gte, inArray, isNull, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, ne, notInArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { askClaude, askClaudeWithWeb, modelFor } from "@/lib/ai/claude";
 import { getIntegration } from "@/lib/integrations/store";
@@ -8,7 +8,7 @@ import { ensureSupplier } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { upsertSystemTask } from "@/lib/tasks/system";
 import type { LeadFinding } from "@/db/schema";
-import { BRANDS_WAITING, contactBlocker, isBrandNote, mailLanguageFor, parseLucidPayload, parseResearch, preAssess, validEmail, type LucidImportProducer } from "./logic";
+import { BRANDS_WAITING, contactBlocker, isBrandNote, isGenericMailDomain, nameKey, priorContact, type ContactRef, mailLanguageFor, parseLucidPayload, parseResearch, preAssess, validEmail, type LucidImportProducer } from "./logic";
 import { brandsOf, LucidSessionError, LucidThrottledError, LucidUnavailableError, openSession, PAUSE_MS, searchProducers, sleep, type LucidProducer, type Session } from "./lucid";
 
 type Lead = typeof schema.supplierLeads.$inferSelect;
@@ -69,10 +69,46 @@ async function storeProducers(tenantId: string, b: string, producers: LucidImpor
   let created = 0;
   const ids: string[] = [];
   const now = new Date().toISOString();
+  // Schon über Amazon, eBay, Messe … bekannte Firma (gleicher Name, noch ohne Registereintrag)?
+  // Dann wird dieser Kontakt zum Registereintrag – statt einer zweiten Zeile.
+  const known = await db.select({ id: L.id, companyName: L.companyName, source: L.source }).from(L).where(and(eq(L.tenantId, tenantId), ne(L.source, "lucid")));
+  const byName = new Map(known.map((k) => [nameKey(k.companyName), k.id]));
+  const lucidIds = new Set(
+    (await db.select({ sourceId: L.sourceId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.source, "lucid"), inArray(L.sourceId, producers.map((p) => p.ManufacturerId).concat(""))))).map((r) => r.sourceId),
+  );
   for (const p of producers) {
     if (opts.onlyActive && p.RegistrationEndDate) continue;
     const pre = preAssess({ companyName: p.CompanyName, brands: p.brands, searchBrand: b, registrationEnd: clean(p.RegistrationEndDate), brandsComplete: p.brandsComplete });
     const finding: LeadFinding = { source: "lucid", label: "Verpackungsregister", detail: clean(p.RegisterNumber) ?? undefined, brand: b, at: now };
+    const mergeId = !lucidIds.has(p.ManufacturerId) ? byName.get(nameKey(p.CompanyName)) : undefined;
+    if (mergeId) {
+      const [l] = await db.select().from(L).where(eq(L.id, mergeId));
+      const f = fieldsOf(p);
+      await db
+        .update(L)
+        .set({
+          source: "lucid",
+          sourceId: p.ManufacturerId,
+          registerNumber: f.registerNumber,
+          street: l.street ?? f.street,
+          zip: l.zip ?? f.zip,
+          city: l.city ?? f.city,
+          country: l.country ?? f.country,
+          phone: l.phone ?? f.phone,
+          registeredAt: f.registeredAt,
+          registrationEnd: f.registrationEnd,
+          isForeign: f.isForeign,
+          ...(p.brands ? { brands: p.brands } : {}),
+          searchBrands: [...new Set([...l.searchBrands, b])],
+          score: Math.max(l.score, pre.score),
+          findings: [...l.findings.filter((x) => !(x.source === "lucid" && x.brand === b)), finding],
+          updatedAt: new Date(),
+        })
+        .where(eq(L.id, mergeId));
+      byName.delete(nameKey(p.CompanyName));
+      ids.push(mergeId);
+      continue;
+    }
     const [row] = await db
       .insert(L)
       .values({
@@ -343,13 +379,15 @@ export async function senderInfo(tenantId: string, userId: string): Promise<Send
 }
 
 export function mailPrompt(l: Lead, sender: Sender, wish: string, lang: "de" | "en"): string {
-  const brand = l.searchBrands[0] ?? "";
+  const brands = l.searchBrands.filter(Boolean);
+  const fair = l.findings.find((f) => f.source === "messe");
   return [
     `Schreibe eine kurze, persönliche Einkaufsanfrage per E-Mail ${lang === "de" ? "auf Deutsch (Sie-Form)" : "auf Englisch"} an einen möglichen Lieferanten.`,
     `Empfänger: ${l.companyName}${l.city ? ` (${l.city}, ${l.country ?? ""})` : ""}`,
     l.summary ? `Was wir über die Firma wissen: ${l.summary}` : "",
+    fair ? `Woher wir die Firma kennen: Aussteller auf der Messe ${fair.detail?.split(" · ")[0] ?? ""}.` : "",
     `Absender: ${sender.company || "[Firma]"}, ${sender.about}.`,
-    `Anliegen: Bezug von ${brand}-Produkten – Händlerkonditionen/Preisliste anfragen und eine Zusammenarbeit anbieten.${wish ? ` Zusatz vom Absender: ${wish}` : ""}`,
+    `Anliegen: ${brands.length ? `Bezug von Produkten der Marke${brands.length > 1 ? "n" : ""} ${brands.join(", ")}` : "Bezug von Waren aus dem Sortiment der Firma"} – Händlerkonditionen/Preisliste anfragen und eine Zusammenarbeit anbieten.${wish ? ` Zusatz vom Absender: ${wish}` : ""}`,
     "",
     "Regeln:",
     "- Höchstens 120 Wörter, sachlich, freundlich, keine Floskeln, keine Übertreibungen, nichts erfinden (keine Mengen, Umsätze oder Referenzen, die oben nicht stehen).",
@@ -373,8 +411,9 @@ export async function startDrafts(tenantId: string, userId: string, ids: string[
   const ai = await aiConfig(tenantId);
   const sender = await senderInfo(tenantId, userId);
   if (!sender.company) throw new Error("Bitte zuerst unter Einstellungen → Versand die Absenderfirma eintragen – sie steht in jeder Anfrage.");
+  const ctx = await contactContext(tenantId);
   const rows = (await db.select().from(L).where(and(eq(L.tenantId, tenantId), inArray(L.id, ids), isNull(L.busy)))).filter((l) => {
-    const block = contactBlocker(l);
+    const block = sendBlocker(l, ctx);
     return !block || block === "keine E-Mail-Adresse";
   });
   if (!rows.length) return 0;
@@ -397,21 +436,43 @@ export async function startDrafts(tenantId: string, userId: string, ids: string[
   return rows.length;
 }
 
+/** Bereits angeschriebene Kontakte und Lieferanten – für die Doppelt-Prüfung. */
+export async function contactContext(tenantId: string) {
+  const [contacted, suppliers] = await Promise.all([
+    db
+      .select({ id: L.id, companyName: L.companyName, email: L.email, website: L.website, mailedAt: L.mailedAt, mailedTo: L.mailedTo, searchBrands: L.searchBrands })
+      .from(L)
+      .where(and(eq(L.tenantId, tenantId), isNotNull(L.mailedAt))),
+    db.select({ name: schema.suppliers.name, code: schema.suppliers.code }).from(schema.suppliers).where(eq(schema.suppliers.tenantId, tenantId)),
+  ]);
+  return { contacted: contacted as ContactRef[], suppliers: suppliers.flatMap((x) => [x.name, x.code].filter((n): n is string => Boolean(n))) };
+}
+
+/** Warum diese Firma nicht (noch einmal) angeschrieben werden soll – oder null. */
+export function sendBlocker(l: Lead, ctx: Awaited<ReturnType<typeof contactContext>>) {
+  return contactBlocker(l) ?? priorContact(l, ctx.contacted, ctx.suppliers);
+}
+
 export async function sentToday(tenantId: string) {
   const since = new Date();
   since.setHours(0, 0, 0, 0);
-  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(L).where(and(eq(L.tenantId, tenantId), gte(L.mailedAt, since)));
+  // Erste Anfragen und Nachfass-Mails zählen beide zum Tageslimit.
+  const [r] = await db
+    .select({ n: sql<number>`(count(*) filter (where ${L.mailedAt} >= ${since}) + count(*) filter (where ${L.followUpAt} >= ${since}))::int` })
+    .from(L)
+    .where(and(eq(L.tenantId, tenantId), sql`(${L.mailedAt} >= ${since} or ${L.followUpAt} >= ${since})`));
   return r?.n ?? 0;
 }
 
 /** Freigegebene Entwürfe senden – nie doppelt, nie an gesperrte Kontakte, mit Tageslimit. */
 export async function sendDrafts(tenantId: string, ids: string[]) {
   const rows = await db.select().from(L).where(and(eq(L.tenantId, tenantId), inArray(L.id, ids)));
+  const ctx = await contactContext(tenantId);
   let sent = 0;
   const skipped: string[] = [];
   let left = DAILY_MAIL_LIMIT - (await sentToday(tenantId));
   for (const l of rows) {
-    const block = contactBlocker(l);
+    const block = sendBlocker(l, ctx);
     if (block || !l.mailSubject || !l.mailBody) {
       skipped.push(`${l.companyName}: ${block ?? "kein Entwurf"}`);
       continue;
@@ -426,6 +487,8 @@ export async function sendDrafts(tenantId: string, ids: string[]) {
     try {
       await sendMail(tenantId, { to: l.email!, subject: l.mailSubject, text: l.mailBody });
       await db.update(L).set({ status: "angeschrieben", mailError: null, updatedAt: new Date() }).where(eq(L.id, l.id));
+      // Gleiche Firma in derselben Auswahl (andere Marke/Quelle) nicht noch einmal.
+      ctx.contacted.push({ ...l, mailedAt: new Date(), mailedTo: l.email });
       sent++;
       left--;
     } catch (e) {
@@ -442,12 +505,12 @@ const domainOf = (email: string) => email.split("@")[1]?.toLowerCase() ?? "";
 
 /** Eingegangene Mails von angeschriebenen Firmen (gleiche Domain) → Status „Antwort“ und Aufgabe. */
 export async function detectReplies(tenantId: string) {
-  const open = await db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.status, "angeschrieben")));
+  const open = await db.select().from(L).where(and(eq(L.tenantId, tenantId), inArray(L.status, ["angeschrieben", "follow_up"])));
   let found = 0;
   for (const l of open) {
     if (!l.mailedTo || !l.mailedAt || !validEmail(l.mailedTo)) continue;
     const domain = domainOf(l.mailedTo);
-    const generic = /^(gmail|googlemail|outlook|hotmail|live|yahoo|gmx|web|t-online|icloud|aol|mail)\./.test(domain);
+    const generic = isGenericMailDomain(domain);
     const E = schema.emails;
     const [hit] = await db
       .select({ id: E.id, subject: E.subject, receivedAt: E.receivedAt })

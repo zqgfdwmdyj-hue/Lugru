@@ -331,6 +331,8 @@ export const tasks = pgTable(
     priority: text("priority", { enum: ["critical", "normal", "low"] }).notNull().default("normal"),
     category: text("category", { enum: TASK_CATEGORIES }).notNull().default("eigene"),
     status: text("status", { enum: ["open", "done"] }).notNull().default("open"),
+    /** Spalte im Board (offen, in_arbeit, warten); erledigt = status „done“. */
+    boardColumn: text("board_column"),
     /** Vom System erzeugte Aufgaben tragen einen Schlüssel, damit sie nicht doppelt entstehen. */
     systemKey: text("system_key"),
     link: text("link"),

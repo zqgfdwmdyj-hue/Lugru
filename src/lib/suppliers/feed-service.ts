@@ -4,9 +4,12 @@ import { db, schema } from "@/db";
 import type { FeedMapping, OfferMarket } from "@/db/schema";
 import { parseKeepaProduct } from "@/lib/brands/market";
 import { decryptSecret } from "@/lib/crypto";
+import { listingRestrictions } from "@/lib/integrations/clients/amazon";
 import { keepaByCode, keepaKey } from "@/lib/integrations/clients/keepa";
+import { getSettings } from "@/lib/settings";
 import { parseAmount } from "@/lib/numbers";
 import { readTable, type Table } from "@/lib/tabular";
+import { econOf } from "./offer-econ";
 import { authHeaders, autoMapping, keepaPriority, looksLikeEan, normEan } from "./prices";
 
 const O = schema.supplierOffers;
@@ -114,7 +117,7 @@ export async function recordHistory(tenantId: string, feedId: string, since: Dat
 
 // ---- Abruf per Link ---------------------------------------------------------------------------
 
-function assertPublicUrl(raw: string): URL {
+export function assertPublicUrl(raw: string): URL {
   let u: URL;
   try {
     u = new URL(raw.trim());
@@ -129,7 +132,7 @@ function assertPublicUrl(raw: string): URL {
 }
 
 /** Weiterleitungen selbst folgen: jedes Ziel muss öffentlich sein, der Zugang geht nur an den ursprünglichen Host. */
-async function fetchFollow(raw: string, auth: Record<string, string>): Promise<Response> {
+export async function fetchFollow(raw: string, auth: Record<string, string>): Promise<Response> {
   let u = assertPublicUrl(raw);
   const origin = u.origin;
   for (let hop = 0; hop < 6; hop++) {
@@ -188,11 +191,26 @@ async function applyKeepa(tenantId: string, ean: string, p: Record<string, unkno
   const mp = p ? parseKeepaProduct(p) : null;
   const cur = ((p?.stats ?? {}) as { current?: number[] }).current ?? [];
   const market: OfferMarket = mp
-    ? { checkedAt: now, asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, offers: typeof cur[11] === "number" && cur[11] >= 0 ? cur[11] : null }
+    ? {
+        checkedAt: now,
+        asin: mp.asin,
+        title: mp.title,
+        price: mp.price,
+        fbaFee: mp.fbaFee,
+        referralPct: mp.referralPct,
+        monthlySold: mp.monthlySold,
+        salesRank: mp.salesRank,
+        offers: typeof cur[11] === "number" && cur[11] >= 0 ? cur[11] : null,
+        amazonSells: typeof cur[0] === "number" ? cur[0] > 0 : null,
+      }
     : { checkedAt: now, asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null };
+  // Die Verkaufsfreigabe (eigene Prüfung) bleibt erhalten, solange es dieselbe ASIN ist.
   await db
     .update(O)
-    .set({ market, ...(mp ? { asin: sql`coalesce(${O.asin}, ${mp.asin})` } : {}) })
+    .set({
+      market: sql`${JSON.stringify(market)}::jsonb || (case when ${O.market}->'sellable' is not null and ${O.market}->>'asin' = ${market.asin} then jsonb_build_object('sellable', ${O.market}->'sellable') else '{}'::jsonb end)`,
+      ...(mp ? { asin: sql`coalesce(${O.asin}, ${mp.asin})` } : {}),
+    })
     .where(and(eq(O.tenantId, tenantId), eq(O.ean, ean)));
   if (mp?.asin) {
     await db.execute(sql`
@@ -345,4 +363,82 @@ export async function ownPurchases(tenantId: string, ean: string | null, asin: s
      order by 1 desc nulls last
      limit 20`);
   return res.rows;
+}
+
+// ---- Nach Scan/Upload: profitable Produkte + Verkaufsfreigabe -------------------------------
+
+type Analysis = { step: string; at: number; note?: string | null; done?: boolean };
+const ga = globalThis as typeof globalThis & { __feedAnalysis?: Map<string, Analysis> };
+const analysis = (ga.__feedAnalysis ??= new Map<string, Analysis>());
+/** Stand der Auswertung eines Feeds (läuft gerade / letzte Meldung). */
+export const feedAnalysis = (feedId: string) => analysis.get(feedId) ?? null;
+
+/** Profitabel = Gewinn ≥ minProfit € und ROI ≥ minRoi % gegen den Amazon-Preis (wie „Chancen“). */
+export async function profitableOffers(tenantId: string, feedId: string, opts: { minRoi?: number; minProfit?: number } = {}) {
+  const [feed] = await db.select().from(F).where(and(eq(F.id, feedId), eq(F.tenantId, tenantId)));
+  if (!feed) return [];
+  const s = await getSettings(tenantId);
+  const offers = await db.select().from(O).where(and(eq(O.tenantId, tenantId), eq(O.feedId, feedId), eq(O.active, true), sql`${O.market}->>'asin' is not null`));
+  return offers
+    .map((o) => ({ o, e: econOf({ price: o.price, title: o.title, url: o.url, market: o.market, pricesGross: feed.pricesGross, costPct: Number(feed.mapping.costPct || 0), vatPct: feed.mapping.vatPct ? Number(feed.mapping.vatPct) : null }, s) }))
+    .filter(({ e }) => e.profit !== null && e.roi !== null && e.profit >= (opts.minProfit ?? 1) && e.roi >= (opts.minRoi ?? 20))
+    .sort((a, b) => (b.e.roi ?? 0) - (a.e.roi ?? 0));
+}
+
+/** Verkaufsfreigabe je ASIN prüfen (höchstens 60 je Lauf, Ergebnis 7 Tage gültig) und an allen Angeboten merken. */
+export async function checkSellable(tenantId: string, asins: string[], opts: { force?: boolean } = {}) {
+  const unique = [...new Set(asins.filter(Boolean))];
+  if (!unique.length) return { checked: 0, ok: 0 };
+  const known = await db.execute<{ asin: string; at: string | null }>(sql`
+    select distinct on (market->>'asin') market->>'asin' as asin, market->'sellable'->>'at' as at
+      from supplier_offers where tenant_id = ${tenantId} and market->>'asin' in (${sql.join(unique.map((a) => sql`${a}`), sql`, `)})
+     order by market->>'asin', market->'sellable'->>'at' desc nulls last`);
+  const fresh = new Set(known.rows.filter((r) => r.at && Date.now() - Date.parse(r.at) < 7 * 86_400_000).map((r) => r.asin));
+  const todo = unique.filter((a) => opts.force || !fresh.has(a)).slice(0, 60);
+  const res = await listingRestrictions(tenantId, todo);
+  const at = new Date().toISOString();
+  let ok = 0;
+  for (const [asin, v] of res) {
+    if (v.ok) ok++;
+    await db.execute(sql`update supplier_offers set market = market || jsonb_build_object('sellable', ${JSON.stringify({ ...v, at })}::jsonb) where tenant_id = ${tenantId} and market->>'asin' = ${asin}`);
+  }
+  return { checked: res.size, ok };
+}
+
+/**
+ * Nach Scan oder Upload im Hintergrund: Keepa für neue EANs, dann für die profitablen Produkte
+ * die Verkaufsfreigabe (falls das Amazon-Konto verbunden ist). Die Feed-Seite zeigt den Stand.
+ */
+export async function analyzeFeed(tenantId: string, feedId: string) {
+  if (analysis.get(feedId)?.done === false) return;
+  analysis.set(feedId, { step: "Keepa prüft die Artikel auf amazon.de …", at: Date.now(), done: false });
+  const notes: string[] = [];
+  try {
+    if (await keepaKey(tenantId)) {
+      const rows = await db
+        .selectDistinct({ ean: O.ean })
+        .from(O)
+        .where(and(eq(O.tenantId, tenantId), eq(O.feedId, feedId), isNotNull(O.ean), sql`(${O.market} is null or (${O.market}->>'checkedAt')::timestamptz < now() - interval '7 days')`))
+        .limit(300);
+      const r = await refreshMarket(tenantId, { eans: rows.map((x) => x.ean!) });
+      notes.push(`Keepa: ${r.found} von ${r.checked} auf amazon.de gefunden`);
+    } else {
+      notes.push("Kein Keepa-Schlüssel – Amazon-Preise fehlen");
+    }
+    const prof = await profitableOffers(tenantId, feedId);
+    notes.push(`${prof.length} profitabel`);
+    if (prof.length) {
+      analysis.set(feedId, { step: "Prüfe die Verkaufsfreigabe bei Amazon …", at: Date.now(), done: false });
+      try {
+        const s = await checkSellable(tenantId, prof.map((p) => p.o.market!.asin!));
+        if (s.checked) notes.push(`Freigabe: ${s.ok} von ${s.checked} verkaufbar`);
+      } catch (e) {
+        notes.push(`Freigabe nicht geprüft: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  } catch (e) {
+    notes.push(e instanceof Error ? e.message : String(e));
+  } finally {
+    analysis.set(feedId, { step: "", at: Date.now(), note: notes.join(" · "), done: true });
+  }
 }

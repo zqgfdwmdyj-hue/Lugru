@@ -123,6 +123,10 @@ export type OfferMarket = {
   offers?: number | null;
   /** Ohne EAN per Titelsuche gefunden – kann ein anderes Produkt sein. */
   byTitle?: boolean;
+  /** Amazon verkauft selbst (Keepa: aktueller Amazon-Preis) – Buy Box schwer zu holen. */
+  amazonSells?: boolean | null;
+  /** Darf das eigene Konto das Produkt anbieten? (SP-API Listings Restrictions, Zustand neu) */
+  sellable?: { ok: boolean; reason: string | null; link: string | null; at: string } | null;
 };
 
 export const supplierFeeds = pgTable("supplier_feeds", {

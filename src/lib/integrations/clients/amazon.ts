@@ -278,6 +278,33 @@ export async function listingsConn(tenantId: string, account: ListingsAccount) {
   };
 }
 
+// --- Verkaufsfreigabe (Listings Restrictions) ------------------------------------------------
+
+export type Sellable = { ok: boolean; reason: string | null; link: string | null };
+
+/**
+ * Darf das eigene Konto diese ASINs (Zustand neu) anbieten? Leere Liste = ja; sonst Grund, z. B.
+ * „Freischaltung erforderlich“, mit Link zum Antrag. Braucht die App-Rolle „Produktlisting“.
+ */
+export async function listingRestrictions(tenantId: string, asins: string[]): Promise<Map<string, Sellable>> {
+  const c = await listingsConn(tenantId, "haupt");
+  const out = new Map<string, Sellable>();
+  for (const asin of asins) {
+    const q = new URLSearchParams({ asin, sellerId: c.sellerId, marketplaceIds: c.marketplaceId, conditionType: "new_new", reasonLocale: "de_DE" });
+    const r = await c.call<{ restrictions?: { reasons?: { message?: string; reasonCode?: string; links?: { resource?: string; title?: string }[] }[] }[] }>("GET", `/listings/2021-08-01/restrictions?${q}`);
+    const reasons = (r.restrictions ?? []).flatMap((x) => x.reasons ?? []);
+    const first = reasons[0];
+    out.set(asin, {
+      ok: reasons.length === 0,
+      reason: first ? (first.reasonCode === "APPROVAL_REQUIRED" ? "Freischaltung erforderlich" : first.reasonCode === "ASIN_NOT_FOUND" ? "ASIN nicht gefunden" : first.message?.slice(0, 160) || first.reasonCode || "gesperrt") : null,
+      link: first?.links?.find((l) => l.resource)?.resource ?? null,
+    });
+    // 5 Anfragen/Sekunde erlaubt – etwas Luft lassen.
+    await new Promise((res) => setTimeout(res, 250));
+  }
+  return out;
+}
+
 // --- Bestandsabgleich (FBM-Menge) --------------------------------------------------------
 
 class SyncOffError extends Error {

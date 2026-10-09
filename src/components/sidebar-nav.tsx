@@ -38,6 +38,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/", label: "Start", badge: counts.tasks, alert: true },
         { href: "/posteingang", label: "Posteingang", badge: counts.inbox, alert: true },
         { href: "/kalender", label: "Kalender" },
+        { href: "/board", label: "Board" },
         { href: "/wissen", label: "Wissen" },
       ],
     },

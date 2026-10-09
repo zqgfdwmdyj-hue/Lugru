@@ -21,6 +21,7 @@ import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
 import { adoptEbayAttempts } from "@/lib/stock/ebay-link";
 import { detectReplies, loadMissingBrands } from "@/lib/leads/service";
+import { autoFollowUps } from "@/lib/board/service";
 import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
 import { getSettings } from "@/lib/settings";
 import { refreshImportReminder } from "@/lib/tasks/system";
@@ -60,6 +61,7 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:mail`, 14)) {
         await step("Postfächer", () => syncAllMailboxes(t));
         await step("Antworten auf Einkaufsanfragen", () => detectReplies(t));
+        await step("Nachfassen bei Einkaufsanfragen", () => autoFollowUps(t));
         await step("Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
       }
       if (await has("amazon_sp")) {

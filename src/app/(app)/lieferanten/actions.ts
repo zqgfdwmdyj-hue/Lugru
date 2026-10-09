@@ -10,7 +10,7 @@ import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { readTable } from "@/lib/tabular";
 import { checkFeedWithKeepa, saveScanned, scan } from "@/lib/suppliers/scan-service";
-import { importTable, pullFeed, refreshMarket } from "@/lib/suppliers/feed-service";
+import { analyzeFeed, checkSellable, importTable, profitableOffers, pullFeed, refreshMarket } from "@/lib/suppliers/feed-service";
 import { encryptSecret } from "@/lib/crypto";
 import { suggestBoxes } from "@/lib/suppliers/boxes-service";
 import { canAccess } from "@/lib/auth/areas";
@@ -46,8 +46,9 @@ export async function uploadFeed(_prev: FeedState, fd: FormData): Promise<FeedSt
   const r = await importTable(session.tenantId, feed, table, { mapping: manual, full: fd.get("full") === "on" });
   revalidatePath(`/lieferanten/${feedId}`);
   if (!r.ok) return { ok: false, message: r.message, headers: r.headers };
-  if (fd.get("keepa") === "on") void refreshMarket(session.tenantId).catch(() => undefined);
-  return { ok: true, message: r.message };
+  // Danach im Hintergrund: Keepa, profitable Produkte, Verkaufsfreigabe – die Seite zeigt den Stand.
+  if (fd.get("keepa") === "on") void analyzeFeed(session.tenantId, feedId).catch(() => undefined);
+  return { ok: true, message: `${r.message}${fd.get("keepa") === "on" ? " Keepa und Verkaufsfreigabe laufen im Hintergrund." : ""}` };
 }
 
 export type ScanState = { ok: boolean; message: string } | null;
@@ -57,6 +58,21 @@ async function ownFeed(tenantId: string, raw: FormDataEntryValue | null) {
   const [feed] = await db.select({ id: schema.supplierFeeds.id }).from(schema.supplierFeeds).where(and(eq(schema.supplierFeeds.id, feedId), eq(schema.supplierFeeds.tenantId, tenantId)));
   if (!feed) throw new Error("Feed nicht gefunden.");
   return feedId;
+}
+
+/** Verkaufsfreigabe der profitablen Produkte jetzt (neu) prüfen. */
+export async function sellableCheckAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
+  let msg: string;
+  try {
+    const p = await profitableOffers(session.tenantId, feedId);
+    const r = await checkSellable(session.tenantId, p.map((x) => x.o.market!.asin!), { force: true });
+    msg = `Verkaufsfreigabe geprüft: ${r.ok} von ${r.checked} verkaufbar.`;
+  } catch (e) {
+    msg = e instanceof Error ? e.message : String(e);
+  }
+  redirect(`/lieferanten/${feedId}?freigabe=${encodeURIComponent(msg)}#profitabel`);
 }
 
 /** Seite, Link, Text, Foto oder PDF scannen und als Angebote übernehmen. */
@@ -69,9 +85,11 @@ export async function scanFeedAction(_prev: ScanState, fd: FormData): Promise<Sc
     const usd = parseAmount(fd.get("usdRate"));
     const res = await scan(session.tenantId, { file: f, url: String(fd.get("url") ?? ""), text: String(fd.get("text") ?? "") });
     const saved = await saveScanned(session.tenantId, feedId, res.items, usd ? { USD: usd } : undefined);
+    // Gleich weiter: Keepa (Amazon-Preis), profitable Produkte, Verkaufsfreigabe – im Hintergrund.
+    if (saved.withEan) void analyzeFeed(session.tenantId, feedId).catch(() => undefined);
     revalidatePath(`/lieferanten/${feedId}`);
     const warn = saved.missingRates.length ? ` Für ${saved.missingRates.join(", ")} fehlt ein Kurs – EK dort leer.` : "";
-    return { ok: true, message: `${saved.saved} Artikel übernommen (${res.method}), ${saved.withEan} mit EAN/UPC.${warn}${saved.withEan ? " Jetzt „Mit Keepa prüfen“ für Amazon-Preise." : ""}` };
+    return { ok: true, message: `${saved.saved} Artikel übernommen (${res.method}), ${saved.withEan} mit EAN/UPC.${warn}${saved.withEan ? " Keepa prüft jetzt automatisch, oben erscheinen die profitablen Produkte." : ""}` };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
@@ -82,6 +100,8 @@ export async function keepaFeedAction(_prev: ScanState, fd: FormData): Promise<S
   try {
     const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
     const r = await checkFeedWithKeepa(session.tenantId, feedId, { byTitle: fd.get("byTitle") === "on" });
+    // Für die profitablen gleich die Verkaufsfreigabe (falls Amazon verbunden) – im Hintergrund.
+    void profitableOffers(session.tenantId, feedId).then((p) => (p.length ? checkSellable(session.tenantId, p.map((x) => x.o.market!.asin!)) : null)).catch(() => undefined);
     revalidatePath(`/lieferanten/${feedId}`);
     if (!r.checked) return { ok: true, message: "Nichts zu prüfen – alles wurde in den letzten 7 Tagen geprüft (oder es gibt keine EANs – dann „auch ohne EAN“ anhaken)." };
     return { ok: true, message: `${r.checked} geprüft, ${r.found} auf amazon.de gefunden${r.byTitle ? ` (${r.byTitle} per Titel – bitte kurz gegenprüfen)` : ""}.${r.tokensLeft !== null ? ` Keepa-Tokens übrig: ${r.tokensLeft}.` : ""}` };

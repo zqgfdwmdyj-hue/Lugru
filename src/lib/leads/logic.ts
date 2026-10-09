@@ -265,7 +265,11 @@ export function parseAddressLines(lines: string[] | null | undefined, companyNam
 
 export type SellerAssessInput = {
   companyName: string;
-  source: "amazon" | "ebay" | "gpsr" | "web";
+  source: "amazon" | "ebay" | "gpsr" | "web" | "messe";
+  /** Messe: Name und Kategorien/Beschreibung des Ausstellers. */
+  fair?: string;
+  categories?: string[];
+  description?: string | null;
   /** Wie viele Produkte der Marke der Verkäufer anbietet. */
   offers?: number;
   email?: string | null;
@@ -312,9 +316,27 @@ export function assessFinding(i: SellerAssessInput): { kind: LeadKind; score: nu
       reasons.push("laut Websuche Händler");
     }
   }
+  if (i.source === "messe") {
+    const about = `${(i.categories ?? []).join(" ")} ${i.description ?? ""}`;
+    if (/dienstleist|agentur|fotograf|software|logistik|beratung|sourcing|marketing|service/i.test(about) && !/großhandel|grosshandel|wholesale|import|distribut/i.test(about)) {
+      score -= 15;
+      reasons.push(`Aussteller auf ${i.fair ?? "der Messe"} – eher Dienstleister`);
+    } else {
+      score += 20;
+      reasons.push(`Aussteller auf ${i.fair ?? "der Messe"} – verkauft an Händler`);
+    }
+    if (/großhandel|grosshandel|wholesale|import|distribut|restposten|sonderposten/i.test(about)) {
+      kind = "grosshandel";
+      score += 10;
+      reasons.push("beschreibt sich als Importeur/Großhändler");
+    } else if (/eigenmarke|hersteller|manufactur|produzent|private label/i.test(about)) {
+      kind = "hersteller";
+      reasons.push("Hersteller/Eigenmarken");
+    }
+  }
   if (validEmail(i.email)) score += 10;
   if (isCompanyName(i.companyName)) score += 5;
-  if (fold(i.companyName).includes(fold(i.searchBrand)) && i.source !== "web" && i.role !== "responsible") {
+  if (i.searchBrand && fold(i.companyName).includes(fold(i.searchBrand)) && i.source !== "web" && i.role !== "responsible") {
     kind = "hersteller";
     reasons.push("Firmenname enthält die Marke – vermutlich Markeninhaber");
   }
@@ -437,4 +459,56 @@ export function lucidFailureMessage(status: number | null, cause?: unknown): str
     : /CERT|SSL|TLS/i.test(`${code} ${c?.cause?.message ?? ""}`) ? "Zertifikatsfehler"
     : c?.cause?.message || c?.message || "Netzwerkfehler";
   return `Verpackungsregister nicht erreichbar (${why}). ${VIA_BROWSER}`;
+}
+
+// ---- Nicht doppelt anschreiben ----------------------------------------------------------------
+
+/** Freemailer: gleiche Domain heißt hier nicht gleiche Firma. */
+export const isGenericMailDomain = (domain: string) =>
+  /^(gmail|googlemail|outlook|hotmail|live|msn|yahoo|gmx|web|t-online|icloud|me|aol|mail|freenet|arcor|posteo|mailbox|protonmail|proton|yandex|qq|163|126)\./i.test(domain);
+
+const mailDomain = (email: string | null | undefined) => (email && email.includes("@") ? email.split("@")[1]!.trim().toLowerCase() : null);
+const webHost = (url: string | null | undefined) => {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
+export type ContactRef = { id: string; companyName: string; email: string | null; website: string | null; mailedAt: Date | null; mailedTo: string | null; searchBrands: string[] };
+
+/**
+ * Wurde dieselbe Firma schon angeschrieben – über eine andere Marke, eine andere Quelle oder
+ * unter anderem Namen (gleiche E-Mail, Firmen-Domain, Website oder gleicher Firmenname)?
+ * Oder ist sie schon als Lieferant angelegt?
+ */
+export function priorContact(
+  lead: Pick<ContactRef, "id" | "companyName" | "email" | "website"> & { supplierId?: string | null },
+  contacted: ContactRef[],
+  supplierNames: string[] = [],
+): string | null {
+  const key = nameKey(lead.companyName);
+  const email = lead.email?.trim().toLowerCase() || null;
+  const dom = mailDomain(email);
+  const host = webHost(lead.website);
+  for (const o of contacted) {
+    if (o.id === lead.id || !o.mailedAt) continue;
+    const oMail = (o.mailedTo ?? o.email)?.trim().toLowerCase() || null;
+    const oDom = mailDomain(oMail);
+    const why =
+      email && oMail === email ? "gleiche E-Mail-Adresse"
+      : dom && oDom === dom && !isGenericMailDomain(dom) ? `gleiche Firmen-Domain (@${dom})`
+      : host && webHost(o.website) === host ? `gleiche Website (${host})`
+      : key.length >= 4 && nameKey(o.companyName) === key ? "gleicher Firmenname"
+      : null;
+    if (why) {
+      const when = o.mailedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" });
+      const brands = o.searchBrands.filter(Boolean);
+      return `schon angeschrieben am ${when} als „${o.companyName}“${brands.length ? ` (${brands.join(", ")})` : ""} – ${why}`;
+    }
+  }
+  if (!lead.supplierId && key.length >= 4 && supplierNames.some((n) => nameKey(n) === key)) return "ist schon als Lieferant angelegt (Einkauf)";
+  return null;
 }

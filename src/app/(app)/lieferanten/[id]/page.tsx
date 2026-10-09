@@ -11,7 +11,9 @@ import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
 import { packInfo, packOf, searchTerm } from "@/lib/suppliers/scan";
 import { getSettings } from "@/lib/settings";
-import { clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction } from "../actions";
+import { clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction, sellableCheckAction } from "../actions";
+import { feedAnalysis } from "@/lib/suppliers/feed-service";
+import { AutoRefresh } from "../finden/refresh";
 import { ebayToolLink } from "@/lib/ebay/tool-link";
 import { BoxSuggest, KeepaCheck, ScanForm } from "./scan-form";
 import { visibleBrands } from "@/lib/brands/access";
@@ -28,7 +30,7 @@ type Row = {
 
 const SYM: Record<string, string> = { USD: "$", GBP: "£" };
 
-export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string }> }) {
+export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string; freigabe?: string }> }) {
   const session = await requireArea("lieferanten");
   const { id } = await params;
   const sp = await searchParams;
@@ -69,6 +71,13 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
   if (sp.nur === "gewinn") shown = shown.filter((r) => (r.profit ?? -1) > 0).sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0));
   const withEan = rows.filter((r) => r.ean).length;
   const onAmazon = rows.filter((r) => r.market?.asin).length;
+  // Profitabel wie unter „Chancen“: Gewinn ≥ 1 €, ROI ≥ 20 % gegen den Amazon-Preis.
+  const profitable = rows
+    .map((r) => ({ ...r, roi: r.profit !== null && r.unitCost ? Math.round((r.profit / r.unitCost) * 1000) / 10 : null }))
+    .filter((r) => r.market?.asin && r.profit !== null && r.profit >= 1 && r.roi !== null && r.roi >= 20)
+    .sort((a, b) => (b.roi ?? 0) - (a.roi ?? 0));
+  const analysis = feedAnalysis(id);
+  const amazonConnected = Boolean((await getIntegration(t, "amazon_sp"))?.sellerId);
   const chip = (nur?: string) => `/lieferanten/${id}${nur || q ? `?${new URLSearchParams({ ...(nur ? { nur } : {}), ...(q ? { q } : {}) })}` : ""}`;
 
   return (
@@ -80,6 +89,60 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           <div className="small muted">{rows.length} Artikel · {withEan} mit EAN/UPC · {onAmazon} auf amazon.de gefunden · {rows.filter((r) => r.our_asin).length} passen zu deinen Artikeln</div>
         </div>
       </div>
+      <AutoRefresh active={analysis?.done === false} />
+      {(profitable.length > 0 || analysis) && (
+        <section className="card" id="profitabel" data-testid="feed-profitable" style={{ overflow: "auto" }}>
+          <div className="card-pad between" style={{ gap: 8, flexWrap: "wrap" }}>
+            <div>
+              <h2>Profitable Produkte ({profitable.length})</h2>
+              <div className="small muted">Gewinn ≥ 1 € und ROI ≥ 20 % gegen den Amazon-Preis (Keepa), je Stück netto inkl. Aufschlag. „Verkaufbar“ = dein Amazon-Konto darf das Produkt ohne Freischaltung anbieten.</div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {amazonConnected && profitable.length > 0 && <form action={sellableCheckAction}><input type="hidden" name="feedId" value={feed.id} /><button className="btn btn-small" type="submit">Verkaufsfreigabe prüfen</button></form>}
+              <Link className="btn btn-small" href={`/lieferanten/chancen?lf=${feed.id}`}>In „Chancen“ öffnen</Link>
+            </div>
+          </div>
+          {analysis?.done === false && <div className="card-pad small notice notice-info" data-testid="feed-analysis">{analysis.step}</div>}
+          {analysis?.done && analysis.note && <div className="card-pad small muted" data-testid="feed-analysis-note">{analysis.note}</div>}
+          {sp.freigabe && <div className="card-pad small notice notice-info" data-testid="feed-sellable-msg">{sp.freigabe}</div>}
+          {!amazonConnected && profitable.length > 0 && <div className="card-pad small muted">Für die Verkaufsfreigabe unter Anbindungen → Amazon Seller Central verbinden (mit Händler-ID, App-Rolle „Produktlisting“).</div>}
+          {profitable.length > 0 && (
+            <table className="table">
+              <thead><tr><th>Produkt</th><th className="right">EK/Stk</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>Verkaufen</th></tr></thead>
+              <tbody>
+                {profitable.slice(0, 40).map((r) => {
+                  const sel = r.market?.sellable;
+                  return (
+                    <tr key={r.id} data-testid="profitable-row" data-asin={r.market?.asin ?? ""}>
+                      <td style={{ maxWidth: 340 }}>
+                        <div><strong>{r.market?.title ?? r.title}</strong></div>
+                        <div className="small muted">
+                          <a href={`https://www.amazon.de/dp/${r.market!.asin}`} target="_blank" rel="noreferrer">{r.market!.asin}</a>
+                          {r.ean && <> · {r.ean}</>}
+                          {r.caseQty > 1 && <> · Karton {r.caseQty} Stk</>}
+                          {r.url && <> · <a href={r.url} target="_blank" rel="noreferrer">beim Lieferanten ↗</a></>}
+                        </div>
+                      </td>
+                      <td className="num right">{formatEuro(r.unitCost!)}</td>
+                      <td className="num right">{formatEuro(r.sale!)}</td>
+                      <td className="num right" style={{ color: "var(--ok)", fontWeight: 600 }}>{formatEuro(r.profit!)}</td>
+                      <td className="num right" style={{ whiteSpace: "nowrap" }}>{r.roi?.toLocaleString("de-DE", { maximumFractionDigits: r.roi >= 100 ? 0 : 1 })} %</td>
+                      <td className="num right">{r.market?.monthlySold ?? "–"}</td>
+                      <td className="small">
+                        {sel ? (sel.ok ? <span className="tag tag-ok">verkaufbar</span> : <span className="tag tag-danger" title={sel.reason ?? undefined}>{sel.reason ?? "gesperrt"}</span>) : <span className="muted">nicht geprüft</span>}
+                        {sel && !sel.ok && sel.link && <div><a href={sel.link} target="_blank" rel="noreferrer">Freischaltung beantragen ↗</a></div>}
+                        {r.market?.amazonSells && <div><span className="tag tag-warn" title="Amazon verkauft selbst – Buy Box schwer zu bekommen">Amazon verkauft selbst</span></div>}
+                        {r.market?.offers ? <div className="muted">{r.market.offers} Anbieter</div> : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          {profitable.length === 0 && analysis?.done && <div className="card-pad small muted">Noch nichts Profitables – Amazon-Preise fehlen (keine EAN?) oder der EK ist zu hoch.</div>}
+        </section>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16, alignItems: "start" }}>
           <ScanForm feedId={feed.id} usdRate={rates.USD ?? null} hasAi={Boolean(ai?.apiKey)} />
           <KeepaCheck feedId={feed.id} hasKeepa={Boolean(keepa)} withEan={withEan} withoutEan={rows.filter((r) => !r.ean && !r.market).length} />

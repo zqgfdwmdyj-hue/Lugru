@@ -2,13 +2,13 @@ import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, 
 import { createdAt, id, suppliers, tenantId, updatedAt } from "./core";
 
 /** Wo ein Kontakt gerade steht – vom Registerfund bis zur Antwort. */
-export const LEAD_STATUSES = ["neu", "geprueft", "entwurf", "angeschrieben", "antwort", "kein_interesse", "ausgeschlossen"] as const;
+export const LEAD_STATUSES = ["neu", "geprueft", "entwurf", "angeschrieben", "antwort", "follow_up", "preisliste", "abgeschlossen", "kein_interesse", "ausgeschlossen"] as const;
 /** Einstufung nach der Prüfung (Vorab aus dem Register, danach per KI-Websuche). */
 export const LEAD_KINDS = ["grosshandel", "haendler", "hersteller", "salon", "marktplatz", "privat", "unklar"] as const;
 
 export type LeadEvidence = { label: string; value: string; url?: string };
 /** Wo eine Firma gefunden wurde (eine Firma kann in mehreren Quellen auftauchen). */
-export const LEAD_SOURCES = ["lucid", "amazon", "ebay", "gpsr", "web"] as const;
+export const LEAD_SOURCES = ["lucid", "amazon", "ebay", "gpsr", "web", "messe"] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 export type LeadFinding = { source: LeadSource; label: string; detail?: string; url?: string; brand?: string; at: string };
 
@@ -59,6 +59,10 @@ export const supplierLeads = pgTable(
     mailedTo: text("mailed_to"),
     mailError: text("mail_error"),
     repliedAt: timestamp("replied_at", { withTimezone: true }),
+    /** Nachfass-Mail gesendet. */
+    followUpAt: timestamp("follow_up_at", { withTimezone: true }),
+    /** Von Hand aufs Board gelegt (Spalte „Zu kontaktieren“). */
+    onBoard: boolean("on_board").notNull().default(false),
     supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     notes: text("notes"),
     createdAt: createdAt(),

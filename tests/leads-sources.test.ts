@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { assessFinding, countryName, lucidFailureMessage, mailLanguageFor, nameKey, parseAddressLines, parseDistributors, parseLucidPayload } from "@/lib/leads/logic";
+import { followUpMail, leadColumn, needsFollowUp, taskColumn } from "@/lib/board/logic";
+import { assessFinding, countryName, lucidFailureMessage, mailLanguageFor, nameKey, parseAddressLines, parseDistributors, parseLucidPayload, priorContact } from "@/lib/leads/logic";
 import { lucidBookmarkletSource } from "@/lib/leads/lucid-bookmarklet";
 
 describe("Weitere Quellen – Firmen zusammenführen", () => {
@@ -88,5 +89,55 @@ describe("Verpackungsregister nicht erreichbar", () => {
     expect(src).toContain('var O="https://lugruseller.example"');
     expect(src).toContain("/Producer/ManufacturerRead");
     expect(src).not.toMatch(/__ORIGIN__/);
+  });
+});
+
+describe("Nicht doppelt anschreiben", () => {
+  const sent = { id: "a", companyName: "Muster Beauty Handels GmbH", email: "einkauf@muster-beauty.example", website: "https://www.muster-beauty.example/", mailedAt: new Date("2026-10-01T10:00:00Z"), mailedTo: "einkauf@muster-beauty.example", searchBrands: ["Wella"] };
+  const lead = (o: Partial<{ id: string; companyName: string; email: string | null; website: string | null; supplierId: string | null }>) => ({ id: "b", companyName: "Andere Firma GmbH", email: null, website: null, ...o });
+  it("gleiche Firma über eine andere Marke/Quelle", () => {
+    expect(priorContact(lead({ companyName: "MUSTER BEAUTY HANDELS GMBH & CO. KG" }), [sent])).toMatch(/schon angeschrieben am 01\.10\.2026 als „Muster Beauty Handels GmbH“ \(Wella\) – gleicher Firmenname/);
+    expect(priorContact(lead({ email: "Einkauf@Muster-Beauty.example" }), [sent])).toMatch(/gleiche E-Mail-Adresse/);
+    expect(priorContact(lead({ email: "info@muster-beauty.example" }), [sent])).toMatch(/gleiche Firmen-Domain \(@muster-beauty\.example\)/);
+    expect(priorContact(lead({ website: "https://muster-beauty.example/b2b" }), [sent])).toMatch(/gleiche Website/);
+  });
+  it("Freemailer und eigener Eintrag zählen nicht", () => {
+    const gmail = { ...sent, companyName: "Irgendwer GmbH", website: null, email: "a@gmail.com", mailedTo: "a@gmail.com" };
+    expect(priorContact(lead({ email: "b@gmail.com" }), [gmail])).toBeNull();
+    expect(priorContact({ ...sent, id: "a" }, [sent])).toBeNull();
+    expect(priorContact(lead({ companyName: "Muster Beauty Handels GmbH" }), [{ ...sent, mailedAt: null }])).toBeNull();
+  });
+  it("schon Lieferant", () => {
+    expect(priorContact(lead({ companyName: "Großhandel Test GmbH" }), [], ["Grosshandel Test GmbH"])).toMatch(/schon als Lieferant angelegt/);
+    expect(priorContact(lead({ companyName: "Großhandel Test GmbH", supplierId: "s1" }), [], ["Grosshandel Test GmbH"])).toBeNull();
+  });
+});
+
+describe("Board", () => {
+  it("Spalten der Großhändler-Pipeline", () => {
+    expect(leadColumn({ status: "neu", kind: "unklar", onBoard: false })).toBeNull();
+    expect(leadColumn({ status: "geprueft", kind: "grosshandel", onBoard: false })).toBe("kontakt");
+    expect(leadColumn({ status: "neu", kind: "haendler", onBoard: true })).toBe("kontakt");
+    expect(leadColumn({ status: "entwurf", kind: "haendler", onBoard: false })).toBe("kontakt");
+    expect(leadColumn({ status: "kein_interesse", kind: "grosshandel", onBoard: false })).toBe("nix");
+    expect(leadColumn({ status: "ausgeschlossen", kind: "grosshandel", onBoard: true })).toBeNull();
+  });
+  it("Follow-up nach 7 Tagen ohne Antwort", () => {
+    const now = new Date("2026-10-20T12:00:00Z");
+    expect(needsFollowUp({ status: "angeschrieben", mailedAt: new Date("2026-10-12T12:00:00Z"), repliedAt: null }, now)).toBe(true);
+    expect(needsFollowUp({ status: "angeschrieben", mailedAt: new Date("2026-10-15T12:00:00Z"), repliedAt: null }, now)).toBe(false);
+    expect(needsFollowUp({ status: "angeschrieben", mailedAt: new Date("2026-10-01T12:00:00Z"), repliedAt: new Date() }, now)).toBe(false);
+  });
+  it("Nachfass-Mail mit Zitat", () => {
+    const m = followUpMail({ mailSubject: "Anfrage Händlerkonditionen Wella", mailBody: "Guten Tag,\\nwir sind …", mailedAt: new Date("2026-10-01T10:00:00Z"), mailLanguage: "de" });
+    expect(m.subject).toBe("AW: Anfrage Händlerkonditionen Wella");
+    expect(m.body).toMatch(/Anfrage vom 01\.10\.2026/);
+    expect(m.body).toMatch(/> Guten Tag,/);
+    expect(followUpMail({ mailSubject: "Re: Inquiry", mailBody: "", mailedAt: null, mailLanguage: "en" }).subject).toBe("Re: Inquiry");
+  });
+  it("Aufgaben-Spalten", () => {
+    expect(taskColumn({ status: "done", boardColumn: "in_arbeit" })).toBe("erledigt");
+    expect(taskColumn({ status: "open", boardColumn: "warten" })).toBe("warten");
+    expect(taskColumn({ status: "open", boardColumn: null })).toBe("offen");
   });
 });

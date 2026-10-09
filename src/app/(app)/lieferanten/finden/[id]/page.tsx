@@ -5,9 +5,12 @@ import { db, schema } from "@/db";
 import { LEAD_KINDS } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { KIND_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
-import { brandMatches, contactBlocker, isBrandNote } from "@/lib/leads/logic";
-import { draftAction, researchAction, saveLeadAction, sendOneAction, setStatusAction, toSupplierAction } from "../actions";
+import { brandMatches, isBrandNote, validEmail } from "@/lib/leads/logic";
+import { contactContext, DAILY_MAIL_LIMIT, sendBlocker } from "@/lib/leads/service";
+import { daysSince, followUpMail } from "@/lib/board/logic";
+import { composeSaveAction, composeSendAction, followUpAction, redraftAction, researchAction, saveLeadAction, setStatusAction, toSupplierAction } from "../actions";
 import { AutoRefresh } from "../refresh";
+import { AutoDraft } from "./auto-draft";
 
 export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("lieferanten");
@@ -18,7 +21,11 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const [l] = await db.select().from(L).where(and(eq(L.id, id), eq(L.tenantId, session.tenantId)));
   if (!l) notFound();
   const brand = l.searchBrands[0] ?? "";
-  const block = contactBlocker(l);
+  const block = l.mailedAt ? null : sendBlocker(l, await contactContext(session.tenantId));
+  const hardBlock = block && block !== "keine E-Mail-Adresse" ? block : null;
+  // Beim Öffnen gleich den Entwurf schreiben lassen – nur einmal (Fehler bleiben stehen) und nie für gesperrte Kontakte.
+  const autoDraft = !l.mailedAt && !hardBlock && validEmail(l.email) && !l.mailBody && !l.busy && !l.mailError;
+  const followUp = followUpMail(l);
 
   return (
     <>
@@ -35,6 +42,52 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
 
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0 }}>
+          <section className="card card-pad stack" style={{ gap: 8 }} data-testid="compose">
+            <h2>E-Mail an {l.companyName}</h2>
+            {autoDraft && <AutoDraft id={l.id} />}
+            {l.mailedAt ? (
+              <div className="small" data-testid="compose-sent">
+                Gesendet am {l.mailedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} an {l.mailedTo}.
+                {l.repliedAt ? <><br /><strong>Antwort erhalten</strong> am {l.repliedAt.toLocaleDateString("de-DE")} – siehe Posteingang.</> : " Antworten werden automatisch erkannt."}
+              </div>
+            ) : hardBlock ? (
+              <div className="notice notice-warn small" data-testid="compose-blocked">Nicht anschreiben: {hardBlock}</div>
+            ) : l.busy === "entwurf" || autoDraft ? (
+              <div className="small muted" data-testid="compose-writing">Die KI schreibt den Entwurf … (dauert ein paar Sekunden)</div>
+            ) : (
+              <form action={composeSendAction} className="stack" style={{ gap: 8 }}>
+                <input type="hidden" name="id" value={l.id} />
+                <div className="field"><label className="label" htmlFor="c-to">An</label><input className="input" id="c-to" name="email" type="email" defaultValue={l.email ?? ""} placeholder="E-Mail-Adresse – unbekannt? „Per Websuche prüfen“ findet sie meist" /></div>
+                <div className="field"><label className="label" htmlFor="c-subj">Betreff</label><input className="input" id="c-subj" name="mailSubject" defaultValue={l.mailSubject ?? ""} /></div>
+                <div className="field"><label className="label" htmlFor="c-body">Text</label><textarea className="textarea" id="c-body" name="mailBody" defaultValue={l.mailBody ?? ""} style={{ minHeight: 260 }} /></div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <button className="btn btn-primary" type="submit">Gelesen – jetzt senden</button>
+                  <button className="btn" type="submit" formAction={composeSaveAction}>Speichern</button>
+                  <button className="btn" type="submit" formAction={redraftAction}>Neu formulieren (KI)</button>
+                </div>
+                <div className="small muted">Geht über dein Standard-Postfach · höchstens {DAILY_MAIL_LIMIT} pro Tag · nie doppelt an dieselbe Firma (auch nicht über eine andere Marke).</div>
+              </form>
+            )}
+            {l.mailError && <div className="notice notice-warn small" data-testid="compose-error">{l.mailError}</div>}
+          </section>
+
+          {l.mailedAt && !l.repliedAt && (l.status === "angeschrieben" || l.status === "follow_up") && (
+            <section className="card card-pad stack" style={{ gap: 8 }} data-testid="follow-up">
+              <h2>Nachfassen</h2>
+              {l.followUpAt ? (
+                <div className="small">Nachfass-Mail gesendet am {l.followUpAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}.</div>
+              ) : (
+                <form action={followUpAction} className="stack" style={{ gap: 8 }}>
+                  <input type="hidden" name="id" value={l.id} />
+                  <div className="small muted">Seit {daysSince(l.mailedAt)} Tagen keine Antwort. Kurze Erinnerung an {l.mailedTo} – mit der ersten Anfrage als Zitat:</div>
+                  <div className="field"><label className="label" htmlFor="fu-subj">Betreff</label><input className="input" id="fu-subj" name="subject" defaultValue={followUp.subject} /></div>
+                  <div className="field"><label className="label" htmlFor="fu-body">Text</label><textarea className="textarea" id="fu-body" name="body" defaultValue={followUp.body} style={{ minHeight: 200 }} /></div>
+                  <div><button className="btn btn-primary" type="submit">Nachfass-Mail senden</button></div>
+                </form>
+              )}
+            </section>
+          )}
+
           <section className="card card-pad stack" style={{ gap: 8 }}>
             <h2>Fundstellen</h2>
             <div className="small">
@@ -84,45 +137,21 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
           <form action={saveLeadAction} className="card card-pad stack" style={{ gap: 8 }}>
             <input type="hidden" name="id" value={l.id} />
             <input type="hidden" name="back" value={`/lieferanten/finden/${l.id}`} />
-            <h2>Anfrage</h2>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <div className="field"><label className="label" htmlFor="kind">Einstufung</label><select className="select" id="kind" name="kind" defaultValue={l.kind}>{LEAD_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k][0]}</option>)}</select></div>
-              <div className="field" style={{ flexGrow: 1 }}><label className="label" htmlFor="email">E-Mail für die Anfrage</label><input className="input" id="email" name="email" type="email" defaultValue={l.email ?? ""} /></div>
-            </div>
-            <div className="field"><label className="label" htmlFor="subj">Betreff</label><input className="input" id="subj" name="mailSubject" defaultValue={l.mailSubject ?? ""} /></div>
-            <div className="field"><label className="label" htmlFor="body">Text</label><textarea className="textarea" id="body" name="mailBody" defaultValue={l.mailBody ?? ""} style={{ minHeight: 240 }} /></div>
+            <h2>Angaben</h2>
+            <div className="field"><label className="label" htmlFor="kind">Einstufung</label><select className="select" id="kind" name="kind" defaultValue={l.kind}>{LEAD_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k][0]}</option>)}</select></div>
             <div className="field"><label className="label" htmlFor="notes">Notizen</label><textarea className="textarea" id="notes" name="notes" defaultValue={l.notes ?? ""} style={{ minHeight: 60 }} /></div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button className="btn" type="submit">Speichern</button>
-              {/* Server-Action-Knöpfe dürfen kein eigenes name/value tragen (React überschreibt es) – die Kennung kommt als verstecktes Feld. */}
-              <input type="hidden" name="ids" value={l.id} />
-              <button className="btn" type="submit" formAction={draftAction}>{l.mailBody ? "Neu formulieren (KI)" : "Entwurf schreiben (KI)"}</button>
-            </div>
+            <div><button className="btn" type="submit">Speichern</button></div>
           </form>
         </div>
 
         <aside className="col-side">
           <section className="card card-pad stack" style={{ gap: 8 }}>
-            <h2>Senden</h2>
-            {l.mailedAt ? (
-              <div className="small">Gesendet am {l.mailedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} an {l.mailedTo}.{l.repliedAt && <><br /><strong>Antwort erhalten</strong> am {l.repliedAt.toLocaleDateString("de-DE")} – siehe Posteingang.</>}</div>
-            ) : block && block !== "keine E-Mail-Adresse" ? (
-              <div className="small" style={{ color: "var(--danger)" }}>{block}</div>
-            ) : (
-              <form action={sendOneAction} className="stack" style={{ gap: 8 }}>
-                <input type="hidden" name="id" value={l.id} />
-                <label className="small" style={{ display: "flex", gap: 6 }}><input type="checkbox" name="confirm" /> Text geprüft, Firma tritt als Großhändler/B2B auf</label>
-                <button className="btn btn-primary" type="submit" disabled={!l.mailBody || Boolean(block)}>{block ? block : "Anfrage senden"}</button>
-                <div className="small muted">Geht über dein Standard-Postfach (Posteingang). Antworten werden automatisch erkannt.</div>
-              </form>
-            )}
-            {l.mailError && <div className="notice notice-warn small">{l.mailError}</div>}
-          </section>
-          <section className="card card-pad stack" style={{ gap: 8 }}>
-            <h2>Status</h2>
+            <div className="between"><h2>Status</h2><Link className="small" href="/board">im Board ↗</Link></div>
             <form action={setStatusAction} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <input type="hidden" name="ids" value={l.id} />
-              <button className="btn btn-small" type="submit" name="status" value="kein_interesse">Kein Interesse</button>
+              {l.mailedAt && <button className="btn btn-small" type="submit" name="status" value="preisliste">Preisliste erhalten</button>}
+              {l.mailedAt && <button className="btn btn-small" type="submit" name="status" value="abgeschlossen">Abgeschlossen</button>}
+              <button className="btn btn-small" type="submit" name="status" value="kein_interesse">GH ist nix</button>
               <button className="btn btn-small" type="submit" name="status" value="ausgeschlossen">Ausschließen</button>
               {l.status !== "neu" && !l.mailedAt && <button className="btn btn-small" type="submit" name="status" value="neu">Zurücksetzen</button>}
             </form>

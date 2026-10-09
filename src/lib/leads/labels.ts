@@ -15,7 +15,10 @@ export const STATUS_LABEL: Record<string, string> = {
   entwurf: "Entwurf",
   angeschrieben: "angeschrieben",
   antwort: "Antwort!",
-  kein_interesse: "kein Interesse",
+  follow_up: "Follow-up",
+  preisliste: "Preisliste erhalten",
+  abgeschlossen: "abgeschlossen",
+  kein_interesse: "kein Interesse / GH ist nix",
   ausgeschlossen: "ausgeschlossen",
 };
 
@@ -26,6 +29,7 @@ export const FINDING_LABEL: Record<string, string> = {
   ebay: "eBay",
   gpsr: "GPSR",
   web: "Websuche",
+  messe: "Messe",
 };
 /** Name je Suchlauf. */
 export const SEARCH_SOURCE_LABEL: Record<string, string> = {
@@ -34,4 +38,5 @@ export const SEARCH_SOURCE_LABEL: Record<string, string> = {
   ebay: "eBay-Verkäufer + GPSR",
   gpsr: "GPSR",
   web: "KI-Websuche",
+  messe: "Messe-Ausstellerliste",
 };

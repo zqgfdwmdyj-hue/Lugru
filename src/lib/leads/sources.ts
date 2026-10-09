@@ -59,7 +59,7 @@ export async function saveCandidates(tenantId: string, brand: string, cands: Can
   let created = 0;
   let merged = 0;
   for (const c of cands) {
-    const finding: LeadFinding = { ...c.finding, brand, at };
+    const finding: LeadFinding = { ...c.finding, ...(brand ? { brand } : {}), at };
     const key = nameKey(c.companyName);
     const id = bySrc.get(`${c.source}:${c.sourceId}`) ?? (key.length >= 4 ? byKey.get(key) : undefined);
     if (id) {
@@ -79,8 +79,8 @@ export async function saveCandidates(tenantId: string, brand: string, cands: Can
           website: l.website ?? c.website ?? null,
           vatId: l.vatId ?? c.vatId ?? null,
           registerNumber: l.registerNumber ?? c.registerNumber ?? null,
-          searchBrands: [...new Set([...l.searchBrands, brand])],
-          findings: [...l.findings.filter((f) => !(f.source === finding.source && f.label === finding.label && f.brand === brand)), finding].slice(-20),
+          searchBrands: brand ? [...new Set([...l.searchBrands, brand])] : l.searchBrands,
+          findings: [...l.findings.filter((f) => !(f.source === finding.source && f.label === finding.label && (f.brand ?? "") === brand)), finding].slice(-20),
           evidence: evidence.slice(0, 12),
           score: Math.max(l.score, c.score),
           // Eine geprüfte oder schon eindeutige Einstufung bleibt.
@@ -99,7 +99,7 @@ export async function saveCandidates(tenantId: string, brand: string, cands: Can
         tenantId,
         source: c.source,
         sourceId: c.sourceId.slice(0, 200),
-        searchBrands: [brand],
+        searchBrands: brand ? [brand] : [],
         companyName: c.companyName.slice(0, 300),
         street: c.street ?? null,
         zip: c.zip ?? null,
@@ -365,7 +365,7 @@ export async function startBrandSearch(tenantId: string, brand: string, sources:
     .select({ source: S.source, brand: S.brand })
     .from(S)
     .where(and(eq(S.tenantId, tenantId), eq(S.status, "laeuft"), gte(S.startedAt, new Date(Date.now() - SEARCH_STALE_MS))));
-  const todo = [...new Set(sources)].filter((s) => s !== "gpsr" && !running.some((r) => r.source === s && r.brand.toLowerCase() === b.toLowerCase()));
+  const todo = [...new Set(sources)].filter((s) => s !== "gpsr" && s !== "messe" && !running.some((r) => r.source === s && r.brand.toLowerCase() === b.toLowerCase()));
   const messages: string[] = [];
   let lucidError: string | null = null;
   for (const source of todo) {
@@ -384,7 +384,7 @@ export async function startBrandSearch(tenantId: string, brand: string, sources:
   return { message: [lucidError, ...messages].filter(Boolean).join(" · "), lucidError };
 }
 
-const SOURCE_NAMES: Record<LeadSource, string> = { lucid: "Verpackungsregister", amazon: "Amazon-Verkäufer", ebay: "eBay-Verkäufer", gpsr: "GPSR", web: "KI-Websuche" };
+const SOURCE_NAMES: Record<LeadSource, string> = { lucid: "Verpackungsregister", amazon: "Amazon-Verkäufer", ebay: "eBay-Verkäufer", gpsr: "GPSR", web: "KI-Websuche", messe: "Messe-Ausstellerliste" };
 
 async function runSource(tenantId: string, brand: string, source: LeadSource, searchId: string, opts: { onlyActive: boolean }): Promise<{ ok: boolean; message: string }> {
   try {
