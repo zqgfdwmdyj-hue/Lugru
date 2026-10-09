@@ -11,6 +11,7 @@ import { importLucidPayload, leadToSupplier, sendDrafts, startBrandLoading, star
 import { startBrandSearch } from "@/lib/leads/sources";
 import { sendFollowUp } from "@/lib/board/service";
 import { importFairData, startFairImport } from "@/lib/leads/messe-service";
+import { startEmailSearch } from "@/lib/leads/email-service";
 import { assertPublicUrl } from "@/lib/suppliers/feed-service";
 
 const uuid = z.string().uuid();
@@ -132,6 +133,23 @@ export async function fairDataAction(fd: FormData) {
     msg = e instanceof Error ? e.message : String(e);
   }
   back({ meldung: msg, quelle: "messe" });
+}
+
+/** Beim Öffnen einer Firma ohne E-Mail: Suche starten (Website, Impressum, Kontakt; ggf. kurze Websuche). */
+export async function autoFindEmailAction(id: string) {
+  const session = await requireArea("lieferanten");
+  // Nur wenn noch nie gesucht wurde – eine veraltete Seitenansicht startet sonst ein zweites Mal.
+  await startEmailSearch(session.tenantId, [uuid.parse(id)], { onlyNew: true });
+}
+
+/** „Erneut suchen“ im Schreibfenster bzw. „E-Mail-Adressen suchen“ für die Auswahl in der Liste. */
+export async function searchEmailAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const one = uuid.safeParse(fd.get("id"));
+  const list = one.success ? [one.data] : ids(fd);
+  const n = await startEmailSearch(session.tenantId, list);
+  if (one.success) redirect(`/lieferanten/finden/${one.data}?meldung=${encodeURIComponent(n ? "Suche die E-Mail-Adresse …" : "Hat schon eine E-Mail-Adresse oder läuft gerade.")}`);
+  back({ meldung: n ? `Suche die E-Mail-Adressen von ${n} Firmen (Website, Impressum, Kontaktseite) – die Liste aktualisiert sich.` : "Alle ausgewählten haben schon eine E-Mail-Adresse." }, fd);
 }
 
 /** Ausgewählte Kontakte aufs Board legen (Spalte „Zu kontaktieren“). */

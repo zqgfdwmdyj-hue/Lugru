@@ -61,6 +61,10 @@ export const supplierLeads = pgTable(
     repliedAt: timestamp("replied_at", { withTimezone: true }),
     /** Nachfass-Mail gesendet. */
     followUpAt: timestamp("follow_up_at", { withTimezone: true }),
+    /** E-Mail-Suche (Website, Impressum, Kontakt) gelaufen – nicht bei jedem Öffnen erneut. */
+    emailSearchedAt: timestamp("email_searched_at", { withTimezone: true }),
+    /** Kontakt-/Impressumsseite (falls keine E-Mail: Kontaktformular). */
+    contactUrl: text("contact_url"),
     /** Von Hand aufs Board gelegt (Spalte „Zu kontaktieren“). */
     onBoard: boolean("on_board").notNull().default(false),
     supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),

@@ -355,6 +355,11 @@ export async function researchOne(tenantId: string, id: string) {
         updatedAt: new Date(),
       })
       .where(eq(L.id, id));
+    // Website selbst lesen (Impressum/Kontakt): findet die Adresse auch, wenn die Websuche sie nicht zeigt.
+    if (!parsed.email && !validEmail(l.email)) {
+      const { findEmailFor } = await import("./email-service");
+      await findEmailFor(tenantId, id, { ai: false });
+    }
   } catch (e) {
     await db.update(L).set({ busy: null, checkError: e instanceof Error ? e.message : String(e) }).where(eq(L.id, id));
   }

@@ -12,7 +12,7 @@ import { brandMatches, isBrandNote, priorContact } from "@/lib/leads/logic";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
-import { draftAction, excludeAction, fairImportAction, loadBrandsAction, reincludeAction, researchAction, searchBrandAction, sendAction, toBoardAction } from "./actions";
+import { draftAction, excludeAction, fairImportAction, loadBrandsAction, searchEmailAction, reincludeAction, researchAction, searchBrandAction, sendAction, toBoardAction } from "./actions";
 import { AutoRefresh, SelectAll } from "./refresh";
 import { RegisterBookmark, RegisterReceiver } from "./register-import";
 import { MesseBookmark, MesseReceiver } from "./messe-import";
@@ -45,6 +45,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
       busyBrands: sql<number>`count(*) filter (where ${L.busy} = 'marken')::int`,
       busyCheck: sql<number>`count(*) filter (where ${L.busy} = 'pruefen')::int`,
       busyDraft: sql<number>`count(*) filter (where ${L.busy} = 'entwurf')::int`,
+      busyEmail: sql<number>`count(*) filter (where ${L.busy} = 'email')::int`,
       wholesale: sql<number>`count(*) filter (where ${L.kind} = 'grosshandel' and ${L.status} <> 'ausgeschlossen')::int`,
       replies: sql<number>`count(*) filter (where ${L.status} = 'antwort')::int`,
     })
@@ -65,7 +66,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
   const brandState = brandLoadStatus(t);
   // „Markenliste lädt“ nur, solange der Lader wirklich läuft (nach einem Neustart sonst endlos).
   const busyBrands = brandState.running ? counts.busyBrands : 0;
-  const busy = busyBrands + counts.busyCheck + counts.busyDraft > 0 || running.length > 0 || brandState.running;
+  const busy = busyBrands + counts.busyCheck + counts.busyDraft + counts.busyEmail > 0 || running.length > 0 || brandState.running;
   const lastLucid = searches.find((r) => r.source === "lucid");
   const registerBlocked = sp.register === "browser" || lastLucid?.status === "fehler";
   const h = await headers();
@@ -165,7 +166,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
       {sp.meldung && <div className="notice notice-info" data-testid="leads-msg">{sp.meldung}</div>}
       {busy && (
         <div className="notice notice-info small" data-testid="leads-busy">
-          Läuft im Hintergrund: {[busyBrands && `${busyBrands} Markenlisten`, counts.busyCheck && `${counts.busyCheck} Websuchen`, counts.busyDraft && `${counts.busyDraft} Entwürfe`].filter(Boolean).join(", ")} – die Liste aktualisiert sich von selbst.
+          Läuft im Hintergrund: {[busyBrands && `${busyBrands} Markenlisten`, counts.busyCheck && `${counts.busyCheck} Websuchen`, counts.busyDraft && `${counts.busyDraft} Entwürfe`, counts.busyEmail && `${counts.busyEmail} E-Mail-Suchen`].filter(Boolean).join(", ")} – die Liste aktualisiert sich von selbst.
         </div>
       )}
 
@@ -264,6 +265,8 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                       {l.website && <div><a href={l.website} target="_blank" rel="noreferrer">{new URL(l.website).hostname}</a></div>}
                       {l.email && <div>{l.email}</div>}
                       {l.b2bUrl && <div><a href={l.b2bUrl} target="_blank" rel="noreferrer">B2B-Zugang</a></div>}
+                      {l.busy === "email" && <div className="muted">suche E-Mail …</div>}
+                      {!l.email && l.emailSearchedAt && l.busy !== "email" && <div className="muted" data-testid="lead-no-email">keine E-Mail gefunden{l.contactUrl && <> · <a href={l.contactUrl} target="_blank" rel="noreferrer">Kontakt ↗</a></>}</div>}
                       {!l.website && !l.email && <span className="muted">{l.phone ?? "–"}</span>}
                     </td>
                     <td className="small">
@@ -284,6 +287,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
           <h2>Mit der Auswahl</h2>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <button className="btn" type="submit" formAction={researchAction}>Per Websuche prüfen</button>
+            <button className="btn" type="submit" formAction={searchEmailAction}>E-Mail-Adressen suchen</button>
             <button className="btn" type="submit" formAction={toBoardAction}>Aufs Board</button>
             <button className="btn" type="submit" formAction={excludeAction}>Ausschließen</button>
             {view === "ausgeschlossen" && <button className="btn" type="submit" formAction={reincludeAction}>Wieder aufnehmen</button>}

@@ -8,9 +8,10 @@ import { KIND_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
 import { brandMatches, isBrandNote, validEmail } from "@/lib/leads/logic";
 import { contactContext, DAILY_MAIL_LIMIT, sendBlocker } from "@/lib/leads/service";
 import { daysSince, followUpMail } from "@/lib/board/logic";
-import { composeSaveAction, composeSendAction, followUpAction, redraftAction, researchAction, saveLeadAction, setStatusAction, toSupplierAction } from "../actions";
+import { composeSaveAction, composeSendAction, followUpAction, redraftAction, searchEmailAction, researchAction, saveLeadAction, setStatusAction, toSupplierAction } from "../actions";
 import { AutoRefresh } from "../refresh";
 import { AutoDraft } from "./auto-draft";
+import { AutoFindEmail } from "./auto-find-email";
 
 export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("lieferanten");
@@ -25,6 +26,10 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const hardBlock = block && block !== "keine E-Mail-Adresse" ? block : null;
   // Beim Öffnen gleich den Entwurf schreiben lassen – nur einmal (Fehler bleiben stehen) und nie für gesperrte Kontakte.
   const autoDraft = !l.mailedAt && !hardBlock && validEmail(l.email) && !l.mailBody && !l.busy && !l.mailError;
+  // Ohne E-Mail beim Öffnen einmal suchen (Website, Impressum, Kontakt; ggf. kurze Websuche).
+  const autoFind = !l.mailedAt && !hardBlock && !validEmail(l.email) && !l.emailSearchedAt && !l.busy;
+  const emailFound = l.evidence.find((e) => e.label === "E-Mail gefunden");
+  const emailMissing = l.evidence.find((e) => e.label === "E-Mail-Suche");
   const followUp = followUpMail(l);
 
   return (
@@ -38,12 +43,13 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
         </div>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="lead-msg">{sp.meldung}</div>}
-      {l.busy && <div className="notice notice-info small">Läuft gerade: {l.busy === "pruefen" ? "Websuche" : l.busy === "entwurf" ? "Entwurf" : "Markenliste"} …</div>}
+      {l.busy && <div className="notice notice-info small">Läuft gerade: {l.busy === "pruefen" ? "Websuche" : l.busy === "entwurf" ? "Entwurf" : l.busy === "email" ? "E-Mail-Suche" : "Markenliste"} …</div>}
 
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0 }}>
           <section className="card card-pad stack" style={{ gap: 8 }} data-testid="compose">
             <h2>E-Mail an {l.companyName}</h2>
+            {autoFind && <AutoFindEmail id={l.id} />}
             {autoDraft && <AutoDraft id={l.id} />}
             {l.mailedAt ? (
               <div className="small" data-testid="compose-sent">
@@ -52,12 +58,27 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               </div>
             ) : hardBlock ? (
               <div className="notice notice-warn small" data-testid="compose-blocked">Nicht anschreiben: {hardBlock}</div>
+            ) : l.busy === "email" || autoFind ? (
+              <div className="small muted" data-testid="compose-searching">Suche die E-Mail-Adresse – Website, Impressum, Kontaktseite … (dauert ein paar Sekunden)</div>
             ) : l.busy === "entwurf" || autoDraft ? (
               <div className="small muted" data-testid="compose-writing">Die KI schreibt den Entwurf … (dauert ein paar Sekunden)</div>
             ) : (
               <form action={composeSendAction} className="stack" style={{ gap: 8 }}>
                 <input type="hidden" name="id" value={l.id} />
-                <div className="field"><label className="label" htmlFor="c-to">An</label><input className="input" id="c-to" name="email" type="email" defaultValue={l.email ?? ""} placeholder="E-Mail-Adresse – unbekannt? „Per Websuche prüfen“ findet sie meist" /></div>
+                <div className="field">
+                  <label className="label" htmlFor="c-to">An</label>
+                  <input className="input" id="c-to" name="email" type="email" defaultValue={l.email ?? ""} placeholder="E-Mail-Adresse" />
+                  {validEmail(l.email) && emailFound && (
+                    <div className="small muted" data-testid="email-found">gefunden: {emailFound.value}{emailFound.url && <> – <a href={emailFound.url} target="_blank" rel="noreferrer">ansehen ↗</a></>}</div>
+                  )}
+                  {!validEmail(l.email) && l.emailSearchedAt && (
+                    <div className="notice notice-warn small" data-testid="email-missing" style={{ marginTop: 6 }}>
+                      {emailMissing?.value ?? "Keine E-Mail-Adresse gefunden."}
+                      {l.contactUrl && <> · <a href={l.contactUrl} target="_blank" rel="noreferrer">Kontakt-/Impressumsseite ↗</a></>}
+                      {" "}· Adresse von Hand eintragen oder <button className="btn btn-small" type="submit" formAction={searchEmailAction}>Erneut suchen</button>
+                    </div>
+                  )}
+                </div>
                 <div className="field"><label className="label" htmlFor="c-subj">Betreff</label><input className="input" id="c-subj" name="mailSubject" defaultValue={l.mailSubject ?? ""} /></div>
                 <div className="field"><label className="label" htmlFor="c-body">Text</label><textarea className="textarea" id="c-body" name="mailBody" defaultValue={l.mailBody ?? ""} style={{ minHeight: 260 }} /></div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
