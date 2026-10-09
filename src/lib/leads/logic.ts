@@ -7,6 +7,22 @@ import type { LEAD_KINDS } from "@/db/schema";
 
 export type LeadKind = (typeof LEAD_KINDS)[number];
 
+/** Eintrag im Herstellerregister (LUCID), wie ihn die Suchmaske liefert. */
+export type LucidProducer = {
+  ManufacturerId: string;
+  CompanyName: string;
+  RegisterNumber?: string | null;
+  Street?: string | null;
+  StreetNumber?: string | null;
+  ZipCode?: string | null;
+  Location?: string | null;
+  Country?: string | null;
+  TelephoneNumber?: string | null;
+  RegisterDate?: string | null;
+  RegistrationEndDate?: string | null;
+  IsForeignProducer?: boolean;
+};
+
 const fold = (s: string) =>
   s
     .normalize("NFKD")
@@ -113,7 +129,7 @@ export function preAssess(l: PreInput): { kind: LeadKind; score: number; exactBr
 
 /** Deutsch für DACH (und Luxemburg/Liechtenstein), sonst Englisch. */
 export function mailLanguageFor(country: string | null | undefined): "de" | "en" {
-  return /^(deutschland|österreich|oesterreich|schweiz|liechtenstein|luxemburg|germany|austria|switzerland)$/i.test((country ?? "").trim()) ? "de" : "en";
+  return /^(deutschland|österreich|oesterreich|schweiz|liechtenstein|luxemburg|germany|austria|switzerland|de|at|ch|li|lu)$/i.test((country ?? "").trim()) ? "de" : "en";
 }
 
 export const validEmail = (s: string | null | undefined): s is string => !!s && /^[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}$/i.test(s.trim());
@@ -197,4 +213,221 @@ export function kendoFilter(fields: Record<string, string | undefined>): string 
     .filter(([, v]) => v && v.trim())
     .map(([k, v]) => `${k}~contains~'${v!.trim().replace(/'/g, "''")}'`)
     .join("~and~");
+}
+
+// ---- Weitere Quellen: Amazon-/eBay-Verkäufer, GPSR-Angaben, Websuche ----------------------
+
+/** Firmenname ohne Rechtsform und Satzzeichen – erkennt dieselbe Firma aus verschiedenen Quellen. */
+export function nameKey(name: string): string {
+  const base = fold(name).replace(/ß/g, "ss").replace(/&/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+  const k = base
+    .replace(/\b(gmbh|mbh|ug|haftungsbeschrankt|ag|kg|ohg|gbr|ek|e k|ev|e v|co|ltd|limited|llc|inc|corp|plc|srl|s r l|sl|sa|s a|sas|sarl|bv|b v|nv|n v|aps|sro|s r o|sp z o o|kft|doo|d o o|oy|spa|s p a)\b/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+  return k.length >= 3 ? k : base.replace(/\s+/g, " ");
+}
+
+const COUNTRIES: Record<string, string> = {
+  DE: "Deutschland", AT: "Österreich", CH: "Schweiz", LI: "Liechtenstein", LU: "Luxemburg", NL: "Niederlande", BE: "Belgien", FR: "Frankreich",
+  IT: "Italien", ES: "Spanien", PT: "Portugal", PL: "Polen", CZ: "Tschechien", SK: "Slowakei", HU: "Ungarn", SI: "Slowenien", HR: "Kroatien",
+  DK: "Dänemark", SE: "Schweden", FI: "Finnland", NO: "Norwegen", IE: "Irland", GB: "Vereinigtes Königreich", UK: "Vereinigtes Königreich",
+  RO: "Rumänien", BG: "Bulgarien", GR: "Griechenland", LT: "Litauen", LV: "Lettland", EE: "Estland", CY: "Zypern", MT: "Malta",
+  TR: "Türkei", CN: "China", HK: "Hongkong", US: "USA", AE: "Vereinigte Arabische Emirate",
+};
+/** Ländercode (DE) → Name wie im Verpackungsregister (Deutschland). */
+export const countryName = (v: string | null | undefined) => {
+  const t = (v ?? "").trim();
+  if (!t) return null;
+  return COUNTRIES[t.toUpperCase()] ?? t;
+};
+
+/** Adresszeilen (z. B. von Keepa: letzte Zeile = Ländercode) in Straße, PLZ, Ort, Land zerlegen. */
+export function parseAddressLines(lines: string[] | null | undefined, companyName?: string): { street: string | null; zip: string | null; city: string | null; country: string | null } {
+  const ls = (lines ?? []).map((l) => (l ?? "").trim()).filter(Boolean);
+  let country: string | null = null;
+  if (ls.length && /^[A-Za-z]{2}$/.test(ls[ls.length - 1])) country = countryName(ls.pop());
+  let zip: string | null = null;
+  let city: string | null = null;
+  let zipIdx = -1;
+  ls.forEach((l, i) => {
+    const m = /^(?:[A-Z]{1,2}[- ])?(\d{4,5}(?:\s?[A-Z]{2})?)\s+(.+)$/.exec(l);
+    if (m && zipIdx < 0) {
+      zip = m[1];
+      city = m[2];
+      zipIdx = i;
+    }
+  });
+  const own = companyName ? nameKey(companyName) : "";
+  const rest = ls.filter((l, i) => i !== zipIdx && (!own || nameKey(l) !== own));
+  const street = rest.find((l) => /\d/.test(l)) ?? rest[0] ?? null;
+  return { street, zip, city, country };
+}
+
+export type SellerAssessInput = {
+  companyName: string;
+  source: "amazon" | "ebay" | "gpsr" | "web";
+  /** Wie viele Produkte der Marke der Verkäufer anbietet. */
+  offers?: number;
+  email?: string | null;
+  role?: "manufacturer" | "responsible" | "distributor" | "wholesaler" | "retailer" | null;
+  searchBrand: string;
+};
+
+/** Vorab-Einschätzung für Funde außerhalb des Registers. */
+export function assessFinding(i: SellerAssessInput): { kind: LeadKind; score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  let kind: LeadKind = "unklar";
+  let score = 35;
+  if (i.source === "amazon" || i.source === "ebay") {
+    kind = "haendler";
+    const where = i.source === "amazon" ? "Amazon" : "eBay";
+    if ((i.offers ?? 0) >= 5) {
+      score += 20;
+      reasons.push(`verkauft ${i.offers} Produkte der Marke auf ${where} – kauft größere Mengen ein`);
+    } else if (i.offers) {
+      score += 5 + i.offers * 2;
+      reasons.push(`verkauft ${i.offers} Produkt(e) der Marke auf ${where}`);
+    }
+  }
+  if (i.source === "gpsr") {
+    if (i.role === "manufacturer") {
+      kind = "hersteller";
+      score += 5;
+      reasons.push("Hersteller laut Produktsicherheitsangaben (GPSR) – nach Distributoren in Deutschland fragen");
+    } else {
+      score += 25;
+      reasons.push("EU-Verantwortlicher laut GPSR – oft Importeur oder Distributor der Marke");
+    }
+  }
+  if (i.source === "web") {
+    if (i.role === "distributor" || i.role === "wholesaler") {
+      kind = "grosshandel";
+      score += 30;
+      reasons.push("laut Websuche Distributor/Großhändler der Marke");
+    } else if (i.role === "manufacturer") {
+      kind = "hersteller";
+      reasons.push("laut Websuche Hersteller/Markeninhaber");
+    } else if (i.role === "retailer") {
+      kind = "haendler";
+      reasons.push("laut Websuche Händler");
+    }
+  }
+  if (validEmail(i.email)) score += 10;
+  if (isCompanyName(i.companyName)) score += 5;
+  if (fold(i.companyName).includes(fold(i.searchBrand)) && i.source !== "web" && i.role !== "responsible") {
+    kind = "hersteller";
+    reasons.push("Firmenname enthält die Marke – vermutlich Markeninhaber");
+  }
+  if (looksLikePerson(i.companyName)) {
+    kind = "privat";
+    score -= 30;
+    reasons.push("Name einer Einzelperson");
+  }
+  if (isMarketplaceName(i.companyName)) {
+    kind = "marktplatz";
+    score -= 60;
+    reasons.push("Marktplatz/Handelskette");
+  }
+  return { kind, score: Math.max(0, Math.min(100, score)), reasons };
+}
+
+export type Distributor = { name: string; website: string | null; email: string | null; phone: string | null; city: string | null; country: string | null; role: "distributor" | "wholesaler" | "manufacturer" | "retailer" | null; note: string | null; url: string | null };
+
+/** KI-Antwort der Distributoren-Suche (JSON mit „companies“) auswerten. */
+export function parseDistributors(text: string): Distributor[] {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return [];
+  let o: { companies?: unknown };
+  try {
+    o = JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(o.companies)) return [];
+  const roles = ["distributor", "wholesaler", "manufacturer", "retailer"] as const;
+  const seen = new Set<string>();
+  return o.companies
+    .flatMap((c) => {
+      const r = c as Record<string, unknown>;
+      const name = str(r.name, 160);
+      if (!name || seen.has(nameKey(name))) return [];
+      seen.add(nameKey(name));
+      const email = str(r.email, 200);
+      return [{
+        name,
+        website: url(r.website),
+        email: validEmail(email) ? email.toLowerCase() : null,
+        phone: str(r.phone, 60),
+        city: str(r.city, 80),
+        country: countryName(str(r.country, 60)),
+        role: roles.includes(r.role as (typeof roles)[number]) ? (r.role as Distributor["role"]) : null,
+        note: str(r.note, 300),
+        url: url(r.sourceUrl ?? r.url),
+      }];
+    })
+    .slice(0, 25);
+}
+
+export type LucidImportProducer = LucidProducer & { brands: string[] | null; brandsComplete: boolean };
+
+/** Daten vom Register-Lesezeichen prüfen – kommen aus dem Browser, also nichts ungeprüft übernehmen. */
+export function parseLucidPayload(raw: string): { ok: true; brand: string; total: number; producers: LucidImportProducer[] } | { ok: false; message: string } {
+  let o: Record<string, unknown>;
+  try {
+    o = JSON.parse(raw.trim());
+  } catch {
+    return { ok: false, message: "Keine gültigen Register-Daten (bitte das Lesezeichen erneut auf der Registerseite klicken)." };
+  }
+  if (o.lucidImport !== 1) return { ok: false, message: "Das sind keine Daten vom Register-Lesezeichen." };
+  const brand = str(o.brand, 80);
+  if (!brand || brand.length < 2) return { ok: false, message: "Marke fehlt." };
+  if (!Array.isArray(o.producers)) return { ok: false, message: "Keine Firmen in den Daten." };
+  const s = (v: unknown, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) || null : typeof v === "number" ? String(v) : null);
+  const producers: LucidImportProducer[] = o.producers.slice(0, 2000).flatMap((x) => {
+    const p = x as Record<string, unknown>;
+    const id = s(p.ManufacturerId, 80);
+    const name = s(p.CompanyName, 300);
+    if (!id || !name) return [];
+    const brands = Array.isArray(p.brands) ? [...new Set(p.brands.filter((b): b is string => typeof b === "string").map((b) => b.trim().slice(0, 150)).filter(Boolean))].slice(0, 5000) : null;
+    return [{
+      ManufacturerId: id,
+      CompanyName: name,
+      RegisterNumber: s(p.RegisterNumber, 40),
+      Street: s(p.Street),
+      StreetNumber: s(p.StreetNumber, 20),
+      ZipCode: s(p.ZipCode, 20),
+      Location: s(p.Location, 120),
+      Country: s(p.Country, 80),
+      TelephoneNumber: s(p.TelephoneNumber, 60),
+      RegisterDate: s(p.RegisterDate, 40),
+      RegistrationEndDate: s(p.RegistrationEndDate, 40),
+      IsForeignProducer: p.IsForeignProducer === true,
+      brands,
+      brandsComplete: p.brandsComplete !== false,
+    }];
+  });
+  const total = typeof o.total === "number" && o.total >= 0 ? Math.round(o.total) : producers.length;
+  return { ok: true, brand, total, producers };
+}
+
+// ---- Verpackungsregister nicht erreichbar ------------------------------------------------------
+
+const VIA_BROWSER = "Lösung: unten „Verpackungsregister über deinen Browser abfragen“ – das funktioniert trotzdem.";
+
+/** Verständliche Meldung, warum das Register nicht antwortet – mit dem Weg über den Browser. */
+export function lucidFailureMessage(status: number | null, cause?: unknown): string {
+  if (status === 401 || status === 403) return `Das Verpackungsregister lehnt Anfragen von diesem Server ab (HTTP ${status}) – Rechenzentrums-Adressen werden dort offenbar gesperrt. ${VIA_BROWSER}`;
+  if (status === 429) return `Das Verpackungsregister meldet zu viele Anfragen (HTTP 429) – in ein paar Minuten erneut versuchen. ${VIA_BROWSER}`;
+  if (status !== null && status >= 500) return `Das Verpackungsregister meldet einen Serverfehler (HTTP ${status}) – oft Wartung, später erneut versuchen. ${VIA_BROWSER}`;
+  if (status !== null) return `Verpackungsregister nicht erreichbar (HTTP ${status}). ${VIA_BROWSER}`;
+  const c = cause as { name?: string; message?: string; cause?: { code?: string; message?: string } } | undefined;
+  const code = c?.cause?.code ?? (c?.name === "TimeoutError" ? "TIMEOUT" : "");
+  const why =
+    /TIMEOUT|ETIMEDOUT/.test(code) ? "Zeitüberschreitung"
+    : code === "ENOTFOUND" || code === "EAI_AGAIN" ? "Adresse nicht auflösbar (DNS)"
+    : code === "ECONNREFUSED" || code === "ECONNRESET" ? "Verbindung abgewiesen"
+    : /CERT|SSL|TLS/i.test(`${code} ${c?.cause?.message ?? ""}`) ? "Zertifikatsfehler"
+    : c?.cause?.message || c?.message || "Netzwerkfehler";
+  return `Verpackungsregister nicht erreichbar (${why}). ${VIA_BROWSER}`;
 }

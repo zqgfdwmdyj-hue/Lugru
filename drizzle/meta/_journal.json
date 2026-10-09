@@ -183,6 +183,13 @@
       "when": 1791522253158,
       "tag": "0025_ek_aenderung",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791523879281,
+      "tag": "0026_lead_quellen",
+      "breakpoints": true
     }
   ]
 }

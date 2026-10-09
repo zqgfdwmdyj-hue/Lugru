@@ -7,7 +7,8 @@ import { sendMail } from "@/lib/mail/accounts";
 import { ensureSupplier } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { upsertSystemTask } from "@/lib/tasks/system";
-import { contactBlocker, mailLanguageFor, parseResearch, preAssess, validEmail } from "./logic";
+import type { LeadFinding } from "@/db/schema";
+import { contactBlocker, mailLanguageFor, parseLucidPayload, parseResearch, preAssess, validEmail, type LucidImportProducer } from "./logic";
 import { brandsOf, PAUSE_MS, searchProducers, sleep, type LucidProducer } from "./lucid";
 
 type Lead = typeof schema.supplierLeads.$inferSelect;
@@ -28,11 +29,38 @@ export async function importFromLucid(tenantId: string, brand: string, opts: { o
   const b = brand.trim();
   if (b.length < 2) throw new Error("Bitte eine Marke mit mindestens 2 Zeichen eingeben.");
   const { producers, total, session } = await searchProducers({ brand: b });
+  const r = await storeProducers(tenantId, b, producers.map((p) => ({ ...p, brands: null, brandsComplete: false })), opts);
+  // Markenlisten im Hintergrund – die Seite zeigt den Fortschritt.
+  void loadBrands(tenantId, b, session).catch((e) => console.error("[Großhändler] Marken:", e instanceof Error ? e.message : e));
+  return { total, read: producers.length, ...r };
+}
+
+/** Daten vom Register-Lesezeichen (Abfrage im eigenen Browser) übernehmen – Markenlisten sind schon dabei. */
+export async function importLucidPayload(tenantId: string, raw: string, opts: { onlyActive: boolean }) {
+  const parsed = parseLucidPayload(raw);
+  if (!parsed.ok) throw new Error(parsed.message);
+  const r = await storeProducers(tenantId, parsed.brand, parsed.producers, opts);
+  await db.insert(schema.supplierLeadSearches).values({
+    tenantId,
+    brand: parsed.brand,
+    source: "lucid",
+    status: "fertig",
+    message: `über den Browser: ${parsed.total} Einträge, ${r.stored} übernommen (${r.created} neu)`,
+    found: r.stored,
+    created: r.created,
+    finishedAt: new Date(),
+  });
+  return { brand: parsed.brand, total: parsed.total, read: parsed.producers.length, ...r };
+}
+
+async function storeProducers(tenantId: string, b: string, producers: LucidImportProducer[], opts: { onlyActive: boolean }) {
   let created = 0;
   const ids: string[] = [];
+  const now = new Date().toISOString();
   for (const p of producers) {
     if (opts.onlyActive && p.RegistrationEndDate) continue;
-    const pre = preAssess({ companyName: p.CompanyName, brands: null, searchBrand: b, registrationEnd: clean(p.RegistrationEndDate) });
+    const pre = preAssess({ companyName: p.CompanyName, brands: p.brands, searchBrand: b, registrationEnd: clean(p.RegistrationEndDate), brandsComplete: p.brandsComplete });
+    const finding: LeadFinding = { source: "lucid", label: "Verpackungsregister", detail: clean(p.RegisterNumber) ?? undefined, brand: b, at: now };
     const [row] = await db
       .insert(L)
       .values({
@@ -41,14 +69,19 @@ export async function importFromLucid(tenantId: string, brand: string, opts: { o
         sourceId: p.ManufacturerId,
         searchBrands: [b],
         ...fieldsOf(p),
+        brands: p.brands,
         score: pre.score,
         kind: pre.kind,
+        findings: [finding],
+        ...(pre.exactBrand === false ? { status: "ausgeschlossen" as const, notes: pre.reasons[0] } : {}),
       })
       .onConflictDoUpdate({
         target: [L.tenantId, L.source, L.sourceId],
         set: {
           ...fieldsOf(p),
+          ...(p.brands ? { brands: p.brands, score: pre.score } : {}),
           searchBrands: sql`(select coalesce(jsonb_agg(distinct x), '[]'::jsonb) from jsonb_array_elements_text(${L.searchBrands} || ${JSON.stringify([b])}::jsonb) x)`,
+          findings: sql`(select coalesce(jsonb_agg(f), '[]'::jsonb) from jsonb_array_elements(${L.findings}) f where not (f->>'source' = 'lucid' and f->>'brand' = ${b})) || ${JSON.stringify([finding])}::jsonb`,
           updatedAt: new Date(),
         },
       })
@@ -56,10 +89,10 @@ export async function importFromLucid(tenantId: string, brand: string, opts: { o
     ids.push(row.id);
     if (row.inserted) created++;
   }
-  await db.update(L).set({ busy: "marken" }).where(and(eq(L.tenantId, tenantId), inArray(L.id, ids), isNull(L.brands)));
-  // Markenlisten im Hintergrund – die Seite zeigt den Fortschritt.
-  void loadBrands(tenantId, b, session).catch((e) => console.error("[Großhändler] Marken:", e instanceof Error ? e.message : e));
-  return { total, read: producers.length, stored: ids.length, created };
+  if (producers.some((p) => p.brands === null)) {
+    await db.update(L).set({ busy: "marken" }).where(and(eq(L.tenantId, tenantId), inArray(L.id, ids), isNull(L.brands)));
+  }
+  return { stored: ids.length, created };
 }
 
 function fieldsOf(p: LucidProducer) {
@@ -107,12 +140,12 @@ async function loadBrands(tenantId: string, brand: string, session: Parameters<t
 
 // ---- 2. Per Websuche prüfen ---------------------------------------------------------------
 
-export function researchPrompt(l: Pick<Lead, "companyName" | "street" | "zip" | "city" | "country" | "phone" | "brands" | "searchBrands">): string {
+export function researchPrompt(l: Pick<Lead, "companyName" | "street" | "zip" | "city" | "country" | "phone" | "brands" | "searchBrands"> & { source?: string }): string {
   const brand = l.searchBrands[0] ?? "";
   return [
     "Du prüfst für einen deutschen Online-Händler (Amazon/eBay), ob eine Firma als Bezugsquelle (Großhändler/Distributor) in Frage kommt.",
     `Firma: ${l.companyName}`,
-    `Adresse laut Verpackungsregister: ${[l.street, [l.zip, l.city].filter(Boolean).join(" "), l.country].filter(Boolean).join(", ") || "unbekannt"}`,
+    `Adresse laut ${l.source === "lucid" ? "Verpackungsregister" : "Fundstelle"}: ${[l.street, [l.zip, l.city].filter(Boolean).join(" "), l.country].filter(Boolean).join(", ") || "unbekannt"}`,
     l.phone ? `Telefon laut Register: ${l.phone}` : "",
     `Gesuchte Marke: ${brand}`,
     l.brands?.length ? `Im Register gemeldete Marken: ${l.brands.slice(0, 25).join(", ")}` : "",
@@ -155,6 +188,8 @@ async function runPool(ids: string[], size: number, fn: (id: string) => Promise<
   }));
 }
 
+const SOURCE_EVIDENCE = new Set(["Amazon-Verkäufer", "eBay-Verkäufer", "USt-ID", "Handelsregister", "Vertreten durch", "Hersteller laut GPSR", "EU-Verantwortlicher laut GPSR", "Websuche"]);
+
 export async function researchOne(tenantId: string, id: string) {
   const [l] = await db.select().from(L).where(and(eq(L.id, id), eq(L.tenantId, tenantId)));
   if (!l) return;
@@ -166,13 +201,17 @@ export async function researchOne(tenantId: string, id: string) {
     await db
       .update(L)
       .set({
-        website: parsed.website,
+        website: parsed.website ?? l.website,
         email: parsed.email ?? l.email,
         phone: l.phone ?? parsed.phone,
         b2bUrl: parsed.b2bUrl,
         sellsBrand: parsed.sellsBrand,
         summary: parsed.summary,
-        evidence: parsed.evidence.length ? parsed.evidence : r.sources.slice(0, 3).map((u) => ({ label: "Quelle", value: new URL(u).hostname, url: u })),
+        // Belege aus der Fundstelle (Amazon-/eBay-Impressum, GPSR) bleiben, die der Websuche kommen neu dazu.
+        evidence: [
+          ...l.evidence.filter((e) => SOURCE_EVIDENCE.has(e.label)),
+          ...(parsed.evidence.length ? parsed.evidence : r.sources.slice(0, 3).map((u) => ({ label: "Quelle", value: new URL(u).hostname, url: u }))),
+        ].slice(0, 12),
         kind: parsed.kind,
         status: l.status === "neu" ? "geprueft" : l.status,
         checkedAt: new Date(),

@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { LEAD_KINDS, LEAD_STATUSES } from "@/db/schema";
+import { LEAD_KINDS, LEAD_SOURCES, LEAD_STATUSES, type LeadSource } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
-import { importFromLucid, leadToSupplier, sendDrafts, startDrafts, startResearch } from "@/lib/leads/service";
+import { importLucidPayload, leadToSupplier, sendDrafts, startDrafts, startResearch } from "@/lib/leads/service";
+import { startBrandSearch } from "@/lib/leads/sources";
 
 const uuid = z.string().uuid();
 const L = schema.supplierLeads;
@@ -19,13 +20,32 @@ const back = (params: Record<string, string>, fd?: FormData) => {
   redirect(`/lieferanten/finden?${new URLSearchParams(params)}`);
 };
 
-export async function searchRegisterAction(fd: FormData) {
+export async function searchBrandAction(fd: FormData) {
   const session = await requireArea("lieferanten");
   const brand = String(fd.get("brand") ?? "").trim();
+  const sources = fd.getAll("quelle").map(String).filter((s): s is LeadSource => (LEAD_SOURCES as readonly string[]).includes(s));
   let msg: string;
+  let failed = false;
   try {
-    const r = await importFromLucid(session.tenantId, brand, { onlyActive: fd.get("onlyActive") === "on" });
-    msg = `${r.total} Einträge im Verpackungsregister zu „${brand}“ – ${r.stored} übernommen (${r.created} neu). Die Markenlisten werden jetzt geladen; Firmen, bei denen „${brand}“ nur Wortteil ist, werden ausgeblendet.`;
+    if (!sources.length) throw new Error("Bitte mindestens eine Quelle ankreuzen.");
+    const r = await startBrandSearch(session.tenantId, brand, sources, { onlyActive: fd.get("onlyActive") === "on" });
+    msg = r.message;
+    failed = Boolean(r.lucidError);
+  } catch (e) {
+    msg = e instanceof Error ? e.message : String(e);
+  }
+  back({ marke: brand, meldung: msg, ...(failed ? { register: "browser" } : {}) });
+}
+
+/** Daten vom Register-Lesezeichen (Abfrage im eigenen Browser). */
+export async function importRegisterDataAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  let msg: string;
+  let brand = "";
+  try {
+    const r = await importLucidPayload(session.tenantId, String(fd.get("data") ?? ""), { onlyActive: fd.get("onlyActive") === "on" });
+    brand = r.brand;
+    msg = `Verpackungsregister (über deinen Browser): ${r.total} Einträge zu „${r.brand}“, ${r.stored} übernommen (${r.created} neu) – inklusive Markenlisten.`;
   } catch (e) {
     msg = e instanceof Error ? e.message : String(e);
   }
@@ -63,11 +83,24 @@ export async function sendAction(fd: FormData) {
   back({ ansicht: "angeschrieben", meldung: `${r.sent} Anfragen gesendet.${r.skipped.length ? ` Übersprungen: ${r.skipped.join(" · ")}` : ""}` });
 }
 
-export async function setStatusAction(fd: FormData) {
+async function setStatus(fd: FormData, status: (typeof LEAD_STATUSES)[number]) {
   const session = await requireArea("lieferanten");
-  const status = z.enum(LEAD_STATUSES).parse(fd.get("status"));
   await db.update(L).set({ status, updatedAt: new Date() }).where(and(eq(L.tenantId, session.tenantId), inArray(L.id, ids(fd))));
   revalidatePath("/lieferanten/finden", "layout");
+}
+
+/** Formular mit action={…}: Der geklickte Knopf schickt name="status" mit. */
+export async function setStatusAction(fd: FormData) {
+  await setStatus(fd, z.enum(LEAD_STATUSES).parse(fd.get("status")));
+}
+
+// Knöpfe mit formAction={…} können kein name/value mitschicken (React belegt name) – daher je Status eine Action.
+export async function excludeAction(fd: FormData) {
+  await setStatus(fd, "ausgeschlossen");
+}
+
+export async function reincludeAction(fd: FormData) {
+  await setStatus(fd, "neu");
 }
 
 export async function saveLeadAction(fd: FormData) {

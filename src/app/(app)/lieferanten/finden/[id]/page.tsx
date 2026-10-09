@@ -36,18 +36,29 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0 }}>
           <section className="card card-pad stack" style={{ gap: 8 }}>
-            <h2>Laut Verpackungsregister</h2>
+            <h2>Fundstellen</h2>
             <div className="small">
-              {[l.street, [l.zip, l.city].filter(Boolean).join(" "), l.country].filter(Boolean).join(", ")}
+              {[l.street, [l.zip, l.city].filter(Boolean).join(" "), l.country].filter(Boolean).join(", ") || <span className="muted">Anschrift unbekannt</span>}
               {l.phone && <> · Tel. {l.phone}</>}
-              {l.registerNumber && <> · Reg.-Nr. {l.registerNumber}</>}
+              {l.email && <> · {l.email}</>}
+              {l.registerNumber && <> · {l.source === "lucid" ? "Reg.-Nr." : "Register-Nr."} {l.registerNumber}</>}
+              {l.vatId && <> · USt-ID {l.vatId}</>}
               {l.registrationEnd && <span style={{ color: "var(--danger)" }}> · Registrierung beendet {l.registrationEnd}</span>}
             </div>
-            <div className="small">
-              {l.brands === null ? <span className="muted">Markenliste wird geladen …</span> : l.brands.map((b) => (
-                <span key={b} className={`tag ${brandMatches([b], brand) ? "tag-ok" : "tag-neutral"}`} style={{ marginRight: 4, marginBottom: 4, display: "inline-block" }}>{b}</span>
+            <ul className="small" style={{ margin: 0, paddingLeft: 18 }} data-testid="lead-findings">
+              {l.findings.map((f, i) => (
+                <li key={i}><strong>{f.label}</strong>{f.brand ? ` („${f.brand}“)` : ""}{f.detail ? `: ${f.detail}` : ""}{f.url && <> – <a href={f.url} target="_blank" rel="noreferrer">ansehen</a></>}</li>
               ))}
-            </div>
+            </ul>
+            {(l.brands !== null || l.busy === "marken") && (
+              <div className="small">
+                <div className="muted" style={{ marginBottom: 4 }}>Im Verpackungsregister gemeldete Marken:</div>
+                {l.brands === null ? <span className="muted">Markenliste wird geladen …</span> : l.brands.map((b) => (
+                  <span key={b} className={`tag ${brandMatches([b], brand) ? "tag-ok" : "tag-neutral"}`} style={{ marginRight: 4, marginBottom: 4, display: "inline-block" }}>{b}</span>
+                ))}
+              </div>
+            )}
+            {l.notes && <div className="small muted">{l.notes}</div>}
           </section>
 
           <section className="card card-pad stack" style={{ gap: 8 }}>
@@ -83,7 +94,9 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             <div className="field"><label className="label" htmlFor="notes">Notizen</label><textarea className="textarea" id="notes" name="notes" defaultValue={l.notes ?? ""} style={{ minHeight: 60 }} /></div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button className="btn" type="submit">Speichern</button>
-              <button className="btn" type="submit" formAction={draftAction} name="ids" value={l.id}>{l.mailBody ? "Neu formulieren (KI)" : "Entwurf schreiben (KI)"}</button>
+              {/* Server-Action-Knöpfe dürfen kein eigenes name/value tragen (React überschreibt es) – die Kennung kommt als verstecktes Feld. */}
+              <input type="hidden" name="ids" value={l.id} />
+              <button className="btn" type="submit" formAction={draftAction}>{l.mailBody ? "Neu formulieren (KI)" : "Entwurf schreiben (KI)"}</button>
             </div>
           </form>
         </div>

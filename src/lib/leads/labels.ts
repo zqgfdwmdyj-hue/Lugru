@@ -18,3 +18,20 @@ export const STATUS_LABEL: Record<string, string> = {
   kein_interesse: "kein Interesse",
   ausgeschlossen: "ausgeschlossen",
 };
+
+/** Kurzname je Fundstelle (Filter und Kennzeichnung in der Liste). */
+export const FINDING_LABEL: Record<string, string> = {
+  lucid: "Register",
+  amazon: "Amazon",
+  ebay: "eBay",
+  gpsr: "GPSR",
+  web: "Websuche",
+};
+/** Name je Suchlauf. */
+export const SEARCH_SOURCE_LABEL: Record<string, string> = {
+  lucid: "Verpackungsregister",
+  amazon: "Amazon-Verkäufer",
+  ebay: "eBay-Verkäufer + GPSR",
+  gpsr: "GPSR",
+  web: "KI-Websuche",
+};

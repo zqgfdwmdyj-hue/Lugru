@@ -7,6 +7,10 @@ export const LEAD_STATUSES = ["neu", "geprueft", "entwurf", "angeschrieben", "an
 export const LEAD_KINDS = ["grosshandel", "haendler", "hersteller", "salon", "marktplatz", "privat", "unklar"] as const;
 
 export type LeadEvidence = { label: string; value: string; url?: string };
+/** Wo eine Firma gefunden wurde (eine Firma kann in mehreren Quellen auftauchen). */
+export const LEAD_SOURCES = ["lucid", "amazon", "ebay", "gpsr", "web"] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+export type LeadFinding = { source: LeadSource; label: string; detail?: string; url?: string; brand?: string; at: string };
 
 /** Mögliche Bezugsquellen, z. B. aus dem Verpackungsregister (LUCID) zu einer Marke. */
 export const supplierLeads = pgTable(
@@ -41,6 +45,9 @@ export const supplierLeads = pgTable(
     sellsBrand: boolean("sells_brand"),
     summary: text("summary"),
     evidence: jsonb("evidence").$type<LeadEvidence[]>().notNull().default([]),
+    /** Fundstellen: Register, Amazon-/eBay-Verkäufer, GPSR-Angaben, Websuche. */
+    findings: jsonb("findings").$type<LeadFinding[]>().notNull().default([]),
+    vatId: text("vat_id"),
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     checkError: text("check_error"),
     /** Läuft gerade eine Prüfung oder ein Entwurf im Hintergrund? */
@@ -61,4 +68,22 @@ export const supplierLeads = pgTable(
     uniqueIndex("supplier_leads_src_uq").on(t.tenantId, t.source, t.sourceId),
     index("supplier_leads_status_idx").on(t.tenantId, t.status),
   ],
+);
+
+/** Suchläufe je Marke und Quelle – laufen im Hintergrund, die Seite zeigt den Stand. */
+export const supplierLeadSearches = pgTable(
+  "supplier_lead_searches",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    brand: text("brand").notNull(),
+    source: text("source", { enum: LEAD_SOURCES }).notNull(),
+    status: text("status", { enum: ["laeuft", "fertig", "fehler"] }).notNull().default("laeuft"),
+    message: text("message"),
+    found: integer("found").notNull().default(0),
+    created: integer("created").notNull().default(0),
+    startedAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("supplier_lead_searches_idx").on(t.tenantId, t.startedAt)],
 );

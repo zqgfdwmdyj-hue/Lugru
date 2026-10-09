@@ -1,39 +1,69 @@
 import "server-only";
-import { kendoFilter } from "./logic";
+import { kendoFilter, lucidFailureMessage, type LucidProducer } from "./logic";
 
 // Öffentliches Herstellerregister der Zentralen Stelle Verpackungsregister (LUCID).
 // Gleiche Abfrage wie die Suchmaske im Browser: Seite laden (Formular-Token + Cookie),
 // dann die Ergebnisliste und je Firma die Markenliste. Höflich: nacheinander, kurze Pause.
+// Sperrt das Register den Server (Rechenzentrums-Adressen), gibt es den Weg übers
+// Lesezeichen im eigenen Browser (lucid-bookmarklet.ts).
 
-const BASE = () => (process.env.LUCID_BASE_URL || "https://oeffentliche-register.verpackungsregister.org").replace(/\/$/, "");
-const UA = "Seller-System (Bezugsquellensuche)";
+export const LUCID_ORIGIN = "https://oeffentliche-register.verpackungsregister.org";
+const BASE = () => (process.env.LUCID_BASE_URL || LUCID_ORIGIN).replace(/\/$/, "");
+const HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; Seller-System Bezugsquellensuche)", "Accept-Language": "de-DE,de;q=0.9,en;q=0.5" };
 const PAUSE_MS = Number(process.env.LUCID_PAUSE_MS ?? 400);
+const RETRIES = 3;
 
-export type LucidProducer = {
-  ManufacturerId: string;
-  CompanyName: string;
-  RegisterNumber?: string | null;
-  Street?: string | null;
-  StreetNumber?: string | null;
-  ZipCode?: string | null;
-  Location?: string | null;
-  Country?: string | null;
-  TelephoneNumber?: string | null;
-  RegisterDate?: string | null;
-  RegistrationEndDate?: string | null;
-  IsForeignProducer?: boolean;
-};
+export type { LucidProducer };
 
-type Session = { cookie: string; token: string };
+/** Register nicht nutzbar – die Meldung sagt, warum, und nennt den Weg über den Browser. */
+export class LucidUnavailableError extends Error {
+  constructor(message: string, readonly status: number | null) {
+    super(message);
+  }
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Mit kurzen Wiederholungen bei Drosselung, Serverfehlern und Netzwerkaussetzern. */
+async function lucidFetch(url: string, init: RequestInit): Promise<Response> {
+  let status: number | null = null;
+  let cause: unknown;
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    if (attempt) await sleep(1500 * attempt);
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(45_000) });
+      if (res.status === 429 || res.status >= 500) {
+        status = res.status;
+        continue;
+      }
+      if (res.status === 401 || res.status === 403) {
+        const body = await res.text().catch(() => "");
+        console.error(`[Verpackungsregister] HTTP ${res.status} für ${new URL(url).pathname}: ${body.replace(/\s+/g, " ").slice(0, 200)}`);
+        throw new LucidUnavailableError(lucidFailureMessage(res.status), res.status);
+      }
+      return res;
+    } catch (e) {
+      if (e instanceof LucidUnavailableError) throw e;
+      status = null;
+      cause = e;
+    }
+  }
+  console.error(`[Verpackungsregister] ${new URL(url).pathname}: ${status !== null ? `HTTP ${status}` : String((cause as Error)?.message ?? cause)}`);
+  throw new LucidUnavailableError(lucidFailureMessage(status, cause), status);
+}
+
+type Session = { cookie: string; token: string };
+
 async function openSession(): Promise<Session> {
-  const res = await fetch(`${BASE()}/Producer`, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`Verpackungsregister nicht erreichbar (HTTP ${res.status}).`);
+  const res = await lucidFetch(`${BASE()}/Producer`, { headers: { ...HEADERS, Accept: "text/html,application/xhtml+xml" } });
+  if (!res.ok) throw new LucidUnavailableError(lucidFailureMessage(res.status), res.status);
   const html = await res.text();
   const token = html.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1];
-  if (!token) throw new Error("Verpackungsregister: Suchformular nicht gefunden – die Seite hat sich vermutlich geändert.");
+  if (!token) {
+    // Manche Schutzsysteme antworten mit 200 und einer Sperrseite.
+    if (/request rejected|was rejected|access denied|zugriff verweigert|captcha/i.test(html)) throw new LucidUnavailableError(lucidFailureMessage(403), 403);
+    throw new Error("Verpackungsregister: Suchformular nicht gefunden – die Seite hat sich vermutlich geändert.");
+  }
   const cookie = res.headers
     .getSetCookie()
     .map((c) => c.split(";")[0])
@@ -42,11 +72,10 @@ async function openSession(): Promise<Session> {
 }
 
 async function grid<T>(s: Session, path: string, form: Record<string, string>): Promise<{ Data: T[]; Total: number }> {
-  const res = await fetch(`${BASE()}${path}`, {
+  const res = await lucidFetch(`${BASE()}${path}`, {
     method: "POST",
-    headers: { "User-Agent": UA, Cookie: s.cookie, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Accept: "application/json" },
+    headers: { ...HEADERS, Cookie: s.cookie, "X-Requested-With": "XMLHttpRequest", "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", Accept: "application/json" },
     body: new URLSearchParams({ sort: "", group: "", filter: "", ...form, __RequestVerificationToken: s.token }),
-    signal: AbortSignal.timeout(30_000),
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`Verpackungsregister: Abfrage fehlgeschlagen (HTTP ${res.status}).`);

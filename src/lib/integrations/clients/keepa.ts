@@ -68,3 +68,46 @@ export async function keepaSellerNames(apiKey: string, ids: string[]): Promise<R
   for (const [id, v] of Object.entries((json.sellers ?? {}) as Record<string, { sellerName?: string }>)) if (v?.sellerName) out[id] = v.sellerName;
   return out;
 }
+
+// ---- Verkäufer einer Marke (Großhändler finden) ---------------------------------------------
+
+const tokensOf = (json: Record<string, unknown>) => (typeof json.tokensLeft === "number" ? json.tokensLeft : null);
+
+/** Stichwortsuche auf amazon.de, Rohdaten inkl. Marke (eine Ergebnisseite, ca. 10 Tokens). */
+export async function keepaSearchRaw(apiKey: string, term: string): Promise<{ products: Record<string, unknown>[]; tokensLeft: number | null }> {
+  const json = await keepaGet(`${BASE()}/search?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&type=product&term=${encodeURIComponent(term)}&page=0`);
+  return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: tokensOf(json) };
+}
+
+/** Aktuelle Angebote je ASIN (1 Token je ASIN + 6 je Angebotsseite mit bis zu 10 Angeboten). */
+export async function keepaOffers(apiKey: string, asins: string[]): Promise<{ products: Record<string, unknown>[]; tokensLeft: number | null }> {
+  const json = await keepaGet(`${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&asin=${asins.map(encodeURIComponent).join(",")}&offers=20&history=0`);
+  return { products: (json.products as Record<string, unknown>[] | undefined) ?? [], tokensLeft: tokensOf(json) };
+}
+
+export type KeepaSeller = {
+  sellerId: string;
+  sellerName?: string | null;
+  businessName?: string | null;
+  businessType?: string | null;
+  representative?: string | null;
+  address?: string[] | null;
+  email?: string | null;
+  phoneNumber?: string | null;
+  tradeNumber?: string | null;
+  vatID?: string | null;
+  hasFBA?: boolean | null;
+};
+
+/** Verkäufer mit Impressumsangaben (Firmenname, Anschrift, E-Mail, Telefon, USt-ID) – 1 Token je Verkäufer, bis 100 je Aufruf. */
+export async function keepaSellerDetails(apiKey: string, ids: string[]): Promise<{ sellers: Record<string, KeepaSeller>; tokensLeft: number | null }> {
+  if (!ids.length) return { sellers: {}, tokensLeft: null };
+  const out: Record<string, KeepaSeller> = {};
+  let tokensLeft: number | null = null;
+  for (let i = 0; i < ids.length; i += 100) {
+    const json = await keepaGet(`${BASE()}/seller?key=${encodeURIComponent(apiKey)}&domain=${DOMAIN_DE}&seller=${ids.slice(i, i + 100).map(encodeURIComponent).join(",")}`);
+    Object.assign(out, (json.sellers ?? {}) as Record<string, KeepaSeller>);
+    tokensLeft = tokensOf(json);
+  }
+  return { sellers: out, tokensLeft };
+}
