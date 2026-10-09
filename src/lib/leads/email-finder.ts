@@ -111,3 +111,52 @@ export function contactLinks(html: string, pageUrl: string): string[] {
 
 /** Übliche Pfade, falls die Startseite keine Links verrät (z. B. per JavaScript gebaut). */
 export const FALLBACK_PATHS = ["/impressum", "/kontakt", "/impressum.html", "/kontakt.html", "/imprint", "/contact", "/pages/impressum", "/pages/contact", "/legal-notice"];
+
+// ---- Erratene Domains prüfen ---------------------------------------------------------------
+
+/** Platzhalter von Registraren/Domainhändlern – keine Firmenseite. */
+export function isParkedPage(html: string): boolean {
+  const t = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 20_000);
+  return /domain (is )?(for sale|zu verkaufen)|diese domain (steht zum verkauf|kaufen|ist geparkt)|buy this domain|parked (domain|free)|domain parking|parkingcrew|sedoparking|bodis\.com|dan\.com|afternic|hugedomains|you made a right choice|gransy|this domain (has been|is) registered|domain (wurde )?registriert|hier entsteht (eine neue|in kürze)|website (coming soon|under construction)|webhosting.{0,40}(platzhalter|default page)|default web site page/i.test(t);
+}
+
+/** Vergleichbarer Text: klein, Umlaute wie im Register (ü = ue = u), nur Buchstaben/Ziffern. */
+export const foldText = (s: string) =>
+  s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/ß/g, "ss")
+    .replace(/ae/g, "a")
+    .replace(/oe/g, "o")
+    .replace(/ue/g, "u")
+    .replace(/[^a-z0-9]+/g, "");
+
+/** Kennwörter einer Firma (ohne Rechtsform, Domainendung, Allerweltswörter) – für die Prüfung erratener Domains. */
+export function nameWords(companyName: string, city?: string | null): string[] {
+  const words = companyName
+    .replace(/\.(de|com|eu|at|ch|net|shop|store|nl|it|fr|es|pl|info|biz|online)\b/gi, " ")
+    .split(/[\s,&+/()-]+/)
+    .map(foldText)
+    .filter((w) => w.length >= 4 && !/^(gmbh|mbh|kg|ohg|gbr|ltd|limited|handel|handels|gross|grosshandel|vertrieb|trading|international|group|gruppe|service|services|company)$/.test(w));
+  const c = city ? foldText(city) : "";
+  return [...new Set([...words, ...(c.length >= 4 ? [c] : [])])];
+}
+
+/** Steht die Firma (Name oder Ort) auf der Seite? */
+export function pageMatchesCompany(html: string, companyName: string, city?: string | null): boolean {
+  const t = foldText(html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " "));
+  return nameWords(companyName, city).some((w) => t.includes(w));
+}
+
+/** Schreibweisen einer Domain aus dem Namen: das Register schreibt „für“ oft als „fur“ → auch „fuer“ probieren. */
+export function domainVariants(domain: string): string[] {
+  const [label, ...rest] = domain.split(".");
+  const tld = rest.join(".");
+  const out = [domain];
+  for (let i = 0; i < label.length && out.length < 8; i++) {
+    const c = label[i];
+    if ("aou".includes(c) && label[i + 1] !== "e") out.push(`${label.slice(0, i)}${c}e${label.slice(i + 1)}.${tld}`);
+  }
+  return out;
+}

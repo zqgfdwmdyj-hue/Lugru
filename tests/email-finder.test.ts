@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bestEmail, contactLinks, decodeCfEmail, domainFromName, extractEmails, rankEmail } from "@/lib/leads/email-finder";
+import { bestEmail, contactLinks, decodeCfEmail, domainFromName, domainVariants, extractEmails, isParkedPage, pageMatchesCompany, rankEmail } from "@/lib/leads/email-finder";
 
 const cf = (email: string, key = 0x2a) => key.toString(16).padStart(2, "0") + [...email].map((c) => (c.charCodeAt(0) ^ key).toString(16).padStart(2, "0")).join("");
 
@@ -33,5 +33,17 @@ describe("E-Mail-Adressen finden", () => {
     expect(domainFromName("Muster Beauty GmbH")).toBeNull();
     const links = contactLinks(`<a href="/ueber-uns">Über uns</a><a href="https://www.firma-test.example/impressum">Impressum</a><a href="/kontakt/">Kontakt</a><a href="https://facebook.com/x">FB</a><a href="/produkte">Produkte</a>`, "https://www.firma-test.example/");
     expect(links).toEqual(["https://www.firma-test.example/impressum", "https://www.firma-test.example/kontakt/", "https://www.firma-test.example/ueber-uns"]);
+  });
+});
+
+describe("Erratene Domains", () => {
+  it("Umlaut-Schreibweisen, geparkte Seiten, passt die Seite zur Firma", () => {
+    expect(domainVariants("allesfurhaare.de")).toContain("allesfuerhaare.de");
+    expect(domainVariants("allesfurhaare.de")[0]).toBe("allesfurhaare.de");
+    expect(isParkedPage("<html><title>Gransy – You made a right choice!</title><body>This domain has been registered</body></html>")).toBe(true);
+    expect(isParkedPage("<html><body><h1>Diese Domain steht zum Verkauf</h1></body></html>")).toBe(true);
+    expect(isParkedPage("<html><body><h1>Alles für Haare – Friseurbedarf Dresden</h1><a href='/impressum'>Impressum</a></body></html>")).toBe(false);
+    expect(pageMatchesCompany("<h1>Alles für Haare</h1><p>Ihr Friseurbedarf</p>", "AllesfurHaare.DE Dresden GmbH", "Dresden")).toBe(true);
+    expect(pageMatchesCompany("<h1>Ganz andere Seite</h1>", "AllesfurHaare.DE Dresden GmbH", "Dresden")).toBe(false);
   });
 });

@@ -5,7 +5,7 @@ import type { LeadEvidence } from "@/db/schema";
 import { askClaudeWithWeb, modelFor } from "@/lib/ai/claude";
 import { getIntegration } from "@/lib/integrations/store";
 import { assertPublicUrl } from "@/lib/suppliers/feed-service";
-import { bestEmail, contactLinks, domainFromName, extractEmails, FALLBACK_PATHS, type FoundEmail } from "./email-finder";
+import { bestEmail, contactLinks, domainFromName, domainVariants, extractEmails, FALLBACK_PATHS, isParkedPage, pageMatchesCompany, type FoundEmail } from "./email-finder";
 import { parseResearch, validEmail } from "./logic";
 
 // E-Mail-Adresse finden: Website ermitteln (vorhanden, aus dem Firmennamen oder per kurzer
@@ -36,7 +36,7 @@ async function fetchPage(raw: string): Promise<{ url: string; html: string } | n
 export type CrawlResult = { reachable: boolean; site: string; pages: string[]; found: FoundEmail[]; contactUrl: string | null };
 
 /** Startseite + Impressum/Kontakt/Händlerseiten (höchstens 8 Seiten). */
-export async function crawlForEmails(site: string): Promise<CrawlResult> {
+export async function crawlForEmails(site: string, verify?: { name: string; city: string | null }): Promise<CrawlResult> {
   const pages: string[] = [];
   const found = new Map<string, FoundEmail>();
   let contactUrl: string | null = null;
@@ -46,7 +46,8 @@ export async function crawlForEmails(site: string): Promise<CrawlResult> {
   } catch {
     home = null;
   }
-  if (!home) return { reachable: false, site, pages, found: [], contactUrl: null };
+  // Geparkte Domain oder (bei erratener Domain) fremde Seite → zählt nicht.
+  if (!home || isParkedPage(home.html) || (verify && !pageMatchesCompany(home.html, verify.name, verify.city))) return { reachable: false, site, pages, found: [], contactUrl: null };
   pages.push(home.url);
   for (const f of extractEmails(home.html, home.url)) found.set(f.email, f);
   const origin = new URL(home.url).origin;
@@ -83,6 +84,7 @@ function websitePrompt(l: { companyName: string; street: string | null; zip: str
     `Firma: ${l.companyName}`,
     `Adresse: ${[l.street, [l.zip, l.city].filter(Boolean).join(" "), l.country].filter(Boolean).join(", ") || "unbekannt"}`,
     l.phone ? `Telefon: ${l.phone}` : "",
+    "Hinweis: Im Register fehlen oft Umlaute („fur“ = „für“, „Grosshandel“ = „Großhandel“); eine Domain im Firmennamen kann veraltet oder geparkt sein – dann die aktuelle Website suchen.",
     "Nur die Website genau dieser Firma (Name und Ort passen), keine Verzeichnisse wie Firmenwissen, North Data, Gelbe Seiten. E-Mail nur, wenn sie in den Suchergebnissen steht – nichts erfinden.",
     'Antworte NUR mit JSON: {"website":"https://…","email":"…","summary":"1 Satz"}',
   ]
@@ -111,10 +113,13 @@ export async function findEmailFor(tenantId: string, id: string, opts: { ai: boo
   };
   add(l.website, false);
   add(l.b2bUrl, true);
-  add(domainFromName(l.companyName), true);
+  const known = sites.length;
+  // Domain im Firmennamen („AllesfurHaare.DE“): auch Umlaut-Schreibweisen, nur wenn die Seite zur Firma passt.
+  const fromName = domainFromName(l.companyName);
+  if (fromName) for (const d of domainVariants(fromName)) add(d, true);
   let crawl: CrawlResult | null = null;
-  for (const s of sites) {
-    crawl = await crawlForEmails(s);
+  for (let i = 0; i < sites.length; i++) {
+    crawl = await crawlForEmails(sites[i], i >= known ? { name: l.companyName, city: l.city } : undefined);
     if (crawl.reachable) break;
   }
   let aiEmail: string | null = null;
