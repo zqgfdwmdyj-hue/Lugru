@@ -11,7 +11,7 @@ import { ebayFetch } from "@/lib/ebay/ebay/http";
 import { extractGpsr } from "@/lib/ebay/pipeline/gpsr";
 import { keepaKey, keepaOffers, keepaSearchRaw, keepaSellerDetails } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { assessFinding, brandMatches, countryName, nameKey, parseAddressLines, parseDistributors, validEmail, type LeadKind } from "./logic";
+import { assessFinding, brandMatches, countryName, nameKey, noRegisterHit, parseAddressLines, parseDistributors, validEmail, type LeadKind } from "./logic";
 import { importFromLucid } from "./service";
 
 // Weitere Wege zu Bezugsquellen einer Marke – neben dem Verpackungsregister:
@@ -366,22 +366,16 @@ export async function startBrandSearch(tenantId: string, brand: string, sources:
     .from(S)
     .where(and(eq(S.tenantId, tenantId), eq(S.status, "laeuft"), gte(S.startedAt, new Date(Date.now() - SEARCH_STALE_MS))));
   const todo = [...new Set(sources)].filter((s) => s !== "gpsr" && s !== "messe" && !running.some((r) => r.source === s && r.brand.toLowerCase() === b.toLowerCase()));
-  const messages: string[] = [];
-  let lucidError: string | null = null;
+  // Alle Quellen im Hintergrund – auch das Register: Es antwortet je nach Drosselung erst nach Minuten,
+  // die Seite zeigt den Stand unter „Letzte Suchläufe“ und lädt sich selbst neu.
   for (const source of todo) {
     const [row] = await db.insert(S).values({ tenantId, brand: b, source }).returning({ id: S.id });
-    if (source === "lucid") {
-      const r = await runSource(tenantId, b, source, row.id, opts);
-      if (r.ok) messages.push(`Verpackungsregister: ${r.message}`);
-      else lucidError = r.message;
-    } else {
-      void runSource(tenantId, b, source, row.id, opts);
-    }
+    void runSource(tenantId, b, source, row.id, opts);
   }
-  const bg = todo.filter((s) => s !== "lucid");
-  if (bg.length) messages.push(`${bg.map((s) => SOURCE_NAMES[s]).join(", ")} ${bg.length > 1 ? "laufen" : "läuft"} im Hintergrund.`);
-  if (!todo.length) messages.push("Diese Suche läuft schon.");
-  return { message: [lucidError, ...messages].filter(Boolean).join(" · "), lucidError };
+  const message = todo.length
+    ? `Suche nach „${b}“ gestartet: ${todo.map((s) => SOURCE_NAMES[s]).join(", ")} – ${todo.length > 1 ? "laufen" : "läuft"} im Hintergrund, Ergebnisse erscheinen hier automatisch.`
+    : "Diese Suche läuft schon.";
+  return { message, lucidError: null as string | null };
 }
 
 const SOURCE_NAMES: Record<LeadSource, string> = { lucid: "Verpackungsregister", amazon: "Amazon-Verkäufer", ebay: "eBay-Verkäufer", gpsr: "GPSR", web: "KI-Websuche", messe: "Messe-Ausstellerliste" };
@@ -395,7 +389,9 @@ async function runSource(tenantId: string, brand: string, source: LeadSource, se
       const r = await importFromLucid(tenantId, brand, opts);
       found = r.stored;
       created = r.created;
-      message = `${r.total} Einträge zu „${brand}“, ${r.stored} übernommen (${r.created} neu) – Markenlisten werden geladen; Firmen, bei denen „${brand}“ nur Wortteil ist, werden ausgeblendet.`;
+      message = r.total
+        ? `${r.total} Einträge zu „${brand}“, ${r.stored} übernommen (${r.created} neu) – Markenlisten werden geladen; Firmen, bei denen „${brand}“ nur Wortteil ist, werden ausgeblendet.`
+        : noRegisterHit(brand);
     } else {
       const { cands, note } = source === "amazon" ? await amazonCandidates(tenantId, brand) : source === "ebay" ? await ebayCandidates(tenantId, brand) : await webCandidates(tenantId, brand);
       const s = await saveCandidates(tenantId, brand, cands);

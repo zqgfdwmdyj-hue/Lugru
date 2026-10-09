@@ -26,10 +26,20 @@ const clean = (s: string | null | undefined) => (s ?? "").trim() || null;
  * Firmen zu einer Marke aus dem Verpackungsregister holen und vorab einstufen.
  * Die Markenlisten je Firma kommen danach im Hintergrund (eine Abfrage je Firma).
  */
+/** Laufende Register-Suchen (prozessweit) – das Nachladen der Markenlisten wartet so lange, damit beides zusammen das Register nicht drosselt. */
+const lucidSearches = ((globalThis as { __lucidSearches?: { active: number } }).__lucidSearches ??= { active: 0 });
+
 export async function importFromLucid(tenantId: string, brand: string, opts: { onlyActive: boolean }) {
   const b = brand.trim();
   if (b.length < 2) throw new Error("Bitte eine Marke mit mindestens 2 Zeichen eingeben.");
-  const { producers, total, session } = await searchProducers({ brand: b });
+  lucidSearches.active++;
+  let found: Awaited<ReturnType<typeof searchProducers>>;
+  try {
+    found = await searchProducers({ brand: b });
+  } finally {
+    lucidSearches.active--;
+  }
+  const { producers, total, session } = found;
   const r = await storeProducers(tenantId, b, producers.map((p) => ({ ...p, brands: null, brandsComplete: false })), opts);
   // Markenlisten im Hintergrund – die Seite zeigt den Fortschritt.
   void loadMissingBrands(tenantId, { session, force: true }).catch((e) => console.error("[Großhändler] Marken:", e instanceof Error ? e.message : e));
@@ -203,6 +213,8 @@ export async function loadMissingBrands(tenantId: string, opts: { session?: Sess
     let failures = 0;
     for (let i = 0; i < todo.length; i++) {
       const l = todo[i];
+      // Eine neue Markensuche hat Vorrang – solange warten (höchstens 10 Minuten).
+      for (let w = 0; lucidSearches.active > 0 && w < 600; w++) await sleep(1000);
       try {
         session ??= await openSession();
         let r: { brands: string[]; complete: boolean };

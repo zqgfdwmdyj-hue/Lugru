@@ -512,3 +512,10 @@ export function priorContact(
   if (!lead.supplierId && key.length >= 4 && supplierNames.some((n) => nameKey(n) === key)) return "ist schon als Lieferant angelegt (Einkauf)";
   return null;
 }
+
+/** Kein Treffer im Register: Marken sind dort oft anders gemeldet (z. B. „BOSS“ statt „Hugo Boss“). */
+export function noRegisterHit(brand: string): string {
+  const words = brand.trim().split(/\s+/).filter((w) => w.length >= 3);
+  const tip = words.length > 1 ? ` Im Register ist die Marke oft anders gemeldet – mit einem Teil suchen, z. B. „${words.sort((a, b) => b.length - a.length)[0]}“.` : " Schreibweise prüfen oder eine andere Quelle (Amazon, eBay, KI-Websuche) ankreuzen.";
+  return `Keine Einträge zu „${brand}“ im Verpackungsregister.${tip}`;
+}

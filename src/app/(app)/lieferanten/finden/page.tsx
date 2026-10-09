@@ -13,6 +13,7 @@ import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
 import { draftAction, excludeAction, fairImportAction, loadBrandsAction, searchEmailAction, reincludeAction, researchAction, searchBrandAction, sendAction, toBoardAction } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
 import { AutoRefresh, SelectAll } from "./refresh";
 import { RegisterBookmark, RegisterReceiver } from "./register-import";
 import { MesseBookmark, MesseReceiver } from "./messe-import";
@@ -69,6 +70,8 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
   const busy = busyBrands + counts.busyCheck + counts.busyDraft + counts.busyEmail > 0 || running.length > 0 || brandState.running;
   const lastLucid = searches.find((r) => r.source === "lucid");
   const registerBlocked = sp.register === "browser" || lastLucid?.status === "fehler";
+  // Marke für das Lesezeichen: aus der Adresse, sonst die der letzten (fehlgeschlagenen) Register-Suche.
+  const regBrand = sp.marke || (lastLucid?.status === "fehler" ? lastLucid.brand : "");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const origin = `${h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || /^\d/.test(host) ? "http" : "https")}://${host}`;
@@ -97,7 +100,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <label className="sr-only" htmlFor="brand">Marke</label>
             <input className="input" id="brand" name="brand" defaultValue={sp.marke ?? ""} placeholder="Marke, z. B. Wella" required style={{ maxWidth: 260 }} />
-            <button className="btn btn-primary" type="submit">Suchen</button>
+            <SubmitButton label="Suchen" pendingLabel="Startet …" testId="brand-search" />
           </div>
           <div className="stack" style={{ gap: 6 }} data-testid="lead-sources">
             {([
@@ -156,7 +159,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
           <div>Manche Register sperren Rechenzentrums-Adressen. Dann läuft die gleiche Abfrage in deinem Browser – mit deiner normalen Internetverbindung, nur lesend:</div>
           <ol style={{ margin: 0, paddingLeft: 18 }}>
             <li>Dieses Lesezeichen einmalig in die Lesezeichenleiste ziehen: <RegisterBookmark href={lucidBookmarkletHref(origin)} /></li>
-            <li><a href={`${registerBase}/Producer${sp.marke ? `#marke=${encodeURIComponent(sp.marke)}` : ""}`} target="_blank" rel="noreferrer">Herstellerregister öffnen</a>{sp.marke ? ` (Marke „${sp.marke}“ wird übernommen)` : ""} und dort das Lesezeichen klicken.</li>
+            <li><a href={`${registerBase}/Producer${regBrand ? `#marke=${encodeURIComponent(regBrand)}` : ""}`} target="_blank" rel="noreferrer">Herstellerregister öffnen</a>{regBrand ? ` (Marke „${regBrand}“ wird übernommen)` : ""} und dort das Lesezeichen klicken.</li>
             <li>Es liest alle Firmen zur Marke und deren Markenlisten (dauert je nach Marke 1–3 Minuten) → „An Seller-System senden“. Die Daten erscheinen hier automatisch.</li>
           </ol>
           <RegisterReceiver allowedOrigin={new URL(registerBase).origin} />

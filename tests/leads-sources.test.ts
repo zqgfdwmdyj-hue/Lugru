@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { followUpMail, leadColumn, needsFollowUp, taskColumn } from "@/lib/board/logic";
-import { assessFinding, countryName, lucidFailureMessage, mailLanguageFor, nameKey, parseAddressLines, parseDistributors, parseLucidPayload, priorContact } from "@/lib/leads/logic";
+import { assessFinding, countryName, lucidFailureMessage, mailLanguageFor, nameKey, noRegisterHit, parseAddressLines, parseDistributors, parseLucidPayload, priorContact } from "@/lib/leads/logic";
 import { lucidBookmarkletSource } from "@/lib/leads/lucid-bookmarklet";
 
 describe("Weitere Quellen – Firmen zusammenführen", () => {
@@ -139,5 +139,12 @@ describe("Board", () => {
     expect(taskColumn({ status: "done", boardColumn: "in_arbeit" })).toBe("erledigt");
     expect(taskColumn({ status: "open", boardColumn: "warten" })).toBe("warten");
     expect(taskColumn({ status: "open", boardColumn: null })).toBe("offen");
+  });
+});
+
+describe("Register ohne Treffer", () => {
+  it("schlägt bei mehrteiligen Marken einen Teil vor", () => {
+    expect(noRegisterHit("Hugo Boss")).toBe("Keine Einträge zu „Hugo Boss“ im Verpackungsregister. Im Register ist die Marke oft anders gemeldet – mit einem Teil suchen, z. B. „Hugo“.");
+    expect(noRegisterHit("Wella")).toMatch(/Schreibweise prüfen oder eine andere Quelle/);
   });
 });
