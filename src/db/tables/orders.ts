@@ -1,4 +1,5 @@
-import { index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { encryptedJson, encryptedText } from "./encrypted";
 import { type Address, createdAt, files, id, lots, money, tenantId, updatedAt } from "./core";
 
 export const CHANNELS = ["amazon", "ebay", "tiktok", "temu", "kaufland", "shop", "manual"] as const;
@@ -18,8 +19,8 @@ export const orders = pgTable(
     fulfillment: text("fulfillment", { enum: ["FBA", "FBM"] }).notNull().default("FBM"),
     status: text("status", { enum: ORDER_STATUSES }).notNull().default("open"),
     externalStatus: text("external_status"),
-    buyerName: text("buyer_name"),
-    shipTo: jsonb("ship_to").$type<Address>(),
+    buyerName: encryptedText("buyer_name"),
+    shipTo: encryptedJson<Address>("ship_to"),
     total: money("total"),
     currency: text("currency").notNull().default("EUR"),
     shipBy: timestamp("ship_by", { withTimezone: true }),

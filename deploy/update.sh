@@ -3,10 +3,11 @@
 #
 # Wo liegt was?
 #   Datenbank (alle Daten, Anbindungen, Postfächer …)  → Docker-Volume „seller-system_dbdata"
-#   Schlüssel für die gespeicherten Zugangsdaten       → APP_SECRET in /opt/seller-system/.env
+#   Schlüssel für Zugangsdaten und Empfängerdaten       → APP_SECRET in /opt/seller-system/.env
 #   Sicherungen                                        → /opt/seller-system/backups
 # Ein Update tauscht nur das Programm aus. Nie „docker compose down -v" ausführen (-v löscht die Datenbank)
-# und APP_SECRET nie ändern (sonst sind gespeicherte Passwörter/Tokens nicht mehr lesbar).
+# und APP_SECRET nie ändern (sonst sind gespeicherte Passwörter/Tokens und die verschlüsselten Empfängerdaten –
+# Namen, Adressen, Telefon, E-Mail in Aufträgen und Rechnungen, Versandetiketten – nicht mehr lesbar).
 set -euo pipefail
 cd /opt/seller-system
 
@@ -24,7 +25,8 @@ mkdir -p backups
 fingerprint=$(grep "^APP_SECRET=" .env | sha256sum | cut -c1-16)
 if [ -f backups/.schluessel ] && [ "$(cat backups/.schluessel)" != "$fingerprint" ]; then
   echo "ABBRUCH: APP_SECRET in .env hat sich seit dem letzten Update geändert."
-  echo "Mit dem neuen Schlüssel wären alle gespeicherten Zugangsdaten (Amazon, eBay, Postfächer, Kalender …) unlesbar."
+  echo "Mit dem neuen Schlüssel wären alle gespeicherten Zugangsdaten (Amazon, eBay, Postfächer, Kalender …)"
+  echo "und die verschlüsselten Empfängerdaten (Namen, Adressen in Aufträgen/Rechnungen, Etiketten) unlesbar."
   echo "Alte .env zurückholen:  cp backups/env-sicherung .env   – und das Update erneut starten."
   echo "Nur wenn der Wechsel wirklich gewollt ist:  rm backups/.schluessel"
   exit 1

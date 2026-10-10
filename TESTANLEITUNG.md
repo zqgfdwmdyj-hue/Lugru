@@ -186,12 +186,20 @@ Das bisherige LuGru eBay-Tool ist komplett im Seller-System enthalten. Die Daten
 
 ## 8. Datensicherung
 
-**Updates behalten alle Daten und Anbindungen.** Alles liegt in der Datenbank (Docker-Volume `seller-system_dbdata`); ein Update tauscht nur das Programm aus, neue Tabellen/Felder werden beim Start ergänzt. Die gespeicherten Zugangsdaten sind mit `APP_SECRET` aus `/opt/seller-system/.env` verschlüsselt. `update.sh` sichert deshalb vor jedem Update:
+**Updates behalten alle Daten und Anbindungen.** Alles liegt in der Datenbank (Docker-Volume `seller-system_dbdata`); ein Update tauscht nur das Programm aus, neue Tabellen/Felder werden beim Start ergänzt. Die gespeicherten Zugangsdaten und die Empfängerdaten (siehe unten) sind mit `APP_SECRET` aus `/opt/seller-system/.env` verschlüsselt. `update.sh` sichert deshalb vor jedem Update:
 - die Datenbank nach `backups/sellersystem-vor-update-….dump` (die letzten 5 bleiben),
 - die `.env` nach `backups/env-sicherung`,
 - und bricht ab, wenn `.env` fehlt oder sich `APP_SECRET` geändert hat.
 
 Nicht machen: `docker compose down -v` (das `-v` löscht die Datenbank), den Ordner `/opt/seller-system` samt `backups` löschen oder `APP_SECRET` ändern. `docker compose down` / `restart` ohne `-v` sind unbedenklich.
+
+**Empfängerdaten verschlüsselt (Datenschutz, Marktplatz-Fragebögen).** Name, Lieferadresse, Telefon und E-Mail der Käufer stehen nur verschlüsselt in der Datenbank – und damit auch in jeder Sicherung:
+- Aufträge (`orders.buyer_name`, `orders.ship_to`), Fälle (`cases.customer`), Kunden (Ansprechpartner, Straße, E-Mail),
+- Rechnungen: Käuferfelder im Block `pii`; Nummer, Datum und Beträge bleiben lesbar,
+- Dateien (Versandetiketten, Belege, Bilder) als Ganzes.
+
+Verfahren: AES-256-GCM (je Wert ein zufälliger IV, Manipulationsschutz über das Auth-Tag). Der Schlüssel wird per HKDF-SHA256 aus `APP_SECRET` abgeleitet und steht nicht in der Datenbank. Im Programm erscheinen die Daten ganz normal. Bestehende Daten im Klartext verschlüsselt das Update automatisch beim Start („Empfängerdaten verschlüsselt: …“ im Log von `docker compose logs app`).
+Nachweis für einen Fragebogen: `bash /opt/seller-system/deploy/pii-nachweis.sh` zeigt gekürzt, wie die Daten in der Datenbank stehen, und zählt, wie viele Zeilen noch Klartext enthalten (alle 0). Diese Ausgabe abfotografieren.
 
 
 Der Container `backup` sichert täglich die ganze Datenbank nach `/opt/seller-system/backups` (Standard: die letzten 30). Status, „Jetzt sichern“ und die Anzahl stehen unter *eBay-Einstellungen → Datensicherung*. Zusätzlich die Server-Backups in der Hetzner-Konsole einschalten.

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { createdAt, tenantId } from "./core";
+import { invoiceJson } from "./encrypted";
 
 // eBay-Listing-Tool (übernommen aus dem bisherigen LuGru eBay-Tool).
 // Die Spalten folgen der bisherigen SQLite-Datenbank, damit die Datenübernahme 1:1 geht.
@@ -88,7 +89,7 @@ export const ebayInvoices = pgTable(
     orderId: text("order_id").notNull(),
     cancelsId: integer("cancels_id"),
     cancelledById: integer("cancelled_by_id"),
-    data: jsonb("data").notNull(),
+    data: invoiceJson<unknown>("data").notNull(),
     createdAt: text("created_at").notNull(),
     emailedAt: text("emailed_at"),
     emailTo: text("email_to"),

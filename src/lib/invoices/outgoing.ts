@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { B2B_EMAIL_SUBJECT, B2B_EMAIL_TEXT, buildB2bInvoiceData, checkB2bInput, type B2bInput } from "@/lib/ebay/invoices/b2b";
@@ -108,13 +108,13 @@ export type OutgoingRow = {
 };
 
 export async function listOutgoing(tenantId: string, opts: { q?: string; limit?: number } = {}): Promise<OutgoingRow[]> {
-  const q = opts.q?.trim();
-  const rows = await db
-    .select()
-    .from(I)
-    .where(and(eq(I.tenantId, tenantId), eq(I.env, "production"), q ? sql`(${I.number} ilike ${`%${q}%`} or ${I.data}->'buyer'->>'name' ilike ${`%${q}%`} or ${I.orderId} ilike ${`%${q}%`})` : undefined))
-    .orderBy(desc(I.id))
-    .limit(opts.limit ?? 200);
+  const q = opts.q?.trim().toLowerCase();
+  const limit = opts.limit ?? 200;
+  const base = db.select().from(I).where(and(eq(I.tenantId, tenantId), eq(I.env, "production"))).orderBy(desc(I.id));
+  // Der Käufername ist verschlüsselt gespeichert – bei einer Suche nach dem Entschlüsseln filtern.
+  const rows = q
+    ? (await base.limit(5000)).filter((r) => [r.number, r.orderId, (r.data as InvoiceData).buyer?.name].some((v) => v?.toLowerCase().includes(q))).slice(0, limit)
+    : await base.limit(limit);
   return rows.map((r) => {
     const d = r.data as InvoiceData;
     return {

@@ -10,22 +10,33 @@ const I = schema.ebayInvoices;
 
 export type CustomerRow = typeof C.$inferSelect & { invoices: number; total: number; lastInvoice: string | null };
 
+/** Nicht stornierte B2B-Rechnungen; Käuferdaten sind verschlüsselt, daher wird nach dem Lesen gefiltert. */
+async function b2bInvoices(tenantId: string) {
+  return db
+    .select({ id: I.id, number: I.number, kind: I.kind, cancelledById: I.cancelledById, data: I.data })
+    .from(I)
+    .where(and(eq(I.tenantId, tenantId), eq(I.env, "production"), sql`${I.data} ? 'b2b'`))
+    .orderBy(desc(I.id));
+}
+
+const buyerName = (data: unknown) => (data as { buyer?: { name?: string } }).buyer?.name ?? "";
+
 /** Kunden mit Anzahl und Summe ihrer (nicht stornierten) B2B-Rechnungen. */
 export async function listCustomers(tenantId: string, q?: string): Promise<CustomerRow[]> {
-  const term = q?.trim();
-  const [rows, stats] = await Promise.all([
-    db
-      .select()
-      .from(C)
-      .where(and(eq(C.tenantId, tenantId), term ? sql`(${C.name} ilike ${`%${term}%`} or ${C.city} ilike ${`%${term}%`} or ${C.customerNumber} ilike ${`%${term}%`} or ${C.email} ilike ${`%${term}%`})` : undefined))
-      .orderBy(asc(C.name)),
-    db.execute<{ name: string; n: number; total: number; last: string | null }>(sql`
-      select data->'buyer'->>'name' as name, count(*)::int as n, coalesce(sum((data->>'totalGross')::numeric), 0)::float as total, max(data->>'date') as last
-        from ebay_invoices
-       where tenant_id = ${tenantId} and env = 'production' and data ? 'b2b' and kind = 'invoice' and cancelled_by_id is null
-       group by 1`),
-  ]);
-  const byName = new Map(stats.rows.map((r) => [r.name, r]));
+  const term = q?.trim().toLowerCase();
+  const [all, invoices] = await Promise.all([db.select().from(C).where(eq(C.tenantId, tenantId)).orderBy(asc(C.name)), b2bInvoices(tenantId)]);
+  // E-Mail und Anschrift sind verschlüsselt gespeichert – Suche nach dem Entschlüsseln.
+  const rows = term ? all.filter((c) => [c.name, c.city, c.customerNumber, c.email].some((v) => v?.toLowerCase().includes(term))) : all;
+  const byName = new Map<string, { n: number; total: number; last: string | null }>();
+  for (const inv of invoices) {
+    if (inv.kind !== "invoice" || inv.cancelledById !== null) continue;
+    const d = inv.data as { totalGross?: number; date?: string };
+    const s = byName.get(buyerName(inv.data)) ?? { n: 0, total: 0, last: null };
+    s.n++;
+    s.total = Math.round((s.total + Number(d.totalGross ?? 0)) * 100) / 100;
+    if (d.date && (!s.last || d.date > s.last)) s.last = d.date;
+    byName.set(buyerName(inv.data), s);
+  }
   return rows.map((r) => {
     const s = byName.get(r.name);
     return { ...r, invoices: s?.n ?? 0, total: s?.total ?? 0, lastInvoice: s?.last ?? null };
@@ -39,12 +50,7 @@ export async function getCustomer(tenantId: string, id: string) {
 
 /** Rechnungen eines Kunden (über den Namen auf der Rechnung). */
 export async function customerInvoices(tenantId: string, name: string) {
-  return db
-    .select({ id: I.id, number: I.number, kind: I.kind, cancelledById: I.cancelledById, data: I.data })
-    .from(I)
-    .where(and(eq(I.tenantId, tenantId), eq(I.env, "production"), sql`${I.data}->'buyer'->>'name' = ${name}`, sql`${I.data} ? 'b2b'`))
-    .orderBy(desc(I.id))
-    .limit(100);
+  return (await b2bInvoices(tenantId)).filter((r) => buyerName(r.data) === name).slice(0, 100);
 }
 
 export class CustomerError extends Error {}

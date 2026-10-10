@@ -1,4 +1,5 @@
 import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { encryptedText } from "./encrypted";
 import { createdAt, id, knowledgeEntries, money, tenantId, updatedAt } from "./core";
 import { CHANNELS, orders } from "./orders";
 
@@ -26,7 +27,7 @@ export const cases = pgTable(
     externalId: text("external_id"),
     orderRef: text("order_ref"),
     orderId: uuid("order_id").references(() => orders.id, { onDelete: "set null" }),
-    customer: text("customer"),
+    customer: encryptedText("customer"),
     amount: money("amount"),
     deadline: date("deadline", { mode: "string" }),
     templateId: uuid("template_id").references(() => knowledgeEntries.id, { onDelete: "set null" }),

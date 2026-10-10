@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { customType } from "drizzle-orm/pg-core";
+import { encryptedBytea } from "./encrypted";
 import {
   type AnyPgColumn,
   boolean,
@@ -18,10 +19,6 @@ import {
 
 // Grundsatz: Jede fachliche Tabelle hat eine tenant_id. Heute gibt es nur einen
 // Mandanten, das Datenmodell ist aber von Anfang an für mehrere ausgelegt.
-
-export const bytea = customType<{ data: Buffer; driverData: Buffer }>({
-  dataType: () => "bytea",
-});
 
 /** Beträge als Zahl in JS, numeric in der Datenbank. */
 export const money = (name: string) =>
@@ -230,7 +227,7 @@ export const files = pgTable(
     mimeType: text("mime_type").notNull(),
     size: integer("size").notNull(),
     sha256: text("sha256").notNull(),
-    data: bytea("data").notNull(),
+    data: encryptedBytea("data").notNull(),
     createdAt: createdAt(),
   },
   (t) => [index("files_tenant_sha_idx").on(t.tenantId, t.sha256)],
