@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
-import { alteLoeschen, artName, dateiPfad, istBereit, sicherName } from '../src/archiv.js'
+import { alteLoeschen, artName, dateiPfad, istBereit, sicherName, zielPruefen } from '../src/archiv.js'
 
 test('sicherName ersetzt Umlaute und Sonderzeichen', () => {
   assert.equal(sicherName('Haustür Außen'), 'haustuer-aussen')
@@ -51,4 +51,19 @@ test('alteLoeschen entfernt nur Tagesordner jenseits der Aufbewahrung', async ()
   assert.deepEqual(geloescht, [path.join(basis, '2026/07/01')])
   assert.deepEqual(await readdir(path.join(basis, '2026/07')), ['13'])
   assert.deepEqual(await alteLoeschen(basis, 0), [])
+})
+
+test('zielPruefen schützt den internen Speicher', async () => {
+  const basis = await mkdtemp(path.join(tmpdir(), 'ziel-'))
+  const ziel = path.join(basis, 'Ring-Aufnahmen')
+  // NAS nicht eingebunden → Fehler, nichts wird angelegt
+  await assert.rejects(zielPruefen(ziel, true, basis), /fehlt/)
+  await assert.rejects(stat(ziel))
+  // Ordner auf demselben Speicher wie /data → kein NAS → Fehler
+  await mkdir(ziel)
+  await assert.rejects(zielPruefen(ziel, true, basis), /internen Speicher/)
+  // Ohne NAS-Pflicht wird der Ordner einfach angelegt bzw. genutzt
+  const anderes = path.join(basis, 'lokal')
+  await zielPruefen(anderes, false, basis)
+  assert.ok((await stat(anderes)).isDirectory())
 })

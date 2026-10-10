@@ -1,0 +1,24 @@
+configuration:
+  ring_email:
+    name: Ring E-Mail
+    description: Nur für die erste Anmeldung. Wird danach automatisch gelöscht.
+  ring_passwort:
+    name: Ring Passwort
+    description: Nur für die erste Anmeldung. Wird danach automatisch gelöscht.
+  zwei_faktor_code:
+    name: Bestätigungscode
+    description: Der Code, den Ring nach dem ersten Start per SMS/E-Mail schickt. Eintragen, speichern, Add-on neu starten.
+  ordner:
+    name: Ordner unter /media
+    description: Name des Netzwerkspeichers in Home Assistant (Einstellungen → System → Speicher), z. B. Ring-Aufnahmen.
+  nur_auf_nas:
+    name: Nur auf dem NAS speichern
+    description: Schützt den kleinen internen Speicher des Green – ist das NAS nicht eingebunden, wird nichts gespeichert und es kommt eine Meldung.
+  aufbewahrung_tage:
+    name: Aufbewahrung (Tage)
+    description: Ältere Aufnahmen werden gelöscht. 0 = nie löschen.
+  intervall_minuten:
+    name: Abruf alle … Minuten
+  rueckblick_tage:
+    name: Rückblick (Tage)
+    description: Wie weit zurück jedes Mal nach fehlenden Aufnahmen gesucht wird.

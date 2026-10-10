@@ -1,9 +1,6 @@
-# Home Assistant – Grundkonfiguration. Geräte (SwitchBot, FRITZ!, Ring) werden in der
+# Home Assistant (Green) – Grundkonfiguration. Geräte (SwitchBot, FRITZ!, Ring) werden in der
 # Oberfläche unter Einstellungen → Geräte & Dienste hinzugefügt, nicht hier.
 homeassistant:
-  # Ring-Aufnahmen aus dem Archiv erscheinen unter „Medien → ring“.
-  media_dirs:
-    ring: /media/ring
   # Eigene Regeln (Benachrichtigungen, Schlösser, Heizung) liegen in packages/.
   packages: !include_dir_named packages
 

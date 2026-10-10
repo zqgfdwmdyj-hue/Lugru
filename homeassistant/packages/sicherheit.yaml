@@ -232,16 +232,3 @@ automation:
           entity_id: "{{ states.climate | map(attribute='entity_id') | list }}"
         data:
           preset_mode: "{{ 'eco' if trigger.id == 'weg' else 'comfort' }}"
-
-  - id: ring_archiv_meldung
-    alias: Ring-Archiv – Störung melden
-    triggers:
-      - trigger: webhook
-        webhook_id: !secret ring_archiv_webhook
-        allowed_methods: [POST]
-        local_only: true
-    actions:
-      - action: script.benachrichtigen
-        data:
-          titel: Ring-Archiv
-          nachricht: "{{ trigger.json.nachricht }}"

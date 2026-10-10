@@ -1,0 +1,35 @@
+name: Ring-Archiv
+version: "1.0.0"
+slug: ring_archiv
+description: Speichert alle Ring-Aufnahmen dauerhaft – z. B. auf dem NAS.
+url: https://github.com/zqgfdwmdyj-hue/Lugru/tree/smarthome
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+# Benachrichtigungen über das Skript „benachrichtigen“ in Home Assistant.
+homeassistant_api: true
+# Nach der Anmeldung E-Mail/Passwort/Code wieder aus den Einstellungen löschen.
+hassio_api: true
+map:
+  - type: media
+    read_only: false
+options:
+  ring_email: ""
+  ring_passwort: ""
+  zwei_faktor_code: ""
+  ordner: Ring-Aufnahmen
+  nur_auf_nas: true
+  aufbewahrung_tage: 365
+  intervall_minuten: 5
+  rueckblick_tage: 7
+schema:
+  ring_email: str?
+  ring_passwort: password?
+  zwei_faktor_code: str?
+  ordner: str
+  nur_auf_nas: bool
+  aufbewahrung_tage: int(0,3650)
+  intervall_minuten: int(1,60)
+  rueckblick_tage: int(1,60)

@@ -1,5 +1,5 @@
 // Reine Hilfsfunktionen des Ring-Archivs (ohne Netzwerk) – damit sie sich testen lassen.
-import { readdir, rm, rmdir } from 'node:fs/promises'
+import { mkdir, readdir, rm, rmdir, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 const ZEITZONE = 'Europe/Berlin'
@@ -90,5 +90,25 @@ async function ordner(p) {
     return eintraege.filter((e) => e.isDirectory() && /^\d+$/.test(e.name)).map((e) => e.name)
   } catch {
     return []
+  }
+}
+
+/**
+ * Ziel prüfen: Ordner vorhanden und – falls gewünscht – wirklich ein eigener Speicher (NAS),
+ * nicht der kleine interne Speicher, auf dem auch <vergleichDir> liegt.
+ */
+export async function zielPruefen(ziel, nurAufNas, vergleichDir) {
+  const info = await stat(ziel).catch(() => null)
+  if (!info) {
+    if (nurAufNas) {
+      throw new Error(
+        `${ziel} fehlt – NAS in Home Assistant unter Einstellungen → System → Speicher als „Medien“ einbinden.`,
+      )
+    }
+    await mkdir(ziel, { recursive: true })
+    return
+  }
+  if (nurAufNas && info.dev === (await stat(vergleichDir)).dev) {
+    throw new Error(`${ziel} liegt auf dem internen Speicher, nicht auf dem NAS – Netzwerkspeicher prüfen.`)
   }
 }

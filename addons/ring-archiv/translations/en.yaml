@@ -1,0 +1,17 @@
+configuration:
+  ring_email:
+    name: Ring email
+  ring_passwort:
+    name: Ring password
+  zwei_faktor_code:
+    name: 2FA code
+  ordner:
+    name: Folder below /media
+  nur_auf_nas:
+    name: Only store on network storage
+  aufbewahrung_tage:
+    name: Retention (days, 0 = forever)
+  intervall_minuten:
+    name: Poll interval (minutes)
+  rueckblick_tage:
+    name: Look-back (days)
