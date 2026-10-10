@@ -12,12 +12,14 @@ services:
       - "${BIND_IP:?BIND_IP fehlt}:${HA_PORT:-8123}:8123"
     volumes:
       - ./homeassistant:/config
-      - ./aufnahmen:/media/ring:ro
+      - ${AUFNAHMEN_PFAD:-./aufnahmen}:/media/ring:ro
       - /etc/localtime:/etc/localtime:ro
 
   ring-archiv:
     build: ./ring-archiv
     restart: unless-stopped
+    # Benutzer, dem der Aufnahme-Ordner gehört (auf dem NAS: id -u / id -g des NAS-Benutzers).
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       TZ: Europe/Berlin
       INTERVALL_MINUTEN: ${RING_INTERVALL_MINUTEN:-5}
@@ -25,5 +27,5 @@ services:
       AUFBEWAHRUNG_TAGE: ${RING_AUFBEWAHRUNG_TAGE:-90}
       HA_WEBHOOK_URL: http://homeassistant:8123/api/webhook/${RING_WEBHOOK_ID:-}
     volumes:
-      - ./aufnahmen:/aufnahmen
+      - ${AUFNAHMEN_PFAD:-./aufnahmen}:/aufnahmen
       - ./ring-daten:/data

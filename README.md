@@ -106,6 +106,45 @@ Die Regeln brauchen keine festen Gerätenamen – neue Schlösser, Thermostate o
 werden automatisch berücksichtigt. Eigene Automationen in der Oberfläche anlegen; sie landen
 in `automations.yaml` und werden bei Updates nicht überschrieben.
 
+## UGREEN-NAS nutzen
+Es gibt zwei Wege. Beide funktionieren mit demselben Projekt, nur die `.env` ist anders.
+
+### Weg 1 (empfohlen): Alles läuft auf dem NAS
+Das NAS steht im Heimnetz. Damit entfällt der WireGuard-Tunnel zur FRITZ!Box, die Videos
+liegen direkt auf den NAS-Platten, und später kommen Matter-/Zigbee-Geräte ohne Zusatzgerät
+dazu. Voraussetzung: ein Modell mit **UGOS Pro und Docker** (z. B. DXP2800/4800/6800).
+
+1. UGOS Pro → **App Center → Docker** installieren; **Systemsteuerung → Terminal → SSH**
+   aktivieren.
+2. Freigabe **„Ring-Aufnahmen“** anlegen (z. B. `/volume1/Ring-Aufnahmen`).
+3. Per SSH aufs NAS, Benutzerkennung ermitteln (`id -u`, `id -g`), dann als root:
+   ```bash
+   SMARTHOME_DIR=/volume1/docker/smarthome AUFNAHMEN_PFAD=/volume1/Ring-Aufnahmen \
+   PUID=<id -u> PGID=<id -g> \
+   bash install.sh https://github.com/<name>/smarthome.git <nas-ip> 8123
+   ```
+   `<nas-ip>` = die Adresse des NAS im Heimnetz (z. B. `192.168.178.20`).
+4. Schritt 2 der Einrichtung (FRITZ!Box-VPN) **entfällt** – nur den FRITZ!Box-Benutzer anlegen.
+5. Von unterwegs: Tailscale auf dem NAS installieren (App Center oder Docker) und als
+   `<nas-ip>` die Tailscale-Adresse verwenden; oder die FRITZ!Box-VPN aufs Handy.
+6. In der FRITZ!Box dem NAS eine feste IP geben (Heimnetz → Netzwerk → Gerät bearbeiten).
+
+### Weg 2: Home Assistant auf dem Server, Videos auf dem NAS
+Setzt den WireGuard-Tunnel aus Schritt 2 voraus. Auf dem Server die NAS-Freigabe einbinden:
+```bash
+apt-get install -y cifs-utils
+printf 'username=<nas-benutzer>\npassword=<passwort>\n' > /root/.nas-ring && chmod 600 /root/.nas-ring
+mkdir -p /mnt/nas-ring
+echo '//<nas-ip>/Ring-Aufnahmen /mnt/nas-ring cifs credentials=/root/.nas-ring,uid=1000,gid=1000,_netdev,x-systemd.automount 0 0' >> /etc/fstab
+mount -a
+```
+Dann in `/opt/smarthome/.env` `AUFNAHMEN_PFAD=/mnt/nas-ring` setzen und
+`docker compose up -d`. Die Videos gehen über die Upload-Leitung des Servers nach Hause –
+bei 2–5 MB pro Aufnahme kein Problem.
+
+> Auf dem NAS die Aufbewahrung ruhig hochsetzen (`RING_AUFBEWAHRUNG_TAGE=365`) und für die
+> Freigabe „Ring-Aufnahmen“ Snapshots aktivieren.
+
 ## Raumfühler für die Thermostate
 Empfehlung: **2× FRITZ!DECT 440**. In der FRITZ!Box unter **Smart Home → Geräte → Thermostat
 bearbeiten → „Temperaturfühler“** den 440 im selben Raum auswählen. Die Thermostate regeln
