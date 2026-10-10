@@ -104,7 +104,7 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
         <section className="card card-pad stack" style={{ gap: 10 }} data-testid="rh-setup">
           <h2>Webhook (Knopf „JSON“ im Ticket)</h2>
-          <div className="small muted">Nur, wenn der Server dir den JSON-Export freischaltet (als VIP gibt es erst einmal nur Drag &amp; Drop – dann oben einlesen).</div>
+          <div className="small muted">Braucht auf dem Ankauf-Server mindestens die Rolle „Allstars“ – sonst (z. B. als VIP) oben per Screenshot oder Text einlesen.</div>
           <ol className="small" style={{ margin: 0, paddingLeft: 18 }}>
             <li>Schlüssel erzeugen und kopieren.</li>
             <li>In Discord auf dem Dashboard-Server <span className="num">/webhook_pull</span> ausführen: Webhook-URL und Auth-Header einfügen.</li>
