@@ -179,6 +179,12 @@ export const supplierOffers = pgTable(
     priceChangedAt: timestamp("price_changed_at", { withTimezone: true }),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
+    /**
+     * Herkunft: „feed“ = Liste (Datei/Link, Abgleich alle 24 Std.), „scan“ = von Hand gezogen
+     * (Seller-Knopf/Lesezeichen, Link, Foto) – wird einmal bei Keepa geprüft und getrennt gezeigt.
+     */
+    origin: text("origin", { enum: ["feed", "scan"] }).notNull().default("feed"),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("offers_uq").on(t.feedId, t.supplierSku), index("offers_ean_idx").on(t.tenantId, t.ean)],

@@ -9,7 +9,7 @@ import type { FeedMapping } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { readTable } from "@/lib/tabular";
-import { checkFeedWithKeepa, saveScanned, scan } from "@/lib/suppliers/scan-service";
+import { checkFeedWithKeepa, saveScanned, scan, titleLookupScanned } from "@/lib/suppliers/scan-service";
 import { analyzeFeed, checkSellable, importTable, profitableOffers, pullFeed, refreshMarket } from "@/lib/suppliers/feed-service";
 import { encryptSecret } from "@/lib/crypto";
 import { suggestBoxes } from "@/lib/suppliers/boxes-service";
@@ -85,11 +85,15 @@ export async function scanFeedAction(_prev: ScanState, fd: FormData): Promise<Sc
     const usd = parseAmount(fd.get("usdRate"));
     const res = await scan(session.tenantId, { file: f, url: String(fd.get("url") ?? ""), text: String(fd.get("text") ?? "") });
     const saved = await saveScanned(session.tenantId, feedId, res.items, usd ? { USD: usd } : undefined);
-    // Gleich weiter: Keepa (Amazon-Preis), profitable Produkte, Verkaufsfreigabe – im Hintergrund.
-    if (saved.withEan) void analyzeFeed(session.tenantId, feedId).catch(() => undefined);
+    // Gleich weiter, einmalig: ohne EAN per Titel, dann Keepa (EAN), profitable Produkte, Verkaufsfreigabe – im Hintergrund.
+    void titleLookupScanned(session.tenantId, feedId, saved.scannedAt)
+      .catch(() => undefined)
+      .then(() => analyzeFeed(session.tenantId, feedId))
+      .catch(() => undefined);
     revalidatePath(`/lieferanten/${feedId}`);
+    revalidatePath("/lieferanten/chancen");
     const warn = saved.missingRates.length ? ` Für ${saved.missingRates.join(", ")} fehlt ein Kurs – EK dort leer.` : "";
-    return { ok: true, message: `${saved.saved} Artikel übernommen (${res.method}), ${saved.withEan} mit EAN/UPC.${warn}${saved.withEan ? " Keepa prüft jetzt automatisch, oben erscheinen die profitablen Produkte." : ""}` };
+    return { ok: true, message: `${saved.saved} Artikel übernommen (${res.method}), ${saved.withEan} mit EAN/UPC.${warn} Keepa prüft jetzt einmal${saved.saved > saved.withEan ? " (ohne EAN per Titel, bis 25 Artikel)" : ""} – Ergebnis oben und unter Chancen → „Manuell gezogen“.` };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

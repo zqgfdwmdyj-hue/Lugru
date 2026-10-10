@@ -79,6 +79,8 @@ export async function importTable(tenantId: string, feed: Feed, table: Table, op
           stock: sql`excluded.stock`,
           moq: sql`excluded.moq`,
           url: sql`coalesce(excluded.url, ${O.url})`,
+          // Steht der Artikel in der Liste, gehört er zum regelmäßigen Abgleich.
+          origin: sql`'feed'`,
           active: true,
           lastSeenAt: new Date(),
           updatedAt: new Date(),
@@ -87,7 +89,8 @@ export async function importTable(tenantId: string, feed: Feed, table: Table, op
   }
   let gone = 0;
   if (opts.full && values.length) {
-    const r = await db.update(O).set({ active: false, stock: 0 }).where(and(eq(O.feedId, feed.id), eq(O.active, true), sql`${O.lastSeenAt} < ${started}`)).returning({ id: O.id });
+    // Von Hand gezogene Artikel (Seller-Knopf) stehen nie in der Liste – die bleiben.
+    const r = await db.update(O).set({ active: false, stock: 0 }).where(and(eq(O.feedId, feed.id), eq(O.active, true), eq(O.origin, "feed"), sql`${O.lastSeenAt} < ${started}`)).returning({ id: O.id });
     gone = r.length;
   }
   await recordHistory(tenantId, feed.id, started);
@@ -226,7 +229,7 @@ export async function keepaQueue(tenantId: string, limit = KEEPA_CODES_PER_RUN) 
   const rows = await db.execute<{ ean: string; checked: string | null; changed: string | null }>(sql`
     select ean, min(market->>'checkedAt') as checked, max(price_changed_at)::text as changed
       from supplier_offers
-     where tenant_id = ${tenantId} and active and ean is not null and price is not null
+     where tenant_id = ${tenantId} and active and ean is not null and price is not null and origin = 'feed'
      group by ean`);
   const now = new Date().toISOString();
   const ranked = rows.rows

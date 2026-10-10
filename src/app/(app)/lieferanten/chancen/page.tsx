@@ -10,12 +10,12 @@ import { keepaQueue, keepaStatus, marketTrend, offerHistory } from "@/lib/suppli
 import { econOf } from "@/lib/suppliers/offer-econ";
 import { priceHint, priceStats } from "@/lib/suppliers/prices";
 import { ago, Spark } from "@/components/spark";
-import { keepaRunAction, pullAllAction } from "./actions";
+import { keepaRunAction, keepaScannedAction, pullAllAction } from "./actions";
 
 type Row = {
   id: string; feed_id: string; feed_name: string; prices_gross: boolean; cost_pct: string | null; vat_pct: string | null;
   supplier_sku: string; ean: string | null; title: string | null; price: number | null; stock: number | null; moq: number | null; url: string | null;
-  market: OfferMarket | null; first_seen_at: string | null; last_seen_at: string | null; max30: number | null;
+  market: OfferMarket | null; first_seen_at: string | null; last_seen_at: string | null; scanned_at: string | null; max30: number | null;
 };
 
 const SORTS = { roi: "ROI", gewinn: "Gewinn", verkaeufe: "Verkäufe", neu: "Neueste" } as const;
@@ -30,22 +30,30 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
   const only = (sp.lf ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/.test(x));
   const nur = sp.nur === "gefallen" || sp.nur === "neu" ? sp.nur : "";
   const sort = (sp.sort && sp.sort in SORTS ? sp.sort : "roi") as keyof typeof SORTS;
+  // Zwei getrennte Bereiche: Listen (Datei/Link, regelmäßiger Abgleich) und von Hand Gezogenes (Seller-Knopf).
+  const manual = sp.quelle === "manuell";
+  const origin = manual ? "scan" : "feed";
   const [s, feeds, queue] = await Promise.all([
     getSettings(t),
     db.select({ id: schema.supplierFeeds.id, name: schema.supplierFeeds.name, auto: schema.supplierFeeds.autoPull, err: schema.supplierFeeds.lastPullError, pulled: schema.supplierFeeds.lastPullAt }).from(schema.supplierFeeds).where(eq(schema.supplierFeeds.tenantId, t)).orderBy(asc(schema.supplierFeeds.name)),
     keepaQueue(t, 0),
   ]);
+  const scanStats = (
+    await db.execute<{ total: number; unchecked: number; last: string | null }>(sql`
+      select count(*)::int as total, count(*) filter (where market is null)::int as unchecked, max(scanned_at)::text as last
+        from supplier_offers where tenant_id = ${t} and origin = 'scan' and active`)
+  ).rows[0];
   const res = await db.execute<Row>(sql`
     with h as (
       select offer_id, max(price)::float as max30 from supplier_offer_history
        where tenant_id = ${t} and day >= current_date - 30 group by offer_id
     )
     select o.id, o.feed_id, f.name as feed_name, f.prices_gross, f.mapping->>'costPct' as cost_pct, f.mapping->>'vatPct' as vat_pct,
-           o.supplier_sku, o.ean, o.title, o.price::float as price, o.stock, o.moq, o.url, o.market, o.first_seen_at::text, o.last_seen_at::text, h.max30
+           o.supplier_sku, o.ean, o.title, o.price::float as price, o.stock, o.moq, o.url, o.market, o.first_seen_at::text, o.last_seen_at::text, o.scanned_at::text, h.max30
       from supplier_offers o
       join supplier_feeds f on f.id = o.feed_id
       left join h on h.offer_id = o.id
-     where o.tenant_id = ${t} and o.active and o.price is not null and (o.stock is null or o.stock > 0)
+     where o.tenant_id = ${t} and o.origin = ${origin} and o.active and o.price is not null and (o.stock is null or o.stock > 0)
        and (o.market->>'price') is not null
        ${only.length ? sql`and o.feed_id in (${sql.join(only.map((f) => sql`${f}`), sql`, `)})` : sql``}
      limit 30000`);
@@ -63,9 +71,10 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
   let list = [...best.values()].filter(({ r, e }) => (e.roi ?? -1) >= minRoi && (e.profit ?? -1) >= minProfit && (r.market?.monthlySold ?? 0) >= minSales);
   if (nur === "gefallen") list = list.filter(({ r }) => r.max30 !== null && r.price !== null && r.price <= r.max30 * 0.97);
-  if (nur === "neu") list = list.filter(({ r }) => r.first_seen_at && new Date(r.first_seen_at).toISOString() >= weekAgo);
+  const seenAt = (r: Row) => (manual ? r.scanned_at : r.first_seen_at) ?? "";
+  if (nur === "neu") list = list.filter(({ r }) => seenAt(r) && new Date(seenAt(r)).toISOString() >= weekAgo);
   list.sort((a, b) =>
-    sort === "gewinn" ? (b.e.profit ?? 0) - (a.e.profit ?? 0) : sort === "verkaeufe" ? (b.r.market?.monthlySold ?? 0) - (a.r.market?.monthlySold ?? 0) : sort === "neu" ? (b.r.first_seen_at ?? "").localeCompare(a.r.first_seen_at ?? "") : (b.e.roi ?? 0) - (a.e.roi ?? 0),
+    sort === "gewinn" ? (b.e.profit ?? 0) - (a.e.profit ?? 0) : sort === "verkaeufe" ? (b.r.market?.monthlySold ?? 0) - (a.r.market?.monthlySold ?? 0) : sort === "neu" ? new Date(seenAt(b.r) || 0).getTime() - new Date(seenAt(a.r) || 0).getTime() : (b.e.roi ?? 0) - (a.e.roi ?? 0),
   );
   const shown = list.slice(0, 200);
   const today = todayIso();
@@ -76,27 +85,47 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <div className="page-head">
-        <div><div className="crumb"><Link href="/lieferanten">Lieferanten</Link></div><h1>Chancen aus den Lieferanten-Listen</h1></div>
+        <div><div className="crumb"><Link href="/lieferanten">Lieferanten</Link></div><h1>{manual ? "Chancen – manuell gezogen" : "Chancen aus den Lieferanten-Listen"}</h1></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <form action={pullAllAction}><button className="btn" type="submit">Alle Listen jetzt abrufen</button></form>
-          <form action={keepaRunAction}><button className="btn btn-primary" type="submit">Keepa jetzt abgleichen</button></form>
+          {manual ? (
+            <form action={keepaScannedAction}><button className="btn btn-primary" type="submit" data-testid="keepa-scanned">Ungeprüfte jetzt prüfen</button></form>
+          ) : (
+            <>
+              <form action={pullAllAction}><button className="btn" type="submit">Alle Listen jetzt abrufen</button></form>
+              <form action={keepaRunAction}><button className="btn btn-primary" type="submit">Keepa jetzt abgleichen</button></form>
+            </>
+          )}
         </div>
       </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="chancen-tabs">
+        <Link href={qs({ quelle: "", lf: "" })} className={`chip${!manual ? " active" : ""}`}>Listen (automatisch, alle 24 Std.)</Link>
+        <Link href={qs({ quelle: "manuell", lf: "" })} className={`chip${manual ? " active" : ""}`}>Manuell gezogen (Seller-Knopf){scanStats.total ? ` · ${scanStats.total}` : ""}</Link>
+      </div>
       {sp.meldung && <div className="notice notice-info" data-testid="chancen-msg">{sp.meldung}</div>}
+      {manual ? (
+        <div className="grid-kpi">
+          <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value" data-testid="manual-profitable">{list.length}</div><div className="small muted">von {best.size} gezogenen Produkten mit Amazon-Daten</div></div>
+          <div className="card card-pad"><div className="kpi-label">Noch ungeprüft</div><div className="kpi-value">{scanStats.unchecked}</div><div className="small muted">einmalige Prüfung läuft nach jedem Ziehen · ohne EAN per Titel (bis 25)</div></div>
+          <div className="card card-pad"><div className="kpi-label">Zuletzt gezogen</div><div className="kpi-value" style={{ fontSize: 20 }}>{scanStats.last ? ago(scanStats.last) : "–"}</div><div className="small muted">{scanStats.total} Produkte von Hand gezogen</div></div>
+          <div className="card card-pad small">Gezogenes wird <strong>einmal</strong> geprüft und nicht in den täglichen Abgleich der Listen gemischt. Ziehen: Lieferant öffnen → „Seite oder Liste scannen“ (Seller-Knopf/Lesezeichen, Link, Foto).</div>
+        </div>
+      ) : (
       <div className="grid-kpi">
         <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value">{list.length}</div><div className="small muted">von {best.size} Produkten mit Amazon-Daten</div></div>
         <div className="card card-pad"><div className="kpi-label">Warten auf Keepa</div><div className="kpi-value">{queue.total}</div><div className="small muted">neue/geänderte zuerst · stündlich</div></div>
         <div className="card card-pad"><div className="kpi-label">Keepa-Tokens</div><div className="kpi-value">{kst?.tokensLeft ?? "–"}</div><div className="small muted">{kst ? ago(kst.at) : "noch kein Abgleich"}</div></div>
         <div className="card card-pad"><div className="kpi-label">Listen automatisch</div><div className="kpi-value">{feeds.filter((f) => f.auto).length} / {feeds.length}</div>{feeds.some((f) => f.err) && <div className="small" style={{ color: "var(--danger)" }}>{feeds.filter((f) => f.err).length} mit Fehler</div>}</div>
       </div>
+      )}
 
       <form className="card card-pad" style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field"><label className="label" htmlFor="roi">ROI ab %</label><input className="input num" id="roi" name="roi" defaultValue={minRoi} style={{ width: 80 }} /></div>
         <div className="field"><label className="label" htmlFor="gw">Gewinn ab €</label><input className="input num" id="gw" name="gewinn" defaultValue={String(minProfit).replace(".", ",")} style={{ width: 80 }} /></div>
         <div className="field"><label className="label" htmlFor="vk">Verk./Monat ab</label><input className="input num" id="vk" name="verk" defaultValue={minSales} style={{ width: 80 }} /></div>
-        <div className="field"><label className="label" htmlFor="nur">Nur</label><select className="select" id="nur" name="nur" defaultValue={nur}><option value="">alle</option><option value="gefallen">EK gefallen (30 T)</option><option value="neu">neu (7 T)</option></select></div>
+        <div className="field"><label className="label" htmlFor="nur">Nur</label><select className="select" id="nur" name="nur" defaultValue={nur}><option value="">alle</option><option value="gefallen">EK gefallen (30 T)</option><option value="neu">{manual ? "gezogen (7 T)" : "neu (7 T)"}</option></select></div>
         <div className="field"><label className="label" htmlFor="so">Sortieren</label><select className="select" id="so" name="sort" defaultValue={sort}>{Object.entries(SORTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
         {only.length > 0 && <input type="hidden" name="lf" value={only.join(",")} />}
+        {manual && <input type="hidden" name="quelle" value="manuell" />}
         <button className="btn" type="submit">Filtern</button>
       </form>
       {feeds.length > 1 && (
@@ -114,7 +143,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         <table className="table">
           <thead><tr><th>Produkt</th><th>Günstigster Lieferant</th><th className="right">EK netto/Stk</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>EK-Verlauf</th><th>VK 30 T</th></tr></thead>
           <tbody>
-            {shown.length === 0 && <tr><td colSpan={9} className="muted">Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise.</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={9} className="muted">{manual ? "Nichts Lohnenswertes unter dem von Hand Gezogenen (oder noch nichts gezogen). Lieferant öffnen → „Seite oder Liste scannen“ mit dem Seller-Knopf." : "Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise."}</td></tr>}
             {shown.map(({ r, e, alt }) => {
               const h = hist.get(r.id) ?? [];
               const hint = priceHint(priceStats(h, r.price, today));
@@ -133,7 +162,8 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
                   </td>
                   <td className="small">
                     <strong>{r.feed_name}</strong>{alt > 0 && <span className="muted"> · +{alt} weitere</span>}
-                    <div className="muted">{r.stock === null ? "lieferbar" : `${r.stock} Stk`}{r.moq && r.moq > 1 ? ` · ab ${r.moq}` : ""} · {ago(r.last_seen_at)}</div>
+                    <div className="muted">{r.stock === null ? "lieferbar" : `${r.stock} Stk`}{r.moq && r.moq > 1 ? ` · ab ${r.moq}` : ""} · {manual && r.scanned_at ? `gezogen ${ago(r.scanned_at)}` : ago(r.last_seen_at)}</div>
+                    {r.market?.byTitle && <div className="muted" title="Ohne EAN per Titel bei Keepa gefunden">per Titel – gegenprüfen</div>}
                   </td>
                   <td className="num right">{formatEuro(e.unitNet)}</td>
                   <td className="num right">{formatEuro(e.sale)}</td>

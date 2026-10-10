@@ -239,6 +239,13 @@
       "when": 1791636871537,
       "tag": "0033_belege_stotax",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791643132396,
+      "tag": "0034_manuell_gezogen",
+      "breakpoints": true
     }
   ]
 }

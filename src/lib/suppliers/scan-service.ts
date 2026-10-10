@@ -7,7 +7,7 @@ import { parseKeepaProduct } from "@/lib/brands/market";
 import { eurRates } from "@/lib/fx/ecb";
 import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
-import { recordHistory, refreshMarket, shareMarket } from "./feed-service";
+import { KEEPA_MIN_TOKENS, recordHistory, refreshMarket, shareMarket } from "./feed-service";
 import { stripHtml } from "@/lib/research/feeds";
 import { chunkText, currencyOf, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, parseCapture, parseScan, scanPromptForText, SCAN_INSTRUCTIONS, searchTerm, toEur, type ScannedItem } from "./scan";
 
@@ -141,6 +141,8 @@ export async function saveScanned(tenantId: string, feedId: string, items: Scann
     imageUrl: i.imageUrl,
     pack: i.pack,
     stock: i.stock,
+    origin: "scan" as const,
+    scannedAt: started,
   }));
   for (let n = 0; n < values.length; n += 500) {
     await db
@@ -159,6 +161,9 @@ export async function saveScanned(tenantId: string, feedId: string, items: Scann
           imageUrl: sql`coalesce(excluded.image_url, ${O.imageUrl})`,
           pack: sql`coalesce(excluded.pack, ${O.pack})`,
           stock: sql`excluded.stock`,
+          // Von Hand gezogen: einmal prüfen, getrennt zeigen (nicht im 24-Std-Abgleich der Listen).
+          origin: sql`'scan'`,
+          scannedAt: sql`excluded.scanned_at`,
           active: true,
           lastSeenAt: new Date(),
           updatedAt: new Date(),
@@ -168,7 +173,35 @@ export async function saveScanned(tenantId: string, feedId: string, items: Scann
   await recordHistory(tenantId, feedId, started);
   await shareMarket(tenantId, feedId);
   await db.update(schema.supplierFeeds).set({ lastImportAt: new Date() }).where(and(eq(schema.supplierFeeds.id, feedId), eq(schema.supplierFeeds.tenantId, tenantId)));
-  return { saved: values.length, withEan: values.filter((v) => v.ean).length, rate: rates.USD ?? null, missingRates: [...missing] };
+  return { saved: values.length, withEan: values.filter((v) => v.ean).length, rate: rates.USD ?? null, missingRates: [...missing], scannedAt: started };
+}
+
+/**
+ * Von Hand gezogene Artikel ohne EAN einmal per Titel bei Keepa suchen (je Suche ca. 10 Tokens) –
+ * begrenzt und nur, solange genug Tokens da sind. Mit EAN prüft `analyzeFeed` danach.
+ */
+export async function titleLookupScanned(tenantId: string, feedId: string, since: Date, limit = 25) {
+  const key = await keepaKey(tenantId);
+  if (!key) return { searched: 0, found: 0 };
+  const rows = await db
+    .select({ id: O.id, title: O.title })
+    .from(O)
+    .where(and(eq(O.tenantId, tenantId), eq(O.feedId, feedId), eq(O.origin, "scan"), sql`${O.scannedAt} >= ${since}`, isNull(O.ean), isNull(O.market), isNotNull(O.title)))
+    .limit(limit);
+  let found = 0;
+  let searched = 0;
+  for (const r of rows) {
+    const res = await keepaSearch(key, searchTerm(r.title!));
+    searched++;
+    const mp = res.products[0];
+    const market: OfferMarket = mp
+      ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, byTitle: true }
+      : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };
+    if (mp) found++;
+    await db.update(O).set({ market }).where(and(eq(O.id, r.id), eq(O.tenantId, tenantId)));
+    if (res.tokensLeft !== null && res.tokensLeft < KEEPA_MIN_TOKENS + 10) break;
+  }
+  return { searched, found };
 }
 
 /**
