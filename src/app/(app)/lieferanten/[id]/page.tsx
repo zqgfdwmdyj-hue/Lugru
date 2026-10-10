@@ -9,9 +9,11 @@ import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
-import { packInfo, packOf, searchTerm, unitsPerSale } from "@/lib/suppliers/scan";
+import { packInfo, packOf, searchTerm, unitsPerSale, type UnitsSource } from "@/lib/suppliers/scan";
+import { isImplausible, ROI_IMPLAUSIBLE } from "@/lib/suppliers/prices";
+import { QtyEdit } from "../qty-edit";
 import { getSettings } from "@/lib/settings";
-import { amazonQtyAction, clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction, sellableCheckAction } from "../actions";
+import { clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction, sellableCheckAction } from "../actions";
 import { feedAnalysis } from "@/lib/suppliers/feed-service";
 import { AutoRefresh } from "../finden/refresh";
 import { ebayToolLink } from "@/lib/ebay/tool-link";
@@ -60,12 +62,12 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
     const cost = r.price !== null ? Math.round((feed.pricesGross ? r.price / (1 + vatRate) : r.price) * (1 + costPct / 100) * 100) / 100 : null;
     const unitCost = cost !== null ? Math.round((cost / pack.caseQty) * 100) / 100 : null;
     // Amazon-Angebot mit mehreren Einheiten („15 x 136 g“, „2er Set“): EK je Verkauf = Einheiten × EK.
-    const per = unitsPerSale({ amazonTitle: m?.title, supplierTitle: r.title, supplierUrl: r.url, override: r.amazon_qty });
+    const per = unitsPerSale({ amazonTitle: m?.title, supplierTitle: r.title, supplierUrl: r.url, override: r.amazon_qty, keepaItems: m?.items, keepaNetG: m?.netG });
     const costPerSale = unitCost !== null ? Math.round(unitCost * per.units * 100) / 100 : null;
     const profit = sale !== null && costPerSale !== null
       ? profitAt(sale, { unitCost: costPerSale, fbaFee: r.fee ?? m?.fbaFee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? (m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate), vatRate })
       : null;
-    return { ...r, pack: packOf(r.title ?? "", r.url) ?? r.pack, caseQty: pack.caseQty, sale, cost, unitCost, units: per.units, unitsAuto: per.auto, costPerSale, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null };
+    return { ...r, pack: packOf(r.title ?? "", r.url) ?? r.pack, caseQty: pack.caseQty, sale, cost, unitCost, units: per.units, unitsSource: per.source, costPerSale, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null };
   });
   const q = sp.q?.trim().toLowerCase();
   let shown = q ? rows.filter((r) => `${r.title} ${r.supplier_sku} ${r.ean} ${r.asin}`.toLowerCase().includes(q)) : rows;
@@ -75,23 +77,19 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
   const withEan = rows.filter((r) => r.ean).length;
   const onAmazon = rows.filter((r) => r.market?.asin).length;
   // Profitabel wie unter „Chancen“: Gewinn ≥ 1 €, ROI ≥ 20 % gegen den Amazon-Preis.
-  const profitable = rows
+  const candidates = rows
     .map((r) => ({ ...r, roi: r.profit !== null && r.costPerSale ? Math.round((r.profit / r.costPerSale) * 1000) / 10 : null }))
     .filter((r) => r.market?.asin && r.profit !== null && r.profit >= 1 && r.roi !== null && r.roi >= 20)
     .sort((a, b) => (b.roi ?? 0) - (a.roi ?? 0));
+  // ROI über 500 % ist fast nie echt (Amazon-Großpackung ohne Mengenangabe, anderes Produkt) – nicht als profitabel zählen.
+  // Von Hand gesetzte Stückzahl gilt als geprüft.
+  const suspicious = (r: { roi: number | null; unitsSource: UnitsSource }) => r.unitsSource !== "hand" && isImplausible(r.roi);
+  const profitable = candidates.filter((r) => !suspicious(r));
+  const odd = candidates.filter(suspicious);
   const analysis = feedAnalysis(id);
   const amazonConnected = Boolean((await getIntegration(t, "amazon_sp"))?.sellerId);
-  // Einheiten je Amazon-Verkauf korrigieren (leer = automatisch aus dem Amazon-Titel).
-  const qtyEdit = (r: { id: string; units: number; unitsAuto: boolean; amazon_qty: number | null }) => (
-    <details className="small" data-testid="qty-edit" style={{ textAlign: "right" }}>
-      <summary className="muted" style={{ cursor: "pointer", listStyle: "none" }} title="Wie viele Einheiten enthält ein Amazon-Verkauf?">{r.units} Stk je Verkauf{r.unitsAuto ? "" : " ✎"}</summary>
-      <form action={amazonQtyAction} style={{ display: "flex", gap: 4, justifyContent: "flex-end", marginTop: 4 }}>
-        <input type="hidden" name="feedId" value={feed.id} />
-        <input type="hidden" name="offerId" value={r.id} />
-        <input className="input num" name="qty" defaultValue={r.amazon_qty ?? ""} placeholder={r.unitsAuto ? `auto ${r.units}` : String(r.units)} style={{ width: 70 }} aria-label="Stück je Amazon-Verkauf" />
-        <button className="btn btn-small" type="submit">OK</button>
-      </form>
-    </details>
+  const qtyEdit = (r: { id: string; units: number; unitsSource: UnitsSource; amazon_qty: number | null; roi?: number | null }) => (
+    <QtyEdit feedId={feed.id} offerId={r.id} units={r.units} source={r.unitsSource} amazonQty={r.amazon_qty} open={r.unitsSource !== "hand" && isImplausible(r.roi)} />
   );
   const chip = (nur?: string) => `/lieferanten/${id}${nur || q ? `?${new URLSearchParams({ ...(nur ? { nur } : {}), ...(q ? { q } : {}) })}` : ""}`;
 
@@ -105,7 +103,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
         </div>
       </div>
       <AutoRefresh active={analysis?.done === false} />
-      {(profitable.length > 0 || analysis) && (
+      {(profitable.length > 0 || odd.length > 0 || analysis) && (
         <section className="card" id="profitabel" data-testid="feed-profitable" style={{ overflow: "auto" }}>
           <div className="card-pad between" style={{ gap: 8, flexWrap: "wrap" }}>
             <div>
@@ -120,6 +118,25 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           {analysis?.done === false && <div className="card-pad small notice notice-info" data-testid="feed-analysis">{analysis.step}</div>}
           {analysis?.done && analysis.note && <div className="card-pad small muted" data-testid="feed-analysis-note">{analysis.note}</div>}
           {sp.freigabe && <div className="card-pad small notice notice-info" data-testid="feed-sellable-msg">{sp.freigabe}</div>}
+          {odd.length > 0 && (
+            <details className="card-pad small notice-warn" data-testid="feed-odd">
+              <summary style={{ cursor: "pointer" }}><strong>{odd.length} weitere mit ROI über {ROI_IMPLAUSIBLE} % – Menge prüfen</strong> (fast immer verkauft Amazon eine Großpackung ohne Mengenangabe im Titel, oder der Titel-Treffer ist ein anderes Produkt)</summary>
+              <table className="table" style={{ marginTop: 8 }}>
+                <thead><tr><th>Amazon-Angebot</th><th>Beim Lieferanten</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">ROI</th></tr></thead>
+                <tbody>
+                  {odd.slice(0, 40).map((r) => (
+                    <tr key={r.id} data-testid="odd-row" data-asin={r.market?.asin ?? ""}>
+                      <td style={{ maxWidth: 280 }}><a href={`https://www.amazon.de/dp/${r.market!.asin}`} target="_blank" rel="noreferrer">{r.market?.title ?? r.market!.asin}</a></td>
+                      <td style={{ maxWidth: 240 }}>{r.title}{r.caseQty > 1 && <span className="muted"> · Karton {r.caseQty}</span>}</td>
+                      <td className="num right">{formatEuro(r.costPerSale)}{qtyEdit(r)}</td>
+                      <td className="num right">{formatEuro(r.sale)}</td>
+                      <td className="num right">{r.roi?.toLocaleString("de-DE", { maximumFractionDigits: 0 })} %</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
           {!amazonConnected && profitable.length > 0 && <div className="card-pad small muted">Für die Verkaufsfreigabe unter Anbindungen → Amazon Seller Central verbinden (mit Händler-ID, App-Rolle „Produktlisting“).</div>}
           {profitable.length > 0 && (
             <table className="table">

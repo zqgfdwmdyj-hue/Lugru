@@ -30,7 +30,22 @@ export function parseKeepaProduct(p: Record<string, unknown>): MarketProduct | n
     monthlySold: posInt(p.monthlySold),
     salesRank: posInt(cur[K_SALES_RANK]) ?? posInt(avg[K_SALES_RANK]),
     reviews: posInt(cur[K_REVIEWS]),
+    ...keepaPack(p),
   };
+}
+
+// Einheiten aus Keepa „unitCount“ in g bzw. ml (Amazon nennt sie je Marktplatz verschieden).
+const UNIT_G: [RegExp, number][] = [[/milligram|^mg$/, 0.001], [/fl\.?\s?oz|fluid/, 29.57], [/oz|ounce|unze/, 28.35], [/lb|pound|pfund/, 453.6], [/kilo|^kg$/, 1000], [/milli|^ml$/, 1], [/centil|^cl$/, 10], [/lit|^l$/, 1000], [/gram|^g$/, 1]];
+
+/** Packungsangaben laut Keepa: Stückzahl (Packungsmenge, Anzahl Artikel, „Count“) und Inhalt in g/ml. */
+export function keepaPack(p: Record<string, unknown>): { items: number | null; netG: number | null } {
+  const uc = (p.unitCount ?? null) as { unitValue?: unknown; unitType?: unknown } | null;
+  const type = typeof uc?.unitType === "string" ? uc.unitType.toLowerCase().trim() : "";
+  const val = typeof uc?.unitValue === "number" && uc.unitValue > 0 ? uc.unitValue : null;
+  const count = val && /count|stück|stk|anzahl|einheit|unit|piece|zähl/.test(type) ? Math.round(val) : null;
+  const f = val ? UNIT_G.find(([re]) => re.test(type))?.[1] : undefined;
+  const items = [posInt(p.packageQuantity), posInt(p.numberOfItems), count].find((n) => n !== null && n > 1 && n <= 500) ?? null;
+  return { items, netG: val && f ? Math.round(val * f * 10) / 10 : null };
 }
 
 // ---- Helium 10 (Xray-Export als CSV) --------------------------------------------------------

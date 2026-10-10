@@ -106,7 +106,7 @@ export async function runManualCheck(tenantId: string, run: ManualRun = { runnin
     run.tokensLeft = res.tokensLeft;
     const mp = res.products[0];
     const market: OfferMarket = mp
-      ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, byTitle: true }
+      ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, items: mp.items ?? null, netG: mp.netG ?? null, byTitle: true }
       : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };
     await db.update(O).set({ market }).where(and(eq(O.id, r.id), eq(O.tenantId, tenantId)));
     run.done++;

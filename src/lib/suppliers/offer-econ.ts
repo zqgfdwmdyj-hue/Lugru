@@ -1,6 +1,6 @@
 import type { OfferMarket } from "@/db/schema";
 import { packInfo, unitsPerSale } from "./scan";
-import { offerCalc } from "./prices";
+import { isImplausible, offerCalc } from "./prices";
 
 type Settings = { vatRate: number; pricing: { defaultFbaFee: number; referralRate: number } };
 
@@ -12,7 +12,7 @@ export function econOf(
   const vatRate = o.vatPct !== null ? o.vatPct / 100 : s.vatRate;
   const pack = packInfo(o.title ?? "", o.url);
   const m = o.market;
-  const per = unitsPerSale({ amazonTitle: m?.title, supplierTitle: o.title, supplierUrl: o.url, override: o.amazonQty });
+  const per = unitsPerSale({ amazonTitle: m?.title, supplierTitle: o.title, supplierUrl: o.url, override: o.amazonQty, keepaItems: m?.items, keepaNetG: m?.netG });
   const c = offerCalc({
     price: o.price,
     gross: o.pricesGross,
@@ -24,5 +24,15 @@ export function econOf(
     referralRate: m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate,
     unitsPerSale: per.units,
   });
-  return { ...c, caseQty: pack.caseQty, sale: m?.price ?? null, unitsPerSale: per.units, unitsAuto: per.auto, costPerSale: c.costPerSale ?? c.unitNet };
+  return {
+    ...c,
+    caseQty: pack.caseQty,
+    sale: m?.price ?? null,
+    unitsPerSale: per.units,
+    unitsAuto: per.auto,
+    unitsSource: per.source,
+    costPerSale: c.costPerSale ?? c.unitNet,
+    // ROI über 500 % zum Prüfen – eine von Hand gesetzte Stückzahl gilt als geprüft.
+    implausible: per.source !== "hand" && isImplausible(c.roi),
+  };
 }

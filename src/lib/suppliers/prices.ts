@@ -180,6 +180,13 @@ export function offerCalc(i: OfferCalcInput): { unitNet: number | null; profit: 
   return { unitNet, profit, roi: cost > 0 ? r1((profit / cost) * 100) : null, ...(units > 1 ? { costPerSale: cost } : {}) };
 }
 
+/**
+ * ROI darüber ist fast nie echt: meist enthält das Amazon-Angebot mehr Stück als erkannt
+ * (Großpackung ohne Mengenangabe im Titel) oder der Titel-Treffer ist ein anderes Produkt.
+ */
+export const ROI_IMPLAUSIBLE = 500;
+export const isImplausible = (roi: number | null | undefined) => typeof roi === "number" && roi > ROI_IMPLAUSIBLE;
+
 /** Wann eine Keepa-Abfrage für eine EAN fällig ist: neu zuerst, dann geänderter EK, dann älteste. */
 export function keepaPriority(o: { checkedAt: string | null; priceChangedAt: string | null; now: string; maxAgeDays: number }): number | null {
   if (!o.checkedAt) return 0;

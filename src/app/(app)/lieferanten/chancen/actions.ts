@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
-import { pullFeed, refreshMarket } from "@/lib/suppliers/feed-service";
+import { pullFeed, refreshMarket, refreshPackData } from "@/lib/suppliers/feed-service";
 import { manualBacklog, startManualCheck } from "@/lib/suppliers/manual-check";
 
 /** Keepa-Abgleich im Hintergrund anstoßen (im Rahmen der Tokens). */
@@ -42,4 +42,17 @@ export async function keepaScannedAction() {
       })()
     : "Alle von Hand gezogenen Artikel sind schon geprüft.";
   redirect(`/lieferanten/chancen?${new URLSearchParams({ quelle: "manuell", meldung: msg })}`);
+}
+
+/** Stückzahl/Inhalt der Amazon-Angebote bei Keepa nachladen (für Treffer mit unplausiblem ROI). */
+export async function packRefreshAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const ids = String(fd.get("ids") ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/i.test(x));
+  const back = String(fd.get("back") ?? "");
+  const r = await refreshPackData(session.tenantId, ids);
+  const msg = r.note ?? `Keepa: ${r.asked} Amazon-Angebote abgefragt, bei ${r.found} Stückzahl bzw. Inhalt gefunden – neu gerechnet.${r.tokensLeft !== null ? ` · ${r.tokensLeft} Tokens übrig` : ""}`;
+  const qs = new URLSearchParams(back.startsWith("?") ? back.slice(1) : "");
+  qs.delete("meldung");
+  qs.set("meldung", msg);
+  redirect(`/lieferanten/chancen?${qs}`);
 }

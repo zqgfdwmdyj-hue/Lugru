@@ -81,38 +81,95 @@ export function packInfo(title: string, url?: string | null): PackInfo {
   return { caseQty: n > 0 && n < 10000 ? n : 1, inner: inner ? Number(inner[1]) : null, unitSize: size ? size.replace(/\s/g, "") : null };
 }
 
-/**
- * Wie viele Einheiten des Lieferanten ein Amazon-Angebot enthält – aus dem Amazon-Titel:
- * „15 x 136 g“, „(2 Stück)“, „2er Set“, „6er-Pack“, „Packung mit 6“, „6 Dosen“. Stückzahlen
- * im Inneren einer Packung („80 Mini Bars“, „(80 Stück)“ über 24) zählen nicht. null = nichts erkannt.
- */
-export function amazonPackQty(title: string | null | undefined): number | null {
+// Stückzahl-Wörter hinter einer Zahl: „24 Count“, „24-Piece“, „24ct“, „(2 Stück)“, „6 Dosen“, „5 Riegel“.
+const COUNT_WORDS = "count|ct|pcs|pieces?|stück|stk|st\\.|packs?|packungen|einzelpackungen|riegel|bars|rollen|sticks|lutscher|tafeln|dosen|flaschen|beutel|tüten|gläser|schachteln|boxen";
+const COUNT_RES = [
+  /(\d+)\s*[x×]\s*\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|cl|oz|stück|stk)\b/i,
+  /\b(\d+)\s*er[- ]?(?:pack|set|packung|vorteilspack|karton|bundle|box)\b/i,
+  /\b(?:packung|pack|set|karton|box|case|vorratspackung|bundle)\s+(?:mit|von|of|à|a)\s+(\d+)\b/i,
+  new RegExp(`\\b(\\d{1,3})[\\s-]*(?:${COUNT_WORDS})(?![a-zäöüß])`, "i"),
+];
+
+/** Stückzahl aus einem Titel (2–200), sonst null. */
+function countIn(title: string | null | undefined): number | null {
   if (!title) return null;
   const t = title.replace(/\u00a0/g, " ");
-  const hits = [
-    t.match(/(\d+)\s*[x×]\s*\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|cl|oz|stück|stk)\b/i),
-    t.match(/\b(\d+)\s*er[- ]?(?:pack|set|packung|vorteilspack|karton|bundle|box)\b/i),
-    t.match(/\b(?:packung|pack|set|karton|box|vorratspackung|bundle)\s+(?:mit|von|of|à|a)\s+(\d+)\b/i),
-    t.match(/\(\s*(\d+)\s*(?:stück|stk|st\.|packungen|packs?|beutel|dosen|flaschen|tüten|gläser|schachteln|boxen|pcs|count)\s*\)/i),
-    t.match(/\b(\d+)\s*(?:dosen|flaschen|beutel|tüten|packungen|gläser|schachteln)\b/i),
-  ];
-  const n = Number(hits.find(Boolean)?.[1] ?? NaN);
-  return Number.isFinite(n) && n >= 2 && n <= 24 ? n : null;
+  const n = Number(COUNT_RES.map((re) => t.match(re)).find(Boolean)?.[1] ?? NaN);
+  return Number.isFinite(n) && n >= 2 && n <= 200 ? n : null;
+}
+
+const G_PER: [RegExp, number][] = [[/^(?:kg|kilo)/, 1000], [/^(?:g|gr|gramm?)$/, 1], [/^ml$/, 1], [/^cl$/, 10], [/^(?:l|liter)$/, 1000], [/^oz$/, 28.35], [/^(?:lb|lbs)$/, 453.6]];
+const WEIGHT_RE = /(\d+(?:[.,]\d+)?)\s?(kg|kilo|gramm?|gr|g|ml|cl|liter|l|oz|lbs?)(?![a-zäöüß])/gi;
+
+/** Inhalt in Gramm bzw. ml aus einer Angabe wie „136 g“, „8.4oz“, „1,5 kg“ – metrische Angabe bevorzugt. */
+function weightIn(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const all = [...text.replace(/\u00a0/g, " ").matchAll(WEIGHT_RE)].map((m) => {
+    const unit = m[2].toLowerCase();
+    const f = G_PER.find(([re]) => re.test(unit))?.[1];
+    return f ? { g: Number(m[1].replace(",", ".")) * f, metric: unit !== "oz" && !unit.startsWith("lb") } : null;
+  }).filter((x): x is { g: number; metric: boolean } => x !== null && x.g > 0);
+  const w = all.find((x) => x.metric) ?? all[0];
+  return w ? Math.round(w.g * 10) / 10 : null;
 }
 
 /**
- * Lieferanten-Einheiten je Amazon-Verkauf. Von Hand gesetzt gewinnt; sonst aus dem Amazon-Titel,
- * geteilt durch den Inhalt der Lieferanten-Einheit (ist sie selbst ein 2er-Set, braucht ein 2er-Set
- * bei Amazon nur 1 davon).
+ * Wie viele Stück ein Amazon-Angebot laut Titel enthält: „15 x 136 g“, „(2 Stück)“, „2er Set“,
+ * „6er-Pack“, „Packung mit 6“, „6 Dosen“, „24 Count“, „24-Piece“. null = nichts erkannt.
  */
-export function unitsPerSale(o: { amazonTitle?: string | null; supplierTitle?: string | null; supplierUrl?: string | null; override?: number | null }): { units: number; auto: boolean } {
-  if (o.override && o.override >= 1) return { units: Math.round(o.override), auto: false };
-  const n = amazonPackQty(o.amazonTitle);
-  if (!n) return { units: 1, auto: true };
-  // Nur der Inhalt einer Lieferanten-Einheit („2er-Pack“) – „15 x 136 g“ beim Lieferanten ist der Karton.
-  const inner = packInfo(o.supplierTitle ?? "", o.supplierUrl).inner;
-  return { units: inner && inner > 1 && n % inner === 0 ? n / inner : n, auto: true };
+export function amazonPackQty(title: string | null | undefined): number | null {
+  return countIn(title);
 }
+
+export type UnitsSource = "hand" | "titel" | "keepa" | "gewicht" | null;
+
+/**
+ * Lieferanten-Einheiten je Amazon-Verkauf. Von Hand gesetzt gewinnt; sonst die Stückzahl aus dem
+ * Amazon-Titel (bzw. laut Keepa), geteilt durch das, was eine Lieferanten-Einheit schon enthält
+ * (ist sie selbst ein 2er-Set, braucht ein 2er-Set bei Amazon nur 1 davon). Ohne Stückzahl: Inhalt
+ * bei Amazon ÷ Inhalt einer Lieferanten-Einheit („340 g“ gegen „(60 x 6g)“ = 57).
+ */
+export function unitsPerSale(o: {
+  amazonTitle?: string | null;
+  supplierTitle?: string | null;
+  supplierUrl?: string | null;
+  override?: number | null;
+  /** Stückzahl laut Keepa (Packungsmenge/Anzahl Artikel). */
+  keepaItems?: number | null;
+  /** Inhalt laut Keepa in g bzw. ml. */
+  keepaNetG?: number | null;
+}): { units: number; auto: boolean; source: UnitsSource } {
+  if (o.override && o.override >= 1) return { units: Math.round(o.override), auto: false, source: "hand" };
+  const st = o.supplierTitle ?? "";
+  const pack = packInfo(st, o.supplierUrl);
+  // EK gilt je Lieferanten-Einheit (Karton ÷ Kartongröße). Wie viele Stück stecken schon darin?
+  const per = pack.inner ?? (pack.caseQty <= 1 ? countIn(st) : null) ?? 1;
+  // Inhalt einer Lieferanten-Einheit: „(24 x 9g)“ = 9 g je Stück; ohne Karton die eine Angabe im Titel.
+  const times = st.match(/\d+\s*[x×]\s*(\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|cl|oz))\b/i);
+  const supplierG = times ? weightIn(times[1]) : pack.caseQty <= 1 ? weightIn(st) : null;
+  const titleN = countIn(o.amazonTitle);
+  const keepaN = o.keepaItems && o.keepaItems > 1 ? o.keepaItems : null;
+  const n = titleN ?? keepaN;
+  // Bei Stückzahl im Titel ist eine Gewichtsangabe dort mehrdeutig (je Stück oder gesamt) – nur Keepa zählt.
+  const amazonG = titleN ? (o.keepaNetG ?? null) : (weightIn(o.amazonTitle) ?? o.keepaNetG ?? null);
+  const byWeight = supplierG && amazonG ? amazonG / supplierG : null;
+  if (n) {
+    const u = Math.max(1, Math.round(n / per));
+    // Gegenprobe übers Gewicht: weicht es stark ab, zählt die Zahl eher den Inhalt einer Packung.
+    if (byWeight && (u > byWeight * 2 || u < byWeight / 2)) return { units: Math.min(500, Math.max(1, Math.round(byWeight))), auto: true, source: "gewicht" };
+    return { units: u, auto: true, source: titleN ? "titel" : "keepa" };
+  }
+  if (byWeight && byWeight >= 1.5) return { units: Math.min(500, Math.round(byWeight)), auto: true, source: "gewicht" };
+  return { units: 1, auto: true, source: null };
+}
+
+/** Kurz, woher die Stückzahl kommt – für Hinweise in der Oberfläche. */
+export const UNITS_SOURCE_LABEL: Record<Exclude<UnitsSource, null>, string> = {
+  hand: "von Hand gesetzt",
+  titel: "aus dem Amazon-Titel",
+  keepa: "laut Keepa (Packungsmenge)",
+  gewicht: "nach Inhalt (Gewicht/Menge) berechnet",
+};
 
 /** Kurztext für die Spalte „pack“: „24 × 9g“, „Karton 18 · je 5er-Pack“. */
 export function packOf(title: string, url?: string | null): string | null {

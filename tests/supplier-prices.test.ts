@@ -99,22 +99,63 @@ describe("Einheiten je Amazon-Verkauf", () => {
     expect(amazonPackQty("Haribo Goldbären, 6er-Pack (6 x 200 g)")).toBe(6);
     expect(amazonPackQty("Monster Energy, Packung mit 12")).toBe(12);
     expect(amazonPackQty("Pringles Original, 6 Dosen à 165 g")).toBe(6);
-    // Einzelpackung bzw. Inhalt einer Packung zählt nicht.
+    // US-Schreibweisen
+    expect(amazonPackQty("Pop Rocks - Blue Razz, 24 count (8.4oz)")).toBe(24);
+    expect(amazonPackQty("POP ROCKS Popping Candy, Cotton Candy, 24 Count by Pop Rocks")).toBe(24);
+    expect(amazonPackQty("Laffy Taffy Rope Candy, Cherry, 24-Piece Box")).toBe(24);
+    expect(amazonPackQty("Warheads Extreme Sour, Case of 12")).toBe(12);
+    expect(amazonPackQty("Haribo Minis Beutel (80 Stück)")).toBe(80);
+    // Einzelpackung bzw. ohne Stückzahl.
     expect(amazonPackQty("Jelly Belly Bean Boozled 100g Süßigkeiten mit Glücksrad")).toBeNull();
     expect(amazonPackQty("AirHeads 80 Mini Bars Fun Taffy Candy Assorted Fruit Flavors 32.17oz (912g)")).toBeNull();
-    expect(amazonPackQty("Haribo Minis Beutel (80 Stück)")).toBeNull();
+    expect(amazonPackQty("Laffy Taffy Rope Cherry")).toBeNull();
+    expect(amazonPackQty("Halloween Süßigkeiten Box USA 25 Teile")).toBeNull();
     expect(amazonPackQty(null)).toBeNull();
   });
 
   it("Lieferanten-Inhalt wird berücksichtigt, von Hand gesetzt gewinnt", async () => {
     const { unitsPerSale } = await import("@/lib/suppliers/scan");
-    expect(unitsPerSale({ amazonTitle: "Jolly Rancher 198 g (2 Stück)", supplierTitle: "Jolly Rancher 198g - Karton 12" })).toEqual({ units: 2, auto: true });
+    expect(unitsPerSale({ amazonTitle: "Jolly Rancher 198 g (2 Stück)", supplierTitle: "Jolly Rancher 198g - Karton 12" })).toEqual({ units: 2, auto: true, source: "titel" });
     // Lieferant verkauft schon 2er-Sets → bei Amazon 2er Set = 1 Einheit.
-    expect(unitsPerSale({ amazonTitle: "2er Set Nerds 2 x 141 g", supplierTitle: "Nerds Rainbow 2er Set (Karton 12)" })).toEqual({ units: 1, auto: true });
+    expect(unitsPerSale({ amazonTitle: "2er Set Nerds 2 x 141 g", supplierTitle: "Nerds Rainbow 2er Set (Karton 12)" })).toEqual({ units: 1, auto: true, source: "titel" });
     // „15 x 136 g“ beim Lieferanten ist der Karton – Amazon verkauft den ganzen Karton.
-    expect(unitsPerSale({ amazonTitle: "Skittles Großpackung, 15 x 136 g", supplierTitle: "Skittles Fruits (15 x 136g)" })).toEqual({ units: 15, auto: true });
-    expect(unitsPerSale({ amazonTitle: "Skittles Großpackung, 15 x 136 g", supplierTitle: "Skittles", override: 1 })).toEqual({ units: 1, auto: false });
-    expect(unitsPerSale({ amazonTitle: "Jelly Belly 100g", supplierTitle: "Jelly Belly 100g x12" })).toEqual({ units: 1, auto: true });
+    expect(unitsPerSale({ amazonTitle: "Skittles Großpackung, 15 x 136 g", supplierTitle: "Skittles Fruits (15 x 136g)" })).toEqual({ units: 15, auto: true, source: "titel" });
+    expect(unitsPerSale({ amazonTitle: "Skittles Großpackung, 15 x 136 g", supplierTitle: "Skittles", override: 1 })).toEqual({ units: 1, auto: false, source: "hand" });
+    expect(unitsPerSale({ amazonTitle: "Jelly Belly 100g", supplierTitle: "Jelly Belly 100g x12" })).toEqual({ units: 1, auto: true, source: null });
+  });
+
+  it("CandyHero-Kartons gegen US-Großpackungen bei Amazon", async () => {
+    const { unitsPerSale } = await import("@/lib/suppliers/scan");
+    // Karton 24 × 9,5 g (EK je Tütchen) gegen „24 count“ bei Amazon → 24 Tütchen je Verkauf.
+    expect(unitsPerSale({ amazonTitle: "Pop Rocks - Blue Razz, 24 count (8.4oz)", supplierTitle: "Pop Rocks Blue Razz (24 x 9.5g)" }).units).toBe(24);
+    // Ohne Stückzahl, aber mit Inhalt: 340 g Beutel ÷ 6 g je Riegel ≈ 57.
+    expect(unitsPerSale({ amazonTitle: "Airheads Mini SOURS Candy Bars, Sour Watermelon Punch, 340 ml Sortenbeutel", supplierTitle: "Airheads Mini Bars Sour (60 x 6g)" })).toEqual({ units: 57, auto: true, source: "gewicht" });
+    // Titel ohne alles → Keepa-Packungsmenge.
+    expect(unitsPerSale({ amazonTitle: "Laffy Taffy Rope Cherry", supplierTitle: "Laffy Taffy Rope Cherry (24 x 22.9g)", keepaItems: 24 })).toEqual({ units: 24, auto: true, source: "keepa" });
+    // Keepa-Inhalt ohne Stückzahl: 549 g ÷ 22,9 g = 24.
+    expect(unitsPerSale({ amazonTitle: "Laffy Taffy Rope Cherry", supplierTitle: "Laffy Taffy Rope Cherry (24 x 22.9g)", keepaNetG: 549 }).units).toBe(24);
+    // Lieferanten-Einheit ist schon der ganze Beutel: „80 Stück“ bei Amazon = 1 Beutel.
+    expect(unitsPerSale({ amazonTitle: "Haribo Minis Beutel (80 Stück)", supplierTitle: "Haribo Minis Beutel 80 Riegel 1 kg" }).units).toBe(1);
+    // Gegenprobe übers Gewicht: Zahl zählt den Inhalt, Inhalt laut Keepa = 1 Beutel.
+    expect(unitsPerSale({ amazonTitle: "Haribo Minis (80 Stück)", supplierTitle: "Haribo Minis Beutel 1 kg", keepaNetG: 1000 })).toEqual({ units: 1, auto: true, source: "gewicht" });
+  });
+
+  it("Keepa-Packungsangaben", async () => {
+    const { keepaPack } = await import("@/lib/brands/market");
+    expect(keepaPack({ packageQuantity: 24, numberOfItems: 1 })).toEqual({ items: 24, netG: null });
+    expect(keepaPack({ packageQuantity: -1, numberOfItems: 12 })).toEqual({ items: 12, netG: null });
+    expect(keepaPack({ unitCount: { unitValue: 8.4, unitType: "Ounce" } })).toEqual({ items: null, netG: 238.1 });
+    expect(keepaPack({ unitCount: { unitValue: 340, unitType: "Gramm" } })).toEqual({ items: null, netG: 340 });
+    expect(keepaPack({ unitCount: { unitValue: 1.5, unitType: "Liter" } })).toEqual({ items: null, netG: 1500 });
+    expect(keepaPack({ unitCount: { unitValue: 24, unitType: "Count" } })).toEqual({ items: 24, netG: null });
+    expect(keepaPack({})).toEqual({ items: null, netG: null });
+  });
+
+  it("unplausibler ROI", async () => {
+    const { isImplausible } = await import("@/lib/suppliers/prices");
+    expect(isImplausible(11070)).toBe(true);
+    expect(isImplausible(480)).toBe(false);
+    expect(isImplausible(null)).toBe(false);
   });
 
   it("Gewinn und ROI je Amazon-Verkauf", () => {

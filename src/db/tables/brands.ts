@@ -46,7 +46,7 @@ export const IDEA_KINDS = ["box", "product", "other"] as const;
 
 export type ChecklistItem = { text: string; done: boolean };
 
-export type MarketProduct = { asin: string; title: string; price: number | null; fbaFee: number | null; referralPct: number | null; monthlySold: number | null; salesRank: number | null; reviews: number | null };
+export type MarketProduct = { asin: string; title: string; price: number | null; fbaFee: number | null; referralPct: number | null; monthlySold: number | null; salesRank: number | null; reviews: number | null; /** Stückzahl laut Keepa (Packungsmenge). */ items?: number | null; /** Inhalt laut Keepa in g bzw. ml. */ netG?: number | null };
 export type BoxComponent = { offerId: string; qty: number; title: string; unitCost: number; caseQty: number; casePrice: number | null; url: string | null; supplierSku: string; feedId: string; feedName: string };
 
 export type MarketData = { source: "keepa" | "helium10"; term: string; fetchedAt: string; products: MarketProduct[]; /** Gewähltes Vergleichsprodukt: dessen FBA-Gebühr/Provision statt Median. */ referenceAsin?: string };

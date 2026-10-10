@@ -2,10 +2,10 @@ import "server-only";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { FeedMapping, OfferMarket } from "@/db/schema";
-import { parseKeepaProduct } from "@/lib/brands/market";
+import { keepaPack, parseKeepaProduct } from "@/lib/brands/market";
 import { decryptSecret } from "@/lib/crypto";
 import { listingRestrictions } from "@/lib/integrations/clients/amazon";
-import { keepaByCode, keepaKey } from "@/lib/integrations/clients/keepa";
+import { keepaByCode, keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
 import { getSettings } from "@/lib/settings";
 import { parseAmount } from "@/lib/numbers";
 import { readTable, type Table } from "@/lib/tabular";
@@ -203,6 +203,8 @@ async function applyKeepa(tenantId: string, ean: string, p: Record<string, unkno
         referralPct: mp.referralPct,
         monthlySold: mp.monthlySold,
         salesRank: mp.salesRank,
+        items: mp.items ?? null,
+        netG: mp.netG ?? null,
         offers: typeof cur[11] === "number" && cur[11] >= 0 ? cur[11] : null,
         amazonSells: typeof cur[0] === "number" ? cur[0] > 0 : null,
       }
@@ -270,6 +272,38 @@ export async function refreshMarket(tenantId: string, opts: { eans?: string[]; l
     if (tokensLeft !== null && tokensLeft < KEEPA_MIN_TOKENS) break;
   }
   return { checked, found, waiting: Math.max(0, queue.total - checked), tokensLeft, note: null };
+}
+
+/**
+ * Packungsangaben (Stückzahl, Inhalt) für Angebote per ASIN bei Keepa nachladen – 1 Token je ASIN.
+ * Für ältere Treffer, die noch ohne diese Angaben gespeichert wurden.
+ */
+export async function refreshPackData(tenantId: string, offerIds: string[]) {
+  const key = await keepaKey(tenantId);
+  if (!key) return { asked: 0, found: 0, tokensLeft: null as number | null, note: "Kein Keepa-Schlüssel – unter Anbindungen → Keepa eintragen." };
+  if (!offerIds.length) return { asked: 0, found: 0, tokensLeft: null, note: null };
+  const rows = await db
+    .select({ asin: sql<string>`${O.market}->>'asin'` })
+    .from(O)
+    .where(and(eq(O.tenantId, tenantId), inArray(O.id, offerIds.slice(0, 500)), sql`${O.market}->>'asin' is not null`));
+  const asins = [...new Set(rows.map((r) => r.asin))].slice(0, 300);
+  let found = 0;
+  let tokensLeft: number | null = null;
+  for (let n = 0; n < asins.length; n += 100) {
+    const res = await keepaProducts(key, asins.slice(n, n + 100));
+    tokensLeft = res.tokensLeft;
+    keepaState.set(tenantId, { tokensLeft, at: new Date().toISOString() });
+    for (const p of res.products) {
+      if (typeof p.asin !== "string") continue;
+      const pack = keepaPack(p);
+      if (pack.items || pack.netG) found++;
+      await db.execute(sql`
+        update supplier_offers set market = market || ${JSON.stringify(pack)}::jsonb
+         where tenant_id = ${tenantId} and market->>'asin' = ${p.asin}`);
+    }
+    if (tokensLeft !== null && tokensLeft < KEEPA_MIN_TOKENS) break;
+  }
+  return { asked: asins.length, found, tokensLeft, note: null };
 }
 
 // ---- Abfrage: wer hat es zu welchem Preis? ----------------------------------------------------

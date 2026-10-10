@@ -195,7 +195,7 @@ export async function titleLookupScanned(tenantId: string, feedId: string, since
     searched++;
     const mp = res.products[0];
     const market: OfferMarket = mp
-      ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, byTitle: true }
+      ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, items: mp.items ?? null, netG: mp.netG ?? null, byTitle: true }
       : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };
     if (mp) found++;
     await db.update(O).set({ market }).where(and(eq(O.id, r.id), eq(O.tenantId, tenantId)));
@@ -235,7 +235,7 @@ export async function checkFeedWithKeepa(tenantId: string, feedId: string, opts:
       tokensLeft = res.tokensLeft;
       const mp = res.products[0];
       const market: OfferMarket = mp
-        ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, byTitle: true }
+        ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, items: mp.items ?? null, netG: mp.netG ?? null, byTitle: true }
         : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };
       if (mp) byTitle++;
       await db.update(O).set({ market }).where(and(eq(O.id, r.id), eq(O.tenantId, tenantId)));

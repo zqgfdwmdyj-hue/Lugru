@@ -8,12 +8,14 @@ import { getSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/dates";
 import { keepaQueue, keepaStatus, marketTrend, offerHistory } from "@/lib/suppliers/feed-service";
 import { econOf } from "@/lib/suppliers/offer-econ";
-import { priceHint, priceStats } from "@/lib/suppliers/prices";
+import { priceHint, priceStats, ROI_IMPLAUSIBLE } from "@/lib/suppliers/prices";
+import { UNITS_SOURCE_LABEL } from "@/lib/suppliers/scan";
 import { ago, Spark } from "@/components/spark";
 import { manualBacklog, manualCheckStatus } from "@/lib/suppliers/manual-check";
 import { SubmitButton } from "@/components/submit-button";
 import { AutoRefresh } from "../finden/refresh";
-import { keepaRunAction, keepaScannedAction, pullAllAction } from "./actions";
+import { QtyEdit } from "../qty-edit";
+import { keepaRunAction, keepaScannedAction, packRefreshAction, pullAllAction } from "./actions";
 
 type Row = {
   id: string; feed_id: string; feed_name: string; prices_gross: boolean; cost_pct: string | null; vat_pct: string | null;
@@ -31,7 +33,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
   const minProfit = parseAmount(sp.gewinn) ?? 1;
   const minSales = parseAmount(sp.verk) ?? 0;
   const only = (sp.lf ?? "").split(",").filter((x) => /^[0-9a-f-]{36}$/.test(x));
-  const nur = sp.nur === "gefallen" || sp.nur === "neu" ? sp.nur : "";
+  const nur = sp.nur === "gefallen" || sp.nur === "neu" || sp.nur === "pruefen" ? sp.nur : "";
   const sort = (sp.sort && sp.sort in SORTS ? sp.sort : "roi") as keyof typeof SORTS;
   // Zwei getrennte Bereiche: Listen (Datei/Link, regelmäßiger Abgleich) und von Hand Gezogenes (Seller-Knopf).
   const manual = sp.quelle === "manuell";
@@ -74,7 +76,10 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
     else cur.alt++;
   }
   const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  let list = [...best.values()].filter(({ r, e }) => (e.roi ?? -1) >= minRoi && (e.profit ?? -1) >= minProfit && (r.market?.monthlySold ?? 0) >= minSales);
+  const matches = [...best.values()].filter(({ r, e }) => (e.roi ?? -1) >= minRoi && (e.profit ?? -1) >= minProfit && (r.market?.monthlySold ?? 0) >= minSales);
+  // ROI über 500 % ist fast nie echt (Großpackung bei Amazon, anderes Produkt) – getrennt zum Prüfen.
+  const odd = matches.filter(({ e }) => e.implausible);
+  let list = nur === "pruefen" ? odd : matches.filter(({ e }) => !e.implausible);
   if (nur === "gefallen") list = list.filter(({ r }) => r.max30 !== null && r.price !== null && r.price <= r.max30 * 0.97);
   const seenAt = (r: Row) => (manual ? r.scanned_at : r.first_seen_at) ?? "";
   if (nur === "neu") list = list.filter(({ r }) => seenAt(r) && new Date(seenAt(r)).toISOString() >= weekAgo);
@@ -82,6 +87,9 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
     sort === "gewinn" ? (b.e.profit ?? 0) - (a.e.profit ?? 0) : sort === "verkaeufe" ? (b.r.market?.monthlySold ?? 0) - (a.r.market?.monthlySold ?? 0) : sort === "neu" ? new Date(seenAt(b.r) || 0).getTime() - new Date(seenAt(a.r) || 0).getTime() : (b.e.roi ?? 0) - (a.e.roi ?? 0),
   );
   const shown = list.slice(0, 200);
+  // Treffer ohne Keepa-Packungsangaben (vor dem Update gespeichert) – lassen sich für 1 Token je ASIN nachladen.
+  const packMissing = odd.filter(({ r }) => r.market?.asin && !(r.market && "items" in r.market)).map(({ r }) => r.id).slice(0, 300);
+  const packAsins = new Set(odd.filter(({ r }) => packMissing.includes(r.id)).map(({ r }) => r.market!.asin)).size;
   const today = todayIso();
   const [hist, vk] = await Promise.all([offerHistory(t, shown.map((x) => x.r.id)), marketTrend(t, shown.map((x) => x.r.market?.asin).filter((a): a is string => !!a))]);
   const kst = keepaStatus(t);
@@ -134,14 +142,14 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       )}
       {manual ? (
         <div className="grid-kpi">
-          <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value" data-testid="manual-profitable">{list.length}</div><div className="small muted">von {best.size} gezogenen Produkten mit Amazon-Daten</div></div>
+          <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value" data-testid="manual-profitable">{matches.length - odd.length}</div><div className="small muted">von {best.size} gezogenen Produkten mit Amazon-Daten{odd.length ? <> · <Link href={qs({ nur: "pruefen" })}>{odd.length} Menge prüfen</Link></> : null}</div></div>
           <div className="card card-pad"><div className="kpi-label">Noch ungeprüft</div><div className="kpi-value">{scanStats.unchecked}</div><div className="small muted">{backlog?.withoutEan ? `davon ${backlog.withoutEan} ohne EAN (Titelsuche)` : "einmalige Prüfung läuft nach jedem Ziehen"}</div></div>
           <div className="card card-pad"><div className="kpi-label">Zuletzt gezogen</div><div className="kpi-value" style={{ fontSize: 20 }}>{scanStats.last ? ago(scanStats.last) : "–"}</div><div className="small muted">{scanStats.total} Produkte von Hand gezogen</div></div>
           <div className="card card-pad small">Gezogenes wird <strong>einmal</strong> geprüft und nicht in den täglichen Abgleich der Listen gemischt. Ziehen: Lieferant öffnen → „Seite oder Liste scannen“ (Seller-Knopf/Lesezeichen, Link, Foto).</div>
         </div>
       ) : (
       <div className="grid-kpi">
-        <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value">{list.length}</div><div className="small muted">von {best.size} Produkten mit Amazon-Daten</div></div>
+        <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value">{matches.length - odd.length}</div><div className="small muted">von {best.size} Produkten mit Amazon-Daten{odd.length ? <> · <Link href={qs({ nur: "pruefen" })}>{odd.length} Menge prüfen</Link></> : null}</div></div>
         <div className="card card-pad"><div className="kpi-label">Warten auf Keepa</div><div className="kpi-value">{queue.total}</div><div className="small muted">neue/geänderte zuerst · stündlich</div></div>
         <div className="card card-pad"><div className="kpi-label">Keepa-Tokens</div><div className="kpi-value">{kst?.tokensLeft ?? "–"}</div><div className="small muted">{kst ? ago(kst.at) : "noch kein Abgleich"}</div></div>
         <div className="card card-pad"><div className="kpi-label">Listen automatisch</div><div className="kpi-value">{feeds.filter((f) => f.auto).length} / {feeds.length}</div>{feeds.some((f) => f.err) && <div className="small" style={{ color: "var(--danger)" }}>{feeds.filter((f) => f.err).length} mit Fehler</div>}</div>
@@ -152,7 +160,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         <div className="field"><label className="label" htmlFor="roi">ROI ab %</label><input className="input num" id="roi" name="roi" defaultValue={minRoi} style={{ width: 80 }} /></div>
         <div className="field"><label className="label" htmlFor="gw">Gewinn ab €</label><input className="input num" id="gw" name="gewinn" defaultValue={String(minProfit).replace(".", ",")} style={{ width: 80 }} /></div>
         <div className="field"><label className="label" htmlFor="vk">Verk./Monat ab</label><input className="input num" id="vk" name="verk" defaultValue={minSales} style={{ width: 80 }} /></div>
-        <div className="field"><label className="label" htmlFor="nur">Nur</label><select className="select" id="nur" name="nur" defaultValue={nur}><option value="">alle</option><option value="gefallen">EK gefallen (30 T)</option><option value="neu">{manual ? "gezogen (7 T)" : "neu (7 T)"}</option></select></div>
+        <div className="field"><label className="label" htmlFor="nur">Nur</label><select className="select" id="nur" name="nur" defaultValue={nur}><option value="">alle</option><option value="gefallen">EK gefallen (30 T)</option><option value="neu">{manual ? "gezogen (7 T)" : "neu (7 T)"}</option><option value="pruefen">Menge prüfen (ROI über {ROI_IMPLAUSIBLE} %)</option></select></div>
         <div className="field"><label className="label" htmlFor="so">Sortieren</label><select className="select" id="so" name="sort" defaultValue={sort}>{Object.entries(SORTS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
         {only.length > 0 && <input type="hidden" name="lf" value={only.join(",")} />}
         {manual && <input type="hidden" name="quelle" value="manuell" />}
@@ -169,17 +177,39 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         </div>
       )}
 
+      {odd.length > 0 && (
+        <div className={`card card-pad small stack ${nur === "pruefen" ? "" : "notice-warn"}`} style={{ gap: 6 }} data-testid="odd-note">
+          {nur === "pruefen" ? (
+            <div>
+              <strong>Menge prüfen ({odd.length}):</strong> ROI über {ROI_IMPLAUSIBLE} % ist fast nie echt. Meist ist das Amazon-Angebot eine Großpackung (z. B. 24 Stück), die Mengenangabe fehlt im Titel – oder der Titel-Treffer ist ein anderes Produkt. Bei „Stk je Verkauf“ die richtige Zahl eintragen (z. B. 24), dann rechnet es neu. <Link href={qs({ nur: "" })}>← zurück zu den plausiblen</Link>
+            </div>
+          ) : (
+            <div>
+              <strong>{odd.length} Treffer mit ROI über {ROI_IMPLAUSIBLE} % ausgeblendet</strong> – fast immer stimmt die Menge nicht (Amazon verkauft eine Großpackung) oder der Titel-Treffer ist ein anderes Produkt. <Link href={qs({ nur: "pruefen" })} data-testid="odd-link">Anzeigen und Stückzahl prüfen →</Link>
+            </div>
+          )}
+          {packMissing.length > 0 && (
+            <form action={packRefreshAction} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input type="hidden" name="ids" value={packMissing.join(",")} />
+              <input type="hidden" name="back" value={qs({}).replace(/^[^?]*/, "")} />
+              <SubmitButton className="btn btn-small" label={`Stückzahl bei Keepa nachladen (${packAsins} Token${packAsins === 1 ? "" : "s"})`} pendingLabel="Frage Keepa …" testId="pack-refresh" />
+              <span className="muted">Keepa kennt bei vielen Angeboten die Packungsmenge bzw. den Inhalt – danach wird automatisch neu gerechnet.</span>
+            </form>
+          )}
+        </div>
+      )}
+
       <section className="card" style={{ overflow: "auto" }}>
         <table className="table">
           <thead><tr><th>Produkt</th><th>Günstigster Lieferant</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>EK-Verlauf</th><th>VK 30 T</th></tr></thead>
           <tbody>
-            {shown.length === 0 && <tr><td colSpan={9} className="muted">{manual ? "Nichts Lohnenswertes unter dem von Hand Gezogenen (oder noch nichts gezogen). Lieferant öffnen → „Seite oder Liste scannen“ mit dem Seller-Knopf." : "Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise."}</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={9} className="muted">{nur === "pruefen" ? "Nichts zu prüfen." : manual ? "Nichts Lohnenswertes unter dem von Hand Gezogenen (oder noch nichts gezogen). Lieferant öffnen → „Seite oder Liste scannen“ mit dem Seller-Knopf." : "Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise."}</td></tr>}
             {shown.map(({ r, e, alt }) => {
               const h = hist.get(r.id) ?? [];
               const hint = priceHint(priceStats(h, r.price, today));
               const vkStats = r.market?.asin ? priceStats(vk.get(r.market.asin) ?? [], r.market.price, today) : null;
               return (
-                <tr key={r.id} data-testid="chance-row" data-ean={r.ean ?? ""}>
+                <tr key={r.id} data-testid="chance-row" data-ean={r.ean ?? ""} data-asin={r.market?.asin ?? ""}>
                   <td style={{ maxWidth: 300 }}>
                     <Link href={`/lieferanten/abfrage?q=${encodeURIComponent(r.ean ?? r.market?.asin ?? r.title ?? "")}`}><strong>{r.market?.title ?? r.title ?? r.supplier_sku}</strong></Link>
                     <div className="small muted">{r.ean ?? "–"}{r.market?.asin && <> · <a href={`https://www.amazon.de/dp/${r.market.asin}`} target="_blank" rel="noreferrer">{r.market.asin}</a></>}</div>
@@ -193,15 +223,24 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
                   <td className="small">
                     <strong>{r.feed_name}</strong>{alt > 0 && <span className="muted"> · +{alt} weitere</span>}
                     <div className="muted">{r.stock === null ? "lieferbar" : `${r.stock} Stk`}{r.moq && r.moq > 1 ? ` · ab ${r.moq}` : ""} · {manual && r.scanned_at ? `gezogen ${ago(r.scanned_at)}` : ago(r.last_seen_at)}</div>
+                    {r.title && (
+                      <div className="muted" style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={`Beim Lieferanten: ${r.title}`}>
+                        ↳ {r.url ? <a href={r.url} target="_blank" rel="noreferrer">{r.title}</a> : r.title}
+                      </div>
+                    )}
                     {r.market?.byTitle && <div className="muted" title="Ohne EAN per Titel bei Keepa gefunden">per Titel – gegenprüfen</div>}
                   </td>
                   <td className="num right">
                     {formatEuro(e.costPerSale)}
-                    {e.unitsPerSale > 1 && <div className="small muted" title={e.unitsAuto ? "aus dem Amazon-Titel erkannt – auf der Lieferanten-Seite änderbar" : "von Hand gesetzt"}>{e.unitsPerSale} × {formatEuro(e.unitNet)}</div>}
+                    {e.unitsPerSale > 1 && <div className="small muted" title={e.unitsSource ? UNITS_SOURCE_LABEL[e.unitsSource] : undefined}>{e.unitsPerSale} × {formatEuro(e.unitNet)}</div>}
+                    <QtyEdit feedId={r.feed_id} offerId={r.id} units={e.unitsPerSale} source={e.unitsSource} amazonQty={r.amazon_qty} open={e.implausible} />
                   </td>
                   <td className="num right">{formatEuro(e.sale)}</td>
                   <td className="num right" style={{ color: "var(--ok)", fontWeight: 600 }}>{formatEuro(e.profit)}</td>
-                  <td className="num right" style={{ whiteSpace: "nowrap" }}>{e.roi?.toLocaleString("de-DE", { maximumFractionDigits: e.roi !== null && Math.abs(e.roi) >= 100 ? 0 : 1 })} %</td>
+                  <td className="num right" style={{ whiteSpace: "nowrap" }}>
+                    {e.roi?.toLocaleString("de-DE", { maximumFractionDigits: e.roi !== null && Math.abs(e.roi) >= 100 ? 0 : 1 })} %
+                    {e.implausible && <div><span className="tag tag-warn" title="Stückzahl des Amazon-Angebots prüfen">Menge prüfen</span></div>}
+                  </td>
                   <td className="num right">{r.market?.monthlySold?.toLocaleString("de-DE") ?? "–"}</td>
                   <td className="small" style={{ minWidth: 140 }}>{hint && <div style={{ color: hint.tone === "good" ? "var(--ok)" : "var(--danger)" }}>{hint.text}</div>}<Spark points={h} /></td>
                   <td className="num small" style={{ whiteSpace: "nowrap", color: vkStats?.change30Pct ? (vkStats.change30Pct > 0 ? "var(--ok)" : "var(--danger)") : undefined }}>{vkStats?.change30Pct !== null && vkStats?.change30Pct !== undefined ? `${vkStats.change30Pct > 0 ? "+" : ""}${vkStats.change30Pct.toLocaleString("de-DE")} %` : "–"}</td>
@@ -211,7 +250,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
           </tbody>
         </table>
       </section>
-      <div className="small muted">Gerechnet mit Amazon-Preis, FBA-Gebühr und Provision laut Keepa (sonst Standard aus den Einstellungen), Netto-EK je Stück inkl. Aufschlag der Liste. Ab Verkaufsstart Preise immer gegenprüfen.</div>
+      <div className="small muted">Gerechnet mit Amazon-Preis, FBA-Gebühr und Provision laut Keepa (sonst Standard aus den Einstellungen), Netto-EK je Stück inkl. Aufschlag der Liste, mal Stück je Amazon-Verkauf (aus dem Amazon-Titel, laut Keepa oder nach Inhalt – unter dem EK änderbar). Ab Verkaufsstart Preise immer gegenprüfen.</div>
     </>
   );
 }

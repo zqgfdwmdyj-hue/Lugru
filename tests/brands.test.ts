@@ -53,7 +53,7 @@ describe("Marktdaten", () => {
     const cur = Array(20).fill(-1);
     cur[1] = 2499; cur[3] = 1520; cur[17] = 312; cur[18] = 2599;
     expect(parseKeepaProduct({ asin: "B0TEST0001", title: "Halloween Candy Box", stats: { current: cur }, fbaFees: { pickAndPackFee: 385 }, referralFeePercentage: 15, monthlySold: 200 })).toEqual({
-      asin: "B0TEST0001", title: "Halloween Candy Box", price: 25.99, fbaFee: 3.85, referralPct: 15, monthlySold: 200, salesRank: 1520, reviews: 312,
+      asin: "B0TEST0001", title: "Halloween Candy Box", price: 25.99, fbaFee: 3.85, referralPct: 15, monthlySold: 200, salesRank: 1520, reviews: 312, items: null, netG: null,
     });
     const avg = Array(20).fill(-1);
     avg[1] = 1999;

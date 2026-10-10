@@ -119,7 +119,10 @@ export default async function AbfragePage({ searchParams }: { searchParams: Prom
                     <td className="num right">{o.stock === null ? <span className="small">lieferbar</span> : `${o.stock.toLocaleString("de-DE")} Stk`}</td>
                     <td className="small">{o.moq && o.moq > 1 ? `ab ${o.moq} Stk` : "–"}</td>
                     <td className="num right" style={{ color: e.profit === null ? undefined : e.profit > 0 ? "var(--ok)" : "var(--danger)", fontWeight: 600 }}>{e.profit === null ? "–" : formatEuro(e.profit)}</td>
-                    <td className="num right" style={{ color: e.roi === null ? undefined : e.roi > 0 ? "var(--ok)" : "var(--danger)" }}>{pct(e.roi)}</td>
+                    <td className="num right" style={{ color: e.roi === null ? undefined : e.roi > 0 ? "var(--ok)" : "var(--danger)" }}>
+                      {pct(e.roi)}
+                      {e.implausible && <div><span className="tag tag-warn" title="ROI über 500 % ist fast nie echt – meist verkauft Amazon eine Großpackung. Stückzahl auf der Lieferanten-Seite oder unter „Chancen“ korrigieren.">Menge prüfen</span></div>}
+                    </td>
                     <td className="small" style={{ minWidth: 150 }}>
                       {hint ? <div style={{ color: hint.tone === "good" ? "var(--ok)" : "var(--danger)" }}>{hint.tone === "good" ? "▼" : "▲"} {hint.text}</div> : <div className="muted">{stats.days > 1 ? `${stats.days} Stände` : "gesammelt seit kurzem"}</div>}
                       <Spark points={h} />

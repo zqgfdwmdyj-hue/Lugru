@@ -123,6 +123,10 @@ export type OfferMarket = {
   offers?: number | null;
   /** Ohne EAN per Titelsuche gefunden – kann ein anderes Produkt sein. */
   byTitle?: boolean;
+  /** Stückzahl des Amazon-Angebots laut Keepa (null = keine Angabe; fehlt = noch nicht abgefragt). */
+  items?: number | null;
+  /** Inhalt des Amazon-Angebots laut Keepa in g bzw. ml. */
+  netG?: number | null;
   /** Amazon verkauft selbst (Keepa: aktueller Amazon-Preis) – Buy Box schwer zu holen. */
   amazonSells?: boolean | null;
   /** Darf das eigene Konto das Produkt anbieten? (SP-API Listings Restrictions, Zustand neu) */
