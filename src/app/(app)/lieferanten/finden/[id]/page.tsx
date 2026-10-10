@@ -9,13 +9,14 @@ import { brandMatches, isBrandNote, validEmail } from "@/lib/leads/logic";
 import { canAccess } from "@/lib/auth/areas";
 import { contactContext, DAILY_MAIL_LIMIT, leadSenders, leadSignature, sendBlocker } from "@/lib/leads/service";
 import { daysSince, followUpMail } from "@/lib/board/logic";
+import { LEAD_VIEWS, listNeighbours, listQuery, parseListContext } from "@/lib/leads/list";
 import { composeSaveAction, composeSendAction, followUpAction, redraftAction, searchEmailAction, researchAction, saveLeadAction, setStatusAction, toSupplierAction } from "../actions";
 import { AutoRefresh } from "../refresh";
 import { AutoDraft } from "./auto-draft";
 import { AutoFindEmail } from "./auto-find-email";
 import { SenderPicker, type SenderOption } from "./sender-picker";
 
-export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string }> }) {
+export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string; ansicht?: string; quelle?: string; m?: string }> }) {
   const session = await requireArea("lieferanten");
   const { id } = await params;
   const sp = await searchParams;
@@ -24,6 +25,15 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const [l] = await db.select().from(L).where(and(eq(L.id, id), eq(L.tenantId, session.tenantId)));
   if (!l) notFound();
   const brand = l.searchBrands[0] ?? "";
+  // Von der Liste gekommen: deren Filter (Reiter, Quelle, Marke) für „zurück zur Suche“ und „nächste Firma“.
+  const hasList = Boolean(sp.ansicht || sp.quelle || sp.m);
+  const list = parseListContext(sp);
+  const listQs = listQuery(list);
+  const backHref = hasList ? `/lieferanten/finden?${listQs}#liste` : "/lieferanten/finden";
+  const backLabel = list.m ? `Zurück zur Suche „${list.m}“` : `Zurück zur Liste „${LEAD_VIEWS[list.view]}“`;
+  const nb = hasList ? await listNeighbours(session.tenantId, list, l.id) : null;
+  const nextHref = nb?.next ? `/lieferanten/finden/${nb.next.id}?${listQs}` : null;
+  const listField = hasList ? <input type="hidden" name="liste" value={listQs} /> : null;
   const block = l.mailedAt ? null : sendBlocker(l, await contactContext(session.tenantId));
   const hardBlock = block && block !== "keine E-Mail-Adresse" ? block : null;
   // Beim Öffnen gleich den Entwurf schreiben lassen – nur einmal (Fehler bleiben stehen) und nie für gesperrte Kontakte.
@@ -51,12 +61,23 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
     <>
       <AutoRefresh active={Boolean(l.busy)} />
       <div className="page-head">
-        <div><div className="crumb"><Link href="/lieferanten/finden">Großhändler finden</Link></div><h1>{l.companyName}</h1></div>
+        <div><div className="crumb"><Link href={backHref}>Großhändler finden{list.m && hasList ? ` – „${list.m}“` : ""}</Link></div><h1>{l.companyName}</h1></div>
         <div style={{ display: "flex", gap: 6 }}>
           <span className={`tag ${KIND_LABEL[l.kind][1]}`}>{KIND_LABEL[l.kind][0]}</span>
           <span className="tag tag-neutral">{STATUS_LABEL[l.status]}</span>
         </div>
       </div>
+      {hasList && (
+        <div className="card card-pad small" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }} data-testid="lead-nav">
+          <Link className="btn btn-small" href={backHref} data-testid="lead-back">← {backLabel}</Link>
+          {nb && nb.position && <span className="muted">{nb.position} von {nb.total}</span>}
+          {nextHref ? (
+            <Link className="btn btn-small" href={nextHref} data-testid="lead-next">Nächste: {nb!.next!.companyName} →</Link>
+          ) : (
+            <span className="muted">Letzte Firma der Liste</span>
+          )}
+        </div>
+      )}
       {sp.meldung && <div className="notice notice-info" data-testid="lead-msg">{sp.meldung}</div>}
       {l.busy && <div className="notice notice-info small">Läuft gerade: {l.busy === "pruefen" ? "Websuche" : l.busy === "entwurf" ? "Entwurf" : l.busy === "email" ? "E-Mail-Suche" : "Markenliste"} …</div>}
 
@@ -70,6 +91,12 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               <div className="small" data-testid="compose-sent">
                 Gesendet am {l.mailedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} an {l.mailedTo}{l.mailFrom ? ` von ${l.mailFrom}` : ""}.
                 {l.repliedAt ? <><br /><strong>Antwort erhalten</strong> am {l.repliedAt.toLocaleDateString("de-DE")} – siehe Posteingang.</> : " Antworten werden automatisch erkannt."}
+                {hasList && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} data-testid="after-send">
+                    {nextHref && <Link className="btn btn-primary" href={nextHref}>Weiter zur nächsten Firma →</Link>}
+                    <Link className="btn" href={backHref}>← {backLabel}</Link>
+                  </div>
+                )}
               </div>
             ) : hardBlock ? (
               <div className="notice notice-warn small" data-testid="compose-blocked">Nicht anschreiben: {hardBlock}</div>
@@ -80,6 +107,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             ) : (
               <form action={composeSendAction} className="stack" style={{ gap: 8 }}>
                 <input type="hidden" name="id" value={l.id} />
+                {listField}
                 <div className="field">
                   <label className="label" htmlFor="c-to">An</label>
                   <input className="input" id="c-to" name="email" type="email" defaultValue={l.email ?? ""} placeholder="E-Mail-Adresse" />
@@ -116,6 +144,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               ) : (
                 <form action={followUpAction} className="stack" style={{ gap: 8 }}>
                   <input type="hidden" name="id" value={l.id} />
+                  {listField}
                   <div className="small muted">Seit {daysSince(l.mailedAt)} Tagen keine Antwort. Kurze Erinnerung an {l.mailedTo}{l.mailFrom ? ` – von ${l.mailFrom}, wie die erste Anfrage` : ""} – mit Signatur und der ersten Anfrage als Zitat:</div>
                   <div className="field"><label className="label" htmlFor="fu-subj">Betreff</label><input className="input" id="fu-subj" name="subject" defaultValue={followUp.subject} /></div>
                   <div className="field"><label className="label" htmlFor="fu-body">Text</label><textarea className="textarea" id="fu-body" name="body" defaultValue={followUp.body} style={{ minHeight: 200 }} /></div>
@@ -154,7 +183,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
           <section className="card card-pad stack" style={{ gap: 8 }}>
             <div className="between">
               <h2>Prüfung per Websuche</h2>
-              <form action={researchAction}><input type="hidden" name="ids" value={l.id} /><input type="hidden" name="back" value={`/lieferanten/finden/${l.id}`} /><button className="btn btn-small" type="submit" disabled={Boolean(l.busy)}>{l.checkedAt ? "Neu prüfen" : "Jetzt prüfen"}</button></form>
+              <form action={researchAction}><input type="hidden" name="ids" value={l.id} /><input type="hidden" name="back" value={`/lieferanten/finden/${l.id}`} />{listField}<button className="btn btn-small" type="submit" disabled={Boolean(l.busy)}>{l.checkedAt ? "Neu prüfen" : "Jetzt prüfen"}</button></form>
             </div>
             {!l.checkedAt && !l.checkError && <div className="small muted">Noch nicht geprüft.</div>}
             {l.checkError && !isBrandNote(l.checkError) && <div className="notice notice-warn small">{l.checkError}</div>}

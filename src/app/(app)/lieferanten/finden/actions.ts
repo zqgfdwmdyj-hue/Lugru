@@ -13,15 +13,31 @@ import { sendFollowUp } from "@/lib/board/service";
 import { importFairData, startFairImport } from "@/lib/leads/messe-service";
 import { startEmailSearch } from "@/lib/leads/email-service";
 import { assertPublicUrl } from "@/lib/suppliers/feed-service";
+import { listQueryFrom } from "@/lib/leads/list";
 
 const uuid = z.string().uuid();
 const L = schema.supplierLeads;
 const ids = (fd: FormData) => fd.getAll("ids").map(String).filter((s) => uuid.safeParse(s).success);
+/** Filter der Liste (Reiter, Quelle, Marke) aus dem Formular – bleiben nach jeder Aktion erhalten. */
+const listOf = (fd?: FormData) => new URLSearchParams(fd?.get("liste") ? listQueryFrom(String(fd.get("liste"))) : "");
+
 /** Zurück zur Liste – oder zur Detailseite, von der die Aktion kam. */
 const back = (params: Record<string, string>, fd?: FormData) => {
   const from = String(fd?.get("back") ?? "");
-  if (/^\/lieferanten\/finden\/[0-9a-f-]{36}$/.test(from)) redirect(`${from}?${new URLSearchParams({ meldung: params.meldung ?? "" })}`);
-  redirect(`/lieferanten/finden?${new URLSearchParams(params)}`);
+  const q = listOf(fd);
+  if (/^\/lieferanten\/finden\/[0-9a-f-]{36}$/.test(from)) {
+    q.set("meldung", params.meldung ?? "");
+    redirect(`${from}?${q}`);
+  }
+  for (const [k, v] of Object.entries(params)) q.set(k, v);
+  redirect(`/lieferanten/finden?${q}${q.get("m") ? "#liste" : ""}`);
+};
+
+/** Zur Detailseite einer Firma – mit den Filtern der Liste (für „zurück zur Suche“ und „nächste Firma“). */
+const toLead = (id: string, meldung: string, fd: FormData): never => {
+  const q = listOf(fd);
+  q.set("meldung", meldung);
+  redirect(`/lieferanten/finden/${id}?${q}`);
 };
 
 export async function searchBrandAction(fd: FormData) {
@@ -148,7 +164,7 @@ export async function searchEmailAction(fd: FormData) {
   const one = uuid.safeParse(fd.get("id"));
   const list = one.success ? [one.data] : ids(fd);
   const n = await startEmailSearch(session.tenantId, list);
-  if (one.success) redirect(`/lieferanten/finden/${one.data}?meldung=${encodeURIComponent(n ? "Suche die E-Mail-Adresse …" : "Hat schon eine E-Mail-Adresse oder läuft gerade.")}`);
+  if (one.success) toLead(one.data, n ? "Suche die E-Mail-Adresse …" : "Hat schon eine E-Mail-Adresse oder läuft gerade.", fd);
   back({ meldung: n ? `Suche die E-Mail-Adressen von ${n} Firmen (Website, Impressum, Kontaktseite) – die Liste aktualisiert sich.` : "Alle ausgewählten haben schon eine E-Mail-Adresse." }, fd);
 }
 
@@ -169,7 +185,7 @@ export async function followUpAction(fd: FormData) {
   } catch (e) {
     msg = `Nicht gesendet: ${e instanceof Error ? e.message : String(e)}`;
   }
-  redirect(`/lieferanten/finden/${id}?meldung=${encodeURIComponent(msg)}`);
+  toLead(id, msg, fd);
 }
 
 /** Formular mit action={…}: Der geklickte Knopf schickt name="status" mit. */
@@ -235,13 +251,13 @@ export async function composeSendAction(fd: FormData) {
   const session = await requireArea("lieferanten");
   const id = await saveCompose(session.tenantId, fd);
   const r = await sendDrafts(session.tenantId, [id], { userId: session.userId });
-  redirect(`/lieferanten/finden/${id}?meldung=${encodeURIComponent(r.sent ? "Anfrage gesendet." : `Nicht gesendet: ${r.skipped.join(" · ")}`)}`);
+  toLead(id, r.sent ? "Anfrage gesendet." : `Nicht gesendet: ${r.skipped.join(" · ")}`, fd);
 }
 
 export async function composeSaveAction(fd: FormData) {
   const session = await requireArea("lieferanten");
   const id = await saveCompose(session.tenantId, fd);
-  redirect(`/lieferanten/finden/${id}?meldung=${encodeURIComponent("Gespeichert.")}`);
+  toLead(id, "Gespeichert.", fd);
 }
 
 /** Neu formulieren: alten Entwurf verwerfen, KI schreibt neu. */
@@ -255,7 +271,7 @@ export async function redraftAction(fd: FormData) {
   } catch (e) {
     msg = e instanceof Error ? e.message : String(e);
   }
-  redirect(`/lieferanten/finden/${id}?meldung=${encodeURIComponent(msg)}`);
+  toLead(id, msg, fd);
 }
 
 export async function toSupplierAction(fd: FormData) {

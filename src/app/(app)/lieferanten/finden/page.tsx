@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { and, desc, eq, inArray, isNotNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { LeadSource } from "@/db/schema";
+import { LEAD_SOURCES, type LeadSource } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, brandSearchKey, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
+import { brandMatches, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
+import { baseWhere, inView, LEAD_VIEWS, listOrder, listQuery, parseListContext, viewWhere, type LeadView } from "@/lib/leads/list";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
@@ -20,52 +21,34 @@ import { MesseBookmark, MesseReceiver } from "./messe-import";
 import { messeBookmarkletHref } from "@/lib/leads/messe-bookmarklet";
 import { FINDING_LABEL, KIND_LABEL, SEARCH_SOURCE_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
 
-const VIEWS = { offen: "Offen", grosshandel: "Großhändler", entwurf: "Entwürfe", angeschrieben: "Angeschrieben", ausgeschlossen: "Ausgeschlossen" } as const;
-type View = keyof typeof VIEWS;
+const VIEWS = LEAD_VIEWS;
+type View = LeadView;
 
-const QUELLEN: LeadSource[] = ["lucid", "amazon", "ebay", "gpsr", "web", "messe"];
+const QUELLEN: readonly LeadSource[] = LEAD_SOURCES;
 
 export default async function GrosshaendlerFindenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; marke?: string; m?: string; meldung?: string; quelle?: string; register?: string; import?: string }> }) {
   const session = await requireArea("lieferanten");
   const sp = await searchParams;
-  const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "offen";
-  const quelle = QUELLEN.find((q) => q === sp.quelle) ?? null;
+  // Reiter, Quelle und Markenfilter – wandern beim Öffnen einer Firma mit (zurück zur Suche, nächste Firma).
+  const list = parseListContext(sp);
+  const { view, quelle, m } = list;
+  const mKey = m; // leer = kein Markenfilter
   const t = session.tenantId;
   const L = schema.supplierLeads;
   // Nach Marke filtern: grobe Vorauswahl in der Datenbank, genau geprüft wird danach (leadBrandHits).
-  const m = (sp.m ?? "").trim().slice(0, 80);
-  const mKey = m ? brandSearchKey(m) : "";
-  const base: SQL[] = [eq(L.tenantId, t)];
-  if (quelle) base.push(sql`${L.findings} @> ${JSON.stringify([{ source: quelle }])}::jsonb`);
-  if (mKey)
-    base.push(sql`regexp_replace(translate(lower(coalesce(${L.brands}::text, '') || ' ' || ${L.searchBrands}::text || ' ' || ${L.findings}::text), 'äöüßéèêëáàâíìîóòôúùûñç', 'aouseeeeaaaiiiooouuunc'), '[^a-z0-9]', '', 'g') like ${`%${mKey}%`}`);
-  const where: SQL[] = [...base];
-  if (view === "offen") where.push(inArray(L.status, ["neu", "geprueft"]));
-  if (view === "grosshandel") where.push(eq(L.kind, "grosshandel"), ne(L.status, "ausgeschlossen"));
-  if (view === "entwurf") where.push(eq(L.status, "entwurf"));
-  if (view === "angeschrieben") where.push(isNotNull(L.mailedAt));
-  if (view === "ausgeschlossen") where.push(inArray(L.status, ["ausgeschlossen", "kein_interesse"]));
-  let rows = await db.select().from(L).where(and(...where)).orderBy(desc(L.score), L.companyName).limit(400);
+  const base = baseWhere(t, list);
+  let rows = await db.select().from(L).where(and(...base, ...viewWhere(view))).orderBy(...listOrder).limit(400);
   // Treffer je Ansicht (für die Reiter), nur bei aktivem Markenfilter.
   const viewHits: Partial<Record<View, number>> = {};
   if (mKey) {
     rows = rows.filter((l) => leadBrandHits(l, m).length > 0);
     const all = (await db.select({ status: L.status, kind: L.kind, mailedAt: L.mailedAt, brands: L.brands, searchBrands: L.searchBrands, findings: L.findings }).from(L).where(and(...base)).limit(5000)).filter((l) => leadBrandHits(l, m).length > 0);
-    viewHits.offen = all.filter((l) => l.status === "neu" || l.status === "geprueft").length;
-    viewHits.grosshandel = all.filter((l) => l.kind === "grosshandel" && l.status !== "ausgeschlossen").length;
-    viewHits.entwurf = all.filter((l) => l.status === "entwurf").length;
-    viewHits.angeschrieben = all.filter((l) => l.mailedAt).length;
-    viewHits.ausgeschlossen = all.filter((l) => l.status === "ausgeschlossen" || l.status === "kein_interesse").length;
+    for (const v of Object.keys(VIEWS) as View[]) viewHits[v] = all.filter((l) => inView(l, v)).length;
   }
-  const listHref = (p: { ansicht?: View; quelle?: string | null; m?: string }) => {
-    const q = new URLSearchParams({ ansicht: p.ansicht ?? view });
-    const src = p.quelle === undefined ? quelle : p.quelle;
-    if (src) q.set("quelle", src);
-    const mm = p.m ?? m;
-    if (mm) q.set("m", mm);
-    // Mit Markenfilter direkt zur Liste springen (auf dem Handy liegt sie weit unten).
-    return `/lieferanten/finden?${q}${mm ? "#liste" : ""}`;
-  };
+  // Mit Markenfilter direkt zur Liste springen (auf dem Handy liegt sie weit unten).
+  const listHref = (p: { ansicht?: View; quelle?: LeadSource | null; m?: string }) =>
+    `/lieferanten/finden?${listQuery(list, { ...(p.ansicht ? { view: p.ansicht } : {}), ...(p.quelle !== undefined ? { quelle: p.quelle } : {}), ...(p.m !== undefined ? { m: p.m } : {}) })}${(p.m ?? m) ? "#liste" : ""}`;
+  const here = listQuery(list);
   const [counts] = await db
     .select({
       total: sql<number>`count(*)::int`,
@@ -246,6 +229,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
       </form>
 
       <form className="stack" style={{ gap: 10 }}>
+        <input type="hidden" name="liste" value={here} />
         <section className="card" style={{ overflow: "auto" }}>
           <table className="table">
             <thead>
@@ -286,7 +270,7 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                   <tr key={l.id} data-testid="lead-row" data-name={l.companyName}>
                     <td><input type="checkbox" name="ids" value={l.id} aria-label={`${l.companyName} auswählen`} /></td>
                     <td style={{ maxWidth: 260 }}>
-                      <Link href={`/lieferanten/finden/${l.id}`}><strong>{l.companyName}</strong></Link>
+                      <Link href={`/lieferanten/finden/${l.id}?${here}`}><strong>{l.companyName}</strong></Link>
                       <div className="small muted">{[l.zip, l.city].filter(Boolean).join(" ")}{l.country ? ` · ${l.country}` : ""}</div>
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 2 }}>
                         {[...new Set(l.findings.map((f) => f.source))].map((src) => <span key={src} className="tag tag-neutral" data-testid="lead-source">{FINDING_LABEL[src]}</span>)}
