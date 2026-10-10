@@ -41,6 +41,30 @@ export function brandMatches(brands: string[], search: string): boolean {
   return brands.some((b) => re.test(fold(b)));
 }
 
+const compactKey = (s: string) => s.replace(/ß/g, "s").replace(/[^a-z0-9]/g, "");
+
+/**
+ * Markensuche in der Kontaktliste: Wortanfang („airhead“ → „Airheads Xtremes“, „boss“ → „Hugo Boss“)
+ * oder zusammengeschrieben („air heads“ = „AirHeads“). „wella“ findet „Pawella“ nicht.
+ */
+export function brandSearchMatch(brand: string, query: string): boolean {
+  const q = fold(query);
+  if (!q) return false;
+  const b = fold(brand);
+  if (new RegExp(`(^|[^a-z0-9])${escapeRe(q)}`).test(b)) return true;
+  const cq = compactKey(q);
+  return cq.length >= 3 && compactKey(b).startsWith(cq);
+}
+
+/** Marken eines Kontakts, die zur Suche passen – aus Markenliste, gesuchten Marken und Fundstellen. */
+export function leadBrandHits(l: { brands: string[] | null; searchBrands: string[]; findings: { brand?: string }[] }, query: string): string[] {
+  const all = [...(l.brands ?? []), ...l.searchBrands, ...l.findings.map((f) => f.brand ?? "")].filter(Boolean);
+  return [...new Set(all.filter((b) => brandSearchMatch(b, query)))];
+}
+
+/** Grobe Form für die Vorauswahl in der Datenbank: klein, ohne Akzente, Leer- und Sonderzeichen. */
+export const brandSearchKey = (s: string) => compactKey(fold(s));
+
 const LEGAL_FORM =
   /\b(gmbh|ug|ag|kg|ohg|gbr|e\.?\s?k\.?|e\.?\s?v\.?|ltd|limited|llc|inc|corp|plc|s\.?\s?r\.?\s?l\.?|s\.?\s?l\.?u?|s\.?\s?a\.?s?|sarl|b\.?\s?v\.?|n\.?\s?v\.?|a\/s|aps|s\.?\s?r\.?\s?o\.?|sp\.?\s?z\s?o\.?\s?o\.?|kft|d\.?\s?o\.?\s?o\.?|oy|ab|s\.?\s?p\.?\s?a\.?|spa|ou|uab|sia|eood|ood|bvba|sprl|ehf|as)\b/i;
 const BUSINESS_WORD =

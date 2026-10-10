@@ -8,7 +8,7 @@ import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, isBrandNote, priorContact } from "@/lib/leads/logic";
+import { brandMatches, brandSearchKey, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
@@ -25,21 +25,47 @@ type View = keyof typeof VIEWS;
 
 const QUELLEN: LeadSource[] = ["lucid", "amazon", "ebay", "gpsr", "web", "messe"];
 
-export default async function GrosshaendlerFindenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; marke?: string; meldung?: string; quelle?: string; register?: string; import?: string }> }) {
+export default async function GrosshaendlerFindenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; marke?: string; m?: string; meldung?: string; quelle?: string; register?: string; import?: string }> }) {
   const session = await requireArea("lieferanten");
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "offen";
   const quelle = QUELLEN.find((q) => q === sp.quelle) ?? null;
   const t = session.tenantId;
   const L = schema.supplierLeads;
-  const where: SQL[] = [eq(L.tenantId, t)];
-  if (quelle) where.push(sql`${L.findings} @> ${JSON.stringify([{ source: quelle }])}::jsonb`);
+  // Nach Marke filtern: grobe Vorauswahl in der Datenbank, genau geprüft wird danach (leadBrandHits).
+  const m = (sp.m ?? "").trim().slice(0, 80);
+  const mKey = m ? brandSearchKey(m) : "";
+  const base: SQL[] = [eq(L.tenantId, t)];
+  if (quelle) base.push(sql`${L.findings} @> ${JSON.stringify([{ source: quelle }])}::jsonb`);
+  if (mKey)
+    base.push(sql`regexp_replace(translate(lower(coalesce(${L.brands}::text, '') || ' ' || ${L.searchBrands}::text || ' ' || ${L.findings}::text), 'äöüßéèêëáàâíìîóòôúùûñç', 'aouseeeeaaaiiiooouuunc'), '[^a-z0-9]', '', 'g') like ${`%${mKey}%`}`);
+  const where: SQL[] = [...base];
   if (view === "offen") where.push(inArray(L.status, ["neu", "geprueft"]));
   if (view === "grosshandel") where.push(eq(L.kind, "grosshandel"), ne(L.status, "ausgeschlossen"));
   if (view === "entwurf") where.push(eq(L.status, "entwurf"));
   if (view === "angeschrieben") where.push(isNotNull(L.mailedAt));
   if (view === "ausgeschlossen") where.push(inArray(L.status, ["ausgeschlossen", "kein_interesse"]));
-  const rows = await db.select().from(L).where(and(...where)).orderBy(desc(L.score), L.companyName).limit(400);
+  let rows = await db.select().from(L).where(and(...where)).orderBy(desc(L.score), L.companyName).limit(400);
+  // Treffer je Ansicht (für die Reiter), nur bei aktivem Markenfilter.
+  const viewHits: Partial<Record<View, number>> = {};
+  if (mKey) {
+    rows = rows.filter((l) => leadBrandHits(l, m).length > 0);
+    const all = (await db.select({ status: L.status, kind: L.kind, mailedAt: L.mailedAt, brands: L.brands, searchBrands: L.searchBrands, findings: L.findings }).from(L).where(and(...base)).limit(5000)).filter((l) => leadBrandHits(l, m).length > 0);
+    viewHits.offen = all.filter((l) => l.status === "neu" || l.status === "geprueft").length;
+    viewHits.grosshandel = all.filter((l) => l.kind === "grosshandel" && l.status !== "ausgeschlossen").length;
+    viewHits.entwurf = all.filter((l) => l.status === "entwurf").length;
+    viewHits.angeschrieben = all.filter((l) => l.mailedAt).length;
+    viewHits.ausgeschlossen = all.filter((l) => l.status === "ausgeschlossen" || l.status === "kein_interesse").length;
+  }
+  const listHref = (p: { ansicht?: View; quelle?: string | null; m?: string }) => {
+    const q = new URLSearchParams({ ansicht: p.ansicht ?? view });
+    const src = p.quelle === undefined ? quelle : p.quelle;
+    if (src) q.set("quelle", src);
+    const mm = p.m ?? m;
+    if (mm) q.set("m", mm);
+    // Mit Markenfilter direkt zur Liste springen (auf dem Handy liegt sie weit unten).
+    return `/lieferanten/finden?${q}${mm ? "#liste" : ""}`;
+  };
   const [counts] = await db
     .select({
       total: sql<number>`count(*)::int`,
@@ -198,13 +224,26 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/lieferanten/finden?ansicht=${v}${quelle ? `&quelle=${quelle}` : ""}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+        {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={listHref({ ansicht: v })} className={`chip${view === v ? " active" : ""}`} data-testid={`view-${v}`}>{VIEWS[v]}{mKey ? ` (${viewHits[v] ?? 0})` : ""}</Link>)}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="source-filter">
         <span className="small muted">Quelle:</span>
-        <Link href={`/lieferanten/finden?ansicht=${view}`} className={`chip${!quelle ? " active" : ""}`}>alle</Link>
-        {QUELLEN.map((q) => <Link key={q} href={`/lieferanten/finden?ansicht=${view}&quelle=${q}`} className={`chip${quelle === q ? " active" : ""}`}>{FINDING_LABEL[q]}</Link>)}
+        <Link href={listHref({ quelle: null })} className={`chip${!quelle ? " active" : ""}`}>alle</Link>
+        {QUELLEN.map((q) => <Link key={q} href={listHref({ quelle: q })} className={`chip${quelle === q ? " active" : ""}`}>{FINDING_LABEL[q]}</Link>)}
       </div>
+      <form action="/lieferanten/finden#liste" id="liste" className="card card-pad" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", scrollMarginTop: 72 }} data-testid="brand-filter">
+        <input type="hidden" name="ansicht" value={view} />
+        {quelle && <input type="hidden" name="quelle" value={quelle} />}
+        <label className="sr-only" htmlFor="mf">Nach Marke filtern</label>
+        <input className="input" id="mf" name="m" type="search" defaultValue={m} placeholder="Nach Marke filtern, z. B. Airheads" style={{ flex: "1 1 220px", maxWidth: 340 }} />
+        <button className="btn" type="submit">Filtern</button>
+        {m && <Link className="btn btn-small" href={listHref({ m: "" })} data-testid="brand-filter-reset">✕ alle Firmen</Link>}
+        {m && (
+          <span className="small muted" data-testid="brand-filter-info">
+            {rows.length} {rows.length === 1 ? "Firma" : "Firmen"} mit der Marke „{m}“ unter „{VIEWS[view]}“
+          </span>
+        )}
+      </form>
 
       <form className="stack" style={{ gap: 10 }}>
         <section className="card" style={{ overflow: "auto" }}>
@@ -221,9 +260,26 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={7} className="muted">Keine Einträge in dieser Ansicht. Oben eine Marke im Register suchen.</td></tr>}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="muted" data-testid="leads-empty">
+                    {m ? (
+                      <>
+                        Keine Firma mit der Marke „{m}“ in dieser Ansicht.{" "}
+                        {Object.values(viewHits).some(Boolean) ? "Andere Reiter oben zeigen, wo es Treffer gibt." : <Link href={`/lieferanten/finden?marke=${encodeURIComponent(m)}`}>Bezugsquellen für „{m}“ suchen →</Link>}
+                      </>
+                    ) : (
+                      "Keine Einträge in dieser Ansicht. Oben eine Marke im Register suchen."
+                    )}
+                  </td>
+                </tr>
+              )}
               {rows.map((l) => {
                 const brand = l.searchBrands[0] ?? "";
+                // Mit Markenfilter: passende Marken zuerst und markiert (sonst die gesuchte Marke).
+                const hits = mKey ? leadBrandHits(l, m) : [];
+                const brandList = l.brands === null ? null : mKey ? [...l.brands.filter((b) => hits.includes(b)), ...l.brands.filter((b) => !hits.includes(b))] : l.brands;
+                const isHit = (b: string) => (mKey ? hits.includes(b) : brandMatches([b], brand));
                 const block = l.mailedAt ? null : sendBlocker(l, ctx);
                 const dup = l.mailedAt ? null : priorContact(l, ctx.contacted, ctx.suppliers);
                 return (
@@ -237,7 +293,12 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                       </div>
                     </td>
                     <td className="small" style={{ maxWidth: 300 }}>
-                      {l.brands === null ? (
+                      {mKey && hits.length > 0 && (l.brands === null || !hits.some((h) => l.brands!.includes(h))) && (
+                        <div style={{ marginBottom: 2 }} data-testid="lead-brand-hit">
+                          {hits.slice(0, 3).map((b) => <span key={b} className="tag tag-ok" style={{ marginRight: 3, display: "inline-block" }}>{b}</span>)}
+                        </div>
+                      )}
+                      {brandList === null ? (
                         l.busy === "marken" && brandState.running ? <span className="muted">wird geladen …</span> : l.source === "lucid" && !l.findings.some((f) => f.source !== "lucid") ? (
                           <span className="muted" title={l.checkError ?? undefined}>Markenliste folgt</span>
                         ) : (
@@ -249,11 +310,11 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                         )
                       ) : (
                         <>
-                          <strong>{l.brands.length}</strong>{" "}
-                          {l.brands.slice(0, 8).map((b) => (
-                            <span key={b} className={`tag ${brandMatches([b], brand) ? "tag-ok" : "tag-neutral"}`} style={{ marginRight: 3, marginBottom: 2, display: "inline-block" }}>{b}</span>
+                          <strong>{brandList.length}</strong>{" "}
+                          {brandList.slice(0, 8).map((b) => (
+                            <span key={b} className={`tag ${isHit(b) ? "tag-ok" : "tag-neutral"}`} style={{ marginRight: 3, marginBottom: 2, display: "inline-block" }} data-hit={isHit(b) ? "1" : undefined}>{b}</span>
                           ))}
-                          {l.brands.length > 8 && <span className="muted">+{l.brands.length - 8}</span>}
+                          {brandList.length > 8 && <span className="muted">+{brandList.length - 8}</span>}
                         </>
                       )}
                     </td>

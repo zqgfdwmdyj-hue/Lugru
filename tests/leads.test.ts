@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brandMatches, contactBlocker, isMarketplaceName, kendoFilter, looksLikePerson, mailLanguageFor, parseResearch, preAssess } from "@/lib/leads/logic";
+import { brandMatches, brandSearchKey, brandSearchMatch, contactBlocker, isMarketplaceName, kendoFilter, looksLikePerson, mailLanguageFor, parseResearch, preAssess } from "@/lib/leads/logic";
 
 describe("Großhändler finden – Vorab-Einschätzung", () => {
   it("Marke nur als ganzes Wort", () => {
@@ -62,5 +62,27 @@ describe("Großhändler finden – Vorab-Einschätzung", () => {
   it("Registerfilter", () => {
     expect(kendoFilter({ Brand: "Wella", CompanyName: "" })).toBe("Brand~contains~'Wella'");
     expect(kendoFilter({ Brand: "L'Oréal" })).toBe("Brand~contains~'L''Oréal'");
+  });
+});
+
+describe("Markensuche in der Kontaktliste", () => {
+  it("Wortanfang, zusammengeschrieben, ohne Groß/Klein und Akzente", () => {
+    expect(brandSearchMatch("AIRHEADS", "airheads")).toBe(true);
+    expect(brandSearchMatch("Airheads Xtremes", "airhead")).toBe(true);
+    expect(brandSearchMatch("Air Heads", "airheads")).toBe(true);
+    expect(brandSearchMatch("AirHeads", "air heads")).toBe(true);
+    expect(brandSearchMatch("Hugo Boss", "boss")).toBe(true);
+    expect(brandSearchMatch("Müller Milch", "muller")).toBe(true);
+    expect(brandSearchMatch("Pawella", "wella")).toBe(false);
+    expect(brandSearchMatch("Warheads", "airheads")).toBe(false);
+    expect(brandSearchMatch("Airheads", "")).toBe(false);
+  });
+  it("Treffer aus Markenliste, gesuchten Marken und Fundstellen", async () => {
+    const { leadBrandHits } = await import("@/lib/leads/logic");
+    expect(leadBrandHits({ brands: ["T-Rex", "AIRHEADS", "Airheads Xtremes"], searchBrands: [], findings: [] }, "airheads")).toEqual(["AIRHEADS", "Airheads Xtremes"]);
+    expect(leadBrandHits({ brands: null, searchBrands: ["Airheads"], findings: [{ brand: "Airheads" }] }, "airheads")).toEqual(["Airheads"]);
+    expect(leadBrandHits({ brands: ["Wella"], searchBrands: ["Wella"], findings: [] }, "airheads")).toEqual([]);
+    expect(brandSearchKey("Air-Heads®")).toBe("airheads");
+    expect(brandSearchKey("Großmann")).toBe("grosmann");
   });
 });
