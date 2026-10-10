@@ -19,6 +19,7 @@ const STATUS: Record<string, { label: string; tag: string }> = {
 };
 
 type Pos = { product_name?: string; quantity?: number };
+type Payload = { positions?: Pos[]; totals?: { net?: number; gross?: number }; is_reverse_charge?: boolean; _source?: string };
 
 export default async function RechnungshelferPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("buchhaltung");
@@ -38,7 +39,8 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
       : [],
   );
   const name = (id?: string | null) => customers.find((c) => c.id === id)?.name;
-  const open = rows.filter((r) => r.d.status === "offen").length;
+  const openRows = rows.filter((r) => r.d.status === "offen");
+  const doneRows = rows.filter((r) => r.d.status !== "offen");
 
 
   return (
@@ -52,53 +54,70 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
         Aus dem „Rechnungshelfer“ im Ticket wird deine Rechnung im eigenen Nummernkreis (PDF + E-Rechnung) – sie geht wie jede B2B-Rechnung an Stotax. Ohne Webhook: Screenshot hochladen oder Text einfügen. Mit Webhook (Knopf <strong>JSON</strong> im Ticket) kommt alles von selbst.
       </div>
 
+      {openRows.length > 0 && (
+        <section className="stack" style={{ gap: 10 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}><h2>Offen – prüfen und Rechnung erstellen</h2><span className="tag tag-warn" data-testid="rh-open">{openRows.length} offen</span></div>
+          {openRows.map(({ d, conv }) => {
+            const p = d.payload as Payload;
+            const warnings = conv?.warnings ?? d.warnings;
+            const customer = name(conv?.customerId ?? d.customerId);
+            const direct = !warnings.length && Boolean(conv?.customerId);
+            return (
+              <div key={d.id} className="card card-pad stack" style={{ gap: 8 }} data-testid="rh-row" data-ticket={d.ticket}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "baseline", justifyContent: "space-between" }}>
+                  <strong className="num">Ticket {d.ticket}</strong>
+                  <span className="small muted">{fmt(d.receivedAt)}{p._source === "screenshot" ? " · aus Screenshot" : p._source === "text" ? " · aus Text" : ""}</span>
+                </div>
+                <div className="small">{(p.positions ?? []).map((x, i) => <div key={i}>{x.quantity}× {x.product_name}</div>)}</div>
+                <div className="small">
+                  Netto <strong className="num">{formatEuro(conv?.totals.net ?? p.totals?.net ?? 0)}</strong> · Brutto <strong className="num">{formatEuro(conv?.totals.gross ?? p.totals?.gross ?? 0)}</strong>
+                  {p.is_reverse_charge && <> · <span className="tag tag-neutral">Reverse Charge</span></>}
+                </div>
+                <div className="small">Rechnung an: {customer ?? <span style={{ color: "var(--warn)" }}>nicht festgelegt – im nächsten Schritt Kunde wählen oder neu eintragen</span>}</div>
+                {warnings.filter((w) => !/Rechnungsempfänger noch nicht/.test(w)).map((w, i) => <div key={i} className="small" style={{ color: "var(--warn)" }} data-testid="rh-warning">⚠ {w}</div>)}
+                {warnings.some((w) => /Rechnungsempfänger noch nicht/.test(w)) && <span hidden data-testid="rh-warning">Rechnungsempfänger noch nicht festgelegt.</span>}
+                {d.error && <div className="small" style={{ color: "var(--danger)" }}>{d.error}</div>}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {direct && (
+                    <form action={createNowAction} style={{ flex: "1 1 200px", display: "flex" }}>
+                      <input type="hidden" name="id" value={d.id} />
+                      <button className="btn btn-primary" type="submit" data-testid="rh-create" style={{ flex: 1, padding: "12px 16px", justifyContent: "center" }}>Rechnung erstellen</button>
+                    </form>
+                  )}
+                  <Link className={`btn${direct ? "" : " btn-primary"}`} href={`/rechnungen/ausgang/neu?entwurf=${d.id}`} data-testid="rh-review" style={{ flex: "1 1 200px", textAlign: "center", justifyContent: "center", padding: "12px 16px" }}>
+                    {direct ? "Erst ansehen / ändern" : "Weiter: prüfen & Rechnung erstellen"}
+                  </Link>
+                  <form action={discardAction}><input type="hidden" name="id" value={d.id} /><button className="btn-link small" type="submit" style={{ color: "var(--muted)" }}>verwerfen</button></form>
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
+
       <section className="card card-pad stack" style={{ gap: 8 }}>
         <h2>Einlesen (ohne Webhook)</h2>
         <ImportForm />
       </section>
 
-      <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
-        <div className="card-head"><h2>Eingang</h2>{open > 0 && <span className="tag tag-warn" data-testid="rh-open">{open} offen</span>}</div>
-        <table className="table">
-          <thead><tr><th>Eingang</th><th>Ticket</th><th>Positionen</th><th className="right">Netto</th><th className="right">Brutto</th><th>Kunde</th><th>Status</th><th></th></tr></thead>
-          <tbody>
-            {rows.length === 0 && <tr><td colSpan={8} className="muted">Noch nichts eingegangen. Erst unten einrichten, dann im Ticket auf „JSON“ drücken.</td></tr>}
-            {rows.map(({ d, conv }) => {
-              const p = d.payload as { positions?: Pos[]; totals?: { net?: number; gross?: number }; is_reverse_charge?: boolean };
-              const warnings = d.status === "offen" ? (conv?.warnings ?? d.warnings) : [];
-              const inv = d.invoiceId !== null ? invTotals.get(d.invoiceId) : undefined;
-              const net = conv?.totals.net ?? inv?.totalNet ?? p.totals?.net ?? 0;
-              const gross = conv?.totals.gross ?? inv?.totalGross ?? p.totals?.gross ?? 0;
-              return (
-                <tr key={d.id} data-testid="rh-row" data-ticket={d.ticket}>
-                  <td className="num small">{fmt(d.receivedAt)}</td>
-                  <td className="num">{d.ticket}{p.is_reverse_charge && <div><span className="tag tag-neutral">Reverse Charge</span></div>}</td>
-                  <td className="small" style={{ maxWidth: 280 }}>{(p.positions ?? []).map((x, i) => <div key={i}>{x.quantity}× {x.product_name}</div>)}</td>
-                  <td className="num right">{formatEuro(net)}</td>
-                  <td className="num right">{formatEuro(gross)}</td>
-                  <td className="small">{name(conv?.customerId ?? d.customerId) ?? <span style={{ color: "var(--warn)" }}>nicht festgelegt</span>}</td>
-                  <td className="small" style={{ maxWidth: 320 }}>
-                    <span className={`tag ${STATUS[d.status]?.tag ?? "tag-neutral"}`}>{STATUS[d.status]?.label ?? d.status}</span>
-                    {d.invoiceNumber && <> <a className="num" href={`/rechnungen/ausgang/${d.invoiceId}/pdf`} target="_blank" rel="noreferrer">{d.invoiceNumber}</a></>}
-                    {warnings.map((w, i) => <div key={i} style={{ color: "var(--warn)" }} data-testid="rh-warning">{w}</div>)}
-                    {d.error && <div style={{ color: "var(--danger)" }}>{d.error}</div>}
-                  </td>
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {d.status === "offen" && (
-                      <>
-                        {!warnings.length && conv?.customerId && (
-                          <form action={createNowAction} style={{ display: "inline" }}><input type="hidden" name="id" value={d.id} /><button className="btn btn-small btn-primary" type="submit" data-testid="rh-create">Erstellen</button></form>
-                        )}
-                        <Link className="btn btn-small" href={`/rechnungen/ausgang/neu?entwurf=${d.id}`} style={{ marginLeft: 6 }} data-testid="rh-review">Prüfen & erstellen</Link>
-                        <form action={discardAction} style={{ display: "inline" }}><input type="hidden" name="id" value={d.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 6, color: "var(--muted)" }}>verwerfen</button></form>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <section className="card stack" style={{ gap: 0, minWidth: 0 }}>
+        <div className="card-head"><h2>Erledigt</h2></div>
+        {doneRows.length === 0 && <div className="card-pad small muted">{rows.length === 0 ? "Noch nichts eingegangen – oben Screenshot oder Text einlesen." : "Noch keine Rechnung aus dem Rechnungshelfer erstellt."}</div>}
+        {doneRows.map(({ d }) => {
+          const p = d.payload as Payload;
+          const inv = d.invoiceId !== null ? invTotals.get(d.invoiceId) : undefined;
+          return (
+            <div key={d.id} data-testid="rh-row" data-ticket={d.ticket} className="small" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: "10px 16px", borderTop: "1px solid var(--border)" }}>
+              <span className={`tag ${STATUS[d.status]?.tag ?? "tag-neutral"}`}>{STATUS[d.status]?.label ?? d.status}</span>
+              <span className="num">Ticket {d.ticket}</span>
+              {d.invoiceNumber && <a className="num" href={`/rechnungen/ausgang/${d.invoiceId}/pdf`} target="_blank" rel="noreferrer">Rechnung {d.invoiceNumber}</a>}
+              <span className="num">{formatEuro(inv?.totalGross ?? p.totals?.gross ?? 0)}</span>
+              <span className="muted">{(p.positions ?? []).map((x) => `${x.quantity}× ${x.product_name}`).join(", ")}</span>
+              <span className="muted" style={{ marginLeft: "auto" }}>{fmt(d.receivedAt)}</span>
+              {d.error && <span style={{ color: "var(--danger)", flexBasis: "100%" }}>{d.error}</span>}
+            </div>
+          );
+        })}
       </section>
 
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
