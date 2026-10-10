@@ -161,18 +161,23 @@ export type OfferCalcInput = {
   fbaFee: number;
   /** Anteil, z. B. 0.15. */
   referralRate: number;
+  /** Lieferanten-Einheiten je Amazon-Verkauf (z. B. 2 beim „2er Set“) – Standard 1. */
+  unitsPerSale?: number;
 };
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Netto-EK je Verkaufseinheit, Gewinn und ROI – Amazon-Provision vom Bruttopreis. */
-export function offerCalc(i: OfferCalcInput): { unitNet: number | null; profit: number | null; roi: number | null } {
+export function offerCalc(i: OfferCalcInput): { unitNet: number | null; profit: number | null; roi: number | null; costPerSale?: number } {
   if (i.price === null) return { unitNet: null, profit: null, roi: null };
   const net = i.gross ? i.price / (1 + i.vatRate) : i.price;
   const unitNet = r2((net * (1 + i.costPct / 100)) / Math.max(1, i.caseQty));
-  if (i.sale === null) return { unitNet, profit: null, roi: null };
-  const profit = r2(i.sale / (1 + i.vatRate) - i.sale * i.referralRate - i.fbaFee - unitNet);
-  return { unitNet, profit, roi: unitNet > 0 ? r1((profit / unitNet) * 100) : null };
+  // EK eines Amazon-Verkaufs: so viele Einheiten, wie das Amazon-Angebot enthält.
+  const units = Math.max(1, Math.round(i.unitsPerSale ?? 1));
+  const cost = r2(unitNet * units);
+  if (i.sale === null) return { unitNet, profit: null, roi: null, ...(units > 1 ? { costPerSale: cost } : {}) };
+  const profit = r2(i.sale / (1 + i.vatRate) - i.sale * i.referralRate - i.fbaFee - cost);
+  return { unitNet, profit, roi: cost > 0 ? r1((profit / cost) * 100) : null, ...(units > 1 ? { costPerSale: cost } : {}) };
 }
 
 /** Wann eine Keepa-Abfrage für eine EAN fällig ist: neu zuerst, dann geänderter EK, dann älteste. */

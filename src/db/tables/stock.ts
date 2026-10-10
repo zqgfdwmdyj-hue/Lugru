@@ -184,6 +184,8 @@ export const supplierOffers = pgTable(
      * (Seller-Knopf/Lesezeichen, Link, Foto) – wird einmal bei Keepa geprüft und getrennt gezeigt.
      */
     origin: text("origin", { enum: ["feed", "scan"] }).notNull().default("feed"),
+    /** Einheiten je Amazon-Verkauf, von Hand gesetzt (leer = aus dem Amazon-Titel erkannt). */
+    amazonQty: integer("amazon_qty"),
     scannedAt: timestamp("scanned_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },

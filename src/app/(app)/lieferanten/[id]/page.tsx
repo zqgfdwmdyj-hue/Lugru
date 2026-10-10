@@ -9,9 +9,9 @@ import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
-import { packInfo, packOf, searchTerm } from "@/lib/suppliers/scan";
+import { packInfo, packOf, searchTerm, unitsPerSale } from "@/lib/suppliers/scan";
 import { getSettings } from "@/lib/settings";
-import { clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction, sellableCheckAction } from "../actions";
+import { amazonQtyAction, clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction, sellableCheckAction } from "../actions";
 import { feedAnalysis } from "@/lib/suppliers/feed-service";
 import { AutoRefresh } from "../finden/refresh";
 import { ebayToolLink } from "@/lib/ebay/tool-link";
@@ -25,7 +25,7 @@ import { FeedUpload } from "./upload-form";
 type Row = {
   id: string; supplier_sku: string; ean: string | null; asin: string | null; title: string | null; price: number | null; stock: number | null;
   price_orig: number | null; currency: string | null; url: string | null; image_url: string | null; pack: string | null; market: OfferMarket | null;
-  amz_price: number | null; our_asin: string | null; fee: number | null; ref: number | null;
+  amz_price: number | null; our_asin: string | null; fee: number | null; ref: number | null; amazon_qty: number | null;
 };
 
 const SYM: Record<string, string> = { USD: "$", GBP: "£" };
@@ -40,7 +40,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
   if (!feed) notFound();
   const [s, rates, ai, keepa, brands] = await Promise.all([getSettings(t), eurRates(), getIntegration(t, "anthropic"), keepaKey(t), canAccess(session, "marken") ? visibleBrands(session) : Promise.resolve([])]);
   const res = await db.execute<Row>(sql`
-    select o.id, o.supplier_sku, o.ean, o.asin, o.title, o.price::float, o.stock, o.price_orig::float, o.currency, o.url, o.image_url, o.pack, o.market,
+    select o.id, o.supplier_sku, o.ean, o.asin, o.title, o.price::float, o.stock, o.price_orig::float, o.currency, o.url, o.image_url, o.pack, o.market, o.amazon_qty,
            (select max(i.price)::float from amazon_inventory i where i.tenant_id = o.tenant_id and i.asin = coalesce(o.asin, p.asin)) as amz_price,
            p.asin as our_asin, p.fba_fee::float as fee, p.referral_rate::float as ref
       from supplier_offers o
@@ -59,10 +59,13 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
     // Brutto-Listen: netto rechnen (USt des Artikels).
     const cost = r.price !== null ? Math.round((feed.pricesGross ? r.price / (1 + vatRate) : r.price) * (1 + costPct / 100) * 100) / 100 : null;
     const unitCost = cost !== null ? Math.round((cost / pack.caseQty) * 100) / 100 : null;
-    const profit = sale !== null && unitCost !== null
-      ? profitAt(sale, { unitCost, fbaFee: r.fee ?? m?.fbaFee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? (m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate), vatRate })
+    // Amazon-Angebot mit mehreren Einheiten („15 x 136 g“, „2er Set“): EK je Verkauf = Einheiten × EK.
+    const per = unitsPerSale({ amazonTitle: m?.title, supplierTitle: r.title, supplierUrl: r.url, override: r.amazon_qty });
+    const costPerSale = unitCost !== null ? Math.round(unitCost * per.units * 100) / 100 : null;
+    const profit = sale !== null && costPerSale !== null
+      ? profitAt(sale, { unitCost: costPerSale, fbaFee: r.fee ?? m?.fbaFee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? (m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate), vatRate })
       : null;
-    return { ...r, pack: packOf(r.title ?? "", r.url) ?? r.pack, caseQty: pack.caseQty, sale, cost, unitCost, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null };
+    return { ...r, pack: packOf(r.title ?? "", r.url) ?? r.pack, caseQty: pack.caseQty, sale, cost, unitCost, units: per.units, unitsAuto: per.auto, costPerSale, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null };
   });
   const q = sp.q?.trim().toLowerCase();
   let shown = q ? rows.filter((r) => `${r.title} ${r.supplier_sku} ${r.ean} ${r.asin}`.toLowerCase().includes(q)) : rows;
@@ -73,11 +76,23 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
   const onAmazon = rows.filter((r) => r.market?.asin).length;
   // Profitabel wie unter „Chancen“: Gewinn ≥ 1 €, ROI ≥ 20 % gegen den Amazon-Preis.
   const profitable = rows
-    .map((r) => ({ ...r, roi: r.profit !== null && r.unitCost ? Math.round((r.profit / r.unitCost) * 1000) / 10 : null }))
+    .map((r) => ({ ...r, roi: r.profit !== null && r.costPerSale ? Math.round((r.profit / r.costPerSale) * 1000) / 10 : null }))
     .filter((r) => r.market?.asin && r.profit !== null && r.profit >= 1 && r.roi !== null && r.roi >= 20)
     .sort((a, b) => (b.roi ?? 0) - (a.roi ?? 0));
   const analysis = feedAnalysis(id);
   const amazonConnected = Boolean((await getIntegration(t, "amazon_sp"))?.sellerId);
+  // Einheiten je Amazon-Verkauf korrigieren (leer = automatisch aus dem Amazon-Titel).
+  const qtyEdit = (r: { id: string; units: number; unitsAuto: boolean; amazon_qty: number | null }) => (
+    <details className="small" data-testid="qty-edit" style={{ textAlign: "right" }}>
+      <summary className="muted" style={{ cursor: "pointer", listStyle: "none" }} title="Wie viele Einheiten enthält ein Amazon-Verkauf?">{r.units} Stk je Verkauf{r.unitsAuto ? "" : " ✎"}</summary>
+      <form action={amazonQtyAction} style={{ display: "flex", gap: 4, justifyContent: "flex-end", marginTop: 4 }}>
+        <input type="hidden" name="feedId" value={feed.id} />
+        <input type="hidden" name="offerId" value={r.id} />
+        <input className="input num" name="qty" defaultValue={r.amazon_qty ?? ""} placeholder={r.unitsAuto ? `auto ${r.units}` : String(r.units)} style={{ width: 70 }} aria-label="Stück je Amazon-Verkauf" />
+        <button className="btn btn-small" type="submit">OK</button>
+      </form>
+    </details>
+  );
   const chip = (nur?: string) => `/lieferanten/${id}${nur || q ? `?${new URLSearchParams({ ...(nur ? { nur } : {}), ...(q ? { q } : {}) })}` : ""}`;
 
   return (
@@ -95,7 +110,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           <div className="card-pad between" style={{ gap: 8, flexWrap: "wrap" }}>
             <div>
               <h2>Profitable Produkte ({profitable.length})</h2>
-              <div className="small muted">Gewinn ≥ 1 € und ROI ≥ 20 % gegen den Amazon-Preis (Keepa), je Stück netto inkl. Aufschlag. „Verkaufbar“ = dein Amazon-Konto darf das Produkt ohne Freischaltung anbieten.</div>
+              <div className="small muted">Gewinn ≥ 1 € und ROI ≥ 20 % gegen den Amazon-Preis (Keepa), netto inkl. Aufschlag – je Amazon-Verkauf: enthält das Amazon-Angebot mehrere Einheiten („15 x 136 g“, „2er Set“), zählt der EK entsprechend mehrfach (unter dem EK änderbar). „Verkaufbar“ = dein Amazon-Konto darf das Produkt ohne Freischaltung anbieten.</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {amazonConnected && profitable.length > 0 && <form action={sellableCheckAction}><input type="hidden" name="feedId" value={feed.id} /><button className="btn btn-small" type="submit">Verkaufsfreigabe prüfen</button></form>}
@@ -108,7 +123,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           {!amazonConnected && profitable.length > 0 && <div className="card-pad small muted">Für die Verkaufsfreigabe unter Anbindungen → Amazon Seller Central verbinden (mit Händler-ID, App-Rolle „Produktlisting“).</div>}
           {profitable.length > 0 && (
             <table className="table">
-              <thead><tr><th>Produkt</th><th className="right">EK/Stk</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>Verkaufen</th></tr></thead>
+              <thead><tr><th>Produkt</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>Verkaufen</th></tr></thead>
               <tbody>
                 {profitable.slice(0, 40).map((r) => {
                   const sel = r.market?.sellable;
@@ -123,7 +138,11 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                           {r.url && <> · <a href={r.url} target="_blank" rel="noreferrer">beim Lieferanten ↗</a></>}
                         </div>
                       </td>
-                      <td className="num right">{formatEuro(r.unitCost!)}</td>
+                      <td className="num right">
+                        {formatEuro(r.costPerSale!)}
+                        {r.units > 1 && <div className="small muted">{r.units} × {formatEuro(r.unitCost!)}</div>}
+                        {qtyEdit(r)}
+                      </td>
                       <td className="num right">{formatEuro(r.sale!)}</td>
                       <td className="num right" style={{ color: "var(--ok)", fontWeight: 600 }}>{formatEuro(r.profit!)}</td>
                       <td className="num right" style={{ whiteSpace: "nowrap" }}>{r.roi?.toLocaleString("de-DE", { maximumFractionDigits: r.roi >= 100 ? 0 : 1 })} %</td>
@@ -209,7 +228,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           <section className="card" style={{ overflow: "auto" }}>
             <table className="table">
               <thead>
-                <tr><th></th><th>Artikel</th><th>EAN / ASIN</th><th className="right">EK Karton</th><th className="right">EK Einheit</th><th className="right">Amazon.de</th><th className="right">Verk./Mon.</th><th className="right">Gewinn/Einheit</th><th></th></tr>
+                <tr><th></th><th>Artikel</th><th>EAN / ASIN</th><th className="right">EK Karton</th><th className="right">EK Einheit</th><th className="right">Amazon.de</th><th className="right">Verk./Mon.</th><th className="right">Gewinn je Verkauf</th><th></th></tr>
               </thead>
               <tbody>
                 {shown.length === 0 && <tr><td colSpan={9} className="muted">Keine Artikel. Rechts eine Liste hochladen oder eine Seite scannen.</td></tr>}
@@ -240,6 +259,8 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                     <td className="num right" style={{ whiteSpace: "nowrap" }}>
                       <strong>{formatEuro(r.unitCost)}</strong>
                       {r.caseQty > 1 && <div className="small muted">÷ {r.caseQty}</div>}
+                      {r.units > 1 && <div className="small" title="So viele Einheiten enthält das Amazon-Angebot">× {r.units} = {formatEuro(r.costPerSale)}</div>}
+                      {r.market?.asin && qtyEdit(r)}
                     </td>
                     <td className="num right" style={{ whiteSpace: "nowrap" }}>
                       {formatEuro(r.sale)}

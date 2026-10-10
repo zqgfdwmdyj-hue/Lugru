@@ -89,3 +89,39 @@ describe("EAN und Zugang", () => {
     expect(authHeaders("abc123token")).toEqual({ Authorization: "Bearer abc123token" });
   });
 });
+
+describe("Einheiten je Amazon-Verkauf", () => {
+  it("erkennt Mehrfachpackungen im Amazon-Titel", async () => {
+    const { amazonPackQty } = await import("@/lib/suppliers/scan");
+    expect(amazonPackQty("Skittles Fruits, fruchtige vegane Kaubonbons, Großpackung, 15 x 136 g")).toBe(15);
+    expect(amazonPackQty("Jolly Rancher Original Hartbonbons 198 g (2 Stück)")).toBe(2);
+    expect(amazonPackQty("2er Set Nerds Rainbow Candy – Amerikanische Süßigkeiten – 2 x 141 g")).toBe(2);
+    expect(amazonPackQty("Haribo Goldbären, 6er-Pack (6 x 200 g)")).toBe(6);
+    expect(amazonPackQty("Monster Energy, Packung mit 12")).toBe(12);
+    expect(amazonPackQty("Pringles Original, 6 Dosen à 165 g")).toBe(6);
+    // Einzelpackung bzw. Inhalt einer Packung zählt nicht.
+    expect(amazonPackQty("Jelly Belly Bean Boozled 100g Süßigkeiten mit Glücksrad")).toBeNull();
+    expect(amazonPackQty("AirHeads 80 Mini Bars Fun Taffy Candy Assorted Fruit Flavors 32.17oz (912g)")).toBeNull();
+    expect(amazonPackQty("Haribo Minis Beutel (80 Stück)")).toBeNull();
+    expect(amazonPackQty(null)).toBeNull();
+  });
+
+  it("Lieferanten-Inhalt wird berücksichtigt, von Hand gesetzt gewinnt", async () => {
+    const { unitsPerSale } = await import("@/lib/suppliers/scan");
+    expect(unitsPerSale({ amazonTitle: "Jolly Rancher 198 g (2 Stück)", supplierTitle: "Jolly Rancher 198g - Karton 12" })).toEqual({ units: 2, auto: true });
+    // Lieferant verkauft schon 2er-Sets → bei Amazon 2er Set = 1 Einheit.
+    expect(unitsPerSale({ amazonTitle: "2er Set Nerds 2 x 141 g", supplierTitle: "Nerds Rainbow 2er Set (Karton 12)" })).toEqual({ units: 1, auto: true });
+    // „15 x 136 g“ beim Lieferanten ist der Karton – Amazon verkauft den ganzen Karton.
+    expect(unitsPerSale({ amazonTitle: "Skittles Großpackung, 15 x 136 g", supplierTitle: "Skittles Fruits (15 x 136g)" })).toEqual({ units: 15, auto: true });
+    expect(unitsPerSale({ amazonTitle: "Skittles Großpackung, 15 x 136 g", supplierTitle: "Skittles", override: 1 })).toEqual({ units: 1, auto: false });
+    expect(unitsPerSale({ amazonTitle: "Jelly Belly 100g", supplierTitle: "Jelly Belly 100g x12" })).toEqual({ units: 1, auto: true });
+  });
+
+  it("Gewinn und ROI je Amazon-Verkauf", () => {
+    // 12er-Karton 36 € netto → 3 € je Stück; Amazon verkauft 2 Stück für 14,99 €.
+    const one = offerCalc({ price: 36, gross: false, vatRate: 0.19, costPct: 0, caseQty: 12, sale: 14.99, fbaFee: 3, referralRate: 0.15 });
+    const two = offerCalc({ price: 36, gross: false, vatRate: 0.19, costPct: 0, caseQty: 12, sale: 14.99, fbaFee: 3, referralRate: 0.15, unitsPerSale: 2 });
+    expect(one).toMatchObject({ unitNet: 3, profit: 4.35 });
+    expect(two).toMatchObject({ unitNet: 3, costPerSale: 6, profit: 1.35, roi: 22.5 });
+  });
+});

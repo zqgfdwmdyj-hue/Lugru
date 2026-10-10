@@ -1,17 +1,18 @@
 import type { OfferMarket } from "@/db/schema";
-import { packInfo } from "./scan";
+import { packInfo, unitsPerSale } from "./scan";
 import { offerCalc } from "./prices";
 
 type Settings = { vatRate: number; pricing: { defaultFbaFee: number; referralRate: number } };
 
 /** Gewinn/ROI eines Lieferantenangebots gegen den Amazon-Preis – wie in der Feed-Ansicht. */
 export function econOf(
-  o: { price: number | null; title: string | null; url: string | null; market: OfferMarket | null; pricesGross: boolean; costPct: number; vatPct: number | null },
+  o: { price: number | null; title: string | null; url: string | null; market: OfferMarket | null; pricesGross: boolean; costPct: number; vatPct: number | null; amazonQty?: number | null },
   s: Settings,
 ) {
   const vatRate = o.vatPct !== null ? o.vatPct / 100 : s.vatRate;
   const pack = packInfo(o.title ?? "", o.url);
   const m = o.market;
+  const per = unitsPerSale({ amazonTitle: m?.title, supplierTitle: o.title, supplierUrl: o.url, override: o.amazonQty });
   const c = offerCalc({
     price: o.price,
     gross: o.pricesGross,
@@ -21,6 +22,7 @@ export function econOf(
     sale: m?.price ?? null,
     fbaFee: m?.fbaFee ?? s.pricing.defaultFbaFee,
     referralRate: m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate,
+    unitsPerSale: per.units,
   });
-  return { ...c, caseQty: pack.caseQty, sale: m?.price ?? null };
+  return { ...c, caseQty: pack.caseQty, sale: m?.price ?? null, unitsPerSale: per.units, unitsAuto: per.auto, costPerSale: c.costPerSale ?? c.unitNet };
 }

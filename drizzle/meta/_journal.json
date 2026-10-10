@@ -246,6 +246,13 @@
       "when": 1791643132396,
       "tag": "0034_manuell_gezogen",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791654146984,
+      "tag": "0035_stueck_je_verkauf",
+      "breakpoints": true
     }
   ]
 }

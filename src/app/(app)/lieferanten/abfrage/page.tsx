@@ -114,6 +114,7 @@ export default async function AbfragePage({ searchParams }: { searchParams: Prom
                       {o.price !== null ? formatEuro(o.price) : "–"}
                       <div className="small muted">{o.pricesGross ? "brutto" : "netto"}{e.caseQty > 1 ? ` · ${e.caseQty} Stk/Karton` : ""}</div>
                       {e.unitNet !== null && (o.pricesGross || e.caseQty > 1 || o.costPct) ? <div className="small muted">= {formatEuro(e.unitNet)} netto/Stk</div> : null}
+                      {e.unitsPerSale > 1 && <div className="small muted">Amazon-Angebot = {e.unitsPerSale} Stk → {formatEuro(e.costPerSale)}</div>}
                     </td>
                     <td className="num right">{o.stock === null ? <span className="small">lieferbar</span> : `${o.stock.toLocaleString("de-DE")} Stk`}</td>
                     <td className="small">{o.moq && o.moq > 1 ? `ab ${o.moq} Stk` : "–"}</td>

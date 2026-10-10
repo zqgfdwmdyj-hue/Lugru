@@ -203,3 +203,19 @@ export async function pullNowAction(fd: FormData) {
   }
   redirect(`/lieferanten/${feedId}?abruf=${encodeURIComponent(msg)}`);
 }
+
+/** Einheiten je Amazon-Verkauf von Hand setzen (leer = wieder aus dem Amazon-Titel erkennen). */
+export async function amazonQtyAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
+  const offerId = uuid.parse(fd.get("offerId"));
+  const raw = String(fd.get("qty") ?? "").trim();
+  const n = raw ? Math.round(Number(raw.replace(",", "."))) : null;
+  const qty = n !== null && Number.isFinite(n) && n >= 1 && n <= 500 ? n : null;
+  await db
+    .update(schema.supplierOffers)
+    .set({ amazonQty: qty })
+    .where(and(eq(schema.supplierOffers.id, offerId), eq(schema.supplierOffers.feedId, feedId), eq(schema.supplierOffers.tenantId, session.tenantId)));
+  revalidatePath(`/lieferanten/${feedId}`);
+  revalidatePath("/lieferanten/chancen");
+}

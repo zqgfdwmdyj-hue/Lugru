@@ -18,7 +18,7 @@ import { keepaRunAction, keepaScannedAction, pullAllAction } from "./actions";
 type Row = {
   id: string; feed_id: string; feed_name: string; prices_gross: boolean; cost_pct: string | null; vat_pct: string | null;
   supplier_sku: string; ean: string | null; title: string | null; price: number | null; stock: number | null; moq: number | null; url: string | null;
-  market: OfferMarket | null; first_seen_at: string | null; last_seen_at: string | null; scanned_at: string | null; max30: number | null;
+  market: OfferMarket | null; first_seen_at: string | null; last_seen_at: string | null; scanned_at: string | null; amazon_qty: number | null; max30: number | null;
 };
 
 const SORTS = { roi: "ROI", gewinn: "Gewinn", verkaeufe: "Verkäufe", neu: "Neueste" } as const;
@@ -54,7 +54,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
        where tenant_id = ${t} and day >= current_date - 30 group by offer_id
     )
     select o.id, o.feed_id, f.name as feed_name, f.prices_gross, f.mapping->>'costPct' as cost_pct, f.mapping->>'vatPct' as vat_pct,
-           o.supplier_sku, o.ean, o.title, o.price::float as price, o.stock, o.moq, o.url, o.market, o.first_seen_at::text, o.last_seen_at::text, o.scanned_at::text, h.max30
+           o.supplier_sku, o.ean, o.title, o.price::float as price, o.stock, o.moq, o.url, o.market, o.first_seen_at::text, o.last_seen_at::text, o.scanned_at::text, o.amazon_qty, h.max30
       from supplier_offers o
       join supplier_feeds f on f.id = o.feed_id
       left join h on h.offer_id = o.id
@@ -66,7 +66,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
   // Je Produkt das günstigste Angebot (netto je Stück) – die anderen zählen als Alternativen.
   const best = new Map<string, { r: Row; e: ReturnType<typeof econOf>; alt: number }>();
   for (const r of res.rows) {
-    const e = econOf({ price: r.price, title: r.title, url: r.url, market: r.market, pricesGross: r.prices_gross, costPct: Number(r.cost_pct || 0), vatPct: r.vat_pct ? Number(r.vat_pct) : null }, s);
+    const e = econOf({ price: r.price, title: r.title, url: r.url, market: r.market, pricesGross: r.prices_gross, costPct: Number(r.cost_pct || 0), vatPct: r.vat_pct ? Number(r.vat_pct) : null, amazonQty: r.amazon_qty }, s);
     if (e.unitNet === null) continue;
     const key = r.ean ?? r.market?.asin ?? r.id;
     const cur = best.get(key);
@@ -171,7 +171,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
 
       <section className="card" style={{ overflow: "auto" }}>
         <table className="table">
-          <thead><tr><th>Produkt</th><th>Günstigster Lieferant</th><th className="right">EK netto/Stk</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>EK-Verlauf</th><th>VK 30 T</th></tr></thead>
+          <thead><tr><th>Produkt</th><th>Günstigster Lieferant</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>EK-Verlauf</th><th>VK 30 T</th></tr></thead>
           <tbody>
             {shown.length === 0 && <tr><td colSpan={9} className="muted">{manual ? "Nichts Lohnenswertes unter dem von Hand Gezogenen (oder noch nichts gezogen). Lieferant öffnen → „Seite oder Liste scannen“ mit dem Seller-Knopf." : "Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise."}</td></tr>}
             {shown.map(({ r, e, alt }) => {
@@ -195,7 +195,10 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
                     <div className="muted">{r.stock === null ? "lieferbar" : `${r.stock} Stk`}{r.moq && r.moq > 1 ? ` · ab ${r.moq}` : ""} · {manual && r.scanned_at ? `gezogen ${ago(r.scanned_at)}` : ago(r.last_seen_at)}</div>
                     {r.market?.byTitle && <div className="muted" title="Ohne EAN per Titel bei Keepa gefunden">per Titel – gegenprüfen</div>}
                   </td>
-                  <td className="num right">{formatEuro(e.unitNet)}</td>
+                  <td className="num right">
+                    {formatEuro(e.costPerSale)}
+                    {e.unitsPerSale > 1 && <div className="small muted" title={e.unitsAuto ? "aus dem Amazon-Titel erkannt – auf der Lieferanten-Seite änderbar" : "von Hand gesetzt"}>{e.unitsPerSale} × {formatEuro(e.unitNet)}</div>}
+                  </td>
                   <td className="num right">{formatEuro(e.sale)}</td>
                   <td className="num right" style={{ color: "var(--ok)", fontWeight: 600 }}>{formatEuro(e.profit)}</td>
                   <td className="num right" style={{ whiteSpace: "nowrap" }}>{e.roi?.toLocaleString("de-DE", { maximumFractionDigits: e.roi !== null && Math.abs(e.roi) >= 100 ? 0 : 1 })} %</td>

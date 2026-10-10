@@ -75,10 +75,43 @@ export function packInfo(title: string, url?: string | null): PackInfo {
   const text = `${title} ${slug}`;
   const times = title.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|oz|cl))\b/i);
   const caseOf = text.match(/\b(?:box|case|pack|karton|packung) of (\d+)\b/i) ?? text.match(/\b(\d+)\s?(?:ct|count)\b/i) ?? text.match(/\b(\d+)\s?(?:stk|stück)\b/i);
-  const inner = title.match(/\b(\d+)\s?(?:pack|pk|er[- ]?pack|pcs|pieces)\b/i);
+  const inner = title.match(/\b(\d+)\s?(?:pack|pk|er[- ]?pack|er[- ]?set|pcs|pieces)\b/i);
   const size = times?.[2] ?? title.match(/\((\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|oz))\)/i)?.[1] ?? null;
   const n = Number(times?.[1] ?? caseOf?.[1] ?? 1);
   return { caseQty: n > 0 && n < 10000 ? n : 1, inner: inner ? Number(inner[1]) : null, unitSize: size ? size.replace(/\s/g, "") : null };
+}
+
+/**
+ * Wie viele Einheiten des Lieferanten ein Amazon-Angebot enthält – aus dem Amazon-Titel:
+ * „15 x 136 g“, „(2 Stück)“, „2er Set“, „6er-Pack“, „Packung mit 6“, „6 Dosen“. Stückzahlen
+ * im Inneren einer Packung („80 Mini Bars“, „(80 Stück)“ über 24) zählen nicht. null = nichts erkannt.
+ */
+export function amazonPackQty(title: string | null | undefined): number | null {
+  if (!title) return null;
+  const t = title.replace(/\u00a0/g, " ");
+  const hits = [
+    t.match(/(\d+)\s*[x×]\s*\d+(?:[.,]\d+)?\s?(?:g|kg|ml|l|cl|oz|stück|stk)\b/i),
+    t.match(/\b(\d+)\s*er[- ]?(?:pack|set|packung|vorteilspack|karton|bundle|box)\b/i),
+    t.match(/\b(?:packung|pack|set|karton|box|vorratspackung|bundle)\s+(?:mit|von|of|à|a)\s+(\d+)\b/i),
+    t.match(/\(\s*(\d+)\s*(?:stück|stk|st\.|packungen|packs?|beutel|dosen|flaschen|tüten|gläser|schachteln|boxen|pcs|count)\s*\)/i),
+    t.match(/\b(\d+)\s*(?:dosen|flaschen|beutel|tüten|packungen|gläser|schachteln)\b/i),
+  ];
+  const n = Number(hits.find(Boolean)?.[1] ?? NaN);
+  return Number.isFinite(n) && n >= 2 && n <= 24 ? n : null;
+}
+
+/**
+ * Lieferanten-Einheiten je Amazon-Verkauf. Von Hand gesetzt gewinnt; sonst aus dem Amazon-Titel,
+ * geteilt durch den Inhalt der Lieferanten-Einheit (ist sie selbst ein 2er-Set, braucht ein 2er-Set
+ * bei Amazon nur 1 davon).
+ */
+export function unitsPerSale(o: { amazonTitle?: string | null; supplierTitle?: string | null; supplierUrl?: string | null; override?: number | null }): { units: number; auto: boolean } {
+  if (o.override && o.override >= 1) return { units: Math.round(o.override), auto: false };
+  const n = amazonPackQty(o.amazonTitle);
+  if (!n) return { units: 1, auto: true };
+  // Nur der Inhalt einer Lieferanten-Einheit („2er-Pack“) – „15 x 136 g“ beim Lieferanten ist der Karton.
+  const inner = packInfo(o.supplierTitle ?? "", o.supplierUrl).inner;
+  return { units: inner && inner > 1 && n % inner === 0 ? n / inner : n, auto: true };
 }
 
 /** Kurztext für die Spalte „pack“: „24 × 9g“, „Karton 18 · je 5er-Pack“. */

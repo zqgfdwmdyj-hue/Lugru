@@ -292,6 +292,7 @@ export type LookupOffer = {
   url: string | null;
   pack: string | null;
   market: OfferMarket | null;
+  amazonQty: number | null;
   active: boolean;
   lastSeenAt: Date | null;
   lastImportAt: Date | null;
@@ -313,7 +314,7 @@ export async function lookupOffers(tenantId: string, q: string, feedIds?: string
     select o.id, o.feed_id as "feedId", f.name as "feedName", coalesce(s.name, s.code) as supplier, f.prices_gross as "pricesGross",
            f.mapping->>'costPct' as cost_pct, f.mapping->>'vatPct' as vat_pct,
            o.supplier_sku as "supplierSku", o.ean, coalesce(o.asin, o.market->>'asin') as asin, o.title, o.price::float as price, o.stock, o.moq, o.url, o.pack,
-           o.market, o.active, o.last_seen_at as "lastSeenAt", f.last_import_at as "lastImportAt"
+           o.market, o.amazon_qty as "amazonQty", o.active, o.last_seen_at as "lastSeenAt", f.last_import_at as "lastImportAt"
       from supplier_offers o
       join supplier_feeds f on f.id = o.feed_id
       left join suppliers s on s.id = f.supplier_id
@@ -383,7 +384,7 @@ export async function profitableOffers(tenantId: string, feedId: string, opts: {
   const s = await getSettings(tenantId);
   const offers = await db.select().from(O).where(and(eq(O.tenantId, tenantId), eq(O.feedId, feedId), eq(O.active, true), sql`${O.market}->>'asin' is not null`));
   return offers
-    .map((o) => ({ o, e: econOf({ price: o.price, title: o.title, url: o.url, market: o.market, pricesGross: feed.pricesGross, costPct: Number(feed.mapping.costPct || 0), vatPct: feed.mapping.vatPct ? Number(feed.mapping.vatPct) : null }, s) }))
+    .map((o) => ({ o, e: econOf({ price: o.price, title: o.title, url: o.url, market: o.market, pricesGross: feed.pricesGross, costPct: Number(feed.mapping.costPct || 0), vatPct: feed.mapping.vatPct ? Number(feed.mapping.vatPct) : null, amazonQty: o.amazonQty }, s) }))
     .filter(({ e }) => e.profit !== null && e.roi !== null && e.profit >= (opts.minProfit ?? 1) && e.roi >= (opts.minRoi ?? 20))
     .sort((a, b) => (b.e.roi ?? 0) - (a.e.roi ?? 0));
 }
