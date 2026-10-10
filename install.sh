@@ -12,11 +12,13 @@ BIND_IP="${2:?IP-Adresse fehlt (z. B. die Tailscale-IP des Servers: tailscale ip
 HA_PORT="${3:-8123}"
 # Auf dem UGREEN-NAS z. B.: SMARTHOME_DIR=/volume1/docker/smarthome bash install.sh …
 DIR="${SMARTHOME_DIR:-/opt/smarthome}"
+# Liegt vorerst als eigener Branch „smarthome“ im Lugru-Repository (getrennt vom Seller-System).
+BRANCH="${SMARTHOME_BRANCH:-smarthome}"
 
 command -v git >/dev/null || { apt-get update -qq && apt-get install -y -qq git; }
 command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
 
-if [ -d "$DIR/.git" ]; then git -C "$DIR" pull --ff-only; else git clone "$REPO" "$DIR"; fi
+if [ -d "$DIR/.git" ]; then git -C "$DIR" pull --ff-only; else git clone --branch "$BRANCH" "$REPO" "$DIR"; fi
 cd "$DIR"
 
 if [ ! -f .env ] && ss -tln | grep -q ":$HA_PORT "; then

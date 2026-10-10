@@ -29,12 +29,16 @@ Internet – wer die Oberfläche erreicht, kann die Türen öffnen.
 ## Einrichtung (einmalig, ca. 45 Minuten)
 
 ### 1. Installieren
+Das Projekt liegt vorerst als **eigener Branch `smarthome`** im Lugru-Repository – ohne
+gemeinsame Historie mit dem Seller-System, eigener Ordner `/opt/smarthome` auf dem Server.
 Auf dem Server als root (die IP ist die Tailscale-Adresse des Servers, `tailscale ip -4`):
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/<name>/smarthome/main/install.sh
-bash install.sh https://github.com/<name>/smarthome.git <tailscale-ip> 8123
+REPO=https://github.com/zqgfdwmdyj-hue/lugru.git
+git clone --branch smarthome "$REPO" /opt/smarthome
+bash /opt/smarthome/install.sh "$REPO" <tailscale-ip> 8123
 ```
+(Zieht das Projekt später in ein eigenes Repository um: `SMARTHOME_BRANCH=main` setzen.)
 
 Danach im Browser `http://<tailscale-ip>:8123` öffnen und das Besitzer-Konto anlegen
 (Standort, Zeitzone Europe/Berlin, Sprache Deutsch).
@@ -122,7 +126,7 @@ DH4300 Plus). **Der DH2300 hat kein Docker** – dort Weg 2 nehmen.
    ```bash
    SMARTHOME_DIR=/volume1/docker/smarthome AUFNAHMEN_PFAD=/volume1/Ring-Aufnahmen \
    PUID=<id -u> PGID=<id -g> \
-   bash install.sh https://github.com/<name>/smarthome.git <nas-ip> 8123
+   bash install.sh https://github.com/zqgfdwmdyj-hue/lugru.git <nas-ip> 8123
    ```
    `<nas-ip>` = die Adresse des NAS im Heimnetz (z. B. `192.168.178.20`).
 4. Schritt 2 der Einrichtung (FRITZ!Box-VPN) **entfällt** – nur den FRITZ!Box-Benutzer anlegen.
