@@ -10,6 +10,9 @@ import { keepaQueue, keepaStatus, marketTrend, offerHistory } from "@/lib/suppli
 import { econOf } from "@/lib/suppliers/offer-econ";
 import { priceHint, priceStats } from "@/lib/suppliers/prices";
 import { ago, Spark } from "@/components/spark";
+import { manualBacklog, manualCheckStatus } from "@/lib/suppliers/manual-check";
+import { SubmitButton } from "@/components/submit-button";
+import { AutoRefresh } from "../finden/refresh";
 import { keepaRunAction, keepaScannedAction, pullAllAction } from "./actions";
 
 type Row = {
@@ -43,6 +46,8 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       select count(*)::int as total, count(*) filter (where market is null)::int as unchecked, max(scanned_at)::text as last
         from supplier_offers where tenant_id = ${t} and origin = 'scan' and active`)
   ).rows[0];
+  const mrun = manual ? manualCheckStatus(t) : null;
+  const backlog = manual ? await manualBacklog(t) : null;
   const res = await db.execute<Row>(sql`
     with h as (
       select offer_id, max(price)::float as max30 from supplier_offer_history
@@ -88,11 +93,15 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         <div><div className="crumb"><Link href="/lieferanten">Lieferanten</Link></div><h1>{manual ? "Chancen – manuell gezogen" : "Chancen aus den Lieferanten-Listen"}</h1></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {manual ? (
-            <form action={keepaScannedAction}><button className="btn btn-primary" type="submit" data-testid="keepa-scanned">Ungeprüfte jetzt prüfen</button></form>
+            mrun?.running ? (
+              <button className="btn btn-primary" type="button" disabled data-testid="keepa-scanned">Prüfung läuft …</button>
+            ) : (
+              <form action={keepaScannedAction}><SubmitButton label="Ungeprüfte jetzt prüfen" pendingLabel="Starte …" testId="keepa-scanned" /></form>
+            )
           ) : (
             <>
-              <form action={pullAllAction}><button className="btn" type="submit">Alle Listen jetzt abrufen</button></form>
-              <form action={keepaRunAction}><button className="btn btn-primary" type="submit">Keepa jetzt abgleichen</button></form>
+              <form action={pullAllAction}><SubmitButton className="btn" label="Alle Listen jetzt abrufen" pendingLabel="Rufe Listen ab …" /></form>
+              <form action={keepaRunAction}><SubmitButton label="Keepa jetzt abgleichen" pendingLabel="Gleiche ab … (kann dauern)" /></form>
             </>
           )}
         </div>
@@ -102,10 +111,31 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         <Link href={qs({ quelle: "manuell", lf: "" })} className={`chip${manual ? " active" : ""}`}>Manuell gezogen (Seller-Knopf){scanStats.total ? ` · ${scanStats.total}` : ""}</Link>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="chancen-msg">{sp.meldung}</div>}
+      <AutoRefresh active={Boolean(mrun?.running)} everyMs={3000} />
+      {manual && (mrun || (backlog && backlog.total > 0)) && (
+        <div className={`card card-pad stack small ${mrun?.paused ? "notice-warn" : ""}`} style={{ gap: 6 }} data-testid="manual-status">
+          {mrun?.running ? (
+            <>
+              <div><strong>⏳ Prüfung läuft:</strong> {mrun.done} von {mrun.total} geprüft · {mrun.found} gefunden{mrun.byTitle ? ` (davon ${mrun.byTitle} per Titel)` : ""} · Keepa-Tokens: {mrun.tokensLeft ?? "–"}</div>
+              <div style={{ height: 8, background: "var(--border)", borderRadius: 4, overflow: "hidden" }}><div style={{ width: `${mrun.total ? Math.round((mrun.done / mrun.total) * 100) : 0}%`, height: "100%", background: "var(--accent)" }} /></div>
+              <div className="muted">{mrun.note} Die Seite aktualisiert sich von selbst – du kannst sie auch verlassen.</div>
+            </>
+          ) : mrun ? (
+            <div>
+              <strong>{mrun.paused ? "⏸ Pausiert" : "✓ Letzte Prüfung"}</strong> {ago(mrun.finishedAt ?? mrun.startedAt)}: {mrun.done} von {mrun.total} geprüft, {mrun.found} gefunden{mrun.byTitle ? ` (${mrun.byTitle} per Titel – gegenprüfen)` : ""}. {mrun.note}
+            </div>
+          ) : null}
+          {!mrun?.running && backlog && backlog.total > 0 && (
+            <div className="muted">
+              Noch {backlog.total} ungeprüft ({backlog.withEan} mit EAN à 1 Token, {backlog.withoutEan} ohne EAN per Titel à ca. 10) – braucht ca. {backlog.tokensNeeded.toLocaleString("de-DE")} Keepa-Tokens. „Ungeprüfte jetzt prüfen“ startet sofort; sonst macht der Takt stündlich mit den übrigen Tokens weiter.
+            </div>
+          )}
+        </div>
+      )}
       {manual ? (
         <div className="grid-kpi">
           <div className="card card-pad"><div className="kpi-label">Profitabel (Filter)</div><div className="kpi-value" data-testid="manual-profitable">{list.length}</div><div className="small muted">von {best.size} gezogenen Produkten mit Amazon-Daten</div></div>
-          <div className="card card-pad"><div className="kpi-label">Noch ungeprüft</div><div className="kpi-value">{scanStats.unchecked}</div><div className="small muted">einmalige Prüfung läuft nach jedem Ziehen · ohne EAN per Titel (bis 25)</div></div>
+          <div className="card card-pad"><div className="kpi-label">Noch ungeprüft</div><div className="kpi-value">{scanStats.unchecked}</div><div className="small muted">{backlog?.withoutEan ? `davon ${backlog.withoutEan} ohne EAN (Titelsuche)` : "einmalige Prüfung läuft nach jedem Ziehen"}</div></div>
           <div className="card card-pad"><div className="kpi-label">Zuletzt gezogen</div><div className="kpi-value" style={{ fontSize: 20 }}>{scanStats.last ? ago(scanStats.last) : "–"}</div><div className="small muted">{scanStats.total} Produkte von Hand gezogen</div></div>
           <div className="card card-pad small">Gezogenes wird <strong>einmal</strong> geprüft und nicht in den täglichen Abgleich der Listen gemischt. Ziehen: Lieferant öffnen → „Seite oder Liste scannen“ (Seller-Knopf/Lesezeichen, Link, Foto).</div>
         </div>

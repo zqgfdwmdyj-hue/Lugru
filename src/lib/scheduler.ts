@@ -26,6 +26,7 @@ import { cogReminder } from "@/lib/exports/cog";
 import { detectReplies, loadMissingBrands } from "@/lib/leads/service";
 import { autoFollowUps } from "@/lib/board/service";
 import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
+import { continueManualCheck } from "@/lib/suppliers/manual-check";
 import { getSettings } from "@/lib/settings";
 import { refreshImportReminder } from "@/lib/tasks/system";
 
@@ -91,7 +92,11 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:feeds`, 29)) await step("Lieferanten-Preislisten", () => pullDueFeeds(t));
       // Fehlende Markenlisten aus dem Verpackungsregister: langsam, im Hintergrund, pausiert bei Drosselung.
       if (due(`${t}:lucid-brands`, 29)) void step("Markenlisten Verpackungsregister", () => loadMissingBrands(t, { limit: 80 }));
-      if (force || due(`${t}:keepa-feeds`, 59)) await step("Keepa-Abgleich Lieferanten", () => refreshMarket(t));
+      if (force || due(`${t}:keepa-feeds`, 59)) {
+        await step("Keepa-Abgleich Lieferanten", () => refreshMarket(t));
+        // Von Hand Gezogenes (Seller-Knopf) einmal prüfen – nur mit den Tokens, die danach übrig sind.
+        await step("Gezogenes einmal prüfen", () => continueManualCheck(t));
+      }
       // Nach dem Bestellabruf: neue Aufträge reservieren Ware → alle Kanäle auf den verfügbaren Bestand.
       if (force || due(`${t}:stock-sync`, 4)) await step("Bestandsabgleich Kanäle", () => syncChannelStock(t));
       if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));
