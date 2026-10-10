@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertDraft, paymentDaysOf, RechnungshelferDraft, ticketPrefix } from "@/lib/invoices/rechnungshelfer";
+import { convertDraft, paymentDaysOf, RechnungshelferDraft } from "@/lib/invoices/rechnungshelfer";
 
 const buyer = { name: "Ankauf Test GmbH", street: "Teststr. 1", zip: "10115", city: "Berlin", country: "DE", vatId: "DE123456789" };
 const opts = { defaultPaymentDays: 14, kleinunternehmer: false, today: "2026-10-10" };
@@ -27,10 +27,7 @@ const konsolen = {
 };
 
 describe("Rechnungshelfer", () => {
-  it("Ticket → Server-Präfix, Zahlungsziel", () => {
-    expect(ticketPrefix("sieben-12747")).toBe("sieben");
-    expect(ticketPrefix("drittserver-14181")).toBe("drittserver");
-    expect(ticketPrefix("Mein Server-77")).toBe("mein server");
+  it("Zahlungsziel", () => {
     expect(paymentDaysOf({ payment_term: "Instant", payment_term_days: null })).toBe(0);
     expect(paymentDaysOf({ payment_term: "60 Tage", payment_term_days: null })).toBe(60);
     expect(paymentDaysOf({ payment_term: "60 Tage", payment_term_days: 60 })).toBe(60);
@@ -50,9 +47,9 @@ describe("Rechnungshelfer", () => {
     expect(r.totals.gross).toBe(2008.48);
   });
 
-  it("ohne Kunden: Entwurf mit Hinweis", () => {
+  it("ohne Rechnungsempfänger: Entwurf mit Hinweis", () => {
     const r = convertDraft(RechnungshelferDraft.parse(konsolen), null, opts);
-    expect(r.warnings).toEqual(["Kunde für „sieben“ noch nicht festgelegt."]);
+    expect(r.warnings).toEqual(["Rechnungsempfänger noch nicht festgelegt."]);
   });
 
   it("Reverse Charge: Konsolen ohne USt, Zubehör mit USt", () => {

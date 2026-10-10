@@ -3,7 +3,7 @@ import { computeB2b, looksLikeRc13bGoods, suggestTaxCase, type B2bInput } from "
 
 // „Rechnungshelfer“ (Discord-Ankaufserver, JSON-Export per Webhook): Aus dem gesendeten
 // Rechnungsentwurf wird eine B2B-Rechnung im eigenen Nummernkreis. Der Käufer steht nicht im JSON –
-// er ergibt sich aus dem Server (Ticket-Präfix, z. B. „sieben-12747“ → „sieben“).
+// alle Rechnungen gehen an einen fest eingestellten Rechnungsempfänger (den Ankäufer).
 
 const money = z.coerce.number().refine(Number.isFinite, "keine Zahl");
 const day = z
@@ -44,11 +44,6 @@ export const RechnungshelferDraft = z.looseObject({
   delivery: z.looseObject({ date: day, date_until: day }).nullish(),
 });
 export type RechnungshelferDraft = z.infer<typeof RechnungshelferDraft>;
-
-/** Ticket „sieben-12747“ → Server-Präfix „sieben“ (bestimmt den Kunden). */
-export function ticketPrefix(ticket: string): string {
-  return ticket.trim().toLowerCase().replace(/[-_ ]*#?\d+$/, "") || ticket.trim().toLowerCase();
-}
 
 /** „Instant“/„sofort“ → 0, „60 Tage“ → 60; sonst die Angabe in Tagen. */
 export function paymentDaysOf(d: Pick<RechnungshelferDraft, "payment_term" | "payment_term_days">): number | null {
@@ -149,6 +144,6 @@ export function convertDraft(d: RechnungshelferDraft, buyer: BuyerForDraft | nul
   if (botGross !== null && Math.abs(botGross - own.totalGross) > tolerance && input.taxCase === "domestic") {
     warnings.push(`Brutto laut Rechnungshelfer ${euro(botGross)}, eigene Berechnung ${euro(own.totalGross)} – bitte prüfen.`);
   }
-  if (!buyer) warnings.push(`Kunde für „${ticketPrefix(d.ticket)}“ noch nicht festgelegt.`);
+  if (!buyer) warnings.push("Rechnungsempfänger noch nicht festgelegt.");
   return { input, warnings, totals: { net: own.totalNet, gross: own.totalGross } };
 }

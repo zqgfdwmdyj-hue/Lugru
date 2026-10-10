@@ -9,10 +9,10 @@ import { getInvoiceSettings } from "@/lib/ebay/invoices/store";
 import type { InvoiceRecord } from "@/lib/ebay/invoices/types";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { createB2bInvoice, mailB2bInvoice } from "./outgoing";
-import { convertDraft, RechnungshelferDraft, ticketPrefix, type BuyerForDraft, type DraftConversion } from "./rechnungshelfer";
+import { convertDraft, RechnungshelferDraft, type BuyerForDraft, type DraftConversion } from "./rechnungshelfer";
 
-// Rechnungshelfer-Webhook: Entwürfe annehmen, Kunden zuordnen, Rechnung erstellen (von Hand
-// nach Prüfung oder automatisch, wenn nichts zu prüfen ist).
+// Rechnungshelfer-Webhook: Entwürfe annehmen, Rechnung an den eingestellten Rechnungsempfänger
+// erstellen (von Hand nach Prüfung oder automatisch, wenn nichts zu prüfen ist).
 
 const D = schema.invoiceDrafts;
 const C = schema.customers;
@@ -49,8 +49,8 @@ export async function tenantForRhToken(token: string): Promise<string | null> {
   return t?.id ?? null;
 }
 
-async function customerFor(tenantId: string, cfg: RhConfig, ticket: string) {
-  const id = cfg.prefixes?.[ticketPrefix(ticket)] ?? cfg.defaultCustomerId ?? null;
+async function customerFor(tenantId: string, cfg: RhConfig) {
+  const id = cfg.customerId ?? null;
   if (!id) return null;
   const [c] = await db.select().from(C).where(and(eq(C.tenantId, tenantId), eq(C.id, id)));
   return c ?? null;
@@ -77,7 +77,7 @@ export async function draftConversion(tenantId: string, row: DraftRow, customerI
     ? ((await db.select().from(C).where(and(eq(C.tenantId, tenantId), eq(C.id, customerId))))[0] ?? null)
     : row.customerId
       ? ((await db.select().from(C).where(and(eq(C.tenantId, tenantId), eq(C.id, row.customerId))))[0] ?? null)
-      : await customerFor(tenantId, cfg, row.ticket);
+      : await customerFor(tenantId, cfg);
   const conv = convertDraft(d, c ? asBuyer(c) : null, { defaultPaymentDays: s.paymentDays ?? 14, kleinunternehmer: Boolean(s.kleinunternehmer), today: new Date().toISOString().slice(0, 10) });
   return { ...conv, customerId: c?.id ?? null };
 }
@@ -116,7 +116,7 @@ export async function receiveRechnungshelfer(tenantId: string, body: unknown): P
       return { status: "erstellt", draftId: created.id, number: created.invoiceNumber ?? undefined, message: `Rechnung ${created.invoiceNumber} wurde für dieses Ticket schon erstellt.` };
     }
     const cfg = await rhConfig(tenantId);
-    const customer = await customerFor(tenantId, cfg, ticket);
+    const customer = await customerFor(tenantId, cfg);
     const values = { payload: body as Record<string, unknown>, customerId: customer?.id ?? null, error: null, updatedAt: new Date() };
     let row: DraftRow;
     if (open) [row] = await db.update(D).set(values).where(eq(D.id, open.id)).returning();
@@ -171,11 +171,10 @@ export async function createFromDraft(tenantId: string, draftId: string, input: 
       error = `Mail an den Kunden ging nicht: ${e instanceof Error ? e.message : String(e)}`;
     }
   }
-  // Kunde für diesen Server merken, damit die nächsten Tickets ihn gleich haben.
+  // Noch kein Rechnungsempfänger eingestellt → den gewählten Kunden für die nächsten Tickets merken.
   const [c] = await db.select({ id: C.id }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.name, input.buyer.name.trim())));
   const cfg = await rhConfig(tenantId);
-  const prefix = ticketPrefix(row.ticket);
-  if (c && !cfg.prefixes?.[prefix]) await saveRhConfig(tenantId, { prefixes: { ...(cfg.prefixes ?? {}), [prefix]: c.id } });
+  if (c && !cfg.customerId) await saveRhConfig(tenantId, { customerId: c.id });
   await db.update(D).set({ status: "erstellt", invoiceId: inv.id, invoiceNumber: inv.number, customerId: c?.id ?? row.customerId, error, updatedAt: new Date() }).where(eq(D.id, draftId));
   await refreshTask(tenantId);
   return inv;

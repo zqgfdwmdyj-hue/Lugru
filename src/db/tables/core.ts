@@ -116,7 +116,7 @@ export type TenantSettings = {
   mail?: { defaultSenderId?: string; leadSenderId?: string };
   /**
    * Rechnungshelfer (Discord-Ankaufserver, JSON-Webhook): Schlüssel nur als SHA-256,
-   * Kunde je Server (Ticket-Präfix), automatisch erstellen ja/nein.
+   * fester Rechnungsempfänger (Ankäufer), automatisch erstellen ja/nein.
    */
   rechnungshelfer?: {
     tokenHash?: string;
@@ -124,8 +124,7 @@ export type TenantSettings = {
     tokenCreatedAt?: string;
     auto?: boolean;
     mailCustomer?: boolean;
-    defaultCustomerId?: string | null;
-    prefixes?: Record<string, string>;
+    customerId?: string | null;
     lastReceivedAt?: string;
   };
   /** Themen-Recherche für die Wissensdatenbank. */

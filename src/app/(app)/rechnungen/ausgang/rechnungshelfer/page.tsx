@@ -2,7 +2,6 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { requireArea } from "@/lib/auth/session";
 import { listCustomers } from "@/lib/invoices/customers";
-import { ticketPrefix } from "@/lib/invoices/rechnungshelfer";
 import { draftConversion, listDrafts, rhConfig } from "@/lib/invoices/rechnungshelfer-service";
 import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -38,15 +37,8 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
       : [],
   );
   const name = (id?: string | null) => customers.find((c) => c.id === id)?.name;
-  const prefixes = [...new Set([...Object.keys(cfg.prefixes ?? {}), ...drafts.map((d) => ticketPrefix(d.ticket))])].sort();
   const open = rows.filter((r) => r.d.status === "offen").length;
 
-  const customerSelect = (nameAttr: string, value: string | null | undefined, id: string, empty = "– keiner –") => (
-    <select className="select" name={nameAttr} id={id} defaultValue={value ?? ""}>
-      <option value="">{empty}</option>
-      {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? `, ${c.city}` : ""}</option>)}
-    </select>
-  );
 
   return (
     <>
@@ -78,7 +70,7 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
                   <td className="small" style={{ maxWidth: 280 }}>{(p.positions ?? []).map((x, i) => <div key={i}>{x.quantity}× {x.product_name}</div>)}</td>
                   <td className="num right">{formatEuro(net)}</td>
                   <td className="num right">{formatEuro(gross)}</td>
-                  <td className="small">{name(conv?.customerId ?? d.customerId) ?? <span style={{ color: "var(--warn)" }}>noch offen</span>}</td>
+                  <td className="small">{name(conv?.customerId ?? d.customerId) ?? <span style={{ color: "var(--warn)" }}>nicht festgelegt</span>}</td>
                   <td className="small" style={{ maxWidth: 320 }}>
                     <span className={`tag ${STATUS[d.status]?.tag ?? "tag-neutral"}`}>{STATUS[d.status]?.label ?? d.status}</span>
                     {d.invoiceNumber && <> <a className="num" href={`/rechnungen/ausgang/${d.invoiceId}/pdf`} target="_blank" rel="noreferrer">{d.invoiceNumber}</a></>}
@@ -109,7 +101,7 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
           <ol className="small" style={{ margin: 0, paddingLeft: 18 }}>
             <li>Schlüssel erzeugen und kopieren.</li>
             <li>In Discord auf dem Dashboard-Server <span className="num">/webhook_pull</span> ausführen: Webhook-URL und Auth-Header einfügen.</li>
-            <li>Unten den Kunden je Server festlegen (sonst beim ersten Entwurf auswählen – wird gemerkt).</li>
+            <li>Rechnungsempfänger festlegen (der Ankäufer – oder beim ersten Entwurf auswählen, wird gemerkt).</li>
             <li>Im Ticket „Rechnungshelfer“ → <strong>JSON</strong> drücken.</li>
           </ol>
           <div className="stack" style={{ gap: 4 }}>
@@ -121,23 +113,19 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
         </section>
 
         <section className="card card-pad stack" style={{ gap: 10 }}>
-          <h2>Kunden & Automatik</h2>
-          <div className="small muted">Im JSON steht kein Käufer – er ergibt sich aus dem Server: Ticket „sieben-12747“ → „sieben“. Kunden legst du unter <Link href="/rechnungen/kunden">Kunden</Link> an (Firma, Anschrift, USt-IdNr.).</div>
+          <h2>Rechnungsempfänger & Automatik</h2>
+          <div className="small muted">Im JSON steht kein Käufer – alle Rechnungen aus dem Rechnungshelfer gehen an diesen Kunden (den Ankäufer). Anlegen unter <Link href="/rechnungen/kunden">Kunden</Link> (Firma, Anschrift, USt-IdNr.).</div>
           <form action={settingsAction} className="stack" style={{ gap: 8 }} data-testid="rh-settings">
-            {prefixes.map((p) => (
-              <div key={p} className="field">
-                <label className="label" htmlFor={`rh-p-${p}`}>Server „{p}“</label>
-                {customerSelect(`p_${p}`, cfg.prefixes?.[p], `rh-p-${p}`, "– Standard-Kunde –")}
-              </div>
-            ))}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div className="field" style={{ flex: "0 1 150px" }}><label className="label" htmlFor="rh-np">Weiterer Server</label><input className="input" id="rh-np" name="newPrefix" placeholder="z. B. sieben" /></div>
-              <div className="field" style={{ flex: "1 1 180px" }}><label className="label" htmlFor="rh-nc">Kunde</label>{customerSelect("newCustomer", null, "rh-nc")}</div>
+            <div className="field">
+              <label className="label" htmlFor="rh-customer">Rechnungsempfänger</label>
+              <select className="select" name="customerId" id="rh-customer" defaultValue={cfg.customerId ?? ""}>
+                <option value="">– noch nicht festgelegt –</option>
+                {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? `, ${c.city}` : ""}</option>)}
+              </select>
             </div>
-            <div className="field"><label className="label" htmlFor="rh-def">Standard-Kunde (alle anderen Server)</label>{customerSelect("defaultCustomerId", cfg.defaultCustomerId, "rh-def")}</div>
             <label className="small" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
               <input type="checkbox" name="auto" defaultChecked={Boolean(cfg.auto)} data-testid="rh-auto" />
-              <span>Automatisch erstellen, wenn nichts zu prüfen ist (Kunde bekannt, Summen stimmen mit dem Rechnungshelfer überein, Reverse Charge eindeutig). Sonst bleibt es ein Entwurf.</span>
+              <span>Automatisch erstellen, wenn nichts zu prüfen ist (Empfänger festgelegt, Summen stimmen mit dem Rechnungshelfer überein, Reverse Charge eindeutig). Sonst bleibt es ein Entwurf.</span>
             </label>
             <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input type="checkbox" name="mailCustomer" defaultChecked={Boolean(cfg.mailCustomer)} />

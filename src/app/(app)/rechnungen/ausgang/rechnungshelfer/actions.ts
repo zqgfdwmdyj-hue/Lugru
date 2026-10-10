@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { createFromDraft, discardDraft, draftConversion, getDraft, newRhToken, rhConfig, saveRhConfig } from "@/lib/invoices/rechnungshelfer-service";
-import { ticketPrefix } from "@/lib/invoices/rechnungshelfer";
 
 const PATH = "/rechnungen/ausgang/rechnungshelfer";
 const back = (msg: string) => redirect(`${PATH}?${new URLSearchParams({ meldung: msg })}`);
@@ -22,24 +21,12 @@ export async function tokenAction(_prev: TokenState, _fd: FormData): Promise<Tok
   return { token };
 }
 
-/** Kunde je Discord-Server (Ticket-Präfix), Standard-Kunde, Automatik. */
+/** Rechnungsempfänger (Ankäufer) und Automatik. */
 export async function settingsAction(fd: FormData) {
   const session = await requireArea("buchhaltung");
-  const cfg = await rhConfig(session.tenantId);
-  const prefixes: Record<string, string> = {};
-  for (const [k, v] of fd.entries()) {
-    if (!k.startsWith("p_")) continue;
-    const id = String(v);
-    if (uuid.safeParse(id).success) prefixes[k.slice(2)] = id;
-  }
-  const np = ticketPrefix(String(fd.get("newPrefix") ?? ""));
-  const nc = String(fd.get("newCustomer") ?? "");
-  if (np && uuid.safeParse(nc).success) prefixes[np] = nc;
-  const def = String(fd.get("defaultCustomerId") ?? "");
+  const customerId = String(fd.get("customerId") ?? "");
   await saveRhConfig(session.tenantId, {
-    ...cfg,
-    prefixes,
-    defaultCustomerId: uuid.safeParse(def).success ? def : null,
+    customerId: uuid.safeParse(customerId).success ? customerId : null,
     auto: fd.get("auto") === "on",
     mailCustomer: fd.get("mailCustomer") === "on",
   });
@@ -55,7 +42,7 @@ export async function createNowAction(fd: FormData) {
     const row = await getDraft(session.tenantId, id);
     if (!row) return back("Entwurf nicht gefunden.");
     const conv = await draftConversion(session.tenantId, row);
-    if (!conv.customerId) return back("Erst den Kunden festlegen (Prüfen & erstellen).");
+    if (!conv.customerId) return back("Erst den Rechnungsempfänger festlegen.");
     const cfg = await rhConfig(session.tenantId);
     const inv = await createFromDraft(session.tenantId, id, conv.input, { mail: cfg.mailCustomer });
     revalidatePath("/rechnungen/ausgang");
