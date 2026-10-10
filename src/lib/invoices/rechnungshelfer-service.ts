@@ -7,9 +7,12 @@ import { ebayDb } from "@/lib/ebay/db/pg";
 import { checkB2bInput } from "@/lib/ebay/invoices/b2b";
 import { getInvoiceSettings } from "@/lib/ebay/invoices/store";
 import type { InvoiceRecord } from "@/lib/ebay/invoices/types";
+import { askClaude, modelFor } from "@/lib/ai/claude";
+import { getIntegration } from "@/lib/integrations/store";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { createB2bInvoice, mailB2bInvoice } from "./outgoing";
 import { convertDraft, RechnungshelferDraft, type BuyerForDraft, type DraftConversion } from "./rechnungshelfer";
+import { parseRechnungshelferText, SCREENSHOT_PROMPT } from "./rechnungshelfer-text";
 
 // Rechnungshelfer-Webhook: Entwürfe annehmen, Rechnung an den eingestellten Rechnungsempfänger
 // erstellen (von Hand nach Prüfung oder automatisch, wenn nichts zu prüfen ist).
@@ -197,4 +200,59 @@ export async function listDrafts(tenantId: string, limit = 100) {
 export async function openDraftCount(tenantId: string): Promise<number> {
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(D).where(and(eq(D.tenantId, tenantId), eq(D.status, "offen")));
   return n;
+}
+
+type UploadFile = { name: string; type: string; bytes: Uint8Array };
+const IMAGE = /^image\/(png|jpe?g|webp|gif)$/;
+
+/** Erstes JSON-Objekt aus einer KI-Antwort. */
+function jsonFrom(text: string): Record<string, unknown> | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ohne Webhook (z. B. als VIP nur Drag & Drop): Screenshots des Rechnungshelfers (KI liest ab),
+ * eingefügter Text aus Discord oder die JSON-Datei → Entwurf wie beim Webhook.
+ */
+export async function importRechnungshelfer(tenantId: string, input: { text?: string; files?: UploadFile[] }): Promise<ReceiveResult> {
+  const files = (input.files ?? []).filter((f) => f.bytes.length > 0);
+  const text = input.text?.trim() ?? "";
+  const json = files.find((f) => /\.json$/i.test(f.name) || f.type === "application/json");
+  const asJson = json ? new TextDecoder().decode(json.bytes) : /^\s*\{/.test(text) ? text : null;
+  if (asJson) {
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(asJson) as Record<string, unknown>;
+    } catch {
+      throw new RhInputError("Die JSON-Datei ist nicht lesbar.");
+    }
+    return receiveRechnungshelfer(tenantId, { ...body, _source: "json" });
+  }
+  const images = files.filter((f) => IMAGE.test(f.type));
+  if (images.length) {
+    if (images.length > 4) throw new RhInputError("Höchstens 4 Screenshots auf einmal.");
+    if (images.some((f) => f.bytes.length > 5 * 1024 * 1024)) throw new RhInputError("Ein Screenshot ist größer als 5 MB – bitte als JPG speichern oder zuschneiden.");
+    const cfg = await getIntegration(tenantId, "anthropic");
+    if (!cfg?.apiKey) throw new RhInputError("Screenshots liest die KI – bitte unter Anbindungen → KI (Claude) einen Schlüssel eintragen. Oder den Text aus Discord einfügen.");
+    const blocks = images.map((f) => ({ type: "image" as const, source: { type: "base64" as const, media_type: f.type.replace("jpg", "jpeg"), data: Buffer.from(f.bytes).toString("base64") } }));
+    // Beträge für eine Rechnung: das genauere Modell lesen lassen (kostet je Screenshot wenige Cent).
+    const r = await askClaude(cfg.apiKey, [...blocks, { type: "text", text: SCREENSHOT_PROMPT }], { model: modelFor(cfg, "creative"), task: "simple", maxTokens: 4000, timeoutMs: 120_000 });
+    const got = jsonFrom(r.text);
+    if (!got || got.error || !Array.isArray(got.positions) || !got.positions.length) throw new RhInputError("Auf den Screenshots wurde kein Rechnungshelfer erkannt (Pos 1 — …, Menge, Netto). Bitte die ganze Nachricht abfotografieren.");
+    const ticket = typeof got.ticket === "string" && got.ticket.trim() ? got.ticket.trim() : `discord-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`;
+    const positions = (got.positions as Record<string, unknown>[]).map((p) => ({ ...p, tax_rate: 19 }));
+    return receiveRechnungshelfer(tenantId, { ...got, type: "invoice_draft", _source: "screenshot", ticket, positions, ...(got.is_reverse_charge === true ? {} : { is_reverse_charge: null }) });
+  }
+  if (files.length) throw new RhInputError("Bitte Screenshots (PNG/JPG) oder die JSON-Datei wählen.");
+  if (!text) throw new RhInputError("Screenshot hochladen oder den Rechnungshelfer-Text einfügen.");
+  const parsed = parseRechnungshelferText(text);
+  if (!parsed) throw new RhInputError("Im Text wurde kein Rechnungshelfer erkannt – es braucht Zeilen wie „Pos 1 — Name“ und „Menge: 3 | Netto: 480,00“.");
+  return receiveRechnungshelfer(tenantId, parsed.draft);
 }

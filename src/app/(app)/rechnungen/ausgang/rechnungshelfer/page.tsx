@@ -7,6 +7,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { formatEuro } from "@/lib/numbers";
 import { createNowAction, discardAction, settingsAction } from "./actions";
+import { ImportForm } from "./import-form";
 import { Copy, TokenForm } from "./token-form";
 
 const fmt = (d: Date | string) => new Date(d).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -48,8 +49,13 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="rh-msg">{sp.meldung}</div>}
       <div className="small muted" style={{ maxWidth: 760 }}>
-        Im Ticket auf dem Ankauf-Server „Rechnungshelfer“ → Knopf <strong>JSON</strong>: Positionen, Sendungsnummern, Leistungsdatum, Zahlungsziel und Reverse Charge kommen hier als Entwurf an. Daraus wird deine Rechnung im eigenen Nummernkreis (PDF + E-Rechnung) und geht wie jede B2B-Rechnung an Stotax.
+        Aus dem „Rechnungshelfer“ im Ticket wird deine Rechnung im eigenen Nummernkreis (PDF + E-Rechnung) – sie geht wie jede B2B-Rechnung an Stotax. Ohne Webhook: Screenshot hochladen oder Text einfügen. Mit Webhook (Knopf <strong>JSON</strong> im Ticket) kommt alles von selbst.
       </div>
+
+      <section className="card card-pad stack" style={{ gap: 8 }}>
+        <h2>Einlesen (ohne Webhook)</h2>
+        <ImportForm />
+      </section>
 
       <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
         <div className="card-head"><h2>Eingang</h2>{open > 0 && <span className="tag tag-warn" data-testid="rh-open">{open} offen</span>}</div>
@@ -97,7 +103,8 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
 
       <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
         <section className="card card-pad stack" style={{ gap: 10 }} data-testid="rh-setup">
-          <h2>Einrichtung</h2>
+          <h2>Webhook (Knopf „JSON“ im Ticket)</h2>
+          <div className="small muted">Nur, wenn der Server dir den JSON-Export freischaltet (als VIP gibt es erst einmal nur Drag &amp; Drop – dann oben einlesen).</div>
           <ol className="small" style={{ margin: 0, paddingLeft: 18 }}>
             <li>Schlüssel erzeugen und kopieren.</li>
             <li>In Discord auf dem Dashboard-Server <span className="num">/webhook_pull</span> ausführen: Webhook-URL und Auth-Header einfügen.</li>

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
-import { createFromDraft, discardDraft, draftConversion, getDraft, newRhToken, rhConfig, saveRhConfig } from "@/lib/invoices/rechnungshelfer-service";
+import { createFromDraft, discardDraft, draftConversion, getDraft, importRechnungshelfer, newRhToken, rhConfig, saveRhConfig } from "@/lib/invoices/rechnungshelfer-service";
 
 const PATH = "/rechnungen/ausgang/rechnungshelfer";
 const back = (msg: string) => redirect(`${PATH}?${new URLSearchParams({ meldung: msg })}`);
@@ -58,4 +58,26 @@ export async function discardAction(fd: FormData) {
   await discardDraft(session.tenantId, uuid.parse(fd.get("id")));
   revalidatePath(PATH);
   back("Entwurf verworfen.");
+}
+
+/** Ohne Webhook: Screenshots, Text oder JSON-Datei → Entwurf, danach gleich das Formular zum Prüfen. */
+export async function importAction(fd: FormData) {
+  const session = await requireArea("buchhaltung");
+  const files = await Promise.all(
+    fd
+      .getAll("file")
+      .filter((f): f is File => f instanceof File && f.size > 0)
+      .map(async (f) => ({ name: f.name, type: f.type, bytes: new Uint8Array(await f.arrayBuffer()) })),
+  );
+  let target: string;
+  try {
+    const r = await importRechnungshelfer(session.tenantId, { text: String(fd.get("text") ?? ""), files });
+    revalidatePath(PATH);
+    revalidatePath("/rechnungen/ausgang");
+    target = r.status === "entwurf" && r.draftId ? `/rechnungen/ausgang/neu?entwurf=${r.draftId}` : `${PATH}?${new URLSearchParams({ meldung: r.message })}`;
+  } catch (e) {
+    if (isRedirect(e)) throw e;
+    return back(`Nicht eingelesen: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  redirect(target);
 }

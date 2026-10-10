@@ -42,6 +42,8 @@ export const RechnungshelferDraft = z.looseObject({
   positions: z.array(Position).min(1, "keine Positionen").max(200),
   totals: z.looseObject({ net: money.nullish(), tax: money.nullish(), gross: money.nullish() }).nullish(),
   delivery: z.looseObject({ date: day, date_until: day }).nullish(),
+  /** Wie der Entwurf ankam: Webhook (leer), eingefügter Text oder Screenshot (KI). */
+  _source: z.enum(["text", "screenshot", "json"]).nullish(),
 });
 export type RechnungshelferDraft = z.infer<typeof RechnungshelferDraft>;
 
@@ -58,7 +60,7 @@ const round = (n: number) => Math.round(n * 100) / 100;
 const fmtDay = (iso: string) => iso.split("-").reverse().join(".");
 const euro = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 
-/** Sendungen einer Position als Text: „404628079027 (3x)“. */
+/** Sendungen einer Position als Text: „900000000001 (3x)“. */
 function shipmentsOf(p: RechnungshelferDraft["positions"][number]): string {
   if (p.description?.trim()) return p.description.trim();
   return (p.trackings ?? []).map((t) => `${t.tracking_number}${t.quantity ? ` (${t.quantity}x)` : ""}`).join(", ");
@@ -80,6 +82,8 @@ export type DraftConversion = {
  */
 export function convertDraft(d: RechnungshelferDraft, buyer: BuyerForDraft | null, opts: { defaultPaymentDays: number; kleinunternehmer: boolean; today: string }): DraftConversion {
   const warnings: string[] = [];
+  if (/^discord-\d+$/.test(d.ticket)) warnings.push("Kein Ticket erkannt – bitte die Referenz (Ticket) im Formular ergänzen.");
+  if (d._source === "screenshot") warnings.push("Aus Screenshot gelesen – Positionen, Mengen und Beträge bitte mit Discord vergleichen.");
   const rc = Boolean(d.is_reverse_charge);
   const lines: B2bInput["lines"] = d.positions.map((p) => {
     const ship = shipmentsOf(p);
@@ -136,7 +140,7 @@ export function convertDraft(d: RechnungshelferDraft, buyer: BuyerForDraft | nul
   };
 
   const own = computeB2b(input, opts.kleinunternehmer);
-  if (!rc && own.rc13b.applies) warnings.push(`Handys/Tablets/Konsolen/Chips zusammen ${euro(own.rc13b.deviceNet)} netto – laut Rechnungshelfer kein Reverse Charge. § 13b prüfen.`);
+  if (d.is_reverse_charge === false && own.rc13b.applies) warnings.push(`Handys/Tablets/Konsolen/Chips zusammen ${euro(own.rc13b.deviceNet)} netto – laut Rechnungshelfer kein Reverse Charge. § 13b prüfen.`);
   if (rc && input.taxCase === "domestic" && !own.rc13b.applies) warnings.push("Reverse Charge laut Rechnungshelfer – bitte prüfen, ob § 13b greift.");
   const botGross = typeof d.totals?.gross === "number" ? round(d.totals.gross) : null;
   // Der Rechnungshelfer rundet je Position, hier wird die USt auf die Summe gerechnet → Cent-Differenzen sind normal.
