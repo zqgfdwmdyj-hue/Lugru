@@ -112,7 +112,8 @@ Es gibt zwei Wege. Beide funktionieren mit demselben Projekt, nur die `.env` ist
 ### Weg 1 (empfohlen): Alles läuft auf dem NAS
 Das NAS steht im Heimnetz. Damit entfällt der WireGuard-Tunnel zur FRITZ!Box, die Videos
 liegen direkt auf den NAS-Platten, und später kommen Matter-/Zigbee-Geräte ohne Zusatzgerät
-dazu. Voraussetzung: ein Modell mit **UGOS Pro und Docker** (z. B. DXP2800/4800/6800).
+dazu. Voraussetzung: ein Modell mit **UGOS Pro und Docker** (z. B. DXP2800/4800/6800,
+DH4300 Plus). **Der DH2300 hat kein Docker** – dort Weg 2 nehmen.
 
 1. UGOS Pro → **App Center → Docker** installieren; **Systemsteuerung → Terminal → SSH**
    aktivieren.
@@ -129,11 +130,17 @@ dazu. Voraussetzung: ein Modell mit **UGOS Pro und Docker** (z. B. DXP2800/4800/
    `<nas-ip>` die Tailscale-Adresse verwenden; oder die FRITZ!Box-VPN aufs Handy.
 6. In der FRITZ!Box dem NAS eine feste IP geben (Heimnetz → Netzwerk → Gerät bearbeiten).
 
-### Weg 2: Home Assistant auf dem Server, Videos auf dem NAS
-Setzt den WireGuard-Tunnel aus Schritt 2 voraus. Auf dem Server die NAS-Freigabe einbinden:
+### Weg 2: Home Assistant auf dem Server, Videos auf dem NAS (z. B. DH2300)
+Setzt den WireGuard-Tunnel aus Schritt 2 voraus.
+
+Auf dem NAS (UGOS): Freigabe **„Ring-Aufnahmen“** anlegen, einen eigenen Benutzer
+`ring-archiv` nur mit Schreibrecht auf diese Freigabe anlegen, **SMB** einschalten
+(Systemsteuerung → Dateidienste) und dem NAS in der FRITZ!Box eine feste IP geben.
+
+Auf dem Server die NAS-Freigabe einbinden:
 ```bash
 apt-get install -y cifs-utils
-printf 'username=<nas-benutzer>\npassword=<passwort>\n' > /root/.nas-ring && chmod 600 /root/.nas-ring
+printf 'username=ring-archiv\npassword=<passwort>\n' > /root/.nas-ring && chmod 600 /root/.nas-ring
 mkdir -p /mnt/nas-ring
 echo '//<nas-ip>/Ring-Aufnahmen /mnt/nas-ring cifs credentials=/root/.nas-ring,uid=1000,gid=1000,_netdev,x-systemd.automount 0 0' >> /etc/fstab
 mount -a
