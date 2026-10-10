@@ -1,0 +1,18 @@
+{
+  "name": "ring-archiv",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lädt Ring-Aufnahmen aus der Cloud und speichert sie dauerhaft lokal.",
+  "scripts": {
+    "start": "node src/index.js",
+    "anmelden": "node src/anmelden.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ring-client-api": "14.3.0"
+  }
+}

@@ -1,0 +1,29 @@
+# Smart-Home-Zentrale: Home Assistant + Ring-Archiv.
+# Unabhängig vom Seller-System – eigener Ordner, eigene Container, eigener Port.
+# Start: docker compose up -d --build   (Einrichtung: siehe README.md)
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+    ports:
+      # Nur auf der privaten Adresse (z. B. Tailscale) – Türschlösser gehören nicht offen ins Internet.
+      - "${BIND_IP:?BIND_IP fehlt}:${HA_PORT:-8123}:8123"
+    volumes:
+      - ./homeassistant:/config
+      - ./aufnahmen:/media/ring:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  ring-archiv:
+    build: ./ring-archiv
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin
+      INTERVALL_MINUTEN: ${RING_INTERVALL_MINUTEN:-5}
+      RUECKBLICK_TAGE: ${RING_RUECKBLICK_TAGE:-7}
+      AUFBEWAHRUNG_TAGE: ${RING_AUFBEWAHRUNG_TAGE:-90}
+      HA_WEBHOOK_URL: http://homeassistant:8123/api/webhook/${RING_WEBHOOK_ID:-}
+    volumes:
+      - ./aufnahmen:/aufnahmen
+      - ./ring-daten:/data

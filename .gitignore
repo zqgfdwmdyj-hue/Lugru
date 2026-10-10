@@ -1,0 +1,8 @@
+.env
+aufnahmen/
+ring-daten/
+node_modules/
+# Von Home Assistant selbst verwaltet (Oberfläche, Datenbank, Zugangsdaten):
+homeassistant/*
+!homeassistant/configuration.yaml
+!homeassistant/packages/

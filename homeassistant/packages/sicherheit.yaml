@@ -1,0 +1,247 @@
+# Sicherheit & Komfort – funktioniert ohne feste Gerätenamen: Die Regeln finden Schlösser
+# (lock.*), Thermostate (climate.*), Batterien und Ring-Ereignisse selbst.
+# Einstellungen (Schalter, Handys) stehen in der Oberfläche unter Einstellungen → Helfer.
+
+input_text:
+  handys:
+    name: Benachrichtigungen an (z. B. mobile_app_iphone_max, durch Komma getrennt)
+    icon: mdi:cellphone-message
+    max: 255
+
+input_boolean:
+  meldung_jede_tueroeffnung:
+    name: Bei jeder Türöffnung benachrichtigen
+    icon: mdi:door-open
+  heizung_abwesend_absenken:
+    name: Heizung absenken, wenn niemand zu Hause ist
+    icon: mdi:radiator
+
+template:
+  - binary_sensor:
+      # Ohne eingerichtete Personen gilt „zu Hause“ – so gibt es keine Fehlalarme.
+      - name: Jemand zu Hause
+        unique_id: jemand_zu_hause
+        device_class: presence
+        state: >
+          {% set p = states.person | list %}
+          {{ p | count == 0 or p | selectattr('state', 'eq', 'home') | list | count > 0 }}
+
+script:
+  benachrichtigen:
+    alias: Benachrichtigen (alle Handys)
+    mode: queued
+    fields:
+      titel:
+        description: Überschrift
+      nachricht:
+        description: Text
+      aktionen:
+        description: Optionale Knöpfe in der Benachrichtigung
+        default: []
+    sequence:
+      - variables:
+          ziele: >
+            {{ states('input_text.handys').split(',') | map('trim')
+               | reject('in', ['', 'unknown', 'unavailable']) | list }}
+      - if: "{{ ziele | count == 0 }}"
+        then:
+          # Noch kein Handy eingetragen → Meldung in der Seitenleiste von Home Assistant.
+          - action: persistent_notification.create
+            data:
+              title: "{{ titel }}"
+              message: "{{ nachricht }}"
+        else:
+          - repeat:
+              for_each: "{{ ziele }}"
+              sequence:
+                - action: "notify.{{ repeat.item }}"
+                  continue_on_error: true
+                  data:
+                    title: "{{ titel }}"
+                    message: "{{ nachricht }}"
+                    data:
+                      actions: "{{ aktionen | default([]) }}"
+
+automation:
+  - id: ring_klingel
+    alias: Ring – Es hat geklingelt
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: state_changed
+    conditions:
+      - condition: template
+        value_template: &ring_ereignis >
+          {% set d = trigger.event.data %}
+          {{ d.entity_id.startswith('event.')
+             and d.new_state is not none and d.old_state is not none
+             and d.old_state.state != 'unavailable'
+             and d.new_state.state not in ['unknown', 'unavailable']
+             and d.entity_id in integration_entities('ring') }}
+      - "{{ trigger.event.data.new_state.attributes.event_type == 'ding' }}"
+    actions:
+      - action: script.benachrichtigen
+        data:
+          titel: Es hat geklingelt
+          nachricht: >
+            {{ trigger.event.data.new_state.name }} – {{ now().strftime('%H:%M') }} Uhr
+
+  - id: ring_bewegung_abwesend
+    alias: Ring – Bewegung, während niemand zu Hause ist
+    # Höchstens eine Meldung alle 2 Minuten.
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: event
+        event_type: state_changed
+    conditions:
+      - condition: template
+        value_template: *ring_ereignis
+      - "{{ trigger.event.data.new_state.attributes.event_type == 'motion' }}"
+      - condition: state
+        entity_id: binary_sensor.jemand_zu_hause
+        state: "off"
+    actions:
+      - action: script.benachrichtigen
+        data:
+          titel: Bewegung erkannt – niemand zu Hause
+          nachricht: >
+            {{ trigger.event.data.new_state.name }} – {{ now().strftime('%H:%M') }} Uhr.
+            Video wird automatisch im Archiv gespeichert.
+      - delay: "00:02:00"
+
+  - id: tuer_geoeffnet
+    alias: Schloss – Tür geöffnet
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: state_changed
+    conditions:
+      - condition: template
+        value_template: >
+          {% set d = trigger.event.data %}
+          {{ d.entity_id.startswith('lock.')
+             and d.new_state is not none and d.old_state is not none
+             and d.old_state.state == 'locked'
+             and d.new_state.state in ['unlocked', 'open', 'opening', 'unlocking'] }}
+      # Immer melden, wenn niemand zu Hause ist – sonst nur, wenn der Schalter an ist.
+      - condition: or
+        conditions:
+          - condition: state
+            entity_id: binary_sensor.jemand_zu_hause
+            state: "off"
+          - condition: state
+            entity_id: input_boolean.meldung_jede_tueroeffnung
+            state: "on"
+    actions:
+      - action: script.benachrichtigen
+        data:
+          titel: >
+            {{ 'Achtung: Tür geöffnet, niemand zu Hause'
+               if is_state('binary_sensor.jemand_zu_hause', 'off') else 'Tür geöffnet' }}
+          nachricht: >
+            {{ trigger.event.data.new_state.name }} – {{ now().strftime('%H:%M') }} Uhr
+          aktionen:
+            - action: ALLE_ABSCHLIESSEN
+              title: Abschließen
+
+  - id: schloss_lange_offen
+    alias: Schloss – länger als 10 Minuten offen
+    triggers:
+      - trigger: template
+        value_template: >
+          {{ states.lock | selectattr('state', 'in', ['unlocked', 'open']) | list | count > 0 }}
+        for: "00:10:00"
+    actions:
+      - action: script.benachrichtigen
+        data:
+          titel: Schloss noch offen
+          nachricht: >
+            Seit über 10 Minuten offen:
+            {{ states.lock | selectattr('state', 'in', ['unlocked', 'open'])
+               | map(attribute='name') | join(', ') }}
+          aktionen:
+            - action: ALLE_ABSCHLIESSEN
+              title: Abschließen
+
+  - id: aktion_alle_abschliessen
+    alias: Knopf „Abschließen“ in der Benachrichtigung
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: ALLE_ABSCHLIESSEN
+    variables:
+      offen: >
+        {{ states.lock | selectattr('state', 'in', ['unlocked', 'open'])
+           | map(attribute='entity_id') | list }}
+    conditions:
+      - "{{ offen | count > 0 }}"
+    actions:
+      - action: lock.lock
+        target:
+          entity_id: "{{ offen }}"
+
+  - id: batterien_pruefen
+    alias: Batterien – täglich prüfen
+    triggers:
+      - trigger: time
+        at: "18:00:00"
+    variables:
+      leer: >
+        {% set ns = namespace(l=[]) %}
+        {% for s in states.sensor
+             if s.attributes.device_class == 'battery' and s.state | is_number and s.state | float < 20 %}
+          {% set ns.l = ns.l + [s.name ~ ' (' ~ s.state ~ ' %)'] %}
+        {% endfor %}
+        {% for s in states.binary_sensor
+             if s.attributes.device_class == 'battery' and s.state == 'on' %}
+          {% set ns.l = ns.l + [s.name] %}
+        {% endfor %}
+        {{ ns.l }}
+    conditions:
+      - "{{ leer | count > 0 }}"
+    actions:
+      - action: script.benachrichtigen
+        data:
+          titel: Batterie fast leer
+          nachricht: "{{ leer | join(', ') }}"
+
+  - id: heizung_abwesend
+    alias: Heizung – absenken, wenn alle weg sind
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.jemand_zu_hause
+        to: "off"
+        for: "00:30:00"
+        id: weg
+      - trigger: state
+        entity_id: binary_sensor.jemand_zu_hause
+        to: "on"
+        id: da
+    conditions:
+      - condition: state
+        entity_id: input_boolean.heizung_abwesend_absenken
+        state: "on"
+      - "{{ states.climate | count > 0 }}"
+    actions:
+      # FRITZ!DECT: „eco“ = Absenktemperatur, „comfort“ = Komforttemperatur aus der FRITZ!Box.
+      - action: climate.set_preset_mode
+        continue_on_error: true
+        target:
+          entity_id: "{{ states.climate | map(attribute='entity_id') | list }}"
+        data:
+          preset_mode: "{{ 'eco' if trigger.id == 'weg' else 'comfort' }}"
+
+  - id: ring_archiv_meldung
+    alias: Ring-Archiv – Störung melden
+    triggers:
+      - trigger: webhook
+        webhook_id: !secret ring_archiv_webhook
+        allowed_methods: [POST]
+        local_only: true
+    actions:
+      - action: script.benachrichtigen
+        data:
+          titel: Ring-Archiv
+          nachricht: "{{ trigger.json.nachricht }}"
