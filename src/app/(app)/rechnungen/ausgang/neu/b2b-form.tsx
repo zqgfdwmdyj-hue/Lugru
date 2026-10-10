@@ -6,6 +6,20 @@ import { computeB2b, looksLikeRc13bGoods, RC13B_THRESHOLD, suggestTaxCase, TAX_C
 import type { TaxCase } from "@/lib/ebay/invoices/types";
 import { parseAmount } from "@/lib/numbers";
 
+export type DraftPrefill = {
+  id: string;
+  ticket: string;
+  customerId: string | null;
+  serviceDate: string;
+  serviceDateTo?: string;
+  paymentDays: number;
+  reference?: string;
+  note?: string;
+  rcWhole: boolean;
+  mailCustomer: boolean;
+  lines: { desc: string; qty: string; unit: string; price: string; vat: string; device: boolean }[];
+  warnings: string[];
+};
 type Customer = { id: string; name: string; contact: string; street: string; zip: string; city: string; country: string; vatId: string; email: string; customerNumber: string };
 /** `device`: § 13b-Ware; `deviceSet`: von Hand gesetzt – dann kein automatischer Vorschlag mehr. */
 type Line = { key: number; desc: string; qty: string; unit: string; price: string; vat: string; device: boolean; deviceSet?: boolean };
@@ -35,13 +49,20 @@ export function B2bForm(props: {
   hasIban: boolean;
   /** Aus der Kundenliste „Rechnung schreiben“ – Kunde vorausgewählt. */
   initialCustomerId?: string;
+  /** Entwurf aus dem Rechnungshelfer: alles vorausgefüllt, beim Erstellen wird er abgehakt. */
+  draft?: DraftPrefill;
 }) {
-  const initial = props.customers.find((x) => x.id === props.initialCustomerId);
+  const d = props.draft;
+  const initial = props.customers.find((x) => x.id === (d?.customerId ?? props.initialCustomerId));
   const [c, setC] = useState<Omit<Customer, "id">>(initial ? { ...EMPTY, ...initial } : EMPTY);
   const [taxCase, setTaxCase] = useState<TaxCase>(initial ? suggestTaxCase(initial.country, initial.vatId) : "domestic");
   const [manualTax, setManualTax] = useState(false);
-  const [lines, setLines] = useState<Line[]>([{ key: 1, desc: "", qty: "1", unit: "Stk", price: "", vat: "19", device: false }]);
-  const [rcWhole, setRcWhole] = useState(false);
+  const [lines, setLines] = useState<Line[]>(
+    d?.lines.length
+      ? d.lines.map((l, i) => ({ key: i + 1, desc: l.desc, qty: l.qty, unit: l.unit, price: l.price, vat: l.vat, device: l.device, deviceSet: true }))
+      : [{ key: 1, desc: "", qty: "1", unit: "Stk", price: "", vat: "19", device: false }],
+  );
+  const [rcWhole, setRcWhole] = useState(Boolean(d?.rcWhole));
 
   const setField = (k: keyof typeof EMPTY, v: string) => {
     const next = { ...c, [k]: v };
@@ -80,6 +101,13 @@ export function B2bForm(props: {
 
   return (
     <form action={props.action} className="stack" data-testid="b2b-form">
+      {d && (
+        <div className={`notice ${d.warnings.length ? "notice-warn" : "notice-info"} small`} data-testid="draft-note">
+          <strong>Aus dem Rechnungshelfer: Ticket {d.ticket}</strong> – Positionen, Sendungen, Leistungsdatum und Zahlungsziel sind übernommen.
+          {d.warnings.map((w, i) => <div key={i}>⚠ {w}</div>)}
+          <input type="hidden" name="draftId" value={d.id} />
+        </div>
+      )}
       <section className="card card-pad stack" style={{ gap: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
           <h2>Kunde</h2>
@@ -125,10 +153,10 @@ export function B2bForm(props: {
             </select>
             {props.kleinunternehmer && <input type="hidden" name="taxCase" value="domestic" />}
           </div>
-          <div className="field" style={{ flex: "0 1 160px" }}><label className="label" htmlFor="r-sd">Liefer-/Leistungsdatum</label><input className="input" type="date" id="r-sd" name="serviceDate" defaultValue={today()} required /></div>
-          <div className="field" style={{ flex: "0 1 160px" }}><label className="label" htmlFor="r-sd2">bis (Zeitraum, optional)</label><input className="input" type="date" id="r-sd2" name="serviceDateTo" /></div>
-          <div className="field" style={{ flex: "0 1 110px" }}><label className="label" htmlFor="r-pd">Zahlungsziel (Tage)</label><input className="input num" id="r-pd" name="paymentDays" defaultValue={props.paymentDays} /></div>
-          <div className="field" style={{ flex: "1 1 180px" }}><label className="label" htmlFor="r-ref">Ihre Referenz / Bestellnr. (optional)</label><input className="input" id="r-ref" name="reference" /></div>
+          <div className="field" style={{ flex: "0 1 160px" }}><label className="label" htmlFor="r-sd">Liefer-/Leistungsdatum</label><input className="input" type="date" id="r-sd" name="serviceDate" defaultValue={d?.serviceDate ?? today()} required /></div>
+          <div className="field" style={{ flex: "0 1 160px" }}><label className="label" htmlFor="r-sd2">bis (Zeitraum, optional)</label><input className="input" type="date" id="r-sd2" name="serviceDateTo" defaultValue={d?.serviceDateTo ?? ""} /></div>
+          <div className="field" style={{ flex: "0 1 110px" }}><label className="label" htmlFor="r-pd">Zahlungsziel (Tage)</label><input className="input num" id="r-pd" name="paymentDays" defaultValue={d?.paymentDays ?? props.paymentDays} /></div>
+          <div className="field" style={{ flex: "1 1 180px" }}><label className="label" htmlFor="r-ref">Ihre Referenz / Bestellnr. (optional)</label><input className="input" id="r-ref" name="reference" defaultValue={d?.reference ?? ""} /></div>
         </div>
         {(taxCase === "eu_supply" || taxCase === "reverse_charge") && !props.sellerVatId && (
           <div className="notice notice-warn small">Für steuerfreie EU-Rechnungen brauchst du eine eigene USt-IdNr. (Einstellungen → Rechnungen).</div>
@@ -180,12 +208,12 @@ export function B2bForm(props: {
           {free && <div className="muted">ohne Umsatzsteuer ({props.kleinunternehmer ? "§ 19 UStG" : TAX_CASE_LABEL[taxCase]})</div>}
           <div style={{ fontSize: 15 }}>Rechnungsbetrag: <strong className="num">{euro(totals.totalGross)}</strong></div>
         </div>
-        <div className="field"><label className="label" htmlFor="r-note">Hinweis auf der Rechnung (optional)</label><textarea className="textarea" id="r-note" name="note" style={{ minHeight: 50 }} /></div>
+        <div className="field"><label className="label" htmlFor="r-note">Hinweis auf der Rechnung (optional)</label><textarea className="textarea" id="r-note" name="note" style={{ minHeight: 50 }} defaultValue={d?.note ?? ""} /></div>
       </section>
 
       <section className="card card-pad stack" style={{ gap: 8 }}>
         <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="saveCustomer" defaultChecked /> Kunde für die nächste Rechnung speichern</label>
-        <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="mailCustomer" disabled={!c.email} /> Rechnung gleich an den Kunden mailen (PDF + E-Rechnung)</label>
+        <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="mailCustomer" disabled={!c.email} defaultChecked={Boolean(d?.mailCustomer)} /> Rechnung gleich an den Kunden mailen (PDF + E-Rechnung)</label>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <button className="btn" type="submit" formAction="/rechnungen/ausgang/vorschau" formTarget="_blank" formMethod="post" data-testid="preview">Vorschau (PDF)</button>
           <CreateButton nextNumber={props.nextNumber} />

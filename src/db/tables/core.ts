@@ -114,6 +114,20 @@ export type TenantSettings = {
   /** E-Mail-Versand: Standard-Absenderpostfach (Rechnungen, Nachrichten). */
   /** `leadSenderId`: zuletzt benutztes Postfach für Einkaufsanfragen (Vorgabe im Schreibfenster). */
   mail?: { defaultSenderId?: string; leadSenderId?: string };
+  /**
+   * Rechnungshelfer (Discord-Ankaufserver, JSON-Webhook): Schlüssel nur als SHA-256,
+   * Kunde je Server (Ticket-Präfix), automatisch erstellen ja/nein.
+   */
+  rechnungshelfer?: {
+    tokenHash?: string;
+    tokenHint?: string;
+    tokenCreatedAt?: string;
+    auto?: boolean;
+    mailCustomer?: boolean;
+    defaultCustomerId?: string | null;
+    prefixes?: Record<string, string>;
+    lastReceivedAt?: string;
+  };
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
 };

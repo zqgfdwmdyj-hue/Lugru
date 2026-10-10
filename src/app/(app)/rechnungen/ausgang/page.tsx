@@ -5,6 +5,7 @@ import { missingSellerData } from "@/lib/ebay/invoices/build";
 import { formatNumber } from "@/lib/ebay/invoices/numbering";
 import { getInvoiceSettings, nextSeq } from "@/lib/ebay/invoices/store";
 import { listOutgoing } from "@/lib/invoices/outgoing";
+import { openDraftCount } from "@/lib/invoices/rechnungshelfer-service";
 import { inStotaxScope, stotaxBacklog, stotaxConfig } from "@/lib/invoices/stotax";
 import { formatEuro } from "@/lib/numbers";
 import { bankAction, cancelAction, mailAction, numberingAction, stotaxPendingAction, stotaxSendAction } from "./actions";
@@ -18,7 +19,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
   const edb = ebayDb(t);
   const s = await getInvoiceSettings(edb);
   const year = new Date().getFullYear();
-  const [rows, cfg, seq] = await Promise.all([listOutgoing(t, { q: sp.q }), stotaxConfig(t), nextSeq(edb, year, s)]);
+  const [rows, cfg, seq, drafts] = await Promise.all([listOutgoing(t, { q: sp.q }), stotaxConfig(t), nextSeq(edb, year, s), openDraftCount(t)]);
   const backlog = await stotaxBacklog(t, cfg);
   const missing = missingSellerData(s);
   const pendingSince = cfg ? backlog.filter((b) => new Date(b.createdAt) >= cfg.since).length : 0;
@@ -29,11 +30,17 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
         <div><div className="crumb">Einkauf & Buchhaltung</div><h1>Ausgangsrechnungen</h1></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
           <Link className="btn btn-primary" href="/rechnungen/ausgang/neu">Neue B2B-Rechnung</Link>
+          <Link className="btn" href="/rechnungen/ausgang/rechnungshelfer">Rechnungshelfer</Link>
           <Link className="btn" href="/rechnungen/kunden">Kunden</Link>
           <Link className="btn" href="/ebay?ansicht=rechnungen">eBay-Rechnungen</Link>
         </div>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="out-msg">{sp.meldung}</div>}
+      {drafts > 0 && (
+        <div className="notice notice-warn" data-testid="rh-banner">
+          {drafts === 1 ? "1 Rechnung" : `${drafts} Rechnungen`} aus dem Rechnungshelfer {drafts === 1 ? "wartet" : "warten"} auf Prüfung – <Link href="/rechnungen/ausgang/rechnungshelfer">ansehen und erstellen</Link>.
+        </div>
+      )}
       {missing.length > 0 && (
         <div className="notice notice-warn">
           Für Rechnungen fehlen noch Absenderdaten: {missing.join(", ")} – <Link href="/ebay?ansicht=einstellungen&tab=invoices">Einstellungen → Rechnungen</Link>.

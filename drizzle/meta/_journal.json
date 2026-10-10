@@ -225,6 +225,13 @@
       "when": 1791540049173,
       "tag": "0031_absender_signatur",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791631319347,
+      "tag": "0032_rechnungshelfer",
+      "breakpoints": true
     }
   ]
 }

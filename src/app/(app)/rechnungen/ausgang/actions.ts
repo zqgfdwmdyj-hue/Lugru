@@ -10,6 +10,7 @@ import { getInvoiceSettings, nextSeq, saveInvoiceSettings } from "@/lib/ebay/inv
 import type { InvoiceSettings } from "@/lib/ebay/invoices/types";
 import { b2bInputFromForm } from "@/lib/invoices/b2b-form";
 import { cancelOutgoing, createB2bInvoice, mailB2bInvoice } from "@/lib/invoices/outgoing";
+import { createFromDraft, getDraft } from "@/lib/invoices/rechnungshelfer-service";
 import { sendPendingToStotax, sendToStotax } from "@/lib/invoices/stotax";
 import { parseAmount } from "@/lib/numbers";
 
@@ -22,8 +23,16 @@ const isRedirect = (e: unknown) => typeof (e as { digest?: string })?.digest ===
 export async function createB2bAction(fd: FormData) {
   const session = await requireArea("buchhaltung");
   const input = b2bInputFromForm(fd);
+  const draftId = String(fd.get("draftId") ?? "");
   let msg: string;
   try {
+    if (/^[0-9a-f-]{36}$/.test(draftId)) {
+      // Entwurf aus dem Rechnungshelfer: Rechnung erstellen und Entwurf abhaken.
+      const inv = await createFromDraft(session.tenantId, draftId, input, { mail: input.mailCustomer, saveCustomer: input.saveCustomer });
+      const d = await getDraft(session.tenantId, draftId);
+      revalidatePath("/rechnungen/ausgang");
+      return back(`Rechnung ${inv.number} erstellt${input.mailCustomer && !d?.error ? ` und an ${input.buyer.email} gemailt` : ""}${d?.error ? ` – ${d.error}` : ""}.`);
+    }
     const inv = await createB2bInvoice(session.tenantId, input, { saveCustomer: input.saveCustomer });
     msg = `Rechnung ${inv.number} erstellt`;
     if (input.mailCustomer) {
@@ -36,7 +45,7 @@ export async function createB2bAction(fd: FormData) {
   } catch (e) {
     if (isRedirect(e)) throw e;
     // Eingaben bleiben im Browser stehen (Zurück) – Meldung oben auf der Formularseite.
-    return back(errMsg(e), "/rechnungen/ausgang/neu");
+    return back(errMsg(e), `/rechnungen/ausgang/neu${/^[0-9a-f-]{36}$/.test(draftId) ? `?entwurf=${draftId}` : ""}`);
   }
   revalidatePath("/rechnungen/ausgang");
   back(msg + ".");
