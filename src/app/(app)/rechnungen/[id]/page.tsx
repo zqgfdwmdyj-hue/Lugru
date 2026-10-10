@@ -5,7 +5,7 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { ignoreInvoice, linkLot, saveInvoice, unlinkLot } from "../actions";
+import { ignoreInvoice, linkLot, saveInvoice, stotaxInvoiceAction, unlinkLot } from "../actions";
 
 export default async function RechnungPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ suche?: string }> }) {
   const session = await requireSession();
@@ -95,6 +95,19 @@ export default async function RechnungPage({ params, searchParams }: { params: P
               </div>
             ))}
           </section>
+          {inv.fileId && (
+            <form action={stotaxInvoiceAction} className="small" data-testid="inv-stotax">
+              <input type="hidden" name="id" value={inv.id} />
+              {inv.stotaxSentAt ? (
+                <span className="tag tag-ok">an Stotax übertragen am {new Date(inv.stotaxSentAt).toLocaleDateString("de-DE")}</span>
+              ) : (
+                <>
+                  {inv.stotaxError && <div style={{ color: "var(--danger)" }}>{inv.stotaxError}</div>}
+                  <button className="btn btn-small" type="submit">{inv.stotaxError ? "Erneut an Stotax senden" : "An Stotax senden"}</button>
+                </>
+              )}
+            </form>
+          )}
           {inv.status !== "ignored" && <form action={ignoreInvoice}><input type="hidden" name="id" value={inv.id} /><button className="btn-link small" type="submit">Ignorieren (keine Geschäftsrechnung)</button></form>}
         </aside>
       </div>

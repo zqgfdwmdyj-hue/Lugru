@@ -232,6 +232,13 @@
       "when": 1791631319347,
       "tag": "0032_rechnungshelfer",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791636871537,
+      "tag": "0033_belege_stotax",
+      "breakpoints": true
     }
   ]
 }

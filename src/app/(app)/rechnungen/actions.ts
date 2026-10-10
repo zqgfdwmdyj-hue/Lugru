@@ -7,6 +7,7 @@ import { db, schema } from "@/db";
 import { INVOICE_KINDS } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount, parseDate } from "@/lib/numbers";
+import { sendInvoiceToStotax } from "@/lib/invoices/receipts";
 import { autoMatch, ingestInvoice, refreshInvoiceTasks, syncDrive } from "@/lib/invoices/service";
 
 export type InvState = { ok: boolean; message: string } | null;
@@ -106,4 +107,17 @@ export async function ignoreInvoice(fd: FormData) {
   await db.update(schema.invoices).set({ status: "ignored", updatedAt: new Date() }).where(eq(schema.invoices.id, id));
   await refreshInvoiceTasks(session.tenantId);
   revalidatePath("/", "layout");
+}
+
+/** Eingangsrechnung (PDF) an Stotax Select senden – per Mail2Select in die Belegablage. */
+export async function stotaxInvoiceAction(fd: FormData) {
+  const session = await requireArea("buchhaltung");
+  const id = uuid.parse(fd.get("id"));
+  await own(session.tenantId, id);
+  try {
+    await sendInvoiceToStotax(session.tenantId, id);
+  } catch {
+    // Fehler steht an der Rechnung (stotax_error) und wird auf der Seite angezeigt.
+  }
+  revalidatePath(`/rechnungen/${id}`);
 }

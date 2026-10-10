@@ -1,4 +1,4 @@
-import { date, index, pgTable, primaryKey, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, files, id, lots, money, suppliers, tenantId, updatedAt } from "./core";
 
 export const INVOICE_KINDS = ["goods", "expense", "unknown"] as const;
@@ -9,7 +9,8 @@ export const invoices = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    source: text("source", { enum: ["drive", "upload"] }).notNull(),
+    /** „scan“: Kassenzettel/Beleg mit dem Handy fotografiert. */
+    source: text("source", { enum: ["drive", "upload", "scan"] }).notNull(),
     externalId: text("external_id"),
     fileName: text("file_name").notNull(),
     fileId: uuid("file_id").references(() => files.id, { onDelete: "set null" }),
@@ -25,6 +26,12 @@ export const invoices = pgTable(
     totalNet: money("total_net"),
     currency: text("currency").notNull().default("EUR"),
     textExcerpt: text("text_excerpt"),
+    /** Händler/Aussteller (bei Belegen von der KI gelesen). */
+    vendor: text("vendor"),
+    /** Stand der Übertragung an Stotax Select (Mail2Select). */
+    stotaxSentAt: timestamp("stotax_sent_at", { withTimezone: true }),
+    stotaxTriedAt: timestamp("stotax_tried_at", { withTimezone: true }),
+    stotaxError: text("stotax_error"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
