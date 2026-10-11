@@ -598,9 +598,11 @@ const kartenMarker = {};
 function karteInit() {
   if (karte || !window.L) return;
   karte = L.map("karte", { zoomControl: true }).setView([40, 10], 4);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  // OpenStreetMap verlangt eine Herkunftsangabe (Referer); eigener Kartendienst über KARTEN_KACHELN.
+  L.tileLayer(zustand.info.kacheln || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    referrerPolicy: "strict-origin-when-cross-origin",
+    attribution: zustand.info.kachelnHinweis || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(karte);
   ebene = L.layerGroup().addTo(karte);
 }

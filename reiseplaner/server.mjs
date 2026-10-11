@@ -175,6 +175,8 @@ async function apiOffen(req, res, url, benutzer) {
       ki: ki.kiAktiv(),
       gyg: Boolean(GYG_KEY),
       gygPartnerId: process.env.GYG_PARTNER_ID ?? "",
+      kacheln: process.env.KARTEN_KACHELN || "",
+      kachelnHinweis: process.env.KARTEN_HINWEIS || "",
     });
   }
   if (p === "/api/einrichtung" && req.method === "POST") {
@@ -652,7 +654,7 @@ async function statisch(req, res, url) {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     return res.end("Nicht gefunden");
   }
-  res.writeHead(200, { "content-type": MIME[path.extname(voll)] ?? "application/octet-stream", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
+  res.writeHead(200, { "content-type": MIME[path.extname(voll)] ?? "application/octet-stream", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "strict-origin-when-cross-origin", "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
   createReadStream(voll).pipe(res);
 }
 

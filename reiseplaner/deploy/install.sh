@@ -36,6 +36,8 @@ KI_MODELL=
 GYG_API_KEY=
 GYG_PARTNER_ID=
 REISE_DOMAIN=
+KARTEN_KACHELN=
+KARTEN_HINWEIS=
 EOT
   echo "==> .env angelegt ($DIR/reiseplaner/.env) – Schlüssel und Adresse dort eintragen."
 fi
