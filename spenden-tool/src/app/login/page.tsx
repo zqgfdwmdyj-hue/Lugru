@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { isLoggedIn } from "@/lib/auth";
+import { hasAdmin, isLoggedIn } from "@/lib/auth";
 import { LoginForm } from "./login-form";
 
 export default async function LoginPage() {
@@ -12,7 +12,7 @@ export default async function LoginPage() {
           Spenden-Tool
         </div>
         <h1 style={{ fontSize: 22, marginBottom: 18 }}>Anmelden</h1>
-        <LoginForm />
+        <LoginForm withName={await hasAdmin()} />
       </div>
     </main>
   );

@@ -57,6 +57,13 @@
       "when": 1791394493933,
       "tag": "0007_preis_stil",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791753234168,
+      "tag": "0008_benutzer",
+      "breakpoints": true
     }
   ]
 }

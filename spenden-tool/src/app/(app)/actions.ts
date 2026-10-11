@@ -14,6 +14,8 @@ import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 import { readBestBefore } from "@/lib/mhd";
+import { logActivity } from "@/lib/activity";
+import { formatDate } from "@/lib/numbers";
 import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
 
@@ -33,7 +35,7 @@ const images = (fd: FormData, k: string) => fd.getAll(k).filter((f): f is File =
 // ---------- Aktionen ----------
 
 export async function createEvent(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const eventDate = parseIsoDate(str(fd, "eventDate"));
   if (!eventDate) return;
   const [ev] = await db
@@ -56,11 +58,12 @@ export async function createEvent(fd: FormData) {
       await db.update(E).set({ collage: src.collage }).where(eq(E.id, ev.id));
     }
   }
+  await logActivity(me, `Verteilung ${formatDate(eventDate)} angelegt${copyFrom.success ? " (Produkte übernommen)" : ""}`, { eventId: ev.id });
   redirect(`/verteilung/${ev.id}`);
 }
 
 export async function updateEvent(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const id = uuid.parse(fd.get("eventId"));
   const eventDate = parseIsoDate(str(fd, "eventDate"));
   await db
@@ -75,13 +78,16 @@ export async function updateEvent(fd: FormData) {
       updatedAt: new Date(),
     })
     .where(eq(E.id, id));
+  await logActivity(me, "Eckdaten geändert", { eventId: id });
   revalidatePath(`/verteilung/${id}`);
 }
 
 export async function deleteEvent(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const id = uuid.parse(fd.get("eventId"));
+  const ev = await loadEvent(id);
   await db.delete(E).where(eq(E.id, id));
+  if (ev) await logActivity(me, `Verteilung ${formatDate(ev.eventDate)} gelöscht`);
   redirect("/");
 }
 
@@ -105,7 +111,7 @@ export async function saveTileStyles(productIds: string[], style: TileStyle | nu
  * eine Zeile entfernen oder verschieben – vorher werden die Eingaben gespeichert, damit nichts verloren geht.
  */
 export async function saveItems(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const eventId = uuid.parse(fd.get("eventId"));
   const items = await db.select().from(I).where(eq(I.eventId, eventId)).orderBy(I.sort, I.createdAt);
   const touchedPrices = new Map<string, number>();
@@ -171,15 +177,26 @@ export async function saveItems(fd: FormData) {
     for (let k = 0; k < rows.length; k++) await db.update(I).set({ sort: (k + 1) * 10 }).where(eq(I.id, rows[k].id));
   }
   await db.update(E).set({ updatedAt: new Date() }).where(eq(E.id, eventId));
+  if (op === "auto") {
+    // Automatisches Speichern einzelner Zeilen: im Protokoll die Produkte nennen.
+    const saved = items.filter((it) => fd.has(`price_${it.id}`)).map((it) => it.productId);
+    const names = saved.length ? await db.select({ name: P.name }).from(P).where(inArray(P.id, saved)) : [];
+    if (names.length) await logActivity(me, `Geändert: ${names.map((n) => (isPlaceholderName(n.name) ? "ohne Namen" : n.name)).join(", ")}`, { eventId, productId: saved.length === 1 ? saved[0] : null });
+    revalidatePath(`/verteilung/${eventId}`);
+    return;
+  }
+  const what = op === "remove" ? "Produkt aus der Liste entfernt" : op === "sort" ? "Liste sortiert" : op === "ai" ? "KI-Suche für ein Produkt gestartet" : op === "up" || op === "down" ? "Reihenfolge geändert" : "Produktliste gespeichert";
+  await logActivity(me, what, { eventId, productId: idx >= 0 ? items[idx].productId : null });
   revalidatePath(`/verteilung/${eventId}`);
 }
 
 export async function addToEvent(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const eventId = uuid.parse(fd.get("eventId"));
   if (!(await loadEvent(eventId))) return;
   const ids = fd.getAll("productId").map(String).filter((v) => uuid.safeParse(v).success);
-  await addProductsToEvent(eventId, ids);
+  const n = await addProductsToEvent(eventId, ids);
+  if (n) await logActivity(me, `${n} Produkt(e) aus der Datenbank hinzugefügt`, { eventId });
   revalidatePath(`/verteilung/${eventId}`);
 }
 
@@ -195,7 +212,7 @@ export type UploadResult = { added: number; reused: number; alreadyInEvent: numb
  * vom Handy ohne Absturz durchgehen. Gibt zurück, was angelegt, wiedererkannt oder abgelehnt wurde.
  */
 export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
-  await requireLogin();
+  const me = await requireLogin();
   const result: UploadResult = { added: 0, reused: 0, alreadyInEvent: 0, similar: 0, rejected: [] };
   const eventId = uuid.parse(fd.get("eventId"));
   if (!(await loadEvent(eventId))) return result;
@@ -235,6 +252,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   // Steht schon ein Preis auf dem Foto (alte Collage-Bilder)? Im Hintergrund ablesen und eintragen – jedes Foto
   // nur einmal, wiedererkannte Fotos gar nicht erneut.
   await startPhotoPrices(eventId, ids);
+  if (result.added + result.reused) await logActivity(me, `Fotos hochgeladen: ${result.added} neu, ${result.reused} wiedererkannt`, { eventId });
   revalidatePath(`/verteilung/${eventId}`);
   return result;
 }
@@ -268,7 +286,7 @@ export async function clearPrintedPrice(fileId: string, back: string, fd?: FormD
 // ---------- Produkte ----------
 
 export async function createProduct(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const name = str(fd, "name");
   if (!name) return;
   const image = images(fd, "image")[0];
@@ -278,6 +296,7 @@ export async function createProduct(fd: FormData) {
     .values({ name, variant: opt(fd, "variant"), category: str(fd, "category") || "Lebensmittel", price: price(fd, "price"), note: opt(fd, "note"), imageFileId })
     .returning({ id: P.id });
   const eventId = uuid.safeParse(fd.get("eventId"));
+  await logActivity(me, `Produkt „${name}“ angelegt`, { productId: p.id, eventId: eventId.success ? eventId.data : null });
   if (eventId.success && (await loadEvent(eventId.data))) {
     await addProductsToEvent(eventId.data, [p.id]);
     revalidatePath(`/verteilung/${eventId.data}`);
@@ -287,7 +306,7 @@ export async function createProduct(fd: FormData) {
 }
 
 export async function updateProduct(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const id = uuid.parse(fd.get("productId"));
   const name = str(fd, "name");
   if (!name) return;
@@ -307,6 +326,7 @@ export async function updateProduct(fd: FormData) {
       updatedAt: new Date(),
     })
     .where(eq(P.id, id));
+  await logActivity(me, `Produkt „${name}“ bearbeitet${imageFileId ? " (neues Foto)" : ""}`, { productId: id });
   const back = str(fd, "back");
   revalidatePath(`/produkte/${id}`);
   if (back.startsWith("/verteilung/")) redirect(back);
@@ -314,8 +334,10 @@ export async function updateProduct(fd: FormData) {
 
 /** Löscht ein Produkt nur, wenn es noch in keiner Aktion war – sonst wird es archiviert. */
 export async function deleteProduct(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const id = uuid.parse(fd.get("productId"));
+  const [prod] = await db.select({ name: P.name }).from(P).where(eq(P.id, id));
+  if (prod) await logActivity(me, `Produkt „${prod.name}“ gelöscht bzw. archiviert`, { productId: id });
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(I).where(eq(I.productId, id));
   if (n > 0) await db.update(P).set({ archived: true, updatedAt: new Date() }).where(eq(P.id, id));
   else await db.delete(P).where(eq(P.id, id));
@@ -324,7 +346,7 @@ export async function deleteProduct(fd: FormData) {
 
 /** Mehrere Produkte zu einem zusammenlegen (z. B. doppelt angelegt nach dem Foto-Upload). */
 export async function mergeProducts(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const keep = uuid.parse(fd.get("productId"));
   const drop = fd.getAll("mergeId").map(String).filter((v) => uuid.safeParse(v).success && v !== keep);
   if (drop.length === 0) return;
@@ -338,6 +360,7 @@ export async function mergeProducts(fd: FormData) {
      where i.product_id in (${sql.join(dropIds.map((id) => sql`${id}`), sql`, `)})
        and not exists (select 1 from event_items j where j.event_id = i.event_id and j.product_id = ${keep})`);
   await db.delete(P).where(inArray(P.id, dropIds));
+  await logActivity(me, `${dropIds.length} doppelte(s) Produkt(e) zusammengeführt`, { productId: keep });
   revalidatePath(`/produkte/${keep}`);
   revalidatePath("/produkte");
 }
@@ -369,7 +392,7 @@ export async function researchProduct(fd: FormData) {
  * letzten 60 Tagen werden übersprungen (kostet nichts extra).
  */
 export async function researchEvent(fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
   const eventId = uuid.parse(fd.get("eventId"));
   const rows = await db.select({ productId: I.productId, price: I.price, name: P.name }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.eventId, eventId)).orderBy(I.sort);
   const mode = stufe(fd);
@@ -378,6 +401,7 @@ export async function researchEvent(fd: FormData) {
   await startChecks(wanted.map((r) => r.productId), mode, { skipRecent: true });
   // Dabei auch Preise ablesen, die schon auf den Fotos stehen (jedes Foto nur einmal).
   await startPhotoPrices(eventId, rows.map((r) => r.productId));
+  await logActivity(me, `KI-Suche gestartet (${mode}, ${all ? "alle" : "nur fehlende"})`, { eventId });
   revalidatePath(`/verteilung/${eventId}`);
 }
 
@@ -439,7 +463,8 @@ export async function applySuggestion(checkId: string, eventId: string, form?: F
 
 /** Alle fertigen KI-Vorschläge einer Verteilung als Preis eintragen (nur Produkte ohne Preis). */
 export async function applyAllSuggestions(eventId: string, fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
+  await logActivity(me, "Alle KI-Vorschläge als Preis übernommen", { eventId: uuid.parse(eventId) });
   const id = uuid.parse(eventId);
   // Erst die Eingaben der Liste speichern, damit nichts verloren geht.
   await saveItems(fd);
@@ -464,7 +489,8 @@ export async function applyAllSuggestions(eventId: string, fd: FormData) {
 
 /** Für alle Produkte, deren Foto schon einen Preis zeigt, genau diesen Preis eintragen (statt KI-Vorschlag o. ä.). */
 export async function applyPhotoPrices(eventId: string, itemId: string | null, fd: FormData) {
-  await requireLogin();
+  const me = await requireLogin();
+  await logActivity(me, itemId ? "Preis vom Foto übernommen" : "Preise vom Foto übernommen", { eventId: uuid.parse(eventId) });
   const id = uuid.parse(eventId);
   // Aus der Produktliste heraus: erst deren Eingaben speichern.
   if (fd.has("eventId")) await saveItems(fd);

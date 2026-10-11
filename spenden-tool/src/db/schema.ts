@@ -150,3 +150,33 @@ export const priceChecks = pgTable(
   },
   (t) => [index("price_checks_product_idx").on(t.productId, t.createdAt)],
 );
+
+/** Eigene Zugänge pro Person. Solange es keinen Admin gibt, gilt das Team-Passwort (APP_PASSWORD). */
+export const users = pgTable("users", {
+  id: id(),
+  name: text("name").notNull(),
+  /** Anmeldename, klein geschrieben */
+  login: text("login").notNull().unique(),
+  /** scrypt, siehe lib/password.ts */
+  passwordHash: text("password_hash").notNull(),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  createdAt: createdAt(),
+});
+
+/** Wer hat wann was getan – für Rückfragen im Team. */
+export const activity = pgTable(
+  "activity",
+  {
+    id: id(),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Name zum Zeitpunkt der Aktion (bleibt auch, wenn der Zugang gelöscht wird) */
+    userName: text("user_name").notNull(),
+    action: text("action").notNull(),
+    eventId: uuid("event_id").references(() => events.id, { onDelete: "set null" }),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("activity_created_idx").on(t.createdAt), index("activity_event_idx").on(t.eventId, t.createdAt)],
+);

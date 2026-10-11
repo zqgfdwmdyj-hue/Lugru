@@ -187,3 +187,7 @@ h2 { font-size: 16px; margin: 0; }
     display: none;
   }
 }
+
+/* Verwaltung: eine Zeile je Zugang */
+.user-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
+.unsaved-bar-ok { background: #1f7a4d; }

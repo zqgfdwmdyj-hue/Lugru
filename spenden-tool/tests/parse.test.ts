@@ -86,3 +86,16 @@ describe("Datum aus Formularfeldern", () => {
     expect(parseIsoDate("12.10.2026")).toBeNull();
   });
 });
+
+describe("Passwörter und Anmeldenamen", () => {
+  it("speichert Passwörter nur als Hash und prüft sie", async () => {
+    const { hashPassword, verifyPassword, normalizeLogin } = await import("@/lib/password");
+    const h = await hashPassword("geheim-123");
+    expect(h).not.toContain("geheim");
+    expect(await verifyPassword("geheim-123", h)).toBe(true);
+    expect(await verifyPassword("geheim-124", h)).toBe(false);
+    expect(await hashPassword("geheim-123")).not.toBe(h);
+    expect(normalizeLogin("  Anna Müller ")).toBe("anna.müller");
+    expect(normalizeLogin("Ben<script>")).toBe("benscript");
+  });
+});

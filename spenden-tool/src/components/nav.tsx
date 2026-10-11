@@ -9,7 +9,7 @@ const ITEMS = [
   { href: "/produkte", label: "Produkte" },
 ];
 
-export function Nav() {
+export function Nav({ admin = false }: { admin?: boolean }) {
   const pathname = usePathname();
   // Auf dem Handy das aufgeklappte Menü nach dem Seitenwechsel schließen.
   useEffect(() => {
@@ -19,7 +19,7 @@ export function Nav() {
   const active = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/verteilung") : pathname.startsWith(href));
   return (
     <nav aria-label="Hauptnavigation">
-      {ITEMS.map((i) => (
+      {[...ITEMS, ...(admin ? [{ href: "/verwaltung", label: "Verwaltung" }] : []), { href: "/konto", label: "Mein Konto" }].map((i) => (
         <Link key={i.href} href={i.href} className={`nav-link${active(i.href) ? " active" : ""}`}>{i.label}</Link>
       ))}
     </nav>

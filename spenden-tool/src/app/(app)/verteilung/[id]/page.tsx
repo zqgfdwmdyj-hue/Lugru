@@ -231,7 +231,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
             </table>
             {rows.length > 0 && <div style={{ padding: "10px 14px", display: "flex", justifyContent: "flex-end" }}><button className="btn btn-primary" type="submit" name="op" value="save">Speichern</button></div>}
           </form>
-          <UnsavedGuard formId="produktliste" />
+          <UnsavedGuard formId="produktliste" eventId={id} save={saveItems} />
 
           <section className="card card-pad stack">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>

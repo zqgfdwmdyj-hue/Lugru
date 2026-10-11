@@ -51,6 +51,23 @@ export async function storeImage(file: File): Promise<string | null> {
   return img ? storeChecked(img) : null;
 }
 
+/** Fotos, die weder Produktfoto noch MHD-Foto sind (ersetzt, entfernt, Produkt zusammengeführt/gelöscht). */
+// Erst nach einer Stunde – ein Foto, das gerade hochgeladen wird, ist kurz noch keinem Produkt zugeordnet.
+const orphanFilter = sql`not exists (select 1 from products p where p.image_file_id = files.id)
+  and not exists (select 1 from event_items i where i.best_before_file_id = files.id)
+  and files.created_at < now() - interval '1 hour'`;
+
+export async function orphanFileStats() {
+  const [r] = await db.select({ count: sql<number>`count(*)::int`, bytes: sql<number>`coalesce(sum(${schema.files.size}), 0)::bigint` }).from(schema.files).where(orphanFilter);
+  return { count: Number(r.count), bytes: Number(r.bytes) };
+}
+
+export async function deleteOrphanFiles() {
+  const stats = await orphanFileStats();
+  await db.delete(schema.files).where(orphanFilter);
+  return stats;
+}
+
 /** Fingerabdrücke für ältere Fotos nachtragen (vor dieser Funktion hochgeladen). */
 export async function backfillPhotoHashes(limit = 300) {
   const rows = await db.select({ id: schema.files.id, data: schema.files.data }).from(schema.files).where(sql`${schema.files.phash} is null`).limit(limit);

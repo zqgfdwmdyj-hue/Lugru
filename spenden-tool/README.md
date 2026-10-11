@@ -34,6 +34,23 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
   automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten.
 
+## Zugänge
+
+Beim ersten Start meldet man sich mit dem Team-Passwort (`APP_PASSWORD`) an und legt unter **Verwaltung** den ersten
+Admin an. Ab dann gilt das Team-Passwort nicht mehr: Jede Person bekommt einen eigenen Zugang (Name + Passwort),
+das Protokoll zeigt, wer was geändert hat. Admins verwalten Zugänge (anlegen, Passwort neu setzen, sperren) und
+können ungenutzte Fotos aufräumen; unter **Mein Konto** ändert jede Person ihr eigenes Passwort. Ein neues Passwort
+meldet die Person auf allen Geräten ab, Sperren wirkt sofort.
+
+Admin-Passwort vergessen? Auf dem Server:
+
+```bash
+cd /opt/spenden-tool/spenden-tool
+docker compose exec app npx tsx scripts/benutzer.ts <anmeldename> <neues-passwort> --admin
+```
+
+In der Produktliste wird automatisch gespeichert, sobald man eine Zeile verlässt oder kurz nichts tippt.
+
 ## Starten (Docker)
 
 ```bash

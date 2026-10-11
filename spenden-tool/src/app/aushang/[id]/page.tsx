@@ -91,8 +91,11 @@ const CSS = `
 .fl-mhd { font-size: .78em; font-weight: 600; color: #555; white-space: nowrap; }
 .fl-sec ul ul { padding-left: 1.2em; list-style: circle; font-size: .88em; }
 @page { size: A4; margin: 0; }
+.sheet-frame { margin: 0 auto; }
 @media print {
   .no-print { display: none !important; }
+  .sheet-frame { width: auto !important; height: auto !important; }
+  .sheet { transform: none !important; }
   html, body, body > div { background: #fff !important; }
   .sheet { box-shadow: none; margin: 0; width: 210mm; height: 297mm; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
