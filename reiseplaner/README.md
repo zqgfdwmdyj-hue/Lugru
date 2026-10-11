@@ -115,8 +115,14 @@ Ergebnis von `pruefen.sh`:
   }
   ```
   Das ist die einzige Berührung mit dem Seller-System – vorher absprechen.
-- *Anderer Webserver auf dem Host (nginx/Caddy):* Subdomain auf `127.0.0.1:3030` weiterleiten,
-  `X-Forwarded-Proto` setzen.
+- *Caddy direkt auf dem Host (`/etc/caddy/Caddyfile`):* Block ergänzen, prüfen, ohne Unterbrechung neu laden:
+  ```bash
+  cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.vor-reiseplaner
+  printf '\nreise.lugru.de {\n\tencode gzip\n\treverse_proxy 127.0.0.1:3030\n}\n' >> /etc/caddy/Caddyfile
+  caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+  ```
+  Andere Domains im Caddyfile bleiben unverändert; Caddy holt das HTTPS-Zertifikat selbst.
+- *nginx o. Ä. auf dem Host:* Subdomain auf `127.0.0.1:3030` weiterleiten, `X-Forwarded-Proto` setzen.
 
 **Update:** `cd /opt/reiseplaner && git pull && cd reiseplaner && docker compose up -d --build`
 (mit denselben `-f`-Dateien wie beim Start). **Sicherung:** `bash deploy/sichern.sh` (z. B. per cron).
