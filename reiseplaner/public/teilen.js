@@ -1,5 +1,6 @@
 // Teilen: öffentlicher Link nur für diesen Beitrag, Social-Media-Knöpfe, Story-Bild und KI-Text.
 import { zustand, $, esc, aktionen, dialogOeffnen, anfrage, fotoUrl, herunterladen, hafenVon } from "./kern.js";
+import { oeffentlicheFotos } from "./rechnen.js";
 
 // Nur Bewertungen, die geteilt werden dürfen (Story-Bild, Fotos an Apps)
 const bewertungenZu = (art, id) => zustand.beitraege.bewertungen.filter((b) => b.zielArt === art && b.zielId === id && !b.privat);
@@ -10,18 +11,18 @@ function eckdaten(art, id) {
     const a = r.ausfluege.find((x) => x.id === id);
     const h = hafenVon(a?.hafenId);
     const bew = bewertungenZu("ausflug", id);
-    return { titel: a?.titel ?? "", unter: [h?.name, h?.land].filter(Boolean).join(", "), fotos: bew.flatMap((b) => b.fotos ?? []), sterne: bew.length ? bew.reduce((s, b) => s + b.sterne, 0) / bew.length : null };
+    return { titel: a?.titel ?? "", unter: [h?.name, h?.land].filter(Boolean).join(", "), fotos: bew.flatMap(oeffentlicheFotos), sterne: bew.length ? bew.reduce((s, b) => s + b.sterne, 0) / bew.length : null };
   }
   if (art === "hotel") {
     const ho = r.hotels?.find((x) => x.id === id);
     const bew = bewertungenZu("hotel", id);
-    return { titel: ho?.name ?? "", unter: ho?.ort ?? "", fotos: bew.flatMap((b) => b.fotos ?? []), sterne: bew.length ? bew.reduce((s, b) => s + b.sterne, 0) / bew.length : null };
+    return { titel: ho?.name ?? "", unter: ho?.ort ?? "", fotos: bew.flatMap(oeffentlicheFotos), sterne: bew.length ? bew.reduce((s, b) => s + b.sterne, 0) / bew.length : null };
   }
   if (art === "tauchgang") {
     const t = zustand.beitraege.tauchgaenge.find((x) => x.id === id);
-    return { titel: t?.tauchplatz ?? "Tauchgang", unter: [t?.ort, t?.maxTiefe != null ? `${t.maxTiefe} m` : "", t?.tauchzeitMin ? `${t.tauchzeitMin} Min.` : ""].filter(Boolean).join(" · "), fotos: t?.fotos ?? [], sterne: t?.sterne ?? null };
+    return { titel: t?.tauchplatz ?? "Tauchgang", unter: [t?.ort, t?.maxTiefe != null ? `${t.maxTiefe} m` : "", t?.tauchzeitMin ? `${t.tauchzeitMin} Min.` : ""].filter(Boolean).join(" · "), fotos: oeffentlicheFotos(t), sterne: t?.sterne ?? null };
   }
-  return { titel: r.name, unter: r.schiff ?? "", fotos: [...zustand.beitraege.bewertungen.filter((b) => !b.privat).flatMap((b) => b.fotos ?? []), ...zustand.beitraege.tauchgaenge.filter((t) => !t.privat).flatMap((t) => t.fotos ?? [])], sterne: null };
+  return { titel: r.name, unter: r.schiff ?? "", fotos: [...zustand.beitraege.bewertungen.flatMap(oeffentlicheFotos), ...zustand.beitraege.tauchgaenge.flatMap(oeffentlicheFotos)], sterne: null };
 }
 
 aktionen["teilen"] = async (el) => {

@@ -42,6 +42,7 @@ function kategorieAus(text) {
     ["natur", /wasserfall|falls|krater|gorge|hot springs|schwefel|regenwald|vulkan|wander|natur|park/],
     ["strand", /strand|beach/],
     ["stadt", /stadt|festung|museum|filmset|altstadt|kirche|markt/],
+    ["bord", /friseur|\bspa\b|massage|wellness|show|dinner|restaurant|kinderclub|an bord|bordprogramm|kurs\b/],
   ];
   return regeln.find(([, re]) => re.test(t))?.[0] ?? "ausflug";
 }
@@ -137,7 +138,7 @@ function zeitenAus(zeilen) {
   return { beginn, dauerMin };
 }
 
-function ausflugAus(ueberschrift, zeilen, datum, ort) {
+function ausflugAus(ueberschrift, zeilen, datum, ort, seetag = false) {
   const inhalt = zeilen.filter(Boolean);
   if (!inhalt.length) return null;
   const anbieterImKopf = /[–—-]\s*([^:]+):?$/.exec(ueberschrift)?.[1]?.trim();
@@ -164,7 +165,7 @@ function ausflugAus(ueberschrift, zeilen, datum, ort) {
   }
   const preise = preiseAus(inhalt);
   const zeiten = zeitenAus(inhalt);
-  const kategorie = kategorieAus(`${titel}\n${rest.join("\n")}`);
+  const kategorie = seetag ? "bord" : kategorieAus(`${titel}\n${rest.join("\n")}`);
   const status = statusAus(ueberschrift);
   const hinweise = [];
   if (/BACKUP/i.test(ueberschrift)) hinweise.push("Backup – stornieren, wenn die bevorzugte Alternative klappt.");
@@ -215,7 +216,7 @@ export function reiseplanAusText(text) {
   let block = [];
   const blockAbschliessen = () => {
     if (station && ueberschrift) {
-      const a = ausflugAus(ueberschrift, block, station.datum, station.name);
+      const a = ausflugAus(ueberschrift, block, station.datum, station.name, station.art === "seetag");
       if (a) plan.ausfluege.push(a);
     } else if (station && block.length) {
       station.notiz = [station.notiz, ...block.filter(Boolean)].filter(Boolean).join("\n");

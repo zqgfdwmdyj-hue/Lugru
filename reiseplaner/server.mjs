@@ -117,18 +117,26 @@ function bewertungAus(d) {
   const sterne = Math.round(Number(d.sterne));
   if (!(sterne >= 1 && sterne <= 5)) throw fehler(400, "Bitte 1 bis 5 Sterne vergeben.");
   if (!["ausflug", "hotel"].includes(d.zielArt)) throw fehler(400, "Unbekanntes Ziel.");
-  return { zielArt: d.zielArt, zielId: text(d.zielId, 80), privat: d.privat === true, sterne, titel: text(d.titel, 200), text: text(d.text, 10_000), fotos: (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40) };
+  const fotos = (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40);
+  return {
+    zielArt: d.zielArt, zielId: text(d.zielId, 80), privat: d.privat === true, sterne, titel: text(d.titel, 200),
+    text: text(d.text, 10_000), // öffentlicher Kommentar
+    textPrivat: text(d.textPrivat, 10_000), // nur für Mitreisende
+    fotos,
+    fotosPrivat: (Array.isArray(d.fotosPrivat) ? d.fotosPrivat : []).filter((f) => fotos.includes(f)),
+  };
 }
 
-const TAUCH_TEXT = ["datum", "tauchplatz", "ort", "basis", "einstieg", "beginn", "stroemung", "anzug", "flascheMaterial", "gas", "buddy", "guide", "sichtungen", "text", "ausflugId", "taucherId"];
+const TAUCH_TEXT = ["datum", "tauchplatz", "ort", "basis", "einstieg", "beginn", "stroemung", "anzug", "flascheMaterial", "gas", "buddy", "guide", "sichtungen", "text", "textPrivat", "ausflugId", "taucherId"];
 const TAUCH_ZAHL = ["lat", "lng", "tauchzeitMin", "maxTiefe", "mittelTiefe", "wasserTemp", "luftTemp", "sicht", "blei", "flascheL", "nitroxProzent", "druckStart", "druckEnde", "sterne"];
 function tauchgangAus(d) {
   const t = {};
-  for (const k of TAUCH_TEXT) t[k] = text(d[k], k === "text" || k === "sichtungen" ? 10_000 : 300);
+  for (const k of TAUCH_TEXT) t[k] = text(d[k], ["text", "textPrivat", "sichtungen"].includes(k) ? 10_000 : 300);
   for (const k of TAUCH_ZAHL) t[k] = zahlOderNull(d[k]);
   if (t.sterne != null) t.sterne = Math.min(5, Math.max(1, Math.round(t.sterne)));
   t.fotos = (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40);
   t.privat = d.privat === true;
+  t.fotosPrivat = (Array.isArray(d.fotosPrivat) ? d.fotosPrivat : []).filter((f) => t.fotos.includes(f));
   return t;
 }
 

@@ -70,3 +70,26 @@ test("Pins im Seitenquelltext können kein HTML einschleusen", () => {
   const html = seiteRendern(tagebuchInhalt([], [], boese, heute), "https://x", "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "");
   assert.ok(!html.includes("</script><script>alert(1)"));
 });
+
+test("Einzelne Fotos und private Notizen bleiben privat – im Tagebuch und in Freigaben", async () => {
+  const { inhaltFuer, seiteRendern: freigabeSeite, erlaubteFotos } = await import("../lib/teilen.mjs");
+  const b = {
+    bewertungen: [{ zielArt: "ausflug", zielId: "a1", autorId: "u1", sterne: 5, text: "Öffentlich toll", textPrivat: "GEHEIME NOTIZ", fotos: ["f1", "f2"], fotosPrivat: ["f2"] }],
+    tauchgaenge: [{ id: "t1", tauchplatz: "Riff", datum: "2026-05-01", taucherId: "u1", text: "Super", textPrivat: "PRIVAT TAUCHEN", fotos: ["f3", "f4"], fotosPrivat: ["f4"] }],
+    fotos: [],
+  };
+  const i = tagebuchInhalt([{ reise: reise(), beitraege: b }], benutzer, einst, heute);
+  assert.deepEqual([...i.fotos].sort(), ["f1", "f3"]);
+  const html = seiteRendern(i, "https://x", "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "");
+  assert.ok(!html.includes("GEHEIME NOTIZ") && !html.includes("PRIVAT TAUCHEN") && !html.includes("/foto/f2") && !html.includes("/foto/f4"));
+  const r = reise();
+  const ausflug = inhaltFuer(r, b, benutzer, { token: "x".repeat(32), art: "ausflug", zielId: "a1" });
+  assert.deepEqual([...erlaubteFotos(ausflug)], ["f1"]);
+  assert.ok(!freigabeSeite(ausflug, { token: "x".repeat(32) }, "https://x").includes("GEHEIME NOTIZ"));
+  const tg = inhaltFuer(r, b, benutzer, { token: "x".repeat(32), art: "tauchgang", zielId: "t1" });
+  assert.deepEqual([...erlaubteFotos(tg)], ["f3"]);
+  assert.ok(!JSON.stringify(tg).includes("PRIVAT TAUCHEN"));
+  const bericht = inhaltFuer(r, b, benutzer, { token: "x".repeat(32), art: "bericht", zielId: "r1" });
+  assert.deepEqual([...erlaubteFotos(bericht)].sort(), ["f1", "f3"]);
+  assert.ok(!JSON.stringify(bericht).includes("GEHEIME NOTIZ") && !JSON.stringify(bericht).includes("PRIVAT TAUCHEN"));
+});

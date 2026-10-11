@@ -278,3 +278,13 @@ form.art-seetag .ohne-seetag, form.art-seetag .nur-hafen, form.art-ort .nur-hafe
 .laender summary { cursor: pointer; }
 .orteliste { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 6px 0 4px 16px; }
 .freigaben { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 12px; }
+
+/* ---------- Sichtbarkeit von Fotos, Sterne-Eingabe ---------- */
+.foto .sicht { position: absolute; left: 3px; bottom: 3px; border: 0; border-radius: 99px; width: 24px; height: 24px; font-size: 13px; line-height: 24px; text-align: center; padding: 0; cursor: pointer; background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); }
+.foto .sicht.offen { background: #e3f4e5; }
+span.sicht { cursor: default; }
+.privatnotiz { background: color-mix(in srgb, var(--gelb) 10%, transparent); border-radius: 7px; padding: 6px 9px; }
+.formular .sterneingabe label { font-size: 2.1rem; line-height: 1; flex-direction: row; color: #c3cad3; }
+@media (prefers-color-scheme: dark) { .formular .sterneingabe label { color: #4a5563; } }
+.formular .sterneingabe label:has(input:checked) span, .formular .sterneingabe label:has(input:checked) ~ label span,
+.formular .sterneingabe label:hover span, .formular .sterneingabe label:hover ~ label span { color: #e0a100; }

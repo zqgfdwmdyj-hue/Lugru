@@ -28,27 +28,40 @@ function zielTitel(zielArt, zielId) {
 
 // ---------- Fotos im Dialog ----------
 
-function fotoFeld(ids) {
+function fotoFeld(ids, privat = []) {
   return `<fieldset><legend>Fotos</legend>
-    <div id="fotoListe">${fotoLeiste(ids, { entfernbar: true })}</div>
+    <p class="klein leise">Antippen von 🔒/🌍 schaltet um: 🔒 = nur für uns, 🌍 = darf geteilt werden (Freigabe-Links, Reisetagebuch, Social Media). Neue Fotos sind erst einmal 🔒.</p>
+    <div id="fotoListe">${fotoLeiste(ids, { entfernbar: true, privat, schaltbar: true })}</div>
     <input type="hidden" name="fotos" value="${esc(JSON.stringify(ids))}">
+    <input type="hidden" name="fotosPrivat" value="${esc(JSON.stringify(privat))}">
     <label class="knopf leise">📷 Fotos hinzufügen<input type="file" accept="image/*" multiple hidden id="fotoWahl"></label>
     <span class="klein leise" id="fotoStatus">Fotos werden vor dem Hochladen verkleinert.</span>
   </fieldset>`;
 }
 
-function fotosLesen(form) {
+const jsonFeld = (form, name) => {
   try {
-    return JSON.parse(new FormData(form).get("fotos") || "[]");
+    return JSON.parse(new FormData(form).get(name) || "[]");
   } catch {
     return [];
   }
+};
+const fotosLesen = (form) => jsonFeld(form, "fotos");
+const fotosPrivatLesen = (form) => jsonFeld(form, "fotosPrivat").filter((f) => fotosLesen(form).includes(f));
+
+function fotosSetzen(form, ids, privat = fotosPrivatLesen(form)) {
+  form.querySelector("input[name=fotos]").value = JSON.stringify(ids);
+  form.querySelector("input[name=fotosPrivat]").value = JSON.stringify(privat.filter((f) => ids.includes(f)));
+  $("#fotoListe").innerHTML = fotoLeiste(ids, { entfernbar: true, privat, schaltbar: true });
 }
 
-function fotosSetzen(form, ids) {
-  form.querySelector("input[name=fotos]").value = JSON.stringify(ids);
-  $("#fotoListe").innerHTML = fotoLeiste(ids, { entfernbar: true });
-}
+aktionen["foto-sichtbarkeit"] = (el) => {
+  const form = el.closest("form");
+  const privat = new Set(fotosPrivatLesen(form));
+  if (privat.has(el.dataset.id)) privat.delete(el.dataset.id);
+  else privat.add(el.dataset.id);
+  fotosSetzen(form, fotosLesen(form), [...privat]);
+};
 
 document.addEventListener("change", async (e) => {
   if (e.target.id !== "fotoWahl") return;
@@ -59,8 +72,9 @@ document.addEventListener("change", async (e) => {
   for (const d of dateien) {
     $("#fotoStatus").textContent = `Lade hoch … ${++n}/${dateien.length}`;
     try {
-      ids.push(await fotoHochladen(d));
-      fotosSetzen(form, ids);
+      const neu = await fotoHochladen(d);
+      ids.push(neu);
+      fotosSetzen(form, ids, [...fotosPrivatLesen(form), neu]);
     } catch (err) {
       alert(err.message);
     }
@@ -73,7 +87,7 @@ aktionen["foto-entfernen"] = async (el) => {
   const form = el.closest("form");
   if (!form) return;
   if (!confirm("Foto entfernen?")) return;
-  fotosSetzen(form, fotosLesen(form).filter((x) => x !== el.dataset.id));
+  fotosSetzen(form, fotosLesen(form).filter((x) => x !== el.dataset.id), fotosPrivatLesen(form).filter((x) => x !== el.dataset.id));
   await anfrage(`/api/reisen/${zustand.reise.id}/fotos/${el.dataset.id}`, { method: "DELETE" }).catch(() => {});
 };
 
@@ -85,9 +99,10 @@ function bewertungDialog(zielArt, zielId) {
     <h3>Bewertung: ${esc(zielTitel(zielArt, zielId))}</h3>
     <label>Wie war es?${sternEingabe("sterne", b.sterne)}</label>
     <label>Überschrift<input name="titel" value="${esc(b.titel ?? "")}" maxlength="200" placeholder="z. B. Bestes Highlight der Reise!"></label>
-    <label>Kommentar<textarea name="text" rows="6" placeholder="Was war toll, was nicht? Tipps für andere (Treffpunkt, Kinder, Wartezeiten …)">${esc(b.text ?? "")}</textarea></label>
-    ${fotoFeld(b.fotos ?? [])}
-    <label class="haken"><input type="checkbox" name="privat" ${b.privat ? "checked" : ""}> 🔒 Nur für Mitreisende – nie in öffentlichen Freigaben zeigen</label>
+    <label>🌍 Kommentar zum Teilen<textarea name="text" rows="5" placeholder="Was war toll, was nicht? Tipps für andere (Treffpunkt, Kinder, Wartezeiten …) – erscheint in Freigaben und im Reisetagebuch">${esc(b.text ?? "")}</textarea></label>
+    <label>🔒 Private Notiz – nur für uns<textarea name="textPrivat" rows="3" placeholder="z. B. Trinkgeld, Name des Guides, was wir nicht öffentlich schreiben wollen">${esc(b.textPrivat ?? "")}</textarea></label>
+    ${fotoFeld(b.fotos ?? [], b.fotosPrivat ?? [])}
+    <label class="haken"><input type="checkbox" name="privat" ${b.privat ? "checked" : ""}> 🔒 Ganze Bewertung nur für Mitreisende (auch Sterne und Kommentar nie teilen)</label>
     <div class="zeile">
       ${b.id ? `<button type="button" class="knopf gefahr" data-aktion="bewertung-loeschen" data-id="${esc(b.id)}">Löschen</button>` : ""}
       <span class="platz"></span>
@@ -97,7 +112,7 @@ function bewertungDialog(zielArt, zielId) {
   </form>`);
   $("#bewertungForm").addEventListener("submit", async (e) => {
     const f = new FormData(e.target);
-    const daten = { zielArt, zielId, sterne: Number(f.get("sterne")), titel: f.get("titel"), text: f.get("text"), fotos: fotosLesen(e.target), privat: f.get("privat") === "on" };
+    const daten = { zielArt, zielId, sterne: Number(f.get("sterne")), titel: f.get("titel"), text: f.get("text"), textPrivat: f.get("textPrivat"), fotos: fotosLesen(e.target), fotosPrivat: fotosPrivatLesen(e.target), privat: f.get("privat") === "on" };
     try {
       await anfrage(`/api/reisen/${zustand.reise.id}/bewertungen`, { method: "POST", body: daten });
       await beitraegeLaden();
@@ -123,7 +138,7 @@ aktionen["bewertungen-zeigen"] = (el) => {
   dialogOeffnen(`<div class="formular">
     <h3>${esc(zielTitel(art, id))} ${sterneText(schnitt(liste))}</h3>
     ${liste.map((b) => `<article class="bewertung"><div class="zeile"><strong>${esc(name(b.autorId))}</strong> ${sterneText(b.sterne)}${b.privat ? ' <span class="klein leise">🔒 privat</span>' : ""} <span class="leise klein">${esc(new Date(b.erstellt).toLocaleDateString("de-DE"))}</span></div>
-      ${b.titel ? `<h4>${esc(b.titel)}</h4>` : ""}${b.text ? `<p class="notiz">${esc(b.text)}</p>` : ""}${fotoLeiste(b.fotos ?? [])}</article>`).join("")}
+      ${b.titel ? `<h4>${esc(b.titel)}</h4>` : ""}${b.text ? `<p class="notiz">${esc(b.text)}</p>` : ""}${b.textPrivat ? `<p class="notiz privatnotiz">🔒 ${esc(b.textPrivat)}</p>` : ""}${fotoLeiste(b.fotos ?? [], { privat: b.fotosPrivat ?? [], zeigeStatus: true })}</article>`).join("")}
     <div class="zeile"><button class="knopf leise" data-aktion="teilen" data-art="${art}" data-id="${esc(id)}">Teilen …</button><span class="platz"></span><button class="knopf" data-aktion="dialog-zu">Schließen</button></div>
   </div>`, true);
 };
@@ -171,11 +186,12 @@ function tauchgangDialog(id, vorlage = {}) {
       <label>Guide<input name="guide" value="${esc(t.guide ?? "")}"></label>
     </div>
     <label>Gesehen (Tiere, Wracks …)<textarea name="sichtungen" rows="2" placeholder="z. B. Hammerhaie, Schildkröte, Napoleon">${esc(t.sichtungen ?? "")}</textarea></label>
-    <label>Kommentar<textarea name="text" rows="3">${esc(t.text ?? "")}</textarea></label>
+    <label>🌍 Kommentar zum Teilen<textarea name="text" rows="3">${esc(t.text ?? "")}</textarea></label>
+    <label>🔒 Private Notiz – nur für uns<textarea name="textPrivat" rows="2">${esc(t.textPrivat ?? "")}</textarea></label>
     <label>Tauchplatz auf der Karte</label>
     ${ortsSuche("platz", hatKoord(t) ? { lat: t.lat, lng: t.lng, name: t.tauchplatz } : null, "Tauchplatz suchen oder Koordinaten einfügen")}
-    ${fotoFeld(t.fotos ?? [])}
-    <label class="haken"><input type="checkbox" name="privat" ${t.privat ? "checked" : ""}> 🔒 Nur für Mitreisende – nicht teilbar</label>
+    ${fotoFeld(t.fotos ?? [], t.fotosPrivat ?? [])}
+    <label class="haken"><input type="checkbox" name="privat" ${t.privat ? "checked" : ""}> 🔒 Ganzer Tauchgang nur für Mitreisende – nicht teilbar</label>
     <div class="zeile">
       ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="tauchgang-loeschen" data-id="${esc(t.id)}">Löschen</button>`}
       <span class="platz"></span>
@@ -187,7 +203,8 @@ function tauchgangDialog(id, vorlage = {}) {
     const f = Object.fromEntries(new FormData(e.target));
     const platz = ortAuslesen(e.target, "platz");
     delete f.platz;
-    const daten = { ...f, lat: platz?.lat ?? null, lng: platz?.lng ?? null, fotos: fotosLesen(e.target), privat: f.privat === "on" };
+    delete f.fotosPrivat;
+    const daten = { ...f, lat: platz?.lat ?? null, lng: platz?.lng ?? null, fotos: fotosLesen(e.target), fotosPrivat: fotosPrivatLesen(e.target), privat: f.privat === "on" };
     for (const k of ["maxTiefe", "mittelTiefe", "wasserTemp", "luftTemp", "sicht", "blei", "nitroxProzent"]) daten[k] = zahl(daten[k]);
     try {
       await anfrage(`/api/reisen/${zustand.reise.id}/tauchgaenge${neu ? "" : `/${t.id}`}`, { method: neu ? "POST" : "PUT", body: daten });
@@ -235,7 +252,7 @@ aktionen["logbuch"] = async () => {
 // ---------- Ansicht ----------
 
 export function erlebnisseAnsicht() {
-  const tage = haefen().filter((h) => (h.art ?? (h.seetag ? "seetag" : "hafen")) !== "seetag");
+  const tage = haefen();
   const heute = new Date().toISOString().slice(0, 10);
   const zeilen = tage
     .map((h) => {
@@ -259,7 +276,7 @@ export function erlebnisseAnsicht() {
     <div class="karte-box">
       <div class="zeile"><h3>Tauchlog (${tauch.length})</h3><button class="knopf leise" data-aktion="logbuch">Mein Logbuch</button><button class="knopf" data-aktion="tauchgang-neu">+ Tauchgang</button></div>
       ${tauch.length ? `<div class="tabelle"><table><thead><tr><th>Datum</th><th>Tauchplatz</th><th>Wer</th><th class="zahl">Tiefe</th><th class="zahl">Zeit</th><th class="zahl">Wasser</th><th></th></tr></thead><tbody>
-        ${tauch.map((t) => `<tr><td>${esc(datumText(t.datum))}${t.beginn ? `<div class="klein leise">${esc(t.beginn)}</div>` : ""}</td><td><strong>${esc(t.tauchplatz)}</strong>${t.sterne ? ` ${sterneText(t.sterne)}` : ""}<div class="klein leise">${esc([t.ort, t.basis].filter(Boolean).join(" · "))}</div>${t.sichtungen ? `<div class="klein">🐠 ${esc(t.sichtungen)}</div>` : ""}${fotoLeiste((t.fotos ?? []).slice(0, 4))}</td><td>${esc(name(t.taucherId))}</td><td class="zahl">${t.maxTiefe != null ? `${String(t.maxTiefe).replace(".", ",")} m` : ""}</td><td class="zahl">${t.tauchzeitMin != null ? `${t.tauchzeitMin}′` : ""}</td><td class="zahl">${t.wasserTemp != null ? `${String(t.wasserTemp).replace(".", ",")} °C` : ""}</td>
+        ${tauch.map((t) => `<tr><td>${esc(datumText(t.datum))}${t.beginn ? `<div class="klein leise">${esc(t.beginn)}</div>` : ""}</td><td><strong>${esc(t.tauchplatz)}</strong>${t.sterne ? ` ${sterneText(t.sterne)}` : ""}<div class="klein leise">${esc([t.ort, t.basis].filter(Boolean).join(" · "))}</div>${t.sichtungen ? `<div class="klein">🐠 ${esc(t.sichtungen)}</div>` : ""}${fotoLeiste((t.fotos ?? []).slice(0, 4), { privat: t.fotosPrivat ?? [], zeigeStatus: true })}</td><td>${esc(name(t.taucherId))}</td><td class="zahl">${t.maxTiefe != null ? `${String(t.maxTiefe).replace(".", ",")} m` : ""}</td><td class="zahl">${t.tauchzeitMin != null ? `${t.tauchzeitMin}′` : ""}</td><td class="zahl">${t.wasserTemp != null ? `${String(t.wasserTemp).replace(".", ",")} °C` : ""}</td>
           <td><button class="link" data-aktion="tauchgang-bearbeiten" data-id="${esc(t.id)}">Bearbeiten</button> ${t.privat ? '<span class="klein leise">🔒</span>' : `<button class="link" data-aktion="teilen" data-art="tauchgang" data-id="${esc(t.id)}">Teilen</button>`}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="leise">Noch keine Tauchgänge auf dieser Reise.</p>`}
     </div>`;

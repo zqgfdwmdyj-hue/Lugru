@@ -130,3 +130,10 @@ test("Einfacher Ausflugs-Import erkennt Gesamtpreise", () => {
   assert.equal(a.preisGruppe, 275);
   assert.equal(a.preisErw, null);
 });
+
+test("Seetag mit Aktivitäten an Bord", () => {
+  const p = reiseplanAusText(`20.03.2027 – Seetag\nGEPLANT:\nFriseur für die Kinder\nZeit: 10:00–10:45\nPreis gesamt: 45 €\n`);
+  assert.equal(p.stationen[0].art, "seetag");
+  assert.equal(p.ausfluege.length, 1);
+  assert.deepEqual([p.ausfluege[0].kategorie, p.ausfluege[0].beginn, p.ausfluege[0].dauerMin, p.ausfluege[0].preisGruppe], ["bord", "10:00", 45, 45]);
+});

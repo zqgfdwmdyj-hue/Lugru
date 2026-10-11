@@ -12,6 +12,8 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
 **Planen**
 - Reisearten: Kreuzfahrt (Häfen mit Ankunft, Abfahrt, „Alle an Bord“, Seetage), Hotel-/Strandurlaub
   und Rundreise (Tage an Land; Startpunkt der Ausflüge ist das gebuchte Hotel).
+- Seetage: Aktivitäten an Bord (Spa, Friseur, Show, Kurse …) mit Kosten wie Ausflüge.
+- Fehlen Kartenpunkte (z. B. nach einem Import), sucht die App die Häfen beim Öffnen selbst.
 - Ausflüge mit Anbieter, Art (Tauchen, Schnorcheln, Bootstour …), Status (Idee, Favorit, Gebucht,
   Verworfen), Beginn, Dauer, Preisen pro Person (Erwachsene/Kinder, „Kinder gratis unter X Jahren“)
   oder pro Gruppe, Zusatzkosten, Interesse (1–5), Link, Notiz.
@@ -165,7 +167,9 @@ npm test
   eine Freigabe, die genau dieses Foto enthält.
 - Freigabe-Seiten sind nicht für Suchmaschinen gedacht (`noindex`), Links nur `http(s)`, keine
   Einbettung in fremde Seiten. Als „privat“ markierte Bewertungen und Tauchgänge erscheinen nie in
-  Freigaben; Tauchgänge teilen nur Taucher/in oder Planer/innen.
+  Freigaben; Tauchgänge teilen nur Taucher/in oder Planer/innen. Jedes Foto lässt sich einzeln
+  auf 🔒 (nur Mitreisende) oder 🌍 (teilbar) stellen – neue Fotos sind erst einmal privat.
+  Bewertungen und Tauchgänge haben einen teilbaren Kommentar und eine private Notiz.
 - Namen sieht man nur von Mitreisenden der eigenen Reise. Passwortwechsel meldet alle anderen
   Geräte ab, Abmelden löscht die lokalen Kopien auf dem Gerät.
 - Allgemeine Einladungslinks gelten 14 Tage und für höchstens 10 Beitritte, persönliche nur einmal.

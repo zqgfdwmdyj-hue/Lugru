@@ -20,6 +20,7 @@ export const KATEGORIEN = {
   strand: "Strand & Baden",
   tiere: "Tiere & Parks",
   essen: "Essen & Trinken",
+  bord: "An Bord (Spa, Friseur, Show …)",
   sport: "Sport & Action",
   sonstiges: "Sonstiges",
 };
@@ -31,6 +32,13 @@ export const VERPFLEGUNG = {
   vollpension: "Vollpension",
   all: "All inclusive",
 };
+
+/** Fotos eines Eintrags, die geteilt werden dürfen (ohne 🔒-Fotos, nichts bei privaten Einträgen). */
+export function oeffentlicheFotos(eintrag) {
+  if (!eintrag || eintrag.privat) return [];
+  const privat = new Set(eintrag.fotosPrivat ?? []);
+  return (eintrag.fotos ?? []).filter((f) => !privat.has(f));
+}
 
 /** Nur http(s)-Links zulassen (kein javascript: o. Ä.). */
 export function sichereUrl(url) {

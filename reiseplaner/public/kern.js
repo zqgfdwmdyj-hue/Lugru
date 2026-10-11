@@ -223,10 +223,18 @@ export async function fotoHochladen(datei) {
   return id;
 }
 
-export function fotoLeiste(ids, { entfernbar = false } = {}) {
+/** Fotoleiste. privat: Liste der 🔒-Fotos; schaltbar: Knopf zum Umschalten 🔒/🌍 anzeigen. */
+export function fotoLeiste(ids, { entfernbar = false, privat = [], schaltbar = false, zeigeStatus = false } = {}) {
   if (!ids?.length) return "";
+  const p = new Set(privat);
   return `<div class="fotoleiste">${ids
-    .map((id) => `<span class="foto"><a href="${fotoUrl(id)}" target="_blank"><img loading="lazy" src="${fotoUrl(id, true)}" alt=""></a>${entfernbar ? `<button type="button" class="weg" data-aktion="foto-entfernen" data-id="${esc(id)}" aria-label="Foto entfernen">×</button>` : ""}</span>`)
+    .map((id) => {
+      const istPrivat = p.has(id);
+      const status = schaltbar
+        ? `<button type="button" class="sicht ${istPrivat ? "privat" : "offen"}" data-aktion="foto-sichtbarkeit" data-id="${esc(id)}" title="${istPrivat ? "Nur für uns – antippen zum Freigeben" : "Wird geteilt – antippen für nur für uns"}">${istPrivat ? "🔒" : "🌍"}</button>`
+        : zeigeStatus && istPrivat ? `<span class="sicht privat" title="Nur für Mitreisende">🔒</span>` : "";
+      return `<span class="foto"><a href="${fotoUrl(id)}" target="_blank"><img loading="lazy" src="${fotoUrl(id, true)}" alt=""></a>${status}${entfernbar ? `<button type="button" class="weg" data-aktion="foto-entfernen" data-id="${esc(id)}" aria-label="Foto entfernen">×</button>` : ""}</span>`;
+    })
     .join("")}</div>`;
 }
 

@@ -5,7 +5,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DATA_DIR, lesen, aendern } from "./speicher.mjs";
-import { KATEGORIEN } from "../public/rechnen.js";
+import { KATEGORIEN, oeffentlicheFotos } from "../public/rechnen.js";
 
 const DATEI = path.join(DATA_DIR, "tagebuch.json");
 const LEER = { titel: "Unsere Reisen", text: "", orte: [] };
@@ -69,7 +69,7 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
   const bewertungenVon = (b, zielArt, zielId) =>
     b.bewertungen
       .filter((x) => x.zielArt === zielArt && x.zielId === zielId && !x.privat)
-      .map((x) => ({ autor: namen[x.autorId] ?? "", sterne: x.sterne, titel: x.titel ?? "", text: x.text ?? "", fotos: x.fotos ?? [] }));
+      .map((x) => ({ autor: namen[x.autorId] ?? "", sterne: x.sterne, titel: x.titel ?? "", text: x.text ?? "", fotos: oeffentlicheFotos(x) }));
   const schnitt = (l) => (l.length ? Math.round((l.reduce((s, x) => s + (Number(x.sterne) || 0), 0) / l.length) * 10) / 10 : null);
   const ausgabe = [];
   for (const { reise, beitraege } of reisen) {
@@ -95,7 +95,7 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
     const tauchgaenge = beitraege.tauchgaenge
       .filter((t) => !t.privat && t.datum && t.datum <= heute)
       .sort((a, b) => `${a.datum}${a.beginn}`.localeCompare(`${b.datum}${b.beginn}`))
-      .map((t) => ({ tauchplatz: t.tauchplatz, ort: t.ort ?? "", datum: t.datum, maxTiefe: t.maxTiefe, tauchzeitMin: t.tauchzeitMin, wasserTemp: t.wasserTemp, sicht: t.sicht, sichtungen: t.sichtungen ?? "", sterne: t.sterne ?? null, text: t.text ?? "", taucher: namen[t.taucherId] ?? "", fotos: t.fotos ?? [], lat: t.lat ?? null, lng: t.lng ?? null }));
+      .map((t) => ({ tauchplatz: t.tauchplatz, ort: t.ort ?? "", datum: t.datum, maxTiefe: t.maxTiefe, tauchzeitMin: t.tauchzeitMin, wasserTemp: t.wasserTemp, sicht: t.sicht, sichtungen: t.sichtungen ?? "", sterne: t.sterne ?? null, text: t.text ?? "", taucher: namen[t.taucherId] ?? "", fotos: oeffentlicheFotos(t), lat: t.lat ?? null, lng: t.lng ?? null }));
     ausgabe.push({
       name: reise.name,
       art: reise.art ?? "kreuzfahrt",

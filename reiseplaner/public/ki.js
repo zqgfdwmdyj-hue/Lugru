@@ -94,7 +94,7 @@ function vorschauZeigen() {
       <div class="zeile">
         ${zustand.reise ? `<button class="knopf" data-aktion="ki-uebernehmen">In „${esc(zustand.reise.name)}“ übernehmen</button>` : ""}
         <button class="knopf leise" data-aktion="ki-neue-reise">Als neue Reise anlegen</button>
-        ${p.personen.length && zustand.reise ? `<label class="haken klein"><input type="checkbox" id="kiPersonen"> Personen ersetzen</label>` : ""}
+        ${p.personen.length && zustand.reise ? `<label class="haken klein"><input type="checkbox" id="kiPersonen" ${zustand.reise.personen.length <= 1 ? "checked" : ""}> Personen aus dem Plan übernehmen (${p.personen.length})</label>` : ""}
       </div>
     </div>`;
 }

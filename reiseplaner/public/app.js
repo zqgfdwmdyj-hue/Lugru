@@ -10,7 +10,7 @@ import {
 import { anmeldungPruefen, anmeldenZeigen } from "./konto.js";
 import { hotelsAnsicht, hotelStatusAendern } from "./hotels.js";
 import { erlebnisseAnsicht, bewertungsZeile } from "./erlebnisse.js";
-import { kiImportBox, kiKnopf, kiPanel } from "./ki.js";
+import { kiImportBox, kiKnopf, kiPanel, koordinatenErgaenzen } from "./ki.js";
 import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js";
 import "./teilen.js";
 
@@ -61,7 +61,30 @@ async function reiseOeffnen(id) {
   $("#reiseWahl").value = id;
   await Promise.all([beitraegeLaden(), mitgliederLaden()]);
   alles();
+  orteAutomatischSuchen();
 }
+
+// Ältere/importierte Reisen ohne Kartenpunkte: einmal je Sitzung automatisch nachsuchen
+const schonGesucht = new Set();
+async function orteAutomatischSuchen() {
+  const r = zustand.reise;
+  if (!r || schonGesucht.has(r.id)) return;
+  const fehlen = haefen().filter((h) => stationsArt(h) !== "seetag" && !hatKoord(h) && h.name);
+  if (!fehlen.length) return;
+  schonGesucht.add(r.id);
+  await koordinatenErgaenzen(r, (t) => status(t));
+  if (zustand.reise !== r) return;
+  speichern();
+  alles();
+}
+
+aktionen["orte-suchen"] = async (el) => {
+  el.disabled = true;
+  const fehlend = await koordinatenErgaenzen(zustand.reise, (t) => status(t));
+  speichern();
+  alles();
+  if (fehlend.length) alert(`Nicht gefunden: ${[...new Set(fehlend)].join(", ")}.\nBitte unter „Tag bearbeiten“ den Ort suchen oder Koordinaten aus Google Maps einfügen.`);
+};
 
 async function mitgliederLaden() {
   try {
@@ -161,7 +184,7 @@ function hafenLeiste() {
       return `<button class="hafenchip ${h.id === zustand.hafenId ? "aktiv" : ""} ${art === "seetag" ? "seetag" : ""}" data-aktion="hafen" data-id="${esc(h.id)}">
         <span class="tag">Tag ${i + 1} · ${esc(datumText(h.datum))}</span>
         <strong>${art === "seetag" ? "🌊 Seetag" : `${art === "hafen" ? "⚓ " : ""}${esc(h.name || "Ort")}`}</strong>
-        ${art === "seetag" ? "" : `<span class="mini">${anzahl} Ausfl.${gebucht ? " · ✅" : ""}${kosten.jeHafen[h.id] ? ` · ${geld(kosten.jeHafen[h.id])}` : ""}</span>`}
+        <span class="mini">${anzahl} ${art === "seetag" ? "an Bord" : "Ausfl."}${gebucht ? " · ✅" : ""}${kosten.jeHafen[h.id] ? ` · ${geld(kosten.jeHafen[h.id])}` : ""}</span>
       </button>`;
     })
     .join("")}</div>`;
@@ -199,7 +222,16 @@ function planAnsicht() {
   const h = hafenVon(zustand.hafenId);
   let detail = "";
   if (h && stationsArt(h) === "seetag") {
-    detail = `<div class="karte-box"><h2>🌊 Seetag – ${esc(datumText(h.datum, { weekday: "long", day: "numeric", month: "long" }))}</h2><p>Zeit fürs Schiff. Ausflüge gibt es an diesem Tag nicht.</p>${h.notiz ? `<p>${esc(h.notiz)}</p>` : ""}</div>`;
+    const liste = ausfluegeIn(h.id)
+      .map((a) => ({ a, b: bewertung(a, h, personen()) }))
+      .sort((x, y) => (x.a.status === "verworfen") - (y.a.status === "verworfen") || (zeitZuMin(x.a.beginn) ?? 9999) - (zeitZuMin(y.a.beginn) ?? 9999));
+    detail = `<div class="karte-box"><h2>🌊 Seetag – ${esc(datumText(h.datum, { weekday: "long", day: "numeric", month: "long" }))}</h2>
+        <p class="leise">Zeit fürs Schiff: Spa, Friseur, Shows, Restaurants, Kinderclub, Kurse … – alles hier eintragen, mit Uhrzeit, Preis und wer mitmacht.</p>${h.notiz ? `<p class="notiz">${esc(h.notiz)}</p>` : ""}
+        <div class="kopfknoepfe"><button class="knopf leise" data-aktion="hafen-bearbeiten" data-id="${esc(h.id)}">Tag bearbeiten</button></div></div>
+      <div class="karte-box">
+        <div class="zeile"><h3>An Bord (${liste.filter((x) => x.a.status !== "verworfen").length})</h3><button class="knopf" data-aktion="ausflug-neu">+ Aktivität</button></div>
+        ${liste.length ? `<div class="ausfluege">${liste.map(({ a, b }) => ausflugKarte(a, b, h, { beste: false, guenstig: false })).join("")}</div>` : `<p class="leise">Noch nichts geplant.</p>`}
+      </div>`;
   } else if (h) {
     const art = stationsArt(h);
     const start = startpunkt(h, zustand.reise.hotels);
@@ -230,6 +262,7 @@ function planAnsicht() {
             ${art === "hafen" ? `<span>⚓ ${esc(h.ankunft || "–")} – ${esc(h.abfahrt || "–")}</span><span class="wichtig">⏰ Alle an Bord: ${esc(h.allesAnBord || "–")}</span>${Number.isFinite(landgang) && landgang > 0 ? `<span>Landgang: ${dauerText(landgang)}</span>` : ""}` : ""}
             ${start?.hotel ? `<span>🏨 Start: ${esc(start.name)}</span>` : art === "ort" ? `<span class="leise">Kein Hotel für diesen Tag – <button class="link" data-aktion="zu-hotels">Unterkunft eintragen</button></span>` : ""}
           </div>
+          ${hatKoord(h) ? "" : `<p class="klein warnung">📍 Noch kein Kartenpunkt – <button class="link" data-aktion="orte-suchen">automatisch suchen</button> oder unter „Tag bearbeiten“ eintragen.</p>`}
           <div id="wetter" class="wetter"></div>
           ${h.notiz ? `<p class="notiz">${esc(h.notiz)}</p>` : ""}
         </div>
@@ -413,7 +446,6 @@ function kostenAnsicht() {
   const k = reiseKosten(r);
   const ps = personen();
   const zeilenHafen = haefen()
-    .filter((h) => stationsArt(h) !== "seetag")
     .map((h) => {
       const gewaehlt = ausfluegeIn(h.id).filter((a) => a.status === "gebucht" || a.status === "favorit");
       if (!gewaehlt.length) return "";
@@ -549,7 +581,7 @@ function verlaufAnsicht() {
       ${istPlaner() ? `<label class="haken"><input type="checkbox" data-aktion="reise-oeffentlich" data-id="${esc(r.id)}" ${r.oeffentlich ? "checked" : ""}> 🌍 Im öffentlichen Reisetagebuch zeigen <span class="leise klein">(nur vergangene Tage, gebuchte Ausflüge/Unterkünfte, Bewertungen und Fotos – ohne Kosten und Planung)</span></label>` : ""}
     </div>
     <div class="karte-box">
-      <div class="zeile"><h3>${istKreuzfahrt() ? "Route" : "Tage"}</h3><button class="knopf" data-aktion="hafen-neu">+ ${istKreuzfahrt() ? "Hafen / Seetag" : "Tag / Ort"}</button></div>
+      <div class="zeile"><h3>${istKreuzfahrt() ? "Route" : "Tage"}</h3>${haefen().some((h) => stationsArt(h) !== "seetag" && !hatKoord(h)) ? `<button class="knopf leise" data-aktion="orte-suchen">📍 Fehlende Orte auf der Karte suchen</button>` : ""}<button class="knopf" data-aktion="hafen-neu">+ ${istKreuzfahrt() ? "Hafen / Seetag" : "Tag / Ort"}</button></div>
       <p class="leise klein">${istKreuzfahrt() ? "Die Zeiten stehen im Reiseplan bzw. in der Mein-Schiff-App. „Alle an Bord“ ist meist 30 Min. vor Abfahrt." : "Tage im Hotel kannst du auch unter „Unterkünfte“ → „Tage anlegen“ erzeugen; Startpunkt der Ausflüge ist dann das Hotel."}</p>
       <div class="tabelle"><table class="haefen">
         <thead><tr><th>Datum</th><th>Ort</th>${istKreuzfahrt() ? "<th>Ankunft</th><th>Abfahrt</th><th>Alle an Bord</th>" : ""}<th>Karte</th><th></th></tr></thead>
@@ -816,13 +848,13 @@ function ausflugDialog(id, vorlage = {}) {
   const neu = !id;
   const a = id
     ? zustand.reise.ausfluege.find((x) => x.id === id)
-    : { id: neueId(), hafenId: zustand.hafenId, quelle: stationsArt(hafenVon(zustand.hafenId)) === "hafen" ? "schiff" : "getyourguide", kategorie: "ausflug", status: "idee", preisArt: "person", teilnehmer: personen().map((p) => p.id), interesse: 3, verkehr: "auto", ...vorlage };
-  const hs = haefen().filter((h) => stationsArt(h) !== "seetag");
+    : { id: neueId(), hafenId: zustand.hafenId, quelle: stationsArt(hafenVon(zustand.hafenId)) === "ort" ? "getyourguide" : "schiff", kategorie: stationsArt(hafenVon(zustand.hafenId)) === "seetag" ? "bord" : "ausflug", status: "idee", preisArt: "person", teilnehmer: personen().map((p) => p.id), interesse: 3, verkehr: "auto", ...vorlage };
+  const hs = haefen();
   dialogOeffnen(`<form method="dialog" class="formular" id="ausflugForm">
-    <h3>${neu ? "Ausflug hinzufügen" : "Ausflug bearbeiten"}</h3>
+    <h3>${stationsArt(hafenVon(a.hafenId)) === "seetag" ? (neu ? "Aktivität an Bord hinzufügen" : "Aktivität bearbeiten") : neu ? "Ausflug hinzufügen" : "Ausflug bearbeiten"}</h3>
     <label>Titel<input name="titel" value="${esc(a.titel ?? "")}" required placeholder="z. B. Teide-Nationalpark mit Seilbahn"></label>
     <div class="formular drei">
-      <label>Tag<select name="hafenId">${hs.map((h) => `<option value="${esc(h.id)}" ${h.id === a.hafenId ? "selected" : ""}>${esc(datumText(h.datum))} – ${esc(h.name)}</option>`).join("")}</select></label>
+      <label>Tag<select name="hafenId">${hs.map((h) => `<option value="${esc(h.id)}" ${h.id === a.hafenId ? "selected" : ""}>${esc(datumText(h.datum))} – ${stationsArt(h) === "seetag" ? "🌊 Seetag" : esc(h.name)}</option>`).join("")}</select></label>
       <label>Anbieter<select name="quelle">${Object.entries(QUELLEN).map(([k, q]) => `<option value="${k}" ${a.quelle === k ? "selected" : ""}>${esc(q.name)}</option>`).join("")}</select></label>
       <label>Art<select name="kategorie">${Object.entries(KATEGORIEN).map(([k, t]) => `<option value="${k}" ${(a.kategorie ?? "ausflug") === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
       <label>Status<select name="status">${Object.entries(STATUS).map(([k, t]) => `<option value="${k}" ${a.status === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
