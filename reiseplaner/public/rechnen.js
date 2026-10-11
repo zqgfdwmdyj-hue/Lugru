@@ -476,3 +476,27 @@ export function textZuAusfluegen(text) {
     };
   });
 }
+
+/** Tiefenprofil eines Tauchgangs als SVG ([Minute, Meter]-Paare, z. B. vom Tauchcomputer). */
+export function tauchProfilSvg(profil, { breite = 360, hoehe = 150 } = {}) {
+  const p = (Array.isArray(profil) ? profil : []).filter((x) => Array.isArray(x) && Number.isFinite(x[0]) && Number.isFinite(x[1]));
+  if (p.length < 2) return "";
+  const rand = { l: 34, r: 8, o: 8, u: 22 };
+  const maxMin = Math.max(...p.map((x) => x[0])) || 1;
+  const maxM = Math.max(5, Math.ceil(Math.max(...p.map((x) => x[1])) / 5) * 5);
+  const x = (min) => (rand.l + (min / maxMin) * (breite - rand.l - rand.r)).toFixed(1);
+  const y = (m) => (rand.o + (m / maxM) * (hoehe - rand.o - rand.u)).toFixed(1);
+  const linie = p.map((q) => `${x(q[0])},${y(q[1])}`).join(" ");
+  const flaeche = `${x(p[0][0])},${y(0)} ${linie} ${x(p.at(-1)[0])},${y(0)}`;
+  const tief = p.reduce((a, q) => (q[1] > a[1] ? q : a), p[0]);
+  const stufe = maxM <= 10 ? 2 : maxM <= 30 ? 5 : 10;
+  const raster = Array.from({ length: Math.floor(maxM / stufe) + 1 }, (_, i) => i * stufe)
+    .map((m) => `<line x1="${rand.l}" x2="${breite - rand.r}" y1="${y(m)}" y2="${y(m)}" stroke="currentColor" stroke-opacity=".15"/><text x="${rand.l - 4}" y="${Number(y(m)) + 4}" text-anchor="end" font-size="11" fill="currentColor" fill-opacity=".7">${m} m</text>`)
+    .join("");
+  const zeitStufe = maxMin <= 20 ? 5 : maxMin <= 60 ? 10 : 20;
+  const zeiten = Array.from({ length: Math.floor(maxMin / zeitStufe) + 1 }, (_, i) => i * zeitStufe)
+    .map((min) => `<text x="${x(min)}" y="${hoehe - 6}" text-anchor="middle" font-size="11" fill="currentColor" fill-opacity=".7">${min}′</text>`)
+    .join("");
+  return `<svg class="tauchprofil" viewBox="0 0 ${breite} ${hoehe}" role="img" aria-label="Tiefenprofil: maximal ${String(tief[1]).replace(".", ",")} m nach ${Math.round(tief[0])} Minuten" style="width:100%;height:auto;display:block">
+${raster}${zeiten}<polygon points="${flaeche}" fill="#1e88c8" fill-opacity=".25"/><polyline points="${linie}" fill="none" stroke="#1e88c8" stroke-width="2" stroke-linejoin="round"/><circle cx="${x(tief[0])}" cy="${y(tief[1])}" r="3.5" fill="#1e88c8"/></svg>`;
+}

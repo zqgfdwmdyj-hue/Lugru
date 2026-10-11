@@ -142,6 +142,11 @@ function tauchgangAus(d) {
   for (const k of TAUCH_ZAHL) t[k] = zahlOderNull(d[k]);
   if (t.sterne != null) t.sterne = Math.min(5, Math.max(1, Math.round(t.sterne)));
   t.fotos = (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40);
+  // Tiefenprofil vom Tauchcomputer: [Minute, Meter]-Paare
+  t.profil = (Array.isArray(d.profil) ? d.profil : [])
+    .filter((p) => Array.isArray(p) && p.length === 2 && p.every((x) => typeof x === "number" && Number.isFinite(x)) && p[0] >= 0 && p[0] <= 1000 && p[1] >= 0 && p[1] <= 400)
+    .slice(0, 200)
+    .map(([min, m]) => [Math.round(min * 10) / 10, Math.round(m * 10) / 10]);
   t.privat = d.privat === true;
   t.fotosPrivat = (Array.isArray(d.fotosPrivat) ? d.fotosPrivat : []).filter((f) => t.fotos.includes(f));
   return t;
@@ -483,7 +488,10 @@ async function api(req, res, url, ich) {
         return json(res, 201, x);
       }
       if (t[4] && (m === "PUT" || m === "DELETE")) {
-        const d = m === "PUT" ? tauchgangAus(await koerper(req)) : null;
+        const roh = m === "PUT" ? await koerper(req) : null;
+        const d = roh ? tauchgangAus(roh) : null;
+        // Das Formular schickt kein Profil mit – vorhandenes Tiefenprofil dann behalten
+        if (d && !Array.isArray(roh.profil)) delete d.profil;
         const x = await beitraegeAendern(id, (b) => {
           const i = b.tauchgaenge.findIndex((y) => y.id === t[4]);
           if (i < 0) throw fehler(404, "Tauchgang nicht gefunden.");

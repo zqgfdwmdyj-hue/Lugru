@@ -1,6 +1,7 @@
 // Erlebnisse: Bewertungen mit Fotos und Kommentaren (Ausflüge, Unterkünfte) und das Tauchlogbuch.
 import { zustand, $, esc, datumText, haefen, ausfluegeIn, hafenVon, hatKoord, aktionen, aenderungen, neuZeichnen, dialogOeffnen, dialog, anfrage, fotoHochladen, fotoLeiste, sterneText, sternEingabe, ortsSuche, ortAuslesen, beitraegeLaden, istPlaner } from "./kern.js";
-import { KATEGORIEN, zahl, dauerText } from "./rechnen.js";
+import { KATEGORIEN, zahl, dauerText, tauchProfilSvg, entfernungKm } from "./rechnen.js";
+import { zipTexte } from "./zip.js";
 import { exifLesen, fotoZuordnen, tauchImport, tauchgangDoppelt, tauchStatistik, ARTEN_MEER, sichtungenListe } from "./unterwegs-logik.js";
 import { fotoUrl, stationsArt } from "./kern.js";
 
@@ -160,6 +161,7 @@ function tauchgangDialog(id, vorlage = {}) {
   const zahlFeld = (n, label, einheit, schritt = "any") => `<label>${label}<span class="einheit"><input name="${n}" type="number" step="${schritt}" inputmode="decimal" value="${esc(t[n] ?? "")}"><em>${einheit}</em></span></label>`;
   dialogOeffnen(`<form method="dialog" class="formular" id="tauchForm">
     <h3>${neu ? "Tauchgang eintragen" : "Tauchgang bearbeiten"}</h3>
+    ${t.profil?.length ? `<figure class="profilbox">${tauchProfilSvg(t.profil)}<figcaption class="klein leise">Tiefenprofil vom Tauchcomputer</figcaption></figure>` : ""}
     <div class="formular drei">
       <label>Datum<input type="date" name="datum" value="${esc(t.datum ?? "")}" required></label>
       <label>Abtauchen<input type="time" name="beginn" value="${esc(t.beginn ?? "")}"></label>
@@ -284,7 +286,7 @@ export function erlebnisseAnsicht() {
     </div>
     ${albumKarte()}
     <div class="karte-box">
-      <div class="zeile"><h3>Tauchlog (${tauch.length})</h3><button class="knopf leise" data-aktion="logbuch">Mein Logbuch &amp; Statistik</button><label class="knopf leise" title="UDDF, Subsurface (.ssrf/.xml) oder CSV – z. B. aus Shearwater Cloud, Suunto, Garmin über Subsurface">⌚ Vom Tauchcomputer<input type="file" accept=".uddf,.udcf,.xml,.ssrf,.csv,.tsv,.txt" hidden id="tauchImportDatei"></label><button class="knopf" data-aktion="tauchgang-neu">+ Tauchgang</button></div>
+      <div class="zeile"><h3>Tauchlog (${tauch.length})</h3><button class="knopf leise" data-aktion="logbuch">Mein Logbuch &amp; Statistik</button><label class="knopf leise" title="UDDF (auch als ZIP), Subsurface (.ssrf/.xml) oder CSV – z. B. Apple Watch über Oceanic+, Shearwater Cloud, Suunto, Garmin über Subsurface">⌚ Vom Tauchcomputer<input type="file" accept=".uddf,.udcf,.xml,.ssrf,.csv,.tsv,.txt,.zip,application/zip,application/xml,text/xml,text/csv" hidden id="tauchImportDatei"></label><button class="knopf" data-aktion="tauchgang-neu">+ Tauchgang</button></div>
       ${tauch.length ? `<div class="tabelle"><table><thead><tr><th>Datum</th><th>Tauchplatz</th><th>Wer</th><th class="zahl">Tiefe</th><th class="zahl">Zeit</th><th class="zahl">Wasser</th><th></th></tr></thead><tbody>
         ${tauch.map((t) => `<tr><td>${esc(datumText(t.datum))}${t.beginn ? `<div class="klein leise">${esc(t.beginn)}</div>` : ""}</td><td><strong>${esc(t.tauchplatz)}</strong>${t.sterne ? ` ${sterneText(t.sterne)}` : ""}<div class="klein leise">${esc([t.ort, t.basis].filter(Boolean).join(" · "))}</div>${t.sichtungen ? `<div class="klein">🐠 ${esc(t.sichtungen)}</div>` : ""}${fotoLeiste((t.fotos ?? []).slice(0, 4), { privat: t.fotosPrivat ?? [], zeigeStatus: true })}</td><td>${esc(name(t.taucherId))}</td><td class="zahl">${t.maxTiefe != null ? `${String(t.maxTiefe).replace(".", ",")} m` : ""}</td><td class="zahl">${t.tauchzeitMin != null ? `${t.tauchzeitMin}′` : ""}</td><td class="zahl">${t.wasserTemp != null ? `${String(t.wasserTemp).replace(".", ",")} °C` : ""}</td>
           <td><button class="link" data-aktion="tauchgang-bearbeiten" data-id="${esc(t.id)}">Bearbeiten</button> ${t.privat ? '<span class="klein leise">🔒</span>' : `<button class="link" data-aktion="teilen" data-art="tauchgang" data-id="${esc(t.id)}">Teilen</button>`}</td></tr>`).join("")}
@@ -310,8 +312,19 @@ document.addEventListener("change", async (e) => {
   if (e.target.id !== "tauchImportDatei" || !e.target.files[0]) return;
   const datei = e.target.files[0];
   e.target.value = "";
-  importTauch = tauchImport(await datei.text(), datei.name);
-  if (!importTauch.length) return alert("In der Datei wurden keine Tauchgänge erkannt. Unterstützt: UDDF, Subsurface-Logbuch (.ssrf/.xml) und CSV mit Spalten wie Datum, Zeit, Max. Tiefe, Dauer.");
+  try {
+    const kopf = new Uint8Array(await datei.slice(0, 4).arrayBuffer());
+    const istZip = kopf[0] === 0x50 && kopf[1] === 0x4b;
+    const texte = istZip ? await zipTexte(await datei.arrayBuffer()) : [{ name: datei.name, text: await datei.text() }];
+    const gesehen = new Set();
+    importTauch = texte.flatMap((x) => tauchImport(x.text, x.name)).filter((t) => {
+      const k = `${t.datum} ${t.beginn} ${t.maxTiefe}`;
+      return !gesehen.has(k) && gesehen.add(k);
+    });
+  } catch (err) {
+    return alert(`Die Datei konnte nicht gelesen werden: ${err.message}`);
+  }
+  if (!importTauch.length) return alert("In der Datei wurden keine Tauchgänge erkannt. Unterstützt: UDDF (auch als ZIP, z. B. Apple Watch über Oceanic+), Subsurface-Logbuch (.ssrf/.xml) und CSV mit Spalten wie Datum, Zeit, Max. Tiefe, Dauer.");
   const meine = zustand.beitraege.tauchgaenge.filter((t) => t.taucherId === zustand.ich.id);
   const { von, bis } = (() => {
     const d = haefen().map((h) => h.datum).filter(Boolean).sort();
@@ -319,12 +332,14 @@ document.addEventListener("change", async (e) => {
   })();
   dialogOeffnen(`<form method="dialog" class="formular" id="tauchImportForm">
     <h3>⌚ ${importTauch.length} Tauchgänge erkannt</h3>
-    <p class="leise klein">Vorausgewählt sind Tauchgänge im Zeitraum dieser Reise${von ? ` (${esc(datumText(von))} – ${esc(datumText(bis))})` : ""}, die noch nicht im Log stehen. Tauchplatz und Fotos kannst du danach ergänzen.</p>
+    <p class="leise klein">Vorausgewählt sind Tauchgänge im Zeitraum dieser Reise${von ? ` (${esc(datumText(von))} – ${esc(datumText(bis))})` : ""}, die noch nicht im Log stehen. Sehr kurze Tauchgänge (unter 3 Min. oder flacher als 2 m, z. B. Tests an der Oberfläche) sind abgewählt. Tauchplatz und Fotos kannst du danach ergänzen.</p>
     <div class="tabelle"><table><thead><tr><th></th><th>Datum</th><th>Tauchplatz</th><th class="zahl">Tiefe</th><th class="zahl">Zeit</th><th class="zahl">Wasser</th></tr></thead><tbody>
       ${importTauch.map((t, i) => {
         const doppelt = tauchgangDoppelt(t, meine);
         const passt = !von || (t.datum >= von && t.datum <= bis);
-        return `<tr class="${doppelt ? "leise" : ""}"><td><input type="checkbox" name="i" value="${i}" ${passt && !doppelt ? "checked" : ""}></td><td>${esc(datumText(t.datum))} ${esc(t.beginn)}</td><td>${esc(t.tauchplatz || "–")}${doppelt ? ' <span class="klein">(schon im Log)</span>' : ""}</td><td class="zahl">${t.maxTiefe != null ? `${String(t.maxTiefe).replace(".", ",")} m` : ""}</td><td class="zahl">${t.tauchzeitMin != null ? `${t.tauchzeitMin}′` : ""}</td><td class="zahl">${t.wasserTemp != null ? `${String(t.wasserTemp).replace(".", ",")} °C` : ""}</td></tr>`;
+        const kurz = (t.tauchzeitMin != null && t.tauchzeitMin < 3) || (t.maxTiefe != null && t.maxTiefe < 2);
+        const platz = t.tauchplatz || (t.lat != null ? "📍 GPS-Position" : "–");
+        return `<tr class="${doppelt || kurz ? "leise" : ""}"><td><input type="checkbox" name="i" value="${i}" ${passt && !doppelt && !kurz ? "checked" : ""}></td><td>${esc(datumText(t.datum))} ${esc(t.beginn)}</td><td>${esc(platz)}${t.profil?.length ? ' <span class="klein" title="mit Tiefenprofil">📈</span>' : ""}${doppelt ? ' <span class="klein">(schon im Log)</span>' : kurz ? ' <span class="klein">(sehr kurz)</span>' : ""}</td><td class="zahl">${t.maxTiefe != null ? `${String(t.maxTiefe).replace(".", ",")} m` : ""}</td><td class="zahl">${t.tauchzeitMin != null ? `${t.tauchzeitMin}′` : ""}</td><td class="zahl">${t.wasserTemp != null ? `${String(t.wasserTemp).replace(".", ",")} °C` : ""}</td></tr>`;
       }).join("")}
     </tbody></table></div>
     <div class="zeile"><span class="platz"></span><button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button><button class="knopf" value="ok">Übernehmen</button></div>
@@ -336,8 +351,15 @@ document.addEventListener("change", async (e) => {
       // Passenden Tauch-Ausflug desselben Tages verknüpfen
       const tag = haefen().find((h) => h.datum === t.datum);
       const ausflug = tag ? ausfluegeIn(tag.id).find((a) => a.kategorie === "tauchen" && a.status === "gebucht") : null;
+      // Ohne Namen (z. B. Apple Watch/Oceanic+ speichert nur GPS): nächsten bekannten Ort der Reise im Umkreis von 10 km nehmen
+      const naechster = hatKoord(t)
+        ? [...(zustand.reise.ausfluege ?? []).filter((a) => hatKoord(a.ziel)).map((a) => ({ name: a.titel, ...a.ziel, ausflug: true })), ...haefen().filter(hatKoord)]
+            .map((o) => ({ o, km: entfernungKm(t, o) }))
+            .filter((x) => x.km != null && x.km <= 10)
+            .sort((a, b) => a.km - b.km)[0]?.o
+        : null;
       try {
-        await anfrage(`/api/reisen/${zustand.reise.id}/tauchgaenge`, { method: "POST", body: { ...t, tauchplatz: t.tauchplatz || ausflug?.titel || "Tauchgang", ort: t.ort || [tag?.name, tag?.land].filter(Boolean).join(", "), ausflugId: ausflug?.id ?? "", taucherId: zustand.ich.id, gas: "Luft", fotos: [], privat: false } });
+        await anfrage(`/api/reisen/${zustand.reise.id}/tauchgaenge`, { method: "POST", body: { ...t, tauchplatz: t.tauchplatz || ausflug?.titel || (naechster?.ausflug ? naechster.name : "") || `Tauchgang ${t.beginn}`.trim(), ort: t.ort || [tag?.name, tag?.land].filter(Boolean).join(", ") || (naechster && !naechster.ausflug ? [naechster.name, naechster.land].filter(Boolean).join(", ") : ""), ausflugId: ausflug?.id ?? "", taucherId: zustand.ich.id, gas: "Luft", fotos: [], privat: false } });
         n++;
       } catch (err) {
         alert(err.message);

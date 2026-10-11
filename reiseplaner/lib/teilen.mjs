@@ -3,7 +3,7 @@
 import path from "node:path";
 import { DATA_DIR, lesen, aendern } from "./speicher.mjs";
 import { token } from "./konten.mjs";
-import { QUELLEN, KATEGORIEN, ausflugKosten, oeffentlicheFotos } from "../public/rechnen.js";
+import { QUELLEN, KATEGORIEN, ausflugKosten, oeffentlicheFotos, tauchProfilSvg } from "../public/rechnen.js";
 
 const FREIGABEN = path.join(DATA_DIR, "freigaben.json");
 export const ARTEN = ["ausflug", "hotel", "tauchgang", "bericht"];
@@ -158,18 +158,20 @@ const sterneHtml = (n) => (n == null ? "" : `<span class="sterne" aria-label="${
 const euro = (n) => (n == null ? "" : new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n));
 
 function tauchTabelle(t) {
+  const de = (n) => String(n).replace(".", ",");
   const zeilen = [
-    ["Max. Tiefe", t.maxTiefe != null ? `${t.maxTiefe} m` : ""],
-    ["Ø Tiefe", t.mittelTiefe != null ? `${t.mittelTiefe} m` : ""],
+    ["Max. Tiefe", t.maxTiefe != null ? `${de(t.maxTiefe)} m` : ""],
+    ["Ø Tiefe", t.mittelTiefe != null ? `${de(t.mittelTiefe)} m` : ""],
     ["Tauchzeit", t.tauchzeitMin != null ? `${t.tauchzeitMin} Min.` : ""],
-    ["Wasser", t.wasserTemp != null ? `${t.wasserTemp} °C` : ""],
-    ["Sicht", t.sicht != null ? `${t.sicht} m` : ""],
+    ["Wasser", t.wasserTemp != null ? `${de(t.wasserTemp)} °C` : ""],
+    ["Sicht", t.sicht != null ? `${de(t.sicht)} m` : ""],
     ["Strömung", t.stroemung ?? ""],
     ["Einstieg", t.einstieg ?? ""],
     ["Gas", t.gas ? `${t.gas}${t.gas === "Nitrox" && t.nitroxProzent ? ` ${t.nitroxProzent} %` : ""}` : ""],
     ["Basis", t.basis ?? ""],
   ].filter(([, v]) => v !== "" && v != null);
   return `<dl class="tauchdaten">${zeilen.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+    ${tauchProfilSvg(t.profil)}
     ${t.sichtungen ? `<p><strong>Gesehen:</strong> ${esc(t.sichtungen)}</p>` : ""}`;
 }
 

@@ -478,13 +478,33 @@ const attr = (tag, name) => {
 const entities = (s) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 const einsNach = (n, stellen = 1) => (n == null || !Number.isFinite(n) ? null : Math.round(n * 10 ** stellen) / 10 ** stellen);
 
+/** Zeitgewichtete mittlere Tiefe aus Messpunkten { s, m }. */
+function mittlereTiefe(punkte) {
+  let flaeche = 0;
+  for (let i = 1; i < punkte.length; i++) flaeche += ((punkte[i].m + punkte[i - 1].m) / 2) * (punkte[i].s - punkte[i - 1].s);
+  const dauer = punkte.length > 1 ? punkte.at(-1).s - punkte[0].s : 0;
+  return dauer > 0 ? flaeche / dauer : null;
+}
+
+/** Tiefenprofil kompakt: höchstens 120 Punkte [Minute, Meter], tiefster Punkt bleibt erhalten. */
+export function profilAus(punkte, max = 120) {
+  if (punkte.length < 2) return [];
+  const schritt = Math.max(1, Math.ceil(punkte.length / max));
+  const tiefster = punkte.reduce((a, x) => (x.m > a.m ? x : a), punkte[0]);
+  const auswahl = punkte.filter((x, i) => i % schritt === 0 || i === punkte.length - 1 || x === tiefster);
+  return auswahl.map((x) => [einsNach(x.s / 60), einsNach(x.m)]).slice(0, max + 2);
+}
+
 /** UDDF (Standardformat vieler Tauchcomputer-Programme, z. B. Shearwater, Suunto, Subsurface-Export). */
 function uddfLesen(xml) {
   const plaetze = {};
   for (const m of xml.matchAll(/<site\b([^>]*)>([\s\S]*?)<\/site>/gi)) {
-    plaetze[attr(m[1], "id")] = {
-      name: entities(tagWert(m[2], "name")),
-      ort: entities(tagWert(m[2], "location")),
+    const id = attr(m[1], "id");
+    // Oceanic+ (Apple Watch) schreibt statt eines Namens nur die interne ID („site_690f…“)
+    const echt = (w) => (w && w !== id && !/^site_[0-9a-f]{8,}$/i.test(w) ? w : "");
+    plaetze[id] = {
+      name: echt(entities(tagWert(m[2], "name"))),
+      ort: echt(entities(tagWert(m[2], "location"))),
       lat: zahl(tagWert(m[2], "latitude")),
       lng: zahl(tagWert(m[2], "longitude")),
     };
@@ -502,6 +522,13 @@ function uddfLesen(xml) {
       const pa = zahl(tagWert(b, n));
       return pa == null ? null : Math.round(pa > 1000 ? pa / 1e5 : pa);
     };
+    // Messpunkte (Sekunden, Meter, Kelvin) – liefern Profil sowie fehlende Ø-Tiefe/Dauer/Temperatur
+    const punkte = [...b.matchAll(/<waypoint\b[^>]*>([\s\S]*?)<\/waypoint>/gi)]
+      .map((w) => ({ s: zahl(tagWert(w[1], "divetime")), m: zahl(tagWert(w[1], "depth")), k: zahl(tagWert(w[1], "temperature")) }))
+      .filter((x) => x.s != null && x.m != null && x.s >= 0 && x.m >= 0)
+      .sort((x, y) => x.s - y.s);
+    const dauerS = zahl(tagWert(nachher, "diveduration")) ?? punkte.at(-1)?.s ?? null;
+    const kalt = kelvin ?? (punkte.some((x) => x.k != null) ? Math.min(...punkte.filter((x) => x.k != null).map((x) => x.k)) : null);
     tauchgaenge.push({
       datum: dt?.[1] ?? "",
       beginn: dt?.[2] ?? "",
@@ -509,10 +536,11 @@ function uddfLesen(xml) {
       ort: platz.ort || "",
       lat: platz.lat ?? null,
       lng: platz.lng ?? null,
-      maxTiefe: einsNach(zahl(tagWert(nachher, "greatestdepth"))),
-      mittelTiefe: einsNach(zahl(tagWert(nachher, "averagedepth"))),
-      tauchzeitMin: zahl(tagWert(nachher, "diveduration")) != null ? Math.round(zahl(tagWert(nachher, "diveduration")) / 60) : null,
-      wasserTemp: kelvin != null ? einsNach(kelvin > 200 ? kelvin - 273.15 : kelvin) : null,
+      maxTiefe: einsNach(zahl(tagWert(nachher, "greatestdepth")) ?? (punkte.length ? Math.max(...punkte.map((x) => x.m)) : null)),
+      mittelTiefe: einsNach(zahl(tagWert(nachher, "averagedepth")) ?? mittlereTiefe(punkte)),
+      tauchzeitMin: dauerS != null ? Math.round(dauerS / 60) : null,
+      wasserTemp: kalt != null ? einsNach(kalt > 200 ? kalt - 273.15 : kalt) : null,
+      profil: profilAus(punkte),
       sicht: zahl(tagWert(nachher, "visibility")),
       druckStart: druck("tankpressurebegin"),
       druckEnde: druck("tankpressureend"),

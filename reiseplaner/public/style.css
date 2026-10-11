@@ -573,3 +573,5 @@ form.art-hafen .ohne-hafen { display: none !important; }
 }
 .kinder .knopf { white-space: normal; text-align: center; }
 .kinderpass .knopf { background: #fff; color: #0d2f52; border-color: #fff; }
+.profilbox { margin: 0 0 12px; padding: 8px; border: 1px solid var(--rand, #ddd); border-radius: 10px; color: var(--text, inherit); }
+.profilbox figcaption { margin-top: 4px; }
