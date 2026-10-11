@@ -18,6 +18,7 @@ import { PhotoUpload } from "@/components/photo-upload";
 import { PriceLinks } from "@/components/price-links";
 import { MhdPhoto } from "@/components/mhd-photo";
 import { CategorySelect } from "@/components/category-select";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
@@ -117,7 +118,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
 
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
-          <form action={saveItems} className="card" style={{ overflow: "auto" }}>
+          <form action={saveItems} id="produktliste" className="card" style={{ overflow: "auto" }}>
             <input type="hidden" name="eventId" value={id} />
             <div className="card-head">
               <h2>Produkte</h2>
@@ -221,6 +222,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
             </table>
             {rows.length > 0 && <div style={{ padding: "10px 14px", display: "flex", justifyContent: "flex-end" }}><button className="btn btn-primary" type="submit" name="op" value="save">Speichern</button></div>}
           </form>
+          <UnsavedGuard formId="produktliste" />
 
           <section className="card card-pad stack">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>

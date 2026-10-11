@@ -162,3 +162,28 @@ h2 { font-size: 16px; margin: 0; }
 .filter-bar { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 14px; }
 .filter-bar .chip { font-size: 12.5px; padding: 4px 10px; }
 .chip-cat { border-style: dashed; }
+
+/* Leiste „Ungespeicherte Änderungen“ – bleibt unten sichtbar, auch beim Scrollen durch lange Listen */
+.unsaved-bar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #1b1d1f;
+  color: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  font-weight: 600;
+}
+
+/* Auf dem Handy Nebensächliches ausblenden (z. B. Spalten der Verteilungsliste) */
+@media (max-width: 700px) {
+  .hide-mobile {
+    display: none;
+  }
+}

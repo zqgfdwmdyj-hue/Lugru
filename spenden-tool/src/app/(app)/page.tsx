@@ -39,16 +39,16 @@ export default async function SpendenPage() {
       <div className="row">
         <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
           <table className="table">
-            <thead><tr><th>Datum</th><th>Titel</th><th className="right">Produkte</th><th className="right">Warenwert*</th><th></th></tr></thead>
+            <thead><tr><th>Datum</th><th className="hide-mobile">Titel</th><th className="right">Produkte</th><th className="right hide-mobile">Warenwert*</th><th className="hide-mobile"></th></tr></thead>
             <tbody>
               {events.length === 0 && <tr><td colSpan={5} className="muted">Noch keine Verteilung. Rechts die erste anlegen – danach Fotos hochladen, Preise eintragen, Collage und Aushang erzeugen.</td></tr>}
               {events.map(({ e, items, value }) => (
                 <tr key={e.id}>
-                  <td className="num" style={{ whiteSpace: "nowrap" }}>{weekday(e.eventDate)} {formatDate(e.eventDate)}{e.eventTime ? <div className="muted small">{e.eventTime}</div> : null}{e.eventDate >= today ? <span className="chip" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 11 }}>geplant</span> : null}</td>
-                  <td><Link href={`/verteilung/${e.id}`}>{e.title}</Link>{e.location ? <span className="small muted"> · {e.location}</span> : null}</td>
+                  <td className="num" style={{ whiteSpace: "nowrap" }}><Link href={`/verteilung/${e.id}`}>{weekday(e.eventDate)} {formatDate(e.eventDate)}</Link>{e.eventTime ? <div className="muted small">{e.eventTime}</div> : null}{e.eventDate >= today ? <span className="chip" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 11 }}>geplant</span> : null}</td>
+                  <td className="hide-mobile"><Link href={`/verteilung/${e.id}`}>{e.title}</Link>{e.location ? <span className="small muted"> · {e.location}</span> : null}</td>
                   <td className="num right">{items}</td>
-                  <td className="num right">{value ? formatEuro(value) : "–"}</td>
-                  <td style={{ whiteSpace: "nowrap" }}>
+                  <td className="num right hide-mobile">{value ? formatEuro(value) : "–"}</td>
+                  <td className="hide-mobile" style={{ whiteSpace: "nowrap" }}>
                     <Link href={`/verteilung/${e.id}/collage`} className="btn btn-small">Collage</Link>{" "}
                     <Link href={`/aushang/${e.id}`} className="btn btn-small" target="_blank">Aushang</Link>
                   </td>
