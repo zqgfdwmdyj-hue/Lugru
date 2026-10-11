@@ -57,6 +57,33 @@ export const REGIONEN = [
     ],
   },
   {
+    id: "alpen", name: "Alpen", box: [45.6, 48.1, 5.8, 16.5],
+    tiere: [
+      T("🐿️", "Murmeltier", "Murmeltiere pfeifen laut, wenn Gefahr droht – und schlafen den ganzen Winter."),
+      T("🐐", "Steinbock", "Steinböcke klettern an fast senkrechten Felswänden."),
+      T("🦅", "Steinadler", "Er kann einen Hasen aus einem Kilometer Entfernung sehen."),
+      T("🐄", "Kuh auf der Alm", "Im Sommer ziehen die Kühe hinauf auf die Almwiesen – mit Glocken!"),
+      T("🦊", "Fuchs", "Im Winter sieht man seine Spuren im Schnee."),
+      T("🐦", "Alpendohle", "Schwarze Vögel mit gelbem Schnabel – sie betteln gern an Berghütten."),
+      T("🦌", "Gämse", "Gämsen springen sicher von Fels zu Fels."),
+      T("🐰", "Schneehase", "Im Winter wird sein Fell weiß wie der Schnee."),
+    ],
+  },
+  {
+    id: "mitteleuropa", name: "Mitteleuropa", box: [47, 55.4, -5, 20],
+    tiere: [
+      T("🦌", "Reh", "Rehe sieht man oft morgens und abends am Waldrand."),
+      T("🦊", "Fuchs", "Füchse wohnen in Höhlen, die Bau heißen."),
+      T("🐿️", "Eichhörnchen", "Es versteckt Nüsse und vergisst viele – daraus wachsen Bäume."),
+      T("🦢", "Schwan", "Schwäne bleiben ihr ganzes Leben zusammen."),
+      T("🦆", "Ente", "Enten haben wasserdichte Federn."),
+      T("🐦", "Storch", "Störche fliegen im Winter bis nach Afrika."),
+      T("🦔", "Igel", "Ein Igel hat rund 7000 Stacheln."),
+      T("🦭", "Seehund", "An Nord- und Ostsee liegen Seehunde auf den Sandbänken."),
+      T("🐞", "Marienkäfer", "Die Punkte zeigen nicht das Alter – aber sie sind trotzdem schön."),
+    ],
+  },
+  {
     id: "mittelmeer", name: "Mittelmeer", box: [30, 46.5, -6, 36.5],
     tiere: [
       T("🐬", "Delfin", "Im Mittelmeer leben mehrere Delfinarten."),

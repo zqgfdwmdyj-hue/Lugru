@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { DATA_DIR, lesen, schreiben, exklusiv } from "./speicher.mjs";
 import { docxText } from "./docx.mjs";
 import { fehler } from "./konten.mjs";
-import { ausflugKosten, zeitplan, startpunkt, hotelKosten, KATEGORIEN, QUELLEN } from "../public/rechnen.js";
+import { ausflugKosten, zeitplan, startpunkt, hotelKosten, festeZeit, zimmerVon, KATEGORIEN, QUELLEN, REISEARTEN, VERKEHRSMITTEL } from "../public/rechnen.js";
 
 const MODELL = process.env.KI_MODELL || "claude-opus-5-5";
 const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -41,7 +41,7 @@ const obj = (properties) => ({ type: "object", properties, required: Object.keys
 
 const PLAN_SCHEMA = obj({
   name: str,
-  art: { type: "string", enum: ["kreuzfahrt", "hotel", "rundreise"] },
+  art: { type: "string", enum: Object.keys(REISEARTEN) },
   schiff: str,
   personen: { type: "array", items: obj({ name: str, typ: { type: "string", enum: ["erwachsen", "kind"] }, alter: zahlOderNull }) },
   stationen: {
@@ -82,7 +82,7 @@ Regeln:
 - Übernimm nur, was in der Vorlage steht. Erfinde keine Preise, Zeiten, Links oder Orte; Unbekanntes bleibt leer ("") bzw. null.
 - Datum als JJJJ-MM-TT. Fehlt das Jahr, nimm das nächste passende Datum ab heute. Zeiten als HH:MM (24 h).
 - Kreuzfahrt: jeder Tag ist eine Station (art "hafen" mit Ankunft/Abfahrt, "seetag" für Tage auf See). "Alle an Bord" nur, wenn angegeben.
-- Hotel- oder Rundreise: Tage an Land als art "ort" mit dem Ort als Name; Unterkünfte unter "hotels".
+- Alle anderen Reisearten (Hotel, Rundreise, Städtereise, Roadtrip/Wohnmobil, Ferienwohnung, Camping, Ski, Tagesausflug): Tage an Land als art "ort" mit dem Ort als Name; Unterkünfte (auch Ferienwohnung, Campingplatz) unter "hotels".
 - Ausflüge: dem Tag über "datum" und dem Ort über "ort" zuordnen. Dauer in Minuten (aus „Zeit: 08:15–11:45“ berechnen).
 - Preise in Euro als Zahl. Steht ein Gesamtpreis da („Preis gesamt für 6 Personen: 275 €“, „Gesamtpreis … 544 €“, „Für 3 Taucher: 597,60 €“), dann preisArt "gruppe" und preisGruppe = dieser Betrag, preisErw/preisKind null; gilt er nur für einen Teil der Gruppe, "anzahl" = Zahl der Teilnehmenden. Sonst preisArt "person" mit preisErw/preisKind. Steht neben Dollar auch ein Euro-Betrag, den Euro-Betrag nehmen; nur Dollar → grob umrechnen und in "notiz" vermerken.
 - Status: gebucht/reserviert → "gebucht"; fest geplant → "favorit"; Alternativen, Anfragen, Optionen → "idee". Backups („TUI BACKUP GEBUCHT“) sind "gebucht" mit Hinweis in der Notiz.
@@ -133,11 +133,11 @@ export async function reiseplanLesen({ text, dateien = [], heute }) {
 
 const SYSTEM_CHAT = `Du bist der Reiseassistent in einem privaten Reiseplaner einer Familie. Du hilfst, Landausflüge, Hotels und Tage zu planen, zu vergleichen und zu hinterfragen – auf Deutsch, freundlich und knapp.
 
-Mit jeder Nachricht bekommst du (wenn er sich geändert hat) den aktuellen Stand der Reise als JSON: Personen, Tage/Häfen mit Zeiten, Hotels, Ausflüge mit berechneten Kosten, Zeitplan und Puffer bis „Alle an Bord“, sowie Bewertungen.
+Die Reise kann eine Kreuzfahrt, ein Hotel-, Städte-, Ski- oder Campingurlaub, ein Roadtrip oder ein Tagesausflug sein. Mit jeder Nachricht bekommst du (wenn er sich geändert hat) den aktuellen Stand der Reise als JSON: Personen (ggf. mit Familie), Tage mit Zeiten und fester Zeit (z. B. „Alle an Bord“, Check-out, Abflug), Verbindungen, Unterkünfte, Ausflüge mit berechneten Kosten, Zeitplan und Puffer bis zur festen Zeit, sowie Bewertungen.
 
 So arbeitest du:
 - Antworte auf Grundlage der Reisedaten. Wenn du aktuelle Infos brauchst (Öffnungszeiten, Wetter, Erfahrungsberichte, Preise), nutze die Websuche und nenne die Quelle.
-- Bei Ausflügen von Kreuzfahrten: Eigene Ausflüge brauchen genug Puffer – das Schiff wartet nicht. Weise auf Risiken hin.
+- Feste Zeiten (Schiff, Flug, Check-out …) brauchen genug Puffer – das Schiff oder der Flieger wartet nicht. Weise auf Risiken hin.
 - Achte auf die Kinder (Alter), Tauchen (Flugverbot nach dem Tauchen, Tiefen), Fahrzeiten und Kosten.
 - Änderungen machst du nicht selbst: Schlage sie mit den Werkzeugen vor (ausflug_vorschlagen, aenderung_vorschlagen, station_vorschlagen, hotel_vorschlagen). Die Familie übernimmt sie mit einem Klick. Sag im Text kurz, was du vorgeschlagen hast.
 - Verwende für Änderungen die IDs aus den Reisedaten. Erfinde keine Preise oder Links – lass sie leer, wenn du sie nicht sicher weißt.`;
@@ -199,12 +199,19 @@ export function reiseStand(reise, beitraege, benutzer) {
     name: reise.name,
     art: reise.art ?? "kreuzfahrt",
     schiff: reise.schiff ?? "",
-    personen: personen.map((p) => ({ name: p.name, typ: p.typ, alter: p.alter || null })),
-    stationen: stationen.map((h) => ({ id: h.id, datum: h.datum, art: h.art ?? (h.seetag ? "seetag" : "hafen"), name: h.name, land: h.land ?? "", ankunft: h.ankunft ?? "", abfahrt: h.abfahrt ?? "", allesAnBord: h.allesAnBord ?? "", notiz: h.notiz ?? "" })),
-    hotels: (reise.hotels ?? []).map((h) => ({ id: h.id, name: h.name, ort: h.ort ?? "", anreise: h.anreise ?? "", abreise: h.abreise ?? "", status: h.status, verpflegung: h.verpflegung ?? "", kosten: hotelKosten(h, personen).summe, notiz: h.notiz ?? "" })),
+    reiseart: REISEARTEN[reise.art ?? "kreuzfahrt"] ?? "",
+    personen: personen.map((p) => ({ name: p.name, typ: p.typ, alter: p.alter || null, familie: (reise.familien ?? []).find((f) => f.id === p.familie)?.name ?? "" })),
+    stationen: stationen.map((h) => {
+      const fest = festeZeit(h, reise);
+      return { id: h.id, datum: h.datum, art: h.art ?? (h.seetag ? "seetag" : "hafen"), name: h.name, land: h.land ?? "", ankunft: h.ankunft ?? "", abfahrt: h.abfahrt ?? "", allesAnBord: h.allesAnBord ?? "", festeZeit: fest ? `${fest.zeit} ${fest.titel}` : "", notiz: h.notiz ?? "" };
+    }),
+    // Nur Fahrplandaten – keine Buchungsnummern
+    verbindungen: (reise.verbindungen ?? []).filter((v) => v.status !== "verworfen").map((v) => ({ art: VERKEHRSMITTEL[v.art]?.name ?? v.art, titel: v.titel ?? "", von: v.von ?? "", nach: v.nach ?? "", datum: v.datum, abfahrt: v.abZeit ?? "", ankunft: [v.anDatum, v.anZeit].filter(Boolean).join(" "), status: v.status })),
+    // Ohne WLAN-Passwort, Zugangscodes, Telefon und Adresse
+    hotels: (reise.hotels ?? []).map((h) => ({ id: h.id, name: h.name, ort: h.ort ?? "", anreise: h.anreise ?? "", abreise: h.abreise ?? "", checkin: h.checkin ?? "", checkout: h.checkout ?? "", status: h.status, verpflegung: h.verpflegung ?? "", kosten: hotelKosten(h, personen, zimmerVon(reise, h.id)).summe, notiz: h.notiz ?? "" })),
     ausfluege: (reise.ausfluege ?? []).map((a) => {
       const h = stationen.find((s) => s.id === a.hafenId);
-      const z = zeitplan(a, h);
+      const z = zeitplan(a, h, reise);
       const k = ausflugKosten(a, personen);
       const bew = beitraege.bewertungen.filter((b) => b.zielArt === "ausflug" && b.zielId === a.id);
       return {
@@ -222,7 +229,8 @@ export function reiseStand(reise, beitraege, benutzer) {
         preisKind: a.preisKind ?? null,
         kostenGesamt: k.summe,
         teilnehmer: personen.filter((p) => (a.teilnehmer ?? []).includes(p.id)).map((p) => p.name),
-        pufferBisAnBordMin: z.puffer,
+        pufferBisFesteZeitMin: z.puffer,
+        festeZeit: z.fest ? `${z.fest.zeit} ${z.fest.titel}` : "",
         warnungen: z.warnungen,
         interesse: a.interesse ?? 3,
         link: a.link ?? "",
@@ -339,17 +347,17 @@ async function mitWerkzeugen({ system, inhalt, tools, effort = "medium", fertig 
   return { ergebnis: null, texte };
 }
 
-const SYSTEM_BRIEFING = `Du schreibst das Tagesbriefing für eine Familie auf Reise (Kreuzfahrt, Hotel- oder Rundreise), das sie morgens aufs Handy bekommt. Deutsch, freundlich, knapp, gut lesbar auf dem Handy.
+const SYSTEM_BRIEFING = `Du schreibst das Tagesbriefing für eine Familie (oder mehrere Familien) auf Reise – Kreuzfahrt, Hotel-, Städte-, Ski- oder Campingurlaub, Roadtrip oder Tagesausflug –, das sie morgens aufs Handy bekommt. Deutsch, freundlich, knapp, gut lesbar auf dem Handy.
 
 Aufbau (genau diese Überschriften mit „## “, nur wenn es etwas dazu zu sagen gibt):
 ## Heute
-Ort, Ankunft/Abfahrt, „Alle an Bord“, Wetter in einem Satz.
+Ort, Ankunft/Abfahrt bzw. Verbindungen des Tages, die feste Zeit (z. B. „Alle an Bord“, Check-out, Abflug), Wetter in einem Satz.
 ## Ablauf
 Zeitlich sortiert als Liste („- 09:30 …“), mit Treffpunkt und wann man spätestens zurück sein muss.
 ## Rechtzeitig zurück
-Konkrete Uhrzeit, wann man spätestens zurück zum Schiff bzw. Startpunkt aufbrechen sollte (mit Reserve). Warnung, wenn ein Ausflug knapp ist.
+Konkrete Uhrzeit, wann man spätestens zurück zum Schiff, zur Unterkunft oder zum Flughafen/Bahnhof aufbrechen sollte (mit Reserve). Warnung, wenn ein Ausflug knapp ist. Bei Roadtrips: Fahrstrecke des Tages und Pausen.
 ## Mitnehmen
-Kurze Liste passend zum Tag (z. B. Bordkarte, Ausweiskopie, Bargeld in Landeswährung, Badesachen, Tauchschein).
+Kurze Liste passend zum Tag (z. B. Bordkarte, Ausweis, Tickets, Bargeld in Landeswährung, Badesachen, Skipass, Tauchschein).
 ## Tipps
 2–4 kurze, aktuelle Tipps zum Ort (Landeswährung, Trinkgeld, Tender, Sicherheit, Öffnungszeiten). Nutze die Websuche für Aktuelles und nenne bei wichtigen Angaben die Quelle in Klammern.
 
@@ -380,7 +388,7 @@ const CHECK_ERGEBNIS = {
   input_schema: obj({
     ampel: { type: "string", enum: ["gruen", "gelb", "rot"], description: "gruen = sicher zurück, gelb = knapp/unsicher, rot = zu riskant" },
     zusammenfassung: { type: "string", description: "1–2 Sätze" },
-    rueckkehr: { type: "string", description: "Voraussichtliche Rückkehr am Schiff/Startpunkt als HH:MM, oder leer" },
+    rueckkehr: { type: "string", description: "Voraussichtliche Rückkehr am Schiff/Startpunkt/Ziel als HH:MM, oder leer" },
     pufferMin: zahlOderNull,
     risiken: { type: "array", items: str, description: "Kurze Stichpunkte" },
     empfehlung: str,
@@ -388,12 +396,12 @@ const CHECK_ERGEBNIS = {
   }),
 };
 
-const SYSTEM_CHECK = `Du prüfst für eine Familie auf Kreuzfahrt, ob ein Landausflug eines fremden Anbieters (z. B. GetYourGuide, Viator) sicher vor „Alle an Bord“ zurück ist. Das Schiff wartet bei fremden Anbietern nicht.
+const SYSTEM_CHECK = `Du prüfst für eine Familie auf Reise, ob ein Ausflug (z. B. von GetYourGuide, Viator oder auf eigene Faust) sicher vor der festen Zeit des Tages zurück ist – „Alle an Bord“ bei Kreuzfahrten (das Schiff wartet bei fremden Anbietern nicht), sonst z. B. Check-out, Abflug, Zug oder Fähre.
 
 Vorgehen:
 1. Lies die Ausflugsdaten (Beginn, Dauer, Treffpunkt, Weg ab Schiff, berechneter Puffer).
 2. Wenn ein Link angegeben ist, rufe die Seite ab (web_fetch) und prüfe Dauer, Startzeiten, Treffpunkt, Abholung am Hafen, Hinweise für Kreuzfahrtgäste und „Rückkehr zum Schiff garantiert“. Nutze bei Bedarf die Websuche (Erfahrungsberichte, Entfernung Hafen–Treffpunkt, Verkehr).
-3. Rechne: Weg zum Treffpunkt + Dauer + Rückweg + Reserve gegen „Alle an Bord“. Unter 60 Minuten Reserve ist „gelb“, keine Reserve oder unklare Rückkehr ist „rot“.
+3. Rechne: Weg zum Treffpunkt + Dauer + Rückweg + Reserve gegen die feste Zeit (im Feld „festeZeit“). Unter 60 Minuten Reserve ist „gelb“, keine Reserve oder unklare Rückkehr ist „rot“. Gibt es keine feste Zeit, prüfe Öffnungszeiten, Dauer und ob der Ablauf realistisch ist.
 4. Rufe zum Schluss genau einmal ergebnis_melden auf. Antworte auf Deutsch, nichts erfinden – Unklares als Risiko nennen.`;
 
 export async function ausflugPruefen({ stand, ausflugId }) {

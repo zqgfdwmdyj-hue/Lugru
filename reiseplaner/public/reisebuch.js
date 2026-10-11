@@ -1,7 +1,7 @@
 // Reisebuch & Jahresrückblick: druckfertige Seiten (→ „Als PDF speichern“) mit Route, Tagen,
 // den besten Fotos, Bewertungen und Tauchgängen – als Vorlage für ein Fotobuch.
 import { zustand, esc, aktionen, anfrage, sterneText } from "./kern.js";
-import { KATEGORIEN, oeffentlicheFotos, entfernungKm } from "./rechnen.js";
+import { KATEGORIEN, REISEARTEN, oeffentlicheFotos, entfernungKm } from "./rechnen.js";
 import { tauchStatistik, reiseZeitraum } from "./unterwegs-logik.js";
 
 const artVon = (h) => h.art ?? (h.seetag ? "seetag" : "hafen");
@@ -80,7 +80,7 @@ function reiseKapitel({ reise, beitraege }, namen, opt) {
   const stat = tauchStatistik(tauch);
   return `<article class="buch-reise">
     <section class="buch-titel">
-      <p class="buch-ueber">${reise.art === "kreuzfahrt" || !reise.art ? esc(reise.schiff || "Kreuzfahrt") : reise.art === "hotel" ? "Urlaub" : "Rundreise"}</p>
+      <p class="buch-ueber">${reise.art === "kreuzfahrt" || !reise.art ? esc(reise.schiff || "Kreuzfahrt") : esc((REISEARTEN[reise.art] ?? "Urlaub").replace(/^\S+\s/, ""))}</p>
       <h2>${esc(reise.name)}</h2>
       <p class="buch-zeitraum">${esc(datum(von, { day: "numeric", month: "long", year: "numeric" }))} – ${esc(datum(bis, { day: "numeric", month: "long", year: "numeric" }))}</p>
       <p class="buch-wer">${esc((reise.personen ?? []).map((p) => vorname(p.name)).join(" · "))}</p>

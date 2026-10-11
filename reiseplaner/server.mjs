@@ -82,7 +82,12 @@ async function reiseLesen(id) {
   return lesen(reiseDatei(id), null);
 }
 
-/** "planer" | "mitreisend" | null. Verwaltungs-Konten dürfen alles. */
+const rolleAus = (r) => (["planer", "familienplaner"].includes(r) ? r : "mitreisend");
+
+/** Familie der Person, die mit diesem Konto verknüpft ist (für Familien-Planer/innen). */
+const familieVonKonto = (reise, userId) => reise.personen?.find((p) => p.userId === userId)?.familie ?? null;
+
+/** "planer" | "familienplaner" | "mitreisend" | null. Verwaltungs-Konten dürfen alles. */
 function rolleIn(reise, benutzer) {
   if (!reise || !benutzer) return null;
   if (benutzer.admin) return "planer";
@@ -265,7 +270,7 @@ async function apiOffen(req, res, url, benutzer) {
       await exklusiv(reiseDatei(reise.id), async () => {
         const r = await reiseLesen(reise.id);
         r.mitglieder ??= [];
-        if (!r.mitglieder.some((m) => m.userId === b.id)) r.mitglieder.push({ userId: b.id, rolle: e.rolle === "planer" ? "planer" : "mitreisend" });
+        if (!r.mitglieder.some((m) => m.userId === b.id)) r.mitglieder.push({ userId: b.id, rolle: rolleAus(e.rolle) });
         const person = r.personen?.find((x) => x.id === e.personId);
         if (person && !person.userId) person.userId = b.id;
         await schreiben(reiseDatei(r.id), r);
@@ -397,7 +402,7 @@ async function api(req, res, url, ich) {
         if (!b) throw fehler(404, "Kein Konto mit dieser E-Mail – bitte eine Einladung schicken.");
         await aendern(reiseDatei(id), null, (r) => {
           r.mitglieder ??= [];
-          if (!r.mitglieder.some((x) => x.userId === b.id)) r.mitglieder.push({ userId: b.id, rolle: d.rolle === "planer" ? "planer" : "mitreisend" });
+          if (!r.mitglieder.some((x) => x.userId === b.id)) r.mitglieder.push({ userId: b.id, rolle: rolleAus(d.rolle) });
         });
         return json(res, 200, { ok: true });
       }
@@ -407,7 +412,7 @@ async function api(req, res, url, ich) {
           const i = (r.mitglieder ?? []).findIndex((x) => x.userId === t[4]);
           if (i < 0) return;
           if (m === "DELETE") r.mitglieder.splice(i, 1);
-          else r.mitglieder[i].rolle = d.rolle === "planer" ? "planer" : "mitreisend";
+          else r.mitglieder[i].rolle = rolleAus(d.rolle);
           if (!r.mitglieder.some((x) => x.rolle === "planer")) throw fehler(400, "Mindestens eine Person muss Planer/in bleiben.");
           for (const pp of r.personen ?? []) if (m === "DELETE" && pp.userId === t[4]) delete pp.userId;
         });
@@ -415,9 +420,17 @@ async function api(req, res, url, ich) {
       }
     }
     if (unter === "einladungen" && m === "POST") {
-      await reiseMitRecht(id, ich, "planer");
+      const { reise, rolle } = await reiseMitRecht(id, ich);
       const d = await koerper(req, 10_000);
-      const tok = await konten.einladungErstellen({ reiseId: id, personId: d.personId ? text(d.personId, 80) : null, rolle: d.rolle, vonId: ich.id });
+      let neueRolle = d.rolle;
+      if (rolle !== "planer") {
+        // Familien-Planer/innen laden nur Personen der eigenen Familie ein – als Mitreisende
+        const person = reise.personen?.find((p) => p.id === d.personId);
+        const eigene = familieVonKonto(reise, ich.id);
+        if (rolle !== "familienplaner" || !person || person.userId || !eigene || person.familie !== eigene) throw fehler(403, "Einladen dürfen Planer/innen – Familien-Planer/innen nur für die eigene Familie.");
+        neueRolle = "mitreisend";
+      }
+      const tok = await konten.einladungErstellen({ reiseId: id, personId: d.personId ? text(d.personId, 80) : null, rolle: neueRolle, vonId: ich.id });
       return json(res, 201, { link: `${basisUrl(req)}/einladung/${tok}` });
     }
 
@@ -534,7 +547,7 @@ async function api(req, res, url, ich) {
       const liste = t[4];
       if (m === "GET" && !liste) return json(res, 200, await extras.extrasLesen(id));
       if (!extras.LISTEN.includes(liste)) throw fehler(404, "Unbekannte Liste.");
-      const kontext = { personen: (reise.personen ?? []).map((p) => p.id), dateien: (await extras.extrasLesen(id)).dateien };
+      const kontext = { personen: (reise.personen ?? []).map((p) => p.id), familien: (reise.familien ?? []).map((f) => f.id), dateien: (await extras.extrasLesen(id)).dateien };
       if (m === "POST" && !t[5]) return json(res, 201, await extras.eintragHinzufuegen(id, liste, extras.eintragAus(liste, await koerper(req, 50_000), kontext), ich.id));
       if (t[5] && m === "PUT") return json(res, 200, await extras.eintragAendern(id, liste, t[5], extras.eintragAus(liste, await koerper(req, 50_000), kontext)));
       if (t[5] && m === "DELETE") {

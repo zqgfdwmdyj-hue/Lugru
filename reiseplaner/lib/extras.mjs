@@ -37,8 +37,9 @@ const zahl = (v) => {
 };
 
 /** Prüft und säubert einen Eintrag. personen: gültige Personen-IDs der Reise, dateien: hochgeladene Dateien. */
-export function eintragAus(liste, d, { personen = [], dateien = [] } = {}) {
-  const person = (p) => (personen.includes(p) ? p : "");
+export function eintragAus(liste, d, { personen = [], familien = [], dateien = [] } = {}) {
+  // Person-ID oder „familie:<id>“ (Eintrag für eine ganze Familie)
+  const person = (p) => (personen.includes(p) || (String(p).startsWith("familie:") && familien.includes(String(p).slice(8))) ? p : "");
   if (liste === "packliste") {
     const t = text(d.text, 200).trim();
     if (!t) throw fehler(400, "Bitte eintragen, was eingepackt werden soll.");

@@ -433,3 +433,25 @@ body.buchmodus { overflow: hidden; }
   @page { margin: 14mm; }
 }
 .karte-box .zeile + h4, .karte-box .formular + h4 { margin-top: 16px; }
+
+/* ---------- Alle Reisearten, Familien, Zimmer ---------- */
+form.art-hafen .ohne-hafen { display: none !important; }
+#neuForm:not(.tagesausflug) .nur-tagesausflug { display: none; }
+.person { grid-template-columns: minmax(0, 1fr) 120px 80px auto auto auto; }
+@media (max-width: 620px) { .person { grid-template-columns: 1fr 1fr; } }
+.familien { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.familie { display: grid; grid-template-columns: minmax(120px, 220px) 1fr auto; gap: 8px; align-items: center; border-left: 5px solid var(--farbe); padding-left: 8px; }
+@media (max-width: 520px) { .familie { grid-template-columns: 1fr auto; } .familie button { grid-row: 1; grid-column: 2; } .familie .klein { grid-column: 1 / -1; } }
+.zimmerbox { border-top: 1px dashed var(--rand); margin-top: 8px; padding-top: 6px; }
+.zimmerbox h4 { margin: 0; }
+.zimmerliste { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0; }
+.zimmer { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: 1px solid var(--rand); border-radius: 8px; padding: 6px 10px; background: var(--flaeche); color: var(--text); font: inherit; cursor: pointer; min-width: 130px; }
+.zimmer:hover { border-color: var(--akzent); }
+.infosvorort { margin-top: 6px; }
+.infosvorort summary { cursor: pointer; }
+.unterkunftinfo { background: var(--akzent-hell); border-radius: 8px; padding: 8px 12px; margin-top: 10px; }
+.unterkunftinfo h4 { margin: 0 0 4px; }
+.unterkunftinfo p { margin: 2px 0; }
+.zuhause { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.zuhause .ortssuche { flex: 1 1 260px; }
+.formular label strong.ergebnis { font-size: 1.3rem; padding-top: 4px; }

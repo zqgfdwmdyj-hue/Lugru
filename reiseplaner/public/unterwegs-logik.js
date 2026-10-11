@@ -1,7 +1,7 @@
 // Reine Rechen- und Lesefunktionen für Vorbereitung und Unterwegs (Browser und Server, ohne DOM):
 // Packlisten-Vorlagen, Dokumente & Fristen, Kalender-Erinnerungen (ICS), Rückweg zum Schiff,
 // Bordkonto und „wer schuldet wem“, Foto-Zuordnung (EXIF), Tauchcomputer-Import, Tauchstatistik.
-import { zeitZuMin, minZuZeit, zahl, istKind, entfernungKm } from "./rechnen.js";
+import { zeitZuMin, minZuZeit, zahl, istKind, entfernungKm, festeZeit, familieVon, VERKEHRSMITTEL } from "./rechnen.js";
 
 export const DOKUMENT_ARTEN = {
   ausweis: "🛂 Reisepass / Ausweis",
@@ -84,6 +84,25 @@ export const PACKVORLAGEN = {
   tauchen: { name: "Tauchen", eintraege: [
     ...P("Tauchen", "Brevet / Tauchschein", "Logbuch", "Tauchcomputer + Ladekabel", "Maske & Schnorchel", "Flossen", "Neoprenanzug", "Antibeschlagmittel", "Ohrentropfen", "Tauchtauglichkeits-Attest", "Unterwasser-Kamera + Akku"),
   ] },
+  stadt: { name: "Städtereise", eintraege: [
+    ...P("Stadt", "Bequeme Laufschuhe", "Tickets / Museumspass (auch offline)", "Stadtplan offline laden", "Kleiner Rucksack", "Regenschirm", "Trinkflasche"),
+  ] },
+  roadtrip: { name: "Roadtrip / Wohnmobil", eintraege: [
+    ...P("Fahrzeug", "Führerschein + Fahrzeugpapiere", "Warnwesten & Warndreieck", "Vignette / Mautbox", "Handyhalterung + Ladekabel fürs Auto", "Offline-Karten laden", "Snacks & Getränke für die Fahrt", "Spucktüten für die Kinder"),
+    ...P("Wohnmobil", "Stromkabel & Adapter (CEE)", "Wasserschlauch", "Auffahrkeile", "Gasflasche geprüft", "Campingstühle & Tisch"),
+  ] },
+  camping: { name: "Camping", eintraege: [
+    ...P("Camping", "Zelt + Heringe + Hammer", "Schlafsäcke & Isomatten", "Stirnlampen", "Campingkocher + Gas", "Geschirr & Spülmittel", "Kühlbox", "Wäscheleine & Klammern", "Mückenschutz", "Feuerzeug"),
+  ] },
+  ski: { name: "Skiurlaub", eintraege: [
+    ...P("Ski", "Skipass", "Helm", "Skibrille", "Handschuhe (2×)", "Skisocken", "Funktionsunterwäsche", "Skijacke & -hose", "Mütze & Schal", "Sonnencreme & Lippenpflege (hoher LSF)", "Schneeketten fürs Auto", "Skischul-Anmeldung"),
+  ] },
+  ferienwohnung: { name: "Ferienwohnung", eintraege: [
+    ...P("Ferienwohnung", "Zugangscode / Schlüsselübergabe", "Bettwäsche & Handtücher (falls nicht inklusive)", "Spülmaschinentabs & Spülmittel", "Kaffee / Gewürze", "Müllbeutel", "Geschirrtücher"),
+  ] },
+  tagesausflug: { name: "Tagesausflug", eintraege: [
+    ...P("Tagesausflug", "Tickets", "Proviant & Wasser", "Sonnencreme / Regenjacke", "Wechselkleidung für die Kinder", "Powerbank", "Bargeld"),
+  ] },
   kinder: { name: "Kinder", eintraege: [
     ...P("Kinder", "Kinderreisepass", "Kuscheltier", "Spiele & Bücher für unterwegs", "Tablet + Kopfhörer + Filme offline", "Snacks", "Schwimmflügel / Schwimmweste", "UV-Badeshirt", "Kinder-Sonnencreme", "Fieberthermometer & Kindermedikamente"),
   ] },
@@ -91,9 +110,11 @@ export const PACKVORLAGEN = {
 
 /** Welche Vorlagen passen zur Reise? */
 export function passendeVorlagen(reise) {
-  const v = ["basis"];
-  if ((reise?.art ?? "kreuzfahrt") === "kreuzfahrt") v.push("kreuzfahrt");
-  const warm = (reise?.haefen ?? []).some((h) => Number.isFinite(h.lat) && Math.abs(h.lat) < 35);
+  const art = reise?.art ?? "kreuzfahrt";
+  const v = [art === "tagesausflug" ? "tagesausflug" : "basis"];
+  const nachArt = { kreuzfahrt: "kreuzfahrt", staedtereise: "stadt", roadtrip: "roadtrip", camping: "camping", ski: "ski", ferienwohnung: "ferienwohnung" };
+  if (nachArt[art]) v.push(nachArt[art]);
+  const warm = art !== "ski" && (reise?.haefen ?? []).some((h) => Number.isFinite(h.lat) && Math.abs(h.lat) < 35);
   if (warm) v.push("warm");
   if ((reise?.ausfluege ?? []).some((a) => ["tauchen", "schnorcheln"].includes(a.kategorie))) v.push("tauchen");
   if ((reise?.personen ?? []).some(istKind)) v.push("kinder");
@@ -167,18 +188,31 @@ export function kalenderDatei(reise, { anBord = [90, 30], ausfluege = 45, dokume
   const tage = [...(reise.haefen ?? [])].sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
   for (const h of tage) {
     if (!h.datum) continue;
-    const art = h.art ?? (h.seetag ? "seetag" : "hafen");
-    const anBordZeit = h.allesAnBord || (h.abfahrt ? minZuZeit(zeitZuMin(h.abfahrt) - 30) : "");
-    if (art === "hafen" && zeitZuMin(anBordZeit) != null && anBord.length) {
-      const ende = minZuZeit(Math.min(zeitZuMin(anBordZeit) + 15, 1439));
-      ev(`anbord-${h.id}`, icsDatumZeit(h.datum, anBordZeit), icsDatumZeit(h.datum, ende), `⚓ Alle an Bord – ${h.name}`, `Das Schiff wartet nicht! Abfahrt ${h.abfahrt || "?"}. Uhrzeit = Bordzeit – prüfen, ob das Handy dieselbe Zeit zeigt.`, anBord.map((m) => alarm(m, `In ${m} Min.: Alle an Bord (${anBordZeit}) – ${h.name}`)), h.name);
+    // Feste Zeit des Tages (Alle an Bord, Check-out, eigene) – Abfahrten von Verbindungen bekommen eigene Termine
+    const fest = festeZeit(h, { ...reise, verbindungen: [] });
+    if (fest && anBord.length) {
+      const ende = minZuZeit(Math.min(fest.min + 15, 1439));
+      const istBord = fest.kurz === "Alle an Bord";
+      ev(`fest-${h.id}`, icsDatumZeit(h.datum, fest.zeit), icsDatumZeit(h.datum, ende), `${istBord ? "⚓" : "⏰"} ${fest.titel}${istBord ? ` – ${h.name}` : ""}`, istBord ? `Das Schiff wartet nicht! Abfahrt ${h.abfahrt || "?"}. Uhrzeit = Bordzeit – prüfen, ob das Handy dieselbe Zeit zeigt.` : "", anBord.map((m) => alarm(m, `In ${m} Min.: ${fest.titel} (${fest.zeit})`)), fest.ort?.name ?? h.name);
     }
     if (!ausfluege && ausfluege !== 0) continue;
     for (const a of (reise.ausfluege ?? []).filter((x) => x.hafenId === h.id && x.status === "gebucht" && zeitZuMin(x.beginn) != null)) {
       const start = zeitZuMin(a.beginn);
       const ende = Math.min(start + (zahl(a.dauerMin) ?? 60), 1439);
-      ev(`ausflug-${a.id}`, icsDatumZeit(h.datum, a.beginn), icsDatumZeit(h.datum, minZuZeit(ende)), `🗺️ ${a.titel}`, [a.code ? `Nr. ${a.code}` : "", a.notiz ?? ""].filter(Boolean).join("\n"), ausfluege ? [alarm(ausfluege, `In ${ausfluege} Min.: ${a.titel}`)] : [], a.ziel?.name ?? h.name);
+      ev(`ausflug-${a.id}`, icsDatumZeit(h.datum, a.beginn), icsDatumZeit(h.datum, minZuZeit(ende)), `${a.kategorie === "essen" ? "🍽️" : "🗺️"} ${a.titel}`, [a.code ? `Nr. ${a.code}` : "", a.notiz ?? ""].filter(Boolean).join("\n"), ausfluege ? [alarm(ausfluege, `In ${ausfluege} Min.: ${a.titel}`)] : [], a.ziel?.name ?? h.name);
     }
+  }
+  // Verbindungen: Abfahrt mit Erinnerung „losfahren“ und „spätestens da sein“
+  for (const v of (reise.verbindungen ?? []).filter((x) => x.status !== "verworfen" && x.datum && zeitZuMin(x.abZeit) != null)) {
+    if (!anBord.length) break;
+    const vm = VERKEHRSMITTEL[v.art] ?? VERKEHRSMITTEL.sonstiges;
+    const vorlauf = zahl(v.vorlaufMin) ?? vm.vorlauf;
+    const anDatum = v.anDatum || v.datum;
+    const anZeit = zeitZuMin(v.anZeit) != null && `${anDatum}${v.anZeit}` > `${v.datum}${v.abZeit}` ? v.anZeit : minZuZeit(Math.min(zeitZuMin(v.abZeit) + 30, 1439));
+    const text = `${vm.name.replace(/^\S+ /, "")} ${v.titel ?? ""}`.trim();
+    ev(`verbindung-${v.id}`, icsDatumZeit(v.datum, v.abZeit), icsDatumZeit(zeitZuMin(v.anZeit) != null ? anDatum : v.datum, anZeit), `${vm.name.split(" ")[0]} ${v.titel || vm.name} ${v.von ? `${v.von} → ${v.nach ?? ""}` : ""}`.trim(),
+      [v.buchungsnr ? `Buchung: ${v.buchungsnr}` : "", v.terminal ? `Terminal/Gleis: ${v.terminal}` : "", v.sitz ? `Sitz: ${v.sitz}` : "", v.notiz ?? ""].filter(Boolean).join("\n"),
+      [alarm(vorlauf + 60, `${text}: in 1 Std. losfahren – spätestens ${minZuZeit(zeitZuMin(v.abZeit) - vorlauf)} am ${vm.ort}`), ...(vorlauf ? [alarm(vorlauf, `${text}: jetzt am ${vm.ort} sein (Abfahrt ${v.abZeit})`)] : [])], v.von ?? "");
   }
   for (const d of dokumente) {
     if (!d.frist || d.erledigt) continue;
@@ -193,8 +227,8 @@ export function kalenderDatei(reise, { anBord = [90, 30], ausfluege = 45, dokume
 export function erinnerungenAm(reise, datum, { anBord = [90, 30], ausfluege = 45 } = {}) {
   const liste = [];
   for (const h of (reise.haefen ?? []).filter((x) => x.datum === datum)) {
-    const anBordMin = zeitZuMin(h.allesAnBord || "");
-    if ((h.art ?? "hafen") === "hafen" && anBordMin != null) for (const m of anBord) liste.push({ zeit: anBordMin - m, text: `⚓ In ${m} Min. „Alle an Bord“ (${h.allesAnBord}) – ${h.name}` });
+    const fest = festeZeit(h, reise);
+    if (fest) for (const m of anBord) liste.push({ zeit: fest.min - m, text: `⏰ In ${m} Min.: ${fest.titel} (${fest.zeit})` });
     for (const a of (reise.ausfluege ?? []).filter((x) => x.hafenId === h.id && x.status === "gebucht" && zeitZuMin(x.beginn) != null)) {
       liste.push({ zeit: zeitZuMin(a.beginn) - ausfluege, text: `🗺️ In ${ausfluege} Min.: ${a.titel} (${a.beginn})` });
     }
@@ -212,11 +246,11 @@ export function fahrzeitSchaetzen(von, nach, zuFuss = false) {
 }
 
 /**
- * Wann müssen wir los? jetztMin: Minuten seit Mitternacht (Ortszeit), fahrMin: Weg zum Hafen.
- * Ergebnis: { losUm, restMin, status: "ok"|"knapp"|"los"|"zuSpaet", zielZeit }
+ * Wann müssen wir los? fest: feste Zeit des Tages (siehe festeZeit), jetztMin: Minuten seit
+ * Mitternacht (Ortszeit), fahrMin: Weg zum Ziel. Ergebnis: { losUm, restMin, status, zielZeit }
  */
-export function rueckweg(hafen, jetztMin, fahrMin, reserveMin = 20) {
-  const ziel = zeitZuMin(hafen?.allesAnBord || "") ?? (zeitZuMin(hafen?.abfahrt || "") != null ? zeitZuMin(hafen.abfahrt) - 30 : null);
+export function rueckweg(fest, jetztMin, fahrMin, reserveMin = 20) {
+  const ziel = fest?.min ?? null;
   if (ziel == null || fahrMin == null) return null;
   const los = ziel - Math.round(fahrMin) - reserveMin;
   const rest = los - jetztMin;
@@ -256,7 +290,7 @@ export function bordkonto(ausgaben, reise) {
  * Wer schuldet wem? Nur Ausgaben mit „bezahlt von“. „für“ leer = alle Erwachsenen (Kinder zahlen nicht).
  * Ergebnis: { saldo: {personId: +bekommt/−schuldet}, zahlungen: [{ von, an, betrag }], summe }
  */
-export function ausgleich(ausgaben, reise) {
+export function ausgleich(ausgaben, reise, { nachFamilie = false } = {}) {
   const personen = reise?.personen ?? [];
   const ids = new Set(personen.map((p) => p.id));
   const erwachsene = personen.filter((p) => !istKind(p)).map((p) => p.id);
@@ -270,6 +304,16 @@ export function ausgleich(ausgaben, reise) {
     summe += b;
     saldo[a.bezahltVon] += b;
     for (const p of teilen) saldo[p] -= b / teilen.length;
+  }
+  if (nachFamilie) {
+    // Familien rechnen untereinander ab: Salden der Mitglieder zusammenzählen
+    const jeFamilie = {};
+    for (const p of personen) {
+      const f = familieVon(p, reise);
+      jeFamilie[f] = (jeFamilie[f] ?? 0) + saldo[p.id];
+    }
+    for (const k of Object.keys(saldo)) delete saldo[k];
+    Object.assign(saldo, jeFamilie);
   }
   for (const k of Object.keys(saldo)) saldo[k] = r2(saldo[k]);
   // Gierig ausgleichen: größter Schuldner zahlt an größten Gläubiger
@@ -603,4 +647,32 @@ export function tauchgangDoppelt(neu, vorhandene) {
     if (a != null && b != null) return Math.abs(a - b) <= 10;
     return zahl(t.maxTiefe) != null && zahl(t.maxTiefe) === zahl(neu.maxTiefe);
   });
+}
+
+// ---------- Roadtrip: Etappen und Spritkosten ----------
+
+/**
+ * Etappen zwischen aufeinanderfolgenden Orten (Seetage zählen nicht, gleicher Ort = keine Etappe).
+ * Startet bei „Zuhause“, wenn eingetragen. km/min aus gespeicherter Berechnung, sonst Luftlinie × 1,3.
+ */
+export function etappen(reise) {
+  const tage = [...(reise?.haefen ?? [])].filter((h) => (h.art ?? "hafen") !== "seetag" && Number.isFinite(h.lat)).sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+  const liste = [];
+  let vorher = Number.isFinite(reise?.zuhause?.lat) ? { ...reise.zuhause, id: "zuhause", name: reise.zuhause.name || "Zuhause" } : null;
+  for (const h of tage) {
+    if (vorher && (Math.abs(vorher.lat - h.lat) > 0.005 || Math.abs(vorher.lng - h.lng) > 0.005)) {
+      const luft = entfernungKm(vorher, h);
+      liste.push({ id: h.id, datum: h.datum, von: vorher.name, nach: h.name, vonOrt: { lat: vorher.lat, lng: vorher.lng }, nachOrt: { lat: h.lat, lng: h.lng }, km: zahl(h.etappe?.km) ?? Math.round(luft * 1.3), min: zahl(h.etappe?.min), berechnet: h.etappe?.km != null });
+    }
+    vorher = h;
+  }
+  return liste;
+}
+
+/** Spritkosten: km × Verbrauch (l/100 km) × Preis pro Liter. */
+export function spritkosten(km, verbrauch, preisProLiter) {
+  const v = zahl(verbrauch);
+  const p = zahl(preisProLiter);
+  if (!km || v == null || p == null) return null;
+  return r2((km * v * p) / 100);
 }

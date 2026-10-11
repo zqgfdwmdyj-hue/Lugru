@@ -37,6 +37,24 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
   bewertet, führt das eigene Tauchlog).
 - Die Teilnehmer je Ausflug sind frei wählbar (z. B. 4 Erwachsene und 2 Kinder, aber nicht alle bei jedem Ausflug).
 
+**Für jede Art von Reise**
+- Reisearten: Kreuzfahrt, Hotel-/Strandurlaub, Rundreise, Städtereise, Roadtrip/Wohnmobil, Ferienwohnung,
+  Camping, Skiurlaub, Tagesausflug – mit passenden Packlisten, Tieren für die Kinder und Texten.
+- **Feste Zeiten** je Tag statt nur „Alle an Bord“: Check-out, eigene Zeiten (z. B. Abholung) und Abfahrten
+  von Verbindungen (minus Vorlauf, z. B. 2 Std. beim Flug). Die früheste gilt – für Wecker, Rückweg-Prüfung,
+  Puffer der Ausflüge und KI-Check.
+- **Anreise & Verbindungen**: Flug, Zug, Fähre, Bus, Mietwagen, Transfer mit Buchungsnummer, Terminal, Sitz,
+  Gepäck, Preis und Mitreisenden; im Tagesbriefing und als Kalendertermine mit Erinnerung.
+- **Etappen** (Roadtrip, Rundreise, Tagesausflug): Strecken ab „Zuhause“ mit Kilometern und Fahrzeit,
+  Spritkostenrechner. **Reservierungen** (Restaurant, Tickets) mit Uhrzeit und Erinnerung, Öffnungszeiten.
+- **Zimmer & Kabinen**: Nummer, Deck/Etage, Kategorie, Preis und wer wo schläft – im Briefing, bei den Kindern;
+  Zimmerpreise werden den Bewohnern zugerechnet.
+- **Infos vor Ort** (nur für Mitreisende, nie in Freigaben oder an die KI): Check-in/-out, Adresse, Telefon,
+  WLAN und Passwort, Schlüsselbox/Code, Hausregeln.
+- **Mehrere Familien**: Personen je Familie, Kosten je Familie (gemeinsame Kosten nach Köpfen oder je
+  Familie), Abrechnung zwischen Familien, Packliste/Dokumente je Familie, Abstimmungen je Familie.
+  Rolle *Familien-Planer/in*: lädt die Personen der eigenen Familie ein (nur als Mitreisende).
+
 **Vorbereitung**
 - **Packliste** für alle gemeinsam (abhaken, je Person filtern) mit Vorlagen: Grundausstattung,
   Sonne & Strand, Kreuzfahrt, Tauchen, Kinder – passende Vorlagen sind markiert.

@@ -4,7 +4,17 @@ import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUM
 import { istKind } from "./rechnen.js";
 
 const basis = () => `/api/reisen/${zustand.reise.id}/extras`;
-const personName = (id) => personen().find((p) => p.id === id)?.name ?? "";
+const familien = () => zustand.reise?.familien ?? [];
+const personName = (id) => (String(id).startsWith("familie:") ? `👨‍👩‍👧 ${familien().find((f) => `familie:${f.id}` === id)?.name ?? ""}` : personen().find((p) => p.id === id)?.name ?? "");
+/** Auswahl „für wen“: alle, Familien, einzelne Personen. */
+const fuerOptionen = (wert, leer = "für alle") => `<option value="">${leer}</option>${familien().map((f) => `<option value="familie:${esc(f.id)}" ${wert === `familie:${f.id}` ? "selected" : ""}>👨‍👩‍👧 ${esc(f.name)}</option>`).join("")}${personen().map((p) => `<option value="${esc(p.id)}" ${wert === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}`;
+/** Gehört ein Eintrag zum Filter? Familie: Einträge der Familie und ihrer Mitglieder. */
+const passtZuFilter = (fuer, filter) => {
+  if (!filter) return true;
+  if (filter === "alle") return !fuer;
+  if (filter.startsWith("familie:")) return fuer === filter || personen().some((p) => p.id === fuer && `familie:${p.familie}` === filter);
+  return fuer === filter;
+};
 
 async function eintragSpeichern(liste, daten, id = null) {
   const x = await anfrage(`${basis()}/${liste}${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: daten });
@@ -28,7 +38,7 @@ export function vorbereitungAnsicht() {
   const fertig = pack.filter((x) => x.erledigt).length;
   const filter = zustand.packFilter ?? "";
   const gruppen = new Map();
-  for (const x of pack.filter((y) => !filter || y.fuer === filter || (!y.fuer && filter === "alle"))) {
+  for (const x of pack.filter((y) => passtZuFilter(y.fuer, filter))) {
     const g = x.gruppe || "Sonstiges";
     if (!gruppen.has(g)) gruppen.set(g, []);
     gruppen.get(g).push(x);
@@ -39,7 +49,7 @@ export function vorbereitungAnsicht() {
     ${hinweise.length ? `<div class="karte-box hinweisbox"><h3>⏰ Fristen &amp; Hinweise</h3><ul class="hinweise">${hinweise.map((h) => `<li class="${h.stufe}">${esc(h.text)}</li>`).join("")}</ul></div>` : ""}
     <div class="karte-box">
       <div class="zeile"><h3>🧳 Packliste</h3><span class="klein leise">${fertig}/${pack.length} eingepackt</span><span class="platz"></span>
-        <select data-aktion="pack-filter" aria-label="Für wen"><option value="">Alle Einträge</option><option value="alle" ${filter === "alle" ? "selected" : ""}>Für alle gemeinsam</option>${personen().map((p) => `<option value="${esc(p.id)}" ${filter === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+        <select data-aktion="pack-filter" aria-label="Für wen"><option value="">Alle Einträge</option><option value="alle" ${filter === "alle" ? "selected" : ""}>Für alle gemeinsam</option>${fuerOptionen(filter, "–").replace('<option value="">–</option>', "")}</select>
       </div>
       ${pack.length ? `<div class="fortschritt"><span style="width:${Math.round((fertig / pack.length) * 100)}%"></span></div>` : ""}
       <p class="leise klein">Gemeinsam für alle Mitreisenden – wer etwas einpackt, hakt es ab. Vorschläge passend zur Reise:</p>
@@ -48,7 +58,7 @@ export function vorbereitungAnsicht() {
         <input name="text" placeholder="z. B. Schnorchelmaske" maxlength="200" required aria-label="Neuer Eintrag">
         <input name="gruppe" placeholder="Gruppe" maxlength="60" list="packGruppen" aria-label="Gruppe">
         <datalist id="packGruppen">${[...new Set(pack.map((x) => x.gruppe).filter(Boolean))].map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
-        <select name="fuer" aria-label="Für wen"><option value="">für alle</option>${personen().map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")}</select>
+        <select name="fuer" aria-label="Für wen">${fuerOptionen(filter && filter !== "alle" ? filter : "")}</select>
         <button class="knopf">+</button>
       </form>
       ${gruppen.size ? [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).map(([g, liste]) => `<div class="packgruppe"><h4>${esc(g)} <span class="leise klein">${liste.filter((x) => x.erledigt).length}/${liste.length}</span></h4>
@@ -146,7 +156,7 @@ function dokumentDialog(id, vorlage = {}) {
     <label>Titel<input name="titel" required maxlength="200" value="${esc(d.titel ?? "")}" placeholder="z. B. Reisepass, Buchungsbestätigung Flug"></label>
     <div class="formular drei">
       <label>Art<select name="art">${Object.entries(DOKUMENT_ARTEN).map(([k, t]) => `<option value="${k}" ${d.art === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
-      <label>Für<select name="personId"><option value="">alle</option>${personen().map((p) => `<option value="${esc(p.id)}" ${d.personId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
+      <label>Für<select name="personId">${fuerOptionen(d.personId ?? "", "alle")}</select></label>
       <label>Gültig bis<input type="date" name="gueltigBis" value="${esc(d.gueltigBis ?? "")}"></label>
       <label>Frist (z. B. Online-Check-in)<input type="date" name="frist" value="${esc(d.frist ?? "")}"></label>
       <label>Uhrzeit der Frist<input type="time" name="fristZeit" value="${esc(d.fristZeit ?? "")}"></label>

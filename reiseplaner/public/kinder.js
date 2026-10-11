@@ -2,9 +2,10 @@
 import { zustand, esc, datumText, haefen, ausfluegeIn, stationsArt, aktionen, neuZeichnen, anfrage, heute } from "./kern.js";
 import { countdown } from "./unterwegs-logik.js";
 import { tiereFuer, tiereDerReise, regionFuer } from "./tiere.js";
-import { zeitZuMin } from "./rechnen.js";
+import { zeitZuMin, festeZeit, zimmerVon } from "./rechnen.js";
+import { unterkunftAm } from "./unterwegs.js";
 
-const BILD = { tauchen: "🤿", schnorcheln: "🐠", strand: "🏖️", boot: "⛵", natur: "🥾", sport: "🏄", stadt: "🏛️", tiere: "🐒", kultur: "🎭", essen: "🍽️", bord: "🛳️", ausflug: "🗺️" };
+const BILD = { tauchen: "🤿", schnorcheln: "🐠", strand: "🏖️", boot: "⛵", natur: "🥾", sport: "🏄", stadt: "🏛️", tiere: "🐒", kultur: "🎭", essen: "🍽️", bord: "🛳️", ausflug: "🗺️", tickets: "🎟️", park: "🎢", ski: "⛷️" };
 
 export function kinderAnsicht() {
   const r = zustand.reise;
@@ -33,7 +34,14 @@ export function kinderAnsicht() {
         <h2>${heuteTag ? "Heute" : c.phase === "vorher" ? "Der erste Tag" : "Als Nächstes"}: ${ortText(tag)}</h2>
         <p class="leise">${esc(datumText(tag.datum, { weekday: "long", day: "numeric", month: "long" }))}${regionFuer(tag) ? ` · ${esc(regionFuer(tag).name)}` : ""}</p>
         ${geplant.length ? `<div class="kind-plan">${geplant.map((a) => `<div class="kind-punkt"><span class="kind-bild">${BILD[a.kategorie] ?? "🗺️"}</span><div><strong>${esc(a.beginn || "")}</strong> ${esc(a.titel)}</div></div>`).join("")}</div>` : stationsArt(tag) === "seetag" ? `<p class="kind-text">Pool, Kinderclub, Eis essen und nach Delfinen Ausschau halten! 🐬</p>` : ""}
-        ${stationsArt(tag) === "hafen" && tag.allesAnBord ? `<p class="kind-text">⏰ Um <strong>${esc(tag.allesAnBord)}</strong> müssen alle wieder auf dem Schiff sein!</p>` : ""}
+        ${stationsArt(tag) === "hafen" && tag.allesAnBord ? `<p class="kind-text">⏰ Um <strong>${esc(tag.allesAnBord)}</strong> müssen alle wieder auf dem Schiff sein!</p>` : festeZeit(tag, r) ? `<p class="kind-text">⏰ Um <strong>${esc(festeZeit(tag, r).zeit)}</strong>: ${esc(festeZeit(tag, r).kurz)}</p>` : ""}
+        ${(() => {
+          const u = unterkunftAm(tag.datum);
+          const z = u ? zimmerVon(r, u.id) : [];
+          const name = (id) => r.personen?.find((p) => p.id === id)?.name.split(" ")[0] ?? "";
+          const einzahl = z.length === 1;
+          return z.length ? `<p class="kind-text">🛏️ ${u.id === "schiff" ? (einzahl ? "Unsere Kabine" : "Unsere Kabinen") : `${einzahl ? "Unser Zimmer" : "Unsere Zimmer"} – ${esc(u.name)}`}: ${z.map((x) => `<strong>${esc(x.nummer || "?")}</strong>${x.deck ? ` (${u.id === "schiff" ? "Deck" : "Etage"} ${esc(x.deck)})` : ""}${!einzahl && x.personen?.length ? ` <span class="klein">${esc(x.personen.map(name).join(", "))}</span>` : ""}`).join(" · ")}</p>` : "";
+        })()}
       </div>` : ""}
       ${tiere.length ? `<div class="karte-box">
         <div class="zeile"><h2>🔍 Tiere-Bingo</h2><span class="platz"></span><strong>${anzahlGesehen} / ${tiere.length}</strong></div>

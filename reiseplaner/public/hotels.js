@@ -1,9 +1,74 @@
 // Unterkünfte: Hotels sammeln, vergleichen, buchen – und mit den Reisetagen verknüpfen.
 import { zustand, $, esc, neueId, datumText, personen, hatKoord, geld, linkHtml, aktionen, speichern, neuZeichnen, dialogOeffnen, dialog, ortsSuche, ortAuslesen, sterneText } from "./kern.js";
-import { STATUS, VERPFLEGUNG, zahl, hotelKosten, naechte, istKind, QUELLEN } from "./rechnen.js";
+import { STATUS, VERPFLEGUNG, zahl, hotelKosten, naechte, istKind, QUELLEN, zimmerVon } from "./rechnen.js";
 import { bewertungsZeile } from "./erlebnisse.js";
 
 export const hotels = () => zustand.reise?.hotels ?? [];
+const kosten = (h) => hotelKosten(h, personen(), zimmerVon(zustand.reise, h.id));
+const istKreuzfahrt = () => (zustand.reise?.art ?? "kreuzfahrt") === "kreuzfahrt";
+
+// ---------- Zimmer & Kabinen ----------
+
+function zimmerListe(unterkunft, titel, nachtpreis) {
+  const liste = zimmerVon(zustand.reise, unterkunft);
+  const name = (id) => personen().find((p) => p.id === id)?.name ?? "?";
+  const verteilt = new Set(liste.flatMap((z) => z.personen ?? []));
+  const offen = personen().filter((p) => !verteilt.has(p.id));
+  return `<div class="zimmerbox">
+    <div class="zeile"><h4>🛏️ ${esc(titel)}</h4><span class="platz"></span><button class="link" data-aktion="zimmer-neu" data-unterkunft="${esc(unterkunft)}">+ ${unterkunft === "schiff" ? "Kabine" : "Zimmer"}</button></div>
+    ${liste.length ? `<div class="zimmerliste">${liste.map((z) => `<button class="zimmer" data-aktion="zimmer-bearbeiten" data-id="${esc(z.id)}">
+        <strong>${unterkunft === "schiff" ? "Kabine" : "Zimmer"} ${esc(z.nummer || "?")}</strong>${z.deck ? ` <span class="leise">· ${unterkunft === "schiff" ? "Deck" : "Etage"} ${esc(z.deck)}</span>` : ""}
+        ${z.kategorie ? `<span class="klein leise">${esc(z.kategorie)}</span>` : ""}
+        <span class="klein">${(z.personen ?? []).map(name).map(esc).join(", ") || "noch niemand"}</span>
+        ${zahl(z.preis) != null ? `<span class="klein">${geld(zahl(z.preis))}${nachtpreis ? " / Nacht" : ""}</span>` : ""}</button>`).join("")}</div>
+      ${offen.length && liste.length ? `<p class="klein leise">Noch ohne ${unterkunft === "schiff" ? "Kabine" : "Zimmer"}: ${offen.map((p) => esc(p.name)).join(", ")}</p>` : ""}` : `<p class="klein leise">Nummern, Deck/Etage und wer wo schläft – erscheint im Tagesbriefing und bei den Kindern. Mit Preis je ${unterkunft === "schiff" ? "Kabine" : "Zimmer"} werden die Kosten den Bewohnern zugerechnet.</p>`}
+  </div>`;
+}
+
+function zimmerDialog(id, unterkunft) {
+  const r = zustand.reise;
+  const z = id ? r.zimmer.find((x) => x.id === id) : { id: neueId(), unterkunft, personen: [] };
+  const schiff = z.unterkunft === "schiff";
+  const hotel = hotels().find((h) => h.id === z.unterkunft);
+  dialogOeffnen(`<form method="dialog" class="formular" id="zimmerForm">
+    <h3>${schiff ? "Kabine" : `Zimmer – ${esc(hotel?.name ?? "")}`}</h3>
+    <div class="formular drei">
+      <label>Nummer<input name="nummer" value="${esc(z.nummer ?? "")}" placeholder="${schiff ? "z. B. 8123" : "z. B. 214"}" maxlength="20"></label>
+      <label>${schiff ? "Deck" : "Etage"}<input name="deck" value="${esc(z.deck ?? "")}" maxlength="20"></label>
+      <label>Kategorie<input name="kategorie" value="${esc(z.kategorie ?? "")}" placeholder="${schiff ? "z. B. Balkonkabine" : "z. B. Familienzimmer"}" maxlength="60"></label>
+      <label>Preis (€) ${schiff ? "für die Reise" : hotel?.preisArt === "nacht" ? "pro Nacht" : "für den Aufenthalt"}<input name="preis" inputmode="decimal" value="${esc(z.preis ?? "")}" placeholder="optional"></label>
+    </div>
+    <fieldset><legend>Wer schläft hier?</legend><div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="personen" value="${esc(p.id)}" ${(z.personen ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div></fieldset>
+    <label>Notiz<input name="notiz" value="${esc(z.notiz ?? "")}" placeholder="z. B. Verbindungstür zu 8125" maxlength="300"></label>
+    <div class="zeile">
+      ${id ? `<button type="button" class="knopf gefahr" data-aktion="zimmer-loeschen" data-id="${esc(id)}">Löschen</button>` : ""}
+      <span class="platz"></span>
+      <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
+      <button class="knopf" value="ok">Speichern</button>
+    </div>
+  </form>`);
+  $("#zimmerForm").addEventListener("submit", (e) => {
+    const f = new FormData(e.target);
+    const neuePersonen = f.getAll("personen");
+    Object.assign(z, { nummer: String(f.get("nummer")).trim(), deck: String(f.get("deck")).trim(), kategorie: String(f.get("kategorie")).trim(), preis: zahl(f.get("preis")), notiz: f.get("notiz"), personen: neuePersonen });
+    r.zimmer ??= [];
+    // Eine Person schläft je Unterkunft nur in einem Zimmer
+    for (const x of r.zimmer) if (x !== z && x.unterkunft === z.unterkunft) x.personen = (x.personen ?? []).filter((p) => !neuePersonen.includes(p));
+    if (!id) r.zimmer.push(z);
+    speichern();
+    neuZeichnen();
+  });
+}
+
+aktionen["zimmer-neu"] = (el) => zimmerDialog(null, el.dataset.unterkunft);
+aktionen["zimmer-bearbeiten"] = (el) => zimmerDialog(el.dataset.id);
+aktionen["zimmer-loeschen"] = (el) => {
+  if (!confirm("Löschen?")) return;
+  zustand.reise.zimmer = zustand.reise.zimmer.filter((z) => z.id !== el.dataset.id);
+  dialog().close();
+  speichern();
+  neuZeichnen();
+};
 
 function suchLinks(ort, anreise, abreise) {
   const ps = personen();
@@ -40,6 +105,7 @@ export function hotelsAnsicht() {
   }
   const ersterOrt = orte[0] ?? zustand.reise?.haefen?.find((x) => x.art === "ort")?.name ?? "";
   return `
+    ${istKreuzfahrt() ? `<div class="karte-box">${zimmerListe("schiff", `Kabinen auf ${zustand.reise.schiff || "dem Schiff"}`, false)}</div>` : ""}
     <div class="karte-box">
       <div class="zeile"><h3>Unterkünfte</h3><button class="knopf" data-aktion="hotel-neu">+ Unterkunft</button></div>
       <p class="leise klein">Sammle Hotels oder Ferienwohnungen, vergleiche Preis, Lage und Ausstattung und markiere die gebuchte. Gebuchte Unterkünfte werden zum Startpunkt der Ausflüge an diesen Tagen und zählen in die Kosten.</p>
@@ -52,7 +118,7 @@ export function hotelsAnsicht() {
             .map((gruppe) => {
               const h0 = gruppe[0];
               const aktive = gruppe.filter((h) => h.status !== "verworfen");
-              const guenstig = aktive.length > 1 ? [...aktive].sort((a, b) => hotelKosten(a, personen()).summe - hotelKosten(b, personen()).summe)[0].id : null;
+              const guenstig = aktive.length > 1 ? [...aktive].sort((a, b) => kosten(a).summe - kosten(b).summe)[0].id : null;
               return `<div class="karte-box">
               <h3>${esc(h0.ort || "Ohne Ort")} <span class="leise klein">${h0.anreise ? `${esc(datumText(h0.anreise))} – ${esc(datumText(h0.abreise))} · ${naechte(h0.anreise, h0.abreise)} Nächte` : ""}</span></h3>
               <div class="ausfluege">${gruppe.map((h) => hotelKarte(h, h.id === guenstig)).join("")}</div>
@@ -64,7 +130,7 @@ export function hotelsAnsicht() {
 }
 
 function hotelKarte(h, guenstig) {
-  const k = hotelKosten(h, personen());
+  const k = kosten(h);
   const merkmale = [h.strandM != null ? `🏖️ ${h.strandM < 1000 ? `${h.strandM} m` : `${(h.strandM / 1000).toFixed(1).replace(".", ",")} km`} zum Strand` : "", h.zentrumKm != null ? `🏙️ ${String(h.zentrumKm).replace(".", ",")} km ins Zentrum` : "", h.pool ? "🏊 Pool" : "", h.kinder ? "🧒 Kinderclub" : "", h.tauchbasis ? "🤿 Tauchbasis" : "", h.hausriff ? "🐠 Hausriff" : ""].filter(Boolean);
   return `<article class="ausflug status-${esc(h.status)}" style="--farbe:#00897b">
     <div class="ausflug-kopf">
@@ -82,6 +148,8 @@ function hotelKarte(h, guenstig) {
       <div><span>Gästebewertung</span><strong>${h.gaeste != null ? String(h.gaeste).replace(".", ",") : "–"}</strong><em>${esc(h.gaesteQuelle ?? "")}</em></div>
     </div>
     ${merkmale.length ? `<p class="klein">${merkmale.map(esc).join(" · ")}</p>` : ""}
+    ${h.status === "gebucht" || h.status === "favorit" || zimmerVon(zustand.reise, h.id).length ? zimmerListe(h.id, "Zimmer", h.preisArt === "nacht") : ""}
+    ${infosVorOrt(h)}
     ${bewertungsZeile("hotel", h.id)}
     <div class="ausflug-fuss">
       <span class="klein leise">${h.notiz ? esc(h.notiz.slice(0, 120)) : ""}</span>
@@ -92,6 +160,18 @@ function hotelKarte(h, guenstig) {
       </span>
     </div>
   </article>`;
+}
+
+function infosVorOrt(h) {
+  const z = [
+    h.checkin || h.checkout ? `🕑 Check-in ${esc(h.checkin || "–")} · Check-out ${esc(h.checkout || "–")}` : "",
+    h.adresse ? `📍 ${esc(h.adresse)}` : "",
+    h.telefon ? `📞 <a href="tel:${esc(h.telefon.replace(/[^\d+]/g, ""))}">${esc(h.telefon)}</a>` : "",
+    h.wlan ? `📶 ${esc(h.wlan)}${h.wlanPasswort ? ` · <code>${esc(h.wlanPasswort)}</code>` : ""}` : "",
+    h.zugang ? `🔑 ${esc(h.zugang)}` : "",
+    h.infos ? `ℹ️ ${esc(h.infos)}` : "",
+  ].filter(Boolean);
+  return z.length ? `<details class="infosvorort"><summary class="klein">🔑 Infos vor Ort (nur für Mitreisende)</summary><p class="klein">${z.join("<br>")}</p></details>` : "";
 }
 
 export function hotelDialog(id, vorlage = {}) {
@@ -126,6 +206,18 @@ export function hotelDialog(id, vorlage = {}) {
         ${[["pool", "Pool"], ["kinder", "Kinderclub/-pool"], ["tauchbasis", "Tauchbasis am Hotel"], ["hausriff", "Hausriff"]].map(([k, t]) => `<label class="haken"><input type="checkbox" name="${k}" ${h[k] ? "checked" : ""}> ${t}</label>`).join("")}
       </div>
     </fieldset>
+    <fieldset><legend>🔑 Infos vor Ort (nur für Mitreisende, nie in Freigaben)</legend><div class="formular drei">
+      <label>Check-in ab<input type="time" name="checkin" value="${esc(h.checkin ?? "")}"></label>
+      <label>Check-out bis<input type="time" name="checkout" value="${esc(h.checkout ?? "")}"></label>
+      <label>Telefon<input name="telefon" type="tel" value="${esc(h.telefon ?? "")}"></label>
+      <label>Adresse<input name="adresse" value="${esc(h.adresse ?? "")}"></label>
+      <label>WLAN-Name<input name="wlan" value="${esc(h.wlan ?? "")}"></label>
+      <label>WLAN-Passwort<input name="wlanPasswort" value="${esc(h.wlanPasswort ?? "")}"></label>
+    </div>
+      <label>Zugang (Schlüsselbox, Code, Rezeption …)<input name="zugang" value="${esc(h.zugang ?? "")}" placeholder="z. B. Schlüsselbox links neben der Tür, Code 4711"></label>
+      <label>Hausregeln, Anfahrt, Parken, Müll …<textarea name="infos" rows="2">${esc(h.infos ?? "")}</textarea></label>
+      <p class="klein leise">Der Check-out zählt als feste Zeit am Abreisetag (Wecker, Puffer der Ausflüge).</p>
+    </fieldset>
     <label>Notiz<textarea name="notiz" rows="3">${esc(h.notiz ?? "")}</textarea></label>
     <div class="zeile">
       ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="hotel-loeschen" data-id="${esc(h.id)}">Löschen</button>`}
@@ -145,10 +237,12 @@ export function hotelDialog(id, vorlage = {}) {
       gaeste: zahl(f.get("gaeste")), gaesteQuelle: String(f.get("gaesteQuelle")).trim(), strandM: zahl(f.get("strandM")), zentrumKm: zahl(f.get("zentrumKm")),
       pool: f.get("pool") === "on", kinder: f.get("kinder") === "on", tauchbasis: f.get("tauchbasis") === "on", hausriff: f.get("hausriff") === "on",
       lat: lage?.lat ?? null, lng: lage?.lng ?? null, notiz: f.get("notiz"),
+      checkin: f.get("checkin"), checkout: f.get("checkout"), telefon: String(f.get("telefon")).trim(), adresse: String(f.get("adresse")).trim(),
+      wlan: String(f.get("wlan")).trim(), wlanPasswort: String(f.get("wlanPasswort")), zugang: String(f.get("zugang")).trim(), infos: f.get("infos"),
     };
   };
   const vorschau = () => {
-    const k = hotelKosten(lesen(), personen());
+    const k = hotelKosten(lesen(), personen(), zimmerVon(zustand.reise, h.id));
     $("#hotelVorschau").innerHTML = `<strong>${geld(k.summe)}</strong> für ${k.naechte} Nächte${k.proPersonNacht != null ? ` · ${geld(k.proPersonNacht)} pro Person und Nacht` : ""}`;
   };
   form.addEventListener("input", vorschau);
@@ -167,6 +261,7 @@ aktionen["hotel-bearbeiten"] = (el) => hotelDialog(el.dataset.id);
 aktionen["hotel-loeschen"] = (el) => {
   if (!confirm("Unterkunft löschen?")) return;
   zustand.reise.hotels = hotels().filter((h) => h.id !== el.dataset.id);
+  zustand.reise.zimmer = (zustand.reise.zimmer ?? []).filter((z) => z.unterkunft !== el.dataset.id);
   dialog().close();
   speichern();
   neuZeichnen();

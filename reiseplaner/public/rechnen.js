@@ -21,8 +21,35 @@ export const KATEGORIEN = {
   tiere: "Tiere & Parks",
   essen: "Essen & Trinken",
   bord: "An Bord (Spa, Friseur, Show …)",
+  tickets: "Tickets & Eintritt",
+  park: "Freizeitpark",
+  ski: "Ski & Snowboard",
   sport: "Sport & Action",
   sonstiges: "Sonstiges",
+};
+
+/** Reisearten – alle außer Kreuzfahrt haben „Tage an Land“ (Startpunkt Unterkunft bzw. Zuhause). */
+export const REISEARTEN = {
+  kreuzfahrt: "🚢 Kreuzfahrt",
+  hotel: "🏖️ Hotel- / Strandurlaub",
+  rundreise: "🗺️ Rundreise",
+  staedtereise: "🏙️ Städtereise",
+  roadtrip: "🚐 Roadtrip / Wohnmobil",
+  ferienwohnung: "🏡 Ferienwohnung / Ferienhaus",
+  camping: "⛺ Camping",
+  ski: "⛷️ Skiurlaub",
+  tagesausflug: "🎢 Tagesausflug",
+};
+
+/** Verkehrsmittel und wie lange man vorher da sein sollte (Minuten). */
+export const VERKEHRSMITTEL = {
+  flug: { name: "✈️ Flug", vorlauf: 120, ort: "Flughafen" },
+  zug: { name: "🚆 Zug", vorlauf: 15, ort: "Bahnhof" },
+  faehre: { name: "⛴️ Fähre", vorlauf: 45, ort: "Fähranleger" },
+  bus: { name: "🚌 Bus", vorlauf: 15, ort: "Haltestelle" },
+  mietwagen: { name: "🚗 Mietwagen", vorlauf: 0, ort: "Station" },
+  transfer: { name: "🚐 Transfer / Taxi", vorlauf: 0, ort: "Treffpunkt" },
+  sonstiges: { name: "🧭 Sonstiges", vorlauf: 0, ort: "Treffpunkt" },
 };
 
 export const VERPFLEGUNG = {
@@ -156,49 +183,88 @@ export function zaehlt(ausflug, modus) {
   return ausflug.status === "gebucht" || ausflug.status === "favorit";
 }
 
-/** Gesamtkosten der Reise: je Hafen, je Person, nach Status. */
+/** Familie (bzw. Haushalt) einer Person; ohne Familie ist jede Person ihre eigene Einheit. */
+export function familieVon(person, reise) {
+  return person?.familie && (reise?.familien ?? []).some((f) => f.id === person.familie) ? person.familie : `person:${person?.id}`;
+}
+
+/** Zimmer/Kabinen einer Unterkunft („schiff“ oder Hotel-ID). */
+export const zimmerVon = (reise, unterkunft) => (reise?.zimmer ?? []).filter((z) => z.unterkunft === unterkunft);
+
+/** Gesamtkosten der Reise: je Hafen, je Person, je Familie, nach Status. */
 export function reiseKosten(reise) {
   const personen = reise.personen ?? [];
+  const ids = new Set(personen.map((p) => p.id));
   const ergebnis = {
     gebucht: 0,
     geplant: 0, // gebucht + Favoriten
     ausfluege: { gebucht: 0, geplant: 0 },
     hotels: { gebucht: 0, geplant: 0 },
+    verbindungen: { gebucht: 0, geplant: 0 },
     sonstiges: { gebucht: 0, geplant: 0 },
     jeHafen: {},
     jeHotel: {},
     jePerson: Object.fromEntries(personen.map((p) => [p.id, 0])),
+    jeFamilie: {},
     jeQuelle: {},
   };
-  const verteilen = (betrag) => {
-    if (!personen.length) return;
-    for (const p of personen) ergebnis.jePerson[p.id] += betrag / personen.length;
+  // Gemeinsame Kosten: nach Köpfen oder zu gleichen Teilen je Familie (Einstellung der Reise)
+  const verteilen = (betrag, nur = null) => {
+    const kreis = nur?.length ? personen.filter((p) => nur.includes(p.id)) : personen;
+    if (!kreis.length) return;
+    if (reise.kostenTeilung === "familie") {
+      const gruppen = new Map();
+      for (const p of kreis) {
+        const f = familieVon(p, reise);
+        if (!gruppen.has(f)) gruppen.set(f, []);
+        gruppen.get(f).push(p);
+      }
+      for (const g of gruppen.values()) for (const p of g) ergebnis.jePerson[p.id] += betrag / gruppen.size / g.length;
+    } else for (const p of kreis) ergebnis.jePerson[p.id] += betrag / kreis.length;
+  };
+  const posten = (teil, status, betrag) => {
+    teil.geplant += betrag;
+    if (status === "gebucht") teil.gebucht += betrag;
   };
   for (const h of reise.hotels ?? []) {
     if (!zaehlt(h, "geplant")) continue;
-    const k = hotelKosten(h, personen).summe;
-    ergebnis.hotels.geplant += k;
-    if (h.status === "gebucht") ergebnis.hotels.gebucht += k;
-    ergebnis.jeHotel[h.id] = k;
-    verteilen(k);
+    const zimmer = zimmerVon(reise, h.id);
+    const k = hotelKosten(h, personen, zimmer);
+    posten(ergebnis.hotels, h.status, k.summe);
+    ergebnis.jeHotel[h.id] = k.summe;
+    if (k.jeZimmer) {
+      for (const z of zimmer) verteilen(k.jeZimmer[z.id] ?? 0, (z.personen ?? []).filter((p) => ids.has(p)));
+    } else verteilen(k.summe);
+  }
+  // Kabinen mit Preis (Kreuzfahrt) zählen als Unterkunft und gehen an die Bewohner der Kabine
+  for (const z of zimmerVon(reise, "schiff")) {
+    const k = zahl(z.preis) ?? 0;
+    if (!k) continue;
+    posten(ergebnis.hotels, "gebucht", k);
+    ergebnis.jeHotel.schiff = (ergebnis.jeHotel.schiff ?? 0) + k;
+    verteilen(k, (z.personen ?? []).filter((p) => ids.has(p)));
+  }
+  for (const v of reise.verbindungen ?? []) {
+    if (!zaehlt(v, "geplant")) continue;
+    const k = zahl(v.preis) ?? 0;
+    posten(ergebnis.verbindungen, v.status, k);
+    verteilen(k, (v.personen ?? []).filter((p) => ids.has(p)));
   }
   for (const s of reise.kosten ?? []) {
     if (!zaehlt(s, "geplant")) continue;
     const k = zahl(s.betrag) ?? 0;
-    ergebnis.sonstiges.geplant += k;
-    if (s.status === "gebucht") ergebnis.sonstiges.gebucht += k;
+    posten(ergebnis.sonstiges, s.status, k);
     verteilen(k);
   }
   for (const a of reise.ausfluege ?? []) {
     if (!zaehlt(a, "geplant")) continue;
     const k = ausflugKosten(a, personen);
-    ergebnis.ausfluege.geplant += k.summe;
-    if (a.status === "gebucht") ergebnis.ausfluege.gebucht += k.summe;
+    posten(ergebnis.ausfluege, a.status, k.summe);
     ergebnis.jeHafen[a.hafenId] = (ergebnis.jeHafen[a.hafenId] ?? 0) + k.summe;
     ergebnis.jeQuelle[a.quelle] = (ergebnis.jeQuelle[a.quelle] ?? 0) + k.summe;
     for (const [id, betrag] of Object.entries(k.jePerson)) ergebnis.jePerson[id] = (ergebnis.jePerson[id] ?? 0) + betrag;
   }
-  for (const teil of [ergebnis.ausfluege, ergebnis.hotels, ergebnis.sonstiges]) {
+  for (const teil of [ergebnis.ausfluege, ergebnis.hotels, ergebnis.verbindungen, ergebnis.sonstiges]) {
     teil.gebucht = runde(teil.gebucht);
     teil.geplant = runde(teil.geplant);
     ergebnis.gebucht += teil.gebucht;
@@ -206,6 +272,11 @@ export function reiseKosten(reise) {
   }
   ergebnis.gebucht = runde(ergebnis.gebucht);
   ergebnis.geplant = runde(ergebnis.geplant);
+  for (const p of personen) {
+    const f = familieVon(p, reise);
+    ergebnis.jeFamilie[f] = (ergebnis.jeFamilie[f] ?? 0) + ergebnis.jePerson[p.id];
+  }
+  for (const f of Object.keys(ergebnis.jeFamilie)) ergebnis.jeFamilie[f] = runde(ergebnis.jeFamilie[f]);
   return ergebnis;
 }
 
@@ -216,15 +287,27 @@ export function naechte(anreise, abreise) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** Kosten einer Unterkunft: Preis pro Nacht × Nächte × Zimmer oder Gesamtpreis. */
-export function hotelKosten(hotel, personen = []) {
+/**
+ * Kosten einer Unterkunft: Preis pro Nacht × Nächte × Zimmer oder Gesamtpreis.
+ * Haben eingetragene Zimmer eigene Preise, gilt deren Summe (Preisart wie bei der Unterkunft).
+ */
+export function hotelKosten(hotel, personen = [], zimmerListe = []) {
   const n = naechte(hotel.anreise, hotel.abreise);
-  const preis = zahl(hotel.preis) ?? 0;
-  const zimmer = Math.max(1, zahl(hotel.zimmer) ?? 1);
-  const summe = runde(hotel.preisArt === "nacht" ? preis * n * zimmer : preis);
+  const mitPreis = zimmerListe.filter((z) => zahl(z.preis) != null);
+  let summe;
+  let jeZimmer = null;
+  if (mitPreis.length) {
+    jeZimmer = Object.fromEntries(mitPreis.map((z) => [z.id, runde(hotel.preisArt === "nacht" ? zahl(z.preis) * n : zahl(z.preis))]));
+    summe = runde(Object.values(jeZimmer).reduce((a, b) => a + b, 0));
+  } else {
+    const preis = zahl(hotel.preis) ?? 0;
+    const zimmer = Math.max(1, zahl(hotel.zimmer) ?? 1);
+    summe = runde(hotel.preisArt === "nacht" ? preis * n * zimmer : preis);
+  }
   const anzahl = personen.length || 1;
   return {
     summe,
+    jeZimmer,
     naechte: n,
     proNacht: n ? runde(summe / n) : null,
     proPersonNacht: n ? runde(summe / n / anzahl) : null,
@@ -245,13 +328,48 @@ export function startpunkt(station, hotels = []) {
 }
 
 /**
- * Zeitplan eines Ausflugs am Hafentag.
- * Bei Schiffsausflügen ist der Transfer in der Dauer enthalten; bei allen anderen kommen
- * Hin- und Rückweg (fahrzeitMin je Richtung) dazu. Puffer = „Alle an Bord“ minus Rückkehr.
+ * Feste Zeit eines Tages, bis zu der man zurück sein muss – die früheste von:
+ * „Alle an Bord“ (Kreuzfahrt), selbst eingetragene feste Zeit, Check-out am Abreisetag,
+ * Abfahrt einer Verbindung (Flug, Zug, Fähre …) abzüglich Vorlauf.
+ * Ergebnis: { min, zeit, titel, kurz, ort } oder null.
  */
-export function zeitplan(ausflug, hafen) {
+export function festeZeit(tag, reise = null) {
+  if (!tag) return null;
+  const kandidaten = [];
+  const art = tag.art ?? (tag.seetag ? "seetag" : "hafen");
+  const tagOrt = Number.isFinite(tag.lat) ? { lat: tag.lat, lng: tag.lng, name: tag.name } : null;
+  if (art === "hafen") {
+    const anBord = zeitZuMin(tag.allesAnBord) ?? (zeitZuMin(tag.abfahrt) != null ? zeitZuMin(tag.abfahrt) - 30 : null);
+    if (anBord != null) kandidaten.push({ min: anBord, titel: "Alle an Bord", kurz: "Alle an Bord", ort: tagOrt });
+  }
+  const eigene = zeitZuMin(tag.festeZeit?.zeit);
+  if (eigene != null) kandidaten.push({ min: eigene, titel: tag.festeZeit.titel || "Feste Zeit", kurz: tag.festeZeit.titel || "Feste Zeit", ort: tagOrt });
+  for (const h of reise?.hotels ?? []) {
+    if (h.status !== "gebucht" || h.abreise !== tag.datum || zeitZuMin(h.checkout) == null) continue;
+    kandidaten.push({ min: zeitZuMin(h.checkout), titel: `Check-out ${h.name}`, kurz: "Check-out", ort: Number.isFinite(h.lat) ? { lat: h.lat, lng: h.lng, name: h.name } : null });
+  }
+  for (const v of reise?.verbindungen ?? []) {
+    if (v.status === "verworfen" || v.datum !== tag.datum || zeitZuMin(v.abZeit) == null) continue;
+    const vm = VERKEHRSMITTEL[v.art] ?? VERKEHRSMITTEL.sonstiges;
+    const vorlauf = zahl(v.vorlaufMin) ?? vm.vorlauf;
+    const ortName = v.von || vm.ort;
+    kandidaten.push({ min: zeitZuMin(v.abZeit) - vorlauf, titel: `${vorlauf ? `Spätestens ${ortName}` : ortName} – ${v.titel || vm.name} um ${v.abZeit}`, kurz: vorlauf ? `${vm.ort} (${v.titel || vm.name})` : v.titel || vm.name, ort: Number.isFinite(v.vonOrt?.lat) ? v.vonOrt : null });
+  }
+  if (!kandidaten.length) return null;
+  const f = kandidaten.sort((a, b) => a.min - b.min)[0];
+  return { ...f, zeit: minZuZeit(f.min) };
+}
+
+/**
+ * Zeitplan eines Ausflugs an einem Tag.
+ * Bei Schiffsausflügen ist der Transfer in der Dauer enthalten; bei allen anderen kommen
+ * Hin- und Rückweg (fahrzeitMin je Richtung) dazu. Puffer = feste Zeit (z. B. „Alle an Bord“,
+ * Check-out, Abflug) minus Rückkehr.
+ */
+export function zeitplan(ausflug, hafen, reise = null) {
   const ankunft = zeitZuMin(hafen?.ankunft);
-  const anBord = zeitZuMin(hafen?.allesAnBord) ?? (zeitZuMin(hafen?.abfahrt) != null ? zeitZuMin(hafen.abfahrt) - 30 : null);
+  const fest = festeZeit(hafen, reise);
+  const anBord = fest?.min ?? null;
   const beginn = zeitZuMin(ausflug.beginn);
   const dauer = zahl(ausflug.dauerMin);
   const weg = ausflug.quelle === "schiff" ? 0 : zahl(ausflug.fahrzeitMin) ?? 0;
@@ -265,18 +383,18 @@ export function zeitplan(ausflug, hafen) {
     warnungen.push("Beginnt sehr früh – kaum Zeit zum Ausschiffen.");
   }
   if (puffer != null) {
-    if (puffer < 0) warnungen.push(`Endet ${dauerText(-puffer)} nach „Alle an Bord“!`);
+    if (puffer < 0) warnungen.push(`Endet ${dauerText(-puffer)} nach „${fest.kurz}“!`);
     else if (ausflug.quelle !== "schiff" && puffer < 60) {
-      warnungen.push("Weniger als 1 Std. Puffer – bei eigenen Ausflügen wartet das Schiff nicht.");
+      warnungen.push(fest.kurz === "Alle an Bord" ? "Weniger als 1 Std. Puffer – bei eigenen Ausflügen wartet das Schiff nicht." : `Weniger als 1 Std. Puffer bis „${fest.kurz}“ (${fest.zeit}).`);
     }
   }
-  return { losVomSchiff, start, zurueck, puffer, landgang, warnungen };
+  return { losVomSchiff, start, zurueck, puffer, landgang, warnungen, fest };
 }
 
 /** Punktwert für den Vergleich innerhalb eines Hafens (höher = sinnvoller). */
-export function bewertung(ausflug, hafen, personen) {
+export function bewertung(ausflug, hafen, personen, reise = null) {
   const k = ausflugKosten(ausflug, personen);
-  const z = zeitplan(ausflug, hafen);
+  const z = zeitplan(ausflug, hafen, reise);
   const interesse = zahl(ausflug.interesse) ?? 3; // 1–5
   const sterne = zahl(ausflug.sterne); // z. B. 4,7 von GetYourGuide
   const dauer = zahl(ausflug.dauerMin) ?? 0;

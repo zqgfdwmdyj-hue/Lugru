@@ -5,6 +5,8 @@ import {
   tauchImport, tauchStatistik, tauchgangDoppelt, passendeVorlagen, vorlageEintraege, inReisewaehrung, reiseZeitraum,
 } from "../public/unterwegs-logik.js";
 import { regionFuer, tiereFuer, tiereDerReise } from "../public/tiere.js";
+import { festeZeit, zeitplan, reiseKosten, hotelKosten } from "../public/rechnen.js";
+import { etappen, spritkosten } from "../public/unterwegs-logik.js";
 
 const personen = [
   { id: "a", name: "Anna", typ: "erwachsen" },
@@ -78,12 +80,12 @@ test("Kalenderdatei: Alle an Bord mit Vorwarnung, gebuchte Ausflüge, Fristen, S
 });
 
 test("Rückweg: wann müssen wir los?", () => {
-  const h = reise.haefen[0]; // Alle an Bord 17:30
+  const h = festeZeit(reise.haefen[0], reise); // Alle an Bord 17:30
   assert.deepEqual(rueckweg(h, 14 * 60, 40), { losUm: "16:30", restMin: 150, status: "ok", zielZeit: "17:30" });
   assert.equal(rueckweg(h, 16 * 60 + 10, 40).status, "knapp");
   assert.equal(rueckweg(h, 16 * 60 + 40, 40).status, "los");
   assert.equal(rueckweg(h, 17 * 60, 40).status, "zuSpaet");
-  assert.equal(rueckweg(reise.haefen[1], 600, 10), null);
+  assert.equal(rueckweg(festeZeit(reise.haefen[1], reise), 600, 10), null);
 });
 
 test("Dokumente: Fristen und Ausweise (6 Monate nach Reiseende)", () => {
@@ -217,4 +219,96 @@ test("Tiere je Region und Packlisten-Vorschläge", () => {
   assert.deepEqual(v, ["basis", "kreuzfahrt", "warm", "tauchen", "kinder"]);
   const rest = vorlageEintraege("tauchen", [{ text: "logbuch" }]);
   assert.ok(!rest.some((e) => e.text === "Logbuch"));
+});
+
+// ---------- Alle Reisearten: feste Zeiten, Verbindungen, Zimmer, Familien ----------
+
+const landreise = {
+  name: "Ostsee mit Meiers",
+  art: "ferienwohnung",
+  personen: [
+    { id: "a", name: "Anna", typ: "erwachsen", familie: "f1" },
+    { id: "b", name: "Ben", typ: "erwachsen", familie: "f1" },
+    { id: "k", name: "Kim", typ: "kind", alter: 6, familie: "f1" },
+    { id: "m", name: "Mia Meier", typ: "erwachsen", familie: "f2" },
+  ],
+  familien: [{ id: "f1", name: "Familie Lugru" }, { id: "f2", name: "Familie Meier" }],
+  haefen: [
+    { id: "t1", datum: "2027-07-01", art: "ort", name: "Zingst", lat: 54.44, lng: 12.69 },
+    { id: "t2", datum: "2027-07-02", art: "ort", name: "Stralsund", lat: 54.31, lng: 13.09, festeZeit: { zeit: "16:00", titel: "Abholung Kinder" } },
+    { id: "t3", datum: "2027-07-08", art: "ort", name: "Zingst", lat: 54.44, lng: 12.69 },
+  ],
+  hotels: [{ id: "fw", name: "FeWo Düne", status: "gebucht", anreise: "2027-07-01", abreise: "2027-07-08", preis: 100, preisArt: "nacht", checkout: "10:00", wlanPasswort: "GEHEIM-WLAN", zugang: "Code 4711", lat: 54.44, lng: 12.69 }],
+  zimmer: [
+    { id: "z1", unterkunft: "fw", nummer: "1", preis: 60, personen: ["a", "b", "k"] },
+    { id: "z2", unterkunft: "fw", nummer: "2", preis: 40, personen: ["m"] },
+  ],
+  verbindungen: [{ id: "v1", art: "flug", titel: "EW 123", status: "gebucht", datum: "2027-07-08", abZeit: "13:30", von: "Rostock (RLG)", preis: 400, personen: ["a", "b", "k", "m"], vonOrt: { lat: 54.18, lng: 12.28, name: "Flughafen Rostock" } }],
+  ausfluege: [{ id: "x1", hafenId: "t3", titel: "Strand", status: "gebucht", quelle: "eigene", beginn: "09:00", dauerMin: 120 }],
+  kosten: [{ id: "k1", titel: "Kurtaxe", betrag: 80, status: "gebucht" }],
+  zuhause: { lat: 52.52, lng: 13.4, name: "Berlin" },
+};
+
+test("Feste Zeit: eigene, Check-out und Abflug – die früheste gilt", () => {
+  assert.deepEqual(festeZeit(landreise.haefen[1], landreise).zeit, "16:00");
+  const abreise = festeZeit(landreise.haefen[2], landreise);
+  assert.equal(abreise.zeit, "10:00"); // Check-out vor „Flughafen 11:30“
+  assert.equal(abreise.kurz, "Check-out");
+  const ohneCheckout = { ...landreise, hotels: [{ ...landreise.hotels[0], checkout: "" }] };
+  const flug = festeZeit(landreise.haefen[2], ohneCheckout);
+  assert.equal(flug.zeit, "11:30"); // 13:30 − 2 Std. Vorlauf
+  assert.match(flug.titel, /Rostock.*EW 123 um 13:30/);
+  assert.equal(flug.ort.name, "Flughafen Rostock");
+  assert.equal(festeZeit(landreise.haefen[0], landreise), null);
+  // Puffer des Ausflugs gegen den Check-out
+  const z = zeitplan(landreise.ausfluege[0], landreise.haefen[2], landreise);
+  assert.equal(z.puffer, -60);
+  assert.match(z.warnungen[0], /nach „Check-out“/);
+});
+
+test("Kosten: Zimmerpreise an die Bewohner, Verbindungen an Mitreisende, je Familie", () => {
+  assert.equal(hotelKosten(landreise.hotels[0], landreise.personen, landreise.zimmer).summe, 700); // (60+40) × 7 Nächte
+  const k = reiseKosten(landreise);
+  assert.equal(k.hotels.gebucht, 700);
+  assert.equal(k.verbindungen.gebucht, 400);
+  assert.equal(k.gebucht, 700 + 400 + 80);
+  assert.equal(Math.round(k.jePerson.m), 280 + 100 + 20); // Zimmer 2, ¼ Flug, ¼ Kurtaxe
+  assert.equal(k.jeFamilie.f1, 780); // Zimmer 1 (420) + ¾ Flug (300) + ¾ Kurtaxe (60)
+  assert.equal(k.jeFamilie.f2, 400);
+  // Gemeinsame Kosten je Familie statt je Kopf: Kurtaxe 40/40, Flug 200/200
+  const f = reiseKosten({ ...landreise, kostenTeilung: "familie" });
+  assert.equal(f.jeFamilie.f2, 280 + 200 + 40);
+  assert.equal(Math.round(f.gebucht), 1180);
+});
+
+test("Abrechnung zwischen Familien", () => {
+  const r = ausgleich([{ betrag: 120, bezahltVon: "m", fuer: ["a", "b", "m"] }, { betrag: 30, bezahltVon: "a", fuer: [] }], landreise);
+  const f = ausgleich([{ betrag: 120, bezahltVon: "m", fuer: ["a", "b", "m"] }, { betrag: 30, bezahltVon: "a", fuer: [] }], landreise, { nachFamilie: true });
+  assert.equal(r.zahlungen.length, 2); // Anna und Ben zahlen einzeln
+  assert.deepEqual(f.zahlungen, [{ von: "f1", an: "f2", betrag: 70 }]); // 80 Schulden − 10 Guthaben
+  assert.deepEqual(Object.keys(f.saldo).sort(), ["f1", "f2"]);
+});
+
+test("Kalender: Abflug mit Erinnerungen, Check-out als feste Zeit", () => {
+  const { text } = kalenderDatei(landreise, { anBord: [60], ausfluege: null, erstellt: new Date("2027-01-01T00:00:00Z") });
+  assert.match(text, /SUMMARY:⏰ Check-out FeWo Düne/);
+  assert.match(text, /UID:verbindung-v1@reiseplaner/);
+  assert.match(text, /DTSTART:20270708T133000/);
+  assert.match(text, /TRIGGER:-PT180M/); // Vorlauf 120 + 60
+  assert.match(text, /TRIGGER:-PT120M/);
+  assert.equal(erinnerungenAm(landreise, "2027-07-02", { anBord: [30] })[0].zeit, 15 * 60 + 30);
+});
+
+test("Etappen ab Zuhause und Spritkosten", () => {
+  const e = etappen(landreise);
+  assert.deepEqual(e.map((x) => `${x.von}→${x.nach}`), ["Berlin→Zingst", "Zingst→Stralsund", "Stralsund→Zingst"]);
+  assert.ok(e[0].km > 200 && e[0].km < 320 && !e[0].berechnet);
+  const mitRoute = etappen({ ...landreise, haefen: [{ ...landreise.haefen[0], etappe: { km: 245, min: 170 } }] });
+  assert.deepEqual([mitRoute[0].km, mitRoute[0].min, mitRoute[0].berechnet], [245, 170, true]);
+  assert.equal(spritkosten(500, "7,5", "1,80"), 67.5);
+  assert.equal(spritkosten(500, null, 1.8), null);
+  assert.ok(passendeVorlagen({ art: "ski", haefen: [{ lat: 47.2 }] }).includes("ski"));
+  assert.deepEqual(passendeVorlagen({ art: "tagesausflug", personen: [] }), ["tagesausflug"]);
+  assert.equal(regionFuer({ lat: 47.13, lng: 10.27 }).id, "alpen"); // St. Anton
+  assert.equal(regionFuer({ lat: 54.44, lng: 12.69 }).id, "mitteleuropa"); // Zingst
 });
