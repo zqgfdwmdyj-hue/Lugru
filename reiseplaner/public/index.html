@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reiseplaner</title>
+  <meta name="theme-color" content="#0b5394">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="kopf">
+    <div class="marke">⚓ Reiseplaner</div>
+    <select id="reiseWahl" aria-label="Reise wählen"></select>
+    <button id="neueReise" class="knopf leise">+ Neue Reise</button>
+    <span id="speicherStatus" class="status" aria-live="polite"></span>
+  </header>
+
+  <nav class="reiter" id="reiter">
+    <button data-ansicht="plan" class="aktiv">Ausflüge planen</button>
+    <button data-ansicht="kosten">Kosten</button>
+    <button data-ansicht="personen">Personen</button>
+    <button data-ansicht="haefen">Route &amp; Häfen</button>
+    <button data-ansicht="daten">Import / Export</button>
+  </nav>
+
+  <main class="layout">
+    <section id="inhalt" class="inhalt"></section>
+    <aside class="kartenbereich">
+      <div id="karte" class="karte"></div>
+      <div class="legende" id="legende"></div>
+    </aside>
+  </main>
+
+  <dialog id="dialog" class="dialog"></dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

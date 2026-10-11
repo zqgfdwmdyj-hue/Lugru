@@ -22,6 +22,8 @@ Mandanten (Firma); heute gibt es nur einen.
 Schnittstellen: Amazon SP-API, eBay, DHL Parcel DE, Gmail, Microsoft Graph, Google Drive.
 TikTok Shop und Temu sind vorbereitet (bis dahin CSV-Import).
 
+Daneben, aber unabhängig: **[Reiseplaner](reiseplaner/README.md)** für Kreuzfahrt-Landausflüge (eigener Container).
+
 **Testen:** siehe [TESTANLEITUNG.md](TESTANLEITUNG.md) – Start mit `docker compose up -d --build`.
 
 ## Technik
