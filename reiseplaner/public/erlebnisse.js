@@ -87,6 +87,7 @@ function bewertungDialog(zielArt, zielId) {
     <label>Überschrift<input name="titel" value="${esc(b.titel ?? "")}" maxlength="200" placeholder="z. B. Bestes Highlight der Reise!"></label>
     <label>Kommentar<textarea name="text" rows="6" placeholder="Was war toll, was nicht? Tipps für andere (Treffpunkt, Kinder, Wartezeiten …)">${esc(b.text ?? "")}</textarea></label>
     ${fotoFeld(b.fotos ?? [])}
+    <label class="haken"><input type="checkbox" name="privat" ${b.privat ? "checked" : ""}> 🔒 Nur für Mitreisende – nie in öffentlichen Freigaben zeigen</label>
     <div class="zeile">
       ${b.id ? `<button type="button" class="knopf gefahr" data-aktion="bewertung-loeschen" data-id="${esc(b.id)}">Löschen</button>` : ""}
       <span class="platz"></span>
@@ -96,7 +97,7 @@ function bewertungDialog(zielArt, zielId) {
   </form>`);
   $("#bewertungForm").addEventListener("submit", async (e) => {
     const f = new FormData(e.target);
-    const daten = { zielArt, zielId, sterne: Number(f.get("sterne")), titel: f.get("titel"), text: f.get("text"), fotos: fotosLesen(e.target) };
+    const daten = { zielArt, zielId, sterne: Number(f.get("sterne")), titel: f.get("titel"), text: f.get("text"), fotos: fotosLesen(e.target), privat: f.get("privat") === "on" };
     try {
       await anfrage(`/api/reisen/${zustand.reise.id}/bewertungen`, { method: "POST", body: daten });
       await beitraegeLaden();
@@ -121,7 +122,7 @@ aktionen["bewertungen-zeigen"] = (el) => {
   const liste = bewertungenZu(art, id);
   dialogOeffnen(`<div class="formular">
     <h3>${esc(zielTitel(art, id))} ${sterneText(schnitt(liste))}</h3>
-    ${liste.map((b) => `<article class="bewertung"><div class="zeile"><strong>${esc(name(b.autorId))}</strong> ${sterneText(b.sterne)} <span class="leise klein">${esc(new Date(b.erstellt).toLocaleDateString("de-DE"))}</span></div>
+    ${liste.map((b) => `<article class="bewertung"><div class="zeile"><strong>${esc(name(b.autorId))}</strong> ${sterneText(b.sterne)}${b.privat ? ' <span class="klein leise">🔒 privat</span>' : ""} <span class="leise klein">${esc(new Date(b.erstellt).toLocaleDateString("de-DE"))}</span></div>
       ${b.titel ? `<h4>${esc(b.titel)}</h4>` : ""}${b.text ? `<p class="notiz">${esc(b.text)}</p>` : ""}${fotoLeiste(b.fotos ?? [])}</article>`).join("")}
     <div class="zeile"><button class="knopf leise" data-aktion="teilen" data-art="${art}" data-id="${esc(id)}">Teilen …</button><span class="platz"></span><button class="knopf" data-aktion="dialog-zu">Schließen</button></div>
   </div>`, true);
@@ -174,6 +175,7 @@ function tauchgangDialog(id, vorlage = {}) {
     <label>Tauchplatz auf der Karte</label>
     ${ortsSuche("platz", hatKoord(t) ? { lat: t.lat, lng: t.lng, name: t.tauchplatz } : null, "Tauchplatz suchen oder Koordinaten einfügen")}
     ${fotoFeld(t.fotos ?? [])}
+    <label class="haken"><input type="checkbox" name="privat" ${t.privat ? "checked" : ""}> 🔒 Nur für Mitreisende – nicht teilbar</label>
     <div class="zeile">
       ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="tauchgang-loeschen" data-id="${esc(t.id)}">Löschen</button>`}
       <span class="platz"></span>
@@ -185,7 +187,7 @@ function tauchgangDialog(id, vorlage = {}) {
     const f = Object.fromEntries(new FormData(e.target));
     const platz = ortAuslesen(e.target, "platz");
     delete f.platz;
-    const daten = { ...f, lat: platz?.lat ?? null, lng: platz?.lng ?? null, fotos: fotosLesen(e.target) };
+    const daten = { ...f, lat: platz?.lat ?? null, lng: platz?.lng ?? null, fotos: fotosLesen(e.target), privat: f.privat === "on" };
     for (const k of ["maxTiefe", "mittelTiefe", "wasserTemp", "luftTemp", "sicht", "blei", "nitroxProzent"]) daten[k] = zahl(daten[k]);
     try {
       await anfrage(`/api/reisen/${zustand.reise.id}/tauchgaenge${neu ? "" : `/${t.id}`}`, { method: neu ? "POST" : "PUT", body: daten });
@@ -258,7 +260,7 @@ export function erlebnisseAnsicht() {
       <div class="zeile"><h3>Tauchlog (${tauch.length})</h3><button class="knopf leise" data-aktion="logbuch">Mein Logbuch</button><button class="knopf" data-aktion="tauchgang-neu">+ Tauchgang</button></div>
       ${tauch.length ? `<div class="tabelle"><table><thead><tr><th>Datum</th><th>Tauchplatz</th><th>Wer</th><th class="zahl">Tiefe</th><th class="zahl">Zeit</th><th class="zahl">Wasser</th><th></th></tr></thead><tbody>
         ${tauch.map((t) => `<tr><td>${esc(datumText(t.datum))}${t.beginn ? `<div class="klein leise">${esc(t.beginn)}</div>` : ""}</td><td><strong>${esc(t.tauchplatz)}</strong>${t.sterne ? ` ${sterneText(t.sterne)}` : ""}<div class="klein leise">${esc([t.ort, t.basis].filter(Boolean).join(" · "))}</div>${t.sichtungen ? `<div class="klein">🐠 ${esc(t.sichtungen)}</div>` : ""}${fotoLeiste((t.fotos ?? []).slice(0, 4))}</td><td>${esc(name(t.taucherId))}</td><td class="zahl">${t.maxTiefe != null ? `${String(t.maxTiefe).replace(".", ",")} m` : ""}</td><td class="zahl">${t.tauchzeitMin != null ? `${t.tauchzeitMin}′` : ""}</td><td class="zahl">${t.wasserTemp != null ? `${String(t.wasserTemp).replace(".", ",")} °C` : ""}</td>
-          <td><button class="link" data-aktion="tauchgang-bearbeiten" data-id="${esc(t.id)}">Bearbeiten</button> <button class="link" data-aktion="teilen" data-art="tauchgang" data-id="${esc(t.id)}">Teilen</button></td></tr>`).join("")}
+          <td><button class="link" data-aktion="tauchgang-bearbeiten" data-id="${esc(t.id)}">Bearbeiten</button> ${t.privat ? '<span class="klein leise">🔒</span>' : `<button class="link" data-aktion="teilen" data-art="tauchgang" data-id="${esc(t.id)}">Teilen</button>`}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="leise">Noch keine Tauchgänge auf dieser Reise.</p>`}
     </div>`;
 }

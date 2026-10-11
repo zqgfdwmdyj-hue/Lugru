@@ -71,33 +71,56 @@ Angebote gibt GetYourGuide per Schnittstelle nur an Partner heraus
 (mit Datum). Mit `GYG_API_KEY` erscheinen je Tag die Touren im Umkreis mit Preis, Dauer, Bewertung
 und Kartenpunkt; `GYG_PARTNER_ID` hängt die Partner-ID an die Such-Links.
 
-## Auf dem Server starten (neben dem Seller-System)
+## Auf dem Hetzner-Server (unabhängig von allem anderen)
+
+Der Reiseplaner bekommt einen **eigenen Ordner** (`/opt/reiseplaner`), ein **eigenes
+Docker-Projekt** (`reiseplaner`: eigener Container, eigenes Netz, eigenes Volume) und lauscht
+standardmäßig nur auf `127.0.0.1:3030`. `/opt/seller-system`, andere Container, Ports 80/443 und die
+Firewall bleiben unberührt. Der Container läuft ohne Root-Rechte mit schreibgeschütztem Dateisystem.
+
+**1. Code holen und Bestandsaufnahme (ändert nichts an Bestehendem):**
 
 ```bash
-cd /opt/seller-system && git pull
-cd reiseplaner
-cp .env.example .env              # BIND_IP, ANTHROPIC_API_KEY, OEFFENTLICHE_URL … eintragen
-docker compose up -d --build
-docker compose logs reiseplaner   # zeigt beim ersten Start den Einrichtungscode
+git clone --branch reiseplaner https://github.com/zqgfdwmdyj-hue/Lugru.git /opt/reiseplaner
+bash /opt/reiseplaner/reiseplaner/deploy/pruefen.sh reise.lugru.de
 ```
 
-Dann `http://<BIND_IP>:3030` öffnen, mit dem Einrichtungscode das erste Konto (Verwaltung) anlegen
-und eine Reise erstellen. Alle anderen bekommen ihren Zugang über **Reisende → Einladen**.
-
-**Freigabe-Links für Außenstehende** funktionieren nur, wenn der Planer aus dem Internet erreichbar
-ist. Dafür eine Domain (z. B. `reise.lugru.de`) auf den Server zeigen lassen und – wenn die Ports
-80/443 frei sind – mit HTTPS starten:
+**2. Installieren und lokal testen:**
 
 ```bash
-# in .env: REISE_DOMAIN=reise.lugru.de und OEFFENTLICHE_URL=https://reise.lugru.de
-docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+bash /opt/reiseplaner/reiseplaner/deploy/install.sh https://github.com/zqgfdwmdyj-hue/Lugru.git reiseplaner 3030
 ```
 
-Läuft auf dem Server schon ein Webserver auf 80/443, dort stattdessen die Domain an Port 3030
-weiterleiten. Nur über Tailscale/intern erreichbar heißt: Familie ja, Freigabe-Links für andere nein.
+Das Skript klont nach `/opt/reiseplaner`, legt `reiseplaner/.env` an (Rechte 600, nicht im Git),
+prüft, ob der Port frei ist, startet das Projekt und zeigt den **Einrichtungscode**. Testen ohne
+etwas freizugeben: `ssh -L 3030:127.0.0.1:3030 root@<server>`, dann `http://localhost:3030`.
 
-Daten (Reisen, Konten, Fotos) liegen im Docker-Volume `reiseplaner_reisedaten`.
-Update: `git pull` und `docker compose up -d --build` im Ordner `reiseplaner`.
+**3. Claude anbinden:** In `/opt/reiseplaner/reiseplaner/.env` `ANTHROPIC_API_KEY=…` eintragen,
+dann `docker compose up -d` im Ordner `reiseplaner`. Der Schlüssel steht nur in dieser Datei auf
+dem Server – nie im Repository.
+
+**4. Subdomain** (nötig für Freigabe-Links an Außenstehende): DNS-Eintrag (A-Record) für z. B.
+`reise.lugru.de` auf die Server-IP, in `.env` `OEFFENTLICHE_URL=https://reise.lugru.de`. Dann je nach
+Ergebnis von `pruefen.sh`:
+
+- *Ports 80/443 frei:* `REISE_DOMAIN=reise.lugru.de` in `.env`, dann
+  `docker compose -f docker-compose.yml -f docker-compose.https.yml up -d` (eigener Caddy, HTTPS automatisch).
+- *Caddy des Seller-Systems belegt 80/443:* Reiseplaner dessen Netz beitreten lassen
+  (`docker compose -f docker-compose.yml -f docker-compose.seller-caddy.yml up -d`) und im Caddyfile
+  des Seller-Systems einen Block ergänzen, danach Caddy neu laden:
+  ```
+  reise.lugru.de {
+  	encode gzip
+  	reverse_proxy reiseplaner:3030
+  }
+  ```
+  Das ist die einzige Berührung mit dem Seller-System – vorher absprechen.
+- *Anderer Webserver auf dem Host (nginx/Caddy):* Subdomain auf `127.0.0.1:3030` weiterleiten,
+  `X-Forwarded-Proto` setzen.
+
+**Update:** `cd /opt/reiseplaner && git pull && cd reiseplaner && docker compose up -d --build`
+(mit denselben `-f`-Dateien wie beim Start). **Sicherung:** `bash deploy/sichern.sh` (z. B. per cron).
+**Entfernen:** `docker compose down` (Daten bleiben im Volume `reiseplaner_reisedaten`).
 
 ## Lokal
 
@@ -125,4 +148,9 @@ npm test
   einen App-eigenen Kopf, Anmelde-Sperre nach mehreren Fehlversuchen.
 - Jede Abfrage prüft die Mitgliedschaft in der Reise; Fotos gibt es nur für Mitglieder oder über
   eine Freigabe, die genau dieses Foto enthält.
-- Freigabe-Seiten sind nicht für Suchmaschinen gedacht (`noindex`), Links nur `http(s)`.
+- Freigabe-Seiten sind nicht für Suchmaschinen gedacht (`noindex`), Links nur `http(s)`, keine
+  Einbettung in fremde Seiten. Als „privat“ markierte Bewertungen und Tauchgänge erscheinen nie in
+  Freigaben; Tauchgänge teilen nur Taucher/in oder Planer/innen.
+- Namen sieht man nur von Mitreisenden der eigenen Reise. Passwortwechsel meldet alle anderen
+  Geräte ab, Abmelden löscht die lokalen Kopien auf dem Gerät.
+- Allgemeine Einladungslinks gelten 14 Tage und für höchstens 10 Beitritte, persönliche nur einmal.

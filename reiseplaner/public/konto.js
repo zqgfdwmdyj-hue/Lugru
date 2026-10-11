@@ -162,6 +162,10 @@ aktionen["profil"] = () => {
 
 aktionen["abmelden"] = async () => {
   await anfrage("/api/abmelden", { method: "POST" }).catch(() => {});
+  // Lokale Kopien der Reisen und KI-Merker vom Gerät entfernen (z. B. geliehenes Handy)
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith("reiseplaner:")) localStorage.removeItem(k);
+  } catch {}
   location.href = "/";
 };
 

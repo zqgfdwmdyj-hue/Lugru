@@ -53,7 +53,7 @@ export function inhaltFuer(reise, beitraege, benutzer, f) {
   const station = (id) => reise.haefen?.find((h) => h.id === id);
   const bewertungenVon = (zielArt, zielId) =>
     beitraege.bewertungen
-      .filter((b) => b.zielArt === zielArt && b.zielId === zielId)
+      .filter((b) => b.zielArt === zielArt && b.zielId === zielId && !b.privat)
       .sort((a, b) => String(a.erstellt).localeCompare(String(b.erstellt)))
       .map((b) => ({ autor: namen[b.autorId] ?? "Mitreisende/r", sterne: b.sterne, titel: b.titel ?? "", text: b.text ?? "", fotos: b.fotos ?? [], datum: b.erstellt }));
   const schnitt = (liste) => (liste.length ? Math.round((liste.reduce((s, b) => s + (Number(b.sterne) || 0), 0) / liste.length) * 10) / 10 : null);
@@ -99,7 +99,7 @@ export function inhaltFuer(reise, beitraege, benutzer, f) {
     };
   }
   if (f.art === "tauchgang") {
-    const t = beitraege.tauchgaenge.find((x) => x.id === f.zielId);
+    const t = beitraege.tauchgaenge.find((x) => x.id === f.zielId && !x.privat);
     if (!t) return null;
     return {
       art: "tauchgang",
@@ -127,7 +127,7 @@ export function inhaltFuer(reise, beitraege, benutzer, f) {
       const bew = bewertungenVon("hotel", ho.id);
       if (bew.length) eintraege.push({ art: "hotel", titel: ho.name, unterzeile: ho.ort ?? "", sterne: schnitt(bew), bewertungen: bew, fotos: bew.flatMap((b) => b.fotos), datum: ho.anreise });
     }
-    for (const t of beitraege.tauchgaenge) {
+    for (const t of beitraege.tauchgaenge.filter((x) => !x.privat)) {
       eintraege.push({ art: "tauchgang", titel: t.tauchplatz || "Tauchgang", unterzeile: [t.ort, datumLang(t.datum)].filter(Boolean).join(" · "), sterne: t.sterne ?? null, tauchgang: t, taucher: namen[t.taucherId] ?? "", bewertungen: t.text ? [{ autor: namen[t.taucherId] ?? "", sterne: t.sterne, text: t.text, fotos: [] }] : [], fotos: t.fotos ?? [], datum: t.datum });
     }
     eintraege.sort((a, b) => String(a.datum ?? "").localeCompare(String(b.datum ?? "")));

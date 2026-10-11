@@ -116,3 +116,23 @@ test("Freigabe zeigt nur den Beitrag – ohne Kosten, ohne fremde Fotos", () => 
   assert.ok(html.includes('og:image" content="https://reise.example/teilen/'));
   assert.equal(inhaltFuer(reise, beitraege, benutzer, { ...f, zielId: "weg" }), null);
 });
+
+test("Private Bewertungen und Tauchgänge erscheinen nie in Freigaben", () => {
+  const reise = { name: "R", personen: [], haefen: [{ id: "h1", datum: "2026-10-20", name: "Funchal" }], ausfluege: [{ id: "a1", hafenId: "h1", titel: "Levada" }], hotels: [] };
+  const beitraege = {
+    bewertungen: [
+      { id: "b1", zielArt: "ausflug", zielId: "a1", autorId: "u1", sterne: 5, text: "öffentlich", fotos: ["f1"] },
+      { id: "b2", zielArt: "ausflug", zielId: "a1", autorId: "u2", sterne: 2, text: "geheim", fotos: ["f2"], privat: true },
+    ],
+    tauchgaenge: [{ id: "t1", taucherId: "u2", tauchplatz: "Privatriff", fotos: ["f3"], privat: true }],
+    fotos: [],
+  };
+  const benutzer = [{ id: "u1", name: "Anna" }, { id: "u2", name: "Ben" }];
+  const a = inhaltFuer(reise, beitraege, benutzer, { token: "x".repeat(32), art: "ausflug", zielId: "a1" });
+  assert.deepEqual(a.bewertungen.map((b) => b.text), ["öffentlich"]);
+  assert.deepEqual([...erlaubteFotos(a)], ["f1"]);
+  assert.equal(inhaltFuer(reise, beitraege, benutzer, { art: "tauchgang", zielId: "t1" }), null);
+  const bericht = inhaltFuer(reise, beitraege, benutzer, { art: "bericht", zielId: "r" });
+  assert.ok(!JSON.stringify(bericht).includes("geheim"));
+  assert.ok(!JSON.stringify(bericht).includes("Privatriff"));
+});

@@ -106,7 +106,7 @@ function bewertungAus(d) {
   const sterne = Math.round(Number(d.sterne));
   if (!(sterne >= 1 && sterne <= 5)) throw fehler(400, "Bitte 1 bis 5 Sterne vergeben.");
   if (!["ausflug", "hotel"].includes(d.zielArt)) throw fehler(400, "Unbekanntes Ziel.");
-  return { zielArt: d.zielArt, zielId: text(d.zielId, 80), sterne, titel: text(d.titel, 200), text: text(d.text, 10_000), fotos: (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40) };
+  return { zielArt: d.zielArt, zielId: text(d.zielId, 80), privat: d.privat === true, sterne, titel: text(d.titel, 200), text: text(d.text, 10_000), fotos: (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40) };
 }
 
 const TAUCH_TEXT = ["datum", "tauchplatz", "ort", "basis", "einstieg", "beginn", "stroemung", "anzug", "flascheMaterial", "gas", "buddy", "guide", "sichtungen", "text", "ausflugId", "taucherId"];
@@ -117,6 +117,7 @@ function tauchgangAus(d) {
   for (const k of TAUCH_ZAHL) t[k] = zahlOderNull(d[k]);
   if (t.sterne != null) t.sterne = Math.min(5, Math.max(1, Math.round(t.sterne)));
   t.fotos = (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40);
+  t.privat = d.privat === true;
   return t;
 }
 
@@ -252,6 +253,10 @@ async function api(req, res, url, ich) {
       throw fehler(403, "Das bisherige Passwort stimmt nicht.");
     });
     const b = await konten.benutzerAendern(ich.id, d);
+    if (d.passwort) {
+      await konten.alleSitzungenBeenden(ich.id);
+      konten.cookieSetzen(res, req, await konten.sitzungStarten(ich.id));
+    }
     konten.cacheLeeren();
     return json(res, 200, { benutzer: konten.oeffentlich(b) });
   }
@@ -359,9 +364,10 @@ async function api(req, res, url, ich) {
 
     // Bewertungen, Tauchgänge, Fotos
     if (unter === "beitraege" && m === "GET") {
-      await reiseMitRecht(id, ich);
+      const { reise } = await reiseMitRecht(id, ich);
       const b = await beitraegeLesen(id);
-      const namen = Object.fromEntries((await konten.alleBenutzer()).map((x) => [x.id, x.name]));
+      const sichtbar = new Set([...(reise.mitglieder ?? []).map((x) => x.userId), ...b.bewertungen.map((x) => x.autorId), ...b.tauchgaenge.map((x) => x.taucherId)]);
+      const namen = Object.fromEntries((await konten.alleBenutzer()).filter((x) => sichtbar.has(x.id)).map((x) => [x.id, x.name]));
       return json(res, 200, { ...b, namen });
     }
     if (unter === "bewertungen") {
@@ -451,7 +457,7 @@ async function api(req, res, url, ich) {
 
     // Freigaben
     if (unter === "freigaben") {
-      const { reise } = await reiseMitRecht(id, ich);
+      const { reise, rolle } = await reiseMitRecht(id, ich);
       if (m === "GET") {
         const liste = (await teilen.alleFreigaben()).filter((f) => f.reiseId === id && f.aktiv);
         return json(res, 200, liste.map((f) => ({ ...f, url: `${basisUrl(req)}/teilen/${f.token}` })));
@@ -460,8 +466,13 @@ async function api(req, res, url, ich) {
         const d = await koerper(req, 10_000);
         if (!teilen.ARTEN.includes(d.art)) throw fehler(400, "Unbekannte Art der Freigabe.");
         const zielId = d.art === "bericht" ? id : text(d.zielId, 80);
-        const probe = teilen.inhaltFuer(reise, await beitraegeLesen(id), [], { art: d.art, zielId });
-        if (!probe) throw fehler(404, "Das Ziel der Freigabe gibt es nicht.");
+        const beitraege = await beitraegeLesen(id);
+        if (d.art === "tauchgang") {
+          const tg = beitraege.tauchgaenge.find((x) => x.id === zielId);
+          if (tg && rolle !== "planer" && tg.taucherId !== ich.id && tg.autorId !== ich.id) throw fehler(403, "Einen Tauchgang teilen nur der/die Taucher/in oder Planer/innen.");
+        }
+        const probe = teilen.inhaltFuer(reise, beitraege, [], { art: d.art, zielId });
+        if (!probe) throw fehler(404, "Nichts zum Teilen gefunden (gibt es den Eintrag noch, ist er privat?).");
         const f = await teilen.freigabeErstellen({ reiseId: id, art: d.art, zielId, vonId: ich.id, mitPreis: d.mitPreis });
         return json(res, 201, { ...f, url: `${basisUrl(req)}/teilen/${f.token}` });
       }
@@ -609,7 +620,7 @@ function fotoSenden(res, id, klein) {
 async function freigabeSeite(req, res, url) {
   const [, , tok, art, fid] = url.pathname.split("/");
   const html = (status, body) => {
-    res.writeHead(status, { "content-type": MIME[".html"], "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" });
+    res.writeHead(status, { "content-type": MIME[".html"], "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
     res.end(body);
   };
   const f = await teilen.freigabeLesen(tok, !art);
@@ -628,7 +639,12 @@ async function freigabeSeite(req, res, url) {
 }
 
 async function statisch(req, res, url) {
-  let datei = decodeURIComponent(url.pathname);
+  let datei;
+  try {
+    datei = decodeURIComponent(url.pathname);
+  } catch {
+    throw fehler(400, "Ungültige Adresse.");
+  }
   // Alle App-Pfade (z. B. /einladung/…) zeigen die Oberfläche
   if (datei === "/" || !path.extname(datei)) datei = "/index.html";
   const voll = path.join(PUBLIC, path.normalize(datei));
@@ -636,7 +652,7 @@ async function statisch(req, res, url) {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     return res.end("Nicht gefunden");
   }
-  res.writeHead(200, { "content-type": MIME[path.extname(voll)] ?? "application/octet-stream", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "same-origin" });
+  res.writeHead(200, { "content-type": MIME[path.extname(voll)] ?? "application/octet-stream", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "frame-ancestors 'none'" });
   createReadStream(voll).pipe(res);
 }
 
@@ -666,6 +682,7 @@ server.listen(PORT, async () => {
   console.log(`Reiseplaner läuft auf http://localhost:${PORT} (Daten: ${DATA_DIR})`);
   const code = await konten.einrichtungsCodeErzeugen();
   if (code) console.log(`Noch kein Konto vorhanden. Einrichtungscode für das erste Konto: ${code}`);
+  if (!process.env.OEFFENTLICHE_URL) console.log("Hinweis: OEFFENTLICHE_URL ist nicht gesetzt – Einladungs- und Freigabe-Links nutzen die Adresse aus der Anfrage.");
   if (!ki.kiAktiv()) console.log("KI: kein ANTHROPIC_API_KEY – KI-Import, Assistent und Beitragstexte sind aus.");
   if (!GYG_KEY) console.log("GetYourGuide: kein Partner-Schlüssel – es gibt Such-Links statt eingebetteter Ergebnisse.");
 });

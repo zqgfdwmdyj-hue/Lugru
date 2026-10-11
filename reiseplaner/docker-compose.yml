@@ -1,6 +1,8 @@
-# Reiseplaner – läuft getrennt vom Seller-System (eigener Container, eigener Port, eigene Daten).
-# Start:  cd /opt/seller-system/reiseplaner && docker compose up -d --build
-# Werte in reiseplaner/.env setzen (siehe .env.example). Einrichtungscode: docker compose logs reiseplaner
+# Reiseplaner – eigenes Docker-Projekt „reiseplaner“, unabhängig vom Seller-System und anderen
+# Containern: eigener Container, eigenes Netz, eigenes Volume, Port nur auf BIND_IP (Standard: lokal).
+# Start:  docker compose up -d --build   (Werte in .env, siehe .env.example)
+# Einrichtungscode für das erste Konto:  docker compose logs reiseplaner
+name: reiseplaner
 services:
   reiseplaner:
     build: .
@@ -15,5 +17,21 @@ services:
       GYG_PARTNER_ID: ${GYG_PARTNER_ID:-}
     volumes:
       - reisedaten:/daten
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3030/gesund').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 volumes:
   reisedaten:

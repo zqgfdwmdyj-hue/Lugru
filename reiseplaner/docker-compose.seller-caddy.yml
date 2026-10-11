@@ -1,0 +1,14 @@
+# Nur für den Fall, dass der Caddy des Seller-Systems (deploy/docker-compose.hetzner.yml) schon die
+# Ports 80/443 belegt: Der Reiseplaner tritt zusätzlich dessen Docker-Netz bei, damit Caddy ihn unter
+# „reiseplaner:3030“ erreicht. Am Seller-System selbst ändert sich dadurch nichts außer einem
+# zusätzlichen Eintrag im Caddyfile (siehe README, Abschnitt „Subdomain“).
+# Start:  docker compose -f docker-compose.yml -f docker-compose.seller-caddy.yml up -d
+services:
+  reiseplaner:
+    networks:
+      - default
+      - seller
+networks:
+  seller:
+    external: true
+    name: ${SELLER_NETZ:-seller-system_default}

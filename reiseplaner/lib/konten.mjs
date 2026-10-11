@@ -11,6 +11,7 @@ const BENUTZER = path.join(DATA_DIR, "benutzer.json");
 const SITZUNGEN = path.join(DATA_DIR, "sitzungen.json");
 const EINLADUNGEN = path.join(DATA_DIR, "einladungen.json");
 const SITZUNG_TAGE = 90;
+const MAX_NUTZUNGEN = 10; // allgemeiner Einladungslink: so viele Beitritte, danach neuen Link erzeugen
 export const COOKIE = "rp_sitzung";
 
 const sha = (s) => createHash("sha256").update(s).digest("hex");
@@ -121,6 +122,13 @@ export async function sitzungStarten(userId) {
   return t;
 }
 
+export async function alleSitzungenBeenden(userId) {
+  await aendern(SITZUNGEN, {}, (s) => {
+    for (const [k, v] of Object.entries(s)) if (v.userId === userId) delete s[k];
+  });
+  cache.clear();
+}
+
 export async function sitzungBeenden(t) {
   if (!t) return;
   await aendern(SITZUNGEN, {}, (s) => {
@@ -192,7 +200,7 @@ export async function einladungErstellen({ reiseId, personId = null, rolle = "mi
 
 export async function einladungLesen(t) {
   const e = (await lesen(EINLADUNGEN, [])).find((x) => x.hash === sha(String(t ?? "")));
-  return e && e.ablauf > Date.now() ? e : null;
+  return e && e.ablauf > Date.now() && e.benutzt < MAX_NUTZUNGEN ? e : null;
 }
 
 export async function einladungVerbrauchen(t) {

@@ -1,5 +1,6 @@
-# Optional: Reiseplaner öffentlich unter einer eigenen Domain mit HTTPS (nötig, damit Freigabe-Links
-# für Freunde/Follower funktionieren). Nur verwenden, wenn die Ports 80/443 auf dem Server frei sind.
+# Nur wenn auf dem Server NICHTS anderes die Ports 80/443 belegt: eigener Caddy mit HTTPS für die
+# Subdomain (z. B. reise.lugru.de). Läuft schon ein Webserver (z. B. der Caddy des Seller-Systems),
+# diese Datei NICHT verwenden – siehe README, Abschnitt „Subdomain“.
 # Start:  docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
 services:
   reiseplaner:
@@ -14,9 +15,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      REISE_DOMAIN: ${REISE_DOMAIN:?REISE_DOMAIN fehlt}
-    command: caddy reverse-proxy --from ${REISE_DOMAIN} --to reiseplaner:3030
+    command: caddy reverse-proxy --from ${REISE_DOMAIN:?REISE_DOMAIN fehlt} --to reiseplaner:3030
     volumes:
       - caddy_daten:/data
 volumes:

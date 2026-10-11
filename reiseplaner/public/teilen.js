@@ -1,7 +1,8 @@
 // Teilen: öffentlicher Link nur für diesen Beitrag, Social-Media-Knöpfe, Story-Bild und KI-Text.
 import { zustand, $, esc, aktionen, dialogOeffnen, anfrage, fotoUrl, herunterladen, hafenVon } from "./kern.js";
 
-const bewertungenZu = (art, id) => zustand.beitraege.bewertungen.filter((b) => b.zielArt === art && b.zielId === id);
+// Nur Bewertungen, die geteilt werden dürfen (Story-Bild, Fotos an Apps)
+const bewertungenZu = (art, id) => zustand.beitraege.bewertungen.filter((b) => b.zielArt === art && b.zielId === id && !b.privat);
 
 function eckdaten(art, id) {
   const r = zustand.reise;
@@ -20,7 +21,7 @@ function eckdaten(art, id) {
     const t = zustand.beitraege.tauchgaenge.find((x) => x.id === id);
     return { titel: t?.tauchplatz ?? "Tauchgang", unter: [t?.ort, t?.maxTiefe != null ? `${t.maxTiefe} m` : "", t?.tauchzeitMin ? `${t.tauchzeitMin} Min.` : ""].filter(Boolean).join(" · "), fotos: t?.fotos ?? [], sterne: t?.sterne ?? null };
   }
-  return { titel: r.name, unter: r.schiff ?? "", fotos: [...zustand.beitraege.bewertungen.flatMap((b) => b.fotos ?? []), ...zustand.beitraege.tauchgaenge.flatMap((t) => t.fotos ?? [])], sterne: null };
+  return { titel: r.name, unter: r.schiff ?? "", fotos: [...zustand.beitraege.bewertungen.filter((b) => !b.privat).flatMap((b) => b.fotos ?? []), ...zustand.beitraege.tauchgaenge.filter((t) => !t.privat).flatMap((t) => t.fotos ?? [])], sterne: null };
 }
 
 aktionen["teilen"] = async (el) => {
@@ -30,7 +31,7 @@ aktionen["teilen"] = async (el) => {
   const was = { ausflug: "die Bewertungen und Fotos dieses Ausflugs", hotel: "die Bewertungen und Fotos dieser Unterkunft", tauchgang: "diesen Tauchgang mit Fotos", bericht: "alle Bewertungen, Tauchgänge und Fotos dieser Reise (ohne Kosten und Planung)" }[art];
   dialogOeffnen(`<div class="formular" id="teilenBox" data-art="${art}" data-id="${esc(id)}">
     <h3>Teilen: ${esc(e.titel)}</h3>
-    <p class="leise klein">Der Link zeigt nur ${was}. Die übrige Reise, Kosten und Mitreisende bleiben privat. Du kannst die Freigabe jederzeit beenden.</p>
+    <p class="leise klein">Der Link zeigt nur ${was}. Die übrige Reise, Kosten und Mitreisende bleiben privat, als 🔒 privat markierte Bewertungen erscheinen nicht. Du kannst die Freigabe jederzeit beenden.</p>
     ${art === "ausflug" || art === "hotel" ? `<label class="haken"><input type="checkbox" id="mitPreis"> Preis und Link zum Angebot mit anzeigen</label>` : ""}
     <div class="zeile"><button class="knopf" data-aktion="link-erstellen">Link erstellen</button></div>
     <div id="teilenLink"></div>
