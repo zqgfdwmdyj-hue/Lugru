@@ -14,9 +14,10 @@ export const DATEI_DIR = path.join(DATA_DIR, "dateien");
 await mkdir(DATEI_DIR, { recursive: true });
 
 export const extrasDatei = (id) => path.join(REISEN_DIR, `${id}.extras.json`);
-export const LEERE_EXTRAS = { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, tierFotos: {}, schatz: {}, kinder: {}, briefings: {}, checks: {} };
+export const LEERE_EXTRAS = { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, tierFotos: {}, schatz: {}, kinder: {}, challenge: {}, geschichten: {}, briefings: {}, checks: {} };
 export const LISTEN = ["packliste", "dokumente", "ausgaben"];
-export const dateiPfad = (id, typ) => path.join(DATEI_DIR, `${id}.${typ === "application/pdf" ? "pdf" : typ === "image/png" ? "png" : "jpg"}`);
+const ENDUNG = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3" };
+export const dateiPfad = (id, typ) => path.join(DATEI_DIR, `${id}.${ENDUNG[typ] ?? "bin"}`);
 
 export async function extrasLesen(id) {
   return { ...structuredClone(LEERE_EXTRAS), ...(await lesen(extrasDatei(id), LEERE_EXTRAS)) };
@@ -132,6 +133,18 @@ export function tierSetzen(reiseId, tier, gesehen, fotoId = undefined) {
   });
 }
 
+export const CHALLENGES = ["essen", "tiere", "sprache", "baden", "foto", "helfen"];
+/** Familien-Challenge: Punkte je Person und Kategorie (+1/−1). */
+export function challengeSetzen(reiseId, kategorie, personId, delta) {
+  if (!CHALLENGES.includes(kategorie)) throw fehler(400, "Unbekannte Challenge.");
+  const d = Math.sign(Number(delta) || 0);
+  return extrasAendern(reiseId, (e) => {
+    const c = (e.challenge[kategorie] ??= {});
+    c[personId] = Math.max(0, Math.min(999, (c[personId] ?? 0) + d));
+    return e.challenge;
+  });
+}
+
 /** Schatzsuche (für die ganze Familie): Aufgabe erledigt, optional mit Foto-Beweis. */
 export function schatzSetzen(reiseId, schluessel, erledigt, fotoId = "") {
   if (!/^[\w-]{1,80}:\d{1,2}$/.test(String(schluessel))) throw fehler(400, "Ungültige Aufgabe.");
@@ -147,7 +160,7 @@ const STIMMUNGEN = 5;
  * Kinder-Bereich je Kind: Abzeichen, Quiz-Punkte, Tagebuch, Sparschwein, Kids-Club.
  * d = { bereich, schluessel, wert }. fotoIds: vorhandene Fotos der Reise (für Bilder).
  */
-export function kinderAendern(reiseId, personId, d, fotoIds = new Set()) {
+export function kinderAendern(reiseId, personId, d, fotoIds = new Set(), audioIds = new Set()) {
   const datumOk = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x ?? ""));
   const { bereich, schluessel, wert } = d ?? {};
   return extrasAendern(reiseId, (e) => {
@@ -170,7 +183,7 @@ export function kinderAendern(reiseId, personId, d, fotoIds = new Set()) {
       if (!wert) delete k.tagebuch[schluessel];
       else {
         const stimmung = Number.isInteger(wert.stimmung) && wert.stimmung >= 0 && wert.stimmung < STIMMUNGEN ? wert.stimmung : null;
-        k.tagebuch[schluessel] = { stimmung, text: text(wert.text, 1000), bildId: fotoIds.has(wert.bildId) ? wert.bildId : "" };
+        k.tagebuch[schluessel] = { stimmung, text: text(wert.text, 1000), bildId: fotoIds.has(wert.bildId) ? wert.bildId : "", audioId: audioIds.has(wert.audioId) ? wert.audioId : "" };
       }
     } else if (bereich === "kasse") {
       const start = zahl(wert?.start);
@@ -184,6 +197,16 @@ export function kinderAendern(reiseId, personId, d, fotoIds = new Set()) {
       } else k.kasse.ausgaben = k.kasse.ausgaben.filter((x) => x.id !== schluessel);
     } else if (bereich === "kidsclub") {
       k.kidsclub = { gruppe: text(wert?.gruppe, 60), armband: text(wert?.armband, 30), hinweis: text(wert?.hinweis, 300) };
+    } else if (bereich === "fund") {
+      // Sammelalbum: Fundstücke mit Foto
+      k.funde ??= [];
+      if (wert) {
+        if (!fotoIds.has(wert.fotoId)) throw fehler(400, "Bitte ein Foto vom Fundstück machen.");
+        if (k.funde.length >= 300) throw fehler(400, "Das Sammelalbum ist voll.");
+        k.funde.push({ id: randomUUID(), titel: text(wert.titel, 80).trim() || "Fundstück", fotoId: wert.fotoId, ort: text(wert.ort, 80), datum: datumOk(wert.datum) ? wert.datum : "" });
+      } else k.funde = k.funde.filter((x) => x.id !== schluessel);
+    } else if (bereich === "ranking") {
+      k.ranking = { ort: text(wert?.ort, 80), essen: text(wert?.essen, 100), erlebnis: text(wert?.erlebnis, 120), tier: text(wert?.tier, 60) };
     } else throw fehler(400, "Unbekannter Bereich.");
     return k;
   });

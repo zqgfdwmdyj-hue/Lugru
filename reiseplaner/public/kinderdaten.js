@@ -208,3 +208,50 @@ export function mischen(liste, saat) {
   }
   return a;
 }
+
+// ---------- Gute-Nacht-Geschichte ohne KI ----------
+
+/** Kleine Geschichte aus Bausteinen (wenn keine KI da ist oder offline). */
+export function geschichteOhneKi({ kinder, ort, seetag, tier, erlebnis, schiff }, saat = "") {
+  const namen = kinder.length ? (kinder.length === 1 ? kinder[0] : `${kinder.slice(0, -1).join(", ")} und ${kinder.at(-1)}`) : "die Kinder";
+  const sie = kinder.length === 1 ? "es" : "sie";
+  const anfang = seetag
+    ? `Heute war ein ganz besonderer Tag: Rundherum war nur Meer, so weit ${namen} schauen konnten. ${schiff ? `Die ${schiff}` : "Das Schiff"} schaukelte sanft, und der Wind roch nach Salz und Abenteuer.`
+    : `Heute waren ${namen} in ${ort}. Die Sonne kitzelte auf der Nase, und überall gab es etwas Neues zu entdecken.`;
+  const mitte = tier
+    ? `Plötzlich entdeckten ${sie} ein Tier, das ganz neugierig zurückschaute. Wisst ihr, wer es war? Es war: ${tier}! Es schien zu sagen: „Hallo, ihr Reisenden!“ ${namen} winkten, und das Tier blinzelte freundlich.`
+    : `${namen} hielten Ausschau nach Tieren – und ganz am Ende des Tages sahen ${sie} einen Vogel, der dreimal um sie herumflog, als wolle er „Gute Nacht“ sagen.`;
+  const erlebnisSatz = erlebnis ? `Das Schönste war aber „${erlebnis}“. Davon wollten ${sie} noch lange erzählen.` : `Sie sammelten so viele schöne Erinnerungen, dass ihr Herz ganz warm wurde.`;
+  const ende = [
+    "Jetzt ist es Abend. Draußen funkeln die Sterne, und das Meer singt ein leises Lied. Die Augen werden schwer … und schwerer … Morgen wartet ein neues Abenteuer. Gute Nacht!",
+    "Der Mond schaut durchs Fenster und flüstert: „Schlaft gut, ihr kleinen Entdecker.“ Und während die Wellen leise rauschen, träumen alle von Palmen, Tieren und Sonnenschein. Gute Nacht!",
+    "Ganz langsam wird es still. Nur das Meer rauscht – hin und her, hin und her. Es ist das schönste Schlaflied der Welt. Gute Nacht und süße Träume!",
+  ];
+  let h = 0;
+  for (const c of String(saat)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return `## ${seetag ? "Die Reise übers große Meer" : `Ein Abenteuer in ${ort}`}\n\n${anfang}\n\n${mitte}\n\n${erlebnisSatz}\n\n${ende[h % ende.length]}`;
+}
+
+// ---------- Zahlen-Spaß ----------
+
+/** Bekannte Schiffslängen in Metern (Mein Schiff). */
+export const SCHIFFSLAENGEN = [[/mein schiff (1|2|7)\b/i, 316], [/mein schiff (3|4|5|6)\b/i, 295], [/mein schiff/i, 300]];
+
+export function zahlenSpass({ km, tage, orte, laender, schiff }) {
+  const fakten = [];
+  const zahl = (n) => Math.round(n).toLocaleString("de-DE");
+  if (km > 0) {
+    fakten.push(`🛳️ Wir sind schon ca. <strong>${zahl(km)} km</strong> unterwegs – das ist ${km > 600 ? `${(km / 612).toFixed(1).replace(".", ",")}-mal von Hamburg nach München` : `${zahl(km / 0.4)} Runden um einen Sportplatz`}!`);
+    fakten.push(`🚶 Zu Fuß bräuchtest du dafür etwa <strong>${zahl(km / 25)} Tage</strong> (25 km pro Tag).`);
+    fakten.push(`🐆 Ein Gepard (110 km/h) wäre <strong>${zahl(km / 110)} Stunden</strong> gerannt – ohne Pause!`);
+    fakten.push(`🐢 Eine Meeresschildkröte (ca. 2 km/h) bräuchte <strong>${zahl(km / 48)} Tage</strong> dafür.`);
+  }
+  const laenge = SCHIFFSLAENGEN.find(([re]) => re.test(schiff ?? ""))?.[1];
+  if (laenge) {
+    fakten.push(`📏 Unser Schiff ist etwa <strong>${laenge} m</strong> lang – so lang wie <strong>${(laenge / 105).toFixed(1).replace(".", ",")} Fußballfelder</strong> hintereinander!`);
+    fakten.push(`🚌 Das sind ungefähr <strong>${zahl(laenge / 12)} Busse</strong> in einer Reihe.`);
+  }
+  if (tage) fakten.push(`📅 Die Reise dauert <strong>${tage} Tage</strong> – das sind <strong>${zahl(tage * 24)} Stunden</strong> Urlaub!`);
+  if (orte) fakten.push(`📍 <strong>${orte}</strong> Orte${laender ? ` in <strong>${laender}</strong> Ländern` : ""} – mehr als manche Leute in ihrem ganzen Leben sehen.`);
+  return fakten;
+}

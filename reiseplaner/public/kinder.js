@@ -7,30 +7,12 @@ import { tiereFuer, tiereDerReise, regionFuer } from "./tiere.js";
 import { tierBild } from "./tierbilder.js";
 import { zeitZuMin, minZuZeit, festeZeit, zimmerVon, istKind, entfernungKm } from "./rechnen.js";
 import { unterkunftAm } from "./unterwegs.js";
+import { kinder, kind, vorname, zustandKind, istSeetag, kinderSetzen } from "./kinderbasis.js";
 import { LAENDER, landFuer, SPRACHEN, WOERTER, schatzAufgaben, RAETSEL, WITZE, ICH_SEHE_FARBEN, WER_FINDET, PANTOMIME, ABZEICHEN, packBild, mischen } from "./kinderdaten.js";
 
 const BILD = { tauchen: "🤿", schnorcheln: "🐠", strand: "🏖️", boot: "⛵", natur: "🥾", sport: "🏄", stadt: "🏛️", tiere: "🐒", kultur: "🎭", essen: "🍽️", bord: "🛳️", ausflug: "🗺️", tickets: "🎟️", park: "🎢", ski: "⛷️", kinderclub: "🧒" };
 const SEITEN = { heute: "☀️ Heute", pass: "🛂 Pass & Abzeichen", entdecken: "🔭 Entdecken", spiele: "🎲 Spiele", tagebuch: "📔 Tagebuch", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
 const STIMMUNGEN = ["😄", "🙂", "😐", "🙁", "😢"];
-
-const kinder = () => {
-  const ps = zustand.reise?.personen ?? [];
-  return ps.filter(istKind).length ? ps.filter(istKind) : ps;
-};
-const kind = () => kinder().find((p) => p.id === zustand.kind) ?? kinder()[0] ?? null;
-const vorname = (p) => String(p?.name ?? "").split(" ")[0];
-const zustandKind = (p = kind()) => {
-  const k = zustand.extras.kinder?.[p?.id] ?? {};
-  return { abzeichen: {}, quiz: {}, tagebuch: {}, kasse: { start: null, ausgaben: [] }, kidsclub: {}, ...k };
-};
-const istSeetag = (h) => stationsArt(h) === "seetag";
-
-async function kinderSetzen(bereich, schluessel, wert, p = kind()) {
-  const k = await anfrage(`/api/reisen/${zustand.reise.id}/kinder/${p.id}`, { method: "PUT", body: { bereich, schluessel, wert } });
-  zustand.extras.kinder ??= {};
-  zustand.extras.kinder[p.id] = k;
-  return k;
-}
 
 // ---------- Kennzahlen, Stempel, Abzeichen ----------
 

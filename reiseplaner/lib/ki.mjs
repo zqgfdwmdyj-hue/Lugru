@@ -436,6 +436,46 @@ export async function ausflugPruefen({ stand, ausflugId }) {
   }
 }
 
+// ---------- Gute-Nacht-Geschichte und Ideen für die nächste Reise ----------
+
+export async function geschichte({ reise, tag, kinder, tiere, tagebuch }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  const ausfluege = (reise.ausfluege ?? []).filter((a) => a.hafenId === tag.id && a.status === "gebucht").map((a) => a.titel);
+  const daten = { reise: reise.art ?? "kreuzfahrt", schiff: reise.schiff ?? "", tag: { datum: tag.datum, seetag: tag.art === "seetag", ort: tag.name, land: tag.land ?? "" }, erlebnisse: ausfluege, kinder, gesehene_tiere: tiere, aus_dem_tagebuch: tagebuch.slice(0, 4) };
+  try {
+    const msg = pruefeAntwort(
+      await client.beta.messages.create({
+        ...FALLBACK,
+        model: MODELL,
+        max_tokens: 4000,
+        output_config: { effort: "low" },
+        system: "Du schreibst liebevolle Gute-Nacht-Geschichten für Kinder (3–10 Jahre) auf Deutsch, zum Vorlesen. Die Kinder sind die Helden, der Tag ihrer Reise ist die Grundlage (Ort, Erlebnisse, Tiere). Etwas Fantasie ist erwünscht, aber nichts Gruseliges, keine Gefahr, ruhiges, schläfriges Ende. 250–400 Wörter, kurze Sätze, ein Titel in der ersten Zeile mit „## “. Keine weitere Formatierung.",
+        messages: [{ role: "user", content: `Heute (JSON):\n${JSON.stringify(daten)}\n\nSchreibe die Gute-Nacht-Geschichte.` }],
+      }),
+    );
+    return textAus(msg).slice(0, 6000);
+  } catch (e) {
+    throw kiFehler(e);
+  }
+}
+
+export async function naechsteReise({ reisen, kinder, wunsch, heute }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  try {
+    const { texte } = await mitWerkzeugen({
+      system: "Du bist Reiseberater für eine Familie. Aus ihren bisherigen Reisen (Orte, Bewertungen mit Sternen, Tauchgänge) erkennst du, was ihnen gefällt, und schlägst 3–5 passende nächste Reiseziele vor – mit Reiseart (z. B. Kreuzfahrt, Hotel, Rundreise), beste Reisezeit, warum es passt (Bezug auf ihre Bewertungen), Highlights für Kinder und ggf. Tauchen, grobe Kosten-Einschätzung. Nutze bei Bedarf die Websuche für aktuelle Infos (z. B. neue Kreuzfahrtrouten). Deutsch, gut lesbar: „## “ je Vorschlag, „- “ für Stichpunkte, **fett** sparsam.",
+      inhalt: [{ type: "text", text: `Heute ist ${heute}.\nBisherige Reisen (JSON):\n${JSON.stringify(reisen)}\nKinder: ${JSON.stringify(kinder)}${wunsch ? `\nWunsch der Familie: ${wunsch}` : ""}` }],
+      tools: [WEB_SUCHE],
+      effort: "medium",
+    });
+    const text = texte.at(-1) ?? "";
+    if (!text) throw fehler(502, "Die KI hat keine Vorschläge geliefert. Bitte erneut versuchen.");
+    return text.slice(0, 12000);
+  } catch (e) {
+    throw kiFehler(e);
+  }
+}
+
 // ---------- Beitragstexte für Social Media ----------
 
 export async function beitragstext({ inhalt, plattform, sprache, creatorName }) {
@@ -449,7 +489,7 @@ export async function beitragstext({ inhalt, plattform, sprache, creatorName }) 
     tauchgang: inhalt.tauchgang ? { maxTiefe: inhalt.tauchgang.maxTiefe, tauchzeitMin: inhalt.tauchgang.tauchzeitMin, wasserTemp: inhalt.tauchgang.wasserTemp, sicht: inhalt.tauchgang.sicht, sichtungen: inhalt.tauchgang.sichtungen } : undefined,
     eintraege: inhalt.eintraege?.slice(0, 15).map((e) => ({ titel: e.titel, unterzeile: e.unterzeile, sterne: e.sterne, texte: e.bewertungen.map((b) => b.text).filter(Boolean).slice(0, 2) })),
   };
-  const plattformText = { instagram: "Instagram (Caption, Emojis erlaubt, 15–25 Hashtags am Ende)", tiktok: "TikTok (sehr kurz, 3–6 Hashtags)", facebook: "Facebook (2–4 Absätze, wenige Hashtags)", x: "X/Twitter (max. 270 Zeichen inkl. 2–3 Hashtags)", youtube: "YouTube (Titel in der ersten Zeile, dann Beschreibung und Hashtags)" }[plattform] ?? "Instagram";
+  const plattformText = { tripadvisor: "Tripadvisor-Bewertung (Überschrift in der ersten Zeile, dann 4–8 Sätze sachlich und hilfreich für andere Familien, keine Hashtags, keine Emojis)", google: "Google-Bewertung (3–6 Sätze, sachlich, hilfreich, keine Hashtags)", holidaycheck: "HolidayCheck-Bewertung (Überschrift, dann Absätze zu Lage, Angebot, Kinderfreundlichkeit, Preis-Leistung; keine Hashtags)", instagram: "Instagram (Caption, Emojis erlaubt, 15–25 Hashtags am Ende)", tiktok: "TikTok (sehr kurz, 3–6 Hashtags)", facebook: "Facebook (2–4 Absätze, wenige Hashtags)", x: "X/Twitter (max. 270 Zeichen inkl. 2–3 Hashtags)", youtube: "YouTube (Titel in der ersten Zeile, dann Beschreibung und Hashtags)" }[plattform] ?? "Instagram";
   try {
     const msg = pruefeAntwort(
       await client.beta.messages.create({
@@ -457,7 +497,9 @@ export async function beitragstext({ inhalt, plattform, sprache, creatorName }) 
         model: MODELL,
         max_tokens: 4000,
         output_config: { effort: "low" },
-        system: "Du schreibst authentische Social-Media-Beiträge für Reise-Content-Creator (Familie, viel unterwegs, taucht gern). Nur auf Basis der gelieferten Erlebnisse – nichts erfinden. Gib nur den fertigen Beitragstext aus, ohne Vorrede.",
+        system: ["tripadvisor", "google", "holidaycheck"].includes(plattform)
+          ? "Du schreibst ehrliche, hilfreiche Bewertungen für Bewertungsportale aus Sicht einer reisenden Familie. Nur auf Basis der gelieferten Bewertungen und Sterne – nichts erfinden, keine Übertreibungen. Gib nur den fertigen Text aus, ohne Vorrede."
+          : "Du schreibst authentische Social-Media-Beiträge für Reise-Content-Creator (Familie, viel unterwegs, taucht gern). Nur auf Basis der gelieferten Erlebnisse – nichts erfinden. Gib nur den fertigen Beitragstext aus, ohne Vorrede.",
         messages: [{ role: "user", content: `Plattform: ${plattformText}\nSprache: ${sprache === "en" ? "Englisch" : "Deutsch"}${creatorName ? `\nAccount-Name: ${creatorName}` : ""}\n\nErlebnis (JSON):\n${JSON.stringify(kurz)}` }],
       }),
     );

@@ -152,6 +152,11 @@ const DATEI_TYPEN = {
   "application/pdf": (b) => b.subarray(0, 5).toString("latin1") === "%PDF-",
   "image/jpeg": JPEG,
   "image/png": (b) => b.length > 8 && b.readUInt32BE(0) === 0x89504e47,
+  // Sprachaufnahmen (Stimmen-Tagebuch)
+  "audio/webm": (b) => b.length > 4 && b.readUInt32BE(0) === 0x1a45dfa3,
+  "audio/ogg": (b) => b.subarray(0, 4).toString("latin1") === "OggS",
+  "audio/mp4": (b) => b.subarray(4, 8).toString("latin1") === "ftyp",
+  "audio/mpeg": (b) => b.subarray(0, 3).toString("latin1") === "ID3" || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0),
 };
 
 /** Album-Angaben eines Fotos: Aufnahmezeit/-ort (aus EXIF), zugeordneter Tag/Ausflug, „geteilt“. */
@@ -580,7 +585,28 @@ async function api(req, res, url, ich) {
       const { reise } = await reiseMitRecht(id, ich);
       if (!(reise.personen ?? []).some((p) => p.id === t[4])) throw fehler(404, "Person nicht gefunden.");
       const fotoIds = new Set((await beitraegeLesen(id)).fotos.map((f) => f.id));
-      return json(res, 200, await extras.kinderAendern(id, t[4], await koerper(req, 20_000), fotoIds));
+      const audioIds = new Set((await extras.extrasLesen(id)).dateien.filter((x) => x.typ.startsWith("audio/")).map((x) => x.id));
+      return json(res, 200, await extras.kinderAendern(id, t[4], await koerper(req, 20_000), fotoIds, audioIds));
+    }
+    if (unter === "challenge" && m === "PUT") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const d = await koerper(req, 2_000);
+      if (!(reise.personen ?? []).some((p) => p.id === d.personId)) throw fehler(404, "Person nicht gefunden.");
+      return json(res, 200, await extras.challengeSetzen(id, d.kategorie, d.personId, d.delta));
+    }
+    // KI: Gute-Nacht-Geschichte zum Tag (für alle Mitreisenden gespeichert)
+    if (unter === "geschichte" && m === "POST") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const d = await koerper(req, 5_000);
+      const tag = (reise.haefen ?? []).find((h) => h.id === d.hafenId);
+      if (!tag) throw fehler(404, "Tag nicht gefunden.");
+      const kinder = (reise.personen ?? []).filter((p) => p.typ === "kind").map((p) => ({ name: String(p.name).split(" ")[0], alter: p.alter || null }));
+      const e = await extras.extrasLesen(id);
+      const geschichte = { text: await ki.geschichte({ reise, tag, kinder, tiere: Object.keys(e.tiere ?? {}).slice(0, 20), tagebuch: Object.values(e.kinder ?? {}).map((k) => k.tagebuch?.[tag.datum]?.text).filter(Boolean) }), zeit: new Date().toISOString() };
+      await extras.extrasAendern(id, (x) => {
+        x.geschichten[tag.id] = geschichte;
+      });
+      return json(res, 200, geschichte);
     }
 
     // Dateien zu Dokumenten (PDF, Fotos von Bestätigungen) – nur für Mitreisende
@@ -589,7 +615,7 @@ async function api(req, res, url, ich) {
       if (m === "POST" && !t[4]) {
         const d = await koerper(req, 22_000_000);
         const typ = String(d.typ ?? "");
-        if (!DATEI_TYPEN[typ]) throw fehler(400, "Erlaubt sind PDF, JPEG und PNG.");
+        if (!DATEI_TYPEN[typ]) throw fehler(400, "Erlaubt sind PDF, JPEG, PNG und Sprachaufnahmen.");
         const roh = Buffer.from(String(d.daten ?? ""), "base64");
         if (!roh.length || roh.length > 15_000_000) throw fehler(400, "Datei leer oder größer als 15 MB.");
         if (!DATEI_TYPEN[typ](roh)) throw fehler(400, "Der Dateiinhalt passt nicht zum Dateityp.");
@@ -746,6 +772,25 @@ async function api(req, res, url, ich) {
     const namen = Object.fromEntries((await konten.alleBenutzer()).filter((x) => sichtbar.has(x.id)).map((x) => [x.id, x.name]));
     reisen.sort((a, b) => String(a.reise.haefen?.map((h) => h.datum).sort()[0] ?? "").localeCompare(String(b.reise.haefen?.map((h) => h.datum).sort()[0] ?? "")));
     return json(res, 200, { jahr, reisen, namen });
+  }
+
+  // KI: Ideen für die nächste Reise aus Bewertungen und besuchten Orten aller eigenen Reisen
+  if (p === "/api/ki/naechste-reise" && m === "POST") {
+    const d = await koerper(req, 5_000);
+    const reisen = [];
+    for (const r of (await alleReisen()).filter((x) => rolleIn(x, ich))) {
+      const b = await beitraegeLesen(r.id);
+      const titel = (zielArt, zielId) => (zielArt === "hotel" ? r.hotels?.find((h) => h.id === zielId)?.name : r.ausfluege?.find((a) => a.id === zielId)?.titel) ?? "";
+      reisen.push({
+        name: r.name, art: r.art ?? "kreuzfahrt",
+        orte: [...new Set((r.haefen ?? []).filter((h) => h.art !== "seetag" && h.name).map((h) => [h.name, h.land].filter(Boolean).join(", ")))],
+        bewertungen: b.bewertungen.map((x) => ({ was: titel(x.zielArt, x.zielId), sterne: x.sterne, text: String(x.text ?? "").slice(0, 300) })).filter((x) => x.was),
+        tauchgaenge: b.tauchgaenge.length,
+      });
+    }
+    const personen = (await alleReisen()).filter((x) => rolleIn(x, ich)).flatMap((r) => r.personen ?? []);
+    const kinder = [...new Map(personen.filter((x) => x.typ === "kind").map((x) => [x.name, x.alter])).entries()].map(([name, alter]) => ({ alter }));
+    return json(res, 200, { text: await ki.naechsteReise({ reisen: reisen.slice(-15), kinder, wunsch: text(d.wunsch, 500), heute: heuteIso() }) });
   }
 
   // Weltkarte: besuchte Orte aller eigenen Reisen + von Hand eingetragene Orte
