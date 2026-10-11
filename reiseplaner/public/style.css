@@ -455,3 +455,6 @@ form.art-hafen .ohne-hafen { display: none !important; }
 .zuhause { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
 .zuhause .ortssuche { flex: 1 1 260px; }
 .formular label strong.ergebnis { font-size: 1.3rem; padding-top: 4px; }
+.bingo-emoji { display: flex; align-items: center; justify-content: center; height: 2.6rem; }
+.bingo-emoji .tierbild { width: 2.6rem; height: 2.6rem; }
+.fakt-bild .tierbild { width: 1.6rem; height: 1.6rem; vertical-align: middle; }

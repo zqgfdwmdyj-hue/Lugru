@@ -1,23 +1,31 @@
 // Tiere, die Kinder in einer Region entdecken können (Tiere-Bingo in der Kinder-Ansicht).
 // Zuordnung über die Koordinaten des Tages – funktioniert ohne Internet und ohne KI.
 
-const T = (emoji, name, satz) => ({ emoji, name, satz });
+// bild: eigene Zeichnung (tierbilder.js), gruppe: nur eins je Gruppe (z. B. ein Wal), nur: Gebiete [S, N, W, O]
+const T = (emoji, name, satz, extra = {}) => ({ emoji, name, satz, ...extra });
+const WAL = { gruppe: "wal" };
+// Inseln/Gebiete in der Karibik, für Tiere, die es nicht überall gibt
+const BARBADOS = [12.9, 13.4, -59.75, -59.3], ST_KITTS = [17.05, 17.45, -62.95, -62.5], GRENADA = [11.95, 12.3, -61.85, -61.5];
+const DOMINICA = [15.1, 15.7, -61.6, -61.15], MARTINIQUE = [14.35, 14.9, -61.25, -60.8], GUADELOUPE = [15.8, 16.55, -61.85, -61.0];
+const DOM_REP = [17.4, 20, -72.1, -68.3], ABC_INSELN = [11.9, 12.7, -70.2, -68.1], BAHAMAS = [20.9, 27.3, -79.5, -72.7], KUBA = [19.8, 23.3, -85, -74.1], YUCATAN = [18, 22, -91, -86.5];
+const ST_LUCIA = [13.7, 14.15, -61.1, -60.85], ST_VINCENT = [12.5, 13.4, -61.5, -61.1];
 
 export const REGIONEN = [
   {
     id: "karibik", name: "Karibik", box: [9, 27.5, -90, -59],
     tiere: [
       T("🐢", "Meeresschildkröte", "Sie kann ihre Luft stundenlang anhalten, wenn sie schläft."),
-      T("🦜", "Papagei", "Auf Dominica und St. Lucia leben Papageien, die es sonst nirgends gibt."),
-      T("🐦", "Kolibri", "Er schlägt bis zu 80-mal pro Sekunde mit den Flügeln – darum summt er."),
+      T("🦜", "Papagei", "Auf Dominica, St. Lucia und St. Vincent leben Papageien, die es sonst nirgends gibt.", { nur: [DOMINICA, ST_LUCIA, ST_VINCENT, DOM_REP, KUBA] }),
+      T("", "Kolibri", "Er schlägt bis zu 80-mal pro Sekunde mit den Flügeln – darum summt er.", { bild: "kolibri" }),
       T("🦎", "Leguan", "Leguane sonnen sich gern auf warmen Steinen und können gut schwimmen."),
-      T("🐦", "Pelikan", "Er fängt Fische mit seinem Kehlsack wie mit einem Kescher."),
+      T("", "Pelikan", "Er fängt Fische mit seinem Kehlsack wie mit einem Kescher.", { bild: "pelikan" }),
       T("🐬", "Delfin", "Delfine schlafen mit einer Gehirnhälfte – die andere passt auf."),
-      T("🐋", "Pottwal", "Vor Dominica leben Pottwale das ganze Jahr – sie tauchen über 1000 m tief."),
+      T("🐋", "Buckelwal", "Von Januar bis März kommen Tausende Buckelwale in die Bucht von Samaná, um ihre Babys zu bekommen.", { ...WAL, nur: [DOM_REP] }),
+      T("", "Pottwal", "Vor Dominica leben Pottwale das ganze Jahr – sie tauchen über 1000 m tief.", { bild: "pottwal", gruppe: "pottwal", nur: [DOMINICA, MARTINIQUE, GUADELOUPE] }),
       T("🐠", "Papageifisch", "Aus seinem Kot entsteht weißer Sand für die Strände!"),
       T("🦀", "Landkrabbe", "Sie wohnt in Löchern am Strand und läuft seitwärts."),
-      T("🐒", "Grüne Meerkatze", "Auf Barbados und St. Kitts klettern kleine Affen durch die Bäume."),
-      T("🦩", "Flamingo", "Auf Bonaire leben viele Flamingos – sie sind rosa vom Futter."),
+      T("🐒", "Grüne Meerkatze", "Auf Barbados, St. Kitts und Grenada klettern kleine Affen durch die Bäume.", { nur: [BARBADOS, ST_KITTS, GRENADA] }),
+      T("🦩", "Flamingo", "Flamingos sind rosa vom Futter – sie stehen gern auf einem Bein.", { nur: [ABC_INSELN, DOM_REP, BAHAMAS, KUBA, YUCATAN] }),
       T("🦈", "Ammenhai", "Er liegt gern faul am Meeresboden und ist ganz friedlich."),
     ],
   },
@@ -48,10 +56,10 @@ export const REGIONEN = [
   {
     id: "atlantik", name: "Kanaren & Madeira", box: [27, 33.5, -18.5, -13],
     tiere: [
-      T("🐋", "Grindwal", "Vor Teneriffa leben Grindwale das ganze Jahr."),
+      T("🐋", "Grindwal", "Vor Teneriffa leben Grindwale das ganze Jahr.", WAL),
       T("🐬", "Delfin", "Große Tümmler springen oft vor dem Schiff aus dem Wasser."),
       T("🦎", "Rieseneidechse", "Auf den Kanaren gibt es Eidechsen, die so lang wie ein Arm werden."),
-      T("🐦", "Kanarienvogel", "Die Inseln haben ihren Namen nicht von ihm – aber er wohnt dort."),
+      T("🐤", "Kanarienvogel", "Die Inseln haben ihren Namen nicht von ihm – aber er wohnt dort."),
       T("🐢", "Meeresschildkröte", "Manchmal ziehen Schildkröten an den Inseln vorbei."),
       T("🦀", "Rote Klippenkrabbe", "Leuchtend rote Krabben klettern über die Lavafelsen."),
     ],
@@ -59,14 +67,13 @@ export const REGIONEN = [
   {
     id: "alpen", name: "Alpen", box: [45.6, 48.1, 5.8, 16.5],
     tiere: [
-      T("🐿️", "Murmeltier", "Murmeltiere pfeifen laut, wenn Gefahr droht – und schlafen den ganzen Winter."),
+      T("", "Murmeltier", "Murmeltiere pfeifen laut, wenn Gefahr droht – und schlafen den ganzen Winter.", { bild: "murmeltier" }),
       T("🐐", "Steinbock", "Steinböcke klettern an fast senkrechten Felswänden."),
       T("🦅", "Steinadler", "Er kann einen Hasen aus einem Kilometer Entfernung sehen."),
       T("🐄", "Kuh auf der Alm", "Im Sommer ziehen die Kühe hinauf auf die Almwiesen – mit Glocken!"),
       T("🦊", "Fuchs", "Im Winter sieht man seine Spuren im Schnee."),
-      T("🐦", "Alpendohle", "Schwarze Vögel mit gelbem Schnabel – sie betteln gern an Berghütten."),
-      T("🦌", "Gämse", "Gämsen springen sicher von Fels zu Fels."),
-      T("🐰", "Schneehase", "Im Winter wird sein Fell weiß wie der Schnee."),
+      T("", "Alpendohle", "Schwarze Vögel mit gelbem Schnabel – sie betteln gern an Berghütten.", { bild: "alpendohle" }),
+      T("🐇", "Schneehase", "Im Winter wird sein Fell weiß wie der Schnee."),
     ],
   },
   {
@@ -77,9 +84,9 @@ export const REGIONEN = [
       T("🐿️", "Eichhörnchen", "Es versteckt Nüsse und vergisst viele – daraus wachsen Bäume."),
       T("🦢", "Schwan", "Schwäne bleiben ihr ganzes Leben zusammen."),
       T("🦆", "Ente", "Enten haben wasserdichte Federn."),
-      T("🐦", "Storch", "Störche fliegen im Winter bis nach Afrika."),
+      T("", "Storch", "Störche fliegen im Winter bis nach Afrika.", { bild: "storch" }),
       T("🦔", "Igel", "Ein Igel hat rund 7000 Stacheln."),
-      T("🦭", "Seehund", "An Nord- und Ostsee liegen Seehunde auf den Sandbänken."),
+      T("🦭", "Seehund", "An Nord- und Ostsee liegen Seehunde auf den Sandbänken.", { gruppe: "robbe" }),
       T("🐞", "Marienkäfer", "Die Punkte zeigen nicht das Alter – aber sie sind trotzdem schön."),
     ],
   },
@@ -89,7 +96,7 @@ export const REGIONEN = [
       T("🐬", "Delfin", "Im Mittelmeer leben mehrere Delfinarten."),
       T("🐙", "Oktopus", "Ein Oktopus hat drei Herzen und blaues Blut."),
       T("🐢", "Unechte Karettschildkröte", "Sie legt in Griechenland und Zypern ihre Eier."),
-      T("🐦", "Möwe", "Möwen trinken sogar Salzwasser."),
+      T("", "Möwe", "Möwen trinken sogar Salzwasser.", { bild: "moewe" }),
       T("🦎", "Gecko", "Geckos laufen kopfüber an der Decke."),
       T("🐐", "Bergziege", "Auf den Inseln klettern Ziegen auf steile Felsen."),
       T("🐟", "Zackenbarsch", "Ein großer Fisch, der gern in Höhlen wohnt."),
@@ -99,13 +106,13 @@ export const REGIONEN = [
   {
     id: "norden", name: "Nordeuropa", box: [53, 72, -25, 32],
     tiere: [
-      T("🐋", "Buckelwal", "Buckelwale singen lange Lieder unter Wasser."),
-      T("🦭", "Robbe", "Robben liegen gern auf Steinen in der Sonne."),
-      T("🐧", "Papageitaucher", "Er heißt auch Puffin und hat einen bunten Schnabel."),
+      T("🐋", "Buckelwal", "Buckelwale singen lange Lieder unter Wasser.", WAL),
+      T("🦭", "Robbe", "Robben liegen gern auf Steinen in der Sonne.", { gruppe: "robbe" }),
+      T("", "Papageitaucher", "Er heißt auch Puffin und hat einen bunten Schnabel.", { bild: "papageitaucher" }),
       T("🦅", "Seeadler", "Er hat Flügel, die so breit sind wie ein Auto."),
       T("🦌", "Rentier", "Rentiere haben Fell sogar an den Hufen."),
       T("🐟", "Lachs", "Lachse schwimmen den Fluss hinauf und springen über Wasserfälle."),
-      T("🐬", "Schweinswal", "Ein kleiner, scheuer Wal in Nord- und Ostsee."),
+      T("🐬", "Schweinswal", "Ein kleiner, scheuer Wal in Nord- und Ostsee.", { gruppe: "delfin" }),
     ],
   },
   {
@@ -124,7 +131,7 @@ export const REGIONEN = [
     tiere: [
       T("🐢", "Riesenschildkröte", "Auf den Seychellen leben Landschildkröten, die über 150 Jahre alt werden."),
       T("🦈", "Walhai", "Der größte Fisch der Welt frisst nur winziges Plankton."),
-      T("🐟", "Mantarochen", "Mantas sehen aus, als würden sie unter Wasser fliegen."),
+      T("", "Mantarochen", "Mantas sehen aus, als würden sie unter Wasser fliegen.", { bild: "manta" }),
       T("🐬", "Delfin", "Spinner-Delfine drehen sich beim Springen in der Luft."),
       T("🦇", "Flughund", "Abends fliegen große Flughunde über die Palmen."),
       T("🐠", "Doktorfisch", "Er hat am Schwanz ein kleines Skalpell."),
@@ -134,7 +141,7 @@ export const REGIONEN = [
     id: "alaska", name: "Alaska & Kanada", box: [47, 72, -170, -122],
     tiere: [
       T("🐻", "Bär", "Bären fangen im Sommer Lachse direkt aus dem Fluss."),
-      T("🐋", "Buckelwal", "Buckelwale jagen gemeinsam mit einem Netz aus Luftblasen."),
+      T("🐋", "Buckelwal", "Buckelwale jagen gemeinsam mit einem Netz aus Luftblasen.", WAL),
       T("🦅", "Weißkopfseeadler", "Das Wappentier der USA."),
       T("🦦", "Seeotter", "Seeotter halten sich beim Schlafen an den Pfoten."),
       T("🦭", "Seelöwe", "Seelöwen bellen laut auf den Felsen."),
@@ -143,10 +150,10 @@ export const REGIONEN = [
 ];
 
 export const SEETAG_TIERE = [
-  T("🐬", "Delfin", "Delfine schwimmen gern in der Bugwelle des Schiffs."),
+  T("🐬", "Delfin", "Delfine schwimmen gern in der Bugwelle des Schiffs.", { gruppe: "delfin" }),
   T("🐟", "Fliegender Fisch", "Er gleitet mit seinen Flossen über das Wasser – bis zu 200 Meter weit!"),
-  T("🐋", "Wal", "Manchmal sieht man den Blas – eine Wasserfontäne – am Horizont."),
-  T("🐦", "Seevogel", "Seevögel begleiten das Schiff oft weit draußen auf dem Meer."),
+  T("🐳", "Wal", "Manchmal sieht man den Blas – eine Wasserfontäne – am Horizont.", WAL),
+  T("", "Seevogel", "Seevögel begleiten das Schiff oft weit draußen auf dem Meer.", { bild: "moewe", gruppe: "moewe" }),
   T("🌈", "Regenbogen", "Kein Tier – aber auf See sieht man besonders oft Regenbögen."),
 ];
 
@@ -155,16 +162,23 @@ export function regionFuer(ort) {
   return REGIONEN.find(({ box: [s, n, w, o] }) => ort.lat >= s && ort.lat <= n && ort.lng >= w && ort.lng <= o) ?? null;
 }
 
-/** Tiere für einen Tag (Seetag: Tiere auf See, sonst Region des Ortes). */
+const istSeetag = (tag) => (tag?.art ?? (tag?.seetag ? "seetag" : "hafen")) === "seetag";
+const imGebiet = (ort, [s, n, w, o]) => ort.lat >= s && ort.lat <= n && ort.lng >= w && ort.lng <= o;
+
+/** Tiere für einen Tag (Seetag: Tiere auf See, sonst Region des Ortes – nur die, die es dort gibt). */
 export function tiereFuer(tag) {
   if (!tag) return [];
-  if ((tag.art ?? (tag.seetag ? "seetag" : "hafen")) === "seetag") return SEETAG_TIERE;
-  return regionFuer(tag)?.tiere ?? [];
+  if (istSeetag(tag)) return SEETAG_TIERE;
+  return (regionFuer(tag)?.tiere ?? []).filter((t) => !t.nur || t.nur.some((g) => imGebiet(tag, g)));
 }
 
-/** Alle Tiere einer Reise, ohne doppelte Namen. */
+/** Alle Tiere einer Reise: erst die der besuchten Orte, dann die vom Meer – ohne Doppelte (ein Wal genügt). */
 export function tiereDerReise(reise) {
   const tiere = new Map();
-  for (const h of reise?.haefen ?? []) for (const t of tiereFuer(h)) if (!tiere.has(t.name)) tiere.set(t.name, t);
+  const tage = [...(reise?.haefen ?? [])].sort((a, b) => istSeetag(a) - istSeetag(b));
+  for (const h of tage) for (const t of tiereFuer(h)) {
+    const schluessel = t.gruppe ?? t.name;
+    if (!tiere.has(schluessel) && ![...tiere.values()].some((x) => x.name === t.name)) tiere.set(schluessel, t);
+  }
   return [...tiere.values()];
 }

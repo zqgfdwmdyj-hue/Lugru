@@ -2,6 +2,7 @@
 import { zustand, esc, datumText, haefen, ausfluegeIn, stationsArt, aktionen, neuZeichnen, anfrage, heute } from "./kern.js";
 import { countdown } from "./unterwegs-logik.js";
 import { tiereFuer, tiereDerReise, regionFuer } from "./tiere.js";
+import { tierBild } from "./tierbilder.js";
 import { zeitZuMin, festeZeit, zimmerVon } from "./rechnen.js";
 import { unterkunftAm } from "./unterwegs.js";
 
@@ -47,8 +48,8 @@ export function kinderAnsicht() {
         <div class="zeile"><h2>🔍 Tiere-Bingo</h2><span class="platz"></span><strong>${anzahlGesehen} / ${tiere.length}</strong></div>
         <p class="leise">Tippe auf ein Tier, wenn ihr es gesehen habt!${heuteTag ? " ⭐ = kann man heute sehen" : ""}</p>
         <div class="bingo">${tiere.map((t) => `<button class="bingo-feld ${gesehen[t.name] ? "gesehen" : ""} ${heuteTag && heuteTiere.has(t.name) ? "heute" : ""}" data-aktion="tier" data-name="${esc(t.name)}" title="${esc(t.satz)}">
-          <span class="bingo-emoji">${t.emoji}</span><span class="bingo-name">${esc(t.name)}</span>${gesehen[t.name] ? `<span class="bingo-haken">✓</span>` : ""}</button>`).join("")}</div>
-        ${zustand.kindTier ? `<p class="kind-fakt">${esc(tiere.find((t) => t.name === zustand.kindTier)?.emoji ?? "")} <strong>${esc(zustand.kindTier)}:</strong> ${esc(tiere.find((t) => t.name === zustand.kindTier)?.satz ?? "")}</p>` : ""}
+          <span class="bingo-emoji">${tierBild(t)}</span><span class="bingo-name">${esc(t.name)}</span>${gesehen[t.name] ? `<span class="bingo-haken">✓</span>` : ""}</button>`).join("")}</div>
+        ${zustand.kindTier ? `<p class="kind-fakt"><span class="fakt-bild">${tierBild(tiere.find((t) => t.name === zustand.kindTier))}</span> <strong>${esc(zustand.kindTier)}:</strong> ${esc(tiere.find((t) => t.name === zustand.kindTier)?.satz ?? "")}</p>` : ""}
       </div>` : ""}
       <div class="karte-box">
         <h2>🗺️ Unsere Reise</h2>
