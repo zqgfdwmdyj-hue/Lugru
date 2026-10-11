@@ -31,7 +31,7 @@ export default async function EinstellungenPage() {
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -164,8 +164,9 @@ export default async function EinstellungenPage() {
                       <summary style={{ cursor: "pointer" }}>
                         Mitarbeiter · {m.areas === null ? "alle Bereiche" : m.areas.length ? AREAS.filter((a) => m.areas!.includes(a.key)).map((a) => a.label.split(" (")[0]).join(", ") : "kein Bereich"}
                         {m.brandIds !== null && ` · Marken: ${brands.filter((b) => m.brandIds!.includes(b.id)).map((b) => b.name).join(", ") || "keine"}`}
+                        {m.readOnly && <span className="tag tag-info" style={{ marginLeft: 6 }} data-testid="user-read-only">nur ansehen</span>}
                       </summary>
-                      <AccessForm userId={m.userId} areas={m.areas} brandIds={m.brandIds} allAreas={AREAS.map((a) => ({ key: a.key, label: a.label }))} brands={brands} />
+                      <AccessForm userId={m.userId} areas={m.areas} brandIds={m.brandIds} readOnly={m.readOnly} allAreas={AREAS.map((a) => ({ key: a.key, label: a.label }))} brands={brands} />
                     </details>
                   )}
                 </td>

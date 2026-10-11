@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt } from "drizzle-orm";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db, schema } from "@/db";
@@ -19,6 +19,8 @@ export type Session = {
   /** Freigegebene Bereiche (null = alle) und Marken (null = alle). */
   areas: string[] | null;
   brandIds: string[] | null;
+  /** Nur ansehen: Server Actions werden abgewiesen (siehe requireSession), schreibende Anfragen im Proxy. */
+  readOnly: boolean;
   email: string;
   name: string | null;
   tenantName: string;
@@ -59,6 +61,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       role: schema.memberships.role,
       areas: schema.memberships.areas,
       brandIds: schema.memberships.brandIds,
+      readOnly: schema.memberships.readOnly,
     })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
@@ -71,13 +74,38 @@ export const getSession = cache(async (): Promise<Session | null> => {
       ),
     )
     .where(and(eq(schema.sessions.id, hash(token)), gt(schema.sessions.expiresAt, new Date())));
-  return row ?? null;
+  // Inhaber sind nie „nur ansehen“.
+  return row ? { ...row, readOnly: row.role === "staff" && row.readOnly } : null;
 });
+
+/** Hinweis in der Adresse, wenn eine Aktion für ein Nur-ansehen-Konto nicht ausgeführt wurde. */
+export const READ_ONLY_PARAM = "nurlesen";
+
+/**
+ * Nur-ansehen-Konten: jede Server Action wird hier abgewiesen – alle Actions holen die Sitzung über
+ * requireSession/requireArea/requireOwner. Zurück auf die Seite, von der der Klick kam.
+ */
+async function blockReadOnlyAction(session: Session) {
+  if (!session.readOnly) return;
+  const h = await headers();
+  if (!h.get("next-action")) return;
+  let target = homeFor(session);
+  try {
+    const u = new URL(h.get("referer") ?? "");
+    u.searchParams.delete("meldung");
+    u.searchParams.set(READ_ONLY_PARAM, "1");
+    target = `${u.pathname}${u.search}`;
+  } catch {
+    // ohne Referer zur Startseite
+  }
+  redirect(target);
+}
 
 /** Für Seiten und Server Actions: ohne gültige Sitzung geht es zum Login. */
 export async function requireSession(): Promise<Session> {
   const session = await getSession();
   if (!session) redirect("/login");
+  await blockReadOnlyAction(session);
   return session;
 }
 

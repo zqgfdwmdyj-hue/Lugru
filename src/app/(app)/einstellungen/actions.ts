@@ -158,8 +158,9 @@ export async function updateAccess(_prev: UserState, fd: FormData): Promise<User
   const brandIds = fd.get("brandMode") === "all" ? null : fd.getAll("brands").map(String).filter((b) => valid.has(b));
   await db
     .update(schema.memberships)
-    .set({ areas, brandIds })
+    .set({ areas, brandIds, readOnly: fd.get("readOnly") === "on" })
     .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId), eq(schema.memberships.role, "staff")));
   revalidatePath("/einstellungen");
-  return { ok: true, message: areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.` };
+  const ro = fd.get("readOnly") === "on" ? " Nur ansehen (kann nichts ändern)." : "";
+  return { ok: true, message: (areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.`) + ro };
 }

@@ -253,6 +253,13 @@
       "when": 1791654146984,
       "tag": "0035_stueck_je_verkauf",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791751171858,
+      "tag": "0036_nur_ansehen",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ export async function GET(request: Request) {
   const base = appUrl(request);
   const session = await getSession();
   if (!session) return Response.redirect(`${base}/login`);
+  if (session.readOnly) return Response.redirect(`${base}/?nurlesen=1`);
   const app = await getIntegration(session.tenantId, "microsoft");
   if (!app?.clientId) return Response.redirect(`${base}/anbindungen?p=microsoft#microsoft`);
   const paste = new URL(request.url).searchParams.get("modus") === "einfuegen" || !canRedirectTo(base);

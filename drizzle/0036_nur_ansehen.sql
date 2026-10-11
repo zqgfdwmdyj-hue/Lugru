@@ -1,0 +1,1 @@
+ALTER TABLE "memberships" ADD COLUMN "read_only" boolean DEFAULT false NOT NULL;

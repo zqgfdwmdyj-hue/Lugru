@@ -31,7 +31,7 @@ export function PasswordForm() {
   );
 }
 
-export function AccessForm({ userId, areas, brandIds, allAreas, brands }: { userId: string; areas: string[] | null; brandIds: string[] | null; allAreas: { key: string; label: string }[]; brands: { id: string; name: string }[] }) {
+export function AccessForm({ userId, areas, brandIds, readOnly, allAreas, brands }: { userId: string; areas: string[] | null; brandIds: string[] | null; readOnly: boolean; allAreas: { key: string; label: string }[]; brands: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState<UserState, FormData>(updateAccess, null);
   return (
     <form action={action} className="stack" style={{ gap: 10, padding: "10px 0" }}>
@@ -62,6 +62,10 @@ export function AccessForm({ userId, areas, brandIds, allAreas, brands }: { user
           </div>
         </div>
       )}
+      <label className="small" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
+        <input type="checkbox" name="readOnly" defaultChecked={readOnly} style={{ marginTop: 3 }} />
+        <span><strong>Nur ansehen</strong> – sieht die freigegebenen Bereiche, kann aber nichts ändern, senden, hochladen oder bei Keepa/Amazon/eBay abfragen (z. B. für Prüfer oder einen Testzugang).</span>
+      </label>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button className="btn btn-small" type="submit" disabled={pending}>Rechte speichern</button>
         {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</span>}

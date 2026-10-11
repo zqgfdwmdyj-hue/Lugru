@@ -8,19 +8,20 @@ import { areaForPath, canAccess, homeFor, type Access } from "@/lib/auth/areas";
 // Bereiche (Seiten und Server Actions). Die Server Actions prüfen den
 // Bereich zusätzlich selbst (requireArea).
 
-const cache = new Map<string, { access: Access | null; at: number }>();
+type ProxyAccess = Access & { readOnly: boolean };
+const cache = new Map<string, { access: ProxyAccess | null; at: number }>();
 const TTL_MS = 30_000;
 
-async function accessFor(token: string): Promise<Access | null> {
+async function accessFor(token: string): Promise<ProxyAccess | null> {
   const id = createHash("sha256").update(token).digest("hex");
   const hit = cache.get(id);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.access;
   const [row] = await db
-    .select({ role: schema.memberships.role, areas: schema.memberships.areas })
+    .select({ role: schema.memberships.role, areas: schema.memberships.areas, readOnly: schema.memberships.readOnly })
     .from(schema.sessions)
     .innerJoin(schema.memberships, and(eq(schema.memberships.userId, schema.sessions.userId), eq(schema.memberships.tenantId, schema.sessions.tenantId)))
     .where(and(eq(schema.sessions.id, id), gt(schema.sessions.expiresAt, new Date())));
-  const access = row ? { role: row.role, areas: row.areas ?? null } : null;
+  const access = row ? { role: row.role, areas: row.areas ?? null, readOnly: row.role === "staff" && row.readOnly } : null;
   if (cache.size > 5000) cache.clear();
   cache.set(id, { access, at: Date.now() });
   return access;
@@ -34,8 +35,13 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   const area = areaForPath(path);
-  if (!area) return NextResponse.next();
   const access = await accessFor(token).catch(() => null);
+  // Nur ansehen: keine schreibenden Anfragen. Server Actions weist requireSession freundlich ab
+  // (zurück zur Seite mit Hinweis); alles andere hier hart.
+  if (access?.readOnly && request.method !== "GET" && request.method !== "HEAD" && !request.headers.get("next-action")) {
+    return NextResponse.json({ error: "Nur-ansehen-Konto: Änderungen sind gesperrt." }, { status: 403 });
+  }
+  if (!area) return NextResponse.next();
   // Ohne gültige Sitzung entscheidet die Seite selbst (requireSession → Login).
   if (!access || canAccess(access, area)) return NextResponse.next();
   if (request.method !== "GET" || path.startsWith("/api/")) {

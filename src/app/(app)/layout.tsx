@@ -3,6 +3,8 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { logout } from "@/app/login/actions";
+import { Suspense } from "react";
+import { ReadOnlyBanner } from "@/components/read-only-banner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
@@ -32,13 +34,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
         <div className="sidebar-foot">
           <span>{session.tenantName}</span>
-          <span>{session.name ?? session.email}</span>
+          <span>{session.name ?? session.email}{session.readOnly ? " · nur ansehen" : ""}</span>
           <form action={logout}>
             <button className="btn-link" type="submit" style={{ fontSize: 12 }}>Abmelden</button>
           </form>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        {session.readOnly && <Suspense fallback={null}><ReadOnlyBanner /></Suspense>}
+        {children}
+      </main>
     </div>
   );
 }

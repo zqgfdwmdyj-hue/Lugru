@@ -37,9 +37,10 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const block = l.mailedAt ? null : sendBlocker(l, await contactContext(session.tenantId));
   const hardBlock = block && block !== "keine E-Mail-Adresse" ? block : null;
   // Beim Öffnen gleich den Entwurf schreiben lassen – nur einmal (Fehler bleiben stehen) und nie für gesperrte Kontakte.
-  const autoDraft = !l.mailedAt && !hardBlock && validEmail(l.email) && !l.mailBody && !l.busy && !l.mailError;
+  // Nur-ansehen-Konten lösen nichts aus.
+  const autoDraft = !session.readOnly && !l.mailedAt && !hardBlock && validEmail(l.email) && !l.mailBody && !l.busy && !l.mailError;
   // Ohne E-Mail beim Öffnen einmal suchen (Website, Impressum, Kontakt; ggf. kurze Websuche).
-  const autoFind = !l.mailedAt && !hardBlock && !validEmail(l.email) && !l.emailSearchedAt && !l.busy;
+  const autoFind = !session.readOnly && !l.mailedAt && !hardBlock && !validEmail(l.email) && !l.emailSearchedAt && !l.busy;
   const emailFound = l.evidence.find((e) => e.label === "E-Mail gefunden");
   const emailMissing = l.evidence.find((e) => e.label === "E-Mail-Suche");
   const lang = l.mailLanguage === "en" ? "en" : "de";

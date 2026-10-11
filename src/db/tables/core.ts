@@ -162,6 +162,8 @@ export const memberships = pgTable(
     areas: jsonb("areas").$type<string[] | null>(),
     /** Nur diese Marken im Bereich „Marken“; null = alle. */
     brandIds: jsonb("brand_ids").$type<string[] | null>(),
+    /** Nur ansehen: Mitarbeiter kann nichts ändern, senden oder abfragen (z. B. Prüfer, Testzugang). */
+    readOnly: boolean("read_only").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
