@@ -1,0 +1,23 @@
+# Optional: Reiseplaner öffentlich unter einer eigenen Domain mit HTTPS (nötig, damit Freigabe-Links
+# für Freunde/Follower funktionieren). Nur verwenden, wenn die Ports 80/443 auf dem Server frei sind.
+# Start:  docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+services:
+  reiseplaner:
+    ports: !reset []
+    expose:
+      - "3030"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - reiseplaner
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      REISE_DOMAIN: ${REISE_DOMAIN:?REISE_DOMAIN fehlt}
+    command: caddy reverse-proxy --from ${REISE_DOMAIN} --to reiseplaner:3030
+    volumes:
+      - caddy_daten:/data
+volumes:
+  caddy_daten:

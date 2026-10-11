@@ -2,10 +2,10 @@
   "name": "Reiseplaner",
   "short_name": "Reiseplaner",
   "description": "Landausflüge planen, vergleichen und Kosten im Blick behalten",
-  "start_url": "./",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f6f9",
   "theme_color": "#0b5394",
   "lang": "de",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }

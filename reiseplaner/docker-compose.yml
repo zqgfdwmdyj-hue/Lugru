@@ -1,6 +1,6 @@
 # Reiseplaner – läuft getrennt vom Seller-System (eigener Container, eigener Port, eigene Daten).
 # Start:  cd /opt/seller-system/reiseplaner && docker compose up -d --build
-# Werte in reiseplaner/.env setzen (siehe .env.example).
+# Werte in reiseplaner/.env setzen (siehe .env.example). Einrichtungscode: docker compose logs reiseplaner
 services:
   reiseplaner:
     build: .
@@ -8,7 +8,9 @@ services:
     ports:
       - "${BIND_IP:-127.0.0.1}:${REISE_PORT:-3030}:3030"
     environment:
-      REISE_PASSWORT: ${REISE_PASSWORT:?REISE_PASSWORT fehlt – siehe reiseplaner/README.md}
+      OEFFENTLICHE_URL: ${OEFFENTLICHE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      KI_MODELL: ${KI_MODELL:-}
       GYG_API_KEY: ${GYG_API_KEY:-}
       GYG_PARTNER_ID: ${GYG_PARTNER_ID:-}
     volumes:

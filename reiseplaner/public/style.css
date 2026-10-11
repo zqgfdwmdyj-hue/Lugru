@@ -30,6 +30,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0;
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -170,7 +171,7 @@ tfoot th { color: var(--text); font-size: 0.95rem; }
 
 .dialog { border: 0; border-radius: 12px; padding: 0; width: min(720px, calc(100vw - 24px)); max-height: calc(100vh - 24px); background: var(--flaeche); color: var(--text); }
 .dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
-.dialog > form { padding: 18px 20px; }
+.dialog > * { padding: 18px 20px; }
 .formular { display: flex; flex-direction: column; gap: 10px; }
 .formular label { display: flex; flex-direction: column; gap: 3px; font-size: 0.85rem; color: var(--leise); }
 .formular label > input, .formular label > select, .formular label > textarea { color: var(--text); font-size: 0.95rem; }
@@ -201,3 +202,72 @@ form.gruppe .nur-person { display: none; }
   .layout { display: block; padding: 0; }
   .karte-box, .ausflug { break-inside: avoid; box-shadow: none; }
 }
+
+/* ---------- Anmeldung ---------- */
+.start { position: fixed; inset: 0; z-index: 2000; background: var(--hg); display: grid; place-items: center; padding: 16px; overflow: auto; }
+body.abgemeldet .kopf, body.abgemeldet .reiter, body.abgemeldet .layout, body.abgemeldet #kiKnopfPlatz { display: none; }
+.startkarte { background: var(--flaeche); border: 1px solid var(--rand); border-radius: 14px; padding: 24px; width: min(440px, 100%); box-shadow: var(--schatten); }
+.startkarte .marke.gross { font-size: 1.4rem; color: var(--akzent); margin-bottom: 12px; }
+.startkarte h2 { margin-top: 4px; }
+.kopf .ich { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.status { margin-left: auto; }
+
+/* ---------- Sterne, Fotos, Bewertungen ---------- */
+.sterne { color: #e0a100; letter-spacing: 1px; }
+.sterneingabe { display: inline-flex; flex-direction: row-reverse; justify-content: flex-end; gap: 2px; font-size: 2rem; line-height: 1; }
+.sterneingabe input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.sterneingabe label { cursor: pointer; color: var(--rand); }
+.sterneingabe label:has(input:checked) span, .sterneingabe label:has(input:checked) ~ label span,
+.sterneingabe label:hover span, .sterneingabe label:hover ~ label span { color: #e0a100; }
+.sterneingabe label:has(input:focus-visible) span { outline: 2px solid var(--akzent); border-radius: 4px; }
+.fotoleiste { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.foto { position: relative; display: inline-block; }
+.foto img { width: 64px; height: 64px; object-fit: cover; border-radius: 7px; display: block; }
+.foto .weg { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--rot); color: #fff; cursor: pointer; line-height: 1; }
+.bewertungszeile { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; border-top: 1px dashed var(--rand); margin-top: 8px; padding-top: 6px; }
+.bewertungszeile .knoepfe { margin-left: auto; }
+.link.ohne { text-decoration: none; color: inherit; }
+.bewertung { border-top: 1px solid var(--rand); padding: 10px 0; }
+.erlebnistag { margin-top: 12px; }
+.tagkopf { font-size: 0.9rem; color: var(--leise); margin-bottom: 4px; }
+.erlebnis { padding: 8px 10px; border: 1px solid var(--rand); border-radius: 9px; margin-bottom: 8px; }
+.einheit { display: flex; align-items: center; gap: 6px; }
+.einheit input { flex: 1; min-width: 0; }
+.einheit em { font-style: normal; color: var(--leise); font-size: 0.85rem; }
+
+/* ---------- Teilen ---------- */
+.linkfeld { display: flex; gap: 6px; }
+.linkfeld input { flex: 1; min-width: 0; }
+.storybild { max-width: 180px; border-radius: 10px; margin: 8px 0; display: block; }
+button.linkchip { background: var(--flaeche); font: inherit; font-size: 0.88rem; cursor: pointer; color: var(--text); }
+
+/* ---------- KI ---------- */
+.kiknopf { position: fixed; right: 18px; bottom: 18px; z-index: 900; border: 0; border-radius: 99px; padding: 12px 18px; font: inherit; font-weight: 600; background: linear-gradient(135deg, #6a3de8, #0b5394); color: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); cursor: pointer; }
+body.ki-offen .kiknopf { display: none; }
+.kipanel { position: fixed; right: 16px; bottom: 16px; z-index: 950; width: min(420px, calc(100vw - 32px)); height: min(620px, calc(100vh - 32px)); display: flex; flex-direction: column; gap: 8px; background: var(--flaeche); border: 1px solid var(--rand); border-radius: 14px; padding: 12px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25); }
+.kipanel[hidden] { display: none; }
+.kipanel-kopf { display: flex; gap: 12px; align-items: center; }
+.kiverlauf { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.nachricht { padding: 8px 11px; border-radius: 12px; max-width: 92%; font-size: 0.93rem; overflow-wrap: anywhere; }
+.nachricht.nutzer { align-self: flex-end; background: var(--akzent); color: #fff; }
+.nachricht.ki { align-self: flex-start; background: var(--akzent-hell); }
+.vorschlag { margin-top: 8px; padding: 8px 10px; border-radius: 9px; background: var(--flaeche); border: 1px solid var(--rand); display: flex; flex-direction: column; gap: 4px; }
+.vorschlag .knopf { align-self: flex-start; }
+.kiform { display: flex; gap: 6px; align-items: flex-end; }
+.kiform textarea { flex: 1; resize: none; }
+.importvorschau { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--rand); border-radius: 9px; }
+.importvorschau ul { margin: 4px 0 8px; padding-left: 20px; }
+.hinweis.klein { font-size: 0.85rem; }
+
+/* ---------- Kosten ---------- */
+.klein-kacheln .kachel strong { font-size: 1.15rem; }
+.kostenliste { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.kostenzeile { display: grid; grid-template-columns: minmax(0, 1fr) 110px 120px auto; gap: 6px; align-items: center; }
+@media (max-width: 520px) { .kostenzeile { grid-template-columns: 1fr 90px; } }
+
+/* ---------- Dialoge ---------- */
+.dialog.breit { width: min(900px, calc(100vw - 24px)); }
+form.art-seetag .ohne-seetag, form.art-seetag .nur-hafen, form.art-ort .nur-hafen { display: none !important; }
+.person { grid-template-columns: minmax(0, 1fr) 120px 80px auto auto; }
+@media (max-width: 520px) { .person { grid-template-columns: 1fr 1fr; } }
+@media print { .kiknopf, .kipanel { display: none !important; } }

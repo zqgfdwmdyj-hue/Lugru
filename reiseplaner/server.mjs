@@ -1,32 +1,33 @@
-// Reiseplaner – eigenständiger kleiner Server ohne Abhängigkeiten (Node 20+).
-// Liefert die Oberfläche aus public/, speichert Reisen als JSON-Dateien und reicht
-// Ortssuche (OpenStreetMap/Nominatim), Fahrwege (OSRM) und – mit Partner-Schlüssel –
-// GetYourGuide-Abfragen durch.
+// Reiseplaner – eigenständiger Server (Node 20+).
+// Oberfläche aus public/, Reisen/Beiträge/Fotos als Dateien in DATA_DIR, Konten mit Einladungen,
+// öffentliche Freigabe-Links, Ortssuche (Nominatim), Fahrwege (OSRM), GetYourGuide, KI (Claude).
 //
 // Umgebungsvariablen:
-//   PORT              Standard 3030
-//   DATA_DIR          Ablage der Reisen, Standard ./daten
-//   REISE_PASSWORT    Passwort für den Zugang (Benutzername egal). Ohne: offen – nur lokal nutzen!
-//   GYG_API_KEY       GetYourGuide-Partner-API-Schlüssel (optional, sonst nur Such-Links)
-//   GYG_PARTNER_ID    GetYourGuide-Partner-ID für Such-Links (optional)
-//   GYG_API_URL       Standard https://api.getyourguide.com (Test: https://api.gygtest.net)
+//   PORT               Standard 3030
+//   DATA_DIR           Ablage, Standard ./daten
+//   OEFFENTLICHE_URL   z. B. https://reise.example.de – für Freigabe-Links und sichere Cookies
+//   ANTHROPIC_API_KEY  Claude-Schlüssel für KI-Import, Assistent und Beitragstexte (optional)
+//   KI_MODELL          Standard claude-opus-5-5
+//   GYG_API_KEY / GYG_PARTNER_ID / GYG_API_URL  GetYourGuide-Partner-Zugang (optional)
 
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir, readdir, rename, unlink } from "node:fs/promises";
+import { readFile, writeFile, readdir } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
-import { randomUUID, timingSafeEqual, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DATA_DIR, REISEN_DIR, ID_RE, lesen, schreiben, aendern, exklusiv, loeschen, reiseDatei, beitraegeDatei, LEERE_BEITRAEGE, fotoDatei } from "./lib/speicher.mjs";
+import * as konten from "./lib/konten.mjs";
+import { fehler } from "./lib/konten.mjs";
+import * as teilen from "./lib/teilen.mjs";
+import * as ki from "./lib/ki.mjs";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(HIER, "public");
 const PORT = Number(process.env.PORT ?? 3030);
-const DATA_DIR = path.resolve(process.env.DATA_DIR ?? path.join(HIER, "daten"));
-const REISEN_DIR = path.join(DATA_DIR, "reisen");
-const PASSWORT = process.env.REISE_PASSWORT ?? "";
 const GYG_KEY = process.env.GYG_API_KEY ?? "";
 const GYG_URL = (process.env.GYG_API_URL ?? "https://api.getyourguide.com").replace(/\/$/, "");
-const USER_AGENT = "Lugru-Reiseplaner/1.0 (privater Reiseplaner)";
+const USER_AGENT = "Lugru-Reiseplaner/2.0 (privater Reiseplaner)";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -35,17 +36,15 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".webmanifest": "application/manifest+json",
 };
-
-await mkdir(REISEN_DIR, { recursive: true });
 
 // ---------- Hilfen ----------
 
 function json(res, status, daten) {
-  const body = JSON.stringify(daten);
   res.writeHead(status, { "content-type": MIME[".json"], "cache-control": "no-store" });
-  res.end(body);
+  res.end(JSON.stringify(daten));
 }
 
 async function koerper(req, max = 5_000_000) {
@@ -53,55 +52,87 @@ async function koerper(req, max = 5_000_000) {
   let laenge = 0;
   for await (const teil of req) {
     laenge += teil.length;
-    if (laenge > max) throw Object.assign(new Error("Anfrage zu groß."), { status: 413 });
+    if (laenge > max) throw fehler(413, `Anfrage zu groß (max. ${Math.round(max / 1e6)} MB).`);
     teile.push(teil);
   }
   try {
     return JSON.parse(Buffer.concat(teile).toString("utf8") || "{}");
   } catch {
-    throw Object.assign(new Error("Ungültiges JSON."), { status: 400 });
+    throw fehler(400, "Ungültiges JSON.");
   }
 }
 
-function gleich(a, b) {
-  const x = createHash("sha256").update(a).digest();
-  const y = createHash("sha256").update(b).digest();
-  return timingSafeEqual(x, y);
+const zahlOk = (x) => x !== "" && x != null && Number.isFinite(Number(x));
+const text = (v, max = 2000) => String(v ?? "").slice(0, max);
+const zahlOderNull = (v) => (v === "" || v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+
+function basisUrl(req) {
+  if (process.env.OEFFENTLICHE_URL) return process.env.OEFFENTLICHE_URL.replace(/\/$/, "");
+  const proto = req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  return `${proto}://${req.headers["x-forwarded-host"] ?? req.headers.host}`;
 }
 
-function angemeldet(req) {
-  if (!PASSWORT) return true;
-  const kopf = req.headers.authorization ?? "";
-  if (!kopf.startsWith("Basic ")) return false;
-  const [, pw = ""] = Buffer.from(kopf.slice(6), "base64").toString("utf8").split(/:(.*)/s);
-  return gleich(pw, PASSWORT);
-}
-
-const ID_RE = /^[a-z0-9-]{8,64}$/;
-const reiseDatei = (id) => path.join(REISEN_DIR, `${id}.json`);
+// ---------- Reisen & Rechte ----------
 
 async function reiseLesen(id) {
-  if (!ID_RE.test(id)) return null;
-  try {
-    return JSON.parse(await readFile(reiseDatei(id), "utf8"));
-  } catch {
-    return null;
-  }
+  if (!ID_RE.test(String(id))) return null;
+  return lesen(reiseDatei(id), null);
 }
 
-async function reiseSchreiben(reise) {
-  const ziel = reiseDatei(reise.id);
-  const tmp = `${ziel}.${process.pid}.tmp`;
-  await writeFile(tmp, JSON.stringify(reise, null, 1));
-  await rename(tmp, ziel);
+/** "planer" | "mitreisend" | null. Verwaltungs-Konten dürfen alles. */
+function rolleIn(reise, benutzer) {
+  if (!reise || !benutzer) return null;
+  if (benutzer.admin) return "planer";
+  return reise.mitglieder?.find((m) => m.userId === benutzer.id)?.rolle ?? null;
 }
 
-// Kleiner Zwischenspeicher für externe Abfragen (Orte und Wege ändern sich kaum).
+async function reiseMitRecht(id, benutzer, mindestens = "mitreisend") {
+  const reise = await reiseLesen(id);
+  const rolle = rolleIn(reise, benutzer);
+  if (!reise || !rolle) throw fehler(404, "Reise nicht gefunden.");
+  if (mindestens === "planer" && rolle !== "planer") throw fehler(403, "Das dürfen nur Planer/innen dieser Reise.");
+  return { reise, rolle };
+}
+
+const beitraegeLesen = (id) => lesen(beitraegeDatei(id), LEERE_BEITRAEGE);
+const beitraegeAendern = (id, fn) => aendern(beitraegeDatei(id), LEERE_BEITRAEGE, fn);
+
+function darfBearbeiten(eintrag, benutzer, rolle, feld = "autorId") {
+  return rolle === "planer" || eintrag[feld] === benutzer.id || eintrag.autorId === benutzer.id;
+}
+
+// Erlaubte Felder für Bewertungen und Tauchgänge (alles andere wird verworfen).
+function bewertungAus(d) {
+  const sterne = Math.round(Number(d.sterne));
+  if (!(sterne >= 1 && sterne <= 5)) throw fehler(400, "Bitte 1 bis 5 Sterne vergeben.");
+  if (!["ausflug", "hotel"].includes(d.zielArt)) throw fehler(400, "Unbekanntes Ziel.");
+  return { zielArt: d.zielArt, zielId: text(d.zielId, 80), sterne, titel: text(d.titel, 200), text: text(d.text, 10_000), fotos: (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40) };
+}
+
+const TAUCH_TEXT = ["datum", "tauchplatz", "ort", "basis", "einstieg", "beginn", "stroemung", "anzug", "flascheMaterial", "gas", "buddy", "guide", "sichtungen", "text", "ausflugId", "taucherId"];
+const TAUCH_ZAHL = ["lat", "lng", "tauchzeitMin", "maxTiefe", "mittelTiefe", "wasserTemp", "luftTemp", "sicht", "blei", "flascheL", "nitroxProzent", "druckStart", "druckEnde", "sterne"];
+function tauchgangAus(d) {
+  const t = {};
+  for (const k of TAUCH_TEXT) t[k] = text(d[k], k === "text" || k === "sichtungen" ? 10_000 : 300);
+  for (const k of TAUCH_ZAHL) t[k] = zahlOderNull(d[k]);
+  if (t.sterne != null) t.sterne = Math.min(5, Math.max(1, Math.round(t.sterne)));
+  t.fotos = (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40);
+  return t;
+}
+
+const JPEG = (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+function dataUrlZuJpeg(url, max) {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(url ?? ""));
+  if (!m) throw fehler(400, "Foto muss als JPEG kommen.");
+  const b = Buffer.from(m[1], "base64");
+  if (!JPEG(b) || b.length > max) throw fehler(400, "Foto ungültig oder zu groß.");
+  return b;
+}
+
+// ---------- Externe Dienste (Zwischenspeicher) ----------
+
 const CACHE_DATEI = path.join(DATA_DIR, "cache.json");
-let cache = {};
-try {
-  cache = JSON.parse(await readFile(CACHE_DATEI, "utf8"));
-} catch {}
+let cache = await lesen(CACHE_DATEI, {});
 let cacheTimer = null;
 function merken(schluessel, wert) {
   cache[schluessel] = { wert, zeit: Date.now() };
@@ -115,7 +146,6 @@ function gemerkt(schluessel, maxAlterMs) {
   return e && Date.now() - e.zeit < maxAlterMs ? e.wert : undefined;
 }
 
-// Nominatim erlaubt höchstens eine Anfrage pro Sekunde.
 let letzteNominatim = 0;
 async function nominatimWarten() {
   const warte = letzteNominatim + 1100 - Date.now();
@@ -129,92 +159,389 @@ async function holen(url, optionen = {}) {
     headers: { "user-agent": USER_AGENT, "accept-language": "de", ...(optionen.headers ?? {}) },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) throw Object.assign(new Error(`Dienst antwortet mit ${res.status}`), { status: 502 });
+  if (!res.ok) throw fehler(502, `Dienst antwortet mit ${res.status}`);
   return res.json();
 }
 
-const zahlOk = (x) => x !== "" && x != null && Number.isFinite(Number(x));
+// ---------- API ohne Anmeldung ----------
 
-// ---------- API ----------
+async function apiOffen(req, res, url, benutzer) {
+  const p = url.pathname;
+  if (p === "/api/ich" && req.method === "GET") {
+    return json(res, 200, {
+      benutzer: konten.oeffentlich(benutzer),
+      einrichtung: await konten.einrichtungNoetig(),
+      ki: ki.kiAktiv(),
+      gyg: Boolean(GYG_KEY),
+      gygPartnerId: process.env.GYG_PARTNER_ID ?? "",
+    });
+  }
+  if (p === "/api/einrichtung" && req.method === "POST") {
+    const d = await koerper(req);
+    if (!(await konten.einrichtungNoetig())) throw fehler(409, "Die Einrichtung ist schon erledigt.");
+    if (!konten.einrichtungsCodeOk(d.code)) throw fehler(403, "Der Einrichtungscode stimmt nicht (steht im Server-Log).");
+    const b = await konten.benutzerAnlegen({ ...d, admin: true });
+    await alteReisenUebernehmen(b.id);
+    konten.cookieSetzen(res, req, await konten.sitzungStarten(b.id));
+    return json(res, 201, { benutzer: konten.oeffentlich(b) });
+  }
+  if (p === "/api/anmelden" && req.method === "POST") {
+    const d = await koerper(req, 10_000);
+    const b = await konten.anmelden(d.email, d.passwort);
+    konten.cookieSetzen(res, req, await konten.sitzungStarten(b.id));
+    return json(res, 200, { benutzer: konten.oeffentlich(b) });
+  }
+  if (p === "/api/abmelden" && req.method === "POST") {
+    await konten.sitzungBeenden(konten.cookieLesen(req));
+    konten.cacheLeeren();
+    konten.cookieSetzen(res, req, "", 0);
+    return json(res, 200, { ok: true });
+  }
+  const einl = /^\/api\/einladung\/([A-Za-z0-9_-]{20,64})$/.exec(p);
+  if (einl) {
+    const e = await konten.einladungLesen(einl[1]);
+    if (!e) throw fehler(404, "Diese Einladung ist abgelaufen oder ungültig.");
+    const reise = await reiseLesen(e.reiseId);
+    if (!reise) throw fehler(404, "Die Reise gibt es nicht mehr.");
+    if (req.method === "GET") {
+      const person = reise.personen?.find((x) => x.id === e.personId);
+      const von = (await konten.alleBenutzer()).find((b) => b.id === e.vonId);
+      return json(res, 200, { reise: reise.name, person: person?.name ?? "", von: von?.name ?? "", angemeldet: konten.oeffentlich(benutzer) });
+    }
+    if (req.method === "POST") {
+      const d = await koerper(req, 10_000);
+      let b = benutzer;
+      if (!b) {
+        b = await konten.benutzerAnlegen({ name: d.name, email: d.email, passwort: d.passwort });
+        konten.cookieSetzen(res, req, await konten.sitzungStarten(b.id));
+      }
+      await exklusiv(reiseDatei(reise.id), async () => {
+        const r = await reiseLesen(reise.id);
+        r.mitglieder ??= [];
+        if (!r.mitglieder.some((m) => m.userId === b.id)) r.mitglieder.push({ userId: b.id, rolle: e.rolle === "planer" ? "planer" : "mitreisend" });
+        const person = r.personen?.find((x) => x.id === e.personId);
+        if (person && !person.userId) person.userId = b.id;
+        await schreiben(reiseDatei(r.id), r);
+      });
+      await konten.einladungVerbrauchen(einl[1]);
+      return json(res, 200, { reiseId: reise.id, benutzer: konten.oeffentlich(b) });
+    }
+  }
+  return false;
+}
 
-async function api(req, res, url) {
-  const teile = url.pathname.split("/").filter(Boolean); // ["api", ...]
+/** Reisen aus Version 1 (ohne Mitglieder) gehören dem ersten Konto. */
+async function alteReisenUebernehmen(userId) {
+  for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
+    await aendern(path.join(REISEN_DIR, d), null, (r) => {
+      if (r && !r.mitglieder) r.mitglieder = [{ userId, rolle: "planer" }];
+    });
+  }
+}
 
-  if (teile[1] === "info") {
-    return json(res, 200, { gyg: Boolean(GYG_KEY), gygPartnerId: process.env.GYG_PARTNER_ID ?? "", passwort: Boolean(PASSWORT) });
+// ---------- API mit Anmeldung ----------
+
+async function api(req, res, url, ich) {
+  const p = url.pathname;
+  const t = p.split("/").filter(Boolean); // ["api", ...]
+  const m = req.method;
+
+  if (p === "/api/ich" && m === "PUT") {
+    const d = await koerper(req, 10_000);
+    if (d.passwort) await konten.anmelden(ich.email, d.altesPasswort).catch(() => {
+      throw fehler(403, "Das bisherige Passwort stimmt nicht.");
+    });
+    const b = await konten.benutzerAendern(ich.id, d);
+    konten.cacheLeeren();
+    return json(res, 200, { benutzer: konten.oeffentlich(b) });
+  }
+
+  if (p === "/api/benutzer" && m === "GET") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    return json(res, 200, (await konten.alleBenutzer()).map(konten.oeffentlich));
+  }
+  if (t[1] === "benutzer" && t[2] && m === "DELETE") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    if (t[2] === ich.id) throw fehler(400, "Das eigene Konto kann hier nicht gelöscht werden.");
+    await konten.benutzerLoeschen(t[2]);
+    konten.cacheLeeren();
+    return json(res, 200, { ok: true });
   }
 
   // Reisen
-  if (teile[1] === "reisen" && teile.length === 2) {
-    if (req.method === "GET") {
-      const dateien = (await readdir(REISEN_DIR)).filter((d) => d.endsWith(".json"));
-      const liste = [];
-      for (const d of dateien) {
-        const r = await reiseLesen(d.slice(0, -5));
-        if (r) liste.push({ id: r.id, name: r.name, schiff: r.schiff, beginn: r.haefen?.[0]?.datum ?? "", geaendert: r.geaendert });
-      }
-      liste.sort((a, b) => String(b.beginn).localeCompare(String(a.beginn)));
-      return json(res, 200, liste);
+  if (p === "/api/reisen" && m === "GET") {
+    const liste = [];
+    for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
+      const r = await reiseLesen(d.slice(0, -5));
+      if (r && rolleIn(r, ich)) liste.push({ id: r.id, name: r.name, art: r.art ?? "kreuzfahrt", beginn: [...(r.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort()[0] ?? r.hotels?.[0]?.anreise ?? "", geaendert: r.geaendert });
     }
-    if (req.method === "POST") {
-      const daten = await koerper(req);
-      const reise = {
-        ...daten,
-        id: randomUUID(),
-        name: String(daten.name ?? "Neue Reise").slice(0, 200),
-        version: 1,
-        geaendert: new Date().toISOString(),
-      };
-      await reiseSchreiben(reise);
-      return json(res, 201, reise);
+    liste.sort((a, b) => String(b.beginn).localeCompare(String(a.beginn)));
+    return json(res, 200, liste);
+  }
+  if (p === "/api/reisen" && m === "POST") {
+    const d = await koerper(req);
+    const reise = { ...d, id: randomUUID(), name: text(d.name || "Neue Reise", 200), mitglieder: [{ userId: ich.id, rolle: "planer" }], version: 1, geaendert: new Date().toISOString() };
+    await schreiben(reiseDatei(reise.id), reise);
+    return json(res, 201, reise);
+  }
+
+  if (t[1] === "reisen" && t[2]) {
+    const id = t[2];
+    const unter = t[3];
+
+    if (!unter) {
+      const { reise, rolle } = await reiseMitRecht(id, ich);
+      if (m === "GET") return json(res, 200, { ...reise, meineRolle: rolle });
+      if (m === "PUT") {
+        const neu = await koerper(req);
+        const ergebnis = await exklusiv(reiseDatei(id), async () => {
+          const alt = await reiseLesen(id);
+          if (Number(neu.version) !== Number(alt.version)) return { konflikt: alt };
+          const { meineRolle, mitglieder, ...rest } = neu;
+          const r = { ...rest, id, mitglieder: alt.mitglieder, version: Number(alt.version) + 1, geaendert: new Date().toISOString(), geaendertVon: ich.id };
+          await schreiben(reiseDatei(id), r);
+          return { version: r.version, geaendert: r.geaendert };
+        });
+        if (ergebnis.konflikt) return json(res, 409, { error: "Die Reise wurde inzwischen von jemand anderem geändert.", aktuell: { ...ergebnis.konflikt, meineRolle: rolle } });
+        return json(res, 200, ergebnis);
+      }
+      if (m === "DELETE") {
+        if (rolle !== "planer") throw fehler(403, "Nur Planer/innen können die Reise löschen.");
+        const b = await beitraegeLesen(id);
+        for (const f of b.fotos) {
+          await loeschen(fotoDatei(f.id));
+          await loeschen(fotoDatei(f.id, true));
+        }
+        await loeschen(beitraegeDatei(id));
+        await loeschen(reiseDatei(id));
+        return json(res, 200, { ok: true });
+      }
+    }
+
+    // Mitglieder & Einladungen
+    if (unter === "mitglieder") {
+      const { reise, rolle } = await reiseMitRecht(id, ich);
+      const alle = await konten.alleBenutzer();
+      if (m === "GET" && !t[4]) {
+        return json(res, 200, (reise.mitglieder ?? []).map((mm) => ({ userId: mm.userId, rolle: mm.rolle, name: alle.find((b) => b.id === mm.userId)?.name ?? "(gelöscht)", email: rolle === "planer" ? alle.find((b) => b.id === mm.userId)?.email ?? "" : "" })));
+      }
+      if (rolle !== "planer") throw fehler(403, "Nur Planer/innen verwalten die Mitreisenden.");
+      if (m === "POST" && !t[4]) {
+        // Vorhandenes Konto direkt hinzufügen (per E-Mail)
+        const d = await koerper(req, 10_000);
+        const b = alle.find((x) => x.email === String(d.email ?? "").trim().toLowerCase());
+        if (!b) throw fehler(404, "Kein Konto mit dieser E-Mail – bitte eine Einladung schicken.");
+        await aendern(reiseDatei(id), null, (r) => {
+          r.mitglieder ??= [];
+          if (!r.mitglieder.some((x) => x.userId === b.id)) r.mitglieder.push({ userId: b.id, rolle: d.rolle === "planer" ? "planer" : "mitreisend" });
+        });
+        return json(res, 200, { ok: true });
+      }
+      if (t[4] && (m === "PUT" || m === "DELETE")) {
+        const d = m === "PUT" ? await koerper(req, 10_000) : {};
+        await aendern(reiseDatei(id), null, (r) => {
+          const i = (r.mitglieder ?? []).findIndex((x) => x.userId === t[4]);
+          if (i < 0) return;
+          if (m === "DELETE") r.mitglieder.splice(i, 1);
+          else r.mitglieder[i].rolle = d.rolle === "planer" ? "planer" : "mitreisend";
+          if (!r.mitglieder.some((x) => x.rolle === "planer")) throw fehler(400, "Mindestens eine Person muss Planer/in bleiben.");
+          for (const pp of r.personen ?? []) if (m === "DELETE" && pp.userId === t[4]) delete pp.userId;
+        });
+        return json(res, 200, { ok: true });
+      }
+    }
+    if (unter === "einladungen" && m === "POST") {
+      await reiseMitRecht(id, ich, "planer");
+      const d = await koerper(req, 10_000);
+      const tok = await konten.einladungErstellen({ reiseId: id, personId: d.personId ? text(d.personId, 80) : null, rolle: d.rolle, vonId: ich.id });
+      return json(res, 201, { link: `${basisUrl(req)}/einladung/${tok}` });
+    }
+
+    // Bewertungen, Tauchgänge, Fotos
+    if (unter === "beitraege" && m === "GET") {
+      await reiseMitRecht(id, ich);
+      const b = await beitraegeLesen(id);
+      const namen = Object.fromEntries((await konten.alleBenutzer()).map((x) => [x.id, x.name]));
+      return json(res, 200, { ...b, namen });
+    }
+    if (unter === "bewertungen") {
+      const { rolle } = await reiseMitRecht(id, ich);
+      if (m === "POST" && !t[4]) {
+        const d = bewertungAus(await koerper(req));
+        const neu = await beitraegeAendern(id, (b) => {
+          const vorhanden = b.bewertungen.find((x) => x.autorId === ich.id && x.zielArt === d.zielArt && x.zielId === d.zielId);
+          if (vorhanden) return Object.assign(vorhanden, d, { geaendert: new Date().toISOString() });
+          const x = { id: randomUUID(), autorId: ich.id, ...d, erstellt: new Date().toISOString() };
+          b.bewertungen.push(x);
+          return x;
+        });
+        return json(res, 201, neu);
+      }
+      if (t[4] && (m === "PUT" || m === "DELETE")) {
+        const d = m === "PUT" ? bewertungAus(await koerper(req)) : null;
+        const x = await beitraegeAendern(id, (b) => {
+          const i = b.bewertungen.findIndex((y) => y.id === t[4]);
+          if (i < 0) throw fehler(404, "Bewertung nicht gefunden.");
+          if (!darfBearbeiten(b.bewertungen[i], ich, rolle)) throw fehler(403, "Nur die eigene Bewertung kann geändert werden.");
+          if (m === "DELETE") return b.bewertungen.splice(i, 1)[0];
+          return Object.assign(b.bewertungen[i], d, { geaendert: new Date().toISOString() });
+        });
+        return json(res, 200, x);
+      }
+    }
+    if (unter === "tauchgaenge") {
+      const { reise, rolle } = await reiseMitRecht(id, ich);
+      const mitgliedIds = new Set([...(reise.mitglieder ?? []).map((x) => x.userId), ich.id]);
+      if (m === "POST" && !t[4]) {
+        const d = tauchgangAus(await koerper(req));
+        if (!mitgliedIds.has(d.taucherId)) d.taucherId = ich.id;
+        if (d.taucherId !== ich.id && rolle !== "planer") d.taucherId = ich.id;
+        const x = await beitraegeAendern(id, (b) => {
+          const neu = { id: randomUUID(), autorId: ich.id, ...d, erstellt: new Date().toISOString() };
+          b.tauchgaenge.push(neu);
+          return neu;
+        });
+        return json(res, 201, x);
+      }
+      if (t[4] && (m === "PUT" || m === "DELETE")) {
+        const d = m === "PUT" ? tauchgangAus(await koerper(req)) : null;
+        const x = await beitraegeAendern(id, (b) => {
+          const i = b.tauchgaenge.findIndex((y) => y.id === t[4]);
+          if (i < 0) throw fehler(404, "Tauchgang nicht gefunden.");
+          if (!darfBearbeiten(b.tauchgaenge[i], ich, rolle, "taucherId")) throw fehler(403, "Nur eigene Tauchgänge können geändert werden.");
+          if (m === "DELETE") return b.tauchgaenge.splice(i, 1)[0];
+          if (!mitgliedIds.has(d.taucherId) || (rolle !== "planer" && d.taucherId !== b.tauchgaenge[i].taucherId)) d.taucherId = b.tauchgaenge[i].taucherId;
+          return Object.assign(b.tauchgaenge[i], d, { geaendert: new Date().toISOString() });
+        });
+        return json(res, 200, x);
+      }
+    }
+    if (unter === "fotos") {
+      const { rolle } = await reiseMitRecht(id, ich);
+      if (m === "POST" && !t[4]) {
+        const d = await koerper(req, 25_000_000);
+        const gross = dataUrlZuJpeg(d.gross, 12_000_000);
+        const klein = dataUrlZuJpeg(d.klein, 2_000_000);
+        const fid = randomUUID();
+        await writeFile(fotoDatei(fid), gross);
+        await writeFile(fotoDatei(fid, true), klein);
+        await beitraegeAendern(id, (b) => {
+          b.fotos.push({ id: fid, autorId: ich.id, erstellt: new Date().toISOString(), breite: zahlOderNull(d.breite), hoehe: zahlOderNull(d.hoehe) });
+        });
+        return json(res, 201, { id: fid });
+      }
+      if (t[4] && m === "GET") {
+        const b = await beitraegeLesen(id);
+        if (!b.fotos.some((f) => f.id === t[4])) throw fehler(404, "Foto nicht gefunden.");
+        return fotoSenden(res, t[4], url.searchParams.has("klein"));
+      }
+      if (t[4] && m === "DELETE") {
+        await beitraegeAendern(id, (b) => {
+          const i = b.fotos.findIndex((f) => f.id === t[4]);
+          if (i < 0) throw fehler(404, "Foto nicht gefunden.");
+          if (!darfBearbeiten(b.fotos[i], ich, rolle)) throw fehler(403, "Nur eigene Fotos können gelöscht werden.");
+          b.fotos.splice(i, 1);
+          for (const x of [...b.bewertungen, ...b.tauchgaenge]) x.fotos = (x.fotos ?? []).filter((f) => f !== t[4]);
+        });
+        await loeschen(fotoDatei(t[4]));
+        await loeschen(fotoDatei(t[4], true));
+        return json(res, 200, { ok: true });
+      }
+    }
+
+    // Freigaben
+    if (unter === "freigaben") {
+      const { reise } = await reiseMitRecht(id, ich);
+      if (m === "GET") {
+        const liste = (await teilen.alleFreigaben()).filter((f) => f.reiseId === id && f.aktiv);
+        return json(res, 200, liste.map((f) => ({ ...f, url: `${basisUrl(req)}/teilen/${f.token}` })));
+      }
+      if (m === "POST") {
+        const d = await koerper(req, 10_000);
+        if (!teilen.ARTEN.includes(d.art)) throw fehler(400, "Unbekannte Art der Freigabe.");
+        const zielId = d.art === "bericht" ? id : text(d.zielId, 80);
+        const probe = teilen.inhaltFuer(reise, await beitraegeLesen(id), [], { art: d.art, zielId });
+        if (!probe) throw fehler(404, "Das Ziel der Freigabe gibt es nicht.");
+        const f = await teilen.freigabeErstellen({ reiseId: id, art: d.art, zielId, vonId: ich.id, mitPreis: d.mitPreis });
+        return json(res, 201, { ...f, url: `${basisUrl(req)}/teilen/${f.token}` });
+      }
+    }
+
+    // KI
+    if (unter === "chat") {
+      const { reise } = await reiseMitRecht(id, ich);
+      if (m === "GET") return json(res, 200, await ki.chatLesen(ich.id, id));
+      if (m === "DELETE") {
+        await ki.chatLoeschen(ich.id, id);
+        return json(res, 200, { ok: true });
+      }
+      if (m === "POST") {
+        const d = await koerper(req, 50_000);
+        const stand = ki.reiseStand(reise, await beitraegeLesen(id), await konten.alleBenutzer());
+        return json(res, 200, await ki.chatFragen({ userId: ich.id, reiseId: id, frage: d.frage, stand }));
+      }
+    }
+    if (unter === "beitragstext" && m === "POST") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const d = await koerper(req, 10_000);
+      const zielId = d.art === "bericht" ? id : text(d.zielId, 80);
+      const inhalt = teilen.inhaltFuer(reise, await beitraegeLesen(id), await konten.alleBenutzer(), { art: d.art, zielId, mitPreis: false });
+      if (!inhalt) throw fehler(404, "Beitrag nicht gefunden.");
+      return json(res, 200, { text: await ki.beitragstext({ inhalt, plattform: d.plattform, sprache: d.sprache, creatorName: ich.creatorName }) });
     }
   }
 
-  if (teile[1] === "reisen" && teile.length === 3) {
-    const id = teile[2];
-    const alt = await reiseLesen(id);
-    if (!alt) return json(res, 404, { error: "Reise nicht gefunden." });
-    if (req.method === "GET") return json(res, 200, alt);
-    if (req.method === "PUT") {
-      const neu = await koerper(req);
-      if (Number(neu.version) !== Number(alt.version)) {
-        return json(res, 409, { error: "Die Reise wurde inzwischen auf einem anderen Gerät geändert.", aktuell: alt });
-      }
-      const reise = { ...neu, id, version: Number(alt.version) + 1, geaendert: new Date().toISOString() };
-      await reiseSchreiben(reise);
-      return json(res, 200, { version: reise.version, geaendert: reise.geaendert });
-    }
-    if (req.method === "DELETE") {
-      await unlink(reiseDatei(id));
-      return json(res, 200, { ok: true });
-    }
+  if (t[1] === "freigaben" && t[2] && m === "DELETE") {
+    const f = (await teilen.alleFreigaben()).find((x) => x.token === t[2]);
+    if (!f) throw fehler(404, "Freigabe nicht gefunden.");
+    const { rolle } = await reiseMitRecht(f.reiseId, ich);
+    if (rolle !== "planer" && f.vonId !== ich.id) throw fehler(403, "Nur wer geteilt hat (oder Planer/innen) kann die Freigabe beenden.");
+    await teilen.freigabeBeenden(t[2]);
+    return json(res, 200, { ok: true });
   }
 
-  // Ortssuche: /api/geo?q=Palma de Mallorca Hafen
-  if (teile[1] === "geo" && req.method === "GET") {
+  // Mein Tauchlogbuch über alle Reisen
+  if (p === "/api/tauchlog" && m === "GET") {
+    const liste = [];
+    for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
+      const r = await reiseLesen(d.slice(0, -5));
+      if (!r || !rolleIn(r, ich)) continue;
+      for (const tg of (await beitraegeLesen(r.id)).tauchgaenge) if (tg.taucherId === ich.id) liste.push({ ...tg, reiseId: r.id, reiseName: r.name });
+    }
+    liste.sort((a, b) => `${a.datum} ${a.beginn}`.localeCompare(`${b.datum} ${b.beginn}`));
+    liste.forEach((tg, i) => (tg.nr = (ich.tauchVorher ?? 0) + i + 1));
+    return json(res, 200, liste);
+  }
+
+  if (p === "/api/ki/import" && m === "POST") {
+    const d = await koerper(req, 40_000_000);
+    const dateien = (Array.isArray(d.dateien) ? d.dateien : []).map((x) => ({ name: text(x.name, 200), typ: text(x.typ, 120), daten: String(x.daten ?? "") }));
+    return json(res, 200, await ki.reiseplanLesen({ text: text(d.text, 400_000), dateien, heute: new Date().toISOString().slice(0, 10) }));
+  }
+
+  // Ortssuche
+  if (p === "/api/geo" && m === "GET") {
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 200);
-    if (q.length < 2) return json(res, 400, { error: "Suchbegriff fehlt." });
+    if (q.length < 2) throw fehler(400, "Suchbegriff fehlt.");
     const schluessel = `geo:${q.toLowerCase()}`;
     let treffer = gemerkt(schluessel, 90 * 86400_000);
     if (treffer === undefined) {
       await nominatimWarten();
       const roh = await holen(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`);
-      treffer = roh.map((t) => ({ name: t.display_name, lat: Number(t.lat), lng: Number(t.lon), art: t.type }));
+      treffer = roh.map((x) => ({ name: x.display_name, lat: Number(x.lat), lng: Number(x.lon), art: x.type }));
       merken(schluessel, treffer);
     }
     return json(res, 200, treffer);
   }
 
-  // Fahrweg: /api/route?von=lat,lng&nach=lat,lng&modus=auto|fuss
-  if (teile[1] === "route" && req.method === "GET") {
+  // Fahrweg
+  if (p === "/api/route" && m === "GET") {
     const von = (url.searchParams.get("von") ?? "").split(",");
     const nach = (url.searchParams.get("nach") ?? "").split(",");
     const modus = url.searchParams.get("modus") === "fuss" ? "foot" : "car";
-    if (![...von, ...nach].every(zahlOk) || von.length !== 2 || nach.length !== 2) {
-      return json(res, 400, { error: "Koordinaten fehlen." });
-    }
-    const runden = (x) => Number(x).toFixed(5);
-    const koord = `${runden(von[1])},${runden(von[0])};${runden(nach[1])},${runden(nach[0])}`;
+    if (![...von, ...nach].every(zahlOk) || von.length !== 2 || nach.length !== 2) throw fehler(400, "Koordinaten fehlen.");
+    const r5 = (x) => Number(x).toFixed(5);
+    const koord = `${r5(von[1])},${r5(von[0])};${r5(nach[1])},${r5(nach[0])}`;
     const schluessel = `route:${modus}:${koord}`;
     let weg = gemerkt(schluessel, 30 * 86400_000);
     if (weg === undefined) {
@@ -223,49 +550,40 @@ async function api(req, res, url) {
       weg = r ? { km: r.distance / 1000, min: r.duration / 60, linie: r.geometry.coordinates.map(([lng, lat]) => [lat, lng]) } : null;
       merken(schluessel, weg);
     }
-    if (!weg) return json(res, 404, { error: "Kein Weg gefunden (z. B. über Wasser)." });
+    if (!weg) throw fehler(404, "Kein Weg gefunden (z. B. über Wasser).");
     return json(res, 200, weg);
   }
 
-  // GetYourGuide-Ausflüge rund um einen Hafen (nur mit Partner-Schlüssel)
-  if (teile[1] === "gyg" && req.method === "GET") {
-    if (!GYG_KEY) return json(res, 501, { error: "Kein GetYourGuide-Partner-Schlüssel hinterlegt (GYG_API_KEY)." });
+  // GetYourGuide (nur mit Partner-Schlüssel)
+  if (p === "/api/gyg" && m === "GET") {
+    if (!GYG_KEY) throw fehler(501, "Kein GetYourGuide-Partner-Schlüssel hinterlegt (GYG_API_KEY).");
     const lat = url.searchParams.get("lat");
     const lng = url.searchParams.get("lng");
     const q = (url.searchParams.get("q") ?? "").trim().slice(0, 150);
     const datum = url.searchParams.get("datum") ?? "";
     const radius = Math.min(Math.max(Number(url.searchParams.get("radius") ?? 30), 1), 100);
-    const p = new URLSearchParams({ cnt_language: "de", currency: "EUR", limit: "30", sortfield: "popularity", sortdirection: "DESC" });
+    const sp = new URLSearchParams({ cnt_language: "de", currency: "EUR", limit: "30", sortfield: "popularity", sortdirection: "DESC" });
     if (zahlOk(lat) && zahlOk(lng)) {
-      p.append("coordinates[]", lat);
-      p.append("coordinates[]", lng);
-      p.append("coordinates[]", String(radius));
-    } else if (q) p.set("q", q);
-    else return json(res, 400, { error: "Hafen ohne Koordinaten und ohne Suchbegriff." });
+      sp.append("coordinates[]", lat);
+      sp.append("coordinates[]", lng);
+      sp.append("coordinates[]", String(radius));
+    } else if (q) sp.set("q", q);
+    else throw fehler(400, "Ort ohne Koordinaten und ohne Suchbegriff.");
     if (/^\d{4}-\d{2}-\d{2}$/.test(datum)) {
-      p.append("date[]", `${datum}T00:00:00`);
-      p.append("date[]", `${datum}T23:59:59`);
+      sp.append("date[]", `${datum}T00:00:00`);
+      sp.append("date[]", `${datum}T23:59:59`);
     }
-    const schluessel = `gyg:${p}`;
+    const schluessel = `gyg:${sp}`;
     let touren = gemerkt(schluessel, 6 * 3600_000);
     if (touren === undefined) {
-      const roh = await holen(`${GYG_URL}/1/tours?${p}`, { headers: { "x-access-token": GYG_KEY, accept: "application/json" } });
-      touren = (roh?.data?.tours ?? []).map((t) => {
-        const d = t.durations?.[0];
-        const faktor = d?.unit === "day" ? 1440 : d?.unit === "hour" ? 60 : 1;
+      const roh = await holen(`${GYG_URL}/1/tours?${sp}`, { headers: { "x-access-token": GYG_KEY, accept: "application/json" } });
+      touren = (roh?.data?.tours ?? []).map((x) => {
+        const du = x.durations?.[0];
+        const faktor = du?.unit === "day" ? 1440 : du?.unit === "hour" ? 60 : 1;
         return {
-          id: t.tour_id,
-          titel: t.title,
-          kurz: t.abstract ?? "",
-          preis: t.price?.values?.amount ?? null,
-          preisHinweis: t.price?.description ?? "",
-          dauerMin: d ? Math.round(d.duration * faktor) : null,
-          sterne: t.overall_rating ?? null,
-          bewertungen: t.number_of_ratings ?? null,
-          lat: t.coordinates?.lat ?? null,
-          lng: t.coordinates?.long ?? null,
-          abholung: Boolean(t.has_pick_up),
-          link: t.url ?? "",
+          id: x.tour_id, titel: x.title, kurz: x.abstract ?? "", preis: x.price?.values?.amount ?? null, preisHinweis: x.price?.description ?? "",
+          dauerMin: du ? Math.round(du.duration * faktor) : null, sterne: x.overall_rating ?? null, bewertungen: x.number_of_ratings ?? null,
+          lat: x.coordinates?.lat ?? null, lng: x.coordinates?.long ?? null, abholung: Boolean(x.has_pick_up), link: x.url ?? "",
         };
       });
       merken(schluessel, touren);
@@ -273,46 +591,81 @@ async function api(req, res, url) {
     return json(res, 200, touren);
   }
 
-  return json(res, 404, { error: "Unbekannte Adresse." });
+  throw fehler(404, "Unbekannte Adresse.");
 }
 
-// ---------- Statische Dateien ----------
+// ---------- Fotos & öffentliche Freigaben ----------
+
+function fotoSenden(res, id, klein) {
+  const datei = fotoDatei(id, klein);
+  if (!existsSync(datei)) {
+    res.writeHead(404);
+    return res.end();
+  }
+  res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "private, max-age=31536000, immutable", "x-content-type-options": "nosniff" });
+  createReadStream(datei).pipe(res);
+}
+
+async function freigabeSeite(req, res, url) {
+  const [, , tok, art, fid] = url.pathname.split("/");
+  const html = (status, body) => {
+    res.writeHead(status, { "content-type": MIME[".html"], "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" });
+    res.end(body);
+  };
+  const f = await teilen.freigabeLesen(tok, !art);
+  const reise = f ? await reiseLesen(f.reiseId) : null;
+  const inhalt = reise ? teilen.inhaltFuer(reise, await beitraegeLesen(reise.id), await konten.alleBenutzer(), f) : null;
+  if (!inhalt) return html(404, teilen.nichtGefundenSeite());
+  if (art === "foto") {
+    if (!ID_RE.test(fid ?? "") || !teilen.erlaubteFotos(inhalt).has(fid)) {
+      res.writeHead(404);
+      return res.end();
+    }
+    return fotoSenden(res, fid, url.searchParams.has("klein"));
+  }
+  if (art) return html(404, teilen.nichtGefundenSeite());
+  return html(200, teilen.seiteRendern(inhalt, f, basisUrl(req)));
+}
 
 async function statisch(req, res, url) {
   let datei = decodeURIComponent(url.pathname);
+  // Alle App-Pfade (z. B. /einladung/…) zeigen die Oberfläche
   if (datei === "/" || !path.extname(datei)) datei = "/index.html";
-  const voll = path.join(PUBLIC, path.normalize(datei).replace(/^(\.\.[/\\])+/, ""));
+  const voll = path.join(PUBLIC, path.normalize(datei));
   if (!voll.startsWith(PUBLIC + path.sep) || !existsSync(voll)) {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     return res.end("Nicht gefunden");
   }
-  res.writeHead(200, {
-    "content-type": MIME[path.extname(voll)] ?? "application/octet-stream",
-    "cache-control": "no-cache",
-    "x-content-type-options": "nosniff",
-  });
+  res.writeHead(200, { "content-type": MIME[path.extname(voll)] ?? "application/octet-stream", "cache-control": "no-cache", "x-content-type-options": "nosniff", "referrer-policy": "same-origin" });
   createReadStream(voll).pipe(res);
 }
+
+// ---------- Server ----------
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   try {
     if (url.pathname === "/gesund") return json(res, 200, { ok: true });
-    if (!angemeldet(req)) {
-      res.writeHead(401, { "www-authenticate": 'Basic realm="Reiseplaner", charset="UTF-8"', "content-type": "text/plain; charset=utf-8" });
-      return res.end("Bitte anmelden.");
-    }
-    if (url.pathname.startsWith("/api/")) return await api(req, res, url);
-    return await statisch(req, res, url);
+    if (url.pathname.startsWith("/teilen/")) return await freigabeSeite(req, res, url);
+    if (!url.pathname.startsWith("/api/")) return await statisch(req, res, url);
+
+    // Schutz vor fremden Seiten (CSRF): Änderungen nur mit dem App-eigenen Kopf.
+    if (req.method !== "GET" && req.headers["x-reiseplaner"] !== "1") throw fehler(403, "Anfrage ohne App-Kennung abgelehnt.");
+    const ich = await konten.benutzerZuSitzung(konten.cookieLesen(req));
+    if ((await apiOffen(req, res, url, ich)) !== false) return;
+    if (!ich) throw fehler(401, "Bitte anmelden.");
+    return await api(req, res, url, ich);
   } catch (e) {
-    console.error(e);
+    if (!e.status) console.error(e);
     if (!res.headersSent) json(res, e.status ?? 500, { error: e.status ? e.message : "Interner Fehler." });
     else res.end();
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Reiseplaner läuft auf http://localhost:${PORT} (Daten: ${DATA_DIR})`);
-  if (!PASSWORT) console.warn("Achtung: REISE_PASSWORT ist nicht gesetzt – jeder mit Zugriff auf den Port kann die Reisen sehen.");
+  const code = await konten.einrichtungsCodeErzeugen();
+  if (code) console.log(`Noch kein Konto vorhanden. Einrichtungscode für das erste Konto: ${code}`);
+  if (!ki.kiAktiv()) console.log("KI: kein ANTHROPIC_API_KEY – KI-Import, Assistent und Beitragstexte sind aus.");
   if (!GYG_KEY) console.log("GetYourGuide: kein Partner-Schlüssel – es gibt Such-Links statt eingebetteter Ergebnisse.");
 });

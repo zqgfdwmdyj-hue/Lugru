@@ -10,6 +10,34 @@ export const QUELLEN = {
   sonstige: { name: "Sonstige", farbe: "#8a6d3b" },
 };
 
+export const KATEGORIEN = {
+  ausflug: "Ausflug / Rundfahrt",
+  tauchen: "Tauchen",
+  schnorcheln: "Schnorcheln",
+  boot: "Bootstour",
+  stadt: "Stadt & Kultur",
+  natur: "Natur & Wandern",
+  strand: "Strand & Baden",
+  tiere: "Tiere & Parks",
+  essen: "Essen & Trinken",
+  sport: "Sport & Action",
+  sonstiges: "Sonstiges",
+};
+
+export const VERPFLEGUNG = {
+  ohne: "Nur Übernachtung",
+  fruehstueck: "Frühstück",
+  halbpension: "Halbpension",
+  vollpension: "Vollpension",
+  all: "All inclusive",
+};
+
+/** Nur http(s)-Links zulassen (kein javascript: o. Ä.). */
+export function sichereUrl(url) {
+  const u = String(url ?? "").trim();
+  return /^https?:\/\//i.test(u) ? u : "";
+}
+
 export const STATUS = {
   idee: "Idee",
   favorit: "Favorit",
@@ -126,22 +154,86 @@ export function reiseKosten(reise) {
   const ergebnis = {
     gebucht: 0,
     geplant: 0, // gebucht + Favoriten
+    ausfluege: { gebucht: 0, geplant: 0 },
+    hotels: { gebucht: 0, geplant: 0 },
+    sonstiges: { gebucht: 0, geplant: 0 },
     jeHafen: {},
+    jeHotel: {},
     jePerson: Object.fromEntries(personen.map((p) => [p.id, 0])),
     jeQuelle: {},
   };
+  const verteilen = (betrag) => {
+    if (!personen.length) return;
+    for (const p of personen) ergebnis.jePerson[p.id] += betrag / personen.length;
+  };
+  for (const h of reise.hotels ?? []) {
+    if (!zaehlt(h, "geplant")) continue;
+    const k = hotelKosten(h, personen).summe;
+    ergebnis.hotels.geplant += k;
+    if (h.status === "gebucht") ergebnis.hotels.gebucht += k;
+    ergebnis.jeHotel[h.id] = k;
+    verteilen(k);
+  }
+  for (const s of reise.kosten ?? []) {
+    if (!zaehlt(s, "geplant")) continue;
+    const k = zahl(s.betrag) ?? 0;
+    ergebnis.sonstiges.geplant += k;
+    if (s.status === "gebucht") ergebnis.sonstiges.gebucht += k;
+    verteilen(k);
+  }
   for (const a of reise.ausfluege ?? []) {
     if (!zaehlt(a, "geplant")) continue;
     const k = ausflugKosten(a, personen);
-    ergebnis.geplant += k.summe;
-    if (a.status === "gebucht") ergebnis.gebucht += k.summe;
+    ergebnis.ausfluege.geplant += k.summe;
+    if (a.status === "gebucht") ergebnis.ausfluege.gebucht += k.summe;
     ergebnis.jeHafen[a.hafenId] = (ergebnis.jeHafen[a.hafenId] ?? 0) + k.summe;
     ergebnis.jeQuelle[a.quelle] = (ergebnis.jeQuelle[a.quelle] ?? 0) + k.summe;
     for (const [id, betrag] of Object.entries(k.jePerson)) ergebnis.jePerson[id] = (ergebnis.jePerson[id] ?? 0) + betrag;
   }
+  for (const teil of [ergebnis.ausfluege, ergebnis.hotels, ergebnis.sonstiges]) {
+    teil.gebucht = runde(teil.gebucht);
+    teil.geplant = runde(teil.geplant);
+    ergebnis.gebucht += teil.gebucht;
+    ergebnis.geplant += teil.geplant;
+  }
   ergebnis.gebucht = runde(ergebnis.gebucht);
   ergebnis.geplant = runde(ergebnis.geplant);
   return ergebnis;
+}
+
+/** Anzahl Nächte zwischen zwei ISO-Daten. */
+export function naechte(anreise, abreise) {
+  if (!anreise || !abreise) return 0;
+  const n = Math.round((new Date(`${abreise}T12:00:00`) - new Date(`${anreise}T12:00:00`)) / 86400_000);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Kosten einer Unterkunft: Preis pro Nacht × Nächte × Zimmer oder Gesamtpreis. */
+export function hotelKosten(hotel, personen = []) {
+  const n = naechte(hotel.anreise, hotel.abreise);
+  const preis = zahl(hotel.preis) ?? 0;
+  const zimmer = Math.max(1, zahl(hotel.zimmer) ?? 1);
+  const summe = runde(hotel.preisArt === "nacht" ? preis * n * zimmer : preis);
+  const anzahl = personen.length || 1;
+  return {
+    summe,
+    naechte: n,
+    proNacht: n ? runde(summe / n) : null,
+    proPersonNacht: n ? runde(summe / n / anzahl) : null,
+  };
+}
+
+/** Ausgangspunkt eines Tages: der Hafen – oder an Land-Tagen das (gebuchte/Favoriten-)Hotel. */
+export function startpunkt(station, hotels = []) {
+  if (!station) return null;
+  if (station.art === "ort") {
+    const rang = { gebucht: 0, favorit: 1, idee: 2 };
+    const passend = hotels
+      .filter((h) => h.lat != null && h.anreise && h.abreise && h.anreise <= station.datum && station.datum < h.abreise && h.status !== "verworfen")
+      .sort((x, y) => (rang[x.status] ?? 3) - (rang[y.status] ?? 3));
+    if (passend[0]) return { lat: passend[0].lat, lng: passend[0].lng, name: passend[0].name, hotel: true };
+  }
+  return station.lat != null ? { lat: station.lat, lng: station.lng, name: station.name, hotel: false } : null;
 }
 
 /**

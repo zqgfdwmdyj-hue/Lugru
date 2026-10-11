@@ -1,0 +1,340 @@
+// KI-Anbindung (Claude): Reisepläne aus Dateien/Text lesen, Assistent mit Änderungsvorschlägen
+// und Beitragstexte für Social Media. Ohne ANTHROPIC_API_KEY ist alles abgeschaltet.
+import Anthropic from "@anthropic-ai/sdk";
+import path from "node:path";
+import { mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { DATA_DIR, lesen, schreiben, exklusiv } from "./speicher.mjs";
+import { docxText } from "./docx.mjs";
+import { fehler } from "./konten.mjs";
+import { ausflugKosten, zeitplan, startpunkt, hotelKosten, KATEGORIEN, QUELLEN } from "../public/rechnen.js";
+
+const MODELL = process.env.KI_MODELL || "claude-opus-5-5";
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+export const kiAktiv = () => Boolean(client);
+
+// Lehnt die KI ab, übernimmt serverseitig automatisch ein passendes Ersatzmodell.
+const FALLBACK = { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
+
+function pruefeAntwort(msg) {
+  if (msg.stop_reason === "refusal") throw fehler(422, "Die KI hat diese Anfrage abgelehnt. Bitte anders formulieren.");
+  if (msg.stop_reason === "max_tokens") throw fehler(502, "Die Antwort der KI war zu lang und wurde abgeschnitten. Bitte in kleineren Teilen versuchen.");
+  return msg;
+}
+
+function kiFehler(e) {
+  if (e.status && !(e instanceof Anthropic.APIError)) return e; // eigene Fehler durchreichen
+  if (e instanceof Anthropic.AuthenticationError) return fehler(502, "Der KI-Schlüssel (ANTHROPIC_API_KEY) ist ungültig.");
+  if (e instanceof Anthropic.RateLimitError) return fehler(429, "Die KI ist gerade ausgelastet. Bitte gleich noch einmal versuchen.");
+  if (e instanceof Anthropic.BadRequestError) return fehler(400, `Die KI konnte die Anfrage nicht verarbeiten: ${e.message}`);
+  if (e instanceof Anthropic.APIError) return fehler(502, `KI-Dienst nicht erreichbar (${e.status ?? "Netz"}).`);
+  return e;
+}
+
+const textAus = (msg) => msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+
+// ---------- Reiseplan lesen ----------
+
+const zahlOderNull = { anyOf: [{ type: "number" }, { type: "null" }] };
+const str = { type: "string" };
+const obj = (properties) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
+
+const PLAN_SCHEMA = obj({
+  name: str,
+  art: { type: "string", enum: ["kreuzfahrt", "hotel", "rundreise"] },
+  schiff: str,
+  personen: { type: "array", items: obj({ name: str, typ: { type: "string", enum: ["erwachsen", "kind"] }, alter: zahlOderNull }) },
+  stationen: {
+    type: "array",
+    items: obj({ datum: str, art: { type: "string", enum: ["hafen", "seetag", "ort"] }, name: str, land: str, ankunft: str, abfahrt: str, allesAnBord: str, notiz: str }),
+  },
+  hotels: {
+    type: "array",
+    items: obj({ name: str, ort: str, anreise: str, abreise: str, preis: zahlOderNull, preisArt: { type: "string", enum: ["nacht", "gesamt"] }, verpflegung: { type: "string", enum: ["", "ohne", "fruehstueck", "halbpension", "vollpension", "all"] }, status: { type: "string", enum: ["idee", "favorit", "gebucht"] }, link: str, notiz: str }),
+  },
+  ausfluege: {
+    type: "array",
+    items: obj({
+      datum: str,
+      ort: str,
+      titel: str,
+      kategorie: { type: "string", enum: Object.keys(KATEGORIEN) },
+      quelle: { type: "string", enum: Object.keys(QUELLEN) },
+      status: { type: "string", enum: ["idee", "favorit", "gebucht"] },
+      beginn: str,
+      dauerMin: zahlOderNull,
+      preisErw: zahlOderNull,
+      preisKind: zahlOderNull,
+      link: str,
+      notiz: str,
+    }),
+  },
+  kosten: { type: "array", items: obj({ titel: str, betrag: zahlOderNull, status: { type: "string", enum: ["idee", "favorit", "gebucht"] } }) },
+  hinweise: str,
+});
+
+const IMPORT_SYSTEM = `Du überträgst Reisepläne in das Datenformat eines Reiseplaners. Die Vorlagen sind z. B. mit ChatGPT ausgearbeitete Pläne, Buchungsbestätigungen, Reiseverläufe von Kreuzfahrten (etwa Mein Schiff), Ausflugslisten oder Screenshots.
+
+Regeln:
+- Übernimm nur, was in der Vorlage steht. Erfinde keine Preise, Zeiten, Links oder Orte; Unbekanntes bleibt leer ("") bzw. null.
+- Datum als JJJJ-MM-TT. Fehlt das Jahr, nimm das nächste passende Datum ab heute. Zeiten als HH:MM (24 h).
+- Kreuzfahrt: jeder Tag ist eine Station (art "hafen" mit Ankunft/Abfahrt, "seetag" für Tage auf See). "Alle an Bord" nur, wenn angegeben.
+- Hotel- oder Rundreise: Tage an Land als art "ort" mit dem Ort als Name; Unterkünfte unter "hotels".
+- Ausflüge: dem Tag über "datum" und dem Ort über "ort" zuordnen. Dauer in Minuten, Preise in Euro pro Person als Zahl. Vorschläge ohne Buchung haben status "idee", ausdrücklich als gebucht markierte "gebucht".
+- quelle: "schiff" für Ausflüge der Reederei, "getyourguide"/"viator"/"tiqets"/"civitatis", wenn genannt, "eigene" für Unternehmungen auf eigene Faust, sonst "sonstige".
+- Weitere Kosten (Flug, Mietwagen, Trinkgeld, Versicherung …) unter "kosten".
+- In "hinweise" kurz auf Deutsch, was unklar war oder fehlt (leer, wenn nichts).`;
+
+const BILD_TYPEN = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const TEXT_ENDUNGEN = /\.(txt|md|markdown|csv|json|html?|ics|eml)$/i;
+
+function dateiBlock(d) {
+  const daten = String(d.daten ?? "");
+  const roh = Buffer.from(daten, "base64");
+  if (d.typ === "application/pdf" || /\.pdf$/i.test(d.name)) {
+    return { type: "document", source: { type: "base64", media_type: "application/pdf", data: daten }, title: String(d.name).slice(0, 200) };
+  }
+  if (BILD_TYPEN.has(d.typ)) return { type: "image", source: { type: "base64", media_type: d.typ, data: daten } };
+  if (/\.docx$/i.test(d.name) || d.typ === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return { type: "text", text: `Datei „${d.name}“:\n${docxText(roh)}` };
+  }
+  if (TEXT_ENDUNGEN.test(d.name) || String(d.typ).startsWith("text/")) return { type: "text", text: `Datei „${d.name}“:\n${roh.toString("utf8")}` };
+  throw fehler(400, `„${d.name}“: Dieses Dateiformat wird nicht unterstützt (PDF, Word, Text oder Bilder gehen).`);
+}
+
+export async function reiseplanLesen({ text, dateien = [], heute }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  if (!String(text ?? "").trim() && !dateien.length) throw fehler(400, "Bitte Text einfügen oder eine Datei wählen.");
+  const inhalt = dateien.slice(0, 10).map(dateiBlock);
+  inhalt.push({ type: "text", text: `Heute ist ${heute}.${String(text ?? "").trim() ? `\n\nVorlage:\n${text}` : ""}\n\nÜbertrage den Reiseplan.` });
+  try {
+    const stream = client.beta.messages.stream({
+      ...FALLBACK,
+      model: MODELL,
+      max_tokens: 64000,
+      system: IMPORT_SYSTEM,
+      output_config: { effort: "medium", format: { type: "json_schema", schema: PLAN_SCHEMA } },
+      messages: [{ role: "user", content: inhalt }],
+    });
+    const msg = pruefeAntwort(await stream.finalMessage());
+    return JSON.parse(textAus(msg));
+  } catch (e) {
+    if (e instanceof SyntaxError) throw fehler(502, "Die KI-Antwort war nicht lesbar. Bitte erneut versuchen.");
+    throw kiFehler(e);
+  }
+}
+
+// ---------- Assistent ----------
+
+const SYSTEM_CHAT = `Du bist der Reiseassistent in einem privaten Reiseplaner einer Familie. Du hilfst, Landausflüge, Hotels und Tage zu planen, zu vergleichen und zu hinterfragen – auf Deutsch, freundlich und knapp.
+
+Mit jeder Nachricht bekommst du (wenn er sich geändert hat) den aktuellen Stand der Reise als JSON: Personen, Tage/Häfen mit Zeiten, Hotels, Ausflüge mit berechneten Kosten, Zeitplan und Puffer bis „Alle an Bord“, sowie Bewertungen.
+
+So arbeitest du:
+- Antworte auf Grundlage der Reisedaten. Wenn du aktuelle Infos brauchst (Öffnungszeiten, Wetter, Erfahrungsberichte, Preise), nutze die Websuche und nenne die Quelle.
+- Bei Ausflügen von Kreuzfahrten: Eigene Ausflüge brauchen genug Puffer – das Schiff wartet nicht. Weise auf Risiken hin.
+- Achte auf die Kinder (Alter), Tauchen (Flugverbot nach dem Tauchen, Tiefen), Fahrzeiten und Kosten.
+- Änderungen machst du nicht selbst: Schlage sie mit den Werkzeugen vor (ausflug_vorschlagen, aenderung_vorschlagen, station_vorschlagen, hotel_vorschlagen). Die Familie übernimmt sie mit einem Klick. Sag im Text kurz, was du vorgeschlagen hast.
+- Verwende für Änderungen die IDs aus den Reisedaten. Erfinde keine Preise oder Links – lass sie leer, wenn du sie nicht sicher weißt.`;
+
+const FELDER = ["titel", "status", "kategorie", "beginn", "dauerMin", "preisErw", "preisKind", "preisGruppe", "zusatzkosten", "interesse", "link", "notiz", "name", "land", "ankunft", "abfahrt", "allesAnBord", "anreise", "abreise", "preis", "preisArt", "verpflegung"];
+
+const WERKZEUGE = [
+  {
+    name: "ausflug_vorschlagen",
+    description: "Schlägt einen neuen Ausflug für einen Tag/Hafen der Reise vor. Die Familie entscheidet in der App, ob er übernommen wird.",
+    strict: true,
+    input_schema: obj({
+      stationId: { type: "string", description: "ID des Tages/Hafens aus den Reisedaten" },
+      titel: str,
+      kategorie: { type: "string", enum: Object.keys(KATEGORIEN) },
+      quelle: { type: "string", enum: Object.keys(QUELLEN) },
+      beginn: { type: "string", description: "HH:MM oder leer" },
+      dauerMin: zahlOderNull,
+      preisErw: zahlOderNull,
+      preisKind: zahlOderNull,
+      link: { type: "string", description: "Nur echte, bekannte Links, sonst leer" },
+      zielName: { type: "string", description: "Ort/Treffpunkt für die Karte, z. B. „Loro Parque, Puerto de la Cruz“, oder leer" },
+      notiz: str,
+      begruendung: { type: "string", description: "Ein Satz, warum der Ausflug passt" },
+    }),
+  },
+  {
+    name: "aenderung_vorschlagen",
+    description: "Schlägt Änderungen an einem vorhandenen Ausflug, Tag/Hafen oder Hotel vor (z. B. Status, Beginn, Preis, Notiz).",
+    strict: true,
+    input_schema: obj({
+      zielArt: { type: "string", enum: ["ausflug", "station", "hotel"] },
+      zielId: str,
+      aenderungen: { type: "array", items: obj({ feld: { type: "string", enum: FELDER }, wert: { type: "string", description: "Neuer Wert als Text (Zahlen mit Punkt)" } }) },
+      begruendung: str,
+    }),
+  },
+  {
+    name: "station_vorschlagen",
+    description: "Schlägt einen neuen Reisetag vor (Hafen, Seetag oder Tag an Land).",
+    strict: true,
+    input_schema: obj({ datum: str, art: { type: "string", enum: ["hafen", "seetag", "ort"] }, name: str, land: str, ankunft: str, abfahrt: str, allesAnBord: str, notiz: str, begruendung: str }),
+  },
+  {
+    name: "hotel_vorschlagen",
+    description: "Schlägt eine Unterkunft zum Vergleichen vor.",
+    strict: true,
+    input_schema: obj({ name: str, ort: str, anreise: str, abreise: str, preis: zahlOderNull, preisArt: { type: "string", enum: ["nacht", "gesamt"] }, verpflegung: { type: "string", enum: ["", "ohne", "fruehstueck", "halbpension", "vollpension", "all"] }, link: str, notiz: str, begruendung: str }),
+  },
+  { type: "web_search_20260209", name: "web_search", max_uses: 5, user_location: { type: "approximate", country: "DE" } },
+];
+
+/** Kompakter Stand der Reise für die KI (ohne Fotos, ohne interne Felder). */
+export function reiseStand(reise, beitraege, benutzer) {
+  const personen = reise.personen ?? [];
+  const namen = Object.fromEntries(benutzer.map((b) => [b.id, b.name]));
+  const stationen = [...(reise.haefen ?? [])].sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
+  return {
+    name: reise.name,
+    art: reise.art ?? "kreuzfahrt",
+    schiff: reise.schiff ?? "",
+    personen: personen.map((p) => ({ name: p.name, typ: p.typ, alter: p.alter || null })),
+    stationen: stationen.map((h) => ({ id: h.id, datum: h.datum, art: h.art ?? (h.seetag ? "seetag" : "hafen"), name: h.name, land: h.land ?? "", ankunft: h.ankunft ?? "", abfahrt: h.abfahrt ?? "", allesAnBord: h.allesAnBord ?? "", notiz: h.notiz ?? "" })),
+    hotels: (reise.hotels ?? []).map((h) => ({ id: h.id, name: h.name, ort: h.ort ?? "", anreise: h.anreise ?? "", abreise: h.abreise ?? "", status: h.status, verpflegung: h.verpflegung ?? "", kosten: hotelKosten(h, personen).summe, notiz: h.notiz ?? "" })),
+    ausfluege: (reise.ausfluege ?? []).map((a) => {
+      const h = stationen.find((s) => s.id === a.hafenId);
+      const z = zeitplan(a, h);
+      const k = ausflugKosten(a, personen);
+      const bew = beitraege.bewertungen.filter((b) => b.zielArt === "ausflug" && b.zielId === a.id);
+      return {
+        id: a.id,
+        stationId: a.hafenId,
+        titel: a.titel,
+        kategorie: a.kategorie ?? "ausflug",
+        anbieter: a.quelle,
+        status: a.status,
+        beginn: a.beginn ?? "",
+        dauerMin: a.dauerMin ?? null,
+        wegAbStartMin: a.quelle === "schiff" ? 0 : a.fahrzeitMin ?? null,
+        startpunkt: startpunkt(h, reise.hotels)?.name ?? "",
+        preisErw: a.preisErw ?? null,
+        preisKind: a.preisKind ?? null,
+        kostenGesamt: k.summe,
+        teilnehmer: personen.filter((p) => (a.teilnehmer ?? []).includes(p.id)).map((p) => p.name),
+        pufferBisAnBordMin: z.puffer,
+        warnungen: z.warnungen,
+        interesse: a.interesse ?? 3,
+        link: a.link ?? "",
+        notiz: a.notiz ?? "",
+        bewertungen: bew.map((b) => ({ von: namen[b.autorId] ?? "", sterne: b.sterne, text: b.text ?? "" })),
+      };
+    }),
+    tauchgaenge: beitraege.tauchgaenge.map((t) => ({ datum: t.datum, tauchplatz: t.tauchplatz, maxTiefe: t.maxTiefe, tauchzeitMin: t.tauchzeitMin, taucher: namen[t.taucherId] ?? "" })),
+    sonstigeKosten: (reise.kosten ?? []).map((k) => ({ titel: k.titel, betrag: k.betrag, status: k.status })),
+  };
+}
+
+const chatDatei = (userId, reiseId) => path.join(DATA_DIR, "chats", `${userId}_${reiseId}.json`);
+const LEERER_CHAT = { nachrichten: [], anzeige: [] };
+const STAND_MARKE = "Aktueller Stand der Reise (JSON):";
+
+export async function chatLesen(userId, reiseId) {
+  return (await lesen(chatDatei(userId, reiseId), LEERER_CHAT)).anzeige;
+}
+
+export async function chatLoeschen(userId, reiseId) {
+  await exklusiv(chatDatei(userId, reiseId), () => schreiben(chatDatei(userId, reiseId), LEERER_CHAT));
+}
+
+/**
+ * Eine Frage an den Assistenten. Der Verlauf wird auf dem Server gespeichert und nur angehängt
+ * (nie umgeschrieben), damit die Denkschritte der KI gültig bleiben und der Cache greift.
+ */
+export async function chatFragen({ userId, reiseId, frage, stand }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  frage = String(frage ?? "").trim().slice(0, 8000);
+  if (!frage) throw fehler(400, "Bitte eine Frage eingeben.");
+  await mkdir(path.dirname(chatDatei(userId, reiseId)), { recursive: true });
+  return exklusiv(chatDatei(userId, reiseId), async () => {
+    const chat = await lesen(chatDatei(userId, reiseId), LEERER_CHAT);
+    // Sehr lange Gespräche (z. B. viele Websuchen) neu beginnen – die Anzeige bleibt erhalten.
+    if (JSON.stringify(chat.nachrichten).length > 1_500_000) {
+      chat.nachrichten = [];
+      chat.standHash = null;
+      chat.anzeige.push({ rolle: "hinweis", text: "Das Gespräch war sehr lang – die KI beginnt ab hier neu (mit dem aktuellen Reisestand).", zeit: new Date().toISOString() });
+    }
+    const standText = JSON.stringify(stand);
+    const standHash = createHash("sha256").update(standText).digest("hex");
+    const inhalt = [];
+    if (chat.standHash !== standHash) inhalt.push({ type: "text", text: `${STAND_MARKE}\n${standText}` });
+    inhalt.push({ type: "text", text: frage });
+    const nachrichten = [...chat.nachrichten, { role: "user", content: inhalt }];
+    const vorschlaege = [];
+    const texte = [];
+    try {
+      for (let runde = 0; runde < 6; runde++) {
+        const msg = pruefeAntwort(
+          await client.beta.messages.create({
+            ...FALLBACK,
+            model: MODELL,
+            max_tokens: 16000,
+            system: SYSTEM_CHAT,
+            tools: WERKZEUGE,
+            output_config: { effort: "medium" },
+            cache_control: { type: "ephemeral" },
+            messages: nachrichten,
+          }),
+        );
+        nachrichten.push({ role: "assistant", content: msg.content });
+        const t = textAus(msg);
+        if (t) texte.push(t);
+        if (msg.stop_reason === "pause_turn") continue;
+        const aufrufe = msg.content.filter((b) => b.type === "tool_use");
+        if (msg.stop_reason !== "tool_use" || !aufrufe.length) break;
+        nachrichten.push({
+          role: "user",
+          content: aufrufe.map((a) => {
+            vorschlaege.push({ id: a.id, typ: a.name, daten: a.input });
+            return { type: "tool_result", tool_use_id: a.id, content: "Vorschlag wird der Familie in der App angezeigt; sie entscheidet, ob er übernommen wird." };
+          }),
+        });
+      }
+    } catch (e) {
+      throw kiFehler(e);
+    }
+    const antwort = texte.join("\n\n") || (vorschlaege.length ? "Hier sind meine Vorschläge:" : "Keine Antwort erhalten.");
+    const zeit = new Date().toISOString();
+    chat.nachrichten = nachrichten;
+    chat.standHash = standHash;
+    chat.anzeige.push({ rolle: "nutzer", text: frage, zeit }, { rolle: "ki", text: antwort, vorschlaege, zeit });
+    await schreiben(chatDatei(userId, reiseId), chat);
+    return { antwort, vorschlaege };
+  });
+}
+
+// ---------- Beitragstexte für Social Media ----------
+
+export async function beitragstext({ inhalt, plattform, sprache, creatorName }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  const kurz = {
+    titel: inhalt.titel,
+    unterzeile: inhalt.unterzeile,
+    kategorie: inhalt.kategorie,
+    sterne: inhalt.sterne,
+    bewertungen: (inhalt.bewertungen ?? []).map((b) => ({ sterne: b.sterne, text: b.text })),
+    tauchgang: inhalt.tauchgang ? { maxTiefe: inhalt.tauchgang.maxTiefe, tauchzeitMin: inhalt.tauchgang.tauchzeitMin, wasserTemp: inhalt.tauchgang.wasserTemp, sicht: inhalt.tauchgang.sicht, sichtungen: inhalt.tauchgang.sichtungen } : undefined,
+    eintraege: inhalt.eintraege?.slice(0, 15).map((e) => ({ titel: e.titel, unterzeile: e.unterzeile, sterne: e.sterne, texte: e.bewertungen.map((b) => b.text).filter(Boolean).slice(0, 2) })),
+  };
+  const plattformText = { instagram: "Instagram (Caption, Emojis erlaubt, 15–25 Hashtags am Ende)", tiktok: "TikTok (sehr kurz, 3–6 Hashtags)", facebook: "Facebook (2–4 Absätze, wenige Hashtags)", x: "X/Twitter (max. 270 Zeichen inkl. 2–3 Hashtags)", youtube: "YouTube (Titel in der ersten Zeile, dann Beschreibung und Hashtags)" }[plattform] ?? "Instagram";
+  try {
+    const msg = pruefeAntwort(
+      await client.beta.messages.create({
+        ...FALLBACK,
+        model: MODELL,
+        max_tokens: 4000,
+        output_config: { effort: "low" },
+        system: "Du schreibst authentische Social-Media-Beiträge für Reise-Content-Creator (Familie, viel unterwegs, taucht gern). Nur auf Basis der gelieferten Erlebnisse – nichts erfinden. Gib nur den fertigen Beitragstext aus, ohne Vorrede.",
+        messages: [{ role: "user", content: `Plattform: ${plattformText}\nSprache: ${sprache === "en" ? "Englisch" : "Deutsch"}${creatorName ? `\nAccount-Name: ${creatorName}` : ""}\n\nErlebnis (JSON):\n${JSON.stringify(kurz)}` }],
+      }),
+    );
+    return textAus(msg);
+  } catch (e) {
+    throw kiFehler(e);
+  }
+}

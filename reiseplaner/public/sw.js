@@ -1,9 +1,9 @@
 // Offline-Unterstützung (auf See ist das Netz oft schwach): App-Dateien und Leaflet werden
 // zwischengespeichert, Kartenkacheln beim Ansehen. Daten (api/) gehen immer ans Netz –
 // die App hält ungespeicherte Änderungen selbst im Browser.
-const APP = "reiseplaner-app-v1";
+const APP = "reiseplaner-app-v2";
 const KACHELN = "reiseplaner-kacheln-v1";
-const DATEIEN = ["./", "index.html", "app.js", "rechnen.js", "style.css", "icon.svg", "manifest.webmanifest",
+const DATEIEN = ["/", "/index.html", "/app.js", "/kern.js", "/konto.js", "/hotels.js", "/erlebnisse.js", "/teilen.js", "/ki.js", "/rechnen.js", "/zusammenfuehren.js", "/style.css", "/icon.svg", "/manifest.webmanifest",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"];
 
 self.addEventListener("install", (e) => {
@@ -18,7 +18,7 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.pathname.includes("/api/")) return;
+  if (e.request.method !== "GET" || url.pathname.startsWith("/api/") || url.pathname.startsWith("/teilen/")) return;
 
   if (url.hostname.endsWith("tile.openstreetmap.org")) {
     e.respondWith(
@@ -47,7 +47,7 @@ self.addEventListener("fetch", (e) => {
           }
           return antwort;
         })
-        .catch(() => caches.match(e.request).then((t) => t ?? caches.match("index.html"))),
+        .catch(() => caches.match(e.request).then((t) => t ?? caches.match("/index.html"))),
     );
   }
 });
