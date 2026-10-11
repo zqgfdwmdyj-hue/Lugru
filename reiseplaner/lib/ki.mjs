@@ -313,6 +313,121 @@ export async function chatFragen({ userId, reiseId, frage, stand }) {
   });
 }
 
+// ---------- Tagesbriefing und Ausflug-Check ----------
+
+const WEB_SUCHE = { type: "web_search_20260209", name: "web_search", max_uses: 4, user_location: { type: "approximate", country: "DE" } };
+const WEB_ABRUF = { type: "web_fetch_20260209", name: "web_fetch", max_uses: 3, max_content_tokens: 20000 };
+
+/** Ruft Claude mit Werkzeugen auf, bis die Antwort fertig ist (Websuche kann pausieren). */
+async function mitWerkzeugen({ system, inhalt, tools, effort = "medium", fertig }) {
+  const nachrichten = [{ role: "user", content: inhalt }];
+  const texte = [];
+  for (let runde = 0; runde < 6; runde++) {
+    const msg = pruefeAntwort(
+      await client.beta.messages.create({ ...FALLBACK, model: MODELL, max_tokens: 16000, system, tools, output_config: { effort }, messages: nachrichten }),
+    );
+    nachrichten.push({ role: "assistant", content: msg.content });
+    const t = textAus(msg);
+    if (t) texte.push(t);
+    if (msg.stop_reason === "pause_turn") continue;
+    const aufrufe = msg.content.filter((b) => b.type === "tool_use");
+    const ergebnis = fertig?.(aufrufe);
+    if (ergebnis) return { ergebnis, texte };
+    if (msg.stop_reason !== "tool_use" || !aufrufe.length) break;
+    nachrichten.push({ role: "user", content: aufrufe.map((a) => ({ type: "tool_result", tool_use_id: a.id, content: "Unbekanntes Werkzeug.", is_error: true })) });
+  }
+  return { ergebnis: null, texte };
+}
+
+const SYSTEM_BRIEFING = `Du schreibst das Tagesbriefing für eine Familie auf Reise (Kreuzfahrt, Hotel- oder Rundreise), das sie morgens aufs Handy bekommt. Deutsch, freundlich, knapp, gut lesbar auf dem Handy.
+
+Aufbau (genau diese Überschriften mit „## “, nur wenn es etwas dazu zu sagen gibt):
+## Heute
+Ort, Ankunft/Abfahrt, „Alle an Bord“, Wetter in einem Satz.
+## Ablauf
+Zeitlich sortiert als Liste („- 09:30 …“), mit Treffpunkt und wann man spätestens zurück sein muss.
+## Rechtzeitig zurück
+Konkrete Uhrzeit, wann man spätestens zurück zum Schiff bzw. Startpunkt aufbrechen sollte (mit Reserve). Warnung, wenn ein Ausflug knapp ist.
+## Mitnehmen
+Kurze Liste passend zum Tag (z. B. Bordkarte, Ausweiskopie, Bargeld in Landeswährung, Badesachen, Tauchschein).
+## Tipps
+2–4 kurze, aktuelle Tipps zum Ort (Landeswährung, Trinkgeld, Tender, Sicherheit, Öffnungszeiten). Nutze die Websuche für Aktuelles und nenne bei wichtigen Angaben die Quelle in Klammern.
+
+Regeln: Nur Fakten aus den Reisedaten oder der Websuche, nichts erfinden. Kein Markdown außer „## “-Überschriften, „- “-Listen und **fett**. Höchstens ca. 250 Wörter.`;
+
+export async function tagesbriefing({ stand, hafenId, wetter, heute }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  const tag = stand.stationen.find((s) => s.id === hafenId);
+  if (!tag) throw fehler(404, "Tag nicht gefunden.");
+  const inhalt = [
+    { type: "text", text: `Reisedaten (JSON):\n${JSON.stringify({ ...stand, ausfluege: stand.ausfluege.filter((a) => a.stationId === hafenId && a.status !== "verworfen") })}` },
+    { type: "text", text: `Heute ist ${heute}. Schreibe das Briefing für den Tag ${tag.datum} (${tag.art === "seetag" ? "Seetag" : tag.name}${tag.land ? `, ${tag.land}` : ""}).${wetter ? `\nWettervorhersage: ${wetter}` : ""}` },
+  ];
+  try {
+    const { texte } = await mitWerkzeugen({ system: SYSTEM_BRIEFING, inhalt, tools: [WEB_SUCHE], effort: "medium" });
+    const text = texte.at(-1) ?? "";
+    if (!text) throw fehler(502, "Die KI hat kein Briefing geliefert. Bitte erneut versuchen.");
+    return text.slice(0, 8000);
+  } catch (e) {
+    throw kiFehler(e);
+  }
+}
+
+const CHECK_ERGEBNIS = {
+  name: "ergebnis_melden",
+  description: "Meldet das Ergebnis der Prüfung. Am Ende genau einmal aufrufen.",
+  strict: true,
+  input_schema: obj({
+    ampel: { type: "string", enum: ["gruen", "gelb", "rot"], description: "gruen = sicher zurück, gelb = knapp/unsicher, rot = zu riskant" },
+    zusammenfassung: { type: "string", description: "1–2 Sätze" },
+    rueckkehr: { type: "string", description: "Voraussichtliche Rückkehr am Schiff/Startpunkt als HH:MM, oder leer" },
+    pufferMin: zahlOderNull,
+    risiken: { type: "array", items: str, description: "Kurze Stichpunkte" },
+    empfehlung: str,
+    quellen: { type: "array", items: str, description: "Geprüfte Links" },
+  }),
+};
+
+const SYSTEM_CHECK = `Du prüfst für eine Familie auf Kreuzfahrt, ob ein Landausflug eines fremden Anbieters (z. B. GetYourGuide, Viator) sicher vor „Alle an Bord“ zurück ist. Das Schiff wartet bei fremden Anbietern nicht.
+
+Vorgehen:
+1. Lies die Ausflugsdaten (Beginn, Dauer, Treffpunkt, Weg ab Schiff, berechneter Puffer).
+2. Wenn ein Link angegeben ist, rufe die Seite ab (web_fetch) und prüfe Dauer, Startzeiten, Treffpunkt, Abholung am Hafen, Hinweise für Kreuzfahrtgäste und „Rückkehr zum Schiff garantiert“. Nutze bei Bedarf die Websuche (Erfahrungsberichte, Entfernung Hafen–Treffpunkt, Verkehr).
+3. Rechne: Weg zum Treffpunkt + Dauer + Rückweg + Reserve gegen „Alle an Bord“. Unter 60 Minuten Reserve ist „gelb“, keine Reserve oder unklare Rückkehr ist „rot“.
+4. Rufe zum Schluss genau einmal ergebnis_melden auf. Antworte auf Deutsch, nichts erfinden – Unklares als Risiko nennen.`;
+
+export async function ausflugPruefen({ stand, ausflugId }) {
+  if (!client) throw fehler(501, "Keine KI hinterlegt (ANTHROPIC_API_KEY fehlt).");
+  const a = stand.ausfluege.find((x) => x.id === ausflugId);
+  if (!a) throw fehler(404, "Ausflug nicht gefunden.");
+  const tag = stand.stationen.find((s) => s.id === a.stationId);
+  const inhalt = [
+    { type: "text", text: `Tag (JSON):\n${JSON.stringify(tag)}\n\nAusflug (JSON):\n${JSON.stringify(a)}\n\nPersonen: ${JSON.stringify(stand.personen)}` },
+    { type: "text", text: `Prüfe diesen Ausflug${a.link ? ` (Link: ${a.link})` : ""}.` },
+  ];
+  try {
+    const { ergebnis, texte } = await mitWerkzeugen({
+      system: SYSTEM_CHECK,
+      inhalt,
+      tools: [WEB_SUCHE, WEB_ABRUF, CHECK_ERGEBNIS],
+      effort: "medium",
+      fertig: (aufrufe) => aufrufe.find((x) => x.name === "ergebnis_melden")?.input,
+    });
+    if (!ergebnis) throw fehler(502, texte.at(-1) ? `Die KI hat kein eindeutiges Ergebnis gemeldet: ${texte.at(-1).slice(0, 300)}` : "Die KI hat kein Ergebnis geliefert. Bitte erneut versuchen.");
+    return {
+      ampel: ["gruen", "gelb", "rot"].includes(ergebnis.ampel) ? ergebnis.ampel : "gelb",
+      zusammenfassung: String(ergebnis.zusammenfassung ?? "").slice(0, 1000),
+      rueckkehr: /^\d{1,2}:\d{2}$/.test(ergebnis.rueckkehr ?? "") ? ergebnis.rueckkehr : "",
+      pufferMin: Number.isFinite(ergebnis.pufferMin) ? Math.round(ergebnis.pufferMin) : null,
+      risiken: (ergebnis.risiken ?? []).slice(0, 8).map((x) => String(x).slice(0, 300)),
+      empfehlung: String(ergebnis.empfehlung ?? "").slice(0, 1000),
+      quellen: (ergebnis.quellen ?? []).filter((q) => /^https?:\/\//.test(q)).slice(0, 5),
+    };
+  } catch (e) {
+    throw kiFehler(e);
+  }
+}
+
 // ---------- Beitragstexte für Social Media ----------
 
 export async function beitragstext({ inhalt, plattform, sprache, creatorName }) {

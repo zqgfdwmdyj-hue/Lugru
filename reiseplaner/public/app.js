@@ -5,13 +5,18 @@ import {
 import {
   zustand, $, esc, neueId, datumText, personen, haefen, hafenVon, ausfluegeIn, hatKoord, geld, istPlaner, linkHtml, stationsArt, istKreuzfahrt,
   aktionen, aenderungen, setzeZeichner, setzeAbmeldung, anfrage, lokalLesen, lokalEntfernen, speichern, status, beitraegeLaden,
-  dialog, dialogOeffnen, ortsSuche, ortSuchen, ortAuslesen, herunterladen,
+  dialog, dialogOeffnen, ortsSuche, ortSuchen, ortAuslesen, herunterladen, extrasLaden, heute,
 } from "./kern.js";
 import { anmeldungPruefen, anmeldenZeigen } from "./konto.js";
 import { hotelsAnsicht, hotelStatusAendern } from "./hotels.js";
 import { erlebnisseAnsicht, bewertungsZeile } from "./erlebnisse.js";
 import { kiImportBox, kiKnopf, kiPanel, koordinatenErgaenzen } from "./ki.js";
 import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js";
+import { vorbereitungAnsicht } from "./vorbereitung.js";
+import { unterwegsAnsicht, nachUnterwegs, weckerPlanen } from "./unterwegs.js";
+import { kinderAnsicht } from "./kinder.js";
+import { bordkonto, inReisewaehrung } from "./unterwegs-logik.js";
+import "./reisebuch.js";
 import "./teilen.js";
 
 const inhalt = $("#inhalt");
@@ -53,15 +58,18 @@ async function reiseOeffnen(id) {
   reise.hotels ??= [];
   reise.kosten ??= [];
   zustand.reise = reise;
-  zustand.hafenId = haefen().find((h) => stationsArt(h) !== "seetag")?.id ?? haefen()[0]?.id ?? null;
+  // Unterwegs: heutigen Tag zeigen, sonst den ersten Landtag
+  zustand.hafenId = haefen().find((h) => h.datum === heute())?.id ?? haefen().find((h) => stationsArt(h) !== "seetag")?.id ?? haefen()[0]?.id ?? null;
+  zustand.unterwegsTag = null;
   zustand.gygErgebnisse = {};
   try {
     localStorage.setItem("reiseplaner:letzte", id);
   } catch {}
   $("#reiseWahl").value = id;
-  await Promise.all([beitraegeLaden(), mitgliederLaden()]);
+  await Promise.all([beitraegeLaden(), mitgliederLaden(), extrasLaden()]);
   alles();
   orteAutomatischSuchen();
+  weckerPlanen();
 }
 
 // Ältere/importierte Reisen ohne Kartenpunkte: einmal je Sitzung automatisch nachsuchen
@@ -158,14 +166,16 @@ function alles() {
         <button class="knopf" data-aktion="reise-neu">+ Erste Reise anlegen</button>
         <p class="klein leise">Du wurdest eingeladen? Dann öffne den Einladungslink – die Reise erscheint danach hier.</p>
       </div>
+      ${erinnerungBanner()}
       ${kiImportBox()}`;
     karteZeichnen();
     return;
   }
   document.querySelector('[data-ansicht="verlauf"]').textContent = istKreuzfahrt() ? "Route & Häfen" : "Reiseverlauf";
-  const ansichten = { plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht };
+  const ansichten = { plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, kinder: kinderAnsicht };
   inhalt.innerHTML = (ansichten[zustand.ansicht] ?? planAnsicht)();
   if (zustand.ansicht === "plan") nachPlan();
+  if (zustand.ansicht === "unterwegs") nachUnterwegs();
   karteZeichnen();
 }
 setzeZeichner(alles);
@@ -244,6 +254,7 @@ function planAnsicht() {
       dauer: (x, y) => (zahl(y.a.dauerMin) ?? 0) - (zahl(x.a.dauerMin) ?? 0),
       fahrzeit: (x, y) => (zahl(x.a.fahrzeitMin) ?? 0) - (zahl(y.a.fahrzeitMin) ?? 0),
       beginn: (x, y) => (zeitZuMin(x.a.beginn) ?? 9999) - (zeitZuMin(y.a.beginn) ?? 9999),
+      stimmen: (x, y) => stimmenSumme(y.a) - stimmenSumme(x.a),
     };
     const statusRang = { gebucht: 0, favorit: 1, idee: 2, verworfen: 3 };
     liste.sort((x, y) => (x.a.status === "verworfen") - (y.a.status === "verworfen") || sortierer[zustand.sortierung](x, y) || statusRang[x.a.status] - statusRang[y.a.status]);
@@ -284,7 +295,7 @@ function planAnsicht() {
           <h3>Vergleich (${aktive.length})</h3>
           <label class="klein">Sortieren:
             <select data-aktion="sortieren">
-              ${Object.entries({ punkte: "Sinnvollste zuerst", preis: "Günstigste zuerst", puffer: "Meiste Zeitreserve", beginn: "Beginn", dauer: "Längste", fahrzeit: "Kürzester Weg" })
+              ${Object.entries({ punkte: "Sinnvollste zuerst", stimmen: "Beliebteste (Abstimmung)", preis: "Günstigste zuerst", puffer: "Meiste Zeitreserve", beginn: "Beginn", dauer: "Längste", fahrzeit: "Kürzester Weg" })
                 .map(([k, v]) => `<option value="${k}" ${zustand.sortierung === k ? "selected" : ""}>${v}</option>`)
                 .join("")}
             </select>
@@ -296,8 +307,42 @@ function planAnsicht() {
   } else {
     detail = `<p class="leise">Wähle oben einen Tag.</p>`;
   }
-  return `${hafenLeiste()}${detail}`;
+  return `${erinnerungBanner()}${heuteHinweis()}${hafenLeiste()}${detail}`;
 }
+
+// „Heute vor … Jahren“ – einmal je Tag, wegklickbar
+function erinnerungBanner() {
+  const liste = zustand.erinnerungen ?? [];
+  let weg = "";
+  try {
+    weg = localStorage.getItem("reiseplaner:erinnerung-weg") ?? "";
+  } catch {}
+  if (!liste.length || weg === heute()) return "";
+  const e = liste[0];
+  return `<div class="karte-box erinnerung">
+    <button class="link weg" data-aktion="erinnerung-weg" aria-label="Schließen">✕</button>
+    <h3>💭 Heute vor ${e.jahre} ${e.jahre === 1 ? "Jahr" : "Jahren"}${liste.length > 1 ? ` <span class="leise klein">(+${liste.length - 1} weitere)</span>` : ""}</h3>
+    <p>${e.art === "seetag" ? `wart ihr auf See – ${esc(e.reise)}` : `wart ihr in <strong>${esc(e.name)}</strong>${e.land ? `, ${esc(e.land)}` : ""}`} <span class="leise">(${esc(e.reise)})</span>${e.ausfluege.length ? `<br><span class="klein">${e.ausfluege.map(esc).join(" · ")}</span>` : ""}</p>
+    ${e.fotos.length ? `<div class="fotoleiste">${e.fotos.map((f) => `<span class="foto"><a href="/api/reisen/${esc(e.reiseId)}/fotos/${esc(f)}" target="_blank"><img loading="lazy" src="/api/reisen/${esc(e.reiseId)}/fotos/${esc(f)}?klein=1" alt=""></a></span>`).join("")}</div>` : ""}
+    ${zustand.reise?.id !== e.reiseId ? `<button class="link" data-aktion="reise-wechseln" data-id="${esc(e.reiseId)}">Reise öffnen →</button>` : ""}
+  </div>`;
+}
+
+// Auf Reise: Hinweis auf Tagesbriefing und Wecker
+function heuteHinweis() {
+  const t = haefen().find((h) => h.datum === heute());
+  if (!t) return "";
+  return `<div class="hinweis heute"><strong>Heute: ${stationsArt(t) === "seetag" ? "🌊 Seetag" : esc(t.name)}</strong>${t.allesAnBord ? ` · ⏰ Alle an Bord ${esc(t.allesAnBord)}` : ""} <button class="link" data-aktion="zu-unterwegs">Tagesbriefing &amp; Rückweg →</button></div>`;
+}
+
+aktionen["erinnerung-weg"] = () => {
+  try {
+    localStorage.setItem("reiseplaner:erinnerung-weg", heute());
+  } catch {}
+  alles();
+};
+aktionen["reise-wechseln"] = (el) => reiseOeffnen(el.dataset.id);
+aktionen["zu-unterwegs"] = () => ansichtWechseln("unterwegs");
 
 function ausflugKarte(a, b, h, { beste, guenstig }) {
   const q = QUELLEN[a.quelle] ?? QUELLEN.sonstige;
@@ -330,12 +375,15 @@ function ausflugKarte(a, b, h, { beste, guenstig }) {
         <div><span>Interesse</span><strong>${"●".repeat(zahl(a.interesse) ?? 3)}${"○".repeat(5 - (zahl(a.interesse) ?? 3))}</strong><em>${b.punkte} Pkt.</em></div>
       </div>
       ${z.warnungen.length ? `<ul class="warnungen">${z.warnungen.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}
+      ${kiCheckAnzeige(a)}
+      ${a.status !== "verworfen" && personen().length > 1 ? stimmenLeiste(a) : ""}
       <div class="ausflug-fuss">
         <span class="klein leise">${namen.length === personen().length ? "Alle dabei" : namen.length ? esc(namen.join(", ")) : "Niemand ausgewählt"}</span>
         <span class="knoepfe">
           ${gm ? `<a class="link" href="${esc(gm)}" target="_blank" rel="noopener">Route ↗</a>` : ""}
           <button class="link" data-aktion="auf-karte" data-id="${esc(a.id)}">Karte</button>
           ${zustand.info.ki ? `<button class="link" data-aktion="ki-oeffnen" data-frage="${esc(frage)}">KI fragen</button>` : ""}
+          ${zustand.info.ki && art === "hafen" && a.quelle !== "schiff" && a.status !== "verworfen" ? `<button class="link" data-aktion="ausflug-check" data-id="${esc(a.id)}">✨ Rechtzeitig zurück?</button>` : ""}
           ${a.kategorie === "tauchen" && a.status === "gebucht" ? `<button class="link" data-aktion="tauchgang-neu" data-ausflug="${esc(a.id)}">🤿 Loggen</button>` : ""}
           <button class="link" data-aktion="ausflug-bearbeiten" data-id="${esc(a.id)}">Bearbeiten</button>
         </span>
@@ -344,6 +392,65 @@ function ausflugKarte(a, b, h, { beste, guenstig }) {
       ${a.notiz ? `<details class="klein"><summary>Notiz</summary><p class="notiz">${esc(a.notiz)}</p></details>` : ""}
     </article>`;
 }
+
+// ---------- Abstimmen: Wer will mit? ----------
+
+const STIMME = { 1: "👍", "-1": "👎" };
+function stimmenLeiste(a) {
+  const s = zustand.extras.stimmen?.[a.id] ?? {};
+  const dafuer = Object.values(s).filter((x) => x === 1).length;
+  const dagegen = Object.values(s).filter((x) => x === -1).length;
+  return `<div class="stimmen"><span class="klein leise">Wer will?${dafuer || dagegen ? ` <strong>👍 ${dafuer}</strong> · 👎 ${dagegen}` : ""}</span>
+    ${personen().map((p) => `<button class="stimme ${s[p.id] === 1 ? "ja" : s[p.id] === -1 ? "nein" : ""}" data-aktion="stimme" data-a="${esc(a.id)}" data-p="${esc(p.id)}" title="${esc(p.name)}: antippen zum Abstimmen">${esc(p.name.split(" ")[0])} ${STIMME[s[p.id]] ?? "·"}</button>`).join("")}</div>`;
+}
+const stimmenSumme = (a) => Object.values(zustand.extras.stimmen?.[a.id] ?? {}).reduce((x, y) => x + y, 0);
+
+// Schnelles Tippen: Stimmen nacheinander senden, sofort anzeigen
+let stimmKette = Promise.resolve();
+aktionen["stimme"] = (el) => {
+  const { a, p } = el.dataset;
+  const s = (zustand.extras.stimmen[a] ??= {});
+  const wert = !s[p] ? 1 : s[p] === 1 ? -1 : 0;
+  if (wert) s[p] = wert;
+  else delete s[p];
+  alles();
+  stimmKette = stimmKette.then(async () => {
+    try {
+      await anfrage(`/api/reisen/${zustand.reise.id}/stimmen`, { method: "PUT", body: { ausflugId: a, personId: p, wert } });
+    } catch (e) {
+      alert(e.message);
+      await extrasLaden();
+      alles();
+    }
+  });
+};
+
+// ---------- KI: Ist der Ausflug rechtzeitig zurück? ----------
+
+function kiCheckAnzeige(a) {
+  const c = zustand.extras.checks?.[a.id];
+  if (!c) return "";
+  const farbe = { gruen: "🟢", gelb: "🟡", rot: "🔴" }[c.ampel] ?? "🟡";
+  return `<details class="kicheck ${esc(c.ampel)}"><summary>${farbe} KI-Check: ${esc(c.zusammenfassung)}</summary>
+    ${c.rueckkehr ? `<p class="klein">Zurück am Schiff ca. <strong>${esc(c.rueckkehr)}</strong>${c.pufferMin != null ? ` · Puffer ${esc(String(c.pufferMin))} Min.` : ""}</p>` : ""}
+    ${c.risiken.length ? `<ul class="klein">${c.risiken.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+    ${c.empfehlung ? `<p class="klein"><strong>Empfehlung:</strong> ${esc(c.empfehlung)}</p>` : ""}
+    ${c.quellen.length ? `<p class="klein leise">Quellen: ${c.quellen.map((q) => linkHtml(q, esc(new URL(q).hostname))).join(", ")}</p>` : ""}
+    <p class="klein leise">Geprüft ${esc(new Date(c.zeit).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }))} – ohne Gewähr, bitte beim Anbieter bestätigen lassen.</p></details>`;
+}
+
+aktionen["ausflug-check"] = async (el) => {
+  el.disabled = true;
+  el.textContent = "✨ Prüfe (ca. 1 Min.) …";
+  try {
+    zustand.extras.checks[el.dataset.id] = await anfrage(`/api/reisen/${zustand.reise.id}/ausflug-check`, { method: "POST", body: { ausflugId: el.dataset.id } });
+    alles();
+  } catch (e) {
+    el.disabled = false;
+    el.textContent = "✨ Rechtzeitig zurück?";
+    alert(e.message);
+  }
+};
 
 function nachPlan() {
   const h = hafenVon(zustand.hafenId);
@@ -462,6 +569,7 @@ function kostenAnsicht() {
       <div class="kachel"><span>Gebucht + Favoriten</span><strong>${geld(k.geplant)}</strong></div>
       <div class="kachel"><span>Je Person (Ø)</span><strong>${geld(ps.length ? k.geplant / ps.length : 0)}</strong></div>
     </div>
+    ${zustand.extras.ausgaben.length ? `<div class="hinweis">Unterwegs tatsächlich ausgegeben: <strong>${geld(zustand.extras.ausgaben.reduce((sum, x) => sum + inReisewaehrung(x, r), 0))}</strong> (davon an Bord ${geld(bordkonto(zustand.extras.ausgaben, r).summe)}) <button class="link" data-aktion="zu-unterwegs">Bordkonto &amp; Abrechnung →</button></div>` : ""}
     <div class="kacheln klein-kacheln">
       <div class="kachel"><span>Ausflüge</span><strong>${geld(k.ausfluege.geplant)}</strong></div>
       <div class="kachel"><span>Unterkünfte</span><strong>${geld(k.hotels.geplant)}</strong></div>
@@ -1241,6 +1349,10 @@ async function start() {
   $("#ichKnopf").textContent = ich.name;
   $("#kiPanelPlatz").innerHTML = kiPanel();
   await reisenLaden();
+  anfrage(`/api/erinnerungen?datum=${heute()}`).then((l) => {
+    zustand.erinnerungen = l;
+    if (l.length && (zustand.ansicht === "plan" || !zustand.reise)) alles();
+  }).catch(() => {});
   const gewuenscht = new URLSearchParams(location.search).get("reise");
   if (gewuenscht) history.replaceState(null, "", "/");
   let letzte = null;

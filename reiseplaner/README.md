@@ -37,12 +37,43 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
   bewertet, führt das eigene Tauchlog).
 - Die Teilnehmer je Ausflug sind frei wählbar (z. B. 4 Erwachsene und 2 Kinder, aber nicht alle bei jedem Ausflug).
 
+**Vorbereitung**
+- **Packliste** für alle gemeinsam (abhaken, je Person filtern) mit Vorlagen: Grundausstattung,
+  Sonne & Strand, Kreuzfahrt, Tauchen, Kinder – passende Vorlagen sind markiert.
+- **Dokumente & Fristen**: Pässe (Warnung, wenn sie vor oder weniger als 6 Monate nach Reiseende
+  ablaufen), ESTA/eTA, Impfungen, Versicherung, Online-Check-in – mit Datei (PDF/Foto, nur für
+  Mitreisende) und Frist; Fristen auch als Kalendertermine.
+
+**Unterwegs**
+- **Tagesbriefing**: Ablauf, Wetter, spätestens zurück am Schiff, was mitnehmen, was zu erledigen ist;
+  mit KI zusätzlich aktuelle Tipps zum Ort (Websuche). Einmal erstellt, sehen es alle Mitreisenden.
+- **Alle-an-Bord-Wecker**: Kalenderdatei (`.ics`) mit Erinnerungen vor „Alle an Bord“ und vor gebuchten
+  Ausflügen – klingelt auch offline auf See und bei geschlossener App. Zusätzlich Hinweise in der App.
+- **Rückweg prüfen**: Standort (GPS) → Weg zum Schiff → „spätestens um … losfahren“ (mit Reserve,
+  ohne Netz als Schätzung über die Luftlinie).
+- **Bordkonto** mit Budget (je Tag, je Kategorie) und **Kosten teilen**: wer hat bezahlt, für wen –
+  die App rechnet aus, wer wem wie viel schuldet (Kinder zahlen nicht mit, Dollar werden umgerechnet).
+- **Abstimmen** an jedem Ausflug: 👍/👎 je Person, Sortierung „Beliebteste“.
+- **KI-Ausflug-Check** („✨ Rechtzeitig zurück?“): Claude liest die Angebotsseite, prüft Dauer, Treffpunkt
+  und Rückweg gegen „Alle an Bord“ und meldet 🟢/🟡/🔴 mit Risiken und Quellen.
+- **🧒 Kinder-Ansicht**: großer Countdown („noch 12 Mal schlafen“), heutiger Ort und Programm, Tiere-Bingo
+  mit Tieren der Region (Karibik, Rotes Meer, Mittelmeer, Kanaren, Nordeuropa …) und kleinen Fakten.
+
 **Erlebnisse**
 - **Bewertungen** für Ausflüge und Unterkünfte: Sterne, Überschrift, Kommentar, Fotos (werden im
   Browser verkleinert – spart Datenvolumen an Bord).
 - **Tauchlog**: Tauchplatz, Basis, Einstieg, Tiefe max./Ø, Tauchzeit, Wasser-/Lufttemperatur, Sicht,
   Strömung, Anzug, Blei, Flasche, Gas/Nitrox, Druck, Buddy, Guide, Sichtungen, Fotos, Kartenpunkt.
-  „Mein Logbuch“ zählt fortlaufend über alle Reisen (Startnummer im Konto einstellbar).
+  „Mein Logbuch“ zählt fortlaufend über alle Reisen (Startnummer im Konto einstellbar) – mit Statistik
+  (tiefster, längster, Gesamtzeit, Wassertemperaturen, Tauchplätze) und Artenliste. Sichtungen per Antippen.
+- **Import vom Tauchcomputer**: UDDF, Subsurface-Logbuch (.ssrf/.xml) oder CSV (z. B. Shearwater Cloud,
+  Suunto, Garmin über Subsurface) – mit Vorschau, doppelte Tauchgänge werden erkannt.
+- **Fotoalbum**: viele Fotos auf einmal; Aufnahmezeit und Ort (EXIF) ordnen sie automatisch dem Tag und
+  Ausflug zu. Neue Fotos sind 🔒, mit 🌍 erscheinen sie im Reisetagebuch. Die Fotos werden im Browser neu
+  gespeichert – GPS-Daten im Bild gehen nicht mit hinaus.
+- **Reisebuch & Jahresrückblick**: druckfertig (→ „Als PDF speichern“) mit Routenkarte, Tagen, Fotos,
+  Bewertungen und Tauchgängen – als Vorlage fürs Fotobuch.
+- **„Heute vor … Jahren“**: Erinnerung an frühere Reisetage mit Fotos.
 
 **Weltkarte & öffentliches Reisetagebuch**
 - Reiter „🌍 Weltkarte“: rote Stecknadeln für alle Orte, an denen ihr wart (vergangene Reisetage aus allen
@@ -172,4 +203,6 @@ npm test
   Bewertungen und Tauchgänge haben einen teilbaren Kommentar und eine private Notiz.
 - Namen sieht man nur von Mitreisenden der eigenen Reise. Passwortwechsel meldet alle anderen
   Geräte ab, Abmelden löscht die lokalen Kopien auf dem Gerät.
+- Dateien zu Dokumenten nur als PDF/JPEG/PNG mit passendem Inhalt, nur für Mitglieder, ausgeliefert
+  in einer Sandbox (`content-security-policy: sandbox`, `nosniff`).
 - Allgemeine Einladungslinks gelten 14 Tage und für höchstens 10 Beitritte, persönliche nur einmal.

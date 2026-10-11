@@ -93,3 +93,23 @@ test("Einzelne Fotos und private Notizen bleiben privat – im Tagebuch und in F
   assert.deepEqual([...erlaubteFotos(bericht)].sort(), ["f1", "f3"]);
   assert.ok(!JSON.stringify(bericht).includes("GEHEIME NOTIZ") && !JSON.stringify(bericht).includes("PRIVAT TAUCHEN"));
 });
+
+test("Album: nur geteilte Fotos vergangener Tage erscheinen im Tagebuch", () => {
+  const b = {
+    bewertungen: [],
+    tauchgaenge: [],
+    fotos: [
+      { id: "alb-offen", hafenId: "h1", geteilt: true, aufnahme: { lat: 14, lng: -61 } },
+      { id: "alb-privat", hafenId: "h1", geteilt: false },
+      { id: "alb-zukunft", hafenId: "h3", geteilt: true },
+      { id: "alb-ohne-tag", geteilt: true },
+    ],
+  };
+  const inhalt = tagebuchInhalt([{ reise: reise(), beitraege: b }], [{ id: "u1", name: "Anna Geheim" }], { titel: "T", text: "", orte: [] }, heute);
+  assert.deepEqual(inhalt.reisen[0].album, ["alb-offen"]);
+  assert.ok(inhalt.fotos.has("alb-offen"));
+  for (const f of ["alb-privat", "alb-zukunft", "alb-ohne-tag"]) assert.ok(!inhalt.fotos.has(f));
+  const html = seiteRendern(inhalt, "https://x.example", "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "OSM");
+  assert.ok(html.includes("/tagebuch/foto/alb-offen"));
+  assert.ok(!html.includes("alb-privat"));
+});

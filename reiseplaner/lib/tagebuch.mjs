@@ -106,6 +106,8 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
       ausfluege,
       hotels,
       tauchgaenge,
+      // Album: nur ausdrücklich geteilte Fotos (🌍) vergangener Tage
+      album: (beitraege.fotos ?? []).filter((f) => f.geteilt === true && tagIds.has(f.hafenId)).map((f) => f.id),
     });
   }
   ausgabe.sort((a, b) => b.von.localeCompare(a.von));
@@ -117,6 +119,7 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
   for (const r of ausgabe) {
     for (const x of [...r.ausfluege, ...r.hotels]) for (const b of x.bewertungen) b.fotos.forEach((f) => fotos.add(f));
     for (const t of r.tauchgaenge) t.fotos.forEach((f) => fotos.add(f));
+    r.album.forEach((f) => fotos.add(f));
   }
   return { titel: einstellungen.titel, text: einstellungen.text, reisen: ausgabe, orte, fotos };
 }
@@ -162,6 +165,7 @@ export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis) {
       <p class="stationen">${[...new Map(r.orte.filter((o) => o.art !== "hotel").map((o) => [o.name, o])).values()].map((o) => `<button type="button" class="flieg chip" data-lat="${o.lat}" data-lng="${o.lng}" data-zoom="11">${esc(o.name)}</button>`).join("")}</p>
       ${r.hotels.length ? `<h3>🏨 Unterkünfte</h3>${r.hotels.map((h) => `<article class="eintrag"><div class="kopf"><strong>${esc(h.name)}</strong> ${sterne(h.sterne)} <span class="leise">${esc(h.ort)} · ${datum(h.anreise, { day: "numeric", month: "short" })} – ${datum(h.abreise, { day: "numeric", month: "short" })}</span>${h.lat != null ? ` <button type="button" class="flieg klein" data-lat="${h.lat}" data-lng="${h.lng}" data-zoom="13">Karte</button>` : ""}</div>${bewertungen(h.bewertungen)}</article>`).join("")}` : ""}
       ${r.ausfluege.length ? `<h3>📍 Ausflüge</h3>${r.ausfluege.map((a) => `<article class="eintrag"><div class="kopf"><strong>${esc(a.titel)}</strong> ${sterne(a.sterne)} <span class="leise">${esc(a.ort)} · ${datum(a.datum, { day: "numeric", month: "short" })}${a.kategorie ? ` · ${esc(a.kategorie)}` : ""}</span>${a.lat != null ? ` <button type="button" class="flieg klein" data-lat="${a.lat}" data-lng="${a.lng}" data-zoom="12">Karte</button>` : ""}</div>${bewertungen(a.bewertungen)}</article>`).join("")}` : ""}
+      ${r.album.length ? `<h3>📷 Fotos</h3>${galerie(r.album)}` : ""}
       ${r.tauchgaenge.length ? `<h3>🤿 Tauchgänge</h3>${r.tauchgaenge.map((t) => `<article class="eintrag"><div class="kopf"><strong>${esc(t.tauchplatz)}</strong> ${sterne(t.sterne)} <span class="leise">${esc(t.ort)} · ${datum(t.datum, { day: "numeric", month: "short" })}${t.maxTiefe != null ? ` · ${String(t.maxTiefe).replace(".", ",")} m` : ""}${t.tauchzeitMin ? ` · ${t.tauchzeitMin} Min.` : ""}${t.wasserTemp != null ? ` · ${String(t.wasserTemp).replace(".", ",")} °C` : ""}</span>${t.lat != null ? ` <button type="button" class="flieg klein" data-lat="${t.lat}" data-lng="${t.lng}" data-zoom="13">Karte</button>` : ""}</div>${t.sichtungen ? `<p>🐠 ${esc(t.sichtungen)}</p>` : ""}${t.text ? `<p>${esc(t.text)}</p>` : ""}${galerie(t.fotos)}</article>`).join("")}` : ""}
     </section>`,
     )

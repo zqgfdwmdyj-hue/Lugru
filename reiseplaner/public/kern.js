@@ -14,6 +14,7 @@ export const zustand = {
   wetter: {},
   wege: {},
   beitraege: { bewertungen: [], tauchgaenge: [], fotos: [], namen: {} },
+  extras: { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, briefings: {}, checks: {} },
   mitglieder: [],
 };
 
@@ -152,6 +153,49 @@ export async function beitraegeLaden() {
   } catch {}
 }
 
+const EXTRAS_LOKAL = (id) => `reiseplaner:extras:${id}`;
+/** Packliste, Dokumente, Ausgaben, Stimmen … (offline: letzte bekannte Fassung). */
+export async function extrasLaden() {
+  if (!zustand.reise) return;
+  const id = zustand.reise.id;
+  try {
+    zustand.extras = await anfrage(`/api/reisen/${id}/extras`);
+    try {
+      localStorage.setItem(EXTRAS_LOKAL(id), JSON.stringify(zustand.extras));
+    } catch {}
+  } catch {
+    try {
+      const lokal = JSON.parse(localStorage.getItem(EXTRAS_LOKAL(id)) ?? "null");
+      if (lokal) zustand.extras = lokal;
+    } catch {}
+  }
+}
+
+export const heute = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+export const jetztMin = () => new Date().getHours() * 60 + new Date().getMinutes();
+
+/** Kleines, sicheres Markdown (## Überschrift, - Liste, **fett**) für KI-Texte. */
+export function einfachesMarkdown(text) {
+  const zeilen = esc(text).split("\n");
+  let html = "";
+  let liste = false;
+  for (const z of zeilen) {
+    const fett = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    if (/^\s*[-•*] /.test(z)) {
+      if (!liste) (html += "<ul>"), (liste = true);
+      html += `<li>${fett(z.replace(/^\s*[-•*] /, ""))}</li>`;
+      continue;
+    }
+    if (liste) (html += "</ul>"), (liste = false);
+    if (/^#{1,3} /.test(z)) html += `<h4>${fett(z.replace(/^#{1,3} /, ""))}</h4>`;
+    else if (z.trim()) html += `<p>${fett(z)}</p>`;
+  }
+  return html + (liste ? "</ul>" : "");
+}
+
 // ---------- Dialog ----------
 
 export const dialog = () => $("#dialog");
@@ -205,7 +249,7 @@ export function ortAuslesen(form, feld) {
 export const fotoUrl = (id, klein = false) => `/api/reisen/${zustand.reise.id}/fotos/${id}${klein ? "?klein=1" : ""}`;
 
 /** Verkleinert ein Bild im Browser (spart Datenvolumen an Bord) und lädt es hoch. */
-export async function fotoHochladen(datei) {
+export async function fotoHochladen(datei, zusatz = {}) {
   const bild = await createImageBitmap(datei, { imageOrientation: "from-image" }).catch(() => null);
   if (!bild) throw new Error(`„${datei.name}“ ist kein lesbares Bild.`);
   const skalieren = (max, qualitaet) => {
@@ -218,9 +262,9 @@ export async function fotoHochladen(datei) {
   };
   const gross = skalieren(2048, 0.85);
   const klein = skalieren(480, 0.75);
-  const { id } = await anfrage(`/api/reisen/${zustand.reise.id}/fotos`, { method: "POST", body: { gross: gross.url, klein: klein.url, breite: gross.breite, hoehe: gross.hoehe } });
-  zustand.beitraege.fotos.push({ id, autorId: zustand.ich?.id });
-  return id;
+  const info = await anfrage(`/api/reisen/${zustand.reise.id}/fotos`, { method: "POST", body: { gross: gross.url, klein: klein.url, breite: gross.breite, hoehe: gross.hoehe, ...zusatz } });
+  zustand.beitraege.fotos.push(info);
+  return info.id;
 }
 
 /** Fotoleiste. privat: Liste der 🔒-Fotos; schaltbar: Knopf zum Umschalten 🔒/🌍 anzeigen. */

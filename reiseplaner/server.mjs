@@ -11,7 +11,7 @@
 //   GYG_API_KEY / GYG_PARTNER_ID / GYG_API_URL  GetYourGuide-Partner-Zugang (optional)
 
 import { createServer } from "node:http";
-import { readFile, writeFile, readdir } from "node:fs/promises";
+import { writeFile, readdir } from "node:fs/promises";
 import { createReadStream, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -22,6 +22,7 @@ import { fehler } from "./lib/konten.mjs";
 import * as teilen from "./lib/teilen.mjs";
 import * as ki from "./lib/ki.mjs";
 import * as tagebuch from "./lib/tagebuch.mjs";
+import * as extras from "./lib/extras.mjs";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(HIER, "public");
@@ -38,6 +39,7 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".pdf": "application/pdf",
   ".webmanifest": "application/manifest+json",
 };
 
@@ -141,6 +143,29 @@ function tauchgangAus(d) {
 }
 
 const JPEG = (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+const DATEI_TYPEN = {
+  "application/pdf": (b) => b.subarray(0, 5).toString("latin1") === "%PDF-",
+  "image/jpeg": JPEG,
+  "image/png": (b) => b.length > 8 && b.readUInt32BE(0) === 0x89504e47,
+};
+
+/** Album-Angaben eines Fotos: Aufnahmezeit/-ort (aus EXIF), zugeordneter Tag/Ausflug, „geteilt“. */
+function fotoInfoAus(d, reise, mitAufnahme = true) {
+  const info = {};
+  if (mitAufnahme && d.aufnahme && typeof d.aufnahme === "object") {
+    const a = d.aufnahme;
+    info.aufnahme = {
+      datum: /^\d{4}-\d{2}-\d{2}$/.test(a.datum ?? "") ? a.datum : "",
+      zeit: /^\d{2}:\d{2}$/.test(a.zeit ?? "") ? a.zeit : "",
+      lat: Number.isFinite(a.lat) && Math.abs(a.lat) <= 90 ? a.lat : null,
+      lng: Number.isFinite(a.lng) && Math.abs(a.lng) <= 180 ? a.lng : null,
+    };
+  }
+  if ("hafenId" in d) info.hafenId = (reise.haefen ?? []).some((h) => h.id === d.hafenId) ? d.hafenId : "";
+  if ("ausflugId" in d) info.ausflugId = (reise.ausfluege ?? []).some((a) => a.id === d.ausflugId) ? d.ausflugId : "";
+  if ("geteilt" in d) info.geteilt = d.geteilt === true;
+  return info;
+}
 function dataUrlZuJpeg(url, max) {
   const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(url ?? ""));
   if (!m) throw fehler(400, "Foto muss als JPEG kommen.");
@@ -339,6 +364,8 @@ async function api(req, res, url, ich) {
           await loeschen(fotoDatei(f.id));
           await loeschen(fotoDatei(f.id, true));
         }
+        for (const d of (await extras.extrasLesen(id)).dateien) await loeschen(extras.dateiPfad(d.id, d.typ));
+        await loeschen(extras.extrasDatei(id));
         await loeschen(beitraegeDatei(id));
         await loeschen(reiseDatei(id));
         return json(res, 200, { ok: true });
@@ -463,10 +490,24 @@ async function api(req, res, url, ich) {
         const fid = randomUUID();
         await writeFile(fotoDatei(fid), gross);
         await writeFile(fotoDatei(fid, true), klein);
+        const { reise } = await reiseMitRecht(id, ich);
+        const info = { id: fid, autorId: ich.id, erstellt: new Date().toISOString(), breite: zahlOderNull(d.breite), hoehe: zahlOderNull(d.hoehe), ...fotoInfoAus(d, reise) };
         await beitraegeAendern(id, (b) => {
-          b.fotos.push({ id: fid, autorId: ich.id, erstellt: new Date().toISOString(), breite: zahlOderNull(d.breite), hoehe: zahlOderNull(d.hoehe) });
+          b.fotos.push(info);
         });
-        return json(res, 201, { id: fid });
+        return json(res, 201, info);
+      }
+      // Album: Tag/Ausflug zuordnen, für das Reisetagebuch freigeben
+      if (t[4] && m === "PUT") {
+        const { reise } = await reiseMitRecht(id, ich);
+        const d = fotoInfoAus(await koerper(req, 10_000), reise, false);
+        const x = await beitraegeAendern(id, (b) => {
+          const f = b.fotos.find((y) => y.id === t[4]);
+          if (!f) throw fehler(404, "Foto nicht gefunden.");
+          if (!darfBearbeiten(f, ich, rolle)) throw fehler(403, "Nur eigene Fotos können geändert werden.");
+          return Object.assign(f, d);
+        });
+        return json(res, 200, x);
       }
       if (t[4] && m === "GET") {
         const b = await beitraegeLesen(id);
@@ -485,6 +526,104 @@ async function api(req, res, url, ich) {
         await loeschen(fotoDatei(t[4], true));
         return json(res, 200, { ok: true });
       }
+    }
+
+    // Gemeinsame Listen: Packliste, Dokumente & Fristen, Ausgaben
+    if (unter === "extras") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const liste = t[4];
+      if (m === "GET" && !liste) return json(res, 200, await extras.extrasLesen(id));
+      if (!extras.LISTEN.includes(liste)) throw fehler(404, "Unbekannte Liste.");
+      const kontext = { personen: (reise.personen ?? []).map((p) => p.id), dateien: (await extras.extrasLesen(id)).dateien };
+      if (m === "POST" && !t[5]) return json(res, 201, await extras.eintragHinzufuegen(id, liste, extras.eintragAus(liste, await koerper(req, 50_000), kontext), ich.id));
+      if (t[5] && m === "PUT") return json(res, 200, await extras.eintragAendern(id, liste, t[5], extras.eintragAus(liste, await koerper(req, 50_000), kontext)));
+      if (t[5] && m === "DELETE") {
+        await extras.eintragLoeschen(id, liste, t[5]);
+        return json(res, 200, { ok: true });
+      }
+    }
+    if (unter === "stimmen" && m === "PUT") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const d = await koerper(req, 2_000);
+      if (!(reise.ausfluege ?? []).some((a) => a.id === d.ausflugId)) throw fehler(404, "Ausflug nicht gefunden.");
+      if (!(reise.personen ?? []).some((p) => p.id === d.personId)) throw fehler(404, "Person nicht gefunden.");
+      return json(res, 200, await extras.stimmeSetzen(id, d.ausflugId, d.personId, Number(d.wert)));
+    }
+    if (unter === "tiere" && m === "PUT") {
+      await reiseMitRecht(id, ich);
+      const d = await koerper(req, 2_000);
+      return json(res, 200, await extras.tierSetzen(id, d.tier, d.gesehen === true));
+    }
+
+    // Dateien zu Dokumenten (PDF, Fotos von Bestätigungen) – nur für Mitreisende
+    if (unter === "dateien") {
+      const { rolle } = await reiseMitRecht(id, ich);
+      if (m === "POST" && !t[4]) {
+        const d = await koerper(req, 22_000_000);
+        const typ = String(d.typ ?? "");
+        if (!DATEI_TYPEN[typ]) throw fehler(400, "Erlaubt sind PDF, JPEG und PNG.");
+        const roh = Buffer.from(String(d.daten ?? ""), "base64");
+        if (!roh.length || roh.length > 15_000_000) throw fehler(400, "Datei leer oder größer als 15 MB.");
+        if (!DATEI_TYPEN[typ](roh)) throw fehler(400, "Der Dateiinhalt passt nicht zum Dateityp.");
+        const fid = randomUUID();
+        await writeFile(extras.dateiPfad(fid, typ), roh);
+        const info = { id: fid, name: text(d.name, 200).replace(/[\\/\r\n"]/g, "_") || "Datei", typ, groesse: roh.length, autorId: ich.id, erstellt: new Date().toISOString() };
+        await extras.extrasAendern(id, (e) => {
+          e.dateien.push(info);
+        });
+        return json(res, 201, info);
+      }
+      if (t[4] && m === "GET") {
+        const info = (await extras.extrasLesen(id)).dateien.find((x) => x.id === t[4]);
+        if (!info || !existsSync(extras.dateiPfad(info.id, info.typ))) throw fehler(404, "Datei nicht gefunden.");
+        res.writeHead(200, {
+          "content-type": info.typ,
+          "content-disposition": `${url.searchParams.has("laden") ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(info.name)}`,
+          "cache-control": "private, no-store",
+          "x-content-type-options": "nosniff",
+          "content-security-policy": "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+        });
+        return createReadStream(extras.dateiPfad(info.id, info.typ)).pipe(res);
+      }
+      if (t[4] && m === "DELETE") {
+        const info = await extras.extrasAendern(id, (e) => {
+          const i = e.dateien.findIndex((x) => x.id === t[4]);
+          if (i < 0) throw fehler(404, "Datei nicht gefunden.");
+          if (!darfBearbeiten(e.dateien[i], ich, rolle)) throw fehler(403, "Nur eigene Dateien können gelöscht werden.");
+          for (const dok of e.dokumente) if (dok.dateiId === t[4]) dok.dateiId = "";
+          return e.dateien.splice(i, 1)[0];
+        });
+        await loeschen(extras.dateiPfad(info.id, info.typ));
+        return json(res, 200, { ok: true });
+      }
+    }
+
+    // KI: Tagesbriefing (für alle Mitreisenden gespeichert) und Ausflug-Check
+    if (unter === "briefing" && m === "POST") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const d = await koerper(req, 10_000);
+      const hafenId = text(d.hafenId, 80);
+      if (!d.neu) {
+        const vorhanden = (await extras.extrasLesen(id)).briefings[hafenId];
+        if (vorhanden) return json(res, 200, vorhanden);
+      }
+      const stand = ki.reiseStand(reise, await beitraegeLesen(id), await konten.alleBenutzer());
+      const briefing = { text: await ki.tagesbriefing({ stand, hafenId, wetter: text(d.wetter, 300), heute: heuteIso() }), zeit: new Date().toISOString() };
+      await extras.extrasAendern(id, (e) => {
+        e.briefings[hafenId] = briefing;
+      });
+      return json(res, 200, briefing);
+    }
+    if (unter === "ausflug-check" && m === "POST") {
+      const { reise } = await reiseMitRecht(id, ich);
+      const d = await koerper(req, 10_000);
+      const ausflugId = text(d.ausflugId, 80);
+      const stand = ki.reiseStand(reise, await beitraegeLesen(id), await konten.alleBenutzer());
+      const check = { ...(await ki.ausflugPruefen({ stand, ausflugId })), zeit: new Date().toISOString() };
+      await extras.extrasAendern(id, (e) => {
+        e.checks[ausflugId] = check;
+      });
+      return json(res, 200, check);
     }
 
     // Freigaben
@@ -541,6 +680,44 @@ async function api(req, res, url, ich) {
     if (rolle !== "planer" && f.vonId !== ich.id) throw fehler(403, "Nur wer geteilt hat (oder Planer/innen) kann die Freigabe beenden.");
     await teilen.freigabeBeenden(t[2]);
     return json(res, 200, { ok: true });
+  }
+
+  // „Heute vor … Jahren“: Tage früherer Reisen mit demselben Datum
+  if (p === "/api/erinnerungen" && m === "GET") {
+    const heute = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("datum") ?? "") ? url.searchParams.get("datum") : heuteIso();
+    const liste = [];
+    for (const r of (await alleReisen()).filter((x) => rolleIn(x, ich))) {
+      const tage = (r.haefen ?? []).filter((h) => h.datum && h.datum.slice(5) === heute.slice(5) && h.datum < heute);
+      if (!tage.length) continue;
+      const b = await beitraegeLesen(r.id);
+      for (const h of tage) {
+        const ausfluege = (r.ausfluege ?? []).filter((a) => a.hafenId === h.id && a.status === "gebucht");
+        const ids = new Set(ausfluege.map((a) => a.id));
+        const fotos = [
+          ...b.fotos.filter((f) => f.hafenId === h.id).map((f) => f.id),
+          ...b.bewertungen.filter((x) => x.zielArt === "ausflug" && ids.has(x.zielId)).flatMap((x) => x.fotos ?? []),
+          ...b.tauchgaenge.filter((x) => x.datum === h.datum).flatMap((x) => x.fotos ?? []),
+        ];
+        liste.push({ reiseId: r.id, reise: r.name, datum: h.datum, jahre: Number(heute.slice(0, 4)) - Number(h.datum.slice(0, 4)), art: h.art ?? (h.seetag ? "seetag" : "hafen"), name: h.name, land: h.land ?? "", ausfluege: ausfluege.map((a) => a.titel), fotos: [...new Set(fotos)].slice(0, 6) });
+      }
+    }
+    return json(res, 200, liste.sort((a, b) => a.jahre - b.jahre));
+  }
+
+  // Jahresrückblick: alle eigenen Reisen eines Jahres mit Beiträgen (für das Reisebuch)
+  if (p === "/api/rueckblick" && m === "GET") {
+    const jahr = /^\d{4}$/.test(url.searchParams.get("jahr") ?? "") ? url.searchParams.get("jahr") : heuteIso().slice(0, 4);
+    const reisen = [];
+    for (const r of (await alleReisen()).filter((x) => rolleIn(x, ich))) {
+      const tage = [...(r.haefen ?? []).map((h) => h.datum), ...(r.hotels ?? []).filter((h) => h.status === "gebucht").map((h) => h.anreise)].filter(Boolean);
+      if (!tage.some((d) => d.startsWith(jahr))) continue;
+      const { mitglieder, ...reise } = r;
+      reisen.push({ reise, beitraege: await beitraegeLesen(r.id) });
+    }
+    const sichtbar = new Set(reisen.flatMap(({ reise, beitraege }) => [...(reise.personen ?? []).map((x) => x.userId), ...beitraege.bewertungen.map((x) => x.autorId), ...beitraege.tauchgaenge.map((x) => x.taucherId)]));
+    const namen = Object.fromEntries((await konten.alleBenutzer()).filter((x) => sichtbar.has(x.id)).map((x) => [x.id, x.name]));
+    reisen.sort((a, b) => String(a.reise.haefen?.map((h) => h.datum).sort()[0] ?? "").localeCompare(String(b.reise.haefen?.map((h) => h.datum).sort()[0] ?? "")));
+    return json(res, 200, { jahr, reisen, namen });
   }
 
   // Weltkarte: besuchte Orte aller eigenen Reisen + von Hand eingetragene Orte
