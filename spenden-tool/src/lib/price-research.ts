@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { claudeImage } from "@/lib/ai-image";
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -23,7 +24,8 @@ const Offer = z.object({
   // „1,49“, „1.49 €“ oder 1.49 – alles wird zur Zahl
   price: z.preprocess((v) => (typeof v === "string" ? parseAmount(v) : v), z.number().positive()),
   unit: z.string().nullish(),
-  url: z.string().url(),
+  // Nur echte Webadressen – die Links landen anklickbar auf der Seite.
+  url: z.string().url().refine((u) => /^https?:\/\//i.test(u)),
 });
 
 const Result = z.object({
@@ -80,7 +82,7 @@ async function research(mode: AiMode, product: { name: string; variant: string |
   if (mode === "erkennen" && !image) throw new Error("Zum Erkennen wird ein Foto gebraucht.");
   const content: Anthropic.Beta.BetaContentBlockParam[] = [];
   if (image) {
-    content.push({ type: "image", source: { type: "base64", media_type: image.mimeType as "image/jpeg", data: image.data.toString("base64") } });
+    content.push({ type: "image", source: await claudeImage(image) });
   }
   content.push({
     type: "text",
@@ -170,7 +172,8 @@ async function runOne(checkId: string) {
           category: result.category && (DONATION_CATEGORIES as readonly string[]).includes(result.category) ? result.category : product.category,
           updatedAt: new Date(),
         })
-        .where(eq(schema.products.id, product.id));
+        // Nur, wenn inzwischen niemand selbst einen Namen eingetragen hat.
+        .where(and(eq(schema.products.id, product.id), eq(schema.products.name, product.name)));
     }
   } catch (e) {
     const message =
@@ -218,10 +221,20 @@ export async function runPriceChecks(ids: string[]) {
   );
 }
 
-/** Nach einem Neustart hängengebliebene Recherchen als Fehler markieren. */
+/**
+ * Nach einem Neustart hängengebliebene Recherchen als Fehler markieren: älter als 15 Minuten, und in den letzten
+ * 5 Minuten ist keine einzige Recherche fertig geworden (sonst arbeitet die Warteschlange noch – große Aufträge
+ * im Modus „genau“ dauern länger als 15 Minuten).
+ */
 export async function failStaleChecks() {
   await db
     .update(C)
     .set({ status: "error", error: "Abgebrochen (Server neu gestartet?) – bitte erneut starten.", finishedAt: new Date() })
-    .where(and(inArray(C.status, ["pending", "running"]), lt(C.createdAt, sql`now() - interval '15 minutes'`)));
+    .where(
+      and(
+        inArray(C.status, ["pending", "running"]),
+        lt(C.createdAt, sql`now() - interval '15 minutes'`),
+        sql`not exists (select 1 from price_checks x where x.finished_at > now() - interval '5 minutes')`,
+      ),
+    );
 }

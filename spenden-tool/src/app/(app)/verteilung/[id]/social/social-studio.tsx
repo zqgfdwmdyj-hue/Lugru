@@ -315,6 +315,12 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
     } catch {}
     setCanShare("canShare" in navigator && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
   }, []);
+  // Erst nach kurzer Tipp-Pause neu zeichnen – sonst rechnet jede Taste alle Vorschauen neu (langsam am Handy).
+  const [drawHandle, setDrawHandle] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDrawHandle(handle), 500);
+    return () => clearTimeout(t);
+  }, [handle]);
   useEffect(() => {
     try {
       localStorage.setItem("social-handle", handle);
@@ -345,15 +351,15 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
     const carousel = ordered.slice(0, 19);
     const list = layoutPriceList(sections, STORY.w, STORY.h);
     return [
-      { key: "story", title: "Story – Ankündigung", hint: "9:16 für Instagram-/Facebook-Story und TikTok", ...STORY, count: 1, draw: (ctx) => drawAnnounce(ctx, data, ordered, imgs, STORY.w, STORY.h, handle, items.length) },
-      { key: "feed", title: "Feed-Beitrag – Titelbild", hint: "4:5 für den Instagram-Feed", ...FEED, count: 1, draw: (ctx) => drawAnnounce(ctx, data, ordered, imgs, FEED.w, FEED.h, handle, items.length) },
+      { key: "story", title: "Story – Ankündigung", hint: "9:16 für Instagram-/Facebook-Story und TikTok", ...STORY, count: 1, draw: (ctx) => drawAnnounce(ctx, data, ordered, imgs, STORY.w, STORY.h, drawHandle, items.length) },
+      { key: "feed", title: "Feed-Beitrag – Titelbild", hint: "4:5 für den Instagram-Feed", ...FEED, count: 1, draw: (ctx) => drawAnnounce(ctx, data, ordered, imgs, FEED.w, FEED.h, drawHandle, items.length) },
       {
         key: "karussell",
         title: "Karussell – ein Produkt pro Bild",
         hint: `4:5, zum Wischen im Feed. Titelbild + bis zu 19 Produkte${ordered.length > 19 ? ` (von ${ordered.length})` : ""}`,
         ...FEED,
         count: carousel.length + 1,
-        draw: (ctx, i) => (i === 0 ? drawAnnounce(ctx, data, ordered, imgs, FEED.w, FEED.h, handle, items.length) : drawProduct(ctx, data, carousel[i - 1], img(carousel[i - 1]), FEED.w, FEED.h, handle, `${i}/${carousel.length}`)),
+        draw: (ctx, i) => (i === 0 ? drawAnnounce(ctx, data, ordered, imgs, FEED.w, FEED.h, drawHandle, items.length) : drawProduct(ctx, data, carousel[i - 1], img(carousel[i - 1]), FEED.w, FEED.h, drawHandle, `${i}/${carousel.length}`)),
       },
       {
         key: "story-produkte",
@@ -361,7 +367,7 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
         hint: `9:16, die ${hl.length} Highlights`,
         ...STORY,
         count: hl.length,
-        draw: (ctx, i) => drawProduct(ctx, data, hl[i], img(hl[i]), STORY.w, STORY.h, handle, `${i + 1}/${hl.length}`),
+        draw: (ctx, i) => drawProduct(ctx, data, hl[i], img(hl[i]), STORY.w, STORY.h, drawHandle, `${i + 1}/${hl.length}`),
       },
       {
         key: "preisliste",
@@ -369,10 +375,10 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
         hint: "9:16, der Aushang zum Posten (mit MHD)",
         ...STORY,
         count: list.pages.length,
-        draw: (ctx, i) => drawPriceList(ctx, data, list.pages[i], list.lineH, STORY.w, STORY.h, handle, list.pages.length > 1 ? `Seite ${i + 1}/${list.pages.length}` : ""),
+        draw: (ctx, i) => drawPriceList(ctx, data, list.pages[i], list.lineH, STORY.w, STORY.h, drawHandle, list.pages.length > 1 ? `Seite ${i + 1}/${list.pages.length}` : ""),
       },
     ];
-  }, [imgs, ordered, hl, sections, data, handle, items.length]);
+  }, [imgs, ordered, hl, sections, data, drawHandle, items.length]);
 
   const save = async (t: Template, only?: number) => downloadFiles(await renderFiles(t, data.fileBase, only));
   const share = async (t: Template) => {

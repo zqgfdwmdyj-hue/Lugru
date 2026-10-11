@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { claudeImage } from "@/lib/ai-image";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { parsePrintedReading, type PrintedReading } from "@/lib/printed-price";
@@ -28,7 +29,7 @@ export async function readPrintedPrice(image: { mimeType: string; data: Buffer }
       {
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: image.mimeType as "image/jpeg", data: image.data.toString("base64") } },
+          { type: "image", source: await claudeImage(image) },
           { type: "text", text: PROMPT },
         ],
       },
@@ -88,10 +89,16 @@ export async function runPhotoPrices(fileIds: string[], eventId: string | null) 
   );
 }
 
-/** Nach einem Neustart hängengebliebene Vormerkungen freigeben. */
+/** Nach einem Neustart hängengebliebene Vormerkungen freigeben (wie failStaleChecks: nur wenn nichts mehr vorangeht). */
 export async function failStalePhotoPrices() {
   await db
     .update(F)
     .set({ printedStatus: "error" })
-    .where(and(eq(F.printedStatus, "pending"), lt(F.printedScannedAt, sql`now() - interval '15 minutes'`)));
+    .where(
+      and(
+        eq(F.printedStatus, "pending"),
+        lt(F.printedScannedAt, sql`now() - interval '15 minutes'`),
+        sql`not exists (select 1 from files x where x.printed_status = 'done' and x.printed_scanned_at > now() - interval '5 minutes')`,
+      ),
+    );
 }

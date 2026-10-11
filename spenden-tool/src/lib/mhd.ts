@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { claudeImage } from "@/lib/ai-image";
 import { normalizeMhd } from "@/lib/mhd-parse";
 
 // MHD vom Foto ablesen: kleinstes Modell, keine Websuche – kostet einen Bruchteil eines Cents.
@@ -20,7 +21,7 @@ export async function readBestBefore(image: { mimeType: string; data: Buffer }):
       {
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: image.mimeType as "image/jpeg", data: image.data.toString("base64") } },
+          { type: "image", source: await claudeImage(image) },
           { type: "text", text: PROMPT },
         ],
       },

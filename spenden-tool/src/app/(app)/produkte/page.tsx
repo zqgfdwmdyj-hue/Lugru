@@ -19,8 +19,9 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
     knownCategories(),
   ]);
   // Produkte mit (fast) demselben Foto – z. B. aus der Zeit vor der automatischen Erkennung.
-  const groups = await duplicatePhotoGroups();
+  // Nur berechnen, wenn die Ansicht geöffnet ist (vergleicht alle Fotos miteinander).
   const doppelt = sp.doppelt === "1";
+  const groups = doppelt ? await duplicatePhotoGroups() : [];
   const groupProducts = doppelt && groups.length
     ? new Map((await db.select().from(schema.products).where(inArray(schema.products.id, groups.flat()))).map((p) => [p.id, p]))
     : new Map();
@@ -49,7 +50,7 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
         <Link href={link({ archiv })} className={`chip${!kat ? " active" : ""}`}>Alle</Link>
         {categories.map((c) => <Link key={c} href={link({ kat: c, archiv })} className={`chip${kat === c ? " active" : ""}`}>{c}</Link>)}
         <Link href={link({ kat, archiv: !archiv })} className={`chip${archiv ? " active" : ""}`}>Archiv</Link>
-        {groups.length > 0 && <Link href={doppelt ? "/produkte" : "/produkte?doppelt=1"} className={`chip${doppelt ? " active" : ""}`}>Mögliche Doppelte ({groups.length})</Link>}
+        <Link href={doppelt ? "/produkte" : "/produkte?doppelt=1"} className={`chip${doppelt ? " active" : ""}`}>Mögliche Doppelte{doppelt ? ` (${groups.length})` : ""}</Link>
       </div>
       {doppelt && (
         <section className="stack">
@@ -64,7 +65,7 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
                 <input type="hidden" name="productId" value={keep.id} />
                 {[keep, ...rest].map((p, i) => (
                   <label key={p.id} style={{ display: "flex", flexDirection: "column", gap: 4, width: 120 }} className="small">
-                    {p.imageFileId && <img src={`/datei/${p.imageFileId}`} alt="" style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 6 }} />}
+                    {p.imageFileId && <img src={`/datei/${p.imageFileId}?w=400`} alt="" style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 6 }} />}
                     <span>{i === 0 ? "bleibt" : <><input type="checkbox" name="mergeId" value={p.id} defaultChecked /> zusammenführen</>}</span>
                     <Link href={`/produkte/${p.id}`}><strong>{p.name}</strong>{p.variant ? ` · ${p.variant}` : ""}</Link>
                   </label>
@@ -81,7 +82,7 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
           <div className="spenden-grid">
             {products.map(({ p, times, lastUsed }) => (
               <Link key={p.id} href={`/produkte/${p.id}`} className="card spenden-tile">
-                {p.imageFileId ? <img src={`/datei/${p.imageFileId}`} alt="" loading="lazy" /> : <span className="spenden-noimg">kein Foto</span>}
+                {p.imageFileId ? <img src={`/datei/${p.imageFileId}?w=400`} alt="" loading="lazy" /> : <span className="spenden-noimg">kein Foto</span>}
                 <span style={{ padding: "8px 10px" }}>
                   <strong style={{ display: "block" }}>{p.name}</strong>
                   {p.variant && <span className="small">{p.variant}</span>}

@@ -65,7 +65,8 @@ export type PhotoEntry = { productId: string; sha: string; hash: string | null; 
 
 /** Alle Produktfotos mit Prüfsumme und Fingerabdruck – zum Wiedererkennen beim Hochladen. */
 export async function photoIndex(): Promise<PhotoEntry[]> {
-  await backfillPhotoHashes();
+  // Ältere Fotos bekommen ihren Fingerabdruck beim Start (scripts/migrate.ts); hier nur noch ein kleiner Rest.
+  await backfillPhotoHashes(20);
   return db
     .select({ productId: P.id, sha: schema.files.sha256, hash: schema.files.phash, createdAt: P.createdAt })
     .from(P)

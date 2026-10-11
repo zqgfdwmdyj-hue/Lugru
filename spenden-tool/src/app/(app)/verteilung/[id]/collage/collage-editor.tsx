@@ -27,7 +27,8 @@ function blurredBackground(img: HTMLImageElement, w: number, h: number, avoid: P
     c.width = cw;
     c.height = ch;
     drawBlurBackground(c.getContext("2d")!, img, 0, 0, cw, ch, "blur(24px) brightness(0.85)", avoid);
-    if (bgCache.size > 400) bgCache.delete(bgCache.keys().next().value!);
+    // Begrenzt, damit iPhones nicht an ihre Grenze für Canvas-Speicher stoßen.
+    if (bgCache.size > 60) bgCache.delete(bgCache.keys().next().value!);
     bgCache.set(key, c);
   }
   return c;

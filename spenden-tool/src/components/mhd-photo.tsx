@@ -42,7 +42,7 @@ export function MhdPhoto({ itemId, fileId, action }: { itemId: string; fileId: s
       </button>
       {current && (
         <a href={`/datei/${current}`} target="_blank" rel="noreferrer" title="MHD-Foto ansehen">
-          <img src={`/datei/${current}`} alt="MHD-Foto" style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 4, verticalAlign: "middle" }} />
+          <img src={`/datei/${current}?w=200`} alt="MHD-Foto" style={{ width: 28, height: 28, objectFit: "cover", borderRadius: 4, verticalAlign: "middle" }} />
         </a>
       )}
       {state && <span style={{ color: state.ok ? "var(--ok)" : "var(--warn)", flexBasis: "100%" }}>{state.message}</span>}

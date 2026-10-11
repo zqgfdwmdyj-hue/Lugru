@@ -15,7 +15,11 @@ export function parseAmount(value: unknown): number | null {
 /** „2026-09-12“ aus einem Datumsfeld; sonst null. */
 export function parseIsoDate(value: unknown): string | null {
   const m = typeof value === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim()) : null;
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  if (!m) return null;
+  // Nur echte Kalendertage (kein 31.02.) – sonst bricht die Datenbank das Speichern ab.
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3] || +m[1] < 2000 || +m[1] > 2100) return null;
+  return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
 export function formatEuro(value: number | null | undefined): string {

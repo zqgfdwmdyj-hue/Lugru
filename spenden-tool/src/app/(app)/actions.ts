@@ -15,7 +15,7 @@ import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from 
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 import { readBestBefore } from "@/lib/mhd";
 import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
-import { hasSeveralPrices } from "@/lib/printed-price";
+import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
 
 const uuid = z.string().uuid();
 const P = schema.products;
@@ -109,33 +109,41 @@ export async function saveItems(fd: FormData) {
   const eventId = uuid.parse(fd.get("eventId"));
   const items = await db.select().from(I).where(eq(I.eventId, eventId)).orderBy(I.sort, I.createdAt);
   const touchedPrices = new Map<string, number>();
+  // Felder, die seit dem Laden der Seite nicht angefasst wurden, bleiben unverändert – so überschreibt ein
+  // Speichern nichts, was inzwischen im Hintergrund eingetragen wurde (Preis aus dem Foto, Name von der KI).
+  const changed = (key: string) => !fd.has(`o_${key}`) || str(fd, `o_${key}`) !== str(fd, key);
   for (const it of items) {
     if (!fd.has(`price_${it.id}`)) continue;
-    const p = price(fd, `price_${it.id}`);
+    const typed = str(fd, `price_${it.id}`);
+    // „50 Cent“ / „50 ct“ verstehen; Unlesbares löscht den Preis nicht.
+    const parsed = typed ? (parseAmount(typed) ?? parsePrintedPrice(typed)) : null;
+    const priceOk = !typed || (parsed !== null && parsed >= 0 && parsed < 100000);
+    const p = priceOk && parsed !== null ? Math.round(parsed * 100) / 100 : null;
     const qty = parseAmount(str(fd, `qty_${it.id}`));
     await db
       .update(I)
       .set({
-        price: p,
+        ...(changed(`price_${it.id}`) && priceOk ? { price: p } : {}),
         priceNote: opt(fd, `note_${it.id}`),
         caption: opt(fd, `caption_${it.id}`),
-        quantity: qty === null ? null : Math.max(0, Math.round(qty)),
-        bestBefore: parseIsoDate(str(fd, `mhd_${it.id}`)),
+        quantity: qty === null || qty < 0 || qty > 1e6 ? null : Math.round(qty),
+        ...(changed(`mhd_${it.id}`) ? { bestBefore: parseIsoDate(str(fd, `mhd_${it.id}`)) } : {}),
         inCollage: fd.get(`col_${it.id}`) === "on",
         inFlyer: fd.get(`fly_${it.id}`) === "on",
       })
       .where(eq(I.id, it.id));
-    if (p !== null && p !== it.price) touchedPrices.set(it.productId, p);
+    if (changed(`price_${it.id}`) && priceOk && p !== null && p !== it.price) touchedPrices.set(it.productId, p);
   }
   // Name, Variante und Kategorie lassen sich direkt in der Liste pflegen (z. B. nach dem Foto-Upload).
   for (const productId of new Set(items.map((i) => i.productId))) {
     if (!fd.has(`name_${productId}`)) continue;
     const name = str(fd, `name_${productId}`);
-    if (!name) continue;
-    await db
-      .update(P)
-      .set({ name, variant: opt(fd, `variant_${productId}`), category: str(fd, `cat_${productId}`) || "Lebensmittel", updatedAt: new Date() })
-      .where(eq(P.id, productId));
+    const set: Partial<typeof P.$inferInsert> = {};
+    // Leerer Name = noch ohne Namen (Platzhalter bleibt); Variante und Kategorie trotzdem speichern.
+    if (name && changed(`name_${productId}`)) set.name = name;
+    if (changed(`variant_${productId}`)) set.variant = opt(fd, `variant_${productId}`);
+    if (changed(`cat_${productId}`)) set.category = str(fd, `cat_${productId}`) || "Lebensmittel";
+    if (Object.keys(set).length) await db.update(P).set({ ...set, updatedAt: new Date() }).where(eq(P.id, productId));
   }
   // Der zuletzt verwendete Preis wird zum Vorschlag für das nächste Mal.
   for (const [productId, p] of touchedPrices) {
@@ -248,9 +256,11 @@ export async function scanEventPhotoPrices(eventId: string, fd: FormData) {
 }
 
 /** Falsch erkannt: Foto gilt als „ohne Preis“, die Collage druckt den Preis wieder normal. */
-export async function clearPrintedPrice(fileId: string, back: string) {
+export async function clearPrintedPrice(fileId: string, back: string, fd?: FormData) {
   await requireLogin();
   const id = uuid.parse(fileId);
+  // Aus der Produktliste heraus: erst deren Eingaben speichern.
+  if (fd?.has("eventId")) await saveItems(fd);
   await db.update(schema.files).set({ printedStatus: "done", printedPrice: null, printedPriceText: null, printedPriceBox: null, printedScannedAt: new Date() }).where(eq(schema.files.id, id));
   revalidatePath(back.startsWith("/") ? back : "/");
 }
@@ -417,8 +427,10 @@ export async function applyPriceCheck(_prev: ApplyState, fd: FormData): Promise<
 }
 
 /** Knopf in der Tabelle einer Verteilung: KI-Vorschlag direkt als Preis übernehmen. */
-export async function applySuggestion(checkId: string, eventId: string) {
+export async function applySuggestion(checkId: string, eventId: string, form?: FormData) {
   await requireLogin();
+  // Erst die übrigen Eingaben der Liste speichern, damit nichts verloren geht.
+  if (form?.has("eventId")) await saveItems(form);
   const fd = new FormData();
   fd.set("checkId", uuid.parse(checkId));
   fd.set("eventId", uuid.parse(eventId));

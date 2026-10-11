@@ -100,7 +100,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
               {twins.map((w) => (
                 <label key={w.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" name="mergeId" value={w.id} defaultChecked={photoNote.get(w.id) !== "ähnliches Foto"} />
-                  {w.imageFileId && <img src={`/datei/${w.imageFileId}`} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 4 }} />}
+                  {w.imageFileId && <img src={`/datei/${w.imageFileId}?w=200`} alt="" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 4 }} />}
                   <Link href={`/produkte/${w.id}`}>{w.name}{w.variant ? ` · ${w.variant}` : ""}</Link>
                   {photoNote.has(w.id) && <span className="small muted">{photoNote.get(w.id)}</span>}
                 </label>

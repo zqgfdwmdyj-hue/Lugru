@@ -6,3 +6,8 @@ next-env.d.ts
 .env.local
 /backups/
 /deploy/server/
+
+# Test-Screenshots nicht versehentlich einchecken
+/*.png
+/*.jpg
+/ux/

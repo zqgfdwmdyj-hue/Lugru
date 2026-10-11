@@ -76,3 +76,13 @@ describe("MHD lesen", () => {
     expect(normalizeMhd("keine Angabe")).toBe(null);
   });
 });
+
+describe("Datum aus Formularfeldern", () => {
+  it("nimmt nur echte Kalendertage", async () => {
+    const { parseIsoDate } = await import("@/lib/numbers");
+    expect(parseIsoDate("2026-10-12")).toBe("2026-10-12");
+    expect(parseIsoDate("2026-02-31")).toBeNull();
+    expect(parseIsoDate("2028-02-29")).toBe("2028-02-29");
+    expect(parseIsoDate("12.10.2026")).toBeNull();
+  });
+});

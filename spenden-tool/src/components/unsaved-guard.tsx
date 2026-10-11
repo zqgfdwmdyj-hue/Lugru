@@ -28,6 +28,15 @@ export function UnsavedGuard({ formId }: { formId: string }) {
   }, [formId]);
 
   useEffect(() => {
+    // Für AutoRefresh: nicht neu laden, solange etwas ungespeichert ist.
+    if (dirty) document.documentElement.dataset.unsaved = "1";
+    else delete document.documentElement.dataset.unsaved;
+    return () => {
+      delete document.documentElement.dataset.unsaved;
+    };
+  }, [dirty]);
+
+  useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     // Links innerhalb der App laufen ohne Neuladen – dort selbst nachfragen.

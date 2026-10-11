@@ -5,7 +5,8 @@ import { CopyButton } from "@/components/copy-button";
 import { eventDateLabel, flyerSections, isPlaceholderName, messengerText } from "@/lib/layout";
 import { knownCategories, latestPriceChecks, loadEvent, loadEventItems, printedInfo, productPicker } from "@/lib/service";
 import { differsFromPhoto } from "@/lib/printed-price";
-import { aiConfigured } from "@/lib/price-research";
+import { aiConfigured, failStaleChecks } from "@/lib/price-research";
+import { failStalePhotoPrices } from "@/lib/photo-price";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckChip, usd } from "@/components/price-check";
 import { aiCostUsd } from "@/lib/ai-modes";
@@ -31,6 +32,8 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const event = await loadEvent(id);
   if (!event) notFound();
+  // Hängengebliebene KI-Aufträge (z. B. nach einem Server-Update) freigeben, damit die Seite nicht ewig „sucht“.
+  if (aiConfigured()) await Promise.all([failStaleChecks(), failStalePhotoPrices()]);
   const [rows, picker, categories] = await Promise.all([loadEventItems(id), productPicker(id, q), knownCategories()]);
 
   const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
@@ -156,10 +159,16 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                   <tr key={item.id}>
                     <td>
                       <Link href={`/produkte/${product.id}?zurueck=${id}`} title="Produkt bearbeiten / Foto ändern">
-                        {product.imageFileId ? <img src={`/datei/${product.imageFileId}`} alt="" style={thumb} loading="lazy" /> : <span style={{ ...thumb, display: "grid", placeItems: "center", fontSize: 11, color: "var(--muted)" }}>kein Foto</span>}
+                        {product.imageFileId ? <img src={`/datei/${product.imageFileId}?w=200`} alt="" style={thumb} loading="lazy" /> : <span style={{ ...thumb, display: "grid", placeItems: "center", fontSize: 11, color: "var(--muted)" }}>kein Foto</span>}
                       </Link>
                     </td>
                     <td style={{ minWidth: 150 }}>
+                      {/* Stand beim Laden – Unverändertes überschreibt beim Speichern nichts, was die KI inzwischen eingetragen hat */}
+                      <input type="hidden" name={`o_name_${product.id}`} value={isPlaceholderName(product.name) ? "" : product.name} />
+                      <input type="hidden" name={`o_variant_${product.id}`} value={product.variant ?? ""} />
+                      <input type="hidden" name={`o_cat_${product.id}`} value={product.category} />
+                      <input type="hidden" name={`o_price_${item.id}`} value={priceText(item.price)} />
+                      <input type="hidden" name={`o_mhd_${item.id}`} value={item.bestBefore ?? ""} />
                       <input className="input input-compact" name={`name_${product.id}`} defaultValue={isPlaceholderName(product.name) ? "" : product.name} placeholder="Name eintragen" aria-label="Name" />
                       <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
                         <input className="input input-compact" name={`variant_${product.id}`} defaultValue={product.variant ?? ""} placeholder="Variante (z. B. 5kg)" aria-label="Variante" />
@@ -278,7 +287,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
               {picker.map(({ p, lastUsed, times }) => (
                 <label key={p.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: 4, borderRadius: 6, cursor: "pointer" }}>
                   <input type="checkbox" name="productId" value={p.id} />
-                  {p.imageFileId ? <img src={`/datei/${p.imageFileId}`} alt="" style={{ ...thumb, width: 36, height: 36 }} loading="lazy" /> : <span style={{ ...thumb, width: 36, height: 36 }} />}
+                  {p.imageFileId ? <img src={`/datei/${p.imageFileId}?w=200`} alt="" style={{ ...thumb, width: 36, height: 36 }} loading="lazy" /> : <span style={{ ...thumb, width: 36, height: 36 }} />}
                   <span style={{ minWidth: 0, flexGrow: 1 }}>
                     <span style={{ display: "block", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}{p.variant ? ` · ${p.variant}` : ""}</span>
                     <span className="small muted">{p.category}{times ? ` · ${times}× dabei, zuletzt ${formatDate(lastUsed)}` : " · neu"}</span>

@@ -28,9 +28,15 @@ export function checkPassword(input: string) {
   return safeEqual(sign(input), sign(pw));
 }
 
+/**
+ * Die Sitzung ist an das aktuelle Passwort gebunden: Wird APP_PASSWORD geändert, sind alle bestehenden
+ * Anmeldungen ungültig (z. B. wenn ein Handy verloren ging oder jemand das Team verlässt).
+ */
+const sessionSig = (expires: string) => sign(`${expires}|${sign(`pw|${process.env.APP_PASSWORD ?? ""}`)}`);
+
 export async function startSession() {
   const expires = Date.now() + DAYS * 86400_000;
-  (await cookies()).set(SESSION_COOKIE, `${expires}.${sign(String(expires))}`, {
+  (await cookies()).set(SESSION_COOKIE, `${expires}.${sessionSig(String(expires))}`, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production" && !process.env.APP_URL?.startsWith("http://"),
@@ -47,7 +53,7 @@ export async function isLoggedIn() {
   const v = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!v) return false;
   const [expires, sig] = v.split(".");
-  return !!sig && Number(expires) > Date.now() && safeEqual(sig, sign(expires));
+  return !!sig && Number(expires) > Date.now() && safeEqual(sig, sessionSig(expires));
 }
 
 /** In jeder Seite, Server-Aktion und Route aufrufen. */
