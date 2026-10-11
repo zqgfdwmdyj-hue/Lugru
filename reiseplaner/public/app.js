@@ -11,6 +11,7 @@ import { anmeldungPruefen, anmeldenZeigen } from "./konto.js";
 import { hotelsAnsicht, hotelStatusAendern } from "./hotels.js";
 import { erlebnisseAnsicht, bewertungsZeile } from "./erlebnisse.js";
 import { kiImportBox, kiKnopf, kiPanel } from "./ki.js";
+import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js";
 import "./teilen.js";
 
 const inhalt = $("#inhalt");
@@ -113,12 +114,18 @@ function ansichtWechseln(ansicht) {
   for (const b of document.querySelectorAll("#reiter button")) b.classList.toggle("aktiv", b.dataset.ansicht === ansicht);
   alles();
   window.scrollTo({ top: 0 });
+  if (ansicht === "weltkarte") weltkarteLaden().then(alles);
 }
 
 // ---------- Darstellung ----------
 
 function alles() {
   $("#kiKnopfPlatz").innerHTML = kiKnopf();
+  if (zustand.ansicht === "weltkarte") {
+    inhalt.innerHTML = weltkarteAnsicht();
+    karteZeichnen();
+    return;
+  }
   if (!zustand.reise) {
     inhalt.innerHTML = `
       <div class="leer">
@@ -539,6 +546,7 @@ function verlaufAnsicht() {
         <label>Art<select data-reise="art"><option value="kreuzfahrt" ${r.art === "kreuzfahrt" || !r.art ? "selected" : ""}>Kreuzfahrt</option><option value="hotel" ${r.art === "hotel" ? "selected" : ""}>Hotel-/Strandurlaub</option><option value="rundreise" ${r.art === "rundreise" ? "selected" : ""}>Rundreise</option></select></label>
         ${istKreuzfahrt() ? `<label>Schiff<input data-reise="schiff" value="${esc(r.schiff ?? "")}" placeholder="z. B. Mein Schiff 4"></label>` : ""}
       </div>
+      ${istPlaner() ? `<label class="haken"><input type="checkbox" data-aktion="reise-oeffentlich" data-id="${esc(r.id)}" ${r.oeffentlich ? "checked" : ""}> 🌍 Im öffentlichen Reisetagebuch zeigen <span class="leise klein">(nur vergangene Tage, gebuchte Ausflüge/Unterkünfte, Bewertungen und Fotos – ohne Kosten und Planung)</span></label>` : ""}
     </div>
     <div class="karte-box">
       <div class="zeile"><h3>${istKreuzfahrt() ? "Route" : "Tage"}</h3><button class="knopf" data-aktion="hafen-neu">+ ${istKreuzfahrt() ? "Hafen / Seetag" : "Tag / Ort"}</button></div>
@@ -548,7 +556,7 @@ function verlaufAnsicht() {
         <tbody>${haefen()
           .map((h) => `<tr>
             <td>${esc(datumText(h.datum))}</td>
-            <td>${stationsArt(h) === "seetag" ? "🌊 Seetag" : `${stationsArt(h) === "hafen" ? "⚓" : "📍"} ${esc(h.name)}`}</td>
+            <td>${stationsArt(h) === "seetag" ? "🌊 Seetag" : hatKoord(h) ? `<button class="link" data-aktion="flieg" data-lat="${h.lat}" data-lng="${h.lng}" data-zoom="12">${stationsArt(h) === "hafen" ? "⚓" : "📍"} ${esc(h.name)}</button>` : `${stationsArt(h) === "hafen" ? "⚓" : "📍"} ${esc(h.name)}`}${h.land ? ` <span class="leise klein">${esc(h.land)}</span>` : ""}</td>
             ${istKreuzfahrt() ? `<td>${esc(h.ankunft ?? "")}</td><td>${esc(h.abfahrt ?? "")}</td><td>${esc(h.allesAnBord ?? "")}</td>` : ""}
             <td>${stationsArt(h) === "seetag" ? "" : hatKoord(h) ? "✓" : `<span class="warnung">fehlt</span>`}</td>
             <td><button class="link" data-aktion="hafen-bearbeiten" data-id="${esc(h.id)}">Bearbeiten</button></td>
@@ -617,12 +625,36 @@ const icon = (farbe, text = "", gross = false) =>
     iconAnchor: gross ? [15, 15] : [12, 12],
   });
 
+const roteNadel = () =>
+  L.divIcon({
+    className: "nadel",
+    html: '<svg width="24" height="36" viewBox="0 0 26 38" aria-hidden="true"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 25 13 25s13-15.2 13-25C26 5.8 20.2 0 13 0z" fill="#d0021b"/><circle cx="13" cy="13" r="5" fill="#fff"/></svg>',
+    iconSize: [24, 36],
+    iconAnchor: [12, 36],
+    popupAnchor: [0, -32],
+  });
+
+function weltkarteZeichnen() {
+  const pins = weltkartePins().filter((p) => !p.hotel);
+  for (const p of pins) {
+    L.marker([p.lat, p.lng], { icon: roteNadel() })
+      .bindPopup(`<strong>${esc(p.name)}</strong>${p.land ? `, ${esc(p.land)}` : ""}${p.info ? `<br>${esc(p.info)}` : ""}`)
+      .addTo(ebene);
+  }
+  $("#legende").innerHTML = `<span><span class="punkt" style="--farbe:#d0021b"></span>Hier wart ihr schon (${pins.length})</span>`;
+  if (pins.length > 1) karte.flyToBounds(pins.map((p) => [p.lat, p.lng]), { padding: [30, 30], maxZoom: 7, duration: 0.8 });
+  else if (pins.length === 1) karte.flyTo([pins[0].lat, pins[0].lng], 7, { duration: 0.8 });
+  else karte.setView([25, 0], 2);
+  setTimeout(() => karte.invalidateSize(), 50);
+}
+
 function karteZeichnen() {
   karteInit();
   if (!karte) return;
   ebene.clearLayers();
   for (const k of Object.keys(kartenMarker)) delete kartenMarker[k];
   const legende = $("#legende");
+  if (zustand.ansicht === "weltkarte") return weltkarteZeichnen();
   if (!zustand.reise) {
     legende.innerHTML = "";
     return;
@@ -695,10 +727,11 @@ function karteZeichnen() {
     }
   }
   legende.innerHTML = [...legendeTeile, ...[...verwendet].map((q) => `<span><span class="punkt" style="--farbe:${QUELLEN[q].farbe}"></span>${esc(QUELLEN[q].name)}</span>`), `<span>✓ gebucht · ★ Favorit</span>`].join("");
-  if (grenzen.length > 1) karte.fitBounds(grenzen, { padding: [30, 30], maxZoom: 14 });
-  else if (grenzen.length === 1) karte.setView(grenzen[0], 12);
-  else if (liste.length > 1) karte.fitBounds(liste.map((x) => [x.lat, x.lng]), { padding: [30, 30] });
-  else if (liste.length === 1) karte.setView([liste[0].lat, liste[0].lng], 10);
+  // Sanft zum gewählten Tag/Ort fliegen
+  if (grenzen.length > 1) karte.flyToBounds(grenzen, { padding: [30, 30], maxZoom: 14, duration: 0.8 });
+  else if (grenzen.length === 1) karte.flyTo(grenzen[0], 12, { duration: 0.8 });
+  else if (liste.length > 1) karte.flyToBounds(liste.map((x) => [x.lat, x.lng]), { padding: [30, 30], duration: 0.8 });
+  else if (liste.length === 1) karte.flyTo([liste[0].lat, liste[0].lng], 10, { duration: 0.8 });
   setTimeout(() => karte.invalidateSize(), 50);
 }
 
@@ -770,6 +803,7 @@ function hafenDialog(id) {
       lng: ort?.lng ?? null,
       ortName: ort?.name ?? "",
     });
+    if (!h.land && ort?.land && h.art !== "seetag") h.land = ort.land;
     if (neu) zustand.reise.haefen.push(h);
     if (!zustand.hafenId || neu) zustand.hafenId = h.id;
     for (const a of ausfluegeIn(h.id)) if (!a.fahrzeitManuell) a.fahrzeitMin = null;
@@ -930,6 +964,11 @@ Object.assign(aktionen, {
     document.querySelector(".kartenbereich").scrollIntoView({ behavior: "smooth", block: "nearest" });
   },
   "dialog-zu": () => dialog().close(),
+  flieg: (el) => {
+    if (!karte) return;
+    karte.flyTo([Number(el.dataset.lat), Number(el.dataset.lng)], Number(el.dataset.zoom) || 10, { duration: 1 });
+    if (window.matchMedia("(max-width: 900px)").matches) document.querySelector(".kartenbereich").scrollIntoView({ behavior: "smooth", block: "start" });
+  },
   drucken: () => window.print(),
   "ort-suchen": (el) => ortSuchen(el.closest(".ortssuche")),
   "ort-waehlen": (el) => {
@@ -1004,7 +1043,7 @@ document.addEventListener("click", (e) => {
   if (!el || el.tagName === "SELECT") return;
   const fn = aktionen[el.dataset.aktion];
   if (!fn) return;
-  if (el.tagName === "BUTTON" && el.type !== "submit") e.preventDefault();
+  if (el.tagName === "BUTTON" && el.type !== "submit" && !el.closest("summary")) e.preventDefault();
   Promise.resolve(fn(el, e)).catch((err) => alert(err.message));
 });
 

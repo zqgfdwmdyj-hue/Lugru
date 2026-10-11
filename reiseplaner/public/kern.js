@@ -188,7 +188,7 @@ export async function ortSuchen(box) {
   try {
     const treffer = await anfrage(`/api/geo?q=${encodeURIComponent(q)}`);
     ziel.innerHTML = treffer.length
-      ? treffer.map((t) => `<button type="button" class="treffer" data-aktion="ort-waehlen" data-wert='${esc(JSON.stringify({ lat: t.lat, lng: t.lng, name: t.name.split(",").slice(0, 3).join(",") }))}'>${esc(t.name)}</button>`).join("")
+      ? treffer.map((t) => `<button type="button" class="treffer" data-aktion="ort-waehlen" data-wert='${esc(JSON.stringify({ lat: t.lat, lng: t.lng, name: t.name.split(",").slice(0, 3).join(","), land: t.name.split(",").at(-1).trim() }))}'>${esc(t.name)}</button>`).join("")
       : `<span class="leise klein">Nichts gefunden. Tipp: In Google Maps rechts auf den Ort klicken, die Koordinaten kopieren und hier einfügen.</span>`;
   } catch (e) {
     ziel.innerHTML = `<span class="warnung klein">${esc(e.message)}</span>`;

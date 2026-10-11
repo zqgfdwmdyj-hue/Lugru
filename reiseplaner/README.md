@@ -42,6 +42,15 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
   Strömung, Anzug, Blei, Flasche, Gas/Nitrox, Druck, Buddy, Guide, Sichtungen, Fotos, Kartenpunkt.
   „Mein Logbuch“ zählt fortlaufend über alle Reisen (Startnummer im Konto einstellbar).
 
+**Weltkarte & öffentliches Reisetagebuch**
+- Reiter „🌍 Weltkarte“: rote Stecknadeln für alle Orte, an denen ihr wart (vergangene Reisetage aus allen
+  Reisen plus von Hand nachgetragene frühere Urlaube), Liste nach Ländern/Inseln – ein Klick und die Karte
+  fliegt hin. Auch beim Planen und unter „Route & Häfen“ fliegt die Karte zum gewählten Ort.
+- `/tagebuch` ist **ohne Anmeldung** erreichbar: Karte mit roten Stecknadeln, Länder & Inseln, je
+  freigegebener Reise die besuchten Orte, gebuchten Ausflüge und Unterkünfte mit Bewertungen und Fotos,
+  Tauchgänge. Freigabe je Reise durch Planer/innen („Im öffentlichen Reisetagebuch zeigen“). Es erscheinen
+  nur vergangene Tage – nie Kosten, Preise, Planungen, Notizen, Nachnamen oder private Bewertungen.
+
 **Teilen**
 - Freigabe-Link für **genau einen Beitrag**: Bewertungen eines Ausflugs/Hotels, einen Tauchgang
   oder den Reisebericht. Die übrige Reise, Kosten und Mitreisende bleiben privat; nur Vornamen

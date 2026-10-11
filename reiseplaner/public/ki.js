@@ -113,7 +113,7 @@ export async function koordinatenErgaenzen(reise, fortschritt = () => {}) {
       gefunden.set(suche, ersatz[0] ?? null);
     }
     const t = gefunden.get(suche);
-    if (t) Object.assign(h, { lat: t.lat, lng: t.lng, ortName: t.name.split(",").slice(0, 3).join(",") });
+    if (t) Object.assign(h, { lat: t.lat, lng: t.lng, ortName: t.name.split(",").slice(0, 3).join(","), land: h.land || t.name.split(",").at(-1).trim() });
   }
   return offen.filter((h) => h.lat == null).map((h) => h.name);
 }

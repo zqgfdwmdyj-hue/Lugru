@@ -21,6 +21,7 @@ import * as konten from "./lib/konten.mjs";
 import { fehler } from "./lib/konten.mjs";
 import * as teilen from "./lib/teilen.mjs";
 import * as ki from "./lib/ki.mjs";
+import * as tagebuch from "./lib/tagebuch.mjs";
 
 const HIER = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(HIER, "public");
@@ -95,6 +96,16 @@ async function reiseMitRecht(id, benutzer, mindestens = "mitreisend") {
 }
 
 const beitraegeLesen = (id) => lesen(beitraegeDatei(id), LEERE_BEITRAEGE);
+
+async function alleReisen() {
+  const liste = [];
+  for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
+    const r = await reiseLesen(d.slice(0, -5));
+    if (r) liste.push(r);
+  }
+  return liste;
+}
+const heuteIso = () => new Date().toISOString().slice(0, 10);
 const beitraegeAendern = (id, fn) => aendern(beitraegeDatei(id), LEERE_BEITRAEGE, fn);
 
 function darfBearbeiten(eintrag, benutzer, rolle, feld = "autorId") {
@@ -305,6 +316,7 @@ async function api(req, res, url, ich) {
           const alt = await reiseLesen(id);
           if (Number(neu.version) !== Number(alt.version)) return { konflikt: alt };
           const { meineRolle, mitglieder, ...rest } = neu;
+          rest.oeffentlich = alt.oeffentlich ?? false; // nur über /oeffentlich änderbar (Planer/innen)
           const r = { ...rest, id, mitglieder: alt.mitglieder, version: Number(alt.version) + 1, geaendert: new Date().toISOString(), geaendertVon: ich.id };
           await schreiben(reiseDatei(id), r);
           return { version: r.version, geaendert: r.geaendert };
@@ -323,6 +335,16 @@ async function api(req, res, url, ich) {
         await loeschen(reiseDatei(id));
         return json(res, 200, { ok: true });
       }
+    }
+
+    // Reise im öffentlichen Reisetagebuch zeigen (nur Planer/innen)
+    if (unter === "oeffentlich" && m === "PUT") {
+      await reiseMitRecht(id, ich, "planer");
+      const d = await koerper(req, 1_000);
+      await aendern(reiseDatei(id), null, (r) => {
+        r.oeffentlich = d.oeffentlich === true;
+      });
+      return json(res, 200, { oeffentlich: d.oeffentlich === true });
     }
 
     // Mitglieder & Einladungen
@@ -513,6 +535,33 @@ async function api(req, res, url, ich) {
     return json(res, 200, { ok: true });
   }
 
+  // Weltkarte: besuchte Orte aller eigenen Reisen + von Hand eingetragene Orte
+  if (p === "/api/weltkarte" && m === "GET") {
+    const einst = await tagebuch.einstellungenLesen();
+    const reisen = (await alleReisen()).filter((r) => rolleIn(r, ich));
+    return json(res, 200, {
+      titel: einst.titel,
+      text: einst.text,
+      orte: einst.orte,
+      besucht: reisen.flatMap((r) => tagebuch.besuchteOrte(r, heuteIso())),
+      reisen: reisen.map((r) => ({ id: r.id, name: r.name, oeffentlich: Boolean(r.oeffentlich), planer: rolleIn(r, ich) === "planer" })),
+      url: `${basisUrl(req)}/tagebuch`,
+    });
+  }
+  if (p === "/api/weltkarte" && m === "PUT") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    return json(res, 200, await tagebuch.einstellungenAendern(await koerper(req, 20_000)));
+  }
+  if (p === "/api/weltkarte/orte" && m === "POST") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    return json(res, 201, await tagebuch.ortHinzufuegen(await koerper(req, 20_000)));
+  }
+  if (t[1] === "weltkarte" && t[2] === "orte" && t[3] && m === "DELETE") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    await tagebuch.ortLoeschen(t[3]);
+    return json(res, 200, { ok: true });
+  }
+
   // Mein Tauchlogbuch über alle Reisen
   if (p === "/api/tauchlog" && m === "GET") {
     const liste = [];
@@ -640,6 +689,40 @@ async function freigabeSeite(req, res, url) {
   return html(200, teilen.seiteRendern(inhalt, f, basisUrl(req)));
 }
 
+async function tagebuchSeite(req, res, url) {
+  const inhalt = tagebuch.tagebuchInhalt(
+    await Promise.all((await alleReisen()).filter((r) => r.oeffentlich).map(async (reise) => ({ reise, beitraege: await beitraegeLesen(reise.id) }))),
+    await konten.alleBenutzer(),
+    await tagebuch.einstellungenLesen(),
+    heuteIso(),
+  );
+  const teile = url.pathname.split("/").filter(Boolean); // ["tagebuch", "foto", id]
+  if (teile[1] === "foto") {
+    if (!ID_RE.test(teile[2] ?? "") || !inhalt.fotos.has(teile[2])) {
+      res.writeHead(404);
+      return res.end();
+    }
+    return fotoSenden(res, teile[2], url.searchParams.has("klein"));
+  }
+  if (teile.length > 1) {
+    res.writeHead(404, { "content-type": MIME[".html"] });
+    return res.end(teilen.nichtGefundenSeite());
+  }
+  const kacheln = process.env.KARTEN_KACHELN || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  let kachelHost = "https://tile.openstreetmap.org";
+  try {
+    kachelHost = new URL(kacheln.replace(/\{[a-z]\}/g, "a")).origin;
+  } catch {}
+  res.writeHead(200, {
+    "content-type": MIME[".html"],
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "content-security-policy": `default-src 'none'; img-src 'self' data: https://unpkg.com ${kachelHost} https://*.tile.openstreetmap.org; style-src 'unsafe-inline' https://unpkg.com; script-src 'unsafe-inline' https://unpkg.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+  });
+  res.end(tagebuch.seiteRendern(inhalt, basisUrl(req), kacheln, process.env.KARTEN_HINWEIS || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'));
+}
+
 async function statisch(req, res, url) {
   let datei;
   try {
@@ -665,6 +748,7 @@ const server = createServer(async (req, res) => {
   try {
     if (url.pathname === "/gesund") return json(res, 200, { ok: true });
     if (url.pathname.startsWith("/teilen/")) return await freigabeSeite(req, res, url);
+    if (url.pathname === "/tagebuch" || url.pathname.startsWith("/tagebuch/")) return await tagebuchSeite(req, res, url);
     if (!url.pathname.startsWith("/api/")) return await statisch(req, res, url);
 
     // Schutz vor fremden Seiten (CSRF): Änderungen nur mit dem App-eigenen Kopf.

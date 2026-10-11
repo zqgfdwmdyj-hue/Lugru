@@ -6,7 +6,7 @@ const startEl = () => $("#start");
 function zeigeStart(html) {
   document.body.classList.add("abgemeldet");
   startEl().hidden = false;
-  startEl().innerHTML = `<div class="startkarte"><div class="marke gross">⚓ Reiseplaner</div>${html}</div>`;
+  startEl().innerHTML = `<div class="startkarte"><div class="marke gross">⚓ Reiseplaner</div>${html}<p class="klein leise"><a href="/tagebuch">🌍 Unser öffentliches Reisetagebuch ansehen</a></p></div>`;
 }
 
 function versteckeStart() {
