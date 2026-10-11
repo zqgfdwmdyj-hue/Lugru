@@ -15,6 +15,17 @@ echo "=== Webserver-Konfigurationen ==="
 for f in /etc/caddy/Caddyfile /opt/seller-system/deploy/Caddyfile; do [ -f "$f" ] && echo "$f:" && grep -vE '^\s*(#|$)' "$f" | head -20; done
 ls /etc/nginx/sites-enabled 2>/dev/null && echo "(nginx vorhanden)"
 echo
+echo "=== Coolify-Proxy ==="
+docker ps --filter name=coolify-proxy --format '{{.Names}}  {{.Image}}  {{.Status}}' 2>/dev/null
+ls -la /data/coolify/proxy/ 2>/dev/null
+echo "Dynamische Konfigurationen:"
+ls -1 /data/coolify/proxy/dynamic/ 2>/dev/null
+for f in /data/coolify/proxy/dynamic/coolify.yaml /data/coolify/proxy/dynamic/default_redirect_503.yaml; do [ -f "$f" ] && echo "--- $f" && head -40 "$f"; done
+grep -E "entrypoints|certificatesresolvers|--providers" /data/coolify/proxy/docker-compose.yml 2>/dev/null | head -20
+echo
+echo "=== Docker-Netze ==="
+docker network ls --format '{{.Name}}' 2>/dev/null
+echo
 echo "=== Tailscale ==="
 tailscale ip -4 2>/dev/null || echo "kein Tailscale"
 echo
