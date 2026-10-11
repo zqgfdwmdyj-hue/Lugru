@@ -88,7 +88,7 @@ function vorschauZeigen() {
       ${p.hinweise ? `<p class="hinweis klein">ℹ️ ${esc(p.hinweise)}</p>` : ""}
       ${liste("Tage", p.stationen, (s) => `${esc(datumText(s.datum))} ${s.art === "seetag" ? "🌊 Seetag" : esc(s.name)}${s.ankunft ? ` · ${esc(s.ankunft)}–${esc(s.abfahrt)}` : ""}`)}
       ${liste("Unterkünfte", p.hotels, (h) => `${esc(h.name)} <span class="leise">${esc(h.ort)} ${esc(datumText(h.anreise))}–${esc(datumText(h.abreise))}${h.preis != null ? ` · ${h.preis} €` : ""}</span>`)}
-      ${liste("Ausflüge", p.ausfluege, (a) => `${esc(datumText(a.datum))} ${esc(a.titel)} <span class="leise">${esc(STATUS[a.status] ?? "")} · ${esc(QUELLEN[a.quelle]?.name ?? "")}${a.beginn ? ` · ${esc(a.beginn)}` : ""}${a.dauerMin ? ` · ${Math.round(a.dauerMin / 6) / 10} Std.` : ""}${a.preisGruppe != null ? ` · ${esc(geld(a.preisGruppe))} gesamt` : a.preisErw != null ? ` · ${esc(geld(a.preisErw))} p. P.${a.preisKind != null ? `, Kind ${esc(geld(a.preisKind))}` : ""}` : " · <em>ohne Preis</em>"}</span>`)}
+      ${liste("Ausflüge", p.ausfluege, (a) => `${esc(datumText(a.datum))} ${esc(a.titel)} <span class="leise">${esc(STATUS[a.status] ?? "")} · ${esc(QUELLEN[a.quelle]?.name ?? "")}${a.beginn ? ` · ${esc(a.beginn)}` : ""}${a.dauerMin ? ` · ${Math.round(a.dauerMin / 6) / 10} Std.` : ""}${a.preisGruppe != null ? ` · ${esc(geld(a.preisGruppe))} gesamt` : a.preisErw != null ? ` · ${esc(geld(a.preisErw))} p. P.${a.preisKind != null ? `, Kind ${esc(geld(a.preisKind))}` : ""}${a.kostenlosBis ? `, Kinder unter ${esc(a.kostenlosBis)} frei` : ""}` : " · <em>ohne Preis</em>"}</span>`)}
       ${liste("Weitere Kosten", p.kosten, (k) => `${esc(k.titel)}${k.betrag != null ? ` · ${k.betrag} €` : ""}`)}
       ${liste("Personen", p.personen, (x) => `${esc(x.name)} <span class="leise">${x.typ === "kind" ? `Kind${x.alter ? `, ${x.alter}` : ""}` : "Erwachsen"}</span>`)}
       <div class="zeile">
@@ -271,7 +271,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-const ZAHLENFELDER = new Set(["dauerMin", "preisErw", "preisKind", "preisGruppe", "zusatzkosten", "interesse", "preis"]);
+const ZAHLENFELDER = new Set(["dauerMin", "preisErw", "preisKind", "kostenlosBis", "preisGruppe", "zusatzkosten", "interesse", "preis"]);
 
 aktionen["ki-vorschlag"] = async (el) => {
   const v = verlauf.flatMap((n) => n.vorschlaege ?? []).find((x) => x.id === el.dataset.id);

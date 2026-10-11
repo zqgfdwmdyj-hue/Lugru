@@ -96,6 +96,8 @@ code { background: var(--akzent-hell); padding: 0 4px; border-radius: 4px; font-
 .knopf.gefahr { background: transparent; color: var(--rot); border-color: var(--rot); }
 .knopf:hover { filter: brightness(1.05); }
 .link { background: none; border: 0; padding: 0; color: var(--akzent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+/* Auf Touch-Geräten größere Tippflächen, ohne das Layout zu verschieben */
+@media (pointer: coarse) { .link { min-height: 32px; padding: 6px 2px; margin: -6px -2px; } }
 
 input, select, textarea {
   font: inherit; color: var(--text); background: var(--flaeche); border: 1px solid var(--rand);

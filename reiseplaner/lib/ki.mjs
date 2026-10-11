@@ -24,6 +24,10 @@ function pruefeAntwort(msg) {
 
 function kiFehler(e) {
   if (e.status && !(e instanceof Anthropic.APIError)) return e; // eigene Fehler durchreichen
+  // Für die Fehlersuche im Server-Log (ohne Inhalte der Reise, ohne Schlüssel)
+  console.error(`KI-Fehler: ${e.constructor?.name ?? "Fehler"} ${e.status ?? ""} ${e.requestID ?? ""}`.trim());
+  if (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 503 || e.error?.error?.type === "overloaded_error")) return fehler(503, "Die KI ist gerade überlastet. Bitte in einer Minute noch einmal versuchen.");
+  if (e instanceof Anthropic.APIConnectionTimeoutError) return fehler(504, "Die KI hat zu lange gebraucht. Bitte noch einmal versuchen.");
   if (e instanceof Anthropic.AuthenticationError) return fehler(502, "Der KI-Schlüssel (ANTHROPIC_API_KEY) ist ungültig.");
   if (e instanceof Anthropic.RateLimitError) return fehler(429, "Die KI ist gerade ausgelastet. Bitte gleich noch einmal versuchen.");
   if (e instanceof Anthropic.BadRequestError) return fehler(400, `Die KI konnte die Anfrage nicht verarbeiten: ${e.message}`);
@@ -31,7 +35,8 @@ function kiFehler(e) {
   return e;
 }
 
-const textAus = (msg) => msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+// Bei Zitaten (Websuche) ist der Text in mehrere Blöcke geteilt – nahtlos zusammensetzen
+const textAus = (msg) => msg.content.filter((b) => b.type === "text").map((b) => b.text).join("").replace(/\n{3,}/g, "\n\n").trim();
 
 // ---------- Reiseplan lesen ----------
 
@@ -66,6 +71,7 @@ const PLAN_SCHEMA = obj({
       preisArt: { type: "string", enum: ["person", "gruppe"] },
       preisErw: zahlOderNull,
       preisKind: zahlOderNull,
+      kostenlosBis: { anyOf: [{ type: "number" }, { type: "null" }], description: "Kinder unter diesem Alter (Jahre) zahlen nichts, z. B. 7 bei „Kinder unter 7 frei“, sonst null" },
       preisGruppe: zahlOderNull,
       anzahl: zahlOderNull,
       link: str,
@@ -84,7 +90,7 @@ Regeln:
 - Kreuzfahrt: jeder Tag ist eine Station (art "hafen" mit Ankunft/Abfahrt, "seetag" für Tage auf See). "Alle an Bord" nur, wenn angegeben.
 - Alle anderen Reisearten (Hotel, Rundreise, Städtereise, Roadtrip/Wohnmobil, Ferienwohnung, Camping, Ski, Tagesausflug): Tage an Land als art "ort" mit dem Ort als Name; Unterkünfte (auch Ferienwohnung, Campingplatz) unter "hotels".
 - Ausflüge: dem Tag über "datum" und dem Ort über "ort" zuordnen. Dauer in Minuten (aus „Zeit: 08:15–11:45“ berechnen).
-- Preise in Euro als Zahl. Steht ein Gesamtpreis da („Preis gesamt für 6 Personen: 275 €“, „Gesamtpreis … 544 €“, „Für 3 Taucher: 597,60 €“), dann preisArt "gruppe" und preisGruppe = dieser Betrag, preisErw/preisKind null; gilt er nur für einen Teil der Gruppe, "anzahl" = Zahl der Teilnehmenden. Sonst preisArt "person" mit preisErw/preisKind. Steht neben Dollar auch ein Euro-Betrag, den Euro-Betrag nehmen; nur Dollar → grob umrechnen und in "notiz" vermerken.
+- Preise in Euro als Zahl. Steht ein Gesamtpreis da („Preis gesamt für 6 Personen: 275 €“, „Gesamtpreis … 544 €“, „Für 3 Taucher: 597,60 €“), dann preisArt "gruppe" und preisGruppe = dieser Betrag, preisErw/preisKind null; gilt er nur für einen Teil der Gruppe, "anzahl" = Zahl der Teilnehmenden. Sonst preisArt "person" mit preisErw/preisKind. „Kinder unter 7 frei“ / „bis 6 Jahre gratis“ → kostenlosBis = 7 (die Altersgrenze, ab der gezahlt wird). Steht neben Dollar auch ein Euro-Betrag, den Euro-Betrag nehmen; nur Dollar → grob umrechnen und in "notiz" vermerken.
 - Status: gebucht/reserviert → "gebucht"; fest geplant → "favorit"; Alternativen, Anfragen, Optionen → "idee". Backups („TUI BACKUP GEBUCHT“) sind "gebucht" mit Hinweis in der Notiz.
 - quelle: "schiff" für Ausflüge der Reederei, "getyourguide"/"viator"/"tiqets"/"civitatis", wenn genannt, "eigene" für Unternehmungen auf eigene Faust, sonst "sonstige".
 - Weitere Kosten (Flug, Mietwagen, Trinkgeld, Versicherung …) unter "kosten".
@@ -142,7 +148,7 @@ So arbeitest du:
 - Änderungen machst du nicht selbst: Schlage sie mit den Werkzeugen vor (ausflug_vorschlagen, aenderung_vorschlagen, station_vorschlagen, hotel_vorschlagen). Die Familie übernimmt sie mit einem Klick. Sag im Text kurz, was du vorgeschlagen hast.
 - Verwende für Änderungen die IDs aus den Reisedaten. Erfinde keine Preise oder Links – lass sie leer, wenn du sie nicht sicher weißt.`;
 
-const FELDER = ["titel", "status", "kategorie", "beginn", "dauerMin", "preisErw", "preisKind", "preisGruppe", "zusatzkosten", "interesse", "link", "notiz", "name", "land", "ankunft", "abfahrt", "allesAnBord", "anreise", "abreise", "preis", "preisArt", "verpflegung"];
+const FELDER = ["titel", "status", "kategorie", "beginn", "dauerMin", "preisErw", "preisKind", "kostenlosBis", "preisGruppe", "zusatzkosten", "interesse", "link", "notiz", "name", "land", "ankunft", "abfahrt", "allesAnBord", "anreise", "abreise", "preis", "preisArt", "verpflegung"];
 
 const WERKZEUGE = [
   {
