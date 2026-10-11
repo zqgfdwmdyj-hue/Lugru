@@ -52,11 +52,17 @@ let beiAbmeldung = () => {};
 export const setzeAbmeldung = (fn) => (beiAbmeldung = fn);
 
 export async function anfrage(pfad, optionen = {}) {
-  const res = await fetch(pfad.startsWith("/") ? pfad : `/${pfad}`, {
-    ...optionen,
-    headers: { "content-type": "application/json", "x-reiseplaner": "1", ...(optionen.headers ?? {}) },
-    body: optionen.body && typeof optionen.body !== "string" ? JSON.stringify(optionen.body) : optionen.body,
-  });
+  let res;
+  try {
+    res = await fetch(pfad.startsWith("/") ? pfad : `/${pfad}`, {
+      ...optionen,
+      headers: { "content-type": "application/json", "x-reiseplaner": "1", ...(optionen.headers ?? {}) },
+      body: optionen.body && typeof optionen.body !== "string" ? JSON.stringify(optionen.body) : optionen.body,
+    });
+  } catch {
+    // Netzwerkfehler (Server neu gestartet, SSH-Tunnel/Internet weg) – verständlich melden
+    throw Object.assign(new Error("Keine Verbindung zum Server. Bitte Internet bzw. SSH-Tunnel prüfen und erneut versuchen."), { status: 0 });
+  }
   const daten = await res.json().catch(() => ({}));
   if (res.status === 401 && !pfad.includes("anmelden")) beiAbmeldung();
   if (!res.ok) throw Object.assign(new Error(daten.error ?? `Fehler ${res.status}`), { status: res.status, daten });
