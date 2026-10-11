@@ -128,7 +128,7 @@ function alles() {
         <button class="knopf" data-aktion="reise-neu">+ Erste Reise anlegen</button>
         <p class="klein leise">Du wurdest eingeladen? Dann öffne den Einladungslink – die Reise erscheint danach hier.</p>
       </div>
-      ${zustand.info.ki ? kiImportBox() : ""}`;
+      ${kiImportBox()}`;
     karteZeichnen();
     return;
   }
@@ -209,8 +209,10 @@ function planAnsicht() {
     const statusRang = { gebucht: 0, favorit: 1, idee: 2, verworfen: 3 };
     liste.sort((x, y) => (x.a.status === "verworfen") - (y.a.status === "verworfen") || sortierer[zustand.sortierung](x, y) || statusRang[x.a.status] - statusRang[y.a.status]);
     const aktive = liste.filter((x) => x.a.status !== "verworfen");
-    const besteId = aktive.length > 1 ? [...aktive].sort(sortierer.punkte)[0].a.id : null;
-    const guenstigsteId = aktive.length > 1 ? [...aktive].sort(sortierer.preis)[0].a.id : null;
+    // Markierungen nur unter Ausflügen mit bekanntem Preis – sonst wäre „ohne Preis“ immer am günstigsten
+    const mitPreis = aktive.filter((x) => x.b.kosten.summe > 0);
+    const besteId = mitPreis.length > 1 ? [...mitPreis].sort(sortierer.punkte)[0].a.id : null;
+    const guenstigsteId = mitPreis.length > 1 ? [...mitPreis].sort(sortierer.preis)[0].a.id : null;
 
     detail = `
       <div class="karte-box hafenkopf">
@@ -280,7 +282,7 @@ function ausflugKarte(a, b, h, { beste, guenstig }) {
       </div>
       <h4>${linkHtml(a.link, esc(a.titel))}</h4>
       <div class="werte">
-        <div><span>Zeit</span><strong>${z.start != null ? `${minZuZeit(z.start)} – ${minZuZeit(z.zurueck ?? NaN)}` : "–"}</strong><em>${dauerText(zahl(a.dauerMin))}</em></div>
+        <div><span>Zeit</span><strong>${a.beginn && z.start != null ? `${minZuZeit(z.start)} – ${minZuZeit(z.zurueck ?? NaN)}` : "–"}</strong><em>${dauerText(zahl(a.dauerMin))}</em></div>
         <div><span>Weg ab ${start?.hotel ? "Hotel" : art === "hafen" ? "Schiff" : "Start"}</span><strong>${inklusive ? "inklusive" : a.fahrzeitMin ? `${Math.round(a.fahrzeitMin)} Min.` : "–"}</strong><em>${a.km ? `${a.km.toFixed(1).replace(".", ",")} km` : inklusive ? "Bus ab Pier" : ""}</em></div>
         ${art === "hafen" ? `<div class="${pufferKlasse}"><span>Puffer bis an Bord</span><strong>${z.puffer != null ? (z.puffer < 0 ? "−" : "") + dauerText(Math.abs(z.puffer)) : "–"}</strong></div>` : ""}
         <div><span>Kosten</span><strong>${geld(k.summe)}</strong><em>${k.erwachsene} Erw. · ${k.kinder} Ki.</em></div>

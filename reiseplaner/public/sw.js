@@ -1,9 +1,9 @@
 // Offline-Unterstützung (auf See ist das Netz oft schwach): App-Dateien und Leaflet werden
 // zwischengespeichert, Kartenkacheln beim Ansehen. Daten (api/) gehen immer ans Netz –
 // die App hält ungespeicherte Änderungen selbst im Browser.
-const APP = "reiseplaner-app-v4";
+const APP = "reiseplaner-app-v6";
 const KACHELN = "reiseplaner-kacheln-v1";
-const DATEIEN = ["/", "/index.html", "/app.js", "/kern.js", "/konto.js", "/hotels.js", "/erlebnisse.js", "/teilen.js", "/ki.js", "/rechnen.js", "/zusammenfuehren.js", "/style.css", "/icon.svg", "/manifest.webmanifest",
+const DATEIEN = ["/", "/index.html", "/app.js", "/kern.js", "/konto.js", "/hotels.js", "/erlebnisse.js", "/teilen.js", "/ki.js", "/rechnen.js", "/zusammenfuehren.js", "/reiseplan-text.js", "/style.css", "/icon.svg", "/manifest.webmanifest",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css", "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"];
 
 self.addEventListener("install", (e) => {

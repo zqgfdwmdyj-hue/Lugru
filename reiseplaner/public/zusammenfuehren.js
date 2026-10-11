@@ -4,6 +4,14 @@ import { sichereUrl } from "./rechnen.js";
 const neueId = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
 
 /** Führt den gelesenen Plan mit einer Reise zusammen (vorhandene Einträge werden ergänzt). */
+/** Alle Mitreisenden – oder bei „für 3 Taucher“ die ersten drei Erwachsenen. */
+function teilnehmerFuer(reise, anzahl) {
+  const alle = (reise.personen ?? []).map((p) => p.id);
+  if (!anzahl || anzahl >= alle.length) return alle;
+  const erwachsene = (reise.personen ?? []).filter((p) => p.typ !== "kind").map((p) => p.id);
+  return [...erwachsene, ...alle.filter((id) => !erwachsene.includes(id))].slice(0, anzahl);
+}
+
 export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {}) {
   reise.haefen ??= [];
   reise.hotels ??= [];
@@ -24,8 +32,7 @@ export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {})
   if (personenErsetzen && p.personen.length) {
     reise.personen = p.personen.map((x) => ({ id: neueId(), name: x.name, typ: x.typ, alter: x.alter ?? "" }));
   }
-  const alle = () => reise.personen.map((x) => x.id);
-  for (const s of p.stationen) {
+    for (const s of p.stationen) {
     if (!s.datum) continue;
     const vorhanden = reise.haefen.find((h) => h.datum === s.datum);
     const daten = { datum: s.datum, art: s.art, seetag: s.art === "seetag", name: s.art === "seetag" ? s.name || "Seetag" : s.name, land: s.land, ankunft: s.ankunft, abfahrt: s.abfahrt, allesAnBord: s.allesAnBord, notiz: s.notiz };
@@ -53,10 +60,21 @@ export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {})
       zaehler.tage++;
     }
     const vorhanden = reise.ausfluege.find((x) => x.hafenId === station.id && x.titel.toLowerCase() === a.titel.toLowerCase());
-    const daten = { titel: a.titel, kategorie: a.kategorie, quelle: a.quelle, status: a.status, beginn: a.beginn, dauerMin: a.dauerMin, preisErw: a.preisErw, preisKind: a.preisKind, link: sichereUrl(a.link), notiz: a.notiz };
-    if (vorhanden) fuellen(vorhanden, daten);
-    else {
-      reise.ausfluege.push({ id: neueId(), hafenId: station.id, preisArt: "person", interesse: 3, verkehr: "auto", teilnehmer: alle(), ...daten });
+    const daten = {
+      titel: a.titel, kategorie: a.kategorie, quelle: a.quelle, status: a.status, beginn: a.beginn, dauerMin: a.dauerMin,
+      preisErw: a.preisErw, preisKind: a.preisKind, preisGruppe: a.preisGruppe ?? null, kostenlosBis: a.kostenlosBis ?? null,
+      link: sichereUrl(a.link), notiz: a.notiz,
+    };
+    if (vorhanden) {
+      // Gesamtpreis ergänzt? Dann gilt er für die Gruppe.
+      if (daten.preisGruppe != null && vorhanden.preisGruppe == null) vorhanden.preisArt = "gruppe";
+      fuellen(vorhanden, daten);
+    } else {
+      reise.ausfluege.push({
+        id: neueId(), hafenId: station.id, interesse: a.interesse ?? 3, verkehr: "auto", ...daten,
+        preisArt: a.preisArt === "gruppe" || (a.preisGruppe != null && a.preisErw == null) ? "gruppe" : "person",
+        teilnehmer: teilnehmerFuer(reise, a.anzahl),
+      });
       zaehler.ausfluege++;
     }
   }

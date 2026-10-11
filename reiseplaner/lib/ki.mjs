@@ -63,8 +63,11 @@ const PLAN_SCHEMA = obj({
       status: { type: "string", enum: ["idee", "favorit", "gebucht"] },
       beginn: str,
       dauerMin: zahlOderNull,
+      preisArt: { type: "string", enum: ["person", "gruppe"] },
       preisErw: zahlOderNull,
       preisKind: zahlOderNull,
+      preisGruppe: zahlOderNull,
+      anzahl: zahlOderNull,
       link: str,
       notiz: str,
     }),
@@ -80,7 +83,9 @@ Regeln:
 - Datum als JJJJ-MM-TT. Fehlt das Jahr, nimm das nächste passende Datum ab heute. Zeiten als HH:MM (24 h).
 - Kreuzfahrt: jeder Tag ist eine Station (art "hafen" mit Ankunft/Abfahrt, "seetag" für Tage auf See). "Alle an Bord" nur, wenn angegeben.
 - Hotel- oder Rundreise: Tage an Land als art "ort" mit dem Ort als Name; Unterkünfte unter "hotels".
-- Ausflüge: dem Tag über "datum" und dem Ort über "ort" zuordnen. Dauer in Minuten, Preise in Euro pro Person als Zahl. Vorschläge ohne Buchung haben status "idee", ausdrücklich als gebucht markierte "gebucht".
+- Ausflüge: dem Tag über "datum" und dem Ort über "ort" zuordnen. Dauer in Minuten (aus „Zeit: 08:15–11:45“ berechnen).
+- Preise in Euro als Zahl. Steht ein Gesamtpreis da („Preis gesamt für 6 Personen: 275 €“, „Gesamtpreis … 544 €“, „Für 3 Taucher: 597,60 €“), dann preisArt "gruppe" und preisGruppe = dieser Betrag, preisErw/preisKind null; gilt er nur für einen Teil der Gruppe, "anzahl" = Zahl der Teilnehmenden. Sonst preisArt "person" mit preisErw/preisKind. Steht neben Dollar auch ein Euro-Betrag, den Euro-Betrag nehmen; nur Dollar → grob umrechnen und in "notiz" vermerken.
+- Status: gebucht/reserviert → "gebucht"; fest geplant → "favorit"; Alternativen, Anfragen, Optionen → "idee". Backups („TUI BACKUP GEBUCHT“) sind "gebucht" mit Hinweis in der Notiz.
 - quelle: "schiff" für Ausflüge der Reederei, "getyourguide"/"viator"/"tiqets"/"civitatis", wenn genannt, "eigene" für Unternehmungen auf eigene Faust, sonst "sonstige".
 - Weitere Kosten (Flug, Mietwagen, Trinkgeld, Versicherung …) unter "kosten".
 - In "hinweise" kurz auf Deutsch, was unklar war oder fehlt (leer, wenn nichts).`;

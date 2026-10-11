@@ -315,10 +315,12 @@ export function textZuAusfluegen(text) {
     const alles = zeilen.join("\n");
     let preisErw = null;
     let preisKind = null;
+    let preisGruppe = null;
     for (const zeile of zeilen) {
       const preise = [...zeile.matchAll(preisRe)].map((m) => zahl(m[1] ?? m[2]));
       if (!preise.length) continue;
-      if (/kind|child|junior/i.test(zeile) && !/erw|adult/i.test(zeile)) preisKind ??= preise[0];
+      if (/gesamt|insgesamt|für alle|pro Gruppe|f(?:ü|ue)r\s+\d+\s+(Person|Personen|Teilnehmer)/i.test(zeile)) preisGruppe ??= preise.at(-1);
+      else if (/kind|child|junior/i.test(zeile) && !/erw|adult/i.test(zeile)) preisKind ??= preise[0];
       else if (/erw|adult/i.test(zeile) && /kind|child/i.test(zeile) && preise.length > 1) {
         const erwZuerst = zeile.search(/erw|adult/i) < zeile.search(/kind|child/i);
         preisErw ??= erwZuerst ? preise[0] : preise[1];
@@ -336,6 +338,8 @@ export function textZuAusfluegen(text) {
     const code = /\b([A-Z]{2,4}\s?\d{2,4}[A-Z]?)\b/.exec(alles);
     return {
       titel,
+      preisArt: preisGruppe != null && preisErw == null ? "gruppe" : "person",
+      preisGruppe,
       preisErw,
       preisKind,
       dauerMin,

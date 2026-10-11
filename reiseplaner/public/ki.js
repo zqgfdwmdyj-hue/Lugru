@@ -1,7 +1,8 @@
 // KI: Reisepläne (z. B. aus ChatGPT) einlesen und Assistent mit Änderungsvorschlägen.
-import { zustand, $, esc, neueId, datumText, personen, hafenVon, aktionen, speichern, neuZeichnen, anfrage, haefen, ausfluegeIn, istKreuzfahrt } from "./kern.js";
+import { zustand, $, esc, geld, neueId, datumText, personen, hafenVon, aktionen, speichern, neuZeichnen, anfrage, haefen, ausfluegeIn, istKreuzfahrt } from "./kern.js";
 import { KATEGORIEN, QUELLEN, STATUS, VERPFLEGUNG, sichereUrl, zahl } from "./rechnen.js";
 import { planZusammenfuehren } from "./zusammenfuehren.js";
+import { reiseplanAusText } from "./reiseplan-text.js";
 
 // ---------- Text der KI hübsch, aber sicher darstellen ----------
 
@@ -18,22 +19,34 @@ export function kiText(text) {
 // ---------- Import ----------
 
 export function kiImportBox() {
-  if (!zustand.info.ki) {
-    return `<div class="karte-box"><h3>✨ Reiseplan mit KI einlesen</h3><p class="leise">Noch nicht eingerichtet: Auf dem Server <code>ANTHROPIC_API_KEY</code> in <code>reiseplaner/.env</code> eintragen. Dann lassen sich hier Pläne aus ChatGPT, Buchungsbestätigungen (PDF), Word-Dateien oder Screenshots hochladen.</p></div>`;
-  }
+  const ki = zustand.info.ki;
   return `<div class="karte-box">
-    <h3>✨ Reiseplan mit KI einlesen</h3>
-    <p class="leise klein">Plan aus ChatGPT einfügen (Text kopieren) oder Dateien hochladen: PDF, Word (.docx), Text, Screenshots. Die KI erkennt Tage/Häfen, Hotels, Ausflüge, Preise und Zeiten. Du siehst vorher, was übernommen wird – erneut hochladen ergänzt und aktualisiert.</p>
-    <textarea id="kiText" rows="8" placeholder="Hier den Reiseplan einfügen …"></textarea>
+    <h3>📋 Reiseplan einlesen</h3>
+    <p class="leise klein">Ganzen Plan einfügen – z. B. aus ChatGPT oder eigenen Notizen (Tage mit Datum, Liegezeiten, Ausflüge mit „GEBUCHT“/„ALTERNATIVE“, Zeiten und Preisen).
+    „Erkennen“ arbeitet ohne KI und versteht Gesamtpreise („Preis gesamt für 6 Personen“), Preise pro Person, Kinderpreise und Dollar mit Euro-Angabe.
+    ${ki ? "Mit KI gehen zusätzlich freie Texte, PDF, Word-Dateien und Screenshots." : "Mit hinterlegtem <code>ANTHROPIC_API_KEY</code> gehen zusätzlich freie Texte, PDF, Word und Screenshots."}
+    Du siehst vorher, was übernommen wird – erneutes Einlesen ergänzt, statt zu verdoppeln.</p>
+    <textarea id="kiText" rows="8" placeholder="21.03.2027 – Castries, St. Lucia&#10;Liegezeit: 07:30–19:00&#10;AUSFLUG GEBUCHT:&#10;TUI Cruises – Delfinbeobachtung&#10;Zeit: 08:15–11:45&#10;Preis gesamt für 6 Personen: 275 €"></textarea>
     <div class="zeile">
-      <label class="knopf leise">📎 Dateien wählen<input type="file" id="kiDateien" multiple accept=".pdf,.docx,.txt,.md,.csv,.html,.ics,image/*" hidden></label>
-      <span id="kiDateiNamen" class="klein leise"></span>
+      ${ki ? `<label class="knopf leise">📎 Dateien wählen<input type="file" id="kiDateien" multiple accept=".pdf,.docx,.txt,.md,.csv,.html,.ics,image/*" hidden></label><span id="kiDateiNamen" class="klein leise"></span>` : ""}
       <span class="platz"></span>
-      <button class="knopf" data-aktion="ki-import">Einlesen</button>
+      <button class="knopf ${ki ? "leise" : ""}" data-aktion="text-plan">Erkennen (ohne KI)</button>
+      ${ki ? `<button class="knopf" data-aktion="ki-import">✨ Mit KI einlesen</button>` : ""}
     </div>
     <div id="kiVorschau"></div>
   </div>`;
 }
+
+aktionen["text-plan"] = () => {
+  const text = $("#kiText").value;
+  if (!text.trim()) return alert("Bitte zuerst den Reiseplan einfügen.");
+  importPlan = reiseplanAusText(text);
+  if (!importPlan.stationen.length && !importPlan.ausfluege.length) {
+    $("#kiVorschau").innerHTML = `<p class="warnung">Keine Tage erkannt. Jeder Tag braucht eine Zeile wie „21.03.2027 – Castries, St. Lucia“.${zustand.info.ki ? " Oder „Mit KI einlesen“ verwenden." : ""}</p>`;
+    return;
+  }
+  vorschauZeigen();
+};
 
 document.addEventListener("change", (e) => {
   if (e.target.id === "kiDateien") $("#kiDateiNamen").textContent = [...e.target.files].map((f) => f.name).join(", ");
@@ -75,7 +88,7 @@ function vorschauZeigen() {
       ${p.hinweise ? `<p class="hinweis klein">ℹ️ ${esc(p.hinweise)}</p>` : ""}
       ${liste("Tage", p.stationen, (s) => `${esc(datumText(s.datum))} ${s.art === "seetag" ? "🌊 Seetag" : esc(s.name)}${s.ankunft ? ` · ${esc(s.ankunft)}–${esc(s.abfahrt)}` : ""}`)}
       ${liste("Unterkünfte", p.hotels, (h) => `${esc(h.name)} <span class="leise">${esc(h.ort)} ${esc(datumText(h.anreise))}–${esc(datumText(h.abreise))}${h.preis != null ? ` · ${h.preis} €` : ""}</span>`)}
-      ${liste("Ausflüge", p.ausfluege, (a) => `${esc(datumText(a.datum))} ${esc(a.titel)} <span class="leise">${esc(QUELLEN[a.quelle]?.name ?? "")}${a.preisErw != null ? ` · ${a.preisErw} €` : ""}${a.dauerMin ? ` · ${Math.round(a.dauerMin / 6) / 10} Std.` : ""}</span>`)}
+      ${liste("Ausflüge", p.ausfluege, (a) => `${esc(datumText(a.datum))} ${esc(a.titel)} <span class="leise">${esc(STATUS[a.status] ?? "")} · ${esc(QUELLEN[a.quelle]?.name ?? "")}${a.beginn ? ` · ${esc(a.beginn)}` : ""}${a.dauerMin ? ` · ${Math.round(a.dauerMin / 6) / 10} Std.` : ""}${a.preisGruppe != null ? ` · ${esc(geld(a.preisGruppe))} gesamt` : a.preisErw != null ? ` · ${esc(geld(a.preisErw))} p. P.${a.preisKind != null ? `, Kind ${esc(geld(a.preisKind))}` : ""}` : " · <em>ohne Preis</em>"}</span>`)}
       ${liste("Weitere Kosten", p.kosten, (k) => `${esc(k.titel)}${k.betrag != null ? ` · ${k.betrag} €` : ""}`)}
       ${liste("Personen", p.personen, (x) => `${esc(x.name)} <span class="leise">${x.typ === "kind" ? `Kind${x.alter ? `, ${x.alter}` : ""}` : "Erwachsen"}</span>`)}
       <div class="zeile">
@@ -86,10 +99,31 @@ function vorschauZeigen() {
     </div>`;
 }
 
-aktionen["ki-uebernehmen"] = () => {
+/** Häfen/Orte ohne Kartenpunkt über die Ortssuche finden (eine Anfrage pro Sekunde, Ergebnisse im Zwischenspeicher). */
+export async function koordinatenErgaenzen(reise, fortschritt = () => {}) {
+  const offen = (reise.haefen ?? []).filter((h) => (h.art ?? (h.seetag ? "seetag" : "hafen")) !== "seetag" && h.lat == null && h.name);
+  const gefunden = new Map();
+  let n = 0;
+  for (const h of offen) {
+    const suche = [h.name, h.land].filter(Boolean).join(", ");
+    fortschritt(`Suche Orte auf der Karte … ${++n}/${offen.length} (${suche})`);
+    if (!gefunden.has(suche)) {
+      const treffer = await anfrage(`/api/geo?q=${encodeURIComponent(suche)}`).catch(() => []);
+      const ersatz = treffer[0] ? treffer : await anfrage(`/api/geo?q=${encodeURIComponent(h.name)}`).catch(() => []);
+      gefunden.set(suche, ersatz[0] ?? null);
+    }
+    const t = gefunden.get(suche);
+    if (t) Object.assign(h, { lat: t.lat, lng: t.lng, ortName: t.name.split(",").slice(0, 3).join(",") });
+  }
+  return offen.filter((h) => h.lat == null).map((h) => h.name);
+}
+
+aktionen["ki-uebernehmen"] = async (el) => {
   const z = planZusammenfuehren(zustand.reise, importPlan, { personenErsetzen: $("#kiPersonen")?.checked });
+  el.disabled = true;
+  const fehlend = await koordinatenErgaenzen(zustand.reise, (t) => ($("#kiVorschau").innerHTML = `<p class="leise">${esc(t)}</p>`));
   speichern();
-  alert(`Übernommen: ${z.tage} Tage, ${z.hotels} Unterkünfte, ${z.ausfluege} Ausflüge, ${z.kosten} Kosten${z.aktualisiert ? `, ${z.aktualisiert} Einträge ergänzt` : ""}.\n\nOrte ohne Kartenpunkt bitte unter „Reiseverlauf“ bzw. „Unterkünfte“ auf der Karte suchen.`);
+  alert(`Übernommen: ${z.tage} Tage, ${z.hotels} Unterkünfte, ${z.ausfluege} Ausflüge, ${z.kosten} Kosten${z.aktualisiert ? `, ${z.aktualisiert} Einträge ergänzt` : ""}.${fehlend.length ? `\n\nNicht auf der Karte gefunden: ${[...new Set(fehlend)].join(", ")} – bitte unter „Route & Häfen“ suchen.` : ""}`);
   neuZeichnen();
 };
 
@@ -98,6 +132,7 @@ aktionen["ki-neue-reise"] = async () => {
   const reise = { name: p.name || "Neue Reise", art: p.art, schiff: p.schiff, waehrung: "EUR", personen: p.personen.map((x) => ({ id: neueId(), name: x.name, typ: x.typ, alter: x.alter ?? "" })), haefen: [], hotels: [], ausfluege: [], kosten: [] };
   if (!reise.personen.length) reise.personen = [{ id: neueId(), name: zustand.ich?.name ?? "Ich", typ: "erwachsen", userId: zustand.ich?.id }];
   planZusammenfuehren(reise, { ...p, personen: [] });
+  await koordinatenErgaenzen(reise, (t) => ($("#kiVorschau").innerHTML = `<p class="leise">${esc(t)}</p>`));
   const neu = await anfrage("/api/reisen", { method: "POST", body: reise });
   location.href = `/?reise=${neu.id}`;
 };
