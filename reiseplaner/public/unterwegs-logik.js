@@ -199,7 +199,9 @@ export function kalenderDatei(reise, { anBord = [90, 30], ausfluege = 45, dokume
     for (const a of (reise.ausfluege ?? []).filter((x) => x.hafenId === h.id && x.status === "gebucht" && zeitZuMin(x.beginn) != null)) {
       const start = zeitZuMin(a.beginn);
       const ende = Math.min(start + (zahl(a.dauerMin) ?? 60), 1439);
-      ev(`ausflug-${a.id}`, icsDatumZeit(h.datum, a.beginn), icsDatumZeit(h.datum, minZuZeit(ende)), `${a.kategorie === "essen" ? "🍽️" : "🗺️"} ${a.titel}`, [a.code ? `Nr. ${a.code}` : "", a.notiz ?? ""].filter(Boolean).join("\n"), ausfluege ? [alarm(ausfluege, `In ${ausfluege} Min.: ${a.titel}`)] : [], a.ziel?.name ?? h.name);
+      ev(`ausflug-${a.id}`, icsDatumZeit(h.datum, a.beginn), icsDatumZeit(h.datum, minZuZeit(ende)), `${a.kategorie === "essen" ? "🍽️" : a.kategorie === "kinderclub" ? "🧒" : "🗺️"} ${a.titel}`, [a.code ? `Nr. ${a.code}` : "", a.notiz ?? ""].filter(Boolean).join("\n"), ausfluege ? [alarm(ausfluege, `In ${ausfluege} Min.: ${a.titel}`)] : [], a.ziel?.name ?? h.name);
+      // Kinderprogramm: zusätzlich „Abholen“ mit Erinnerung
+      if (a.kategorie === "kinderclub" && zahl(a.dauerMin)) ev(`abholen-${a.id}`, icsDatumZeit(h.datum, minZuZeit(ende)), icsDatumZeit(h.datum, minZuZeit(Math.min(ende + 15, 1439))), `🧒 Abholen: ${a.titel}`, "", [alarm(15, `In 15 Min. abholen: ${a.titel}`)], a.ziel?.name ?? "");
     }
   }
   // Verbindungen: Abfahrt mit Erinnerung „losfahren“ und „spätestens da sein“

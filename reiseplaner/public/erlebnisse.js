@@ -353,7 +353,7 @@ document.addEventListener("change", async (e) => {
 // ---------- Fotoalbum: automatisch Tagen und Ausflügen zuordnen ----------
 
 function albumKarte() {
-  const fotos = zustand.beitraege.fotos.filter((f) => "hafenId" in f || f.aufnahme);
+  const fotos = zustand.beitraege.fotos.filter((f) => f.art !== "kinder" && ("hafenId" in f || f.aufnahme));
   const tage = haefen();
   const gruppen = tage.map((h) => ({ h, fotos: fotos.filter((f) => f.hafenId === h.id) })).filter((g) => g.fotos.length);
   const ohne = fotos.filter((f) => !f.hafenId || !hafenVon(f.hafenId));

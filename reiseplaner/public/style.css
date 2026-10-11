@@ -458,3 +458,116 @@ form.art-hafen .ohne-hafen { display: none !important; }
 .bingo-emoji { display: flex; align-items: center; justify-content: center; height: 2.6rem; }
 .bingo-emoji .tierbild { width: 2.6rem; height: 2.6rem; }
 .fakt-bild .tierbild { width: 1.6rem; height: 1.6rem; vertical-align: middle; }
+
+/* ---------- Kinderwelt ---------- */
+.kindwahl { display: flex; gap: 8px; flex-wrap: wrap; }
+.kindknopf { border: 2px solid var(--rand); background: var(--flaeche); color: var(--text); border-radius: 99px; padding: 6px 16px; font: inherit; font-size: 1.05rem; cursor: pointer; }
+.kindknopf.an { background: #e0a100; border-color: #e0a100; color: #000; font-weight: 700; }
+.kinderseiten { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.kinderseiten button { flex: 0 0 auto; border: 0; border-radius: 12px; padding: 10px 14px; background: var(--akzent-hell); color: var(--text); font: inherit; font-size: 1rem; cursor: pointer; }
+.kinderseiten button.an { background: var(--akzent); color: #fff; font-weight: 700; }
+.kind-karte { width: 100%; height: auto; border-radius: 18px; }
+.kind-gross.rot { color: var(--rot); }
+
+.tuerchen { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 8px; margin: 8px 0; }
+.tuer { aspect-ratio: 1; border-radius: 12px; border: 2px dashed #c9a227; background: #fff8e1; color: #8a6d00; font: inherit; font-size: 1.3rem; font-weight: 800; cursor: not-allowed; opacity: 0.55; }
+.tuer.darf { cursor: pointer; opacity: 1; background: #ffecb3; border-style: solid; }
+.tuer.offen { background: #e3f4e5; border-color: var(--gruen); }
+@media (prefers-color-scheme: dark) { .tuer { background: #3a3320; color: #ffd54f; } .tuer.darf { background: #4a3f1a; } .tuer.offen { background: #1f3a22; } }
+
+.kinderpass { background: linear-gradient(160deg, #0d2f52, #12467a); color: #fff; border: 0; }
+.kinderpass .leise { color: #c8d7e8; }
+.pass-kopf { display: flex; gap: 14px; align-items: center; }
+.pass-adler { font-size: 3rem; }
+.stempelseite { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 14px; background: #fbf6e9; border-radius: 12px; padding: 16px; margin-top: 12px; }
+.stempel { aspect-ratio: 1; border: 4px double var(--farbe); color: var(--farbe); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; background: rgba(255, 255, 255, 0.4); }
+.stempel.offen { border-style: dashed; color: #b9b2a0; border-color: #cfc7b3; font-weight: 600; }
+.stempel-flagge { font-size: 2rem; line-height: 1.1; }
+.stempel-name { font-size: 0.72rem; line-height: 1.15; }
+.stempel-datum { font-size: 0.7rem; opacity: 0.85; }
+.abzeichenliste { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.abzeichen-feld { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; border: 2px solid var(--rand); border-radius: 14px; padding: 10px 6px; filter: grayscale(1); opacity: 0.45; }
+.abzeichen-feld.hat { filter: none; opacity: 1; border-color: #e0a100; background: #fff8e1; }
+@media (prefers-color-scheme: dark) { .abzeichen-feld.hat { background: #3a3320; } }
+.abzeichen-bild { font-size: 2.4rem; }
+
+.steckbrief { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; font-size: 1.08rem; }
+.steckbrief-flagge { font-size: 5rem; line-height: 1; }
+.steckbrief p { margin: 6px 0; }
+.woerter { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.wort { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: 1px solid var(--rand); border-radius: 12px; padding: 8px 12px; background: var(--flaeche); color: var(--text); font: inherit; cursor: pointer; }
+.wort strong { font-size: 1.1rem; }
+.wort em { font-style: normal; color: var(--leise); font-size: 0.85rem; }
+
+.quizfrage { border-top: 1px solid var(--rand); padding: 10px 0; font-size: 1.05rem; }
+.quizfrage p { margin: 0 0 8px; }
+.quizantworten, .flaggenraten { display: flex; flex-wrap: wrap; gap: 8px; }
+.quizknopf { border: 2px solid var(--rand); background: var(--flaeche); color: var(--text); border-radius: 12px; padding: 8px 14px; font: inherit; font-size: 1.02rem; cursor: pointer; }
+.quizknopf .gross { font-size: 2rem; }
+.quizknopf.richtig { background: #e3f4e5; border-color: var(--gruen); color: #1c4a1f; }
+.quizknopf.falsch { background: #fbe4e4; border-color: var(--rot); color: #6d1717; }
+.quizknopf:disabled { cursor: default; }
+.flaggenraten { align-items: center; }
+.flaggenraten p { width: 100%; margin: 4px 0; }
+.riesenflagge { font-size: 5rem; width: 100%; }
+
+.schatzliste { display: flex; flex-direction: column; gap: 6px; }
+.schatz { display: flex; align-items: center; gap: 10px; border: 1px solid var(--rand); border-radius: 12px; padding: 8px 10px; font-size: 1.05rem; }
+.schatz.gefunden { background: #e3f4e5; border-color: var(--gruen); }
+@media (prefers-color-scheme: dark) { .schatz.gefunden { background: #1f3a22; } }
+.schatz-haken { border: 0; background: none; font-size: 1.6rem; cursor: pointer; padding: 0; }
+.schatz-text { flex: 1; }
+.schatz-foto { width: 52px; height: 52px; object-fit: cover; border-radius: 8px; }
+.kamera { cursor: pointer; font-size: 1.4rem; }
+
+.bingo-feld { padding: 0; }
+.bingo-knopf { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px 6px; width: 100%; }
+.bingo-foto { width: 2.6rem; height: 2.6rem; border-radius: 8px; object-fit: cover; }
+.bingo-kamera { position: absolute; right: 4px; bottom: 2px; font-size: 1rem; opacity: 0.7; }
+.bingo-feld.heute::after { right: 4px; top: 2px; }
+
+.spielwahl { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.spielkarte { min-height: 90px; border-radius: 14px; background: var(--akzent-hell); padding: 12px 16px; margin-bottom: 10px; }
+.farbklecks { display: inline-block; width: 28px; height: 28px; border-radius: 50%; vertical-align: middle; border: 2px solid var(--rand); }
+.verdeckt { cursor: pointer; text-decoration: underline dotted; }
+
+.stimmungen { display: flex; gap: 8px; flex-wrap: wrap; }
+.stimmung { font-size: 2.2rem; border: 3px solid transparent; border-radius: 50%; background: var(--akzent-hell); width: 64px; height: 64px; cursor: pointer; }
+.stimmung.an { border-color: #e0a100; background: #fff8e1; }
+.kinder textarea { width: 100%; font: inherit; font-size: 1.05rem; border-radius: 10px; border: 1px solid var(--rand); padding: 8px; background: var(--flaeche); color: var(--text); }
+.malen canvas { width: 100%; max-width: 800px; aspect-ratio: 800 / 560; border: 2px solid var(--rand); border-radius: 14px; background: #fff; touch-action: none; display: block; }
+.malfarben { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; align-items: center; }
+.malfarbe { width: 38px; height: 38px; border-radius: 50%; border: 3px solid var(--rand); cursor: pointer; }
+.malfarbe.an { border-color: var(--akzent); transform: scale(1.12); }
+.tagebuchbild { max-width: 100%; border-radius: 12px; border: 1px solid var(--rand); margin: 6px 0; }
+.tagebuch-eintrag { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--rand); padding: 8px 0; }
+.tagebuch-eintrag img { width: 90px; border-radius: 8px; }
+
+.kindpack { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.kindpack-feld { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; border: 2px solid var(--rand); border-radius: 14px; background: var(--flaeche); color: var(--text); padding: 10px 6px; font: inherit; cursor: pointer; }
+.kindpack-feld.erledigt { background: #e3f4e5; border-color: var(--gruen); }
+@media (prefers-color-scheme: dark) { .kindpack-feld.erledigt { background: #1f3a22; } }
+.kindpack-bild { font-size: 2.4rem; }
+.sparschwein .kind-gross { font-size: clamp(2.6rem, 10vw, 4rem); }
+.budget-klein { width: 90px; }
+.kasse { list-style: none; padding: 0; margin: 8px 0; }
+.kasse li { display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--rand); padding: 6px 0; }
+.kasse li strong { margin-left: auto; }
+#kasseNeu .betrag { max-width: 90px; flex: 0 0 90px; }
+
+.sicherheitskarte { border: 3px solid var(--rot); border-radius: 16px; padding: 14px 18px; margin: 12px 0; background: #fff; color: #1c2430; max-width: 520px; font-size: 1.05rem; }
+.sicherheitskarte p { margin: 6px 0; }
+.sk-kopf { font-size: 1.3rem; color: var(--rot); margin-bottom: 6px; }
+.sk-fuss { font-size: 0.85rem; color: #5f6b7a; }
+.buch-kinderbild { max-width: 60%; border-radius: 8px; border: 1px solid #ddd; }
+.buch .stempelseite { background: #fbf6e9; }
+
+@media print {
+  body[data-druck] > *:not(.layout), body[data-druck] .kartenbereich, body[data-druck] .kindwahl, body[data-druck] .kinderseiten, body[data-druck] .keindruck { display: none !important; }
+  body[data-druck="sicherheitskarte"] .inhalt > * > *:not(.karte-box:has(#sicherheitskarte)), body[data-druck="kinderpass"] .inhalt > * > *:not(#kinderpass) { display: none !important; }
+  body[data-druck="sicherheitskarte"] .karte-box:has(#sicherheitskarte) > *:not(#sicherheitskarte) { display: none !important; }
+  body[data-druck] .layout { display: block; padding: 0; }
+  .kinderpass { color: #000; background: #fff; border: 2px solid #0d2f52; }
+}
+.kinder .knopf { white-space: normal; text-align: center; }
+.kinderpass .knopf { background: #fff; color: #0d2f52; border-color: #fff; }

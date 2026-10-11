@@ -254,7 +254,7 @@ function planAnsicht() {
         <p class="leise">Zeit fürs Schiff: Spa, Friseur, Shows, Restaurants, Kinderclub, Kurse … – alles hier eintragen, mit Uhrzeit, Preis und wer mitmacht.</p>${h.notiz ? `<p class="notiz">${esc(h.notiz)}</p>` : ""}
         <div class="kopfknoepfe"><button class="knopf leise" data-aktion="hafen-bearbeiten" data-id="${esc(h.id)}">Tag bearbeiten</button></div></div>
       <div class="karte-box">
-        <div class="zeile"><h3>An Bord (${liste.filter((x) => x.a.status !== "verworfen").length})</h3><button class="knopf" data-aktion="ausflug-neu">+ Aktivität</button></div>
+        <div class="zeile"><h3>An Bord (${liste.filter((x) => x.a.status !== "verworfen").length})</h3>${personen().some(istKind) ? `<button class="knopf leise" data-aktion="kinderprogramm-neu">+ Kinderprogramm</button>` : ""}<button class="knopf" data-aktion="ausflug-neu">+ Aktivität</button></div>
         ${liste.length ? `<div class="ausfluege">${liste.map(({ a, b }) => ausflugKarte(a, b, h, { beste: false, guenstig: false })).join("")}</div>` : `<p class="leise">Noch nichts geplant.</p>`}
       </div>`;
   } else if (h) {
@@ -1318,6 +1318,13 @@ Object.assign(aktionen, {
     alles();
   },
   "ausflug-neu": () => ausflugDialog(null),
+  "kinderprogramm-neu": () => {
+    const kinder = personen().filter(istKind);
+    const tag = haefen().find((h) => h.datum >= heute()) ?? haefen()[0];
+    if (!tag) return alert("Bitte zuerst die Reisetage eintragen.");
+    if (!zustand.hafenId) zustand.hafenId = tag.id;
+    ausflugDialog(null, { hafenId: zustand.hafenId ?? tag.id, kategorie: "kinderclub", quelle: istKreuzfahrt() ? "schiff" : "eigene", status: "gebucht", titel: "Kinderclub", teilnehmer: (kinder.length ? kinder : personen()).map((p) => p.id) });
+  },
   "reservierung-neu": () => ausflugDialog(null, { kategorie: "essen", quelle: "eigene", status: "gebucht", titel: "", teilnehmer: personen().map((p) => p.id) }),
   "ausflug-bearbeiten": (el) => ausflugDialog(el.dataset.id),
   "ausflug-loeschen": (el) => {

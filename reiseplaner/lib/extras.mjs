@@ -14,7 +14,7 @@ export const DATEI_DIR = path.join(DATA_DIR, "dateien");
 await mkdir(DATEI_DIR, { recursive: true });
 
 export const extrasDatei = (id) => path.join(REISEN_DIR, `${id}.extras.json`);
-export const LEERE_EXTRAS = { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, briefings: {}, checks: {} };
+export const LEERE_EXTRAS = { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, tierFotos: {}, schatz: {}, kinder: {}, briefings: {}, checks: {} };
 export const LISTEN = ["packliste", "dokumente", "ausgaben"];
 export const dateiPfad = (id, typ) => path.join(DATEI_DIR, `${id}.${typ === "application/pdf" ? "pdf" : typ === "image/png" ? "png" : "jpg"}`);
 
@@ -114,13 +114,77 @@ export function stimmeSetzen(reiseId, ausflugId, personId, wert) {
   });
 }
 
-/** Tiere-Bingo: gesehen am Datum (oder entfernen). */
-export function tierSetzen(reiseId, tier, gesehen) {
+/** Tiere-Bingo: gesehen am Datum (oder entfernen), optional mit eigenem Foto. */
+export function tierSetzen(reiseId, tier, gesehen, fotoId = undefined) {
   const name = text(tier, 80).trim();
   if (!name) throw fehler(400, "Kein Tier angegeben.");
   return extrasAendern(reiseId, (e) => {
-    if (gesehen) e.tiere[name] = new Date().toISOString().slice(0, 10);
-    else delete e.tiere[name];
-    return e.tiere;
+    if (gesehen) e.tiere[name] ??= new Date().toISOString().slice(0, 10);
+    else {
+      delete e.tiere[name];
+      delete e.tierFotos[name];
+    }
+    if (gesehen && fotoId !== undefined) {
+      if (fotoId) e.tierFotos[name] = fotoId;
+      else delete e.tierFotos[name];
+    }
+    return { tiere: e.tiere, tierFotos: e.tierFotos };
+  });
+}
+
+/** Schatzsuche (für die ganze Familie): Aufgabe erledigt, optional mit Foto-Beweis. */
+export function schatzSetzen(reiseId, schluessel, erledigt, fotoId = "") {
+  if (!/^[\w-]{1,80}:\d{1,2}$/.test(String(schluessel))) throw fehler(400, "Ungültige Aufgabe.");
+  return extrasAendern(reiseId, (e) => {
+    if (erledigt) e.schatz[schluessel] = { datum: new Date().toISOString().slice(0, 10), fotoId: fotoId || e.schatz[schluessel]?.fotoId || "" };
+    else delete e.schatz[schluessel];
+    return e.schatz;
+  });
+}
+
+const STIMMUNGEN = 5;
+/**
+ * Kinder-Bereich je Kind: Abzeichen, Quiz-Punkte, Tagebuch, Sparschwein, Kids-Club.
+ * d = { bereich, schluessel, wert }. fotoIds: vorhandene Fotos der Reise (für Bilder).
+ */
+export function kinderAendern(reiseId, personId, d, fotoIds = new Set()) {
+  const datumOk = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x ?? ""));
+  const { bereich, schluessel, wert } = d ?? {};
+  return extrasAendern(reiseId, (e) => {
+    const k = (e.kinder[personId] ??= { abzeichen: {}, quiz: {}, tagebuch: {}, kasse: { start: null, ausgaben: [] }, kidsclub: {} });
+    k.abzeichen ??= {};
+    k.quiz ??= {};
+    k.tagebuch ??= {};
+    k.kasse ??= { start: null, ausgaben: [] };
+    k.kidsclub ??= {};
+    if (bereich === "abzeichen") {
+      if (!/^[a-z0-9-]{1,40}$/.test(String(schluessel))) throw fehler(400, "Ungültiges Abzeichen.");
+      if (wert) k.abzeichen[schluessel] = new Date().toISOString().slice(0, 10);
+      else delete k.abzeichen[schluessel];
+    } else if (bereich === "quiz") {
+      if (!datumOk(schluessel)) throw fehler(400, "Ungültiges Datum.");
+      const punkte = Math.max(0, Math.min(10, Math.round(Number(wert) || 0)));
+      k.quiz[schluessel] = Math.max(k.quiz[schluessel] ?? 0, punkte);
+    } else if (bereich === "tagebuch") {
+      if (!datumOk(schluessel)) throw fehler(400, "Ungültiges Datum.");
+      if (!wert) delete k.tagebuch[schluessel];
+      else {
+        const stimmung = Number.isInteger(wert.stimmung) && wert.stimmung >= 0 && wert.stimmung < STIMMUNGEN ? wert.stimmung : null;
+        k.tagebuch[schluessel] = { stimmung, text: text(wert.text, 1000), bildId: fotoIds.has(wert.bildId) ? wert.bildId : "" };
+      }
+    } else if (bereich === "kasse") {
+      const start = zahl(wert?.start);
+      k.kasse.start = start != null && start >= 0 && start <= 10_000 ? start : null;
+    } else if (bereich === "kasseAusgabe") {
+      if (wert) {
+        const betrag = zahl(wert.betrag);
+        if (betrag == null || betrag < 0 || betrag > 10_000) throw fehler(400, "Bitte einen gültigen Betrag eingeben.");
+        if (k.kasse.ausgaben.length >= 500) throw fehler(400, "Zu viele Einträge.");
+        k.kasse.ausgaben.push({ id: randomUUID(), titel: text(wert.titel, 100).trim() || "Ausgabe", betrag, datum: datumOk(wert.datum) ? wert.datum : "" });
+      } else k.kasse.ausgaben = k.kasse.ausgaben.filter((x) => x.id !== schluessel);
+    } else if (bereich === "kidsclub") {
+      k.kidsclub = { gruppe: text(wert?.gruppe, 60), armband: text(wert?.armband, 30), hinweis: text(wert?.hinweis, 300) };
+    } else throw fehler(400, "Unbekannter Bereich.");
+    return k;
   });
 }

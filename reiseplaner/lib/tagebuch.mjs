@@ -107,7 +107,7 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
       hotels,
       tauchgaenge,
       // Album: nur ausdrücklich geteilte Fotos (🌍) vergangener Tage
-      album: (beitraege.fotos ?? []).filter((f) => f.geteilt === true && tagIds.has(f.hafenId)).map((f) => f.id),
+      album: (beitraege.fotos ?? []).filter((f) => f.geteilt === true && f.art !== "kinder" && tagIds.has(f.hafenId)).map((f) => f.id),
     });
   }
   ausgabe.sort((a, b) => b.von.localeCompare(a.von));

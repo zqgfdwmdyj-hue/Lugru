@@ -152,7 +152,7 @@ export const REGIONEN = [
 export const SEETAG_TIERE = [
   T("🐬", "Delfin", "Delfine schwimmen gern in der Bugwelle des Schiffs.", { gruppe: "delfin" }),
   T("🐟", "Fliegender Fisch", "Er gleitet mit seinen Flossen über das Wasser – bis zu 200 Meter weit!"),
-  T("🐳", "Wal", "Manchmal sieht man den Blas – eine Wasserfontäne – am Horizont.", WAL),
+  T("🐳", "Wal", "Manchmal sieht man den Blas – eine Wasserfontäne – am Horizont.", { ...WAL, nichtNeben: ["pottwal"] }),
   T("", "Seevogel", "Seevögel begleiten das Schiff oft weit draußen auf dem Meer.", { bild: "moewe", gruppe: "moewe" }),
   T("🌈", "Regenbogen", "Kein Tier – aber auf See sieht man besonders oft Regenbögen."),
 ];
@@ -178,6 +178,8 @@ export function tiereDerReise(reise) {
   const tage = [...(reise?.haefen ?? [])].sort((a, b) => istSeetag(a) - istSeetag(b));
   for (const h of tage) for (const t of tiereFuer(h)) {
     const schluessel = t.gruppe ?? t.name;
+    // Allgemeiner „Wal“ nur, wenn es keine bestimmte Walart gibt
+    if (t.nichtNeben?.some((g) => tiere.has(g))) continue;
     if (!tiere.has(schluessel) && ![...tiere.values()].some((x) => x.name === t.name)) tiere.set(schluessel, t);
   }
   return [...tiere.values()];

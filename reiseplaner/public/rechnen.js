@@ -24,6 +24,7 @@ export const KATEGORIEN = {
   tickets: "Tickets & Eintritt",
   park: "Freizeitpark",
   ski: "Ski & Snowboard",
+  kinderclub: "Kinderclub & Kinderprogramm",
   sport: "Sport & Action",
   sonstiges: "Sonstiges",
 };

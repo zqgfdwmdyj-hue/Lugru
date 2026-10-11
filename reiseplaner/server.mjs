@@ -169,6 +169,7 @@ function fotoInfoAus(d, reise, mitAufnahme = true) {
   if ("hafenId" in d) info.hafenId = (reise.haefen ?? []).some((h) => h.id === d.hafenId) ? d.hafenId : "";
   if ("ausflugId" in d) info.ausflugId = (reise.ausfluege ?? []).some((a) => a.id === d.ausflugId) ? d.ausflugId : "";
   if ("geteilt" in d) info.geteilt = d.geteilt === true;
+  if (d.art === "kinder") info.art = "kinder"; // Kinder-Bilder (Tagebuch, Bingo, Schatzsuche) – nicht im Fotoalbum
   return info;
 }
 function dataUrlZuJpeg(url, max) {
@@ -565,7 +566,21 @@ async function api(req, res, url, ich) {
     if (unter === "tiere" && m === "PUT") {
       await reiseMitRecht(id, ich);
       const d = await koerper(req, 2_000);
-      return json(res, 200, await extras.tierSetzen(id, d.tier, d.gesehen === true));
+      const fotoId = d.fotoId === undefined ? undefined : (await beitraegeLesen(id)).fotos.some((f) => f.id === d.fotoId) ? d.fotoId : "";
+      return json(res, 200, await extras.tierSetzen(id, d.tier, d.gesehen === true, fotoId));
+    }
+    if (unter === "schatz" && m === "PUT") {
+      await reiseMitRecht(id, ich);
+      const d = await koerper(req, 2_000);
+      const fotoId = (await beitraegeLesen(id)).fotos.some((f) => f.id === d.fotoId) ? d.fotoId : "";
+      return json(res, 200, await extras.schatzSetzen(id, text(d.schluessel, 100), d.erledigt === true, fotoId));
+    }
+    // Kinder-Bereich je Kind (Abzeichen, Quiz, Tagebuch, Sparschwein, Kids-Club)
+    if (unter === "kinder" && t[4] && m === "PUT") {
+      const { reise } = await reiseMitRecht(id, ich);
+      if (!(reise.personen ?? []).some((p) => p.id === t[4])) throw fehler(404, "Person nicht gefunden.");
+      const fotoIds = new Set((await beitraegeLesen(id)).fotos.map((f) => f.id));
+      return json(res, 200, await extras.kinderAendern(id, t[4], await koerper(req, 20_000), fotoIds));
     }
 
     // Dateien zu Dokumenten (PDF, Fotos von Bestätigungen) – nur für Mitreisende

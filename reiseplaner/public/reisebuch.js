@@ -3,6 +3,7 @@
 import { zustand, esc, aktionen, anfrage, sterneText } from "./kern.js";
 import { KATEGORIEN, REISEARTEN, oeffentlicheFotos, entfernungKm } from "./rechnen.js";
 import { tauchStatistik, reiseZeitraum } from "./unterwegs-logik.js";
+import { kinderKapitel } from "./kinder.js";
 
 const artVon = (h) => h.art ?? (h.seetag ? "seetag" : "hafen");
 const mitKoord = (o) => Number.isFinite(o?.lat) && Number.isFinite(o?.lng);
@@ -105,9 +106,10 @@ function reiseKapitel({ reise, beitraege }, namen, opt) {
 }
 
 function buchZeigen(daten, titel) {
-  const opt = { privat: false, nurGeteilt: false, fotosJeTag: 6, kompakt: true, ...(zustand.buchOptionen ?? {}) };
+  const opt = { privat: false, nurGeteilt: false, fotosJeTag: 6, kompakt: true, kinder: true, ...(zustand.buchOptionen ?? {}) };
   const zeichnen = () => {
-    const kapitel = daten.reisen.map((r) => reiseKapitel(r, daten.namen ?? {}, opt)).join("");
+    const kapitel = daten.reisen.map((r) => reiseKapitel(r, daten.namen ?? {}, opt)).join("")
+      + (opt.kinder && daten.extras ? kinderKapitel(daten.reisen[0].reise, daten.extras, (id) => `/api/reisen/${daten.reisen[0].reise.id}/fotos/${id}`) : "");
     const jahr = daten.jahr
       ? `<section class="buch-titel buch-jahr"><p class="buch-ueber">Jahresrückblick</p><h2>Unser Jahr ${esc(daten.jahr)}</h2>
         <div class="buch-zahlen"><span><b>${daten.reisen.length}</b>Reisen</span><span><b>${new Set(daten.reisen.flatMap((r) => (r.reise.haefen ?? []).filter((h) => artVon(h) !== "seetag" && h.datum?.startsWith(daten.jahr)).map((h) => h.name))).size}</b>Orte</span><span><b>${new Set(daten.reisen.flatMap((r) => (r.reise.haefen ?? []).map((h) => h.land).filter(Boolean))).size}</b>Länder</span><span><b>${daten.reisen.reduce((s, r) => s + r.beitraege.tauchgaenge.filter((t) => t.datum?.startsWith(daten.jahr)).length, 0)}</b>Tauchgänge</span></div>
@@ -124,6 +126,7 @@ function buchZeigen(daten, titel) {
       <label class="haken"><input type="checkbox" data-opt="privat" ${opt.privat ? "checked" : ""}> Private Notizen &amp; 🔒-Einträge</label>
       <label class="haken"><input type="checkbox" data-opt="nurGeteilt" ${opt.nurGeteilt ? "checked" : ""}> Nur 🌍-Fotos</label>
       <label class="haken"><input type="checkbox" data-opt="kompakt" ${opt.kompakt ? "checked" : ""}> Leere Tage weglassen</label>
+      ${daten.extras ? `<label class="haken"><input type="checkbox" data-opt="kinder" ${opt.kinder ? "checked" : ""}> Kinder-Kapitel</label>` : ""}
       <label>Fotos je Tag <select data-opt="fotosJeTag">${[2, 4, 6, 9].map((n) => `<option ${opt.fotosJeTag === n ? "selected" : ""}>${n}</option>`).join("")}</select></label>
       <span class="platz"></span>
       <button class="knopf" data-buch="drucken">🖨️ Drucken / Als PDF speichern</button>
@@ -155,7 +158,7 @@ function buchZeigen(daten, titel) {
 
 aktionen["reisebuch"] = () => {
   const { meineRolle, ...reise } = zustand.reise;
-  buchZeigen({ reisen: [{ reise, beitraege: zustand.beitraege }], namen: zustand.beitraege.namen ?? {} }, `Reisebuch: ${reise.name}`);
+  buchZeigen({ reisen: [{ reise, beitraege: zustand.beitraege }], namen: zustand.beitraege.namen ?? {}, extras: zustand.extras }, `Reisebuch: ${reise.name}`);
 };
 
 aktionen["rueckblick"] = async (el) => {

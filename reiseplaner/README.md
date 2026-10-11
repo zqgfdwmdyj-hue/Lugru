@@ -74,8 +74,21 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
 - **Abstimmen** an jedem Ausflug: 👍/👎 je Person, Sortierung „Beliebteste“.
 - **KI-Ausflug-Check** („✨ Rechtzeitig zurück?“): Claude liest die Angebotsseite, prüft Dauer, Treffpunkt
   und Rückweg gegen „Alle an Bord“ und meldet 🟢/🟡/🔴 mit Risiken und Quellen.
-- **🧒 Kinder-Ansicht**: großer Countdown („noch 12 Mal schlafen“), heutiger Ort und Programm, Tiere-Bingo
-  mit Tieren der Region (Karibik, Rotes Meer, Mittelmeer, Kanaren, Nordeuropa …) und kleinen Fakten.
+- **🧒 Kinder-Bereich** (je Kind auswählbar, alles ohne Internet nutzbar):
+  - *Heute*: großer Countdown, Vorfreude-Kalender mit 24 Türchen vor der Reise, heutiger Ort mit Flagge,
+    Programm des Kindes, feste Zeit, eigene Kabine/Zimmer, „Wo sind wir?“-Karte mit Schiff und Entfernung.
+  - *Pass & Abzeichen*: Reisepass mit Stempel je besuchtem Ort (druckbar), Abzeichen – automatisch
+    (Orte, Länder, Seetag, Tiere, Schatzsuche, Quiz, Tagebuch) oder von den Eltern verliehen.
+  - *Entdecken*: Insel-/Länder-Steckbrief (Flagge, Hauptstadt, Sprache, Hallo/Danke, Geld, Essen, Fakt)
+    und Wörterbuch mit Lautschrift und Vorlesen.
+  - *Spiele*: Quiz zum Tag, Schatzsuche je Hafen mit Foto-Beweis, Tiere-Bingo mit eigenen Fotos,
+    Spiele für Wartezeiten (Ich sehe was, Flaggen raten, Wer findet zuerst, Pantomime, Rätsel, Witze).
+  - *Tagebuch*: Stimmung, „Das Beste heute war …“ und ein Bild zum Malen mit dem Finger.
+  - *Meine Sachen*: Packliste mit Bildern zum Selbst-Abhaken, Sparschwein fürs Taschengeld.
+  - *Für Eltern*: Sicherheitskarte (Drucken oder als Sperrbildschirm-Bild), Kids-Club-Gruppe und
+    Armband-Nr., Kinderprogramm mit Erinnerung zum Abholen, Abzeichen verleihen.
+  - Im Reisebuch erscheint ein Kinder-Kapitel (Stempel, Abzeichen, Tagebuch mit Bildern).
+  - Kinder-Bilder und -Fotos bleiben privat (nicht im Fotoalbum, nicht im öffentlichen Tagebuch).
 
 **Erlebnisse**
 - **Bewertungen** für Ausflüge und Unterkünfte: Sterne, Überschrift, Kommentar, Fotos (werden im
