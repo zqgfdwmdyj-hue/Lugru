@@ -1,5 +1,5 @@
 // Weltkarte: rote Stecknadeln für alle Orte, an denen ihr wart – plus Steuerung des öffentlichen Reisetagebuchs.
-import { zustand, $, esc, aktionen, aenderungen, neuZeichnen, dialogOeffnen, anfrage, ortsSuche, ortAuslesen } from "./kern.js";
+import { zustand, $, esc, aktionen, aenderungen, neuZeichnen, dialogOeffnen, anfrage, ortsSuche, ortAuslesen, ortFinden, dialog } from "./kern.js";
 
 export async function weltkarteLaden() {
   try {
@@ -106,9 +106,22 @@ aktionen["ort-neu"] = () => {
     if (!form.name.value) form.name.value = o.name.split(",")[0].trim();
     if (!form.land.value && o.land) form.land.value = o.land;
   });
-  form.addEventListener("submit", async () => {
-    const o = ortAuslesen(form, "ort");
-    if (!o) return alert("Bitte den Ort suchen und auswählen.");
+  form.addEventListener("submit", async (e) => {
+    let o = ortAuslesen(form, "ort");
+    if (!o) {
+      // Nichts ausgewählt: selbst suchen – Suchtext, dann „Name, Land“, Name, Land
+      e.preventDefault();
+      const knopf = form.querySelector("button[value=ok]");
+      knopf.disabled = true;
+      knopf.textContent = "Suche Ort …";
+      const name = form.name.value.trim();
+      const land = form.land.value.trim();
+      o = await ortFinden([$(".ortsq", form).value, name && land && name !== land ? `${name}, ${land}` : "", name, land]);
+      knopf.disabled = false;
+      knopf.textContent = "Speichern";
+      if (!o) return alert("Diesen Ort finden wir nicht. Bitte anders schreiben (z. B. „Griechenland“ oder „Kreta“) oder Koordinaten aus Google Maps einfügen.");
+      dialog().close();
+    }
     try {
       const neu = await anfrage("/api/weltkarte/orte", { method: "POST", body: { ...o, name: form.name.value || o.name, land: form.land.value, jahr: form.jahr.value, notiz: form.notiz.value } });
       zustand.weltkarte.orte.push(neu);

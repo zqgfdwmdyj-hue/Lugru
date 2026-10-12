@@ -239,6 +239,21 @@ export async function ortSuchen(box) {
   }
 }
 
+/** Sucht den ersten Treffer zu mehreren Begriffen (z. B. Suchtext, „Name, Land“, Land) – für Speichern ohne Auswahl. */
+export async function ortFinden(begriffe) {
+  const gesehen = new Set();
+  for (const roh of begriffe) {
+    const q = String(roh ?? "").trim();
+    if (q.length < 2 || gesehen.has(q.toLowerCase())) continue;
+    gesehen.add(q.toLowerCase());
+    const koord = /^(-?\d{1,2}(?:\.\d+)?)\s*[,; ]\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(q);
+    if (koord) return { lat: Number(koord[1]), lng: Number(koord[2]), name: q };
+    const [t] = await anfrage(`/api/geo?q=${encodeURIComponent(q)}`).catch(() => []);
+    if (t) return { lat: t.lat, lng: t.lng, name: t.name.split(",").slice(0, 3).join(","), land: t.name.split(",").at(-1).trim() };
+  }
+  return null;
+}
+
 export function ortAuslesen(form, feld) {
   const v = new FormData(form).get(feld);
   return v ? JSON.parse(v) : null;
