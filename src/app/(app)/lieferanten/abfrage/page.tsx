@@ -122,6 +122,8 @@ export default async function AbfragePage({ searchParams }: { searchParams: Prom
                     <td className="num right" style={{ color: e.roi === null ? undefined : e.roi > 0 ? "var(--ok)" : "var(--danger)" }}>
                       {pct(e.roi)}
                       {e.implausible && <div><span className="tag tag-warn" title="ROI über 500 % ist fast nie echt – meist verkauft Amazon eine Großpackung. Stückzahl auf der Lieferanten-Seite oder unter „Chancen“ korrigieren.">Menge prüfen</span></div>}
+                      {e.issues.map((t) => <div key={t}><span className="tag tag-warn" title="Titel-Treffer ohne EAN – auf der Lieferanten-Seite oder unter „Chancen“ bestätigen oder verwerfen">{t}</span></div>)}
+                      {e.rejected && <div><span className="tag tag-danger">als falsches Produkt markiert</span></div>}
                     </td>
                     <td className="small" style={{ minWidth: 150 }}>
                       {hint ? <div style={{ color: hint.tone === "good" ? "var(--ok)" : "var(--danger)" }}>{hint.tone === "good" ? "▼" : "▲"} {hint.text}</div> : <div className="muted">{stats.days > 1 ? `${stats.days} Stände` : "gesammelt seit kurzem"}</div>}

@@ -260,6 +260,13 @@
       "when": 1791751171858,
       "tag": "0036_nur_ansehen",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791785027633,
+      "tag": "0037_treffer_pruefung",
+      "breakpoints": true
     }
   ]
 }

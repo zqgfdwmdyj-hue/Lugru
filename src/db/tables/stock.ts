@@ -190,6 +190,8 @@ export const supplierOffers = pgTable(
     origin: text("origin", { enum: ["feed", "scan"] }).notNull().default("feed"),
     /** Einheiten je Amazon-Verkauf, von Hand gesetzt (leer = aus dem Amazon-Titel erkannt). */
     amazonQty: integer("amazon_qty"),
+    /** Titel-Treffer von Hand geprüft: passt (ok) bzw. falsches Produkt – gilt nur für diese ASIN. */
+    matchReview: jsonb("match_review").$type<{ asin: string; ok: boolean; at: string } | null>(),
     scannedAt: timestamp("scanned_at", { withTimezone: true }),
     updatedAt: updatedAt(),
   },

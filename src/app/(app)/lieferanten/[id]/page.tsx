@@ -9,9 +9,11 @@ import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
 import { profitAt } from "@/lib/pricing";
-import { packInfo, packOf, searchTerm, unitsPerSale, type UnitsSource } from "@/lib/suppliers/scan";
+import { packInfo, packOf, searchTerm, sizeIssue, unitsPerSale, type UnitsSource } from "@/lib/suppliers/scan";
 import { isImplausible, ROI_IMPLAUSIBLE } from "@/lib/suppliers/prices";
 import { QtyEdit } from "../qty-edit";
+import { MatchReview } from "../match-review";
+import { matchIssue } from "@/lib/suppliers/match";
 import { getSettings } from "@/lib/settings";
 import { clearFeedAction, feedCostAction, pullNowAction, saveFeedSourceAction, sellableCheckAction } from "../actions";
 import { feedAnalysis } from "@/lib/suppliers/feed-service";
@@ -28,11 +30,12 @@ type Row = {
   id: string; supplier_sku: string; ean: string | null; asin: string | null; title: string | null; price: number | null; stock: number | null;
   price_orig: number | null; currency: string | null; url: string | null; image_url: string | null; pack: string | null; market: OfferMarket | null;
   amz_price: number | null; our_asin: string | null; fee: number | null; ref: number | null; amazon_qty: number | null;
+  match_review: { asin: string; ok: boolean } | null;
 };
 
 const SYM: Record<string, string> = { USD: "$", GBP: "£" };
 
-export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string; freigabe?: string }> }) {
+export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string; freigabe?: string; alle?: string }> }) {
   const session = await requireArea("lieferanten");
   const { id } = await params;
   const sp = await searchParams;
@@ -42,7 +45,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
   if (!feed) notFound();
   const [s, rates, ai, keepa, brands] = await Promise.all([getSettings(t), eurRates(), getIntegration(t, "anthropic"), keepaKey(t), canAccess(session, "marken") ? visibleBrands(session) : Promise.resolve([])]);
   const res = await db.execute<Row>(sql`
-    select o.id, o.supplier_sku, o.ean, o.asin, o.title, o.price::float, o.stock, o.price_orig::float, o.currency, o.url, o.image_url, o.pack, o.market, o.amazon_qty,
+    select o.id, o.supplier_sku, o.ean, o.asin, o.title, o.price::float, o.stock, o.price_orig::float, o.currency, o.url, o.image_url, o.pack, o.market, o.amazon_qty, o.match_review,
            (select max(i.price)::float from amazon_inventory i where i.tenant_id = o.tenant_id and i.asin = coalesce(o.asin, p.asin)) as amz_price,
            p.asin as our_asin, p.fba_fee::float as fee, p.referral_rate::float as ref
       from supplier_offers o
@@ -67,7 +70,10 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
     const profit = sale !== null && costPerSale !== null
       ? profitAt(sale, { unitCost: costPerSale, fbaFee: r.fee ?? m?.fbaFee ?? s.pricing.defaultFbaFee, referralRate: r.ref ?? (m?.referralPct ? m.referralPct / 100 : s.pricing.referralRate), vatRate })
       : null;
-    return { ...r, pack: packOf(r.title ?? "", r.url) ?? r.pack, caseQty: pack.caseQty, sale, cost, unitCost, units: per.units, unitsSource: per.source, costPerSale, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null };
+    // Titel-Treffer (ohne EAN): passt das Amazon-Angebot? Prüfung von Hand gilt für diese ASIN.
+    const review = r.match_review && m?.asin && r.match_review.asin === m.asin ? r.match_review : null;
+    const issues = m?.byTitle && m.asin && !review?.ok ? [matchIssue(r.title, m.title)?.text, sizeIssue({ amazonTitle: m.title, supplierTitle: r.title, supplierUrl: r.url, source: per.source })].filter((x): x is string => !!x) : [];
+    return { ...r, pack: packOf(r.title ?? "", r.url) ?? r.pack, caseQty: pack.caseQty, sale, cost, unitCost, units: per.units, unitsSource: per.source, costPerSale, profit, margin: profit !== null && sale ? Math.round((profit / sale) * 1000) / 10 : null, issues, rejected: review?.ok === false };
   });
   const q = sp.q?.trim().toLowerCase();
   let shown = q ? rows.filter((r) => `${r.title} ${r.supplier_sku} ${r.ean} ${r.asin}`.toLowerCase().includes(q)) : rows;
@@ -83,14 +89,18 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
     .sort((a, b) => (b.roi ?? 0) - (a.roi ?? 0));
   // ROI über 500 % ist fast nie echt (Amazon-Großpackung ohne Mengenangabe, anderes Produkt) – nicht als profitabel zählen.
   // Von Hand gesetzte Stückzahl gilt als geprüft.
-  const suspicious = (r: { roi: number | null; unitsSource: UnitsSource }) => r.unitsSource !== "hand" && isImplausible(r.roi);
-  const profitable = candidates.filter((r) => !suspicious(r));
-  const odd = candidates.filter(suspicious);
+  // Zum Prüfen: ROI über 500 % (Stückzahl von Hand gilt als geprüft) oder Titel-Treffer, der wohl nicht passt.
+  const suspicious = (r: { roi: number | null; unitsSource: UnitsSource; issues: string[] }) => (r.unitsSource !== "hand" && isImplausible(r.roi)) || r.issues.length > 0;
+  const live = candidates.filter((r) => !r.rejected);
+  const profitable = live.filter((r) => !suspicious(r));
+  const odd = live.filter(suspicious);
   const analysis = feedAnalysis(id);
   const amazonConnected = Boolean((await getIntegration(t, "amazon_sp"))?.sellerId);
   const qtyEdit = (r: { id: string; units: number; unitsSource: UnitsSource; amazon_qty: number | null; roi?: number | null }) => (
     <QtyEdit feedId={feed.id} offerId={r.id} units={r.units} source={r.unitsSource} amazonQty={r.amazon_qty} open={r.unitsSource !== "hand" && isImplausible(r.roi)} />
   );
+  // Große Listen: erst 150 Zeilen (auf dem Handy sonst mehrere MB), Rest auf Wunsch.
+  const limit = sp.alle ? 3000 : 150;
   const chip = (nur?: string) => `/lieferanten/${id}${nur || q ? `?${new URLSearchParams({ ...(nur ? { nur } : {}), ...(q ? { q } : {}) })}` : ""}`;
 
   return (
@@ -120,14 +130,17 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
           {sp.freigabe && <div className="card-pad small notice notice-info" data-testid="feed-sellable-msg">{sp.freigabe}</div>}
           {odd.length > 0 && (
             <details className="card-pad small notice-warn" data-testid="feed-odd">
-              <summary style={{ cursor: "pointer" }}><strong>{odd.length} weitere mit ROI über {ROI_IMPLAUSIBLE} % – Menge prüfen</strong> (fast immer verkauft Amazon eine Großpackung ohne Mengenangabe im Titel, oder der Titel-Treffer ist ein anderes Produkt)</summary>
+              <summary style={{ cursor: "pointer" }}><strong>{odd.length} weitere zum Prüfen</strong> (ROI über {ROI_IMPLAUSIBLE} % – meist Großpackung ohne Mengenangabe – oder der Titel-Treffer passt wohl nicht: anderes Produkt, andere Marke, Sorte oder Packungsgröße)</summary>
               <table className="table" style={{ marginTop: 8 }}>
                 <thead><tr><th>Amazon-Angebot</th><th>Beim Lieferanten</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">ROI</th></tr></thead>
                 <tbody>
                   {odd.slice(0, 40).map((r) => (
                     <tr key={r.id} data-testid="odd-row" data-asin={r.market?.asin ?? ""}>
                       <td style={{ maxWidth: 280 }}><a href={`https://www.amazon.de/dp/${r.market!.asin}`} target="_blank" rel="noreferrer">{r.market?.title ?? r.market!.asin}</a></td>
-                      <td style={{ maxWidth: 240 }}>{r.title}{r.caseQty > 1 && <span className="muted"> · Karton {r.caseQty}</span>}</td>
+                      <td style={{ maxWidth: 240 }}>
+                        {r.title}{r.caseQty > 1 && <span className="muted"> · Karton {r.caseQty}</span>}
+                        {r.market?.byTitle && <MatchReview feedId={feed.id} offerId={r.id} issues={r.issues} />}
+                      </td>
                       <td className="num right">{formatEuro(r.costPerSale)}{qtyEdit(r)}</td>
                       <td className="num right">{formatEuro(r.sale)}</td>
                       <td className="num right">{r.roi?.toLocaleString("de-DE", { maximumFractionDigits: 0 })} %</td>
@@ -249,7 +262,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
               </thead>
               <tbody>
                 {shown.length === 0 && <tr><td colSpan={9} className="muted">Keine Artikel. Rechts eine Liste hochladen oder eine Seite scannen.</td></tr>}
-                {shown.slice(0, 500).map((r) => (
+                {shown.slice(0, limit).map((r) => (
                   <tr key={r.id}>
                     <td style={{ width: 44 }}>{r.image_url && <img src={r.image_url} alt="" width={40} height={40} loading="lazy" style={{ objectFit: "contain", borderRadius: 6, background: "#fff" }} />}</td>
                     <td style={{ maxWidth: 320 }}>
@@ -295,6 +308,14 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                     </td>
                   </tr>
                 ))}
+                {shown.length > limit && (
+                  <tr>
+                    <td colSpan={9} className="small" data-testid="feed-more">
+                      {limit} von {shown.length} Artikeln angezeigt – oben suchen oder filtern, oder{" "}
+                      <Link href={`${chip(sp.nur)}${chip(sp.nur).includes("?") ? "&" : "?"}alle=1`}>alle anzeigen</Link> (lädt auf dem Handy länger).
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
             {shown.length > 500 && <div className="card-pad small muted">Die ersten 500 von {shown.length} – Suche oder Filter nutzen.</div>}

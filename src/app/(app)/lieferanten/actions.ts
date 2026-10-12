@@ -219,3 +219,18 @@ export async function amazonQtyAction(fd: FormData) {
   revalidatePath(`/lieferanten/${feedId}`);
   revalidatePath("/lieferanten/chancen");
 }
+
+/** Titel-Treffer von Hand prüfen: „passt“, „falsches Produkt“ oder zurücksetzen – gilt für die aktuelle ASIN. */
+export async function matchReviewAction(fd: FormData) {
+  const session = await requireArea("lieferanten");
+  const feedId = await ownFeed(session.tenantId, fd.get("feedId"));
+  const offerId = uuid.parse(fd.get("offerId"));
+  const O = schema.supplierOffers;
+  const where = and(eq(O.id, offerId), eq(O.feedId, feedId), eq(O.tenantId, session.tenantId));
+  const [o] = await db.select({ asin: sql<string | null>`${O.market}->>'asin'` }).from(O).where(where);
+  if (!o?.asin) return;
+  const v = String(fd.get("ok") ?? "");
+  await db.update(O).set({ matchReview: v === "reset" ? null : { asin: o.asin, ok: v === "1", at: new Date().toISOString() } }).where(where);
+  revalidatePath(`/lieferanten/${feedId}`);
+  revalidatePath("/lieferanten/chancen");
+}

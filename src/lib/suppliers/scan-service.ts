@@ -10,6 +10,7 @@ import { keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
 import { KEEPA_MIN_TOKENS, recordHistory, refreshMarket, shareMarket } from "./feed-service";
 import { stripHtml } from "@/lib/research/feeds";
 import { chunkText, currencyOf, dedupe, fromCards, fromJsonLd, fromShopify, jsonLdFromHtml, parseCapture, parseScan, scanPromptForText, SCAN_INSTRUCTIONS, searchTerm, toEur, type ScannedItem } from "./scan";
+import { pickTitleMatch } from "./match";
 
 const O = schema.supplierOffers;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36";
@@ -193,7 +194,7 @@ export async function titleLookupScanned(tenantId: string, feedId: string, since
   for (const r of rows) {
     const res = await keepaSearch(key, searchTerm(r.title!));
     searched++;
-    const mp = res.products[0];
+    const mp = pickTitleMatch(r.title!, res.products);
     const market: OfferMarket = mp
       ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, items: mp.items ?? null, netG: mp.netG ?? null, byTitle: true }
       : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };
@@ -233,7 +234,7 @@ export async function checkFeedWithKeepa(tenantId: string, feedId: string, opts:
       const term = searchTerm(r.title!);
       const res = await keepaSearch(key, term);
       tokensLeft = res.tokensLeft;
-      const mp = res.products[0];
+      const mp = pickTitleMatch(r.title!, res.products);
       const market: OfferMarket = mp
         ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, items: mp.items ?? null, netG: mp.netG ?? null, byTitle: true }
         : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };

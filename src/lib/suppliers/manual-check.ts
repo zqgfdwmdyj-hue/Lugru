@@ -5,6 +5,7 @@ import type { OfferMarket } from "@/db/schema";
 import { keepaKey, keepaSearch } from "@/lib/integrations/clients/keepa";
 import { KEEPA_MIN_TOKENS, refreshMarket } from "./feed-service";
 import { searchTerm } from "./scan";
+import { pickTitleMatch } from "./match";
 
 // Von Hand gezogene Artikel (Seller-Knopf) einmal bei Keepa prüfen – im Hintergrund, mit Stand
 // zum Anzeigen. Mit EAN 1 Token je Code, ohne EAN Titelsuche (ca. 10 Tokens je Artikel). Werden
@@ -104,7 +105,7 @@ export async function runManualCheck(tenantId: string, run: ManualRun = { runnin
     run.note = `Suche ohne EAN per Titel (${i + 1} von ${noEan.length}) …`;
     const res = await keepaSearch(key, searchTerm(r.title!));
     run.tokensLeft = res.tokensLeft;
-    const mp = res.products[0];
+    const mp = pickTitleMatch(r.title!, res.products);
     const market: OfferMarket = mp
       ? { checkedAt: new Date().toISOString(), asin: mp.asin, title: mp.title, price: mp.price, fbaFee: mp.fbaFee, referralPct: mp.referralPct, monthlySold: mp.monthlySold, salesRank: mp.salesRank, items: mp.items ?? null, netG: mp.netG ?? null, byTitle: true }
       : { checkedAt: new Date().toISOString(), asin: null, price: null, fbaFee: null, referralPct: null, monthlySold: null, salesRank: null, byTitle: true };
