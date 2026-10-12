@@ -17,6 +17,7 @@ services:
       GYG_PARTNER_ID: ${GYG_PARTNER_ID:-}
       KARTEN_KACHELN: ${KARTEN_KACHELN:-}
       KARTEN_HINWEIS: ${KARTEN_HINWEIS:-}
+      KARTEN_OFFLINE: ${KARTEN_OFFLINE:-}
     volumes:
       - reisedaten:/daten
     read_only: true

@@ -706,3 +706,61 @@ export function spritkosten(km, verbrauch, preisProLiter) {
   if (!km || v == null || p == null) return null;
   return r2((km * v * p) / 100);
 }
+
+// ---------- Wetter-Plan B ----------
+
+const DRAUSSEN = new Set(["strand", "schnorcheln", "tauchen", "boot", "natur", "sport", "park", "ski", "tiere"]);
+const WASSER = new Set(["schnorcheln", "tauchen", "boot"]);
+export const PLAN_B_IDEEN = [
+  ["🏛️", "Museum"],
+  ["🐠", "Aquarium"],
+  ["🛍️", "Markthalle"],
+  ["🧗", "Indoor-Spielplatz"],
+  ["🎬", "Kino"],
+  ["♨️", "Thermalbad"],
+];
+
+/**
+ * Prüft die Tagesvorhersage (Open-Meteo „daily“, erster Tag) gegen die Ausflüge im Freien.
+ * Liefert { grund, betroffen } oder null, wenn kein Plan B nötig ist.
+ */
+export function planB(wetter, ausfluege) {
+  if (!wetter?.time?.length) return null;
+  const regen = wetter.precipitation_probability_max?.[0] ?? 0;
+  const code = wetter.weather_code?.[0] ?? 0;
+  const wind = wetter.wind_speed_10m_max?.[0] ?? 0;
+  const gewitter = code >= 95;
+  const nass = regen >= 60 || (code >= 61 && code <= 67) || (code >= 80 && code <= 82) || gewitter;
+  const sturm = wind >= 45;
+  if (!nass && !sturm) return null;
+  const betroffen = (ausfluege ?? []).filter((a) => a.status !== "verworfen" && (DRAUSSEN.has(a.kategorie) && nass || WASSER.has(a.kategorie) && (sturm || gewitter)));
+  const grund = [gewitter ? "Gewitter" : nass ? `Regen (${regen} %)` : "", sturm ? `Wind bis ${Math.round(wind)} km/h` : ""].filter(Boolean).join(" und ");
+  return { grund, betroffen };
+}
+
+// ---------- Offline-Karten ----------
+
+/** Kachelnummern (Web-Mercator) rund um die Orte – für Kartendienste, die Offline-Nutzung erlauben. */
+export function kachelnFuer(orte, { zoomVon = 11, zoomBis = 16, radiusKm = 2, max = 4000 } = {}) {
+  const ergebnis = new Map();
+  for (const o of orte) {
+    if (!Number.isFinite(o?.lat) || !Number.isFinite(o?.lng)) continue;
+    const dLat = radiusKm / 111;
+    const dLng = radiusKm / (111 * Math.max(0.1, Math.cos((o.lat * Math.PI) / 180)));
+    for (let z = zoomVon; z <= zoomBis; z++) {
+      const n = 2 ** z;
+      const x = (lng) => Math.min(n - 1, Math.max(0, Math.floor(((lng + 180) / 360) * n)));
+      const y = (lat) => {
+        const r = (Math.max(-85, Math.min(85, lat)) * Math.PI) / 180;
+        return Math.min(n - 1, Math.max(0, Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)));
+      };
+      for (let tx = x(o.lng - dLng); tx <= x(o.lng + dLng); tx++) {
+        for (let ty = y(o.lat + dLat); ty <= y(o.lat - dLat); ty++) {
+          ergebnis.set(`${z}/${tx}/${ty}`, { z, x: tx, y: ty });
+          if (ergebnis.size >= max) return [...ergebnis.values()];
+        }
+      }
+    }
+  }
+  return [...ergebnis.values()];
+}

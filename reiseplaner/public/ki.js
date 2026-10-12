@@ -173,6 +173,8 @@ aktionen["ki-oeffnen"] = async (el) => {
     verlauf = [];
   }
   chatZeichnen();
+  // Fertige Aufträge (z. B. „3 passende Ausflüge“, „Plan B“) direkt abschicken
+  if (el?.dataset.senden) fragen();
 };
 
 aktionen["ki-schliessen"] = () => {

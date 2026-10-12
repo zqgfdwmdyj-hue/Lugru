@@ -7,30 +7,13 @@ import { tiereFuer, tiereDerReise, regionFuer } from "./tiere.js";
 import { tierBild } from "./tierbilder.js";
 import { zeitZuMin, minZuZeit, festeZeit, zimmerVon, istKind, entfernungKm } from "./rechnen.js";
 import { unterkunftAm } from "./unterwegs.js";
+import { kinder, kind, vorname, zustandKind, istSeetag, kinderSetzen } from "./kinderbasis.js";
+import { geschichteBox, stimmeBox, rankingBox, kreativSeite, postkarteZeichnen, memoryBox, puzzleBox, wimmelBox, challengeBox, rueckblickBox, zahlenSpassBox, lieblingeHtml } from "./kinderextra.js";
 import { LAENDER, landFuer, SPRACHEN, WOERTER, schatzAufgaben, RAETSEL, WITZE, ICH_SEHE_FARBEN, WER_FINDET, PANTOMIME, ABZEICHEN, packBild, mischen } from "./kinderdaten.js";
 
 const BILD = { tauchen: "🤿", schnorcheln: "🐠", strand: "🏖️", boot: "⛵", natur: "🥾", sport: "🏄", stadt: "🏛️", tiere: "🐒", kultur: "🎭", essen: "🍽️", bord: "🛳️", ausflug: "🗺️", tickets: "🎟️", park: "🎢", ski: "⛷️", kinderclub: "🧒" };
-const SEITEN = { heute: "☀️ Heute", pass: "🛂 Pass & Abzeichen", entdecken: "🔭 Entdecken", spiele: "🎲 Spiele", tagebuch: "📔 Tagebuch", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
+const SEITEN = { heute: "☀️ Heute", pass: "🛂 Pass & Abzeichen", entdecken: "🔭 Entdecken", spiele: "🎲 Spiele", tagebuch: "📔 Tagebuch", kreativ: "🎨 Basteln & Sammeln", abend: "🌙 Abend", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
 const STIMMUNGEN = ["😄", "🙂", "😐", "🙁", "😢"];
-
-const kinder = () => {
-  const ps = zustand.reise?.personen ?? [];
-  return ps.filter(istKind).length ? ps.filter(istKind) : ps;
-};
-const kind = () => kinder().find((p) => p.id === zustand.kind) ?? kinder()[0] ?? null;
-const vorname = (p) => String(p?.name ?? "").split(" ")[0];
-const zustandKind = (p = kind()) => {
-  const k = zustand.extras.kinder?.[p?.id] ?? {};
-  return { abzeichen: {}, quiz: {}, tagebuch: {}, kasse: { start: null, ausgaben: [] }, kidsclub: {}, ...k };
-};
-const istSeetag = (h) => stationsArt(h) === "seetag";
-
-async function kinderSetzen(bereich, schluessel, wert, p = kind()) {
-  const k = await anfrage(`/api/reisen/${zustand.reise.id}/kinder/${p.id}`, { method: "PUT", body: { bereich, schluessel, wert } });
-  zustand.extras.kinder ??= {};
-  zustand.extras.kinder[p.id] = k;
-  return k;
-}
 
 // ---------- Kennzahlen, Stempel, Abzeichen ----------
 
@@ -212,7 +195,8 @@ function seiteHeute(r) {
       ${zimmer.length ? `<p class="kind-text">🛏️ ${u.id === "schiff" ? "Meine Kabine" : "Mein Zimmer"}: <strong>${zimmer.map((z) => esc(z.nummer || "?")).join(", ")}</strong>${zimmer[0].deck ? ` (${u.id === "schiff" ? "Deck" : "Etage"} ${esc(zimmer[0].deck)})` : ""}</p>` : ""}
       ${land ? `<p class="kind-text">${land.flagge} „Hallo“ heißt hier <strong>${esc(WOERTER[land.sprache]?.[0]?.[1] ?? "Hallo")}</strong> – <button class="link" data-aktion="kind-seite" data-seite="entdecken">mehr über ${esc(land.name)} →</button></p>` : ""}
     </div>` : ""}
-    <div class="karte-box"><h2>🗺️ Wo sind wir?</h2>${karteSvg(r)}</div>`;
+    <div class="karte-box"><h2>🗺️ Wo sind wir?</h2>${karteSvg(r)}</div>
+    ${zahlenSpassBox(r)}`;
 }
 
 function seitePass(r) {
@@ -470,7 +454,7 @@ aktionen["warte-weiter"] = () => {
 };
 aktionen["flagge-raten"] = (el) => {
   el.classList.add(el.dataset.richtig ? "richtig" : "falsch");
-  if (el.dataset.richtig) setTimeout(() => aktionen["warte-weiter"](), 900);
+  if (el.dataset.richtig) setTimeout(() => $(".flaggenraten") && aktionen["warte-weiter"](), 900);
 };
 aktionen["aufdecken"] = (el) => {
   el.hidden = true;
@@ -493,6 +477,7 @@ function seiteTagebuch(r) {
     <p class="kind-text">Wie war dein Tag?</p>
     <div class="stimmungen">${STIMMUNGEN.map((s, i) => `<button class="stimmung ${e.stimmung === i ? "an" : ""}" data-aktion="stimmung" data-i="${i}" data-datum="${esc(tag.datum)}">${s}</button>`).join("")}</div>
     <label class="kind-text">Das Beste heute war …<textarea id="tagebuchText" rows="3" maxlength="1000" placeholder="Erzähl mal!">${esc(e.text ?? "")}</textarea></label>
+    ${stimmeBox(tag.datum)}
     <p class="kind-text">🎨 Mal ein Bild von deinem Tag:</p>
     ${e.bildId ? `<img class="tagebuchbild" src="${fotoUrl(e.bildId)}" alt="Bild von ${esc(vorname(p))}">` : ""}
     <div class="malen">
@@ -502,7 +487,7 @@ function seiteTagebuch(r) {
     </div>
     <div class="zeile"><button class="knopf" data-aktion="tagebuch-speichern" data-datum="${esc(tag.datum)}">💾 Speichern</button><span class="klein leise" id="tagebuchStatus"></span></div>
   </div>
-  ${fruehere.length ? `<div class="karte-box"><h2>Frühere Tage</h2>${fruehere.map(([d, x]) => `<div class="tagebuch-eintrag"><strong>${esc(datumText(d))}</strong> ${x.stimmung != null ? STIMMUNGEN[x.stimmung] : ""} <span>${esc(x.text ?? "")}</span>${x.bildId ? `<img src="${fotoUrl(x.bildId, true)}" alt="">` : ""}</div>`).join("")}</div>` : ""}`;
+  ${fruehere.length ? `<div class="karte-box"><h2>Frühere Tage</h2>${fruehere.map(([d, x]) => `<div class="tagebuch-eintrag"><strong>${esc(datumText(d))}</strong> ${x.stimmung != null ? STIMMUNGEN[x.stimmung] : ""} <span>${esc(x.text ?? "")}</span>${x.bildId ? `<img src="${fotoUrl(x.bildId, true)}" alt="">` : ""}${x.audioId ? `<audio controls preload="none" src="/api/reisen/${esc(zustand.reise.id)}/dateien/${esc(x.audioId)}"></audio>` : ""}</div>`).join("")}</div>` : ""}`;
 }
 
 let malDick = false;
@@ -576,7 +561,7 @@ aktionen["tagebuch-speichern"] = async (el) => {
       const blob = await new Promise((ok) => $("#malflaeche").toBlob(ok, "image/jpeg", 0.9));
       bildId = await fotoHochladen(new File([blob], "bild.jpg", { type: "image/jpeg" }), { art: "kinder" });
     }
-    await kinderSetzen("tagebuch", datum, { stimmung: vorher.stimmung ?? null, text: $("#tagebuchText").value, bildId });
+    await kinderSetzen("tagebuch", datum, { stimmung: vorher.stimmung ?? null, text: $("#tagebuchText").value, bildId, audioId: vorher.audioId ?? "" });
     neuZeichnen();
   } catch (e) {
     el.disabled = false;
@@ -776,12 +761,15 @@ export function kinderAnsicht() {
     heute: () => seiteHeute(r),
     pass: () => seitePass(r),
     entdecken: () => seiteEntdecken(r),
-    spiele: () => `${quizBox(r)}${schatzBox()}${bingoBox(r)}${warteBox()}`,
+    spiele: () => `${quizBox(r)}${memoryBox()}${puzzleBox()}${wimmelBox()}${schatzBox()}${bingoBox(r)}${warteBox()}`,
     tagebuch: () => seiteTagebuch(r),
+    kreativ: () => kreativSeite(r),
+    abend: () => `${geschichteBox(r)}${challengeBox()}${rankingBox(r)}${rueckblickBox(r)}`,
     sachen: () => seiteSachen(),
     eltern: () => seiteEltern(r),
   }[seite]();
   setTimeout(malenStarten, 0);
+  if (seite === "kreativ") setTimeout(postkarteZeichnen, 0);
   return `<div class="kinder">
     ${ks.length > 1 ? `<div class="kindwahl">${ks.map((k) => `<button class="kindknopf ${k.id === p?.id ? "an" : ""}" data-aktion="kind-waehlen" data-id="${esc(k.id)}">${esc(vorname(k))}</button>`).join("")}</div>` : ""}
     <nav class="kinderseiten">${Object.entries(SEITEN).map(([k, t]) => `<button class="${k === seite ? "an" : ""}" data-aktion="kind-seite" data-seite="${k}">${t}</button>`).join("")}</nav>
@@ -828,6 +816,7 @@ export function kinderKapitel(reise, extras, fotoAdresse) {
       ${stempel.length ? `<div class="stempelseite">${stempel.map((s, i) => stempelSvg({ ...s, besucht: true }, i)).join("")}</div>` : ""}
       ${manuell.length ? `<p>🏅 ${manuell.map((a) => `${a.emoji} ${esc(a.name)}`).join(" · ")}</p>` : ""}
       ${tiere.length ? `<p>🔍 Entdeckt: ${tiere.map((t) => esc(t.name)).join(", ")}</p>` : ""}
+      ${lieblingeHtml(k, fotoAdresse)}
       ${eintraege.map(([d, x]) => `<div class="buch-erlebnis"><h4>${esc(datumText(d, { weekday: "long", day: "numeric", month: "long" }))} ${x.stimmung != null ? STIMMUNGEN[x.stimmung] : ""}</h4>${x.text ? `<blockquote>${esc(x.text)}</blockquote>` : ""}${x.bildId ? `<img class="buch-kinderbild" src="${fotoAdresse(x.bildId)}" alt="">` : ""}</div>`).join("")}
     </section>`;
   }).join("");

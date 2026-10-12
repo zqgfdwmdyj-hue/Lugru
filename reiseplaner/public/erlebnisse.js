@@ -1,5 +1,5 @@
 // Erlebnisse: Bewertungen mit Fotos und Kommentaren (Ausflüge, Unterkünfte) und das Tauchlogbuch.
-import { zustand, $, esc, datumText, haefen, ausfluegeIn, hafenVon, hatKoord, aktionen, aenderungen, neuZeichnen, dialogOeffnen, dialog, anfrage, fotoHochladen, fotoLeiste, sterneText, sternEingabe, ortsSuche, ortAuslesen, beitraegeLaden, istPlaner } from "./kern.js";
+import { zustand, $, esc, einfachesMarkdown, datumText, haefen, ausfluegeIn, hafenVon, hatKoord, aktionen, aenderungen, neuZeichnen, dialogOeffnen, dialog, anfrage, fotoHochladen, fotoLeiste, sterneText, sternEingabe, ortsSuche, ortAuslesen, beitraegeLaden, istPlaner } from "./kern.js";
 import { KATEGORIEN, zahl, dauerText, tauchProfilSvg, entfernungKm } from "./rechnen.js";
 import { zipTexte } from "./zip.js";
 import { exifLesen, fotoZuordnen, tauchImport, tauchgangDoppelt, tauchStatistik, ARTEN_MEER, sichtungenListe } from "./unterwegs-logik.js";
@@ -280,7 +280,7 @@ export function erlebnisseAnsicht() {
   const tauch = [...zustand.beitraege.tauchgaenge].sort((a, b) => `${a.datum} ${a.beginn}`.localeCompare(`${b.datum} ${b.beginn}`));
   return `
     <div class="karte-box">
-      <div class="zeile"><h3>Bewertungen &amp; Fotos</h3><button class="knopf leise" data-aktion="teilen" data-art="bericht" data-id="">Reisebericht teilen</button><button class="knopf leise" data-aktion="reisebuch">📖 Reisebuch / PDF</button><button class="knopf leise" data-aktion="rueckblick">Jahresrückblick</button></div>
+      <div class="zeile"><h3>Bewertungen &amp; Fotos</h3><button class="knopf leise" data-aktion="teilen" data-art="bericht" data-id="">Reisebericht teilen</button><button class="knopf leise" data-aktion="reisebuch">📖 Reisebuch / PDF</button><button class="knopf leise" data-aktion="rueckblick">Jahresrückblick</button>${zustand.info.ki ? `<button class="knopf leise" data-aktion="naechste-reise">✨ Ideen für die nächste Reise</button>` : ""}</div>
       <p class="leise klein">Jede/r bewertet selbst – mit Sternen, Kommentar und Fotos. Über „Teilen“ entsteht ein Link, der nur diesen Beitrag zeigt (nicht die Reise, nicht die Kosten).</p>
       ${zeilen || hotelZeilen ? `${zeilen}${hotelZeilen ? `<div class="erlebnistag"><div class="tagkopf"><strong>Unterkünfte</strong></div>${hotelZeilen}</div>` : ""}` : `<p class="leise">Sobald Ausflüge oder Unterkünfte als „Gebucht“ markiert sind, können sie hier bewertet werden.</p>`}
     </div>
@@ -467,3 +467,29 @@ aktionen["album-loeschen"] = async (el) => {
   dialog().close();
   neuZeichnen();
 };
+
+// ---------- Ideen für die nächste Reise (KI) ----------
+
+function naechsteReiseDialog(text = "", laeuft = false, fehlerText = "") {
+  dialogOeffnen(`<form method="dialog" class="formular" id="naechsteForm">
+    <h3>✨ Ideen für die nächste Reise</h3>
+    <p class="leise klein">Claude schaut sich eure Reisen, Lieblingsorte und Bewertungen an und schlägt passende Ziele vor. Namen der Kinder werden nicht übermittelt, nur ihr Alter.</p>
+    <label>Wünsche (optional)<input name="wunsch" maxlength="500" placeholder="z. B. Herbstferien, max. 4 Std. Flug, Tauchen für Anfänger" value="${esc(zustand.naechsteWunsch ?? "")}"></label>
+    <div class="zeile"><span class="platz"></span><button type="button" class="knopf leise" data-aktion="dialog-zu">Schließen</button><button class="knopf" value="ok" ${laeuft ? "disabled" : ""}>${laeuft ? "Claude überlegt … (bis zu einer Minute)" : text ? "Neue Ideen" : "Ideen holen"}</button></div>
+    ${fehlerText ? `<p class="warnung">${esc(fehlerText)}</p>` : ""}
+    ${text ? `<div>${einfachesMarkdown(text)}</div>` : ""}
+  </form>`, true);
+  $("#naechsteForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    zustand.naechsteWunsch = e.target.wunsch.value;
+    naechsteReiseDialog(text, true);
+    try {
+      const r = await anfrage("/api/ki/naechste-reise", { method: "POST", body: { wunsch: zustand.naechsteWunsch } });
+      zustand.naechsteIdeen = r.text;
+      naechsteReiseDialog(r.text);
+    } catch (err) {
+      naechsteReiseDialog(text, false, err.message);
+    }
+  });
+}
+aktionen["naechste-reise"] = () => naechsteReiseDialog(zustand.naechsteIdeen ?? "");

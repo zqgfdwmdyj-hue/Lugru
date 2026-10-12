@@ -16,6 +16,7 @@ import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js"
 import { vorbereitungAnsicht } from "./vorbereitung.js";
 import { unterwegsAnsicht, nachUnterwegs, weckerPlanen } from "./unterwegs.js";
 import { kinderAnsicht } from "./kinder.js";
+import { planB, PLAN_B_IDEEN } from "./unterwegs-logik.js";
 import { bordkonto, inReisewaehrung, etappen, spritkosten } from "./unterwegs-logik.js";
 import { verbindungText } from "./unterwegs.js";
 import "./reisebuch.js";
@@ -308,6 +309,7 @@ function planAnsicht() {
         <h3>Ausflüge finden in ${esc(h.suchname || h.name)}</h3>
         <p class="leise klein">Öffnet die Suche beim Anbieter (bei GetYourGuide mit Datum). Gefundenes mit „+ Ausflug“ eintragen – Link, Preis und Dauer übernehmen.</p>
         ${suchLinks(h)}
+        ${zustand.info.ki ? `<p><button class="knopf leise" data-aktion="ki-oeffnen" data-senden="1" data-frage="${esc(`Schlage für den Tag ${datumText(h.datum)} in ${h.name} (stationId ${h.id}) die 3 besten Ausflüge für unsere Familie vor – passend zum Alter der Kinder, unseren Interessen (z. B. Tauchen, Tiere, Strand, frühere Bewertungen) und einem vernünftigen Budget. Prüfe jeweils, ob wir sicher vor der festen Zeit (z. B. „Alle an Bord“) zurück sind, und lege sie mit ausflug_vorschlagen an (nur echte Anbieter und Links).`)}">✨ 3 passende Ausflüge vorschlagen</button></p>` : ""}
         ${zustand.info.gyg ? `<div class="gyg"><button class="knopf leise" data-aktion="gyg-laden" data-id="${esc(h.id)}">GetYourGuide-Angebote hier anzeigen</button><div id="gygListe"></div></div>` : ""}
       </div>
 
@@ -515,7 +517,21 @@ async function wetterLaden(h) {
   if (!d?.time?.length || !$("#wetter")) return;
   const code = d.weather_code[0];
   const symbol = code === 0 ? "☀️" : code <= 2 ? "🌤️" : code <= 3 ? "☁️" : code <= 48 ? "🌫️" : code <= 67 ? "🌧️" : code <= 77 ? "🌨️" : code <= 82 ? "🌦️" : "⛈️";
-  $("#wetter").innerHTML = `${symbol} ${Math.round(d.temperature_2m_min[0])}–${Math.round(d.temperature_2m_max[0])} °C · Regen ${d.precipitation_probability_max[0] ?? "–"} % · Wind ${Math.round(d.wind_speed_10m_max[0])} km/h · Sonnenuntergang ${String(d.sunset[0]).slice(11, 16)}`;
+  $("#wetter").innerHTML = `${symbol} ${Math.round(d.temperature_2m_min[0])}–${Math.round(d.temperature_2m_max[0])} °C · Regen ${d.precipitation_probability_max[0] ?? "–"} % · Wind ${Math.round(d.wind_speed_10m_max[0])} km/h · Sonnenuntergang ${String(d.sunset[0]).slice(11, 16)}${planBHtml(h, d, ort)}`;
+}
+
+/** Wetter-Plan B: bei Regen, Gewitter oder Sturm Alternativen für Ausflüge im Freien. */
+function planBHtml(h, wetter, ort) {
+  const b = planB(wetter, ausfluegeIn(h.id));
+  if (!b) return "";
+  const suche = (q) => `https://www.google.com/maps/search/${encodeURIComponent(q)}/@${ort.lat},${ort.lng},13z`;
+  const frage = `Für ${datumText(h.datum)} in ${h.name} (stationId ${h.id}) ist ${b.grund} gemeldet.${b.betroffen.length ? ` Betroffen: ${b.betroffen.map((a) => a.titel).join(", ")}.` : ""} Schlag uns einen Plan B für die Familie vor (Indoor oder wetterfest, kindgerecht, mit Blick auf die feste Zeit des Tages) und lege passende Alternativen mit ausflug_vorschlagen an.`;
+  return `<div class="planb">
+    <strong>🌧️ Plan B: ${esc(b.grund)} gemeldet</strong>
+    ${b.betroffen.length ? `<div class="klein">Betrifft: ${b.betroffen.map((a) => esc(a.titel)).join(", ")}</div>` : ""}
+    <div class="links">${PLAN_B_IDEEN.map(([e, q]) => `<a class="linkchip" target="_blank" rel="noopener" href="${suche(q)}">${e} ${esc(q)}</a>`).join("")}</div>
+    ${zustand.info.ki ? `<button class="knopf leise" data-aktion="ki-oeffnen" data-senden="1" data-frage="${esc(frage)}">✨ Plan B von der KI</button>` : ""}
+  </div>`;
 }
 
 const berechnet = new Set();

@@ -575,3 +575,48 @@ form.art-hafen .ohne-hafen { display: none !important; }
 .kinderpass .knopf { background: #fff; color: #0d2f52; border-color: #fff; }
 .profilbox { margin: 0 0 12px; padding: 8px; border: 1px solid var(--rand, #ddd); border-radius: 10px; color: var(--text, inherit); }
 .profilbox figcaption { margin-top: 4px; }
+
+/* ---------- Kinder: Abend, Basteln, Spiele ---------- */
+.geschichtetext { font-size: 1.15rem; line-height: 1.6; max-width: 42em; }
+.geschichtetext h2, .geschichtetext h3 { margin-top: 0; }
+.stimmbox { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.stimmbox .kind-text { flex-basis: 100%; }
+.stimmbox audio, .tagebuch-eintrag audio { max-width: 100%; height: 36px; }
+.treppchen { display: grid; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 6px; text-align: center; margin-top: 8px; }
+.stufe { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stufe-name { font-weight: 700; overflow-wrap: anywhere; }
+.sockel { background: var(--akzent); color: #fff; font-size: 1.6rem; font-weight: 700; border-radius: 6px 6px 0 0; padding-top: 6px; }
+.stufe1 .sockel { height: 90px; background: #d4a017; }
+.stufe2 .sockel { height: 64px; background: #9e9e9e; }
+.stufe3 .sockel { height: 44px; background: #a0522d; }
+.postkarte { width: 100%; height: auto; border: 1px solid var(--rand); border-radius: 8px; margin: 8px 0; background: #fffdf6; }
+.funde { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+.fund { position: relative; margin: 0; border: 1px solid var(--rand); border-radius: 8px; overflow: hidden; background: var(--flaeche); }
+.fund img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.fund figcaption { padding: 6px 8px; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.fund .link { position: absolute; top: 4px; right: 6px; background: rgba(255, 255, 255, .85); border-radius: 50%; width: 28px; height: 28px; text-decoration: none; margin: 0; padding: 0; }
+.memory { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; max-width: 520px; }
+.memory-karte { aspect-ratio: 1; border: 2px solid var(--rand); border-radius: 8px; background: var(--akzent-hell); font-size: 1.8rem; padding: 0; overflow: hidden; cursor: pointer; color: inherit; }
+.memory-karte.auf { background: var(--flaeche); }
+.memory-karte.gefunden { border-color: var(--gruen); opacity: .8; }
+.memory-karte img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.memory-tier { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.memory-tier svg { width: 80%; height: 80%; }
+.puzzle { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 2px; max-width: 480px; aspect-ratio: 1; }
+.puzzle-teil { border: 0; padding: 0; background-size: calc(var(--n) * 100%) calc(var(--n) * 100%); cursor: pointer; }
+.puzzle-teil.an { outline: 4px solid var(--gelb); outline-offset: -4px; }
+.wimmel { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; max-width: 520px; background: #b3e5fc; border-radius: 8px; padding: 4px; }
+.wimmel-feld { aspect-ratio: 1; border: 0; background: none; font-size: clamp(1rem, 5vw, 1.7rem); padding: 0; cursor: pointer; }
+.wimmel-feld.treffer { background: #fff59d; border-radius: 50%; }
+.wimmel-feld.daneben { animation: wackeln .3s; }
+@keyframes wackeln { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+.challenge td, .challenge th { text-align: center; white-space: nowrap; }
+.challenge td:first-child { text-align: left; white-space: normal; }
+.punkte { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.mini { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--rand); background: var(--flaeche); color: inherit; font-size: 1.1rem; cursor: pointer; }
+.mini.plus { background: var(--akzent); color: #fff; border-color: var(--akzent); }
+.rb-punkte { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.zahlenspass { padding-left: 1.2em; font-size: 1.1rem; line-height: 1.5; }
+.zahlenspass li { margin: 4px 0; }
+.planb { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--gelb); border-left-width: 4px; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
+.planb .linkchip { --farbe: var(--gelb); }

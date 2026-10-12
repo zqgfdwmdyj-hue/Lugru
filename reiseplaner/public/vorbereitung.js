@@ -1,6 +1,6 @@
 // Vorbereitung: gemeinsame Packliste (abhaken für alle) und Dokumente & Fristen mit Dateien.
 import { zustand, $, esc, datumText, personen, aktionen, aenderungen, neuZeichnen, dialogOeffnen, dialog, anfrage, heute, herunterladen, istKreuzfahrt } from "./kern.js";
-import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUMENT_VORLAGEN, dokumentHinweise, reiseZeitraum, kalenderDatei } from "./unterwegs-logik.js";
+import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUMENT_VORLAGEN, dokumentHinweise, reiseZeitraum, kalenderDatei, kachelnFuer } from "./unterwegs-logik.js";
 import { istKind } from "./rechnen.js";
 
 const basis = () => `/api/reisen/${zustand.reise.id}/extras`;
@@ -82,8 +82,65 @@ export function vorbereitungAnsicht() {
       <p class="klein leise">Schnell anlegen:</p>
       <div class="links">${DOKUMENT_VORLAGEN.filter((v) => (!v.nurKreuzfahrt || istKreuzfahrt()) && (!v.nurTauchen || passendeVorlagen(zustand.reise).includes("tauchen"))).map((v, i) => `<button class="linkchip" data-aktion="dokument-vorlage" data-i="${DOKUMENT_VORLAGEN.indexOf(v)}">+ ${esc(v.titel)}${v.jePerson ? " (je Person)" : ""}</button>`).join("")}</div>
       ${e.dokumente.some((d) => d.frist && !d.erledigt) ? `<div class="zeile"><button class="knopf leise" data-aktion="fristen-kalender">📅 Fristen in den Kalender</button></div>` : ""}
-    </div>`;
+    </div>
+    ${offlineKartenBox()}`;
 }
+
+// ---------- Offline-Karten ----------
+
+const KACHEL_CACHE = "reiseplaner-kacheln-v1";
+const kartenOrte = () => [...(zustand.reise.haefen ?? []), ...(zustand.reise.hotels ?? []), ...(zustand.reise.ausfluege ?? []).map((a) => a.ziel)].filter((o) => Number.isFinite(o?.lat) && Number.isFinite(o?.lng));
+
+function offlineKartenBox() {
+  const orte = kartenOrte();
+  const gespeichert = zustand.kachelnGespeichert;
+  if (gespeichert == null && "caches" in window) caches.open(KACHEL_CACHE).then((c) => c.keys()).then((k) => {
+    zustand.kachelnGespeichert = k.length;
+    const el = $("#kachelZahl");
+    if (el) el.textContent = String(k.length);
+  }).catch(() => {});
+  return `<div class="karte-box">
+    <h3>🗺️ Karten offline</h3>
+    <p class="klein">Auf dem Gerät gespeichert: <strong id="kachelZahl">${gespeichert ?? "…"}</strong> Kartenausschnitte.</p>
+    ${zustand.info.kartenOffline
+      ? `<p class="leise klein">Speichert die Karten rund um alle ${orte.length} Orte der Reise (ca. 2 km Umkreis, bis Straßenebene) – damit die Karte auf See und im Ausland ohne Roaming funktioniert. Am besten im WLAN.</p>
+         <div class="zeile"><button class="knopf" data-aktion="karten-offline" ${orte.length ? "" : "disabled"}>⬇️ Karten der Reise speichern</button><span class="klein leise" id="kartenStatus"></span></div>`
+      : `<p class="leise klein">Jeder Kartenausschnitt, den ihr einmal angesehen habt, bleibt auf diesem Gerät gespeichert und funktioniert danach auch ohne Internet. Tipp: Vor der Reise im WLAN die Karte jedes Tages einmal öffnen und rund um Hafen bzw. Hotel etwas hineinzoomen.</p>
+         <p class="leise klein">Ganze Gebiete vorab herunterladen erlaubt OpenStreetMap nicht. Dafür kann auf dem Server ein Kartendienst eingetragen werden, der Offline-Nutzung erlaubt (KARTEN_KACHELN und KARTEN_OFFLINE=1).</p>`}
+  </div>`;
+}
+
+aktionen["karten-offline"] = async (el) => {
+  if (!("caches" in window)) return alert("Dieser Browser kann keine Karten offline speichern.");
+  const vorlage = zustand.info.kacheln;
+  const kacheln = kachelnFuer(kartenOrte());
+  const status = (t) => $("#kartenStatus") && ($("#kartenStatus").textContent = t);
+  el.disabled = true;
+  const cache = await caches.open(KACHEL_CACHE);
+  let fertig = 0;
+  let fehler = 0;
+  const url = ({ z, x, y }) => vorlage.replace("{z}", z).replace("{x}", x).replace("{y}", y).replace("{s}", "a").replace("{r}", "");
+  const warteschlange = [...kacheln];
+  const arbeiter = async () => {
+    while (warteschlange.length) {
+      const k = warteschlange.shift();
+      const anfrageKachel = new Request(url(k), { mode: "no-cors" });
+      try {
+        if (!(await cache.match(anfrageKachel))) await cache.put(anfrageKachel, await fetch(anfrageKachel));
+      } catch {
+        fehler++;
+      }
+      fertig++;
+      if (fertig % 20 === 0) status(`${fertig} von ${kacheln.length} …`);
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, arbeiter));
+  zustand.kachelnGespeichert = (await cache.keys()).length;
+  status(`Fertig: ${kacheln.length - fehler} Ausschnitte gespeichert${fehler ? `, ${fehler} fehlgeschlagen` : ""}.`);
+  const zahl = $("#kachelZahl");
+  if (zahl) zahl.textContent = String(zustand.kachelnGespeichert);
+  el.disabled = false;
+};
 
 // ---------- Packliste ----------
 

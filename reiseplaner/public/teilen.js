@@ -44,7 +44,7 @@ aktionen["teilen"] = async (el) => {
       </div>
       <div id="storyVorschau"></div>
       ${zustand.info.ki ? `<div class="zeile">
-        <label class="klein">Beitragstext für <select id="plattform"><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="facebook">Facebook</option><option value="youtube">YouTube</option><option value="x">X</option></select></label>
+        <label class="klein">Beitragstext für <select id="plattform"><optgroup label="Social Media"><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="facebook">Facebook</option><option value="youtube">YouTube</option><option value="x">X</option></optgroup><optgroup label="Bewertung für andere"><option value="tripadvisor">Tripadvisor</option><option value="holidaycheck">HolidayCheck</option><option value="google">Google</option></optgroup></select></label>
         <select id="sprache" aria-label="Sprache"><option value="de">Deutsch</option><option value="en">Englisch</option></select>
         <button class="knopf leise" data-aktion="ki-beitrag">✨ Text mit KI schreiben</button>
       </div><textarea id="beitragText" rows="7" hidden></textarea><div class="zeile"><button class="knopf leise" data-aktion="text-kopieren" id="textKopieren" hidden>Text kopieren</button></div>` : ""}
