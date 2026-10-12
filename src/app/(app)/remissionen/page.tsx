@@ -126,10 +126,10 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
       <section className="card card-pad stack" style={{ gap: 10 }} id="suche">
         <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
           <h2>Remissionssendungen durchsuchen</h2>
-          <form method="get" action="/remissionen#suche" style={{ display: "flex", gap: 6 }}>
+          <form method="get" action="/remissionen#suche" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {view === "alle" && <input type="hidden" name="ansicht" value="alle" />}
             <label className="sr-only" htmlFor="suche">Stichwort</label>
-            <input className="input" id="suche" name="suche" defaultValue={search} placeholder="Stichwort, z. B. tendron" style={{ width: 220 }} />
+            <input className="input" id="suche" name="suche" defaultValue={search} placeholder="Stichwort, z. B. tendron" style={{ flex: "1 1 160px", maxWidth: 220, minWidth: 0 }} />
             <button className="btn" type="submit">Suchen</button>
             <Link className="btn btn-primary" href="/remissionen?suche=tendron#suche">Tendron</Link>
           </form>

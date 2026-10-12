@@ -52,13 +52,13 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <section className="card card-pad">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 14 }}>
               <div><div className="kpi-label">Menge</div><div className="kpi-value" style={{ fontSize: 22 }}>{claim.quantity}</div></div>
               <div><div className="kpi-label">EK je Einheit</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatEuro(claim.unitCost)}</div></div>
               <div><div className="kpi-label">Erwarteter Betrag</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatEuro(claim.expectedAmount)}</div></div>
               <div><div className="kpi-label">Frist</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatDate(claim.deadline)}</div></div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", rowGap: 6, marginTop: 16, fontSize: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(110px, 160px) minmax(0, 1fr)", columnGap: 10, rowGap: 6, marginTop: 16, fontSize: 14, overflowWrap: "anywhere" }}>
               <span className="muted">SKU</span><span className="num">{claim.lotId ? <Link href={`/chargen/${claim.lotId}`}>{claim.sku}</Link> : (claim.sku ?? "–")}</span>
               <span className="muted">FNSKU / ASIN</span><span className="num">{claim.fnsku ?? "–"} / {claim.asin ?? "–"}</span>
               <span className="muted">Referenz</span><span className="num">{claim.reference ?? "–"}</span>
@@ -70,7 +70,7 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
             </div>
           </section>
 
-          <section className="card card-pad">
+          <section className="card card-pad" style={{ overflowX: "auto" }}>
             <h2 style={{ marginBottom: 10 }}>Nachweise</h2>
             <table className="table">
               <tbody>

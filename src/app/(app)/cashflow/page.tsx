@@ -81,20 +81,22 @@ export default async function CashflowPage() {
             );
           })}
         </svg>
-        <table className="table" style={{ marginTop: 8 }}>
-          <thead><tr><th>Woche ab</th><th className="right">Eingänge</th><th className="right">Ausgänge</th><th className="right">Saldo danach</th><th>Posten</th></tr></thead>
-          <tbody>
-            {rows.map((w) => (
-              <tr key={w.start}>
-                <td className="num">{formatDate(w.start)}</td>
-                <td className="num right">{formatEuro(w.inflow)}</td>
-                <td className="num right">{formatEuro(-w.outflow)}</td>
-                <td className="num right" style={{ fontWeight: 600, color: w.balance < 0 ? "var(--danger)" : undefined }}>{formatEuro(w.balance)}</td>
-                <td className="small muted">{w.entries.map((e) => `${e.label} ${formatEuro(e.amount)}`).join(" · ")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table" style={{ marginTop: 8 }}>
+            <thead><tr><th>Woche ab</th><th className="right">Eingänge</th><th className="right">Ausgänge</th><th className="right">Saldo danach</th><th>Posten</th></tr></thead>
+            <tbody>
+              {rows.map((w) => (
+                <tr key={w.start}>
+                  <td className="num">{formatDate(w.start)}</td>
+                  <td className="num right">{formatEuro(w.inflow)}</td>
+                  <td className="num right">{formatEuro(-w.outflow)}</td>
+                  <td className="num right" style={{ fontWeight: 600, color: w.balance < 0 ? "var(--danger)" : undefined }}>{formatEuro(w.balance)}</td>
+                  <td className="small muted">{w.entries.map((e) => `${e.label} ${formatEuro(e.amount)}`).join(" · ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <div className="row">

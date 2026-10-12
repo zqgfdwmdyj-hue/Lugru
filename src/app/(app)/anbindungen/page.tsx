@@ -32,9 +32,9 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
         </div>
         <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich), Rechnungen stündlich.</div>
         {status.get("amazon_sp") && (
-          <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="rk" className="small">Amazon-Report sofort anfordern:</label>
-            <select className="select" id="rk" name="kind" style={{ width: 280 }}>{Object.entries(REPORT_KINDS).filter(([k]) => k !== "settlement").map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+            <select className="select" id="rk" name="kind" style={{ width: 280, maxWidth: "100%" }}>{Object.entries(REPORT_KINDS).filter(([k]) => k !== "settlement").map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
             <button className="btn btn-small" type="submit">Anfordern</button>
           </form>
         )}
@@ -69,7 +69,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                   <h2>{def.name}</h2>
                   <div className="small muted" style={{ marginTop: 2 }}>{def.purpose}</div>
                 </div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {st ? <span className="tag tag-ok">EINGERICHTET</span> : <span className="tag tag-neutral">NICHT VERBUNDEN</span>}
                   <a className="btn btn-small" href={open ? "/anbindungen" : `/anbindungen?p=${def.provider}#${def.provider}`}>{open ? "Schließen" : "Bearbeiten"}</a>
                 </div>
