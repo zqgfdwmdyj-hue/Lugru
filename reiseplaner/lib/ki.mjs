@@ -78,7 +78,13 @@ const PLAN_SCHEMA = obj({
       notiz: str,
     }),
   },
-  // Bewusst schlank (die API begrenzt die Größe des Schemas): Details als ein Text, die App teilt ihn auf
+  kosten: { type: "array", items: obj({ titel: str, betrag: zahlOderNull, status: { type: "string", enum: ["idee", "favorit", "gebucht"] } }) },
+  hinweise: str,
+});
+
+// Verbindungen in eigener Anfrage mit eigenem kleinen Schema: zusammen mit PLAN_SCHEMA wäre
+// die kompilierte Grammatik für die API zu groß („compiled grammar is too large“)
+const VERBINDUNGEN_SCHEMA = obj({
   verbindungen: {
     type: "array",
     description: "Flüge, Züge, Fähren, Bus, Transfers, Mietwagen – je Teilstrecke ein Eintrag",
@@ -94,9 +100,18 @@ const PLAN_SCHEMA = obj({
       details: { type: "string", description: "kurz: Klasse, Gepäck, Sitz, Terminal, Buchung – z. B. „Business, 30 kg, Sitz 12A, Terminal 1, Buchung ABC123“" },
     }),
   },
-  kosten: { type: "array", items: obj({ titel: str, betrag: zahlOderNull, status: { type: "string", enum: ["idee", "favorit", "gebucht"] } }) },
-  hinweise: str,
 });
+
+const VERBINDUNGEN_SYSTEM = `Du liest aus Reiseunterlagen (Buchungsbestätigungen, Screenshots, Reisepläne) alle Flüge, Züge, Fähren, Busse, Transfers und Mietwagen heraus.
+
+Regeln:
+- Je Teilstrecke ein Eintrag (Umsteigen = mehrere Einträge). Nur übernehmen, was in der Vorlage steht; Unbekanntes bleibt "".
+- Datum als JJJJ-MM-TT. Fehlt das Jahr, nimm das nächste passende Datum ab heute. Zeiten als HH:MM (24 h).
+- titel: Anbieter mit Nummer, z. B. „Condor DE 3910“; von/nach mit Code, z. B. „Frankfurt (FRA)“.
+- Ankunft an einem späteren Tag → anDatum setzen, sonst anDatum leer.
+- details kurz: Klasse, Gepäck, Sitz, Terminal, Buchungsnummer.
+- Tickets ohne Datum oder Uhrzeit (z. B. Bahnticket ohne Zeiten) weglassen.
+- Keine Verbindungen in der Vorlage → leere Liste.`;
 
 const IMPORT_SYSTEM = `Du überträgst Reisepläne in das Datenformat eines Reiseplaners. Die Vorlagen sind z. B. mit ChatGPT ausgearbeitete Pläne, Buchungsbestätigungen, Reiseverläufe von Kreuzfahrten (etwa Mein Schiff), Ausflugslisten oder Screenshots.
 
@@ -109,7 +124,7 @@ Regeln:
 - Preise in Euro als Zahl. Steht ein Gesamtpreis da („Preis gesamt für 6 Personen: 275 €“, „Gesamtpreis … 544 €“, „Für 3 Taucher: 597,60 €“), dann preisArt "gruppe" und preisGruppe = dieser Betrag, preisErw/preisKind null; gilt er nur für einen Teil der Gruppe, "anzahl" = Zahl der Teilnehmenden. Sonst preisArt "person" mit preisErw/preisKind. „Kinder unter 7 frei“ / „bis 6 Jahre gratis“ → kostenlosBis = 7 (die Altersgrenze, ab der gezahlt wird). Steht neben Dollar auch ein Euro-Betrag, den Euro-Betrag nehmen; nur Dollar → grob umrechnen und in "notiz" vermerken.
 - Status: gebucht/reserviert → "gebucht"; fest geplant → "favorit"; Alternativen, Anfragen, Optionen → "idee". Backups („TUI BACKUP GEBUCHT“) sind "gebucht" mit Hinweis in der Notiz.
 - quelle: "schiff" für Ausflüge der Reederei, "getyourguide"/"viator"/"tiqets"/"civitatis", wenn genannt, "eigene" für Unternehmungen auf eigene Faust, sonst "sonstige".
-- Flüge, Züge, Fähren, Busse, Transfers und Mietwagen mit Datum/Uhrzeit unter "verbindungen" – je Teilstrecke ein Eintrag (Umsteigen = mehrere). Klasse, Gepäck, Sitz, Terminal und Buchungsnummer kurz in "details". Ankunft am Folgetag → anDatum setzen (sonst leer). Nicht zusätzlich unter "kosten" aufführen – nur ein eigener Preis dafür gehört unter "kosten".
+- Flüge, Züge, Fähren, Busse, Transfers und Mietwagen mit Datum/Uhrzeit werden getrennt erfasst: nicht unter "kosten" aufführen (nur ein eigener Preis dafür gehört unter "kosten") und in "hinweise" nicht erwähnen.
 - Weitere Kosten ohne Fahrplan (Trinkgeld, Versicherung, Parken, Bahnticket ohne Zeiten …) unter "kosten".
 - In "hinweise" kurz auf Deutsch, was unklar war oder fehlt (leer, wenn nichts).`;
 
@@ -135,96 +150,30 @@ export async function reiseplanLesen({ text, dateien = [], heute }) {
   if (!String(text ?? "").trim() && !dateien.length) throw fehler(400, "Bitte Text einfügen oder eine Datei wählen.");
   const inhalt = dateien.slice(0, 10).map(dateiBlock);
   inhalt.push({ type: "text", text: `Heute ist ${heute}.${String(text ?? "").trim() ? `\n\nVorlage:\n${text}` : ""}\n\nÜbertrage den Reiseplan.` });
-  const lesen = async (schema) => {
+  const lesen = async (system, schema, effort) => {
     const stream = client.beta.messages.stream({
       ...FALLBACK,
       model: MODELL,
       max_tokens: 64000,
-      system: IMPORT_SYSTEM,
-      output_config: { effort: "medium", format: { type: "json_schema", schema } },
+      system,
+      output_config: { effort, format: { type: "json_schema", schema } },
       messages: [{ role: "user", content: inhalt }],
     });
     return JSON.parse(textAus(pruefeAntwort(await stream.finalMessage())));
   };
+  // Beide Anfragen parallel; scheitern nur die Verbindungen, bleibt der übrige Plan erhalten
+  const [plan, verb] = await Promise.allSettled([lesen(IMPORT_SYSTEM, PLAN_SCHEMA, "medium"), lesen(VERBINDUNGEN_SYSTEM, VERBINDUNGEN_SCHEMA, "low")]);
   try {
-    try {
-      return await lesen(PLAN_SCHEMA);
-    } catch (e) {
-      // Sicherheitsnetz: Ist das Schema der API zu groß, ohne Verbindungen erneut lesen
-      if (!(e instanceof Anthropic.BadRequestError) || !/grammar is too large|schema.*too (large|complex)/i.test(String(e.message))) throw e;
-      console.error("KI-Import: Schema zu groß – lese ohne Verbindungen");
-      const { verbindungen, ...ohne } = PLAN_SCHEMA.properties;
-      const p = await lesen({ ...PLAN_SCHEMA, properties: ohne, required: PLAN_SCHEMA.required.filter((k) => k !== "verbindungen") });
-      return { ...p, verbindungen: [], hinweise: [p.hinweise, "Flüge und Verbindungen konnten diesmal nicht einzeln gelesen werden – bitte unter „Verbindungen“ eintragen."].filter(Boolean).join(" ") };
-    }
+    if (plan.status === "rejected") throw plan.reason;
+    if (verb.status === "fulfilled") return { ...plan.value, verbindungen: verb.value.verbindungen ?? [] };
+    console.error("KI-Import: Verbindungen nicht lesbar –", verb.reason?.constructor?.name ?? "Fehler", verb.reason?.status ?? "");
+    return { ...plan.value, verbindungen: [], hinweise: [plan.value.hinweise, "Flüge und Verbindungen konnten diesmal nicht gelesen werden – bitte den Import wiederholen oder unter „Verbindungen“ eintragen."].filter(Boolean).join(" ") };
   } catch (e) {
     if (e instanceof SyntaxError) throw fehler(502, "Die KI-Antwort war nicht lesbar. Bitte erneut versuchen.");
     throw kiFehler(e);
   }
 }
 
-// ---------- Assistent ----------
-
-const SYSTEM_CHAT = `Du bist der Reiseassistent in einem privaten Reiseplaner einer Familie. Du hilfst, Landausflüge, Hotels und Tage zu planen, zu vergleichen und zu hinterfragen – auf Deutsch, freundlich und knapp.
-
-Die Reise kann eine Kreuzfahrt, ein Hotel-, Städte-, Ski- oder Campingurlaub, ein Roadtrip oder ein Tagesausflug sein. Mit jeder Nachricht bekommst du (wenn er sich geändert hat) den aktuellen Stand der Reise als JSON: Personen (ggf. mit Familie), Tage mit Zeiten und fester Zeit (z. B. „Alle an Bord“, Check-out, Abflug), Verbindungen, Unterkünfte, Ausflüge mit berechneten Kosten, Zeitplan und Puffer bis zur festen Zeit, sowie Bewertungen.
-
-So arbeitest du:
-- Antworte auf Grundlage der Reisedaten. Wenn du aktuelle Infos brauchst (Öffnungszeiten, Wetter, Erfahrungsberichte, Preise), nutze die Websuche und nenne die Quelle.
-- Feste Zeiten (Schiff, Flug, Check-out …) brauchen genug Puffer – das Schiff oder der Flieger wartet nicht. Weise auf Risiken hin.
-- Achte auf die Kinder (Alter), Tauchen (Flugverbot nach dem Tauchen, Tiefen), Fahrzeiten und Kosten.
-- Änderungen machst du nicht selbst: Schlage sie mit den Werkzeugen vor (ausflug_vorschlagen, aenderung_vorschlagen, station_vorschlagen, hotel_vorschlagen). Die Familie übernimmt sie mit einem Klick. Sag im Text kurz, was du vorgeschlagen hast.
-- Verwende für Änderungen die IDs aus den Reisedaten. Erfinde keine Preise oder Links – lass sie leer, wenn du sie nicht sicher weißt.`;
-
-const FELDER = ["titel", "status", "kategorie", "beginn", "dauerMin", "preisErw", "preisKind", "kostenlosBis", "preisGruppe", "zusatzkosten", "interesse", "link", "notiz", "name", "land", "ankunft", "abfahrt", "allesAnBord", "anreise", "abreise", "preis", "preisArt", "verpflegung"];
-
-const WERKZEUGE = [
-  {
-    name: "ausflug_vorschlagen",
-    description: "Schlägt einen neuen Ausflug für einen Tag/Hafen der Reise vor. Die Familie entscheidet in der App, ob er übernommen wird.",
-    strict: true,
-    input_schema: obj({
-      stationId: { type: "string", description: "ID des Tages/Hafens aus den Reisedaten" },
-      titel: str,
-      kategorie: { type: "string", enum: Object.keys(KATEGORIEN) },
-      quelle: { type: "string", enum: Object.keys(QUELLEN) },
-      beginn: { type: "string", description: "HH:MM oder leer" },
-      dauerMin: zahlOderNull,
-      preisErw: zahlOderNull,
-      preisKind: zahlOderNull,
-      link: { type: "string", description: "Nur echte, bekannte Links, sonst leer" },
-      zielName: { type: "string", description: "Ort/Treffpunkt für die Karte, z. B. „Loro Parque, Puerto de la Cruz“, oder leer" },
-      notiz: str,
-      begruendung: { type: "string", description: "Ein Satz, warum der Ausflug passt" },
-    }),
-  },
-  {
-    name: "aenderung_vorschlagen",
-    description: "Schlägt Änderungen an einem vorhandenen Ausflug, Tag/Hafen oder Hotel vor (z. B. Status, Beginn, Preis, Notiz).",
-    strict: true,
-    input_schema: obj({
-      zielArt: { type: "string", enum: ["ausflug", "station", "hotel"] },
-      zielId: str,
-      aenderungen: { type: "array", items: obj({ feld: { type: "string", enum: FELDER }, wert: { type: "string", description: "Neuer Wert als Text (Zahlen mit Punkt)" } }) },
-      begruendung: str,
-    }),
-  },
-  {
-    name: "station_vorschlagen",
-    description: "Schlägt einen neuen Reisetag vor (Hafen, Seetag oder Tag an Land).",
-    strict: true,
-    input_schema: obj({ datum: str, art: { type: "string", enum: ["hafen", "seetag", "ort"] }, name: str, land: str, ankunft: str, abfahrt: str, allesAnBord: str, notiz: str, begruendung: str }),
-  },
-  {
-    name: "hotel_vorschlagen",
-    description: "Schlägt eine Unterkunft zum Vergleichen vor.",
-    strict: true,
-    input_schema: obj({ name: str, ort: str, anreise: str, abreise: str, preis: zahlOderNull, preisArt: { type: "string", enum: ["nacht", "gesamt"] }, verpflegung: { type: "string", enum: ["", "ohne", "fruehstueck", "halbpension", "vollpension", "all"] }, link: str, notiz: str, begruendung: str }),
-  },
-  { type: "web_search_20260209", name: "web_search", max_uses: 5, user_location: { type: "approximate", country: "DE" } },
-];
-
-/** Kompakter Stand der Reise für die KI (ohne Fotos, ohne interne Felder). */
 export function reiseStand(reise, beitraege, benutzer) {
   const personen = reise.personen ?? [];
   const namen = Object.fromEntries(benutzer.map((b) => [b.id, b.name]));
