@@ -7,7 +7,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { DATA_DIR, lesen, aendern, schreiben, exklusiv } from "./speicher.mjs";
-import { KATEGORIEN, oeffentlicheFotos, FLUGHAFEN_ARTEN } from "../public/rechnen.js";
+import { KATEGORIEN, oeffentlicheFotos, FLUGHAFEN_ARTEN, tauchProfilSvg } from "../public/rechnen.js";
 
 // Jedes Konto hat sein eigenes Tagebuch (Weltkarte, nachgetragene Orte, freigegebene Reisen, eigener Link).
 const ORDNER = path.join(DATA_DIR, "tagebuecher");
@@ -113,6 +113,8 @@ export function ortLoeschen(userId, id) {
   });
 }
 
+/** „Griechenland, Griechenland“ → „Griechenland“ */
+const ortOhneDoppel = (ort) => [...new Set(String(ort ?? "").split(",").map((x) => x.trim()).filter(Boolean))].join(", ");
 const vorname = (name) => String(name ?? "").trim().split(/\s+/)[0] || "";
 const artVon = (h) => h.art ?? (h.seetag ? "seetag" : "hafen");
 const mitKoord = (o) => Number.isFinite(o?.lat) && Number.isFinite(o?.lng);
@@ -172,7 +174,13 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
     const tauchgaenge = beitraege.tauchgaenge
       .filter((t) => !t.privat && t.datum && t.datum <= heute)
       .sort((a, b) => `${a.datum}${a.beginn}`.localeCompare(`${b.datum}${b.beginn}`))
-      .map((t) => ({ tauchplatz: t.tauchplatz, ort: t.ort ?? "", datum: t.datum, maxTiefe: t.maxTiefe, tauchzeitMin: t.tauchzeitMin, wasserTemp: t.wasserTemp, sicht: t.sicht, sichtungen: t.sichtungen ?? "", sterne: t.sterne ?? null, text: t.text ?? "", taucher: namen[t.taucherId] ?? "", fotos: oeffentlicheFotos(t), lat: t.lat ?? null, lng: t.lng ?? null }));
+      // Öffentlich: Tauchdaten, Profil, Sichtungen, Bewertung – keine Namen von Buddy/Guide, kein Flaschendruck
+      .map((t) => ({
+        tauchplatz: t.tauchplatz, ort: ortOhneDoppel(t.ort), datum: t.datum, beginn: t.beginn ?? "", maxTiefe: t.maxTiefe, mittelTiefe: t.mittelTiefe ?? null, tauchzeitMin: t.tauchzeitMin,
+        wasserTemp: t.wasserTemp, luftTemp: t.luftTemp ?? null, sicht: t.sicht, stroemung: t.stroemung ?? "", einstieg: t.einstieg ?? "", basis: t.basis ?? "", anzug: t.anzug ?? "",
+        gas: t.gas ? `${t.gas}${t.gas === "Nitrox" && t.nitroxProzent ? ` ${t.nitroxProzent} %` : ""}` : "", profil: Array.isArray(t.profil) ? t.profil : [],
+        sichtungen: t.sichtungen ?? "", sterne: t.sterne ?? null, text: t.text ?? "", taucher: namen[t.taucherId] ?? "", fotos: oeffentlicheFotos(t), lat: t.lat ?? null, lng: t.lng ?? null,
+      }));
     ausgabe.push({
       name: reise.name,
       art: reise.art ?? "kreuzfahrt",
@@ -220,12 +228,54 @@ function bewertungen(liste) {
     .join("");
 }
 
+const z = (n) => String(n).replace(".", ",");
+
+/** Kurze Zusammenfassung der Tauchgänge einer Reise. */
+function tauchUebersicht(liste) {
+  const tiefe = Math.max(...liste.map((t) => t.maxTiefe ?? 0));
+  const minuten = liste.reduce((s, t) => s + (t.tauchzeitMin ?? 0), 0);
+  const temps = liste.map((t) => t.wasserTemp).filter((x) => x != null);
+  return `<p class="tauchsumme">${liste.length} Tauchgänge${tiefe ? ` · tiefster ${z(tiefe)} m` : ""}${minuten ? ` · ${Math.floor(minuten / 60) ? `${Math.floor(minuten / 60)} Std. ` : ""}${minuten % 60} Min. unter Wasser` : ""}${temps.length ? ` · Wasser ${z(Math.min(...temps))}–${z(Math.max(...temps))} °C` : ""}</p>`;
+}
+
+/** Ein Tauchgang mit allen öffentlichen Daten, Tiefenprofil, Sichtungen, Bewertung und Fotos. */
+function tauchgangHtml(t) {
+  const daten = [
+    ["Max. Tiefe", t.maxTiefe != null ? `${z(t.maxTiefe)} m` : ""],
+    ["Ø Tiefe", t.mittelTiefe != null ? `${z(t.mittelTiefe)} m` : ""],
+    ["Tauchzeit", t.tauchzeitMin ? `${t.tauchzeitMin} Min.` : ""],
+    ["Wasser", t.wasserTemp != null ? `${z(t.wasserTemp)} °C` : ""],
+    ["Luft", t.luftTemp != null ? `${z(t.luftTemp)} °C` : ""],
+    ["Sicht", t.sicht != null ? `${z(t.sicht)} m` : ""],
+    ["Strömung", t.stroemung],
+    ["Einstieg", t.einstieg],
+    ["Gas", t.gas],
+    ["Anzug", t.anzug],
+    ["Basis", t.basis],
+  ].filter(([, w]) => w);
+  return `<article class="eintrag tauchgang">
+    <div class="kopf"><strong>${esc(t.tauchplatz)}</strong> ${sterne(t.sterne)} <span class="leise">${esc([t.ort, `${datum(t.datum, { day: "numeric", month: "short", year: "numeric" })}${t.beginn ? `, ${t.beginn} Uhr` : ""}`, t.taucher].filter(Boolean).join(" · "))}</span>${t.lat != null ? ` <button type="button" class="flieg klein" data-lat="${t.lat}" data-lng="${t.lng}" data-zoom="13">📍 Karte</button>` : ""}</div>
+    ${daten.length ? `<dl class="tauchdaten">${daten.map(([k, w]) => `<div><dt>${esc(k)}</dt><dd>${esc(w)}</dd></div>`).join("")}</dl>` : ""}
+    ${t.profil?.length ? `<div class="profil">${tauchProfilSvg(t.profil)}</div>` : ""}
+    ${t.sichtungen ? `<p>🐠 <strong>Gesehen:</strong> ${esc(t.sichtungen)}</p>` : ""}
+    ${t.text ? `<p>${esc(t.text)}</p>` : ""}
+    ${galerie(t.fotos)}
+  </article>`;
+}
+
 export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis, pfad = "/tagebuch") {
   fotoBasis = pfad;
   const laender = new Set(inhalt.orte.map((o) => o.land).filter(Boolean));
   const tauchgaenge = inhalt.reisen.reduce((s, r) => s + r.tauchgaenge.length, 0);
   const ersteFoto = [...inhalt.fotos][0];
   const pins = inhalt.orte.map((o) => ({ n: o.name, l: o.land, a: o.lat, o: o.lng, d: o.datum ?? "", r: o.reise ?? "" }));
+  const zahl = (n) => String(n).replace(".", ",");
+  const mitKoordinaten = (x) => Number.isFinite(x?.lat) && Number.isFinite(x?.lng);
+  for (const r of inhalt.reisen) {
+    for (const t of r.tauchgaenge.filter(mitKoordinaten)) pins.push({ typ: "t", n: t.tauchplatz, a: t.lat, o: t.lng, d: datum(t.datum), r: [t.maxTiefe != null ? `${zahl(t.maxTiefe)} m` : "", t.tauchzeitMin ? `${t.tauchzeitMin} Min.` : "", t.sterne ? "★".repeat(t.sterne) : ""].filter(Boolean).join(" · ") });
+    for (const a of r.ausfluege.filter((x) => mitKoordinaten(x) && x.bewertungen.length)) pins.push({ typ: "a", n: a.titel, a: a.lat, o: a.lng, d: datum(a.datum), r: a.sterne != null ? `${"★".repeat(Math.round(a.sterne))} ${zahl(a.sterne)}` : "" });
+    for (const h of r.hotels.filter(mitKoordinaten)) pins.push({ typ: "h", n: h.name, a: h.lat, o: h.lng, d: datum(h.anreise), r: h.sterne != null ? `${"★".repeat(Math.round(h.sterne))} ${zahl(h.sterne)}` : "" });
+  }
   // Gruppiert nach Land für die Liste (Klick → Karte fliegt hin)
   const nachLand = new Map();
   for (const o of inhalt.orte) {
@@ -247,7 +297,7 @@ export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis, pfad = 
       ${r.hotels.length ? `<h3>🏨 Unterkünfte</h3>${r.hotels.map((h) => `<article class="eintrag"><div class="kopf"><strong>${esc(h.name)}</strong> ${sterne(h.sterne)} <span class="leise">${esc(h.ort)} · ${datum(h.anreise, { day: "numeric", month: "short" })} – ${datum(h.abreise, { day: "numeric", month: "short" })}</span>${h.lat != null ? ` <button type="button" class="flieg klein" data-lat="${h.lat}" data-lng="${h.lng}" data-zoom="13">Karte</button>` : ""}</div>${bewertungen(h.bewertungen)}</article>`).join("")}` : ""}
       ${r.ausfluege.length ? `<h3>📍 Ausflüge</h3>${r.ausfluege.map((a) => `<article class="eintrag"><div class="kopf"><strong>${esc(a.titel)}</strong> ${sterne(a.sterne)} <span class="leise">${esc(a.ort)} · ${datum(a.datum, { day: "numeric", month: "short" })}${a.kategorie ? ` · ${esc(a.kategorie)}` : ""}</span>${a.lat != null ? ` <button type="button" class="flieg klein" data-lat="${a.lat}" data-lng="${a.lng}" data-zoom="12">Karte</button>` : ""}</div>${bewertungen(a.bewertungen)}</article>`).join("")}` : ""}
       ${r.album.length ? `<h3>📷 Fotos</h3>${galerie(r.album)}` : ""}
-      ${r.tauchgaenge.length ? `<h3>🤿 Tauchgänge</h3>${r.tauchgaenge.map((t) => `<article class="eintrag"><div class="kopf"><strong>${esc(t.tauchplatz)}</strong> ${sterne(t.sterne)} <span class="leise">${esc(t.ort)} · ${datum(t.datum, { day: "numeric", month: "short" })}${t.maxTiefe != null ? ` · ${String(t.maxTiefe).replace(".", ",")} m` : ""}${t.tauchzeitMin ? ` · ${t.tauchzeitMin} Min.` : ""}${t.wasserTemp != null ? ` · ${String(t.wasserTemp).replace(".", ",")} °C` : ""}</span>${t.lat != null ? ` <button type="button" class="flieg klein" data-lat="${t.lat}" data-lng="${t.lng}" data-zoom="13">Karte</button>` : ""}</div>${t.sichtungen ? `<p>🐠 ${esc(t.sichtungen)}</p>` : ""}${t.text ? `<p>${esc(t.text)}</p>` : ""}${galerie(t.fotos)}</article>`).join("")}` : ""}
+      ${r.tauchgaenge.length ? `<h3>🤿 Tauchgänge</h3>${tauchUebersicht(r.tauchgaenge)}${r.tauchgaenge.map((t) => tauchgangHtml(t)).join("")}` : ""}
     </section>`,
     )
     .join("");
@@ -286,6 +336,10 @@ button.flieg.klein{font-size:.85rem;text-decoration:underline}
 .galerie{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-top:6px}
 .galerie img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block}
 .pin svg{filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.tauchdaten{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin:8px 0}.tauchdaten div{background:var(--hg);border:1px solid var(--ra);border-radius:8px;padding:6px 8px}
+.tauchdaten dt{font-size:.72rem;color:var(--le);text-transform:uppercase}.tauchdaten dd{margin:0;font-weight:600}
+.profil{max-width:520px;margin:6px 0;color:var(--tx)}.tauchsumme{font-weight:600;margin:4px 0 8px}
+.legende{grid-column:1/-1;display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--le);margin-top:-8px}.legende span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;background:var(--f)}
 .teilen{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.teilen a,.teilen button{color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:99px;padding:4px 12px;text-decoration:none;background:none;font:inherit;font-size:.9rem;cursor:pointer}
 footer{text-align:center;color:var(--le);font-size:.85rem;padding:24px}
 </style></head><body>
@@ -302,6 +356,7 @@ footer{text-align:center;color:var(--le);font-size:.85rem;padding:24px}
 </header>
 <main>
   <div id="karte"></div>
+  <div class="legende"><span style="--f:#d0021b">Orte</span>${pins.some((p) => p.typ === "t") ? `<span style="--f:#0277bd">Tauchplätze</span>` : ""}${pins.some((p) => p.typ === "a") ? `<span style="--f:#ef6c00">Ausflüge</span>` : ""}${pins.some((p) => p.typ === "h") ? `<span style="--f:#6a1b9a">Unterkünfte</span>` : ""}</div>
   <div class="inhalt">${reisen || `<section class="reise"><p class="leise">Noch keine freigegebenen Reisen.</p></section>`}</div>
   <aside><h2>Länder &amp; Inseln</h2>${laenderListe || `<p class="leise">Noch keine Orte.</p>`}</aside>
 </main>
@@ -312,11 +367,13 @@ footer{text-align:center;color:var(--le);font-size:.85rem;padding:24px}
 const pins = JSON.parse(document.getElementById("pins").textContent);
 const karte = L.map("karte", { worldCopyJump: true }).setView([25, 0], 2);
 L.tileLayer(${JSON.stringify(kachelUrl)}, { maxZoom: 19, crossOrigin: true, referrerPolicy: "strict-origin-when-cross-origin", attribution: ${JSON.stringify(kachelHinweis)} }).addTo(karte);
-const nadel = L.divIcon({ className: "pin", html: '<svg width="26" height="38" viewBox="0 0 26 38"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 25 13 25s13-15.2 13-25C26 5.8 20.2 0 13 0z" fill="#d0021b"/><circle cx="13" cy="13" r="5" fill="#fff"/></svg>', iconSize: [26, 38], iconAnchor: [13, 38], popupAnchor: [0, -34] });
+const nadelIn = (farbe, zeichen) => L.divIcon({ className: "pin", html: '<svg width="26" height="38" viewBox="0 0 26 38"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 25 13 25s13-15.2 13-25C26 5.8 20.2 0 13 0z" fill="' + farbe + '"/>' + (zeichen ? '<text x="13" y="18" font-size="13" text-anchor="middle">' + zeichen + '</text>' : '<circle cx="13" cy="13" r="5" fill="#fff"/>') + '</svg>', iconSize: [26, 38], iconAnchor: [13, 38], popupAnchor: [0, -34] });
+const nadeln = { o: nadelIn("#d0021b"), t: nadelIn("#0277bd", "🤿"), a: nadelIn("#ef6c00", "⭐"), h: nadelIn("#6a1b9a", "🏨") };
+const nadel = nadeln.o;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const grenzen = [];
 for (const p of pins) {
-  L.marker([p.a, p.o], { icon: nadel }).bindPopup("<strong>" + esc(p.n) + "</strong>" + (p.l ? ", " + esc(p.l) : "") + (p.d ? "<br>" + esc(p.d) : "") + (p.r ? "<br>" + esc(p.r) : "")).addTo(karte);
+  L.marker([p.a, p.o], { icon: nadeln[p.typ] ?? nadel, zIndexOffset: p.typ ? 100 : 0 }).bindPopup("<strong>" + esc(p.n) + "</strong>" + (p.l ? ", " + esc(p.l) : "") + (p.d ? "<br>" + esc(p.d) : "") + (p.r ? "<br>" + esc(p.r) : "")).addTo(karte);
   grenzen.push([p.a, p.o]);
 }
 if (grenzen.length > 1) karte.fitBounds(grenzen, { padding: [30, 30], maxZoom: 8 });

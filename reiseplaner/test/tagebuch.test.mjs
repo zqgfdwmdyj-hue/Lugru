@@ -159,3 +159,15 @@ test("Alte gemeinsame Weltkarte geht einmalig an das erste Verwaltungskonto", as
   const zweiter = await t.einstellungenLesen(`admin2-${Date.now()}`, { migrieren: { reisen: [] } });
   assert.equal(zweiter.orte.length, 0, "nur einmal übernommen");
 });
+
+test("Tauchgänge im Tagebuch: alle Daten, Profil, Stecknadel – ohne Buddy, Guide und private Notizen", async () => {
+  const t = await import("../lib/tagebuch.mjs");
+  const reise = { id: "r1", name: "Griechenland 2025", oeffentlich: true, haefen: [{ id: "h1", datum: "2025-10-31", art: "ort", name: "Griechenland", land: "Griechenland", lat: 38.99, lng: 21.98 }] };
+  const beitraege = { bewertungen: [], fotos: [], tauchgaenge: [{ id: "t1", taucherId: "u1", tauchplatz: "Elephant Cave", ort: "Griechenland, Griechenland", datum: "2025-11-08", beginn: "10:26", maxTiefe: 19, mittelTiefe: 9.9, tauchzeitMin: 45, wasserTemp: 21.7, sicht: 25, stroemung: "leicht", einstieg: "Boot", gas: "Nitrox", nitroxProzent: 32, basis: "Blue Adventures", sterne: 5, sichtungen: "Oktopus, Zackenbarsch", text: "Traumhafte Höhle", buddy: "Peter Geheim", guide: "Maria Geheim", textPrivat: "Trinkgeld 20 €", druckStart: 200, profil: [[0, 0], [10, 18], [45, 0]], lat: 35.42, lng: 24.70, fotos: [] }] };
+  const inhalt = t.tagebuchInhalt([{ reise, beitraege }], [{ id: "u1", name: "Ludwig Lugru" }], { titel: "T", text: "", orte: [] }, "2026-01-01");
+  const html = t.seiteRendern(inhalt, "https://x.example", "https://tile.openstreetmap.org/{z}/{x}/{y}.png", "OSM");
+  for (const s of ["Elephant Cave", "9,9 m", "21,7 °C", "25 m", "leicht", "Boot", "Nitrox 32 %", "Blue Adventures", "Oktopus", "Traumhafte Höhle", "tauchprofil", "10:26 Uhr", "1 Tauchgänge", "tiefster 19 m", "Tauchplätze", '"typ":"t"']) assert.ok(html.includes(s), s);
+  assert.ok(html.includes("Griechenland · 8. Nov. 2025") || html.includes("Griechenland · 8. November 2025") || /Griechenland · 8\./.test(html), "Ort ohne Doppelung");
+  assert.ok(!html.includes("Griechenland, Griechenland"));
+  for (const s of ["Peter Geheim", "Maria Geheim", "Trinkgeld", "Lugru"]) assert.ok(!html.includes(s), `nicht öffentlich: ${s}`);
+});
