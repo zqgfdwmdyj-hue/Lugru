@@ -17,7 +17,8 @@ export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {})
   reise.hotels ??= [];
   reise.ausfluege ??= [];
   reise.kosten ??= [];
-  const zaehler = { tage: 0, hotels: 0, ausfluege: 0, kosten: 0, aktualisiert: 0 };
+  reise.verbindungen ??= [];
+  const zaehler = { tage: 0, hotels: 0, ausfluege: 0, verbindungen: 0, kosten: 0, aktualisiert: 0 };
   const fuellen = (ziel, quelle) => {
     let geaendert = false;
     for (const [k, v] of Object.entries(quelle)) {
@@ -76,6 +77,22 @@ export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {})
         teilnehmer: teilnehmerFuer(reise, a.anzahl),
       });
       zaehler.ausfluege++;
+    }
+  }
+  // Flüge, Züge … als Verbindungen (mit Zeiten) – gleiche Verbindung (Datum + Nummer/Strecke) nur einmal
+  const vkey = (v) => `${v.datum}|${String(v.titel ?? "").replace(/\s+/g, "").toLowerCase() || `${v.von}-${v.nach}`.toLowerCase()}`;
+  for (const v of p.verbindungen ?? []) {
+    if (!v.datum) continue;
+    const daten = {
+      art: v.art || "flug", titel: v.titel ?? "", von: v.von ?? "", nach: v.nach ?? "", datum: v.datum, abZeit: v.abZeit ?? "", anDatum: v.anDatum && v.anDatum !== v.datum ? v.anDatum : "",
+      anZeit: v.anZeit ?? "", buchungsnr: v.buchungsnr ?? "", terminal: v.terminal ?? "", sitz: v.sitz ?? "",
+      gepaeck: [v.klasse, v.gepaeck].filter(Boolean).join(", "), preis: v.preis ?? null, notiz: v.notiz ?? "",
+    };
+    const vorhanden = reise.verbindungen.find((x) => vkey(x) === vkey(daten));
+    if (vorhanden) fuellen(vorhanden, daten);
+    else {
+      reise.verbindungen.push({ id: neueId(), status: v.status || "gebucht", personen: (reise.personen ?? []).map((x) => x.id), vonOrt: null, nachOrt: null, ...daten });
+      zaehler.verbindungen++;
     }
   }
   for (const k of p.kosten) {

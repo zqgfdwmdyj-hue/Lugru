@@ -87,3 +87,28 @@ test("Lounge-Bewertungen: Freigabe-Seite und öffentliches Tagebuch", async () =
   assert.match(html, /✈️ Flughafen/);
   assert.doesNotMatch(html, /geheim/);
 });
+
+test("KI-Import: Flüge werden zu Verbindungen – je Teilstrecke, ohne Doppelte", async () => {
+  const { planZusammenfuehren } = await import("../public/zusammenfuehren.js");
+  const reise = { personen: [{ id: "p1", name: "Ludwig" }, { id: "p2", name: "Mia" }], haefen: [], hotels: [], ausfluege: [], kosten: [] };
+  const fl = (titel, von, nach, datum, abZeit, anZeit, anDatum = "", klasse = "Economy", gepaeck = "") => ({ art: "flug", titel, von, nach, datum, abZeit, anDatum, anZeit, buchungsnr: "ABC123", terminal: "", sitz: "", klasse, gepaeck, preis: null, status: "gebucht", notiz: "" });
+  const plan = { personen: [], stationen: [], hotels: [], ausfluege: [], kosten: [{ titel: "Bahnticket", betrag: null, status: "gebucht" }], verbindungen: [
+    fl("Condor DE 4063", "München (MUC)", "Frankfurt (FRA)", "2027-03-19", "08:45", "09:40"),
+    fl("Condor DE 3910", "Frankfurt (FRA)", "La Romana (LRM)", "2027-03-19", "12:00", "17:25", "", "Business", "30 kg"),
+    fl("Condor DE 3867", "La Romana (LRM)", "Frankfurt (FRA)", "2027-04-02", "14:40", "05:45", "2027-04-03", "Business", "30 kg"),
+    fl("Condor DE 4062", "Frankfurt (FRA)", "München (MUC)", "2027-04-03", "07:15", "08:15"),
+  ] };
+  const z = planZusammenfuehren(reise, plan);
+  assert.equal(z.verbindungen, 4);
+  assert.equal(reise.verbindungen.length, 4);
+  const rueck = reise.verbindungen.find((v) => v.titel === "Condor DE 3867");
+  assert.deepEqual([rueck.art, rueck.anDatum, rueck.anZeit, rueck.gepaeck, rueck.status, rueck.buchungsnr], ["flug", "2027-04-03", "05:45", "Business, 30 kg", "gebucht", "ABC123"]);
+  assert.deepEqual(rueck.personen, ["p1", "p2"]);
+  assert.equal(reise.kosten.length, 1, "Bahnticket ohne Zeiten bleibt bei den Kosten");
+  // Zweiter Import (z. B. weiterer Screenshot) ergänzt nur
+  const z2 = planZusammenfuehren(reise, { ...plan, verbindungen: [{ ...plan.verbindungen[1], titel: "Condor  DE 3910", terminal: "Terminal 1" }] });
+  assert.equal(z2.verbindungen, 0);
+  assert.equal(reise.verbindungen.find((v) => v.titel === "Condor DE 3910").terminal, "Terminal 1");
+  // Zeitplan funktioniert direkt mit dem importierten Flug
+  assert.equal(flugZeitplan(reise.verbindungen[1]).schritte.at(-1).zeit, "12:00");
+});

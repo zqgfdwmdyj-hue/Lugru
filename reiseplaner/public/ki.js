@@ -89,6 +89,7 @@ function vorschauZeigen() {
       ${liste("Tage", p.stationen, (s) => `${esc(datumText(s.datum))} ${s.art === "seetag" ? "🌊 Seetag" : esc(s.name)}${s.ankunft ? ` · ${esc(s.ankunft)}–${esc(s.abfahrt)}` : ""}`)}
       ${liste("Unterkünfte", p.hotels, (h) => `${esc(h.name)} <span class="leise">${esc(h.ort)} ${esc(datumText(h.anreise))}–${esc(datumText(h.abreise))}${h.preis != null ? ` · ${h.preis} €` : ""}</span>`)}
       ${liste("Ausflüge", p.ausfluege, (a) => `${esc(datumText(a.datum))} ${esc(a.titel)} <span class="leise">${esc(STATUS[a.status] ?? "")} · ${esc(QUELLEN[a.quelle]?.name ?? "")}${a.beginn ? ` · ${esc(a.beginn)}` : ""}${a.dauerMin ? ` · ${Math.round(a.dauerMin / 6) / 10} Std.` : ""}${a.preisGruppe != null ? ` · ${esc(geld(a.preisGruppe))} gesamt` : a.preisErw != null ? ` · ${esc(geld(a.preisErw))} p. P.${a.preisKind != null ? `, Kind ${esc(geld(a.preisKind))}` : ""}${a.kostenlosBis ? `, Kinder unter ${esc(a.kostenlosBis)} frei` : ""}` : " · <em>ohne Preis</em>"}</span>`)}
+      ${liste("Verbindungen", p.verbindungen ?? [], (v) => `${esc(datumText(v.datum))} ${{ flug: "✈️", zug: "🚆", faehre: "⛴️", bus: "🚌", mietwagen: "🚗", transfer: "🚐" }[v.art] ?? "🧭"} ${esc(v.titel)} <span class="leise">${esc(v.von)} → ${esc(v.nach)}${v.abZeit ? ` · ${esc(v.abZeit)}${v.anZeit ? `–${esc(v.anZeit)}` : ""}` : ""}${v.anDatum && v.anDatum !== v.datum ? ` (an ${esc(datumText(v.anDatum))})` : ""}${v.klasse ? ` · ${esc(v.klasse)}` : ""}${v.gepaeck ? ` · ${esc(v.gepaeck)}` : ""}</span>`)}
       ${liste("Weitere Kosten", p.kosten, (k) => `${esc(k.titel)}${k.betrag != null ? ` · ${k.betrag} €` : ""}`)}
       ${liste("Personen", p.personen, (x) => `${esc(x.name)} <span class="leise">${x.typ === "kind" ? `Kind${x.alter ? `, ${x.alter}` : ""}` : "Erwachsen"}</span>`)}
       <div class="zeile">
@@ -115,6 +116,21 @@ export async function koordinatenErgaenzen(reise, fortschritt = () => {}) {
     const t = gefunden.get(suche);
     if (t) Object.assign(h, { lat: t.lat, lng: t.lng, ortName: t.name.split(",").slice(0, 3).join(","), land: h.land || t.name.split(",").at(-1).trim() });
   }
+  // Flughäfen/Bahnhöfe der Verbindungen (für Zeitplan, Karte und „Wo sind wir gerade?“)
+  for (const v of reise.verbindungen ?? []) {
+    for (const [feld, name] of [["vonOrt", v.von], ["nachOrt", v.nach]]) {
+      if (v[feld] || !name) continue;
+      const code = /\(([A-Z]{3})\)/.exec(name)?.[1];
+      const suche = v.art === "flug" ? `${code ? `${code} ` : ""}Flughafen ${name.replace(/\s*\([A-Z]{3}\)/, "")}` : name;
+      fortschritt(`Suche ${name} auf der Karte …`);
+      if (!gefunden.has(suche)) {
+        const treffer = await anfrage(`/api/geo?q=${encodeURIComponent(suche)}`).catch(() => []);
+        gefunden.set(suche, treffer[0] ?? null);
+      }
+      const t = gefunden.get(suche);
+      if (t) v[feld] = { lat: t.lat, lng: t.lng, name: t.name.split(",").slice(0, 2).join(",") };
+    }
+  }
   return offen.filter((h) => h.lat == null).map((h) => h.name);
 }
 
@@ -123,13 +139,13 @@ aktionen["ki-uebernehmen"] = async (el) => {
   el.disabled = true;
   const fehlend = await koordinatenErgaenzen(zustand.reise, (t) => ($("#kiVorschau").innerHTML = `<p class="leise">${esc(t)}</p>`));
   speichern();
-  alert(`Übernommen: ${z.tage} Tage, ${z.hotels} Unterkünfte, ${z.ausfluege} Ausflüge, ${z.kosten} Kosten${z.aktualisiert ? `, ${z.aktualisiert} Einträge ergänzt` : ""}.${fehlend.length ? `\n\nNicht auf der Karte gefunden: ${[...new Set(fehlend)].join(", ")} – bitte unter „Route & Häfen“ suchen.` : ""}`);
+  alert(`Übernommen: ${z.tage} Tage, ${z.hotels} Unterkünfte, ${z.ausfluege} Ausflüge, ${z.verbindungen} Verbindungen (Flüge …), ${z.kosten} Kosten${z.aktualisiert ? `, ${z.aktualisiert} Einträge ergänzt` : ""}.${fehlend.length ? `\n\nNicht auf der Karte gefunden: ${[...new Set(fehlend)].join(", ")} – bitte unter „Route & Häfen“ suchen.` : ""}`);
   neuZeichnen();
 };
 
 aktionen["ki-neue-reise"] = async () => {
   const p = importPlan;
-  const reise = { name: p.name || "Neue Reise", art: p.art, schiff: p.schiff, waehrung: "EUR", personen: p.personen.map((x) => ({ id: neueId(), name: x.name, typ: x.typ, alter: x.alter ?? "" })), haefen: [], hotels: [], ausfluege: [], kosten: [] };
+  const reise = { name: p.name || "Neue Reise", art: p.art, schiff: p.schiff, waehrung: "EUR", personen: p.personen.map((x) => ({ id: neueId(), name: x.name, typ: x.typ, alter: x.alter ?? "" })), haefen: [], hotels: [], ausfluege: [], kosten: [], verbindungen: [] };
   if (!reise.personen.length) reise.personen = [{ id: neueId(), name: zustand.ich?.name ?? "Ich", typ: "erwachsen", userId: zustand.ich?.id }];
   planZusammenfuehren(reise, { ...p, personen: [] });
   await koordinatenErgaenzen(reise, (t) => ($("#kiVorschau").innerHTML = `<p class="leise">${esc(t)}</p>`));
