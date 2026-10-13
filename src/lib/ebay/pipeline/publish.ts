@@ -4,6 +4,7 @@ import type { InventoryApi } from '../ebay/inventory';
 import type { ListingAttempt, Settings } from '../types';
 import { copyImagesToEps, type EpsUploader } from './epsCopy';
 import { buildInventoryItemPayload, buildOfferPayload } from './payload';
+import { buildGroupPayload, buildVariantItemPayload, buildVariantOfferPayload, isVariation, variationProblems } from './variants';
 
 /**
  * Veröffentlicht einen Draft auf eBay: Bilder kopieren → InventoryItem → Offer
@@ -42,6 +43,7 @@ export async function publishAttempt(
   if (missing.length > 0) {
     throw new Error(`Bitte zuerst in den Einstellungen festlegen: ${missing.join(', ')}.`);
   }
+  if (isVariation(attempt)) return publishVariations(db, inv, settings, attempt, upload);
 
   // Ohne EAN (Treffer per Produkttitel gewählt) reicht die laufende Nummer als SKU.
   const sku = attempt.sku ?? (attempt.ean ? `LG-${attempt.ean}-${attempt.id}` : `LG-${attempt.id}`);
@@ -72,6 +74,67 @@ export async function publishAttempt(
     // dafür ist der Nutzen hier zu klein. Der Fall betraf schon vor den Bildern
     // die listingId.
     return (await updateAttempt(db, id, { status: 'published', listingId, imageUrls, errorMessage: undefined }))!;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return (await updateAttempt(db, id, { status: 'publish_failed', errorMessage: message }))!;
+  }
+}
+
+/**
+ * Mehrfachangebot: Bilder kopieren → je Variante ein InventoryItem → Gruppe → je Variante ein
+ * Offer (neu oder Update) → die Gruppe als ein Angebot veröffentlichen. Jede neue offerId wird
+ * sofort gespeichert, damit ein erneuter Versuch aktualisiert statt doppelt anzulegen.
+ */
+async function publishVariations(
+  db: Db,
+  inv: InventoryApi,
+  settings: Settings,
+  attempt: ListingAttempt,
+  upload: EpsUploader
+): Promise<ListingAttempt> {
+  const problems = variationProblems(attempt);
+  if (problems.length > 0) throw new Error(problems.join(' '));
+  const id = attempt.id;
+  const key = attempt.sku ?? `LG-${id}-G`;
+  const current = (await updateAttempt(db, id, { sku: key }))!;
+  const v = current.variants!;
+
+  try {
+    // Jedes Bild nur einmal kopieren – Varianten nutzen oft Bilder des Angebots.
+    const variantImages = v.items.flatMap((i) => (i.imageUrl ? [i.imageUrl] : []));
+    const originals = [...new Set([...(current.imageUrls ?? []), ...variantImages])];
+    const copied = await copyImagesToEps(originals, upload);
+    const eps = new Map(originals.map((u, i) => [u, copied[i]]));
+    let groupImages = (current.imageUrls ?? []).map((u) => eps.get(u)!);
+    // Ohne gemeinsame Bilder zeigt das Angebot die Bilder der Varianten.
+    if (groupImages.length === 0) groupImages = [...new Set(variantImages)].slice(0, 24).map((u) => eps.get(u)!);
+    const items = v.items.map((i) => ({ ...i, imageUrl: i.imageUrl ? eps.get(i.imageUrl) : undefined }));
+    const forPublish: ListingAttempt = { ...current, imageUrls: groupImages, variants: { ...v, items } };
+
+    for (const item of items) await inv.putInventoryItem(item.sku, buildVariantItemPayload(forPublish, item, groupImages));
+    await inv.putInventoryItemGroup(key, buildGroupPayload(forPublish, groupImages));
+
+    // Gespeichert werden die Original-Bild-URLs, bis das Angebot live ist (wie beim einfachen Angebot).
+    const stored = v.items.map((i) => ({ ...i }));
+    for (const [n, item] of items.entries()) {
+      const payload = buildVariantOfferPayload(forPublish, item, settings);
+      if (item.offerId) {
+        await inv.updateOffer(item.offerId, payload);
+      } else {
+        item.offerId = await inv.createOffer(payload);
+        stored[n].offerId = item.offerId;
+        await updateAttempt(db, id, { variants: { ...v, items: stored } });
+      }
+    }
+
+    const listingId = await inv.publishOfferByGroup(key);
+    return (await updateAttempt(db, id, {
+      status: 'published',
+      listingId,
+      imageUrls: groupImages,
+      variants: { ...v, items },
+      errorMessage: undefined,
+    }))!;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return (await updateAttempt(db, id, { status: 'publish_failed', errorMessage: message }))!;

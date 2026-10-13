@@ -34,7 +34,10 @@ export function History({ onOpen }: { onOpen: (id: number) => void }) {
             <tr key={a.id}>
               <td>{formatDate(a.createdAt)}</td>
               <td className="mono">{a.ean || <span className="muted">—</span>}</td>
-              <td className="title-cell" title={a.errorMessage ?? a.title}>{a.title ?? <span className="muted">—</span>}</td>
+              <td className="title-cell" title={a.errorMessage ?? a.title}>
+                {a.variants && <span className="badge" title={a.variants.items.map((i) => i.value).join(', ')}>{a.variants.items.length} Varianten</span>}{' '}
+                {a.title ?? <span className="muted">—</span>}
+              </td>
               <td>
                 {a.source
                   ? a.source.url
@@ -43,9 +46,11 @@ export function History({ onOpen }: { onOpen: (id: number) => void }) {
                   : <span className="muted">—</span>}
               </td>
               <td className="mono">{a.purchasePrice !== undefined ? formatPrice(a.purchasePrice) : <span className="muted">—</span>}</td>
-              <td className="mono">{formatPrice(a.price)}</td>
+              <td className="mono">{a.variants ? `ab ${formatPrice(a.price)}` : formatPrice(a.price)}</td>
               <td className="mono">
-                {a.profit
+                {a.variants
+                  ? <span className="muted">je Variante</span>
+                  : a.profit
                   ? `${formatPrice(a.profit.profit)} (${formatPercent(a.profit.profitPercent)})`
                   : <span className="muted">—</span>}
               </td>

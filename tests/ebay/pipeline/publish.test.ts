@@ -32,6 +32,8 @@ function mockInv(overrides: Partial<InventoryApi> = {}): InventoryApi {
     createOffer: vi.fn(async () => 'OFFER-1'),
     updateOffer: vi.fn(async () => {}),
     publishOffer: vi.fn(async () => 'LISTING-9'),
+    putInventoryItemGroup: vi.fn(async () => {}),
+    publishOfferByGroup: vi.fn(async () => 'LISTING-GROUP'),
     ...overrides,
   };
 }

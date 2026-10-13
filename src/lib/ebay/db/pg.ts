@@ -40,6 +40,7 @@ const attemptColumns: Record<keyof Omit<AttemptRow, "id">, keyof typeof L.$infer
   article_key: "articleKey",
   purchase_price_basis: "purchasePriceBasis",
   fulfillment_policy_id: "fulfillmentPolicyId",
+  variants: "variants",
   created_at: "createdAt",
   updated_at: "updatedAt",
 };

@@ -150,6 +150,7 @@ export async function importLugruDb(tenantId: string, bytes: Uint8Array): Promis
         article_key: str(a.article_key) ?? (a.ean ? `ean:${a.ean}` : a.epid ? `epid:${a.epid}` : `attempt:${a.id}`),
         purchase_price_basis: str(a.purchase_price_basis),
         fulfillment_policy_id: str(a.fulfillment_policy_id),
+        variants: null,
         created_at: String(a.created_at),
         updated_at: String(a.updated_at),
       };

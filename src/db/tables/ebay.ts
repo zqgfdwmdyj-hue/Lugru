@@ -66,6 +66,8 @@ export const ebayListings = pgTable(
     articleKey: text("article_key"),
     purchasePriceBasis: text("purchase_price_basis"),
     fulfillmentPolicyId: text("fulfillment_policy_id"),
+    /** Mehrfachangebot: Variantenmerkmal und Varianten (Preis, Menge, EAN, Bild, EK je Variante). */
+    variants: jsonb("variants"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },

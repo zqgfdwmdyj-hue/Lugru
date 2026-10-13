@@ -54,6 +54,29 @@ export interface EanLookupResult {
   gpsr: Gpsr | null;
 }
 
+/**
+ * Eine Variante eines Mehrfachangebots (z. B. Sorte „Kirsche“): eigener Preis, eigene
+ * Menge, eigene EAN, eigenes Bild und eigener Einkaufspreis – bei eBay eine eigene SKU.
+ */
+export interface VariantItem {
+  /** Wert des Variantenmerkmals, z. B. „Kirsche“. */
+  value: string;
+  sku: string;
+  ean?: string;
+  price: number;
+  quantity: number;
+  imageUrl?: string;
+  /** Einkaufspreis pro Stück, netto. */
+  purchasePrice?: number;
+  offerId?: string;
+}
+
+/** Mehrfachangebot: ein Merkmal (z. B. „Sorte“), nach dem sich die Varianten unterscheiden. */
+export interface Variants {
+  name: string;
+  items: VariantItem[];
+}
+
 export interface ListingAttempt {
   id: number;
   ean: string;
@@ -96,6 +119,11 @@ export interface ListingAttempt {
    * aus den Einstellungen.
    */
   fulfillmentPolicyId?: string;
+  /**
+   * Mehrfachangebot mit Varianten. Dann gelten Preis und Menge je Variante; Titel, Bilder,
+   * Merkmale, Beschreibung und Kategorie gelten für alle. `sku` ist der Gruppenschlüssel.
+   */
+  variants?: Variants;
   createdAt: string;
   updatedAt: string;
 }

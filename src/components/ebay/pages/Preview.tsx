@@ -12,6 +12,8 @@ import { ShippingSelect } from '../components/ShippingSelect';
 import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IdealoPanel } from '../components/IdealoPanel';
 import { AspectEditor } from '../components/AspectEditor';
+import { VariantEditor } from '../components/VariantEditor';
+import { isVariation } from '@/lib/ebay/pipeline/variants';
 import {
   asInput, fieldAfterToggle, placeholderFor, planPurchaseSave, type PriceMode, type VatMode,
 } from '../purchaseEntry';
@@ -40,6 +42,8 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
   const [error, setError] = useState('');
   /** Pflicht-Merkmale ohne Wert — solange welche fehlen, bleibt „Listing erstellen" gesperrt. */
   const [missingAspects, setMissingAspects] = useState<string[]>([]);
+  /** Ungespeicherte Varianten – erst speichern, dann veröffentlichen. */
+  const [variantsDirty, setVariantsDirty] = useState(false);
   const purchasePriceInput = useRef<HTMLInputElement>(null);
   // Speichern läuft nacheinander: zwei schnelle Blur-Events dürfen sich nicht überholen.
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -72,6 +76,7 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
   }
 
   const editable = attempt.status === 'draft' || attempt.status === 'publish_failed';
+  const variation = isVariation(attempt);
 
   /**
    * Speichert und meldet, ob es geklappt hat. Ein Treffer-Wechsel (`ref`, `url`)
@@ -314,28 +319,32 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
           </label>
 
           <div className="row">
-            <label>
-              Preis (€)
-              <input
-                value={price}
-                disabled={!editable}
-                onChange={(e) => setPrice(e.target.value)}
-                onBlur={savePrice}
-                inputMode="decimal"
-              />
-            </label>
-            <label>
-              Stückzahl
-              <input
-                value={quantity}
-                disabled={!editable}
-                onChange={(e) => setQuantity(e.target.value)}
-                onBlur={saveQuantity}
-                type="number"
-                min={1}
-                step={1}
-              />
-            </label>
+            {!variation && !variantsDirty && (
+              <>
+                <label>
+                  Preis (€)
+                  <input
+                    value={price}
+                    disabled={!editable}
+                    onChange={(e) => setPrice(e.target.value)}
+                    onBlur={savePrice}
+                    inputMode="decimal"
+                  />
+                </label>
+                <label>
+                  Stückzahl
+                  <input
+                    value={quantity}
+                    disabled={!editable}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    onBlur={saveQuantity}
+                    type="number"
+                    min={1}
+                    step={1}
+                  />
+                </label>
+              </>
+            )}
             <label>
               Zustand
               <select
@@ -349,6 +358,16 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
               </select>
             </label>
           </div>
+
+          {attempt.status !== 'no_catalog_match' && (
+            <VariantEditor
+              key={`${attempt.id}:${attempt.status}`}
+              attempt={attempt}
+              editable={editable}
+              onSaved={(a) => adopt(a, ['price', 'quantity'])}
+              onDirty={setVariantsDirty}
+            />
+          )}
 
           <ShippingSelect
             attempt={attempt}
@@ -445,7 +464,9 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
               </p>
             )}
 
-            {attempt.profit ? (
+            {variation ? (
+              <p className="muted">Preis, Einkaufspreis und Gewinn stehen je Variante oben bei den Varianten.</p>
+            ) : attempt.profit ? (
               <>
                 <ProfitTable profit={attempt.profit} feePercent={attempt.feePercent} />
                 <p className="muted">Geschätzt: die tatsächliche Provision steht erst nach dem Verkauf fest.</p>
@@ -525,13 +546,17 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
           </div>
 
           {editable && (
-            <button className="primary big" onClick={publish} disabled={busy || title.trim() === '' || missingAspects.length > 0}>
+            <button className="primary big" onClick={publish} disabled={busy || title.trim() === '' || missingAspects.length > 0 || variantsDirty}>
               {busy
                 ? 'Wird bei eBay erstellt …'
                 : title.trim() === ''
                   ? 'Titel eingeben, um das Listing zu erstellen'
                   : missingAspects.length > 0
                     ? `Erst Pflichtangaben ausfüllen: ${missingAspects.join(', ')}`
+                  : variantsDirty
+                    ? 'Erst die Varianten speichern'
+                  : variation
+                    ? `${attempt.status === 'publish_failed' ? 'Erneut erstellen' : 'Angebot mit Varianten erstellen'} — ${attempt.variants!.items.length} Varianten ab ${formatPrice(attempt.price)}`
                   : `${attempt.status === 'publish_failed' ? 'Erneut erstellen' : 'Listing erstellen'} — ${formatPrice(attempt.price)}`}
             </button>
           )}

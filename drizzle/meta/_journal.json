@@ -267,6 +267,13 @@
       "when": 1791785027633,
       "tag": "0037_treffer_pruefung",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791890604110,
+      "tag": "0038_varianten",
+      "breakpoints": true
     }
   ]
 }

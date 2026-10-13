@@ -34,6 +34,7 @@ import { publishAttempt } from '../pipeline/publish';
 import { aspectProblems, aspectsFromError, missingRequired, normalizeAspects, parseEan, type CategoryAspect } from '../pipeline/aspects';
 import { getCategoryAspects } from '../ebay/taxonomy';
 import { truncateTitle } from '../pipeline/title';
+import { isVariation, normalizeVariants, variantTotals, variationAspectCheck } from '../pipeline/variants';
 import type { Condition, Env, ListingAttempt, Settings } from '../types';
 
 const CONDITIONS: Condition[] = ['NEW', 'NEW_OTHER', 'USED_VERY_GOOD', 'USED_GOOD', 'USED_ACCEPTABLE'];
@@ -121,6 +122,15 @@ function decorate(settings: Settings, a: ListingAttempt) {
       vatPercentage: settings.vatPercentage,
     }),
     source: a.purchaseSource ? parseSource(a.purchaseSource) : null,
+    /** Mehrfachangebot: Provision und Gewinn je Variante (eigener Preis, eigener EK). */
+    variantFigures: a.variants?.items.map((i) => {
+      const f = estimateFee(i.price, fee, settings);
+      return {
+        sku: i.sku,
+        fee: f,
+        profit: computeProfit({ salePrice: i.price, purchasePrice: i.purchasePrice, fee: f, shipping: settings.shippingAssumption, vatPercentage: settings.vatPercentage }),
+      };
+    }),
   };
 }
 
@@ -294,7 +304,7 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
 
     if (attempt.status === 'published') throw new Error('Veröffentlichte Listings können hier nicht mehr geändert werden.');
 
-    const { title, price, quantity, condition, ref, url, epid, description, resetDescription, fulfillmentPolicyId, aspects, ean } =
+    const { title, price, quantity, condition, ref, url, epid, description, resetDescription, fulfillmentPolicyId, aspects, ean, variants } =
       req.body ?? {};
     if (url) {
       const legacyId = parseEbayItemUrl(String(url));
@@ -323,6 +333,12 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
       patch.aspects = normalizeAspects(aspects, defs);
     }
     if (ean !== undefined) patch.ean = parseEan(ean);
+    if (variants !== undefined) {
+      // Mehrfachangebot an/aus bzw. Varianten ändern. Preis und Menge des Angebots folgen den
+      // Varianten (günstigste, Summe) – für Verlauf und Liste.
+      patch.variants = normalizeVariants(variants, attempt);
+      if (patch.variants) Object.assign(patch, variantTotals(patch.variants));
+    }
     if (fulfillmentPolicyId !== undefined) {
       // Leer heißt: wieder das Standard-Versandprofil aus den Einstellungen.
       const v = String(fulfillmentPolicyId ?? '').trim();
@@ -342,12 +358,16 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
     const { aspects, error } = await categoryAspects(db, settings, attempt.categoryId);
     const current = attempt.aspects ?? {};
     const fromError = aspectsFromError(attempt.errorMessage).filter((n) => !Object.keys(current).some((k) => k.toLowerCase() === n.toLowerCase()));
+    // Mehrfachangebot: das Variantenmerkmal ist über die Varianten ausgefüllt.
+    const check = isVariation(attempt)
+      ? variationAspectCheck(aspects, attempt)
+      : { missing: missingRequired(aspects, current, attempt.ean), problems: aspectProblems(aspects, current) };
     res.json({
       aspects,
       error,
-      missing: [...new Set([...missingRequired(aspects, current, attempt.ean), ...fromError])],
+      missing: [...new Set([...check.missing, ...fromError])],
       fromError,
-      problems: aspectProblems(aspects, current),
+      problems: check.problems,
     });
   }));
 
@@ -427,9 +447,12 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
     if (draft && draft.status !== 'published') {
       // Pflicht-Merkmale vorab prüfen — spart den Umweg über eBays Fehlermeldung.
       const { aspects } = await categoryAspects(db, settings, draft.categoryId);
-      const missing = missingRequired(aspects, draft.aspects ?? {}, draft.ean);
+      const check = isVariation(draft)
+        ? variationAspectCheck(aspects, draft)
+        : { missing: missingRequired(aspects, draft.aspects ?? {}, draft.ean), problems: aspectProblems(aspects, draft.aspects ?? {}) };
+      const missing = check.missing;
       if (missing.length) throw new Error(`Bitte zuerst die Pflicht-Merkmale ausfüllen: ${missing.join(', ')}.`);
-      const problems = aspectProblems(aspects, draft.aspects ?? {});
+      const problems = check.problems;
       if (problems.length) throw new Error(`Artikelmerkmale prüfen: ${problems.join(' ')}`);
     }
     const inv = makeInventoryApi(db, settings);

@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { listAttempts } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import type { ListingAttempt } from "@/lib/ebay/types";
+import { variantListings } from "@/lib/ebay/pipeline/variants";
 import { ebayQuantity } from "@/lib/integrations/clients/ebay";
 import { stockSkuOf } from "./channel-logic";
 import { syncSoon } from "./channel-sync";
@@ -166,6 +167,25 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
   return { stockSku, booked, stocked: fresh || booked !== 0, note };
 }
 
+/**
+ * Nach dem Veröffentlichen im eBay-Tool: einfaches Angebot wie bisher; ein Mehrfachangebot je
+ * Variante (eigene SKU, eigene EAN, eigener Bestand und Abgleich). Liefert den Hinweis für die Vorschau.
+ */
+export async function linkEbayPublished(tenantId: string, a: ListingAttempt): Promise<string | undefined> {
+  if (!a.variants) return (await linkEbayAttempt(tenantId, a))?.note;
+  const parts: string[] = [];
+  let booked = 0;
+  for (const [n, v] of variantListings(a).entries()) {
+    const r = await linkEbayAttempt(tenantId, v);
+    if (!r) continue;
+    booked += r.booked;
+    const value = a.variants.items[n].value;
+    parts.push(r.stockSku === v.sku ? `${value} (${r.booked} Stück)` : `${value} → SKU ${r.stockSku}`);
+  }
+  if (!parts.length) return undefined;
+  return `In der Wawi: ${parts.length} Varianten als eigene Angebote angelegt – ${parts.join(", ")}${booked ? `; ${booked} Stück als Bestand gebucht` : ""}. Die Mengen werden je Variante mit Amazon FBM, Temu & Co. abgeglichen.`;
+}
+
 /** Wawi-Entwürfe für eBay („Im eBay-Tool einstellen“), die jetzt durch das echte Angebot ersetzt sind. */
 async function dropReplacedDrafts(tenantId: string, ebaySku: string, stockSku: string) {
   const L = schema.listings;
@@ -176,7 +196,8 @@ async function dropReplacedDrafts(tenantId: string, ebaySku: string, stockSku: s
 
 /** Alle veröffentlichten Angebote des eBay-Tools, die in der Wawi noch fehlen, übernehmen – mit Bestand. */
 export async function adoptEbayAttempts(tenantId: string): Promise<{ adopted: number; booked: number }> {
-  const attempts = (await listAttempts(ebayDb(tenantId))).filter((a) => a.status === "published" && a.sku && a.listingId);
+  // Mehrfachangebote: jede Variante ist ein eigenes Wawi-Angebot.
+  const attempts = (await listAttempts(ebayDb(tenantId))).filter((a) => a.status === "published" && a.sku && a.listingId).flatMap(variantListings);
   if (!attempts.length) return { adopted: 0, booked: 0 };
   const known = new Set(
     (await db.select({ sku: schema.listings.sku }).from(schema.listings).where(and(eq(schema.listings.tenantId, tenantId), eq(schema.listings.channel, "ebay")))).map((r) => r.sku),

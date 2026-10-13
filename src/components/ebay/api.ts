@@ -32,6 +32,8 @@ export type Attempt = ListingAttempt & {
   vatPercentage?: number;
   profit?: Profit | null;
   source?: ParsedSource | null;
+  /** Mehrfachangebot: Provision und Gewinn je Variante (per SKU). */
+  variantFigures?: { sku: string; fee: number; profit: Profit | null }[];
 };
 
 export interface Article {

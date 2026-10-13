@@ -42,6 +42,7 @@ export interface AttemptRow {
   article_key: string | null;
   purchase_price_basis: string | null;
   fulfillment_policy_id: string | null;
+  variants: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -198,6 +199,7 @@ export function rowToAttempt(row: AttemptRow): ListingAttempt {
     articleKey: row.article_key ?? undefined,
     purchasePriceBasis: row.purchase_price_basis === 'net' ? 'net' : undefined,
     fulfillmentPolicyId: row.fulfillment_policy_id ?? undefined,
+    variants: (row.variants as ListingAttempt['variants']) ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -244,6 +246,7 @@ export async function createAttempt(
     target_price: input.targetPrice ?? null,
     article_key: null,
     fulfillment_policy_id: null,
+    variants: null,
     created_at: now,
     updated_at: now,
   });
@@ -276,6 +279,7 @@ const PATCH_COLUMNS: Record<string, keyof AttemptRow> = {
   articleKey: 'article_key',
   purchasePriceBasis: 'purchase_price_basis',
   fulfillmentPolicyId: 'fulfillment_policy_id',
+  variants: 'variants',
 };
 
 export async function updateAttempt(db: Db, id: number, input: Partial<ListingAttempt>): Promise<ListingAttempt | null> {

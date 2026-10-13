@@ -21,6 +21,10 @@ export interface InventoryApi {
   createOffer(payload: unknown): Promise<string>;
   updateOffer(offerId: string, payload: unknown): Promise<void>;
   publishOffer(offerId: string): Promise<string>;
+  /** Mehrfachangebot: Gruppe der Varianten-SKUs (gemeinsamer Titel, Bilder, Merkmale, Variantenmerkmal). */
+  putInventoryItemGroup(key: string, payload: unknown): Promise<void>;
+  /** Mehrfachangebot: alle Offers der Gruppe als ein Angebot veröffentlichen. */
+  publishOfferByGroup(key: string): Promise<string>;
 }
 
 async function headers(db: Db, settings: Settings): Promise<Record<string, string>> {
@@ -77,6 +81,22 @@ export function makeInventoryApi(db: Db, settings: Settings): InventoryApi {
         method: 'POST',
         headers: await headers(db, settings),
         body: JSON.stringify({}),
+      })) as { listingId?: string } | null;
+      if (!res?.listingId) throw new Error('eBay hat keine listingId zurückgegeben.');
+      return res.listingId;
+    },
+    async putInventoryItemGroup(key, payload) {
+      await ebayFetch(`${base()}/inventory_item_group/${encodeURIComponent(key)}`, {
+        method: 'PUT',
+        headers: await headers(db, settings),
+        body: JSON.stringify(payload),
+      });
+    },
+    async publishOfferByGroup(key) {
+      const res = (await ebayFetch(`${base()}/offer/publish_by_inventory_item_group`, {
+        method: 'POST',
+        headers: await headers(db, settings),
+        body: JSON.stringify({ inventoryItemGroupKey: key, marketplaceId: MARKETPLACE }),
       })) as { listingId?: string } | null;
       if (!res?.listingId) throw new Error('eBay hat keine listingId zurückgegeben.');
       return res.listingId;
