@@ -71,14 +71,39 @@ export function normalizeVariants(input: unknown, a: Pick<ListingAttempt, 'id' |
       ...(imageUrl ? { imageUrl } : {}),
       ...(ekRaw !== undefined && ekRaw > 0 ? { purchasePrice: roundCents(ekRaw) } : {}),
       ...(old?.offerId ? { offerId: old.offerId } : {}),
+      ...(r.set ? { set: [] } : {}),
     };
   });
+  // Komplettset: je 1× jede Einzelvariante; verfügbar, so oft es sich aus deren Mengen bilden lässt.
+  const singles = items.filter((i) => !i.set);
+  for (const i of items) {
+    if (!i.set) continue;
+    if (singles.length < 2) throw new Error(`${i.value}: ein Set braucht mindestens 2 einzelne Varianten.`);
+    i.set = singles.map((s) => ({ sku: s.sku, qty: 1 }));
+    i.quantity = setQuantity(i, items);
+  }
   return { name, items };
+}
+
+/** Wie oft sich ein Set aus den Mengen seiner Bestandteile bilden lässt. */
+export function setQuantity(set: VariantItem, items: VariantItem[]): number {
+  return Math.min(...(set.set ?? []).map((c) => Math.floor((items.find((i) => i.sku === c.sku)?.quantity ?? 0) / Math.max(1, c.qty))));
+}
+
+/** EK eines Sets: eigener Wert, sonst die Summe der Bestandteile (wenn alle einen haben). */
+export function setPurchasePrice(item: VariantItem, items: VariantItem[]): number | undefined {
+  if (item.purchasePrice !== undefined || !item.set?.length) return item.purchasePrice;
+  const parts = item.set.map((c) => {
+    const p = items.find((i) => i.sku === c.sku)?.purchasePrice;
+    return p === undefined ? undefined : p * c.qty;
+  });
+  return parts.every((p) => p !== undefined) ? roundCents(parts.reduce((s, p) => s! + p!, 0)!) : undefined;
 }
 
 /** Preis und Menge des Gesamtangebots (für Verlauf und Liste): günstigste Variante, Summe der Mengen. */
 export function variantTotals(v: Variants): { price: number; quantity: number } {
-  return { price: Math.min(...v.items.map((i) => i.price)), quantity: v.items.reduce((s, i) => s + i.quantity, 0) };
+  // Sets zählen nicht mit – ihre Stück stecken schon in den Einzelvarianten.
+  return { price: Math.min(...v.items.map((i) => i.price)), quantity: v.items.filter((i) => !i.set).reduce((s, i) => s + i.quantity, 0) };
 }
 
 /** Was vor dem Veröffentlichen eines Mehrfachangebots noch fehlt. */
@@ -196,4 +221,50 @@ export function suggestVariantValue(baseTitle: string | undefined, otherTitle: s
     return n !== '' && !have.has(n) && !AMOUNT.test(n);
   });
   return extra.join(' ').replace(/^[\s\-–,|/()]+|[\s\-–,|/()]+$/g, '').slice(0, NAME_MAX);
+}
+
+/** Merkmale, die je Variante abweichen, aber keine Variante beschreiben (Nummern). */
+const ID_ASPECT = /^(ean|gtin|upc|isbn|mpn|herstellernummer|hersteller-?nr\.?|herstellerartikelnummer|sku|modellnummer)$/i;
+
+export type ImportedVariants = { name: string; items: { value: string; ean?: string; price?: number; imageUrl?: string }[] };
+
+/**
+ * Varianten eines bestehenden eBay-Angebots (Browse: get_items_by_item_group) als Vorlage:
+ * Variantenmerkmal = die Merkmale, die sich zwischen den Varianten unterscheiden (bei mehreren
+ * zusammengefasst, z. B. „Farbe / Größe“ mit „Rot / M“), dazu Bild, EAN und Preis je Variante.
+ */
+export function variantsFromGroup(items: Record<string, unknown>[]): ImportedVariants | null {
+  if (items.length < 2) return null;
+  const maps = items.map(
+    (it) => new Map(((it.localizedAspects as { name?: unknown; value?: unknown }[] | undefined) ?? []).map((x) => [String(x.name ?? '').trim(), String(x.value ?? '').trim()]))
+  );
+  const names = [...maps[0].keys()].filter(
+    (n) => n && !ID_ASPECT.test(n) && maps.every((m) => m.get(n)) && new Set(maps.map((m) => m.get(n)!.toLowerCase())).size > 1
+  );
+  if (names.length === 0) return null;
+  const seen = new Map<string, number>();
+  const out = items.map((it, i) => {
+    let value = names.map((n) => maps[i].get(n)!).join(' / ').slice(0, NAME_MAX);
+    // Gleiche Werte (selten) durchnummerieren – eBay verlangt eindeutige Varianten.
+    const k = value.toLowerCase();
+    const count = (seen.get(k) ?? 0) + 1;
+    seen.set(k, count);
+    if (count > 1) value = `${value.slice(0, NAME_MAX - 4)} (${count})`;
+    const gtin = String(it.gtin ?? '').replace(/\s/g, '');
+    const price = Number((it.price as { value?: unknown } | undefined)?.value);
+    const imageUrl = (it.image as { imageUrl?: unknown } | undefined)?.imageUrl;
+    return {
+      value,
+      ...(/^\d{8,14}$/.test(gtin) && !/^0+$/.test(gtin) ? { ean: gtin } : {}),
+      ...(Number.isFinite(price) && price > 0 ? { price: roundCents(price) } : {}),
+      ...(typeof imageUrl === 'string' && imageUrl ? { imageUrl } : {}),
+    };
+  });
+  return { name: names.join(' / ').slice(0, NAME_MAX), items: out };
+}
+
+/** Artikelnummer der Item-Gruppe aus einer Treffer-Referenz („v1|188871680435|697…“), nur bei Varianten. */
+export function groupIdOfRef(ref: string | undefined): string | null {
+  const m = /^v1\|(\d+)\|(\d+)$/.exec(ref ?? '');
+  return m && m[2] !== '0' ? m[1] : null;
 }

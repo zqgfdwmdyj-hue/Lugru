@@ -7,6 +7,7 @@ import { createDhlLabel, cancelDhlLabel } from "@/lib/integrations/clients/dhl";
 import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
 import { syncSoon, wawiSku } from "@/lib/stock/channel-sync";
+import { adjustStock } from "@/lib/stock/sets";
 
 export const PACKAGING_GRAMS = 150;
 
@@ -122,12 +123,8 @@ export async function markShipped(tenantId: string, orderId: string, userId: str
     for (const { item } of data.items) {
       if (!item.sku) continue;
       const sku = await wawiSku(tenantId, data.order.channel, item.sku);
-      touched.push(sku);
-      await db
-        .insert(schema.ownStock)
-        .values({ tenantId, sku, quantity: -item.quantity })
-        .onConflictDoUpdate({ target: [schema.ownStock.tenantId, schema.ownStock.sku], set: { quantity: sql`${schema.ownStock.quantity} - ${item.quantity}`, updatedAt: new Date() } });
-      await db.insert(schema.stockMovements).values({ tenantId, sku, delta: -item.quantity, reason: "Versand", reference: `${data.order.channel} ${data.order.externalId}`, userId });
+      // Ein Set (Komplettset) bucht seine Bestandteile ab.
+      touched.push(...(await adjustStock(tenantId, sku, -item.quantity, "Versand", `${data.order.channel} ${data.order.externalId}`, userId)));
     }
     // Lager und Reservierung sinken gleich – verfügbar bleibt; trotzdem abgleichen (Korrekturen, Mehrfach-Positionen).
     syncSoon(tenantId, touched);

@@ -69,6 +69,11 @@ export interface VariantItem {
   /** Einkaufspreis pro Stück, netto. */
   purchasePrice?: number;
   offerId?: string;
+  /**
+   * Set (z. B. „Komplettset“): besteht aus anderen Varianten (je `qty` Stück). Die Menge ergibt
+   * sich aus deren Mengen; in der Wawi bucht ein Verkauf die Bestandteile ab.
+   */
+  set?: { sku: string; qty: number }[];
 }
 
 /** Mehrfachangebot: ein Merkmal (z. B. „Sorte“), nach dem sich die Varianten unterscheiden. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableOf, oversold, planSync, stockSkuOf, targetQuantity, type SyncListing } from "@/lib/stock/channel-logic";
+import { availableOf, oversold, planSync, setsContaining, stockSkuOf, targetQuantity, withSets, type SyncListing } from "@/lib/stock/channel-logic";
 
 const L = (over: Partial<SyncListing>): SyncListing => ({ id: "l1", channel: "ebay", sku: "LG-1", stockSku: null, status: "active", stockSync: true, maxQuantity: null, pushedQuantity: null, ...over });
 const levels = new Map([
@@ -58,4 +58,29 @@ describe("Bestandsabgleich über Kanäle", () => {
     expect(oversold(levels.values()).map((l) => l.sku)).toEqual(["OVER"]);
   });
 
+});
+
+describe("Sets (Komplettset aus Einzelsorten)", () => {
+  const lvl = (sku: string, onHand: number, reserved = 0) => [sku, { sku, onHand, reserved }] as const;
+  const set = { sku: "SET-1", components: [{ sku: "A", qty: 1 }, { sku: "B", qty: 1 }, { sku: "C", qty: 2 }] };
+
+  it("verfügbar = was sich aus den freien Einzelsorten bilden lässt", () => {
+    const out = withSets(new Map([lvl("A", 5), lvl("B", 3, 1), lvl("C", 9)]), new Map(), [set]);
+    expect(out.get("SET-1")).toEqual({ sku: "SET-1", onHand: 2, reserved: 0 }); // B: 3 − 1 = 2
+  });
+  it("offene Set-Bestellungen reservieren die Einzelsorten", () => {
+    const out = withSets(new Map([lvl("A", 5), lvl("B", 3), lvl("C", 9)]), new Map([["SET-1", 2]]), [set]);
+    expect(out.get("A")!.reserved).toBe(2);
+    expect(out.get("C")!.reserved).toBe(4);
+    expect(out.get("SET-1")!.onHand).toBe(1); // B: 3 − 2 = 1; C: (9 − 4) / 2 = 2
+    // Überverkauf zeigt sich an der Einzelsorte
+    expect(oversold(withSets(new Map([lvl("A", 1), lvl("B", 3), lvl("C", 9)]), new Map([["SET-1", 2]]), [set]).values()).map((l) => l.sku)).toEqual(["A"]);
+  });
+  it("ohne Bestand einer Einzelsorte kein Stand (kein Abgleich); fertig gepackte Sets bleiben normale SKUs", () => {
+    expect(withSets(new Map([lvl("A", 5), lvl("B", 3)]), new Map(), [set]).has("SET-1")).toBe(false);
+    expect(withSets(new Map([lvl("A", 5), lvl("B", 3), lvl("C", 9), lvl("SET-1", 7)]), new Map([["SET-1", 1]]), [set]).get("SET-1")).toEqual({ sku: "SET-1", onHand: 7, reserved: 0 });
+  });
+  it("ändert sich eine Einzelsorte, wird auch das Set abgeglichen", () => {
+    expect(setsContaining([set, { sku: "SET-2", components: [{ sku: "X", qty: 1 }] }], ["B"])).toEqual(["SET-1"]);
+  });
 });

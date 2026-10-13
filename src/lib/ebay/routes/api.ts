@@ -5,7 +5,7 @@ import {
 } from '../db/db';
 import { getPolicies, getShippingPolicies, optInToBusinessPolicies } from '../ebay/account';
 import { buildConsentUrl, exchangeCode, extractCodeFromRedirectUrl, isExpired } from '../ebay/auth';
-import { fetchItemByLegacyId, fetchItemByRef, lookupByEan, searchListings } from '../ebay/browse';
+import { fetchItemByLegacyId, fetchItemByRef, fetchItemGroup, lookupByEan, searchListings } from '../ebay/browse';
 import { listingUrl } from '../ebay/config';
 import { makeInventoryApi } from '../ebay/inventory';
 import {
@@ -34,7 +34,7 @@ import { publishAttempt } from '../pipeline/publish';
 import { aspectProblems, aspectsFromError, missingRequired, normalizeAspects, parseEan, type CategoryAspect } from '../pipeline/aspects';
 import { getCategoryAspects } from '../ebay/taxonomy';
 import { truncateTitle } from '../pipeline/title';
-import { isVariation, normalizeVariants, variantTotals, variationAspectCheck } from '../pipeline/variants';
+import { groupIdOfRef, isVariation, normalizeVariants, setPurchasePrice, variantsFromGroup, variantTotals, variationAspectCheck } from '../pipeline/variants';
 import type { Condition, Env, ListingAttempt, Settings } from '../types';
 
 const CONDITIONS: Condition[] = ['NEW', 'NEW_OTHER', 'USED_VERY_GOOD', 'USED_GOOD', 'USED_ACCEPTABLE'];
@@ -128,7 +128,8 @@ function decorate(settings: Settings, a: ListingAttempt) {
       return {
         sku: i.sku,
         fee: f,
-        profit: computeProfit({ salePrice: i.price, purchasePrice: i.purchasePrice, fee: f, shipping: settings.shippingAssumption, vatPercentage: settings.vatPercentage }),
+        purchasePrice: setPurchasePrice(i, a.variants!.items),
+        profit: computeProfit({ salePrice: i.price, purchasePrice: setPurchasePrice(i, a.variants!.items), fee: f, shipping: settings.shippingAssumption, vatPercentage: settings.vatPercentage }),
       };
     }),
   };
@@ -412,6 +413,25 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
     const url = String(req.body?.url ?? '');
     if (!url) throw new Error('Keine Bild-URL angegeben.');
     res.json(decorate(await getSettings(db), await removeImage(db, Number(req.params.id), url)));
+  }));
+
+  /**
+   * Varianten eines bestehenden eBay-Angebots als Vorlage (Sortennamen, Bilder, EAN, Preise):
+   * per eingefügtem Link/Artikelnummer oder – ohne Angabe – aus dem gewählten Treffer des Entwurfs.
+   */
+  r.get('/attempts/:id/ebay-variants', h(async (req, res) => {
+    const attempt = await getAttempt(db, Number(req.params.id));
+    if (!attempt) throw new Error('Listing-Versuch nicht gefunden.');
+    const q = String(req.query.q ?? '').trim();
+    const current = attempt.catalogMatches?.[attempt.catalogMatches.length - 1]?.ref;
+    const groupId = q ? (groupIdOfRef(q) ?? parseEbayItemUrl(q)) : groupIdOfRef(current);
+    if (!groupId) {
+      throw new Error(q ? 'Das sieht nicht nach einem eBay-Artikel-Link (oder einer Artikelnummer) aus.' : 'Der gewählte Treffer ist kein Angebot mit Varianten – bitte den Link eines Angebots mit Varianten einfügen.');
+    }
+    const items = await fetchItemGroup(db, await getSettings(db), groupId).catch(() => []);
+    const found = variantsFromGroup(items);
+    if (!found) throw new Error(`Angebot ${groupId} hat bei eBay keine Varianten (oder ist beendet).`);
+    res.json(found);
   }));
 
   /** Einstieg des Workflows: EAN, Produkttitel oder eingefügter eBay-Link. */

@@ -53,3 +53,35 @@ export function planSync(listings: SyncListing[], levels: Map<string, StockLevel
 /** Überverkauft: mehr in offenen Aufträgen als im Lager. */
 export const oversold = (levels: Iterable<StockLevel>) => [...levels].filter((l) => l.reserved > l.onHand);
 
+
+/** Set (z. B. Komplettset): Verkaufs-SKU ohne eigenes Lager, gebildet aus anderen Wawi-SKUs. */
+export type SetDef = { sku: string; components: { sku: string; qty: number }[] };
+
+/**
+ * Sets in die Bestandsstände einrechnen: offene Set-Bestellungen reservieren ihre Bestandteile,
+ * und das Set ist so oft verfügbar, wie es sich aus dem freien Bestand der Bestandteile bilden
+ * lässt. Fehlt für einen Bestandteil der Wawi-Bestand, bekommt das Set keinen Stand (wird dann –
+ * wie jede SKU ohne Bestand – nicht abgeglichen). Sets mit eigenem Lagereintrag gelten als
+ * fertig gepackte Ware und bleiben normale SKUs.
+ */
+export function withSets(levels: Map<string, StockLevel>, reserved: Map<string, number>, sets: SetDef[]): Map<string, StockLevel> {
+  const out = new Map([...levels].map(([k, v]) => [k, { ...v }]));
+  const virtual = sets.filter((s) => !levels.has(s.sku) && s.components.length > 0);
+  for (const s of virtual) {
+    const r = reserved.get(s.sku) ?? 0;
+    if (!r) continue;
+    for (const c of s.components) {
+      const lvl = out.get(c.sku);
+      if (lvl) lvl.reserved += r * c.qty;
+    }
+  }
+  for (const s of virtual) {
+    if (!s.components.every((c) => out.has(c.sku))) continue;
+    const onHand = Math.min(...s.components.map((c) => Math.floor(availableOf(out.get(c.sku)) / Math.max(1, c.qty))));
+    out.set(s.sku, { sku: s.sku, onHand, reserved: 0 });
+  }
+  return out;
+}
+
+/** Sets, die eine der SKUs enthalten – ändert sich ein Bestandteil, müssen auch sie abgeglichen werden. */
+export const setsContaining = (sets: SetDef[], skus: string[]) => sets.filter((s) => s.components.some((c) => skus.includes(c.sku))).map((s) => s.sku);

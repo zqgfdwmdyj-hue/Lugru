@@ -4,7 +4,8 @@ import { db, schema } from "@/db";
 import type { Channel } from "@/db/schema";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
-import { availableOf, oversold, planSync, stockSkuOf, targetQuantity, type StockLevel } from "./channel-logic";
+import { availableOf, oversold, planSync, setsContaining, stockSkuOf, targetQuantity, withSets, type StockLevel } from "./channel-logic";
+import { loadSets } from "./sets";
 
 type Listing = typeof schema.listings.$inferSelect;
 /** Meldet die Menge an den Kanal. Darf Zusatzdaten (z. B. offerId, productType) für das nächste Mal zurückgeben. */
@@ -27,8 +28,8 @@ export async function channelsWithStockApi(): Promise<Channel[]> {
  * Nur SKUs mit eigenem Lagereintrag; ohne Eintrag kennt die Wawi den Bestand nicht.
  */
 export async function stockLevels(tenantId: string, skus?: string[]): Promise<Map<string, StockLevel>> {
-  const res = await db.execute<{ sku: string; on_hand: number; reserved: number }>(sql`
-    with res as (
+  const [res, stock, sets] = await Promise.all([
+    db.execute<{ sku: string; qty: number }>(sql`
       select coalesce(nullif(l.stock_sku, ''), i.sku) as sku, sum(i.quantity)::int as qty
         from order_items i
         join orders o on o.id = i.order_id
@@ -38,14 +39,15 @@ export async function stockLevels(tenantId: string, skus?: string[]): Promise<Ma
          and o.status in ('open', 'label_created')
          and coalesce(o.external_status, '') !~* '(cancel|storn)'
          and i.sku is not null
-       group by 1
-    )
-    select os.sku, os.quantity as on_hand, coalesce(res.qty, 0) as reserved
-      from own_stock os
-      left join res on res.sku = os.sku
-     where os.tenant_id = ${tenantId}
-       ${skus?.length ? sql`and os.sku in (${sql.join(skus.map((s) => sql`${s}`), sql`, `)})` : sql``}`);
-  return new Map(res.rows.map((r) => [r.sku, { sku: r.sku, onHand: Number(r.on_hand), reserved: Number(r.reserved) }]));
+       group by 1`),
+    db.select({ sku: schema.ownStock.sku, quantity: schema.ownStock.quantity }).from(schema.ownStock).where(eq(schema.ownStock.tenantId, tenantId)),
+    loadSets(tenantId),
+  ]);
+  const reserved = new Map(res.rows.map((r) => [r.sku, Number(r.qty)]));
+  const base = new Map(stock.map((r) => [r.sku, { sku: r.sku, onHand: Number(r.quantity), reserved: reserved.get(r.sku) ?? 0 }]));
+  // Sets (Komplettsets): Reservierung auf die Bestandteile, verfügbar = was sich daraus bilden lässt.
+  const all = sets.length ? withSets(base, reserved, sets) : base;
+  return skus?.length ? new Map([...all].filter(([k]) => skus.includes(k))) : all;
 }
 
 /** Wawi-SKU zu einer Kanal-SKU (z. B. eBay „LG-…“ → eigene SKU). */
@@ -74,7 +76,11 @@ export async function syncChannelStock(tenantId: string, opts: { skus?: string[]
     await import("@/lib/integrations/clients");
     const L = schema.listings;
     let rows = await db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.status, "active")));
-    if (opts.skus?.length) rows = rows.filter((r) => opts.skus!.includes(stockSkuOf(r)));
+    if (opts.skus?.length) {
+      // Ändert sich ein Bestandteil, ändert sich auch, wie viele Sets verfügbar sind.
+      const skus = [...opts.skus, ...setsContaining(await loadSets(tenantId), opts.skus)];
+      rows = rows.filter((r) => skus.includes(stockSkuOf(r)));
+    }
     // Alle Stände laden – die Überverkaufs-Prüfung braucht das Gesamtbild.
     const levels = await stockLevels(tenantId);
     const plan = planSync(rows, levels);

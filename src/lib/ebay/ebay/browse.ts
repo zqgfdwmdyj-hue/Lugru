@@ -195,6 +195,15 @@ export async function fetchItemByLegacyId(db: Db, settings: Settings, legacyId: 
   }
 }
 
+/** Alle Varianten eines Variantenlistings (Item-Gruppe = Artikelnummer des Angebots). */
+export async function fetchItemGroup(db: Db, settings: Settings, groupId: string): Promise<Record<string, unknown>[]> {
+  const res = (await ebayFetch(
+    `${apiBase(settings.env)}/buy/browse/v1/item/get_items_by_item_group?item_group_id=${encodeURIComponent(groupId)}`,
+    { headers: await headers(db, settings) }
+  )) as { items?: Record<string, unknown>[] } | null;
+  return res?.items ?? [];
+}
+
 /** Sucht die ePID zu einer GTIN über die Such-Summaries (bevorzugt das Item selbst). */
 async function findEpidByGtin(db: Db, settings: Settings, gtin: string, preferItemId: string): Promise<string | undefined> {
   const result = (await ebayFetch(

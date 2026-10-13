@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { api, formatPercent, formatPrice, looksLikeEan, parseAmount, type Attempt, type SearchResult } from '../api';
-import { suggestVariantValue, VARIATION_NAMES } from '@/lib/ebay/pipeline/variants';
+import { groupIdOfRef, suggestVariantValue, VARIATION_NAMES, type ImportedVariants } from '@/lib/ebay/pipeline/variants';
 
 /** Eine Zeile im Editor – Eingaben als Text, gespeichert wird erst mit „Varianten speichern“. */
-type Row = { key: string; sku?: string; value: string; ean: string; price: string; quantity: string; purchasePrice: string; imageUrl: string };
+type Row = { key: string; sku?: string; value: string; ean: string; price: string; quantity: string; purchasePrice: string; imageUrl: string; set: boolean };
 
 const asText = (n: number | undefined) => (n === undefined ? '' : String(n).replace('.', ','));
 let seq = 0;
@@ -19,7 +19,20 @@ function rowsOf(a: Attempt): Row[] {
     quantity: String(i.quantity),
     purchasePrice: asText(i.purchasePrice),
     imageUrl: i.imageUrl ?? '',
+    set: Boolean(i.set),
   }));
+}
+
+/** Komplettset: so oft, wie es sich aus den Einzelvarianten bilden lässt (je 1×). */
+function setQty(rows: Row[]): number {
+  const singles = rows.filter((r) => !r.set);
+  return singles.length ? Math.min(...singles.map((r) => Math.max(0, Math.floor(Number(r.quantity) || 0)))) : 0;
+}
+
+/** EK-Vorschlag für ein Set: Summe der Einzelvarianten, wenn alle einen haben. */
+function setEk(rows: Row[]): number | undefined {
+  const eks = rows.filter((r) => !r.set).map((r) => parseAmount(r.purchasePrice));
+  return eks.length && eks.every((e) => e !== undefined) ? Math.round(eks.reduce((s, e) => s + e!, 0) * 100) / 100 : undefined;
 }
 
 /**
@@ -44,6 +57,10 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
   const [found, setFound] = useState<SearchResult[] | null>(null);
   const [picker, setPicker] = useState<string | null>(null);
   const [pickUrl, setPickUrl] = useState('');
+  const [link, setLink] = useState('');
+  const [note, setNote] = useState('');
+  /** Der gewählte Treffer ist selbst ein Angebot mit Varianten – dann gleich anbieten, sie zu übernehmen. */
+  const sourceGroup = groupIdOfRef(attempt.catalogMatches?.[attempt.catalogMatches.length - 1]?.ref);
 
   const setDirty = (d: boolean) => {
     setDirtyState(d);
@@ -64,14 +81,15 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
       quantity: String(attempt.quantity),
       purchasePrice: asText(attempt.purchasePrice),
       imageUrl: attempt.imageUrls?.[0] ?? '',
+      set: false,
     };
-    setRows([first, { key: newKey(), value: '', ean: '', price: asText(attempt.price), quantity: '1', purchasePrice: '', imageUrl: '' }]);
+    setRows([first, { key: newKey(), value: '', ean: '', price: asText(attempt.price), quantity: '1', purchasePrice: '', imageUrl: '', set: false }]);
     setDirty(true);
   }
 
   function addRow(r: Partial<Row> = {}) {
     const last = rows[rows.length - 1];
-    setRows((rs) => [...rs, { key: newKey(), value: '', ean: '', price: last?.price ?? asText(attempt.price), quantity: '1', purchasePrice: '', imageUrl: '', ...r }]);
+    setRows((rs) => [...rs, { key: newKey(), value: '', ean: '', price: last?.price ?? asText(attempt.price), quantity: '1', purchasePrice: '', imageUrl: '', set: false, ...r }]);
     setDirty(true);
   }
 
@@ -84,7 +102,7 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
       const label = r.value.trim() || `Variante ${rows.indexOf(r) + 1}`;
       if (price === undefined) return setError(`${label}: Preis „${r.price.trim()}" ist keine gültige Zahl.`);
       if (ek === undefined) return setError(`${label}: Einkaufspreis „${r.purchasePrice.trim()}" ist keine gültige Zahl.`);
-      items.push({ sku: r.sku, value: r.value, ean: r.ean, price, quantity: r.quantity.trim() === '' ? 0 : Number(r.quantity), purchasePrice: ek, imageUrl: r.imageUrl });
+      items.push({ sku: r.sku, value: r.value, ean: r.ean, price, quantity: r.set ? 0 : r.quantity.trim() === '' ? 0 : Number(r.quantity), purchasePrice: ek, imageUrl: r.imageUrl, set: r.set });
     }
     setBusy(true);
     try {
@@ -116,6 +134,43 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
     }
   }
 
+  /**
+   * Varianten aus einem bestehenden eBay-Angebot übernehmen (Sortennamen, Bilder, EAN, Preis als
+   * Vorschlag). Ohne Link: aus dem gewählten Treffer. Vorhandene Werte bleiben, Neues kommt dazu.
+   */
+  async function importFrom(e?: FormEvent) {
+    e?.preventDefault();
+    setBusy(true);
+    setError('');
+    setNote('');
+    try {
+      const got = await api<ImportedVariants>(`/attempts/${attempt.id}/ebay-variants?q=${encodeURIComponent(link.trim())}`);
+      const have = new Set(rows.map((r) => r.value.trim().toLowerCase()));
+      const fresh = got.items
+        .filter((i) => !have.has(i.value.toLowerCase()))
+        .map((i): Row => ({
+          key: newKey(),
+          value: i.value,
+          ean: i.ean ?? '',
+          price: asText(i.price ?? attempt.price),
+          quantity: '',
+          purchasePrice: '',
+          imageUrl: i.imageUrl ?? '',
+          // „Komplettset (6 Shaker)“ → gleich als Set aus den Einzelsorten.
+          set: /komplett/i.test(i.value),
+        }));
+      if (rows.length === 0) setName(got.name);
+      setRows((rs) => [...rs, ...fresh]);
+      setDirty(true);
+      setLink('');
+      setNote(`${fresh.length} Varianten übernommen (Merkmal „${got.name}“). Eigene Preise und Mengen eintragen – Bilder nur verwenden, wenn du darfst.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function search(e: FormEvent) {
     e.preventDefault();
     const q = query.trim();
@@ -138,12 +193,26 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
     setQuery('');
   }
 
+  const importForm = (
+    <form className="with-toggle variant-search" onSubmit={importFrom}>
+      <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Link eines eBay-Angebots mit Varianten" aria-label="Varianten aus eBay-Angebot übernehmen" />
+      <button disabled={busy || link.trim().length < 5}>Varianten übernehmen</button>
+    </form>
+  );
+
   if (!active && rows.length === 0) {
     if (!editable) return null;
     return (
       <div className="variant-start">
         <button type="button" onClick={start} data-testid="variants-start">+ Varianten anlegen (z. B. Sorten, Größen)</button>
         <span className="muted">Ein Angebot, mehrere Sorten – jede mit eigenem Preis, eigener Menge, EAN und Bild.</span>
+        {sourceGroup && (
+          <button type="button" disabled={busy} onClick={() => void importFrom()} data-testid="variants-from-source">
+            Varianten des gewählten eBay-Angebots übernehmen
+          </button>
+        )}
+        {importForm}
+        {error && <div className="banner error">{error}</div>}
       </div>
     );
   }
@@ -173,11 +242,17 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
             <label className="vf"><span className="vf-cap">{name || 'Wert'}</span><input aria-label={`Wert Variante ${n + 1}`} value={r.value} disabled={!editable} onChange={(e) => change(r.key, { value: e.target.value })} placeholder="z. B. Kirsche" maxLength={65} /></label>
             <label className="vf"><span className="vf-cap">EAN</span><input aria-label={`EAN Variante ${n + 1}`} value={r.ean} disabled={!editable} onChange={(e) => change(r.key, { ean: e.target.value })} inputMode="numeric" placeholder="optional" /></label>
             <label className="vf"><span className="vf-cap">Preis €</span><input aria-label={`Preis Variante ${n + 1}`} value={r.price} disabled={!editable} onChange={(e) => change(r.key, { price: e.target.value })} inputMode="decimal" /></label>
-            <label className="vf"><span className="vf-cap">Menge</span><input aria-label={`Menge Variante ${n + 1}`} value={r.quantity} disabled={!editable} onChange={(e) => change(r.key, { quantity: e.target.value })} type="number" min={0} step={1} /></label>
-            <label className="vf"><span className="vf-cap">EK netto €</span><input aria-label={`EK Variante ${n + 1}`} value={r.purchasePrice} disabled={!editable} onChange={(e) => change(r.key, { purchasePrice: e.target.value })} inputMode="decimal" placeholder="optional" /></label>
+            <label className="vf"><span className="vf-cap">Menge</span><input aria-label={`Menge Variante ${n + 1}`} value={r.set ? String(setQty(rows)) : r.quantity} disabled={!editable || r.set} title={r.set ? 'Ergibt sich aus den Einzelsorten' : undefined} onChange={(e) => change(r.key, { quantity: e.target.value })} type="number" min={0} step={1} placeholder="Menge" /></label>
+            <label className="vf"><span className="vf-cap">EK netto €</span><input aria-label={`EK Variante ${n + 1}`} value={r.purchasePrice} disabled={!editable} onChange={(e) => change(r.key, { purchasePrice: e.target.value })} inputMode="decimal" placeholder={r.set && setEk(rows) !== undefined ? `Summe ${asText(setEk(rows))}` : 'optional'} /></label>
             {editable ? (
               <button type="button" className="variant-remove" title="Variante entfernen" aria-label="Variante entfernen" onClick={() => { setRows((rs) => rs.filter((x) => x.key !== r.key)); setDirty(true); }}>×</button>
             ) : <span />}
+            {(editable || r.set) && (
+              <label className="variant-set" title="Set aus je einem Stück jeder anderen Sorte – ein Verkauf bucht die Einzelsorten ab">
+                <input type="checkbox" checked={r.set} disabled={!editable} onChange={(e) => change(r.key, { set: e.target.checked })} />
+                {r.set ? 'Komplettset – je 1× jede andere Sorte, Menge ergibt sich daraus' : 'Komplettset'}
+              </label>
+            )}
             {f && !dirty && (
               <div className="variant-profit muted" data-testid="variant-profit">
                 {f.profit
@@ -215,6 +290,11 @@ export function VariantEditor({ attempt, editable, onSaved, onDirty }: {
               <button disabled={busy || query.trim().length < 2}>Suchen</button>
             </form>
           </div>
+          <div className="variant-actions">
+            {sourceGroup && <button type="button" disabled={busy} onClick={() => void importFrom()}>Varianten des gewählten Angebots übernehmen</button>}
+            {importForm}
+          </div>
+          {note && <p className="muted" data-testid="variants-note">{note}</p>}
           {found && (
             <div className="variant-found">
               {found.length === 0 && <span className="muted">Nichts gefunden.</span>}

@@ -4,8 +4,8 @@ import { openMemoryDb } from '@/lib/ebay/db/memory';
 import type { InventoryApi } from '@/lib/ebay/ebay/inventory';
 import { publishAttempt } from '@/lib/ebay/pipeline/publish';
 import {
-  buildGroupPayload, buildVariantItemPayload, buildVariantOfferPayload, normalizeVariants, suggestVariantValue,
-  variantListings, variantTitle, variantTotals, variationAspectCheck, variationProblems,
+  buildGroupPayload, buildVariantItemPayload, buildVariantOfferPayload, groupIdOfRef, normalizeVariants, setPurchasePrice, suggestVariantValue,
+  variantListings, variantsFromGroup, variantTitle, variantTotals, variationAspectCheck, variationProblems,
 } from '@/lib/ebay/pipeline/variants';
 import type { ListingAttempt, Settings } from '@/lib/ebay/types';
 
@@ -202,5 +202,73 @@ describe('publishAttempt mit Varianten', () => {
     const inv = mockInv();
     await expect(publishAttempt(db, inv, settings, a.id, upload)).rejects.toThrow(/mindestens 2 Varianten/);
     expect(inv.putInventoryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('Komplettset als Variante', () => {
+  const input = {
+    name: 'Auswahl',
+    items: [
+      { value: 'Figur A - gelb', price: 12.99, quantity: 4, purchasePrice: 5 },
+      { value: 'Figur B - blau', price: 12.99, quantity: 2, purchasePrice: 5.5 },
+      { value: 'Figur C - rot', price: 12.99, quantity: 7 },
+      { value: 'Komplettset (3 Becher)', price: 34.99, quantity: 99, set: true },
+    ],
+  };
+  it('besteht aus je 1× jeder Einzelsorte, Menge = was sich bilden lässt', () => {
+    const v = normalizeVariants(input, base)!;
+    const set = v.items[3];
+    expect(set.set).toEqual([{ sku: 'LG-7-V1', qty: 1 }, { sku: 'LG-7-V2', qty: 1 }, { sku: 'LG-7-V3', qty: 1 }]);
+    expect(set.quantity).toBe(2);
+    // Gesamtmenge ohne das Set (dessen Stück stecken in den Einzelsorten)
+    expect(variantTotals(v)).toEqual({ price: 12.99, quantity: 13 });
+  });
+  it('EK des Sets = Summe der Einzelsorten, sobald alle einen haben', () => {
+    const v = normalizeVariants(input, base)!;
+    expect(setPurchasePrice(v.items[3], v.items)).toBeUndefined();
+    v.items[2].purchasePrice = 4;
+    expect(setPurchasePrice(v.items[3], v.items)).toBe(14.5);
+    expect(setPurchasePrice({ ...v.items[3], purchasePrice: 12 }, v.items)).toBe(12);
+  });
+  it('braucht mindestens 2 Einzelsorten', () => {
+    expect(() => normalizeVariants({ name: 'Auswahl', items: [input.items[0], input.items[3]] }, base)).toThrow(/mindestens 2 einzelne Varianten/);
+  });
+});
+
+describe('Varianten aus einem bestehenden eBay-Angebot', () => {
+  const item = (variant: string, extra: Record<string, unknown> = {}) => ({
+    itemId: 'v1|188000000001|' + variant.length,
+    localizedAspects: [
+      { type: 'STRING', name: 'Marke', value: 'Testmarke' },
+      { type: 'STRING', name: 'Auswahl', value: variant },
+      { type: 'STRING', name: 'EAN', value: String(4000000000000 + variant.length) },
+    ],
+    ...extra,
+  });
+  it('erkennt das Variantenmerkmal (ohne EAN/Marke) mit Bild, EAN und Preis je Variante', () => {
+    const r = variantsFromGroup([
+      item('Figur A - gelb', { gtin: '4000000000017', price: { value: '12.99', currency: 'EUR' }, image: { imageUrl: 'https://i.example/a.jpg' } }),
+      item('Figur B - blau', { gtin: '0', price: { value: '12.99' } }),
+      item('Komplettset (6 Becher)', { price: { value: '59.99' } }),
+    ]);
+    expect(r).toEqual({
+      name: 'Auswahl',
+      items: [
+        { value: 'Figur A - gelb', ean: '4000000000017', price: 12.99, imageUrl: 'https://i.example/a.jpg' },
+        { value: 'Figur B - blau', price: 12.99 },
+        { value: 'Komplettset (6 Becher)', price: 59.99 },
+      ],
+    });
+  });
+  it('zwei Merkmale werden zusammengefasst; ohne Unterschied keine Varianten', () => {
+    const v = (farbe: string, groesse: string) => ({ localizedAspects: [{ name: 'Farbe', value: farbe }, { name: 'Größe', value: groesse }] });
+    expect(variantsFromGroup([v('Rot', 'M'), v('Rot', 'L'), v('Blau', 'M')])).toMatchObject({ name: 'Farbe / Größe', items: [{ value: 'Rot / M' }, { value: 'Rot / L' }, { value: 'Blau / M' }] });
+    expect(variantsFromGroup([v('Rot', 'M'), v('Rot', 'M')])).toBeNull();
+    expect(variantsFromGroup([v('Rot', 'M')])).toBeNull();
+  });
+  it('Gruppe aus der Treffer-Referenz nur bei Varianten', () => {
+    expect(groupIdOfRef('v1|188871680435|697123456')).toBe('188871680435');
+    expect(groupIdOfRef('v1|188871680435|0')).toBeNull();
+    expect(groupIdOfRef(undefined)).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import { listAttempts } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import type { ListingAttempt } from "@/lib/ebay/types";
 import { variantListings } from "@/lib/ebay/pipeline/variants";
+import { loadSets, saveSet } from "./sets";
 import { ebayQuantity } from "@/lib/integrations/clients/ebay";
 import { stockSkuOf } from "./channel-logic";
 import { syncSoon } from "./channel-sync";
@@ -90,11 +91,12 @@ export type LinkResult = { stockSku: string; booked: number; stocked: boolean; n
  * eingestellte Menge, bei der Übernahme eines älteren (`adopt`) die aktuelle eBay-Menge plus
  * verkaufte, noch nicht versandte Stück (es kann ja schon verkauft sein).
  */
-export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean } = {}): Promise<LinkResult | null> {
+export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean; set?: boolean } = {}): Promise<LinkResult | null> {
   if (a.status !== "published" || !a.sku || !a.listingId) return null;
   const L = schema.listings;
   const [existing] = await db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay"), eq(L.sku, a.sku)));
-  const stockSku = existing?.stockSku?.trim() || (a.ean ? await matchStockSku(tenantId, a.ean) : null) || a.sku;
+  // Ein Set hat kein eigenes Lager – sein Bestand ergibt sich aus den Bestandteilen (stock_sets).
+  const stockSku = opts.set ? a.sku : existing?.stockSku?.trim() || (a.ean ? await matchStockSku(tenantId, a.ean) : null) || a.sku;
 
   const [stock] = await db.select().from(schema.ownStock).where(and(eq(schema.ownStock.tenantId, tenantId), eq(schema.ownStock.sku, stockSku)));
   let booked = 0;
@@ -102,7 +104,9 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
   let source: EbayStock | null = null;
   let failure: string | null = null;
   let withStock = Boolean(stock);
-  if (!opts.adopt && (!stock || stock.quantity <= 0)) {
+  if (opts.set) {
+    withStock = true;
+  } else if (!opts.adopt && (!stock || stock.quantity <= 0)) {
     booked = await bookStock(tenantId, stockSku, a.quantity, stock, "Anfangsbestand eBay-Angebot", `eBay ${a.listingId}`);
     withStock = true;
   } else if (opts.adopt && !stock) {
@@ -157,7 +161,9 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
   await dropReplacedDrafts(tenantId, a.sku, stockSku);
 
   if (withStock) syncSoon(tenantId, [stockSku]);
-  const note = source
+  const note = opts.set
+    ? `In der Wawi als Set angelegt (SKU ${a.sku}) – verfügbar, so oft es sich aus den Bestandteilen bilden lässt.`
+    : source
     ? `In der Wawi: ${source.onHand} Stück als Bestand gebucht (SKU ${stockSku}: ${source.ebay} auf eBay + ${source.reserved} verkauft, noch nicht versandt). Die Menge wird ab jetzt mit Amazon FBM, Temu & Co. abgeglichen.`
     : booked
       ? `In der Wawi: ${booked} Stück als Bestand gebucht (SKU ${stockSku}). Die Menge wird ab jetzt mit Amazon FBM, Temu & Co. abgeglichen.`
@@ -171,19 +177,30 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
  * Nach dem Veröffentlichen im eBay-Tool: einfaches Angebot wie bisher; ein Mehrfachangebot je
  * Variante (eigene SKU, eigene EAN, eigener Bestand und Abgleich). Liefert den Hinweis für die Vorschau.
  */
-export async function linkEbayPublished(tenantId: string, a: ListingAttempt): Promise<string | undefined> {
-  if (!a.variants) return (await linkEbayAttempt(tenantId, a))?.note;
+export async function linkEbayPublished(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean } = {}): Promise<string | undefined> {
+  if (!a.variants) return (await linkEbayAttempt(tenantId, a, opts))?.note;
+  const items = a.variants.items;
+  const list = variantListings(a);
   const parts: string[] = [];
+  const stockOf = new Map<string, string>();
   let booked = 0;
-  for (const [n, v] of variantListings(a).entries()) {
-    const r = await linkEbayAttempt(tenantId, v);
+  // Erst die Einzelvarianten (ihre Wawi-SKUs braucht das Set), dann die Sets.
+  for (const [n, v] of list.entries()) {
+    if (items[n].set) continue;
+    const r = await linkEbayAttempt(tenantId, v, opts);
     if (!r) continue;
+    stockOf.set(v.sku!, r.stockSku);
     booked += r.booked;
-    const value = a.variants.items[n].value;
-    parts.push(r.stockSku === v.sku ? `${value} (${r.booked} Stück)` : `${value} → SKU ${r.stockSku}`);
+    parts.push(r.stockSku === v.sku ? `${items[n].value} (${r.booked} Stück)` : `${items[n].value} → SKU ${r.stockSku}`);
+  }
+  for (const [n, v] of list.entries()) {
+    const set = items[n].set;
+    if (!set) continue;
+    await saveSet(tenantId, v.sku!, set.map((c) => ({ sku: stockOf.get(c.sku) ?? c.sku, qty: c.qty })), v.title);
+    if (await linkEbayAttempt(tenantId, v, { set: true })) parts.push(`${items[n].value} (Set aus ${set.length} Sorten)`);
   }
   if (!parts.length) return undefined;
-  return `In der Wawi: ${parts.length} Varianten als eigene Angebote angelegt – ${parts.join(", ")}${booked ? `; ${booked} Stück als Bestand gebucht` : ""}. Die Mengen werden je Variante mit Amazon FBM, Temu & Co. abgeglichen.`;
+  return `In der Wawi: ${parts.length} Varianten als eigene Angebote angelegt – ${parts.join(", ")}${booked ? `; ${booked} Stück als Bestand gebucht` : ""}. Die Mengen werden je Variante mit Amazon FBM, Temu & Co. abgeglichen${items.some((i) => i.set) ? "; ein verkauftes Set bucht je Sorte ein Stück ab" : ""}.`;
 }
 
 /** Wawi-Entwürfe für eBay („Im eBay-Tool einstellen“), die jetzt durch das echte Angebot ersetzt sind. */
@@ -196,14 +213,20 @@ async function dropReplacedDrafts(tenantId: string, ebaySku: string, stockSku: s
 
 /** Alle veröffentlichten Angebote des eBay-Tools, die in der Wawi noch fehlen, übernehmen – mit Bestand. */
 export async function adoptEbayAttempts(tenantId: string): Promise<{ adopted: number; booked: number }> {
-  // Mehrfachangebote: jede Variante ist ein eigenes Wawi-Angebot.
-  const attempts = (await listAttempts(ebayDb(tenantId))).filter((a) => a.status === "published" && a.sku && a.listingId).flatMap(variantListings);
-  if (!attempts.length) return { adopted: 0, booked: 0 };
+  const published = (await listAttempts(ebayDb(tenantId))).filter((a) => a.status === "published" && a.sku && a.listingId);
+  if (!published.length) return { adopted: 0, booked: 0 };
   const known = new Set(
     (await db.select({ sku: schema.listings.sku }).from(schema.listings).where(and(eq(schema.listings.tenantId, tenantId), eq(schema.listings.channel, "ebay")))).map((r) => r.sku),
   );
   let adopted = 0;
   let booked = 0;
+  // Mehrfachangebote: jede Variante ein eigenes Wawi-Angebot, Sets aus den Einzelvarianten.
+  for (const a of published.filter((x) => x.variants)) {
+    if (a.variants!.items.every((i) => known.has(i.sku))) continue;
+    await linkEbayPublished(tenantId, a, { adopt: true });
+    adopted++;
+  }
+  const attempts = published.filter((x) => !x.variants);
   for (const a of attempts) {
     if (known.has(a.sku!)) continue;
     const r = await linkEbayAttempt(tenantId, a, { adopt: true });
@@ -230,6 +253,8 @@ export async function ensureEbayStock(tenantId: string, ids?: string[]): Promise
     .from(L)
     .where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay"), eq(L.status, "active"), ...(ids ? [inArray(L.id, ids)] : [])));
   const have = new Set((await db.select({ sku: schema.ownStock.sku }).from(schema.ownStock).where(eq(schema.ownStock.tenantId, tenantId))).map((r) => r.sku));
+  // Sets haben bewusst kein eigenes Lager.
+  for (const s of await loadSets(tenantId)) have.add(s.sku);
   // Automatisch nicht immer wieder nachfragen, wenn eBay die SKU gar nicht kennt (nicht übers Tool eingestellt).
   const todo = rows.filter(
     (l) => !have.has(stockSkuOf(l)) && (ids || ((l.stockSync || /^(Übernommen aus dem eBay-Tool|Wawi-Bestand nicht angelegt)/.test(l.lastError ?? "")) && !UNKNOWN_SKU.test(l.lastError ?? ""))),

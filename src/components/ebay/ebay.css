@@ -399,6 +399,8 @@
 .ebt .variant-hit { display: flex; flex-direction: column; gap: 6px; align-items: stretch; text-align: left; font-size: 12.5px; font-weight: 500; padding: 8px; }
 .ebt .variant-hit img { height: 80px; width: 100%; object-fit: contain; background: #fff; border-radius: 6px; }
 .ebt .variant-row .vf { display: block; font-weight: 400; }
+.ebt .variant-row .variant-set { grid-column: 2 / -1; display: flex; flex-direction: row; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: -4px; }
+.ebt .variant-row .variant-set input { width: auto; margin: 0; }
 .ebt .variant-row .vf-cap { display: none; }
 @media (max-width: 700px) {
   .ebt .variant-head { display: none; }
@@ -411,4 +413,5 @@
   .ebt .variant-row > .vf:nth-of-type(4) { grid-column: 1 / 3; }
   .ebt .variant-row > .vf:nth-of-type(5) { grid-column: 3 / 5; }
   .ebt .variant-profit { grid-column: 1 / -1; margin-top: 0; }
+  .ebt .variant-row .variant-set { grid-column: 1 / -1; margin-top: 0; }
 }

@@ -17,6 +17,24 @@ export const ownStock = pgTable(
   (t) => [uniqueIndex("own_stock_sku_uq").on(t.tenantId, t.sku)],
 );
 
+/**
+ * Sets (z. B. „Komplettset“ eines Mehrfachangebots): eine Verkaufs-SKU ohne eigenes Lager,
+ * die aus anderen Wawi-SKUs besteht. Verfügbar = was sich aus den Bestandteilen bilden lässt;
+ * Reservierung, Versand und Retoure buchen auf die Bestandteile.
+ */
+export const stockSets = pgTable(
+  "stock_sets",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    sku: text("sku").notNull(),
+    title: text("title"),
+    components: jsonb("components").$type<{ sku: string; qty: number }[]>().notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("stock_sets_sku_uq").on(t.tenantId, t.sku)],
+);
+
 export const stockMovements = pgTable(
   "stock_movements",
   {

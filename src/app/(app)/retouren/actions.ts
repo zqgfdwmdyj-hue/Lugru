@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { CHANNELS, RETURN_STATUSES } from "@/db/schema";
 import { syncSoon, wawiSku } from "@/lib/stock/channel-sync";
+import { adjustStock } from "@/lib/stock/sets";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 
@@ -53,12 +54,8 @@ export async function updateReturn(fd: FormData) {
     .where(eq(schema.customerReturns.id, id));
   if (restock && r.sku) {
     const sku = await wawiSku(session.tenantId, r.channel, r.sku);
-    await db
-      .insert(schema.ownStock)
-      .values({ tenantId: session.tenantId, sku, quantity: r.quantity })
-      .onConflictDoUpdate({ target: [schema.ownStock.tenantId, schema.ownStock.sku], set: { quantity: sql`${schema.ownStock.quantity} + ${r.quantity}`, updatedAt: new Date() } });
-    await db.insert(schema.stockMovements).values({ tenantId: session.tenantId, sku, delta: r.quantity, reason: "Retoure", reference: `${r.channel} ${r.orderRef}`, userId: session.userId });
-    syncSoon(session.tenantId, [sku]);
+    // Ein zurückgekommenes Set geht als Bestandteile zurück ins Lager.
+    syncSoon(session.tenantId, await adjustStock(session.tenantId, sku, r.quantity, "Retoure", `${r.channel} ${r.orderRef}`, session.userId));
   }
   revalidatePath("/retouren");
 }
