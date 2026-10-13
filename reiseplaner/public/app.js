@@ -5,7 +5,7 @@ import {
 } from "./rechnen.js";
 import {
   zustand, $, esc, neueId, datumText, personen, haefen, hafenVon, ausfluegeIn, hatKoord, geld, istPlaner, linkHtml, stationsArt, istKreuzfahrt,
-  aktionen, aenderungen, setzeZeichner, setzeAbmeldung, anfrage, lokalLesen, lokalEntfernen, speichern, status, beitraegeLaden,
+  aktionen, aenderungen, setzeZeichner, setzeAbmeldung, anfrage, lokalLesen, lokalEntfernen, lokalSichern, lokalMerken, lokalHolen, speichern, status, beitraegeLaden,
   dialog, dialogOeffnen, ortsSuche, ortSuchen, ortAuslesen, herunterladen, extrasLaden, heute,
 } from "./kern.js";
 import { anmeldungPruefen, anmeldenZeigen } from "./konto.js";
@@ -29,8 +29,9 @@ const inhalt = $("#inhalt");
 async function reisenLaden() {
   try {
     zustand.reisen = await anfrage("/api/reisen");
-  } catch {
-    zustand.reisen = [];
+    lokalMerken("reisen", zustand.reisen);
+  } catch (e) {
+    zustand.reisen = (e.status === 0 && lokalHolen("reisen")) || [];
   }
   const wahl = $("#reiseWahl");
   wahl.innerHTML = zustand.reisen.length
@@ -47,7 +48,7 @@ async function reiseOeffnen(id) {
     if (lokal?.ungespeichert && Number(lokal.reise.version) === Number(reise.version)) {
       reise = { ...lokal.reise, meineRolle: reise.meineRolle }; // Offline-Änderungen übernehmen und nachspeichern
       setTimeout(speichern, 100);
-    }
+    } else if (!lokal?.ungespeichert) lokalSichern(reise, false); // Kopie fürs Öffnen ohne Internet
   } catch (e) {
     if (e.status === 404) lokalEntfernen(id);
     else {
@@ -103,8 +104,9 @@ aktionen["orte-suchen"] = async (el) => {
 async function mitgliederLaden() {
   try {
     zustand.mitglieder = await anfrage(`/api/reisen/${zustand.reise.id}/mitglieder`);
-  } catch {
-    zustand.mitglieder = [];
+    lokalMerken(`mitglieder:${zustand.reise.id}`, zustand.mitglieder);
+  } catch (e) {
+    zustand.mitglieder = (e.status === 0 && lokalHolen(`mitglieder:${zustand.reise.id}`)) || [];
   }
 }
 
@@ -991,6 +993,8 @@ function karteInit() {
   // OpenStreetMap verlangt eine Herkunftsangabe (Referer); eigener Kartendienst über KARTEN_KACHELN.
   L.tileLayer(zustand.info.kacheln || "https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
+    // Mit CORS laden – nur so kann der Service Worker die Kacheln für offline speichern
+    crossOrigin: true,
     referrerPolicy: "strict-origin-when-cross-origin",
     attribution: zustand.info.kachelnHinweis || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(karte);

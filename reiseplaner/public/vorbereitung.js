@@ -96,7 +96,7 @@ const kartenOrte = () => [...(zustand.reise.haefen ?? []), ...(zustand.reise.hot
 function offlineKartenBox() {
   const orte = kartenOrte();
   const gespeichert = zustand.kachelnGespeichert;
-  if (gespeichert == null && "caches" in window) caches.open(KACHEL_CACHE).then((c) => c.keys()).then((k) => {
+  if ("caches" in window) caches.open(KACHEL_CACHE).then((c) => c.keys()).then((k) => {
     zustand.kachelnGespeichert = k.length;
     const el = $("#kachelZahl");
     if (el) el.textContent = String(k.length);
@@ -126,9 +126,13 @@ aktionen["karten-offline"] = async (el) => {
   const arbeiter = async () => {
     while (warteschlange.length) {
       const k = warteschlange.shift();
-      const anfrageKachel = new Request(url(k), { mode: "no-cors" });
+      const anfrageKachel = new Request(url(k), { mode: "cors" });
       try {
-        if (!(await cache.match(anfrageKachel))) await cache.put(anfrageKachel, await fetch(anfrageKachel));
+        if (!(await cache.match(anfrageKachel))) {
+          const antwort = await fetch(anfrageKachel);
+          if (!antwort.ok) throw new Error(String(antwort.status));
+          await cache.put(anfrageKachel, antwort);
+        }
       } catch {
         fehler++;
       }

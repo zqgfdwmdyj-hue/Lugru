@@ -70,6 +70,20 @@ export async function anfrage(pfad, optionen = {}) {
   return daten;
 }
 
+/** Zuletzt bekannte Antworten auf dem Gerät – damit die App auch ohne Internet startet (an Bord, im Ausland). */
+export function lokalMerken(schluessel, wert) {
+  try {
+    localStorage.setItem(`reiseplaner:${schluessel}`, JSON.stringify(wert));
+  } catch {}
+}
+export function lokalHolen(schluessel) {
+  try {
+    return JSON.parse(localStorage.getItem(`reiseplaner:${schluessel}`) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
 const LOKAL = (id) => `reiseplaner:reise:${id}`;
 export function lokalSichern(reise, ungespeichert) {
   try {
@@ -150,7 +164,11 @@ export async function beitraegeLaden() {
   if (!zustand.reise) return;
   try {
     zustand.beitraege = await anfrage(`/api/reisen/${zustand.reise.id}/beitraege`);
-  } catch {}
+    lokalMerken(`beitraege:${zustand.reise.id}`, zustand.beitraege);
+  } catch (e) {
+    const lokal = e.status === 0 ? lokalHolen(`beitraege:${zustand.reise.id}`) : null;
+    if (lokal) zustand.beitraege = lokal;
+  }
 }
 
 const EXTRAS_LOKAL = (id) => `reiseplaner:extras:${id}`;

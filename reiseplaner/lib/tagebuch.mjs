@@ -230,7 +230,7 @@ footer{text-align:center;color:var(--le);font-size:.85rem;padding:24px}
 <script>
 const pins = JSON.parse(document.getElementById("pins").textContent);
 const karte = L.map("karte", { worldCopyJump: true }).setView([25, 0], 2);
-L.tileLayer(${JSON.stringify(kachelUrl)}, { maxZoom: 19, referrerPolicy: "strict-origin-when-cross-origin", attribution: ${JSON.stringify(kachelHinweis)} }).addTo(karte);
+L.tileLayer(${JSON.stringify(kachelUrl)}, { maxZoom: 19, crossOrigin: true, referrerPolicy: "strict-origin-when-cross-origin", attribution: ${JSON.stringify(kachelHinweis)} }).addTo(karte);
 const nadel = L.divIcon({ className: "pin", html: '<svg width="26" height="38" viewBox="0 0 26 38"><path d="M13 0C5.8 0 0 5.8 0 13c0 9.8 13 25 13 25s13-15.2 13-25C26 5.8 20.2 0 13 0z" fill="#d0021b"/><circle cx="13" cy="13" r="5" fill="#fff"/></svg>', iconSize: [26, 38], iconAnchor: [13, 38], popupAnchor: [0, -34] });
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const grenzen = [];

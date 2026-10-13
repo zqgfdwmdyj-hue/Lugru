@@ -1,5 +1,5 @@
 // Anmelden, Einrichtung, Einladungen annehmen, eigenes Profil und Konten-Verwaltung.
-import { zustand, $, esc, anfrage, aktionen, dialogOeffnen, dialog } from "./kern.js";
+import { zustand, $, esc, anfrage, aktionen, dialogOeffnen, dialog, lokalMerken, lokalHolen } from "./kern.js";
 
 const startEl = () => $("#start");
 
@@ -50,7 +50,15 @@ function absenden(id, fn) {
  * und ruft danach weiter() auf.
  */
 export async function anmeldungPruefen(weiter) {
-  const info = await anfrage("/api/ich");
+  let info;
+  try {
+    info = await anfrage("/api/ich");
+    if (info.benutzer) lokalMerken("ich", info);
+  } catch (e) {
+    // Ohne Internet: mit der zuletzt bekannten Anmeldung weiter (Daten kommen dann vom Gerät)
+    info = e.status === 0 ? lokalHolen("ich") : null;
+    if (!info) throw e;
+  }
   zustand.info = info;
   const einladung = /^\/einladung\/([A-Za-z0-9_-]{20,64})$/.exec(location.pathname)?.[1];
   if (einladung) return einladungZeigen(einladung, info, weiter);
