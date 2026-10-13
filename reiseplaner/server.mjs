@@ -91,6 +91,12 @@ const familieVonKonto = (reise, userId) => reise.personen?.find((p) => p.userId 
 function rolleIn(reise, benutzer) {
   if (!reise || !benutzer) return null;
   if (benutzer.admin) return "planer";
+  return mitgliedRolle(reise, benutzer);
+}
+/** Rolle nur aus der Mitgliedschaft – für Listen und Übersichten (Reisen, Weltkarte, Tauchlog …):
+ *  jede/r sieht dort nur die eigenen Reisen, auch Verwaltungskonten. */
+function mitgliedRolle(reise, benutzer) {
+  if (!reise || !benutzer) return null;
   return reise.mitglieder?.find((m) => m.userId === benutzer.id)?.rolle ?? null;
 }
 
@@ -266,6 +272,21 @@ async function apiOffen(req, res, url, benutzer) {
   if (einl) {
     const e = await konten.einladungLesen(einl[1]);
     if (!e) throw fehler(404, "Diese Einladung ist abgelaufen oder ungültig.");
+    // Konto-Einladung ohne Reise (von der Verwaltung): nur ein eigenes Konto anlegen
+    if (!e.reiseId) {
+      if (req.method === "GET") {
+        const von = (await konten.alleBenutzer()).find((b) => b.id === e.vonId);
+        return json(res, 200, { reise: "", person: "", von: von?.name ?? "", angemeldet: konten.oeffentlich(benutzer) });
+      }
+      if (req.method === "POST") {
+        if (benutzer) throw fehler(400, "Du hast schon ein Konto – diese Einladung ist für neue Konten.");
+        const d = await koerper(req, 10_000);
+        const b = await konten.benutzerAnlegen({ name: d.name, email: d.email, passwort: d.passwort });
+        konten.cookieSetzen(res, req, await konten.sitzungStarten(b.id));
+        await konten.einladungVerbrauchen(einl[1]);
+        return json(res, 200, { reiseId: null, benutzer: konten.oeffentlich(b) });
+      }
+    }
     const reise = await reiseLesen(e.reiseId);
     if (!reise) throw fehler(404, "Die Reise gibt es nicht mehr.");
     if (req.method === "GET") {
@@ -293,6 +314,16 @@ async function apiOffen(req, res, url, benutzer) {
     }
   }
   return false;
+}
+
+/**
+ * Tagebuch des Kontos. Das erste Verwaltungskonto übernimmt einmalig die frühere gemeinsame Fassung
+ * (nachgetragene Orte, Titel) und alle bisher öffentlichen Reisen, in denen es Mitglied ist.
+ */
+async function meinTagebuch(ich, reisen = null) {
+  const erstesAdmin = ich.admin && (await konten.alleBenutzer()).find((b) => b.admin)?.id === ich.id;
+  const meine = erstesAdmin ? (reisen ?? (await alleReisen()).filter((r) => mitgliedRolle(r, ich))) : [];
+  return tagebuch.einstellungenLesen(ich.id, { migrieren: erstesAdmin ? { reisen: meine.filter((r) => r.oeffentlich).map((r) => r.id) } : null });
 }
 
 /** Reisen aus Version 1 (ohne Mitglieder) gehören dem ersten Konto. */
@@ -325,6 +356,12 @@ async function api(req, res, url, ich) {
     return json(res, 200, { benutzer: konten.oeffentlich(b) });
   }
 
+  // Verwaltung: Einladung für ein eigenes Konto (ohne Reise) – z. B. für die Schwester, die eigene Reisen plant
+  if (p === "/api/konto-einladung" && m === "POST") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    const tok = await konten.einladungErstellen({ reiseId: null, personId: null, rolle: "mitreisend", vonId: ich.id });
+    return json(res, 201, { link: `${basisUrl(req)}/einladung/${tok}` });
+  }
   if (p === "/api/benutzer" && m === "GET") {
     if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
     return json(res, 200, (await konten.alleBenutzer()).map(konten.oeffentlich));
@@ -342,7 +379,7 @@ async function api(req, res, url, ich) {
     const liste = [];
     for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
       const r = await reiseLesen(d.slice(0, -5));
-      if (r && rolleIn(r, ich)) liste.push({ id: r.id, name: r.name, art: r.art ?? "kreuzfahrt", beginn: [...(r.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort()[0] ?? r.hotels?.[0]?.anreise ?? "", geaendert: r.geaendert });
+      if (r && mitgliedRolle(r, ich)) liste.push({ id: r.id, name: r.name, art: r.art ?? "kreuzfahrt", beginn: [...(r.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort()[0] ?? r.hotels?.[0]?.anreise ?? "", geaendert: r.geaendert });
     }
     liste.sort((a, b) => String(b.beginn).localeCompare(String(a.beginn)));
     return json(res, 200, liste);
@@ -360,7 +397,7 @@ async function api(req, res, url, ich) {
 
     if (!unter) {
       const { reise, rolle } = await reiseMitRecht(id, ich);
-      if (m === "GET") return json(res, 200, { ...reise, meineRolle: rolle });
+      if (m === "GET") return json(res, 200, { ...reise, meineRolle: rolle, oeffentlich: (await meinTagebuch(ich)).reisen.includes(id) });
       if (m === "PUT") {
         const neu = await koerper(req);
         const ergebnis = await exklusiv(reiseDatei(id), async () => {
@@ -392,11 +429,11 @@ async function api(req, res, url, ich) {
 
     // Reise im öffentlichen Reisetagebuch zeigen (nur Planer/innen)
     if (unter === "oeffentlich" && m === "PUT") {
+      // Zeigt die Reise im eigenen öffentlichen Tagebuch (Planer/innen der Reise)
       await reiseMitRecht(id, ich, "planer");
       const d = await koerper(req, 1_000);
-      await aendern(reiseDatei(id), null, (r) => {
-        r.oeffentlich = d.oeffentlich === true;
-      });
+      await meinTagebuch(ich);
+      await tagebuch.reiseFreigeben(ich.id, id, d.oeffentlich === true);
       return json(res, 200, { oeffentlich: d.oeffentlich === true });
     }
 
@@ -576,6 +613,10 @@ async function api(req, res, url, ich) {
         return json(res, 201, await extras.packlisteErgaenzen(id, eintraege, ich.id));
       }
       if (m === "POST" && !t[5]) return json(res, 201, await extras.eintragHinzufuegen(id, liste, extras.eintragAus(liste, await koerper(req, 50_000), kontext), ich.id));
+      if (liste === "packliste" && t[5] && t[6] === "haken" && m === "PUT") {
+        const d = await koerper(req, 2_000);
+        return json(res, 200, await extras.packHaken(id, t[5], { haushalt: text(d.haushalt, 80), erledigt: d.erledigt === true, familien: kontext.familien }));
+      }
       if (t[5] && m === "PUT") return json(res, 200, await extras.eintragAendern(id, liste, t[5], extras.eintragAus(liste, await koerper(req, 50_000), kontext)));
       if (t[5] && m === "DELETE") {
         await extras.eintragLoeschen(id, liste, t[5]);
@@ -776,7 +817,7 @@ async function api(req, res, url, ich) {
   if (p === "/api/erinnerungen" && m === "GET") {
     const heute = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("datum") ?? "") ? url.searchParams.get("datum") : heuteIso();
     const liste = [];
-    for (const r of (await alleReisen()).filter((x) => rolleIn(x, ich))) {
+    for (const r of (await alleReisen()).filter((x) => mitgliedRolle(x, ich))) {
       const tage = (r.haefen ?? []).filter((h) => h.datum && h.datum.slice(5) === heute.slice(5) && h.datum < heute);
       if (!tage.length) continue;
       const b = await beitraegeLesen(r.id);
@@ -798,7 +839,7 @@ async function api(req, res, url, ich) {
   if (p === "/api/rueckblick" && m === "GET") {
     const jahr = /^\d{4}$/.test(url.searchParams.get("jahr") ?? "") ? url.searchParams.get("jahr") : heuteIso().slice(0, 4);
     const reisen = [];
-    for (const r of (await alleReisen()).filter((x) => rolleIn(x, ich))) {
+    for (const r of (await alleReisen()).filter((x) => mitgliedRolle(x, ich))) {
       const tage = [...(r.haefen ?? []).map((h) => h.datum), ...(r.hotels ?? []).filter((h) => h.status === "gebucht").map((h) => h.anreise)].filter(Boolean);
       if (!tage.some((d) => d.startsWith(jahr))) continue;
       const { mitglieder, ...reise } = r;
@@ -814,7 +855,7 @@ async function api(req, res, url, ich) {
   if (p === "/api/ki/naechste-reise" && m === "POST") {
     const d = await koerper(req, 5_000);
     const reisen = [];
-    for (const r of (await alleReisen()).filter((x) => rolleIn(x, ich))) {
+    for (const r of (await alleReisen()).filter((x) => mitgliedRolle(x, ich))) {
       const b = await beitraegeLesen(r.id);
       const titel = (zielArt, zielId) => (zielArt === "hotel" ? r.hotels?.find((h) => h.id === zielId)?.name : r.ausfluege?.find((a) => a.id === zielId)?.titel) ?? "";
       reisen.push({
@@ -824,39 +865,38 @@ async function api(req, res, url, ich) {
         tauchgaenge: b.tauchgaenge.length,
       });
     }
-    const personen = (await alleReisen()).filter((x) => rolleIn(x, ich)).flatMap((r) => r.personen ?? []);
+    const personen = (await alleReisen()).filter((x) => mitgliedRolle(x, ich)).flatMap((r) => r.personen ?? []);
     const kinder = [...new Map(personen.filter((x) => x.typ === "kind").map((x) => [x.name, x.alter])).entries()].map(([name, alter]) => ({ alter }));
     return json(res, 200, { text: await ki.naechsteReise({ reisen: reisen.slice(-15), kinder, wunsch: text(d.wunsch, 500), heute: heuteIso() }) });
   }
 
   // Weltkarte: besuchte Orte aller eigenen Reisen + von Hand eingetragene Orte
+  // Jedes Konto hat seine eigene Weltkarte und sein eigenes öffentliches Tagebuch
   if (p === "/api/weltkarte" && m === "GET") {
-    const einst = await tagebuch.einstellungenLesen();
-    const reisen = (await alleReisen()).filter((r) => rolleIn(r, ich));
+    const reisen = (await alleReisen()).filter((r) => mitgliedRolle(r, ich));
+    const einst = await meinTagebuch(ich, reisen);
     return json(res, 200, {
       titel: einst.titel,
       text: einst.text,
       orte: einst.orte,
       besucht: reisen.flatMap((r) => tagebuch.besuchteOrte(r, heuteIso())),
-      reisen: reisen.map((r) => ({ id: r.id, name: r.name, oeffentlich: Boolean(r.oeffentlich), planer: rolleIn(r, ich) === "planer" })),
-      url: `${basisUrl(req)}/tagebuch`,
+      reisen: reisen.map((r) => ({ id: r.id, name: r.name, oeffentlich: einst.reisen.includes(r.id), planer: mitgliedRolle(r, ich) === "planer" })),
+      url: `${basisUrl(req)}/tagebuch/${einst.kennung}`,
     });
   }
   if (p === "/api/weltkarte" && m === "PUT") {
-    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
-    return json(res, 200, await tagebuch.einstellungenAendern(await koerper(req, 20_000)));
+    await meinTagebuch(ich);
+    return json(res, 200, await tagebuch.einstellungenAendern(ich.id, await koerper(req, 20_000)));
   }
   if (p === "/api/weltkarte/orte" && m === "POST") {
-    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
-    return json(res, 201, await tagebuch.ortHinzufuegen(await koerper(req, 20_000)));
+    await meinTagebuch(ich);
+    return json(res, 201, await tagebuch.ortHinzufuegen(ich.id, await koerper(req, 20_000)));
   }
   if (t[1] === "weltkarte" && t[2] === "orte" && t[3] && m === "PUT") {
-    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
-    return json(res, 200, await tagebuch.ortAendern(t[3], await koerper(req, 20_000)));
+    return json(res, 200, await tagebuch.ortAendern(ich.id, t[3], await koerper(req, 20_000)));
   }
   if (t[1] === "weltkarte" && t[2] === "orte" && t[3] && m === "DELETE") {
-    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
-    await tagebuch.ortLoeschen(t[3]);
+    await tagebuch.ortLoeschen(ich.id, t[3]);
     return json(res, 200, { ok: true });
   }
 
@@ -865,7 +905,7 @@ async function api(req, res, url, ich) {
     const liste = [];
     for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
       const r = await reiseLesen(d.slice(0, -5));
-      if (!r || !rolleIn(r, ich)) continue;
+      if (!r || !mitgliedRolle(r, ich)) continue;
       for (const tg of (await beitraegeLesen(r.id)).tauchgaenge) if (tg.taucherId === ich.id) liste.push({ ...tg, reiseId: r.id, reiseName: r.name });
     }
     liste.sort((a, b) => `${a.datum} ${a.beginn}`.localeCompare(`${b.datum} ${b.beginn}`));
@@ -988,21 +1028,41 @@ async function freigabeSeite(req, res, url) {
 }
 
 async function tagebuchSeite(req, res, url) {
-  const inhalt = tagebuch.tagebuchInhalt(
-    await Promise.all((await alleReisen()).filter((r) => r.oeffentlich).map(async (reise) => ({ reise, beitraege: await beitraegeLesen(reise.id) }))),
-    await konten.alleBenutzer(),
-    await tagebuch.einstellungenLesen(),
-    heuteIso(),
-  );
-  const teile = url.pathname.split("/").filter(Boolean); // ["tagebuch", "foto", id]
-  if (teile[1] === "foto") {
-    if (!ID_RE.test(teile[2] ?? "") || !inhalt.fotos.has(teile[2])) {
+  // /tagebuch/<kennung>[/foto/<id>] – ohne Kennung: das frühere gemeinsame Tagebuch (erstes Verwaltungskonto)
+  const teile = url.pathname.split("/").filter(Boolean);
+  const kennung = teile[1] && teile[1] !== "foto" ? teile[1] : "";
+  const rest = kennung ? teile.slice(2) : teile.slice(1);
+  let userId = await tagebuch.kontoZuKennung(kennung);
+  const alle = await konten.alleBenutzer();
+  if (!userId && !kennung) {
+    const admin = alle.find((b) => b.admin);
+    // Noch nie übernommen: jetzt dem ersten Verwaltungskonto zuordnen, damit der alte Link weiter geht
+    if (admin) {
+      await meinTagebuch(admin);
+      userId = await tagebuch.kontoZuKennung("");
+    }
+  }
+  const besitzer = alle.find((b) => b.id === userId);
+  if (!besitzer) {
+    res.writeHead(404, { "content-type": MIME[".html"] });
+    return res.end(teilen.nichtGefundenSeite());
+  }
+  const einst = await tagebuch.einstellungenLesen(besitzer.id);
+  const freigegeben = [];
+  for (const rid of einst.reisen) {
+    const reise = ID_RE.test(rid) ? await reiseLesen(rid) : null;
+    // Nur Reisen, in denen das Konto (noch) Planer/in ist
+    if (reise && mitgliedRolle(reise, besitzer) === "planer") freigegeben.push({ reise: { ...reise, oeffentlich: true }, beitraege: await beitraegeLesen(reise.id) });
+  }
+  const inhalt = tagebuch.tagebuchInhalt(freigegeben, alle, einst, heuteIso());
+  if (rest[0] === "foto") {
+    if (!ID_RE.test(rest[1] ?? "") || !inhalt.fotos.has(rest[1])) {
       res.writeHead(404);
       return res.end();
     }
-    return fotoSenden(res, teile[2], url.searchParams.has("klein"));
+    return fotoSenden(res, rest[1], url.searchParams.has("klein"));
   }
-  if (teile.length > 1) {
+  if (rest.length) {
     res.writeHead(404, { "content-type": MIME[".html"] });
     return res.end(teilen.nichtGefundenSeite());
   }
@@ -1018,7 +1078,7 @@ async function tagebuchSeite(req, res, url) {
     "referrer-policy": "strict-origin-when-cross-origin",
     "content-security-policy": `default-src 'none'; img-src 'self' data: https://unpkg.com ${kachelHost} https://*.tile.openstreetmap.org; style-src 'unsafe-inline' https://unpkg.com; script-src 'unsafe-inline' https://unpkg.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   });
-  res.end(tagebuch.seiteRendern(inhalt, basisUrl(req), kacheln, process.env.KARTEN_HINWEIS || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'));
+  res.end(tagebuch.seiteRendern(inhalt, basisUrl(req), kacheln, process.env.KARTEN_HINWEIS || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', kennung ? `/tagebuch/${kennung}` : "/tagebuch"));
 }
 
 async function statisch(req, res, url) {

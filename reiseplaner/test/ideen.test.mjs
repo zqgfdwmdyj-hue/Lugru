@@ -118,3 +118,29 @@ test("Packliste ergänzen: Server verhindert Doppelte und merkt sich die Automat
   assert.equal(e.packliste.length, 2);
   assert.equal(e.packAuto, true);
 });
+
+test("Packliste je Familie: „für alle“ hakt jede Familie getrennt ab", async () => {
+  const { packFamilie, packErledigt } = await import("../public/unterwegs-logik.js");
+  const reise = { familien: [{ id: "f1", name: "Wir" }, { id: "f2", name: "Eltern" }], personen: [{ id: "p1", familie: "f1" }, { id: "p2", familie: "f2" }, { id: "p3" }] };
+  assert.equal(packFamilie({ fuer: "" }, reise), "");
+  assert.equal(packFamilie({ fuer: "familie:f2" }, reise), "f2");
+  assert.equal(packFamilie({ fuer: "p1" }, reise), "f1");
+  assert.equal(packFamilie({ fuer: "p3" }, reise), "");
+  const gemeinsam = { fuer: "", erledigt: false, erledigtVon: { f1: true } };
+  assert.equal(packErledigt(gemeinsam, "f1", reise), true);
+  assert.equal(packErledigt(gemeinsam, "f2", reise), false, "Haken der einen Familie gilt nicht für die andere");
+  assert.equal(packErledigt({ fuer: "p2", erledigt: true }, "f1", reise), true, "eigene Einträge: ein Haken");
+  assert.equal(packErledigt({ fuer: "", erledigt: true }, "", { familien: [] }), true, "ohne Familien wie bisher");
+
+  const id = `famhaken-${Date.now()}`;
+  const [x] = (await extras.packlisteErgaenzen(id, [{ text: "Reiseapotheke", gruppe: "", fuer: "", erledigt: false }], "u1")).neu;
+  let y = await extras.packHaken(id, x.id, { haushalt: "f1", erledigt: true, familien: ["f1", "f2"] });
+  assert.deepEqual([y.erledigt, y.erledigtVon], [false, { f1: true }]);
+  y = await extras.packHaken(id, x.id, { haushalt: "f2", erledigt: true, familien: ["f1", "f2"] });
+  assert.deepEqual(y.erledigtVon, { f1: true, f2: true });
+  y = await extras.packHaken(id, x.id, { haushalt: "f1", erledigt: false, familien: ["f1", "f2"] });
+  assert.deepEqual(y.erledigtVon, { f2: true });
+  y = await extras.packHaken(id, x.id, { haushalt: "fremd", erledigt: true, familien: ["f1", "f2"] });
+  assert.equal(y.erledigt, true, "unbekannte Familie → normaler Haken");
+  await assert.rejects(extras.packHaken(id, "gibts-nicht", { erledigt: true }), /nicht gefunden/);
+});

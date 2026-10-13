@@ -35,7 +35,7 @@ export function weltkarteAnsicht() {
   if (!w) return `<div class="karte-box"><p class="leise">Lade Weltkarte …</p></div>`;
   const pins = weltkartePins();
   const gruppen = laenderGruppen(pins);
-  const admin = zustand.ich?.admin;
+  const admin = true; // Weltkarte und Tagebuch gehören dem eigenen Konto – jede/r bearbeitet die eigene
   return `
     <div class="kacheln">
       <div class="kachel"><span>Länder</span><strong>${gruppen.filter(([l]) => l !== "Weitere Orte").length}</strong></div>
@@ -52,7 +52,8 @@ export function weltkarteAnsicht() {
       }).join("")}</div>` : `<p class="leise">Noch keine Orte. Sobald Reisetage vorbei sind und auf der Karte stehen, erscheinen sie hier – frühere Reisen kannst du unten nachtragen.</p>`}
     </div>
     <div class="karte-box">
-      <div class="zeile"><h3>Öffentliches Reisetagebuch</h3><a class="knopf leise" href="/tagebuch" target="_blank" rel="noopener">Ansehen ↗</a></div>
+      <div class="zeile"><h3>Mein öffentliches Reisetagebuch</h3><a class="knopf leise" href="${esc(w.url)}" target="_blank" rel="noopener">Ansehen ↗</a></div>
+      <p class="leise klein">Jede/r hat eine eigene Weltkarte und ein eigenes Tagebuch mit eigenem Link – hier steht nur, was zu deinem Konto gehört.</p>
       <p class="leise klein">Für alle mit dem Link, ohne Anmeldung: Karte mit roten Stecknadeln, besuchte Orte, gebuchte Ausflüge und Unterkünfte mit Bewertungen und Fotos, Tauchgänge.
       Es erscheinen nur Reisen, die hier freigegeben sind, und nur vergangene Tage. Nie Kosten, Planungen, Notizen, Nachnamen oder als 🔒 privat markierte Bewertungen.</p>
       <div class="linkfeld"><input readonly value="${esc(w.url)}" onclick="this.select()"><button class="knopf leise" data-aktion="link-kopieren" data-url="${esc(w.url)}">Kopieren</button></div>

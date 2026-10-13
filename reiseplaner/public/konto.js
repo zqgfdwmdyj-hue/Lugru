@@ -102,23 +102,29 @@ async function einladungZeigen(t, info, weiter) {
     zeigeStart(`<h2>Einladung</h2><p class="warnung">${esc(err.message)}</p><a class="knopf" href="/">Zur Anmeldung</a>`);
     return null;
   }
-  const kopf = `<h2>Einladung zur Reise „${esc(e.reise)}“</h2><p class="leise">${esc(e.von)} lädt dich ein${e.person ? ` (als ${esc(e.person)})` : ""}.</p>`;
+  const kopf = e.reise
+    ? `<h2>Einladung zur Reise „${esc(e.reise)}“</h2><p class="leise">${esc(e.von)} lädt dich ein${e.person ? ` (als ${esc(e.person)})` : ""}.</p>`
+    : `<h2>Einladung zum Reiseplaner</h2><p class="leise">${esc(e.von)} lädt dich ein, ein eigenes Konto anzulegen – mit eigenen Reisen, eigener Weltkarte und eigenem Tagebuch.</p>`;
   const fertig = (r) => {
     history.replaceState(null, "", "/");
     try {
-      localStorage.setItem("reiseplaner:letzte", r.reiseId);
+      if (r.reiseId) localStorage.setItem("reiseplaner:letzte", r.reiseId);
     } catch {}
     zustand.ich = r.benutzer;
     versteckeStart();
     weiter();
   };
+  if (info.benutzer && !e.reise) {
+    zeigeStart(`${kopf}<p>Du bist schon angemeldet als <strong>${esc(info.benutzer.name)}</strong> – diese Einladung ist für ein neues Konto.</p><a class="knopf" href="/">Zum Reiseplaner</a>`);
+    return null;
+  }
   if (info.benutzer) {
     zeigeStart(`${kopf}${formular("annehmen", `<p>Angemeldet als <strong>${esc(info.benutzer.name)}</strong>.</p>`, "Einladung annehmen")}`);
     absenden("annehmen", async () => fertig(await anfrage(`/api/einladung/${t}`, { method: "POST", body: {} })));
     return null;
   }
   zeigeStart(`${kopf}
-    ${formular("neuesKonto", `<input type="hidden" name="x">${FELD_NAME.replace('required', `required value="${esc(e.person)}"`)}${FELD_EMAIL}${FELD_PW_NEU}`, "Konto anlegen und beitreten",
+    ${formular("neuesKonto", `<input type="hidden" name="x">${FELD_NAME.replace('required', `required value="${esc(e.person)}"`)}${FELD_EMAIL}${FELD_PW_NEU}`, e.reise ? "Konto anlegen und beitreten" : "Konto anlegen",
       `<p class="leise klein">Schon ein Konto? <button type="button" class="link" id="lieberAnmelden">Erst anmelden</button>, dann den Link erneut öffnen.</p>`)}`);
   $("#lieberAnmelden").onclick = () => {
     anmeldenZeigen(() => location.reload());
@@ -181,12 +187,25 @@ aktionen["konten"] = async () => {
   const liste = await anfrage("/api/benutzer");
   dialogOeffnen(`<div class="formular">
     <h3>Alle Konten</h3>
-    <p class="leise klein">Neue Konten entstehen über Einladungslinks (Reise → Reisende → Einladen).</p>
+    <p class="leise klein">Neue Konten entstehen über Einladungslinks: zu einer Reise (Reise → Reisende → Einladen) oder hier als eigenes Konto ohne Reise – die Person plant dann eigene Reisen mit eigener Weltkarte und eigenem Tagebuch.</p>
+    <div class="zeile"><button class="knopf" data-aktion="konto-einladung">+ Einladung für ein eigenes Konto</button></div><div id="kontoEinladung"></div>
     <div class="tabelle"><table><thead><tr><th>Name</th><th>E-Mail</th><th></th></tr></thead><tbody>
       ${liste.map((b) => `<tr><td>${esc(b.name)}${b.admin ? ' <span class="abzeichen">Verwaltung</span>' : ""}</td><td>${esc(b.email)}</td><td>${b.id === zustand.ich.id ? "" : `<button class="link rot" data-aktion="konto-loeschen" data-id="${esc(b.id)}">Löschen</button>`}</td></tr>`).join("")}
     </tbody></table></div>
     <div class="zeile"><span class="platz"></span><button class="knopf leise" data-aktion="dialog-zu">Schließen</button></div>
   </div>`);
+};
+
+aktionen["konto-einladung"] = async (el) => {
+  el.disabled = true;
+  try {
+    const { link } = await anfrage("/api/konto-einladung", { method: "POST" });
+    $("#kontoEinladung").innerHTML = `<p class="klein">Gilt einmal und 14 Tage – z. B. per WhatsApp schicken:</p><div class="linkfeld"><input readonly value="${esc(link)}" onclick="this.select()"><button class="knopf leise" data-aktion="link-kopieren" data-url="${esc(link)}">Kopieren</button></div>`;
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    el.disabled = false;
+  }
 };
 
 aktionen["konto-loeschen"] = async (el) => {

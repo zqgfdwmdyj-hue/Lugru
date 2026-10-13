@@ -155,6 +155,23 @@ export function automatischePackliste(reise, vorhanden = []) {
   return liste;
 }
 
+/** Zu welcher Familie gehört ein Packlisten-Eintrag? "" = für alle gemeinsam. */
+export function packFamilie(eintrag, reise) {
+  const fuer = String(eintrag?.fuer ?? "");
+  if (!fuer) return "";
+  if (fuer.startsWith("familie:")) return fuer.slice(8);
+  return (reise?.personen ?? []).find((p) => p.id === fuer)?.familie ?? "";
+}
+
+/**
+ * Ist der Eintrag für diese Familie eingepackt? Einträge „für alle“ hakt jede Familie getrennt ab,
+ * sobald die Reise Familien hat – eigene Einträge einer Familie/Person haben einen Haken.
+ */
+export function packErledigt(eintrag, familie, reise) {
+  if (!eintrag.fuer && familie && (reise?.familien ?? []).length) return Boolean(eintrag.erledigtVon?.[familie]);
+  return Boolean(eintrag.erledigt);
+}
+
 // ---------- Dokumente & Fristen ----------
 
 /**

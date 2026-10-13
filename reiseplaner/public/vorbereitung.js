@@ -1,6 +1,6 @@
 // Vorbereitung: gemeinsame Packliste (abhaken für alle) und Dokumente & Fristen mit Dateien.
 import { zustand, $, esc, datumText, personen, aktionen, aenderungen, neuZeichnen, dialogOeffnen, dialog, anfrage, heute, herunterladen, istKreuzfahrt } from "./kern.js";
-import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUMENT_VORLAGEN, dokumentHinweise, reiseZeitraum, kalenderDatei, kachelnFuer, automatischePackliste } from "./unterwegs-logik.js";
+import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUMENT_VORLAGEN, dokumentHinweise, reiseZeitraum, kalenderDatei, kachelnFuer, automatischePackliste, packFamilie, packErledigt } from "./unterwegs-logik.js";
 import { istKind } from "./rechnen.js";
 
 const basis = () => `/api/reisen/${zustand.reise.id}/extras`;
@@ -15,6 +15,15 @@ const passtZuFilter = (fuer, filter) => {
   if (filter.startsWith("familie:")) return fuer === filter || personen().some((p) => p.id === fuer && `familie:${p.familie}` === filter);
   return fuer === filter;
 };
+
+/** Für welche Familie wird gerade gepackt? Standard: die eigene (Konto ↔ Person ↔ Familie). */
+function aktiveFamilie() {
+  const fam = familien();
+  if (!fam.length) return "";
+  if (fam.some((f) => f.id === zustand.packFamilie)) return zustand.packFamilie;
+  const ich = personen().find((p) => p.userId && p.userId === zustand.ich?.id);
+  return fam.some((f) => f.id === ich?.familie) ? ich.familie : fam[0].id;
+}
 
 async function eintragSpeichern(liste, daten, id = null) {
   const x = await anfrage(`${basis()}/${liste}${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: daten });
@@ -36,11 +45,15 @@ export function vorbereitungAnsicht() {
   // Beim ersten Öffnen: Packliste automatisch passend zur Reise anlegen (nur einmal je Reise)
   if (zustand.extrasVomServer === zustand.reise.id && !e.packliste.length && !e.packAuto && !packAutoLaeuft && (zustand.reise.personen?.length || zustand.reise.haefen?.length)) setTimeout(() => packAuto(true), 0);
   const hinweise = dokumentHinweise(e.dokumente, zustand.reise, heute());
-  const pack = e.packliste;
-  const fertig = pack.filter((x) => x.erledigt).length;
+  const fam = aktiveFamilie();
   const filter = zustand.packFilter ?? "";
+  // Mit Familien: ohne Filter die gemeinsamen Einträge und die der eigenen Familie
+  const pack = e.packliste.filter((y) => passtZuFilter(y.fuer, filter) && (!fam || filter || !packFamilie(y, zustand.reise) || packFamilie(y, zustand.reise) === fam));
+  const erledigt = (x) => packErledigt(x, fam, zustand.reise);
+  const fertig = pack.filter(erledigt).length;
+  const andereFertig = (x) => (fam && !x.fuer ? familien().filter((f) => f.id !== fam && x.erledigtVon?.[f.id]).map((f) => f.name) : []);
   const gruppen = new Map();
-  for (const x of pack.filter((y) => passtZuFilter(y.fuer, filter))) {
+  for (const x of pack) {
     const g = x.gruppe || "Sonstiges";
     if (!gruppen.has(g)) gruppen.set(g, []);
     gruppen.get(g).push(x);
@@ -51,10 +64,11 @@ export function vorbereitungAnsicht() {
     ${hinweise.length ? `<div class="karte-box hinweisbox"><h3>⏰ Fristen &amp; Hinweise</h3><ul class="hinweise">${hinweise.map((h) => `<li class="${h.stufe}">${esc(h.text)}</li>`).join("")}</ul></div>` : ""}
     <div class="karte-box">
       <div class="zeile"><h3>🧳 Packliste</h3><span class="klein leise">${fertig}/${pack.length} eingepackt</span><span class="platz"></span>
-        <select data-aktion="pack-filter" aria-label="Für wen"><option value="">Alle Einträge</option><option value="alle" ${filter === "alle" ? "selected" : ""}>Für alle gemeinsam</option>${fuerOptionen(filter, "–").replace('<option value="">–</option>', "")}</select>
+        ${fam ? `<label class="klein">Ich packe für <select data-aktion="pack-familie">${familien().map((f) => `<option value="${esc(f.id)}" ${f.id === fam ? "selected" : ""}>👨‍👩‍👧 ${esc(f.name)}</option>`).join("")}</select></label>` : ""}
+        <select data-aktion="pack-filter" aria-label="Für wen"><option value="">${fam ? "Gemeinsam + unsere Familie" : "Alle Einträge"}</option><option value="alle" ${filter === "alle" ? "selected" : ""}>Für alle gemeinsam</option>${fuerOptionen(filter, "–").replace('<option value="">–</option>', "")}</select>
       </div>
       ${pack.length ? `<div class="fortschritt"><span style="width:${Math.round((fertig / pack.length) * 100)}%"></span></div>` : ""}
-      <p class="leise klein">Gemeinsam für alle Mitreisenden – wer etwas einpackt, hakt es ab. Vorschläge passend zur Reise:</p>
+      <p class="leise klein">${fam ? "Einträge „für alle“ hakt jede Familie für sich ab – was ihr einpackt, gilt nicht für die anderen Familien." : "Gemeinsam für alle Mitreisenden – wer etwas einpackt, hakt es ab."} Vorschläge passend zur Reise:</p>
       <div class="links"><button class="linkchip empfohlen" data-aktion="pack-auto" title="Alle ★-Vorlagen auf einmal, Pässe und Kinder-Sachen je Person">✨ Automatisch ergänzen</button>${Object.entries(PACKVORLAGEN).map(([k, v]) => `<button class="linkchip ${vorschlaege.includes(k) ? "empfohlen" : ""}" data-aktion="pack-vorlage" data-id="${k}">+ ${esc(v.name)}${vorschlaege.includes(k) ? " ★" : ""}</button>`).join("")}</div>
       <form class="zeile eng packneu" id="packNeu">
         <input name="text" placeholder="z. B. Schnorchelmaske" maxlength="200" required aria-label="Neuer Eintrag">
@@ -63,8 +77,8 @@ export function vorbereitungAnsicht() {
         <select name="fuer" aria-label="Für wen">${fuerOptionen(filter && filter !== "alle" ? filter : "")}</select>
         <button class="knopf">+</button>
       </form>
-      ${gruppen.size ? [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).map(([g, liste]) => `<div class="packgruppe"><h4>${esc(g)} <span class="leise klein">${liste.filter((x) => x.erledigt).length}/${liste.length}</span></h4>
-        ${liste.map((x) => `<div class="packzeile ${x.erledigt ? "erledigt" : ""}"><label class="haken"><input type="checkbox" data-aktion="pack-haken" data-id="${esc(x.id)}" ${x.erledigt ? "checked" : ""}> ${esc(x.text)}</label>${x.fuer ? `<span class="klein leise">${esc(personName(x.fuer))}</span>` : ""}<button class="link rot" data-aktion="pack-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</div>`).join("") : `<p class="leise">${packAutoLaeuft ? "✨ Packliste wird passend zur Reise erstellt …" : "Noch leer – wähle oben eine Vorlage oder trage selbst etwas ein."}</p>`}
+      ${gruppen.size ? [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).map(([g, liste]) => `<div class="packgruppe"><h4>${esc(g)} <span class="leise klein">${liste.filter(erledigt).length}/${liste.length}</span></h4>
+        ${liste.map((x) => `<div class="packzeile ${erledigt(x) ? "erledigt" : ""}"><label class="haken"><input type="checkbox" data-aktion="pack-haken" data-id="${esc(x.id)}" ${erledigt(x) ? "checked" : ""}> ${esc(x.text)}</label>${x.fuer ? `<span class="klein leise">${esc(personName(x.fuer))}</span>` : ""}${andereFertig(x).length ? `<span class="klein leise" title="Schon eingepackt bei">✓ ${esc(andereFertig(x).join(", "))}</span>` : ""}<button class="link rot" data-aktion="pack-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</div>`).join("") : `<p class="leise">${packAutoLaeuft ? "✨ Packliste wird passend zur Reise erstellt …" : "Noch leer – wähle oben eine Vorlage oder trage selbst etwas ein."}</p>`}
       ${fertig ? `<div class="zeile"><button class="link" data-aktion="pack-zuruecksetzen">Alle Haken entfernen (für die Rückreise)</button></div>` : ""}
     </div>
     <div class="karte-box">
@@ -202,12 +216,17 @@ aktionen["pack-vorlage"] = async (el) => {
 aenderungen["pack-haken"] = async (el) => {
   const x = zustand.extras.packliste.find((y) => y.id === el.dataset.id);
   try {
-    await eintragSpeichern("packliste", { ...x, erledigt: el.checked }, x.id);
+    const neu = await anfrage(`${basis()}/packliste/${x.id}/haken`, { method: "PUT", body: { haushalt: aktiveFamilie(), erledigt: el.checked } });
+    Object.assign(x, neu);
     neuZeichnen();
   } catch (e) {
     el.checked = !el.checked;
     alert(e.message);
   }
+};
+aenderungen["pack-familie"] = (el) => {
+  zustand.packFamilie = el.value;
+  neuZeichnen();
 };
 aenderungen["pack-filter"] = (el) => {
   zustand.packFilter = el.value;
@@ -218,8 +237,11 @@ aktionen["pack-loeschen"] = async (el) => {
   neuZeichnen();
 };
 aktionen["pack-zuruecksetzen"] = async () => {
-  if (!confirm("Alle Haken entfernen? (z. B. zum Packen für die Rückreise)")) return;
-  for (const x of zustand.extras.packliste.filter((y) => y.erledigt)) await eintragSpeichern("packliste", { ...x, erledigt: false }, x.id);
+  const fam = aktiveFamilie();
+  if (!confirm(fam ? "Alle Haken eurer Familie entfernen? (z. B. zum Packen für die Rückreise)" : "Alle Haken entfernen? (z. B. zum Packen für die Rückreise)")) return;
+  for (const x of zustand.extras.packliste.filter((y) => packErledigt(y, fam, zustand.reise) && (!fam || !packFamilie(y, zustand.reise) || packFamilie(y, zustand.reise) === fam))) {
+    Object.assign(x, await anfrage(`${basis()}/packliste/${x.id}/haken`, { method: "PUT", body: { haushalt: fam, erledigt: false } }));
+  }
   neuZeichnen();
 };
 

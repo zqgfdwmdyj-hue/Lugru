@@ -106,6 +106,24 @@ export function packlisteErgaenzen(reiseId, eintraege, vonId) {
   });
 }
 
+/**
+ * Packliste abhaken. haushalt = Familien-ID: Einträge „für alle“ hakt jede Familie getrennt ab
+ * (erledigtVon), sonst gilt der eine Haken des Eintrags.
+ */
+export function packHaken(reiseId, eid, { haushalt = "", erledigt, familien = [] }) {
+  return extrasAendern(reiseId, (e) => {
+    const x = e.packliste.find((y) => y.id === eid);
+    if (!x) throw fehler(404, "Eintrag nicht gefunden.");
+    if (haushalt && familien.includes(haushalt) && !x.fuer) {
+      x.erledigtVon = { ...(x.erledigtVon ?? {}) };
+      if (erledigt === true) x.erledigtVon[haushalt] = true;
+      else delete x.erledigtVon[haushalt];
+    } else x.erledigt = erledigt === true;
+    x.geaendert = new Date().toISOString();
+    return x;
+  });
+}
+
 export function eintragAendern(reiseId, liste, eid, eintrag) {
   return extrasAendern(reiseId, (e) => {
     const x = e[liste].find((y) => y.id === eid);

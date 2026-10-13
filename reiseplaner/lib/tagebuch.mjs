@@ -3,20 +3,75 @@
 // vergangene Tage, gebuchte Ausflüge/Unterkünfte, nicht-private Bewertungen und Tauchgänge.
 // Nie: Kosten, Preise, Notizen, Mitreisende, Nachnamen, Planungen in der Zukunft.
 import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { DATA_DIR, lesen, aendern } from "./speicher.mjs";
+import { randomUUID, randomBytes } from "node:crypto";
+import { mkdir, readdir, rename } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { DATA_DIR, lesen, aendern, schreiben, exklusiv } from "./speicher.mjs";
 import { KATEGORIEN, oeffentlicheFotos } from "../public/rechnen.js";
 
-const DATEI = path.join(DATA_DIR, "tagebuch.json");
-const LEER = { titel: "Unsere Reisen", text: "", orte: [] };
+// Jedes Konto hat sein eigenes Tagebuch (Weltkarte, nachgetragene Orte, freigegebene Reisen, eigener Link).
+const ORDNER = path.join(DATA_DIR, "tagebuecher");
+const ALT = path.join(DATA_DIR, "tagebuch.json"); // frühere gemeinsame Fassung – geht an das erste Verwaltungskonto
+const STANDARD = path.join(DATA_DIR, "tagebuch-standard.json"); // wohin der alte Link /tagebuch zeigt
+const LEER = { titel: "Unsere Reisen", text: "", orte: [], reisen: [], kennung: "" };
+const ID = /^[a-z0-9-]{8,64}$/;
+const datei = (userId) => {
+  if (!ID.test(String(userId ?? ""))) throw Object.assign(new Error("Ungültiges Konto."), { status: 400 });
+  return path.join(ORDNER, `${userId}.json`);
+};
+const neueKennung = () => randomBytes(12).toString("base64url");
+await mkdir(ORDNER, { recursive: true });
 
-export const einstellungenLesen = () => lesen(DATEI, LEER);
+/**
+ * Tagebuch eines Kontos. migrieren: { reisen: [IDs] } – nur für das Verwaltungskonto, das die alte
+ * gemeinsame Fassung übernimmt (einmalig; danach zeigt /tagebuch auf dieses Tagebuch).
+ */
+export async function einstellungenLesen(userId, { migrieren = null } = {}) {
+  const d = datei(userId);
+  return exklusiv(d, async () => {
+    const e = await lesen(d, null);
+    if (e?.kennung) return { ...structuredClone(LEER), ...e };
+    const neu = { ...structuredClone(LEER), ...(e ?? {}), kennung: neueKennung() };
+    if (migrieren) {
+      await exklusiv(ALT, async () => {
+        const alt = existsSync(ALT) ? await lesen(ALT, null) : null;
+        if (!alt) return;
+        Object.assign(neu, { titel: alt.titel || LEER.titel, text: alt.text ?? "", orte: [...(alt.orte ?? []), ...neu.orte], reisen: [...new Set([...(migrieren.reisen ?? []), ...neu.reisen])] });
+        await rename(ALT, `${ALT}.uebernommen`);
+        await schreiben(STANDARD, { userId, kennung: neu.kennung });
+      });
+    }
+    await schreiben(d, neu);
+    return neu;
+  });
+}
 
-export function einstellungenAendern({ titel, text }) {
-  return aendern(DATEI, LEER, (e) => {
+/** userId zu einer öffentlichen Kennung (oder der alte Link ohne Kennung). */
+export async function kontoZuKennung(kennung) {
+  if (!kennung) return (await lesen(STANDARD, null))?.userId ?? null;
+  if (!/^[A-Za-z0-9_-]{12,40}$/.test(kennung)) return null;
+  for (const f of await readdir(ORDNER)) {
+    if (!f.endsWith(".json")) continue;
+    const e = await lesen(path.join(ORDNER, f), null);
+    if (e?.kennung === kennung) return f.slice(0, -5);
+  }
+  return null;
+}
+
+export function einstellungenAendern(userId, { titel, text }) {
+  return aendern(datei(userId), LEER, (e) => {
     if (titel != null) e.titel = String(titel).trim().slice(0, 120) || LEER.titel;
     if (text != null) e.text = String(text).slice(0, 2000);
     return e;
+  });
+}
+
+/** Reise im eigenen öffentlichen Tagebuch zeigen oder nicht. */
+export function reiseFreigeben(userId, reiseId, an) {
+  return aendern(datei(userId), LEER, (e) => {
+    e.reisen = (e.reisen ?? []).filter((x) => x !== reiseId);
+    if (an) e.reisen.push(reiseId);
+    return e.reisen;
   });
 }
 
@@ -34,25 +89,26 @@ function ortAus(d) {
   };
 }
 
-export async function ortHinzufuegen(d) {
+export async function ortHinzufuegen(userId, d) {
   const ort = { id: randomUUID(), ...ortAus(d) };
-  return aendern(DATEI, LEER, (e) => {
+  return aendern(datei(userId), LEER, (e) => {
+    if (e.orte.length >= 2000) throw Object.assign(new Error("Zu viele Orte."), { status: 400 });
     e.orte.push(ort);
     return ort;
   });
 }
 
-export async function ortAendern(id, d) {
+export async function ortAendern(userId, id, d) {
   const neu = ortAus(d);
-  return aendern(DATEI, LEER, (e) => {
+  return aendern(datei(userId), LEER, (e) => {
     const o = e.orte.find((x) => x.id === id);
     if (!o) throw Object.assign(new Error("Ort nicht gefunden."), { status: 404 });
     return Object.assign(o, neu);
   });
 }
 
-export function ortLoeschen(id) {
-  return aendern(DATEI, LEER, (e) => {
+export function ortLoeschen(userId, id) {
+  return aendern(datei(userId), LEER, (e) => {
     e.orte = e.orte.filter((o) => o.id !== id);
   });
 }
@@ -142,9 +198,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const datum = (iso, opt = { day: "numeric", month: "long", year: "numeric" }) => (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(`${iso}T12:00:00`).toLocaleDateString("de-DE", opt) : esc(iso ?? ""));
 const sterne = (n) => (n == null ? "" : `<span class="sterne" aria-label="${n} von 5">${"★".repeat(Math.round(n))}${"☆".repeat(5 - Math.round(n))}</span>`);
 
+let fotoBasis = "/tagebuch";
 function galerie(fotos) {
   if (!fotos?.length) return "";
-  return `<div class="galerie">${fotos.map((id) => `<a href="/tagebuch/foto/${esc(id)}" target="_blank"><img loading="lazy" src="/tagebuch/foto/${esc(id)}?klein=1" alt=""></a>`).join("")}</div>`;
+  return `<div class="galerie">${fotos.map((id) => `<a href="${fotoBasis}/foto/${esc(id)}" target="_blank"><img loading="lazy" src="${fotoBasis}/foto/${esc(id)}?klein=1" alt=""></a>`).join("")}</div>`;
 }
 
 function bewertungen(liste) {
@@ -153,7 +210,8 @@ function bewertungen(liste) {
     .join("");
 }
 
-export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis) {
+export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis, pfad = "/tagebuch") {
+  fotoBasis = pfad;
   const laender = new Set(inhalt.orte.map((o) => o.land).filter(Boolean));
   const tauchgaenge = inhalt.reisen.reduce((s, r) => s + r.tauchgaenge.length, 0);
   const ersteFoto = [...inhalt.fotos][0];
@@ -182,7 +240,7 @@ export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis) {
     </section>`,
     )
     .join("");
-  const url = `${basisUrl}/tagebuch`;
+  const url = `${basisUrl}${pfad}`;
   const daten = JSON.stringify(pins).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="de"><head>
@@ -191,7 +249,7 @@ export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis) {
 <meta name="description" content="${esc(`${inhalt.orte.length} Orte in ${laender.size} Ländern`)}">
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(inhalt.titel)}">
 <meta property="og:description" content="${esc(inhalt.text || `${inhalt.orte.length} Orte in ${laender.size} Ländern`)}"><meta property="og:url" content="${esc(url)}">
-${ersteFoto ? `<meta property="og:image" content="${esc(`${basisUrl}/tagebuch/foto/${ersteFoto}`)}"><meta name="twitter:card" content="summary_large_image">` : ""}
+${ersteFoto ? `<meta property="og:image" content="${esc(`${basisUrl}${pfad}/foto/${ersteFoto}`)}"><meta name="twitter:card" content="summary_large_image">` : ""}
 <link rel="icon" href="/icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <style>

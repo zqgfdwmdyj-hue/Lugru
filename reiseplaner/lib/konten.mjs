@@ -208,8 +208,8 @@ export async function einladungVerbrauchen(t) {
     const e = liste.find((x) => x.hash === sha(String(t ?? "")));
     if (e) {
       e.benutzt += 1;
-      // Einladung für eine bestimmte Person gilt nur einmal
-      if (e.personId) e.ablauf = 0;
+      // Einladung für eine bestimmte Person bzw. für ein eigenes Konto (ohne Reise) gilt nur einmal
+      if (e.personId || !e.reiseId) e.ablauf = 0;
     }
   });
 }

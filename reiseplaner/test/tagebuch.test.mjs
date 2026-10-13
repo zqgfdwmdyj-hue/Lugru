@@ -116,9 +116,46 @@ test("Album: nur geteilte Fotos vergangener Tage erscheinen im Tagebuch", () => 
 
 test("Nachgetragene Orte lassen sich bearbeiten", async () => {
   const t = await import("../lib/tagebuch.mjs");
-  const o = await t.ortHinzufuegen({ name: "Kreta", land: "Griechenland", jahr: "2025", notiz: "Tauchen", lat: 35.2, lng: 24.9 });
-  const neu = await t.ortAendern(o.id, { name: "Chania", land: "Griechenland", jahr: "20x5", notiz: "Tauchen mit Kindern", lat: 35.5, lng: 24.0 });
+  const u = `konto-${Date.now()}`;
+  const o = await t.ortHinzufuegen(u, { name: "Kreta", land: "Griechenland", jahr: "2025", notiz: "Tauchen", lat: 35.2, lng: 24.9 });
+  const neu = await t.ortAendern(u, o.id, { name: "Chania", land: "Griechenland", jahr: "20x5", notiz: "Tauchen mit Kindern", lat: 35.5, lng: 24.0 });
   assert.deepEqual([neu.id, neu.name, neu.jahr, neu.notiz, neu.lat], [o.id, "Chania", "", "Tauchen mit Kindern", 35.5]);
-  await assert.rejects(t.ortAendern(o.id, { name: "x", lat: 999, lng: 0 }), /Karte/);
-  await assert.rejects(t.ortAendern("gibts-nicht", { name: "x", lat: 1, lng: 1 }), /nicht gefunden/);
+  await assert.rejects(t.ortAendern(u, o.id, { name: "x", lat: 999, lng: 0 }), /Karte/);
+  await assert.rejects(t.ortAendern(u, "gibts-nicht", { name: "x", lat: 1, lng: 1 }), /nicht gefunden/);
+  await assert.rejects(t.ortHinzufuegen("../boese", { lat: 1, lng: 1 }), /Ungültiges Konto/);
+});
+
+test("Jedes Konto hat sein eigenes Tagebuch mit eigener Kennung", async () => {
+  const t = await import("../lib/tagebuch.mjs");
+  const a = `konto-a-${Date.now()}`;
+  const b = `konto-b-${Date.now()}`;
+  await t.ortHinzufuegen(a, { name: "Kreta", lat: 35.2, lng: 24.9 });
+  await t.reiseFreigeben(a, "reise-1234", true);
+  const ea = await t.einstellungenLesen(a);
+  const eb = await t.einstellungenLesen(b);
+  assert.equal(ea.orte.length, 1, "Ort von vor dem ersten Lesen bleibt erhalten");
+  assert.deepEqual(ea.reisen, ["reise-1234"]);
+  assert.equal(eb.orte.length, 0);
+  assert.notEqual(ea.kennung, eb.kennung);
+  assert.equal((await t.einstellungenLesen(a)).kennung, ea.kennung, "Kennung bleibt gleich");
+  assert.equal(await t.kontoZuKennung(ea.kennung), a);
+  assert.equal(await t.kontoZuKennung(eb.kennung), b);
+  assert.equal(await t.kontoZuKennung("gibtsnichtgibtsnicht"), null);
+  assert.equal(await t.kontoZuKennung("../../x"), null);
+  await t.reiseFreigeben(a, "reise-1234", false);
+  assert.deepEqual((await t.einstellungenLesen(a)).reisen, []);
+});
+
+test("Alte gemeinsame Weltkarte geht einmalig an das erste Verwaltungskonto", async () => {
+  const { DATA_DIR } = await import("../lib/speicher.mjs");
+  const { writeFile } = await import("node:fs/promises");
+  const pfad = (await import("node:path")).default;
+  await writeFile(pfad.join(DATA_DIR, "tagebuch.json"), JSON.stringify({ titel: "Familie L.", text: "Hallo", orte: [{ id: "o1", name: "Malta", lat: 35.9, lng: 14.5 }] }));
+  const t = await import("../lib/tagebuch.mjs");
+  const admin = `admin-${Date.now()}`;
+  const e = await t.einstellungenLesen(admin, { migrieren: { reisen: ["karibik-1234"] } });
+  assert.deepEqual([e.titel, e.orte.map((o) => o.name), e.reisen], ["Familie L.", ["Malta"], ["karibik-1234"]]);
+  assert.equal(await t.kontoZuKennung(""), admin, "alter Link /tagebuch zeigt auf dieses Tagebuch");
+  const zweiter = await t.einstellungenLesen(`admin2-${Date.now()}`, { migrieren: { reisen: [] } });
+  assert.equal(zweiter.orte.length, 0, "nur einmal übernommen");
 });
