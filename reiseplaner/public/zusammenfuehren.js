@@ -12,6 +12,22 @@ function teilnehmerFuer(reise, anzahl) {
   return [...erwachsene, ...alle.filter((id) => !erwachsene.includes(id))].slice(0, anzahl);
 }
 
+/** „Business, 30 kg, Sitz 12A, Terminal 1, Buchung ABC123“ → Sitz, Terminal, Buchung und der Rest (Klasse, Gepäck). */
+export function detailsAufteilen(text) {
+  const teile = String(text ?? "").split(/[,;]\s*/).map((x) => x.trim()).filter(Boolean);
+  const ergebnis = { buchungsnr: "", terminal: "", sitz: "", rest: "" };
+  const rest = [];
+  for (const t of teile) {
+    let m;
+    if ((m = /^(?:buchung(?:snummer|scode)?|booking|pnr|filekey)[:\s]+(\S+)/i.exec(t))) ergebnis.buchungsnr = m[1];
+    else if ((m = /^(?:sitz(?:platz)?|seat)[:\s]+(.+)/i.exec(t))) ergebnis.sitz = m[1];
+    else if (/^terminal\b/i.test(t)) ergebnis.terminal = t;
+    else rest.push(t);
+  }
+  ergebnis.rest = rest.join(", ");
+  return ergebnis;
+}
+
 export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {}) {
   reise.haefen ??= [];
   reise.hotels ??= [];
@@ -83,10 +99,10 @@ export function planZusammenfuehren(reise, p, { personenErsetzen = false } = {})
   const vkey = (v) => `${v.datum}|${String(v.titel ?? "").replace(/\s+/g, "").toLowerCase() || `${v.von}-${v.nach}`.toLowerCase()}`;
   for (const v of p.verbindungen ?? []) {
     if (!v.datum) continue;
+    const d = detailsAufteilen(v.details ?? [v.klasse, v.gepaeck].filter(Boolean).join(", "));
     const daten = {
       art: v.art || "flug", titel: v.titel ?? "", von: v.von ?? "", nach: v.nach ?? "", datum: v.datum, abZeit: v.abZeit ?? "", anDatum: v.anDatum && v.anDatum !== v.datum ? v.anDatum : "",
-      anZeit: v.anZeit ?? "", buchungsnr: v.buchungsnr ?? "", terminal: v.terminal ?? "", sitz: v.sitz ?? "",
-      gepaeck: [v.klasse, v.gepaeck].filter(Boolean).join(", "), preis: v.preis ?? null, notiz: v.notiz ?? "",
+      anZeit: v.anZeit ?? "", buchungsnr: v.buchungsnr || d.buchungsnr, terminal: v.terminal || d.terminal, sitz: v.sitz || d.sitz, gepaeck: d.rest, preis: v.preis ?? null, notiz: v.notiz ?? "",
     };
     const vorhanden = reise.verbindungen.find((x) => vkey(x) === vkey(daten));
     if (vorhanden) fuellen(vorhanden, daten);

@@ -78,26 +78,20 @@ const PLAN_SCHEMA = obj({
       notiz: str,
     }),
   },
+  // Bewusst schlank (die API begrenzt die Größe des Schemas): Details als ein Text, die App teilt ihn auf
   verbindungen: {
     type: "array",
-    description: "Flüge, Züge, Fähren, Bus, Transfers, Mietwagen – je Strecke (Teilflug) ein Eintrag",
+    description: "Flüge, Züge, Fähren, Bus, Transfers, Mietwagen – je Teilstrecke ein Eintrag",
     items: obj({
       art: { type: "string", enum: Object.keys(VERKEHRSMITTEL) },
-      titel: { type: "string", description: "Flug-/Zugnummer mit Anbieter, z. B. „Condor DE 3910“, „ICE 578“, „Sixt“" },
-      von: { type: "string", description: "Abflug-/Abfahrtsort, bei Flughäfen mit Code in Klammern, z. B. „Frankfurt (FRA)“" },
-      nach: { type: "string", description: "Ziel, z. B. „La Romana (LRM)“" },
+      titel: { type: "string", description: "Nummer mit Anbieter, z. B. „Condor DE 3910“" },
+      von: { type: "string", description: "z. B. „Frankfurt (FRA)“" },
+      nach: str,
       datum: str,
       abZeit: str,
       anDatum: str,
       anZeit: str,
-      buchungsnr: str,
-      terminal: str,
-      sitz: str,
-      klasse: { type: "string", description: "z. B. Economy, Business, 1. Klasse – oder leer" },
-      gepaeck: str,
-      preis: zahlOderNull,
-      status: { type: "string", enum: ["idee", "favorit", "gebucht"] },
-      notiz: str,
+      details: { type: "string", description: "kurz: Klasse, Gepäck, Sitz, Terminal, Buchung – z. B. „Business, 30 kg, Sitz 12A, Terminal 1, Buchung ABC123“" },
     }),
   },
   kosten: { type: "array", items: obj({ titel: str, betrag: zahlOderNull, status: { type: "string", enum: ["idee", "favorit", "gebucht"] } }) },
@@ -115,7 +109,7 @@ Regeln:
 - Preise in Euro als Zahl. Steht ein Gesamtpreis da („Preis gesamt für 6 Personen: 275 €“, „Gesamtpreis … 544 €“, „Für 3 Taucher: 597,60 €“), dann preisArt "gruppe" und preisGruppe = dieser Betrag, preisErw/preisKind null; gilt er nur für einen Teil der Gruppe, "anzahl" = Zahl der Teilnehmenden. Sonst preisArt "person" mit preisErw/preisKind. „Kinder unter 7 frei“ / „bis 6 Jahre gratis“ → kostenlosBis = 7 (die Altersgrenze, ab der gezahlt wird). Steht neben Dollar auch ein Euro-Betrag, den Euro-Betrag nehmen; nur Dollar → grob umrechnen und in "notiz" vermerken.
 - Status: gebucht/reserviert → "gebucht"; fest geplant → "favorit"; Alternativen, Anfragen, Optionen → "idee". Backups („TUI BACKUP GEBUCHT“) sind "gebucht" mit Hinweis in der Notiz.
 - quelle: "schiff" für Ausflüge der Reederei, "getyourguide"/"viator"/"tiqets"/"civitatis", wenn genannt, "eigene" für Unternehmungen auf eigene Faust, sonst "sonstige".
-- Flüge, Züge, Fähren, Busse, Transfers und Mietwagen mit Datum/Uhrzeit unter "verbindungen" – je Teilstrecke ein Eintrag (Umsteigen = mehrere), mit Flugnummer, Klasse, Gepäck, Sitz, Terminal und Buchungsnummer, wenn angegeben. Ankunft am Folgetag → anDatum setzen. Nicht zusätzlich unter "kosten" aufführen; einen Preis der Verbindung unter "preis".
+- Flüge, Züge, Fähren, Busse, Transfers und Mietwagen mit Datum/Uhrzeit unter "verbindungen" – je Teilstrecke ein Eintrag (Umsteigen = mehrere). Klasse, Gepäck, Sitz, Terminal und Buchungsnummer kurz in "details". Ankunft am Folgetag → anDatum setzen (sonst leer). Nicht zusätzlich unter "kosten" aufführen – nur ein eigener Preis dafür gehört unter "kosten".
 - Weitere Kosten ohne Fahrplan (Trinkgeld, Versicherung, Parken, Bahnticket ohne Zeiten …) unter "kosten".
 - In "hinweise" kurz auf Deutsch, was unklar war oder fehlt (leer, wenn nichts).`;
 
@@ -141,17 +135,28 @@ export async function reiseplanLesen({ text, dateien = [], heute }) {
   if (!String(text ?? "").trim() && !dateien.length) throw fehler(400, "Bitte Text einfügen oder eine Datei wählen.");
   const inhalt = dateien.slice(0, 10).map(dateiBlock);
   inhalt.push({ type: "text", text: `Heute ist ${heute}.${String(text ?? "").trim() ? `\n\nVorlage:\n${text}` : ""}\n\nÜbertrage den Reiseplan.` });
-  try {
+  const lesen = async (schema) => {
     const stream = client.beta.messages.stream({
       ...FALLBACK,
       model: MODELL,
       max_tokens: 64000,
       system: IMPORT_SYSTEM,
-      output_config: { effort: "medium", format: { type: "json_schema", schema: PLAN_SCHEMA } },
+      output_config: { effort: "medium", format: { type: "json_schema", schema } },
       messages: [{ role: "user", content: inhalt }],
     });
-    const msg = pruefeAntwort(await stream.finalMessage());
-    return JSON.parse(textAus(msg));
+    return JSON.parse(textAus(pruefeAntwort(await stream.finalMessage())));
+  };
+  try {
+    try {
+      return await lesen(PLAN_SCHEMA);
+    } catch (e) {
+      // Sicherheitsnetz: Ist das Schema der API zu groß, ohne Verbindungen erneut lesen
+      if (!(e instanceof Anthropic.BadRequestError) || !/grammar is too large|schema.*too (large|complex)/i.test(String(e.message))) throw e;
+      console.error("KI-Import: Schema zu groß – lese ohne Verbindungen");
+      const { verbindungen, ...ohne } = PLAN_SCHEMA.properties;
+      const p = await lesen({ ...PLAN_SCHEMA, properties: ohne, required: PLAN_SCHEMA.required.filter((k) => k !== "verbindungen") });
+      return { ...p, verbindungen: [], hinweise: [p.hinweise, "Flüge und Verbindungen konnten diesmal nicht einzeln gelesen werden – bitte unter „Verbindungen“ eintragen."].filter(Boolean).join(" ") };
+    }
   } catch (e) {
     if (e instanceof SyntaxError) throw fehler(502, "Die KI-Antwort war nicht lesbar. Bitte erneut versuchen.");
     throw kiFehler(e);
