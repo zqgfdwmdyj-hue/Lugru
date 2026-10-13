@@ -160,6 +160,7 @@ export async function extrasLaden() {
   const id = zustand.reise.id;
   try {
     zustand.extras = await anfrage(`/api/reisen/${id}/extras`);
+    zustand.extrasVomServer = id;
     try {
       localStorage.setItem(EXTRAS_LOKAL(id), JSON.stringify(zustand.extras));
     } catch {}

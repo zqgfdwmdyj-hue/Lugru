@@ -564,6 +564,17 @@ async function api(req, res, url, ich) {
       if (m === "GET" && !liste) return json(res, 200, await extras.extrasLesen(id));
       if (!extras.LISTEN.includes(liste)) throw fehler(404, "Unbekannte Liste.");
       const kontext = { personen: (reise.personen ?? []).map((p) => p.id), familien: (reise.familien ?? []).map((f) => f.id), dateien: (await extras.extrasLesen(id)).dateien };
+      if (liste === "packliste" && t[5] === "auto" && m === "POST") {
+        const d = await koerper(req, 200_000);
+        const eintraege = (Array.isArray(d.eintraege) ? d.eintraege : []).slice(0, 300).flatMap((x) => {
+          try {
+            return [extras.eintragAus("packliste", x, kontext)];
+          } catch {
+            return [];
+          }
+        });
+        return json(res, 201, await extras.packlisteErgaenzen(id, eintraege, ich.id));
+      }
       if (m === "POST" && !t[5]) return json(res, 201, await extras.eintragHinzufuegen(id, liste, extras.eintragAus(liste, await koerper(req, 50_000), kontext), ich.id));
       if (t[5] && m === "PUT") return json(res, 200, await extras.eintragAendern(id, liste, t[5], extras.eintragAus(liste, await koerper(req, 50_000), kontext)));
       if (t[5] && m === "DELETE") {

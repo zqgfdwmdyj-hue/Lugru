@@ -89,6 +89,23 @@ export function eintragHinzufuegen(reiseId, liste, eintrag, vonId) {
   });
 }
 
+/** Automatische Packliste: viele Einträge auf einmal, ohne Doppelte (gleicher Text für dieselbe Person). */
+export function packlisteErgaenzen(reiseId, eintraege, vonId) {
+  return extrasAendern(reiseId, (e) => {
+    const da = new Set(e.packliste.map((x) => `${String(x.text).trim().toLowerCase()}|${x.fuer ?? ""}`));
+    const neu = [];
+    for (const x of eintraege.slice(0, 300)) {
+      const k = `${x.text.toLowerCase()}|${x.fuer ?? ""}`;
+      if (da.has(k) || e.packliste.length + neu.length >= 2000) continue;
+      da.add(k);
+      neu.push({ id: randomUUID(), ...x, vonId, erstellt: new Date().toISOString() });
+    }
+    e.packliste.push(...neu);
+    e.packAuto = true;
+    return { neu, packAuto: true };
+  });
+}
+
 export function eintragAendern(reiseId, liste, eid, eintrag) {
   return extrasAendern(reiseId, (e) => {
     const x = e[liste].find((y) => y.id === eid);

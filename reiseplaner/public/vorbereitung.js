@@ -1,6 +1,6 @@
 // Vorbereitung: gemeinsame Packliste (abhaken für alle) und Dokumente & Fristen mit Dateien.
 import { zustand, $, esc, datumText, personen, aktionen, aenderungen, neuZeichnen, dialogOeffnen, dialog, anfrage, heute, herunterladen, istKreuzfahrt } from "./kern.js";
-import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUMENT_VORLAGEN, dokumentHinweise, reiseZeitraum, kalenderDatei, kachelnFuer } from "./unterwegs-logik.js";
+import { PACKVORLAGEN, passendeVorlagen, vorlageEintraege, DOKUMENT_ARTEN, DOKUMENT_VORLAGEN, dokumentHinweise, reiseZeitraum, kalenderDatei, kachelnFuer, automatischePackliste } from "./unterwegs-logik.js";
 import { istKind } from "./rechnen.js";
 
 const basis = () => `/api/reisen/${zustand.reise.id}/extras`;
@@ -33,6 +33,8 @@ async function eintragEntfernen(liste, id) {
 
 export function vorbereitungAnsicht() {
   const e = zustand.extras;
+  // Beim ersten Öffnen: Packliste automatisch passend zur Reise anlegen (nur einmal je Reise)
+  if (zustand.extrasVomServer === zustand.reise.id && !e.packliste.length && !e.packAuto && !packAutoLaeuft && (zustand.reise.personen?.length || zustand.reise.haefen?.length)) setTimeout(() => packAuto(true), 0);
   const hinweise = dokumentHinweise(e.dokumente, zustand.reise, heute());
   const pack = e.packliste;
   const fertig = pack.filter((x) => x.erledigt).length;
@@ -53,7 +55,7 @@ export function vorbereitungAnsicht() {
       </div>
       ${pack.length ? `<div class="fortschritt"><span style="width:${Math.round((fertig / pack.length) * 100)}%"></span></div>` : ""}
       <p class="leise klein">Gemeinsam für alle Mitreisenden – wer etwas einpackt, hakt es ab. Vorschläge passend zur Reise:</p>
-      <div class="links">${Object.entries(PACKVORLAGEN).map(([k, v]) => `<button class="linkchip ${vorschlaege.includes(k) ? "empfohlen" : ""}" data-aktion="pack-vorlage" data-id="${k}">+ ${esc(v.name)}${vorschlaege.includes(k) ? " ★" : ""}</button>`).join("")}</div>
+      <div class="links"><button class="linkchip empfohlen" data-aktion="pack-auto" title="Alle ★-Vorlagen auf einmal, Pässe und Kinder-Sachen je Person">✨ Automatisch ergänzen</button>${Object.entries(PACKVORLAGEN).map(([k, v]) => `<button class="linkchip ${vorschlaege.includes(k) ? "empfohlen" : ""}" data-aktion="pack-vorlage" data-id="${k}">+ ${esc(v.name)}${vorschlaege.includes(k) ? " ★" : ""}</button>`).join("")}</div>
       <form class="zeile eng packneu" id="packNeu">
         <input name="text" placeholder="z. B. Schnorchelmaske" maxlength="200" required aria-label="Neuer Eintrag">
         <input name="gruppe" placeholder="Gruppe" maxlength="60" list="packGruppen" aria-label="Gruppe">
@@ -62,7 +64,7 @@ export function vorbereitungAnsicht() {
         <button class="knopf">+</button>
       </form>
       ${gruppen.size ? [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).map(([g, liste]) => `<div class="packgruppe"><h4>${esc(g)} <span class="leise klein">${liste.filter((x) => x.erledigt).length}/${liste.length}</span></h4>
-        ${liste.map((x) => `<div class="packzeile ${x.erledigt ? "erledigt" : ""}"><label class="haken"><input type="checkbox" data-aktion="pack-haken" data-id="${esc(x.id)}" ${x.erledigt ? "checked" : ""}> ${esc(x.text)}</label>${x.fuer ? `<span class="klein leise">${esc(personName(x.fuer))}</span>` : ""}<button class="link rot" data-aktion="pack-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</div>`).join("") : `<p class="leise">Noch leer – wähle oben eine Vorlage oder trage selbst etwas ein.</p>`}
+        ${liste.map((x) => `<div class="packzeile ${x.erledigt ? "erledigt" : ""}"><label class="haken"><input type="checkbox" data-aktion="pack-haken" data-id="${esc(x.id)}" ${x.erledigt ? "checked" : ""}> ${esc(x.text)}</label>${x.fuer ? `<span class="klein leise">${esc(personName(x.fuer))}</span>` : ""}<button class="link rot" data-aktion="pack-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</div>`).join("") : `<p class="leise">${packAutoLaeuft ? "✨ Packliste wird passend zur Reise erstellt …" : "Noch leer – wähle oben eine Vorlage oder trage selbst etwas ein."}</p>`}
       ${fertig ? `<div class="zeile"><button class="link" data-aktion="pack-zuruecksetzen">Alle Haken entfernen (für die Rückreise)</button></div>` : ""}
     </div>
     <div class="karte-box">
@@ -156,6 +158,29 @@ document.addEventListener("submit", async (ev) => {
     alert(e.message);
   }
 });
+
+let packAutoLaeuft = false;
+async function packAuto(still = false) {
+  const eintraege = automatischePackliste(zustand.reise, zustand.extras.packliste);
+  if (!eintraege.length) {
+    zustand.extras.packAuto = true;
+    if (!still) alert("Alles Passende steht schon auf der Liste.");
+    return;
+  }
+  packAutoLaeuft = true;
+  if (still) neuZeichnen();
+  try {
+    const r = await anfrage(`${basis()}/packliste/auto`, { method: "POST", body: { eintraege } });
+    zustand.extras.packliste.push(...r.neu);
+    zustand.extras.packAuto = true;
+  } catch (err) {
+    if (!still) alert(err.message);
+  } finally {
+    packAutoLaeuft = false;
+    neuZeichnen();
+  }
+}
+aktionen["pack-auto"] = () => packAuto(false);
 
 aktionen["pack-vorlage"] = async (el) => {
   const neu = vorlageEintraege(el.dataset.id, zustand.extras.packliste);

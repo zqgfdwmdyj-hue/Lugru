@@ -127,6 +127,34 @@ export function vorlageEintraege(schluessel, vorhanden = []) {
   return (PACKVORLAGEN[schluessel]?.eintraege ?? []).filter((e) => !da.has(e.text.toLowerCase()));
 }
 
+/**
+ * Automatische Packliste: alle passenden Vorlagen zusammen, ohne Doppelte, Persönliches je Person
+ * (Ausweis je Erwachsenem, Kinderreisepass und Kuscheltier je Kind). Bereits Vorhandenes fällt weg.
+ */
+export function automatischePackliste(reise, vorhanden = []) {
+  const personen = reise?.personen ?? [];
+  const kinder = personen.filter(istKind);
+  const erwachsene = personen.filter((p) => !istKind(p));
+  const da = new Set(vorhanden.map((x) => `${String(x.text).trim().toLowerCase()}|${x.fuer ?? ""}`));
+  const liste = [];
+  const dazu = (x, fuer = "") => {
+    const k = `${x.text.toLowerCase()}|${fuer}`;
+    if (da.has(k)) return;
+    da.add(k);
+    liste.push({ text: x.text, gruppe: x.gruppe, fuer });
+  };
+  for (const v of passendeVorlagen(reise)) {
+    for (const x of PACKVORLAGEN[v]?.eintraege ?? []) {
+      const jeErwachsenem = /^reisepass \/ personalausweis$/i.test(x.text) && erwachsene.length > 0 && personen.length > 1;
+      const jeKind = /kinderreisepass|kuscheltier/i.test(x.text) && kinder.length > 0;
+      if (jeErwachsenem) erwachsene.forEach((p) => dazu(x, p.id));
+      else if (jeKind) kinder.forEach((p) => dazu(x, p.id));
+      else dazu(x);
+    }
+  }
+  return liste;
+}
+
 // ---------- Dokumente & Fristen ----------
 
 /**

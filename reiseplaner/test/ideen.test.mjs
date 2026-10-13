@@ -86,3 +86,35 @@ test("Offline-Karten: Kacheln rund um die Orte, ohne Doppelte, mit Obergrenze", 
   assert.deepEqual(kachelnFuer([{ lat: 50, lng: 8 }], { zoomVon: 0, zoomBis: 0 }), [{ z: 0, x: 0, y: 0 }]);
   assert.equal(kachelnFuer([{ lat: 50, lng: 8 }], { zoomVon: 10, zoomBis: 18, max: 50 }).length, 50);
 });
+
+test("Automatische Packliste: passende Vorlagen, Persönliches je Person, keine Doppelten", async () => {
+  const { automatischePackliste } = await import("../public/unterwegs-logik.js");
+  const reise = {
+    art: "kreuzfahrt",
+    personen: [{ id: "e1", name: "Papa", typ: "erwachsen" }, { id: "e2", name: "Mama", typ: "erwachsen" }, { id: "k1", name: "Mia", typ: "kind" }],
+    haefen: [{ lat: 15.3, lng: -61.4 }],
+    ausfluege: [{ kategorie: "tauchen" }],
+  };
+  const liste = automatischePackliste(reise);
+  const texte = liste.map((x) => x.text);
+  for (const t of ["Handy + Ladekabel", "Kofferbanderolen am Koffer", "Riffschonende Sonnencreme (LSF 50)", "Brevet / Tauchschein", "Spiele & Bücher für unterwegs"]) assert.ok(texte.includes(t), t);
+  assert.ok(!texte.includes("Skipass"));
+  assert.deepEqual(liste.filter((x) => x.text === "Reisepass / Personalausweis").map((x) => x.fuer), ["e1", "e2"]);
+  assert.deepEqual(liste.filter((x) => x.text === "Kinderreisepass").map((x) => x.fuer), ["k1"]);
+  assert.equal(new Set(liste.map((x) => `${x.text}|${x.fuer}`)).size, liste.length);
+  // Vorhandenes kommt nicht noch einmal
+  const zweite = automatischePackliste(reise, [...liste.slice(0, 5), { text: "  handy + LADEKABEL ", fuer: "" }]);
+  assert.equal(zweite.length, liste.length - 6);
+  assert.equal(automatischePackliste(reise, liste).length, 0);
+});
+
+test("Packliste ergänzen: Server verhindert Doppelte und merkt sich die Automatik", async () => {
+  const id = `pack-${Date.now()}`;
+  const a = await extras.packlisteErgaenzen(id, [{ text: "Maske", gruppe: "Tauchen", fuer: "", erledigt: false }, { text: "maske", gruppe: "", fuer: "", erledigt: false }], "u1");
+  assert.equal(a.neu.length, 1);
+  const b = await extras.packlisteErgaenzen(id, [{ text: "Maske", gruppe: "", fuer: "", erledigt: false }, { text: "Maske", gruppe: "", fuer: "p1", erledigt: false }], "u1");
+  assert.equal(b.neu.length, 1);
+  const e = await extras.extrasLesen(id);
+  assert.equal(e.packliste.length, 2);
+  assert.equal(e.packAuto, true);
+});
