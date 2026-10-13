@@ -8,11 +8,12 @@ import { tierBild } from "./tierbilder.js";
 import { zeitZuMin, minZuZeit, festeZeit, zimmerVon, istKind, entfernungKm } from "./rechnen.js";
 import { unterkunftAm } from "./unterwegs.js";
 import { kinder, kind, vorname, zustandKind, istSeetag, kinderSetzen } from "./kinderbasis.js";
+import { flughafenKinderSeite, bordkarteZeichnen, fluege } from "./flug.js";
 import { geschichteBox, stimmeBox, rankingBox, kreativSeite, postkarteZeichnen, memoryBox, puzzleBox, wimmelBox, challengeBox, rueckblickBox, zahlenSpassBox, lieblingeHtml } from "./kinderextra.js";
 import { LAENDER, landFuer, SPRACHEN, WOERTER, schatzAufgaben, RAETSEL, WITZE, ICH_SEHE_FARBEN, WER_FINDET, PANTOMIME, ABZEICHEN, packBild, mischen } from "./kinderdaten.js";
 
 const BILD = { tauchen: "🤿", schnorcheln: "🐠", strand: "🏖️", boot: "⛵", natur: "🥾", sport: "🏄", stadt: "🏛️", tiere: "🐒", kultur: "🎭", essen: "🍽️", bord: "🛳️", ausflug: "🗺️", tickets: "🎟️", park: "🎢", ski: "⛷️", kinderclub: "🧒" };
-const SEITEN = { heute: "☀️ Heute", pass: "🛂 Pass & Abzeichen", entdecken: "🔭 Entdecken", spiele: "🎲 Spiele", tagebuch: "📔 Tagebuch", kreativ: "🎨 Basteln & Sammeln", abend: "🌙 Abend", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
+const SEITEN = { heute: "☀️ Heute", flughafen: "✈️ Flughafen", pass: "🛂 Pass & Abzeichen", entdecken: "🔭 Entdecken", spiele: "🎲 Spiele", tagebuch: "📔 Tagebuch", kreativ: "🎨 Basteln & Sammeln", abend: "🌙 Abend", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
 const STIMMUNGEN = ["😄", "🙂", "😐", "🙁", "😢"];
 
 // ---------- Kennzahlen, Stempel, Abzeichen ----------
@@ -26,7 +27,16 @@ export function stempelDerReise(reise, bisDatum) {
     gesehen.add(h.name);
     liste.push({ tag: h, land: landFuer(h), besucht: Boolean(h.datum) && h.datum <= bisDatum });
   }
-  return liste;
+  // Flughäfen bekommen einen eigenen ✈️-Stempel (zählen nicht als Land)
+  for (const v of (reise.verbindungen ?? []).filter((x) => x.art === "flug" && x.status !== "verworfen" && x.datum)) {
+    for (const [name, datum] of [[v.von, v.datum], [v.nach, v.anDatum || v.datum]]) {
+      const n = `✈️ ${String(name ?? "").trim()}`;
+      if (!name || gesehen.has(n)) continue;
+      gesehen.add(n);
+      liste.push({ tag: { name: String(name).replace(/\s*\([A-Z]{3}\)$/, ""), datum, land: "" }, land: null, flagge: "✈️", flughafen: true, besucht: datum <= bisDatum });
+    }
+  }
+  return liste.sort((a, b) => String(a.tag.datum).localeCompare(String(b.tag.datum)));
 }
 
 function kennzahlen(p = kind()) {
@@ -52,7 +62,7 @@ function stempelSvg(s, i) {
   const drehung = ((i * 37) % 21) - 10;
   const name = s.tag.name.length > 16 ? `${s.tag.name.slice(0, 15)}…` : s.tag.name;
   return `<div class="stempel ${s.besucht ? "" : "offen"}" style="--farbe:${f};transform:rotate(${s.besucht ? drehung : 0}deg)">
-    ${s.besucht ? `<span class="stempel-flagge">${s.land?.flagge ?? "📍"}</span><span class="stempel-name">${esc(name)}</span><span class="stempel-datum">${esc(datumText(s.tag.datum, { day: "2-digit", month: "2-digit", year: "2-digit" }))}</span>` : `<span class="stempel-flagge">❔</span><span class="stempel-name">${esc(name)}</span><span class="stempel-datum">${esc(datumText(s.tag.datum, { day: "2-digit", month: "2-digit" }))}</span>`}
+    ${s.besucht ? `<span class="stempel-flagge">${s.flagge ?? s.land?.flagge ?? "📍"}</span><span class="stempel-name">${esc(name)}</span><span class="stempel-datum">${esc(datumText(s.tag.datum, { day: "2-digit", month: "2-digit", year: "2-digit" }))}</span>` : `<span class="stempel-flagge">❔</span><span class="stempel-name">${esc(name)}</span><span class="stempel-datum">${esc(datumText(s.tag.datum, { day: "2-digit", month: "2-digit" }))}</span>`}
   </div>`;
 }
 
@@ -753,7 +763,8 @@ aktionen["karte-bild"] = async () => {
 
 export function kinderAnsicht() {
   const r = zustand.reise;
-  const seite = SEITEN[zustand.kinderSeite] ? zustand.kinderSeite : "heute";
+  const sichtbar = Object.fromEntries(Object.entries(SEITEN).filter(([k]) => k !== "flughafen" || fluege().length));
+  const seite = sichtbar[zustand.kinderSeite] ? zustand.kinderSeite : "heute";
   const ks = kinder();
   const p = kind();
   if (!p) return `<div class="karte-box"><p>Unter „Reisende“ zuerst die Mitreisenden (und Kinder) eintragen.</p></div>`;
@@ -764,15 +775,17 @@ export function kinderAnsicht() {
     spiele: () => `${quizBox(r)}${memoryBox()}${puzzleBox()}${wimmelBox()}${schatzBox()}${bingoBox(r)}${warteBox()}`,
     tagebuch: () => seiteTagebuch(r),
     kreativ: () => kreativSeite(r),
+    flughafen: () => flughafenKinderSeite(),
     abend: () => `${geschichteBox(r)}${challengeBox()}${rankingBox(r)}${rueckblickBox(r)}`,
     sachen: () => seiteSachen(),
     eltern: () => seiteEltern(r),
   }[seite]();
   setTimeout(malenStarten, 0);
   if (seite === "kreativ") setTimeout(postkarteZeichnen, 0);
+  if (seite === "flughafen") setTimeout(bordkarteZeichnen, 0);
   return `<div class="kinder">
     ${ks.length > 1 ? `<div class="kindwahl">${ks.map((k) => `<button class="kindknopf ${k.id === p?.id ? "an" : ""}" data-aktion="kind-waehlen" data-id="${esc(k.id)}">${esc(vorname(k))}</button>`).join("")}</div>` : ""}
-    <nav class="kinderseiten">${Object.entries(SEITEN).map(([k, t]) => `<button class="${k === seite ? "an" : ""}" data-aktion="kind-seite" data-seite="${k}">${t}</button>`).join("")}</nav>
+    <nav class="kinderseiten">${Object.entries(sichtbar).map(([k, t]) => `<button class="${k === seite ? "an" : ""}" data-aktion="kind-seite" data-seite="${k}">${t}</button>`).join("")}</nav>
     ${inhalt}
   </div>`;
 }

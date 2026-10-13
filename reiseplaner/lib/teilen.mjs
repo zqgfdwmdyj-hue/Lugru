@@ -3,10 +3,10 @@
 import path from "node:path";
 import { DATA_DIR, lesen, aendern } from "./speicher.mjs";
 import { token } from "./konten.mjs";
-import { QUELLEN, KATEGORIEN, ausflugKosten, oeffentlicheFotos, tauchProfilSvg } from "../public/rechnen.js";
+import { QUELLEN, KATEGORIEN, ausflugKosten, oeffentlicheFotos, tauchProfilSvg, FLUGHAFEN_ARTEN } from "../public/rechnen.js";
 
 const FREIGABEN = path.join(DATA_DIR, "freigaben.json");
-export const ARTEN = ["ausflug", "hotel", "tauchgang", "bericht"];
+export const ARTEN = ["ausflug", "hotel", "flughafen", "tauchgang", "bericht"];
 
 export const alleFreigaben = () => lesen(FREIGABEN, []);
 
@@ -80,6 +80,21 @@ export function inhaltFuer(reise, beitraege, benutzer, f) {
       fotos: bew.flatMap((b) => b.fotos),
     };
   }
+  if (f.art === "flughafen") {
+    const o = (reise.flughafenOrte ?? []).find((x) => x.id === f.zielId);
+    if (!o) return null;
+    const bew = bewertungenVon("flughafen", o.id);
+    return {
+      art: "flughafen",
+      titel: o.name,
+      unterzeile: [o.flughafen, o.terminal].filter(Boolean).join(" · "),
+      kategorie: FLUGHAFEN_ARTEN[o.art] ?? "Flughafen",
+      ort: null,
+      sterne: schnitt(bew),
+      bewertungen: bew,
+      fotos: bew.flatMap((b) => b.fotos),
+    };
+  }
   if (f.art === "hotel") {
     const ho = reise.hotels?.find((x) => x.id === f.zielId);
     if (!ho) return null;
@@ -127,6 +142,11 @@ export function inhaltFuer(reise, beitraege, benutzer, f) {
     for (const ho of reise.hotels ?? []) {
       const bew = bewertungenVon("hotel", ho.id);
       if (bew.length) eintraege.push({ art: "hotel", titel: ho.name, unterzeile: ho.ort ?? "", sterne: schnitt(bew), bewertungen: bew, fotos: bew.flatMap((b) => b.fotos), datum: ho.anreise });
+    }
+    for (const o of reise.flughafenOrte ?? []) {
+      const bew = bewertungenVon("flughafen", o.id);
+      const v = (reise.verbindungen ?? []).find((x) => x.id === o.verbindungId);
+      if (bew.length) eintraege.push({ art: "flughafen", titel: o.name, unterzeile: [o.flughafen, v?.datum ? datumLang(v.datum) : ""].filter(Boolean).join(" · "), sterne: schnitt(bew), bewertungen: bew, fotos: bew.flatMap((b) => b.fotos), datum: v?.datum ?? "" });
     }
     for (const roh of beitraege.tauchgaenge.filter((x) => !x.privat)) {
       const { textPrivat, fotosPrivat, ...t } = roh;
@@ -204,7 +224,7 @@ export function seiteRendern(inhalt, f, basisUrl) {
       ? inhalt.eintraege
           .map(
             (e) => `<section class="eintrag">
-          <p class="kat">${e.art === "tauchgang" ? "🤿 Tauchgang" : e.art === "hotel" ? "🏨 Unterkunft" : "📍 Ausflug"}</p>
+          <p class="kat">${e.art === "tauchgang" ? "🤿 Tauchgang" : e.art === "hotel" ? "🏨 Unterkunft" : e.art === "flughafen" ? "✈️ Flughafen" : "📍 Ausflug"}</p>
           <h2>${esc(e.titel)}</h2><p class="leise">${esc(e.unterzeile)} ${e.sterne != null ? `· ${sterneHtml(e.sterne)}` : ""}</p>
           ${e.tauchgang ? tauchTabelle(e.tauchgang) + fotosHtml(e.fotos, basis) : ""}
           ${bewertungenHtml(e.bewertungen, basis)}

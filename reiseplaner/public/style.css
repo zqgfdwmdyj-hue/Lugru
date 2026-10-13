@@ -620,3 +620,15 @@ form.art-hafen .ohne-hafen { display: none !important; }
 .zahlenspass li { margin: 4px 0; }
 .planb { margin-top: 8px; padding: 10px 12px; border: 1px solid var(--gelb); border-left-width: 4px; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; font-size: 0.95rem; }
 .planb .linkchip { --farbe: var(--gelb); }
+
+/* ---------- Flug & Flughafen ---------- */
+.flugplan { list-style: none; padding: 0; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.flugplan li { padding: 6px 10px; border-left: 4px solid var(--rand); background: var(--akzent-hell); border-radius: 6px; }
+.flugplan li.wecker, .flugplan li.los { border-left-color: var(--gelb); }
+.flugplan li.da, .flugplan li.gate { border-left-color: var(--akzent); }
+.flugplan li.boarding, .flugplan li.abflug { border-left-color: var(--gruen); font-weight: 600; }
+.flugort { padding: 8px 0; border-top: 1px solid var(--rand); }
+.spalten { columns: 2 220px; padding-left: 1.2em; }
+.flugfortschritt { margin: 6px 0; color: var(--text); }
+.flugkarte h4 { margin: 16px 0 6px; }
+.kind-countdown .leise { color: rgba(255, 255, 255, 0.88); }

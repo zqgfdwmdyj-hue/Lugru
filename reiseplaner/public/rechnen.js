@@ -42,6 +42,9 @@ export const REISEARTEN = {
   tagesausflug: "🎢 Tagesausflug",
 };
 
+/** Orte am Flughafen, die man bewerten kann. */
+export const FLUGHAFEN_ARTEN = { lounge: "🛋️ Lounge", essen: "🍽️ Restaurant / Café", spielplatz: "🛝 Spielplatz / Familienbereich", ruhe: "😴 Ruheraum", shop: "🛍️ Shop", sicherheit: "🛂 Sicherheitskontrolle", sonstiges: "📍 Sonstiges" };
+
 /** Verkehrsmittel und wie lange man vorher da sein sollte (Minuten). */
 export const VERKEHRSMITTEL = {
   flug: { name: "✈️ Flug", vorlauf: 120, ort: "Flughafen" },

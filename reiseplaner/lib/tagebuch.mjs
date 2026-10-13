@@ -7,7 +7,7 @@ import { randomUUID, randomBytes } from "node:crypto";
 import { mkdir, readdir, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { DATA_DIR, lesen, aendern, schreiben, exklusiv } from "./speicher.mjs";
-import { KATEGORIEN, oeffentlicheFotos } from "../public/rechnen.js";
+import { KATEGORIEN, oeffentlicheFotos, FLUGHAFEN_ARTEN } from "../public/rechnen.js";
 
 // Jedes Konto hat sein eigenes Tagebuch (Weltkarte, nachgetragene Orte, freigegebene Reisen, eigener Link).
 const ORDNER = path.join(DATA_DIR, "tagebuecher");
@@ -160,6 +160,15 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
         const bew = bewertungenVon(beitraege, "hotel", ho.id);
         return { name: ho.name, ort: ho.ort ?? "", anreise: ho.anreise, abreise: ho.abreise ?? "", lat: ho.lat ?? null, lng: ho.lng ?? null, sterne: schnitt(bew), bewertungen: bew };
       });
+    // Flughafen: Lounges, Restaurants, Spielplätze vergangener Flüge mit Bewertungen
+    const flughafen = (reise.flughafenOrte ?? [])
+      .map((o) => ({ o, v: (reise.verbindungen ?? []).find((x) => x.id === o.verbindungId) }))
+      .filter(({ v }) => v?.datum && v.datum <= heute && v.status !== "verworfen")
+      .map(({ o, v }) => {
+        const bew = bewertungenVon(beitraege, "flughafen", o.id);
+        return { name: o.name, art: o.art ?? "", flughafen: o.flughafen ?? "", datum: v.datum, sterne: schnitt(bew), bewertungen: bew };
+      })
+      .filter((x) => x.bewertungen.length);
     const tauchgaenge = beitraege.tauchgaenge
       .filter((t) => !t.privat && t.datum && t.datum <= heute)
       .sort((a, b) => `${a.datum}${a.beginn}`.localeCompare(`${b.datum}${b.beginn}`))
@@ -173,6 +182,7 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
       orte: besuchteOrte(reise, heute).map(({ reiseId, ...o }) => o),
       ausfluege,
       hotels,
+      flughafen,
       tauchgaenge,
       // Album: nur ausdrücklich geteilte Fotos (🌍) vergangener Tage
       album: (beitraege.fotos ?? []).filter((f) => f.geteilt === true && f.art !== "kinder" && tagIds.has(f.hafenId)).map((f) => f.id),
@@ -185,7 +195,7 @@ export function tagebuchInhalt(reisen, benutzer, einstellungen, heute) {
   ];
   const fotos = new Set();
   for (const r of ausgabe) {
-    for (const x of [...r.ausfluege, ...r.hotels]) for (const b of x.bewertungen) b.fotos.forEach((f) => fotos.add(f));
+    for (const x of [...r.ausfluege, ...r.hotels, ...(r.flughafen ?? [])]) for (const b of x.bewertungen) b.fotos.forEach((f) => fotos.add(f));
     for (const t of r.tauchgaenge) t.fotos.forEach((f) => fotos.add(f));
     r.album.forEach((f) => fotos.add(f));
   }
@@ -233,6 +243,7 @@ export function seiteRendern(inhalt, basisUrl, kachelUrl, kachelHinweis, pfad = 
       <h2>${esc(r.name)}</h2>
       <p class="leise">${datum(r.von)} – ${datum(r.bis)}${r.schiff ? ` · ${esc(r.schiff)}` : ""}</p>
       <p class="stationen">${[...new Map(r.orte.filter((o) => o.art !== "hotel").map((o) => [o.name, o])).values()].map((o) => `<button type="button" class="flieg chip" data-lat="${o.lat}" data-lng="${o.lng}" data-zoom="11">${esc(o.name)}</button>`).join("")}</p>
+      ${r.flughafen?.length ? `<h3>✈️ Flughafen</h3>${r.flughafen.map((x) => `<article class="eintrag"><div class="kopf"><strong>${esc(x.name)}</strong> ${sterne(x.sterne)} <span class="leise">${esc([FLUGHAFEN_ARTEN[x.art], x.flughafen].filter(Boolean).join(" · "))} · ${datum(x.datum, { day: "numeric", month: "short" })}</span></div>${bewertungen(x.bewertungen)}</article>`).join("")}` : ""}
       ${r.hotels.length ? `<h3>🏨 Unterkünfte</h3>${r.hotels.map((h) => `<article class="eintrag"><div class="kopf"><strong>${esc(h.name)}</strong> ${sterne(h.sterne)} <span class="leise">${esc(h.ort)} · ${datum(h.anreise, { day: "numeric", month: "short" })} – ${datum(h.abreise, { day: "numeric", month: "short" })}</span>${h.lat != null ? ` <button type="button" class="flieg klein" data-lat="${h.lat}" data-lng="${h.lng}" data-zoom="13">Karte</button>` : ""}</div>${bewertungen(h.bewertungen)}</article>`).join("")}` : ""}
       ${r.ausfluege.length ? `<h3>📍 Ausflüge</h3>${r.ausfluege.map((a) => `<article class="eintrag"><div class="kopf"><strong>${esc(a.titel)}</strong> ${sterne(a.sterne)} <span class="leise">${esc(a.ort)} · ${datum(a.datum, { day: "numeric", month: "short" })}${a.kategorie ? ` · ${esc(a.kategorie)}` : ""}</span>${a.lat != null ? ` <button type="button" class="flieg klein" data-lat="${a.lat}" data-lng="${a.lng}" data-zoom="12">Karte</button>` : ""}</div>${bewertungen(a.bewertungen)}</article>`).join("")}` : ""}
       ${r.album.length ? `<h3>📷 Fotos</h3>${galerie(r.album)}` : ""}

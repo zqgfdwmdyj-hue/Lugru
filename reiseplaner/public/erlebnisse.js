@@ -26,6 +26,7 @@ export function bewertungsZeile(zielArt, zielId) {
 
 function zielTitel(zielArt, zielId) {
   if (zielArt === "hotel") return zustand.reise.hotels?.find((h) => h.id === zielId)?.name ?? "Unterkunft";
+  if (zielArt === "flughafen") return (zustand.reise.flughafenOrte ?? []).find((o) => o.id === zielId)?.name ?? "Flughafen";
   return zustand.reise.ausfluege?.find((a) => a.id === zielId)?.titel ?? "Ausflug";
 }
 

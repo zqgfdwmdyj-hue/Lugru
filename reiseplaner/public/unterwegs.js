@@ -87,6 +87,7 @@ function briefingOhneKi(h) {
     </div>
     <div id="unterwegsWetter" class="wetter"></div>
     ${verbindungen.length ? `<h4>Unterwegs mit</h4><ul class="ablauf">${verbindungen.map((v) => `<li>${verbindungText(v)}</li>`).join("")}</ul>` : ""}
+    ${verbindungen.some((v) => v.art === "flug") ? `<p><button class="knopf leise" data-aktion="zum-flug">✈️ Flug-Tag: Zeitplan, Lounge, Handgepäck, Flugstatus</button></p>` : ""}
     ${geplant.length ? `<h4>Ablauf</h4><ul class="ablauf">${geplant.map((a) => {
       const z = zeitplan(a, h, reise);
       return `<li><strong>${esc(a.beginn || "–")}</strong> ${esc(a.titel)}${a.status === "favorit" ? ' <span class="klein leise">(noch nicht gebucht)</span>' : ""}${z.zurueck != null ? ` <span class="klein leise">– zurück ca. ${minZuZeit(z.zurueck)}</span>` : ""}${z.puffer != null && z.puffer < 60 && a.quelle !== "schiff" ? ` <span class="warnung klein">⚠️ Puffer ${z.puffer < 0 ? "fehlt" : dauerText(z.puffer)}</span>` : ""}</li>`;
@@ -377,3 +378,5 @@ aenderungen["usd-kurs"] = (el) => {
   neuZeichnen();
 };
 
+
+aktionen["zum-flug"] = () => document.querySelector('#reiter button[data-ansicht="flug"]')?.click();

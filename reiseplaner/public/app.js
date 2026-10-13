@@ -16,6 +16,7 @@ import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js"
 import { vorbereitungAnsicht } from "./vorbereitung.js";
 import { unterwegsAnsicht, nachUnterwegs, weckerPlanen } from "./unterwegs.js";
 import { kinderAnsicht } from "./kinder.js";
+import { flugAnsicht, fluege } from "./flug.js";
 import { planB, PLAN_B_IDEEN } from "./unterwegs-logik.js";
 import { bordkonto, inReisewaehrung, etappen, spritkosten } from "./unterwegs-logik.js";
 import { verbindungText } from "./unterwegs.js";
@@ -190,7 +191,9 @@ function alles() {
     return;
   }
   document.querySelector('[data-ansicht="verlauf"]').textContent = istKreuzfahrt() ? "Route & Häfen" : "Reiseverlauf";
-  const ansichten = { plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, kinder: kinderAnsicht };
+  // Reiter „✈️ Flug“ nur, wenn ein Flug eingetragen ist
+  document.querySelector('[data-ansicht="flug"]').hidden = !fluege().length && zustand.ansicht !== "flug";
+  const ansichten = { flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, kinder: kinderAnsicht };
   inhalt.innerHTML = (ansichten[zustand.ansicht] ?? planAnsicht)();
   if (zustand.ansicht === "plan") nachPlan();
   if (zustand.ansicht === "unterwegs") nachUnterwegs();
@@ -847,9 +850,14 @@ function verbindungDialog(id) {
       <label>Sitz / Wagen<input name="sitz" value="${esc(v.sitz ?? "")}" maxlength="60"></label>
       <label>Gepäck<input name="gepaeck" value="${esc(v.gepaeck ?? "")}" placeholder="z. B. 23 kg + Handgepäck" maxlength="80"></label>
       <label>Preis gesamt (€)<input name="preis" inputmode="decimal" value="${esc(v.preis ?? "")}"></label>
+      <label>Anfahrt (Min.)<input name="anfahrtMin" inputmode="numeric" value="${esc(v.anfahrtMin ?? "")}" placeholder="Fahrt von zu Hause"></label>
+      <label>Parken / Shuttle (Min.)<input name="parkenMin" inputmode="numeric" value="${esc(v.parkenMin ?? "")}" placeholder="z. B. 20"></label>
+      <label>Flug-/Fahrdauer (Min.)<input name="flugdauerMin" inputmode="numeric" value="${esc(v.flugdauerMin ?? "")}" placeholder="z. B. 570 (für „Wo sind wir?“)"></label>
     </div>
     <label>Abfahrtsort auf der Karte (für die Rückweg-Prüfung)</label>
     ${ortsSuche("vonOrt", v.vonOrt, "z. B. Flughafen Frankfurt, Hauptbahnhof")}
+    <label>Zielort auf der Karte (für „Wo sind wir gerade?“)</label>
+    ${ortsSuche("nachOrt", v.nachOrt, "z. B. Flughafen Barbados")}
     <fieldset><legend>Wer reist mit?</legend><div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="personen" value="${esc(p.id)}" ${(v.personen ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div></fieldset>
     <label>Notiz<textarea name="notiz" rows="2">${esc(v.notiz ?? "")}</textarea></label>
     <div class="zeile">
@@ -861,6 +869,10 @@ function verbindungDialog(id) {
   </form>`, true);
   const form = $("#verbindungForm");
   if (!v.vonOrt && v.von) $(".ortsq", form).value = v.von;
+  if (!v.nachOrt && v.nach) $('[data-ort="nachOrt"] .ortsq', form).value = v.nach;
+  form.nach.addEventListener("change", () => {
+    if (!ortAuslesen(form, "nachOrt")) $('[data-ort="nachOrt"] .ortsq', form).value = form.nach.value;
+  });
   form.von.addEventListener("change", () => {
     if (!ortAuslesen(form, "vonOrt")) $(".ortsq", form).value = form.von.value;
   });
@@ -870,7 +882,8 @@ function verbindungDialog(id) {
       art: f.get("art"), titel: String(f.get("titel")).trim(), status: f.get("status"), von: String(f.get("von")).trim(), nach: String(f.get("nach")).trim(),
       vorlaufMin: zahl(f.get("vorlaufMin")), datum: f.get("datum"), abZeit: f.get("abZeit"), anDatum: f.get("anDatum"), anZeit: f.get("anZeit"),
       buchungsnr: String(f.get("buchungsnr")).trim(), terminal: String(f.get("terminal")).trim(), sitz: String(f.get("sitz")).trim(), gepaeck: String(f.get("gepaeck")).trim(),
-      preis: zahl(f.get("preis")), vonOrt: ortAuslesen(form, "vonOrt"), personen: f.getAll("personen"), notiz: f.get("notiz"),
+      preis: zahl(f.get("preis")), vonOrt: ortAuslesen(form, "vonOrt"), nachOrt: ortAuslesen(form, "nachOrt"), personen: f.getAll("personen"), notiz: f.get("notiz"),
+      anfahrtMin: zahl(f.get("anfahrtMin")), parkenMin: zahl(f.get("parkenMin")), flugdauerMin: zahl(f.get("flugdauerMin")),
     });
     if (!id) zustand.reise.verbindungen.push(v);
     speichern();

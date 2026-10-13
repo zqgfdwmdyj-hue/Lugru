@@ -240,6 +240,14 @@ export function kinderAendern(reiseId, personId, d, fotoIds = new Set(), audioId
         if (k.funde.length >= 300) throw fehler(400, "Das Sammelalbum ist voll.");
         k.funde.push({ id: randomUUID(), titel: text(wert.titel, 80).trim() || "Fundstück", fotoId: wert.fotoId, ort: text(wert.ort, 80), datum: datumOk(wert.datum) ? wert.datum : "" });
       } else k.funde = k.funde.filter((x) => x.id !== schluessel);
+    } else if (bereich === "flugspiel") {
+      // Flughafen-Bingo und gesammelte Fluglinien: „bingo:Pilot/in“, „linie:Condor“
+      if (!/^(bingo|linie):[\p{L}\p{N} ./&()'-]{1,50}$/u.test(String(schluessel ?? ""))) throw fehler(400, "Ungültiges Feld.");
+      k.flugspiel ??= {};
+      if (wert) {
+        if (Object.keys(k.flugspiel).length >= 200) throw fehler(400, "Zu viele Einträge.");
+        k.flugspiel[schluessel] = true;
+      } else delete k.flugspiel[schluessel];
     } else if (bereich === "ranking") {
       k.ranking = { ort: text(wert?.ort, 80), essen: text(wert?.essen, 100), erlebnis: text(wert?.erlebnis, 120), tier: text(wert?.tier, 60) };
     } else throw fehler(400, "Unbekannter Bereich.");

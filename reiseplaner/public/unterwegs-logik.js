@@ -103,6 +103,9 @@ export const PACKVORLAGEN = {
   tagesausflug: { name: "Tagesausflug", eintraege: [
     ...P("Tagesausflug", "Tickets", "Proviant & Wasser", "Sonnencreme / Regenjacke", "Wechselkleidung für die Kinder", "Powerbank", "Bargeld"),
   ] },
+  handgepaeck: { name: "Handgepäck (Flug)", eintraege: [
+    ...P("Handgepäck", "Reisepässe & Bordkarten griffbereit", "Flüssigkeiten max. 100 ml im 1-Liter-Beutel", "Powerbank & Ersatzakkus ins Handgepäck (nicht in den Koffer)", "Ladekabel", "Kopfhörer", "Tablet mit Filmen offline", "Snacks für unterwegs", "Leere Trinkflasche (nach der Kontrolle füllen)", "Kaugummi / Schnuller / Trinken gegen Druck auf den Ohren", "Feuchttücher & Taschentücher", "Pullover oder Decke (im Flugzeug ist es kühl)", "Wechselkleidung für die Kinder", "Wichtige Medikamente (nicht in den Koffer)", "Nackenkissen"),
+  ] },
   kinder: { name: "Kinder", eintraege: [
     ...P("Kinder", "Kinderreisepass", "Kuscheltier", "Spiele & Bücher für unterwegs", "Tablet + Kopfhörer + Filme offline", "Snacks", "Schwimmflügel / Schwimmweste", "UV-Badeshirt", "Kinder-Sonnencreme", "Fieberthermometer & Kindermedikamente"),
   ] },
@@ -118,6 +121,7 @@ export function passendeVorlagen(reise) {
   if (warm) v.push("warm");
   if ((reise?.ausfluege ?? []).some((a) => ["tauchen", "schnorcheln"].includes(a.kategorie))) v.push("tauchen");
   if ((reise?.personen ?? []).some(istKind)) v.push("kinder");
+  if ((reise?.verbindungen ?? []).some((x) => x.art === "flug" && x.status !== "verworfen")) v.push("handgepaeck");
   return v;
 }
 
@@ -259,7 +263,7 @@ export function kalenderDatei(reise, { anBord = [90, 30], ausfluege = 45, dokume
     const text = `${vm.name.replace(/^\S+ /, "")} ${v.titel ?? ""}`.trim();
     ev(`verbindung-${v.id}`, icsDatumZeit(v.datum, v.abZeit), icsDatumZeit(zeitZuMin(v.anZeit) != null ? anDatum : v.datum, anZeit), `${vm.name.split(" ")[0]} ${v.titel || vm.name} ${v.von ? `${v.von} → ${v.nach ?? ""}` : ""}`.trim(),
       [v.buchungsnr ? `Buchung: ${v.buchungsnr}` : "", v.terminal ? `Terminal/Gleis: ${v.terminal}` : "", v.sitz ? `Sitz: ${v.sitz}` : "", v.notiz ?? ""].filter(Boolean).join("\n"),
-      [alarm(vorlauf + 60, `${text}: in 1 Std. losfahren – spätestens ${minZuZeit(zeitZuMin(v.abZeit) - vorlauf)} am ${vm.ort}`), ...(vorlauf ? [alarm(vorlauf, `${text}: jetzt am ${vm.ort} sein (Abfahrt ${v.abZeit})`)] : [])], v.von ?? "");
+      flugAlarme(v, reise, text) ?? [alarm(vorlauf + 60, `${text}: in 1 Std. losfahren – spätestens ${minZuZeit(zeitZuMin(v.abZeit) - vorlauf)} am ${vm.ort}`), ...(vorlauf ? [alarm(vorlauf, `${text}: jetzt am ${vm.ort} sein (Abfahrt ${v.abZeit})`)] : [])], v.von ?? "");
   }
   for (const d of dokumente) {
     if (!d.frist || d.erledigt) continue;
@@ -809,3 +813,127 @@ export function kachelnFuer(orte, { zoomVon = 11, zoomBis = 16, radiusKm = 2, ma
   }
   return [...ergebnis.values()];
 }
+
+
+// ---------- Flughafen ----------
+
+/** Flug mit eingetragener Anfahrt: Erinnerungen „Aufstehen“, „Losfahren“ und „am Flughafen sein“. */
+function flugAlarme(v, reise, text) {
+  if (v.art !== "flug") return null;
+  const plan = flugZeitplan(v, { kinder: (reise.personen ?? []).some(istKind) });
+  if (plan?.losfahren == null) return null;
+  return [
+    alarm(plan.ab - plan.aufstehen, `${text}: Aufstehen (Losfahren um ${uhrzeitMitTag(plan.losfahren)})`),
+    alarm(plan.ab - plan.losfahren, `${text}: Jetzt losfahren!`),
+    alarm(plan.ab - plan.amFlughafen, `${text}: Jetzt am Flughafen sein`),
+  ];
+}
+
+/** Uhrzeit aus Minuten, auch über Mitternacht hinaus (negativ = Vortag). */
+export function uhrzeitMitTag(min) {
+  if (min == null || !Number.isFinite(min)) return "";
+  const tag = Math.floor(min / 1440);
+  const m = ((min % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}${tag < 0 ? " (Vortag)" : tag > 0 ? " (+1 Tag)" : ""}`;
+}
+
+/**
+ * Anreise-Tag rückwärts ab Abflug: Aufstehen, Losfahren, am Flughafen, Gepäck/Sicherheit, Gate, Boarding.
+ * Felder der Verbindung: abZeit, vorlaufMin (Standard 120), anfahrtMin, parkenMin, boardingMin (Standard 40).
+ */
+export function flugZeitplan(v, { kinder = false } = {}) {
+  const ab = zeitZuMin(v?.abZeit ?? "");
+  if (ab == null) return null;
+  const vorlauf = zahl(v.vorlaufMin) ?? VERKEHRSMITTEL.flug.vorlauf;
+  const boarding = ab - (zahl(v.boardingMin) ?? 40);
+  const gate = boarding - 15;
+  const amFlughafen = ab - vorlauf;
+  const anfahrt = zahl(v.anfahrtMin);
+  const parken = zahl(v.parkenMin) ?? 0;
+  const reserve = kinder ? 30 : 15;
+  const losfahren = anfahrt != null ? amFlughafen - parken - anfahrt - reserve : null;
+  const aufstehen = losfahren != null ? losfahren - (kinder ? 75 : 60) : null;
+  const schritte = [
+    aufstehen != null && { min: aufstehen, text: "⏰ Aufstehen", art: "wecker" },
+    losfahren != null && { min: losfahren, text: `🚗 Losfahren (${anfahrt} Min. Fahrt${parken ? ` + ${parken} Min. Parken/Shuttle` : ""} + ${reserve} Min. Reserve)`, art: "los" },
+    { min: amFlughafen, text: `🏢 Am Flughafen sein${v.terminal ? ` – ${v.terminal}` : ""}: Gepäck aufgeben, Sicherheitskontrolle`, art: "da" },
+    { min: gate, text: "🚪 Spätestens am Gate (Bordkarte & Pässe bereit)", art: "gate" },
+    { min: boarding, text: "🎫 Boarding", art: "boarding" },
+    { min: ab, text: `✈️ Abflug ${v.titel ?? ""}`.trim(), art: "abflug" },
+  ].filter(Boolean);
+  return { schritte: schritte.map((x) => ({ ...x, zeit: uhrzeitMitTag(x.min) })), ab, boarding, losfahren, aufstehen, amFlughafen };
+}
+
+/** Was tun bei Verspätung? Vorschläge nach Wartezeit, mit Hinweis auf die Fluggastrechte (EU 261). */
+export function verspaetungsTipps(min, { kinder = false } = {}) {
+  const m = Math.max(0, Math.round(zahl(min) ?? 0));
+  const t = [];
+  if (!m) return t;
+  if (m < 45) t.push("🛫 Flugzeuge am Fenster beobachten – wer findet die meisten Fluglinien?", "🧩 Spiele für Wartezeiten aus dem Kinder-Bereich (ganz ohne Internet)");
+  if (m >= 30) t.push("🥨 Snack holen und Trinkflasche nach der Kontrolle auffüllen", kinder ? "🛝 Spielplatz oder Familienbereich im Terminal suchen" : "🚶 Durch den Terminal bummeln");
+  if (m >= 60) t.push("🌅 Aussichtsterrasse oder Besucherbereich (oft vor der Sicherheitskontrolle)", "🛋️ Lounge – mit Priority Pass, Kreditkarte oder Tagesticket (meist 30–60 €)");
+  if (m >= 120) t.push("🍽️ In Ruhe essen – oft gibt die Fluglinie ab 2 Std. Verspätung Essensgutscheine (am Schalter fragen)", "😴 Ruheraum oder ruhige Ecke für die Kinder");
+  if (m >= 180) t.push("⚖️ Ab 3 Std. Verspätung am Ziel: Anspruch auf Entschädigung nach EU-Fluggastrechten (250–600 € pro Person, je nach Strecke) – Bordkarten und Belege aufheben, Grund der Verspätung erfragen");
+  if (m >= 300) t.push("🏨 Bei sehr langer Verspätung oder über Nacht: Fluglinie muss Betreuung und ggf. Hotel stellen – am Schalter nachfragen");
+  return t;
+}
+
+/** Zwischenpunkt auf dem Großkreis (anteil 0–1) zwischen zwei Orten. */
+export function grosskreisPunkt(a, b, anteil) {
+  const rad = (x) => (x * Math.PI) / 180;
+  const grad = (x) => (x * 180) / Math.PI;
+  const [l1, g1, l2, g2] = [rad(a.lat), rad(a.lng), rad(b.lat), rad(b.lng)];
+  const d = 2 * Math.asin(Math.sqrt(Math.sin((l2 - l1) / 2) ** 2 + Math.cos(l1) * Math.cos(l2) * Math.sin((g2 - g1) / 2) ** 2));
+  if (!d) return { lat: a.lat, lng: a.lng };
+  const A = Math.sin((1 - anteil) * d) / Math.sin(d);
+  const B = Math.sin(anteil * d) / Math.sin(d);
+  const x = A * Math.cos(l1) * Math.cos(g1) + B * Math.cos(l2) * Math.cos(g2);
+  const y = A * Math.cos(l1) * Math.sin(g1) + B * Math.cos(l2) * Math.sin(g2);
+  const z = A * Math.sin(l1) + B * Math.sin(l2);
+  return { lat: grad(Math.atan2(z, Math.sqrt(x * x + y * y))), lng: grad(Math.atan2(y, x)) };
+}
+
+/**
+ * „Wo sind wir gerade?“ – Anteil der Flugstrecke nach Uhrzeit. Dauer aus flugdauerMin, sonst aus Ab/An
+ * (ohne Zeitzonen – daher besser die Flugdauer eintragen). jetzt: Date (Ortszeit des Abflugs).
+ */
+export function flugFortschritt(v, jetzt = new Date()) {
+  const ab = zeitZuMin(v?.abZeit ?? "");
+  if (!v?.datum || ab == null) return null;
+  let dauer = zahl(v.flugdauerMin);
+  if (dauer == null && zeitZuMin(v.anZeit ?? "") != null) {
+    const tage = v.anDatum && v.anDatum !== v.datum ? Math.round((new Date(`${v.anDatum}T12:00`) - new Date(`${v.datum}T12:00`)) / 86400000) : 0;
+    dauer = zeitZuMin(v.anZeit) + tage * 1440 - ab;
+  }
+  if (!(dauer > 0) || dauer > 24 * 60) return null;
+  const start = new Date(`${v.datum}T${v.abZeit}:00`);
+  const vergangen = (jetzt - start) / 60000;
+  const anteil = Math.min(1, Math.max(0, vergangen / dauer));
+  const km = Number.isFinite(v.vonOrt?.lat) && Number.isFinite(v.nachOrt?.lat) ? Math.round(entfernungKm(v.vonOrt, v.nachOrt)) : null;
+  return { anteil, dauer, restMin: Math.max(0, Math.round(dauer - vergangen)), phase: vergangen < 0 ? "vorher" : vergangen >= dauer ? "gelandet" : "fliegt", km, position: km != null ? grosskreisPunkt(v.vonOrt, v.nachOrt, anteil) : null };
+}
+
+/** Rückflug: woran man denken sollte. */
+export const RUECKFLUG_CHECK = [
+  "Flüssige Souvenirs (Rum, Öl, Sonnencreme) in den Koffer, nicht ins Handgepäck",
+  "Koffer wiegen – Freigepäck prüfen",
+  "Check-out bzw. Ausschiffung: Uhrzeit und Gepäckabgabe am Vorabend",
+  "Mietwagen volltanken und Rückgabezeit einplanen",
+  "Online-Check-in für den Rückflug (öffnet meist 24–30 Std. vorher)",
+  "Restliches Bargeld ausgeben oder fürs Trinkgeld einplanen",
+  "Ladekabel, Adapter und Kuscheltiere einsammeln",
+];
+
+/** Flughafen-Bingo für Kinder (Emoji, Begriff). */
+export const FLUG_BINGO = [
+  ["👩‍✈️", "Pilot/in"], ["🧳", "Gepäckband"], ["🚒", "Flughafen-Feuerwehr"], ["⛽", "Tankwagen"], ["🚌", "Vorfeldbus"], ["🛩️", "Kleines Flugzeug"],
+  ["✈️", "Riesen-Flugzeug (4 Triebwerke)"], ["🦺", "Mitarbeiter mit Warnweste"], ["🎫", "Bordkarte"], ["🛂", "Passkontrolle"], ["📺", "Abflugtafel"], ["🚶", "Laufband"],
+  ["🛒", "Gepäckwagen"], ["🐕", "Spürhund"], ["🌍", "Weltkarte"], ["🚦", "Ampel auf dem Vorfeld"], ["🧃", "Saftbar"], ["🪟", "Flugzeug am Fenster"],
+];
+
+/** Fluglinien zum Sammeln (Name, Kennfarbe für das Abzeichen). */
+export const FLUGLINIEN = [
+  ["Lufthansa", "#0a1d3d"], ["Condor", "#fdb913"], ["Eurowings", "#a3195b"], ["TUIfly", "#70cbf4"], ["Ryanair", "#073590"], ["easyJet", "#ff6600"],
+  ["Emirates", "#d71921"], ["Turkish Airlines", "#c70a0c"], ["KLM", "#00a1de"], ["Air France", "#002157"], ["British Airways", "#075aaa"], ["Swiss", "#e30613"],
+  ["Austrian", "#ef3340"], ["Qatar Airways", "#5c0632"], ["American Airlines", "#0078d2"], ["Delta", "#003366"], ["United", "#005daa"], ["Discover", "#ad0c2b"],
+];

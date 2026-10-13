@@ -129,7 +129,7 @@ function darfBearbeiten(eintrag, benutzer, rolle, feld = "autorId") {
 function bewertungAus(d) {
   const sterne = Math.round(Number(d.sterne));
   if (!(sterne >= 1 && sterne <= 5)) throw fehler(400, "Bitte 1 bis 5 Sterne vergeben.");
-  if (!["ausflug", "hotel"].includes(d.zielArt)) throw fehler(400, "Unbekanntes Ziel.");
+  if (!["ausflug", "hotel", "flughafen"].includes(d.zielArt)) throw fehler(400, "Unbekanntes Ziel.");
   const fotos = (Array.isArray(d.fotos) ? d.fotos : []).filter((f) => ID_RE.test(f)).slice(0, 40);
   return {
     zielArt: d.zielArt, zielId: text(d.zielId, 80), privat: d.privat === true, sterne, titel: text(d.titel, 200),
