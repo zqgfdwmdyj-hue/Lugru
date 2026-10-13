@@ -850,6 +850,10 @@ async function api(req, res, url, ich) {
     if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
     return json(res, 201, await tagebuch.ortHinzufuegen(await koerper(req, 20_000)));
   }
+  if (t[1] === "weltkarte" && t[2] === "orte" && t[3] && m === "PUT") {
+    if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
+    return json(res, 200, await tagebuch.ortAendern(t[3], await koerper(req, 20_000)));
+  }
   if (t[1] === "weltkarte" && t[2] === "orte" && t[3] && m === "DELETE") {
     if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
     await tagebuch.ortLoeschen(t[3]);

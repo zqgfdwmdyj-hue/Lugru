@@ -113,3 +113,12 @@ test("Album: nur geteilte Fotos vergangener Tage erscheinen im Tagebuch", () => 
   assert.ok(html.includes("/tagebuch/foto/alb-offen"));
   assert.ok(!html.includes("alb-privat"));
 });
+
+test("Nachgetragene Orte lassen sich bearbeiten", async () => {
+  const t = await import("../lib/tagebuch.mjs");
+  const o = await t.ortHinzufuegen({ name: "Kreta", land: "Griechenland", jahr: "2025", notiz: "Tauchen", lat: 35.2, lng: 24.9 });
+  const neu = await t.ortAendern(o.id, { name: "Chania", land: "Griechenland", jahr: "20x5", notiz: "Tauchen mit Kindern", lat: 35.5, lng: 24.0 });
+  assert.deepEqual([neu.id, neu.name, neu.jahr, neu.notiz, neu.lat], [o.id, "Chania", "", "Tauchen mit Kindern", 35.5]);
+  await assert.rejects(t.ortAendern(o.id, { name: "x", lat: 999, lng: 0 }), /Karte/);
+  await assert.rejects(t.ortAendern("gibts-nicht", { name: "x", lat: 1, lng: 1 }), /nicht gefunden/);
+});

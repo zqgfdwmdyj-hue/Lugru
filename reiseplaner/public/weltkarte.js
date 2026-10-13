@@ -1,5 +1,6 @@
 // Weltkarte: rote Stecknadeln für alle Orte, an denen ihr wart – plus Steuerung des öffentlichen Reisetagebuchs.
-import { zustand, $, esc, aktionen, aenderungen, neuZeichnen, dialogOeffnen, anfrage, ortsSuche, ortAuslesen, ortFinden, dialog } from "./kern.js";
+import { zustand, $, esc, aktionen, aenderungen, neuZeichnen, dialogOeffnen, anfrage, ortsSuche, ortAuslesen, ortFinden, dialog, neueId } from "./kern.js";
+import { REISEARTEN } from "./rechnen.js";
 
 export async function weltkarteLaden() {
   try {
@@ -64,8 +65,8 @@ export function weltkarteAnsicht() {
     </div>
     <div class="karte-box">
       <div class="zeile"><h3>Frühere Reisen nachtragen</h3>${admin ? `<button class="knopf" data-aktion="ort-neu">+ Ort</button>` : ""}</div>
-      <p class="leise klein">Orte aus Urlauben vor dem Reiseplaner – sie bekommen ebenfalls eine rote Stecknadel (auch im öffentlichen Tagebuch).</p>
-      ${w.orte.length ? `<div class="tabelle"><table><tbody>${w.orte.map((o) => `<tr><td><button class="link" data-aktion="flieg" data-lat="${o.lat}" data-lng="${o.lng}" data-zoom="10">📍 ${esc(o.name)}</button></td><td class="leise">${esc(o.land)}</td><td>${esc(o.jahr)}</td><td class="klein">${esc(o.notiz)}</td><td>${admin ? `<button class="link rot" data-aktion="ort-loeschen" data-id="${esc(o.id)}">Entfernen</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : ""}
+      <p class="leise klein">Orte aus Urlauben vor dem Reiseplaner – sie bekommen ebenfalls eine rote Stecknadel (auch im öffentlichen Tagebuch). Mit „📸 Als Reise anlegen“ wird daraus eine richtige Reise, in der ihr Fotos, Bewertungen, Tauchgänge (auch vom Tauchcomputer) und ein Tagebuch nachtragen könnt.</p>
+      ${w.orte.length ? `<div class="tabelle"><table><tbody>${w.orte.map((o) => `<tr><td><button class="link" data-aktion="flieg" data-lat="${o.lat}" data-lng="${o.lng}" data-zoom="10">📍 ${esc(o.name)}</button></td><td class="leise">${esc(o.land)}</td><td>${esc(o.jahr)}</td><td class="klein">${esc(o.notiz)}</td><td>${admin ? `<button class="link" data-aktion="ort-als-reise" data-id="${esc(o.id)}">📸 Als Reise anlegen</button> <button class="link" data-aktion="ort-bearbeiten" data-id="${esc(o.id)}">Bearbeiten</button> <button class="link rot" data-aktion="ort-loeschen" data-id="${esc(o.id)}">Entfernen</button>` : ""}</td></tr>`).join("")}</tbody></table></div>` : ""}
     </div>`;
 }
 
@@ -87,16 +88,19 @@ aktionen["tagebuch-speichern"] = async (el) => {
   el.textContent = "Gespeichert ✓";
 };
 
-aktionen["ort-neu"] = () => {
+aktionen["ort-neu"] = () => ortDialog(null);
+aktionen["ort-bearbeiten"] = (el) => ortDialog(zustand.weltkarte.orte.find((o) => o.id === el.dataset.id));
+
+function ortDialog(alt) {
   dialogOeffnen(`<form method="dialog" class="formular" id="ortForm">
-    <h3>Ort nachtragen</h3>
-    ${ortsSuche("ort", null, "Ort suchen, z. B. „Hurghada“ oder „Malediven“")}
+    <h3>${alt ? "Ort bearbeiten" : "Ort nachtragen"}</h3>
+    ${ortsSuche("ort", alt ? { lat: alt.lat, lng: alt.lng, name: alt.name } : null, "Ort suchen, z. B. „Hurghada“ oder „Malediven“")}
     <div class="formular drei">
-      <label>Name<input name="name" placeholder="wird aus der Suche übernommen"></label>
-      <label>Land<input name="land"></label>
-      <label>Jahr<input name="jahr" inputmode="numeric" maxlength="4" placeholder="z. B. 2019"></label>
+      <label>Name<input name="name" placeholder="wird aus der Suche übernommen" value="${esc(alt?.name ?? "")}"></label>
+      <label>Land<input name="land" value="${esc(alt?.land ?? "")}"></label>
+      <label>Jahr<input name="jahr" inputmode="numeric" maxlength="4" placeholder="z. B. 2019" value="${esc(alt?.jahr ?? "")}"></label>
     </div>
-    <label>Notiz (öffentlich sichtbar)<input name="notiz" maxlength="300" placeholder="z. B. Erster Tauchurlaub"></label>
+    <label>Notiz (öffentlich sichtbar)<input name="notiz" maxlength="300" placeholder="z. B. Erster Tauchurlaub" value="${esc(alt?.notiz ?? "")}"></label>
     <div class="zeile"><span class="platz"></span><button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button><button class="knopf" value="ok">Speichern</button></div>
   </form>`);
   const form = $("#ortForm");
@@ -123,11 +127,57 @@ aktionen["ort-neu"] = () => {
       dialog().close();
     }
     try {
-      const neu = await anfrage("/api/weltkarte/orte", { method: "POST", body: { ...o, name: form.name.value || o.name, land: form.land.value, jahr: form.jahr.value, notiz: form.notiz.value } });
-      zustand.weltkarte.orte.push(neu);
+      const daten = { ...o, name: form.name.value || o.name, land: form.land.value, jahr: form.jahr.value, notiz: form.notiz.value };
+      if (alt) Object.assign(alt, await anfrage(`/api/weltkarte/orte/${alt.id}`, { method: "PUT", body: daten }));
+      else zustand.weltkarte.orte.push(await anfrage("/api/weltkarte/orte", { method: "POST", body: daten }));
       neuZeichnen();
     } catch (e) {
       alert(e.message);
+    }
+  });
+}
+
+// Früheren Urlaub als richtige Reise anlegen – dann gibt es Fotos, Bewertungen, Tauchlog, Tagebuch, Reisebuch
+aktionen["ort-als-reise"] = (el) => {
+  const o = zustand.weltkarte.orte.find((x) => x.id === el.dataset.id);
+  if (!o) return;
+  const jahrMin = o.jahr ? `${o.jahr}-01-01` : "";
+  const jahrMax = o.jahr ? `${o.jahr}-12-31` : "";
+  dialogOeffnen(`<form method="dialog" class="formular" id="alsReiseForm">
+    <h3>📸 ${esc(o.name)}${o.jahr ? ` ${esc(o.jahr)}` : ""} als Reise anlegen</h3>
+    <p class="leise klein">Danach könnt ihr unter „Erlebnisse &amp; Tauchlog“ Fotos, Bewertungen und Tauchgänge nachtragen (z. B. den Export der Apple Watch / Oceanic+), im Kinder-Bereich das Tagebuch und daraus ein Reisebuch machen.</p>
+    <div class="formular zwei">
+      <label>Name der Reise<input name="name" required maxlength="200" value="${esc(`${o.name}${o.jahr ? ` ${o.jahr}` : ""}`)}"></label>
+      <label>Art<select name="art">${Object.entries(REISEARTEN).map(([k, v]) => `<option value="${k}" ${k === (/tauch/i.test(o.notiz) ? "hotel" : "rundreise") ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <label>Von<input type="date" name="von" required min="${jahrMin}" max="${jahrMax}"></label>
+      <label>Bis<input type="date" name="bis" min="${jahrMin}" max="${jahrMax}"></label>
+    </div>
+    ${zustand.reisen?.length ? `<label>Reisende übernehmen aus<select name="vorlage"><option value="">– nur ich –</option>${zustand.reisen.map((r) => `<option value="${esc(r.id)}" ${r.id === zustand.reise?.id ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select></label>` : ""}
+    <label class="haken"><input type="checkbox" name="oeffentlich" checked> Im öffentlichen Tagebuch zeigen (wie bisher die Stecknadel)</label>
+    <label class="haken"><input type="checkbox" name="entfernen" checked> Ort hier aus der Liste nehmen – die Reise zeigt ihn jetzt</label>
+    <div class="zeile"><span class="platz"></span><button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button><button class="knopf" value="ok">Reise anlegen</button></div>
+  </form>`);
+  $("#alsReiseForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.bis.value && f.bis.value < f.von.value) return alert("„Bis“ liegt vor „Von“.");
+    f.querySelector("button[value=ok]").disabled = true;
+    try {
+      let personen = [{ id: neueId(), name: zustand.ich?.name ?? "Ich", typ: "erwachsen", userId: zustand.ich?.id }];
+      if (f.vorlage?.value) {
+        const v = await anfrage(`/api/reisen/${f.vorlage.value}`);
+        // Verknüpfung mit Konten nur für mich behalten – die anderen sind (noch) keine Mitglieder der neuen Reise
+        if (v.personen?.length) personen = v.personen.map(({ userId, ...p }) => (userId === zustand.ich?.id ? { ...p, userId } : p));
+      }
+      const tag = (datum) => ({ id: neueId(), datum, art: "ort", name: o.name, land: o.land, lat: o.lat, lng: o.lng, notiz: o.notiz ?? "" });
+      const haefen = [tag(f.von.value), ...(f.bis.value && f.bis.value !== f.von.value ? [tag(f.bis.value)] : [])];
+      const reise = await anfrage("/api/reisen", { method: "POST", body: { name: f.name.value, art: f.art.value, personen, familien: [], haefen, ausfluege: [], hotels: [], kosten: [], verbindungen: [], zimmer: [] } });
+      if (f.oeffentlich.checked) await anfrage(`/api/reisen/${reise.id}/oeffentlich`, { method: "PUT", body: { oeffentlich: true } }).catch(() => {});
+      if (f.entfernen.checked) await anfrage(`/api/weltkarte/orte/${o.id}`, { method: "DELETE" }).catch(() => {});
+      location.assign(`/?reise=${encodeURIComponent(reise.id)}&ansicht=erlebnisse`);
+    } catch (err) {
+      alert(err.message);
+      f.querySelector("button[value=ok]").disabled = false;
     }
   });
 };

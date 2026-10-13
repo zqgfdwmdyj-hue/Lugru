@@ -1622,6 +1622,7 @@ async function start() {
     if (l.length && (zustand.ansicht === "plan" || !zustand.reise)) alles();
   }).catch(() => {});
   const gewuenscht = new URLSearchParams(location.search).get("reise");
+  const ansichtGewuenscht = new URLSearchParams(location.search).get("ansicht");
   if (gewuenscht) history.replaceState(null, "", "/");
   let letzte = null;
   try {
@@ -1630,6 +1631,7 @@ async function start() {
   const id = zustand.reisen.find((r) => r.id === gewuenscht)?.id ?? zustand.reisen.find((r) => r.id === letzte)?.id ?? zustand.reisen[0]?.id;
   if (id) await reiseOeffnen(id);
   else alles();
+  if (id && ansichtGewuenscht && document.querySelector(`#reiter button[data-ansicht="${CSS.escape(ansichtGewuenscht)}"]`)) ansichtWechseln(ansichtGewuenscht);
 }
 
 setzeAbmeldung(() => anmeldenZeigen(start));

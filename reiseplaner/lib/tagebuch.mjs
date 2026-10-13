@@ -20,12 +20,11 @@ export function einstellungenAendern({ titel, text }) {
   });
 }
 
-export function ortHinzufuegen(d) {
+function ortAus(d) {
   const lat = Number(d.lat);
   const lng = Number(d.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw Object.assign(new Error("Bitte den Ort auf der Karte suchen."), { status: 400 });
-  const ort = {
-    id: randomUUID(),
+  return {
     name: String(d.name ?? "").trim().slice(0, 120) || "Ort",
     land: String(d.land ?? "").trim().slice(0, 80),
     jahr: /^\d{4}$/.test(String(d.jahr ?? "")) ? String(d.jahr) : "",
@@ -33,9 +32,22 @@ export function ortHinzufuegen(d) {
     lat,
     lng,
   };
+}
+
+export async function ortHinzufuegen(d) {
+  const ort = { id: randomUUID(), ...ortAus(d) };
   return aendern(DATEI, LEER, (e) => {
     e.orte.push(ort);
     return ort;
+  });
+}
+
+export async function ortAendern(id, d) {
+  const neu = ortAus(d);
+  return aendern(DATEI, LEER, (e) => {
+    const o = e.orte.find((x) => x.id === id);
+    if (!o) throw Object.assign(new Error("Ort nicht gefunden."), { status: 404 });
+    return Object.assign(o, neu);
   });
 }
 
