@@ -30,7 +30,8 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
   const list = parseListContext(sp);
   const listQs = listQuery(list);
   const backHref = hasList ? `/lieferanten/finden?${listQs}#liste` : "/lieferanten/finden";
-  const backLabel = list.m ? `Zurück zur Suche „${list.m}“` : `Zurück zur Liste „${LEAD_VIEWS[list.view]}“`;
+  const landLabel = list.land ? ` · ${list.land === "ohne" ? "ohne Land" : list.land}` : "";
+  const backLabel = (list.m ? `Zurück zur Suche „${list.m}“` : `Zurück zur Liste „${LEAD_VIEWS[list.view]}“`) + landLabel;
   const nb = hasList ? await listNeighbours(session.tenantId, list, l.id) : null;
   const nextHref = nb?.next ? `/lieferanten/finden/${nb.next.id}?${listQs}` : null;
   const listField = hasList ? <input type="hidden" name="liste" value={listQs} /> : null;

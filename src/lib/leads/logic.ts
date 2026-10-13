@@ -265,6 +265,55 @@ export const countryName = (v: string | null | undefined) => {
   return COUNTRIES[t.toUpperCase()] ?? t;
 };
 
+// Andere Schreibweisen derselben Länder (englisch, ISO-3, Kurzformen) – für Filter und Sortierung.
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  DE: ["Germany", "DEU", "BRD", "Bundesrepublik Deutschland", "Federal Republic of Germany"],
+  AT: ["Austria", "AUT", "Oesterreich"],
+  CH: ["Switzerland", "CHE", "Suisse", "Svizzera"],
+  LI: ["LIE"], LU: ["Luxembourg", "LUX"],
+  NL: ["Netherlands", "The Netherlands", "Holland", "NLD", "Nederland"],
+  BE: ["Belgium", "BEL", "Belgique", "België"],
+  FR: ["France", "FRA"], IT: ["Italy", "ITA", "Italia"], ES: ["Spain", "ESP", "España"], PT: ["Portugal", "PRT"],
+  PL: ["Poland", "POL", "Polska"], CZ: ["Czech Republic", "Czechia", "CZE", "Tschechische Republik"], SK: ["Slovakia", "SVK"],
+  HU: ["Hungary", "HUN"], SI: ["Slovenia", "SVN"], HR: ["Croatia", "HRV"], DK: ["Denmark", "DNK"], SE: ["Sweden", "SWE"],
+  FI: ["Finland", "FIN"], NO: ["Norway", "NOR"], IE: ["Ireland", "IRL"],
+  GB: ["United Kingdom", "Great Britain", "Großbritannien", "England", "GBR", "U.K."],
+  RO: ["Romania", "ROU"], BG: ["Bulgaria", "BGR"], GR: ["Greece", "GRC"], LT: ["Lithuania", "LTU"], LV: ["Latvia", "LVA"],
+  EE: ["Estonia", "EST"], CY: ["Cyprus", "CYP"], MT: ["MLT"], TR: ["Turkey", "Türkiye", "TUR"],
+  CN: ["CHN", "Volksrepublik China", "People's Republic of China", "PR China"], HK: ["Hong Kong", "HKG"],
+  US: ["United States", "United States of America", "Vereinigte Staaten", "U.S.A.", "USA"], AE: ["United Arab Emirates", "UAE", "VAE", "ARE"],
+};
+const COUNTRY_KEY = new Map<string, string>();
+for (const [code, name] of Object.entries(COUNTRIES)) {
+  for (const alias of [code, name, ...(COUNTRY_ALIASES[code] ?? [])]) COUNTRY_KEY.set(alias.toLowerCase(), name);
+}
+
+/** Einheitlicher Ländername (Deutschland, Niederlande …) – egal ob DE, Germany oder Deutschland. */
+export function countryKey(v: string | null | undefined): string | null {
+  const t = (v ?? "").trim();
+  if (!t) return null;
+  return COUNTRY_KEY.get(t.toLowerCase()) ?? t;
+}
+
+/** Ländername → alle bekannten Schreibweisen (klein). */
+export function countryGroups(): [string, string[]][] {
+  const out = new Map<string, string[]>();
+  for (const [alias, name] of COUNTRY_KEY) out.set(name, [...(out.get(name) ?? []), alias]);
+  return [...out];
+}
+
+/** Alle bekannten Schreibweisen (klein) eines Landes – für den Datenbankfilter. */
+export function countrySpellings(key: string): string[] {
+  const out = [...COUNTRY_KEY].filter(([, name]) => name === key).map(([alias]) => alias);
+  return out.length ? out : [key.toLowerCase()];
+}
+
+/** Reihenfolge der Länder: Deutschland, Österreich, Schweiz zuerst, dann alphabetisch, ohne Land zuletzt. */
+export function countryRank(key: string | null): [number, string] {
+  const dach = ["Deutschland", "Österreich", "Schweiz"].indexOf(key ?? "");
+  return key === null ? [9, ""] : dach >= 0 ? [dach, ""] : [5, key.toLocaleLowerCase("de")];
+}
+
 /** Adresszeilen (z. B. von Keepa: letzte Zeile = Ländercode) in Straße, PLZ, Ort, Land zerlegen. */
 export function parseAddressLines(lines: string[] | null | undefined, companyName?: string): { street: string | null; zip: string | null; city: string | null; country: string | null } {
   const ls = (lines ?? []).map((l) => (l ?? "").trim()).filter(Boolean);

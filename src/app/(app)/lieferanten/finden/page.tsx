@@ -8,8 +8,8 @@ import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
-import { baseWhere, inView, LEAD_VIEWS, listOrder, listQuery, parseListContext, viewWhere, type LeadView } from "@/lib/leads/list";
+import { brandMatches, countryKey, countryRank, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
+import { baseWhere, countryKeySql, inView, LEAD_VIEWS, listOrder, listQuery, NO_COUNTRY, parseListContext, viewWhere, type LeadView, type ListSort } from "@/lib/leads/list";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
 import { recentSearches, SEARCH_STALE_MS } from "@/lib/leads/sources";
@@ -26,18 +26,18 @@ type View = LeadView;
 
 const QUELLEN: readonly LeadSource[] = LEAD_SOURCES;
 
-export default async function GrosshaendlerFindenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; marke?: string; m?: string; meldung?: string; quelle?: string; register?: string; import?: string }> }) {
+export default async function GrosshaendlerFindenPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; marke?: string; m?: string; meldung?: string; quelle?: string; register?: string; import?: string; land?: string; sort?: string }> }) {
   const session = await requireArea("lieferanten");
   const sp = await searchParams;
   // Reiter, Quelle und Markenfilter – wandern beim Öffnen einer Firma mit (zurück zur Suche, nächste Firma).
   const list = parseListContext(sp);
-  const { view, quelle, m } = list;
+  const { view, quelle, m, land, sort } = list;
   const mKey = m; // leer = kein Markenfilter
   const t = session.tenantId;
   const L = schema.supplierLeads;
   // Nach Marke filtern: grobe Vorauswahl in der Datenbank, genau geprüft wird danach (leadBrandHits).
   const base = baseWhere(t, list);
-  let rows = await db.select().from(L).where(and(...base, ...viewWhere(view))).orderBy(...listOrder).limit(400);
+  let rows = await db.select().from(L).where(and(...base, ...viewWhere(view))).orderBy(...listOrder(list)).limit(400);
   // Treffer je Ansicht (für die Reiter), nur bei aktivem Markenfilter.
   const viewHits: Partial<Record<View, number>> = {};
   if (mKey) {
@@ -45,9 +45,25 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
     const all = (await db.select({ status: L.status, kind: L.kind, mailedAt: L.mailedAt, brands: L.brands, searchBrands: L.searchBrands, findings: L.findings }).from(L).where(and(...base)).limit(5000)).filter((l) => leadBrandHits(l, m).length > 0);
     for (const v of Object.keys(VIEWS) as View[]) viewHits[v] = all.filter((l) => inView(l, v)).length;
   }
+  // Länder in dieser Ansicht (ohne den Länderfilter selbst) – für die Auswahl „Land“.
+  const baseAllCountries = baseWhere(t, { ...list, land: "" });
+  const byCountry = new Map<string | null, number>();
+  if (mKey) {
+    const all = (await db.select({ country: L.country, status: L.status, kind: L.kind, mailedAt: L.mailedAt, brands: L.brands, searchBrands: L.searchBrands, findings: L.findings }).from(L).where(and(...baseAllCountries)).limit(5000))
+      .filter((l) => inView(l, view) && leadBrandHits(l, m).length > 0);
+    for (const l of all) byCountry.set(countryKey(l.country), (byCountry.get(countryKey(l.country)) ?? 0) + 1);
+  } else {
+    const res = await db.select({ key: sql<string | null>`${countryKeySql}`, n: sql<number>`count(*)::int` }).from(L).where(and(...baseAllCountries, ...viewWhere(view))).groupBy(sql`1`);
+    for (const r of res) byCountry.set(r.key, Number(r.n));
+  }
+  const countries = [...byCountry].sort(([a, x], [b, y]) => {
+    const [ra, na] = countryRank(a);
+    const [rb, nb] = countryRank(b);
+    return ra - rb || y - x || na.localeCompare(nb, "de");
+  });
   // Mit Markenfilter direkt zur Liste springen (auf dem Handy liegt sie weit unten).
-  const listHref = (p: { ansicht?: View; quelle?: LeadSource | null; m?: string }) =>
-    `/lieferanten/finden?${listQuery(list, { ...(p.ansicht ? { view: p.ansicht } : {}), ...(p.quelle !== undefined ? { quelle: p.quelle } : {}), ...(p.m !== undefined ? { m: p.m } : {}) })}${(p.m ?? m) ? "#liste" : ""}`;
+  const listHref = (p: { ansicht?: View; quelle?: LeadSource | null; m?: string; land?: string; sort?: ListSort }) =>
+    `/lieferanten/finden?${listQuery(list, { ...(p.ansicht ? { view: p.ansicht } : {}), ...(p.quelle !== undefined ? { quelle: p.quelle } : {}), ...(p.m !== undefined ? { m: p.m } : {}), ...(p.land !== undefined ? { land: p.land } : {}), ...(p.sort ? { sort: p.sort } : {}) })}${(p.m ?? m) || p.land !== undefined || p.sort ? "#liste" : ""}`;
   const here = listQuery(list);
   const [counts] = await db
     .select({
@@ -214,16 +230,34 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
         <Link href={listHref({ quelle: null })} className={`chip${!quelle ? " active" : ""}`}>alle</Link>
         {QUELLEN.map((q) => <Link key={q} href={listHref({ quelle: q })} className={`chip${quelle === q ? " active" : ""}`}>{FINDING_LABEL[q]}</Link>)}
       </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="country-filter">
+        <span className="small muted">Land:</span>
+        <Link href={listHref({ land: "" })} className={`chip${!land ? " active" : ""}`}>alle</Link>
+        {countries.map(([key, n]) => {
+          const value = key ?? NO_COUNTRY;
+          return (
+            <Link key={value} href={listHref({ land: value })} className={`chip${land === value ? " active" : ""}`} data-testid="country-chip" data-country={value}>
+              {key ?? "ohne Land"} <span className="muted">{n}</span>
+            </Link>
+          );
+        })}
+        {land && !countries.some(([k]) => (k ?? NO_COUNTRY) === land) && <span className="chip active">{land === NO_COUNTRY ? "ohne Land" : land} <span className="muted">0</span></span>}
+        <span className="small muted" style={{ marginLeft: 8 }}>Sortierung:</span>
+        <Link href={listHref({ sort: "score" })} className={`chip${sort === "score" ? " active" : ""}`} data-testid="sort-score">Score</Link>
+        <Link href={listHref({ sort: "land" })} className={`chip${sort === "land" ? " active" : ""}`} data-testid="sort-land">nach Land</Link>
+      </div>
       <form action="/lieferanten/finden#liste" id="liste" className="card card-pad" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", scrollMarginTop: 72 }} data-testid="brand-filter">
         <input type="hidden" name="ansicht" value={view} />
         {quelle && <input type="hidden" name="quelle" value={quelle} />}
+        {land && <input type="hidden" name="land" value={land} />}
+        {sort === "land" && <input type="hidden" name="sort" value="land" />}
         <label className="sr-only" htmlFor="mf">Nach Marke filtern</label>
         <input className="input" id="mf" name="m" type="search" defaultValue={m} placeholder="Nach Marke filtern, z. B. Airheads" style={{ flex: "1 1 220px", maxWidth: 340 }} />
         <button className="btn" type="submit">Filtern</button>
         {m && <Link className="btn btn-small" href={listHref({ m: "" })} data-testid="brand-filter-reset">✕ alle Firmen</Link>}
         {m && (
           <span className="small muted" data-testid="brand-filter-info">
-            {rows.length} {rows.length === 1 ? "Firma" : "Firmen"} mit der Marke „{m}“ unter „{VIEWS[view]}“
+            {rows.length} {rows.length === 1 ? "Firma" : "Firmen"} mit der Marke „{m}“ unter „{VIEWS[view]}“{land ? ` · ${land === NO_COUNTRY ? "ohne Land" : land}` : ""}
           </span>
         )}
       </form>
@@ -258,7 +292,16 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                   </td>
                 </tr>
               )}
-              {rows.map((l) => {
+              {rows.map((l, i) => {
+                const key = countryKey(l.country);
+                // Nach Land sortiert: Zwischenüberschrift, sobald ein neues Land beginnt.
+                const group = sort === "land" && (i === 0 || countryKey(rows[i - 1].country) !== key) ? (
+                  <tr key={`g-${key ?? NO_COUNTRY}`} data-testid="country-group" data-country={key ?? NO_COUNTRY}>
+                    <td colSpan={7} style={{ background: "var(--surface-2)", fontWeight: 600 }}>
+                      {key ?? "Ohne Land"} <span className="small muted">· {rows.filter((r) => countryKey(r.country) === key).length}</span>
+                    </td>
+                  </tr>
+                ) : null;
                 const brand = l.searchBrands[0] ?? "";
                 // Mit Markenfilter: passende Marken zuerst und markiert (sonst die gesuchte Marke).
                 const hits = mKey ? leadBrandHits(l, m) : [];
@@ -266,12 +309,13 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                 const isHit = (b: string) => (mKey ? hits.includes(b) : brandMatches([b], brand));
                 const block = l.mailedAt ? null : sendBlocker(l, ctx);
                 const dup = l.mailedAt ? null : priorContact(l, ctx.contacted, ctx.suppliers);
-                return (
-                  <tr key={l.id} data-testid="lead-row" data-name={l.companyName}>
+                return [
+                  group,
+                  <tr key={l.id} data-testid="lead-row" data-name={l.companyName} data-country={key ?? NO_COUNTRY}>
                     <td><input type="checkbox" name="ids" value={l.id} aria-label={`${l.companyName} auswählen`} /></td>
                     <td style={{ maxWidth: 260 }}>
                       <Link href={`/lieferanten/finden/${l.id}?${here}`}><strong>{l.companyName}</strong></Link>
-                      <div className="small muted">{[l.zip, l.city].filter(Boolean).join(" ")}{l.country ? ` · ${l.country}` : ""}</div>
+                      <div className="small muted">{[l.zip, l.city].filter(Boolean).join(" ")}{key ? ` · ${key}` : ""}</div>
                       <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginTop: 2 }}>
                         {[...new Set(l.findings.map((f) => f.source))].map((src) => <span key={src} className="tag tag-neutral" data-testid="lead-source">{FINDING_LABEL[src]}</span>)}
                       </div>
@@ -324,8 +368,8 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                       {dup ? <div style={{ color: "var(--danger)" }} data-testid="lead-dup">{dup}</div> : view === "entwurf" && block && <div style={{ color: "var(--danger)" }}>{block}</div>}
                       {l.mailError && <div style={{ color: "var(--danger)" }}>{l.mailError}</div>}
                     </td>
-                  </tr>
-                );
+                  </tr>,
+                ];
               })}
             </tbody>
           </table>

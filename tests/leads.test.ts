@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brandMatches, brandSearchKey, brandSearchMatch, contactBlocker, isMarketplaceName, kendoFilter, looksLikePerson, mailLanguageFor, parseResearch, preAssess } from "@/lib/leads/logic";
+import { brandMatches, brandSearchKey, brandSearchMatch, contactBlocker, countryKey, countryRank, countrySpellings, isMarketplaceName, kendoFilter, looksLikePerson, mailLanguageFor, parseResearch, preAssess } from "@/lib/leads/logic";
 
 describe("Großhändler finden – Vorab-Einschätzung", () => {
   it("Marke nur als ganzes Wort", () => {
@@ -84,5 +84,30 @@ describe("Markensuche in der Kontaktliste", () => {
     expect(leadBrandHits({ brands: ["Wella"], searchBrands: ["Wella"], findings: [] }, "airheads")).toEqual([]);
     expect(brandSearchKey("Air-Heads®")).toBe("airheads");
     expect(brandSearchKey("Großmann")).toBe("grosmann");
+  });
+});
+
+describe("Länder vereinheitlichen (Filter und Sortierung)", () => {
+  it("Codes, englische und deutsche Namen → ein Name", () => {
+    for (const v of ["DE", "de", "Deutschland", "Germany", "GERMANY", " DEU ", "Bundesrepublik Deutschland"]) expect(countryKey(v)).toBe("Deutschland");
+    expect(countryKey("Netherlands")).toBe("Niederlande");
+    expect(countryKey("UK")).toBe("Vereinigtes Königreich");
+    expect(countryKey("United States")).toBe("USA");
+    expect(countryKey("Atlantis")).toBe("Atlantis");
+    expect(countryKey("  ")).toBeNull();
+    expect(countryKey(null)).toBeNull();
+  });
+  it("alle Schreibweisen für den Datenbankfilter", () => {
+    expect(countrySpellings("Deutschland")).toEqual(expect.arrayContaining(["de", "deutschland", "germany", "deu"]));
+    expect(countrySpellings("Atlantis")).toEqual(["atlantis"]);
+  });
+  it("Reihenfolge: Deutschland, Österreich, Schweiz, dann alphabetisch, ohne Land zuletzt", () => {
+    const keys = ["Niederlande", null, "Schweiz", "Belgien", "Deutschland", "Österreich", "China"];
+    const sorted = [...keys].sort((a, b) => {
+      const [ra, na] = countryRank(a);
+      const [rb, nb] = countryRank(b);
+      return ra - rb || na.localeCompare(nb, "de");
+    });
+    expect(sorted).toEqual(["Deutschland", "Österreich", "Schweiz", "Belgien", "China", "Niederlande", null]);
   });
 });
