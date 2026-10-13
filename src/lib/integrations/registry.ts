@@ -137,13 +137,29 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "temu",
     name: "Temu",
-    purpose: "Bestellungen abholen (Vorbereitung – bis dahin CSV-Import).",
+    purpose: "Bestellungen mit Lieferadresse alle 5 Minuten abholen und nach dem Versand die Sendungsnummer an Temu melden. Für lokale Shops im Seller Center (seller-eu.temu.com).",
     fields: [
+      {
+        key: "region",
+        label: "Region",
+        options: [
+          { value: "auto", label: "Automatisch erkennen (Europa zuerst)" },
+          { value: "eu", label: "Europa (Deutschland, EU, UK)" },
+          { value: "us", label: "USA" },
+          { value: "global", label: "Andere Länder (global)" },
+        ],
+      },
       { key: "appKey", label: "App-Key" },
       { key: "appSecret", label: "App-Secret", secret: true },
-      { key: "accessToken", label: "Access-Token", secret: true },
+      { key: "accessToken", label: "Access-Token", secret: true, help: "Aus dem Seller Center (Open Platform → Client-Verwaltung). Läuft nach einiger Zeit ab – das Datum zeigt „Verbindung testen“, rechtzeitig vorher kommt eine Aufgabe." },
     ],
-    setup: ["Zugang über das Temu Seller Center / Partner-Programm beantragen. Verfügbarkeit vorab prüfen."],
+    setup: [
+      "partner-eu.temu.com → Konto als „Self-developed applications seller“ anlegen → Seller-Center-Hauptkonto verknüpfen („You are a local seller“).",
+      "App-Angaben ausfüllen. Bei den Schnittstellen angeben: Bestellungen (bg.order.list.v2.get, bg.order.shippinginfo.v2.get, bg.order.decryptshippinginfo.get) und Versand (bg.logistics.companies.get, bg.logistics.shipment.v2.confirm, bg.logistics.warehouse.list.get).",
+      "Im Sicherheits-Fragebogen (Frage 5) die öffentliche IP-Adresse deines Servers eintragen – Anfragen von anderen Adressen lehnt Temu ab.",
+      "Nach der Freigabe: App-Key und App-Secret aus dem Partner-Portal kopieren. Im Seller Center (seller-eu.temu.com → Open Platform → Client-Verwaltung) die App autorisieren und den Access-Token kopieren.",
+      "Hier eintragen, Region auf „Automatisch“ lassen, speichern und „Verbindung testen“. Danach kommen Bestellungen von selbst unter Aufträge; beim Versand (DHL-Label oder „Versendet“) geht die Sendungsnummer an Temu.",
+    ],
   },
   {
     provider: "apple_calendar",

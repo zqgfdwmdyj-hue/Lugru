@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { cancelLabel, createLabel, estimateWeightKg, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
 import { getSettings } from "@/lib/settings";
+import { TEMU_MASKED_NOTE } from "@/lib/orders/temu";
 
 const uuid = z.string().uuid();
 export type LabelState = { ok: boolean; message: string; fileId?: string } | null;
@@ -96,7 +97,9 @@ export async function saveAddress(fd: FormData) {
   const id = uuid.parse(fd.get("orderId"));
   const g = (k: string) => String(fd.get(k) ?? "").trim() || undefined;
   const shipTo = { name1: g("name1"), name2: g("name2"), street: g("street"), houseNo: g("houseNo"), zip: g("zip"), city: g("city"), country: g("country") ?? "DE", email: g("email"), phone: g("phone") };
-  await db.update(schema.orders).set({ shipTo, buyerName: shipTo.name1, updatedAt: new Date() }).where(and(eq(schema.orders.id, id), eq(schema.orders.tenantId, session.tenantId)));
+  // Adresse von Hand eingetragen → Temu-Hinweis „nur unkenntlich“ ist erledigt.
+  const notes = shipTo.street ? sql`case when ${schema.orders.notes} = ${TEMU_MASKED_NOTE} then null else ${schema.orders.notes} end` : schema.orders.notes;
+  await db.update(schema.orders).set({ shipTo, buyerName: shipTo.name1, notes, updatedAt: new Date() }).where(and(eq(schema.orders.id, id), eq(schema.orders.tenantId, session.tenantId)));
   revalidatePath(`/auftraege/${id}`);
 }
 
@@ -129,6 +132,7 @@ export async function fetchOrdersNow() {
   const { ebayConnected, syncEbayOrders } = await import("@/lib/integrations/clients/ebay");
   const { syncFbmOrders } = await import("@/lib/integrations/clients/amazon");
   const { getIntegration } = await import("@/lib/integrations/store");
+  const { syncTemuOrders, temuConnected } = await import("@/lib/integrations/clients/temu");
   const msgs: string[] = [];
   const run = async (name: string, fn: () => Promise<{ orders: number }>) => {
     try {
@@ -139,6 +143,7 @@ export async function fetchOrdersNow() {
   };
   if (await ebayConnected(t)) await run("eBay", () => syncEbayOrders(t));
   if (await getIntegration(t, "amazon_sp")) await run("Amazon FBM", () => syncFbmOrders(t));
+  if (await temuConnected(t)) await run("Temu", () => syncTemuOrders(t));
   const r = await syncChannelStock(t);
   msgs.push(`Bestandsabgleich: ${r.pushed} Mengen übertragen${r.manual ? `, ${r.manual} von Hand` : ""}${r.oversold.length ? `, ÜBERVERKAUF ${r.oversold.join(", ")}` : ""}`);
   redirect(`/auftraege?${new URLSearchParams({ meldung: msgs.join(" · ") })}`);

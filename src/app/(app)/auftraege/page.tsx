@@ -70,7 +70,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
       <div className="page-head">
         <div><div className="crumb">WaWi</div><h1>Aufträge & Versand</h1></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <form action={fetchOrdersNow}><button className="btn btn-primary" type="submit" title="eBay- und Amazon-FBM-Bestellungen holen, danach Bestand in allen Kanälen abgleichen">Bestellungen jetzt abrufen</button></form>
+          <form action={fetchOrdersNow}><button className="btn btn-primary" type="submit" title="eBay-, Amazon-FBM- und Temu-Bestellungen holen, danach Bestand in allen Kanälen abgleichen">Bestellungen jetzt abrufen</button></form>
           <a className="btn" href="/auftraege/vorlage">CSV-Vorlage</a>
           <a className="btn" href="/auftraege/versandbestaetigung">Amazon-Versandbestätigung (Datei)</a>
         </div>

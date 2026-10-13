@@ -5,6 +5,7 @@ import "./drive";
 import "./amazon";
 import "./ebay";
 import "./marketplaces-other";
+import "./temu";
 import "./calendar";
 import "./discord";
 import "./keepa";

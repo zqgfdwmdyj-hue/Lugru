@@ -35,6 +35,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
         </div>
         {order.status === "open" && <form action={cancelOrder}><input type="hidden" name="orderId" value={order.id} /><button className="btn-link small" style={{ color: "var(--danger)" }}>Stornieren</button></form>}
       </div>
+      {order.notes && <div className="notice notice-warn" data-testid="order-notes">{order.notes}</div>}
 
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
