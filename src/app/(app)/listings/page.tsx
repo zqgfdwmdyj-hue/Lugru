@@ -61,6 +61,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                 const manual = !withApi.has(l.channel) || /^Bitte im Kanal auf/.test(l.lastError ?? "");
                 const behind = l.status === "active" && l.stockSync && target !== null && target !== l.pushedQuantity;
                 const attemptId = l.channel === "ebay" ? (l.payload as { attemptId?: number }).attemptId : undefined;
+                // Schon bei Temu angelegt: nicht noch einmal einstellen (Temu lehnt doppelte SKUs ab), nur den Stand abfragen.
+                const atTemu = l.channel === "temu" && Boolean((l.payload as { goodsId?: string; externalGoodsId?: string }).goodsId || (l.payload as { externalGoodsId?: string }).externalGoodsId);
                 // eBay-Entwürfe der Wawi werden im eBay-Tool eingestellt – alte Fehler vom direkten Einstellen zählen nicht mehr.
                 const toolDraft = l.channel === "ebay" && (l.status === "draft" || l.status === "error") && !attemptId && !l.externalId;
                 // Ohne Wawi-Bestand: eBay-Angebote aus dem Tool holen ihn aus der eBay-Menge, alle anderen bekommen ein Mengenfeld.
@@ -114,7 +116,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                       // eBay-Angebote entstehen im eBay-Tool (Katalog, Bilder, HTML-Vorlage, Keepa) – vorausgefüllt.
                       <Link className="btn btn-small" href={ebayToolLink({ q: l.ean || l.title, vk: l.price, menge: lvl ? availableOf(lvl) : l.quantity })}>Im eBay-Tool einstellen</Link>
                     ) : (
-                      <form action={publishAction} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit">{l.status === "active" ? "Aktualisieren" : "Einstellen"}</button></form>
+                      <form action={publishAction} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit" title={atTemu ? "Schon bei Temu – fragt nur den Stand ab (aktiv, unvollständig, Entwurf)" : undefined}>{atTemu ? "Stand abfragen" : l.status === "active" ? "Aktualisieren" : "Einstellen"}</button></form>
                     )}
                     <Link className="btn-link small" href={`/listings?sku=${encodeURIComponent(l.sku)}&kanal=${l.channel}`} style={{ marginLeft: 8 }}>bearbeiten</Link>
                     <form action={deleteListing} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 8, color: "var(--muted)" }}>×</button></form>

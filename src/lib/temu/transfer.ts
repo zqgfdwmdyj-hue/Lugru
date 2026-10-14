@@ -8,7 +8,7 @@ import type { ListingAttempt } from "@/lib/ebay/types";
 import { ebayActiveItems, ebayConnected, ebayLegacyItem } from "@/lib/integrations/clients/ebay";
 import { temuConnected } from "@/lib/integrations/clients/temu";
 import { adoptLegacyEbayItem, linkEbayPublished } from "@/lib/stock/ebay-link";
-import { TEMU_GOODS_STATUS, type TemuPackage } from "./goods";
+import { TEMU_GOODS_STATUS, TEMU_PENDING_LABEL, type TemuPackage } from "./goods";
 import { publishListingToTemu, rememberTemuDefaults, temuDefaults, temuGoodsKey } from "./from-ebay";
 import type { TemuPriceRule } from "./price";
 
@@ -103,7 +103,7 @@ export async function transferCandidates(tenantId: string, opts: { fresh?: boole
     const r = temuBy.get(key);
     if (!r) return null;
     const st = r.status?.toUpperCase() ?? null;
-    return { label: st ? (TEMU_GOODS_STATUS[st] ?? st) : "angelegt – Temu prüft", status: st, goodsId: r.goodsId, error: r.error };
+    return { label: st ? (TEMU_GOODS_STATUS[st] ?? st) : TEMU_PENDING_LABEL, status: st, goodsId: r.goodsId, error: r.error };
   };
   const packs = await packsByEan(tenantId, attempts);
 

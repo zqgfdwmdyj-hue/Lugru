@@ -6,7 +6,7 @@ import { runAmazonTodos } from "@/lib/amazon-todos/service";
 import { syncDrive, refreshInvoiceTasks } from "@/lib/invoices/service";
 import { fetchSettlements, processPendingReports, scheduleReports, syncFbmOrders } from "@/lib/integrations/clients/amazon";
 import { ebayConnected, syncEbayOrders } from "@/lib/integrations/clients/ebay";
-import { refreshTemuListings, syncTemuOrders, temuConnected } from "@/lib/integrations/clients/temu";
+import { refreshTemuListings, linkTemuBySku, syncTemuOrders, temuConnected } from "@/lib/integrations/clients/temu";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { runIdealoDaily } from "@/lib/ebay/idealo/scheduler";
 import { runInvoiceAutomation } from "@/lib/ebay/invoices/scheduler";
@@ -92,8 +92,10 @@ export async function runScheduledJobs(force = false) {
       }
       if (await temuConnected(t)) {
         if (force || due(`${t}:temu-orders`, 4)) await step("Temu-Bestellungen", () => syncTemuOrders(t));
-        // Neue Temu-Angebote: in Prüfung → aktiv (dann Bestandsabgleich).
+        // Neue Temu-Angebote: Stand bei Temu (unvollständig, Entwurf → aktiv, dann Bestandsabgleich).
         if (force || due(`${t}:temu-goods`, 29)) await step("Temu-Angebote", () => refreshTemuListings(t));
+        // Per Excel-Vorlage oder Shop-Synchronisierung eingestellte Temu-Produkte über die SKU verknüpfen.
+        if (force || due(`${t}:temu-link`, 359)) await step("Temu-Produkte verknüpfen", () => linkTemuBySku(t));
       }
       // eBay-Angebote übernehmen: liegengebliebene Aufträge (z. B. nach einem Neustart) fortsetzen.
       if (force || due(`${t}:ebay-transfers`, 5)) await step("eBay-Übernahme", () => runTransfers(t));

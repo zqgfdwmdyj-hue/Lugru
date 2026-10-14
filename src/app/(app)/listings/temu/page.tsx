@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { transferCandidates } from "@/lib/temu/transfer";
 import { retryFailedAction } from "./actions";
-import { TransferTable } from "./transfer-table";
+import { LinkTemuButton, TransferTable } from "./transfer-table";
 
 export default async function EbayTransferPage({ searchParams }: { searchParams: Promise<{ neu?: string }> }) {
   const session = await requireArea("wawi");
@@ -38,6 +38,14 @@ export default async function EbayTransferPage({ searchParams }: { searchParams:
           <button className="btn btn-small" type="submit">Fehlgeschlagene erneut versuchen</button>
         </form>
       )}
+      <section className="card card-pad stack" style={{ gap: 6 }}>
+        <div className="small muted">
+          Schon auf anderem Weg bei Temu (Excel-Vorlage „Mehrfach-Upload“, „Synchronisierung von Drittanbieter-Shops“ oder von Hand)? Steht im
+          Temu-Produkt dieselbe SKU wie bei eBay bzw. im Lager, verknüpft das System es mit der Wawi – danach folgt die Menge auf Temu dem Bestand.
+          Läuft alle 6 Stunden auch von selbst.
+        </div>
+        <LinkTemuButton disabled={!data.temuConnected} />
+      </section>
       <TransferTable candidates={data.candidates} rule={data.rule} pack={data.pack} temuConnected={data.temuConnected} running={data.running} />
     </>
   );

@@ -6,7 +6,7 @@ import type { ListingAttempt } from "@/lib/ebay/types";
 import { refreshTemuListings, temuConnected, temuCreateGoods } from "@/lib/integrations/clients/temu";
 import { availableOf } from "@/lib/stock/channel-logic";
 import { stockLevels } from "@/lib/stock/channel-sync";
-import { TEMU_GOODS_STATUS, temuGoodsFromAttempt, temuListingState, type TemuPackage } from "./goods";
+import { TEMU_GOODS_STATUS, TEMU_PENDING_LABEL, temuGoodsFromAttempt, temuListingState, type TemuPackage } from "./goods";
 import { TEMU_PRICE_RULE, temuFactor, type TemuPriceRule } from "./price";
 
 // Ein eBay-Angebot zusätzlich bei Temu einstellen – aus dem eBay-Tool oder ein älteres direkt bei
@@ -106,7 +106,7 @@ export async function temuPanel(tenantId: string, a: ListingAttempt): Promise<Te
         label: values.get(r.sku) ?? r.title,
         goodsId: r.externalId,
         status,
-        statusLabel: status ? (TEMU_GOODS_STATUS[status] ?? status) : "angelegt – Temu prüft",
+        statusLabel: status ? (TEMU_GOODS_STATUS[status] ?? status) : TEMU_PENDING_LABEL,
         error: r.lastError,
       };
     }),
@@ -139,7 +139,7 @@ export async function publishListingToTemu(tenantId: string, a: ListingAttempt, 
   const { goodsId } = await temuCreateGoods(tenantId, goods);
 
   const values = new Map((a.variants?.items ?? []).map((i) => [i.sku, i]));
-  const pending = temuListingState("INCOMPLETE");
+  const pending = temuListingState(null);
   for (const s of goods.skus) {
     const v = values.get(s.externalSkuId);
     const row = {
@@ -159,8 +159,6 @@ export async function publishListingToTemu(tenantId: string, a: ListingAttempt, 
         ...(src.ebayItemId ? { ebayItemId: src.ebayItemId } : {}),
         externalGoodsId: key,
         goodsId,
-        // Neu angelegt = in Prüfung, bis der Abruf etwas anderes meldet.
-        temuStatus: "INCOMPLETE",
         imageUrls: s.images,
         ...pack,
         priceRule: rule,
@@ -177,6 +175,9 @@ export async function publishListingToTemu(tenantId: string, a: ListingAttempt, 
       .onConflictDoUpdate({ target: [L.tenantId, L.channel, L.sku], set: { ...row, updatedAt: new Date() } });
   }
   await rememberTemuDefaults(tenantId, { factor: rule.factor, food: rule.food });
+  // Gleich nachsehen, wo Temu das Produkt einsortiert hat (aktiv, unvollständig, Entwurf …).
+  const ids = (await temuRows(tenantId, key)).map((r) => r.id);
+  await refreshTemuListings(tenantId, ids).catch(() => 0);
   return { goodsId, skus: goods.skus.length };
 }
 

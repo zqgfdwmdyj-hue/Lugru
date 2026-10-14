@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
+import { linkTemuBySku } from "@/lib/integrations/clients/temu";
 import { kickTransfers, queueTransfers } from "@/lib/temu/transfer";
 
 export type TransferState = { ok: boolean; message: string } | null;
@@ -48,4 +49,16 @@ export async function retryFailedAction(): Promise<void> {
   await db.update(T).set({ status: "wartet", message: null, updatedAt: new Date() }).where(and(eq(T.tenantId, session.tenantId), eq(T.status, "fehler")));
   kickTransfers(session.tenantId);
   revalidatePath("/listings/temu");
+}
+
+/** Schon bei Temu vorhandene Produkte (Excel-Vorlage, Shop-Synchronisierung) per SKU mit der Wawi verknüpfen. */
+export async function linkTemuAction(): Promise<TransferState> {
+  const session = await requireArea("wawi");
+  try {
+    const r = await linkTemuBySku(session.tenantId);
+    revalidatePath("/listings/temu");
+    return { ok: true, message: r.linked ? `${r.linked} Temu-Produkt(e) über die SKU mit der Wawi verknüpft (${r.checked} SKUs geprüft) – die Menge auf Temu folgt ab jetzt dem Bestand.` : `Bei Temu keine Produkte mit passender SKU gefunden (${r.checked} SKUs geprüft). Im Temu-Angebot muss genau die SKU von eBay bzw. aus dem Lager stehen.` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) };
+  }
 }

@@ -1,12 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { parseAmount } from "@/lib/numbers";
 import type { TemuPackage } from "@/lib/temu/goods";
 import { temuBasePrice, type TemuPriceRule } from "@/lib/temu/price";
 import type { Candidate } from "@/lib/temu/transfer";
-import { queueTransfersAction, type TransferState } from "./actions";
+import { linkTemuAction, queueTransfersAction, type TransferState } from "./actions";
 
 type Pack = Partial<TemuPackage>;
 const PACK_FIELDS: [keyof TemuPackage, string][] = [["weightG", "g"], ["lengthCm", "L"], ["widthCm", "B"], ["heightCm", "H"]];
@@ -208,5 +208,20 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running }
         </table>
       </section>
     </div>
+  );
+}
+
+/** Schon bei Temu vorhandene Produkte (Excel-Vorlage, Shop-Synchronisierung) per SKU verknüpfen. */
+export function LinkTemuButton({ disabled }: { disabled: boolean }) {
+  const [state, action, pending] = useActionState<TransferState>(async () => linkTemuAction(), null);
+  return (
+    <form action={action} className="stack" style={{ gap: 6 }}>
+      <div>
+        <button className="btn" type="submit" disabled={disabled || pending} data-testid="link-temu" title="Produkte, die per Excel-Vorlage oder Shop-Synchronisierung zu Temu kamen: über die SKU mit eBay/Lager verknüpfen, dann folgt die Menge dem Bestand">
+          {pending ? "Suche bei Temu …" : "Bei Temu vorhandene Produkte verknüpfen"}
+        </button>
+      </div>
+      {state && <div className={`notice small ${state.ok ? "notice-ok" : "notice-warn"}`} data-testid="link-temu-msg">{state.message}</div>}
+    </form>
   );
 }

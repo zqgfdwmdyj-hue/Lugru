@@ -115,16 +115,16 @@ export function TemuPanel({ attempt }: { attempt: Attempt }) {
                   <td>
                     <span className={`badge ${e.status === 'ACTIVE' ? 'status-published' : 'status-draft'}`}>{e.statusLabel}</span>
                     {e.goodsId && <div className="muted">Temu-Nr. {e.goodsId}</div>}
-                    {/* „in Prüfung“ sagt das Abzeichen schon – sonst der Grund (z. B. im Seller Center ergänzen). */}
-                    {e.error && e.status && !['ACTIVE', 'INCOMPLETE'].includes(e.status) && <div className="muted">{e.error}</div>}
+                    {/* Was zu tun ist (z. B. im Seller Center ergänzen) – bei „aktiv“ nichts. */}
+                    {e.error && e.status !== 'ACTIVE' && <div className="muted">{e.error}</div>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="muted">
-            Temu ordnet Kategorie und Merkmale selbst zu und prüft neue Angebote (meist innerhalb von Stunden). Der Stand wird
-            alle 30 Minuten abgefragt; sobald es aktiv ist, folgt die Menge auf Temu dem Wawi-Bestand.{' '}
+            Fehlen Temu Pflichtangaben der Kategorie, steht das Produkt dort als unvollständig bzw. Entwurf – dann im Seller Center
+            ergänzen und absenden. Der Stand wird alle 30 Minuten abgefragt; sobald es aktiv ist, folgt die Menge auf Temu dem Wawi-Bestand.{' '}
             <button className="linklike" type="button" onClick={() => void load()}>Stand jetzt abfragen</button>
           </p>
         </>

@@ -82,10 +82,11 @@ describe("Temu-Angebot aus eBay", () => {
 
   it("Temu-Stand → Wawi-Angebot", () => {
     expect(temuListingState("ACTIVE")).toEqual({ status: "active", lastError: null });
-    expect(temuListingState("DRAFT").lastError).toMatch(/Seller Center/);
-    expect(temuListingState("INCOMPLETE")).toMatchObject({ status: "draft", lastError: expect.stringMatching(/prüft/) });
+    expect(temuListingState("DRAFT").lastError).toMatch(/Entwürfe/);
+    expect(temuListingState("incomplete")).toMatchObject({ status: "draft", lastError: expect.stringMatching(/unvollständig – im Seller Center/) });
+    expect(temuListingState("INACTIVE").status).toBe("draft");
     expect(temuListingState("DELETED").status).toBe("ended");
-    expect(temuListingState(null).status).toBe("draft");
+    expect(temuListingState(null)).toEqual({ status: "draft", lastError: "Bei Temu angelegt – der Stand wird abgefragt." });
   });
 
   it("Basispreis-Rechner wie die Excel-Vorlage (Non-Food 19 %, Food 7 %, 2,99 € Versandabzug bis 30 €)", () => {

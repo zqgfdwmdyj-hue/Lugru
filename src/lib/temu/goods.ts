@@ -141,26 +141,31 @@ export function temuGoodsFromAttempt(
   return { externalGoodsId: opts.goodsId ?? a.sku!, title: a.title ?? "", description: a.description, images, attributes, categoryHint: hint, skus, pack: opts.pack, gpsr: a.gpsr };
 }
 
-/** Temu-Status eines Angebots → Text und Zustand des Wawi-Angebots. */
+/** Temu-Stand eines Angebots (wie Temu Produkte sucht: aktiv, inaktiv, unvollständig, Entwurf, gelöscht). */
 export const TEMU_GOODS_STATUS: Record<string, string> = {
   ACTIVE: "aktiv",
-  INCOMPLETE: "in Prüfung bei Temu",
-  DRAFT: "Entwurf – bei Temu fehlen Angaben",
-  INACTIVE: "nicht im Verkauf",
+  INACTIVE: "inaktiv",
+  INCOMPLETE: "unvollständig",
+  DRAFT: "Entwurf",
   DELETED: "gelöscht",
 };
+
+/** Text, solange Temu noch keinen Stand gemeldet hat. */
+export const TEMU_PENDING_LABEL = "angelegt – Stand folgt";
 
 export function temuListingState(status: string | null | undefined): { status: "active" | "draft" | "ended"; lastError: string | null } {
   switch ((status ?? "").toUpperCase()) {
     case "ACTIVE":
       return { status: "active", lastError: null };
+    case "INCOMPLETE":
+      return { status: "draft", lastError: "Temu: unvollständig – im Seller Center unter Produkte beim Artikel die fehlenden Angaben (z. B. Kategorie-Pflichtmerkmale) ergänzen und absenden." };
     case "DRAFT":
-      return { status: "draft", lastError: "Temu: Entwurf – es fehlen Angaben (z. B. Pflichtmerkmale oder Bilder). Im Temu Seller Center beim Produkt ergänzen." };
+      return { status: "draft", lastError: "Temu: Entwurf – im Seller Center unter Produkte → Entwürfe öffnen, fehlende Angaben ergänzen und absenden." };
     case "INACTIVE":
-      return { status: "draft", lastError: "Temu: nicht im Verkauf (inaktiv) – im Seller Center prüfen." };
+      return { status: "draft", lastError: "Temu: nicht im Verkauf (inaktiv) – Temu prüft noch oder es ist abgeschaltet; im Seller Center nachsehen." };
     case "DELETED":
       return { status: "ended", lastError: "Bei Temu gelöscht." };
     default:
-      return { status: "draft", lastError: "Temu prüft das Angebot – sobald es freigegeben ist, läuft der Bestandsabgleich." };
+      return { status: "draft", lastError: "Bei Temu angelegt – der Stand wird abgefragt." };
   }
 }
