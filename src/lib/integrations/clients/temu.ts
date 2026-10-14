@@ -10,6 +10,9 @@ import {
   TEMU_HOSTS,
   TEMU_MASKED_NOTE,
   TEMU_REGION_CODES,
+  temuComplianceNote,
+  temuComplianceTodos,
+  type TemuComplianceGoods,
   TEMU_REGION_LABEL,
   TEMU_STATUS,
   type TemuCarrier,
@@ -529,6 +532,9 @@ export async function refreshTemuListings(tenantId: string, ids?: string[]): Pro
       continue;
     }
     const state = temuListingState(st.status);
+    // Noch nicht aktiv: dazuschreiben, welche Konformitätsangaben Temu noch verlangt.
+    const todo = state.status !== "active" ? await complianceOf(tenantId, st.goodsId) : null;
+    if (todo) state.lastError = [state.lastError, todo].filter(Boolean).join(" ");
     const sku = st.skus.find((x) => x.skuSn === l.sku) ?? (st.skus.length === 1 ? st.skus[0] : undefined);
     await db
       .update(L)
@@ -546,6 +552,25 @@ export async function refreshTemuListings(tenantId: string, ids?: string[]): Pro
   // Frisch freigegeben → Menge gleich mit der Wawi abgleichen.
   if (synced.length) syncSoon(tenantId, synced);
   return rows.length;
+}
+
+/** Offene Konformitätsangaben eines Temu-Produkts (GPSR-Hersteller, EU-Verantwortliche, Fotos …) als Hinweis. */
+const complianceCache = new Map<string, Promise<string | null>>();
+function complianceOf(tenantId: string, goodsId: string): Promise<string | null> {
+  // Je Abgleich nur einmal je Produkt fragen (Varianten teilen sich das Produkt).
+  const key = `${tenantId}:${goodsId}`;
+  const hit = complianceCache.get(key);
+  if (hit) return hit;
+  const p = (async () => {
+    const c = await conn(tenantId);
+    if (!c) return null;
+    const r = await localCall<unknown>(c, "bg.local.compliance.goods.list.query", { pageNo: 1, pageSize: 25, searchText: goodsId });
+    const g = listOf(r, "goodsList").find((x) => field(x, "goodsId") === goodsId);
+    return g ? temuComplianceNote(temuComplianceTodos(g as TemuComplianceGoods)) : null;
+  })().catch(() => null);
+  complianceCache.set(key, p);
+  setTimeout(() => complianceCache.delete(key), 60_000);
+  return p;
 }
 
 /**

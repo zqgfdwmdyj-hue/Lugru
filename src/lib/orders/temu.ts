@@ -23,6 +23,7 @@ export const TEMU_APIS = [
   { type: "temu.local.sku.list.retrieve", label: "Artikel (SKUs) lesen" },
   { type: "temu.local.goods.v3.add", label: "Angebote anlegen" },
   { type: "temu.local.goods.list.retrieve", label: "Angebote lesen" },
+  { type: "bg.local.compliance.goods.list.query", label: "Konformität lesen" },
 ] as const;
 
 const signValue = (v: unknown) => (typeof v === "string" ? JSON.stringify(v).replace(/^"+|"+$/g, "") : JSON.stringify(v));
@@ -293,3 +294,43 @@ export function temuErrorText(code: number, msg: string, type?: string): string 
 
 /** Zeitpunkt aus Temu (Sekunden, manchmal Millisekunden). */
 export const temuDate = (v: number | undefined | null) => (v ? new Date(v > 1e12 ? v : v * 1000) : null);
+
+/** Stand einer Konformitätsangabe bei Temu: 1 nicht eingereicht, 2/3 in Prüfung, 4 Handlung nötig, 5 genehmigt, 6 abgelehnt, 7 zu aktualisieren. */
+const COMPLIANCE_OPEN = new Set([1, 4, 6, 7]);
+const COMPLIANCE_REVIEW = new Set([2, 3]);
+
+type ComplianceItem = { repType?: unknown; status?: unknown };
+export type TemuComplianceGoods = {
+  gpsrInfoList?: ComplianceItem[];
+  repInfoList?: ComplianceItem[];
+  actualPhotoList?: ComplianceItem[];
+  certificateInfoList?: ComplianceItem[];
+  extraTemplateInfoList?: ComplianceItem[];
+};
+
+/** Was Temu an Konformitätsangaben noch verlangt (offen) bzw. gerade prüft – als deutsche Stichworte. */
+export function temuComplianceTodos(g: TemuComplianceGoods): { open: string[]; review: string[] } {
+  const open = new Set<string>();
+  const review = new Set<string>();
+  const add = (list: ComplianceItem[] | undefined, label: (x: ComplianceItem) => string) => {
+    for (const x of list ?? []) {
+      const st = Number(x.status);
+      if (COMPLIANCE_OPEN.has(st)) open.add(label(x));
+      else if (COMPLIANCE_REVIEW.has(st)) review.add(label(x));
+    }
+  };
+  add(g.gpsrInfoList, (x) => (Number(x.repType) === 3 ? "Hersteller (GPSR)" : Number(x.repType) === 2 ? "EU-verantwortliche Person (GPSR)" : "GPSR-Angaben"));
+  add(g.repInfoList, (x) => (Number(x.repType) === 4 ? "Kundendienst-Ansprechpartner" : "verantwortliche Person"));
+  add(g.actualPhotoList, () => "echte Fotos von Produkt/Etikett");
+  add(g.certificateInfoList, () => "Zertifikate/Prüfberichte");
+  add(g.extraTemplateInfoList, () => "Pflichtangaben der Kategorie");
+  for (const o of open) review.delete(o);
+  return { open: [...open], review: [...review] };
+}
+
+/** Hinweis am Temu-Angebot aus den offenen Konformitätsangaben. */
+export function temuComplianceNote(t: { open: string[]; review: string[] }): string | null {
+  if (t.open.length) return `Temu verlangt noch: ${t.open.join(", ")} – im Seller Center beim Produkt „Konformität erforderlich“ öffnen und ergänzen (Hersteller/Verantwortliche einmal anlegen, dann bei jedem Produkt auswählen).`;
+  if (t.review.length) return `Konformitätsangaben in Prüfung bei Temu (${t.review.join(", ")}).`;
+  return null;
+}

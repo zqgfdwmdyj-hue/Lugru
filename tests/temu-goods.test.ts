@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { gpsrText, temuBarcodeType, temuGoodsFromAttempt, temuGoodsPayload, temuGoodsProblems, temuListingState, temuMeasure, temuMoney } from "@/lib/temu/goods";
 import { TEMU_PRICE_RULE, temuBasePrice, temuFactor, temuPriceNote } from "@/lib/temu/price";
+import { temuComplianceNote, temuComplianceTodos } from "@/lib/orders/temu";
 import type { ListingAttempt } from "@/lib/ebay/types";
 
 // Temu-Angebot aus einem eBay-Listing. Fiktive Produkte, Preise und Firmen.
@@ -120,5 +121,19 @@ describe("Temu-Angebot aus eBay", () => {
     expect(p.goodsBasic.externalGoodsId).toBe("EB-1");
     expect(p.attributes.map((x) => x.name)).toEqual(["Marke"]);
     expect(p.skuList[0].variations).toEqual([{ name: "Farbe", value: "Rot" }, { name: "Größe", value: "M" }]);
+  });
+
+  it("Konformität: was Temu noch verlangt (GPSR-Hersteller, EU-Verantwortliche, Fotos), was in Prüfung ist", () => {
+    const t = temuComplianceTodos({
+      gpsrInfoList: [{ repType: 3, status: 1 }, { repType: 2, status: 4 }],
+      repInfoList: [{ repType: 4, status: 5 }],
+      actualPhotoList: [{ status: 2 }],
+      certificateInfoList: [{ status: "7" }],
+      extraTemplateInfoList: [{ status: 3 }],
+    });
+    expect(t).toEqual({ open: ["Hersteller (GPSR)", "EU-verantwortliche Person (GPSR)", "Zertifikate/Prüfberichte"], review: ["echte Fotos von Produkt/Etikett", "Pflichtangaben der Kategorie"] });
+    expect(temuComplianceNote(t)).toMatch(/^Temu verlangt noch: Hersteller \(GPSR\), EU-verantwortliche Person \(GPSR\), Zertifikate\/Prüfberichte – im Seller Center/);
+    expect(temuComplianceNote({ open: [], review: ["echte Fotos von Produkt/Etikett"] })).toBe("Konformitätsangaben in Prüfung bei Temu (echte Fotos von Produkt/Etikett).");
+    expect(temuComplianceNote(temuComplianceTodos({}))).toBeNull();
   });
 });
