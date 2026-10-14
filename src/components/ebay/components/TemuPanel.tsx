@@ -4,7 +4,7 @@ import { api, formatPrice, parseAmount, type Attempt } from '../api';
 
 type Panel = {
   connected: boolean;
-  entries: { sku: string; label: string; goodsId: string | null; status: string | null; statusLabel: string; error: string | null }[];
+  entries: { sku: string; label: string; goodsId: string | null; status: string | null; statusLabel: string; error: string | null; compliance?: string | null; complianceRaw?: string | null }[];
   defaults: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number; quantities: Record<string, number>; rule: TemuPriceRule };
 };
 
@@ -117,6 +117,7 @@ export function TemuPanel({ attempt }: { attempt: Attempt }) {
                     {e.goodsId && <div className="muted">Temu-Nr. {e.goodsId}</div>}
                     {/* Was zu tun ist (z. B. im Seller Center ergänzen) – bei „aktiv“ nichts. */}
                     {e.error && e.status !== 'ACTIVE' && <div className="muted">{e.error}</div>}
+                    {e.compliance && e.status !== 'ACTIVE' && <div className="muted temu-note" title={e.complianceRaw ?? undefined} data-testid="temu-compliance">Konformität: {e.compliance}</div>}
                   </td>
                 </tr>
               ))}

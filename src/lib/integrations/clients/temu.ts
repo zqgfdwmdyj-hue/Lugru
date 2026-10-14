@@ -534,7 +534,7 @@ export async function refreshTemuListings(tenantId: string, ids?: string[]): Pro
     const state = temuListingState(st.status);
     // Noch nicht aktiv: dazuschreiben, welche Konformitätsangaben Temu noch verlangt.
     const todo = state.status !== "active" ? await complianceOf(tenantId, st.goodsId) : null;
-    if (todo) state.lastError = [state.lastError, todo].filter(Boolean).join(" ");
+    if (todo?.note) state.lastError = [state.lastError, todo.note].filter(Boolean).join(" ");
     const sku = st.skus.find((x) => x.skuSn === l.sku) ?? (st.skus.length === 1 ? st.skus[0] : undefined);
     await db
       .update(L)
@@ -542,7 +542,7 @@ export async function refreshTemuListings(tenantId: string, ids?: string[]): Pro
         status: state.status,
         externalId: st.goodsId,
         lastError: state.lastError,
-        payload: { ...l.payload, goodsId: st.goodsId, temuStatus: st.status.toUpperCase(), ...(sku ? { skuId: sku.skuId } : {}) },
+        payload: { ...l.payload, goodsId: st.goodsId, temuStatus: st.status.toUpperCase(), ...(sku ? { skuId: sku.skuId } : {}), ...(todo ? { compliance: todo.check, complianceRaw: todo.raw } : {}) },
         lastSyncAt: new Date(),
         updatedAt: new Date(),
       })
@@ -554,20 +554,44 @@ export async function refreshTemuListings(tenantId: string, ids?: string[]): Pro
   return rows.length;
 }
 
-/** Offene Konformitätsangaben eines Temu-Produkts (GPSR-Hersteller, EU-Verantwortliche, Fotos …) als Hinweis. */
-const complianceCache = new Map<string, Promise<string | null>>();
-function complianceOf(tenantId: string, goodsId: string): Promise<string | null> {
+/**
+ * Offene Konformitätsangaben eines Temu-Produkts (GPSR-Hersteller, EU-Verantwortliche, Fotos …): `note` als
+ * Hinweis am Angebot, `check` als kurzer Stand der Abfrage, `raw` als knappe Rohantwort (Fehlersuche).
+ */
+type ComplianceCheck = { note: string | null; check: string; raw: string };
+const COMPLIANCE_LISTS = ["gpsrInfoList", "repInfoList", "actualPhotoList", "certificateInfoList", "extraTemplateInfoList"];
+const complianceCache = new Map<string, Promise<ComplianceCheck>>();
+function complianceOf(tenantId: string, goodsId: string): Promise<ComplianceCheck> {
   // Je Abgleich nur einmal je Produkt fragen (Varianten teilen sich das Produkt).
   const key = `${tenantId}:${goodsId}`;
   const hit = complianceCache.get(key);
   if (hit) return hit;
-  const p = (async () => {
+  const p = (async (): Promise<ComplianceCheck> => {
     const c = await conn(tenantId);
-    if (!c) return null;
-    const r = await localCall<unknown>(c, "bg.local.compliance.goods.list.query", { pageNo: 1, pageSize: 25, searchText: goodsId });
-    const g = listOf(r, "goodsList").find((x) => field(x, "goodsId") === goodsId);
-    return g ? temuComplianceNote(temuComplianceTodos(g as TemuComplianceGoods)) : null;
-  })().catch(() => null);
+    if (!c) return { note: null, check: "Temu nicht verbunden", raw: "" };
+    const type = "bg.local.compliance.goods.list.query";
+    const find = (r: unknown) => listOf(r, "goodsList").find((x) => field(x, "goodsId") === goodsId);
+    const r = await localCall<unknown>(c, type, { pageNo: 1, pageSize: 25, searchText: goodsId });
+    let g = find(r);
+    // Suche nach der Nummer greift nicht immer – dann die Liste der offenen/zu prüfenden Produkte.
+    const r2 = g ? null : await localCall<unknown>(c, type, { pageNo: 1, pageSize: 100, statusList: [1, 2, 3, 4, 6, 7] });
+    g ??= find(r2);
+    if (!g) {
+      const shape = (x: unknown) => {
+        const o = (x ?? {}) as Obj;
+        const first = listOf(o, "goodsList")[0];
+        return `${Object.keys(o).join(",")}${first ? ` | Eintrag: ${Object.keys(first).join(",")}` : ""}`;
+      };
+      return { note: null, check: "nicht in Temus Konformitätsliste gefunden", raw: `Suche: ${shape(r)} · Liste: ${shape(r2)}`.slice(0, 600) };
+    }
+    const t = temuComplianceTodos(g as TemuComplianceGoods);
+    const raw = JSON.stringify(Object.fromEntries(Object.entries(g).filter(([k]) => COMPLIANCE_LISTS.includes(k) || /status|compliance/i.test(k)))).slice(0, 600);
+    const check = t.open.length ? `offen: ${t.open.join(", ")}` : t.review.length ? `in Prüfung: ${t.review.join(", ")}` : "Temu meldet nichts Offenes";
+    return { note: temuComplianceNote(t), check, raw };
+  })().catch((e): ComplianceCheck => {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { note: `Konformität bei Temu nicht abrufbar: ${msg}`, check: `Abfrage fehlgeschlagen: ${msg}`, raw: msg.slice(0, 600) };
+  });
   complianceCache.set(key, p);
   setTimeout(() => complianceCache.delete(key), 60_000);
   return p;

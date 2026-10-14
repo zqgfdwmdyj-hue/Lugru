@@ -14,7 +14,7 @@ import { TEMU_PRICE_RULE, temuFactor, type TemuPriceRule } from "./price";
 
 export type TemuPanel = {
   connected: boolean;
-  entries: { sku: string; label: string; goodsId: string | null; status: string | null; statusLabel: string; error: string | null }[];
+  entries: { sku: string; label: string; goodsId: string | null; status: string | null; statusLabel: string; error: string | null; compliance: string | null; complianceRaw: string | null }[];
   defaults: Partial<TemuPackage> & { quantities: Record<string, number>; rule: TemuPriceRule };
 };
 
@@ -108,6 +108,8 @@ export async function temuPanel(tenantId: string, a: ListingAttempt): Promise<Te
         status,
         statusLabel: status ? (TEMU_GOODS_STATUS[status] ?? status) : TEMU_PENDING_LABEL,
         error: r.lastError,
+        compliance: typeof r.payload?.compliance === "string" ? r.payload.compliance : null,
+        complianceRaw: typeof r.payload?.complianceRaw === "string" ? r.payload.complianceRaw : null,
       };
     }),
     defaults: { ...(await packageDefaults(tenantId, a, rows)), quantities, rule },
