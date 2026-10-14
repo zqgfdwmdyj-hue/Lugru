@@ -204,6 +204,7 @@ function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { eventId: string; tiles: CollageTile[]; initial: CollageSettings; header: { title: string; date: string }; fileBase: string }) {
   const [s, setS] = useState<CollageSettings>(initial);
   const [images, setImages] = useState<Loaded | null>(null);
+  const imagesRef = useRef<Loaded | null>(null);
   const [message, setMessage] = useState("");
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   // Preis-Lage und -Farbe je Produkt (auf ein Bild tippen → einstellen).
@@ -224,8 +225,16 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       try {
         await Promise.race([document.fonts.load(`40px "Archivo Black"`), new Promise((r) => setTimeout(r, 2500))]);
       } catch {}
-      const loaded = await loadImages(tiles.map((t) => t.image));
-      if (alive) setImages(loaded);
+      // Nur fehlende Fotos laden (z. B. nach dem Drehen ein neues) – die übrigen bleiben im Speicher.
+      const have = imagesRef.current;
+      const missing = tiles.map((t) => t.image).filter((u): u is string => !!u && !have?.has(u));
+      if (have && missing.length === 0) return;
+      const loaded = await loadImages(missing);
+      if (!alive) return;
+      const merged: Loaded = new Map(have ?? []);
+      for (const [u, img] of loaded) merged.set(u, img);
+      imagesRef.current = merged;
+      setImages(merged);
     })();
     return () => {
       alive = false;
@@ -240,7 +249,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       const c = canvases.current[i];
       if (!c) return [];
       const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
-      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, t.style, t.price, t.priceNote, t.caption, t.name, t.printed?.text])]);
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.priceNote, t.caption, t.name, t.printed?.text])]);
       if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
       drawn.current.set(c, key);
       changed = true;
