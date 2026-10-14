@@ -1,0 +1,40 @@
+# Reiseplaner – eigenes Docker-Projekt „reiseplaner“, unabhängig vom Seller-System und anderen
+# Containern: eigener Container, eigenes Netz, eigenes Volume, Port nur auf BIND_IP (Standard: lokal).
+# Start:  docker compose up -d --build   (Werte in .env, siehe .env.example)
+# Einrichtungscode für das erste Konto:  docker compose logs reiseplaner
+name: reiseplaner
+services:
+  reiseplaner:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${REISE_PORT:-3030}:3030"
+    environment:
+      OEFFENTLICHE_URL: ${OEFFENTLICHE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      KI_MODELL: ${KI_MODELL:-}
+      GYG_API_KEY: ${GYG_API_KEY:-}
+      GYG_PARTNER_ID: ${GYG_PARTNER_ID:-}
+      KARTEN_KACHELN: ${KARTEN_KACHELN:-}
+      KARTEN_HINWEIS: ${KARTEN_HINWEIS:-}
+      KARTEN_OFFLINE: ${KARTEN_OFFLINE:-}
+    volumes:
+      - reisedaten:/daten
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3030/gesund').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  reisedaten:
