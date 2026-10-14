@@ -10,16 +10,22 @@ import { loadSets } from "./sets";
 type Listing = typeof schema.listings.$inferSelect;
 /** Meldet die Menge an den Kanal. Darf Zusatzdaten (z. B. offerId, productType) für das nächste Mal zurückgeben. */
 type StockPusher = (tenantId: string, listing: Listing, quantity: number) => Promise<{ payload?: Record<string, unknown> } | void>;
-const pushers = new Map<Channel, StockPusher>();
+/** `ready`: nutzt dieser Mandant die Schnittstelle (z. B. Temu verbunden)? Sonst wie ohne Schnittstelle. */
+const pushers = new Map<Channel, { push: StockPusher; ready?: (tenantId: string) => Promise<boolean> }>();
 
-export function registerStockPusher(channel: Channel, fn: StockPusher) {
-  pushers.set(channel, fn);
+export function registerStockPusher(channel: Channel, push: StockPusher, opts: { ready?: (tenantId: string) => Promise<boolean> } = {}) {
+  pushers.set(channel, { push, ready: opts.ready });
 }
 
-/** Kanäle mit Schnittstelle für die Menge; alle anderen bekommen eine Aufgabe zum Nachtragen. */
-export async function channelsWithStockApi(): Promise<Channel[]> {
+/** Die Schnittstelle kann diese Menge nicht setzen (z. B. SKU dort unbekannt) – wie ohne Schnittstelle als Aufgabe. */
+export class ManualStockError extends Error {}
+
+/** Kanäle, deren Menge dieser Mandant per Schnittstelle setzt; alle anderen bekommen eine Aufgabe zum Nachtragen. */
+export async function channelsWithStockApi(tenantId: string): Promise<Channel[]> {
   await import("@/lib/integrations/clients");
-  return [...pushers.keys()];
+  const out: Channel[] = [];
+  for (const [channel, p] of pushers) if (!p.ready || (await p.ready(tenantId).catch(() => false))) out.push(channel);
+  return out;
 }
 
 /**
@@ -85,6 +91,7 @@ export async function syncChannelStock(tenantId: string, opts: { skus?: string[]
     const levels = await stockLevels(tenantId);
     const plan = planSync(rows, levels);
     result.checked = rows.length;
+    const apis = new Set(await channelsWithStockApi(tenantId));
 
     for (const d of plan) {
       const l = rows.find((r) => r.id === d.listingId)!;
@@ -103,19 +110,22 @@ export async function syncChannelStock(tenantId: string, opts: { skus?: string[]
         continue;
       }
       if (d.action === "none") continue;
-      const fn = pushers.get(l.channel);
       const key = `stock-manual:${l.id}`;
-      if (!fn) {
-        // Temu, TikTok & Co.: noch keine Schnittstelle – als Aufgabe nachtragen lassen.
+      // TikTok & Co. (oder Kanal nicht verbunden): keine Schnittstelle – als Aufgabe nachtragen lassen.
+      const manual = async (reason?: string) => {
         result.manual++;
-        await db.update(L).set({ lastError: `Bitte im Kanal auf ${d.target} setzen (keine Schnittstelle).` }).where(eq(L.id, l.id));
+        await db.update(L).set({ lastError: `Bitte im Kanal auf ${d.target} setzen (${reason ?? "keine Schnittstelle"}).` }).where(eq(L.id, l.id));
         await upsertSystemTask(db, tenantId, key, {
           title: `${CHANNEL_LABEL[l.channel]}: Bestand von ${l.sku} auf ${d.target} setzen`,
-          notes: `Wawi verfügbar: ${d.target}. Zuletzt gemeldet: ${l.pushedQuantity ?? "–"}. Nach dem Ändern im Kanal unter Listings „Gesetzt“ klicken.`,
+          notes: `Wawi verfügbar: ${d.target}. Zuletzt gemeldet: ${l.pushedQuantity ?? "–"}. ${reason ? `${reason}. ` : ""}Nach dem Ändern im Kanal unter Listings „Gesetzt“ klicken.`,
           priority: d.target === 0 ? "critical" : "normal",
           category: "versand",
           link: `/listings?kanal=${l.channel}`,
         });
+      };
+      const fn = apis.has(l.channel) ? pushers.get(l.channel)?.push : undefined;
+      if (!fn) {
+        await manual();
         continue;
       }
       try {
@@ -131,8 +141,14 @@ export async function syncChannelStock(tenantId: string, opts: { skus?: string[]
             ...(r && r.payload ? { payload: { ...(l.payload ?? {}), ...r.payload } } : {}),
           })
           .where(eq(L.id, l.id));
+        // Früher (ohne Schnittstelle) angelegte Aufgabe „Bestand von Hand setzen“ ist erledigt.
+        await resolveSystemTask(db, tenantId, key);
         result.pushed++;
       } catch (e) {
+        if (e instanceof ManualStockError) {
+          await manual(e.message);
+          continue;
+        }
         result.failed++;
         const msg = e instanceof Error ? e.message : String(e);
         const off = (e as { disableSync?: boolean }).disableSync === true;

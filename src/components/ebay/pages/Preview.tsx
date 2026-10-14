@@ -13,6 +13,7 @@ import { DescriptionEditor } from '../components/DescriptionEditor';
 import { IdealoPanel } from '../components/IdealoPanel';
 import { AspectEditor } from '../components/AspectEditor';
 import { VariantEditor } from '../components/VariantEditor';
+import { TemuPanel } from '../components/TemuPanel';
 import { isVariation } from '@/lib/ebay/pipeline/variants';
 import {
   asInput, fieldAfterToggle, placeholderFor, planPurchaseSave, type PriceMode, type VatMode,
@@ -273,6 +274,7 @@ export function Preview({ id, onBack }: { id: number; onBack: () => void }) {
         {attempt.errorMessage && attempt.status !== 'published' && (
           <div className="banner error">{attempt.errorMessage}</div>
         )}
+        {attempt.status === 'published' && <TemuPanel attempt={attempt} />}
         {(attempt.warnings ?? []).map((w, i) => (
           <div key={i} className="banner warn">{w}</div>
         ))}

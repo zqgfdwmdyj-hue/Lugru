@@ -1,5 +1,6 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Address } from "@/db/tables/core";
 import { markShipped, registerTrackingUploader } from "@/lib/orders/service";
@@ -25,7 +26,10 @@ import {
   temuShipment,
   temuSign,
 } from "@/lib/orders/temu";
+import { registerListingPublisher } from "@/lib/listings/publish";
+import { ManualStockError, registerStockPusher, syncSoon } from "@/lib/stock/channel-sync";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
+import { temuGoodsPayload, temuGoodsProblems, temuListingState, type TemuGoodsInput } from "@/lib/temu/goods";
 import { getIntegration } from "../store";
 import { registerTester } from "../test";
 
@@ -332,4 +336,140 @@ registerTrackingUploader("temu", async (tenantId, order) => {
     if (!pick) throw new Error("Temu verlangt ein Versandlager – bitte im Seller Center ein Standardlager festlegen.");
     await send(pick.warehouseId);
   }
+});
+
+// ---- Angebote und Bestand -------------------------------------------------------------------
+
+/** Temu-Nummern einer Artikelnummer (SKU im Temu-Angebot = SKU in der Wawi). */
+type SkuRef = { goodsId: string; skuId: string };
+
+const safeId = (v: string) => {
+  const n = Number(v);
+  if (!Number.isSafeInteger(n)) throw new Error(`Temu-Nummer ${v} ist zu groß für die Übertragung.`);
+  return n;
+};
+
+async function findSku(c: Conn, sku: string): Promise<SkuRef | null> {
+  const r = await call<{ skuList?: { goodsId?: string | number; skuId?: string | number; outSkuSn?: string }[] }>(c, "temu.local.sku.list.retrieve", { outSkuSnList: [sku], pageSize: 20 });
+  const hit = (r?.skuList ?? []).find((x) => String(x.outSkuSn ?? "").trim() === sku && x.goodsId && x.skuId);
+  return hit ? { goodsId: String(hit.goodsId), skuId: String(hit.skuId) } : null;
+}
+
+/**
+ * Menge eines Temu-Angebots setzen (Bestandsabgleich der Wawi). Temu adressiert Artikel über
+ * eigene Nummern – die werden einmal über die Artikelnummer (SKU) gesucht und am Angebot gemerkt.
+ */
+registerStockPusher("temu", async (tenantId, l, quantity) => {
+  const c = await conn(tenantId);
+  if (!c) throw new ManualStockError("Temu nicht verbunden");
+  const p = (l.payload ?? {}) as { goodsId?: string; skuId?: string };
+  const ref = p.goodsId && p.skuId ? { goodsId: String(p.goodsId), skuId: String(p.skuId) } : await findSku(c, l.sku);
+  // Bis die SKU im Temu-Angebot steht: von Hand setzen lassen.
+  if (!ref) throw new ManualStockError(`Temu kennt die SKU „${l.sku}“ nicht – im Temu-Angebot genau diese SKU eintragen, dann geht es automatisch`);
+  const r = await call<{ operateResult?: boolean; msg?: string; skuStockEditStatusInfoList?: { skuId?: number; stockEditStatus?: boolean; errorMsg?: string }[] }>(c, "bg.local.goods.stock.edit", {
+    goodsId: safeId(ref.goodsId),
+    skuStockTargetList: [{ skuId: safeId(ref.skuId), stockTarget: Math.max(0, Math.floor(quantity)) }],
+    requestUniqueKey: randomUUID(),
+  });
+  const bad = r?.skuStockEditStatusInfoList?.find((x) => x.stockEditStatus === false);
+  if (bad || r?.operateResult === false) throw new Error(`Temu hat die Menge nicht übernommen: ${bad?.errorMsg || r?.msg || "ohne Begründung"}`);
+  return p.goodsId === ref.goodsId && p.skuId === ref.skuId ? undefined : { payload: { goodsId: ref.goodsId, skuId: ref.skuId } };
+}, { ready: temuConnected });
+
+/** Angebot bei Temu anlegen. Gibt Temus Produktnummer zurück. */
+export async function temuCreateGoods(tenantId: string, goods: TemuGoodsInput): Promise<{ goodsId: string }> {
+  const c = await conn(tenantId);
+  if (!c) throw new Error("Temu ist nicht verbunden (Anbindungen → Temu).");
+  const problems = temuGoodsProblems(goods, { allowHttp: process.env.TEMU_ALLOW_HTTP_IMAGES === "1" });
+  if (problems.length) throw new Error(problems.join(" "));
+  try {
+    const r = await call<{ goodsId?: string | number }>(c, "temu.local.goods.v3.add", temuGoodsPayload(goods));
+    if (!r?.goodsId) throw new Error("Temu hat keine Produktnummer zurückgegeben.");
+    return { goodsId: String(r.goodsId) };
+  } catch (e) {
+    // Schon angelegt (z. B. Antwort beim ersten Versuch verloren)? Dann das vorhandene nehmen.
+    const known = (await temuGoodsStatus(tenantId, [goods.externalGoodsId]).catch(() => new Map())).get(goods.externalGoodsId);
+    if (known?.goodsId) return { goodsId: known.goodsId };
+    throw e;
+  }
+}
+
+export type TemuGoodsState = { goodsId: string; status: string; skus: { skuId: string; skuSn: string }[] };
+
+/** Stand der Angebote bei Temu (über unsere Angebotsnummern). */
+export async function temuGoodsStatus(tenantId: string, externalGoodsIds: string[]): Promise<Map<string, TemuGoodsState>> {
+  const c = await conn(tenantId);
+  const out = new Map<string, TemuGoodsState>();
+  if (!c || !externalGoodsIds.length) return out;
+  for (let i = 0; i < externalGoodsIds.length; i += 50) {
+    const r = await call<{ goodsList?: { goodsId?: string | number; outGoodsSn?: string; goodsStatus?: string; skuInfoList?: { skuId?: string | number; skuSn?: string }[] }[] }>(c, "temu.local.goods.list.retrieve", {
+      outGoodsSnList: externalGoodsIds.slice(i, i + 50),
+      pageSize: 50,
+    });
+    for (const g of r?.goodsList ?? []) {
+      if (!g.outGoodsSn || !g.goodsId) continue;
+      out.set(g.outGoodsSn, {
+        goodsId: String(g.goodsId),
+        status: String(g.goodsStatus ?? ""),
+        skus: (g.skuInfoList ?? []).filter((x) => x.skuId).map((x) => ({ skuId: String(x.skuId), skuSn: String(x.skuSn ?? "") })),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Wawi-Angebote für Temu mit dem Stand bei Temu abgleichen: in Prüfung, Entwurf, aktiv … Aktiv
+ * heißt: Temu-Nummern gemerkt, Bestandsabgleich läuft. Ohne `ids` alle noch nicht aktiven.
+ */
+export async function refreshTemuListings(tenantId: string, ids?: string[]): Promise<number> {
+  const L = schema.listings;
+  const rows = (
+    await db
+      .select()
+      .from(L)
+      .where(and(eq(L.tenantId, tenantId), eq(L.channel, "temu"), sql`${L.payload} ? 'externalGoodsId'`, ...(ids ? [inArray(L.id, ids)] : [sql`${L.status} <> 'active'`])))
+  ).filter((l) => typeof l.payload?.externalGoodsId === "string");
+  if (!rows.length) return 0;
+  const states = await temuGoodsStatus(tenantId, [...new Set(rows.map((l) => String(l.payload.externalGoodsId)))]);
+  const synced: string[] = [];
+  for (const l of rows) {
+    const st = states.get(String(l.payload.externalGoodsId));
+    if (!st) continue;
+    const state = temuListingState(st.status);
+    const sku = st.skus.find((x) => x.skuSn === l.sku) ?? (st.skus.length === 1 ? st.skus[0] : undefined);
+    await db
+      .update(L)
+      .set({
+        status: state.status,
+        externalId: st.goodsId,
+        lastError: state.lastError,
+        payload: { ...l.payload, goodsId: st.goodsId, temuStatus: st.status, ...(sku ? { skuId: sku.skuId } : {}) },
+        lastSyncAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(L.id, l.id));
+    if (state.status === "active" && l.status !== "active") synced.push(l.stockSku?.trim() || l.sku);
+  }
+  // Frisch freigegeben → Menge gleich mit der Wawi abgleichen.
+  if (synced.length) syncSoon(tenantId, synced);
+  return rows.length;
+}
+
+/** Wawi-Angebot (Kanal Temu, Entwurf) bei Temu anlegen – Bilder, Gewicht und Maße aus den Angebotsdaten. */
+registerListingPublisher("temu", async (tenantId, l) => {
+  const p = l.payload as { imageUrls?: string[]; weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number; attributes?: Record<string, string[]> };
+  const goods: TemuGoodsInput = {
+    externalGoodsId: l.sku,
+    title: l.title,
+    description: l.description ?? undefined,
+    images: p.imageUrls ?? [],
+    attributes: p.attributes ?? {},
+    skus: [{ externalSkuId: l.sku, price: l.price ?? 0, quantity: l.quantity, images: p.imageUrls ?? [], ean: l.ean ?? undefined }],
+    pack: { weightG: Number(p.weightG) || 0, lengthCm: Number(p.lengthCm) || 0, widthCm: Number(p.widthCm) || 0, heightCm: Number(p.heightCm) || 0 },
+  };
+  const { goodsId } = await temuCreateGoods(tenantId, goods);
+  await db.update(schema.listings).set({ payload: { ...l.payload, externalGoodsId: l.sku, goodsId } }).where(eq(schema.listings.id, l.id));
+  // Temu prüft neue Angebote – bis zur Freigabe Entwurf, der Abruf meldet den Stand.
+  return { externalId: goodsId, status: "draft", lastError: temuListingState("INCOMPLETE").lastError };
 });

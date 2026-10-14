@@ -8,6 +8,7 @@ import { invoiceDeps } from "./invoices/deps";
 import { maintenanceRouter } from "./routes/maintenance";
 import { dispatch } from "./routes/dispatch";
 import { linkEbayPublished } from "@/lib/stock/ebay-link";
+import { publishAttemptToTemu, temuPanel } from "@/lib/temu/from-ebay";
 import type { Router } from "./routes/router";
 
 /** Routen, die nur der Inhaber aufrufen darf: Zugangsdaten, Verbindung, Rechnungsabsender, Sicherung. */
@@ -26,6 +27,10 @@ function routersFor(db: Db, tenantId: string): Router[] {
   const hooks = {
     // Jedes veröffentlichte Angebot landet in der Wawi und nimmt am Bestandsabgleich teil.
     onPublished: (attempt: Parameters<typeof linkEbayPublished>[1]) => linkEbayPublished(tenantId, attempt),
+    temu: {
+      panel: (attempt: Parameters<typeof temuPanel>[1]) => temuPanel(tenantId, attempt),
+      publish: (attempt: Parameters<typeof temuPanel>[1], input: Parameters<typeof publishAttemptToTemu>[2]) => publishAttemptToTemu(tenantId, attempt, input),
+    },
   };
   return [apiRouter(db, hooks), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
 }

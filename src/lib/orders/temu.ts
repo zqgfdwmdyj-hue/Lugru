@@ -19,6 +19,10 @@ export const TEMU_APIS = [
   { type: "bg.order.decryptshippinginfo.get", label: "Lieferadressen" },
   { type: "bg.logistics.companies.get", label: "Versanddienstleister" },
   { type: "bg.logistics.shipment.v2.confirm", label: "Versand melden" },
+  { type: "bg.local.goods.stock.edit", label: "Bestand ändern" },
+  { type: "temu.local.sku.list.retrieve", label: "Artikel (SKUs) lesen" },
+  { type: "temu.local.goods.v3.add", label: "Angebote anlegen" },
+  { type: "temu.local.goods.list.retrieve", label: "Angebote lesen" },
 ] as const;
 
 const signValue = (v: unknown) => (typeof v === "string" ? JSON.stringify(v).replace(/^"+|"+$/g, "") : JSON.stringify(v));

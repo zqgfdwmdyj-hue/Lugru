@@ -149,6 +149,11 @@ async function categoryAspects(db: Db, settings: Settings, categoryId?: string):
 export interface ApiHooks {
   /** Nach erfolgreichem Veröffentlichen: Angebot in die Wawi übernehmen, Hinweis für die Vorschau. */
   onPublished?: (attempt: ListingAttempt) => Promise<string | undefined>;
+  /** Dasselbe Angebot auch bei Temu: Stand anzeigen und einstellen. */
+  temu?: {
+    panel: (attempt: ListingAttempt) => Promise<unknown>;
+    publish: (attempt: ListingAttempt, input: { pricePercent: number; weightG: number; lengthCm: number; widthCm: number; heightCm: number }) => Promise<unknown>;
+  };
 }
 
 export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
@@ -432,6 +437,28 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
     const found = variantsFromGroup(items);
     if (!found) throw new Error(`Angebot ${groupId} hat bei eBay keine Varianten (oder ist beendet).`);
     res.json(found);
+  }));
+
+  /** Temu: Stand des Angebots bei Temu (oder Vorgaben zum Einstellen). */
+  r.get('/attempts/:id/temu', h(async (req, res) => {
+    const attempt = await getAttempt(db, Number(req.params.id));
+    if (!attempt) throw new Error('Listing-Versuch nicht gefunden.');
+    res.json(hooks.temu ? await hooks.temu.panel(attempt) : { connected: false, entries: [], defaults: { quantities: {} } });
+  }));
+
+  /** Temu: veröffentlichtes eBay-Angebot zusätzlich bei Temu einstellen. */
+  r.post('/attempts/:id/temu', h(async (req, res) => {
+    const attempt = await getAttempt(db, Number(req.params.id));
+    if (!attempt) throw new Error('Listing-Versuch nicht gefunden.');
+    if (!hooks.temu) throw new Error('Temu ist hier nicht angebunden.');
+    const b = req.body ?? {};
+    res.json(await hooks.temu.publish(attempt, {
+      pricePercent: Number(b.pricePercent),
+      weightG: Number(b.weightG),
+      lengthCm: Number(b.lengthCm),
+      widthCm: Number(b.widthCm),
+      heightCm: Number(b.heightCm),
+    }));
   }));
 
   /** Einstieg des Workflows: EAN, Produkttitel oder eingefügter eBay-Link. */

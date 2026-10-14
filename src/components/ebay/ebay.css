@@ -415,3 +415,7 @@
   .ebt .variant-profit { grid-column: 1 / -1; margin-top: 0; }
   .ebt .variant-row .variant-set { grid-column: 1 / -1; margin-top: 0; }
 }
+
+/* Temu-Kasten in der Vorschau */
+.ebt .temu-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.ebt .temu-box h3 { margin: 0; font-size: 15px; }

@@ -21,7 +21,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
   if (CHANNELS.includes(sp.kanal as never)) where.push(eq(L.channel, sp.kanal as never));
   const rows = await db.select().from(L).where(and(...where)).orderBy(desc(L.updatedAt)).limit(500);
   const levels = await stockLevels(session.tenantId);
-  const withApi = new Set(await channelsWithStockApi());
+  const withApi = new Set(await channelsWithStockApi(session.tenantId));
   return (
     <>
       <div className="page-head">
@@ -40,8 +40,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
       {sp.meldung && <div className="notice notice-info" data-testid="sync-msg">{sp.meldung}</div>}
       <div className="small muted">
         <strong>Bestandsabgleich:</strong> Die Wawi ist führend. Jedes aktive Angebot zeigt im Kanal den verfügbaren Bestand der Wawi-SKU
-        (eigenes Lager − in offenen Aufträgen reserviert, ggf. gedeckelt). Neue Bestellungen von eBay und Amazon werden alle 5 Minuten geholt;
-        danach gehen alle anderen Kanäle sofort herunter. Kanäle ohne Schnittstelle (Temu, TikTok …) bekommen eine Aufgabe mit der Zielmenge.
+        (eigenes Lager − in offenen Aufträgen reserviert, ggf. gedeckelt). Neue Bestellungen von eBay, Amazon und Temu werden alle 5 Minuten geholt;
+        danach gehen alle anderen Kanäle sofort herunter. Kanäle ohne Schnittstelle (TikTok …) bekommen eine Aufgabe mit der Zielmenge.
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <Link href="/listings" className={`chip${!sp.kanal ? " active" : ""}`}>Alle</Link>
@@ -57,7 +57,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                 const ssku = stockSkuOf(l);
                 const lvl = levels.get(ssku);
                 const target = lvl ? targetQuantity(l, availableOf(lvl)) : null;
-                const manual = !withApi.has(l.channel);
+                const manual = !withApi.has(l.channel) || /^Bitte im Kanal auf/.test(l.lastError ?? "");
                 const behind = l.status === "active" && l.stockSync && target !== null && target !== l.pushedQuantity;
                 const attemptId = l.channel === "ebay" ? (l.payload as { attemptId?: number }).attemptId : undefined;
                 // eBay-Entwürfe der Wawi werden im eBay-Tool eingestellt – alte Fehler vom direkten Einstellen zählen nicht mehr.
@@ -167,7 +167,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
             noch nicht versandte Stück – automatisch alle 15 Minuten oder per „Bestand aus eBay anlegen“. Damit eBay ein Angebot bei Menge 0 nicht beendet, in eBay unter
             Verkaufen → Einstellungen die Option „Nicht vorrätig“ (Out-of-stock control) einschalten.<br />
             Amazon FBM: „Amazon FBM verknüpfen“ übernimmt SKUs aus FBM-Bestellungen; FBA-Angebote werden erkannt und nie angefasst.<br />
-            Temu, TikTok: Angebot hier mit Status „Aktiv“ anlegen – bis die Schnittstelle frei ist, kommt bei jeder Änderung eine Aufgabe mit der Zielmenge.
+            Temu: im eBay-Tool beim veröffentlichten Angebot „Auf Temu einstellen“ – oder ein bestehendes Temu-Angebot hier mit Status „Aktiv“ und derselben SKU wie im Temu-Angebot anlegen; die Menge geht dann automatisch an Temu.<br />
+            TikTok: Angebot hier mit Status „Aktiv“ anlegen – bis die Schnittstelle frei ist, kommt bei jeder Änderung eine Aufgabe mit der Zielmenge.
           </div>
         </div>
       </div>
