@@ -1,22 +1,26 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { temuBasePrice, temuPriceNote, type TemuPriceRule } from '@/lib/temu/price';
 import { api, formatPrice, parseAmount, type Attempt } from '../api';
 
 type Panel = {
   connected: boolean;
   entries: { sku: string; label: string; goodsId: string | null; status: string | null; statusLabel: string; error: string | null }[];
-  defaults: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number; quantities: Record<string, number> };
+  defaults: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number; quantities: Record<string, number>; rule: TemuPriceRule };
 };
 
 const text = (n: number | undefined) => (n === undefined ? '' : String(n).replace('.', ','));
+const money = (n: number) => (n > 0 ? n.toFixed(2).replace('.', ',') : '');
 
 /**
- * Dasselbe Angebot zusätzlich bei Temu (nur für auf eBay veröffentlichte Angebote): Preis (Prozent
- * vom eBay-Preis), Gewicht und Paketmaße – Kategorie, Merkmale und Herstellerangaben ordnet Temu
- * selbst zu. Danach Stand je SKU.
+ * Dasselbe Angebot zusätzlich bei Temu (nur für auf eBay veröffentlichte Angebote): Preis nach dem
+ * Temu-Basispreis-Rechner (je SKU änderbar), Gewicht und Paketmaße – Kategorie, Merkmale und
+ * Herstellerangaben ordnet Temu selbst zu. Danach Stand je SKU.
  */
 export function TemuPanel({ attempt }: { attempt: Attempt }) {
   const [panel, setPanel] = useState<Panel | null>(null);
-  const [percent, setPercent] = useState('100');
+  const [factor, setFactor] = useState('85');
+  const [food, setFood] = useState(false);
+  const [prices, setPrices] = useState<Record<string, string>>({});
   const [weight, setWeight] = useState('');
   const [length, setLength] = useState('');
   const [width, setWidth] = useState('');
@@ -24,24 +28,39 @@ export function TemuPanel({ attempt }: { attempt: Attempt }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  function adopt(p: Panel) {
+  const rows = attempt.variants
+    ? attempt.variants.items.map((i) => ({ sku: i.sku, label: i.value, ref: i.price }))
+    : [{ sku: attempt.sku ?? '', label: 'Preis', ref: attempt.price }];
+
+  function recompute(f: string, isFood: boolean) {
+    const rule = { factor: (parseAmount(f) ?? 0) / 100, food: isFood };
+    setPrices(Object.fromEntries(rows.map((r) => [r.sku, money(temuBasePrice(r.ref, rule))])));
+  }
+
+  function adopt(p: Panel, first = false) {
     setPanel(p);
     setWeight((w) => w || text(p.defaults.weightG));
     setLength((v) => v || text(p.defaults.lengthCm));
     setWidth((v) => v || text(p.defaults.widthCm));
     setHeight((v) => v || text(p.defaults.heightCm));
+    if (first) {
+      const f = text(Math.round(p.defaults.rule.factor * 10000) / 100);
+      setFactor(f);
+      setFood(p.defaults.rule.food);
+      recompute(f, p.defaults.rule.food);
+    }
   }
 
-  async function load() {
+  async function load(first = false) {
     try {
-      adopt(await api<Panel>(`/attempts/${attempt.id}/temu`));
+      adopt(await api<Panel>(`/attempts/${attempt.id}/temu`), first);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
   useEffect(() => {
-    void load();
+    void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempt.id]);
 
@@ -55,23 +74,27 @@ export function TemuPanel({ attempt }: { attempt: Attempt }) {
     );
   }
 
-  const p = parseAmount(percent) ?? 0;
-  const prices = attempt.variants ? attempt.variants.items.map((i) => i.price) : [attempt.price];
-  const minPrice = Math.min(...prices.map((x) => Math.round(x * p) / 100));
   const quantities = Object.values(panel.defaults.quantities);
+  const rule = { factor: (parseAmount(factor) ?? 0) / 100, food };
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError('');
     const n = (v: string) => parseAmount(v);
-    const body = { pricePercent: n(percent), weightG: n(weight), lengthCm: n(length), widthCm: n(width), heightCm: n(height) };
-    if (Object.values(body).some((v) => v === undefined || v <= 0)) {
-      setError('Bitte Preis-Prozent, Gewicht und alle drei Paketmaße angeben.');
+    const pack = { weightG: n(weight), lengthCm: n(length), widthCm: n(width), heightCm: n(height) };
+    if (Object.values(pack).some((v) => v === undefined || v <= 0)) {
+      setError('Bitte Gewicht und alle drei Paketmaße angeben.');
+      return;
+    }
+    const own = Object.fromEntries(rows.map((r) => [r.sku, n(prices[r.sku] ?? '')]));
+    const missing = rows.filter((r) => !(own[r.sku]! > 0));
+    if (missing.length) {
+      setError(`Temu-Preis fehlt${attempt.variants ? ` (${missing.map((r) => r.label).join(', ')})` : ''} – der Rechner kommt bei so niedrigem eBay-Preis auf 0 € oder weniger; bitte eigenen Preis eintragen.`);
       return;
     }
     setBusy(true);
     try {
-      adopt(await api<Panel>(`/attempts/${attempt.id}/temu`, { method: 'POST', body: JSON.stringify(body) }));
+      adopt(await api<Panel>(`/attempts/${attempt.id}/temu`, { method: 'POST', body: JSON.stringify({ factor: rule.factor, food, prices: own, ...pack }) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -114,17 +137,40 @@ export function TemuPanel({ attempt }: { attempt: Attempt }) {
           </p>
           <div className="row">
             <label>
-              Preis bei Temu (% vom eBay-Preis)
-              <input value={percent} onChange={(e) => setPercent(e.target.value)} inputMode="decimal" aria-label="Preis bei Temu in Prozent" />
-              <span className="muted">{p > 0 ? `${attempt.variants ? 'ab ' : ''}${formatPrice(minPrice)}` : ''}</span>
+              Faktor (%)
+              <input value={factor} onChange={(e) => { setFactor(e.target.value); recompute(e.target.value, food); }} inputMode="decimal" aria-label="Faktor in Prozent" />
             </label>
+            <label>
+              Warengruppe
+              <select value={food ? 'food' : 'nonfood'} onChange={(e) => { setFood(e.target.value === 'food'); recompute(factor, e.target.value === 'food'); }} aria-label="Warengruppe">
+                <option value="nonfood">Non-Food (19 % MwSt.)</option>
+                <option value="food">Food (7 % MwSt.)</option>
+              </select>
+            </label>
+          </div>
+          <table className="aspects temu-prices" data-testid="temu-prices">
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.sku}>
+                  <th>{r.label}</th>
+                  <td>
+                    <span className="muted">eBay {formatPrice(r.ref)} → </span>
+                    <input value={prices[r.sku] ?? ''} onChange={(e) => setPrices((p) => ({ ...p, [r.sku]: e.target.value }))} inputMode="decimal" aria-label={`Temu-Basispreis ${r.label}`} className="temu-price" /> €
+                    <div className="muted temu-note">{temuPriceNote(r.ref, rule)}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted temu-note">Temu-Basispreis = (eBay-Preis × Faktor{' '}− 2,99 € Versand, wenn das 30 € oder weniger sind) ÷ (1 + MwSt.) – wie im Basispreis-Kalkulator. Je Zeile änderbar.</p>
+          <div className="row">
             <label>
               Gewicht verpackt (g)
               <input value={weight} onChange={(e) => setWeight(e.target.value)} inputMode="decimal" aria-label="Gewicht in Gramm" />
             </label>
+            <label>Länge (cm)<input value={length} onChange={(e) => setLength(e.target.value)} inputMode="decimal" aria-label="Länge in cm" /></label>
           </div>
           <div className="row">
-            <label>Länge (cm)<input value={length} onChange={(e) => setLength(e.target.value)} inputMode="decimal" aria-label="Länge in cm" /></label>
             <label>Breite (cm)<input value={width} onChange={(e) => setWidth(e.target.value)} inputMode="decimal" aria-label="Breite in cm" /></label>
             <label>Höhe (cm)<input value={height} onChange={(e) => setHeight(e.target.value)} inputMode="decimal" aria-label="Höhe in cm" /></label>
           </div>

@@ -1,15 +1,17 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { registerListingPublisher } from "@/lib/listings/publish";
 import { registerTrackingUploader } from "@/lib/orders/service";
-import { registerStockPusher } from "@/lib/stock/channel-sync";
+import { ManualStockError, registerStockPusher } from "@/lib/stock/channel-sync";
 import { splitStreet } from "@/lib/shipping/countries";
 import { getSettings, getToken } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { getUserAccessToken } from "@/lib/ebay/ebay/auth";
 import { apiBase, MARKETPLACE } from "@/lib/ebay/ebay/config";
 import type { Settings } from "@/lib/ebay/types";
+import { activeItems, escXml, inventoryStatusXml, legacyItem, matchSpecifics, tradingBody, type EbayActiveItem, type LegacyItem } from "@/lib/ebay/trading-map";
+import type { XmlObject } from "@/lib/xml";
 import { registerTester } from "../test";
 
 // eBay REST APIs: Fulfillment (Bestellungen, Sendungsnummer) und Inventory (Artikel einstellen).
@@ -61,14 +63,31 @@ type EbayOrder = {
   buyer?: { username?: string };
   pricingSummary?: { total?: { value: string; currency: string } };
   fulfillmentStartInstructions?: { shippingStep?: { shipTo?: { fullName?: string; contactAddress?: { addressLine1?: string; addressLine2?: string; city?: string; postalCode?: string; countryCode?: string }; primaryPhone?: { phoneNumber?: string }; email?: string } } }[];
-  lineItems: { lineItemId: string; sku?: string; title?: string; quantity: number; lineItemCost?: { value: string } }[];
+  lineItems: { lineItemId: string; sku?: string; legacyItemId?: string; variationAspects?: { name?: string; value?: string }[]; title?: string; quantity: number; lineItemCost?: { value: string } }[];
 };
+
+/** Ältere eBay-Angebote (Trading API) ohne SKU: Position über Artikelnummer und Variantenmerkmale der Wawi-SKU zuordnen. */
+async function legacySkus(tenantId: string, orders: EbayOrder[]) {
+  const ids = [...new Set(orders.flatMap((o) => o.lineItems.filter((i) => !i.sku && i.legacyItemId).map((i) => i.legacyItemId!)))];
+  if (!ids.length) return () => null;
+  const L = schema.listings;
+  const rows = await db
+    .select({ sku: L.sku, externalId: L.externalId, payload: L.payload })
+    .from(L)
+    .where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay"), inArray(L.externalId, ids), sql`${L.payload}->>'trading' = 'true'`));
+  return (i: EbayOrder["lineItems"][number]) => {
+    const hits = rows.filter((r) => r.externalId === i.legacyItemId);
+    const hit = hits.length === 1 && !(hits[0].payload.specifics as unknown[] | undefined)?.length ? hits[0] : hits.find((r) => matchSpecifics((r.payload.specifics as { name: string; value: string }[]) ?? [], i.variationAspects ?? []));
+    return hit?.sku ?? null;
+  };
+}
 
 export async function syncEbayOrders(tenantId: string) {
   const c = await cfg(tenantId);
   if (!c) return { orders: 0 };
   const r = await api<{ orders: EbayOrder[] }>(c, "GET", `/sell/fulfillment/v1/order?filter=${encodeURIComponent("orderfulfillmentstatus:{NOT_STARTED|IN_PROGRESS}")}&limit=100`);
   let count = 0;
+  const legacy = await legacySkus(tenantId, r.orders ?? []);
   for (const o of r.orders ?? []) {
     const st = o.fulfillmentStartInstructions?.[0]?.shippingStep?.shipTo;
     const a = st?.contactAddress ?? {};
@@ -80,7 +99,7 @@ export async function syncEbayOrders(tenantId: string) {
       .onConflictDoUpdate({ target: [schema.orders.tenantId, schema.orders.channel, schema.orders.externalId], set: { externalStatus: sql`excluded.external_status`, shipTo: sql`excluded.ship_to`, updatedAt: sql`now()` } })
       .returning({ id: schema.orders.id, inserted: sql<boolean>`(xmax = 0)` });
     await db.delete(schema.orderItems).where(eq(schema.orderItems.orderId, row.id));
-    await db.insert(schema.orderItems).values(o.lineItems.map((i) => ({ tenantId, orderId: row.id, externalItemId: i.lineItemId, sku: i.sku ?? null, title: i.title ?? null, quantity: i.quantity, price: i.lineItemCost ? Number(i.lineItemCost.value) / Math.max(1, i.quantity) : null })));
+    await db.insert(schema.orderItems).values(o.lineItems.map((i) => ({ tenantId, orderId: row.id, externalItemId: i.lineItemId, sku: i.sku || legacy(i), title: i.title ?? null, quantity: i.quantity, price: i.lineItemCost ? Number(i.lineItemCost.value) / Math.max(1, i.quantity) : null })));
     if (row.inserted) count++;
   }
   return { orders: count };
@@ -137,7 +156,14 @@ registerListingPublisher("ebay", async (tenantId, l) => {
 registerStockPusher("ebay", async (tenantId, l, quantity) => {
   const c = await cfg(tenantId);
   if (!c) throw new Error("eBay ist nicht verbunden.");
-  const payload = (l.payload ?? {}) as { offerId?: string };
+  const payload = (l.payload ?? {}) as { offerId?: string } & LegacyPayload;
+  // Älteres Angebot (nicht übers eBay-Tool): Menge über die Trading API.
+  if (payload.trading && payload.itemId) {
+    const variation = Boolean(payload.specifics?.length);
+    if (variation && !payload.ebaySku) throw new ManualStockError("Variante ohne SKU bei eBay – bei eBay je Variante eine SKU eintragen, dann geht es automatisch");
+    await trading(c, "ReviseInventoryStatus", inventoryStatusXml(payload.itemId, quantity, variation ? payload.ebaySku : null));
+    return;
+  }
   let offerId = payload.offerId;
   if (!offerId) {
     const r = await api<{ offers?: { offerId: string }[] }>(c, "GET", `/sell/inventory/v1/offer?sku=${encodeURIComponent(l.sku)}`).catch(() => null);
@@ -158,6 +184,15 @@ registerStockPusher("ebay", async (tenantId, l, quantity) => {
 export async function ebayQuantity(tenantId: string, sku: string): Promise<number> {
   const c = await cfg(tenantId);
   if (!c) throw new Error("eBay ist nicht verbunden (eBay → eBay-Einstellungen → Verbindung).");
+  const L = schema.listings;
+  const [own] = await db.select({ payload: L.payload }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay"), eq(L.sku, sku)));
+  const lp = (own?.payload ?? {}) as LegacyPayload;
+  if (lp.trading && lp.itemId) {
+    const item = await getLegacyItem(c, lp.itemId);
+    const hit = item.skus.find((k) => k.sku === sku) ?? item.skus.find((k) => lp.specifics?.length && matchSpecifics(lp.specifics, k.specifics));
+    if (!hit) throw new Error(`eBay-Angebot ${lp.itemId}: Variante zu ${sku} nicht mehr gefunden.`);
+    return hit.quantity;
+  }
   const s = encodeURIComponent(sku);
   try {
     const item = await api<{ availability?: { shipToLocationAvailability?: { quantity?: number } } }>(c, "GET", `/sell/inventory/v1/inventory_item/${s}`);
@@ -171,6 +206,53 @@ export async function ebayQuantity(tenantId: string, sku: string): Promise<numbe
   const q = r.offers?.find((o) => typeof o.availableQuantity === "number")?.availableQuantity;
   if (typeof q !== "number") throw new Error(`eBay nennt für ${sku} keine Menge.`);
   return Math.max(0, q);
+}
+
+// ---- Ältere Angebote (Trading API) ---------------------------------------------------------
+
+/** Am Wawi-Angebot gemerkt: Artikelnummer, SKU bei eBay (falls vergeben), Variantenmerkmale. */
+export type LegacyPayload = { trading?: boolean; itemId?: string; ebaySku?: string | null; specifics?: { name: string; value: string }[] };
+
+async function trading(c: Conn, call: string, inner: string): Promise<XmlObject> {
+  const res = await fetch(`${c.base}/ws/api.dll`, {
+    method: "POST",
+    headers: {
+      "X-EBAY-API-COMPATIBILITY-LEVEL": "1193",
+      "X-EBAY-API-CALL-NAME": call,
+      "X-EBAY-API-SITEID": "77",
+      "X-EBAY-API-IAF-TOKEN": c.token,
+      "Content-Type": "text/xml; charset=utf-8",
+    },
+    body: `<?xml version="1.0" encoding="utf-8"?><${call}Request xmlns="urn:ebay:apis:eBLBaseComponents">${inner}</${call}Request>`,
+  });
+  const text = await res.text();
+  if (!res.ok && !text.includes(`${call}Response`)) throw new Error(`eBay ${call} → HTTP ${res.status}`);
+  return tradingBody(text, call);
+}
+
+async function getLegacyItem(c: Conn, itemId: string): Promise<LegacyItem> {
+  return legacyItem(await trading(c, "GetItem", `<ItemID>${escXml(itemId)}</ItemID><DetailLevel>ReturnAll</DetailLevel><IncludeItemSpecifics>true</IncludeItemSpecifics>`));
+}
+
+/** Alle laufenden Angebote des eBay-Kontos – auch die nicht übers eBay-Tool eingestellten. */
+export async function ebayActiveItems(tenantId: string): Promise<EbayActiveItem[]> {
+  const c = await cfg(tenantId);
+  if (!c) throw new Error("eBay ist nicht verbunden (eBay → eBay-Einstellungen → Verbindung).");
+  const out: EbayActiveItem[] = [];
+  for (let page = 1, pages = 1; page <= pages && page <= 100; page++) {
+    const body = await trading(c, "GetMyeBaySelling", `<ActiveList><Include>true</Include><Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>${page}</PageNumber></Pagination></ActiveList><DetailLevel>ReturnAll</DetailLevel>`);
+    const r = activeItems(body);
+    pages = r.pages;
+    out.push(...r.items);
+  }
+  return out;
+}
+
+/** Ein eBay-Angebot mit allen Angaben (Beschreibung, Bilder, Merkmale, Varianten, EAN). */
+export async function ebayLegacyItem(tenantId: string, itemId: string): Promise<LegacyItem> {
+  const c = await cfg(tenantId);
+  if (!c) throw new Error("eBay ist nicht verbunden (eBay → eBay-Einstellungen → Verbindung).");
+  return getLegacyItem(c, itemId);
 }
 
 registerTester("ebay", async (_v, tenantId) => {

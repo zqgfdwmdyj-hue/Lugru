@@ -74,6 +74,8 @@ export interface VariantItem {
    * sich aus deren Mengen; in der Wawi bucht ein Verkauf die Bestandteile ab.
    */
   set?: { sku: string; qty: number }[];
+  /** Ältere eBay-Angebote mit mehreren Merkmalen (z. B. Farbe + Größe): alle Merkmale dieser Variante. */
+  specs?: { name: string; value: string }[];
 }
 
 /** Mehrfachangebot: ein Merkmal (z. B. „Sorte“), nach dem sich die Varianten unterscheiden. */

@@ -112,6 +112,32 @@ export const listings = pgTable(
   (t) => [uniqueIndex("listings_uq").on(t.tenantId, t.channel, t.sku), index("listings_stock_sku_idx").on(t.tenantId, t.stockSku)],
 );
 
+/**
+ * Warteschlange „eBay-Angebote übernehmen“: je eBay-Angebot (aus dem eBay-Tool oder ein älteres
+ * direkt bei eBay) ein Auftrag – auf Temu einstellen oder nur in die Wawi übernehmen. Läuft im
+ * Hintergrund; ein Neustart setzt beim nächsten Lauf fort.
+ */
+export const ebayTransfers = pgTable(
+  "ebay_transfers",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** „attempt“ = Angebot aus dem eBay-Tool (ref = Nummer), „ebay“ = Angebot bei eBay (ref = Artikelnummer). */
+    source: text("source", { enum: ["attempt", "ebay"] }).notNull(),
+    ref: text("ref").notNull(),
+    /** „temu“ = auf Temu einstellen (inkl. Wawi), „wawi“ = nur Wawi-Angebot mit Bestandsabgleich. */
+    target: text("target", { enum: ["temu", "wawi"] }).notNull(),
+    title: text("title"),
+    /** Preisrechner, Preise je SKU, Paket. */
+    input: jsonb("input").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status", { enum: ["wartet", "läuft", "fertig", "fehler"] }).notNull().default("wartet"),
+    message: text("message"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("ebay_transfers_uq").on(t.tenantId, t.source, t.ref, t.target), index("ebay_transfers_status_idx").on(t.tenantId, t.status)],
+);
+
 export type FeedMapping = {
   ean?: string;
   asin?: string;

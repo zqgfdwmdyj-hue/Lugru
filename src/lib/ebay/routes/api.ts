@@ -152,7 +152,7 @@ export interface ApiHooks {
   /** Dasselbe Angebot auch bei Temu: Stand anzeigen und einstellen. */
   temu?: {
     panel: (attempt: ListingAttempt) => Promise<unknown>;
-    publish: (attempt: ListingAttempt, input: { pricePercent: number; weightG: number; lengthCm: number; widthCm: number; heightCm: number }) => Promise<unknown>;
+    publish: (attempt: ListingAttempt, input: { factor: number; food: boolean; prices: Record<string, number>; weightG: number; lengthCm: number; widthCm: number; heightCm: number }) => Promise<unknown>;
   };
 }
 
@@ -443,7 +443,7 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   r.get('/attempts/:id/temu', h(async (req, res) => {
     const attempt = await getAttempt(db, Number(req.params.id));
     if (!attempt) throw new Error('Listing-Versuch nicht gefunden.');
-    res.json(hooks.temu ? await hooks.temu.panel(attempt) : { connected: false, entries: [], defaults: { quantities: {} } });
+    res.json(hooks.temu ? await hooks.temu.panel(attempt) : { connected: false, entries: [], defaults: { quantities: {}, rule: { factor: 0.85, food: false } } });
   }));
 
   /** Temu: veröffentlichtes eBay-Angebot zusätzlich bei Temu einstellen. */
@@ -452,8 +452,12 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
     if (!attempt) throw new Error('Listing-Versuch nicht gefunden.');
     if (!hooks.temu) throw new Error('Temu ist hier nicht angebunden.');
     const b = req.body ?? {};
+    const prices: Record<string, number> = {};
+    for (const [sku, p] of Object.entries((b.prices ?? {}) as Record<string, unknown>)) prices[sku] = Number(p);
     res.json(await hooks.temu.publish(attempt, {
-      pricePercent: Number(b.pricePercent),
+      factor: Number(b.factor),
+      food: b.food === true,
+      prices,
       weightG: Number(b.weightG),
       lengthCm: Number(b.lengthCm),
       widthCm: Number(b.widthCm),

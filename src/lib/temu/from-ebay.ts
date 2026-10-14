@@ -7,23 +7,30 @@ import { refreshTemuListings, temuConnected, temuCreateGoods } from "@/lib/integ
 import { availableOf } from "@/lib/stock/channel-logic";
 import { stockLevels } from "@/lib/stock/channel-sync";
 import { TEMU_GOODS_STATUS, temuGoodsFromAttempt, temuListingState, type TemuPackage } from "./goods";
+import { TEMU_PRICE_RULE, temuFactor, type TemuPriceRule } from "./price";
 
-// Ein im eBay-Tool veröffentlichtes Angebot zusätzlich bei Temu einstellen. In der Wawi entsteht je
-// SKU ein Temu-Angebot mit derselben SKU und demselben Lager wie bei eBay.
+// Ein eBay-Angebot zusätzlich bei Temu einstellen – aus dem eBay-Tool oder ein älteres direkt bei
+// eBay. In der Wawi entsteht je SKU ein Temu-Angebot mit derselben SKU und demselben Lager wie bei eBay.
 
 export type TemuPanel = {
   connected: boolean;
   entries: { sku: string; label: string; goodsId: string | null; status: string | null; statusLabel: string; error: string | null }[];
-  defaults: Partial<TemuPackage> & { quantities: Record<string, number> };
+  defaults: Partial<TemuPackage> & { quantities: Record<string, number>; rule: TemuPriceRule };
 };
+
+/** Woher das Angebot kommt: Nummer im eBay-Tool oder Artikelnummer eines älteren eBay-Angebots. */
+export type TemuSource = { attemptId?: number; ebayItemId?: string };
 
 const L = schema.listings;
 
 const skusOf = (a: ListingAttempt) => (a.variants ? a.variants.items.map((i) => i.sku) : a.sku ? [a.sku] : []);
 const num = (v: unknown) => (v === null || v === undefined || v === "" ? undefined : Number(v) || undefined);
 
-async function temuRows(tenantId: string, a: ListingAttempt) {
-  return db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "temu"), sql`${L.payload}->>'attemptId' = ${String(a.id)}`));
+/** Angebotsnummer bei Temu (externalGoodsId): die eBay-SKU bzw. Gruppennummer, bei älteren Angeboten aus der Artikelnummer. */
+export const temuGoodsKey = (a: ListingAttempt, src: TemuSource) => (src.ebayItemId ? `EB-${src.ebayItemId}` : a.sku!);
+
+async function temuRows(tenantId: string, key: string) {
+  return db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "temu"), sql`${L.payload}->>'externalGoodsId' = ${key}`));
 }
 
 /** Verfügbare Menge je eBay-SKU aus der Wawi (über das eBay-Angebot und dessen Lager-SKU). */
@@ -43,8 +50,26 @@ async function wawiQuantities(tenantId: string, a: ListingAttempt): Promise<{ qu
   return { quantities, stockSkus };
 }
 
+/** Zuletzt benutzter Preisrechner und Standardpaket des Mandanten. */
+export async function temuDefaults(tenantId: string): Promise<{ rule: TemuPriceRule; pack: Partial<TemuPackage> }> {
+  const [t] = await db.select({ s: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
+  const s = t?.s?.temu ?? {};
+  return {
+    rule: { factor: s.factor && s.factor > 0 ? s.factor : TEMU_PRICE_RULE.factor, food: Boolean(s.food) },
+    pack: { weightG: num(s.pack?.weightG), lengthCm: num(s.pack?.lengthCm), widthCm: num(s.pack?.widthCm), heightCm: num(s.pack?.heightCm) },
+  };
+}
+
+export async function rememberTemuDefaults(tenantId: string, patch: { factor?: number; food?: boolean; pack?: Partial<TemuPackage> }) {
+  const T = schema.tenants;
+  await db
+    .update(T)
+    .set({ settings: sql`${T.settings} || jsonb_build_object('temu', coalesce(${T.settings}->'temu', '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb)` })
+    .where(eq(T.id, tenantId));
+}
+
 /** Gewicht und Maße aus Artikelstamm/Produkten (per EAN), sonst vom letzten Temu-Versuch. */
-async function packageDefaults(tenantId: string, a: ListingAttempt, rows: Awaited<ReturnType<typeof temuRows>>): Promise<Partial<TemuPackage>> {
+export async function packageDefaults(tenantId: string, a: ListingAttempt, rows: Awaited<ReturnType<typeof temuRows>> = []): Promise<Partial<TemuPackage>> {
   const sent = rows.find((r) => r.payload?.weightG)?.payload;
   if (sent) return { weightG: num(sent.weightG), lengthCm: num(sent.lengthCm), widthCm: num(sent.widthCm), heightCm: num(sent.heightCm) };
   const eans = [a.ean, ...(a.variants?.items.map((i) => i.ean) ?? [])].filter((e): e is string => Boolean(e));
@@ -62,14 +87,16 @@ async function packageDefaults(tenantId: string, a: ListingAttempt, rows: Awaite
 
 export async function temuPanel(tenantId: string, a: ListingAttempt): Promise<TemuPanel> {
   const connected = await temuConnected(tenantId);
-  let rows = await temuRows(tenantId, a);
+  const key = temuGoodsKey(a, { attemptId: a.id });
+  let rows = await temuRows(tenantId, key);
   // Stand bei Temu nachsehen, solange noch nicht alles aktiv ist.
   if (connected && rows.some((r) => r.status !== "active")) {
     await refreshTemuListings(tenantId, rows.map((r) => r.id)).catch(() => 0);
-    rows = await temuRows(tenantId, a);
+    rows = await temuRows(tenantId, key);
   }
   const values = new Map((a.variants?.items ?? []).map((i) => [i.sku, i.value]));
   const { quantities } = await wawiQuantities(tenantId, a);
+  const { rule } = await temuDefaults(tenantId);
   return {
     connected,
     entries: rows.map((r) => {
@@ -83,22 +110,32 @@ export async function temuPanel(tenantId: string, a: ListingAttempt): Promise<Te
         error: r.lastError,
       };
     }),
-    defaults: { ...(await packageDefaults(tenantId, a, rows)), quantities },
+    defaults: { ...(await packageDefaults(tenantId, a, rows)), quantities, rule },
   };
 }
 
-export type TemuPublishInput = { pricePercent: number; weightG: number; lengthCm: number; widthCm: number; heightCm: number };
+/** `factor` z. B. 0,85 (Preisrechner); `prices` je SKU überschreiben den Rechner. */
+export type TemuPublishInput = { factor: number; food?: boolean; prices?: Record<string, number>; weightG: number; lengthCm: number; widthCm: number; heightCm: number };
 
-export async function publishAttemptToTemu(tenantId: string, a: ListingAttempt, input: TemuPublishInput): Promise<TemuPanel> {
+/** Angebot bei Temu anlegen und je SKU ein Wawi-Angebot (Kanal Temu, Entwurf bis zur Freigabe). */
+export async function publishListingToTemu(tenantId: string, a: ListingAttempt, input: TemuPublishInput, src: TemuSource): Promise<{ goodsId: string; skus: number }> {
   if (a.status !== "published" || !a.sku) throw new Error("Erst auf eBay veröffentlichen – dann liegen die Bilder öffentlich bei eBay und Temu kann sie laden.");
-  if (a.condition !== "NEW") throw new Error("Über diese Funktion nur Neuware – Gebrauchtes braucht bei Temu einen eigenen Gebrauchtwaren-Shop.");
-  if ((await temuRows(tenantId, a)).some((r) => r.payload?.externalGoodsId)) throw new Error("Dieses Angebot ist schon bei Temu angelegt.");
-  const pricePercent = Number(input.pricePercent);
-  if (!Number.isFinite(pricePercent) || pricePercent < 10 || pricePercent > 300) throw new Error("Temu-Preis: bitte zwischen 10 und 300 % vom eBay-Preis.");
+  if (a.condition !== "NEW") throw new Error("Nur Neuware – Gebrauchtes braucht bei Temu einen eigenen Gebrauchtwaren-Shop.");
+  const key = temuGoodsKey(a, src);
+  if ((await temuRows(tenantId, key)).length) throw new Error("Dieses Angebot ist schon bei Temu angelegt.");
+  const factor = temuFactor(Math.round(Number(input.factor) * 10000) / 100);
+  if (!factor) throw new Error("Temu-Preisrechner: Faktor bitte zwischen 10 und 300 %.");
+  const rule: TemuPriceRule = { factor, food: Boolean(input.food) };
+  const prices = new Map<string, number>();
+  for (const [sku, p] of Object.entries(input.prices ?? {})) {
+    const n = Number(p);
+    if (!Number.isFinite(n) || n <= 0) throw new Error(`Temu-Preis für ${sku} fehlt oder ist 0 €.`);
+    prices.set(sku, n);
+  }
   const pack: TemuPackage = { weightG: Number(input.weightG) || 0, lengthCm: Number(input.lengthCm) || 0, widthCm: Number(input.widthCm) || 0, heightCm: Number(input.heightCm) || 0 };
 
   const { quantities, stockSkus } = await wawiQuantities(tenantId, a);
-  const goods = temuGoodsFromAttempt(a, { pricePercent, pack, quantities: new Map(Object.entries(quantities)) });
+  const goods = temuGoodsFromAttempt(a, { rule, prices, pack, quantities: new Map(Object.entries(quantities)), goodsId: key });
   const { goodsId } = await temuCreateGoods(tenantId, goods);
 
   const values = new Map((a.variants?.items ?? []).map((i) => [i.sku, i]));
@@ -117,7 +154,18 @@ export async function publishAttemptToTemu(tenantId: string, a: ListingAttempt, 
       quantity: s.quantity,
       status: "draft" as const,
       externalId: goodsId,
-      payload: { attemptId: a.id, externalGoodsId: goods.externalGoodsId, goodsId, imageUrls: s.images, ...pack, ...(v ? { variant: v.value } : {}) },
+      payload: {
+        ...(src.attemptId ? { attemptId: src.attemptId } : {}),
+        ...(src.ebayItemId ? { ebayItemId: src.ebayItemId } : {}),
+        externalGoodsId: key,
+        goodsId,
+        // Neu angelegt = in Prüfung, bis der Abruf etwas anderes meldet.
+        temuStatus: "INCOMPLETE",
+        imageUrls: s.images,
+        ...pack,
+        priceRule: rule,
+        ...(v ? { variant: v.value } : {}),
+      },
       stockSync: true,
       pushedQuantity: s.quantity,
       pushedAt: new Date(),
@@ -128,5 +176,11 @@ export async function publishAttemptToTemu(tenantId: string, a: ListingAttempt, 
       .values(row)
       .onConflictDoUpdate({ target: [L.tenantId, L.channel, L.sku], set: { ...row, updatedAt: new Date() } });
   }
+  await rememberTemuDefaults(tenantId, { factor: rule.factor, food: rule.food });
+  return { goodsId, skus: goods.skus.length };
+}
+
+export async function publishAttemptToTemu(tenantId: string, a: ListingAttempt, input: TemuPublishInput): Promise<TemuPanel> {
+  await publishListingToTemu(tenantId, a, input, { attemptId: a.id });
   return temuPanel(tenantId, a);
 }

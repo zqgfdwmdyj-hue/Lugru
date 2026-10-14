@@ -1,11 +1,12 @@
 import type { Gpsr, ListingAttempt } from "@/lib/ebay/types";
+import { temuBasePrice, type TemuPriceRule } from "./price";
 
 // Temu-Angebot über temu.local.goods.v3.add: Temu lädt die Bilder selbst, ordnet Kategorie,
 // Merkmale und Herstellerangaben aus Titel, Beschreibung und Merkmalen zu und nimmt die
 // Standard-Versandvorlage des Shops. Reine Logik, ohne Server-Abhängigkeiten.
 
 export type TemuPackage = { weightG: number; lengthCm: number; widthCm: number; heightCm: number };
-export type TemuSkuInput = { externalSkuId: string; price: number; quantity: number; images: string[]; ean?: string; variation?: { name: string; value: string } };
+export type TemuSkuInput = { externalSkuId: string; price: number; quantity: number; images: string[]; ean?: string; variations?: { name: string; value: string }[] };
 export type TemuGoodsInput = {
   externalGoodsId: string;
   title: string;
@@ -58,9 +59,9 @@ export function temuGoodsProblems(g: TemuGoodsInput, opts: { allowHttp?: boolean
   if (!g.skus.length) out.push("Keine Artikel (SKUs).");
   if (g.skus.length > LIMIT.skus) out.push(`Höchstens ${LIMIT.skus} Varianten.`);
   for (const s of g.skus) {
-    const label = s.variation ? s.variation.value : s.externalSkuId;
+    const label = s.variations?.length ? s.variations.map((x) => x.value).join(" / ") : s.externalSkuId;
     if (!s.images.length) out.push(`${label}: kein Bild.`);
-    if (!(s.price > 0)) out.push(`${label}: kein Preis.`);
+    if (!(s.price > 0)) out.push(`${label}: kein Preis (nach dem Rechner 0 € oder weniger – eigenen Preis eintragen).`);
   }
   const p = g.pack;
   if (!(p.weightG > 0)) out.push("Gewicht (g) fehlt.");
@@ -102,7 +103,7 @@ export function temuGoodsPayload(g: TemuGoodsInput): Record<string, unknown> {
         price: { basePrice: { amount: temuMoney(s.price), currency: "EUR" } },
         quantity: Math.max(0, Math.floor(s.quantity)),
         packageInfo: pack,
-        ...(s.variation ? { variations: [{ name: clip(plain(s.variation.name), LIMIT.attr), value: clip(plain(s.variation.value), LIMIT.attr) }] } : {}),
+        ...(s.variations?.length ? { variations: s.variations.map((x) => ({ name: clip(plain(x.name), LIMIT.attr), value: clip(plain(x.value), LIMIT.attr) })) } : {}),
         ...(type ? { barCode: { barCodeType: type, barCodeId: [s.ean!.replace(/\D/g, "")] } } : {}),
       };
     }),
@@ -110,30 +111,34 @@ export function temuGoodsPayload(g: TemuGoodsInput): Record<string, unknown> {
 }
 
 /**
- * Ein eBay-Listing (einfach oder mit Varianten) als Temu-Angebot. Preise als Prozent vom
- * eBay-Preis, Mengen je SKU aus der Wawi (sonst die eBay-Menge). Die SKUs bleiben die eBay-SKUs –
- * so finden Bestellungen und Bestandsabgleich dasselbe Wawi-Lager.
+ * Ein eBay-Listing (einfach oder mit Varianten) als Temu-Angebot. Preise je SKU wie angegeben,
+ * sonst nach dem Basispreis-Kalkulator aus dem eBay-Preis; Mengen je SKU aus der Wawi (sonst die
+ * eBay-Menge). Die SKUs bleiben die eBay-SKUs – so finden Bestellungen und Bestandsabgleich
+ * dasselbe Wawi-Lager.
  */
 export function temuGoodsFromAttempt(
   a: ListingAttempt,
-  opts: { pricePercent: number; pack: TemuPackage; quantities: Map<string, number> },
+  opts: { rule: TemuPriceRule; prices?: Map<string, number>; pack: TemuPackage; quantities: Map<string, number>; goodsId?: string },
 ): TemuGoodsInput {
-  const price = (p: number) => Math.round(p * opts.pricePercent) / 100;
+  const own = (sku: string) => opts.prices?.get(sku);
+  const price = (sku: string, ref: number) => { const p = own(sku); return p !== undefined && p > 0 ? Math.round(p * 100) / 100 : temuBasePrice(ref, opts.rule); };
   const images = a.imageUrls ?? [];
   const v = a.variants;
   const skus: TemuSkuInput[] = v
     ? v.items.map((i) => ({
         externalSkuId: i.sku,
-        price: price(i.price),
+        price: price(i.sku, i.price),
         quantity: opts.quantities.get(i.sku) ?? i.quantity,
         images: i.imageUrl ? [i.imageUrl, ...images.filter((u) => u !== i.imageUrl)] : images,
         ean: i.ean,
-        variation: { name: v.name, value: i.value },
+        variations: i.specs?.length ? i.specs : [{ name: v.name, value: i.value }],
       }))
-    : [{ externalSkuId: a.sku!, price: price(a.price), quantity: opts.quantities.get(a.sku!) ?? a.quantity, images, ean: a.ean || undefined }];
-  const attributes = Object.fromEntries(Object.entries(a.aspects ?? {}).filter(([k]) => !v || k.toLowerCase() !== v.name.toLowerCase()));
+    : [{ externalSkuId: a.sku!, price: price(a.sku!, a.price), quantity: opts.quantities.get(a.sku!) ?? a.quantity, images, ean: a.ean || undefined }];
+  // Variantenmerkmale stehen je SKU, nicht bei den Merkmalen des Angebots.
+  const varNames = new Set(v ? [v.name, ...v.items.flatMap((i) => i.specs?.map((x) => x.name) ?? [])].map((n) => n.toLowerCase()) : []);
+  const attributes = Object.fromEntries(Object.entries(a.aspects ?? {}).filter(([k]) => !varNames.has(k.toLowerCase())));
   const hint = a.aspects?.Produktart?.[0] ?? a.aspects?.Typ?.[0];
-  return { externalGoodsId: a.sku!, title: a.title ?? "", description: a.description, images, attributes, categoryHint: hint, skus, pack: opts.pack, gpsr: a.gpsr };
+  return { externalGoodsId: opts.goodsId ?? a.sku!, title: a.title ?? "", description: a.description, images, attributes, categoryHint: hint, skus, pack: opts.pack, gpsr: a.gpsr };
 }
 
 /** Temu-Status eines Angebots → Text und Zustand des Wawi-Angebots. */

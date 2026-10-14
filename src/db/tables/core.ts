@@ -129,6 +129,8 @@ export type TenantSettings = {
   };
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
+  /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
+  temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };
 
 export const tenants = pgTable("tenants", {

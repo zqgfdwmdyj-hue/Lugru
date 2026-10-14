@@ -28,6 +28,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
         <div><div className="crumb">WaWi</div><h1>Listings</h1></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         <form action={syncNowAction}><input type="hidden" name="kanal" value={sp.kanal ?? ""} /><button className="btn btn-primary" type="submit">Bestand jetzt abgleichen</button></form>
+        <Link className="btn" href="/listings/temu" title="Alle eBay-Angebote (auch ältere) auf Temu einstellen oder in die Wawi übernehmen">eBay-Angebote übernehmen (Temu/Wawi)</Link>
         <form action={adoptEbayAction}><button className="btn" type="submit" title="Angebote aus dem eBay-Tool in die Wawi holen und fehlenden Wawi-Bestand aus der eBay-Menge anlegen">eBay-Angebote aus dem Tool übernehmen</button></form>
         <form action={linkAmazonFbmAction}><button className="btn" type="submit" title="SKUs aus Amazon-FBM-Bestellungen mit eigenem Lager">Amazon FBM verknüpfen</button></form>
         <form action={draftsFromOwnStock} style={{ display: "flex", gap: 6 }}>

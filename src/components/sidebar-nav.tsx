@@ -52,6 +52,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/bestand", label: "Bestand & Inventur" },
         { href: "/artikel", label: "Artikelstamm" },
         { href: "/listings", label: "Listings" },
+        { href: "/listings/temu", label: "eBay → Temu / Wawi" },
         { href: "/lieferanten", label: "Lieferanten-Feeds" },
         { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
         { href: "/lieferanten/chancen", label: "Chancen" },
@@ -124,6 +125,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
     if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
     if (href === "/rechnungen") return pathname === "/rechnungen" || (pathname.startsWith("/rechnungen/") && !/^\/rechnungen\/(ausgang|kunden|belege)(\/|$)/.test(pathname));
     if (href === "/einkauf") return pathname === "/einkauf" || (pathname.startsWith("/einkauf/") && !/^\/einkauf\/beschaffungsanalyse(\/|$)/.test(pathname));
+    if (href === "/listings") return pathname === "/listings" || (pathname.startsWith("/listings/") && !pathname.startsWith("/listings/temu"));
     if (href === "/marken") return pathname === "/marken" || pathname.startsWith("/marken/ideen");
     if (href === "/lieferanten") return pathname === "/lieferanten" || (pathname.startsWith("/lieferanten/") && !/^\/lieferanten\/(finden|abfrage|chancen)(\/|$)/.test(pathname));
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");

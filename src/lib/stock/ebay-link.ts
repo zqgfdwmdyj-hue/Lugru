@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { listAttempts } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import type { ListingAttempt } from "@/lib/ebay/types";
+import type { LegacyItem } from "@/lib/ebay/trading-map";
 import { variantListings } from "@/lib/ebay/pipeline/variants";
 import { loadSets, saveSet } from "./sets";
 import { ebayQuantity } from "@/lib/integrations/clients/ebay";
@@ -57,6 +58,14 @@ export async function ebayStockOf(tenantId: string, sku: string): Promise<EbaySt
   return { onHand: ebay + reserved, ebay, reserved };
 }
 
+/** Älteres eBay-Angebot (Trading API): Menge bei eBay und was am Wawi-Angebot gemerkt wird. */
+export type LegacyLink = { quantity: number; payload: Record<string, unknown> };
+
+async function legacyStock(tenantId: string, sku: string, ebay: number): Promise<EbayStock> {
+  const reserved = await openEbayOrderQty(tenantId, sku);
+  return { onHand: ebay + reserved, ebay, reserved };
+}
+
 type OwnStock = typeof schema.ownStock.$inferSelect;
 
 /** Bestand setzen und als Bewegung festhalten. Gibt die gebuchte Änderung zurück. */
@@ -91,9 +100,10 @@ export type LinkResult = { stockSku: string; booked: number; stocked: boolean; n
  * eingestellte Menge, bei der Übernahme eines älteren (`adopt`) die aktuelle eBay-Menge plus
  * verkaufte, noch nicht versandte Stück (es kann ja schon verkauft sein).
  */
-export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean; set?: boolean } = {}): Promise<LinkResult | null> {
+export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean; set?: boolean; legacy?: Map<string, LegacyLink> } = {}): Promise<LinkResult | null> {
   if (a.status !== "published" || !a.sku || !a.listingId) return null;
   const L = schema.listings;
+  const legacy = opts.legacy?.get(a.sku);
   const [existing] = await db.select().from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay"), eq(L.sku, a.sku)));
   // Ein Set hat kein eigenes Lager – sein Bestand ergibt sich aus den Bestandteilen (stock_sets).
   const stockSku = opts.set ? a.sku : existing?.stockSku?.trim() || (a.ean ? await matchStockSku(tenantId, a.ean) : null) || a.sku;
@@ -111,7 +121,7 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
     withStock = true;
   } else if (opts.adopt && !stock) {
     try {
-      source = await ebayStockOf(tenantId, a.sku);
+      source = legacy ? await legacyStock(tenantId, a.sku, legacy.quantity) : await ebayStockOf(tenantId, a.sku);
       booked = await bookStock(tenantId, stockSku, source.onHand, undefined, "Anfangsbestand aus eBay-Menge", `eBay ${a.listingId}: ${source.ebay} angeboten + ${source.reserved} verkauft, nicht versandt`);
       listed = source.ebay;
       withStock = true;
@@ -133,7 +143,7 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
     quantity: listed,
     status: "active" as const,
     externalId: a.listingId,
-    payload: { offerId: a.offerId, attemptId: a.id, categoryId: a.categoryId, imageUrls: a.imageUrls ?? [] },
+    payload: { ...(a.id ? { offerId: a.offerId, attemptId: a.id } : {}), categoryId: a.categoryId, imageUrls: a.imageUrls ?? [], ...(legacy?.payload ?? {}) },
     pushedQuantity: listed,
     pushedAt: new Date(),
     lastSyncAt: new Date(),
@@ -177,7 +187,7 @@ export async function linkEbayAttempt(tenantId: string, a: ListingAttempt, opts:
  * Nach dem Veröffentlichen im eBay-Tool: einfaches Angebot wie bisher; ein Mehrfachangebot je
  * Variante (eigene SKU, eigene EAN, eigener Bestand und Abgleich). Liefert den Hinweis für die Vorschau.
  */
-export async function linkEbayPublished(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean } = {}): Promise<string | undefined> {
+export async function linkEbayPublished(tenantId: string, a: ListingAttempt, opts: { adopt?: boolean; legacy?: Map<string, LegacyLink> } = {}): Promise<string | undefined> {
   if (!a.variants) return (await linkEbayAttempt(tenantId, a, opts))?.note;
   const items = a.variants.items;
   const list = variantListings(a);
@@ -280,4 +290,16 @@ export async function ensureEbayStock(tenantId: string, ids?: string[]): Promise
   }
   if (out.done.length) syncSoon(tenantId, out.done.map((d) => d.stockSku));
   return out;
+}
+
+/**
+ * Älteres eBay-Angebot (direkt bei eBay eingestellt, nicht übers eBay-Tool) in die Wawi: je SKU ein
+ * eBay-Angebot mit Bestand aus der eBay-Menge (oder per EAN/SKU mit vorhandenem Lager verknüpft),
+ * Mengen ab jetzt über die Trading API abgeglichen.
+ */
+export async function adoptLegacyEbayItem(tenantId: string, item: LegacyItem): Promise<string | undefined> {
+  const legacy = new Map(
+    item.skus.map((k) => [k.sku, { quantity: k.quantity, payload: { trading: true, itemId: item.attempt.listingId, ebaySku: k.ebaySku, ...(k.specifics.length ? { specifics: k.specifics } : {}), ...(item.url ? { url: item.url } : {}) } }]),
+  );
+  return linkEbayPublished(tenantId, item.attempt, { adopt: true, legacy });
 }

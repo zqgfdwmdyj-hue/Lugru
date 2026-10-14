@@ -20,6 +20,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
+import { runTransfers } from "@/lib/temu/transfer";
 import { adoptEbayAttempts, ensureEbayStock } from "@/lib/stock/ebay-link";
 import { sendPendingReceipts } from "@/lib/invoices/receipts";
 import { sendPendingToStotax } from "@/lib/invoices/stotax";
@@ -94,6 +95,8 @@ export async function runScheduledJobs(force = false) {
         // Neue Temu-Angebote: in Prüfung → aktiv (dann Bestandsabgleich).
         if (force || due(`${t}:temu-goods`, 29)) await step("Temu-Angebote", () => refreshTemuListings(t));
       }
+      // eBay-Angebote übernehmen: liegengebliebene Aufträge (z. B. nach einem Neustart) fortsetzen.
+      if (force || due(`${t}:ebay-transfers`, 5)) await step("eBay-Übernahme", () => runTransfers(t));
       // Preislisten per Link (alle X Std je Feed), danach Amazon-Daten für Neues/Geändertes – im Keepa-Budget.
       if (force || due(`${t}:feeds`, 29)) await step("Lieferanten-Preislisten", () => pullDueFeeds(t));
       // Fehlende Markenlisten aus dem Verpackungsregister: langsam, im Hintergrund, pausiert bei Drosselung.
