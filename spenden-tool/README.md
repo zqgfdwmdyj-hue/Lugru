@@ -9,6 +9,8 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Preis, dazu der Verlauf, wann ein Produkt zu welchem Preis dabei war.
 - **Verteilungen:** Datum und Uhrzeit, viele Handyfotos auf einmal hochladen (jedes Foto wird ein
   Produkt), frühere Verteilung übernehmen, Preise direkt in der Liste eintragen.
+- **Fotos drehen:** ↺ / ↻ unter jedem Foto in der Produktliste, auf der Produktseite und im Collage-Editor. Das
+  gespeicherte Foto wird gedreht und gilt damit überall (Collage, Social Media, KI).
 - **Doppelte Fotos:** Jedes Foto bekommt einen Fingerabdruck. Dasselbe Foto wird wiedererkannt – auch verkleinert,
   neu gespeichert, per WhatsApp verschickt oder als PNG/HEIC – und weder doppelt angelegt noch doppelt von der KI
   ausgewertet. Nur ähnliche Fotos werden nicht automatisch zusammengelegt, sondern unter Produkte → „Mögliche
@@ -18,7 +20,8 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   vorgeschlagen (Standard: 25 % vom günstigsten Preis). Das läuft im Hintergrund.
 - **Collage:** Bilder zum Teilen im Messenger. Das Raster passt sich an, die Anzahl pro Bild ist
   einstellbar (4 bis 20), in den Formaten 4:5, 9:16, 1:1 oder A4. Der Preis steht auf dem Foto. Auf ein Produkt
-  in der Collage tippen, um Lage (9 Stellen) und Farbe des Preises festzulegen – das gilt für dieses Produkt auch
+  in der Collage tippen, um Name, Preis und Zusatztext einzeln ein- oder auszuschalten, das Foto zu drehen und Lage
+  (9 Stellen) und Farbe des Preises festzulegen – das gilt für dieses Produkt auch
   bei späteren Verteilungen („Automatisch“ setzt es zurück, „Für alle Bilder“ übernimmt es für die ganze Collage).
 - **Aushang:** A4 „Unsere Spendenempfehlungen“, die Schrift passt sich automatisch der Seite an.
 - **Messenger-Text:** dieselbe Liste als Text zum Kopieren.

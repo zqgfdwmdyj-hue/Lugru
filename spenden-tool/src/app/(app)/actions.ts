@@ -8,8 +8,8 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
-import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, type TileStyle, tileStyle } from "@/lib/layout";
-import { addProductsToEvent, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
+import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
+import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
@@ -97,13 +97,24 @@ export async function saveCollageSettings(eventId: string, settings: CollageSett
   await db.update(E).set({ collage: collageSettings(settings) }).where(eq(E.id, id));
 }
 
+/** Produktfoto drehen (↺ / ↻). */
+export async function rotatePhoto(productId: string, degrees: number) {
+  const me = await requireLogin();
+  const id = uuid.parse(productId);
+  const deg = degrees === 180 ? 180 : degrees === 270 || degrees === -90 ? 270 : 90;
+  const fileId = await rotateProductPhoto(id, deg);
+  if (fileId) await logActivity(me, `Foto gedreht (${deg === 270 ? "links" : deg === 90 ? "rechts" : "180°"})`, { productId: id });
+  // Das Foto erscheint auf vielen Seiten (Listen, Collage, Social Media)
+  revalidatePath("/", "layout");
+  return fileId;
+}
+
 /** Lage/Farbe des Preises für ein oder mehrere Produkte festlegen; null = wieder automatisch. */
 export async function saveTileStyles(productIds: string[], style: TileStyle | null) {
   await requireLogin();
   const ids = z.array(uuid).max(500).parse(productIds);
   if (ids.length === 0) return;
-  const t = tileStyle(style);
-  await db.update(P).set({ collageStyle: style && t.custom ? { pos: t.pos, color: t.color } : {} }).where(inArray(P.id, ids));
+  await db.update(P).set({ collageStyle: style ? cleanTileStyle(style) : {} }).where(inArray(P.id, ids));
 }
 
 /**

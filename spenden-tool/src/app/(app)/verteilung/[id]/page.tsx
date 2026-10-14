@@ -20,6 +20,7 @@ import { PriceLinks } from "@/components/price-links";
 import { MhdPhoto } from "@/components/mhd-photo";
 import { CategorySelect } from "@/components/category-select";
 import { UnsavedGuard } from "@/components/unsaved-guard";
+import { RotateButtons } from "@/components/rotate-buttons";
 
 const thumb: React.CSSProperties = { width: 52, height: 52, objectFit: "cover", borderRadius: 6, background: "var(--row)", display: "block" };
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
@@ -161,6 +162,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                       <Link href={`/produkte/${product.id}?zurueck=${id}`} title="Produkt bearbeiten / Foto ändern">
                         {product.imageFileId ? <img src={`/datei/${product.imageFileId}?w=200`} alt="" style={thumb} loading="lazy" /> : <span style={{ ...thumb, display: "grid", placeItems: "center", fontSize: 11, color: "var(--muted)" }}>kein Foto</span>}
                       </Link>
+                      {product.imageFileId && <div style={{ marginTop: 4 }}><RotateButtons productId={product.id} compact /></div>}
                     </td>
                     <td style={{ minWidth: 150 }}>
                       {/* Stand beim Laden – Unverändertes überschreibt beim Speichern nichts, was die KI inzwischen eingetragen hat */}

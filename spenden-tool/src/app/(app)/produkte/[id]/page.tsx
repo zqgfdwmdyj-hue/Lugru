@@ -13,6 +13,7 @@ import { deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/
 import { ImageForm } from "@/components/image-form";
 import { PriceLinks } from "@/components/price-links";
 import { CategorySelect } from "@/components/category-select";
+import { RotateButtons } from "@/components/rotate-buttons";
 
 export default async function SpendenProduktPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ zurueck?: string }> }) {
   await requireLogin();
@@ -53,7 +54,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <section className="card card-pad" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             {product.imageFileId
-              ? <a href={`/datei/${product.imageFileId}`} target="_blank"><img src={`/datei/${product.imageFileId}`} alt={product.name} style={{ maxWidth: 320, maxHeight: 320, borderRadius: 8, display: "block" }} /></a>
+              ? <div><a href={`/datei/${product.imageFileId}`} target="_blank"><img src={`/datei/${product.imageFileId}`} alt={product.name} style={{ maxWidth: 320, maxHeight: 320, borderRadius: 8, display: "block" }} /></a><div style={{ marginTop: 6 }}><RotateButtons productId={product.id} /></div></div>
               : <div className="muted" style={{ width: 240, height: 180, display: "grid", placeItems: "center", background: "var(--row)", borderRadius: 8 }}>noch kein Foto</div>}
             <div className="stack" style={{ flex: "1 1 260px", gap: 8 }}>
               <h2>Preis im Internet</h2>

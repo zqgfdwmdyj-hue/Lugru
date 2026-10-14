@@ -68,7 +68,7 @@ export const products = pgTable(
     price: money("price"),
     imageFileId: uuid("image_file_id").references(() => files.id, { onDelete: "set null" }),
     /** Lage und Farbe des Preises auf der Collage (siehe TileStyle in lib/layout.ts). */
-    collageStyle: jsonb("collage_style").$type<{ pos?: string; color?: string }>().notNull().default({}),
+    collageStyle: jsonb("collage_style").$type<{ pos?: string; color?: string; name?: boolean; price?: boolean; caption?: boolean }>().notNull().default({}),
     note: text("note"),
     archived: boolean("archived").notNull().default(false),
     createdAt: createdAt(),

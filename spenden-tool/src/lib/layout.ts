@@ -40,15 +40,26 @@ export const TILE_COLORS = {
 } as const;
 export type TileColor = keyof typeof TILE_COLORS;
 
-/** Pro Produkt gespeichert – gilt auf jeder Collage, auf der das Produktfoto vorkommt. */
-export type TileStyle = { pos?: TilePosition; color?: TileColor };
+/**
+ * Pro Produkt gespeichert – gilt auf jeder Collage, auf der das Produktfoto vorkommt. name/price/caption schalten
+ * die einzelnen Texte auf dem Bild ab (false) oder an (true); fehlt der Wert, gilt die Einstellung der Collage.
+ */
+export type TileStyle = { pos?: TilePosition; color?: TileColor; name?: boolean; price?: boolean; caption?: boolean };
 
-/** Gespeicherten Stil prüfen; `custom` sagt, ob jemand ihn festgelegt hat (sonst wählt die Collage selbst). */
-export function tileStyle(saved: unknown): { pos: TilePosition; color: TileColor; custom: boolean } {
+/** Nur gültige, gesetzte Werte – so wird gespeichert und an den Browser gegeben. */
+export function cleanTileStyle(saved: unknown): TileStyle {
   const s = (saved && typeof saved === "object" ? saved : {}) as Record<string, unknown>;
-  const pos = (TILE_POSITIONS as readonly string[]).includes(String(s.pos)) ? (s.pos as TilePosition) : null;
-  const color = String(s.color) in TILE_COLORS ? (s.color as TileColor) : null;
-  return { pos: pos ?? "um", color: color ?? "weiss", custom: !!pos || !!color };
+  const out: TileStyle = {};
+  if ((TILE_POSITIONS as readonly string[]).includes(String(s.pos))) out.pos = s.pos as TilePosition;
+  if (String(s.color) in TILE_COLORS) out.color = s.color as TileColor;
+  for (const k of ["name", "price", "caption"] as const) if (typeof s[k] === "boolean") out[k] = s[k] as boolean;
+  return out;
+}
+
+/** Gespeicherten Stil mit Standardwerten; `custom` sagt, ob Lage/Farbe festgelegt sind (sonst wählt die Collage selbst). */
+export function tileStyle(saved: unknown): { pos: TilePosition; color: TileColor; custom: boolean; name: boolean | null; price: boolean; caption: boolean } {
+  const s = cleanTileStyle(saved);
+  return { pos: s.pos ?? "um", color: s.color ?? "weiss", custom: !!s.pos || !!s.color, name: s.name ?? null, price: s.price ?? true, caption: s.caption ?? true };
 }
 
 /**

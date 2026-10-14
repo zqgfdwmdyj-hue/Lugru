@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
-import { collageSettings, eventDateLabel, type TileStyle, tileStyle } from "@/lib/layout";
+import { cleanTileStyle, collageSettings, eventDateLabel } from "@/lib/layout";
 import { loadEvent, loadEventItems, printedInfo } from "@/lib/service";
 import { differsFromPhoto } from "@/lib/printed-price";
 import { CollageEditor, type CollageTile } from "./collage-editor";
 
-const storedStyle = (raw: unknown): TileStyle => {
-  const t = tileStyle(raw);
-  return t.custom ? { pos: t.pos, color: t.color } : {};
-};
 
 export default async function CollagePage({ params }: { params: Promise<{ id: string }> }) {
   await requireLogin();
@@ -23,7 +19,7 @@ export default async function CollagePage({ params }: { params: Promise<{ id: st
     .map(({ item, product, photo }) => ({
       id: item.id,
       productId: product.id,
-      style: storedStyle(product.collageStyle),
+      style: cleanTileStyle(product.collageStyle),
       image: product.imageFileId ? `/datei/${product.imageFileId}` : null,
       name: [product.name, product.variant].filter(Boolean).join(" "),
       price: item.price,

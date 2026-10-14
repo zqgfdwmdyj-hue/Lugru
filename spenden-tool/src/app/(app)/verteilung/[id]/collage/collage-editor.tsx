@@ -5,6 +5,7 @@ import type { CollageSettings, PriceBox } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
 import { saveTileStyles } from "@/app/(app)/actions";
+import { RotateButtons } from "@/components/rotate-buttons";
 import { TILE_COLORS, TILE_POSITIONS, type TileColor, type TilePosition, type TileStyle, tileStyle } from "@/lib/layout";
 import { BAND, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
 import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
@@ -67,7 +68,8 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     const vis = (Math.max(0, Math.min(bx + bw, x + w) - Math.max(bx, x)) * Math.max(0, Math.min(by + bh, y + h) - Math.max(by, y))) / (bw * bh);
     if (vis < 0.8) plan = "normal";
   }
-  const priceLine = plan === "normal" ? fullPrice : "";
+  // Pro Bild abschaltbar: Preis, Name, Zusatztext (siehe Auswahl im Editor)
+  const priceLine = plan === "normal" && st.price ? fullPrice : "";
   // Lage der Schrift: festgelegt pro Produkt – sonst unten, bzw. oben, wenn unten schon ein Preis im Foto steht.
   const autoTop = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
   const vert = !img ? "m" : st.custom ? st.pos[0] : autoTop ? "o" : "u";
@@ -76,13 +78,13 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   const maxW = w - pad * 2;
 
   const lines: { text: string; size: number; isPrice?: boolean }[] = [];
-  if (!img || s.showName) {
+  if (st.name ?? (!img || s.showName)) {
     ctx.font = `${Math.round(side * (img ? 0.06 : 0.085))}px ${FONT}`;
     for (const l of wrap(ctx, tile.name, maxW, img ? 2 : 4)) lines.push({ text: l, size: side * (img ? 0.06 : 0.085) });
   }
-  if (note && !inline && plan === "normal") lines.push({ text: note, size: side * 0.09 });
+  if (note && !inline && plan === "normal" && st.price) lines.push({ text: note, size: side * 0.09 });
   if (priceLine) lines.push({ text: priceLine, size: side * 0.16, isPrice: true });
-  if (tile.caption) {
+  if (tile.caption && st.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
     for (const l of wrap(ctx, tile.caption, maxW, 3)) lines.push({ text: l, size: side * 0.055 });
   }
@@ -238,7 +240,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       const c = canvases.current[i];
       if (!c) return [];
       const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
-      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.style, t.price, t.priceNote, t.caption, t.name, t.printed?.text])]);
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, t.style, t.price, t.priceNote, t.caption, t.name, t.printed?.text])]);
       if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
       drawn.current.set(c, key);
       changed = true;
@@ -341,24 +343,40 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
         </div>
       </section>
       {message && <div className="notice notice-warn">{message}</div>}
-      {images && !sel && <div className="small muted">Tipp: Auf ein Produkt in der Collage tippen, um dort Lage und Farbe des Preises festzulegen.</div>}
+      {images && !sel && <div className="small muted">Tipp: Auf ein Produkt in der Collage tippen – dort lassen sich Name, Preis und Zusatztext einzeln ein- und ausschalten, Lage und Farbe festlegen und das Foto drehen.</div>}
       {sel && selStyle && (
         <section className="card card-pad tile-style" style={{ position: "sticky", top: 8, zIndex: 5, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div style={{ minWidth: 160 }}>
-            <div className="label">Preis bei</div>
+            <div className="label">Ausgewählt</div>
             <strong>{sel.name}</strong>
-            {sel.printed && <div className="small muted" style={{ maxWidth: 220 }}>Preis steht schon im Foto ({sel.printed.text}) – die Einstellung gilt für Name und Text.</div>}
-            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <button className="btn btn-small" type="button" onClick={() => changeStyle([sel.productId], null)} disabled={!selStyle.custom}>Automatisch</button>
-              <button className="btn btn-small" type="button" onClick={() => changeStyle(tiles.map((t) => t.productId), { pos: selStyle.pos, color: selStyle.color })} title="Diese Lage und Farbe für alle Bilder der Collage">Für alle Bilder</button>
+            {sel.printed && <div className="small muted" style={{ maxWidth: 220 }}>Preis steht schon im Foto ({sel.printed.text}) – darüber wird kein Preis gedruckt.</div>}
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+              {sel.image && <RotateButtons productId={sel.productId} />}
+              <button className="btn btn-small" type="button" onClick={() => changeStyle([sel.productId], null)} disabled={Object.keys(styles[sel.productId] ?? {}).length === 0}>Zurücksetzen</button>
+              <button className="btn btn-small" type="button" onClick={() => changeStyle(tiles.map((t) => t.productId), styles[sel.productId] ?? {})} title="Diese Einstellungen für alle Bilder der Collage">Für alle Bilder</button>
               <button className="btn btn-small" type="button" onClick={() => setSelected(null)}>Fertig</button>
+            </div>
+          </div>
+          <div>
+            <div className="label">Text auf dem Bild</div>
+            <div className="stack" style={{ gap: 4 }}>
+              {([
+                ["name", "Name", selStyle.name ?? (sel.image ? s.showName : true)],
+                ["price", "Preis", selStyle.price],
+                ["caption", "Zusatztext", selStyle.caption],
+              ] as const).map(([key, label, on]) => (
+                <label key={key} className="small" style={{ whiteSpace: "nowrap" }}>
+                  <input type="checkbox" checked={on} aria-label={`${label} zeigen`} onChange={(e) => changeStyle([sel.productId], { ...styles[sel.productId], [key]: e.target.checked })} /> {label}
+                  {key === "caption" && !sel.caption && <span className="muted"> (keiner eingetragen)</span>}
+                </label>
+              ))}
             </div>
           </div>
           <div>
             <div className="label">Lage</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 36px)", gap: 4 }}>
               {TILE_POSITIONS.map((p) => (
-                <button key={p} type="button" aria-label={`Lage ${p}`} aria-pressed={selStyle.custom && selStyle.pos === p} onClick={() => changeStyle([sel.productId], { pos: p as TilePosition, color: selStyle.color })}
+                <button key={p} type="button" aria-label={`Lage ${p}`} aria-pressed={selStyle.custom && selStyle.pos === p} onClick={() => changeStyle([sel.productId], { ...styles[sel.productId], pos: p as TilePosition, color: selStyle.color })}
                   style={{ width: 36, height: 30, borderRadius: 6, border: "1px solid #8a949c", cursor: "pointer", background: selStyle.pos === p ? "#1f7a4d" : "#fff" }} />
               ))}
             </div>
@@ -369,7 +387,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
               {(Object.keys(TILE_COLORS) as TileColor[]).map((c) => {
                 const col = TILE_COLORS[c];
                 return (
-                  <button key={c} type="button" title={col.label} aria-label={`Farbe ${col.label}`} aria-pressed={selStyle.color === c} onClick={() => changeStyle([sel.productId], { pos: selStyle.pos, color: c })}
+                  <button key={c} type="button" title={col.label} aria-label={`Farbe ${col.label}`} aria-pressed={selStyle.color === c} onClick={() => changeStyle([sel.productId], { ...styles[sel.productId], pos: selStyle.pos, color: c })}
                     style={{ minWidth: 40, height: 30, padding: "0 8px", borderRadius: 6, cursor: "pointer", fontWeight: 800, fontSize: 13, color: col.text, background: col.field ?? (col.veil === "dark" ? "#55606a" : "#e9e6dd"), border: selStyle.color === c ? "3px solid #ffd60a" : "1px solid #8a949c", boxShadow: selStyle.color === c ? "0 0 0 1px #1b1d1f" : "none" }}>
                     Aa
                   </button>

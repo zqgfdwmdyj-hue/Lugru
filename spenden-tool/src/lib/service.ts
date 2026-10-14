@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
 import type { PrintedInfo } from "@/lib/printed-price";
 import { DONATION_CATEGORIES } from "@/lib/layout";
+import sharp from "sharp";
 import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
 const P = schema.products;
@@ -15,7 +16,7 @@ const I = schema.eventItems;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
-const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
+export const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
 
 /** Prüft die ersten Bytes – der Dateityp allein sagt nichts (z. B. HEIC mit falscher Endung). */
 export function looksLikeImage(data: Uint8Array): boolean {
@@ -66,6 +67,43 @@ export async function deleteOrphanFiles() {
   const stats = await orphanFileStats();
   await db.delete(schema.files).where(orphanFilter);
   return stats;
+}
+
+/**
+ * Produktfoto drehen (im Uhrzeigersinn um 90/180/270 Grad). Es entsteht eine neue Datei – Fotos werden lange im
+ * Browser zwischengespeichert, eine geänderte Datei unter derselben Adresse käme nicht an. Die Lage eines
+ * aufgedruckten Preises wird mitgedreht; die alte Datei räumt „Aufräumen“ später weg.
+ */
+export async function rotateProductPhoto(productId: string, degrees: 90 | 180 | 270): Promise<string | null> {
+  const [p] = await db.select({ fileId: P.imageFileId }).from(P).where(eq(P.id, productId));
+  if (!p?.fileId) return null;
+  const [f] = await db.select().from(schema.files).where(eq(schema.files.id, p.fileId));
+  if (!f) return null;
+  // Erst die Kamera-Ausrichtung (EXIF) anwenden, dann drehen.
+  const upright = await sharp(f.data, { failOn: "none" }).rotate().toBuffer();
+  const png = f.mimeType === "image/png";
+  const turned = sharp(upright).rotate(degrees);
+  const data = png ? await turned.png().toBuffer() : await turned.jpeg({ quality: 90 }).toBuffer();
+  const b = f.printedPriceBox;
+  const box = !b ? null : degrees === 90 ? { x: 1 - b.y - b.h, y: b.x, w: b.h, h: b.w } : degrees === 180 ? { x: 1 - b.x - b.w, y: 1 - b.y - b.h, w: b.w, h: b.h } : { x: b.y, y: 1 - b.x - b.w, w: b.h, h: b.w };
+  const [nf] = await db
+    .insert(schema.files)
+    .values({
+      name: f.name,
+      mimeType: png ? "image/png" : "image/jpeg",
+      size: data.length,
+      sha256: sha256(data),
+      phash: (await photoHash(data)) ?? "",
+      data,
+      printedStatus: f.printedStatus,
+      printedPrice: f.printedPrice,
+      printedPriceText: f.printedPriceText,
+      printedPriceBox: box,
+      printedScannedAt: f.printedScannedAt,
+    })
+    .returning({ id: schema.files.id });
+  await db.update(P).set({ imageFileId: nf.id, updatedAt: new Date() }).where(eq(P.id, productId));
+  return nf.id;
 }
 
 /** Fingerabdrücke für ältere Fotos nachtragen (vor dieser Funktion hochgeladen). */
