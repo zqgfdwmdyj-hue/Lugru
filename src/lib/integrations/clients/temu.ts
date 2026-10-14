@@ -558,7 +558,7 @@ export async function refreshTemuListings(tenantId: string, ids?: string[]): Pro
  * Offene Konformitätsangaben eines Temu-Produkts (GPSR-Hersteller, EU-Verantwortliche, Fotos …): `note` als
  * Hinweis am Angebot, `check` als kurzer Stand der Abfrage, `raw` als knappe Rohantwort (Fehlersuche).
  */
-type ComplianceCheck = { note: string | null; check: string; raw: string };
+type ComplianceCheck = { note: string | null; check: string | null; raw: string };
 const COMPLIANCE_LISTS = ["gpsrInfoList", "repInfoList", "actualPhotoList", "certificateInfoList", "extraTemplateInfoList"];
 const complianceCache = new Map<string, Promise<ComplianceCheck>>();
 function complianceOf(tenantId: string, goodsId: string): Promise<ComplianceCheck> {
@@ -582,7 +582,8 @@ function complianceOf(tenantId: string, goodsId: string): Promise<ComplianceChec
         const first = listOf(o, "goodsList")[0];
         return `${Object.keys(o).join(",")}${first ? ` | Eintrag: ${Object.keys(first).join(",")}` : ""}`;
       };
-      return { note: null, check: "nicht in Temus Konformitätsliste gefunden", raw: `Suche: ${shape(r)} · Liste: ${shape(r2)}`.slice(0, 600) };
+      // Unvollständige Produkte führt Temu dort (noch) nicht – dann nichts anzeigen, die Angaben stehen im Seller Center.
+      return { note: null, check: null, raw: `nicht in der Konformitätsliste · Suche: ${shape(r)} · Liste: ${shape(r2)}`.slice(0, 600) };
     }
     const t = temuComplianceTodos(g as TemuComplianceGoods);
     const raw = JSON.stringify(Object.fromEntries(Object.entries(g).filter(([k]) => COMPLIANCE_LISTS.includes(k) || /status|compliance/i.test(k)))).slice(0, 600);
