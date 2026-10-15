@@ -5,6 +5,7 @@ import type { CollageSettings, PriceBox } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { saveCollageSettings } from "@/app/(app)/actions";
 import { saveTileStyles } from "@/app/(app)/actions";
+import { jpegsToPdf, type PdfPage } from "@/lib/pdf";
 import { RotateButtons } from "@/components/rotate-buttons";
 import { TILE_COLORS, TILE_POSITIONS, type TileColor, type TilePosition, type TileStyle, tileStyle } from "@/lib/layout";
 import { BAND, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
@@ -291,8 +292,32 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       a.href = url;
       a.download = f.name;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      await new Promise((r) => setTimeout(r, 250));
+      // Safari fragt bei jedem Bild nach – die Datei muss so lange verfügbar bleiben.
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  };
+  /** Alle Collage-Bilder als eine PDF-Datei, Seite für Seite untereinander – ein Klick, eine Datei. */
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    try {
+      const list: PdfPage[] = [];
+      for (const c of canvases.current.slice(0, pages.length)) {
+        if (!c) continue;
+        list.push({ jpeg: new Uint8Array(await (await toBlob(c)).arrayBuffer()), width: c.width, height: c.height });
+      }
+      const file = new File([jpegsToPdf(list, { a4: s.format === "a4" }) as BlobPart], `${fileBase}.pdf`, { type: "application/pdf" });
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch {
+      setMessage("PDF konnte nicht erstellt werden – bitte die Bilder einzeln speichern.");
+    } finally {
+      setPdfBusy(false);
     }
   };
   const share = async () => {
@@ -351,7 +376,14 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
         <div style={{ flexGrow: 1 }} />
         <div style={{ display: "flex", gap: 8 }}>
           {canShare && <button className="btn btn-primary" type="button" onClick={share} disabled={!images}>Teilen …</button>}
-          <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={() => download()} disabled={!images}>{pages.length > 1 ? `Alle ${pages.length} speichern` : "Bild speichern"}</button>
+          {pages.length > 1 ? (
+            <>
+              <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={downloadPdf} disabled={!images || pdfBusy} title="Alle Collage-Bilder untereinander in einer Datei – zum Drucken oder Weiterschicken">{pdfBusy ? "Erstelle PDF …" : `Alle ${pages.length} als PDF (1 Datei)`}</button>
+              <button className="btn" type="button" onClick={() => download()} disabled={!images} title="Jedes Bild als eigene Datei – manche Browser (Safari) fragen dann bei jedem Bild nach">Einzeln als Bilder</button>
+            </>
+          ) : (
+            <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={() => download()} disabled={!images}>Bild speichern</button>
+          )}
         </div>
       </section>
       {message && <div className="notice notice-warn">{message}</div>}

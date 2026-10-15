@@ -143,8 +143,9 @@ export async function downloadFiles(files: File[]) {
     a.href = url;
     a.download = f.name;
     a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    await new Promise((r) => setTimeout(r, 250));
+    // Safari fragt bei jeder Datei nach – sie muss so lange verfügbar bleiben.
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    await new Promise((r) => setTimeout(r, 700));
   }
 }
 

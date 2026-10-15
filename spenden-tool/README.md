@@ -18,7 +18,7 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **KI-Preisrecherche (Claude):** erkennt das Produkt auf dem Foto, trägt fehlende Namen ein und sucht
   den günstigsten aktuellen Preis bei deutschen Händlern, mit Links. Daraus wird ein Spendenpreis
   vorgeschlagen (Standard: 25 % vom günstigsten Preis). Das läuft im Hintergrund.
-- **Collage:** Bilder zum Teilen im Messenger. Das Raster passt sich an, die Anzahl pro Bild ist
+- **Collage:** Bilder zum Teilen im Messenger; alle Bilder auf einmal als eine PDF-Datei (Seite für Seite). Das Raster passt sich an, die Anzahl pro Bild ist
   einstellbar (4 bis 20), in den Formaten 4:5, 9:16, 1:1 oder A4. Der Preis steht auf dem Foto. Auf ein Produkt
   in der Collage tippen, um Name, Preis und Zusatztext einzeln ein- oder auszuschalten, das Foto zu drehen und Lage
   (9 Stellen) und Farbe des Preises festzulegen – das gilt für dieses Produkt auch
