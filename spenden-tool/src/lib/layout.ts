@@ -57,9 +57,10 @@ export function cleanTileStyle(saved: unknown): TileStyle {
 }
 
 /** Gespeicherten Stil mit Standardwerten; `custom` sagt, ob Lage/Farbe festgelegt sind (sonst wählt die Collage selbst). */
-export function tileStyle(saved: unknown): { pos: TilePosition; color: TileColor; custom: boolean; name: boolean | null; price: boolean; caption: boolean } {
+export function tileStyle(saved: unknown): { pos: TilePosition; color: TileColor; custom: boolean; name: boolean | null; price: boolean; priceSet: boolean; caption: boolean } {
   const s = cleanTileStyle(saved);
-  return { pos: s.pos ?? "um", color: s.color ?? "weiss", custom: !!s.pos || !!s.color, name: s.name ?? null, price: s.price ?? true, caption: s.caption ?? true };
+  // priceSet: ausdrücklich gewählt – „Preis an“ druckt ihn dann auch auf Fotos, auf denen schon einer steht.
+  return { pos: s.pos ?? "um", color: s.color ?? "weiss", custom: !!s.pos || !!s.color, name: s.name ?? null, price: s.price ?? true, priceSet: s.price !== undefined, caption: s.caption ?? true };
 }
 
 /**

@@ -130,8 +130,8 @@ describe("Social-Media-Texte", () => {
 
 describe("Preis-Lage und -Farbe je Produkt", () => {
   it("nimmt gültige Werte und fällt sonst auf automatisch zurück", () => {
-    expect(tileStyle({})).toEqual({ pos: "um", color: "weiss", custom: false, name: null, price: true, caption: true });
-    expect(tileStyle({ pos: "ol", color: "gelb" })).toEqual({ pos: "ol", color: "gelb", custom: true, name: null, price: true, caption: true });
+    expect(tileStyle({})).toEqual({ pos: "um", color: "weiss", custom: false, name: null, price: true, priceSet: false, caption: true });
+    expect(tileStyle({ pos: "ol", color: "gelb" })).toEqual({ pos: "ol", color: "gelb", custom: true, name: null, price: true, priceSet: false, caption: true });
     expect(tileStyle({ name: true, price: false, caption: "x" })).toMatchObject({ custom: false, name: true, price: false, caption: true });
     expect(cleanTileStyle({ pos: "um", price: false, evil: 1 })).toEqual({ pos: "um", price: false });
     expect(tileStyle({ pos: "xx", color: "lila" }).custom).toBe(false);

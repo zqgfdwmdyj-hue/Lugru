@@ -69,7 +69,10 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     if (vis < 0.8) plan = "normal";
   }
   // Pro Bild abschaltbar: Preis, Name, Zusatztext (siehe Auswahl im Editor)
-  const priceLine = plan === "normal" && st.price ? fullPrice : "";
+  // Steht schon ein Preis im Foto, wird nur gedruckt, wenn „Preis“ für dieses Bild ausdrücklich angehakt ist
+  // (z. B. weil der Preis im Foto zu klein ist).
+  const ownPrice = st.price && (plan === "normal" || st.priceSet);
+  const priceLine = ownPrice ? fullPrice : "";
   // Lage der Schrift: festgelegt pro Produkt – sonst unten, bzw. oben, wenn unten schon ein Preis im Foto steht.
   const autoTop = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
   const vert = !img ? "m" : st.custom ? st.pos[0] : autoTop ? "o" : "u";
@@ -82,7 +85,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     ctx.font = `${Math.round(side * (img ? 0.06 : 0.085))}px ${FONT}`;
     for (const l of wrap(ctx, tile.name, maxW, img ? 2 : 4)) lines.push({ text: l, size: side * (img ? 0.06 : 0.085) });
   }
-  if (note && !inline && plan === "normal" && st.price) lines.push({ text: note, size: side * 0.09 });
+  if (note && !inline && ownPrice) lines.push({ text: note, size: side * 0.09 });
   if (priceLine) lines.push({ text: priceLine, size: side * 0.16, isPrice: true });
   if (tile.caption && st.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
@@ -358,11 +361,16 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
           <div style={{ minWidth: 160 }}>
             <div className="label">Ausgewählt</div>
             <strong>{sel.name}</strong>
-            {sel.printed && <div className="small muted" style={{ maxWidth: 220 }}>Preis steht schon im Foto ({sel.printed.text}) – darüber wird kein Preis gedruckt.</div>}
+            {sel.printed && <div className="small muted" style={{ maxWidth: 240 }}>Preis steht schon im Foto ({sel.printed.text}) – deshalb wird keiner dazugedruckt. Ist er im Foto zu klein, „Preis“ anhaken.</div>}
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
               {sel.image && <RotateButtons productId={sel.productId} />}
               <button className="btn btn-small" type="button" onClick={() => changeStyle([sel.productId], null)} disabled={Object.keys(styles[sel.productId] ?? {}).length === 0}>Zurücksetzen</button>
-              <button className="btn btn-small" type="button" onClick={() => changeStyle(tiles.map((t) => t.productId), styles[sel.productId] ?? {})} title="Diese Einstellungen für alle Bilder der Collage">Für alle Bilder</button>
+              <button className="btn btn-small" type="button" onClick={() => {
+                  // „Preis zusätzlich drucken“ nicht auf alle übertragen – sonst stünden auf Fotos mit Preis zwei.
+                  const { price: _price, ...rest } = styles[sel.productId] ?? {};
+                  void _price;
+                  changeStyle(tiles.map((t) => t.productId).filter((id) => id !== sel.productId), rest);
+                }} title="Lage, Farbe, Name und Zusatztext für alle Bilder der Collage">Für alle Bilder</button>
               <button className="btn btn-small" type="button" onClick={() => setSelected(null)}>Fertig</button>
             </div>
           </div>
@@ -371,7 +379,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
             <div className="stack" style={{ gap: 4 }}>
               {([
                 ["name", "Name", selStyle.name ?? (sel.image ? s.showName : true)],
-                ["price", "Preis", selStyle.price],
+                ["price", "Preis", selStyle.priceSet ? selStyle.price : !sel.printed],
                 ["caption", "Zusatztext", selStyle.caption],
               ] as const).map(([key, label, on]) => (
                 <label key={key} className="small" style={{ whiteSpace: "nowrap" }}>
