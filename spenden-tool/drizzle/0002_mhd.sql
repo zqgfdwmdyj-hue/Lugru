@@ -1,0 +1,1 @@
+ALTER TABLE "event_items" ADD COLUMN "best_before" date;

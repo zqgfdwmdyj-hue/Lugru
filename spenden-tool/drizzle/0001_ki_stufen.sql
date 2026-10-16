@@ -1,0 +1,1 @@
+ALTER TABLE "price_checks" ADD COLUMN "mode" text DEFAULT 'genau' NOT NULL;

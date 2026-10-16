@@ -1,0 +1,3 @@
+# Seller-Tool (unverändert) + Spenden-Tool
+import /etc/caddy/Caddyfile
+import /etc/caddy/spenden.caddy

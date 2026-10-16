@@ -1,0 +1,2 @@
+ALTER TABLE "event_items" ADD COLUMN "best_before_file_id" uuid;--> statement-breakpoint
+ALTER TABLE "event_items" ADD CONSTRAINT "event_items_best_before_file_id_files_id_fk" FOREIGN KEY ("best_before_file_id") REFERENCES "public"."files"("id") ON DELETE set null ON UPDATE no action;

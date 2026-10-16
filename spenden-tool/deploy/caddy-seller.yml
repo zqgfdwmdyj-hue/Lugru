@@ -1,0 +1,16 @@
+# Ergänzung für den vorhandenen Caddy des Seller-Tools (nur auf dem Server, über COMPOSE_FILE in
+# /opt/seller-system/.env eingebunden – an den Dateien des Seller-Tools ändert sich nichts).
+# Caddy liest zusätzlich die Spenden-Domain und erreicht die Spenden-App über deren Docker-Netz.
+services:
+  caddy:
+    command: ["caddy", "run", "--config", "/etc/caddy/gesamt.caddy", "--adapter", "caddyfile"]
+    volumes:
+      - /opt/spenden-tool/spenden-tool/deploy/gesamt.caddy:/etc/caddy/gesamt.caddy:ro
+      - /opt/spenden-tool/spenden-tool/deploy/server/spenden.caddy:/etc/caddy/spenden.caddy:ro
+    networks:
+      - default
+      - spenden
+networks:
+  spenden:
+    external: true
+    name: spenden-tool_default
