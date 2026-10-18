@@ -41,7 +41,7 @@
     const tip = days > 21 ? "Tipp: Schultüte jetzt in Ruhe aussuchen – mit Prime ist sie schnell da."
       : days >= 0 ? "Jetzt wird’s Zeit: Schultüte und Füllbox bestellen! Mit Prime oft schon morgen da." : "";
 
-    board.innerHTML = `<img src="img/Grulu-Schultute-768x768.webp" alt="" width="160" height="160">
+    board.innerHTML = `<img src="img/grulu-schultuete-768x768.webp" alt="" width="160" height="160">
       <p class="cd-head">${head}</p><p class="cd-sub">${sub}</p>
       ${days >= 0 ? `<div class="cd-weeks" aria-hidden="true">${weeksBar(days)}</div>` : ""}
       ${tip ? `<p class="cd-tip">${tip}</p>` : ""}

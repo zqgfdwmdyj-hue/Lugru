@@ -15,9 +15,9 @@
   const BOXES = {
     nerds: { name: "Nerds Probierbox", price: "14,99 €", img: "img/Nerds-Probierbox-1-768x768.webp", url: "https://www.amazon.de/dp/B0H62R2VKD", text: "4 Nerds-Sorten – knusprig, bunt und perfekt zum Teilen." },
     pop: { name: "Pop Rocks Probierbox", price: "14,99 €", img: "img/Pop-Rocks-Probierbox-1-768x768.webp", url: "https://www.amazon.de/dp/B0H6CJH7RY", text: "Knisternder Knallzucker – das Highlight für mutige Entdecker." },
-    schultuete: { name: "GRULU Schultüte", price: "bei Amazon", img: "img/Grulu-Schultute-768x768.webp", url: "https://www.amazon.de/s?k=GRULU+Schult%C3%BCte", text: "Die bunte GRULU-Schultüte für den großen Tag – mit Überraschungen zum Schulstart." },
+    schultuete: { name: "GRULU Schultüte", price: "bei Amazon", img: "img/grulu-schultuete-768x768.webp", url: "https://www.amazon.de/s?k=GRULU+Schult%C3%BCte", text: "Die bunte GRULU-Schultüte für den großen Tag – mit Überraschungen zum Schulstart." },
     fuellung: { name: "Schultüte-Füllung (28 Teile)", price: "bei Amazon", img: "img/Fullmaterial-fur-Schultute-768x768.webp", url: "https://www.amazon.de/dp/B0HCCVDJKX", text: "28 Teile amerikanische & saure Süßigkeiten, ohne Schokolade – die Schultüte ist in Minuten gefüllt." },
-    reise: { name: "Kinder-Reisebox", price: "12,99 €", img: "img/GRULU-Kinder-Reisebox-1-768x768.webp", url: "#newsletter", text: "Snacks für unterwegs plus kleines GRULU-Buch. Bald bei Amazon – trag dich ein, dann sagen wir Bescheid." },
+    reise: { name: "Kinder-Reisebox", price: "12,99 €", img: "img/book-768x512.webp", url: "#newsletter", text: "Snacks für unterwegs plus kleines GRULU-Buch. Bald bei Amazon – trag dich ein, dann sagen wir Bescheid." },
   };
 
   /* ---------- Musik: eigene GRULU-Melodie, live im Browser erzeugt (keine Lizenzen nötig) ---------- */

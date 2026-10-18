@@ -20,6 +20,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; scroll-padding-top: 80px; }
 main { overflow-x: clip; }
 body { margin: 0; font-family: "Nunito", system-ui, sans-serif; color: var(--ink); background: var(--cream); line-height: 1.55; overflow-x: hidden; }
@@ -242,6 +243,8 @@ h2 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); color: var(--night-2); }
 .story-form label, .card-form label { display: grid; gap: 6px; font-weight: 800; color: var(--night-2); }
 .story-form input, .story-form select, .card-form input, .card-form select, .card-form textarea { padding: .75em 1em; border-radius: 14px; border: 2px solid #d8c9f5; font: inherit; background: #fff; }
 .story-form .btn { justify-self: start; }
+.story-form input, .story-form select, .card-form input, .card-form select, .card-form textarea { width: 100%; min-width: 0; }
+.story-form label { min-width: 0; }
 .story-form .hint { grid-column: 1 / -1; margin: 0; }
 .story { max-width: 680px; margin: 26px auto 0; background: linear-gradient(180deg, #2a1460, #4b23a8); color: #fff; border-radius: 26px; padding: 28px; font-size: 1.12rem; line-height: 1.75; }
 .story h3 { color: var(--yellow); font-size: 1.6rem; }

@@ -117,11 +117,11 @@ export function adminPage(pending, approved) {
     li{display:grid;grid-template-columns:120px 1fr auto;gap:12px;align-items:center;background:#fff;padding:10px;border-radius:14px}
     img{width:120px;height:120px;object-fit:cover;border-radius:10px}
     button{font:inherit;padding:8px 12px;border-radius:10px;border:0;background:#2ecc71;color:#fff;cursor:pointer;margin:2px}
-    .del{background:#ff2a6d}@media(max-width:560px){li{grid-template-columns:90px 1fr}img{width:90px;height:90px}form{grid-column:1/-1}}
+    .del{background:#ff2a6d}li.empty{display:block}@media(max-width:560px){li{grid-template-columns:90px 1fr}img{width:90px;height:90px}form{grid-column:1/-1}}
   </style></head><body>
   <h1>📸 GRULU-Galerie</h1>
   <p>Bitte vor dem Freigeben prüfen: keine erkennbaren Kindergesichter, keine Namen, Adressen oder Fremdmarken im Mittelpunkt.</p>
-  <h2>Zu prüfen (${pending.length})</h2><ul>${pending.map((i) => row(i, "pending")).join("") || "<li>Keine neuen Fotos.</li>"}</ul>
-  <h2>Online (${approved.length})</h2><ul>${approved.map((i) => row(i, "approved")).join("") || "<li>Noch keine.</li>"}</ul>
+  <h2>Zu prüfen (${pending.length})</h2><ul>${pending.map((i) => row(i, "pending")).join("") || '<li class="empty">Keine neuen Fotos.</li>'}</ul>
+  <h2>Online (${approved.length})</h2><ul>${approved.map((i) => row(i, "approved")).join("") || '<li class="empty">Noch keine.</li>'}</ul>
   </body></html>`;
 }
