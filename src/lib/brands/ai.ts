@@ -39,12 +39,13 @@ export function ideasPrompt(input: { brand: BrandProfile; occasion: { name: stri
     .join("\n");
 }
 
-export function contentPrompt(input: { brand: BrandProfile; subject: { title: string; concept: string | null; contents: string[] }; platform: string; count: number; occasion: string | null }): string {
+export function contentPrompt(input: { brand: BrandProfile; subject: { title: string; concept: string | null; contents: string[] }; platform: string; count: number; occasion: string | null; avoid?: string[] }): string {
   return [
     `Du bist Social-Media-Producer für ${input.platform === "youtube" ? "YouTube (Shorts und Videos)" : input.platform === "instagram" ? "Instagram Reels" : "TikTok (inkl. TikTok Shop)"}.`,
     profile(input.brand),
     `Produkt/Box: ${input.subject.title}${input.subject.concept ? ` – ${input.subject.concept}` : ""}${input.subject.contents.length ? `\nInhalt: ${input.subject.contents.join(", ")}` : ""}`,
     input.occasion ? `Anlass: ${input.occasion}` : "",
+    input.avoid?.length ? `Diese Hooks gab es schon – nicht wiederholen, andere Formate wählen:\n${input.avoid.slice(0, 30).map((h) => `- ${h}`).join("\n")}` : "",
     "",
     `Entwirf ${input.count} unterschiedliche Kurzvideo-Ideen (15–45 Sekunden), die mit Handy und wenig Aufwand drehbar sind: z. B. Unboxing, Geschmackstest/Reaktion, „Packt mit mir“, Vorher/Nachher, Fakten, POV, Trend-Format.`,
     "Starker Hook in den ersten 2 Sekunden, deutsch, zur Tonalität passend, keine gesundheits- oder wettbewerbsrechtlich heiklen Aussagen.",
@@ -133,3 +134,32 @@ export const CONTENT_STATUS_LABEL: Record<string, [string, string]> = {
   scheduled: ["Geplant", "tag-warn"],
   published: ["Veröffentlicht", "tag-ok"],
 };
+
+/* ---------- Wöchentlicher Content-Plan ---------- */
+
+/** ISO-Kalenderwoche als „2026-W43“ (Woche beginnt Montag). */
+export function isoWeek(dateIso: string): string {
+  const d = new Date(`${dateIso}T12:00:00Z`);
+  const day = (d.getUTCDay() + 6) % 7; // Mo = 0
+  d.setUTCDate(d.getUTCDate() - day + 3); // Donnerstag dieser Woche bestimmt das Jahr
+  const year = d.getUTCFullYear();
+  const week = Math.floor((d.getTime() - Date.UTC(year, 0, 1)) / 86400_000 / 7) + 1;
+  return `${year}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Freitag derselben Woche (Fälligkeit des Wochenplans). */
+export function fridayOf(dateIso: string): string {
+  const d = new Date(`${dateIso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + (4 - ((d.getUTCDay() + 6) % 7)));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Worum es in den Videos dieser Woche geht: der nächste Anlass, dessen Planung läuft und der höchstens
+ * 8 Wochen entfernt ist – sonst ganzjährig das Sortiment.
+ */
+export function weeklyTopic(upcoming: { name: string; date: string; daysLeft: number; planning: boolean }[]): { occasion: string | null; label: string } {
+  const next = upcoming.find((u) => u.planning && u.daysLeft >= 0 && u.daysLeft <= 56);
+  if (!next) return { occasion: null, label: "Sortiment (ganzjährig)" };
+  return { occasion: `${next.name} am ${next.date.slice(8, 10)}.${next.date.slice(5, 7)}. (noch ${next.daysLeft} Tage)`, label: next.name };
+}

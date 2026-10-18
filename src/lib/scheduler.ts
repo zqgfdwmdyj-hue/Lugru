@@ -13,7 +13,7 @@ import { runInvoiceAutomation } from "@/lib/ebay/invoices/scheduler";
 import { invoiceDeps } from "@/lib/ebay/invoices/deps";
 import { syncCalendar } from "@/lib/calendar/sync";
 import { runResearchIfDue } from "@/lib/research/service";
-import { refreshBrandPlanning } from "@/lib/brands/service";
+import { refreshBrandPlanning, refreshWeeklyContent } from "@/lib/brands/service";
 import { autoBoxes } from "@/lib/suppliers/boxes-service";
 import { refreshOwnProducts } from "@/lib/brands/shop-service";
 import { getIntegration } from "@/lib/integrations/store";
@@ -61,6 +61,7 @@ export async function runScheduledJobs(force = false) {
       const has = async (p: string) => Boolean(await getIntegration(t, p));
       if (force || due(`${t}:brands`, 360)) {
         await step("Marken-Planung", () => refreshBrandPlanning(t));
+        await step("Content-Plan der Woche", () => refreshWeeklyContent(t));
         await step("Eigene Produkte (Keepa)", () => refreshOwnProducts(t));
         await step("Box-Vorschläge", () => autoBoxes(t));
       }

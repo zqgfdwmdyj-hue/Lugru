@@ -288,6 +288,13 @@
       "when": 1791982046352,
       "tag": "0040_uebernahme",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792339876815,
+      "tag": "0041_content_wochenplan",
+      "breakpoints": true
     }
   ]
 }

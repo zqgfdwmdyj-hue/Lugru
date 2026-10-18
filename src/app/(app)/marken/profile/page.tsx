@@ -41,6 +41,13 @@ export default async function ProfilePage() {
                   <input type="checkbox" name="boxAuto" defaultChecked={b.boxAuto} />
                   <span><strong>Boxen selbstständig vorschlagen</strong> – einmal pro Woche aus neuen Lieferanten-Artikeln (mit TikTok-Trends, Keepa-Vergleich und Gewinnrechnung). Es entsteht eine Aufgabe, die Boxen stehen im Ideen-Board.{b.lastBoxRunAt ? ` Zuletzt: ${b.lastBoxRunAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}.` : ""}</span>
                 </label>
+                <div className="field"><label className="label">TikTok-Plan jede Woche</label>
+                  <select className="input" name="contentAuto" defaultValue={String(b.contentAuto)} style={{ width: "auto" }}>
+                    <option value="0">Aus</option>
+                    {[1, 2, 3, 4, 5, 7].map((n) => <option key={n} value={n}>{n} Video-Idee{n === 1 ? "" : "n"} pro Woche</option>)}
+                  </select>
+                  <span className="small muted">Jeden Montag schreibt die KI neue Drehbücher passend zum nächsten Anlass, verteilt sie im Content-Plan auf die Woche und legt eine Aufgabe an. Braucht einen KI-Schlüssel unter Anbindungen.{b.lastContentWeek ? ` Zuletzt: KW ${b.lastContentWeek.slice(6)}.` : ""}</span>
+                </div>
                 <div className="field"><label className="label">Amazon-Konto für den Artikelstamm</label>
                   <select className="input" name="amazonAccount" defaultValue={b.amazonAccount} style={{ width: "auto" }}>
                     <option value="haupt">Hauptkonto (Anbindungen → Amazon Seller Central)</option>

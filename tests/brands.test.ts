@@ -149,3 +149,41 @@ describe("Kalkulation wie ProfitGo", () => {
     expect(cp({ price: 24.95, cost: 8.55, vatRate: 7, referralPct: 14.99, fbaFee: 3.75, storageFee: 0.09 }, "fba").profit).toBe(7.19);
   });
 });
+
+describe("Content-Plan der Woche", () => {
+  it("rechnet die ISO-Kalenderwoche", async () => {
+    const { isoWeek } = await import("@/lib/brands/ai");
+    expect(isoWeek("2026-10-19")).toBe("2026-W43"); // Montag
+    expect(isoWeek("2026-10-25")).toBe("2026-W43"); // Sonntag, gleiche Woche
+    expect(isoWeek("2026-10-26")).toBe("2026-W44");
+    expect(isoWeek("2027-01-01")).toBe("2026-W53"); // Freitag gehört noch zur letzten Woche 2026
+    expect(isoWeek("2027-01-04")).toBe("2027-W01");
+    expect(isoWeek("2024-12-30")).toBe("2025-W01");
+  });
+
+  it("findet den Freitag der Woche", async () => {
+    const { fridayOf } = await import("@/lib/brands/ai");
+    expect(fridayOf("2026-10-19")).toBe("2026-10-23");
+    expect(fridayOf("2026-10-23")).toBe("2026-10-23");
+    expect(fridayOf("2026-10-25")).toBe("2026-10-23");
+  });
+
+  it("wählt den nächsten Anlass in der Planung, sonst das Sortiment", async () => {
+    const { weeklyTopic } = await import("@/lib/brands/ai");
+    const niko = { name: "Nikolaus", date: "2026-12-06", daysLeft: 49, planning: true };
+    expect(weeklyTopic([niko]).label).toBe("Nikolaus");
+    expect(weeklyTopic([niko]).occasion).toContain("06.12.");
+    expect(weeklyTopic([{ ...niko, planning: false }]).occasion).toBeNull();
+    expect(weeklyTopic([{ ...niko, daysLeft: 90 }]).label).toBe("Sortiment (ganzjährig)");
+    expect(weeklyTopic([]).occasion).toBeNull();
+  });
+
+  it("nennt schon genutzte Hooks im Prompt", async () => {
+    const { contentPrompt } = await import("@/lib/brands/ai");
+    const brand = { name: "Grulu", description: "Snackboxen", audience: null, priceRange: null, tone: null };
+    const p = contentPrompt({ brand, subject: { title: "Grulu – Nikolaus", concept: null, contents: [] }, platform: "tiktok", count: 3, occasion: "Nikolaus", avoid: ["Die Post ist da"] });
+    expect(p).toContain("nicht wiederholen");
+    expect(p).toContain("- Die Post ist da");
+    expect(contentPrompt({ brand, subject: { title: "x", concept: null, contents: [] }, platform: "tiktok", count: 3, occasion: null })).not.toContain("nicht wiederholen");
+  });
+});
