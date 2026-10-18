@@ -21,8 +21,9 @@ und den Server neu starten.
   kleines GRULU-Buch. Wer informiert werden möchte, trägt sich in den Newsletter auf der Website ein.
 - GRULU Schultüte – jetzt verfügbar bei Amazon – bunte Schultüte mit Überraschungen zum Schulstart.
   Kaufen: https://www.amazon.de/s?k=GRULU+Schult%C3%BCte
-- Füllbox für die Schultüte – jetzt verfügbar bei Amazon – fertig gepackte Füllung mit kleinen Überraschungen und Snacks.
-  Kaufen: https://www.amazon.de/s?k=GRULU+F%C3%BCllung+Schult%C3%BCte
+- GRULU Schultüte Füllung 28 Teile – jetzt verfügbar bei Amazon – 28 Teile amerikanische und saure Süßigkeiten
+  zum Befüllen der Schultüte, ohne Schokolade, für Jungen und Mädchen.
+  Kaufen: https://www.amazon.de/dp/B0HCCVDJKX
 - Preise für Schultüte und Füllbox: siehe Amazon (keine eigenen Preise nennen).
 
 ## Kinderbuch

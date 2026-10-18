@@ -8,7 +8,7 @@
   const nameEl = document.getElementById("cdName");
   const dateEl = document.getElementById("cdDate");
   const SCHULTUETE = "https://www.amazon.de/s?k=GRULU+Schult%C3%BCte";
-  const FUELLBOX = "https://www.amazon.de/s?k=GRULU+F%C3%BCllung+Schult%C3%BCte";
+  const FUELLBOX = "https://www.amazon.de/dp/B0HCCVDJKX";
 
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
