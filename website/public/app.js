@@ -15,6 +15,8 @@
   const BOXES = {
     nerds: { name: "Nerds Probierbox", price: "14,99 €", img: "img/Nerds-Probierbox-1-768x768.webp", url: "https://www.amazon.de/dp/B0H62R2VKD", text: "4 Nerds-Sorten – knusprig, bunt und perfekt zum Teilen." },
     pop: { name: "Pop Rocks Probierbox", price: "14,99 €", img: "img/Pop-Rocks-Probierbox-1-768x768.webp", url: "https://www.amazon.de/dp/B0H6CJH7RY", text: "Knisternder Knallzucker – das Highlight für mutige Entdecker." },
+    schultuete: { name: "GRULU Schultüte", price: "bei Amazon", img: "img/Grulu-Schultute-768x768.webp", url: "https://www.amazon.de/s?k=GRULU+Schult%C3%BCte", text: "Die bunte GRULU-Schultüte für den großen Tag – mit Überraschungen zum Schulstart." },
+    fuellung: { name: "Füllbox für die Schultüte", price: "bei Amazon", img: "img/Fullmaterial-fur-Schultute-768x768.webp", url: "https://www.amazon.de/s?k=GRULU+F%C3%BCllung+Schult%C3%BCte", text: "Fertig gepackt: kleine Überraschungen und Snacks – die Schultüte ist in Minuten voll." },
     reise: { name: "Kinder-Reisebox", price: "12,99 €", img: "img/GRULU-Kinder-Reisebox-1-768x768.webp", url: "#newsletter", text: "Snacks für unterwegs plus kleines GRULU-Buch. Bald bei Amazon – trag dich ein, dann sagen wir Bescheid." },
   };
 
@@ -131,7 +133,7 @@
   /* ---------- Box-Finder ---------- */
   const QUESTIONS = [
     { q: "Für wen ist die Box?", a: [["👧", "Kind 4–7", "klein"], ["🧒", "Kind 8–12", "gross"], ["👨‍👩‍👧", "Ganze Familie", "familie"]] },
-    { q: "Was ist der Anlass?", a: [["🎁", "Geschenk", "geschenk"], ["🚗", "Reise / Ausflug", "reise"], ["🍿", "Einfach so", "snack"]] },
+    { q: "Was ist der Anlass?", a: [["🎒", "Schulstart", "schule"], ["🎁", "Geschenk", "geschenk"], ["🚗", "Reise / Ausflug", "reise"], ["🍿", "Einfach so", "snack"]] },
     { q: "Welcher Snack-Typ?", a: [["💥", "Knistern & Prickeln", "pop"], ["🌈", "Bunt & knusprig", "nerds"], ["📚", "Snacks + Geschichte", "buch"]] },
   ];
   const finder = $("#finderBox");
@@ -147,6 +149,7 @@
     }));
   }
   function pick([wer, anlass, typ]) {
+    if (anlass === "schule") return wer === "familie" ? "fuellung" : "schultuete";
     if (anlass === "reise" || typ === "buch") return "reise";
     if (typ === "pop") return wer === "klein" ? "nerds" : "pop";
     if (typ === "nerds") return "nerds";
@@ -230,7 +233,8 @@
     if (/(allerg|zutat|gluten|vegan|laktose)/.test(t)) return "Die Boxen können Allergene enthalten. Bitte prüf die Angaben auf Amazon und auf den einzelnen Verpackungen. Bei Fragen: hallo@grulu-box.de";
     if (/(liefer|versand|wann|prime)/.test(t)) return "Wir versenden über Amazon – mit Prime kommt deine Box oft schon am nächsten Werktag. 🚚";
     if (/(firma|unternehmen|menge|bulk|großbestell)/.test(t)) return "Für Firmen- und Mengenanfragen schreib uns gern an hallo@grulu-box.de 💼";
-    if (/(geschenk|geburtstag|schul)/.test(t)) return `Als Geschenk lieben Kinder die Pop Rocks Box (${BOXES.pop.url}) oder die Nerds Box (${BOXES.nerds.url}). 🎁 Schultüte und Füllung kommen bald!`;
+    if (/(geschenk|geburtstag)/.test(t)) return `Als Geschenk lieben Kinder die Pop Rocks Box (${BOXES.pop.url}) oder die Nerds Box (${BOXES.nerds.url}). 🎁`;
+    if (/(schult|füll|einschul)/.test(t)) return `Zum Schulstart gibt es die GRULU Schultüte (${BOXES.schultuete.url}) und die passende Füllbox (${BOXES.fuellung.url}). 🎒`;
     if (/(geschichte|märchen|erzähl)/.test(t)) return "Es war einmal ein kleines lila Fellwesen namens GRULU. Jeden Abend öffnete es eine Box voller Sterne – und jedes Mal war etwas anderes darin: mal ein Regenbogen-Bonbon, mal ein kichernder Pilz. 🍄 Heute fand GRULU … dich! Gute Nacht! 🌙";
     return "Gute Frage! Gerade bin ich im Offline-Modus. 🙈 Schau gern in die FAQ oder schreib uns an hallo@grulu-box.de.";
   }

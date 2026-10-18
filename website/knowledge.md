@@ -19,8 +19,11 @@ und den Server neu starten.
   Kaufen: https://www.amazon.de/dp/B0H6CJH7RY
 - GRULU Kinder-Reisebox – 12,99 € – bald bei Amazon – wechselnder Inhalt, Snacks für unterwegs und ein
   kleines GRULU-Buch. Wer informiert werden möchte, trägt sich in den Newsletter auf der Website ein.
-- GRULU Schultüte – demnächst.
-- Füllmaterial für die Schultüte – demnächst – Füllbox mit kleinen Überraschungen und Snacks zum Schulstart.
+- GRULU Schultüte – jetzt verfügbar bei Amazon – bunte Schultüte mit Überraschungen zum Schulstart.
+  Kaufen: https://www.amazon.de/s?k=GRULU+Schult%C3%BCte
+- Füllbox für die Schultüte – jetzt verfügbar bei Amazon – fertig gepackte Füllung mit kleinen Überraschungen und Snacks.
+  Kaufen: https://www.amazon.de/s?k=GRULU+F%C3%BCllung+Schult%C3%BCte
+- Preise für Schultüte und Füllbox: siehe Amazon (keine eigenen Preise nennen).
 
 ## Kinderbuch
 - Eigenes GRULU-Kinderbuch mit Geschichten rund um die bunten GRULU-Figuren.
