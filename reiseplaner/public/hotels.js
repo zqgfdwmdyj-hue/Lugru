@@ -94,6 +94,97 @@ function suchLinks(ort, anreise, abreise) {
   return `<div class="links">${links.map(([n, u]) => `<a class="linkchip" style="--farbe:${n === "Tauchbasen" ? "#0277bd" : QUELLEN.sonstige.farbe}" href="${esc(u)}" target="_blank" rel="noopener">${esc(n)} ↗</a>`).join("")}</div>`;
 }
 
+// ---------- Wünsche an die Unterkunft (die KI berücksichtigt sie bei jeder Suche) ----------
+
+export const WUNSCH_MERKMALE = [
+  "Bungalow / Ferienhaus", "Ferienwohnung", "Hotel", "Eigenes Schlafzimmer je Familie", "Mehrere Bäder", "Küche", "Spülmaschine", "Waschmaschine",
+  "Strand ≤ 5 Min. zu Fuß", "Sandstrand", "Pool", "Kinderpool", "Kinderclub", "Spielplatz", "Klimaanlage", "WLAN", "Terrasse / Garten", "Grill",
+  "Parkplatz", "Babybett / Hochstuhl", "Haustiere erlaubt", "Ruhige Lage", "Restaurants zu Fuß", "Supermarkt in der Nähe", "Tauchbasis / Hausriff",
+  "All inclusive", "Frühstück", "Barrierefrei", "Kostenlos stornierbar",
+];
+
+const wuensche = () => (zustand.reise.wuensche ??= { muss: [], schoen: [], text: "", budget: "", anreise: "", abreise: "" });
+
+/** Wer reist mit – nach Familien, als Text für die KI. */
+export function gruppeText(r = zustand.reise) {
+  const ps = r.personen ?? [];
+  const beschreibung = (liste) => {
+    const erw = liste.filter((p) => !istKind(p)).length;
+    const kinder = liste.filter(istKind);
+    return [erw && `${erw} Erw.`, kinder.length && `${kinder.length} ${kinder.length === 1 ? "Kind" : "Kinder"}${kinder.some((k) => k.alter) ? ` (${kinder.map((k) => k.alter || "?").join(", ")} J.)` : ""}`].filter(Boolean).join(", ");
+  };
+  const fam = (r.familien ?? []).map((f) => ({ name: f.name, liste: ps.filter((p) => p.familie === f.id) })).filter((f) => f.liste.length);
+  const ohne = ps.filter((p) => !(r.familien ?? []).some((f) => f.id === p.familie));
+  const teile = fam.map((f) => `${f.name}: ${beschreibung(f.liste)}`);
+  if (ohne.length) teile.push(`${fam.length ? "weitere: " : ""}${beschreibung(ohne)}`);
+  return `${ps.length} Personen${fam.length > 1 ? ` in ${fam.length} Familien` : ""}${teile.length ? ` – ${teile.join("; ")}` : ""}`;
+}
+
+function wunschBox(ort) {
+  const w = wuensche();
+  const tage = [...(zustand.reise.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort();
+  const chip = (m) => {
+    const zustandM = w.muss.includes(m) ? "muss" : w.schoen.includes(m) ? "schoen" : "";
+    return `<button type="button" class="wunschchip ${zustandM}" data-aktion="wunsch-chip" data-wert="${esc(m)}" aria-pressed="${zustandM ? "true" : "false"}">${zustandM === "muss" ? "✓✓ " : zustandM === "schoen" ? "✓ " : ""}${esc(m)}</button>`;
+  };
+  return `<div class="karte-box wunschbox">
+    <h3>🎯 Unsere Wünsche</h3>
+    <p class="klein">${esc(gruppeText())} <span class="leise">(aus „Personen“)</span></p>
+    <p class="klein leise">Antippen: einmal = <strong>muss sein</strong> (✓✓), zweimal = <strong>wäre schön</strong> (✓), dreimal = egal. Die KI berücksichtigt das bei jeder Suche und jedem Vorschlag.</p>
+    <div class="wunschchips">${WUNSCH_MERKMALE.map(chip).join("")}</div>
+    <div class="formular drei">
+      <label>Anreise<input type="date" data-wunschfeld="anreise" value="${esc(w.anreise || tage[0] || "")}"></label>
+      <label>Abreise<input type="date" data-wunschfeld="abreise" value="${esc(w.abreise || tage.at(-1) || "")}"></label>
+      <label>Budget<input data-wunschfeld="budget" value="${esc(w.budget)}" placeholder="z. B. 250 € pro Nacht für alle" maxlength="120"></label>
+    </div>
+    <label>Weitere Wünsche<textarea data-wunschfeld="text" rows="2" maxlength="2000" placeholder="z. B. 3 Familien wollen zusammen wohnen, aber jede mit eigenem Bad; Oma kann keine Treppen; Hund (15 kg) kommt mit">${esc(w.text)}</textarea></label>
+    ${zustand.info.ki ? `<button class="knopf" data-aktion="wunsch-suche">✨ Passende Unterkünfte suchen${ort ? ` in ${esc(ort)}` : ""}</button>` : ""}
+  </div>`;
+}
+
+aktionen["wunsch-chip"] = (el) => {
+  const w = wuensche();
+  const m = el.dataset.wert;
+  if (w.muss.includes(m)) {
+    w.muss = w.muss.filter((x) => x !== m);
+    w.schoen.push(m);
+  } else if (w.schoen.includes(m)) w.schoen = w.schoen.filter((x) => x !== m);
+  else w.muss.push(m);
+  speichern();
+  neuZeichnen();
+};
+
+document.addEventListener("change", (e) => {
+  const feld = e.target.dataset?.wunschfeld;
+  if (!feld || !zustand.reise) return;
+  wuensche()[feld] = String(e.target.value).trim();
+  speichern();
+});
+
+const deDatum = (iso) => String(iso).split("-").reverse().join(".");
+
+/** Auftrag an die KI aus den Wünschen. */
+export function wunschAuftrag(ort) {
+  const w = wuensche();
+  const tage = [...(zustand.reise.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort();
+  const an = w.anreise || tage[0] || "";
+  const ab = w.abreise || tage.at(-1) || "";
+  return [
+    `Such uns passende Unterkünfte${ort ? ` in/um ${ort}` : ""}${an ? ` vom ${deDatum(an)}` : ""}${ab ? ` bis ${deDatum(ab)}` : ""}.`,
+    `Wir sind ${gruppeText()}.`,
+    w.muss.length ? `Muss: ${w.muss.join(", ")}.` : "",
+    w.schoen.length ? `Wäre schön: ${w.schoen.join(", ")}.` : "",
+    w.budget ? `Budget: ${w.budget}.` : "",
+    w.text ? `Außerdem: ${w.text}` : "",
+    "Prüfe jede Muss-Anforderung mit der Websuche (Ausstattung, Lage, Bettenzahl). Schlage nur Unterkünfte vor, die alle Muss-Punkte erfüllen und genug Platz für alle haben – höchstens 5, mit hotel_vorschlagen und echtem Link. Schreib zu jeder, welche Wünsche sicher erfüllt sind und was unklar ist. Wenn nichts alles erfüllt, sag ehrlich, woran es scheitert, und schlag die beste Annäherung vor.",
+  ].filter(Boolean).join("\n");
+}
+
+aktionen["wunsch-suche"] = () => {
+  if (document.activeElement?.dataset?.wunschfeld) document.activeElement.dispatchEvent(new Event("change", { bubbles: true }));
+  aktionen["ki-oeffnen"]({ dataset: { frage: wunschAuftrag($("#hotelSuchort")?.value.trim() ?? ""), senden: "1" } });
+};
+
 export function hotelsAnsicht() {
   const liste = [...hotels()].sort((a, b) => String(a.anreise).localeCompare(String(b.anreise)) || (a.status === "verworfen") - (b.status === "verworfen"));
   const orte = [...new Set(liste.map((h) => h.ort).filter(Boolean))];
@@ -112,6 +203,7 @@ export function hotelsAnsicht() {
       <label class="klein">Suche bei Anbietern für <input id="hotelSuchort" value="${esc(ersterOrt)}" placeholder="Ort, z. B. Hurghada"></label>
       <div id="hotelLinks">${suchLinks(ersterOrt, liste[0]?.anreise, liste[0]?.abreise)}</div>
     </div>
+    ${istKreuzfahrt() && !liste.length ? "" : wunschBox(ersterOrt)}
     ${
       liste.length
         ? [...zeitraeume.values()]

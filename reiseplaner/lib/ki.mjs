@@ -174,6 +174,86 @@ export async function reiseplanLesen({ text, dateien = [], heute }) {
   }
 }
 
+// ---------- Assistent ----------
+
+const SYSTEM_CHAT = `Du bist der Reiseassistent in einem privaten Reiseplaner einer Familie. Du hilfst, Landausflüge, Hotels und Tage zu planen, zu vergleichen und zu hinterfragen – auf Deutsch, freundlich und knapp.
+
+Die Reise kann eine Kreuzfahrt, ein Hotel-, Städte-, Ski- oder Campingurlaub, ein Roadtrip oder ein Tagesausflug sein. Mit jeder Nachricht bekommst du (wenn er sich geändert hat) den aktuellen Stand der Reise als JSON: Personen (ggf. mit Familie), Tage mit Zeiten und fester Zeit (z. B. „Alle an Bord“, Check-out, Abflug), Verbindungen, Unterkünfte, Ausflüge mit berechneten Kosten, Zeitplan und Puffer bis zur festen Zeit, sowie Bewertungen.
+
+So arbeitest du:
+- Antworte auf Grundlage der Reisedaten. Wenn du aktuelle Infos brauchst (Öffnungszeiten, Wetter, Erfahrungsberichte, Preise), nutze die Websuche und nenne die Quelle.
+- Feste Zeiten (Schiff, Flug, Check-out …) brauchen genug Puffer – das Schiff oder der Flieger wartet nicht. Weise auf Risiken hin.
+- Achte auf die Kinder (Alter), Tauchen (Flugverbot nach dem Tauchen, Tiefen), Fahrzeiten und Kosten.
+- Änderungen machst du nicht selbst: Schlage sie mit den Werkzeugen vor (ausflug_vorschlagen, aenderung_vorschlagen, station_vorschlagen, hotel_vorschlagen). Die Familie übernimmt sie mit einem Klick. Sag im Text kurz, was du vorgeschlagen hast.
+- Verwende für Änderungen die IDs aus den Reisedaten. Erfinde keine Preise oder Links – lass sie leer, wenn du sie nicht sicher weißt.
+- Wünsche der Familie (im Reisestand unter "wuensche": muss, schoen, budget, text – und alles, was sie im Gespräch sagt, z. B. „3 Familien suchen einen Bungalow mit Spülmaschine am Strand“) gelten für jeden Vorschlag. Muss-Punkte sind Bedingungen: Prüfe sie mit der Websuche (Ausstattung, Bettenzahl und Schlafzimmer für alle Personen bzw. Familien, Entfernung zum Strand, Preis im Zeitraum) und schlage nichts vor, was einen Muss-Punkt sicher nicht erfüllt. „Wäre schön“ entscheidet zwischen passenden Angeboten. Fehlen wichtige Angaben (Zeitraum, Ort, wie viele Personen), frag kurz nach, statt zu raten.
+- Bei Unterkünften gib in hotel_vorschlagen unter "passt" an, welche Wünsche sicher erfüllt sind, und unter "offen", was nicht erfüllt oder unklar ist (z. B. „Spülmaschine laut Beschreibung nicht erwähnt – beim Anbieter nachfragen“). Nur echte Unterkünfte mit Link zur Anbieterseite.`;
+
+const FELDER = ["titel", "status", "kategorie", "beginn", "dauerMin", "preisErw", "preisKind", "kostenlosBis", "preisGruppe", "zusatzkosten", "interesse", "link", "notiz", "name", "land", "ankunft", "abfahrt", "allesAnBord", "anreise", "abreise", "preis", "preisArt", "verpflegung"];
+
+const WERKZEUGE = [
+  {
+    name: "ausflug_vorschlagen",
+    description: "Schlägt einen neuen Ausflug für einen Tag/Hafen der Reise vor. Die Familie entscheidet in der App, ob er übernommen wird.",
+    strict: true,
+    input_schema: obj({
+      stationId: { type: "string", description: "ID des Tages/Hafens aus den Reisedaten" },
+      titel: str,
+      kategorie: { type: "string", enum: Object.keys(KATEGORIEN) },
+      quelle: { type: "string", enum: Object.keys(QUELLEN) },
+      beginn: { type: "string", description: "HH:MM oder leer" },
+      dauerMin: zahlOderNull,
+      preisErw: zahlOderNull,
+      preisKind: zahlOderNull,
+      link: { type: "string", description: "Nur echte, bekannte Links, sonst leer" },
+      zielName: { type: "string", description: "Ort/Treffpunkt für die Karte, z. B. „Loro Parque, Puerto de la Cruz“, oder leer" },
+      notiz: str,
+      begruendung: { type: "string", description: "Ein Satz, warum der Ausflug passt" },
+    }),
+  },
+  {
+    name: "aenderung_vorschlagen",
+    description: "Schlägt Änderungen an einem vorhandenen Ausflug, Tag/Hafen oder Hotel vor (z. B. Status, Beginn, Preis, Notiz).",
+    strict: true,
+    input_schema: obj({
+      zielArt: { type: "string", enum: ["ausflug", "station", "hotel"] },
+      zielId: str,
+      aenderungen: { type: "array", items: obj({ feld: { type: "string", enum: FELDER }, wert: { type: "string", description: "Neuer Wert als Text (Zahlen mit Punkt)" } }) },
+      begruendung: str,
+    }),
+  },
+  {
+    name: "station_vorschlagen",
+    description: "Schlägt einen neuen Reisetag vor (Hafen, Seetag oder Tag an Land).",
+    strict: true,
+    input_schema: obj({ datum: str, art: { type: "string", enum: ["hafen", "seetag", "ort"] }, name: str, land: str, ankunft: str, abfahrt: str, allesAnBord: str, notiz: str, begruendung: str }),
+  },
+  {
+    name: "hotel_vorschlagen",
+    description: "Schlägt eine Unterkunft zum Vergleichen vor.",
+    strict: true,
+    input_schema: obj({
+      name: str, ort: str, anreise: str, abreise: str, preis: zahlOderNull, preisArt: { type: "string", enum: ["nacht", "gesamt"] }, verpflegung: { type: "string", enum: ["", "ohne", "fruehstueck", "halbpension", "vollpension", "all"] }, link: str, notiz: str,
+      passt: { type: "string", description: "Welche Wünsche sicher erfüllt sind, z. B. „Bungalow mit 4 Schlafzimmern, Spülmaschine, 150 m zum Sandstrand“" },
+      offen: { type: "string", description: "Was nicht erfüllt oder unklar ist, sonst leer" },
+      begruendung: str,
+    }),
+  },
+  { type: "web_search_20260209", name: "web_search", max_uses: 8, user_location: { type: "approximate", country: "DE" } },
+  { type: "web_fetch_20260209", name: "web_fetch", max_uses: 4, max_content_tokens: 20000 },
+];
+
+/** Kompakter Stand der Reise für die KI (ohne Fotos, ohne interne Felder). */
+const kurz = (t, n) => String(t ?? "").slice(0, n);
+const wuenscheAus = (w) => ({
+  muss: (Array.isArray(w?.muss) ? w.muss : []).slice(0, 40).map((x) => kurz(x, 80)),
+  schoen: (Array.isArray(w?.schoen) ? w.schoen : []).slice(0, 40).map((x) => kurz(x, 80)),
+  budget: kurz(w?.budget, 120),
+  text: kurz(w?.text, 2000),
+  anreise: kurz(w?.anreise, 10),
+  abreise: kurz(w?.abreise, 10),
+});
+
 export function reiseStand(reise, beitraege, benutzer) {
   const personen = reise.personen ?? [];
   const namen = Object.fromEntries(benutzer.map((b) => [b.id, b.name]));
@@ -223,6 +303,7 @@ export function reiseStand(reise, beitraege, benutzer) {
     }),
     tauchgaenge: beitraege.tauchgaenge.map((t) => ({ datum: t.datum, tauchplatz: t.tauchplatz, maxTiefe: t.maxTiefe, tauchzeitMin: t.tauchzeitMin, taucher: namen[t.taucherId] ?? "" })),
     sonstigeKosten: (reise.kosten ?? []).map((k) => ({ titel: k.titel, betrag: k.betrag, status: k.status })),
+    wuensche: wuenscheAus(reise.wuensche),
   };
 }
 

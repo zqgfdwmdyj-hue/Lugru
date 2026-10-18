@@ -632,3 +632,12 @@ form.art-hafen .ohne-hafen { display: none !important; }
 .flugfortschritt { margin: 6px 0; color: var(--text); }
 .flugkarte h4 { margin: 16px 0 6px; }
 .kind-countdown .leise { color: rgba(255, 255, 255, 0.88); }
+
+/* Wünsche an die Unterkunft */
+.wunschchips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.wunschchip { border: 1px solid var(--rand); background: var(--flaeche, #fff); color: var(--text); border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.wunschchip.muss { background: var(--akzent); border-color: var(--akzent); color: #fff; font-weight: 600; }
+.wunschchip.schoen { background: var(--akzent-hell); border-color: var(--akzent); }
+.vorschlag .passt { color: #2e7d32; }
+.vorschlag .offen { color: #b26a00; }
+.wunschbox [data-aktion="wunsch-suche"] { white-space: normal; max-width: 100%; margin-top: 10px; }

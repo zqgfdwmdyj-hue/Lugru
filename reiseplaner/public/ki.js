@@ -210,6 +210,7 @@ const BEISPIELE = [
   "Haben wir irgendwo zu wenig Zeitpuffer bis „Alle an Bord“?",
   "Schlag uns gute Tauchplätze für die Reise vor.",
   "Wie können wir die Kosten senken?",
+  "Wir sind 3 Familien und suchen einen Bungalow mit Spülmaschine direkt am Strand – was passt?",
 ];
 
 function chatZeichnen() {
@@ -248,6 +249,8 @@ function vorschlagKarte(v, erledigt) {
   }
   return `<div class="vorschlag">
     <strong>${esc(titel)}</strong><div class="klein">${esc(details)}</div>
+    ${d.passt ? `<div class="klein passt">✅ ${esc(d.passt)}</div>` : ""}
+    ${d.offen ? `<div class="klein offen">⚠️ ${esc(d.offen)}</div>` : ""}
     ${d.begruendung ? `<div class="klein leise">${esc(d.begruendung)}</div>` : ""}
     ${erledigt ? `<span class="klein leise">✓ übernommen</span>` : `<button class="knopf leise" data-aktion="ki-vorschlag" data-id="${esc(v.id)}">Übernehmen</button>`}
   </div>`;
@@ -324,7 +327,12 @@ aktionen["ki-vorschlag"] = async (el) => {
       r.haefen.push({ id: neueId(), datum: d.datum, art: d.art, seetag: d.art === "seetag", name: d.art === "seetag" ? "Seetag" : d.name, land: d.land, ankunft: d.ankunft, abfahrt: d.abfahrt, allesAnBord: d.allesAnBord, notiz: d.notiz, lat: null, lng: null });
     } else if (v.typ === "hotel_vorschlagen") {
       r.hotels ??= [];
-      r.hotels.push({ id: neueId(), status: "idee", zimmer: 1, ...d, link: sichereUrl(d.link), notiz: [d.notiz, d.begruendung && `KI: ${d.begruendung}`].filter(Boolean).join("\n"), lat: null, lng: null });
+      r.hotels.push({
+        id: neueId(), status: "idee", zimmer: 1, name: String(d.name ?? "").slice(0, 200), ort: String(d.ort ?? "").slice(0, 200),
+        anreise: /^\d{4}-\d{2}-\d{2}$/.test(d.anreise) ? d.anreise : "", abreise: /^\d{4}-\d{2}-\d{2}$/.test(d.abreise) ? d.abreise : "",
+        preis: zahl(d.preis), preisArt: d.preisArt === "gesamt" ? "gesamt" : "nacht", verpflegung: VERPFLEGUNG[d.verpflegung] ? d.verpflegung : "", link: sichereUrl(d.link),
+        notiz: [d.notiz, d.passt && `✅ ${d.passt}`, d.offen && `⚠️ ${d.offen}`, d.begruendung && `KI: ${d.begruendung}`].filter(Boolean).join("\n"), lat: null, lng: null,
+      });
     }
     merkeAngewendet(v.id);
     speichern();
