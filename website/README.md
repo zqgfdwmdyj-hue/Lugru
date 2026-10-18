@@ -7,7 +7,7 @@ Neue Version von www.grulu-box.de – eigenständig, unabhängig vom Seller-Syst
 | Funktion | Beschreibung |
 |---|---|
 | **KI-Chat „Frag GRULU“** | Das Maskottchen beantwortet Fragen zu Boxen, Geschenken und Lieferung und erzählt Gute-Nacht-Geschichten. Läuft über Claude. Ohne Server oder API-Schlüssel antwortet der Chat aus festen FAQ-Antworten. |
-| **GRULU-Musik** | Eigene fröhliche Melodie, live im Browser erzeugt. Dafür braucht es keine GEMA- oder Lizenzrechte. Startet nur auf Klick, wie es Browser verlangen. |
+| **GRULU-Song** | „Tausend tolle Sachen“ läuft über den Musik-Knopf oben. Im Mitsing-Bereich (#song) wandert der Text passend zur Musik mit, ein Tipp auf eine Zeile springt dorthin. Startet nur auf Klick, wie es Browser verlangen. |
 | **Box-Finder** | Drei Klicks, danach gibt es eine passende Box mit Amazon-Link und Konfetti. |
 | **ChatGPT-fähig** | Strukturierte Produktdaten (schema.org), `llms.txt`, `robots.txt` für ChatGPT-Bots, Produkt-Feed und ein Button „Frag ChatGPT nach GRULU“. Siehe [CHATGPT-WERBUNG.md](CHATGPT-WERBUNG.md). |
 | **GRULU-Welt** | Ausmalbild (Flächen antippen, als Bild speichern), Spiel „Süßigkeiten-Fang“ mit Rekord, persönliche Gute-Nacht-Geschichte per KI mit Vorlese-Funktion, Grußkarte zum Teilen per WhatsApp. |

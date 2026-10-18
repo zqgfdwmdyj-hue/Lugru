@@ -301,3 +301,31 @@ h2 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); color: var(--night-2); }
   body.print-story .story { background: #fff; color: #000; }
   body.print-story .story h3 { color: #2a1460; }
 }
+
+/* ---------- GRULU-Song ---------- */
+.song { display: grid; grid-template-columns: minmax(0, 420px) 1fr; gap: 40px; align-items: center; background: linear-gradient(135deg, #0f4c81, #2a1460); color: #fff; border-radius: 36px; max-width: 1100px; }
+.song h2 { color: #fff; }
+.song .kicker { color: var(--yellow); }
+.song-cover { position: relative; }
+.song-cover img { border-radius: 28px; box-shadow: 0 24px 60px rgba(0, 0, 0, .4); }
+.song-cover.playing img { animation: beat .47s ease-in-out infinite alternate; }
+@keyframes beat { to { transform: scale(1.025) rotate(-.6deg); } }
+.song-play { position: absolute; right: 18px; top: 18px; width: 76px; height: 76px; border-radius: 50%; border: 0; cursor: pointer; font: 700 1.6rem "Fredoka", sans-serif; color: #fff; background: linear-gradient(135deg, var(--pink), var(--orange)); box-shadow: 0 8px 0 #b8124a, 0 14px 30px rgba(0, 0, 0, .35); }
+.song-play:active { transform: translateY(4px); box-shadow: 0 3px 0 #b8124a; }
+.song-bar { display: flex; align-items: center; gap: 10px; font-weight: 800; font-variant-numeric: tabular-nums; margin: 14px 0; }
+.song-bar input { flex: 1; accent-color: var(--yellow); min-width: 0; }
+.karaoke { background: rgba(255, 255, 255, .08); border-radius: 22px; padding: 18px 20px; text-align: center; min-height: 168px; display: flex; flex-direction: column; justify-content: center; }
+.karaoke p { margin: 4px 0; }
+.k-prev, .k-next { opacity: .5; font-weight: 600; min-height: 1.5em; }
+.k-now { font: 700 clamp(1.25rem, 3.6vw, 1.7rem) "Fredoka", sans-serif; color: var(--yellow); min-height: 1.3em; }
+.k-now.pulse { animation: pop-in .35s ease-out; }
+@keyframes pop-in { from { transform: scale(.92); opacity: .4; } }
+.song-text { margin-top: 14px; }
+.song-text summary { cursor: pointer; font-weight: 800; }
+.song-text ol { list-style: none; padding: 0; margin: 10px 0 0; max-height: 280px; overflow-y: auto; }
+.song-text button { background: none; border: 0; color: #fff; font: 600 1rem "Nunito", sans-serif; text-align: left; padding: 3px 6px; border-radius: 8px; cursor: pointer; opacity: .8; }
+.song-text button.on { background: var(--yellow); color: var(--night); opacity: 1; }
+@media (max-width: 860px) {
+  .song { grid-template-columns: 1fr; }
+  .song-cover { max-width: 360px; margin: 0 auto; }
+}

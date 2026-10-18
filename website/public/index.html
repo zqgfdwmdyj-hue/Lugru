@@ -73,6 +73,7 @@
     <a href="#start" class="brand" aria-label="GRULU Startseite"><img src="img/logo-grulu.webp" alt="GRULU" width="140" height="57"></a>
     <nav class="nav" aria-label="Hauptmenü">
       <a href="#boxen">Boxen</a>
+      <a href="#song">Song</a>
       <a href="#welt">GRULU-Welt</a>
       <a href="#schulstart">Schulstart</a>
       <a href="#galerie">Galerie</a>
@@ -119,8 +120,8 @@
 
     <div class="ticker" aria-hidden="true">
       <div class="ticker-track">
-        <span>🎥 Bald: TikTok Live Shopping</span><span>💬 Neu: Frag GRULU – unser KI-Helfer</span><span>🎵 Mit GRULU-Musik</span><span>🎒 Neu: Schultüte &amp; Füllbox</span>
-        <span>🎥 Bald: TikTok Live Shopping</span><span>💬 Neu: Frag GRULU – unser KI-Helfer</span><span>🎵 Mit GRULU-Musik</span><span>🎒 Neu: Schultüte &amp; Füllbox</span>
+        <span>🎥 Bald: TikTok Live Shopping</span><span>💬 Neu: Frag GRULU – unser KI-Helfer</span><span>🎵 Neu: der GRULU-Song zum Mitsingen</span><span>🎒 Neu: Schultüte &amp; Füllbox</span>
+        <span>🎥 Bald: TikTok Live Shopping</span><span>💬 Neu: Frag GRULU – unser KI-Helfer</span><span>🎵 Neu: der GRULU-Song zum Mitsingen</span><span>🎒 Neu: Schultüte &amp; Füllbox</span>
       </div>
     </div>
 
@@ -166,6 +167,33 @@
           <p>28 Teile amerikanische &amp; saure Süßigkeiten, ohne Schokolade – die Schultüte ist in Minuten gefüllt.</p>
           <div class="card-foot"><span class="price">🎒 Schulstart</span><a class="btn btn-sm" href="https://www.amazon.de/dp/B0HCCVDJKX" target="_blank" rel="noopener">🛒 Bei Amazon</a></div>
         </article>
+      </div>
+    </section>
+
+    <!-- GRULU-SONG -->
+    <section class="section song" id="song">
+      <div class="song-cover" id="songCover">
+        <img src="img/grulu-song-cover.webp" alt="Cover des GRULU-Songs „Tausend tolle Sachen“" width="768" height="768" loading="lazy">
+        <button type="button" class="song-play" id="songPlay" aria-label="Song abspielen">▶</button>
+      </div>
+      <div class="song-main">
+        <span class="kicker">🎵 Der GRULU-Song</span>
+        <h2>Tausend tolle Sachen</h2>
+        <p>Mitsingen ausdrücklich erlaubt! Der Text läuft passend zur Musik mit.</p>
+        <div class="song-bar">
+          <span id="songTime">0:00</span>
+          <input type="range" id="songSeek" min="0" max="152" step="0.1" value="0" aria-label="Stelle im Song">
+          <span id="songDur">2:32</span>
+        </div>
+        <div class="karaoke" id="karaoke">
+          <p class="k-prev" id="kPrev"></p>
+          <p class="k-now" id="kNow">Drück auf ▶ und sing mit!</p>
+          <p class="k-next" id="kNext"></p>
+        </div>
+        <details class="song-text">
+          <summary>Ganzen Liedtext anzeigen</summary>
+          <ol id="songFull"></ol>
+        </details>
       </div>
     </section>
 
@@ -451,6 +479,7 @@
   </section>
 
   <script src="app.js" defer></script>
+  <script src="js/song.js" defer></script>
   <script src="js/countdown.js" defer></script>
   <script src="js/welt.js" defer></script>
   <script src="js/ausmalen.js" defer></script>

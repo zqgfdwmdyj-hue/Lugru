@@ -20,72 +20,48 @@
     reise: { name: "Kinder-Reisebox", price: "12,99 €", img: "img/book-768x512.webp", url: "#newsletter", text: "Snacks für unterwegs plus kleines GRULU-Buch. Bald bei Amazon – trag dich ein, dann sagen wir Bescheid." },
   };
 
-  /* ---------- Musik: eigene GRULU-Melodie, live im Browser erzeugt (keine Lizenzen nötig) ---------- */
+  /* ---------- Musik: der GRULU-Song „Tausend tolle Sachen“ + kleine Klick-Töne ---------- */
   const Music = (() => {
-    let ctx, master, timer, step = 0, nextTime = 0, playing = false;
-    const BPM = 112, STEP = 60 / BPM / 2; // Achtelnoten
+    const song = new Audio();
+    song.preload = "none";
+    song.src = "audio/grulu-song.mp3";
+    let ctx, master;
     const n = (m) => 440 * Math.pow(2, (m - 69) / 12);
-    // Akkorde C – G – Am – F, je 8 Achtel
-    const chords = [[60, 64, 67], [55, 59, 62], [57, 60, 64], [53, 57, 60]];
-    const bass = [36, 43, 45, 41];
-    const melody = [
-      72, 0, 76, 79, 76, 0, 74, 72,  71, 0, 74, 79, 74, 0, 71, 67,
-      69, 0, 72, 76, 74, 72, 71, 69, 65, 69, 72, 0, 74, 72, 71, 0,
-    ];
-    function tone(freq, t, dur, type, vol) {
+    function ensure() {
+      if (!ctx) {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        master = ctx.createGain(); master.gain.value = 0.12; master.connect(ctx.destination);
+      }
+      ctx.resume();
+    }
+    function tone(freq, t, dur, vol) {
       const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = type; o.frequency.value = freq;
+      o.type = "sine"; o.frequency.value = freq;
       g.gain.setValueAtTime(0, t);
       g.gain.linearRampToValueAtTime(vol, t + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.connect(g).connect(master);
       o.start(t); o.stop(t + dur + 0.05);
     }
-    function schedule() {
-      while (nextTime < ctx.currentTime + 0.15) {
-        const bar = Math.floor(step / 8) % 4, beat = step % 8;
-        if (beat % 2 === 0) tone(n(bass[bar]), nextTime, STEP * 1.8, "triangle", 0.35);
-        tone(n(chords[bar][beat % 3] + 12), nextTime, STEP * 0.9, "square", 0.04);
-        const m = melody[step % melody.length];
-        if (m) tone(n(m), nextTime, STEP * 1.6, "sine", 0.22);
-        if (beat % 4 === 2) noise(nextTime);
-        nextTime += STEP; step++;
-      }
-    }
-    function noise(t) {
-      const len = ctx.sampleRate * 0.05, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const s = ctx.createBufferSource(), g = ctx.createGain();
-      g.gain.value = 0.08; s.buffer = buf; s.connect(g).connect(master); s.start(t);
-    }
-    function ensure() {
-      if (!ctx) {
-        ctx = new (window.AudioContext || window.webkitAudioContext)();
-        master = ctx.createGain(); master.gain.value = 0.18; master.connect(ctx.destination);
-      }
-      return ctx;
-    }
     return {
-      get on() { return playing; },
-      start() { ensure().resume(); nextTime = ctx.currentTime + 0.05; timer = setInterval(schedule, 40); playing = true; },
-      stop() { clearInterval(timer); playing = false; },
-      // kleiner „Pop“ für Klicks (nur wenn Musik an ist)
-      pop() {
-        if (!playing) return;
-        const t = ctx.currentTime;
-        tone(n(84 + Math.floor(Math.random() * 7)), t, 0.12, "sine", 0.25);
-      },
+      song,
+      get on() { return !song.paused; },
+      start() { ensure(); return song.play().catch(() => {}); },
+      stop() { song.pause(); },
+      // kleiner „Pop“ für Klicks (nur wenn Musik läuft)
+      pop() { if (!ctx || song.paused) return; tone(n(84 + Math.floor(Math.random() * 7)), ctx.currentTime, 0.12, 0.25); },
     };
   })();
 
   const musicBtn = $("#musicBtn");
-  function setMusic(on) {
-    on ? Music.start() : Music.stop();
+  // Knopf oben zeigt immer den echten Zustand – auch wenn der Song im Mitsing-Bereich gestartet wird.
+  function syncMusicBtn() {
+    const on = Music.on;
     musicBtn.setAttribute("aria-pressed", String(on));
-    musicBtn.setAttribute("aria-label", on ? "GRULU-Musik ausschalten" : "GRULU-Musik einschalten");
-    store.set("grulu-music", on ? "1" : "0");
+    musicBtn.setAttribute("aria-label", on ? "GRULU-Song anhalten" : "GRULU-Song abspielen");
   }
-  musicBtn.addEventListener("click", () => setMusic(!Music.on));
+  ["play", "pause", "ended"].forEach((ev) => Music.song.addEventListener(ev, syncMusicBtn));
+  musicBtn.addEventListener("click", () => (Music.on ? Music.stop() : Music.start()));
   document.addEventListener("click", (e) => { if (e.target.closest(".btn, .finder-opts button, .chips button")) Music.pop(); });
 
   /* ---------- Hero ---------- */
@@ -169,7 +145,7 @@
   renderQuestion();
 
   // Für die übrigen Module (Spiel, Ausmalen, …)
-  window.GRULU = { confetti, pop: () => Music.pop(), store, reduced, openChat: (p) => openChat(p) };
+  window.GRULU = { confetti, pop: () => Music.pop(), music: Music, store, reduced, openChat: (p) => openChat(p) };
 
   /* ---------- KI-Chat ---------- */
   const chat = $("#chat"), fab = $("#chatFab"), log = $("#chatLog"), form = $("#chatForm"), input = $("#chatInput");

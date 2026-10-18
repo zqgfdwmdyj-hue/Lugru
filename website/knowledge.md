@@ -40,6 +40,7 @@ und den Server neu starten.
 - Bestellstatus, Rückgaben und Erstattungen laufen über das Amazon-Konto des Kunden.
 
 ## Mitmachen auf der Website (darauf gern hinweisen)
+- GRULU-Song „Tausend tolle Sachen“ (#song): zum Anhören und Mitsingen, der Text läuft mit.
 - GRULU-Welt (#welt): Ausmalbild zum Ausmalen und Speichern, Spiel „Süßigkeiten-Fang“, persönliche
   Gute-Nacht-Geschichte mit dem Namen des Kindes (wird auch vorgelesen), Grußkarte zum Teilen per WhatsApp.
 - Schulstart-Countdown (#schulstart): Tage bis zur Einschulung zählen, Erinnerung in den Kalender.

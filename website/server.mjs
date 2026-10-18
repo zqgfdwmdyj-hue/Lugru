@@ -132,7 +132,7 @@ const TYPES = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8", ".jsonl": "application/jsonl; charset=utf-8", ".txt": "text/plain; charset=utf-8",
   ".xml": "application/xml; charset=utf-8", ".webp": "image/webp", ".png": "image/png", ".svg": "image/svg+xml",
-  ".woff2": "font/woff2", ".ico": "image/x-icon",
+  ".woff2": "font/woff2", ".mp3": "audio/mpeg", ".ico": "image/x-icon",
 };
 const SECURITY = {
   "x-content-type-options": "nosniff",
@@ -149,8 +149,21 @@ async function serveStatic(req, res) {
   try {
     const data = await readFile(file);
     const ext = extname(file);
-    const cache = ext === ".html" ? "no-cache" : /\.(webp|png|woff2)$/.test(ext) ? "public, max-age=2592000" : "public, max-age=3600";
-    res.writeHead(200, { "content-type": TYPES[ext] || "application/octet-stream", "cache-control": cache, ...SECURITY });
+    const cache = ext === ".html" ? "no-cache" : /\.(webp|png|woff2|mp3)$/.test(ext) ? "public, max-age=2592000" : "public, max-age=3600";
+    const headers = { "content-type": TYPES[ext] || "application/octet-stream", "cache-control": cache, "accept-ranges": "bytes", ...SECURITY };
+    // Teilabruf (Range) – Safari/iPhone spielt Audio nur so ab und kann vorspulen.
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+    if (range && (range[1] || range[2])) {
+      let start = range[1] ? Number(range[1]) : Math.max(0, data.length - Number(range[2]));
+      let end = range[1] && range[2] ? Math.min(Number(range[2]), data.length - 1) : data.length - 1;
+      if (start > end || start >= data.length) {
+        res.writeHead(416, { "content-range": `bytes */${data.length}` });
+        return res.end();
+      }
+      res.writeHead(206, { ...headers, "content-range": `bytes ${start}-${end}/${data.length}`, "content-length": end - start + 1 });
+      return res.end(req.method === "HEAD" ? undefined : data.subarray(start, end + 1));
+    }
+    res.writeHead(200, { ...headers, "content-length": data.length });
     res.end(req.method === "HEAD" ? undefined : data);
   } catch {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
