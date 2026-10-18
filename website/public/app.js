@@ -168,6 +168,9 @@
   }
   renderQuestion();
 
+  // Für die übrigen Module (Spiel, Ausmalen, …)
+  window.GRULU = { confetti, pop: () => Music.pop(), store, reduced, openChat: (p) => openChat(p) };
+
   /* ---------- KI-Chat ---------- */
   const chat = $("#chat"), fab = $("#chatFab"), log = $("#chatLog"), form = $("#chatForm"), input = $("#chatInput");
   const history = [];
@@ -249,7 +252,7 @@
     const f = e.currentTarget, msg = $("#nlMsg");
     msg.textContent = "Einen Moment …";
     try {
-      const res = await fetch("/api/newsletter", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: f.name.value, email: f.email.value, consent: f.consent.checked }) });
+      const res = await fetch("/api/newsletter", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: f.elements.namedItem("name").value, email: f.elements.namedItem("email").value, consent: f.elements.namedItem("consent").checked }) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Fehler");
       msg.textContent = data.message || "Danke! Bitte bestätige deine Anmeldung in der E-Mail, die wir dir geschickt haben. 💌";

@@ -37,3 +37,9 @@ und den Server neu starten.
 - Viele Boxen haben wechselnden Inhalt.
 - Gut als Geschenk: Schulstart, Geburtstag, Reisen, Mitbringsel.
 - Bestellstatus, Rückgaben und Erstattungen laufen über das Amazon-Konto des Kunden.
+
+## Mitmachen auf der Website (darauf gern hinweisen)
+- GRULU-Welt (#welt): Ausmalbild zum Ausmalen und Speichern, Spiel „Süßigkeiten-Fang“, persönliche
+  Gute-Nacht-Geschichte mit dem Namen des Kindes (wird auch vorgelesen), Grußkarte zum Teilen per WhatsApp.
+- Schulstart-Countdown (#schulstart): Tage bis zur Einschulung zählen, Erinnerung in den Kalender.
+- Galerie (#galerie): Kunden können Fotos ihrer GRULU-Box einsenden.
