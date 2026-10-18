@@ -1,0 +1,17 @@
+{
+  "name": "reiseplaner",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reisen, Landausflüge und Hotels planen, vergleichen, bewerten und teilen",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0"
+  }
+}
