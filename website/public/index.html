@@ -125,6 +125,38 @@
       </div>
     </div>
 
+    <!-- WEIHNACHTEN (wird nur in der Saison eingeblendet, siehe js/weihnachten.js) -->
+    <section class="section xmas" id="weihnachten" hidden>
+      <div class="snow" aria-hidden="true"></div>
+      <header class="section-head">
+        <span class="kicker">Nikolaus &amp; Weihnachten</span>
+        <h2>Geschenkideen, die knistern</h2>
+        <p class="xmas-count" id="xmasCount"></p>
+      </header>
+      <div class="xmas-grid">
+        <a class="xmas-tile" href="https://www.amazon.de/dp/B0H62R2VKD" target="_blank" rel="noopener">
+          <img src="img/Nerds-Probierbox-1-768x768.webp" alt="" width="768" height="768" loading="lazy">
+          <strong>Für den Nikolausstiefel</strong><span>Nerds Probierbox · 14,99 €</span>
+        </a>
+        <a class="xmas-tile" href="https://www.amazon.de/dp/B0H6CJH7RY" target="_blank" rel="noopener">
+          <img src="img/Pop-Rocks-Probierbox-1-768x768.webp" alt="" width="768" height="768" loading="lazy">
+          <strong>Zum Wichteln</strong><span>Pop Rocks Probierbox · 14,99 €</span>
+        </a>
+        <a class="xmas-tile" href="https://www.amazon.de/dp/B0HCCVDJKX" target="_blank" rel="noopener">
+          <img src="img/Fullmaterial-fur-Schultute-768x768.webp" alt="" width="768" height="768" loading="lazy">
+          <strong>Die große Naschkiste</strong><span>28 Teile amerikanische &amp; saure Süßigkeiten</span>
+        </a>
+      </div>
+      <div class="xmas-b2b">
+        <div>
+          <h3>Für Firmen: Weihnachtsgeschenke für Mitarbeiterkinder</h3>
+          <p>GRULU-Boxen mit Ihrer Grußkarte und Ihrem Logo, gebündelt geliefert. Bestellschluss für Firmen: Ende November.</p>
+        </div>
+        <a class="btn" id="xmasB2b" href="mailto:hallo@grulu-box.de">✉ Angebot anfragen</a>
+      </div>
+      <p class="xmas-note">Mit Prime kommt deine Box oft schon am nächsten Werktag – den letzten Liefertag vor Weihnachten zeigt Amazon beim Bestellen.</p>
+    </section>
+
     <!-- BOXEN -->
     <section class="section" id="boxen">
       <header class="section-head">
@@ -479,6 +511,7 @@
   </section>
 
   <script src="app.js" defer></script>
+  <script src="js/weihnachten.js" defer></script>
   <script src="js/song.js" defer></script>
   <script src="js/countdown.js" defer></script>
   <script src="js/welt.js" defer></script>

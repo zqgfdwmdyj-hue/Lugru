@@ -39,6 +39,13 @@ und den Server neu starten.
 - Gut als Geschenk: Schulstart, Geburtstag, Reisen, Mitbringsel.
 - Bestellstatus, Rückgaben und Erstattungen laufen über das Amazon-Konto des Kunden.
 
+## Weihnachten (Mitte Oktober bis 26. Dezember)
+- Geschenkideen: Nerds Probierbox für den Nikolausstiefel, Pop Rocks Probierbox zum Wichteln,
+  die 28-teilige Füllung als große Naschkiste.
+- Firmen-Weihnachtsgeschenke für Mitarbeiterkinder: mit Logo-Grußkarte, Anfrage an hallo@grulu-box.de,
+  Bestellschluss für Firmen Ende November. Preise nennt das Team auf Anfrage.
+- Letzter Liefertag vor Weihnachten: steht bei Amazon beim Bestellen.
+
 ## Mitmachen auf der Website (darauf gern hinweisen)
 - GRULU-Song „Tausend tolle Sachen“ (#song): zum Anhören und Mitsingen, der Text läuft mit.
 - GRULU-Welt (#welt): Ausmalbild zum Ausmalen und Speichern, Spiel „Süßigkeiten-Fang“, persönliche
