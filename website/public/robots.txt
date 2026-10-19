@@ -1,0 +1,16 @@
+# Suchmaschinen und KI-Assistenten (ChatGPT, Claude, Perplexity, Google) dürfen die Seite lesen,
+# damit GRULU in deren Antworten und Produktempfehlungen auftaucht.
+User-agent: *
+Allow: /
+Disallow: /api/
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+Sitemap: https://www.grulu-box.de/sitemap.xml

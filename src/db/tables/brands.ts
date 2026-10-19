@@ -1,4 +1,4 @@
-import { boolean, date, index, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, updatedAt, users } from "./core";
 
 // Eigene Marken (z. B. Grulu: Schultüten, US-Süßigkeiten, Themenboxen · Zeitlux: Uhren-Zubehör),
@@ -33,6 +33,10 @@ export const brands = pgTable(
     /** Box-Vorschläge aus Lieferanten-Artikeln selbstständig (wöchentlich, wenn neue Artikel da sind). */
     boxAuto: boolean("box_auto").notNull().default(false),
     lastBoxRunAt: timestamp("last_box_run_at", { withTimezone: true }),
+    /** Jede Woche automatisch so viele TikTok-Ideen mit Drehbuch (0 = aus). */
+    contentAuto: integer("content_auto").notNull().default(0),
+    /** Kalenderwoche des letzten automatischen Content-Plans, z. B. „2026-W43“. */
+    lastContentWeek: text("last_content_week"),
     /** Hersteller-/Verantwortlichen-Angaben (GPSR) – Vorlage für neue Artikel. */
     gpsr: jsonb("gpsr").$type<{ companyName?: string; addressLine1?: string; postalCode?: string; city?: string; country?: string; email?: string; phone?: string }>().notNull().default({}),
     createdAt: createdAt(),

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { askClaude, modelFor } from "@/lib/ai/claude";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -7,7 +7,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { googleNewsUrl } from "@/lib/research/feeds";
 import { fetchFeed } from "@/lib/research/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
-import { checklistFor, contentPrompt, ideasPrompt, parseContent, parseIdeas, type BrandProfile } from "./ai";
+import { checklistFor, contentPrompt, fridayOf, ideasPrompt, isoWeek, parseContent, parseIdeas, weeklyTopic, type BrandProfile } from "./ai";
 import { DEFAULT_OCCASIONS, occasionByKey, upcomingOccasions } from "./occasions";
 import { tiktokTopSellers } from "./shop-service";
 
@@ -170,6 +170,73 @@ export async function refreshBrandPlanning(tenantId: string) {
         link: `/marken?marke=${b.id}&anlass=${u.key}`,
         dueDate: decideBy < today ? today : decideBy,
       });
+    }
+  }
+}
+
+/**
+ * Wöchentlich: Für Marken mit „Content-Plan automatisch“ schreibt die KI einmal pro Kalenderwoche
+ * neue TikTok-Ideen mit Drehbuch (passend zum nächsten Anlass), verteilt sie auf die Woche und legt
+ * eine Aufgabe an. Holt eine verpasste Woche nach, wenn der Server am Montag aus war.
+ */
+export async function refreshWeeklyContent(tenantId: string) {
+  const brands = await db.select().from(B).where(and(eq(B.tenantId, tenantId), gt(B.contentAuto, 0)));
+  if (!brands.length) return;
+  const ai = await getIntegration(tenantId, "anthropic");
+  if (!ai?.apiKey) return;
+  const today = todayIso();
+  const week = isoWeek(today);
+  for (const b of brands) {
+    if (b.lastContentWeek === week) continue;
+    // Woche zuerst vermerken: schlägt die KI fehl, wird es nicht alle 6 Stunden erneut (und kostenpflichtig) versucht.
+    await db.update(B).set({ lastContentWeek: week }).where(and(eq(B.tenantId, tenantId), eq(B.id, b.id)));
+    try {
+      const topic = weeklyTopic(upcomingOccasions(today, b.occasions));
+      const avoid = (
+        await db.select({ hook: C.hook }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.brandId, b.id))).orderBy(desc(C.createdAt)).limit(30)
+      ).map((r) => r.hook);
+      const count = Math.min(7, b.contentAuto);
+      const r = await askClaude(
+        ai.apiKey,
+        contentPrompt({
+          brand: b as BrandProfile,
+          subject: { title: `${b.name} – ${topic.label}`, concept: b.description, contents: [] },
+          platform: "tiktok",
+          count,
+          occasion: topic.occasion,
+          avoid,
+        }),
+        { model: modelFor(ai, "creative"), task: "creative", maxTokens: 4000 },
+      );
+      const drafts = parseContent(r.text).slice(0, count);
+      if (!drafts.length) throw new Error("Die KI hat keine lesbaren Ideen geliefert.");
+      // Auf die restlichen Tage der Woche verteilen (bis Sonntag).
+      const daysLeft = Math.max(1, 7 - ((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
+      await db.insert(C).values(
+        drafts.map((d, i) => ({
+          tenantId,
+          brandId: b.id,
+          platform: "tiktok" as const,
+          format: d.format || null,
+          hook: d.hook,
+          script: d.script || null,
+          shots: d.shots,
+          caption: d.caption || null,
+          hashtags: d.hashtags || null,
+          soundIdea: d.soundIdea || null,
+          plannedFor: addDaysIso(today, Math.min(daysLeft - 1, Math.floor((i * daysLeft) / drafts.length))),
+          source: "ai" as const,
+        })),
+      );
+      await upsertSystemTask(db, tenantId, `content-week:${b.id}:${week}`, {
+        title: `${b.name}: ${drafts.length} neue TikTok-Ideen für diese Woche (${topic.label})`,
+        notes: "Die KI hat Drehbücher geschrieben und auf die Woche verteilt. Im Content-Plan aussuchen, drehen und auf „Veröffentlicht“ setzen.",
+        category: "marken",
+        link: `/marken/content?marke=${b.id}`,
+        dueDate: fridayOf(today),
+      });
+    } catch (e) {
+      console.error(`[Marken] Wochenplan ${b.name}:`, e instanceof Error ? e.message : e);
     }
   }
 }

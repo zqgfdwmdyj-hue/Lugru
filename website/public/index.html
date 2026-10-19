@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GRULU – Bunte Snackboxen für kleine Entdecker</title>
+  <meta name="description" content="GRULU Snackboxen: Nerds- und Pop-Rocks-Probierboxen, Kinder-Reisebox mit GRULU-Buch. Überraschungen für Kinder und Familien – schnell geliefert über Amazon.">
+  <link rel="canonical" href="https://www.grulu-box.de/">
+  <meta name="theme-color" content="#2a1460">
+  <link rel="icon" href="img/cropped-favicon-1-192x192.webp" type="image/webp">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="GRULU – Bunte Snackboxen für kleine Entdecker">
+  <meta property="og:description" content="Überraschungsboxen voller Snacks, Spaß und Geschichten – für Kinder und Familien.">
+  <meta property="og:image" content="https://www.grulu-box.de/img/grulu-768x525.webp">
+  <meta property="og:locale" content="de_DE">
+  <link rel="preload" href="fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://www.grulu-box.de/#org",
+        "name": "GRULU",
+        "legalName": "Wittmann & Grunert GmbH",
+        "url": "https://www.grulu-box.de/",
+        "logo": "https://www.grulu-box.de/img/logo-grulu.webp",
+        "email": "hallo@grulu-box.de",
+        "address": {"@type": "PostalAddress", "streetAddress": "Kirchenbug 2c", "postalCode": "85111", "addressLocality": "Adelschlag", "addressCountry": "DE"}
+      },
+      {
+        "@type": "Product",
+        "name": "GRULU Nerds Probierbox",
+        "description": "Probierbox mit 4 verschiedenen Nerds-Sorten – bunter Knusper-Spaß für Kinder und Familien.",
+        "image": "https://www.grulu-box.de/img/Nerds-Probierbox-1-768x768.webp",
+        "brand": {"@type": "Brand", "name": "GRULU"},
+        "offers": {"@type": "Offer", "price": "14.99", "priceCurrency": "EUR", "availability": "https://schema.org/InStock", "url": "https://www.amazon.de/dp/B0H62R2VKD"}
+      },
+      {
+        "@type": "Product",
+        "name": "GRULU Pop Rocks Probierbox",
+        "description": "Knisternder Knallzucker in verschiedenen Sorten – prickelt und überrascht.",
+        "image": "https://www.grulu-box.de/img/Pop-Rocks-Probierbox-1-768x768.webp",
+        "brand": {"@type": "Brand", "name": "GRULU"},
+        "offers": {"@type": "Offer", "price": "14.99", "priceCurrency": "EUR", "availability": "https://schema.org/InStock", "url": "https://www.amazon.de/dp/B0H6CJH7RY"}
+      },
+      {
+        "@type": "Product",
+        "name": "GRULU Schultüte Füllung 28 Teile",
+        "description": "28 Teile amerikanische und saure Süßigkeiten zum Befüllen der Schultüte, ohne Schokolade – für Jungen und Mädchen.",
+        "image": "https://www.grulu-box.de/img/Fullmaterial-fur-Schultute-768x768.webp",
+        "brand": {"@type": "Brand", "name": "GRULU"},
+        "url": "https://www.amazon.de/dp/B0HCCVDJKX"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {"@type": "Question", "name": "Wie lange dauert es, bis meine Box ankommt?", "acceptedAnswer": {"@type": "Answer", "text": "Bei Bestellung über Amazon gelten die dort angegebenen Lieferzeiten. Mit Prime kommt deine GRULU-Box oft schon am nächsten Werktag an."}},
+          {"@type": "Question", "name": "Sind die Snacks für Allergiker geeignet?", "acceptedAnswer": {"@type": "Answer", "text": "Die Boxen können verschiedene Allergene enthalten. Bitte prüfe vor dem Kauf die Produktbeschreibung auf Amazon und die Angaben auf den einzelnen Verpackungen."}},
+          {"@type": "Question", "name": "Kann ich als Unternehmen größere Mengen bestellen?", "acceptedAnswer": {"@type": "Answer", "text": "Ja. Schreib uns an hallo@grulu-box.de für individuelle Angebote, Aktionen oder Mengenanfragen."}},
+          {"@type": "Question", "name": "Ist der Inhalt der Box immer gleich?", "acceptedAnswer": {"@type": "Answer", "text": "Nein, viele GRULU-Boxen haben wechselnde Inhalte. So bleibt jede Box spannend."}}
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip" href="#inhalt">Zum Inhalt springen</a>
+
+  <header class="top">
+    <a href="#start" class="brand" aria-label="GRULU Startseite"><img src="img/logo-grulu.webp" alt="GRULU" width="140" height="57"></a>
+    <nav class="nav" aria-label="Hauptmenü">
+      <a href="#boxen">Boxen</a>
+      <a href="#song">Song</a>
+      <a href="#welt">GRULU-Welt</a>
+      <a href="#schulstart">Schulstart</a>
+      <a href="#galerie">Galerie</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="top-actions">
+      <button class="music-btn" id="musicBtn" type="button" aria-pressed="false" aria-label="GRULU-Musik einschalten">
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="music-label">Musik</span>
+      </button>
+      <a href="#boxen" class="btn btn-sm">Jetzt kaufen</a>
+    </div>
+  </header>
+
+  <main id="inhalt">
+    <!-- HERO -->
+    <section class="hero" id="start">
+      <div class="sky" aria-hidden="true">
+        <span class="candy c1">🍬</span><span class="candy c2">🍭</span><span class="candy c3">⭐</span>
+        <span class="candy c4">🍫</span><span class="candy c5">🌈</span><span class="candy c6">✨</span>
+        <span class="candy c7">🍩</span><span class="candy c8">💜</span>
+      </div>
+      <div class="hero-grid">
+        <div class="hero-text">
+          <span class="pill">✨ Neu in Deutschland</span>
+          <h1>Bunte Snackboxen für <span class="rainbow">kleine Entdecker</span></h1>
+          <p class="lead">Willkommen im GRULU-Universum: Überraschungsboxen voller Snacks, Geschichten und kleiner Abenteuer für die ganze Familie.</p>
+          <div class="hero-cta">
+            <a href="#boxen" class="btn">📦 Boxen entdecken</a>
+            <button type="button" class="btn btn-ghost" data-open-chat>💬 Frag GRULU</button>
+          </div>
+          <ul class="stats">
+            <li><strong data-count="987">0</strong><span>+ glückliche Kinder</span></li>
+            <li><strong>4,9 ⭐</strong><span>Bewertung</span></li>
+            <li><strong>Prime</strong><span>schnell geliefert</span></li>
+          </ul>
+        </div>
+        <figure class="hero-art">
+          <img src="img/grulu-768x525.webp" alt="Maskottchen GRULU mit einer Box voller Süßigkeiten" width="768" height="525" fetchpriority="high">
+          <figcaption class="bubble" id="mascotBubble">Hallo! Ich bin GRULU. Tipp mich an! 👋</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        <span>🎥 Bald: TikTok Live Shopping</span><span>💬 Neu: Frag GRULU – unser KI-Helfer</span><span>🎵 Neu: der GRULU-Song zum Mitsingen</span><span>🎒 Neu: Schultüte &amp; Füllbox</span>
+        <span>🎥 Bald: TikTok Live Shopping</span><span>💬 Neu: Frag GRULU – unser KI-Helfer</span><span>🎵 Neu: der GRULU-Song zum Mitsingen</span><span>🎒 Neu: Schultüte &amp; Füllbox</span>
+      </div>
+    </div>
+
+    <!-- WEIHNACHTEN (wird nur in der Saison eingeblendet, siehe js/weihnachten.js) -->
+    <section class="section xmas" id="weihnachten" hidden>
+      <div class="snow" aria-hidden="true"></div>
+      <header class="section-head">
+        <span class="kicker">Nikolaus &amp; Weihnachten</span>
+        <h2>Geschenkideen, die knistern</h2>
+        <p class="xmas-count" id="xmasCount"></p>
+      </header>
+      <div class="xmas-grid">
+        <a class="xmas-tile" href="https://www.amazon.de/dp/B0H62R2VKD" target="_blank" rel="noopener">
+          <img src="img/Nerds-Probierbox-1-768x768.webp" alt="" width="768" height="768" loading="lazy">
+          <strong>Für den Nikolausstiefel</strong><span>Nerds Probierbox · 14,99 €</span>
+        </a>
+        <a class="xmas-tile" href="https://www.amazon.de/dp/B0H6CJH7RY" target="_blank" rel="noopener">
+          <img src="img/Pop-Rocks-Probierbox-1-768x768.webp" alt="" width="768" height="768" loading="lazy">
+          <strong>Zum Wichteln</strong><span>Pop Rocks Probierbox · 14,99 €</span>
+        </a>
+        <a class="xmas-tile" href="https://www.amazon.de/dp/B0HCCVDJKX" target="_blank" rel="noopener">
+          <img src="img/Fullmaterial-fur-Schultute-768x768.webp" alt="" width="768" height="768" loading="lazy">
+          <strong>Die große Naschkiste</strong><span>28 Teile amerikanische &amp; saure Süßigkeiten</span>
+        </a>
+      </div>
+      <div class="xmas-b2b">
+        <div>
+          <h3>Für Firmen: Weihnachtsgeschenke für Mitarbeiterkinder</h3>
+          <p>GRULU-Boxen mit Ihrer Grußkarte und Ihrem Logo, gebündelt geliefert. Bestellschluss für Firmen: Ende November.</p>
+        </div>
+        <a class="btn" id="xmasB2b" href="mailto:hallo@grulu-box.de">✉ Angebot anfragen</a>
+      </div>
+      <p class="xmas-note">Mit Prime kommt deine Box oft schon am nächsten Werktag – den letzten Liefertag vor Weihnachten zeigt Amazon beim Bestellen.</p>
+    </section>
+
+    <!-- BOXEN -->
+    <section class="section" id="boxen">
+      <header class="section-head">
+        <span class="kicker">Unsere Produkte</span>
+        <h2>Die magischen GRULU-Boxen</h2>
+      </header>
+      <div class="cards">
+        <article class="card" data-tilt>
+          <span class="badge ok">Jetzt verfügbar</span>
+          <img src="img/Nerds-Probierbox-1-768x768.webp" alt="GRULU Nerds Probierbox" width="768" height="768" loading="lazy">
+          <h3>Nerds Probierbox</h3>
+          <p>4 verschiedene Nerds-Sorten in einer liebevoll gepackten Box – bunter Knusper-Spaß.</p>
+          <div class="card-foot"><span class="price">14,99 €</span><a class="btn btn-sm" href="https://www.amazon.de/dp/B0H62R2VKD" target="_blank" rel="noopener">🛒 Bei Amazon</a></div>
+        </article>
+        <article class="card" data-tilt>
+          <span class="badge ok">Jetzt verfügbar</span>
+          <img src="img/Pop-Rocks-Probierbox-1-768x768.webp" alt="GRULU Pop Rocks Probierbox" width="768" height="768" loading="lazy">
+          <h3>Pop Rocks Probierbox</h3>
+          <p>Knisternder Knallzucker in verschiedenen Sorten – prickelt im Mund und überrascht.</p>
+          <div class="card-foot"><span class="price">14,99 €</span><a class="btn btn-sm" href="https://www.amazon.de/dp/B0H6CJH7RY" target="_blank" rel="noopener">🛒 Bei Amazon</a></div>
+        </article>
+        <article class="card" data-tilt>
+          <span class="badge soon">Bald bei Amazon</span>
+          <img src="img/book-768x512.webp" alt="GRULU Kinder-Reisebox" width="768" height="768" loading="lazy">
+          <h3>Kinder-Reisebox</h3>
+          <p>Für kleine Entdecker unterwegs: wechselnde Snacks und ein kleines GRULU-Buch.</p>
+          <div class="card-foot"><span class="price">12,99 €</span><a class="btn btn-sm btn-ghost" href="#newsletter">🔔 Bescheid geben</a></div>
+        </article>
+        <article class="card" data-tilt>
+          <span class="badge ok">Jetzt verfügbar</span>
+          <img src="img/grulu-schultuete-768x768.webp" alt="GRULU Schultüte" width="768" height="768" loading="lazy">
+          <h3>GRULU Schultüte</h3>
+          <p>Die bunte GRULU-Schultüte für den großen Tag – mit Überraschungen zum Schulstart.</p>
+          <div class="card-foot"><span class="price">🎒 Schulstart</span><a class="btn btn-sm" href="https://www.amazon.de/s?k=GRULU+Schult%C3%BCte" target="_blank" rel="noopener">🛒 Bei Amazon</a></div>
+        </article>
+        <article class="card" data-tilt>
+          <span class="badge ok">Jetzt verfügbar</span>
+          <img src="img/Fullmaterial-fur-Schultute-768x768.webp" alt="Füllbox für die Schultüte" width="768" height="768" loading="lazy">
+          <h3>Füllung für die Schultüte</h3>
+          <p>28 Teile amerikanische &amp; saure Süßigkeiten, ohne Schokolade – die Schultüte ist in Minuten gefüllt.</p>
+          <div class="card-foot"><span class="price">🎒 Schulstart</span><a class="btn btn-sm" href="https://www.amazon.de/dp/B0HCCVDJKX" target="_blank" rel="noopener">🛒 Bei Amazon</a></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- GRULU-SONG -->
+    <section class="section song" id="song">
+      <div class="song-cover" id="songCover">
+        <img src="img/grulu-song-cover.webp" alt="Cover des GRULU-Songs „Tausend tolle Sachen“" width="768" height="768" loading="lazy">
+        <button type="button" class="song-play" id="songPlay" aria-label="Song abspielen">▶</button>
+      </div>
+      <div class="song-main">
+        <span class="kicker">🎵 Der GRULU-Song</span>
+        <h2>Tausend tolle Sachen</h2>
+        <p>Mitsingen ausdrücklich erlaubt! Der Text läuft passend zur Musik mit.</p>
+        <div class="song-bar">
+          <span id="songTime">0:00</span>
+          <input type="range" id="songSeek" min="0" max="152" step="0.1" value="0" aria-label="Stelle im Song">
+          <span id="songDur">2:32</span>
+        </div>
+        <div class="karaoke" id="karaoke">
+          <p class="k-prev" id="kPrev"></p>
+          <p class="k-now" id="kNow">Drück auf ▶ und sing mit!</p>
+          <p class="k-next" id="kNext"></p>
+        </div>
+        <details class="song-text">
+          <summary>Ganzen Liedtext anzeigen</summary>
+          <ol id="songFull"></ol>
+        </details>
+      </div>
+    </section>
+
+    <!-- SCHULSTART-COUNTDOWN -->
+    <section class="section countdown" id="schulstart">
+      <div class="cd-text">
+        <span class="kicker">🎒 Schulstart</span>
+        <h2>Countdown bis zur Einschulung</h2>
+        <p>Datum eintragen – GRULU zählt mit. Mit Erinnerung im Kalender, damit Schultüte und Füllbox rechtzeitig da sind.</p>
+        <form class="cd-form" id="cdForm">
+          <label for="cdName">Name des Schulkinds <small>(optional, bleibt auf deinem Gerät)</small></label>
+          <input id="cdName" maxlength="30" placeholder="z. B. Mia" autocomplete="off">
+          <label for="cdDate">Tag der Einschulung</label>
+          <input id="cdDate" type="date" required>
+          <button class="btn" type="submit">⏳ Countdown starten</button>
+        </form>
+      </div>
+      <div class="cd-board" id="cdBoard" aria-live="polite">
+        <img src="img/grulu-schultuete-768x768.webp" alt="" width="160" height="160" loading="lazy">
+        <p class="cd-empty">Trag den Einschulungstag ein und los geht’s!</p>
+      </div>
+    </section>
+
+    <!-- BOX-FINDER -->
+    <section class="section finder" id="finder">
+      <header class="section-head">
+        <span class="kicker">In 3 Klicks</span>
+        <h2>Welche Box passt zu euch?</h2>
+      </header>
+      <div class="finder-box" id="finderBox" aria-live="polite">
+        <!-- wird von app.js gefüllt -->
+      </div>
+    </section>
+
+    <!-- GRULU-WELT -->
+    <section class="section welt" id="welt">
+      <header class="section-head">
+        <span class="kicker">Spielen, malen, träumen</span>
+        <h2>Die GRULU-Welt</h2>
+      </header>
+      <div class="tabs" role="tablist" aria-label="GRULU-Welt">
+        <button role="tab" id="tab-malen" aria-controls="pane-malen" aria-selected="true">🎨 Ausmalen</button>
+        <button role="tab" id="tab-spiel" aria-controls="pane-spiel" aria-selected="false" tabindex="-1">🎮 Süßigkeiten-Fang</button>
+        <button role="tab" id="tab-geschichte" aria-controls="pane-geschichte" aria-selected="false" tabindex="-1">🌙 Deine Geschichte</button>
+        <button role="tab" id="tab-karte" aria-controls="pane-karte" aria-selected="false" tabindex="-1">💌 Grußkarte</button>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-malen" aria-labelledby="tab-malen">
+        <p class="pane-intro">Farbe wählen und in eine Fläche tippen. Fertig? Bild speichern und ausdrucken!</p>
+        <div class="paint">
+          <canvas id="paintCanvas" width="600" height="600" aria-label="GRULU-Ausmalbild"></canvas>
+          <div class="paint-tools">
+            <div class="palette" id="palette" role="radiogroup" aria-label="Farben"></div>
+            <div class="paint-actions">
+              <button type="button" class="btn btn-sm btn-ghost" id="paintUndo">↶ Zurück</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="paintReset">🧽 Neu</button>
+              <button type="button" class="btn btn-sm" id="paintSave">💾 Speichern</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-spiel" aria-labelledby="tab-spiel" hidden>
+        <p class="pane-intro">Hilf GRULU, die Süßigkeiten zu fangen! 💥 Pop Rocks geben 3 Punkte – aber Vorsicht vor dem Brokkoli 🥦.</p>
+        <div class="game">
+          <canvas id="gameCanvas" width="480" height="640" aria-label="Spiel Süßigkeiten-Fang"></canvas>
+          <div class="game-overlay" id="gameOverlay">
+            <p class="game-title">Süßigkeiten-Fang</p>
+            <p id="gameMsg">Wisch oder benutze die Pfeiltasten.</p>
+            <button type="button" class="btn" id="gameStart">▶ Spielen</button>
+          </div>
+        </div>
+        <p class="game-best">Dein Rekord: <strong id="gameBest">0</strong></p>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-geschichte" aria-labelledby="tab-geschichte" hidden>
+        <p class="pane-intro">GRULU schreibt eine Gute-Nacht-Geschichte nur für dein Kind – und liest sie auf Wunsch vor.</p>
+        <form class="story-form" id="storyForm">
+          <label>Vorname oder Spitzname <input name="name" maxlength="20" required placeholder="z. B. Mia" autocomplete="off"></label>
+          <label>Alter
+            <select name="age"><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
+          </label>
+          <label>Worum soll es gehen?
+            <select name="theme">
+              <option>Ein Abenteuer im Zauberwald</option>
+              <option>Der erste Schultag</option>
+              <option>Eine Reise zu den Sternen</option>
+              <option>Ein Geburtstag voller Überraschungen</option>
+              <option>Unterwegs im Urlaub</option>
+              <option>Ein Tag am Meer</option>
+            </select>
+          </label>
+          <label>Lieblingstier <small>(optional)</small> <input name="animal" maxlength="20" placeholder="z. B. Einhorn" autocomplete="off"></label>
+          <button class="btn" type="submit">✨ Geschichte zaubern</button>
+          <p class="hint">Bitte nur einen Vor- oder Spitznamen eingeben. Der Text wird zum Schreiben an unseren KI-Dienst geschickt und nicht gespeichert.</p>
+        </form>
+        <article class="story" id="story" hidden aria-live="polite">
+          <h3 id="storyTitle"></h3>
+          <div id="storyText"></div>
+          <div class="story-actions">
+            <button type="button" class="btn btn-sm" id="storyRead">🔊 Vorlesen</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="storyPrint">🖨 Drucken</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="storyNew">✨ Neue Geschichte</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-karte" aria-labelledby="tab-karte" hidden>
+        <p class="pane-intro">Gestalte eine bunte GRULU-Karte und schick sie per WhatsApp oder speichere sie.</p>
+        <div class="card-maker">
+          <form class="card-form" id="cardForm">
+            <label>Anlass
+              <select name="motif">
+                <option value="geburtstag">🎂 Geburtstag</option>
+                <option value="schule">🎒 Einschulung</option>
+                <option value="danke">💜 Dankeschön</option>
+                <option value="einfach">🌈 Einfach so</option>
+              </select>
+            </label>
+            <label>Für <input name="to" maxlength="24" placeholder="z. B. Paul" autocomplete="off"></label>
+            <label>Dein Gruß <textarea name="text" maxlength="140" rows="3" placeholder="Alles Liebe zu deinem Tag!"></textarea></label>
+            <label>Von <input name="from" maxlength="24" placeholder="z. B. Oma Rita" autocomplete="off"></label>
+          </form>
+          <div class="card-preview">
+            <canvas id="cardCanvas" width="1080" height="1350" aria-label="Vorschau der Grußkarte"></canvas>
+            <div class="card-actions">
+              <button type="button" class="btn btn-sm" id="cardShare">📤 Teilen</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="cardSave">💾 Speichern</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BUCH -->
+    <section class="section book" id="buch">
+      <img src="img/book-768x512.webp" alt="Das GRULU-Kinderbuch" width="768" height="512" loading="lazy">
+      <div>
+        <span class="kicker">Mehr als nur Snacks</span>
+        <h2>Das GRULU-Kinderbuch</h2>
+        <p>GRULU ist ein kleines Universum voller Fantasie und Abenteuer. Unser eigenes Kinderbuch liegt ausgewählten Boxen bei und erzählt die Geschichten rund um die bunten GRULU-Figuren – perfekt zum Vorlesen am Abend.</p>
+        <a class="btn" href="#welt" data-open-tab="geschichte">🌙 Eigene Gute-Nacht-Geschichte</a>
+      </div>
+    </section>
+
+    <!-- WARUM -->
+    <section class="section" id="warum">
+      <header class="section-head">
+        <span class="kicker">Warum GRULU?</span>
+        <h2>Das macht uns besonders</h2>
+      </header>
+      <ul class="features">
+        <li><span>📦</span><h3>Liebevoll gepackt</h3><p>Spannende Produkte, schöne Verpackung, ein rundes Erlebnis.</p></li>
+        <li><span>🚚</span><h3>Schnell da</h3><p>Versand über Amazon – mit Prime oft am nächsten Werktag.</p></li>
+        <li><span>🎨</span><h3>Einzigartiges Design</h3><p>Bunte Boxen und unser Maskottchen GRULU machen jede Box zum Erlebnis.</p></li>
+        <li><span>📚</span><h3>Buch inklusive</h3><p>In ausgewählten Boxen: das kleine GRULU-Buch zum Vorlesen und Sammeln.</p></li>
+      </ul>
+    </section>
+
+    <!-- STIMMEN -->
+    <section class="section" id="stimmen">
+      <header class="section-head">
+        <span class="kicker">Kundenstimmen</span>
+        <h2>Was unsere Entdecker sagen</h2>
+      </header>
+      <div class="quotes">
+        <blockquote><p>„Mein Sohn war total begeistert von der Schulanfangs-Box. Das kleine GRULU-Buch ist eine schöne Ergänzung, die wir abends gemeinsam lesen.“</p><footer>★★★★★ Laura G.</footer></blockquote>
+        <blockquote><p>„Ich habe die Box durch TikTok entdeckt und war positiv überrascht. Die Verpackung sieht richtig schön aus und die Snacks kamen super an.“</p><footer>★★★★★ Karl M.</footer></blockquote>
+        <blockquote><p>„Perfekt als Geschenk. Eine GRULU-Box sorgt immer für Freude.“</p><footer>★★★★★ Elena R.</footer></blockquote>
+        <blockquote><p>„Liebevoll gestaltet und für die Kinder richtig spannend – man weiß nicht genau, was einen erwartet.“</p><footer>★★★★★ Miriam S.</footer></blockquote>
+      </div>
+    </section>
+
+    <!-- TIKTOK -->
+    <section class="section tiktok" id="tiktok">
+      <div class="tt-head">
+        <span class="kicker">#GRULU</span>
+        <h2>GRULU auf TikTok</h2>
+        <p class="tt-live" id="ttLive" hidden><span class="dot"></span> Wir sind gerade LIVE – jetzt zuschauen und mitshoppen!</p>
+        <p>Unboxings, neue Boxen und bald Live Shopping. Folg uns, damit du nichts verpasst.</p>
+        <a class="btn" id="ttFollow" href="#" target="_blank" rel="noopener" hidden>🎵 Auf TikTok folgen</a>
+      </div>
+      <div class="tt-embed" id="ttEmbed">
+        <div class="tt-consent">
+          <p>🎬 Hier zeigen wir unsere neuesten TikTok-Videos.</p>
+          <p class="hint">Beim Laden werden Daten an TikTok übertragen. Mehr in der <a href="/datenschutz">Datenschutzerklärung</a>.</p>
+          <button type="button" class="btn btn-sm" id="ttLoad">Videos laden</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALERIE -->
+    <section class="section galerie" id="galerie">
+      <header class="section-head">
+        <span class="kicker">Eure Unboxings</span>
+        <h2>Die GRULU-Galerie</h2>
+        <p>Zeig uns deine GRULU-Box! Nach kurzer Prüfung erscheint dein Foto hier.</p>
+      </header>
+      <div class="gallery" id="gallery" aria-live="polite"></div>
+      <details class="upload">
+        <summary class="btn">📸 Foto einsenden</summary>
+        <form id="uploadForm" class="upload-form">
+          <label class="file">
+            <input type="file" name="file" accept="image/*" required>
+            <span id="uploadPick">Foto auswählen</span>
+          </label>
+          <img id="uploadPreview" alt="Vorschau" hidden>
+          <label>Vorname <small>(optional)</small> <input name="name" maxlength="30" autocomplete="given-name"></label>
+          <label>Kurzer Text <small>(optional)</small> <input name="caption" maxlength="120" placeholder="Unsere Pop-Rocks-Party!"></label>
+          <label class="check"><input type="checkbox" name="rights" required> Ich habe das Foto selbst gemacht und darf es weitergeben.</label>
+          <label class="check"><input type="checkbox" name="faces" required> Auf dem Foto sind keine Gesichter von Kindern zu erkennen.</label>
+          <label class="check"><input type="checkbox" name="publish" required> GRULU darf das Foto auf dieser Website zeigen. Ich kann das jederzeit per E-Mail an hallo@grulu-box.de widerrufen.</label>
+          <button class="btn" type="submit">Einsenden 🎉</button>
+          <p class="nl-msg" id="uploadMsg" role="status"></p>
+        </form>
+      </details>
+    </section>
+
+    <!-- NEWSLETTER -->
+    <section class="section newsletter" id="newsletter">
+      <h2>Werde Teil der GRULU-Familie!</h2>
+      <p>Neue Boxen, Aktionen und Überraschungen direkt per E-Mail.</p>
+      <form id="nlForm" class="nl-form">
+        <label class="sr" for="nlName">Name</label>
+        <input id="nlName" name="name" placeholder="Dein Name" autocomplete="given-name">
+        <label class="sr" for="nlMail">E-Mail</label>
+        <input id="nlMail" name="email" type="email" placeholder="Deine E-Mail" required autocomplete="email">
+        <button class="btn" type="submit">Abonnieren 🎉</button>
+        <label class="consent"><input type="checkbox" name="consent" required> Ich möchte den GRULU-Newsletter erhalten. Abmeldung jederzeit möglich. Hinweise in der <a href="/datenschutz">Datenschutzerklärung</a>.</label>
+        <p class="nl-msg" id="nlMsg" role="status"></p>
+      </form>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section" id="faq">
+      <header class="section-head">
+        <span class="kicker">FAQ</span>
+        <h2>Häufige Fragen</h2>
+      </header>
+      <div class="faq">
+        <details><summary>Wie lange dauert es, bis meine Box ankommt?</summary><p>Bei Bestellung über Amazon gelten die dort angegebenen Lieferzeiten. Mit Prime kommt deine GRULU-Box oft schon am nächsten Werktag an.</p></details>
+        <details><summary>Sind die Snacks für Allergiker geeignet?</summary><p>Die Boxen können verschiedene Allergene enthalten. Bitte prüfe vor dem Kauf die Produktbeschreibung auf Amazon und die Angaben auf den einzelnen Verpackungen.</p></details>
+        <details><summary>Wo bekomme ich das Kinderbuch?</summary><p>Das kleine GRULU-Buch liegt ausgewählten Boxen bei, zum Beispiel der Kinder-Reisebox. Über den Newsletter erfährst du von neuen Geschichten.</p></details>
+        <details><summary>Kann ich als Unternehmen größere Mengen bestellen?</summary><p>Ja, gerne. Schreib uns an <a href="mailto:hallo@grulu-box.de">hallo@grulu-box.de</a> für Angebote, Aktionen oder Mengenanfragen.</p></details>
+        <details><summary>Ist der Inhalt der Box immer gleich?</summary><p>Nein, viele GRULU-Boxen haben wechselnde Inhalte. So bleibt jede Box spannend.</p></details>
+        <details><summary>Sind die Produkte für Kinder geeignet?</summary><p>GRULU richtet sich an Familien und Kinder. Bitte beachte trotzdem immer Altersempfehlungen, Zutaten und Hinweise der einzelnen Produkte.</p></details>
+        <details><summary>Kann ich die Box verschenken?</summary><p>Ja – zum Schulstart, Geburtstag, für Reisen oder als kleine Überraschung zwischendurch.</p></details>
+      </div>
+      <p class="ask-ai">Noch Fragen? <button type="button" class="link" data-open-chat>Frag GRULU im Chat</button> oder <a id="askChatGPT" href="https://chatgpt.com/" target="_blank" rel="noopener">frag ChatGPT nach GRULU ↗</a></p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <img src="img/logo-grulu.webp" alt="GRULU" width="120" height="49" loading="lazy">
+    <p class="tag">Aufregend. Lecker. Überraschend.</p>
+    <p><a href="mailto:hallo@grulu-box.de">hallo@grulu-box.de</a> · Wittmann &amp; Grunert GmbH, Kirchenbug 2c, 85111 Adelschlag</p>
+    <p class="legal"><a href="/impressum">Impressum</a> · <a href="/datenschutz">Datenschutz</a> · © <span id="year">2026</span> GRULU</p>
+  </footer>
+
+  <!-- KI-CHAT -->
+  <button class="chat-fab" id="chatFab" type="button" aria-controls="chat" aria-expanded="false">
+    <img src="img/cropped-favicon-1-192x192.webp" alt="" width="44" height="44"><span>Frag GRULU</span>
+  </button>
+  <section class="chat" id="chat" hidden aria-label="Chat mit GRULU">
+    <header class="chat-head">
+      <img src="img/cropped-favicon-1-192x192.webp" alt="" width="36" height="36">
+      <div><strong>GRULU</strong><small>KI-Helfer · antwortet sofort</small></div>
+      <button type="button" class="chat-close" id="chatClose" aria-label="Chat schließen">✕</button>
+    </header>
+    <div class="chat-log" id="chatLog" aria-live="polite"></div>
+    <div class="chips" id="chatChips">
+      <button type="button">Welche Box für 6-Jährige?</button>
+      <button type="button">Was ist in der Reisebox?</button>
+      <button type="button">Geschenkidee Geburtstag</button>
+      <button type="button">Erzähl eine kurze Geschichte</button>
+    </div>
+    <form class="chat-form" id="chatForm">
+      <label class="sr" for="chatInput">Deine Frage</label>
+      <input id="chatInput" maxlength="500" placeholder="Schreib GRULU eine Frage …" autocomplete="off">
+      <button type="submit" aria-label="Senden">➤</button>
+    </form>
+    <p class="chat-note">KI-Antworten können Fehler enthalten. Keine persönlichen Daten eingeben. <a href="/datenschutz">Datenschutz</a></p>
+  </section>
+
+  <script src="app.js" defer></script>
+  <script src="js/weihnachten.js" defer></script>
+  <script src="js/song.js" defer></script>
+  <script src="js/countdown.js" defer></script>
+  <script src="js/welt.js" defer></script>
+  <script src="js/ausmalen.js" defer></script>
+  <script src="js/spiel.js" defer></script>
+  <script src="js/geschichte.js" defer></script>
+  <script src="js/karte.js" defer></script>
+  <script src="js/social.js" defer></script>
+</body>
+</html>
