@@ -5,7 +5,7 @@
 
   /* ---------- TikTok ---------- */
   // Hier euren TikTok-Kanal eintragen (ohne @). Leer = Bereich zeigt „bald“.
-  const TIKTOK_HANDLE = "";
+  const TIKTOK_HANDLE = "wigru0";
   // Während eines Live-Shoppings auf true setzen.
   const TIKTOK_LIVE = false;
 
