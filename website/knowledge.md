@@ -10,7 +10,7 @@ und den Server neu starten.
 - Betreiber: Wittmann & Grunert GmbH, Kirchenbug 2c, 85111 Adelschlag.
 - Kontakt: hallo@grulu-box.de (auch für Firmen- und Mengenanfragen).
 - Verkauf und Versand über Amazon. Mit Prime oft Lieferung am nächsten Werktag.
-- Demnächst: TikTok Live Shopping.
+- TikTok: @wigru0 (https://www.tiktok.com/@wigru0) – Unboxings, demnächst TikTok Live Shopping.
 
 ## Produkte
 - Nerds Probierbox – 14,99 € – jetzt verfügbar – 4 verschiedene Nerds-Sorten, bunt und knusprig.
