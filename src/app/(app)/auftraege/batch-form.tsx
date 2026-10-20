@@ -10,9 +10,24 @@ export function BatchForm({ children }: { children: React.ReactNode }) {
   return (
     <form action={action} className="stack">
       {children}
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Erstelle Labels …" : "DHL-Labels für Auswahl erstellen"}</button>
         <span className="small muted">Gewicht aus den Artikeldaten + 150 g Verpackung; bis zur Kleinpaket-Grenze automatisch als Kleinpaket.</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button
+          className="btn"
+          type="button"
+          data-testid="address-labels"
+          onClick={(e) => {
+            const ids = [...(e.currentTarget.form?.querySelectorAll<HTMLInputElement>('input[name="ids"]:checked') ?? [])].map((c) => c.value);
+            if (!ids.length) return alert("Bitte Aufträge auswählen.");
+            window.open(`/auftraege/adressetiketten?ids=${ids.join(",")}`, "_blank");
+          }}
+        >
+          Adressetiketten 62 × 29 mm (Auswahl)
+        </button>
+        <span className="small muted">Nur Name und Anschrift – z. B. für Bücher- und Warensendungen. Drucken mit dem QL-800: Papier 62 mm × 29 mm, Skalierung 100 % (tatsächliche Größe).</span>
       </div>
       {state?.results.map((r) => (
         <div key={r.id} className={`notice ${r.ok ? "notice-ok" : "notice-error"}`}>
