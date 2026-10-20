@@ -53,6 +53,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/artikel", label: "Artikelstamm" },
         { href: "/listings", label: "Listings" },
         { href: "/listings/temu", label: "eBay → Temu / Wawi" },
+        { href: "/listings/temu#rechner", label: "Temu-Rechner" },
         { href: "/lieferanten", label: "Lieferanten-Feeds" },
         { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
         { href: "/lieferanten/chancen", label: "Chancen" },

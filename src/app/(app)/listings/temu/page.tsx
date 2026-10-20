@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { transferCandidates } from "@/lib/temu/transfer";
 import { retryFailedAction } from "./actions";
+import { TemuCalculator } from "./calculator";
 import { LinkTemuButton, TransferTable } from "./transfer-table";
 
 export default async function EbayTransferPage({ searchParams }: { searchParams: Promise<{ neu?: string }> }) {
@@ -38,6 +39,7 @@ export default async function EbayTransferPage({ searchParams }: { searchParams:
           <button className="btn btn-small" type="submit">Fehlgeschlagene erneut versuchen</button>
         </form>
       )}
+      <div id="rechner"><TemuCalculator rule={data.rule} /></div>
       <section className="card card-pad stack" style={{ gap: 6 }}>
         <div className="small muted">
           Schon auf anderem Weg bei Temu (Excel-Vorlage „Mehrfach-Upload“, „Synchronisierung von Drittanbieter-Shops“ oder von Hand)? Steht im
