@@ -63,6 +63,32 @@ type MonitorProdukt struct {
 	BewertetShop string
 	BewertetCent money.Cents
 	BewertetAm   time.Time
+
+	// Modus ist ModusAmazon (Gewinn gegen den Verkaufspreis bei Amazon, über
+	// Keepa) oder ModusAnkauf (Gewinn gegen einen festen Ankaufspreis, ohne
+	// Keepa). Im Ankaufs-Modus ist MaxEK der Preiswecker.
+	Modus  string
+	Ankauf money.Cents
+	// Hinweis steht im Ankaufs-Post, etwa „1180 € ab 6 Stk“.
+	Hinweis string
+	// Kategorie ist frei, etwa „Konsolen“ — Regeln können danach wählen.
+	Kategorie string
+}
+
+// Die beiden Arten von Monitor-Produkten.
+const (
+	ModusAmazon = "amazon"
+	ModusAnkauf = "ankauf"
+)
+
+// IstAnkauf sagt, ob das Produkt im Ankaufs-Modus läuft.
+func (p MonitorProdukt) IstAnkauf() bool { return p.Modus == ModusAnkauf }
+
+func modusOderAmazon(m string) string {
+	if m == ModusAnkauf {
+		return ModusAnkauf
+	}
+	return ModusAmazon
 }
 
 // ShopListe liefert die Shops als bereinigte Liste.
@@ -94,14 +120,16 @@ func ShopPasst(liste, shop string) bool {
 }
 
 const monitorProduktSpalten = `id, name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv,
-	angelegt_am, geprueft_am, status, bester_shop, bester_cent, bewertet_shop, bewertet_cent, bewertet_am`
+	angelegt_am, geprueft_am, status, bester_shop, bester_cent, bewertet_shop, bewertet_cent, bewertet_am,
+	modus, ankauf_cent, hinweis, kategorie`
 
 func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var p MonitorProdukt
 	var verz, aktiv int
 	var angelegt, geprueft, bewertet string
 	if err := z.Scan(&p.ID, &p.Name, &p.URL, &p.EAN, &p.ASIN, &p.Maerkte, &p.MaxEK, &p.Shops, &verz, &aktiv,
-		&angelegt, &geprueft, &p.Status, &p.BesterShop, &p.BesterCent, &p.BewertetShop, &p.BewertetCent, &bewertet); err != nil {
+		&angelegt, &geprueft, &p.Status, &p.BesterShop, &p.BesterCent, &p.BewertetShop, &p.BewertetCent, &bewertet,
+		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie); err != nil {
 		return MonitorProdukt{}, err
 	}
 	p.AuchVerzoegert, p.Aktiv = verz != 0, aktiv != 0
@@ -129,11 +157,13 @@ func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 		return 0, err
 	}
 	erg, err := s.db.Exec(`
-		INSERT INTO monitor_produkte (name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv, angelegt_am)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO monitor_produkte (name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv, angelegt_am,
+			modus, ankauf_cent, hinweis, kategorie)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(p.Name), p.URL, strings.TrimSpace(p.EAN), strings.ToUpper(strings.TrimSpace(p.ASIN)),
 		p.Maerkte, int64(p.MaxEK), strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert), jaNein(p.Aktiv),
-		time.Now().UTC().Format(time.RFC3339))
+		time.Now().UTC().Format(time.RFC3339),
+		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie))
 	if err != nil {
 		return 0, fmt.Errorf("store: Monitor-Produkt nicht anlegbar: %w", err)
 	}
@@ -146,10 +176,12 @@ func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 func (s *Store) MonitorProduktAendern(p MonitorProdukt) error {
 	_, err := s.db.Exec(`
 		UPDATE monitor_produkte SET name = ?, asin = ?, maerkte = ?, max_ek_cent = ?, shops = ?, auch_verzoegert = ?,
+			modus = ?, ankauf_cent = ?, hinweis = ?, kategorie = ?,
 			bewertet_shop = '', bewertet_cent = 0, bewertet_am = ''
 		WHERE id = ?`,
 		strings.TrimSpace(p.Name), strings.ToUpper(strings.TrimSpace(p.ASIN)), p.Maerkte, int64(p.MaxEK),
-		strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert), p.ID)
+		strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert),
+		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie), p.ID)
 	return err
 }
 
@@ -255,14 +287,19 @@ type MonitorRegel struct {
 	Shops      string
 	Aktiv      bool
 	AngelegtAm time.Time
+	// Modus leer heißt: für beide Arten; sonst ModusAmazon oder ModusAnkauf.
+	Modus string
+	// Kategorie leer heißt: jede; sonst nur Produkte dieser Kategorie.
+	Kategorie string
 }
 
 func (s *Store) MonitorRegelAnlegen(r MonitorRegel) (int64, error) {
 	erg, err := s.db.Exec(`
-		INSERT INTO monitor_regeln (name, channel_id, produkt_id, min_marge, min_gewinn_cent, min_sales, shops, aktiv, angelegt_am)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO monitor_regeln (name, channel_id, produkt_id, min_marge, min_gewinn_cent, min_sales, shops, aktiv, angelegt_am, modus, kategorie)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(r.Name), r.ChannelID, r.ProduktID, r.MinMarge, int64(r.MinGewinn), r.MinSales,
-		strings.TrimSpace(r.Shops), jaNein(r.Aktiv), time.Now().UTC().Format(time.RFC3339))
+		strings.TrimSpace(r.Shops), jaNein(r.Aktiv), time.Now().UTC().Format(time.RFC3339),
+		strings.TrimSpace(r.Modus), strings.TrimSpace(r.Kategorie))
 	if err != nil {
 		return 0, fmt.Errorf("store: Regel nicht anlegbar: %w", err)
 	}
@@ -280,8 +317,8 @@ func (s *Store) MonitorRegelLoeschen(id int64) error {
 }
 
 func (s *Store) MonitorRegeln() ([]MonitorRegel, error) {
-	zeilen, err := s.db.Query(`SELECT id, name, channel_id, produkt_id, min_marge, min_gewinn_cent, min_sales, shops, aktiv, angelegt_am
-		FROM monitor_regeln ORDER BY id`)
+	zeilen, err := s.db.Query(`SELECT id, name, channel_id, produkt_id, min_marge, min_gewinn_cent, min_sales, shops, aktiv, angelegt_am,
+		modus, kategorie FROM monitor_regeln ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +328,8 @@ func (s *Store) MonitorRegeln() ([]MonitorRegel, error) {
 		var r MonitorRegel
 		var aktiv int
 		var angelegt string
-		if err := zeilen.Scan(&r.ID, &r.Name, &r.ChannelID, &r.ProduktID, &r.MinMarge, &r.MinGewinn, &r.MinSales, &r.Shops, &aktiv, &angelegt); err != nil {
+		if err := zeilen.Scan(&r.ID, &r.Name, &r.ChannelID, &r.ProduktID, &r.MinMarge, &r.MinGewinn, &r.MinSales, &r.Shops, &aktiv, &angelegt,
+			&r.Modus, &r.Kategorie); err != nil {
 			return nil, err
 		}
 		r.Aktiv = aktiv != 0

@@ -185,7 +185,16 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 	}
 	b.Angebot = &bester
 	if p.MaxEK > 0 && bester.Gesamt > p.MaxEK {
-		b.Status = fmt.Sprintf("günstigstes: %s bei %s — über dem Höchstpreis %s", bester.Gesamt.Euro(), bester.Shop, p.MaxEK.Euro())
+		grenze := "Höchstpreis"
+		if p.IstAnkauf() {
+			grenze = "Preiswecker"
+		}
+		b.Status = fmt.Sprintf("günstigstes: %s bei %s — über dem %s %s", bester.Gesamt.Euro(), bester.Shop, grenze, p.MaxEK.Euro())
+		return b
+	}
+
+	if p.IstAnkauf() {
+		srv.monitorAnkauf(ctx, p, liste, bester, test, jetzt, &b)
 		return b
 	}
 
@@ -372,7 +381,7 @@ func (srv *Server) monitorChannels(p store.MonitorProdukt, shop string, b monito
 	var out []store.Channel
 	gesehen := map[int64]bool{}
 	for _, r := range regeln {
-		if !regelPasst(r, p.ID, shop, b) || gesehen[r.ChannelID] {
+		if !regelPasst(r, p, shop, b) || gesehen[r.ChannelID] {
 			continue
 		}
 		c, err := srv.store.Channel(r.ChannelID)
@@ -385,12 +394,19 @@ func (srv *Server) monitorChannels(p store.MonitorProdukt, shop string, b monito
 	return out
 }
 
-func regelPasst(r store.MonitorRegel, produktID int64, shop string, b monitorBericht) bool {
+func regelPasst(r store.MonitorRegel, p store.MonitorProdukt, shop string, b monitorBericht) bool {
+	modus := store.ModusAmazon
+	if p.IstAnkauf() {
+		modus = store.ModusAnkauf
+	}
 	return r.Aktiv &&
-		(r.ProduktID == 0 || r.ProduktID == produktID) &&
+		(r.ProduktID == 0 || r.ProduktID == p.ID) &&
+		(r.Modus == "" || r.Modus == modus) &&
+		(strings.TrimSpace(r.Kategorie) == "" || strings.EqualFold(strings.TrimSpace(r.Kategorie), strings.TrimSpace(p.Kategorie))) &&
 		b.Marge >= r.MinMarge &&
 		b.Gewinn >= r.MinGewinn &&
-		b.Sales >= r.MinSales &&
+		// Ein Ankauf hat keine Verkaufszahl — die Schwelle gilt nur für Amazon.
+		(p.IstAnkauf() || b.Sales >= r.MinSales) &&
 		store.ShopPasst(r.Shops, shop)
 }
 

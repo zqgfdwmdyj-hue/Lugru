@@ -219,7 +219,11 @@ CREATE TABLE IF NOT EXISTS monitor_produkte (
     bester_cent    INTEGER NOT NULL DEFAULT 0,
     bewertet_shop  TEXT    NOT NULL DEFAULT '',
     bewertet_cent  INTEGER NOT NULL DEFAULT 0,
-    bewertet_am    TEXT    NOT NULL DEFAULT ''
+    bewertet_am    TEXT    NOT NULL DEFAULT '',
+    modus          TEXT    NOT NULL DEFAULT 'amazon',
+    ankauf_cent    INTEGER NOT NULL DEFAULT 0,
+    hinweis        TEXT    NOT NULL DEFAULT '',
+    kategorie      TEXT    NOT NULL DEFAULT ''
 );
 
 -- produkt_id 0 heißt: die Regel gilt für jedes Produkt. shops leer heißt:
@@ -234,7 +238,9 @@ CREATE TABLE IF NOT EXISTS monitor_regeln (
     min_sales       INTEGER NOT NULL DEFAULT 0,
     shops           TEXT    NOT NULL DEFAULT '',
     aktiv           INTEGER NOT NULL DEFAULT 1,
-    angelegt_am     TEXT    NOT NULL
+    angelegt_am     TEXT    NOT NULL,
+    modus           TEXT    NOT NULL DEFAULT '',
+    kategorie       TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS monitor_treffer (
@@ -373,6 +379,13 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	{"deals", "haupt_id", `INTEGER NOT NULL DEFAULT 0`},
 	// Die Eingaben beim Posten, für "Erneut posten".
 	{"deals", "formular", `TEXT NOT NULL DEFAULT ''`},
+	// Der Ankaufs-Modus des Shop-Monitors (siehe store/monitor.go).
+	{"monitor_produkte", "modus", `TEXT NOT NULL DEFAULT 'amazon'`},
+	{"monitor_produkte", "ankauf_cent", `INTEGER NOT NULL DEFAULT 0`},
+	{"monitor_produkte", "hinweis", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_produkte", "kategorie", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_regeln", "modus", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_regeln", "kategorie", `TEXT NOT NULL DEFAULT ''`},
 }
 
 // spalteErgaenzen hängt eine Spalte an, falls sie noch fehlt.

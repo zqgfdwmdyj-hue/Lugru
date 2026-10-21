@@ -304,3 +304,78 @@ func TestMonitorSeiteUndFormulare(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitorAnkaufPostetOhneKeepa(t *testing.T) {
+	a := neuerMonitorAufbau(t, "OTTO")
+	p := a.produkt(t)
+	p.Modus, p.Ankauf, p.Kategorie, p.Hinweis = store.ModusAnkauf, 14000, "Konsolen", "145 € ab 6 Stk"
+	p.MaxEK = 13300
+	_ = a.s.MonitorProduktAendern(p)
+	// Eine Regel nur für Amazon-Deals, eine für Ankauf in der Kategorie.
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.hoch, Modus: store.ModusAmazon, Aktiv: true})
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.normal, Modus: store.ModusAnkauf, Kategorie: "konsolen", MinMarge: 5, MinSales: 999, Aktiv: true})
+
+	b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false)
+	if !b.Gepostet {
+		t.Fatalf("nicht gepostet: %s", b.Status)
+	}
+	if b.Gewinn != 944 {
+		t.Errorf("Gewinn = %d, will 944 (140,00 − 130,56)", b.Gewinn)
+	}
+	if len(a.posts("/hoch")) != 0 {
+		t.Error("Ankauf in den Amazon-Channel gepostet")
+	}
+	posts := a.posts("/normal")
+	if len(posts) != 1 {
+		t.Fatalf("%d Posts, will 1", len(posts))
+	}
+	for _, soll := range []string{"🤝 Ankauf: 140,00 €", "💰 EK: 130,56 € (inkl. 4,99 € Versand)", "🤑 Gewinn: 9,44 € / 6,7 % Marge", "145 € ab 6 Stk", "[OTTO](https://www.billiger.de/pricelist/123-makita)"} {
+		if !strings.Contains(posts[0], soll) {
+			t.Errorf("Post ohne %q: %s", soll, posts[0])
+		}
+	}
+	if len(a.keepaCode) != 0 {
+		t.Error("im Ankaufs-Modus Keepa gefragt")
+	}
+	if ds, _ := a.s.Deals(store.DealFilter{Limit: 10}); len(ds) != 0 {
+		t.Error("Ankauf in der Amazon-Historie gelandet")
+	}
+
+	// Danach dasselbe Angebot: kein zweiter Post.
+	if b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false); b.Gepostet {
+		t.Error("zweimal gepostet")
+	}
+}
+
+func TestMonitorAnkaufUeberPreiswecker(t *testing.T) {
+	a := neuerMonitorAufbau(t, "OTTO")
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.normal, Aktiv: true})
+	p := a.produkt(t)
+	p.Modus, p.Ankauf, p.MaxEK = store.ModusAnkauf, 13500, 12825
+	_ = a.s.MonitorProduktAendern(p)
+	b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false)
+	if b.Gepostet || !strings.Contains(b.Status, "über dem Preiswecker") {
+		t.Errorf("b = %+v", b)
+	}
+}
+
+func TestMonitorAnkaufFormularSetztPreiswecker(t *testing.T) {
+	srv, s := testServer(t)
+	w := hole(t, srv, http.MethodPost, "/monitor/produkte", url.Values{
+		"url": {"https://www.billiger.de/pricelist/1-ps5-pro"}, "modus": {"ankauf"}, "ankauf": {"1175"},
+		"kategorie": {"Konsolen"},
+	}.Encode())
+	if !strings.Contains(w.Body.String(), "Produkt angelegt") {
+		t.Fatalf("%s", w.Body.String())
+	}
+	ps, _ := s.MonitorProdukte()
+	if len(ps) != 1 || !ps[0].IstAnkauf() || ps[0].Ankauf != 117500 || ps[0].MaxEK != 111625 {
+		t.Errorf("Produkt = %+v", ps)
+	}
+	w = hole(t, srv, http.MethodPost, "/monitor/produkte", url.Values{
+		"url": {"https://www.billiger.de/pricelist/2-x"}, "modus": {"ankauf"},
+	}.Encode())
+	if !strings.Contains(w.Body.String(), "Ankaufspreis Pflicht") {
+		t.Error("Ankauf ohne Preis angenommen")
+	}
+}

@@ -19,6 +19,7 @@ type monitorProduktAnzeige struct {
 	// Anzeige ist der Name, oder der Link, solange es keinen gibt.
 	Anzeige    string
 	MaxEKText  string
+	AnkaufText string
 	Geprueft   string
 	BesterText string
 }
@@ -51,11 +52,12 @@ type monitorDaten struct {
 	Poster      string
 	PosterListe []posterEintrag
 
-	Produkte []monitorProduktAnzeige
-	Regeln   []monitorRegelAnzeige
-	Treffer  []monitorTrefferAnzeige
-	Channels []store.Channel
-	Maerkte  []marketplace.Marketplace
+	Produkte   []monitorProduktAnzeige
+	Kategorien []string
+	Regeln     []monitorRegelAnzeige
+	Treffer    []monitorTrefferAnzeige
+	Channels   []store.Channel
+	Maerkte    []marketplace.Marketplace
 
 	// Test ist das Ergebnis des Knopfs „Testen", nil ohne Test.
 	Test      *monitorBericht
@@ -90,6 +92,9 @@ func (srv *Server) monitorDaten() monitorDaten {
 		if p.MaxEK > 0 {
 			a.MaxEKText = p.MaxEK.String()
 		}
+		if p.Ankauf > 0 {
+			a.AnkaufText = p.Ankauf.String()
+		}
 		if !p.GeprueftAm.IsZero() {
 			a.Geprueft = p.GeprueftAm.Local().Format("02.01. 15:04:05")
 		}
@@ -101,6 +106,9 @@ func (srv *Server) monitorDaten() monitorDaten {
 			a.Anzeige = p.URL
 		}
 		produktName[p.ID] = a.Anzeige
+		if k := strings.TrimSpace(p.Kategorie); k != "" && !enthaelt(d.Kategorien, k) {
+			d.Kategorien = append(d.Kategorien, k)
+		}
 		d.Produkte = append(d.Produkte, a)
 	}
 
@@ -135,6 +143,15 @@ func (srv *Server) monitorDaten() monitorDaten {
 	return d
 }
 
+func enthaelt(liste []string, s string) bool {
+	for _, e := range liste {
+		if strings.EqualFold(e, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // enthaeltCode sagt der Vorlage, ob ein Marktkürzel in einer Liste mit Komma
 // steht.
 func enthaeltCode(liste, code string) bool {
@@ -164,6 +181,35 @@ func betragOderNull(s string) (money.Cents, error) {
 	return money.Parse(s)
 }
 
+// ankaufFelder liest Modus, Ankaufspreis, Preiswecker, Hinweis und Kategorie.
+// Fehlt im Ankaufs-Modus der Preiswecker, gilt 95 % des Ankaufspreises —
+// also 5 % Marge, so wie ihr ihn bisher setzt.
+func ankaufFelder(r *http.Request, p *store.MonitorProdukt) string {
+	p.Modus = store.ModusAmazon
+	if r.PostForm.Get("modus") == store.ModusAnkauf {
+		p.Modus = store.ModusAnkauf
+	}
+	p.Hinweis = r.PostForm.Get("hinweis")
+	p.Kategorie = r.PostForm.Get("kategorie")
+	ankauf, err := betragOderNull(r.PostForm.Get("ankauf"))
+	if err != nil || ankauf < 0 {
+		return "Ankaufspreis: kein gültiger Betrag."
+	}
+	p.Ankauf = ankauf
+	if p.IstAnkauf() {
+		if p.Ankauf == 0 {
+			return "Im Modus Ankauf ist der Ankaufspreis Pflicht."
+		}
+		if p.MaxEK == 0 {
+			p.MaxEK = money.Cents(int64(p.Ankauf) * 95 / 100)
+		}
+		if p.MaxEK > p.Ankauf {
+			return "Der Preiswecker liegt über dem Ankaufspreis — so gäbe es nur Verlust-Deals."
+		}
+	}
+	return ""
+}
+
 // maerkteAusFormular liest die angehakten Zielmärkte als Liste mit Komma.
 func maerkteAusFormular(r *http.Request) string {
 	var codes []string
@@ -190,12 +236,17 @@ func (srv *Server) speichereMonitorProdukt(w http.ResponseWriter, r *http.Reques
 		srv.monitorMeldung(w, "", "Die ASIN hat zehn Zeichen, etwa B0CHSBV9CN — oder leer lassen, dann sucht der Monitor sie über die EAN.")
 		return
 	}
-	_, err = srv.store.MonitorProduktAnlegen(store.MonitorProdukt{
+	neu := store.MonitorProdukt{
 		Name: r.PostForm.Get("name"), URL: link, ASIN: asin,
 		Maerkte: maerkteAusFormular(r), MaxEK: maxEK,
 		Shops: r.PostForm.Get("shops"), AuchVerzoegert: r.PostForm.Get("auch_verzoegert") == "1",
 		Aktiv: true,
-	})
+	}
+	if f := ankaufFelder(r, &neu); f != "" {
+		srv.monitorMeldung(w, "", f)
+		return
+	}
+	_, err = srv.store.MonitorProduktAnlegen(neu)
 	if err != nil {
 		srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
 		return
@@ -224,6 +275,10 @@ func (srv *Server) aendereMonitorProdukt(w http.ResponseWriter, r *http.Request)
 	p.Maerkte = maerkteAusFormular(r)
 	p.Shops = r.PostForm.Get("shops")
 	p.AuchVerzoegert = r.PostForm.Get("auch_verzoegert") == "1"
+	if f := ankaufFelder(r, &p); f != "" {
+		srv.monitorMeldung(w, "", f)
+		return
+	}
 	if err := srv.store.MonitorProduktAendern(p); err != nil {
 		srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
 		return
@@ -296,11 +351,20 @@ func (srv *Server) speichereMonitorRegel(w http.ResponseWriter, r *http.Request)
 		Name: r.PostForm.Get("name"), ChannelID: channelID, ProduktID: produktID,
 		MinMarge: minMarge, MinGewinn: minGewinn, MinSales: minSales,
 		Shops: r.PostForm.Get("shops"), Aktiv: true,
+		Modus:     modusFilter(r.PostForm.Get("modus")),
+		Kategorie: r.PostForm.Get("kategorie"),
 	}); err != nil {
 		srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
 		return
 	}
 	srv.monitorMeldung(w, "Regel angelegt.", "")
+}
+
+func modusFilter(m string) string {
+	if m == store.ModusAmazon || m == store.ModusAnkauf {
+		return m
+	}
+	return ""
 }
 
 func (srv *Server) schalteMonitorRegel(w http.ResponseWriter, r *http.Request) {

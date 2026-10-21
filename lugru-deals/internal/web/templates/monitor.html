@@ -49,12 +49,21 @@ Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel
       <a href="{{.URL}}" target="_blank" rel="noopener">{{.Anzeige}}</a><br>
       <small>{{if .EAN}}EAN {{.EAN}}{{end}} {{if .ASIN}}· ASIN {{.ASIN}}{{end}}</small><br>
       {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
+      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{else}}<span class="chip neutral">Amazon</span>{{end}}
+      {{if .Kategorie}}<span class="chip neutral">{{.Kategorie}}</span>{{end}}
     </td>
     <td>
       <form method="post" action="/monitor/produkte/{{.ID}}/aendern" class="aktionen">
         <input name="name" value="{{.Name}}" size="18" aria-label="Name">
         <input name="asin" value="{{.ASIN}}" size="11" placeholder="ASIN" aria-label="ASIN">
-        <input name="max_ek" value="{{.MaxEKText}}" size="7" placeholder="max. EK" aria-label="Höchstpreis mit Versand">
+        <select name="modus" aria-label="Art">
+          <option value="amazon" {{if not .IstAnkauf}}selected{{end}}>Amazon</option>
+          <option value="ankauf" {{if .IstAnkauf}}selected{{end}}>Ankauf</option>
+        </select>
+        <input name="ankauf" value="{{.AnkaufText}}" size="7" placeholder="Ankauf" aria-label="Ankaufspreis">
+        <input name="max_ek" value="{{.MaxEKText}}" size="7" placeholder="{{if .IstAnkauf}}Wecker{{else}}max. EK{{end}}" aria-label="Höchstpreis bzw. Preiswecker mit Versand">
+        <input name="hinweis" value="{{.Hinweis}}" size="16" placeholder="Hinweis" aria-label="Hinweis im Post">
+        <input name="kategorie" value="{{.Kategorie}}" size="10" list="kategorien" placeholder="Kategorie" aria-label="Kategorie">
         <input name="shops" value="{{.Shops}}" size="16" placeholder="alle Shops" aria-label="Shops">
         {{$p := .}}
         {{range $.Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"
@@ -86,9 +95,19 @@ Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel
 <form method="post" action="/monitor/produkte" class="karte">
   <label>Link zur Preisliste bei billiger.de <small>Produkt bei billiger.de suchen, öffnen und den Link aus der Adresszeile einfügen</small>
     <input name="url" type="url" required placeholder="https://www.billiger.de/pricelist/…"></label>
+  <label>Art
+    <select name="modus">
+      <option value="amazon">Amazon-Arbitrage — Gewinn gegen den Verkaufspreis bei Amazon (Keepa)</option>
+      <option value="ankauf">Ankauf — Gewinn gegen einen festen Ankaufspreis, ohne Keepa</option>
+    </select></label>
+  <label>Ankaufspreis <small>nur bei Art „Ankauf“: was der Ankäufer zahlt</small><input name="ankauf" placeholder="z. B. 1175"></label>
+  <label>Hinweis im Post <small>optional, etwa „1180 € ab 6 Stk“ — Namen der Ankäufer gehören nicht hierher, der Post ist öffentlich</small>
+    <input name="hinweis"></label>
+  <label>Kategorie <small>optional, etwa „Konsolen“ — Regeln können danach in eigene Channels sortieren</small>
+    <input name="kategorie" list="kategorien"></label>
   <label>Name <small>leer lassen — dann gilt der Name von billiger.de</small><input name="name"></label>
   <label>ASIN <small>leer lassen — dann sucht der Monitor sie über die EAN bei Keepa</small><input name="asin" size="11"></label>
-  <label>Höchster Einkaufspreis mit Versand <small>leer heißt: jeder Preis wird mit Keepa durchgerechnet (kostet Token)</small>
+  <label>Höchster Einkaufspreis mit Versand (bei Ankauf: Preiswecker) <small>Amazon: leer heißt, jeder Preis wird mit Keepa durchgerechnet (kostet Token). Ankauf: leer heißt 95 % des Ankaufspreises</small>
     <input name="max_ek" placeholder="z. B. 399,99"></label>
   <label>Nur diese Shops <small>mit Komma getrennt, etwa „OTTO, Kaufland, MediaMarkt" — leer heißt: alle</small>
     <input name="shops"></label>
@@ -109,7 +128,7 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
   {{range .Regeln}}
   <tr>
     <td>#{{.ChannelName}}{{if .Name}}<br><small>{{.Name}}</small>{{end}}</td>
-    <td>{{.ProduktName}}</td>
+    <td>{{.ProduktName}}{{if .Modus}}<br><small>nur {{if eq .Modus "ankauf"}}Ankauf{{else}}Amazon{{end}}</small>{{end}}{{if .Kategorie}}<br><small>Kategorie {{.Kategorie}}</small>{{end}}</td>
     <td>{{if .MinMargeText}}Marge {{.MinMargeText}} {{end}}{{if .MinGewinnText}}Gewinn {{.MinGewinnText}} {{end}}{{if .MinSales}}{{.MinSales}} Verkäufe{{end}}
       {{if not (or .MinMargeText .MinGewinnText .MinSales)}}<small>keine Schwelle</small>{{end}}</td>
     <td>{{if .Shops}}{{.Shops}}{{else}}alle{{end}}</td>
@@ -139,9 +158,16 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
       <option value="0">alle Produkte</option>
       {{range .Produkte}}<option value="{{.ID}}">{{.Anzeige}}</option>{{end}}
     </select></label>
+  <label>Art
+    <select name="modus">
+      <option value="">Amazon und Ankauf</option>
+      <option value="amazon">nur Amazon-Arbitrage</option>
+      <option value="ankauf">nur Ankauf</option>
+    </select></label>
+  <label>Kategorie <small>leer heißt: jede</small><input name="kategorie" list="kategorien" placeholder="z. B. Konsolen"></label>
   <label>Mindestmarge in % <input name="min_marge" placeholder="z. B. 15"></label>
   <label>Mindestgewinn in € <input name="min_gewinn" placeholder="z. B. 10"></label>
-  <label>Mindestverkäufe im Monat <input name="min_sales" type="number" min="0" placeholder="z. B. 20"></label>
+  <label>Mindestverkäufe im Monat <small>gilt nur für Amazon</small><input name="min_sales" type="number" min="0" placeholder="z. B. 20"></label>
   <label>Nur diese Shops <small>leer heißt: alle</small><input name="shops" placeholder="z. B. OTTO, Kaufland"></label>
   <label>Bezeichnung <small>nur für euch, optional</small><input name="name" placeholder="z. B. High Margin"></label>
   <button type="submit" class="primaer">Regel anlegen</button>
@@ -168,5 +194,6 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
   </tbody>
 </table>
 </div>
+<datalist id="kategorien">{{range .Kategorien}}<option value="{{.}}">{{end}}</datalist>
 {{template "fuss"}}
 {{end}}

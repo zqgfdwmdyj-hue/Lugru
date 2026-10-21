@@ -229,6 +229,14 @@ derselbe Deal wird innerhalb der Sperrzeit (Vorgabe 6 Stunden) nicht noch
 einmal gepostet, außer er wird günstiger. Jedes Produkt wird höchstens alle
 15 Sekunden geprüft (Vorgabe 60), zwischen zwei Abrufen liegen 2 Sekunden.
 
+**Ankauf statt Amazon:** Bei Art „Ankauf“ rechnet der Monitor nicht gegen
+Amazon, sondern gegen einen festen Ankaufspreis. Ein Treffer ist dann jeder
+Shop-Preis (mit Versand) bis zum Preiswecker — ohne Keepa, ohne Token. Leer
+gelassen liegt der Preiswecker bei 95 % des Ankaufspreises. Der Post nennt
+Shop, EK, Ankauf, Gewinn je Stück, Marge und den Hinweis, aber keine Namen
+von Ankäufern. Mit Kategorien („Konsolen“, „Starlink“ …) und der Art in den
+Regeln lassen sich die Treffer auf eigene Channels verteilen.
+
 Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
 sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen
 Minuten zu sehen. OTTO und Kaufland direkt abzufragen geht nur über einen
