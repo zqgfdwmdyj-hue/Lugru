@@ -10,6 +10,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/trinkfreunde/lugru-deal-discord/internal/keepa"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/store"
@@ -64,6 +65,11 @@ type Server struct {
 	// monitorHTTP ersetzt in Tests den Client für billiger.de; nil heißt
 	// srv.http.
 	monitorHTTP *http.Client
+	// mydealzZuletzt ist der letzte Abruf des mydealz-Feeds; nur der
+	// Monitor-Takt liest und schreibt ihn. mydealzFeed ersetzt den Feed in
+	// Tests.
+	mydealzZuletzt time.Time
+	mydealzFeed    string
 }
 
 // Neu baut den Server. envKeepaKey ist die Umgebungsvariable KEEPA_API_KEY
@@ -205,6 +211,12 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /monitor/regeln/{id}/aktiv", srv.schalteMonitorRegel)
 	mux.HandleFunc("POST /monitor/regeln/{id}/loeschen", srv.loescheMonitorRegel)
 	mux.HandleFunc("POST /monitor/einstellungen", srv.speichereMonitorEinstellungen)
+	mux.HandleFunc("POST /monitor/produkte/{id}/ankaeufer", srv.speichereAnkaeufer)
+	mux.HandleFunc("POST /monitor/ankaeufer/{id}/loeschen", srv.loescheAnkaeufer)
+	mux.HandleFunc("POST /monitor/kategorien", srv.speichereKategorie)
+	mux.HandleFunc("POST /monitor/kategorien/{id}/loeschen", srv.loescheKategorie)
+	mux.HandleFunc("POST /monitor/import", srv.zeigeImport)
+	mux.HandleFunc("POST /monitor/import/uebernehmen", srv.uebernehmeImport)
 
 	mux.HandleFunc("GET /einstellungen", srv.zeigeEinstellungen)
 	mux.HandleFunc("POST /einstellungen", srv.speichereEinstellungen)

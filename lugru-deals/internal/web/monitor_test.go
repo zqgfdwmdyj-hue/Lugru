@@ -54,6 +54,15 @@ type monitorAufbau struct {
 	mu        sync.Mutex
 	gesendet  map[string][]string
 	keepaCode []string
+	// seiten ersetzt die Antwort von billiger.de (und mydealz) je Pfad;
+	// ohne Eintrag gilt billigerSeite.
+	seiten map[string]string
+}
+
+func (a *monitorAufbau) setzeSeite(pfad, inhalt string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.seiten[pfad] = inhalt
 }
 
 func (a *monitorAufbau) posts(kanal string) []string {
@@ -65,7 +74,7 @@ func (a *monitorAufbau) posts(kanal string) []string {
 func neuerMonitorAufbau(t *testing.T, shops string) *monitorAufbau {
 	t.Helper()
 	srv, s := testServer(t)
-	a := &monitorAufbau{srv: srv, s: s, gesendet: map[string][]string{}}
+	a := &monitorAufbau{srv: srv, s: s, gesendet: map[string][]string{}, seiten: map[string]string{}}
 
 	roh, err := os.ReadFile(filepath.Join("..", "keepa", "testdata", "produkt.json"))
 	if err != nil {
@@ -91,7 +100,13 @@ func neuerMonitorAufbau(t *testing.T, shops string) *monitorAufbau {
 	srv.keepa.Key = "test"
 
 	bs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(billigerSeite))
+		a.mu.Lock()
+		seite, ok := a.seiten[r.URL.Path]
+		a.mu.Unlock()
+		if !ok {
+			seite = billigerSeite
+		}
+		_, _ = w.Write([]byte(seite))
 	}))
 	t.Cleanup(bs.Close)
 	ziel, _ := url.Parse(bs.URL)
@@ -362,7 +377,7 @@ func TestMonitorAnkaufUeberPreiswecker(t *testing.T) {
 	}
 }
 
-func TestMonitorAnkaufFormularSetztPreiswecker(t *testing.T) {
+func TestMonitorAnkaufPreisweckerAutomatisch(t *testing.T) {
 	srv, s := testServer(t)
 	w := hole(t, srv, http.MethodPost, "/monitor/produkte", url.Values{
 		"url": {"https://www.billiger.de/pricelist/1-ps5-pro"}, "modus": {"ankauf"}, "ankauf": {"1175"},
@@ -372,14 +387,18 @@ func TestMonitorAnkaufFormularSetztPreiswecker(t *testing.T) {
 		t.Fatalf("%s", w.Body.String())
 	}
 	ps, _ := s.MonitorProdukte()
-	if len(ps) != 1 || !ps[0].IstAnkauf() || ps[0].Ankauf != 117500 || ps[0].MaxEK != 111625 {
+	if len(ps) != 1 || !ps[0].IstAnkauf() || ps[0].Ankauf != 117500 || ps[0].MaxEK != 0 {
 		t.Errorf("Produkt = %+v", ps)
 	}
+	// Ohne Eintrag gilt 95 % des Ankaufs.
+	if got := srv.wecker(ps[0]); got != 111625 {
+		t.Errorf("Wecker = %d, will 111625", got)
+	}
 	w = hole(t, srv, http.MethodPost, "/monitor/produkte", url.Values{
-		"url": {"https://www.billiger.de/pricelist/2-x"}, "modus": {"ankauf"},
+		"url": {"https://www.billiger.de/pricelist/2-x"}, "modus": {"ankauf"}, "ankauf": {"100"}, "max_ek": {"120"},
 	}.Encode())
-	if !strings.Contains(w.Body.String(), "Ankaufspreis Pflicht") {
-		t.Error("Ankauf ohne Preis angenommen")
+	if !strings.Contains(w.Body.String(), "über dem Ankaufspreis") {
+		t.Error("Wecker über Ankauf angenommen")
 	}
 }
 

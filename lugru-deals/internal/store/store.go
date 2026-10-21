@@ -223,7 +223,10 @@ CREATE TABLE IF NOT EXISTS monitor_produkte (
     modus          TEXT    NOT NULL DEFAULT 'amazon',
     ankauf_cent    INTEGER NOT NULL DEFAULT 0,
     hinweis        TEXT    NOT NULL DEFAULT '',
-    kategorie      TEXT    NOT NULL DEFAULT ''
+    kategorie      TEXT    NOT NULL DEFAULT '',
+    prio           TEXT    NOT NULL DEFAULT 'normal',
+    stichworte     TEXT    NOT NULL DEFAULT '',
+    notiz          TEXT    NOT NULL DEFAULT ''
 );
 
 -- produkt_id 0 heißt: die Regel gilt für jedes Produkt. shops leer heißt:
@@ -258,6 +261,70 @@ CREATE TABLE IF NOT EXISTS monitor_treffer (
     zeit          TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_treffer ON monitor_treffer(produkt_id, zeit DESC);
+
+-- Preisverlauf je Monitor-Produkt: das günstigste passende Angebot, sobald
+-- es sich ändert, sonst höchstens einmal je Stunde. Daraus kommen der
+-- Tiefstpreis im Post und der Preisfehler-Alarm.
+CREATE TABLE IF NOT EXISTS monitor_preise (
+    produkt_id INTEGER NOT NULL,
+    zeit       TEXT    NOT NULL,
+    cent       INTEGER NOT NULL,
+    shop       TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_preise ON monitor_preise(produkt_id, zeit DESC);
+
+-- Jeder Post des Monitors in Discord, damit er als ausverkauft markiert
+-- werden kann, sobald das Angebot verschwindet. Amazon-Deals verweisen auf
+-- ihre Zeile in deals (deal_id), Ankaufs-Posts tragen Text und Nachricht
+-- selbst.
+CREATE TABLE IF NOT EXISTS monitor_posts (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    produkt_id     INTEGER NOT NULL,
+    shop           TEXT    NOT NULL DEFAULT '',
+    gesamt_cent    INTEGER NOT NULL DEFAULT 0,
+    deal_id        INTEGER NOT NULL DEFAULT 0,
+    channel_id     INTEGER NOT NULL DEFAULT 0,
+    nachricht_id   TEXT    NOT NULL DEFAULT '',
+    text           TEXT    NOT NULL DEFAULT '',
+    gepostet_am    TEXT    NOT NULL,
+    ausverkauft_am TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_posts ON monitor_posts(produkt_id, gepostet_am DESC);
+
+-- Ankäufer je Produkt mit Staffel: preis_cent gilt ab ab_stueck Stück. Die
+-- Namen stehen nur hier, nie im Post.
+CREATE TABLE IF NOT EXISTS monitor_ankaeufer (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    produkt_id INTEGER NOT NULL,
+    name       TEXT    NOT NULL DEFAULT '',
+    preis_cent INTEGER NOT NULL,
+    ab_stueck  INTEGER NOT NULL DEFAULT 1,
+    notiz      TEXT    NOT NULL DEFAULT ''
+);
+
+-- Kategorie-Scan: ganze Kategorieseiten bei billiger.de, und je Produkt
+-- darauf der Preisverlauf, um Preisstürze zu erkennen.
+CREATE TABLE IF NOT EXISTS monitor_kategorien (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL DEFAULT '',
+    url         TEXT    NOT NULL,
+    aktiv       INTEGER NOT NULL DEFAULT 1,
+    geprueft_am TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS monitor_kategorie_preise (
+    objekt TEXT    NOT NULL,
+    zeit   TEXT    NOT NULL,
+    cent   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_kategorie_preise ON monitor_kategorie_preise(objekt, zeit DESC);
+
+-- Was schon gemeldet wurde (Preisstürze, mydealz-Deals, Admin-Hinweise),
+-- damit nichts zweimal kommt.
+CREATE TABLE IF NOT EXISTS monitor_gemeldet (
+    schluessel TEXT PRIMARY KEY,
+    zeit       TEXT NOT NULL
+);
 `
 
 // Open öffnet die Datenbank und legt Schema und Chart-Ordner an, falls sie
@@ -386,6 +453,10 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	{"monitor_produkte", "kategorie", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_regeln", "modus", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_regeln", "kategorie", `TEXT NOT NULL DEFAULT ''`},
+	// Prio-Stufe, Stichworte für mydealz und eine interne Notiz.
+	{"monitor_produkte", "prio", `TEXT NOT NULL DEFAULT 'normal'`},
+	{"monitor_produkte", "stichworte", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_produkte", "notiz", `TEXT NOT NULL DEFAULT ''`},
 }
 
 // spalteErgaenzen hängt eine Spalte an, falls sie noch fehlt.

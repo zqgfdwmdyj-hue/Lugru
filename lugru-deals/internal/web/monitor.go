@@ -18,10 +18,17 @@ type monitorProduktAnzeige struct {
 	store.MonitorProdukt
 	// Anzeige ist der Name, oder der Link, solange es keinen gibt.
 	Anzeige    string
+	Ankaeufer  []ankaeuferAnzeige
+	WeckerText string
 	MaxEKText  string
 	AnkaufText string
 	Geprueft   string
 	BesterText string
+}
+
+type ankaeuferAnzeige struct {
+	store.Ankaeufer
+	PreisText string
 }
 
 type monitorRegelAnzeige struct {
@@ -55,10 +62,22 @@ type monitorDaten struct {
 
 	Produkte   []monitorProduktAnzeige
 	Kategorien []string
-	Regeln     []monitorRegelAnzeige
-	Treffer    []monitorTrefferAnzeige
-	Channels   []store.Channel
-	Maerkte    []marketplace.Marketplace
+
+	PrioHoch       int
+	PrioNiedrig    int
+	SturzProzent   int
+	SturzChannel   int64
+	AdminChannel   int64
+	Mydealz        bool
+	Ausverkauft    bool
+	ScanKategorien []store.MonitorKategorie
+
+	// Import ist die geprüfte Liste vor dem Übernehmen, nil ohne Import.
+	Import   []importVorschlag
+	Regeln   []monitorRegelAnzeige
+	Treffer  []monitorTrefferAnzeige
+	Channels []store.Channel
+	Maerkte  []marketplace.Marketplace
 
 	// Varianten sind die Produktseiten einer eingefügten Sammelseite, zur
 	// Auswahl; Mitnehmen sind die übrigen Eingaben, die dabei erhalten
@@ -83,7 +102,17 @@ func (srv *Server) monitorDaten() monitorDaten {
 		Poster:      srv.store.Einstellung(store.SchluesselMonitorPoster),
 		PosterListe: srv.posterListe(),
 		Maerkte:     marketplace.All(),
+
+		PrioHoch:     srv.store.EinstellungZahl(store.SchluesselMonitorHochSek),
+		PrioNiedrig:  srv.store.EinstellungZahl(store.SchluesselMonitorNiedrigSek),
+		SturzProzent: srv.store.EinstellungZahl(store.SchluesselMonitorSturzProzent),
+		SturzChannel: int64(srv.store.EinstellungZahl(store.SchluesselMonitorSturzChannel)),
+		AdminChannel: int64(srv.store.EinstellungZahl(store.SchluesselMonitorAdminChannel)),
+		Mydealz:      srv.store.Einstellung(store.SchluesselMonitorMydealz) == "1",
+		Ausverkauft:  srv.store.Einstellung(store.SchluesselMonitorAusverkauft) == "1",
 	}
+	d.ScanKategorien, _ = srv.store.Kategorien()
+	ankaeufer, _ := srv.store.AnkaeuferAlle()
 	d.Channels, _ = srv.store.Channels()
 	kanalName := map[int64]string{}
 	for _, c := range d.Channels {
@@ -108,6 +137,21 @@ func (srv *Server) monitorDaten() monitorDaten {
 		}
 		if p.BesterShop != "" {
 			a.BesterText = p.BesterCent.Euro() + " bei " + p.BesterShop
+		}
+		for _, k := range ankaeufer[p.ID] {
+			a.Ankaeufer = append(a.Ankaeufer, ankaeuferAnzeige{Ankaeufer: k, PreisText: k.Preis.Euro()})
+		}
+		eff := p
+		if best, ok := einzelPreis(ankaeufer[p.ID]); ok && p.IstAnkauf() {
+			eff.Ankauf = best
+		}
+		if p.IstAnkauf() {
+			if wk := srv.wecker(eff); wk > 0 {
+				a.WeckerText = wk.Euro()
+				if p.MaxEK == 0 {
+					a.WeckerText += " (95 %)"
+				}
+			}
 		}
 		a.Anzeige = p.Name
 		if a.Anzeige == "" {
@@ -191,9 +235,10 @@ func betragOderNull(s string) (money.Cents, error) {
 	return money.Parse(s)
 }
 
-// ankaufFelder liest Modus, Ankaufspreis, Preiswecker, Hinweis und Kategorie.
-// Fehlt im Ankaufs-Modus der Preiswecker, gilt 95 % des Ankaufspreises —
-// also 5 % Marge, so wie ihr ihn bisher setzt.
+// ankaufFelder liest Modus, Ankaufspreis, Hinweis und Kategorie. Ein leerer
+// Preiswecker bleibt leer: dann gilt bei jeder Prüfung 95 % des besten
+// Ankaufs (siehe wecker) — er wandert also mit, wenn sich die Ankäufer
+// ändern. Ohne Ankaufspreis geht es auch, sobald Ankäufer eingetragen sind.
 func ankaufFelder(r *http.Request, p *store.MonitorProdukt) string {
 	p.Modus = store.ModusAmazon
 	if r.PostForm.Get("modus") == store.ModusAnkauf {
@@ -201,21 +246,16 @@ func ankaufFelder(r *http.Request, p *store.MonitorProdukt) string {
 	}
 	p.Hinweis = r.PostForm.Get("hinweis")
 	p.Kategorie = r.PostForm.Get("kategorie")
+	p.Prio = r.PostForm.Get("prio")
+	p.Stichworte = r.PostForm.Get("stichworte")
+	p.Notiz = r.PostForm.Get("notiz")
 	ankauf, err := betragOderNull(r.PostForm.Get("ankauf"))
 	if err != nil || ankauf < 0 {
 		return "Ankaufspreis: kein gültiger Betrag."
 	}
 	p.Ankauf = ankauf
-	if p.IstAnkauf() {
-		if p.Ankauf == 0 {
-			return "Im Modus Ankauf ist der Ankaufspreis Pflicht."
-		}
-		if p.MaxEK == 0 {
-			p.MaxEK = money.Cents(int64(p.Ankauf) * 95 / 100)
-		}
-		if p.MaxEK > p.Ankauf {
-			return "Der Preiswecker liegt über dem Ankaufspreis — so gäbe es nur Verlust-Deals."
-		}
+	if p.IstAnkauf() && p.Ankauf > 0 && p.MaxEK > p.Ankauf {
+		return "Der Preiswecker liegt über dem Ankaufspreis — so gäbe es nur Verlust-Deals."
 	}
 	return ""
 }
@@ -417,13 +457,59 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 	if r.PostForm.Get("aktiv") == "1" {
 		aktiv = "1"
 	}
+	// Fehlt ein Feld (ältere Seite im Browser), bleibt der bisherige Wert.
+	zahl := func(feld, schluessel string, min int) (string, bool) {
+		if !r.PostForm.Has(feld) {
+			return srv.store.Einstellung(schluessel), true
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(r.PostForm.Get(feld)))
+		return strconv.Itoa(n), err == nil && n >= min
+	}
+	hoch, ok1 := zahl("prio_hoch", store.SchluesselMonitorHochSek, int(monitorMindestIntervall.Seconds()))
+	niedrig, ok2 := zahl("prio_niedrig", store.SchluesselMonitorNiedrigSek, int(monitorMindestIntervall.Seconds()))
+	sturz, ok3 := zahl("sturz_prozent", store.SchluesselMonitorSturzProzent, 1)
+	if !ok1 || !ok2 || !ok3 {
+		srv.monitorMeldung(w, "", "Prio-Intervalle: mindestens 15 Sekunden; Preissturz: mindestens 1 %.")
+		return
+	}
+	kanal := func(feld string) string {
+		if !r.PostForm.Has(feld) {
+			return "keep"
+		}
+		id, _ := strconv.ParseInt(r.PostForm.Get(feld), 10, 64)
+		if _, err := srv.store.Channel(id); err != nil {
+			return "0"
+		}
+		return strconv.FormatInt(id, 10)
+	}
+	// Ohne die neuen Felder (ältere Seite) bleiben auch die Schalter stehen.
+	neueFelder := r.PostForm.Has("sturz_prozent")
+	an := func(feld string) string {
+		if !neueFelder {
+			return "keep"
+		}
+		if r.PostForm.Get(feld) == "1" {
+			return "1"
+		}
+		return "0"
+	}
 	for k, v := range map[string]string{
-		store.SchluesselMonitorAktiv:     aktiv,
-		store.SchluesselMonitorIntervall: strconv.Itoa(intervall),
-		store.SchluesselMonitorSperre:    strconv.Itoa(sperre),
-		store.SchluesselMonitorMaxTage:   strconv.Itoa(maxTage),
-		store.SchluesselMonitorPoster:    poster,
+		store.SchluesselMonitorHochSek:      hoch,
+		store.SchluesselMonitorNiedrigSek:   niedrig,
+		store.SchluesselMonitorSturzProzent: sturz,
+		store.SchluesselMonitorSturzChannel: kanal("sturz_channel"),
+		store.SchluesselMonitorAdminChannel: kanal("admin_channel"),
+		store.SchluesselMonitorMydealz:      an("mydealz"),
+		store.SchluesselMonitorAusverkauft:  an("ausverkauft"),
+		store.SchluesselMonitorAktiv:        aktiv,
+		store.SchluesselMonitorIntervall:    strconv.Itoa(intervall),
+		store.SchluesselMonitorSperre:       strconv.Itoa(sperre),
+		store.SchluesselMonitorMaxTage:      strconv.Itoa(maxTage),
+		store.SchluesselMonitorPoster:       poster,
 	} {
+		if v == "keep" {
+			continue
+		}
 		if err := srv.store.SetzeEinstellung(k, v); err != nil {
 			srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
 			return

@@ -77,6 +77,29 @@ type MonitorProdukt struct {
 	Hinweis string
 	// Kategorie ist frei, etwa „Konsolen“ — Regeln können danach wählen.
 	Kategorie string
+	// Prio ist PrioHoch, PrioNormal oder PrioNiedrig: wie oft geprüft wird.
+	Prio string
+	// Stichworte erkennen das Produkt in mydealz-Deals: eine Zeile oder ein
+	// Komma je Stichwort, ein Stichwort passt, wenn alle seine Wörter im
+	// Titel stehen („ps5 pro" passt auf „Sony PlayStation 5 Pro … PS5 Pro").
+	Stichworte string
+	// Notiz ist nur für euch, etwa die Ankäufer aus dem Listen-Import.
+	Notiz string
+}
+
+// Prio-Stufen der Monitor-Produkte.
+const (
+	PrioHoch    = "hoch"
+	PrioNormal  = "normal"
+	PrioNiedrig = "niedrig"
+)
+
+func prioOderNormal(p string) string {
+	switch p {
+	case PrioHoch, PrioNiedrig:
+		return p
+	}
+	return PrioNormal
 }
 
 // Die beiden Arten von Monitor-Produkten.
@@ -139,7 +162,7 @@ func shopSchluessel(s string) string {
 
 const monitorProduktSpalten = `id, name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv,
 	angelegt_am, geprueft_am, status, bester_shop, bester_cent, bewertet_shop, bewertet_cent, bewertet_am,
-	modus, ankauf_cent, hinweis, kategorie`
+	modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz`
 
 func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var p MonitorProdukt
@@ -147,7 +170,7 @@ func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var angelegt, geprueft, bewertet string
 	if err := z.Scan(&p.ID, &p.Name, &p.URL, &p.EAN, &p.ASIN, &p.Maerkte, &p.MaxEK, &p.Shops, &verz, &aktiv,
 		&angelegt, &geprueft, &p.Status, &p.BesterShop, &p.BesterCent, &p.BewertetShop, &p.BewertetCent, &bewertet,
-		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie); err != nil {
+		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie, &p.Prio, &p.Stichworte, &p.Notiz); err != nil {
 		return MonitorProdukt{}, err
 	}
 	p.AuchVerzoegert, p.Aktiv = verz != 0, aktiv != 0
@@ -183,12 +206,13 @@ func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 	}
 	erg, err := s.db.Exec(`
 		INSERT INTO monitor_produkte (name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv, angelegt_am,
-			modus, ankauf_cent, hinweis, kategorie)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(p.Name), p.URL, strings.TrimSpace(p.EAN), strings.ToUpper(strings.TrimSpace(p.ASIN)),
 		p.Maerkte, int64(p.MaxEK), strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert), jaNein(p.Aktiv),
 		time.Now().UTC().Format(time.RFC3339),
-		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie))
+		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie),
+		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz))
 	if err != nil {
 		return 0, fmt.Errorf("store: Monitor-Produkt nicht anlegbar: %w", err)
 	}
@@ -201,12 +225,13 @@ func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 func (s *Store) MonitorProduktAendern(p MonitorProdukt) error {
 	_, err := s.db.Exec(`
 		UPDATE monitor_produkte SET name = ?, asin = ?, maerkte = ?, max_ek_cent = ?, shops = ?, auch_verzoegert = ?,
-			modus = ?, ankauf_cent = ?, hinweis = ?, kategorie = ?,
+			modus = ?, ankauf_cent = ?, hinweis = ?, kategorie = ?, prio = ?, stichworte = ?, notiz = ?,
 			bewertet_shop = '', bewertet_cent = 0, bewertet_am = ''
 		WHERE id = ?`,
 		strings.TrimSpace(p.Name), strings.ToUpper(strings.TrimSpace(p.ASIN)), p.Maerkte, int64(p.MaxEK),
 		strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert),
-		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie), p.ID)
+		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie),
+		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz), p.ID)
 	return err
 }
 
@@ -259,13 +284,18 @@ func (s *Store) MonitorProdukte() ([]MonitorProdukt, error) {
 // MonitorFaellig liefert die aktiven Produkte, die zuletzt vor mehr als
 // intervall geprüft wurden — das am längsten ungeprüfte zuerst.
 func (s *Store) MonitorFaellig(intervall time.Duration, jetzt time.Time) ([]MonitorProdukt, error) {
+	return s.MonitorFaelligJe(func(MonitorProdukt) time.Duration { return intervall }, jetzt)
+}
+
+// MonitorFaelligJe ist MonitorFaellig mit einem Intervall je Produkt (Prio).
+func (s *Store) MonitorFaelligJe(intervall func(MonitorProdukt) time.Duration, jetzt time.Time) ([]MonitorProdukt, error) {
 	alle, err := s.MonitorProdukte()
 	if err != nil {
 		return nil, err
 	}
 	var out []MonitorProdukt
 	for _, p := range alle {
-		if p.Aktiv && (p.GeprueftAm.IsZero() || jetzt.Sub(p.GeprueftAm) >= intervall) {
+		if p.Aktiv && (p.GeprueftAm.IsZero() || jetzt.Sub(p.GeprueftAm) >= intervall(p)) {
 			out = append(out, p)
 		}
 	}
@@ -422,13 +452,14 @@ func (s *Store) MonitorLetzteTreffer(n int) ([]MonitorTreffer, error) {
 	return out, zeilen.Err()
 }
 
-// MonitorZuletztGepostet liefert den letzten geposteten Treffer eines
-// Produkts seit seit.
+// MonitorZuletztGepostet liefert den letzten geposteten Deal eines Produkts
+// seit seit. Preissturz-Meldungen zählen nicht: sie gehen in einen eigenen
+// Channel und dürfen den eigentlichen Deal nicht sperren.
 func (s *Store) MonitorZuletztGepostet(produktID int64, seit time.Time) (MonitorTreffer, bool) {
 	var t MonitorTreffer
 	var zeit string
 	err := s.db.QueryRow(`SELECT shop, gesamt_cent, zeit FROM monitor_treffer
-		WHERE produkt_id = ? AND gepostet = 1 AND zeit >= ? ORDER BY id DESC LIMIT 1`,
+		WHERE produkt_id = ? AND gepostet = 1 AND zeit >= ? AND ergebnis NOT LIKE 'Preissturz%' ORDER BY id DESC LIMIT 1`,
 		produktID, seit.UTC().Format(time.RFC3339)).Scan(&t.Shop, &t.Gesamt, &zeit)
 	if err != nil {
 		return MonitorTreffer{}, false

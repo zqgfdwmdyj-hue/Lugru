@@ -58,7 +58,13 @@ func (srv *Server) ankaufText(p store.MonitorProdukt, liste billiger.Preisliste,
 		z = append(z, l)
 	}
 	z = append(z, "🤝 Ankauf: "+p.Ankauf.Euro())
+	if st := srv.staffelText(p); st != "" {
+		z = append(z, "📦 Mengen: "+st)
+	}
 	z = append(z, "🤑 Gewinn: "+gewinn.Euro()+" / "+prozent(marge, 1)+" Marge")
+	if zeile := srv.preisZeile(p, a.Gesamt, time.Now()); zeile != "" {
+		z = append(z, zeile)
+	}
 	if h := strings.TrimSpace(p.Hinweis); h != "" {
 		z = append(z, "ℹ️ "+h)
 	}
@@ -74,8 +80,8 @@ func linkText(s string) string {
 }
 
 func (srv *Server) monitorAnkauf(ctx context.Context, p store.MonitorProdukt, liste billiger.Preisliste, bester billiger.Angebot, test bool, jetzt time.Time, b *monitorBericht) {
-	if p.Ankauf <= 0 || p.MaxEK <= 0 {
-		b.Status = "Ankaufspreis und Preiswecker fehlen — bitte eintragen"
+	if p.Ankauf <= 0 {
+		b.Status = "Ankaufspreis fehlt — bitte eintragen oder einen Ankäufer anlegen"
 		return
 	}
 	b.Bewertet = true
@@ -131,6 +137,8 @@ func (srv *Server) monitorAnkauf(ctx context.Context, p store.MonitorProdukt, li
 			continue
 		}
 		_ = srv.store.ChannelDefekt(c.ID, false)
+		_ = srv.store.MonitorPostMerken(store.MonitorPost{ProduktID: p.ID, Shop: bester.Shop, Gesamt: bester.Gesamt,
+			ChannelID: c.ID, NachrichtID: g.NachrichtID, Text: text, GepostetAm: jetzt})
 		srv.reaktionenVorbelegen(g.KanalID, g.NachrichtID, c.Name)
 		if !telegramGesendet {
 			srv.anTelegram(text, nil)
@@ -141,6 +149,7 @@ func (srv *Server) monitorAnkauf(ctx context.Context, p store.MonitorProdukt, li
 	if len(gepostet) == 0 {
 		b.Status = "nicht gesendet: " + strings.Join(fehler, " · ")
 		srv.monitorProtokoll(p, titel, bester, *b, false, b.Status)
+		srv.adminMelden(ctx, "discord", "⚠️ Monitor: Ankaufs-Deal nicht gepostet ("+titel+"): "+b.Status)
 		return
 	}
 	b.Gepostet = true

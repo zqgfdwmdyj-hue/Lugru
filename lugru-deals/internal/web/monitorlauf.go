@@ -59,6 +59,9 @@ type monitorBericht struct {
 	// Karte und ChartURL sind die Vorschau des Posts beim Test.
 	Karte    kartenVorschau
 	ChartURL string
+
+	// asin ist die ASIN, die bei der Bewertung benutzt wurde.
+	asin string
 }
 
 // StarteMonitor prüft im Hintergrund die fälligen Produkte, solange der
@@ -76,7 +79,8 @@ func (srv *Server) StarteMonitor(ctx context.Context) {
 			if srv.store.Einstellung(store.SchluesselMonitorAktiv) != "1" {
 				continue
 			}
-			faellig, err := srv.store.MonitorFaellig(srv.monitorIntervall(), time.Now())
+			srv.monitorNebenquellen(ctx)
+			faellig, err := srv.store.MonitorFaelligJe(srv.prioIntervall, time.Now())
 			if err != nil {
 				log.Printf("Monitor: %v", err)
 				continue
@@ -110,6 +114,24 @@ func warteKurz(ctx context.Context, d time.Duration) bool {
 
 func (srv *Server) monitorIntervall() time.Duration {
 	d := time.Duration(srv.store.EinstellungZahl(store.SchluesselMonitorIntervall)) * time.Second
+	if d < monitorMindestIntervall {
+		d = monitorMindestIntervall
+	}
+	return d
+}
+
+// prioIntervall ist die Prüfzeit eines Produkts nach seiner Prio-Stufe.
+func (srv *Server) prioIntervall(p store.MonitorProdukt) time.Duration {
+	sek := 0
+	switch p.Prio {
+	case store.PrioHoch:
+		sek = srv.store.EinstellungZahl(store.SchluesselMonitorHochSek)
+	case store.PrioNiedrig:
+		sek = srv.store.EinstellungZahl(store.SchluesselMonitorNiedrigSek)
+	default:
+		return srv.monitorIntervall()
+	}
+	d := time.Duration(sek) * time.Second
 	if d < monitorMindestIntervall {
 		d = monitorMindestIntervall
 	}
@@ -182,25 +204,54 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 	liste, err := billiger.Hole(ctx, srv.monitorClient(), p.URL)
 	if err != nil {
 		b.Status = "Fehler: " + sicherFehlertext(err.Error())
+		if !test {
+			srv.adminMelden(ctx, "billiger", "⚠️ Monitor: billiger.de antwortet nicht wie erwartet ("+p.Name+"): "+sicherFehlertext(err.Error()))
+		}
 		return b
 	}
 	name, ean = liste.Name, liste.EAN
 	if p.Name == "" {
 		p.Name = liste.Name
 	}
+	if p.EAN == "" {
+		p.EAN = liste.EAN
+	}
+	srv.ankaufAnwenden(&p)
 
-	bester, besterDa = bestesAngebot(p, liste.Angebote, srv.store.EinstellungZahl(store.SchluesselMonitorMaxTage), jetzt)
+	maxTage := srv.store.EinstellungZahl(store.SchluesselMonitorMaxTage)
+	if !test {
+		srv.ausverkauftPruefen(ctx, p, liste.Angebote, maxTage, jetzt)
+	}
+
+	bester, besterDa = bestesAngebot(p, liste.Angebote, maxTage, jetzt)
 	if !besterDa {
 		b.Status = fmt.Sprintf("kein passendes Angebot (%d Angebote, keines aus den gewählten Shops mit passender Lieferzeit)", len(liste.Angebote))
 		return b
 	}
+	if !test {
+		_ = srv.store.MonitorPreisMerken(p.ID, bester.Gesamt, bester.Shop, jetzt)
+		srv.preissturzPruefen(ctx, p, liste, bester, jetzt)
+	}
+	b = srv.monitorAngebot(ctx, p, liste, bester, test, jetzt)
+	if b.Angebot == nil {
+		b.Angebot = &bester
+	}
+	asin = b.asin
+	return b
+}
+
+// monitorAngebot bewertet das günstigste passende Angebot eines Produkts und
+// postet es, wenn es die Vorgaben erfüllt — gleich, ob es von billiger.de
+// oder von mydealz stammt.
+func (srv *Server) monitorAngebot(ctx context.Context, p store.MonitorProdukt, liste billiger.Preisliste, bester billiger.Angebot, test bool, jetzt time.Time) monitorBericht {
+	var b monitorBericht
 	b.Angebot = &bester
-	if p.MaxEK > 0 && bester.Gesamt > p.MaxEK {
-		grenze := "Höchstpreis"
+	if grenze := srv.wecker(p); grenze > 0 && bester.Gesamt > grenze {
+		art := "Höchstpreis"
 		if p.IstAnkauf() {
-			grenze = "Preiswecker"
+			art = "Preiswecker"
 		}
-		b.Status = fmt.Sprintf("günstigstes: %s bei %s — über dem %s %s", bester.Gesamt.Euro(), bester.Shop, grenze, p.MaxEK.Euro())
+		b.Status = fmt.Sprintf("günstigstes: %s bei %s — über dem %s %s", bester.Gesamt.Euro(), bester.Shop, art, grenze.Euro())
 		return b
 	}
 
@@ -211,16 +262,20 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 
 	// Ohne ASIN kein Keepa und kein Verkaufslink: über die EAN suchen.
 	maerkte := srv.monitorMaerkte(p)
-	asin = p.ASIN
+	asin := p.ASIN
 	if asin == "" {
-		gefunden, err := srv.asinZuEAN(ctx, liste.EAN, maerkte[0])
+		ean := liste.EAN
+		if ean == "" {
+			ean = p.EAN
+		}
+		gefunden, err := srv.asinZuEAN(ctx, ean, maerkte[0])
 		if err != nil {
-			b.Status = "ASIN nicht gefunden (EAN " + liste.EAN + "): " + sicherFehlertext(err.Error()) + " — bitte von Hand eintragen"
+			b.Status = "ASIN nicht gefunden (EAN " + ean + "): " + sicherFehlertext(err.Error()) + " — bitte von Hand eintragen"
 			return b
 		}
 		asin = gefunden
 	}
-
+	b.asin = asin
 	sperre := srv.monitorSperre()
 	if !test {
 		// Dasselbe Angebot wurde eben schon bewertet: Keepa nicht erneut
@@ -239,10 +294,16 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 	}
 
 	werte := monitorFormularWerte(p, liste, bester, asin, maerkte, srv.store.Einstellung(store.SchluesselMonitorPoster))
+	if z := srv.preisZeile(p, bester.Gesamt, jetzt); z != "" {
+		werte.Set("zusatz", z)
+	}
 	f := formularLesen(formularAnfrage(werte))
 	d := dealSeite{Formular: f}
 	if fehler := srv.keepaEinlesen(ctx, &d, false); len(fehler) > 0 && len(fehler) == len(d.Formular.Maerkte) {
 		b.Status = "Keepa: " + strings.Join(fehler, " · ")
+		if !test {
+			srv.adminMelden(ctx, "keepa", "⚠️ Monitor: Keepa liefert nichts ("+p.Name+"): "+strings.Join(fehler, " · "))
+		}
 		return b
 	}
 	f = d.Formular
@@ -301,8 +362,10 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 	if err != nil {
 		b.Status = sicherFehlertext(err.Error())
 		srv.monitorProtokoll(p, f.Titel, bester, b, false, b.Status)
+		srv.adminMelden(ctx, "discord", "⚠️ Monitor: Deal nicht gepostet ("+p.Name+"): "+b.Status)
 		return b
 	}
+	_ = srv.store.MonitorPostMerken(store.MonitorPost{ProduktID: p.ID, Shop: bester.Shop, Gesamt: bester.Gesamt, DealID: ausgang.HauptID, GepostetAm: jetzt})
 	b.Gepostet = true
 	b.Status = "gepostet in " + strings.Join(ausgang.GepostetIn, ", ") + ": " + kennzahlen
 	if len(ausgang.Fehlgeschlagen) > 0 {
