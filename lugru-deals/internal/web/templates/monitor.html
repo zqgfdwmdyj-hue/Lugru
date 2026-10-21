@@ -30,6 +30,8 @@ Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel
     <input name="intervall" type="number" min="15" value="{{.Intervall}}"></label>
   <label>Sperrzeit in Minuten <small>so lange wird derselbe Deal nicht noch einmal gepostet — außer er wird günstiger</small>
     <input name="sperre" type="number" min="0" value="{{.Sperre}}"></label>
+  <label>Max. Lieferzeit in Tagen <small>längere Lieferzeiten werden ignoriert — 0 heißt: keine Grenze</small>
+    <input name="max_tage" type="number" min="0" value="{{.MaxTage}}"></label>
   <label>Gepostet von
     <select name="poster">
       <option value="">— niemand —</option>
@@ -114,7 +116,7 @@ Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel
   <fieldset><legend>Zielmärkte <small>keiner angehakt heißt: wie unter Einstellungen</small></legend>
     {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
   </fieldset>
-  <label><input type="checkbox" name="auch_verzoegert" value="1" checked> auch Angebote mit längerer Lieferzeit (eine Woche und mehr) — die Lieferzeit steht dann im Post</label>
+  <label><input type="checkbox" name="auch_verzoegert" value="1" checked> auch Angebote mit längerer Lieferzeit (bis zur Grenze unter Einstellungen) — die Lieferzeit steht dann im Post</label>
   <button type="submit" class="primaer">Anlegen</button>
 </form>
 

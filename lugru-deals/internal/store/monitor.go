@@ -23,6 +23,9 @@ const (
 	// SchluesselMonitorPoster ist der Name, der bei Monitor-Deals als Poster
 	// steht (einer aus deal.poster, leer für keinen).
 	SchluesselMonitorPoster = "monitor.poster"
+	// SchluesselMonitorMaxTage ist die längste Lieferzeit in Tagen, die ein
+	// Angebot haben darf; 0 heißt: keine Grenze.
+	SchluesselMonitorMaxTage = "monitor.max_liefertage"
 )
 
 func init() {
@@ -30,6 +33,7 @@ func init() {
 	vorgaben[SchluesselMonitorIntervall] = "60"
 	vorgaben[SchluesselMonitorSperre] = "360"
 	vorgaben[SchluesselMonitorPoster] = ""
+	vorgaben[SchluesselMonitorMaxTage] = "7"
 }
 
 // MonitorProdukt ist ein Produkt, das bei billiger.de beobachtet wird.

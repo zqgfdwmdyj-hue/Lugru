@@ -49,6 +49,7 @@ type monitorDaten struct {
 	Aktiv       bool
 	Intervall   int
 	Sperre      int
+	MaxTage     int
 	Poster      string
 	PosterListe []posterEintrag
 
@@ -72,6 +73,7 @@ func (srv *Server) monitorDaten() monitorDaten {
 		Aktiv:       srv.store.Einstellung(store.SchluesselMonitorAktiv) == "1",
 		Intervall:   srv.store.EinstellungZahl(store.SchluesselMonitorIntervall),
 		Sperre:      srv.store.EinstellungZahl(store.SchluesselMonitorSperre),
+		MaxTage:     srv.store.EinstellungZahl(store.SchluesselMonitorMaxTage),
 		Poster:      srv.store.Einstellung(store.SchluesselMonitorPoster),
 		PosterListe: srv.posterListe(),
 		Maerkte:     marketplace.All(),
@@ -390,6 +392,11 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		srv.monitorMeldung(w, "", "Sperrzeit: keine ganze Zahl.")
 		return
 	}
+	maxTage, err := strconv.Atoi(strings.TrimSpace(r.PostForm.Get("max_tage")))
+	if err != nil || maxTage < 0 {
+		srv.monitorMeldung(w, "", "Max. Lieferzeit: keine ganze Zahl (0 heißt keine Grenze).")
+		return
+	}
 	poster := strings.TrimSpace(r.PostForm.Get("poster"))
 	if _, ok := srv.poster(poster); poster != "" && !ok {
 		poster = ""
@@ -402,6 +409,7 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		store.SchluesselMonitorAktiv:     aktiv,
 		store.SchluesselMonitorIntervall: strconv.Itoa(intervall),
 		store.SchluesselMonitorSperre:    strconv.Itoa(sperre),
+		store.SchluesselMonitorMaxTage:   strconv.Itoa(maxTage),
 		store.SchluesselMonitorPoster:    poster,
 	} {
 		if err := srv.store.SetzeEinstellung(k, v); err != nil {

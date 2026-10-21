@@ -129,7 +129,12 @@ func (srv *Server) monitorClient() *http.Client {
 
 // bestesAngebot liefert das günstigste Angebot (mit Versand), das zu den
 // Vorgaben des Produkts passt.
-func bestesAngebot(p store.MonitorProdukt, angebote []billiger.Angebot) (billiger.Angebot, bool) {
+//
+// maxTage ist die längste erlaubte Lieferzeit (0 = keine Grenze). Sagt der
+// Text bei billiger.de nichts Verwertbares, zählt ein Angebot mit grünem
+// Symbol („lieferbar") trotzdem, eines mit gelbem nicht — dort ist offen,
+// wie lange es dauert.
+func bestesAngebot(p store.MonitorProdukt, angebote []billiger.Angebot, maxTage int, jetzt time.Time) (billiger.Angebot, bool) {
 	var best billiger.Angebot
 	gefunden := false
 	for _, a := range angebote {
@@ -138,6 +143,12 @@ func bestesAngebot(p store.MonitorProdukt, angebote []billiger.Angebot) (billige
 		}
 		if a.Status != billiger.Lieferbar && !(p.AuchVerzoegert && a.Status == billiger.Verzoegert) {
 			continue
+		}
+		if maxTage > 0 {
+			tage, bekannt := billiger.MaxLiefertage(a.Lieferzeit, jetzt)
+			if (bekannt && tage > maxTage) || (!bekannt && a.Status != billiger.Lieferbar) {
+				continue
+			}
 		}
 		if !gefunden || a.Gesamt < best.Gesamt {
 			best, gefunden = a, true
@@ -178,9 +189,9 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 		p.Name = liste.Name
 	}
 
-	bester, besterDa = bestesAngebot(p, liste.Angebote)
+	bester, besterDa = bestesAngebot(p, liste.Angebote, srv.store.EinstellungZahl(store.SchluesselMonitorMaxTage), jetzt)
 	if !besterDa {
-		b.Status = fmt.Sprintf("kein passendes Angebot (%d Angebote, keines lieferbar oder aus den gewählten Shops)", len(liste.Angebote))
+		b.Status = fmt.Sprintf("kein passendes Angebot (%d Angebote, keines aus den gewählten Shops mit passender Lieferzeit)", len(liste.Angebote))
 		return b
 	}
 	b.Angebot = &bester

@@ -288,11 +288,14 @@ func TestMonitorSeiteUndFormulare(t *testing.T) {
 		t.Errorf("Regel = %+v", rs)
 	}
 
-	w = hole(t, srv, http.MethodPost, "/monitor/einstellungen", url.Values{"aktiv": {"1"}, "intervall": {"5"}, "sperre": {"60"}}.Encode())
+	w = hole(t, srv, http.MethodPost, "/monitor/einstellungen", url.Values{"aktiv": {"1"}, "intervall": {"5"}, "sperre": {"60"}, "max_tage": {"7"}}.Encode())
 	if !strings.Contains(w.Body.String(), "mindestens 15") {
 		t.Error("zu kurzes Intervall angenommen")
 	}
-	w = hole(t, srv, http.MethodPost, "/monitor/einstellungen", url.Values{"aktiv": {"1"}, "intervall": {"30"}, "sperre": {"60"}}.Encode())
+	w = hole(t, srv, http.MethodPost, "/monitor/einstellungen", url.Values{"aktiv": {"1"}, "intervall": {"30"}, "sperre": {"60"}, "max_tage": {"5"}}.Encode())
+	if s.Einstellung(store.SchluesselMonitorMaxTage) != "5" {
+		t.Error("max. Lieferzeit nicht gespeichert")
+	}
 	if s.Einstellung(store.SchluesselMonitorAktiv) != "1" || s.Einstellung(store.SchluesselMonitorIntervall) != "30" {
 		t.Error("Einstellungen nicht gespeichert")
 	}
@@ -392,5 +395,23 @@ func TestMonitorLangeLieferzeitImPost(t *testing.T) {
 	}
 	if posts := a.posts("/normal"); len(posts) != 1 || !strings.Contains(posts[0], "⏳ Längere Lieferzeit: 5-7 Werktage") {
 		t.Errorf("Post ohne Lieferzeit: %v", posts)
+	}
+}
+
+func TestMonitorMaxLieferzeit(t *testing.T) {
+	// Kaufland liefert in 5-7 Werktagen: bei 7 Tagen Grenze dabei, bei 5 nicht.
+	for grenze, willKaufland := range map[string]bool{"7": true, "5": false} {
+		a := neuerMonitorAufbau(t, "Kaufland, OTTO")
+		_ = a.s.SetzeEinstellung(store.SchluesselMonitorMaxTage, grenze)
+		p := a.produkt(t)
+		p.AuchVerzoegert = true
+		_ = a.s.MonitorProduktAendern(p)
+		b := a.srv.monitorPruefe(context.Background(), a.produkt(t), true)
+		if b.Angebot == nil {
+			t.Fatalf("Grenze %s: kein Angebot (%s)", grenze, b.Status)
+		}
+		if got := b.Angebot.Shop == "Kaufland.de"; got != willKaufland {
+			t.Errorf("Grenze %s: Shop = %s", grenze, b.Angebot.Shop)
+		}
 	}
 }
