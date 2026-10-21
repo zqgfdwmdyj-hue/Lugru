@@ -20,6 +20,11 @@ const (
 	SchluesselEbayGebuehr    = "ebay.gebuehr_prozent"
 	SchluesselEbayGebuehrFix = "ebay.gebuehr_fix"
 	SchluesselEbayVersand    = "ebay.versand"
+	// Das Lugru-Seller-System als Quelle des eBay-Tokens: Adresse und
+	// Verbindungsschlüssel (Anbindungen → Lugru Deals). Gesetzt, gilt es vor
+	// App ID und Cert ID.
+	SchluesselEbaySellerURL = "ebay.seller_url"
+	SchluesselEbaySellerKey = "ebay.seller_schluessel"
 )
 
 func init() {
@@ -34,6 +39,8 @@ func init() {
 	vorgaben[SchluesselEbayGebuehr] = "11"
 	vorgaben[SchluesselEbayGebuehrFix] = "0,35"
 	vorgaben[SchluesselEbayVersand] = "0"
+	vorgaben[SchluesselEbaySellerURL] = ""
+	vorgaben[SchluesselEbaySellerKey] = ""
 }
 
 // ---------------------------------------------------------------- Shop-Rabatte

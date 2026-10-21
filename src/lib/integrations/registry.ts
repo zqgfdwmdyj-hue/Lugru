@@ -234,6 +234,26 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["Discord → Server-Einstellungen → Integrationen → Webhooks → „Neuer Webhook“ → Kanal wählen (z. B. „todo“) → „Webhook-URL kopieren“ → hier einfügen und testen."],
   },
   {
+    provider: "lugru_deals",
+    name: "Lugru Deals (Shop-Monitor) – optional",
+    purpose:
+      "Lugru Deals holt sich hier das eBay-Zugangstoken für Deals, die auf eBay verkauft werden. Die eBay-Schlüssel bleiben im Seller-System; Lugru Deals bekommt nur ein kurzlebiges Token.",
+    fields: [
+      {
+        key: "schluessel",
+        label: "Verbindungsschlüssel",
+        secret: true,
+        placeholder: "mindestens 32 zufällige Zeichen",
+        help: "Frei wählen, z. B. aus einem Passwort-Generator. Denselben Schlüssel in Lugru Deals unter Monitor → Einstellungen → eBay eintragen.",
+      },
+    ],
+    setup: [
+      "Die eBay-Anbindung (Client ID und Client Secret) muss im Seller-System eingerichtet sein.",
+      "Hier einen zufälligen Verbindungsschlüssel mit mindestens 32 Zeichen eintragen und „Verbindung testen“.",
+      "In Lugru Deals unter Monitor → Einstellungen → eBay die Adresse dieses Seller-Systems und denselben Schlüssel eintragen.",
+    ],
+  },
+  {
     provider: "anthropic",
     name: "KI (Claude) – optional",
     purpose: "Stuft Amazon-Systemmails ein, fasst die Themen-Recherche zusammen und schreibt Marken-Ideen, Video-Skripte und Listing-Vorschläge. Ohne Schlüssel arbeiten Mails und Recherche mit festen Regeln.",

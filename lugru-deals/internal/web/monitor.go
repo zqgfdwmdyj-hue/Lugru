@@ -91,6 +91,8 @@ type monitorDaten struct {
 	TagChannel     int64
 	TagZeit        string
 	EbayAppID      string
+	EbaySellerURL  string
+	EbaySellerDa   bool
 	EbayCertDa     bool
 	EbayGebuehr    string
 	EbayFix        string
@@ -155,6 +157,8 @@ func (srv *Server) monitorDaten() monitorDaten {
 	d.TagChannel = int64(srv.store.EinstellungZahl(store.SchluesselMonitorTagChannel))
 	d.TagZeit = srv.store.Einstellung(store.SchluesselMonitorTagZeit)
 	d.EbayAppID = srv.store.Einstellung(store.SchluesselEbayAppID)
+	d.EbaySellerURL = srv.store.Einstellung(store.SchluesselEbaySellerURL)
+	d.EbaySellerDa = srv.store.Einstellung(store.SchluesselEbaySellerKey) != ""
 	d.EbayCertDa = srv.store.Einstellung(store.SchluesselEbayCertID) != ""
 	d.EbayGebuehr = srv.store.Einstellung(store.SchluesselEbayGebuehr)
 	d.EbayFix = srv.store.Einstellung(store.SchluesselEbayGebuehrFix)
@@ -510,6 +514,14 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		}
 		return v
 	}
+	sellerURL := behalte("ebay_seller_url", false)
+	if sellerURL != "keep" && sellerURL != "" {
+		var ok bool
+		if sellerURL, ok = gueltigeBasisURL(sellerURL); !ok {
+			srv.monitorMeldung(w, "", "Adresse des Seller-Systems: bitte so angeben: https://seller.example.de")
+			return
+		}
+	}
 	tagZeit := "keep"
 	if r.PostForm.Has("tag_zeit") {
 		h, m := tageszeit(r.PostForm.Get("tag_zeit"))
@@ -579,6 +591,8 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		store.SchluesselMonitorRabatte:      an("rabatte"),
 		store.SchluesselMonitorTagChannel:   kanal("tag_channel"),
 		store.SchluesselMonitorTagZeit:      tagZeit,
+		store.SchluesselEbaySellerURL:       sellerURL,
+		store.SchluesselEbaySellerKey:       behalte("ebay_seller_schluessel", true),
 		store.SchluesselEbayAppID:           behalte("ebay_app_id", false),
 		store.SchluesselEbayCertID:          behalte("ebay_cert_id", true),
 		store.SchluesselEbayGebuehr:         behalte("ebay_gebuehr", false),

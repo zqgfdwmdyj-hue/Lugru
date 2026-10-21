@@ -10,3 +10,4 @@ import "./calendar";
 import "./discord";
 import "./keepa";
 import "./stotax";
+import "./lugru-deals";

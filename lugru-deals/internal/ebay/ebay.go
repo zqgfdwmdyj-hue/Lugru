@@ -34,6 +34,11 @@ type Client struct {
 	HTTP          *http.Client
 	BasisURL      string // in Tests überschrieben
 
+	// Seller, wenn gesetzt, liefert das Token statt App ID und Cert ID:
+	// das Lugru-Seller-System, das die eBay-Schlüssel verwahrt (siehe
+	// SellerToken).
+	Seller *Seller
+
 	mu     sync.Mutex
 	token  string
 	ablauf time.Time
@@ -54,12 +59,25 @@ type Angebot struct {
 // Gesamt ist Preis plus Versand.
 func (a Angebot) Gesamt() money.Cents { return a.Preis + a.Versand }
 
-var ErrKeinZugang = errors.New("eBay: kein Zugang hinterlegt (App ID und Cert ID unter Monitor → Einstellungen)")
+var ErrKeinZugang = errors.New("eBay: kein Zugang hinterlegt (Lugru-Seller-System oder App ID und Cert ID unter Monitor → Einstellungen)")
 
 func (c *Client) holeToken(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.token != "" && time.Now().Before(c.ablauf) {
+		return c.token, nil
+	}
+	if c.Seller != nil {
+		token, gueltig, env, err := c.Seller.token(ctx, c.HTTP)
+		if err != nil {
+			return "", err
+		}
+		// Ist das Seller-System auf die eBay-Sandbox eingestellt, gilt das
+		// Token nur dort.
+		if env == "sandbox" && c.BasisURL == "https://api.ebay.com" {
+			c.BasisURL = "https://api.sandbox.ebay.com"
+		}
+		c.token, c.ablauf = token, time.Now().Add(gueltig-time.Minute)
 		return c.token, nil
 	}
 	if c.AppID == "" || c.CertID == "" {
@@ -201,4 +219,47 @@ func ohneURL(err error) error {
 		return uerr.Err
 	}
 	return err
+}
+
+// Seller ist das Lugru-Seller-System als Quelle des eBay-Tokens.
+type Seller struct {
+	// URL ist die Adresse des Seller-Systems, etwa https://seller.example.de.
+	URL string
+	// Schluessel ist der Verbindungsschlüssel aus Anbindungen → Lugru Deals.
+	Schluessel string
+}
+
+func (s *Seller) token(ctx context.Context, hc *http.Client) (string, time.Duration, string, error) {
+	ziel := strings.TrimRight(strings.TrimSpace(s.URL), "/") + "/api/public/lugru-deals/ebay-token"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ziel, nil)
+	if err != nil {
+		return "", 0, "", errors.New("Seller-System: Adresse ungültig")
+	}
+	req.Header.Set("Authorization", "Bearer "+s.Schluessel)
+	resp, err := hc.Do(req)
+	if err != nil {
+		return "", 0, "", fmt.Errorf("Seller-System nicht erreichbar: %w", ohneURL(err))
+	}
+	defer resp.Body.Close()
+	roh, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var r struct {
+		Token    string `json:"access_token"`
+		Sekunden int    `json:"expires_in"`
+		Env      string `json:"env"`
+		Fehler   string `json:"error"`
+	}
+	_ = json.Unmarshal(roh, &r)
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized:
+		return "", 0, "", errors.New("Seller-System: Verbindungsschlüssel falsch (Anbindungen → Lugru Deals)")
+	case resp.StatusCode != http.StatusOK || r.Token == "":
+		if r.Fehler != "" {
+			return "", 0, "", errors.New("Seller-System: " + r.Fehler)
+		}
+		return "", 0, "", fmt.Errorf("Seller-System: HTTP %d — ist es auf dem neuesten Stand?", resp.StatusCode)
+	}
+	if r.Sekunden <= 120 {
+		r.Sekunden = 1800
+	}
+	return r.Token, time.Duration(r.Sekunden) * time.Second, r.Env, nil
 }

@@ -38,14 +38,19 @@ const ebayMerken = 30 * time.Minute
 
 func (srv *Server) ebayClient() *ebay.Client {
 	app, cert := srv.store.Einstellung(store.SchluesselEbayAppID), srv.store.Einstellung(store.SchluesselEbayCertID)
+	sellerURL, sellerKey := srv.store.Einstellung(store.SchluesselEbaySellerURL), srv.store.Einstellung(store.SchluesselEbaySellerKey)
+	schl := app + "|" + cert + "|" + sellerURL + "|" + sellerKey
 	srv.ebayCache.mu.Lock()
 	defer srv.ebayCache.mu.Unlock()
-	if srv.ebayCache.client == nil || srv.ebayCache.schl != app+"|"+cert {
+	if srv.ebayCache.client == nil || srv.ebayCache.schl != schl {
 		srv.ebayCache.client = ebay.NeuerClient(app, cert, srv.http)
+		if sellerURL != "" && sellerKey != "" {
+			srv.ebayCache.client.Seller = &ebay.Seller{URL: sellerURL, Schluessel: sellerKey}
+		}
 		if srv.ebayBasisURL != "" {
 			srv.ebayCache.client.BasisURL = srv.ebayBasisURL
 		}
-		srv.ebayCache.schl = app + "|" + cert
+		srv.ebayCache.schl = schl
 		srv.ebayCache.preise = map[string]ebayStand{}
 	}
 	return srv.ebayCache.client

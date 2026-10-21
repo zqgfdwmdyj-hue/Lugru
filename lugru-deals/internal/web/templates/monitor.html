@@ -111,7 +111,13 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
   <label>… jeden Tag um <input name="tag_zeit" value="{{.TagZeit}}" placeholder="20:00" size="5"></label>
   <label><input type="checkbox" name="rabatte" value="1" {{if .RabatteAn}}checked{{end}}> Gutscheine und Cashback einrechnen
     <small>siehe „Gutscheine &amp; Cashback“ — senkt den effektiven Einkaufspreis</small></label>
-  <fieldset><legend>eBay <small>für die Art „eBay“: Schlüssel aus dem eBay-Entwicklerkonto (dieselben wie im Lugru-System)</small></legend>
+  <fieldset><legend>eBay <small>für die Art „eBay“</small></legend>
+    <p><small><strong>Empfohlen:</strong> über das Lugru-Seller-System — dort unter Anbindungen → „Lugru Deals“ einen
+      Verbindungsschlüssel festlegen und hier dieselbe Adresse und denselben Schlüssel eintragen. Die eBay-Schlüssel bleiben im Seller-System.</small></p>
+    <label>Adresse des Seller-Systems <input name="ebay_seller_url" value="{{.EbaySellerURL}}" placeholder="https://seller.example.de"></label>
+    <label>Verbindungsschlüssel <small>{{if .EbaySellerDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}noch keiner{{end}}</small>
+      <input name="ebay_seller_schluessel" type="password" autocomplete="off"></label>
+    <p><small>Oder ohne Seller-System: eigene Schlüssel aus dem eBay-Entwicklerkonto.</small></p>
     <label>App ID (Client ID) <input name="ebay_app_id" value="{{.EbayAppID}}" autocomplete="off"></label>
     <label>Cert ID (Client Secret) <small>{{if .EbayCertDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}noch keiner{{end}}</small>
       <input name="ebay_cert_id" type="password" autocomplete="off"></label>

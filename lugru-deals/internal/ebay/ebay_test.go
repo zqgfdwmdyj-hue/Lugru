@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -53,5 +54,39 @@ func TestSucheUndMarktpreis(t *testing.T) {
 	ohne := NeuerClient("", "", ts.Client())
 	if _, err := ohne.Suche(context.Background(), "1"); err != ErrKeinZugang {
 		t.Errorf("ohne Zugang: %v", err)
+	}
+}
+
+func TestTokenVomSellerSystem(t *testing.T) {
+	var gesehen string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/public/lugru-deals/ebay-token":
+			gesehen = r.Header.Get("Authorization")
+			if gesehen != "Bearer richtig" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"access_token":"vomSeller","expires_in":1800,"env":"production"}`))
+		case "/buy/browse/v1/item_summary/search":
+			if r.Header.Get("Authorization") != "Bearer vomSeller" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(antwort))
+		}
+	}))
+	defer ts.Close()
+	c := NeuerClient("", "", ts.Client())
+	c.BasisURL = ts.URL
+	c.Seller = &Seller{URL: ts.URL + "/", Schluessel: "richtig"}
+	if as, err := c.Suche(context.Background(), "1"); err != nil || len(as) != 3 {
+		t.Fatalf("%v %d", err, len(as))
+	}
+	falsch := NeuerClient("", "", ts.Client())
+	falsch.BasisURL = ts.URL
+	falsch.Seller = &Seller{URL: ts.URL, Schluessel: "falsch"}
+	if _, err := falsch.Suche(context.Background(), "1"); err == nil || !strings.Contains(err.Error(), "Verbindungsschlüssel falsch") {
+		t.Errorf("falscher Schlüssel: %v", err)
 	}
 }

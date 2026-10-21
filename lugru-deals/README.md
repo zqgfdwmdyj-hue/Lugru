@@ -278,8 +278,13 @@ Gutscheincodes aus mydealz-Deals („Code: SPAR10“) stehen automatisch im Post
 
 **eBay als Verkaufsweg:** Art „eBay“ rechnet gegen den Median der fünf
 günstigsten neuen Sofort-Kaufen-Angebote in Deutschland (offizielle
-Browse-API, Schlüssel aus dem eBay-Entwicklerkonto unter Monitor →
-Einstellungen) abzüglich Gebühr, festem Anteil und eigenem Versand. Der
+Browse-API) abzüglich Gebühr, festem Anteil und eigenem Versand. Den Zugang
+holt sich Lugru Deals am besten vom Lugru-Seller-System: dort unter
+Anbindungen → „Lugru Deals“ einen Verbindungsschlüssel festlegen, hier unter
+Monitor → Einstellungen → eBay Adresse und Schlüssel eintragen. Das
+Seller-System gibt dann nur ein kurzlebiges Token heraus
+(`POST /api/public/lugru-deals/ebay-token`), die eBay-Schlüssel bleiben dort.
+Ohne Seller-System gehen auch eigene App ID und Cert ID. Der
 Marktpreis wird je EAN 30 Minuten gemerkt. Verkaufte Artikel liefert die API
 nicht, und die Seite dafür blockt eBay für Server.
 
