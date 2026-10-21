@@ -14,6 +14,9 @@ func TestMonitorProdukte(t *testing.T) {
 	if _, err := s.MonitorProduktAnlegen(MonitorProdukt{URL: "https://www.billiger.de/pricelist/1-x"}); err == nil {
 		t.Error("dieselbe URL zweimal angelegt")
 	}
+	if _, err := s.MonitorProduktAnlegen(MonitorProdukt{URL: "https://www.billiger.de/pricelist/1-x", Modus: ModusAnkauf, Ankauf: 100}); err != nil {
+		t.Errorf("dieselbe URL als Ankauf abgelehnt: %v", err)
+	}
 	p, err := s.MonitorProdukt(id)
 	if err != nil {
 		t.Fatal(err)

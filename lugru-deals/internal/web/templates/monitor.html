@@ -97,6 +97,19 @@ Eingaben bleiben erhalten.</p>
     </td>
     <td class="aktionen">
       <form method="post" action="/monitor/produkte/{{.ID}}/testen"><button type="submit">Testen</button></form>
+      {{/* Dasselbe Produkt zusätzlich in der anderen Art beobachten. */}}
+      <form method="post" action="/monitor/produkte">
+        <input type="hidden" name="url" value="{{.URL}}">
+        <input type="hidden" name="name" value="{{.Name}}">
+        <input type="hidden" name="kategorie" value="{{.Kategorie}}">
+        <input type="hidden" name="shops" value="{{.Shops}}">
+        {{if .AuchVerzoegert}}<input type="hidden" name="auch_verzoegert" value="1">{{end}}
+        {{if .IstAnkauf}}<input type="hidden" name="modus" value="amazon">
+        <button type="submit">Auch als Amazon</button>
+        {{else}}<input type="hidden" name="modus" value="ankauf">
+        <input name="ankauf" size="6" placeholder="Ankauf €" aria-label="Ankaufspreis" required>
+        <button type="submit">Auch als Ankauf</button>{{end}}
+      </form>
       <form method="post" action="/monitor/produkte/{{.ID}}/aktiv">
         <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
         <button type="submit">{{if .Aktiv}}Pausieren{{else}}Aktivieren{{end}}</button></form>

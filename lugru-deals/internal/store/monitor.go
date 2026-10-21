@@ -164,12 +164,19 @@ func jaNein(b bool) int {
 	return 0
 }
 
-// MonitorProduktAnlegen legt ein Produkt an; dieselbe URL gibt es nur einmal.
+// MonitorProduktAnlegen legt ein Produkt an; dieselbe URL gibt es je Art
+// (Amazon, Ankauf) nur einmal.
 func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 	var vorhanden int64
-	err := s.db.QueryRow(`SELECT id FROM monitor_produkte WHERE url = ?`, p.URL).Scan(&vorhanden)
+	// Dasselbe Produkt darf je Art einmal da sein: als Ankauf und als
+	// Amazon-Deal zugleich, jedes mit eigenen Zahlen und eigener Sperrzeit.
+	err := s.db.QueryRow(`SELECT id FROM monitor_produkte WHERE url = ? AND modus = ?`, p.URL, modusOderAmazon(p.Modus)).Scan(&vorhanden)
 	if err == nil {
-		return 0, fmt.Errorf("dieses Produkt wird schon beobachtet")
+		art := "Amazon"
+		if modusOderAmazon(p.Modus) == ModusAnkauf {
+			art = "Ankauf"
+		}
+		return 0, fmt.Errorf("dieses Produkt wird als %s schon beobachtet", art)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
