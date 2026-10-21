@@ -12,6 +12,7 @@ import (
 
 	"github.com/trinkfreunde/lugru-deal-discord/internal/discord"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/podcast"
+	"github.com/trinkfreunde/lugru-deal-discord/internal/spotify"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/store"
 )
 
@@ -85,7 +86,13 @@ func (srv *Server) podcastPruefen(ctx context.Context, q store.PodcastQuelle, je
 	client := srv.podcastClient()
 	gepostet, fehler := 0, 0
 	for _, feed := range feeds {
-		folgen, err := client.Folgen(ctx, feed)
+		var folgen []podcast.Folge
+		var err error
+		if strings.HasPrefix(feed, spotifyPraefix) {
+			folgen, err = srv.spotifyFolgen(ctx, feed, q.Name)
+		} else {
+			folgen, err = client.Folgen(ctx, feed)
+		}
 		if err != nil {
 			fehler++
 			continue
@@ -101,8 +108,12 @@ func (srv *Server) podcastPruefen(ctx context.Context, q store.PodcastQuelle, je
 			if !bekannt || (!f.Zeit.IsZero() && jetzt.Sub(f.Zeit) > podcastAlter) || gepostet >= podcastJeLauf {
 				continue
 			}
+			spotifyLink := ""
+			if !strings.HasPrefix(feed, spotifyPraefix) {
+				spotifyLink = srv.spotifyLinkZu(ctx, f)
+			}
 			if _, err := discord.SendeMitWiederholung(ctx, srv.http, c.WebhookURL, discord.Nachricht{
-				Inhalt: srv.folgeText(q, f, c.ID), Mention: discord.MentionTyp(c.MentionTyp), RollenID: c.RollenID,
+				Inhalt: srv.folgeText(q, f, spotifyLink, c.ID), Mention: discord.MentionTyp(c.MentionTyp), RollenID: c.RollenID,
 			}); err != nil {
 				if errors.Is(err, discord.ErrWebhookTot) {
 					_ = srv.store.ChannelDefekt(c.ID, true)
@@ -123,7 +134,7 @@ func (srv *Server) podcastPruefen(ctx context.Context, q store.PodcastQuelle, je
 	_ = srv.store.PodcastGeprueft(q.ID, jetzt, status)
 }
 
-func (srv *Server) folgeText(q store.PodcastQuelle, f podcast.Folge, channelID int64) string {
+func (srv *Server) folgeText(q store.PodcastQuelle, f podcast.Folge, spotifyLink string, channelID int64) string {
 	z := []string{strings.TrimSpace("🎙️ Neue Folge: " + f.Podcast + " " + mentionText(channelID, srv)), "**" + f.Titel + "**"}
 	var info []string
 	if f.Dauer != "" {
@@ -135,8 +146,15 @@ func (srv *Server) folgeText(q store.PodcastQuelle, f podcast.Folge, channelID i
 	if len(info) > 0 {
 		z = append(z, strings.Join(info, " · "))
 	}
+	if spotifyLink != "" {
+		z = append(z, "🎧 [Auf Spotify hören]("+spotifyLink+")")
+	}
 	if f.Link != "" {
-		z = append(z, "🔗 "+f.Link)
+		if strings.Contains(f.Link, "open.spotify.com") {
+			z = append(z, "🎧 [Auf Spotify hören]("+f.Link+")")
+		} else {
+			z = append(z, "🔗 "+f.Link)
+		}
 	}
 	return strings.Join(z, "\n")
 }
@@ -154,6 +172,9 @@ func (srv *Server) podcastAnzeigen(kanalName map[int64]string) []podcastAnzeige 
 	var out []podcastAnzeige
 	for _, q := range qs {
 		a := podcastAnzeige{PodcastQuelle: q, ChannelName: kanalName[q.ChannelID], Quelle: q.Feed}
+		if strings.HasPrefix(q.Feed, spotifyPraefix) {
+			a.Quelle = "Spotify: open.spotify.com/show/" + strings.TrimPrefix(q.Feed, spotifyPraefix)
+		}
 		if q.Genre != 0 {
 			a.Quelle = "Top " + strconv.Itoa(q.Anzahl) + " " + podcast.KategorieName(q.Genre)
 		}
@@ -171,7 +192,17 @@ func (srv *Server) speicherePodcast(w http.ResponseWriter, r *http.Request) {
 	}
 	q := store.PodcastQuelle{ChannelID: channelID, Name: r.PostForm.Get("name")}
 	if quelle := strings.TrimSpace(r.PostForm.Get("podcast")); quelle != "" {
-		if id, ok := podcast.AppleID(quelle); ok {
+		if id, ok := spotify.ShowID(quelle); ok {
+			name, err := srv.spotifyClient().ShowName(r.Context(), id)
+			if err != nil {
+				srv.monitorMeldung(w, "", sicherFehlertext(err.Error()))
+				return
+			}
+			q.Feed = spotifyPraefix + id
+			if q.Name == "" {
+				q.Name = name
+			}
+		} else if id, ok := podcast.AppleID(quelle); ok {
 			feed, name, err := srv.podcastClient().FeedAdresse(r.Context(), id)
 			if err != nil {
 				srv.monitorMeldung(w, "", sicherFehlertext(err.Error()))
@@ -184,7 +215,7 @@ func (srv *Server) speicherePodcast(w http.ResponseWriter, r *http.Request) {
 		} else if u, err := url.Parse(quelle); err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != "" {
 			q.Feed = quelle
 		} else {
-			srv.monitorMeldung(w, "", "Bitte einen Link von Apple Podcasts (…/id123…) oder die Adresse des RSS-Feeds angeben.")
+			srv.monitorMeldung(w, "", "Bitte einen Link von Spotify (open.spotify.com/show/…), Apple Podcasts (…/id123…) oder die Adresse des RSS-Feeds angeben.")
 			return
 		}
 		if q.Name == "" {

@@ -299,6 +299,11 @@ Monitor alle 15 Minuten über den Discord-Bot.
 Deutschland, Top 5/10/25) oder eines einzelnen Podcasts (Link von Apple
 Podcasts oder RSS-Feed), alle 30 Minuten in einen Channel. Ein Feed, der zum
 ersten Mal auftaucht, wird nur gemerkt; Folgen älter als zwei Tage kommen nie.
+Mit einer kostenlosen Spotify-App (developer.spotify.com, Client ID und
+Secret unter Monitor → Einstellungen) steht in jedem Post auch der Link zur
+Folge bei Spotify, und Podcasts lassen sich direkt per Spotify-Link anlegen —
+auch Spotify-exklusive. Charts je Kategorie gibt es bei Spotify nicht
+offiziell; dafür bleiben die Apple-Charts die Quelle.
 
 Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
 sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen

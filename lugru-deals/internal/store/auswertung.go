@@ -25,6 +25,9 @@ const (
 	// App ID und Cert ID.
 	SchluesselEbaySellerURL = "ebay.seller_url"
 	SchluesselEbaySellerKey = "ebay.seller_schluessel"
+	// Spotify-App (developer.spotify.com) für Links und Spotify-Podcasts.
+	SchluesselSpotifyID     = "spotify.client_id"
+	SchluesselSpotifySecret = "spotify.client_secret"
 )
 
 func init() {
@@ -41,6 +44,8 @@ func init() {
 	vorgaben[SchluesselEbayVersand] = "0"
 	vorgaben[SchluesselEbaySellerURL] = ""
 	vorgaben[SchluesselEbaySellerKey] = ""
+	vorgaben[SchluesselSpotifyID] = ""
+	vorgaben[SchluesselSpotifySecret] = ""
 }
 
 // ---------------------------------------------------------------- Shop-Rabatte

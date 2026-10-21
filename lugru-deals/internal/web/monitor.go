@@ -92,6 +92,8 @@ type monitorDaten struct {
 	TagZeit        string
 	EbayAppID      string
 	EbaySellerURL  string
+	SpotifyID      string
+	SpotifyDa      bool
 	EbaySellerDa   bool
 	EbayCertDa     bool
 	EbayGebuehr    string
@@ -158,6 +160,8 @@ func (srv *Server) monitorDaten() monitorDaten {
 	d.TagZeit = srv.store.Einstellung(store.SchluesselMonitorTagZeit)
 	d.EbayAppID = srv.store.Einstellung(store.SchluesselEbayAppID)
 	d.EbaySellerURL = srv.store.Einstellung(store.SchluesselEbaySellerURL)
+	d.SpotifyID = srv.store.Einstellung(store.SchluesselSpotifyID)
+	d.SpotifyDa = srv.store.Einstellung(store.SchluesselSpotifySecret) != ""
 	d.EbaySellerDa = srv.store.Einstellung(store.SchluesselEbaySellerKey) != ""
 	d.EbayCertDa = srv.store.Einstellung(store.SchluesselEbayCertID) != ""
 	d.EbayGebuehr = srv.store.Einstellung(store.SchluesselEbayGebuehr)
@@ -594,6 +598,8 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		store.SchluesselEbaySellerURL:       sellerURL,
 		store.SchluesselEbaySellerKey:       behalte("ebay_seller_schluessel", true),
 		store.SchluesselEbayAppID:           behalte("ebay_app_id", false),
+		store.SchluesselSpotifyID:           behalte("spotify_id", false),
+		store.SchluesselSpotifySecret:       behalte("spotify_secret", true),
 		store.SchluesselEbayCertID:          behalte("ebay_cert_id", true),
 		store.SchluesselEbayGebuehr:         behalte("ebay_gebuehr", false),
 		store.SchluesselEbayGebuehrFix:      behalte("ebay_fix", false),

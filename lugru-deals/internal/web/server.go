@@ -80,6 +80,10 @@ type Server struct {
 	kaeufeZuletzt time.Time
 	// appleBasisURL ersetzt itunes.apple.com in Tests.
 	appleBasisURL string
+	// spotifyCache hält Zugang und gefundene Podcasts; spotifyBasisURL
+	// ersetzt Spotify in Tests.
+	spotifyCache    spotifyGemerkt
+	spotifyBasisURL string
 }
 
 // Neu baut den Server. envKeepaKey ist die Umgebungsvariable KEEPA_API_KEY

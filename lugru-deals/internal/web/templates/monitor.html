@@ -125,6 +125,12 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     <label>fester Anteil je Verkauf in € <input name="ebay_fix" value="{{.EbayFix}}" size="6"></label>
     <label>euer Versand je Verkauf in € <input name="ebay_versand" value="{{.EbayVersand}}" size="6"></label>
   </fieldset>
+  <fieldset><legend>Spotify <small>für Spotify-Links in Podcast-Posts und Podcasts von Spotify — kostenlose App unter
+    developer.spotify.com → Dashboard → „Create app“</small></legend>
+    <label>Client ID <input name="spotify_id" value="{{.SpotifyID}}" autocomplete="off"></label>
+    <label>Client Secret <small>{{if .SpotifyDa}}gespeichert — leer lassen, um es zu behalten{{else}}noch keins{{end}}</small>
+      <input name="spotify_secret" type="password" autocomplete="off"></label>
+  </fieldset>
   <label>Öffentliche Adresse dieses Servers <small>für direkte Shop-Links im Post, z. B. http://91.99.29.165:8080 —
     leer: der Post verlinkt die Seite bei billiger.de</small>
     <input name="basis_url" value="{{.BasisURL}}" placeholder="http://91.99.29.165:8080"></label>
@@ -334,7 +340,7 @@ Alle zwei Minuten wird nachgesehen; beim ersten Abruf merkt sich ein Feed die vo
 
 <h2 id="podcasts">Podcasts</h2>
 <p class="hinweis">Neue Folgen der Top-Podcasts einer Kategorie (Apple-Charts Deutschland) oder eines einzelnen Podcasts —
-alle 30 Minuten. Beim ersten Abruf merkt sich der Eintrag die vorhandenen Folgen; danach kommt jede neue.</p>
+alle 30 Minuten. Mit Spotify-Zugang unter Einstellungen steht in jedem Post auch der Link zur Folge bei Spotify. Beim ersten Abruf merkt sich der Eintrag die vorhandenen Folgen; danach kommt jede neue.</p>
 <div class="tabellenkarte">
 <table>
   <thead><tr><th>Podcasts</th><th>Channel</th><th>Zuletzt</th><th></th></tr></thead>
@@ -358,8 +364,9 @@ alle 30 Minuten. Beim ersten Abruf merkt sich der Eintrag die vorhandenen Folgen
     <select name="genre"><option value="0">— wählen —</option>
       {{range .PodKategorien}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
   <label>… davon die Top <select name="anzahl"><option>5</option><option selected>10</option><option>25</option></select></label>
-  <label>oder ein einzelner Podcast <small>Link von Apple Podcasts (…/id123…) oder die Adresse des RSS-Feeds — dann zählt die Kategorie nicht</small>
-    <input name="podcast" placeholder="https://podcasts.apple.com/de/podcast/…/id…"></label>
+  <label>oder ein einzelner Podcast <small>Link von Spotify (open.spotify.com/show/…, auch Spotify-exklusive), Apple Podcasts (…/id123…)
+    oder die Adresse des RSS-Feeds — dann zählt die Kategorie nicht</small>
+    <input name="podcast" placeholder="https://open.spotify.com/show/…"></label>
   <label>Name <small>optional</small><input name="name"></label>
   <label>Channel
     <select name="channel_id" required><option value="">— wählen —</option>
