@@ -10,6 +10,7 @@ import (
 	"github.com/trinkfreunde/lugru-deal-discord/internal/billiger"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/marketplace"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/money"
+	"github.com/trinkfreunde/lugru-deal-discord/internal/podcast"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/store"
 )
 
@@ -26,6 +27,11 @@ type monitorProduktAnzeige struct {
 	AnkaufText string
 	Geprueft   string
 	BesterText string
+}
+
+type podcastKategorie struct {
+	ID   int
+	Name string
 }
 
 type rabattAnzeige struct {
@@ -90,6 +96,8 @@ type monitorDaten struct {
 	EbayFix        string
 	EbayVersand    string
 	Auswertung     auswertung
+	Podcasts       []podcastAnzeige
+	PodKategorien  []podcastKategorie
 
 	// Import ist die geprüfte Liste vor dem Übernehmen, nil ohne Import.
 	Import   []importVorschlag
@@ -152,6 +160,10 @@ func (srv *Server) monitorDaten() monitorDaten {
 	d.EbayFix = srv.store.Einstellung(store.SchluesselEbayGebuehrFix)
 	d.EbayVersand = srv.store.Einstellung(store.SchluesselEbayVersand)
 	d.Auswertung = srv.auswertung(time.Now(), 30)
+	d.Podcasts = srv.podcastAnzeigen(feedKanal)
+	for _, k := range podcast.Kategorien {
+		d.PodKategorien = append(d.PodKategorien, podcastKategorie{ID: k.ID, Name: k.Name})
+	}
 	kanalName := map[int64]string{}
 	for _, c := range d.Channels {
 		kanalName[c.ID] = c.Name

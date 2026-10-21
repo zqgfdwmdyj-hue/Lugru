@@ -290,6 +290,11 @@ Deals der letzten 24 Stunden mit Gewinn und Käufen.
 Shop, Kategorie und Uhrzeit. Die ✅ unter Ankaufs- und eBay-Posts liest der
 Monitor alle 15 Minuten über den Discord-Bot.
 
+**Podcasts:** neue Folgen der Top-Podcasts einer Kategorie (Apple-Charts
+Deutschland, Top 5/10/25) oder eines einzelnen Podcasts (Link von Apple
+Podcasts oder RSS-Feed), alle 30 Minuten in einen Channel. Ein Feed, der zum
+ersten Mal auftaucht, wird nur gemerkt; Folgen älter als zwei Tage kommen nie.
+
 Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
 sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen
 Minuten zu sehen. OTTO und Kaufland direkt abzufragen geht nur über einen

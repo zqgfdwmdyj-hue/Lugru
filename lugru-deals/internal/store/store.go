@@ -368,6 +368,26 @@ CREATE TABLE IF NOT EXISTS monitor_shoprabatte (
     notiz     TEXT    NOT NULL DEFAULT ''
 );
 
+-- Podcasts: neue Folgen aus den Apple-Charts einer Kategorie oder eines
+-- einzelnen Podcasts, gepostet in einen Channel. podcast_feeds merkt sich je
+-- Apple-ID die Adresse des Feeds.
+CREATE TABLE IF NOT EXISTS monitor_podcasts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL DEFAULT '',
+    genre       INTEGER NOT NULL DEFAULT 0,
+    anzahl      INTEGER NOT NULL DEFAULT 10,
+    feed        TEXT    NOT NULL DEFAULT '',
+    channel_id  INTEGER NOT NULL,
+    aktiv       INTEGER NOT NULL DEFAULT 1,
+    geprueft_am TEXT    NOT NULL DEFAULT '',
+    status      TEXT    NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS podcast_feeds (
+    apple_id TEXT PRIMARY KEY,
+    feed     TEXT NOT NULL,
+    name     TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS monitor_gemeldet (
     schluessel TEXT PRIMARY KEY,
     zeit       TEXT NOT NULL

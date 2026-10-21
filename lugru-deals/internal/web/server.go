@@ -78,6 +78,8 @@ type Server struct {
 
 	// kaeufeZuletzt ist der letzte Abgleich der ✅ unter Monitor-Posts.
 	kaeufeZuletzt time.Time
+	// appleBasisURL ersetzt itunes.apple.com in Tests.
+	appleBasisURL string
 }
 
 // Neu baut den Server. envKeepaKey ist die Umgebungsvariable KEEPA_API_KEY
@@ -226,6 +228,9 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /monitor/kategorien/{id}/loeschen", srv.loescheKategorie)
 	mux.HandleFunc("POST /monitor/rabatte", srv.speichereShopRabatt)
 	mux.HandleFunc("POST /monitor/rabatte/{id}/loeschen", srv.loescheShopRabatt)
+	mux.HandleFunc("POST /monitor/podcasts", srv.speicherePodcast)
+	mux.HandleFunc("POST /monitor/podcasts/{id}/aktiv", srv.schaltePodcast)
+	mux.HandleFunc("POST /monitor/podcasts/{id}/loeschen", srv.loeschePodcast)
 	mux.HandleFunc("POST /monitor/feeds", srv.speichereFeed)
 	mux.HandleFunc("POST /monitor/feeds/{id}/aktiv", srv.schalteFeed)
 	mux.HandleFunc("POST /monitor/feeds/{id}/loeschen", srv.loescheFeed)

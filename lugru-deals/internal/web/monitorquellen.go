@@ -34,6 +34,7 @@ func (srv *Server) monitorNebenquellen(ctx context.Context) {
 	}
 	srv.feedsPruefen(ctx, jetzt)
 	srv.tageszusammenfassung(ctx, jetzt)
+	srv.podcastsPruefen(ctx, jetzt)
 	srv.kaeufeAbgleichen(ctx, jetzt)
 	ks, err := srv.store.Kategorien()
 	if err != nil {

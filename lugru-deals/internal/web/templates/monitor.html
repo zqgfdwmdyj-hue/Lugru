@@ -6,7 +6,7 @@ MediaMarkt, Cyberport und vielen anderen Shops. Wird ein Produkt günstig genug 
 Deal durch und postet ihn wie einen Deal von Hand — in jeden Channel, dessen Regel er erfüllt. Zusätzlich liest er
 neue Deals bei mydealz mit.</p>
 <p class="aktionen"><a href="#produkte">Produkte</a> · <a href="#import">Liste importieren</a> · <a href="#regeln">Regeln</a>
-· <a href="#feeds">Reisen, Leasing &amp; Eigengebrauch</a> · <a href="#kategorien">Kategorie-Scan</a> · <a href="#rabatte">Gutscheine &amp; Cashback</a> · <a href="#treffer">Treffer</a> · <a href="#auswertung">Auswertung</a> · <a href="#einstellungen">Einstellungen</a></p>
+· <a href="#feeds">Reisen, Leasing &amp; Eigengebrauch</a> · <a href="#podcasts">Podcasts</a> · <a href="#kategorien">Kategorie-Scan</a> · <a href="#rabatte">Gutscheine &amp; Cashback</a> · <a href="#treffer">Treffer</a> · <a href="#auswertung">Auswertung</a> · <a href="#einstellungen">Einstellungen</a></p>
 {{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
 {{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
 
@@ -325,6 +325,41 @@ Alle zwei Minuten wird nachgesehen; beim ersten Abruf merkt sich ein Feed die vo
   <button type="submit" class="primaer">Feed anlegen</button>
 </form>
 </details>
+
+<h2 id="podcasts">Podcasts</h2>
+<p class="hinweis">Neue Folgen der Top-Podcasts einer Kategorie (Apple-Charts Deutschland) oder eines einzelnen Podcasts —
+alle 30 Minuten. Beim ersten Abruf merkt sich der Eintrag die vorhandenen Folgen; danach kommt jede neue.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Podcasts</th><th>Channel</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Podcasts}}
+  <tr><td>🎙️ {{.Name}}<br><small>{{.Quelle}}</small></td><td>#{{.ChannelName}}</td><td><small>{{.Status}}</small></td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/podcasts/{{.ID}}/aktiv"><input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/podcasts/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td></tr>
+  {{else}}
+  <tr><td colspan="4" class="leer">Noch keine Podcasts.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<form method="post" action="/monitor/podcasts" class="karte">
+  <label>Kategorie
+    <select name="genre"><option value="0">— wählen —</option>
+      {{range .PodKategorien}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+  <label>… davon die Top <select name="anzahl"><option>5</option><option selected>10</option><option>25</option></select></label>
+  <label>oder ein einzelner Podcast <small>Link von Apple Podcasts (…/id123…) oder die Adresse des RSS-Feeds — dann zählt die Kategorie nicht</small>
+    <input name="podcast" placeholder="https://podcasts.apple.com/de/podcast/…/id…"></label>
+  <label>Name <small>optional</small><input name="name"></label>
+  <label>Channel
+    <select name="channel_id" required><option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}</select></label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
 
 <h2 id="kategorien">Kategorie-Scan</h2>
 <p class="hinweis">Ganze Kategorien bei billiger.de (etwa „Konsolen“ oder „Grafikkarten“) werden alle zehn Minuten gelesen.
