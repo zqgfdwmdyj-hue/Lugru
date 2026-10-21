@@ -39,8 +39,8 @@ func MitPasswort(h http.Handler, benutzer, passwort string) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasPrefix(r.URL.Path, "/static/"):
-			// Schrift und Stil braucht schon die Anmeldeseite.
+		case strings.HasPrefix(r.URL.Path, "/static/") || r.URL.Path == "/favicon.ico":
+			// Schrift, Stil und Icon braucht schon die Anmeldeseite.
 			h.ServeHTTP(w, r)
 		case r.URL.Path == "/anmelden":
 			a.anmelden(w, r)
@@ -157,6 +157,12 @@ var anmeldeSeite = template.Must(template.New("anmelden").Parse(`<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Anmelden · Lugru Deals</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="Lugru Deals">
+<meta name="apple-mobile-web-app-capable" content="yes">
 </head><body>
 <main style="max-width:28rem;box-sizing:border-box;margin-top:3rem">
 <h1>Lugru Deals</h1>

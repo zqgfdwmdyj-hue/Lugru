@@ -155,3 +155,21 @@ func TestNavigationMarkiertDieAktiveSeite(t *testing.T) {
 		}
 	}
 }
+
+func TestIconsWerdenAusgeliefert(t *testing.T) {
+	srv, _ := testServer(t)
+	for pfad, typ := range map[string]string{
+		"/favicon.ico":                 "image/x-icon",
+		"/static/icon.svg":             "image/svg+xml",
+		"/static/apple-touch-icon.png": "image/png",
+		"/static/manifest.webmanifest": "application/manifest+json",
+	} {
+		w := hole(t, srv, http.MethodGet, pfad, "")
+		if w.Code != http.StatusOK || !strings.HasPrefix(w.Header().Get("Content-Type"), typ) {
+			t.Errorf("%s: %d %q", pfad, w.Code, w.Header().Get("Content-Type"))
+		}
+	}
+	if w := hole(t, srv, http.MethodGet, "/historie", ""); !strings.Contains(w.Body.String(), `rel="apple-touch-icon"`) {
+		t.Error("Seite verlinkt das Icon nicht")
+	}
+}

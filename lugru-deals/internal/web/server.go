@@ -92,7 +92,9 @@ func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *
 // eigeneTypen sind die Endungen, für die Go von sich aus keinen Inhaltstyp
 // kennt. Der Rest bleibt Gos Erkennung überlassen.
 var eigeneTypen = map[string]string{
-	".woff2": "font/woff2",
+	".woff2":       "font/woff2",
+	".ico":         "image/x-icon",
+	".webmanifest": "application/manifest+json",
 }
 
 // inhaltstyp liefert den Inhaltstyp für einen Pfad, oder "" wenn Go ihn selbst
@@ -133,6 +135,12 @@ func (srv *Server) Routen() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /static/", statischAusliefern())
+	// Browser fragen das Icon ohne Hinweis im HTML unter /favicon.ico ab.
+	mux.HandleFunc("GET /favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/static/favicon.ico"
+		statischAusliefern().ServeHTTP(w, r2)
+	})
 
 	// Die vier Funnel-Schritte, in der Reihenfolge, in der sie durchlaufen
 	// werden. Jede Route liefert das Fragment des Schritts, den sie erreicht

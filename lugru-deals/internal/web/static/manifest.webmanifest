@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Lugru Deals",
+  "short_name": "Lugru Deals",
+  "description": "Deals posten, Shop-Monitor und Historie.",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1f4f8",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
