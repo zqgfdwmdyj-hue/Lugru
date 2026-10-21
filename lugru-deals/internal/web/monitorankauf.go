@@ -51,7 +51,11 @@ func (srv *Server) ankaufText(p store.MonitorProdukt, liste billiger.Preisliste,
 	}
 	z = append(z, ek)
 	if a.Lieferzeit != "" {
-		z = append(z, "🚚 Lieferzeit: "+a.Lieferzeit)
+		l := "🚚 Lieferzeit: " + a.Lieferzeit
+		if a.Status == billiger.Verzoegert {
+			l = "⏳ Längere Lieferzeit: " + a.Lieferzeit
+		}
+		z = append(z, l)
 	}
 	z = append(z, "🤝 Ankauf: "+p.Ankauf.Euro())
 	z = append(z, "🤑 Gewinn: "+gewinn.Euro()+" / "+prozent(marge, 1)+" Marge")

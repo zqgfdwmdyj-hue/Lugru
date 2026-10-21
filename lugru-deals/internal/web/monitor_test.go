@@ -379,3 +379,18 @@ func TestMonitorAnkaufFormularSetztPreiswecker(t *testing.T) {
 		t.Error("Ankauf ohne Preis angenommen")
 	}
 }
+
+func TestMonitorLangeLieferzeitImPost(t *testing.T) {
+	a := neuerMonitorAufbau(t, "Kaufland")
+	p := a.produkt(t)
+	p.AuchVerzoegert, p.Modus, p.Ankauf, p.MaxEK = true, store.ModusAnkauf, 12000, 11400
+	_ = a.s.MonitorProduktAendern(p)
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.normal, Aktiv: true})
+	b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false)
+	if !b.Gepostet || b.Angebot.Shop != "Kaufland.de" {
+		t.Fatalf("b = %+v", b)
+	}
+	if posts := a.posts("/normal"); len(posts) != 1 || !strings.Contains(posts[0], "⏳ Längere Lieferzeit: 5-7 Werktage") {
+		t.Errorf("Post ohne Lieferzeit: %v", posts)
+	}
+}

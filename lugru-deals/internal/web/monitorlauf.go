@@ -344,6 +344,10 @@ func monitorFormularWerte(p store.MonitorProdukt, liste billiger.Preisliste, a b
 	if a.Versand > 0 {
 		notiz += " (inkl. " + a.Versand.Euro() + " Versand)"
 	}
+	// Bei langer Lieferzeit gehört sie in den Post — wer kauft, soll es wissen.
+	if a.Status == billiger.Verzoegert && a.Lieferzeit != "" {
+		notiz += " · Lieferzeit: " + a.Lieferzeit
+	}
 	w := url.Values{
 		"einkaufslink":    {liste.URL},
 		"link_bestaetigt": {liste.URL},

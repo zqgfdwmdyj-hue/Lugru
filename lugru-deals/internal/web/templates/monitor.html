@@ -114,7 +114,7 @@ Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel
   <fieldset><legend>Zielmärkte <small>keiner angehakt heißt: wie unter Einstellungen</small></legend>
     {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
   </fieldset>
-  <label><input type="checkbox" name="auch_verzoegert" value="1"> auch Angebote mit längerer Lieferzeit (eine Woche und mehr)</label>
+  <label><input type="checkbox" name="auch_verzoegert" value="1" checked> auch Angebote mit längerer Lieferzeit (eine Woche und mehr) — die Lieferzeit steht dann im Post</label>
   <button type="submit" class="primaer">Anlegen</button>
 </form>
 
