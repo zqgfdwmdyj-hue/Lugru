@@ -1,0 +1,119 @@
+{
+  "timestamp": 1788624229322,
+  "tokensLeft": 1183,
+  "refillIn": 42000,
+  "refillRate": 20,
+  "tokensConsumed": 1,
+  "products": [
+    {
+      "asin": "B01636IZ0G",
+      "domainId": 3,
+      "title": "Makita HR2630/2 HR2630 230V SDS Plus 26mm Rotary Hammer, 800 W, 240 V",
+      "brand": "Makita",
+      "model": "HR2630",
+      "imagesCSV": "71bYHZQrjxL.jpg,61pMxAWL8sL.jpg,71QhOXPmTVL.jpg",
+      "partNumber": "HR2630",
+      "monthlySold": 40,
+      "referralFeePercentage": 15.0,
+      "packageLength": 400,
+      "packageWidth": 105,
+      "packageHeight": 320,
+      "packageWeight": 4200,
+      "itemWeight": 3100,
+      "fbaFees": {
+        "storageFee": 12,
+        "storageFeeTax": 0,
+        "pickAndPackFee": 864,
+        "pickAndPackFeeTax": 0
+      },
+      "csv": [
+        [
+          7000000,
+          21498,
+          7001440,
+          21498
+        ],
+        null,
+        null,
+        [
+          7000000,
+          1200
+        ],
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        [
+          7000000,
+          18500,
+          0,
+          7001440,
+          -1,
+          -1,
+          7002880,
+          19900,
+          495,
+          7004320,
+          21286,
+          -1
+        ]
+      ],
+      "stats": {
+        "current": [
+          21498,
+          21286,
+          -1,
+          1200,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          21286
+        ],
+        "avg90": [
+          20890,
+          20700,
+          -1,
+          1350,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          -1,
+          20749
+        ],
+        "salesRankDrops30": 37,
+        "salesRankDrops90": 112
+      }
+    }
+  ]
+}

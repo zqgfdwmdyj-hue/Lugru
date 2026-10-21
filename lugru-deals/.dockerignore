@@ -1,0 +1,9 @@
+.git
+docs
+*.db
+*.db-shm
+*.db-wal
+charts/
+dist/
+lugru-deals
+lugru-deals.exe

@@ -1,0 +1,70 @@
+{{define "channels"}}
+{{template "kopf" .}}
+<h1>Channels</h1>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Name</th><th>Gruppe</th><th>Webhook</th><th>Mention</th><th>Zustand</th><th></th></tr></thead>
+  <tbody>
+  {{range .Channels}}
+  <tr>
+    <td>{{.Name}}</td>
+    <td>
+      {{/* Die Gruppe fasst Channels zusammen, etwa je Discord-Server — die
+           Statistik lässt sich danach umschalten. */}}
+      <form method="post" action="/channels/{{.ID}}/gruppe" class="aktionen">
+        <input name="gruppe" list="gruppen" value="{{.Gruppe}}" size="12" placeholder="z. B. Server 1"
+               aria-label="Gruppe von {{.Name}}">
+        <button type="submit" class="schmal">Speichern</button></form>
+    </td>
+    <td><code>{{.WebhookMaskiert}}</code></td>
+    <td>
+      {{/* Wen der Post am Ende der Titelzeile erwähnt: @everyone, @here
+           oder eine Rolle wie @Super Low Margin (über ihre Rollen-ID). */}}
+      <form method="post" action="/channels/{{.ID}}/mention" class="aktionen">
+        <select name="mention_typ" aria-label="Mention von {{.Name}}">
+          <option value="keine" {{if eq .MentionTyp "keine"}}selected{{end}}>keine</option>
+          <option value="everyone" {{if eq .MentionTyp "everyone"}}selected{{end}}>@everyone</option>
+          <option value="here" {{if eq .MentionTyp "here"}}selected{{end}}>@here</option>
+          <option value="rolle" {{if eq .MentionTyp "rolle"}}selected{{end}}>Rolle</option>
+        </select>
+        <input name="rollen_id" value="{{.RollenID}}" size="20" placeholder="Rollen-ID"
+               aria-label="Rollen-ID von {{.Name}}">
+        <button type="submit" class="schmal">Speichern</button></form>
+    </td>
+    <td>{{if .Defekt}}<span class="chip negativ">defekt</span>{{else}}<span class="chip positiv">ok</span>{{end}}</td>
+    <td class="aktionen">
+      <form method="post" action="/channels/{{.ID}}/test">
+        <button type="submit">Testen</button></form>
+      <form method="post" action="/channels/{{.ID}}/loeschen">
+        <button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="6" class="leer">Noch kein Channel angelegt.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Neuer Channel</h2>
+<form method="post" action="/channels" class="karte">
+  <label>Name <input name="name" required></label>
+  <label>Webhook-URL <input name="webhook_url" type="url" required></label>
+  <label>Mention
+    <select name="mention_typ">
+      <option value="keine">keine</option>
+      <option value="everyone">@everyone</option>
+      <option value="here">@here</option>
+      <option value="rolle">Rolle</option>
+    </select></label>
+  <label>Rollen-ID <small>nur bei Mention „Rolle"</small><input name="rollen_id"></label>
+  <label>Gruppe <small>z. B. der Discord-Server — für die getrennte Statistik, leer lassen geht auch</small>
+    <input name="gruppe" list="gruppen"></label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+<datalist id="gruppen">{{range .Gruppen}}<option value="{{.}}">{{end}}</datalist>
+{{template "fuss"}}
+{{end}}

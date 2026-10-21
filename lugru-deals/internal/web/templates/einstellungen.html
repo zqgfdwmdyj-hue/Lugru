@@ -1,0 +1,187 @@
+{{define "einstellungen"}}
+{{template "kopf" .}}
+<h1>Einstellungen</h1>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+<form method="post" action="/einstellungen">
+  <fieldset><legend>Zugang</legend>
+    <label>Keepa-API-Key
+      <input type="password" name="keepa.api_key" value="{{.Werte.keepaKey}}" autocomplete="off">
+    </label>
+  </fieldset>
+
+  <fieldset><legend>Post-Vorlage</legend>
+    <p class="hinweis">Der ganze Text des Posts. Leer lassen ergibt die
+      Standardvorlage. Die Erwähnung (<code>{{"{{"}}.Mention{{"}}"}}</code>)
+      gehört ans Ende der Titelzeile — fehlt sie in der Vorlage, hängt das
+      Programm sie dort selbst an.</p>
+    <textarea name="post.vorlage" rows="10"
+              hx-post="/einstellungen/vorschau" hx-trigger="keyup changed delay:400ms"
+              hx-target="#vorschau">{{.Werte.vorlage}}</textarea>
+    <div id="vorschau">{{template "kartenvorschau" .Vorschau}}</div>
+    <p class="hinweis">Verfügbar sind unter anderem
+      <code>{{"{{"}}.Titel{{"}}"}}</code>, <code>{{"{{"}}.Mention{{"}}"}}</code>,
+      <code>{{"{{"}}.ASIN{{"}}"}}</code>,
+      <code>{{"{{"}}.EK{{"}}"}}</code>, <code>{{"{{"}}.MaxMenge{{"}}"}}</code>, <code>{{"{{"}}.VK{{"}}"}}</code>,
+      <code>{{"{{"}}.Gewinn{{"}}"}}</code> und <code>{{"{{"}}.Marge{{"}}"}}</code>
+      (die Zahlen des Leitmarkts) sowie <code>{{"{{"}}range .Maerkte{{"}}"}}</code>
+      für alle Zielmärkte. Nennt die Vorlage <code>.Maerkte</code> nicht, stehen
+      weitere Zielmärkte automatisch darunter; nennt sie <code>.MaxMenge</code>
+      nicht, steht das Cart-Limit automatisch unter dem Einkaufspreis.</p>
+  </fieldset>
+
+  <fieldset><legend>Wer postet</legend>
+    <p class="hinweis">Eine Person je Zeile. Sie steht in Schritt 4 zur Wahl und als
+      „👤 Deal von …“ am Ende des Posts. Mit <code>name=Discord-User-ID</code>
+      (z. B. <code>ludwig=123456789012345678</code>) wird daraus eine anklickbare
+      Discord-Erwähnung — ohne jemanden anzupingen.</p>
+    <textarea name="deal.poster" rows="4">{{.Werte.poster}}</textarea>
+  </fieldset>
+
+  <fieldset><legend>Rechnen</legend>
+    <label>Standard-Provision in Prozent
+      <input name="calc.standard_provision" value="{{.Werte.provision}}"></label>
+    <label>Standard-FBA-Gebühr in Euro <small>leer lassen, wenn unbekannt</small>
+      <input name="calc.standard_fba" value="{{.Werte.fba}}" placeholder="leer"></label>
+    <label>Marge bezogen auf
+      <select name="calc.margen_basis">
+        <option value="brutto" {{if eq .Werte.margenBasis "brutto"}}selected{{end}}>VK brutto</option>
+        <option value="netto" {{if eq .Werte.margenBasis "netto"}}selected{{end}}>VK netto</option>
+      </select></label>
+    {{range .USt}}
+      <label>USt {{.Code}} in Promille
+        <input name="ust.{{.Code}}" value="{{.Wert}}"></label>
+      <label>USt {{.Code}} ermäßigt in Promille <small>gilt, wenn in Schritt 3 „ermäßigt“ gewählt ist</small>
+        <input name="ust_erm.{{.Code}}" value="{{.Ermaessigt}}"></label>
+    {{end}}
+  </fieldset>
+
+  <fieldset><legend>Chart</legend>
+    <label>Zeitraum in Tagen <input name="chart.tage" value="{{.Werte.chartTage}}"></label>
+    <label>Zweiter Chart darunter, Tage <small>0 = aus</small>
+      <input name="chart.tage_kurz" value="{{.Werte.chartTageKurz}}"></label>
+    <label>Breite <input name="chart.breite" value="{{.Werte.chartBreite}}"></label>
+    <label>Höhe <input name="chart.hoehe" value="{{.Werte.chartHoehe}}"></label>
+    <fieldset class="eingerueckt"><legend>Kurven</legend>
+      <small>der Verkaufsrang beantwortet die Frage, die der Preis nicht
+        beantwortet: ob sich der Artikel überhaupt bewegt</small>
+      <input type="hidden" name="chart.kurven" value="1">
+      <label class="teil"><input type="checkbox" name="chart.salesrank" value="1"
+        {{if eq .Werte.chartRang "1"}}checked{{end}}> Verkaufsrang</label>
+      <label class="teil"><input type="checkbox" name="chart.buybox" value="1"
+        {{if eq .Werte.chartBuyBox "1"}}checked{{end}}> Buy Box</label>
+      <label class="teil"><input type="checkbox" name="chart.amazon" value="1"
+        {{if eq .Werte.chartAmazon "1"}}checked{{end}}> Amazon</label>
+      <label class="teil"><input type="checkbox" name="chart.neu" value="1"
+        {{if eq .Werte.chartNeu "1"}}checked{{end}}> Neu</label>
+      <label class="teil"><input type="checkbox" name="chart.fba" value="1"
+        {{if eq .Werte.chartFBA "1"}}checked{{end}}> Neu, FBA</label>
+    </fieldset>
+  </fieldset>
+
+  <fieldset><legend>Sonstiges</legend>
+    <label>Lagerland <small>wo die Ware liegt — dorthin gilt der lokale Tarif,
+      jedes andere Ziel geht über EFN — beides unter <a href="/tarife">Tarife</a></small>
+      <select name="versand.lagerland">
+        {{range .Maerkte}}<option value="{{.Code}}" {{if eq (printf "%s" .Code) $.Werte.lagerland}}selected{{end}}>{{.Code}}</option>{{end}}
+      </select></label>
+    <label>EFN-Zuschlag je Einheit in Euro <small>Fußnote 4 der Tarifübersicht:
+      ohne Teilnahme am Central Europe Program 0,26 € je Einheit aus einem
+      deutschen Logistikzentrum — wer teilnimmt, trägt 0 ein</small>
+      <input name="versand.zuschlag_pro_einheit" value="{{.Werte.efnZuschlag}}" placeholder="0,26"></label>
+    <fieldset class="eingerueckt"><legend>Standard-Zielmärkte</legend>
+      <small>vorgewählt in Schritt 2; der erste angehakte ist der Leitmarkt</small>
+      {{/* Ein leeres verborgenes Feld vor den Kästchen: ein nicht angehaktes
+           Kästchen sendet gar nichts, und ohne dieses Feld käme eine
+           vollständig leere Auswahl als "Schlüssel fehlt" an — die Ablehnung
+           unten liefe dann nie, und wer alle Haken entfernt bekäme eine
+           Erfolgsmeldung, während die alte Einstellung stehen bliebe. Der
+           leere Wert selbst fällt in marketplace.Codes weg. */}}
+      <input type="hidden" name="deal.standard_zielmarkt" value="">
+      {{range .Maerkte}}<label class="teil"><input type="checkbox"
+        name="deal.standard_zielmarkt" value="{{.Code}}"
+        {{if $.StandardMarkt .Code}}checked{{end}}> {{.Code}}</label>{{end}}
+    </fieldset>
+    <label>Keepa-Cache in Minuten <input name="keepa.cache_minuten" value="{{.Werte.cacheMinuten}}"></label>
+  </fieldset>
+
+  <fieldset id="statistik"><legend>Statistik: Gewinn mit Cart-Limit</legend>
+    <p class="hinweis">Jeder Deal zählt so oft, wie sein Cart-Limit erlaubt (Feld „Max. Menge“ oder
+      „3er cart“ in der EK-Notiz). Ohne Cart-Limit gilt die Stückzahl hier. Deals aus den
+      B2B-Channels zählen dabei nicht mit.</p>
+    <label>Stück je Deal ohne Cart-Limit <input name="statistik.stueck_standard" value="{{.Werte.stueckStandard}}" size="4" inputmode="numeric"></label>
+    <input type="hidden" name="statistik.b2b_felder" value="1">
+    <fieldset>
+      <legend>B2B-Channels <small>zählen beim Gewinn mit Cart-Limit nicht mit</small></legend>
+      {{range .B2BWahl}}<label class="teil"><input type="checkbox" name="statistik.b2b_channel" value="{{.ID}}"
+        {{if .Aktiv}}checked{{end}}> #{{.Name}}</label>{{else}}<p class="leer">Noch keine Channels angelegt.</p>{{end}}
+    </fieldset>
+  </fieldset>
+
+  <fieldset id="bot"><legend>Discord-Bot &amp; Reaktionen</legend>
+    <p class="hinweis">Der Bot liest die Reaktionen unter den Posts — ✅ für
+      gekauft, ❌ für nicht mehr verfügbar — und zeigt sie in Historie und
+      Statistik. Ein Webhook kann das nicht; wie der Bot angelegt wird, steht
+      in <code>docs/discord-bot.md</code>. Ohne Token bleibt alles aus.</p>
+    <label>Bot-Token
+      <input type="password" name="discord.bot_token" value="{{.Werte.botToken}}" autocomplete="off"></label>
+    <input type="hidden" name="reaktion.felder" value="1">
+    <label>Reaktion für „gekauft“ <small>das Zeichen selbst oder ein Server-Emoji wie &lt;:name:123&gt;</small>
+      <input name="reaktion.gekauft" value="{{.Werte.reaktionGekauft}}" size="12"></label>
+    <label>Reaktion für „nicht mehr verfügbar“
+      <input name="reaktion.weg" value="{{.Werte.reaktionWeg}}" size="12"></label>
+    <label class="teil"><input type="checkbox" name="reaktion.vorbelegen" value="1"
+      {{if eq .Werte.reaktionVorbelegen "1"}}checked{{end}}> Beide Reaktionen nach dem Posten selbst setzen
+      <small>(zählt beim Auswerten nicht mit)</small></label>
+    <label>Ausverkauft vorschlagen ab so vielen „nicht mehr verfügbar“ <small>0 = nie</small>
+      <input name="reaktion.schwelle" value="{{.Werte.reaktionSchwelle}}" size="4"></label>
+    <label>In B2B-Channels schon ab <small>❌ (welche Channels B2B sind, steht unter „Statistik“)</small>
+      <input name="reaktion.schwelle_b2b" value="{{.Werte.reaktionSchwelleB2B}}" size="4"></label>
+    <label class="teil"><input type="checkbox" name="reaktion.automatisch" value="1"
+      {{if eq .Werte.reaktionAuto "1"}}checked{{end}}> Dann automatisch als ausverkauft markieren
+      <small>(ändert den Post in Discord)</small></label>
+  </fieldset>
+
+  <fieldset id="telegram"><legend>Telegram</legend>
+    <p class="hinweis">Jeder gepostete Deal geht zusätzlich an Telegram — Text,
+      Links und Chart, ohne die Discord-Erwähnung. So geht's: in Telegram mit
+      <b>@BotFather</b> <code>/newbot</code> anlegen, den Token hier eintragen,
+      dem neuen Bot einmal „Hallo“ schreiben (für eine Gruppe: Bot hinzufügen
+      und dort etwas schreiben; für einen Kanal: Bot als Admin hinzufügen und
+      etwas posten), dann „Chat suchen“.</p>
+    <input type="hidden" name="telegram.felder" value="1">
+    <label>Telegram-Bot-Token
+      <input type="password" name="telegram.token" value="{{.Werte.telegramToken}}" autocomplete="off"></label>
+    <label>Chat-ID <small>wird über „Chat suchen“ gefüllt</small>
+      <input name="telegram.chat" value="{{.Werte.telegramChat}}" size="20"></label>
+    <label class="teil"><input type="checkbox" name="telegram.aktiv" value="1"
+      {{if eq .Werte.telegramAktiv "1"}}checked{{end}}> Jeden Deal zusätzlich an Telegram senden</label>
+    <p class="knoepfe">
+      <button type="submit" formaction="/telegram/chats" formnovalidate>Chat suchen</button>
+      <button type="submit" formaction="/telegram/test" formnovalidate>Testnachricht senden</button>
+    </p>
+    {{if .Telegram.Chats}}
+    <div class="tabellenkarte">
+    <table>
+      <thead><tr><th>gefundener Chat</th><th>Art</th><th>Chat-ID</th><th></th></tr></thead>
+      <tbody>
+      {{range .Telegram.Chats}}
+      <tr><td>{{.Name}}</td><td>{{.Typ}}</td><td><code>{{.ID}}</code></td>
+          <td><button type="submit" class="schmal" formaction="/telegram/test" formnovalidate
+                      name="chat_uebernehmen" value="{{.ID}}">Übernehmen &amp; testen</button></td></tr>
+      {{end}}
+      </tbody>
+    </table>
+    </div>
+    {{end}}
+    {{if .Telegram.Fehler}}<p class="fehler">Telegram: {{.Telegram.Fehler}}</p>
+    {{else if .Telegram.Zuletzt}}<p class="hinweis">Zuletzt an Telegram gesendet: {{.Telegram.Zuletzt}}</p>{{end}}
+  </fieldset>
+
+  <p class="knoepfe"><button type="submit" class="primaer">Speichern</button></p>
+</form>
+
+{{template "abgleich" .Abgleich}}
+{{template "fuss"}}
+{{end}}
