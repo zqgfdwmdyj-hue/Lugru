@@ -415,3 +415,30 @@ func TestMonitorMaxLieferzeit(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitorSammelseiteZeigtVarianten(t *testing.T) {
+	srv, s := testServer(t)
+	seite := `<a href="/products/4717608960-sony-playstation-5-slim-disc-edition">x</a>
+<a href="/products/4718879898-sony-playstation-5-slim-digital-edition#offers">y</a>`
+	bs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(seite))
+	}))
+	defer bs.Close()
+	ziel, _ := url.Parse(bs.URL)
+	srv.monitorHTTP = &http.Client{Transport: zumTestserver{ziel}}
+
+	w := hole(t, srv, http.MethodPost, "/monitor/produkte", url.Values{
+		"url": {"https://www.billiger.de/baseproducts/79784-sony-playstation-5#offers"}, "modus": {"ankauf"}, "ankauf": {"645"},
+	}.Encode())
+	k := w.Body.String()
+	for _, soll := range []string{"Welche Variante?", "Sony Playstation 5 Slim Disc Edition",
+		`value="https://www.billiger.de/products/4718879898-sony-playstation-5-slim-digital-edition"`,
+		`name="ankauf" value="645"`} {
+		if !strings.Contains(k, soll) {
+			t.Errorf("Antwort ohne %q", soll)
+		}
+	}
+	if ps, _ := s.MonitorProdukte(); len(ps) != 0 {
+		t.Error("Sammelseite als Produkt angelegt")
+	}
+}

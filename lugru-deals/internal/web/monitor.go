@@ -60,6 +60,12 @@ type monitorDaten struct {
 	Channels   []store.Channel
 	Maerkte    []marketplace.Marketplace
 
+	// Varianten sind die Produktseiten einer eingefügten Sammelseite, zur
+	// Auswahl; Mitnehmen sind die übrigen Eingaben, die dabei erhalten
+	// bleiben.
+	Varianten []billiger.Variante
+	Mitnehmen []feldWert
+
 	// Test ist das Ergebnis des Knopfs „Testen", nil ohne Test.
 	Test      *monitorBericht
 	TestName  string
@@ -175,6 +181,8 @@ func (srv *Server) monitorMeldung(w http.ResponseWriter, meldung, fehler string)
 	srv.rendere(w, "monitor", d)
 }
 
+type feldWert struct{ Name, Wert string }
+
 // betragOderNull liest einen optionalen Betrag: leer heißt 0.
 func betragOderNull(s string) (money.Cents, error) {
 	if strings.TrimSpace(s) == "" {
@@ -223,6 +231,10 @@ func maerkteAusFormular(r *http.Request) string {
 
 func (srv *Server) speichereMonitorProdukt(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
+	if sammel, ok := billiger.IstSammelseite(r.PostForm.Get("url")); ok {
+		srv.zeigeVarianten(w, r, sammel)
+		return
+	}
 	link, err := billiger.NormalisiereURL(r.PostForm.Get("url"))
 	if err != nil {
 		srv.monitorMeldung(w, "", err.Error())
@@ -422,4 +434,30 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		return
 	}
 	srv.monitorMeldung(w, "Gespeichert — der Monitor ist aus.", "")
+}
+
+// zeigeVarianten antwortet auf eine eingefügte Sammelseite mit ihren
+// Varianten: je Variante ein Knopf, der das Produkt mit genau dieser Seite
+// und allen übrigen Eingaben anlegt.
+func (srv *Server) zeigeVarianten(w http.ResponseWriter, r *http.Request, sammel string) {
+	varianten, err := billiger.HoleVarianten(r.Context(), srv.monitorClient(), sammel)
+	if err != nil || len(varianten) == 0 {
+		meldung := "Das ist eine Sammelseite mit mehreren Varianten. Bitte bei billiger.de die genaue Variante öffnen und deren Link einfügen."
+		if err != nil {
+			meldung += " (" + sicherFehlertext(err.Error()) + ")"
+		}
+		srv.monitorMeldung(w, "", meldung)
+		return
+	}
+	d := srv.monitorDaten()
+	d.Varianten = varianten
+	for name, werte := range r.PostForm {
+		if name == "url" {
+			continue
+		}
+		for _, v := range werte {
+			d.Mitnehmen = append(d.Mitnehmen, feldWert{name, v})
+		}
+	}
+	srv.rendere(w, "monitor", d)
 }

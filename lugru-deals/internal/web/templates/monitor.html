@@ -7,6 +7,23 @@ Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel
 {{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
 {{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
 
+{{if .Varianten}}
+<h2>Welche Variante?</h2>
+<p class="hinweis">Der Link führt auf eine Sammelseite mit {{len .Varianten}} Varianten. Ein Ankaufspreis gilt aber nur für
+eine davon — sonst meldet der Monitor z. B. eine Digital Edition als Disc-Deal. Bitte die passende wählen; die übrigen
+Eingaben bleiben erhalten.</p>
+<div class="karte">
+{{range .Varianten}}
+  <form method="post" action="/monitor/produkte" class="aktionen">
+    {{range $.Mitnehmen}}<input type="hidden" name="{{.Name}}" value="{{.Wert}}">{{end}}
+    <input type="hidden" name="url" value="{{.URL}}">
+    <button type="submit">{{.Name}}</button>
+    <a href="{{.URL}}" target="_blank" rel="noopener"><small>ansehen</small></a>
+  </form>
+{{end}}
+</div>
+{{end}}
+
 {{with .Test}}
 <h2>Test: {{$.TestName}}</h2>
 <p class="{{if .Bewertet}}meldung{{else}}fehler{{end}}">{{.Status}}</p>
