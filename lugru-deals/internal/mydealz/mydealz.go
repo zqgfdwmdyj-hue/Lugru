@@ -43,6 +43,8 @@ type Deal struct {
 	// sie, sonst 0 und TemperaturBekannt false.
 	Temperatur        int
 	TemperaturBekannt bool
+	// Code ist ein Gutscheincode aus Titel oder Beschreibung, leer ohne.
+	Code string
 }
 
 type rss struct {
@@ -80,6 +82,7 @@ func Lies(roh []byte) ([]Deal, error) {
 		d.Kategorie = strings.TrimSpace(it.Kategorie)
 		d.Bild = strings.TrimSpace(it.Bild.URL)
 		d.Text = ohneHTML(it.Beschreibung)
+		d.Code = gutscheincode(d.Titel + " " + d.Text)
 		if m := temperaturMuster.FindStringSubmatch(d.Titel); m != nil {
 			d.Temperatur, _ = strconv.Atoi(m[1])
 			if m[0][0] == '-' {
@@ -124,6 +127,27 @@ var (
 	tagMuster        = regexp.MustCompile(`<[^>]+>`)
 	leerMuster       = regexp.MustCompile(`\s+`)
 )
+
+// codeMuster findet „Code: SPAR10", „Gutscheincode SPAR10", „mit dem Code
+// „SPAR10"". Ein Code ist mindestens vier Zeichen lang, enthält eine Ziffer
+// oder ist ganz in Großbuchstaben geschrieben — sonst wäre jedes Wort nach
+// „Code" ein Treffer.
+var codeMuster = regexp.MustCompile(`(?i)(?:gutschein)?code\s*(?::|lautet|„|"|')?\s*[„"']?([A-Za-z0-9][A-Za-z0-9_-]{3,24})`)
+
+func gutscheincode(text string) string {
+	for _, m := range codeMuster.FindAllStringSubmatch(text, -1) {
+		c := m[1]
+		hatZiffer := strings.IndexAny(c, "0123456789") >= 0
+		if hatZiffer || c == strings.ToUpper(c) {
+			switch strings.ToLower(c) {
+			case "notwendig", "erforderlich", "nötig", "benötigt":
+				continue
+			}
+			return c
+		}
+	}
+	return ""
+}
 
 func ohneHTML(s string) string {
 	s = tagMuster.ReplaceAllString(s, " ")

@@ -58,7 +58,17 @@ type Angebot struct {
 	// Klick ist der verschlüsselte Weiterleitungs-Schlüssel des Angebots
 	// (data-submit). Nur billiger.de selbst kann ihn öffnen, siehe KlickLink.
 	Klick string
+
+	// Rabatt senkt den Preis um Cashback und Gutscheine des Shops (vom
+	// Monitor gesetzt); RabattText erklärt ihn im Post. Code ist ein
+	// Gutscheincode aus einem mydealz-Deal.
+	Rabatt     money.Cents
+	RabattText string
+	Code       string
 }
+
+// Effektiv ist der Preis nach Rabatt — mit ihm rechnet der Monitor.
+func (a Angebot) Effektiv() money.Cents { return a.Gesamt - a.Rabatt }
 
 // Preisliste ist eine Produktseite mit allen gelesenen Angeboten, nach
 // Gesamtpreis aufsteigend so, wie billiger.de sie zeigt.

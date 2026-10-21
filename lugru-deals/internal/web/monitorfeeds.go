@@ -154,6 +154,9 @@ func (srv *Server) feedText(f store.DealFeed, d mydealz.Deal, l mydealz.Leasing,
 			z = append(z, "🌡️ "+strconv.Itoa(d.Temperatur)+"°")
 		}
 	}
+	if d.Code != "" {
+		z = append(z, "🎟️ Code: "+d.Code)
+	}
 	z = append(z, "🔗 "+d.Link)
 	return strings.Join(z, "\n")
 }
@@ -339,4 +342,3 @@ func (srv *Server) loescheFeed(w http.ResponseWriter, r *http.Request) {
 	_ = srv.store.FeedLoeschen(idAusPfad(r))
 	srv.monitorMeldung(w, "Feed gelöscht.", "")
 }
-

@@ -70,6 +70,14 @@ type Server struct {
 	// Tests.
 	mydealzZuletzt time.Time
 	mydealzFeed    string
+
+	// ebayCache hält den eBay-Zugang und die Marktpreise; ebayBasisURL
+	// ersetzt die eBay-API in Tests.
+	ebayCache    ebayGemerkt
+	ebayBasisURL string
+
+	// kaeufeZuletzt ist der letzte Abgleich der ✅ unter Monitor-Posts.
+	kaeufeZuletzt time.Time
 }
 
 // Neu baut den Server. envKeepaKey ist die Umgebungsvariable KEEPA_API_KEY
@@ -90,7 +98,7 @@ func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *
 		// Länder-SVG der Marktübersicht. Es als Zeichenkette durch die
 		// Seitendaten zu reichen hieße, Markup in Go-Strukturen zu tragen,
 		// die sonst nur fertige Zahlen führen.
-		tmpl: template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode}).
+		tmpl: template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode, "tabelle": auswertungTabelle}).
 			ParseFS(vorlagenFS, "templates/*.html")),
 	}
 }
@@ -216,6 +224,8 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /monitor/ankaeufer/{id}/loeschen", srv.loescheAnkaeufer)
 	mux.HandleFunc("POST /monitor/kategorien", srv.speichereKategorie)
 	mux.HandleFunc("POST /monitor/kategorien/{id}/loeschen", srv.loescheKategorie)
+	mux.HandleFunc("POST /monitor/rabatte", srv.speichereShopRabatt)
+	mux.HandleFunc("POST /monitor/rabatte/{id}/loeschen", srv.loescheShopRabatt)
 	mux.HandleFunc("POST /monitor/feeds", srv.speichereFeed)
 	mux.HandleFunc("POST /monitor/feeds/{id}/aktiv", srv.schalteFeed)
 	mux.HandleFunc("POST /monitor/feeds/{id}/loeschen", srv.loescheFeed)

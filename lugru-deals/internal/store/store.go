@@ -287,7 +287,12 @@ CREATE TABLE IF NOT EXISTS monitor_posts (
     nachricht_id   TEXT    NOT NULL DEFAULT '',
     text           TEXT    NOT NULL DEFAULT '',
     gepostet_am    TEXT    NOT NULL,
-    ausverkauft_am TEXT    NOT NULL DEFAULT ''
+    ausverkauft_am TEXT    NOT NULL DEFAULT '',
+    kanal_id       TEXT    NOT NULL DEFAULT '',
+    kaeufe         INTEGER NOT NULL DEFAULT 0,
+    kategorie      TEXT    NOT NULL DEFAULT '',
+    gewinn_cent    INTEGER NOT NULL DEFAULT 0,
+    titel          TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_posts ON monitor_posts(produkt_id, gepostet_am DESC);
 
@@ -349,6 +354,18 @@ CREATE TABLE IF NOT EXISTS monitor_feeds (
     aktiv         INTEGER NOT NULL DEFAULT 1,
     geprueft_am   TEXT    NOT NULL DEFAULT '',
     status        TEXT    NOT NULL DEFAULT ''
+);
+
+-- Shop-Rabatte: Cashback in Prozent und ein fester Rabatt ab einem
+-- Mindestwert (Gutschein, Neukundenrabatt). Sie senken den effektiven
+-- Einkaufspreis, mit dem der Monitor rechnet.
+CREATE TABLE IF NOT EXISTS monitor_shoprabatte (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop      TEXT    NOT NULL,
+    cashback  REAL    NOT NULL DEFAULT 0,
+    fest_cent INTEGER NOT NULL DEFAULT 0,
+    ab_cent   INTEGER NOT NULL DEFAULT 0,
+    notiz     TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS monitor_gemeldet (
@@ -487,6 +504,12 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	{"monitor_produkte", "prio", `TEXT NOT NULL DEFAULT 'normal'`},
 	{"monitor_produkte", "stichworte", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_produkte", "notiz", `TEXT NOT NULL DEFAULT ''`},
+	// Discord-Channel der Nachricht und ✅ darunter, für die Auswertung.
+	{"monitor_posts", "kanal_id", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_posts", "kaeufe", `INTEGER NOT NULL DEFAULT 0`},
+	{"monitor_posts", "kategorie", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_posts", "gewinn_cent", `INTEGER NOT NULL DEFAULT 0`},
+	{"monitor_posts", "titel", `TEXT NOT NULL DEFAULT ''`},
 }
 
 // spalteErgaenzen hängt eine Spalte an, falls sie noch fehlt.

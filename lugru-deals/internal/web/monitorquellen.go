@@ -33,6 +33,8 @@ func (srv *Server) monitorNebenquellen(ctx context.Context) {
 		srv.mydealzPruefen(ctx, jetzt)
 	}
 	srv.feedsPruefen(ctx, jetzt)
+	srv.tageszusammenfassung(ctx, jetzt)
+	srv.kaeufeAbgleichen(ctx, jetzt)
 	ks, err := srv.store.Kategorien()
 	if err != nil {
 		return
@@ -94,7 +96,8 @@ func (srv *Server) mydealzBewerten(ctx context.Context, p store.MonitorProdukt, 
 		haendler = "mydealz"
 	}
 	liste := billiger.Preisliste{URL: d.Link, Name: p.Name, EAN: p.EAN}
-	a := billiger.Angebot{Shop: haendler + mydealzZusatz, Titel: d.Titel, Preis: d.Preis, Gesamt: d.Preis, Status: billiger.Lieferbar}
+	a := billiger.Angebot{Shop: haendler + mydealzZusatz, Titel: d.Titel, Preis: d.Preis, Gesamt: d.Preis, Status: billiger.Lieferbar, Code: d.Code}
+	a = srv.rabatteAnwenden([]billiger.Angebot{a})[0]
 	b := srv.monitorAngebot(ctx, p, liste, a, false, jetzt)
 	if !b.Gepostet && !b.Bewertet {
 		srv.monitorProtokoll(p, d.Titel, a, b, false, "mydealz: "+b.Status)

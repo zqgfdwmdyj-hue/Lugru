@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,7 +39,7 @@ func (srv *Server) ankaufText(p store.MonitorProdukt, liste billiger.Preisliste,
 	if name == "" {
 		name = liste.Name
 	}
-	gewinn, marge := ankaufZahlen(p.Ankauf, a.Gesamt)
+	gewinn, marge := ankaufZahlen(p.Ankauf, a.Effektiv())
 	var z []string
 	z = append(z, strings.TrimSpace("🛒 "+name+" "+mentionText(channelID, srv)))
 	if pe, ok := srv.poster(srv.store.Einstellung(store.SchluesselMonitorPoster)); ok {
@@ -54,6 +55,12 @@ func (srv *Server) ankaufText(p store.MonitorProdukt, liste billiger.Preisliste,
 		ek += " (inkl. " + a.Versand.Euro() + " Versand)"
 	}
 	z = append(z, ek)
+	if a.Rabatt > 0 {
+		z = append(z, "💸 abzgl. "+a.RabattText+" → effektiv "+a.Effektiv().Euro())
+	}
+	if a.Code != "" {
+		z = append(z, "🎟️ Code: "+a.Code)
+	}
 	if a.Lieferzeit != "" {
 		l := "🚚 Lieferzeit: " + a.Lieferzeit
 		if a.Status == billiger.Verzoegert {
@@ -61,9 +68,17 @@ func (srv *Server) ankaufText(p store.MonitorProdukt, liste billiger.Preisliste,
 		}
 		z = append(z, l)
 	}
-	z = append(z, "🤝 Ankauf: "+p.Ankauf.Euro())
-	if st := srv.staffelText(p); st != "" {
-		z = append(z, "📦 Mengen: "+st)
+	if p.IstEbay() {
+		vk := "🏷️ eBay: " + p.EbayVK.Euro() + " (Median der " + strconv.Itoa(p.EbayAnzahl) + " günstigsten neuen Angebote)"
+		if p.EbayLink != "" {
+			vk += " · [ansehen](" + p.EbayLink + ")"
+		}
+		z = append(z, vk, "🧾 nach eBay-Gebühren: "+p.Ankauf.Euro())
+	} else {
+		z = append(z, "🤝 Ankauf: "+p.Ankauf.Euro())
+		if st := srv.staffelText(p); st != "" {
+			z = append(z, "📦 Mengen: "+st)
+		}
 	}
 	z = append(z, "🤑 Gewinn: "+gewinn.Euro()+" / "+prozent(marge, 1)+" Marge")
 	if zeile := srv.preisZeile(p, a.Gesamt, time.Now()); zeile != "" {
@@ -86,12 +101,19 @@ func linkText(s string) string {
 func (srv *Server) monitorAnkauf(ctx context.Context, p store.MonitorProdukt, liste billiger.Preisliste, bester billiger.Angebot, test bool, jetzt time.Time, b *monitorBericht) {
 	if p.Ankauf <= 0 {
 		b.Status = "Ankaufspreis fehlt — bitte eintragen oder einen Ankäufer anlegen"
+		if p.IstEbay() {
+			b.Status = "nach eBay-Gebühren bleibt nichts übrig"
+		}
 		return
 	}
 	b.Bewertet = true
-	b.Gewinn, b.Marge = ankaufZahlen(p.Ankauf, bester.Gesamt)
-	kennzahlen := fmt.Sprintf("%s bei %s · Ankauf %s · Gewinn %s · Marge %s",
-		bester.Gesamt.Euro(), bester.Shop, p.Ankauf.Euro(), b.Gewinn.Euro(), prozent(b.Marge, 1))
+	b.Gewinn, b.Marge = ankaufZahlen(p.Ankauf, bester.Effektiv())
+	erloes := "Ankauf"
+	if p.IstEbay() {
+		erloes = "eBay nach Gebühren"
+	}
+	kennzahlen := fmt.Sprintf("%s bei %s · %s %s · Gewinn %s · Marge %s",
+		bester.Effektiv().Euro(), bester.Shop, erloes, p.Ankauf.Euro(), b.Gewinn.Euro(), prozent(b.Marge, 1))
 
 	sperre := srv.monitorSperre()
 	if !test {
@@ -142,7 +164,8 @@ func (srv *Server) monitorAnkauf(ctx context.Context, p store.MonitorProdukt, li
 		}
 		_ = srv.store.ChannelDefekt(c.ID, false)
 		_ = srv.store.MonitorPostMerken(store.MonitorPost{ProduktID: p.ID, Shop: bester.Shop, Gesamt: bester.Gesamt,
-			ChannelID: c.ID, NachrichtID: g.NachrichtID, Text: text, GepostetAm: jetzt})
+			ChannelID: c.ID, NachrichtID: g.NachrichtID, Text: text, GepostetAm: jetzt,
+			KanalID: g.KanalID, Kategorie: p.Kategorie, Gewinn: b.Gewinn, Titel: titel})
 		srv.reaktionenVorbelegen(g.KanalID, g.NachrichtID, c.Name)
 		if !telegramGesendet {
 			srv.anTelegram(text, nil)

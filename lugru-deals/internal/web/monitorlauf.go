@@ -172,7 +172,7 @@ func bestesAngebot(p store.MonitorProdukt, angebote []billiger.Angebot, maxTage 
 				continue
 			}
 		}
-		if !gefunden || a.Gesamt < best.Gesamt {
+		if !gefunden || a.Effektiv() < best.Effektiv() {
 			best, gefunden = a, true
 		}
 	}
@@ -202,6 +202,7 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 	}()
 
 	liste, err := billiger.Hole(ctx, srv.monitorClient(), p.URL)
+	liste.Angebote = srv.rabatteAnwenden(liste.Angebote)
 	if err != nil {
 		b.Status = "Fehler: " + sicherFehlertext(err.Error())
 		if !test {
@@ -246,16 +247,25 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 func (srv *Server) monitorAngebot(ctx context.Context, p store.MonitorProdukt, liste billiger.Preisliste, bester billiger.Angebot, test bool, jetzt time.Time) monitorBericht {
 	var b monitorBericht
 	b.Angebot = &bester
-	if grenze := srv.wecker(p); grenze > 0 && bester.Gesamt > grenze {
+	if grenze := srv.wecker(p); grenze > 0 && bester.Effektiv() > grenze {
 		art := "Höchstpreis"
 		if p.IstAnkauf() {
 			art = "Preiswecker"
 		}
-		b.Status = fmt.Sprintf("günstigstes: %s bei %s — über dem %s %s", bester.Gesamt.Euro(), bester.Shop, art, grenze.Euro())
+		b.Status = fmt.Sprintf("günstigstes: %s bei %s — über dem %s %s", bester.Effektiv().Euro(), bester.Shop, art, grenze.Euro())
 		return b
 	}
 
-	if p.IstAnkauf() {
+	if p.IstEbay() {
+		if err := srv.ebayAnwenden(ctx, &p, liste); err != nil {
+			b.Status = sicherFehlertext(err.Error())
+			if !test {
+				srv.adminMelden(ctx, "ebay", "⚠️ Monitor: eBay-Preis nicht ermittelbar ("+p.Name+"): "+b.Status)
+			}
+			return b
+		}
+	}
+	if p.IstFestpreis() {
 		srv.monitorAnkauf(ctx, p, liste, bester, test, jetzt, &b)
 		return b
 	}
@@ -372,7 +382,8 @@ func (srv *Server) monitorAngebot(ctx context.Context, p store.MonitorProdukt, l
 		srv.adminMelden(ctx, "discord", "⚠️ Monitor: Deal nicht gepostet ("+p.Name+"): "+b.Status)
 		return b
 	}
-	_ = srv.store.MonitorPostMerken(store.MonitorPost{ProduktID: p.ID, Shop: bester.Shop, Gesamt: bester.Gesamt, DealID: ausgang.HauptID, GepostetAm: jetzt})
+	_ = srv.store.MonitorPostMerken(store.MonitorPost{ProduktID: p.ID, Shop: bester.Shop, Gesamt: bester.Gesamt, DealID: ausgang.HauptID, GepostetAm: jetzt,
+		Kategorie: p.Kategorie, Gewinn: b.Gewinn, Titel: f.Titel})
 	b.Gepostet = true
 	b.Status = "gepostet in " + strings.Join(ausgang.GepostetIn, ", ") + ": " + kennzahlen
 	if len(ausgang.Fehlgeschlagen) > 0 {
@@ -425,6 +436,12 @@ func monitorFormularWerte(p store.MonitorProdukt, liste billiger.Preisliste, a b
 	if a.Versand > 0 {
 		notiz += " (inkl. " + a.Versand.Euro() + " Versand)"
 	}
+	if a.Rabatt > 0 {
+		notiz += " · Shop-Preis " + a.Gesamt.Euro() + ", abzgl. " + a.RabattText
+	}
+	if a.Code != "" {
+		notiz += " · Code: " + a.Code
+	}
 	// Bei langer Lieferzeit gehört sie in den Post — wer kauft, soll es wissen.
 	if a.Status == billiger.Verzoegert && a.Lieferzeit != "" {
 		notiz += " · Lieferzeit: " + a.Lieferzeit
@@ -435,7 +452,7 @@ func monitorFormularWerte(p store.MonitorProdukt, liste billiger.Preisliste, a b
 		"quell_url":       {liste.URL},
 		"asin":            {asin},
 		"quellmarkt":      {string(marketplace.DE)},
-		"ek":              {a.Gesamt.String()},
+		"ek":              {a.Effektiv().String()},
 		"ek_art":          {"brutto"},
 		"ek_notiz":        {notiz},
 		"steuersatz":      {"normal"},
@@ -481,8 +498,8 @@ func (srv *Server) monitorChannels(p store.MonitorProdukt, shop string, b monito
 
 func regelPasst(r store.MonitorRegel, p store.MonitorProdukt, shop string, b monitorBericht) bool {
 	modus := store.ModusAmazon
-	if p.IstAnkauf() {
-		modus = store.ModusAnkauf
+	if p.IstFestpreis() {
+		modus = p.Modus
 	}
 	return r.Aktiv &&
 		(r.ProduktID == 0 || r.ProduktID == p.ID) &&
@@ -490,8 +507,8 @@ func regelPasst(r store.MonitorRegel, p store.MonitorProdukt, shop string, b mon
 		(strings.TrimSpace(r.Kategorie) == "" || strings.EqualFold(strings.TrimSpace(r.Kategorie), strings.TrimSpace(p.Kategorie))) &&
 		b.Marge >= r.MinMarge &&
 		b.Gewinn >= r.MinGewinn &&
-		// Ein Ankauf hat keine Verkaufszahl — die Schwelle gilt nur für Amazon.
-		(p.IstAnkauf() || b.Sales >= r.MinSales) &&
+		// Ankauf und eBay haben keine Verkaufszahl — die Schwelle gilt nur für Amazon.
+		(p.IstFestpreis() || b.Sales >= r.MinSales) &&
 		store.ShopPasst(r.Shops, shop)
 }
 

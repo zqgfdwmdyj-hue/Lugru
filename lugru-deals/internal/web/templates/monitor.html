@@ -6,7 +6,7 @@ MediaMarkt, Cyberport und vielen anderen Shops. Wird ein Produkt günstig genug 
 Deal durch und postet ihn wie einen Deal von Hand — in jeden Channel, dessen Regel er erfüllt. Zusätzlich liest er
 neue Deals bei mydealz mit.</p>
 <p class="aktionen"><a href="#produkte">Produkte</a> · <a href="#import">Liste importieren</a> · <a href="#regeln">Regeln</a>
-· <a href="#feeds">Reisen, Leasing &amp; Eigengebrauch</a> · <a href="#kategorien">Kategorie-Scan</a> · <a href="#treffer">Treffer</a> · <a href="#einstellungen">Einstellungen</a></p>
+· <a href="#feeds">Reisen, Leasing &amp; Eigengebrauch</a> · <a href="#kategorien">Kategorie-Scan</a> · <a href="#rabatte">Gutscheine &amp; Cashback</a> · <a href="#treffer">Treffer</a> · <a href="#auswertung">Auswertung</a> · <a href="#einstellungen">Einstellungen</a></p>
 {{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
 {{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
 
@@ -105,6 +105,20 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     <small>neue Deals, deren Titel zu den Stichworten eines Produkts passt, werden wie ein Shop-Angebot bewertet</small></label>
   <label><input type="checkbox" name="ausverkauft" value="1" {{if .Ausverkauft}}checked{{end}}> Posts automatisch als ausverkauft markieren
     <small>sobald der Shop das Angebot nicht mehr zum geposteten Preis führt</small></label>
+  <label>Tageszusammenfassung in
+    <select name="tag_channel"><option value="0">— aus —</option>
+      {{range .Channels}}<option value="{{.ID}}" {{if eq .ID $.TagChannel}}selected{{end}}>#{{.Name}}</option>{{end}}</select></label>
+  <label>… jeden Tag um <input name="tag_zeit" value="{{.TagZeit}}" placeholder="20:00" size="5"></label>
+  <label><input type="checkbox" name="rabatte" value="1" {{if .RabatteAn}}checked{{end}}> Gutscheine und Cashback einrechnen
+    <small>siehe „Gutscheine &amp; Cashback“ — senkt den effektiven Einkaufspreis</small></label>
+  <fieldset><legend>eBay <small>für die Art „eBay“: Schlüssel aus dem eBay-Entwicklerkonto (dieselben wie im Lugru-System)</small></legend>
+    <label>App ID (Client ID) <input name="ebay_app_id" value="{{.EbayAppID}}" autocomplete="off"></label>
+    <label>Cert ID (Client Secret) <small>{{if .EbayCertDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}noch keiner{{end}}</small>
+      <input name="ebay_cert_id" type="password" autocomplete="off"></label>
+    <label>Gebühr in % <input name="ebay_gebuehr" value="{{.EbayGebuehr}}" size="5"></label>
+    <label>fester Anteil je Verkauf in € <input name="ebay_fix" value="{{.EbayFix}}" size="6"></label>
+    <label>euer Versand je Verkauf in € <input name="ebay_versand" value="{{.EbayVersand}}" size="6"></label>
+  </fieldset>
   <label>Öffentliche Adresse dieses Servers <small>für direkte Shop-Links im Post, z. B. http://91.99.29.165:8080 —
     leer: der Post verlinkt die Seite bei billiger.de</small>
     <input name="basis_url" value="{{.BasisURL}}" placeholder="http://91.99.29.165:8080"></label>
@@ -127,7 +141,7 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
       <a href="{{.URL}}" target="_blank" rel="noopener">{{.Anzeige}}</a><br>
       <small>{{if .EAN}}EAN {{.EAN}}{{end}} {{if .ASIN}}· ASIN {{.ASIN}}{{end}}</small><br>
       {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
-      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{else}}<span class="chip neutral">Amazon</span>{{end}}
+      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{else if .IstEbay}}<span class="chip akzent">eBay</span>{{else}}<span class="chip neutral">Amazon</span>{{end}}
       {{if .Kategorie}}<span class="chip neutral">{{.Kategorie}}</span>{{end}}
       {{if eq .Prio "hoch"}}<span class="chip positiv">Prio hoch</span>{{else if eq .Prio "niedrig"}}<span class="chip neutral">Prio niedrig</span>{{end}}
       {{if .WeckerText}}<br><small>Wecker {{.WeckerText}}</small>{{end}}
@@ -154,6 +168,7 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
         <select name="modus" aria-label="Art">
           <option value="amazon" {{if not .IstAnkauf}}selected{{end}}>Amazon</option>
           <option value="ankauf" {{if .IstAnkauf}}selected{{end}}>Ankauf</option>
+          <option value="ebay" {{if .IstEbay}}selected{{end}}>eBay</option>
         </select>
         <input name="ankauf" value="{{.AnkaufText}}" size="7" placeholder="Ankauf" aria-label="Ankaufspreis">
         <input name="max_ek" value="{{.MaxEKText}}" size="7" placeholder="{{if .IstAnkauf}}Wecker{{else}}max. EK{{end}}" aria-label="Höchstpreis bzw. Preiswecker mit Versand">
@@ -214,6 +229,7 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     <select name="modus">
       <option value="amazon">Amazon-Arbitrage — Gewinn gegen den Verkaufspreis bei Amazon (Keepa)</option>
       <option value="ankauf">Ankauf — Gewinn gegen einen festen Ankaufspreis, ohne Keepa</option>
+      <option value="ebay">eBay — Gewinn gegen den Marktpreis bei eBay nach Gebühren</option>
     </select></label>
   <label>Ankaufspreis <small>nur bei Art „Ankauf“: was der Ankäufer zahlt</small><input name="ankauf" placeholder="z. B. 1175"></label>
   <label>Hinweis im Post <small>optional, etwa „1180 € ab 6 Stk“ — Namen der Ankäufer gehören nicht hierher, der Post ist öffentlich</small>
@@ -343,7 +359,7 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
   {{range .Regeln}}
   <tr>
     <td>#{{.ChannelName}}{{if .Name}}<br><small>{{.Name}}</small>{{end}}</td>
-    <td>{{.ProduktName}}{{if .Modus}}<br><small>nur {{if eq .Modus "ankauf"}}Ankauf{{else}}Amazon{{end}}</small>{{end}}{{if .Kategorie}}<br><small>Kategorie {{.Kategorie}}</small>{{end}}</td>
+    <td>{{.ProduktName}}{{if .Modus}}<br><small>nur {{if eq .Modus "ankauf"}}Ankauf{{else if eq .Modus "ebay"}}eBay{{else}}Amazon{{end}}</small>{{end}}{{if .Kategorie}}<br><small>Kategorie {{.Kategorie}}</small>{{end}}</td>
     <td>{{if .MinMargeText}}Marge {{.MinMargeText}} {{end}}{{if .MinGewinnText}}Gewinn {{.MinGewinnText}} {{end}}{{if .MinSales}}{{.MinSales}} Verkäufe{{end}}
       {{if not (or .MinMargeText .MinGewinnText .MinSales)}}<small>keine Schwelle</small>{{end}}</td>
     <td>{{if .Shops}}{{.Shops}}{{else}}alle{{end}}</td>
@@ -378,6 +394,7 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
       <option value="">Amazon und Ankauf</option>
       <option value="amazon">nur Amazon-Arbitrage</option>
       <option value="ankauf">nur Ankauf</option>
+      <option value="ebay">nur eBay</option>
     </select></label>
   <label>Kategorie <small>leer heißt: jede</small><input name="kategorie" list="kategorien" placeholder="z. B. Konsolen"></label>
   <label>Mindestmarge in % <input name="min_marge" placeholder="z. B. 15"></label>
@@ -386,6 +403,32 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
   <label>Nur diese Shops <small>leer heißt: alle</small><input name="shops" placeholder="z. B. OTTO, Kaufland"></label>
   <label>Bezeichnung <small>nur für euch, optional</small><input name="name" placeholder="z. B. High Margin"></label>
   <button type="submit" class="primaer">Regel anlegen</button>
+</form>
+
+<h2 id="rabatte">Gutscheine &amp; Cashback</h2>
+<p class="hinweis">Je Shop Cashback in Prozent (Shoop, Payback …) und ein fester Gutschein ab einem Mindestwert. Der Monitor
+rechnet mit dem effektiven Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals stehen automatisch im Post.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Shop</th><th>Cashback</th><th>Gutschein</th><th>Notiz</th><th></th></tr></thead>
+  <tbody>
+  {{range .Rabatte}}
+  <tr><td>{{.Shop}}</td><td>{{if .Cashback}}{{.CashbackText}}{{end}}</td>
+    <td>{{if .Fest}}{{.FestText}}{{if .Ab}} ab {{.AbText}}{{end}}{{end}}</td><td><small>{{.Notiz}}</small></td>
+    <td><form method="post" action="/monitor/rabatte/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form></td></tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch kein Shop-Rabatt.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<form method="post" action="/monitor/rabatte" class="karte">
+  <label>Shop <small>wie bei billiger.de, z. B. „OTTO“, „MediaMarkt“</small><input name="shop" required></label>
+  <label>Cashback in % <input name="cashback" placeholder="z. B. 3"></label>
+  <label>Gutschein in € <input name="fest" placeholder="z. B. 10"></label>
+  <label>… ab Bestellwert in € <input name="ab" placeholder="z. B. 100"></label>
+  <label>Notiz <small>steht im Post, z. B. „über Shoop“ oder „Neukunden“</small><input name="notiz"></label>
+  <button type="submit" class="primaer">Speichern</button>
 </form>
 
 <h2 id="treffer">Letzte Treffer</h2>
@@ -409,6 +452,23 @@ unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zi
   </tbody>
 </table>
 </div>
+<h2 id="auswertung">Auswertung der letzten {{.Auswertung.Tage}} Tage</h2>
+<p class="hinweis">{{.Auswertung.Deals}} Deals gepostet · zusammen {{.Auswertung.GewinnText}} Gewinn je Stück ·
+✅ {{.Auswertung.Kaeufe}} Käufe. Käufe zählen über die ✅ unter den Posts (braucht den Discord-Bot unter Einstellungen).</p>
+{{template "auswertungstabelle" (tabelle "Shop" .Auswertung.NachShop)}}
+{{template "auswertungstabelle" (tabelle "Kategorie" .Auswertung.NachKat)}}
+{{template "auswertungstabelle" (tabelle "Uhrzeit" .Auswertung.NachStunde)}}
+
 <datalist id="kategorien">{{range .Kategorien}}<option value="{{.}}">{{end}}</datalist>
 {{template "fuss"}}
+{{end}}
+
+{{define "auswertungstabelle"}}
+<div class="tabellenkarte"><table>
+  <thead><tr><th>{{.Titel}}</th><th>Deals</th><th>✅ Käufe</th><th>Quote</th><th>Gewinn je Stück</th></tr></thead>
+  <tbody>
+  {{range .Zeilen}}<tr><td>{{.Name}}</td><td>{{.Deals}}</td><td>{{.Kaeufe}}</td><td>{{.Quote}}</td><td>{{.GewinnText}}</td></tr>
+  {{else}}<tr><td colspan="5" class="leer">Noch keine Posts.</td></tr>{{end}}
+  </tbody>
+</table></div>
 {{end}}

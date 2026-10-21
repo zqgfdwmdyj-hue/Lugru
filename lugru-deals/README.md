@@ -271,6 +271,25 @@ Post) und Hot-Deals ab 200° aus „trending“. Eigene Feeds mit Stichworten,
 Höchstpreis, Mindest-Temperatur, LF-Grenze und Leasing-Art. Beim ersten Abruf
 merkt sich ein Feed die vorhandenen Deals, danach kommen nur neue.
 
+**Gutscheine & Cashback:** je Shop Cashback in Prozent und ein fester
+Gutschein ab Mindestwert. Der Monitor rechnet mit dem effektiven Preis (auch
+für Preiswecker und Wahl des günstigsten Shops) und nennt den Rabatt im Post.
+Gutscheincodes aus mydealz-Deals („Code: SPAR10“) stehen automatisch im Post.
+
+**eBay als Verkaufsweg:** Art „eBay“ rechnet gegen den Median der fünf
+günstigsten neuen Sofort-Kaufen-Angebote in Deutschland (offizielle
+Browse-API, Schlüssel aus dem eBay-Entwicklerkonto unter Monitor →
+Einstellungen) abzüglich Gebühr, festem Anteil und eigenem Versand. Der
+Marktpreis wird je EAN 30 Minuten gemerkt. Verkaufte Artikel liefert die API
+nicht, und die Seite dafür blockt eBay für Server.
+
+**Tageszusammenfassung:** täglich zur eingestellten Uhrzeit die fünf besten
+Deals der letzten 24 Stunden mit Gewinn und Käufen.
+
+**Auswertung:** Deals, ✅-Käufe, Kaufquote und Gewinn der letzten 30 Tage nach
+Shop, Kategorie und Uhrzeit. Die ✅ unter Ankaufs- und eBay-Posts liest der
+Monitor alle 15 Minuten über den Discord-Bot.
+
 Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
 sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen
 Minuten zu sehen. OTTO und Kaufland direkt abzufragen geht nur über einen

@@ -225,3 +225,42 @@ func (srv *Server) uebernehmeImport(w http.ResponseWriter, r *http.Request) {
 	meldung += ". Jetzt Regeln für die Channels prüfen und einzelne Produkte mit „Testen“ ansehen."
 	srv.monitorMeldung(w, meldung, strings.Join(fehler, " · "))
 }
+
+// ---------------------------------------------------------------- Shop-Rabatte
+
+func (srv *Server) speichereShopRabatt(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	shop := strings.TrimSpace(r.PostForm.Get("shop"))
+	if shop == "" {
+		srv.monitorMeldung(w, "", "Bitte einen Shop angeben.")
+		return
+	}
+	cb := 0.0
+	if v := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(r.PostForm.Get("cashback")), "%")); v != "" {
+		var err error
+		if cb, err = strconv.ParseFloat(strings.ReplaceAll(v, ",", "."), 64); err != nil || cb < 0 || cb > 50 {
+			srv.monitorMeldung(w, "", "Cashback: eine Zahl zwischen 0 und 50.")
+			return
+		}
+	}
+	fest, err1 := betragOderNull(r.PostForm.Get("fest"))
+	ab, err2 := betragOderNull(r.PostForm.Get("ab"))
+	if err1 != nil || err2 != nil {
+		srv.monitorMeldung(w, "", "Gutschein: kein gültiger Betrag.")
+		return
+	}
+	if cb == 0 && fest == 0 {
+		srv.monitorMeldung(w, "", "Bitte Cashback oder einen Gutschein-Betrag angeben.")
+		return
+	}
+	if err := srv.store.ShopRabattAnlegen(store.ShopRabatt{Shop: shop, Cashback: cb, Fest: fest, Ab: ab, Notiz: r.PostForm.Get("notiz")}); err != nil {
+		srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
+		return
+	}
+	srv.monitorMeldung(w, "Shop-Rabatt gespeichert.", "")
+}
+
+func (srv *Server) loescheShopRabatt(w http.ResponseWriter, r *http.Request) {
+	_ = srv.store.ShopRabattLoeschen(idAusPfad(r))
+	srv.monitorMeldung(w, "Shop-Rabatt gelöscht.", "")
+}

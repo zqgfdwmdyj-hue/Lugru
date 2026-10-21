@@ -212,7 +212,7 @@ func (srv *Server) preissturzPruefen(ctx context.Context, p store.MonitorProdukt
 		fmt.Sprintf("💰 %s — %s unter Ø 7 Tage (%s)", a.Gesamt.Euro(), prozent(prozentUnter, 0), st.Schnitt.Euro()),
 	}
 	if p.IstAnkauf() && p.Ankauf > 0 {
-		g, m := ankaufZahlen(p.Ankauf, a.Gesamt)
+		g, m := ankaufZahlen(p.Ankauf, a.Effektiv())
 		z = append(z, "🤝 Ankauf: "+p.Ankauf.Euro()+" · Gewinn "+g.Euro()+" / "+prozent(m, 1))
 	}
 	if liste.EAN != "" {
@@ -263,4 +263,59 @@ func erstesNichtLeer(werte ...string) string {
 		}
 	}
 	return ""
+}
+
+// ---------------------------------------------------------------- Rabatte
+
+// rabatteAnwenden setzt je Angebot Cashback und Gutschein seines Shops —
+// sofern unter Monitor eingeschaltet.
+func (srv *Server) rabatteAnwenden(angebote []billiger.Angebot) []billiger.Angebot {
+	if srv.store.Einstellung(store.SchluesselMonitorRabatte) != "1" {
+		return angebote
+	}
+	regeln, err := srv.store.ShopRabatte()
+	if err != nil || len(regeln) == 0 {
+		return angebote
+	}
+	for i := range angebote {
+		angebote[i].Rabatt, angebote[i].RabattText = rabattFuer(regeln, angebote[i].Shop, angebote[i].Gesamt)
+	}
+	return angebote
+}
+
+// rabattFuer rechnet den Rabatt eines Shops auf einen Preis: fester Betrag
+// ab dem Mindestwert plus Cashback in Prozent. Gelten mehrere Einträge für
+// einen Shop, zählt der mit dem größten Rabatt — Gutscheine lassen sich
+// selten kombinieren.
+func rabattFuer(regeln []store.ShopRabatt, shop string, preis money.Cents) (money.Cents, string) {
+	var best money.Cents
+	text := ""
+	for _, r := range regeln {
+		if !store.ShopPasst(r.Shop, shop) {
+			continue
+		}
+		var betrag money.Cents
+		var teile []string
+		if r.Fest > 0 && preis >= r.Ab {
+			betrag += r.Fest
+			t := r.Fest.Euro() + " Gutschein"
+			if r.Ab > 0 {
+				t += " ab " + r.Ab.Euro()
+			}
+			teile = append(teile, t)
+		}
+		if r.Cashback > 0 {
+			cb := money.Cents(float64(preis) * r.Cashback / 100)
+			betrag += cb
+			teile = append(teile, prozent(r.Cashback, 1)+" Cashback ("+cb.Euro()+")")
+		}
+		if betrag > best && betrag < preis {
+			best = betrag
+			text = strings.Join(teile, " + ")
+			if r.Notiz != "" {
+				text += " — " + r.Notiz
+			}
+		}
+	}
+	return best, text
 }

@@ -1,9 +1,11 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/trinkfreunde/lugru-deal-discord/internal/billiger"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/marketplace"
@@ -24,6 +26,11 @@ type monitorProduktAnzeige struct {
 	AnkaufText string
 	Geprueft   string
 	BesterText string
+}
+
+type rabattAnzeige struct {
+	store.ShopRabatt
+	FestText, AbText, CashbackText string
 }
 
 type ankaeuferAnzeige struct {
@@ -73,6 +80,16 @@ type monitorDaten struct {
 	BasisURL       string
 	ScanKategorien []store.MonitorKategorie
 	Feeds          []feedAnzeige
+	Rabatte        []rabattAnzeige
+	RabatteAn      bool
+	TagChannel     int64
+	TagZeit        string
+	EbayAppID      string
+	EbayCertDa     bool
+	EbayGebuehr    string
+	EbayFix        string
+	EbayVersand    string
+	Auswertung     auswertung
 
 	// Import ist die geprüfte Liste vor dem Übernehmen, nil ohne Import.
 	Import   []importVorschlag
@@ -122,6 +139,19 @@ func (srv *Server) monitorDaten() monitorDaten {
 		feedKanal[c.ID] = c.Name
 	}
 	d.Feeds = srv.feedAnzeigen(feedKanal)
+	rs, _ := srv.store.ShopRabatte()
+	for _, r := range rs {
+		d.Rabatte = append(d.Rabatte, rabattAnzeige{ShopRabatt: r, FestText: r.Fest.Euro(), AbText: r.Ab.Euro(), CashbackText: prozent(r.Cashback, 1)})
+	}
+	d.RabatteAn = srv.store.Einstellung(store.SchluesselMonitorRabatte) == "1"
+	d.TagChannel = int64(srv.store.EinstellungZahl(store.SchluesselMonitorTagChannel))
+	d.TagZeit = srv.store.Einstellung(store.SchluesselMonitorTagZeit)
+	d.EbayAppID = srv.store.Einstellung(store.SchluesselEbayAppID)
+	d.EbayCertDa = srv.store.Einstellung(store.SchluesselEbayCertID) != ""
+	d.EbayGebuehr = srv.store.Einstellung(store.SchluesselEbayGebuehr)
+	d.EbayFix = srv.store.Einstellung(store.SchluesselEbayGebuehrFix)
+	d.EbayVersand = srv.store.Einstellung(store.SchluesselEbayVersand)
+	d.Auswertung = srv.auswertung(time.Now(), 30)
 	kanalName := map[int64]string{}
 	for _, c := range d.Channels {
 		kanalName[c.ID] = c.Name
@@ -249,8 +279,9 @@ func betragOderNull(s string) (money.Cents, error) {
 // ändern. Ohne Ankaufspreis geht es auch, sobald Ankäufer eingetragen sind.
 func ankaufFelder(r *http.Request, p *store.MonitorProdukt) string {
 	p.Modus = store.ModusAmazon
-	if r.PostForm.Get("modus") == store.ModusAnkauf {
-		p.Modus = store.ModusAnkauf
+	switch r.PostForm.Get("modus") {
+	case store.ModusAnkauf, store.ModusEbay:
+		p.Modus = r.PostForm.Get("modus")
 	}
 	p.Hinweis = r.PostForm.Get("hinweis")
 	p.Kategorie = r.PostForm.Get("kategorie")
@@ -423,7 +454,7 @@ func (srv *Server) speichereMonitorRegel(w http.ResponseWriter, r *http.Request)
 }
 
 func modusFilter(m string) string {
-	if m == store.ModusAmazon || m == store.ModusAnkauf {
+	if m == store.ModusAmazon || m == store.ModusAnkauf || m == store.ModusEbay {
 		return m
 	}
 	return ""
@@ -456,6 +487,21 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 	if err != nil || maxTage < 0 {
 		srv.monitorMeldung(w, "", "Max. Lieferzeit: keine ganze Zahl (0 heißt keine Grenze).")
 		return
+	}
+	// behalte: ein fehlendes Feld lässt den Wert stehen; ein Geheimnis
+	// (geheim=true) auch ein leeres — es wird nie zurück in die Seite
+	// geschrieben.
+	behalte := func(feld string, geheim bool) string {
+		v := strings.TrimSpace(r.PostForm.Get(feld))
+		if !r.PostForm.Has(feld) || (geheim && v == "") {
+			return "keep"
+		}
+		return v
+	}
+	tagZeit := "keep"
+	if r.PostForm.Has("tag_zeit") {
+		h, m := tageszeit(r.PostForm.Get("tag_zeit"))
+		tagZeit = fmt.Sprintf("%02d:%02d", h, m)
 	}
 	basis, ok := gueltigeBasisURL(r.PostForm.Get("basis_url"))
 	if !ok {
@@ -518,6 +564,14 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		store.SchluesselMonitorMydealz:      an("mydealz"),
 		store.SchluesselMonitorAusverkauft:  an("ausverkauft"),
 		store.SchluesselMonitorBasisURL:     basis,
+		store.SchluesselMonitorRabatte:      an("rabatte"),
+		store.SchluesselMonitorTagChannel:   kanal("tag_channel"),
+		store.SchluesselMonitorTagZeit:      tagZeit,
+		store.SchluesselEbayAppID:           behalte("ebay_app_id", false),
+		store.SchluesselEbayCertID:          behalte("ebay_cert_id", true),
+		store.SchluesselEbayGebuehr:         behalte("ebay_gebuehr", false),
+		store.SchluesselEbayGebuehrFix:      behalte("ebay_fix", false),
+		store.SchluesselEbayVersand:         behalte("ebay_versand", false),
 		store.SchluesselMonitorAktiv:        aktiv,
 		store.SchluesselMonitorIntervall:    strconv.Itoa(intervall),
 		store.SchluesselMonitorSperre:       strconv.Itoa(sperre),

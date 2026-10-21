@@ -143,14 +143,22 @@ type MonitorPost struct {
 	Text          string
 	GepostetAm    time.Time
 	AusverkauftAm time.Time
+	// KanalID ist der Discord-Channel der Nachricht (für die Reaktionen).
+	KanalID   string
+	Kaeufe    int
+	Kategorie string
+	Gewinn    money.Cents
+	Titel     string
 }
 
 func (s *Store) MonitorPostMerken(p MonitorPost) error {
 	if p.GepostetAm.IsZero() {
 		p.GepostetAm = time.Now()
 	}
-	_, err := s.db.Exec(`INSERT INTO monitor_posts (produkt_id, shop, gesamt_cent, deal_id, channel_id, nachricht_id, text, gepostet_am)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, p.ProduktID, p.Shop, int64(p.Gesamt), p.DealID, p.ChannelID, p.NachrichtID, p.Text, zeitText(p.GepostetAm))
+	_, err := s.db.Exec(`INSERT INTO monitor_posts (produkt_id, shop, gesamt_cent, deal_id, channel_id, nachricht_id, text, gepostet_am,
+			kanal_id, kategorie, gewinn_cent, titel)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.ProduktID, p.Shop, int64(p.Gesamt), p.DealID, p.ChannelID, p.NachrichtID, p.Text, zeitText(p.GepostetAm),
+		p.KanalID, p.Kategorie, int64(p.Gewinn), p.Titel)
 	return err
 }
 

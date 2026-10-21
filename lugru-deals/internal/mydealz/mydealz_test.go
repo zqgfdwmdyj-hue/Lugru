@@ -71,3 +71,16 @@ func TestTrendingTemperatur(t *testing.T) {
 		t.Errorf("Trending = %+v", ds[0])
 	}
 }
+
+func TestGutscheincode(t *testing.T) {
+	for text, will := range map[string]string{
+		"Mit dem Code SPAR10 gibt es 10 € Rabatt":   "SPAR10",
+		"Gutscheincode: „HERBST25“ im Warenkorb":    "HERBST25",
+		"kein Code notwendig, Preis direkt im Shop": "",
+		"Code eingeben und sparen":                  "",
+	} {
+		if got := gutscheincode(text); got != will {
+			t.Errorf("%q → %q, will %q", text, got, will)
+		}
+	}
+}

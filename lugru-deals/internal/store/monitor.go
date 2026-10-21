@@ -85,6 +85,12 @@ type MonitorProdukt struct {
 	Stichworte string
 	// Notiz ist nur für euch, etwa die Ankäufer aus dem Listen-Import.
 	Notiz string
+
+	// Nur während einer Prüfung im Modus eBay gesetzt, nicht gespeichert:
+	// Marktpreis, aus wie vielen Angeboten er stammt, und die Suche bei eBay.
+	EbayVK     money.Cents
+	EbayAnzahl int
+	EbayLink   string
 }
 
 // Prio-Stufen der Monitor-Produkte.
@@ -106,17 +112,27 @@ func prioOderNormal(p string) string {
 const (
 	ModusAmazon = "amazon"
 	ModusAnkauf = "ankauf"
+	// ModusEbay rechnet gegen den Marktpreis bei eBay (siehe internal/ebay).
+	ModusEbay = "ebay"
 )
 
 // IstAnkauf sagt, ob das Produkt im Ankaufs-Modus läuft.
 func (p MonitorProdukt) IstAnkauf() bool { return p.Modus == ModusAnkauf }
 
 func modusOderAmazon(m string) string {
-	if m == ModusAnkauf {
-		return ModusAnkauf
+	switch m {
+	case ModusAnkauf, ModusEbay:
+		return m
 	}
 	return ModusAmazon
 }
+
+// IstEbay sagt, ob das Produkt gegen den eBay-Preis rechnet.
+func (p MonitorProdukt) IstEbay() bool { return p.Modus == ModusEbay }
+
+// IstFestpreis: Ankauf und eBay rechnen beide gegen einen festen Erlös statt
+// über Keepa und posten im selben Format.
+func (p MonitorProdukt) IstFestpreis() bool { return p.IstAnkauf() || p.IstEbay() }
 
 // ShopListe liefert die Shops als bereinigte Liste.
 func ShopListe(roh string) []string {
