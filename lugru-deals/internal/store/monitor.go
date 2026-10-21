@@ -103,20 +103,34 @@ func ShopListe(roh string) []string {
 }
 
 // ShopPasst meldet, ob shop in der Liste steht. Verglichen wird ohne Groß-
-// und Kleinschreibung und als Teilwort: "otto" passt auf "OTTO", "kaufland"
+// und Kleinschreibung, ohne Leerzeichen und Satzzeichen und als Teilwort: "otto" passt auf "OTTO", "kaufland"
 // auf "Kaufland.de". Eine leere Liste lässt jeden Shop zu.
 func ShopPasst(liste, shop string) bool {
 	eintraege := ShopListe(liste)
 	if len(eintraege) == 0 {
 		return true
 	}
-	shop = strings.ToLower(shop)
+	shop = shopSchluessel(shop)
 	for _, e := range eintraege {
-		if strings.Contains(shop, strings.ToLower(e)) {
+		if k := shopSchluessel(e); k != "" && strings.Contains(shop, k) {
 			return true
 		}
 	}
 	return false
+}
+
+// shopSchluessel macht Shopnamen vergleichbar: klein, ohne Leerzeichen,
+// Bindestriche und Punkte. billiger.de schreibt „Media Markt Online Shop“,
+// eingetragen wird eher „MediaMarkt“ oder „media-markt“.
+func shopSchluessel(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if r == ' ' || r == '-' || r == '.' || r == '_' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 const monitorProduktSpalten = `id, name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv,

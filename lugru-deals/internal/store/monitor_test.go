@@ -104,6 +104,9 @@ func TestShopPasst(t *testing.T) {
 		{"otto", "OTTO", true},
 		{"Kaufland, OTTO", "Kaufland.de", true},
 		{"kaufland\nmediamarkt", "Cyberport", false},
+		{"MediaMarkt, Saturn", "Media Markt Online Shop", true},
+		{"media-markt", "Media Markt Online Shop", true},
+		{"saturn", "Saturn Online Shop", true},
 	} {
 		if got := ShopPasst(f.liste, f.shop); got != f.will {
 			t.Errorf("ShopPasst(%q, %q) = %v", f.liste, f.shop, got)
