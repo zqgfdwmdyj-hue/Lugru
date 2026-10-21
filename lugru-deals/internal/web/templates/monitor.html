@@ -1,0 +1,172 @@
+{{define "monitor"}}
+{{template "kopf" .}}
+<h1>Shop-Monitor</h1>
+<p class="hinweis">Beobachtet Produkte bei <strong>billiger.de</strong> — dort stehen die Angebote von OTTO, Kaufland,
+MediaMarkt, Cyberport und vielen anderen Shops. Wird ein Produkt günstig genug angeboten, rechnet der Monitor den
+Deal mit Keepa durch und postet ihn wie einen Deal von Hand — in jeden Channel, dessen Regel er erfüllt.</p>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+{{with .Test}}
+<h2>Test: {{$.TestName}}</h2>
+<p class="{{if .Bewertet}}meldung{{else}}fehler{{end}}">{{.Status}}</p>
+{{if .Karte.Text}}
+<div class="spalten">
+  <div>{{template "kartenvorschau" .Karte}}</div>
+  <div class="karte">
+    <p><strong>So würde der Post aussehen.</strong> Beim Test wird nichts gesendet.</p>
+    {{if .Channels}}<p>Ginge in: {{range .Channels}}<span class="chip positiv">#{{.Name}}</span> {{end}}</p>
+    {{else}}<p>Keine Regel passt — der Treffer würde nur protokolliert.</p>{{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+<h2>Einstellungen</h2>
+<form method="post" action="/monitor/einstellungen" class="karte">
+  <label><input type="checkbox" name="aktiv" value="1" {{if .Aktiv}}checked{{end}}> Monitor eingeschaltet
+    <small>aus heißt: nichts wird geprüft und nichts gepostet</small></label>
+  <label>Prüfintervall je Produkt in Sekunden <small>mindestens 15 — billiger.de nicht überlasten</small>
+    <input name="intervall" type="number" min="15" value="{{.Intervall}}"></label>
+  <label>Sperrzeit in Minuten <small>so lange wird derselbe Deal nicht noch einmal gepostet — außer er wird günstiger</small>
+    <input name="sperre" type="number" min="0" value="{{.Sperre}}"></label>
+  <label>Gepostet von
+    <select name="poster">
+      <option value="">— niemand —</option>
+      {{range .PosterListe}}<option value="{{.Name}}" {{if eq .Name $.Poster}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select></label>
+  <button type="submit" class="primaer">Speichern</button>
+</form>
+
+<h2>Produkte</h2>
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>Produkt</th><th>Vorgaben</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Produkte}}
+  <tr>
+    <td>
+      <a href="{{.URL}}" target="_blank" rel="noopener">{{.Anzeige}}</a><br>
+      <small>{{if .EAN}}EAN {{.EAN}}{{end}} {{if .ASIN}}· ASIN {{.ASIN}}{{end}}</small><br>
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
+    </td>
+    <td>
+      <form method="post" action="/monitor/produkte/{{.ID}}/aendern" class="aktionen">
+        <input name="name" value="{{.Name}}" size="18" aria-label="Name">
+        <input name="asin" value="{{.ASIN}}" size="11" placeholder="ASIN" aria-label="ASIN">
+        <input name="max_ek" value="{{.MaxEKText}}" size="7" placeholder="max. EK" aria-label="Höchstpreis mit Versand">
+        <input name="shops" value="{{.Shops}}" size="16" placeholder="alle Shops" aria-label="Shops">
+        {{$p := .}}
+        {{range $.Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"
+          {{if contains $p.Maerkte (print .Code)}}checked{{end}}> {{.Code}}</label>{{end}}
+        <label class="schmal"><input type="checkbox" name="auch_verzoegert" value="1" {{if .AuchVerzoegert}}checked{{end}}> auch längere Lieferzeit</label>
+        <button type="submit" class="schmal">Speichern</button>
+      </form>
+    </td>
+    <td>
+      {{if .BesterText}}{{.BesterText}}<br>{{end}}
+      <small>{{.Status}}</small>{{if .Geprueft}}<br><small>{{.Geprueft}}</small>{{end}}
+    </td>
+    <td class="aktionen">
+      <form method="post" action="/monitor/produkte/{{.ID}}/testen"><button type="submit">Testen</button></form>
+      <form method="post" action="/monitor/produkte/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Pausieren{{else}}Aktivieren{{end}}</button></form>
+      <form method="post" action="/monitor/produkte/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="4" class="leer">Noch kein Produkt — unten das erste anlegen.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Neues Produkt</h2>
+<form method="post" action="/monitor/produkte" class="karte">
+  <label>Link zur Preisliste bei billiger.de <small>Produkt bei billiger.de suchen, öffnen und den Link aus der Adresszeile einfügen</small>
+    <input name="url" type="url" required placeholder="https://www.billiger.de/pricelist/…"></label>
+  <label>Name <small>leer lassen — dann gilt der Name von billiger.de</small><input name="name"></label>
+  <label>ASIN <small>leer lassen — dann sucht der Monitor sie über die EAN bei Keepa</small><input name="asin" size="11"></label>
+  <label>Höchster Einkaufspreis mit Versand <small>leer heißt: jeder Preis wird mit Keepa durchgerechnet (kostet Token)</small>
+    <input name="max_ek" placeholder="z. B. 399,99"></label>
+  <label>Nur diese Shops <small>mit Komma getrennt, etwa „OTTO, Kaufland, MediaMarkt" — leer heißt: alle</small>
+    <input name="shops"></label>
+  <fieldset><legend>Zielmärkte <small>keiner angehakt heißt: wie unter Einstellungen</small></legend>
+    {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
+  </fieldset>
+  <label><input type="checkbox" name="auch_verzoegert" value="1"> auch Angebote mit längerer Lieferzeit (eine Woche und mehr)</label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+
+<h2>Regeln: was in welchen Channel geht</h2>
+<p class="hinweis">Ein Treffer geht in <em>jeden</em> Channel, dessen Regel er erfüllt. Erfüllt er keine, wird er nur
+unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zielmarkts).</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Channel</th><th>Produkt</th><th>Mindestens</th><th>Shops</th><th></th></tr></thead>
+  <tbody>
+  {{range .Regeln}}
+  <tr>
+    <td>#{{.ChannelName}}{{if .Name}}<br><small>{{.Name}}</small>{{end}}</td>
+    <td>{{.ProduktName}}</td>
+    <td>{{if .MinMargeText}}Marge {{.MinMargeText}} {{end}}{{if .MinGewinnText}}Gewinn {{.MinGewinnText}} {{end}}{{if .MinSales}}{{.MinSales}} Verkäufe{{end}}
+      {{if not (or .MinMargeText .MinGewinnText .MinSales)}}<small>keine Schwelle</small>{{end}}</td>
+    <td>{{if .Shops}}{{.Shops}}{{else}}alle{{end}}</td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/regeln/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/regeln/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch keine Regel — ohne Regel postet der Monitor nichts.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<form method="post" action="/monitor/regeln" class="karte">
+  <label>Channel
+    <select name="channel_id" required>
+      <option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}
+    </select></label>
+  <label>Produkt
+    <select name="produkt_id">
+      <option value="0">alle Produkte</option>
+      {{range .Produkte}}<option value="{{.ID}}">{{.Anzeige}}</option>{{end}}
+    </select></label>
+  <label>Mindestmarge in % <input name="min_marge" placeholder="z. B. 15"></label>
+  <label>Mindestgewinn in € <input name="min_gewinn" placeholder="z. B. 10"></label>
+  <label>Mindestverkäufe im Monat <input name="min_sales" type="number" min="0" placeholder="z. B. 20"></label>
+  <label>Nur diese Shops <small>leer heißt: alle</small><input name="shops" placeholder="z. B. OTTO, Kaufland"></label>
+  <label>Bezeichnung <small>nur für euch, optional</small><input name="name" placeholder="z. B. High Margin"></label>
+  <button type="submit" class="primaer">Regel anlegen</button>
+</form>
+
+<h2>Letzte Treffer</h2>
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>Zeit</th><th>Produkt</th><th>Einkauf</th><th>Gewinn</th><th>Marge</th><th>Verkäufe</th><th>Ergebnis</th></tr></thead>
+  <tbody>
+  {{range .Treffer}}
+  <tr>
+    <td>{{.ZeitText}}</td>
+    <td>{{.Titel}}</td>
+    <td>{{.GesamtText}} bei {{.Shop}}</td>
+    <td>{{.GewinnText}}</td>
+    <td>{{.MargeText}}</td>
+    <td>{{.Sales}}</td>
+    <td>{{if .Gepostet}}<span class="chip positiv">gepostet</span>{{end}} <small>{{.Ergebnis}}</small></td>
+  </tr>
+  {{else}}
+  <tr><td colspan="7" class="leer">Noch keine Treffer.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{template "fuss"}}
+{{end}}

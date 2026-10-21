@@ -56,6 +56,14 @@ type Server struct {
 	// ersetzt Telegrams API in Tests.
 	telegram         telegramStand
 	telegramBasisURL string
+
+	// monitorMu lässt immer nur eine Monitor-Prüfung zugleich laufen — die
+	// im Hintergrund und die per Knopf „Testen" sollen sich nicht
+	// überholen und denselben Deal nicht zweimal posten.
+	monitorMu sync.Mutex
+	// monitorHTTP ersetzt in Tests den Client für billiger.de; nil heißt
+	// srv.http.
+	monitorHTTP *http.Client
 }
 
 // Neu baut den Server. envKeepaKey ist die Umgebungsvariable KEEPA_API_KEY
@@ -76,7 +84,7 @@ func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *
 		// Länder-SVG der Marktübersicht. Es als Zeichenkette durch die
 		// Seitendaten zu reichen hieße, Markup in Go-Strukturen zu tragen,
 		// die sonst nur fertige Zahlen führen.
-		tmpl: template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }}).
+		tmpl: template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode}).
 			ParseFS(vorlagenFS, "templates/*.html")),
 	}
 }
@@ -178,6 +186,17 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /tarife", srv.speichereTarife)
 	mux.HandleFunc("POST /tarife/neu", srv.neueTarifKlasse)
 	mux.HandleFunc("POST /tarife/{id}/loeschen", srv.loescheTarifKlasse)
+
+	mux.HandleFunc("GET /monitor", srv.zeigeMonitor)
+	mux.HandleFunc("POST /monitor/produkte", srv.speichereMonitorProdukt)
+	mux.HandleFunc("POST /monitor/produkte/{id}/aendern", srv.aendereMonitorProdukt)
+	mux.HandleFunc("POST /monitor/produkte/{id}/aktiv", srv.schalteMonitorProdukt)
+	mux.HandleFunc("POST /monitor/produkte/{id}/loeschen", srv.loescheMonitorProdukt)
+	mux.HandleFunc("POST /monitor/produkte/{id}/testen", srv.testeMonitorProdukt)
+	mux.HandleFunc("POST /monitor/regeln", srv.speichereMonitorRegel)
+	mux.HandleFunc("POST /monitor/regeln/{id}/aktiv", srv.schalteMonitorRegel)
+	mux.HandleFunc("POST /monitor/regeln/{id}/loeschen", srv.loescheMonitorRegel)
+	mux.HandleFunc("POST /monitor/einstellungen", srv.speichereMonitorEinstellungen)
 
 	mux.HandleFunc("GET /einstellungen", srv.zeigeEinstellungen)
 	mux.HandleFunc("POST /einstellungen", srv.speichereEinstellungen)

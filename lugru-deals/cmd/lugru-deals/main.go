@@ -115,6 +115,9 @@ func laufe() int {
 	// Liest regelmäßig die Reaktionen (✅/❌) unter den Posts, sobald ein
 	// Bot-Token eingetragen ist.
 	srv.StarteReaktionsAbgleich(ctx)
+	// Der Shop-Monitor prüft im Hintergrund die beobachteten Produkte bei
+	// billiger.de — nur, solange er unter Monitor eingeschaltet ist.
+	srv.StarteMonitor(ctx)
 	// Eingelesene Deals mit dem aktuellen Einlesen nachprüfen — so werden
 	// Zahlen, die eine ältere Version falsch gelesen hat, beim Start
 	// berichtigt.

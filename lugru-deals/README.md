@@ -203,6 +203,37 @@ Sieht die Notiz nach dem ganzen Post von früher aus (`{{range .Maerkte}}`,
 baut Märkte und Links selbst, alles davon in der Notiz erscheint doppelt.
 
 
+## Shop-Monitor
+
+Unter **Monitor** beobachtet das Programm Produkte bei billiger.de und postet
+selbst, sobald ein Shop einen Deal hergibt. billiger.de führt die Angebote von
+OTTO, Kaufland, MediaMarkt, Cyberport und vielen anderen auf einer Seite und
+liefert sie — anders als die Shops selbst — auch an einen Server aus.
+
+1. **Produkt anlegen:** das Produkt bei billiger.de öffnen und den Link
+   (`…/pricelist/…` oder `…/products/…`) einfügen. Optional: höchster
+   Einkaufspreis mit Versand, nur bestimmte Shops („OTTO, Kaufland“),
+   Zielmärkte. Die ASIN sucht der Monitor über die EAN selbst bei Keepa.
+2. **Regeln anlegen:** je Regel ein Channel und Mindestwerte für Marge,
+   Gewinn und Verkäufe, optional nur für ein Produkt oder bestimmte Shops.
+   Ein Treffer geht in jeden Channel, dessen Regel er erfüllt.
+3. **Testen:** zeigt den fertigen Post und die Channels, ohne zu senden.
+4. **Einschalten:** unter *Einstellungen* oben auf der Seite.
+
+Ein Treffer läuft durch dieselben Schritte wie ein Deal von Hand — der Post
+sieht deshalb genau so aus. Einkaufspreis ist der Preis mit Versand, der
+Einkaufslink die Preisliste bei billiger.de, die Notiz nennt den Shop.
+
+Keepa wird nur gefragt, wenn sich das günstigste passende Angebot ändert;
+derselbe Deal wird innerhalb der Sperrzeit (Vorgabe 6 Stunden) nicht noch
+einmal gepostet, außer er wird günstiger. Jedes Produkt wird höchstens alle
+15 Sekunden geprüft (Vorgabe 60), zwischen zwei Abrufen liegen 2 Sekunden.
+
+Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
+sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen
+Minuten zu sehen. OTTO und Kaufland direkt abzufragen geht nur über einen
+kostenpflichtigen Dienst, der deren Bot-Schutz umgeht.
+
 ## Affiliate-Tags
 
 Die Amazon-Links im Post tragen einen Affiliate-Tag: aus

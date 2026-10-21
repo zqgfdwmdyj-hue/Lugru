@@ -468,6 +468,19 @@ func (srv *Server) ladeDeal(w http.ResponseWriter, r *http.Request) {
 	d.Schritt = schrittRechnung
 	d.ChartURL = d.Formular.chartURL(string(d.Formular.Leitmarkt))
 
+	fehler := srv.keepaEinlesen(r.Context(), &d, r.PostForm.Get("neu_laden") != "")
+	d.Fehler = strings.Join(fehler, " · ")
+
+	d.TokenText = srv.tokenText()
+	srv.rechnungFuellen(&d)
+	srv.rendereSchritt(w, r, "schritt3", d)
+}
+
+// keepaEinlesen holt den Artikel für jeden gewählten Zielmarkt bei Keepa und
+// belegt die Felder des Formulars damit — der Kern von Schritt 3, den auch
+// der Shop-Monitor nutzt. Zurück kommen die Fehler je Markt, fertig für die
+// Anzeige; ein Markt mit Fehler steht auf den Standardwerten.
+func (srv *Server) keepaEinlesen(ctx context.Context, d *dealSeite, neuLaden bool) []string {
 	// Je Markt ein Abruf, der Reihe nach. Der Cache liegt auf (asin, domain)
 	// und trennt die Märkte damit sauber — der Weg zurück nach Schritt 2 und
 	// wieder vor kostet also keine weiteren Token.
@@ -494,7 +507,7 @@ func (srv *Server) ladeDeal(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			continue
 		}
-		produkt, err := srv.holeProdukt(r, d.Formular.ASIN, ziel)
+		produkt, err := srv.holeProduktCtx(ctx, d.Formular.ASIN, ziel, neuLaden)
 		if err != nil {
 			// sicherFehlertext ist hier keine Formsache: holeProdukt reicht
 			// im default-Zweig einen Fehler durch, der von einem *url.Error
@@ -504,23 +517,19 @@ func (srv *Server) ladeDeal(w http.ResponseWriter, r *http.Request) {
 			// genau die Klasse Leck, gegen die sicherFehlertext bereits in
 			// channels.go absichert (siehe dortiger Kommentar).
 			fehler = append(fehler, "Amazon."+string(ziel.Code)+": "+sicherFehlertext(err.Error()))
-			srv.standardwerteFuer(&d, ziel)
+			srv.standardwerteFuer(d, ziel)
 			continue
 		}
-		srv.uebernehmeArtikel(&d, ziel, produkt)
+		srv.uebernehmeArtikel(d, ziel, produkt)
 		geholt = append(geholt, struct {
 			ziel    marketplace.Marketplace
 			produkt keepa.Product
 		}{ziel, produkt})
 	}
 	for _, g := range geholt {
-		srv.uebernehmeKeepa(&d, g.ziel, g.produkt)
+		srv.uebernehmeKeepa(d, g.ziel, g.produkt)
 	}
-	d.Fehler = strings.Join(fehler, " · ")
-
-	d.TokenText = srv.tokenText()
-	srv.rechnungFuellen(&d)
-	srv.rendereSchritt(w, r, "schritt3", d)
+	return fehler
 }
 
 // standardwerteFuer belegt den Markt, für den Keepa nicht erreichbar war.
@@ -753,9 +762,15 @@ func (srv *Server) keepaKeyAufloesen() string {
 
 // holeProdukt fragt Keepa, nutzt aber zuerst den Zwischenspeicher.
 func (srv *Server) holeProdukt(r *http.Request, asin string, ziel marketplace.Marketplace) (keepa.Product, error) {
+	return srv.holeProduktCtx(r.Context(), asin, ziel, r.PostForm.Get("neu_laden") != "")
+}
+
+// holeProduktCtx ist holeProdukt ohne Anfrage — der Shop-Monitor ruft es aus
+// dem Hintergrund. neuLaden umgeht den Zwischenspeicher.
+func (srv *Server) holeProduktCtx(ctx context.Context, asin string, ziel marketplace.Marketplace, neuLaden bool) (keepa.Product, error) {
 	minuten := srv.store.EinstellungZahl(store.SchluesselCacheMinuten)
 	if roh, da := srv.store.CacheLesen(asin, ziel.KeepaDomain,
-		time.Duration(minuten)*time.Minute); da && r.PostForm.Get("neu_laden") == "" {
+		time.Duration(minuten)*time.Minute); da && !neuLaden {
 		if a, err := keepa.ParseAntwort(roh); err == nil {
 			return a.Produkt, nil
 		}
@@ -781,7 +796,7 @@ func (srv *Server) holeProdukt(r *http.Request, asin string, ziel marketplace.Ma
 	keepaClient := *srv.keepa
 	keepaClient.Key = schluessel
 
-	a, roh, err := keepaClient.Produkt(r.Context(), asin, ziel.KeepaDomain)
+	a, roh, err := keepaClient.Produkt(ctx, asin, ziel.KeepaDomain)
 	if err != nil {
 		return keepa.Product{}, keepaFehler(err, asin, ziel)
 	}
@@ -882,176 +897,13 @@ func (srv *Server) sendeDeal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chartName := ""
-	if len(png) > 0 {
-		chartName = d.Formular.ASIN + ".png"
-	}
-
-	// Ein schlichter Textpost mit dem Chart als Anhang darunter — keine
-	// Karte: ein Anhang steht in voller Breite im Channel, ein Bild in einer
-	// Karte nur so breit wie die Karte. Die Erwähnung steht im Text am Ende
-	// der Titelzeile und pingt dort auch.
-	gesendet, err := discord.SendeMitWiederholung(r.Context(), srv.http, erg.Channel.WebhookURL, discord.Nachricht{
-		Inhalt:    erg.Text,
-		Mention:   discord.MentionTyp(erg.Channel.MentionTyp),
-		RollenID:  erg.Channel.RollenID,
-		ChartName: chartName,
-		ChartPNG:  png,
-	})
+	ausgang, err := srv.posten(r.Context(), d.Formular, erg, png, eingabenZumMerken(r.PostForm).Encode())
 	if err != nil {
-		if errors.Is(err, discord.ErrWebhookTot) {
-			_ = srv.store.ChannelDefekt(erg.Channel.ID, true)
-		}
-		// sicherFehlertext ist hier Pflicht, nicht Kosmetik: internal/discord
-		// bemüht sich zwar, die Webhook-URL nie in einen Fehler zu
-		// schreiben, aber dieser zweite, unabhängige Scrub ist die
-		// etablierte Verteidigungslinie dieses Projekts (siehe channels.go)
-		// und fängt jede URL ab, die trotzdem durchrutscht.
-		d.Fehler = "Nicht gesendet: " + sicherFehlertext(err.Error())
+		d.Fehler = err.Error()
 		srv.rendereSchritt(w, r, "schritt4", d)
 		return
 	}
-	_ = srv.store.ChannelDefekt(erg.Channel.ID, false)
-
-	// Gepostet ist gepostet: der Entwurf, aus dem der Deal stammt, hat
-	// seinen Zweck erfüllt.
-	if d.Formular.EntwurfID != 0 {
-		_ = srv.store.EntwurfLoeschen(d.Formular.EntwurfID)
-	}
-
-	chartDatei := ""
-	if len(png) > 0 {
-		chartDatei, _ = srv.store.ChartSpeichern(d.Formular.ASIN, png)
-	}
-
-	quellURL := ""
-	if erg.Extern {
-		quellURL = erg.QuellURL
-	}
-	// Die Herkunftsangaben der Historie gehören zum gerechneten Markt, also
-	// zum Leitmarkt — dieselbe Zeile trägt ja auch dessen Gewinn und Marge.
-	leit := d.Formular.Leit()
-
-	// Die Marktzeilen tragen dieselben Zahlen wie der gesendete Post. Die
-	// Quellen ("keepa", "standardwert", "EFN-Tarif · Standardpaket") kommen
-	// aus dem Formular — in der Historie soll später ablesbar sein, woher
-	// jede Zahl stammte.
-	maerkte := make([]store.DealMarkt, 0, len(erg.Maerkte))
-	for _, m := range erg.Maerkte {
-		mf, _ := d.Formular.Markt(m.Ziel.Code)
-		dm := store.DealMarkt{
-			Markt: string(m.Ziel.Code), Leitmarkt: m.Leitmarkt,
-			VKCent: m.VKBrutto, VKQuelle: mf.VKQuelle,
-			Sales: m.Sales, SalesQuelle: mf.SalesQuelle,
-			ProvisionProzent: m.Provision, ProvisionQuelle: mf.ProvisionQuelle,
-			FBACent: m.FBA, FBAQuelle: mf.FBAQuelle,
-			GewinnCent: m.Ergebnis.Gewinn, MargeProzent: m.Ergebnis.MargeProzent,
-		}
-		// Nur wo es den Vergleich gibt. Ein Nullwert stünde sonst als
-		// Aussage da, die niemand gerechnet hat.
-		if m.PanEU != nil {
-			dm.PanEU = &store.DealMarktPanEU{
-				FBACent:      m.PanEUGebuehr,
-				GewinnCent:   m.PanEU.Gewinn,
-				MargeProzent: m.PanEU.MargeProzent,
-			}
-		}
-		maerkte = append(maerkte, dm)
-	}
-
-	eintrag := store.Deal{
-		ASIN: d.Formular.ASIN, Titel: d.Formular.Titel,
-		Quellmarkt: string(erg.Quell.Code), QuellURL: quellURL,
-		Lieferant: func() string {
-			if d.Formular.OhneLink {
-				return lieferantAnzeige(d.Formular.Lieferant)
-			}
-			return ""
-		}(),
-		Zielmarkt: string(leitErg.Ziel.Code),
-		// Gespeichert wird der Bruttopreis, auch nach einer Netto-Eingabe:
-		// die Historie soll Zeile für Zeile vergleichbar bleiben, egal wie
-		// der Preis eingegeben wurde. Wie er eingegeben wurde, steht in
-		// EKArt daneben.
-		EKCent: leitErg.Ergebnis.EKBrutto, EKArt: d.Formular.EKArt, EKNotiz: d.Formular.EKNotiz,
-		MaxMenge: erg.MaxMenge,
-		Poster: func() string {
-			if p, ok := srv.poster(d.Formular.Poster); ok {
-				return p.Name
-			}
-			return ""
-		}(),
-		Steuersatz: func() string {
-			if d.Formular.Steuersatz == "ermaessigt" {
-				return "ermaessigt"
-			}
-			return ""
-		}(),
-		VKCent: leitErg.VKBrutto, VKQuelle: leit.VKQuelle,
-		Sales: leitErg.Sales, SalesQuelle: leit.SalesQuelle,
-		ProvisionProzent: leitErg.Provision, ProvisionQuelle: leit.ProvisionQuelle,
-		FBACent: leitErg.FBA, FBAQuelle: leit.FBAQuelle,
-		UStModus:   d.Formular.UStModus,
-		GewinnCent: leitErg.Ergebnis.Gewinn, MargeProzent: leitErg.Ergebnis.MargeProzent,
-		ChannelID: erg.Channel.ID, ChannelName: erg.Channel.Name, Gruppe: erg.Channel.Gruppe,
-		NachrichtText: erg.Text, ChartDatei: chartDatei,
-		BildKennung:        d.Formular.BildKennung,
-		DiscordNachrichtID: gesendet.NachrichtID,
-		DiscordKanalID:     gesendet.KanalID,
-		Maerkte:            maerkte,
-	}
-	eintrag.Formular = eingabenZumMerken(r.PostForm).Encode()
-	hauptID, err := srv.store.DealAnlegen(eintrag)
-	if err != nil {
-		d.Fehler = "Gepostet, aber nicht in der Historie gespeichert: " + sicherFehlertext(err.Error())
-		srv.rendereSchritt(w, r, "schritt4", d)
-		return
-	}
-
-	// ✅ und ❌ unter den Post setzen, falls ein Bot eingerichtet ist.
-	srv.reaktionenVorbelegen(gesendet.KanalID, gesendet.NachrichtID, erg.Channel.Name)
-	// Und derselbe Post zusätzlich an Telegram, falls eingeschaltet — nur
-	// einmal, auch wenn der Deal in mehrere Channels geht.
-	srv.anTelegram(erg.Text, png)
-
-	// Weitere Channels: derselbe Deal mit demselben Chart, jeweils mit der
-	// Erwähnung des Channels. Jeder Post steht für sich in der Historie und
-	// verweist auf den ersten; die Statistik über alle Gruppen zählt den
-	// Deal so nur einmal. Ein Fehler hier nimmt den ersten Post nicht zurück
-	// — er ist ja draußen — und wird darum nach dem Neuladen gemeldet.
-	gepostetIn := []string{"#" + erg.Channel.Name}
-	var fehlgeschlagen []string
-	for _, cid := range d.Formular.WeitereChannels {
-		f := d.Formular
-		f.ChannelID = cid
-		weiter, err := srv.baueDeal(f)
-		if err != nil || weiter.Channel.ID == 0 {
-			fehlgeschlagen = append(fehlgeschlagen, "Channel "+itoa(cid)+" gibt es nicht mehr")
-			continue
-		}
-		g, err := discord.SendeMitWiederholung(r.Context(), srv.http, weiter.Channel.WebhookURL, discord.Nachricht{
-			Inhalt: weiter.Text, Mention: discord.MentionTyp(weiter.Channel.MentionTyp),
-			RollenID: weiter.Channel.RollenID, ChartName: chartName, ChartPNG: png,
-		})
-		if err != nil {
-			if errors.Is(err, discord.ErrWebhookTot) {
-				_ = srv.store.ChannelDefekt(weiter.Channel.ID, true)
-			}
-			fehlgeschlagen = append(fehlgeschlagen, "#"+weiter.Channel.Name+": "+sicherFehlertext(err.Error()))
-			continue
-		}
-		_ = srv.store.ChannelDefekt(weiter.Channel.ID, false)
-		zweit := eintrag
-		zweit.HauptID = hauptID
-		zweit.ChannelID, zweit.ChannelName, zweit.Gruppe = weiter.Channel.ID, weiter.Channel.Name, weiter.Channel.Gruppe
-		zweit.NachrichtText = weiter.Text
-		zweit.DiscordNachrichtID, zweit.DiscordKanalID = g.NachrichtID, g.KanalID
-		if _, err := srv.store.DealAnlegen(zweit); err != nil {
-			fehlgeschlagen = append(fehlgeschlagen, "#"+weiter.Channel.Name+": gepostet, aber nicht gespeichert")
-		}
-		srv.reaktionenVorbelegen(g.KanalID, g.NachrichtID, weiter.Channel.Name)
-		gepostetIn = append(gepostetIn, "#"+weiter.Channel.Name)
-	}
+	gepostetIn, fehlgeschlagen := ausgang.GepostetIn, ausgang.Fehlgeschlagen
 
 	// Der Posten-Knopf zielt mit hx-target="#funnel" auf ein Fragment, kein
 	// ganzes Dokument. Die "deal"-Vorlage ist aber ein komplettes
@@ -1075,6 +927,195 @@ func (srv *Server) sendeDeal(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("HX-Refresh", "true")
 	srv.rendere(w, "gepostet", "Gepostet in "+strings.Join(gepostetIn, ", ")+".")
+}
+
+// postAusgang sagt, wohin ein Deal gegangen ist.
+type postAusgang struct {
+	HauptID        int64
+	GepostetIn     []string
+	Fehlgeschlagen []string
+}
+
+// posten sendet einen fertig gerechneten Deal an seinen Channel und an die
+// weiteren Channels aus f.WeitereChannels und legt jeden Post in der Historie
+// ab — der Kern von sendeDeal, den auch der Shop-Monitor nutzt. So sieht ein
+// Monitor-Deal genau so aus wie einer, der von Hand gepostet wurde.
+//
+// Ein Fehler heißt: der erste Post ist nicht hinausgegangen oder nicht
+// gespeichert. Scheitert nur ein weiterer Channel, steht das in
+// Fehlgeschlagen, denn der erste Post ist dann schon draußen.
+//
+// formular sind die Eingaben für "Erneut posten" (siehe eingabenZumMerken).
+func (srv *Server) posten(ctx context.Context, f dealFormular, erg dealErgebnis, png []byte, formular string) (postAusgang, error) {
+	leitErg := erg.Leit()
+	chartName := ""
+	if len(png) > 0 {
+		chartName = f.ASIN + ".png"
+	}
+
+	// Ein schlichter Textpost mit dem Chart als Anhang darunter — keine
+	// Karte: ein Anhang steht in voller Breite im Channel, ein Bild in einer
+	// Karte nur so breit wie die Karte. Die Erwähnung steht im Text am Ende
+	// der Titelzeile und pingt dort auch.
+	gesendet, err := discord.SendeMitWiederholung(ctx, srv.http, erg.Channel.WebhookURL, discord.Nachricht{
+		Inhalt:    erg.Text,
+		Mention:   discord.MentionTyp(erg.Channel.MentionTyp),
+		RollenID:  erg.Channel.RollenID,
+		ChartName: chartName,
+		ChartPNG:  png,
+	})
+	if err != nil {
+		if errors.Is(err, discord.ErrWebhookTot) {
+			_ = srv.store.ChannelDefekt(erg.Channel.ID, true)
+		}
+		// sicherFehlertext ist hier Pflicht, nicht Kosmetik: internal/discord
+		// bemüht sich zwar, die Webhook-URL nie in einen Fehler zu
+		// schreiben, aber dieser zweite, unabhängige Scrub ist die
+		// etablierte Verteidigungslinie dieses Projekts (siehe channels.go)
+		// und fängt jede URL ab, die trotzdem durchrutscht.
+		return postAusgang{}, errors.New("Nicht gesendet: " + sicherFehlertext(err.Error()))
+	}
+	_ = srv.store.ChannelDefekt(erg.Channel.ID, false)
+
+	// Gepostet ist gepostet: der Entwurf, aus dem der Deal stammt, hat
+	// seinen Zweck erfüllt.
+	if f.EntwurfID != 0 {
+		_ = srv.store.EntwurfLoeschen(f.EntwurfID)
+	}
+
+	chartDatei := ""
+	if len(png) > 0 {
+		chartDatei, _ = srv.store.ChartSpeichern(f.ASIN, png)
+	}
+
+	quellURL := ""
+	if erg.Extern {
+		quellURL = erg.QuellURL
+	}
+	// Die Herkunftsangaben der Historie gehören zum gerechneten Markt, also
+	// zum Leitmarkt — dieselbe Zeile trägt ja auch dessen Gewinn und Marge.
+	leit := f.Leit()
+
+	// Die Marktzeilen tragen dieselben Zahlen wie der gesendete Post. Die
+	// Quellen ("keepa", "standardwert", "EFN-Tarif · Standardpaket") kommen
+	// aus dem Formular — in der Historie soll später ablesbar sein, woher
+	// jede Zahl stammte.
+	maerkte := make([]store.DealMarkt, 0, len(erg.Maerkte))
+	for _, m := range erg.Maerkte {
+		mf, _ := f.Markt(m.Ziel.Code)
+		dm := store.DealMarkt{
+			Markt: string(m.Ziel.Code), Leitmarkt: m.Leitmarkt,
+			VKCent: m.VKBrutto, VKQuelle: mf.VKQuelle,
+			Sales: m.Sales, SalesQuelle: mf.SalesQuelle,
+			ProvisionProzent: m.Provision, ProvisionQuelle: mf.ProvisionQuelle,
+			FBACent: m.FBA, FBAQuelle: mf.FBAQuelle,
+			GewinnCent: m.Ergebnis.Gewinn, MargeProzent: m.Ergebnis.MargeProzent,
+		}
+		// Nur wo es den Vergleich gibt. Ein Nullwert stünde sonst als
+		// Aussage da, die niemand gerechnet hat.
+		if m.PanEU != nil {
+			dm.PanEU = &store.DealMarktPanEU{
+				FBACent:      m.PanEUGebuehr,
+				GewinnCent:   m.PanEU.Gewinn,
+				MargeProzent: m.PanEU.MargeProzent,
+			}
+		}
+		maerkte = append(maerkte, dm)
+	}
+
+	eintrag := store.Deal{
+		ASIN: f.ASIN, Titel: f.Titel,
+		Quellmarkt: string(erg.Quell.Code), QuellURL: quellURL,
+		Lieferant: func() string {
+			if f.OhneLink {
+				return lieferantAnzeige(f.Lieferant)
+			}
+			return ""
+		}(),
+		Zielmarkt: string(leitErg.Ziel.Code),
+		// Gespeichert wird der Bruttopreis, auch nach einer Netto-Eingabe:
+		// die Historie soll Zeile für Zeile vergleichbar bleiben, egal wie
+		// der Preis eingegeben wurde. Wie er eingegeben wurde, steht in
+		// EKArt daneben.
+		EKCent: leitErg.Ergebnis.EKBrutto, EKArt: f.EKArt, EKNotiz: f.EKNotiz,
+		MaxMenge: erg.MaxMenge,
+		Poster: func() string {
+			if p, ok := srv.poster(f.Poster); ok {
+				return p.Name
+			}
+			return ""
+		}(),
+		Steuersatz: func() string {
+			if f.Steuersatz == "ermaessigt" {
+				return "ermaessigt"
+			}
+			return ""
+		}(),
+		VKCent: leitErg.VKBrutto, VKQuelle: leit.VKQuelle,
+		Sales: leitErg.Sales, SalesQuelle: leit.SalesQuelle,
+		ProvisionProzent: leitErg.Provision, ProvisionQuelle: leit.ProvisionQuelle,
+		FBACent: leitErg.FBA, FBAQuelle: leit.FBAQuelle,
+		UStModus:   f.UStModus,
+		GewinnCent: leitErg.Ergebnis.Gewinn, MargeProzent: leitErg.Ergebnis.MargeProzent,
+		ChannelID: erg.Channel.ID, ChannelName: erg.Channel.Name, Gruppe: erg.Channel.Gruppe,
+		NachrichtText: erg.Text, ChartDatei: chartDatei,
+		BildKennung:        f.BildKennung,
+		DiscordNachrichtID: gesendet.NachrichtID,
+		DiscordKanalID:     gesendet.KanalID,
+		Maerkte:            maerkte,
+	}
+	eintrag.Formular = formular
+	hauptID, err := srv.store.DealAnlegen(eintrag)
+	if err != nil {
+		return postAusgang{}, errors.New("Gepostet, aber nicht in der Historie gespeichert: " + sicherFehlertext(err.Error()))
+	}
+
+	// ✅ und ❌ unter den Post setzen, falls ein Bot eingerichtet ist.
+	srv.reaktionenVorbelegen(gesendet.KanalID, gesendet.NachrichtID, erg.Channel.Name)
+	// Und derselbe Post zusätzlich an Telegram, falls eingeschaltet — nur
+	// einmal, auch wenn der Deal in mehrere Channels geht.
+	srv.anTelegram(erg.Text, png)
+
+	// Weitere Channels: derselbe Deal mit demselben Chart, jeweils mit der
+	// Erwähnung des Channels. Jeder Post steht für sich in der Historie und
+	// verweist auf den ersten; die Statistik über alle Gruppen zählt den
+	// Deal so nur einmal. Ein Fehler hier nimmt den ersten Post nicht zurück
+	// — er ist ja draußen — und wird darum nach dem Neuladen gemeldet.
+	gepostetIn := []string{"#" + erg.Channel.Name}
+	var fehlgeschlagen []string
+	for _, cid := range f.WeitereChannels {
+		f := f
+		f.ChannelID = cid
+		weiter, err := srv.baueDeal(f)
+		if err != nil || weiter.Channel.ID == 0 {
+			fehlgeschlagen = append(fehlgeschlagen, "Channel "+itoa(cid)+" gibt es nicht mehr")
+			continue
+		}
+		g, err := discord.SendeMitWiederholung(ctx, srv.http, weiter.Channel.WebhookURL, discord.Nachricht{
+			Inhalt: weiter.Text, Mention: discord.MentionTyp(weiter.Channel.MentionTyp),
+			RollenID: weiter.Channel.RollenID, ChartName: chartName, ChartPNG: png,
+		})
+		if err != nil {
+			if errors.Is(err, discord.ErrWebhookTot) {
+				_ = srv.store.ChannelDefekt(weiter.Channel.ID, true)
+			}
+			fehlgeschlagen = append(fehlgeschlagen, "#"+weiter.Channel.Name+": "+sicherFehlertext(err.Error()))
+			continue
+		}
+		_ = srv.store.ChannelDefekt(weiter.Channel.ID, false)
+		zweit := eintrag
+		zweit.HauptID = hauptID
+		zweit.ChannelID, zweit.ChannelName, zweit.Gruppe = weiter.Channel.ID, weiter.Channel.Name, weiter.Channel.Gruppe
+		zweit.NachrichtText = weiter.Text
+		zweit.DiscordNachrichtID, zweit.DiscordKanalID = g.NachrichtID, g.KanalID
+		if _, err := srv.store.DealAnlegen(zweit); err != nil {
+			fehlgeschlagen = append(fehlgeschlagen, "#"+weiter.Channel.Name+": gepostet, aber nicht gespeichert")
+		}
+		srv.reaktionenVorbelegen(g.KanalID, g.NachrichtID, weiter.Channel.Name)
+		gepostetIn = append(gepostetIn, "#"+weiter.Channel.Name)
+	}
+
+	return postAusgang{HauptID: hauptID, GepostetIn: gepostetIn, Fehlgeschlagen: fehlgeschlagen}, nil
 }
 
 // zeigeChart reicht das Keepa-Bild für die Vorschau durch, damit die Seite

@@ -192,6 +192,66 @@ CREATE TABLE IF NOT EXISTS keepa_cache (
     antwort_json BLOB    NOT NULL,
     PRIMARY KEY (asin, domain_id)
 );
+
+-- Der Shop-Monitor (siehe internal/web/monitor.go): Produkte, die bei
+-- billiger.de beobachtet werden, die Regeln, nach denen ein Treffer in
+-- welchen Channel geht, und das Protokoll der Treffer.
+--
+-- Je Produkt steht der zuletzt bewertete Einkauf (bewertet_shop,
+-- bewertet_cent) dabei: solange sich das günstigste Angebot nicht ändert,
+-- wird Keepa nicht erneut gefragt — ein Abruf kostet Token, und der Monitor
+-- prüft im Minutentakt.
+CREATE TABLE IF NOT EXISTS monitor_produkte (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL DEFAULT '',
+    url            TEXT    NOT NULL,
+    ean            TEXT    NOT NULL DEFAULT '',
+    asin           TEXT    NOT NULL DEFAULT '',
+    maerkte        TEXT    NOT NULL DEFAULT '',
+    max_ek_cent    INTEGER NOT NULL DEFAULT 0,
+    shops          TEXT    NOT NULL DEFAULT '',
+    auch_verzoegert INTEGER NOT NULL DEFAULT 0,
+    aktiv          INTEGER NOT NULL DEFAULT 1,
+    angelegt_am    TEXT    NOT NULL,
+    geprueft_am    TEXT    NOT NULL DEFAULT '',
+    status         TEXT    NOT NULL DEFAULT '',
+    bester_shop    TEXT    NOT NULL DEFAULT '',
+    bester_cent    INTEGER NOT NULL DEFAULT 0,
+    bewertet_shop  TEXT    NOT NULL DEFAULT '',
+    bewertet_cent  INTEGER NOT NULL DEFAULT 0,
+    bewertet_am    TEXT    NOT NULL DEFAULT ''
+);
+
+-- produkt_id 0 heißt: die Regel gilt für jedes Produkt. shops leer heißt:
+-- für jeden Shop. Ein Treffer geht in jeden Channel, dessen Regel passt.
+CREATE TABLE IF NOT EXISTS monitor_regeln (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    NOT NULL DEFAULT '',
+    channel_id      INTEGER NOT NULL,
+    produkt_id      INTEGER NOT NULL DEFAULT 0,
+    min_marge       REAL    NOT NULL DEFAULT 0,
+    min_gewinn_cent INTEGER NOT NULL DEFAULT 0,
+    min_sales       INTEGER NOT NULL DEFAULT 0,
+    shops           TEXT    NOT NULL DEFAULT '',
+    aktiv           INTEGER NOT NULL DEFAULT 1,
+    angelegt_am     TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS monitor_treffer (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    produkt_id    INTEGER NOT NULL,
+    titel         TEXT    NOT NULL DEFAULT '',
+    shop          TEXT    NOT NULL DEFAULT '',
+    gesamt_cent   INTEGER NOT NULL DEFAULT 0,
+    gewinn_cent   INTEGER NOT NULL DEFAULT 0,
+    marge_prozent REAL    NOT NULL DEFAULT 0,
+    sales         INTEGER NOT NULL DEFAULT 0,
+    gepostet      INTEGER NOT NULL DEFAULT 0,
+    ergebnis      TEXT    NOT NULL DEFAULT '',
+    deal_id       INTEGER NOT NULL DEFAULT 0,
+    zeit          TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_treffer ON monitor_treffer(produkt_id, zeit DESC);
 `
 
 // Open öffnet die Datenbank und legt Schema und Chart-Ordner an, falls sie
