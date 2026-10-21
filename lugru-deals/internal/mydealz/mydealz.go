@@ -9,9 +9,11 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -31,13 +33,28 @@ type Deal struct {
 	Preis money.Cents
 	// Zeit ist die Veröffentlichung, Nullwert wenn unbekannt.
 	Zeit time.Time
+	// Kategorie ist die Kategorie bei mydealz, etwa „Urlaub & Reisen".
+	Kategorie string
+	// Bild ist das Vorschaubild, leer ohne.
+	Bild string
+	// Text ist die Beschreibung ohne HTML.
+	Text string
+	// Temperatur ist die Beliebtheit („177°"); nur der Trending-Feed nennt
+	// sie, sonst 0 und TemperaturBekannt false.
+	Temperatur        int
+	TemperaturBekannt bool
 }
 
 type rss struct {
 	Items []struct {
-		Titel    string `xml:"title"`
-		Link     string `xml:"link"`
-		Datum    string `xml:"pubDate"`
+		Titel        string `xml:"title"`
+		Link         string `xml:"link"`
+		Datum        string `xml:"pubDate"`
+		Kategorie    string `xml:"category"`
+		Beschreibung string `xml:"description"`
+		Bild         struct {
+			URL string `xml:"url,attr"`
+		} `xml:"http://search.yahoo.com/mrss/ content"`
 		Haendler struct {
 			Name  string `xml:"name,attr"`
 			Preis string `xml:"price,attr"`
@@ -59,6 +76,17 @@ func Lies(roh []byte) ([]Deal, error) {
 		}
 		if t, err := time.Parse(time.RFC1123Z, strings.TrimSpace(it.Datum)); err == nil {
 			d.Zeit = t
+		}
+		d.Kategorie = strings.TrimSpace(it.Kategorie)
+		d.Bild = strings.TrimSpace(it.Bild.URL)
+		d.Text = ohneHTML(it.Beschreibung)
+		if m := temperaturMuster.FindStringSubmatch(d.Titel); m != nil {
+			d.Temperatur, _ = strconv.Atoi(m[1])
+			if m[0][0] == '-' {
+				d.Temperatur = -d.Temperatur
+			}
+			d.TemperaturBekannt = true
+			d.Titel = strings.TrimSpace(d.Titel[len(m[0]):])
 		}
 		if d.Link != "" {
 			out = append(out, d)
@@ -90,7 +118,17 @@ func Hole(ctx context.Context, hc *http.Client, url string) ([]Deal, error) {
 	return Lies(roh)
 }
 
-var trenner = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+var (
+	trenner          = regexp.MustCompile(`[^\p{L}\p{N}]+`)
+	temperaturMuster = regexp.MustCompile(`^-?(\d{1,5})°\s*-\s*`)
+	tagMuster        = regexp.MustCompile(`<[^>]+>`)
+	leerMuster       = regexp.MustCompile(`\s+`)
+)
+
+func ohneHTML(s string) string {
+	s = tagMuster.ReplaceAllString(s, " ")
+	return strings.TrimSpace(leerMuster.ReplaceAllString(html.UnescapeString(s), " "))
+}
 
 // woerter zerlegt einen Text in kleingeschriebene Wörter. Zahl und Buchstabe
 // werden dabei getrennt („ps5" → „ps", „5"), damit „PS5" und „PS 5" gleich

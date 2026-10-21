@@ -263,6 +263,14 @@ Regeln lassen sich die Treffer auf eigene Channels verteilen.
 - **Admin-Channel:** Fehler (billiger.de blockt, Keepa leer, Post
   gescheitert) kommen nur zu euch, je Art höchstens einmal pro Stunde.
 
+**Deal-Feeds (Reisen, Auto-Leasing, Eigengebrauch):** Gruppen bei mydealz
+werden alle zwei Minuten gelesen, gefiltert und in einen Channel gepostet —
+ohne Ankauf und ohne Amazon-Rechnung. Vorlagen per Klick: Reisen, Auto-Leasing
+mit Leasingfaktor bis 0,5 (LF, Rate, Laufzeit und Privat/Gewerbe stehen im
+Post) und Hot-Deals ab 200° aus „trending“. Eigene Feeds mit Stichworten,
+Höchstpreis, Mindest-Temperatur, LF-Grenze und Leasing-Art. Beim ersten Abruf
+merkt sich ein Feed die vorhandenen Deals, danach kommen nur neue.
+
 Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
 sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen
 Minuten zu sehen. OTTO und Kaufland direkt abzufragen geht nur über einen

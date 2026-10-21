@@ -32,6 +32,7 @@ func (srv *Server) monitorNebenquellen(ctx context.Context) {
 		srv.mydealzZuletzt = jetzt
 		srv.mydealzPruefen(ctx, jetzt)
 	}
+	srv.feedsPruefen(ctx, jetzt)
 	ks, err := srv.store.Kategorien()
 	if err != nil {
 		return

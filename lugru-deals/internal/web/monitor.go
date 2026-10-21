@@ -72,6 +72,7 @@ type monitorDaten struct {
 	Ausverkauft    bool
 	BasisURL       string
 	ScanKategorien []store.MonitorKategorie
+	Feeds          []feedAnzeige
 
 	// Import ist die geprüfte Liste vor dem Übernehmen, nil ohne Import.
 	Import   []importVorschlag
@@ -116,6 +117,11 @@ func (srv *Server) monitorDaten() monitorDaten {
 	d.ScanKategorien, _ = srv.store.Kategorien()
 	ankaeufer, _ := srv.store.AnkaeuferAlle()
 	d.Channels, _ = srv.store.Channels()
+	feedKanal := map[int64]string{}
+	for _, c := range d.Channels {
+		feedKanal[c.ID] = c.Name
+	}
+	d.Feeds = srv.feedAnzeigen(feedKanal)
 	kanalName := map[int64]string{}
 	for _, c := range d.Channels {
 		kanalName[c.ID] = c.Name

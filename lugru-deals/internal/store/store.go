@@ -332,6 +332,25 @@ CREATE TABLE IF NOT EXISTS monitor_links (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_monitor_links ON monitor_links(schluessel);
 
+-- Deal-Feeds: Gruppen bei mydealz (Reisen, Auto-Leasing, Elektronik …),
+-- gefiltert und in einen Channel gepostet — für Reisen, Leasing und Deals
+-- zum eigenen Gebrauch.
+CREATE TABLE IF NOT EXISTS monitor_feeds (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT    NOT NULL DEFAULT '',
+    art           TEXT    NOT NULL DEFAULT 'allgemein',
+    quelle        TEXT    NOT NULL,
+    channel_id    INTEGER NOT NULL,
+    stichworte    TEXT    NOT NULL DEFAULT '',
+    max_preis     INTEGER NOT NULL DEFAULT 0,
+    min_temp      INTEGER NOT NULL DEFAULT 0,
+    max_lf        REAL    NOT NULL DEFAULT 0,
+    leasing_art   TEXT    NOT NULL DEFAULT '',
+    aktiv         INTEGER NOT NULL DEFAULT 1,
+    geprueft_am   TEXT    NOT NULL DEFAULT '',
+    status        TEXT    NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS monitor_gemeldet (
     schluessel TEXT PRIMARY KEY,
     zeit       TEXT NOT NULL

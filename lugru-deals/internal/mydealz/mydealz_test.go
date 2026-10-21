@@ -2,6 +2,7 @@ package mydealz
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -38,5 +39,35 @@ func TestPasst(t *testing.T) {
 		if got := Passt(f.titel, f.stichworte); got != f.will {
 			t.Errorf("Passt(%q, %q) = %v", f.titel, f.stichworte, got)
 		}
+	}
+}
+
+func TestLeasingFeed(t *testing.T) {
+	roh, _ := os.ReadFile("testdata/leasing.xml")
+	ds, err := Lies(roh)
+	if err != nil || len(ds) != 3 {
+		t.Fatalf("%d Deals, %v", len(ds), err)
+	}
+	if ds[0].Kategorie == "" || ds[0].Text == "" {
+		t.Errorf("Deal = %+v", ds[0])
+	}
+	l := LiesLeasing(ds[0])
+	if l.Faktor != 0.53 || l.Rate != 28500 || l.Monate != 24 || l.Art != "privat" || l.Gesamtkostenfaktor == 0 {
+		t.Errorf("Leasing 0 = %+v", l)
+	}
+	// Im gekürzten Testbeispiel steht der LF nicht mehr, wohl aber der GKF.
+	if l := LiesLeasing(ds[2]); l.Art != "gewerbe" || l.Gesamtkostenfaktor != 0.68 || l.Rate != 32700 {
+		t.Errorf("Leasing 2 = %+v", l)
+	}
+	if l := LiesLeasing(Deal{Titel: "[Privatleasing] Cupra Formentor | 265€/M | 10tkm/J | 24Mo | 0,45LF"}); l.Faktor != 0.45 || l.Rate != 26500 {
+		t.Errorf("LF nachgestellt = %+v", l)
+	}
+}
+
+func TestTrendingTemperatur(t *testing.T) {
+	roh, _ := os.ReadFile("testdata/trending.xml")
+	ds, _ := Lies(roh)
+	if len(ds) != 3 || !ds[0].TemperaturBekannt || ds[0].Temperatur != 177 || strings.HasPrefix(ds[0].Titel, "177") {
+		t.Errorf("Trending = %+v", ds[0])
 	}
 }

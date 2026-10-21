@@ -6,7 +6,7 @@ MediaMarkt, Cyberport und vielen anderen Shops. Wird ein Produkt günstig genug 
 Deal durch und postet ihn wie einen Deal von Hand — in jeden Channel, dessen Regel er erfüllt. Zusätzlich liest er
 neue Deals bei mydealz mit.</p>
 <p class="aktionen"><a href="#produkte">Produkte</a> · <a href="#import">Liste importieren</a> · <a href="#regeln">Regeln</a>
-· <a href="#kategorien">Kategorie-Scan</a> · <a href="#treffer">Treffer</a> · <a href="#einstellungen">Einstellungen</a></p>
+· <a href="#feeds">Reisen, Leasing &amp; Eigengebrauch</a> · <a href="#kategorien">Kategorie-Scan</a> · <a href="#treffer">Treffer</a> · <a href="#einstellungen">Einstellungen</a></p>
 {{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
 {{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
 
@@ -244,6 +244,71 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     <textarea name="liste" rows="8" placeholder="Artikel	Preiswecker	Bester Ankauf	Hinweis"></textarea></label>
   <button type="submit" class="primaer">Einlesen und prüfen</button>
 </form>
+
+<h2 id="feeds">Deal-Feeds: Reisen, Auto-Leasing, Eigengebrauch</h2>
+<p class="hinweis">Gruppen bei mydealz, gefiltert und in einen Channel gepostet — ohne Ankauf und ohne Amazon-Rechnung.
+Alle zwei Minuten wird nachgesehen; beim ersten Abruf merkt sich ein Feed die vorhandenen Deals, danach kommen nur neue.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Feed</th><th>Filter</th><th>Channel</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Feeds}}
+  <tr>
+    <td>{{if eq .Art "reisen"}}✈️{{else if eq .Art "leasing"}}🚗{{else}}🔥{{end}} {{.Name}}<br><small>{{.Quelle}}</small></td>
+    <td><small>{{if .Filter}}{{.Filter}}{{else}}alle{{end}}</small></td>
+    <td>#{{.ChannelName}}</td>
+    <td><small>{{.Status}}</small></td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/feeds/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/feeds/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch kein Feed — mit einer Vorlage unten geht es am schnellsten.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<form method="post" action="/monitor/feeds" class="karte">
+  <p><strong>Schnell anlegen</strong> — Channel wählen, Vorlage klicken:</p>
+  <label>Channel
+    <select name="channel_id" required>
+      <option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}
+    </select></label>
+  <div class="aktionen">
+    <button type="submit" name="vorlage" value="reisen">✈️ Reisen</button>
+    <button type="submit" name="vorlage" value="leasing">🚗 Auto-Leasing (LF bis 0,5)</button>
+    <button type="submit" name="vorlage" value="eigen">🔥 Eigengebrauch: Hot-Deals ab 200°</button>
+  </div>
+</form>
+
+<details class="karte"><summary>Eigenen Feed anlegen</summary>
+<form method="post" action="/monitor/feeds">
+  <label>Gruppe bei mydealz <small>z. B. „reisen“, „urlaub“, „auto-leasing“, „elektronik“, „trending“ (die angesagtesten, mit Temperatur) oder der Link mydealz.de/gruppe/…</small>
+    <input name="quelle" required placeholder="elektronik"></label>
+  <label>Art
+    <select name="art"><option value="allgemein">🔥 allgemein</option><option value="reisen">✈️ Reisen</option><option value="leasing">🚗 Leasing</option></select></label>
+  <label>Name <input name="name" placeholder="z. B. Flüge ab Frankfurt"></label>
+  <label>Stichworte <small>nur Deals, deren Titel dazu passt — „frankfurt, düsseldorf, -kreuzfahrt“, „airpods, dyson“; leer heißt alle</small>
+    <input name="stichworte"></label>
+  <label>Höchstpreis in € <small>bei Leasing: höchste Monatsrate</small><input name="max_preis"></label>
+  <label>Mindest-Temperatur <small>nur mit Gruppe „trending“ — mydealz nennt sie nur dort</small><input name="min_temp" type="number" min="0"></label>
+  <label>Höchster Leasingfaktor <small>nur Leasing, z. B. 0,5</small><input name="max_lf"></label>
+  <label>Leasing-Art
+    <select name="leasing_art"><option value="">Privat und Gewerbe</option><option value="privat">nur Privatleasing</option><option value="gewerbe">nur Gewerbeleasing</option></select></label>
+  <label>Channel
+    <select name="channel_id" required>
+      <option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}
+    </select></label>
+  <button type="submit" class="primaer">Feed anlegen</button>
+</form>
+</details>
 
 <h2 id="kategorien">Kategorie-Scan</h2>
 <p class="hinweis">Ganze Kategorien bei billiger.de (etwa „Konsolen“ oder „Grafikkarten“) werden alle zehn Minuten gelesen.
