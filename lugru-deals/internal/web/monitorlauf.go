@@ -294,8 +294,15 @@ func (srv *Server) monitorAngebot(ctx context.Context, p store.MonitorProdukt, l
 	}
 
 	werte := monitorFormularWerte(p, liste, bester, asin, maerkte, srv.store.Einstellung(store.SchluesselMonitorPoster))
+	var zusatz []string
+	if direkt := srv.shopLink(bester, liste.URL); direkt != "" {
+		zusatz = append(zusatz, "🛒 [Direkt zu "+linkText(bester.Shop)+"]("+direkt+")")
+	}
 	if z := srv.preisZeile(p, bester.Gesamt, jetzt); z != "" {
-		werte.Set("zusatz", z)
+		zusatz = append(zusatz, z)
+	}
+	if len(zusatz) > 0 {
+		werte.Set("zusatz", strings.Join(zusatz, "\n"))
 	}
 	f := formularLesen(formularAnfrage(werte))
 	d := dealSeite{Formular: f}

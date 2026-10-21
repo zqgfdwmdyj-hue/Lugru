@@ -39,8 +39,9 @@ func MitPasswort(h http.Handler, benutzer, passwort string) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasPrefix(r.URL.Path, "/static/") || r.URL.Path == "/favicon.ico":
-			// Schrift, Stil und Icon braucht schon die Anmeldeseite.
+		case strings.HasPrefix(r.URL.Path, "/static/") || r.URL.Path == "/favicon.ico" || strings.HasPrefix(r.URL.Path, "/go/"):
+			// Schrift, Stil und Icon braucht schon die Anmeldeseite; /go/
+			// sind die Shop-Links in den Posts, die eure Mitglieder öffnen.
 			h.ServeHTTP(w, r)
 		case r.URL.Path == "/anmelden":
 			a.anmelden(w, r)

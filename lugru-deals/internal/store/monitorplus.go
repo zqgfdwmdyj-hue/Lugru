@@ -1,6 +1,7 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"strings"
@@ -25,6 +26,9 @@ const (
 	SchluesselMonitorMydealz = "monitor.mydealz"
 	// Posts automatisch als ausverkauft markieren ("1" = an).
 	SchluesselMonitorAusverkauft = "monitor.ausverkauft"
+	// Öffentliche Adresse dieses Servers für die direkten Shop-Links,
+	// etwa "http://91.99.29.165:8080". Leer: kein direkter Link.
+	SchluesselMonitorBasisURL = "monitor.basis_url"
 )
 
 func init() {
@@ -35,6 +39,7 @@ func init() {
 	vorgaben[SchluesselMonitorAdminChannel] = "0"
 	vorgaben[SchluesselMonitorMydealz] = "1"
 	vorgaben[SchluesselMonitorAusverkauft] = "1"
+	vorgaben[SchluesselMonitorBasisURL] = ""
 }
 
 func zeitText(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -328,4 +333,49 @@ func (s *Store) Gemeldet(schluessel string, zeit time.Time) error {
 		ON CONFLICT(schluessel) DO UPDATE SET zeit = excluded.zeit`, schluessel, zeitText(zeit))
 	_, _ = s.db.Exec(`DELETE FROM monitor_gemeldet WHERE zeit < ?`, zeitText(zeit.AddDate(0, 0, -30)))
 	return err
+}
+
+// ---------------------------------------------------------------- Kurzlinks
+
+const kurzZeichen = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+// MonitorLink liefert den Kurzlink zu einem Klick-Schlüssel und legt ihn an,
+// wenn es ihn noch nicht gibt.
+func (s *Store) MonitorLink(schluessel, ersatz string) (string, error) {
+	var kurz string
+	err := s.db.QueryRow(`SELECT kurz FROM monitor_links WHERE schluessel = ?`, schluessel).Scan(&kurz)
+	if err == nil {
+		return kurz, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	for versuch := 0; versuch < 5; versuch++ {
+		kurz = zufall(8)
+		_, err = s.db.Exec(`INSERT INTO monitor_links (kurz, schluessel, ersatz, angelegt_am) VALUES (?, ?, ?, ?)`,
+			kurz, schluessel, ersatz, zeitText(time.Now()))
+		if err == nil {
+			// Links älter als 30 Tage braucht niemand mehr.
+			_, _ = s.db.Exec(`DELETE FROM monitor_links WHERE angelegt_am < ?`, zeitText(time.Now().AddDate(0, 0, -30)))
+			return kurz, nil
+		}
+	}
+	return "", err
+}
+
+// MonitorLinkAufloesen liefert Schlüssel und Ersatzseite zu einem Kurzlink.
+func (s *Store) MonitorLinkAufloesen(kurz string) (schluessel, ersatz string, ok bool) {
+	err := s.db.QueryRow(`SELECT schluessel, ersatz FROM monitor_links WHERE kurz = ?`, kurz).Scan(&schluessel, &ersatz)
+	return schluessel, ersatz, err == nil
+}
+
+func zufall(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	for i := range b {
+		b[i] = kurzZeichen[int(b[i])%len(kurzZeichen)]
+	}
+	return string(b)
 }

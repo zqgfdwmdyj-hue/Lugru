@@ -54,6 +54,10 @@ type Angebot struct {
 
 	Lieferzeit string
 	Status     Lieferstatus
+
+	// Klick ist der verschlüsselte Weiterleitungs-Schlüssel des Angebots
+	// (data-submit). Nur billiger.de selbst kann ihn öffnen, siehe KlickLink.
+	Klick string
 }
 
 // Preisliste ist eine Produktseite mit allen gelesenen Angeboten, nach
@@ -148,6 +152,7 @@ var (
 	gesamtMuster  = regexp.MustCompile(`([\d.,]+)\s*€\s*Gesamt`)
 	lieferMuster  = regexp.MustCompile(`Lieferzeit:\s*([^<]+)`)
 	statusMuster  = regexp.MustCompile(`icons/availability\.svg\)"\s*class="\s*(text-[a-z]+-\d+)`)
+	klickMuster   = regexp.MustCompile(`data-submit="([A-Za-z0-9_-]{40,})"`)
 )
 
 // Lies wertet den HTML-Text einer Preisliste aus.
@@ -234,6 +239,9 @@ func liesZeile(z string) (Angebot, bool) {
 	}
 	if m := lieferMuster.FindStringSubmatch(z); m != nil {
 		a.Lieferzeit = strings.TrimSpace(html.UnescapeString(m[1]))
+	}
+	if m := klickMuster.FindStringSubmatch(z); m != nil {
+		a.Klick = m[1]
 	}
 	a.Status = Unbekannt
 	if m := statusMuster.FindStringSubmatch(z); m != nil {

@@ -70,6 +70,7 @@ type monitorDaten struct {
 	AdminChannel   int64
 	Mydealz        bool
 	Ausverkauft    bool
+	BasisURL       string
 	ScanKategorien []store.MonitorKategorie
 
 	// Import ist die geprüfte Liste vor dem Übernehmen, nil ohne Import.
@@ -110,6 +111,7 @@ func (srv *Server) monitorDaten() monitorDaten {
 		AdminChannel: int64(srv.store.EinstellungZahl(store.SchluesselMonitorAdminChannel)),
 		Mydealz:      srv.store.Einstellung(store.SchluesselMonitorMydealz) == "1",
 		Ausverkauft:  srv.store.Einstellung(store.SchluesselMonitorAusverkauft) == "1",
+		BasisURL:     srv.store.Einstellung(store.SchluesselMonitorBasisURL),
 	}
 	d.ScanKategorien, _ = srv.store.Kategorien()
 	ankaeufer, _ := srv.store.AnkaeuferAlle()
@@ -449,6 +451,14 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		srv.monitorMeldung(w, "", "Max. Lieferzeit: keine ganze Zahl (0 heißt keine Grenze).")
 		return
 	}
+	basis, ok := gueltigeBasisURL(r.PostForm.Get("basis_url"))
+	if !ok {
+		srv.monitorMeldung(w, "", "Öffentliche Adresse: bitte so angeben: http://91.99.29.165:8080 oder https://deals.example.de")
+		return
+	}
+	if !r.PostForm.Has("basis_url") {
+		basis = "keep"
+	}
 	poster := strings.TrimSpace(r.PostForm.Get("poster"))
 	if _, ok := srv.poster(poster); poster != "" && !ok {
 		poster = ""
@@ -501,6 +511,7 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		store.SchluesselMonitorAdminChannel: kanal("admin_channel"),
 		store.SchluesselMonitorMydealz:      an("mydealz"),
 		store.SchluesselMonitorAusverkauft:  an("ausverkauft"),
+		store.SchluesselMonitorBasisURL:     basis,
 		store.SchluesselMonitorAktiv:        aktiv,
 		store.SchluesselMonitorIntervall:    strconv.Itoa(intervall),
 		store.SchluesselMonitorSperre:       strconv.Itoa(sperre),

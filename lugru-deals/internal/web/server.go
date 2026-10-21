@@ -201,6 +201,7 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /tarife/neu", srv.neueTarifKlasse)
 	mux.HandleFunc("POST /tarife/{id}/loeschen", srv.loescheTarifKlasse)
 
+	mux.HandleFunc("GET /go/{kurz}", srv.zumShop)
 	mux.HandleFunc("GET /monitor", srv.zeigeMonitor)
 	mux.HandleFunc("POST /monitor/produkte", srv.speichereMonitorProdukt)
 	mux.HandleFunc("POST /monitor/produkte/{id}/aendern", srv.aendereMonitorProdukt)

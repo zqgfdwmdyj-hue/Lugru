@@ -208,7 +208,7 @@ func (srv *Server) preissturzPruefen(ctx context.Context, p store.MonitorProdukt
 	}
 	z := []string{
 		strings.TrimSpace("⚠️ Preissturz: " + name + " " + mentionText(c.ID, srv)),
-		"🏬 [" + linkText(a.Shop) + "](" + liste.URL + ")",
+		"🏬 [" + linkText(a.Shop) + "](" + erstesNichtLeer(srv.shopLink(a, liste.URL), liste.URL) + ")",
 		fmt.Sprintf("💰 %s — %s unter Ø 7 Tage (%s)", a.Gesamt.Euro(), prozent(prozentUnter, 0), st.Schnitt.Euro()),
 	}
 	if p.IstAnkauf() && p.Ankauf > 0 {
@@ -254,4 +254,13 @@ func (srv *Server) adminMelden(ctx context.Context, art, text string) {
 	if _, err := discord.SendeMitWiederholung(ctx, srv.http, c.WebhookURL, discord.Nachricht{Inhalt: text, Mention: discord.MentionKeine}); err == nil {
 		_ = srv.store.Gemeldet(schluessel, jetzt)
 	}
+}
+
+func erstesNichtLeer(werte ...string) string {
+	for _, w := range werte {
+		if w != "" {
+			return w
+		}
+	}
+	return ""
 }

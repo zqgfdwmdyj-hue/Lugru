@@ -321,6 +321,17 @@ CREATE INDEX IF NOT EXISTS idx_monitor_kategorie_preise ON monitor_kategorie_pre
 
 -- Was schon gemeldet wurde (Preisstürze, mydealz-Deals, Admin-Hinweise),
 -- damit nichts zweimal kommt.
+-- Kurzlinks für den direkten Weg zum Shop: /go/<kurz> holt beim Klick über
+-- billiger.de eine frische Weiterleitung (siehe billiger.KlickLink); geht
+-- das nicht, führt er auf ersatz, die Seite bei billiger.de.
+CREATE TABLE IF NOT EXISTS monitor_links (
+    kurz        TEXT PRIMARY KEY,
+    schluessel  TEXT NOT NULL,
+    ersatz      TEXT NOT NULL,
+    angelegt_am TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_monitor_links ON monitor_links(schluessel);
+
 CREATE TABLE IF NOT EXISTS monitor_gemeldet (
     schluessel TEXT PRIMARY KEY,
     zeit       TEXT NOT NULL

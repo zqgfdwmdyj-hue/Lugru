@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -235,5 +236,53 @@ func TestImportEndeZuEnde(t *testing.T) {
 	ak, _ := a.s.AnkaeuferAlle()
 	if len(ak[neu.ID]) != 2 {
 		t.Errorf("Ankäufer = %+v", ak[neu.ID])
+	}
+}
+
+func TestDirekterShopLink(t *testing.T) {
+	a := ankaufAufbau(t)
+	_ = a.s.SetzeEinstellung(store.SchluesselMonitorBasisURL, "http://91.99.29.165:8080/")
+	if b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false); !b.Gepostet {
+		t.Fatalf("nicht gepostet: %s", b.Status)
+	}
+	post := a.posts("/normal")[0]
+	i := strings.Index(post, "http://91.99.29.165:8080/go/")
+	if i < 0 || !strings.Contains(post, "[Preisvergleich](https://www.billiger.de/pricelist/123-makita)") {
+		t.Fatalf("Post ohne Shop-Link: %s", post)
+	}
+	kurz := post[i+len("http://91.99.29.165:8080/go/") : i+len("http://91.99.29.165:8080/go/")+8]
+
+	// Der Link geht auch ohne Anmeldung, und zwar zum Shop.
+	h := MitPasswort(a.srv.Routen(), "", "geheim")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/go/"+kurz, nil))
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "https://cmodul.solutenetwork.com/cmodul?mid=otto" {
+		t.Errorf("Weiterleitung: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/go/unbekannt", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("unbekannter Link: %d", w.Code)
+	}
+}
+
+func TestShopLinkFaelltAufBilligerZurueck(t *testing.T) {
+	a := ankaufAufbau(t)
+	kurz, _ := a.s.MonitorLink("KAPUTT-abcdefghijklmnopqrstuvwxyz0123456789", "https://www.billiger.de/pricelist/123-makita")
+	w := hole(t, a.srv, http.MethodGet, "/go/"+kurz, "")
+	if w.Code != http.StatusFound || w.Header().Get("Location") != "https://www.billiger.de/pricelist/123-makita" {
+		t.Errorf("Ersatz: %d %q", w.Code, w.Header().Get("Location"))
+	}
+}
+
+func TestAmazonPostMitDirektlink(t *testing.T) {
+	a := neuerMonitorAufbau(t, "OTTO")
+	_ = a.s.SetzeEinstellung(store.SchluesselMonitorBasisURL, "https://deals.example.de")
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.normal, Aktiv: true})
+	if b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false); !b.Gepostet {
+		t.Fatalf("nicht gepostet: %s", b.Status)
+	}
+	if post := a.posts("/normal")[0]; !strings.Contains(post, "[Direkt zu OTTO](https://deals.example.de/go/") {
+		t.Errorf("Amazon-Post ohne Direktlink: %s", post)
 	}
 }

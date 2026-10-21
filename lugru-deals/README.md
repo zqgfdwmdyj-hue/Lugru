@@ -237,6 +237,32 @@ Shop, EK, Ankauf, Gewinn je Stück, Marge und den Hinweis, aber keine Namen
 von Ankäufern. Mit Kategorien („Konsolen“, „Starlink“ …) und der Art in den
 Regeln lassen sich die Treffer auf eigene Channels verteilen.
 
+**Weitere Bausteine des Monitors** (alle unter *Monitor*):
+
+- **mydealz:** neue Deals aus dem Feed von mydealz werden mitgelesen; passt
+  ein Titel zu den Stichworten eines Produkts („ps5 pro, -controller“), wird
+  er wie ein Shop-Angebot bewertet. Ohne Stichworte gilt der Name.
+- **Prio:** hoch/normal/niedrig mit eigenen Prüfintervallen (Vorgabe 15 s,
+  60 s, 300 s).
+- **Preisverlauf:** der Post nennt „Tiefster Preis seit X Tagen“ oder den
+  7-Tage-Schnitt. Fällt ein Preis weit unter diesen Schnitt (Vorgabe 20 %),
+  geht unabhängig vom Preiswecker eine Meldung in den Preissturz-Channel.
+- **Kategorie-Scan:** ganze Kategorien bei billiger.de werden alle zehn
+  Minuten auf solche Preisstürze geprüft.
+- **Ausverkauft:** verschwindet ein gepostetes Angebot, wird der Post in
+  Discord als ausverkauft markiert.
+- **Direkte Shop-Links:** mit eingetragener öffentlicher Adresse steht im
+  Post ein Kurzlink (`/go/…`), der beim Klick über billiger.de direkt zum
+  Shop führt. `/go/` ist ohne Anmeldung erreichbar.
+- **Ankäufer:** je Produkt mehrere Ankäufer mit Staffel („ab 6 Stk“). Der
+  beste Einzelpreis ist der Ankauf, Mengenpreise stehen im Post — die Namen
+  nie.
+- **Listen-Import:** eure Tabelle einfügen; der Monitor sucht je Zeile die
+  Seite bei billiger.de (mit EAN-Abgleich) und legt nach eurer Prüfung alles
+  an.
+- **Admin-Channel:** Fehler (billiger.de blockt, Keepa leer, Post
+  gescheitert) kommen nur zu euch, je Art höchstens einmal pro Stunde.
+
 Grenzen: die Preise bei billiger.de kommen aus den Datenfeeds der Shops und
 sind darum nicht sekundengenau — ein Restock ist dort meist erst nach einigen
 Minuten zu sehen. OTTO und Kaufland direkt abzufragen geht nur über einen

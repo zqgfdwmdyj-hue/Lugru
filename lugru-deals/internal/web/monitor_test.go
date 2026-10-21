@@ -30,7 +30,7 @@ const billigerSeite = `<html><head>
 <span class="block font-bold"> 110,00 € Gesamt </span>
 <i style="--icon:url(/static/img/icons/availability.svg)" class=" text-amber-400 mask-center"></i> Lieferzeit: 5-7 Werktage</div>
 <div class="p-4" data-offer-row data-offer-id="3" data-shop-id="3"><div class="order-1 w-full" title="Makita">Makita</div>
-<img alt="Shop OTTO" src="x.png"><span class="text-2xl" data-price >125,57 €*</span><span class="block">ab 4,99 € Versand</span>
+<div data-submit="OTTOKLICKSCHLUESSEL0123456789abcdefghijklmnopqrstuvwxyz" class="prg-helper clickout-link"></div><img alt="Shop OTTO" src="x.png"><span class="text-2xl" data-price >125,57 €*</span><span class="block">ab 4,99 € Versand</span>
 <span class="block font-bold"> 130,56 € Gesamt </span>
 <i style="--icon:url(/static/img/icons/availability.svg)" class=" text-green-500 mask-center"></i> Lieferzeit: lieferbar - in 2-3 Werktagen bei dir</div>
 </body></html>`
@@ -100,6 +100,16 @@ func neuerMonitorAufbau(t *testing.T, shops string) *monitorAufbau {
 	srv.keepa.Key = "test"
 
 	bs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/redirect" {
+			_ = r.ParseForm()
+			if strings.HasPrefix(r.PostForm.Get("target"), "OTTOKLICK") {
+				w.Header().Set("Location", "https://cmodul.solutenetwork.com/cmodul?mid=otto")
+				w.WriteHeader(http.StatusSeeOther)
+				return
+			}
+			http.NotFound(w, r)
+			return
+		}
 		a.mu.Lock()
 		seite, ok := a.seiten[r.URL.Path]
 		a.mu.Unlock()

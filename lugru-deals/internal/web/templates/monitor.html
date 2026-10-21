@@ -105,6 +105,9 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     <small>neue Deals, deren Titel zu den Stichworten eines Produkts passt, werden wie ein Shop-Angebot bewertet</small></label>
   <label><input type="checkbox" name="ausverkauft" value="1" {{if .Ausverkauft}}checked{{end}}> Posts automatisch als ausverkauft markieren
     <small>sobald der Shop das Angebot nicht mehr zum geposteten Preis führt</small></label>
+  <label>Öffentliche Adresse dieses Servers <small>für direkte Shop-Links im Post, z. B. http://91.99.29.165:8080 —
+    leer: der Post verlinkt die Seite bei billiger.de</small>
+    <input name="basis_url" value="{{.BasisURL}}" placeholder="http://91.99.29.165:8080"></label>
   <label>Gepostet von
     <select name="poster">
       <option value="">— niemand —</option>

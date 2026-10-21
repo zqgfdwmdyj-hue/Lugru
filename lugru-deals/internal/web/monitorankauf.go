@@ -44,7 +44,11 @@ func (srv *Server) ankaufText(p store.MonitorProdukt, liste billiger.Preisliste,
 	if pe, ok := srv.poster(srv.store.Einstellung(store.SchluesselMonitorPoster)); ok {
 		z = append(z, "👤 Deal von "+pe.posterText())
 	}
-	z = append(z, "🏬 ["+linkText(a.Shop)+"]("+liste.URL+")")
+	if direkt := srv.shopLink(a, liste.URL); direkt != "" {
+		z = append(z, "🏬 ["+linkText(a.Shop)+"]("+direkt+") · [Preisvergleich]("+liste.URL+")")
+	} else {
+		z = append(z, "🏬 ["+linkText(a.Shop)+"]("+liste.URL+")")
+	}
 	ek := "💰 EK: " + a.Gesamt.Euro()
 	if a.Versand > 0 {
 		ek += " (inkl. " + a.Versand.Euro() + " Versand)"
