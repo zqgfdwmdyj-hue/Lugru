@@ -99,3 +99,18 @@ describe("Passwörter und Anmeldenamen", () => {
     expect(normalizeLogin("Ben<script>")).toBe("benscript");
   });
 });
+
+describe("Ideen", () => {
+  it("ordnet Produktnamen der KI den Produkten der Verteilung zu", async () => {
+    const { matchProducts, themeSuggestions, productLines } = await import("@/lib/ideas");
+    const items = [
+      { name: "Getrocknete Tomaten", variant: "500 g", price: 0.9 },
+      { name: "Hafer Porridge", variant: null, price: 0.4 },
+    ];
+    const m = matchProducts(["getrocknete tomaten 500 g", "Porridge", "Schokolade"], items);
+    expect(m.map((x) => x.item?.price ?? null)).toEqual([0.9, 0.4, null]);
+    expect(themeSuggestions(10)[0]).toBe("Halloween");
+    expect(themeSuggestions(12)[0]).toBe("Weihnachten");
+    expect(productLines([{ name: "Kimchi", variant: null, category: "Lebensmittel", price: 0.5, priceNote: "je", quantity: 12, bestBefore: "2026-10-30" }])).toBe("- Kimchi (Lebensmittel, je 50 Cent, Menge 12, MHD 30.10.2026)");
+  });
+});

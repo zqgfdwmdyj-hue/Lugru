@@ -180,3 +180,24 @@ export const activity = pgTable(
   },
   (t) => [index("activity_created_idx").on(t.createdAt), index("activity_event_idx").on(t.eventId, t.createdAt)],
 );
+
+export type IdeaPackage = { name: string; beschreibung: string; produkte: string[] };
+export type IdeaRecipe = { name: string; aus_der_verteilung: string[]; zusaetzlich: string[]; anleitung: string; dauer?: string | null };
+export type IdeaResult = { titel: string; einleitung: string; pakete: IdeaPackage[]; rezepte: IdeaRecipe[]; aktionstext: string; tipps: string[] };
+
+/** KI-Ideen zu einer Verteilung (Themenpakete, Rezepte, Werbetext) – bleiben zum Nachlesen gespeichert. */
+export const eventIdeas = pgTable(
+  "event_ideas",
+  {
+    id: id(),
+    eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+    /** Gewählte Themen bzw. eigener Wunsch */
+    request: text("request").notNull(),
+    result: jsonb("result").$type<IdeaResult>().notNull(),
+    userName: text("user_name"),
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("event_ideas_event_idx").on(t.eventId, t.createdAt)],
+);

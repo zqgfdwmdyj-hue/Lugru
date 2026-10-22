@@ -33,6 +33,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   liest den Preis ab und trägt ihn ein, wo noch keiner steht. Collage und Social Media zeichnen über solche Fotos
   nie etwas – kein zweiter Preis, nichts verdeckt das Produkt. Weicht der eingetragene Preis ab, gibt es nur einen
   Hinweis mit „Preise vom Foto übernehmen“. Falsch erkannt? In der Produktzeile auf „falsch erkannt“ tippen.
+- **Ideen (✨):** Die KI liest die Produkte einer Verteilung und schlägt Themenpakete (z. B. Halloween, Winter,
+  Frühstück) mit Gesamtpreis, Rezepte aus den vorhandenen Sachen, einen fertigen Werbetext und Tipps fürs Team vor.
+  Themen per Klick oder eigener Wunsch; Claude Sonnet, ca. 3–5 Cent je Durchlauf. Ergebnisse bleiben gespeichert.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
   automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten.

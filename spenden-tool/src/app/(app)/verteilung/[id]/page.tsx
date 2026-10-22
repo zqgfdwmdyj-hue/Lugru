@@ -92,6 +92,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
           <PhotoUpload eventId={id} action={uploadPhotos} categories={categories} ai={ai} />
           <Link href={`/verteilung/${id}/collage`} className="btn">Collage erstellen</Link>
           <Link href={`/verteilung/${id}/social`} className="btn">Social Media</Link>
+          <Link href={`/verteilung/${id}/ideen`} className="btn">✨ Ideen</Link>
           <Link href={`/aushang/${id}`} className="btn" target="_blank">Aushang drucken</Link>
         </div>
       </div>

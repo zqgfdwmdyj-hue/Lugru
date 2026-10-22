@@ -1,0 +1,117 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { desc, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { requireLogin } from "@/lib/auth";
+import { collagePrice, eventDateLabel, isPlaceholderName } from "@/lib/layout";
+import { formatEuro } from "@/lib/numbers";
+import { loadEvent, loadEventItems } from "@/lib/service";
+import { aiConfigured } from "@/lib/price-research";
+import { ideasCostUsd, matchProducts, themeSuggestions } from "@/lib/ideas";
+import { createIdeas, deleteIdeas } from "@/app/(app)/actions";
+import { CopyButton } from "@/components/copy-button";
+import { IdeasForm } from "./ideas-form";
+
+const when = (d: Date) => d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const usd = (v: number) => `${(v * 100).toFixed(1).replace(".", ",")} US-Cent`;
+
+export default async function IdeenPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireLogin();
+  const { id } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  const event = await loadEvent(id);
+  if (!event) notFound();
+  const [rows, ideas] = await Promise.all([
+    loadEventItems(id),
+    db.select().from(schema.eventIdeas).where(eq(schema.eventIdeas.eventId, id)).orderBy(desc(schema.eventIdeas.createdAt)),
+  ]);
+  const items = rows.filter((r) => !isPlaceholderName(r.product.name)).map((r) => ({ name: r.product.name, variant: r.product.variant, price: r.item.price, priceNote: r.item.priceNote }));
+  const month = Number(event.eventDate.slice(5, 7));
+  const unnamed = rows.length - items.length;
+
+  return (
+    <>
+      <div className="crumb"><Link href={`/verteilung/${id}`}>Zurück zur Verteilung</Link></div>
+      <div className="page-head"><div><h1>Ideen</h1><div className="small muted">{eventDateLabel(event.eventDate)} · {items.length} Produkte · Themenpakete, Rezepte und Werbetext von der KI</div></div></div>
+      {unnamed > 0 && <div className="notice notice-warn">{unnamed} Produkt(e) haben noch keinen Namen und werden nicht berücksichtigt.</div>}
+      {aiConfigured() ? (
+        <IdeasForm action={createIdeas.bind(null, id)} themes={themeSuggestions(month)} cost="3–5 Cent" />
+      ) : (
+        <div className="card card-pad muted">Die KI ist aus – dafür auf dem Server <code>ANTHROPIC_API_KEY</code> setzen (siehe README).</div>
+      )}
+
+      {ideas.map((idea) => {
+        const r = idea.result;
+        return (
+          <section key={idea.id} className="card card-pad stack idea-card" style={{ gap: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <h2 style={{ margin: 0 }}>{r.titel}</h2>
+                <div className="small muted">{idea.request} · {when(idea.createdAt)}{idea.userName ? ` · ${idea.userName}` : ""} · ca. {usd(ideasCostUsd(idea.inputTokens, idea.outputTokens))}</div>
+              </div>
+              <form action={deleteIdeas.bind(null, idea.id, id)}><button className="btn btn-small" type="submit" title="Diese Ideen löschen">Löschen</button></form>
+            </div>
+            {r.einleitung && <p style={{ margin: 0 }}>{r.einleitung}</p>}
+
+            {r.pakete.length > 0 && (
+              <div>
+                <h3 className="idea-h">📦 Pakete</h3>
+                <div className="idea-grid">
+                  {r.pakete.map((p, i) => {
+                    const matched = matchProducts(p.produkte, items);
+                    const sum = matched.reduce((n, m) => n + (m.item?.price ?? 0), 0);
+                    const complete = matched.every((m) => m.item?.price != null);
+                    return (
+                      <div key={i} className="idea-box">
+                        <strong>{p.name}</strong>
+                        {p.beschreibung && <div className="small">{p.beschreibung}</div>}
+                        <ul className="small" style={{ margin: "6px 0", paddingLeft: 18 }}>
+                          {matched.map((m, j) => <li key={j}>{m.label}{m.item?.price != null ? ` – ${collagePrice(m.item.price)}` : ""}</li>)}
+                        </ul>
+                        {sum > 0 && <div className="small"><strong>Zusammen {complete ? "" : "mind. "}{formatEuro(sum)}</strong> (Summe der Spendenpreise)</div>}
+                        <CopyButton text={`${p.name}\n${p.beschreibung}\n${matched.map((m) => `• ${m.label}${m.item?.price != null ? ` ${collagePrice(m.item.price)}` : ""}`).join("\n")}${sum > 0 ? `\nZusammen ${formatEuro(sum)}` : ""}`} label="Kopieren" />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {r.rezepte.length > 0 && (
+              <div>
+                <h3 className="idea-h">🍲 Rezepte</h3>
+                <div className="idea-grid">
+                  {r.rezepte.map((rz, i) => (
+                    <div key={i} className="idea-box">
+                      <strong>{rz.name}</strong>{rz.dauer ? <span className="small muted"> · {rz.dauer}</span> : null}
+                      <div className="small" style={{ marginTop: 4 }}><strong>Aus der Verteilung:</strong> {rz.aus_der_verteilung.join(", ")}</div>
+                      {rz.zusaetzlich.length > 0 && <div className="small muted">Dazu: {rz.zusaetzlich.join(", ")}</div>}
+                      <div className="small" style={{ marginTop: 6 }}>{rz.anleitung}</div>
+                      <div style={{ marginTop: 6 }}><CopyButton text={`${rz.name}${rz.dauer ? ` (${rz.dauer})` : ""}\nAus der Verteilung: ${rz.aus_der_verteilung.join(", ")}${rz.zusaetzlich.length ? `\nDazu: ${rz.zusaetzlich.join(", ")}` : ""}\n\n${rz.anleitung}`} label="Rezept kopieren" /></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {r.aktionstext && (
+              <div>
+                <h3 className="idea-h">📣 Werbetext</h3>
+                <pre className="small" style={{ whiteSpace: "pre-wrap", margin: "0 0 6px", fontFamily: "var(--sans)", background: "var(--surface-2)", padding: 12, borderRadius: 8 }}>{r.aktionstext}</pre>
+                <CopyButton text={r.aktionstext} label="Text kopieren" />
+              </div>
+            )}
+
+            {r.tipps.length > 0 && (
+              <div>
+                <h3 className="idea-h">💡 Tipps fürs Team</h3>
+                <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{r.tipps.map((t, i) => <li key={i}>{t}</li>)}</ul>
+              </div>
+            )}
+          </section>
+        );
+      })}
+      {ideas.length === 0 && <div className="small muted">Noch keine Ideen für diese Verteilung.</div>}
+    </>
+  );
+}

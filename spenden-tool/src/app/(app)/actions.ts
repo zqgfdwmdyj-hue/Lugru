@@ -15,6 +15,8 @@ import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from 
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 import { readBestBefore } from "@/lib/mhd";
 import { logActivity } from "@/lib/activity";
+import Anthropic from "@anthropic-ai/sdk";
+import { generateIdeas } from "@/lib/ideas";
 import { formatDate } from "@/lib/numbers";
 import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
@@ -518,6 +520,51 @@ export async function applyPhotoPrices(eventId: string, itemId: string | null, f
     await db.update(P).set({ price: r.photoPrice, updatedAt: new Date() }).where(eq(P.id, r.productId));
   }
   revalidatePath(`/verteilung/${id}`);
+}
+
+// ---------- Ideen (Themenpakete, Rezepte, Werbetext) ----------
+
+export type IdeasState = { ok: boolean; message: string } | null;
+
+export async function createIdeas(eventId: string, _prev: IdeasState, fd: FormData): Promise<IdeasState> {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  if (!aiConfigured()) return { ok: false, message: "KI ist aus – auf dem Server ANTHROPIC_API_KEY setzen." };
+  const event = await loadEvent(id);
+  if (!event) return { ok: false, message: "Verteilung nicht gefunden." };
+  const rows = await db
+    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore })
+    .from(I)
+    .innerJoin(P, eq(P.id, I.productId))
+    .where(eq(I.eventId, id))
+    .orderBy(I.sort);
+  const items = rows.filter((r) => !isPlaceholderName(r.name));
+  if (items.length === 0) return { ok: false, message: "Noch keine Produkte mit Namen in dieser Verteilung." };
+  const themes = fd.getAll("thema").map(String).filter(Boolean).slice(0, 6);
+  const wish = str(fd, "wunsch").slice(0, 500);
+  try {
+    const { result, inputTokens, outputTokens } = await generateIdeas({ dateLabel: formatDate(event.eventDate), items, themes, wish });
+    await db.insert(schema.eventIdeas).values({ eventId: id, request: [...themes, wish].filter(Boolean).join(" · ") || "Vorschläge der KI", result, userName: me.name, inputTokens, outputTokens });
+    await logActivity(me, `Ideen erzeugt${themes.length ? `: ${themes.join(", ")}` : ""}`, { eventId: id });
+  } catch (e) {
+    console.error("Ideen fehlgeschlagen", e);
+    const message =
+      e instanceof Anthropic.AuthenticationError ? "API-Schlüssel ungültig (ANTHROPIC_API_KEY prüfen)."
+      : e instanceof Anthropic.RateLimitError ? "Zu viele Anfragen – bitte gleich nochmal versuchen."
+      : e instanceof Anthropic.APIConnectionError ? "KI nicht erreichbar – Internetverbindung des Servers prüfen und erneut versuchen."
+      : e instanceof Anthropic.APIError ? `KI-Dienst meldet Fehler ${e.status}.`
+      : e instanceof Error ? e.message
+      : "Unbekannter Fehler";
+    return { ok: false, message };
+  }
+  revalidatePath(`/verteilung/${id}/ideen`);
+  return { ok: true, message: "Neue Ideen sind da." };
+}
+
+export async function deleteIdeas(ideaId: string, eventId: string) {
+  await requireLogin();
+  await db.delete(schema.eventIdeas).where(and(eq(schema.eventIdeas.id, uuid.parse(ideaId)), eq(schema.eventIdeas.eventId, uuid.parse(eventId))));
+  revalidatePath(`/verteilung/${eventId}/ideen`);
 }
 
 // ---------- MHD-Foto ----------

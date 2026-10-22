@@ -194,3 +194,10 @@ h2 { font-size: 16px; margin: 0; }
 
 /* Kleine Dreh-Knöpfe unter dem Vorschaubild */
 .rotate-btn { padding: 2px 8px; min-height: 0; font-size: 14px; line-height: 1.2; }
+
+/* Ideen: Themen-Chips mit Häkchen, Karten für Pakete und Rezepte */
+.idea-chip { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.idea-chip:has(input:checked) { background: #1f7a4d; color: #fff; border-color: #1f7a4d; }
+.idea-h { font-size: 15px; margin: 4px 0 8px; }
+.idea-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.idea-box { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface-2, #faf8f4); }
