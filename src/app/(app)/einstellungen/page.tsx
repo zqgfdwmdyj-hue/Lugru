@@ -5,7 +5,7 @@ import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
 import { removeUser, saveSettings, saveSupplierName } from "./actions";
-import { AccessForm, AddUserForm, PasswordForm } from "./user-forms";
+import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
 import { AREAS } from "@/lib/auth/areas";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
@@ -152,8 +152,8 @@ export default async function EinstellungenPage() {
 
       <section className="card card-pad stack" style={{ gap: 14 }}>
         <h2>Benutzer</h2>
-        <table className="table">
-          <thead><tr><th>E-Mail</th><th>Name</th><th>Rolle / Zugriff</th><th></th></tr></thead>
+        <table className="table users-table">
+          <thead><tr><th>Benutzer</th><th>Name</th><th>Rolle / Zugriff</th><th></th></tr></thead>
           <tbody>
             {members.map((m) => (
               <tr key={m.userId}>
@@ -172,7 +172,10 @@ export default async function EinstellungenPage() {
                 </td>
                 <td className="right">
                   {m.userId !== session.userId && (
-                    <form action={removeUser}><input type="hidden" name="userId" value={m.userId} /><button className="btn-link small" style={{ color: "var(--danger)" }}>Entfernen</button></form>
+                    <div className="stack" style={{ gap: 4, alignItems: "flex-end" }}>
+                      <SetPasswordForm userId={m.userId} login={m.email} />
+                      <form action={removeUser}><input type="hidden" name="userId" value={m.userId} /><button className="btn-link small" style={{ color: "var(--danger)" }}>Entfernen</button></form>
+                    </div>
                   )}
                 </td>
               </tr>

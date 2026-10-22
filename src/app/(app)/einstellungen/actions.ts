@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES, type TenantSettings } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
+import { isEmailLogin, loginNameError, normalizeLogin, passwordError } from "@/lib/auth/username";
 import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
 
@@ -103,29 +104,79 @@ export async function saveSupplierName(fd: FormData) {
 
 export type UserState = { ok: boolean; message: string } | null;
 
+/**
+ * Passwort eines anderen Benutzers dieser Firma setzen. Nicht bei Konten, die auch zu einer anderen
+ * Firma gehören – deren Passwort ändert nur der Benutzer selbst. Danach sind seine Geräte abgemeldet.
+ */
+async function setMemberPassword(tenantId: string, actorId: string, userId: string, password: string): Promise<string | null> {
+  if (userId === actorId) return "Das eigene Passwort bitte unten unter „Eigenes Passwort“ ändern.";
+  const ms = await db.select({ tenantId: schema.memberships.tenantId }).from(schema.memberships).where(eq(schema.memberships.userId, userId));
+  if (!ms.some((m) => m.tenantId === tenantId)) return "Benutzer nicht gefunden.";
+  if (ms.some((m) => m.tenantId !== tenantId)) return "Dieses Konto gehört auch zu einer anderen Firma – das Passwort kann nur der Benutzer selbst ändern.";
+  await db.update(schema.users).set({ passwordHash: await bcrypt.hash(password, 12) }).where(eq(schema.users.id, userId));
+  await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+  return null;
+}
+
+/** Benutzer anlegen: Benutzername (oder E-Mail) und – wenn angegeben – das Passwort vom Inhaber. */
 export async function addUser(_prev: UserState, fd: FormData): Promise<UserState> {
   const session = await requireOwner();
-  const parsed = z
-    .object({ email: z.string().trim().toLowerCase().email(), name: z.string().trim().max(100), role: z.enum(["owner", "staff"]) })
-    .safeParse({ email: fd.get("email"), name: fd.get("name") ?? "", role: fd.get("role") });
-  if (!parsed.success) return { ok: false, message: "Bitte gültige E-Mail angeben." };
-  const password = randomBytes(9).toString("base64url");
-  const hash = await bcrypt.hash(password, 12);
-  let [user] = await db.select().from(schema.users).where(eq(sql`lower(${schema.users.email})`, parsed.data.email));
-  if (!user) {
-    [user] = await db
-      .insert(schema.users)
-      .values({ email: parsed.data.email, name: parsed.data.name || null, passwordHash: hash })
-      .returning();
+  const login = normalizeLogin(fd.get("login") ?? fd.get("email"));
+  const loginError = loginNameError(login);
+  if (loginError) return { ok: false, message: loginError };
+  const role = z.enum(["owner", "staff"]).safeParse(fd.get("role"));
+  if (!role.success) return { ok: false, message: "Bitte Rolle wählen." };
+  const name = String(fd.get("name") ?? "").trim().slice(0, 100);
+  const typed = String(fd.get("password") ?? "");
+  if (typed) {
+    const pwError = passwordError(typed);
+    if (pwError) return { ok: false, message: pwError };
   }
-  await db
-    .insert(schema.memberships)
-    .values({ tenantId: session.tenantId, userId: user.id, role: parsed.data.role })
-    .onConflictDoUpdate({ target: [schema.memberships.tenantId, schema.memberships.userId], set: { role: parsed.data.role } });
+
+  const [existing] = await db.select().from(schema.users).where(eq(sql`lower(${schema.users.email})`, login));
+  if (existing) {
+    const ms = await db.select({ tenantId: schema.memberships.tenantId }).from(schema.memberships).where(eq(schema.memberships.userId, existing.id));
+    if (existing.id === session.userId) return { ok: false, message: "Das bist du selbst." };
+    if (ms.some((m) => m.tenantId === session.tenantId)) {
+      await db
+        .update(schema.memberships)
+        .set({ role: role.data })
+        .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, existing.id)));
+      const pwError = typed ? await setMemberPassword(session.tenantId, session.userId, existing.id, typed) : null;
+      revalidatePath("/einstellungen");
+      if (pwError) return { ok: false, message: `${login} gibt es schon. ${pwError}` };
+      return { ok: true, message: `${login} gibt es schon – Rolle gespeichert${typed ? ", Passwort neu gesetzt" : ""}.` };
+    }
+    // Benutzernamen sind eindeutig: ein fremdes Konto nur über seine E-Mail-Adresse dazunehmen.
+    if (!isEmailLogin(login)) return { ok: false, message: `Benutzername „${login}“ ist schon vergeben – bitte einen anderen wählen.` };
+    await db.insert(schema.memberships).values({ tenantId: session.tenantId, userId: existing.id, role: role.data }).onConflictDoNothing();
+    revalidatePath("/einstellungen");
+    return { ok: true, message: `${login} hatte schon ein Konto und wurde hinzugefügt – das Passwort bleibt wie bisher.` };
+  }
+
+  const password = typed || randomBytes(9).toString("base64url");
+  const [user] = await db
+    .insert(schema.users)
+    .values({ email: login, name: name || null, passwordHash: await bcrypt.hash(password, 12) })
+    .returning();
+  await db.insert(schema.memberships).values({ tenantId: session.tenantId, userId: user.id, role: role.data });
   revalidatePath("/einstellungen");
-  return user.passwordHash === hash
-    ? { ok: true, message: `Angelegt. Einmal-Passwort für ${user.email}: ${password}` }
-    : { ok: true, message: `${user.email} hatte schon ein Konto und wurde hinzugefügt.` };
+  return typed
+    ? { ok: true, message: `Angelegt: ${login} meldet sich mit dem vergebenen Passwort an.` }
+    : { ok: true, message: `Angelegt. Einmal-Passwort für ${login}: ${password}` };
+}
+
+/** Inhaber vergibt einem Benutzer ein neues Passwort (z. B. vergessen oder neuer Mitarbeiter). */
+export async function setUserPassword(_prev: UserState, fd: FormData): Promise<UserState> {
+  const session = await requireOwner();
+  const userId = z.string().uuid().safeParse(fd.get("userId"));
+  if (!userId.success) return { ok: false, message: "Benutzer nicht gefunden." };
+  const password = String(fd.get("password") ?? "");
+  const pwError = passwordError(password);
+  if (pwError) return { ok: false, message: pwError };
+  const error = await setMemberPassword(session.tenantId, session.userId, userId.data, password);
+  if (error) return { ok: false, message: error };
+  return { ok: true, message: "Passwort gesetzt – ab jetzt gilt das neue." };
 }
 
 export async function removeUser(fd: FormData) {

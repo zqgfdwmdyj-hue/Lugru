@@ -197,6 +197,16 @@ h2 { font-size: 16px; margin: 0; }
 /* ---- Einkauf ---- */
 .po-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) 80px 100px 80px 100px auto; gap: 8px; }
 @media (max-width: 900px) { .po-add { grid-template-columns: 1fr 1fr; } }
+/* Benutzerliste (Einstellungen) am Handy untereinander statt breiter Tabelle. */
+@media (max-width: 760px) {
+  .users-table thead { display: none; }
+  .users-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--row); }
+  .users-table td { display: block; padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; }
+  .users-table td:nth-child(1) { font-weight: 600; }
+  .users-table td:nth-child(2) { color: var(--muted); text-align: right; }
+  .users-table td:nth-child(n+3) { grid-column: 1 / -1; text-align: left; }
+  .users-table td:nth-child(4) .stack { align-items: flex-start !important; }
+}
 
 /* ---- Marken & Ideen ---- */
 .season-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }

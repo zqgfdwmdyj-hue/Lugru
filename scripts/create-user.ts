@@ -1,5 +1,6 @@
 // Legt einen Benutzer an – und bei Bedarf die Firma (Mandant) dazu.
-//   npm run user:create -- --email du@firma.de --name "Dein Name" --firma "Deine Firma" [--passwort ...]
+//   npm run user:create -- --benutzer ludwig --name "Dein Name" --firma "Deine Firma" [--passwort ...]
+//   (statt --benutzer geht auch --email du@firma.de)
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
@@ -7,10 +8,12 @@ import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "../src/db/schema";
+import { loginNameError, normalizeLogin } from "../src/lib/auth/username";
 import { STARTER_KNOWLEDGE } from "./starter-content";
 
 const { values } = parseArgs({
   options: {
+    benutzer: { type: "string" },
     email: { type: "string" },
     name: { type: "string" },
     firma: { type: "string" },
@@ -18,8 +21,14 @@ const { values } = parseArgs({
     rolle: { type: "string", default: "owner" },
   },
 });
-if (!values.email || !values.firma) {
-  console.error('Aufruf: npm run user:create -- --email du@firma.de --firma "Deine Firma" [--name "Name"] [--passwort ...]');
+const login = normalizeLogin(values.benutzer ?? values.email);
+if (!login || !values.firma) {
+  console.error('Aufruf: npm run user:create -- --benutzer ludwig --firma "Deine Firma" [--name "Name"] [--passwort ...]');
+  process.exit(1);
+}
+const loginError = loginNameError(login);
+if (loginError) {
+  console.error(loginError);
   process.exit(1);
 }
 
@@ -36,12 +45,12 @@ await db.transaction(async (tx) => {
     await tx.insert(schema.knowledgeEntries).values(STARTER_KNOWLEDGE.map((k) => ({ ...k, tenantId: tenant.id })));
   }
 
-  let [user] = await tx.select().from(schema.users).where(eq(sql`lower(${schema.users.email})`, values.email!.toLowerCase()));
+  let [user] = await tx.select().from(schema.users).where(eq(sql`lower(${schema.users.email})`, login));
   const hash = await bcrypt.hash(password, 12);
   if (user) {
     await tx.update(schema.users).set({ passwordHash: hash, name: values.name ?? user.name }).where(eq(schema.users.id, user.id));
   } else {
-    [user] = await tx.insert(schema.users).values({ email: values.email!, name: values.name ?? null, passwordHash: hash }).returning();
+    [user] = await tx.insert(schema.users).values({ email: login, name: values.name ?? null, passwordHash: hash }).returning();
   }
   await tx.insert(schema.memberships).values({ tenantId: tenant.id, userId: user.id, role }).onConflictDoNothing();
 

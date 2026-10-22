@@ -3,45 +3,42 @@
 import bcrypt from "bcryptjs";
 import { asc, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { db, schema } from "@/db";
 import { createSession, destroySession } from "@/lib/auth/session";
-
-const credentials = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(1),
-});
+import { normalizeLogin } from "@/lib/auth/username";
 
 // Einfache Bremse gegen Durchprobieren von Passwörtern (pro Prozess).
 const attempts = new Map<string, { count: number; until: number }>();
 
+// Unbekannter Benutzername: trotzdem einmal bcrypt rechnen, damit die Antwortzeit nicht verrät, ob es ihn gibt.
+let dummyHash: Promise<string> | null = null;
+const dummy = () => (dummyHash ??= bcrypt.hash("kein-benutzer", 12));
+
+/** `email` = eingegebener Anmeldename (Benutzername oder E-Mail). */
 export type LoginState = { error: string; email: string } | null;
 
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const parsed = credentials.safeParse({
-    email: formData.get("email"),
-    password: formData.get("password"),
-  });
-  const typedEmail = String(formData.get("email") ?? "");
-  if (!parsed.success) return { error: "Bitte E-Mail und Passwort eingeben.", email: typedEmail };
-  const { email, password } = parsed.data;
+  const typed = String(formData.get("email") ?? "");
+  const name = normalizeLogin(typed);
+  const password = String(formData.get("password") ?? "");
+  if (!name || !password) return { error: "Bitte Benutzername und Passwort eingeben.", email: typed };
 
-  const a = attempts.get(email);
+  const a = attempts.get(name);
   if (a && a.count >= 5 && a.until > Date.now()) {
-    return { error: "Zu viele Versuche. Bitte in ein paar Minuten erneut probieren.", email };
+    return { error: "Zu viele Versuche. Bitte in ein paar Minuten erneut probieren.", email: typed };
   }
 
   const [user] = await db
     .select()
     .from(schema.users)
-    .where(eq(sql`lower(${schema.users.email})`, email));
-  const ok = user ? await bcrypt.compare(password, user.passwordHash) : false;
+    .where(eq(sql`lower(${schema.users.email})`, name));
+  const ok = await bcrypt.compare(password, user?.passwordHash ?? (await dummy()));
   if (!user || !ok) {
     const next = { count: (a?.count ?? 0) + 1, until: Date.now() + 5 * 60_000 };
-    attempts.set(email, next);
-    return { error: "E-Mail oder Passwort ist falsch.", email };
+    attempts.set(name, next);
+    return { error: "Benutzername oder Passwort ist falsch.", email: typed };
   }
-  attempts.delete(email);
+  attempts.delete(name);
 
   const [membership] = await db
     .select()
@@ -49,7 +46,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     .where(eq(schema.memberships.userId, user.id))
     .orderBy(asc(schema.memberships.createdAt))
     .limit(1);
-  if (!membership) return { error: "Diesem Konto ist noch keine Firma zugeordnet.", email };
+  if (!membership) return { error: "Diesem Konto ist noch keine Firma zugeordnet.", email: typed };
 
   await createSession(user.id, membership.tenantId);
   redirect("/");

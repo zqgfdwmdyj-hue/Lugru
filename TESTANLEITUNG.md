@@ -15,7 +15,7 @@
    Der erste Start dauert ein paar Minuten.
 4. Benutzer anlegen (gibt ein Passwort aus, wenn du keins angibst):
    ```
-   docker compose exec app npm run user:create -- --email du@firma.de --name "Dein Name" --firma "Deine Firma" --passwort "dein-passwort"
+   docker compose exec app npm run user:create -- --benutzer ludwig --name "Dein Name" --firma "Deine Firma" --passwort "dein-passwort"
    ```
 5. Im Browser **http://localhost:3000** öffnen und anmelden.
 
@@ -137,6 +137,8 @@ Umzug: rechts „Aus dem Retouren-Tool übernehmen“ → aus `backend\data` des
 Bei Google-Postfächern wird „Alle Nachrichten“ gelesen, damit auch archivierte oder per Filter einsortierte Amazon-Mails ankommen.
 
 **Mitarbeiter-Rechte** (Einstellungen → Benutzer): Mitarbeiter anlegen, dann in seiner Zeile „Mitarbeiter · …“ aufklappen → „nur diese“ Bereiche ankreuzen (z. B. Marken, Kalender) und bei Bedarf nur bestimmte Marken (z. B. Zeitlux). Der Mitarbeiter sieht dann nur diese Menüpunkte; andere Seiten leiten auf seine Startseite um, Aktionen und die eBay-Schnittstelle antworten mit „keine Freigabe“. Im Kalender sieht er keine privaten Termine, nur Fälligkeiten seiner Bereiche/Marken; die globale Suche ist für ihn gesperrt. Änderungen gelten nach spätestens 30 Sekunden.
+
+**Benutzer mit Benutzername** (Einstellungen → Benutzer): Unten „Benutzername“ (z. B. `lager1`, ohne Leerzeichen; Groß/Klein egal), Name (optional), **Passwort** (mind. 8 Zeichen, sichtbar zum Weitergeben – leer lassen = es wird eins erzeugt und einmal angezeigt), Rolle → „Hinzufügen“. Eine E-Mail-Adresse ist nicht nötig; bestehende Konten mit E-Mail melden sich wie bisher mit der E-Mail an. Anmelden: Feld „Benutzername oder E-Mail“. Passwort vergessen oder Mitarbeiter wechselt: in der Zeile des Benutzers „Passwort vergeben“ → neues Passwort → „Setzen“ – der Benutzer wird dabei auf allen Geräten abgemeldet und meldet sich mit dem neuen Passwort an. Ein Benutzername, den es in einer anderen Firma schon gibt, wird abgelehnt („schon vergeben“). Das eigene Passwort weiterhin unter „Eigenes Passwort“.
 
 **Nur ansehen** (Einstellungen → Benutzer → Mitarbeiter aufklappen → Haken „Nur ansehen“ → „Rechte speichern“; z. B. für Prüfer oder einen Testzugang): Das Konto sieht die freigegebenen Bereiche, kann aber nichts auslösen. Oben steht „👁 Nur ansehen“, in der Benutzerliste „nur ansehen“. Jeder Klick auf einen Knopf, der etwas ändert/sendet/abfragt, wird abgewiesen – die Seite lädt neu mit „Nicht ausgeführt – …“, nichts wird gespeichert, gesendet oder bei Keepa/Amazon/eBay abgefragt. Beim Öffnen einer Großhändler-Firma schreibt die KI keinen Entwurf und sucht keine E-Mail. eBay-Tool: nur Anzeigen (Speichern, Suchen, Keepa-Bilder gesperrt). Postfach verbinden (Google/Microsoft) gesperrt. Abmelden geht. Inhaber sind nie „nur ansehen“. Gilt nach spätestens 30 Sekunden. Test: Konto mit „Nur ansehen“ anlegen, einloggen, z. B. „Stk je Verkauf“ ändern → „Nicht ausgeführt“, Wert unverändert.
 

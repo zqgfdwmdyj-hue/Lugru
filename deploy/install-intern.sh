@@ -48,4 +48,4 @@ docker compose up -d --build
 echo
 echo "Fertig. Adresse: http://$BIND_IP:$APP_PORT"
 echo "Benutzer anlegen:"
-echo "  cd $DIR && docker compose exec app npm run user:create -- --email du@firma.de --firma \"Deine Firma\""
+echo "  cd $DIR && docker compose exec app npm run user:create -- --benutzer ludwig --firma \"Deine Firma\""
