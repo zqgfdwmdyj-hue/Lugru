@@ -207,9 +207,20 @@ func (srv *Server) feedPruefen(ctx context.Context, f store.DealFeed, geladen ma
 		if srv.store.SchonGemeldet(schluessel, jetzt.AddDate(0, 0, -30)) {
 			continue
 		}
-		_ = srv.store.Gemeldet(schluessel, jetzt)
+		// Gemerkt wird nur, was passt: ein Trending-Deal steht schon mit 100°
+		// im Feed und wird erst später heiß genug — er muss dann noch kommen.
 		l := mydealz.LiesLeasing(d)
-		if erster || !feedPasst(f, d, l) {
+		if !feedPasst(f, d, l) {
+			continue
+		}
+		_ = srv.store.Gemeldet(schluessel, jetzt)
+		if erster {
+			continue
+		}
+		// Zwei Feeds mit derselben Gruppe im selben Channel posten einen Deal
+		// nur einmal.
+		imChannel := fmt.Sprintf("feedchannel:%d:%s", c.ID, d.Link)
+		if srv.store.SchonGemeldet(imChannel, jetzt.AddDate(0, 0, -30)) {
 			continue
 		}
 		passend++
@@ -225,6 +236,7 @@ func (srv *Server) feedPruefen(ctx context.Context, f store.DealFeed, geladen ma
 			srv.adminMelden(ctx, "discord", "⚠️ Deal-Feed „"+f.Name+"“: nicht gepostet: "+sicherFehlertext(err.Error()))
 			break
 		}
+		_ = srv.store.Gemeldet(imChannel, jetzt)
 		gepostet++
 	}
 	status := fmt.Sprintf("%d Deals gelesen", len(deals))
@@ -324,6 +336,15 @@ func (srv *Server) speichereFeed(w http.ResponseWriter, r *http.Request) {
 	f.Quelle = quelle
 	if strings.TrimSpace(f.Name) == "" {
 		f.Name = strings.TrimPrefix(quelle, "https://www.mydealz.de/rss/")
+	}
+	if alle, err := srv.store.Feeds(); err == nil {
+		for _, g := range alle {
+			if g.ChannelID == f.ChannelID && g.Quelle == f.Quelle && g.MinTemp == f.MinTemp && g.MaxLF == f.MaxLF &&
+				g.MaxPreis == f.MaxPreis && g.Stichworte == f.Stichworte && g.LeasingArt == f.LeasingArt {
+				srv.monitorMeldung(w, "", "Diesen Feed gibt es in dem Channel schon („"+g.Name+"“).")
+				return
+			}
+		}
 	}
 	if err := srv.store.FeedAnlegen(f); err != nil {
 		srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
