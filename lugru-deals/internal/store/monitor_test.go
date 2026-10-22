@@ -14,8 +14,16 @@ func TestMonitorProdukte(t *testing.T) {
 	if _, err := s.MonitorProduktAnlegen(MonitorProdukt{URL: "https://www.billiger.de/pricelist/1-x"}); err == nil {
 		t.Error("dieselbe URL zweimal angelegt")
 	}
-	if _, err := s.MonitorProduktAnlegen(MonitorProdukt{URL: "https://www.billiger.de/pricelist/1-x", Modus: ModusAnkauf, Ankauf: 100}); err != nil {
-		t.Errorf("dieselbe URL als Ankauf abgelehnt: %v", err)
+	// Ein weiterer Verkaufsweg wird am vorhandenen Produkt angehakt, nicht
+	// als zweites Produkt angelegt.
+	if _, err := s.MonitorProduktAnlegen(MonitorProdukt{URL: "https://www.billiger.de/pricelist/1-x", Modus: ModusAnkauf, Ankauf: 100}); err == nil {
+		t.Error("dieselbe URL als Ankauf doppelt angelegt")
+	}
+	if v, ok := s.MonitorProduktZuURL("https://www.billiger.de/pricelist/1-x"); !ok || v.ID != id {
+		t.Errorf("MonitorProduktZuURL: %+v %v", v, ok)
+	}
+	if got := ModiNormal("ebay, amazon,quatsch", "ankauf"); got != "amazon,ankauf,ebay" {
+		t.Errorf("ModiNormal = %q", got)
 	}
 	p, err := s.MonitorProdukt(id)
 	if err != nil {
@@ -75,15 +83,15 @@ func TestMonitorRegelnUndTreffer(t *testing.T) {
 	}
 
 	vorher := time.Now().Add(-time.Hour)
-	if _, ok := s.MonitorZuletztGepostet(pid, vorher); ok {
+	if _, ok := s.MonitorZuletztGepostet(pid, "", vorher); ok {
 		t.Error("ohne Treffer gepostet")
 	}
 	_ = s.MonitorTrefferAnlegen(MonitorTreffer{ProduktID: pid, Shop: "OTTO", Gesamt: 100, Ergebnis: "unter Schwelle"})
-	if _, ok := s.MonitorZuletztGepostet(pid, vorher); ok {
+	if _, ok := s.MonitorZuletztGepostet(pid, "", vorher); ok {
 		t.Error("ungeposteter Treffer zählt als gepostet")
 	}
 	_ = s.MonitorTrefferAnlegen(MonitorTreffer{ProduktID: pid, Shop: "OTTO", Gesamt: 90, Gepostet: true})
-	if g, ok := s.MonitorZuletztGepostet(pid, vorher); !ok || g.Gesamt != 90 {
+	if g, ok := s.MonitorZuletztGepostet(pid, "", vorher); !ok || g.Gesamt != 90 {
 		t.Errorf("zuletzt gepostet = %+v, %v", g, ok)
 	}
 	if l, _ := s.MonitorLetzteTreffer(10); len(l) != 2 || !l[0].Gepostet {

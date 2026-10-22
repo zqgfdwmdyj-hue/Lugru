@@ -127,13 +127,14 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
 <form method="post" action="/monitor/produkte">
   <label>Link zur Preisliste bei billiger.de <small>Produkt bei billiger.de suchen, öffnen und den Link aus der Adresszeile einfügen</small>
     <input name="url" type="url" required placeholder="https://www.billiger.de/pricelist/…"></label>
-  <label>Art
-    <select name="modus">
-      <option value="amazon">Amazon-Arbitrage — Gewinn gegen den Verkaufspreis bei Amazon (Keepa)</option>
-      <option value="ankauf">Ankauf — Gewinn gegen einen festen Ankaufspreis, ohne Keepa</option>
-      <option value="ebay">eBay — Gewinn gegen den Marktpreis bei eBay nach Gebühren</option>
-    </select></label>
-  <label>Ankaufspreis <small>nur bei Art „Ankauf“: was der Ankäufer zahlt</small><input name="ankauf" placeholder="z. B. 1175"></label>
+  <fieldset class="breit"><legend>Verkaufswege <small>einer oder mehrere — jeder wird für sich gerechnet und gepostet</small></legend>
+    <div class="haken">
+    <label class="schmal"><input type="checkbox" name="modus" value="amazon" checked> Amazon-Arbitrage <small>Verkaufspreis bei Amazon (Keepa)</small></label>
+    <label class="schmal"><input type="checkbox" name="modus" value="ankauf"> Ankauf <small>fester Ankaufspreis</small></label>
+    <label class="schmal"><input type="checkbox" name="modus" value="ebay"> eBay <small>Marktpreis nach Gebühren</small></label>
+    </div>
+  </fieldset>
+  <label>Ankaufspreis <small>nur mit „Ankauf“: was der Ankäufer zahlt</small><input name="ankauf" placeholder="z. B. 1175"></label>
   <label>Hinweis im Post <small>optional, etwa „1180 € ab 6 Stk“ — Namen der Ankäufer gehören nicht hierher, der Post ist öffentlich</small>
     <input name="hinweis"></label>
   <label>Kategorie <small>optional, etwa „Konsolen“ — Regeln können danach in eigene Channels sortieren</small>
@@ -173,7 +174,10 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
       <a href="{{.URL}}" target="_blank" rel="noopener"><strong>{{.Anzeige}}</strong></a>
       <div class="chips">
       {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
-      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{else if .IstEbay}}<span class="chip akzent">eBay</span>{{else}}<span class="chip neutral">Amazon</span>{{end}}
+      {{if .IstAmazonQuelle}}<span class="chip akzent">Einkauf Amazon {{.Einkauf}}</span>{{end}}
+      {{if .IstAmazon}}<span class="chip neutral">Amazon</span>{{end}}
+      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{end}}
+      {{if .IstEbay}}<span class="chip akzent">eBay</span>{{end}}
       {{if .Kategorie}}<span class="chip neutral">{{.Kategorie}}</span>{{end}}
       {{if eq .Prio "hoch"}}<span class="chip positiv">Prio hoch</span>{{else if eq .Prio "niedrig"}}<span class="chip neutral">Prio niedrig</span>{{end}}
       {{if .WeckerText}}<span class="chip neutral">Wecker {{.WeckerText}}</span>{{end}}
@@ -182,12 +186,11 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
       <details class="bearbeiten"><summary>Bearbeiten</summary>
       <form method="post" action="/monitor/produkte/{{.ID}}/aendern" class="formraster">
         <label>Name <input name="name" value="{{.Name}}"></label>
-        <label>Art
-          <select name="modus">
-            <option value="amazon" {{if not .IstAnkauf}}selected{{end}}>Amazon</option>
-            <option value="ankauf" {{if .IstAnkauf}}selected{{end}}>Ankauf</option>
-            <option value="ebay" {{if .IstEbay}}selected{{end}}>eBay</option>
-          </select></label>
+        <div class="breit haken"><strong>Verkaufswege:</strong>
+          <label class="schmal"><input type="checkbox" name="modus" value="amazon" {{if .IstAmazon}}checked{{end}}> Amazon</label>
+          <label class="schmal"><input type="checkbox" name="modus" value="ankauf" {{if .IstAnkauf}}checked{{end}}> Ankauf</label>
+          <label class="schmal"><input type="checkbox" name="modus" value="ebay" {{if .IstEbay}}checked{{end}}> eBay</label>
+        </div>
         <label>Ankaufspreis <input name="ankauf" value="{{.AnkaufText}}"></label>
         <label>{{if .IstAnkauf}}Preiswecker{{else}}max. Einkauf{{end}} <input name="max_ek" value="{{.MaxEKText}}" aria-label="Höchstpreis bzw. Preiswecker mit Versand"></label>
         <label>Prio
@@ -224,19 +227,6 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
           <button type="submit" class="schmal">+ Ankäufer</button></form>
       </div>
       {{end}}
-      {{/* Dasselbe Produkt zusätzlich in der anderen Art beobachten. */}}
-      <form method="post" action="/monitor/produkte" class="aktionen unterblock">
-        <input type="hidden" name="url" value="{{.URL}}">
-        <input type="hidden" name="name" value="{{.Name}}">
-        <input type="hidden" name="kategorie" value="{{.Kategorie}}">
-        <input type="hidden" name="shops" value="{{.Shops}}">
-        {{if .AuchVerzoegert}}<input type="hidden" name="auch_verzoegert" value="1">{{end}}
-        {{if .IstAnkauf}}<input type="hidden" name="modus" value="amazon">
-        <button type="submit" class="schmal">Auch als Amazon beobachten</button>
-        {{else}}<input type="hidden" name="modus" value="ankauf">
-        <input name="ankauf" size="6" placeholder="Ankauf €" aria-label="Ankaufspreis" required>
-        <button type="submit" class="schmal">Auch als Ankauf beobachten</button>{{end}}
-      </form>
       </details>
     </td>
     <td class="umbruch">
@@ -276,7 +266,7 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     </select></label>
   <label>Art
     <select name="modus">
-      <option value="">Amazon und Ankauf</option>
+      <option value="">alle Verkaufswege</option>
       <option value="amazon">nur Amazon-Arbitrage</option>
       <option value="ankauf">nur Ankauf</option>
       <option value="ebay">nur eBay</option>

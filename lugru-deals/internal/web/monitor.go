@@ -298,11 +298,8 @@ func betragOderNull(s string) (money.Cents, error) {
 // Ankaufs (siehe wecker) — er wandert also mit, wenn sich die Ankäufer
 // ändern. Ohne Ankaufspreis geht es auch, sobald Ankäufer eingetragen sind.
 func ankaufFelder(r *http.Request, p *store.MonitorProdukt) string {
-	p.Modus = store.ModusAmazon
-	switch r.PostForm.Get("modus") {
-	case store.ModusAnkauf, store.ModusEbay:
-		p.Modus = r.PostForm.Get("modus")
-	}
+	// Verkaufswege als Häkchen; mehrere zugleich sind erlaubt.
+	p.Modus = store.ModiNormal(r.PostForm["modus"]...)
 	p.Hinweis = r.PostForm.Get("hinweis")
 	p.Kategorie = r.PostForm.Get("kategorie")
 	p.Prio = r.PostForm.Get("prio")
@@ -357,6 +354,22 @@ func (srv *Server) speichereMonitorProdukt(w http.ResponseWriter, r *http.Reques
 	}
 	if f := ankaufFelder(r, &neu); f != "" {
 		srv.monitorMeldung(w, "", f)
+		return
+	}
+	if alt, ok := srv.store.MonitorProduktZuURL(link); ok {
+		// Gibt es das Produkt schon, kommt der Verkaufsweg dort dazu.
+		alt.Modus = store.ModiNormal(alt.Modus, neu.Modus)
+		if neu.Ankauf > 0 {
+			alt.Ankauf = neu.Ankauf
+		}
+		if alt.Hinweis == "" {
+			alt.Hinweis = neu.Hinweis
+		}
+		if err := srv.store.MonitorProduktAendern(alt); err != nil {
+			srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
+			return
+		}
+		srv.monitorMeldung(w, "Das Produkt wird schon beobachtet — die Verkaufswege sind dort ergänzt.", "")
 		return
 	}
 	_, err = srv.store.MonitorProduktAnlegen(neu)

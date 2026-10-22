@@ -226,7 +226,8 @@ CREATE TABLE IF NOT EXISTS monitor_produkte (
     kategorie      TEXT    NOT NULL DEFAULT '',
     prio           TEXT    NOT NULL DEFAULT 'normal',
     stichworte     TEXT    NOT NULL DEFAULT '',
-    notiz          TEXT    NOT NULL DEFAULT ''
+    notiz          TEXT    NOT NULL DEFAULT '',
+    einkauf        TEXT    NOT NULL DEFAULT ''
 );
 
 -- produkt_id 0 heißt: die Regel gilt für jedes Produkt. shops leer heißt:
@@ -258,7 +259,8 @@ CREATE TABLE IF NOT EXISTS monitor_treffer (
     gepostet      INTEGER NOT NULL DEFAULT 0,
     ergebnis      TEXT    NOT NULL DEFAULT '',
     deal_id       INTEGER NOT NULL DEFAULT 0,
-    zeit          TEXT    NOT NULL
+    zeit          TEXT    NOT NULL,
+    modus         TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_treffer ON monitor_treffer(produkt_id, zeit DESC);
 
@@ -537,6 +539,8 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	{"monitor_produkte", "prio", `TEXT NOT NULL DEFAULT 'normal'`},
 	{"monitor_produkte", "stichworte", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_produkte", "notiz", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_produkte", "einkauf", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_treffer", "modus", `TEXT NOT NULL DEFAULT ''`},
 	// Discord-Channel der Nachricht und ✅ darunter, für die Auswertung.
 	{"monitor_posts", "kanal_id", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_posts", "kaeufe", `INTEGER NOT NULL DEFAULT 0`},
