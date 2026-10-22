@@ -9,7 +9,7 @@ import { PrintButton } from "@/components/print-button";
 // Aufruf: /etikett/palette?codes=P-0001,P-0002
 
 export default async function PalettenEtikettPage({ searchParams }: { searchParams: Promise<{ codes?: string }> }) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const sp = await searchParams;
   const codes = [...new Set((sp.codes ?? "").split(",").map((c) => c.trim()).filter(Boolean))].slice(0, 300);
   const P = schema.pallets;

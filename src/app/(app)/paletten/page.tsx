@@ -11,7 +11,7 @@ import { checkOutPallet, deletePallet, savePalletRates, undoCheckOut, updatePall
 import { PalletScan } from "./scan";
 
 export default async function PalettenPage({ searchParams }: { searchParams: Promise<{ monat?: string; kunde?: string; bearbeiten?: string }> }) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const t = session.tenantId;
   const sp = await searchParams;
   const today = todayIso();
@@ -48,7 +48,7 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <div className="page-head">
-        <div><div className="crumb">WaWi</div><h1>Paletten-Lager</h1></div>
+        <div><div className="crumb">Lager</div><h1>Paletten-Lager</h1></div>
         <span className="small muted">{formatEuro(rates.pricePerMonth)} je Stellplatz und Monat · die ersten {rates.freeDays} Tage kostenfrei · {modeLabel}</span>
       </div>
 

@@ -25,7 +25,7 @@ function readDate(v: FormDataEntryValue | null): string {
  * Leere Nummer beim Einlagern = automatisch P-0001, P-0002 …, mit Anzahl auch mehrere auf einmal.
  */
 export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanState> {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const t = session.tenantId;
   const mode = z.enum(["ein", "aus"]).parse(fd.get("mode"));
   const code = String(fd.get("code") ?? "").trim().slice(0, 80);
@@ -66,7 +66,7 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
 
 /** Knopf in der Liste: Palette ist weg. */
 export async function checkOutPallet(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const id = z.string().uuid().parse(fd.get("id"));
   const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
   if (!p || p.outAt) return;
@@ -77,7 +77,7 @@ export async function checkOutPallet(fd: FormData) {
 
 /** Auslagern rückgängig (versehentlich gescannt). */
 export async function undoCheckOut(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const id = z.string().uuid().parse(fd.get("id"));
   const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
   if (!p || !p.outAt) return;
@@ -89,7 +89,7 @@ export async function undoCheckOut(fd: FormData) {
 
 /** Daten korrigieren (Kunde, Notiz, Ein-/Auslagerungstag). */
 export async function updatePallet(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const id = z.string().uuid().parse(fd.get("id"));
   const inAt = isoDate.parse(fd.get("inAt"));
   const outRaw = String(fd.get("outAt") ?? "").trim();
@@ -109,7 +109,7 @@ export async function updatePallet(fd: FormData) {
 }
 
 export async function deletePallet(fd: FormData) {
-  const session = await requireArea("wawi");
+  const session = await requireArea("paletten");
   const id = z.string().uuid().parse(fd.get("id"));
   await db.delete(P).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
   revalidatePath("/paletten");

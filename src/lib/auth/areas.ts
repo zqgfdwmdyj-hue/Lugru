@@ -2,14 +2,15 @@
 // alles oder nur die freigegebenen Bereiche (und bei „Marken“ ggf. nur bestimmte Marken).
 // Ohne Server-Abhängigkeiten – wird in proxy.ts, Seiten und Server Actions genutzt.
 
-export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld";
+export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld";
 
 export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string }[] = [
   { key: "start", label: "Start & Aufgaben", paths: ["/"], home: "/" },
   { key: "posteingang", label: "Posteingang", paths: ["/posteingang"], home: "/posteingang" },
   { key: "kalender", label: "Kalender", paths: ["/kalender"], home: "/kalender" },
   { key: "wissen", label: "Wissen", paths: ["/wissen"], home: "/wissen" },
-  { key: "wawi", label: "WaWi (Aufträge, Einkauf, Chargen, Bestand, Paletten, Listings, Import)", paths: ["/auftraege", "/einkauf", "/chargen", "/bestand", "/paletten", "/listings", "/import"], home: "/auftraege" },
+  { key: "wawi", label: "WaWi (Aufträge, Einkauf, Chargen, Bestand, Listings, Import)", paths: ["/auftraege", "/einkauf", "/chargen", "/bestand", "/listings", "/import"], home: "/auftraege" },
+  { key: "paletten", label: "Paletten-Lager (Paletten ein- und auslagern, Monatsabrechnung)", paths: ["/paletten", "/etikett/palette"], home: "/paletten" },
   { key: "artikel", label: "Artikelstamm (eigene Produkte, Bilder, Texte, Amazon/eBay)", paths: ["/artikel"], home: "/artikel" },
   { key: "lieferanten", label: "Lieferanten-Feeds und Großhändler finden (Scannen, Keepa-Prüfung, Boxen, Einkaufsanfragen)", paths: ["/lieferanten"], home: "/lieferanten" },
   { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse)", paths: ["/marken"], home: "/marken" },

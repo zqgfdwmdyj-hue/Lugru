@@ -12,7 +12,7 @@ const de = (n: number) => n.toFixed(2).replace(".", ",");
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return new Response("Nicht angemeldet", { status: 401 });
-  if (!canAccess(session, "wawi")) return new Response("Keine Freigabe", { status: 403 });
+  if (!canAccess(session, "paletten")) return new Response("Keine Freigabe", { status: 403 });
   const raw = new URL(request.url).searchParams.get("monat") ?? "";
   const month = MONTH_RE.test(raw) ? raw : todayIso().slice(0, 7);
   const bill = await loadMonthBill(session.tenantId, month);

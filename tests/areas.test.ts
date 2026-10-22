@@ -27,6 +27,18 @@ describe("Bereiche und Rechte", () => {
   });
 });
 
+describe("Paletten-Lager", () => {
+  it("ist ein eigener Bereich und muss einzeln freigegeben werden", () => {
+    expect(areaForPath("/paletten")).toBe("paletten");
+    expect(areaForPath("/paletten/export")).toBe("paletten");
+    expect(areaForPath("/etikett/palette")).toBe("paletten");
+    expect(canAccess({ role: "staff", areas: ["wawi"] }, "paletten")).toBe(false);
+    expect(canAccess({ role: "staff", areas: ["paletten"] }, "paletten")).toBe(true);
+    expect(canAccess({ role: "staff", areas: null }, "paletten")).toBe(true);
+    expect(homeFor({ role: "staff", areas: ["paletten"] })).toBe("/paletten");
+  });
+});
+
 describe("Einträge mit Links", () => {
   it("prüft Bereich und Marke", async () => {
     const { linkAllowed } = await import("@/lib/auth/areas");
