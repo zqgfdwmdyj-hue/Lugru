@@ -11,7 +11,7 @@ import { TILE_COLORS, TILE_POSITIONS, type TileColor, type TilePosition, type Ti
 import { BAND, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
 import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
 
-export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo; style: TileStyle };
+export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo; style: TileStyle; packNote?: string | null; packPrice?: number | null };
 type Rect = { productId: string; x: number; y: number; w: number; h: number };
 
 /**
@@ -88,6 +88,8 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   }
   if (note && !inline && ownPrice) lines.push({ text: note, size: side * 0.09 });
   if (priceLine) lines.push({ text: priceLine, size: side * 0.16, isPrice: true });
+  // Spendenempfehlung für die ganze Packung als zweite, kleinere Zeile
+  if (ownPrice && tile.packPrice != null) lines.push({ text: `${tile.packNote?.trim() || "ganze Packung"} ${collagePrice(tile.packPrice)}`, size: side * 0.075 });
   if (tile.caption && st.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
     for (const l of wrap(ctx, tile.caption, maxW, 3)) lines.push({ text: l, size: side * 0.055 });
@@ -253,7 +255,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       const c = canvases.current[i];
       if (!c) return [];
       const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
-      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.priceNote, t.caption, t.name, t.printed?.text])]);
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packNote, t.packPrice, t.priceNote, t.caption, t.name, t.printed?.text])]);
       if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
       drawn.current.set(c, key);
       changed = true;

@@ -105,6 +105,9 @@ export const eventItems = pgTable(
     price: money("price"),
     /** Steht vor dem Preis, z. B. „je“ oder „3er Packung“. */
     priceNote: text("price_note"),
+    /** Zusätzliche Spendenempfehlung für eine ganze Packung, z. B. „ganzer Karton“ für 5 €. */
+    packNote: text("pack_note"),
+    packPrice: money("pack_price"),
     /** Zusatztext auf der Collage. */
     caption: text("caption"),
     quantity: integer("quantity"),
@@ -183,7 +186,18 @@ export const activity = pgTable(
 
 export type IdeaPackage = { name: string; beschreibung: string; produkte: string[] };
 export type IdeaRecipe = { name: string; aus_der_verteilung: string[]; zusaetzlich: string[]; anleitung: string; dauer?: string | null };
-export type IdeaResult = { titel: string; einleitung: string; pakete: IdeaPackage[]; rezepte: IdeaRecipe[]; aktionstext: string; tipps: string[] };
+export const POSTER_THEMES = ["winter", "herbst", "halloween", "weihnachten", "fruehling", "ostern", "sommer", "allgemein"] as const;
+export type IdeaPoster = {
+  thema: (typeof POSTER_THEMES)[number];
+  titel: string;
+  untertitel: string;
+  notiz: string;
+  /** Produktnamen für die großen Kacheln */
+  hervorgehoben: string[];
+  gruppen: { titel: string; text: string; produkte: string[] }[];
+  schluss: string;
+};
+export type IdeaResult = { titel: string; einleitung: string; pakete: IdeaPackage[]; rezepte: IdeaRecipe[]; aktionstext: string; tipps: string[]; plakat?: IdeaPoster | null };
 
 /** KI-Ideen zu einer Verteilung (Themenpakete, Rezepte, Werbetext) – bleiben zum Nachlesen gespeichert. */
 export const eventIdeas = pgTable(

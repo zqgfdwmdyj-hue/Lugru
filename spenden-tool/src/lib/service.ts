@@ -203,7 +203,7 @@ export async function lastPrices(productIds: string[]): Promise<Map<string, numb
   return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, r.price as number]));
 }
 
-type Preset = { price: number | null; priceNote: string | null; caption: string | null };
+type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null };
 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {
@@ -225,6 +225,8 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
           price: given ? given.price : (last.get(p.id) ?? p.price ?? null),
           priceNote: given?.priceNote ?? null,
           caption: given?.caption ?? null,
+          packNote: given?.packNote ?? null,
+          packPrice: given?.packPrice ?? null,
           sort: max + (i + 1) * 10,
         };
       }),

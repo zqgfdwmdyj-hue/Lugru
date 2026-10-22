@@ -16,7 +16,7 @@ export default async function AushangPage({ params, searchParams }: { params: Pr
   const event = await loadEvent(id);
   if (!event) notFound();
   const rows = await loadEventItems(id);
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
+  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })));
   const cols = [1, 2, 3, 4].includes(Number(sp.spalten)) ? Number(sp.spalten) : 3;
   // „auto“: so groß wie möglich (bis 26 px), sonst höchstens die gewählte Größe.
   const fixed = [12, 14, 16, 18, 20].includes(Number(sp.groesse)) ? Number(sp.groesse) : 0;

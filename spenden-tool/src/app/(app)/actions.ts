@@ -56,7 +56,7 @@ export async function createEvent(fd: FormData) {
     const src = await loadEvent(copyFrom.data);
     if (src) {
       const items = await db.select().from(I).where(eq(I.eventId, src.id)).orderBy(I.sort);
-      await addProductsToEvent(ev.id, items.map((i) => i.productId), new Map(items.map((i) => [i.productId, { price: i.price, priceNote: i.priceNote, caption: i.caption }])));
+      await addProductsToEvent(ev.id, items.map((i) => i.productId), new Map(items.map((i) => [i.productId, { price: i.price, priceNote: i.priceNote, caption: i.caption, packNote: i.packNote, packPrice: i.packPrice }])));
       await db.update(E).set({ collage: src.collage }).where(eq(E.id, ev.id));
     }
   }
@@ -144,6 +144,7 @@ export async function saveItems(fd: FormData) {
       .set({
         ...(changed(`price_${it.id}`) && priceOk ? { price: p } : {}),
         priceNote: opt(fd, `note_${it.id}`),
+        ...(fd.has(`packprice_${it.id}`) ? { packNote: opt(fd, `packnote_${it.id}`), packPrice: price(fd, `packprice_${it.id}`) ?? parsePrintedPrice(str(fd, `packprice_${it.id}`)) } : {}),
         caption: opt(fd, `caption_${it.id}`),
         quantity: qty === null || qty < 0 || qty > 1e6 ? null : Math.round(qty),
         ...(changed(`mhd_${it.id}`) ? { bestBefore: parseIsoDate(str(fd, `mhd_${it.id}`)) } : {}),
@@ -533,7 +534,7 @@ export async function createIdeas(eventId: string, _prev: IdeasState, fd: FormDa
   const event = await loadEvent(id);
   if (!event) return { ok: false, message: "Verteilung nicht gefunden." };
   const rows = await db
-    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore })
+    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice })
     .from(I)
     .innerJoin(P, eq(P.id, I.productId))
     .where(eq(I.eventId, id))

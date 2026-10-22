@@ -1,9 +1,9 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { IdeaResult } from "@/db/schema";
+import { POSTER_THEMES, type IdeaResult } from "@/db/schema";
 import { formatDate } from "@/lib/numbers";
-import { collagePrice } from "@/lib/layout";
+import { collagePrice, packLabel } from "@/lib/layout";
 
 // Ideen für eine Verteilung: Themenpakete, Rezepte und ein Werbetext – aus den Produkten des Tages.
 // Nur Text (keine Fotos, keine Websuche): Claude Sonnet, wenige Cent je Durchlauf.
@@ -34,19 +34,25 @@ export function themeSuggestions(month: number): string[] {
 }
 
 const SYSTEM = `Du hilfst einem Foodsharing-Team bei einer Lebensmittelverteilung: Gerettete Lebensmittel und Spenden werden gegen eine kleine Spende abgegeben.
-Du bekommst die Produktliste des Tages (mit Spendenpreis, Menge und Mindesthaltbarkeitsdatum, soweit bekannt) und Wünsche des Teams.
+Du bekommst die Produktliste des Tages (mit Spendenempfehlung je Stück, ggf. Spendenempfehlung für eine ganze Packung, Menge und Mindesthaltbarkeitsdatum) und Wünsche des Teams.
 Mach die Verteilung schmackhaft: kreative, alltagstaugliche Ideen auf Deutsch, herzlich und kurz.
 Regeln:
-- Verwende in Paketen und als Hauptzutaten in Rezepten nur Produkte aus der Liste und schreibe die Produktnamen genau wie in der Liste.
+- Schreibe nie „Preis“, „kostet“ oder „kaufen“ – es sind Spendenempfehlungen („Spendenempfehlung“, „gegen eine kleine Spende“, „mitnehmen“).
+- Verwende in Paketen, auf dem Plakat und als Hauptzutaten in Rezepten nur Produkte aus der Liste und schreibe die Produktnamen genau wie in der Liste.
+- Nenne keine Beträge selbst – die Spendenempfehlungen setzt das Programm aus der Liste ein. Ausnahme: im Werbetext dürfen die Beträge aus der Liste stehen.
 - Bei Rezepten darfst du übliche Grundzutaten ergänzen (Salz, Öl, Zwiebeln, Wasser …) – liste sie unter „zusaetzlich“.
 - Produkte mit bald ablaufendem MHD bevorzugt einplanen und darauf hinweisen. Keine Gesundheitsversprechen.
 - Babynahrung nur in Baby-/Familienpaketen, Drogerieartikel nicht in Rezepten.
+Werbetext (für WhatsApp/Instagram): herzliche Anrede („Ihr Lieben“), 1–2 Sätze Einleitung zum Thema; gibt es Packungs-Spendenempfehlungen, eine Liste mit passendem Emoji je Zeile („🌭 Produkt – ganzer Karton: 5 €“); dann kurze Absätze zu Gruppen von Produkten; herzlicher Schluss. Emojis sparsam, aber passend.
+Plakat (A4 zum Aushängen und Teilen): thema ist eines von ${POSTER_THEMES.join(", ")}. titel kurz und groß (max. 5 Wörter, z. B. „Bevorratet euch für den Winter!“), untertitel ein Satz, notiz ein kurzer Satz für einen Zettel am Rand.
+hervorgehoben: 3–9 Produkte mit Foto-Kachel – bevorzugt solche mit Packungs-Spendenempfehlung. gruppen: 0–3 Gruppen weiterer Produkte mit kurzem Titel und einem Satz (z. B. „Wenn es mal schnell gehen muss …“). schluss: ein Satz für das Band unten.
 Antworte nur mit JSON in genau diesem Aufbau:
 {"titel": "kurzer, einladender Titel", "einleitung": "1–2 Sätze",
  "pakete": [{"name": "…", "beschreibung": "1–2 Sätze", "produkte": ["Produktname", "…"]}],
  "rezepte": [{"name": "…", "aus_der_verteilung": ["Produktname"], "zusaetzlich": ["…"], "anleitung": "3–6 kurze Sätze", "dauer": "z. B. 20 Min."}],
- "aktionstext": "fertiger Text für WhatsApp/Instagram, 3–6 Zeilen, gern mit 1–3 Emojis",
- "tipps": ["kurzer Tipp für das Team, z. B. wie man die Pakete am Stand präsentiert"]}
+ "aktionstext": "fertiger Werbetext wie oben beschrieben",
+ "tipps": ["kurzer Tipp für das Team"],
+ "plakat": {"thema": "winter", "titel": "…", "untertitel": "…", "notiz": "…", "hervorgehoben": ["Produktname"], "gruppen": [{"titel": "…", "text": "…", "produkte": ["Produktname"]}], "schluss": "Wir freuen uns auf euch bei unserer nächsten Verteilung!"}}
 2–4 Pakete, 2–4 Rezepte, 1–3 Tipps.`;
 
 const Result = z.object({
@@ -58,9 +64,21 @@ const Result = z.object({
     .default([]),
   aktionstext: z.string().default(""),
   tipps: z.array(z.string()).default([]),
+  plakat: z
+    .object({
+      thema: z.enum(POSTER_THEMES).catch("allgemein"),
+      titel: z.string().default("Unsere Spendenempfehlungen"),
+      untertitel: z.string().default(""),
+      notiz: z.string().default(""),
+      hervorgehoben: z.array(z.string()).default([]),
+      gruppen: z.array(z.object({ titel: z.string(), text: z.string().default(""), produkte: z.array(z.string()).default([]) })).default([]),
+      schluss: z.string().default("Wir freuen uns auf euch bei unserer nächsten Verteilung!"),
+    })
+    .nullish()
+    .catch(null),
 });
 
-export type IdeaProduct = { name: string; variant: string | null; category: string; price: number | null; priceNote: string | null; quantity: number | null; bestBefore: string | null };
+export type IdeaProduct = { name: string; variant: string | null; category: string; price: number | null; priceNote: string | null; quantity: number | null; bestBefore: string | null; packNote?: string | null; packPrice?: number | null };
 
 export function productLines(items: IdeaProduct[]): string {
   return items
@@ -68,7 +86,8 @@ export function productLines(items: IdeaProduct[]): string {
       const name = [p.name, p.variant].filter(Boolean).join(" ");
       const extra = [
         p.category,
-        p.price !== null ? `${p.priceNote ? `${p.priceNote} ` : ""}${collagePrice(p.price)}` : "",
+        p.price !== null ? `Spendenempfehlung ${p.priceNote ? `${p.priceNote} ` : ""}${collagePrice(p.price)}` : "",
+        packLabel(p.packNote, p.packPrice) ? `Packung: ${packLabel(p.packNote, p.packPrice)}` : "",
         p.quantity ? `Menge ${p.quantity}` : "",
         p.bestBefore ? `MHD ${formatDate(p.bestBefore)}` : "",
       ].filter(Boolean);

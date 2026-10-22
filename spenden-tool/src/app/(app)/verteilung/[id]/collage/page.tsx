@@ -25,6 +25,8 @@ export default async function CollagePage({ params }: { params: Promise<{ id: st
       price: item.price,
       priceNote: item.priceNote,
       caption: item.caption,
+      packNote: item.packNote,
+      packPrice: item.packPrice,
       printed: printedInfo(photo),
     }));
   // Eingetragener Preis weicht vom Preis im Foto ab – die Collage zeigt das Foto unverändert, also den alten Preis.

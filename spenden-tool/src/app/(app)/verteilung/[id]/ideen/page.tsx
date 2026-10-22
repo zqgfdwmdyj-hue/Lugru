@@ -11,6 +11,8 @@ import { ideasCostUsd, matchProducts, themeSuggestions } from "@/lib/ideas";
 import { createIdeas, deleteIdeas } from "@/app/(app)/actions";
 import { CopyButton } from "@/components/copy-button";
 import { IdeasForm } from "./ideas-form";
+import { type PosterGroup, PosterStudio, type PosterTile } from "./poster";
+import type { IdeaPoster } from "@/db/schema";
 
 const when = (d: Date) => d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 const usd = (v: number) => `${(v * 100).toFixed(1).replace(".", ",")} US-Cent`;
@@ -25,7 +27,28 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
     loadEventItems(id),
     db.select().from(schema.eventIdeas).where(eq(schema.eventIdeas.eventId, id)).orderBy(desc(schema.eventIdeas.createdAt)),
   ]);
-  const items = rows.filter((r) => !isPlaceholderName(r.product.name)).map((r) => ({ name: r.product.name, variant: r.product.variant, price: r.item.price, priceNote: r.item.priceNote }));
+  const items = rows
+    .filter((r) => !isPlaceholderName(r.product.name))
+    .map((r) => ({ name: r.product.name, variant: r.product.variant, price: r.item.price, priceNote: r.item.priceNote, packNote: r.item.packNote, packPrice: r.item.packPrice, image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
+  // Plakat: Produktnamen der KI den Produkten (Foto, Spendenempfehlungen) zuordnen
+  const posterData = (poster: IdeaPoster) => {
+    const tiles: PosterTile[] = matchProducts(poster.hervorgehoben, items)
+      .filter((m) => m.item)
+      .slice(0, 9)
+      .map(({ item }) => ({
+        name: [item!.name, item!.variant].filter(Boolean).join(" "),
+        image: item!.image,
+        single: item!.price != null ? `${item!.priceNote ? `${item!.priceNote} ` : ""}${formatEuro(item!.price)}` : "",
+        pack: item!.packPrice != null ? formatEuro(item!.packPrice) : null,
+        packLabel: item!.packNote ?? null,
+      }));
+    const groups: PosterGroup[] = poster.gruppen.slice(0, 3).map((g) => ({
+      titel: g.titel,
+      text: g.text,
+      images: matchProducts(g.produkte, items).map((m) => m.item?.image).filter((u): u is string => !!u).slice(0, 3),
+    }));
+    return { tiles, groups };
+  };
   const month = Number(event.eventDate.slice(5, 7));
   const unnamed = rows.length - items.length;
 
@@ -52,6 +75,18 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
               <form action={deleteIdeas.bind(null, idea.id, id)}><button className="btn btn-small" type="submit" title="Diese Ideen löschen">Löschen</button></form>
             </div>
             {r.einleitung && <p style={{ margin: 0 }}>{r.einleitung}</p>}
+
+            {r.plakat && (() => {
+              const d = posterData(r.plakat);
+              return (
+                <details open={idea.id === ideas[0].id}>
+                  <summary className="idea-h" style={{ cursor: "pointer" }}>🖼️ Plakat zum Aushängen und Teilen</summary>
+                  <div style={{ marginTop: 8 }}>
+                    {d.tiles.length === 0 ? <div className="small muted">Die vorgeschlagenen Produkte wurden in der Verteilung nicht gefunden.</div> : <PosterStudio poster={r.plakat} tiles={d.tiles} groups={d.groups} fileBase={`spenden-${event.eventDate}`} />}
+                  </div>
+                </details>
+              );
+            })()}
 
             {r.pakete.length > 0 && (
               <div>

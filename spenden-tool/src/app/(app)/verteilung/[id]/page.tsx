@@ -37,7 +37,7 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
   if (aiConfigured()) await Promise.all([failStaleChecks(), failStalePhotoPrices()]);
   const [rows, picker, categories] = await Promise.all([loadEventItems(id), productPicker(id, q), knownCategories()]);
 
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
+  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })));
   const text = messengerText({ ...event, dateLabel: eventDateLabel(event.eventDate) }, sections);
   const missingPrice = rows.filter((r) => r.item.price === null).length;
   const missingImage = rows.filter((r) => r.item.inCollage && !r.product.imageFileId).length;
@@ -181,6 +181,11 @@ export default async function SpendenAktionPage({ params, searchParams }: { para
                     <td>
                       <input className="input input-compact num" name={`price_${item.id}`} defaultValue={priceText(item.price)} inputMode="decimal" style={{ width: 80 }} placeholder="Preis" aria-label="Preis" />
                       <input className="input input-compact" name={`note_${item.id}`} defaultValue={item.priceNote ?? ""} placeholder="z. B. je" title="Steht vor dem Preis, z. B. „je“ oder „3er Packung“" style={{ width: 80, marginTop: 4, display: "block" }} aria-label="Zusatz vor dem Preis" />
+                      {/* Spendenempfehlung für die ganze Packung, z. B. „ganzer Karton“ 5 € */}
+                      <div style={{ display: "flex", gap: 4, marginTop: 4 }} title="Zusätzlich: Spendenempfehlung für eine ganze Packung (z. B. ganzer Karton, 10 Riegel nach Wahl)">
+                        <input className="input input-compact" name={`packnote_${item.id}`} defaultValue={item.packNote ?? ""} placeholder="Packung" style={{ width: 92 }} aria-label="Packung (z. B. ganzer Karton)" />
+                        <input className="input input-compact num" name={`packprice_${item.id}`} defaultValue={priceText(item.packPrice)} inputMode="decimal" placeholder="€" style={{ width: 56 }} aria-label="Spendenempfehlung Packung" />
+                      </div>
                     
                       {(() => {
                         const c = checks.get(product.id);

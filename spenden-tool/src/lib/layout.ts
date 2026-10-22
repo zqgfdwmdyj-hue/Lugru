@@ -137,7 +137,13 @@ export function balancedPages<T>(items: T[], perPage: number): T[][] {
   return pages;
 }
 
-export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; bestBefore?: string | null };
+export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; bestBefore?: string | null; packNote?: string | null; packPrice?: number | null };
+
+/** „ganzer Karton 5€“ – Spendenempfehlung für eine ganze Packung; leer, wenn keine. */
+export function packLabel(packNote: string | null | undefined, packPrice: number | null | undefined): string {
+  const p = flyerPrice(packPrice);
+  return p ? `${packNote?.trim() || "ganze Packung"} ${p}` : "";
+}
 export type FlyerLine = { text: string; price: string; mhd: string; sub: { text: string; price: string; mhd: string }[] };
 
 /** „MHD 12.10.26“ aus „2026-10-12“; leer, wenn kein Datum. */
@@ -172,7 +178,10 @@ export function flyerSections(items: FlyerItem[]): FlyerSection[] {
   return cats.map((category) => ({
     category,
     lines: [...byCat.get(category)!.values()].map((group) => {
-      const withPrice = (it: FlyerItem) => [it.priceNote?.trim(), flyerPrice(it.price)].filter(Boolean).join(" ");
+      const withPrice = (it: FlyerItem) => {
+        const single = [it.priceNote?.trim(), flyerPrice(it.price)].filter(Boolean).join(" ");
+        return [single, packLabel(it.packNote, it.packPrice)].filter(Boolean).join(" · ");
+      };
       if (group.length === 1) {
         const it = group[0];
         return { text: it.name.trim(), price: withPrice(it), mhd: mhdLabel(it.bestBefore), sub: it.variant?.trim() ? [{ text: it.variant.trim(), price: "", mhd: "" }] : [] };

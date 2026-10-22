@@ -36,6 +36,10 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **Ideen (✨):** Die KI liest die Produkte einer Verteilung und schlägt Themenpakete (z. B. Halloween, Winter,
   Frühstück) mit Gesamtpreis, Rezepte aus den vorhandenen Sachen, einen fertigen Werbetext und Tipps fürs Team vor.
   Themen per Klick oder eigener Wunsch; Claude Sonnet, ca. 3–5 Cent je Durchlauf. Ergebnisse bleiben gespeichert.
+  Dazu ein **Plakat** (A4, als Bild oder PDF) mit Fotos, „Einzeln“ und Packungs-Spendenempfehlung – die KI wählt Thema,
+  Texte und Produkte, Fotos und Beträge kommen aus der Verteilung. Das Wort „Preis“ verwendet die KI nicht.
+- **Packungs-Spendenempfehlung:** pro Produkt zusätzlich z. B. „ganzer Karton“ 5 € – erscheint in Aushang,
+  Messenger-Text, Collage und Plakat.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
   automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten.

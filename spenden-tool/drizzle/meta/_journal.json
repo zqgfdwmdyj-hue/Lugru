@@ -71,6 +71,13 @@
       "when": 1792688962857,
       "tag": "0009_ideen",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792689367584,
+      "tag": "0010_packung",
+      "breakpoints": true
     }
   ]
 }

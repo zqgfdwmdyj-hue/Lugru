@@ -17,7 +17,7 @@ export default async function SocialPage({ params }: { params: Promise<{ id: str
   const items: SocialItem[] = rows
     .filter((r) => r.item.inCollage)
     .map(({ item, product, photo }) => ({ id: item.id, image: product.imageFileId ? `/datei/${product.imageFileId}` : null, name: product.name, variant: product.variant, price: item.price, priceNote: item.priceNote, caption: item.caption, printed: printedInfo(photo) }));
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore })));
+  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })));
   const [y, m, d] = event.eventDate.split("-").map(Number);
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   const data: SocialData = {
