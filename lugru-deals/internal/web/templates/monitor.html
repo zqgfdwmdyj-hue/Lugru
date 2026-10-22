@@ -168,85 +168,60 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
 <table>
   <thead><tr><th>Produkt</th><th>Zuletzt</th><th></th></tr></thead>
   <tbody>
-  {{range .Produkte}}
-  <tr>
-    <td class="produktzelle">
-      <a href="{{.URL}}" target="_blank" rel="noopener"><strong>{{.Anzeige}}</strong></a>
-      <div class="chips">
-      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
-      {{if .IstAmazonQuelle}}<span class="chip akzent">Einkauf Amazon {{.Einkauf}}</span>{{end}}
-      {{if .IstAmazon}}<span class="chip neutral">Amazon</span>{{end}}
-      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{end}}
-      {{if .IstEbay}}<span class="chip akzent">eBay</span>{{end}}
-      {{if .Kategorie}}<span class="chip neutral">{{.Kategorie}}</span>{{end}}
-      {{if eq .Prio "hoch"}}<span class="chip positiv">Prio hoch</span>{{else if eq .Prio "niedrig"}}<span class="chip neutral">Prio niedrig</span>{{end}}
-      {{if .WeckerText}}<span class="chip neutral">Wecker {{.WeckerText}}</span>{{end}}
-      </div>
-      {{if or .EAN .ASIN .Notiz}}<small class="leise">{{if .EAN}}EAN {{.EAN}}{{end}}{{if .ASIN}} · ASIN {{.ASIN}}{{end}}{{if .Notiz}} · Notiz: {{.Notiz}}{{end}}</small>{{end}}
-      <details class="bearbeiten"><summary>Bearbeiten</summary>
-      <form method="post" action="/monitor/produkte/{{.ID}}/aendern" class="formraster">
-        <label>Name <input name="name" value="{{.Name}}"></label>
-        <div class="breit haken"><strong>Verkaufswege:</strong>
-          <label class="schmal"><input type="checkbox" name="modus" value="amazon" {{if .IstAmazon}}checked{{end}}> Amazon</label>
-          <label class="schmal"><input type="checkbox" name="modus" value="ankauf" {{if .IstAnkauf}}checked{{end}}> Ankauf</label>
-          <label class="schmal"><input type="checkbox" name="modus" value="ebay" {{if .IstEbay}}checked{{end}}> eBay</label>
-        </div>
-        <label>Ankaufspreis <input name="ankauf" value="{{.AnkaufText}}"></label>
-        <label>{{if .IstAnkauf}}Preiswecker{{else}}max. Einkauf{{end}} <input name="max_ek" value="{{.MaxEKText}}" aria-label="Höchstpreis bzw. Preiswecker mit Versand"></label>
-        <label>Prio
-          <select name="prio">
-            <option value="normal" {{if eq .Prio "normal"}}selected{{end}}>normal</option>
-            <option value="hoch" {{if eq .Prio "hoch"}}selected{{end}}>hoch</option>
-            <option value="niedrig" {{if eq .Prio "niedrig"}}selected{{end}}>niedrig</option>
-          </select></label>
-        <label>Kategorie <input name="kategorie" value="{{.Kategorie}}" list="kategorien"></label>
-        <label>Shops <input name="shops" value="{{.Shops}}" placeholder="alle"></label>
-        <label>ASIN <input name="asin" value="{{.ASIN}}"></label>
-        <label class="breit">Hinweis im Post <input name="hinweis" value="{{.Hinweis}}"></label>
-        <label class="breit">mydealz-Stichworte <input name="stichworte" value="{{.Stichworte}}"></label>
-        <label class="breit">Notiz (intern) <input name="notiz" value="{{.Notiz}}"></label>
-        <div class="breit haken">
-        {{$p := .}}
-        {{range $.Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"
-          {{if contains $p.Maerkte (print .Code)}}checked{{end}}> {{.Code}}</label>{{end}}
-        <label class="schmal"><input type="checkbox" name="auch_verzoegert" value="1" {{if .AuchVerzoegert}}checked{{end}}> auch längere Lieferzeit</label>
-        </div>
-        <div class="breit"><button type="submit" class="primaer schmal">Speichern</button></div>
-      </form>
-      {{if .IstAnkauf}}
-      <div class="unterblock"><strong>Ankäufer</strong> <small class="leise">nur intern, nie im Post</small>
-        {{range .Ankaeufer}}
-        <form method="post" action="/monitor/ankaeufer/{{.ID}}/loeschen" class="aktionen">
-          <small>{{if .Name}}{{.Name}}: {{end}}{{.PreisText}}{{if gt .AbStueck 1}} ab {{.AbStueck}} Stk{{end}}</small>
-          <button type="submit" class="schmal gefahr" aria-label="Ankäufer löschen">×</button></form>
-        {{end}}
-        <form method="post" action="/monitor/produkte/{{.ID}}/ankaeufer" class="aktionen">
-          <input name="name" size="10" placeholder="Name" aria-label="Name des Ankäufers">
-          <input name="preis" size="6" placeholder="Preis €" required aria-label="Preis">
-          <input name="ab" size="3" type="number" min="1" value="1" aria-label="ab Stück">
-          <button type="submit" class="schmal">+ Ankäufer</button></form>
-      </div>
-      {{end}}
-      </details>
-    </td>
-    <td class="umbruch">
-      {{if .BesterText}}{{.BesterText}}<br>{{end}}
-      <small>{{.Status}}</small>{{if .Geprueft}}<br><small class="leise">{{.Geprueft}}</small>{{end}}
-    </td>
-    <td class="aktionen">
-      <form method="post" action="/monitor/produkte/{{.ID}}/testen"><button type="submit" class="schmal">Testen</button></form>
-      <form method="post" action="/monitor/produkte/{{.ID}}/aktiv">
-        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
-        <button type="submit" class="schmal">{{if .Aktiv}}Pausieren{{else}}Aktivieren{{end}}</button></form>
-      <form method="post" action="/monitor/produkte/{{.ID}}/loeschen"><button type="submit" class="schmal gefahr">Löschen</button></form>
-    </td>
-  </tr>
-  {{else}}
+  {{range .Produkte}}{{if not .IstAmazonQuelle}}{{template "produktzeile" .}}{{end}}{{end}}
+  {{if not .ShopAnzahl}}
   <tr><td colspan="3" class="leer">Noch kein Produkt — oben über „Neues Produkt“ anlegen.</td></tr>
   {{end}}
   </tbody>
 </table>
 </div>
+
+<h2 id="asins">Amazon-ASIN-Liste <small class="leise">{{.AsinAnzahl}} ASINs</small></h2>
+<p class="hinweis">Einkauf bei Amazon: je ASIN und Einkaufsmarkt der günstigste Neupreis (Amazon, FBA- oder Händlerangebot),
+gerechnet gegen die angehakten Verkaufswege. Gepostet wird nur bei echten Preissenkungen — dieselbe ASIN kommt sieben Tage
+lang nur wieder, wenn sie günstiger wird. Alle {{.AmazonMinuten}} Minuten (Einstellungen), Verbrauch etwa
+<b>{{.AsinBedarf}} Keepa-Token je Minute</b>{{if .KeepaRate}} — euer Keepa-Zugang lädt {{.KeepaRate}} je Minute nach{{end}}.</p>
+<details class="karte neu"{{if not .AsinAnzahl}} open{{end}}><summary>+ ASIN-Liste hochladen</summary>
+<form method="post" action="/monitor/asins" enctype="multipart/form-data" class="formraster">
+  <label class="breit">ASINs <small>eine je Zeile, oder ganze Tabelle einfügen — jede B0…-Nummer zählt</small>
+    <textarea name="asins" rows="5" placeholder="B0CHSBV9CN&#10;B0D1XD1ZV3"></textarea></label>
+  <label class="breit">oder Datei <small>Keepa-Export (CSV) oder Textdatei</small><input type="file" name="datei" accept=".csv,.txt,text/csv,text/plain"></label>
+  <fieldset class="breit"><legend>Einkauf bei</legend><div class="haken">
+    {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="einkauf" value="{{.Code}}" checked> Amazon.{{.Code}}</label>{{end}}
+  </div></fieldset>
+  <fieldset class="breit"><legend>Verkauf auf <small>keiner angehakt: wie unter Einstellungen</small></legend><div class="haken">
+    {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
+  </div></fieldset>
+  <fieldset class="breit"><legend>Verkaufswege</legend><div class="haken">
+    <label class="schmal"><input type="checkbox" name="modus" value="amazon" checked> Amazon-Arbitrage</label>
+    <label class="schmal"><input type="checkbox" name="modus" value="ankauf"> Ankauf</label>
+    <label class="schmal"><input type="checkbox" name="modus" value="ebay"> eBay</label>
+  </div></fieldset>
+  <label>Kategorie <input name="kategorie" value="ASIN-Liste" list="kategorien"></label>
+  <label>Prio <select name="prio"><option value="normal">normal</option><option value="hoch">hoch (doppelt so oft)</option><option value="niedrig">niedrig (halb so oft)</option></select></label>
+  <fieldset class="breit"><legend>Regel gleich mit anlegen <small>optional — sonst unter „Regeln“</small></legend>
+    <div class="paar drei">
+      <label>Channel <select name="channel_id"><option value="0">— keine Regel —</option>
+        {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}</select></label>
+      <label>Mindestmarge % <input name="min_marge" value="10"></label>
+      <label>Mindestgewinn € <input name="min_gewinn" placeholder="z. B. 5"></label>
+    </div>
+  </fieldset>
+  <button type="submit" class="primaer">ASINs anlegen</button>
+</form>
+</details>
+{{if .AsinAnzahl}}
+<details class="karte" open><summary>{{.AsinAnzahl}} ASINs anzeigen</summary>
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>ASIN</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Produkte}}{{if .IstAmazonQuelle}}{{template "produktzeile" .}}{{end}}{{end}}
+  </tbody>
+</table>
+</div>
+</details>
+{{end}}
 </section>
 
 <section id="regeln" data-reiter="regeln">
@@ -497,6 +472,8 @@ Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals kommen auto
       <label>Max. Lieferzeit (Tage) <small>0 = keine Grenze</small>
         <input name="max_tage" type="number" min="0" value="{{.MaxTage}}"></label>
     </div>
+    <label>ASIN-Liste: alle … Minuten <small>jede Prüfung kostet je ASIN und Markt ein Keepa-Token</small>
+      <input name="amazon_minuten" type="number" min="5" value="{{.AmazonMinuten}}"></label>
     <label>Gepostet von
       <select name="poster">
         <option value="">— niemand —</option>
@@ -604,6 +581,83 @@ Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals kommen auto
 })();
 </script>
 {{template "fuss"}}
+{{end}}
+
+{{define "produktzeile"}}
+  <tr>
+    <td class="produktzelle">
+      <a href="{{.URL}}" target="_blank" rel="noopener"><strong>{{.Anzeige}}</strong></a>
+      <div class="chips">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
+      {{if .IstAmazonQuelle}}<span class="chip akzent">Einkauf Amazon {{.Einkauf}}</span>{{end}}
+      {{if .IstAmazon}}<span class="chip neutral">Amazon</span>{{end}}
+      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{end}}
+      {{if .IstEbay}}<span class="chip akzent">eBay</span>{{end}}
+      {{if .Kategorie}}<span class="chip neutral">{{.Kategorie}}</span>{{end}}
+      {{if eq .Prio "hoch"}}<span class="chip positiv">Prio hoch</span>{{else if eq .Prio "niedrig"}}<span class="chip neutral">Prio niedrig</span>{{end}}
+      {{if .WeckerText}}<span class="chip neutral">Wecker {{.WeckerText}}</span>{{end}}
+      </div>
+      {{if or .EAN .ASIN .Notiz}}<small class="leise">{{if .EAN}}EAN {{.EAN}}{{end}}{{if .ASIN}} · ASIN {{.ASIN}}{{end}}{{if .Notiz}} · Notiz: {{.Notiz}}{{end}}</small>{{end}}
+      <details class="bearbeiten"><summary>Bearbeiten</summary>
+      <form method="post" action="/monitor/produkte/{{.ID}}/aendern" class="formraster">
+        <label>Name <input name="name" value="{{.Name}}"></label>
+        <div class="breit haken"><strong>Verkaufswege:</strong>
+          <label class="schmal"><input type="checkbox" name="modus" value="amazon" {{if .IstAmazon}}checked{{end}}> Amazon</label>
+          <label class="schmal"><input type="checkbox" name="modus" value="ankauf" {{if .IstAnkauf}}checked{{end}}> Ankauf</label>
+          <label class="schmal"><input type="checkbox" name="modus" value="ebay" {{if .IstEbay}}checked{{end}}> eBay</label>
+        </div>
+        <label>Ankaufspreis <input name="ankauf" value="{{.AnkaufText}}"></label>
+        <label>{{if .IstAnkauf}}Preiswecker{{else}}max. Einkauf{{end}} <input name="max_ek" value="{{.MaxEKText}}" aria-label="Höchstpreis bzw. Preiswecker mit Versand"></label>
+        <label>Prio
+          <select name="prio">
+            <option value="normal" {{if eq .Prio "normal"}}selected{{end}}>normal</option>
+            <option value="hoch" {{if eq .Prio "hoch"}}selected{{end}}>hoch</option>
+            <option value="niedrig" {{if eq .Prio "niedrig"}}selected{{end}}>niedrig</option>
+          </select></label>
+        <label>Kategorie <input name="kategorie" value="{{.Kategorie}}" list="kategorien"></label>
+        {{if .IstAmazonQuelle}}<div class="breit haken"><strong>Einkauf bei:</strong>
+          {{range .EinkaufWahl}}<label class="schmal"><input type="checkbox" name="einkauf" value="{{.Code}}" {{if .An}}checked{{end}}> Amazon.{{.Code}}</label>{{end}}
+        </div>{{else}}<label>Shops <input name="shops" value="{{.Shops}}" placeholder="alle"></label>{{end}}
+        <label>ASIN <input name="asin" value="{{.ASIN}}"></label>
+        <label class="breit">Hinweis im Post <input name="hinweis" value="{{.Hinweis}}"></label>
+        <label class="breit">mydealz-Stichworte <input name="stichworte" value="{{.Stichworte}}"></label>
+        <label class="breit">Notiz (intern) <input name="notiz" value="{{.Notiz}}"></label>
+        <div class="breit haken">
+        <strong>Verkauf auf:</strong>
+        {{range .MarktWahl}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"
+          {{if .An}}checked{{end}}> {{.Code}}</label>{{end}}
+        <label class="schmal"><input type="checkbox" name="auch_verzoegert" value="1" {{if .AuchVerzoegert}}checked{{end}}> auch längere Lieferzeit</label>
+        </div>
+        <div class="breit"><button type="submit" class="primaer schmal">Speichern</button></div>
+      </form>
+      {{if .IstAnkauf}}
+      <div class="unterblock"><strong>Ankäufer</strong> <small class="leise">nur intern, nie im Post</small>
+        {{range .Ankaeufer}}
+        <form method="post" action="/monitor/ankaeufer/{{.ID}}/loeschen" class="aktionen">
+          <small>{{if .Name}}{{.Name}}: {{end}}{{.PreisText}}{{if gt .AbStueck 1}} ab {{.AbStueck}} Stk{{end}}</small>
+          <button type="submit" class="schmal gefahr" aria-label="Ankäufer löschen">×</button></form>
+        {{end}}
+        <form method="post" action="/monitor/produkte/{{.ID}}/ankaeufer" class="aktionen">
+          <input name="name" size="10" placeholder="Name" aria-label="Name des Ankäufers">
+          <input name="preis" size="6" placeholder="Preis €" required aria-label="Preis">
+          <input name="ab" size="3" type="number" min="1" value="1" aria-label="ab Stück">
+          <button type="submit" class="schmal">+ Ankäufer</button></form>
+      </div>
+      {{end}}
+      </details>
+    </td>
+    <td class="umbruch">
+      {{if .BesterText}}{{.BesterText}}<br>{{end}}
+      <small>{{.Status}}</small>{{if .Geprueft}}<br><small class="leise">{{.Geprueft}}</small>{{end}}
+    </td>
+    <td class="aktionen">
+      <form method="post" action="/monitor/produkte/{{.ID}}/testen"><button type="submit" class="schmal">Testen</button></form>
+      <form method="post" action="/monitor/produkte/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit" class="schmal">{{if .Aktiv}}Pausieren{{else}}Aktivieren{{end}}</button></form>
+      <form method="post" action="/monitor/produkte/{{.ID}}/loeschen"><button type="submit" class="schmal gefahr">Löschen</button></form>
+    </td>
+  </tr>
 {{end}}
 
 {{define "auswertungstabelle"}}

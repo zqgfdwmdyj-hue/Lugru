@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/trinkfreunde/lugru-deal-discord/internal/bild"
@@ -18,6 +19,7 @@ import (
 const (
 	csvAmazon         = 0  // Paare: Zeit, Preis
 	csvNeuFBA         = 10 // Paare: Zeit, Preis (günstigstes FBA-Angebot)
+	csvNeuFBM         = 7  // Dreiergruppen: Zeit, Preis, Versand (günstigster Händlerversand)
 	csvBuyBoxShipping = 18 // Dreiergruppen: Zeit, Preis, Versand
 )
 
@@ -63,6 +65,18 @@ type Product struct {
 	AmazonAktuell Price
 	FBA           Price
 
+	// NeuFBAAktuell ist das günstigste neue FBA-Angebot, NeuFBMAktuell das
+	// günstigste neue Angebot mit Händlerversand (inklusive Versand).
+	// AmazonFBAAvg90 ist der niedrigere der beiden Ø-90-Tage-Preise von
+	// Amazon selbst und dem günstigsten FBA-Angebot — ohne Buy-Box-Daten
+	// (die kosten bei Keepa extra) der beste Ersatz für die Buy Box.
+	NeuFBAAktuell  Price
+	NeuFBMAktuell  Price
+	AmazonFBAAvg90 Price
+
+	// EANs sind die EANs, die Keepa zum Artikel kennt.
+	EANs []string
+
 	// Masse sind die Paketmaße, aus denen sich die EFN-Größenklasse
 	// bestimmt (siehe internal/fba). Keepa nennt für Unbekanntes -1 oder 0;
 	// beides wird hier zu 0, damit der Rest des Programms nur einen Fall
@@ -105,12 +119,15 @@ type Antwort struct {
 	TokensLeft     int
 	TokensConsumed int
 	RefillIn       time.Duration
+	// RefillRate sind die Token, die je Minute nachkommen.
+	RefillRate int
 }
 
 type rohAntwort struct {
 	TokensLeft     int          `json:"tokensLeft"`
 	TokensConsumed int          `json:"tokensConsumed"`
 	RefillIn       int          `json:"refillIn"` // Millisekunden
+	RefillRate     int          `json:"refillRate"`
 	Products       []rohProdukt `json:"products"`
 	Error          *rohFehler   `json:"error"`
 }
@@ -126,6 +143,7 @@ type rohProdukt struct {
 	Brand                 string   `json:"brand"`
 	Model                 string   `json:"model"`
 	ImagesCSV             string   `json:"imagesCSV"`
+	EANList               []string `json:"eanList"`
 	MonthlySold           int      `json:"monthlySold"`
 	ReferralFeePercentage *float64 `json:"referralFeePercentage"`
 	FBAFees               *struct {
@@ -156,7 +174,16 @@ func ParseAntwort(roh []byte) (Antwort, error) {
 		return Antwort{}, ErrNichtGefunden
 	}
 
-	rp := r.Products[0]
+	return Antwort{
+		Produkt:        produktAus(r.Products[0]),
+		TokensLeft:     r.TokensLeft,
+		TokensConsumed: r.TokensConsumed,
+		RefillIn:       time.Duration(r.RefillIn) * time.Millisecond,
+		RefillRate:     r.RefillRate,
+	}, nil
+}
+
+func produktAus(rp rohProdukt) Product {
 	p := Product{
 		ASIN:             rp.ASIN,
 		Titel:            rp.Title,
@@ -184,14 +211,45 @@ func ParseAntwort(roh []byte) (Antwort, error) {
 		p.BuyBoxAvg90 = ausReihe(rp.Stats.Avg90, csvBuyBoxShipping)
 		p.BuyBoxAktuell = ausReihe(rp.Stats.Current, csvBuyBoxShipping)
 		p.AmazonAktuell = ausReihe(rp.Stats.Current, csvAmazon)
+		p.NeuFBAAktuell = ausReihe(rp.Stats.Current, csvNeuFBA)
+		p.NeuFBMAktuell = ausReihe(rp.Stats.Current, csvNeuFBM)
+		p.AmazonFBAAvg90 = niedriger(ausReihe(rp.Stats.Avg90, csvAmazon), ausReihe(rp.Stats.Avg90, csvNeuFBA))
 	}
+	for _, e := range rp.EANList {
+		if e = strings.TrimSpace(e); e != "" {
+			p.EANs = append(p.EANs, e)
+		}
+	}
+	return p
+}
 
-	return Antwort{
-		Produkt:        p,
-		TokensLeft:     r.TokensLeft,
-		TokensConsumed: r.TokensConsumed,
-		RefillIn:       time.Duration(r.RefillIn) * time.Millisecond,
-	}, nil
+// niedriger ist der kleinere zweier Preise; fehlt einer, gilt der andere.
+func niedriger(a, b Price) Price {
+	switch {
+	case !a.OK:
+		return b
+	case !b.OK:
+		return a
+	case b.Cents < a.Cents:
+		return b
+	}
+	return a
+}
+
+// Einkaufspreis ist der günstigste Preis, zu dem man den Artikel gerade neu
+// kaufen kann: bei Amazon selbst, beim günstigsten FBA-Händler oder beim
+// günstigsten Händler mit eigenem Versand (inklusive Versand).
+func (p Product) Einkaufspreis() (Price, string) {
+	best, wer := Price{}, ""
+	for _, k := range []struct {
+		p   Price
+		wer string
+	}{{p.AmazonAktuell, "Amazon"}, {p.NeuFBAAktuell, "FBA-Händler"}, {p.NeuFBMAktuell, "Händler"}} {
+		if k.p.OK && k.p.Cents > 0 && (!best.OK || k.p.Cents < best.Cents) {
+			best, wer = k.p, k.wer
+		}
+	}
+	return best, wer
 }
 
 // mass macht aus Keepas Ganzzahl ein Maß. Keepa schreibt für "nicht

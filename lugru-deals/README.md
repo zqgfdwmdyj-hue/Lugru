@@ -237,6 +237,23 @@ Shop, EK, Ankauf, Gewinn je Stück, Marge und den Hinweis, aber keine Namen
 von Ankäufern. Mit Kategorien („Konsolen“, „Starlink“ …) und der Art in den
 Regeln lassen sich die Treffer auf eigene Channels verteilen.
 
+**Mehrere Verkaufswege:** Amazon, Ankauf und eBay sind Häkchen. Ein Produkt
+mit mehreren Häkchen wird für jeden Weg einzeln bewertet und gepostet, mit
+eigener Sperrzeit je Weg — es muss nicht doppelt angelegt werden. Wer
+dieselbe Preisliste noch einmal anlegt, ergänzt nur den Verkaufsweg.
+
+**Amazon-ASIN-Liste:** Unter *Monitor → Produkte → ASIN-Liste hochladen*
+eine Liste von ASINs einfügen oder einen Keepa-Export (CSV) hochladen,
+Einkaufsmärkte (Amazon DE/FR/IT/ES) und Verkaufswege anhaken, auf Wunsch
+gleich eine Regel mit Channel und Mindestmarge (Vorgabe 10 %) anlegen.
+Eingekauft wird zum günstigsten Neupreis (Amazon, FBA- oder Händlerangebot
+inkl. Versand). Gepostet wird nur bei echten Preissenkungen: dieselbe ASIN
+kommt sieben Tage lang nur wieder, wenn sie günstiger wird. Keepa kostet ein
+Token je ASIN und Markt und Prüfung; die Liste hat darum ein eigenes
+Intervall (Vorgabe 60 Minuten), holt je Markt 100 ASINs in einer Abfrage und
+pausiert, solange das Kontingent leer ist. Den geschätzten Verbrauch in
+Token je Minute zeigt die Seite.
+
 **Weitere Bausteine des Monitors** (alle unter *Monitor*):
 
 - **mydealz:** neue Deals aus dem Feed von mydealz werden mitgelesen; passt

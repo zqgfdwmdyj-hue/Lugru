@@ -27,6 +27,15 @@ type monitorProduktAnzeige struct {
 	AnkaufText string
 	Geprueft   string
 	BesterText string
+	// MarktWahl sind die Zielmärkte, EinkaufWahl die Einkaufsmärkte (nur
+	// bei der ASIN-Liste) — je Markt mit Häkchen.
+	MarktWahl   []marktWahl
+	EinkaufWahl []marktWahl
+}
+
+type marktWahl struct {
+	Code string
+	An   bool
 }
 
 type podcastKategorie struct {
@@ -75,6 +84,14 @@ type monitorDaten struct {
 
 	Produkte   []monitorProduktAnzeige
 	Kategorien []string
+	// ShopAnzahl und AsinAnzahl zählen die Produkte von billiger.de und die
+	// der Amazon-ASIN-Liste; AsinBedarf ist deren Keepa-Verbrauch je Minute,
+	// KeepaRate was Keepa je Minute nachlädt (0 = noch unbekannt).
+	ShopAnzahl    int
+	AsinAnzahl    int
+	AsinBedarf    string
+	KeepaRate     int
+	AmazonMinuten int
 
 	PrioHoch       int
 	PrioNiedrig    int
@@ -214,6 +231,20 @@ func (srv *Server) monitorDaten() monitorDaten {
 		a.Anzeige = p.Name
 		if a.Anzeige == "" {
 			a.Anzeige = p.URL
+			if p.IstAmazonQuelle() {
+				a.Anzeige = p.ASIN + " (Name kommt mit der ersten Prüfung)"
+			}
+		}
+		for _, m := range marketplace.All() {
+			a.MarktWahl = append(a.MarktWahl, marktWahl{Code: string(m.Code), An: enthaeltCode(p.Maerkte, string(m.Code))})
+			if p.IstAmazonQuelle() {
+				a.EinkaufWahl = append(a.EinkaufWahl, marktWahl{Code: string(m.Code), An: enthaeltCode(p.Einkauf, string(m.Code))})
+			}
+		}
+		if p.IstAmazonQuelle() {
+			d.AsinAnzahl++
+		} else {
+			d.ShopAnzahl++
 		}
 		produktName[p.ID] = a.Anzeige
 		if k := strings.TrimSpace(p.Kategorie); k != "" && !enthaelt(d.Kategorien, k) {
@@ -221,6 +252,12 @@ func (srv *Server) monitorDaten() monitorDaten {
 		}
 		d.Produkte = append(d.Produkte, a)
 	}
+
+	d.AsinBedarf = tokenText(srv.amazonTokenBedarf(produkte))
+	d.AmazonMinuten = srv.amazonMinuten()
+	srv.tokenMu.Lock()
+	d.KeepaRate = srv.tokenRate
+	srv.tokenMu.Unlock()
 
 	regeln, _ := srv.store.MonitorRegeln()
 	for _, r := range regeln {
@@ -398,6 +435,21 @@ func (srv *Server) aendereMonitorProdukt(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	p.Name, p.ASIN, p.MaxEK = r.PostForm.Get("name"), asin, maxEK
+	if p.IstAmazonQuelle() {
+		if asin == "" {
+			srv.monitorMeldung(w, "", "Ohne ASIN geht die ASIN-Liste nicht.")
+			return
+		}
+		var einkauf []string
+		for _, m := range marketplace.Codes(r.PostForm["einkauf"]) {
+			einkauf = append(einkauf, string(m.Code))
+		}
+		if len(einkauf) == 0 {
+			srv.monitorMeldung(w, "", "Bitte mindestens einen Einkaufsmarkt anhaken.")
+			return
+		}
+		p.Einkauf = strings.Join(einkauf, ",")
+	}
 	p.Maerkte = maerkteAusFormular(r)
 	p.Shops = r.PostForm.Get("shops")
 	p.AuchVerzoegert = r.PostForm.Get("auch_verzoegert") == "1"
@@ -596,7 +648,17 @@ func (srv *Server) speichereMonitorEinstellungen(w http.ResponseWriter, r *http.
 		}
 		return "0"
 	}
+	amazonMin := "keep"
+	if r.PostForm.Has("amazon_minuten") {
+		n, err := strconv.Atoi(strings.TrimSpace(r.PostForm.Get("amazon_minuten")))
+		if err != nil || n < 5 {
+			srv.monitorMeldung(w, "", "ASIN-Liste: höchstens alle 5 Minuten prüfen.")
+			return
+		}
+		amazonMin = strconv.Itoa(n)
+	}
 	for k, v := range map[string]string{
+		store.SchluesselMonitorAmazonMin:    amazonMin,
 		store.SchluesselMonitorHochSek:      hoch,
 		store.SchluesselMonitorNiedrigSek:   niedrig,
 		store.SchluesselMonitorSturzProzent: sturz,

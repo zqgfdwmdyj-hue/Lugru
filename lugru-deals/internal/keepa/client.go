@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -159,4 +160,64 @@ func (c *Client) abfrage(ctx context.Context, q url.Values) ([]byte, error) {
 	}
 
 	return koerper, nil
+}
+
+// MaxJeAbfrage ist die größte Zahl ASINs, die Keepa in einer Abfrage nimmt.
+const MaxJeAbfrage = 100
+
+// Stapel ist das Ergebnis einer Abfrage mehrerer ASINs: je gefundenem
+// Artikel das Produkt und seine Antwort in der Form einer Einzelabfrage
+// (für den Cache, siehe store.CacheSchreiben).
+type Stapel struct {
+	Produkte       []Product
+	Einzeln        [][]byte
+	TokensLeft     int
+	TokensConsumed int
+	RefillRate     int
+}
+
+// Produkte holt bis zu MaxJeAbfrage ASINs eines Marktes in einer Abfrage —
+// es kostet dasselbe wie einzeln (ein Token je ASIN), spart aber Zeit und
+// Anfragen.
+func (c *Client) Produkte(ctx context.Context, asins []string, domain int) (Stapel, error) {
+	if len(asins) == 0 || len(asins) > MaxJeAbfrage {
+		return Stapel{}, fmt.Errorf("keepa: 1 bis %d ASINs je Abfrage", MaxJeAbfrage)
+	}
+	koerper, err := c.abfrage(ctx, url.Values{
+		"domain":  {strconv.Itoa(domain)},
+		"asin":    {strings.Join(asins, ",")},
+		"stats":   {"90"},
+		"history": {"1"},
+	})
+	if err != nil {
+		return Stapel{}, err
+	}
+	var r struct {
+		TokensLeft     int               `json:"tokensLeft"`
+		TokensConsumed int               `json:"tokensConsumed"`
+		RefillRate     int               `json:"refillRate"`
+		Products       []json.RawMessage `json:"products"`
+		Error          *rohFehler        `json:"error"`
+	}
+	if err := json.Unmarshal(koerper, &r); err != nil {
+		return Stapel{}, fmt.Errorf("keepa: Antwort nicht lesbar: %w", err)
+	}
+	if r.Error != nil && r.Error.Type != "" {
+		return Stapel{}, fmt.Errorf("keepa: %s: %s", r.Error.Type, r.Error.Message)
+	}
+	st := Stapel{TokensLeft: r.TokensLeft, TokensConsumed: r.TokensConsumed, RefillRate: r.RefillRate}
+	for _, roh := range r.Products {
+		var rp rohProdukt
+		if json.Unmarshal(roh, &rp) != nil || rp.ASIN == "" {
+			continue
+		}
+		// Keepa liefert unbekannte ASINs als fast leeres Produkt ohne Titel
+		// und ohne Verlauf.
+		if rp.Title == "" && len(rp.CSV) == 0 {
+			continue
+		}
+		st.Produkte = append(st.Produkte, produktAus(rp))
+		st.Einzeln = append(st.Einzeln, append(append([]byte(`{"products":[`), roh...), []byte(`]}`)...))
+	}
+	return st, nil
 }

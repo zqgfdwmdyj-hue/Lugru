@@ -47,6 +47,11 @@ type Server struct {
 	tokenMu         sync.Mutex
 	tokenLinks      int
 	tokenVerbraucht int
+	// tokenRate sind die Keepa-Token, die je Minute nachkommen (0 =
+	// unbekannt); keepaPauseBis hält die ASIN-Liste an, solange das
+	// Kontingent leer ist. Beide schützt tokenMu.
+	tokenRate     int
+	keepaPauseBis time.Time
 
 	// reaktionen ist der Hintergrund-Abgleich der Discord-Reaktionen.
 	reaktionen *abgleich
@@ -245,6 +250,7 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /monitor/feeds/{id}/aktiv", srv.schalteFeed)
 	mux.HandleFunc("POST /monitor/feeds/{id}/loeschen", srv.loescheFeed)
 	mux.HandleFunc("POST /monitor/import", srv.zeigeImport)
+	mux.HandleFunc("POST /monitor/asins", srv.speichereAsinListe)
 	mux.HandleFunc("POST /monitor/import/uebernehmen", srv.uebernehmeImport)
 
 	mux.HandleFunc("GET /einstellungen", srv.zeigeEinstellungen)

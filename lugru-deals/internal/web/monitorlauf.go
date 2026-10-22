@@ -85,11 +85,14 @@ func (srv *Server) StarteMonitor(ctx context.Context) {
 				log.Printf("Monitor: %v", err)
 				continue
 			}
+			// Die fälligen ASINs der Amazon-Liste je Markt in Stapeln holen.
+			srv.amazonVorladen(ctx, faellig)
 			for i, p := range faellig {
 				if ctx.Err() != nil {
 					return
 				}
-				if i > 0 && !warteKurz(ctx, monitorPause) {
+				// Die Pause schont billiger.de; ASINs kommen aus dem Cache.
+				if i > 0 && !p.IstAmazonQuelle() && !warteKurz(ctx, monitorPause) {
 					return
 				}
 				b := srv.monitorPruefe(ctx, p, false)
@@ -122,6 +125,9 @@ func (srv *Server) monitorIntervall() time.Duration {
 
 // prioIntervall ist die Prüfzeit eines Produkts nach seiner Prio-Stufe.
 func (srv *Server) prioIntervall(p store.MonitorProdukt) time.Duration {
+	if p.IstAmazonQuelle() {
+		return srv.amazonIntervall(p)
+	}
 	sek := 0
 	switch p.Prio {
 	case store.PrioHoch:
@@ -219,11 +225,19 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 		_ = srv.store.MonitorGeprueft(p.ID, jetzt, b.Status, shop, cent, name, ean, asin)
 	}()
 
-	liste, err := billiger.Hole(ctx, srv.monitorClient(), p.URL)
+	var liste billiger.Preisliste
+	var err error
+	if p.IstAmazonQuelle() {
+		liste, err = srv.amazonListe(ctx, p)
+	} else {
+		liste, err = billiger.Hole(ctx, srv.monitorClient(), p.URL)
+	}
 	liste.Angebote = srv.rabatteAnwenden(liste.Angebote)
 	if err != nil {
 		b.Status = "Fehler: " + sicherFehlertext(err.Error())
-		if !test {
+		if p.IstAmazonQuelle() {
+			b.Status = sicherFehlertext(err.Error())
+		} else if !test {
 			srv.adminMelden(ctx, "billiger", "⚠️ Monitor: billiger.de antwortet nicht wie erwartet ("+p.Name+"): "+sicherFehlertext(err.Error()))
 		}
 		return b
@@ -466,12 +480,19 @@ func monitorFormularWerte(p store.MonitorProdukt, liste billiger.Preisliste, a b
 	if a.Status == billiger.Verzoegert && a.Lieferzeit != "" {
 		notiz += " · Lieferzeit: " + a.Lieferzeit
 	}
+	einkauf, quelle, quellURL := liste.URL, marketplace.DE, liste.URL
+	if m, ok := amazonMarktAusShop(a.Shop); ok {
+		// Einkauf bei Amazon: der Link geht auf die Produktseite dieses
+		// Marktes, die Vorsteuer ist die dieses Landes.
+		einkauf, quelle, quellURL = m.ProductURL(asin), m.Code, ""
+		notiz = einkaufsText(a)
+	}
 	w := url.Values{
-		"einkaufslink":    {liste.URL},
-		"link_bestaetigt": {liste.URL},
-		"quell_url":       {liste.URL},
+		"einkaufslink":    {einkauf},
+		"link_bestaetigt": {einkauf},
+		"quell_url":       {quellURL},
 		"asin":            {asin},
-		"quellmarkt":      {string(marketplace.DE)},
+		"quellmarkt":      {string(quelle)},
 		"ek":              {a.Effektiv().String()},
 		"ek_art":          {"brutto"},
 		"ek_notiz":        {notiz},
