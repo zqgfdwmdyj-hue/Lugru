@@ -109,3 +109,31 @@ func (s *Store) RueckblickDeals(von, bis time.Time) ([]Deal, error) {
 	}
 	return out, zeilen.Err()
 }
+
+// RueckblickB2B sind die Deals (je Hauptpost), von denen mindestens ein Post
+// in einem B2B-Channel steht.
+func (s *Store) RueckblickB2B() (map[int64]bool, error) {
+	channels, err := s.B2BChannels()
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]bool{}
+	if len(channels) == 0 {
+		return out, nil
+	}
+	bedingung, args := b2bBedingung(channels)
+	zeilen, err := s.db.Query(`SELECT DISTINCT CASE WHEN haupt_id = 0 THEN id ELSE haupt_id END
+		FROM deals WHERE `+bedingung, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer zeilen.Close()
+	for zeilen.Next() {
+		var id int64
+		if err := zeilen.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, zeilen.Err()
+}

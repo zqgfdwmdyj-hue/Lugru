@@ -36,6 +36,8 @@ type rueckblickZeile struct {
 	ID                   int64
 	Datum, Titel, ASIN   string
 	Link, Markt          string
+	Channel              string
+	B2B                  bool
 	VK, Gewinn, Marge    string
 	Tief, TiefInfo       string
 	VK30, VK30Info       string
@@ -52,9 +54,13 @@ type rueckblickDaten struct {
 	Titel, TokenText string
 	Fehler, Meldung  string
 	Von, Bis, Nur    string
-	Sortierung       string
-	Zeitraeume       []zeitraum
-	Filter           []gruppenWahl
+	// Art ist "b2b", "standard" oder leer für alle Deals.
+	Art        string
+	ArtWahl    []gruppenWahl
+	B2BDeals   int
+	Sortierung string
+	Zeitraeume []zeitraum
+	Filter     []gruppenWahl
 
 	Stand rueckblickStand
 	// Offen sind die Artikel, die noch (oder wieder) abzugleichen sind —
@@ -97,7 +103,7 @@ func rueckblickZeitraeume(von, bis string) []zeitraum {
 func (srv *Server) zeigeRueckblick(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	d := rueckblickDaten{Titel: "Statistik", TokenText: srv.tokenText(), Von: q.Get("von"), Bis: q.Get("bis"),
-		Nur: q.Get("nur"), Sortierung: q.Get("sortierung"), Meldung: q.Get("meldung")}
+		Nur: q.Get("nur"), Art: q.Get("art"), Sortierung: q.Get("sortierung"), Meldung: q.Get("meldung")}
 	if !q.Has("von") && !q.Has("bis") {
 		// Ohne Auswahl: der Monat vor sechs Monaten.
 		z := rueckblickZeitraeume("", "")[2]
@@ -119,6 +125,13 @@ func (srv *Server) zeigeRueckblick(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bl, _ := srv.store.Rueckblicke()
+	b2b, _ := srv.store.RueckblickB2B()
+	for _, deal := range deals {
+		if b2b[deal.ID] {
+			d.B2BDeals++
+		}
+	}
+	deals = nachArt(deals, b2b, d.Art)
 	jetzt := time.Now()
 	d.Offen = len(rueckblickOffen(deals, bl, jetzt))
 
@@ -126,6 +139,7 @@ func (srv *Server) zeigeRueckblick(w http.ResponseWriter, r *http.Request) {
 	var tage, erholtMitTagen int
 	for _, deal := range deals {
 		z := rueckblickZeileAus(deal, bl, jetzt)
+		z.B2B = b2b[deal.ID]
 		d.Anzahl++
 		switch z.art {
 		case "offen":
@@ -173,6 +187,9 @@ func (srv *Server) zeigeRueckblick(w http.ResponseWriter, r *http.Request) {
 		{"⚠️ weniger Gewinn", "weniger"}, {"❌ Verlust", "verlust"}, {"📉 eingebrochen", "gefallen"}, {"nicht erholt", "nichterholt"}} {
 		d.Filter = append(d.Filter, gruppenWahl{Name: f.name, Wert: f.wert, Aktiv: f.wert == d.Nur})
 	}
+	for _, a := range []struct{ name, wert string }{{"alle Deals", ""}, {"nur B2B", "b2b"}, {"ohne B2B", "standard"}} {
+		d.ArtWahl = append(d.ArtWahl, gruppenWahl{Name: a.name, Wert: a.wert, Aktiv: a.wert == d.Art})
+	}
 	srv.rendere(w, "rueckblick", d)
 }
 
@@ -206,7 +223,7 @@ func rueckblickZeileAus(deal store.Deal, bl map[int64]store.Rueckblick, jetzt ti
 	m, _ := marketplace.ByCode(marketplace.Code(deal.Zielmarkt))
 	z := rueckblickZeile{
 		ID: deal.ID, Datum: deal.GepostetAm.Local().Format("02.01.2006"), Titel: deal.Titel, ASIN: deal.ASIN,
-		Markt: deal.Zielmarkt, VK: deal.VKCent.Euro(), Gewinn: deal.EffGewinnCent.Euro(), Marge: prozent(deal.EffMargeProzent, 1),
+		Markt: deal.Zielmarkt, Channel: deal.ChannelName, VK: deal.VKCent.Euro(), Gewinn: deal.EffGewinnCent.Euro(), Marge: prozent(deal.EffMargeProzent, 1),
 		art: "offen", Bewertung: "noch nicht abgeglichen", Klasse: "neutral",
 	}
 	if m.Host != "" {
@@ -288,8 +305,8 @@ func rueckblickOffen(deals []store.Deal, bl map[int64]store.Rueckblick, jetzt ti
 
 func (srv *Server) starteRueckblick(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
-	von, bis := r.PostForm.Get("von"), r.PostForm.Get("bis")
-	zurueck := "/statistik/rueckblick?" + url.Values{"von": {von}, "bis": {bis}}.Encode()
+	von, bis, art := r.PostForm.Get("von"), r.PostForm.Get("bis"), r.PostForm.Get("art")
+	zurueck := "/statistik/rueckblick?" + url.Values{"von": {von}, "bis": {bis}, "art": {art}}.Encode()
 	vonT, bisT, fehler := statistikZeitraum(von, bis)
 	if fehler != "" {
 		http.Redirect(w, r, zurueck, http.StatusSeeOther)
@@ -301,7 +318,8 @@ func (srv *Server) starteRueckblick(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bl, _ := srv.store.Rueckblicke()
-	offen := rueckblickOffen(deals, bl, time.Now())
+	b2b, _ := srv.store.RueckblickB2B()
+	offen := rueckblickOffen(nachArt(deals, b2b, art), bl, time.Now())
 
 	srv.rueckblickMu.Lock()
 	if srv.rueckblickLauf.Laeuft || len(offen) == 0 {
@@ -360,3 +378,18 @@ func (srv *Server) rueckblickAbgleichen(gruppen []rueckblickGruppe) {
 // tageZwischen sind die vollen Tage von a bis b, gerundet — eine
 // Zeitumstellung dazwischen macht aus 80 Tagen sonst 79.
 func tageZwischen(a, b time.Time) int { return int(math.Round(b.Sub(a).Hours() / 24)) }
+
+// nachArt lässt nur B2B-Deals ("b2b"), nur die übrigen ("standard") oder
+// alle (leer) durch.
+func nachArt(deals []store.Deal, b2b map[int64]bool, art string) []store.Deal {
+	if art != "b2b" && art != "standard" {
+		return deals
+	}
+	var out []store.Deal
+	for _, d := range deals {
+		if (art == "b2b") == b2b[d.ID] {
+			out = append(out, d)
+		}
+	}
+	return out
+}

@@ -72,3 +72,31 @@ func TestRueckblickGleichtMitKeepaAb(t *testing.T) {
 		t.Error("Deals nicht abgeglichen")
 	}
 }
+
+func TestRueckblickMitB2B(t *testing.T) {
+	srv, s := testServer(t)
+	if err := s.SetzeEinstellung(store.SchluesselB2BChannels, "auto"); err != nil {
+		t.Fatal(err)
+	}
+	normal, _ := s.ChannelAnlegen(store.Channel{Name: "deals", WebhookURL: "https://x/1"})
+	b2b, _ := s.ChannelAnlegen(store.Channel{Name: "b2b-deals", WebhookURL: "https://x/2"})
+	post := time.Now().AddDate(0, -6, 0)
+	for _, c := range []struct {
+		titel string
+		id    int64
+	}{{"Normaler Deal", normal}, {"Palette Großhandel", b2b}} {
+		if _, err := s.DealAnlegen(store.Deal{ASIN: "B00000000X", Titel: c.titel, Quellmarkt: "DE", Zielmarkt: "DE",
+			EKCent: 100, VKCent: 200, ChannelID: c.id, ChannelName: "c", NachrichtText: "x", GepostetAm: post}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tag := post.Format("2006-01-02")
+	alle := hole(t, srv, http.MethodGet, "/statistik/rueckblick?von="+tag+"&bis="+tag, "").Body.String()
+	if !strings.Contains(alle, "Normaler Deal") || !strings.Contains(alle, "Palette Großhandel") || !strings.Contains(alle, "davon 1 B2B") {
+		t.Fatalf("alle Deals: %s", alle)
+	}
+	nurB2B := hole(t, srv, http.MethodGet, "/statistik/rueckblick?von="+tag+"&bis="+tag+"&art=b2b", "").Body.String()
+	if strings.Contains(nurB2B, "Normaler Deal") || !strings.Contains(nurB2B, "Palette Großhandel") {
+		t.Fatal("Filter „nur B2B“ greift nicht")
+	}
+}

@@ -9,9 +9,13 @@ eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und G
 {{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
 
 <p class="schnellwahl">
-  {{range .Zeitraeume}}<a href="/statistik/rueckblick?von={{.Von}}&amp;bis={{.Bis}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+  {{range .Zeitraeume}}<a href="/statistik/rueckblick?von={{.Von}}&amp;bis={{.Bis}}&amp;art={{$.Art}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+</p>
+<p class="schnellwahl gruppenwahl">
+  {{range .ArtWahl}}<a href="/statistik/rueckblick?von={{$.Von}}&amp;bis={{$.Bis}}&amp;art={{.Wert}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
 </p>
 <form method="get" action="/statistik/rueckblick" class="karte filterzeile">
+  <input type="hidden" name="art" value="{{.Art}}">
   <label>gepostet von <input type="date" name="von" value="{{.Von}}"></label>
   <label>bis <input type="date" name="bis" value="{{.Bis}}"></label>
   <button type="submit" class="primaer">Anzeigen</button>
@@ -27,7 +31,7 @@ eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und G
 {{if .Stand.Meldung}}<p class="meldung">{{.Stand.Meldung}}</p>{{end}}
 {{if .Offen}}
 <form method="post" action="/statistik/rueckblick/abgleichen" class="karte">
-  <input type="hidden" name="von" value="{{.Von}}"><input type="hidden" name="bis" value="{{.Bis}}">
+  <input type="hidden" name="von" value="{{.Von}}"><input type="hidden" name="bis" value="{{.Bis}}"><input type="hidden" name="art" value="{{.Art}}">
   <p><b>{{.Offen}} Artikel</b> sind noch nicht (oder vor über einer Woche) abgeglichen.
   Das kostet bis zu <b>{{.Offen}} Keepa-Token</b> (1 je Artikel und Markt; was im Keepa-Cache liegt, ist gratis).</p>
   <button type="submit" class="primaer">Mit Keepa abgleichen</button>
@@ -36,7 +40,7 @@ eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und G
 {{end}}
 
 <div class="kacheln">
-  <div class="kachel"><span>Deals im Zeitraum</span><b>{{.Anzahl}}</b></div>
+  <div class="kachel"><span>Deals im Zeitraum</span><b>{{.Anzahl}}{{if and .B2BDeals (not .Art)}} <small>davon {{.B2BDeals}} B2B</small>{{end}}</b></div>
   <div class="kachel"><span>abgeglichen</span><b>{{.Geprueft}}</b></div>
   <div class="kachel"><span>✅ realistisch</span><b>{{.Realistisch}}{{if .Quote}} <small>({{.Quote}})</small>{{end}}</b></div>
   <div class="kachel"><span>⚠️ weniger Gewinn</span><b>{{.Weniger}}</b></div>
@@ -51,8 +55,8 @@ eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und G
 im Post. Gewinne je 1 Stück.{{if .OhneDaten}} {{.OhneDaten}} Deals ohne Keepa-Daten.{{end}}</p>
 
 <p class="schnellwahl">
-  {{range .Filter}}<a href="/statistik/rueckblick?von={{$.Von}}&amp;bis={{$.Bis}}&amp;nur={{.Wert}}&amp;sortierung={{$.Sortierung}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
-  <a href="/statistik/rueckblick?von={{.Von}}&amp;bis={{.Bis}}&amp;nur={{.Nur}}&amp;sortierung={{if eq .Sortierung "schlecht"}}{{else}}schlecht{{end}}">{{if eq .Sortierung "schlecht"}}nach Datum sortieren{{else}}größte Abweichung zuerst{{end}}</a>
+  {{range .Filter}}<a href="/statistik/rueckblick?von={{$.Von}}&amp;bis={{$.Bis}}&amp;art={{$.Art}}&amp;nur={{.Wert}}&amp;sortierung={{$.Sortierung}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+  <a href="/statistik/rueckblick?von={{.Von}}&amp;bis={{.Bis}}&amp;art={{.Art}}&amp;nur={{.Nur}}&amp;sortierung={{if eq .Sortierung "schlecht"}}{{else}}schlecht{{end}}">{{if eq .Sortierung "schlecht"}}nach Datum sortieren{{else}}größte Abweichung zuerst{{end}}</a>
 </p>
 <div class="tabellenkarte scrollbar">
 <table>
@@ -63,7 +67,7 @@ im Post. Gewinne je 1 Stück.{{if .OhneDaten}} {{.OhneDaten}} Deals ohne Keepa-D
   {{range .Zeilen}}
   <tr>
     <td>{{.Datum}}</td>
-    <td class="umbruch"><span>{{.Titel}}<br><small class="leise">{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener">{{.ASIN}}</a>{{else}}{{.ASIN}}{{end}} · {{.Markt}}{{if .Hinweis}} · {{.Hinweis}}{{end}}</small></span></td>
+    <td class="umbruch"><span>{{.Titel}}<br><small class="leise">{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener">{{.ASIN}}</a>{{else}}{{.ASIN}}{{end}} · {{.Markt}} · #{{.Channel}}{{if .B2B}} <span class="chip akzent">B2B</span>{{end}}{{if .Hinweis}} · {{.Hinweis}}{{end}}</small></span></td>
     <td class="zahl">{{.VK}}</td>
     <td class="zahl">{{.Gewinn}}<br><small class="leise">{{.Marge}}</small></td>
     <td class="zahl">{{.Tief}}{{if .TiefInfo}}<br><small class="leise">{{.TiefInfo}}</small>{{end}}</td>
