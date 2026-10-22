@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/trinkfreunde/lugru-deal-discord/internal/keepa"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/marketplace"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/money"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/rueckblick"
@@ -287,7 +288,9 @@ func rueckblickOffen(deals []store.Deal, bl map[int64]store.Rueckblick, jetzt ti
 		}
 		b, da := bl[d.ID]
 		// Ein Abgleich mehr als ein Jahr nach dem Post ändert sich kaum noch.
-		fertig := da && (jetzt.Sub(b.GeprueftAm) < rueckblickNeuNach || b.GeprueftAm.Sub(d.GepostetAm) > 365*24*time.Hour)
+		// Ein Abgleich ohne Daten und ohne Grund stammt aus der Zeit, als
+		// nur die Buy-Box-Reihe gelesen wurde — er wird nachgeholt.
+		fertig := da && (b.Daten || b.Fehler != "") && (jetzt.Sub(b.GeprueftAm) < rueckblickNeuNach || b.GeprueftAm.Sub(d.GepostetAm) > 365*24*time.Hour)
 		if fertig {
 			continue
 		}
@@ -341,9 +344,7 @@ func (srv *Server) rueckblickAbgleichen(gruppen []rueckblickGruppe) {
 	meldung := ""
 	fertig := 0
 	for _, g := range gruppen {
-		ctx, abbruch := context.WithTimeout(context.Background(), time.Minute)
-		p, err := srv.holeProduktCtx(ctx, g.asin, g.markt, false)
-		abbruch()
+		p, err := srv.rueckblickProdukt(g.asin, g.markt)
 		jetzt := time.Now()
 		if err != nil {
 			if !strings.Contains(err.Error(), "kennt die ASIN") {
@@ -355,7 +356,7 @@ func (srv *Server) rueckblickAbgleichen(gruppen []rueckblickGruppe) {
 			}
 		} else {
 			for _, d := range g.deals {
-				e := rueckblick.Auswerten(p.BuyBoxVerlauf, d.GepostetAm, jetzt, d.VKCent)
+				e := rueckblick.Auswerten(p.Verkaufsverlauf(), d.GepostetAm, jetzt, d.VKCent)
 				_ = srv.store.RueckblickSpeichern(store.Rueckblick{
 					DealID: d.ID, GeprueftAm: jetzt, Daten: e.Daten,
 					VKJetzt: e.VKJetzt, VKTief: e.VKTief, TiefAm: e.TiefAm, VK30: e.VK30, VK90: e.VK90, ErholtAm: e.ErholtAm,
@@ -392,4 +393,18 @@ func nachArt(deals []store.Deal, b2b map[int64]bool, art string) []store.Deal {
 		}
 	}
 	return out
+}
+
+// rueckblickProdukt nimmt eine Keepa-Antwort aus dem Cache, wenn sie höchstens
+// drei Tage alt ist — für den Rückblick genügt das, und ein zweiter Lauf
+// über denselben Zeitraum kostet so kein Token. Sonst fragt es Keepa.
+func (srv *Server) rueckblickProdukt(asin string, m marketplace.Marketplace) (keepa.Product, error) {
+	if roh, da := srv.store.CacheLesen(asin, m.KeepaDomain, 72*time.Hour); da {
+		if a, err := keepa.ParseAntwort(roh); err == nil {
+			return a.Produkt, nil
+		}
+	}
+	ctx, abbruch := context.WithTimeout(context.Background(), time.Minute)
+	defer abbruch()
+	return srv.holeProduktCtx(ctx, asin, m, true)
 }

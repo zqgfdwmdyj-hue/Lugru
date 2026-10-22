@@ -2,7 +2,7 @@
 {{template "kopf" .}}
 <p class="hinweis"><a href="/statistik">← zurück zur Statistik</a></p>
 <h1>Rückblick: Wie haben sich die Deals entwickelt?</h1>
-<p class="hinweis">Gleicht gepostete Deals mit dem späteren Buy-Box-Verlauf bei Keepa ab. <b>Realistischer
+<p class="hinweis">Gleicht gepostete Deals mit dem späteren Preisverlauf bei Keepa ab (Buy Box, sonst der niedrigere von Amazon-Preis und günstigstem FBA-Angebot). <b>Realistischer
 Verkaufspreis</b> ist der Median der ersten 30 Tage nach dem Post — so lange dauert es meist, bis die Ware
 eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und Gebühren wie im Post).</p>
 {{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
@@ -33,7 +33,7 @@ eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und G
 <form method="post" action="/statistik/rueckblick/abgleichen" class="karte">
   <input type="hidden" name="von" value="{{.Von}}"><input type="hidden" name="bis" value="{{.Bis}}"><input type="hidden" name="art" value="{{.Art}}">
   <p><b>{{.Offen}} Artikel</b> sind noch nicht (oder vor über einer Woche) abgeglichen.
-  Das kostet bis zu <b>{{.Offen}} Keepa-Token</b> (1 je Artikel und Markt; was im Keepa-Cache liegt, ist gratis).</p>
+  Das kostet bis zu <b>{{.Offen}} Keepa-Token</b> (1 je Artikel und Markt; was in den letzten drei Tagen schon geholt wurde, ist gratis).</p>
   <button type="submit" class="primaer">Mit Keepa abgleichen</button>
 </form>
 {{else if .Anzahl}}<p class="hinweis">Alle Deals im Zeitraum sind abgeglichen.</p>{{end}}

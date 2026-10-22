@@ -100,3 +100,19 @@ func TestRueckblickMitB2B(t *testing.T) {
 		t.Fatal("Filter „nur B2B“ greift nicht")
 	}
 }
+
+// Abgleiche ohne Daten und ohne Grund (aus der Zeit, als nur die
+// Buy-Box-Reihe gelesen wurde) werden nachgeholt, alle anderen nicht.
+func TestRueckblickOffenHoltLeereNach(t *testing.T) {
+	jetzt := time.Now()
+	deals := []store.Deal{{ID: 1, ASIN: "A", Zielmarkt: "DE"}, {ID: 2, ASIN: "B", Zielmarkt: "DE"}, {ID: 3, ASIN: "C", Zielmarkt: "DE"}}
+	bl := map[int64]store.Rueckblick{
+		1: {DealID: 1, GeprueftAm: jetzt},
+		2: {DealID: 2, GeprueftAm: jetzt, Daten: true},
+		3: {DealID: 3, GeprueftAm: jetzt, Fehler: "Keepa kennt die ASIN nicht"},
+	}
+	offen := rueckblickOffen(deals, bl, jetzt)
+	if len(offen) != 1 || offen[0].asin != "A" {
+		t.Fatalf("offen: %+v", offen)
+	}
+}
