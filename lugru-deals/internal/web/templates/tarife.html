@@ -1,0 +1,115 @@
+{{define "tarife"}}
+{{template "kopf" .}}
+<h1>Versandtarife</h1>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+<p class="hinweis">Die Ware liegt in <strong>{{.Lagerland}}</strong>. Dorthin
+gilt Amazons <strong>lokaler</strong> Tarif; jedes andere Ziel wird von dort
+über das Europäische Versandnetzwerk beliefert und kostet den
+<strong>EFN</strong>-Tarif. Das ist kein Detail: je nach Größenklasse liegt der
+EFN-Tarif beim Anderthalb- bis Dreieinhalbfachen des lokalen. Jede Spalte unten
+trägt darum den Weg, der für sie gilt.</p>
+
+<p class="hinweis">Diese Tabelle ist Amazons Tarifübersicht: Zeilen sind
+Größenklassen, Spalten sind Zielmärkte. Grenzen und Beträge stehen bewusst
+nicht im Programm, damit eine Gebührenänderung hier eingetragen werden kann
+statt in einer neuen Version. In der Datenbank liegen beide Tarifwerke
+nebeneinander — wechselt das Lagerland, gilt schlagartig das jeweils andere,
+und dann soll es nicht leer sein.</p>
+
+<p class="hinweis">Solange eine Zeile fehlt oder ein Betrag leer ist, rechnet
+der Funnel wie bisher weiter — mit Keepas Gebühr, ersatzweise dem Standardwert.
+Ein leeres Feld heißt „nicht eingetragen“ und nicht „0,00 €“.</p>
+
+<p class="hinweis">Die zweite Zeile jeder Zelle ist die Kilogramm-Staffel, die
+Amazon für die Übergrößen führt: „0,36 € je zusätzlichem Kilogramm“ über einem
+Grundgewicht. Bei Umschlägen und Paketen bleibt sie leer — dort gilt ein
+Festbetrag. Beide Felder gehören zusammen; eines allein wird abgelehnt.</p>
+
+{{if .Stand}}<p class="hinweis">Startbestückung: {{.Stand}}. Von Hand geänderte
+Werte bleiben davon unberührt — nachgefüllt wird nie wieder.</p>{{end}}
+
+{{if .Zuschlag}}<p class="hinweis">Dazu kommt je Einheit ein Zuschlag von
+<strong>{{.Zuschlag}}</strong> (Einstellungen). Das ist Fußnote 4 beider
+Tarifübersichten: wer Lagerbestand in Deutschland hat und am Central Europe
+Program nicht teilnimmt, zahlt so viel mehr je Einheit aus einem deutschen
+Logistikzentrum. Wer teilnimmt, trägt dort 0 ein.</p>{{end}}
+
+<form method="post" action="/tarife">
+{{/* Für welches Lagerland diese Tabelle gebaut wurde. Der Handler lehnt das
+     Speichern ab, wenn es sich inzwischen geändert hat — sonst gerieten die
+     angezeigten Beträge in den falschen Versandweg. */}}
+<input type="hidden" name="lagerland" value="{{.Lagerland}}">
+<div class="tabellenkarte scrollbar">
+<table class="tarife">
+  <thead>
+  <tr>
+    <th>Klasse</th>
+    <th>Reihenfolge</th>
+    <th>max. Länge cm</th><th>max. Breite cm</th><th>max. Höhe cm</th>
+    <th>max. Gewicht g</th>
+    {{range .Spalten}}<th>{{.Markt.Code}} €<br><small>{{.Weg}}</small></th>{{end}}
+    <th></th>
+  </tr>
+  </thead>
+  <tbody>
+  {{range .Zeilen}}
+  <tr>
+    <td class="klasse"><input name="bez.{{.Klasse.ID}}" value="{{.Klasse.Bezeichnung}}" required></td>
+    <td><input name="sortierung.{{.Klasse.ID}}" value="{{.Klasse.Sortierung}}" size="3"></td>
+    <td><input name="laenge.{{.Klasse.ID}}"  value="{{.LaengeCM}}" size="5"></td>
+    <td><input name="breite.{{.Klasse.ID}}"  value="{{.BreiteCM}}" size="5"></td>
+    <td><input name="hoehe.{{.Klasse.ID}}"   value="{{.HoeheCM}}" size="5"></td>
+    <td><input name="gewicht.{{.Klasse.ID}}" value="{{.GewichtG}}" size="6"></td>
+    {{$z := .}}
+    {{range $.Spalten}}
+    {{$b := index $z.Gebuehren (printf "%s" .Markt.Code)}}
+    <td class="tarifzelle">
+      <input name="geb.{{$z.Klasse.ID}}.{{.Markt.Code}}" value="{{$b.Cent}}" size="6"
+             placeholder="leer" title="Betrag in Euro">
+      <span class="tarifstaffel">ab
+        <input name="frei.{{$z.Klasse.ID}}.{{.Markt.Code}}" value="{{$b.FreiGewichtG}}" size="5"
+               placeholder="—" title="Grundgewicht in Gramm, nur bei Übergrößen">g
+        <input name="prokg.{{$z.Klasse.ID}}.{{.Markt.Code}}" value="{{$b.CentProKg}}" size="4"
+               placeholder="—" title="Zuschlag je zusätzlichem Kilogramm">€/kg</span>
+    </td>
+    {{end}}
+    <td class="aktionen"><button type="submit" form="loeschen-{{.Klasse.ID}}" class="gefahr">Löschen</button></td>
+  </tr>
+  {{else}}
+  <tr><td colspan="99" class="leer">Noch keine Größenklasse angelegt — unten anfangen.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{if .Zeilen}}<p class="knoepfe"><button type="submit" class="primaer">Tabelle speichern</button></p>{{end}}
+</form>
+
+{{/* Die Löschformulare stehen außerhalb der Tabelle und werden aus den
+     Knöpfen oben über form="…" angesprochen. Ein <form> mitten in einer
+     Tabellenzeile ist kein gültiges HTML, und ein verschachteltes erst
+     recht nicht — das Speichern-Formular umschließt hier ja bereits alles. */}}
+{{range .Zeilen}}
+<form method="post" action="/tarife/{{.Klasse.ID}}/loeschen" id="loeschen-{{.Klasse.ID}}"></form>
+{{end}}
+
+<h2>Neue Größenklasse</h2>
+<form method="post" action="/tarife/neu" class="karte">
+  <label>Bezeichnung <small>wie in der Tarifübersicht</small>
+    <input name="bez" required placeholder="Standardpaket ≤ 1,4 kg"></label>
+  <label>Reihenfolge <small>kleinste Klasse zuerst — geprüft wird von oben nach unten</small>
+    <input name="sortierung" value="0" size="3"></label>
+  <label>max. Länge in cm <input name="laenge" required placeholder="45"></label>
+  <label>max. Breite in cm <input name="breite" required placeholder="34"></label>
+  <label>max. Höhe in cm <input name="hoehe" required placeholder="26"></label>
+  <label>max. Gewicht in Gramm <small>1,4 kg sind 1400</small>
+    <input name="gewicht" required placeholder="1400"></label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+
+<p class="hinweis">Welche der drei Kanten im Formular „Länge“ heißt, ist
+gleichgültig: verglichen wird der Größe nach, längste gegen längste. Ein quer
+liegendes Paket fällt darum nicht aus seiner Klasse.</p>
+{{template "fuss"}}
+{{end}}

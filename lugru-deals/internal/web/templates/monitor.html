@@ -1,0 +1,522 @@
+{{define "monitor"}}
+{{template "kopf" .}}
+<h1>Shop-Monitor</h1>
+<p class="hinweis">Beobachtet Produkte bei <strong>billiger.de</strong> — dort stehen die Angebote von OTTO, Kaufland,
+MediaMarkt, Cyberport und vielen anderen Shops. Wird ein Produkt günstig genug angeboten, rechnet der Monitor den
+Deal durch und postet ihn wie einen Deal von Hand — in jeden Channel, dessen Regel er erfüllt. Zusätzlich liest er
+neue Deals bei mydealz mit.</p>
+<p class="aktionen"><a href="#produkte">Produkte</a> · <a href="#import">Liste importieren</a> · <a href="#regeln">Regeln</a>
+· <a href="#feeds">Reisen, Leasing &amp; Eigengebrauch</a> · <a href="#podcasts">Podcasts</a> · <a href="#kategorien">Kategorie-Scan</a> · <a href="#rabatte">Gutscheine &amp; Cashback</a> · <a href="#treffer">Treffer</a> · <a href="#auswertung">Auswertung</a> · <a href="#einstellungen">Einstellungen</a></p>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+{{if .Varianten}}
+<h2>Welche Variante?</h2>
+<p class="hinweis">Der Link führt auf eine Sammelseite mit {{len .Varianten}} Varianten. Ein Ankaufspreis gilt aber nur für
+eine davon — sonst meldet der Monitor z. B. eine Digital Edition als Disc-Deal. Bitte die passende wählen; die übrigen
+Eingaben bleiben erhalten.</p>
+<div class="karte">
+{{range .Varianten}}
+  <form method="post" action="/monitor/produkte" class="aktionen">
+    {{range $.Mitnehmen}}<input type="hidden" name="{{.Name}}" value="{{.Wert}}">{{end}}
+    <input type="hidden" name="url" value="{{.URL}}">
+    <button type="submit">{{.Name}}</button>
+    <a href="{{.URL}}" target="_blank" rel="noopener"><small>ansehen</small></a>
+  </form>
+{{end}}
+</div>
+{{end}}
+
+{{if .Import}}
+<h2>Import prüfen</h2>
+<p class="hinweis">Je Zeile ist der beste Treffer bei billiger.de vorgewählt; ✓ heißt, die EAN stimmt überein. Bitte die
+Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer aus der Liste werden mit angelegt und bleiben intern.</p>
+<form method="post" action="/monitor/import/uebernehmen">
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>Artikel</th><th>Produktseite bei billiger.de</th><th>Wecker</th><th>Ankauf</th><th>Kategorie</th><th>Prio</th></tr></thead>
+  <tbody>
+  {{range .Import}}
+  <tr>
+    <td><input name="z{{.Nr}}_name" value="{{.Name}}" size="22" aria-label="Name">
+      <input type="hidden" name="z{{.Nr}}_ean" value="{{.EAN}}">
+      <input type="hidden" name="z{{.Nr}}_notiz" value="{{.Notiz}}">
+      <input type="hidden" name="z{{.Nr}}_stichworte" value="{{.Stichworte}}">
+      <input type="hidden" name="z{{.Nr}}_ankaeufer" value="{{.AnkaeuferRoh}}">
+      <br><small>{{if .EAN}}EAN {{.EAN}} · {{end}}{{.Notiz}}</small>
+      {{if .Warnung}}<br><span class="chip negativ">{{.Warnung}}</span>{{end}}</td>
+    <td>{{if .Fehler}}<span class="fehler">{{.Fehler}}</span>{{end}}
+      {{$z := .}}
+      <select name="z{{.Nr}}_url" aria-label="Produktseite">
+        <option value="">— nicht anlegen —</option>
+        {{range .Treffer}}<option value="{{.URL}}" {{if eq .URL $z.Gewaehlt}}selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+      {{if .EANGeprueft}}<span class="chip positiv">✓ EAN</span>{{end}}</td>
+    <td><input name="z{{.Nr}}_wecker" value="{{.WeckerText}}" size="7" aria-label="Preiswecker"></td>
+    <td><input name="z{{.Nr}}_ankauf" value="{{.AnkaufText}}" size="7" aria-label="Ankaufspreis"></td>
+    <td><input name="z{{.Nr}}_kategorie" value="{{.Kategorie}}" size="10" list="kategorien" aria-label="Kategorie"></td>
+    <td><select name="z{{.Nr}}_prio" aria-label="Prio">
+      <option value="normal">normal</option><option value="hoch">hoch</option><option value="niedrig">niedrig</option></select></td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<button type="submit" class="primaer">Ausgewählte anlegen</button>
+</form>
+{{end}}
+
+{{with .Test}}
+<h2>Test: {{$.TestName}}</h2>
+<p class="{{if .Bewertet}}meldung{{else}}fehler{{end}}">{{.Status}}</p>
+{{if .Karte.Text}}
+<div class="spalten">
+  <div>{{template "kartenvorschau" .Karte}}</div>
+  <div class="karte">
+    <p><strong>So würde der Post aussehen.</strong> Beim Test wird nichts gesendet.</p>
+    {{if .Channels}}<p>Ginge in: {{range .Channels}}<span class="chip positiv">#{{.Name}}</span> {{end}}</p>
+    {{else}}<p>Keine Regel passt — der Treffer würde nur protokolliert.</p>{{end}}
+  </div>
+</div>
+{{end}}
+{{end}}
+
+<h2 id="einstellungen">Einstellungen</h2>
+<form method="post" action="/monitor/einstellungen" class="karte">
+  <label><input type="checkbox" name="aktiv" value="1" {{if .Aktiv}}checked{{end}}> Monitor eingeschaltet
+    <small>aus heißt: nichts wird geprüft und nichts gepostet</small></label>
+  <label>Prüfintervall je Produkt in Sekunden <small>mindestens 15 — billiger.de nicht überlasten</small>
+    <input name="intervall" type="number" min="15" value="{{.Intervall}}"></label>
+  <label>Sperrzeit in Minuten <small>so lange wird derselbe Deal nicht noch einmal gepostet — außer er wird günstiger</small>
+    <input name="sperre" type="number" min="0" value="{{.Sperre}}"></label>
+  <label>Max. Lieferzeit in Tagen <small>längere Lieferzeiten werden ignoriert — 0 heißt: keine Grenze</small>
+    <input name="max_tage" type="number" min="0" value="{{.MaxTage}}"></label>
+  <label>Prio „hoch“: alle … Sekunden <input name="prio_hoch" type="number" min="15" value="{{.PrioHoch}}"></label>
+  <label>Prio „niedrig“: alle … Sekunden <input name="prio_niedrig" type="number" min="15" value="{{.PrioNiedrig}}"></label>
+  <label>Preissturz-Alarm ab … % unter dem 7-Tage-Schnitt <small>unabhängig vom Preiswecker; braucht einen Tag Preisverlauf</small>
+    <input name="sturz_prozent" type="number" min="1" value="{{.SturzProzent}}"></label>
+  <label>Channel für Preisstürze und den Kategorie-Scan
+    <select name="sturz_channel"><option value="0">— aus —</option>
+      {{range .Channels}}<option value="{{.ID}}" {{if eq .ID $.SturzChannel}}selected{{end}}>#{{.Name}}</option>{{end}}</select></label>
+  <label>Admin-Channel <small>nur für euch: Fehler des Monitors (billiger.de blockt, Keepa leer, Post gescheitert), je Art höchstens einmal pro Stunde</small>
+    <select name="admin_channel"><option value="0">— aus —</option>
+      {{range .Channels}}<option value="{{.ID}}" {{if eq .ID $.AdminChannel}}selected{{end}}>#{{.Name}}</option>{{end}}</select></label>
+  <label><input type="checkbox" name="mydealz" value="1" {{if .Mydealz}}checked{{end}}> mydealz mitlesen
+    <small>neue Deals, deren Titel zu den Stichworten eines Produkts passt, werden wie ein Shop-Angebot bewertet</small></label>
+  <label><input type="checkbox" name="ausverkauft" value="1" {{if .Ausverkauft}}checked{{end}}> Posts automatisch als ausverkauft markieren
+    <small>sobald der Shop das Angebot nicht mehr zum geposteten Preis führt</small></label>
+  <label>Tageszusammenfassung in
+    <select name="tag_channel"><option value="0">— aus —</option>
+      {{range .Channels}}<option value="{{.ID}}" {{if eq .ID $.TagChannel}}selected{{end}}>#{{.Name}}</option>{{end}}</select></label>
+  <label>… jeden Tag um <input name="tag_zeit" value="{{.TagZeit}}" placeholder="20:00" size="5"></label>
+  <label><input type="checkbox" name="rabatte" value="1" {{if .RabatteAn}}checked{{end}}> Gutscheine und Cashback einrechnen
+    <small>siehe „Gutscheine &amp; Cashback“ — senkt den effektiven Einkaufspreis</small></label>
+  <fieldset><legend>eBay <small>für die Art „eBay“</small></legend>
+    <p><small><strong>Empfohlen:</strong> über das Lugru-Seller-System — dort unter Anbindungen → „Lugru Deals“ einen
+      Verbindungsschlüssel festlegen und hier dieselbe Adresse und denselben Schlüssel eintragen. Die eBay-Schlüssel bleiben im Seller-System.</small></p>
+    <label>Adresse des Seller-Systems <input name="ebay_seller_url" value="{{.EbaySellerURL}}" placeholder="https://seller.example.de"></label>
+    <label>Verbindungsschlüssel <small>{{if .EbaySellerDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}noch keiner{{end}}</small>
+      <input name="ebay_seller_schluessel" type="password" autocomplete="off"></label>
+    <p><small>Oder ohne Seller-System: eigene Schlüssel aus dem eBay-Entwicklerkonto.</small></p>
+    <label>App ID (Client ID) <input name="ebay_app_id" value="{{.EbayAppID}}" autocomplete="off"></label>
+    <label>Cert ID (Client Secret) <small>{{if .EbayCertDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}noch keiner{{end}}</small>
+      <input name="ebay_cert_id" type="password" autocomplete="off"></label>
+    <label>Gebühr in % <input name="ebay_gebuehr" value="{{.EbayGebuehr}}" size="5"></label>
+    <label>fester Anteil je Verkauf in € <input name="ebay_fix" value="{{.EbayFix}}" size="6"></label>
+    <label>euer Versand je Verkauf in € <input name="ebay_versand" value="{{.EbayVersand}}" size="6"></label>
+  </fieldset>
+  <fieldset><legend>Spotify <small>für Spotify-Links in Podcast-Posts und Podcasts von Spotify — kostenlose App unter
+    developer.spotify.com → Dashboard → „Create app“</small></legend>
+    <label>Client ID <input name="spotify_id" value="{{.SpotifyID}}" autocomplete="off"></label>
+    <label>Client Secret <small>{{if .SpotifyDa}}gespeichert — leer lassen, um es zu behalten{{else}}noch keins{{end}}</small>
+      <input name="spotify_secret" type="password" autocomplete="off"></label>
+  </fieldset>
+  <label>Öffentliche Adresse dieses Servers <small>für direkte Shop-Links im Post, z. B. http://91.99.29.165:8080 —
+    leer: der Post verlinkt die Seite bei billiger.de</small>
+    <input name="basis_url" value="{{.BasisURL}}" placeholder="http://91.99.29.165:8080"></label>
+  <label>Gepostet von
+    <select name="poster">
+      <option value="">— niemand —</option>
+      {{range .PosterListe}}<option value="{{.Name}}" {{if eq .Name $.Poster}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select></label>
+  <button type="submit" class="primaer">Speichern</button>
+</form>
+
+<h2 id="produkte">Produkte</h2>
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>Produkt</th><th>Vorgaben</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Produkte}}
+  <tr>
+    <td>
+      <a href="{{.URL}}" target="_blank" rel="noopener">{{.Anzeige}}</a><br>
+      <small>{{if .EAN}}EAN {{.EAN}}{{end}} {{if .ASIN}}· ASIN {{.ASIN}}{{end}}</small><br>
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">pausiert</span>{{end}}
+      {{if .IstAnkauf}}<span class="chip akzent">Ankauf {{.Ankauf.Euro}}</span>{{else if .IstEbay}}<span class="chip akzent">eBay</span>{{else}}<span class="chip neutral">Amazon</span>{{end}}
+      {{if .Kategorie}}<span class="chip neutral">{{.Kategorie}}</span>{{end}}
+      {{if eq .Prio "hoch"}}<span class="chip positiv">Prio hoch</span>{{else if eq .Prio "niedrig"}}<span class="chip neutral">Prio niedrig</span>{{end}}
+      {{if .WeckerText}}<br><small>Wecker {{.WeckerText}}</small>{{end}}
+      {{if .IstAnkauf}}
+      <details><summary><small>Ankäufer ({{len .Ankaeufer}}) — nur intern</small></summary>
+        {{range .Ankaeufer}}
+        <form method="post" action="/monitor/ankaeufer/{{.ID}}/loeschen" class="aktionen">
+          <small>{{if .Name}}{{.Name}}: {{end}}{{.PreisText}}{{if gt .AbStueck 1}} ab {{.AbStueck}} Stk{{end}}</small>
+          <button type="submit" class="schmal gefahr" aria-label="Ankäufer löschen">×</button></form>
+        {{end}}
+        <form method="post" action="/monitor/produkte/{{.ID}}/ankaeufer" class="aktionen">
+          <input name="name" size="10" placeholder="Name" aria-label="Name des Ankäufers">
+          <input name="preis" size="6" placeholder="Preis €" required aria-label="Preis">
+          <input name="ab" size="3" type="number" min="1" value="1" aria-label="ab Stück">
+          <button type="submit" class="schmal">+</button></form>
+      </details>
+      {{end}}
+      {{if .Notiz}}<br><small>Notiz: {{.Notiz}}</small>{{end}}
+    </td>
+    <td>
+      <form method="post" action="/monitor/produkte/{{.ID}}/aendern" class="aktionen">
+        <input name="name" value="{{.Name}}" size="18" aria-label="Name">
+        <input name="asin" value="{{.ASIN}}" size="11" placeholder="ASIN" aria-label="ASIN">
+        <select name="modus" aria-label="Art">
+          <option value="amazon" {{if not .IstAnkauf}}selected{{end}}>Amazon</option>
+          <option value="ankauf" {{if .IstAnkauf}}selected{{end}}>Ankauf</option>
+          <option value="ebay" {{if .IstEbay}}selected{{end}}>eBay</option>
+        </select>
+        <input name="ankauf" value="{{.AnkaufText}}" size="7" placeholder="Ankauf" aria-label="Ankaufspreis">
+        <input name="max_ek" value="{{.MaxEKText}}" size="7" placeholder="{{if .IstAnkauf}}Wecker{{else}}max. EK{{end}}" aria-label="Höchstpreis bzw. Preiswecker mit Versand">
+        <input name="hinweis" value="{{.Hinweis}}" size="16" placeholder="Hinweis" aria-label="Hinweis im Post">
+        <input name="kategorie" value="{{.Kategorie}}" size="10" list="kategorien" placeholder="Kategorie" aria-label="Kategorie">
+        <input name="shops" value="{{.Shops}}" size="16" placeholder="alle Shops" aria-label="Shops">
+        <select name="prio" aria-label="Prio">
+          <option value="normal" {{if eq .Prio "normal"}}selected{{end}}>Prio normal</option>
+          <option value="hoch" {{if eq .Prio "hoch"}}selected{{end}}>Prio hoch</option>
+          <option value="niedrig" {{if eq .Prio "niedrig"}}selected{{end}}>Prio niedrig</option>
+        </select>
+        <input name="stichworte" value="{{.Stichworte}}" size="20" placeholder="mydealz-Stichworte" aria-label="Stichworte für mydealz">
+        <input name="notiz" value="{{.Notiz}}" size="16" placeholder="Notiz (intern)" aria-label="Notiz">
+        {{$p := .}}
+        {{range $.Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"
+          {{if contains $p.Maerkte (print .Code)}}checked{{end}}> {{.Code}}</label>{{end}}
+        <label class="schmal"><input type="checkbox" name="auch_verzoegert" value="1" {{if .AuchVerzoegert}}checked{{end}}> auch längere Lieferzeit</label>
+        <button type="submit" class="schmal">Speichern</button>
+      </form>
+    </td>
+    <td>
+      {{if .BesterText}}{{.BesterText}}<br>{{end}}
+      <small>{{.Status}}</small>{{if .Geprueft}}<br><small>{{.Geprueft}}</small>{{end}}
+    </td>
+    <td class="aktionen">
+      <form method="post" action="/monitor/produkte/{{.ID}}/testen"><button type="submit">Testen</button></form>
+      {{/* Dasselbe Produkt zusätzlich in der anderen Art beobachten. */}}
+      <form method="post" action="/monitor/produkte">
+        <input type="hidden" name="url" value="{{.URL}}">
+        <input type="hidden" name="name" value="{{.Name}}">
+        <input type="hidden" name="kategorie" value="{{.Kategorie}}">
+        <input type="hidden" name="shops" value="{{.Shops}}">
+        {{if .AuchVerzoegert}}<input type="hidden" name="auch_verzoegert" value="1">{{end}}
+        {{if .IstAnkauf}}<input type="hidden" name="modus" value="amazon">
+        <button type="submit">Auch als Amazon</button>
+        {{else}}<input type="hidden" name="modus" value="ankauf">
+        <input name="ankauf" size="6" placeholder="Ankauf €" aria-label="Ankaufspreis" required>
+        <button type="submit">Auch als Ankauf</button>{{end}}
+      </form>
+      <form method="post" action="/monitor/produkte/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Pausieren{{else}}Aktivieren{{end}}</button></form>
+      <form method="post" action="/monitor/produkte/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="4" class="leer">Noch kein Produkt — unten das erste anlegen.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Neues Produkt</h2>
+<form method="post" action="/monitor/produkte" class="karte">
+  <label>Link zur Preisliste bei billiger.de <small>Produkt bei billiger.de suchen, öffnen und den Link aus der Adresszeile einfügen</small>
+    <input name="url" type="url" required placeholder="https://www.billiger.de/pricelist/…"></label>
+  <label>Art
+    <select name="modus">
+      <option value="amazon">Amazon-Arbitrage — Gewinn gegen den Verkaufspreis bei Amazon (Keepa)</option>
+      <option value="ankauf">Ankauf — Gewinn gegen einen festen Ankaufspreis, ohne Keepa</option>
+      <option value="ebay">eBay — Gewinn gegen den Marktpreis bei eBay nach Gebühren</option>
+    </select></label>
+  <label>Ankaufspreis <small>nur bei Art „Ankauf“: was der Ankäufer zahlt</small><input name="ankauf" placeholder="z. B. 1175"></label>
+  <label>Hinweis im Post <small>optional, etwa „1180 € ab 6 Stk“ — Namen der Ankäufer gehören nicht hierher, der Post ist öffentlich</small>
+    <input name="hinweis"></label>
+  <label>Kategorie <small>optional, etwa „Konsolen“ — Regeln können danach in eigene Channels sortieren</small>
+    <input name="kategorie" list="kategorien"></label>
+  <label>Name <small>leer lassen — dann gilt der Name von billiger.de</small><input name="name"></label>
+  <label>Prio
+    <select name="prio"><option value="normal">normal</option><option value="hoch">hoch — für Top-Produkte wie PS5, RTX, Starlink</option><option value="niedrig">niedrig</option></select></label>
+  <label>Stichworte für mydealz <small>z. B. „ps5 pro, playstation 5 pro, -controller“ — leer lassen, dann gilt der Name</small>
+    <input name="stichworte"></label>
+  <label>ASIN <small>leer lassen — dann sucht der Monitor sie über die EAN bei Keepa</small><input name="asin" size="11"></label>
+  <label>Höchster Einkaufspreis mit Versand (bei Ankauf: Preiswecker) <small>Amazon: leer heißt, jeder Preis wird mit Keepa durchgerechnet (kostet Token). Ankauf: leer heißt 95 % des Ankaufspreises</small>
+    <input name="max_ek" placeholder="z. B. 399,99"></label>
+  <label>Nur diese Shops <small>mit Komma getrennt, etwa „OTTO, Kaufland, MediaMarkt" — leer heißt: alle</small>
+    <input name="shops"></label>
+  <fieldset><legend>Zielmärkte <small>keiner angehakt heißt: wie unter Einstellungen</small></legend>
+    {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
+  </fieldset>
+  <label><input type="checkbox" name="auch_verzoegert" value="1" checked> auch Angebote mit längerer Lieferzeit (bis zur Grenze unter Einstellungen) — die Lieferzeit steht dann im Post</label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+
+<h2 id="import">Liste importieren</h2>
+<form method="post" action="/monitor/import" class="karte">
+  <label>Tabelle einfügen <small>Spalten Artikel · Preiswecker · Bester Ankauf · Hinweis, wie aus Excel oder WhatsApp kopiert.
+    Zeilen wie „Starlink“ werden zur Kategorie. Der Monitor sucht für jede Zeile die Seite bei billiger.de — das dauert bis zu einer Minute.</small>
+    <textarea name="liste" rows="8" placeholder="Artikel	Preiswecker	Bester Ankauf	Hinweis"></textarea></label>
+  <button type="submit" class="primaer">Einlesen und prüfen</button>
+</form>
+
+<h2 id="feeds">Deal-Feeds: Reisen, Auto-Leasing, Eigengebrauch</h2>
+<p class="hinweis">Gruppen bei mydealz, gefiltert und in einen Channel gepostet — ohne Ankauf und ohne Amazon-Rechnung.
+Alle zwei Minuten wird nachgesehen; beim ersten Abruf merkt sich ein Feed die vorhandenen Deals, danach kommen nur neue.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Feed</th><th>Filter</th><th>Channel</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Feeds}}
+  <tr>
+    <td>{{if eq .Art "reisen"}}✈️{{else if eq .Art "leasing"}}🚗{{else}}🔥{{end}} {{.Name}}<br><small>{{.Quelle}}</small></td>
+    <td><small>{{if .Filter}}{{.Filter}}{{else}}alle{{end}}</small></td>
+    <td>#{{.ChannelName}}</td>
+    <td><small>{{.Status}}</small></td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/feeds/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/feeds/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch kein Feed — mit einer Vorlage unten geht es am schnellsten.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<form method="post" action="/monitor/feeds" class="karte">
+  <p><strong>Schnell anlegen</strong> — Channel wählen, Vorlage klicken:</p>
+  <label>Channel
+    <select name="channel_id" required>
+      <option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}
+    </select></label>
+  <div class="aktionen">
+    <button type="submit" name="vorlage" value="reisen">✈️ Reisen</button>
+    <button type="submit" name="vorlage" value="leasing">🚗 Auto-Leasing (LF bis 0,5)</button>
+    <button type="submit" name="vorlage" value="eigen">🔥 Eigengebrauch: Hot-Deals ab 200°</button>
+  </div>
+</form>
+
+<details class="karte"><summary>Eigenen Feed anlegen</summary>
+<form method="post" action="/monitor/feeds">
+  <label>Gruppe bei mydealz <small>z. B. „reisen“, „urlaub“, „auto-leasing“, „elektronik“, „trending“ (die angesagtesten, mit Temperatur) oder der Link mydealz.de/gruppe/…</small>
+    <input name="quelle" required placeholder="elektronik"></label>
+  <label>Art
+    <select name="art"><option value="allgemein">🔥 allgemein</option><option value="reisen">✈️ Reisen</option><option value="leasing">🚗 Leasing</option></select></label>
+  <label>Name <input name="name" placeholder="z. B. Flüge ab Frankfurt"></label>
+  <label>Stichworte <small>nur Deals, deren Titel dazu passt — „frankfurt, düsseldorf, -kreuzfahrt“, „airpods, dyson“; leer heißt alle</small>
+    <input name="stichworte"></label>
+  <label>Höchstpreis in € <small>bei Leasing: höchste Monatsrate</small><input name="max_preis"></label>
+  <label>Mindest-Temperatur <small>nur mit Gruppe „trending“ — mydealz nennt sie nur dort</small><input name="min_temp" type="number" min="0"></label>
+  <label>Höchster Leasingfaktor <small>nur Leasing, z. B. 0,5</small><input name="max_lf"></label>
+  <label>Leasing-Art
+    <select name="leasing_art"><option value="">Privat und Gewerbe</option><option value="privat">nur Privatleasing</option><option value="gewerbe">nur Gewerbeleasing</option></select></label>
+  <label>Channel
+    <select name="channel_id" required>
+      <option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}
+    </select></label>
+  <button type="submit" class="primaer">Feed anlegen</button>
+</form>
+</details>
+
+<h2 id="podcasts">Podcasts</h2>
+<p class="hinweis">Neue Folgen der Top-Podcasts einer Kategorie (Apple-Charts Deutschland) oder eines einzelnen Podcasts —
+alle 30 Minuten. Mit Spotify-Zugang unter Einstellungen steht in jedem Post auch der Link zur Folge bei Spotify. Beim ersten Abruf merkt sich der Eintrag die vorhandenen Folgen; danach kommt jede neue.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Podcasts</th><th>Channel</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Podcasts}}
+  <tr><td>🎙️ {{.Name}}<br><small>{{.Quelle}}</small></td><td>#{{.ChannelName}}</td><td><small>{{.Status}}</small></td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/podcasts/{{.ID}}/aktiv"><input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/podcasts/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td></tr>
+  {{else}}
+  <tr><td colspan="4" class="leer">Noch keine Podcasts.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<form method="post" action="/monitor/podcasts" class="karte">
+  <label>Kategorie
+    <select name="genre"><option value="0">— wählen —</option>
+      {{range .PodKategorien}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+  <label>… davon die Top <select name="anzahl"><option>5</option><option selected>10</option><option>25</option></select></label>
+  <label>oder ein einzelner Podcast <small>Link von Spotify (open.spotify.com/show/…, auch Spotify-exklusive), Apple Podcasts (…/id123…)
+    oder die Adresse des RSS-Feeds — dann zählt die Kategorie nicht</small>
+    <input name="podcast" placeholder="https://open.spotify.com/show/…"></label>
+  <label>Name <small>optional</small><input name="name"></label>
+  <label>Channel
+    <select name="channel_id" required><option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}</select></label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+
+<h2 id="kategorien">Kategorie-Scan</h2>
+<p class="hinweis">Ganze Kategorien bei billiger.de (etwa „Konsolen“ oder „Grafikkarten“) werden alle zehn Minuten gelesen.
+Fällt ein Produkt darin weit unter seinen eigenen 7-Tage-Schnitt, kommt eine Meldung in den Preissturz-Channel.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Kategorie</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .ScanKategorien}}
+  <tr><td><a href="{{.URL}}" target="_blank" rel="noopener">{{.Name}}</a></td><td><small>{{.Status}}</small></td>
+    <td><form method="post" action="/monitor/kategorien/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form></td></tr>
+  {{else}}
+  <tr><td colspan="3" class="leer">Noch keine Kategorie.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<form method="post" action="/monitor/kategorien" class="karte">
+  <label>Link zur Kategorie bei billiger.de <small>…/show/kategorie/….htm, gern mit Filter</small>
+    <input name="url" type="url" required placeholder="https://www.billiger.de/show/kategorie/14083.htm"></label>
+  <label>Name <input name="name" placeholder="z. B. Konsolen"></label>
+  <button type="submit" class="primaer">Kategorie anlegen</button>
+</form>
+
+<h2 id="regeln">Regeln: was in welchen Channel geht</h2>
+<p class="hinweis">Ein Treffer geht in <em>jeden</em> Channel, dessen Regel er erfüllt. Erfüllt er keine, wird er nur
+unten protokolliert. Gerechnet wird mit den Zahlen des Leitmarkts (des ersten Zielmarkts).</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Channel</th><th>Produkt</th><th>Mindestens</th><th>Shops</th><th></th></tr></thead>
+  <tbody>
+  {{range .Regeln}}
+  <tr>
+    <td>#{{.ChannelName}}{{if .Name}}<br><small>{{.Name}}</small>{{end}}</td>
+    <td>{{.ProduktName}}{{if .Modus}}<br><small>nur {{if eq .Modus "ankauf"}}Ankauf{{else if eq .Modus "ebay"}}eBay{{else}}Amazon{{end}}</small>{{end}}{{if .Kategorie}}<br><small>Kategorie {{.Kategorie}}</small>{{end}}</td>
+    <td>{{if .MinMargeText}}Marge {{.MinMargeText}} {{end}}{{if .MinGewinnText}}Gewinn {{.MinGewinnText}} {{end}}{{if .MinSales}}{{.MinSales}} Verkäufe{{end}}
+      {{if not (or .MinMargeText .MinGewinnText .MinSales)}}<small>keine Schwelle</small>{{end}}</td>
+    <td>{{if .Shops}}{{.Shops}}{{else}}alle{{end}}</td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/regeln/{{.ID}}/aktiv">
+        <input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/regeln/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch keine Regel — ohne Regel postet der Monitor nichts.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<form method="post" action="/monitor/regeln" class="karte">
+  <label>Channel
+    <select name="channel_id" required>
+      <option value="">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}
+    </select></label>
+  <label>Produkt
+    <select name="produkt_id">
+      <option value="0">alle Produkte</option>
+      {{range .Produkte}}<option value="{{.ID}}">{{.Anzeige}}</option>{{end}}
+    </select></label>
+  <label>Art
+    <select name="modus">
+      <option value="">Amazon und Ankauf</option>
+      <option value="amazon">nur Amazon-Arbitrage</option>
+      <option value="ankauf">nur Ankauf</option>
+      <option value="ebay">nur eBay</option>
+    </select></label>
+  <label>Kategorie <small>leer heißt: jede</small><input name="kategorie" list="kategorien" placeholder="z. B. Konsolen"></label>
+  <label>Mindestmarge in % <input name="min_marge" placeholder="z. B. 15"></label>
+  <label>Mindestgewinn in € <input name="min_gewinn" placeholder="z. B. 10"></label>
+  <label>Mindestverkäufe im Monat <small>gilt nur für Amazon</small><input name="min_sales" type="number" min="0" placeholder="z. B. 20"></label>
+  <label>Nur diese Shops <small>leer heißt: alle</small><input name="shops" placeholder="z. B. OTTO, Kaufland"></label>
+  <label>Bezeichnung <small>nur für euch, optional</small><input name="name" placeholder="z. B. High Margin"></label>
+  <button type="submit" class="primaer">Regel anlegen</button>
+</form>
+
+<h2 id="rabatte">Gutscheine &amp; Cashback</h2>
+<p class="hinweis">Je Shop Cashback in Prozent (Shoop, Payback …) und ein fester Gutschein ab einem Mindestwert. Der Monitor
+rechnet mit dem effektiven Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals stehen automatisch im Post.</p>
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Shop</th><th>Cashback</th><th>Gutschein</th><th>Notiz</th><th></th></tr></thead>
+  <tbody>
+  {{range .Rabatte}}
+  <tr><td>{{.Shop}}</td><td>{{if .Cashback}}{{.CashbackText}}{{end}}</td>
+    <td>{{if .Fest}}{{.FestText}}{{if .Ab}} ab {{.AbText}}{{end}}{{end}}</td><td><small>{{.Notiz}}</small></td>
+    <td><form method="post" action="/monitor/rabatte/{{.ID}}/loeschen"><button type="submit" class="gefahr">Löschen</button></form></td></tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch kein Shop-Rabatt.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<form method="post" action="/monitor/rabatte" class="karte">
+  <label>Shop <small>wie bei billiger.de, z. B. „OTTO“, „MediaMarkt“</small><input name="shop" required></label>
+  <label>Cashback in % <input name="cashback" placeholder="z. B. 3"></label>
+  <label>Gutschein in € <input name="fest" placeholder="z. B. 10"></label>
+  <label>… ab Bestellwert in € <input name="ab" placeholder="z. B. 100"></label>
+  <label>Notiz <small>steht im Post, z. B. „über Shoop“ oder „Neukunden“</small><input name="notiz"></label>
+  <button type="submit" class="primaer">Speichern</button>
+</form>
+
+<h2 id="treffer">Letzte Treffer</h2>
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>Zeit</th><th>Produkt</th><th>Einkauf</th><th>Gewinn</th><th>Marge</th><th>Verkäufe</th><th>Ergebnis</th></tr></thead>
+  <tbody>
+  {{range .Treffer}}
+  <tr>
+    <td>{{.ZeitText}}</td>
+    <td>{{.Titel}}</td>
+    <td>{{.GesamtText}} bei {{.Shop}}</td>
+    <td>{{.GewinnText}}</td>
+    <td>{{.MargeText}}</td>
+    <td>{{.Sales}}</td>
+    <td>{{if .Gepostet}}<span class="chip positiv">gepostet</span>{{end}} <small>{{.Ergebnis}}</small></td>
+  </tr>
+  {{else}}
+  <tr><td colspan="7" class="leer">Noch keine Treffer.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<h2 id="auswertung">Auswertung der letzten {{.Auswertung.Tage}} Tage</h2>
+<p class="hinweis">{{.Auswertung.Deals}} Deals gepostet · zusammen {{.Auswertung.GewinnText}} Gewinn je Stück ·
+✅ {{.Auswertung.Kaeufe}} Käufe. Käufe zählen über die ✅ unter den Posts (braucht den Discord-Bot unter Einstellungen).</p>
+{{template "auswertungstabelle" (tabelle "Shop" .Auswertung.NachShop)}}
+{{template "auswertungstabelle" (tabelle "Kategorie" .Auswertung.NachKat)}}
+{{template "auswertungstabelle" (tabelle "Uhrzeit" .Auswertung.NachStunde)}}
+
+<datalist id="kategorien">{{range .Kategorien}}<option value="{{.}}">{{end}}</datalist>
+{{template "fuss"}}
+{{end}}
+
+{{define "auswertungstabelle"}}
+<div class="tabellenkarte"><table>
+  <thead><tr><th>{{.Titel}}</th><th>Deals</th><th>✅ Käufe</th><th>Quote</th><th>Gewinn je Stück</th></tr></thead>
+  <tbody>
+  {{range .Zeilen}}<tr><td>{{.Name}}</td><td>{{.Deals}}</td><td>{{.Kaeufe}}</td><td>{{.Quote}}</td><td>{{.GewinnText}}</td></tr>
+  {{else}}<tr><td colspan="5" class="leer">Noch keine Posts.</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{end}}

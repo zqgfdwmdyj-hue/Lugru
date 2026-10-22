@@ -1,0 +1,133 @@
+name: Release
+
+# Baut bei Tag-Push im Format 'v*' ein Windows-Release-Artefakt (EXE +
+# PowerShell-Skripte + CMD-Wrapper) und hängt es an das GitHub-Release.
+# Zielgruppe sind Endnutzer, die kein Go-Toolchain auf der Maschine haben.
+#
+# Reihenfolge ist bewusst Build → ZIP → Smoketest → Upload: fehlerhafte
+# Artefakte werden nie veröffentlicht. Das ZIP-Inhalts-Gate listet jede
+# Datei, bevor sie veröffentlicht wird.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bauen-windows:
+    name: Windows-EXE + ZIP bauen
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Go einrichten
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          check-latest: true
+          cache: true
+
+      - name: EXE bauen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:CGO_ENABLED = '0'
+          go build -trimpath -ldflags="-s -w" -o dist\lugru-deals.exe .\cmd\lugru-deals
+
+      - name: ZIP packen
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $Bundle = Join-Path $env:RUNNER_TEMP 'lugru-bundle'
+          if (Test-Path $Bundle) { Remove-Item -LiteralPath $Bundle -Recurse -Force }
+          New-Item -ItemType Directory -Path $Bundle | Out-Null
+
+          Copy-Item -LiteralPath 'dist\lugru-deals.exe' -Destination $Bundle
+          # -Path (nicht -LiteralPath) sorgt dafuer, dass die Wildcard
+          # expandiert wird. -LiteralPath deaktiviert Wildcards und
+          # wuerde die Datei namens '*' suchen.
+          foreach ($f in (Get-ChildItem -Path 'scripts\windows\*' -File)) {
+            Copy-Item -LiteralPath $f.FullName -Destination $Bundle
+          }
+          Compress-Archive -Path "$Bundle\*" -DestinationPath lugru-deals-windows.zip
+          Get-Item .\lugru-deals-windows.zip
+
+      # Smoketest MUSS vor dem Upload laufen. Liefert er einen Fehler,
+      # wird der Workflow abgebrochen und das Artefakt nie veröffentlicht.
+      - name: ZIP-Inhalt-Gate + Smoketest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $Zip = 'lugru-deals-windows.zip'
+          if (-not (Test-Path -LiteralPath $Zip)) { throw "ZIP fehlt: $Zip" }
+          $ZipInfo = Get-Item -LiteralPath $Zip
+
+          $Extract = Join-Path $env:RUNNER_TEMP 'lugru-extract'
+          if (Test-Path $Extract) { Remove-Item -LiteralPath $Extract -Recurse -Force }
+          Expand-Archive -LiteralPath $Zip -DestinationPath $Extract
+
+          # Liste jeden Eintrag — wenn etwas fehlt oder am falschen Ort
+          # ist, schlaegt das Gate fehl.
+          $Entries = Get-ChildItem -LiteralPath $Extract -Recurse -File
+          Write-Host "--- ZIP-Inhalt ($($Entries.Count) Dateien) ---"
+          $Entries | ForEach-Object {
+            $rel = $_.FullName.Substring($Extract.Length).TrimStart('\','/')
+            Write-Host "  $rel"
+          }
+
+          # Erwartet: EXE + alle Skripte am Root (ZIP-Inhalt, nicht in
+          # Unterordnern).
+          $RequiredAtRoot = @(
+            'lugru-deals.exe',
+            'install.ps1','start.ps1','stop.ps1','update.ps1','uninstall.ps1',
+            'install.cmd','uninstall.cmd'
+          )
+          foreach ($name in $RequiredAtRoot) {
+            if (-not (Test-Path -LiteralPath (Join-Path $Extract $name))) {
+              throw "Erwartete Datei fehlt im ZIP-Root: $name"
+            }
+          }
+
+          # PE-Header pruefen (MZ fuer Windows-EXE).
+          $ExeBytes = [System.IO.File]::ReadAllBytes((Join-Path $Extract 'lugru-deals.exe'))[0..1]
+          if ($ExeBytes[0] -ne 0x4D -or $ExeBytes[1] -ne 0x5A) {
+            throw "EXE-Header 'MZ' erwartet, ist aber 0x$('{0:x2}' -f $ExeBytes[0]) 0x$('{0:x2}' -f $ExeBytes[1])."
+          }
+
+          Write-Host "ZIP-Groesse: $($ZipInfo.Length) Bytes"
+          Write-Host "Gepackt: $Zip"
+          Write-Host "OK."
+
+      - name: Release-Asset hochladen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: lugru-deals-windows.zip
+
+  bauen-linux:
+    name: Linux-Binary (Container-Vergleich)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Linux-Binary bauen
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o dist/lugru-deals ./cmd/lugru-deals
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lugru-deals-linux
+          path: dist/lugru-deals

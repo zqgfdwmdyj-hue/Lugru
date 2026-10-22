@@ -1,0 +1,151 @@
+{{define "historie"}}
+{{template "kopf" .}}
+<h1>Historie</h1>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+
+<form method="get" action="/historie" class="karte filterzeile">
+  <label>Suche <small>ASIN oder Titel</small>
+    <input name="suche" value="{{.Suche}}"></label>
+  <label>Channel
+    <select name="channel">
+      <option value="0">alle</option>
+      {{range .Channels}}<option value="{{.ID}}" {{if eq .ID $.ChannelID}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select></label>
+  {{if .Gruppen}}<label>Gruppe
+    <select name="gruppe">
+      <option value="">alle</option>
+      {{range .Gruppen}}<option value="{{.}}" {{if eq . $.Gruppe}}selected{{end}}>{{.}}</option>{{end}}
+    </select></label>{{end}}
+  {{if .PosterListe}}<label>Gepostet von
+    <select name="poster">
+      <option value="">alle</option>
+      {{range .PosterListe}}<option value="{{.Name}}" {{if eq .Name $.Poster}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select></label>{{end}}
+  <label>von <input type="date" name="von" value="{{.Von}}"></label>
+  <label>bis <input type="date" name="bis" value="{{.Bis}}"></label>
+  <label>Marge ab % <input name="marge_min" inputmode="decimal" value="{{.MargeMin}}" size="5" placeholder="z. B. 15"></label>
+  <label>bis % <input name="marge_max" inputmode="decimal" value="{{.MargeMax}}" size="5"></label>
+  <label>Status
+    <select name="status">
+      <option value="">alle</option>
+      <option value="aktiv" {{if eq .Status "aktiv"}}selected{{end}}>aktiv</option>
+      <option value="ausverkauft" {{if eq .Status "ausverkauft"}}selected{{end}}>ausverkauft</option>
+      <option value="geloescht" {{if eq .Status "geloescht"}}selected{{end}}>gelöscht</option>
+    </select></label>
+  <button type="submit" class="primaer">Filtern</button>
+  <a href="/historie">zurücksetzen</a>
+</form>
+
+{{template "abgleich" .Abgleich}}
+<p><a class="knopf" href="/einlesen">📥 Alte Deals aus Discord einlesen</a></p>
+<p class="anzahl">{{.Anzahl}} Deals</p>
+
+<div class="tabellenkarte">
+<table class="historie">
+  <thead>
+  <tr><th>Datum</th><th>ASIN</th><th>Artikel</th><th>Channel</th>
+      <th class="zahl">EK</th><th class="zahl">VK</th>
+      <th class="zahl">Gewinn</th><th class="zahl">Marge</th></tr>
+  </thead>
+  <tbody>
+  {{range .Zeilen}}
+  <tr><td>{{.Datum}}</td><td>{{.ASIN}}</td>
+      <td class="artikel">{{if .BildKlein}}<span class="lupe" tabindex="0"
+           role="img" aria-label="Produktbild, vergrößert bei Fokus"
+          ><img class="klein" src="{{.BildKlein}}" alt="" loading="lazy" width="40" height="40"
+          ><img class="gross" src="{{.BildGross}}" alt="" loading="lazy"
+        ></span>{{end}}<span>{{.Titel}}{{if eq .Status "ausverkauft"}} <span class="status ausverkauft">ausverkauft</span>{{else if eq .Status "geloescht"}} <span class="status geloescht">gelöscht</span>{{end}}{{if .Importiert}} <span class="status" title="Aus einem alten Discord-Post eingelesen — die Zahlen stammen aus dem Post">aus Discord</span>{{end}}
+        {{if .Reaktionen}}<span class="reaktionen" title="Reaktionen in Discord">{{$.EmojiGekauft}} {{.Kaeufe}} · {{$.EmojiWeg}} {{.NichtVerfuegbar}}</span>{{end}}</span></td>
+      <td>{{.ChannelName}}{{if .Poster}}<br><small>von {{.Poster}}</small>{{end}}</td>
+      <td class="zahl">{{.EK}}</td><td class="zahl">{{.VK}}</td>
+      <td class="zahl">{{if .PanEU}}<span class="status paneu" title="Gerechnet mit Pan-EU (Ware im Zielland) — per EFN wären es {{.GewinnEFN}}">Pan-EU</span> {{end}}<span class="chip {{.GewinnKlasse}}">{{.Gewinn}}</span></td>
+      <td class="zahl"><span class="chip {{.MargeKlasse}}">{{.Marge}}</span></td></tr>
+  <tr class="details"><td colspan="8">
+    {{/* Die Knöpfe ändern den Post in Discord über denselben Webhook, über
+         den er gesendet wurde. "zurueck" trägt die Filter mit, damit die
+         Liste danach so dasteht wie vorher. */}}
+    <div class="aktionen">
+      <a class="knopf schmal" href="/deal/erneut/{{.ID}}">Erneut posten</a>
+      {{if .DiscordNachrichtID}}
+        {{if .AusverkauftVorschlag}}<span class="vorschlag">{{.NichtVerfuegbar}}× {{$.EmojiWeg}} — wohl ausverkauft?</span>{{end}}
+        {{if eq .Status ""}}
+        <form method="post" action="/post/{{.ID}}/ausverkauft">
+          <input type="hidden" name="zurueck" value="{{$.Filter}}">
+          <button type="submit" class="schmal">Ausverkauft</button></form>
+        {{else if eq .Status "ausverkauft"}}
+        <form method="post" action="/post/{{.ID}}/verfuegbar">
+          <input type="hidden" name="zurueck" value="{{$.Filter}}">
+          <button type="submit" class="schmal">Wieder verfügbar</button></form>
+        {{end}}
+        {{if ne .Status "geloescht"}}
+        <a class="knopf schmal" href="/post/{{.ID}}/bearbeiten?zurueck={{$.Filter}}">Bearbeiten</a>
+        <form method="post" action="/post/{{.ID}}/loeschen"
+              onsubmit="return confirm('Post wirklich aus Discord löschen? Das lässt sich nicht rückgängig machen.')">
+          <input type="hidden" name="zurueck" value="{{$.Filter}}">
+          <button type="submit" class="gefahr schmal">In Discord löschen</button></form>
+        {{end}}
+      {{end}}
+    </div>
+    <details><summary>Gesendeter Text</summary>
+      <div class="vorschau">{{.NachrichtText}}</div>
+      {{if .ChartDatei}}<figure class="chart">
+        <span class="lupe breit" tabindex="0" role="img"
+              aria-label="Preisverlauf beim Posten, vergrößert bei Fokus">
+          <img class="klein" src="/historie/chart/{{.ChartDatei}}" alt="Preisverlauf beim Posten" loading="lazy"
+          ><img class="gross" src="/historie/chart/{{.ChartDatei}}" alt="" loading="lazy"></span>
+      </figure>{{end}}
+      <p class="herkunft">
+        VK aus {{.VKQuelle}} · Sales aus {{.SalesQuelle}} ·
+        Provision aus {{.ProvisionQuelle}} · FBA aus {{.FBAQuelle}} ·
+        Vorsteuer {{.UStModus}} · EK {{.EKArt}} eingegeben ·
+        {{if .MaxMenge}}max. {{.MaxMenge}} Stück pro Bestellung ·{{end}}
+        {{if eq .Steuersatz "ermaessigt"}}USt ermäßigt ·{{end}}
+        {{/* Bei einem Fremdshop ist der Link die einzige Angabe, die den
+             Einkauf wiederfindbar macht: aus Land und ASIN lässt er sich,
+             anders als bei Amazon, nicht wieder herstellen. */}}
+        {{if .Lieferant}}Einkauf bei {{.Lieferant}} (ohne Link)
+        {{else if .QuellURL}}Einkauf <a href="{{.QuellURL}}" target="_blank" rel="noreferrer">{{.QuellURL}}</a>
+        {{else}}Einkauf amazon.{{.Quellmarkt}}{{end}}
+      </p>
+    </details>
+    {{if .Maerkte}}
+    <details><summary>Zielmärkte ({{len .Maerkte}})</summary>
+      <div class="scrollen">
+      <table class="rechnung maerkte">
+        <thead>
+        <tr><th>Markt</th><th class="zahl">VK</th><th class="zahl">Verk.</th>
+            <th class="zahl">Provision</th><th class="zahl">FBA</th>
+            <th class="zahl">Gewinn</th><th class="zahl">Marge</th>
+            <th class="zahl">FBA lokal</th><th class="zahl">Gewinn Pan-EU</th>
+            <th class="zahl">Marge Pan-EU</th></tr>
+        </thead>
+        <tbody>
+        {{range .Maerkte}}
+        <tr><td>Amazon.{{.Code}}{{if .Leitmarkt}} ★{{end}}</td>
+            <td class="zahl">{{.VK}}</td><td class="zahl">{{.Sales}}</td>
+            <td class="zahl">{{.Provision}}</td><td class="zahl">{{.FBA}}</td>
+            <td class="zahl">{{.Gewinn}}</td><td class="zahl">{{.Marge}}</td>
+            <td class="zahl">{{.FBAPanEU}}</td><td class="zahl">{{.GewinnPanEU}}</td>
+            <td class="zahl">{{.MargePanEU}}</td></tr>
+        <tr><td colspan="10" class="herkunft">{{.Quellen}}</td></tr>
+        {{end}}
+        </tbody>
+      </table>
+      </div>
+    </details>
+    {{end}}
+  </td></tr>
+  {{else}}
+  <tr><td colspan="8" class="leer">Noch nichts gepostet.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<nav class="blaettern">
+{{if gt .Seite 1}}<a href="/historie?{{.FilterURL}}&amp;seite={{.VorherigeSeite}}">zurück</a>{{end}}
+{{if .MehrDa}}<a href="/historie?{{.FilterURL}}&amp;seite={{.NaechsteSeite}}">weiter</a>{{end}}
+</nav>
+{{template "fuss"}}
+{{end}}

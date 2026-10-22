@@ -1,0 +1,21 @@
+# Laufzeitdaten — gehören nie ins Repo
+deals.db
+deals.db-shm
+deals.db-wal
+charts/
+config.toml
+
+# Geheimnisse
+.env
+
+# Build-Ergebnisse
+/lugru-deals
+/lugru-deals.exe
+/dist/
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
+# SDD-Arbeitsbereich (Ledger, Briefs, Reviews) — gehoert nicht ins Repo
+.superpowers/

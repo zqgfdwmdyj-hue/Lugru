@@ -1,0 +1,20 @@
+{{define "postbearbeiten"}}
+{{template "kopf" .}}
+<p class="hinweis"><a href="/historie">← zurück zur Historie</a></p>
+<h1>Post bearbeiten</h1>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+<p class="hinweis">{{.Deal.Titel}} · #{{.Deal.ChannelName}} · gepostet {{.Deal.GepostetAm.Local.Format "02.01.2006 15:04"}}</p>
+{{/* Der Text ist genau der gesendete Post, Discord-Schreibweise
+     inklusive: Links als [Text](Adresse), Erwähnungen als <@&…>. Der Chart
+     bleibt, wie er ist. */}}
+<form method="post" action="/post/{{.Deal.ID}}/bearbeiten" class="karte postbearbeiten">
+  <input type="hidden" name="zurueck" value="{{.Zurueck}}">
+  <label>Text des Posts <small>Links stehen als [Text](Adresse) — die Adresse in den runden Klammern ändern</small>
+    <textarea name="text" rows="16" maxlength="{{.MaxLaenge}}">{{.Text}}</textarea></label>
+  <p class="hinweis">Gespeichert wird direkt in Discord. Niemand wird dabei erneut benachrichtigt; der Chart bleibt.
+    {{if eq .Deal.Status "ausverkauft"}}Der Post ist als ausverkauft markiert und bleibt durchgestrichen.{{end}}</p>
+  <p class="knoepfe"><a class="knopf" href="/historie">Abbrechen</a>
+    <button type="submit" class="primaer">In Discord ändern</button></p>
+</form>
+{{template "fuss"}}
+{{end}}

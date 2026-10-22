@@ -1,0 +1,696 @@
+{{define "deal"}}
+{{template "kopf" .}}
+<h1>Neuer Deal</h1>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{/* Jeder Schritt tauscht ausschließlich den Inhalt von #funnel aus. Die
+     Seite selbst wird dabei nie verlassen — auch die Berechnung in Schritt 3
+     rechnet in genau diesem Ausschnitt live mit. */}}
+{{/* Einstieg ist gesetzt, wenn ein Entwurf oder ein alter Deal geöffnet
+     wird — dann beginnt die Seite gleich beim passenden Schritt. */}}
+<div id="funnel">{{if eq .Einstieg "schritt2"}}{{template "schritt2" .}}
+  {{else if eq .Einstieg "schritt3"}}{{template "schritt3" .}}
+  {{else if eq .Einstieg "schritt4"}}{{template "schritt4" .}}
+  {{else}}{{template "schritt1" .}}{{end}}</div>
+
+{{if .Entwuerfe}}
+<section class="entwuerfe">
+  <h2>Entwürfe</h2>
+  <div class="tabellenkarte">
+  <table>
+    <thead><tr><th>Artikel</th><th>ASIN</th><th>Stand</th><th>gespeichert</th><th></th></tr></thead>
+    <tbody>
+    {{range .Entwuerfe}}
+    <tr><td class="artikel"><a href="/entwurf/{{.ID}}">{{if .Titel}}{{.Titel}}{{else}}(ohne Titel){{end}}</a></td>
+        <td>{{.ASIN}}</td><td>{{.Schritt}}</td><td>{{.Datum}}</td>
+        <td class="aktionen">
+          <a class="knopf" href="/entwurf/{{.ID}}">Öffnen</a>
+          <form method="post" action="/entwurf/{{.ID}}/loeschen"
+                onsubmit="return confirm('Entwurf wirklich löschen?')">
+            <button type="submit">Löschen</button></form></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+</section>
+{{end}}
+{{template "fuss"}}
+{{end}}
+
+{{/* Das Statusfeld des Entwurfs: trägt die ID des Entwurfs, zu dem das
+     Formular gehört, und die Rückmeldung nach dem Speichern. Es ist das
+     einzige Feld namens entwurf_id im Formular — der Speichern-Knopf tauscht
+     es aus, und so überschreibt ein zweites Speichern denselben Entwurf. */}}
+{{define "entwurf-status"}}<span id="entwurf-status" class="entwurf-status"><input type="hidden" name="entwurf_id" value="{{.ID}}"
+  >{{if .Meldung}}<small class="meldung">{{.Meldung}}</small>{{end}}{{if .Fehler}}<small class="fehler">{{.Fehler}}</small>{{end}}</span>{{end}}
+
+{{define "entwurf-knopf"}}<button type="button" name="entwurf_schritt" value="{{.}}"
+  hx-post="/deal/entwurf" hx-target="#entwurf-status" hx-swap="outerHTML">Als Entwurf speichern</button>{{end}}
+
+{{/* ------------------------------------------------------------------ */}}
+{{/* Fortschritt. Steht in jedem Schritt-Fragment, damit die Anzeige beim
+     Austausch von #funnel mitwandert. */}}
+{{define "fortschritt"}}
+<ol class="funnel">
+  <li class="{{if eq .Schritt 1}}jetzt{{else if gt .Schritt 1}}fertig{{end}}"><b>1</b> Einkaufslink</li>
+  <li class="{{if eq .Schritt 2}}jetzt{{else if gt .Schritt 2}}fertig{{end}}"><b>2</b> Einkauf &amp; Ziel</li>
+  <li class="{{if eq .Schritt 3}}jetzt{{else if gt .Schritt 3}}fertig{{end}}"><b>3</b> Berechnung</li>
+  <li class="{{if eq .Schritt 4}}jetzt{{end}}"><b>4</b> Vorschau</li>
+</ol>
+{{end}}
+
+{{/* Verborgene Felder, die den Zustand des Funnels weitertragen. Jeder
+     Schritt bindet genau die Blöcke ein, deren Felder er nicht selbst
+     sichtbar anzeigt — zwei Elemente gleichen Namens im selben Formular
+     würden zwei Werte senden, und gelesen würde davon nur der erste. */}}
+{{define "verborgen-quelle"}}
+  {{if .Formular.OhneLink}}<input type="hidden" name="ohne_link" value="1">
+  <input type="hidden" name="lieferant" value="{{.Formular.Lieferant}}">{{end}}
+  <input type="hidden" name="einkaufslink" value="{{.Formular.Einkaufslink}}">
+  <input type="hidden" name="link_bestaetigt" value="{{.Formular.LinkBestaetigt}}">
+  <input type="hidden" name="asin" value="{{.Formular.ASIN}}">
+  <input type="hidden" name="quellmarkt" value="{{.Formular.Quellmarkt}}">
+  <input type="hidden" name="quell_url" value="{{.Formular.QuellURL}}">
+  {{range .Formular.WeitereLinks}}<input type="hidden" name="weitere_link" value="{{.}}">{{end}}
+{{end}}
+
+{{define "verborgen-einkauf"}}
+  <input type="hidden" name="ek" value="{{.Formular.EK}}">
+  <input type="hidden" name="ek_art" value="{{.Formular.EKArt}}">
+  <input type="hidden" name="ek_notiz" value="{{.Formular.EKNotiz}}">
+  <input type="hidden" name="max_menge" value="{{.Formular.MaxMenge}}">
+  <input type="hidden" name="zusatz" value="{{.Formular.Zusatz}}">
+{{end}}
+
+{{/* Der Steuersatz steht nicht in verborgen-einkauf: Schritt 3 zeigt ihn
+     sichtbar zur Wahl, und zwei Felder gleichen Namens sendeten zwei Werte. */}}
+{{/* Wer postet, wird in Schritt 4 gewählt; davor reist es verborgen mit. */}}
+{{define "verborgen-poster"}}
+  <input type="hidden" name="poster" value="{{.Formular.Poster}}">
+{{end}}
+
+{{define "verborgen-steuersatz"}}
+  <input type="hidden" name="steuersatz" value="{{.Formular.Steuersatz}}">
+  {{if .Formular.VerkaufsLinie}}<input type="hidden" name="chart_verkauft" value="1">{{end}}
+{{end}}
+
+{{/* Die Wahl der Zielmärkte selbst: welche gewählt sind und welcher davon
+     führt. Getrennt von den Zahlen darunter, weil Schritt 2 die Wahl
+     sichtbar anbietet und darum nur die Zahlen verborgen weitertragen darf —
+     zwei Elemente namens "zielmarkt" im selben Formular sendeten zwei Werte. */}}
+{{define "verborgen-maerkte"}}
+  <input type="hidden" name="leitmarkt" value="{{.Formular.Leitmarkt}}">
+  {{range .Formular.Maerkte}}<input type="hidden" name="zielmarkt" value="{{.Code}}">
+  {{end}}
+{{end}}
+
+{{/* Die marktabhängigen Zahlen, je Markt einmal. Das Marktkürzel steht im
+     Feldnamen ("vk.IT") und nicht als laufende Nummer: wer einen Markt
+     abwählt, verschöbe damit jede folgende Nummer, und die Werte erbten
+     still den Nachbarn. */}}
+{{define "verborgen-marktzahlen"}}
+  {{range .Formular.Maerkte}}
+  <input type="hidden" name="vk.{{.Code}}" value="{{.VK}}">
+  <input type="hidden" name="vk_quelle.{{.Code}}" value="{{.VKQuelle}}">
+  <input type="hidden" name="zielmarge.{{.Code}}" value="{{.ZielMarge}}">
+  <input type="hidden" name="sales.{{.Code}}" value="{{.Sales}}">
+  <input type="hidden" name="sales_quelle.{{.Code}}" value="{{.SalesQuelle}}">
+  <input type="hidden" name="provision.{{.Code}}" value="{{.Provision}}">
+  <input type="hidden" name="provision_quelle.{{.Code}}" value="{{.ProvisionQuelle}}">
+  <input type="hidden" name="fba.{{.Code}}" value="{{.FBA}}">
+  <input type="hidden" name="fba_quelle.{{.Code}}" value="{{.FBAQuelle}}">
+  {{end}}
+{{end}}
+
+{{/* Die Paketmaße reisen mit, weil Schritt 4 den Post allein aus dem
+     Formular baut und dort keine Keepa-Antwort mehr vorliegt. Ohne sie
+     ließe sich die Pan-EU-Alternative nicht rechnen. */}}
+{{define "verborgen-masse"}}
+  <input type="hidden" name="masse_l" value="{{.Formular.Masse.LaengeMM}}">
+  <input type="hidden" name="masse_b" value="{{.Formular.Masse.BreiteMM}}">
+  <input type="hidden" name="masse_h" value="{{.Formular.Masse.HoeheMM}}">
+  <input type="hidden" name="masse_g" value="{{.Formular.Masse.GewichtG}}">
+{{end}}
+
+{{define "verborgen-zahlen"}}
+  {{template "verborgen-masse" .}}
+  <input type="hidden" name="bild_kennung" value="{{.Formular.BildKennung}}">
+  <input type="hidden" name="titel" value="{{.Formular.Titel}}">
+  <input type="hidden" name="titel_manuell" value="{{if .Formular.TitelManuell}}1{{end}}">
+  <input type="hidden" name="titel_asin" value="{{.Formular.TitelASIN}}">
+  {{template "verborgen-marktzahlen" .}}
+{{end}}
+
+{{/* ------------------------------------------------------------------ */}}
+{{define "schritt1"}}
+{{template "fortschritt" .}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .Hinweis}}<p class="hinweis">{{.Hinweis}}</p>{{end}}
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+
+<form id="deal-schritt1" hx-post="/deal/preis" hx-target="#funnel" class="karte">
+  {{/* Der Link, für den die Angaben unten gelten. Wird das Feld darüber
+       geändert, stimmt er beim Absenden nicht mehr mit ihm überein — und
+       ASIN und Einkaufsland gelten dann als das, was sie sind: Angaben zu
+       einem anderen Artikel. */}}
+  <input type="hidden" name="link_bestaetigt" value="{{.Formular.Einkaufslink}}">
+  {{if not .Formular.OhneLink}}
+  <label>Einkaufslink
+    <small>Amazon-URL, der Link eines anderen Shops oder eine nackte ASIN</small>
+    <input name="einkaufslink" autofocus value="{{.Formular.Einkaufslink}}"
+           placeholder="https://www.amazon.es/dp/B01636IZ0G"></label>
+  {{end}}
+  {{/* Bis zu drei weitere Einkaufsquellen: je eine 🏬-Zeile im Post unter
+       der ersten. Gerechnet wird mit dem ersten Link. */}}
+  <fieldset class="weitere-links">
+    <legend>Weitere Einkaufslinks <small>optional, je eine eigene Zeile im Post</small></legend>
+    {{range .Formular.WeitereLinkFelder}}<input name="weitere_link" value="{{.}}" placeholder="https://www.saturn.de/…">{{end}}
+  </fieldset>
+  {{/* Großhandel und andere Einkäufe ohne Link: dann zählen nur ASIN,
+       Einkaufsland und der Name des Lieferanten. */}}
+  <label class="teil"><input type="checkbox" name="ohne_link" value="1"
+    {{if .Formular.OhneLink}}checked{{end}}
+    hx-post="/deal/preis" hx-target="#funnel" hx-trigger="change"> Ohne Einkaufslink (Großhandel)</label>
+  {{if .Formular.OhneLink}}
+    <input type="hidden" name="ohne_link_gesehen" value="1">
+    <label>Lieferant <small>erscheint im Post statt des Links — leer lassen ergibt „Großhandel“</small>
+      <input name="lieferant" value="{{.Formular.Lieferant}}" placeholder="z. B. Metro"></label>
+  {{end}}
+
+  {{if .ASINFrage}}
+    {{/* Ein Fremdshop-Link nennt keine ASIN — verkauft wird aber bei Amazon,
+         und ohne ASIN gibt es weder Keepa-Daten noch einen Verkaufslink. */}}
+    <label>ASIN des Artikels bei Amazon
+      {{if .Formular.OhneLink}}<small>für Keepa-Daten und den Verkaufslink</small>{{else if .QuellHost}}<small>{{.QuellHost}} kennt keine ASIN — bitte nachtragen</small>{{end}}
+      <input name="asin" value="{{.Formular.ASIN}}" placeholder="B01636IZ0G"></label>
+  {{else}}
+    <input type="hidden" name="asin" value="{{.Formular.ASIN}}">
+  {{end}}
+
+  {{if .MarktFrage}}
+    <label>Einkaufsland
+      <small>legt nur den Umsatzsteuersatz des Einkaufs fest{{if and .QuellHost (not .Formular.OhneLink)}} — Vorschlag aus der Endung von {{.QuellHost}}{{end}}</small>
+      <select name="quellmarkt">
+        <option value="">— wählen —</option>
+        {{range .Maerkte}}<option value="{{.Code}}"
+          {{if eq (printf "%s" .Code) $.Formular.Quellmarkt}}selected{{end}}>{{.Code}}</option>{{end}}
+      </select></label>
+  {{else}}
+    <input type="hidden" name="quellmarkt" value="{{.Formular.Quellmarkt}}">
+  {{end}}
+
+  <input type="hidden" name="quell_url" value="{{.Formular.QuellURL}}">
+  {{template "verborgen-einkauf" .}}
+  {{template "verborgen-poster" .}}
+  {{template "verborgen-steuersatz" .}}
+  {{template "verborgen-maerkte" .}}
+  {{template "verborgen-zahlen" .}}
+
+  <p class="knoepfe">
+    {{template "entwurf-knopf" 1}}{{template "entwurf-status" .Status}}
+    <button type="submit" class="primaer">Weiter</button></p>
+</form>
+{{end}}
+
+{{/* ------------------------------------------------------------------ */}}
+{{/* Ergebnis von "Bestand / Kauflimit prüfen" in Schritt 2. */}}
+{{define "kauflimit"}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>
+{{else if not .Angebote}}<p class="herkunft">Keepa hat auf {{.Markt}} gerade keine Neu-Angebote.</p>
+{{else}}
+<table class="angebote">
+  <thead><tr><th>Angebot auf {{.Markt}}</th><th>Preis</th><th>Bestand / Limit</th><th></th></tr></thead>
+  <tbody>
+  {{range .Angebote}}
+  <tr{{if .PasstZumEK}} class="passend"{{end}}>
+    <td>{{if .Amazon}}Amazon{{else if .HaendlerURL}}<a href="{{.HaendlerURL}}" target="_blank" rel="noreferrer">Händler</a>{{else}}Händler{{end}}{{if and .FBA (not .Amazon)}} · FBA{{end}}{{if .PasstZumEK}} · <b>dein EK</b>{{end}}</td>
+    <td>{{.Preis}}</td>
+    <td>{{if lt .Bestand 0}}unbekannt{{else}}<b>{{.Bestand}}</b>{{end}}{{if gt .Mindestmenge 1}} · ab {{.Mindestmenge}} Stück{{end}}</td>
+    {{/* Setzt die Max. Menge und schreibt den Bestand als eigene Zeile in
+         "Zusätzliche Zeilen" — dort steht er im Post, bleibt beim erneuten
+         Posten erhalten und lässt sich von Hand ändern. Eine vorhandene
+         Bestandszeile wird ersetzt, nicht verdoppelt. */}}
+    <td>{{if gt .Bestand 0}}<button type="button"
+      onclick="var f = this.form; f['max_menge'].value = '{{.Bestand}}';
+               var z = f['zusatz'], zeilen = z.value.split('\n').filter(function (l) { return l.indexOf('📊 Bestand:') !== 0; });
+               while (zeilen.length &amp;&amp; !zeilen[zeilen.length - 1].trim()) zeilen.pop();
+               zeilen.push('📊 Bestand: {{.Bestand}} Stück'); z.value = zeilen.join('\n');"
+      >übernehmen</button>{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+<p class="herkunft">Keepa legt den Artikel in den Warenkorb: Bei einem Limit pro Kunde steht hier das Limit,
+  sonst der Lagerbestand. Die API sagt nicht, welches von beiden. „übernehmen“ setzt die Max. Menge
+  und schreibt den Bestand in die zusätzlichen Zeilen. Verbraucht: {{.Token}} Token.</p>
+{{end}}
+{{end}}
+
+{{define "schritt2"}}
+{{template "fortschritt" .}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .SchonGepostet}}<p class="hinweis schon-gepostet">🔁 Diese ASIN wurde schon {{.SchonGepostet}}.
+  <a href="/historie?suche={{.Formular.ASIN}}" target="_blank" rel="noopener">In der Historie ansehen</a></p>{{end}}
+
+{{/* hx-post gehört auf das Formular, nicht nur auf den Weiter-Knopf: ohne
+     das löst die Eingabetaste im Preisfeld die eingebaute Formularabsendung
+     des Browsers aus — ein vollständiger Seitenwechsel, der den halb
+     ausgefüllten Deal verwirft. Mit hx-post fängt htmx dieselbe Taste ab und
+     macht daraus genau das, was der Weiter-Knopf tut. */}}
+<form id="deal-schritt2" hx-post="/deal/laden" hx-target="#funnel">
+  {{template "verborgen-quelle" .}}
+  {{template "verborgen-poster" .}}
+  {{template "verborgen-steuersatz" .}}
+  {{template "verborgen-zahlen" .}}
+
+  <p class="herkunft">{{.Formular.ASIN}} · Einkauf bei
+    {{if .Formular.QuellURL}}<a href="{{.Formular.QuellURL}}" target="_blank" rel="noreferrer">{{.QuellHost}}</a>
+      <small>({{.Formular.Quellmarkt}} — Umsatzsteuer des Einkaufs)</small>
+    {{else}}{{.QuellHost}}{{end}}</p>
+
+  {{/* Beides nebeneinander: der Einkaufspreis sind drei kurze Felder, die
+       Marktwahl eine schmale Tabelle. Untereinander schob die Marktwahl den
+       Weiter-Knopf aus dem Bild, obwohl neben dem Preis die halbe Zeile
+       frei blieb. */}}
+  <div class="spalten">
+  <fieldset><legend>Einkaufspreis</legend>
+    <label>Betrag <input name="ek" autofocus value="{{.Formular.EK}}" placeholder="130,56">
+      {{if .EKHinweis}}<span class="herkunft">{{.EKHinweis}}</span>{{end}}</label>
+
+    {{/* Der Schalter sagt, welche der beiden Größen gerade eingegeben wird.
+         Eine zweite Frage nach der Vorsteuer gibt es nicht mehr: bei Reverse
+         Charge stellt Amazon einem Geschäftskunden netto, es ist also nie
+         etwas abzuziehen. */}}
+    <div class="schalter">
+      <label class="teil"><input type="radio" name="ek_art" value="brutto"
+        {{if ne .Formular.EKArt "netto"}}checked{{end}}><span>brutto</span></label>
+      <label class="teil"><input type="radio" name="ek_art" value="netto"
+        {{if eq .Formular.EKArt "netto"}}checked{{end}}><span>netto</span></label>
+    </div>
+
+    <label>Notiz
+      <input name="ek_notiz" list="notizen" value="{{.Formular.EKNotiz}}"
+             placeholder="Brutto inkl. Versand (3er cart)">
+      <datalist id="notizen">{{range .Notizen}}<option value="{{.}}">{{end}}</datalist></label>
+
+    <label>Max. Menge <small>Stück pro Bestellung (Cart-Limit), leer wenn keins</small>
+      <input name="max_menge" inputmode="numeric" value="{{.Formular.MaxMenge}}" placeholder="z. B. 3"></label>
+
+    {{/* Nur bei Einkauf auf Amazon: Keepa kennt die Angebote eines fremden
+         Shops nicht. Auf Knopfdruck, weil die Abfrage mit Angeboten und
+         Bestand ein Vielfaches einer normalen kostet. */}}
+    {{if and (not .Formular.OhneLink) (not .Formular.QuellURL)}}
+    <div class="kauflimit">
+      <button type="button" hx-post="/deal/kauflimit" hx-target="#kauflimit-ergebnis">Bestand / Kauflimit bei Keepa prüfen</button>
+      <small>kostet ca. 8–14 Keepa-Token</small>
+      <div id="kauflimit-ergebnis"></div>
+    </div>
+    {{end}}
+
+    <label>Zusätzliche Zeilen <small>stehen im Post unter dem EK, eine je Zeile — z. B. ETA, MOQ, Zahlungsziel</small>
+      <textarea name="zusatz" rows="3" placeholder="⏳ ETA: 2–3 Wochen&#10;📦 MOQ: 50 Stück">{{.Formular.Zusatz}}</textarea></label>
+  </fieldset>
+
+  <fieldset><legend>Zielmarktplätze</legend>
+    {{/* Kästchen statt Auswahlfeld: verkauft wird oft auf mehreren
+         Marktplätzen zugleich. Der Leitmarkt daneben ist der, an dem alles
+         hängt, was es nur einmal geben kann — Artikelname, Bild, Chart und
+         die Zahlen der Historienzeile. */}}
+    <table class="marktwahl">
+      <thead><tr><th>verkaufen</th><th>Leitmarkt</th><th>Marktplatz</th></tr></thead>
+      <tbody>
+      {{range .Maerkte}}{{$c := printf "%s" .Code}}
+      <tr>
+        <td><input type="checkbox" name="zielmarkt" aria-label="auf Amazon.{{$c}} verkaufen"
+                   value="{{$c}}" {{if $.Formular.MarktGewaehlt .Code}}checked{{end}}></td>
+        <td><input type="radio" name="leitmarkt" aria-label="Amazon.{{$c}} als Leitmarkt"
+                   value="{{$c}}" {{if eq $c (printf "%s" $.Formular.Leitmarkt)}}checked{{end}}></td>
+        <td>Amazon.{{$c}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </fieldset>
+  </div>
+
+  <p class="knoepfe">
+    <button type="button" hx-post="/deal/start" hx-target="#funnel">Zurück</button>
+    {{template "entwurf-knopf" 2}}{{template "entwurf-status" .Status}}
+    <button type="submit" class="weiter primaer">Weiter — Keepa laden</button>
+  </p>
+</form>
+{{end}}
+
+{{/* ------------------------------------------------------------------ */}}
+{{define "schritt3"}}
+{{/* Zeilen sind die Größen, Spalten die Märkte — gebaut wie die
+     Tarifübersicht in tarife.html, weil dort dieselbe Frage schon dieselbe
+     Form bekommen hat. Jede Spalte trägt ihre eigene Kandidatenliste und
+     ihren eigenen Sales-Hinweis (marktFormular.Kandidaten/.SalesHinweis):
+     Keepa nennt Verkaufspreis und Verkaufszahl je Domain, ein Vorschlag aus
+     dem falschen Land wäre schlimmer als keiner. */}}
+{{template "fortschritt" .}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+{{/* Die Übersicht steht über den beiden Spalten und nicht in einer von
+     ihnen: sieben Spalten passen nicht in eine halbe Seite, und ausgerechnet
+     die Rechnung am Zeilenende fiele hinter den Rand. */}}
+{{/* #rechnung wird bei jedem Tastendruck ausgetauscht; der Chart steht
+     bewusst außerhalb, sonst würde er jedes Mal neu geladen. */}}
+<div id="rechnung">{{template "rechnung" .}}</div>
+
+<div class="spalten">
+{{/* Jede Änderung schickt das ganze Formular an /deal/berechnung und tauscht
+     allein #rechnung aus — die Aufschlüsselung rechnet also live mit, ohne
+     dass die Seite gewechselt oder der Chart neu geholt wird. */}}
+{{/* submit steht bewusst in der Auslöserliste: eine eigene hx-trigger-Angabe
+     ersetzt den eingebauten submit-Auslöser vollständig, und ohne ihn ließe
+     die Eingabetaste in einem der Felder die eingebaute Formularabsendung des
+     Browsers laufen — ein Seitenwechsel mitten im Prüfen der Zahlen. So
+     rechnet sie stattdessen einfach neu. */}}
+<form id="deal-formular" hx-post="/deal/berechnung" hx-target="#rechnung"
+      hx-trigger="change, keyup changed delay:400ms, submit">
+  {{template "verborgen-quelle" .}}
+  {{template "verborgen-einkauf" .}}
+  {{template "verborgen-poster" .}}
+  {{template "verborgen-maerkte" .}}
+  {{template "verborgen-masse" .}}
+  <input type="hidden" name="bild_kennung" value="{{.Formular.BildKennung}}">
+
+  {{/* Ermäßigt (in Deutschland 7 % statt 19 %) gilt für Einkauf und
+       Verkauf — der Satz hängt an der Ware. Die Sätze je Land stehen in den
+       Einstellungen. Jede Änderung rechnet sofort neu. */}}
+  <fieldset class="eingerueckt"><legend>Umsatzsteuer</legend>
+    <div class="schalter">
+      <label class="teil"><input type="radio" name="steuersatz" value="normal"
+        {{if ne .Formular.Steuersatz "ermaessigt"}}checked{{end}}><span>normal (19 %)</span></label>
+      <label class="teil"><input type="radio" name="steuersatz" value="ermaessigt"
+        {{if eq .Formular.Steuersatz "ermaessigt"}}checked{{end}}><span>ermäßigt (7 %)</span></label>
+    </div>
+  </fieldset>
+
+  <label>Artikelname <small>aus Keepa, kürzen</small>
+    <input name="titel" value="{{.Formular.Titel}}"
+           oninput="this.form['titel_manuell'].value='1'; this.form['titel_asin'].value='{{.Formular.ASIN}}'"></label>
+  <input type="hidden" name="titel_manuell" value="{{if .Formular.TitelManuell}}1{{end}}">
+  <input type="hidden" name="titel_asin" value="{{.Formular.TitelASIN}}">
+
+  <div class="tabellenkarte scrollbar">
+  <table class="eingabe">
+    <thead><tr><th></th>{{range .Formular.Maerkte}}<th>Amazon.{{.Code}}</th>{{end}}</tr></thead>
+    <tbody>
+
+    {{/* Die Auswahlknöpfe tragen bewusst kein name-Attribut aus dem Handler:
+         sonst sendete das Formular zwei Werte namens "vk.DE". Sie füllen nur
+         das Feld.
+
+         Angesprochen wird es über this.form['vk.DE'] statt über this.form.vk:
+         ein Punkt im Feldnamen ist als Eigenschaftsname nicht erreichbar. */}}
+    {{/* Als Reihe kleiner Chips und nicht als ausgeschriebene Auswahlknöpfe
+         untereinander: so nahmen die vier Kandidaten mehr Höhe ein als die
+         ganze übrige Eingabe, und ihre Beschriftung brach mitten im Betrag
+         um. Der Betrag steht fett — nach ihm sucht das Auge, nicht nach dem
+         Zeitraum. */}}
+    <tr><td>Ø-Preise</td>
+      {{range .Formular.Maerkte}}{{$c := .Code}}<td>
+        {{if .Kandidaten}}<div class="preiswahl">
+        {{range .Kandidaten}}
+        <label><input type="radio" name="vk_wahl.{{$c}}" value="{{.Schluessel}}"
+                      {{if .Gewaehlt}}checked{{end}}
+                      onchange="this.form['vk.{{$c}}'].value='{{.Wert}}'; this.form['vk_quelle.{{$c}}'].value='{{.Schluessel}}'"
+          ><span>{{.Bezeichnung}} <b>{{.Wert}} €</b></span></label>
+        {{end}}
+        </div>{{else}}<span class="fehler">Keepa hat keinen Verkaufspreis</span>{{end}}
+      </td>{{end}}</tr>
+
+    <tr><td>Verkaufspreis</td>
+      {{range .Formular.Maerkte}}{{$c := .Code}}<td>
+        <input name="vk.{{$c}}" value="{{.VK}}" placeholder="207,49"
+               oninput="this.form['vk_quelle.{{$c}}'].value='manuell'; this.form['zielmarge.{{$c}}'].value=''">
+        <input type="hidden" name="vk_quelle.{{$c}}" value="{{.VKQuelle}}">
+        {{if eq .VKQuelle "vorher"}}<span class="herkunft">VK vom letzten Post</span>{{end}}
+      </td>{{end}}</tr>
+
+    {{/* Eine Ziel-Marge rechnet den VK selbst aus und schlägt damit jeden
+         eingetippten Verkaufspreis. Darum leert das Tippen im VK-Feld die
+         Ziel-Marge: sonst rechnete Schritt 4 still mit dem Preis zur
+         Ziel-Marge statt mit dem eingegebenen. */}}
+    {{/* oninput setzt dieselbe "manuell"-Quelle wie beim VK-Feld: ohne das
+         behauptete die Historie nach einer Handeingabe weiterhin "keepa"
+         oder "standardwert", obwohl der Wert von niemandem außer dem
+         Nutzer stammt (I5 im Abschluss-Review). */}}
+    <tr><td>Ziel-Marge %</td>
+      {{range .Formular.Maerkte}}{{$c := .Code}}<td>
+        <input name="zielmarge.{{$c}}" value="{{.ZielMarge}}" placeholder="leer lassen">
+        <span class="herkunft">gefüllt = VK wird daraus berechnet</span>
+      </td>{{end}}</tr>
+
+    <tr><td>Verkäufe</td>
+      {{range .Formular.Maerkte}}{{$c := .Code}}<td>
+        <input name="sales.{{$c}}" value="{{.Sales}}" placeholder="z. B. 50+"
+               oninput="this.form['sales_quelle.{{$c}}'].value='manuell'">
+        <input type="hidden" name="sales_quelle.{{$c}}" value="{{.SalesQuelle}}">
+        <span class="herkunft">{{.SalesHinweis}}</span>
+      </td>{{end}}</tr>
+
+    <tr><td>Provision in %</td>
+      {{range .Formular.Maerkte}}{{$c := .Code}}<td>
+        <input name="provision.{{$c}}" value="{{.Provision}}"
+               oninput="this.form['provision_quelle.{{$c}}'].value='manuell'">
+        <input type="hidden" name="provision_quelle.{{$c}}" value="{{.ProvisionQuelle}}">
+        <span class="herkunft">{{.ProvisionQuelle}}</span>
+      </td>{{end}}</tr>
+
+    <tr><td>FBA-Gebühr</td>
+      {{range .Formular.Maerkte}}{{$c := .Code}}<td>
+        <input name="fba.{{$c}}" value="{{.FBA}}" placeholder="leer, wenn unbekannt"
+               oninput="this.form['fba_quelle.{{$c}}'].value='manuell'">
+        <input type="hidden" name="fba_quelle.{{$c}}" value="{{.FBAQuelle}}">
+        <span class="herkunft">{{.FBAQuelle}}</span>
+      </td>{{end}}</tr>
+    </tbody>
+  </table>
+  </div>
+
+  {{/* Die gelbe Linie "Monatlich verkauft" aus Keepa, in beiden Charts;
+       Schritt 4 trägt die Wahl verborgen weiter. */}}
+  <label class="teil chart-verkauft"><input type="checkbox" name="chart_verkauft" value="1"
+    {{if .Formular.VerkaufsLinie}}checked{{end}}> In den Charts „Monatlich verkauft“ zeigen
+    <small>(gelbe Linie von Keepa)</small></label>
+
+  {{/* Gewinn und Marge von Hand für den Leitmarkt; Schritt 4 trägt sie
+       nur verborgen weiter. Leer: wie gerechnet. */}}
+  <fieldset class="handwerte">
+    <legend>Gewinn / Marge von Hand <small>für den Leitmarkt, leer = wie gerechnet</small></legend>
+    <label>Gewinn im Post
+      <input name="gewinn_manuell" value="{{.Formular.GewinnManuell}}" inputmode="decimal" placeholder="z. B. 25,90"></label>
+    <label>Marge im Post in %
+      <input name="marge_manuell" value="{{.Formular.MargeManuell}}" inputmode="decimal" placeholder="z. B. 12,5"></label>
+    <label>Pan-EU-Gewinn
+      <input name="gewinn_paneu_manuell" value="{{.Formular.GewinnPanEUManuell}}" inputmode="decimal" placeholder="z. B. 7,85"></label>
+    <label>Pan-EU-Marge in %
+      <input name="marge_paneu_manuell" value="{{.Formular.MargePanEUManuell}}" inputmode="decimal" placeholder="z. B. 10,9"></label>
+  </fieldset>
+
+  <p class="knoepfe">
+    <button type="button" hx-post="/deal/preis" hx-target="#funnel">Zurück</button>
+    <button type="button" name="neu_laden" value="1" hx-post="/deal/laden" hx-target="#funnel">Neu laden
+      <small>(Cache umgehen)</small></button>
+    {{template "entwurf-knopf" 3}}{{template "entwurf-status" .Status}}
+    <button type="button" class="weiter primaer" hx-post="/deal/vorschau" hx-target="#funnel">Weiter zur Vorschau</button>
+  </p>
+</form>
+
+<div>
+  {{if .ChartURL}}<figure class="chart">
+    <span class="lupe breit" tabindex="0" role="img"
+          aria-label="Preisverlauf, vergrößert bei Fokus">
+      <img class="klein" src="{{.ChartURL}}" alt="Keepa-Preisverlauf"
+      ><img class="gross" src="{{.ChartURL}}" alt=""></span>
+  </figure>{{end}}
+</div>
+</div>
+{{end}}
+
+{{/* Die Aufschlüsselung. Wird als eigenes Fragment von /deal/berechnung
+     geliefert und ist deshalb bewusst ohne Formular und ohne Fortschritt. */}}
+{{define "rechnung"}}
+{{if .RechenFehler}}<p class="fehler">{{.RechenFehler}}</p>{{end}}
+
+{{/* Zeilen sind die Märkte, Spalten ihre Kennzahlen: die Frage, welcher Markt
+     trägt, liest sich so von oben nach unten. Andersherum — Märkte als
+     Spalten — wuchs die Übersicht mit jedem weiteren Markt nach rechts aus
+     dem Bild.
+
+     Die ausführliche Rechnung steht nicht mehr darunter, sondern hinter dem
+     Taschenrechner am Zeilenende: sichtbar für den Markt, auf den man zeigt,
+     und für keinen anderen. Damit entfällt auch der Knopf "aufschlüsseln"
+     samt seiner zweiten Anfrage — jede Zeile bringt ihre Rechnung schon
+     mit. */}}
+{{if .Ergebnisse}}
+<div class="tabellenkarte scrollbar">
+<table class="rechnung maerkteliste">
+  <caption>Vergleich der Zielmärkte</caption>
+  <thead>
+  <tr><th>Markt</th><th class="zahl">Verkäufe</th><th class="zahl">Verkauf</th>
+      <th class="zahl">Gewinn</th><th class="zahl">Marge</th><th class="zahl">ROI</th>
+      <th class="zahl">Rechnung</th></tr>
+  </thead>
+  <tbody>
+  {{range .Ergebnisse}}
+  <tr{{if .Leitmarkt}} class="leitmarkt"{{end}}>
+    <td class="markt">{{fahne .Code}}{{.Code}}{{if .Leitmarkt}} <span class="stern" title="Leitmarkt">★</span>{{end}}
+      <small>USt {{.UStSatz}}</small></td>
+    <td class="zahl"><span class="chip {{.SalesKlasse}}">{{.Sales}}</span></td>
+    <td class="zahl">{{.VK}}</td>
+    {{/* Der Pan-EU-Vergleich hängt als leise zweite Zeile unter seiner Zahl:
+         er gehört zu ihr und ist doch nicht sie. Wo es ihn nicht gibt, bleibt
+         die Zeile leer — den Grund kennt sie nicht. Ein Ziel im Lagerland hat
+         keinen zweiten Versandweg, aber genauso gut können die Maße oder der
+         Tarif fehlen, und eine geratene Begründung wäre schlimmer als keine. */}}
+    <td class="zahl"><span class="chip {{.GewinnKlasse}}">{{.Gewinn}}</span>
+      {{if .GewinnPanEU}}<span class="nebenzahl">Pan-EU {{.GewinnPanEU}}</span>{{end}}</td>
+    <td class="zahl"><span class="chip {{.MargeKlasse}}">{{.Marge}}</span>
+      {{if .MargePanEU}}<span class="nebenzahl">Pan-EU {{.MargePanEU}}</span>{{end}}</td>
+    <td class="zahl">{{.ROI}}</td>
+    {{/* tabindex und role machen den Taschenrechner anfassbar: ohne sie
+         könnte die :focus-Regel im Stylesheet nie greifen und die Rechnung
+         wäre eine reine Mausfunktion — genau der Fehler, den die Lupe der
+         Historie schon einmal hatte. */}}
+    <td class="zahl">
+      <span class="rechner {{.RechnerKlasse}}" tabindex="0" role="button"
+            aria-label="Rechnung für Amazon.{{.Code}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="2.5" width="16" height="19" rx="2.5"/>
+          <rect x="7" y="5.5" width="10" height="4" rx="1"/>
+          <path d="M7.5 13h1M11.5 13h1M15.5 13h1M7.5 17h1M11.5 17h1M15.5 17h5" stroke-linecap="round"/>
+        </svg>
+        <span class="karte" role="tooltip">
+          <table class="rechnung kassenbon"><tbody>
+          {{range .Bloecke}}
+          <tr class="abschnitt"><td colspan="3">{{.Titel}}</td></tr>
+          {{range .Zeilen}}
+          <tr class="{{if .Betonung}}betont {{end}}{{.Art}}">
+            <td class="zeichen">{{.Zeichen}}</td><td>{{.Bezeichnung}}</td>
+            <td class="betrag">{{if .Klasse}}<span class="chip {{.Klasse}}">{{.Wert}}</span>{{else}}{{.Wert}}{{end}}</td>
+          </tr>
+          {{end}}
+          {{end}}
+          </tbody></table>
+        </span>
+      </span>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}
+
+{{/* ------------------------------------------------------------------ */}}
+{{define "schritt4"}}
+{{template "fortschritt" .}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .SchonGepostet}}<p class="hinweis schon-gepostet">🔁 Diese ASIN wurde schon {{.SchonGepostet}}.
+  <a href="/historie?suche={{.Formular.ASIN}}" target="_blank" rel="noopener">In der Historie ansehen</a></p>{{end}}
+{{if .Hinweis}}<p class="hinweis">{{.Hinweis}}</p>{{end}}
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+
+{{template "rechnung" .}}
+
+{{/* Das Formular ist selbst die zweispaltige Fläche: links die Karte, rechts
+     die Wahl. Untereinander stand die Karte über einer halbleeren Seite,
+     während neben ihr Platz frei blieb.
+
+     Die verborgenen Felder sind display:none und darum keine Rasterzellen —
+     sie stehen weiter oben im Formular, wo sie hingehören, und verschieben
+     nichts. */}}
+<form id="deal-vorschau" hx-post="/deal/senden" hx-target="#funnel" class="spalten">
+  {{/* Dieses Formular trägt den ganzen Deal — sendeDeal liest ihn allein aus
+       dem, was hier steht. Kein hx-include auf ein anderes Formular: genau
+       so ging der Posten-Knopf schon einmal leer aus. */}}
+  {{template "verborgen-quelle" .}}
+  {{template "verborgen-einkauf" .}}
+  {{template "verborgen-steuersatz" .}}
+  {{template "verborgen-maerkte" .}}
+  {{template "verborgen-zahlen" .}}
+
+  <div>{{template "kartenvorschau" .Karte}}</div>
+
+  <div class="versand">
+
+  {{/* Die Erwähnung (@everyone, @here, eine Rolle) hängt am Channel und steht
+       damit im Text. Ohne diesen erneuten Aufbau zeigte die Vorschau einen
+       Post ohne Erwähnung, während sendeDeal ihn mit baut — der gesendete
+       Text wäre nicht der gezeigte. Das ganze Fragment wird getauscht; der
+       Chart darunter kommt dabei aus dem Browser-Zwischenspeicher, siehe
+       zeigeChart. */}}
+  {{/* Wer postet, steht im Post direkt unter dem Titel. Der Browser merkt sich
+       die Wahl nach dem Posten. */}}
+  {{if .PosterAuswahl}}
+  <label>Gepostet von
+    <select name="poster" hx-post="/deal/vorschau" hx-target="#funnel">
+      <option value="">— niemand —</option>
+      {{range .PosterAuswahl}}<option value="{{.Name}}" {{if eq .Name $.Formular.Poster}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select></label>
+  {{end}}
+
+  <label>Channel
+    <select name="channel_id" hx-post="/deal/vorschau" hx-target="#funnel">
+      <option value="0">— wählen —</option>
+      {{range .Channels}}<option value="{{.ID}}"
+        {{if eq .ID $.Formular.ChannelID}}selected{{end}}>{{.Name}}{{if .Defekt}} (defekt){{end}}</option>{{end}}
+    </select></label>
+
+  {{/* Gewinn und Marge von Hand werden in Schritt 3 eingetragen; hier
+       reisen sie nur mit, damit sie beim Posten ankommen. */}}
+  <input type="hidden" name="gewinn_manuell" value="{{.Formular.GewinnManuell}}">
+  <input type="hidden" name="marge_manuell" value="{{.Formular.MargeManuell}}">
+  <input type="hidden" name="gewinn_paneu_manuell" value="{{.Formular.GewinnPanEUManuell}}">
+  <input type="hidden" name="marge_paneu_manuell" value="{{.Formular.MargePanEUManuell}}">
+
+
+  {{/* Derselbe Deal zusätzlich in weitere Channels, etwa auf dem anderen
+       Server. Jeder Post bekommt die Erwähnung seines Channels; die
+       Vorschau zeigt den ersten. */}}
+  {{if gt (len .Channels) 1}}
+  <fieldset class="weitere-channels"><legend>Zusätzlich posten in</legend>
+    {{range .Channels}}{{if ne .ID $.Formular.ChannelID}}<label class="teil"><input type="checkbox"
+      name="channel_weitere" value="{{.ID}}" {{if $.Formular.WeitererChannel .ID}}checked{{end}}> {{.Name}}{{if .Gruppe}} <small>{{.Gruppe}}</small>{{end}}</label>{{end}}{{end}}
+  </fieldset>
+  {{end}}
+
+  {{/* Dasselbe hx-post wie beim Channel und aus demselben Grund: der Tag
+       steckt in den Links des Post-Textes, den die Vorschau darüber zeigt.
+       Ohne den erneuten Aufbau zeigte sie einen anderen Post, als gesendet
+       wird. Angeboten werden je Markt nur dessen eigene Tags — ein Tag
+       verdient nur dort, wofür er ausgestellt wurde, und darum bekommt
+       jeder Markt sein eigenes Auswahlfeld. */}}
+  {{range .TagAuswahl}}{{$gewaehlt := .TagID}}
+  <label>Affiliate-Tag Amazon.{{.Code}}
+    <select name="tag.{{.Code}}" hx-post="/deal/vorschau" hx-target="#funnel">
+      <option value="0">— kein Tag —</option>
+      {{range .Tags}}<option value="{{.ID}}"
+        {{if eq .ID $gewaehlt}}selected{{end}}>{{.Name}} ({{.Tag}}){{if .Standard}} — Standard{{end}}</option>{{end}}
+    </select></label>
+  {{/* Genau der Verkaufslink dieses Marktes, nicht „die Links": der
+       Einkaufslink hängt nicht an dieser Wahl, sondern am Standard-Tag
+       seines eigenen Marktes, und trägt ihn hier weiter. */}}
+  {{if .OhneTag}}<p class="hinweis">Amazon.{{.Code}} ohne Affiliate-Tag — der Verkaufslink verdient dort keine Provision.</p>{{end}}
+  {{end}}
+
+  {{/* Erscheint nur, wenn der Chart-Abruf gerade fehlgeschlagen ist (siehe
+       sendeDeal). Ohne dieses Feld nannte die Fehlermeldung oben einen
+       Knopf, den keine Vorlage je gerendert hat, und ein fehlgeschlagener
+       Chart-Abruf blockierte das Posten endgültig — der im Design
+       zugesagte Ausweg war unerreichbar (I3 im Abschluss-Review). */}}
+  {{if .OhneChartAnbieten}}<input type="hidden" name="ohne_chart" value="1">{{end}}
+
+  <p class="knoepfe">
+    <button type="button" name="zurueck" value="1" hx-post="/deal/laden" hx-target="#funnel">Zurück</button>
+    {{template "entwurf-knopf" 4}}{{template "entwurf-status" .Status}}
+    <button type="submit" class="weiter primaer">{{if .OhneChartAnbieten}}Ohne Chart senden{{else}}Posten{{end}}</button>
+  </p>
+  </div>
+</form>
+{{end}}

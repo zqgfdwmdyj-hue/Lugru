@@ -1,0 +1,65 @@
+{{define "einlesen"}}
+{{template "kopf" .}}
+<p class="hinweis"><a href="/historie">← zurück zur Historie</a></p>
+<h1>Alte Deals aus Discord einlesen</h1>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{range .Hinweis}}<p class="fehler">{{.}}</p>{{end}}
+
+{{if not .BotDa}}
+<p class="leer">Dafür braucht es den Discord-Bot — unter <a href="/einstellungen#bot">Einstellungen</a> den Bot-Token eintragen.</p>
+{{else if .Laeuft}}
+<div class="karte">
+  <p><b>Wird eingelesen …</b> {{.Stand}}</p>
+  <p class="hinweis">Die Seite lädt sich von selbst neu. Bei großen Channels kann das ein paar Minuten dauern.</p>
+</div>
+<script>setTimeout(function () { location.reload(); }, 3000);</script>
+{{else}}
+
+{{if .Zeilen}}
+{{/* Vorschau: nichts ist gespeichert, bis hier bestätigt wird. */}}
+<form method="post" action="/einlesen/uebernehmen" class="tabellenkarte statistikblock">
+  <h2 class="einlesen-kopf">{{len .Zeilen}} Deals erkannt</h2>
+  <p class="hinweis einlesen-kopf">Noch nichts gespeichert — Häkchen prüfen und unten übernehmen. Zum Seitwärtsschieben wischen.</p>
+  <div class="scrollen">
+  <table class="statistik einlesen">
+    <thead><tr><th><input type="checkbox" checked aria-label="alle"
+        onchange="for (const c of this.form.querySelectorAll('input[name=nachricht]')) c.checked = this.checked"></th>
+      <th>gepostet</th><th>Artikel</th><th>Channel</th><th>von</th>
+      <th class="zahl">EK</th><th class="zahl">VK</th><th class="zahl">Gewinn</th><th class="zahl">Marge</th><th class="zahl">✅</th></tr></thead>
+    <tbody>
+    {{range .Zeilen}}
+    <tr><td><input type="checkbox" name="nachricht" value="{{.NachrichtID}}" checked></td>
+        <td>{{.Datum}}</td>
+        <td class="artikel">{{.Titel}} <small>{{.ASIN}}</small>{{if .Ausverkauft}} <span class="status ausverkauft">ausverkauft</span>{{end}}</td>
+        <td>#{{.Channel}}</td><td>{{if .Poster}}@{{.Poster}}{{end}}</td>
+        <td class="zahl">{{.EK}}</td><td class="zahl">{{.VK}}</td>
+        <td class="zahl">{{if .PanEU}}<span class="status paneu">Pan-EU</span> {{end}}<span class="chip {{.Klasse}}">{{.Gewinn}}</span></td>
+        <td class="zahl">{{.Marge}}</td><td class="zahl">{{.Kaeufe}}</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="knoepfe" style="padding: 0 .8rem .8rem"><button type="submit" class="primaer">Angehakte Deals übernehmen</button></p>
+</form>
+{{end}}
+
+{{if .Fertig}}
+<p class="hinweis">Zuletzt eingelesen {{.Fertig}}: {{.Gelesen}} Nachrichten gelesen, {{len .Zeilen}} Deals erkannt,
+  {{.SchonDa}} schon in der Historie, {{.Unerkannt}} keine Deals (Unterhaltungen, Bilder oder Posts ohne Gewinnzeile).</p>
+{{end}}
+
+<form method="post" action="/einlesen/start" class="karte werbebild-optionen">
+  <fieldset>
+    <legend>Channels</legend>
+    {{range .Channels}}<label class="teil"><input type="checkbox" name="channel" value="{{.ID}}" checked> #{{.Name}}{{if .Gruppe}} <small>{{.Gruppe}}</small>{{end}}</label>{{end}}
+  </fieldset>
+  <label>Ab Datum <small>leer = alles</small><input type="date" name="von" value="{{.Von}}"></label>
+  <p class="hinweis">Erkannt werden Posts mit Titelzeile und „Gewinn: … / … % Marge“ — im selben Aufbau, wie ihr postet.
+    Deals, die schon in der Historie stehen, werden übersprungen. Danach kommt eine Vorschau; gespeichert wird erst,
+    wenn du sie bestätigst.</p>
+  <p class="knoepfe"><button type="submit" class="primaer">Einlesen starten</button></p>
+</form>
+{{end}}
+{{template "fuss"}}
+{{end}}

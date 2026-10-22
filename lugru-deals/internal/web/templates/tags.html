@@ -1,0 +1,52 @@
+{{define "tags"}}
+{{template "kopf" .}}
+<h1>Tags</h1>
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+<p class="hinweis">Ein Affiliate-Tag verdient nur auf dem Marktplatz, für den
+er ausgestellt wurde. Darum gehört jeder Tag zu genau einem Land, und je Land
+gilt höchstens einer als Standard.</p>
+
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Name</th><th>Tag</th><th>Markt</th><th>Standard</th><th></th></tr></thead>
+  <tbody>
+  {{range .Tags}}
+  <tr>
+    <td>{{.Name}}</td>
+    <td><code>{{.Tag}}</code></td>
+    <td>Amazon.{{.Markt}}</td>
+    <td>{{if .Standard}}<span class="chip akzent">Standard</span>{{else}}<span class="leise">—</span>{{end}}</td>
+    <td class="aktionen">
+      {{if not .Standard}}
+      <form method="post" action="/tags/{{.ID}}/standard">
+        <button type="submit">Als Standard</button></form>
+      {{end}}
+      <form method="post" action="/tags/{{.ID}}/loeschen">
+        <button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{else}}
+  <tr><td colspan="5" class="leer">Noch kein Tag angelegt.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Neuer Tag</h2>
+<form method="post" action="/tags" class="karte">
+  <label>Name <small>frei wählbar, nur zum Wiedererkennen</small>
+    <input name="name" required placeholder="Hauptkonto DE"></label>
+  <label>Tag <small>die Tracking-ID aus dem PartnerNet</small>
+    <input name="tag" required placeholder="lugru-21"></label>
+  <label>Marktplatz
+    <select name="markt">
+      {{range .Maerkte}}<option value="{{.Code}}">Amazon.{{.Code}}</option>{{end}}
+    </select></label>
+  <label><input type="checkbox" name="standard" value="1">
+    Als Standard für diesen Marktplatz</label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+{{template "fuss"}}
+{{end}}

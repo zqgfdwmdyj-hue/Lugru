@@ -1,0 +1,431 @@
+{{define "statistikbild"}}
+{{template "kopf" .}}
+<p class="hinweis"><a href="/statistik?gruppe={{.Gruppe}}&amp;von={{.Von}}&amp;bis={{.Bis}}">← zurück zur Statistik</a></p>
+<h1>Bild für Social Media</h1>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+{{if .GruppenWahl}}
+<p class="schnellwahl gruppenwahl">
+  {{range .GruppenWahl}}<a href="/statistik/bild?gruppe={{.Wert}}&amp;von={{$.Von}}&amp;bis={{$.Bis}}"
+     {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+</p>
+{{end}}
+<p class="schnellwahl">
+  {{range .Zeitraeume}}<a href="/statistik/bild?gruppe={{$.Gruppe}}&amp;von={{.Von}}&amp;bis={{.Bis}}"
+     {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+</p>
+
+{{if not .Daten.Deals}}
+<p class="leer">Im gewählten Zeitraum wurde nichts gepostet — dafür gibt es noch kein Bild.</p>
+{{else}}
+<div class="werbebild">
+  {{/* Die Einstellungen wirken sofort auf die Vorschau; nichts davon geht
+       an den Server. Die Texte merkt sich der Browser. */}}
+  <form class="karte werbebild-optionen" id="bild-optionen" onsubmit="return false">
+    <fieldset>
+      <legend>Format</legend>
+      <label><input type="radio" name="format" value="story" checked> Story / TikTok / Reels <small>1080 × 1920</small></label>
+      <label><input type="radio" name="format" value="post"> Instagram-Post <small>1080 × 1350</small></label>
+      <label><input type="radio" name="format" value="quadrat"> Quadrat <small>1080 × 1080</small></label>
+      <label><input type="radio" name="format" value="discord"> Discord-Auswertung für Mitglieder <small>ausführlich: wer was gepostet hat, Top-Deals, Käufe, Quellen</small></label>
+    </fieldset>
+    <label>Große Zahl
+      <select name="held">
+        <option value="menge">Gewinn mit Cart-Limit (ohne B2B)</option>
+        <option value="gewinn">Gewinn laut Deal-Posts (je 1 Stück)</option>
+        {{if .Daten.Reaktionen}}<option value="kaeufer">Gewinn der Käufer (geschätzt)</option>{{end}}
+        <option value="deals">Anzahl Deals</option>
+      </select></label>
+    <label>Überschrift <input name="ueberschrift" value="Unsere Deals" maxlength="40"></label>
+    <label>Aufruf unten <input name="aufruf" value="Jetzt der Deal-Gruppe beitreten · Link in Bio" maxlength="70"></label>
+    <label>Kleingedrucktes <small>leer = passend zur großen Zahl, „-“ = keins</small>
+      <input name="fussnote" value="" maxlength="120" placeholder="automatisch"></label>
+    <label class="teil"><input type="checkbox" name="top" checked> Top-Deals zeigen</label>
+    <label class="teil"><input type="checkbox" name="namen" checked> Artikelnamen zeigen</label>
+    {{if .Daten.Reaktionen}}<label class="teil"><input type="checkbox" name="kaeufe" checked> Käufe ({{.Daten.Emoji}}) zeigen</label>{{end}}
+    <label>Akzentfarbe <input type="color" name="farbe" value="#3b8bf6"></label>
+    <p class="hinweis">„Mit Cart-Limit“ zählt jeden Deal so oft, wie sein Cart-Limit erlaubt (sonst
+      {{.Daten.MengeStueck}} Stück), ohne B2B-Deals. „Je 1 Stück“ ist die Summe der Gewinne aus den Posts;
+      „Gewinn der Käufer“ rechnet jede {{.Daten.Emoji}}-Reaktion als ein gekauftes Stück.</p>
+  </form>
+
+  <div class="werbebild-vorschau">
+    <canvas id="bild" width="1080" height="1920" aria-label="Vorschau des Bildes"></canvas>
+    <p class="knoepfe">
+      <button type="button" class="primaer" id="bild-laden">Bild herunterladen</button>
+      <button type="button" id="bild-teilen" hidden>Teilen / in Fotos sichern</button>
+    </p>
+  </div>
+</div>
+
+<script>
+(function () {
+  const daten = {{.Daten}};
+  const leinwand = document.getElementById("bild");
+  const ctx = leinwand.getContext("2d");
+  const form = document.getElementById("bild-optionen");
+  const formate = { story: [1080, 1920], post: [1080, 1350], quadrat: [1080, 1080] };
+  const schrift = "Geist, system-ui, -apple-system, 'Segoe UI', sans-serif";
+  const euro = c => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(c / 100);
+  const euroRund = c => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(c / 100);
+  const prozent = p => new Intl.NumberFormat("de-DE", { maximumFractionDigits: 1 }).format(p) + " %";
+  const zahl = n => new Intl.NumberFormat("de-DE").format(n);
+
+  // Texte und Schalter merkt sich der Browser, damit das nächste Bild
+  // genauso aussieht. Ohne Speicher (privates Fenster) geht es auch.
+  const SPEICHER = "lugru.werbebild";
+  try {
+    const alt = JSON.parse(localStorage.getItem(SPEICHER) || "{}");
+    // Gespeichert vor dem Gewinn mit Cart-Limit: die große Zahl und das
+    // alte Standard-Kleingedruckte nicht übernehmen.
+    if (!alt.v) { delete alt.held; delete alt.fussnote; }
+    for (const [k, v] of Object.entries(alt)) {
+      const feld = form.elements[k];
+      if (!feld) continue;
+      if (feld instanceof RadioNodeList) { for (const r of feld) r.checked = r.value === v; }
+      else if (feld.type === "checkbox") feld.checked = v;
+      else if (feld.tagName !== "SELECT" || [...feld.options].some(o => o.value === v)) feld.value = v;
+    }
+  } catch (e) {}
+  function merken(o) { try { localStorage.setItem(SPEICHER, JSON.stringify(Object.assign({ v: 2 }, o))); } catch (e) {} }
+
+  function optionen() {
+    const f = form.elements;
+    return {
+      format: f.format.value, held: f.held.value,
+      ueberschrift: f.ueberschrift.value.trim(),
+      aufruf: f.aufruf.value.trim(), fussnote: f.fussnote.value.trim(),
+      top: f.top.checked, namen: f.namen.checked,
+      kaeufe: f.kaeufe ? f.kaeufe.checked : false, farbe: f.farbe.value,
+    };
+  }
+
+  function font(groesse, gewicht) { ctx.font = (gewicht || 400) + " " + groesse + "px " + schrift; }
+
+  // passend verkleinert die Schrift, bis der Text in breite passt, und
+  // kürzt ihn unterhalb der kleinsten Größe mit „…“.
+  // zuletzt ist die Größe, die passend zuletzt gewählt hat.
+  let zuletzt = 0;
+  function passend(text, breite, groesse, gewicht, kleinste) {
+    let g = groesse;
+    font(g, gewicht);
+    while (ctx.measureText(text).width > breite && g > kleinste) { g -= 2; font(g, gewicht); }
+    zuletzt = g;
+    if (ctx.measureText(text).width <= breite) return text;
+    let t = text;
+    while (t.length > 1 && ctx.measureText(t + "…").width > breite) t = t.slice(0, -1);
+    return t.trimEnd() + "…";
+  }
+
+  // Keepa-Titel sind lang; für das Bild reicht der Teil vor dem ersten
+  // Trenner ("Marke Modell | Werbesatz …").
+  function kurztitel(t) {
+    for (const trenner of [" | ", " – ", " - ", ", ", " (", ": "]) {
+      const i = t.indexOf(trenner);
+      if (i >= 12) t = t.slice(0, i);
+    }
+    return t.trim();
+  }
+
+  function kasten(x, y, b, h, r, fuellung, rand) {
+    ctx.beginPath();
+    ctx.roundRect(x, y, b, h, r);
+    if (fuellung) { ctx.fillStyle = fuellung; ctx.fill(); }
+    if (rand) { ctx.strokeStyle = rand; ctx.lineWidth = 2; ctx.stroke(); }
+  }
+
+  function text(t, x, y, groesse, gewicht, farbe, ausrichtung) {
+    font(groesse, gewicht);
+    ctx.fillStyle = farbe;
+    ctx.textAlign = ausrichtung || "left";
+    ctx.fillText(t, x, y);
+    ctx.textAlign = "left";
+  }
+
+  function zeichne() {
+    const o = optionen();
+    merken(o);
+    if (o.format === "discord") { zeichneDiscord(o); return; }
+    const [B, H] = formate[o.format];
+    leinwand.width = B; leinwand.height = H;
+    const quadrat = o.format === "quadrat", story = o.format === "story";
+    const P = 80, innen = B - 2 * P;
+    const weiss = "#f8fafc", leise = "#94a3b8", gruen = "#34d399";
+    ctx.textBaseline = "alphabetic";
+
+    // Hintergrund: dunkles Blau mit einem Schein in der Akzentfarbe.
+    const verlauf = ctx.createLinearGradient(0, 0, B, H);
+    verlauf.addColorStop(0, "#0b1220"); verlauf.addColorStop(1, "#111c34");
+    ctx.fillStyle = verlauf; ctx.fillRect(0, 0, B, H);
+    const schein = ctx.createRadialGradient(B * 0.85, H * 0.08, 0, B * 0.85, H * 0.08, B * 0.9);
+    schein.addColorStop(0, o.farbe + "55"); schein.addColorStop(1, o.farbe + "00");
+    ctx.fillStyle = schein; ctx.fillRect(0, 0, B, H);
+
+    // Kopf: Überschrift und Zeitraum.
+    let y = story ? 240 : 170;
+    if (o.ueberschrift) {
+      const u = passend(o.ueberschrift, innen, quadrat ? 76 : 92, 600, 48);
+      text(u, P, y, zuletzt, 600, weiss);
+      y += quadrat ? 60 : 70;
+    }
+    text(daten.zeitraum, P, y, quadrat ? 36 : 42, 400, leise);
+    y += story ? 90 : 60;
+
+    // Die große Zahl.
+    let heldWert, heldText, heldFarbe = gruen;
+    if (o.held === "menge") {
+      heldWert = euroRund(daten.mengeCent);
+      heldText = "Gewinn möglich mit unseren Deals";
+    } else if (o.held === "kaeufer") {
+      heldWert = euroRund(daten.kaeufeCent);
+      heldText = "Gewinn unserer Käufer (geschätzt)";
+    } else if (o.held === "deals") {
+      heldWert = zahl(daten.deals); heldFarbe = weiss;
+      heldText = "geprüfte Deals gepostet";
+    } else {
+      heldWert = euroRund(daten.gewinnCent);
+      heldText = "Gewinn laut unseren Deals";
+    }
+    const heldH = story ? 300 : 250;
+    kasten(P, y, innen, heldH, 36, "rgba(255,255,255,0.06)", "rgba(255,255,255,0.10)");
+    text(heldText, P + 48, y + 72, story ? 36 : 32, 400, leise);
+    const hw = passend(heldWert, innen - 96, story ? 150 : 120, 600, 70);
+    text(hw, P + 48, y + (story ? 235 : 200), zuletzt, 600, heldFarbe);
+    y += heldH + 32;
+
+    // Kacheln.
+    const kacheln = [];
+    if (o.held !== "deals") kacheln.push(["Deals", zahl(daten.deals)]);
+    kacheln.push(["Ø Marge", prozent(daten.marge)]);
+    if (o.kaeufe && daten.reaktionen) {
+      kacheln.push(["Käufe " + daten.emoji, zahl(daten.kaeufe)]);
+      kacheln.push(["Deals mit Kauf", daten.mitKauf + " %"]);
+    }
+    if (o.held === "deals") kacheln.push(["Gewinn gesamt", euroRund(daten.gewinnCent)]);
+    // Story: zwei Spalten, groß. Post und Quadrat: eine Reihe, damit darunter
+    // noch Top-Deals Platz haben.
+    const eng = !story;
+    const spalten = eng ? Math.min(kacheln.length, 4) : 2;
+    const abstand = 24, kb = (innen - abstand * (spalten - 1)) / spalten, kh = eng ? 150 : 170;
+    kacheln.forEach(([titel, wert], i) => {
+      const x = P + (i % spalten) * (kb + abstand), ky = y + Math.floor(i / spalten) * (kh + abstand);
+      kasten(x, ky, kb, kh, 28, "rgba(255,255,255,0.06)", "rgba(255,255,255,0.10)");
+      text(passend(titel, kb - 60, eng ? 26 : 30, 400, 20), x + 30, ky + 55, zuletzt, 400, leise);
+      text(passend(wert, kb - 60, eng ? 52 : 64, 600, 30), x + 30, ky + (eng ? 120 : 135), zuletzt, 600, weiss);
+    });
+    y += Math.ceil(kacheln.length / spalten) * (kh + abstand) + 16;
+
+    // Fuß: Aufruf und Kleingedrucktes, von unten gerechnet.
+    let fussY = H - (story ? 110 : 60);
+    let fussnote = o.fussnote;
+    if (!fussnote) {
+      fussnote = {
+        menge: "Gewinn laut Deal-Posts × Cart-Limit (sonst " + daten.mengeStueck + " Stück), ohne B2B, vor Steuern. Keine Garantie.",
+        gewinn: "Gewinn je 1 Stück laut Deal-Post, vor Steuern. Keine Garantie für künftige Deals.",
+        kaeufer: "Geschätzt: je " + daten.emoji + " ein Stück × Gewinn laut Post, vor Steuern. Keine Garantie.",
+        deals: "Keine Garantie für künftige Deals.",
+      }[o.held] || "";
+    }
+    if (fussnote === "-") fussnote = "";
+    if (fussnote) {
+      text(passend(fussnote, innen, 24, 400, 16), B / 2, fussY, zuletzt, 400, leise, "center");
+      fussY -= 50;
+    }
+    let aufrufOben = fussY;
+    if (o.aufruf) {
+      const ah = quadrat ? 96 : 110;
+      aufrufOben = fussY - ah;
+      kasten(P, aufrufOben, innen, ah, ah / 2, o.farbe);
+      const a = passend(o.aufruf, innen - 80, quadrat ? 36 : 40, 600, 22);
+      text(a, B / 2, aufrufOben + ah / 2 + zuletzt * 0.35, zuletzt, 600, "#ffffff", "center");
+    }
+
+    // Top-Deals füllen den Platz dazwischen, so viele hineinpassen.
+    if (o.top && daten.top.length) {
+      const zeileH = quadrat ? 88 : 104, luecke = 16, kopfH = 64;
+      const platz = aufrufOben - 24 - y - kopfH;
+      const n = Math.min(daten.top.length, story ? 5 : 3, Math.floor((platz + luecke) / (zeileH + luecke)));
+      if (n > 0) {
+        text("Top-Deals", P, y + 44, quadrat ? 34 : 40, 600, weiss);
+        y += kopfH;
+        daten.top.slice(0, n).forEach((d, i) => {
+          kasten(P, y, innen, zeileH, 24, "rgba(255,255,255,0.05)");
+          const gewinn = "+" + euro(d.gewinnCent);
+          font(quadrat ? 34 : 40, 600);
+          const gb = ctx.measureText(gewinn).width;
+          text(gewinn, P + innen - 32, y + zeileH / 2 + 14, quadrat ? 34 : 40, 600, gruen, "right");
+          const marge = prozent(d.marge) + (d.panEU ? " · Pan-EU" : "");
+          font(26, 400);
+          const mb = ctx.measureText(marge).width;
+          text(marge, P + innen - 56 - gb, y + zeileH / 2 + 10, 26, 400, leise, "right");
+          const name = o.namen ? kurztitel(d.titel) : "Deal " + (i + 1);
+          const t = passend((i + 1) + ".  " + name, innen - 120 - gb - mb, quadrat ? 30 : 34, 400, 24);
+          text(t, P + 32, y + zeileH / 2 + 12, zuletzt, 400, weiss);
+          y += zeileH + luecke;
+        });
+      }
+    }
+  }
+
+  // Die Discord-Auswertung ist für die eigenen Mitglieder: länger und
+  // ausführlicher als ein Story-Bild. Ihre Höhe ergibt sich aus dem Inhalt,
+  // darum werden die Abschnitte erst gemessen und dann gezeichnet.
+  function zeichneDiscord(o) {
+    const B = 1080, P = 64, innen = B - 2 * P;
+    const weiss = "#f8fafc", leise = "#94a3b8", gruen = "#34d399", rot = "#f87171";
+    const flaeche = "rgba(255,255,255,0.06)", rand = "rgba(255,255,255,0.10)";
+    const zeileH = 72, titelH = 76, abstand = 44;
+
+    const kaeufeDa = daten.reaktionen && o.kaeufe;
+    const poster = daten.poster;
+    const top = daten.top.slice(0, 5);
+    const gekauft = kaeufeDa ? daten.topKaeufe.slice(0, 5) : [];
+    const listen = Math.max(daten.quellen.length, daten.maerkte.length);
+    const abschnitt = n => n ? titelH + n * zeileH + abstand : 0;
+    const H = 280 + 190 + abschnitt(poster.length) + abschnitt(top.length) + abschnitt(gekauft.length) +
+      (listen ? titelH + listen * 52 + abstand : 0) + 130;
+    leinwand.width = B; leinwand.height = H;
+    ctx.textBaseline = "alphabetic";
+
+    const verlauf = ctx.createLinearGradient(0, 0, 0, H);
+    verlauf.addColorStop(0, "#0b1220"); verlauf.addColorStop(1, "#111c34");
+    ctx.fillStyle = verlauf; ctx.fillRect(0, 0, B, H);
+    const schein = ctx.createRadialGradient(B * 0.85, 120, 0, B * 0.85, 120, B * 0.8);
+    schein.addColorStop(0, o.farbe + "55"); schein.addColorStop(1, o.farbe + "00");
+    ctx.fillStyle = schein; ctx.fillRect(0, 0, B, 900);
+
+    // Kopf
+    let y = 150;
+    text(passend(o.ueberschrift || "Unsere Deals", innen, 80, 600, 44), P, y, zuletzt, 600, weiss);
+    y += 64;
+    text("Auswertung " + daten.zeitraum, P, y, 38, 400, leise);
+    y += 66;
+
+    // Kacheln
+    const kacheln = [["Deals", zahl(daten.deals)], ["Gewinn möglich", euroRund(daten.mengeCent)], ["Ø Marge", prozent(daten.marge)]];
+    if (kaeufeDa) kacheln.push(["Käufe " + daten.emoji, zahl(daten.kaeufe)]);
+    const kb = (innen - 20 * (kacheln.length - 1)) / kacheln.length;
+    kacheln.forEach(([t, w], i) => {
+      const x = P + i * (kb + 20);
+      kasten(x, y, kb, 150, 24, flaeche, rand);
+      text(passend(t, kb - 48, 26, 400, 18), x + 24, y + 50, zuletzt, 400, leise);
+      text(passend(w, kb - 48, 52, 600, 28), x + 24, y + 118, zuletzt, 600, i === 1 ? gruen : weiss);
+    });
+    y += 150 + abstand;
+
+    function ueberschrift(t) { text(t, P, y + 46, 40, 600, weiss); y += titelH; }
+    function zeile(i) { if (i % 2 === 0) kasten(P, y, innen, zeileH - 8, 16, "rgba(255,255,255,0.04)"); }
+
+    // Wer hat gepostet
+    if (poster.length) {
+      ueberschrift("Wer hat gepostet");
+      const max = Math.max(...poster.map(p => p.anzahl));
+      poster.forEach((p, i) => {
+        zeile(i);
+        const mitte = y + (zeileH - 8) / 2;
+        text(passend(p.name, 190, 32, 600, 22), P + 20, mitte + 11, zuletzt, 600, weiss);
+        const wert = zahl(p.anzahl) + " Deals · " + euroRund(p.gewinnCent) + (kaeufeDa ? " · " + daten.emoji + " " + zahl(p.kaeufe) : "");
+        font(28, 400);
+        const wb = ctx.measureText(wert).width;
+        text(wert, P + innen - 20, mitte + 10, 28, 400, leise, "right");
+        const x0 = P + 230, spur = innen - 230 - wb - 50;
+        if (spur > 40) {
+          kasten(x0, mitte - 12, Math.max(6, spur * p.anzahl / max), 24, 6, o.farbe);
+        }
+        y += zeileH;
+      });
+      y += abstand;
+    }
+
+    // Top-Deals nach Gewinn
+    function dealZeilen(liste, rechts) {
+      liste.forEach((d, i) => {
+        zeile(i);
+        const mitte = y + (zeileH - 8) / 2;
+        const r = rechts(d);
+        font(34, 600);
+        const rb = ctx.measureText(r.haupt).width;
+        text(r.haupt, P + innen - 20, mitte + 12, 34, 600, r.farbe, "right");
+        font(24, 400);
+        const nb = ctx.measureText(r.neben).width;
+        text(r.neben, P + innen - 36 - rb, mitte + 9, 24, 400, leise, "right");
+        const name = (i + 1) + ".  " + (o.namen ? kurztitel(d.titel) : "Deal " + (i + 1)) + (d.poster ? "  · @" + d.poster : "");
+        text(passend(name, innen - 90 - rb - nb, 30, 400, 20), P + 20, mitte + 10, zuletzt, 400, weiss);
+        y += zeileH;
+      });
+      y += abstand;
+    }
+    if (top.length) {
+      ueberschrift("Top-Deals nach Gewinn");
+      dealZeilen(top, d => ({ haupt: (d.gewinnCent < 0 ? "" : "+") + euro(d.gewinnCent), farbe: d.gewinnCent < 0 ? rot : gruen,
+        neben: prozent(d.marge) + (d.panEU ? " · Pan-EU" : "") }));
+    }
+    if (gekauft.length) {
+      ueberschrift("Am meisten gekauft " + daten.emoji);
+      dealZeilen(gekauft, d => ({ haupt: zahl(d.kaeufe) + "×", farbe: weiss, neben: euro(d.gewinnCent) + " je Stück" }));
+    }
+
+    // Einkaufsquellen und Zielmärkte nebeneinander
+    if (listen) {
+      ueberschrift("Wo eingekauft · wo verkauft");
+      const sb = (innen - 40) / 2;
+      [[daten.quellen, P], [daten.maerkte, P + sb + 40]].forEach(([liste, x]) => {
+        liste.forEach((e, i) => {
+          const zy = y + i * 52;
+          text(passend(e.name, sb - 90, 30, 400, 20), x, zy + 34, zuletzt, 400, weiss);
+          text(zahl(e.anzahl), x + sb, zy + 34, 30, 600, leise, "right");
+        });
+      });
+      y += listen * 52 + abstand;
+    }
+
+    // Fuß
+    let fussnote = o.fussnote === "-" ? "" : (o.fussnote ||
+      "Gewinn laut Deal-Posts, mit Cart-Limit sonst " + daten.mengeStueck + " Stück, ohne B2B, vor Steuern.");
+    if (fussnote) text(passend(fussnote, innen, 24, 400, 16), B / 2, H - 60, zuletzt, 400, leise, "center");
+  }
+
+  function dateiname() {
+    const o = optionen();
+    return ("statistik-" + daten.zeitraum + "-" + o.format).toLowerCase()
+      .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".png";
+  }
+
+  document.getElementById("bild-laden").addEventListener("click", () => {
+    leinwand.toBlob(blob => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = dateiname();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }, "image/png");
+  });
+
+  // Auf dem Handy speichert „Teilen“ direkt in die Fotos oder schickt das
+  // Bild an Instagram und TikTok. Nur, wo der Browser das kann.
+  const teilen = document.getElementById("bild-teilen");
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [new File([""], "x.png", { type: "image/png" })] })) {
+      teilen.hidden = false;
+    }
+  } catch (e) {}
+  teilen.addEventListener("click", () => {
+    leinwand.toBlob(async blob => {
+      try { await navigator.share({ files: [new File([blob], dateiname(), { type: "image/png" })] }); } catch (e) {}
+    }, "image/png");
+  });
+
+  form.addEventListener("input", zeichne);
+  form.addEventListener("change", zeichne);
+  zeichne();
+  // Die Schrift lädt erst nach: danach noch einmal zeichnen.
+  if (document.fonts) {
+    Promise.all([document.fonts.load("400 40px Geist"), document.fonts.load("600 40px Geist")])
+      .then(zeichne, zeichne);
+  }
+})();
+</script>
+{{end}}
+{{template "fuss"}}
+{{end}}

@@ -1,0 +1,71 @@
+{{define "kopf"}}<!doctype html>
+<html lang="de"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<title>{{.Titel}} · Lugru Deals</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="Lugru Deals">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<script src="/static/htmx.min.js"></script>
+</head><body>
+<nav aria-label="Hauptnavigation">
+  <span class="marke">Lugru Deals</span>
+  <div class="reiter">
+  {{/* Der aktive Zustand entsteht aus dem Seitentitel: alle Seitendaten
+       tragen .Titel, und die Werte sind wörtlich die Beschriftungen
+       hier. Ein eigenes Feld je Seite wäre eine zweite Wahrheit, die
+       auseinanderlaufen kann. */}}
+  <a href="/"              {{if eq .Titel "Neuer Deal"}}class="aktiv"{{end}}>Neuer Deal</a>
+  <a href="/historie"      {{if eq .Titel "Historie"}}class="aktiv"{{end}}>Historie</a>
+  <a href="/statistik"     {{if eq .Titel "Statistik"}}class="aktiv"{{end}}>Statistik</a>
+  <a href="/monitor"       {{if eq .Titel "Monitor"}}class="aktiv"{{end}}>Monitor</a>
+  <a href="/channels"      {{if eq .Titel "Channels"}}class="aktiv"{{end}}>Channels</a>
+  <a href="/tags"          {{if eq .Titel "Tags"}}class="aktiv"{{end}}>Tags</a>
+  <a href="/tarife"        {{if eq .Titel "Versandtarife"}}class="aktiv"{{end}}>Tarife</a>
+  <a href="/einstellungen" {{if eq .Titel "Einstellungen"}}class="aktiv"{{end}}>Einstellungen</a>
+  </div>
+  {{if .TokenText}}<span class="token">{{.TokenText}}</span>{{end}}
+  <a href="/abmelden" class="abmelden">Abmelden</a>
+</nav>
+<main>{{end}}
+
+{{define "fuss"}}</main><footer class="version">Lugru Deals · Version {{version}}</footer></body></html>{{end}}
+
+{{define "fehler"}}<p class="fehler">{{.}}</p>{{end}}
+
+{{define "vorschautext"}}{{.}}{{end}}
+
+{{/* gepostet ist die Antwort auf einen erfolgreichen Versand (siehe
+     sendeDeal). Sie geht immer zusammen mit dem Antwort-Header HX-Refresh:
+     true hinaus, der htmx zu einem vollständigen Neuladen der Seite
+     veranlasst — der eigentliche Inhalt hier wird darum in der Praxis nie
+     sichtbar. Er bleibt trotzdem ein echtes, prüfbares Fragment (kein
+     zweites komplettes Dokument mit eigener Kopfzeile und eigenem
+     #formular), für den Fall, dass eine Anfrage den Header aus irgendeinem
+     Grund nicht auswertet. */}}
+{{define "gepostet"}}<p class="meldung">{{.}}</p>{{end}}
+
+{{define "platzhalter"}}
+{{template "kopf" .}}
+<h1>{{.Titel}}</h1>
+<p>{{.Text}}</p>
+{{template "fuss"}}
+{{end}}
+
+
+{{/* Stand des Reaktions-Abgleichs mit dem Knopf, ihn sofort anzustoßen.
+     .Seite sagt, wohin es danach zurückgeht. */}}
+{{define "abgleich"}}
+{{if .Aktiv}}
+<form method="post" action="/reaktionen/abrufen" class="abgleich">
+  <input type="hidden" name="seite" value="{{.Seite}}">
+  <span>Reaktionen: {{if .Laeuft}}werden gerade abgerufen …{{else if .Zuletzt}}zuletzt abgerufen {{.Zuletzt}} ({{.Anzahl}} Posts){{else}}noch nicht abgerufen{{end}}</span>
+  {{if .Fehler}}<span class="fehler">{{.Fehler}}</span>{{end}}
+  <button type="submit" class="schmal">Jetzt abrufen</button>
+</form>
+{{end}}
+{{end}}

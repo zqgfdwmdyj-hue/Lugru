@@ -1,0 +1,171 @@
+{{define "statistik"}}
+{{template "kopf" .}}
+<h1>Statistik</h1>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+
+{{if .GruppenWahl}}
+{{/* Eine Gruppe ist etwa ein Discord-Server; zugeordnet wird sie unter
+     Channels. */}}
+<p class="schnellwahl gruppenwahl">
+  {{range .GruppenWahl}}<a href="/statistik?gruppe={{.Wert}}&amp;von={{$.Von}}&amp;bis={{$.Bis}}"
+     {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+</p>
+{{end}}
+<p class="schnellwahl">
+  {{range .Zeitraeume}}<a href="/statistik?gruppe={{$.Gruppe}}&amp;von={{.Von}}&amp;bis={{.Bis}}"
+     {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+</p>
+<form method="get" action="/statistik" class="karte filterzeile">
+  <input type="hidden" name="gruppe" value="{{.Gruppe}}">
+  <label>von <input type="date" name="von" value="{{.Von}}"></label>
+  <label>bis <input type="date" name="bis" value="{{.Bis}}"></label>
+  <button type="submit" class="primaer">Anzeigen</button>
+</form>
+
+{{/* Der Gewinn ist der, den die Posts versprochen haben — was tatsächlich
+     gekauft und verkauft wurde, weiß das Programm nicht. Das steht dabei,
+     damit niemand die Zahl für einen Kontoauszug hält. */}}
+<div class="kacheln">
+  <div class="kachel"><span>Deals</span><b>{{.Gesamt.Anzahl}}</b></div>
+  <div class="kachel"><span>Gewinn mit Cart-Limit</span><b><span class="chip {{.Menge.Klasse}}">{{.Menge.Gewinn}}</span></b></div>
+  <div class="kachel"><span>Gewinn laut Posts (je 1 Stück)</span><b><span class="chip {{.Gesamt.GewinnKlasse}}">{{.Gesamt.Gewinn}}</span></b></div>
+  <div class="kachel"><span>Ø Marge</span><b>{{.Gesamt.Marge}}</b></div>
+  <div class="kachel"><span>Ausverkauft markiert</span><b>{{.Gesamt.Ausverkauft}}</b></div>
+  {{if .Reaktionen}}
+  <div class="kachel"><span>Käufe ({{.EmojiGekauft}})</span><b>{{.Gesamt.Kaeufe}}</b></div>
+  <div class="kachel"><span>Deals mit mind. einem Kauf</span><b>{{.Gesamt.Kaufquote}}</b></div>
+  {{end}}
+</div>
+<p class="hinweis"><b>Gewinn mit Cart-Limit:</b> jeder Deal so oft, wie das Cart-Limit erlaubt
+  ({{.Menge.MitLimit}} von {{.Menge.Deals}} Deals nennen eins), sonst {{.Menge.Standard}} Stück.
+  {{if .Menge.B2BChannels}}Deals aus {{.Menge.B2BChannels}} (B2B) zählen nicht mit{{if .Menge.B2B}} — {{.Menge.B2B}} Deals{{end}}.
+  {{else}}Kein B2B-Channel gewählt.{{end}}
+  Stückzahl und B2B-Channels unter <a href="/einstellungen#statistik">Einstellungen</a>.</p>
+<p class="hinweis">Gewinn und Marge sind die des Leitmarkts, so wie sie im Post standen —
+  nicht, was tatsächlich verkauft wurde. Hat ein Deal einen besseren Pan-EU-Weg (Ware im
+  Zielland), zählt dieser. In Discord gelöschte Posts zählen nicht mit.
+  {{if .Reaktionen}}Käufe sind die {{.EmojiGekauft}}-Reaktionen unter den Posts.{{else}}Käufe
+  zählt das Programm, sobald unter <a href="/einstellungen#bot">Einstellungen</a> ein Discord-Bot eingetragen ist.{{end}}</p>
+{{template "abgleich" .Abgleich}}
+{{if .Gesamt.Anzahl}}<p><a class="knopf" href="/statistik/bild?gruppe={{.Gruppe}}&amp;von={{.Von}}&amp;bis={{.Bis}}">📸 Bild für Instagram / TikTok</a></p>{{end}}
+
+{{if .PosterDiagramm}}
+{{/* Wer hat wie viel gepostet: ein Balken je Poster, die Zahl steht immer
+     daneben, Gewinn und Käufe beim Drüberfahren bzw. Antippen. */}}
+<div class="tabellenkarte statistikblock posterdiagramm">
+  <h2>Posts je Poster</h2>
+  <ul class="balkendiagramm">
+  {{range .PosterDiagramm}}
+    <li{{if .Unbekannt}} class="unbekannt"{{end}}
+        title="{{.Name}}: {{.Anzahl}} Posts ({{.Anteil}} %) · Gewinn laut Posts {{.Gewinn}}{{if $.Reaktionen}} · {{.Kaeufe}} Käufe{{end}}">
+      <span class="name">{{.Name}}</span>
+      <span class="spur"><span class="balken" style="width: {{.Balken}}%"></span></span>
+      <span class="wert"><b>{{.Anzahl}}</b> <small>{{.Anteil}} %</small></span>
+    </li>
+  {{end}}
+  </ul>
+  {{if .PosterUnbekannt}}<p class="hinweis">„unbekannt“ sind Deals von vor der Poster-Auswahl.</p>{{end}}
+</div>
+{{end}}
+
+{{if .Rueckmeldung.Zeigen}}{{with .Rueckmeldung}}
+<div class="tabellenkarte statistikblock rueckmeldung">
+  <h2>Rückmeldung aus Discord</h2>
+  {{if .Abgerufen}}
+  {{/* Ein Balken für alle abgerufenen Posts: wie viele gekauft wurden, wie
+       viele nur als nicht mehr verfügbar gemeldet und wie viele ohne jede
+       Reaktion blieben. */}}
+  <div class="anteilbalken" role="img"
+       aria-label="{{.MitKauf}} gekauft, {{.NurWeg}} nicht mehr verfügbar, {{.OhneReaktion}} ohne Reaktion">
+    {{if .AnteilMitKauf}}<span class="teil positiv" style="width: {{.AnteilMitKauf}}%"></span>{{end}}
+    {{if .AnteilNurWeg}}<span class="teil negativ" style="width: {{.AnteilNurWeg}}%"></span>{{end}}
+    {{if .AnteilOhne}}<span class="teil neutral" style="width: {{.AnteilOhne}}%"></span>{{end}}
+  </div>
+  <div class="kacheln">
+    <div class="kachel"><span>gekauft ({{$.EmojiGekauft}})</span><b>{{.MitKauf}} Deals</b><small>{{.Kaeufe}} Käufe insgesamt</small></div>
+    <div class="kachel"><span>nicht gekauft, nicht mehr verfügbar ({{$.EmojiWeg}})</span><b>{{.NurWeg}} Deals</b><small>{{.Weg}}× {{$.EmojiWeg}} insgesamt</small></div>
+    <div class="kachel"><span>ohne Reaktion</span><b>{{.OhneReaktion}} Deals</b></div>
+    <div class="kachel"><span>noch nicht abgerufen</span><b>{{.NichtAbgeruf}} Deals</b><small>älter als 30 Tage oder vor dem Bot gepostet</small></div>
+  </div>
+  <table class="statistik">
+    <caption>Reaktionen je Deal (die letzten 50)</caption>
+    <thead><tr><th>Artikel</th><th>gepostet</th><th>Channel</th>
+      <th class="zahl">{{$.EmojiGekauft}}</th><th class="zahl">{{$.EmojiWeg}}</th><th>Ergebnis</th></tr></thead>
+    <tbody>
+    {{range .Liste}}
+    <tr><td class="artikel">{{.Titel}} <small>{{.ASIN}}</small>{{if eq .Status "ausverkauft"}} <span class="status ausverkauft">ausverkauft</span>{{end}}</td>
+        <td>{{.Datum}}</td><td>#{{.Channel}}</td>
+        <td class="zahl"><b>{{.Kaeufe}}</b></td><td class="zahl">{{.Weg}}</td>
+        <td><span class="chip {{.Klasse}}">{{.Ergebnis}}</span></td></tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="leer">Noch keine Reaktionen abgerufen — nach dem ersten Abruf steht hier, welche Deals gekauft wurden.</p>
+  {{end}}
+</div>
+{{end}}{{end}}
+
+{{if .TopKaeufe}}
+<div class="tabellenkarte statistikblock">
+<table class="statistik">
+  <caption>Top-Deals nach Käufen</caption>
+  <thead><tr><th>Artikel</th><th>gepostet</th><th class="zahl">Käufe</th>
+    <th class="zahl">Gewinn</th><th class="zahl">Marge</th><th></th></tr></thead>
+  <tbody>
+  {{range .TopKaeufe}}
+  <tr><td class="artikel">{{.Titel}} <small>{{.ASIN}}</small>{{if eq .Status "ausverkauft"}} <span class="status ausverkauft">ausverkauft</span>{{end}}</td>
+      <td>{{.Datum}}</td><td class="zahl"><b>{{.Kaeufe}}</b></td>
+      <td class="zahl">{{.Gewinn}}</td><td class="zahl">{{.Marge}}</td>
+      <td class="aktionen"><a class="knopf schmal" href="/deal/erneut/{{.ID}}">Erneut posten</a></td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+{{range .Tabellen}}{{template "statistiktabelle" .}}{{else}}
+<p class="leer">Im gewählten Zeitraum wurde nichts gepostet.</p>
+{{end}}
+
+{{if .Dauerbrenner}}
+<div class="tabellenkarte statistikblock">
+<table class="statistik">
+  <caption>Dauerbrenner — öfter gepostet</caption>
+  <thead><tr><th>Artikel</th><th class="zahl">Posts</th>{{if .Reaktionen}}<th class="zahl">Käufe</th>{{end}}
+    <th class="zahl">Ø Marge</th><th>zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .Dauerbrenner}}
+  <tr><td class="artikel">{{.Titel}} <small>{{.ASIN}}</small></td>
+      <td class="zahl">{{.Anzahl}}</td>{{if $.Reaktionen}}<td class="zahl">{{.Kaeufe}}</td>{{end}}
+      <td class="zahl">{{.Marge}}</td><td>{{.Zuletzt}}</td>
+      <td class="aktionen"><a class="knopf schmal" href="/deal/erneut/{{.LetzterDeal}}">Erneut posten</a></td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+{{template "fuss"}}
+{{end}}
+
+{{define "statistiktabelle"}}
+<div class="tabellenkarte statistikblock">
+<table class="statistik">
+  <caption>{{.Titel}}</caption>
+  <thead><tr><th></th><th>Deals</th><th class="zahl">Gewinn laut Posts</th>
+    <th class="zahl">Ø Marge</th><th class="zahl">ausverkauft</th>
+    {{if .Reaktionen}}<th class="zahl">Käufe</th><th class="zahl">mit Kauf</th>{{end}}</tr></thead>
+  <tbody>
+  {{range .Zeilen}}
+  <tr><td>{{.Name}}</td>
+      <td class="balkenzelle"><span class="balken" style="width: {{.Balken}}%"></span><span>{{.Anzahl}}</span></td>
+      <td class="zahl"><span class="chip {{.GewinnKlasse}}">{{.Gewinn}}</span></td>
+      <td class="zahl">{{.Marge}}</td>
+      <td class="zahl">{{.Ausverkauft}}</td>
+      {{if $.Reaktionen}}<td class="zahl">{{.Kaeufe}}</td><td class="zahl">{{.Kaufquote}}</td>{{end}}</tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

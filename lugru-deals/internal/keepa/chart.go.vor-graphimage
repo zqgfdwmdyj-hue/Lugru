@@ -1,0 +1,98 @@
+package keepa
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+var ErrKeinPNG = errors.New("keepa: Antwort ist kein PNG")
+
+// ChartOptionen steuern das Preisverlaufsbild.
+type ChartOptionen struct {
+	Tage   int
+	Breite int
+	Hoehe  int
+	SalesRank bool
+	BuyBox    bool
+	Amazon    bool
+	Neu       bool
+	FBA       bool
+}
+
+// StandardChart zeigt 90 Tage mit Buy-Box-Kurve — also der Reihe, aus der der
+// VK-Vorschlag stammt. Ohne sie ließe sich der genannte VK nicht am Bild
+// ablesen.
+var StandardChart = ChartOptionen{
+	Tage: 90, Breite: 800, Hoehe: 350,
+	SalesRank: true, BuyBox: true, Amazon: true, Neu: true, FBA: true,
+}
+
+// ChartURL baut die Adresse des Preisverlaufsbildes.
+//
+// Dieser Endpunkt braucht weder Key noch Token. Er ist allerdings nicht
+// dokumentiert — falls Keepa ihn schließt, ist der Umstieg auf das
+// token-pflichtige api.keepa.com/graphimage der Ersatzweg.
+func (c *Client) ChartURL(asin, chartDomain string, o ChartOptionen) string {
+	q := url.Values{
+		"asin":   {asin},
+		"domain": {chartDomain},
+		"range":  {strconv.Itoa(o.Tage)},
+		"width":  {strconv.Itoa(o.Breite)},
+		"height": {strconv.Itoa(o.Hoehe)},
+	}
+	if o.SalesRank {
+		q.Set("salesrank", "1")
+	}
+	if o.BuyBox {
+		q.Set("bb", "1")
+	}
+	if o.Amazon {
+		q.Set("amazon", "1")
+	}
+	if o.Neu {
+		q.Set("new", "1")
+	}
+	if o.FBA {
+		q.Set("fba", "1")
+	}
+	return c.ChartBasisURL + "/pricehistory.png?" + q.Encode()
+}
+
+// Chart holt das Bild als Bytes, damit es als Datei-Anhang mitgesendet und
+// lokal archiviert werden kann. Verlinken käme nicht in Frage: alte Posts
+// würden leer, sobald Keepa die Adresse ändert.
+func (c *Client) Chart(ctx context.Context, asin, chartDomain string, o ChartOptionen) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.ChartURL(asin, chartDomain, o), nil)
+	if err != nil {
+		return nil, fmt.Errorf("keepa-chart: Anfrage nicht baubar: %w", ohneKey(err))
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("keepa-chart: nicht erreichbar: %w", ohneKey(err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, fmt.Errorf("keepa-chart: HTTP %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "image/png") {
+		return nil, fmt.Errorf("%w (Content-Type %q)", ErrKeinPNG, ct)
+	}
+
+	daten, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, fmt.Errorf("keepa-chart: Bild nicht lesbar: %w", err)
+	}
+	if !bytes.HasPrefix(daten, []byte("\x89PNG\r\n\x1a\n")) {
+		return nil, ErrKeinPNG
+	}
+	return daten, nil
+}

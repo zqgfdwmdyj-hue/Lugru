@@ -1,0 +1,17 @@
+{{/* Der Post, wie Discord ihn zeigt: der Text, darunter der Chart als
+     Anhang in voller Breite.
+
+     Bewusst in Discords eigenen Farben und nicht in denen dieser Oberfläche:
+     die Vorschau soll die Frage beantworten, wie der Post im Channel aussieht.
+     Der Text ist derselbe, der gesendet wird — nachgebaut ist die
+     Darstellung, nicht der Inhalt. */}}
+{{define "kartenvorschau"}}
+<section class="discord">
+  <p class="discord-beschreibung">{{.Text}}</p>
+  {{if .ChartURL}}
+  <span class="lupe breit" tabindex="0" role="img" aria-label="Preisverlauf, vergrößert bei Fokus">
+    <img class="klein discord-bild" src="{{.ChartURL}}" alt="Preisverlauf"
+    ><img class="gross" src="{{.ChartURL}}" alt=""></span>
+  {{end}}
+</section>
+{{end}}

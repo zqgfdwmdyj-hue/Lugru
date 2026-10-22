@@ -68,3 +68,10 @@ nachgebaute Beispiel-SKUs.
 
 `src/db/schema.ts` anpassen, dann `npm run db:generate` (erzeugt eine Migration in `drizzle/`)
 und `npm run db:migrate`.
+
+## Weitere Projekte im Repo
+
+- [`lugru-deals/`](lugru-deals/README.md): **Lugru Deals**, eigenständiges Go-Tool, das
+  Amazon-Arbitrage-Deals mit Keepa-Daten rechnet und über Webhooks in Discord postet.
+  Eigener Build (`go build ./cmd/lugru-deals`), läuft unabhängig vom Seller-System.
+
