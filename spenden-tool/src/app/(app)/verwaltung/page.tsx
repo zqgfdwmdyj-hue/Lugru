@@ -34,10 +34,10 @@ export default async function VerwaltungPage({ searchParams }: { searchParams: P
             {users.length === 0 && <div className="card-pad muted">Noch keine.</div>}
             <div className="stack" style={{ gap: 0 }}>
               {users.map((u) => (
-                <UserRow key={u.id} self={u.id === me.id} user={{ id: u.id, name: u.name, login: u.login, isAdmin: u.isAdmin, active: u.active, lastLogin: when(u.lastLoginAt) }} />
+                <UserRow key={u.id} self={u.id === me.id} user={{ id: u.id, name: u.name, login: u.login, email: u.email, isAdmin: u.isAdmin, active: u.active, lastLogin: when(u.lastLoginAt) }} />
               ))}
             </div>
-            <div className="small muted" style={{ padding: "8px 14px" }}>Neues Passwort eintragen und speichern meldet die Person auf allen Geräten ab. „aktiv“ abwählen sperrt den Zugang sofort (der Verlauf bleibt erhalten).</div>
+            <div className="small muted" style={{ padding: "8px 14px" }}>Anmeldung mit E-Mail oder Anmeldename. Neues Passwort eintragen und speichern meldet die Person auf allen Geräten ab. „aktiv“ abwählen sperrt den Zugang sofort, „Entfernen“ löscht ihn (im Protokoll bleibt der Name).</div>
           </section>
 
           <section className="card">

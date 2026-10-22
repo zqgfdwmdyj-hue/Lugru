@@ -39,9 +39,11 @@ export async function login(_prev: LoginState, fd: FormData): Promise<LoginState
 
   if (await hasAdmin()) {
     // Eigene Zugänge: Name + Passwort
-    if (!name) return { error: "Bitte deinen Namen eingeben." };
-    const [u] = await db.select().from(schema.users).where(eq(schema.users.login, name));
-    if (!u || !u.active || !(await verifyPassword(password, u.passwordHash))) return fail("Name oder Passwort stimmt nicht.");
+    if (!name) return { error: "Bitte E-Mail oder Namen eingeben." };
+    // Anmeldename oder E-Mail-Adresse
+    const raw = String(fd.get("login") ?? "").trim().toLowerCase();
+    const [u] = await db.select().from(schema.users).where(raw.includes("@") ? eq(schema.users.email, raw) : eq(schema.users.login, name));
+    if (!u || !u.active || !(await verifyPassword(password, u.passwordHash))) return fail("E-Mail/Name oder Passwort stimmt nicht.");
     fails.delete(key);
     await db.update(schema.users).set({ lastLoginAt: new Date() }).where(eq(schema.users.id, u.id));
     await startSession(u);

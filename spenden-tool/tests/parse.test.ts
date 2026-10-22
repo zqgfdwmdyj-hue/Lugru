@@ -115,3 +115,15 @@ describe("Ideen", () => {
     expect(productLines([{ name: "Bifi", variant: null, category: "Lebensmittel", price: 0.4, priceNote: null, quantity: null, bestBefore: null, packNote: "ganzer Karton", packPrice: 5 }])).toBe("- Bifi (Lebensmittel, Spendenempfehlung 40 Cent, Packung: ganzer Karton 5€)");
   });
 });
+
+describe("Zugänge anlegen", () => {
+  it("erzeugt lesbare Passwörter und prüft E-Mails", async () => {
+    const { generatePassword, normalizeEmail } = await import("@/lib/password");
+    const pw = generatePassword();
+    expect(pw).toHaveLength(10);
+    expect(pw).not.toMatch(/[0O1lI]/);
+    expect(generatePassword()).not.toBe(pw);
+    expect(normalizeEmail(" Anna@Beispiel.DE ")).toBe("anna@beispiel.de");
+    expect(normalizeEmail("kein-mail@")).toBe("");
+  });
+});

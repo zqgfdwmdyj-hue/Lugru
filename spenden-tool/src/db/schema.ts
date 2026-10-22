@@ -160,6 +160,8 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   /** Anmeldename, klein geschrieben */
   login: text("login").notNull().unique(),
+  /** Optional – Anmeldung auch mit der E-Mail-Adresse (wie im Seller-Tool) */
+  email: text("email").unique(),
   /** scrypt, siehe lib/password.ts */
   passwordHash: text("password_hash").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),

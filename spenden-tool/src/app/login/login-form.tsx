@@ -9,7 +9,7 @@ export function LoginForm({ withName }: { withName: boolean }) {
     <form action={action} className="stack" style={{ gap: 14 }}>
       {withName && (
         <div className="field">
-          <label className="label" htmlFor="login">Name</label>
+          <label className="label" htmlFor="login">E-Mail oder Name</label>
           <input className="input" id="login" name="login" autoComplete="username" autoCapitalize="none" autoCorrect="off" required autoFocus />
         </div>
       )}

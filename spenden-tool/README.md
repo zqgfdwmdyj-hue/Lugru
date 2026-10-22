@@ -48,7 +48,8 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 ## Zugänge
 
 Beim ersten Start meldet man sich mit dem Team-Passwort (`APP_PASSWORD`) an und legt unter **Verwaltung** den ersten
-Admin an. Ab dann gilt das Team-Passwort nicht mehr: Jede Person bekommt einen eigenen Zugang (Name + Passwort),
+Admin an. Ab dann gilt das Team-Passwort nicht mehr: Jede Person bekommt einen eigenen Zugang (E-Mail oder Name +
+Passwort; wie im Seller-Tool mit Rolle Helfer/Admin und erzeugtem Passwort – auch mehrere Personen auf einmal),
 das Protokoll zeigt, wer was geändert hat. Admins verwalten Zugänge (anlegen, Passwort neu setzen, sperren) und
 können ungenutzte Fotos aufräumen; unter **Mein Konto** ändert jede Person ihr eigenes Passwort. Ein neues Passwort
 meldet die Person auf allen Geräten ab, Sperren wirkt sofort.

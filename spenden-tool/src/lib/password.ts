@@ -22,6 +22,18 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+/** Gut lesbares Startpasswort (ohne 0/O, 1/l/I), z. B. zum Weitergeben an neue Helfer. */
+export function generatePassword(length = 10): string {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(length);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+export const normalizeEmail = (input: string) => {
+  const e = input.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : "";
+};
+
 /** Anmeldename: klein, ohne Leerzeichen – „Anna Müller“ → „anna.müller“. */
 export function normalizeLogin(input: string): string {
   return input.trim().toLowerCase().replace(/\s+/g, ".").replace(/[^\p{L}\p{N}._-]/gu, "").slice(0, 40);
