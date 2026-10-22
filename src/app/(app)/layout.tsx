@@ -22,7 +22,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">S</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="brand-mark" src="/icons/mark.svg" alt="" width={28} height={28} />
           Seller-System
         </div>
         <input type="checkbox" id="nav-toggle" className="nav-toggle" aria-hidden="true" />

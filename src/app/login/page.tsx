@@ -8,7 +8,8 @@ export default async function LoginPage() {
     <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div className="card card-pad" style={{ width: 380, padding: 28 }}>
         <div className="brand" style={{ padding: "0 0 18px" }}>
-          <span className="brand-mark">S</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="brand-mark" src="/icons/mark.svg" alt="" width={28} height={28} />
           Seller-System
         </div>
         <h1 style={{ fontSize: 22, marginBottom: 18 }}>Anmelden</h1>

@@ -7,6 +7,7 @@ import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
 import { removeUser, saveSettings, saveSupplierName } from "./actions";
 import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
 import { AREAS } from "@/lib/auth/areas";
+import { formatSeen, isOnline } from "@/lib/auth/last-seen";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -31,7 +32,7 @@ export default async function EinstellungenPage() {
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -152,12 +153,27 @@ export default async function EinstellungenPage() {
 
       <section className="card card-pad stack" style={{ gap: 14 }}>
         <h2>Benutzer</h2>
+        {(() => {
+          const last = members.filter((m) => m.lastLoginAt && m.userId !== session.userId).sort((a, b) => b.lastLoginAt!.getTime() - a.lastLoginAt!.getTime())[0];
+          const online = members.filter((m) => isOnline(m.lastSeenAt) && m.userId !== session.userId);
+          return (
+            <div className="small" data-testid="last-login-summary">
+              {last ? <>Zuletzt angemeldet: <strong>{last.name ?? last.email}</strong> – {formatSeen(last.lastLoginAt)}</> : <span className="muted">Außer dir hat sich noch niemand angemeldet.</span>}
+              {online.length > 0 && <> · gerade aktiv: {online.map((m) => m.name ?? m.email).join(", ")}</>}
+            </div>
+          );
+        })()}
         <table className="table users-table">
-          <thead><tr><th>Benutzer</th><th>Name</th><th>Rolle / Zugriff</th><th></th></tr></thead>
+          <thead><tr><th>Benutzer</th><th>Name</th><th>Zuletzt angemeldet</th><th>Rolle / Zugriff</th><th></th></tr></thead>
           <tbody>
             {members.map((m) => (
               <tr key={m.userId}>
                 <td>{m.email}</td><td>{m.name ?? "–"}</td>
+                <td className="small" data-testid="user-last-login">
+                  {isOnline(m.lastSeenAt) && <span className="tag tag-ok" style={{ marginRight: 6 }}>aktiv</span>}
+                  {formatSeen(m.lastLoginAt)}
+                  {m.lastSeenAt && !isOnline(m.lastSeenAt) && m.lastLoginAt && m.lastSeenAt.getTime() - m.lastLoginAt.getTime() > 5 * 60_000 && <div className="muted">zuletzt aktiv {formatSeen(m.lastSeenAt)}</div>}
+                </td>
                 <td>
                   {m.role === "owner" ? "Inhaber (alles)" : (
                     <details>

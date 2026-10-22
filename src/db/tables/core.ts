@@ -129,8 +129,21 @@ export type TenantSettings = {
   };
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
-  /** Palettenlager: Preis je Stellplatz und Monat, kostenfreie Tage, Abrechnungsart. */
-  pallets?: { pricePerMonth?: number; freeDays?: number; mode?: "monat" | "anteilig" };
+  /**
+   * Palettenlager: Standard je Stellplatz und Monat, kostenfreie Tage, Abrechnungsart, Gebühr je
+   * Ein-/Auslagerung, Stellplätze gesamt, Erinnerungen und Zusatzleistungen mit Preis.
+   */
+  pallets?: {
+    pricePerMonth?: number;
+    freeDays?: number;
+    mode?: "monat" | "anteilig";
+    inFee?: number;
+    outFee?: number;
+    capacity?: number;
+    longStayDays?: number;
+    remindFreeEnd?: boolean;
+    services?: { name: string; price: number }[];
+  };
   /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };
@@ -149,6 +162,9 @@ export const users = pgTable(
     email: text("email").notNull(),
     name: text("name"),
     passwordHash: text("password_hash").notNull(),
+    /** Letzte erfolgreiche Anmeldung und letzte Aktivität (höchstens alle 5 Minuten nachgeführt). */
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`)],

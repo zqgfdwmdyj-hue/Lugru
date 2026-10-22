@@ -302,6 +302,20 @@
       "when": 1792664248520,
       "tag": "0042_paletten",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792674682830,
+      "tag": "0043_paletten_plus",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792675997373,
+      "tag": "0044_letzte_anmeldung",
+      "breakpoints": true
     }
   ]
 }

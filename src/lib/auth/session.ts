@@ -74,9 +74,24 @@ export const getSession = cache(async (): Promise<Session | null> => {
       ),
     )
     .where(and(eq(schema.sessions.id, hash(token)), gt(schema.sessions.expiresAt, new Date())));
+  if (!row) return null;
+  touchLastSeen(row.userId);
   // Inhaber sind nie „nur ansehen“.
-  return row ? { ...row, readOnly: row.role === "staff" && row.readOnly } : null;
+  return { ...row, readOnly: row.role === "staff" && row.readOnly };
 });
+
+// „Zuletzt aktiv“ höchstens alle 5 Minuten je Benutzer schreiben – nicht bei jeder Anfrage.
+const lastTouch = new Map<string, number>();
+function touchLastSeen(userId: string) {
+  const now = Date.now();
+  if (now - (lastTouch.get(userId) ?? 0) < 5 * 60_000) return;
+  lastTouch.set(userId, now);
+  void db
+    .update(schema.users)
+    .set({ lastSeenAt: new Date(now) })
+    .where(eq(schema.users.id, userId))
+    .catch(() => lastTouch.delete(userId));
+}
 
 /** Hinweis in der Adresse, wenn eine Aktion für ein Nur-ansehen-Konto nicht ausgeführt wurde. */
 export const READ_ONLY_PARAM = "nurlesen";

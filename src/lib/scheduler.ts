@@ -31,6 +31,8 @@ import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
 import { continueManualCheck } from "@/lib/suppliers/manual-check";
 import { getSettings } from "@/lib/settings";
 import { refreshImportReminder } from "@/lib/tasks/system";
+import { autoSendStatements, refreshPalletReminders } from "@/lib/pallets/service";
+import { todayIso } from "@/lib/dates";
 
 // Hintergrund-Abrufe. Läuft im Server-Prozess (alle 15 Minuten) oder per /api/cron.
 
@@ -122,6 +124,11 @@ export async function runScheduledJobs(force = false) {
           await step("Rechnungen an Stotax", () => sendPendingToStotax(t));
           await step("Belege an Stotax", () => sendPendingReceipts(t));
         }
+      // Paletten-Lager: Erinnerungen (freie Zeit endet, lange Standzeit) und Monatsaufstellungen am Monatsanfang.
+      if (force || due(`${t}:pallets`, 59)) {
+        await step("Paletten-Erinnerungen", () => refreshPalletReminders(t, todayIso()));
+        await step("Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
+      }
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);
         await step("Ansprüche", () => syncClaims(t));

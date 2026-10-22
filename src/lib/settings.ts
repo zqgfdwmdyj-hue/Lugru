@@ -60,7 +60,20 @@ export const DEFAULT_SETTINGS = {
   /** Wie im bisherigen Retouren-Tool: Rücksendefrist FBA 45 Tage, Amazon zahlt bis Tag 60, FBM 21 Tage. */
   returns: { graceFba: 45, claimFba: 60, graceFbm: 21, marketplace: "sellercentral.amazon.de" },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
-  pallets: { pricePerMonth: 14, freeDays: 5, mode: "monat" as "monat" | "anteilig" },
+  pallets: {
+    pricePerMonth: 14,
+    freeDays: 5,
+    mode: "monat" as "monat" | "anteilig",
+    inFee: 0,
+    outFee: 0,
+    /** Stellplätze gesamt (0 = nicht angegeben). */
+    capacity: 0,
+    /** Aufgabe, wenn eine Palette so lange steht (0 = aus). */
+    longStayDays: 90,
+    /** Aufgabe am Vortag, wenn die freie Zeit endet. */
+    remindFreeEnd: true,
+    services: [] as { name: string; price: number }[],
+  },
 };
 
 export type ResolvedSettings = typeof DEFAULT_SETTINGS;

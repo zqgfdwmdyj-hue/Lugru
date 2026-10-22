@@ -48,6 +48,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
     .limit(1);
   if (!membership) return { error: "Diesem Konto ist noch keine Firma zugeordnet.", email: typed };
 
+  const now = new Date();
+  await db.update(schema.users).set({ lastLoginAt: now, lastSeenAt: now }).where(eq(schema.users.id, user.id));
   await createSession(user.id, membership.tenantId);
   redirect("/");
 }
