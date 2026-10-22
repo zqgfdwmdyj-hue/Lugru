@@ -48,7 +48,8 @@
   {{if .Reaktionen}}Käufe sind die {{.EmojiGekauft}}-Reaktionen unter den Posts.{{else}}Käufe
   zählt das Programm, sobald unter <a href="/einstellungen#bot">Einstellungen</a> ein Discord-Bot eingetragen ist.{{end}}</p>
 {{template "abgleich" .Abgleich}}
-{{if .Gesamt.Anzahl}}<p><a class="knopf" href="/statistik/bild?gruppe={{.Gruppe}}&amp;von={{.Von}}&amp;bis={{.Bis}}">📸 Bild für Instagram / TikTok</a></p>{{end}}
+<p class="aktionen">{{if .Gesamt.Anzahl}}<a class="knopf" href="/statistik/bild?gruppe={{.Gruppe}}&amp;von={{.Von}}&amp;bis={{.Bis}}">📸 Bild für Instagram / TikTok</a>{{end}}
+  <a class="knopf" href="/statistik/rueckblick">🔎 Rückblick: Deals mit Keepa nachprüfen</a></p>
 
 {{if .PosterDiagramm}}
 {{/* Wer hat wie viel gepostet: ein Balken je Poster, die Zahl steht immer

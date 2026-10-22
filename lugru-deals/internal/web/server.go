@@ -62,6 +62,10 @@ type Server struct {
 	// im Hintergrund und die per Knopf „Testen" sollen sich nicht
 	// überholen und denselben Deal nicht zweimal posten.
 	monitorMu sync.Mutex
+	// rueckblickMu schützt rueckblickLauf, den Stand des Keepa-Abgleichs
+	// für den Rückblick (siehe rueckblick.go).
+	rueckblickMu   sync.Mutex
+	rueckblickLauf rueckblickStand
 	// monitorHTTP ersetzt in Tests den Client für billiger.de; nil heißt
 	// srv.http.
 	monitorHTTP *http.Client
@@ -191,6 +195,8 @@ func (srv *Server) Routen() http.Handler {
 
 	mux.HandleFunc("GET /statistik", srv.zeigeStatistik)
 	mux.HandleFunc("GET /statistik/bild", srv.zeigeStatistikBild)
+	mux.HandleFunc("GET /statistik/rueckblick", srv.zeigeRueckblick)
+	mux.HandleFunc("POST /statistik/rueckblick/abgleichen", srv.starteRueckblick)
 	mux.HandleFunc("GET /einlesen", srv.zeigeEinlesen)
 	mux.HandleFunc("POST /einlesen/start", srv.starteEinlesen)
 	mux.HandleFunc("POST /einlesen/uebernehmen", srv.uebernehmeEinlesen)

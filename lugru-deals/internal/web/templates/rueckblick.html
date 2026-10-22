@@ -1,0 +1,83 @@
+{{define "rueckblick"}}
+{{template "kopf" .}}
+<p class="hinweis"><a href="/statistik">← zurück zur Statistik</a></p>
+<h1>Rückblick: Wie haben sich die Deals entwickelt?</h1>
+<p class="hinweis">Gleicht gepostete Deals mit dem späteren Buy-Box-Verlauf bei Keepa ab. <b>Realistischer
+Verkaufspreis</b> ist der Median der ersten 30 Tage nach dem Post — so lange dauert es meist, bis die Ware
+eingelagert und verkauft ist. Damit wird der Gewinn neu gerechnet (Einkauf und Gebühren wie im Post).</p>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+{{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
+
+<p class="schnellwahl">
+  {{range .Zeitraeume}}<a href="/statistik/rueckblick?von={{.Von}}&amp;bis={{.Bis}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+</p>
+<form method="get" action="/statistik/rueckblick" class="karte filterzeile">
+  <label>gepostet von <input type="date" name="von" value="{{.Von}}"></label>
+  <label>bis <input type="date" name="bis" value="{{.Bis}}"></label>
+  <button type="submit" class="primaer">Anzeigen</button>
+</form>
+
+{{if .Stand.Laeuft}}
+<div class="karte">
+  <p><b>Abgleich mit Keepa läuft …</b> {{.Stand.Fertig}} von {{.Stand.Gesamt}} Artikeln.</p>
+  <p class="hinweis">Die Seite lädt sich von selbst neu.</p>
+</div>
+<script>setTimeout(function () { location.reload(); }, 3000);</script>
+{{else}}
+{{if .Stand.Meldung}}<p class="meldung">{{.Stand.Meldung}}</p>{{end}}
+{{if .Offen}}
+<form method="post" action="/statistik/rueckblick/abgleichen" class="karte">
+  <input type="hidden" name="von" value="{{.Von}}"><input type="hidden" name="bis" value="{{.Bis}}">
+  <p><b>{{.Offen}} Artikel</b> sind noch nicht (oder vor über einer Woche) abgeglichen.
+  Das kostet bis zu <b>{{.Offen}} Keepa-Token</b> (1 je Artikel und Markt; was im Keepa-Cache liegt, ist gratis).</p>
+  <button type="submit" class="primaer">Mit Keepa abgleichen</button>
+</form>
+{{else if .Anzahl}}<p class="hinweis">Alle Deals im Zeitraum sind abgeglichen.</p>{{end}}
+{{end}}
+
+<div class="kacheln">
+  <div class="kachel"><span>Deals im Zeitraum</span><b>{{.Anzahl}}</b></div>
+  <div class="kachel"><span>abgeglichen</span><b>{{.Geprueft}}</b></div>
+  <div class="kachel"><span>✅ realistisch</span><b>{{.Realistisch}}{{if .Quote}} <small>({{.Quote}})</small>{{end}}</b></div>
+  <div class="kachel"><span>⚠️ weniger Gewinn</span><b>{{.Weniger}}</b></div>
+  <div class="kachel"><span>❌ Verlust</span><b>{{.Verlust}}</b></div>
+  <div class="kachel"><span>Gewinn laut Posts</span><b>{{.GewinnVersprochen}}</b></div>
+  <div class="kachel"><span>Gewinn realistisch</span><b><span class="chip {{.KlasseRealistisch}}">{{.GewinnRealistisch}}</span></b></div>
+  <div class="kachel"><span>📉 eingebrochen (&gt; 5 %)</span><b>{{.Gefallen}}</b></div>
+  <div class="kachel"><span>davon erholt</span><b>{{.Erholt}}{{if .ErholtTage}} <small>Ø {{.ErholtTage}}</small>{{end}}</b></div>
+</div>
+<p class="hinweis">✅ realistisch: mindestens 80 % des versprochenen Gewinns · ⚠️ weniger: Gewinn, aber unter 80 % ·
+❌ Verlust: beim realistischen Preis kein Gewinn. „Erholt“ heißt: der Preis lag wieder höchstens 3 % unter dem VK
+im Post. Gewinne je 1 Stück.{{if .OhneDaten}} {{.OhneDaten}} Deals ohne Keepa-Daten.{{end}}</p>
+
+<p class="schnellwahl">
+  {{range .Filter}}<a href="/statistik/rueckblick?von={{$.Von}}&amp;bis={{$.Bis}}&amp;nur={{.Wert}}&amp;sortierung={{$.Sortierung}}" {{if .Aktiv}}class="aktiv"{{end}}>{{.Name}}</a>{{end}}
+  <a href="/statistik/rueckblick?von={{.Von}}&amp;bis={{.Bis}}&amp;nur={{.Nur}}&amp;sortierung={{if eq .Sortierung "schlecht"}}{{else}}schlecht{{end}}">{{if eq .Sortierung "schlecht"}}nach Datum sortieren{{else}}größte Abweichung zuerst{{end}}</a>
+</p>
+<div class="tabellenkarte scrollbar">
+<table>
+  <thead><tr><th>Gepostet</th><th>Artikel</th><th class="zahl">VK im Post</th><th class="zahl">Gewinn im Post</th>
+    <th class="zahl">Tiefstpreis danach</th><th class="zahl">VK realistisch<small>Median 30 Tage</small></th>
+    <th class="zahl">Gewinn realistisch</th><th class="zahl">VK heute</th><th>Erholt</th><th>Bewertung</th></tr></thead>
+  <tbody>
+  {{range .Zeilen}}
+  <tr>
+    <td>{{.Datum}}</td>
+    <td class="umbruch"><span>{{.Titel}}<br><small class="leise">{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener">{{.ASIN}}</a>{{else}}{{.ASIN}}{{end}} · {{.Markt}}{{if .Hinweis}} · {{.Hinweis}}{{end}}</small></span></td>
+    <td class="zahl">{{.VK}}</td>
+    <td class="zahl">{{.Gewinn}}<br><small class="leise">{{.Marge}}</small></td>
+    <td class="zahl">{{.Tief}}{{if .TiefInfo}}<br><small class="leise">{{.TiefInfo}}</small>{{end}}</td>
+    <td class="zahl">{{.VK30}}{{if .VK30Info}}<br><small class="leise">{{.VK30Info}}</small>{{end}}</td>
+    <td class="zahl">{{if .Gewinn30}}<span class="chip {{.Klasse30}}">{{.Gewinn30}}</span>{{end}}</td>
+    <td class="zahl">{{.Jetzt}}{{if .JetztInfo}}<br><small class="leise">{{.JetztInfo}}</small>{{end}}</td>
+    <td>{{if .Erholt}}<span class="chip {{.ErholtKlasse}}">{{.Erholt}}</span>{{end}}</td>
+    <td><span class="chip {{.Klasse}}">{{.Bewertung}}</span></td>
+  </tr>
+  {{else}}
+  <tr><td colspan="10" class="leer">Keine Deals in diesem Zeitraum.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{template "fuss"}}
+{{end}}

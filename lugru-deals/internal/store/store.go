@@ -392,6 +392,19 @@ CREATE TABLE IF NOT EXISTS monitor_gemeldet (
     schluessel TEXT PRIMARY KEY,
     zeit       TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS deal_rueckblick (
+    deal_id     INTEGER PRIMARY KEY,
+    geprueft_am TEXT    NOT NULL,
+    daten       INTEGER NOT NULL DEFAULT 0,
+    vk_jetzt    INTEGER NOT NULL DEFAULT 0,
+    vk_tief     INTEGER NOT NULL DEFAULT 0,
+    tief_am     TEXT    NOT NULL DEFAULT '',
+    vk_30       INTEGER NOT NULL DEFAULT 0,
+    vk_90       INTEGER NOT NULL DEFAULT 0,
+    erholt_am   TEXT    NOT NULL DEFAULT '',
+    fehler      TEXT    NOT NULL DEFAULT ''
+);
 `
 
 // Open öffnet die Datenbank und legt Schema und Chart-Ordner an, falls sie
