@@ -197,7 +197,7 @@ export type IdeaPoster = {
   gruppen: { titel: string; text: string; produkte: string[] }[];
   schluss: string;
 };
-export type IdeaResult = { titel: string; einleitung: string; pakete: IdeaPackage[]; rezepte: IdeaRecipe[]; aktionstext: string; tipps: string[]; plakat?: IdeaPoster | null };
+export type IdeaResult = { titel: string; einleitung: string; pakete: IdeaPackage[]; rezepte: IdeaRecipe[]; aktionstext: string; tipps: string[]; plakat?: IdeaPoster | null; verwendung?: { produkt: string; ideen: string[] }[] };
 
 /** KI-Ideen zu einer Verteilung (Themenpakete, Rezepte, Werbetext) – bleiben zum Nachlesen gespeichert. */
 export const eventIdeas = pgTable(

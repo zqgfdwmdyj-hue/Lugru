@@ -201,3 +201,5 @@ h2 { font-size: 16px; margin: 0; }
 .idea-h { font-size: 15px; margin: 4px 0 8px; }
 .idea-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
 .idea-box { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface-2, #faf8f4); }
+.idea-hint { margin-left: 4px; }
+.idea-chip:has(input:checked) .idea-hint { color: #e6f2ea; }

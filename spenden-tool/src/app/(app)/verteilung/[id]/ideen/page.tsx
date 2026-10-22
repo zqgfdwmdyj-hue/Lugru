@@ -7,7 +7,7 @@ import { collagePrice, eventDateLabel, isPlaceholderName } from "@/lib/layout";
 import { formatEuro } from "@/lib/numbers";
 import { loadEvent, loadEventItems } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
-import { ideasCostUsd, matchProducts, themeSuggestions } from "@/lib/ideas";
+import { IDEA_MODES, ideasCostUsd, matchProducts, themeSuggestions } from "@/lib/ideas";
 import { createIdeas, deleteIdeas } from "@/app/(app)/actions";
 import { CopyButton } from "@/components/copy-button";
 import { IdeasForm } from "./ideas-form";
@@ -58,7 +58,7 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
       <div className="page-head"><div><h1>Ideen</h1><div className="small muted">{eventDateLabel(event.eventDate)} · {items.length} Produkte · Themenpakete, Rezepte und Werbetext von der KI</div></div></div>
       {unnamed > 0 && <div className="notice notice-warn">{unnamed} Produkt(e) haben noch keinen Namen und werden nicht berücksichtigt.</div>}
       {aiConfigured() ? (
-        <IdeasForm action={createIdeas.bind(null, id)} themes={themeSuggestions(month)} cost="3–5 Cent" />
+        <IdeasForm action={createIdeas.bind(null, id)} themes={themeSuggestions(month)} cost="3–5 Cent" modes={Object.entries(IDEA_MODES).map(([key, m]) => ({ key, label: m.label, hint: m.hint }))} />
       ) : (
         <div className="card card-pad muted">Die KI ist aus – dafür auf dem Server <code>ANTHROPIC_API_KEY</code> setzen (siehe README).</div>
       )}
@@ -128,6 +128,29 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
                 </div>
               </div>
             )}
+
+            {(r.verwendung?.length ?? 0) > 0 && (() => {
+              const list = r.verwendung!;
+              const matched = matchProducts(list.map((v) => v.produkt), items);
+              const all = list.map((v) => `${v.produkt}:\n${v.ideen.map((x) => `• ${x}`).join("\n")}`).join("\n\n");
+              return (
+                <div>
+                  <h3 className="idea-h">💡 Wofür kann man das verwenden?</h3>
+                  <div className="idea-grid">
+                    {list.map((v, i) => (
+                      <div key={i} className="idea-box" style={{ display: "flex", gap: 10 }}>
+                        {matched[i]?.item?.image && <img src={`${matched[i].item!.image}?w=200`} alt="" style={{ width: 54, height: 54, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} loading="lazy" />}
+                        <div style={{ minWidth: 0 }}>
+                          <strong>{v.produkt}</strong>
+                          <ul className="small" style={{ margin: "4px 0 0", paddingLeft: 18 }}>{v.ideen.map((x, j) => <li key={j}>{x}</li>)}</ul>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 8 }}><CopyButton text={all} label="Alle Verwendungs-Ideen kopieren" /></div>
+                </div>
+              );
+            })()}
 
             {r.aktionstext && (
               <div>

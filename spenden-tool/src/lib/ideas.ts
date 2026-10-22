@@ -52,8 +52,10 @@ Antworte nur mit JSON in genau diesem Aufbau:
  "rezepte": [{"name": "…", "aus_der_verteilung": ["Produktname"], "zusaetzlich": ["…"], "anleitung": "3–6 kurze Sätze", "dauer": "z. B. 20 Min."}],
  "aktionstext": "fertiger Werbetext wie oben beschrieben",
  "tipps": ["kurzer Tipp für das Team"],
- "plakat": {"thema": "winter", "titel": "…", "untertitel": "…", "notiz": "…", "hervorgehoben": ["Produktname"], "gruppen": [{"titel": "…", "text": "…", "produkte": ["Produktname"]}], "schluss": "Wir freuen uns auf euch bei unserer nächsten Verteilung!"}}
-2–4 Pakete, 2–4 Rezepte, 1–3 Tipps.`;
+ "plakat": {"thema": "winter", "titel": "…", "untertitel": "…", "notiz": "…", "hervorgehoben": ["Produktname"], "gruppen": [{"titel": "…", "text": "…", "produkte": ["Produktname"]}], "schluss": "Wir freuen uns auf euch bei unserer nächsten Verteilung!"},
+ "verwendung": [{"produkt": "Produktname", "ideen": ["kurze, konkrete Idee", "…"]}]}
+Der Modus in der Anfrage sagt, welche Teile gefragt sind; nicht gefragte Teile leer lassen ([] bzw. null).
+Verwendung: zu jedem Produkt 2–3 konkrete Ideen, wofür man es nutzen kann (bei Lebensmitteln Gerichte oder Kombinationen, bei Drogerie-/Haushaltsartikeln, Deko, DVDs usw. praktische Einsatzzwecke, Geschenkidee, für wen es sich eignet). Kurz und alltagsnah, je Idee höchstens ein Satz.`;
 
 const Result = z.object({
   titel: z.string().default("Ideen für die Verteilung"),
@@ -64,6 +66,7 @@ const Result = z.object({
     .default([]),
   aktionstext: z.string().default(""),
   tipps: z.array(z.string()).default([]),
+  verwendung: z.array(z.object({ produkt: z.string(), ideen: z.array(z.string()).default([]) })).default([]),
   plakat: z
     .object({
       thema: z.enum(POSTER_THEMES).catch("allgemein"),
@@ -96,7 +99,24 @@ export function productLines(items: IdeaProduct[]): string {
     .join("\n");
 }
 
-export async function generateIdeas(input: { dateLabel: string; items: IdeaProduct[]; themes: string[]; wish: string }) {
+/** Was die KI liefern soll: alles (Pakete, Rezepte, Plakat …), nur Rezepte oder Verwendungsideen je Produkt. */
+export const IDEA_MODES = {
+  alles: { label: "Alles", hint: "Pakete, Rezepte, Werbetext und Plakat", instruction: "Modus: Alles – 2–4 Pakete, 2–4 Rezepte, Werbetext, 1–3 Tipps und das Plakat. verwendung leer lassen." },
+  rezepte: {
+    label: "🍲 Rezept-Ideen",
+    hint: "5–8 Rezepte aus den Produkten",
+    instruction: "Modus: Rezept-Ideen – 5–8 abwechslungsreiche Rezepte (Frühstück, Hauptgericht, Snack, Süßes; auch einfache ohne Backofen), die möglichst viele Lebensmittel der Liste verwenden. Werbetext zu den Rezepten (z. B. „Was ihr mit unseren Schätzen kochen könnt“), 1–2 Tipps. pakete und verwendung leer, plakat null.",
+  },
+  verwendung: {
+    label: "💡 Verwendungs-Ideen",
+    hint: "Wofür man jedes Produkt nutzen kann",
+    instruction: "Modus: Verwendungs-Ideen – verwendung für alle Produkte der Liste (gleiche Namen wie in der Liste), dazu ein kurzer Werbetext mit den schönsten Ideen und 1–2 Tipps. pakete und rezepte leer, plakat null.",
+  },
+} as const;
+export type IdeaMode = keyof typeof IDEA_MODES;
+export const isIdeaMode = (v: unknown): v is IdeaMode => typeof v === "string" && v in IDEA_MODES;
+
+export async function generateIdeas(input: { dateLabel: string; items: IdeaProduct[]; themes: string[]; wish: string; mode?: IdeaMode }) {
   const client = new Anthropic();
   const wishes = [input.themes.length ? `Themen: ${input.themes.join(", ")}.` : "", input.wish ? `Wunsch des Teams: ${input.wish}` : ""].filter(Boolean).join("\n");
   const response = await client.beta.messages.create({
@@ -109,7 +129,7 @@ export async function generateIdeas(input: { dateLabel: string; items: IdeaProdu
     messages: [
       {
         role: "user",
-        content: `Verteilung am ${input.dateLabel}.\n\nProdukte:\n${productLines(input.items)}\n\n${wishes || "Keine besonderen Wünsche – schlage passende Themen zur Jahreszeit vor."}`,
+        content: `Verteilung am ${input.dateLabel}.\n\nProdukte:\n${productLines(input.items)}\n\n${wishes || "Keine besonderen Wünsche – schlage passende Themen zur Jahreszeit vor."}\n\n${IDEA_MODES[input.mode ?? "alles"].instruction}`,
       },
     ],
   });

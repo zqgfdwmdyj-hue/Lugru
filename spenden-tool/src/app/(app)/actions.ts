@@ -16,7 +16,7 @@ import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 import { readBestBefore } from "@/lib/mhd";
 import { logActivity } from "@/lib/activity";
 import Anthropic from "@anthropic-ai/sdk";
-import { generateIdeas } from "@/lib/ideas";
+import { generateIdeas, IDEA_MODES, type IdeaMode, isIdeaMode } from "@/lib/ideas";
 import { formatDate } from "@/lib/numbers";
 import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
@@ -543,9 +543,11 @@ export async function createIdeas(eventId: string, _prev: IdeasState, fd: FormDa
   if (items.length === 0) return { ok: false, message: "Noch keine Produkte mit Namen in dieser Verteilung." };
   const themes = fd.getAll("thema").map(String).filter(Boolean).slice(0, 6);
   const wish = str(fd, "wunsch").slice(0, 500);
+  const mode = isIdeaMode(fd.get("modus")) ? (fd.get("modus") as IdeaMode) : "alles";
   try {
-    const { result, inputTokens, outputTokens } = await generateIdeas({ dateLabel: formatDate(event.eventDate), items, themes, wish });
-    await db.insert(schema.eventIdeas).values({ eventId: id, request: [...themes, wish].filter(Boolean).join(" · ") || "Vorschläge der KI", result, userName: me.name, inputTokens, outputTokens });
+    const { result, inputTokens, outputTokens } = await generateIdeas({ dateLabel: formatDate(event.eventDate), items, themes, wish, mode });
+    const what = mode === "alles" ? [] : [IDEA_MODES[mode].label.replace(/^\S+\s/, "")];
+    await db.insert(schema.eventIdeas).values({ eventId: id, request: [...what, ...themes, wish].filter(Boolean).join(" · ") || "Vorschläge der KI", result, userName: me.name, inputTokens, outputTokens });
     await logActivity(me, `Ideen erzeugt${themes.length ? `: ${themes.join(", ")}` : ""}`, { eventId: id });
   } catch (e) {
     console.error("Ideen fehlgeschlagen", e);
