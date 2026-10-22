@@ -14,6 +14,7 @@ type Group = { head?: string; items: Item[] };
 const GROUP_COLOR: Record<string, string> = {
   "": "#5b6670",
   WaWi: "#1f7a5c",
+  Lager: "#0e7490",
   Marken: "#c2410c",
   eBay: "#2563eb",
   "Amazon FBA": "#d97706",
@@ -60,6 +61,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/lieferanten/finden", label: "Großhändler finden" },
       ],
     },
+    { head: "Lager", items: [{ href: "/paletten", label: "Paletten-Lager" }] },
     {
       head: "Marken",
       items: [

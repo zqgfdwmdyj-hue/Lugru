@@ -59,6 +59,8 @@ export const DEFAULT_SETTINGS = {
   drive: { folderId: "" },
   /** Wie im bisherigen Retouren-Tool: Rücksendefrist FBA 45 Tage, Amazon zahlt bis Tag 60, FBM 21 Tage. */
   returns: { graceFba: 45, claimFba: 60, graceFbm: 21, marketplace: "sellercentral.amazon.de" },
+  /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
+  pallets: { pricePerMonth: 14, freeDays: 5, mode: "monat" as "monat" | "anteilig" },
 };
 
 export type ResolvedSettings = typeof DEFAULT_SETTINGS;
@@ -81,6 +83,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     aging: { ...d.aging, ...(s.aging ?? {}) },
     drive: { ...d.drive, ...(s.drive ?? {}) },
     returns: { ...d.returns, ...(s.returns ?? {}) },
+    pallets: { ...d.pallets, ...(s.pallets ?? {}) },
   };
 }
 

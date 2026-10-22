@@ -17,3 +17,4 @@ export * from "./tables/articles";
 export * from "./tables/leads";
 export * from "./tables/customers";
 export * from "./tables/exports";
+export * from "./tables/pallets";
