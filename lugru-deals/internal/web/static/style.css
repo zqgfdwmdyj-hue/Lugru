@@ -874,3 +874,56 @@ fieldset.handwerte legend small { color: var(--leise); font-weight: 400; }
 
 /* Post bearbeiten */
 .postbearbeiten textarea { width: 100%; font-family: var(--mono); font-size: 13px; line-height: 1.5; }
+
+/* ── Monitor: Reiter und Formularraster ─────────────────────────────────── */
+.statuszeile { display: flex; flex-wrap: wrap; gap: .35rem; margin: .6rem 0; }
+.unterreiter {
+  display: flex; gap: .15rem; overflow-x: auto; scrollbar-width: none;
+  margin: 1.1rem 0 .4rem; border-bottom: 1px solid var(--rand);
+  position: sticky; top: 0; z-index: 5; background: var(--grund);
+}
+.unterreiter::-webkit-scrollbar { display: none; }
+.unterreiter a {
+  padding: .55rem .8rem; white-space: nowrap; text-decoration: none;
+  font-size: 13px; font-weight: 500; color: var(--gedaempft);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.unterreiter a small { color: var(--leise); font-weight: 400; margin-left: .15rem; }
+.unterreiter a:hover { color: var(--text); }
+.unterreiter a[aria-current] { color: var(--akzent-dunkel); border-bottom-color: var(--akzent); }
+section[data-reiter] > h2:first-child { margin-top: 1rem; }
+.raster {
+  display: grid; gap: .75rem; align-items: start;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+.raster > fieldset, .raster > .tabellenkarte { margin: 0; }
+.paar { display: grid; gap: 0 .6rem; grid-template-columns: 1fr 1fr; align-items: end; }
+.paar.drei { grid-template-columns: 1fr 1fr 1fr; }
+.paar > label { min-width: 0; }
+fieldset details { margin-top: .5rem; }
+p.speichern { margin: .9rem 0; }
+details.neu > summary {
+  font-size: 13px; font-weight: 600; color: var(--akzent-dunkel); list-style: none;
+}
+details.neu > summary::-webkit-details-marker { display: none; }
+details.neu[open] > summary { margin-bottom: .4rem; }
+.formraster {
+  display: grid; gap: 0 .75rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+}
+.formraster > label, .formraster > fieldset, .formraster > p, .formraster > div { margin-top: .35rem; margin-bottom: .35rem; }
+.formraster > fieldset, .formraster > p, .formraster > .breit, .formraster > button,
+.formraster > label:has(> input[type=checkbox]) { grid-column: 1 / -1; }
+.formraster > button { justify-self: start; }
+.formraster .haken { display: flex; flex-wrap: wrap; gap: .25rem .9rem; }
+.formraster .haken label { margin: 0; }
+td.produktzelle { white-space: normal; min-width: 16rem; }
+td.produktzelle .chips { display: flex; flex-wrap: wrap; gap: .25rem; margin: .3rem 0 .15rem; }
+td.umbruch { white-space: normal; min-width: 9rem; max-width: 18rem; }
+details.bearbeiten { margin-top: .3rem; }
+details.bearbeiten[open] { min-width: min(42rem, 80vw); padding-bottom: .4rem; }
+.unterblock { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed var(--rand); }
+@media (max-width: 700px) {
+  .paar, .paar.drei { grid-template-columns: 1fr; }
+}
+section[data-reiter] td.aktionen { display: table-cell; vertical-align: middle; }
