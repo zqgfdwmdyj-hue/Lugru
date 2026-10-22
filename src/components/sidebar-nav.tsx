@@ -50,6 +50,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
         { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
         { href: "/chargen", label: "Chargen & Artikel" },
         { href: "/bestand", label: "Bestand & Inventur" },
+        { href: "/paletten", label: "Paletten-Lager" },
         { href: "/artikel", label: "Artikelstamm" },
         { href: "/listings", label: "Listings" },
         { href: "/listings/temu", label: "eBay → Temu / Wawi" },

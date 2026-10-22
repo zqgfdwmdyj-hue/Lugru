@@ -130,6 +130,8 @@ export type TenantSettings = {
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
   /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
+  /** Palettenlager: Preis je Stellplatz und Monat, kostenfreie Tage, Abrechnungsart. */
+  pallets?: { pricePerMonth?: number; freeDays?: number; mode?: "monat" | "anteilig" };
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };
 

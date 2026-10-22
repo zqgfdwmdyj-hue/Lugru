@@ -9,7 +9,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "posteingang", label: "Posteingang", paths: ["/posteingang"], home: "/posteingang" },
   { key: "kalender", label: "Kalender", paths: ["/kalender"], home: "/kalender" },
   { key: "wissen", label: "Wissen", paths: ["/wissen"], home: "/wissen" },
-  { key: "wawi", label: "WaWi (Aufträge, Einkauf, Chargen, Bestand, Listings, Import)", paths: ["/auftraege", "/einkauf", "/chargen", "/bestand", "/listings", "/import"], home: "/auftraege" },
+  { key: "wawi", label: "WaWi (Aufträge, Einkauf, Chargen, Bestand, Paletten, Listings, Import)", paths: ["/auftraege", "/einkauf", "/chargen", "/bestand", "/paletten", "/listings", "/import"], home: "/auftraege" },
   { key: "artikel", label: "Artikelstamm (eigene Produkte, Bilder, Texte, Amazon/eBay)", paths: ["/artikel"], home: "/artikel" },
   { key: "lieferanten", label: "Lieferanten-Feeds und Großhändler finden (Scannen, Keepa-Prüfung, Boxen, Einkaufsanfragen)", paths: ["/lieferanten"], home: "/lieferanten" },
   { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse)", paths: ["/marken"], home: "/marken" },
