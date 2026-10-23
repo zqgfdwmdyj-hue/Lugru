@@ -90,3 +90,46 @@ func (s *Store) KeepaSucheLoeschen(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM keepa_suchen WHERE id = ?`, id)
 	return err
 }
+
+// KeepaKategorie ist eine Hauptkategorie eines Amazon-Marktes.
+type KeepaKategorie struct {
+	ID   int64
+	Name string
+}
+
+// KeepaKategorienMerken speichert Kategorien eines Marktes (Name wird
+// aktualisiert).
+func (s *Store) KeepaKategorienMerken(markt string, ks []KeepaKategorie) error {
+	for _, k := range ks {
+		if _, err := s.db.Exec(`INSERT INTO keepa_kategorien (markt, id, name) VALUES (?, ?, ?)
+			ON CONFLICT(markt, id) DO UPDATE SET name = excluded.name`, markt, k.ID, k.Name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// KeepaKategorien liefert die bekannten Kategorien je Markt, nach Namen.
+func (s *Store) KeepaKategorien() (map[string][]KeepaKategorie, error) {
+	zeilen, err := s.db.Query(`SELECT markt, id, name FROM keepa_kategorien ORDER BY markt, name COLLATE NOCASE`)
+	if err != nil {
+		return nil, err
+	}
+	defer zeilen.Close()
+	out := map[string][]KeepaKategorie{}
+	for zeilen.Next() {
+		var m string
+		var k KeepaKategorie
+		if err := zeilen.Scan(&m, &k.ID, &k.Name); err != nil {
+			return nil, err
+		}
+		out[m] = append(out[m], k)
+	}
+	return out, zeilen.Err()
+}
+
+// KeepaSucheAusschluss setzt die ausgeblendeten Kategorien einer Suche.
+func (s *Store) KeepaSucheAusschluss(id int64, ausschluss string) error {
+	_, err := s.db.Exec(`UPDATE keepa_suchen SET ausschluss = ?, geprueft_am = '' WHERE id = ?`, ausschluss, id)
+	return err
+}

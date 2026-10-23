@@ -80,6 +80,13 @@ func (srv *Server) keepaSuchePruefen(ctx context.Context, k store.KeepaSuche, sc
 	}
 	srv.merkeToken(erg.TokensLeft, erg.TokensConsumed)
 	srv.merkeRate(erg.RefillRate)
+	// Die Kategorien kommen mit Namen gratis mit — für die Häkchen zum
+	// Ausblenden.
+	var ks []store.KeepaKategorie
+	for _, kat := range erg.Kategorien {
+		ks = append(ks, store.KeepaKategorie{ID: kat.ID, Name: kat.Name})
+	}
+	_ = srv.store.KeepaKategorienMerken(string(m.Code), ks)
 
 	geprueft, gepostet := 0, 0
 	maxJeLauf := k.MaxJeLauf
@@ -134,6 +141,23 @@ type keepaSucheAnzeige struct {
 	ZeitraumText string
 	FilterText   string
 	Geprueft     string
+	// KategorieWahl sind die bekannten Hauptkategorien ihres Marktes, mit
+	// Häkchen, wenn ausgeblendet; Ausgeblendet nennt sie beim Namen.
+	KategorieWahl []kategorieWahl
+	Ausgeblendet  string
+}
+
+type kategorieWahl struct {
+	ID   int64
+	Name string
+	An   bool
+}
+
+// kategorieGruppe sind die bekannten Kategorien eines Marktes, für das
+// Formular einer neuen Suche.
+type kategorieGruppe struct {
+	Markt      string
+	Kategorien []store.KeepaKategorie
 }
 
 var preisartNamen = map[int]string{keepa.DealAmazon: "Amazon", keepa.DealNeu: "Neu (alle)", keepa.DealNeuFBA: "FBA-Angebot", keepa.DealWarehouse: "Warehouse"}
@@ -141,9 +165,26 @@ var zeitraumNamen = []string{"24 Stunden", "7 Tage", "31 Tage", "90 Tage"}
 
 func (srv *Server) keepaSuchenAnzeigen() []keepaSucheAnzeige {
 	ks, _ := srv.store.KeepaSuchen()
+	bekannt, _ := srv.store.KeepaKategorien()
 	var out []keepaSucheAnzeige
 	for _, k := range ks {
 		a := keepaSucheAnzeige{KeepaSuche: k, PreisartText: preisartNamen[k.Preisart]}
+		aus := map[int64]bool{}
+		for _, id := range idListe(k.Ausschluss) {
+			aus[id] = true
+		}
+		var namen []string
+		for _, kat := range bekannt[k.Markt] {
+			a.KategorieWahl = append(a.KategorieWahl, kategorieWahl{ID: kat.ID, Name: kat.Name, An: aus[kat.ID]})
+			if aus[kat.ID] {
+				namen = append(namen, kat.Name)
+				delete(aus, kat.ID)
+			}
+		}
+		for id := range aus {
+			namen = append(namen, strconv.FormatInt(id, 10))
+		}
+		a.Ausgeblendet = strings.Join(namen, ", ")
 		if k.Zeitraum >= 0 && k.Zeitraum < len(zeitraumNamen) {
 			a.ZeitraumText = zeitraumNamen[k.Zeitraum]
 		}
@@ -159,7 +200,10 @@ func (srv *Server) keepaSuchenAnzeigen() []keepaSucheAnzeige {
 			f = append(f, "„"+k.Suchbegriff+"“")
 		}
 		if k.Kategorien != "" {
-			f = append(f, "Kategorien "+k.Kategorien)
+			f = append(f, "nur Kategorien "+k.Kategorien)
+		}
+		if a.Ausgeblendet != "" {
+			f = append(f, "ohne "+a.Ausgeblendet)
 		}
 		a.FilterText = strings.Join(f, " · ")
 		if !k.GeprueftAm.IsZero() {
@@ -188,7 +232,7 @@ func (srv *Server) speichereKeepaSuche(w http.ResponseWriter, r *http.Request) {
 		Name: r.PostForm.Get("name"), Markt: string(m.Code), Preisart: zahl("preisart", keepa.DealAmazon),
 		MinRabatt: zahl("min_rabatt", 20), Zeitraum: zahl("zeitraum", 0), MaxRang: zahl("max_rang", 0),
 		Suchbegriff: r.PostForm.Get("suchbegriff"), Kategorien: strings.TrimSpace(r.PostForm.Get("kategorien")),
-		Ausschluss: strings.TrimSpace(r.PostForm.Get("ausschluss")), Maerkte: maerkteAusFormular(r),
+		Ausschluss: ausschlussAus(r), Maerkte: maerkteAusFormular(r),
 		Modus: store.ModiNormal(r.PostForm["modus"]...), Minuten: zahl("minuten", 5), MaxJeLauf: zahl("max_je_lauf", 20),
 		Aktiv: true,
 	}
@@ -245,4 +289,59 @@ func (srv *Server) schalteKeepaSuche(w http.ResponseWriter, r *http.Request) {
 func (srv *Server) loescheKeepaSuche(w http.ResponseWriter, r *http.Request) {
 	_ = srv.store.KeepaSucheLoeschen(idAusPfad(r))
 	srv.monitorMeldung(w, "Keepa-Suche gelöscht.", "")
+}
+
+// ausschlussAus liest die ausgeblendeten Kategorien: Häkchen
+// (ausschluss_id) und von Hand eingetragene IDs (ausschluss).
+func ausschlussAus(r *http.Request) string {
+	gesehen := map[int64]bool{}
+	var ids []string
+	for _, id := range idListe(strings.Join(append(r.PostForm["ausschluss_id"], r.PostForm.Get("ausschluss")), ",")) {
+		if !gesehen[id] {
+			gesehen[id] = true
+			ids = append(ids, strconv.FormatInt(id, 10))
+		}
+	}
+	return strings.Join(ids, ",")
+}
+
+// speichereKeepaAusschluss setzt die ausgeblendeten Kategorien einer Suche.
+func (srv *Server) speichereKeepaAusschluss(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	if err := srv.store.KeepaSucheAusschluss(idAusPfad(r), ausschlussAus(r)); err != nil {
+		srv.monitorMeldung(w, "", "Nicht gespeichert: "+sicherFehlertext(err.Error()))
+		return
+	}
+	srv.monitorMeldung(w, "Kategorien gespeichert — gilt ab der nächsten Abfrage.", "")
+}
+
+// ladeKeepaKategorien holt die Hauptkategorien eines Marktes bei Keepa
+// (ein Token), damit sie zum Ausblenden zur Wahl stehen.
+func (srv *Server) ladeKeepaKategorien(w http.ResponseWriter, r *http.Request) {
+	_ = r.ParseForm()
+	m, ok := marketplace.ByCode(marketplace.Code(r.PostForm.Get("markt")))
+	if !ok {
+		srv.monitorMeldung(w, "", "Bitte einen Markt wählen.")
+		return
+	}
+	schluessel := srv.keepaKeyAufloesen()
+	if schluessel == "" {
+		srv.monitorMeldung(w, "", "Kein Keepa-API-Key hinterlegt.")
+		return
+	}
+	c := *srv.keepa
+	c.Key = schluessel
+	ks, rest, err := c.Hauptkategorien(r.Context(), m.KeepaDomain)
+	if err != nil {
+		srv.keepaPausieren(err)
+		srv.monitorMeldung(w, "", "Keepa: "+sicherFehlertext(err.Error()))
+		return
+	}
+	srv.merkeToken(rest, 1)
+	var neu []store.KeepaKategorie
+	for _, k := range ks {
+		neu = append(neu, store.KeepaKategorie{ID: k.ID, Name: k.Name})
+	}
+	_ = srv.store.KeepaKategorienMerken(string(m.Code), neu)
+	srv.monitorMeldung(w, fmt.Sprintf("%d Kategorien von Amazon.%s geladen — jetzt lassen sie sich anhaken.", len(neu), m.Code), "")
 }

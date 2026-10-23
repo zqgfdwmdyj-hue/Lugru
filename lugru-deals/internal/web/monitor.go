@@ -95,6 +95,7 @@ type monitorDaten struct {
 	// KeepaSuchen sind die Suchen nach Preisstürzen, KeepaDealProdukte die
 	// Artikel, die sie bisher angelegt haben.
 	KeepaSuchen       []keepaSucheAnzeige
+	KeepaKategorien   []kategorieGruppe
 	KeepaDealProdukte int
 
 	PrioHoch       int
@@ -266,6 +267,13 @@ func (srv *Server) monitorDaten() monitorDaten {
 
 	d.AsinBedarf = tokenText(srv.amazonTokenBedarf(produkte))
 	d.KeepaSuchen = srv.keepaSuchenAnzeigen()
+	if bekannt, err := srv.store.KeepaKategorien(); err == nil {
+		for _, m := range marketplace.All() {
+			if ks := bekannt[string(m.Code)]; len(ks) > 0 {
+				d.KeepaKategorien = append(d.KeepaKategorien, kategorieGruppe{Markt: string(m.Code), Kategorien: ks})
+			}
+		}
+	}
 	d.AmazonMinuten = srv.amazonMinuten()
 	srv.tokenMu.Lock()
 	d.KeepaRate = srv.tokenRate

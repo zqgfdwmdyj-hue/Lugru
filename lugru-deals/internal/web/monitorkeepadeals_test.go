@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -22,6 +23,7 @@ func TestKeepaPreisstuerzePosten(t *testing.T) {
 	fixtureDE, _ := os.ReadFile(filepath.Join("..", "keepa", "testdata", "produkt.json"))
 	var mu sync.Mutex
 	dealAbfragen, produktAbfragen := 0, 0
+	var letzteDealAnfrage string
 	ks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -30,8 +32,11 @@ func TestKeepaPreisstuerzePosten(t *testing.T) {
 			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nTESTBILD"))
 		case strings.HasSuffix(r.URL.Path, "/deal"):
 			dealAbfragen++
+			roh, _ := io.ReadAll(r.Body)
+			letzteDealAnfrage = string(roh)
 			fmt.Fprint(w, `{"tokensLeft": 80, "tokensConsumed": 5, "refillRate": 20, "deals": {"dr": [
-				{"asin": "B01636IZ0G", "title": "Makita HR2630", "current": [12000, 12000, -1, 900], "avg": [[17000]], "deltaPercent": [[-29]]}]}}`)
+				{"asin": "B01636IZ0G", "title": "Makita HR2630", "current": [12000, 12000, -1, 900], "avg": [[17000]], "deltaPercent": [[-29]]}],
+				"categoryIds": [80084031, 11961464031], "categoryNames": ["Baumarkt", "Fashion"], "categoryCount": [1, 0]}}`)
 		default:
 			produktAbfragen++
 			if r.URL.Query().Get("domain") == "4" {
@@ -85,5 +90,21 @@ func TestKeepaPreisstuerzePosten(t *testing.T) {
 	seite := hole(t, a.srv, http.MethodGet, "/monitor", "").Body.String()
 	if !strings.Contains(seite, "Keepa-Preisstürze") || !strings.Contains(seite, "Bisher 1 Artikel durchgerechnet") {
 		t.Error("Abschnitt fehlt")
+	}
+	// Die Kategorien kamen mit der Abfrage; „Fashion“ ausblenden.
+	if !strings.Contains(seite, `data-name="Fashion"`) {
+		t.Fatal("Kategorie Fashion nicht zur Wahl")
+	}
+	hole(t, a.srv, http.MethodPost, fmt.Sprintf("/monitor/keepa/%d/ausschluss", ks2[0].ID), url.Values{"ausschluss_id": {"11961464031"}}.Encode())
+	a.srv.keepaSuchenPruefen(context.Background(), jetzt.Add(12*time.Minute))
+	if !strings.Contains(letzteDealAnfrage, `"excludeCategories":[11961464031]`) {
+		t.Errorf("Ausschluss nicht gesendet: %s", letzteDealAnfrage)
+	}
+	ks3, _ := a.s.KeepaSuchen()
+	if !strings.Contains(ks3[0].Status, "Preisstürze") {
+		t.Errorf("Status: %s", ks3[0].Status)
+	}
+	if seite := hole(t, a.srv, http.MethodGet, "/monitor", "").Body.String(); !strings.Contains(seite, "ohne Fashion") {
+		t.Error("ausgeblendete Kategorie nicht beim Namen genannt")
 	}
 }

@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,9 +103,20 @@ type Deal struct {
 	Seit time.Time
 }
 
+// Kategorie ist eine Amazon-Kategorie (Browse-Node) bei Keepa; Anzahl ist,
+// wie viele Deals der Abfrage in ihr liegen.
+type Kategorie struct {
+	ID     int64
+	Name   string
+	Anzahl int
+}
+
 // DealErgebnis ist eine Seite Deals samt Kontingentstand.
 type DealErgebnis struct {
-	Deals          []Deal
+	Deals []Deal
+	// Kategorien sind die Hauptkategorien der gefundenen Deals — Keepa
+	// liefert sie mit Namen gratis dazu.
+	Kategorien     []Kategorie
 	TokensLeft     int
 	TokensConsumed int
 	RefillRate     int
@@ -134,6 +148,9 @@ func LiesDeals(koerper []byte, preisart, zeitraum int) (DealErgebnis, error) {
 				Image        []int   `json:"image"`
 				CurrentSince []int   `json:"currentSince"`
 			} `json:"dr"`
+			CategoryIDs   []int64  `json:"categoryIds"`
+			CategoryNames []string `json:"categoryNames"`
+			CategoryCount []int    `json:"categoryCount"`
 		} `json:"deals"`
 	}
 	if err := json.Unmarshal(koerper, &r); err != nil {
@@ -145,6 +162,16 @@ func LiesDeals(koerper []byte, preisart, zeitraum int) (DealErgebnis, error) {
 	erg := DealErgebnis{TokensLeft: r.TokensLeft, TokensConsumed: r.TokensConsumed, RefillRate: r.RefillRate}
 	if r.Deals == nil {
 		return erg, nil
+	}
+	for i, id := range r.Deals.CategoryIDs {
+		if i >= len(r.Deals.CategoryNames) || id <= 0 || id == 9223372036854775807 || r.Deals.CategoryNames[i] == "?" {
+			continue
+		}
+		k := Kategorie{ID: id, Name: r.Deals.CategoryNames[i]}
+		if i < len(r.Deals.CategoryCount) {
+			k.Anzahl = r.Deals.CategoryCount[i]
+		}
+		erg.Kategorien = append(erg.Kategorien, k)
 	}
 	wert := func(reihe []int, i int) int {
 		if i >= 0 && i < len(reihe) {
@@ -183,4 +210,35 @@ func LiesDeals(koerper []byte, preisart, zeitraum int) (DealErgebnis, error) {
 		erg.Deals = append(erg.Deals, dl)
 	}
 	return erg, nil
+}
+
+// Hauptkategorien liefert die obersten Kategorien eines Marktes (Keepa:
+// category=0, ein Token).
+func (c *Client) Hauptkategorien(ctx context.Context, domain int) ([]Kategorie, int, error) {
+	koerper, err := c.senden(ctx, "category", url.Values{"domain": {strconv.Itoa(domain)}, "category": {"0"}}, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	var r struct {
+		TokensLeft int        `json:"tokensLeft"`
+		Error      *rohFehler `json:"error"`
+		Categories map[string]struct {
+			CatID int64  `json:"catId"`
+			Name  string `json:"name"`
+		} `json:"categories"`
+	}
+	if err := json.Unmarshal(koerper, &r); err != nil {
+		return nil, 0, fmt.Errorf("keepa: Kategorien nicht lesbar: %w", err)
+	}
+	if r.Error != nil && r.Error.Type != "" {
+		return nil, 0, fmt.Errorf("keepa: %s: %s", r.Error.Type, r.Error.Message)
+	}
+	var out []Kategorie
+	for _, k := range r.Categories {
+		if k.CatID > 0 && strings.TrimSpace(k.Name) != "" {
+			out = append(out, Kategorie{ID: k.CatID, Name: strings.TrimSpace(k.Name)})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out, r.TokensLeft, nil
 }

@@ -236,7 +236,23 @@ So schnell wie Keepa selbst — Minuten, nicht Sekunden.{{if .KeepaDealProdukte}
   {{range .KeepaSuchen}}
   <tr>
     <td class="umbruch"><strong>{{.Name}}</strong><br><small class="leise">Amazon.{{.Markt}} · {{.PreisartText}} · {{.ZeitraumText}} · alle {{.Minuten}} Min · max. {{.MaxJeLauf}} je Lauf</small></td>
-    <td class="umbruch"><small>{{.FilterText}}</small></td>
+    <td class="umbruch"><small>{{.FilterText}}</small>
+      <details class="bearbeiten"><summary>Kategorien ausblenden</summary>
+      {{if .KategorieWahl}}
+      <form method="post" action="/monitor/keepa/{{.ID}}/ausschluss" class="kat-auswahl">
+        <div class="kat-wahl">
+        {{range .KategorieWahl}}<label class="schmal"><input type="checkbox" name="ausschluss_id" value="{{.ID}}" data-name="{{.Name}}" {{if .An}}checked{{end}}> {{.Name}}</label>{{end}}
+        </div>
+        <p class="aktionen"><button type="button" class="schmal typisch">Typische anhaken (Kleidung, Schuhe, Bücher …)</button>
+          <button type="submit" class="schmal primaer">Speichern</button></p>
+      </form>
+      {{else}}
+      <form method="post" action="/monitor/keepa/kategorien" class="aktionen">
+        <input type="hidden" name="markt" value="{{.Markt}}">
+        <small>Die Kategorien von Amazon.{{.Markt}} kennt das Tool noch nicht — sie kommen mit der ersten Abfrage, oder gleich:</small>
+        <button type="submit" class="schmal">Von Keepa laden (1 Token)</button></form>
+      {{end}}
+      </details></td>
     <td class="umbruch"><small>{{.Status}}</small>{{if .Geprueft}}<br><small class="leise">{{.Geprueft}}</small>{{end}}</td>
     <td class="aktionen">
       {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
@@ -250,6 +266,11 @@ So schnell wie Keepa selbst — Minuten, nicht Sekunden.{{if .KeepaDealProdukte}
 </table>
 </div>
 {{end}}
+<form method="post" action="/monitor/keepa/kategorien" class="aktionen kat-laden">
+  <small>Kategorien zum Ausblenden laden:</small>
+  <select name="markt" aria-label="Markt">{{range .Maerkte}}<option value="{{.Code}}">Amazon.{{.Code}}</option>{{end}}</select>
+  <button type="submit" class="schmal">Kategorien laden (1 Token)</button>
+</form>
 <details class="karte neu"{{if not .KeepaSuchen}} open{{end}}><summary>+ Keepa-Suche anlegen</summary>
 <form method="post" action="/monitor/keepa" class="formraster">
   <label>Name <small>wird zur Kategorie — Regeln wählen danach</small><input name="name" placeholder="z. B. Preisstürze DE"></label>
@@ -265,7 +286,16 @@ So schnell wie Keepa selbst — Minuten, nicht Sekunden.{{if .KeepaDealProdukte}
   <label>Preis bis € <input name="max_preis" placeholder="z. B. 800"></label>
   <label class="breit">Suchbegriff im Titel <small>optional, alle Wörter müssen vorkommen, z. B. „lego technic“</small><input name="suchbegriff"></label>
   <label>Nur Kategorien <small>Keepa-Kategorie-IDs mit Komma, leer: alle</small><input name="kategorien" placeholder="z. B. 562066"></label>
-  <label>Ohne Kategorien <input name="ausschluss" placeholder="z. B. 186606"></label>
+  <label>Ohne Kategorien (IDs) <small>zusätzlich zu den Häkchen unten</small><input name="ausschluss" placeholder="z. B. 186606"></label>
+  <fieldset class="breit kat-auswahl"><legend>Kategorien ausblenden <small>z. B. Kleidung — gilt samt Unterkategorien</small></legend>
+    {{range .KeepaKategorien}}
+    <div class="kat-wahl" data-markt="{{.Markt}}">
+      {{range .Kategorien}}<label class="schmal"><input type="checkbox" name="ausschluss_id" value="{{.ID}}" data-name="{{.Name}}"> {{.Name}}</label>{{end}}
+    </div>
+    {{end}}
+    <p class="kat-leer"><small>Für diesen Markt kennt das Tool die Kategorien noch nicht — oben „Kategorien laden“, oder später an der Suche unter „Kategorien ausblenden“.</small></p>
+    <p><button type="button" class="schmal typisch">Typische anhaken (Kleidung, Schuhe, Bücher …)</button></p>
+  </fieldset>
   <fieldset class="breit"><legend>Verkauf auf <small>keiner angehakt: wie unter Einstellungen</small></legend><div class="haken">
     {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
   </div></fieldset>
@@ -602,6 +632,35 @@ Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals kommen auto
 
 <datalist id="kategorien">{{range .Kategorien}}<option value="{{.}}">{{end}}</datalist>
 <script>
+(function () {
+  // Kategorien ausblenden: typische Nicht-Arbitrage-Kategorien anhaken und
+  // im Formular nur die Kategorien des gewählten Marktes zeigen.
+  var typisch = /fashion|bekleid|kleidung|schuh|schmuck|uhren|bücher|buch|kindle|musik|dvd|blu-ray|film|beauty|drogerie|lebensmittel|getränk|apps|vêtement|chaussure|bijou|livre|abbigliamento|scarpe|gioiell|libri|ropa|zapato|joyer|libros|clothing|shoes|jewel|books|grocery|kosmetik/i;
+  document.querySelectorAll('.typisch').forEach(function (k) {
+    k.addEventListener('click', function () {
+      var box = k.closest('.kat-auswahl');
+      box.querySelectorAll('input[data-name]').forEach(function (i) {
+        if (!i.closest('[hidden]') && typisch.test(i.getAttribute('data-name'))) i.checked = true;
+      });
+    });
+  });
+  document.querySelectorAll('form[action="/monitor/keepa"]').forEach(function (f) {
+    var wahl = f.querySelector('select[name="markt"]');
+    if (!wahl) return;
+    function zeige() {
+      var da = false;
+      f.querySelectorAll('.kat-wahl[data-markt]').forEach(function (g) {
+        g.hidden = g.getAttribute('data-markt') !== wahl.value;
+        if (g.hidden) g.querySelectorAll('input').forEach(function (i) { i.checked = false; });
+        else da = true;
+      });
+      var leer = f.querySelector('.kat-leer');
+      if (leer) leer.hidden = da;
+    }
+    wahl.addEventListener('change', zeige);
+    zeige();
+  });
+})();
 (function () {
   var nav = document.getElementById('monitor-reiter');
   if (!nav) return;

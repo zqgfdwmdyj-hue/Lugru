@@ -45,3 +45,19 @@ func TestDealsAbfrage(t *testing.T) {
 		t.Errorf("Deal: %+v", d)
 	}
 }
+
+func TestHauptkategorien(t *testing.T) {
+	ks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/category" || r.URL.Query().Get("category") != "0" || r.URL.Query().Get("domain") != "3" {
+			t.Errorf("Anfrage %s", r.URL)
+		}
+		fmt.Fprint(w, `{"tokensLeft": 9, "categories": {"186606": {"catId": 186606, "name": "Bücher"}, "562066": {"catId": 562066, "name": "Elektronik & Foto"}}}`)
+	}))
+	defer ks.Close()
+	c := NeuerClient("k")
+	c.BasisURL = ks.URL
+	got, rest, err := c.Hauptkategorien(context.Background(), 3)
+	if err != nil || rest != 9 || len(got) != 2 || got[0].Name != "Bücher" || got[1].ID != 562066 {
+		t.Fatalf("%v %d %+v", err, rest, got)
+	}
+}

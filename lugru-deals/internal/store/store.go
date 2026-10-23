@@ -420,6 +420,13 @@ CREATE TABLE IF NOT EXISTS keepa_suchen (
     angelegt_am  TEXT    NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS keepa_kategorien (
+    markt TEXT    NOT NULL,
+    id    INTEGER NOT NULL,
+    name  TEXT    NOT NULL,
+    PRIMARY KEY (markt, id)
+);
+
 CREATE TABLE IF NOT EXISTS deal_rueckblick (
     deal_id     INTEGER PRIMARY KEY,
     geprueft_am TEXT    NOT NULL,
