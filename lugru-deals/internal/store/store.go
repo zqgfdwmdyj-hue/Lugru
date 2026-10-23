@@ -228,7 +228,8 @@ CREATE TABLE IF NOT EXISTS monitor_produkte (
     prio           TEXT    NOT NULL DEFAULT 'normal',
     stichworte     TEXT    NOT NULL DEFAULT '',
     notiz          TEXT    NOT NULL DEFAULT '',
-    einkauf        TEXT    NOT NULL DEFAULT ''
+    einkauf        TEXT    NOT NULL DEFAULT '',
+    herkunft       TEXT    NOT NULL DEFAULT ''
 );
 
 -- produkt_id 0 heißt: die Regel gilt für jedes Produkt. shops leer heißt:
@@ -396,6 +397,29 @@ CREATE TABLE IF NOT EXISTS monitor_gemeldet (
     zeit       TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS keepa_suchen (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    markt        TEXT    NOT NULL DEFAULT 'DE',
+    preisart     INTEGER NOT NULL DEFAULT 0,
+    min_rabatt   INTEGER NOT NULL DEFAULT 20,
+    zeitraum     INTEGER NOT NULL DEFAULT 0,
+    min_preis    INTEGER NOT NULL DEFAULT 0,
+    max_preis    INTEGER NOT NULL DEFAULT 0,
+    max_rang     INTEGER NOT NULL DEFAULT 0,
+    suchbegriff  TEXT    NOT NULL DEFAULT '',
+    kategorien   TEXT    NOT NULL DEFAULT '',
+    ausschluss   TEXT    NOT NULL DEFAULT '',
+    maerkte      TEXT    NOT NULL DEFAULT '',
+    modus        TEXT    NOT NULL DEFAULT 'amazon',
+    minuten      INTEGER NOT NULL DEFAULT 5,
+    max_je_lauf  INTEGER NOT NULL DEFAULT 20,
+    aktiv        INTEGER NOT NULL DEFAULT 1,
+    geprueft_am  TEXT    NOT NULL DEFAULT '',
+    status       TEXT    NOT NULL DEFAULT '',
+    angelegt_am  TEXT    NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS deal_rueckblick (
     deal_id     INTEGER PRIMARY KEY,
     geprueft_am TEXT    NOT NULL,
@@ -542,6 +566,7 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	{"monitor_produkte", "stichworte", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_produkte", "notiz", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_produkte", "einkauf", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_produkte", "herkunft", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_treffer", "modus", `TEXT NOT NULL DEFAULT ''`},
 	// Discord-Channel der Nachricht und ✅ darunter, für die Auswertung.
 	{"monitor_posts", "kanal_id", `TEXT NOT NULL DEFAULT ''`},

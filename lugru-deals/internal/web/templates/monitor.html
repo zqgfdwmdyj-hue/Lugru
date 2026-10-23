@@ -222,6 +222,70 @@ lang nur wieder, wenn sie günstiger wird. Alle {{.AmazonMinuten}} Minuten (Eins
 </div>
 </details>
 {{end}}
+
+<h2 id="keepadeals">Keepa-Preisstürze</h2>
+<p class="hinweis">Keepa meldet, welche Artikel gerade im Preis gefallen sind — bis zu 150 je Abfrage für wenige Token,
+ohne jede ASIN einzeln zu fragen. Jeder neue Preissturz wird wie die ASIN-Liste durchgerechnet (Einkauf auf dem Markt der
+Suche, Verkauf auf den Zielmärkten); gepostet wird, was eine Regel für die Kategorie der Suche erfüllt.
+So schnell wie Keepa selbst — Minuten, nicht Sekunden.{{if .KeepaDealProdukte}} Bisher {{.KeepaDealProdukte}} Artikel durchgerechnet.{{end}}</p>
+{{if .KeepaSuchen}}
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Suche</th><th>Filter</th><th>Zuletzt</th><th></th></tr></thead>
+  <tbody>
+  {{range .KeepaSuchen}}
+  <tr>
+    <td class="umbruch"><strong>{{.Name}}</strong><br><small class="leise">Amazon.{{.Markt}} · {{.PreisartText}} · {{.ZeitraumText}} · alle {{.Minuten}} Min · max. {{.MaxJeLauf}} je Lauf</small></td>
+    <td class="umbruch"><small>{{.FilterText}}</small></td>
+    <td class="umbruch"><small>{{.Status}}</small>{{if .Geprueft}}<br><small class="leise">{{.Geprueft}}</small>{{end}}</td>
+    <td class="aktionen">
+      {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
+      <form method="post" action="/monitor/keepa/{{.ID}}/aktiv"><input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
+        <button type="submit" class="schmal">{{if .Aktiv}}Ausschalten{{else}}Einschalten{{end}}</button></form>
+      <form method="post" action="/monitor/keepa/{{.ID}}/loeschen"><button type="submit" class="schmal gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+<details class="karte neu"{{if not .KeepaSuchen}} open{{end}}><summary>+ Keepa-Suche anlegen</summary>
+<form method="post" action="/monitor/keepa" class="formraster">
+  <label>Name <small>wird zur Kategorie — Regeln wählen danach</small><input name="name" placeholder="z. B. Preisstürze DE"></label>
+  <label>Einkauf auf
+    <select name="markt">{{range .Maerkte}}<option value="{{.Code}}">Amazon.{{.Code}}</option>{{end}}</select></label>
+  <label>Preis von
+    <select name="preisart"><option value="0">Amazon selbst</option><option value="10">FBA-Angebot</option><option value="1">alle Neuangebote</option><option value="9">Amazon Warehouse</option></select></label>
+  <label>gefallen in den letzten
+    <select name="zeitraum"><option value="0">24 Stunden</option><option value="1">7 Tagen</option><option value="2">31 Tagen</option><option value="3">90 Tagen</option></select></label>
+  <label>Preissturz mindestens % <small>gegenüber dem Schnitt im Zeitraum, ab 10</small><input name="min_rabatt" type="number" min="10" value="20"></label>
+  <label>Verkaufsrang höchstens <small>leer: egal — z. B. 50000 für gut verkäufliche</small><input name="max_rang" type="number" min="0" placeholder="z. B. 50000"></label>
+  <label>Preis ab € <input name="min_preis" placeholder="z. B. 20"></label>
+  <label>Preis bis € <input name="max_preis" placeholder="z. B. 800"></label>
+  <label class="breit">Suchbegriff im Titel <small>optional, alle Wörter müssen vorkommen, z. B. „lego technic“</small><input name="suchbegriff"></label>
+  <label>Nur Kategorien <small>Keepa-Kategorie-IDs mit Komma, leer: alle</small><input name="kategorien" placeholder="z. B. 562066"></label>
+  <label>Ohne Kategorien <input name="ausschluss" placeholder="z. B. 186606"></label>
+  <fieldset class="breit"><legend>Verkauf auf <small>keiner angehakt: wie unter Einstellungen</small></legend><div class="haken">
+    {{range .Maerkte}}<label class="schmal"><input type="checkbox" name="zielmarkt" value="{{.Code}}"> Amazon.{{.Code}}</label>{{end}}
+  </div></fieldset>
+  <fieldset class="breit"><legend>Verkaufswege</legend><div class="haken">
+    <label class="schmal"><input type="checkbox" name="modus" value="amazon" checked> Amazon-Arbitrage</label>
+    <label class="schmal"><input type="checkbox" name="modus" value="ebay"> eBay</label>
+  </div></fieldset>
+  <label>alle … Minuten <small>ab 2 — eine Abfrage kostet nur wenige Token</small><input name="minuten" type="number" min="2" value="5"></label>
+  <label>höchstens … neue je Abfrage durchrechnen <small>jeder kostet 1 Token je Markt</small><input name="max_je_lauf" type="number" min="1" value="20"></label>
+  <fieldset class="breit"><legend>Regel gleich mit anlegen <small>optional — sonst unter „Regeln“</small></legend>
+    <div class="paar drei">
+      <label>Channel <select name="channel_id"><option value="0">— keine Regel —</option>
+        {{range .Channels}}<option value="{{.ID}}">#{{.Name}}</option>{{end}}</select></label>
+      <label>Mindestmarge % <input name="min_marge" value="10"></label>
+      <label>Mindestverkäufe/Monat <input name="min_sales" type="number" min="0" placeholder="z. B. 20"></label>
+    </div>
+  </fieldset>
+  <button type="submit" class="primaer">Suche anlegen</button>
+</form>
+</details>
 </section>
 
 <section id="regeln" data-reiter="regeln">

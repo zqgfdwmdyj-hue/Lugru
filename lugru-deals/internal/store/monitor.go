@@ -94,6 +94,10 @@ type MonitorProdukt struct {
 	// Produktseite bei Amazon und die Preise kommen von Keepa.
 	Einkauf string
 
+	// Herkunft ist HerkunftKeepaDeal, wenn die Keepa-Suche nach Preisstürzen
+	// das Produkt angelegt hat; leer bei allem, was von Hand kam.
+	Herkunft string
+
 	// Nur während einer Prüfung im Modus eBay gesetzt, nicht gespeichert:
 	// Marktpreis, aus wie vielen Angeboten er stammt, und die Suche bei eBay.
 	EbayVK     money.Cents
@@ -224,7 +228,7 @@ func shopSchluessel(s string) string {
 
 const monitorProduktSpalten = `id, name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv,
 	angelegt_am, geprueft_am, status, bester_shop, bester_cent, bewertet_shop, bewertet_cent, bewertet_am,
-	modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz, einkauf`
+	modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz, einkauf, herkunft`
 
 func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var p MonitorProdukt
@@ -232,7 +236,7 @@ func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var angelegt, geprueft, bewertet string
 	if err := z.Scan(&p.ID, &p.Name, &p.URL, &p.EAN, &p.ASIN, &p.Maerkte, &p.MaxEK, &p.Shops, &verz, &aktiv,
 		&angelegt, &geprueft, &p.Status, &p.BesterShop, &p.BesterCent, &p.BewertetShop, &p.BewertetCent, &bewertet,
-		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie, &p.Prio, &p.Stichworte, &p.Notiz, &p.Einkauf); err != nil {
+		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie, &p.Prio, &p.Stichworte, &p.Notiz, &p.Einkauf, &p.Herkunft); err != nil {
 		return MonitorProdukt{}, err
 	}
 	p.AuchVerzoegert, p.Aktiv = verz != 0, aktiv != 0
@@ -264,13 +268,13 @@ func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 	}
 	erg, err := s.db.Exec(`
 		INSERT INTO monitor_produkte (name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv, angelegt_am,
-			modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz, einkauf)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz, einkauf, herkunft)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(p.Name), p.URL, strings.TrimSpace(p.EAN), strings.ToUpper(strings.TrimSpace(p.ASIN)),
 		p.Maerkte, int64(p.MaxEK), strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert), jaNein(p.Aktiv),
 		time.Now().UTC().Format(time.RFC3339),
 		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie),
-		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz), strings.TrimSpace(p.Einkauf))
+		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz), strings.TrimSpace(p.Einkauf), p.Herkunft)
 	if err != nil {
 		return 0, fmt.Errorf("store: Monitor-Produkt nicht anlegbar: %w", err)
 	}

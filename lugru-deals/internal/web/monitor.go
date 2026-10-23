@@ -92,6 +92,10 @@ type monitorDaten struct {
 	AsinBedarf    string
 	KeepaRate     int
 	AmazonMinuten int
+	// KeepaSuchen sind die Suchen nach Preisstürzen, KeepaDealProdukte die
+	// Artikel, die sie bisher angelegt haben.
+	KeepaSuchen       []keepaSucheAnzeige
+	KeepaDealProdukte int
 
 	PrioHoch       int
 	PrioNiedrig    int
@@ -200,6 +204,13 @@ func (srv *Server) monitorDaten() monitorDaten {
 	}
 	produktName := map[int64]string{}
 	for _, p := range produkte {
+		if p.Herkunft == store.HerkunftKeepaDeal {
+			// Von Keepa-Preisstürzen angelegt: nicht in den Listen, sonst
+			// würden sie nach wenigen Tagen unübersichtlich lang.
+			d.KeepaDealProdukte++
+			produktName[p.ID] = p.Name
+			continue
+		}
 		a := monitorProduktAnzeige{MonitorProdukt: p}
 		if p.MaxEK > 0 {
 			a.MaxEKText = p.MaxEK.String()
@@ -254,6 +265,7 @@ func (srv *Server) monitorDaten() monitorDaten {
 	}
 
 	d.AsinBedarf = tokenText(srv.amazonTokenBedarf(produkte))
+	d.KeepaSuchen = srv.keepaSuchenAnzeigen()
 	d.AmazonMinuten = srv.amazonMinuten()
 	srv.tokenMu.Lock()
 	d.KeepaRate = srv.tokenRate

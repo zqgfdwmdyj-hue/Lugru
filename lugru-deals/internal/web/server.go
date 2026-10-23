@@ -256,6 +256,9 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /monitor/feeds/{id}/loeschen", srv.loescheFeed)
 	mux.HandleFunc("POST /monitor/import", srv.zeigeImport)
 	mux.HandleFunc("POST /monitor/asins", srv.speichereAsinListe)
+	mux.HandleFunc("POST /monitor/keepa", srv.speichereKeepaSuche)
+	mux.HandleFunc("POST /monitor/keepa/{id}/aktiv", srv.schalteKeepaSuche)
+	mux.HandleFunc("POST /monitor/keepa/{id}/loeschen", srv.loescheKeepaSuche)
 	mux.HandleFunc("POST /monitor/import/uebernehmen", srv.uebernehmeImport)
 
 	mux.HandleFunc("GET /einstellungen", srv.zeigeEinstellungen)

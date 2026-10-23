@@ -1,6 +1,7 @@
 package keepa
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -119,12 +120,29 @@ func (c *Client) Produkt(ctx context.Context, asin string, domain int) (Antwort,
 // Antwortkörper. Key, Kontingent und HTTP-Fehler behandelt sie für alle
 // Anfragen gleich; q bringt nur die fachlichen Parameter mit.
 func (c *Client) abfrage(ctx context.Context, q url.Values) ([]byte, error) {
-	q.Set("key", c.Key)
-	ziel := c.BasisURL + "/product?" + q.Encode()
+	return c.senden(ctx, "product", q, nil)
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ziel, nil)
+// senden schickt eine Anfrage an einen Endpunkt der Keepa-API; mit Körper
+// als POST mit JSON, sonst als GET.
+func (c *Client) senden(ctx context.Context, pfad string, q url.Values, koerperRaus []byte) ([]byte, error) {
+	if q == nil {
+		q = url.Values{}
+	}
+	q.Set("key", c.Key)
+	ziel := c.BasisURL + "/" + pfad + "?" + q.Encode()
+
+	methode := http.MethodGet
+	var rein io.Reader
+	if koerperRaus != nil {
+		methode, rein = http.MethodPost, bytes.NewReader(koerperRaus)
+	}
+	req, err := http.NewRequestWithContext(ctx, methode, ziel, rein)
 	if err != nil {
 		return nil, fmt.Errorf("keepa: Anfrage nicht baubar: %w", ohneKey(err))
+	}
+	if koerperRaus != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := c.HTTP.Do(req)

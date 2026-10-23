@@ -254,6 +254,18 @@ Intervall (Vorgabe 60 Minuten), holt je Markt 100 ASINs in einer Abfrage und
 pausiert, solange das Kontingent leer ist. Den geschätzten Verbrauch in
 Token je Minute zeigt die Seite.
 
+**Keepa-Preisstürze:** Unter *Monitor → Produkte → Keepa-Suche anlegen*
+fragt der Monitor Keepa regelmäßig (Vorgabe alle 5 Minuten, frühestens alle
+2), welche Artikel auf einem Amazon-Markt gerade im Preis gefallen sind —
+bis zu 150 je Abfrage für wenige Token, gefiltert nach Preisart (Amazon,
+FBA, alle Neuangebote, Warehouse), Mindest-Preissturz, Zeitraum, Preis,
+Verkaufsrang, Titel und Keepa-Kategorien. Jeder neue Preissturz wird wie
+die ASIN-Liste durchgerechnet (ein Token je Markt, höchstens so viele je
+Abfrage wie eingestellt) und gepostet, wenn eine Regel für die Kategorie
+der Suche passt; die Suche kann diese Regel gleich mit anlegen. Derselbe
+Preissturz wird nur einmal gerechnet. So schnell wie Keepa selbst, also
+Minuten.
+
 **Weitere Bausteine des Monitors** (alle unter *Monitor*):
 
 - **mydealz:** neue Deals aus dem Feed von mydealz werden mitgelesen; passt
