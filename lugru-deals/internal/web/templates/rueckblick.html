@@ -67,7 +67,7 @@ im Post. Gewinne je 1 Stück.{{if .OhneDaten}} {{.OhneDaten}} Deals ohne Keepa-D
   {{range .Zeilen}}
   <tr>
     <td>{{.Datum}}</td>
-    <td class="umbruch"><span>{{.Titel}}<br><small class="leise">{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener">{{.ASIN}}</a>{{else}}{{.ASIN}}{{end}} · {{.Markt}} · #{{.Channel}}{{if .B2B}} <span class="chip akzent">B2B</span>{{end}}{{if .Hinweis}} · {{.Hinweis}}{{end}}</small></span></td>
+    <td class="umbruch"><span>{{.Titel}}<br><small class="leise">{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener">{{.ASIN}}</a>{{else}}{{.ASIN}}{{end}} · {{.Markt}} · <span class="kanal {{kanalfarbe .Channel}}">#{{.Channel}}</span>{{if .B2B}} <span class="chip akzent">B2B</span>{{end}}{{if .Hinweis}} · {{.Hinweis}}{{end}}</small></span></td>
     <td class="zahl">{{.VK}}</td>
     <td class="zahl">{{.Gewinn}}<br><small class="leise">{{.Marge}}</small></td>
     <td class="zahl">{{.Tief}}{{if .TiefInfo}}<br><small class="leise">{{.TiefInfo}}</small>{{end}}</td>

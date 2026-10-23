@@ -4,23 +4,65 @@
 {{if .Meldung}}<p class="meldung">{{.Meldung}}</p>{{end}}
 {{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
 
-<div class="tabellenkarte">
-<table>
-  <thead><tr><th>Name</th><th>Gruppe</th><th>Webhook</th><th>Mention</th><th>Zustand</th><th></th></tr></thead>
-  <tbody>
+<div class="kanal-kopf">
+  <p class="statuszeile">
+    <span class="chip neutral">{{len .Channels}} Channels</span>
+    {{if .Defekt}}<span class="chip negativ">{{.Defekt}} defekt — „Testen“ prüft den Webhook</span>{{else if .Channels}}<span class="chip positiv">alle Webhooks ok</span>{{end}}
+  </p>
+  <input type="search" id="kanal-suche" placeholder="Channel suchen …" aria-label="Channel suchen">
+</div>
+
+<details class="karte neu"{{if not .Channels}} open{{end}}><summary>+ Neuer Channel</summary>
+<form method="post" action="/channels" class="formraster">
+  <label>Name <input name="name" required placeholder="z. B. shop-deals"></label>
+  <label>Gruppe <small>z. B. der Discord-Server</small><input name="gruppe" list="gruppen"></label>
+  <label class="breit">Webhook-URL <small>in Discord: Channel-Einstellungen → Integrationen → Webhooks</small>
+    <input name="webhook_url" type="url" required></label>
+  <label>Mention
+    <select name="mention_typ">
+      <option value="keine">keine</option>
+      <option value="everyone">@everyone</option>
+      <option value="here">@here</option>
+      <option value="rolle">Rolle</option>
+    </select></label>
+  <label>Rollen-ID <small>nur bei Mention „Rolle"</small><input name="rollen_id"></label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+</details>
+
+{{range .Karten}}
+<section class="kanal-gruppe">
+  <h2>{{.Name}} <small class="leise">{{len .Channels}}</small></h2>
+  <div class="kanal-raster">
   {{range .Channels}}
-  <tr>
-    <td>{{.Name}}</td>
-    <td>
+  <article class="kanal-karte kf-{{.FarbeAnzeige}}{{if .Defekt}} defekt{{end}}" data-suche="{{.Name}} {{.Gruppe}}">
+    <header>
+      <span class="kanal">#{{.Name}}</span>
+      {{if .Defekt}}<span class="chip negativ">defekt</span>{{else}}<span class="chip positiv">ok</span>{{end}}
+    </header>
+    <p class="kanal-zahlen">
+      <span><b>{{.Posts30}}</b> Posts in 30 Tagen</span>
+      <span>{{if .Zuletzt}}zuletzt {{.Zuletzt}}{{else}}noch nichts gepostet{{end}}</span>
+    </p>
+    <p class="kanal-info">
+      {{if eq .MentionTyp "everyone"}}<span class="chip neutral">@everyone</span>{{else if eq .MentionTyp "here"}}<span class="chip neutral">@here</span>{{else if eq .MentionTyp "rolle"}}<span class="chip neutral">@Rolle</span>{{end}}
+      {{range .Verwendung}}<span class="chip akzent">{{.}}</span>{{end}}
+    </p>
+    <div class="aktionen">
+      <form method="post" action="/channels/{{.ID}}/test"><button type="submit" class="schmal">Testen</button></form>
+    </div>
+    <details class="bearbeiten"><summary>Bearbeiten</summary>
+      <form method="post" action="/channels/{{.ID}}/farbe" class="farbwahl">
+        {{$f := .Farbe}}{{$id := .ID}}
+        <label class="farbe kf-auto" title="automatisch"><input type="radio" name="farbe" value="" {{if not $f}}checked{{end}}><span>A</span></label>
+        {{range $.Farben}}<label class="farbe kf-{{.}}" title="{{.}}"><input type="radio" name="farbe" value="{{.}}" {{if eq . $f}}checked{{end}}><span></span></label>{{end}}
+        <button type="submit" class="schmal">Farbe</button>
+      </form>
       {{/* Die Gruppe fasst Channels zusammen, etwa je Discord-Server — die
            Statistik lässt sich danach umschalten. */}}
       <form method="post" action="/channels/{{.ID}}/gruppe" class="aktionen">
-        <input name="gruppe" list="gruppen" value="{{.Gruppe}}" size="12" placeholder="z. B. Server 1"
-               aria-label="Gruppe von {{.Name}}">
-        <button type="submit" class="schmal">Speichern</button></form>
-    </td>
-    <td><code>{{.WebhookMaskiert}}</code></td>
-    <td>
+        <input name="gruppe" list="gruppen" value="{{.Gruppe}}" size="12" placeholder="Gruppe" aria-label="Gruppe von {{.Name}}">
+        <button type="submit" class="schmal">Gruppe</button></form>
       {{/* Wen der Post am Ende der Titelzeile erwähnt: @everyone, @here
            oder eine Rolle wie @Super Low Margin (über ihre Rollen-ID). */}}
       <form method="post" action="/channels/{{.ID}}/mention" class="aktionen">
@@ -30,41 +72,30 @@
           <option value="here" {{if eq .MentionTyp "here"}}selected{{end}}>@here</option>
           <option value="rolle" {{if eq .MentionTyp "rolle"}}selected{{end}}>Rolle</option>
         </select>
-        <input name="rollen_id" value="{{.RollenID}}" size="20" placeholder="Rollen-ID"
-               aria-label="Rollen-ID von {{.Name}}">
-        <button type="submit" class="schmal">Speichern</button></form>
-    </td>
-    <td>{{if .Defekt}}<span class="chip negativ">defekt</span>{{else}}<span class="chip positiv">ok</span>{{end}}</td>
-    <td class="aktionen">
-      <form method="post" action="/channels/{{.ID}}/test">
-        <button type="submit">Testen</button></form>
-      <form method="post" action="/channels/{{.ID}}/loeschen">
-        <button type="submit" class="gefahr">Löschen</button></form>
-    </td>
-  </tr>
-  {{else}}
-  <tr><td colspan="6" class="leer">Noch kein Channel angelegt.</td></tr>
+        <input name="rollen_id" value="{{.RollenID}}" size="14" placeholder="Rollen-ID" aria-label="Rollen-ID von {{.Name}}">
+        <button type="submit" class="schmal">Mention</button></form>
+      <p class="leise"><small>Webhook <code>{{.WebhookMaskiert}}</code></small></p>
+      <form method="post" action="/channels/{{.ID}}/loeschen"><button type="submit" class="schmal gefahr">Channel löschen</button></form>
+    </details>
+  </article>
   {{end}}
-  </tbody>
-</table>
-</div>
-
-<h2>Neuer Channel</h2>
-<form method="post" action="/channels" class="karte">
-  <label>Name <input name="name" required></label>
-  <label>Webhook-URL <input name="webhook_url" type="url" required></label>
-  <label>Mention
-    <select name="mention_typ">
-      <option value="keine">keine</option>
-      <option value="everyone">@everyone</option>
-      <option value="here">@here</option>
-      <option value="rolle">Rolle</option>
-    </select></label>
-  <label>Rollen-ID <small>nur bei Mention „Rolle"</small><input name="rollen_id"></label>
-  <label>Gruppe <small>z. B. der Discord-Server — für die getrennte Statistik, leer lassen geht auch</small>
-    <input name="gruppe" list="gruppen"></label>
-  <button type="submit" class="primaer">Anlegen</button>
-</form>
+  </div>
+</section>
+{{else}}
+<p class="leer">Noch kein Channel angelegt.</p>
+{{end}}
 <datalist id="gruppen">{{range .Gruppen}}<option value="{{.}}">{{end}}</datalist>
+<script>
+(function () {
+  var feld = document.getElementById('kanal-suche');
+  if (!feld) return;
+  feld.addEventListener('input', function () {
+    var q = feld.value.toLowerCase();
+    document.querySelectorAll('.kanal-karte').forEach(function (k) {
+      k.hidden = q !== '' && k.getAttribute('data-suche').toLowerCase().indexOf(q) < 0;
+    });
+  });
+})();
+</script>
 {{template "fuss"}}
 {{end}}

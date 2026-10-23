@@ -78,7 +78,7 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
   <div>{{template "kartenvorschau" .Karte}}</div>
   <div class="karte">
     <p><strong>So würde der Post aussehen.</strong> Beim Test wird nichts gesendet.</p>
-    {{if .Channels}}<p>Ginge in: {{range .Channels}}<span class="chip positiv">#{{.Name}}</span> {{end}}</p>
+    {{if .Channels}}<p>Ginge in: {{range .Channels}}<span class="kanal {{kanalfarbe .Name}}">#{{.Name}}</span> {{end}}</p>
     {{else}}<p>Keine Regel passt — der Treffer würde nur protokolliert.</p>{{end}}
   </div>
 </div>
@@ -261,7 +261,7 @@ lang nur wieder, wenn sie günstiger wird. Alle {{.AmazonMinuten}} Minuten (Eins
   <tbody>
   {{range .Regeln}}
   <tr>
-    <td>#{{.ChannelName}}{{if .Name}}<br><small>{{.Name}}</small>{{end}}</td>
+    <td><span class="kanal {{kanalfarbe .ChannelName}}">#{{.ChannelName}}</span>{{if .Name}}<br><small>{{.Name}}</small>{{end}}</td>
     <td>{{.ProduktName}}{{if .Modus}}<br><small>nur {{if eq .Modus "ankauf"}}Ankauf{{else if eq .Modus "ebay"}}eBay{{else}}Amazon{{end}}</small>{{end}}{{if .Kategorie}}<br><small>Kategorie {{.Kategorie}}</small>{{end}}</td>
     <td>{{if .MinMargeText}}Marge {{.MinMargeText}} {{end}}{{if .MinGewinnText}}Gewinn {{.MinGewinnText}} {{end}}{{if .MinSales}}{{.MinSales}} Verkäufe{{end}}
       {{if not (or .MinMargeText .MinGewinnText .MinSales)}}<small>keine Schwelle</small>{{end}}</td>
@@ -293,7 +293,7 @@ lang nur wieder, wenn sie günstiger wird. Alle {{.AmazonMinuten}} Minuten (Eins
   <tr>
     <td>{{if eq .Art "reisen"}}✈️{{else if eq .Art "leasing"}}🚗{{else}}🔥{{end}} {{.Name}}<br><small>{{.Quelle}}</small></td>
     <td><small>{{if .Filter}}{{.Filter}}{{else}}alle{{end}}</small></td>
-    <td>#{{.ChannelName}}</td>
+    <td><span class="kanal {{kanalfarbe .ChannelName}}">#{{.ChannelName}}</span></td>
     <td><small>{{.Status}}</small></td>
     <td class="aktionen">
       {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
@@ -369,7 +369,7 @@ lang nur wieder, wenn sie günstiger wird. Alle {{.AmazonMinuten}} Minuten (Eins
   <thead><tr><th>Podcasts</th><th>Channel</th><th>Zuletzt</th><th></th></tr></thead>
   <tbody>
   {{range .Podcasts}}
-  <tr><td>🎙️ {{.Name}}<br><small>{{.Quelle}}</small></td><td>#{{.ChannelName}}</td><td><small>{{.Status}}</small></td>
+  <tr><td>🎙️ {{.Name}}<br><small>{{.Quelle}}</small></td><td><span class="kanal {{kanalfarbe .ChannelName}}">#{{.ChannelName}}</span></td><td><small>{{.Status}}</small></td>
     <td class="aktionen">
       {{if .Aktiv}}<span class="chip positiv">aktiv</span>{{else}}<span class="chip neutral">aus</span>{{end}}
       <form method="post" action="/monitor/podcasts/{{.ID}}/aktiv"><input type="hidden" name="aktiv" value="{{if .Aktiv}}0{{else}}1{{end}}">
@@ -573,6 +573,17 @@ Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals kommen auto
     if (!a || nav.contains(a)) return;
     var anker = a.getAttribute('href').slice(1), name = ausAnker(anker);
     if (name) { zeige(name, anker); var el = document.getElementById(anker); if (el) el.scrollIntoView(); e.preventDefault(); }
+  });
+  // Links aus der Seitenleiste (/monitor#regeln) ändern auf dieser Seite
+  // nur den Anker.
+  window.addEventListener('hashchange', function () {
+    var anker = location.hash.slice(1), name = ausAnker(anker);
+    if (!name) return;
+    zeige(name, anker);
+    var el = document.getElementById(anker);
+    if (el && anker !== name) el.scrollIntoView();
+    var schalter = document.getElementById('menue-schalter');
+    if (schalter) schalter.checked = false;
   });
   var anker = location.hash.slice(1);
   var start = ausAnker(anker) || nachPfad[location.pathname.split('/')[2]];

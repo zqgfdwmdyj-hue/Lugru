@@ -69,6 +69,11 @@ type Server struct {
 	monitorMu sync.Mutex
 	// rueckblickMu schützt rueckblickLauf, den Stand des Keepa-Abgleichs
 	// für den Rückblick (siehe rueckblick.go).
+	// farben ist die Zuordnung Channel-Name → Farbe für die Vorlagen.
+	farbenMu    sync.Mutex
+	farben      map[string]string
+	farbenStand time.Time
+
 	rueckblickMu   sync.Mutex
 	rueckblickLauf rueckblickStand
 	// monitorHTTP ersetzt in Tests den Client für billiger.de; nil heißt
@@ -103,19 +108,18 @@ type Server struct {
 var Version = "Entwicklung"
 
 func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *Server {
-	return &Server{
+	srv := &Server{
 		store:       s,
 		keepa:       k,
 		http:        hc,
 		envKeepaKey: envKeepaKey,
 		reaktionen:  &abgleich{anstoss: make(chan struct{}, 1)},
-		// Die Vorlagen kennen eine einzige eigene Funktion: fahne liefert das
-		// Länder-SVG der Marktübersicht. Es als Zeichenkette durch die
-		// Seitendaten zu reichen hieße, Markup in Go-Strukturen zu tragen,
-		// die sonst nur fertige Zahlen führen.
-		tmpl: template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode, "tabelle": auswertungTabelle}).
-			ParseFS(vorlagenFS, "templates/*.html")),
 	}
+	// Eigene Funktionen der Vorlagen: fahne liefert das Länder-SVG der
+	// Marktübersicht, kanalfarbe die Farbklasse eines Channels.
+	srv.tmpl = template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode, "tabelle": auswertungTabelle, "kanalfarbe": srv.kanalfarbe}).
+		ParseFS(vorlagenFS, "templates/*.html"))
+	return srv
 }
 
 // eigeneTypen sind die Endungen, für die Go von sich aus keinen Inhaltstyp
@@ -215,6 +219,7 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /channels/{id}/test", srv.testeChannel)
 	mux.HandleFunc("POST /channels/{id}/gruppe", srv.speichereChannelGruppe)
 	mux.HandleFunc("POST /channels/{id}/mention", srv.speichereChannelMention)
+	mux.HandleFunc("POST /channels/{id}/farbe", srv.speichereChannelFarbe)
 
 	mux.HandleFunc("GET /tags", srv.zeigeTags)
 	mux.HandleFunc("POST /tags", srv.speichereTag)

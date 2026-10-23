@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS channels (
     rollen_id   TEXT    NOT NULL DEFAULT '',
     defekt      INTEGER NOT NULL DEFAULT 0,
     angelegt_am TEXT    NOT NULL,
-    gruppe      TEXT    NOT NULL DEFAULT ''
+    gruppe      TEXT    NOT NULL DEFAULT '',
+    farbe       TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS deals (
@@ -506,6 +507,7 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	// Statistik lässt sich danach trennen. Am Deal steht sie zusätzlich,
 	// damit sie das Löschen eines Channels überlebt — wie channel_name.
 	{"channels", "gruppe", `TEXT NOT NULL DEFAULT ''`},
+	{"channels", "farbe", `TEXT NOT NULL DEFAULT ''`},
 	{"deals", "gruppe", `TEXT NOT NULL DEFAULT ''`},
 	// "ermaessigt", wenn der Deal mit dem ermäßigten Umsatzsteuersatz
 	// gerechnet wurde (etwa 7 % statt 19 %); leer für den normalen.

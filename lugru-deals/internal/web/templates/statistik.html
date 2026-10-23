@@ -96,7 +96,7 @@
     <tbody>
     {{range .Liste}}
     <tr><td class="artikel">{{.Titel}} <small>{{.ASIN}}</small>{{if eq .Status "ausverkauft"}} <span class="status ausverkauft">ausverkauft</span>{{end}}</td>
-        <td>{{.Datum}}</td><td>#{{.Channel}}</td>
+        <td>{{.Datum}}</td><td><span class="kanal {{kanalfarbe .Channel}}">#{{.Channel}}</span></td>
         <td class="zahl"><b>{{.Kaeufe}}</b></td><td class="zahl">{{.Weg}}</td>
         <td><span class="chip {{.Klasse}}">{{.Ergebnis}}</span></td></tr>
     {{end}}
