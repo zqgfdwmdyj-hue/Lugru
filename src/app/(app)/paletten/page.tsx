@@ -10,7 +10,7 @@ import { MONTH_RE, palletContext, palletPhotos } from "@/lib/pallets/service";
 import { ConfirmButton } from "@/components/confirm-button";
 import { cancelPallet, checkOutPallet, undoCheckOut } from "./actions";
 import { PalletScan } from "./scan";
-import { Occupancy, PalletTabs } from "./tabs";
+import { Occupancy } from "./tabs";
 
 const kg = (n: number | null) => (n ? `${String(n).replace(".", ",")} kg` : "");
 
@@ -52,7 +52,6 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
         <div><div className="crumb">Lager</div><h1>Paletten-Lager</h1></div>
         <span className="small muted">{formatEuro(rates.pricePerMonth)} je Stellplatz und Monat · {rates.freeDays} Tage frei · <Link href="/paletten/abrechnung">Abrechnung</Link></span>
       </div>
-      <PalletTabs active="lager" />
 
       <nav className="pal-actions" aria-label="Lagerarbeit" data-testid="pal-actions">
         <Link href="/paletten?aktion=ein#scan" className={`pal-action${mode === "ein" ? " active" : ""}`}><span aria-hidden="true">⬇</span>Einlagern</Link>

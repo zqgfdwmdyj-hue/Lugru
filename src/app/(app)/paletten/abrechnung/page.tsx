@@ -10,7 +10,6 @@ import { getSettings } from "@/lib/settings";
 import { CopyButton } from "@/components/copy-button";
 import { deleteCharge } from "../actions";
 import { ChargeForm, InvoiceStatus, SendStatementButton } from "../forms";
-import { PalletTabs } from "../tabs";
 
 const sentLabel = (d: Date | null) => (d ? d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }) : null);
 const dateLabel = (d: Date | null) => (d ? d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Berlin" }) : null);
@@ -65,7 +64,6 @@ export default async function PalettenAbrechnungPage({ searchParams }: { searchP
           <a className="btn btn-small btn-primary" href={`/paletten/export?monat=${month}`}>Excel (CSV)</a>
         </div>
       </div>
-      <PalletTabs active="abrechnung" />
 
       <div className="grid-kpi" data-testid="bill-kpis">
         {running && toDate ? (

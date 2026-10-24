@@ -1,28 +1,3 @@
-import Link from "next/link";
-
-/** Lagerarbeit zuerst; Abrechnung, Konditionen und Auswertung als eigene Ansichten. */
-const TABS = [
-  { key: "lager", href: "/paletten", label: "Lager" },
-  { key: "lagerplan", href: "/paletten/lagerplan", label: "Lagerplan" },
-  { key: "abholung", href: "/paletten/abholung", label: "Abholung" },
-  { key: "inventur", href: "/paletten/inventur", label: "Inventur" },
-  { key: "abrechnung", href: "/paletten/abrechnung", label: "Abrechnung" },
-  { key: "kunden", href: "/paletten/kunden", label: "Kunden & Preise" },
-  { key: "uebersicht", href: "/paletten/uebersicht", label: "Auswertung" },
-] as const;
-
-export function PalletTabs({ active }: { active: (typeof TABS)[number]["key"] }) {
-  return (
-    <nav style={{ display: "flex", gap: 6, flexWrap: "wrap" }} aria-label="Paletten-Lager" data-testid="pal-tabs">
-      {TABS.map((t) => (
-        <Link key={t.key} href={t.href} className={`chip${t.key === active ? " active" : ""}`} aria-current={t.key === active ? "page" : undefined}>
-          {t.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 /** Belegung als Balken (z. B. 38 von 50 Stellplätzen). */
 export function Occupancy({ used, capacity }: { used: number; capacity: number }) {
   if (!capacity) return null;

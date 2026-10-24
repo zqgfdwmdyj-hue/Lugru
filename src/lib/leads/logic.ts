@@ -59,11 +59,28 @@ export function brandSearchMatch(brand: string, query: string): boolean {
 /** Marken eines Kontakts, die zur Suche passen – aus Markenliste, gesuchten Marken und Fundstellen. */
 export function leadBrandHits(l: { brands: string[] | null; searchBrands: string[]; findings: { brand?: string }[] }, query: string): string[] {
   const all = [...(l.brands ?? []), ...l.searchBrands, ...l.findings.map((f) => f.brand ?? "")].filter(Boolean);
-  return [...new Set(all.filter((b) => brandSearchMatch(b, query)))];
+  return dedupeBrands(all.filter((b) => brandSearchMatch(b, query)));
 }
 
 /** Grobe Form für die Vorauswahl in der Datenbank: klein, ohne Akzente, Leer- und Sonderzeichen. */
 export const brandSearchKey = (s: string) => compactKey(fold(s));
+
+/**
+ * Markennamen ohne Dubletten durch Schreibweise („wella“, „Wella“, „WELLA“ → „Wella“): gleiche Grundform zählt
+ * einmal; angezeigt wird die Schreibweise mit Großbuchstaben am Anfang (sonst die erste). Reihenfolge bleibt.
+ */
+export function dedupeBrands(list: string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const raw of list) {
+    const b = raw.trim();
+    if (!b) continue;
+    const k = brandSearchKey(b) || b.toLowerCase();
+    const cur = byKey.get(k);
+    const nicer = (x: string) => /^[A-ZÄÖÜ]/.test(x) && x !== x.toUpperCase();
+    if (cur === undefined || (!nicer(cur) && nicer(b))) byKey.set(k, b);
+  }
+  return [...byKey.values()];
+}
 
 const LEGAL_FORM =
   /\b(gmbh|ug|ag|kg|ohg|gbr|e\.?\s?k\.?|e\.?\s?v\.?|ltd|limited|llc|inc|corp|plc|s\.?\s?r\.?\s?l\.?|s\.?\s?l\.?u?|s\.?\s?a\.?s?|sarl|b\.?\s?v\.?|n\.?\s?v\.?|a\/s|aps|s\.?\s?r\.?\s?o\.?|sp\.?\s?z\s?o\.?\s?o\.?|kft|d\.?\s?o\.?\s?o\.?|oy|ab|s\.?\s?p\.?\s?a\.?|spa|ou|uab|sia|eood|ood|bvba|sprl|ehf|as)\b/i;

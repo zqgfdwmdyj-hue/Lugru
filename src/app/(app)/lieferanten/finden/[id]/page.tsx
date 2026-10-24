@@ -5,7 +5,7 @@ import { db, schema } from "@/db";
 import { LEAD_KINDS } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { KIND_LABEL, STATUS_LABEL } from "@/lib/leads/labels";
-import { brandMatches, isBrandNote, validEmail } from "@/lib/leads/logic";
+import { brandMatches, isBrandNote, validEmail, dedupeBrands } from "@/lib/leads/logic";
 import { canAccess } from "@/lib/auth/areas";
 import { contactContext, DAILY_MAIL_LIMIT, leadSenders, leadSignature, sendBlocker } from "@/lib/leads/service";
 import { daysSince, followUpMail } from "@/lib/board/logic";
@@ -174,7 +174,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             {(l.brands !== null || l.source === "lucid") && (
               <div className="small">
                 <div className="muted" style={{ marginBottom: 4 }}>Im Verpackungsregister gemeldete Marken:</div>
-                {l.brands === null ? <span className="muted">{l.busy === "marken" ? "Markenliste wird geladen …" : (l.checkError ?? "Markenliste fehlt noch – wird automatisch nachgeladen.")}</span> : l.brands.map((b) => (
+                {l.brands === null ? <span className="muted">{l.busy === "marken" ? "Markenliste wird geladen …" : (l.checkError ?? "Markenliste fehlt noch – wird automatisch nachgeladen.")}</span> : dedupeBrands(l.brands).map((b) => (
                   <span key={b} className={`tag ${brandMatches([b], brand) ? "tag-ok" : "tag-neutral"}`} style={{ marginRight: 4, marginBottom: 4, display: "inline-block" }}>{b}</span>
                 ))}
               </div>

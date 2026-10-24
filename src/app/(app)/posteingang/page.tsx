@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
+import { TOPIC_LABEL, isUncertainRule, type Topic } from "@/lib/inbox/classify";
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
 import { archiveMails } from "./actions";
 import { EmlUpload } from "./inbox-forms";
@@ -42,7 +42,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
                   return (
                     <tr key={m.id}>
                       <td><input type="checkbox" name="ids" value={m.id} aria-label="Auswählen" /></td>
-                      <td><span className={`tag ${cls}`}>{label}</span><div className="small muted">{TOPIC_LABEL[(m.topic ?? "other") as Topic]}</div></td>
+                      <td><span className={`tag ${cls}`}>{label}</span>{isUncertainRule(m.matchedRule) && <> <span className="tag tag-warn" title="Nur Absender oder Text passte – bitte prüfen" data-testid="mail-uncertain">unsicher</span></>}<div className="small muted">{TOPIC_LABEL[(m.topic ?? "other") as Topic] ?? m.topic}</div></td>
                       <td style={{ maxWidth: 420 }}><Link href={`/posteingang/${m.id}`} style={{ fontWeight: 600 }}>{m.subject || "(ohne Betreff)"}</Link><div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.snippet}</div></td>
                       <td className="small">{m.fromName ?? m.fromAddress}</td>
                       <td className="num small">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
@@ -60,7 +60,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
           <MailboxStatus tenantId={session.tenantId} isOwner={session.role === "owner"} />
           <section className="card card-pad"><EmlUpload /></section>
           <section className="card card-pad small muted">
-            Kritisch und „Handeln“ werden automatisch zu To-dos. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
+            Kritisch und „Handeln“ werden automatisch zu To-dos. „unsicher“ heißt: nur Absender oder Text passte – in der Mail lässt sich Thema und Wichtigkeit korrigieren. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
           </section>
         </aside>
       </div>

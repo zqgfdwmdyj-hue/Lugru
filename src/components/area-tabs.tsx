@@ -5,6 +5,7 @@ import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { toggleFavoriteAction } from "@/app/(app)/nav-actions";
 import type { Favorite } from "@/db/schema";
+import { SUBPAGES, activeSubpage } from "@/lib/nav";
 import { useNav, type NavAccess } from "./sidebar-nav";
 
 function StarButton({ on }: { on: boolean }) {
@@ -35,8 +36,9 @@ function favoriteLabel(pathname: string, search: string, itemHref?: string, item
 }
 
 /**
- * Reiter des aktuellen Bereichs über dem Seiteninhalt (z. B. Finanzen: Gewinn · Cash Flow · Rechnungen …)
- * und der Stern für „als Favorit merken“. Privat hat eigene Reiter.
+ * Leiste über dem Seiteninhalt: Bereichsname, Reiter und der Stern für „als Favorit merken“. Privat hat eigene Reiter.
+ * Eine Ebene je Leiste: Hat die Seite Unterseiten (Paletten), zeigen die Reiter diese. Sonst zeigen sie die Seiten
+ * des Bereichs – aber nur am Handy, weil auf dem Desktop die Seitenleiste genau diese Punkte schon aufgeklappt zeigt.
  */
 export function AreaTabs({ favorites = [], canFavorite, ...access }: NavAccess & { favorites?: Favorite[]; canFavorite: boolean }) {
   const { pathname, search, active } = useNav(access);
@@ -45,13 +47,27 @@ export function AreaTabs({ favorites = [], canFavorite, ...access }: NavAccess &
   const section = active?.section;
   const href = `${pathname}${search.toString() ? `?${search}` : ""}`;
   const isFav = favorites.some((f) => f.href === href);
-  const tabs = section && !section.helper && section.items.length > 1 ? section.items : [];
+  const sub = active ? SUBPAGES[active.item.href] : undefined;
+  const subOn = sub ? activeSubpage(sub, pathname, search) : null;
+  const tabs = !sub && section && !section.helper && section.items.length > 1 ? section.items : [];
   if (!section && !canFavorite) return null;
   return (
     <div className="area-bar" style={{ ["--g" as string]: section?.color ?? "#5b6670" }} data-testid="area-bar">
-      {section && !section.helper && <span className="area-name">{section.label}</span>}
+      {section && !section.helper && <span className="area-name">{sub ? active!.item.label : section.label}</span>}
+      {sub && (
+        <nav className="area-tabs" aria-label={`${active!.item.label}: Unterseiten`} data-testid="sub-tabs">
+          {sub.map((it) => {
+            const on = subOn?.href === it.href;
+            return (
+              <Link key={it.href} href={it.href} className={`area-tab${on ? " active" : ""}`} aria-current={on ? "page" : undefined}>
+                {it.label}
+              </Link>
+            );
+          })}
+        </nav>
+      )}
       {tabs.length > 0 && (
-        <nav className="area-tabs" aria-label={`${section!.label}: Unterseiten`} data-testid="area-tabs">
+        <nav className="area-tabs area-tabs-mobile" aria-label={`${section!.label}: Seiten`} data-testid="area-tabs">
           {tabs.map((it) => {
             const on = active!.item.href === it.href;
             return (

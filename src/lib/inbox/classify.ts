@@ -14,6 +14,7 @@ export type Topic =
   | "chargeback"
   | "ebay_case"
   | "buyer_message"
+  | "registration"
   | "return_request"
   | "inbound_problem"
   | "case_update"
@@ -32,6 +33,7 @@ export const TOPIC_LABEL: Record<Topic, string> = {
   chargeback: "Rückbelastung",
   ebay_case: "eBay-Fall",
   buyer_message: "Käufernachricht",
+  registration: "Registrierung / Verifizierung",
   return_request: "Rücksendeanfrage",
   inbound_problem: "Problem mit FBA-Sendung",
   case_update: "Supportfall",
@@ -48,9 +50,34 @@ export type Classification = {
   category: MailCategory;
   topic: Topic;
   rule: string;
+  /** Zuordnung wackelig: nur der Absender passte, nur der Text, oder gar keine Regel. */
+  uncertain: boolean;
   references: Record<string, string>;
   dueInDays: number | null;
 };
+
+export const TOPICS = Object.keys(TOPIC_LABEL) as Topic[];
+
+/** Markierung in `matched_rule`, damit die Unsicherheit ohne eigene Spalte erhalten bleibt. */
+export const UNSICHER = "(unsicher)";
+export const MANUAL_RULE = "von Hand";
+
+export function isUncertainRule(rule: string | null | undefined): boolean {
+  return !!rule && rule.includes(UNSICHER);
+}
+
+/** Lesbare Erklärung, warum eine Mail so eingeordnet wurde. */
+export function describeRule(rule: string | null | undefined): string {
+  if (!rule) return "unbekannt";
+  if (rule === MANUAL_RULE) return "von Hand korrigiert";
+  const [key, ...rest] = rule.replace(UNSICHER, "").trim().split(/\s*·\s*/);
+  const why = rest.join(" · ");
+  const label = (TOPIC_LABEL as Record<string, string>)[key];
+  if (label) return `automatisch: ${label}${why ? ` (${why})` : ""}`;
+  if (key === "keine regel") return "keine passende Regel – nur als Info abgelegt";
+  if (key === "newsletter-merkmal") return "Abmeldelink im Text – als Werbung abgelegt";
+  return key;
+}
 
 const SOURCES: [Classification["source"], RegExp][] = [
   ["amazon", /amazon\.(de|com|co\.uk|fr|it|es|nl|pl|se|com\.be)|marketplace\.amazon/i],
@@ -60,7 +87,7 @@ const SOURCES: [Classification["source"], RegExp][] = [
   ["dhl", /dhl\.(de|com)/i],
 ];
 
-type Rule = { topic: Topic; category: MailCategory; subject?: RegExp; body?: RegExp; from?: RegExp; dueInDays?: number };
+type Rule = { topic: Topic; category: MailCategory; subject?: RegExp; body?: RegExp; from?: RegExp; dueInDays?: number; /** Betreffmuster auch am Textanfang suchen. */ bodyStart?: boolean };
 
 // Reihenfolge = Priorität. Die erste passende Regel gewinnt.
 const RULES: Rule[] = [
@@ -74,8 +101,10 @@ const RULES: Rule[] = [
   { topic: "return_request", category: "action", subject: /rücksendeanfrage|rücksendung.*(angefordert|beantragt|genehmigen)|return request|rückgabeantrag/i, dueInDays: 2 },
   { topic: "negative_feedback", category: "action", subject: /negative (bewertung|feedback)|neutrale bewertung|negative feedback/i, dueInDays: 3 },
   { topic: "inbound_problem", category: "action", subject: /(sendung|shipment|lieferung).*(problem|fehler|abweich|discrepan)|probleme beim wareneingang|inbound.*(problem|defect)|bearbeitungsgebühr|unplanned (service|prep)/i, dueInDays: 5 },
-  { topic: "buyer_message", category: "action", from: /marketplace\.amazon|members\.ebay/i, dueInDays: 1 },
+  // Rückfragen zur Verkäufer-Registrierung kommen oft über dieselben Absender wie Käufernachrichten – deshalb vorher.
+  { topic: "registration", category: "action", subject: /registrierung|registration|verifizierung|verification|verifizieren|verify|identitätsprüfung|identität (bestätigen|überprüfen|nachweisen)|ausweis|kyc|know your customer|anmeldung (abschließen|fortsetzen)|onboarding/i, bodyStart: true, dueInDays: 3 },
   { topic: "buyer_message", category: "action", subject: /nachricht von (käufer|kunde|einem kunden)|anfrage von (käufer|kunde|einem kunden)|käuferanfrage|buyer message|message from (buyer|customer)|frage zu/i, dueInDays: 1 },
+  { topic: "buyer_message", category: "action", from: /marketplace\.amazon|members\.ebay/i, dueInDays: 1 },
   { topic: "case_update", category: "action", subject: /fall-id|case id|ihr (support)?fall|your case|supportanfrage/i, dueInDays: 3 },
   { topic: "payout_info", category: "info", subject: /auszahlung|abrechnung|settlement|disbursement|zahlung.*überwiesen/i },
   { topic: "order_info", category: "info", subject: /bestellung|versandt|verkauft|sold|order|versandbestätigung|zugestellt|sendungsverfolgung/i },
@@ -119,15 +148,27 @@ export function classifyMail(m: MailInput, today = new Date()): Classification {
   const text = `${m.subject}\n${m.body}`;
   const references = extractReferences(text);
   if (!source) {
-    return { relevant: false, source: null, category: "info", topic: "other", rule: "kein Marktplatz-Absender", references, dueInDays: null };
+    return { relevant: false, source: null, category: "info", topic: "other", rule: "kein Marktplatz-Absender", uncertain: false, references, dueInDays: null };
   }
-  for (const r of RULES) {
-    if (r.from && !r.from.test(m.from)) continue;
-    if (r.subject && !r.subject.test(m.subject) && !(r.category === "critical" && r.subject.test(m.body.slice(0, 600)))) continue;
-    if (r.body && !r.body.test(m.body)) continue;
-    const due = extractDeadlineDays(text, today) ?? r.dueInDays ?? null;
-    return { relevant: true, source, category: r.category, topic: r.topic, rule: `${r.topic}`, references, dueInDays: due };
+  const head = m.body.slice(0, 600);
+  // Durchgang 1: Betreff (kritische Themen auch am Textanfang), Absender. Durchgang 2: übrige Textanfang-Regeln –
+  // so gewinnt ein eindeutiger Betreff immer gegen ein Stichwort im Text.
+  for (const pass of [1, 2]) {
+    for (const r of RULES) {
+      if (r.from && !r.from.test(m.from)) continue;
+      let why = "Betreff";
+      if (r.subject && !r.subject.test(m.subject)) {
+        const bodyOk = r.category === "critical" ? pass === 1 : r.bodyStart && pass === 2;
+        if (!bodyOk || !r.subject.test(head)) continue;
+        why = "nur im Text erkannt";
+      } else if (pass === 2) continue;
+      if (r.body && !r.body.test(m.body)) continue;
+      if (!r.subject && !r.body) why = "nur Absender erkannt";
+      const uncertain = why !== "Betreff";
+      const due = extractDeadlineDays(text, today) ?? r.dueInDays ?? null;
+      return { relevant: true, source, category: r.category, topic: r.topic, rule: uncertain ? `${r.topic} · ${why} ${UNSICHER}` : r.topic, uncertain, references, dueInDays: due };
+    }
   }
   const noise = /abbestellen|unsubscribe|newsletter/i.test(m.body);
-  return { relevant: true, source, category: noise ? "noise" : "info", topic: noise ? "marketing" : "other", rule: noise ? "newsletter-merkmal" : "keine regel", references, dueInDays: null };
+  return { relevant: true, source, category: noise ? "noise" : "info", topic: noise ? "marketing" : "other", rule: noise ? "newsletter-merkmal" : `keine regel ${UNSICHER}`, uncertain: !noise, references, dueInDays: null };
 }

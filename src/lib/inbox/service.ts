@@ -77,7 +77,7 @@ const CASE_TYPE: Partial<Record<Topic, (typeof schema.CASE_TYPES)[number]>> = {
 
 /** Speichert eine Mail (Dubletten über alle Postfächer hinweg erkannt) und legt Aufgaben an. */
 /** Amazon-Mails, die weiter als Einzelaufgabe/Fall laufen (Fälle-Modul). */
-const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message"]);
+const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message", "registration"]);
 
 export async function ingestMail(tenantId: string, mailboxId: string | null, m: ParsedMail): Promise<"new" | "duplicate" | "ignored"> {
   const c = classifyMail({ from: `${m.fromName ?? ""} <${m.fromAddress}>`, subject: m.subject, body: m.text });

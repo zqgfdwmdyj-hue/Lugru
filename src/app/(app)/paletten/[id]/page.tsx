@@ -11,7 +11,6 @@ import { cancelPallet, checkOutPallet, deleteCharge, deletePalletPhoto, undoCanc
 import { ConfirmButton } from "@/components/confirm-button";
 import { ChargeForm } from "../forms";
 import { AddPhotos } from "../photos";
-import { PalletTabs } from "../tabs";
 
 export default async function PaletteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireArea("paletten");
@@ -54,7 +53,6 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
       </div>
-      <PalletTabs active="lager" />
       {p.cancelledAt && <div className="notice notice-error" data-testid="cancelled">Storniert am {when(p.cancelledAt)}{p.cancelReason ? ` – ${p.cancelReason}` : ""}. Zählt nicht in Bestand und Abrechnung; der Verlauf bleibt erhalten.</div>}
 
       <div className="grid-kpi">

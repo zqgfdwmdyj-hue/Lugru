@@ -8,7 +8,6 @@ import { customerKey, servicesText } from "@/lib/pallets/billing";
 import { palletContext } from "@/lib/pallets/service";
 import { deletePalletCustomer } from "../actions";
 import { CustomerForm, RatesForm } from "../forms";
-import { PalletTabs } from "../tabs";
 
 export default async function PalettenKundenPage() {
   const session = await requireArea("paletten");
@@ -39,7 +38,6 @@ export default async function PalettenKundenPage() {
       <div className="page-head">
         <div><div className="crumb">Lager</div><h1>Paletten-Lager</h1></div>
       </div>
-      <PalletTabs active="kunden" />
 
       <section className="card" id="kunden">
         <div className="card-head"><h2>Kunden ({list.length})</h2><span className="small muted">Leere Felder = Standard. Fett = eigene Kondition.</span></div>

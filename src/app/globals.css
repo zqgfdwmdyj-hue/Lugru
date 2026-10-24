@@ -80,6 +80,8 @@ h2 { font-size: 16px; margin: 0; }
 .area-tab { white-space: nowrap; padding: 8px 10px 9px; font-size: 14px; color: var(--ink-2); text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
 .area-tab:hover { color: var(--ink); border-bottom-color: color-mix(in srgb, var(--g) 35%, transparent); }
 .area-tab.active { color: var(--ink); font-weight: 650; border-bottom-color: var(--g); }
+/* Desktop: die Seiten des Bereichs stehen schon aufgeklappt in der Seitenleiste – oben nicht doppelt zeigen. */
+@media (min-width: 901px) { .area-tabs-mobile { display: none; } .area-bar:not(:has(.area-tabs:not(.area-tabs-mobile))) { justify-content: space-between; padding: 2px 0 6px; } }
 .fav-form { margin-left: auto; }
 .fav-toggle { font: inherit; font-size: 13px; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid transparent; border-radius: 14px; background: none; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .fav-toggle:hover { border-color: var(--border-strong); color: var(--ink); }

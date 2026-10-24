@@ -5,7 +5,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { modelFor } from "@/lib/ai/claude";
 import { upsertSystemTask } from "@/lib/tasks/system";
 import { googleNewsUrl, parseFeed, titleKey, type FeedItem } from "./feeds";
-import { summarize } from "./summary";
+import { isFailedSummary, summarize } from "./summary";
 
 // Themen-Recherche: alle paar Tage neue Meldungen zu den eingestellten Themen suchen und als
 // Einträge in der Wissensdatenbank ablegen (Kategorie „Recherche", je Thema und Lauf einer).
@@ -103,12 +103,28 @@ export async function runResearch(tenantId: string, fetcher = fetchFeed): Promis
     if (fresh.length === 0) continue;
 
     let summary = "";
+    let failed = false;
     if (ai?.apiKey) {
       try {
         summary = await summarize(ai.apiKey, { topic, items: fresh }, modelFor(ai, "simple"));
       } catch (e) {
         result.errors.push(e instanceof Error ? e.message : String(e));
+        failed = true;
       }
+      if (!failed && isFailedSummary(summary)) {
+        failed = true;
+        summary = "";
+        result.errors.push(`„${topic}“: KI hat keine Zusammenfassung geliefert – Artikel stehen unter Themen-Recherche, kein Wissenseintrag.`);
+      }
+    }
+    // Fehlgeschlagene Recherche nicht als Wissen ablegen – die Artikel bleiben in der Themen-Recherche sichtbar.
+    if (failed) {
+      await db
+        .insert(R)
+        .values([...fresh, ...overflow].map((i) => ({ tenantId, topic, url: i.link, title: i.title, titleKey: titleKey(i.title), source: i.source, publishedAt: i.published ? new Date(i.published) : null, snippet: i.snippet || null, knowledgeId: null })))
+        .onConflictDoNothing();
+      result.newItems += fresh.length;
+      continue;
     }
     const list = fresh
       .map((a, i) => `[${i + 1}] ${a.title}\n${[a.source, de(a.published)].filter(Boolean).join(" · ")}\n${a.snippet ? `${a.snippet}\n` : ""}${a.link}`)

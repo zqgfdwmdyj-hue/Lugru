@@ -37,3 +37,11 @@ describe("EK-Herkunft", () => {
     expect(all.get("V3")).toMatchObject({ cost: 4.2, source: "ebay", inherited: true });
   });
 });
+
+describe("Markennamen ohne Schreibweisen-Dubletten", () => {
+  it("wella / Wella / WELLA → Wella, Reihenfolge bleibt", async () => {
+    const { dedupeBrands } = await import("@/lib/leads/logic");
+    expect(dedupeBrands(["wella", "Schwarzkopf", "Wella", "WELLA", " schwarzkopf "])).toEqual(["Wella", "Schwarzkopf"]);
+    expect(dedupeBrands(["L'Oréal", "loreal"])).toEqual(["L'Oréal"]);
+  });
+});

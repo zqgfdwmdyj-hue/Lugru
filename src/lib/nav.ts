@@ -131,6 +131,32 @@ export const NAV: NavSection[] = [
 ];
 
 /**
+ * Unterseiten einzelner Menüpunkte (dritte Ebene). Sie stehen nur als Reiter über dem Inhalt, nicht in der
+ * Seitenleiste – so zeigt jede Leiste genau eine Ebene: Seitenleiste = Bereiche und Seiten, Reiter = Unterseiten.
+ */
+export const SUBPAGES: Record<string, NavItem[]> = {
+  "/paletten": [
+    { href: "/paletten", label: "Lager" },
+    { href: "/paletten/lagerplan", label: "Lagerplan" },
+    { href: "/paletten/abholung", label: "Abholung" },
+    { href: "/paletten/inventur", label: "Inventur" },
+    { href: "/paletten/abrechnung", label: "Abrechnung" },
+    { href: "/paletten/kunden", label: "Kunden & Preise" },
+    { href: "/paletten/uebersicht", label: "Auswertung" },
+  ],
+};
+
+/** Aktive Unterseite: bester Treffer (Paletten-Detail /paletten/<id> gehört zu „Lager“). */
+export function activeSubpage(items: NavItem[], path: string, q: URLSearchParams): NavItem | null {
+  let best: { item: NavItem; score: number } | null = null;
+  for (const item of items) {
+    const score = matchScore(item, path, q);
+    if (score > 0 && (!best || score > best.score)) best = { item, score };
+  }
+  return best?.item ?? null;
+}
+
+/**
  * Wie gut passt ein Menüpunkt zur aktuellen Adresse? 0 = gar nicht. Genaue Treffer und Punkte mit
  * passender Ansicht schlagen Präfix-Treffer; der längste Pfad gewinnt (/ebay/pruefen vor /ebay).
  */

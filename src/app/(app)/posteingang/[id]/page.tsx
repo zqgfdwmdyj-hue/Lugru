@@ -4,9 +4,9 @@ import { and, eq, ilike, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MAIL_CATEGORIES } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
+import { TOPICS, TOPIC_LABEL, describeRule, isUncertainRule, type Topic } from "@/lib/inbox/classify";
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
-import { archiveMails, createTaskFromMail, setCategory } from "../actions";
+import { archiveMails, correctMail, createTaskFromMail } from "../actions";
 
 const TOPIC_SEARCH: Partial<Record<Topic, string>> = { a_to_z: "A-bis-Z", buyer_message: "Kunde", ebay_case: "eBay", return_request: "Rücksendung", inbound_problem: "Wareneingang", listing_blocked: "Rechnung", negative_feedback: "Bewertung" };
 
@@ -23,15 +23,17 @@ export default async function MailPage({ params }: { params: Promise<{ id: strin
     ? await db.select({ id: schema.knowledgeEntries.id, title: schema.knowledgeEntries.title }).from(schema.knowledgeEntries).where(and(eq(schema.knowledgeEntries.tenantId, session.tenantId), or(ilike(schema.knowledgeEntries.title, `%${term}%`), ilike(schema.knowledgeEntries.category, `%${term}%`)))).limit(5)
     : [];
   const [label, cls] = MAIL_CATEGORY_LABEL[m.category];
+  const uncertain = isUncertainRule(m.matchedRule);
 
   return (
     <>
       <div className="crumb"><Link href="/posteingang">Posteingang</Link> › {TOPIC_LABEL[topic]}</div>
       <div className="row">
         <article className="card" style={{ flexGrow: 1, minWidth: 0, padding: "22px 28px" }}>
-          <div className="between"><span className={`tag ${cls}`}>{label}</span><span className="small muted">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</span></div>
+          <div className="between"><span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><span className={`tag ${cls}`}>{label}</span><span className="tag tag-neutral">{TOPIC_LABEL[topic] ?? topic}</span>{uncertain && <span className="tag tag-warn" data-testid="mail-uncertain">unsicher</span>}</span><span className="small muted">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</span></div>
           <h1 style={{ fontSize: 20, marginTop: 10 }}>{m.subject}</h1>
-          <div className="small muted" style={{ marginTop: 4 }}>{m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress} · Regel: {m.matchedRule}</div>
+          <div className="small muted" style={{ marginTop: 4 }}>{m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress}</div>
+          <div className="small muted" style={{ marginTop: 2 }} data-testid="mail-rule">Einordnung: {describeRule(m.matchedRule)}{uncertain ? " – bitte prüfen und rechts korrigieren" : ""}</div>
           <div className="article-body" style={{ marginTop: 16, fontSize: 14 }}>{m.bodyText}</div>
         </article>
         <aside className="col-side">
@@ -47,11 +49,13 @@ export default async function MailPage({ params }: { params: Promise<{ id: strin
           <section className="card card-pad stack">
             <h2>Bearbeiten</h2>
             {m.taskId ? <div className="small">✓ Als To-do auf der Startseite</div> : <form action={createTaskFromMail}><input type="hidden" name="id" value={m.id} /><button className="btn btn-small" type="submit">To-do anlegen</button></form>}
-            <form action={setCategory} style={{ display: "flex", gap: 6 }}>
+            <form action={correctMail} className="stack" style={{ gap: 6 }} data-testid="mail-correct">
               <input type="hidden" name="id" value={m.id} />
-              <label className="sr-only" htmlFor="cat">Einordnung</label>
+              <label className="small" htmlFor="topic">Thema</label>
+              <select className="select" id="topic" name="topic" defaultValue={TOPICS.includes(topic) ? topic : "other"}>{TOPICS.map((t) => <option key={t} value={t}>{TOPIC_LABEL[t]}</option>)}</select>
+              <label className="small" htmlFor="cat">Wichtigkeit</label>
               <select className="select" id="cat" name="category" defaultValue={m.category}>{MAIL_CATEGORIES.map((c) => <option key={c} value={c}>{MAIL_CATEGORY_LABEL[c][0]}</option>)}</select>
-              <button className="btn btn-small" type="submit">Ändern</button>
+              <button className="btn btn-small" type="submit">Einordnung speichern</button>
             </form>
             {!m.archived && <form action={archiveMails}><input type="hidden" name="id" value={m.id} /><button className="btn-link small" type="submit">Archivieren</button></form>}
           </section>

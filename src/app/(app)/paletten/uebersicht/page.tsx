@@ -2,7 +2,7 @@ import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { formatEuro } from "@/lib/numbers";
 import { MONTH_NAMES, loadOverview, monthLabel } from "@/lib/pallets/service";
-import { Occupancy, PalletTabs } from "../tabs";
+import { Occupancy } from "../tabs";
 
 const short = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1].slice(0, 3)} ${m.slice(2, 4)}`;
 
@@ -52,7 +52,6 @@ export default async function PalettenUebersichtPage() {
         <div><div className="crumb">Lager</div><h1>Paletten-Lager</h1></div>
         <span className="small muted">Letzte 12 Monate · laufender Monat bis Monatsende hochgerechnet</span>
       </div>
-      <PalletTabs active="uebersicht" />
 
       <div className="grid-kpi">
         <div className="card card-pad">

@@ -8,7 +8,7 @@ import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, countryKey, countryRank, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
+import { brandMatches, countryKey, countryRank, dedupeBrands, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
 import { baseWhere, countryKeySql, inView, LEAD_VIEWS, listOrder, listQuery, NO_COUNTRY, parseListContext, viewWhere, type LeadView, type ListSort } from "@/lib/leads/list";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
@@ -305,7 +305,8 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
                 const brand = l.searchBrands[0] ?? "";
                 // Mit Markenfilter: passende Marken zuerst und markiert (sonst die gesuchte Marke).
                 const hits = mKey ? leadBrandHits(l, m) : [];
-                const brandList = l.brands === null ? null : mKey ? [...l.brands.filter((b) => hits.includes(b)), ...l.brands.filter((b) => !hits.includes(b))] : l.brands;
+                const brandsClean = l.brands === null ? null : dedupeBrands(l.brands);
+                const brandList = brandsClean === null ? null : mKey ? [...brandsClean.filter((b) => hits.includes(b)), ...brandsClean.filter((b) => !hits.includes(b))] : brandsClean;
                 const isHit = (b: string) => (mKey ? hits.includes(b) : brandMatches([b], brand));
                 const block = l.mailedAt ? null : sendBlocker(l, ctx);
                 const dup = l.mailedAt ? null : priorContact(l, ctx.contacted, ctx.suppliers);

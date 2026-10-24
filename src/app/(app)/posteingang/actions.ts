@@ -8,6 +8,7 @@ import { db, schema } from "@/db";
 import { MAIL_CATEGORIES } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { rememberLeadSender } from "@/lib/leads/service";
+import { MANUAL_RULE, TOPICS, TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
 import { ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
 import { sendMail, setDefaultSender } from "@/lib/mail/accounts";
 
@@ -40,12 +41,23 @@ export async function syncNow(_prev: InboxState): Promise<InboxState> {
   return { ok: res.every((r) => !r.error), message: res.map((r) => (r.error ? `${r.address}: ${r.error}` : `${r.address}: ${r.new} neu`)).join(" · ") };
 }
 
-export async function setCategory(fd: FormData) {
+/** Einordnung von Hand korrigieren: Thema und Wichtigkeit. Ein verknüpftes To-do bekommt den neuen Thementitel. */
+export async function correctMail(fd: FormData) {
   const session = await requireArea("posteingang");
   const id = uuid.parse(fd.get("id"));
   const category = z.enum(MAIL_CATEGORIES).parse(fd.get("category"));
-  await db.update(schema.emails).set({ category, matchedRule: "von Hand" }).where(and(eq(schema.emails.id, id), eq(schema.emails.tenantId, session.tenantId)));
-  revalidatePath("/posteingang", "layout");
+  const topic = z.enum(TOPICS as [Topic, ...Topic[]]).parse(fd.get("topic"));
+  const [m] = await db.select().from(schema.emails).where(and(eq(schema.emails.id, id), eq(schema.emails.tenantId, session.tenantId)));
+  if (!m) return;
+  await db.update(schema.emails).set({ category, topic, matchedRule: MANUAL_RULE }).where(and(eq(schema.emails.id, m.id), eq(schema.emails.tenantId, session.tenantId)));
+  const oldLabel = TOPIC_LABEL[(m.topic ?? "other") as Topic];
+  if (m.taskId && oldLabel && topic !== m.topic) {
+    const [t] = await db.select({ title: schema.tasks.title }).from(schema.tasks).where(and(eq(schema.tasks.id, m.taskId), eq(schema.tasks.tenantId, session.tenantId)));
+    if (t?.title.startsWith(`${oldLabel}: `)) {
+      await db.update(schema.tasks).set({ title: `${TOPIC_LABEL[topic]}: ${t.title.slice(oldLabel.length + 2)}`.slice(0, 280) }).where(and(eq(schema.tasks.id, m.taskId), eq(schema.tasks.tenantId, session.tenantId)));
+    }
+  }
+  revalidatePath("/", "layout");
 }
 
 export async function archiveMails(fd: FormData) {

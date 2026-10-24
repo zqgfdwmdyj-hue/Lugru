@@ -5,7 +5,6 @@ import { todayIso } from "@/lib/dates";
 import { formatDate } from "@/lib/numbers";
 import { ConfirmButton } from "@/components/confirm-button";
 import { cancelPickupAction } from "../actions";
-import { PalletTabs } from "../tabs";
 import { PickupForm } from "./pickup-form";
 
 export default async function AbholungPage({ searchParams }: { searchParams: Promise<{ kunde?: string }> }) {
@@ -26,7 +25,6 @@ export default async function AbholungPage({ searchParams }: { searchParams: Pro
         <div><div className="crumb">Lager</div><h1>Paletten-Lager</h1></div>
         <span className="small muted">Mehrere Paletten auf einmal ausgeben – der Fahrer unterschreibt auf dem Handy, der Abholschein ist sofort fertig.</span>
       </div>
-      <PalletTabs active="abholung" />
       <section className="card card-pad stack">
         <h2>Abholung</h2>
         <PickupForm pallets={open} gone={gone} customers={customers} today={todayIso()} preselect={sp.kunde && customers.includes(sp.kunde) ? sp.kunde : undefined} />

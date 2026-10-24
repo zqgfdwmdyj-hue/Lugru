@@ -6,7 +6,7 @@ import { todayIso } from "@/lib/dates";
 import { freeLocations, locationRows, storedDays } from "@/lib/pallets/billing";
 import { getSettings } from "@/lib/settings";
 import { LocationsForm } from "../forms";
-import { Occupancy, PalletTabs } from "../tabs";
+import { Occupancy } from "../tabs";
 
 function byPlaceCount(open: { location: string | null }[]) {
   const m = new Map<string, number>();
@@ -36,7 +36,6 @@ export default async function LagerplanPage() {
         <div><div className="crumb">Lager</div><h1>Paletten-Lager</h1></div>
         <span className="small muted">Platz antippen: frei → hier einlagern, belegt → Palette öffnen.</span>
       </div>
-      <PalletTabs active="lagerplan" />
       <div className="plan-legend" data-testid="plan-legend">
         <span>○ frei</span><span>● belegt</span><span>⚠ mehrere Paletten auf einem Platz</span>
       </div>
