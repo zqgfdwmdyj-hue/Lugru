@@ -64,7 +64,7 @@ h2 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); color: var(--night-2); }
 .hero-grid { position: relative; display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; max-width: 1200px; margin: 0 auto; }
 .pill { display: inline-block; padding: .35em .9em; border-radius: 999px; background: rgba(255, 255, 255, .14); font-weight: 700; margin-bottom: 14px; }
 .hero h1 { font-size: clamp(2.3rem, 6vw, 4.2rem); }
-.rainbow { background: var(--rainbow); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 6s linear infinite; }
+.rainbow { background: var(--rainbow); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; }
 @keyframes shine { to { background-position: 200% center; } }
 .lead { font-size: 1.15rem; opacity: .92; max-width: 34em; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 30px; }
@@ -72,7 +72,7 @@ h2 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); color: var(--night-2); }
 .stats strong { display: block; font: 700 1.7rem "Fredoka", sans-serif; color: var(--yellow); }
 .stats span { font-size: .9rem; opacity: .8; }
 .hero-art { position: relative; margin: 0; }
-.hero-art img { border-radius: 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45); cursor: pointer; animation: float 6s ease-in-out infinite; }
+.hero-art img { border-radius: 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45); cursor: pointer; }
 @keyframes float { 50% { transform: translateY(-12px) rotate(-1deg); } }
 .bubble { position: absolute; left: 6%; top: -18px; max-width: 70%; background: #fff; color: var(--ink); font-weight: 800; padding: 10px 16px; border-radius: 18px 18px 18px 4px; box-shadow: var(--shadow); transition: transform .2s; }
 .sky .candy { position: absolute; font-size: 2rem; opacity: .55; animation: drift 14s linear infinite; }
@@ -154,7 +154,7 @@ h2 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); color: var(--night-2); }
 .legal { opacity: .8; }
 
 /* Chat */
-.chat-fab { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: flex; align-items: center; gap: 8px; padding: 6px 18px 6px 6px; border: 0; border-radius: 999px; background: var(--night-2); color: #fff; font: 700 1rem "Fredoka", sans-serif; cursor: pointer; box-shadow: 0 10px 30px rgba(29, 13, 71, .45); animation: pulse 2.5s ease-in-out infinite; }
+.chat-fab { position: fixed; right: 18px; bottom: 18px; z-index: 90; display: flex; align-items: center; gap: 8px; padding: 6px 18px 6px 6px; border: 0; border-radius: 999px; background: var(--night-2); color: #fff; font: 700 1rem "Fredoka", sans-serif; cursor: pointer; box-shadow: 0 10px 30px rgba(29, 13, 71, .45); }
 .chat-fab img { border-radius: 50%; background: #fff; }
 @keyframes pulse { 50% { box-shadow: 0 10px 30px rgba(29, 13, 71, .45), 0 0 0 10px rgba(255, 42, 109, .18); } }
 .chat { position: fixed; right: 18px; bottom: 18px; z-index: 95; width: min(390px, calc(100vw - 24px)); height: min(600px, calc(100dvh - 36px)); display: flex; flex-direction: column; background: #fff; border-radius: 26px; box-shadow: 0 24px 70px rgba(29, 13, 71, .4); overflow: hidden; }
@@ -356,4 +356,53 @@ h2 { font-size: clamp(1.8rem, 4.5vw, 2.8rem); color: var(--night-2); }
   .xmas-tile strong { flex: 1 1 calc(100% - 100px); }
   .xmas-tile span { flex-basis: 100%; padding-left: 96px; margin-top: -6px; }
   .xmas-b2b { flex-direction: column; align-items: flex-start; }
+}
+
+/* ---------- Überarbeitung: ruhiger, klarer, Produkte zuerst ---------- */
+.fakten { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; font-weight: 700; }
+.fakten li { background: rgba(255, 255, 255, .1); border-radius: 14px; padding: 8px 14px; width: fit-content; }
+.eckdaten { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0 0 14px; font-size: .9rem; }
+.eckdaten dt { font-weight: 800; color: var(--night-2); }
+.eckdaten dd { margin: 0; color: var(--muted); }
+.card p { flex: 0 0 auto; }
+.card .eckdaten { flex: 1; align-content: start; }
+.preis-amazon { font-size: 1rem; color: var(--muted); }
+.bild-folgt { display: grid; place-items: center; gap: 4px; aspect-ratio: 1; border-radius: 16px; margin-bottom: 14px;
+  background: linear-gradient(135deg, #f1e8ff, #ffe9f1); font-size: 2.6rem; text-align: center; }
+.bild-folgt small { display: block; font-size: .85rem; font-weight: 800; color: var(--muted); }
+.finder-result .bild-folgt { width: 180px; margin: 0; }
+.finder-warum { margin: 8px 0; padding-left: 1.1em; color: var(--night-2); font-weight: 600; }
+.finder-warum li + li { margin-top: 4px; }
+.boxen-hinweis { text-align: center; margin-top: 18px; }
+.book { margin-top: 40px; }
+.book h3 { font-size: 1.6rem; color: var(--night-2); }
+.bewertungen { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.bewertungen .btn-ghost, .welt-teaser .btn-ghost { color: var(--violet); }
+.unboxing { text-align: center; font-weight: 700; margin-top: 20px; }
+.firmen { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; background: #fff; border-radius: 30px; box-shadow: var(--shadow); max-width: 1100px; }
+.firmen-liste { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; color: var(--muted); }
+.firmen-liste strong { color: var(--night-2); }
+.nl-ersatz { max-width: 640px; margin: 18px auto 0; }
+.nl-ersatz p { margin-bottom: 14px; }
+.welt-teaser { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; background: linear-gradient(135deg, #f1e8ff, #ffe9f1); border-radius: 30px; max-width: 1100px; margin-bottom: 40px; }
+.welt-kopf { text-align: center; padding-bottom: 0; }
+.welt-kopf h1 { font-size: clamp(2rem, 5vw, 3rem); color: var(--night-2); }
+.ki-hinweis { max-width: 640px; margin: 0 auto 16px; padding: 12px 16px; border-radius: 14px; background: #fff7d6; border-left: 4px solid var(--yellow); font-size: .92rem; }
+@media (max-width: 860px) {
+  .firmen, .welt-teaser { grid-template-columns: 1fr; }
+  .finder-result .bild-folgt { width: 100%; max-width: 220px; margin: 0 auto; }
+}
+/* Handy: Menü als wischbare zweite Zeile statt ausgeblendet, Text vor dem Bild */
+@media (max-width: 860px) {
+  .top { flex-wrap: wrap; row-gap: 6px; }
+  .nav { display: flex; order: 3; width: 100%; margin: 0; gap: 18px; overflow-x: auto; scrollbar-width: none; padding: 2px 0 4px; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { white-space: nowrap; font-size: .95rem; }
+  .hero-art { order: 0; max-width: 340px; margin: 0 auto; }
+  .hero { padding-top: 28px; }
+}
+/* Handy: nur das runde Symbol, damit der Knopf keine Kaufknöpfe verdeckt. */
+@media (max-width: 420px) {
+  .chat-fab { padding: 4px; bottom: 12px; right: 12px; }
+  .chat-fab img { width: 38px; height: 38px; }
 }

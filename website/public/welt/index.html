@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GRULU-Welt – Song, Ausmalbild, Spiel und Schulstart-Countdown</title>
+  <meta name="description" content="Die GRULU-Welt: der GRULU-Song zum Mitsingen, Ausmalbild, Spiel „Süßigkeiten-Fang“, Grußkarte und Schulstart-Countdown.">
+  <link rel="canonical" href="https://www.grulu-box.de/welt/">
+  <meta name="theme-color" content="#2a1460">
+  <link rel="icon" href="/img/cropped-favicon-1-192x192.webp" type="image/webp">
+  <link rel="preload" href="/fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip" href="#inhalt">Zum Inhalt springen</a>
+
+  <header class="top">
+    <a href="/" class="brand" aria-label="GRULU Startseite"><img src="/img/logo-grulu.webp" alt="GRULU" width="140" height="57"></a>
+    <nav class="nav" aria-label="Menü der GRULU-Welt">
+      <a href="#song">Song</a>
+      <a href="#welt">Malen &amp; Spielen</a>
+      <a href="#schulstart">Schulstart</a>
+      <a href="#tiktok">TikTok</a>
+      <a href="/#boxen">Zu den Boxen</a>
+    </nav>
+    <div class="top-actions">
+      <button class="music-btn" id="musicBtn" type="button" aria-pressed="false" aria-label="GRULU-Song abspielen">
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="music-label">Musik</span>
+      </button>
+      <a href="/#boxen" class="btn btn-sm">Boxen ansehen</a>
+    </div>
+  </header>
+
+  <main id="inhalt">
+    <section class="section welt-kopf">
+      <span class="kicker">Spielen, malen, singen</span>
+      <h1>Die GRULU-Welt</h1>
+      <p>Hier geht es nicht ums Kaufen, sondern ums Mitmachen. Alles läuft im Browser – Malbild, Rekord und Countdown bleiben auf deinem Gerät.</p>
+    </section>
+
+    <!-- GRULU-WELT -->
+    <section class="section welt" id="welt">
+      <div class="tabs" role="tablist" aria-label="GRULU-Welt">
+        <button role="tab" id="tab-malen" aria-controls="pane-malen" aria-selected="true">🎨 Ausmalen</button>
+        <button role="tab" id="tab-spiel" aria-controls="pane-spiel" aria-selected="false" tabindex="-1">🎮 Süßigkeiten-Fang</button>
+        <button role="tab" id="tab-geschichte" aria-controls="pane-geschichte" aria-selected="false" tabindex="-1" hidden>🌙 Deine Geschichte</button>
+        <button role="tab" id="tab-karte" aria-controls="pane-karte" aria-selected="false" tabindex="-1">💌 Grußkarte</button>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-malen" aria-labelledby="tab-malen">
+        <p class="pane-intro">Farbe wählen und in eine Fläche tippen. Fertig? Bild speichern und ausdrucken!</p>
+        <div class="paint">
+          <canvas id="paintCanvas" width="600" height="600" aria-label="GRULU-Ausmalbild"></canvas>
+          <div class="paint-tools">
+            <div class="palette" id="palette" role="radiogroup" aria-label="Farben"></div>
+            <div class="paint-actions">
+              <button type="button" class="btn btn-sm btn-ghost" id="paintUndo">↶ Zurück</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="paintReset">🧽 Neu</button>
+              <button type="button" class="btn btn-sm" id="paintSave">💾 Speichern</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-spiel" aria-labelledby="tab-spiel" hidden>
+        <p class="pane-intro">Hilf GRULU, die Süßigkeiten zu fangen! 💥 Pop Rocks geben 3 Punkte – aber Vorsicht vor dem Brokkoli 🥦.</p>
+        <div class="game">
+          <canvas id="gameCanvas" width="480" height="640" aria-label="Spiel Süßigkeiten-Fang"></canvas>
+          <div class="game-overlay" id="gameOverlay">
+            <p class="game-title">Süßigkeiten-Fang</p>
+            <p id="gameMsg">Wisch oder benutze die Pfeiltasten.</p>
+            <button type="button" class="btn" id="gameStart">▶ Spielen</button>
+          </div>
+        </div>
+        <p class="game-best">Dein Rekord: <strong id="gameBest">0</strong></p>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-geschichte" aria-labelledby="tab-geschichte" hidden>
+        <p class="pane-intro">GRULU schreibt eine Gute-Nacht-Geschichte – und liest sie auf Wunsch vor.</p>
+        <div class="ki-hinweis">
+          <strong>Für Eltern:</strong> Die Geschichte schreibt ein KI-Dienst (Anthropic). Dafür werden nur die Angaben unten
+          übertragen – Name (freiwillig), Alter, Thema und Lieblingstier – und nicht gespeichert. Ein Fantasiename reicht völlig.
+          <a href="/datenschutz/#ki">Mehr dazu</a>
+        </div>
+        <form class="story-form" id="storyForm">
+          <label>Name der Hauptfigur <small>(freiwillig, z. B. ein Fantasiename)</small> <input name="name" maxlength="20" placeholder="z. B. Sternchen" autocomplete="off"></label>
+          <label>Alter
+            <select name="age"><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option></select>
+          </label>
+          <label>Worum soll es gehen?
+            <select name="theme">
+              <option>Ein Abenteuer im Zauberwald</option>
+              <option>Der erste Schultag</option>
+              <option>Eine Reise zu den Sternen</option>
+              <option>Ein Geburtstag voller Überraschungen</option>
+              <option>Unterwegs im Urlaub</option>
+              <option>Ein Tag am Meer</option>
+            </select>
+          </label>
+          <label>Lieblingstier <small>(optional)</small> <input name="animal" maxlength="20" placeholder="z. B. Einhorn" autocomplete="off"></label>
+          <button class="btn" type="submit">✨ Geschichte zaubern</button>
+        </form>
+        <article class="story" id="story" hidden aria-live="polite">
+          <h3 id="storyTitle"></h3>
+          <div id="storyText"></div>
+          <div class="story-actions">
+            <button type="button" class="btn btn-sm" id="storyRead">🔊 Vorlesen</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="storyPrint">🖨 Drucken</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="storyNew">✨ Neue Geschichte</button>
+          </div>
+        </article>
+      </div>
+
+      <div class="pane" role="tabpanel" id="pane-karte" aria-labelledby="tab-karte" hidden>
+        <p class="pane-intro">Gestalte eine bunte GRULU-Karte und schick sie per WhatsApp oder speichere sie.</p>
+        <div class="card-maker">
+          <form class="card-form" id="cardForm">
+            <label>Anlass
+              <select name="motif">
+                <option value="geburtstag">🎂 Geburtstag</option>
+                <option value="schule">🎒 Einschulung</option>
+                <option value="danke">💜 Dankeschön</option>
+                <option value="einfach">🌈 Einfach so</option>
+              </select>
+            </label>
+            <label>Für <input name="to" maxlength="24" placeholder="z. B. Paul" autocomplete="off"></label>
+            <label>Dein Gruß <textarea name="text" maxlength="140" rows="3" placeholder="Alles Liebe zu deinem Tag!"></textarea></label>
+            <label>Von <input name="from" maxlength="24" placeholder="z. B. Oma Rita" autocomplete="off"></label>
+          </form>
+          <div class="card-preview">
+            <canvas id="cardCanvas" width="1080" height="1350" aria-label="Vorschau der Grußkarte"></canvas>
+            <div class="card-actions">
+              <button type="button" class="btn btn-sm" id="cardShare">📤 Teilen</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="cardSave">💾 Speichern</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- GRULU-SONG -->
+    <section class="section song" id="song">
+      <div class="song-cover" id="songCover">
+        <img src="/img/grulu-song-cover.webp" alt="Cover des GRULU-Songs „Tausend tolle Sachen“" width="768" height="768" loading="lazy">
+        <button type="button" class="song-play" id="songPlay" aria-label="Song abspielen">▶</button>
+      </div>
+      <div class="song-main">
+        <span class="kicker">🎵 Der GRULU-Song</span>
+        <h2>Tausend tolle Sachen</h2>
+        <p>Mitsingen ausdrücklich erlaubt! Der Text läuft passend zur Musik mit.</p>
+        <div class="song-bar">
+          <span id="songTime">0:00</span>
+          <input type="range" id="songSeek" min="0" max="152" step="0.1" value="0" aria-label="Stelle im Song">
+          <span id="songDur">2:32</span>
+        </div>
+        <div class="karaoke" id="karaoke">
+          <p class="k-prev" id="kPrev"></p>
+          <p class="k-now" id="kNow">Drück auf ▶ und sing mit!</p>
+          <p class="k-next" id="kNext"></p>
+        </div>
+        <details class="song-text">
+          <summary>Ganzen Liedtext anzeigen</summary>
+          <ol id="songFull"></ol>
+        </details>
+      </div>
+    </section>
+
+    <!-- SCHULSTART-COUNTDOWN -->
+    <section class="section countdown" id="schulstart">
+      <div class="cd-text">
+        <span class="kicker">🎒 Schulstart</span>
+        <h2>Countdown bis zur Einschulung</h2>
+        <p>Datum eintragen – GRULU zählt mit. Mit Erinnerung im Kalender, damit Schultüte und Füllbox rechtzeitig da sind.</p>
+        <form class="cd-form" id="cdForm">
+          <label for="cdName">Name des Schulkinds <small>(optional, bleibt auf deinem Gerät)</small></label>
+          <input id="cdName" maxlength="30" placeholder="z. B. Mia" autocomplete="off">
+          <label for="cdDate">Tag der Einschulung</label>
+          <input id="cdDate" type="date" required>
+          <button class="btn" type="submit">⏳ Countdown starten</button>
+        </form>
+      </div>
+      <div class="cd-board" id="cdBoard" aria-live="polite">
+        <img src="/img/grulu-schultuete-768x768.webp" alt="" width="160" height="160" loading="lazy">
+        <p class="cd-empty">Trag den Einschulungstag ein und los geht’s!</p>
+      </div>
+    </section>
+
+    <!-- TIKTOK -->
+    <section class="section tiktok" id="tiktok">
+      <div class="tt-head">
+        <span class="kicker">#GRULU</span>
+        <h2>GRULU auf TikTok</h2>
+        <p class="tt-live" id="ttLive" hidden><span class="dot"></span> Wir sind gerade LIVE – jetzt zuschauen und mitshoppen!</p>
+        <p>Unboxings und neue Boxen. Folg uns, damit du nichts verpasst.</p>
+        <a class="btn" id="ttFollow" href="#" target="_blank" rel="noopener" hidden>🎵 Auf TikTok folgen</a>
+      </div>
+      <div class="tt-embed" id="ttEmbed">
+        <div class="tt-consent">
+          <p>🎬 Hier zeigen wir unsere neuesten TikTok-Videos.</p>
+          <p class="hint">Beim Laden werden Daten an TikTok übertragen. Mehr in der <a href="/datenschutz/">Datenschutzerklärung</a>.</p>
+          <button type="button" class="btn btn-sm" id="ttLoad">Videos laden</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- GALERIE -->
+    <section class="section galerie" id="galerie" hidden>
+      <header class="section-head">
+        <span class="kicker">Eure Unboxings</span>
+        <h2>Die GRULU-Galerie</h2>
+        <p>Zeig uns deine GRULU-Box! Nach kurzer Prüfung erscheint dein Foto hier.</p>
+      </header>
+      <div class="gallery" id="gallery" aria-live="polite"></div>
+      <details class="upload">
+        <summary class="btn">📸 Foto einsenden</summary>
+        <form id="uploadForm" class="upload-form">
+          <label class="file">
+            <input type="file" name="file" accept="image/*" required>
+            <span id="uploadPick">Foto auswählen</span>
+          </label>
+          <img id="uploadPreview" alt="Vorschau" hidden>
+          <label>Vorname <small>(optional)</small> <input name="name" maxlength="30" autocomplete="given-name"></label>
+          <label>Kurzer Text <small>(optional)</small> <input name="caption" maxlength="120" placeholder="Unsere Pop-Rocks-Party!"></label>
+          <label class="check"><input type="checkbox" name="rights" required> Ich habe das Foto selbst gemacht und darf es weitergeben.</label>
+          <label class="check"><input type="checkbox" name="faces" required> Auf dem Foto sind keine Gesichter von Kindern zu erkennen.</label>
+          <label class="check"><input type="checkbox" name="publish" required> GRULU darf das Foto auf dieser Website zeigen. Ich kann das jederzeit per E-Mail an hallo@grulu-box.de widerrufen.</label>
+          <button class="btn" type="submit">Einsenden 🎉</button>
+          <p class="nl-msg" id="uploadMsg" role="status"></p>
+        </form>
+      </details>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <img src="/img/logo-grulu.webp" alt="GRULU" width="120" height="49" loading="lazy">
+    <p class="tag">Aufregend. Lecker. Überraschend.</p>
+    <p><a href="/">Zur Startseite</a> · <a href="mailto:hallo@grulu-box.de">hallo@grulu-box.de</a></p>
+    <p class="legal"><a href="/impressum/">Impressum</a> · <a href="/datenschutz/">Datenschutz</a> · © <span id="year">2026</span> GRULU</p>
+  </footer>
+
+  <!-- CHAT: KI-Helfer, wenn der Server ihn anbietet, sonst Produkthilfe -->
+  <button class="chat-fab" id="chatFab" type="button" aria-controls="chat" aria-expanded="false" aria-label="Fragen zu den Boxen">
+    <img src="/img/cropped-favicon-1-192x192.webp" alt="" width="44" height="44"><span id="chatFabLabel">Fragen?</span>
+  </button>
+  <section class="chat" id="chat" hidden aria-label="Fragen an GRULU">
+    <header class="chat-head">
+      <img src="/img/cropped-favicon-1-192x192.webp" alt="" width="36" height="36">
+      <div><strong>GRULU</strong><small id="chatModus">Produkthilfe · feste Antworten zu unseren Boxen</small></div>
+      <button type="button" class="chat-close" id="chatClose" aria-label="Chat schließen">✕</button>
+    </header>
+    <div class="chat-log" id="chatLog" aria-live="polite"></div>
+    <div class="chips" id="chatChips">
+      <button type="button">Welche Box für 6-Jährige?</button>
+      <button type="button">Wo finde ich die Allergene?</button>
+      <button type="button">Wie bestelle ich?</button>
+      <button type="button">Was ist in der Reisebox?</button>
+      <button type="button">Anfrage für Firmen</button>
+    </div>
+    <form class="chat-form" id="chatForm">
+      <label class="sr" for="chatInput">Deine Frage</label>
+      <input id="chatInput" maxlength="500" placeholder="Stichwort oder Frage …" autocomplete="off">
+      <button type="submit" aria-label="Senden">➤</button>
+    </form>
+    <p class="chat-note" id="chatNote"></p>
+  </section>
+
+  <script src="/js/produkte.js" defer></script>
+  <script src="/app.js" defer></script>
+  <script src="/js/song.js" defer></script>
+  <script src="/js/countdown.js" defer></script>
+  <script src="/js/welt.js" defer></script>
+  <script src="/js/ausmalen.js" defer></script>
+  <script src="/js/spiel.js" defer></script>
+  <script src="/js/geschichte.js" defer></script>
+  <script src="/js/karte.js" defer></script>
+  <script src="/js/social.js" defer></script>
+</body>
+</html>

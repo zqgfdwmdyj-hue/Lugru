@@ -21,7 +21,7 @@
 
   const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-  fetch("audio/grulu-song.json")
+  fetch("/audio/grulu-song.json")
     .then((r) => r.json())
     .then((data) => {
       lines = data;

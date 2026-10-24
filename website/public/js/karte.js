@@ -16,7 +16,7 @@
   };
 
   const mascot = new Image();
-  mascot.src = "img/grulu-768x525.webp";
+  mascot.src = "/img/grulu-768x525.webp";
 
   function wrap(text, maxW) {
     const words = text.split(/\s+/), lines = [];

@@ -18,6 +18,28 @@ Neue Version von www.grulu-box.de – eigenständig, unabhängig vom Seller-Syst
 
 Korrigiert gegenüber der alten Seite: Die Schultüte hatte den Text der Nerds-Box. Der Reisebox-Button führte ins Leere (`#`). Der Website-Link im Footer zeigte auf die E-Mail-Adresse.
 
+## Zwei Betriebsarten
+
+| | Reiner Webhoster (Apache, nur `public/` hochladen) | Mit Node-Server (`npm start`) |
+|---|---|---|
+| Boxen, Box-Finder, FAQ, GRULU-Welt (Song, Malen, Spiel, Karte, Countdown) | ✓ | ✓ |
+| Chat | Produkthilfe mit festen Antworten (steht so im Chatfenster) | KI-Helfer über Claude, wenn `ANTHROPIC_API_KEY` gesetzt ist |
+| Gute-Nacht-Geschichte | ausgeblendet | sichtbar mit KI-Schlüssel |
+| Newsletter | Formular ausgeblendet, stattdessen „per E-Mail Bescheid geben“ | Formular mit `NEWSLETTER_WEBHOOK` |
+| Galerie / Foto einsenden | ausgeblendet | sichtbar; Fotos erst nach Freigabe unter `/admin` |
+
+Die Seite fragt beim Laden `/api/status` ab und schaltet nur ein, was wirklich läuft – auf einem reinen Webhoster gibt es diese Adresse nicht, dann bleibt alles im ehrlichen Offline-Modus statt erst nach der Eingabe zu scheitern.
+
+Struktur: `index.html` (Kaufseite: Boxen, Finder, Warum GRULU, Bewertungen bei Amazon, Firmen, Newsletter, FAQ), `welt/` (Erlebnisbereich), `impressum/`, `datenschutz/`. Produktdaten für Finder, Produkthilfe und Countdown stehen in `public/js/produkte.js`.
+
+## Vor jedem Hochladen
+
+```bash
+cd website
+npm test          # prüft jede Antwortkombination des Box-Finders
+npm run pruefen   # bricht ab, solange in Impressum/Datenschutz „[bitte eintragen: …]“ steht
+```
+
 ## Starten
 
 ```bash
@@ -49,8 +71,8 @@ Das Wissen des Chats steht in `knowledge.md`. Bei neuen Produkten oder Preisen d
 
 ## Vor dem Livegang
 
-1. **Impressum und Datenschutz** von der alten Seite übernehmen, als `public/impressum/index.html` und `public/datenschutz/index.html`.
-2. **Datenschutzerklärung ergänzen**:
+1. **Impressum und Datenschutz** liegen in `public/impressum/` und `public/datenschutz/`. Die rot markierten Lücken ausfüllen (Geschäftsführung, Registergericht, HRB, USt-IdNr., Hoster, Newsletter-Anbieter, Grundlage der Übermittlung an Anthropic) – `npm run pruefen` zeigt, was noch fehlt. Rechtlich prüfen lassen.
+2. **Datenschutzerklärung** deckt bereits ab:
    - Chat-Nachrichten und Angaben für die Geschichte (Vorname, Alter, Thema) gehen an Anthropic (USA). Dazu einen Auftragsverarbeitungsvertrag mit Anthropic abschließen.
    - TikTok-Videos laden erst nach Klick. Beim Laden gehen Daten an TikTok.
    - Galerie: Speicherung der eingesendeten Fotos mit Einwilligung, Widerruf per E-Mail.

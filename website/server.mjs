@@ -166,6 +166,14 @@ async function serveStatic(req, res) {
     res.writeHead(200, { ...headers, "content-length": data.length });
     res.end(req.method === "HEAD" ? undefined : data);
   } catch {
+    // „/impressum“ ohne Schrägstrich: wie ein Webhoster auf „/impressum/“ weiterleiten.
+    if (!extname(path) && !path.endsWith("/index.html")) {
+      try {
+        await readFile(join(file, "index.html"));
+        res.writeHead(301, { location: path + "/" });
+        return res.end();
+      } catch { /* gibt es nicht */ }
+    }
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     res.end("Seite nicht gefunden");
   }
@@ -174,6 +182,12 @@ async function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0] || req.socket.remoteAddress || "").trim();
   try {
+    // Welche Dienste laufen: die Seite schaltet Chat, Geschichten, Galerie und
+    // Newsletter nur ein, wenn sie hier wirklich bereitstehen.
+    if (req.url === "/api/status" && req.method === "GET") {
+      const fotos = (await gallery.list("approved")).length;
+      return send(res, 200, { chat: !!client, geschichte: !!client, newsletter: !!NEWSLETTER_WEBHOOK, galerie: true, fotos });
+    }
     if (req.url === "/api/chat" && req.method === "POST") {
       if (!client) return send(res, 503, { error: "KI ist noch nicht eingerichtet." });
       if (limited(ip)) return send(res, 429, { error: "Du warst gerade sehr fleißig! Bitte warte kurz. 😊" });
@@ -201,8 +215,8 @@ const server = http.createServer(async (req, res) => {
       const age = Math.min(10, Math.max(3, parseInt(b.age, 10) || 5));
       const theme = THEMES.includes(b.theme) ? b.theme : THEMES[0];
       const animal = String(b.animal || "").replace(/[^\p{L}\p{M} -]/gu, "").trim().slice(0, 20);
-      if (!name) return send(res, 400, { error: "Bitte einen Vornamen eingeben." });
-      const story = await writeStory({ name, age, theme, animal });
+      // Ein Name ist nicht nötig – ohne ihn heißt die Hauptfigur „kleiner Entdecker“.
+      const story = await writeStory({ name: name || "kleiner Entdecker", age, theme, animal });
       if (!story) return send(res, 422, { error: "Diese Geschichte konnte GRULU nicht schreiben." });
       return send(res, 200, story);
     }

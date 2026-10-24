@@ -47,8 +47,11 @@ und den Server neu starten.
 - Letzter Liefertag vor Weihnachten: steht bei Amazon beim Bestellen.
 
 ## Mitmachen auf der Website (darauf gern hinweisen)
-- GRULU-Song „Tausend tolle Sachen“ (#song): zum Anhören und Mitsingen, der Text läuft mit.
-- GRULU-Welt (#welt): Ausmalbild zum Ausmalen und Speichern, Spiel „Süßigkeiten-Fang“, persönliche
-  Gute-Nacht-Geschichte mit dem Namen des Kindes (wird auch vorgelesen), Grußkarte zum Teilen per WhatsApp.
-- Schulstart-Countdown (#schulstart): Tage bis zur Einschulung zählen, Erinnerung in den Kalender.
-- Galerie (#galerie): Kunden können Fotos ihrer GRULU-Box einsenden.
+- Alles auf der eigenen Seite GRULU-Welt: https://www.grulu-box.de/welt/
+  - GRULU-Song „Tausend tolle Sachen“: zum Anhören und Mitsingen, der Text läuft mit.
+  - Ausmalbild zum Ausmalen und Speichern, Spiel „Süßigkeiten-Fang“, Grußkarte zum Teilen per WhatsApp.
+  - Gute-Nacht-Geschichte (Name freiwillig, ein Fantasiename reicht), wird auch vorgelesen.
+  - Schulstart-Countdown: Tage bis zur Einschulung zählen, Erinnerung in den Kalender.
+  - Galerie: Kunden können Fotos ihrer GRULU-Box einsenden.
+- Bestellung und Bezahlung immer über Amazon.
+- Zutaten und Allergene: Produktseite bei Amazon und jede Verpackung; das Kinderbuch liegt der Kinder-Reisebox bei.

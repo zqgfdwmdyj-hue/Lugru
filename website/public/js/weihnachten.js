@@ -29,11 +29,12 @@
 
   // Firmenanfrage mit vorausgefüllter E-Mail
   const body = "Guten Tag,\n\nwir interessieren uns für GRULU-Boxen als Weihnachtsgeschenk.\n\nFirma:\nAnzahl Boxen:\nGewünschter Liefertermin:\nMit Logo-Grußkarte (ja/nein):\n\nViele Grüße";
-  document.getElementById("xmasB2b").href = "mailto:hallo@grulu-box.de?subject=" + encodeURIComponent("Anfrage Firmen-Weihnachtsgeschenke") + "&body=" + encodeURIComponent(body);
+  const b2b = document.getElementById("xmasB2b");
+  if (b2b) b2b.href = "mailto:hallo@grulu-box.de?subject=" + encodeURIComponent("Anfrage Firmen-Weihnachtsgeschenke") + "&body=" + encodeURIComponent(body);
 
   // Leichter Schneefall (nicht bei „weniger Bewegung“)
-  if (!window.GRULU.reduced) {
-    const snow = sec.querySelector(".snow");
+  const snow = sec.querySelector(".snow");
+  if (snow && !window.GRULU.reduced) {
     for (let i = 0; i < 26; i++) {
       const f = document.createElement("i");
       f.textContent = i % 3 ? "❄" : "✦";

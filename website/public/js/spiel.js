@@ -16,7 +16,7 @@
 
   // GRULU-Figur aus dem Maskottchen-Bild ausschneiden
   const sprite = new Image();
-  sprite.src = "img/grulu-768x525.webp";
+  sprite.src = "/img/grulu-768x525.webp";
   const CROP = { x: 30, y: 30, w: 290, h: 290 };
   const PW = 110, PH = 110;
 

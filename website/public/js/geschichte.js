@@ -3,7 +3,9 @@
   "use strict";
   const form = document.getElementById("storyForm");
   if (!form) return;
-  const { confetti } = window.GRULU;
+  const { confetti, status } = window.GRULU;
+  // Der Reiter erscheint nur, wenn der KI-Dienst am Server bereitsteht.
+  status.then((s) => { const tab = document.getElementById("tab-geschichte"); if (tab && s.geschichte) tab.hidden = false; });
   const box = document.getElementById("story");
   const titleEl = document.getElementById("storyTitle");
   const textEl = document.getElementById("storyText");
@@ -14,7 +16,7 @@
     e.preventDefault();
     stopReading();
     const data = Object.fromEntries(new FormData(form));
-    data.name = data.name.trim();
+    data.name = (data.name || "").trim();
     submit.disabled = true; submit.textContent = "✨ GRULU schreibt …";
     box.hidden = false; titleEl.textContent = ""; textEl.innerHTML = '<p class="typing"><span></span><span></span><span></span></p>';
     let story;

@@ -7,8 +7,9 @@
   const board = document.getElementById("cdBoard");
   const nameEl = document.getElementById("cdName");
   const dateEl = document.getElementById("cdDate");
-  const SCHULTUETE = "https://www.amazon.de/s?k=GRULU+Schult%C3%BCte";
-  const FUELLBOX = "https://www.amazon.de/dp/B0HCCVDJKX";
+  const { PRODUKTE } = window.GRULU_PRODUKTE;
+  const SCHULTUETE = PRODUKTE.schultuete.url;
+  const FUELLBOX = PRODUKTE.fuellung.url;
 
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -41,7 +42,7 @@
     const tip = days > 21 ? "Tipp: Schultüte jetzt in Ruhe aussuchen – mit Prime ist sie schnell da."
       : days >= 0 ? "Jetzt wird’s Zeit: Schultüte und Füllbox bestellen! Mit Prime oft schon morgen da." : "";
 
-    board.innerHTML = `<img src="img/grulu-schultuete-768x768.webp" alt="" width="160" height="160">
+    board.innerHTML = `<img src="/img/grulu-schultuete-768x768.webp" alt="" width="160" height="160">
       <p class="cd-head">${head}</p><p class="cd-sub">${sub}</p>
       ${days >= 0 ? `<div class="cd-weeks" aria-hidden="true">${weeksBar(days)}</div>` : ""}
       ${tip ? `<p class="cd-tip">${tip}</p>` : ""}
@@ -70,7 +71,7 @@
       `UID:${ymd(date)}-schulstart@grulu-box.de`, `DTSTAMP:${stamp}`,
       `DTSTART;VALUE=DATE:${ymd(date)}`, `DTEND;VALUE=DATE:${ymd(next)}`,
       `SUMMARY:🎒 Einschulung ${who === "dein Schulkind" ? "" : who}`.trim(),
-      "DESCRIPTION:Der große Tag! Schultüte und Füllbox: https://www.grulu-box.de/#schulstart",
+      "DESCRIPTION:Der große Tag! Schultüte und Füllbox: https://www.grulu-box.de/#boxen",
       "BEGIN:VALARM", "TRIGGER:-P21D", "ACTION:DISPLAY", "DESCRIPTION:Noch 3 Wochen bis zur Einschulung – Schultüte bestellen!", "END:VALARM",
       "BEGIN:VALARM", "TRIGGER:-P7D", "ACTION:DISPLAY", "DESCRIPTION:Noch 1 Woche bis zur Einschulung!", "END:VALARM",
       "END:VEVENT", "END:VCALENDAR",

@@ -9,22 +9,25 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch { /* privat */ } },
   };
 
-  $("#year").textContent = new Date().getFullYear();
+  const jahr = $("#year");
+  if (jahr) jahr.textContent = new Date().getFullYear();
 
-  /* ---------- Produkte (für Finder und Offline-Antworten) ---------- */
-  const BOXES = {
-    nerds: { name: "Nerds Probierbox", price: "14,99 €", img: "img/Nerds-Probierbox-1-768x768.webp", url: "https://www.amazon.de/dp/B0H62R2VKD", text: "4 Nerds-Sorten – knusprig, bunt und perfekt zum Teilen." },
-    pop: { name: "Pop Rocks Probierbox", price: "14,99 €", img: "img/Pop-Rocks-Probierbox-1-768x768.webp", url: "https://www.amazon.de/dp/B0H6CJH7RY", text: "Knisternder Knallzucker – das Highlight für mutige Entdecker." },
-    schultuete: { name: "GRULU Schultüte", price: "bei Amazon", img: "img/grulu-schultuete-768x768.webp", url: "https://www.amazon.de/s?k=GRULU+Schult%C3%BCte", text: "Die bunte GRULU-Schultüte für den großen Tag – mit Überraschungen zum Schulstart." },
-    fuellung: { name: "Schultüte-Füllung (28 Teile)", price: "bei Amazon", img: "img/Fullmaterial-fur-Schultute-768x768.webp", url: "https://www.amazon.de/dp/B0HCCVDJKX", text: "28 Teile amerikanische & saure Süßigkeiten, ohne Schokolade – die Schultüte ist in Minuten gefüllt." },
-    reise: { name: "Kinder-Reisebox", price: "12,99 €", img: "img/book-768x512.webp", url: "#newsletter", text: "Snacks für unterwegs plus kleines GRULU-Buch. Bald bei Amazon – trag dich ein, dann sagen wir Bescheid." },
-  };
+  /* ---------- Produkte (js/produkte.js) ---------- */
+  const { PRODUKTE: BOXES, empfehlung } = window.GRULU_PRODUKTE;
+
+  /* ---------- Was der Server kann ---------- */
+  // Auf einem reinen Webhoster (ohne Node-Server) gibt es /api/status nicht:
+  // dann laufen Chat, Geschichten, Galerie und Newsletter nicht, und die
+  // Seite zeigt das ehrlich, statt erst nach der Eingabe zu scheitern.
+  const status = fetch("/api/status", { headers: { accept: "application/json" } })
+    .then((r) => (r.ok && (r.headers.get("content-type") || "").includes("json") ? r.json() : {}))
+    .catch(() => ({}));
 
   /* ---------- Musik: der GRULU-Song „Tausend tolle Sachen“ + kleine Klick-Töne ---------- */
   const Music = (() => {
     const song = new Audio();
     song.preload = "none";
-    song.src = "audio/grulu-song.mp3";
+    song.src = "/audio/grulu-song.mp3";
     let ctx, master;
     const n = (m) => 440 * Math.pow(2, (m - 69) / 12);
     function ensure() {
@@ -56,44 +59,24 @@
   const musicBtn = $("#musicBtn");
   // Knopf oben zeigt immer den echten Zustand – auch wenn der Song im Mitsing-Bereich gestartet wird.
   function syncMusicBtn() {
+    if (!musicBtn) return;
     const on = Music.on;
     musicBtn.setAttribute("aria-pressed", String(on));
     musicBtn.setAttribute("aria-label", on ? "GRULU-Song anhalten" : "GRULU-Song abspielen");
   }
   ["play", "pause", "ended"].forEach((ev) => Music.song.addEventListener(ev, syncMusicBtn));
-  musicBtn.addEventListener("click", () => (Music.on ? Music.stop() : Music.start()));
+  musicBtn?.addEventListener("click", () => (Music.on ? Music.stop() : Music.start()));
   document.addEventListener("click", (e) => { if (e.target.closest(".btn, .finder-opts button, .chips button")) Music.pop(); });
 
-  /* ---------- Hero ---------- */
-  const counter = $("[data-count]");
-  if (counter) {
-    const target = +counter.dataset.count;
-    if (reduced) counter.textContent = target;
-    else {
-      const t0 = performance.now();
-      const tick = (t) => { const p = Math.min(1, (t - t0) / 1600); counter.textContent = Math.round(target * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(tick); };
-      requestAnimationFrame(tick);
-    }
-  }
-  const lines = ["Ich liebe Überraschungen! 🎁", "Schon die Pop Rocks probiert? 💥", "Mach mal die Musik an! 🎵", "Frag mich was im Chat! 💬", "Kennst du mein Buch? 📚", "Hihi, das kitzelt! 😆"];
+  /* ---------- Maskottchen ---------- */
+  const lines = ["Ich liebe Überraschungen! 🎁", "Schon die Pop Rocks probiert? 💥", "Kennst du mein Buch? 📚", "Hihi, das kitzelt! 😆"];
   let li = 0;
-  $(".hero-art img").addEventListener("click", () => {
+  $(".hero-art img")?.addEventListener("click", () => {
     const b = $("#mascotBubble");
+    if (!b) return;
     b.textContent = lines[li++ % lines.length];
-    b.animate?.([{ transform: "scale(.8)" }, { transform: "scale(1.06)" }, { transform: "scale(1)" }], { duration: 300 });
-    Music.pop(); confetti(6);
+    Music.pop();
   });
-
-  // 3D-Neigen der Karten
-  if (!reduced && matchMedia("(hover: hover)").matches) {
-    $$("[data-tilt]").forEach((c) => {
-      c.addEventListener("mousemove", (e) => {
-        const r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - 0.5, y = (e.clientY - r.top) / r.height - 0.5;
-        c.style.transform = `perspective(700px) rotateY(${x * 10}deg) rotateX(${-y * 10}deg) translateY(-4px)`;
-      });
-      c.addEventListener("mouseleave", () => { c.style.transform = ""; });
-    });
-  }
 
   function confetti(count = 24) {
     if (reduced) return;
@@ -114,6 +97,7 @@
   ];
   const finder = $("#finderBox");
   let answers = [];
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   function renderQuestion() {
     const i = answers.length, Q = QUESTIONS[i];
     finder.innerHTML = `<div class="finder-steps">${QUESTIONS.map((_, k) => `<i class="${k <= i ? "on" : ""}"></i>`).join("")}</div>
@@ -124,50 +108,74 @@
       answers.length === QUESTIONS.length ? renderResult() : renderQuestion();
     }));
   }
-  function pick([wer, anlass, typ]) {
-    if (anlass === "schule") return wer === "familie" ? "fuellung" : "schultuete";
-    if (anlass === "reise" || typ === "buch") return "reise";
-    if (typ === "pop") return wer === "klein" ? "nerds" : "pop";
-    if (typ === "nerds") return "nerds";
-    return "pop";
+  function knopf(b) {
+    if (!b.verfuegbar) return `<a class="btn btn-sm btn-ghost" href="${b.url}">🔔 Bescheid geben</a>`;
+    return `<a class="btn btn-sm" href="${b.url}" target="_blank" rel="noopener">🛒 ${b.suche ? "Bei Amazon suchen" : "Bei Amazon"}</a>`;
   }
   function renderResult() {
-    const key = pick(answers), b = BOXES[key];
-    const ext = b.url.startsWith("http");
+    const e = empfehlung(...answers), b = BOXES[e.tipp], alt = e.auch && BOXES[e.auch];
+    const bild = b.bild ? `<img src="${b.bild}" alt="${esc(b.name)}" width="180" height="180">` : `<div class="bild-folgt" aria-hidden="true">🚗🍬📚</div>`;
     finder.innerHTML = `<div class="finder-result">
-        <img src="${b.img}" alt="${b.name}" width="180" height="180">
-        <div><span class="kicker">Unser Tipp für euch</span><h3>${b.name} · ${b.price}</h3><p>${b.text}</p>
-        <div class="actions"><a class="btn btn-sm" href="${b.url}" ${ext ? 'target="_blank" rel="noopener"' : ""}>${ext ? "🛒 Bei Amazon" : "🔔 Bescheid geben"}</a>
-        <button type="button" class="btn btn-sm btn-ghost" id="finderAgain">↺ Nochmal</button></div></div></div>`;
+        ${bild}
+        <div><span class="kicker">Unser Tipp für euch</span><h3>${esc(b.name)}${b.preis ? " · " + b.preis : ""}</h3><p>${esc(b.kurz)}</p>
+        <ul class="finder-warum">${e.warum.map((w) => `<li>${esc(w)}</li>`).join("")}</ul>
+        <div class="actions">${knopf(b)}
+        ${alt ? `<a class="btn btn-sm btn-ghost" href="${alt.url}" ${alt.verfuegbar ? 'target="_blank" rel="noopener"' : ""}>Auch passend: ${esc(alt.name)}</a>` : ""}
+        <button type="button" class="btn btn-sm btn-ghost" id="finderAgain">↺ Nochmal</button></div>
+        <p class="hint">Bestellung und Bezahlung über Amazon.</p></div></div>`;
     $("#finderAgain").addEventListener("click", () => { answers = []; renderQuestion(); });
-    confetti();
+    confetti(10);
   }
-  renderQuestion();
+  if (finder) renderQuestion();
 
   // Für die übrigen Module (Spiel, Ausmalen, …)
-  window.GRULU = { confetti, pop: () => Music.pop(), music: Music, store, reduced, openChat: (p) => openChat(p) };
+  window.GRULU = { confetti, pop: () => Music.pop(), music: Music, store, reduced, status, openChat: (p) => openChat(p) };
 
-  /* ---------- KI-Chat ---------- */
+  /* ---------- Chat: KI-Helfer oder Produkthilfe ---------- */
+  // Ohne erreichbare KI ist der Chat eine Produkthilfe mit festen Antworten –
+  // das steht schon auf dem Knopf und im Kopf des Fensters, nicht erst nach
+  // der ersten Frage.
   const chat = $("#chat"), fab = $("#chatFab"), log = $("#chatLog"), form = $("#chatForm"), input = $("#chatInput");
   const history = [];
-  let greeted = false, busy = false;
+  let greeted = false, busy = false, ki = false;
+
+  function setzeModus(an) {
+    ki = an;
+    const label = $("#chatFabLabel"), modus = $("#chatModus"), note = $("#chatNote");
+    if (label) label.textContent = ki ? "Frag GRULU" : "Fragen?";
+    if (modus) modus.textContent = ki ? "KI-Helfer · Antworten können Fehler enthalten" : "Produkthilfe · feste Antworten zu unseren Boxen";
+    if (note) note.innerHTML = ki
+      ? 'Deine Fragen werden zur Beantwortung an unseren KI-Dienst (Anthropic) geschickt. Bitte keine persönlichen Daten eingeben. <a href="/datenschutz/">Datenschutz</a>'
+      : 'Die Produkthilfe antwortet aus unseren FAQ – deine Eingaben verlassen deinen Browser nicht. Weitere Fragen: <a href="mailto:hallo@grulu-box.de">hallo@grulu-box.de</a>';
+    $$("[data-open-chat]").forEach((b) => { if (b.dataset.chatLabel !== "fest") b.textContent = ki ? "💬 Frag GRULU" : "💬 Fragen zu den Boxen"; });
+  }
+  setzeModus(false);
+  status.then((s) => setzeModus(!!s.chat));
 
   function openChat(prompt) {
+    if (!chat) return;
     chat.hidden = false; fab.hidden = true; fab.setAttribute("aria-expanded", "true");
-    if (!greeted) { addMsg("bot", "Hallo, ich bin GRULU! 💜 Frag mich nach unseren Boxen, Geschenkideen oder lass dir eine kleine Geschichte erzählen."); greeted = true; }
+    if (!greeted) {
+      addMsg("bot", ki
+        ? "Hallo, ich bin GRULU! 💜 Frag mich nach unseren Boxen, Geschenkideen oder lass dir eine kleine Geschichte erzählen."
+        : "Hallo, ich bin GRULU! 💜 Ich beantworte die häufigsten Fragen zu unseren Boxen. Tipp einfach auf eine Frage unten oder schreib mir ein Stichwort.");
+      greeted = true;
+    }
     if (prompt) send(prompt); else input.focus();
   }
   function closeChat() { chat.hidden = true; fab.hidden = false; fab.setAttribute("aria-expanded", "false"); fab.focus(); }
-  fab.addEventListener("click", () => openChat());
-  $("#chatClose").addEventListener("click", closeChat);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !chat.hidden) closeChat(); });
+  if (chat) {
+    fab.addEventListener("click", () => openChat());
+    $("#chatClose").addEventListener("click", closeChat);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !chat.hidden) closeChat(); });
+    $$("#chatChips button").forEach((b) => b.addEventListener("click", () => send(b.textContent)));
+    form.addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });
+  }
   $$("[data-open-chat]").forEach((b) => b.addEventListener("click", () => openChat(b.dataset.chatPrompt)));
-  $$("#chatChips button").forEach((b) => b.addEventListener("click", () => send(b.textContent)));
 
   // Links in Antworten klickbar machen – Text wird vorher escaped.
   function render(text) {
-    const esc = text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-    return esc
+    return esc(text)
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/(https:\/\/[^\s<)]+)/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u.includes("amazon.") ? "Zu Amazon ↗" : u}</a>`)
       .replace(/([\w.+-]+@grulu-box\.de)/g, '<a href="mailto:$1">$1</a>');
@@ -175,7 +183,7 @@
   function addMsg(who, text) {
     const d = document.createElement("div");
     d.className = `msg ${who}`;
-    d.innerHTML = who === "bot" ? render(text) : text.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    d.innerHTML = who === "bot" ? render(text) : esc(text);
     log.appendChild(d); log.scrollTop = log.scrollHeight;
     return d;
   }
@@ -186,55 +194,89 @@
     busy = true; input.value = "";
     addMsg("me", text);
     history.push({ role: "user", content: text });
-    const wait = addMsg("bot", ""); wait.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
     let reply;
-    try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history.slice(-10) }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.reply) throw new Error(data.error || "offline");
-      reply = data.reply;
-    } catch {
+    if (!ki) {
       reply = offlineAnswer(text);
+      addMsg("bot", reply);
+    } else {
+      const wait = addMsg("bot", ""); wait.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+      try {
+        const res = await fetch("/api/chat", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: history.slice(-10) }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.reply) throw new Error(data.error || "offline");
+        reply = data.reply;
+      } catch {
+        // KI gerade nicht erreichbar: auf die Produkthilfe umschalten.
+        setzeModus(false);
+        reply = "Der KI-Helfer ist gerade nicht erreichbar, ich antworte aus unseren FAQ: " + offlineAnswer(text);
+      }
+      wait.innerHTML = render(reply);
     }
-    wait.innerHTML = render(reply);
     history.push({ role: "assistant", content: reply });
     log.scrollTop = log.scrollHeight;
     busy = false;
   }
-  form.addEventListener("submit", (e) => { e.preventDefault(); send(input.value); });
 
-  // Antworten ohne Server (z. B. wenn die KI gerade nicht erreichbar ist).
+  // Feste Antworten der Produkthilfe.
   function offlineAnswer(q) {
     const t = q.toLowerCase();
-    if (/(pop ?rocks|knall|prickel)/.test(t)) return `Die Pop Rocks Probierbox (${BOXES.pop.price}) knistert und prickelt im Mund! 💥 ${BOXES.pop.url}`;
-    if (/nerds/.test(t)) return `Die Nerds Probierbox (${BOXES.nerds.price}) hat 4 bunte Sorten. 🌈 ${BOXES.nerds.url}`;
-    if (/(reise|unterwegs|auto|urlaub|buch)/.test(t)) return "Die Kinder-Reisebox (12,99 €) hat Snacks für unterwegs und ein kleines GRULU-Buch. Sie kommt bald zu Amazon – trag dich unten in den Newsletter ein, dann sagen wir Bescheid! 📚";
-    if (/(allerg|zutat|gluten|vegan|laktose)/.test(t)) return "Die Boxen können Allergene enthalten. Bitte prüf die Angaben auf Amazon und auf den einzelnen Verpackungen. Bei Fragen: hallo@grulu-box.de";
-    if (/(liefer|versand|wann|prime)/.test(t)) return "Wir versenden über Amazon – mit Prime kommt deine Box oft schon am nächsten Werktag. 🚚";
-    if (/(firma|unternehmen|menge|bulk|großbestell)/.test(t)) return "Für Firmen- und Mengenanfragen schreib uns gern an hallo@grulu-box.de 💼";
-    if (/(geschenk|geburtstag)/.test(t)) return `Als Geschenk lieben Kinder die Pop Rocks Box (${BOXES.pop.url}) oder die Nerds Box (${BOXES.nerds.url}). 🎁`;
-    if (/(schult|füll|einschul)/.test(t)) return `Zum Schulstart gibt es die GRULU Schultüte (${BOXES.schultuete.url}) und die passende Füllbox (${BOXES.fuellung.url}). 🎒`;
-    if (/(geschichte|märchen|erzähl)/.test(t)) return "Es war einmal ein kleines lila Fellwesen namens GRULU. Jeden Abend öffnete es eine Box voller Sterne – und jedes Mal war etwas anderes darin: mal ein Regenbogen-Bonbon, mal ein kichernder Pilz. 🍄 Heute fand GRULU … dich! Gute Nacht! 🌙";
-    return "Gute Frage! Gerade bin ich im Offline-Modus. 🙈 Schau gern in die FAQ oder schreib uns an hallo@grulu-box.de.";
+    const alter = /(\d{1,2})\s*-?\s*(jährig|jahr|j\b)/.exec(t);
+    if (alter || /(welche box|was passt|empfehl)/.test(t)) {
+      const a = alter ? +alter[1] : 0;
+      return a && a < 3
+        ? "Für Kinder unter 3 Jahren sind Knallzucker und kleine Süßigkeiten nicht geeignet. 💜 Für Fragen: hallo@grulu-box.de"
+        : `Für Kinder${a ? " mit " + a + " Jahren" : ""} kommen gut an: die Nerds Probierbox (bunt & knusprig, ${BOXES.nerds.preis}) ${BOXES.nerds.url} und die Pop Rocks Probierbox (knistert, ${BOXES.pop.preis}) ${BOXES.pop.url} – oder probier oben den Box-Finder. 🎁`;
+    }
+    if (/(pop ?rocks|knall|prickel|knister)/.test(t)) return `Die Pop Rocks Probierbox (${BOXES.pop.preis}) knistert und prickelt im Mund! 💥 ${BOXES.pop.url}`;
+    if (/nerds/.test(t)) return `Die Nerds Probierbox (${BOXES.nerds.preis}) hat 4 bunte Sorten. 🌈 ${BOXES.nerds.url}`;
+    if (/(reise|unterwegs|auto|urlaub|buch)/.test(t)) return `Die Kinder-Reisebox (${BOXES.reise.preis}) hat wechselnde Snacks für unterwegs und ein kleines GRULU-Buch. Sie kommt bald zu Amazon – unten kannst du dich benachrichtigen lassen. 📚`;
+    if (/(allerg|zutat|gluten|vegan|laktose|nuss|nüsse)/.test(t)) return "Zutaten und Allergene stehen auf der jeweiligen Produktseite bei Amazon und auf jeder einzelnen Verpackung. Weil viele Boxen wechselnde Inhalte haben, bitte vor dem Verzehr immer die Verpackung prüfen. Fragen beantworten wir an hallo@grulu-box.de";
+    if (/(bestell|kauf|bezahl|zahl)/.test(t)) return "Bestellung und Bezahlung laufen über Amazon: Box auswählen, auf „Bei Amazon“ tippen und dort bestellen. Bestellstatus, Rückgaben und Erstattungen findest du in deinem Amazon-Konto. 🛒";
+    if (/(liefer|versand|wann|prime)/.test(t)) return "Wir versenden über Amazon – die Lieferzeit zeigt Amazon beim Bestellen, mit Prime oft am nächsten Werktag. 🚚";
+    if (/(firma|unternehmen|menge|bulk|großbestell|mitarbeiter)/.test(t)) return "Für Firmen- und Mengenanfragen schreib uns an hallo@grulu-box.de – gern mit Anzahl, Wunschtermin und ob ihr eine Grußkarte mit Logo möchtet. 💼";
+    if (/(geschenk|geburtstag|weihnacht|nikolaus)/.test(t)) return `Als Geschenk kommen die Pop Rocks Box (${BOXES.pop.url}) und die Nerds Box (${BOXES.nerds.url}) gut an. 🎁`;
+    if (/(schult|füll|einschul)/.test(t)) return `Zum Schulstart gibt es die GRULU Schultüte (${BOXES.schultuete.url}) und die passende 28-teilige Füllung (${BOXES.fuellung.url}). 🎒`;
+    if (/(inhalt|gleich|wechsel)/.test(t)) return "Viele GRULU-Boxen haben wechselnde Inhalte – so bleibt jede Box spannend. Was gerade drin ist, steht bei Amazon in der Produktbeschreibung.";
+    if (/(geschichte|märchen|erzähl)/.test(t)) return "Geschichten, Ausmalbilder und ein Spiel findest du in der GRULU-Welt: https://www.grulu-box.de/welt/ 🌙";
+    return "Dazu habe ich keine feste Antwort. 🙈 Schau gern in die häufigen Fragen unten oder schreib uns an hallo@grulu-box.de.";
   }
 
   /* ---------- „Frag ChatGPT nach GRULU“ ---------- */
   const q = "Was sind GRULU Snackboxen von grulu-box.de und welche Box passt zu meinem Kind?";
-  $("#askChatGPT").href = "https://chatgpt.com/?q=" + encodeURIComponent(q);
+  const askGpt = $("#askChatGPT");
+  if (askGpt) askGpt.href = "https://chatgpt.com/?q=" + encodeURIComponent(q);
+
+  /* ---------- Firmenanfrage mit Vorlage ---------- */
+  const firmen = $("#firmenAnfrage");
+  if (firmen) {
+    const body = "Guten Tag,\n\nwir interessieren uns für GRULU-Boxen.\n\nFirma:\nAnlass (z. B. Weihnachten, Mitarbeiterkinder, Kunden):\nWelche Box:\nAnzahl:\nGewünschter Liefertermin:\nGrußkarte mit Logo (ja/nein):\n\nViele Grüße";
+    firmen.href = "mailto:hallo@grulu-box.de?subject=" + encodeURIComponent("Firmenanfrage GRULU-Boxen") + "&body=" + encodeURIComponent(body);
+  }
 
   /* ---------- Newsletter ---------- */
-  $("#nlForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const f = e.currentTarget, msg = $("#nlMsg");
-    msg.textContent = "Einen Moment …";
-    try {
-      const res = await fetch("/api/newsletter", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: f.elements.namedItem("name").value, email: f.elements.namedItem("email").value, consent: f.elements.namedItem("consent").checked }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Fehler");
-      msg.textContent = data.message || "Danke! Bitte bestätige deine Anmeldung in der E-Mail, die wir dir geschickt haben. 💌";
-      f.reset(); confetti();
-    } catch (err) {
-      msg.textContent = err.message && err.message !== "Fehler" ? err.message : "Das hat leider nicht geklappt. Bitte versuch es später noch einmal.";
-    }
-  });
+  const nlForm = $("#nlForm");
+  if (nlForm) {
+    // Ohne Newsletter-Dienst am Server: statt eines Formulars, das scheitert,
+    // die Benachrichtigung per E-Mail anbieten.
+    status.then((s) => {
+      if (s.newsletter) return;
+      nlForm.hidden = true;
+      const ersatz = $("#nlErsatz");
+      if (ersatz) ersatz.hidden = false;
+    });
+    nlForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = e.currentTarget, msg = $("#nlMsg");
+      msg.textContent = "Einen Moment …";
+      try {
+        const res = await fetch("/api/newsletter", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: f.elements.namedItem("name").value, email: f.elements.namedItem("email").value, consent: f.elements.namedItem("consent").checked }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Fehler");
+        msg.textContent = data.message || "Danke! Bitte bestätige deine Anmeldung in der E-Mail, die wir dir geschickt haben. 💌";
+        f.reset(); confetti();
+      } catch (err) {
+        msg.textContent = err.message && err.message !== "Fehler" ? err.message : "Das hat leider nicht geklappt. Bitte versuch es später noch einmal.";
+      }
+    });
+  }
 })();

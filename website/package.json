@@ -6,7 +6,9 @@
   "description": "GRULU-Website mit KI-Chat, Musik und Box-Finder",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js"
+    "check": "node --check server.mjs && node --check public/app.js",
+    "test": "node --test test/*.test.mjs",
+    "pruefen": "node scripts/pruefen.mjs"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

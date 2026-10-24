@@ -28,8 +28,12 @@
   }
 
   /* ---------- Galerie ---------- */
+  // Nur mit dem Server (Fotos einsenden und freigeben); leer wird nur der
+  // Einsende-Knopf gezeigt, keine leere Galerie.
   const gallery = document.getElementById("gallery");
   if (!gallery) return;
+  const section = document.getElementById("galerie");
+  window.GRULU.status.then((s) => { if (s.galerie && section) section.hidden = false; });
 
   async function loadGallery() {
     try {
@@ -46,7 +50,7 @@
         return fig;
       }));
     } catch {
-      gallery.innerHTML = '<p class="gallery-empty">📦 Noch keine Fotos – sei die oder der Erste!</p>';
+      gallery.hidden = true;
     }
   }
   loadGallery();
