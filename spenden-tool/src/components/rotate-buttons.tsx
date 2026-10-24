@@ -10,6 +10,8 @@ export function RotateButtons({ productId, compact = false, onDone }: { productI
   const router = useRouter();
   const turn = (deg: number) =>
     start(async () => {
+      // Erst offene Eingaben der Produktliste speichern, damit beim Neuladen nichts verloren geht.
+      await (window as unknown as { __spendenFlush?: () => Promise<void> }).__spendenFlush?.();
       await rotatePhoto(productId, deg);
       router.refresh();
       onDone?.();

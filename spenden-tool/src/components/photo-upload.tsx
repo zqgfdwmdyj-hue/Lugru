@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { UploadResult } from "@/app/(app)/actions";
 import { shrink } from "./image-form";
 import { CategorySelect } from "./category-select";
+import { UNSORTED_CATEGORY } from "@/lib/price-logic";
 
 const BATCH = 4;
 
@@ -33,7 +34,7 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
       const part = files.slice(i, i + BATCH);
       const fd = new FormData();
       fd.set("eventId", eventId);
-      fd.set("category", categoryBox.current?.querySelector<HTMLInputElement | HTMLSelectElement>("[name=category]")?.value || "Lebensmittel");
+      fd.set("category", categoryBox.current?.querySelector<HTMLInputElement | HTMLSelectElement>("[name=category]")?.value || UNSORTED_CATEGORY);
       for (let j = 0; j < part.length; j++) {
         setStatus(`Foto ${i + j + 1} von ${total} wird vorbereitet …`);
         fd.append("photos", await shrink(part[j]));
@@ -103,7 +104,7 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
         {picker}
         <h2>Fotos hochladen</h2>
         <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Doppelte Fotos werden erkannt – auch verkleinert, neu gespeichert oder per WhatsApp verschickt – und nicht doppelt angelegt oder ausgewertet.</div>
-        <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><CategorySelect id="pc" name="category" value="Lebensmittel" categories={categories} /></div>
+        <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><span className="small muted">„{UNSORTED_CATEGORY}“: die KI schlägt eine vor, du ordnest später zu.</span><CategorySelect id="pc" name="category" value={UNSORTED_CATEGORY} categories={categories} /></div>
         <button className="btn btn-primary" type="button" disabled={busy} onClick={() => input.current?.click()}>Fotos auswählen</button>
         {message}
       </div>

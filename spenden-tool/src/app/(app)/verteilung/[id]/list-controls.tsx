@@ -1,0 +1,213 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const STATUS_ALL = "";
+
+/**
+ * Suche und Filter über der Produktliste. Filtert nur die Anzeige im Browser – alle Zeilen bleiben im Formular, so
+ * gehen beim Filtern keine Eingaben verloren. Kategorie und Prüfstatus lassen sich kombinieren; der Stand steht in
+ * der Adresse (Links aus „Prüfen“ öffnen die Liste gleich gefiltert).
+ */
+export function ListControls({ listId, categories, statuses, total, initial }: {
+  listId: string;
+  categories: { name: string; count: number }[];
+  statuses: { key: string; label: string; count: number }[];
+  total: number;
+  initial: { q: string; kat: string; status: string };
+}) {
+  const [q, setQ] = useState(initial.q);
+  const [kat, setKat] = useState(initial.kat);
+  const [status, setStatus] = useState(initial.status);
+  const [shown, setShown] = useState(total);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const apply = useCallback(() => {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const words = q.toLocaleLowerCase("de-DE").split(/\s+/).filter(Boolean);
+    let n = 0;
+    for (const row of list.querySelectorAll<HTMLElement>("[data-row]")) {
+      const text = row.dataset.search ?? "";
+      const ok =
+        words.every((w) => text.includes(w)) &&
+        (!kat || row.dataset.cat === kat) &&
+        (status === STATUS_ALL || (status === "fertig" ? !row.dataset.issues : (row.dataset.issues ?? "").split(" ").includes(status)));
+      row.hidden = !ok;
+      if (ok) n++;
+    }
+    setShown(n);
+    const u = new URL(location.href);
+    for (const [k, v] of [["q", q], ["kat", kat], ["status", status]] as const) {
+      if (v) u.searchParams.set(k, v);
+      else u.searchParams.delete(k);
+    }
+    history.replaceState(history.state, "", u);
+  }, [listId, q, kat, status]);
+
+  useEffect(() => {
+    apply();
+  }, [apply]);
+  // Nach dem Neuladen der Liste (Speichern, KI fertig …) Filter erneut anwenden.
+  useEffect(() => {
+    const list = document.getElementById(listId);
+    if (!list) return;
+    const obs = new MutationObserver((m) => {
+      if (m.some((x) => [...x.addedNodes].some((n) => n instanceof HTMLElement && (n.matches("[data-row]") || n.querySelector("[data-row]"))))) apply();
+    });
+    obs.observe(list, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, [listId, apply]);
+
+  // Beim Aufklappen das erste Feld der Details erreichbar machen (Tastatur) – das Aufklappen selbst macht CSS.
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const t = e.target as HTMLInputElement;
+      if (!t.classList?.contains("pl-open") || !t.checked) return;
+      t.closest("[data-row]")?.querySelector<HTMLElement>(".pl-details input:not([type=hidden]), .pl-details select")?.focus({ preventScroll: true });
+    };
+    document.addEventListener("change", onChange);
+    return () => document.removeEventListener("change", onChange);
+  }, []);
+
+  const reset = () => {
+    setQ("");
+    setKat("");
+    setStatus(STATUS_ALL);
+    searchRef.current?.focus();
+  };
+  const filtered = !!(q || kat || status);
+
+  return (
+    <div className="list-controls">
+      <div className="list-search">
+        <input ref={searchRef} className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="In dieser Verteilung suchen …" aria-label="In dieser Verteilung suchen" enterKeyHint="search" onKeyDown={(e) => e.key === "Enter" && e.preventDefault()} />
+      </div>
+      <select className="select" value={kat} onChange={(e) => setKat(e.target.value)} aria-label="Kategorie">
+        <option value="">Alle Kategorien</option>
+        {categories.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.count})</option>)}
+      </select>
+      <select className="select" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Prüfstatus">
+        <option value="">Jeder Prüfstatus</option>
+        {statuses.map((s) => <option key={s.key} value={s.key} disabled={s.count === 0}>{s.label} ({s.count})</option>)}
+      </select>
+      <span className="small muted list-count" aria-live="polite">
+        {filtered ? <>{shown} von {total} · <button type="button" className="btn-link small" onClick={reset}>Filter zurücksetzen</button></> : `${total} Produkte`}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Auswahl und Stapelaktionen: erscheint, sobald Zeilen angehakt sind. Die Knöpfe senden das Produktformular mit
+ * (vorher werden alle Eingaben gespeichert).
+ */
+export function BulkBar({ formId, categories, ai, costs }: { formId: string; categories: string[]; ai: boolean; costs: Record<string, number> }) {
+  const [count, setCount] = useState(0);
+  const [stufe, setStufe] = useState("sparsam");
+  useEffect(() => {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    const update = () => setCount(form.querySelectorAll<HTMLInputElement>("input[name=sel]:checked").length);
+    form.addEventListener("change", update);
+    update();
+    const obs = new MutationObserver(update);
+    obs.observe(form, { childList: true, subtree: true });
+    return () => {
+      form.removeEventListener("change", update);
+      obs.disconnect();
+    };
+  }, [formId]);
+  const selectVisible = (on: boolean) => {
+    const form = document.getElementById(formId);
+    form?.querySelectorAll<HTMLElement>("[data-row]").forEach((row) => {
+      const box = row.querySelector<HTMLInputElement>("input[name=sel]");
+      if (box && (!row.hidden || !on)) box.checked = on;
+    });
+    form?.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  const confirmRun = (msg: string) => (e: React.MouseEvent) => {
+    if (!confirm(msg)) e.preventDefault();
+  };
+  const cost = (costs[stufe] ?? 0) * count;
+
+  return (
+    <div className={`bulk-bar${count ? " active" : ""}`}>
+      <div className="bulk-head">
+        <button type="button" className="btn-link small" onClick={() => selectVisible(true)}>Alle sichtbaren auswählen</button>
+        {count > 0 && <><strong>{count} ausgewählt</strong><button type="button" className="btn-link small" onClick={() => selectVisible(false)}>Auswahl aufheben</button></>}
+      </div>
+      {count > 0 && (
+        <div className="bulk-actions">
+          <span className="bulk-group">
+            <select className="select select-compact" name="bulk_cat" defaultValue="" aria-label="Kategorie für die Auswahl">
+              <option value="" disabled>Kategorie …</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:cat">Zuordnen</button>
+          </span>
+          <span className="bulk-group">
+            <span className="small muted">Collage</span>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:col-on">an</button>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:col-off">aus</button>
+          </span>
+          <span className="bulk-group">
+            <span className="small muted">Aushang</span>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:fly-on">an</button>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:fly-off">aus</button>
+          </span>
+          <span className="bulk-group">
+            <span className="small muted">MHD</span>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:mhd-nein" title="Kein MHD nötig, z. B. Spielzeug, Haushaltswaren">nicht nötig</button>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:mhd-auto" title="Nach Kategorie entscheiden">automatisch</button>
+          </span>
+          <button className="btn btn-small" type="submit" name="op" value="bulk:confirm" title="Preise und KI-Angaben der Auswahl als geprüft markieren" onClick={confirmRun(`${count} Produkt(e) als geprüft markieren? Preise und KI-Angaben gelten dann als bestätigt.`)}>✓ Als geprüft markieren</button>
+          {ai && (
+            <span className="bulk-group">
+              <select className="select select-compact" name="stufe" value={stufe} onChange={(e) => setStufe(e.target.value)} aria-label="KI-Stufe">
+                <option value="erkennen">KI: nur Namen erkennen</option>
+                <option value="minimal">KI: Preis minimal</option>
+                <option value="sparsam">KI: Preis sparsam</option>
+                <option value="genau">KI: Preis genau</option>
+              </select>
+              <button
+                className="btn btn-small"
+                type="submit"
+                name="op"
+                value="bulk:ai"
+                onClick={confirmRun(`KI-Suche für ${count} Produkt(e) starten?\n\nUmfang: ${stufe === "erkennen" ? "nur Namen erkennen" : `Namen erkennen und Preise suchen (${stufe})`}.\nProdukte mit Ergebnis aus den letzten 60 Tagen werden übersprungen.\nGeschätzte Kosten: höchstens ca. ${cost.toFixed(2).replace(".", ",")} $.\n\nEingetragene Preise werden nicht verändert – Vorschläge erscheinen unter „Prüfen“.`)}
+              >
+                KI starten (~{cost.toFixed(2).replace(".", ",")} $)
+              </button>
+            </span>
+          )}
+          <button className="btn btn-small btn-danger-link" type="submit" name="op" value="bulk:remove" onClick={confirmRun(`${count} Produkt(e) aus dieser Verteilung entfernen? Sie bleiben in der Produktdatenbank.`)}>Entfernen</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** „Produkte hinzufügen“ – drei Wege, nur bei Bedarf aufgeklappt. */
+export function AddPanel({ initial, photos, database, manual }: { initial: string; photos: React.ReactNode; database: React.ReactNode; manual: React.ReactNode }) {
+  const [tab, setTab] = useState(initial);
+  const tabs = [
+    { key: "fotos", label: "📷 Fotos hochladen" },
+    { key: "datenbank", label: "Aus der Datenbank" },
+    { key: "manuell", label: "Manuell anlegen" },
+  ];
+  return (
+    <div className="add-panel">
+      <div className="add-tabs" role="tablist">
+        {tabs.map((t) => (
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`btn${tab === t.key ? " btn-primary" : ""}`} onClick={() => setTab(tab === t.key ? "" : t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "fotos" && <div className="add-body">{photos}</div>}
+      {tab === "datenbank" && <div className="add-body">{database}</div>}
+      {tab === "manuell" && <div className="add-body">{manual}</div>}
+    </div>
+  );
+}

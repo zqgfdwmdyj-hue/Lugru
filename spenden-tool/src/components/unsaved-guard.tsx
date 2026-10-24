@@ -11,7 +11,7 @@ type Status = "idle" | "dirty" | "saving" | "saved" | "error";
  */
 export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventId: string; save: (fd: FormData) => Promise<void> }) {
   const [status, setStatus] = useState<Status>("idle");
-  const dirtyRows = useRef(new Set<HTMLTableRowElement>());
+  const dirtyRows = useRef(new Set<HTMLElement>());
   const busy = useRef(false);
   const again = useRef(false);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,6 +30,7 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
     fd.set("op", "auto");
     for (const row of rows) {
       for (const el of row.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input[name], select[name], textarea[name]")) {
+        if (el.name === "sel") continue;
         if (el instanceof HTMLInputElement && (el.type === "file" || ((el.type === "checkbox" || el.type === "radio") && !el.checked))) continue;
         fd.append(el.name, el.value);
       }
@@ -57,9 +58,9 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
     if (!form) return;
     const mark = (e: Event) => {
       const t = e.target as HTMLInputElement | null;
-      // Datei-Felder (MHD-Foto) speichern sich selbst.
-      if (!t || t.type === "file") return;
-      const row = t.closest("tr");
+      // Datei-Felder (MHD-Foto) speichern sich selbst; die Auswahl-Häkchen sind keine Eingabe.
+      if (!t || t.type === "file" || t.name === "sel" || !t.name) return;
+      const row = t.closest<HTMLElement>("[data-row]");
       if (!row) return;
       dirtyRows.current.add(row);
       setStatus("dirty");
@@ -69,15 +70,17 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
     };
     // Zeile verlassen → gleich speichern
     const leave = (e: FocusEvent) => {
-      const row = (e.target as Element | null)?.closest?.("tr");
+      const row = (e.target as Element | null)?.closest?.<HTMLElement>("[data-row]");
       const next = e.relatedTarget as Node | null;
-      if (row && dirtyRows.current.has(row as HTMLTableRowElement) && !(next && row.contains(next))) setTimeout(() => void flush(), 300);
+      if (row && dirtyRows.current.has(row) && !(next && row.contains(next))) setTimeout(() => void flush(), 300);
     };
     // Normales Absenden (Speichern-Knopf, Pfeile, ✕ …) speichert ohnehin alles.
     const submitted = () => {
       dirtyRows.current.clear();
       if (idle.current) clearTimeout(idle.current);
-      setStatus("idle");
+      setStatus("saving");
+      // Nach dem Absenden lädt die Seite neu; dann gilt wieder „gespeichert“.
+      setTimeout(() => setStatus((s) => (s === "saving" ? "saved" : s)), 1200);
     };
     form.addEventListener("input", mark);
     form.addEventListener("change", mark);
@@ -90,6 +93,15 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
       form.removeEventListener("submit", submitted);
     };
   }, [formId, flush]);
+
+  // Andere Aktionen (z. B. Foto drehen) speichern vorher, was noch offen ist.
+  useEffect(() => {
+    const w = window as unknown as { __spendenFlush?: () => Promise<void> };
+    w.__spendenFlush = flush;
+    return () => {
+      delete w.__spendenFlush;
+    };
+  }, [flush]);
 
   // Beim Wechsel in eine andere App / Sperren des Handys sofort speichern.
   useEffect(() => {
@@ -136,20 +148,19 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
     };
   }, [pending]);
 
-  if (status === "idle") return null;
+  // Immer sichtbar (unten angeheftet): Stand und Speichern-Knopf – auch mitten in einer langen Liste.
   return (
-    <div className={`unsaved-bar${status === "saved" ? " unsaved-bar-ok" : ""}`} role="status">
-      <span>
-        {status === "dirty" && "Änderungen werden gleich gespeichert …"}
-        {status === "saving" && "Speichert …"}
-        {status === "saved" && "✓ Automatisch gespeichert"}
-        {status === "error" && "Nicht gespeichert – Verbindung? Bitte erneut versuchen."}
+    <div className={`save-bar save-${status}`} role="status" aria-live="polite">
+      <span className="save-state">
+        {status === "idle" && "✓ Alles gespeichert"}
+        {status === "dirty" && "● Ungespeicherte Änderungen – werden gleich gespeichert"}
+        {status === "saving" && "Wird gespeichert …"}
+        {status === "saved" && "✓ Gespeichert"}
+        {status === "error" && "⚠ Nicht gespeichert – Verbindung prüfen und erneut speichern"}
       </span>
-      {status !== "saved" && (
-        <button className="btn btn-primary" type="button" onClick={() => void flush()} disabled={status === "saving"}>
-          Jetzt speichern
-        </button>
-      )}
+      <button className="btn btn-primary btn-small" type="submit" form={formId} name="op" value="save" disabled={status === "saving"}>
+        Speichern
+      </button>
     </div>
   );
 }

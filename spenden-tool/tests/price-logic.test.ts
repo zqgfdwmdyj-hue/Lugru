@@ -70,6 +70,7 @@ describe("Abgabeeinheit", () => {
     expect(guessUnit(null, "23 g (Einzelriegel)")).toEqual({ unit: "stueck", count: null });
     expect(guessUnit("ganzer Karton", "24 Dosen")).toEqual({ unit: "karton", count: 24 });
     expect(guessUnit(null, "500 g")).toBeNull();
+    expect(guessUnit(null, "10 Stück")).toEqual({ unit: "packung", count: 10 });
   });
 });
 

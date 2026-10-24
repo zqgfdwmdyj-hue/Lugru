@@ -54,3 +54,6 @@ export function aiCostUsd(mode: string, inputTokens: number | null, outputTokens
   const m = AI_MODE_INFO[isAiMode(mode) ? mode : "genau"];
   return ((inputTokens ?? 0) * m.inPrice + (outputTokens ?? 0) * m.outPrice) / 1e6 + (searches ?? 0) * 0.01;
 }
+
+/** Grobe Kosten je Produkt in US-Dollar (Erfahrungswerte) – für die Anzeige vor einer Stapel-Suche. */
+export const AI_MODE_ESTIMATE: Record<AiMode, number> = { erkennen: 0.004, minimal: 0.02, sparsam: 0.035, genau: 0.15 };

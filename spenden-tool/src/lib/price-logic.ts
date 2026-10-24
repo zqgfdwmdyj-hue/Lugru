@@ -54,6 +54,8 @@ export function guessUnit(priceNote: string | null | undefined, variant: string 
     return { unit: "karton", count: n ? Number(n[1]) : null };
   }
   if (pack && Number(pack[1]) > 1) return { unit: "packung", count: Number(pack[1]) };
+  const pieces = /(\d{1,3})\s*(?:stück|stk\.?|st\.|kapseln|beutel|riegel|dosen|flaschen|rollen)(?![a-zäöü])/.exec(t);
+  if (pieces && Number(pieces[1]) > 1) return { unit: "packung", count: Number(pieces[1]) };
   if (/einzel|\bje\b|stück|\bst\.?\b/.test(t)) return { unit: "stueck", count: null };
   return null;
 }

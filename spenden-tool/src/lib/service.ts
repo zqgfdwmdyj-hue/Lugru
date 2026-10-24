@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
 import type { PrintedInfo } from "@/lib/printed-price";
 import { DONATION_CATEGORIES, flyerSections } from "@/lib/layout";
+import { UNSORTED_CATEGORY } from "@/lib/price-logic";
 import sharp from "sharp";
 import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
@@ -267,6 +268,7 @@ export async function knownCategories(): Promise<string[]> {
   const rows = await db.selectDistinct({ c: P.category }).from(P);
   const set = new Set<string>(DONATION_CATEGORIES);
   for (const r of rows) set.add(r.c);
+  set.add(UNSORTED_CATEGORY);
   return [...set];
 }
 
