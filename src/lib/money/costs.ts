@@ -9,7 +9,7 @@ import { mergeCosts, type CostInfo } from "./profit-logic";
 type Variants = { items?: { sku?: string; purchasePrice?: number }[] } | null;
 
 export async function skuCostMap(tenantId: string): Promise<Map<string, CostInfo>> {
-  const [lots, manual, ebay] = await Promise.all([
+  const [lots, manual, ebay, links] = await Promise.all([
     db.select({ sku: schema.lots.sku, cost: schema.lots.unitCostNet }).from(schema.lots).where(and(eq(schema.lots.tenantId, tenantId), isNotNull(schema.lots.unitCostNet))),
     db.select({ sku: schema.skuCosts.sku, cost: schema.skuCosts.unitCostNet }).from(schema.skuCosts).where(eq(schema.skuCosts.tenantId, tenantId)),
     db
@@ -18,12 +18,22 @@ export async function skuCostMap(tenantId: string): Promise<Map<string, CostInfo
       .where(eq(schema.ebayListings.tenantId, tenantId))
       // Neueste zuerst: gibt es mehrere Angebote mit derselben SKU, gilt der jüngste EK.
       .orderBy(desc(schema.ebayListings.id)),
+    // eBay-Angebote mit eigener Lager-SKU (z. B. „LG-…“): der EK gilt auch für die Lager-SKU.
+    db
+      .select({ sku: schema.listings.sku, stockSku: schema.listings.stockSku })
+      .from(schema.listings)
+      .where(and(eq(schema.listings.tenantId, tenantId), eq(schema.listings.channel, "ebay"), isNotNull(schema.listings.stockSku))),
   ]);
   const ebayPairs: [string, number | null][] = [];
   for (const e of ebay) {
     const v = e.variants as Variants;
     if (v?.items?.length) for (const i of v.items) ebayPairs.push([i.sku ?? "", i.purchasePrice ?? e.cost ?? null]);
     else if (e.sku) ebayPairs.push([e.sku, e.cost]);
+  }
+  const stockOf = new Map(links.filter((l) => l.stockSku?.trim()).map((l) => [l.sku, l.stockSku!.trim()]));
+  for (const [sku, cost] of [...ebayPairs]) {
+    const stock = stockOf.get(sku);
+    if (stock && stock !== sku) ebayPairs.push([stock, cost]);
   }
   return mergeCosts(
     ["charge", lots.map((l) => [l.sku, l.cost === null ? null : Number(l.cost)] as [string, number | null])],

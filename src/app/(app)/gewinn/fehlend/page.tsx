@@ -80,7 +80,7 @@ export default async function FehlendPage({ searchParams }: { searchParams: Prom
             {list.map((m) => (
               <div key={m.sku} className="fix-row" data-testid="missing-cost-row">
                 <div style={{ minWidth: 0 }}>
-                  <div className="num" style={{ fontWeight: 600, overflowWrap: "anywhere" }}><Link href={`/produkte?q=${encodeURIComponent(m.sku)}`}>{m.sku}</Link></div>
+                  <div className="num" style={{ fontWeight: 600, overflowWrap: "anywhere" }}><Link href={`/produkte/sku/${encodeURIComponent(m.sku)}?tab=einkauf`}>{m.sku}</Link></div>
                   <div className="small muted" style={{ overflowWrap: "anywhere" }}>{m.title ?? "ohne Titel"}</div>
                   <div className="small">{[...m.channels].map((c) => CHANNEL_LABEL[c] ?? c).join(", ")} · {m.units} Stk · Umsatz netto {formatEuro(m.revenueNet)}</div>
                   {attemptBy.has(m.sku) && <Link className="small" href={`/ebay?ansicht=vorschau&id=${attemptBy.get(m.sku)}`}>im eBay-Tool öffnen</Link>}

@@ -17,6 +17,7 @@ const amount = (v: FormDataEntryValue | null, label: string) => {
 const done = (message: string): FixState => {
   revalidatePath("/gewinn", "layout");
   revalidatePath("/bestand");
+  revalidatePath("/produkte", "layout");
   return { ok: true, message };
 };
 const fail = (e: unknown): FixState => ({ ok: false, message: e instanceof Error ? e.message : String(e) });

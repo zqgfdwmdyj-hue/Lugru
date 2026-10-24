@@ -121,7 +121,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                   <td style={{ maxWidth: 320 }}>
                     <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
                       {r.image && <img src={r.image} alt="" width={32} height={32} style={{ objectFit: "contain", borderRadius: 4, flex: "none" }} loading="lazy" />}
-                      <Link href={`/produkte?q=${encodeURIComponent(r.sku)}`} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? undefined}>{r.title ?? r.asin ?? "– Name fehlt –"}</Link>
+                      <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}`} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? undefined}>{r.title ?? r.asin ?? "– Name fehlt –"}</Link>
                     </div>
                   </td>
                   <td className="num right">{r.fba}</td>
@@ -143,7 +143,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                       </Link>
                     ))}
                   </td>
-                  <td className="num right">{r.cost !== null ? <span title={`EK ${formatEuro(r.cost)} (${COST_SOURCE_LABEL[costs.get(r.sku)!.source]})`}>{formatEuro((r.fba + r.reserved + r.inbound + Math.max(0, r.own)) * r.cost)}</span> : <Link href={`/produkte?q=${encodeURIComponent(r.sku)}`} style={{ color: "var(--warn)" }} title="EK fehlt – nicht bewertet">EK fehlt</Link>}</td>
+                  <td className="num right">{r.cost !== null ? <span title={`EK ${formatEuro(r.cost)} (${COST_SOURCE_LABEL[costs.get(r.sku)!.source]})`}>{formatEuro((r.fba + r.reserved + r.inbound + Math.max(0, r.own)) * r.cost)}</span> : <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} style={{ color: "var(--warn)" }} title="EK fehlt – nicht bewertet">EK fehlt</Link>}</td>
                   <td className="num small" style={{ color: !r.lastSale || r.lastSale < noSaleBefore ? "var(--warn)" : undefined }}>{formatDate(r.lastSale)}</td>
                 </tr>
               ))}

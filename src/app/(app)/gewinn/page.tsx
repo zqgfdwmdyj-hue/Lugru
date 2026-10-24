@@ -152,7 +152,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
                   const priceDrop = s.plannedPrice && s.avgPrice ? s.avgPrice < s.plannedPrice * 0.9 : false;
                   return (
                     <tr key={s.sku}>
-                      <td className="num small" style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.title ?? undefined}><Link href={`/produkte?q=${encodeURIComponent(s.sku)}`}>{s.sku}</Link></td>
+                      <td className="num small" style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.title ?? undefined}><Link href={`/produkte/sku/${encodeURIComponent(s.sku)}`}>{s.sku}</Link></td>
                       <td className="num right">{s.units}</td>
                       <td className="num right">{s.refunds || ""}</td>
                       <td className="num right">{formatEuro(s.revenueNet)}</td>

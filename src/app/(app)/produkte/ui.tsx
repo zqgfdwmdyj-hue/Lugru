@@ -1,0 +1,387 @@
+import Link from "next/link";
+import { canAccess } from "@/lib/auth/areas";
+import type { Session } from "@/lib/auth/session";
+import { safeHref } from "@/lib/auth/prefs";
+import { todayIso } from "@/lib/dates";
+import { CHANNEL_LABEL } from "@/lib/labels";
+import { formatDate, formatEuro } from "@/lib/numbers";
+import { amazonProfit, orderLines } from "@/lib/money/profit";
+import { COST_SOURCE_LABEL, summarizeAmazon, summarizeChannels, totalsOf } from "@/lib/money/profit-logic";
+import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
+import { skuCostMap } from "@/lib/money/costs";
+import { availableOf } from "@/lib/stock/channel-logic";
+import { getSettings } from "@/lib/settings";
+import type { ProductDetail } from "@/lib/products/service";
+import { Kpi } from "@/components/kpi";
+import { FixForm } from "../gewinn/fix-form";
+import { setLotCostAction, setSkuCostAction } from "../gewinn/actions";
+
+// Produkte: gemeinsame Bausteine für Liste und Detail (Seiten dürfen nur default/metadata exportieren).
+
+export const VIEWS = { bestand: "Mit Bestand", alle: "Alle", zuordnung: "Zuordnung prüfen" } as const;
+export type View = keyof typeof VIEWS;
+export const PAGE_SIZE = 50;
+
+export function listHref(p: { q?: string; ansicht?: string; seite?: string; art?: string }) {
+  const u = new URLSearchParams();
+  if (p.q) u.set("q", p.q);
+  if (p.ansicht && p.ansicht !== "bestand") u.set("ansicht", p.ansicht);
+  if (p.art) u.set("art", p.art);
+  if (p.seite && p.seite !== "1") u.set("seite", p.seite);
+  const s = u.toString();
+  return `/produkte${s ? `?${s}` : ""}`;
+}
+
+export const TABS = { stammdaten: "Stammdaten", einkauf: "Chargen & Einkauf", bestand: "Bestand", angebote: "Angebote", ergebnis: "Ergebnis", belege: "Belege" } as const;
+export type Tab = keyof typeof TABS;
+
+const STATUS_LABEL: Record<string, string> = { draft: "Entwurf", active: "aktiv", ended: "beendet", error: "Fehler", published: "veröffentlicht" };
+const PO_LABEL: Record<string, string> = { draft: "Entwurf", ordered: "bestellt", shipped: "unterwegs", partial: "teilweise da", received: "eingegangen", cancelled: "storniert" };
+const LOT_KIND: Record<string, string> = { purchase: "Einkauf", return: "Retoure", unknown: "unbekannt" };
+
+/** Detailansicht mit Reitern. `base` = Adresse dieser Seite ohne Abfrage. */
+export async function ProductHub({ session, d, base, tab, von, highlight, zeitraum }: { session: Session; d: ProductDetail & object; base: string; tab: Tab; von?: string; highlight?: string; zeitraum?: string }) {
+  const tabs = (Object.keys(TABS) as Tab[]).filter((k) => (k === "ergebnis" ? canAccess(session, "geld") : k === "belege" ? canAccess(session, "buchhaltung") : true));
+  const current: Tab = tabs.includes(tab) ? tab : "stammdaten";
+  const back = von && safeHref(von)?.startsWith("/produkte") ? von : "/produkte";
+  const q = (t: Tab) => {
+    const u = new URLSearchParams();
+    if (t !== "stammdaten") u.set("tab", t);
+    if (von) u.set("von", von);
+    const s = u.toString();
+    return `${base}${s ? `?${s}` : ""}`;
+  };
+  const title = d.product?.title ?? d.group.title ?? d.skus[0] ?? "Produkt";
+  const own = d.ownRows.reduce((n, r) => n + r.quantity, 0);
+  const fba = d.fbaRows.reduce((n, r) => n + r.fulfillable + r.reserved + r.inboundWorking + r.inboundShipped + r.inboundReceiving, 0);
+  const activeOffers = d.listings.filter((l) => l.status === "active").length;
+  const ekMissing = d.ek.filter((e) => !e.effective).length;
+  const ekConflict = d.ek.filter((e) => e.conflict).length;
+
+  return (
+    <>
+      <div className="page-head">
+        <div style={{ display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
+          {d.group.image && <img src={d.group.image} alt="" width={64} height={64} style={{ objectFit: "contain", borderRadius: 8, background: "var(--surface)", flex: "none" }} />}
+          <div style={{ minWidth: 0 }}>
+            <div className="crumb"><Link href={back} data-testid="product-back">← Produkte</Link></div>
+            <h1 style={{ overflowWrap: "anywhere" }}>{title}</h1>
+            <div className="small muted num" style={{ marginTop: 4 }}>
+              {[d.product?.asin ?? d.group.asin ? `ASIN ${d.product?.asin ?? d.group.asin}` : null, d.product?.ean ?? d.group.ean ? `EAN ${d.product?.ean ?? d.group.ean}` : null, `${d.skus.length} SKU${d.skus.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="grid-kpi" data-testid="product-kpis">
+        <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value" style={{ color: own < 0 ? "var(--danger)" : undefined }}>{own}</div></div>
+        <div className="card card-pad"><div className="kpi-label">Bei Amazon</div><div className="kpi-value">{fba}</div></div>
+        <div className="card card-pad"><div className="kpi-label">Aktive Angebote</div><div className="kpi-value">{activeOffers}</div></div>
+        <div className="card card-pad">
+          <div className="kpi-label">EK</div>
+          <div className="kpi-value">{d.ek.length === 1 && d.ek[0].effective ? formatEuro(d.ek[0].effective.cost) : ekMissing ? <span style={{ color: "var(--warn)", fontSize: 18 }}>fehlt</span> : `${d.ek.length} SKUs`}</div>
+          {(ekMissing > 0 || ekConflict > 0) && <Link className="small" href={q("einkauf")} style={{ color: "var(--warn)" }}>{[ekMissing ? `${ekMissing} ohne EK` : null, ekConflict ? `${ekConflict} widersprüchlich` : null].filter(Boolean).join(" · ")} →</Link>}
+        </div>
+      </div>
+      <nav className="prod-tabs" aria-label="Produkt" data-testid="product-tabs">
+        {tabs.map((k) => (
+          <Link key={k} href={q(k)} className={`chip${current === k ? " active" : ""}`} aria-current={current === k ? "page" : undefined}>{TABS[k]}</Link>
+        ))}
+      </nav>
+      <div data-testid={`tab-${current}`}>
+        {current === "stammdaten" && <Stammdaten d={d} />}
+        {current === "einkauf" && <Einkauf d={d} highlight={highlight} canFix={!session.readOnly && (canAccess(session, "geld") || canAccess(session, "wawi"))} />}
+        {current === "bestand" && <Bestand d={d} />}
+        {current === "angebote" && <Angebote d={d} />}
+        {current === "ergebnis" && <Ergebnis session={session} d={d} base={q("ergebnis")} zeitraum={zeitraum} />}
+        {current === "belege" && <Belege d={d} />}
+      </div>
+    </>
+  );
+}
+
+const SOURCE_ROLE: Record<string, string> = { produkt: "Charge", lager: "Lager-SKU", angebot: "Angebot", ebay: "eBay-Tool", artikel: "Artikelstamm", fba: "Amazon-Bestand", charge: "Charge" };
+
+function Stammdaten({ d }: { d: ProductDetail & object }) {
+  const p = d.product;
+  const roles = new Map<string, Set<string>>();
+  for (const c of d.cands) roles.set(c.sku, (roles.get(c.sku) ?? new Set()).add(SOURCE_ROLE[c.source] ?? c.source));
+  const fields: [string, React.ReactNode][] = p
+    ? [
+        ["Titel", p.title ?? "–"],
+        ["ASIN", p.asin ? <a href={`https://www.amazon.de/dp/${p.asin}`} target="_blank" rel="noreferrer">{p.asin} ↗</a> : "–"],
+        ["EAN", p.ean ?? "–"],
+        ["Gewicht", p.weightGrams ? `${p.weightGrams} g` : "–"],
+        ["Maße", p.lengthCm ? `${p.lengthCm} × ${p.widthCm} × ${p.heightCm} cm` : "–"],
+        ["FBA-Gebühr je Stück", p.fbaFee ? formatEuro(Number(p.fbaFee)) : "–"],
+        ["Gefahrgut", p.isHazmat ? "ja" : "nein"],
+      ]
+    : [
+        ["Titel", d.group.title ?? "–"],
+        ["EAN", d.group.ean ?? "–"],
+        ["Produkt (ASIN)", <span key="x" className="muted">Keinem Amazon-Produkt zugeordnet – eigene SKU (z. B. eBay-Ware).</span>],
+      ];
+  return (
+    <div className="row" style={{ flexWrap: "wrap" }}>
+      <section className="card card-pad" style={{ flex: "1 1 320px" }}>
+        <h2 style={{ marginBottom: 10 }}>Stammdaten</h2>
+        <dl className="facts">
+          {fields.map(([k, v]) => (
+            <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+          ))}
+        </dl>
+        {d.articles.length > 0 && (
+          <div className="small" style={{ marginTop: 10 }}>
+            Artikelstamm: {d.articles.map((a) => <Link key={a.id} href={`/artikel/${a.id}`} style={{ marginRight: 8 }}>{a.title} ({a.status}) →</Link>)}
+          </div>
+        )}
+      </section>
+      <section className="card" style={{ flex: "1 1 360px", overflow: "auto" }}>
+        <table className="table" data-testid="product-skus">
+          <thead><tr><th>SKU</th><th>Kommt vor als</th></tr></thead>
+          <tbody>
+            {d.skus.map((s) => (
+              <tr key={s}><td className="num small">{s}</td><td className="small">{[...(roles.get(s) ?? [])].join(", ") || <span className="muted">nur in Aufträgen</span>}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  );
+}
+
+function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highlight?: string; canFix: boolean }) {
+  const lotsWithoutCost = d.lots.filter((l) => l.unitCostNet === null);
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <section className="card" style={{ overflow: "auto" }} id="ek">
+        <div className="card-pad" style={{ paddingBottom: 0 }}>
+          <h2>EK je SKU</h2>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>Gilt überall gleich (Gewinn, Lagerwert, Produkte): Charge → EK von Hand → Einkaufspreis aus dem eBay-Tool. Abweichungen werden markiert, nicht überschrieben.</p>
+        </div>
+        <table className="table" data-testid="ek-table">
+          <thead><tr><th>SKU</th><th>Quellen</th><th className="right">Gilt</th><th /></tr></thead>
+          <tbody>
+            {d.ek.map((e) => (
+              <tr key={e.sku} data-testid="ek-row" style={e.sku === highlight ? { background: "var(--info-soft)" } : undefined}>
+                <td className="num small">{e.sku}</td>
+                <td className="small">
+                  {e.sources.length ? e.sources.map((s) => <span key={s.source} className="tag tag-neutral" style={{ marginRight: 4 }}>{s.label} {formatEuro(s.cost)}</span>) : <span className="muted">keine</span>}
+                  {e.conflict && <span className="tag tag-warn" data-testid="ek-conflict">weicht ab ({formatEuro(e.spread)})</span>}
+                </td>
+                <td className="num right">{e.effective ? <span title={COST_SOURCE_LABEL[e.effective.source]}>{formatEuro(e.effective.cost)}</span> : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
+                <td>
+                  {canFix && !e.effective && !d.lots.some((l) => l.sku === e.sku) && <FixForm action={setSkuCostAction} hidden={{ sku: e.sku }} name="cost" label={`EK netto für ${e.sku}`} placeholder="EK netto €" testid="ek-fix" />}
+                  {canFix && e.conflict && !d.lots.some((l) => l.sku === e.sku && l.unitCostNet !== null) && <FixForm action={setSkuCostAction} hidden={{ sku: e.sku }} name="cost" label={`Richtigen EK für ${e.sku} festlegen`} placeholder="richtiger EK €" testid="ek-fix" />}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="card" style={{ overflow: "auto" }}>
+        <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Chargen</h2></div>
+        <table className="table" data-testid="lot-table">
+          <thead><tr><th>SKU</th><th>Art</th><th>Datum</th><th className="right">Menge</th><th className="right">EK netto</th><th>Lieferant</th><th /></tr></thead>
+          <tbody>
+            {d.lots.length === 0 && <tr><td colSpan={7} className="muted small">Keine Charge – Ware ohne Einkauf in der Wawi (z. B. eBay-Bestand). EK oben von Hand eintragen.</td></tr>}
+            {d.lots.map((l) => (
+              <tr key={l.id}>
+                <td className="num small"><Link href={`/chargen/${l.id}`}>{l.sku}</Link></td>
+                <td className="small">{LOT_KIND[l.kind]}</td>
+                <td className="small">{formatDate(l.purchaseDate ?? l.returnDate)}{l.estimated ? " (geschätzt)" : ""}</td>
+                <td className="num right">{l.quantity ?? "–"}</td>
+                <td className="num right">{l.unitCostNet !== null ? formatEuro(Number(l.unitCostNet)) : canFix ? <FixForm action={setLotCostAction} hidden={{ lotId: l.id }} name="cost" label={`EK für Charge ${l.sku}`} placeholder="EK €" testid="lot-fix" /> : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
+                <td className="small">{l.supplier ?? <span className="muted">–</span>}</td>
+                <td className="small muted">{l.unitCostSource ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {lotsWithoutCost.length > 0 && <div className="small muted" style={{ padding: "8px 14px" }}>{lotsWithoutCost.length} Charge{lotsWithoutCost.length === 1 ? "" : "n"} ohne EK – fließen nicht in Gewinn und Lagerwert ein.</div>}
+      </section>
+      <section className="card" style={{ overflow: "auto" }}>
+        <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Bestellungen & Wareneingang</h2></div>
+        <table className="table" data-testid="po-table">
+          <thead><tr><th>Bestellung</th><th>Status</th><th>Datum</th><th className="right">Bestellt</th><th className="right">Eingegangen</th><th className="right">EK brutto</th><th>Lieferant</th></tr></thead>
+          <tbody>
+            {d.poItems.length === 0 && <tr><td colSpan={7} className="muted small">Keine Einkaufsbestellung zu diesem Produkt.</td></tr>}
+            {d.poItems.map((p, i) => (
+              <tr key={`${p.poId}-${i}`}>
+                <td className="num small"><Link href={`/einkauf/${p.poId}`}>{p.number}</Link></td>
+                <td className="small"><span className={`tag ${p.status === "received" ? "tag-ok" : p.status === "cancelled" ? "tag-neutral" : "tag-info"}`}>{PO_LABEL[p.status] ?? p.status}</span></td>
+                <td className="small">{formatDate(p.orderDate)}</td>
+                <td className="num right">{p.quantity}</td>
+                <td className="num right" style={{ color: p.received < p.quantity && p.status !== "cancelled" ? "var(--warn)" : undefined }}>{p.received}</td>
+                <td className="num right">{formatEuro(Number(p.unitCostGross))}</td>
+                <td className="small">{p.supplier ?? "–"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  );
+}
+
+function Bestand({ d }: { d: ProductDetail & object }) {
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <section className="card" style={{ overflow: "auto" }}>
+        <table className="table" data-testid="stock-table">
+          <thead><tr><th>SKU</th><th className="right">Eigenes Lager</th><th className="right">Reserviert</th><th className="right">Frei</th><th>Lagerplatz</th><th className="right">Amazon verkaufbar</th><th className="right">Unterwegs</th><th className="right">Nicht verkaufbar</th></tr></thead>
+          <tbody>
+            {d.skus.map((s) => {
+              const o = d.ownRows.find((r) => r.sku === s);
+              const a = d.fbaRows.find((r) => r.sku === s);
+              const lvl = d.levels.get(s);
+              return (
+                <tr key={s}>
+                  <td className="num small">{s}</td>
+                  <td className="num right" style={{ color: (o?.quantity ?? 0) < 0 ? "var(--danger)" : undefined }}>{o ? o.quantity : <span className="muted">–</span>}</td>
+                  <td className="num right">{lvl?.reserved || ""}</td>
+                  <td className="num right">{lvl ? availableOf(lvl) : ""}</td>
+                  <td className="small">{o?.location ?? ""}</td>
+                  <td className="num right">{a ? a.fulfillable : <span className="muted">–</span>}</td>
+                  <td className="num right">{a ? a.inboundWorking + a.inboundShipped + a.inboundReceiving || "" : ""}</td>
+                  <td className="num right" style={{ color: a?.unsellable ? "var(--danger)" : undefined }}>{a?.unsellable || ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {d.fbaRows[0] && <div className="small muted" style={{ padding: "8px 14px" }}>Amazon-Bestand laut Bericht vom {formatDate(d.fbaRows[0].snapshotDate)}.</div>}
+      </section>
+      {d.sets.length > 0 && (
+        <section className="card card-pad small">
+          <h2 style={{ marginBottom: 6 }}>Sets</h2>
+          {d.sets.map((s) => <div key={s.sku}>{s.sku}: {s.components.map((c) => `${c.qty}× ${c.sku}`).join(" + ")}</div>)}
+        </section>
+      )}
+      <section className="card" style={{ overflow: "auto" }}>
+        <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Letzte Buchungen</h2></div>
+        <table className="table">
+          <thead><tr><th>Zeit</th><th>SKU</th><th className="right">Menge</th><th>Grund</th><th>Bezug</th></tr></thead>
+          <tbody>
+            {d.movements.length === 0 && <tr><td colSpan={5} className="muted small">Noch keine Buchungen im eigenen Lager.</td></tr>}
+            {d.movements.map((m) => (
+              <tr key={m.id}><td className="small">{m.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td><td className="num small">{m.sku}</td><td className="num right" style={{ color: m.delta < 0 ? "var(--danger)" : "var(--ok)" }}>{m.delta > 0 ? `+${m.delta}` : m.delta}</td><td className="small">{m.reason}</td><td className="small muted">{m.reference ?? ""}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <div className="small"><Link href="/bestand">Bestand & Inventur öffnen →</Link></div>
+    </div>
+  );
+}
+
+function Angebote({ d }: { d: ProductDetail & object }) {
+  return (
+    <div className="stack" style={{ gap: 16 }}>
+      <section className="card" style={{ overflow: "auto" }}>
+        <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Angebote in den Kanälen</h2></div>
+        <table className="table" data-testid="offer-table">
+          <thead><tr><th>Kanal</th><th>Kanal-SKU</th><th>Lager-SKU</th><th>Status</th><th className="right">Preis</th><th className="right">Menge</th><th>Abgleich</th></tr></thead>
+          <tbody>
+            {d.listings.length === 0 && <tr><td colSpan={7} className="muted small">In keinem Kanal angeboten.</td></tr>}
+            {d.listings.map((l) => (
+              <tr key={l.id}>
+                <td>{CHANNEL_LABEL[l.channel] ?? l.channel}</td>
+                <td className="num small"><Link href={`/listings?sku=${encodeURIComponent(l.sku)}`}>{l.sku}</Link></td>
+                <td className="num small">{l.stockSku || <span className="muted">gleich</span>}</td>
+                <td><span className={`tag ${l.status === "active" ? "tag-ok" : l.status === "error" ? "tag-danger" : "tag-neutral"}`}>{STATUS_LABEL[l.status] ?? l.status}</span>{l.lastError && <div className="small" style={{ color: "var(--danger)" }}>{l.lastError}</div>}</td>
+                <td className="num right">{l.price !== null ? formatEuro(l.price) : "–"}</td>
+                <td className="num right">{l.pushedQuantity ?? l.quantity}</td>
+                <td className="small">{l.stockSync ? `folgt Lager${l.maxQuantity ? ` (max. ${l.maxQuantity})` : ""}` : "aus"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      {d.ebayTool.length > 0 && (
+        <section className="card" style={{ overflow: "auto" }}>
+          <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Im eBay-Tool</h2></div>
+          <table className="table" data-testid="ebaytool-table">
+            <thead><tr><th>eBay-Nr.</th><th>Status</th><th className="right">Preis</th><th className="right">Menge</th><th className="right">EK</th><th /></tr></thead>
+            <tbody>
+              {d.ebayTool.map((e) => (
+                <tr key={e.id}>
+                  <td className="num small">{e.listingId ?? "–"}</td>
+                  <td><span className={`tag ${e.status === "published" ? "tag-ok" : "tag-neutral"}`}>{STATUS_LABEL[e.status] ?? e.status}</span></td>
+                  <td className="num right">{formatEuro(e.price)}</td>
+                  <td className="num right">{e.quantity}</td>
+                  <td className="num right">{e.purchasePrice !== null ? formatEuro(e.purchasePrice) : "–"}</td>
+                  <td className="right">{e.listingId && <Link className="btn btn-small" href={`/ebay/pruefen/${e.listingId}`}>Prüfen</Link>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </div>
+  );
+}
+
+async function Ergebnis({ session, d, base, zeitraum }: { session: Session; d: ProductDetail & object; base: string; zeitraum?: string }) {
+  const r: Range = zeitraum && zeitraum in RANGES ? (zeitraum as Range) : "90";
+  const [from, to] = rangeOf(r, todayIso());
+  const t = session.tenantId;
+  const settings = await getSettings(t);
+  const costs = await skuCostMap(t);
+  // Kanal-SKUs (z. B. eBay „LG-…“) gehören über die Lager-SKU zum Produkt.
+  const skuSet = new Set([...d.skus, ...d.listings.map((l) => l.sku)]);
+  const [{ skus }, lines] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to)]);
+  const az = skus.filter((s) => skuSet.has(s.sku));
+  const mine = lines.filter((l) => l.sku && skuSet.has(l.sku));
+  const amazon = az.length ? summarizeAmazon(az.map((s) => ({ sku: s.sku, units: s.units, revenueNet: s.revenueNet, costsExCogs: s.fees + s.promotions / (1 + settings.vatRate) + s.reimbursements + s.other, cogs: s.cogs })), 0) : null;
+  const channels = summarizeChannels(mine, costs, settings.vatRate);
+  const tot = totalsOf(amazon, channels);
+  const units = az.reduce((n, s) => n + s.units, 0) + mine.reduce((n, l) => n + l.qty, 0);
+  const period = `${formatDate(from)} – ${formatDate(to)}`;
+  const missing = [
+    tot.missing.costSkus ? `EK für ${tot.missing.costSkus} SKU${tot.missing.costSkus === 1 ? "" : "s"}` : null,
+    tot.missing.feeOrders ? `Gebühren für ${tot.missing.feeOrders} Bestellung${tot.missing.feeOrders === 1 ? "" : "en"}` : null,
+    tot.missing.priceLines ? `Preis für ${tot.missing.priceLines} Position${tot.missing.priceLines === 1 ? "" : "en"}` : null,
+  ].filter((x): x is string => Boolean(x));
+  const sep = base.includes("?") ? "&" : "?";
+  const state = units === 0 ? "fehlt" : tot.complete ? "ok" : "unvollstaendig";
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`${base}${sep}zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`}>{RANGES[k]}</Link>)}
+      </div>
+      {units === 0 ? (
+        <div className="notice notice-info" data-testid="result-empty">Keine Verkäufe dieses Produkts im Zeitraum {period}. (Amazon zählt erst mit der Abrechnung.)</div>
+      ) : (
+        <div className="grid-kpi">
+          <Kpi label="Umsatz netto" value={formatEuro(tot.revenueNet)} note={`${units} Stück verkauft`} period={period} source="Amazon-Abrechnung, Aufträge" testid="result-revenue" />
+          <Kpi label="Vorläufiges Ergebnis" value={formatEuro(tot.provisional)} state={state} note="nur bekannte Kosten" missing={missing} fixHref={missing.length ? `${base.split("?")[0]}?tab=einkauf` : undefined} period={period} testid="result-provisional" />
+          <Kpi label="Gewinn vollständig berechnet" value={formatEuro(tot.completeProfit)} state={state} note={`${tot.coverage} % des Umsatzes mit allen Kosten`} period={period} testid="result-complete" />
+          <div className="card card-pad"><div className="kpi-label">Kanäle</div><div className="small" style={{ marginTop: 8 }}>{[az.length ? `Amazon ${az.reduce((n, s) => n + s.units, 0)}` : null, ...channels.map((c) => `${CHANNEL_LABEL[c.channel] ?? c.channel} ${mine.filter((l) => l.channel === c.channel).reduce((n, l) => n + l.qty, 0)}`)].filter(Boolean).join(" · ")}</div></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Belege({ d }: { d: ProductDetail & object }) {
+  return (
+    <section className="card" style={{ overflow: "auto" }}>
+      <table className="table" data-testid="doc-table">
+        <thead><tr><th>Datum</th><th>Nummer</th><th>Von</th><th>Art</th><th>Status</th><th className="right">Betrag</th></tr></thead>
+        <tbody>
+          {d.invoices.length === 0 && <tr><td colSpan={6} className="muted small">Keine Rechnung mit den Chargen oder Bestellungen dieses Produkts verknüpft. Verknüpfen unter „Eingangsrechnungen“.</td></tr>}
+          {d.invoices.map((i) => (
+            <tr key={i.id}>
+              <td className="small">{formatDate(i.date)}</td>
+              <td className="num small"><Link href={`/rechnungen/${i.id}`}>{i.number ?? "ohne Nummer"}</Link></td>
+              <td className="small">{i.supplier ?? "–"}</td>
+              <td className="small">{i.kind}</td>
+              <td className="small">{i.status}</td>
+              <td className="num right">{i.total !== null ? formatEuro(i.total) : "–"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}

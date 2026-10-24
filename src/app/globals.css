@@ -424,3 +424,16 @@ h2 { font-size: 16px; margin: 0; }
   .signal, .bundle > summary { padding: 12px 14px; }
   .bundle > summary { flex-wrap: wrap; }
 }
+
+/* ---- Produkte ---- */
+.prod-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+.facts > div { display: contents; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.thumb-empty { width: 36px; height: 36px; border-radius: 4px; background: var(--row); flex: none; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 240px; }
+@media (max-width: 760px) {
+  .facts { grid-template-columns: 1fr; gap: 2px; }
+  .facts dd { margin-bottom: 6px; }
+}
