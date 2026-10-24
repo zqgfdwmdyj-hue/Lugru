@@ -32,7 +32,7 @@ export default async function InboundPage() {
         </form>
       </div>
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Sendung</th><th>Status</th><th>Amazon-ID</th><th className="right">Artikel</th><th className="right">Einheiten</th><th className="right">Kartons</th><th>Angelegt</th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={7} className="muted">Noch keine Sendungen.</td></tr>}

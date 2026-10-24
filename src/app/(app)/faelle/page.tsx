@@ -32,7 +32,7 @@ export default async function FaellePage({ searchParams }: { searchParams: Promi
       </div>
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
-          <table className="table">
+          <table className="table sticky-head">
             <thead><tr><th>Kanal</th><th>Art</th><th>Fall</th><th>Bestellung</th><th className="right">Betrag</th><th>Frist</th><th>Status</th></tr></thead>
             <tbody>
               {cases.length === 0 && <tr><td colSpan={7} className="muted">Keine Fälle. Fälle entstehen automatisch aus Mails (A-bis-Z, eBay-Fälle, Rücksendeanfragen) oder hier von Hand.</td></tr>}

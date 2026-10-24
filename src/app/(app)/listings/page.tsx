@@ -50,7 +50,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
       </div>
       <div className="stack">
         <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
-          <table className="table">
+          <table className="table sticky-head">
             <thead><tr><th>Kanal</th><th>SKU</th><th>Titel</th><th className="right">Preis</th><th className="right" title="Eigenes Lager − reserviert">Wawi verfügbar</th><th className="right">Im Kanal</th><th>Abgleich</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={9} className="muted">Noch keine Listings.</td></tr>}

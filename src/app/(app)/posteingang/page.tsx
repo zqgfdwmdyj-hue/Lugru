@@ -33,7 +33,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
             {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/posteingang?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
           </div>
           <form action={archiveMails} className="card" style={{ overflow: "auto" }}>
-            <table className="table">
+            <table className="table sticky-head">
               <thead><tr><th style={{ width: 28 }}></th><th>Einordnung</th><th>Betreff</th><th>Von</th><th>Eingang</th><th>Aufgabe</th></tr></thead>
               <tbody>
                 {mails.length === 0 && <tr><td colSpan={6} className="muted">Keine Mails in dieser Ansicht.</td></tr>}

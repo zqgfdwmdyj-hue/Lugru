@@ -9,6 +9,8 @@ import { openDraftCount } from "@/lib/invoices/rechnungshelfer-service";
 import { inStotaxScope, stotaxBacklog, stotaxConfig } from "@/lib/invoices/stotax";
 import { formatEuro } from "@/lib/numbers";
 import { cancelAction, mailAction, stotaxPendingAction, stotaxSendAction } from "./actions";
+import { ActionMenu } from "@/components/action-menu";
+import { ConfirmButton } from "@/components/confirm-button";
 
 const ARTEN = { alle: "Alle", b2b: "B2B", ebay: "eBay", storno: "Stornos" } as const;
 const fmtDate = (iso: string | Date) => new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -106,7 +108,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
         </form>
       </div>
       <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Nummer</th><th>Datum</th><th>Kunde</th><th>Art</th><th className="right">Brutto</th><th>Stotax</th><th></th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={7} className="muted">{sp.q || art !== "alle" ? "Keine Rechnung zu diesem Filter." : "Noch keine Rechnungen."}</td></tr>}
@@ -134,14 +136,17 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
                   ) : <span className="muted">–</span>}
                 </td>
                 <td style={{ whiteSpace: "nowrap" }}>
-                  <a className="btn btn-small" href={`/rechnungen/ausgang/${r.id}/pdf`} target="_blank" rel="noreferrer">PDF</a>
-                  {r.source === "b2b" && <a className="btn-link small" href={`/rechnungen/ausgang/${r.id}/xml`} style={{ marginLeft: 6 }} title="E-Rechnung (EN 16931, CII)">XML</a>}
-                  {r.source === "b2b" && r.kind === "invoice" && (
-                    <form action={mailAction} style={{ display: "inline" }}><input type="hidden" name="id" value={r.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 6 }}>{r.emailedAt ? "erneut mailen" : "an Kunden mailen"}</button></form>
-                  )}
-                  {r.kind === "invoice" && !r.cancelledById && (
-                    <form action={cancelAction} style={{ display: "inline" }}><input type="hidden" name="id" value={r.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 6, color: "var(--muted)" }} data-testid="cancel-btn">stornieren</button></form>
-                  )}
+                  <a className="btn btn-small" href={`/rechnungen/ausgang/${r.id}/pdf`} target="_blank" rel="noreferrer">PDF</a>{" "}
+                  <ActionMenu testid="out-menu">
+                    {r.source === "b2b" && <a className="menu-item" href={`/rechnungen/ausgang/${r.id}/xml`} title="E-Rechnung (EN 16931, CII)">E-Rechnung (XML)</a>}
+                    {r.source === "b2b" && r.kind === "invoice" && (
+                      <form action={mailAction}><input type="hidden" name="id" value={r.id} /><button className="menu-item" type="submit">{r.emailedAt ? "Erneut an Kunden mailen" : "An Kunden mailen"}</button></form>
+                    )}
+                    {r.kind === "invoice" && !r.cancelledById && (
+                      <form action={cancelAction}><input type="hidden" name="id" value={r.id} /><ConfirmButton className="menu-item danger" confirm={`Rechnung ${r.number} wirklich stornieren? Es wird eine Stornorechnung mit eigener Nummer erstellt – das lässt sich nicht rückgängig machen.`} testid="cancel-btn">Stornieren …</ConfirmButton></form>
+                    )}
+                    {r.source !== "b2b" && r.kind !== "invoice" && <span className="menu-item muted">keine weiteren Aktionen</span>}
+                  </ActionMenu>
                 </td>
               </tr>
             ))}

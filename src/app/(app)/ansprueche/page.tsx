@@ -10,6 +10,7 @@ import { formatDate, formatEuro } from "@/lib/numbers";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
 import { CLAIM_STATUS_LABEL as STATUS_LABEL } from "@/lib/claims/labels";
 import { bulkStatus, createManualClaim, queueAllDetected, redetect } from "./actions";
+import { ConfirmButton } from "@/components/confirm-button";
 
 const VIEWS = {
   warteschlange: "Warteschlange",
@@ -137,8 +138,9 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
         </div>
       )}
 
+      {claims.length >= 300 && tabCount(view) > 300 && <div className="small muted" data-testid="claims-limit">Es werden die ersten 300 von {tabCount(view)} gezeigt (nach Frist bzw. Priorität) – mit Art-Filter oder Reitern eingrenzen.</div>}
       <form action={bulkStatus} className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead>
             <tr><th style={{ width: 28 }}></th><th>Art</th><th>Anspruch</th><th className="right">Menge</th><th className="right">Wert</th><th>Ereignis</th><th>Frist</th><th>Status</th></tr>
           </thead>
@@ -176,7 +178,7 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
         {claims.length > 0 && (
           <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid var(--border)" }}>
             <button className="btn btn-small" name="bulk" value="queue" type="submit">Auswahl vormerken</button>
-            <button className="btn btn-small" name="bulk" value="dismiss" type="submit">Auswahl verwerfen</button>
+            <ConfirmButton name="bulk" value="dismiss" confirm="Ausgewählte Ansprüche verwerfen? Sie bleiben unter „Erledigt“ sichtbar und lassen sich wieder öffnen.">Auswahl verwerfen</ConfirmButton>
           </div>
         )}
       </form>

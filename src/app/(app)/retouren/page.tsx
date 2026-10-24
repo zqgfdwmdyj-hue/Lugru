@@ -69,7 +69,7 @@ export default async function RetourenPage({ searchParams }: { searchParams: Pro
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           {fba ? (
-            <table className="table">
+            <table className="table sticky-head">
               <thead><tr><th>Datum</th><th>Bestellung</th><th>SKU</th><th className="right">Menge</th><th>Zustand</th><th>Grund</th><th>LPN → Retouren-SKU</th></tr></thead>
               <tbody>
                 {fba.rows.length === 0 && <tr><td colSpan={7} className="muted">Keine – den Bericht „FBA-Kundenrücksendungen“ importieren.</td></tr>}

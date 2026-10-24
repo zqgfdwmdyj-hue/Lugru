@@ -35,7 +35,7 @@ export default async function BewertungenPage({ searchParams }: { searchParams: 
         <div className="card card-pad small"><div style={{ marginBottom: 6 }}>Vorlage Entfernungsantrag (FBA-Versand)</div><CopyButton text={REMOVAL_TEXT} /></div>
       </div>
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Datum</th><th>Sterne</th><th>Kommentar</th><th>Bestellung</th><th>Status</th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={5} className="muted">Keine Bewertungen. Den Feedback-Bericht aus Seller Central importieren.</td></tr>}

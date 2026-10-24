@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { senderMailboxes } from "@/lib/mail/accounts";
 import { removeMailbox, setDefaultSenderAction, toggleMailbox } from "./actions";
 import { SyncButton, TestMailButton } from "./inbox-forms";
+import { ConfirmButton } from "@/components/confirm-button";
 
 const PROVIDER_TAG = { gmail: "GOOGLE", outlook: "MICROSOFT", imap: "IMAP", upload: "" } as const;
 
@@ -34,7 +35,7 @@ export async function MailboxManager({ tenantId }: { tenantId: string }) {
             {b.active && senders.defaultId !== b.id && <form action={setDefaultSenderAction}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">Als Absender</button></form>}
             {b.active && <TestMailButton id={b.id} />}
             <Link className="btn-link small" href={`/posteingang/postfaecher/${b.id}`} data-testid="mailbox-profile">Name & Signatur</Link>
-            <form action={removeMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>Entfernen</button></form>
+            <form action={removeMailbox}><input type="hidden" name="id" value={b.id} /><ConfirmButton className="btn-link small danger-link" confirm={`Postfach ${b.address} entfernen? Bereits abgerufene Mails bleiben im Posteingang.`}>Entfernen</ConfirmButton></form>
           </div>
         </div>
       ))}

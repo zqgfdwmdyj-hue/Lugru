@@ -207,7 +207,7 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       )}
 
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Produkt</th><th>Günstigster Lieferant</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>EK-Verlauf</th><th>VK 30 T</th></tr></thead>
           <tbody>
             {shown.length === 0 && <tr><td colSpan={9} className="muted">{nur === "pruefen" ? "Nichts zu prüfen." : nur === "falsch" ? "Nichts als falsch markiert." : manual ? "Nichts Lohnenswertes unter dem von Hand Gezogenen (oder noch nichts gezogen). Lieferant öffnen → „Seite oder Liste scannen“ mit dem Seller-Knopf." : "Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise."}</td></tr>}

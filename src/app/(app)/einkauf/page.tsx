@@ -52,7 +52,7 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
             {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/einkauf?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
           </div>
           <section className="card" style={{ overflow: "auto" }}>
-            <table className="table">
+            <table className="table sticky-head">
               <thead><tr><th>Nummer</th><th>Lieferant</th><th>Status</th><th>Bestellt</th><th>Erwartet</th><th className="right">Menge</th><th className="right">Summe brutto</th></tr></thead>
               <tbody>
                 {orders.length === 0 && <tr><td colSpan={7} className="muted">Keine Bestellungen in dieser Ansicht.</td></tr>}

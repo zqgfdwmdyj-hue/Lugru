@@ -22,7 +22,7 @@ export default async function LieferantenPage() {
       </div>
       <div className="row">
         <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
-          <table className="table">
+          <table className="table sticky-head">
             <thead><tr><th>Feed</th><th className="right">Angebote</th><th>Letzter Import</th><th>Abruf</th></tr></thead>
             <tbody>
               {feeds.length === 0 && <tr><td colSpan={4} className="muted">Noch keine Feeds. Rechts einen anlegen – danach Preislisten (CSV/Excel) hochladen oder Shop-Seiten, Fotos und PDFs scannen.</td></tr>}

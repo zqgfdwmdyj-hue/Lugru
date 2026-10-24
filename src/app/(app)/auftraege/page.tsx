@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { CHANNELS } from "@/db/schema";
@@ -43,7 +44,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
   const link = (v: View) => `/auftraege?ansicht=${v}${sp.kanal ? `&kanal=${sp.kanal}` : ""}`;
   const table = (
     <section className="card" style={{ overflow: "auto" }}>
-      <table className="table">
+      <table className="table sticky-head">
         <thead><tr><th style={{ width: 28 }}></th><th>Kanal</th><th>Bestellung</th><th>Datum</th><th>Empfänger</th><th>Artikel</th><th className="right">Summe</th><th>Status</th><th>Sendung</th></tr></thead>
         <tbody>
           {orders.length === 0 && <tr><td colSpan={9} className="muted">Keine Aufträge in dieser Ansicht.</td></tr>}
@@ -89,7 +90,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
           {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={link(v)} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
           {sp.kanal && <Link href={`/auftraege?ansicht=${view}`} className="chip">Kanal: {CHANNEL_LABEL[sp.kanal as keyof typeof CHANNEL_LABEL] ?? sp.kanal} ×</Link>}
         </div>
-        {view === "label" && orders.length > 0 && <form action={markAllLabeledShipped}><button className="btn" type="submit">Alle als versendet markieren</button></form>}
+        {view === "label" && orders.length > 0 && <form action={markAllLabeledShipped}><ConfirmButton className="btn" confirm={`Alle ${orders.length} Aufträge mit Label als versendet markieren? Die Sendungsnummern gehen an die Marktplätze.`}>Alle als versendet markieren</ConfirmButton></form>}
       </div>
       {view === "offen" ? <BatchForm>{table}</BatchForm> : table}
       <details className="card card-pad">

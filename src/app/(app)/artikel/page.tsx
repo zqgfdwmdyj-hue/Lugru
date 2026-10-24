@@ -42,7 +42,7 @@ export default async function ArtikelPage({ searchParams }: { searchParams: Prom
       </div>
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
-          <table className="table">
+          <table className="table sticky-head">
             <thead><tr><th></th><th>Artikel</th><th>Marke</th><th>EAN / ASIN</th><th className="right">VK</th><th>Amazon</th><th>eBay</th><th>Status</th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={8} className="muted">Noch keine Artikel. Ideen landen hier automatisch, sobald sie auf „Umsetzen“ oder „Live“ gehen – oder rechts von Hand anlegen.</td></tr>}

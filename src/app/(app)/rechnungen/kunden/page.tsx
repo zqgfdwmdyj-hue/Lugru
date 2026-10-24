@@ -27,7 +27,7 @@ export default async function KundenPage({ searchParams }: { searchParams: Promi
         <input className="input" id="kq" name="q" defaultValue={sp.q} placeholder="Name, Ort, Kundennummer, E-Mail" />
       </form>
       <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Kunde</th><th>Ort</th><th>USt-IdNr.</th><th className="right">Rechnungen</th><th></th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={5} className="muted">{sp.q ? "Kein Kunde gefunden." : "Noch keine Kunden – unten anlegen oder beim Rechnungschreiben speichern."}</td></tr>}

@@ -112,7 +112,7 @@ export default async function ChargenPage({
       </div>
 
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead>
             <tr>
               <th>SKU</th><th>ASIN</th><th>Shop</th><th>Datum</th><th>Art</th><th className="right">EK netto</th><th>Quelle</th>

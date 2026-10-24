@@ -98,7 +98,7 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
             {open.length > 0 && <a className="btn btn-small" href={`/etikett/palette?codes=${encodeURIComponent(open.map((p) => p.code).join(","))}`} target="_blank" rel="noreferrer">Etiketten</a>}
           </form>
         </div>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Palette</th><th>Kunde</th><th>Stellplatz</th><th></th><th>Kosten</th><th>Eingelagert</th><th className="right">Tage</th><th className="right">{monthLabel(thisMonth).split(" ")[0]}</th></tr></thead>
           <tbody>
             {open.length === 0 && <tr><td colSpan={8} className="muted">Keine Paletten eingelagert. Oben scannen oder Nummer eingeben.</td></tr>}
