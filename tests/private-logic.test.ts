@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canAccess, homeFor } from "@/lib/auth/areas";
-import { dateStats, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, monthGrid, num, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
+import { dateStats, nextSleeper, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, monthGrid, num, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
 
 // Bereich „Privat“: Rechte und Auswertungen. Fiktive Daten.
 
@@ -54,6 +54,19 @@ describe("Paarzeit", () => {
     );
     expect(s).toMatchObject({ inMonth: 2, hoursInMonth: 7.5, costInMonth: 45, last: "2026-10-17", daysSinceLast: 7, avgGapDays: 14, last90: 3 });
     expect(dateStats([], "2026-10", "2026-10-24")).toMatchObject({ inMonth: 0, daysSinceLast: null, avgGapDays: null });
+  });
+});
+
+describe("Ausschlafen", () => {
+  it("abwechselnd, außer einer liegt im Monat 2× zurück", () => {
+    expect(nextSleeper([], "2026-10")).toBeNull();
+    expect(nextSleeper([{ day: "2026-10-18", person: "a" }], "2026-10")).toBe("b");
+    expect(nextSleeper([{ day: "2026-10-18", person: "a" }, { day: "2026-10-24", person: "b" }], "2026-10")).toBe("a");
+    expect(nextSleeper([{ day: "2026-10-04", person: "a" }, { day: "2026-10-11", person: "a" }, { day: "2026-10-18", person: "b" }, { day: "2026-10-19", person: "a" }], "2026-10")).toBe("b");
+    // gleicher Tag: der später eingetragene zählt als letzter
+    expect(nextSleeper([{ day: "2026-10-24", person: "b", at: 2 }, { day: "2026-10-24", person: "a", at: 1 }], "2026-10")).toBe("a");
+    // Vormonat zählt fürs Abwechseln, nicht für den Ausgleich
+    expect(nextSleeper([{ day: "2026-09-27", person: "b" }], "2026-10")).toBe("a");
   });
 });
 
@@ -139,6 +152,7 @@ describe("Seit der letzten Sitzung", () => {
       today: "2026-10-24",
       intim: [{ day: "2026-10-09" }, { day: "2026-10-12" }, { day: "2026-10-20" }],
       dates: [{ day: "2026-10-05" }, { day: "2026-10-17", hours: 3 }],
+      sleep: [{ day: "2026-10-11", person: "a", hours: 2 }, { day: "2026-10-18", person: "b", from: "06:30", to: "09:00" }, { day: "2026-10-25", person: "a", hours: 1 }],
       kids: [{ day: "2026-10-11", person: "a", hours: 2 }, { day: "2026-10-15", person: "b", from: "10:00", to: "11:30" }],
       tasks: [
         { title: "x", source: "paar", forWhom: "beide", repeat: "einmal", done: true, doneAt: "2026-10-15" },
@@ -146,6 +160,6 @@ describe("Seit der letzten Sitzung", () => {
         { title: "z", source: "ads", forWhom: "a", repeat: "einmal" },
       ],
     });
-    expect(r).toMatchObject({ days: 14, intim: 2, dates: 1, kidsHours: { a: 2, b: 1.5 }, tasksDone: 2, tasksOpen: 1 });
+    expect(r).toMatchObject({ days: 14, intim: 2, dates: 1, sleepIn: { a: 1, b: 1 }, kidsHours: { a: 2, b: 1.5 }, tasksDone: 2, tasksOpen: 1 });
   });
 });

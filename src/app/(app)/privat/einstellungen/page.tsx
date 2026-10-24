@@ -20,6 +20,9 @@ export default async function PrivatEinstellungenPage() {
             <div className="field"><label className="label" htmlFor="pb">Partner 2</label><input className="input" id="pb" name="partnerB" defaultValue={s.partners.b} required /></div>
           </div>
           <div className="field"><span className="label">Das bin ich</span><Choice name="me" value={me} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }]} /></div>
+          <div className="priv-grid">
+            <div className="field"><label className="label" htmlFor="wake">Übliche Aufstehzeit (fürs Ausschlafen)</label><input className="input" id="wake" name="wakeTime" type="time" defaultValue={s.wakeTime} /></div>
+          </div>
           <div className="field"><label className="label" htmlFor="kids">Kinder (Vornamen, mit Komma – optional)</label><input className="input" id="kids" name="kids" defaultValue={s.kids.join(", ")} placeholder="z. B. Mia, Paul" /></div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="ads">ADHS-Behandlung bei</label><input className="input" id="ads" name="ads" defaultValue={s.therapists.ads} /></div>

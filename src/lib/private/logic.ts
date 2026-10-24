@@ -11,6 +11,8 @@ export type PrivateSettings = {
   diaryShared: string[];
   /** Welcher Benutzer welcher Partner ist (für Vorbelegungen). */
   userPartner: Record<string, PartnerKey>;
+  /** Übliche Aufstehzeit – Vorschlag für „von“ beim Ausschlafen. */
+  wakeTime: string;
 };
 export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   partners: { a: "Ludwig", b: "Alexandra" },
@@ -18,6 +20,7 @@ export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   therapists: { ads: "ADHS-Psychologin", paar: "Paartherapie" },
   diaryShared: [],
   userPartner: {},
+  wakeTime: "06:30",
 };
 
 export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey | "beide"; closeness?: Ratings; note?: string };
@@ -38,6 +41,8 @@ export type TaskEntry = {
 export type AppointmentEntry = { day: string; time?: string; with: "ads" | "paar" | "arzt" | "sonst"; notes?: string };
 /** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
 export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string };
+/** Ausschlafen: wer durfte wann wie lange länger schlafen (der andere übernimmt die Kinder). */
+export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string };
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;
@@ -190,6 +195,24 @@ export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
   return { totals, shareA: sum ? Math.round((totals.a.hours / sum) * 100) : null, days: [...byDay.entries()].map(([day, r]) => ({ day, ...r })) };
 }
 
+// ---- Ausschlafen -----------------------------------------------------------------------------------
+
+/**
+ * Wer ist als Nächstes mit Ausschlafen dran? Wer im Monat deutlich weniger hatte (mind. 2× weniger),
+ * sonst abwechselnd: der andere als beim letzten Mal. Ohne Einträge: null.
+ */
+export function nextSleeper(entries: (Pick<SleepEntry, "day" | "person"> & { at?: number })[], month: string): PartnerKey | null {
+  if (!entries.length) return null;
+  const inMonth = entries.filter((e) => e.day.startsWith(month));
+  const a = inMonth.filter((e) => e.person === "a").length;
+  const b = inMonth.filter((e) => e.person === "b").length;
+  if (a - b >= 2) return "b";
+  if (b - a >= 2) return "a";
+  // gleicher Tag: was zuletzt eingetragen wurde
+  const last = [...entries].sort((x, y) => x.day.localeCompare(y.day) || (x.at ?? 0) - (y.at ?? 0)).pop()!;
+  return last.person === "a" ? "b" : "a";
+}
+
 // ---- Aufgaben --------------------------------------------------------------------------------------
 
 /** Stand einer Aufgabe heute: offen/erledigt, bei Wiederholung „heute / diese Woche erledigt“ und die letzten 7 Tage. */
@@ -267,7 +290,7 @@ export function diarySeries(entries: DiaryEntry[], key: RatingKey, today: string
 }
 
 /** Für die nächste Sitzung: was seit dem letzten Termin passiert ist. */
-export function sinceSummary(input: { since: string; today: string; intim: IntimEntry[]; kids: KidsEntry[]; tasks: TaskEntry[]; dates?: DateEntry[] }) {
+export function sinceSummary(input: { since: string; today: string; intim: IntimEntry[]; kids: KidsEntry[]; tasks: TaskEntry[]; dates?: DateEntry[]; sleep?: SleepEntry[] }) {
   const { since, today } = input;
   const kids = input.kids.filter((e) => e.day >= since && e.day <= today);
   const hours = { a: 0, b: 0 };
@@ -277,6 +300,10 @@ export function sinceSummary(input: { since: string; today: string; intim: Intim
     days: daysBetween(since, today),
     intim: input.intim.filter((e) => e.day >= since && e.day <= today).length,
     dates: (input.dates ?? []).filter((e) => e.day >= since && e.day <= today).length,
+    sleepIn: {
+      a: (input.sleep ?? []).filter((e) => e.person === "a" && e.day >= since && e.day <= today).length,
+      b: (input.sleep ?? []).filter((e) => e.person === "b" && e.day >= since && e.day <= today).length,
+    },
     kidsHours: hours,
     kidsCount: { a: kids.filter((e) => e.person === "a").length, b: kids.filter((e) => e.person === "b").length },
     tasksDone: done.length,

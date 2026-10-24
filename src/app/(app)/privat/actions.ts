@@ -61,12 +61,14 @@ export async function saveSettingsAction(_prev: FormState, fd: FormData): Promis
     .map((k) => k.slice(0, 30));
   const me = partner(fd.get("me"));
   const share = fd.get("shareDiary") === "on";
+  const wake = time(fd.get("wakeTime"));
   await savePrivateSettings(session, {
     partners: { a, b },
     kids,
     therapists: { ads: clip(fd.get("ads"), 60) ?? cur.therapists.ads, paar: clip(fd.get("paar"), 60) ?? cur.therapists.paar },
     userPartner: me ? { ...cur.userPartner, [session.userId]: me } : cur.userPartner,
     diaryShared: share ? [...new Set([...cur.diaryShared, session.userId])] : cur.diaryShared.filter((u) => u !== session.userId),
+    wakeTime: wake ?? cur.wakeTime,
   });
   return done("Gespeichert.");
 }
@@ -136,6 +138,23 @@ export async function addKidsAction(_prev: FormState, fd: FormData): Promise<For
   const entry: KidsEntry = compact({ day: dayOr(fd.get("day")), person, from, to, hours: from && to ? undefined : hours, what: clip(fd.get("what"), 200), kids });
   await addEntry(session, "kinder", entry);
   return done(`Eingetragen: ${settings.partners[person]} am ${entry.day.split("-").reverse().join(".")}.`);
+}
+
+// ---- Ausschlafen ---------------------------------------------------------------------------------------
+
+export async function addSleepAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate();
+  const person = partner(fd.get("person"));
+  if (!person) return fail("Bitte wählen, wer ausgeschlafen hat.");
+  const day = dayOr(fd.get("day"));
+  if (day > todayIso()) return fail("Bitte kein Datum in der Zukunft.");
+  const from = time(fd.get("from"));
+  const to = time(fd.get("to"));
+  const hours = num(fd.get("hours"), 0, 24);
+  if (!(from && to) && !hours) return fail("Bitte von–bis (z. B. 06:30–09:30) oder die Stunden angeben.");
+  const settings = await privateSettings(session.tenantId);
+  await addEntry(session, "ausschlafen", compact({ day, person, from, to, hours: from && to ? undefined : hours, note: clip(fd.get("note"), 300) }));
+  return done(`Eingetragen: ${settings.partners[person]} hat am ${day.split("-").reverse().join(".")} ausgeschlafen.`);
 }
 
 // ---- Aufgaben & Termine ------------------------------------------------------------------------------
@@ -253,7 +272,7 @@ export async function addObservationAction(_prev: FormState, fd: FormData): Prom
 
 // ---- Löschen (alle Arten) ----------------------------------------------------------------------------
 
-const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech"];
+const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech"];
 
 export async function deleteEntryAction(fd: FormData) {
   const session = await requirePrivate();

@@ -14,7 +14,7 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
 const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung"]);
 
@@ -57,6 +57,7 @@ export async function privateSettings(tenantId: string): Promise<PrivateSettings
     therapists: { ...DEFAULT_PRIVATE_SETTINGS.therapists, ...(d.therapists ?? {}) },
     diaryShared: d.diaryShared ?? [],
     userPartner: d.userPartner ?? {},
+    wakeTime: d.wakeTime ?? DEFAULT_PRIVATE_SETTINGS.wakeTime,
   };
 }
 

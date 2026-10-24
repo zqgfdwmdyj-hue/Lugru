@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { dateStats, intimStats, kidsOverview, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type TaskEntry } from "@/lib/private/logic";
+import { dateStats, intimStats, kidsOverview, nextSleeper, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { toggleTaskAction } from "./actions";
 import { PrivatHead, dmy, hoursLabel, monthLabel, weekday } from "./ui";
@@ -10,14 +10,17 @@ export default async function PrivatStartPage() {
   const today = todayIso();
   const month = today.slice(0, 7);
   const s = await privateSettings(session.tenantId);
-  const [intim, kids, tasks, appts, diary, dates] = await Promise.all([
+  const [intim, kids, tasks, appts, diary, dates, sleep] = await Promise.all([
     loadEntries<IntimEntry>(session, ["intim"]),
     loadEntries<KidsEntry>(session, ["kinder"]),
     loadEntries<TaskEntry>(session, ["aufgabe"]),
     loadEntries<AppointmentEntry>(session, ["termin"]),
     loadEntries<DiaryEntry>(session, ["tagebuch"]),
     loadEntries<DateEntry>(session, ["paarzeit"]),
+    loadEntries<SleepEntry>(session, ["ausschlafen"]),
   ]);
+  const so = kidsOverview(sleep.map((e) => e.data), month);
+  const nextSleep = nextSleeper(sleep.map((e) => ({ ...e.data, at: e.createdAt.getTime() })), month);
   const ds = dateStats(dates.map((e) => e.data), month, today);
   const myDiary = diary.filter((e) => e.userId === session.userId);
   const todayEntry = myDiary.find((e) => e.data.day === today)?.data;
@@ -49,6 +52,11 @@ export default async function PrivatStartPage() {
           <div className="kpi-label">🥂 Paarzeit · {monthLabel(month)}</div>
           <div className="kpi-value">{ds.inMonth}×</div>
           <div className="small muted">{ds.daysSinceLast === null ? "noch kein Date eingetragen" : ds.daysSinceLast === 0 ? "zuletzt heute" : `zuletzt vor ${ds.daysSinceLast} Tagen`}</div>
+        </Link>
+        <Link href="/privat/ausschlafen" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }} data-testid="ov-sleep">
+          <div className="kpi-label">😴 Ausschlafen · {monthLabel(month)}</div>
+          <div className="kpi-value" style={{ fontSize: 20 }}>{s.partners.a} {so.totals.a.count}× · {s.partners.b} {so.totals.b.count}×</div>
+          <div className="small muted">{nextSleep ? `als Nächstes: ${s.partners[nextSleep]}` : "noch nichts eingetragen"}</div>
         </Link>
         <Link href="/privat/kinder" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }}>
           <div className="kpi-label">Kinderzeit · {monthLabel(month)}</div>

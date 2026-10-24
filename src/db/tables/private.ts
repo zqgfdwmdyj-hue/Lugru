@@ -16,7 +16,7 @@ export const privateEntries = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** intim | paarzeit | kinder | aufgabe | termin | tagebuch | beobachtung | gespraech | einstellungen */
+    /** intim | paarzeit | kinder | ausschlafen | aufgabe | termin | tagebuch | beobachtung | gespraech | einstellungen */
     kind: text("kind").notNull(),
     data: encryptedJson<Record<string, unknown>>("data").notNull(),
     createdAt: createdAt(),

@@ -1,5 +1,5 @@
 import { todayIso } from "@/lib/dates";
-import { sinceSummary, taskState, type AppointmentEntry, type DateEntry, type IntimEntry, type KidsEntry, type TaskEntry } from "@/lib/private/logic";
+import { sinceSummary, taskState, type AppointmentEntry, type DateEntry, type IntimEntry, type KidsEntry, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { loadEntries, myPartner, privateSettings, requirePrivate, type Entry } from "@/lib/private/service";
 import { addAppointmentAction, addTaskAction, deleteEntryAction, saveAppointmentNotesAction, saveTaskNoteAction, toggleTaskAction } from "../actions";
 import { StateForm } from "../state-form";
@@ -15,6 +15,7 @@ export default async function AufgabenPage() {
   const intim = await loadEntries<IntimEntry>(session, ["intim"]);
   const kids = await loadEntries<KidsEntry>(session, ["kinder"]);
   const dates = await loadEntries<DateEntry>(session, ["paarzeit"]);
+  const sleep = await loadEntries<SleepEntry>(session, ["ausschlafen"]);
   const src = { ads: s.therapists.ads, paar: s.therapists.paar, sonst: "sonstige" } as const;
   const forLabel = (f: TaskEntry["forWhom"]) => (f === "a" ? s.partners.a : f === "b" ? s.partners.b : "beide");
   const withLabel = (w: AppointmentEntry["with"]) => (w === "ads" ? s.therapists.ads : w === "paar" ? s.therapists.paar : w === "arzt" ? "Arzt/Ärztin" : "sonstiger Termin");
@@ -25,7 +26,7 @@ export default async function AufgabenPage() {
   const upcoming = appts.filter((a) => a.data.day >= today);
   const past = appts.filter((a) => a.data.day < today).reverse();
   const lastPaar = past.find((a) => a.data.with === "paar")?.data.day;
-  const prep = lastPaar ? sinceSummary({ since: lastPaar, today, intim: intim.map((e) => e.data), kids: kids.map((e) => e.data), tasks: tasks.map((e) => e.data), dates: dates.map((e) => e.data) }) : null;
+  const prep = lastPaar ? sinceSummary({ since: lastPaar, today, intim: intim.map((e) => e.data), kids: kids.map((e) => e.data), tasks: tasks.map((e) => e.data), dates: dates.map((e) => e.data), sleep: sleep.map((e) => e.data) }) : null;
 
   const TaskItem = ({ t }: { t: Entry<TaskEntry> }) => {
     const st = taskState(t.data, today);
@@ -79,6 +80,7 @@ export default async function AufgabenPage() {
           <div className="priv-grid small">
             <div><div className="kpi-label">Nähe / Intimität</div><strong>{prep.intim}×</strong></div>
             <div><div className="kpi-label">🥂 Paarzeit</div><strong>{prep.dates}×</strong></div>
+            <div><div className="kpi-label">😴 Ausgeschlafen</div>{s.partners.a} <strong>{prep.sleepIn.a}×</strong> · {s.partners.b} <strong>{prep.sleepIn.b}×</strong></div>
             <div><div className="kpi-label">{s.partners.a} allein mit Kindern</div><strong>{hoursLabel(prep.kidsHours.a)}</strong> ({prep.kidsCount.a}×)</div>
             <div><div className="kpi-label">{s.partners.b} allein mit Kindern</div><strong>{hoursLabel(prep.kidsHours.b)}</strong> ({prep.kidsCount.b}×)</div>
             <div><div className="kpi-label">Aufgaben</div><strong>{prep.tasksDone}</strong> erledigt · {prep.tasksOpen} offen</div>

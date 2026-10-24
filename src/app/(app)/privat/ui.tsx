@@ -5,6 +5,7 @@ const TABS = [
   { key: "start", href: "/privat", label: "Übersicht" },
   { key: "paar", href: "/privat/paar", label: "Paar" },
   { key: "kinder", href: "/privat/kinder", label: "Kinderzeit" },
+  { key: "ausschlafen", href: "/privat/ausschlafen", label: "Ausschlafen" },
   { key: "aufgaben", href: "/privat/aufgaben", label: "Aufgaben & Termine" },
   { key: "tagebuch", href: "/privat/tagebuch", label: "ADHS-Tagebuch" },
   { key: "wissen", href: "/privat/wissen", label: "Wissen" },

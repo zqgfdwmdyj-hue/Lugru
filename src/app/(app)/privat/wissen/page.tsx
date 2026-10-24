@@ -80,6 +80,7 @@ const CARDS: Card[] = [
     items: [
       "Nähe/Intimität: Das Gefühl („wir haben ja nie …“) täuscht oft – das Protokoll zeigt, wie es wirklich ist, und gibt der Therapie eine Grundlage. Kein Wettbewerb und kein Soll; Initiative und „wie nah“ sind freiwillig.",
       "Paarzeit: zeigt, wie oft ihr wirklich zu zweit unterwegs seid. Feste Paarzeit in den Kalender schreiben (z. B. alle zwei Wochen) und die Betreuung früh klären hilft, dass sie im Alltag nicht untergeht.",
+      "Ausschlafen: abwechselnd ausschlafen ist eine einfache Entlastung – die Übersicht zeigt, ob es fair verteilt ist und wer als Nächstes dran ist. Gerade in der ADHS-Einstellungsphase ist genug Schlaf wichtig.",
       "Kinderzeit: macht sichtbar, wer wie viel allein mit den Kindern unterwegs ist – Grundlage, um Entlastung fair zu planen. Auch Zeit allein mit einem Kind zählt.",
       "Aufgaben: kleine, regelmäßige Übungen wirken mehr als große Vorsätze – deshalb „täglich“/„wöchentlich“ zum Abhaken.",
     ],
