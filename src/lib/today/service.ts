@@ -36,11 +36,11 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
   ]);
   const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
   const out: Signal[] = [];
-  if (ship.n) out.push({ key: "versand", label: `${ship.n} Auftrag${ship.n === 1 ? "" : "e"} heute bzw. überfällig versenden`, count: ship.n, href: "/auftraege?ansicht=offen", level: "danger" });
-  if (cases.n) out.push({ key: "faelle", label: `${cases.n} Fall${cases.n === 1 ? "" : "e"} mit Frist bis übermorgen`, detail: "A-bis-Z, eBay-Fälle", count: cases.n, href: "/faelle", level: "danger" });
+  if (ship.n) out.push({ key: "versand", label: `${ship.n} ${ship.n === 1 ? "Auftrag" : "Aufträge"} heute bzw. überfällig versenden`, count: ship.n, href: "/auftraege?ansicht=offen", level: "danger" });
+  if (cases.n) out.push({ key: "faelle", label: `${cases.n} ${cases.n === 1 ? "Fall" : "Fälle"} mit Frist bis übermorgen`, detail: "A-bis-Z, eBay-Fälle", count: cases.n, href: "/faelle", level: "danger" });
   if (neg.n) out.push({ key: "negativ", label: `${neg.n} SKU${neg.n === 1 ? "" : "s"} mit negativem Bestand`, detail: `${neg.units} Stück – überverkauft oder falsch gebucht`, count: neg.n, href: "/bestand?ansicht=negativ", level: "danger" });
   if (claims.n) out.push({ key: "ansprueche", label: `${claims.n} Anspr${claims.n === 1 ? "uch läuft" : "üche laufen"} in 7 Tagen ab`, detail: `zusammen ${euro(claims.sum)}`, count: claims.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
-  if (shipTomorrow.n) out.push({ key: "versand-morgen", label: `${shipTomorrow.n} Auftrag${shipTomorrow.n === 1 ? "" : "e"} morgen versenden`, count: shipTomorrow.n, href: "/auftraege?ansicht=offen", level: "warn" });
+  if (shipTomorrow.n) out.push({ key: "versand-morgen", label: `${shipTomorrow.n} ${shipTomorrow.n === 1 ? "Auftrag" : "Aufträge"} morgen versenden`, count: shipTomorrow.n, href: "/auftraege?ansicht=offen", level: "warn" });
   if (expired.n) out.push({ key: "abgelaufen", label: `${expired.n} Anspr${expired.n === 1 ? "uch" : "üche"} mit abgelaufener Frist, nicht eingereicht`, count: expired.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
   return out;
 }
