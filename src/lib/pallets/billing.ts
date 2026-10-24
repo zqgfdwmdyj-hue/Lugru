@@ -272,3 +272,61 @@ export function palletOverview<P extends PalletLike & { customer: string | null 
     avgStayDays,
   };
 }
+
+// ---- Lagerplan & Inventur ---------------------------------------------------------------------------
+
+/**
+ * Stellplätze aus dem Einstellungsfeld, eine Angabe je Zeile oder mit Komma:
+ * „A-01..A-20“ (Bereich, führende Nullen bleiben), „B1..B5“, oder einzelne Namen („Tor 1“).
+ */
+export function parseLocations(spec: string): string[] {
+  const out: string[] = [];
+  for (const raw of spec.split(/[\n,;]+/)) {
+    const part = raw.trim();
+    if (!part) continue;
+    const m = /^(.*?)(\d+)\s*(?:\.\.|–|—|bis)\s*(.*?)(\d+)$/i.exec(part);
+    if (m && (m[3].trim() === "" || m[3].trim().toUpperCase() === m[1].trim().toUpperCase())) {
+      const prefix = m[1].toUpperCase();
+      const a = Number(m[2]);
+      const b = Number(m[4]);
+      const width = m[2].length;
+      if (b >= a && b - a < 1000) for (let i = a; i <= b; i++) out.push(`${prefix}${String(i).padStart(width, "0")}`);
+      continue;
+    }
+    const one = normalizeLocation(part);
+    if (one) out.push(one);
+  }
+  return [...new Set(out)].slice(0, 2000);
+}
+
+/** Plan gruppiert nach Reihe (Teil vor der Nummer), z. B. „A-“ → [A-01, A-02 …]. */
+export function locationRows(plan: string[]): { row: string; places: string[] }[] {
+  const rows = new Map<string, string[]>();
+  for (const p of plan) {
+    const row = /^(.*?)\d+$/.exec(p)?.[1].replace(/[-\s]+$/, "") || p;
+    rows.set(row, [...(rows.get(row) ?? []), p]);
+  }
+  return [...rows.entries()].map(([row, places]) => ({ row, places }));
+}
+
+/** Freie Plätze in Plan-Reihenfolge. */
+export function freeLocations(plan: string[], occupied: (string | null)[]): string[] {
+  const used = new Set(occupied.filter(Boolean) as string[]);
+  return plan.filter((p) => !used.has(p));
+}
+
+/** Inventur: gescannte Nummern gegen eingelagerte Paletten. */
+export function inventoryCompare<P extends { code: string }>(scanned: string[], open: P[]) {
+  const seen = new Map<string, string>();
+  for (const s of scanned) {
+    const c = s.trim();
+    if (c && !seen.has(c.toLowerCase())) seen.set(c.toLowerCase(), c);
+  }
+  const byCode = new Map(open.map((p) => [p.code.toLowerCase(), p]));
+  return {
+    found: open.filter((p) => seen.has(p.code.toLowerCase())),
+    missing: open.filter((p) => !seen.has(p.code.toLowerCase())),
+    unknown: [...seen.entries()].filter(([k]) => !byCode.has(k)).map(([, v]) => v),
+    scanned: seen.size,
+  };
+}

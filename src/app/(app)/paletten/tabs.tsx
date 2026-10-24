@@ -2,6 +2,9 @@ import Link from "next/link";
 
 const TABS = [
   { key: "lager", href: "/paletten", label: "Lager" },
+  { key: "lagerplan", href: "/paletten/lagerplan", label: "Lagerplan" },
+  { key: "abholung", href: "/paletten/abholung", label: "Abholung" },
+  { key: "inventur", href: "/paletten/inventur", label: "Inventur" },
   { key: "kunden", href: "/paletten/kunden", label: "Kunden & Preise" },
   { key: "uebersicht", href: "/paletten/uebersicht", label: "Übersicht" },
 ] as const;

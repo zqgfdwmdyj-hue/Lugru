@@ -8,7 +8,7 @@ import { PhotoPicker, type PickedPhoto } from "./photos";
 type Detector = { detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
 
 /** Kamera-Scan über die BarcodeDetector-API (Chrome/Android, Safari ab iOS 17). */
-function CameraScan({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
+export function CameraScan({ onCode, onClose }: { onCode: (code: string) => void; onClose: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -59,7 +59,7 @@ const MODES: { key: Mode; label: string }[] = [
 ];
 const dmy = (iso: string) => iso.split("-").reverse().join(".");
 
-export function PalletScan({ customers, locations, today }: { customers: string[]; locations: string[]; today: string }) {
+export function PalletScan({ customers, locations, today, free = [], initialLocation }: { customers: string[]; locations: string[]; today: string; free?: string[]; initialLocation?: string }) {
   const [state, action] = useActionState<ScanState, FormData>(scanPallet, null);
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<Mode>("ein");
@@ -147,8 +147,16 @@ export function PalletScan({ customers, locations, today }: { customers: string[
             </div>
             <div className="field">
               <label className="label" htmlFor="pal-location">Stellplatz</label>
-              <input className="input" id="pal-location" name="location" list="pal-locations" autoComplete="off" placeholder="z. B. B-03" autoCapitalize="characters" />
+              <input className="input" id="pal-location" name="location" list="pal-locations" autoComplete="off" placeholder="z. B. B-03" autoCapitalize="characters" defaultValue={initialLocation} />
               <datalist id="pal-locations">{locations.map((c) => <option key={c} value={c} />)}</datalist>
+              {free.length > 0 && (
+                <div className="small" style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }} data-testid="free-places">
+                  <span className="muted">frei:</span>
+                  {free.slice(0, 5).map((f) => (
+                    <button key={f} type="button" className="btn-link small" onClick={() => { const i = form.current?.querySelector<HTMLInputElement>("#pal-location"); if (i) i.value = f; }}>{f}</button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="field">
               <label className="label" htmlFor="pal-count">Anzahl Paletten</label>

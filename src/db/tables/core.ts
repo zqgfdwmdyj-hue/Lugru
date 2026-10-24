@@ -143,6 +143,11 @@ export type TenantSettings = {
     longStayDays?: number;
     remindFreeEnd?: boolean;
     services?: { name: string; price: number }[];
+    /** Stellplätze laut Lagerplan (z. B. aus „A-01..A-20“). */
+    locations?: string[];
+    locationsSpec?: string;
+    /** Letzte Inventur. */
+    lastInventory?: { at: string; scanned: number; found: number; missing: number; unknown: number };
   };
   /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };

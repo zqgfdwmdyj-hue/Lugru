@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -9,7 +9,7 @@ import { requireArea, requireOwner } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { parseAmount } from "@/lib/numbers";
 import { storeFile } from "@/lib/orders/service";
-import { chargeableFrom, customerKey, nextPalletCodes, normalizeLocation, parseServices, storedDays } from "@/lib/pallets/billing";
+import { chargeableFrom, customerKey, inventoryCompare, nextPalletCodes, normalizeLocation, parseLocations, parseServices, storedDays } from "@/lib/pallets/billing";
 import { MONTH_RE, dropOrphanPhotoFiles, palletContext, sendStatement } from "@/lib/pallets/service";
 
 const P = schema.pallets;
@@ -346,6 +346,8 @@ export async function savePalletRates(_prev: SaveState, fd: FormData): Promise<S
     longStayDays,
     remindFreeEnd: fd.get("remindFreeEnd") === "on",
     services: parseServices(String(fd.get("services") ?? "")),
+    locationsSpec: String(fd.get("locations") ?? "").slice(0, 4000),
+    locations: parseLocations(String(fd.get("locations") ?? "")),
   };
   await db
     .update(schema.tenants)
@@ -399,3 +401,87 @@ export async function deletePalletCustomer(fd: FormData) {
   revalidatePath("/paletten", "layout");
 }
 
+
+// ---- Inventur ---------------------------------------------------------------------------------------
+
+export type InventoryState = {
+  ok: boolean;
+  message: string;
+  found?: { id: string; code: string; location: string | null; customer: string | null }[];
+  missing?: { id: string; code: string; location: string | null; customer: string | null }[];
+  unknown?: string[];
+} | null;
+
+/** Gescannte Nummern mit dem Bestand abgleichen: da, fehlt, unbekannt. */
+export async function inventoryAction(_prev: InventoryState, fd: FormData): Promise<InventoryState> {
+  const session = await requireArea("paletten");
+  const t = session.tenantId;
+  let codes: string[] = [];
+  try {
+    codes = (JSON.parse(String(fd.get("codes") ?? "[]")) as unknown[]).map((c) => String(c).trim().slice(0, 80)).filter(Boolean).slice(0, 5000);
+  } catch {
+    return { ok: false, message: "Liste nicht lesbar." };
+  }
+  if (!codes.length) return { ok: false, message: "Noch nichts gescannt." };
+  const open = await db.select({ id: P.id, code: P.code, location: P.location, customer: P.customer }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt))).orderBy(P.location, P.code);
+  const r = inventoryCompare(codes, open);
+  const lastInventory = { at: new Date().toISOString(), scanned: r.scanned, found: r.found.length, missing: r.missing.length, unknown: r.unknown.length };
+  await db
+    .update(schema.tenants)
+    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('pallets', coalesce(${schema.tenants.settings}->'pallets', '{}'::jsonb) || ${JSON.stringify({ lastInventory })}::jsonb)` })
+    .where(eq(schema.tenants.id, t));
+  revalidatePath("/paletten", "layout");
+  const clean = !r.missing.length && !r.unknown.length;
+  return {
+    ok: true,
+    message: clean ? `Alles stimmt: ${r.found.length} Paletten gefunden.` : `${r.found.length} gefunden · ${r.missing.length} fehlen · ${r.unknown.length} unbekannt`,
+    found: r.found,
+    missing: r.missing,
+    unknown: r.unknown,
+  };
+}
+
+// ---- Sammel-Abholung mit Unterschrift ----------------------------------------------------------------
+
+export type PickupState = { ok: boolean; message: string; id?: string } | null;
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+/** Mehrere Paletten auf einmal auslagern, Abholer unterschreibt auf dem Handy → Abholschein. */
+export async function pickupAction(_prev: PickupState, fd: FormData): Promise<PickupState> {
+  const session = await requireArea("paletten");
+  const t = session.tenantId;
+  const ids = [...new Set(fd.getAll("ids").map(String))].filter((v) => z.string().uuid().safeParse(v).success).slice(0, 500);
+  if (!ids.length) return { ok: false, message: "Bitte mindestens eine Palette auswählen oder scannen." };
+  const pickedBy = text(fd, "pickedBy", 120);
+  if (!pickedBy) return { ok: false, message: "Bitte den Namen des Abholers eintragen." };
+  const sig = String(fd.get("signature") ?? "");
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(sig);
+  const png = m ? Buffer.from(m[1], "base64") : null;
+  if (!png || png.length < 200 || !png.subarray(0, 4).equals(PNG_MAGIC)) return { ok: false, message: "Bitte unterschreiben lassen." };
+  if (png.length > 600_000) return { ok: false, message: "Unterschrift zu groß – bitte nochmal." };
+  const day = readDate(fd.get("date"));
+  const rows = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), inArray(P.id, ids)));
+  if (!rows.length) return { ok: false, message: "Die ausgewählten Paletten sind nicht (mehr) eingelagert." };
+  const fileId = await storeFile(t, `unterschrift-${day}.png`, "image/png", png);
+  await db
+    .update(P)
+    .set({ outAt: sql`greatest(${P.inAt}, ${day}::date)`, updatedAt: new Date() })
+    .where(and(eq(P.tenantId, t), isNull(P.outAt), inArray(P.id, rows.map((r) => r.id))));
+  const customers = [...new Set(rows.map((r) => r.customer?.trim()).filter(Boolean))];
+  const [pickup] = await db
+    .insert(schema.palletPickups)
+    .values({
+      tenantId: t,
+      customer: customers.length === 1 ? customers[0]! : customers.length ? customers.join(", ") : null,
+      day,
+      pickedBy,
+      plate: text(fd, "plate", 30),
+      note: text(fd, "note", 300),
+      palletIds: rows.map((r) => r.id),
+      codes: rows.map((r) => r.code).sort((a, b) => a.localeCompare(b, "de", { numeric: true })),
+      signatureFileId: fileId,
+    })
+    .returning({ id: schema.palletPickups.id });
+  revalidatePath("/paletten", "layout");
+  return { ok: true, message: `${rows.length} Palette${rows.length === 1 ? "" : "n"} ausgelagert – Abholschein ist fertig.`, id: pickup.id };
+}

@@ -101,7 +101,7 @@ export function SendStatementButton({ customer, month, email, sentAt, error }: {
   );
 }
 
-type Rates = { pricePerMonth: number; freeDays: number; mode: "monat" | "anteilig"; inFee: number; outFee: number; capacity: number; longStayDays: number; remindFreeEnd: boolean; servicesText: string };
+type Rates = { pricePerMonth: number; freeDays: number; mode: "monat" | "anteilig"; inFee: number; outFee: number; capacity: number; longStayDays: number; remindFreeEnd: boolean; servicesText: string; locationsSpec: string; locationsCount: number };
 
 /** Standard-Konditionen und Einstellungen des Palettenlagers (Inhaber). */
 export function RatesForm({ rates }: { rates: Rates }) {
@@ -129,6 +129,10 @@ export function RatesForm({ rates }: { rates: Rates }) {
       <div className="field">
         <label className="label" htmlFor="r-services">Zusatzleistungen mit Preis (eine je Zeile: Name = Preis)</label>
         <textarea className="input" id="r-services" name="services" rows={4} defaultValue={rates.servicesText} placeholder={"Folieren = 8\nUmpacken je Stunde = 35\nPalettentausch = 12"} />
+      </div>
+      <div className="field">
+        <label className="label" htmlFor="r-locations">Stellplätze (Lagerplan) – Bereiche wie „A-01..A-20“ oder einzelne Namen, je Zeile oder mit Komma{rates.locationsCount ? ` · jetzt ${rates.locationsCount} Plätze` : ""}</label>
+        <textarea className="input" id="r-locations" name="locations" rows={3} defaultValue={rates.locationsSpec} placeholder={"A-01..A-20\nB-01..B-20\nTor 1"} />
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <button className="btn btn-primary" type="submit" disabled={pending}>Speichern</button>

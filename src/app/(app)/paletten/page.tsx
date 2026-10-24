@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { amountForMonth, chargeableFrom, customerKey, storedDays } from "@/lib/pallets/billing";
+import { amountForMonth, chargeableFrom, customerKey, freeLocations, normalizeLocation, storedDays } from "@/lib/pallets/billing";
 import { MONTH_RE, loadMonthBill, monthLabel, palletContext, palletPhotos, shiftMonth, statementsFor } from "@/lib/pallets/service";
 import { CopyButton } from "@/components/copy-button";
 import { checkOutPallet, deleteCharge, deletePallet, undoCheckOut } from "./actions";
@@ -15,7 +15,7 @@ import { Occupancy, PalletTabs } from "./tabs";
 const kg = (n: number | null) => (n ? `${String(n).replace(".", ",")} kg` : "");
 const sentLabel = (d: Date | null) => (d ? d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }) : null);
 
-export default async function PalettenPage({ searchParams }: { searchParams: Promise<{ monat?: string; kunde?: string }> }) {
+export default async function PalettenPage({ searchParams }: { searchParams: Promise<{ monat?: string; kunde?: string; platz?: string }> }) {
   const session = await requireArea("paletten");
   const t = session.tenantId;
   const sp = await searchParams;
@@ -25,7 +25,7 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
   const kunde = (sp.kunde ?? "").trim().slice(0, 120);
   const P = schema.pallets;
   const ctx = await palletContext(t);
-  const rates = ctx.settings;
+  const rates = { ...ctx.settings, capacity: ctx.settings.capacity || (ctx.settings.locations?.length ?? 0) };
 
   const allOpen = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt))).orderBy(P.inAt, P.code);
   const open = kunde ? allOpen.filter((p) => customerKey(p.customer) === customerKey(kunde)) : allOpen;
@@ -82,7 +82,7 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
         <div className="card card-pad"><div className="kpi-label">Kunden mit Paletten</div><div className="kpi-value">{new Set(allOpen.map((p) => customerKey(p.customer))).size}</div></div>
       </div>
 
-      <PalletScan customers={customers} locations={locations} today={today} />
+      <PalletScan customers={customers} locations={[...new Set([...(rates.locations ?? []), ...locations])]} today={today} free={freeLocations(rates.locations ?? [], allOpen.map((p) => p.location))} initialLocation={normalizeLocation(sp.platz) ?? undefined} />
 
       <section className="card" id="lager">
         <div className="card-head">

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, files, id, money, tenantId, updatedAt } from "./core";
 
 /**
@@ -105,4 +105,24 @@ export const palletStatements = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("pallet_statements_uq").on(t.tenantId, sql`lower(${t.customer})`, t.month)],
+);
+
+/** Abholung mehrerer Paletten auf einmal – mit Abholschein und Unterschrift des Abholers. */
+export const palletPickups = pgTable(
+  "pallet_pickups",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    customer: text("customer"),
+    day: date("day").notNull(),
+    pickedBy: text("picked_by").notNull(),
+    plate: text("plate"),
+    note: text("note"),
+    palletIds: jsonb("pallet_ids").$type<string[]>().notNull(),
+    codes: jsonb("codes").$type<string[]>().notNull(),
+    /** Unterschrift als PNG (files). */
+    signatureFileId: uuid("signature_file_id").references(() => files.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("pallet_pickups_day_idx").on(t.tenantId, t.day)],
 );

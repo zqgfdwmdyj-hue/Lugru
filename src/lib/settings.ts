@@ -73,6 +73,9 @@ export const DEFAULT_SETTINGS = {
     /** Aufgabe am Vortag, wenn die freie Zeit endet. */
     remindFreeEnd: true,
     services: [] as { name: string; price: number }[],
+    locations: [] as string[],
+    locationsSpec: "",
+    lastInventory: null as null | { at: string; scanned: number; found: number; missing: number; unknown: number },
   },
 };
 

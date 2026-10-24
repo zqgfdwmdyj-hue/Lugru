@@ -313,3 +313,15 @@ h2 { font-size: 16px; margin: 0; }
   .main { padding: 0 !important; }
   .card { break-inside: avoid; border: 0; }
 }
+
+/* ---- Paletten: Lagerplan, Unterschrift ---- */
+.plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.plan-cell { display: flex; flex-direction: column; gap: 1px; padding: 7px 8px; border-radius: 8px; font-size: 12px; text-decoration: none; min-width: 0; }
+.plan-cell strong { font-family: var(--mono); font-size: 13px; }
+.plan-cell span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-free { border: 1px dashed var(--ok); color: var(--ok); background: var(--ok-soft); }
+.plan-used { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+.plan-used:hover, .plan-free:hover { text-decoration: none; filter: brightness(1.05); }
+.plan-double { box-shadow: inset 0 0 0 2px var(--warn); }
+.plan-sub { opacity: .85; font-size: 11px; }
+.sig-pad { width: 100%; max-width: 520px; height: 170px; border: 1px dashed var(--border-strong); border-radius: 8px; background: #fff; touch-action: none; cursor: crosshair; }
