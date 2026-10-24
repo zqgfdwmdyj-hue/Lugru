@@ -2,11 +2,12 @@ import {
   QUELLEN, STATUS, KATEGORIEN, zeitZuMin, minZuZeit, dauerText, zahl, istKind, sichereUrl,
   ausflugKosten, reiseKosten, zeitplan, bewertung, entfernungKm, textZuAusfluegen, startpunkt, hotelKosten,
   REISEARTEN, VERKEHRSMITTEL, festeZeit, familieVon, zimmerVon, moeglicheDubletten, buchungsKonflikte, punkteErklaerung,
-  zuJung, titelAehnlich,
+  zuJung, titelAehnlich, anBordZeit,
 } from "./rechnen.js";
 import {
   zustand, $, esc, neueId, datumText, personen, haefen, hafenVon, ausfluegeIn, hatKoord, geld, istPlaner, linkHtml, stationsArt, istKreuzfahrt,
   aktionen, aenderungen, setzeZeichner, setzeAbmeldung, anfrage, lokalLesen, lokalEntfernen, lokalSichern, lokalMerken, lokalHolen, speichern, status, beitraegeLaden,
+  speichernAbschliessen, leereExtras, leereBeitraege,
   dialog, dialogOeffnen, ortsSuche, ortSuchen, ortAuslesen, herunterladen, extrasLaden, heute,
 } from "./kern.js";
 import { anmeldungPruefen, anmeldenZeigen } from "./konto.js";
@@ -14,7 +15,7 @@ import { hotelsAnsicht, hotelStatusAendern } from "./hotels.js";
 import { erlebnisseAnsicht, bewertungsZeile } from "./erlebnisse.js";
 import { kiImportBox, kiKnopf, kiPanel, koordinatenErgaenzen } from "./ki.js";
 import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js";
-import { vorbereitungAnsicht } from "./vorbereitung.js";
+import { vorbereitungAnsicht, dokumenteAnsicht } from "./vorbereitung.js";
 import { unterwegsAnsicht, nachUnterwegs, weckerPlanen, ausgabenAnsicht } from "./unterwegs.js";
 import { kinderAnsicht } from "./kinder.js";
 import { flugAnsicht, fluege } from "./flug.js";
@@ -43,41 +44,75 @@ async function reisenLaden() {
   if (zustand.reise) wahl.value = zustand.reise.id;
 }
 
+let ladeNr = 0;
 async function reiseOeffnen(id) {
+  const nr = ++ladeNr;
+  const vorher = zustand.reise;
+  const wahl = $("#reiseWahl");
+  // Alte Inhalte sofort ausblenden und sperren – nichts darf der falschen Reise zugeordnet werden
+  zustand.reiseLaedt = true;
+  document.body.classList.add("reise-laedt");
+  wahl.disabled = true;
+  if (dialog().open) dialog().close();
+  if ($("#kiPanel")) $("#kiPanel").hidden = true;
+  document.body.classList.remove("ki-offen");
+  inhalt.innerHTML = `<div class="leer laden"><p>⏳ Reise wird geladen …</p></div>`;
   let reise = null;
   try {
-    reise = await anfrage(`/api/reisen/${id}`);
-    const lokal = lokalLesen(id);
-    if (lokal?.ungespeichert && Number(lokal.reise.version) === Number(reise.version)) {
-      reise = { ...lokal.reise, meineRolle: reise.meineRolle }; // Offline-Änderungen übernehmen und nachspeichern
-      setTimeout(speichern, 100);
-    } else if (!lokal?.ungespeichert) lokalSichern(reise, false); // Kopie fürs Öffnen ohne Internet
-  } catch (e) {
-    if (e.status === 404) lokalEntfernen(id);
-    else {
-      reise = lokalLesen(id)?.reise ?? null;
-      if (reise) status("Offline – lokale Kopie", true);
+    await speichernAbschliessen(); // ausstehende Änderungen gehören zur bisherigen Reise
+    try {
+      reise = await anfrage(`/api/reisen/${id}`);
+      const lokal = lokalLesen(id);
+      if (lokal?.ungespeichert && Number(lokal.reise.version) === Number(reise.version)) {
+        reise = { ...lokal.reise, meineRolle: reise.meineRolle }; // Offline-Änderungen übernehmen und nachspeichern
+        setTimeout(() => zustand.reise?.id === reise.id && speichern(), 100);
+      } else if (!lokal?.ungespeichert) lokalSichern(reise, false); // Kopie fürs Öffnen ohne Internet
+    } catch (e) {
+      if (e.status === 404) lokalEntfernen(id);
+      else {
+        reise = lokalLesen(id)?.reise ?? null;
+        if (reise) status("Offline – lokale Kopie", true);
+      }
+    }
+    if (nr !== ladeNr) return; // inzwischen eine andere Reise gewählt
+    if (!reise) {
+      zustand.reise = vorher;
+      return;
+    }
+    zustand.rolle = reise.meineRolle ?? "mitreisend";
+    delete reise.meineRolle;
+    reise.hotels ??= [];
+    reise.kosten ??= [];
+    reise.verbindungen ??= [];
+    reise.zimmer ??= [];
+    reise.familien ??= [];
+    zustand.reise = reise;
+    // Daten der bisherigen Reise nicht weiter anzeigen
+    zustand.extras = leereExtras();
+    zustand.beitraege = leereBeitraege();
+    zustand.mitglieder = [];
+    // Unterwegs: heutigen Tag zeigen, sonst den ersten Landtag
+    zustand.hafenId = haefen().find((h) => h.datum === heute())?.id ?? haefen().find((h) => stationsArt(h) !== "seetag")?.id ?? haefen()[0]?.id ?? null;
+    zustand.unterwegsTag = null;
+    zustand.gygErgebnisse = {};
+    zustand.importArt = null;
+    zustand.hotelSuchort = null;
+    try {
+      localStorage.setItem("reiseplaner:letzte", id);
+    } catch {}
+    await Promise.all([beitraegeLaden(), mitgliederLaden(), extrasLaden()]);
+    if (nr !== ladeNr) return;
+  } finally {
+    if (nr === ladeNr) {
+      zustand.reiseLaedt = false;
+      document.body.classList.remove("reise-laedt");
+      wahl.disabled = false;
+      if (zustand.reise) wahl.value = zustand.reise.id;
     }
   }
-  if (!reise) return;
-  zustand.rolle = reise.meineRolle ?? "mitreisend";
-  delete reise.meineRolle;
-  reise.hotels ??= [];
-  reise.kosten ??= [];
-  reise.verbindungen ??= [];
-  reise.zimmer ??= [];
-  reise.familien ??= [];
-  zustand.reise = reise;
-  // Unterwegs: heutigen Tag zeigen, sonst den ersten Landtag
-  zustand.hafenId = haefen().find((h) => h.datum === heute())?.id ?? haefen().find((h) => stationsArt(h) !== "seetag")?.id ?? haefen()[0]?.id ?? null;
-  zustand.unterwegsTag = null;
-  zustand.gygErgebnisse = {};
-  try {
-    localStorage.setItem("reiseplaner:letzte", id);
-  } catch {}
-  $("#reiseWahl").value = id;
-  await Promise.all([beitraegeLaden(), mitgliederLaden(), extrasLaden()]);
+  if (nr !== ladeNr) return;
   alles();
+  if (zustand.reise?.id !== id) return;
   orteAutomatischSuchen();
   weckerPlanen();
 }
@@ -105,11 +140,14 @@ aktionen["orte-suchen"] = async (el) => {
 };
 
 async function mitgliederLaden() {
+  const id = zustand.reise.id;
   try {
-    zustand.mitglieder = await anfrage(`/api/reisen/${zustand.reise.id}/mitglieder`);
-    lokalMerken(`mitglieder:${zustand.reise.id}`, zustand.mitglieder);
+    const liste = await anfrage(`/api/reisen/${id}/mitglieder`);
+    if (zustand.reise?.id !== id) return;
+    zustand.mitglieder = liste;
+    lokalMerken(`mitglieder:${id}`, liste);
   } catch (e) {
-    zustand.mitglieder = (e.status === 0 && lokalHolen(`mitglieder:${zustand.reise.id}`)) || [];
+    if (zustand.reise?.id === id) zustand.mitglieder = (e.status === 0 && lokalHolen(`mitglieder:${id}`)) || [];
   }
 }
 
@@ -163,7 +201,7 @@ $("#reiseWahl").addEventListener("change", (e) => e.target.value && reiseOeffnen
 const GRUPPEN = {
   uebersicht: ["uebersicht"],
   reiseplan: ["plan", "verlauf", "hotels", "flug"],
-  vorbereitung: ["vorbereitung"],
+  vorbereitung: ["vorbereitung", "dokumente"],
   unterwegs: ["unterwegs"],
   kosten: ["kosten", "ausgaben"],
   erinnerungen: ["erlebnisse"],
@@ -180,6 +218,8 @@ const UNTER_NAMEN = () => ({
   personen: "👥 Reisende & Zugänge",
   daten: "📥 Import & Sicherung",
   einstellungen: "⚙️ Reise & Freigabe",
+  vorbereitung: "🧳 Packliste",
+  dokumente: "📄 Dokumente & Fristen",
   kosten: "📊 Reisekosten & Zahlungen",
   ausgaben: istKreuzfahrt() ? "💳 Bordkonto & Abrechnung" : "💳 Urlaubskasse & Abrechnung",
 });
@@ -250,6 +290,7 @@ function ansichtWechseln(ansicht) {
 // ---------- Darstellung ----------
 
 function alles() {
+  if (zustand.reiseLaedt) return;
   $("#kiKnopfPlatz").innerHTML = zustand.ansicht === "kinder" ? "" : kiKnopf();
   navZeichnen();
   if (zustand.ansicht === "weltkarte") {
@@ -271,7 +312,7 @@ function alles() {
     karteZeichnen();
     return;
   }
-  const ansichten = { uebersicht: uebersichtAnsicht, flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, einstellungen: einstellungenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, ausgaben: ausgabenAnsicht, kinder: kinderAnsicht };
+  const ansichten = { uebersicht: uebersichtAnsicht, flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, einstellungen: einstellungenAnsicht, vorbereitung: vorbereitungAnsicht, dokumente: dokumenteAnsicht, unterwegs: unterwegsAnsicht, ausgaben: ausgabenAnsicht, kinder: kinderAnsicht };
   inhalt.innerHTML = (ansichten[zustand.ansicht] ?? uebersichtAnsicht)();
   if (zustand.ansicht === "plan") nachPlan();
   if (zustand.ansicht === "unterwegs") nachUnterwegs();
@@ -406,7 +447,7 @@ function planAnsicht() {
   const darstellung = aktive.length > 1 ? `<span class="segment" role="group" aria-label="Darstellung"><button data-aktion="plan-darstellung" data-wert="karten" class="${tabelle ? "" : "aktiv"}">Karten</button><button data-aktion="plan-darstellung" data-wert="tabelle" class="${tabelle ? "aktiv" : ""}">Vergleich</button></span>` : "";
 
   const inhaltTag = tabelle
-    ? `<div class="karte-box"><div class="zeile"><h3>Vergleich (${aktive.length})</h3><span class="platz"></span>${sortierFeld}${darstellung}</div>${dublettenHinweis(h)}${vergleichsTabelle(aktive, h)}<div class="zeile">${knoepfe}</div></div>`
+    ? `<div class="karte-box"><div class="zeile"><h3>Vergleich (${aktive.length})</h3><span class="platz"></span>${sortierFeld}${darstellung}</div>${vergleichsTabelle(aktive, h)}<div class="zeile">${knoepfe}</div></div>`
     : `<div class="karte-box">
         <div class="zeile"><h3>📌 ${seetag ? "Gebucht an Bord" : "Tagesablauf – gebucht"} (${gebucht.length})</h3><span class="platz"></span>${darstellung}</div>
         ${gebucht.length ? `<div class="ausfluege">${gebucht.map(karte).join("")}</div>` : `<p class="leise">Für diesen Tag ist noch nichts gebucht${ideen.length ? " – Ideen und Favoriten stehen darunter." : "."}</p>`}
@@ -415,9 +456,8 @@ function planAnsicht() {
       ${ideen.length ? `<details class="karte-box klappe" data-klappe="ideen:${esc(h.id)}" ${klappeOffen(`ideen:${h.id}`, !gebucht.length) ? "open" : ""}>
         <summary><h3>💡 Ideen, Favoriten &amp; Alternativen (${ideen.length})</h3></summary>
         <div class="zeile">${sortierFeld}</div>
-        ${dublettenHinweis(h)}
         <div class="ausfluege">${ideen.map(karte).join("")}</div>
-      </details>` : dublettenHinweis(h)}`;
+      </details>` : ""}`;
 
   const kopf = seetag
     ? `<div class="karte-box hafenkopf"><div><h2>🌊 Seetag</h2><div class="zeiten"><span>📅 ${esc(datumText(h.datum, { weekday: "long", day: "numeric", month: "long" }))}</span></div>
@@ -436,7 +476,8 @@ function planAnsicht() {
   const weg = verworfen.length
     ? `<details class="karte-box klappe" data-klappe="verworfen:${esc(h.id)}" ${klappeOffen(`verworfen:${h.id}`, false) ? "open" : ""}><summary><h3 class="leise">🗑️ Verworfen (${verworfen.length})</h3></summary><div class="ausfluege">${verworfen.map(karte).join("")}</div></details>`
     : "";
-  return `${erinnerungBanner()}${heuteHinweis()}${tagWahl()}${kopf}${inhaltTag}${finden}${weg}`;
+  const dubletten = dublettenHinweis(h);
+  return `${erinnerungBanner()}${heuteHinweis()}${tagWahl()}${kopf}${dubletten ? `<div class="karte-box">${dubletten}</div>` : ""}${inhaltTag}${finden}${weg}`;
 }
 
 function tagKopf(h) {
@@ -444,6 +485,7 @@ function tagKopf(h) {
   const start = startpunkt(h, zustand.reise.hotels);
   const landgang = zeitZuMin(h.allesAnBord || h.abfahrt) - zeitZuMin(h.ankunft);
   const fest = festeZeit(h, zustand.reise);
+  const anBord = anBordZeit(h);
   const etappe = etappen(zustand.reise).find((e) => e.id === h.id);
   const verbindungen = (zustand.reise.verbindungen ?? []).filter((v) => v.status !== "verworfen" && (v.datum === h.datum || v.anDatum === h.datum));
   return `
@@ -452,13 +494,13 @@ function tagKopf(h) {
           <h2>${esc(h.name)}${h.land ? `<span class="leise">, ${esc(h.land)}</span>` : ""}</h2>
           <div class="zeiten">
             <span>📅 ${esc(datumText(h.datum, { weekday: "long", day: "numeric", month: "long" }))}</span>
-            ${art === "hafen" ? `<span>⚓ ${esc(h.ankunft || "–")} – ${esc(h.abfahrt || "–")}</span><span class="wichtig">⏰ Alle an Bord: ${h.allesAnBord ? esc(h.allesAnBord) : fest?.angenommen ? `ca. ${esc(fest.zeit)} <span class="annahme" title="${esc(fest.grundlage)}">angenommen</span>` : "–"}</span>${Number.isFinite(landgang) && landgang > 0 ? `<span>Landgang: ${dauerText(landgang)}</span>` : ""}` : ""}
-            ${art !== "hafen" && fest ? `<span class="wichtig">⏰ ${esc(fest.titel)}${fest.kurz.startsWith("Check-out") || !/um \d/.test(fest.titel) ? ` ${esc(fest.zeit)}` : ""}</span>` : ""}
+            ${art === "hafen" ? `<span>⚓ ${esc(h.ankunft || "–")} – ${esc(h.abfahrt || "–")}</span><span class="wichtig">⏰ Alle an Bord: ${anBord && !anBord.angenommen ? esc(anBord.zeit) : anBord ? `ca. ${esc(anBord.zeit)} <span class="annahme" title="${esc(anBord.grundlage)}">angenommen</span>` : "–"}</span>${Number.isFinite(landgang) && landgang > 0 ? `<span>Landgang: ${dauerText(landgang)}</span>` : ""}` : ""}
+            ${fest && (art !== "hafen" || fest.kurz !== "Alle an Bord") ? `<span class="wichtig">⏰ ${art === "hafen" ? "Früher: " : ""}${esc(fest.titel)}${fest.kurz.startsWith("Check-out") || !/um \d/.test(fest.titel) ? ` ${esc(fest.zeit)}` : ""}</span>` : ""}
             ${start?.hotel ? `<span>🏨 Start: ${esc(start.name)}</span>` : art === "ort" && zustand.reise.art !== "tagesausflug" ? `<span class="leise">Keine Unterkunft für diesen Tag – <button class="link" data-aktion="zu-hotels">Unterkunft eintragen</button></span>` : ""}
             ${etappe ? `<span>${ETAPPEN_SYMBOL[etappe.mittel] ?? "🚗"} ${esc(etappe.von)} → ${esc(etappe.nach)}: ${etappe.mittel === "auto" ? `${etappe.berechnet ? "" : "ca. "}${etappe.km} km${etappe.min ? ` · ${dauerText(etappe.min)}` : ""}` : `${esc(VERKEHRSMITTEL[etappe.mittel]?.name.replace(/^\S+\s/, "") ?? "")} (Luftlinie ca. ${etappe.km} km)`}</span>` : ""}
           </div>
           ${verbindungen.length ? `<ul class="ablauf klein">${verbindungen.map((v) => `<li>${verbindungText(v)}</li>`).join("")}</ul>` : ""}
-          ${fest?.angenommen && art === "hafen" ? `<p class="klein annahme-text">ℹ️ Rückkehrzeiten rechnen mit ${esc(fest.grundlage)} – bitte „Alle an Bord“ unter „Tag bearbeiten“ eintragen.</p>` : ""}
+          ${anBord?.angenommen ? `<p class="klein annahme-text">ℹ️ Rückkehrzeiten rechnen mit ${esc(anBord.grundlage)} – bitte „Alle an Bord“ unter „Tag bearbeiten“ eintragen.</p>` : ""}
           ${hatKoord(h) ? "" : `<p class="klein warnung">📍 Noch kein Kartenpunkt – <button class="link" data-aktion="orte-suchen">automatisch suchen</button> oder unter „Tag bearbeiten“ eintragen.</p>`}
           <div id="wetter" class="wetter"></div>
           ${h.notiz ? `<p class="notiz">${esc(h.notiz)}</p>` : ""}
@@ -586,14 +628,79 @@ function alternativenZeile(a) {
 
 function dublettenHinweis(h) {
   const paare = moeglicheDubletten(ausfluegeIn(h.id));
-  if (!paare.length) return "";
+  const aktiv = ausfluegeIn(h.id).filter((a) => a.status !== "verworfen").length;
+  if (!paare.length) return aktiv > 2 ? `<p class="klein"><button class="link" data-aktion="gegenueberstellen" data-id="${esc(h.id)}">🔁 Einträge dieses Tages gegenüberstellen</button> <span class="leise">– ähnliche Angebote vergleichen und aufräumen</span></p>` : "";
   return `<div class="hinweis dubletten"><strong>🔁 Mögliche Dubletten (${paare.length})</strong> – bitte prüfen, nichts wird automatisch zusammengeführt:
     <ul class="klein">${paare.map(([x, y]) => `<li>„${esc(x.titel)}“ <span class="leise">(${esc(STATUS[x.status])}${x.beginn ? `, ${esc(x.beginn)}` : ""})</span> und „${esc(y.titel)}“ <span class="leise">(${esc(STATUS[y.status])}${y.beginn ? `, ${esc(y.beginn)}` : ""})</span>
       <span class="knoepfe"><button class="link" data-aktion="dublette-alternative" data-a="${esc(x.id)}" data-b="${esc(y.id)}">Als Alternativen verknüpfen</button> · <button class="link" data-aktion="dublette-nein" data-a="${esc(x.id)}" data-b="${esc(y.id)}">Keine Dublette</button></span></li>`).join("")}</ul>
-    <span class="klein leise">Ist es doppelt, den überflüssigen Eintrag über „Bearbeiten“ verwerfen oder löschen.</span></div>`;
+    <button class="knopf leise" data-aktion="gegenueberstellen" data-id="${esc(h.id)}">🔁 Alle Einträge des Tages gegenüberstellen</button>
+    <span class="klein leise">Ist etwas doppelt, den überflüssigen Eintrag verwerfen – er bleibt unter „Verworfen“ erhalten.</span></div>`;
 }
 
 const ausflugMit = (id) => zustand.reise.ausfluege.find((x) => x.id === id);
+
+const hostVon = (u) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return "Link";
+  }
+};
+
+/** Alle aktiven Einträge eines Tages nebeneinander – zum manuellen Aufräumen. Nichts wird gelöscht. */
+aktionen["gegenueberstellen"] = (el) => {
+  const h = hafenVon(el.dataset.id);
+  const liste = ausfluegeIn(h.id).filter((a) => a.status !== "verworfen").sort((x, y) => String(x.beginn || "99").localeCompare(String(y.beginn || "99")));
+  const paare = moeglicheDubletten(liste);
+  const verdacht = new Set(paare.flat().map((a) => a.id));
+  const stimmen = (a) => Object.values(zustand.extras.stimmen?.[a.id] ?? {}).filter((x) => x === 1).length;
+  const bewertet = (a) => zustand.beitraege.bewertungen.filter((b) => b.zielId === a.id).length;
+  const zeilen = [
+    ["Status", (a) => esc(STATUS[a.status])],
+    ["Anbieter", (a) => esc((QUELLEN[a.quelle] ?? QUELLEN.sonstige).name)],
+    ["Beginn / Dauer", (a) => `${esc(a.beginn || "–")} · ${dauerText(zahl(a.dauerMin))}`],
+    ["Preis gesamt", (a) => kostenText(ausflugKosten(a, personen()))],
+    ["Wer", (a) => esc(personen().filter((p) => (a.teilnehmer ?? []).includes(p.id)).map((p) => p.name.split(" ")[0]).join(", ") || "–")],
+    ["Buchungs-Nr.", (a) => esc(a.code || "–")],
+    ["Link", (a) => (a.link ? linkHtml(a.link, esc(hostVon(a.link))) : "–")],
+    ["Stimmen / Bewertungen", (a) => `👍 ${stimmen(a)} · ★ ${bewertet(a)}`],
+    ["Notiz", (a) => `<span class="klein">${esc((a.notiz ?? "").slice(0, 140)) || "–"}</span>`],
+  ];
+  dialogOeffnen(`<form method="dialog" class="formular" id="vergleichForm">
+    <h3>🔁 Einträge am ${esc(datumText(h.datum))} – ${esc(h.name)}</h3>
+    <p class="klein leise">Markiert (🔁) sind mögliche Dubletten. Wähle Einträge aus und entscheide: verwerfen (bleibt unter „Verworfen“ erhalten), als Alternativen verknüpfen oder als „keine Dubletten“ kennzeichnen. Gelöscht wird hier nichts.</p>
+    <div class="tabelle"><table class="gegenueber"><thead><tr><th></th>${liste.map((a) => `<th><label class="haken"><input type="checkbox" name="wahl" value="${esc(a.id)}" ${verdacht.has(a.id) ? "checked" : ""}> ${verdacht.has(a.id) ? "🔁 " : ""}${esc(a.titel)}</label></th>`).join("")}</tr></thead>
+      <tbody>${zeilen.map(([t, f]) => `<tr><th class="klein leise">${t}</th>${liste.map((a) => `<td>${f(a)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    <div class="zeile">
+      <button type="button" class="knopf leise" data-aktion="vergleich-tun" data-tun="verwerfen">Ausgewählte verwerfen</button>
+      <button type="button" class="knopf leise" data-aktion="vergleich-tun" data-tun="alternativen">Als Alternativen verknüpfen</button>
+      <button type="button" class="knopf leise" data-aktion="vergleich-tun" data-tun="keine">Keine Dubletten</button>
+      <span class="platz"></span>
+      <button type="button" class="knopf" data-aktion="dialog-zu">Fertig</button>
+    </div>
+  </form>`, true);
+};
+aktionen["vergleich-tun"] = (el) => {
+  const ids = new FormData($("#vergleichForm")).getAll("wahl");
+  if (!ids.length) return alert("Bitte zuerst Einträge auswählen (Haken in der Kopfzeile).");
+  const tun = el.dataset.tun;
+  if (tun === "verwerfen") {
+    if (!confirm(`${ids.length} ${ids.length === 1 ? "Eintrag" : "Einträge"} verwerfen? Sie bleiben unter „Verworfen“ erhalten und lassen sich zurückholen.`)) return;
+    for (const id of ids) ausflugMit(id).status = "verworfen";
+  } else {
+    if (ids.length < 2) return alert("Bitte mindestens zwei Einträge auswählen.");
+    const feld = tun === "alternativen" ? "alternativen" : "keineDublette";
+    for (const id of ids) {
+      const a = ausflugMit(id);
+      a[feld] = [...new Set([...(a[feld] ?? []), ...ids.filter((x) => x !== id)])];
+    }
+  }
+  speichern();
+  const tag = ausflugMit(ids[0]).hafenId;
+  dialog().close();
+  alles();
+  aktionen.gegenueberstellen({ dataset: { id: tag } });
+};
 function verknuepfen(feld, idA, idB, an = true) {
   for (const [x, y] of [[idA, idB], [idB, idA]]) {
     const a = ausflugMit(x);
@@ -822,7 +929,7 @@ function kostenAnsicht() {
   const p = kostenPosten(r, zustand.extras.ausgaben, { mitFavoriten: mitFav });
   const ps = personen();
   const offenHinweis = k.offen.length
-    ? `<div class="hinweis warnung-box"><strong>⚠️ Summen unvollständig:</strong> ${k.offen.length} ${k.offen.length === 1 ? "Posten hat" : "Posten haben"} noch keinen Preis – ${k.offen.length === 1 ? "er zählt" : "sie zählen"} bisher mit 0 €.
+    ? `<div class="hinweis warnung-box"><strong>⚠️ Summen unvollständig:</strong> ${[["gebucht", "Buchung", "Buchungen"], ["favorit", "Favorit", "Favoriten"]].map(([st, eins, viele]) => { const n = k.offen.filter((o) => o.status === st).length; return n ? `${n} ${n === 1 ? eins : viele}` : ""; }).filter(Boolean).join(" und ")} ohne Preis – zählen bisher mit 0 €. <a class="link" href="#allePosten">Zur Liste ↓</a>
       <details class="klein"><summary>Welche?</summary><ul>${k.offen.map((o) => `<li>${esc(o.art)}: ${esc(o.titel)} <span class="leise">(${esc(STATUS[o.status] ?? "")}${o.teilweise ? ", Preis teilweise bekannt" : ""})</span></li>`).join("")}</ul></details></div>`
     : "";
   const anzahl = (f) => p.posten.filter(f).length;
@@ -830,7 +937,10 @@ function kostenAnsicht() {
       <td>${esc(x.titel)}<div class="klein leise">${esc(POSTEN_ART[x.art])}${x.status === "favorit" ? " · ★ Favorit (noch nicht gebucht)" : ""}</div></td>
       <td class="zahl">${x.offen ? `<span class="preis-offen">${x.teilbetrag ? `ab ${geld(x.teilbetrag)}` : "Preis offen"}</span>` : geld(x.betrag)}</td>
       <td class="zahl">${x.status === "gebucht" ? `<input class="betragfeld" data-aktion="bezahlt" data-art="${esc(x.art)}" data-id="${esc(x.id)}" inputmode="decimal" value="${x.bezahlt ? esc(String(x.bezahlt).replace(".", ",")) : ""}" placeholder="0" aria-label="Bezahlt"> ${x.betrag != null && x.bezahlt < x.betrag ? `<button class="link klein" data-aktion="bezahlt-voll" data-art="${esc(x.art)}" data-id="${esc(x.id)}" data-betrag="${x.betrag}">voll</button>` : ""}${x.ueberAusgaben ? `<div class="klein leise">davon ${geld(x.ueberAusgaben)} über Ausgaben</div>` : ""}` : "–"}</td>
-      <td class="zahl ${x.rest ? "gelb" : ""}">${x.status !== "gebucht" ? "–" : x.rest == null ? "?" : x.rest ? geld(x.rest) : "✓"}</td></tr>`).join("");
+      <td class="zahl ${x.rest ? "gelb" : ""}">${x.status !== "gebucht" ? "–" : x.rest == null ? "?" : x.rest ? geld(x.rest) : "✓"}</td></tr>
+      ${x.notizZahlung ? `<tr class="pruefen"><td colspan="4">📝 Notiz: „…${esc(x.notizZahlung)}…“ – eingetragen sind ${geld(x.bezahlt)}. Bitte prüfen:
+        ${x.betrag != null ? `<button class="link" data-aktion="bezahlt-voll" data-art="${esc(x.art)}" data-id="${esc(x.id)}" data-betrag="${x.betrag}">als voll bezahlt eintragen</button> ·` : ""}
+        <button class="link" data-aktion="zahlung-geprueft" data-art="${esc(x.art)}" data-id="${esc(x.id)}">stimmt so</button></td></tr>` : ""}`).join("");
   return `
     ${offenHinweis}
     <div class="karte-box zeile">
@@ -846,7 +956,8 @@ function kostenAnsicht() {
     </div>
     <p class="klein leise">So wird gerechnet: <strong>Gebucht</strong> = alle Posten mit Status „Gebucht“ (Ausflüge nach Teilnehmenden, Unterkünfte nach Nächten/Zimmern, Kabinen, Verbindungen mit Preis, weitere Kosten). <strong>Bezahlt</strong> = je Posten der eingetragene Betrag oder die Summe der verknüpften Ausgaben (der höhere Wert, nie doppelt). <strong>Unterwegs ausgegeben</strong> = Ausgaben ohne Verknüpfung zu einer Buchung.</p>
     <div class="karte-box">
-      <h3>📋 Alle Posten (${p.posten.length})</h3>
+      <h3 id="allePosten">📋 Alle Posten (${p.posten.length})</h3>
+      ${p.posten.some((x) => x.notizZahlung) ? `<p class="hinweis warnung-box klein">📝 Bei ${p.posten.filter((x) => x.notizZahlung).length} Posten steht in der Notiz etwas von Zahlung, eingetragen ist aber weniger. Freitext wird nie automatisch als Zahlung übernommen – bitte unten prüfen.</p>` : ""}
       ${p.posten.length ? `<div class="tabelle"><table class="posten"><thead><tr><th>Posten</th><th class="zahl">Betrag</th><th class="zahl">Bezahlt</th><th class="zahl">Offen</th></tr></thead><tbody>${zeilen}</tbody>
         <tfoot><tr><th>Gebucht</th><th class="zahl">${geld(p.gebucht)}</th><th class="zahl">${geld(p.bezahlt)}</th><th class="zahl">${geld(p.nochOffen)}</th></tr></tfoot></table></div>` : `<p class="leise">Noch nichts gebucht.${mitFav ? "" : " Favoriten lassen sich oben mit einrechnen."}</p>`}
     </div>
@@ -906,6 +1017,14 @@ aktionen["bezahlt-voll"] = (el) => {
   speichern();
   alles();
 };
+aktionen["zahlung-geprueft"] = (el) => {
+  const x = postenMit(el.dataset.art, el.dataset.id);
+  if (!x) return;
+  x.zahlungGeprueft = true;
+  speichern();
+  alles();
+};
+
 aktionen["kosten-aufteilen"] = (el) => {
   const x = zustand.reise.kosten.find((y) => y.id === el.dataset.id);
   dialogOeffnen(`<form method="dialog" class="formular" id="aufteilenForm">

@@ -1,7 +1,7 @@
 // Übersicht einer Reise: Status, nächste Termine und offene Aufgaben – der Einstieg in jede Reise.
 import { zustand, esc, datumText, personen, haefen, hatKoord, geld, stationsArt, istKreuzfahrt, aktionen, heute } from "./kern.js";
 import { REISEARTEN, VERKEHRSMITTEL, reiseKosten, buchungsKonflikte, moeglicheDubletten, fehlendeNaechte, istKind } from "./rechnen.js";
-import { dokumentHinweise, reiseZeitraum, tageZwischen, packErledigt } from "./unterwegs-logik.js";
+import { dokumentHinweise, reiseZeitraum, tageZwischen, packErledigt, kostenPosten } from "./unterwegs-logik.js";
 
 const kurz = (iso) => datumText(iso, { weekday: "short", day: "2-digit", month: "2-digit" });
 
@@ -39,7 +39,7 @@ function termine(r) {
     if (h.abreise >= ab) liste.push({ datum: h.abreise, zeit: h.checkout || "", text: `Check-out ${h.name}`, symbol: "🧳", ziel: { ansicht: "hotels" } });
   }
   for (const d of zustand.extras?.dokumente ?? []) {
-    if (d.frist && !d.erledigt && d.frist >= ab) liste.push({ datum: d.frist, zeit: d.fristZeit || "", text: `Frist: ${d.titel}`, symbol: "⏰", ziel: { ansicht: "vorbereitung" } });
+    if (d.frist && !d.erledigt && d.frist >= ab) liste.push({ datum: d.frist, zeit: d.fristZeit || "", text: `Frist: ${d.titel}`, symbol: "⏰", ziel: { ansicht: "dokumente" } });
   }
   return liste.sort((a, b) => `${a.datum}${a.zeit || "99"}`.localeCompare(`${b.datum}${b.zeit || "99"}`)).slice(0, 8);
 }
@@ -64,11 +64,13 @@ export function offeneAufgaben(r) {
   const dubletten = moeglicheDubletten(r.ausfluege);
   if (dubletten.length) aufgaben.push({ stufe: "gelb", text: `${dubletten.length} mögliche ${dubletten.length === 1 ? "Dublette" : "Dubletten"} prüfen`, ziel: { tag: dubletten[0][0].hafenId } });
   const offenGebucht = kosten.offen.filter((o) => o.status === "gebucht");
-  if (offenGebucht.length) aufgaben.push({ stufe: "gelb", text: `${offenGebucht.length} gebuchte ${offenGebucht.length === 1 ? "Posten hat" : "Posten haben"} keinen Preis – die Kosten sind unvollständig`, ziel: { ansicht: "kosten" } });
+  if (offenGebucht.length) aufgaben.push({ stufe: "gelb", text: `${offenGebucht.length} ${offenGebucht.length === 1 ? "Buchung hat" : "Buchungen haben"} keinen Preis (${offenGebucht.slice(0, 3).map((o) => o.titel).join(", ")}${offenGebucht.length > 3 ? " …" : ""}) – die Kosten sind unvollständig`, ziel: { ansicht: "kosten" } });
+  const notizZahlung = kostenPosten(r, zustand.extras?.ausgaben ?? []).posten.filter((x) => x.notizZahlung);
+  if (notizZahlung.length) aufgaben.push({ stufe: "gelb", text: `${notizZahlung.length} ${notizZahlung.length === 1 ? "Posten" : "Posten"}: Notiz erwähnt eine Zahlung, eingetragen ist aber noch nichts – bitte prüfen`, ziel: { ansicht: "kosten" } });
   if (ohneKarte.length) aufgaben.push({ stufe: "info", text: `${ohneKarte.length} ${ohneKarte.length === 1 ? "Ort hat" : "Orte haben"} noch keinen Kartenpunkt`, ziel: { ansicht: "verlauf" } });
   const kinderOhneAlter = personen().filter((p) => istKind(p) && !p.alter && p.alter !== 0);
   if (kinderOhneAlter.length) aufgaben.push({ stufe: "info", text: `Alter fehlt bei ${kinderOhneAlter.map((p) => p.name).join(", ")} (für Kinderpreise)`, ziel: { ansicht: "personen" } });
-  for (const h of dokumentHinweise(zustand.extras?.dokumente ?? [], r, heute()).filter((x) => x.stufe !== "info").slice(0, 3)) aufgaben.push({ stufe: h.stufe, text: h.text, ziel: { ansicht: "vorbereitung" } });
+  for (const h of dokumentHinweise(zustand.extras?.dokumente ?? [], r, heute()).filter((x) => x.stufe !== "info").slice(0, 3)) aufgaben.push({ stufe: h.stufe, text: h.text, ziel: { ansicht: "dokumente" } });
   const pack = zustand.extras?.packliste ?? [];
   const { von } = reiseZeitraum(r);
   if (pack.length && von && tageZwischen(heute(), von) <= 14 && tageZwischen(heute(), von) >= 0) {
@@ -80,6 +82,18 @@ export function offeneAufgaben(r) {
   return aufgaben.sort((a, b) => rang[a.stufe] - rang[b.stufe]);
 }
 
+/** „2 Buchungen und 1 Favorit ohne Preis“ – Ideen zählen nie in die Kosten. */
+const offenText = (g, f) => {
+  const teile = [g && `${g} ${g === 1 ? "Buchung" : "Buchungen"}`, f && `${f} ${f === 1 ? "Favorit" : "Favoriten"}`].filter(Boolean);
+  return teile.length ? `<span class="preis-offen">${teile.join(" und ")} ohne Preis</span>` : "";
+};
+
+aktionen["kosten-offen"] = (el) => {
+  // Nur Favoriten ohne Preis? Dann Favoriten einrechnen, damit sie in der Liste erscheinen
+  zustand.kostenMitFavoriten = Boolean(el.dataset.favoriten) || zustand.kostenMitFavoriten;
+  aktionen.ansicht({ dataset: { ziel: "kosten" } });
+};
+
 const zielAttribute = (ziel) => (ziel?.tag ? `data-aktion="zu-tag" data-id="${esc(ziel.tag)}"` : `data-aktion="ansicht" data-ziel="${esc(ziel?.ansicht ?? "plan")}"`);
 
 export function uebersichtAnsicht() {
@@ -90,6 +104,8 @@ export function uebersichtAnsicht() {
   const aktiv = (r.ausfluege ?? []).filter((a) => a.status !== "verworfen");
   const gebucht = aktiv.filter((a) => a.status === "gebucht");
   const aufgaben = offeneAufgaben(r);
+  const offenGebucht = k.offen.filter((o) => o.status === "gebucht");
+  const offenFavorit = k.offen.filter((o) => o.status === "favorit");
   const liste = termine(r);
   const heuteTag = haefen().find((h) => h.datum === heute());
   return `
@@ -104,7 +120,7 @@ export function uebersichtAnsicht() {
     <div class="kacheln">
       <button class="kachel" data-aktion="ansicht" data-ziel="plan"><span>Tage</span><strong>${haefen().length}</strong><em>${haefen().filter((h) => stationsArt(h) === "seetag").length ? `${haefen().filter((h) => stationsArt(h) === "seetag").length} Seetage` : ""}</em></button>
       <button class="kachel" data-aktion="ansicht" data-ziel="plan"><span>Ausflüge gebucht</span><strong>${gebucht.length}</strong><em>${aktiv.length - gebucht.length} Ideen/Favoriten</em></button>
-      <button class="kachel" data-aktion="ansicht" data-ziel="kosten"><span>Kosten gebucht</span><strong>${geld(k.gebucht)}</strong><em>${k.offen.length ? `<span class="preis-offen">${k.offen.length} ohne Preis</span>` : `geplant ${geld(k.geplant)}`}</em></button>
+      <button class="kachel" data-aktion="kosten-offen" data-favoriten="${offenGebucht.length ? "" : "1"}"><span>Kosten gebucht</span><strong>${geld(k.gebucht)}</strong><em>${offenText(offenGebucht.length, offenFavorit.length) || `geplant ${geld(k.geplant)}`}</em></button>
     </div>
     <div class="karte-box">
       <h3>✅ Offene Aufgaben ${aufgaben.length ? `<span class="leise klein">(${aufgaben.length})</span>` : ""}</h3>

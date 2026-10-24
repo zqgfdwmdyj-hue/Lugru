@@ -807,3 +807,19 @@ details.weitere-vorlagen > summary { cursor: pointer; color: var(--leise); }
 #speicherStatus[data-stufe="ok"] { background: rgba(129, 199, 132, 0.3); }
 #speicherStatus[data-stufe="fehler"] { background: #b00020; color: #fff; opacity: 1; }
 .ausflugform .haken { flex-wrap: wrap; }
+
+/* Reisewechsel: alte Inhalte während des Ladens ausblenden und sperren */
+body.reise-laedt .inhalt > :not(.laden), body.reise-laedt .kartenbereich, body.reise-laedt .unterreiter, body.reise-laedt #kiKnopfPlatz { visibility: hidden; }
+body.reise-laedt .reiter, body.reise-laedt .layout { pointer-events: none; }
+.leer.laden { padding: 40px 20px; }
+table.posten tr.pruefen td { background: #fff3e0; color: #5d3a00; font-size: 0.88rem; }
+@media (prefers-color-scheme: dark) { table.posten tr.pruefen td { background: #3d2a00; color: #ffd8a8; } }
+@media (max-width: 600px) { table.posten tr.pruefen { display: block; } table.posten tr.pruefen td::before { display: none; } }
+
+/* Kindermodus: Kopf ohne Reisewechsel, „Neue Reise“, Weltkarte und Kontomenü */
+body.kindermodus .kopf > :not(.marke) { display: none !important; }
+body.kindermodus .kopf { justify-content: center; }
+table.gegenueber th, table.gegenueber td { vertical-align: top; min-width: 130px; }
+table.gegenueber thead th { position: sticky; top: 0; background: var(--flaeche); }
+table.gegenueber tbody th { min-width: 90px; text-align: left; }
+table.gegenueber tbody th { position: sticky; left: 0; background: var(--flaeche); z-index: 1; }

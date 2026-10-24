@@ -956,6 +956,8 @@ export const FLUGLINIEN = [
  * (der höhere Wert) – so wird dieselbe Zahlung nie doppelt gezählt. Ausgaben ohne Buchung sind
  * zusätzliche Kosten unterwegs.
  */
+const ZAHLUNG_IM_TEXT = /\b(bezahlt|beglichen|angezahlt|anzahlung|überwiesen|ueberwiesen|paid)\b/i;
+
 export function kostenPosten(reise, ausgaben = [], { mitFavoriten = false } = {}) {
   const personen = reise?.personen ?? [];
   const zaehltHier = (x) => x.status === "gebucht" || (mitFavoriten && x.status === "favorit");
@@ -973,7 +975,13 @@ export function kostenPosten(reise, ausgaben = [], { mitFavoriten = false } = {}
     const vonHand = zahl(x.bezahltBetrag) ?? 0;
     const betrag = k.offen ? null : r2(k.summe);
     const bezahlt = r2(Math.max(vonHand, ueberAusgaben));
-    liste.push({ art, id: x.id, schluessel, titel, status: x.status ?? "gebucht", betrag, teilbetrag: r2(k.summe), offen: k.offen, bezahlt, ueberAusgaben, rest: betrag == null ? null : r2(Math.max(0, betrag - bezahlt)) });
+    // Altangabe im Freitext („bezahlt“, „Anzahlung“ …) widerspricht dem eingetragenen Stand? Nur markieren.
+    const freitext = [x.notiz, x.infos].filter(Boolean).join(" · ");
+    const treffer = ZAHLUNG_IM_TEXT.exec(freitext);
+    const notizZahlung = (x.status ?? "gebucht") === "gebucht" && treffer && !x.zahlungGeprueft && (betrag == null || bezahlt < betrag)
+      ? freitext.slice(Math.max(0, treffer.index - 30), treffer.index + treffer[0].length + 30).trim()
+      : "";
+    liste.push({ art, id: x.id, schluessel, titel, status: x.status ?? "gebucht", betrag, teilbetrag: r2(k.summe), offen: k.offen, bezahlt, ueberAusgaben, rest: betrag == null ? null : r2(Math.max(0, betrag - bezahlt)), notizZahlung });
   };
   for (const a of reise?.ausfluege ?? []) if (zaehltHier(a)) dazu("ausflug", a, a.titel, ausflugKosten(a, personen));
   for (const h of reise?.hotels ?? []) if (zaehltHier(h)) dazu("hotel", h, h.name, hotelKosten(h, personen, zimmerVon(reise, h.id)));

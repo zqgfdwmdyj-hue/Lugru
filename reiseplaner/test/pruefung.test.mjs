@@ -189,3 +189,25 @@ test("Mindestalter getrennt von „Kinder gratis unter“", async () => {
   assert.deepEqual(zuJung(a, ps).map((p) => p.name), ["Mia"]);
   assert.equal(ausflugKosten(a, ps).summe, 100, "Mia (7) zahlt – gratis nur unter 6");
 });
+
+test("Zubringerflug ab Deutschland erzeugt keine Bordzeit in der Karibik", async () => {
+  const { festeZeit, anBordZeit, abfahrtAmOrt } = await import("../public/rechnen.js");
+  const tag = { id: "h1", datum: "2027-03-19", art: "hafen", name: "La Romana", land: "Dominikanische Republik", lat: 18.42, lng: -68.95, ankunft: "", abfahrt: "23:00", allesAnBord: "" };
+  const zubringer = { id: "v1", art: "flug", status: "gebucht", titel: "Condor DE 4063", von: "München (MUC)", nach: "Frankfurt (FRA)", datum: "2027-03-19", abZeit: "08:45", vonOrt: { lat: 48.35, lng: 11.79 } };
+  const ohneKoord = { ...zubringer, id: "v2", vonOrt: null };
+  for (const v of [zubringer, ohneKoord]) {
+    assert.equal(abfahrtAmOrt(v, tag), false);
+    const f = festeZeit(tag, { verbindungen: [v] });
+    assert.equal(f.kurz, "Alle an Bord");
+    assert.equal(f.zeit, "22:30");
+  }
+  assert.equal(anBordZeit(tag).angenommen, true);
+  // Rückflug ab La Romana zählt am Abreisetag
+  const rueck = { id: "v3", art: "flug", status: "gebucht", titel: "Condor DE 3867", von: "La Romana (LRM)", nach: "Frankfurt (FRA)", datum: "2027-04-02", abZeit: "14:40" };
+  const ende = { id: "h9", datum: "2027-04-02", art: "ort", name: "La Romana", lat: 18.42, lng: -68.95 };
+  assert.equal(abfahrtAmOrt(rueck, ende), true);
+  assert.equal(festeZeit(ende, { verbindungen: [rueck] }).zeit, "12:40");
+  assert.equal(festeZeit(ende, { verbindungen: [{ ...rueck, vonOrt: { lat: 18.45, lng: -68.91 } }] }).zeit, "12:40");
+  // Land-Tag ohne Kartenpunkt und ohne Abfahrtsort: weiterhin feste Zeit (wie bisher)
+  assert.equal(festeZeit({ datum: "2027-04-02", art: "ort", name: "Ort" }, { verbindungen: [{ ...rueck, von: "" }] }).zeit, "12:40");
+});

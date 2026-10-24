@@ -1,6 +1,13 @@
 // Gemeinsamer Zustand und Hilfen für alle Teile der Oberfläche.
 import { euro, sichereUrl } from "./rechnen.js";
 
+export function leereExtras() {
+  return { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, briefings: {}, checks: {} };
+}
+export function leereBeitraege() {
+  return { bewertungen: [], tauchgaenge: [], fotos: [], namen: {} };
+}
+
 export const zustand = {
   info: { gyg: false, gygPartnerId: "", ki: false },
   ich: null,
@@ -13,8 +20,8 @@ export const zustand = {
   gygErgebnisse: {},
   wetter: {},
   wege: {},
-  beitraege: { bewertungen: [], tauchgaenge: [], fotos: [], namen: {} },
-  extras: { packliste: [], dokumente: [], ausgaben: [], dateien: [], stimmen: {}, tiere: {}, briefings: {}, checks: {} },
+  beitraege: leereBeitraege(),
+  extras: leereExtras(),
   mitglieder: [],
 };
 
@@ -106,12 +113,31 @@ export function lokalEntfernen(id) {
 let speicherTimer = null;
 let speichertGerade = false;
 let nochmal = false;
+// Die Reise, zu der die ausstehende Änderung gehört – auch wenn inzwischen eine andere geöffnet wird
+let zuSpeichern = null;
 export function speichern() {
-  if (!zustand.reise) return;
+  if (!zustand.reise || zustand.reiseLaedt) return;
+  // Noch ausstehende Änderung einer anderen Reise zuerst wegschreiben
+  if (zuSpeichern && zuSpeichern !== zustand.reise && speicherTimer) {
+    clearTimeout(speicherTimer);
+    speicherTimer = null;
+    jetztSpeichern();
+  }
+  zuSpeichern = zustand.reise;
   lokalSichern(zustand.reise, true);
   status("Speichert gleich …", "wartet");
   clearTimeout(speicherTimer);
   speicherTimer = setTimeout(jetztSpeichern, 700);
+}
+
+/** Vor dem Reisewechsel: ausstehende Änderungen sofort speichern (gehören zur bisherigen Reise). */
+export async function speichernAbschliessen() {
+  if (speicherTimer) {
+    clearTimeout(speicherTimer);
+    speicherTimer = null;
+    await jetztSpeichern();
+  }
+  for (let i = 0; i < 50 && speichertGerade; i++) await new Promise((r) => setTimeout(r, 100));
 }
 
 async function jetztSpeichern() {
@@ -120,7 +146,12 @@ async function jetztSpeichern() {
     return;
   }
   speichertGerade = true;
-  const reise = zustand.reise;
+  speicherTimer = null;
+  const reise = zuSpeichern ?? zustand.reise;
+  if (!reise) {
+    speichertGerade = false;
+    return;
+  }
   status("Speichert …", "laeuft");
   try {
     const antwort = await anfrage(`/api/reisen/${reise.id}`, { method: "PUT", body: reise });
@@ -131,10 +162,13 @@ async function jetztSpeichern() {
   } catch (e) {
     if (e.status === 409) {
       const aktuell = e.daten?.aktuell;
-      if (aktuell && confirm(`${e.message}\n\nOK = die neuere Fassung laden (deine letzten Änderungen gehen verloren).\nAbbrechen = deine Fassung behalten und die andere überschreiben.`)) {
-        zustand.reise = aktuell;
+      if (aktuell && confirm(`„${reise.name}“: ${e.message}\n\nOK = die neuere Fassung laden (deine letzten Änderungen gehen verloren).\nAbbrechen = deine Fassung behalten und die andere überschreiben.`)) {
         lokalSichern(aktuell, false);
-        neuZeichnen();
+        // Nur die betroffene Reise ersetzen – nie eine inzwischen geöffnete andere
+        if (zustand.reise?.id === reise.id) {
+          zustand.reise = aktuell;
+          neuZeichnen();
+        }
       } else if (aktuell) {
         reise.version = aktuell.version;
         nochmal = true;
@@ -143,7 +177,12 @@ async function jetztSpeichern() {
       status(`⚠️ Fehler beim Speichern: ${e.message}`, "fehler");
     } else {
       status("⚠️ Offline – auf dem Gerät gesichert, wird nachgeholt", "fehler");
-      setTimeout(() => speichern(), 15_000);
+      // Später erneut versuchen – für genau diese Reise (sie bleibt bis dahin auf dem Gerät gesichert)
+      setTimeout(() => {
+        if (speicherTimer || speichertGerade) return;
+        zuSpeichern = reise;
+        jetztSpeichern();
+      }, 15_000);
     }
   } finally {
     speichertGerade = false;
@@ -174,12 +213,15 @@ window.addEventListener("beforeunload", (e) => {
 
 export async function beitraegeLaden() {
   if (!zustand.reise) return;
+  const id = zustand.reise.id;
   try {
-    zustand.beitraege = await anfrage(`/api/reisen/${zustand.reise.id}/beitraege`);
-    lokalMerken(`beitraege:${zustand.reise.id}`, zustand.beitraege);
+    const b = await anfrage(`/api/reisen/${id}/beitraege`);
+    if (zustand.reise?.id !== id) return; // inzwischen andere Reise geöffnet
+    zustand.beitraege = b;
+    lokalMerken(`beitraege:${id}`, b);
   } catch (e) {
-    const lokal = e.status === 0 ? lokalHolen(`beitraege:${zustand.reise.id}`) : null;
-    if (lokal) zustand.beitraege = lokal;
+    const lokal = e.status === 0 ? lokalHolen(`beitraege:${id}`) : null;
+    if (zustand.reise?.id === id) zustand.beitraege = lokal ?? leereBeitraege();
   }
 }
 
@@ -189,7 +231,9 @@ export async function extrasLaden() {
   if (!zustand.reise) return;
   const id = zustand.reise.id;
   try {
-    zustand.extras = await anfrage(`/api/reisen/${id}/extras`);
+    const extras = await anfrage(`/api/reisen/${id}/extras`);
+    if (zustand.reise?.id !== id) return; // inzwischen andere Reise geöffnet
+    zustand.extras = extras;
     zustand.extrasVomServer = id;
     try {
       localStorage.setItem(EXTRAS_LOKAL(id), JSON.stringify(zustand.extras));
@@ -197,7 +241,7 @@ export async function extrasLaden() {
   } catch {
     try {
       const lokal = JSON.parse(localStorage.getItem(EXTRAS_LOKAL(id)) ?? "null");
-      if (lokal) zustand.extras = lokal;
+      if (zustand.reise?.id === id) zustand.extras = lokal ?? leereExtras();
     } catch {}
   }
 }

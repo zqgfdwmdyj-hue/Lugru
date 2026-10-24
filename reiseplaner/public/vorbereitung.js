@@ -59,9 +59,10 @@ export function vorbereitungAnsicht() {
     gruppen.get(g).push(x);
   }
   const vorschlaege = passendeVorlagen(zustand.reise);
-  const { von } = reiseZeitraum(zustand.reise);
+  const dringend = hinweise.filter((h) => h.stufe === "rot").length;
+  const ersteOffene = [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).find(([, l]) => l.some((x) => !erledigt(x)))?.[0];
   return `
-    ${hinweise.length ? `<div class="karte-box hinweisbox"><h3>⏰ Fristen &amp; Hinweise</h3><ul class="hinweise">${hinweise.map((h) => `<li class="${h.stufe}">${esc(h.text)}</li>`).join("")}</ul></div>` : ""}
+    ${hinweise.length ? `<div class="hinweis ${dringend ? "warnung-box" : ""}">⏰ ${hinweise.length} ${hinweise.length === 1 ? "Frist bzw. Hinweis" : "Fristen bzw. Hinweise"}${dringend ? ` (${dringend} dringend)` : ""} <button class="link" data-aktion="ansicht" data-ziel="dokumente">Dokumente &amp; Fristen →</button></div>` : ""}
     <div class="karte-box">
       <div class="zeile"><h3>🧳 Packliste</h3><span class="klein leise">${fertig}/${pack.length} eingepackt</span><span class="platz"></span>
         ${fam ? `<label class="klein">Ich packe für <select data-aktion="pack-familie">${familien().map((f) => `<option value="${esc(f.id)}" ${f.id === fam ? "selected" : ""}>👨‍👩‍👧 ${esc(f.name)}</option>`).join("")}</select></label>` : ""}
@@ -79,10 +80,21 @@ export function vorbereitungAnsicht() {
         <select name="fuer" aria-label="Für wen">${fuerOptionen(filter && filter !== "alle" ? filter : "")}</select>
         <button class="knopf">+</button>
       </form>
-      ${gruppen.size ? [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).map(([g, liste]) => `<div class="packgruppe"><h4>${esc(g)} <span class="leise klein">${liste.filter(erledigt).length}/${liste.length}</span></h4>
-        ${liste.map((x) => `<div class="packzeile ${erledigt(x) ? "erledigt" : ""}"><label class="haken"><input type="checkbox" data-aktion="pack-haken" data-id="${esc(x.id)}" ${erledigt(x) ? "checked" : ""}> ${esc(x.text)}</label>${x.fuer ? `<span class="klein leise">${esc(personName(x.fuer))}</span>` : ""}${andereFertig(x).length ? `<span class="klein leise" title="Schon eingepackt bei">✓ ${esc(andereFertig(x).join(", "))}</span>` : ""}<button class="link rot" data-aktion="pack-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</div>`).join("") : `<p class="leise">${packAutoLaeuft ? "✨ Packliste wird passend zur Reise erstellt …" : "Noch leer – wähle oben eine Vorlage oder trage selbst etwas ein."}</p>`}
+      ${gruppen.size > 1 ? `<div class="zeile klein"><button class="link" data-aktion="pack-alle" data-offen="1">Alle aufklappen</button> · <button class="link" data-aktion="pack-alle" data-offen="">Alle zuklappen</button></div>` : ""}
+      ${gruppen.size ? [...gruppen.entries()].sort(([a], [b]) => a.localeCompare(b, "de")).map(([g, liste]) => `<details class="packgruppe" data-klappe="pack:${esc(g)}" ${zustand.klappen?.[`pack:${g}`] ?? (gruppen.size <= 2 || g === ersteOffene) ? "open" : ""}><summary><strong>${esc(g)}</strong> <span class="leise klein">${liste.filter(erledigt).length}/${liste.length}${liste.every(erledigt) ? " ✓" : ""}</span></summary>
+        ${liste.map((x) => `<div class="packzeile ${erledigt(x) ? "erledigt" : ""}"><label class="haken"><input type="checkbox" data-aktion="pack-haken" data-id="${esc(x.id)}" ${erledigt(x) ? "checked" : ""}> ${esc(x.text)}</label>${x.fuer ? `<span class="klein leise">${esc(personName(x.fuer))}</span>` : ""}${andereFertig(x).length ? `<span class="klein leise" title="Schon eingepackt bei">✓ ${esc(andereFertig(x).join(", "))}</span>` : ""}<button class="link rot" data-aktion="pack-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</details>`).join("") : `<p class="leise">${packAutoLaeuft ? "✨ Packliste wird passend zur Reise erstellt …" : "Noch leer – wähle oben eine Vorlage oder trage selbst etwas ein."}</p>`}
       ${fertig ? `<div class="zeile"><button class="link" data-aktion="pack-zuruecksetzen">Alle Haken entfernen (für die Rückreise)</button></div>` : ""}
     </div>
+    `;
+}
+
+/** Dokumente & Fristen (eigener Unterbereich der Vorbereitung) – mit Offline-Karten. */
+export function dokumenteAnsicht() {
+  const e = zustand.extras;
+  const hinweise = dokumentHinweise(e.dokumente, zustand.reise, heute());
+  const { von } = reiseZeitraum(zustand.reise);
+  return `
+    ${hinweise.length ? `<div class="karte-box hinweisbox"><h3>⏰ Fristen &amp; Hinweise</h3><ul class="hinweise">${hinweise.map((h) => `<li class="${h.stufe}">${esc(h.text)}</li>`).join("")}</ul></div>` : ""}
     <div class="karte-box">
       <div class="zeile"><h3>📄 Dokumente &amp; Fristen</h3><span class="platz"></span><button class="knopf" data-aktion="dokument-neu">+ Dokument</button></div>
       <p class="leise klein">Buchungsbestätigungen, Pässe (Ablaufdatum!), ESTA/eTA, Impfungen, Versicherung – mit Datei (PDF/Foto) und Frist. Nur für Mitreisende sichtbar.
@@ -363,6 +375,14 @@ aktionen["dokument-loeschen"] = async (el) => {
   dialog().close();
   neuZeichnen();
 };
+aktionen["pack-alle"] = (el) => {
+  zustand.klappen ??= {};
+  for (const d of document.querySelectorAll("details.packgruppe")) {
+    d.open = Boolean(el.dataset.offen);
+    zustand.klappen[d.dataset.klappe] = d.open;
+  }
+};
+
 aktionen["fristen-kalender"] = () => {
   const { text, anzahl } = kalenderDatei({ name: `${zustand.reise.name} – Fristen`, haefen: [], ausfluege: [] }, { anBord: [], ausfluege: null, dokumente: zustand.extras.dokumente });
   herunterladen(`${zustand.reise.name}-Fristen.ics`, text, "text/calendar");

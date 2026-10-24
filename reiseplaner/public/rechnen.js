@@ -361,6 +361,31 @@ export function startpunkt(station, hotels = []) {
  * Abfahrt einer Verbindung (Flug, Zug, Fähre …) abzüglich Vorlauf.
  * Ergebnis: { min, zeit, titel, kurz, ort } oder null.
  */
+/**
+ * Fährt eine Verbindung am Ort dieses Tages ab? Nur dann ist sie eine feste Zeit für Ausflüge dort –
+ * ein Zubringerflug ab München hat mit dem Tag in La Romana nichts zu tun (andere Zeitzone, anderer Ort).
+ * Mit Kartenpunkten: höchstens 150 km entfernt; sonst Ortsname im Abfahrtsort; ohne jede Angabe nur an
+ * Land-Tagen ohne Kartenpunkt (wie bisher).
+ */
+export function abfahrtAmOrt(v, tag, reise = null) {
+  const hier = Number.isFinite(tag?.lat) ? tag : (reise?.hotels ?? []).find((h) => h.status === "gebucht" && Number.isFinite(h.lat) && h.anreise <= tag?.datum && tag?.datum <= h.abreise) ?? null;
+  if (Number.isFinite(v?.vonOrt?.lat) && hier) return entfernungKm(v.vonOrt, hier) <= 150;
+  const norm = (x) => String(x ?? "").toLowerCase().replace(/\([a-z]{3}\)/g, "").replace(/flughafen|airport|hbf|hauptbahnhof|bahnhof|hafen|port/g, "").replace(/[^a-zäöüß]+/g, " ").trim();
+  const von = norm(v?.von);
+  const namen = [tag?.name, tag?.ortName?.split(",")[0], tag?.suchname].map(norm).filter((x) => x.length >= 3);
+  if (von && namen.some((n) => von.includes(n) || n.includes(von))) return true;
+  return !hier && (tag?.art ?? "hafen") !== "hafen" && !von;
+}
+
+/** „Alle an Bord“ eines Hafentags – nur aus den Schiffszeiten, nie aus Flügen oder anderen Terminen. */
+export function anBordZeit(tag) {
+  if ((tag?.art ?? (tag?.seetag ? "seetag" : "hafen")) !== "hafen") return null;
+  const angegeben = zeitZuMin(tag.allesAnBord);
+  const min = angegeben ?? (zeitZuMin(tag.abfahrt) != null ? zeitZuMin(tag.abfahrt) - 30 : null);
+  if (min == null) return null;
+  return { min, zeit: minZuZeit(min), angenommen: angegeben == null, grundlage: angegeben != null ? `„Alle an Bord“ ${tag.allesAnBord} laut Reiseplan` : `angenommen: Abfahrt ${tag.abfahrt} − 30 Min. („Alle an Bord“ fehlt)` };
+}
+
 export function festeZeit(tag, reise = null) {
   if (!tag) return null;
   const kandidaten = [];
@@ -385,6 +410,7 @@ export function festeZeit(tag, reise = null) {
   }
   for (const v of reise?.verbindungen ?? []) {
     if (v.status === "verworfen" || v.datum !== tag.datum || zeitZuMin(v.abZeit) == null) continue;
+    if (!abfahrtAmOrt(v, tag, reise)) continue;
     const vm = VERKEHRSMITTEL[v.art] ?? VERKEHRSMITTEL.sonstiges;
     const vorlauf = zahl(v.vorlaufMin) ?? vm.vorlauf;
     const ortName = v.von || vm.ort;
@@ -502,6 +528,12 @@ export function titelAehnlich(a, b) {
   return gemeinsam >= 2 && gemeinsam / kleiner >= 0.6;
 }
 
+/** Gleicher Angebotslink (ohne Protokoll, „www.“, Parameter und Schrägstrich am Ende). */
+export function gleicherLink(x, y) {
+  const norm = (u) => String(u ?? "").trim().toLowerCase().replace(/^https?:\/\/(www\.)?/, "").replace(/[?#].*$/, "").replace(/\/+$/, "");
+  return Boolean(norm(x)) && norm(x) === norm(y);
+}
+
 /** Mögliche Dubletten innerhalb eines Tages (ohne verworfene und ohne als „keine Dublette“ markierte). */
 export function moeglicheDubletten(ausfluege) {
   const paare = [];
@@ -513,7 +545,7 @@ export function moeglicheDubletten(ausfluege) {
       if (a.hafenId !== b.hafenId) continue;
       if ((a.keineDublette ?? []).includes(b.id) || (b.keineDublette ?? []).includes(a.id)) continue;
       if ((a.alternativen ?? []).includes(b.id) || (b.alternativen ?? []).includes(a.id)) continue;
-      if (titelAehnlich(a.titel, b.titel)) paare.push([a, b]);
+      if (titelAehnlich(a.titel, b.titel) || gleicherLink(a.link, b.link)) paare.push([a, b]);
     }
   }
   return paare;
