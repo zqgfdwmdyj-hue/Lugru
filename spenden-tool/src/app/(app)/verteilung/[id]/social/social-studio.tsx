@@ -319,7 +319,9 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
   const [imgs, setImgs] = useState<Loaded | null>(null);
   const [handle, setHandle] = useState(settings.handle);
   const [tags, setTags] = useState(settings.tags);
-  const [picked, setPicked] = useState<string[]>(() => highlightIds.filter((id) => items.some((i) => i.id === id)));
+  // Alle gespeicherten Highlights behalten – auch von Produkten, die gerade nicht auf der Collage sind.
+  const [picked, setPicked] = useState<string[]>(highlightIds);
+  const visiblePicked = picked.filter((id) => items.some((i) => i.id === id));
   const [highlights, setHighlights] = useState(6);
   const [message, setMessage] = useState("");
   const [video, setVideo] = useState<{ busy: boolean; progress: number; url?: string; file?: File }>({ busy: false, progress: 0 });
@@ -381,7 +383,7 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
     return [...first, ...rest.filter((i) => i.image), ...rest.filter((i) => !i.image)];
   }, [items, picked]);
   const extraTags = tags.split(/[\s,#]+/).filter(Boolean);
-  const hl = picked.length ? ordered.slice(0, picked.length) : ordered.slice(0, highlights);
+  const hl = visiblePicked.length ? ordered.slice(0, visiblePicked.length) : ordered.slice(0, highlights);
 
   const templates = useMemo<Template[]>(() => {
     if (!imgs) return [];
@@ -488,7 +490,9 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
   const move = (id: string, d: -1 | 1) =>
     setPicked((prev) => {
       const i = prev.indexOf(id);
-      const j = i + d;
+      // Mit dem nächsten sichtbaren Highlight tauschen (ausgeblendete bleiben, wo sie sind).
+      let j = i + d;
+      while (j >= 0 && j < prev.length && !items.some((x) => x.id === prev[j])) j += d;
       if (i < 0 || j < 0 || j >= prev.length) return prev;
       const next = [...prev];
       [next[i], next[j]] = [next[j], next[i]];
@@ -517,7 +521,7 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
             <input className="input" id="st" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="z. B. musterstadt tafel" />
           </div>
         )}
-        {(format === "story-produkte" || format === "video") && picked.length === 0 && (
+        {(format === "story-produkte" || format === "video") && visiblePicked.length === 0 && (
           <div className="field">
             <label className="label" htmlFor="sp">Anzahl Highlights</label>
             <select className="select" id="sp" value={highlights} onChange={(e) => setHighlights(Number(e.target.value))}>
@@ -529,11 +533,11 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
       </section>
 
       {USES_HIGHLIGHTS.includes(format) && (
-        <details className="card card-pad highlight-picker" open={picked.length > 0 || undefined}>
-          <summary><strong>Highlights auswählen und sortieren</strong> <span className="small muted">{picked.length ? `${picked.length} ausgewählt – kommen zuerst` : "keine ausgewählt – es gilt die Reihenfolge der Produktliste (Fotos zuerst)"}</span></summary>
-          {picked.length > 0 && (
+        <details className="card card-pad highlight-picker" open={visiblePicked.length > 0 || undefined}>
+          <summary><strong>Highlights auswählen und sortieren</strong> <span className="small muted">{visiblePicked.length ? `${visiblePicked.length} ausgewählt – kommen zuerst` : "keine ausgewählt – es gilt die Reihenfolge der Produktliste (Fotos zuerst)"}</span></summary>
+          {visiblePicked.length > 0 && (
             <ol className="hl-order">
-              {picked.map((id, i) => {
+              {visiblePicked.map((id, i) => {
                 const it = items.find((x) => x.id === id);
                 if (!it) return null;
                 return (
@@ -541,7 +545,7 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
                     {it.image ? <img src={`${it.image}?w=200`} alt="" className="thumb thumb-sm" /> : <span className="thumb thumb-sm" />}
                     <span className="wrap-anywhere" style={{ flex: 1 }}>{it.name}</span>
                     <button type="button" className="btn btn-small" onClick={() => move(id, -1)} disabled={i === 0} aria-label="Nach vorne">↑</button>
-                    <button type="button" className="btn btn-small" onClick={() => move(id, 1)} disabled={i === picked.length - 1} aria-label="Nach hinten">↓</button>
+                    <button type="button" className="btn btn-small" onClick={() => move(id, 1)} disabled={i === visiblePicked.length - 1} aria-label="Nach hinten">↓</button>
                     <button type="button" className="btn btn-small" onClick={() => setPicked((p) => p.filter((x) => x !== id))} aria-label="Entfernen">✕</button>
                   </li>
                 );

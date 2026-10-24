@@ -99,6 +99,13 @@
       "when": 1792837243082,
       "tag": "0013_ausgabe",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792838085371,
+      "tag": "0014_bestaetigt",
+      "breakpoints": true
     }
   ]
 }

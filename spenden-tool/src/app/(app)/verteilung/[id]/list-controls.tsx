@@ -27,6 +27,7 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
     if (!list) return;
     const words = q.toLocaleLowerCase("de-DE").split(/\s+/).filter(Boolean);
     let n = 0;
+    let unchecked = false;
     for (const row of list.querySelectorAll<HTMLElement>("[data-row]")) {
       const text = row.dataset.search ?? "";
       const ok =
@@ -34,9 +35,18 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
         (!kat || row.dataset.cat === kat) &&
         (status === STATUS_ALL || (status === "fertig" ? !row.dataset.issues : (row.dataset.issues ?? "").split(" ").includes(status)));
       row.hidden = !ok;
+      // Ausgeblendete Zeilen nicht versehentlich in Stapelaktionen mitnehmen.
+      if (!ok) {
+        const box = row.querySelector<HTMLInputElement>("input[name=sel]");
+        if (box?.checked) {
+          box.checked = false;
+          unchecked = true;
+        }
+      }
       if (ok) n++;
     }
     setShown(n);
+    if (unchecked) list.dispatchEvent(new Event("change", { bubbles: true }));
     const u = new URL(location.href);
     for (const [k, v] of [["q", q], ["kat", kat], ["status", status]] as const) {
       if (v) u.searchParams.set(k, v);
@@ -69,6 +79,21 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
     document.addEventListener("change", onChange);
     return () => document.removeEventListener("change", onChange);
   }, []);
+
+  // Nach jedem Absenden setzt React das Formular zurück – aufgeklappte Details bleiben trotzdem offen.
+  useEffect(() => {
+    const form = document.getElementById(listId);
+    if (!form) return;
+    const onReset = () => {
+      const open = [...form.querySelectorAll<HTMLInputElement>("input.pl-open:checked")].map((b) => b.id);
+      setTimeout(() => open.forEach((id) => {
+        const b = document.getElementById(id) as HTMLInputElement | null;
+        if (b) b.checked = true;
+      }), 0);
+    };
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, [listId]);
 
   const reset = () => {
     setQ("");

@@ -1,5 +1,5 @@
 import type { PriceBox } from "@/db/schema";
-import { hasSeveralPrices, plausibleBox, type PrintedInfo } from "@/lib/printed-price";
+import { hasSeveralPrices, plausibleBox, printedAmounts, type PrintedInfo } from "@/lib/printed-price";
 
 // Eine gemeinsame Preislogik für Produktliste, Prüfen, Collage, Aushang, Messenger und Social Media.
 // Grundsatz: Ausgegeben wird immer die gespeicherte Spendenempfehlung. Ein im Foto erkannter Preis oder ein
@@ -164,13 +164,19 @@ export function priceState(item: PriceInput, imageFileId: string | null | undefi
   if (!printed) return base;
   const suspicious = printed.price !== null && (printed.price >= 20 || (price !== null && price > 0 && (printed.price / price >= 8 || price / printed.price >= 8)));
   const s = { ...base, printed, suspicious };
-  if (hasSeveralPrices(printed.text)) return { ...s, photo: "mehrere", plan: "foto" };
-  if (printed.price === null) return { ...s, photo: "ohne-betrag", plan: "foto" };
+  const resolvedFor = !!imageFileId && item.priceOverPhotoFileId === imageFileId;
+  if (hasSeveralPrices(printed.text)) {
+    // Staffelpreise im Foto (z. B. „2kg 5€ / 5kg 10€“): passt der eingetragene dazu, Foto unverändert lassen.
+    if (price === null) return { ...s, photo: "mehrere", conflict: true, plan: "foto" };
+    if (printedAmounts(printed.text).some((a) => Math.abs(a - price) < 0.005)) return { ...s, photo: "mehrere", plan: "foto" };
+    return { ...s, photo: resolvedFor ? "abweichend-geloest" : "abweichend", conflict: !resolvedFor, plan: "drucken", oldVisible: true };
+  }
+  // Text ohne lesbaren Betrag: eingetragenen Preis normal drucken.
+  if (printed.price === null) return price === null ? { ...s, photo: "ohne-betrag", plan: "foto" } : { ...s, photo: "ohne-betrag", plan: "drucken", oldVisible: true };
   if (price === null) return { ...s, photo: "fehlt-eingetragen", conflict: true, plan: "foto" };
   if (Math.abs(printed.price - price) < 0.005) return { ...s, photo: "gleich", plan: "foto" };
-  const resolved = !!imageFileId && item.priceOverPhotoFileId === imageFileId;
   const plan = plausibleBox(printed.box) ? "aufkleber" : "drucken";
-  return { ...s, photo: resolved ? "abweichend-geloest" : "abweichend", conflict: !resolved, plan, oldVisible: plan === "drucken" };
+  return { ...s, photo: resolvedFor ? "abweichend-geloest" : "abweichend", conflict: !resolvedFor, plan, oldVisible: plan === "drucken" };
 }
 
 // ---------- Prüfstatus einer Zeile ----------

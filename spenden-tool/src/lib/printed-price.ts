@@ -17,6 +17,12 @@ export function hasSeveralPrices(text: string | null | undefined): boolean {
  * Ist die Lage des alten Preises glaubwürdig genug zum Überdecken? Ein Preisschriftzug ist ein schmales Band –
  * meldet die KI ein riesiges Feld, stimmt die Angabe nicht, und ein Überdecken würde das Produkt verdecken.
  */
+/** Alle Beträge im Text, z. B. „2kg – 5€ / 5kg – 10€“ → [5, 10]. */
+export function printedAmounts(text: string | null | undefined): number[] {
+  if (!text) return [];
+  return (text.match(/\d+(?:[.,]\d{1,2})?\s*(?:€|euro|eur|cent|ct)/gi) ?? []).map((m) => parsePrintedPrice(m)).filter((v): v is number => v !== null);
+}
+
 export function plausibleBox(b: PriceBox | null | undefined): b is PriceBox {
   return !!b && b.h <= 0.3 && b.w * b.h <= 0.18 && b.w >= 0.05 && b.h >= 0.03;
 }

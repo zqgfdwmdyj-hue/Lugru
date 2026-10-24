@@ -11,7 +11,9 @@ type Status = "idle" | "dirty" | "saving" | "saved" | "error";
  */
 export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventId: string; save: (fd: FormData) => Promise<void> }) {
   const [status, setStatus] = useState<Status>("idle");
-  const dirtyRows = useRef(new Set<HTMLElement>());
+  // Pro Zeile die Felder, die wirklich geändert wurden – nur die werden gespeichert. So überschreibt das
+  // automatische Speichern nichts, was jemand anderes inzwischen in anderen Feldern geändert hat.
+  const dirtyRows = useRef(new Map<HTMLElement, Set<string>>());
   const busy = useRef(false);
   const again = useRef(false);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -22,17 +24,28 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
       again.current = true;
       return;
     }
-    const rows = [...dirtyRows.current].filter((r) => r.isConnected);
+    const rows = [...dirtyRows.current].filter(([r]) => r.isConnected);
     dirtyRows.current.clear();
     if (rows.length === 0) return;
     const fd = new FormData();
     fd.set("eventId", eventId);
     fd.set("op", "auto");
-    for (const row of rows) {
-      for (const el of row.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input[name], select[name], textarea[name]")) {
-        if (el.name === "sel") continue;
-        if (el instanceof HTMLInputElement && (el.type === "file" || ((el.type === "checkbox" || el.type === "radio") && !el.checked))) continue;
-        fd.append(el.name, el.value);
+    for (const [row, names] of rows) {
+      const marker = row.querySelector<HTMLInputElement>("input[name^=row_]");
+      if (marker) fd.append(marker.name, marker.value);
+      // Zusammengehörige Felder immer gemeinsam (Packung: Bezeichnung + Betrag).
+      const all = new Set(names);
+      for (const n of names) {
+        const m = /^pack(note|price)_(.+)$/.exec(n);
+        if (m) all.add(`pack${m[1] === "note" ? "price" : "note"}_${m[2]}`);
+      }
+      for (const name of all) {
+        const el = row.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${CSS.escape(name)}"]`);
+        if (!el) continue;
+        const unchecked = el instanceof HTMLInputElement && el.type === "checkbox" && !el.checked;
+        if (!unchecked) fd.append(name, el.value);
+        const orig = row.querySelector<HTMLInputElement>(`input[name="${CSS.escape(`o_${name}`)}"]`);
+        if (orig) fd.append(orig.name, orig.value);
       }
     }
     busy.current = true;
@@ -41,8 +54,12 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
       await save(fd);
       setStatus(dirtyRows.current.size ? "dirty" : "saved");
     } catch {
-      // Beim nächsten Versuch dieselben Zeilen erneut schicken.
-      for (const r of rows) dirtyRows.current.add(r);
+      // Beim nächsten Versuch dieselben Felder erneut schicken.
+      for (const [r, names] of rows) {
+        const cur = dirtyRows.current.get(r) ?? new Set<string>();
+        for (const n of names) cur.add(n);
+        dirtyRows.current.set(r, cur);
+      }
       setStatus("error");
     } finally {
       busy.current = false;
@@ -59,11 +76,17 @@ export function UnsavedGuard({ formId, eventId, save }: { formId: string; eventI
     const mark = (e: Event) => {
       const t = e.target as HTMLInputElement | null;
       // Datei-Felder (MHD-Foto) speichern sich selbst; die Auswahl-Häkchen sind keine Eingabe.
-      if (!t || t.type === "file" || t.name === "sel" || !t.name) return;
+      if (!t || t.type === "file" || t.name === "sel" || !t.name || t.name.startsWith("o_")) return;
+      // „Neue Kategorie …“ gewählt, aber noch nichts getippt – nichts zu speichern.
+      if (t.value === "__neu__") return;
       const row = t.closest<HTMLElement>("[data-row]");
       if (!row) return;
-      dirtyRows.current.add(row);
+      const names = dirtyRows.current.get(row) ?? new Set<string>();
+      names.add(t.name);
+      dirtyRows.current.set(row, names);
       setStatus("dirty");
+      // Freie Eingaben wie eine neue Kategorie erst beim Verlassen der Zeile speichern, nicht mitten im Tippen.
+      if (t.dataset.lazy) return;
       // Nach kurzer Tipp-Pause speichern, auch wenn die Zeile noch nicht verlassen wurde.
       if (idle.current) clearTimeout(idle.current);
       idle.current = setTimeout(() => void flush(), 4000);

@@ -168,7 +168,9 @@ export async function saveItems(fd: FormData) {
       const typed = str(fd, k("price"));
       // „50 Cent“ / „50 ct“ verstehen; Unlesbares löscht den Preis nicht.
       const parsed = typed ? (parseAmount(typed) ?? parsePrintedPrice(typed)) : null;
-      if (!typed || (parsed !== null && parsed >= 0 && parsed < 100000)) {
+      // Nur anders geschrieben („1.5“ statt „1,50“)? Dann nichts ändern – auch nicht den Bestätigt-Status.
+      const same = parsed !== null && it.price !== null && Math.abs(parsed - it.price) < 0.005;
+      if (!same && (!typed || (parsed !== null && parsed >= 0 && parsed < 100000))) {
         const p = parsed === null ? null : Math.round(parsed * 100) / 100;
         // Von Hand eingetragen = bestätigt.
         Object.assign(set, { price: p, priceSource: p === null ? null : "manuell", priceConfirmed: p !== null });
@@ -202,13 +204,15 @@ export async function saveItems(fd: FormData) {
   // Produktangaben (Name, Variante, Kategorie, MHD nötig?) – gelten auch für spätere Verteilungen.
   for (const productId of new Set(items.map((i) => i.productId))) {
     const k = (f: string) => `${f}_${productId}`;
-    if (!fd.has(k("name")) && !fd.has(k("cat"))) continue;
+    if (!["name", "variant", "cat", "mhdmode"].some((f) => fd.has(k(f)))) continue;
     const set: Partial<typeof P.$inferInsert> = {};
     const name = str(fd, k("name"));
     // Leerer Name = noch ohne Namen (Platzhalter bleibt).
     if (fd.has(k("name")) && name && changed(k("name"))) set.name = name;
     if (fd.has(k("variant")) && changed(k("variant"))) set.variant = opt(fd, k("variant"));
-    if (fd.has(k("cat")) && changed(k("cat"))) set.category = str(fd, k("cat")) || UNSORTED_CATEGORY;
+    // Leere Kategorie (z. B. „Neue Kategorie …“ noch ohne Text) ändert nichts.
+    const cat = str(fd, k("cat"));
+    if (fd.has(k("cat")) && changed(k("cat")) && cat && cat !== "__neu__") set.category = cat.slice(0, 60);
     if (fd.has(k("mhdmode")) && changed(k("mhdmode"))) {
       const m = str(fd, k("mhdmode"));
       set.mhdMode = m === "ja" || m === "nein" ? m : null;
@@ -219,7 +223,7 @@ export async function saveItems(fd: FormData) {
   }
   // Der zuletzt verwendete Preis wird zum Vorschlag für das nächste Mal.
   for (const [productId, p] of touchedPrices) {
-    await db.update(P).set({ price: p, updatedAt: new Date() }).where(eq(P.id, productId));
+    await db.update(P).set({ price: p, priceConfirmed: true, updatedAt: new Date() }).where(eq(P.id, productId));
   }
 
   const [op, target] = str(fd, "op").split(":");
@@ -260,7 +264,11 @@ export async function saveItems(fd: FormData) {
     const n = selItems.length;
     if (target === "cat") {
       const cat = str(fd, "bulk_cat");
-      if (cat) await db.update(P).set({ category: cat, updatedAt: new Date() }).where(inArray(P.id, pids));
+      if (!cat) {
+        revalidatePath(`/verteilung/${eventId}`, "layout");
+        return;
+      }
+      await db.update(P).set({ category: cat.slice(0, 60), updatedAt: new Date() }).where(inArray(P.id, pids));
       what = `${n} Produkt(e) der Kategorie „${cat}“ zugeordnet`;
     } else if (target === "col-on" || target === "col-off") {
       await db.update(I).set({ inCollage: target === "col-on" }).where(inArray(I.id, ids));
@@ -304,6 +312,7 @@ export async function saveItems(fd: FormData) {
 export async function resolvePhotoPrice(itemId: string, decision: "eingetragen" | "foto" | "falsch", fd?: FormData) {
   const me = await requireLogin();
   const id = uuid.parse(itemId);
+  z.enum(["eingetragen", "foto", "falsch"]).parse(decision);
   if (fd?.has("eventId")) await saveItems(fd);
   const [row] = await db
     .select({ item: I, fileId: P.imageFileId, photoPrice: schema.files.printedPrice, photoText: schema.files.printedPriceText })
@@ -316,9 +325,9 @@ export async function resolvePhotoPrice(itemId: string, decision: "eingetragen" 
     await db.update(I).set({ priceConfirmed: true, priceOverPhotoFileId: row.fileId }).where(eq(I.id, id));
   } else if (decision === "foto" && row.photoPrice !== null) {
     await db.update(I).set({ price: row.photoPrice, priceSource: "foto", priceConfirmed: true, priceOverPhotoFileId: null }).where(eq(I.id, id));
-    await db.update(P).set({ price: row.photoPrice, updatedAt: new Date() }).where(eq(P.id, row.item.productId));
+    await db.update(P).set({ price: row.photoPrice, priceConfirmed: true, updatedAt: new Date() }).where(eq(P.id, row.item.productId));
   } else if (decision === "falsch" && row.fileId) {
-    await db.update(schema.files).set({ printedStatus: "done", printedPrice: null, printedPriceText: null, printedPriceBox: null, printedScannedAt: new Date() }).where(eq(schema.files.id, row.fileId));
+    await db.update(schema.files).set({ printedStatus: "done", printedPrice: null, printedPriceText: null, printedPriceBox: null, printedRejected: true, printedScannedAt: new Date() }).where(eq(schema.files.id, row.fileId));
   }
   const label = decision === "eingetragen" ? "Eingetragenen Preis bestätigt (Foto zeigt anderen)" : decision === "foto" ? `Fotopreis übernommen (${row.photoText ?? ""})` : "Fotoerkennung als falsch markiert";
   await logActivity(me, label, { eventId: row.item.eventId, productId: row.item.productId });
@@ -448,7 +457,7 @@ export async function clearPrintedPrice(fileId: string, back: string, fd?: FormD
   const id = uuid.parse(fileId);
   // Aus der Produktliste heraus: erst deren Eingaben speichern.
   if (fd?.has("eventId")) await saveItems(fd);
-  await db.update(schema.files).set({ printedStatus: "done", printedPrice: null, printedPriceText: null, printedPriceBox: null, printedScannedAt: new Date() }).where(eq(schema.files.id, id));
+  await db.update(schema.files).set({ printedStatus: "done", printedPrice: null, printedPriceText: null, printedPriceBox: null, printedRejected: true, printedScannedAt: new Date() }).where(eq(schema.files.id, id));
   revalidatePath(back.startsWith("/") ? back : "/");
 }
 
@@ -467,7 +476,9 @@ export async function createProduct(fd: FormData) {
   const eventId = uuid.safeParse(fd.get("eventId"));
   await logActivity(me, `Produkt „${name}“ angelegt`, { productId: p.id, eventId: eventId.success ? eventId.data : null });
   if (eventId.success && (await loadEvent(eventId.data))) {
-    await addProductsToEvent(eventId.data, [p.id]);
+    const pr = price(fd, "price");
+    // Von Hand angelegt = eingetragener, bestätigter Preis.
+    await addProductsToEvent(eventId.data, [p.id], new Map([[p.id, { price: pr, priceNote: null, caption: null, priceConfirmed: pr !== null, priceSource: pr === null ? null : ("manuell" as const) }]]));
     revalidatePath(`/verteilung/${eventId.data}`, "layout");
     return;
   }
@@ -488,6 +499,7 @@ export async function updateProduct(fd: FormData) {
       variant: opt(fd, "variant"),
       category: str(fd, "category") || UNSORTED_CATEGORY,
       price: price(fd, "price"),
+      priceConfirmed: true,
       note: opt(fd, "note"),
       ...(fd.has("mhdMode") ? { mhdMode: fd.get("mhdMode") === "ja" ? ("ja" as const) : fd.get("mhdMode") === "nein" ? ("nein" as const) : null } : {}),
       // Von Hand gespeichert = Angaben geprüft.
@@ -593,7 +605,7 @@ async function doApply(fd: FormData): Promise<ApplyState> {
   await db
     .update(P)
     .set({
-      ...(chosen !== null ? { price: chosen } : {}),
+      ...(chosen !== null ? { price: chosen, priceConfirmed: true } : {}),
       ...(withName ? { name: check.recognizedName!, variant: check.recognizedVariant, reviewNote: null, ...(check.recognizedCategory ? { category: check.recognizedCategory } : {}) } : {}),
       updatedAt: new Date(),
     })
@@ -658,7 +670,7 @@ export async function applyAllSuggestions(eventId: string, fd: FormData) {
     if (comparability(it.variant, c).level === "abweichend") continue;
     // Als Stapel übernommen → noch unbestätigt, erscheint unter „Prüfen“.
     await db.update(I).set({ price: c.suggestedPrice, priceSource: "ki", priceConfirmed: false }).where(eq(I.id, it.id));
-    await db.update(P).set({ price: c.suggestedPrice, updatedAt: new Date() }).where(eq(P.id, it.productId));
+    await db.update(P).set({ price: c.suggestedPrice, priceConfirmed: false, updatedAt: new Date() }).where(eq(P.id, it.productId));
   }
   revalidatePath(`/verteilung/${id}`, "layout");
 }
@@ -672,13 +684,15 @@ export async function applyPhotoPrices(eventId: string, itemId: string | null, f
   if (fd.has("eventId")) await saveItems(fd);
   const only = uuid.safeParse(itemId);
   const rows = await db
-    .select({ id: I.id, productId: I.productId, price: I.price, photoPrice: schema.files.printedPrice, photoText: schema.files.printedPriceText })
+    .select({ id: I.id, productId: I.productId, price: I.price, confirmed: I.priceConfirmed, over: I.priceOverPhotoFileId, fileId: P.imageFileId, photoPrice: schema.files.printedPrice, photoText: schema.files.printedPriceText })
     .from(I)
     .innerJoin(P, eq(P.id, I.productId))
     .innerJoin(schema.files, eq(schema.files.id, P.imageFileId))
     .where(and(eq(I.eventId, id), only.success ? eq(I.id, only.data) : undefined));
   for (const r of rows) {
     if (r.photoPrice === null || hasSeveralPrices(r.photoText) || r.price === r.photoPrice) continue;
+    // Im Stapel nie einen bestätigten oder bewusst gegen das Foto entschiedenen Preis ersetzen.
+    if (!only.success && r.price !== null && (r.confirmed || r.over === r.fileId)) continue;
     await db.update(I).set({ price: r.photoPrice, priceSource: "foto", priceConfirmed: true, priceOverPhotoFileId: null }).where(eq(I.id, r.id));
     await db.update(P).set({ price: r.photoPrice, updatedAt: new Date() }).where(eq(P.id, r.productId));
   }

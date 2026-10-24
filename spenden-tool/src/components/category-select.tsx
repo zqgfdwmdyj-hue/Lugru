@@ -15,7 +15,7 @@ export function CategorySelect({ name, value, categories, id, compact = false, l
   if (custom) {
     return (
       <span style={{ display: "flex", gap: 4, minWidth: 0 }}>
-        <input className={compact ? "input input-compact" : "input"} id={id} name={name} autoFocus placeholder="Neue Kategorie" aria-label={label ?? "Neue Kategorie"} style={{ minWidth: 0 }} />
+        <input className={compact ? "input input-compact" : "input"} id={id} name={name} autoFocus placeholder="Neue Kategorie" aria-label={label ?? "Neue Kategorie"} style={{ minWidth: 0 }} data-lazy="1" />
         <button className="btn btn-small" type="button" onClick={() => setCustom(false)} title="Zurück zur Liste">×</button>
       </span>
     );

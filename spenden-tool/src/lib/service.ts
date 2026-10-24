@@ -195,24 +195,24 @@ export function eventFlyerSections(rows: Awaited<ReturnType<typeof loadEventItem
   );
 }
 
-/** Zuletzt verwendeter Preis je Produkt (aus früheren Verteilungen). */
-export async function lastPrices(productIds: string[]): Promise<Map<string, number>> {
+/** Zuletzt verwendeter Preis je Produkt (aus früheren Verteilungen) – mit Bestätigt-Status. */
+export async function lastPrices(productIds: string[]): Promise<Map<string, { price: number; confirmed: boolean }>> {
   if (productIds.length === 0) return new Map();
   const rows = await db
-    .selectDistinctOn([I.productId], { productId: I.productId, price: I.price })
+    .selectDistinctOn([I.productId], { productId: I.productId, price: I.price, confirmed: I.priceConfirmed })
     .from(I)
     .innerJoin(E, eq(E.id, I.eventId))
     .where(and(inArray(I.productId, productIds), sql`${I.price} is not null`))
     .orderBy(I.productId, desc(E.eventDate), desc(I.createdAt));
-  return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, r.price as number]));
+  return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, { price: r.price as number, confirmed: r.confirmed }]));
 }
 
-type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; priceConfirmed?: boolean };
+type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {
   if (productIds.length === 0) return 0;
-  const products = await db.select({ id: P.id, price: P.price }).from(P).where(inArray(P.id, productIds));
+  const products = await db.select({ id: P.id, price: P.price, confirmed: P.priceConfirmed }).from(P).where(inArray(P.id, productIds));
   if (products.length === 0) return 0;
   const last = await lastPrices(products.map((p) => p.id));
   const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${I.sort}), 0)::int` }).from(I).where(eq(I.eventId, eventId));
@@ -223,14 +223,16 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
     .values(
       products.map((p, i) => {
         const given = presets?.get(p.id);
-        const price = given ? given.price : (last.get(p.id) ?? p.price ?? null);
+        const prev = last.get(p.id);
+        const price = given ? given.price : (prev?.price ?? p.price ?? null);
+        // Bestätigt nur, wenn der Preis dort schon bestätigt war – unbestätigte Foto-/KI-Preise bleiben zur Prüfung.
+        const confirmed = given ? (given.priceConfirmed ?? false) : prev ? prev.confirmed : p.confirmed;
         return {
           eventId,
           productId: p.id,
           price,
-          // Preis aus einer früheren Verteilung – war dort schon im Einsatz.
-          priceSource: price === null ? null : ("vorlage" as const),
-          priceConfirmed: price !== null && (given?.priceConfirmed ?? true),
+          priceSource: price === null ? null : (given?.priceSource ?? ("vorlage" as const)),
+          priceConfirmed: price !== null && confirmed,
           unit: given?.unit ?? null,
           unitCount: given?.unitCount ?? null,
           priceNote: given?.priceNote ?? null,

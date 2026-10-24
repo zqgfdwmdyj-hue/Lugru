@@ -50,6 +50,8 @@ export async function queuePhotoPrices(productIds: string[], opts: { again?: boo
       and(
         inArray(F.id, db.select({ id: sql<string>`${P.imageFileId}` }).from(P).where(inArray(P.id, productIds))),
         opts.again ? sql`coalesce(${F.printedStatus}, '') <> 'pending'` : or(isNull(F.printedStatus), eq(F.printedStatus, "error")),
+        // Als „Erkennung falsch“ markierte Fotos nie wieder lesen.
+        eq(F.printedRejected, false),
       ),
     )
     .returning({ id: F.id });
@@ -67,7 +69,7 @@ async function scanOne(fileId: string, eventId: string | null) {
       .where(eq(F.id, fileId));
     if (r.found && r.price !== null) {
       // Preis übernehmen, wo noch keiner steht: im Produkt (Vorschlag für später) und in der Verteilung.
-      if (r.price < 20) await db.update(P).set({ price: r.price, updatedAt: new Date() }).where(and(eq(P.imageFileId, fileId), isNull(P.price)));
+      if (r.price < 20) await db.update(P).set({ price: r.price, priceConfirmed: false, updatedAt: new Date() }).where(and(eq(P.imageFileId, fileId), isNull(P.price)));
       if (eventId) {
         const ids = db.select({ id: P.id }).from(P).where(eq(P.imageFileId, fileId));
         // Aus dem Foto gelesen = noch unbestätigt (erscheint unter „Prüfen“). Unplausible Werte (z. B. „50 €“ statt

@@ -259,9 +259,9 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
 
         <fieldset>
           <legend>Ausgabe & Bestand</legend>
-          <label className="check"><input type="checkbox" name={k("col")} defaultChecked={item.inCollage} /> Auf der Collage / Social Media</label>
+          <label className="check"><input key={String(item.inCollage)} type="checkbox" name={k("col")} defaultChecked={item.inCollage} /> Auf der Collage / Social Media</label>
           <O name={k("col")} value={item.inCollage ? "on" : ""} />
-          <label className="check"><input type="checkbox" name={k("fly")} defaultChecked={item.inFlyer} /> Im Aushang / Messenger-Text</label>
+          <label className="check"><input key={String(item.inFlyer)} type="checkbox" name={k("fly")} defaultChecked={item.inFlyer} /> Im Aushang / Messenger-Text</label>
           <O name={k("fly")} value={item.inFlyer ? "on" : ""} />
           <div className="field"><label className="label" htmlFor={k("caption")}>Text auf dem Bild</label><input className="input input-compact" id={k("caption")} name={k("caption")} defaultValue={item.caption ?? ""} placeholder="z. B. vegan, nur heute" /></div>
           <O name={k("caption")} value={item.caption ?? ""} />

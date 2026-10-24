@@ -32,8 +32,15 @@ describe("priceState – gespeicherte Spendenempfehlung gilt überall", () => {
   it("Preis nur im Foto, nicht eingetragen: zur Entscheidung", () => {
     expect(priceState({ price: null }, FILE, reading("60 Cent", 0.6))).toMatchObject({ conflict: true, photo: "fehlt-eingetragen" });
   });
-  it("mehrere Preise im Foto: Foto behalten, kein Widerspruch", () => {
+  it("mehrere Preise im Foto: passt der eingetragene dazu, Foto behalten", () => {
     expect(priceState({ price: 5 }, FILE, reading("2kg 5€ / 5kg 10€", 5))).toMatchObject({ photo: "mehrere", conflict: false, plan: "foto" });
+    expect(priceState({ price: 10 }, FILE, reading("2kg 5€ / 5kg 10€", 5)).plan).toBe("foto");
+  });
+  it("mehrere Preise im Foto, eingetragener passt nicht: drucken und Widerspruch", () => {
+    expect(priceState({ price: 7 }, FILE, reading("2kg 5€ / 5kg 10€", 5))).toMatchObject({ conflict: true, plan: "drucken", oldVisible: true });
+  });
+  it("Text ohne Betrag im Foto: eingetragenen Preis drucken", () => {
+    expect(priceState({ price: 1 }, FILE, reading("gratis", null as unknown as number))).toMatchObject({ photo: "ohne-betrag", plan: "drucken" });
   });
   it("Foto wird noch gelesen", () => {
     expect(priceState({ price: 1 }, FILE, { status: "pending", text: null, price: null, box: null }).photo).toBe("wird-gelesen");

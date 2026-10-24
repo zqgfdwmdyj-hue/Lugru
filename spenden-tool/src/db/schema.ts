@@ -50,6 +50,8 @@ export const files = pgTable(
     printedPriceText: text("printed_price_text"),
     printedPriceBox: jsonb("printed_price_box").$type<PriceBox>(),
     printedScannedAt: timestamp("printed_scanned_at", { withTimezone: true }),
+    /** Jemand hat „Erkennung falsch“ gewählt – auch „Alle neu lesen“ liest dieses Foto nicht erneut. */
+    printedRejected: boolean("printed_rejected").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("files_sha_idx").on(t.sha256)],
@@ -66,6 +68,8 @@ export const products = pgTable(
     category: text("category").notNull().default("Lebensmittel"),
     /** Zuletzt verwendeter Spendenpreis – Vorschlag für die nächste Verteilung. */
     price: money("price"),
+    /** Ist dieser Preis von einem Menschen eingetragen/bestätigt? (Fotoerkennung/KI-Stapel: nein) */
+    priceConfirmed: boolean("price_confirmed").notNull().default(true),
     imageFileId: uuid("image_file_id").references(() => files.id, { onDelete: "set null" }),
     /** Lage und Farbe des Preises auf der Collage (siehe TileStyle in lib/layout.ts). */
     collageStyle: jsonb("collage_style").$type<{ pos?: string; color?: string; name?: boolean; price?: boolean; caption?: boolean }>().notNull().default({}),

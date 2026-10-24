@@ -70,7 +70,9 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   if (img && plan === "sticker" && st.price && fullPrice && tile.printed?.box) {
     const fill = colors.field ?? GREEN;
     const ink = colors.field ? colors.text : "#ffffff";
-    if (drawSticker(ctx, img, x, y, w, h, s.fit === "cover" ? "cover" : "contain", tile.printed.box, fullPrice, fill, ink)) {
+    // Auf dem Aufkleber mit Abgabeeinheit – genau wie in Aushang und Messenger („6er-Pack 2 €“).
+    const stickerText = note && !inline ? `${note} ${price}` : fullPrice;
+    if (drawSticker(ctx, img, x, y, w, h, s.fit === "cover" ? "cover" : "contain", tile.printed.box, stickerText, fill, ink)) {
       plan = "keep";
       stickered = true;
     }

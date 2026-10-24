@@ -47,7 +47,7 @@ describe("Preis im Foto – Foto nie großflächig überdecken", () => {
   it("erkennt Staffelpreise und überdeckt sie nie", () => {
     expect(hasSeveralPrices("2kg - 5€ 5kg - 10€ 10kg - 18€")).toBe(true);
     expect(hasSeveralPrices("3 Stück 40 Cent")).toBe(false);
-    expect(priceState({ price: 0.5 }, F, read("2kg - 5€ 5kg - 10€", 5, null))).toMatchObject({ plan: "foto", conflict: false });
+    expect(priceState({ price: 5 }, F, read("2kg - 5€ 5kg - 10€", 5, null))).toMatchObject({ plan: "foto", conflict: false });
   });
 
   it("Aufkleber nur mit glaubwürdiger, kleiner Lage – sonst normal drucken", () => {
