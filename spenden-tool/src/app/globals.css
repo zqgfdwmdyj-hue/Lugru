@@ -412,3 +412,6 @@ form.check-row { grid-template-columns: auto 1fr auto; }
   .db-row .db-meta { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
   .db-row .db-price { grid-column: 3; grid-row: 1; }
 }
+
+.tab-short { display: none; }
+@media (max-width: 420px) { .tab-long { display: none; } .tab-short { display: inline; font-size: 18px; } .tab { padding: 10px 11px; } }

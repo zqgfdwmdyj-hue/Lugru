@@ -7,8 +7,17 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 
 - **Produktdatenbank:** wiederkehrende Spendenprodukte mit Foto, Kategorie und dem zuletzt verwendeten
   Preis, dazu der Verlauf, wann ein Produkt zu welchem Preis dabei war.
-- **Verteilungen:** Datum und Uhrzeit, viele Handyfotos auf einmal hochladen (jedes Foto wird ein
-  Produkt), frühere Verteilung übernehmen, Preise direkt in der Liste eintragen.
+- **Verteilungen:** gegliedert nach Arbeitsablauf in die Reiter **Produkte** (hinzufügen per Fotos, aus der
+  Datenbank oder manuell; schlanke Liste mit Suche, Kategorie- und Prüfstatus-Filter, „Details bearbeiten“ und
+  Stapelaktionen für Kategorie, Collage/Aushang, MHD und KI), **Prüfen** (Preiswidersprüche mit Foto daneben,
+  unbestätigte Preise und KI-Angaben, nicht vergleichbare Packungsgrößen, Kategorien, fehlende Angaben),
+  **Ausgabe** (Collage, Aushang, Messenger-Text, Social Media, Ideen – mit Hinweis auf offene Punkte vor dem
+  Export) und **Einstellungen** (Datum, Ort, Überschrift, interne Notiz). Speicherstand ist immer unten sichtbar;
+  Änderungen werden zeilenweise automatisch gespeichert. „Letzte übernehmen“ auf der Startseite legt die nächste
+  Verteilung mit allen Produkten und Preisen an.
+- **Eine Preislogik für alles:** Collage, Aushang, Messenger und Social Media geben immer die eingetragene
+  Spendenempfehlung mit ihrer **Abgabeeinheit** aus (Einzelstück, Mehrfachpackung mit Stückzahl, Karton). Preise aus
+  dem Foto oder von der KI sind zunächst „unbestätigt“ und überschreiben nie einen eingetragenen Preis.
 - **Fotos drehen:** ↺ / ↻ unter jedem Foto in der Produktliste, auf der Produktseite und im Collage-Editor. Das
   gespeicherte Foto wird gedreht und gilt damit überall (Collage, Social Media, KI).
 - **Doppelte Fotos:** Jedes Foto bekommt einen Fingerabdruck. Dasselbe Foto wird wiedererkannt – auch verkleinert,
@@ -30,9 +39,14 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   nie auf Collage oder Social Media.
 - **Alte Fotos mit Preis darauf** (z. B. aus früheren Collagen): Wird bei jedem neuen Foto automatisch geprüft, ebenso
   beim Start der KI-Preissuche; für schon vorhandene Fotos zeigt die Verteilungsseite „Preise aus Fotos lesen“. Die KI (Claude Haiku, ca. 0,2 Cent je Foto)
-  liest den Preis ab und trägt ihn ein, wo noch keiner steht. Collage und Social Media zeichnen über solche Fotos
-  nie etwas – kein zweiter Preis, nichts verdeckt das Produkt. Weicht der eingetragene Preis ab, gibt es nur einen
-  Hinweis mit „Preise vom Foto übernehmen“. Falsch erkannt? In der Produktzeile auf „falsch erkannt“ tippen.
+  liest den Preis ab und trägt ihn dort „unbestätigt“ ein, wo noch keiner steht. Stimmt er mit dem eingetragenen
+  überein, druckt die Collage keinen zweiten. Weicht er ab, erscheint unter „Prüfen“ ein Widerspruch mit Foto und
+  drei Möglichkeiten: „Eingetragenen Preis bestätigen“ (die Collage setzt ihn als kleines Feld genau über den alten
+  Preis), „Fotopreis übernehmen“ oder „Erkennung falsch“. Bis dahin gilt der eingetragene Preis.
+- **Kategorien:** Neue Fotos landen in „Noch zuordnen“; die KI darf diese Kategorie ersetzen, bestätigte
+  Kategorien nicht. Abweichende KI-Vorschläge stehen unter „Prüfen“ zum einzelnen Übernehmen.
+- **MHD nur wo nötig:** pro Produkt „automatisch“ (Lebensmittel, Getränke, Babyprodukte), „ja“ oder „nein“ –
+  Spielzeug und Haushaltswaren zählen nicht als „MHD fehlt“.
 - **Ideen (✨):** Die KI liest die Produkte einer Verteilung und schlägt Themenpakete (z. B. Halloween, Winter,
   Frühstück) mit Gesamtpreis, Rezepte aus den vorhandenen Sachen, einen fertigen Werbetext und Tipps fürs Team vor.
   Themen per Klick oder eigener Wunsch; Claude Sonnet, ca. 3–5 Cent je Durchlauf. Ergebnisse bleiben gespeichert.
@@ -43,7 +57,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Messenger-Text, Collage und Plakat.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
-  automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten.
+  automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten. Immer nur das gewählte Format; Highlights
+  lassen sich auswählen und sortieren. Account, Hashtags und die Collage-Vorlage („Als Vorlage speichern“) gelten
+  fürs ganze Team.
 
 ## Zugänge
 

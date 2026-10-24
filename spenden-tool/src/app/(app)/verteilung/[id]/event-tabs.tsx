@@ -7,17 +7,17 @@ import { usePathname } from "next/navigation";
 export function EventTabs({ id, open }: { id: string; open: number }) {
   const path = usePathname();
   const base = `/verteilung/${id}`;
-  const tabs = [
+  const tabs: { href: string; label: string; short?: string; badge?: number; active: boolean }[] = [
     { href: base, label: "Produkte", active: path === base },
     { href: `${base}/pruefen`, label: "Prüfen", badge: open, active: path.startsWith(`${base}/pruefen`) },
     { href: `${base}/ausgabe`, label: "Ausgabe", active: ["/ausgabe", "/collage", "/social", "/ideen"].some((s) => path.startsWith(base + s)) },
-    { href: `${base}/einstellungen`, label: "Einstellungen", active: path.startsWith(`${base}/einstellungen`) },
+    { href: `${base}/einstellungen`, label: "Einstellungen", short: "⚙", active: path.startsWith(`${base}/einstellungen`) },
   ];
   return (
     <nav className="tabs" aria-label="Bereiche der Verteilung">
       {tabs.map((t) => (
         <Link key={t.href} href={t.href} className={`tab${t.active ? " active" : ""}`} aria-current={t.active ? "page" : undefined}>
-          {t.label}
+          {t.short ? <><span className="tab-long">{t.label}</span><span className="tab-short" aria-label={t.label}>{t.short}</span></> : t.label}
           {t.badge ? <span className="tab-badge">{t.badge}</span> : null}
         </Link>
       ))}
