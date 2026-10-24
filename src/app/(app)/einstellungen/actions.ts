@@ -215,3 +215,16 @@ export async function updateAccess(_prev: UserState, fd: FormData): Promise<User
   const ro = fd.get("readOnly") === "on" ? " Nur ansehen (kann nichts ändern)." : "";
   return { ok: true, message: (areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.`) + ro };
 }
+
+/** Zugang zum Bereich „Privat“ vergeben oder entziehen – auch für Inhaber nur ausdrücklich. */
+export async function setPrivateAccess(fd: FormData) {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  const on = fd.get("on") === "1";
+  await db
+    .update(schema.memberships)
+    .set({ privateAccess: on, ...(on ? {} : { privatePinHash: null }) })
+    .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  if (!on) await db.update(schema.sessions).set({ privateUnlockedUntil: null }).where(and(eq(schema.sessions.tenantId, session.tenantId), eq(schema.sessions.userId, userId)));
+  revalidatePath("/", "layout");
+}

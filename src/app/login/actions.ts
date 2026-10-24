@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { asc, eq, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
+import { homeFor } from "@/lib/auth/areas";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { normalizeLogin } from "@/lib/auth/username";
 
@@ -51,7 +52,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const now = new Date();
   await db.update(schema.users).set({ lastLoginAt: now, lastSeenAt: now }).where(eq(schema.users.id, user.id));
   await createSession(user.id, membership.tenantId);
-  redirect("/");
+  // Gleich auf die eigene Startseite (z. B. nur Paletten-Lager oder nur Privat), ohne „gesperrt“-Umweg.
+  redirect(homeFor({ role: membership.role, areas: membership.areas ?? null, privateAccess: membership.privateAccess }));
 }
 
 export async function logout() {

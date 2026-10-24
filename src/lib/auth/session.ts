@@ -21,6 +21,11 @@ export type Session = {
   brandIds: string[] | null;
   /** Nur ansehen: Server Actions werden abgewiesen (siehe requireSession), schreibende Anfragen im Proxy. */
   readOnly: boolean;
+  /** Zugang zu „Privat“; mit PIN nur offen, solange `privateUnlockedUntil` in der Zukunft liegt. */
+  privateAccess: boolean;
+  privatePin: boolean;
+  privateUnlockedUntil: Date | null;
+  sessionId: string;
   email: string;
   name: string | null;
   tenantName: string;
@@ -62,6 +67,10 @@ export const getSession = cache(async (): Promise<Session | null> => {
       areas: schema.memberships.areas,
       brandIds: schema.memberships.brandIds,
       readOnly: schema.memberships.readOnly,
+      privateAccess: schema.memberships.privateAccess,
+      privatePinHash: schema.memberships.privatePinHash,
+      privateUnlockedUntil: schema.sessions.privateUnlockedUntil,
+      sessionId: schema.sessions.id,
     })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
@@ -76,8 +85,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
     .where(and(eq(schema.sessions.id, hash(token)), gt(schema.sessions.expiresAt, new Date())));
   if (!row) return null;
   touchLastSeen(row.userId);
+  const { privatePinHash, ...rest } = row;
   // Inhaber sind nie „nur ansehen“.
-  return { ...row, readOnly: row.role === "staff" && row.readOnly };
+  return { ...rest, privatePin: Boolean(privatePinHash), readOnly: row.role === "staff" && row.readOnly };
 });
 
 // „Zuletzt aktiv“ höchstens alle 5 Minuten je Benutzer schreiben – nicht bei jeder Anfrage.

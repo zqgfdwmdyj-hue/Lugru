@@ -2,7 +2,7 @@
 // alles oder nur die freigegebenen Bereiche (und bei „Marken“ ggf. nur bestimmte Marken).
 // Ohne Server-Abhängigkeiten – wird in proxy.ts, Seiten und Server Actions genutzt.
 
-export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld";
+export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld" | "privat";
 
 export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string }[] = [
   { key: "start", label: "Start & Aufgaben", paths: ["/"], home: "/" },
@@ -19,9 +19,13 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "buchhaltung", label: "Einkauf & Buchhaltung (Rechnungen, COG-Export, Repricer)", paths: ["/rechnungen", "/export", "/repricer"], home: "/rechnungen" },
   { key: "service", label: "Service (Retouren, Fälle, Bewertungen)", paths: ["/retouren", "/faelle", "/bewertungen"], home: "/retouren" },
   { key: "geld", label: "Geld (Gewinn, Cash Flow)", paths: ["/gewinn", "/cashflow"], home: "/gewinn" },
+  // Eigenes Recht (memberships.privateAccess) – nie Teil von „alle Bereiche“, auch nicht beim Inhaber.
+  { key: "privat", label: "Privat (Paar, Kinder, Therapie, Tagebuch)", paths: ["/privat"], home: "/privat" },
 ];
 
-export const AREA_KEYS = AREAS.map((a) => a.key);
+/** Bereiche, die man Mitarbeitern über die Bereichs-Auswahl freigeben kann („Privat“ nicht – eigener Schalter). */
+export const STAFF_AREAS = AREAS.filter((a) => a.key !== "privat");
+export const AREA_KEYS = STAFF_AREAS.map((a) => a.key);
 
 /** Zu welchem Bereich gehört ein Pfad? null = kein Bereich (Login, Einstellungen des Inhabers …). */
 export function areaForPath(pathname: string): AreaKey | null {
@@ -33,10 +37,11 @@ export function areaForPath(pathname: string): AreaKey | null {
   return null;
 }
 
-export type Access = { role: "owner" | "staff"; areas: string[] | null };
+export type Access = { role: "owner" | "staff"; areas: string[] | null; privateAccess?: boolean };
 
-/** Inhaber und Mitarbeiter ohne Einschränkung dürfen alles. */
+/** Inhaber und Mitarbeiter ohne Einschränkung dürfen alles – außer „Privat“, das braucht den eigenen Zugang. */
 export function canAccess(a: Access, area: AreaKey | null): boolean {
+  if (area === "privat") return a.privateAccess === true;
   if (area === null || a.role === "owner" || a.areas === null) return true;
   // Lieferanten-Feeds und Artikelstamm hängen an der WaWi – wer WaWi hat, sieht sie mit.
   return a.areas.includes(area) || ((area === "lieferanten" || area === "artikel") && a.areas.includes("wawi"));
@@ -45,7 +50,7 @@ export function canAccess(a: Access, area: AreaKey | null): boolean {
 /** Wohin nach dem Login bzw. bei einem gesperrten Bereich? */
 export function homeFor(a: Access): string {
   if (a.role === "owner" || a.areas === null || a.areas.includes("start")) return "/";
-  return AREAS.find((x) => a.areas!.includes(x.key))?.home ?? "/kein-zugriff";
+  return STAFF_AREAS.find((x) => a.areas!.includes(x.key))?.home ?? (a.privateAccess ? "/privat" : "/kein-zugriff");
 }
 
 /** Marken, die ein Mitarbeiter sehen darf: null = alle. */

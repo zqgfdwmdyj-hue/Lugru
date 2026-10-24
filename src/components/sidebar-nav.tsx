@@ -21,10 +21,11 @@ const GROUP_COLOR: Record<string, string> = {
   "Einkauf & Buchhaltung": "#7c3aed",
   Service: "#db2777",
   Geld: "#15803d",
+  Privat: "#be185d",
   System: "#475569",
 };
 
-export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOwner: boolean; areas: string[] | null }) {
+export function SidebarNav({ counts, isOwner, areas, privateAccess = false }: { counts: NavCounts; isOwner: boolean; areas: string[] | null; privateAccess?: boolean }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const gesperrt = search.get("gesperrt") === "1";
@@ -110,6 +111,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
       ],
     },
     { head: "Geld", items: [{ href: "/gewinn", label: "Gewinn" }, { href: "/cashflow", label: "Cash Flow" }] },
+    { head: "Privat", items: [{ href: "/privat", label: "Privat" }] },
     {
       head: "System",
       items: [
@@ -136,7 +138,7 @@ export function SidebarNav({ counts, isOwner, areas }: { counts: NavCounts; isOw
 
   // Mitarbeiter sehen nur freigegebene Bereiche.
   const visible = groups
-    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess({ role: isOwner ? "owner" : "staff", areas }, areaForPath(it.href.split("?")[0]))) }))
+    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess({ role: isOwner ? "owner" : "staff", areas, privateAccess }, areaForPath(it.href.split("?")[0]))) }))
     .filter((g) => g.items.length > 0);
 
   return (

@@ -1,0 +1,205 @@
+import Link from "next/link";
+import { todayIso } from "@/lib/dates";
+import { RATING_FIELDS, SIDE_EFFECTS, URGENT_SIDE_EFFECTS, addDays, diarySeries, isDay, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
+import { loadEntries, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
+import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
+import { StateForm } from "../state-form";
+import { Chips, PrivatHead, Rating, dm, dmy, weekday } from "../ui";
+
+const n = (v: number | undefined) => (v === undefined ? "" : String(v).replace(".", ","));
+
+/** Kleines Säulendiagramm (eine Reihe, 1–5) über 30 Tage; Dosiswechsel oben markiert. */
+function Spark({ title, series }: { title: string; series: { day: string; value: number | null; doseMg: number | null }[] }) {
+  const values = series.filter((p) => p.value !== null).map((p) => p.value!);
+  const avg = values.length ? (values.reduce((s, v) => s + v, 0) / values.length).toFixed(1).replace(".", ",") : "–";
+  let lastDose: number | null = null;
+  return (
+    <figure style={{ margin: 0, minWidth: 0 }}>
+      <figcaption className="small" style={{ display: "flex", justifyContent: "space-between" }}><span>{title}</span><span className="muted">Ø {avg}</span></figcaption>
+      <div className="spark" role="img" aria-label={`${title}, letzte 30 Tage, Durchschnitt ${avg} von 5`}>
+        {series.map((p) => {
+          const changed = p.doseMg !== null && lastDose !== null && p.doseMg !== lastDose;
+          if (p.doseMg !== null) lastDose = p.doseMg;
+          return <i key={p.day} className={`${p.value === null ? "empty" : ""}${changed ? " dose" : ""}`} style={{ height: p.value === null ? "100%" : `${(p.value / 5) * 100}%` }} title={`${dm(p.day)}: ${p.value ?? "–"}${p.doseMg !== null ? ` · ${n(p.doseMg)} mg` : ""}`} />;
+        })}
+      </div>
+      <div className="small muted" style={{ display: "flex", justifyContent: "space-between" }}><span>{dm(series[0].day)}</span><span>heute</span></div>
+    </figure>
+  );
+}
+
+export default async function TagebuchPage({ searchParams }: { searchParams: Promise<{ tag?: string; von?: string }> }) {
+  const session = await requirePrivate();
+  const sp = await searchParams;
+  const today = todayIso();
+  const day = isDay(sp.tag) && sp.tag! <= today ? sp.tag! : today;
+  const s = await privateSettings(session.tenantId);
+  const members = await privateMembers(session.tenantId);
+  const all = await loadEntries<DiaryEntry>(session, ["tagebuch"]);
+  const others = members.filter((m) => m.userId !== session.userId && s.diaryShared.includes(m.userId));
+  const viewing = others.find((m) => m.userId === sp.von) ?? null;
+  const owner = viewing?.userId ?? session.userId;
+  const mine = all.filter((e) => e.userId === owner).sort((a, b) => b.data.day.localeCompare(a.data.day));
+  const entry = mine.find((e) => e.data.day === day)?.data;
+  const last = mine.find((e) => e.data.day < day)?.data;
+  const pre: Partial<DiaryEntry> = entry ?? { med: last?.med, doseMg: last?.doseMg, takenAt: last?.takenAt };
+  const observations = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).sort((a, b) => b.data.day.localeCompare(a.data.day));
+  const aboutMe = observations.filter((o) => o.data.aboutUserId === session.userId);
+  const byMe = observations.filter((o) => o.userId === session.userId);
+  const nameOf = (id: string) => members.find((m) => m.userId === id)?.name ?? members.find((m) => m.userId === id)?.login ?? "?";
+  const urgent = (entry?.sideEffects ?? []).filter((x) => URGENT_SIDE_EFFECTS.has(x));
+  const data = mine.map((e) => e.data);
+  const streakDays = (() => {
+    const days = new Set(data.map((d) => d.day));
+    let k = 0;
+    for (let d = days.has(today) ? today : addDays(today, -1); days.has(d); d = addDays(d, -1)) k++;
+    return k;
+  })();
+
+  return (
+    <>
+      <PrivatHead active="tagebuch" title={viewing ? `ADHS-Tagebuch von ${viewing.name ?? viewing.login}` : "ADHS-Tagebuch"} pin={session.privatePin} sub={
+        <Link className="btn btn-small" href={`/privat/tagebuch/bericht${viewing ? `?von=${viewing.userId}` : ""}`}>Bericht für den Arzttermin</Link>
+      } />
+
+      {others.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Link className={`chip${!viewing ? " active" : ""}`} href="/privat/tagebuch">Mein Tagebuch</Link>
+          {others.map((m) => <Link key={m.userId} className={`chip${viewing?.userId === m.userId ? " active" : ""}`} href={`/privat/tagebuch?von=${m.userId}`}>{m.name ?? m.login}</Link>)}
+        </div>
+      )}
+
+      <section className="card card-pad stack">
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <h2>{weekday(day)}, {dmy(day)} {entry ? <span className="tag tag-ok">eingetragen</span> : <span className="tag tag-warn">noch offen</span>}</h2>
+          <div style={{ display: "flex", gap: 6 }}>
+            <Link className="btn btn-small" href={`/privat/tagebuch?tag=${addDays(day, -1)}${viewing ? `&von=${viewing.userId}` : ""}`} aria-label="Vortag">‹</Link>
+            {day !== today && <Link className="btn btn-small" href={`/privat/tagebuch${viewing ? `?von=${viewing.userId}` : ""}`}>Heute</Link>}
+            {day < today && <Link className="btn btn-small" href={`/privat/tagebuch?tag=${addDays(day, 1)}${viewing ? `&von=${viewing.userId}` : ""}`} aria-label="Folgetag">›</Link>}
+          </div>
+        </div>
+        {streakDays > 1 && !viewing && <div className="small muted">{streakDays} Tage am Stück eingetragen – stark.</div>}
+        {urgent.length > 0 && (
+          <div className="notice notice-warn small" data-testid="diary-urgent">
+            Du hast „{urgent.join("“, „")}“ eingetragen. Das bitte zeitnah mit deiner Ärztin/deinem Arzt besprechen (außerhalb der Sprechzeiten: 116 117).
+            Bei Brustschmerzen, Atemnot, Ohnmacht oder Gedanken, dir oder anderen etwas anzutun: sofort 112.
+          </div>
+        )}
+
+        {viewing ? (
+          entry ? (
+            <div className="small stack" style={{ gap: 4 }}>
+              <div>{[entry.med, entry.doseMg !== undefined ? `${n(entry.doseMg)} mg` : "", entry.takenAt ? `um ${entry.takenAt}` : ""].filter(Boolean).join(" · ") || "kein Medikament eingetragen"}</div>
+              <div>{RATING_FIELDS.map((f) => `${f.label}: ${entry[f.key] ?? "–"}`).join(" · ")}</div>
+              {entry.sideEffects?.length ? <div>Nebenwirkungen: {entry.sideEffects.join(", ")}</div> : null}
+              {entry.good && <div>Gut: {entry.good}</div>}
+              {entry.hard && <div>Schwer: {entry.hard}</div>}
+            </div>
+          ) : <div className="small muted">Für diesen Tag nichts eingetragen.</div>
+        ) : (
+          <div key={day}>
+            <StateForm action={saveDiaryAction} submit={entry ? "Änderungen speichern" : "Tag speichern"} testid="diary-form" keep>
+              <input type="hidden" name="day" value={day} />
+              <h3 className="label" style={{ margin: 0 }}>Medikament</h3>
+              <div className="priv-grid">
+                <div className="field"><label className="label" htmlFor="d-med">Name</label><input className="input" id="d-med" name="med" defaultValue={pre.med ?? ""} placeholder="z. B. Methylphenidat retard" autoComplete="off" /></div>
+                <div className="field"><label className="label" htmlFor="d-dose">Dosis (mg)</label><input className="input" id="d-dose" name="doseMg" inputMode="decimal" defaultValue={n(pre.doseMg)} /></div>
+                <div className="field"><label className="label" htmlFor="d-taken">eingenommen um</label><input className="input" id="d-taken" name="takenAt" type="time" defaultValue={pre.takenAt ?? ""} /></div>
+                <div className="field"><label className="label" htmlFor="d-onset">Wirkung spürbar ab</label><input className="input" id="d-onset" name="onset" type="time" defaultValue={entry?.onset ?? ""} /></div>
+                <div className="field"><label className="label" htmlFor="d-wear">lässt nach um</label><input className="input" id="d-wear" name="wearOff" type="time" defaultValue={entry?.wearOff ?? ""} /></div>
+              </div>
+              <h3 className="label" style={{ margin: "6px 0 0" }}>Wie war der Tag? (1 = schlecht, 5 = sehr gut)</h3>
+              <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+                {RATING_FIELDS.map((f) => <Rating key={f.key} name={f.key} label={f.label} low={f.low} high={f.high} value={entry?.[f.key]} />)}
+              </div>
+              <h3 className="label" style={{ margin: "6px 0 0" }}>Messwerte (wenn gemessen – am besten in Ruhe, immer zur ähnlichen Uhrzeit)</h3>
+              <div className="priv-grid">
+                <div className="field"><label className="label" htmlFor="d-sleep">Schlaf (Std.)</label><input className="input" id="d-sleep" name="sleepHours" inputMode="decimal" defaultValue={n(entry?.sleepHours)} /></div>
+                <div className="field"><label className="label" htmlFor="d-pulse">Puls (Ruhe)</label><input className="input" id="d-pulse" name="pulse" inputMode="numeric" defaultValue={n(entry?.pulse)} /></div>
+                <div className="field"><label className="label" htmlFor="d-sys">Blutdruck oben</label><input className="input" id="d-sys" name="bpSys" inputMode="numeric" defaultValue={n(entry?.bpSys)} /></div>
+                <div className="field"><label className="label" htmlFor="d-dia">Blutdruck unten</label><input className="input" id="d-dia" name="bpDia" inputMode="numeric" defaultValue={n(entry?.bpDia)} /></div>
+                <div className="field"><label className="label" htmlFor="d-weight">Gewicht (kg)</label><input className="input" id="d-weight" name="weightKg" inputMode="decimal" defaultValue={n(entry?.weightKg)} /></div>
+                <div className="field"><label className="label" htmlFor="d-coffee">Kaffee/Energy (Tassen)</label><input className="input" id="d-coffee" name="caffeine" inputMode="numeric" defaultValue={n(entry?.caffeine)} /></div>
+              </div>
+              <div className="field">
+                <span className="label">Nebenwirkungen heute</span>
+                <Chips name="sideEffects" options={SIDE_EFFECTS} values={entry?.sideEffects} />
+                <input className="input" name="otherEffect" placeholder="Sonstiges (optional)" style={{ marginTop: 6 }} defaultValue={(entry?.sideEffects ?? []).find((x) => !(SIDE_EFFECTS as readonly string[]).includes(x)) ?? ""} />
+              </div>
+              <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+                <div className="field"><label className="label" htmlFor="d-good">Was lief gut?</label><textarea className="input" id="d-good" name="good" rows={2} defaultValue={entry?.good ?? ""} /></div>
+                <div className="field"><label className="label" htmlFor="d-hard">Was war schwer?</label><textarea className="input" id="d-hard" name="hard" rows={2} defaultValue={entry?.hard ?? ""} /></div>
+              </div>
+              <div className="field"><label className="label" htmlFor="d-note">Notiz / Fragen an die Ärztin</label><textarea className="input" id="d-note" name="note" rows={2} defaultValue={entry?.note ?? ""} /></div>
+            </StateForm>
+          </div>
+        )}
+      </section>
+
+      <section className="card card-pad stack">
+        <h2>Verlauf – letzte 30 Tage</h2>
+        {data.length === 0 ? <div className="small muted">Noch keine Einträge – nach ein paar Tagen siehst du hier, wie sich Konzentration, Stimmung und Schlaf entwickeln.</div> : (
+          <>
+            <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18 }} data-testid="diary-charts">
+              {(["focus", "mood", "calm", "sleepQuality"] as const).map((k) => <Spark key={k} title={RATING_FIELDS.find((f) => f.key === k)!.label} series={diarySeries(data, k, today, 30)} />)}
+            </div>
+            <div className="small muted">Je höher die Säule, desto besser (1–5). Ein oranger Strich oben markiert einen Tag mit neuer Dosis.</div>
+            <table className="table" style={{ marginTop: 6 }}>
+              <thead><tr><th>Tag</th><th>Dosis</th><th className="right">Konz.</th><th className="right">Stimm.</th><th className="right">Schlaf</th><th>Nebenwirkungen</th><th></th></tr></thead>
+              <tbody>
+                {mine.slice(0, 14).map((e) => (
+                  <tr key={e.id}>
+                    <td className="num"><Link href={`/privat/tagebuch?tag=${e.data.day}${viewing ? `&von=${viewing.userId}` : ""}`}>{weekday(e.data.day)} {dm(e.data.day)}</Link></td>
+                    <td className="num">{e.data.doseMg !== undefined ? `${n(e.data.doseMg)} mg` : "–"}{e.data.takenAt ? <span className="muted"> {e.data.takenAt}</span> : null}</td>
+                    <td className="num right">{e.data.focus ?? "–"}</td>
+                    <td className="num right">{e.data.mood ?? "–"}</td>
+                    <td className="num right">{e.data.sleepHours !== undefined ? `${n(e.data.sleepHours)} h` : e.data.sleepQuality ?? "–"}</td>
+                    <td className="small">{e.data.sideEffects?.join(", ") || <span className="muted">–</span>}</td>
+                    <td className="right">{!viewing && <form action={deleteEntryAction}><input type="hidden" name="kind" value="tagebuch" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </section>
+
+      <section className="card card-pad stack" id="beobachtungen">
+        <h2>Beobachtungen</h2>
+        <div className="small muted">Wie wirkt es von außen? Gerade in der Einstellungsphase sehen Partner oft Dinge, die man selbst nicht merkt (z. B. gereizt am Abend, ruhiger beim Essen).</div>
+        {aboutMe.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="observations-about-me">
+            {aboutMe.slice(0, 20).map((o) => <li key={o.id} className="small"><strong>{dm(o.data.day)}</strong> {nameOf(o.userId)}: {o.data.text}</li>)}
+          </ul>
+        )}
+        {members.filter((m) => m.userId !== session.userId).length > 0 && (
+          <StateForm action={addObservationAction} submit="Beobachtung speichern" testid="observation-form">
+            <div className="priv-grid">
+              <div className="field">
+                <label className="label" htmlFor="o-about">Über</label>
+                <select className="select" id="o-about" name="about">
+                  {members.filter((m) => m.userId !== session.userId).map((m) => <option key={m.userId} value={m.userId}>{m.name ?? m.login}</option>)}
+                </select>
+              </div>
+              <div className="field"><label className="label" htmlFor="o-day">Tag</label><input className="input" id="o-day" name="day" type="date" defaultValue={today} max={today} /></div>
+            </div>
+            <textarea className="input" name="text" rows={2} placeholder="z. B. Mittags viel ruhiger, ab 17 Uhr gereizt" required />
+          </StateForm>
+        )}
+        {byMe.length > 0 && (
+          <details>
+            <summary className="small" style={{ cursor: "pointer" }}>Meine Beobachtungen ({byMe.length})</summary>
+            <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+              {byMe.slice(0, 30).map((o) => (
+                <li key={o.id} className="small">
+                  <strong>{dm(o.data.day)}</strong> über {nameOf(o.data.aboutUserId)}: {o.data.text}
+                  <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="beobachtung" /><input type="hidden" name="id" value={o.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+    </>
+  );
+}

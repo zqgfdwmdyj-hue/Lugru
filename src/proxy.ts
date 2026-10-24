@@ -17,11 +17,11 @@ async function accessFor(token: string): Promise<ProxyAccess | null> {
   const hit = cache.get(id);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.access;
   const [row] = await db
-    .select({ role: schema.memberships.role, areas: schema.memberships.areas, readOnly: schema.memberships.readOnly })
+    .select({ role: schema.memberships.role, areas: schema.memberships.areas, readOnly: schema.memberships.readOnly, privateAccess: schema.memberships.privateAccess })
     .from(schema.sessions)
     .innerJoin(schema.memberships, and(eq(schema.memberships.userId, schema.sessions.userId), eq(schema.memberships.tenantId, schema.sessions.tenantId)))
     .where(and(eq(schema.sessions.id, id), gt(schema.sessions.expiresAt, new Date())));
-  const access = row ? { role: row.role, areas: row.areas ?? null, readOnly: row.role === "staff" && row.readOnly } : null;
+  const access = row ? { role: row.role, areas: row.areas ?? null, readOnly: row.role === "staff" && row.readOnly, privateAccess: row.privateAccess } : null;
   if (cache.size > 5000) cache.clear();
   cache.set(id, { access, at: Date.now() });
   return access;

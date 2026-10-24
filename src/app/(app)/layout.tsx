@@ -32,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           counts={{ tasks: tasks.n, inbox: inbox.n, orders: orders.n, claims: claims.n, invoices: invoices.n, amazonTodos: amazonTodos.n }}
           isOwner={session.role === "owner"}
           areas={session.areas}
+          privateAccess={session.privateAccess}
         />
         <div className="sidebar-foot">
           <span>{session.tenantName}</span>

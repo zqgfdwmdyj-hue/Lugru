@@ -184,6 +184,13 @@ export const memberships = pgTable(
     brandIds: jsonb("brand_ids").$type<string[] | null>(),
     /** Nur ansehen: Mitarbeiter kann nichts ändern, senden oder abfragen (z. B. Prüfer, Testzugang). */
     readOnly: boolean("read_only").notNull().default(false),
+    /**
+     * Zugang zum Bereich „Privat“ (Paar, Kinder, Therapie, Tagebuch). Gilt auch für Inhaber nur,
+     * wenn ausdrücklich vergeben – „alle Bereiche“ schließt ihn nicht ein.
+     */
+    privateAccess: boolean("private_access").notNull().default(false),
+    /** Optionale PIN für „Privat“ (bcrypt). */
+    privatePinHash: text("private_pin_hash"),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
@@ -197,6 +204,8 @@ export const sessions = pgTable("sessions", {
     .references(() => users.id, { onDelete: "cascade" }),
   tenantId: tenantId(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  /** Bis wann „Privat“ nach PIN-Eingabe in dieser Sitzung offen ist. */
+  privateUnlockedUntil: timestamp("private_unlocked_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
 

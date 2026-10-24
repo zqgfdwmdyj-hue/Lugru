@@ -7,6 +7,7 @@ import { addDaysIso, dueLabel, greeting, longDate, todayIso } from "@/lib/dates"
 import { formatDate } from "@/lib/numbers";
 import { createTask, deleteTask, toggleTask } from "@/lib/tasks/actions";
 import { refreshImportReminder } from "@/lib/tasks/system";
+import { PrivateHint } from "./privat/hint";
 
 const CATEGORY_LABEL: Record<string, string> = {
   amazon: "Amazon",
@@ -184,6 +185,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           />
         </form>
       </div>
+      <PrivateHint session={session} />
 
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "hidden" }}>

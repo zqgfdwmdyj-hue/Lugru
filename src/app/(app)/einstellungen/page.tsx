@@ -4,9 +4,9 @@ import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
-import { removeUser, saveSettings, saveSupplierName } from "./actions";
+import { removeUser, saveSettings, saveSupplierName, setPrivateAccess } from "./actions";
 import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
-import { AREAS } from "@/lib/auth/areas";
+import { STAFF_AREAS as AREAS } from "@/lib/auth/areas";
 import { formatSeen, isOnline } from "@/lib/auth/last-seen";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
@@ -32,7 +32,7 @@ export default async function EinstellungenPage() {
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -187,6 +187,13 @@ export default async function EinstellungenPage() {
                   )}
                 </td>
                 <td className="right">
+                  <form action={setPrivateAccess} style={{ marginBottom: 4 }} data-testid="private-access">
+                    <input type="hidden" name="userId" value={m.userId} />
+                    <input type="hidden" name="on" value={m.privateAccess ? "0" : "1"} />
+                    <button className="btn-link small" type="submit" title="Bereich „Privat“ (Paar, Kinder, Therapie, Tagebuch) – wird einzeln vergeben, auch für Inhaber">
+                      {m.privateAccess ? "🔒 Privat: ja – entziehen" : "Privat freigeben"}
+                    </button>
+                  </form>
                   {m.userId !== session.userId && (
                     <div className="stack" style={{ gap: 4, alignItems: "flex-end" }}>
                       <SetPasswordForm userId={m.userId} login={m.email} />

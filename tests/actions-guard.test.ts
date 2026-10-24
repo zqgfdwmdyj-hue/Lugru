@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 // Nur-ansehen-Konten werden in requireSession abgewiesen. Das hält nur, wenn jede Server Action die
 // Sitzung über requireSession/requireArea/requireOwner holt – direkt oder über eine Hilfsfunktion der Datei.
 
-const GUARD = /\brequire(Session|Area|Owner)\(/;
+// requirePrivate (src/lib/private/service.ts) ruft selbst requireSession auf.
+const GUARD = /\brequire(Session|Area|Owner|Private)\(/;
 const FREE = new Set(["src/app/login/actions.ts:login", "src/app/login/actions.ts:logout"]);
 
 function functionBodies(src: string) {
