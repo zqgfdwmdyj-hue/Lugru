@@ -32,6 +32,11 @@ export const SCOPES_USER_READONLY = [
  * „Aufträge" und das Zurückmelden der Sendungsnummer.
  */
 export const SCOPES_USER = [...SCOPES_USER_LEGACY, 'https://api.ebay.com/oauth/api_scope/sell.fulfillment'];
+/**
+ * Verkehrsdaten der Angebote (Einblendungen, Aufrufe, Käufe) für „Angebote prüfen". Nur lesend und
+ * optional: ältere Verbindungen ohne diese Zustimmung laufen weiter, nur ohne Verkehrsdaten.
+ */
+export const SCOPE_ANALYTICS = 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly';
 
 export function apiBase(env: Env): string {
   // Nur für Tests: eBay-Aufrufe auf einen Mock umleiten. In Betrieb nicht gesetzt.

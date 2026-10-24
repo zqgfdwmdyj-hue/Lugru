@@ -76,6 +76,7 @@ export function SidebarNav({ counts, isOwner, areas, privateAccess = false }: { 
       head: "eBay",
       items: [
         { href: "/ebay", label: "Neues Angebot" },
+        { href: "/ebay/pruefen", label: "Angebote prüfen" },
         { href: "/ebay?ansicht=artikel", label: "Artikel & Gewinn" },
         { href: "/ebay?ansicht=verlauf", label: "Verlauf" },
         { href: "/ebay?ansicht=rechnungen", label: "Rechnungen (eBay)" },

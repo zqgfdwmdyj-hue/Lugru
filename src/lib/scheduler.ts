@@ -21,6 +21,7 @@ import { refreshServiceTasks } from "@/lib/service/tasks";
 import { refreshStockWarnings } from "@/lib/stock/warnings";
 import { syncChannelStock } from "@/lib/stock/channel-sync";
 import { runTransfers } from "@/lib/temu/transfer";
+import { reviewDue } from "@/lib/ebay-review/service";
 import { adoptEbayAttempts, ensureEbayStock } from "@/lib/stock/ebay-link";
 import { sendPendingReceipts } from "@/lib/invoices/receipts";
 import { sendPendingToStotax } from "@/lib/invoices/stotax";
@@ -92,6 +93,8 @@ export async function runScheduledJobs(force = false) {
         }
         // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
         if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));
+        // Angebote prüfen: einmal am Tag neu laden, Ungeprüfte und seit 7 Tagen nicht Geprüfte – im Hintergrund.
+        if (due(`${t}:ebay-review`, 59)) void step("eBay-Angebote prüfen", () => reviewDue(t));
       }
       if (await temuConnected(t)) {
         if (force || due(`${t}:temu-orders`, 4)) await step("Temu-Bestellungen", () => syncTemuOrders(t));

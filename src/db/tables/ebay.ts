@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
-import { createdAt, tenantId } from "./core";
+import { createdAt, id, tenantId, updatedAt } from "./core";
 import { invoiceJson } from "./encrypted";
 
 // eBay-Listing-Tool (übernommen aus dem bisherigen LuGru eBay-Tool).
@@ -121,4 +121,41 @@ export const ebayIdealoPrices = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.productKey, t.day] })],
+);
+
+/**
+ * „Angebote prüfen“: je laufendem eBay-Angebot der letzte Prüfstand – Punktzahl, Hinweise, Fakten aus
+ * GetItem, Preisvergleich, Verkehrsdaten, KI-Vorschlag und was zuletzt bei eBay geändert wurde.
+ */
+export const ebayListingChecks = pgTable(
+  "ebay_listing_checks",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    itemId: text("item_id").notNull(),
+    /** „tool“ = übers eBay-Tool (Inventory API) eingestellt, „ebay“ = direkt bei eBay / anderes Programm. */
+    source: text("source", { enum: ["tool", "ebay"] }).notNull().default("ebay"),
+    attemptId: integer("attempt_id"),
+    title: text("title").notNull(),
+    image: text("image"),
+    url: text("url"),
+    sku: text("sku"),
+    price: numeric("price", { precision: 14, scale: 2, mode: "number" }),
+    quantity: integer("quantity"),
+    variations: integer("variations").notNull().default(0),
+    /** wartet → läuft → fertig/fehler; „beendet“ = bei eBay nicht mehr aktiv. */
+    status: text("status", { enum: ["wartet", "läuft", "fertig", "fehler", "beendet"] }).notNull().default("wartet"),
+    score: integer("score"),
+    issues: jsonb("issues").$type<unknown[]>().notNull().default([]),
+    facts: jsonb("facts").$type<Record<string, unknown> | null>(),
+    market: jsonb("market").$type<Record<string, unknown> | null>(),
+    traffic: jsonb("traffic").$type<Record<string, unknown> | null>(),
+    ai: jsonb("ai").$type<Record<string, unknown> | null>(),
+    applied: jsonb("applied").$type<Record<string, unknown> | null>(),
+    message: text("message"),
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("ebay_listing_checks_uq").on(t.tenantId, t.itemId), index("ebay_listing_checks_status_idx").on(t.tenantId, t.status)],
 );

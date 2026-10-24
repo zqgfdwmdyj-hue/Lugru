@@ -17,6 +17,7 @@ export function ConnectionTab({ ctx }: { ctx: TabContext }) {
   const [redirectUrl, setRedirectUrl] = useState('');
   /** Bestellungen lesen (für Rechnungen) mit anfragen — abschaltbar, falls eBay die Anmeldung damit ablehnt. */
   const [withOrders, setWithOrders] = useState(true);
+  const [withAnalytics, setWithAnalytics] = useState(true);
 
   const until = formatDate(status?.connectionExpiresAt ?? null);
   /** Zugangsdaten der gewählten Umgebung – im bisherigen Tool per setup.cmd, hier im Formular. */
@@ -105,15 +106,20 @@ export function ConnectionTab({ ctx }: { ctx: TabContext }) {
             <input type="checkbox" checked={withOrders} onChange={(e) => setWithOrders(e.target.checked)} />
             Bestellungen lesen erlauben (nötig für Rechnungen)
           </label>
+          <label className="check">
+            <input type="checkbox" checked={withAnalytics} onChange={(e) => setWithAnalytics(e.target.checked)} />
+            Verkehrsdaten lesen erlauben (Einblendungen, Klicks, Käufe für „Angebote prüfen")
+          </label>
           <p className="muted small">
-            Zeigt eBay schon vor der Anmeldung „invalid_request", das Häkchen entfernen und erneut verbinden.
+            Zeigt eBay schon vor der Anmeldung „invalid_request", erst das Häkchen „Verkehrsdaten", dann „Bestellungen" entfernen und erneut verbinden.
             Klappt es dann, ist die Bestell-Berechtigung für deinen Entwicklerzugang nicht freigegeben;
             sonst passt der RuName nicht zur Client ID (oben prüfen).
           </p>
           <button
             onClick={() =>
               run(async () => {
-                const r = await api<{ url: string }>(`/auth/url${withOrders ? '' : '?orders=0'}`);
+                const q = [withOrders ? '' : 'orders=0', withAnalytics ? '' : 'analytics=0'].filter(Boolean).join('&');
+                const r = await api<{ url: string }>(`/auth/url${q ? `?${q}` : ''}`);
                 setConsentUrl(r.url);
                 window.open(r.url, '_blank');
               }, 'eBay-Anmeldung geöffnet.')

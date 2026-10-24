@@ -330,6 +330,13 @@
       "when": 1792825795915,
       "tag": "0046_paletten_abholung",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792832120116,
+      "tag": "0047_ebay_pruefen",
+      "breakpoints": true
     }
   ]
 }

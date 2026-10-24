@@ -593,7 +593,7 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   // --- eBay-Verbindung ---
 
   r.get('/auth/url', h(async (req, res) => {
-    res.json({ url: buildConsentUrl(await getSettings(db), { withOrders: req.query.orders !== '0' }) });
+    res.json({ url: buildConsentUrl(await getSettings(db), { withOrders: req.query.orders !== '0', withAnalytics: req.query.analytics !== '0' }) });
   }));
 
   r.post('/auth/code', h(async (req, res) => {
