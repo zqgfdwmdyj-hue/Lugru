@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { dateReminder, dateStats, kidsHours, overnight, shiftMonth, type DateEntry, type DateIdea } from "@/lib/private/logic";
+import { clockShiftHours, dateReminder, dateStats, kidsHours, overnight, shiftMonth, type DateEntry, type DateIdea } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { addDateAction, addIdeaAction, deleteEntryAction, toggleIdeaAction } from "../../actions";
 import { AddPanel } from "../../add-panel";
 import { StateForm } from "../../state-form";
-import { Counted, MonthNav, PrivatHead, Rating, dm, hoursLabel, monthLabel, monthParam, weekday } from "../../ui";
+import { Counted, MonthNav, PrivatHead, Rating, clockShiftLabel, dm, hoursLabel, monthLabel, monthParam, weekday } from "../../ui";
 
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 const n = (v: number | undefined) => (v === undefined ? "" : String(v).replace(".", ","));
@@ -27,7 +27,7 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
   const edit = sp.bearbeiten ? dates.find((e) => e.id === sp.bearbeiten) : undefined;
   const v = edit?.data;
   const line = (d: DateEntry) =>
-    [d.from && d.to ? `${d.from}–${d.to}${overnight(d) ? " (bis nächster Tag)" : ""}` : kidsHours(d) ? hoursLabel(kidsHours(d)) : "", d.what, d.sitter ? `Kinder bei ${d.sitter}` : "", d.costEur ? euro(d.costEur) : "", d.rating ? `${d.rating}/5` : ""].filter(Boolean).join(" · ");
+    [d.from && d.to ? `${d.from}–${d.to}${overnight(d) ? " (bis nächster Tag)" : ""}${clockShiftHours(d) ? ` (${clockShiftLabel(clockShiftHours(d))}, ${hoursLabel(kidsHours(d))})` : ""}` : kidsHours(d) ? hoursLabel(kidsHours(d)) : "", d.what, d.sitter ? `Kinder bei ${d.sitter}` : "", d.costEur ? euro(d.costEur) : "", d.rating ? `${d.rating}/5` : ""].filter(Boolean).join(" · ");
 
   return (
     <>

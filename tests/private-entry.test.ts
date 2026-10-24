@@ -3,16 +3,16 @@ import { changePlan, durationOf, intakeStatus, medStock, nextSleeper, parseTimes
 
 describe("Dauer prüfen (Kinderzeit, Auszeit, Ausschlafen, Paarzeit)", () => {
   it("von–bis, auch über Mitternacht (zählt am Tag des Beginns)", () => {
-    expect(durationOf({ from: "14:00", to: "16:30" })).toEqual({ hours: 2.5, overnight: false });
-    expect(durationOf({ from: "22:00", to: "02:00" })).toEqual({ hours: 4, overnight: true });
+    expect(durationOf({ from: "14:00", to: "16:30" })).toEqual({ hours: 2.5, overnight: false, clockShift: 0 });
+    expect(durationOf({ from: "22:00", to: "02:00" })).toEqual({ hours: 4, overnight: true, clockShift: 0 });
   });
   it("nur Stunden", () => {
-    expect(durationOf({ hours: 3 })).toEqual({ hours: 3, overnight: false });
+    expect(durationOf({ hours: 3 })).toEqual({ hours: 3, overnight: false, clockShift: 0 });
   });
   it("widersprüchliche Angaben werden nicht still übernommen", () => {
     const r = durationOf({ from: "14:00", to: "16:00", hours: 5 });
     expect("error" in r && r.error).toMatch(/ergibt 2 Std\., angegeben sind 5 Std\./);
-    expect(durationOf({ from: "14:00", to: "16:00", hours: 2 })).toEqual({ hours: 2, overnight: false });
+    expect(durationOf({ from: "14:00", to: "16:00", hours: 2 })).toEqual({ hours: 2, overnight: false, clockShift: 0 });
   });
   it("gleiche Zeiten, nur eine Seite, nichts, zu lang", () => {
     expect("error" in durationOf({ from: "10:00", to: "10:00" })).toBe(true);

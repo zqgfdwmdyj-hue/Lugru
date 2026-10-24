@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { kidsHours, kidsOverview, nextSleeper, overnight, shiftMonth, type PartnerKey, type SleepEntry } from "@/lib/private/logic";
+import { addDays, clockChangeOn, clockShiftHours, kidsHours, kidsOverview, nextSleeper, overnight, shiftMonth, upcomingClockChange, type PartnerKey, type SleepEntry } from "@/lib/private/logic";
 import type { Session } from "@/lib/auth/session";
 import { loadEntries, myPartner, privateSettings, type Entry } from "@/lib/private/service";
 import { deleteEntryAction, type FormState } from "./actions";
 import { StateForm } from "./state-form";
-import { Choice, MonthNav, PrivatHead, dm, hoursLabel, monthLabel, weekday, type PrivatTab } from "./ui";
+import { Choice, MonthNav, PrivatHead, clockShiftLabel, dm, hoursLabel, monthLabel, weekday, type PrivatTab } from "./ui";
 
 /** Gleiche Farben wie bei der Kinderzeit (auf Farbsehschwäche geprüft); Name steht immer dabei. */
 const COLOR = { a: "#0d9488", b: "#c2410c" } as const;
@@ -20,6 +20,7 @@ function Cell({ list, kind, path, month, names }: { list: Entry<SleepEntry>[]; k
           {e.data.from && e.data.to ? " · " : ""}
           {hoursLabel(kidsHours(e.data))}
           {overnight(e.data) ? <span className="muted"> (über Mitternacht)</span> : null}
+          {clockShiftHours(e.data) ? <span className="muted" data-testid="clock-shift"> ({clockShiftLabel(clockShiftHours(e.data))})</span> : null}
           {e.data.note ? <span className="muted"> · {e.data.note}</span> : null}
           {e.data.linkId ? <span className="muted" data-testid="linked"> · 🔗 zugleich Kinderzeit {names[e.data.person === "a" ? "b" : "a"]}</span> : null}
           {e.data.editedAt ? <span className="muted"> · geändert</span> : null}
@@ -31,6 +32,27 @@ function Cell({ list, kind, path, month, names }: { list: Entry<SleepEntry>[]; k
           </form>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Hinweis rund um die Zeitumstellung (ab einer Woche vorher bis zum Tag danach): Die Nacht ist für alle eine Stunde
+ * länger bzw. kürzer. Gezählt wird nach der Uhr ab der üblichen Aufstehzeit – die Stunde der Umstellung bekommt
+ * oder verliert also niemand allein; wer nach „alter“ Zeit geweckt wurde, setzt „sonst auf um“ entsprechend.
+ */
+function ClockChangeHint({ today }: { today: string }) {
+  const cc = upcomingClockChange(addDays(today, -1), 8);
+  if (!cc) return null;
+  const past = today >= cc.day;
+  const back = cc.change > 0;
+  return (
+    <div className="notice notice-info small" data-testid="clock-change">
+      <strong>🕑 Zeitumstellung in der Nacht zu {weekday(cc.day)} {dm(cc.day)}:</strong>{" "}
+      Die Uhr {past ? "wurde" : "wird"} {back ? "von 3 auf 2 Uhr zurückgestellt – die Nacht ist für alle eine Stunde länger" : "von 2 auf 3 Uhr vorgestellt – die Nacht ist für alle eine Stunde kürzer"}.
+      {" "}Uhrzeiten nach der neuen Uhr eintragen. Gezählt wird nur die Zeit nach der üblichen Aufstehzeit – die {back ? "geschenkte" : "fehlende"} Stunde
+      {back ? " zählt bei niemandem als Ausschlafen" : " wird niemandem abgezogen"}.
+      {back ? " Sind die Kinder nach alter Zeit wach geworden (z. B. 5:30 statt 6:30), „sonst auf um“ entsprechend früher setzen." : " Sind die Kinder nach alter Zeit wach geworden (z. B. 7:30 statt 6:30), „sonst auf um“ entsprechend später setzen."}
     </div>
   );
 }
@@ -144,6 +166,7 @@ export async function FairPage({ session, month, cfg, editId }: { session: Sessi
             </div>
           </details>
           {cfg.hint && <div className="small muted">{cfg.hint}</div>}
+          {cfg.kind === "ausschlafen" && <ClockChangeHint today={today} />}
           {edit && <Link className="small" href={`${cfg.path}?monat=${month}`}>fertig / abbrechen</Link>}
         </StateForm>
       </section>
@@ -155,7 +178,7 @@ export async function FairPage({ session, month, cfg, editId }: { session: Sessi
           <div className="head"><i style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: COLOR.b, marginRight: 5 }} />{name.b}</div>
           {ov.days.length === 0 && <div style={{ gridColumn: "1 / -1" }} className="muted">In diesem Monat nichts erfasst.</div>}
           {ov.days.map((d) => [
-            <div key={`${d.day}-d`} className="num">{weekday(d.day)} {dm(d.day)}</div>,
+            <div key={`${d.day}-d`} className="num">{weekday(d.day)} {dm(d.day)}{clockChangeOn(d.day) ? <div className="small muted" data-testid="clock-night">Zeitumstellung ({clockChangeOn(d.day) > 0 ? "Nacht 1 Std. länger" : "Nacht 1 Std. kürzer"})</div> : null}</div>,
             <div key={`${d.day}-a`}><Cell kind={cfg.kind} path={cfg.path} month={month} names={name} list={d.a.map((e) => byId.get((e as SleepEntry & { id: string }).id)!)} /></div>,
             <div key={`${d.day}-b`}><Cell kind={cfg.kind} path={cfg.path} month={month} names={name} list={d.b.map((e) => byId.get((e as SleepEntry & { id: string }).id)!)} /></div>,
           ])}

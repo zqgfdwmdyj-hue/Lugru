@@ -196,3 +196,5 @@ export const weekday = (iso: string) => WD[new Date(`${iso}T12:00:00Z`).getUTCDa
 const MONTHS = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 export const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 export const hoursLabel = (h: number) => `${String(h).replace(".", ",")} Std.`;
+/** „inkl. Zeitumstellung +1 Std.“ für Zeitspannen über die Umstellung (2–3 Uhr nachts). */
+export const clockShiftLabel = (shift: number) => (shift ? `inkl. Zeitumstellung ${shift > 0 ? "+" : "−"}${hoursLabel(Math.abs(shift))}` : "");

@@ -139,7 +139,7 @@ async function saveTimeEntry(kind: TimeKind, fd: FormData): Promise<FormState> {
   const from = time(fd.get("from"));
   const to = time(fd.get("to"));
   const hoursIn = num(fd.get("hours"), 0, 72);
-  const dur = durationOf({ from, to, hours: hoursIn }, MAX_HOURS[kind]);
+  const dur = durationOf({ day, from, to, hours: hoursIn }, MAX_HOURS[kind]);
   if ("error" in dur) return fail(dur.error);
   const settings = await privateSettings(session.tenantId);
   const base = { day, from, to, hours: from && to ? undefined : dur.hours };
@@ -151,7 +151,7 @@ async function saveTimeEntry(kind: TimeKind, fd: FormData): Promise<FormState> {
         : compact({ ...base, person, note: clip(fd.get("note"), kind === "auszeit" ? 200 : 300) });
   const other: PartnerKey | undefined = person === "a" ? "b" : person === "b" ? "a" : undefined;
   const linkKind: TimeKind | null = kind === "kinder" && fd.get("linkAuszeit") === "on" ? "auszeit" : kind === "auszeit" && fd.get("linkKinder") === "on" ? "kinder" : null;
-  const what = `${dmyOf(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}`;
+  const what = `${dmyOf(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}`;
 
   if (editId?.success) {
     const cur = (await loadEntries<Record<string, unknown>>(session, [kind])).find((e) => e.id === editId.data);

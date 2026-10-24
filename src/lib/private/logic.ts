@@ -185,16 +185,82 @@ export function dateStats(entries: DateEntry[], month: string, today: string) {
   };
 }
 
+// ---- Zeitumstellung (Europe/Berlin) ----------------------------------------------------------------
+
+const TZ = "Europe/Berlin";
+const tzParts = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+/** Abstand der Berliner Uhr zu UTC in Minuten (60 im Winter, 120 im Sommer) zu einem Zeitpunkt. */
+function berlinOffset(utcMs: number): number {
+  const p = Object.fromEntries(tzParts.formatToParts(new Date(utcMs)).map((x) => [x.type, x.value]));
+  const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour), Number(p.minute));
+  return Math.round((asUtc - Math.floor(utcMs / 60_000) * 60_000) / 60_000);
+}
+
+/**
+ * Uhrzeit an einem Tag (Berliner Uhr) → Zeitpunkt. Wie eine echte Uhr: Die doppelte Stunde im Oktober
+ * (2–3 Uhr) gilt als die erste, eine Zeit in der übersprungenen Stunde im März als eine Stunde später.
+ */
+export function berlinInstant(day: string, hhmm: string): number {
+  const [y, mo, d] = day.split("-").map(Number);
+  const [h, mi] = hhmm.split(":").map(Number);
+  const naive = Date.UTC(y, mo - 1, d, h, mi);
+  const offsets = [...new Set([berlinOffset(naive - DAY), berlinOffset(naive + DAY)])].sort((a, b) => b - a);
+  for (const o of offsets) if (berlinOffset(naive - o * 60_000) === o) return naive - o * 60_000;
+  return naive - Math.min(...offsets) * 60_000;
+}
+
+/**
+ * Uhr-Umstellung in der Nacht vor diesem Tag: +60 = Uhr zurückgestellt (Oktober, Nacht eine Stunde länger),
+ * −60 = vorgestellt (März, eine Stunde kürzer), 0 = keine.
+ */
+export function clockChangeOn(day: string): number {
+  return berlinOffset(ms(addDays(day, -1))) - berlinOffset(ms(day));
+}
+
+/** Nächste Zeitumstellung ab heute innerhalb von `withinDays` Tagen (Tag und Richtung) – oder null. */
+export function upcomingClockChange(today: string, withinDays = 7): { day: string; change: number } | null {
+  for (let i = 0; i <= withinDays; i++) {
+    const day = addDays(today, i);
+    const change = clockChangeOn(day);
+    if (change) return { day, change };
+  }
+  return null;
+}
+
+/** Minuten zwischen von und bis an einem Tag (über Mitternacht: bis am Folgetag) – nach Uhr und tatsächlich vergangen. */
+function spanMinutes(day: string, from: string, to: string): { wall: number; real: number } {
+  const toMin = (t: string) => Number(t.split(":")[0]) * 60 + Number(t.split(":")[1]);
+  let wall = toMin(to) - toMin(from);
+  if (wall < 0) wall += 24 * 60;
+  if (!isDay(day)) return { wall, real: wall };
+  const endDay = toMin(to) < toMin(from) ? addDays(day, 1) : day;
+  const real = Math.round((berlinInstant(endDay, to) - berlinInstant(day, from)) / 60_000);
+  return { wall, real: real > 0 ? real : wall };
+}
+
+/**
+ * Stunden, um die die Zeitumstellung eine von–bis-Spanne verlängert (+1) oder verkürzt (−1) – 0, wenn die
+ * Spanne nicht über die Umstellung (2–3 Uhr nachts) geht.
+ */
+export function clockShiftHours(e: Pick<KidsEntry, "from" | "to"> & { day?: string }): number {
+  if (!e.day || !e.from || !e.to || !TIME_RE.test(e.from) || !TIME_RE.test(e.to)) return 0;
+  const { wall, real } = spanMinutes(e.day, e.from, e.to);
+  return round1((real - wall) / 60);
+}
+
 // ---- Kinderzeit ------------------------------------------------------------------------------------
 
-/** Dauer in Stunden: aus von–bis (auch über Mitternacht) oder der Angabe „Stunden“. */
-export function kidsHours(e: Pick<KidsEntry, "from" | "to" | "hours">): number {
-  if (e.from && e.to && /^\d{1,2}:\d{2}$/.test(e.from) && /^\d{1,2}:\d{2}$/.test(e.to)) {
-    const [h1, m1] = e.from.split(":").map(Number);
-    const [h2, m2] = e.to.split(":").map(Number);
-    let mins = h2 * 60 + m2 - (h1 * 60 + m1);
-    if (mins < 0) mins += 24 * 60;
-    return round1(mins / 60);
+const TIME_RE = /^\d{1,2}:\d{2}$/;
+
+/**
+ * Dauer in Stunden: aus von–bis (auch über Mitternacht) oder der Angabe „Stunden“. Mit Tag zählt die
+ * tatsächlich vergangene Zeit – über die Zeitumstellung hinweg also eine Stunde mehr (Oktober) bzw. weniger (März).
+ */
+export function kidsHours(e: Pick<KidsEntry, "from" | "to" | "hours"> & { day?: string }): number {
+  if (e.from && e.to && TIME_RE.test(e.from) && TIME_RE.test(e.to)) {
+    const { wall, real } = spanMinutes(e.day ?? "", e.from, e.to);
+    return round1((e.day ? real : wall) / 60);
   }
   return e.hours && e.hours > 0 ? round1(e.hours) : 0;
 }
@@ -207,23 +273,23 @@ export const overnight = (e: Pick<KidsEntry, "from" | "to">) => Boolean(e.from &
  * Stunden. Widersprüchliche Angaben (von–bis und abweichende Stunden), gleiche Zeiten oder nur eine Seite
  * werden mit verständlicher Meldung abgelehnt, statt still eine davon zu nehmen.
  */
-export function durationOf(e: { from?: string; to?: string; hours?: number }, maxHours = 16): { hours: number; overnight: boolean } | { error: string } {
+export function durationOf(e: { day?: string; from?: string; to?: string; hours?: number }, maxHours = 16): { hours: number; overnight: boolean; clockShift: number } | { error: string } {
   if ((e.from && !e.to) || (!e.from && e.to)) {
     if (e.hours && e.hours > 0) return { error: "Bitte entweder von–bis vollständig oder nur die Stunden angeben." };
     return { error: e.from ? "Bitte auch „bis“ angeben – oder die Stunden." : "Bitte auch „von“ angeben – oder die Stunden." };
   }
   if (e.from && e.to) {
     if (e.from === e.to) return { error: "„von“ und „bis“ sind gleich – bitte prüfen." };
-    const h = kidsHours({ from: e.from, to: e.to });
+    const h = kidsHours({ day: e.day, from: e.from, to: e.to });
     if (e.hours !== undefined && e.hours > 0 && Math.abs(e.hours - h) > 0.25) {
       return { error: `von–bis ergibt ${String(h).replace(".", ",")} Std., angegeben sind ${String(e.hours).replace(".", ",")} Std. – bitte angleichen oder nur eins angeben.` };
     }
     if (h > maxHours) return { error: `${e.from}–${e.to} wären ${String(h).replace(".", ",")} Std.${overnight(e) ? " (über Mitternacht)" : ""} – bitte die Uhrzeiten prüfen.` };
-    return { hours: h, overnight: overnight(e) };
+    return { hours: h, overnight: overnight(e), clockShift: clockShiftHours(e) };
   }
   if (e.hours !== undefined && e.hours > 0) {
     if (e.hours > maxHours) return { error: `Mehr als ${maxHours} Std. – bitte prüfen.` };
-    return { hours: round1(e.hours), overnight: false };
+    return { hours: round1(e.hours), overnight: false, clockShift: 0 };
   }
   return { error: "Bitte von–bis oder die Stunden angeben." };
 }
