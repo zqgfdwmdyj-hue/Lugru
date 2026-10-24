@@ -36,6 +36,8 @@ export type TaskEntry = {
   reflection?: string;
 };
 export type AppointmentEntry = { day: string; time?: string; with: "ads" | "paar" | "arzt" | "sonst"; notes?: string };
+/** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
+export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string };
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;
@@ -133,6 +135,24 @@ export function intimStats(entries: Pick<IntimEntry, "day">[], month: string, to
   const gaps = recent.slice(1).map((d, i) => daysBetween(recent[i], d));
   return {
     inMonth,
+    last,
+    daysSinceLast: last ? daysBetween(last, today) : null,
+    avgGapDays: gaps.length ? round1(gaps.reduce((s, g) => s + g, 0) / gaps.length) : null,
+    last90: recent.length,
+  };
+}
+
+/** Paarzeit: Anzahl und Stunden im Monat, zuletzt, Ø Abstand (90 Tage), Babysitter-Kosten im Monat. */
+export function dateStats(entries: DateEntry[], month: string, today: string) {
+  const inMonth = entries.filter((e) => e.day.startsWith(month));
+  const days = [...new Set(entries.map((e) => e.day))].filter((d) => d <= today).sort();
+  const last = days[days.length - 1] ?? null;
+  const recent = days.filter((d) => d >= addDays(today, -90));
+  const gaps = recent.slice(1).map((d, i) => daysBetween(recent[i], d));
+  return {
+    inMonth: inMonth.length,
+    hoursInMonth: round1(inMonth.reduce((s, e) => s + kidsHours(e), 0)),
+    costInMonth: Math.round(inMonth.reduce((s, e) => s + (e.costEur ?? 0), 0) * 100) / 100,
     last,
     daysSinceLast: last ? daysBetween(last, today) : null,
     avgGapDays: gaps.length ? round1(gaps.reduce((s, g) => s + g, 0) / gaps.length) : null,
@@ -247,7 +267,7 @@ export function diarySeries(entries: DiaryEntry[], key: RatingKey, today: string
 }
 
 /** Für die nächste Sitzung: was seit dem letzten Termin passiert ist. */
-export function sinceSummary(input: { since: string; today: string; intim: IntimEntry[]; kids: KidsEntry[]; tasks: TaskEntry[] }) {
+export function sinceSummary(input: { since: string; today: string; intim: IntimEntry[]; kids: KidsEntry[]; tasks: TaskEntry[]; dates?: DateEntry[] }) {
   const { since, today } = input;
   const kids = input.kids.filter((e) => e.day >= since && e.day <= today);
   const hours = { a: 0, b: 0 };
@@ -256,6 +276,7 @@ export function sinceSummary(input: { since: string; today: string; intim: Intim
   return {
     days: daysBetween(since, today),
     intim: input.intim.filter((e) => e.day >= since && e.day <= today).length,
+    dates: (input.dates ?? []).filter((e) => e.day >= since && e.day <= today).length,
     kidsHours: hours,
     kidsCount: { a: kids.filter((e) => e.person === "a").length, b: kids.filter((e) => e.person === "b").length },
     tasksDone: done.length,

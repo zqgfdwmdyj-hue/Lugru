@@ -100,6 +100,27 @@ export async function addTalkAction(_prev: FormState, fd: FormData): Promise<For
   return done("Paar-Gespräch gespeichert.");
 }
 
+/** Paarzeit: zu zweit unterwegs, Kinder bei Babysitterin & Co. */
+export async function addDateAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate();
+  const day = dayOr(fd.get("day"));
+  if (day > todayIso()) return fail("Bitte kein Datum in der Zukunft – geplante Dates als Termin eintragen.");
+  const from = time(fd.get("from"));
+  const to = time(fd.get("to"));
+  await addEntry(session, "paarzeit", compact({
+    day,
+    from,
+    to,
+    hours: from && to ? undefined : num(fd.get("hours"), 0, 72),
+    what: clip(fd.get("what"), 200),
+    sitter: clip(fd.get("sitter"), 60),
+    costEur: num(fd.get("costEur"), 0, 10000),
+    rating: rating(fd.get("rating")),
+    note: clip(fd.get("note"), 500),
+  }));
+  return done(`Paarzeit am ${day.split("-").reverse().join(".")} eingetragen.`);
+}
+
 // ---- Kinder ------------------------------------------------------------------------------------------
 
 export async function addKidsAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -232,7 +253,7 @@ export async function addObservationAction(_prev: FormState, fd: FormData): Prom
 
 // ---- Löschen (alle Arten) ----------------------------------------------------------------------------
 
-const KINDS: PrivateKind[] = ["intim", "kinder", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech"];
+const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech"];
 
 export async function deleteEntryAction(fd: FormData) {
   const session = await requirePrivate();

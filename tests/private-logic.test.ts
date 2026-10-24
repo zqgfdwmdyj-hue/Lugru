@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canAccess, homeFor } from "@/lib/auth/areas";
-import { diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, monthGrid, num, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
+import { dateStats, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, monthGrid, num, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
 
 // Bereich „Privat“: Rechte und Auswertungen. Fiktive Daten.
 
@@ -38,6 +38,22 @@ describe("Kalender und Paar", () => {
     // Tage 20.9., 1.10., 5.10., 15.10. → Abstände 11, 4, 10
     expect(s.avgGapDays).toBe(8.3);
     expect(intimStats([], "2026-10", "2026-10-24").daysSinceLast).toBeNull();
+  });
+});
+
+describe("Paarzeit", () => {
+  it("Anzahl, Stunden und Kosten im Monat, zuletzt, Ø Abstand", () => {
+    const s = dateStats(
+      [
+        { day: "2026-10-03", from: "19:00", to: "23:30", sitter: "Babysitterin", costEur: 45 },
+        { day: "2026-10-17", hours: 3, sitter: "Oma" },
+        { day: "2026-09-19", hours: 2, costEur: 30 },
+      ],
+      "2026-10",
+      "2026-10-24",
+    );
+    expect(s).toMatchObject({ inMonth: 2, hoursInMonth: 7.5, costInMonth: 45, last: "2026-10-17", daysSinceLast: 7, avgGapDays: 14, last90: 3 });
+    expect(dateStats([], "2026-10", "2026-10-24")).toMatchObject({ inMonth: 0, daysSinceLast: null, avgGapDays: null });
   });
 });
 
@@ -122,6 +138,7 @@ describe("Seit der letzten Sitzung", () => {
       since: "2026-10-10",
       today: "2026-10-24",
       intim: [{ day: "2026-10-09" }, { day: "2026-10-12" }, { day: "2026-10-20" }],
+      dates: [{ day: "2026-10-05" }, { day: "2026-10-17", hours: 3 }],
       kids: [{ day: "2026-10-11", person: "a", hours: 2 }, { day: "2026-10-15", person: "b", from: "10:00", to: "11:30" }],
       tasks: [
         { title: "x", source: "paar", forWhom: "beide", repeat: "einmal", done: true, doneAt: "2026-10-15" },
@@ -129,6 +146,6 @@ describe("Seit der letzten Sitzung", () => {
         { title: "z", source: "ads", forWhom: "a", repeat: "einmal" },
       ],
     });
-    expect(r).toMatchObject({ days: 14, intim: 2, kidsHours: { a: 2, b: 1.5 }, tasksDone: 2, tasksOpen: 1 });
+    expect(r).toMatchObject({ days: 14, intim: 2, dates: 1, kidsHours: { a: 2, b: 1.5 }, tasksDone: 2, tasksOpen: 1 });
   });
 });

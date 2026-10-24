@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { intimStats, isDay, monthGrid, shiftMonth, type IntimEntry, type TalkEntry } from "@/lib/private/logic";
+import { dateStats, intimStats, isDay, kidsHours, monthGrid, shiftMonth, type DateEntry, type IntimEntry, type TalkEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
-import { addIntimAction, addTalkAction, deleteEntryAction } from "../actions";
+import { addDateAction, addIntimAction, addTalkAction, deleteEntryAction } from "../actions";
 import { StateForm } from "../state-form";
-import { Choice, PrivatHead, Rating, dmy, monthLabel, weekday } from "../ui";
+import { Choice, PrivatHead, Rating, dm, dmy, hoursLabel, monthLabel, weekday } from "../ui";
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
@@ -24,6 +24,16 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
   const href = (m: string, d?: string) => `/privat/paar?monat=${m}${d ? `&tag=${d}` : ""}#kalender`;
   const who = (k?: string) => (k === "a" ? s.partners.a : k === "b" ? s.partners.b : k === "beide" ? "beide" : null);
   const prevMonths = [1, 2, 3].map((i) => shiftMonth(month, -i)).map((m) => ({ m, n: intim.filter((e) => e.data.day.startsWith(m)).length }));
+  const dates = (await loadEntries<DateEntry>(session, ["paarzeit"])).sort((a, b) => b.data.day.localeCompare(a.data.day) || (b.data.from ?? "").localeCompare(a.data.from ?? ""));
+  const ds = dateStats(dates.map((e) => e.data), month, today);
+  const datesByDay = new Map<string, typeof dates>();
+  for (const e of dates) datesByDay.set(e.data.day, [...(datesByDay.get(e.data.day) ?? []), e]);
+  const dayDates = datesByDay.get(selected) ?? [];
+  const sitters = [...new Set(["Babysitterin", "Oma", "Opa", ...dates.map((e) => e.data.sitter).filter((x): x is string => Boolean(x))])];
+  const prevDates = [1, 2, 3].map((i) => shiftMonth(month, -i)).map((m) => ({ m, n: dates.filter((e) => e.data.day.startsWith(m)).length }));
+  const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
+  const dateLine = (d: DateEntry) =>
+    [d.from && d.to ? `${d.from}–${d.to}` : kidsHours(d) ? hoursLabel(kidsHours(d)) : "", d.what, d.sitter ? `Kinder bei ${d.sitter}` : "", d.costEur ? euro(d.costEur) : "", d.rating ? `${d.rating}/5` : ""].filter(Boolean).join(" · ");
 
   return (
     <>
@@ -33,6 +43,7 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
         <div className="card card-pad"><div className="kpi-label">{monthLabel(month)}</div><div className="kpi-value" data-testid="intim-month">{stats.inMonth}×</div><div className="small muted">{prevMonths.map((p) => `${monthLabel(p.m).split(" ")[0].slice(0, 3)} ${p.n}×`).join(" · ")}</div></div>
         <div className="card card-pad"><div className="kpi-label">Zuletzt</div><div className="kpi-value">{stats.daysSinceLast === null ? "–" : stats.daysSinceLast === 0 ? "heute" : `vor ${stats.daysSinceLast} T.`}</div><div className="small muted">{stats.last ? dmy(stats.last) : "noch nichts eingetragen"}</div></div>
         <div className="card card-pad"><div className="kpi-label">Ø Abstand (90 Tage)</div><div className="kpi-value">{stats.avgGapDays === null ? "–" : `${String(stats.avgGapDays).replace(".", ",")} T.`}</div><div className="small muted">{stats.last90}× in 90 Tagen</div></div>
+        <a href="#paarzeit" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }}><div className="kpi-label">🥂 Paarzeit {monthLabel(month).split(" ")[0]}</div><div className="kpi-value" data-testid="date-month">{ds.inMonth}×</div><div className="small muted">{ds.daysSinceLast === null ? "noch kein Date eingetragen" : ds.daysSinceLast === 0 ? "zuletzt heute" : `zuletzt vor ${ds.daysSinceLast} Tagen`}</div></a>
       </div>
 
       <div className="row" style={{ alignItems: "flex-start" }} id="kalender">
@@ -49,11 +60,17 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
             {WEEKDAYS.map((w) => <div key={w} className="cal-wd">{w}</div>)}
             {monthGrid(month).map((d) => {
               const n = byDay.get(d)?.length ?? 0;
+              const dn = datesByDay.get(d)?.length ?? 0;
               const cls = ["cal-day", d.startsWith(month) ? "" : "cal-out", d === today ? "cal-today" : "", d === selected ? "cal-sel" : ""].filter(Boolean).join(" ");
               return (
-                <Link key={d} href={href(month, d)} className={cls} scroll={false} aria-label={`${dmy(d)}${n ? `, ${n}× eingetragen` : ""}`}>
+                <Link key={d} href={href(month, d)} className={cls} scroll={false} aria-label={`${dmy(d)}${n ? `, ${n}× Nähe` : ""}${dn ? `, ${dn}× Paarzeit` : ""}`}>
                   <span className="cal-num">{Number(d.slice(8))}</span>
-                  {n > 0 && <span className="priv-heart" aria-hidden="true">❤️{n > 1 ? <small> {n}</small> : null}</span>}
+                  {(n > 0 || dn > 0) && (
+                    <span className="priv-heart" aria-hidden="true">
+                      {n > 0 && <>❤️{n > 1 ? <small>{n}</small> : null}</>}
+                      {dn > 0 && <span data-testid="date-mark">🥂</span>}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -63,6 +80,11 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
         <aside className="col-side stack">
           <section className="card card-pad stack">
             <h2>{weekday(selected)}, {dmy(selected)}</h2>
+            {dayDates.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {dayDates.map((e) => <li key={e.id} className="small">🥂 Paarzeit {dateLine(e.data)}</li>)}
+              </ul>
+            )}
             {dayList.length === 0 ? <div className="small muted">Nichts eingetragen.</div> : (
               <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="intim-day">
                 {dayList.map((e) => (
@@ -92,6 +114,49 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
           </section>
         </aside>
       </div>
+
+      <section className="card card-pad stack" id="paarzeit">
+        <h2>🥂 Paarzeit – zu zweit unterwegs</h2>
+        <div className="small muted">Dates und Zeit nur für euch beide, während die Kinder bei der Babysitterin, Oma &amp; Co. sind.</div>
+        <div className="priv-grid" data-testid="date-stats">
+          <div><div className="kpi-label">{monthLabel(month)}</div><strong>{ds.inMonth}×</strong>{ds.hoursInMonth ? ` · ${hoursLabel(ds.hoursInMonth)}` : ""}</div>
+          <div><div className="kpi-label">Vormonate</div>{prevDates.map((p) => `${monthLabel(p.m).split(" ")[0].slice(0, 3)} ${p.n}×`).join(" · ")}</div>
+          <div><div className="kpi-label">Ø Abstand (90 Tage)</div><strong>{ds.avgGapDays === null ? "–" : `${String(ds.avgGapDays).replace(".", ",")} Tage`}</strong> · {ds.last90}× in 90 Tagen</div>
+          {ds.costInMonth > 0 && <div><div className="kpi-label">Babysitter {monthLabel(month).split(" ")[0]}</div><strong>{euro(ds.costInMonth)}</strong></div>}
+        </div>
+        <StateForm action={addDateAction} submit="Paarzeit eintragen" testid="date-form">
+          <div className="priv-grid">
+            <div className="field"><label className="label" htmlFor="pz-day">Tag</label><input className="input" id="pz-day" name="day" type="date" defaultValue={selected <= today ? selected : today} max={today} /></div>
+            <div className="field"><label className="label" htmlFor="pz-from">von</label><input className="input" id="pz-from" name="from" type="time" /></div>
+            <div className="field"><label className="label" htmlFor="pz-to">bis</label><input className="input" id="pz-to" name="to" type="time" /></div>
+            <div className="field"><label className="label" htmlFor="pz-hours">oder Stunden</label><input className="input" id="pz-hours" name="hours" inputMode="decimal" placeholder="z. B. 3" /></div>
+          </div>
+          <div className="priv-grid">
+            <div className="field"><label className="label" htmlFor="pz-what">Was habt ihr gemacht?</label><input className="input" id="pz-what" name="what" autoComplete="off" placeholder="z. B. Essen gehen, Kino, Spaziergang" /></div>
+            <div className="field">
+              <label className="label" htmlFor="pz-sitter">Wer hat auf die Kinder aufgepasst?</label>
+              <input className="input" id="pz-sitter" name="sitter" list="pz-sitters" autoComplete="off" />
+              <datalist id="pz-sitters">{sitters.map((x) => <option key={x} value={x} />)}</datalist>
+            </div>
+            <div className="field"><label className="label" htmlFor="pz-cost">Kosten Babysitter (€, optional)</label><input className="input" id="pz-cost" name="costEur" inputMode="decimal" /></div>
+          </div>
+          <Rating name="rating" label="Wie war’s? (optional)" low="naja" high="wunderbar" />
+          <div className="field"><label className="label" htmlFor="pz-note">Notiz (optional)</label><input className="input" id="pz-note" name="note" autoComplete="off" /></div>
+        </StateForm>
+        {dates.length > 0 && (
+          <table className="table" data-testid="date-list">
+            <tbody>
+              {dates.slice(0, 15).map((e) => (
+                <tr key={e.id}>
+                  <td className="num" style={{ whiteSpace: "nowrap" }}>{weekday(e.data.day)} {dm(e.data.day)}</td>
+                  <td className="small">{dateLine(e.data) || "–"}{e.data.note ? <div className="muted">{e.data.note}</div> : null}</td>
+                  <td className="right"><form action={deleteEntryAction}><input type="hidden" name="kind" value="paarzeit" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <section className="card card-pad stack" id="gespraech">
         <h2>Paar-Gespräch der Woche</h2>

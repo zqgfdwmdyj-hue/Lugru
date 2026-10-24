@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { intimStats, kidsOverview, taskState, type AppointmentEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type TaskEntry } from "@/lib/private/logic";
+import { dateStats, intimStats, kidsOverview, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type TaskEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { toggleTaskAction } from "./actions";
 import { PrivatHead, dmy, hoursLabel, monthLabel, weekday } from "./ui";
@@ -10,13 +10,15 @@ export default async function PrivatStartPage() {
   const today = todayIso();
   const month = today.slice(0, 7);
   const s = await privateSettings(session.tenantId);
-  const [intim, kids, tasks, appts, diary] = await Promise.all([
+  const [intim, kids, tasks, appts, diary, dates] = await Promise.all([
     loadEntries<IntimEntry>(session, ["intim"]),
     loadEntries<KidsEntry>(session, ["kinder"]),
     loadEntries<TaskEntry>(session, ["aufgabe"]),
     loadEntries<AppointmentEntry>(session, ["termin"]),
     loadEntries<DiaryEntry>(session, ["tagebuch"]),
+    loadEntries<DateEntry>(session, ["paarzeit"]),
   ]);
+  const ds = dateStats(dates.map((e) => e.data), month, today);
   const myDiary = diary.filter((e) => e.userId === session.userId);
   const todayEntry = myDiary.find((e) => e.data.day === today)?.data;
   const stats = intimStats(intim.map((e) => e.data), month, today);
@@ -42,6 +44,11 @@ export default async function PrivatStartPage() {
           <div className="kpi-label">Paar · {monthLabel(month)}</div>
           <div className="kpi-value">{stats.inMonth}×</div>
           <div className="small muted">{stats.daysSinceLast === null ? "noch nichts eingetragen" : stats.daysSinceLast === 0 ? "zuletzt heute" : `zuletzt vor ${stats.daysSinceLast} Tagen`}</div>
+        </Link>
+        <Link href="/privat/paar#paarzeit" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }} data-testid="ov-dates">
+          <div className="kpi-label">🥂 Paarzeit · {monthLabel(month)}</div>
+          <div className="kpi-value">{ds.inMonth}×</div>
+          <div className="small muted">{ds.daysSinceLast === null ? "noch kein Date eingetragen" : ds.daysSinceLast === 0 ? "zuletzt heute" : `zuletzt vor ${ds.daysSinceLast} Tagen`}</div>
         </Link>
         <Link href="/privat/kinder" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }}>
           <div className="kpi-label">Kinderzeit · {monthLabel(month)}</div>
