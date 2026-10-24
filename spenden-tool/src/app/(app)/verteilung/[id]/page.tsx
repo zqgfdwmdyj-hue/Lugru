@@ -8,7 +8,7 @@ import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { addToEvent, applySuggestion, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
+import { addToEvent, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
 import { PriceCheckChip } from "@/components/price-check";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
@@ -202,10 +202,11 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
           <div className="field">
             <label className="label" htmlFor={kp("mhdmode")}>MHD nötig?</label>
             <select key={product.mhdMode ?? ""} className="select select-compact" id={kp("mhdmode")} name={kp("mhdmode")} defaultValue={product.mhdMode ?? ""}>
-              <option value="">Automatisch: {mhd.relevant ? "ja" : "nein"} ({mhd.reason})</option>
-              <option value="ja">Ja, MHD erfassen</option>
-              <option value="nein">Nein (z. B. Spielzeug, Haushalt)</option>
+              <option value="">Automatisch: {mhd.unsure ? "unklar" : mhd.relevant ? "ja" : "nein"} ({mhd.reason})</option>
+              <option value="ja">Ja – Lebensmittel / Nahrung</option>
+              <option value="nein">Nein – Zubehör, Spielzeug, Haushalt</option>
             </select>
+            {mhd.unsure && !product.mhdMode && <span className="small warn-text">MHD-Relevanz prüfen: Ist das Nahrung (ja) oder Zubehör (nein)?</span>}
           </div>
           <O name={kp("mhdmode")} value={product.mhdMode ?? ""} />
         </fieldset>
@@ -308,7 +309,20 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
 function PhotoPrice({ r, eventId }: { r: EventRow; eventId: string }) {
   const { state, item } = r;
   if (state.photo === "wird-gelesen") return <div className="small muted">📷 Preis im Foto wird gelesen …</div>;
-  if (!state.printed) return <div className="small muted">📷 Kein Preis im Foto erkannt.</div>;
+  if (!state.printed) {
+    if (!r.product.imageFileId) return null;
+    return (
+      <div className="small stack" style={{ gap: 4 }}>
+        <span className="muted">📷 {state.unread ? "Foto noch nicht auf einen eingebrannten Preis geprüft." : "Kein Preis im Foto erkannt."}</span>
+        {/* Erkennung übersehen? Dann von Hand – sonst stünde der Preis in der Collage doppelt. */}
+        <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          Steht doch ein Preis im Foto?
+          <input className="input input-compact num" name={`photoprice_${item.id}`} placeholder={priceText(item.price) || "Betrag"} inputMode="decimal" aria-label="Preis im Foto" style={{ width: 80 }} data-lazy="1" />
+          <button className="btn btn-small" type="submit" formAction={markPhotoPrice.bind(null, item.id)}>Eintragen</button>
+        </span>
+      </div>
+    );
+  }
   const text = state.printed.text;
   if (!state.conflict) {
     const what = state.photo === "gleich" ? "passt zum eingetragenen Preis – wird nicht doppelt gedruckt"

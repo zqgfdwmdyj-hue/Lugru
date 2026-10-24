@@ -52,6 +52,8 @@ export const files = pgTable(
     printedScannedAt: timestamp("printed_scanned_at", { withTimezone: true }),
     /** Jemand hat „Erkennung falsch“ gewählt – auch „Alle neu lesen“ liest dieses Foto nicht erneut. */
     printedRejected: boolean("printed_rejected").notNull().default(false),
+    /** Womit gelesen: 1 = erste Version, 2 = verbesserter Leser, 9 = von Hand eingetragen (siehe lib/photo-price.ts). */
+    printedReader: integer("printed_reader"),
     createdAt: createdAt(),
   },
   (t) => [index("files_sha_idx").on(t.sha256)],

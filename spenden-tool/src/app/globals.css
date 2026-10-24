@@ -427,3 +427,13 @@ form.check-row { grid-template-columns: auto 1fr auto; }
   .cat-row .conflict-actions { grid-column: 2; }
 }
 .pl-unit { display: flex; flex-direction: column; gap: 1px; }
+
+/* Einklappbare Prüf-Abschnitte mit Suche */
+.review-block > summary { list-style: none; cursor: pointer; flex-wrap: wrap; }
+.review-block > summary::-webkit-details-marker { display: none; }
+.review-block > summary h2::before { content: "▸ "; color: var(--muted); }
+.review-block[open] > summary h2::before { content: "▾ "; }
+.review-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 14px 0; }
+.review-tools .input { flex: 1 1 200px; width: auto; }
+.review-tools .select { width: auto; }
+.review-foot { position: sticky; bottom: 0; display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 12px 12px; }

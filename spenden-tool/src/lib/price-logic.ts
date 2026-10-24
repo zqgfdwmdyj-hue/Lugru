@@ -49,7 +49,7 @@ export function pricePrefix(i: UnitInfo): string {
  * Nur eindeutige Angaben zählen: „6er-Pack“, „6 x 125 g“, „10 Stück“, „Karton mit 24 Dosen“. Maße („68 x 64 cm“),
  * Gewichte („240 g“), Altersangaben („3–6 Jahre“, „ab 6 Monaten“) und Modellnummern ergeben nie eine Stückzahl.
  */
-export function guessUnit(priceNote: string | null | undefined, variant: string | null | undefined): { unit: Unit; count: number | null } | null {
+export function guessUnit(priceNote: string | null | undefined, variant: string | null | undefined): { unit: Unit; count: number | null; sure: boolean } | null {
   let t = ` ${priceNote ?? ""} ${variant ?? ""} `.toLowerCase().replace(/,/g, ".");
   if (!t.trim()) return null;
   // Erst alles entfernen, was nach Zahl aussieht, aber keine Stückzahl ist.
@@ -64,9 +64,10 @@ export function guessUnit(priceNote: string | null | undefined, variant: string 
   const pack = /(\d{1,3})\s*er[\s-]*(?:pack|packung|pck|set|tray|beutel|karton|kiste)?(?![a-zäöü0-9])/.exec(t) ?? /(\d{1,3})[\s-]*(?:pack|packung)(?![a-zäöü])/.exec(t) ?? /(?:pack|packung|set|karton|kiste)\s*(?:mit|à|a)\s*(\d{1,3})/.exec(t);
   const pieces = /(\d{1,3})\s*(?:stück|stk\.?|st\.|kapseln|beutel|riegel|dosen|flaschen|rollen|tüten|gläser|päckchen)(?![a-zäöü])/.exec(t);
   const count = [multi, pack, pieces].map((m) => (m ? Number(m[1]) : 0)).find((n) => n > 1 && n <= 500) ?? null;
-  if (/karton|kiste|\btray\b|palette/.test(t)) return { unit: "karton", count };
-  if (count) return { unit: "packung", count };
-  if (/einzel|\bje\b|\b1\s*(?:stück|stk|st\.)|\bstück\b/.test(t)) return { unit: "stueck", count: null };
+  // „sure“: eindeutige Stückzahl. Einzelstück- und Karton-ohne-Anzahl-Vorschläge bleiben unsicher.
+  if (/karton|kiste|\btray\b|palette/.test(t)) return { unit: "karton", count, sure: !!count };
+  if (count) return { unit: "packung", count, sure: true };
+  if (/einzel|\bje\b|\b1\s*(?:stück|stk|st\.)|\bstück\b/.test(t)) return { unit: "stueck", count: null, sure: false };
   return null;
 }
 
@@ -140,7 +141,7 @@ const has = (t: string, words: string[]) =>
 const TOY = ["spielzeug", "plüsch", "puzzle", "malbuch", "spielkarten", "steckspiel", "seifenblasen", "kuscheltier", "bauklötze", "ball ", "puppe", "lego", "schwimmflügel", "schwimmsitz", "schwimmring", "schwimmreifen", "wasserspielzeug", "sandspielzeug", "badespielzeug", "wasserfarben", "farbkasten", "spardose", "^knete", "stifte"];
 const BABY_GEAR = ["babyflasche", "glasflasche", "trinkflasche", "milchflasche", "trinklernbecher", "sauger", "schnuller", "beißring", "windel", "feuchttücher", "lätzchen", "babybody", "strampler", "wärmflasche", "fieberthermometer", "nasensauger", "schwimm", "nuk ", "mam ", "avent", "bema "];
 const HOUSEHOLD = ["schwamm", "tuchschwämme", "spültuch", "spülmittel", "waschmittel", "weichspüler", "reiniger", "müllbeutel", "küchenrolle", "toilettenpapier", "taschentücher", "batterie", "kerze", "kugelschreiber", "shampoo", "duschgel", "seife", "zahnpasta", "zahnbürste", "lotion", "rasier", "^deo", "pflaster", "tampons", "binden", "wattepads", "hautcreme", "handcreme", "gesichtscreme", "sonnencreme", "wundschutzcreme", "babycreme", "babyöl", "körperöl", "badesalz", "teelicht", "brotdose", "frischhaltedose", "vorratsdose"];
-const FOOD = ["gewürz", "chili", "bbq", "barbecue", "pfeffer", "paprika", "curry", "kräuter", "salz", "zimt", "oregano", "gyros", "grillgewürz", "sauce", "soße", "dressing", "brühe", "nudeln", "^reis", "mehl", "zucker", "öl", "essig", "senf", "ketchup", "honig", "marmelade", "schokolade", "keks", "kekse", "riegel", "müsli", "haferflocken", "brei", "gläschen", "snack", "püree", "quetschie", "joghurt", "milch", "saft", "tee", "kaffee", "kapseln", "espresso", "chips", "cracker", "zwieback", "brot", "dose", "konserve", "suppe", "linsen", "bohnen", "kichererbsen", "mais", "thunfisch", "pesto", "gnocchi", "tortellini", "wraps", "getränk", "wasser", "limonade", "cola", "energy", "drink", "bonbon", "gummibärchen", "fruchtpüree", "babymilch", "anfangsmilch", "folgemilch", "hipp", "alete", "bebivita", "milupa", "aptamil", "humana", "holle", "freche freunde", "wiberg", "ostmann", "fuchs gewürze", "knorr", "maggi"];
+const FOOD = ["gewürz", "chili", "bbq", "barbecue", "pfeffer", "paprika", "curry", "kräuter", "salz", "zimt", "oregano", "gyros", "grillgewürz", "sauce", "soße", "dressing", "brühe", "nudeln", "^reis", "mehl", "zucker", "öl", "essig", "senf", "ketchup", "honig", "marmelade", "schokolade", "keks", "kekse", "riegel", "müsli", "haferflocken", "brei", "gläschen", "snack", "püree", "quetschie", "joghurt", "milch", "saft", "tee", "kaffee", "kapseln", "espresso", "chips", "cracker", "zwieback", "brot", "dose", "konserve", "suppe", "linsen", "bohnen", "kichererbsen", "mais", "thunfisch", "pesto", "gnocchi", "tortellini", "wraps", "getränk", "wasser", "limonade", "cola", "energy", "drink", "bonbon", "gummibärchen", "fruchtpüree", "babymilch", "anfangsmilch", "folgemilch", "hipp", "alete", "bebivita", "milupa", "aptamil", "humana", "holle", "freche freunde", "wiberg", "ostmann", "fuchs gewürze", "knorr", "maggi", "dessert", "pudding", "grieß", "apfel", "birne", "banane", "pfirsich", "mango", "beere", "frucht", "obst", "gemüse", "karotte", "möhre", "pastinake", "kürbis", "kartoffel", "pasta", "menü", "mahlzeit", "abendbrei", "milchbrei", "getreide", "dinkel", "hirse", "puffs", "sticks", "bällchen", "waffel", "knabber", "teekeks", "trinkmahlzeit", "babynahrung", "kindernahrung", "säuglingsnahrung"];
 
 export type ProductKind = { kind: "lebensmittel" | "babyzubehoer" | "haushalt" | "spielzeug"; word: string };
 
@@ -167,15 +168,22 @@ const FOOD_CATEGORIES = new Set(["Lebensmittel", "Getränke inkl. Pfand"]);
  * Spielzeug, Babyzubehör (Flaschen, Schwimmhilfen …) und Haushaltswaren nie – auch wenn sie falsch unter
  * „Lebensmittel“ stehen. Babyprodukte nur, wenn sie nach Nahrung klingen (Brei, Gläschen, Snack, HiPP …).
  */
-export function mhdAuto(p: { category: string; mhdMode?: string | null; name?: string | null; variant?: string | null }): { relevant: boolean; reason: string } {
-  if (p.mhdMode === "ja") return { relevant: true, reason: "festgelegt" };
-  if (p.mhdMode === "nein") return { relevant: false, reason: "festgelegt" };
+export type MhdDecision = { relevant: boolean; reason: string; unsure: boolean };
+
+export function mhdAuto(p: { category: string; mhdMode?: string | null; name?: string | null; variant?: string | null }): MhdDecision {
+  if (p.mhdMode === "ja") return { relevant: true, reason: "festgelegt", unsure: false };
+  if (p.mhdMode === "nein") return { relevant: false, reason: "festgelegt", unsure: false };
   const kind = productKind(p.name, p.variant);
-  if (kind && kind.kind !== "lebensmittel") return { relevant: false, reason: `kein Lebensmittel („${kind.word}“)` };
-  if (FOOD_CATEGORIES.has(p.category)) return { relevant: true, reason: p.category };
-  if (p.category === "Babyprodukte") return kind ? { relevant: true, reason: `Babynahrung („${kind.word}“)` } : { relevant: false, reason: "Babyprodukt, nicht als Nahrung erkannt" };
-  if (kind && p.category === UNSORTED_CATEGORY) return { relevant: true, reason: `klingt nach Lebensmittel („${kind.word}“)` };
-  return { relevant: false, reason: p.category };
+  if (kind && kind.kind !== "lebensmittel") return { relevant: false, reason: kind.kind === "babyzubehoer" ? `Babyzubehör („${kind.word}“)` : `kein Lebensmittel („${kind.word}“)`, unsure: false };
+  if (FOOD_CATEGORIES.has(p.category)) return { relevant: true, reason: p.category, unsure: false };
+  if (p.category === "Babyprodukte") {
+    // Babynahrung ausdrücklich erkannt → MHD; nicht erkannt → lieber prüfen als stillschweigend auslassen.
+    return kind ? { relevant: true, reason: `Babynahrung („${kind.word}“)`, unsure: false } : { relevant: true, reason: "Babyprodukt – Nahrung oder Zubehör? bitte festlegen", unsure: true };
+  }
+  // Klingt eindeutig nach Lebensmittel (auch wenn die Kategorie nicht passt – das meldet „Kategorie prüfen“).
+  if (kind) return { relevant: true, reason: `klingt nach Lebensmittel („${kind.word}“)`, unsure: false };
+  if (p.category === UNSORTED_CATEGORY) return { relevant: true, reason: "Kategorie noch offen – bitte festlegen", unsure: true };
+  return { relevant: false, reason: p.category, unsure: false };
 }
 
 export function mhdRelevant(p: { category: string; mhdMode?: string | null; name?: string | null; variant?: string | null }): boolean {
@@ -206,7 +214,8 @@ export function categoryHint(p: { name: string; variant?: string | null; categor
 // ---------- Interne Hinweise aus Namen/Varianten heraushalten ----------
 
 /** Formulierungen der KI, die nur fürs Team gedacht sind („genaue Packungsgröße unbekannt“, „alternativ …“). */
-const INTERNAL = /(unbekannt|unklar|nicht (?:identifiziert|erkennbar|lesbar|sicher|eindeutig)|vermutlich|wahrscheinlich|möglicherweise|evtl\.?|eventuell|alternativ|ähnlich wie|oder ähnlich|geschätzt|ca\.|circa|nicht verifiziert|keine angabe|siehe foto)/i;
+// Nur echte Recherche-Kommentare. Sachliche Angaben wie „ca. 12 cm Höhe“ oder „ca. 60–80 g“ bleiben öffentlich.
+const INTERNAL = /(unbekannt|unklar|nicht (?:identifiziert|erkennbar|lesbar|eindeutig|verifiziert|gefunden|bestätigt)|vermutlich|wahrscheinlich|möglicherweise|alternativ|ähnlich wie|oder ähnlich|keine (?:angabe|info)|siehe foto|laut (?:foto|bild) nicht|marke unklar)/i;
 
 /** Name/Variante ohne interne Hinweise – so erscheinen sie in Collage, Aushang, Messenger und Social Media. */
 export function splitInternal(text: string | null | undefined): { clean: string; notes: string[] } {
@@ -243,7 +252,10 @@ export const isSecondHand = (title: string | null | undefined, shop?: string | n
 
 // ---------- Ausgegebener Preis und Preis im Foto ----------
 
-export type PhotoReading = { status: string | null; price: number | null; text: string | null; box: unknown } | null;
+export type PhotoReading = { status: string | null; price: number | null; text: string | null; box: unknown; reader?: number | null } | null;
+
+/** Leser-Version, ab der „kein Preis im Foto“ als verlässlich gilt (siehe lib/photo-price.ts). */
+export const RELIABLE_READER = 2;
 export type PriceInput = { price: number | null; priceSource?: string | null; priceConfirmed?: boolean | null; priceOverPhotoFileId?: string | null };
 
 export type PriceState = {
@@ -279,7 +291,8 @@ export function printedFrom(imageFileId: string | null | undefined, photo: Photo
 export function priceState(item: PriceInput, imageFileId: string | null | undefined, photo: PhotoReading): PriceState {
   const price = item.price;
   const confirmed = price !== null && !!item.priceConfirmed;
-  const unread = !!imageFileId && (!photo?.status || photo.status === "error");
+  // Noch nicht (oder nur vom alten, unzuverlässigeren Leser ohne Ergebnis) gelesen → Gefahr doppelter Preise.
+  const unread = !!imageFileId && (!photo?.status || photo.status === "error" || (photo.status === "done" && !photo.text && (photo.reader ?? 1) < RELIABLE_READER));
   const base: PriceState = { price, printed: null, photo: "keiner", conflict: false, suspicious: false, confirmed, plan: "drucken", oldVisible: false, unread };
   if (imageFileId && photo?.status === "pending") return { ...base, photo: "wird-gelesen" };
   const printed = printedFrom(imageFileId, photo);
@@ -304,7 +317,7 @@ export function priceState(item: PriceInput, imageFileId: string | null | undefi
 // ---------- Prüfstatus einer Zeile ----------
 
 export type Issue = { key: IssueKey; label: string; level: "fehlt" | "pruefen" };
-export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "foto" | "vergleich";
+export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich";
 
 export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
   { key: "konflikt", label: "Preiswiderspruch" },
@@ -319,6 +332,7 @@ export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
   { key: "kategorie", label: "Kategorie zuordnen" },
   { key: "kategorie-pruefen", label: "Kategorie prüfen" },
   { key: "mhd", label: "MHD fehlt" },
+  { key: "mhd-pruefen", label: "MHD-Relevanz prüfen" },
   { key: "foto", label: "Ohne Foto" },
 ];
 
@@ -354,7 +368,10 @@ export function itemIssues(o: {
   if (o.compare && o.compare.level !== "passt") out.push({ key: "vergleich", label: o.compare.level === "abweichend" ? "Größe ≠ Handel" : "Vergleich unsicher", level: "pruefen" });
   if (o.product.category === UNSORTED_CATEGORY) out.push({ key: "kategorie", label: "Kategorie fehlt", level: "fehlt" });
   else if (categoryHint(o.product, o.aiCategory)) out.push({ key: "kategorie-pruefen", label: "Kategorie prüfen", level: "pruefen" });
-  if (!o.item.bestBefore && mhdRelevant(o.product)) out.push({ key: "mhd", label: "MHD fehlt", level: "fehlt" });
+  const mhd = mhdAuto(o.product);
+  // Unklar, ob Nahrung (z. B. unbekanntes Babyprodukt): nicht auslassen, sondern ausdrücklich prüfen lassen.
+  if (!o.item.bestBefore && mhd.unsure) out.push({ key: "mhd-pruefen", label: "MHD-Relevanz prüfen", level: "pruefen" });
+  else if (!o.item.bestBefore && mhd.relevant) out.push({ key: "mhd", label: "MHD fehlt", level: "fehlt" });
   if (!o.product.imageFileId && o.item.inCollage) out.push({ key: "foto", label: "Foto fehlt", level: "fehlt" });
   return out;
 }

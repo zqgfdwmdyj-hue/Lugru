@@ -47,7 +47,8 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Kategorien nicht. Abweichende KI-Vorschläge stehen unter „Prüfen“ zum einzelnen Übernehmen.
 - **MHD nur wo nötig:** pro Produkt „automatisch“, „ja“ oder „nein“. Automatisch nach Produktart: Spielzeug,
   Schwimmhilfen, Babyzubehör (Flaschen, Sauger, Windeln) und Haushaltswaren nie – auch wenn sie falsch unter
-  „Lebensmittel“ stehen; Babyprodukte nur, wenn sie nach Nahrung klingen (Brei, Gläschen, Snack, HiPP …).
+  „Lebensmittel“ stehen. Babyprodukte, die als Nahrung erkannt werden (Brei, Gläschen, Dessert, Snack, HiPP …), brauchen
+  eins; ist unklar, ob Nahrung oder Zubehör, erscheint „MHD-Relevanz prüfen“ (zählt bis dahin als „MHD nötig“).
 - **Kategorie-Auffälligkeiten:** z. B. Gewürze unter „Drogerie & Haushalt“ oder ein Schwimmsitz unter
   „Lebensmittel“ erscheinen als offener Punkt; geändert wird erst mit „Übernehmen“, „Stimmt so“ blendet sie aus.
 - **Abgabeeinheit getrennt vom Preis bestätigen:** Vorschläge nur aus eindeutigen Angaben („6er-Pack“,
@@ -55,7 +56,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   sich alle offenen Einheiten auf einmal bestätigen.
 - **Nie zwei Preise auf einem Bild:** Steht derselbe Preis im Foto, wird keiner dazugedruckt; ein abweichender wird
   gezielt überklebt – oder, wenn seine Lage unbekannt ist, verlangt das Tool ein Foto ohne Preis. Noch nicht
-  geprüfte Fotos werden beim Öffnen von Collage/Social Media automatisch gelesen.
+  geprüfte Fotos – und solche, bei denen der ältere Leser nichts gefunden hat – werden beim Öffnen von
+  Collage/Social Media automatisch (neu) gelesen. Übersieht die Erkennung einen Preis trotzdem: in der Collage aufs
+  Bild tippen → „Preis steht schon im Foto“ (oder in den Produktdetails von Hand eintragen).
 - **Interne KI-Hinweise** („Marke nicht identifiziert“, „genaue Packungsgröße unbekannt“) erscheinen nie in den
   Ausgaben; unter „Prüfen“ lassen sie sich in die interne Notiz verschieben. B-Ware zählt nicht als Vergleichspreis.
 - **Ideen (✨):** Die KI liest die Produkte einer Verteilung und schlägt Themenpakete (z. B. Halloween, Winter,

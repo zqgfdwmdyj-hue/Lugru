@@ -174,7 +174,7 @@ export async function loadEvent(id: string) {
 
 const F = schema.files;
 /** Was über das Produktfoto bekannt ist – ohne die Bilddaten selbst. */
-const photoInfo = { status: F.printedStatus, price: F.printedPrice, text: F.printedPriceText, box: F.printedPriceBox };
+const photoInfo = { status: F.printedStatus, price: F.printedPrice, text: F.printedPriceText, box: F.printedPriceBox, reader: F.printedReader };
 
 export async function loadEventItems(eventId: string) {
   return db

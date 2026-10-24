@@ -32,7 +32,9 @@ describe("priceState – gespeicherte Spendenempfehlung gilt überall", () => {
   it("gleicher Preis im Foto: nur eine Beschriftung (Foto), ungelesene Fotos werden gemeldet", () => {
     expect(priceState({ price: 2 }, FILE, reading("Je 2 €", 2)).plan).toBe("foto");
     expect(priceState({ price: 2 }, FILE, { status: null, text: null, price: null, box: null }).unread).toBe(true);
-    expect(priceState({ price: 2 }, FILE, { status: "done", text: null, price: null, box: null }).unread).toBe(false);
+    // Vom alten Leser ohne Ergebnis gelesen → noch einmal lesen; vom neuen Leser → verlässlich
+    expect(priceState({ price: 2 }, FILE, { status: "done", text: null, price: null, box: null }).unread).toBe(true);
+    expect(priceState({ price: 2 }, FILE, { status: "done", text: null, price: null, box: null, reader: 2 }).unread).toBe(false);
   });
   it("Preis nur im Foto, nicht eingetragen: zur Entscheidung", () => {
     expect(priceState({ price: null }, FILE, reading("60 Cent", 0.6))).toMatchObject({ conflict: true, photo: "fehlt-eingetragen" });
@@ -78,12 +80,12 @@ describe("Abgabeeinheit", () => {
     expect(flyerSections([{ name: "X", variant: null, category: UNSORTED_CATEGORY, price: 1 }])[0].category).toBe("Sonstiges");
   });
   it("raten aus Zusatz/Variante", () => {
-    expect(guessUnit("je 6er pack", "120 g")).toEqual({ unit: "packung", count: 6 });
-    expect(guessUnit(null, "23 g (Einzelriegel)")).toEqual({ unit: "stueck", count: null });
-    expect(guessUnit("ganzer Karton", "24 Dosen")).toEqual({ unit: "karton", count: 24 });
+    expect(guessUnit("je 6er pack", "120 g")).toEqual({ unit: "packung", count: 6, sure: true });
+    expect(guessUnit(null, "23 g (Einzelriegel)")).toEqual({ unit: "stueck", count: null, sure: false });
+    expect(guessUnit("ganzer Karton", "24 Dosen")).toEqual({ unit: "karton", count: 24, sure: true });
     expect(guessUnit(null, "500 g")).toBeNull();
-    expect(guessUnit(null, "10 Stück")).toEqual({ unit: "packung", count: 10 });
-    expect(guessUnit(null, "6 x 125 g")).toEqual({ unit: "packung", count: 6 });
+    expect(guessUnit(null, "10 Stück")).toEqual({ unit: "packung", count: 10, sure: true });
+    expect(guessUnit(null, "6 x 125 g")).toEqual({ unit: "packung", count: 6, sure: true });
   });
   it("Maße, Gewichte, Alter und Modellnummern ergeben keine Stückzahl", () => {
     expect(guessUnit(null, "68 x 64 cm")).toBeNull();
@@ -131,6 +133,14 @@ describe("Produktart, MHD und Kategorie", () => {
     expect(mhdAuto({ category: "Babyprodukte", name: "Babybrei Karotte" }).relevant).toBe(true);
     expect(mhdAuto({ category: "Lebensmittel", name: "Eiscreme Vanille" }).relevant).toBe(true);
   });
+  it("Babynahrung erkannt, unbekannte Babyprodukte zur Prüfung statt ausgelassen", () => {
+    expect(mhdAuto({ category: "Babyprodukte", name: "Bio Desserts Apfel" })).toMatchObject({ relevant: true, unsure: false });
+    expect(mhdAuto({ category: "Babyprodukte", name: "Kinder-Set Lotta" })).toMatchObject({ relevant: true, unsure: true });
+    const state = priceState({ price: 1, priceConfirmed: true }, FILE, null);
+    const keys = itemIssues({ unnamed: false, product: { name: "Kinder-Set Lotta", category: "Babyprodukte", imageFileId: FILE }, item: { bestBefore: null, inCollage: true, unit: "stueck", unitConfirmed: true }, state }).map((i) => i.key);
+    expect(keys).toContain("mhd-pruefen");
+    expect(keys).not.toContain("mhd");
+  });
   it("Gewürze unter Drogerie und Schwimmsitz unter Lebensmittel sind auffällig", () => {
     expect(categoryHint({ name: "Wiberg Chili-Fäden", category: "Drogerie & Haushalt" })?.suggest).toBe("Lebensmittel");
     expect(categoryHint({ name: "Wiberg Classic BBQ", category: "Drogerie & Haushalt" })?.suggest).toBe("Lebensmittel");
@@ -166,6 +176,10 @@ describe("Interne Hinweise und KI-Texte", () => {
     expect(publicText("Kekse, Marke nicht identifiziert")).toBe("Kekse");
     expect(publicText("200 g – alternativ verfügbar in 400 g")).toBe("200 g");
     expect(publicText("Bio Kimchi")).toBe("Bio Kimchi");
+    // Sachliche Angaben bleiben öffentlich
+    expect(publicText("LED-Kerze, ca. 12 cm Höhe")).toBe("LED-Kerze, ca. 12 cm Höhe");
+    expect(splitInternal("ca. 60–80 g").notes).toEqual([]);
+    expect(splitInternal("Nudeln, ca. 60–80 g").notes).toEqual([]);
   });
   it("Messenger-/Aushangtext ohne interne Hinweise", () => {
     const [sec] = flyerSections([{ name: "Kekse, Marke nicht identifiziert", variant: "500 g (genaue Packungsgröße unbekannt)", category: "Lebensmittel", price: 1 }]);

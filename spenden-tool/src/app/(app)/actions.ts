@@ -354,6 +354,41 @@ export async function resolvePhotoPrice(itemId: string, decision: "eingetragen" 
   revalidatePath(`/verteilung/${row.item.eventId}`, "layout");
 }
 
+/**
+ * Von Hand: „Im Foto steht schon ein Preis“ – wenn die automatische Erkennung ihn übersehen hat. Ohne Betrag gilt
+ * der eingetragene Preis. Dann druckt die Collage keinen zweiten; weicht er ab, erscheint ein Widerspruch.
+ */
+export async function markPhotoPrice(itemId: string, fd?: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(itemId);
+  const typed = fd ? str(fd, `photoprice_${id}`) : "";
+  if (fd?.has("eventId")) await saveItems(fd);
+  const [row] = await db.select({ item: I, fileId: P.imageFileId }).from(I).innerJoin(P, eq(P.id, I.productId)).where(eq(I.id, id));
+  if (!row?.fileId) return;
+  const amount = typed ? (parseAmount(typed) ?? parsePrintedPrice(typed)) : row.item.price;
+  if (amount === null || !(amount > 0) || amount > 1000) return;
+  const p = Math.round(amount * 100) / 100;
+  const text = p < 1 ? `${Math.round(p * 100)} Cent` : `${p.toFixed(2).replace(".", ",").replace(",00", "")} €`;
+  await db
+    .update(schema.files)
+    .set({ printedStatus: "done", printedPrice: p, printedPriceText: text, printedPriceBox: null, printedRejected: false, printedReader: 9, printedScannedAt: new Date() })
+    .where(eq(schema.files.id, row.fileId));
+  await logActivity(me, `Preis im Foto von Hand eingetragen (${text})`, { eventId: row.item.eventId, productId: row.item.productId });
+  revalidatePath(`/verteilung/${row.item.eventId}`, "layout");
+}
+
+/** „Prüfen“: MHD-Relevanz für angehakte Produkte festlegen – „ja“ (Nahrung) oder „nein“ (Zubehör). */
+export async function setMhdMode(eventId: string, mode: "ja" | "nein", fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const m = z.enum(["ja", "nein"]).parse(mode);
+  const ids = fd.getAll("productId").map(String).filter((v) => uuid.safeParse(v).success);
+  if (ids.length === 0) return;
+  await db.update(P).set({ mhdMode: m, updatedAt: new Date() }).where(inArray(P.id, ids));
+  await logActivity(me, `MHD ${m === "ja" ? "nötig (Nahrung)" : "nicht nötig (Zubehör)"} für ${ids.length} Produkt(e)`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
 /** „Prüfen“: angehakte Preise als bestätigt markieren. */
 export async function confirmItems(eventId: string, fd: FormData) {
   const me = await requireLogin();
@@ -510,7 +545,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   return result;
 }
 
-async function startPhotoPrices(eventId: string, productIds: string[], opts: { again?: boolean } = {}) {
+async function startPhotoPrices(eventId: string, productIds: string[], opts: { again?: boolean; retry?: boolean } = {}) {
   if (!aiConfigured() || productIds.length === 0) return;
   await failStalePhotoPrices();
   const fileIds = await queuePhotoPrices(productIds, opts);
@@ -522,7 +557,7 @@ export async function scanEventPhotoPrices(eventId: string, fd: FormData) {
   await requireLogin();
   const id = uuid.parse(eventId);
   const rows = await db.select({ productId: I.productId }).from(I).where(eq(I.eventId, id));
-  await startPhotoPrices(id, rows.map((r) => r.productId), { again: fd.get("umfang") === "alle" });
+  await startPhotoPrices(id, rows.map((r) => r.productId), { again: fd.get("umfang") === "alle", retry: true });
   revalidatePath(`/verteilung/${id}`, "layout");
 }
 

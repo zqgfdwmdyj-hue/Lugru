@@ -13,9 +13,16 @@ const F = schema.files;
 const P = schema.products;
 const I = schema.eventItems;
 
-const PROMPT = `Auf dem Foto ist ein Produkt aus einer Lebensmittelverteilung. Manche Fotos stammen aus früheren Collagen:
-Dann wurde ein Spendenpreis nachträglich ins Bild geschrieben (z. B. große weiße oder farbige Schrift „60 Cent“, „Je 50 Cent“, „1 €“, „2,50 €“, oft unten im Bild, manchmal auf einem farbigen Feld).
-Gesucht ist NUR so ein nachträglich ins Bild gesetzter Preis – nicht Preise, Rabatte oder Mengenangaben, die auf der Verpackung selbst gedruckt sind, und kein Preisschild im Supermarktregal.
+/** Version des Lesers – Fotos, die ein älterer Leser ohne Ergebnis gelesen hat, werden einmal neu gelesen. */
+export const READER_VERSION = 2;
+
+const PROMPT = `Auf dem Foto ist ein Produkt aus einer Lebensmittelverteilung. Viele Fotos stammen aus früheren Collagen:
+Dann wurde ein Spendenpreis nachträglich ins Bild geschrieben – typisch: „1,50 €“, „40 Cent“, „Je 50 Cent“, „2 €“, „0,80 €“,
+in großer, fetter weißer, gelber, roter oder schwarzer Schrift, oft mit Schatten oder Umrandung, oft unten oder oben im Bild,
+manchmal auf einem farbigen Feld oder Streifen, manchmal mit dunklem Verlauf dahinter. Er sieht aus wie nachträglich darübergelegt,
+nicht wie Teil des Verpackungsdesigns.
+Gesucht ist NUR so ein nachträglich ins Bild gesetzter Preis – keine Preise, Rabatte, Gewichte oder Mengenangaben, die auf der
+Verpackung selbst gedruckt sind, und kein Preisschild im Supermarktregal. Prüfe das ganze Bild sorgfältig, auch die Ränder.
 Antworte nur mit JSON:
 {"preis_text": "Text genau wie im Bild, z. B. Je 60 Cent", "preis": 0.6, "rahmen": [links, oben, rechts, unten]}
 „preis“ in Euro als Zahl. „rahmen“ umschließt den ganzen Preistext (mit Zusatz wie „Je“) in Prozent von Bildbreite und -höhe (0–100).
@@ -24,8 +31,9 @@ Steht kein nachträglich eingefügter Preis im Bild: {"preis_text": null}`;
 export async function readPrintedPrice(image: { mimeType: string; data: Buffer }): Promise<PrintedReading> {
   const client = new Anthropic();
   const response = await client.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 200,
+    // Größeres Modell: das kleinste hat eingebrannte Preise auf manchen Fotos übersehen (→ doppelte Preise).
+    model: "claude-sonnet-5-5",
+    max_tokens: 300,
     messages: [
       {
         role: "user",
@@ -41,7 +49,7 @@ export async function readPrintedPrice(image: { mimeType: string; data: Buffer }
 }
 
 /** Fotos dieser Produkte zum Ablesen vormerken (nur noch nicht gelesene oder mit Fehler). Gibt die Datei-IDs zurück. */
-export async function queuePhotoPrices(productIds: string[], opts: { again?: boolean } = {}): Promise<string[]> {
+export async function queuePhotoPrices(productIds: string[], opts: { again?: boolean; retry?: boolean } = {}): Promise<string[]> {
   if (productIds.length === 0) return [];
   const rows = await db
     .update(F)
@@ -50,7 +58,12 @@ export async function queuePhotoPrices(productIds: string[], opts: { again?: boo
     .where(
       and(
         inArray(F.id, db.select({ id: sql<string>`${P.imageFileId}` }).from(P).where(inArray(P.id, productIds))),
-        opts.again ? sql`coalesce(${F.printedStatus}, '') <> 'pending'` : or(isNull(F.printedStatus), eq(F.printedStatus, "error")),
+        opts.again
+          ? sql`coalesce(${F.printedStatus}, '') <> 'pending'`
+          : opts.retry
+            ? // auch: von einem älteren Leser ohne Ergebnis gelesen
+              or(isNull(F.printedStatus), eq(F.printedStatus, "error"), and(eq(F.printedStatus, "done"), isNull(F.printedPriceText), sql`coalesce(${F.printedReader}, 1) < ${READER_VERSION}`))
+            : or(isNull(F.printedStatus), eq(F.printedStatus, "error")),
         // Als „Erkennung falsch“ markierte Fotos nie wieder lesen.
         eq(F.printedRejected, false),
       ),
@@ -66,7 +79,7 @@ async function scanOne(fileId: string, eventId: string | null) {
     const r = await readPrintedPrice(file);
     await db
       .update(F)
-      .set({ printedStatus: "done", printedPrice: r.found ? r.price : null, printedPriceText: r.found ? r.text : null, printedPriceBox: r.found ? r.box : null, printedScannedAt: new Date() })
+      .set({ printedStatus: "done", printedPrice: r.found ? r.price : null, printedPriceText: r.found ? r.text : null, printedPriceBox: r.found ? r.box : null, printedReader: READER_VERSION, printedScannedAt: new Date() })
       .where(eq(F.id, fileId));
     if (r.found && r.price !== null) {
       // Preis übernehmen, wo noch keiner steht: im Produkt (Vorschlag für später) und in der Verteilung.
@@ -115,7 +128,7 @@ export async function failStalePhotoPrices() {
 export async function readUnreadPhotos(eventId: string, productIds: string[]) {
   if (productIds.length === 0 || !(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)) return 0;
   await failStalePhotoPrices();
-  const fileIds = await queuePhotoPrices(productIds);
+  const fileIds = await queuePhotoPrices(productIds, { retry: true });
   if (fileIds.length) after(() => runPhotoPrices(fileIds, eventId));
   return fileIds.length;
 }

@@ -5,7 +5,8 @@ import type { CollageSettings, PriceBox } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
 import { pricePrefix, type PriceState } from "@/lib/price-logic";
 import { saveCollageSettings } from "@/app/(app)/actions";
-import { saveCollageTemplate, saveTileStyles } from "@/app/(app)/actions";
+import { markPhotoPrice, saveCollageTemplate, saveTileStyles } from "@/app/(app)/actions";
+import { useRouter } from "next/navigation";
 import { jpegsToPdf, type PdfPage } from "@/lib/pdf";
 import { RotateButtons } from "@/components/rotate-buttons";
 import { TILE_COLORS, TILE_POSITIONS, type TileColor, type TilePosition, type TileStyle, tileStyle } from "@/lib/layout";
@@ -231,6 +232,8 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
   const imagesRef = useRef<Loaded | null>(null);
   const [message, setMessage] = useState("");
   const [info, setInfo] = useState("");
+  const router = useRouter();
+  const [marking, setMarking] = useState(false);
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   // Preis-Lage und -Farbe je Produkt (auf ein Bild tippen → einstellen).
   const [styles, setStyles] = useState<Record<string, TileStyle>>(() => Object.fromEntries(tiles.map((t) => [t.productId, t.style ?? {}])));
@@ -428,6 +431,23 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
             <strong>{sel.name}</strong>
             {sel.printed && sel.plan === "foto" && <div className="small muted" style={{ maxWidth: 260 }}>Preis steht schon richtig im Foto ({sel.printed.text}) – deshalb wird keiner dazugedruckt.{sel.printed.box ? " Ist er im Foto zu klein, „Preis“ anhaken – dann kommt er als Feld genau über den alten." : ""}</div>}
             {sel.printed && sel.plan === "aufkleber" && <div className="small muted" style={{ maxWidth: 260 }}>Im Foto steht „{sel.printed.text}“ – eingetragen ist {collagePrice(sel.price)}. Der eingetragene Preis wird genau über den alten gesetzt.</div>}
+            {sel.image && !sel.printed && sel.plan === "drucken" && (
+              <div className="small" style={{ maxWidth: 260, marginTop: 6 }}>
+                Steht der Preis schon im Foto? Dann nicht doppelt drucken:{" "}
+                <button className="btn btn-small" type="button" disabled={marking} onClick={async () => {
+                    setMarking(true);
+                    try {
+                      await markPhotoPrice(sel.id);
+                      setInfo(`Gemerkt: Im Foto von „${sel.name}“ steht der Preis schon – er wird nicht mehr zusätzlich gedruckt.`);
+                      router.refresh();
+                    } catch {
+                      setMessage("Konnte nicht gespeichert werden – bitte erneut versuchen.");
+                    } finally {
+                      setMarking(false);
+                    }
+                  }}>{marking ? "Speichere …" : "Preis steht schon im Foto"}</button>
+              </div>
+            )}
             {sel.plan === "ersetzen" && <div className="small warn-text" style={{ maxWidth: 260 }}>Im Foto steht „{sel.printed?.text}“, eingetragen ist {collagePrice(sel.price)}. Der alte Preis lässt sich nicht gezielt verdecken – bitte ein Foto ohne Preis hochladen. Bis dahin wird kein zweiter Preis aufs Bild gedruckt.</div>}
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
               {sel.image && <RotateButtons productId={sel.productId} />}
