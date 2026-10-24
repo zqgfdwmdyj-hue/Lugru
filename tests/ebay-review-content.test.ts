@@ -85,3 +85,19 @@ describe("Prüfrunde 2: Marke im Titel, Arten von Hinweisen", () => {
     expect(i?.text).toMatch(/„SanDisk“ – im Titel „Speicherkarte 128 GB/);
   });
 });
+
+describe("Verkehrsdaten nachladen", () => {
+  it("ersetzt nur die Hinweise aus den Verkehrsdaten, Rest bleibt", async () => {
+    const { withTraffic } = await import("@/lib/ebay-review/logic");
+    const old = [
+      { key: "titel-kurz", level: "wichtig" as const, area: "Titel", text: "Titel zu kurz" },
+      { key: "sicht-wenig", level: "empfohlen" as const, area: "Sichtbarkeit", text: "alt" },
+    ];
+    const f = { startTime: "2026-08-01" };
+    const t = { impressions: 2000, searchImpressions: 1500, searchViews: 6, views: 80, sales: 0, ctr: 0.4, conversion: 0, days: 30 };
+    const r = withTraffic(old, f, t, "2026-10-24");
+    expect(r.issues.map((i) => i.key).sort()).toEqual(["kauf-wenig", "klicks-wenig", "titel-kurz"]);
+    expect(withTraffic(old, f, null, "2026-10-24").issues.map((i) => i.key)).toEqual(["titel-kurz"]);
+    expect(r.score).toBeLessThan(withTraffic(old, f, null, "2026-10-24").score);
+  });
+});

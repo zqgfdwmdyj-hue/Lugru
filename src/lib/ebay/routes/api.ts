@@ -154,6 +154,8 @@ export interface ApiHooks {
     panel: (attempt: ListingAttempt) => Promise<unknown>;
     publish: (attempt: ListingAttempt, input: { factor: number; food: boolean; prices: Record<string, number>; weightG: number; lengthCm: number; widthCm: number; heightCm: number }) => Promise<unknown>;
   };
+  /** Nach dem (Neu-)Verbinden mit eBay, z. B. Verkehrsdaten nachladen. Läuft im Hintergrund. */
+  onConnected?: () => void;
 }
 
 export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
@@ -600,6 +602,8 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
     const redirectUrl = String(req.body?.redirectUrl ?? '');
     const code = extractCodeFromRedirectUrl(redirectUrl);
     await exchangeCode(db, await getSettings(db), code);
+    // Neue Berechtigungen (z. B. Verkehrsdaten) gleich nutzen – nicht erst bei der nächsten Wochenprüfung.
+    hooks.onConnected?.();
     res.json({ ok: true });
   }));
 

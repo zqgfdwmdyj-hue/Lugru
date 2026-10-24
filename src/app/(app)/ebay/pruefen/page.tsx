@@ -3,7 +3,7 @@ import { requireArea } from "@/lib/auth/session";
 import { ISSUE_LABEL, issueKind } from "@/lib/ebay-review/logic";
 import { reviewOverview, type CheckRow } from "@/lib/ebay-review/service";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
-import { aiWeakestAction, recheckAllAction, refreshAction } from "./actions";
+import { aiWeakestAction, recheckAllAction, refreshAction, refreshTrafficAction } from "./actions";
 import { ActionButton } from "./forms";
 import { euro, issueTag, scoreClass } from "./ui";
 
@@ -43,6 +43,7 @@ export default async function EbayReviewPage({ searchParams }: { searchParams: P
           <h1>Angebote prüfen</h1>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {data.connected && <ActionButton action={refreshTrafficAction} label="Verkehrsdaten neu laden" pending="Lade Verkehrsdaten …" testid="traffic-refresh" />}
           <ActionButton action={refreshAction} label="Angebote von eBay laden" pending="Lade …" primary testid="refresh" />
         </div>
       </div>
@@ -53,7 +54,7 @@ export default async function EbayReviewPage({ searchParams }: { searchParams: P
       </div>
 
       {!data.connected && <div className="notice notice-warn">eBay ist nicht verbunden – unter eBay → eBay-Einstellungen → Verbindung anmelden.</div>}
-      {data.trafficNote && <div className="notice notice-info small" data-testid="traffic-note">{data.trafficNote}</div>}
+      {data.trafficNote && <div className="notice notice-info small" data-testid="traffic-note">{data.trafficNote} Danach oben „Verkehrsdaten neu laden“.</div>}
 
       <section className="card card-pad stack">
         <div className="rev-grid" data-testid="review-kpis">

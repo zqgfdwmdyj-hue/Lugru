@@ -9,6 +9,7 @@ import { maintenanceRouter } from "./routes/maintenance";
 import { dispatch } from "./routes/dispatch";
 import { linkEbayPublished } from "@/lib/stock/ebay-link";
 import { publishAttemptToTemu, temuPanel } from "@/lib/temu/from-ebay";
+import { refreshTrafficSoon } from "@/lib/ebay-review/service";
 import type { Router } from "./routes/router";
 
 /** Routen, die nur der Inhaber aufrufen darf: Zugangsdaten, Verbindung, Rechnungsabsender, Sicherung. */
@@ -31,6 +32,8 @@ function routersFor(db: Db, tenantId: string): Router[] {
       panel: (attempt: Parameters<typeof temuPanel>[1]) => temuPanel(tenantId, attempt),
       publish: (attempt: Parameters<typeof temuPanel>[1], input: Parameters<typeof publishAttemptToTemu>[2]) => publishAttemptToTemu(tenantId, attempt, input),
     },
+    // Neu verbunden (z. B. mit „Verkehrsdaten“): Einblendungen und Klicks sofort für alle geprüften Angebote holen.
+    onConnected: () => refreshTrafficSoon(tenantId),
   };
   return [apiRouter(db, hooks), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
 }

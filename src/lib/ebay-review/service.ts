@@ -34,6 +34,7 @@ import {
   titleQuery,
   TRAFFIC_METRICS,
   trafficFrom,
+  withTraffic,
   type AiSuggestion,
   type CategoryHint,
   type Issue,
@@ -220,7 +221,14 @@ async function trafficFor(c: Conn, itemIds: string[]): Promise<TrafficResult> {
     return { map, error: null };
   } catch (e) {
     const denied = e instanceof EbayHttpError && (e.status === 401 || e.status === 403);
-    return { map, error: denied ? "Für Einblendungen und Klicks unter eBay → eBay-Einstellungen → Verbindung einmal neu verbinden (Häkchen „Verkehrsdaten“)." : `Verkehrsdaten nicht abrufbar: ${e instanceof Error ? e.message : String(e)}` };
+    const at = new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" });
+    const detail = e instanceof Error ? e.message.slice(0, 160) : String(e);
+    return {
+      map,
+      error: denied
+        ? `eBay verweigert die Verkehrsdaten (Stand ${at}: ${detail}). Unter eBay → eBay-Einstellungen → Verbindung mit Häkchen „Verkehrsdaten“ neu verbinden – danach werden sie automatisch geladen. Bleibt diese Meldung trotz Neuverbinden, ist die Berechtigung „Analytics“ für den eBay-Entwicklerzugang nicht freigegeben.`
+        : `Verkehrsdaten nicht abrufbar (Stand ${at}): ${detail}`,
+    };
   }
 }
 
@@ -301,6 +309,37 @@ export async function checkNow(tenantId: string, itemId: string) {
   const c = await mustConn(tenantId);
   const traffic = await trafficFor(c, [itemId]);
   await checkOne(c, tenantId, itemId, traffic);
+}
+
+/**
+ * Nur die Verkehrsdaten neu holen – z. B. direkt nach dem Neuverbinden mit „Verkehrsdaten“. Ersetzt bei allen
+ * geprüften Angeboten Einblendungen/Klicks und die daraus abgeleiteten Hinweise, ohne jedes Angebot neu zu prüfen.
+ */
+export async function refreshTraffic(tenantId: string): Promise<{ updated: number; withData: number; error: string | null }> {
+  const c = await conn(tenantId);
+  if (!c) return { updated: 0, withData: 0, error: "eBay ist nicht verbunden." };
+  const rows = await db
+    .select({ id: C.id, itemId: C.itemId, issues: C.issues, facts: C.facts })
+    .from(C)
+    .where(and(eq(C.tenantId, tenantId), eq(C.status, "fertig")));
+  if (!rows.length) return { updated: 0, withData: 0, error: null };
+  const traffic = await trafficFor(c, rows.map((r) => r.itemId));
+  const today = todayIso();
+  let withData = 0;
+  for (const r of rows) {
+    const t = traffic.map.get(r.itemId) ?? null;
+    if (t) withData++;
+    const set: Partial<typeof C.$inferInsert> = { traffic: (t ? t : traffic.error ? { unavailable: traffic.error } : null) as Record<string, unknown> | null, updatedAt: new Date() };
+    const facts = r.facts as ListingFacts | null;
+    if (facts && !traffic.error) Object.assign(set, withTraffic((r.issues ?? []) as Issue[], facts, t, today));
+    await db.update(C).set(set).where(and(eq(C.id, r.id), eq(C.tenantId, tenantId)));
+  }
+  return { updated: rows.length, withData, error: traffic.error };
+}
+
+/** Nach dem Neuverbinden im Hintergrund die Verkehrsdaten nachladen (die Seite wartet nicht). */
+export function refreshTrafficSoon(tenantId: string) {
+  void refreshTraffic(tenantId).catch((e) => console.error("[Verkehrsdaten]", e instanceof Error ? e.message : e));
 }
 
 /** Für den Hintergrund-Abruf: einmal am Tag neu laden, Ungeprüfte und Ältere (7 Tage) prüfen. */

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireArea } from "@/lib/auth/session";
-import { amazonContentFor, applyRevision, checkNow, queueChecks, refreshListings, startChecks, suggestForWeakest, suggestWithAi, uploadImageFile } from "@/lib/ebay-review/service";
+import { amazonContentFor, applyRevision, checkNow, queueChecks, refreshListings, refreshTraffic, startChecks, suggestForWeakest, suggestWithAi, uploadImageFile } from "@/lib/ebay-review/service";
 import type { Revision } from "@/lib/ebay-review/logic";
 import type { AmazonContent } from "@/lib/ebay-review/content";
 
@@ -36,6 +36,20 @@ export async function recheckAllAction(_prev: ActionState): Promise<ActionState>
   startChecks(session.tenantId);
   revalidatePath("/ebay/pruefen");
   return { ok: true, message: `${n} Angebote werden neu geprüft.` };
+}
+
+/** Nur Einblendungen und Klicks neu holen (nach dem Neuverbinden mit „Verkehrsdaten“). */
+export async function refreshTrafficAction(_prev: ActionState): Promise<ActionState> {
+  const session = await requireArea("ebay");
+  try {
+    const r = await refreshTraffic(session.tenantId);
+    revalidatePath("/ebay/pruefen", "layout");
+    if (r.error) return { ok: false, message: r.error };
+    if (!r.updated) return { ok: true, message: "Noch keine geprüften Angebote – zuerst „Angebote von eBay laden“." };
+    return { ok: true, message: `Verkehrsdaten geladen: ${r.withData} von ${r.updated} Angeboten mit Einblendungen/Klicks (letzte 30 Tage).` };
+  } catch (e) {
+    return fail(e);
+  }
 }
 
 export async function aiWeakestAction(_prev: ActionState): Promise<ActionState> {

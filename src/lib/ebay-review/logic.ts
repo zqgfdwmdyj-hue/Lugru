@@ -430,19 +430,39 @@ export function reviewListing(f: ListingFacts, ctx: ReviewContext): { score: num
     add({ key: "kategorie", level: "tipp", area: "Kategorie", text: `eBay schlägt für den Titel eher „${ctx.categories[0].categoryName}“ vor – passt die Kategorie „${f.categoryName ?? f.categoryId}“? Eine falsche Kategorie kostet Sichtbarkeit.` });
 
   const age = f.startTime ? daysBetween(f.startTime, ctx.today) : null;
-  const t = ctx.traffic;
   if (age !== null && age >= 60 && f.sold === 0) add({ key: "ladenhueter", level: "empfohlen", area: "Verkauf", text: `Seit ${age} Tagen online und noch nichts verkauft – Preis, Hauptbild und Titel prüfen.` });
   if ((f.watchers ?? 0) >= 3 && f.sold === 0) add({ key: "beobachter", level: "tipp", area: "Verkauf", text: `${f.watchers} Beobachter, aber noch kein Kauf – im Seller Hub „Angebot an Interessenten senden“ (kleiner Rabatt) oder den Preis prüfen.` });
+  issues.push(...trafficIssues(f, ctx.traffic, ctx.today));
+
+  return sortAndScore(issues);
+}
+
+/** Sortiert (Fehler, Pflicht, Empfehlung; innerhalb nach Priorität) und rechnet die Punktzahl. */
+export function sortAndScore(issues: Issue[]): { score: number; issues: Issue[] } {
+  const order: Record<Level, number> = { wichtig: 0, empfohlen: 1, tipp: 2 };
+  const kindOrder: Record<IssueKind, number> = { fehler: 0, pflicht: 1, empfehlung: 2 };
+  const sorted = [...issues].sort((a, b) => kindOrder[issueKind(a.key)] - kindOrder[issueKind(b.key)] || order[a.level] - order[b.level]);
+  return { score: scoreOf(sorted), issues: sorted };
+}
+
+/** Hinweise, die nur aus den Verkehrsdaten kommen – beim Nachladen der Verkehrsdaten werden genau diese ersetzt. */
+export const TRAFFIC_ISSUE_KEYS = new Set(["sicht-wenig", "klicks-wenig", "kauf-wenig"]);
+
+export function trafficIssues(f: Pick<ListingFacts, "startTime">, t: Traffic | null, today: string): Issue[] {
+  const issues: Issue[] = [];
+  const add = (i: Issue) => issues.push(i);
+  const age = f.startTime ? daysBetween(f.startTime, today) : null;
   if (t && (age === null || age >= 30)) {
     if (t.impressions < 100) add({ key: "sicht-wenig", level: "empfohlen", area: "Sichtbarkeit", text: `Wird kaum gezeigt (${t.impressions} Einblendungen in ${t.days} Tagen) – Titel, Merkmale und Kategorie verbessern.`, fix: "title" });
     else if (t.searchImpressions >= 500 && t.ctr !== null && t.ctr < 0.8) add({ key: "klicks-wenig", level: "empfohlen", area: "Sichtbarkeit", text: `Wird oft gezeigt, aber selten angeklickt (${String(t.ctr).replace(".", ",")} % von ${t.searchImpressions} Einblendungen) – Hauptbild, Preis inkl. Versand und Titelanfang prüfen.` });
     if (t.views >= 50 && t.sales === 0) add({ key: "kauf-wenig", level: "empfohlen", area: "Verkauf", text: `${t.views} Aufrufe in ${t.days} Tagen, aber kein Kauf – Preis, Versandkosten, Bilder und Beschreibung prüfen.` });
   }
+  return issues;
+}
 
-  const order: Record<Level, number> = { wichtig: 0, empfohlen: 1, tipp: 2 };
-  const kindOrder: Record<IssueKind, number> = { fehler: 0, pflicht: 1, empfehlung: 2 };
-  issues.sort((a, b) => kindOrder[issueKind(a.key)] - kindOrder[issueKind(b.key)] || order[a.level] - order[b.level]);
-  return { score: scoreOf(issues), issues };
+/** Gespeicherte Hinweise mit neuen Verkehrsdaten aktualisieren (ohne das Angebot neu zu prüfen). */
+export function withTraffic(issues: Issue[], f: Pick<ListingFacts, "startTime">, t: Traffic | null, today: string): { score: number; issues: Issue[] } {
+  return sortAndScore([...issues.filter((i) => !TRAFFIC_ISSUE_KEYS.has(i.key)), ...trafficIssues(f, t, today)]);
 }
 
 /** Kurzname eines Hinweises für die Übersicht „häufigste Punkte“. */
