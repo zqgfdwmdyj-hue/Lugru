@@ -159,3 +159,39 @@ export async function shareFiles(files: File[], title: string): Promise<boolean>
   }
   return true;
 }
+
+/**
+ * Preis als Aufkleber über den alten Preis im Foto (Lage `box` als Anteil des Fotos). Gibt false zurück, wenn der
+ * alte Preis im sichtbaren Ausschnitt nicht ganz zu sehen ist – dann den Preis normal drucken.
+ */
+export function drawSticker(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number, mode: "cover" | "contain", box: Box, text: string, fill: string, ink = "#ffffff"): boolean {
+  if (!text) return false;
+  const r = imageRect(img, x, y, w, h, mode);
+  const bx = r.x + box.x * r.w;
+  const by = r.y + box.y * r.h;
+  const bw = box.w * r.w;
+  const bh = box.h * r.h;
+  const visible = (Math.max(0, Math.min(bx + bw, x + w) - Math.max(bx, x)) * Math.max(0, Math.min(by + bh, y + h) - Math.max(by, y))) / (bw * bh);
+  if (!(visible >= 0.8)) return false;
+  const minSize = Math.min(w, h) * 0.07;
+  let size = fitFont(ctx, text, bw * 0.9, Math.max(minSize, bh * 0.7));
+  size = Math.max(size, minSize);
+  ctx.font = `${size}px ${FONT}`;
+  const sw = Math.max(bw, ctx.measureText(text).width + size * 0.8);
+  const sh = Math.max(bh, size * 1.35);
+  const cx = Math.min(Math.max(bx + bw / 2, x + sw / 2), x + w - sw / 2);
+  const cy = Math.min(Math.max(by + bh / 2, y + sh / 2), y + h - sh / 2);
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.3)";
+  ctx.shadowBlur = size * 0.3;
+  ctx.fillStyle = fill;
+  roundRect(ctx, cx - sw / 2, cy - sh / 2, sw, sh, Math.min(sh * 0.25, size * 0.3));
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `${size}px ${FONT}`;
+  ctx.fillText(text, cx, cy + size * 0.05);
+  return true;
+}

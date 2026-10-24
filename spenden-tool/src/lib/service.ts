@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
-import type { PrintedInfo } from "@/lib/printed-price";
 import { DONATION_CATEGORIES, flyerSections } from "@/lib/layout";
 import { UNSORTED_CATEGORY } from "@/lib/price-logic";
 import sharp from "sharp";
@@ -194,11 +193,6 @@ export function eventFlyerSections(rows: Awaited<ReturnType<typeof loadEventItem
       .filter((r) => r.item.inFlyer)
       .map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, unit: r.item.unit, unitCount: r.item.unitCount, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })),
   );
-}
-
-/** Preis, der schon im Foto steht – null, wenn keiner (oder noch nicht gelesen). */
-export function printedInfo(photo: { price: number | null; text: string | null; box: unknown } | null): PrintedInfo {
-  return photo?.text ? { price: photo.price, text: photo.text, box: (photo.box as PriceBox | null) ?? null } : null;
 }
 
 /** Zuletzt verwendeter Preis je Produkt (aus früheren Verteilungen). */

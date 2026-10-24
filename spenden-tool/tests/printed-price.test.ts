@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { differsFromPhoto, hasSeveralPrices, normalizeBox, parsePrintedPrice, parsePrintedReading, printedPlan } from "@/lib/printed-price";
+import { hasSeveralPrices, normalizeBox, parsePrintedPrice, parsePrintedReading } from "@/lib/printed-price";
+import { priceState } from "@/lib/price-logic";
+
+const F = "f";
+const read = (text: string, price: number, box: { x: number; y: number; w: number; h: number } | null) => ({ status: "done", text, price, box });
 
 describe("Preis im Foto", () => {
   it("liest übliche Schreibweisen", () => {
@@ -31,27 +35,26 @@ describe("Preis im Foto", () => {
     expect(normalizeBox([0.3, 0.8, 0.7, 0.9])).not.toBeNull();
   });
 
-  it("entscheidet, was die Collage druckt", () => {
+  it("entscheidet, was die Collage druckt (gemeinsame Preislogik)", () => {
     const box = { x: 0.2, y: 0.75, w: 0.6, h: 0.2 };
-    expect(printedPlan(null)).toBe("normal");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box })).toBe("keep");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: null })).toBe("keep");
+    expect(priceState({ price: 0.6 }, F, null).plan).toBe("drucken");
+    expect(priceState({ price: 0.6 }, F, read("60 Cent", 0.6, box)).plan).toBe("foto");
+    expect(priceState({ price: 0.6 }, F, read("60 Cent", 0.6, null)).plan).toBe("foto");
   });
 });
 
-describe("Preis im Foto – nie etwas übers Foto zeichnen", () => {
+describe("Preis im Foto – Foto nie großflächig überdecken", () => {
   it("erkennt Staffelpreise und überdeckt sie nie", () => {
     expect(hasSeveralPrices("2kg - 5€ 5kg - 10€ 10kg - 18€")).toBe(true);
     expect(hasSeveralPrices("3 Stück 40 Cent")).toBe(false);
-    expect(printedPlan({ price: 5, text: "2kg - 5€ 5kg - 10€ 10kg - 18€", box: { x: 0.1, y: 0.6, w: 0.8, h: 0.25 } })).toBe("keep");
-    expect(differsFromPhoto({ price: 5, text: "2kg - 5€ 5kg - 10€", box: null }, 0.5)).toBe(false);
+    expect(priceState({ price: 0.5 }, F, read("2kg - 5€ 5kg - 10€", 5, null))).toMatchObject({ plan: "foto", conflict: false });
   });
 
-  it("lässt das Foto unverändert und meldet nur Abweichungen", () => {
+  it("Aufkleber nur mit glaubwürdiger, kleiner Lage – sonst normal drucken", () => {
     expect(normalizeBox([5, 20, 95, 98])).toBeNull();
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0, y: 0.2, w: 1, h: 0.8 } })).toBe("keep");
-    expect(printedPlan({ price: 0.6, text: "60 Cent", box: { x: 0.1, y: 0.05, w: 0.8, h: 0.15 } })).toBe("keep");
-    expect(differsFromPhoto({ price: 0.6, text: "60 Cent", box: null }, 0.5)).toBe(true);
-    expect(differsFromPhoto({ price: 0.6, text: "60 Cent", box: null }, 0.6)).toBe(false);
+    expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, { x: 0, y: 0.2, w: 1, h: 0.8 })).plan).toBe("drucken");
+    expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, { x: 0.1, y: 0.05, w: 0.8, h: 0.15 })).plan).toBe("aufkleber");
+    expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, null)).conflict).toBe(true);
+    expect(priceState({ price: 0.6 }, F, read("60 Cent", 0.6, null)).conflict).toBe(false);
   });
 });

@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
 import { PrintButton } from "@/components/print-button";
-import { flyerSections } from "@/lib/layout";
-import { loadEvent, loadEventItems } from "@/lib/service";
+import { loadEventView } from "@/lib/event-view";
+import { eventFlyerSections } from "@/lib/service";
+import { exportWarnings } from "@/lib/export-check";
 import { formatDate } from "@/lib/numbers";
 import { FitSheet } from "./fit-sheet";
 
@@ -13,10 +14,12 @@ export default async function AushangPage({ params, searchParams }: { params: Pr
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const event = await loadEvent(id);
-  if (!event) notFound();
-  const rows = await loadEventItems(id);
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })));
+  const view = await loadEventView(id);
+  if (!view) notFound();
+  const { event, rows } = view;
+  // Gleiche Preislogik wie Collage und Messenger (lib/price-logic.ts).
+  const sections = eventFlyerSections(rows);
+  const warnings = exportWarnings(rows.filter((r) => r.item.inFlyer));
   const cols = [1, 2, 3, 4].includes(Number(sp.spalten)) ? Number(sp.spalten) : 3;
   // „auto“: so groß wie möglich (bis 26 px), sonst höchstens die gewählte Größe.
   const fixed = [12, 14, 16, 18, 20].includes(Number(sp.groesse)) ? Number(sp.groesse) : 0;
@@ -28,7 +31,7 @@ export default async function AushangPage({ params, searchParams }: { params: Pr
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@600;700&display=swap" precedence="default" />
       <style>{CSS}</style>
       <div className="no-print" style={{ maxWidth: 794, margin: "0 auto", padding: "16px 0", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <Link href={`/verteilung/${id}`} className="btn btn-small">← Zurück</Link>
+        <Link href={`/verteilung/${id}/ausgabe`} className="btn btn-small">← Zurück</Link>
         <span className="small muted" style={{ marginLeft: 8 }}>Spalten:</span>
         {[2, 3, 4].map((n) => <Link key={n} href={q({ spalten: n })} className={`chip${cols === n ? " active" : ""}`}>{n}</Link>)}
         <span className="small muted" style={{ marginLeft: 8 }}>Schrift:</span>
@@ -37,6 +40,11 @@ export default async function AushangPage({ params, searchParams }: { params: Pr
         <span style={{ flexGrow: 1 }} />
         <PrintButton />
       </div>
+      {warnings.length > 0 && (
+        <div className="no-print notice notice-warn" style={{ maxWidth: 794, margin: "0 auto 12px" }}>
+          <strong>Vor dem Drucken:</strong> {warnings.join(" · ")} – <Link href={`/verteilung/${id}/pruefen`}>prüfen</Link>
+        </div>
+      )}
       <FitSheet maxSize={size}>
         <header className="fl-head">
           <div className="fl-band">

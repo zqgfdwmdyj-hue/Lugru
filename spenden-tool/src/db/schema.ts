@@ -93,6 +93,8 @@ export const events = pgTable(
     location: text("location"),
     note: text("note"),
     collage: jsonb("collage").$type<Partial<CollageSettings>>().notNull().default({}),
+    /** Ausgewählte Highlights für Social Media (IDs der Verteilungs-Einträge, in dieser Reihenfolge). */
+    highlights: jsonb("highlights").$type<string[]>().notNull().default([]),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -234,3 +236,10 @@ export const eventIdeas = pgTable(
   },
   (t) => [index("event_ideas_event_idx").on(t.eventId, t.createdAt)],
 );
+
+/** Einstellungen fürs ganze Team, z. B. Collage-Vorlage für neue Verteilungen oder Account und Hashtags für Social Media. */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").$type<unknown>().notNull(),
+  updatedAt: updatedAt(),
+});

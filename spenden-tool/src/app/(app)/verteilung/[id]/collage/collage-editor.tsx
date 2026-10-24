@@ -3,15 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CollageSettings, PriceBox } from "@/db/schema";
 import { balancedPages, bestGrid, COLLAGE_FORMATS, collagePrice, PER_PAGE_CHOICES } from "@/lib/layout";
+import { pricePrefix, type PriceState } from "@/lib/price-logic";
 import { saveCollageSettings } from "@/app/(app)/actions";
-import { saveTileStyles } from "@/app/(app)/actions";
+import { saveCollageTemplate, saveTileStyles } from "@/app/(app)/actions";
 import { jpegsToPdf, type PdfPage } from "@/lib/pdf";
 import { RotateButtons } from "@/components/rotate-buttons";
 import { TILE_COLORS, TILE_POSITIONS, type TileColor, type TilePosition, type TileStyle, tileStyle } from "@/lib/layout";
-import { BAND, drawBlurBackground, drawImage, fitFont, FONT, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
-import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
+import { BAND, drawBlurBackground, drawImage, drawSticker, fitFont, FONT, GREEN, imageRect, type Loaded, loadImages, roundRect, wrap } from "@/components/canvas-kit";
+import type { PrintedInfo } from "@/lib/printed-price";
 
-export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo; style: TileStyle; packNote?: string | null; packPrice?: number | null };
+/** plan: aus der gemeinsamen Preislogik (lib/price-logic.ts) – drucken, Foto zeigt ihn schon, oder Aufkleber über den alten. */
+export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null; caption: string | null; printed: PrintedInfo; plan: PriceState["plan"]; style: TileStyle; packNote?: string | null; packPrice?: number | null };
 type Rect = { productId: string; x: number; y: number; w: number; h: number };
 
 /**
@@ -55,13 +57,26 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   }
 
   const price = collagePrice(tile.price);
-  const note = tile.priceNote?.trim() ?? "";
+  // Abgabeeinheit bzw. eigener Zusatz – gleiche Logik wie Aushang und Messenger.
+  const note = pricePrefix({ unit: tile.unit ?? null, unitCount: tile.unitCount ?? null, priceNote: tile.priceNote });
   // Kurzer Zusatz („je“) in dieselbe Zeile, längerer („3er Packung“) darüber.
   const inline = note && note.length <= 4;
-  const fullPrice = inline ? `${note.charAt(0).toUpperCase()}${note.slice(1)} ${price}` : price;
-  // Steht der Preis schon im Foto, nicht doppelt drucken – bei neuem Preis den alten überdecken.
-  let plan = img ? printedPlan(tile.printed) : "normal";
-  if (img && plan === "keep" && tile.printed?.box && s.fit === "cover" && fullPrice) {
+  // Ohne Preis kein Zusatz („Je“ allein ergibt keinen Sinn).
+  const fullPrice = !price ? "" : inline ? `${note.charAt(0).toUpperCase()}${note.slice(1)} ${price}` : price;
+  // Gemeinsame Preislogik: „foto“ = steht schon richtig im Foto (nicht doppelt), „aufkleber“ = eingetragener Preis
+  // über den alten im Foto, „drucken“ = normal.
+  let stickered = false;
+  let plan: "normal" | "keep" | "sticker" = !img ? "normal" : tile.plan === "foto" ? "keep" : tile.plan === "aufkleber" ? "sticker" : "normal";
+  if (img && plan === "sticker" && st.price && fullPrice && tile.printed?.box) {
+    const fill = colors.field ?? GREEN;
+    const ink = colors.field ? colors.text : "#ffffff";
+    if (drawSticker(ctx, img, x, y, w, h, s.fit === "cover" ? "cover" : "contain", tile.printed.box, fullPrice, fill, ink)) {
+      plan = "keep";
+      stickered = true;
+    }
+    else plan = "normal";
+  } else if (plan === "sticker") plan = "normal";
+  if (img && plan === "keep" && tile.printed?.box && s.fit === "cover" && fullPrice && tile.plan === "foto") {
     // „Kachel füllen“ schneidet Ränder ab – ist der alte Preis dadurch angeschnitten, neu drucken.
     const r = imageRect(img, x, y, w, h, "cover");
     const b = tile.printed.box;
@@ -72,7 +87,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   // Pro Bild abschaltbar: Preis, Name, Zusatztext (siehe Auswahl im Editor)
   // Steht schon ein Preis im Foto, wird nur gedruckt, wenn „Preis“ für dieses Bild ausdrücklich angehakt ist
   // (z. B. weil der Preis im Foto zu klein ist).
-  const ownPrice = st.price && (plan === "normal" || st.priceSet);
+  const ownPrice = st.price && (plan === "normal" || (st.priceSet && tile.plan === "foto"));
   const priceLine = ownPrice ? fullPrice : "";
   // Lage der Schrift: festgelegt pro Produkt – sonst unten, bzw. oben, wenn unten schon ein Preis im Foto steht.
   const autoTop = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
@@ -86,10 +101,10 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
     ctx.font = `${Math.round(side * (img ? 0.06 : 0.085))}px ${FONT}`;
     for (const l of wrap(ctx, tile.name, maxW, img ? 2 : 4)) lines.push({ text: l, size: side * (img ? 0.06 : 0.085) });
   }
-  if (note && !inline && ownPrice) lines.push({ text: note, size: side * 0.09 });
+  if (note && !inline && ownPrice && price) lines.push({ text: note, size: side * 0.09 });
   if (priceLine) lines.push({ text: priceLine, size: side * 0.16, isPrice: true });
   // Spendenempfehlung für die ganze Packung als zweite, kleinere Zeile
-  if (ownPrice && tile.packPrice != null) lines.push({ text: `${tile.packNote?.trim() || "ganze Packung"} ${collagePrice(tile.packPrice)}`, size: side * 0.075 });
+  if ((ownPrice || stickered) && tile.packPrice != null) lines.push({ text: `${tile.packNote?.trim() || "ganze Packung"} ${collagePrice(tile.packPrice)}`, size: side * 0.075 });
   if (tile.caption && st.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
     for (const l of wrap(ctx, tile.caption, maxW, 3)) lines.push({ text: l, size: side * 0.055 });
@@ -207,11 +222,14 @@ function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error("Bild konnte nicht erzeugt werden"))), "image/jpeg", 0.9));
 }
 
-export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { eventId: string; tiles: CollageTile[]; initial: CollageSettings; header: { title: string; date: string }; fileBase: string }) {
+export function CollageEditor({ eventId, tiles, initial, header, fileBase, warnings = [] }: { eventId: string; tiles: CollageTile[]; initial: CollageSettings; header: { title: string; date: string }; fileBase: string; warnings?: string[] }) {
+  /** Vor dem Speichern/Teilen: offene Punkte (fehlende Preise, Widersprüche) zusammenfassen und nachfragen. */
+  const okToExport = () => !warnings.length || confirm(`Vor dem Export bitte beachten:\n\n• ${warnings.join("\n• ")}\n\nTrotzdem speichern?`);
   const [s, setS] = useState<CollageSettings>(initial);
   const [images, setImages] = useState<Loaded | null>(null);
   const imagesRef = useRef<Loaded | null>(null);
   const [message, setMessage] = useState("");
+  const [info, setInfo] = useState("");
   const canvases = useRef<(HTMLCanvasElement | null)[]>([]);
   // Preis-Lage und -Farbe je Produkt (auf ein Bild tippen → einstellen).
   const [styles, setStyles] = useState<Record<string, TileStyle>>(() => Object.fromEntries(tiles.map((t) => [t.productId, t.style ?? {}])));
@@ -255,7 +273,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
       const c = canvases.current[i];
       if (!c) return [];
       const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
-      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packNote, t.packPrice, t.priceNote, t.caption, t.name, t.printed?.text])]);
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packNote, t.packPrice, t.priceNote, t.unit, t.unitCount, t.plan, t.caption, t.name, t.printed?.text])]);
       if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
       drawn.current.set(c, key);
       changed = true;
@@ -288,6 +306,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
     return out;
   };
   const download = async (only?: number) => {
+    if (!okToExport()) return;
     for (const f of await files(only)) {
       const url = URL.createObjectURL(f);
       const a = document.createElement("a");
@@ -302,6 +321,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
   /** Alle Collage-Bilder als eine PDF-Datei, Seite für Seite untereinander – ein Klick, eine Datei. */
   const [pdfBusy, setPdfBusy] = useState(false);
   const downloadPdf = async () => {
+    if (!okToExport()) return;
     setPdfBusy(true);
     try {
       const list: PdfPage[] = [];
@@ -323,6 +343,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
     }
   };
   const share = async () => {
+    if (!okToExport()) return;
     const list = await files();
     if (!navigator.canShare?.({ files: list })) {
       setMessage("Teilen wird von diesem Browser nicht unterstützt – bitte „Alle speichern“ nutzen.");
@@ -375,6 +396,14 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
         </div>
         <label className="small" style={{ paddingBottom: 10 }}><input type="checkbox" checked={s.showName} onChange={(e) => set("showName", e.target.checked)} /> Produktnamen</label>
         <label className="small" style={{ paddingBottom: 10 }}><input type="checkbox" checked={s.header} onChange={(e) => set("header", e.target.checked)} /> Kopfzeile mit Datum</label>
+        <button className="btn btn-small" type="button" style={{ marginBottom: 4 }} title="Format, Produkte pro Bild, Namen und Kopfzeile für alle neuen Verteilungen übernehmen" onClick={async () => {
+            try {
+              await saveCollageTemplate(s);
+              setInfo("Als Vorlage gespeichert – neue Verteilungen starten mit diesen Collage-Einstellungen.");
+            } catch {
+              setMessage("Vorlage konnte nicht gespeichert werden.");
+            }
+          }}>Als Vorlage speichern</button>
         <div style={{ flexGrow: 1 }} />
         <div style={{ display: "flex", gap: 8 }}>
           {canShare && <button className="btn btn-primary" type="button" onClick={share} disabled={!images}>Teilen …</button>}
@@ -389,13 +418,15 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
         </div>
       </section>
       {message && <div className="notice notice-warn">{message}</div>}
+      {info && <div className="notice notice-ok">{info}</div>}
       {images && !sel && <div className="small muted">Tipp: Auf ein Produkt in der Collage tippen – dort lassen sich Name, Preis und Zusatztext einzeln ein- und ausschalten, Lage und Farbe festlegen und das Foto drehen.</div>}
       {sel && selStyle && (
         <section className="card card-pad tile-style" style={{ position: "sticky", top: 8, zIndex: 5, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
           <div style={{ minWidth: 160 }}>
             <div className="label">Ausgewählt</div>
             <strong>{sel.name}</strong>
-            {sel.printed && <div className="small muted" style={{ maxWidth: 240 }}>Preis steht schon im Foto ({sel.printed.text}) – deshalb wird keiner dazugedruckt. Ist er im Foto zu klein, „Preis“ anhaken.</div>}
+            {sel.printed && sel.plan === "foto" && <div className="small muted" style={{ maxWidth: 240 }}>Preis steht schon richtig im Foto ({sel.printed.text}) – deshalb wird keiner dazugedruckt. Ist er im Foto zu klein, „Preis“ anhaken.</div>}
+            {sel.printed && sel.plan !== "foto" && <div className="small muted" style={{ maxWidth: 240 }}>Im Foto steht „{sel.printed.text}“ – eingetragen ist {collagePrice(sel.price)}. {sel.plan === "aufkleber" ? "Der eingetragene Preis wird über den alten gesetzt." : "Der alte Preis bleibt im Foto sichtbar – besser ein Foto ohne Preis verwenden."}</div>}
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
               {sel.image && <RotateButtons productId={sel.productId} />}
               <button className="btn btn-small" type="button" onClick={() => changeStyle([sel.productId], null)} disabled={Object.keys(styles[sel.productId] ?? {}).length === 0}>Zurücksetzen</button>
@@ -413,7 +444,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase }: { e
             <div className="stack" style={{ gap: 4 }}>
               {([
                 ["name", "Name", selStyle.name ?? (sel.image ? s.showName : true)],
-                ["price", "Preis", selStyle.priceSet ? selStyle.price : !sel.printed],
+                ["price", "Preis", selStyle.priceSet ? selStyle.price : sel.plan !== "foto"],
                 ["caption", "Zusatztext", selStyle.caption],
               ] as const).map(([key, label, on]) => (
                 <label key={key} className="small" style={{ whiteSpace: "nowrap" }}>

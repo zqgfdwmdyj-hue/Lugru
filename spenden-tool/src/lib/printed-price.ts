@@ -62,22 +62,6 @@ export function normalizeBox(raw: unknown): PriceBox | null {
 /** Preis, der schon im Foto steht (für Collage/Social Media); null = keiner. */
 export type PrintedInfo = { price: number | null; text: string; box: PriceBox | null } | null;
 
-/**
- * Was die Collage mit dem Preis macht – über einen Preis im Foto wird nie etwas gezeichnet, das Produkt bleibt
- * immer ganz zu sehen:
- *  - „keep“: Im Foto steht schon ein Preis → Foto unverändert, kein zweiter Preis. Weicht der eingetragene Preis ab,
- *    gibt es nur einen Hinweis (differsFromPhoto) mit „Preise vom Foto übernehmen“.
- *  - „normal“: kein Preis im Foto → Preis wie sonst drucken.
- */
-export function printedPlan(printed: PrintedInfo): "keep" | "normal" {
-  return printed ? "keep" : "normal";
-}
-
-/** Weicht der eingetragene Preis vom Preis im Foto ab (dann stünde ein anderer Preis auf der Collage)? */
-export function differsFromPhoto(printed: PrintedInfo, price: number | null): boolean {
-  return !!printed && printed.price !== null && price !== null && !hasSeveralPrices(printed.text) && Math.abs(printed.price - price) >= 0.005;
-}
-
 export type PrintedReading = { found: boolean; price: number | null; text: string | null; box: PriceBox | null };
 
 /** JSON-Antwort der KI auswerten: {"preis_text": "60 Cent", "preis": 0.6, "rahmen": [x0, y0, x1, y1]} */

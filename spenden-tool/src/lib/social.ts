@@ -55,3 +55,16 @@ export function tiktokCaption(e: SocialEvent, products: SocialProduct[], extraTa
   tags.push(...extraTags.map(hashtag).filter(Boolean));
   return `${whenWhere(e)}: ${products.length} gerettete Produkte gegen kleine Spende 💚 ${top ? `u. a. ${top}` : ""}`.trim() + `\n${[...new Set(tags)].join(" ")}`;
 }
+
+/** Formate in der Social-Media-Ansicht – es wird immer nur eines angezeigt. */
+export const SOCIAL_FORMATS = [
+  { key: "story", label: "Instagram-Story", hint: "Ankündigung 9:16" },
+  { key: "feed", label: "Feed-Beitrag", hint: "Titelbild 4:5" },
+  { key: "karussell", label: "Karussell", hint: "ein Produkt pro Bild" },
+  { key: "story-produkte", label: "Story-Serie", hint: "Highlights einzeln" },
+  { key: "preisliste", label: "Preisliste als Bild", hint: "wie der Aushang" },
+  { key: "video", label: "Video (Reel/TikTok)", hint: "9:16 ohne Ton" },
+  { key: "texte", label: "Texte", hint: "Instagram & TikTok" },
+] as const;
+export type SocialFormat = (typeof SOCIAL_FORMATS)[number]["key"];
+export const isSocialFormat = (v: unknown): v is SocialFormat => SOCIAL_FORMATS.some((f) => f.key === v);

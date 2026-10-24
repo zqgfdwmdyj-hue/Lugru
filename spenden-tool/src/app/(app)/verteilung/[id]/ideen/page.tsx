@@ -54,8 +54,7 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
 
   return (
     <>
-      <div className="crumb"><Link href={`/verteilung/${id}`}>Zurück zur Verteilung</Link></div>
-      <div className="page-head"><div><h1>Ideen</h1><div className="small muted">{eventDateLabel(event.eventDate)} · {items.length} Produkte · Themenpakete, Rezepte und Werbetext von der KI</div></div></div>
+      <div><h2>Ideen</h2><div className="small muted">{items.length} Produkte · Themenpakete, Rezepte und Werbetext von der KI · <Link href={`/verteilung/${id}/ausgabe`}>andere Ausgabe wählen</Link></div></div>
       {unnamed > 0 && <div className="notice notice-warn">{unnamed} Produkt(e) haben noch keinen Namen und werden nicht berücksichtigt.</div>}
       {aiConfigured() ? (
         <IdeasForm action={createIdeas.bind(null, id)} themes={themeSuggestions(month)} cost="3–5 Cent" modes={Object.entries(IDEA_MODES).map(([key, m]) => ({ key, label: m.label, hint: m.hint }))} />

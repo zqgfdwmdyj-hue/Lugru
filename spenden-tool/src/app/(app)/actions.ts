@@ -18,6 +18,7 @@ import { readBestBefore } from "@/lib/mhd";
 import { logActivity } from "@/lib/activity";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateIdeas, IDEA_MODES, type IdeaMode, isIdeaMode } from "@/lib/ideas";
+import { getSetting, setSetting, SETTINGS } from "@/lib/settings";
 import { formatDate } from "@/lib/numbers";
 import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
@@ -53,6 +54,9 @@ export async function createEvent(fd: FormData) {
     .returning({ id: E.id });
   // Produkte einer früheren Aktion übernehmen (mit deren Preisen).
   const copyFrom = uuid.safeParse(fd.get("copyFrom"));
+  // Sonst die gespeicherte Collage-Vorlage des Teams verwenden.
+  const template = copyFrom.success ? null : await getSetting<Partial<CollageSettings>>(SETTINGS.collage);
+  if (template) await db.update(E).set({ collage: collageSettings(template) }).where(eq(E.id, ev.id));
   if (copyFrom.success) {
     const src = await loadEvent(copyFrom.data);
     if (src) {
@@ -98,6 +102,28 @@ export async function saveCollageSettings(eventId: string, settings: CollageSett
   await requireLogin();
   const id = uuid.parse(eventId);
   await db.update(E).set({ collage: collageSettings(settings) }).where(eq(E.id, id));
+}
+
+/** Collage-Einstellungen als Vorlage für neue Verteilungen speichern. */
+export async function saveCollageTemplate(settings: CollageSettings) {
+  const me = await requireLogin();
+  await setSetting(SETTINGS.collage, collageSettings(settings));
+  await logActivity(me, "Collage-Vorlage für neue Verteilungen gespeichert");
+}
+
+/** Highlights für Social Media: ausgewählte Einträge in der gewünschten Reihenfolge. */
+export async function saveHighlights(eventId: string, itemIds: string[]) {
+  await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = z.array(uuid).max(60).parse(itemIds);
+  const valid = ids.length ? new Set((await db.select({ id: I.id }).from(I).where(and(eq(I.eventId, id), inArray(I.id, ids)))).map((r) => r.id)) : new Set<string>();
+  await db.update(E).set({ highlights: ids.filter((x) => valid.has(x)) }).where(eq(E.id, id));
+}
+
+/** Account und Hashtags für Social Media – gelten fürs ganze Team. */
+export async function saveSocialSettings(v: { handle: string; tags: string }) {
+  await requireLogin();
+  await setSetting(SETTINGS.social, { handle: String(v.handle ?? "").slice(0, 60), tags: String(v.tags ?? "").slice(0, 300) });
 }
 
 /** Produktfoto drehen (↺ / ↻). */

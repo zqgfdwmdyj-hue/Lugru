@@ -2,12 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CopyButton } from "@/components/copy-button";
-import { BAND, BODY_FONT, brushBand, downloadFiles, drawPhoto, fitFont, FONT, GREEN, INK, type Loaded, loadFonts, loadImages, PINK, roundRect, shareFiles, toBlob, wrap } from "@/components/canvas-kit";
+import { BAND, BODY_FONT, brushBand, downloadFiles, drawPhoto, drawSticker, fitFont, FONT, GREEN, INK, type Loaded, loadFonts, loadImages, PINK, roundRect, shareFiles, toBlob, wrap } from "@/components/canvas-kit";
 import type { FlyerSection } from "@/lib/layout";
-import { type PrintedInfo, printedPlan } from "@/lib/printed-price";
-import { instagramCaption, priceLabel, tiktokCaption, type SocialEvent } from "@/lib/social";
+import type { PrintedInfo } from "@/lib/printed-price";
+import type { PriceState } from "@/lib/price-logic";
+import { instagramCaption, priceLabel, SOCIAL_FORMATS as FORMATS, type SocialFormat, tiktokCaption, type SocialEvent } from "@/lib/social";
+import { saveHighlights, saveSocialSettings } from "@/app/(app)/actions";
 
-export type SocialItem = { id: string; image: string | null; name: string; variant: string | null; price: number | null; priceNote: string | null; caption: string | null; printed: PrintedInfo };
+/** plan: gemeinsame Preislogik – „foto“: Preis steht schon richtig im Foto, „aufkleber“: über den alten setzen. */
+export type SocialItem = { id: string; image: string | null; name: string; variant: string | null; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null; caption: string | null; printed: PrintedInfo; plan: PriceState["plan"] };
 export type SocialData = SocialEvent & { subtitle: string | null; dateShort: string; weekdayShort: string; fileBase: string };
 
 type Ctx = CanvasRenderingContext2D;
@@ -61,8 +64,10 @@ function tile(ctx: Ctx, p: SocialItem, img: HTMLImageElement | undefined, x: num
     wrap(ctx, p.name, w * 0.85, 3).forEach((l, k, all) => ctx.fillText(l, x + w / 2, y + h / 2 + (k - (all.length - 1) / 2) * w * 0.11));
   }
   ctx.restore();
-  // Preis schon im Foto: nicht doppelt – bei neuem Preis den alten überdecken.
-  if ((img ? printedPlan(p.printed) : "normal") === "normal") priceBadge(ctx, priceLabel(p), x + w / 2, y + h - Math.min(w, h) * 0.1, Math.round(Math.min(w, h) * 0.1), w * 0.9);
+  // Gemeinsame Preislogik: steht der Preis schon richtig im Foto, nicht doppelt; weicht er ab, Aufkleber über den alten.
+  if (img && p.plan === "foto") return;
+  if (img && p.plan === "aufkleber" && p.printed?.box && drawSticker(ctx, img, x, y, w, h, "contain", p.printed.box, priceLabel(p), GREEN)) return;
+  priceBadge(ctx, priceLabel(p), x + w / 2, y + h - Math.min(w, h) * 0.1, Math.round(Math.min(w, h) * 0.1), w * 0.9);
 }
 
 /** Kopf mit Farbband, Titel und Datum – für Story und Feed. */
@@ -153,9 +158,9 @@ function drawProduct(ctx: Ctx, d: SocialData, p: SocialItem, img: HTMLImageEleme
   const nameSize = Math.round(W * (story ? 0.07 : 0.06));
   ctx.font = `${nameSize}px ${FONT}`;
   const nameLines = wrap(ctx, p.name, W * 0.88, 2);
-  const plan = img ? printedPlan(p.printed) : "normal";
-  // Steht der Preis schon im Foto, keine zweite Plakette darunter.
-  const price = plan === "normal" ? priceLabel(p) : "";
+  // Steht der Preis schon richtig im Foto, keine zweite Plakette; weicht er ab, kommt ein Aufkleber über den alten.
+  const sticker = !!img && p.plan === "aufkleber" && !!p.printed?.box;
+  const price = img && (p.plan === "foto" || sticker) ? "" : priceLabel(p);
   const badge = Math.round(W * (story ? 0.085 : 0.066));
   const gap = W * 0.025;
   let bottom = H - (handle ? W * 0.11 : W * 0.04);
@@ -187,6 +192,7 @@ function drawProduct(ctx: Ctx, d: SocialData, p: SocialItem, img: HTMLImageEleme
   const photoH = Math.max(H * 0.3, bottom - gap - barH);
   if (img) {
     drawPhoto(ctx, img, 0, barH, W, photoH, p.printed?.box);
+    if (sticker && !drawSticker(ctx, img, 0, barH, W, photoH, "contain", p.printed!.box!, priceLabel(p), GREEN)) priceBadge(ctx, priceLabel(p), W / 2, barH + photoH - badge, badge, W * 0.8);
   } else {
     ctx.fillStyle = "#eef3f5";
     ctx.fillRect(0, barH, W, photoH);
@@ -297,36 +303,63 @@ function videoMime(): string | null {
   return null;
 }
 
-export function SocialStudio({ data, items, sections }: { data: SocialData; items: SocialItem[]; sections: FlyerSection[] }) {
+const USES_HIGHLIGHTS: SocialFormat[] = ["story", "feed", "karussell", "story-produkte", "video", "texte"];
+
+export function SocialStudio({ eventId, data, items, sections, format: initialFormat, highlightIds, settings, warnings }: {
+  eventId: string;
+  data: SocialData;
+  items: SocialItem[];
+  sections: FlyerSection[];
+  format: SocialFormat;
+  highlightIds: string[];
+  settings: { handle: string; tags: string };
+  warnings: string[];
+}) {
+  const [format, setFormat] = useState<SocialFormat>(initialFormat);
   const [imgs, setImgs] = useState<Loaded | null>(null);
-  const [handle, setHandle] = useState("");
-  const [tags, setTags] = useState("");
+  const [handle, setHandle] = useState(settings.handle);
+  const [tags, setTags] = useState(settings.tags);
+  const [picked, setPicked] = useState<string[]>(() => highlightIds.filter((id) => items.some((i) => i.id === id)));
   const [highlights, setHighlights] = useState(6);
   const [message, setMessage] = useState("");
   const [video, setVideo] = useState<{ busy: boolean; progress: number; url?: string; file?: File }>({ busy: false, progress: 0 });
   const [secondsPer, setSecondsPer] = useState(1.5);
   const [canShare, setCanShare] = useState(false);
 
-  // Handle und Hashtags im Browser merken
   useEffect(() => {
-    try {
-      setHandle(localStorage.getItem("social-handle") ?? "");
-      setTags(localStorage.getItem("social-tags") ?? "");
-    } catch {}
     setCanShare("canShare" in navigator && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
   }, []);
+  // Gewähltes Format in der Adresse merken (Zurück-Knopf, Lesezeichen).
+  useEffect(() => {
+    const u = new URL(location.href);
+    u.searchParams.set("format", format);
+    history.replaceState(history.state, "", u);
+  }, [format]);
   // Erst nach kurzer Tipp-Pause neu zeichnen – sonst rechnet jede Taste alle Vorschauen neu (langsam am Handy).
-  const [drawHandle, setDrawHandle] = useState("");
+  const [drawHandle, setDrawHandle] = useState(settings.handle);
   useEffect(() => {
     const t = setTimeout(() => setDrawHandle(handle), 500);
     return () => clearTimeout(t);
   }, [handle]);
+  // Account und Hashtags fürs ganze Team speichern (statt nur in diesem Browser).
+  const firstSave = useRef(true);
   useEffect(() => {
-    try {
-      localStorage.setItem("social-handle", handle);
-      localStorage.setItem("social-tags", tags);
-    } catch {}
+    if (firstSave.current) {
+      firstSave.current = false;
+      return;
+    }
+    const t = setTimeout(() => void saveSocialSettings({ handle, tags }).catch(() => {}), 900);
+    return () => clearTimeout(t);
   }, [handle, tags]);
+  const firstPick = useRef(true);
+  useEffect(() => {
+    if (firstPick.current) {
+      firstPick.current = false;
+      return;
+    }
+    const t = setTimeout(() => void saveHighlights(eventId, picked).catch(() => setMessage("Highlights konnten nicht gespeichert werden.")), 600);
+    return () => clearTimeout(t);
+  }, [eventId, picked]);
 
   useEffect(() => {
     let alive = true;
@@ -340,10 +373,15 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
     };
   }, [items]);
 
-  // Produkte mit Foto zuerst – die sehen auf Social Media besser aus.
-  const ordered = useMemo(() => [...items.filter((i) => i.image), ...items.filter((i) => !i.image)], [items]);
+  // Reihenfolge: ausgewählte Highlights in ihrer Reihenfolge, dann Produkte mit Foto, dann ohne.
+  const ordered = useMemo(() => {
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const first = picked.map((id) => byId.get(id)).filter((i): i is SocialItem => !!i);
+    const rest = items.filter((i) => !picked.includes(i.id));
+    return [...first, ...rest.filter((i) => i.image), ...rest.filter((i) => !i.image)];
+  }, [items, picked]);
   const extraTags = tags.split(/[\s,#]+/).filter(Boolean);
-  const hl = ordered.slice(0, highlights);
+  const hl = picked.length ? ordered.slice(0, picked.length) : ordered.slice(0, highlights);
 
   const templates = useMemo<Template[]>(() => {
     if (!imgs) return [];
@@ -380,8 +418,11 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
     ];
   }, [imgs, ordered, hl, sections, data, drawHandle, items.length]);
 
-  const save = async (t: Template, only?: number) => downloadFiles(await renderFiles(t, data.fileBase, only));
+  /** Vor dem Speichern/Teilen: offene Punkte nennen und nachfragen. */
+  const okToExport = () => !warnings.length || confirm(`Vor dem Export bitte beachten:\n\n• ${warnings.join("\n• ")}\n\nTrotzdem speichern?`);
+  const save = async (t: Template, only?: number) => okToExport() && downloadFiles(await renderFiles(t, data.fileBase, only));
   const share = async (t: Template) => {
+    if (!okToExport()) return;
     const files = await renderFiles(t, data.fileBase);
     if (!(await shareFiles(files, data.title))) setMessage("Teilen geht in diesem Browser nicht – bitte speichern und in der App hochladen.");
   };
@@ -393,6 +434,7 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
       setMessage("Dieser Browser kann keine Videos erzeugen – bitte Chrome, Edge oder Safari (aktuell) verwenden.");
       return;
     }
+    if (!okToExport()) return;
     const W = STORY.w;
     const H = STORY.h;
     const slides: { draw: (c: Ctx) => void; secs: number }[] = [
@@ -442,32 +484,87 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
 
   const ig = instagramCaption(data, ordered, extraTags);
   const tt = tiktokCaption(data, ordered, extraTags);
+  const t = templates.find((x) => x.key === format);
+  const move = (id: string, d: -1 | 1) =>
+    setPicked((prev) => {
+      const i = prev.indexOf(id);
+      const j = i + d;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
 
   return (
     <>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@600&display=swap" precedence="default" />
+      <div className="format-chips" role="tablist" aria-label="Format">
+        {FORMATS.map((f) => (
+          <button key={f.key} type="button" role="tab" aria-selected={format === f.key} className={`format-chip${format === f.key ? " active" : ""}`} onClick={() => setFormat(f.key)}>
+            <strong>{f.label}</strong><span>{f.hint}</span>
+          </button>
+        ))}
+      </div>
+
       <section className="card card-pad" style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ minWidth: 200 }}>
           <label className="label" htmlFor="sh">Euer Account (unten auf den Bildern)</label>
           <input className="input" id="sh" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@foodsharing_musterstadt" />
         </div>
-        <div className="field" style={{ minWidth: 200, flex: 1 }}>
-          <label className="label" htmlFor="st">Eigene Hashtags</label>
-          <input className="input" id="st" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="z. B. musterstadt tafel" />
-        </div>
-        <div className="field">
-          <label className="label" htmlFor="sp">Highlights (Story-Serie & Video)</label>
-          <select className="select" id="sp" value={highlights} onChange={(e) => setHighlights(Number(e.target.value))}>
-            {[3, 4, 5, 6, 8, 10, 12, 15, 20].map((n) => <option key={n} value={n}>{n} Produkte</option>)}
-          </select>
-        </div>
+        {format === "texte" && (
+          <div className="field" style={{ minWidth: 200, flex: 1 }}>
+            <label className="label" htmlFor="st">Eigene Hashtags</label>
+            <input className="input" id="st" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="z. B. musterstadt tafel" />
+          </div>
+        )}
+        {(format === "story-produkte" || format === "video") && picked.length === 0 && (
+          <div className="field">
+            <label className="label" htmlFor="sp">Anzahl Highlights</label>
+            <select className="select" id="sp" value={highlights} onChange={(e) => setHighlights(Number(e.target.value))}>
+              {[3, 4, 5, 6, 8, 10, 12, 15, 20].map((n) => <option key={n} value={n}>{n} Produkte</option>)}
+            </select>
+          </div>
+        )}
+        <span className="small muted" style={{ paddingBottom: 10 }}>Account und Hashtags gelten fürs ganze Team.</span>
       </section>
-      {message && <div className="notice notice-warn">{message}</div>}
-      {!imgs && <div className="notice notice-info">Lade Fotos …</div>}
-      <div className="small muted">Produkte mit Foto kommen zuerst, sonst gilt die Reihenfolge aus der Produktliste. Nur Produkte mit Häkchen „Collage“ erscheinen hier.</div>
 
-      {templates.map((t) => (
-        <section key={t.key} className="card card-pad stack" style={{ gap: 10 }}>
+      {USES_HIGHLIGHTS.includes(format) && (
+        <details className="card card-pad highlight-picker" open={picked.length > 0 || undefined}>
+          <summary><strong>Highlights auswählen und sortieren</strong> <span className="small muted">{picked.length ? `${picked.length} ausgewählt – kommen zuerst` : "keine ausgewählt – es gilt die Reihenfolge der Produktliste (Fotos zuerst)"}</span></summary>
+          {picked.length > 0 && (
+            <ol className="hl-order">
+              {picked.map((id, i) => {
+                const it = items.find((x) => x.id === id);
+                if (!it) return null;
+                return (
+                  <li key={id}>
+                    {it.image ? <img src={`${it.image}?w=200`} alt="" className="thumb thumb-sm" /> : <span className="thumb thumb-sm" />}
+                    <span className="wrap-anywhere" style={{ flex: 1 }}>{it.name}</span>
+                    <button type="button" className="btn btn-small" onClick={() => move(id, -1)} disabled={i === 0} aria-label="Nach vorne">↑</button>
+                    <button type="button" className="btn btn-small" onClick={() => move(id, 1)} disabled={i === picked.length - 1} aria-label="Nach hinten">↓</button>
+                    <button type="button" className="btn btn-small" onClick={() => setPicked((p) => p.filter((x) => x !== id))} aria-label="Entfernen">✕</button>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+          <div className="hl-grid">
+            {items.filter((i) => !picked.includes(i.id)).map((i) => (
+              <button key={i.id} type="button" className="hl-pick" onClick={() => setPicked((p) => [...p, i.id])} title="Als Highlight hinzufügen">
+                {i.image ? <img src={`${i.image}?w=200`} alt="" /> : <span className="thumb-empty">kein Foto</span>}
+                <span>{i.name}</span>
+              </button>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {warnings.length > 0 && <div className="notice notice-warn"><strong>Vor dem Export:</strong> {warnings.join(" · ")}</div>}
+      {message && <div className="notice notice-warn">{message}</div>}
+      {!imgs && format !== "texte" && <div className="notice notice-info">Lade Fotos …</div>}
+
+      {t && (
+        <section className="card card-pad stack" style={{ gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div><h2>{t.title}</h2><div className="small muted">{t.hint} · {t.count} {t.count === 1 ? "Bild" : "Bilder"}</div></div>
             <div style={{ display: "flex", gap: 6 }}>
@@ -475,18 +572,18 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
               <button className={`btn btn-small${canShare ? "" : " btn-primary"}`} type="button" onClick={() => save(t)}>{t.count > 1 ? `Alle ${t.count} speichern` : "Speichern"}</button>
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${t.h > t.w * 1.5 ? 120 : 150}px, 1fr))`, gap: 10 }}>
-            {Array.from({ length: Math.min(t.count, 8) }, (_, i) => (
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${t.h > t.w * 1.5 ? 140 : 170}px, 1fr))`, gap: 10 }}>
+            {Array.from({ length: Math.min(t.count, 20) }, (_, i) => (
               <button key={i} type="button" onClick={() => save(t, i)} title="Dieses Bild speichern" style={{ border: 0, padding: 0, background: "none", cursor: "pointer" }}>
                 <Preview t={t} i={i} ready={!!imgs} />
               </button>
             ))}
-            {t.count > 8 && <div className="small muted" style={{ alignSelf: "center" }}>+ {t.count - 8} weitere</div>}
+            {t.count > 20 && <div className="small muted" style={{ alignSelf: "center" }}>+ {t.count - 20} weitere</div>}
           </div>
         </section>
-      ))}
+      )}
 
-      {imgs && (
+      {format === "video" && imgs && (
         <section className="card card-pad stack" style={{ gap: 10 }}>
           <div><h2>Video für Reels & TikTok</h2><div className="small muted">9:16 · Titelbild, dann {hl.length} Highlights, dann die Preisliste · ohne Ton (Musik in der App hinzufügen)</div></div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -507,12 +604,14 @@ export function SocialStudio({ data, items, sections }: { data: SocialData; item
         </section>
       )}
 
-      <section className="card card-pad stack" style={{ gap: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><h2>Text für Instagram</h2><CopyButton text={ig} label="Kopieren" /></div>
-        <pre className="small" style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "var(--sans)", background: "var(--surface-2)", padding: 12, borderRadius: 8, maxHeight: 260, overflow: "auto" }}>{ig}</pre>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}><h2>Text für TikTok</h2><CopyButton text={tt} label="Kopieren" /></div>
-        <pre className="small" style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "var(--sans)", background: "var(--surface-2)", padding: 12, borderRadius: 8 }}>{tt}</pre>
-      </section>
+      {format === "texte" && (
+        <section className="card card-pad stack" style={{ gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}><h2>Text für Instagram</h2><CopyButton text={ig} label="Kopieren" /></div>
+          <pre className="small" style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "var(--sans)", background: "var(--surface-2)", padding: 12, borderRadius: 8, maxHeight: 260, overflow: "auto" }}>{ig}</pre>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}><h2>Text für TikTok</h2><CopyButton text={tt} label="Kopieren" /></div>
+          <pre className="small" style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "var(--sans)", background: "var(--surface-2)", padding: 12, borderRadius: 8 }}>{tt}</pre>
+        </section>
+      )}
     </>
   );
 }

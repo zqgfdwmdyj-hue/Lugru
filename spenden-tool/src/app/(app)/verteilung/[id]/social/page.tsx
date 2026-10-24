@@ -1,23 +1,39 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
-import { eventDateLabel, flyerSections } from "@/lib/layout";
-import { loadEvent, loadEventItems, printedInfo } from "@/lib/service";
+import { eventDateLabel } from "@/lib/layout";
+import { loadEventView } from "@/lib/event-view";
+import { eventFlyerSections } from "@/lib/service";
+import { exportWarnings } from "@/lib/export-check";
+import { getSetting, SETTINGS } from "@/lib/settings";
+import { isSocialFormat } from "@/lib/social";
 import { SocialStudio, type SocialData, type SocialItem } from "./social-studio";
 
 const WEEKDAYS = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 
-export default async function SocialPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SocialPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ format?: string }> }) {
   await requireLogin();
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const event = await loadEvent(id);
-  if (!event) notFound();
-  const rows = await loadEventItems(id);
-  const items: SocialItem[] = rows
-    .filter((r) => r.item.inCollage)
-    .map(({ item, product, photo }) => ({ id: item.id, image: product.imageFileId ? `/datei/${product.imageFileId}` : null, name: product.name, variant: product.variant, price: item.price, priceNote: item.priceNote, caption: item.caption, printed: printedInfo(photo) }));
-  const sections = flyerSections(rows.filter((r) => r.item.inFlyer).map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })));
+  const sp = await searchParams;
+  const view = await loadEventView(id);
+  if (!view) notFound();
+  const { event, rows } = view;
+  const shown = rows.filter((r) => r.item.inCollage);
+  const items: SocialItem[] = shown.map(({ item, product, state }) => ({
+    id: item.id,
+    image: product.imageFileId ? `/datei/${product.imageFileId}` : null,
+    name: product.name,
+    variant: product.variant,
+    price: item.price,
+    priceNote: item.priceNote,
+    unit: item.unit,
+    unitCount: item.unitCount,
+    caption: item.caption,
+    printed: state.printed,
+    plan: state.plan,
+  }));
+  const sections = eventFlyerSections(rows);
+  const social = (await getSetting<{ handle?: string; tags?: string }>(SETTINGS.social)) ?? {};
   const [y, m, d] = event.eventDate.split("-").map(Number);
   const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   const data: SocialData = {
@@ -32,10 +48,11 @@ export default async function SocialPage({ params }: { params: Promise<{ id: str
     fileBase: `spenden-${event.eventDate}`,
   };
   return (
-    <>
-      <div className="crumb"><Link href={`/verteilung/${id}`}>Zurück zur Verteilung</Link></div>
-      <div className="page-head"><div><h1>Social Media</h1><div className="small muted">{eventDateLabel(event.eventDate)} · Bilder, Video und Texte für Instagram & TikTok – automatisch aus der Verteilung</div></div></div>
-      {items.length === 0 ? <div className="card card-pad muted">Keine Produkte mit Häkchen „Collage“.</div> : <SocialStudio data={data} items={items} sections={sections} />}
-    </>
+    <div className="stack">
+      <div><h2>Social Media</h2><div className="small muted">{items.length} Produkte mit Häkchen „Collage“ · <Link href={`/verteilung/${id}/ausgabe`}>andere Ausgabe wählen</Link></div></div>
+      {items.length === 0
+        ? <div className="card card-pad muted">Keine Produkte mit Häkchen „Collage“.</div>
+        : <SocialStudio eventId={id} data={data} items={items} sections={sections} format={isSocialFormat(sp.format) ? sp.format : "story"} highlightIds={event.highlights ?? []} settings={{ handle: social.handle ?? "", tags: social.tags ?? "" }} warnings={exportWarnings(shown)} />}
+    </div>
   );
 }

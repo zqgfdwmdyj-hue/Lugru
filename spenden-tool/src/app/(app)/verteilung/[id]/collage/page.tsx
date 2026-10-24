@@ -2,48 +2,57 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireLogin } from "@/lib/auth";
 import { cleanTileStyle, collageSettings, eventDateLabel } from "@/lib/layout";
-import { loadEvent, loadEventItems, printedInfo } from "@/lib/service";
-import { differsFromPhoto } from "@/lib/printed-price";
+import { loadEventView } from "@/lib/event-view";
+import type { CollageSettings } from "@/db/schema";
+import { exportWarnings } from "@/lib/export-check";
 import { CollageEditor, type CollageTile } from "./collage-editor";
 
+/** Vorlagen aus der Ausgabe-Übersicht („WhatsApp“, „Story“, „A4“) – setzen nur das Format beim Öffnen. */
+const PRESETS: Record<string, Partial<CollageSettings>> = {
+  whatsapp: { format: "4:5" },
+  story: { format: "9:16" },
+  a4: { format: "a4", header: true },
+};
 
-export default async function CollagePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CollagePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ vorlage?: string }> }) {
   await requireLogin();
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const event = await loadEvent(id);
-  if (!event) notFound();
-  const rows = await loadEventItems(id);
-  const tiles: CollageTile[] = rows
-    .filter((r) => r.item.inCollage)
-    .map(({ item, product, photo }) => ({
-      id: item.id,
-      productId: product.id,
-      style: cleanTileStyle(product.collageStyle),
-      image: product.imageFileId ? `/datei/${product.imageFileId}` : null,
-      name: [product.name, product.variant].filter(Boolean).join(" "),
-      price: item.price,
-      priceNote: item.priceNote,
-      caption: item.caption,
-      packNote: item.packNote,
-      packPrice: item.packPrice,
-      printed: printedInfo(photo),
-    }));
-  // Eingetragener Preis weicht vom Preis im Foto ab – die Collage zeigt das Foto unverändert, also den alten Preis.
-  const clash = tiles.filter((t) => t.image && differsFromPhoto(t.printed, t.price));
+  const sp = await searchParams;
+  const view = await loadEventView(id);
+  if (!view) notFound();
+  const { event, rows } = view;
+  const shown = rows.filter((r) => r.item.inCollage);
+  const tiles: CollageTile[] = shown.map(({ item, product, state }) => ({
+    id: item.id,
+    productId: product.id,
+    style: cleanTileStyle(product.collageStyle),
+    image: product.imageFileId ? `/datei/${product.imageFileId}` : null,
+    name: [product.name, product.variant].filter(Boolean).join(" "),
+    price: item.price,
+    priceNote: item.priceNote,
+    unit: item.unit,
+    unitCount: item.unitCount,
+    caption: item.caption,
+    packNote: item.packNote,
+    packPrice: item.packPrice,
+    printed: state.printed,
+    plan: state.plan,
+  }));
+  const warnings = exportWarnings(shown);
+  const preset = PRESETS[sp.vorlage ?? ""];
   return (
-    <>
-      <div className="crumb"><Link href={`/verteilung/${id}`}>Zurück zur Verteilung</Link></div>
-      <div className="page-head"><div><h1>Collage</h1><div className="small muted">{eventDateLabel(event.eventDate)} · {tiles.length} Produkte</div></div></div>
-      {clash.length > 0 && (
+    <div className="stack">
+      <div className="between" style={{ flexWrap: "wrap" }}>
+        <div><h2>Collage</h2><div className="small muted">{tiles.length} Produkte mit Häkchen „Collage“ · <Link href={`/verteilung/${id}/ausgabe`}>andere Ausgabe wählen</Link></div></div>
+      </div>
+      {warnings.length > 0 && (
         <div className="notice notice-warn">
-          Bei {clash.length === 1 ? "einem Produkt" : `${clash.length} Produkten`} steht im Foto ein anderer Preis als eingetragen. Die Collage zeigt das Foto unverändert, also den Preis aus dem Foto: {clash.map((t) => `${t.name} (Foto: ${t.printed!.text})`).join(", ")}.
-          {" "}Auf der Verteilungsseite „Preise vom Foto übernehmen“ – oder ein Foto ohne Preis hochladen.
+          <strong>Vor dem Export:</strong> {warnings.join(" · ")} – <Link href={`/verteilung/${id}/pruefen`}>prüfen</Link>
         </div>
       )}
       {tiles.length === 0
         ? <div className="card card-pad muted">Keine Produkte für die Collage ausgewählt.</div>
-        : <CollageEditor eventId={id} tiles={tiles} initial={collageSettings(event.collage)} header={{ title: event.title, date: `${eventDateLabel(event.eventDate)}${event.eventTime ? ` · ${event.eventTime}` : ""}` }} fileBase={`spenden-${event.eventDate}`} />}
-    </>
+        : <CollageEditor eventId={id} tiles={tiles} warnings={warnings} initial={collageSettings({ ...event.collage, ...preset })} header={{ title: event.title, date: `${eventDateLabel(event.eventDate)}${event.eventTime ? ` · ${event.eventTime}` : ""}` }} fileBase={`spenden-${event.eventDate}`} />}
+    </div>
   );
 }
