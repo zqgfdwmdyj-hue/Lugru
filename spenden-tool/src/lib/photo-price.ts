@@ -67,10 +67,12 @@ async function scanOne(fileId: string, eventId: string | null) {
       .where(eq(F.id, fileId));
     if (r.found && r.price !== null) {
       // Preis übernehmen, wo noch keiner steht: im Produkt (Vorschlag für später) und in der Verteilung.
-      await db.update(P).set({ price: r.price, updatedAt: new Date() }).where(and(eq(P.imageFileId, fileId), isNull(P.price)));
+      if (r.price < 20) await db.update(P).set({ price: r.price, updatedAt: new Date() }).where(and(eq(P.imageFileId, fileId), isNull(P.price)));
       if (eventId) {
         const ids = db.select({ id: P.id }).from(P).where(eq(P.imageFileId, fileId));
-        await db.update(I).set({ price: r.price }).where(and(eq(I.eventId, eventId), inArray(I.productId, ids), isNull(I.price)));
+        // Aus dem Foto gelesen = noch unbestätigt (erscheint unter „Prüfen“). Unplausible Werte (z. B. „50 €“ statt
+        // „50 Cent“) gar nicht erst eintragen.
+        if (r.price < 20) await db.update(I).set({ price: r.price, priceSource: "foto", priceConfirmed: false }).where(and(eq(I.eventId, eventId), inArray(I.productId, ids), isNull(I.price)));
       }
     }
   } catch (e) {

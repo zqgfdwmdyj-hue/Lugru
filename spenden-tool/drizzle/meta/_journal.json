@@ -85,6 +85,13 @@
       "when": 1792690632883,
       "tag": "0011_benutzer_email",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792836011512,
+      "tag": "0012_pruefstatus",
+      "breakpoints": true
     }
   ]
 }

@@ -1,8 +1,8 @@
 // Texte für Instagram und TikTok aus den Daten einer Verteilung – ohne KI, sofort und kostenlos.
 
-import { collagePrice } from "@/lib/layout";
+import { outputPrice } from "@/lib/layout";
 
-export type SocialProduct = { name: string; variant: string | null; price: number | null; priceNote: string | null };
+export type SocialProduct = { name: string; variant: string | null; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null };
 export type SocialEvent = { title: string; dateLabel: string; weekdayLong: string; eventTime: string | null; location: string | null };
 
 const BASE_TAGS = ["foodsharing", "lebensmittelretten", "spenden", "nachhaltigkeit", "zerowaste", "rettenstattwegwerfen"];
@@ -13,11 +13,9 @@ export function hashtag(text: string): string {
   return t ? `#${t}` : "";
 }
 
+/** Gleicher Preistext wie auf der Collage – aus der gemeinsamen Preislogik. */
 export function priceLabel(p: SocialProduct): string {
-  const price = collagePrice(p.price);
-  if (!price) return "";
-  const note = p.priceNote?.trim();
-  return note ? `${note} ${price}` : price;
+  return outputPrice(p);
 }
 
 function productLine(p: SocialProduct): string {

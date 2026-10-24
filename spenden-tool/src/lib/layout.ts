@@ -1,8 +1,9 @@
 // Reine Logik für Collagen und Aushang – ohne Datenbank, damit sie auf Server und im Browser läuft.
 
 import type { CollageSettings } from "@/db/schema";
+import { pricePrefix, UNSORTED_CATEGORY } from "@/lib/price-logic";
 
-export const DONATION_CATEGORIES = ["Babyprodukte", "Lebensmittel", "Getränke inkl. Pfand", "Drogerie & Haushalt", "Sonstiges"] as const;
+export const DONATION_CATEGORIES = ["Babyprodukte", "Lebensmittel", "Getränke inkl. Pfand", "Drogerie & Haushalt", "Spielzeug", "Sonstiges"] as const;
 
 export const COLLAGE_FORMATS: Record<CollageSettings["format"], { label: string; width: number; height: number }> = {
   "4:5": { label: "Hochformat 4:5 (Messenger, Instagram)", width: 1080, height: 1350 },
@@ -137,7 +138,18 @@ export function balancedPages<T>(items: T[], perPage: number): T[][] {
   return pages;
 }
 
-export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; bestBefore?: string | null; packNote?: string | null; packPrice?: number | null };
+export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null; bestBefore?: string | null; packNote?: string | null; packPrice?: number | null };
+
+/**
+ * Preis mit Abgabeeinheit, wie er überall erscheint: „je 40 Cent“, „6er-Pack 2 €“ (Collage/Social Media) bzw.
+ * „je 0,40€“ (Aushang/Messenger, style "flyer").
+ */
+export function outputPrice(i: { price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null }, style: "collage" | "flyer" = "collage"): string {
+  const p = style === "flyer" ? flyerPrice(i.price) : collagePrice(i.price);
+  if (!p) return "";
+  const prefix = pricePrefix({ unit: i.unit ?? null, unitCount: i.unitCount ?? null, priceNote: i.priceNote });
+  return prefix ? `${prefix} ${p}` : p;
+}
 
 /** „ganzer Karton 5€“ – Spendenempfehlung für eine ganze Packung; leer, wenn keine. */
 export function packLabel(packNote: string | null | undefined, packPrice: number | null | undefined): string {
@@ -161,7 +173,8 @@ export type FlyerSection = { category: string; lines: FlyerLine[] };
 export function flyerSections(items: FlyerItem[]): FlyerSection[] {
   const byCat = new Map<string, Map<string, FlyerItem[]>>();
   for (const it of items) {
-    const cat = it.category.trim() || "Sonstiges";
+    // „Noch zuordnen“ ist nur intern – im Aushang steht das Produkt unter „Sonstiges“.
+    const cat = it.category.trim() && it.category !== UNSORTED_CATEGORY ? it.category.trim() : "Sonstiges";
     if (!byCat.has(cat)) byCat.set(cat, new Map());
     const groups = byCat.get(cat)!;
     const key = it.name.trim().toLocaleLowerCase("de-DE");
@@ -179,7 +192,7 @@ export function flyerSections(items: FlyerItem[]): FlyerSection[] {
     category,
     lines: [...byCat.get(category)!.values()].map((group) => {
       const withPrice = (it: FlyerItem) => {
-        const single = [it.priceNote?.trim(), flyerPrice(it.price)].filter(Boolean).join(" ");
+        const single = outputPrice(it, "flyer");
         return [single, packLabel(it.packNote, it.packPrice)].filter(Boolean).join(" · ");
       };
       if (group.length === 1) {

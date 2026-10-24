@@ -5,6 +5,7 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { DONATION_CATEGORIES, isPlaceholderName } from "@/lib/layout";
+import { UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { suggestDonationPrice } from "@/lib/pricing";
 import { parseAmount } from "@/lib/numbers";
 import { AI_MODE_INFO, type AiMode, isAiMode } from "@/lib/ai-modes";
@@ -162,18 +163,24 @@ async function runOne(checkId: string) {
         finishedAt: new Date(),
       })
       .where(eq(C.id, checkId));
-    // Noch namenlose Produkte (nach dem Foto-Upload) bekommen den erkannten Namen direkt.
+    const aiCategory = result.category && (DONATION_CATEGORIES as readonly string[]).includes(result.category) ? result.category : null;
+    // Noch namenlose Produkte (nach dem Foto-Upload) bekommen den erkannten Namen direkt – als „unbestätigt“ markiert.
     if (isPlaceholderName(product.name)) {
+      const unsure = result.summary && /unbekannt|unsicher|alternativ|ähnlich|nicht (?:exakt|genau|eindeutig)|vermutlich|nächst|möglicherweise/i.test(result.summary);
       await db
         .update(schema.products)
         .set({
           name: result.name,
           variant: product.variant ?? result.variant ?? null,
-          category: result.category && (DONATION_CATEGORIES as readonly string[]).includes(result.category) ? result.category : product.category,
+          // Kategorie nur ersetzen, wenn noch keine zugeordnet ist.
+          category: aiCategory && product.category === UNSORTED_CATEGORY ? aiCategory : product.category,
+          reviewNote: `Name${!product.variant && result.variant ? " und Variante" : ""} von der KI erkannt${unsure ? ` – ${result.summary!.slice(0, 200)}` : ""}`,
           updatedAt: new Date(),
         })
         // Nur, wenn inzwischen niemand selbst einen Namen eingetragen hat.
         .where(and(eq(schema.products.id, product.id), eq(schema.products.name, product.name)));
+    } else if (aiCategory && product.category === UNSORTED_CATEGORY) {
+      await db.update(schema.products).set({ category: aiCategory, updatedAt: new Date() }).where(and(eq(schema.products.id, product.id), eq(schema.products.category, UNSORTED_CATEGORY)));
     }
   } catch (e) {
     const message =

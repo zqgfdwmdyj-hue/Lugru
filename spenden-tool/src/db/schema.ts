@@ -70,6 +70,10 @@ export const products = pgTable(
     /** Lage und Farbe des Preises auf der Collage (siehe TileStyle in lib/layout.ts). */
     collageStyle: jsonb("collage_style").$type<{ pos?: string; color?: string; name?: boolean; price?: boolean; caption?: boolean }>().notNull().default({}),
     note: text("note"),
+    /** Von der KI eingetragen und noch nicht von einem Menschen bestätigt (z. B. „Name von der KI · Packungsgröße unsicher“). null = bestätigt. */
+    reviewNote: text("review_note"),
+    /** Ist ein MHD nötig? null = nach Kategorie (Lebensmittel, Getränke, Babyprodukte), "ja" / "nein" = festgelegt. */
+    mhdMode: text("mhd_mode", { enum: ["ja", "nein"] }),
     archived: boolean("archived").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -103,8 +107,21 @@ export const eventItems = pgTable(
     productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
     /** Preis bei dieser Verteilung – bleibt für den Rückblick erhalten. */
     price: money("price"),
-    /** Steht vor dem Preis, z. B. „je“ oder „3er Packung“. */
+    /** Steht vor dem Preis, z. B. „je“ oder „3er Packung“ – freier Text, überschreibt die Anzeige der Abgabeeinheit. */
     priceNote: text("price_note"),
+    /** Worauf sich die Spendenempfehlung bezieht: Einzelstück, Mehrfachpackung oder Karton (siehe lib/price-logic.ts). */
+    unit: text("unit", { enum: ["stueck", "packung", "karton"] }),
+    /** Stück je Packung bzw. Karton, z. B. 6 beim 6er-Pack. */
+    unitCount: integer("unit_count"),
+    /** Woher der Preis kommt: manuell, foto (aus dem Foto gelesen), ki (KI-Vorschlag), vorlage (aus früherer Verteilung). */
+    priceSource: text("price_source", { enum: ["manuell", "foto", "ki", "vorlage"] }),
+    /** Von einem Menschen eingetragen oder bestätigt – unbestätigte Werte erscheinen unter „Prüfen“. */
+    priceConfirmed: boolean("price_confirmed").notNull().default(false),
+    /**
+     * Preiswiderspruch mit dem Foto bewusst gelöst: „eingetragener Preis gilt“ für dieses Foto (Datei-ID). Die Collage
+     * klebt den eingetragenen Preis dann über den alten. Ein neues Foto bringt die Frage wieder.
+     */
+    priceOverPhotoFileId: uuid("price_over_photo_file_id"),
     /** Zusätzliche Spendenempfehlung für eine ganze Packung, z. B. „ganzer Karton“ für 5 €. */
     packNote: text("pack_note"),
     packPrice: money("pack_price"),

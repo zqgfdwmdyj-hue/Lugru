@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
 import type { PrintedInfo } from "@/lib/printed-price";
-import { DONATION_CATEGORIES } from "@/lib/layout";
+import { DONATION_CATEGORIES, flyerSections } from "@/lib/layout";
 import sharp from "sharp";
 import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
@@ -186,6 +186,15 @@ export async function loadEventItems(eventId: string) {
     .orderBy(asc(I.sort), asc(I.createdAt));
 }
 
+/** Aushang/Messenger: Produkte mit Häkchen „Aushang“, gruppiert – überall dieselbe Preislogik (lib/price-logic.ts). */
+export function eventFlyerSections(rows: Awaited<ReturnType<typeof loadEventItems>>) {
+  return flyerSections(
+    rows
+      .filter((r) => r.item.inFlyer)
+      .map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, unit: r.item.unit, unitCount: r.item.unitCount, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })),
+  );
+}
+
 /** Preis, der schon im Foto steht – null, wenn keiner (oder noch nicht gelesen). */
 export function printedInfo(photo: { price: number | null; text: string | null; box: unknown } | null): PrintedInfo {
   return photo?.text ? { price: photo.price, text: photo.text, box: (photo.box as PriceBox | null) ?? null } : null;
@@ -203,7 +212,7 @@ export async function lastPrices(productIds: string[]): Promise<Map<string, numb
   return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, r.price as number]));
 }
 
-type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null };
+type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; priceConfirmed?: boolean };
 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {
@@ -219,10 +228,16 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
     .values(
       products.map((p, i) => {
         const given = presets?.get(p.id);
+        const price = given ? given.price : (last.get(p.id) ?? p.price ?? null);
         return {
           eventId,
           productId: p.id,
-          price: given ? given.price : (last.get(p.id) ?? p.price ?? null),
+          price,
+          // Preis aus einer früheren Verteilung – war dort schon im Einsatz.
+          priceSource: price === null ? null : ("vorlage" as const),
+          priceConfirmed: price !== null && (given?.priceConfirmed ?? true),
+          unit: given?.unit ?? null,
+          unitCount: given?.unitCount ?? null,
           priceNote: given?.priceNote ?? null,
           caption: given?.caption ?? null,
           packNote: given?.packNote ?? null,
