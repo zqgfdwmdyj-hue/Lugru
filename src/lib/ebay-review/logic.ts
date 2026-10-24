@@ -27,6 +27,8 @@ export type ListingFacts = {
   startTime: string | null;
   images: string[];
   descriptionText: string;
+  /** Beschreibung als HTML (zum Bearbeiten); fehlt bei älteren Prüfungen. */
+  descriptionHtml?: string;
   descriptionLength: number;
   activeContent: boolean;
   fixedWidth: boolean;
@@ -150,6 +152,7 @@ export function factsFromItem(body: XmlObject): ListingFacts {
     startTime: xmlText(xmlAt(it, "ListingDetails", "StartTime")) || null,
     images: xmlList(xmlAt(it, "PictureDetails", "PictureURL")).map((x) => xmlText(x)).filter(Boolean),
     descriptionText: text.slice(0, 4000),
+    descriptionHtml: html.slice(0, 500_000),
     descriptionLength: text.length,
     activeContent: /<(script|iframe|form|embed|object)\b/i.test(html),
     fixedWidth: /width\s*[:=]\s*["']?\s*(9\d\d|[1-9]\d{3})\s*(px)?\b/i.test(html),
@@ -518,7 +521,16 @@ export function parseAiSuggestion(raw: unknown, defs: CategoryAspect[], existing
 
 // ---- Änderung bei eBay (Trading API) -----------------------------------------------------------
 
-export type Revision = { title?: string; aspects?: Record<string, string[]>; price?: number; bestOffer?: boolean };
+export type Revision = {
+  title?: string;
+  aspects?: Record<string, string[]>;
+  price?: number;
+  bestOffer?: boolean;
+  /** Vollständige, geordnete Bilderliste (erstes = Hauptbild); nur eBay-gehostete oder https-Adressen. */
+  images?: string[];
+  /** Neue Beschreibung (HTML, gesäubert). */
+  description?: string;
+};
 
 /** Rumpf für ReviseFixedPriceItem. Merkmale werden als vollständige Liste geschickt (eBay ersetzt sie). */
 export function reviseXml(itemId: string, r: Revision): string {
@@ -533,15 +545,19 @@ export function reviseXml(itemId: string, r: Revision): string {
   }
   if (r.price !== undefined) parts.push(`<StartPrice currencyID="EUR">${r.price.toFixed(2)}</StartPrice>`);
   if (r.bestOffer !== undefined) parts.push(`<BestOfferDetails><BestOfferEnabled>${r.bestOffer ? "true" : "false"}</BestOfferEnabled></BestOfferDetails>`);
+  if (r.description !== undefined) parts.push(`<Description><![CDATA[${r.description.replace(/\]\]>/g, "]]&gt;")}]]></Description>`);
+  if (r.images?.length) parts.push(`<PictureDetails>${r.images.slice(0, 24).map((u) => `<PictureURL>${escXml(u)}</PictureURL>`).join("")}</PictureDetails>`);
   return `<Item>${parts.join("")}</Item>`;
 }
 
 /** Was sich ändern würde – für die Prüfung vor dem Senden und die Anzeige danach. */
-export function revisionSummary(f: Pick<ListingFacts, "title" | "price" | "bestOffer">, r: Revision): string[] {
+export function revisionSummary(f: Pick<ListingFacts, "title" | "price" | "bestOffer"> & Partial<Pick<ListingFacts, "images">>, r: Revision): string[] {
   const out: string[] = [];
   if (r.title && fitTitle(r.title) !== f.title) out.push(`Titel: „${fitTitle(r.title)}“`);
   if (r.aspects) out.push(`Merkmale: ${Object.keys(r.aspects).length} gesetzt`);
   if (r.price !== undefined && Math.abs(r.price - f.price) >= 0.005) out.push(`Preis: ${euro(f.price)} → ${euro(r.price)}`);
   if (r.bestOffer !== undefined && r.bestOffer !== f.bestOffer) out.push(`Preisvorschlag: ${r.bestOffer ? "an" : "aus"}`);
+  if (r.images) out.push(`Bilder: ${f.images?.length ?? "?"} → ${r.images.length}`);
+  if (r.description !== undefined) out.push("Beschreibung geändert");
   return out;
 }

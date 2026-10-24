@@ -478,3 +478,36 @@ h2 { font-size: 16px; margin: 0; }
 .card:has(> table.table), .card:has(> form > table.table) { overflow-x: auto; }
 /* Absolut positionierte Hilfselemente (z. B. .sr-only-Beschriftungen) in scrollenden Kästen mit abschneiden. */
 .card { position: relative; }
+
+/* eBay prüfen: Inhalte-Editor (Bilder, Beschreibung, Merkmale) */
+.ce-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--row); }
+.ce-box > summary { cursor: pointer; }
+.ce-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.ce-tile { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: var(--surface); min-width: 0; }
+.ce-tile img { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 4px; background: var(--row); }
+.ce-tile:first-child:not(.ce-pick) { border-color: var(--accent); }
+.ce-pick { cursor: pointer; }
+.ce-pick.on { border-color: var(--ok); }
+.ce-tile-bar { display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ce-tile-bar > span:last-child { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+.ce-ico { border: 1px solid var(--border); background: transparent; border-radius: 6px; min-width: 28px; height: 28px; padding: 0 4px; cursor: pointer; font-size: 13px; line-height: 1; color: inherit; }
+.ce-ico:disabled { opacity: 0.35; cursor: default; }
+.ce-ico:not(:disabled):hover { border-color: var(--border-strong); }
+.ce-del { color: var(--danger); }
+.ce-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.ce-add .input { flex: 1 1 220px; min-width: 0; }
+.ce-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.ce-file:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ce-add label.btn.disabled { opacity: 0.5; pointer-events: none; }
+.ce-desc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; min-height: 180px; resize: vertical; width: 100%; }
+.ce-preview { width: 100%; height: 380px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.ce-asp { display: flex; flex-direction: column; gap: 6px; }
+.ce-asp-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 6px; align-items: center; }
+.ce-asp-pick { display: flex; flex-direction: column; gap: 4px; }
+.ce-send { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; position: sticky; bottom: 0; background: var(--surface); padding: 10px 0 4px; border-top: 1px solid var(--border); }
+@media (max-width: 600px) {
+  .ce-asp-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .ce-asp-row > div { grid-column: 1 / -1; grid-row: 2; }
+  .ce-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ce-ico { min-width: 34px; height: 34px; }
+}

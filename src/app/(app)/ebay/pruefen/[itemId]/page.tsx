@@ -5,6 +5,7 @@ import { GTIN_ASPECT } from "@/lib/ebay/pipeline/aspects";
 import type { Level } from "@/lib/ebay-review/logic";
 import { reviewDetail } from "@/lib/ebay-review/service";
 import { aiSuggestAction, applyAction, recheckOneAction } from "../actions";
+import { ContentEditor } from "../content-editor";
 import { ActionButton, ReviseForm } from "../forms";
 import { euro, LEVEL_TAG, scoreClass } from "../ui";
 
@@ -26,6 +27,8 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
   const missing = f && defs ? defs.filter((x) => (x.required || x.recommended) && !GTIN_ASPECT.test(x.name) && !Object.keys(f.aspects).some((k) => k.toLowerCase() === x.name.toLowerCase())).slice(0, 24) : [];
   const levels: Level[] = ["wichtig", "empfohlen", "tipp"];
   const applied = row.applied as { at?: string; changes?: string[] } | null;
+  // Nach dem Senden lädt die Seite neu – die Rückmeldung bleibt eine Weile am Editor stehen.
+  const recentApplied = applied?.at && Date.now() - Date.parse(applied.at) < 15 * 60_000 ? (applied.changes ?? []).join(" · ") : null;
 
   return (
     <>
@@ -163,7 +166,27 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
             bestOffer={f.bestOffer}
             canBestOffer={f.variations === 0 && f.listingType === "FixedPriceItem"}
           />
-          <div className="small muted">Bilder, Beschreibung, Versand und Rücknahme änderst du bei eBay (Seller Hub) bzw. im eBay-Tool und in den Versand-/Rückgabeprofilen.</div>
+        </section>
+      )}
+
+      {f && (
+        <section className="card card-pad stack" id="inhalte">
+          <div>
+            <h2 style={{ margin: 0 }}>Bilder, Beschreibung und Merkmale</h2>
+            <div className="small muted">Bilder ordnen, entfernen, per Link oder Datei hinzufügen oder von Amazon übernehmen; Beschreibung und alle Merkmale bearbeiten. Versand und Rücknahme änderst du in den Versand-/Rückgabeprofilen bei eBay.</div>
+          </div>
+          <ContentEditor
+            key={`${row.checkedAt ?? ""}|${applied?.at ?? ""}`}
+            itemId={itemId}
+            images={f.images}
+            descriptionHtml={f.descriptionHtml ?? null}
+            aspects={f.aspects}
+            defs={(defs ?? []).filter((x) => !GTIN_ASPECT.test(x.name)).map((x) => ({ name: x.name, required: x.required, recommended: x.recommended, values: x.values, multi: x.multi }))}
+            ean={f.ean}
+            title={f.title}
+            recentApplied={recentApplied}
+            disabled={session.readOnly}
+          />
         </section>
       )}
     </>

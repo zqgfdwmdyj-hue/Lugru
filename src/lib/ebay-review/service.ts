@@ -15,6 +15,11 @@ import type { Settings } from "@/lib/ebay/types";
 import { ebayActiveItems } from "@/lib/integrations/clients/ebay";
 import { getIntegration } from "@/lib/integrations/store";
 import { todayIso } from "@/lib/dates";
+import { uploadPictureToEps } from "@/lib/ebay/ebay/pictures";
+import { isAsin } from "@/lib/ebay/keepa/keepa";
+import { keepaByCode, keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
+import { xmlAt, xmlText } from "@/lib/xml";
+import { amazonContentFrom, cleanImages, isEbayHosted, sanitizeDescription, type AmazonContent } from "./content";
 import {
   aiPrompt,
   competitorsFrom,
@@ -429,25 +434,45 @@ export async function suggestForWeakest(tenantId: string, limit = 10): Promise<n
 
 // ---- Ändern bei eBay ---------------------------------------------------------------------------
 
-/** Titel, Merkmale, Preis, Preisvorschlag bei eBay ändern. Danach wird das Angebot neu geprüft. */
-export async function applyRevision(tenantId: string, itemId: string, r: Revision): Promise<string[]> {
+/**
+ * Titel, Merkmale, Preis, Preisvorschlag, Bilder und Beschreibung bei eBay ändern. Danach wird das Angebot
+ * neu geprüft. `replaceAspects`: die Merkmalsliste ersetzt die vorhandene (sonst werden Merkmale ergänzt).
+ */
+export async function applyRevision(tenantId: string, itemId: string, r: Revision, opts: { replaceAspects?: boolean } = {}): Promise<string[]> {
   const c = await mustConn(tenantId);
   const d = await reviewDetail(tenantId, itemId);
   if (!d?.row.facts) throw new Error("Bitte das Angebot zuerst prüfen lassen.");
   // Frisch von eBay: Merkmale werden als volle Liste geschickt, also vom aktuellen Stand ausgehen.
   const f = await getFacts(c, itemId);
+  const wantAspects = r.aspects && Object.keys(r.aspects).length ? r.aspects : null;
+  const aspects = wantAspects ? (opts.replaceAspects ? wantAspects : mergeAspects(f.aspects, wantAspects)) : null;
+  const aspectsChanged = aspects && JSON.stringify(aspects) !== JSON.stringify(f.aspects);
+  let images: string[] | undefined;
+  if (r.images) {
+    const { images: clean, dropped } = cleanImages(r.images);
+    if (dropped.length) throw new Error(`Diese Bilder gehen nicht (nur https, höchstens 24): ${dropped.slice(0, 3).join(", ")}`);
+    if (!clean.length) throw new Error("Mindestens ein Bild muss bleiben.");
+    if (JSON.stringify(clean) !== JSON.stringify(f.images)) images = clean;
+  }
+  const description = r.description !== undefined ? sanitizeDescription(r.description) : undefined;
   const rev: Revision = {
     ...(r.title && fitTitle(r.title) !== f.title ? { title: fitTitle(r.title) } : {}),
-    ...(r.aspects && Object.keys(r.aspects).length ? { aspects: mergeAspects(f.aspects, r.aspects) } : {}),
+    ...(aspectsChanged ? { aspects: aspects! } : {}),
     ...(r.price !== undefined && Math.abs(r.price - f.price) >= 0.005 ? { price: r.price } : {}),
     ...(r.bestOffer !== undefined && r.bestOffer !== f.bestOffer ? { bestOffer: r.bestOffer } : {}),
+    ...(images ? { images } : {}),
+    ...(description !== undefined && description !== (f.descriptionHtml ?? "").trim() ? { description } : {}),
   };
   if (rev.price !== undefined && f.variations > 0) throw new Error("Bei Angeboten mit Varianten den Preis bitte je Variante im eBay-Tool bzw. bei eBay ändern.");
   if (rev.bestOffer && f.variations > 0) throw new Error("Preisvorschlag gibt es bei eBay nicht für Angebote mit Varianten.");
-  const summary = revisionSummary(f, { ...rev, aspects: r.aspects && Object.keys(r.aspects).length ? r.aspects : undefined });
+  const summary = revisionSummary(f, { ...rev, aspects: aspectsChanged ? (opts.replaceAspects ? rev.aspects : wantAspects ?? undefined) : undefined });
+  if (opts.replaceAspects && aspectsChanged) summary.splice(summary.findIndex((x) => x.startsWith("Merkmale")), 1, `Merkmale: ${Object.keys(rev.aspects!).length} (Liste ersetzt)`);
   if (!summary.length) throw new Error("Nichts zu ändern – die Werte sind schon so bei eBay.");
 
-  if (d.row.source === "tool" && d.row.attemptId) await reviseViaInventory(c, d.row.attemptId, rev, r.aspects ?? {});
+  // Bilder von außerhalb (Keepa/Amazon, eigene Links) erst zu eBay kopieren – eBay zeigt nur eigene Bilder zuverlässig.
+  if (rev.images) rev.images = await Promise.all(rev.images.map((u) => (isEbayHosted(u) ? u : externalToEps(c, u))));
+
+  if (d.row.source === "tool" && d.row.attemptId) await reviseViaInventory(c, d.row.attemptId, rev, opts.replaceAspects ? rev.aspects ?? null : wantAspects ?? {}, Boolean(opts.replaceAspects));
   else await trading(c, "ReviseFixedPriceItem", reviseXml(itemId, rev));
 
   await db
@@ -462,41 +487,82 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
   return summary;
 }
 
+/** Bild von einer Adresse (Amazon, eigener Server …) zu eBay (EPS) kopieren – eBay lädt es selbst herunter. */
+async function externalToEps(c: Conn, url: string): Promise<string> {
+  let body;
+  try {
+    body = await trading(c, "UploadSiteHostedPictures", `<ExternalPictureURL>${url.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</ExternalPictureURL><PictureSet>Standard</PictureSet><ExtensionInDays>30</ExtensionInDays>`);
+  } catch (e) {
+    const msg = (e instanceof Error ? e.message : String(e)).replace(/^eBay \(UploadSiteHostedPictures\):\s*/, "");
+    throw new Error(`eBay konnte das Bild nicht übernehmen (${url}): ${msg} Nichts wurde geändert – Bild entfernen oder andere Adresse nehmen.`);
+  }
+  const full = xmlText(xmlAt(body, "SiteHostedPictureDetails", "FullURL"));
+  if (!full) throw new Error(`eBay hat das Bild nicht übernommen: ${url}`);
+  return full;
+}
+
+/** Eigene Bilddatei zu eBay hochladen (für „Bild hinzufügen“). */
+export async function uploadImageFile(tenantId: string, name: string, data: Buffer): Promise<string> {
+  const c = await mustConn(tenantId);
+  if (data.length > 12 * 1024 * 1024) throw new Error("Bilder dürfen höchstens 12 MB groß sein.");
+  return uploadPictureToEps(c.edb, c.settings, name || "bild.jpg", data);
+}
+
+/** Produktdaten von Amazon (über Keepa): per eingegebener ASIN/EAN oder der EAN des Angebots. */
+export async function amazonContentFor(tenantId: string, itemId: string, code?: string): Promise<AmazonContent & { tokensLeft: number | null }> {
+  const key = await keepaKey(tenantId);
+  if (!key) throw new Error("Für Amazon-Daten fehlt der Keepa-Schlüssel (Anbindungen → Keepa oder eBay-Tool → Bildquellen).");
+  const d = await reviewDetail(tenantId, itemId);
+  const raw = (code?.trim() || d?.row.facts?.ean || "").replace(/[\s-]/g, "").toUpperCase();
+  if (!raw) throw new Error("Das Angebot hat keine EAN – bitte ASIN oder EAN eingeben.");
+  if (!isAsin(raw) && !/^\d{8,14}$/.test(raw)) throw new Error("Das ist weder eine ASIN noch eine EAN (8–14 Ziffern).");
+  const r = isAsin(raw) ? await keepaProducts(key, [raw]) : await keepaByCode(key, [raw]);
+  const products = r.products.map(amazonContentFrom);
+  const best = products.find((p) => p.images.length) ?? products[0];
+  if (!best) throw new Error(`Bei Amazon (über Keepa) nichts zu ${raw} gefunden.`);
+  return { ...best, tokensLeft: r.tokensLeft };
+}
+
 const OFFER_READONLY = ["offerId", "status", "listing", "warnings"];
 
 /** Übers eBay-Tool eingestellte Angebote: Inventory API (aktuellen Stand holen, ändern, zurückschreiben). */
-async function reviseViaInventory(c: Conn, attemptId: number, rev: Revision, added: Record<string, string[]>) {
+async function reviseViaInventory(c: Conn, attemptId: number, rev: Revision, added: Record<string, string[]> | null, replace = false) {
   const a = await getAttempt(c.edb, attemptId);
   if (!a?.sku) throw new Error("Angebot im eBay-Tool nicht gefunden.");
   const inv = `${c.base}/sell/inventory/v1`;
   const h = await userHeaders(c);
   const isGroup = Boolean(a.variants?.items?.length);
-  if (rev.title || Object.keys(added).length) {
+  const aspectsOf = (cur: Record<string, string[]>) => (replace && added ? added : mergeAspects(cur, added ?? {}));
+  const touchesItem = rev.title || Object.keys(added ?? {}).length || rev.images || rev.description !== undefined;
+  if (touchesItem) {
     if (isGroup) {
       const g = (await ebayFetch(`${inv}/inventory_item_group/${encodeURIComponent(a.sku)}`, { headers: h })) as Record<string, unknown> & { aspects?: Record<string, string[]>; title?: string };
-      const body = { ...g, ...(rev.title ? { title: rev.title } : {}), aspects: mergeAspects(g.aspects ?? {}, added) };
+      const body = { ...g, ...(rev.title ? { title: rev.title } : {}), aspects: aspectsOf(g.aspects ?? {}), ...(rev.images ? { imageUrls: rev.images } : {}), ...(rev.description !== undefined ? { description: rev.description } : {}) };
       delete (body as Record<string, unknown>).inventoryItemGroupKey;
       await ebayFetch(`${inv}/inventory_item_group/${encodeURIComponent(a.sku)}`, { method: "PUT", headers: h, body: JSON.stringify(body) });
     } else {
       const it = (await ebayFetch(`${inv}/inventory_item/${encodeURIComponent(a.sku)}`, { headers: h })) as { availability?: unknown; condition?: string; conditionDescription?: string; conditionDescriptors?: unknown; packageWeightAndSize?: unknown; product?: Record<string, unknown> & { aspects?: Record<string, string[]> } };
-      const product = { ...(it.product ?? {}), ...(rev.title ? { title: rev.title } : {}), aspects: mergeAspects(it.product?.aspects ?? {}, added) };
+      const product = { ...(it.product ?? {}), ...(rev.title ? { title: rev.title } : {}), aspects: aspectsOf(it.product?.aspects ?? {}), ...(rev.images ? { imageUrls: rev.images } : {}), ...(rev.description !== undefined ? { description: rev.description } : {}) };
       const body = { availability: it.availability, condition: it.condition, conditionDescription: it.conditionDescription, conditionDescriptors: it.conditionDescriptors, packageWeightAndSize: it.packageWeightAndSize, product };
       await ebayFetch(`${inv}/inventory_item/${encodeURIComponent(a.sku)}`, { method: "PUT", headers: h, body: JSON.stringify(body) });
     }
   }
-  if (rev.price !== undefined || rev.bestOffer !== undefined) {
-    if (!a.offerId) throw new Error("Zum Angebot fehlt die eBay-Angebotsnummer (Offer) – Preis bitte im eBay-Tool ändern.");
+  if (rev.price !== undefined || rev.bestOffer !== undefined || (rev.description !== undefined && !isGroup)) {
+    if (!a.offerId) throw new Error("Zum Angebot fehlt die eBay-Angebotsnummer (Offer) – Preis/Beschreibung bitte im eBay-Tool ändern.");
     const o = (await ebayFetch(`${inv}/offer/${encodeURIComponent(a.offerId)}`, { headers: h })) as Record<string, unknown> & { pricingSummary?: Record<string, unknown>; listingPolicies?: Record<string, unknown> & { bestOfferTerms?: Record<string, unknown> } };
     const body: Record<string, unknown> = { ...o };
     for (const k of OFFER_READONLY) delete body[k];
     if (rev.price !== undefined) body.pricingSummary = { ...(o.pricingSummary ?? {}), price: { value: rev.price.toFixed(2), currency: "EUR" } };
     if (rev.bestOffer !== undefined) body.listingPolicies = { ...(o.listingPolicies ?? {}), bestOfferTerms: { ...(o.listingPolicies?.bestOfferTerms ?? {}), bestOfferEnabled: rev.bestOffer } };
+    if (rev.description !== undefined) body.listingDescription = rev.description;
     await ebayFetch(`${inv}/offer/${encodeURIComponent(a.offerId)}`, { method: "PUT", headers: h, body: JSON.stringify(body) });
   }
   // Das eBay-Tool zeigt danach dieselben Werte.
   await updateAttempt(c.edb, attemptId, {
     ...(rev.title ? { title: rev.title } : {}),
-    ...(Object.keys(added).length ? { aspects: mergeAspects(a.aspects ?? {}, added) } : {}),
+    ...(Object.keys(added ?? {}).length ? { aspects: replace && added ? added : mergeAspects(a.aspects ?? {}, added ?? {}) } : {}),
+    ...(rev.images ? { imageUrls: rev.images } : {}),
+    ...(rev.description !== undefined ? { description: rev.description } : {}),
     ...(rev.price !== undefined && !isGroup ? { price: rev.price } : {}),
   });
 }
