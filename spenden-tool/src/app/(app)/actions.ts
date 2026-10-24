@@ -462,7 +462,7 @@ export async function createProduct(fd: FormData) {
   const imageFileId = image ? await storeImage(image) : null;
   const [p] = await db
     .insert(P)
-    .values({ name, variant: opt(fd, "variant"), category: str(fd, "category") || "Lebensmittel", price: price(fd, "price"), note: opt(fd, "note"), imageFileId })
+    .values({ name, variant: opt(fd, "variant"), category: str(fd, "category") || UNSORTED_CATEGORY, price: price(fd, "price"), note: opt(fd, "note"), imageFileId })
     .returning({ id: P.id });
   const eventId = uuid.safeParse(fd.get("eventId"));
   await logActivity(me, `Produkt „${name}“ angelegt`, { productId: p.id, eventId: eventId.success ? eventId.data : null });
@@ -486,9 +486,12 @@ export async function updateProduct(fd: FormData) {
     .set({
       name,
       variant: opt(fd, "variant"),
-      category: str(fd, "category") || "Lebensmittel",
+      category: str(fd, "category") || UNSORTED_CATEGORY,
       price: price(fd, "price"),
       note: opt(fd, "note"),
+      ...(fd.has("mhdMode") ? { mhdMode: fd.get("mhdMode") === "ja" ? ("ja" as const) : fd.get("mhdMode") === "nein" ? ("nein" as const) : null } : {}),
+      // Von Hand gespeichert = Angaben geprüft.
+      reviewNote: null,
       archived: fd.get("archived") === "on",
       ...(imageFileId ? { imageFileId } : {}),
       ...(fd.get("removeImage") === "on" && !imageFileId ? { imageFileId: null } : {}),

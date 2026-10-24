@@ -289,8 +289,16 @@ export async function productPicker(eventId: string, q: string) {
     .limit(80);
 }
 
-export async function searchProducts(opts: { q: string; category: string; archived: boolean }) {
+export const PRODUCT_FILTERS = {
+  "ohne-preis": "Ohne Preis",
+  pruefen: "Unbestätigte Angaben",
+  zuletzt: "Zuletzt verwendet",
+} as const;
+export type ProductFilter = keyof typeof PRODUCT_FILTERS;
+
+export async function searchProducts(opts: { q: string; category: string; archived: boolean; filter?: ProductFilter | null }) {
   const like = escapeLike(opts.q);
+  const f = opts.filter;
   return db
     .select({ p: P, ...productStats })
     .from(P)
@@ -299,10 +307,14 @@ export async function searchProducts(opts: { q: string; category: string; archiv
         eq(P.archived, opts.archived),
         opts.category ? eq(P.category, opts.category) : undefined,
         opts.q ? sql`(${P.name} ilike ${like} or ${P.variant} ilike ${like} or ${P.note} ilike ${like})` : undefined,
+        f === "ohne-preis" ? sql`${P.price} is null` : undefined,
+        // Von der KI eingetragen und noch nicht bestätigt, oder Kategorie noch offen
+        f === "pruefen" ? sql`(${P.reviewNote} is not null or ${P.category} = ${UNSORTED_CATEGORY})` : undefined,
+        f === "zuletzt" ? sql`${productStats.lastUsed} is not null` : undefined,
       ),
     )
-    .orderBy(asc(P.category), asc(P.name), asc(P.variant))
-    .limit(500);
+    .orderBy(...(f === "zuletzt" ? [sql`${productStats.lastUsed} desc`, asc(P.name)] : [asc(P.category), asc(P.name), asc(P.variant)]))
+    .limit(f === "zuletzt" ? 120 : 500);
 }
 
 /** Letzte Preisrecherche je Produkt. */

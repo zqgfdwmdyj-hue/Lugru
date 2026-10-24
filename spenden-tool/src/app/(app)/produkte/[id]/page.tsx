@@ -120,7 +120,16 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
               <div className="field"><label className="label" htmlFor="nv">Variante</label><input className="input" id="nv" name="variant" defaultValue={product.variant ?? ""} /></div>
               <div className="field"><label className="label" htmlFor="np">Preis €</label><input className="input" id="np" name="price" inputMode="decimal" defaultValue={product.price !== null ? product.price.toFixed(2).replace(".", ",") : ""} /></div>
             </div>
+            {product.reviewNote && <div className="notice notice-info small">🤖 {product.reviewNote}. Mit „Speichern“ gelten die Angaben als geprüft.</div>}
             <div className="field"><label className="label" htmlFor="nc">Kategorie</label><CategorySelect id="nc" name="category" value={product.category} categories={categories} /></div>
+            <div className="field">
+              <label className="label" htmlFor="nm">MHD nötig?</label>
+              <select className="select" id="nm" name="mhdMode" defaultValue={product.mhdMode ?? ""}>
+                <option value="">Automatisch (nach Kategorie)</option>
+                <option value="ja">Ja, MHD erfassen</option>
+                <option value="nein">Nein (z. B. Spielzeug, Haushalt)</option>
+              </select>
+            </div>
             <div className="field"><label className="label" htmlFor="nt">Notiz</label><textarea className="input" id="nt" name="note" rows={2} defaultValue={product.note ?? ""} /></div>
             <div className="field"><label className="label" htmlFor="ni">{product.imageFileId ? "Foto ersetzen" : "Foto"}</label><input className="input" id="ni" name="image" type="file" accept="image/*" /></div>
             {product.imageFileId && <label className="small"><input type="checkbox" name="removeImage" /> Foto entfernen</label>}

@@ -2,90 +2,148 @@ import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
-import { formatDate, formatEuro } from "@/lib/numbers";
+import { formatDate } from "@/lib/numbers";
 import { createEvent } from "./actions";
 import { InstallHint } from "@/components/install-hint";
 
-export default async function SpendenPage() {
+type Row = { e: typeof schema.events.$inferSelect; items: number; noPrice: number; unconfirmed: number };
+
+export default async function SpendenPage({ searchParams }: { searchParams: Promise<{ archiv?: string }> }) {
   await requireLogin();
+  const sp = await searchParams;
   const E = schema.events;
   const [events, [stats]] = await Promise.all([
     db
       .select({
         e: E,
         items: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id)`,
-        value: sql<number | null>`(select sum(i.price * coalesce(i.quantity, 0))::float from event_items i where i.event_id = events.id)`,
+        noPrice: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id and i.price is null)`,
+        unconfirmed: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id and i.price is not null and not i.price_confirmed)`,
       })
       .from(E)
-            .orderBy(desc(E.eventDate), desc(E.createdAt))
-      .limit(100),
+      .orderBy(desc(E.eventDate), desc(E.createdAt))
+      .limit(300),
     db.select({ products: sql<number>`count(*)::int` }).from(schema.products).where(eq(schema.products.archived, false)),
   ]);
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
-  const nextSat = (() => {
-    const d = new Date(`${today}T12:00:00`);
+  /** Nächster Samstag nach dem Datum. */
+  const saturdayAfter = (iso: string) => {
+    const d = new Date(`${iso}T12:00:00`);
     d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
     return d.toISOString().slice(0, 10);
-  })();
+  };
+  const nextSat = saturdayAfter(today);
   const weekday = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short" });
+  const current = events.filter((r) => r.e.eventDate >= today).reverse();
+  const past = events.filter((r) => r.e.eventDate < today);
+  const allPast = sp.archiv === "alle";
+  const archive = allPast ? past : past.slice(0, 8);
+  const latest = events[0];
+  // „Letzte übernehmen“: am Samstag nach der letzten (bzw. nach heute, wenn die letzte vorbei ist).
+  const copyDate = latest ? saturdayAfter(latest.e.eventDate > today ? latest.e.eventDate : today) : nextSat;
 
   return (
     <>
       <div className="page-head">
         <div><div className="crumb">Lebensmittelverteilung</div><h1>Verteilungen</h1></div>
-        <Link href="/produkte" className="btn">Produkte ({stats.products})</Link>
+        <div className="head-actions">
+          {latest && (
+            <form action={createEvent}>
+              <input type="hidden" name="eventDate" value={copyDate} />
+              <input type="hidden" name="eventTime" value={latest.e.eventTime ?? ""} />
+              <input type="hidden" name="title" value={latest.e.title} />
+              <input type="hidden" name="subtitle" value={latest.e.subtitle ?? ""} />
+              <input type="hidden" name="location" value={latest.e.location ?? ""} />
+              <input type="hidden" name="copyFrom" value={latest.e.id} />
+              <button className="btn" type="submit" title={`Neue Verteilung am ${formatDate(copyDate)} mit allen Produkten und Preisen vom ${formatDate(latest.e.eventDate)}`}>
+                ↻ Letzte übernehmen ({latest.items})
+              </button>
+            </form>
+          )}
+          <Link href="/produkte" className="btn">Produkte ({stats.products})</Link>
+        </div>
       </div>
       <InstallHint />
-      <div className="row">
-        <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
-          <table className="table">
-            <thead><tr><th>Datum</th><th className="hide-mobile">Titel</th><th className="right">Produkte</th><th className="right hide-mobile">Warenwert*</th><th className="hide-mobile"></th></tr></thead>
-            <tbody>
-              {events.length === 0 && <tr><td colSpan={5} className="muted">Noch keine Verteilung. Rechts die erste anlegen – danach Fotos hochladen, Preise eintragen, Collage und Aushang erzeugen.</td></tr>}
-              {events.map(({ e, items, value }) => (
-                <tr key={e.id}>
-                  <td className="num" style={{ whiteSpace: "nowrap" }}><Link href={`/verteilung/${e.id}`}>{weekday(e.eventDate)} {formatDate(e.eventDate)}</Link>{e.eventTime ? <div className="muted small">{e.eventTime}</div> : null}{e.eventDate >= today ? <span className="chip" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 11 }}>geplant</span> : null}</td>
-                  <td className="hide-mobile"><Link href={`/verteilung/${e.id}`}>{e.title}</Link>{e.location ? <span className="small muted"> · {e.location}</span> : null}</td>
-                  <td className="num right">{items}</td>
-                  <td className="num right hide-mobile">{value ? formatEuro(value) : "–"}</td>
-                  <td className="hide-mobile" style={{ whiteSpace: "nowrap" }}>
-                    <Link href={`/verteilung/${e.id}/collage`} className="btn btn-small">Collage</Link>{" "}
-                    <Link href={`/aushang/${e.id}`} className="btn btn-small" target="_blank">Aushang</Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="small muted" style={{ padding: "8px 14px" }}>* Preis × eingetragene Menge – nur wenn Mengen gepflegt werden.</div>
-        </section>
-        <aside className="col-side">
-          <form action={createEvent} className="card card-pad stack" style={{ gap: 8 }}>
-            <h2>Neue Verteilung</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div className="field"><label className="label" htmlFor="ed">Datum</label><input className="input" id="ed" name="eventDate" type="date" required defaultValue={nextSat} /></div>
-              <div className="field"><label className="label" htmlFor="et">Uhrzeit</label><input className="input" id="et" name="eventTime" placeholder="11 Uhr" /></div>
-            </div>
+
+      <details className="card new-event" open={events.length === 0 || undefined}>
+        <summary className="btn btn-primary">+ Neue Verteilung</summary>
+        <form action={createEvent} className="stack" style={{ gap: 10, padding: "14px 0 4px" }}>
+          <div className="form-grid">
+            <div className="field"><label className="label" htmlFor="ed">Datum</label><input className="input" id="ed" name="eventDate" type="date" required defaultValue={nextSat} /></div>
+            <div className="field"><label className="label" htmlFor="et">Uhrzeit</label><input className="input" id="et" name="eventTime" placeholder="11 Uhr" defaultValue={latest?.e.eventTime ?? ""} /></div>
+            <div className="field"><label className="label" htmlFor="lo">Ort (optional)</label><input className="input" id="lo" name="location" defaultValue={latest?.e.location ?? ""} /></div>
+          </div>
+          <div className="form-grid">
             <div className="field"><label className="label" htmlFor="ti">Überschrift</label><input className="input" id="ti" name="title" defaultValue="Unsere Spendenempfehlungen" /></div>
             <div className="field"><label className="label" htmlFor="st">Unterzeile</label><input className="input" id="st" name="subtitle" defaultValue="Dank eurer Spenden können wir retten!" /></div>
-            <div className="field"><label className="label" htmlFor="lo">Ort (optional)</label><input className="input" id="lo" name="location" /></div>
-            <div className="field">
-              <label className="label" htmlFor="cf">Produkte übernehmen von</label>
-              <select className="select" id="cf" name="copyFrom" defaultValue="">
-                <option value="">– leer beginnen –</option>
-                {events.slice(0, 30).map(({ e, items }) => <option key={e.id} value={e.id}>{formatDate(e.eventDate)} · {e.title} ({items})</option>)}
-              </select>
-            </div>
-            <button className="btn btn-primary" type="submit">Anlegen</button>
-          </form>
-          <div className="card card-pad small muted stack" style={{ gap: 6 }}>
-            <strong style={{ color: "var(--ink)" }}>So geht’s</strong>
-            <div>1. Verteilung anlegen (oder die letzte übernehmen).</div>
-            <div>2. Fotos auf einmal hochladen – jedes Foto wird ein Produkt. Wiederkehrende Produkte aus der Datenbank dazunehmen.</div>
-            <div>3. Namen und Preise eintragen. Der Preis wird für das nächste Mal gemerkt.</div>
-            <div>4. Collage-Bilder erzeugen und teilen, Aushang drucken, Text für den Messenger kopieren.</div>
           </div>
-        </aside>
-      </div>
+          <div className="field">
+            <label className="label" htmlFor="cf">Produkte übernehmen von</label>
+            <select className="select" id="cf" name="copyFrom" defaultValue="">
+              <option value="">– leer beginnen –</option>
+              {events.slice(0, 30).map(({ e, items }) => <option key={e.id} value={e.id}>{formatDate(e.eventDate)} · {e.title} ({items})</option>)}
+            </select>
+          </div>
+          <div><button className="btn btn-primary" type="submit">Anlegen</button></div>
+        </form>
+      </details>
+
+      {events.length === 0 && (
+        <div className="card card-pad small muted stack" style={{ gap: 6 }}>
+          <strong style={{ color: "var(--ink)" }}>So geht’s</strong>
+          <div>1. Verteilung anlegen (oder später die letzte übernehmen).</div>
+          <div>2. Fotos auf einmal hochladen – jedes Foto wird ein Produkt. Wiederkehrende Produkte aus der Datenbank dazunehmen.</div>
+          <div>3. Unter „Prüfen“ Namen, Preise und Abgabeeinheiten klären.</div>
+          <div>4. Unter „Ausgabe“ Collage, Aushang, Messenger-Text und Social Media erzeugen.</div>
+        </div>
+      )}
+
+      {current.length > 0 && (
+        <section className="stack" style={{ gap: 8 }}>
+          <h2>Aktuell & geplant</h2>
+          <div className="event-cards">{current.map((r) => <EventCard key={r.e.id} r={r} weekday={weekday(r.e.eventDate)} upcoming />)}</div>
+        </section>
+      )}
+
+      {past.length > 0 && (
+        <section className="stack" style={{ gap: 8 }}>
+          <div className="between"><h2>Archiv</h2><span className="small muted">{past.length} frühere Verteilungen</span></div>
+          <div className="card archive-list">
+            {archive.map((r) => (
+              <Link key={r.e.id} href={`/verteilung/${r.e.id}`} className="archive-row">
+                <span className="num">{weekday(r.e.eventDate)} {formatDate(r.e.eventDate)}</span>
+                <span className="archive-title">{r.e.title}{r.e.location ? <span className="muted"> · {r.e.location}</span> : null}</span>
+                <span className="small muted">{r.items} Produkte</span>
+              </Link>
+            ))}
+          </div>
+          {past.length > archive.length && <Link href="/?archiv=alle" className="small">Alle {past.length} anzeigen</Link>}
+        </section>
+      )}
     </>
+  );
+}
+
+function EventCard({ r, weekday, upcoming }: { r: Row; weekday: string; upcoming?: boolean }) {
+  const { e } = r;
+  const base = `/verteilung/${e.id}`;
+  const open = r.noPrice + r.unconfirmed;
+  return (
+    <div className="card event-card">
+      <Link href={base} className="event-card-main">
+        <span className="event-date">{weekday} {formatDate(e.eventDate)}{e.eventTime ? ` · ${e.eventTime}` : ""}</span>
+        <strong className="wrap-anywhere">{e.title}</strong>
+        <span className="small muted">{e.location ? `${e.location} · ` : ""}{r.items} Produkte</span>
+        <span>
+          {upcoming && <span className="tag tag-info">geplant</span>}{" "}
+          {r.items > 0 && (open ? <span className="tag tag-warn">{r.noPrice ? `${r.noPrice} ohne Preis` : ""}{r.noPrice && r.unconfirmed ? " · " : ""}{r.unconfirmed ? `${r.unconfirmed} unbestätigt` : ""}</span> : <span className="tag tag-ok">✓ Preise vollständig</span>)}
+        </span>
+      </Link>
+      <div className="event-card-actions">
+        <Link href={base} className="btn btn-small btn-primary">Produkte</Link>
+        <Link href={`${base}/pruefen`} className="btn btn-small">Prüfen</Link>
+        <Link href={`${base}/ausgabe`} className="btn btn-small">Ausgabe</Link>
+      </div>
+    </div>
   );
 }
