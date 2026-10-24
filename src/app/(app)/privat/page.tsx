@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { dateStats, intimStats, kidsOverview, nextSleeper, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
+import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, nextSleeper, routineState, taskState, type AppointmentEntry, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { toggleTaskAction } from "./actions";
+import { IntakeCard } from "./intake";
 import { PrivatHead, dmy, hoursLabel, monthLabel, weekday } from "./ui";
 
 export default async function PrivatStartPage() {
@@ -19,9 +20,18 @@ export default async function PrivatStartPage() {
     loadEntries<DateEntry>(session, ["paarzeit"]),
     loadEntries<SleepEntry>(session, ["ausschlafen"]),
   ]);
+  const [routines, care, moods] = await Promise.all([
+    loadEntries<Routine>(session, ["routine"]),
+    loadEntries<CareTask>(session, ["zustaendig"]),
+    loadEntries<MoodEntry>(session, ["stimmung"]),
+  ]);
+  const routinesOpen = routines.filter((r) => r.userId === session.userId && !routineState(r.data, today).doneToday);
+  const careDue = careOverview(care.map((e) => e.data), today).due.filter((t) => t.next! <= today);
+  const moodDone = moods.some((e) => e.userId === session.userId && e.data.day === today);
   const so = kidsOverview(sleep.map((e) => e.data), month);
   const nextSleep = nextSleeper(sleep.map((e) => ({ ...e.data, at: e.createdAt.getTime() })), month);
   const ds = dateStats(dates.map((e) => e.data), month, today);
+  const remind = dateReminder(ds.last, today, s.dateReminderDays);
   const myDiary = diary.filter((e) => e.userId === session.userId);
   const todayEntry = myDiary.find((e) => e.data.day === today)?.data;
   const stats = intimStats(intim.map((e) => e.data), month, today);
@@ -35,6 +45,16 @@ export default async function PrivatStartPage() {
       <PrivatHead active="start" title="Privat" pin={session.privatePin} />
       {!session.privatePin && (
         <div className="notice notice-info small">Tipp: Unter <Link href="/privat/einstellungen">Einstellungen</Link> eine PIN setzen – dann fragt „Privat“ zusätzlich danach.</div>
+      )}
+
+      <IntakeCard session={session} />
+      {(remind !== null || routinesOpen.length > 0 || careDue.length > 0 || !moodDone) && (
+        <div className="stack" style={{ gap: 6 }} data-testid="ov-reminders">
+          {routinesOpen.length > 0 && <Link className="notice notice-info small" href="/privat/routinen" style={{ textDecoration: "none", color: "inherit" }}>✅ Heute noch offen: {routinesOpen.map((r) => r.data.title).join(", ")}</Link>}
+          {careDue.length > 0 && <Link className="notice notice-warn small" href="/privat/familie" style={{ textDecoration: "none", color: "inherit" }}>👨‍👩‍👧 Fällig: {careDue.map((t) => t.title).join(", ")}</Link>}
+          {remind !== null && <Link className="notice notice-info small" href="/privat/paar#ideen" style={{ textDecoration: "none", color: "inherit" }}>🥂 Euer letztes Date ist {remind} Tage her – Zeit für das nächste?</Link>}
+          {!moodDone && <Link className="notice notice-info small" href="/privat/paar#stimmung" style={{ textDecoration: "none", color: "inherit" }}>Wie geht’s euch heute als Paar? Kurz 1–5 eintragen.</Link>}
+        </div>
       )}
 
       <div className="grid-kpi">

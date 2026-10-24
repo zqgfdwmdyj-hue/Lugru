@@ -1,11 +1,11 @@
 import "server-only";
 import bcrypt from "bcryptjs";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
 import { homeFor } from "@/lib/auth/areas";
 import { requireSession, type Session } from "@/lib/auth/session";
-import { DEFAULT_PRIVATE_SETTINGS, type PartnerKey, type PrivateSettings } from "./logic";
+import { DEFAULT_MED_PLAN, DEFAULT_PRIVATE_SETTINGS, type MedPlan, type PartnerKey, type PrivateSettings } from "./logic";
 
 // Bereich „Privat“: Zugang (eigenes Recht + optionale PIN) und Einträge. Inhalte liegen verschlüsselt
 // in private_entries.data; hier wird entschlüsselt gelesen und nach Sichtbarkeit gefiltert.
@@ -14,9 +14,11 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
-const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung"]);
+const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung"]);
+/** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
+const PERSONAL_KINDS = new Set<string>(["medplan", "routine"]);
 
 /**
  * Für alle Seiten und Aktionen in „Privat“: Zugang nötig, mit PIN zusätzlich entsperrt.
@@ -58,6 +60,7 @@ export async function privateSettings(tenantId: string): Promise<PrivateSettings
     diaryShared: d.diaryShared ?? [],
     userPartner: d.userPartner ?? {},
     wakeTime: d.wakeTime ?? DEFAULT_PRIVATE_SETTINGS.wakeTime,
+    dateReminderDays: typeof d.dateReminderDays === "number" ? d.dateReminderDays : DEFAULT_PRIVATE_SETTINGS.dateReminderDays,
   };
 }
 
@@ -89,6 +92,7 @@ export async function loadEntries<T = Record<string, unknown>>(session: Session,
   const settings = kinds.includes("tagebuch") ? await privateSettings(session.tenantId) : null;
   return rows
     .filter((r) => {
+      if (PERSONAL_KINDS.has(r.kind)) return r.userId === session.userId;
       if (r.kind === "tagebuch") return r.userId === session.userId || settings!.diaryShared.includes(r.userId);
       if (r.kind === "beobachtung") return r.userId === session.userId || (r.data as { aboutUserId?: string }).aboutUserId === session.userId;
       return true;
@@ -166,4 +170,21 @@ export async function setPin(session: Session, current: string, next: string): P
     .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, session.userId)));
   if (next) await db.update(schema.sessions).set({ privateUnlockedUntil: new Date(Date.now() + UNLOCK_MINUTES * 60_000) }).where(eq(schema.sessions.id, session.sessionId));
   return null;
+}
+
+/** Uhrzeit jetzt (deutsche Zeit) als HH:MM. */
+export function nowTime(d = new Date()): string {
+  return new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+}
+
+/** Eigener Medikamentenplan (oder Standard) mit Eintrags-ID. */
+export async function myMedPlan(session: Session) {
+  const [row] = (await loadEntries<MedPlan>(session, ["medplan"])).filter((e) => e.userId === session.userId);
+  return { id: row?.id ?? null, plan: { ...DEFAULT_MED_PLAN, ...(row?.data ?? {}) } as MedPlan };
+}
+
+/** Alle eigenen Privat-Einträge löschen (die gemeinsamen Einstellungen bleiben). */
+export async function deleteAllPrivate(session: Session) {
+  const rows = await db.delete(E).where(and(eq(E.tenantId, session.tenantId), eq(E.userId, session.userId), ne(E.kind, "einstellungen"))).returning({ id: E.id });
+  return rows.length;
 }

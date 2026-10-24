@@ -13,6 +13,8 @@ export type PrivateSettings = {
   userPartner: Record<string, PartnerKey>;
   /** Übliche Aufstehzeit – Vorschlag für „von“ beim Ausschlafen. */
   wakeTime: string;
+  /** Hinweis „mal wieder ein Date?“ nach so vielen Tagen ohne Paarzeit (0 = aus). */
+  dateReminderDays: number;
 };
 export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   partners: { a: "Ludwig", b: "Alexandra" },
@@ -21,6 +23,7 @@ export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   diaryShared: [],
   userPartner: {},
   wakeTime: "06:30",
+  dateReminderDays: 21,
 };
 
 export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey | "beide"; closeness?: Ratings; note?: string };
@@ -49,6 +52,8 @@ export type DiaryEntry = {
   med?: string;
   doseMg?: number;
   takenAt?: string;
+  /** Alle Einnahmen des Tages (Uhrzeiten), z. B. bei zwei Gaben. */
+  intakes?: string[];
   onset?: string;
   wearOff?: string;
   focus?: Ratings;
@@ -158,6 +163,7 @@ export function dateStats(entries: DateEntry[], month: string, today: string) {
     inMonth: inMonth.length,
     hoursInMonth: round1(inMonth.reduce((s, e) => s + kidsHours(e), 0)),
     costInMonth: Math.round(inMonth.reduce((s, e) => s + (e.costEur ?? 0), 0) * 100) / 100,
+    costInYear: Math.round(entries.filter((e) => e.day.startsWith(month.slice(0, 4))).reduce((s, e) => s + (e.costEur ?? 0), 0) * 100) / 100,
     last,
     daysSinceLast: last ? daysBetween(last, today) : null,
     avgGapDays: gaps.length ? round1(gaps.reduce((s, g) => s + g, 0) / gaps.length) : null,
@@ -326,3 +332,160 @@ export function num(v: unknown, min: number, max: number): number | undefined {
   return Number.isFinite(n) && n >= min && n <= max ? Math.round(n * 10) / 10 : undefined;
 }
 export const clip = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max) || undefined;
+
+// ---- Medikament: Einnahme und Vorrat ---------------------------------------------------------------
+
+/** Je Person: Medikament, Dosis, Stück je Einnahme, Einnahmen am Tag, Vorrat (Stand mit Zeitpunkt). */
+export type MedPlan = {
+  med: string;
+  doseMg?: number;
+  piecesPerIntake: number;
+  intakesPerDay: number;
+  /** `atAsOf`: Einnahmen, die beim Zählen schon in derselben Minute eingetragen waren. */
+  stock?: { count: number; asOf: string; atAsOf?: number };
+  /** Warnen, wenn der Vorrat nur noch so viele Tage reicht. */
+  warnDays: number;
+};
+export const DEFAULT_MED_PLAN: MedPlan = { med: "", piecesPerIntake: 1, intakesPerDay: 1, warnDays: 10 };
+
+/** Zeitpunkt „Tag + Uhrzeit“ als vergleichbare Zeichenkette. */
+const stamp = (day: string, time = "00:00") => `${day}T${time.padStart(5, "0")}`;
+
+/**
+ * Vorrat: Bestand beim letzten Stand minus Einnahmen danach. Reicht noch … Tage; „knapp“, wenn das
+ * höchstens `warnDays` sind.
+ */
+export function medStock(plan: MedPlan, diary: Pick<DiaryEntry, "day" | "takenAt" | "intakes">[]) {
+  if (!plan.stock) return null;
+  const since = plan.stock.asOf.slice(0, 16);
+  let taken = 0;
+  let sameMinute = 0;
+  for (const e of diary) {
+    const times = e.intakes?.length ? e.intakes : e.takenAt ? [e.takenAt] : [];
+    for (const t of times) {
+      const s = stamp(e.day, t);
+      if (s > since) taken++;
+      else if (s === since) sameMinute++;
+    }
+  }
+  // Einnahmen in genau der Minute des Zählens: nur die, die erst danach dazukamen.
+  taken += Math.max(0, sameMinute - (plan.stock.atAsOf ?? 0));
+  const remaining = Math.max(0, Math.round((plan.stock.count - taken * plan.piecesPerIntake) * 10) / 10);
+  const perDay = Math.max(0.1, plan.piecesPerIntake * plan.intakesPerDay);
+  const daysLeft = Math.floor(remaining / perDay);
+  return { remaining, daysLeft, low: daysLeft <= plan.warnDays, taken };
+}
+
+/** Wie viele Einnahmen genau zu diesem Zeitpunkt (Minute) eingetragen sind – für den Vorrats-Stand. */
+export function intakesAt(diary: Pick<DiaryEntry, "day" | "takenAt" | "intakes">[], asOf: string) {
+  const at = asOf.slice(0, 16);
+  let n = 0;
+  for (const e of diary) for (const t of e.intakes?.length ? e.intakes : e.takenAt ? [e.takenAt] : []) if (stamp(e.day, t) === at) n++;
+  return n;
+}
+
+// ---- Routinen ---------------------------------------------------------------------------------------
+
+export type Routine = { title: string; items: string[]; checks?: Record<string, string[]> };
+
+/** Heute abgehakt, komplett?, Serie kompletter Tage, letzte 7 Tage. */
+export function routineState(r: Routine, today: string) {
+  const checks = r.checks ?? {};
+  const complete = (d: string) => r.items.length > 0 && r.items.every((it) => (checks[d] ?? []).includes(it));
+  let streak = 0;
+  for (let d = complete(today) ? today : addDays(today, -1); complete(d); d = addDays(d, -1)) streak++;
+  return {
+    today: checks[today] ?? [],
+    doneToday: complete(today),
+    streak,
+    last7: Array.from({ length: 7 }, (_, i) => addDays(today, i - 6)).map((d) => ({ day: d, done: complete(d), some: (checks[d] ?? []).length > 0 })),
+  };
+}
+
+// ---- Wertschätzung & Paar-Stimmung --------------------------------------------------------------------
+
+/** Was jemand am anderen geschätzt hat (`from` = wer schreibt). */
+export type ThanksEntry = { day: string; from: PartnerKey; text: string };
+/** Wie geht es uns als Paar? Je Person ein Wert am Tag. */
+export type MoodEntry = { day: string; person: PartnerKey; value: Ratings; note?: string };
+
+/** Wertschätzungen seit einem Tag, getrennt nach Schreiber – für das Paar-Gespräch. */
+export function thanksSince(entries: ThanksEntry[], since: string | null) {
+  const list = entries.filter((e) => !since || e.day > since).sort((a, b) => a.day.localeCompare(b.day));
+  return { a: list.filter((e) => e.from === "a").map((e) => e.text), b: list.filter((e) => e.from === "b").map((e) => e.text) };
+}
+
+/** Stimmung je Person über die letzten n Tage. */
+export function moodSeries(entries: MoodEntry[], person: PartnerKey, today: string, n = 30) {
+  const byDay = new Map(entries.filter((e) => e.person === person).map((e) => [e.day, e.value]));
+  return Array.from({ length: n }, (_, i) => addDays(today, i - n + 1)).map((day) => ({ day, value: byDay.get(day) ?? null, doseMg: null }));
+}
+export const avgOf = (vals: (number | null | undefined)[]) => {
+  const v = vals.filter((x): x is number => typeof x === "number");
+  return v.length ? round1(v.reduce((s, x) => s + x, 0) / v.length) : null;
+};
+
+// ---- Wer kümmert sich (Mental Load) -----------------------------------------------------------------
+
+export type CareOwner = PartnerKey | "beide" | "offen";
+export type CareTask = {
+  title: string;
+  owner: CareOwner;
+  repeat: "einmal" | "woechentlich" | "monatlich" | "jaehrlich" | "laufend";
+  next?: string;
+  notes?: string;
+  /** Erledigt: Tag und von wem. */
+  done?: { day: string; by: PartnerKey }[];
+};
+export const CARE_SUGGESTIONS = [
+  "Kinderarzt & Vorsorge-Termine",
+  "Impfungen im Blick",
+  "Kita/Schule: Infos, Elternabende, Formulare",
+  "Geburtstage & Geschenke",
+  "Kleidung & Schuhe für die Kinder",
+  "Wocheneinkauf",
+  "Kochen / Essensplan",
+  "Wäsche",
+  "Putzen / Ordnung",
+  "Babysitter organisieren",
+  "Urlaub & Ausflüge planen",
+  "Rechnungen & Verträge",
+  "Hobbys & Kurse der Kinder",
+  "Termine im Familienkalender pflegen",
+] as const;
+
+/** Verteilung: Zuständigkeiten je Person und erledigt in den letzten 30 Tagen. */
+export function careOverview(tasks: CareTask[], today: string) {
+  const from = addDays(today, -29);
+  const owned = { a: 0, b: 0, beide: 0, offen: 0 };
+  const doneBy = { a: 0, b: 0 };
+  for (const t of tasks) {
+    owned[t.owner]++;
+    for (const d of t.done ?? []) if (d.day >= from && d.day <= today) doneBy[d.by]++;
+  }
+  const due = tasks.filter((t) => t.next && t.next <= addDays(today, 7)).sort((x, y) => x.next!.localeCompare(y.next!));
+  const sum = doneBy.a + doneBy.b;
+  return { owned, doneBy, shareA: sum ? Math.round((doneBy.a / sum) * 100) : null, due };
+}
+
+/** Nach dem Erledigen: nächster Termin je nach Wiederholung. */
+export function nextCareDate(t: Pick<CareTask, "repeat" | "next">, doneDay: string): string | undefined {
+  const base = t.next && t.next > doneDay ? t.next : doneDay;
+  const d = new Date(`${base}T12:00:00Z`);
+  if (t.repeat === "woechentlich") return addDays(base, 7);
+  if (t.repeat === "monatlich") d.setUTCMonth(d.getUTCMonth() + 1);
+  else if (t.repeat === "jaehrlich") d.setUTCFullYear(d.getUTCFullYear() + 1);
+  else return undefined;
+  return d.toISOString().slice(0, 10);
+}
+
+// ---- Date-Ideen -------------------------------------------------------------------------------------
+
+export type DateIdea = { text: string; done?: boolean };
+
+/** „Mal wieder ein Date?“ – wenn das letzte länger her ist als eingestellt. */
+export function dateReminder(lastDay: string | null, today: string, days: number): number | null {
+  if (!days || !lastDay) return null;
+  const since = daysBetween(lastDay, today);
+  return since >= days ? since : null;
+}

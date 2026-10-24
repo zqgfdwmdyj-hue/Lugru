@@ -6,8 +6,12 @@ const TABS = [
   { key: "paar", href: "/privat/paar", label: "Paar" },
   { key: "kinder", href: "/privat/kinder", label: "Kinderzeit" },
   { key: "ausschlafen", href: "/privat/ausschlafen", label: "Ausschlafen" },
+  { key: "auszeit", href: "/privat/auszeit", label: "Auszeit" },
+  { key: "familie", href: "/privat/familie", label: "Wer kümmert sich" },
   { key: "aufgaben", href: "/privat/aufgaben", label: "Aufgaben & Termine" },
   { key: "tagebuch", href: "/privat/tagebuch", label: "ADHS-Tagebuch" },
+  { key: "routinen", href: "/privat/routinen", label: "Routinen" },
+  { key: "rueckblick", href: "/privat/rueckblick", label: "Rückblick" },
   { key: "wissen", href: "/privat/wissen", label: "Wissen" },
   { key: "einstellungen", href: "/privat/einstellungen", label: "Einstellungen" },
 ] as const;

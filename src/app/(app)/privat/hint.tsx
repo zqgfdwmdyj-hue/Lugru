@@ -1,8 +1,8 @@
 import Link from "next/link";
 import type { Session } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { addDays, taskState, type AppointmentEntry, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
-import { loadEntries } from "@/lib/private/service";
+import { addDays, dateReminder, dateStats, medStock, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
+import { loadEntries, myMedPlan, privateSettings } from "@/lib/private/service";
 
 /**
  * Kleiner Hinweis auf der Startseite – nur für Personen mit Privat-Zugang. Ist „Privat“ mit PIN
@@ -15,11 +15,16 @@ export async function PrivateHint({ session }: { session: Session }) {
     return <Link href="/privat" className="small" data-testid="private-hint" style={{ alignSelf: "flex-start" }}>🔒 Privat</Link>;
   }
   const today = todayIso();
-  const [diary, tasks, appts] = await Promise.all([
+  const [diary, tasks, appts, dates, settings, med] = await Promise.all([
     loadEntries<DiaryEntry>(session, ["tagebuch"]),
     loadEntries<TaskEntry>(session, ["aufgabe"]),
     loadEntries<AppointmentEntry>(session, ["termin"]),
+    loadEntries<DateEntry>(session, ["paarzeit"]),
+    privateSettings(session.tenantId),
+    myMedPlan(session),
   ]);
+  const stock = medStock(med.plan, diary.filter((e) => e.userId === session.userId).map((e) => e.data));
+  const remind = dateReminder(dateStats(dates.map((e) => e.data), today.slice(0, 7), today).last, today, settings.dateReminderDays);
   const hasDiary = diary.some((e) => e.userId === session.userId);
   const diaryToday = diary.some((e) => e.userId === session.userId && e.data.day === today);
   const open = tasks.filter((t) => taskState(t.data, today).open).length;
@@ -28,6 +33,8 @@ export async function PrivateHint({ session }: { session: Session }) {
     hasDiary && !diaryToday ? "Tagebuch heute noch offen" : null,
     open ? `${open} Aufgabe${open === 1 ? "" : "n"} offen` : null,
     soon ? `Termin ${soon.data.day === today ? "heute" : "morgen"}${soon.data.time ? ` ${soon.data.time}` : ""}` : null,
+    stock?.low ? `Vorrat reicht noch ${stock.daysLeft} Tage – Rezept besorgen` : null,
+    remind !== null ? `letztes Date vor ${remind} Tagen` : null,
   ].filter(Boolean);
   return (
     <Link href="/privat" className="notice notice-info small" data-testid="private-hint" style={{ textDecoration: "none", color: "inherit" }}>

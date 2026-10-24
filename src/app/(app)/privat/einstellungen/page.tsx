@@ -1,5 +1,5 @@
 import { myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
-import { savePinAction, saveSettingsAction } from "../actions";
+import { deleteAllAction, savePinAction, saveSettingsAction } from "../actions";
 import { StateForm } from "../state-form";
 import { Choice, PrivatHead } from "../ui";
 
@@ -22,6 +22,7 @@ export default async function PrivatEinstellungenPage() {
           <div className="field"><span className="label">Das bin ich</span><Choice name="me" value={me} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }]} /></div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="wake">Übliche Aufstehzeit (fürs Ausschlafen)</label><input className="input" id="wake" name="wakeTime" type="time" defaultValue={s.wakeTime} /></div>
+            <div className="field"><label className="label" htmlFor="remind">„Zeit für ein Date?“ nach … Tagen (0 = aus)</label><input className="input" id="remind" name="dateReminderDays" type="number" min={0} max={365} defaultValue={s.dateReminderDays} /></div>
           </div>
           <div className="field"><label className="label" htmlFor="kids">Kinder (Vornamen, mit Komma – optional)</label><input className="input" id="kids" name="kids" defaultValue={s.kids.join(", ")} placeholder="z. B. Mia, Paul" /></div>
           <div className="priv-grid">
@@ -47,6 +48,24 @@ export default async function PrivatEinstellungenPage() {
             <div className="field"><label className="label" htmlFor="pin2">PIN wiederholen</label><input className="input" id="pin2" name="pin2" type="password" inputMode="numeric" autoComplete="new-password" /></div>
           </div>
         </StateForm>
+      </section>
+
+      <section className="card card-pad stack" id="daten">
+        <h2>Daten sichern oder löschen</h2>
+        <div className="small">
+          <a className="btn btn-small" href="/privat/export" data-testid="export">Alles herunterladen (Datei)</a>
+          <span className="muted" style={{ marginLeft: 8 }}>enthält alles, was du hier sehen darfst – unverschlüsselt, also sicher aufbewahren.</span>
+        </div>
+        <details>
+          <summary className="small" style={{ cursor: "pointer", color: "var(--danger)" }}>Einträge löschen …</summary>
+          <div style={{ marginTop: 8 }}>
+            <StateForm action={deleteAllAction} submit="Endgültig löschen" testid="delete-all">
+              <div className="small">Löscht <strong>alle deine eigenen Einträge</strong> in Privat. Was die anderen eingetragen haben, bleibt – das kann nur jede Person selbst löschen.</div>
+              <div className="field"><label className="label" htmlFor="confirm">Zum Bestätigen LÖSCHEN eintippen</label><input className="input" id="confirm" name="confirm" autoComplete="off" required /></div>
+              <div className="small muted">Kann nicht rückgängig gemacht werden. Vorher am besten oben herunterladen.</div>
+            </StateForm>
+          </div>
+        </details>
       </section>
 
       <section className="card card-pad stack">

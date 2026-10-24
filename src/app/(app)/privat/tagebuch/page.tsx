@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { RATING_FIELDS, SIDE_EFFECTS, URGENT_SIDE_EFFECTS, addDays, diarySeries, isDay, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
-import { loadEntries, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
+import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
 import { StateForm } from "../state-form";
+import { IntakeCard } from "../intake";
 import { Chips, PrivatHead, Rating, dm, dmy, weekday } from "../ui";
 
 const n = (v: number | undefined) => (v === undefined ? "" : String(v).replace(".", ","));
@@ -42,7 +43,8 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
   const mine = all.filter((e) => e.userId === owner).sort((a, b) => b.data.day.localeCompare(a.data.day));
   const entry = mine.find((e) => e.data.day === day)?.data;
   const last = mine.find((e) => e.data.day < day)?.data;
-  const pre: Partial<DiaryEntry> = entry ?? { med: last?.med, doseMg: last?.doseMg, takenAt: last?.takenAt };
+  const { plan } = await myMedPlan(session);
+  const pre: Partial<DiaryEntry> = entry ?? { med: last?.med ?? (plan.med || undefined), doseMg: last?.doseMg ?? plan.doseMg, takenAt: last?.takenAt };
   const observations = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).sort((a, b) => b.data.day.localeCompare(a.data.day));
   const aboutMe = observations.filter((o) => o.data.aboutUserId === session.userId);
   const byMe = observations.filter((o) => o.userId === session.userId);
@@ -68,6 +70,8 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
           {others.map((m) => <Link key={m.userId} className={`chip${viewing?.userId === m.userId ? " active" : ""}`} href={`/privat/tagebuch?von=${m.userId}`}>{m.name ?? m.login}</Link>)}
         </div>
       )}
+
+      {!viewing && <IntakeCard session={session} full />}
 
       <section className="card card-pad stack">
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -104,7 +108,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
               <div className="priv-grid">
                 <div className="field"><label className="label" htmlFor="d-med">Name</label><input className="input" id="d-med" name="med" defaultValue={pre.med ?? ""} placeholder="z. B. Methylphenidat retard" autoComplete="off" /></div>
                 <div className="field"><label className="label" htmlFor="d-dose">Dosis (mg)</label><input className="input" id="d-dose" name="doseMg" inputMode="decimal" defaultValue={n(pre.doseMg)} /></div>
-                <div className="field"><label className="label" htmlFor="d-taken">eingenommen um</label><input className="input" id="d-taken" name="takenAt" type="time" defaultValue={pre.takenAt ?? ""} /></div>
+                <div className="field"><label className="label" htmlFor="d-taken">eingenommen um{entry?.intakes && entry.intakes.length > 1 ? ` (alle: ${entry.intakes.join(", ")})` : ""}</label><input className="input" id="d-taken" name="takenAt" type="time" defaultValue={pre.takenAt ?? ""} /></div>
                 <div className="field"><label className="label" htmlFor="d-onset">Wirkung spürbar ab</label><input className="input" id="d-onset" name="onset" type="time" defaultValue={entry?.onset ?? ""} /></div>
                 <div className="field"><label className="label" htmlFor="d-wear">lässt nach um</label><input className="input" id="d-wear" name="wearOff" type="time" defaultValue={entry?.wearOff ?? ""} /></div>
               </div>

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { dateStats, intimStats, isDay, kidsHours, monthGrid, shiftMonth, type DateEntry, type IntimEntry, type TalkEntry } from "@/lib/private/logic";
-import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
-import { addDateAction, addIntimAction, addTalkAction, deleteEntryAction } from "../actions";
+import { avgOf, dateReminder, dateStats, intimStats, isDay, kidsHours, monthGrid, moodSeries, shiftMonth, thanksSince, type DateEntry, type DateIdea, type IntimEntry, type MoodEntry, type TalkEntry, type ThanksEntry } from "@/lib/private/logic";
+import { loadEntries, myPartner, privateSettings, requirePrivate } from "@/lib/private/service";
+import { addDateAction, addIdeaAction, addIntimAction, addTalkAction, addThanksAction, deleteEntryAction, saveMoodAction, toggleIdeaAction } from "../actions";
 import { StateForm } from "../state-form";
 import { Choice, PrivatHead, Rating, dm, dmy, hoursLabel, monthLabel, weekday } from "../ui";
 
@@ -32,12 +32,24 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
   const sitters = [...new Set(["Babysitterin", "Oma", "Opa", ...dates.map((e) => e.data.sitter).filter((x): x is string => Boolean(x))])];
   const prevDates = [1, 2, 3].map((i) => shiftMonth(month, -i)).map((m) => ({ m, n: dates.filter((e) => e.data.day.startsWith(m)).length }));
   const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
+  const me = myPartner(s, session);
+  const thanks = (await loadEntries<ThanksEntry>(session, ["danke"])).sort((a, b) => b.data.day.localeCompare(a.data.day) || b.createdAt.getTime() - a.createdAt.getTime());
+  const lastTalk = talks[0]?.data.day ?? null;
+  const pending = thanksSince(thanks.map((e) => e.data), lastTalk);
+  const moods = await loadEntries<MoodEntry>(session, ["stimmung"]);
+  const myMood = moods.find((e) => e.userId === session.userId && e.data.day === today)?.data;
+  const moodToday = { a: moods.find((e) => e.data.person === "a" && e.data.day === today)?.data.value, b: moods.find((e) => e.data.person === "b" && e.data.day === today)?.data.value };
+  const ideas = (await loadEntries<DateIdea>(session, ["dateidee"])).sort((a, b) => Number(a.data.done ?? false) - Number(b.data.done ?? false) || b.createdAt.getTime() - a.createdAt.getTime());
+  const remind = dateReminder(ds.last, today, s.dateReminderDays);
   const dateLine = (d: DateEntry) =>
     [d.from && d.to ? `${d.from}–${d.to}` : kidsHours(d) ? hoursLabel(kidsHours(d)) : "", d.what, d.sitter ? `Kinder bei ${d.sitter}` : "", d.costEur ? euro(d.costEur) : "", d.rating ? `${d.rating}/5` : ""].filter(Boolean).join(" · ");
 
   return (
     <>
       <PrivatHead active="paar" title="Paar" pin={session.privatePin} />
+      <nav className="small" style={{ display: "flex", gap: 12, flexWrap: "wrap" }} aria-label="Abschnitte">
+        <a href="#kalender">Kalender</a><a href="#paarzeit">🥂 Paarzeit</a><a href="#danke">💛 Wertschätzung</a><a href="#stimmung">Wie geht’s uns?</a><a href="#gespraech">Paar-Gespräch</a>
+      </nav>
 
       <div className="grid-kpi">
         <div className="card card-pad"><div className="kpi-label">{monthLabel(month)}</div><div className="kpi-value" data-testid="intim-month">{stats.inMonth}×</div><div className="small muted">{prevMonths.map((p) => `${monthLabel(p.m).split(" ")[0].slice(0, 3)} ${p.n}×`).join(" · ")}</div></div>
@@ -118,11 +130,13 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
       <section className="card card-pad stack" id="paarzeit">
         <h2>🥂 Paarzeit – zu zweit unterwegs</h2>
         <div className="small muted">Dates und Zeit nur für euch beide, während die Kinder bei der Babysitterin, Oma &amp; Co. sind.</div>
+        {remind !== null && <div className="notice notice-info small" data-testid="date-remind">Euer letztes Date ist {remind} Tage her – Zeit, das nächste zu planen? Ideen stehen unten.</div>}
         <div className="priv-grid" data-testid="date-stats">
           <div><div className="kpi-label">{monthLabel(month)}</div><strong>{ds.inMonth}×</strong>{ds.hoursInMonth ? ` · ${hoursLabel(ds.hoursInMonth)}` : ""}</div>
           <div><div className="kpi-label">Vormonate</div>{prevDates.map((p) => `${monthLabel(p.m).split(" ")[0].slice(0, 3)} ${p.n}×`).join(" · ")}</div>
           <div><div className="kpi-label">Ø Abstand (90 Tage)</div><strong>{ds.avgGapDays === null ? "–" : `${String(ds.avgGapDays).replace(".", ",")} Tage`}</strong> · {ds.last90}× in 90 Tagen</div>
           {ds.costInMonth > 0 && <div><div className="kpi-label">Babysitter {monthLabel(month).split(" ")[0]}</div><strong>{euro(ds.costInMonth)}</strong></div>}
+          {ds.costInYear > 0 && <div><div className="kpi-label">Babysitter {month.slice(0, 4)}</div><strong data-testid="date-cost-year">{euro(ds.costInYear)}</strong></div>}
         </div>
         <StateForm action={addDateAction} submit="Paarzeit eintragen" testid="date-form">
           <div className="priv-grid">
@@ -158,6 +172,69 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
         )}
       </section>
 
+      <section className="card card-pad stack" id="ideen">
+        <h2>💡 Date-Ideen</h2>
+        {ideas.length > 0 && (
+          <div className="stack" style={{ gap: 4 }} data-testid="ideas">
+            {ideas.map((i) => (
+              <div key={i.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <form action={toggleIdeaAction}><input type="hidden" name="id" value={i.id} /><button className={`btn btn-small${i.data.done ? " btn-primary" : ""}`} type="submit" aria-pressed={Boolean(i.data.done)} title="gemacht / noch offen">{i.data.done ? "✓" : "○"}</button></form>
+                <span className="small" style={{ textDecoration: i.data.done ? "line-through" : undefined, flex: 1 }}>{i.data.text}</span>
+                <form action={deleteEntryAction}><input type="hidden" name="kind" value="dateidee" /><input type="hidden" name="id" value={i.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="Idee löschen">×</button></form>
+              </div>
+            ))}
+          </div>
+        )}
+        <StateForm action={addIdeaAction} submit="Idee speichern" testid="idea-form" className="">
+          <input className="input" name="text" required placeholder="z. B. Thermalbad, Kochkurs, Konzert, Picknick" autoComplete="off" />
+        </StateForm>
+        <div className="small muted">Hinweis „Zeit für ein Date?“ nach {s.dateReminderDays || "–"} Tagen – in den Einstellungen änderbar.</div>
+      </section>
+
+      <section className="card card-pad stack" id="danke">
+        <h2>💛 Wertschätzung</h2>
+        <div className="small muted">Kleine Dinge, die du am anderen geschätzt hast – gleich notieren, sonst vergisst man sie. Beim Paar-Gespräch stehen sie schon drin.</div>
+        <StateForm action={addThanksAction} submit={`Notieren (${me === "a" ? `${s.partners.a} über ${s.partners.b}` : `${s.partners.b} über ${s.partners.a}`})`} testid="thanks-form" className="">
+          <input className="input" name="text" required placeholder="z. B. hat mir heute Abend den Rücken freigehalten" autoComplete="off" />
+        </StateForm>
+        {thanks.length > 0 && (
+          <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="thanks-list">
+            {thanks.slice(0, 12).map((t) => (
+              <li key={t.id} className="small">
+                <strong>{dm(t.data.day)}</strong> {t.data.from === "a" ? s.partners.a : s.partners.b}: {t.data.text}
+                <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="danke" /><input type="hidden" name="id" value={t.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="löschen">×</button></form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="card card-pad stack" id="stimmung">
+        <h2>Wie geht’s uns als Paar?</h2>
+        <StateForm action={saveMoodAction} submit={myMood ? "Ändern" : "Speichern"} testid="mood-form" keep>
+          <Rating name="value" label={`Heute (${me === "a" ? s.partners.a : s.partners.b})`} low="schwierig" high="sehr gut" value={myMood?.value} />
+          <input className="input" name="note" placeholder="Warum? (optional)" defaultValue={myMood?.note ?? ""} autoComplete="off" />
+        </StateForm>
+        <div className="small muted" data-testid="mood-today">
+          Heute: {s.partners.a} {moodToday.a ? `${moodToday.a}/5` : "–"} · {s.partners.b} {moodToday.b ? `${moodToday.b}/5` : "–"}
+        </div>
+        <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18 }}>
+          {(["a", "b"] as const).map((k) => {
+            const series = moodSeries(moods.map((e) => e.data), k, today, 30);
+            const avg = avgOf(series.map((p) => p.value));
+            return (
+              <figure key={k} style={{ margin: 0, minWidth: 0 }}>
+                <figcaption className="small" style={{ display: "flex", justifyContent: "space-between" }}><span>{k === "a" ? s.partners.a : s.partners.b}</span><span className="muted">Ø {avg === null ? "–" : String(avg).replace(".", ",")}</span></figcaption>
+                <div className="spark" role="img" aria-label={`Stimmung ${k === "a" ? s.partners.a : s.partners.b}, letzte 30 Tage, Durchschnitt ${avg ?? "–"}`}>
+                  {series.map((p) => <i key={p.day} className={p.value === null ? "empty" : ""} style={{ height: p.value === null ? "100%" : `${(p.value / 5) * 100}%` }} title={`${dm(p.day)}: ${p.value ?? "–"}`} />)}
+                </div>
+                <div className="small muted" style={{ display: "flex", justifyContent: "space-between" }}><span>{dm(series[0].day)}</span><span>heute</span></div>
+              </figure>
+            );
+          })}
+        </div>
+      </section>
+
       <section className="card card-pad stack" id="gespraech">
         <h2>Paar-Gespräch der Woche</h2>
         <details>
@@ -174,8 +251,8 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
             <div className="field"><label className="label" htmlFor="t-day">Tag</label><input className="input" id="t-day" name="day" type="date" defaultValue={today} max={today} /></div>
           </div>
           <div className="priv-grid">
-            <div className="field"><label className="label" htmlFor="t-a">{s.partners.a} schätzt an {s.partners.b}</label><textarea className="input" id="t-a" name="appreciationsA" rows={3} /></div>
-            <div className="field"><label className="label" htmlFor="t-b">{s.partners.b} schätzt an {s.partners.a}</label><textarea className="input" id="t-b" name="appreciationsB" rows={3} /></div>
+            <div className="field"><label className="label" htmlFor="t-a">{s.partners.a} schätzt an {s.partners.b}</label><textarea className="input" id="t-a" name="appreciationsA" rows={3} defaultValue={pending.a.join("\n")} /></div>
+            <div className="field"><label className="label" htmlFor="t-b">{s.partners.b} schätzt an {s.partners.a}</label><textarea className="input" id="t-b" name="appreciationsB" rows={3} defaultValue={pending.b.join("\n")} /></div>
           </div>
           <div className="field"><label className="label" htmlFor="t-topic">Thema</label><input className="input" id="t-topic" name="topic" /></div>
           <div className="field"><label className="label" htmlFor="t-agreed">Was wir mitnehmen / vereinbaren</label><textarea className="input" id="t-agreed" name="agreed" rows={2} /></div>
