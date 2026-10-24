@@ -2,8 +2,9 @@
 
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES, type TenantSettings } from "@/db/schema";
@@ -236,4 +237,32 @@ export async function setPrivateAccess(fd: FormData) {
     .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
   if (!on) await db.update(schema.sessions).set({ privateUnlockedUntil: null }).where(and(eq(schema.sessions.tenantId, session.tenantId), eq(schema.sessions.userId, userId)));
   revalidatePath("/", "layout");
+}
+
+/**
+ * Zwei Shops/Lieferanten zusammenführen (von Hand, nach Prüfung): alle Verweise (Chargen, Rechnungen,
+ * Regeln, Bestellungen, Feeds, Großhändler-Kontakte) auf den behaltenen Eintrag, dann den doppelten entfernen.
+ */
+export async function mergeSuppliersAction(fd: FormData) {
+  const session = await requireOwner();
+  const keep = z.string().uuid().parse(fd.get("keep"));
+  const drop = z.string().uuid().parse(fd.get("drop"));
+  if (keep === drop) return;
+  const t = session.tenantId;
+  const S = schema.suppliers;
+  const rows = await db.select().from(S).where(and(eq(S.tenantId, t), inArray(S.id, [keep, drop])));
+  const k = rows.find((r) => r.id === keep);
+  const d = rows.find((r) => r.id === drop);
+  if (!k || !d) return;
+  let moved = 0;
+  await db.transaction(async (tx) => {
+    for (const tbl of [schema.lots, schema.invoices, schema.invoiceSourceRules, schema.purchaseOrders, schema.supplierFeeds, schema.supplierLeads]) {
+      const r = await tx.update(tbl).set({ supplierId: keep }).where(and(eq(tbl.tenantId, t), eq(tbl.supplierId, drop))).returning({ x: tbl.supplierId });
+      moved += r.length;
+    }
+    if (!k.name && d.name) await tx.update(S).set({ name: d.name }).where(and(eq(S.id, keep), eq(S.tenantId, t)));
+    await tx.delete(S).where(and(eq(S.id, drop), eq(S.tenantId, t)));
+  });
+  revalidatePath("/", "layout");
+  redirect(`/einstellungen?${new URLSearchParams({ meldung: `„${d.code}“ in „${k.code}“ zusammengeführt – ${moved} Verweise übernommen.` })}#shops`);
 }

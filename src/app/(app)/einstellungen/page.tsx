@@ -1,14 +1,17 @@
 import Link from "next/link";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
-import { removeUser, saveSettings, saveSupplierName, setPrivateAccess } from "./actions";
+import { mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess } from "./actions";
+import { similarSuppliers } from "@/lib/suppliers/duplicates";
+import { ConfirmButton } from "@/components/confirm-button";
 import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
 import { STAFF_AREAS as AREAS } from "@/lib/auth/areas";
 import { formatSeen, isOnline } from "@/lib/auth/last-seen";
 import { InvoiceSettingsCards } from "../rechnungen/ausgang/settings-cards";
+import { MailboxManager } from "../posteingang/mailbox-manager";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -32,6 +35,16 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   const s = await getSettings(session.tenantId);
   const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
+  const pairs = similarSuppliers(suppliers);
+  // Wie oft wird ein Shop verwendet (Chargen, Rechnungen)? Hilft bei der Entscheidung, welcher bleibt.
+  const usage = new Map(
+    (
+      await db.execute<{ id: string; lots: number; invoices: number }>(sql`
+        select s.id, (select count(*)::int from lots l where l.tenant_id = s.tenant_id and l.supplier_id = s.id) as lots,
+               (select count(*)::int from invoices i where i.tenant_id = s.tenant_id and i.supplier_id = s.id) as invoices
+          from suppliers s where s.tenant_id = ${session.tenantId}`)
+    ).rows.map((r) => [r.id, r]),
+  );
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
     .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
@@ -46,6 +59,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         <div><div className="crumb">System</div><h1>Einstellungen</h1></div>
         <Link className="btn" href="/anbindungen">Anbindungen →</Link>
       </div>
+      {meldung && <div className="notice notice-info" data-testid="settings-msg">{meldung}</div>}
 
       <form action={saveSettings} className="stack" style={{ gap: 16 }}>
         <section className="card card-pad stack" style={{ gap: 14 }}>
@@ -136,15 +150,40 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         <div><button className="btn btn-primary" type="submit">Einstellungen speichern</button></div>
       </form>
 
+      <section className="stack" id="postfaecher" style={{ gap: 10, maxWidth: 720 }}>
+        <MailboxManager tenantId={session.tenantId} />
+        <Link className="small" href="/posteingang">Zum Posteingang →</Link>
+      </section>
+
       <section className="stack" id="rechnungen" style={{ gap: 10 }}>
         <div className="between"><h2>Ausgangsrechnungen</h2><Link className="small" href="/rechnungen/ausgang">Zu den Ausgangsrechnungen →</Link></div>
-        {meldung && <div className="notice notice-info" data-testid="settings-msg">{meldung}</div>}
         <InvoiceSettingsCards tenantId={session.tenantId} />
         <div className="small muted">Absenderdaten (Firma, Anschrift, USt-ID) für Rechnungen: <Link href="/ebay?ansicht=einstellungen&tab=invoices">eBay-Einstellungen → Rechnungen</Link>. Stotax-Anbindung: <Link href="/anbindungen?p=stotax#stotax">Anbindungen</Link>.</div>
       </section>
 
-      <section className="card" style={{ overflow: "hidden" }}>
+      <section className="card" style={{ overflow: "hidden" }} id="shops">
         <div className="card-head"><h2>Shops / Lieferanten</h2><span className="small muted">Kürzel aus den SKUs – hier einen lesbaren Namen vergeben</span></div>
+        {pairs.length > 0 && (
+          <details className="card-pad" style={{ borderBottom: "1px solid var(--border)" }} data-testid="supplier-dups">
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Mögliche Doppel prüfen ({pairs.length})</summary>
+            <div className="small muted" style={{ margin: "6px 0 10px" }}>Nur Vorschläge – nichts wird automatisch zusammengeführt. Beim Zusammenführen wandern Chargen, Rechnungen, Regeln, Bestellungen und Kontakte zum behaltenen Eintrag; die SKUs bleiben unverändert.</div>
+            <div className="stack" style={{ gap: 8 }}>
+              {pairs.map(({ a, b, reason }) => {
+                const u = (id: string) => usage.get(id) ?? { lots: 0, invoices: 0 };
+                const label = (x: typeof a) => `${x.code}${x.name ? ` – ${x.name}` : ""} (${u(x.id).lots} Chargen, ${u(x.id).invoices} Rechnungen)`;
+                return (
+                  <div key={`${a.id}-${b.id}`} className="between" style={{ flexWrap: "wrap", gap: 8 }} data-testid="supplier-dup">
+                    <span className="small"><strong>{label(a)}</strong> und <strong>{label(b)}</strong> · {reason}</span>
+                    <span style={{ display: "flex", gap: 6 }}>
+                      <form action={mergeSuppliersAction}><input type="hidden" name="keep" value={a.id} /><input type="hidden" name="drop" value={b.id} /><ConfirmButton confirm={`„${b.code}“ in „${a.code}“ zusammenführen? „${b.code}“ verschwindet danach aus der Liste.`}>„{a.code}“ behalten</ConfirmButton></form>
+                      <form action={mergeSuppliersAction}><input type="hidden" name="keep" value={b.id} /><input type="hidden" name="drop" value={a.id} /><ConfirmButton confirm={`„${a.code}“ in „${b.code}“ zusammenführen? „${a.code}“ verschwindet danach aus der Liste.`}>„{b.code}“ behalten</ConfirmButton></form>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        )}
         {suppliers.length === 0 ? <div className="card-pad muted">Noch keine – entstehen beim Import.</div> : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 8, padding: 16 }}>
             {suppliers.map((sup) => (

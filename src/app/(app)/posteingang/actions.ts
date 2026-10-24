@@ -74,7 +74,7 @@ export async function toggleMailbox(fd: FormData) {
   const [mb] = await db.select().from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
   if (!mb) return;
   await db.update(schema.mailboxes).set({ active: !mb.active, updatedAt: new Date() }).where(eq(schema.mailboxes.id, id));
-  revalidatePath("/posteingang");
+  revalidatePath("/", "layout");
 }
 
 export async function setDefaultSenderAction(fd: FormData) {
@@ -83,7 +83,7 @@ export async function setDefaultSenderAction(fd: FormData) {
   const [box] = await db.select({ id: schema.mailboxes.id }).from(schema.mailboxes).where(and(eq(schema.mailboxes.id, id), eq(schema.mailboxes.tenantId, session.tenantId)));
   if (!box) return;
   await setDefaultSender(session.tenantId, box.id);
-  revalidatePath("/posteingang");
+  revalidatePath("/", "layout");
 }
 
 /** Absendername und Signatur eines Postfachs speichern. */
@@ -96,7 +96,7 @@ export async function saveMailboxProfileAction(fd: FormData) {
   const signature = String(fd.get("signature") ?? "").replace(/\r\n/g, "\n").trim().slice(0, 2000) || null;
   await db.update(schema.mailboxes).set({ fromName, signature, updatedAt: new Date() }).where(eq(schema.mailboxes.id, box.id));
   if (fd.get("leadDefault") === "on") await rememberLeadSender(session.tenantId, box.id);
-  revalidatePath("/posteingang");
+  revalidatePath("/", "layout");
   redirect(`/posteingang/postfaecher/${box.id}?meldung=${encodeURIComponent("Gespeichert.")}`);
 }
 

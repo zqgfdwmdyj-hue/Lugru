@@ -372,6 +372,13 @@
       "when": 1792838751649,
       "tag": "0052_rechnungen_pruefen",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792840193349,
+      "tag": "0053_wissen_herkunft",
+      "breakpoints": true
     }
   ]
 }

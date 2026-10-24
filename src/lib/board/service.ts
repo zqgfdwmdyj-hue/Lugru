@@ -22,7 +22,8 @@ export async function leadBoard(tenantId: string) {
         or(notInArray(L.status, ["neu", "geprueft"]), eq(L.onBoard, true), eq(L.kind, "grosshandel")),
       ),
     )
-    .orderBy(desc(L.updatedAt))
+    // Aktive Kontakte zuerst: wer geantwortet hat (neueste Antwort oben), dann zuletzt bearbeitete.
+    .orderBy(sql`${L.repliedAt} desc nulls last`, desc(L.updatedAt))
     .limit(800);
   const cols = new Map<LeadColumnKey, typeof rows>(LEAD_COLUMNS.map((c) => [c.key, []]));
   for (const l of rows) {

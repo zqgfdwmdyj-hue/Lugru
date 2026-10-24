@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { and, arrayOverlaps, eq, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { deleteEntry } from "@/lib/knowledge/actions";
+import { verifyEntry, deleteEntry } from "@/lib/knowledge/actions";
 import { formatDate } from "@/lib/numbers";
 import { CopyButton } from "@/components/copy-button";
 
@@ -39,9 +39,14 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
         <article className="card" style={{ flexGrow: 1, minWidth: 0, padding: "26px 34px" }}>
           <div className="between" style={{ alignItems: "flex-start" }}>
             <div className="small muted">
+              <span className={`tag ${entry.origin === "anleitung" ? "tag-ok" : entry.origin === "recherche" ? "tag-warn" : "tag-neutral"}`} data-testid="entry-origin" style={{ marginRight: 6 }}>
+                {entry.origin === "anleitung" ? "Anleitung" : entry.origin === "recherche" ? "Recherche (automatisch, ungeprüft)" : "Eigene Notiz"}
+                {entry.verifiedAt ? ` ✓ geprüft am ${formatDate(entry.verifiedAt.toISOString())}` : ""}
+              </span>
               {entry.kind === "snippet" ? "Textbaustein" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <form action={verifyEntry}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-verify">{entry.verifiedAt ? "Prüfung zurücknehmen" : entry.origin === "recherche" ? "Geprüft – als Anleitung übernehmen" : "Als geprüft markieren"}</button></form>
               {entry.kind === "snippet" && <CopyButton text={entry.body} />}
               <Link className="btn btn-small" href={`/wissen/${entry.id}/bearbeiten`}>Bearbeiten</Link>
             </div>

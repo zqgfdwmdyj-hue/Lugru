@@ -13,6 +13,7 @@ const entry = z.object({
   kind: z.enum(["article", "snippet"]),
   body: z.string().max(50_000),
   tags: z.string().max(500),
+  origin: z.enum(["recherche", "anleitung", "notiz"]).catch("notiz"),
 });
 
 function read(formData: FormData) {
@@ -22,6 +23,7 @@ function read(formData: FormData) {
     kind: formData.get("kind"),
     body: formData.get("body") ?? "",
     tags: formData.get("tags") ?? "",
+    origin: formData.get("origin") ?? "notiz",
   });
 }
 
@@ -59,4 +61,19 @@ export async function deleteEntry(formData: FormData) {
     .where(and(eq(schema.knowledgeEntries.id, id), eq(schema.knowledgeEntries.tenantId, session.tenantId)));
   revalidatePath("/wissen");
   redirect("/wissen");
+}
+
+/** Eintrag als geprüft markieren (oder die Markierung zurücknehmen). Geprüfte Recherche wird zur Anleitung. */
+export async function verifyEntry(formData: FormData) {
+  const session = await requireArea("wissen");
+  const id = z.string().uuid().parse(formData.get("id"));
+  const K = schema.knowledgeEntries;
+  const [e] = await db.select({ origin: K.origin, verifiedAt: K.verifiedAt }).from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  if (!e) return;
+  const on = !e.verifiedAt;
+  await db
+    .update(K)
+    .set(on ? { verifiedAt: new Date(), verifiedBy: session.userId, origin: e.origin === "recherche" ? "anleitung" : e.origin } : { verifiedAt: null, verifiedBy: null })
+    .where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  revalidatePath("/wissen", "layout");
 }

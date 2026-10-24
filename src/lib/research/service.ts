@@ -119,7 +119,7 @@ export async function runResearch(tenantId: string, fetcher = fetchFeed): Promis
       .join("\n\n");
     const [entry] = await db
       .insert(K)
-      .values({ tenantId, kind: "article", category: "Recherche", title: `${topic} – neu am ${today}`, body, tags: ["recherche", topic.toLowerCase()] })
+      .values({ tenantId, kind: "article", category: "Recherche", origin: "recherche", title: `${topic} – neu am ${today}`, body, tags: ["recherche", topic.toLowerCase()] })
       .returning({ id: K.id });
     await db
       .insert(R)

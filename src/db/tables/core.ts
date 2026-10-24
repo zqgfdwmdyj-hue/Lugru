@@ -419,6 +419,11 @@ export const knowledgeEntries = pgTable(
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz. */
+    origin: text("origin", { enum: ["recherche", "anleitung", "notiz"] }).notNull().default("notiz"),
+    /** Von jemandem als geprüft/verlässlich bestätigt. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    verifiedBy: uuid("verified_by").references(() => users.id, { onDelete: "set null" }),
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

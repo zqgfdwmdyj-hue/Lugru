@@ -5,18 +5,27 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/numbers";
 import { KNOWLEDGE_CATEGORIES, SNIPPET_CATEGORIES } from "@/lib/knowledge/categories";
 
+const ORIGIN = {
+  anleitung: { label: "Anleitung", cls: "tag-ok" },
+  notiz: { label: "Eigene Notiz", cls: "tag-neutral" },
+  recherche: { label: "Recherche (automatisch, ungeprüft)", cls: "tag-warn" },
+} as const;
+type Origin = keyof typeof ORIGIN;
+
 export default async function WissenPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; kat?: string }>;
+  searchParams: Promise<{ q?: string; kat?: string; herkunft?: string }>;
 }) {
   const session = await requireSession();
-  const { q = "", kat } = await searchParams;
+  const { q = "", kat, herkunft: rawOrigin } = await searchParams;
+  const herkunft = rawOrigin && rawOrigin in ORIGIN ? (rawOrigin as Origin) : null;
   const K = schema.knowledgeEntries;
   const query = q.trim();
 
   const where = [eq(K.tenantId, session.tenantId)];
   if (kat) where.push(eq(K.category, kat));
+  if (herkunft) where.push(eq(K.origin, herkunft));
   const doc = sql`to_tsvector('german', ${K.title} || ' ' || ${K.body})`;
   if (query) {
     where.push(
@@ -24,25 +33,30 @@ export default async function WissenPage({
     );
   }
 
-  const [entries, counts] = await Promise.all([
+  const [entries, counts, origins] = await Promise.all([
     db
-      .select({ id: K.id, title: K.title, category: K.category, kind: K.kind, body: K.body, tags: K.tags, updatedAt: K.updatedAt })
+      .select({ id: K.id, title: K.title, category: K.category, kind: K.kind, body: K.body, tags: K.tags, updatedAt: K.updatedAt, origin: K.origin, verifiedAt: K.verifiedAt })
       .from(K)
       .where(and(...where))
       .orderBy(
         ...(query ? [desc(sql`ts_rank(${doc}, websearch_to_tsquery('german', ${query}))`)] : []),
+        // Verbindliches zuerst: Anleitungen, dann eigene Notizen, automatische Recherche zuletzt.
+        sql`case ${K.origin} when 'anleitung' then 0 when 'notiz' then 1 else 2 end`,
         desc(K.updatedAt),
       )
       .limit(100),
     db.select({ category: K.category, n: count() }).from(K).where(eq(K.tenantId, session.tenantId)).groupBy(K.category),
+    db.select({ origin: K.origin, n: count() }).from(K).where(eq(K.tenantId, session.tenantId)).groupBy(K.origin),
   ]);
+  const originCount = new Map(origins.map((o) => [o.origin, o.n]));
   const countOf = new Map(counts.map((c) => [c.category, c.n]));
   const total = counts.reduce((a, c) => a + c.n, 0);
 
-  const catLink = (c?: string) => {
+  const catLink = (c?: string, o: Origin | null = herkunft) => {
     const p = new URLSearchParams();
     if (query) p.set("q", query);
     if (c) p.set("kat", c);
+    if (o) p.set("herkunft", o);
     const s = p.toString();
     return s ? `/wissen?${s}` : "/wissen";
   };
@@ -65,13 +79,13 @@ export default async function WissenPage({
           <Link className={`kb-cat${!kat ? " active" : ""}`} href={catLink()}>
             <span>Alle</span><span className="num muted">{total}</span>
           </Link>
-          <div className="nav-head" style={{ padding: "12px 10px 6px" }}>Bereiche</div>
+          <div className="kb-head">Bereiche</div>
           {KNOWLEDGE_CATEGORIES.map((c) => (
             <Link key={c} className={`kb-cat${kat === c ? " active" : ""}`} href={catLink(c)}>
               <span>{c}</span><span className="num muted">{countOf.get(c) ?? 0}</span>
             </Link>
           ))}
-          <div className="nav-head" style={{ padding: "12px 10px 6px" }}>Textbausteine</div>
+          <div className="kb-head">Textbausteine</div>
           {SNIPPET_CATEGORIES.map((c) => (
             <Link key={c} className={`kb-cat${kat === c ? " active" : ""}`} href={catLink(c)}>
               <span>{c}</span><span className="num muted">{countOf.get(c) ?? 0}</span>
@@ -80,16 +94,25 @@ export default async function WissenPage({
         </aside>
 
         <section className="card" style={{ overflow: "hidden" }}>
-          <div className="card-head">
+          <div className="card-head" style={{ flexWrap: "wrap", gap: 8 }}>
             <h2>{query ? `Treffer für „${query}“` : (kat ?? "Alle Einträge")}</h2>
             <span className="small muted">{entries.length} Einträge</span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 20px 12px" }} data-testid="origin-filter">
+            <Link className={`chip${!herkunft ? " active" : ""}`} href={catLink(kat, null)}>Alle Herkünfte</Link>
+            {(Object.keys(ORIGIN) as Origin[]).map((o) => (
+              <Link key={o} className={`chip${herkunft === o ? " active" : ""}`} href={catLink(kat, o)}>{ORIGIN[o].label} · {originCount.get(o) ?? 0}</Link>
+            ))}
           </div>
           {entries.length === 0 && <div className="card-pad muted">Keine Einträge gefunden.</div>}
           {entries.map((e) => (
             <Link key={e.id} href={`/wissen/${e.id}`} style={{ display: "block", padding: "14px 20px", borderBottom: "1px solid var(--row)", color: "inherit", textDecoration: "none" }}>
               <div className="between">
                 <span style={{ fontWeight: 600, fontSize: 15 }}>{e.title}</span>
-                <span className={`tag ${e.kind === "snippet" ? "tag-info" : "tag-neutral"}`}>{e.kind === "snippet" ? "TEXTBAUSTEIN" : e.category.toUpperCase()}</span>
+                <span style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <span className={`tag ${ORIGIN[e.origin].cls}`} data-testid="origin-tag">{ORIGIN[e.origin].label}{e.verifiedAt ? " ✓ geprüft" : ""}</span>
+                  <span className={`tag ${e.kind === "snippet" ? "tag-info" : "tag-neutral"}`}>{e.kind === "snippet" ? "TEXTBAUSTEIN" : e.category.toUpperCase()}</span>
+                </span>
               </div>
               <div className="small muted" style={{ marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {e.body.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").slice(0, 180) || "–"}

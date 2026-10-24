@@ -257,6 +257,8 @@ const COUNTRIES: Record<string, string> = {
   DK: "Dänemark", SE: "Schweden", FI: "Finnland", NO: "Norwegen", IE: "Irland", GB: "Vereinigtes Königreich", UK: "Vereinigtes Königreich",
   RO: "Rumänien", BG: "Bulgarien", GR: "Griechenland", LT: "Litauen", LV: "Lettland", EE: "Estland", CY: "Zypern", MT: "Malta",
   TR: "Türkei", CN: "China", HK: "Hongkong", US: "USA", AE: "Vereinigte Arabische Emirate",
+  CA: "Kanada", JP: "Japan", KR: "Südkorea", TW: "Taiwan", IN: "Indien", VN: "Vietnam", TH: "Thailand", AU: "Australien",
+  IL: "Israel", UA: "Ukraine", RS: "Serbien", IS: "Island", MX: "Mexiko", BR: "Brasilien",
 };
 /** Ländercode (DE) → Name wie im Verpackungsregister (Deutschland). */
 export const countryName = (v: string | null | undefined) => {
@@ -281,7 +283,11 @@ const COUNTRY_ALIASES: Record<string, string[]> = {
   RO: ["Romania", "ROU"], BG: ["Bulgaria", "BGR"], GR: ["Greece", "GRC"], LT: ["Lithuania", "LTU"], LV: ["Latvia", "LVA"],
   EE: ["Estonia", "EST"], CY: ["Cyprus", "CYP"], MT: ["MLT"], TR: ["Turkey", "Türkiye", "TUR"],
   CN: ["CHN", "Volksrepublik China", "People's Republic of China", "PR China"], HK: ["Hong Kong", "HKG"],
-  US: ["United States", "United States of America", "Vereinigte Staaten", "U.S.A.", "USA"], AE: ["United Arab Emirates", "UAE", "VAE", "ARE"],
+  US: ["United States", "United States of America", "Vereinigte Staaten", "Vereinigte Staaten von Amerika", "Vereinigte Staaten (USA)", "Amerika", "U.S.A.", "U.S.", "USA", "US-Amerika"],
+  AE: ["United Arab Emirates", "UAE", "VAE", "ARE"],
+  CA: ["Canada", "CAN"], JP: ["Japan", "JPN"], KR: ["South Korea", "Korea", "Republic of Korea", "Korea, Republik", "Republik Korea", "KOR"],
+  TW: ["Taiwan", "TWN", "Republic of China"], IN: ["India", "IND"], VN: ["Viet Nam", "Vietnam", "VNM"], TH: ["Thailand", "THA"],
+  AU: ["Australia", "AUS"], IL: ["Israel", "ISR"], UA: ["Ukraine", "UKR"], RS: ["Serbia", "SRB"], IS: ["Iceland", "ISL"], MX: ["Mexico", "MEX"], BR: ["Brazil", "BRA"],
 };
 const COUNTRY_KEY = new Map<string, string>();
 for (const [code, name] of Object.entries(COUNTRIES)) {
@@ -292,7 +298,9 @@ for (const [code, name] of Object.entries(COUNTRIES)) {
 export function countryKey(v: string | null | undefined): string | null {
   const t = (v ?? "").trim();
   if (!t) return null;
-  return COUNTRY_KEY.get(t.toLowerCase()) ?? t;
+  // Auch „USA (Vereinigte Staaten)“, „Deutschland.“ oder doppelte Leerzeichen erkennen.
+  const loose = t.toLowerCase().replace(/\s*\(.*?\)\s*/g, " ").replace(/[.\s]+$/g, "").replace(/\s+/g, " ").trim();
+  return COUNTRY_KEY.get(t.toLowerCase()) ?? COUNTRY_KEY.get(loose) ?? t;
 }
 
 /** Ländername → alle bekannten Schreibweisen (klein). */

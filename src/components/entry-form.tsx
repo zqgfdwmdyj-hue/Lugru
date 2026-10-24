@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ALL_CATEGORIES } from "@/lib/knowledge/categories";
 
-type Entry = { id?: string; title: string; category: string; kind: "article" | "snippet"; body: string; tags: string[] };
+type Entry = { id?: string; title: string; category: string; kind: "article" | "snippet"; body: string; tags: string[]; origin?: "recherche" | "anleitung" | "notiz" };
 
 export function EntryForm({
   action,
@@ -19,7 +19,15 @@ export function EntryForm({
         <label className="label" htmlFor="title">Titel</label>
         <input className="input" id="title" name="title" defaultValue={entry?.title} required />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+        <div className="field">
+          <label className="label" htmlFor="origin">Herkunft</label>
+          <select className="select" id="origin" name="origin" defaultValue={entry?.origin ?? "notiz"}>
+            <option value="notiz">Eigene Notiz</option>
+            <option value="anleitung">Anleitung (verbindlich)</option>
+            <option value="recherche">Recherche (ungeprüft)</option>
+          </select>
+        </div>
         <div className="field">
           <label className="label" htmlFor="kind">Art</label>
           <select className="select" id="kind" name="kind" defaultValue={entry?.kind ?? "article"}>

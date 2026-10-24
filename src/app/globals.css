@@ -155,6 +155,7 @@ h2 { font-size: 16px; margin: 0; }
 .kb { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; align-items: start; }
 .kb-cat { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 6px; font-size: 14px; color: var(--ink-2); text-decoration: none; }
 .kb-cat:hover { background: var(--row); color: var(--ink); }
+.kb-head { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); padding: 12px 10px 6px; }
 .kb-cat.active { background: var(--accent-soft); color: #0b4f46; font-weight: 600; }
 .article-body { font-size: 15px; line-height: 1.65; color: #2b2f33; max-width: 720px; white-space: pre-wrap; }
 .article-title { font-family: var(--serif); font-size: 28px; font-weight: 600; margin: 0; }
@@ -248,12 +249,12 @@ h2 { font-size: 16px; margin: 0; }
 /* ---- Marken & Ideen ---- */
 .season-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .season-card { border: 1px solid var(--border); border-top: 4px solid var(--accent); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; background: var(--surface-2); }
-.idea-board { display: grid; grid-template-columns: repeat(5, minmax(200px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.idea-board { display: grid; grid-template-columns: repeat(4, minmax(200px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
 .idea-col { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
 .idea-col-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
 .idea-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; color: var(--ink); text-decoration: none; }
 .idea-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.08); text-decoration: none; }
-@media (max-width: 760px) { .idea-board { grid-template-columns: repeat(5, 78vw); } }
+@media (max-width: 760px) { .idea-board { grid-template-columns: repeat(4, 78vw); } }
 @media (max-width: 900px) { .profile-grid { grid-template-columns: minmax(0, 1fr) !important; } }
 .brand-forms { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
 .shop-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
