@@ -4,6 +4,7 @@ import { loadEntries, myPartner, privateSettings, requirePrivate } from "@/lib/p
 import { addThanksAction, deleteEntryAction, saveMoodAction } from "../../actions";
 import { StateForm } from "../../state-form";
 import { PrivatHead, Rating, dm } from "../../ui";
+import { WhoAmI } from "../../who-am-i";
 
 /** Partnerschaft → Wertschätzung und „Wie geht’s uns?“. */
 export default async function WertschaetzungPage() {
@@ -19,11 +20,12 @@ export default async function WertschaetzungPage() {
   return (
     <>
       <PrivatHead active="danke" title="💛 Wertschätzung" pin={session.privatePin} />
+      {!me && <WhoAmI partners={s.partners} account={session.name ?? session.email} />}
 
       <section className="card card-pad stack" id="danke">
         <h2>Was ich heute geschätzt habe</h2>
         <div className="small muted">Kleine Dinge gleich notieren, sonst vergisst man sie. Beim Paar-Gespräch stehen sie schon drin.</div>
-        <StateForm action={addThanksAction} submit={`Notieren (${me === "a" ? `${s.partners.a} über ${s.partners.b}` : `${s.partners.b} über ${s.partners.a}`})`} testid="thanks-form" className="">
+        <StateForm action={addThanksAction} submit={me ? `Notieren (${me === "a" ? `${s.partners.a} über ${s.partners.b}` : `${s.partners.b} über ${s.partners.a}`})` : "Notieren (erst oben festlegen, wer du bist)"} testid="thanks-form" className="">
           <input className="input" name="text" required placeholder="z. B. hat mir heute Abend den Rücken freigehalten" autoComplete="off" />
         </StateForm>
         {thanks.length > 0 && (
@@ -41,7 +43,7 @@ export default async function WertschaetzungPage() {
       <section className="card card-pad stack" id="stimmung">
         <h2>Wie geht’s uns als Paar?</h2>
         <StateForm action={saveMoodAction} submit={myMood ? "Ändern" : "Speichern"} testid="mood-form" keep>
-          <Rating name="value" label={`Heute (${me === "a" ? s.partners.a : s.partners.b})`} low="schwierig" high="sehr gut" value={myMood?.value} />
+          <Rating name="value" label={`Heute (${me === "a" ? s.partners.a : me === "b" ? s.partners.b : "wer du bist, oben festlegen"})`} low="schwierig" high="sehr gut" value={myMood?.value} />
           <input className="input" name="note" placeholder="Warum? (optional)" defaultValue={myMood?.note ?? ""} autoComplete="off" />
         </StateForm>
         <div className="small muted" data-testid="mood-today">

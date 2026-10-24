@@ -105,7 +105,10 @@ export async function FairPage({ session, month, cfg, editId }: { session: Sessi
             </div>
           ))}
         </div>
-        {ov.shareA !== null && (
+        {ov.shareA !== null && (ov.totals.a.count === 0 || ov.totals.b.count === 0) && (
+          <div className="small muted" data-testid="share-incomplete">Kein Anteil berechnet – für {ov.totals.a.count ? name.b : name.a} ist in diesem Monat nichts erfasst. Ein Vergleich wäre aus fehlenden Einträgen geraten.</div>
+        )}
+        {ov.shareA !== null && ov.totals.a.count > 0 && ov.totals.b.count > 0 && (
           <>
             <div className="priv-share" role="img" aria-label={`${name.a} ${ov.shareA} %, ${name.b} ${100 - ov.shareA} %`} style={{ gap: ov.shareA > 0 && ov.shareA < 100 ? 2 : 0 }}>
               <span style={{ width: `${ov.shareA}%`, background: COLOR.a }} />
@@ -114,7 +117,7 @@ export async function FairPage({ session, month, cfg, editId }: { session: Sessi
             <div className="small muted">{name.a} {ov.shareA} % · {name.b} {100 - ov.shareA} % {cfg.shareText}</div>
           </>
         )}
-        <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${x.a.count + x.b.count ? `${name.a} ${x.a.count}× / ${name.b} ${x.b.count}×` : "nicht erfasst"}`).join(" · ")}</div>
+        <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${x.a.count + x.b.count ? `${name.a} ${x.a.count ? `${x.a.count}×` : "nicht erfasst"} / ${name.b} ${x.b.count ? `${x.b.count}×` : "nicht erfasst"}` : "nicht erfasst"}`).join(" · ")}</div>
         {recorded > 0 && <div className="small muted">Nur erfasste Zeiten – sie sagen nichts darüber, wer mehr leistet oder braucht.</div>}
       </section>
 
@@ -122,7 +125,7 @@ export async function FairPage({ session, month, cfg, editId }: { session: Sessi
         <h2>{edit ? "Eintrag ändern" : "Eintragen"}</h2>
         <StateForm key={edit?.id ?? "neu"} action={cfg.action} submit={edit ? "Änderung speichern" : "Eintragen"} testid={`${t}-form`} keep={Boolean(edit)}>
           {edit && <input type="hidden" name="id" value={edit.id} />}
-          <div className="field"><span className="label">{cfg.who}</span><Choice name="person" value={v?.person ?? next ?? me} options={[{ value: "a", label: name.a }, { value: "b", label: name.b }]} /></div>
+          <div className="field"><span className="label">{cfg.who}</span><Choice name="person" value={v?.person ?? next ?? me ?? undefined} options={[{ value: "a", label: name.a }, { value: "b", label: name.b }]} /></div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor={`${t}-day`}>Tag</label><input className="input" id={`${t}-day`} name="day" type="date" defaultValue={v?.day ?? today} max={today} /></div>
             <div className="field"><label className="label" htmlFor={`${t}-from`}>{cfg.fromLabel}</label><input className="input" id={`${t}-from`} name="from" type="time" defaultValue={v ? v.from ?? "" : cfg.fromDefault} /></div>

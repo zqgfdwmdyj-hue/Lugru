@@ -8,6 +8,8 @@ import { monthGrid, monthTitle, parseMonth, shiftMonth, spreadDays, type DayEntr
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { createTask } from "@/lib/tasks/actions";
+import { calendarVisible } from "@/lib/calendar/visibility";
+import { saveStaffCalendarsAction } from "./actions";
 import { SyncButton } from "./sync-button";
 
 // Monatsansicht wie in Apple Kalender: eigene Termine (aus den verbundenen Kalendern, in deren Farbe)
@@ -73,7 +75,12 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
     for (const r of ideaRows) hiddenIdeas.add(`idea:${r.id}`);
     for (const r of postRows) hiddenIdeas.add(`post:${r.id}`);
   }
-  for (const ev of restricted ? [] : events) {
+  // Eigene Kalender: Inhaber und Privat-Zugang alle, andere nur die freigegebenen (Familie/Privat nie ungefragt).
+  const staffCalendars = calState?.staffCalendars;
+  const visibleEvents = restricted ? [] : events.filter((ev) => calendarVisible(session, ev.calendarName, staffCalendars));
+  const hiddenCalendars = restricted ? 0 : new Set(events.filter((ev) => !calendarVisible(session, ev.calendarName, staffCalendars)).map((ev) => ev.calendarName)).size;
+  const allCalendarNames = [...new Set([...(calState?.read ?? []).map((r) => r.name), ...events.map((e) => e.calendarName)])].sort((a, b) => a.localeCompare(b, "de"));
+  for (const ev of visibleEvents) {
     const color = ev.color ?? "#6E6E73";
     calendars.set(ev.calendarName, color);
     const endDay = ev.endsAt ? (ev.allDay ? ev.endsAt.toISOString().slice(0, 10) : addDaysIso(berlinDay(new Date(ev.endsAt.getTime() - 1)), 1)) : null;
@@ -137,6 +144,26 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
           <Link href="/anbindungen?p=apple_calendar#apple_calendar">Anbindungen → Kalender</Link> eintragen.
         </div>
       ) : null}
+
+      {hiddenCalendars > 0 && (
+        <div className="notice notice-info small" data-testid="calendars-hidden">
+          Termine aus {hiddenCalendars} eigenen Kalender{hiddenCalendars === 1 ? "" : "n"} des Inhabers sind für dein Konto ausgeblendet (privat bzw. nicht freigegeben). Fälligkeiten des Systems stehen vollständig hier.
+        </div>
+      )}
+      {session.role === "owner" && allCalendarNames.length > 0 && (
+        <details className="card card-pad small" data-testid="staff-calendars">
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Sichtbarkeit für Mitarbeiter ({(staffCalendars ?? []).length ? `${(staffCalendars ?? []).length} freigegeben` : "keine Kalender freigegeben"})</summary>
+          <form action={saveStaffCalendarsAction} className="stack" style={{ gap: 6, marginTop: 8 }}>
+            <span className="muted">Mitarbeiter ohne Privat-Zugang (auch „nur ansehen“) sehen nur die hier angehakten Kalender – auf der Startseite und im Kalender. Familien- und Privatkalender nicht anhaken.</span>
+            {allCalendarNames.map((n) => (
+              <label key={n} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" name="calendar" value={n} defaultChecked={(staffCalendars ?? []).some((x) => x.toLowerCase() === n.toLowerCase())} /> {n}
+              </label>
+            ))}
+            <button className="btn btn-small" type="submit" style={{ alignSelf: "flex-start" }}>Speichern</button>
+          </form>
+        </details>
+      )}
 
       <div className="row" style={{ alignItems: "flex-start" }}>
         <section className="card cal-card" style={{ flexGrow: 1, minWidth: 0 }}>

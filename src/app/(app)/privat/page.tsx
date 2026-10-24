@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { and, eq, sql } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { addDays, careOverview, dateReminder, dateStats, intimStats, kidsOverview, nextSleeper, routineState, taskState, type AppointmentEntry, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type PrivateSettings, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import type { Session } from "@/lib/auth/session";
@@ -6,6 +8,7 @@ import { loadEntries, myMedPlan, myPartner, privateSettings, requirePrivate } fr
 import { toggleTaskAction } from "./actions";
 import { IntakeCard } from "./intake";
 import { QuickEntry } from "./quick-entry";
+import { WhoAmI } from "./who-am-i";
 import { PrivatHead, dm, dmy, hoursLabel, monthLabel, weekday } from "./ui";
 
 /** Zeile der Tagesübersicht: Bereich, Stand in Worten, Link zum Bereich. */
@@ -58,11 +61,17 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
   const openTasks = tasks.filter((t) => taskState(t.data, today).open).sort((a, b) => (a.data.repeat === "einmal" ? 1 : 0) - (b.data.repeat === "einmal" ? 1 : 0));
   const week = addDays(today, 7);
   const next = appts.filter((a) => a.data.day >= today && a.data.day <= week).sort((a, b) => a.data.day.localeCompare(b.data.day) || (a.data.time ?? "").localeCompare(b.data.time ?? ""));
+  // Termine aus den verbundenen Kalendern (nur gezählt, mit Link) – Privat-Zugang sieht alle Kalender.
+  const [{ n: calendarCount }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(schema.calendarEvents)
+    .where(and(eq(schema.calendarEvents.tenantId, session.tenantId), sql`${schema.calendarEvents.day} between ${today}::date and ${week}::date`));
   const withLabel = (w: AppointmentEntry["with"]) => (w === "ads" ? s.therapists.ads : w === "paar" ? s.therapists.paar : w === "arzt" ? "Arzt/Ärztin" : "Termin");
 
   return (
     <>
       <PrivatHead active="start" title="Heute" pin={session.privatePin} />
+      {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} />}
       {!session.privatePin && (
         <div className="notice notice-info small">Tipp: Unter <Link href="/privat/einstellungen">Einstellungen</Link> eine PIN setzen – dann fragt „Privat“ zusätzlich danach.</div>
       )}
@@ -90,7 +99,11 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
                 </div>
               )}
             </TodayRow>
-            <TodayRow icon="📅" label="Termine (7 Tage)" href="/privat/aufgaben#termine" testid="today-appts" state={next.length ? next.slice(0, 3).map((a) => `${a.data.day === today ? "heute" : `${weekday(a.data.day)} ${dm(a.data.day)}`}${a.data.time ? ` ${a.data.time}` : ""} · ${withLabel(a.data.with)}`).join(" · ") : "Keine Termine in den nächsten 7 Tagen"} tone={next.some((a) => a.data.day === today) ? "warn" : "muted"} />
+            <TodayRow icon="📅" label="Private Termine (7 Tage)" href="/privat/aufgaben#termine" testid="today-appts" state={next.length ? next.slice(0, 3).map((a) => `${a.data.day === today ? "heute" : `${weekday(a.data.day)} ${dm(a.data.day)}`}${a.data.time ? ` ${a.data.time}` : ""} · ${withLabel(a.data.with)}`).join(" · ") : "Keine im Privat-Bereich eingetragenen Termine"} tone={next.some((a) => a.data.day === today) ? "warn" : "muted"}>
+              <div className="small muted" style={{ margin: "2px 0 0 28px" }} data-testid="today-calendar">
+                {calendarCount > 0 ? <>Außerdem {calendarCount} Termin{calendarCount === 1 ? "" : "e"} in deinen verbundenen Kalendern in den nächsten 7 Tagen – <Link href="/kalender">im Kalender ansehen</Link>.</> : "In den verbundenen Kalendern stehen in den nächsten 7 Tagen keine Termine."}
+              </div>
+            </TodayRow>
             {careDue.length > 0 && <TodayRow icon="👨‍👩‍👧" label="Familie fällig" href="/privat/familie" testid="today-care" tone="warn" state={careDue.map((t) => t.title).join(", ")} />}
             <TodayRow icon="💬" label="Paar-Stimmung" href="/privat/paar/wertschaetzung#stimmung" testid="today-mood" tone={moodDone ? "ok" : "muted"} state={moodDone ? "heute eingetragen" : "heute nicht erfasst"} />
             {remind !== null && <TodayRow icon="🥂" label="Paarzeit" href="/privat/paar/paarzeit#ideen" state={`letztes Date vor ${remind} Tagen`} />}
@@ -119,7 +132,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
         </Link>
         <Link href="/privat/ausschlafen" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }} data-testid="ov-sleep">
           <div className="kpi-label">😴 Ausschlafen</div>
-          <div className="kpi-value" style={{ fontSize: 20 }}>{so.totals.a.count + so.totals.b.count ? `${s.partners.a} ${so.totals.a.count}× · ${s.partners.b} ${so.totals.b.count}×` : <span className="muted" style={{ fontSize: 18 }}>nicht erfasst</span>}</div>
+          <div className="kpi-value" style={{ fontSize: 20 }}>{so.totals.a.count + so.totals.b.count ? `${s.partners.a} ${so.totals.a.count ? `${so.totals.a.count}×` : "nicht erfasst"} · ${s.partners.b} ${so.totals.b.count ? `${so.totals.b.count}×` : "nicht erfasst"}` : <span className="muted" style={{ fontSize: 18 }}>nicht erfasst</span>}</div>
           <div className="small muted">{nextSleep ? `im Wechsel als Nächstes: ${s.partners[nextSleep]}` : "noch nichts eingetragen"}</div>
         </Link>
         <Link href="/privat/kinder" className="card card-pad" style={{ color: "inherit", textDecoration: "none" }}>
@@ -162,10 +175,11 @@ async function FamilyOverview({ session, settings: s, today, blocked }: { sessio
       ) : <div className="kpi-value muted" style={{ fontSize: 18 }}>nicht erfasst</div>}
     </Link>
   );
-  const c = (t: { count: number; hours: number }, unit: "h" | "x") => (t.count ? (unit === "h" ? hoursLabel(t.hours) : `${t.count}×`) : "–");
+  const c = (t: { count: number; hours: number }, unit: "h" | "x") => (t.count ? (unit === "h" ? hoursLabel(t.hours) : `${t.count}×`) : "nicht erfasst");
   return (
     <>
       <PrivatHead active="start" title="Privat · Familie" pin={session.privatePin} />
+      {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} />}
       {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
       <section className="card card-pad stack">
         <h2>Schnell eintragen</h2>

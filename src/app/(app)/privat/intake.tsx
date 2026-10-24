@@ -17,7 +17,9 @@ export async function IntakeCard({ session, full = false }: { session: Session; 
   const { id, plan } = await myMedPlan(session);
   const diary = (await loadEntries<DiaryEntry>(session, ["tagebuch"])).filter((e) => e.userId === session.userId).map((e) => e.data);
   const todayEntry = diary.find((e) => e.day === today);
-  const st = intakeStatus(todayEntry, plan.intakesPerDay);
+  // Geplant ist nur etwas, wenn ein Medikament eingerichtet ist.
+  const hasPlan = Boolean(id && plan.med);
+  const st = intakeStatus(todayEntry, hasPlan ? plan.intakesPerDay : 0);
   const intakes = st.times;
   const stock = medStock(plan, diary);
   if (!full && !id) return null;
@@ -29,7 +31,7 @@ export async function IntakeCard({ session, full = false }: { session: Session; 
         <div>
           <h2 style={{ margin: 0 }}>💊 {plan.med || "Medikament"}{plan.doseMg !== undefined ? ` ${n(plan.doseMg)} mg` : ""}</h2>
           <div className="small muted" data-testid="intake-today">
-            Heute ({plan.intakesPerDay} geplant): {st.label}
+            {hasPlan ? `Heute (${plan.intakesPerDay} geplant): ${st.label}` : st.times.length ? `Heute: ${st.label} · noch kein Einnahmeplan eingerichtet` : "Noch kein Einnahmeplan eingerichtet"}
           </div>
           {plan.validFrom && <div className="small muted">Plan gilt seit {dmy(plan.validFrom)}</div>}
         </div>

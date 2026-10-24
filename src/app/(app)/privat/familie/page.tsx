@@ -67,7 +67,10 @@ export default async function FamiliePage() {
           <div><div className="kpi-label">beide</div><div className="kpi-value">{ov.owned.beide}</div></div>
           <div><div className="kpi-label">noch offen</div><div className="kpi-value">{ov.owned.offen}</div></div>
         </div>
-        {ov.shareA !== null && (
+        {ov.shareA !== null && (ov.doneBy.a === 0 || ov.doneBy.b === 0) && (
+          <div className="small muted" data-testid="care-done">Als erledigt eingetragen (30 Tage): {name.a} {ov.doneBy.a ? `${ov.doneBy.a}×` : "nichts eingetragen"} · {name.b} {ov.doneBy.b ? `${ov.doneBy.b}×` : "nichts eingetragen"} – kein Anteil, solange eine Seite nichts eingetragen hat.</div>
+        )}
+        {ov.shareA !== null && ov.doneBy.a > 0 && ov.doneBy.b > 0 && (
           <>
             <div className="priv-share" role="img" aria-label={`Erledigt in 30 Tagen: ${name.a} ${ov.doneBy.a}, ${name.b} ${ov.doneBy.b}`} style={{ gap: ov.shareA > 0 && ov.shareA < 100 ? 2 : 0 }}>
               <span style={{ width: `${ov.shareA}%`, background: COLOR.a }} />

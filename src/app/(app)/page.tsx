@@ -9,6 +9,7 @@ import { createTask, deleteTask, toggleTask } from "@/lib/tasks/actions";
 import { refreshImportReminder } from "@/lib/tasks/system";
 import { BUCKET_LABEL, bucketCounts, bucketOf, isIdeaTask, planDay, type Bucket, type TaskLite } from "@/lib/today/logic";
 import { dataAreas, todaySignals } from "@/lib/today/service";
+import { calendarVisible } from "@/lib/calendar/visibility";
 import { PrivateHint } from "./privat/hint";
 import { toggleCalendarAction } from "./start-actions";
 
@@ -85,6 +86,7 @@ function AddTask({ category }: { category: string }) {
         </label>
         <input type="hidden" name="category" value={category} />
         <button className="btn btn-primary" type="submit">Hinzufügen</button>
+        <div className="small muted" style={{ flexBasis: "100%" }}>Erscheint in den Aufgaben der Firma und – mit Datum – im Kalender (auch im verbundenen Apple-Kalender „Seller-System“). Private Aufgaben gehören in den Privat-Bereich.</div>
       </form>
     </details>
   );
@@ -124,10 +126,13 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
     db.select().from(E).where(and(eq(E.tenantId, session.tenantId), sql`${E.day} between ${today}::date and ${addDaysIso(today, 7)}::date`)).orderBy(asc(E.day), desc(E.allDay), asc(E.startsAt)).limit(40),
     db.select({ n: count() }).from(schema.integrations).where(and(eq(schema.integrations.tenantId, session.tenantId), eq(schema.integrations.provider, "apple_calendar"))),
   ]);
-  const calendars = [...new Set(appointments.map((a) => a.calendarName))].sort();
-  const hidden = new Set(prefs.hiddenCalendars ?? []);
-  const shownAppointments = appointments.filter((a) => !hidden.has(a.calendarName)).slice(0, 12);
   const calState = tenant.settings.calendar;
+  // Eigene Kalender nur, wenn diese Person sie sehen darf (Inhaber/Privat-Zugang alle, sonst nur freigegebene).
+  const allowed = appointments.filter((a) => calendarVisible(session, a.calendarName, calState?.staffCalendars));
+  const blockedCalendars = new Set(appointments.filter((a) => !calendarVisible(session, a.calendarName, calState?.staffCalendars)).map((a) => a.calendarName)).size;
+  const calendars = [...new Set(allowed.map((a) => a.calendarName))].sort();
+  const hidden = new Set(prefs.hiddenCalendars ?? []);
+  const shownAppointments = allowed.filter((a) => !hidden.has(a.calendarName)).slice(0, 12);
   const timeOf = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
   const problems = areas.filter((a) => a.missing || a.stale || a.error);
 
@@ -319,7 +324,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
               ) : calState?.lastError ? (
                 <div className="small" style={{ color: "var(--danger)" }}>Kalender: {calState.lastError}</div>
               ) : shownAppointments.length === 0 ? (
-                <div className="small muted">Keine Termine in den nächsten 7 Tagen{hidden.size ? " (ausgeblendete Kalender nicht mitgezählt)" : ""}.</div>
+                <div className="small muted">Keine Termine in den nächsten 7 Tagen{hidden.size ? " (ausgeblendete Kalender nicht mitgezählt)" : ""}{blockedCalendars ? " – private bzw. nicht freigegebene Kalender sind für dein Konto ausgeblendet" : ""}.</div>
               ) : (
                 <div className="stack" style={{ fontSize: 13 }}>
                   {shownAppointments.map((a) => (
@@ -334,6 +339,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                   ))}
                 </div>
               )}
+              {blockedCalendars > 0 && shownAppointments.length > 0 && <div className="small muted" style={{ marginTop: 8 }} data-testid="calendars-blocked">Private bzw. nicht freigegebene Kalender sind für dein Konto ausgeblendet.</div>}
               {calendars.length > 1 && (
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 10 }} data-testid="calendar-toggles">
                   {calendars.map((c) => (

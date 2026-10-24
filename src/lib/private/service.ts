@@ -83,14 +83,12 @@ export async function savePrivateSettings(session: Session, patch: Partial<Priva
   else await db.insert(E).values({ tenantId: session.tenantId, userId: session.userId, kind: "einstellungen", data });
 }
 
-/** Welcher Partner bin ich? Aus den Einstellungen, sonst über den Namen, sonst „a“. */
-export function myPartner(s: PrivateSettings, session: Pick<Session, "userId" | "name" | "email">): PartnerKey {
-  const set = s.userPartner[session.userId];
-  if (set) return set;
-  const me = (session.name ?? session.email).trim().toLowerCase();
-  const first = (n: string) => n.trim().toLowerCase().split(/\s+/)[0];
-  if (me && first(s.partners.b) && me.startsWith(first(s.partners.b))) return "b";
-  return "a";
+/**
+ * Welche Person bin ich (Partner 1 oder 2)? Nur aus der ausdrücklichen Zuordnung – nie geraten (früher über
+ * den Namen bzw. „Partner 1“). null = noch nicht festgelegt: dann fragt die Seite einmal danach.
+ */
+export function myPartner(s: PrivateSettings, session: Pick<Session, "userId">): PartnerKey | null {
+  return s.userPartner[session.userId] ?? null;
 }
 
 /**

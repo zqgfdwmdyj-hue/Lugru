@@ -84,6 +84,8 @@ export type DiaryEntry = {
   weightKg?: number;
   caffeine?: number;
   sideEffects?: string[];
+  /** Ausdrücklich „keine Nebenwirkungen“ – anders als eine leere Auswahl („nicht dokumentiert“). */
+  noSideEffects?: boolean;
   good?: string;
   hard?: string;
   note?: string;
@@ -278,6 +280,14 @@ export function taskState(t: TaskEntry, today: string) {
 
 // ---- Tagebuch --------------------------------------------------------------------------------------
 
+/** Nebenwirkungen eines Tages: erfasst, ausdrücklich keine oder nicht dokumentiert. */
+export type SideEffectState = "erfasst" | "keine" | "nicht dokumentiert";
+export function sideEffectState(e: Pick<DiaryEntry, "sideEffects" | "noSideEffects"> | undefined): SideEffectState {
+  if (e?.sideEffects?.length) return "erfasst";
+  if (e?.noSideEffects) return "keine";
+  return "nicht dokumentiert";
+}
+
 /** Zeitraum-Auswertung fürs Arztgespräch: Dosis-Phasen, Mittelwerte, Nebenwirkungen, Messwerte. */
 export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
   const list = entries.filter((e) => e.day >= from && e.day <= to).sort((a, b) => a.day.localeCompare(b.day));
@@ -286,7 +296,7 @@ export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
     return v.length ? round1(v.reduce((s, x) => s + x, 0) / v.length) : null;
   };
   // Dosis-Phasen: zusammenhängende Tage mit gleichem Mittel + Dosis
-  const phases: { med: string; doseMg: number | null; from: string; to: string; days: number; focus: number | null; mood: number | null; sideEffects: number }[] = [];
+  const phases: { med: string; doseMg: number | null; from: string; to: string; days: number; focus: number | null; mood: number | null; sideEffects: number; noEffectDays: number; undocumentedDays: number }[] = [];
   for (const e of list) {
     const med = e.med?.trim() || "–";
     const dose = typeof e.doseMg === "number" ? e.doseMg : null;
@@ -294,7 +304,7 @@ export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
     if (p && p.med === med && p.doseMg === dose) {
       p.to = e.day;
       p.days++;
-    } else phases.push({ med, doseMg: dose, from: e.day, to: e.day, days: 1, focus: null, mood: null, sideEffects: 0 });
+    } else phases.push({ med, doseMg: dose, from: e.day, to: e.day, days: 1, focus: null, mood: null, sideEffects: 0, noEffectDays: 0, undocumentedDays: 0 });
   }
   for (const p of phases) {
     const inP = list.filter((e) => e.day >= p.from && e.day <= p.to && (e.med?.trim() || "–") === p.med && (typeof e.doseMg === "number" ? e.doseMg : null) === p.doseMg);
@@ -305,6 +315,8 @@ export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
     p.focus = mean("focus");
     p.mood = mean("mood");
     p.sideEffects = inP.reduce((s, e) => s + (e.sideEffects?.length ?? 0), 0);
+    p.noEffectDays = inP.filter((e) => sideEffectState(e) === "keine").length;
+    p.undocumentedDays = inP.filter((e) => sideEffectState(e) === "nicht dokumentiert").length;
   }
   const effects = new Map<string, number>();
   for (const e of list) for (const s of e.sideEffects ?? []) effects.set(s, (effects.get(s) ?? 0) + 1);
@@ -316,6 +328,7 @@ export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
     phases,
     averages: { focus: avg("focus"), mood: avg("mood"), calm: avg("calm"), energy: avg("energy"), sleepQuality: avg("sleepQuality"), appetite: avg("appetite"), sleepHours: avg("sleepHours"), pulse: avg("pulse") },
     sideEffects: [...effects.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
+    sideEffectDays: { erfasst: list.filter((e) => sideEffectState(e) === "erfasst").length, keine: list.filter((e) => sideEffectState(e) === "keine").length, offen: list.filter((e) => sideEffectState(e) === "nicht dokumentiert").length },
     vitals,
     weightChange: weights.length >= 2 ? round1(weights[weights.length - 1].weightKg! - weights[0].weightKg!) : null,
   };
@@ -452,8 +465,11 @@ export function intakeStatus(e: Pick<DiaryEntry, "intakes" | "takenAt" | "notTak
   const times = e?.intakes?.length ? e.intakes : e?.takenAt ? [e.takenAt] : [];
   const notTaken = Math.max(0, e?.notTaken ?? 0);
   const undocumented = Math.max(0, perDay - times.length - notTaken);
+  // perDay 0 = kein Einnahmeplan: dann gibt es nichts „Geplantes“ und nichts „nicht Dokumentiertes“.
   const label = !times.length && !notTaken
-    ? "nicht dokumentiert"
+    ? perDay === 0
+      ? "kein Einnahmeplan eingerichtet"
+      : "nicht dokumentiert"
     : [times.length ? `genommen ${times.join(", ")}` : "", notTaken ? `${notTaken}× bewusst nicht genommen` : "", undocumented ? `${undocumented} nicht dokumentiert` : ""].filter(Boolean).join(" · ");
   return { times, notTaken, undocumented, complete: undocumented === 0, label };
 }

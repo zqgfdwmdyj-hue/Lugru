@@ -69,7 +69,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
           <li>Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong></li>
           <li>🥂 Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
-          <li>💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a}× · ${name.b} ${th.b}×` : "nicht erfasst"}</li>
+          <li>💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a ? `${th.a}×` : "keine notiert"} · ${name.b} ${th.b ? `${th.b}×` : "keine notiert"}` : "nicht erfasst"}</li>
           <li>Stimmung als Paar (Ø 1–5): {name.a} {num(mood.a)} · {name.b} {num(mood.b)}</li>
         </ul>
 
@@ -81,7 +81,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
             <Row label="Allein mit den Kindern" a={ch(ko.totals.a)} b={ch(ko.totals.b)} />
             <Row label="Ausgeschlafen" a={ch(so.totals.a)} b={ch(so.totals.b)} />
             <Row label="Auszeit für sich" a={ch(to.totals.a)} b={ch(to.totals.b)} />
-            <Row label="Familienaufgaben als erledigt eingetragen" a={careDone.a ? `${careDone.a}×` : "–"} b={careDone.b ? `${careDone.b}×` : "–"} note={`zuständig: ${co.owned.a} / ${co.owned.b}, beide ${co.owned.beide}, offen ${co.owned.offen}`} />
+            <Row label="Familienaufgaben als erledigt eingetragen" a={careDone.a ? `${careDone.a}×` : "nicht erfasst"} b={careDone.b ? `${careDone.b}×` : "nicht erfasst"} note={`zuständig: ${co.owned.a} / ${co.owned.b}, beide ${co.owned.beide}, offen ${co.owned.offen}`} />
           </tbody>
         </table>
 

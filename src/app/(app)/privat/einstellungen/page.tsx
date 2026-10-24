@@ -36,7 +36,7 @@ export default async function PrivatEinstellungenPage() {
             <div className="field"><label className="label" htmlFor="pa">Partner 1</label><input className="input" id="pa" name="partnerA" defaultValue={s.partners.a} required /></div>
             <div className="field"><label className="label" htmlFor="pb">Partner 2</label><input className="input" id="pb" name="partnerB" defaultValue={s.partners.b} required /></div>
           </div>
-          <div className="field"><span className="label">Das bin ich</span><Choice name="me" value={me} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }]} /></div>
+          <div className="field"><span className="label">Das bin ich (Konto „{session.name ?? session.email}“)</span><Choice name="me" value={me ?? undefined} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }]} />{!me && <span className="small" style={{ color: "var(--warn)" }} data-testid="me-unset">Noch nicht festgelegt – bitte auswählen.</span>}</div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="wake">Übliche Aufstehzeit (fürs Ausschlafen)</label><input className="input" id="wake" name="wakeTime" type="time" defaultValue={s.wakeTime} /></div>
             <div className="field"><label className="label" htmlFor="remind">„Zeit für ein Date?“ nach … Tagen (0 = aus)</label><input className="input" id="remind" name="dateReminderDays" type="number" min={0} max={365} defaultValue={s.dateReminderDays} /></div>

@@ -125,7 +125,8 @@ export default async function TagebuchBerichtPage({ searchParams }: { searchPara
 
         {chosen.has("neben") && <>
         <h3 style={{ margin: "8px 0 0", fontSize: 15 }}>Nebenwirkungen (an wie vielen Tagen eingetragen)</h3>
-        {r.sideEffects.length === 0 ? <div className="small muted">Keine eingetragen.</div> : <div className="small">{r.sideEffects.map((x) => `${x.name} ${x.count}×`).join(" · ")}</div>}
+        <div className="small" data-testid="report-side-days">Tage mit Nebenwirkungen: {r.sideEffectDays.erfasst} · ausdrücklich keine: {r.sideEffectDays.keine} · nicht dokumentiert: {r.sideEffectDays.offen}</div>
+        {r.sideEffects.length === 0 ? <div className="small muted">Keine Nebenwirkung eingetragen{r.sideEffectDays.offen ? ` (an ${r.sideEffectDays.offen} Tag${r.sideEffectDays.offen === 1 ? "" : "en"} nicht dokumentiert)` : ""}.</div> : <div className="small">{r.sideEffects.map((x) => `${x.name} ${x.count}×`).join(" · ")}</div>}
         </>}
 
         {chosen.has("mess") && r.vitals.length > 0 && (

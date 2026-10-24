@@ -11,10 +11,11 @@ const WHO: Partial<Record<Kind, string>> = { kinder: "Wer war mit den Kindern al
  * Schnell eintragen: Art wählen → Person → Zeitpunkt/Dauer → speichern. Alles Weitere eingeklappt.
  * `kinds`: was diese Person eintragen darf (Umfang „familie“ ohne Paar-Einträge).
  */
-export function QuickEntry({ kinds, partners, me, today, yesterday, wakeTime }: { kinds: Kind[]; partners: { a: string; b: string }; me: "a" | "b"; today: string; yesterday: string; wakeTime: string }) {
+export function QuickEntry({ kinds, partners, me, today, yesterday, wakeTime }: { kinds: Kind[]; partners: { a: string; b: string }; me: "a" | "b" | null; today: string; yesterday: string; wakeTime: string }) {
   const [state, dispatch, pending] = useActionState<FormState, FormData>(quickAddAction, null);
   const [kind, setKind] = useState<Kind>(kinds[0]);
-  const [person, setPerson] = useState<"a" | "b">(me);
+  // Ohne Zuordnung keine Vorauswahl – wer es war, wird bewusst gewählt.
+  const [person, setPerson] = useState<"a" | "b" | null>(me);
   const [day, setDay] = useState(today);
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -25,7 +26,7 @@ export function QuickEntry({ kinds, partners, me, today, yesterday, wakeTime }: 
       else i.value = "";
     });
   }, [state]);
-  const other = person === "a" ? partners.b : partners.a;
+  const other = person === "a" ? partners.b : person === "b" ? partners.a : "die andere Person";
   const timed = kind !== "intim";
 
   return (

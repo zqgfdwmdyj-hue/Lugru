@@ -74,7 +74,10 @@ export default async function KinderPage({ searchParams }: { searchParams: Promi
             </div>
           ))}
         </div>
-        {ov.shareA !== null && (
+        {ov.shareA !== null && (ov.totals.a.count === 0 || ov.totals.b.count === 0) && (
+          <div className="small muted" data-testid="share-incomplete">Kein Anteil berechnet – für {ov.totals.a.count ? name.b : name.a} ist in diesem Monat nichts erfasst.</div>
+        )}
+        {ov.shareA !== null && ov.totals.a.count > 0 && ov.totals.b.count > 0 && (
           <>
             <div className="priv-share" role="img" aria-label={`Anteil an den erfassten Stunden: ${name.a} ${ov.shareA} %, ${name.b} ${100 - ov.shareA} %`} style={{ gap: ov.shareA > 0 && ov.shareA < 100 ? 2 : 0 }}>
               <span style={{ width: `${ov.shareA}%`, background: COLOR.a }} />
@@ -83,14 +86,14 @@ export default async function KinderPage({ searchParams }: { searchParams: Promi
             <div className="small muted">Anteil an den erfassten Stunden: {name.a} {ov.shareA} % · {name.b} {100 - ov.shareA} % – nur was eingetragen ist, keine Bewertung.</div>
           </>
         )}
-        <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${x.a.count + x.b.count ? `${name.a} ${h(x.a.hours)} / ${name.b} ${h(x.b.hours)}` : "nicht erfasst"}`).join(" · ")}</div>
+        <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${x.a.count + x.b.count ? `${name.a} ${x.a.count ? h(x.a.hours) : "nicht erfasst"} / ${name.b} ${x.b.count ? h(x.b.hours) : "nicht erfasst"}` : "nicht erfasst"}`).join(" · ")}</div>
       </section>
 
       <section className="card card-pad stack" id="eintragen">
         <h2>{edit ? "Eintrag ändern" : "Eintragen"}</h2>
         <StateForm key={edit?.id ?? "neu"} action={addKidsAction} submit={edit ? "Änderung speichern" : "Eintragen"} testid="kids-form" keep={Boolean(edit)}>
           {edit && <input type="hidden" name="id" value={edit.id} />}
-          <div className="field"><span className="label">Wer war mit den Kindern allein?</span><Choice name="person" value={v?.person ?? me} options={[{ value: "a", label: name.a }, { value: "b", label: name.b }]} /></div>
+          <div className="field"><span className="label">Wer war mit den Kindern allein?</span><Choice name="person" value={v?.person ?? me ?? undefined} options={[{ value: "a", label: name.a }, { value: "b", label: name.b }]} /></div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="k-day">Tag (Beginn)</label><input className="input" id="k-day" name="day" type="date" defaultValue={v?.day ?? today} max={today} /></div>
             <div className="field"><label className="label" htmlFor="k-from">von</label><input className="input" id="k-from" name="from" type="time" defaultValue={v?.from ?? ""} /></div>

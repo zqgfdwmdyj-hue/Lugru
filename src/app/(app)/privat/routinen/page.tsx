@@ -67,6 +67,7 @@ export default async function RoutinenPage() {
             </StateForm>
           ))}
         </div>
+        <div className="small muted">Erscheint nur hier im Privat-Bereich (verschlüsselt) – nicht in den Firmen-Aufgaben, nicht im Kalender des Systems und nicht im Apple-Kalender.</div>
         <StateForm action={addRoutineAction} submit="Routine anlegen" testid="routine-form">
           <div className="field"><label className="label" htmlFor="r-title">Name</label><input className="input" id="r-title" name="title" required placeholder="z. B. Arbeitsbeginn" /></div>
           <div className="field"><label className="label" htmlFor="r-items">Schritte (einer je Zeile)</label><textarea className="input" id="r-items" name="items" rows={4} required placeholder={"Wasser hinstellen\nHandy auf lautlos\nWichtigste Aufgabe zuerst"} /></div>

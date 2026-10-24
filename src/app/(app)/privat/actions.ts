@@ -276,6 +276,8 @@ export async function saveDiaryAction(_prev: FormState, fd: FormData): Promise<F
   const other = clip(fd.get("otherEffect"), 60);
   const intakesIn = fd.has("intakes") ? parseTimes(fd.get("intakes")) : undefined;
   if (intakesIn === null) return fail("Einnahmen bitte als Uhrzeiten angeben, z. B. „08:00, 13:30“.");
+  const noEffects = fd.get("noSideEffects") === "on";
+  if (noEffects && (effects.length || other)) return fail("Bitte entweder „keine Nebenwirkungen“ anhaken oder Nebenwirkungen auswählen – nicht beides.");
   const entry: DiaryEntry = compact({
     day,
     med: clip(fd.get("med"), 60),
@@ -297,6 +299,7 @@ export async function saveDiaryAction(_prev: FormState, fd: FormData): Promise<F
     weightKg: num(fd.get("weightKg"), 20, 400),
     caffeine: num(fd.get("caffeine"), 0, 20),
     sideEffects: other ? [...effects, other] : effects,
+    noSideEffects: noEffects || undefined,
     good: clip(fd.get("good"), 2000),
     hard: clip(fd.get("hard"), 2000),
     note: clip(fd.get("note"), 2000),
@@ -471,12 +474,26 @@ export async function toggleRoutineItemAction(fd: FormData) {
 
 // ---- Wertschätzung & Paar-Stimmung ------------------------------------------------------------------
 
+const WHO_AM_I = "Bitte zuerst festlegen, wer du bist (oben auf der Seite oder unter Privat → Einstellungen) – dann ist klar, von wem der Eintrag ist.";
+
+/** Einmalige Zuordnung: dieses Konto ist Partner 1 oder Partner 2. */
+export async function assignMeAction(fd: FormData) {
+  const session = await requirePrivate();
+  const me = partner(fd.get("me"));
+  if (!me) return;
+  const cur = await privateSettings(session.tenantId);
+  await savePrivateSettings(session, { userPartner: { ...cur.userPartner, [session.userId]: me } });
+  revalidatePath("/privat", "layout");
+}
+
 export async function addThanksAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const session = await requirePrivate();
   const text = clip(fd.get("text"), 300);
   if (!text) return fail("Was hast du geschätzt?");
   const s = await privateSettings(session.tenantId);
-  await addEntry(session, "danke", { day: todayIso(), from: myPartner(s, session), text });
+  const me = myPartner(s, session);
+  if (!me) return fail(WHO_AM_I);
+  await addEntry(session, "danke", { day: todayIso(), from: me, text });
   return done("Gespeichert 💛 – kommt beim nächsten Paar-Gespräch automatisch mit.");
 }
 
@@ -486,8 +503,10 @@ export async function saveMoodAction(_prev: FormState, fd: FormData): Promise<Fo
   const value = rating(fd.get("value"));
   if (!value) return fail("Bitte 1 bis 5 wählen.");
   const s = await privateSettings(session.tenantId);
+  const me = myPartner(s, session);
+  if (!me) return fail(WHO_AM_I);
   const day = todayIso();
-  const entry: MoodEntry = compact({ day, person: myPartner(s, session), value, note: clip(fd.get("note"), 300) });
+  const entry: MoodEntry = compact({ day, person: me, value, note: clip(fd.get("note"), 300) });
   const mine = (await loadEntries<MoodEntry>(session, ["stimmung"])).find((e) => e.userId === session.userId && e.data.day === day);
   if (mine) await updateEntry(session, mine.id, "stimmung", entry, true);
   else await addEntry(session, "stimmung", entry);
@@ -528,8 +547,10 @@ export async function careDoneAction(fd: FormData) {
   const t = (await loadEntries<CareTask>(session, ["zustaendig"])).find((e) => e.id === id);
   if (!t) return;
   const s = await privateSettings(session.tenantId);
+  const me = myPartner(s, session);
+  if (!me) return;
   const day = todayIso();
-  const doneList = [...(t.data.done ?? []), { day, by: myPartner(s, session) }].slice(-200);
+  const doneList = [...(t.data.done ?? []), { day, by: me }].slice(-200);
   await updateEntry(session, id, "zustaendig", { done: doneList, next: nextCareDate(t.data, day) });
   revalidatePath("/privat", "layout");
 }

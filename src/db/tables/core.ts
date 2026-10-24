@@ -110,7 +110,8 @@ export type TenantSettings = {
   returns?: { graceFba?: number; claimFba?: number; graceFbm?: number; marketplace?: string };
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
-  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[] };
+  /** `staffCalendars`: eigene Kalender, die Mitarbeiter ohne Privat-Zugang sehen dürfen (sonst keine). */
+  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[]; staffCalendars?: string[] };
   /** E-Mail-Versand: Standard-Absenderpostfach (Rechnungen, Nachrichten). */
   /** `leadSenderId`: zuletzt benutztes Postfach für Einkaufsanfragen (Vorgabe im Schreibfenster). */
   mail?: { defaultSenderId?: string; leadSenderId?: string };

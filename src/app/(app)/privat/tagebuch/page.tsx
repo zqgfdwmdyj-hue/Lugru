@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, planFor, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
+import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, planFor, sideEffectState, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
 import { Disclosure } from "@/components/disclosure";
 import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
@@ -49,7 +49,8 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
   const dayPlan = planFor(plan, day);
   const pre: Partial<DiaryEntry> = entry ?? { med: dayPlan.med || last?.med, doseMg: dayPlan.med ? dayPlan.doseMg : last?.doseMg };
   // Fremdes Tagebuch: den eigenen Plan nicht unterstellen (nur zeigen, was dort steht).
-  const perDay = viewing ? 0 : dayPlan.med ? dayPlan.intakesPerDay : 1;
+  // Ohne eingerichteten Einnahmeplan ist nichts „geplant“ (früher stand hier still 1).
+  const perDay = viewing ? 0 : dayPlan.med ? dayPlan.intakesPerDay : 0;
   const status = intakeStatus(entry, perDay);
   const observations = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).sort((a, b) => b.data.day.localeCompare(a.data.day));
   const aboutMe = observations.filter((o) => o.data.aboutUserId === session.userId);
@@ -94,7 +95,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
             <div className="small stack" style={{ gap: 4 }}>
               <div>{[entry.med, entry.doseMg !== undefined ? `${n(entry.doseMg)} mg` : ""].filter(Boolean).join(" · ") || "kein Medikament eingetragen"} · Einnahme: {status.label}</div>
               <div>{RATING_FIELDS.map((f) => `${f.label}: ${entry[f.key] ?? "nicht erfasst"}`).join(" · ")}</div>
-              {entry.sideEffects?.length ? <div>Nebenwirkungen: {entry.sideEffects.join(", ")}</div> : null}
+              <div>Nebenwirkungen: {entry.sideEffects?.length ? entry.sideEffects.join(", ") : sideEffectState(entry) === "keine" ? "keine" : "nicht dokumentiert"}</div>
               {entry.good && <div>Gut: {entry.good}</div>}
               {entry.hard && <div>Schwer: {entry.hard}</div>}
             </div>
@@ -117,13 +118,20 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
                   </select>
                 </div>
               </div>
-              <div className="small muted" data-testid="diary-intake-status">{perDay} Einnahme{perDay === 1 ? "" : "n"} geplant: {status.label}. Leer gelassen heißt „nicht dokumentiert“ – nicht „nicht genommen“.</div>
+              <div className="small muted" data-testid="diary-intake-status">
+                {perDay > 0
+                  ? <>{perDay} Einnahme{perDay === 1 ? "" : "n"} geplant: {status.label}. Leer gelassen heißt „nicht dokumentiert“ – nicht „nicht genommen“.</>
+                  : <>Noch kein Einnahmeplan eingerichtet – nichts gilt als geplant. Einnahmen kannst du trotzdem eintragen; den Plan richtest du oben bei „💊 Medikament“ ein.</>}
+              </div>
               <h3 className="label" style={{ margin: "6px 0 0" }}>Wie war der Tag? (1 = schlecht, 5 = sehr gut)</h3>
               <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
                 {RATING_FIELDS.filter((f) => f.key === "focus" || f.key === "mood" || f.key === "sleepQuality").map((f) => <Rating key={f.key} name={f.key} label={f.label} low={f.low} high={f.high} value={entry?.[f.key]} />)}
               </div>
               <div className="field">
                 <span className="label">Nebenwirkungen heute</span>
+                <label className="small" style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
+                  <input type="checkbox" name="noSideEffects" defaultChecked={Boolean(entry?.noSideEffects)} data-testid="no-side-effects" /> Keine Nebenwirkungen heute
+                </label>
                 <Chips name="sideEffects" options={SIDE_EFFECTS} values={entry?.sideEffects} />
                 <input className="input" name="otherEffect" placeholder="Sonstiges (optional)" style={{ marginTop: 6 }} defaultValue={(entry?.sideEffects ?? []).find((x) => !(SIDE_EFFECTS as readonly string[]).includes(x)) ?? ""} />
                 <div className="small muted">Das Tagebuch wertet nichts medizinisch aus. Fragen zu Nebenwirkungen bitte mit deiner Ärztin/deinem Arzt besprechen – Bereitschaftsdienst 116 117, im Notfall 112.</div>
@@ -175,7 +183,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
                 {mine.slice(0, 14).map((e) => (
                   <tr key={e.id}>
                     <td className="num"><Link href={`/privat/tagebuch?tag=${e.data.day}${viewing ? `&von=${viewing.userId}` : ""}`}>{weekday(e.data.day)} {dm(e.data.day)}</Link></td>
-                    <td className="small">{e.data.doseMg !== undefined ? `${n(e.data.doseMg)} mg · ` : ""}{intakeStatus(e.data, viewing ? 0 : planFor(plan, e.data.day).med ? planFor(plan, e.data.day).intakesPerDay : 1).label}</td>
+                    <td className="small">{e.data.doseMg !== undefined ? `${n(e.data.doseMg)} mg · ` : ""}{intakeStatus(e.data, viewing ? 0 : planFor(plan, e.data.day).med ? planFor(plan, e.data.day).intakesPerDay : 0).label}</td>
                     <td className="num right">{e.data.focus ?? "–"}</td>
                     <td className="num right">{e.data.mood ?? "–"}</td>
                     <td className="num right">{e.data.sleepHours !== undefined ? `${n(e.data.sleepHours)} h` : e.data.sleepQuality ?? "–"}</td>

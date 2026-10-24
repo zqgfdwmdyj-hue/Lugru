@@ -99,10 +99,11 @@ export default async function AufgabenPage() {
 
       <section className="card card-pad stack">
         <h2>Neue Aufgabe von der Therapie</h2>
+        <div className="small muted" data-testid="where-shown">Erscheint nur hier im Privat-Bereich (verschlüsselt) – nicht in den Firmen-Aufgaben, nicht im Kalender des Systems und nicht im Apple-Kalender.</div>
         <StateForm action={addTaskAction} submit="Aufgabe anlegen" testid="task-form">
           <div className="field"><label className="label" htmlFor="ta-title">Aufgabe</label><input className="input" id="ta-title" name="title" required placeholder="z. B. jeden Abend 10 Minuten ungestört reden" /></div>
           <div className="field"><span className="label">Von</span><Choice name="source" value="paar" options={[{ value: "ads", label: s.therapists.ads }, { value: "paar", label: s.therapists.paar }, { value: "sonst", label: "sonstige" }]} /></div>
-          <div className="field"><span className="label">Für</span><Choice name="forWhom" value={me} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }, { value: "beide", label: "beide" }]} /></div>
+          <div className="field"><span className="label">Für</span><Choice name="forWhom" value={me ?? undefined} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }, { value: "beide", label: "beide" }]} /></div>
           <div className="field"><span className="label">Wie oft</span><Choice name="repeat" value="einmal" options={[{ value: "einmal", label: "einmal" }, { value: "taeglich", label: "täglich" }, { value: "woechentlich", label: "wöchentlich" }]} /></div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="ta-due">bis (optional)</label><input className="input" id="ta-due" name="due" type="date" /></div>
@@ -124,6 +125,7 @@ export default async function AufgabenPage() {
             ))}
           </ul>
         )}
+        <div className="small muted">Private Termine stehen nur hier (verschlüsselt) und werden nicht mit dem Kalender abgeglichen. Termine aus deinen verbundenen Kalendern siehst du unter <a href="/kalender">Kalender</a>.</div>
         <StateForm action={addAppointmentAction} submit="Termin speichern" testid="appointment-form">
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="ap-day">Tag</label><input className="input" id="ap-day" name="day" type="date" required /></div>
