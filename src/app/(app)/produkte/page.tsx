@@ -4,6 +4,7 @@ import { formatEuro } from "@/lib/numbers";
 import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
 import { ISSUE_LABEL, type IssueKind } from "@/lib/products/logic";
 import { mappingWorklist, productList } from "@/lib/products/service";
+import { fbaReport } from "@/lib/stock/fba-report";
 import { listHref, PAGE_SIZE, VIEWS, type View } from "./ui";
 
 export const metadata = { title: "Produkte" };
@@ -46,7 +47,7 @@ export default async function ProduktePage({ searchParams }: { searchParams: Pro
 }
 
 async function ProductTable({ tenantId, q, view, seite, back }: { tenantId: string; q: string; view: Exclude<View, "zuordnung">; seite: number; back: string }) {
-  const rows = await productList(tenantId, { q: q || undefined, view });
+  const [rows, fba] = await Promise.all([productList(tenantId, { q: q || undefined, view }), fbaReport(tenantId)]);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const page = Math.min(Math.max(1, seite), pages);
   const shown = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -58,7 +59,7 @@ async function ProductTable({ tenantId, q, view, seite, back }: { tenantId: stri
   return (
     <section className="card" style={{ overflow: "auto" }}>
       <div className="between" style={{ padding: "10px 14px", flexWrap: "wrap", gap: 8 }}>
-        <span className="small muted" data-testid="product-count">{rows.length} Produkt{rows.length === 1 ? "" : "e"}{q ? ` für „${q}“` : ""}</span>
+        <span className="small muted" data-testid="product-count">{rows.length} Produkt{rows.length === 1 ? "" : "e"}{q ? ` für „${q}“` : ""}{fba.missing ? " · Amazon-Bestand unbekannt (FBA-Bericht fehlt)" : fba.stale ? ` · Amazon-Bestand vom ${fba.snapshot?.split("-").reverse().join(".")} (veraltet)` : ""}</span>
         {pages > 1 && <Pager page={page} pages={pages} q={q} view={view} />}
       </div>
       <table className="table sticky-head" data-testid="product-list">
@@ -80,7 +81,7 @@ async function ProductTable({ tenantId, q, view, seite, back }: { tenantId: stri
               </td>
               <td className="small num">{r.skus.slice(0, 2).join(", ")}{r.skus.length > 2 ? ` +${r.skus.length - 2}` : ""}</td>
               <td className="num right" style={{ color: r.own < 0 ? "var(--danger)" : undefined }}>{r.own || ""}</td>
-              <td className="num right">{r.fba || ""}</td>
+              <td className="num right">{fba.missing ? <span className="muted" title="FBA-Bestandsbericht fehlt – Amazon-Bestand unbekannt">?</span> : r.fba || ""}</td>
               <td className="num right">{r.offers || ""}</td>
               <td className="num right">
                 {r.costMissing > 0 ? (

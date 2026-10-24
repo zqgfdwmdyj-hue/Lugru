@@ -72,6 +72,12 @@ export async function ingestInvoice(opts: { tenantId: string; source: "drive" | 
 export async function autoMatch(tenantId: string, invoiceId: string, asinsFromText?: string[]) {
   const [inv] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
   if (!inv || inv.kind !== "goods") return false;
+  // Unsicheres Datum (z. B. 01.12. oder 12.01.?) nicht still für die Zuordnung über Zeitfenster benutzen –
+  // erst bestätigen (Rechnung → Datum), dann ordnet „Neu zuordnen“ bzw. die nächste Prüfung zu.
+  if (inv.checks?.date && !(inv.checks.manual ?? []).includes("date")) {
+    await db.update(schema.invoices).set({ status: "review", updatedAt: new Date() }).where(eq(schema.invoices.id, invoiceId));
+    return false;
+  }
   const settings = await getSettings(tenantId);
   const asins = asinsFromText ?? [...new Set([...(inv.textExcerpt ?? "").matchAll(/\bB0[A-Z0-9]{8}\b/g)].map((m) => m[0]))];
   const day = inv.invoiceDate ?? todayIso(inv.createdAt);

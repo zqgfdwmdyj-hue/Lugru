@@ -165,6 +165,20 @@ function commonHref(list: TaskLite[]): string | null {
 
 export type Freshness = { key: string; label: string; last: Date | null; maxAgeDays: number; href: string; stale: boolean; missing: boolean };
 
+export type AreaState = "fehler" | "fehlt" | "veraltet" | "unvollstaendig" | "aktuell";
+export const AREA_STATE_LABEL: Record<AreaState, string> = { fehler: "Fehler", fehlt: "fehlt", veraltet: "veraltet", unvollstaendig: "unvollständig", aktuell: "aktuell" };
+
+/** Zustand je Bereich und die passende nächste Aktion (Text + Ziel). */
+export function areaStep(a: { key: string; missing: boolean; stale: boolean; error: string | null; via?: string; empty?: boolean }): { state: AreaState; step: string | null; href: string | null } {
+  const report = a.key.startsWith("report:");
+  const job = a.key.startsWith("job:");
+  if (a.error) return { state: "fehler", step: job ? "Anbindung prüfen und Abruf neu starten" : "Fehler ansehen und erneut importieren", href: job ? "/anbindungen" : "/import#upload" };
+  if (a.missing) return { state: "fehlt", step: report ? "Bericht automatisch holen lassen (Anbindungen → Amazon) oder unten hochladen" : job ? "Anbindung einrichten" : "Export hochladen", href: report ? "/anbindungen?p=amazon_sp#amazon_sp" : job ? "/anbindungen" : "/import#upload" };
+  if (a.empty) return { state: "unvollstaendig", step: "Letzter Bericht war leer – Zeitraum prüfen und neu holen", href: "/import#upload" };
+  if (a.stale) return { state: "veraltet", step: report && a.via === "api" ? "Automatischer Abruf hängt – Anbindung prüfen" : report ? "Neuen Bericht hochladen oder automatisch holen lassen" : job ? "Abruf läuft nicht mehr – Anbindung prüfen" : "Neuen Export hochladen", href: report && a.via !== "api" ? "/import#upload" : "/anbindungen" };
+  return { state: "aktuell", step: null, href: null };
+}
+
 /** Veraltet, wenn älter als `maxAgeDays`; fehlt, wenn es nie Daten gab. */
 export function freshness(items: Omit<Freshness, "stale" | "missing">[], now: Date): Freshness[] {
   return items.map((i) => ({ ...i, missing: i.last === null, stale: i.last !== null && now.getTime() - i.last.getTime() > i.maxAgeDays * 86_400_000 }));

@@ -74,7 +74,20 @@ export async function ProductHub({ session, d, base, tab, von, highlight, zeitra
       </div>
       <div className="grid-kpi" data-testid="product-kpis">
         <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value" style={{ color: own < 0 ? "var(--danger)" : undefined }}>{own}</div></div>
-        <div className="card card-pad"><div className="kpi-label">Bei Amazon</div><div className="kpi-value">{fba}</div></div>
+        <div className="card card-pad" data-testid="kpi-fba">
+          <div className="kpi-label">Bei Amazon</div>
+          {d.fbaReport.missing ? (
+            <>
+              <div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div>
+              <Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt – importieren →</Link>
+            </>
+          ) : (
+            <>
+              <div className="kpi-value">{fba}</div>
+              <div className="small" style={{ color: d.fbaReport.stale ? "var(--warn)" : "var(--muted)" }}>laut Bericht vom {formatDate(d.fbaReport.snapshot)}{d.fbaReport.stale ? " – veraltet" : ""}</div>
+            </>
+          )}
+        </div>
         <div className="card card-pad"><div className="kpi-label">Aktive Angebote</div><div className="kpi-value">{activeOffers}</div></div>
         <div className="card card-pad">
           <div className="kpi-label">EK</div>
@@ -260,7 +273,7 @@ function Bestand({ d }: { d: ProductDetail & object }) {
                   <td className="num right">{lvl?.reserved || ""}</td>
                   <td className="num right">{lvl ? availableOf(lvl) : ""}</td>
                   <td className="small">{o?.location ?? ""}</td>
-                  <td className="num right">{a ? a.fulfillable : <span className="muted">–</span>}</td>
+                  <td className="num right">{d.fbaReport.missing ? <span className="muted" title="FBA-Bestandsbericht fehlt">unbekannt</span> : a ? a.fulfillable : <span className="muted" title="laut Bericht nicht bei Amazon">0</span>}</td>
                   <td className="num right">{a ? a.inboundWorking + a.inboundShipped + a.inboundReceiving || "" : ""}</td>
                   <td className="num right" style={{ color: a?.unsellable ? "var(--danger)" : undefined }}>{a?.unsellable || ""}</td>
                 </tr>
@@ -268,7 +281,9 @@ function Bestand({ d }: { d: ProductDetail & object }) {
             })}
           </tbody>
         </table>
-        {d.fbaRows[0] && <div className="small muted" style={{ padding: "8px 14px" }}>Amazon-Bestand laut Bericht vom {formatDate(d.fbaRows[0].snapshotDate)}.</div>}
+        <div className="small muted" style={{ padding: "8px 14px" }} data-testid="fba-stand">
+          {d.fbaReport.missing ? <>Amazon-Bestand unbekannt – es wurde noch kein FBA-Bestandsbericht importiert (<Link href="/import">Import</Link>).</> : <>Amazon-Bestand laut Bericht vom {formatDate(d.fbaReport.snapshot)}{d.fbaReport.stale ? " – veraltet, bitte neuen Bericht holen" : ""}.</>}
+        </div>
       </section>
       {d.sets.length > 0 && (
         <section className="card card-pad small">
@@ -391,7 +406,7 @@ async function Ergebnis({ session, d, base, zeitraum }: { session: Session; d: P
         <div className="grid-kpi">
           <Kpi label="Umsatz netto" value={formatEuro(tot.revenueNet)} note={`${units} Stück verkauft`} period={period} source="Amazon-Abrechnung, Aufträge" testid="result-revenue" />
           <Kpi label="Vorläufiges Ergebnis" value={formatEuro(tot.provisional)} state={state} note="nur bekannte Kosten" missing={missing} fixHref={missing.length ? `${base.split("?")[0]}?tab=einkauf` : undefined} period={period} testid="result-provisional" />
-          <Kpi label="Gewinn vollständig berechnet" value={formatEuro(tot.completeProfit)} state={state} note={`${tot.coverage} % des Umsatzes mit allen Kosten`} period={period} testid="result-complete" />
+          <Kpi label="Gewinn aus vollständig erfassten Verkäufen" value={tot.completeRevenueNet > 0 || tot.complete ? formatEuro(tot.completeProfit) : "nicht berechenbar"} state={tot.complete ? "ok" : tot.coverage > 0 ? "unvollstaendig" : "fehlt"} note={tot.completeRevenueNet > 0 || tot.complete ? `umfasst ${tot.coverage} % des Umsatzes (${formatEuro(tot.completeRevenueNet)}) – nur Verkäufe mit Preis, EK und Gebühren` : "kein Verkauf mit Preis, EK und Gebühren – erst nach dem Nachtragen berechenbar"} period={period} testid="result-complete" />
           <div className="card card-pad"><div className="kpi-label">Kanäle</div><div className="small" style={{ marginTop: 8 }}>{[az.length ? `Amazon ${az.reduce((n, s) => n + s.units, 0)}` : null, ...channels.map((c) => `${CHANNEL_LABEL[c.channel] ?? c.channel} ${mine.filter((l) => l.channel === c.channel).reduce((n, l) => n + l.qty, 0)}`)].filter(Boolean).join(" · ")}</div></div>
         </div>
       )}

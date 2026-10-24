@@ -5,6 +5,7 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { loadCostPairs, mergeCostPairs, skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, type CostInfo } from "@/lib/money/profit-logic";
 import { loadSets } from "@/lib/stock/sets";
+import { fbaReport } from "@/lib/stock/fba-report";
 import { stockLevels } from "@/lib/stock/channel-sync";
 import { ekCheck, groupCandidates, mappingIssues, rankProductGroups, type Candidate, type EkSource, type Issue, type ProductGroup } from "./logic";
 
@@ -190,7 +191,7 @@ export async function productDetail(t: string, ref: { productId: string } | { sk
   });
 
   const setDefs = sets.filter((s) => skus.includes(s.sku) || s.components.some((c) => skus.includes(c.sku)));
-  return { product, group, skus, lots, poItems, ownRows, fbaRows, movements, listings, ebayTool, articles, invoices, ek, levels, sets: setDefs, cands };
+  return { product, group, skus, lots, poItems, ownRows, fbaRows, movements, listings, ebayTool, articles, invoices, ek, levels, sets: setDefs, cands, fbaReport: await fbaReport(t) };
 }
 
 // ---- Arbeitsliste ------------------------------------------------------------------------------

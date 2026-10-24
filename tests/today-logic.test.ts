@@ -95,3 +95,15 @@ describe("Datenstand", () => {
     expect(f.map((x) => [x.missing, x.stale])).toEqual([[true, false], [false, true], [false, false]]);
   });
 });
+
+describe("Datenstand: Zustand und nächster Schritt", () => {
+  it("fehlt, unvollständig, veraltet, Fehler, aktuell – jeweils mit Aktion", async () => {
+    const { areaStep } = await import("@/lib/today/logic");
+    expect(areaStep({ key: "report:inventory", missing: true, stale: false, error: null })).toMatchObject({ state: "fehlt", href: "/anbindungen?p=amazon_sp#amazon_sp" });
+    expect(areaStep({ key: "report:settlement", missing: false, stale: false, error: null, empty: true }).state).toBe("unvollstaendig");
+    expect(areaStep({ key: "report:ledger", missing: false, stale: true, error: null, via: "api" })).toMatchObject({ state: "veraltet", href: "/anbindungen" });
+    expect(areaStep({ key: "report:ledger", missing: false, stale: true, error: null, via: "upload" }).href).toBe("/import#upload");
+    expect(areaStep({ key: "job:Postfächer", missing: false, stale: false, error: "Login fehlgeschlagen" }).state).toBe("fehler");
+    expect(areaStep({ key: "uploads", missing: false, stale: false, error: null })).toEqual({ state: "aktuell", step: null, href: null });
+  });
+});

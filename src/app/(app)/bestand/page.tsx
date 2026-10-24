@@ -90,17 +90,25 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
           testid="kpi-stock-value"
           label="Warenwert (EK, bewertet)"
           value={formatEuro(sv.valued)}
-          state={sv.unvaluedUnits || sv.negative.length ? "unvollstaendig" : "ok"}
+          state={sv.unvaluedUnits || sv.negative.length || !inv?.snap ? "unvollstaendig" : "ok"}
           note={`${sv.valuedUnits} Einheiten mit EK`}
           missing={[
             ...(sv.unvaluedUnits ? [`EK für ${sv.unvaluedUnits} Einheiten (${sv.unvaluedSkus.length} SKU${sv.unvaluedSkus.length === 1 ? "" : "s"}) – nicht bewertet`] : []),
+            ...(!inv?.snap ? ["FBA-Bestandsbericht – Ware bei Amazon ist nicht enthalten"] : []),
           ]}
           fixHref="/bestand?ansicht=ohne-ek"
           fixLabel="ansehen"
           source="FBA-Bericht, eigenes Lager, EK"
           stand={inv?.snap ? formatDate(inv.snap) : undefined}
         />
-        <div className="card card-pad"><div className="kpi-label">Bei Amazon</div><div className="kpi-value">{units}</div><div className="small muted">verfügbar, reserviert, unterwegs</div></div>
+        <div className="card card-pad" data-testid="kpi-fba">
+          <div className="kpi-label">Bei Amazon</div>
+          {inv?.snap ? (
+            <><div className="kpi-value">{units}</div><div className="small muted">verfügbar, reserviert, unterwegs · Bericht vom {formatDate(inv.snap)}</div></>
+          ) : (
+            <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt – nicht „0“ →</Link></>
+          )}
+        </div>
         <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value">{own}</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}
           {sv.negative.length > 0 && <Link href="/bestand?ansicht=negativ" className="small" style={{ color: "var(--danger)" }} data-testid="stock-negative">{sv.negative.length} SKU{sv.negative.length === 1 ? "" : "s"} mit negativem Bestand ({sv.negativeUnits}) – nicht im Warenwert verrechnet →</Link>}
         </div>

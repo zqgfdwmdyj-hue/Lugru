@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { ImportForm } from "./import-form";
+import { areaStep } from "@/lib/today/logic";
 import { dataAreas } from "@/lib/today/service";
 
 const SOURCES: { name: string; where: string }[] = [
@@ -45,22 +47,26 @@ export default async function ImportPage() {
             <div className="card-head"><h2>Datenstand je Bereich</h2></div>
             <div className="card-pad small muted" style={{ paddingTop: 0 }}>Letzter Stand je Bericht bzw. Abruf – egal ob hochgeladen oder automatisch über die Schnittstelle geholt. Veraltet = älter als üblich für diesen Bericht.</div>
             <table className="table">
-              <thead><tr><th>Bereich</th><th>Zuletzt</th><th>Weg</th><th>Zustand</th></tr></thead>
+              <thead><tr><th>Bereich</th><th>Zuletzt</th><th>Weg</th><th>Zustand</th><th>Nächster Schritt</th></tr></thead>
               <tbody>
-                {areas.map((a) => (
-                  <tr key={a.key} data-testid="data-area">
+                {areas.map((a) => {
+                  const st = areaStep(a);
+                  return (
+                  <tr key={a.key} data-testid="data-area" data-state={st.state}>
                     <td>{a.label}</td>
                     <td className="num">{a.last ? a.last.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "–"}</td>
                     <td className="small">{a.key.startsWith("job:") ? "Hintergrund-Abruf" : a.key === "uploads" ? "Upload" : a.via === "api" ? "Schnittstelle" : a.last ? "Upload" : "–"}</td>
                     <td>
-                      {a.error ? <span className="tag tag-danger" title={a.error}>Fehler: {a.error.slice(0, 80)}</span> : a.missing ? <span className="tag tag-warn">fehlt</span> : a.stale ? <span className="tag tag-warn">älter als {a.maxAgeDays} Tag{a.maxAgeDays === 1 ? "" : "e"}</span> : <span className="tag tag-ok">aktuell</span>}
+                      {a.error ? <span className="tag tag-danger" title={a.error}>Fehler: {a.error.slice(0, 80)}</span> : a.missing ? <span className="tag tag-warn">fehlt</span> : a.empty ? <span className="tag tag-warn">unvollständig</span> : a.stale ? <span className="tag tag-warn">veraltet (älter als {a.maxAgeDays} Tag{a.maxAgeDays === 1 ? "" : "e"})</span> : <span className="tag tag-ok">aktuell</span>}
                     </td>
+                    <td className="small" data-testid="data-area-step">{st.step ? (st.href ? <Link href={st.href}>{st.step} →</Link> : st.step) : <span className="muted">–</span>}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </section>
-          <ImportForm />
+          <div id="upload"><ImportForm /></div>
           <section className="card" style={{ overflow: "auto" }}>
             <div className="card-head"><h2>Letzte Importe</h2></div>
             {history.length === 0 ? <div className="card-pad muted">Noch keine Importe.</div> : (

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { SearchSelect } from "@/components/search-select";
+import { similarSuppliers } from "@/lib/suppliers/duplicates";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq, gte, lte, notExists, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -21,6 +23,16 @@ export default async function RechnungPage({ params, searchParams }: { params: P
     db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code)),
     db.select({ id: L.id, sku: L.sku, asin: P.asin, date: L.purchaseDate, cost: L.unitCostNet, by: schema.invoiceLots.matchedBy }).from(schema.invoiceLots).innerJoin(L, eq(L.id, schema.invoiceLots.lotId)).innerJoin(P, eq(P.id, L.productId)).where(eq(schema.invoiceLots.invoiceId, id)),
   ]);
+  // Lange Lieferantenliste: nach Name sortiert, mögliche Dubletten am Eintrag markiert (zusammengeführt wird nur von Hand).
+  const similar = similarSuppliers(suppliers.map((x) => ({ id: x.id, code: x.code, name: x.name })));
+  const twinOf = new Map<string, string[]>();
+  for (const pr of similar) {
+    twinOf.set(pr.a.id, [...(twinOf.get(pr.a.id) ?? []), pr.b.code]);
+    twinOf.set(pr.b.id, [...(twinOf.get(pr.b.id) ?? []), pr.a.code]);
+  }
+  const supplierOptions = [...suppliers]
+    .sort((a, b) => (a.name ?? a.code).localeCompare(b.name ?? b.code, "de", { sensitivity: "base" }))
+    .map((x) => ({ value: x.id, label: `${x.name ?? x.code}${x.name ? ` (${x.code})` : ""}`, hint: twinOf.has(x.id) ? `ähnlich wie ${twinOf.get(x.id)!.slice(0, 2).join(", ")}` : undefined }));
   const dupIds = inv.checks.duplicateOf && !inv.checks.notDuplicate ? inv.checks.duplicateOf.map((d) => d.id) : [];
   const dups = dupIds.length
     ? await db.select({ id: schema.invoices.id, fileName: schema.invoices.fileName, date: schema.invoices.invoiceDate, total: schema.invoices.totalGross, status: schema.invoices.status }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, session.tenantId), sql`${schema.invoices.id} in (${sql.join(dupIds.map((x) => sql`${x}`), sql`, `)})`))
@@ -85,7 +97,7 @@ export default async function RechnungPage({ params, searchParams }: { params: P
               <select className="select" id="doctype" name="docType" defaultValue={inv.docType}>{DOC_TYPES.map((d) => <option key={d} value={d}>{DOC_TYPE_LABEL[d]}</option>)}</select>
             </div>
             <div className="field"><label className="label" htmlFor="sup">Shop / Lieferant</label>
-              <select className="select" id="sup" name="supplierId" defaultValue={inv.supplierId ?? ""}><option value="">–</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.code}{s.name ? ` – ${s.name}` : ""}</option>)}</select>
+              <SearchSelect id="sup" name="supplierId" defaultValue={inv.supplierId ?? ""} placeholder="Lieferant suchen (Kürzel oder Name)" options={supplierOptions} />
             </div>
             <div className="field"><label className="label" htmlFor="idate">Rechnungsdatum{inv.checks.date ? <span style={{ color: "var(--warn)" }}> – unsicher</span> : null}</label><input className="input" id="idate" name="invoiceDate" defaultValue={formatDate(inv.invoiceDate) === "–" ? "" : formatDate(inv.invoiceDate)} /></div>
             <div className="field"><label className="label" htmlFor="inr">Rechnungsnummer</label><input className="input" id="inr" name="invoiceNumber" defaultValue={inv.invoiceNumber ?? ""} /></div>
@@ -141,7 +153,7 @@ function CheckNotes({ inv, dups }: { inv: Inv; dups: { id: string; fileName: str
     <section className="notice notice-warn stack" style={{ gap: 8 }} data-testid="inv-checks">
       {c.date && (
         <div className="between" style={{ flexWrap: "wrap" }} data-testid="check-date">
-          <span><strong>Datum unsicher:</strong> {c.date.uncertain}. Gespeichert: {formatDate(inv.invoiceDate)}{c.date.suggestion ? `, Vorschlag: ${formatDate(c.date.suggestion)}` : ""}.</span>
+          <span><strong>Datum unsicher:</strong> {c.date.uncertain}. Gespeichert: {formatDate(inv.invoiceDate)}{c.date.suggestion ? `, Vorschlag: ${formatDate(c.date.suggestion)}` : ""}. Bis zur Bestätigung ordnet das System diese Rechnung nicht automatisch Einkäufen zu.</span>
           <span style={{ display: "flex", gap: 6 }}>
             {c.date.suggestion && btn("datum-uebernehmen", `${formatDate(c.date.suggestion)} übernehmen`, true)}
             {btn("datum-ok", `${formatDate(inv.invoiceDate)} stimmt`)}

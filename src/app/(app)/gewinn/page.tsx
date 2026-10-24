@@ -59,7 +59,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       {noData && <div className="notice notice-warn">Keine Abrechnungen und keine Aufträge in diesem Zeitraum. Amazon: Settlement-Reports unter „Daten importieren“; eBay/Temu kommen über die Anbindungen.</div>}
       {!noData && !tot.complete && (
         <div className="notice notice-warn" data-testid="profit-incomplete">
-          <strong>Unvollständige Daten:</strong> {missing.join(", ")} fehlen. Der „vorläufige“ Wert enthält nur bekannte Kosten; der vollständig berechnete Gewinn umfasst nur {tot.coverage} % des Umsatzes.{" "}
+          <strong>Unvollständige Daten:</strong> {missing.join(", ")} fehlen. Der „vorläufige“ Wert enthält nur bekannte Kosten; der Gewinn aus vollständig erfassten Verkäufen umfasst nur {tot.coverage} % des Umsatzes.{" "}
           <Link href={fix}>Fehlende Werte nachtragen →</Link>
         </div>
       )}
@@ -79,11 +79,11 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
         />
         <Kpi
           testid="kpi-profit"
-          label="Gewinn (vollständig berechnet)"
-          value={tot.completeRevenueNet > 0 || tot.complete ? formatEuro(tot.completeProfit) : "–"}
+          label="Gewinn aus vollständig erfassten Verkäufen"
+          value={tot.completeRevenueNet > 0 || tot.complete ? formatEuro(tot.completeProfit) : "nicht berechenbar"}
           danger={tot.completeProfit < 0}
           state={tot.complete ? "ok" : tot.coverage > 0 ? "unvollstaendig" : "fehlt"}
-          note={tot.complete ? `Marge ${tot.revenueNet ? `${((tot.completeProfit / tot.revenueNet) * 100).toFixed(1).replace(".", ",")} %` : "–"}` : `nur Positionen mit Preis, EK und Gebühren: ${tot.coverage} % des Umsatzes (${formatEuro(tot.completeRevenueNet)})`}
+          note={tot.complete ? `Marge ${tot.revenueNet ? `${((tot.completeProfit / tot.revenueNet) * 100).toFixed(1).replace(".", ",")} %` : "–"}` : tot.completeRevenueNet > 0 ? `umfasst nur ${tot.coverage} % des Umsatzes (${formatEuro(tot.completeRevenueNet)}) – Verkäufe mit Preis, EK und Gebühren` : "kein Verkauf mit Preis, EK und Gebühren – erst nach dem Nachtragen berechenbar"}
           period={period}
         />
         <Kpi testid="kpi-costs" label="Bekannte Kosten" value={formatEuro(neg(fees) + cogs + neg(nonSkuTotal) + channels.reduce((n, c) => n + c.feesKnown, 0))} note={`Amazon-Gebühren ${formatEuro(neg(fees))} · Wareneinsatz ${formatEuro(cogs)} · Kanalgebühren ${formatEuro(channels.reduce((n, c) => n + c.feesKnown, 0))} · sonstige ${formatEuro(neg(nonSkuTotal))}`} period={period} />
@@ -94,7 +94,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
           <div>Stand: {standText}</div>
           <div>Umsatz netto = Brutto ÷ (1 + {Math.round(settings.vatRate * 100)} % MwSt). EK in dieser Reihenfolge (wie auf der Produktseite, mit Herkunft): Charge → „EK je SKU“ (von Hand) → Einkaufspreis aus dem eBay-Tool (Variante/Einzelangebot) → bei Sets die Summe der Bestandteile → zuletzt der vom Mehrfachangebot geerbte EK (als „geerbt“ markiert). Erstattete Einheiten gelten als zurück im Bestand.</div>
           <div>Gebühren: Amazon aus der Abrechnung, eBay je Bestellung von eBay (ältere Bestellungen ohne Angabe → „fehlt“), Temu ohne eigene Gebühr (Basispreis), Manuell ohne Gebühr. Fehlende Werte zählen nie als 0 €.</div>
-          <div>„Vorläufig“ = Umsatz − bekannte Kosten. „Vollständig berechnet“ = nur Positionen, bei denen Preis, EK und Gebühr bekannt sind – plus Amazon-Kosten ohne SKU.</div>
+          <div>„Vorläufig“ = Umsatz − bekannte Kosten. „Gewinn aus vollständig erfassten Verkäufen“ = nur Positionen, bei denen Preis, EK und Gebühr bekannt sind – plus Amazon-Kosten ohne SKU. Gibt es keine solche Position, steht dort „nicht berechenbar“ statt 0 €.</div>
         </div>
       </details>
 

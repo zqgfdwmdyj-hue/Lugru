@@ -105,14 +105,14 @@ export default async function CashflowPage() {
         </svg>
         <div style={{ overflowX: "auto" }}>
           <table className="table" style={{ marginTop: 8 }}>
-            <thead><tr><th>Woche ab</th><th className="right">Eingänge</th><th className="right">Ausgänge</th><th className="right">Saldo danach</th><th>Posten</th></tr></thead>
+            <thead><tr><th>Woche ab</th><th className="right">Eingänge</th><th className="right">Ausgänge</th><th className="right" title={start === null ? "Ohne Startkontostand ist der Saldo unbekannt" : undefined}>Saldo danach</th><th>Posten</th></tr></thead>
             <tbody>
               {rows.map((w) => (
                 <tr key={w.start}>
                   <td className="num">{formatDate(w.start)}</td>
                   <td className="num right">{formatEuro(w.inflow)}</td>
                   <td className="num right">{formatEuro(-w.outflow)}</td>
-                  <td className="num right" style={{ fontWeight: 600, color: w.balance < 0 ? "var(--danger)" : undefined }}>{formatEuro(w.balance)}</td>
+                  <td className="num right" style={{ fontWeight: 600, color: start !== null && w.balance < 0 ? "var(--danger)" : undefined }} data-testid="cash-balance">{start === null ? <span className="muted" style={{ fontWeight: 400 }}>unbekannt</span> : formatEuro(w.balance)}</td>
                   <td className="small muted">{w.entries.map((e) => `${e.label} ${formatEuro(e.amount)}`).join(" · ")}</td>
                 </tr>
               ))}

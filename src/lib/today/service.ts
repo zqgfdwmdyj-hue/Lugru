@@ -71,21 +71,21 @@ const JOB_AREAS: [string, string, string][] = [
   ["Rechnungen", "Rechnungen aus Drive", "/rechnungen"],
 ];
 
-export type DataArea = Freshness & { error: string | null; via?: string };
+export type DataArea = Freshness & { error: string | null; via?: string; empty?: boolean };
 
 /** Datenstand je Bereich: Amazon-Berichte (Upload oder automatisch), manuelle Importe, Hintergrund-Abrufe. */
 export async function dataAreas(tenantId: string): Promise<DataArea[]> {
   const R = schema.reportImports;
   const [reports, [uploads], jobs] = await Promise.all([
-    db.select({ kind: R.reportType, last: max(R.createdAt), via: sql<string>`(array_agg(${R.via} order by ${R.createdAt} desc))[1]` }).from(R).where(and(eq(R.tenantId, tenantId), ne(R.rows, -1))).groupBy(R.reportType),
+    db.select({ kind: R.reportType, last: max(R.createdAt), via: sql<string>`(array_agg(${R.via} order by ${R.createdAt} desc))[1]`, lastRows: sql<number>`(array_agg(${R.rows} order by ${R.createdAt} desc))[1]` }).from(R).where(and(eq(R.tenantId, tenantId), ne(R.rows, -1))).groupBy(R.reportType),
     db.select({ last: max(schema.importRuns.createdAt) }).from(schema.importRuns).where(eq(schema.importRuns.tenantId, tenantId)),
     db.select().from(schema.jobRuns).where(eq(schema.jobRuns.tenantId, tenantId)),
   ]);
   const byKind = new Map(reports.map((r) => [r.kind, r]));
   const kinds = [...new Set([...REPORT_CORE, ...reports.map((r) => r.kind as ReportKind)])].filter((k) => k in REPORT_KINDS);
-  const items: (Omit<Freshness, "stale" | "missing"> & { error: string | null; via?: string })[] = kinds.map((k) => {
+  const items: (Omit<Freshness, "stale" | "missing"> & { error: string | null; via?: string; empty?: boolean })[] = kinds.map((k) => {
     const r = byKind.get(k);
-    return { key: `report:${k}`, label: `Amazon: ${REPORT_KINDS[k].split(" (")[0]}`, last: r?.last ? new Date(r.last) : null, maxAgeDays: REPORT_AGE[k] ?? 30, href: "/import", error: null, via: r?.via };
+    return { key: `report:${k}`, label: `Amazon: ${REPORT_KINDS[k].split(" (")[0]}`, last: r?.last ? new Date(r.last) : null, maxAgeDays: REPORT_AGE[k] ?? 30, href: "/import", error: null, via: r?.via, empty: r ? Number(r.lastRows) === 0 : undefined };
   });
   items.push({ key: "uploads", label: "Datei-Importe (von Hand)", last: uploads?.last ? new Date(uploads.last) : null, maxAgeDays: 30, href: "/import", error: null });
   for (const [name, label, href] of JOB_AREAS) {
@@ -95,5 +95,5 @@ export async function dataAreas(tenantId: string): Promise<DataArea[]> {
     items.push({ key: `job:${name}`, label, last: j.lastOkAt, maxAgeDays: 1, href, error: failing });
   }
   const fr = freshness(items, new Date());
-  return fr.map((f, i) => ({ ...f, error: items[i].error, via: items[i].via }));
+  return fr.map((f, i) => ({ ...f, error: items[i].error, via: items[i].via, empty: items[i].empty }));
 }
