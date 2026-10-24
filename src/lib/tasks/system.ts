@@ -73,8 +73,8 @@ export async function refreshImportReminder(tenantId: string, reminderDays: numb
     await upsertSystemTask(db, tenantId, "import-reminder", {
       title: "Arbitrage-One-Export hochladen",
       notes: lastAt
-        ? `Letzter Import am ${lastAt.toLocaleDateString("de-DE")}. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.`
-        : "Noch kein Import. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.",
+        ? `Letzter Arbitrage-One-Upload am ${lastAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} (automatische Amazon-Berichte zählen hier nicht). Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.`
+        : "Noch kein Arbitrage-One-Upload. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.",
       category: "einkauf",
       link: "/import",
       dueDate: new Date().toISOString().slice(0, 10),

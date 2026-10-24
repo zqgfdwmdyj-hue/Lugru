@@ -1,0 +1,144 @@
+// Tagesübersicht: Aufgaben nach Zeitfenster einordnen, nach Dringlichkeit gewichten und gleichartige,
+// automatisch erzeugte Aufgaben zu Arbeitsvorräten bündeln. Reine Logik – Abfragen in der Startseite.
+
+export type TaskLite = {
+  id: string;
+  title: string;
+  notes: string | null;
+  dueDate: string | null;
+  priority: "critical" | "normal" | "low";
+  category: string;
+  systemKey: string | null;
+  link: string | null;
+  createdAt: Date;
+};
+
+export type Bucket = "ueberfaellig" | "heute" | "woche" | "spaeter" | "ohne";
+export const BUCKET_LABEL: Record<Bucket, string> = { ueberfaellig: "Überfällig", heute: "Heute", woche: "Diese Woche", spaeter: "Später", ohne: "Ohne Datum" };
+
+const day = (iso: string) => Date.parse(`${iso}T12:00:00Z`);
+const daysBetween = (a: string, b: string) => Math.round((day(b) - day(a)) / 86_400_000);
+
+export function bucketOf(t: Pick<TaskLite, "dueDate">, today: string): Bucket {
+  if (!t.dueDate) return "ohne";
+  const d = daysBetween(today, t.dueDate);
+  if (d < 0) return "ueberfaellig";
+  if (d === 0) return "heute";
+  if (d <= 7) return "woche";
+  return "spaeter";
+}
+
+/** Wirtschaftliche Bedeutung je Bereich (grob): Versand und Geld vor Einkauf und Marken. */
+const CATEGORY_WEIGHT: Record<string, number> = { versand: 15, geld: 12, amazon: 9, ebay: 9, support: 8, einkauf: 5, eigene: 6, system: 3, marken: 0 };
+
+export function scoreOf(t: TaskLite, today: string): number {
+  let s = CATEGORY_WEIGHT[t.category] ?? 4;
+  if (t.priority === "critical") s += 100;
+  if (t.priority === "low") s -= 10;
+  if (t.dueDate) {
+    const d = daysBetween(today, t.dueDate);
+    if (d < 0) s += 50 + Math.min(-d, 30);
+    else if (d === 0) s += 40;
+    else if (d <= 7) s += 20 - d;
+  }
+  return s;
+}
+
+/** Arbeitsvorräte: automatisch erzeugte Aufgaben gleicher Art (Schlüssel-Anfang) gehören zusammen. */
+type GroupDef = { label: string; href: string; ideas?: boolean };
+const GROUPS: [RegExp, GroupDef][] = [
+  [/^lead-(followup|reply)/, { label: "Lieferanten nachfassen", href: "/board" }],
+  [/^invoices?-review|^lots-without-invoice|^accountone-ek|^cost-conflicts/, { label: "Rechnungen & EK prüfen", href: "/rechnungen" }],
+  [/^removal/, { label: "Remissionen bestätigen", href: "/remissionen" }],
+  [/^claims/, { label: "Ansprüche bearbeiten", href: "/ansprueche" }],
+  [/^cases/, { label: "Fälle bearbeiten", href: "/faelle" }],
+  [/^returns|^ret(nr|dmg|wrong)/, { label: "Retouren prüfen", href: "/retouren" }],
+  [/^stock-manual|^oversold|^below|^unsellable/, { label: "Bestand korrigieren", href: "/bestand" }],
+  [/^mail/, { label: "Posteingang", href: "/posteingang" }],
+  [/^amazon-todo/, { label: "Amazon-ToDos", href: "/amazon-todos" }],
+  [/^(idea|research|content|box-auto|brand)/, { label: "Ideen, Saison & Content", href: "/marken", ideas: true }],
+  [/^pallet/, { label: "Paletten-Lager", href: "/paletten" }],
+  [/^temu/, { label: "Temu", href: "/listings/temu" }],
+];
+
+export function groupOf(t: Pick<TaskLite, "systemKey" | "category">): (GroupDef & { key: string }) | null {
+  if (t.category === "marken") return { key: "ideen", label: "Ideen, Saison & Content", href: "/marken", ideas: true };
+  if (!t.systemKey) return null;
+  for (const [re, g] of GROUPS) if (re.test(t.systemKey)) return { ...g, key: g.label };
+  return null;
+}
+
+export type Bundle = { key: string; label: string; href: string; tasks: TaskLite[]; overdue: number; next: string | null };
+
+export type DayPlan = {
+  critical: TaskLite[];
+  top: TaskLite[];
+  bundles: Bundle[];
+  ideas: TaskLite[];
+  later: TaskLite[];
+  noDate: TaskLite[];
+  counts: Record<Bucket, number>;
+};
+
+/**
+ * Tagesplan: kritische Aufgaben, die wichtigsten (höchstens `topMax`) mit Fälligkeit bis Ende der Woche,
+ * gebündelte Arbeitsvorräte (ab 2 gleichartigen), Ideen sowie „Später“ und „Ohne Datum“ zum Einklappen.
+ */
+export function planDay(tasks: TaskLite[], today: string, topMax = 8): DayPlan {
+  const counts: Record<Bucket, number> = { ueberfaellig: 0, heute: 0, woche: 0, spaeter: 0, ohne: 0 };
+  for (const t of tasks) counts[bucketOf(t, today)]++;
+  const byGroup = new Map<string, { def: GroupDef & { key: string }; tasks: TaskLite[] }>();
+  for (const t of tasks) {
+    const g = groupOf(t);
+    if (!g || t.priority === "critical") continue;
+    const e = byGroup.get(g.key) ?? { def: g, tasks: [] };
+    e.tasks.push(t);
+    byGroup.set(g.key, e);
+  }
+  const bundled = new Set<string>();
+  const ideas: TaskLite[] = [];
+  const bundles: Bundle[] = [];
+  for (const { def, tasks: list } of byGroup.values()) {
+    if (def.ideas) {
+      for (const t of list) bundled.add(t.id);
+      ideas.push(...list);
+      continue;
+    }
+    if (list.length < 2) continue;
+    for (const t of list) bundled.add(t.id);
+    const dues = list.map((t) => t.dueDate).filter((d): d is string => Boolean(d)).sort();
+    bundles.push({ key: def.key, label: def.label, href: commonHref(list) ?? def.href, tasks: list.sort((a, b) => scoreOf(b, today) - scoreOf(a, today)), overdue: list.filter((t) => bucketOf(t, today) === "ueberfaellig").length, next: dues[0] ?? null });
+  }
+  bundles.sort((a, b) => b.overdue - a.overdue || b.tasks.length - a.tasks.length);
+  const rest = tasks.filter((t) => !bundled.has(t.id));
+  const critical = rest.filter((t) => t.priority === "critical").sort((a, b) => scoreOf(b, today) - scoreOf(a, today));
+  const candidates = rest.filter((t) => t.priority !== "critical" && ["ueberfaellig", "heute", "woche"].includes(bucketOf(t, today)));
+  const top = candidates.sort((a, b) => scoreOf(b, today) - scoreOf(a, today)).slice(0, topMax);
+  const shown = new Set([...critical, ...top].map((t) => t.id));
+  const remaining = rest.filter((t) => !shown.has(t.id));
+  return {
+    critical,
+    top,
+    bundles,
+    ideas,
+    later: remaining.filter((t) => t.dueDate !== null).sort((a, b) => a.dueDate!.localeCompare(b.dueDate!)),
+    noDate: remaining.filter((t) => t.dueDate === null).sort((a, b) => scoreOf(b, today) - scoreOf(a, today) || +b.createdAt - +a.createdAt),
+    counts,
+  };
+}
+
+/** Gemeinsamer Pfad der Links (ohne Abfrage) – dann führt der Arbeitsvorrat genau dorthin. */
+function commonHref(list: TaskLite[]): string | null {
+  const paths = list.map((t) => t.link?.split(/[?#]/)[0] ?? null);
+  if (paths.some((p) => !p)) return null;
+  return paths.every((p) => p === paths[0]) ? paths[0] : null;
+}
+
+// ---- Datenstand ----------------------------------------------------------------------------------
+
+export type Freshness = { key: string; label: string; last: Date | null; maxAgeDays: number; href: string; stale: boolean; missing: boolean };
+
+/** Veraltet, wenn älter als `maxAgeDays`; fehlt, wenn es nie Daten gab. */
+export function freshness(items: Omit<Freshness, "stale" | "missing">[], now: Date): Freshness[] {
+  return items.map((i) => ({ ...i, missing: i.last === null, stale: i.last !== null && now.getTime() - i.last.getTime() > i.maxAgeDays * 86_400_000 }));
+}

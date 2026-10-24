@@ -34,6 +34,7 @@ import { getSettings } from "@/lib/settings";
 import { refreshImportReminder } from "@/lib/tasks/system";
 import { autoSendStatements, refreshPalletReminders } from "@/lib/pallets/service";
 import { todayIso } from "@/lib/dates";
+import { recordJob } from "@/lib/today/jobs";
 
 // Hintergrund-Abrufe. Läuft im Server-Prozess (alle 15 Minuten) oder per /api/cron.
 
@@ -45,11 +46,14 @@ const due = (key: string, minutes: number) => {
   return true;
 };
 
-async function step(name: string, fn: () => Promise<unknown>) {
+async function step(tenantId: string, name: string, fn: () => Promise<unknown>) {
   try {
     await fn();
+    void recordJob(tenantId, name, null);
   } catch (e) {
-    console.error(`[Hintergrund] ${name}:`, e instanceof Error ? e.message : e);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[Hintergrund] ${name}:`, msg);
+    void recordJob(tenantId, name, msg);
   }
 }
 
@@ -63,82 +67,82 @@ export async function runScheduledJobs(force = false) {
     for (const { id: t } of tenants) {
       const has = async (p: string) => Boolean(await getIntegration(t, p));
       if (force || due(`${t}:brands`, 360)) {
-        await step("Marken-Planung", () => refreshBrandPlanning(t));
-        await step("Content-Plan der Woche", () => refreshWeeklyContent(t));
-        await step("Eigene Produkte (Keepa)", () => refreshOwnProducts(t));
-        await step("Box-Vorschläge", () => autoBoxes(t));
+        await step(t, "Marken-Planung", () => refreshBrandPlanning(t));
+        await step(t, "Content-Plan der Woche", () => refreshWeeklyContent(t));
+        await step(t, "Eigene Produkte (Keepa)", () => refreshOwnProducts(t));
+        await step(t, "Box-Vorschläge", () => autoBoxes(t));
       }
       if (force || due(`${t}:mail`, 14)) {
-        await step("Postfächer", () => syncAllMailboxes(t));
-        await step("Antworten auf Einkaufsanfragen", () => detectReplies(t));
-        await step("Nachfassen bei Einkaufsanfragen", () => autoFollowUps(t));
-        await step("Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
+        await step(t, "Postfächer", () => syncAllMailboxes(t));
+        await step(t, "Antworten auf Einkaufsanfragen", () => detectReplies(t));
+        await step(t, "Nachfassen bei Einkaufsanfragen", () => autoFollowUps(t));
+        await step(t, "Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
       }
       if (await has("amazon_sp")) {
-        if (force || due(`${t}:amz-orders`, 4)) await step("Amazon-Bestellungen", () => syncFbmOrders(t));
+        if (force || due(`${t}:amz-orders`, 4)) await step(t, "Amazon-Bestellungen", () => syncFbmOrders(t));
         if (force || due(`${t}:amz-reports`, 14)) {
-          await step("Amazon-Reports abholen", () => processPendingReports(t));
-          await step("Amazon-Reports anfordern", () => scheduleReports(t));
+          await step(t, "Amazon-Reports abholen", () => processPendingReports(t));
+          await step(t, "Amazon-Reports anfordern", () => scheduleReports(t));
         }
-        if (force || due(`${t}:amz-settlements`, 180)) await step("Abrechnungen", () => fetchSettlements(t));
+        if (force || due(`${t}:amz-settlements`, 180)) await step(t, "Abrechnungen", () => fetchSettlements(t));
       }
       if (await ebayConnected(t)) {
-        if (force || due(`${t}:ebay-orders`, 4)) await step("eBay-Bestellungen", () => syncEbayOrders(t));
+        if (force || due(`${t}:ebay-orders`, 4)) await step(t, "eBay-Bestellungen", () => syncEbayOrders(t));
         if (force || due(`${t}:ebay`, 14)) {
           const edb = ebayDb(t);
-          await step("eBay-Rechnungen", () => runInvoiceAutomation(edb, invoiceDeps(edb, t)));
-          await step("eBay-Angebote in die Wawi", () => adoptEbayAttempts(t));
+          await step(t, "eBay-Rechnungen", () => runInvoiceAutomation(edb, invoiceDeps(edb, t)));
+          await step(t, "eBay-Angebote in die Wawi", () => adoptEbayAttempts(t));
           // Laufende eBay-Angebote ohne Wawi-Bestand: Bestand aus der eBay-Menge anlegen.
-          await step("eBay-Bestand in die Wawi", () => ensureEbayStock(t));
+          await step(t, "eBay-Bestand in die Wawi", () => ensureEbayStock(t));
         }
         // idealo einmal am Tag – läuft im Hintergrund weiter, damit die übrigen Abrufe nicht warten.
-        if (due(`${t}:idealo`, 60)) void step("idealo-Preise", () => runIdealoDaily(ebayDb(t)));
+        if (due(`${t}:idealo`, 60)) void step(t, "idealo-Preise", () => runIdealoDaily(ebayDb(t)));
         // Angebote prüfen: einmal am Tag neu laden, Ungeprüfte und seit 7 Tagen nicht Geprüfte – im Hintergrund.
-        if (due(`${t}:ebay-review`, 59)) void step("eBay-Angebote prüfen", () => reviewDue(t));
+        if (due(`${t}:ebay-review`, 59)) void step(t, "eBay-Angebote prüfen", () => reviewDue(t));
       }
       if (await temuConnected(t)) {
-        if (force || due(`${t}:temu-orders`, 4)) await step("Temu-Bestellungen", () => syncTemuOrders(t));
+        if (force || due(`${t}:temu-orders`, 4)) await step(t, "Temu-Bestellungen", () => syncTemuOrders(t));
         // Neue Temu-Angebote: Stand bei Temu (unvollständig, Entwurf → aktiv, dann Bestandsabgleich).
-        if (force || due(`${t}:temu-goods`, 29)) await step("Temu-Angebote", () => refreshTemuListings(t));
+        if (force || due(`${t}:temu-goods`, 29)) await step(t, "Temu-Angebote", () => refreshTemuListings(t));
         // Per Excel-Vorlage oder Shop-Synchronisierung eingestellte Temu-Produkte über die SKU verknüpfen.
-        if (force || due(`${t}:temu-link`, 359)) await step("Temu-Produkte verknüpfen", () => linkTemuBySku(t));
+        if (force || due(`${t}:temu-link`, 359)) await step(t, "Temu-Produkte verknüpfen", () => linkTemuBySku(t));
       }
       // eBay-Angebote übernehmen: liegengebliebene Aufträge (z. B. nach einem Neustart) fortsetzen.
-      if (force || due(`${t}:ebay-transfers`, 5)) await step("eBay-Übernahme", () => runTransfers(t));
+      if (force || due(`${t}:ebay-transfers`, 5)) await step(t, "eBay-Übernahme", () => runTransfers(t));
       // Preislisten per Link (alle X Std je Feed), danach Amazon-Daten für Neues/Geändertes – im Keepa-Budget.
-      if (force || due(`${t}:feeds`, 29)) await step("Lieferanten-Preislisten", () => pullDueFeeds(t));
+      if (force || due(`${t}:feeds`, 29)) await step(t, "Lieferanten-Preislisten", () => pullDueFeeds(t));
       // Fehlende Markenlisten aus dem Verpackungsregister: langsam, im Hintergrund, pausiert bei Drosselung.
-      if (due(`${t}:lucid-brands`, 29)) void step("Markenlisten Verpackungsregister", () => loadMissingBrands(t, { limit: 80 }));
+      if (due(`${t}:lucid-brands`, 29)) void step(t, "Markenlisten Verpackungsregister", () => loadMissingBrands(t, { limit: 80 }));
       if (force || due(`${t}:keepa-feeds`, 59)) {
-        await step("Keepa-Abgleich Lieferanten", () => refreshMarket(t));
+        await step(t, "Keepa-Abgleich Lieferanten", () => refreshMarket(t));
         // Von Hand Gezogenes (Seller-Knopf) einmal prüfen – nur mit den Tokens, die danach übrig sind.
-        await step("Gezogenes einmal prüfen", () => continueManualCheck(t));
+        await step(t, "Gezogenes einmal prüfen", () => continueManualCheck(t));
       }
       // Nach dem Bestellabruf: neue Aufträge reservieren Ware → alle Kanäle auf den verfügbaren Bestand.
-      if (force || due(`${t}:stock-sync`, 4)) await step("Bestandsabgleich Kanäle", () => syncChannelStock(t));
-      if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step("Kalender", () => syncCalendar(t));
-      if (force || due(`${t}:research`, 59)) await step("Themen-Recherche", () => runResearchIfDue(t));
-      if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step("Rechnungen", () => syncDrive(t, 100));
+      if (force || due(`${t}:stock-sync`, 4)) await step(t, "Bestandsabgleich Kanäle", () => syncChannelStock(t));
+      if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step(t, "Kalender", () => syncCalendar(t));
+      if (force || due(`${t}:research`, 59)) await step(t, "Themen-Recherche", () => runResearchIfDue(t));
+      if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step(t, "Rechnungen", () => syncDrive(t, 100));
       // EK-Liste für AccountOne (tax.fish braucht die EKs für PAN-EU-Verbringungen): Erinnerung bei Neuem, höchstens alle 4 Wochen.
-      if (force || due(`${t}:cog-reminder`, 720)) await step("EK-Liste AccountOne", () => cogReminder(t));
+      if (force || due(`${t}:cog-reminder`, 720)) await step(t, "EK-Liste AccountOne", () => cogReminder(t));
       // Ausgangsrechnungen (eBay + B2B) an Stotax Select – neue sofort, Fehlgeschlagene nach einer Stunde erneut.
       if (await has("stotax"))
         if (force || due(`${t}:stotax`, 14)) {
-          await step("Rechnungen an Stotax", () => sendPendingToStotax(t));
-          await step("Belege an Stotax", () => sendPendingReceipts(t));
+          await step(t, "Rechnungen an Stotax", () => sendPendingToStotax(t));
+          await step(t, "Belege an Stotax", () => sendPendingReceipts(t));
         }
       // Paletten-Lager: Erinnerungen (freie Zeit endet, lange Standzeit) und Monatsaufstellungen am Monatsanfang.
       if (force || due(`${t}:pallets`, 59)) {
-        await step("Paletten-Erinnerungen", () => refreshPalletReminders(t, todayIso()));
-        await step("Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
+        await step(t, "Paletten-Erinnerungen", () => refreshPalletReminders(t, todayIso()));
+        await step(t, "Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
       }
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);
-        await step("Ansprüche", () => syncClaims(t));
-        await step("Bestandswarnungen", () => refreshStockWarnings(t));
-        await step("Service", () => refreshServiceTasks(t));
-        await step("Rechnungsaufgaben", () => refreshInvoiceTasks(t));
-        await step("Import-Erinnerung", () => refreshImportReminder(t, s.importReminderDays));
+        await step(t, "Ansprüche", () => syncClaims(t));
+        await step(t, "Bestandswarnungen", () => refreshStockWarnings(t));
+        await step(t, "Service", () => refreshServiceTasks(t));
+        await step(t, "Rechnungsaufgaben", () => refreshInvoiceTasks(t));
+        await step(t, "Import-Erinnerung", () => refreshImportReminder(t, s.importReminderDays));
       }
     }
     return { skipped: false };

@@ -3,6 +3,7 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { ImportForm } from "./import-form";
+import { dataAreas } from "@/lib/today/service";
 
 const SOURCES: { name: string; where: string }[] = [
   { name: "Arbitrage One – Vorlage „Tool“, AccountOne COG, Sellerboard-Export", where: "Arbitrage One → Export" },
@@ -25,9 +26,10 @@ const LABELS: Record<string, string> = { ...REPORT_KINDS, sellerboard: "Arbitrag
 
 export default async function ImportPage() {
   const session = await requireSession();
-  const [runs, reports] = await Promise.all([
+  const [runs, reports, areas] = await Promise.all([
     db.select().from(schema.importRuns).where(eq(schema.importRuns.tenantId, session.tenantId)).orderBy(desc(schema.importRuns.createdAt)).limit(15),
     db.select().from(schema.reportImports).where(eq(schema.reportImports.tenantId, session.tenantId)).orderBy(desc(schema.reportImports.createdAt)).limit(30),
+    dataAreas(session.tenantId),
   ]);
   const history = [
     ...runs.map((r) => ({ at: r.createdAt, type: r.source, file: r.fileName, rows: (r.stats as { rows?: number }).rows ?? 0, inserted: (r.stats as { created?: number }).created ?? 0, via: "upload" })),
@@ -39,6 +41,25 @@ export default async function ImportPage() {
       <div className="page-head"><div><div className="crumb">Daten</div><h1>Daten importieren</h1></div></div>
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
+          <section className="card" id="datenstand" data-testid="data-areas" style={{ overflow: "auto" }}>
+            <div className="card-head"><h2>Datenstand je Bereich</h2></div>
+            <div className="card-pad small muted" style={{ paddingTop: 0 }}>Letzter Stand je Bericht bzw. Abruf – egal ob hochgeladen oder automatisch über die Schnittstelle geholt. Veraltet = älter als üblich für diesen Bericht.</div>
+            <table className="table">
+              <thead><tr><th>Bereich</th><th>Zuletzt</th><th>Weg</th><th>Zustand</th></tr></thead>
+              <tbody>
+                {areas.map((a) => (
+                  <tr key={a.key} data-testid="data-area">
+                    <td>{a.label}</td>
+                    <td className="num">{a.last ? a.last.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "–"}</td>
+                    <td className="small">{a.key.startsWith("job:") ? "Hintergrund-Abruf" : a.key === "uploads" ? "Upload" : a.via === "api" ? "Schnittstelle" : a.last ? "Upload" : "–"}</td>
+                    <td>
+                      {a.error ? <span className="tag tag-danger" title={a.error}>Fehler: {a.error.slice(0, 80)}</span> : a.missing ? <span className="tag tag-warn">fehlt</span> : a.stale ? <span className="tag tag-warn">älter als {a.maxAgeDays} Tag{a.maxAgeDays === 1 ? "" : "e"}</span> : <span className="tag tag-ok">aktuell</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
           <ImportForm />
           <section className="card" style={{ overflow: "auto" }}>
             <div className="card-head"><h2>Letzte Importe</h2></div>

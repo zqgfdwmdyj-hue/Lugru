@@ -153,6 +153,14 @@ export type TenantSettings = {
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };
 
+/** Persönliche Einstellungen (memberships.prefs). */
+export type MemberPrefs = {
+  /** Favoriten in der Navigation und auf der Startseite (Pfad mit Abfrage, Bezeichnung). */
+  favorites?: { href: string; label: string }[];
+  /** Kalender, die auf der Startseite nicht erscheinen sollen (z. B. private). */
+  hiddenCalendars?: string[];
+};
+
 export const tenants = pgTable("tenants", {
   id: id(),
   name: text("name").notNull(),
@@ -199,6 +207,8 @@ export const memberships = pgTable(
      * „familie“ = nur gemeinsame Familieninfos (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten).
      */
     privateScope: text("private_scope", { enum: ["voll", "familie"] }).notNull().default("voll"),
+    /** Persönliche Einstellungen je Person und Firma: Favoriten, ausgeblendete Kalender auf der Startseite. */
+    prefs: jsonb("prefs").$type<MemberPrefs>().notNull().default({}),
     /** Optionale PIN für „Privat“ (bcrypt). */
     privatePinHash: text("private_pin_hash"),
     createdAt: createdAt(),
@@ -419,4 +429,18 @@ export const knowledgeEntries = pgTable(
       sql`to_tsvector('german', ${t.title} || ' ' || ${t.body})`,
     ),
   ],
+);
+
+/** Hintergrund-Abrufe: wann zuletzt erfolgreich, wann zuletzt mit Fehler – für den Datenstand je Bereich. */
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.name] })],
 );
