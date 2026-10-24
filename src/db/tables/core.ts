@@ -194,6 +194,11 @@ export const memberships = pgTable(
      * wenn ausdrücklich vergeben – „alle Bereiche“ schließt ihn nicht ein.
      */
     privateAccess: boolean("private_access").notNull().default(false),
+    /**
+     * Umfang von „Privat“: „voll“ = alles (Partnerschaft, Gesundheit, Therapie, Familie),
+     * „familie“ = nur gemeinsame Familieninfos (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten).
+     */
+    privateScope: text("private_scope", { enum: ["voll", "familie"] }).notNull().default("voll"),
     /** Optionale PIN für „Privat“ (bcrypt). */
     privatePinHash: text("private_pin_hash"),
     createdAt: createdAt(),

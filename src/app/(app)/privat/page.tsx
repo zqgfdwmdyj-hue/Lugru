@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, nextSleeper, routineState, taskState, type AppointmentEntry, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
+import { careOverview, dateReminder, type PrivateSettings, dateStats, intimStats, kidsOverview, nextSleeper, routineState, taskState, type AppointmentEntry, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
+import type { Session } from "@/lib/auth/session";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { toggleTaskAction } from "./actions";
 import { IntakeCard } from "./intake";
 import { PrivatHead, dmy, hoursLabel, monthLabel, weekday } from "./ui";
 
-export default async function PrivatStartPage() {
+export default async function PrivatStartPage({ searchParams }: { searchParams: Promise<{ nurfamilie?: string }> }) {
   const session = await requirePrivate();
   const today = todayIso();
   const month = today.slice(0, 7);
   const s = await privateSettings(session.tenantId);
+  if (session.privateScope === "familie") return <FamilyOverview session={session} settings={s} today={today} blocked={(await searchParams).nurfamilie === "1"} />;
   const [intim, kids, tasks, appts, diary, dates, sleep] = await Promise.all([
     loadEntries<IntimEntry>(session, ["intim"]),
     loadEntries<KidsEntry>(session, ["kinder"]),
@@ -113,6 +115,46 @@ export default async function PrivatStartPage() {
           <Link className="small" href="/privat/wissen">Wichtig in der Einstellungsphase & Warnzeichen →</Link>
         </section>
       </div>
+    </>
+  );
+}
+
+/** Übersicht für Umfang „nur Familie“: Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten – sonst nichts. */
+async function FamilyOverview({ session, settings: s, today, blocked }: { session: Session; settings: PrivateSettings; today: string; blocked: boolean }) {
+  const month = today.slice(0, 7);
+  const [kids, sleep, timeout, care] = await Promise.all([
+    loadEntries<KidsEntry>(session, ["kinder"]),
+    loadEntries<SleepEntry>(session, ["ausschlafen"]),
+    loadEntries<SleepEntry>(session, ["auszeit"]),
+    loadEntries<CareTask>(session, ["zustaendig"]),
+  ]);
+  const ko = kidsOverview(kids.map((e) => e.data), month);
+  const so = kidsOverview(sleep.map((e) => e.data), month);
+  const to = kidsOverview(timeout.map((e) => e.data), month);
+  const due = careOverview(care.map((e) => e.data), today).due;
+  const Card = ({ href, label, a, b, testid }: { href: string; label: string; a: string; b: string; testid?: string }) => (
+    <Link href={href} className="card card-pad" style={{ color: "inherit", textDecoration: "none" }} data-testid={testid}>
+      <div className="kpi-label">{label} · {monthLabel(month)}</div>
+      <div className="kpi-value" style={{ fontSize: 20 }}>{s.partners.a} {a}</div>
+      <div className="kpi-value" style={{ fontSize: 20 }}>{s.partners.b} {b}</div>
+    </Link>
+  );
+  return (
+    <>
+      <PrivatHead active="start" title="Privat · Familie" pin={session.privatePin} />
+      {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
+      <div className="grid-kpi">
+        <Card href="/privat/kinder" label="Kinderzeit" a={hoursLabel(ko.totals.a.hours)} b={hoursLabel(ko.totals.b.hours)} />
+        <Card href="/privat/ausschlafen" label="😴 Ausschlafen" a={`${so.totals.a.count}×`} b={`${so.totals.b.count}×`} />
+        <Card href="/privat/auszeit" label="Auszeit" a={`${to.totals.a.count}×`} b={`${to.totals.b.count}×`} />
+      </div>
+      <section className="card card-pad stack">
+        <h2>Wer kümmert sich – demnächst</h2>
+        {due.length === 0 ? <div className="small muted">Nichts fällig in den nächsten 7 Tagen.</div> : (
+          <ul style={{ margin: 0, paddingLeft: 18 }}>{due.map((t) => <li key={t.title} className="small">{t.title}{t.next ? ` · ${dmy(t.next)}` : ""}</li>)}</ul>
+        )}
+        <Link className="small" href="/privat/familie">Alle Zuständigkeiten →</Link>
+      </section>
     </>
   );
 }

@@ -9,7 +9,7 @@ import { Choice, PrivatHead, Rating, dm, dmy, hoursLabel, monthLabel, weekday } 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 export default async function PaarPage({ searchParams }: { searchParams: Promise<{ monat?: string; tag?: string }> }) {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const today = todayIso();
   const month = sp.monat && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.monat) ? sp.monat : today.slice(0, 7);

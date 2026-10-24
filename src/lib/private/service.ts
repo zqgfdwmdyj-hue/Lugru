@@ -19,14 +19,23 @@ export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "aus
 const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung"]);
 /** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
 const PERSONAL_KINDS = new Set<string>(["medplan", "routine"]);
+/** Was Personen mit Umfang „familie“ sehen und eintragen dürfen – gemeinsame Familieninfos, sonst nichts. */
+export const FAMILY_KINDS = new Set<PrivateKind>(["kinder", "ausschlafen", "auszeit", "zustaendig"]);
+
+/** Darf diese Sitzung Einträge dieser Art sehen bzw. anlegen? (Umfang „familie“ nur Familieninfos.) */
+export function kindAllowed(session: Pick<Session, "privateScope">, kind: PrivateKind): boolean {
+  return session.privateScope !== "familie" || FAMILY_KINDS.has(kind);
+}
 
 /**
  * Für alle Seiten und Aktionen in „Privat“: Zugang nötig, mit PIN zusätzlich entsperrt.
  * `allowLocked` nur für die Entsperr-Seite selbst.
  */
-export async function requirePrivate(opts: { allowLocked?: boolean } = {}): Promise<Session> {
+export async function requirePrivate(opts: { allowLocked?: boolean; full?: boolean } = {}): Promise<Session> {
   const session = await requireSession();
   if (!session.privateAccess) redirect(`${homeFor(session)}?gesperrt=1`);
+  // Partnerschaft, Gesundheit, Therapie: nur mit vollem Umfang – direkt aufgerufene Links eingeschlossen.
+  if (opts.full && session.privateScope === "familie") redirect("/privat?nurfamilie=1");
   if (session.privatePin && !opts.allowLocked) {
     const until = session.privateUnlockedUntil?.getTime() ?? 0;
     if (until <= Date.now()) redirect("/privat/entsperren");
@@ -43,10 +52,11 @@ export type Entry<T = Record<string, unknown>> = { id: string; userId: string; k
 /** Alle Personen mit Privat-Zugang dieser Firma (für Namen und Freigaben). */
 export async function privateMembers(tenantId: string) {
   return db
-    .select({ userId: schema.users.id, name: schema.users.name, login: schema.users.email })
+    .select({ userId: schema.users.id, name: schema.users.name, login: schema.users.email, scope: schema.memberships.privateScope })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
-    .where(and(eq(schema.memberships.tenantId, tenantId), eq(schema.memberships.privateAccess, true)));
+    // Nur-ansehen-Konten zählen nie dazu (sie bekommen „Privat“ nicht, auch mit Freigabe).
+    .where(and(eq(schema.memberships.tenantId, tenantId), eq(schema.memberships.privateAccess, true), eq(schema.memberships.readOnly, false)));
 }
 
 export async function privateSettings(tenantId: string): Promise<PrivateSettings & { id: string | null }> {
@@ -61,6 +71,7 @@ export async function privateSettings(tenantId: string): Promise<PrivateSettings
     userPartner: d.userPartner ?? {},
     wakeTime: d.wakeTime ?? DEFAULT_PRIVATE_SETTINGS.wakeTime,
     dateReminderDays: typeof d.dateReminderDays === "number" ? d.dateReminderDays : DEFAULT_PRIVATE_SETTINGS.dateReminderDays,
+    startHint: d.startHint ?? {},
   };
 }
 
@@ -87,6 +98,7 @@ export function myPartner(s: PrivateSettings, session: Pick<Session, "userId" | 
  * die über mich. Alles andere teilen sich alle mit Privat-Zugang.
  */
 export async function loadEntries<T = Record<string, unknown>>(session: Session, kinds: PrivateKind[]): Promise<Entry<T>[]> {
+  kinds = kinds.filter((k) => kindAllowed(session, k));
   if (!kinds.length) return [];
   const rows = await db.select().from(E).where(and(eq(E.tenantId, session.tenantId), inArray(E.kind, kinds)));
   const settings = kinds.includes("tagebuch") ? await privateSettings(session.tenantId) : null;
@@ -101,11 +113,13 @@ export async function loadEntries<T = Record<string, unknown>>(session: Session,
 }
 
 export async function addEntry(session: Session, kind: PrivateKind, data: Record<string, unknown>) {
+  if (!kindAllowed(session, kind)) throw new Error("Dafür reicht der Privat-Zugang nicht.");
   const [row] = await db.insert(E).values({ tenantId: session.tenantId, userId: session.userId, kind, data }).returning({ id: E.id });
   return row.id;
 }
 
 async function ownEntry(session: Session, id: string, kind: PrivateKind) {
+  if (!kindAllowed(session, kind)) return null;
   const [row] = await db.select().from(E).where(and(eq(E.id, id), eq(E.tenantId, session.tenantId), eq(E.kind, kind)));
   if (!row) return null;
   if (OWN_KINDS.has(kind) && row.userId !== session.userId) return null;

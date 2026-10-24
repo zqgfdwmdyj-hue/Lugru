@@ -23,6 +23,8 @@ export type Session = {
   readOnly: boolean;
   /** Zugang zu „Privat“; mit PIN nur offen, solange `privateUnlockedUntil` in der Zukunft liegt. */
   privateAccess: boolean;
+  /** „voll“ oder nur „familie“ (gemeinsame Familieninfos). */
+  privateScope: "voll" | "familie";
   privatePin: boolean;
   privateUnlockedUntil: Date | null;
   sessionId: string;
@@ -68,6 +70,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       brandIds: schema.memberships.brandIds,
       readOnly: schema.memberships.readOnly,
       privateAccess: schema.memberships.privateAccess,
+      privateScope: schema.memberships.privateScope,
       privatePinHash: schema.memberships.privatePinHash,
       privateUnlockedUntil: schema.sessions.privateUnlockedUntil,
       sessionId: schema.sessions.id,
@@ -86,8 +89,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
   if (!row) return null;
   touchLastSeen(row.userId);
   const { privatePinHash, ...rest } = row;
-  // Inhaber sind nie „nur ansehen“.
-  return { ...rest, privatePin: Boolean(privatePinHash), readOnly: row.role === "staff" && row.readOnly };
+  // Inhaber sind nie „nur ansehen“. Nur-ansehen-Konten bekommen „Privat“ nie (auch nicht mit Freigabe).
+  const readOnly = row.role === "staff" && row.readOnly;
+  return { ...rest, privatePin: Boolean(privatePinHash), readOnly, privateAccess: row.privateAccess && !readOnly };
 });
 
 // „Zuletzt aktiv“ höchstens alle 5 Minuten je Benutzer schreiben – nicht bei jeder Anfrage.

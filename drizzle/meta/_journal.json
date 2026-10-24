@@ -337,6 +337,13 @@
       "when": 1792832120116,
       "tag": "0047_ebay_pruefen",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792833497433,
+      "tag": "0048_privat_umfang",
+      "breakpoints": true
     }
   ]
 }

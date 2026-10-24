@@ -11,7 +11,7 @@ const TEMPLATES = [
 ];
 
 export default async function RoutinenPage() {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   const today = todayIso();
   const routines = (await loadEntries<Routine>(session, ["routine"])).filter((e) => e.userId === session.userId).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const existing = new Set(routines.map((r) => r.data.title));

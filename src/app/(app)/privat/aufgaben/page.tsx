@@ -6,7 +6,7 @@ import { StateForm } from "../state-form";
 import { Choice, PrivatHead, dm, dmy, hoursLabel, weekday } from "../ui";
 
 export default async function AufgabenPage() {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   const today = todayIso();
   const s = await privateSettings(session.tenantId);
   const me = myPartner(s, session);

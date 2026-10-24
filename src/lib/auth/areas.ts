@@ -37,11 +37,12 @@ export function areaForPath(pathname: string): AreaKey | null {
   return null;
 }
 
-export type Access = { role: "owner" | "staff"; areas: string[] | null; privateAccess?: boolean };
+export type Access = { role: "owner" | "staff"; areas: string[] | null; privateAccess?: boolean; readOnly?: boolean };
 
 /** Inhaber und Mitarbeiter ohne Einschränkung dürfen alles – außer „Privat“, das braucht den eigenen Zugang. */
 export function canAccess(a: Access, area: AreaKey | null): boolean {
-  if (area === "privat") return a.privateAccess === true;
+  // Nur-ansehen-Konten (Prüfer, Testzugang) nie – auch wenn „Privat“ versehentlich freigegeben ist.
+  if (area === "privat") return a.privateAccess === true && a.readOnly !== true;
   if (area === null || a.role === "owner" || a.areas === null) return true;
   // Lieferanten-Feeds und Artikelstamm hängen an der WaWi – wer WaWi hat, sieht sie mit.
   return a.areas.includes(area) || ((area === "lieferanten" || area === "artikel") && a.areas.includes("wawi"));
@@ -50,7 +51,7 @@ export function canAccess(a: Access, area: AreaKey | null): boolean {
 /** Wohin nach dem Login bzw. bei einem gesperrten Bereich? */
 export function homeFor(a: Access): string {
   if (a.role === "owner" || a.areas === null || a.areas.includes("start")) return "/";
-  return STAFF_AREAS.find((x) => a.areas!.includes(x.key))?.home ?? (a.privateAccess ? "/privat" : "/kein-zugriff");
+  return STAFF_AREAS.find((x) => a.areas!.includes(x.key))?.home ?? (canAccess(a, "privat") ? "/privat" : "/kein-zugriff");
 }
 
 /** Marken, die ein Mitarbeiter sehen darf: null = alle. */

@@ -8,7 +8,7 @@ import { PrivatHead, dm, dmy } from "../../ui";
 const n = (v: number | null | undefined, unit = "") => (v === null || v === undefined ? "–" : `${String(v).replace(".", ",")}${unit}`);
 
 export default async function TagebuchBerichtPage({ searchParams }: { searchParams: Promise<{ von?: string; ab?: string; bis?: string }> }) {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const today = todayIso();
   const to = isDay(sp.bis) ? sp.bis! : today;

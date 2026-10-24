@@ -216,14 +216,23 @@ export async function updateAccess(_prev: UserState, fd: FormData): Promise<User
   return { ok: true, message: (areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.`) + ro };
 }
 
-/** Zugang zum Bereich „Privat“ vergeben oder entziehen – auch für Inhaber nur ausdrücklich. */
+/**
+ * Zugang zum Bereich „Privat“: aus, nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten) oder voll –
+ * auch für Inhaber nur ausdrücklich. Nur-ansehen-Konten bekommen ihn nie.
+ */
 export async function setPrivateAccess(fd: FormData) {
   const session = await requireOwner();
   const userId = z.string().uuid().parse(fd.get("userId"));
-  const on = fd.get("on") === "1";
+  const level = z.enum(["aus", "familie", "voll"]).parse(fd.get("level") ?? (fd.get("on") === "1" ? "voll" : "aus"));
+  const [m] = await db
+    .select({ role: schema.memberships.role, readOnly: schema.memberships.readOnly })
+    .from(schema.memberships)
+    .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  if (!m) return;
+  const on = level !== "aus" && !(m.role === "staff" && m.readOnly);
   await db
     .update(schema.memberships)
-    .set({ privateAccess: on, ...(on ? {} : { privatePinHash: null }) })
+    .set({ privateAccess: on, ...(on ? { privateScope: level as "familie" | "voll" } : { privatePinHash: null }) })
     .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
   if (!on) await db.update(schema.sessions).set({ privateUnlockedUntil: null }).where(and(eq(schema.sessions.tenantId, session.tenantId), eq(schema.sessions.userId, userId)));
   revalidatePath("/", "layout");

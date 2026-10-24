@@ -47,8 +47,19 @@ export async function savePinAction(_prev: FormState, fd: FormData): Promise<For
   return done(next ? "PIN gespeichert – „Privat“ fragt ab jetzt danach (30 Minuten offen, dann wieder gesperrt)." : "PIN entfernt.");
 }
 
-export async function saveSettingsAction(_prev: FormState, fd: FormData): Promise<FormState> {
+/** Was von „Privat“ auf der geschäftlichen Startseite erscheint – je Person, auch mit Umfang „familie“. */
+export async function saveStartHintAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const session = await requirePrivate();
+  const v = String(fd.get("startHint") ?? "");
+  if (v !== "aus" && v !== "link" && v !== "hinweise") return fail("Bitte eine Auswahl treffen.");
+  const cur = await privateSettings(session.tenantId);
+  await savePrivateSettings(session, { startHint: { ...cur.startHint, [session.userId]: v } });
+  revalidatePath("/");
+  return done(v === "aus" ? "Startseite zeigt nichts von Privat." : v === "link" ? "Startseite zeigt nur den Link „Privat“." : "Startseite zeigt Hinweise aus Privat.");
+}
+
+export async function saveSettingsAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate({ full: true });
   const cur = await privateSettings(session.tenantId);
   const a = clip(fd.get("partnerA"), 40);
   const b = clip(fd.get("partnerB"), 40);

@@ -10,8 +10,11 @@ import { loadEntries, myMedPlan, privateSettings } from "@/lib/private/service";
  */
 export async function PrivateHint({ session }: { session: Session }) {
   if (!session.privateAccess) return null;
+  const mode = (await privateSettings(session.tenantId)).startHint[session.userId] ?? "link";
+  if (mode === "aus") return null;
   const locked = session.privatePin && (session.privateUnlockedUntil?.getTime() ?? 0) <= Date.now();
-  if (locked) {
+  // Standard: nur der Link, ohne Inhalte. Hinweise nur, wenn ausdrücklich gewählt (und nicht mit PIN gesperrt).
+  if (locked || mode === "link" || session.privateScope === "familie") {
     return <Link href="/privat" className="small" data-testid="private-hint" style={{ alignSelf: "flex-start" }}>🔒 Privat</Link>;
   }
   const today = todayIso();

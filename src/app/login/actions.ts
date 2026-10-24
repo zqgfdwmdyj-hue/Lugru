@@ -53,7 +53,7 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   await db.update(schema.users).set({ lastLoginAt: now, lastSeenAt: now }).where(eq(schema.users.id, user.id));
   await createSession(user.id, membership.tenantId);
   // Gleich auf die eigene Startseite (z. B. nur Paletten-Lager oder nur Privat), ohne „gesperrt“-Umweg.
-  redirect(homeFor({ role: membership.role, areas: membership.areas ?? null, privateAccess: membership.privateAccess }));
+  redirect(homeFor({ role: membership.role, areas: membership.areas ?? null, privateAccess: membership.privateAccess, readOnly: membership.role === "staff" && membership.readOnly }));
 }
 
 export async function logout() {

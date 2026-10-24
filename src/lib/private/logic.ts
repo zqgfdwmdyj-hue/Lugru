@@ -15,7 +15,13 @@ export type PrivateSettings = {
   wakeTime: string;
   /** Hinweis „mal wieder ein Date?“ nach so vielen Tagen ohne Paarzeit (0 = aus). */
   dateReminderDays: number;
+  /**
+   * Je Benutzer: was auf der geschäftlichen Startseite von „Privat“ erscheint – „aus“, nur der Link
+   * (Standard, keine Inhalte) oder Hinweise (Tagebuch offen, Termin, Rezept …).
+   */
+  startHint: Record<string, StartHint>;
 };
+export type StartHint = "aus" | "link" | "hinweise";
 export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   partners: { a: "Ludwig", b: "Alexandra" },
   kids: [],
@@ -24,6 +30,7 @@ export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   userPartner: {},
   wakeTime: "06:30",
   dateReminderDays: 21,
+  startHint: {},
 };
 
 export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey | "beide"; closeness?: Ratings; note?: string };

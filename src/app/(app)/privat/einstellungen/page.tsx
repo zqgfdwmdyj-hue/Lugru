@@ -1,5 +1,5 @@
 import { myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
-import { deleteAllAction, savePinAction, saveSettingsAction } from "../actions";
+import { deleteAllAction, savePinAction, saveSettingsAction, saveStartHintAction } from "../actions";
 import { StateForm } from "../state-form";
 import { Choice, PrivatHead } from "../ui";
 
@@ -12,6 +12,23 @@ export default async function PrivatEinstellungenPage() {
     <>
       <PrivatHead active="einstellungen" title="Einstellungen" pin={session.privatePin} />
 
+      <section className="card card-pad stack" data-testid="start-hint">
+        <h2>Auf der geschäftlichen Startseite</h2>
+        <StateForm action={saveStartHintAction} submit="Speichern" testid="start-hint-form" keep>
+          <Choice
+            name="startHint"
+            value={s.startHint[session.userId] ?? "link"}
+            options={[
+              { value: "aus", label: "nichts anzeigen" },
+              { value: "link", label: "nur Link „Privat“" },
+              ...(session.privateScope === "voll" ? [{ value: "hinweise", label: "Hinweise (Tagebuch, Termine, Rezept)" }] : []),
+            ]}
+          />
+          <div className="small muted">Gilt nur für dich. Standard ist „nur Link“ – dann sieht auf der Startseite niemand Inhalte aus Privat, auch nicht, wer dir über die Schulter schaut.</div>
+        </StateForm>
+      </section>
+
+      {session.privateScope === "voll" && (
       <section className="card card-pad stack">
         <h2>Namen</h2>
         <StateForm action={saveSettingsAction} submit="Speichern" testid="priv-settings" keep>
@@ -35,6 +52,7 @@ export default async function PrivatEinstellungenPage() {
           </label>
         </StateForm>
       </section>
+      )}
 
       <section className="card card-pad stack">
         <h2>PIN-Sperre {session.privatePin ? <span className="tag tag-ok">an</span> : <span className="tag">aus</span>}</h2>
@@ -71,10 +89,10 @@ export default async function PrivatEinstellungenPage() {
       <section className="card card-pad stack">
         <h2>Wer hat Zugang</h2>
         <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {members.map((m) => <li key={m.userId}>{m.name ?? m.login}{m.userId === session.userId ? " (du)" : ""}</li>)}
+          {members.map((m) => <li key={m.userId}>{m.name ?? m.login}{m.userId === session.userId ? " (du)" : ""}{m.scope === "familie" ? " – nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten)" : ""}</li>)}
         </ul>
         <div className="small muted">
-          Freigeben oder entziehen kann der Inhaber unter Einstellungen → Benutzer („Privat freigeben“). Der Zugang ist nie in „alle Bereiche“ enthalten – auch nicht für Inhaber.
+          Freigeben oder entziehen kann der Inhaber unter Einstellungen → Benutzer („Privat“: voll oder nur Familie). Der Zugang ist nie in „alle Bereiche“ enthalten – auch nicht für Inhaber –, und Nur-ansehen-Konten bekommen ihn nie.
           Alle Einträge liegen verschlüsselt in der Datenbank (auch in Sicherungen), werden mit nichts abgeglichen (kein Kalender, keine Aufgabenliste, keine KI) und nirgends sonst angezeigt.
         </div>
       </section>

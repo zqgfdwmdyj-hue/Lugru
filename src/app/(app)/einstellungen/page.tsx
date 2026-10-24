@@ -32,7 +32,7 @@ export default async function EinstellungenPage() {
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -187,13 +187,22 @@ export default async function EinstellungenPage() {
                   )}
                 </td>
                 <td className="right">
-                  <form action={setPrivateAccess} style={{ marginBottom: 4 }} data-testid="private-access">
-                    <input type="hidden" name="userId" value={m.userId} />
-                    <input type="hidden" name="on" value={m.privateAccess ? "0" : "1"} />
-                    <button className="btn-link small" type="submit" title="Bereich „Privat“ (Paar, Kinder, Therapie, Tagebuch) – wird einzeln vergeben, auch für Inhaber">
-                      {m.privateAccess ? "🔒 Privat: ja – entziehen" : "Privat freigeben"}
-                    </button>
-                  </form>
+                  {m.readOnly ? (
+                    <div className="small muted" style={{ marginBottom: 4 }} data-testid="private-access-readonly" title="Nur-ansehen-Konten bekommen „Privat“ nie – auch nicht, wenn es früher freigegeben wurde.">
+                      🔒 Privat: gesperrt (nur ansehen)
+                    </div>
+                  ) : (
+                    <form action={setPrivateAccess} style={{ marginBottom: 4, display: "inline-flex", gap: 4, alignItems: "center" }} data-testid="private-access">
+                      <input type="hidden" name="userId" value={m.userId} />
+                      <label className="small muted" htmlFor={`pa-${m.userId}`}>🔒 Privat</label>
+                      <select className="select" id={`pa-${m.userId}`} name="level" defaultValue={m.privateAccess ? m.privateScope : "aus"} style={{ padding: "3px 6px", fontSize: 13 }} title="Bereich „Privat“ – wird einzeln vergeben, auch für Inhaber. „Nur Familie“: Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten – nichts aus Partnerschaft, Gesundheit oder Therapie.">
+                        <option value="aus">kein Zugang</option>
+                        <option value="familie">nur Familie</option>
+                        <option value="voll">voll</option>
+                      </select>
+                      <button className="btn btn-small" type="submit">ändern</button>
+                    </form>
+                  )}
                   {m.userId !== session.userId && (
                     <div className="stack" style={{ gap: 4, alignItems: "flex-end" }}>
                       <SetPasswordForm userId={m.userId} login={m.email} />

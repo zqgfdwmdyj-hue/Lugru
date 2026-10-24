@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getSession } from "@/lib/auth/session";
 import { lockAction } from "./actions";
 
 const TABS = [
@@ -16,9 +17,13 @@ const TABS = [
   { key: "einstellungen", href: "/privat/einstellungen", label: "Einstellungen" },
 ] as const;
 export type PrivatTab = (typeof TABS)[number]["key"];
+/** Reiter für Personen mit Umfang „familie“ (nur gemeinsame Familieninfos). */
+const FAMILY_TABS = new Set<PrivatTab>(["start", "kinder", "ausschlafen", "auszeit", "familie", "einstellungen"]);
 
 /** Kopf aller Privat-Seiten: Titel, Reiter und – mit PIN – „Sperren“. */
-export function PrivatHead({ active, title, pin, sub }: { active: PrivatTab; title: string; pin: boolean; sub?: React.ReactNode }) {
+export async function PrivatHead({ active, title, pin, sub }: { active: PrivatTab; title: string; pin: boolean; sub?: React.ReactNode }) {
+  const family = (await getSession())?.privateScope === "familie";
+  const tabs = TABS.filter((t) => !family || FAMILY_TABS.has(t.key));
   return (
     <>
       <div className="page-head">
@@ -36,7 +41,7 @@ export function PrivatHead({ active, title, pin, sub }: { active: PrivatTab; tit
         </div>
       </div>
       <nav className="priv-tabs" aria-label="Privat" data-testid="priv-tabs">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <Link key={t.key} href={t.href} className={`chip${t.key === active ? " active" : ""}`} aria-current={t.key === active ? "page" : undefined}>
             {t.label}
           </Link>

@@ -88,7 +88,7 @@ const CARDS: Card[] = [
 ];
 
 export default async function WissenPage() {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   return (
     <>
       <PrivatHead active="wissen" title="Wissen" pin={session.privatePin} />

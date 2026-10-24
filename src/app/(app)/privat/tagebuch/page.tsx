@@ -30,7 +30,7 @@ function Spark({ title, series }: { title: string; series: { day: string; value:
 }
 
 export default async function TagebuchPage({ searchParams }: { searchParams: Promise<{ tag?: string; von?: string }> }) {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const today = todayIso();
   const day = isDay(sp.tag) && sp.tag! <= today ? sp.tag! : today;

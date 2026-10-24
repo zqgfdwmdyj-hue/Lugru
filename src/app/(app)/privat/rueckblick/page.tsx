@@ -10,7 +10,7 @@ const num = (v: number | null) => (v === null ? "–" : String(v).replace(".", "
 
 /** Eine Seite je Monat – zum Ausdrucken oder als PDF für die Therapie. */
 export default async function RueckblickPage({ searchParams }: { searchParams: Promise<{ monat?: string }> }) {
-  const session = await requirePrivate();
+  const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const today = todayIso();
   const month = sp.monat && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.monat) ? sp.monat : today.slice(0, 7);
