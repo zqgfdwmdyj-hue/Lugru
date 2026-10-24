@@ -13,12 +13,20 @@ export function ideaPhase(status: string): Phase {
   return "ideen";
 }
 
-/** Content-Status (idea, filmed, edited, scheduled, published) → Phase; eine Idee mit Datum ist schon geplant. */
-export function contentPhase(status: string, plannedFor: string | null): Phase {
+/**
+ * Content-Status (idea, filmed, edited, scheduled, published) → Phase. Eine eigene Idee mit Datum ist
+ * geplant; ein KI-Vorschlag bleibt eine Idee, bis ihn jemand annimmt – das vorgeschlagene Datum zählt nicht.
+ */
+export function contentPhase(status: string, plannedFor: string | null, source?: string): Phase {
   if (status === "filmed" || status === "edited") return "umsetzung";
   if (status === "scheduled" || status === "published") return "veroeffentlichung";
+  if (source === "ai") return "ideen";
   return plannedFor ? "planung" : "ideen";
 }
+
+/** Noch nicht angenommen: Projekt-Idee in „Idee“/„prüfen“ bzw. KI-Beitrag im Status „Idee“. Nie überfällig. */
+export const ideaUnaccepted = (status: string) => status === "idea" || status === "review";
+export const postUnaccepted = (status: string, source: string) => source === "ai" && status === "idea";
 
 /** Überfällig: Termin vorbei und noch nicht veröffentlicht/live. */
 export function isOverdue(date: string | null, done: boolean, today: string): boolean {

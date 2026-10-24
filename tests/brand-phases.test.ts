@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentPhase, ideaPhase, isOverdue, phaseOrder } from "@/lib/brands/phases";
+import { contentPhase, ideaUnaccepted, postUnaccepted, ideaPhase, isOverdue, phaseOrder } from "@/lib/brands/phases";
 
 // Marken & Content: Phasen, Überfälliges, eigene vor KI.
 
@@ -26,5 +26,16 @@ describe("Phasen", () => {
       "2026-10-24",
     );
     expect(l.map((x) => x.id)).toEqual(["alt", "eigen", "ki"]);
+  });
+});
+
+describe("Nicht angenommene Ideen", () => {
+  it("KI-Beitrag mit vorgeschlagenem Datum bleibt Idee und ist nie überfällig", () => {
+    expect(contentPhase("idea", "2026-10-01", "ai")).toBe("ideen");
+    expect(contentPhase("idea", "2026-10-01", "manual")).toBe("planung");
+    expect(postUnaccepted("idea", "ai")).toBe(true);
+    expect(postUnaccepted("filmed", "ai")).toBe(false);
+    expect(ideaUnaccepted("review")).toBe(true);
+    expect(ideaUnaccepted("planned")).toBe(false);
   });
 });

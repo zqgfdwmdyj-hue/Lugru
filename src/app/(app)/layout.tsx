@@ -9,16 +9,18 @@ import { Suspense } from "react";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AreaTabs } from "@/components/area-tabs";
 import { getPrefs } from "@/lib/auth/prefs";
+import { needsReview } from "@/lib/invoices/review";
+import { bindingTask } from "@/lib/today/service";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
   const t = session.tenantId;
   const [[tasks], [inbox], [orders], [claims], [invoices], [amazonTodos], prefs] = await Promise.all([
-    db.select({ n: count() }).from(schema.tasks).where(and(eq(schema.tasks.tenantId, t), eq(schema.tasks.status, "open"))),
+    db.select({ n: count() }).from(schema.tasks).where(and(eq(schema.tasks.tenantId, t), eq(schema.tasks.status, "open"), bindingTask)),
     db.select({ n: count() }).from(schema.emails).where(and(eq(schema.emails.tenantId, t), eq(schema.emails.category, "critical"), eq(schema.emails.archived, false))),
     db.select({ n: count() }).from(schema.orders).where(and(eq(schema.orders.tenantId, t), eq(schema.orders.fulfillment, "FBM"), inArray(schema.orders.status, ["open", "label_created"]))),
     db.select({ n: count() }).from(schema.claims).where(and(eq(schema.claims.tenantId, t), inArray(schema.claims.status, ["detected", "queued"]))),
-    db.select({ n: count() }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, t), inArray(schema.invoices.status, ["new", "review"]))),
+    db.select({ n: count() }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, t), needsReview)),
     db.select({ n: count() }).from(schema.amazonTodos).where(and(eq(schema.amazonTodos.tenantId, t), eq(schema.amazonTodos.status, "open"), eq(schema.amazonTodos.priority, "high"))),
     getPrefs(session),
   ]);

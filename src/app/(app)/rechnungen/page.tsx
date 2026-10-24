@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { DOC_TYPE_LABEL, NEGATIVE, NOT_BOOKED, type DocType } from "@/lib/invoices/checks";
-import { hasOpenCheck } from "@/lib/invoices/review";
+import { needsReview } from "@/lib/invoices/review";
 import { BulkForm } from "@/components/bulk-form";
 import { bulkInvoiceAction } from "./actions";
 import { DriveSync, InvoiceUpload } from "./forms";
@@ -24,7 +24,7 @@ export default async function RechnungenPage({ searchParams }: { searchParams: P
   const I = schema.invoices;
   const t = session.tenantId;
   const viewWhere: Record<View, SQL | undefined> = {
-    pruefen: and(ne(I.status, "ignored"), sql`(${I.status} in ('new', 'review') or ${hasOpenCheck})`),
+    pruefen: needsReview,
     ware: and(eq(I.kind, "goods"), ne(I.status, "ignored")),
     kosten: and(eq(I.kind, "expense"), ne(I.status, "ignored")),
     alle: undefined,

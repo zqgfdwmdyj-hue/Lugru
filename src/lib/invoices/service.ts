@@ -10,7 +10,7 @@ import { linkInvoiceByOrderNo } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { extractInvoiceFacts, guessKind, matchBySum, parseInvoiceFileName } from "./parse";
-import { analyzeNew, duplicatesOf, hasOpenCheck, recheckInvoices } from "./review";
+import { analyzeNew, duplicatesOf, needsReview, recheckInvoices } from "./review";
 
 export async function pdfText(bytes: Uint8Array): Promise<string> {
   try {
@@ -130,7 +130,7 @@ export async function refreshInvoiceTasks(tenantId: string) {
   const I = schema.invoices;
   // Noch nicht mit der aktuellen Logik geprüfte Rechnungen nachprüfen (nur Hinweise, keine Änderung am Datum).
   await recheckInvoices(tenantId);
-  const [review] = await db.select({ n: sql<number>`count(*)::int` }).from(I).where(and(eq(I.tenantId, tenantId), sql`${I.status} <> 'ignored'`, sql`(${I.status} = 'review' or ${hasOpenCheck})`));
+  const [review] = await db.select({ n: sql<number>`count(*)::int` }).from(I).where(and(eq(I.tenantId, tenantId), needsReview));
   if (review.n > 0) {
     await upsertSystemTask(db, tenantId, "invoices-review", { title: `${review.n} Rechnung${review.n === 1 ? "" : "en"} prüfen (Zuordnung, Datum, Belegart, Duplikate)`, category: "einkauf", link: "/rechnungen?ansicht=pruefen" });
   } else await resolveSystemTask(db, tenantId, "invoices-review");

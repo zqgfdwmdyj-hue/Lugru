@@ -11,7 +11,7 @@ import { createIdeaAction } from "./actions";
 import { SuggestIdeas } from "./forms";
 import { BoxSuggest } from "../lieferanten/[id]/scan-form";
 import { getSettings } from "@/lib/settings";
-import { ideaPhase, isOverdue, PHASE_LABEL, PHASES, phaseOrder } from "@/lib/brands/phases";
+import { ideaPhase, ideaUnaccepted, isOverdue, PHASE_LABEL, PHASES, phaseOrder } from "@/lib/brands/phases";
 
 const COLUMNS = ["idea", "review", "planned", "in_progress", "live"] as const;
 
@@ -76,7 +76,7 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
           <div className="idea-board">
             {(sp.verworfen ? [null] : PHASES).map((phase) => {
               const list = phaseOrder(
-                ideas.filter((i) => (phase ? i.status !== "rejected" && ideaPhase(i.status) === phase : i.status === "rejected")).map((i) => ({ ...i, date: i.launchDate, done: i.status === "live" })),
+                ideas.filter((i) => (phase ? i.status !== "rejected" && ideaPhase(i.status) === phase : i.status === "rejected")).map((i) => ({ ...i, date: i.launchDate, done: i.status === "live" || ideaUnaccepted(i.status) })),
                 today,
               );
               return (
@@ -86,7 +86,7 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
                     const b = brandById.get(i.brandId);
                     const margin = i.targetPrice && i.costEstimate ? Number(i.targetPrice) - Number(i.costEstimate) : null;
                     const done = i.checklist.filter((c) => c.done).length;
-                    const late = isOverdue(i.launchDate, i.status === "live", today);
+                    const late = isOverdue(i.launchDate, i.status === "live" || ideaUnaccepted(i.status), today);
                     return (
                       <Link key={i.id} href={`/marken/ideen/${i.id}`} className="idea-card" style={{ borderLeftColor: b?.color ?? "var(--accent)" }} data-testid="idea-card">
                         <div className="small muted">

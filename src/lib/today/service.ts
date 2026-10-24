@@ -1,9 +1,12 @@
 import "server-only";
-import { and, count, eq, gte, inArray, lt, lte, max, ne, sql } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNull, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
 import { REPORT_KINDS, type ReportKind } from "@/lib/reports/amazon";
-import { freshness, type Freshness } from "./logic";
+import { freshness, IDEA_KEY_PATTERN, type Freshness } from "./logic";
+
+/** SQL: verbindliche Aufgabe (keine automatische Idee) – gleiche Regel wie isIdeaTask. */
+export const bindingTask = sql`not (${schema.tasks.systemKey} is not null and (${schema.tasks.systemKey} ~ ${IDEA_KEY_PATTERN} or ${schema.tasks.category} = 'marken'))`;
 
 // Tagesübersicht: dringende operative Themen direkt aus den Daten (nicht aus Aufgaben) und der
 // Datenstand je Bereich (letzter Bericht, letzter erfolgreicher Abruf).
@@ -16,16 +19,21 @@ export function berlinMidnight(iso: string): Date {
   return new Date(guess.getTime() - (local - utc));
 }
 
-export type Signal = { key: string; label: string; detail?: string; count: number; href: string; level: "danger" | "warn" };
+export type Signal = { key: string; label: string; detail?: string; count: number; href: string; level: "danger" | "warn" | "info" };
 
 export async function todaySignals(tenantId: string, today: string): Promise<Signal[]> {
   const O = schema.orders;
   const C = schema.claims;
   const K = schema.cases;
   const endOfToday = berlinMidnight(addDaysIso(today, 1));
-  const [[ship], [shipTomorrow], [neg], [claims], [expired], [cases]] = await Promise.all([
-    db.select({ n: count() }).from(O).where(and(eq(O.tenantId, tenantId), eq(O.fulfillment, "FBM"), inArray(O.status, ["open", "label_created"]), lt(O.shipBy, endOfToday))),
-    db.select({ n: count() }).from(O).where(and(eq(O.tenantId, tenantId), eq(O.fulfillment, "FBM"), inArray(O.status, ["open", "label_created"]), gte(O.shipBy, endOfToday), lt(O.shipBy, new Date(endOfToday.getTime() + 86_400_000)))),
+  const endOfTomorrow = berlinMidnight(addDaysIso(today, 2));
+  // Offene Sendungen wie in Navigation und Kalender: eigener Versand, offen oder Label erstellt.
+  // Ohne Versandfrist zählt wie heute (der Kalender zeigt sie ebenfalls heute).
+  const openShip = and(eq(O.tenantId, tenantId), eq(O.fulfillment, "FBM"), inArray(O.status, ["open", "label_created"]));
+  const [[ship], [shipTomorrow], [shipLater], [neg], [claims], [expired], [cases]] = await Promise.all([
+    db.select({ n: count(), noDate: sql<number>`count(*) filter (where ${O.shipBy} is null)::int`, labelled: sql<number>`count(*) filter (where ${O.status} = 'label_created')::int` }).from(O).where(and(openShip, or(isNull(O.shipBy), lt(O.shipBy, endOfToday)))),
+    db.select({ n: count() }).from(O).where(and(openShip, gte(O.shipBy, endOfToday), lt(O.shipBy, endOfTomorrow))),
+    db.select({ n: count(), next: min(O.shipBy) }).from(O).where(and(openShip, gte(O.shipBy, endOfTomorrow))),
     db.select({ n: count(), units: sql<number>`coalesce(sum(${schema.ownStock.quantity}), 0)::int` }).from(schema.ownStock).where(and(eq(schema.ownStock.tenantId, tenantId), lt(schema.ownStock.quantity, 0))),
     db
       .select({ n: count(), sum: sql<number>`coalesce(sum(${C.expectedAmount}), 0)::float` })
@@ -36,11 +44,15 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
   ]);
   const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
   const out: Signal[] = [];
-  if (ship.n) out.push({ key: "versand", label: `${ship.n} ${ship.n === 1 ? "Auftrag" : "Aufträge"} heute bzw. überfällig versenden`, count: ship.n, href: "/auftraege?ansicht=offen", level: "danger" });
+  if (ship.n) out.push({ key: "versand", label: `${ship.n} ${ship.n === 1 ? "Auftrag" : "Aufträge"} heute bzw. überfällig versenden`, detail: [ship.noDate ? `${ship.noDate} ohne Versandfrist` : null, ship.labelled ? `${ship.labelled} mit Label (Reiter „Label erstellt“)` : null].filter(Boolean).join(" · ") || undefined, count: ship.n, href: "/auftraege?ansicht=offen", level: "danger" });
   if (cases.n) out.push({ key: "faelle", label: `${cases.n} ${cases.n === 1 ? "Fall" : "Fälle"} mit Frist bis übermorgen`, detail: "A-bis-Z, eBay-Fälle", count: cases.n, href: "/faelle", level: "danger" });
   if (neg.n) out.push({ key: "negativ", label: `${neg.n} SKU${neg.n === 1 ? "" : "s"} mit negativem Bestand`, detail: `${neg.units} Stück – überverkauft oder falsch gebucht`, count: neg.n, href: "/bestand?ansicht=negativ", level: "danger" });
   if (claims.n) out.push({ key: "ansprueche", label: `${claims.n} Anspr${claims.n === 1 ? "uch läuft" : "üche laufen"} in 7 Tagen ab`, detail: `zusammen ${euro(claims.sum)}`, count: claims.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
   if (shipTomorrow.n) out.push({ key: "versand-morgen", label: `${shipTomorrow.n} ${shipTomorrow.n === 1 ? "Auftrag" : "Aufträge"} morgen versenden`, count: shipTomorrow.n, href: "/auftraege?ansicht=offen", level: "warn" });
+  if (shipLater.n) {
+    const next = shipLater.next ? new Date(shipLater.next).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" }) : null;
+    out.push({ key: "versand-spaeter", label: `${shipLater.n} weitere ${shipLater.n === 1 ? "Sendung" : "Sendungen"} mit Frist ab übermorgen`, detail: next ? `nächste Frist ${next}` : undefined, count: shipLater.n, href: "/auftraege?ansicht=offen", level: "info" });
+  }
   if (expired.n) out.push({ key: "abgelaufen", label: `${expired.n} Anspr${expired.n === 1 ? "uch" : "üche"} mit abgelaufener Frist, nicht eingereicht`, count: expired.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
   return out;
 }

@@ -106,3 +106,9 @@ export async function recheckInvoices(tenantId: string, opts: { ids?: string[]; 
 
 /** SQL-Bedingung: Rechnung hat einen offenen Prüfhinweis. */
 export const hasOpenCheck = sql`(${schema.invoices.checks} ? 'date' or ${schema.invoices.checks} ? 'docType' or (${schema.invoices.checks} ? 'duplicateOf' and not coalesce((${schema.invoices.checks}->>'notDuplicate')::boolean, false)))`;
+
+/**
+ * SQL-Bedingung „zu prüfen“ – eine Definition für Reiter „Prüfen“, Zähler in der Navigation und die
+ * Aufgabe: nicht ignoriert und (neu, zur Prüfung oder mit offenem Prüfhinweis).
+ */
+export const needsReview = sql`(${schema.invoices.status} <> 'ignored' and (${schema.invoices.status} in ('new', 'review') or ${hasOpenCheck}))`;

@@ -6,6 +6,7 @@ import { addMonthsIso } from "@/lib/money/cashflow";
 import { formatEuro } from "@/lib/numbers";
 import { categoryLabel } from "@/lib/amazon-todos/logic";
 import { todoDeadlines } from "@/lib/amazon-todos/service";
+import { isIdeaTask } from "@/lib/today/logic";
 
 /** Ein Termin, den das System im Kalender haben möchte. */
 export type Desired = {
@@ -41,6 +42,8 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
     .from(T)
     .where(and(eq(T.tenantId, t), eq(T.status, "open"), isNotNull(T.dueDate), gte(T.dueDate, from), lte(T.dueDate, to), or(sql`${T.systemKey} is null`, notInArray(T.systemKey, COVERED_BY_CALENDAR))));
   for (const k of tasks) {
+    // Automatische Ideen sind unverbindlich – nicht in den Kalender (gleiche Regel wie die Startseite).
+    if (isIdeaTask(k)) continue;
     out.push({
       key: `task:${k.id}`,
       title: (k.priority === "critical" ? "‼ " : "") + k.title,
@@ -157,6 +160,8 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
     .from(schema.contentPosts)
     .where(and(eq(schema.contentPosts.tenantId, t), inArray(schema.contentPosts.status, ["idea", "filmed", "edited", "scheduled"]), isNotNull(schema.contentPosts.plannedFor), gte(schema.contentPosts.plannedFor, from), lte(schema.contentPosts.plannedFor, to)));
   for (const p of posts) {
+    // KI-Vorschläge, die noch niemand angenommen hat (Status „Idee“), sind keine Termine.
+    if (p.source === "ai" && p.status === "idea") continue;
     out.push({ key: `post:${p.id}`, title: `${p.platform === "youtube" ? "YouTube" : p.platform === "instagram" ? "Instagram" : "TikTok"} (${brandNames.get(p.brandId) ?? ""}): ${p.hook}`.slice(0, 200), date: p.plannedFor!, description: [p.caption, p.hashtags].filter(Boolean).join("\n\n"), link: `/marken/content`, category: "Aufgabe", remind: true });
   }
 

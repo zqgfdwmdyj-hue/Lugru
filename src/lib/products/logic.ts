@@ -58,6 +58,28 @@ export function groupCandidates(cands: Candidate[]): ProductGroup[] {
   });
 }
 
+export type RankedGroup = ProductGroup & { exact: boolean; matched: string[] };
+
+/**
+ * Suchtreffer sortieren: exakte SKU zuerst, dann exakte ASIN/EAN, dann SKU beginnt mit dem Begriff,
+ * dann Name. Groß/Klein und Leerzeichen am Rand egal. `matched` = SKUs der Gruppe, die passen.
+ */
+export function rankProductGroups(groups: ProductGroup[], q: string): RankedGroup[] {
+  const n = q.trim().toLowerCase();
+  const low = (s: string | null) => (s ?? "").toLowerCase();
+  const score = (g: ProductGroup) => {
+    if (g.skus.some((s) => low(s) === n)) return 0;
+    if (low(g.asin) === n || low(g.ean) === n) return 1;
+    if (g.skus.some((s) => low(s).startsWith(n))) return 2;
+    if (g.skus.some((s) => low(s).includes(n))) return 3;
+    return 4;
+  };
+  return groups
+    .map((g) => ({ g, s: score(g) }))
+    .sort((a, b) => a.s - b.s || (a.g.title ?? a.g.skus[0] ?? "").localeCompare(b.g.title ?? b.g.skus[0] ?? "", "de"))
+    .map(({ g, s }) => ({ ...g, exact: s <= 1, matched: g.skus.filter((x) => low(x).includes(n)) }));
+}
+
 // ---- EK-Abgleich ---------------------------------------------------------------------------------
 
 export type EkSource = { source: "charge" | "manuell" | "ebay"; label: string; cost: number };

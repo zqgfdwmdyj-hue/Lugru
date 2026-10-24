@@ -6,7 +6,7 @@ import { CONTENT_STATUS_LABEL } from "@/lib/brands/ai";
 import { visibleBrands } from "@/lib/brands/access";
 import { formatDate } from "@/lib/numbers";
 import { deletePostAction, updatePostAction } from "../actions";
-import { contentPhase, isOverdue, PHASE_LABEL, PHASES, phaseOrder, type Phase } from "@/lib/brands/phases";
+import { contentPhase, isOverdue, PHASE_LABEL, PHASES, phaseOrder, postUnaccepted, type Phase } from "@/lib/brands/phases";
 import { todayIso } from "@/lib/dates";
 import { CopyButton, SuggestContent } from "../forms";
 
@@ -32,12 +32,12 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
     .orderBy(sql`${C.plannedFor} asc nulls last`, desc(C.createdAt))
     .limit(200);
   const today = todayIso();
-  const byPhase = (ph: Phase) => posts.filter(({ p }) => contentPhase(p.status, p.plannedFor) === ph).length;
+  const byPhase = (ph: Phase) => posts.filter(({ p }) => contentPhase(p.status, p.plannedFor, p.source) === ph).length;
   const shownPosts = phaseOrder(
-    posts.filter(({ p }) => !phase || contentPhase(p.status, p.plannedFor) === phase).map((x) => ({ ...x, source: x.p.source, date: x.p.plannedFor, done: x.p.status === "published" })),
+    posts.filter(({ p }) => !phase || contentPhase(p.status, p.plannedFor, p.source) === phase).map((x) => ({ ...x, source: x.p.source, date: x.p.plannedFor, done: x.p.status === "published" || postUnaccepted(x.p.status, x.p.source) })),
     today,
   );
-  const overdue = posts.filter(({ p }) => isOverdue(p.plannedFor, p.status === "published", today)).length;
+  const overdue = posts.filter(({ p }) => isOverdue(p.plannedFor, p.status === "published" || postUnaccepted(p.status, p.source), today)).length;
   const brandById = new Map(brands.map((b) => [b.id, b]));
   const q = (p: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
@@ -79,9 +79,9 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
             return (
               <article key={p.id} className="card card-pad stack" style={{ gap: 8, borderLeft: `4px solid ${b?.color ?? "var(--accent)"}` }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                  <span className="tag tag-neutral">{PHASE_LABEL[contentPhase(p.status, p.plannedFor)]}</span>
+                  <span className="tag tag-neutral">{PHASE_LABEL[contentPhase(p.status, p.plannedFor, p.source)]}</span>
                   <span className={`tag ${CONTENT_STATUS_LABEL[p.status][1]}`}>{CONTENT_STATUS_LABEL[p.status][0]}</span>
-                  {isOverdue(p.plannedFor, p.status === "published", today) && <span className="tag tag-danger" data-testid="content-late">überfällig</span>}
+                  {isOverdue(p.plannedFor, p.status === "published" || postUnaccepted(p.status, p.source), today) && <span className="tag tag-danger" data-testid="content-late">überfällig</span>}
                   {p.source === "ai" && <span className="tag tag-neutral">KI-Vorschlag</span>}
                   <span className="tag tag-neutral">{PLATFORM[p.platform]}</span>
                   {p.format && <span className="small muted">{p.format}</span>}

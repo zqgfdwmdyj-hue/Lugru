@@ -7,7 +7,7 @@ import { getPrefs } from "@/lib/auth/prefs";
 import { addDaysIso, dueLabel, greeting, longDate, todayIso } from "@/lib/dates";
 import { createTask, deleteTask, toggleTask } from "@/lib/tasks/actions";
 import { refreshImportReminder } from "@/lib/tasks/system";
-import { BUCKET_LABEL, bucketOf, planDay, type Bucket, type TaskLite } from "@/lib/today/logic";
+import { BUCKET_LABEL, bucketCounts, bucketOf, isIdeaTask, planDay, type Bucket, type TaskLite } from "@/lib/today/logic";
 import { dataAreas, todaySignals } from "@/lib/today/service";
 import { PrivateHint } from "./privat/hint";
 import { toggleCalendarAction } from "./start-actions";
@@ -29,9 +29,10 @@ const BUCKETS: Bucket[] = ["ueberfaellig", "heute", "woche", "spaeter", "ohne"];
 
 type Task = typeof schema.tasks.$inferSelect;
 
-function TaskRow({ task, today, step = false }: { task: Task | TaskLite; today: string; step?: boolean }) {
+function TaskRow({ task, today, step = false, idea = false }: { task: Task | TaskLite; today: string; step?: boolean; idea?: boolean }) {
   const done = "status" in task && task.status === "done";
-  const overdue = !done && task.dueDate !== null && task.dueDate < today;
+  // Ideen haben höchstens ein vorgeschlagenes Datum – nie „überfällig“.
+  const overdue = !idea && !done && task.dueDate !== null && task.dueDate < today;
   const tagClass =
     task.priority === "critical" ? "tag tag-critical" : task.category === "einkauf" || task.category === "versand" ? "tag tag-info" : task.category === "geld" ? "tag tag-warn" : "tag tag-neutral";
   return (
@@ -52,7 +53,7 @@ function TaskRow({ task, today, step = false }: { task: Task | TaskLite; today: 
       </div>
       <div className="todo-meta">
         <span className={tagClass}>{task.priority === "critical" ? "KRITISCH" : (CATEGORY_LABEL[task.category] ?? task.category).toUpperCase()}</span>
-        <span className="due" style={{ color: overdue ? "var(--danger)" : "var(--muted)" }}>{task.dueDate ? dueLabel(task.dueDate, today) : ""}</span>
+        <span className="due" style={{ color: overdue ? "var(--danger)" : "var(--muted)" }}>{task.dueDate ? (idea ? `Vorschlag ${new Date(`${task.dueDate}T12:00:00Z`).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}` : dueLabel(task.dueDate, today)) : ""}</span>
         {step && task.link && !done ? (
           <Link className="btn btn-small" href={task.link} data-testid="task-step">Öffnen →</Link>
         ) : (
@@ -145,7 +146,11 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
 
   // ---- Klassische Liste (Filter nach Bereich bzw. „alle Aufgaben“) – wie bisher, nach Zeitfenstern getrennt.
   if (listView) {
-    const byBucket = (b: Bucket) => open.filter((t) => bucketOf(t, today) === b);
+    // Gleiche Zeitlogik wie die Tagesübersicht: automatische Ideen zählen nicht und stehen getrennt.
+    const binding = open.filter((t) => !isIdeaTask(t));
+    const ideaTasks = open.filter((t) => isIdeaTask(t));
+    const listCounts = bucketCounts(open, today);
+    const byBucket = (b: Bucket) => binding.filter((t) => bucketOf(t, today) === b);
     return (
       <>
         {head}
@@ -153,7 +158,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           <div className="between" style={{ padding: "18px 22px 12px", flexWrap: "wrap", gap: 10 }}>
             <h2 style={{ fontSize: 20 }}>
               <Link href="/" className="small" style={{ fontWeight: 400, marginRight: 8 }}>← Tagesübersicht</Link>
-              Alle Aufgaben <span className="num muted" style={{ fontSize: 15, fontWeight: 400 }}>{open.length} offen</span>
+              Alle Aufgaben <span className="num muted" style={{ fontSize: 15, fontWeight: 400 }}>{binding.length} offen{ideaTasks.length ? ` · ${ideaTasks.length} Ideen` : ""}</span>
             </h2>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {FILTERS.map((f) => (
@@ -163,7 +168,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 22px 10px" }}>
             {BUCKETS.map((b) => (
-              <Link key={b} href={`/?ansicht=liste${filter !== "alle" ? `&kat=${filter}` : ""}${zeit === b ? "" : `&zeit=${b}`}`} className={`chip${zeit === b ? " active" : ""}`}>{BUCKET_LABEL[b]} · {byBucket(b).length}</Link>
+              <Link key={b} href={`/?ansicht=liste${filter !== "alle" ? `&kat=${filter}` : ""}${zeit === b ? "" : `&zeit=${b}`}`} className={`chip${zeit === b ? " active" : ""}`} data-testid={`list-count-${b}`}>{BUCKET_LABEL[b]} · {listCounts[b]}</Link>
             ))}
           </div>
           <div style={{ padding: "0 22px 10px" }}><AddTask category={filter === "alle" ? "eigene" : filter} /></div>
@@ -178,6 +183,12 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
               </div>
             );
           })}
+          {ideaTasks.length > 0 && !zeit && (
+            <div data-testid="bucket-ideen">
+              <div className="section-label muted">IDEEN & VORSCHLÄGE (UNVERBINDLICH) · {ideaTasks.length}</div>
+              {ideaTasks.map((t) => <TaskRow key={t.id} task={t} today={today} idea />)}
+            </div>
+          )}
           {recentlyDone.length > 0 && !zeit && (
             <>
               <div className="section-label muted">ZULETZT ERLEDIGT</div>
@@ -192,6 +203,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   // ---- Tagesübersicht
   const urgent = mySignals.filter((s) => s.level === "danger");
   const warn = mySignals.filter((s) => s.level === "warn");
+  const info = mySignals.filter((s) => s.level === "info");
   return (
     <>
       {head}
@@ -201,11 +213,11 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
         <div className="stack" style={{ flexGrow: 1, minWidth: 0, gap: 16 }}>
           <section className="card" data-testid="today-urgent">
             <div className="card-head"><h2>Jetzt dringend</h2></div>
-            {urgent.length === 0 && plan.critical.length === 0 && warn.length === 0 ? (
+            {urgent.length === 0 && plan.critical.length === 0 && warn.length === 0 && info.length === 0 ? (
               <div className="card-pad small muted" style={{ paddingTop: 0 }} data-testid="nothing-urgent">Nichts Dringendes: keine fälligen Versände, Fall-Fristen, negativen Bestände oder ablaufenden Ansprüche.</div>
             ) : (
               <div className="signal-list">
-                {[...urgent, ...warn].map((s) => (
+                {[...urgent, ...warn, ...info].map((s) => (
                   <Link key={s.key} href={s.href} className={`signal signal-${s.level}`} data-testid={`signal-${s.key}`}>
                     <span className="signal-text"><strong>{s.label}</strong>{s.detail && <span className="small"> · {s.detail}</span>}</span>
                     <span className="signal-go">→</span>
@@ -227,10 +239,17 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                 ))}
               </div>
             </div>
-            {plan.top.length === 0 ? (
-              <div className="card-pad small muted" style={{ paddingTop: 0 }}>Keine Aufgaben mit Fälligkeit bis Ende der Woche{plan.noDate.length ? " – unten „Ohne Datum“ ansehen" : ""}.</div>
+            {plan.top.length === 0 && plan.soonElsewhere === 0 ? (
+              <div className="card-pad small muted" style={{ paddingTop: 0 }} data-testid="next-empty">Keine Aufgaben fällig bis in 7 Tagen{plan.noDate.length ? " – unten „Ohne Datum“ ansehen" : ""}.</div>
             ) : (
               plan.top.map((t) => <TaskRow key={t.id} task={t} today={today} step />)
+            )}
+            {plan.soonElsewhere > 0 && (
+              <div className="card-pad small" style={{ paddingTop: plan.top.length ? 8 : 0 }} data-testid="next-elsewhere">
+                {plan.top.length ? "Außerdem " : ""}
+                <Link href="/?ansicht=liste&zeit=woche">{plan.soonElsewhere} {plan.soonElsewhere === 1 ? "Aufgabe" : "Aufgaben"} bis in 7 Tagen</Link>{" "}
+                {plan.bundles.length ? "in den Arbeitsvorräten unten bzw. in der Liste" : "in der Liste"}.
+              </div>
             )}
             <div className="card-pad" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
               <AddTask category="eigene" />
@@ -258,7 +277,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
 
           <section className="card" data-testid="today-later">
             <details className="bundle">
-              <summary><span className="bundle-label"><strong>Später</strong> <span className="num">· {plan.later.length}</span></span><span className="small muted">Fälligkeit nach dieser Woche</span></summary>
+              <summary><span className="bundle-label"><strong>Später</strong> <span className="num">· {plan.later.length}</span></span><span className="small muted">fällig in mehr als 7 Tagen</span></summary>
               <div>{plan.later.length ? plan.later.map((t) => <TaskRow key={t.id} task={t} today={today} />) : <div className="card-pad small muted">Nichts.</div>}</div>
             </details>
             <details className="bundle">
@@ -266,8 +285,8 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
               <div>{plan.noDate.length ? plan.noDate.map((t) => <TaskRow key={t.id} task={t} today={today} />) : <div className="card-pad small muted">Nichts.</div>}</div>
             </details>
             <details className="bundle">
-              <summary><span className="bundle-label"><strong>Ideen, Saison & Content</strong> <span className="num">· {plan.ideas.length}</span></span><span className="small muted">aus Marken und Recherche</span></summary>
-              <div>{plan.ideas.length ? plan.ideas.map((t) => <TaskRow key={t.id} task={t} today={today} />) : <div className="card-pad small muted">Nichts.</div>}</div>
+              <summary><span className="bundle-label"><strong>Ideen, Saison & Content</strong> <span className="num">· {plan.ideas.length}</span></span><span className="small muted">unverbindliche Vorschläge – zählen nicht als fällig</span></summary>
+              <div>{plan.ideas.length ? plan.ideas.map((t) => <TaskRow key={t.id} task={t} today={today} idea />) : <div className="card-pad small muted">Nichts.</div>}</div>
             </details>
             <details className="bundle">
               <summary><span className="bundle-label"><strong>Zuletzt erledigt</strong> <span className="num">· {recentlyDone.length}</span></span></summary>

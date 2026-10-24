@@ -14,7 +14,8 @@ export type TaskLite = {
 };
 
 export type Bucket = "ueberfaellig" | "heute" | "woche" | "spaeter" | "ohne";
-export const BUCKET_LABEL: Record<Bucket, string> = { ueberfaellig: "Überfällig", heute: "Heute", woche: "Diese Woche", spaeter: "Später", ohne: "Ohne Datum" };
+/** Eine Zeitlogik überall (Zähler, Blöcke, Liste): „Nächste 7 Tage“ = morgen bis in 7 Tagen, „Später“ = danach. */
+export const BUCKET_LABEL: Record<Bucket, string> = { ueberfaellig: "Überfällig", heute: "Heute", woche: "Nächste 7 Tage", spaeter: "Später", ohne: "Ohne Datum" };
 
 const day = (iso: string) => Date.parse(`${iso}T12:00:00Z`);
 const daysBetween = (a: string, b: string) => Math.round((day(b) - day(a)) / 86_400_000);
@@ -44,6 +45,9 @@ export function scoreOf(t: TaskLite, today: string): number {
   return s;
 }
 
+/** Systemschlüssel automatischer Ideen (auch als SQL-Muster für Zähler genutzt). */
+export const IDEA_KEY_PATTERN = "^(idea|research|content|box-auto|brand)";
+
 /** Arbeitsvorräte: automatisch erzeugte Aufgaben gleicher Art (Schlüssel-Anfang) gehören zusammen. */
 type GroupDef = { label: string; href: string; ideas?: boolean };
 const GROUPS: [RegExp, GroupDef][] = [
@@ -56,10 +60,19 @@ const GROUPS: [RegExp, GroupDef][] = [
   [/^stock-manual|^oversold|^below|^unsellable/, { label: "Bestand korrigieren", href: "/bestand" }],
   [/^mail/, { label: "Posteingang", href: "/posteingang" }],
   [/^amazon-todo/, { label: "Amazon-ToDos", href: "/amazon-todos" }],
-  [/^(idea|research|content|box-auto|brand)/, { label: "Ideen, Saison & Content", href: "/marken", ideas: true }],
+  [new RegExp(IDEA_KEY_PATTERN), { label: "Ideen, Saison & Content", href: "/marken", ideas: true }],
   [/^pallet/, { label: "Paletten-Lager", href: "/paletten" }],
   [/^temu/, { label: "Temu", href: "/listings/temu" }],
 ];
+
+/**
+ * Unverbindliche Vorschläge (automatisch erzeugte Ideen, Box-Vorschläge, KI-Content, Recherche): keine
+ * Pflichtaufgaben – sie zählen nicht als überfällig, nicht in den Zeitfenstern und nicht im Kalender.
+ * Selbst angelegte Aufgaben (ohne Systemschlüssel) sind immer verbindlich.
+ */
+export function isIdeaTask(t: Pick<TaskLite, "systemKey" | "category">): boolean {
+  return t.systemKey !== null && Boolean(groupOf(t)?.ideas);
+}
 
 export function groupOf(t: Pick<TaskLite, "systemKey" | "category">): (GroupDef & { key: string }) | null {
   if (t.category === "marken") return { key: "ideen", label: "Ideen, Saison & Content", href: "/marken", ideas: true };
@@ -75,22 +88,33 @@ export type DayPlan = {
   top: TaskLite[];
   bundles: Bundle[];
   ideas: TaskLite[];
+  /** Alle verbindlichen Aufgaben mit Fälligkeit nach den nächsten 7 Tagen – gleich dem Zähler „Später“. */
   later: TaskLite[];
+  /** Alle verbindlichen Aufgaben ohne Fälligkeit – gleich dem Zähler „Ohne Datum“. */
   noDate: TaskLite[];
+  /** Verbindliche Aufgaben bis in 7 Tagen, die nicht oben stehen (gebündelt oder über der Höchstzahl). */
+  soonElsewhere: number;
   counts: Record<Bucket, number>;
 };
+
+/** Zähler je Zeitfenster – nur verbindliche Aufgaben (Ideen zählen nicht). Gleiche Zahl in Liste und Startseite. */
+export function bucketCounts(tasks: Pick<TaskLite, "dueDate" | "systemKey" | "category">[], today: string): Record<Bucket, number> {
+  const counts: Record<Bucket, number> = { ueberfaellig: 0, heute: 0, woche: 0, spaeter: 0, ohne: 0 };
+  for (const t of tasks) if (!isIdeaTask(t)) counts[bucketOf(t, today)]++;
+  return counts;
+}
 
 /**
  * Tagesplan: kritische Aufgaben, die wichtigsten (höchstens `topMax`) mit Fälligkeit bis Ende der Woche,
  * gebündelte Arbeitsvorräte (ab 2 gleichartigen), Ideen sowie „Später“ und „Ohne Datum“ zum Einklappen.
  */
 export function planDay(tasks: TaskLite[], today: string, topMax = 8): DayPlan {
-  const counts: Record<Bucket, number> = { ueberfaellig: 0, heute: 0, woche: 0, spaeter: 0, ohne: 0 };
-  for (const t of tasks) counts[bucketOf(t, today)]++;
+  const counts = bucketCounts(tasks, today);
   const byGroup = new Map<string, { def: GroupDef & { key: string }; tasks: TaskLite[] }>();
   for (const t of tasks) {
     const g = groupOf(t);
     if (!g || t.priority === "critical") continue;
+    if (g.ideas && !isIdeaTask(t)) continue; // selbst angelegte Marken-Aufgabe: verbindlich, nicht bei den Ideen
     const e = byGroup.get(g.key) ?? { def: g, tasks: [] };
     e.tasks.push(t);
     byGroup.set(g.key, e);
@@ -115,14 +139,17 @@ export function planDay(tasks: TaskLite[], today: string, topMax = 8): DayPlan {
   const candidates = rest.filter((t) => t.priority !== "critical" && ["ueberfaellig", "heute", "woche"].includes(bucketOf(t, today)));
   const top = candidates.sort((a, b) => scoreOf(b, today) - scoreOf(a, today)).slice(0, topMax);
   const shown = new Set([...critical, ...top].map((t) => t.id));
-  const remaining = rest.filter((t) => !shown.has(t.id));
+  const binding = tasks.filter((t) => !isIdeaTask(t));
+  const soon = binding.filter((t) => ["ueberfaellig", "heute", "woche"].includes(bucketOf(t, today)));
   return {
     critical,
     top,
     bundles,
-    ideas,
-    later: remaining.filter((t) => t.dueDate !== null).sort((a, b) => a.dueDate!.localeCompare(b.dueDate!)),
-    noDate: remaining.filter((t) => t.dueDate === null).sort((a, b) => scoreOf(b, today) - scoreOf(a, today) || +b.createdAt - +a.createdAt),
+    ideas: ideas.sort((a, b) => +b.createdAt - +a.createdAt),
+    // „Später“ und „Ohne Datum“ zeigen die ganze Menge des Zählers (auch Aufgaben aus Arbeitsvorräten).
+    later: binding.filter((t) => bucketOf(t, today) === "spaeter").sort((a, b) => a.dueDate!.localeCompare(b.dueDate!)),
+    noDate: binding.filter((t) => t.dueDate === null).sort((a, b) => scoreOf(b, today) - scoreOf(a, today) || +b.createdAt - +a.createdAt),
+    soonElsewhere: soon.filter((t) => !shown.has(t.id)).length,
     counts,
   };
 }

@@ -4,6 +4,7 @@ import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { formatEuro } from "@/lib/numbers";
+import { productSearch } from "@/lib/products/service";
 
 export default async function SuchePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const session = await requireSession();
@@ -16,8 +17,9 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
   const K = schema.knowledgeEntries;
   const T = schema.tasks;
 
-  const [lots, knowledge, tasks] = q
+  const [products, lots, knowledge, tasks] = q
     ? await Promise.all([
+        productSearch(session.tenantId, q),
         db
           .select({ id: L.id, sku: L.sku, asin: P.asin, cost: L.unitCostNet })
           .from(L)
@@ -31,12 +33,14 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
           .where(and(eq(K.tenantId, session.tenantId), or(ilike(K.title, like), sql`to_tsvector('german', ${K.title} || ' ' || ${K.body}) @@ websearch_to_tsquery('german', ${q})`)))
           .limit(10),
         db
-          .select({ id: T.id, title: T.title, status: T.status })
+          .select({ id: T.id, title: T.title, status: T.status, link: T.link })
           .from(T)
           .where(and(eq(T.tenantId, session.tenantId), or(ilike(T.title, like), ilike(T.notes, like))))
           .limit(10),
       ])
-    : [[], [], []];
+    : [{ rows: [], total: 0 }, [], [], []];
+  const exact = products.rows.filter((p) => p.exact);
+  const back = `/suche?q=${encodeURIComponent(q)}`;
 
   return (
     <>
@@ -50,6 +54,39 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
       {!q && <div className="muted">Suchbegriff eingeben.</div>}
       {q && (
         <div className="stack" style={{ gap: 16 }}>
+          {exact.length > 0 && (
+            <div className="notice notice-ok" data-testid="search-exact">
+              <strong>Genauer Treffer:</strong>{" "}
+              {exact.map((p, i) => (
+                <span key={p.key}>
+                  {i > 0 && " · "}
+                  <Link href={`${p.matched.length === 1 ? `/produkte/sku/${encodeURIComponent(p.matched[0])}` : p.href}?von=${encodeURIComponent(back)}`}>{p.matched.length === 1 ? p.matched[0] : p.skus[0]} – {p.title ?? "Name fehlt"}</Link>
+                </span>
+              ))}
+            </div>
+          )}
+          <section className="card" style={{ overflow: "hidden" }}>
+            <div className="card-head"><h2>Produkte</h2><span className="small muted">{products.total > products.rows.length ? `erste ${products.rows.length} von ${products.total} – ` : ""}<Link href={`/produkte?ansicht=alle&q=${encodeURIComponent(q)}`}>in Produkte öffnen</Link></span></div>
+            {products.rows.length === 0 ? <div className="card-pad muted">Keine Treffer in SKU, Name, ASIN oder EAN.</div> : (
+              <table className="table" data-testid="search-products"><tbody>
+                {products.rows.map((p) => (
+                  <tr key={p.key} data-testid="search-product">
+                    <td style={{ maxWidth: 380 }}>
+                      <Link href={`${p.href}?von=${encodeURIComponent(back)}`} style={{ fontWeight: 600 }}>{p.title ?? "– Name fehlt –"}</Link>
+                      {p.exact && <span className="tag tag-ok" style={{ marginLeft: 6 }}>genau</span>}
+                      <div className="small muted num">{[p.asin, p.ean].filter(Boolean).join(" · ")}</div>
+                    </td>
+                    <td className="num small">
+                      {p.skus.slice(0, 6).map((s, i) => (
+                        <span key={s}>{i > 0 && ", "}<Link href={`/produkte/sku/${encodeURIComponent(s)}?von=${encodeURIComponent(back)}`} style={p.matched.includes(s) ? { fontWeight: 700 } : undefined}>{s}</Link></span>
+                      ))}
+                      {p.skus.length > 6 && ` … +${p.skus.length - 6}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody></table>
+            )}
+          </section>
           <section className="card" style={{ overflow: "hidden" }}>
             <div className="card-head"><h2>Chargen</h2><span className="small muted">{lots.length === 20 ? "erste 20" : lots.length}</span></div>
             {lots.length === 0 ? <div className="card-pad muted">Keine Treffer.</div> : (
@@ -69,7 +106,7 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
           <section className="card" style={{ overflow: "hidden" }}>
             <div className="card-head"><h2>Aufgaben</h2></div>
             {tasks.length === 0 ? <div className="card-pad muted">Keine Treffer.</div> : (
-              <div className="card-pad stack">{tasks.map((t) => <span key={t.id}>{t.status === "done" ? "✓ " : ""}{t.title}</span>)}</div>
+              <div className="card-pad stack">{tasks.map((t) => (t.link && t.link.startsWith("/") ? <Link key={t.id} href={t.link}>{t.status === "done" ? "✓ " : ""}{t.title}</Link> : <span key={t.id}>{t.status === "done" ? "✓ " : ""}{t.title}</span>))}</div>
             )}
           </section>
         </div>

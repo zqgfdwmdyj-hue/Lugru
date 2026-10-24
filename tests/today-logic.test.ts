@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bucketOf, freshness, groupOf, planDay, type TaskLite } from "@/lib/today/logic";
+import { bucketOf, freshness, groupOf, isIdeaTask, planDay, type TaskLite } from "@/lib/today/logic";
 
 // Tagesübersicht: Zeitfenster, Priorität, Bündelung. Fiktive Aufgaben.
 
@@ -8,7 +8,7 @@ let n = 0;
 const task = (p: Partial<TaskLite>): TaskLite => ({ id: `t${++n}`, title: `Aufgabe ${n}`, notes: null, dueDate: null, priority: "normal", category: "eigene", systemKey: null, link: null, createdAt: new Date("2026-10-01"), ...p });
 
 describe("Zeitfenster", () => {
-  it("überfällig, heute, diese Woche, später, ohne Datum", () => {
+  it("überfällig, heute, nächste 7 Tage, später, ohne Datum", () => {
     expect(bucketOf({ dueDate: "2026-10-23" }, TODAY)).toBe("ueberfaellig");
     expect(bucketOf({ dueDate: TODAY }, TODAY)).toBe("heute");
     expect(bucketOf({ dueDate: "2026-10-31" }, TODAY)).toBe("woche");
@@ -37,10 +37,19 @@ describe("Bündelung", () => {
     expect(p.top.some((t) => t.systemKey === "removal-receipts:1")).toBe(true);
     expect(p.counts.ueberfaellig).toBe(3);
   });
-  it("Ideen (Marken) landen eingeklappt, nicht in den wichtigsten", () => {
-    const p = planDay([task({ category: "marken", dueDate: TODAY }), task({ systemKey: "research-new:1", dueDate: TODAY })], TODAY);
+  it("automatische Ideen landen eingeklappt, zählen nicht und sind nie überfällig; eigene Marken-Aufgabe ist verbindlich", () => {
+    const p = planDay(
+      [
+        task({ category: "marken", systemKey: "content-week:b1:2026-43", dueDate: "2026-10-20" }),
+        task({ systemKey: "research-new:1", dueDate: TODAY }),
+        task({ title: "Fotos für Marke machen", category: "marken", dueDate: TODAY }),
+      ],
+      TODAY,
+    );
     expect(p.ideas).toHaveLength(2);
-    expect(p.top).toHaveLength(0);
+    expect(p.top.map((t) => t.title)).toEqual(["Fotos für Marke machen"]);
+    expect(p.counts).toEqual({ ueberfaellig: 0, heute: 1, woche: 0, spaeter: 0, ohne: 0 });
+    expect(isIdeaTask({ systemKey: null, category: "marken" })).toBe(false);
   });
 });
 
@@ -59,9 +68,12 @@ describe("Priorität", () => {
     expect(p.top).toHaveLength(8);
     expect(p.top[0].title).toBe("überfällig");
     expect(p.top[1].title).toBe("heute");
-    expect(p.later.map((t) => t.title)).toContain("später");
-    expect(p.later.map((t) => t.title)).toContain("w8");
-    expect(p.noDate.map((t) => t.title)).toEqual(["ohne"]);
+    // „Später“ und „Ohne Datum“ = genau die Menge der Zähler; was bis in 7 Tagen nicht oben steht, wird genannt.
+    expect(p.later.map((t) => t.title)).toEqual(["später"]);
+    expect(p.later).toHaveLength(p.counts.spaeter);
+    expect(p.noDate.map((t) => t.title)).toEqual(["kritisch", "ohne"]);
+    expect(p.noDate).toHaveLength(p.counts.ohne);
+    expect(p.soonElsewhere).toBe(6);
   });
   it("Versand und Geld vor Marken bei gleicher Fälligkeit", () => {
     const p = planDay([task({ title: "eigene", dueDate: TODAY, category: "eigene" }), task({ title: "versand", dueDate: TODAY, category: "versand" })], TODAY);

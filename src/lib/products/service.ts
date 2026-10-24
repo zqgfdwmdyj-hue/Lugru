@@ -6,7 +6,7 @@ import { skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, type CostInfo } from "@/lib/money/profit-logic";
 import { loadSets } from "@/lib/stock/sets";
 import { stockLevels } from "@/lib/stock/channel-sync";
-import { ekCheck, groupCandidates, mappingIssues, type Candidate, type EkSource, type Issue, type ProductGroup } from "./logic";
+import { ekCheck, groupCandidates, mappingIssues, rankProductGroups, type Candidate, type EkSource, type Issue, type ProductGroup } from "./logic";
 
 // Produkte: Suche über alle Quellen, Detail je Produkt (Stammdaten, Chargen & Einkauf, Bestand,
 // Angebote, Ergebnis, Belege) und die Arbeitsliste „Zuordnung prüfen“. Jede Abfrage mit tenant_id.
@@ -48,6 +48,13 @@ async function candidates(t: string, opts: { q?: string; skus?: string[]; produc
 }
 
 export type ProductListRow = ProductGroup & { own: number; fba: number; offers: number; cost: CostInfo | null; costMissing: number };
+
+/** Globale Suche: Produkte und Varianten aus allen Quellen (auch ohne Charge), exakte SKU zuerst. */
+export async function productSearch(t: string, q: string, limit = 20) {
+  if (!q.trim()) return { rows: [] as ReturnType<typeof rankProductGroups>, total: 0 };
+  const ranked = rankProductGroups(groupCandidates(await candidates(t, { q })), q);
+  return { rows: ranked.slice(0, limit), total: ranked.length };
+}
 
 /** Produktliste: Suche über SKU, Name, ASIN, EAN – gebündelt je Produkt, mit Bestand und Angeboten. */
 export async function productList(t: string, opts: { q?: string; view: "bestand" | "alle" }): Promise<ProductListRow[]> {
