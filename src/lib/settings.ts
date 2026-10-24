@@ -75,7 +75,11 @@ export const DEFAULT_SETTINGS = {
     services: [] as { name: string; price: number }[],
     locations: [] as string[],
     locationsSpec: "",
-    lastInventory: null as null | { at: string; scanned: number; found: number; missing: number; unknown: number },
+    lastInventory: null as null | { at: string; scanned: number; found: number; missing: number; unknown: number; duplicates?: number; confirmed?: number },
+    /** Frühere Standard-Konditionen (gültig bis einschließlich Monat `until`). */
+    rateHistory: [] as { until: string; pricePerMonth: number | null; freeDays: number | null; mode: "monat" | "anteilig" | null; inFee: number | null; outFee: number | null }[],
+    /** Sind die Preise netto (zzgl. USt) oder brutto? Ändert nichts an der Rechnung, nur an der Anzeige. */
+    pricesAre: "netto" as "netto" | "brutto",
   },
 };
 

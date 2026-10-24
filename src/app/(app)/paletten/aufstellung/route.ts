@@ -18,8 +18,10 @@ export async function GET(request: Request) {
   const bill = await loadMonthBill(session.tenantId, month);
   const group = bill.groups.find((g) => customerKey(g.customer) === customerKey(kunde));
   if (!group) return new Response("Für diesen Kunden ist im Monat nichts abzurechnen.", { status: 404 });
-  const s = (await getSettings(session.tenantId)).shipper;
+  const all = await getSettings(session.tenantId);
+  const s = all.shipper;
   const pdf = await buildStatementPdf({
+    vat: { rate: all.vatRate, pricesAre: all.pallets.pricesAre ?? "netto" },
     sender: { name: s.name1, street: s.street, houseNo: s.houseNo, zip: s.zip, city: s.city, email: s.email, phone: s.phone },
     month,
     group,

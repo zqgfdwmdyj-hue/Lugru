@@ -12,6 +12,8 @@
 export type PalletBillingMode = "monat" | "anteilig";
 export type PalletRates = { pricePerMonth: number; freeDays: number; mode: PalletBillingMode; inFee?: number; outFee?: number };
 export type PalletLike = { inAt: string; outAt: string | null };
+/** Konditionen, die bis einschließlich Monat `until` (JJJJ-MM) galten – leere Felder = Standard dieses Monats. */
+export type RateVersion = { until: string; pricePerMonth: number | null; freeDays: number | null; mode: PalletBillingMode | null; inFee: number | null; outFee: number | null };
 /** Eigene Konditionen eines Kunden – leere Felder = Standard. */
 export type CustomerRates = {
   name: string;
@@ -20,7 +22,10 @@ export type CustomerRates = {
   mode?: PalletBillingMode | null;
   inFee?: number | null;
   outFee?: number | null;
+  rateHistory?: RateVersion[] | null;
 };
+/** Standard-Konditionen mit Verlauf. */
+export type DefaultRates = PalletRates & { rateHistory?: RateVersion[] | null };
 export type ChargeLike = { customer: string; day: string; description: string; quantity: number; unitPrice: number };
 
 const DAY = 86_400_000;
@@ -40,17 +45,54 @@ export function monthRange(month: string): { first: string; last: string; days: 
   return { first: `${month}-01`, last: `${month}-${String(days).padStart(2, "0")}`, days };
 }
 
-/** Konditionen für einen Kunden: eigene, sonst Standard. */
-export function ratesFor(customer: string | null | undefined, defaults: PalletRates, overrides: Map<string, CustomerRates> = new Map()): Required<PalletRates> {
-  const o = overrides.get(customerKey(customer));
+/** Fassung, die im Monat galt: die früheste aus dem Verlauf mit `until` ≥ Monat, sonst die aktuelle. */
+function versionFor<T extends Partial<Omit<RateVersion, "until">>>(current: T, history: RateVersion[] | null | undefined, month: string | undefined): T {
+  if (!month || !history?.length) return current;
+  const v = [...history].sort((a, b) => a.until.localeCompare(b.until)).find((h) => h.until >= month);
+  return v ? ({ ...current, pricePerMonth: v.pricePerMonth, freeDays: v.freeDays, mode: v.mode, inFee: v.inFee, outFee: v.outFee } as T) : current;
+}
+
+/**
+ * Konditionen für einen Kunden: eigene, sonst Standard. Mit `month` die Fassung, die in diesem Monat galt –
+ * so verändert eine Preisänderung keine früheren Abrechnungen.
+ */
+export function ratesFor(customer: string | null | undefined, defaults: DefaultRates, overrides: Map<string, CustomerRates> = new Map(), month?: string): Required<PalletRates> & { own: boolean } {
+  const d = versionFor(defaults as Partial<RateVersion> & DefaultRates, defaults.rateHistory, month);
+  const raw = overrides.get(customerKey(customer));
+  const o = raw ? versionFor(raw as CustomerRates, raw.rateHistory, month) : undefined;
   return {
-    pricePerMonth: o?.pricePerMonth ?? defaults.pricePerMonth,
-    freeDays: o?.freeDays ?? defaults.freeDays,
-    mode: o?.mode ?? defaults.mode,
-    inFee: o?.inFee ?? defaults.inFee ?? 0,
-    outFee: o?.outFee ?? defaults.outFee ?? 0,
+    pricePerMonth: o?.pricePerMonth ?? d.pricePerMonth ?? defaults.pricePerMonth,
+    freeDays: o?.freeDays ?? d.freeDays ?? defaults.freeDays,
+    mode: o?.mode ?? d.mode ?? defaults.mode,
+    inFee: o?.inFee ?? d.inFee ?? 0,
+    outFee: o?.outFee ?? d.outFee ?? 0,
+    own: Boolean(o && (o.pricePerMonth != null || o.freeDays != null || o.mode != null || o.inFee != null || o.outFee != null)),
   };
 }
+
+/** Vormonat „JJJJ-MM“. */
+export const prevMonth = (month: string) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+};
+
+/**
+ * Konditionen ändern ab Monat `from`: die bisherige Fassung gilt bis zum Vormonat weiter (Verlauf).
+ * Frühere Monate bleiben so abgerechnet, wie sie waren. Liegt `from` vor einer schon gespeicherten
+ * Änderung, wird abgelehnt (sonst würde ein abgerechneter Zeitraum still umgedeutet).
+ */
+export function changeRates(current: Omit<RateVersion, "until">, history: RateVersion[] | null | undefined, from: string): { history: RateVersion[] } | { error: string } {
+  const list = [...(history ?? [])].sort((a, b) => a.until.localeCompare(b.until));
+  const until = prevMonth(from);
+  const last = list[list.length - 1];
+  if (last && last.until > until) return { error: `Ab ${last.until} gelten schon geänderte Konditionen – Änderungen frühestens ab dem Monat danach.` };
+  if (last && last.until === until) return { history: list };
+  return { history: [...list, { until, ...current }].slice(-60) };
+}
+
+/** Haben sich preisrelevante Felder geändert? */
+export const ratesDiffer = (a: Partial<Omit<RateVersion, "until">>, b: Partial<Omit<RateVersion, "until">>) =>
+  (["pricePerMonth", "freeDays", "mode", "inFee", "outFee"] as const).some((k) => (a[k] ?? null) !== (b[k] ?? null));
 
 /** Ab welchem Tag die Palette Geld kostet. */
 export function chargeableFrom(inAt: string, freeDays: number): string {
@@ -104,10 +146,15 @@ export type BillGroup<P extends PalletLike, C extends ChargeLike> = {
 
 type RatesInput = PalletRates | ((customer: string | null) => PalletRates);
 
-/** Alle Paletten und Leistungen eines Monats mit Betrag > 0, gruppiert nach Kunde. */
-export function monthlyBill<P extends PalletLike & { customer: string | null }, C extends ChargeLike>(pallets: P[], month: string, rates: RatesInput, charges: C[] = []) {
+/**
+ * Alle Paletten und Leistungen eines Monats mit Betrag > 0, gruppiert nach Kunde. Ohne `asOf` zählen noch
+ * eingelagerte Paletten bis Monatsende (Hochrechnung); mit `asOf` nur, was bis zu diesem Tag angefallen ist.
+ */
+export function monthlyBill<P extends PalletLike & { customer: string | null }, C extends ChargeLike>(pallets: P[], month: string, rates: RatesInput, charges: C[] = [], opts: { asOf?: string } = {}) {
   const ratesOf = typeof rates === "function" ? rates : () => rates;
   const { first, last } = monthRange(month);
+  const asOf = opts.asOf && opts.asOf < last ? opts.asOf : undefined;
+  if (asOf && asOf < first) return { groups: [], total: 0, storage: 0, fees: 0, services: 0, count: 0 };
   const groups = new Map<string, BillGroup<P, C>>();
   const groupOf = (name: string | null) => {
     const key = customerKey(name) || customerKey(NO_CUSTOMER);
@@ -119,9 +166,13 @@ export function monthlyBill<P extends PalletLike & { customer: string | null }, 
     return g;
   };
   for (const p of pallets) {
+    if (asOf && p.inAt > asOf) continue;
     const r = ratesOf(p.customer);
-    const { days, amount: storage } = amountForMonth(p, month, r);
-    const { inFee, outFee } = feesForMonth(p, month, r);
+    const cut = asOf ? { inAt: p.inAt, outAt: p.outAt && p.outAt <= asOf ? p.outAt : asOf } : p;
+    const { days, amount: storage } = amountForMonth(cut, month, r);
+    const fees = feesForMonth(p, month, r);
+    const inFee = fees.inFee;
+    const outFee = asOf && !(p.outAt && p.outAt <= asOf) ? 0 : fees.outFee;
     if (days === 0 && inFee === 0 && outFee === 0) continue;
     const g = groupOf(p.customer);
     g.lines.push({ pallet: p, days, storage, inFee, outFee, amount: round2(storage + inFee + outFee) });
@@ -129,7 +180,7 @@ export function monthlyBill<P extends PalletLike & { customer: string | null }, 
     g.fees += inFee + outFee;
   }
   for (const c of charges) {
-    if (c.day < first || c.day > last) continue;
+    if (c.day < first || c.day > (asOf ?? last)) continue;
     const amount = round2(c.quantity * c.unitPrice);
     if (amount === 0) continue;
     const g = groupOf(c.customer);
@@ -237,9 +288,9 @@ export function lastMonths(month: string, n: number): string[] {
  * Auslastung und Umsatz je Monat und Kunde. Im laufenden Monat zählt die Belegung von heute,
  * sonst die am Monatsende.
  */
-export function palletOverview<P extends PalletLike & { customer: string | null }, C extends ChargeLike>(pallets: P[], charges: C[], months: string[], ratesOf: (c: string | null) => PalletRates, today: string) {
+export function palletOverview<P extends PalletLike & { customer: string | null }, C extends ChargeLike>(pallets: P[], charges: C[], months: string[], ratesOf: (c: string | null, month?: string) => PalletRates, today: string) {
   const perMonth = months.map((month) => {
-    const bill = monthlyBill(pallets, month, ratesOf, charges);
+    const bill = monthlyBill(pallets, month, (c) => ratesOf(c, month), charges);
     const { last } = monthRange(month);
     const day = last > today ? today : last;
     return { month, occupied: occupiedOn(pallets, day), revenue: bill.total, storage: bill.storage, fees: bill.fees, services: bill.services, groups: bill.groups };

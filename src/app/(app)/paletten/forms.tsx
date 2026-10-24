@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { addCharge, savePalletCustomer, savePalletRates, sendStatementAction, type ChargeState, type SaveState, type SendState } from "./actions";
+import { addCharge, markInvoicedAction, markPaidAction, saveLocationsAction, savePalletCustomer, savePalletRates, sendStatementAction, undoInvoicedAction, type ChargeState, type SaveState, type SendState } from "./actions";
 
 const num = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
@@ -101,7 +101,17 @@ export function SendStatementButton({ customer, month, email, sentAt, error }: {
   );
 }
 
-type Rates = { pricePerMonth: number; freeDays: number; mode: "monat" | "anteilig"; inFee: number; outFee: number; capacity: number; longStayDays: number; remindFreeEnd: boolean; servicesText: string; locationsSpec: string; locationsCount: number };
+type Rates = { pricePerMonth: number; freeDays: number; mode: "monat" | "anteilig"; inFee: number; outFee: number; capacity: number; longStayDays: number; remindFreeEnd: boolean; servicesText: string; locationsSpec: string; locationsCount: number; pricesAre: "netto" | "brutto"; month: string };
+
+/** „Gilt ab“ für Preisänderungen – frühere Monate behalten die damaligen Konditionen. */
+function ValidFrom({ id, month }: { id: string; month: string }) {
+  return (
+    <div className="field">
+      <label className="label" htmlFor={id}>Preisänderung gilt ab Monat</label>
+      <input className="input" id={id} name="validFrom" type="month" defaultValue={month} min={month} />
+    </div>
+  );
+}
 
 /** Standard-Konditionen und Einstellungen des Palettenlagers (Inhaber). */
 export function RatesForm({ rates }: { rates: Rates }) {
@@ -130,11 +140,18 @@ export function RatesForm({ rates }: { rates: Rates }) {
         <label className="label" htmlFor="r-services">Zusatzleistungen mit Preis (eine je Zeile: Name = Preis)</label>
         <textarea className="input" id="r-services" name="services" rows={4} defaultValue={rates.servicesText} placeholder={"Folieren = 8\nUmpacken je Stunde = 35\nPalettentausch = 12"} />
       </div>
-      <div className="field">
-        <label className="label" htmlFor="r-locations">Stellplätze (Lagerplan) – Bereiche wie „A-01..A-20“ oder einzelne Namen, je Zeile oder mit Komma{rates.locationsCount ? ` · jetzt ${rates.locationsCount} Plätze` : ""}</label>
-        <textarea className="input" id="r-locations" name="locations" rows={3} defaultValue={rates.locationsSpec} placeholder={"A-01..A-20\nB-01..B-20\nTor 1"} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+        <div className="field">
+          <label className="label" htmlFor="r-net">Preise sind</label>
+          <select className="select" id="r-net" name="pricesAre" defaultValue={rates.pricesAre}>
+            <option value="netto">netto (zzgl. USt)</option>
+            <option value="brutto">brutto (inkl. USt)</option>
+          </select>
+        </div>
+        <ValidFrom id="r-from" month={rates.month} />
       </div>
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <div className="small muted">Stellplätze (Lagerplan) richtest du jetzt direkt unter <a href="/paletten/lagerplan#einrichten">Lagerplan</a> ein{rates.locationsCount ? ` – zurzeit ${rates.locationsCount} Plätze` : ""}.</div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn btn-primary" type="submit" disabled={pending}>Speichern</button>
         {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }} data-testid="rates-result">{state.message}</span>}
       </div>
@@ -142,10 +159,69 @@ export function RatesForm({ rates }: { rates: Rates }) {
   );
 }
 
+/** Lagerplan einrichten (Inhaber) – direkt im Lagerbereich. */
+export function LocationsForm({ spec, count, capacity }: { spec: string; count: number; capacity: number }) {
+  const [state, action, pending] = useActionState<SaveState, FormData>(saveLocationsAction, null);
+  return (
+    <form action={action} className="stack" style={{ gap: 10 }} data-testid="locations-form">
+      <div className="field">
+        <label className="label" htmlFor="l-spec">Stellplätze – Bereiche wie „A-01..A-20“ oder einzelne Namen, je Zeile oder mit Komma{count ? ` · jetzt ${count} Plätze` : ""}</label>
+        <textarea className="input" id="l-spec" name="locations" rows={4} defaultValue={spec} placeholder={"A-01..A-20\nB-01..B-20\nTor 1"} />
+      </div>
+      <div className="field" style={{ maxWidth: 220 }}>
+        <label className="label" htmlFor="l-cap">Stellplätze gesamt (leer = laut Plan)</label>
+        <input className="input" id="l-cap" name="capacity" type="number" min={0} defaultValue={capacity || ""} />
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn btn-primary" type="submit" disabled={pending}>Lagerplan speichern</button>
+        {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }} data-testid="locations-result">{state.message}</span>}
+      </div>
+    </form>
+  );
+}
+
+/** Stand je Kunde und Monat: in Rechnung gestellt (mit Nummer, nur einmal) und bezahlt. */
+export function InvoiceStatus({ customer, month, invoicedAt, invoiceNo, paidAt, invoicedTotal, total, owner }: { customer: string; month: string; invoicedAt: string | null; invoiceNo: string | null; paidAt: string | null; invoicedTotal: number | null; total: number; owner: boolean }) {
+  const [state, action, pending] = useActionState<SendState, FormData>(markInvoicedAction, null);
+  const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
+  if (invoicedAt) {
+    const changed = invoicedTotal !== null && Math.abs(invoicedTotal - total) >= 0.005;
+    return (
+      <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }} data-testid="invoice-status">
+        <span className="tag tag-info">in Rechnung gestellt · Nr. {invoiceNo} · {invoicedAt}</span>
+        {paidAt ? <span className="tag tag-ok">bezahlt {paidAt}</span> : null}
+        <form action={markPaidAction} style={{ display: "inline" }}>
+          <input type="hidden" name="customer" value={customer} />
+          <input type="hidden" name="month" value={month} />
+          {paidAt && <input type="hidden" name="undo" value="1" />}
+          <button className="btn btn-small" type="submit" data-testid="mark-paid">{paidAt ? "doch offen" : "als bezahlt markieren"}</button>
+        </form>
+        {owner && (
+          <form action={undoInvoicedAction} style={{ display: "inline" }} onSubmit={(e) => { if (!confirm(`Rechnungsvermerk Nr. ${invoiceNo} zurücknehmen?`)) e.preventDefault(); }}>
+            <input type="hidden" name="customer" value={customer} />
+            <input type="hidden" name="month" value={month} />
+            <button className="btn-link small" type="submit">Vermerk zurücknehmen</button>
+          </form>
+        )}
+        {changed && <span className="small" style={{ color: "var(--danger)" }} data-testid="invoice-changed">Achtung: Abrechnung hat sich seit der Rechnung geändert ({euro(invoicedTotal!)} → {euro(total)}) – Korrektur prüfen.</span>}
+      </span>
+    );
+  }
+  return (
+    <form action={action} style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }} data-testid="invoice-form">
+      <input type="hidden" name="customer" value={customer} />
+      <input type="hidden" name="month" value={month} />
+      <input className="input" name="invoiceNo" placeholder="Rechnungsnr." aria-label={`Rechnungsnummer für ${customer}`} style={{ width: 130, padding: "4px 8px" }} />
+      <button className="btn btn-small" type="submit" disabled={pending}>in Rechnung gestellt</button>
+      {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }} data-testid="invoice-result">{state.message}</span>}
+    </form>
+  );
+}
+
 type Customer = { id?: string; name: string; email: string | null; pricePerMonth: number | null; freeDays: number | null; mode: "monat" | "anteilig" | null; inFee: number | null; outFee: number | null; monthlyMail: boolean };
 
 /** Eigene Konditionen und E-Mail eines Kunden (leer = Standard). */
-export function CustomerForm({ customer, defaults }: { customer: Customer | null; defaults: Pick<Rates, "pricePerMonth" | "freeDays" | "mode" | "inFee" | "outFee"> }) {
+export function CustomerForm({ customer, defaults, month }: { customer: Customer | null; defaults: Pick<Rates, "pricePerMonth" | "freeDays" | "mode" | "inFee" | "outFee">; month: string }) {
   const [state, action, pending] = useActionState<SaveState, FormData>(savePalletCustomer, null);
   const [email, setEmail] = useState(customer?.email ?? "");
   const c = customer;
@@ -170,6 +246,7 @@ export function CustomerForm({ customer, defaults }: { customer: Customer | null
         </div>
         <div className="field"><label className="label" htmlFor={`c-in-${p}`}>Einlagern (€)</label><input className="input" id={`c-in-${p}`} name="inFee" inputMode="decimal" defaultValue={num(c?.inFee)} placeholder={`Standard ${num(defaults.inFee)}`} /></div>
         <div className="field"><label className="label" htmlFor={`c-out-${p}`}>Auslagern (€)</label><input className="input" id={`c-out-${p}`} name="outFee" inputMode="decimal" defaultValue={num(c?.outFee)} placeholder={`Standard ${num(defaults.outFee)}`} /></div>
+        <ValidFrom id={`c-from-${p}`} month={month} />
       </div>
       <label className="small" style={{ display: "flex", gap: 6, alignItems: "flex-start" }}>
         <input type="checkbox" name="monthlyMail" defaultChecked={c?.monthlyMail ?? false} disabled={!email.trim()} style={{ marginTop: 3 }} />

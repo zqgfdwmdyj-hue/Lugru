@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -9,8 +9,9 @@ import { requireArea, requireOwner } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { parseAmount } from "@/lib/numbers";
 import { storeFile } from "@/lib/orders/service";
-import { chargeableFrom, customerKey, inventoryCompare, nextPalletCodes, normalizeLocation, parseLocations, parseServices, storedDays } from "@/lib/pallets/billing";
-import { MONTH_RE, dropOrphanPhotoFiles, palletContext, sendStatement } from "@/lib/pallets/service";
+import { changeRates, chargeableFrom, prevMonth, customerKey, inventoryCompare, nextPalletCodes, normalizeLocation, parseLocations, parseServices, ratesDiffer, storedDays, type RateVersion } from "@/lib/pallets/billing";
+import { MONTH_RE, dropOrphanPhotoFiles, loadMonthBill, logPalletEvent, palletContext, sendStatement } from "@/lib/pallets/service";
+import { listOutgoing } from "@/lib/invoices/outgoing";
 
 const P = schema.pallets;
 const PH = schema.palletPhotos;
@@ -30,7 +31,7 @@ export type FoundPallet = {
   chargeableFrom: string;
   photos: number;
 };
-export type ScanState = { ok: boolean; message: string; codes?: string[]; found?: FoundPallet; warn?: string } | null;
+export type ScanState = { ok: boolean; message: string; codes?: string[]; found?: FoundPallet; warn?: string; at?: number } | null;
 
 function readDate(v: FormDataEntryValue | null): string {
   const s = String(v ?? "").trim();
@@ -73,9 +74,23 @@ async function canonicalCustomer(tenantId: string, name: string | null): Promise
 }
 
 async function findOpen(tenantId: string, code: string) {
-  const [open] = await db.select().from(P).where(and(eq(P.tenantId, tenantId), isNull(P.outAt), sql`lower(${P.code}) = lower(${code})`));
+  const [open] = await db.select().from(P).where(and(eq(P.tenantId, tenantId), isNull(P.outAt), isNull(P.cancelledAt), sql`lower(${P.code}) = lower(${code})`));
   return open ?? null;
 }
+
+const dmyOf = (iso: string) => iso.split("-").reverse().join(".");
+
+/** Verständliche Meldung, wenn eine Nummer nicht eingelagert ist: schon ausgelagert, storniert oder unbekannt. */
+async function notOpenMessage(tenantId: string, code: string): Promise<string> {
+  const [last] = await db.select().from(P).where(and(eq(P.tenantId, tenantId), sql`lower(${P.code}) = lower(${code})`)).orderBy(desc(P.inAt), desc(P.createdAt)).limit(1);
+  if (!last) return `Palette „${code}“ ist unbekannt – unter dieser Nummer wurde nie etwas eingelagert. Nummer prüfen oder einlagern.`;
+  if (last.cancelledAt) return `Palette „${last.code}“ wurde storniert (Fehlbuchung${last.cancelReason ? `: ${last.cancelReason}` : ""}) – nicht eingelagert.`;
+  const [pu] = await db.select({ pickedBy: schema.palletPickups.pickedBy }).from(schema.palletPickups).where(and(eq(schema.palletPickups.tenantId, tenantId), isNull(schema.palletPickups.cancelledAt), sql`${schema.palletPickups.palletIds} @> ${JSON.stringify([last.id])}::jsonb`)).limit(1);
+  return `Palette „${last.code}“ ist schon ausgelagert – am ${dmyOf(last.outAt!)}${pu ? `, abgeholt von ${pu.pickedBy}` : ""}${last.customer ? ` (${last.customer})` : ""}.`;
+}
+
+/** Name für den Verlauf. */
+const who = (session: { name?: string | null; email: string }) => session.name || session.email;
 
 /**
  * Scan-Feld: Einlagern (neue Palette, Timer startet), Auslagern (Timer stoppt) oder Suchen
@@ -91,7 +106,7 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
   if (mode === "suchen") {
     if (!code) return { ok: false, message: "Bitte Palettennummer scannen oder eingeben." };
     const open = await findOpen(t, code);
-    if (!open) return { ok: false, message: `Palette „${code}“ ist nicht eingelagert.` };
+    if (!open) return { ok: false, message: await notOpenMessage(t, code), at: Date.now() };
     const ctx = await palletContext(t);
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(PH).where(and(eq(PH.tenantId, t), eq(PH.palletId, open.id)));
     return {
@@ -115,11 +130,12 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
   if (mode === "aus") {
     if (!code) return { ok: false, message: "Bitte Palettennummer scannen oder eingeben." };
     const open = await findOpen(t, code);
-    if (!open) return { ok: false, message: `Palette „${code}“ ist nicht eingelagert.` };
+    if (!open) return { ok: false, message: await notOpenMessage(t, code), at: Date.now() };
     const outAt = day < open.inAt ? open.inAt : day;
     await db.update(P).set({ outAt, updatedAt: new Date() }).where(and(eq(P.id, open.id), eq(P.tenantId, t)));
+    await logPalletEvent(t, [open.id], "aus", `Ausgelagert (Scan)${open.location ? ` von ${open.location}` : ""}`, { day: outAt, userName: who(session) });
     revalidatePath("/paletten");
-    return { ok: true, message: `Palette ${open.code} ausgelagert${open.customer ? ` (${open.customer})` : ""}${open.location ? ` – Stellplatz ${open.location} ist frei` : ""}.`, codes: [open.code] };
+    return { ok: true, message: `Palette ${open.code} ausgelagert${open.customer ? ` (${open.customer})` : ""}${open.location ? ` – Stellplatz ${open.location} ist frei` : ""}.`, codes: [open.code], at: Date.now() };
   }
 
   const customer = await canonicalCustomer(t, text(fd, "customer", 120));
@@ -128,17 +144,24 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
   const contents = text(fd, "contents", 300);
   const weightKg = amount(fd, "weightKg");
   const count = Math.min(100, Math.max(1, Math.round(Number(fd.get("count")) || 1)));
-  const openRows = await db.select({ code: P.code, location: P.location }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt)));
+  const openRows = await db.select({ code: P.code, location: P.location }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt)));
+  const isOpen = (c: string) => openRows.some((r) => r.code.toLowerCase() === c.toLowerCase());
 
   let codes: string[];
+  const notes: string[] = [];
   if (code) {
-    if (count > 1) return { ok: false, message: "Mehrere Paletten auf einmal nur ohne Nummer (dann werden Nummern vergeben)." };
-    if (openRows.some((r) => r.code.toLowerCase() === code.toLowerCase())) return { ok: false, message: `Palette „${code}“ ist schon eingelagert. Zum Auslagern oben „Auslagern“ wählen.` };
-    codes = [code];
+    // Mehrere Paletten mit eigener Nummer: jede bekommt eine eigene Kennung (LS-4711-1, LS-4711-2 …).
+    codes = count > 1 ? Array.from({ length: count }, (_, i) => `${code}-${i + 1}`) : [code];
+    const clash = codes.filter(isOpen);
+    if (clash.length) return { ok: false, message: `${clash.length === 1 ? `Palette „${clash[0]}“ ist` : `Paletten ${clash.join(", ")} sind`} schon eingelagert. Zum Auslagern oben „Auslagern“ wählen.`, at: Date.now() };
+    const earlier = await db.select({ code: P.code, outAt: P.outAt }).from(P).where(and(eq(P.tenantId, t), isNotNull(P.outAt), isNull(P.cancelledAt), inArray(sql`lower(${P.code})`, codes.map((c) => c.toLowerCase())))).orderBy(desc(P.outAt)).limit(3);
+    if (earlier.length) notes.push(`Nummer ${earlier[0].code} war schon einmal eingelagert (ausgelagert am ${dmyOf(earlier[0].outAt!)}) – das hier ist eine neue Palette mit eigenem Verlauf.`);
   } else {
     const all = (await db.select({ code: P.code }).from(P).where(eq(P.tenantId, t))).map((r) => r.code);
     codes = nextPalletCodes(all, count);
   }
+  const plan = (await palletContext(t)).settings.locations ?? [];
+  if (location && plan.length && !plan.includes(location)) notes.push(`Stellplatz ${location} steht nicht im Lagerplan.`);
   let photoIds: string[];
   try {
     photoIds = await storePhotos(t, fd);
@@ -151,16 +174,19 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
     .returning({ id: P.id });
   if (photoIds.length) await db.insert(PH).values(inserted.flatMap((p) => photoIds.map((fileId) => ({ tenantId: t, palletId: p.id, fileId }))));
   const busy = location ? openRows.filter((r) => r.location === location).map((r) => r.code) : [];
+  if (busy.length) notes.unshift(`Achtung: Auf ${location} steht schon ${busy.join(", ")}.`);
+  await logPalletEvent(t, inserted.map((r) => r.id), "ein", `Eingelagert${customer ? ` für ${customer}` : ""}${location ? ` auf ${location}` : ""}${codes.length > 1 ? ` (eine von ${codes.length}: ${codes[0]} bis ${codes[codes.length - 1]})` : ""}`, { day, userName: who(session) });
   revalidatePath("/paletten");
   const when = day.split("-").reverse().join(".");
   return {
     ok: true,
     message:
-      (codes.length === 1 ? `Palette ${codes[0]} eingelagert – Timer läuft ab ${when}.` : `${codes.length} Paletten eingelagert: ${codes[0]} bis ${codes[codes.length - 1]}.`) +
+      (codes.length === 1 ? `Palette ${codes[0]} eingelagert – Timer läuft ab ${when}.` : `${codes.length} Paletten eingelagert, jede mit eigener Nummer: ${codes.join(", ")}.`) +
       (location ? ` Stellplatz ${location}.` : "") +
       (photoIds.length ? ` ${photoIds.length} Foto${photoIds.length === 1 ? "" : "s"} gespeichert.` : ""),
-    warn: busy.length ? `Achtung: Auf ${location} steht schon ${busy.join(", ")}.` : undefined,
+    warn: notes.length ? notes.join(" ") : undefined,
     codes,
+    at: Date.now(),
   };
 }
 
@@ -171,8 +197,10 @@ export async function checkOutPallet(fd: FormData) {
   const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
   if (!p || p.outAt) return;
   const day = readDate(fd.get("date"));
+  const reason = text(fd, "reason", 200);
   await db.update(P).set({ outAt: day < p.inAt ? p.inAt : day, updatedAt: new Date() }).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
-  revalidatePath("/paletten");
+  await logPalletEvent(session.tenantId, [id], "aus", reason ?? "Ausgelagert („Ist raus“)", { day: day < p.inAt ? p.inAt : day, userName: who(session) });
+  revalidatePath("/paletten", "layout");
 }
 
 /** Auslagern rückgängig (versehentlich gescannt). */
@@ -180,11 +208,12 @@ export async function undoCheckOut(fd: FormData) {
   const session = await requireArea("paletten");
   const id = z.string().uuid().parse(fd.get("id"));
   const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
-  if (!p || !p.outAt) return;
+  if (!p || !p.outAt || p.cancelledAt) return;
   const [clash] = await db.select({ id: P.id }).from(P).where(and(eq(P.tenantId, session.tenantId), isNull(P.outAt), eq(P.code, p.code)));
   if (clash) return; // Nummer ist inzwischen wieder belegt
   await db.update(P).set({ outAt: null, updatedAt: new Date() }).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
-  revalidatePath("/paletten");
+  await logPalletEvent(session.tenantId, [id], "zurueck", `Auslagerung vom ${dmyOf(p.outAt)} zurückgenommen${text(fd, "reason", 200) ? `: ${text(fd, "reason", 200)}` : " (versehentlich ausgelagert)"}`, { userName: who(session) });
+  revalidatePath("/paletten", "layout");
 }
 
 /** Daten korrigieren (Kunde, Stellplatz, Inhalt, Gewicht, Notiz, Ein-/Auslagerungstag). */
@@ -196,6 +225,8 @@ export async function updatePallet(fd: FormData) {
   const outRaw = String(fd.get("outAt") ?? "").trim();
   const outAt = outRaw ? isoDate.parse(outRaw) : null;
   if (outAt && outAt < inAt) return;
+  const [before] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  if (!before || before.cancelledAt) return;
   if (outAt === null && fd.has("outAt")) {
     // Wieder „im Lager“ nur, wenn die Nummer nicht inzwischen neu belegt ist.
     const [p] = await db.select({ code: P.code }).from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
@@ -215,19 +246,52 @@ export async function updatePallet(fd: FormData) {
       updatedAt: new Date(),
     })
     .where(and(eq(P.id, id), eq(P.tenantId, t)));
-  revalidatePath("/paletten");
+  // Was hat sich geändert? Alles in den Verlauf – nichts wird still überschrieben.
+  const [after] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  const fmt = (v: unknown) => (v === null || v === undefined || v === "" ? "–" : /^\d{4}-\d{2}-\d{2}$/.test(String(v)) ? dmyOf(String(v)) : String(v));
+  const fields: [keyof typeof before, string][] = [["customer", "Kunde"], ["location", "Stellplatz"], ["contents", "Inhalt"], ["weightKg", "Gewicht"], ["note", "Notiz"], ["inAt", "Eingelagert"], ["outAt", "Ausgelagert"]];
+  const changes = fields.filter(([k]) => String(before[k] ?? "") !== String(after?.[k] ?? "")).map(([k, label]) => `${label} ${fmt(before[k])} → ${fmt(after?.[k])}`);
+  if (changes.length) {
+    const onlyPlace = changes.length === 1 && changes[0].startsWith("Stellplatz");
+    await logPalletEvent(t, [id], onlyPlace ? "umlagern" : "korrektur", `${onlyPlace ? "Umgelagert" : "Korrigiert"}: ${changes.join(" · ")}${text(fd, "reason", 200) ? ` (Grund: ${text(fd, "reason", 200)})` : ""}`, { userName: who(session) });
+  }
+  revalidatePath("/paletten", "layout");
   revalidatePath(`/paletten/${id}`);
 }
 
-export async function deletePallet(fd: FormData) {
+/**
+ * Fehlbuchung stornieren statt löschen: die Palette bleibt mit Verlauf und Fotos erhalten, zählt aber
+ * in Bestand und Abrechnung nicht mehr; die Nummer wird frei. Grund ist Pflicht.
+ */
+export async function cancelPallet(fd: FormData) {
   const session = await requireArea("paletten");
   const t = session.tenantId;
   const id = z.string().uuid().parse(fd.get("id"));
-  const files = await db.select({ fileId: PH.fileId }).from(PH).where(and(eq(PH.tenantId, t), eq(PH.palletId, id)));
-  await db.delete(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
-  await dropOrphanPhotoFiles(t, files.map((f) => f.fileId));
-  revalidatePath("/paletten");
-  if (fd.get("back") === "1") redirect("/paletten#ausgelagert");
+  const reason = text(fd, "reason", 200) ?? "Fehlbuchung";
+  const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  if (!p || p.cancelledAt) return;
+  await db.update(P).set({ cancelledAt: new Date(), cancelReason: reason, outAt: p.outAt ?? p.inAt, updatedAt: new Date() }).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  await logPalletEvent(t, [id], "storno", `Storniert: ${reason}`, { userName: who(session) });
+  revalidatePath("/paletten", "layout");
+  if (fd.get("back") === "1") redirect(`/paletten/${id}`);
+}
+
+/** Storno zurücknehmen (z. B. versehentlich storniert). */
+export async function undoCancelPallet(fd: FormData) {
+  const session = await requireArea("paletten");
+  const t = session.tenantId;
+  const id = z.string().uuid().parse(fd.get("id"));
+  const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  if (!p?.cancelledAt) return;
+  await db.update(P).set({ cancelledAt: null, cancelReason: null, updatedAt: new Date() }).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  await logPalletEvent(t, [id], "korrektur", "Storno zurückgenommen", { userName: who(session) });
+  revalidatePath("/paletten", "layout");
+}
+
+/** Früher: ganz löschen. Jetzt nur noch Storno – der Verlauf bleibt. (Alter Formular-Name bleibt gültig.) */
+export async function deletePallet(fd: FormData) {
+  if (!fd.get("reason")) fd.set("reason", "Fehlbuchung");
+  return cancelPallet(fd);
 }
 
 // ---- Fotos ----------------------------------------------------------------------------------------
@@ -244,6 +308,7 @@ export async function addPalletPhotos(_prev: PhotoState, fd: FormData): Promise<
     const ids = await storePhotos(t, fd);
     if (!ids.length) return { ok: false, message: "Kein Foto ausgewählt." };
     await db.insert(PH).values(ids.map((fileId) => ({ tenantId: t, palletId, fileId })));
+    await logPalletEvent(t, [palletId], "foto", `${ids.length} Foto${ids.length === 1 ? "" : "s"} hinzugefügt`, { userName: who(session) });
     revalidatePath(`/paletten/${palletId}`);
     revalidatePath("/paletten");
     return { ok: true, message: `${ids.length} Foto${ids.length === 1 ? "" : "s"} gespeichert.` };
@@ -294,7 +359,8 @@ export async function addCharge(_prev: ChargeState, fd: FormData): Promise<Charg
   if (!customer) return { ok: false, message: "Bitte Kunde angeben." };
   const day = readDate(fd.get("day"));
   await db.insert(CH).values({ tenantId: t, palletId, customer, day, description, quantity: Math.round(quantity * 100) / 100, unitPrice: Math.round(unitPrice * 100) / 100 });
-  revalidatePath("/paletten");
+  if (palletId) await logPalletEvent(t, [palletId], "leistung", `Leistung: ${description} (${String(quantity).replace(".", ",")} × ${unitPrice.toFixed(2).replace(".", ",")} €)`, { day, userName: who(session) });
+  revalidatePath("/paletten", "layout");
   if (palletId) revalidatePath(`/paletten/${palletId}`);
   const sum = (quantity * unitPrice).toFixed(2).replace(".", ",");
   return { ok: true, message: `${description} für ${customer} erfasst (${sum} €).` };
@@ -321,11 +387,84 @@ export async function sendStatementAction(_prev: SendState, fd: FormData): Promi
   return res;
 }
 
+// ---- Abgerechnet → in Rechnung gestellt → bezahlt --------------------------------------------------
+
+const ST = schema.palletStatements;
+
+async function statementRow(tenantId: string, customer: string, month: string) {
+  const [row] = await db.select().from(ST).where(and(eq(ST.tenantId, tenantId), eq(ST.month, month), sql`lower(${ST.customer}) = ${customerKey(customer)}`));
+  return row ?? null;
+}
+
+/**
+ * Als „in Rechnung gestellt“ markieren – mit Rechnungsnummer und dem Betrag von jetzt. Ein zweites Mal geht
+ * nicht (doppelte Rechnung); ändert sich die Abrechnung danach, zeigt die Abrechnung eine Warnung.
+ */
+export async function markInvoicedAction(_prev: SendState, fd: FormData): Promise<SendState> {
+  const session = await requireArea("paletten");
+  const t = session.tenantId;
+  const month = String(fd.get("month") ?? "");
+  const customer = String(fd.get("customer") ?? "").trim();
+  const invoiceNo = text(fd, "invoiceNo", 60);
+  if (!MONTH_RE.test(month) || !customer) return { ok: false, message: "Monat oder Kunde fehlt." };
+  if (!invoiceNo) return { ok: false, message: "Bitte die Rechnungsnummer angeben." };
+  const cur = await statementRow(t, customer, month);
+  if (cur?.invoicedAt) return { ok: false, message: `Schon in Rechnung gestellt (Nr. ${cur.invoiceNo ?? "?"}, ${cur.invoicedAt.toLocaleDateString("de-DE")}) – keine zweite Rechnung.` };
+  const dup = await db.select({ month: ST.month, customer: ST.customer }).from(ST).where(and(eq(ST.tenantId, t), sql`lower(${ST.invoiceNo}) = lower(${invoiceNo})`)).limit(1);
+  if (dup.length) return { ok: false, message: `Rechnungsnummer ${invoiceNo} ist schon bei ${dup[0].customer} (${dup[0].month}) eingetragen.` };
+  const bill = await loadMonthBill(t, month);
+  const group = bill.groups.find((g) => customerKey(g.customer) === customerKey(customer));
+  if (!group || group.total <= 0) return { ok: false, message: `Für „${customer}“ ist im Monat nichts abzurechnen.` };
+  const known = (await listOutgoing(t, { q: invoiceNo, limit: 5 })).find((r) => r.number.toLowerCase() === invoiceNo.toLowerCase());
+  const patch = { invoicedAt: new Date(), invoiceNo, invoicedTotal: group.total };
+  if (cur) await db.update(ST).set(patch).where(eq(ST.id, cur.id));
+  else await db.insert(ST).values({ tenantId: t, customer: group.customer, month, ...patch });
+  revalidatePath("/paletten", "layout");
+  return { ok: true, message: `In Rechnung gestellt: Nr. ${invoiceNo} (${group.total.toFixed(2).replace(".", ",")} € netto)${known ? " – Ausgangsrechnung im System gefunden und verknüpft" : ""}.` };
+}
+
+export async function markPaidAction(fd: FormData) {
+  const session = await requireArea("paletten");
+  const month = String(fd.get("month") ?? "");
+  const customer = String(fd.get("customer") ?? "").trim();
+  const cur = await statementRow(session.tenantId, customer, month);
+  if (!cur?.invoicedAt) return;
+  await db.update(ST).set({ paidAt: fd.get("undo") ? null : new Date() }).where(eq(ST.id, cur.id));
+  revalidatePath("/paletten", "layout");
+}
+
+/** Rechnungsvermerk zurücknehmen (z. B. falsche Nummer) – nur Inhaber. */
+export async function undoInvoicedAction(fd: FormData) {
+  const session = await requireOwner();
+  const month = String(fd.get("month") ?? "");
+  const customer = String(fd.get("customer") ?? "").trim();
+  const cur = await statementRow(session.tenantId, customer, month);
+  if (!cur) return;
+  await db.update(ST).set({ invoicedAt: null, invoiceNo: null, invoicedTotal: null, paidAt: null }).where(eq(ST.id, cur.id));
+  revalidatePath("/paletten", "layout");
+}
+
 // ---- Konditionen (nur Inhaber) ---------------------------------------------------------------------
+
+/** Einstellungen der Paletten zusammenführen (nicht ersetzen – sonst gehen Inventur-Stand und Lagerplan verloren). */
+async function mergePalletSettings(tenantId: string, patch: Record<string, unknown>) {
+  await db
+    .update(schema.tenants)
+    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('pallets', coalesce(${schema.tenants.settings}->'pallets', '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb)` })
+    .where(eq(schema.tenants.id, tenantId));
+}
+const thisMonth = () => todayIso().slice(0, 7);
+const validFromOf = (fd: FormData) => {
+  const v = String(fd.get("validFrom") ?? "").trim();
+  return MONTH_RE.test(v) ? v : thisMonth();
+};
 
 export type SaveState = { ok: boolean; message: string } | null;
 
-/** Standard-Konditionen, Gebühren, Stellplätze, Erinnerungen und Leistungen. */
+/**
+ * Standard-Konditionen, Gebühren, Erinnerungen und Leistungen. Preisänderungen gelten ab dem gewählten Monat;
+ * frühere Monate rechnen mit den damaligen Konditionen weiter (Verlauf).
+ */
 export async function savePalletRates(_prev: SaveState, fd: FormData): Promise<SaveState> {
   const session = await requireOwner();
   const pricePerMonth = amount(fd, "pricePerMonth");
@@ -336,25 +475,44 @@ export async function savePalletRates(_prev: SaveState, fd: FormData): Promise<S
   if (!mode.success) return { ok: false, message: "Bitte Abrechnungsart wählen." };
   const capacity = Math.max(0, Math.min(100000, Math.round(Number(fd.get("capacity")) || 0)));
   const longStayDays = Math.max(0, Math.min(3650, Math.round(Number(fd.get("longStayDays")) || 0)));
-  const pallets = {
-    pricePerMonth,
-    freeDays,
-    mode: mode.data,
-    inFee: amount(fd, "inFee") ?? 0,
-    outFee: amount(fd, "outFee") ?? 0,
+  const cur = (await palletContext(session.tenantId)).settings;
+  const next = { pricePerMonth, freeDays, mode: mode.data, inFee: amount(fd, "inFee") ?? 0, outFee: amount(fd, "outFee") ?? 0 };
+  let rateHistory = cur.rateHistory ?? [];
+  let note = "";
+  if (ratesDiffer(cur, next)) {
+    const from = validFromOf(fd);
+    const r = changeRates({ pricePerMonth: cur.pricePerMonth, freeDays: cur.freeDays, mode: cur.mode, inFee: cur.inFee ?? 0, outFee: cur.outFee ?? 0 }, rateHistory, from);
+    if ("error" in r) return { ok: false, message: r.error };
+    rateHistory = r.history;
+    note = ` Neue Konditionen gelten ab ${from.slice(5, 7)}/${from.slice(0, 4)} – frühere Monate bleiben wie abgerechnet.`;
+  }
+  const pricesAre = fd.get("pricesAre") === "brutto" ? "brutto" : "netto";
+  await mergePalletSettings(session.tenantId, {
+    ...next,
+    rateHistory,
+    pricesAre,
     capacity,
     longStayDays,
     remindFreeEnd: fd.get("remindFreeEnd") === "on",
     services: parseServices(String(fd.get("services") ?? "")),
-    locationsSpec: String(fd.get("locations") ?? "").slice(0, 4000),
-    locations: parseLocations(String(fd.get("locations") ?? "")),
-  };
-  await db
-    .update(schema.tenants)
-    .set({ settings: sql`${schema.tenants.settings} || ${JSON.stringify({ pallets })}::jsonb` })
-    .where(eq(schema.tenants.id, session.tenantId));
+    // Lagerplan nur, wenn das Feld mitkommt (er wird jetzt im Lagerplan eingerichtet).
+    ...(fd.has("locations") ? { locationsSpec: String(fd.get("locations") ?? "").slice(0, 4000), locations: parseLocations(String(fd.get("locations") ?? "")) } : {}),
+  });
   revalidatePath("/paletten", "layout");
-  return { ok: true, message: "Gespeichert." };
+  return { ok: true, message: `Gespeichert.${note}` };
+}
+
+/** Lagerplan (Stellplätze) direkt im Lagerbereich einrichten. */
+export async function saveLocationsAction(_prev: SaveState, fd: FormData): Promise<SaveState> {
+  const session = await requireOwner();
+  const spec = String(fd.get("locations") ?? "").slice(0, 4000);
+  const locations = parseLocations(spec);
+  const capacity = Math.max(0, Math.min(100000, Math.round(Number(fd.get("capacity")) || 0)));
+  const open = await db.select({ location: P.location }).from(P).where(and(eq(P.tenantId, session.tenantId), isNull(P.outAt), isNull(P.cancelledAt), isNotNull(P.location)));
+  const lost = [...new Set(open.map((o) => o.location!))].filter((l) => !locations.includes(l));
+  await mergePalletSettings(session.tenantId, { locationsSpec: spec, locations, ...(fd.has("capacity") ? { capacity } : {}) });
+  revalidatePath("/paletten", "layout");
+  return { ok: true, message: `${locations.length} Stellplätze gespeichert.${lost.length ? ` Belegte Plätze nicht mehr im Plan: ${lost.slice(0, 8).join(", ")} – Paletten bleiben, erscheinen unter „ohne Platz im Plan“.` : ""}` };
 }
 
 /** Kunde mit eigenen Konditionen und E-Mail anlegen oder ändern. Leere Felder = Standard. */
@@ -370,14 +528,34 @@ export async function savePalletCustomer(_prev: SaveState, fd: FormData): Promis
   const freeDays = freeRaw === "" ? null : Math.round(Number(freeRaw));
   if (freeDays !== null && (!Number.isFinite(freeDays) || freeDays < 0 || freeDays > 365)) return { ok: false, message: "Kostenfreie Tage: 0 bis 365." };
   const modeRaw = String(fd.get("mode") ?? "");
-  const values = {
-    name: id.success ? undefined : await canonicalCustomer(t, name),
-    email,
+  const existing = id.success
+    ? (await db.select().from(PC).where(and(eq(PC.id, id.data), eq(PC.tenantId, t))))[0]
+    : (await db.select().from(PC).where(and(eq(PC.tenantId, t), sql`lower(${PC.name}) = ${customerKey(name)}`)))[0];
+  const priceFields = {
     pricePerMonth: amount(fd, "pricePerMonth"),
     freeDays,
     mode: modeRaw === "monat" || modeRaw === "anteilig" ? (modeRaw as "monat" | "anteilig") : null,
     inFee: amount(fd, "inFee"),
     outFee: amount(fd, "outFee"),
+  };
+  let rateHistory: RateVersion[] = existing?.rateHistory ?? [];
+  let note = "";
+  if (existing && ratesDiffer(existing, priceFields)) {
+    const from = validFromOf(fd);
+    const r = changeRates({ pricePerMonth: existing.pricePerMonth, freeDays: existing.freeDays, mode: existing.mode, inFee: existing.inFee, outFee: existing.outFee }, rateHistory, from);
+    if ("error" in r) return { ok: false, message: r.error };
+    rateHistory = r.history;
+    note = ` Neue Konditionen ab ${from.slice(5, 7)}/${from.slice(0, 4)}, frühere Monate unverändert.`;
+  } else if (!existing && ratesDiffer({}, priceFields)) {
+    // Neuer Kunde mit eigenen Preisen: frühere Monate liefen zum Standard – das bleibt so.
+    const from = validFromOf(fd);
+    rateHistory = [{ until: prevMonth(from), pricePerMonth: null, freeDays: null, mode: null, inFee: null, outFee: null }];
+  }
+  const values = {
+    name: id.success ? undefined : await canonicalCustomer(t, name),
+    email,
+    ...priceFields,
+    rateHistory,
     monthlyMail: fd.get("monthlyMail") === "on" && Boolean(email),
     updatedAt: new Date(),
   };
@@ -390,7 +568,7 @@ export async function savePalletCustomer(_prev: SaveState, fd: FormData): Promis
     else await db.insert(PC).values({ ...values, name: values.name ?? name, tenantId: t });
   }
   revalidatePath("/paletten", "layout");
-  return { ok: true, message: `${name}: gespeichert.${fd.get("monthlyMail") === "on" && !email ? " Automatisch senden geht erst mit E-Mail-Adresse." : ""}` };
+  return { ok: true, message: `${name}: gespeichert.${note}${fd.get("monthlyMail") === "on" && !email ? " Automatisch senden geht erst mit E-Mail-Adresse." : ""}` };
 }
 
 /** Eigene Konditionen entfernen – der Kunde rechnet dann wieder zum Standard ab. */
@@ -404,15 +582,18 @@ export async function deletePalletCustomer(fd: FormData) {
 
 // ---- Inventur ---------------------------------------------------------------------------------------
 
+type InvPallet = { id: string; code: string; location: string | null; customer: string | null };
 export type InventoryState = {
   ok: boolean;
   message: string;
-  found?: { id: string; code: string; location: string | null; customer: string | null }[];
-  missing?: { id: string; code: string; location: string | null; customer: string | null }[];
+  expected?: number;
+  found?: InvPallet[];
+  missing?: InvPallet[];
   unknown?: string[];
+  duplicates?: { code: string; times: number }[];
 } | null;
 
-/** Gescannte Nummern mit dem Bestand abgleichen: da, fehlt, unbekannt. */
+/** Gescannte Nummern mit dem Bestand abgleichen: erwartet, gefunden, fehlt, unbekannt, doppelt gescannt. */
 export async function inventoryAction(_prev: InventoryState, fd: FormData): Promise<InventoryState> {
   const session = await requireArea("paletten");
   const t = session.tenantId;
@@ -423,22 +604,76 @@ export async function inventoryAction(_prev: InventoryState, fd: FormData): Prom
     return { ok: false, message: "Liste nicht lesbar." };
   }
   if (!codes.length) return { ok: false, message: "Noch nichts gescannt." };
-  const open = await db.select({ id: P.id, code: P.code, location: P.location, customer: P.customer }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt))).orderBy(P.location, P.code);
+  const open = await db.select({ id: P.id, code: P.code, location: P.location, customer: P.customer }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt))).orderBy(P.location, P.code);
   const r = inventoryCompare(codes, open);
-  const lastInventory = { at: new Date().toISOString(), scanned: r.scanned, found: r.found.length, missing: r.missing.length, unknown: r.unknown.length };
-  await db
-    .update(schema.tenants)
-    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('pallets', coalesce(${schema.tenants.settings}->'pallets', '{}'::jsonb) || ${JSON.stringify({ lastInventory })}::jsonb)` })
-    .where(eq(schema.tenants.id, t));
-  revalidatePath("/paletten", "layout");
+  const counts = new Map<string, { code: string; times: number }>();
+  for (const c of codes) {
+    const k = c.toLowerCase();
+    counts.set(k, { code: counts.get(k)?.code ?? c, times: (counts.get(k)?.times ?? 0) + 1 });
+  }
+  const duplicates = [...counts.values()].filter((x) => x.times > 1);
   const clean = !r.missing.length && !r.unknown.length;
   return {
     ok: true,
-    message: clean ? `Alles stimmt: ${r.found.length} Paletten gefunden.` : `${r.found.length} gefunden · ${r.missing.length} fehlen · ${r.unknown.length} unbekannt`,
+    message: clean
+      ? `Alles stimmt: ${r.found.length} von ${open.length} erwarteten Paletten gefunden.${duplicates.length ? ` ${duplicates.length} doppelt gescannt (zählt einmal).` : ""}`
+      : `Erwartet ${open.length} · gefunden ${r.found.length} · fehlen ${r.missing.length} · unbekannt ${r.unknown.length}${duplicates.length ? ` · doppelt gescannt ${duplicates.length}` : ""}`,
+    expected: open.length,
     found: r.found,
     missing: r.missing,
     unknown: r.unknown,
+    duplicates,
   };
+}
+
+/**
+ * Inventur abschließen, nachdem jede Abweichung einzeln entschieden ist: fehlende Paletten „ist raus“
+ * (wird ausgelagert) oder „doch da“ / „klären“; unbekannte „einlagern“ (separat) oder „ignorieren“.
+ * Alles landet im Verlauf; der Stand wird gespeichert.
+ */
+export async function finishInventoryAction(_prev: InventoryState, fd: FormData): Promise<InventoryState> {
+  const session = await requireArea("paletten");
+  const t = session.tenantId;
+  let input: { codes: string[]; decisions: Record<string, "raus" | "da" | "klaeren" | "ignorieren" | "einlagern"> };
+  try {
+    input = JSON.parse(String(fd.get("payload") ?? "{}"));
+  } catch {
+    return { ok: false, message: "Daten nicht lesbar." };
+  }
+  const codes = (input.codes ?? []).map((c) => String(c).trim().slice(0, 80)).filter(Boolean).slice(0, 5000);
+  const open = await db.select({ id: P.id, code: P.code, location: P.location, customer: P.customer }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt)));
+  const r = inventoryCompare(codes, open);
+  const d = input.decisions ?? {};
+  const undecided = [...r.missing.map((p) => p.code), ...r.unknown].filter((c) => !d[c.toLowerCase()]);
+  if (undecided.length) return { ok: false, message: `Noch nicht entschieden: ${undecided.slice(0, 8).join(", ")}${undecided.length > 8 ? " …" : ""}` };
+  const today = todayIso();
+  const by = who(session);
+  await logPalletEvent(t, r.found.map((p) => p.id), "inventur", "Inventur: gesehen", { day: today, userName: by });
+  const out = r.missing.filter((p) => d[p.code.toLowerCase()] === "raus");
+  if (out.length) {
+    await db.update(P).set({ outAt: sql`greatest(${P.inAt}, ${today}::date)`, updatedAt: new Date() }).where(and(eq(P.tenantId, t), isNull(P.outAt), inArray(P.id, out.map((p) => p.id))));
+    await logPalletEvent(t, out.map((p) => p.id), "aus", "Inventur: nicht gefunden – als ausgelagert bestätigt", { day: today, userName: by });
+  }
+  const there = r.missing.filter((p) => d[p.code.toLowerCase()] === "da");
+  await logPalletEvent(t, there.map((p) => p.id), "inventur", "Inventur: nicht gescannt, aber nachgesehen – ist da", { day: today, userName: by });
+  const unclear = r.missing.filter((p) => d[p.code.toLowerCase()] === "klaeren");
+  await logPalletEvent(t, unclear.map((p) => p.id), "inventur", "Inventur: nicht gefunden – wird geklärt", { day: today, userName: by });
+  const counts = new Map<string, number>();
+  for (const c of codes) counts.set(c.toLowerCase(), (counts.get(c.toLowerCase()) ?? 0) + 1);
+  const lastInventory = { at: new Date().toISOString(), scanned: r.scanned, found: r.found.length, missing: r.missing.length, unknown: r.unknown.length, duplicates: [...counts.values()].filter((n) => n > 1).length, confirmed: r.missing.length + r.unknown.length };
+  await mergeInventory(t, lastInventory);
+  revalidatePath("/paletten", "layout");
+  return {
+    ok: true,
+    message: `Inventur abgeschlossen: ${r.found.length} gesehen${out.length ? `, ${out.length} als ausgelagert gebucht` : ""}${there.length ? `, ${there.length} doch da` : ""}${unclear.length ? `, ${unclear.length} zu klären` : ""}${r.unknown.length ? `, ${r.unknown.length} unbekannte entschieden` : ""}.`,
+  };
+}
+
+async function mergeInventory(tenantId: string, lastInventory: Record<string, unknown>) {
+  await db
+    .update(schema.tenants)
+    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('pallets', coalesce(${schema.tenants.settings}->'pallets', '{}'::jsonb) || ${JSON.stringify({ lastInventory })}::jsonb)` })
+    .where(eq(schema.tenants.id, tenantId));
 }
 
 // ---- Sammel-Abholung mit Unterschrift ----------------------------------------------------------------
@@ -460,8 +695,9 @@ export async function pickupAction(_prev: PickupState, fd: FormData): Promise<Pi
   if (!png || png.length < 200 || !png.subarray(0, 4).equals(PNG_MAGIC)) return { ok: false, message: "Bitte unterschreiben lassen." };
   if (png.length > 600_000) return { ok: false, message: "Unterschrift zu groß – bitte nochmal." };
   const day = readDate(fd.get("date"));
-  const rows = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), inArray(P.id, ids)));
+  const rows = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt), inArray(P.id, ids)));
   if (!rows.length) return { ok: false, message: "Die ausgewählten Paletten sind nicht (mehr) eingelagert." };
+  if (rows.length < ids.length) return { ok: false, message: `${ids.length - rows.length} der ausgewählten Paletten sind nicht mehr eingelagert – bitte Auswahl prüfen (Seite neu laden).` };
   const fileId = await storeFile(t, `unterschrift-${day}.png`, "image/png", png);
   await db
     .update(P)
@@ -482,6 +718,33 @@ export async function pickupAction(_prev: PickupState, fd: FormData): Promise<Pi
       signatureFileId: fileId,
     })
     .returning({ id: schema.palletPickups.id });
+  await logPalletEvent(t, rows.map((r) => r.id), "abholung", `Abgeholt von ${pickedBy}${text(fd, "plate", 30) ? ` (${text(fd, "plate", 30)})` : ""} – Abholschein mit Unterschrift, ${rows.length} Palette${rows.length === 1 ? "" : "n"}`, { day, userName: who(session) });
   revalidatePath("/paletten", "layout");
   return { ok: true, message: `${rows.length} Palette${rows.length === 1 ? "" : "n"} ausgelagert – Abholschein ist fertig.`, id: pickup.id };
+}
+
+/**
+ * Abholung zurücknehmen (versehentlich gebucht): die Paletten sind wieder im Lager, der Abholschein bleibt
+ * als „storniert“ erhalten, alles steht im Verlauf. Nummern, die inzwischen neu belegt sind, bleiben draußen.
+ */
+export async function cancelPickupAction(fd: FormData) {
+  const session = await requireArea("paletten");
+  const t = session.tenantId;
+  const id = z.string().uuid().parse(fd.get("id"));
+  const reason = text(fd, "reason", 200) ?? "versehentlich gebucht";
+  const PU = schema.palletPickups;
+  const [pu] = await db.select().from(PU).where(and(eq(PU.id, id), eq(PU.tenantId, t)));
+  if (!pu || pu.cancelledAt) return;
+  const rows = await db.select().from(P).where(and(eq(P.tenantId, t), inArray(P.id, pu.palletIds), isNull(P.cancelledAt)));
+  const back: string[] = [];
+  for (const r of rows) {
+    if (!r.outAt) continue;
+    const [clash] = await db.select({ id: P.id }).from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), eq(P.code, r.code)));
+    if (clash) continue;
+    await db.update(P).set({ outAt: null, updatedAt: new Date() }).where(eq(P.id, r.id));
+    back.push(r.id);
+  }
+  await db.update(PU).set({ cancelledAt: new Date(), cancelReason: reason }).where(eq(PU.id, id));
+  await logPalletEvent(t, back, "zurueck", `Abholung vom ${dmyOf(pu.day)} (${pu.pickedBy}) zurückgenommen: ${reason}`, { userName: who(session) });
+  revalidatePath("/paletten", "layout");
 }

@@ -30,7 +30,7 @@ const MUTED = rgb(0.42, 0.46, 0.53);
 const LINE = rgb(0.82, 0.84, 0.88);
 const ACCENT = rgb(0.055, 0.42, 0.37);
 
-export async function buildStatementPdf(input: { sender: StatementSender; month: string; group: StatementGroup; today: string }): Promise<Uint8Array> {
+export async function buildStatementPdf(input: { sender: StatementSender; month: string; group: StatementGroup; today: string; vat?: { rate: number; pricesAre: "netto" | "brutto" } }): Promise<Uint8Array> {
   const { sender, month, group: g } = input;
   const doc = await PDFDocument.create();
   doc.setTitle(`Palettenaufstellung ${statementMonthLabel(month)} – ${g.customer}`);
@@ -154,7 +154,20 @@ export async function buildStatementPdf(input: { sender: StatementSender; month:
   sumLine(`Lagerung (${g.lines.filter((l) => l.storage > 0).length} Paletten)`, g.storage);
   if (g.fees) sumLine("Ein- und Auslagern", g.fees);
   if (g.servicesTotal) sumLine("Zusatzleistungen", g.servicesTotal);
-  sumLine("Gesamt", g.total, true);
+  if (input.vat) {
+    const { rate, pricesAre } = input.vat;
+    const pct = `${String(Math.round(rate * 1000) / 10).replace(".", ",")} %`;
+    if (pricesAre === "netto") {
+      const tax = Math.round(g.total * rate * 100) / 100;
+      sumLine("Gesamt netto", g.total);
+      sumLine(`zzgl. USt ${pct}`, tax);
+      sumLine("Gesamt brutto", Math.round((g.total + tax) * 100) / 100, true);
+    } else {
+      const tax = Math.round((g.total - g.total / (1 + rate)) * 100) / 100;
+      sumLine("Gesamt brutto", g.total, true);
+      sumLine(`darin USt ${pct}`, tax);
+    }
+  } else sumLine("Gesamt", g.total, true);
   y -= 16;
   text("Diese Aufstellung ist keine Rechnung.", M.left, 8.5, reg, MUTED);
   return doc.save();

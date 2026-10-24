@@ -1,11 +1,12 @@
 import "server-only";
-import { and, asc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, like, lte, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { senderMailboxes, sendMail } from "@/lib/mail/accounts";
 import { signatureFor } from "@/lib/mail/signature";
 import { getSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { addDays, chargeableFrom, customerKey, lastMonths, monthRange, monthlyBill, palletOverview, palletReminders, ratesFor, type CustomerRates } from "./billing";
+import type { PalletEventKind } from "@/db/tables/pallets";
 import { buildStatementPdf, statementMail } from "./statement";
 
 const P = schema.pallets;
@@ -27,7 +28,22 @@ export async function palletContext(tenantId: string) {
   const settings = (await getSettings(tenantId)).pallets;
   const customers = await db.select().from(PC).where(eq(PC.tenantId, tenantId)).orderBy(asc(PC.name));
   const overrides = new Map<string, CustomerRates>(customers.map((c) => [customerKey(c.name), c]));
-  return { settings, customers, overrides, ratesOf: (c: string | null) => ratesFor(c, settings, overrides) };
+  // Mit Monat: die Konditionen, die damals galten (Preisänderungen wirken nicht rückwirkend).
+  return { settings, customers, overrides, ratesOf: (c: string | null, month?: string) => ratesFor(c, settings, overrides, month) };
+}
+
+/** Nicht stornierte Paletten (Fehlbuchungen bleiben mit Verlauf erhalten, zählen aber nirgends). */
+export const notCancelled = isNull(P.cancelledAt);
+
+/** Buchungsverlauf schreiben – je Palette ein Eintrag. */
+export async function logPalletEvent(tenantId: string, palletIds: string[], kind: PalletEventKind, text: string, opts: { day?: string | null; userName?: string | null } = {}) {
+  if (!palletIds.length) return;
+  await db.insert(schema.palletEvents).values(palletIds.map((palletId) => ({ tenantId, palletId, kind, text: text.slice(0, 500), day: opts.day ?? null, userName: opts.userName ?? null })));
+}
+
+/** Verlauf einer Palette, neueste zuerst. */
+export async function palletHistory(tenantId: string, palletId: string) {
+  return db.select().from(schema.palletEvents).where(and(eq(schema.palletEvents.tenantId, tenantId), eq(schema.palletEvents.palletId, palletId))).orderBy(desc(schema.palletEvents.createdAt));
 }
 export type PalletContext = Awaited<ReturnType<typeof palletContext>>;
 
@@ -41,17 +57,21 @@ async function loadCharges(tenantId: string, from: string, to: string) {
     .orderBy(CH.day, CH.createdAt);
 }
 
-/** Alle Paletten, die im Monat irgendwann eingelagert waren, und alle Leistungen – Abrechnung je Kunde. */
-export async function loadMonthBill(tenantId: string, month: string, ctx?: PalletContext) {
+/**
+ * Alle Paletten, die im Monat irgendwann eingelagert waren, und alle Leistungen – Abrechnung je Kunde,
+ * mit den Konditionen, die in diesem Monat galten. `asOf`: nur bis zu diesem Tag Angefallenes.
+ */
+export async function loadMonthBill(tenantId: string, month: string, ctx?: PalletContext, opts: { asOf?: string } = {}) {
   const c = ctx ?? (await palletContext(tenantId));
   const { first, last } = monthRange(month);
   const rows = await db
     .select()
     .from(P)
-    .where(and(eq(P.tenantId, tenantId), lte(P.inAt, last), or(isNull(P.outAt), gte(P.outAt, first))))
+    .where(and(eq(P.tenantId, tenantId), notCancelled, lte(P.inAt, last), or(isNull(P.outAt), gte(P.outAt, first))))
     .orderBy(P.customer, P.inAt, P.code);
   const charges = await loadCharges(tenantId, first, last);
-  return { rates: c.settings, ratesOf: c.ratesOf, ...monthlyBill(rows, month, c.ratesOf, charges) };
+  const ratesOf = (x: string | null) => c.ratesOf(x, month);
+  return { rates: c.settings, ratesOf, ...monthlyBill(rows, month, ratesOf, charges, opts) };
 }
 export type MonthBill = Awaited<ReturnType<typeof loadMonthBill>>;
 
@@ -82,7 +102,7 @@ export async function sendStatement(tenantId: string, customer: string, month: s
   const box = boxes.find((b) => b.id === defaultId);
   const mail = statementMail({ customer: group.customer, month, group, company: s.shipper.name1, signature: signatureFor(box?.signature, "de") });
   try {
-    const pdf = await buildStatementPdf({ sender, month, group, today: opts.today });
+    const pdf = await buildStatementPdf({ sender, month, group, today: opts.today, vat: { rate: s.vatRate, pricesAre: ctx.settings.pricesAre ?? "netto" } });
     await sendMail(tenantId, { to, subject: mail.subject, text: mail.text, attachments: [{ filename: mail.filename, content: pdf, contentType: "application/pdf" }] });
     await recordStatement(tenantId, group.customer, month, { recipient: to, total: group.total, sentAt: new Date(), auto: Boolean(opts.auto), error: null });
     return { ok: true, message: `Aufstellung ${monthLabel(month)} an ${to} gesendet.` };
@@ -117,7 +137,7 @@ export async function autoSendStatements(tenantId: string, today: string) {
       n++;
       await resolveSystemTask(db, tenantId, taskKey);
     } else {
-      await upsertSystemTask(db, tenantId, taskKey, { title: `Paletten: Monatsaufstellung ${monthLabel(month)} an ${c.name} nicht gesendet`, notes: res.message, priority: "normal", category: "system", link: `/paletten?monat=${month}#abrechnung` });
+      await upsertSystemTask(db, tenantId, taskKey, { title: `Paletten: Monatsaufstellung ${monthLabel(month)} an ${c.name} nicht gesendet`, notes: res.message, priority: "normal", category: "system", link: `/paletten/abrechnung?monat=${month}` });
     }
   }
   return n;
@@ -126,7 +146,7 @@ export async function autoSendStatements(tenantId: string, today: string) {
 /** Erinnerungen als Aufgaben: freie Lagerzeit endet heute/morgen, Paletten stehen sehr lange. */
 export async function refreshPalletReminders(tenantId: string, today: string) {
   const ctx = await palletContext(tenantId);
-  const open = await db.select().from(P).where(and(eq(P.tenantId, tenantId), isNull(P.outAt)));
+  const open = await db.select().from(P).where(and(eq(P.tenantId, tenantId), isNull(P.outAt), notCancelled));
   const s = ctx.settings;
   const r = palletReminders(open, today, ctx.ratesOf, { longStayDays: s.longStayDays, remindFreeEnd: s.remindFreeEnd });
   const link = (customer: string) => `/paletten?kunde=${encodeURIComponent(customer)}#lager`;
@@ -177,9 +197,9 @@ export async function loadOverview(tenantId: string, today: string, n = 12) {
   const ctx = await palletContext(tenantId);
   const months = lastMonths(today.slice(0, 7), n);
   const { first } = monthRange(months[0]);
-  const rows = await db.select().from(P).where(and(eq(P.tenantId, tenantId), lte(P.inAt, today), or(isNull(P.outAt), gte(P.outAt, first))));
+  const rows = await db.select().from(P).where(and(eq(P.tenantId, tenantId), notCancelled, lte(P.inAt, today), or(isNull(P.outAt), gte(P.outAt, first))));
   const charges = await loadCharges(tenantId, first, monthRange(months[months.length - 1]).last);
-  return { ...palletOverview(rows, charges, months, ctx.ratesOf, today), capacity: ctx.settings.capacity };
+  return { ...palletOverview(rows, charges, months, (c, m) => ctx.ratesOf(c, m), today), capacity: ctx.settings.capacity };
 }
 
 /** Fotos von Paletten (Datei-IDs je Palette). */

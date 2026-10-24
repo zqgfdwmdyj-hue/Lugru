@@ -24,8 +24,8 @@ const ratesOf = (c: string | null) => ratesFor(c, std, own);
 
 describe("Kundenpreise", () => {
   it("eigene Kondition vor Standard, leere Felder = Standard, Groß/Klein egal", () => {
-    expect(ratesOf("müller GmbH ")).toEqual({ pricePerMonth: 10, freeDays: 5, mode: "anteilig", inFee: 0, outFee: 4 });
-    expect(ratesOf("Fremd AG")).toEqual({ pricePerMonth: 14, freeDays: 5, mode: "monat", inFee: 5, outFee: 4 });
+    expect(ratesOf("müller GmbH ")).toEqual({ pricePerMonth: 10, freeDays: 5, mode: "anteilig", inFee: 0, outFee: 4, own: true });
+    expect(ratesOf("Fremd AG")).toEqual({ pricePerMonth: 14, freeDays: 5, mode: "monat", inFee: 5, outFee: 4, own: false });
     expect(ratesOf(null).pricePerMonth).toBe(14);
   });
 });

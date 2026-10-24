@@ -13,6 +13,8 @@ export type PickupPdfInput = {
   note?: string | null;
   pallets: { code: string; location?: string | null; contents?: string | null; inAt: string }[];
   signaturePng?: Uint8Array | null;
+  /** Abholung zurückgenommen – der Schein bleibt erhalten, ist aber deutlich markiert. */
+  cancelled?: string | null;
 };
 
 const A4 = { w: 595.28, h: 841.89 };
@@ -45,6 +47,7 @@ export async function buildPickupPdf(input: PickupPdfInput): Promise<Uint8Array>
   if (addr) { text(addr, M, 8.5, reg, MUTED); y -= 12; }
   y -= 26;
   text("Abholschein", M, 20, bold);
+  if (input.cancelled) text(`ZURÜCKGENOMMEN – ${input.cancelled}`, M + 150, 12, bold, rgb(0.7, 0.14, 0.1));
   y -= 26;
   const meta: [string, string][] = [
     ["Nr.", input.number],

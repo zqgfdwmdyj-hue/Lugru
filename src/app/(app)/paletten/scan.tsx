@@ -59,11 +59,31 @@ const MODES: { key: Mode; label: string }[] = [
 ];
 const dmy = (iso: string) => iso.split("-").reverse().join(".");
 
-export function PalletScan({ customers, locations, today, free = [], initialLocation }: { customers: string[]; locations: string[]; today: string; free?: string[]; initialLocation?: string }) {
+/** Kurzer Ton nach dem Scan (Handscanner ohne Blick aufs Display): hoch = ok, zwei tiefe = Fehler. */
+function beep(ok: boolean) {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const tones = ok ? [[880, 0]] : [[220, 0], [220, 0.18]];
+    for (const [f, at] of tones) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.frequency.value = f;
+      g.gain.value = 0.08;
+      o.connect(g).connect(ctx.destination);
+      o.start(ctx.currentTime + at);
+      o.stop(ctx.currentTime + at + 0.12);
+    }
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch {}
+}
+
+export function PalletScan({ customers, locations, today, free = [], initialLocation, initialMode, initialCode }: { customers: string[]; locations: string[]; today: string; free?: string[]; initialLocation?: string; initialMode?: string; initialCode?: string }) {
   const [state, action] = useActionState<ScanState, FormData>(scanPallet, null);
   const [pending, start] = useTransition();
-  const [mode, setMode] = useState<Mode>("ein");
-  const [code, setCode] = useState("");
+  const [mode, setMode] = useState<Mode>(initialMode === "aus" || initialMode === "suchen" || initialMode === "ein" ? initialMode : "ein");
+  const [code, setCode] = useState(initialCode ?? "");
   const [camera, setCamera] = useState(false);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [more, setMore] = useState(false);
@@ -71,17 +91,22 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (initialMode) return; // aus den vier Aktionen gewählt
     try {
       const m = localStorage.getItem("paletten.mode");
       if (m === "ein" || m === "aus" || m === "suchen") setMode(m);
     } catch {}
-  }, []);
+  }, [initialMode]);
   useEffect(() => {
+    if (state) beep(state.ok && !state.warn);
     if (state?.ok) {
       setCode("");
       if (mode === "ein") {
         setPhotos([]);
         form.current?.querySelectorAll<HTMLInputElement>("#pal-location, #pal-contents, #pal-weight, #pal-note").forEach((i) => (i.value = ""));
+        // Anzahl zurück auf 1 – sonst würde die nächste Palette versehentlich mehrfach angelegt.
+        const count = form.current?.querySelector<HTMLInputElement>("#pal-count");
+        if (count) count.value = "1";
       }
     }
     input.current?.focus();
@@ -111,7 +136,7 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
       <input type="hidden" name="mode" value={mode} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {MODES.map((m) => (
-          <button key={m.key} type="button" className={`btn${mode === m.key ? " btn-primary" : ""}`} onClick={() => pick(m.key)} aria-pressed={mode === m.key}>{m.label}</button>
+          <button key={m.key} type="button" className={`btn pal-big-btn${mode === m.key ? " btn-primary" : ""}`} onClick={() => pick(m.key)} aria-pressed={mode === m.key} data-testid={`scan-mode-${m.key}`}>{m.label}</button>
         ))}
       </div>
 
@@ -160,7 +185,8 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
             </div>
             <div className="field">
               <label className="label" htmlFor="pal-count">Anzahl Paletten</label>
-              <input className="input" id="pal-count" name="count" type="number" min={1} max={100} defaultValue={1} disabled={code.trim() !== ""} />
+              <input className="input" id="pal-count" name="count" type="number" min={1} max={100} defaultValue={1} />
+              <div className="small muted">Mehrere: jede Palette bekommt eine eigene Nummer{code.trim() ? ` (${code.trim()}-1, ${code.trim()}-2 …)` : " (P-0001, P-0002 …)"}.</div>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
@@ -193,17 +219,19 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
             <label className="label" htmlFor="pal-date">{mode === "ein" ? "Eingelagert am" : "Ausgelagert am"}</label>
             <input className="input" id="pal-date" name="date" type="date" defaultValue={today} max={today} />
           </div>
-          <button className="btn btn-primary" type="submit" disabled={pending}>
+          <button className="btn btn-primary pal-big-btn" type="submit" disabled={pending}>
             {pending ? "Speichere …" : mode === "ein" ? "Einlagern – Timer starten" : "Auslagern – Timer stoppen"}
           </button>
         </div>
       )}
       {mode === "suchen" && (
-        <button className="btn btn-primary" type="submit" disabled={pending} style={{ alignSelf: "flex-start" }}>{pending ? "Suche …" : "Suchen"}</button>
+        <button className="btn btn-primary pal-big-btn" type="submit" disabled={pending} style={{ alignSelf: "flex-start" }}>{pending ? "Suche …" : "Suchen"}</button>
       )}
 
       {state && (
-        <div className={`notice ${state.ok ? "notice-ok" : "notice-warn"}`} data-testid="pal-result">
+        <div key={state.at ?? 0} className={`scan-status ${!state.ok ? "scan-err" : state.warn ? "scan-warn" : "scan-ok"}`} role="status" aria-live="assertive" data-testid="pal-result" data-status={!state.ok ? "fehler" : state.warn ? "hinweis" : "ok"}>
+          <span className="scan-icon" aria-hidden="true">{!state.ok ? "✗" : state.warn ? "⚠" : "✓"}</span>
+          <div style={{ minWidth: 0, flex: 1 }}>
           {f ? (
             <div className="stack" style={{ gap: 4 }}>
               <div style={{ fontSize: 18 }}>
@@ -225,7 +253,9 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
               ) : null}
             </>
           )}
-          {state.warn && <div className="small" style={{ marginTop: 4, color: "var(--danger)" }} data-testid="pal-warn">{state.warn}</div>}
+          {state.warn && <div className="small" style={{ marginTop: 4 }} data-testid="pal-warn">{state.warn}</div>}
+          <div className="small muted" style={{ marginTop: 4 }}>Bereit für den nächsten Scan.</div>
+          </div>
         </div>
       )}
     </form>

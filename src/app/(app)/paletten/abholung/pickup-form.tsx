@@ -69,23 +69,30 @@ function SignaturePad({ onChange }: { onChange: (png: string) => void }) {
   );
 }
 
-export function PickupForm({ pallets, customers, today, preselect }: { pallets: Pallet[]; customers: string[]; today: string; preselect?: string }) {
+export function PickupForm({ pallets, gone = [], customers, today, preselect }: { pallets: Pallet[]; gone?: { code: string; outAt: string; cancelled: boolean }[]; customers: string[]; today: string; preselect?: string }) {
   const [state, action] = useActionState<PickupState, FormData>(pickupAction, null);
   const [pending, start] = useTransition();
   const [customer, setCustomer] = useState(preselect ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scan, setScan] = useState("");
-  const [scanMsg, setScanMsg] = useState("");
+  const [scanMsg, setScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pickedBy, setPickedBy] = useState("");
   const [camera, setCamera] = useState(false);
   const [signature, setSignature] = useState("");
   const list = useMemo(() => pallets.filter((p) => !customer || (p.customer ?? "") === customer), [pallets, customer]);
 
   const add = (code: string) => {
-    const p = pallets.find((x) => x.code.toLowerCase() === code.trim().toLowerCase());
-    if (!p) return setScanMsg(`„${code}“ ist nicht eingelagert.`);
+    const c = code.trim();
+    const p = pallets.find((x) => x.code.toLowerCase() === c.toLowerCase());
+    if (!p) {
+      const g = gone.find((x) => x.code.toLowerCase() === c.toLowerCase());
+      const d = (iso: string) => iso.split("-").reverse().join(".");
+      return setScanMsg({ ok: false, text: g ? (g.cancelled ? `„${g.code}“ wurde storniert – nicht im Lager.` : `„${g.code}“ ist schon ausgelagert (am ${d(g.outAt)}).`) : `„${c}“ ist unbekannt – unter dieser Nummer ist nichts eingelagert.` });
+    }
+    if (selected.has(p.id)) return setScanMsg({ ok: false, text: `${p.code} ist schon ausgewählt (doppelt gescannt).` });
     setSelected((s) => new Set(s).add(p.id));
     if (customer && (p.customer ?? "") !== customer) setCustomer("");
-    setScanMsg(`${p.code} dazu${p.location ? ` (Platz ${p.location})` : ""}.`);
+    setScanMsg({ ok: true, text: `${p.code} dazu${p.location ? ` (Platz ${p.location})` : ""}${p.customer ? ` · ${p.customer}` : ""}.` });
   };
   const toggle = (id: string) => setSelected((s) => {
     const n = new Set(s);
@@ -131,7 +138,12 @@ export function PickupForm({ pallets, customers, today, preselect }: { pallets: 
         </div>
       </div>
       {camera && <CameraScan onCode={(c) => { setCamera(false); add(c); }} onClose={() => setCamera(false)} />}
-      {scanMsg && <div className="small muted" role="status">{scanMsg}</div>}
+      {scanMsg && (
+        <div className={`scan-status ${scanMsg.ok ? "scan-ok" : "scan-err"}`} role="status" aria-live="assertive" data-testid="pickup-scan-msg">
+          <span className="scan-icon" aria-hidden="true">{scanMsg.ok ? "✓" : "✗"}</span>
+          <div>{scanMsg.text}</div>
+        </div>
+      )}
       <div className="stack" style={{ gap: 4 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <span className="label">{list.length} eingelagert{customer ? ` bei ${customer}` : ""} – {chosen.length} ausgewählt</span>
@@ -147,16 +159,29 @@ export function PickupForm({ pallets, customers, today, preselect }: { pallets: 
         </div>
       </div>
       <div className="priv-grid">
-        <div className="field"><label className="label" htmlFor="pu-by">Abgeholt von</label><input className="input" id="pu-by" name="pickedBy" required autoComplete="off" placeholder="Name des Fahrers" /></div>
+        <div className="field"><label className="label" htmlFor="pu-by">Abgeholt von</label><input className="input" id="pu-by" name="pickedBy" required autoComplete="off" placeholder="Name des Fahrers" value={pickedBy} onChange={(e) => setPickedBy(e.target.value)} /></div>
         <div className="field"><label className="label" htmlFor="pu-plate">Kennzeichen (optional)</label><input className="input" id="pu-plate" name="plate" autoComplete="off" /></div>
         <div className="field"><label className="label" htmlFor="pu-date">Datum</label><input className="input" id="pu-date" name="date" type="date" defaultValue={today} max={today} /></div>
       </div>
       <div className="field"><label className="label" htmlFor="pu-note">Hinweis (optional)</label><input className="input" id="pu-note" name="note" autoComplete="off" placeholder="z. B. eine Palette mit beschädigter Folie" /></div>
+      {chosen.length > 0 && (() => {
+        const byCustomer = new Map<string, number>();
+        for (const p of chosen) byCustomer.set(p.customer ?? "ohne Kunde", (byCustomer.get(p.customer ?? "ohne Kunde") ?? 0) + 1);
+        return (
+          <div className="notice notice-info stack" style={{ gap: 4 }} data-testid="pickup-summary">
+            <strong>Zusammenfassung: {chosen.length} Palette{chosen.length === 1 ? "" : "n"}</strong>
+            <div className="small">Kunde{byCustomer.size === 1 ? "" : "n"}: {[...byCustomer].map(([c, n]) => `${c} (${n})`).join(", ")}</div>
+            <div className="small num">{[...chosen].sort((a, b) => a.code.localeCompare(b.code, "de", { numeric: true })).map((p) => `${p.code}${p.location ? ` (${p.location})` : ""}`).join(", ")}</div>
+            {byCustomer.size > 1 && <div className="small" style={{ color: "var(--warn)" }} data-testid="pickup-mixed">⚠ Paletten von {byCustomer.size} Kunden – bitte prüfen, ob das so stimmt.</div>}
+            {pickedBy.trim() && <div className="small">Abholer: {pickedBy.trim()}</div>}
+          </div>
+        );
+      })()}
       <div className="field">
         <span className="label">Unterschrift Abholer ({chosen.length} Palette{chosen.length === 1 ? "" : "n"} übernommen)</span>
         <SignaturePad onChange={setSignature} />
       </div>
-      <button className="btn btn-primary" type="submit" disabled={pending || !chosen.length || !signature} style={{ alignSelf: "flex-start" }} data-testid="pickup-submit">
+      <button className="btn btn-primary pal-big-btn" type="submit" disabled={pending || !chosen.length || !signature || !pickedBy.trim()} style={{ alignSelf: "flex-start" }} data-testid="pickup-submit">
         {pending ? "Speichere …" : `${chosen.length} Palette${chosen.length === 1 ? "" : "n"} auslagern & Abholschein erstellen`}
       </button>
       {state && !state.ok && <div className="notice notice-warn" data-testid="pickup-error">{state.message}</div>}

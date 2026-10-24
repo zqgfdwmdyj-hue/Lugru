@@ -31,6 +31,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     note: pu.note,
     pallets: pallets.sort((a, b) => a.code.localeCompare(b.code, "de", { numeric: true })).map((p) => ({ code: p.code, location: p.location, contents: p.contents, inAt: p.inAt })),
     signaturePng: sig ? new Uint8Array(sig.data) : null,
+    cancelled: pu.cancelledAt ? `${pu.cancelledAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}${pu.cancelReason ? `: ${pu.cancelReason}` : ""}` : null,
   });
   return new Response(new Uint8Array(pdf), {
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `inline; filename="Abholschein-${number}.pdf"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },

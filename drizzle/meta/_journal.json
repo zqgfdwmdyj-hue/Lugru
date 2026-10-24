@@ -379,6 +379,13 @@
       "when": 1792840193349,
       "tag": "0053_wissen_herkunft",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792845257126,
+      "tag": "0054_paletten_verlauf",
+      "breakpoints": true
     }
   ]
 }

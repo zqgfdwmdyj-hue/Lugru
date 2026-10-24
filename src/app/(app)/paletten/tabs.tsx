@@ -1,12 +1,14 @@
 import Link from "next/link";
 
+/** Lagerarbeit zuerst; Abrechnung, Konditionen und Auswertung als eigene Ansichten. */
 const TABS = [
   { key: "lager", href: "/paletten", label: "Lager" },
   { key: "lagerplan", href: "/paletten/lagerplan", label: "Lagerplan" },
   { key: "abholung", href: "/paletten/abholung", label: "Abholung" },
   { key: "inventur", href: "/paletten/inventur", label: "Inventur" },
+  { key: "abrechnung", href: "/paletten/abrechnung", label: "Abrechnung" },
   { key: "kunden", href: "/paletten/kunden", label: "Kunden & Preise" },
-  { key: "uebersicht", href: "/paletten/uebersicht", label: "Übersicht" },
+  { key: "uebersicht", href: "/paletten/uebersicht", label: "Auswertung" },
 ] as const;
 
 export function PalletTabs({ active }: { active: (typeof TABS)[number]["key"] }) {

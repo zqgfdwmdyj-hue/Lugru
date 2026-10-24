@@ -4,6 +4,7 @@ import { todayIso } from "@/lib/dates";
 import { formatDate } from "@/lib/numbers";
 import { chargeableFrom } from "@/lib/pallets/billing";
 import { MONTH_RE, loadMonthBill } from "@/lib/pallets/service";
+import { getSettings } from "@/lib/settings";
 
 const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 const de = (n: number) => n.toFixed(2).replace(".", ",");
@@ -16,7 +17,9 @@ export async function GET(request: Request) {
   const raw = new URL(request.url).searchParams.get("monat") ?? "";
   const month = MONTH_RE.test(raw) ? raw : todayIso().slice(0, 7);
   const bill = await loadMonthBill(session.tenantId, month);
-  const header = ["Kunde", "Palette / Leistung", "Stellplatz", "Inhalt", "Eingelagert", "Kostenpflichtig ab", "Ausgelagert", "Kostenpflichtige Tage im Monat", "Lager (EUR)", "Ein/Aus (EUR)", "Betrag (EUR)", "Notiz"];
+  const net = (await getSettings(session.tenantId)).pallets.pricesAre !== "brutto";
+  const unit = net ? "EUR netto" : "EUR brutto";
+  const header = ["Kunde", "Palette / Leistung", "Stellplatz", "Inhalt", "Eingelagert", "Kostenpflichtig ab", "Ausgelagert", "Kostenpflichtige Tage im Monat", `Lager (${unit})`, `Ein/Aus (${unit})`, `Betrag (${unit})`, "Notiz"];
   const lines = bill.groups.flatMap((g) => [
     ...g.lines.map((l) =>
       [g.customer, l.pallet.code, l.pallet.location ?? "", l.pallet.contents ?? "", formatDate(l.pallet.inAt), formatDate(chargeableFrom(l.pallet.inAt, g.rates.freeDays)), l.pallet.outAt ? formatDate(l.pallet.outAt) : "noch eingelagert", l.days, de(l.storage), de(l.inFee + l.outFee), de(l.amount), l.pallet.note ?? ""]

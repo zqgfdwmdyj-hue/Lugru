@@ -22,6 +22,9 @@ export const pallets = pgTable(
     weightKg: money("weight_kg"),
     inAt: date("in_at").notNull(),
     outAt: date("out_at"),
+    /** Fehlbuchung storniert: bleibt mit Verlauf erhalten, zählt aber nirgends mehr. */
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -64,6 +67,8 @@ export const palletCustomers = pgTable(
     mode: text("mode", { enum: ["monat", "anteilig"] }),
     inFee: money("in_fee"),
     outFee: money("out_fee"),
+    /** Frühere Konditionen (gültig bis einschließlich Monat `until`) – Preisänderungen wirken nicht rückwirkend. */
+    rateHistory: jsonb("rate_history").$type<RateVersion[]>().notNull().default([]),
     /** Monatsaufstellung am Monatsanfang automatisch per Mail senden. */
     monthlyMail: boolean("monthly_mail").notNull().default(false),
     createdAt: createdAt(),
@@ -102,6 +107,12 @@ export const palletStatements = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }),
     auto: boolean("auto").notNull().default(false),
     error: text("error"),
+    /** In Rechnung gestellt (Rechnungsnummer) und bezahlt – getrennt vom Versand der Aufstellung. */
+    invoicedAt: timestamp("invoiced_at", { withTimezone: true }),
+    invoiceNo: text("invoice_no"),
+    /** Betrag (netto) beim Stellen der Rechnung – ändert sich die Abrechnung danach, wird gewarnt. */
+    invoicedTotal: money("invoiced_total"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("pallet_statements_uq").on(t.tenantId, sql`lower(${t.customer})`, t.month)],
@@ -122,7 +133,35 @@ export const palletPickups = pgTable(
     codes: jsonb("codes").$type<string[]>().notNull(),
     /** Unterschrift als PNG (files). */
     signatureFileId: uuid("signature_file_id").references(() => files.id, { onDelete: "set null" }),
+    /** Abholung zurückgenommen (Paletten wieder im Lager) – Abholschein bleibt als storniert erhalten. */
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    cancelReason: text("cancel_reason"),
     createdAt: createdAt(),
   },
   (t) => [index("pallet_pickups_day_idx").on(t.tenantId, t.day)],
 );
+
+export const PALLET_EVENT_KINDS = ["ein", "aus", "abholung", "zurueck", "korrektur", "umlagern", "storno", "inventur", "leistung", "foto"] as const;
+export type PalletEventKind = (typeof PALLET_EVENT_KINDS)[number];
+
+/** Buchungsverlauf je Palette: jede Ein-/Auslagerung, Korrektur und Inventur – nichts wird still überschrieben. */
+export const palletEvents = pgTable(
+  "pallet_events",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    palletId: uuid("pallet_id")
+      .notNull()
+      .references(() => pallets.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: PALLET_EVENT_KINDS }).notNull(),
+    /** Fachlicher Tag (z. B. Auslagerungstag), falls abweichend vom Buchungszeitpunkt. */
+    day: date("day"),
+    text: text("text").notNull(),
+    userName: text("user_name"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("pallet_events_pallet_idx").on(t.palletId, t.createdAt)],
+);
+
+/** Konditionen, die bis einschließlich `until` (JJJJ-MM) galten. */
+export type RateVersion = { until: string; pricePerMonth: number | null; freeDays: number | null; mode: "monat" | "anteilig" | null; inFee: number | null; outFee: number | null };
