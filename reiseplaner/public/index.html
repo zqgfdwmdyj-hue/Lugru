@@ -18,23 +18,23 @@
     <select id="reiseWahl" aria-label="Reise wählen"></select>
     <button class="knopf leise" data-aktion="reise-neu">+ Neue Reise</button>
     <span id="speicherStatus" class="status" aria-live="polite"></span>
+    <button class="knopf leise weltknopf" data-aktion="ansicht" data-ziel="weltkarte" title="Meine Weltkarte (alle Reisen)" aria-label="Meine Weltkarte">🌍<span class="breit-nur"> Weltkarte</span></button>
     <button class="knopf leise ich" id="ichKnopf" data-aktion="profil" aria-label="Mein Konto">…</button>
   </header>
 
-  <nav class="reiter" id="reiter">
-    <button data-ansicht="plan" class="aktiv">Planen</button>
-    <button data-ansicht="vorbereitung">Vorbereitung</button>
-    <button data-ansicht="hotels">Unterkünfte</button>
-    <button data-ansicht="unterwegs">Unterwegs</button>
-    <button data-ansicht="flug" hidden>✈️ Flug</button>
-    <button data-ansicht="erlebnisse">Erlebnisse &amp; Tauchlog</button>
-    <button data-ansicht="kosten">Kosten</button>
-    <button data-ansicht="personen">Reisende</button>
-    <button data-ansicht="verlauf">Route &amp; Häfen</button>
-    <button data-ansicht="daten">Import &amp; KI</button>
-    <button data-ansicht="weltkarte">🌍 Weltkarte</button>
-    <button data-ansicht="kinder">🧒 Kinder</button>
+  <nav class="reiter" id="reiter" aria-label="Bereiche der Reise">
+    <button data-gruppe="uebersicht">Übersicht</button>
+    <button data-gruppe="reiseplan">Reiseplan</button>
+    <button data-gruppe="vorbereitung">Vorbereitung</button>
+    <button data-gruppe="unterwegs">Unterwegs</button>
+    <button data-gruppe="kosten">Kosten</button>
+    <button data-gruppe="erinnerungen">Erinnerungen</button>
+    <span class="platz"></span>
+    <button data-gruppe="verwalten" class="verwalten">⚙️ Reise verwalten</button>
+    <button data-gruppe="kinder" class="kindermodus-knopf">🧒 Kindermodus</button>
   </nav>
+  <nav class="unterreiter" id="unterreiter" aria-label="Unterbereiche"></nav>
+  <div class="kinderleiste" id="kinderleiste" hidden><strong>🧒 Kindermodus</strong><span class="platz"></span><button class="knopf leise" data-aktion="kindermodus-ende">← Zurück<span class="breit-nur"> zur Erwachsenen-Ansicht</span></button></div>
 
   <main class="layout">
     <section id="inhalt" class="inhalt"></section>

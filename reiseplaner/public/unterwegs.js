@@ -379,4 +379,4 @@ aenderungen["usd-kurs"] = (el) => {
 };
 
 
-aktionen["zum-flug"] = () => document.querySelector('#reiter button[data-ansicht="flug"]')?.click();
+aktionen["zum-flug"] = () => aktionen.ansicht({ dataset: { ziel: "flug" } });

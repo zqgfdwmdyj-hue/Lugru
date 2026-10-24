@@ -145,7 +145,7 @@ aktionen["handgepaeck-liste"] = async (el) => {
 };
 aktionen["kind-seite-flug"] = () => {
   zustand.kinderSeite = "flughafen";
-  document.querySelector('#reiter button[data-ansicht="kinder"]')?.click();
+  aktionen.ansicht({ dataset: { ziel: "kinder" } });
 };
 
 // ---------- Lounges & Orte am Flughafen ----------

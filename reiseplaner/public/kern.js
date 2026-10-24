@@ -7,7 +7,7 @@ export const zustand = {
   reisen: [],
   reise: null,
   rolle: null,
-  ansicht: "plan",
+  ansicht: "uebersicht",
   hafenId: null,
   sortierung: "punkte",
   gygErgebnisse: {},

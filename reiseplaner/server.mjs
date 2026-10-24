@@ -1109,6 +1109,47 @@ async function tagebuchSeite(req, res, url) {
   res.end(tagebuch.seiteRendern(inhalt, basisUrl(req), kacheln, process.env.KARTEN_HINWEIS || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', kennung ? `/tagebuch/${kennung}` : "/tagebuch"));
 }
 
+/**
+ * Vorschau vor dem Teilen: genau das, was die Reise im öffentlichen Tagebuch zeigen würde –
+ * nur für angemeldete Planer/innen dieser Reise, unabhängig davon, ob sie schon freigegeben ist.
+ */
+const htmlText = (x) => String(x ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+async function tagebuchVorschau(req, res, url) {
+  const [, , reiseId, ...rest] = url.pathname.split("/");
+  const ich = await konten.benutzerZuSitzung(konten.cookieLesen(req));
+  const reise = ich && ID_RE.test(reiseId ?? "") ? await reiseLesen(reiseId) : null;
+  if (!reise || rolleIn(reise, ich) !== "planer") {
+    res.writeHead(404, { "content-type": MIME[".html"] });
+    return res.end(teilen.nichtGefundenSeite());
+  }
+  const alle = await konten.alleBenutzer();
+  const einst = await tagebuch.einstellungenLesen(ich.id);
+  const inhalt = tagebuch.tagebuchInhalt([{ reise: { ...reise, oeffentlich: true }, beitraege: await beitraegeLesen(reise.id) }], alle, { ...einst, orte: [] }, heuteIso());
+  if (rest[0] === "foto") {
+    if (!ID_RE.test(rest[1] ?? "") || !inhalt.fotos.has(rest[1])) {
+      res.writeHead(404);
+      return res.end();
+    }
+    return fotoSenden(res, rest[1], url.searchParams.has("klein"));
+  }
+  const kacheln = process.env.KARTEN_KACHELN || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  let kachelHost = "https://tile.openstreetmap.org";
+  try {
+    kachelHost = new URL(kacheln.replace(/\{[a-z]\}/g, "a")).origin;
+  } catch {}
+  const seite = tagebuch.seiteRendern(inhalt, basisUrl(req), kacheln, process.env.KARTEN_HINWEIS || '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>', `/tagebuch-vorschau/${reise.id}`);
+  const hinweis = `<div style="position:sticky;top:0;z-index:2000;background:#fff3e0;color:#5d3a00;padding:10px 16px;font:600 15px system-ui;border-bottom:2px solid #e69100">👁️ Vorschau – so sähe „${htmlText(reise.name)}“ im öffentlichen Tagebuch aus${(await tagebuch.einstellungenLesen(ich.id)).reisen.includes(reise.id) ? " (ist freigegeben)" : " (noch nicht freigegeben)"}. Nur du siehst diese Seite.</div>`;
+  res.writeHead(200, {
+    "content-type": MIME[".html"],
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "x-robots-tag": "noindex",
+    "content-security-policy": `default-src 'none'; img-src 'self' data: https://unpkg.com ${kachelHost} https://*.tile.openstreetmap.org; style-src 'unsafe-inline' https://unpkg.com; script-src 'unsafe-inline' https://unpkg.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+  });
+  res.end(seite.replace(/<body([^>]*)>/, `<body$1>${hinweis}`));
+}
+
 async function statisch(req, res, url) {
   let datei;
   try {
@@ -1134,6 +1175,7 @@ const server = createServer(async (req, res) => {
   try {
     if (url.pathname === "/gesund") return json(res, 200, { ok: true });
     if (url.pathname.startsWith("/teilen/")) return await freigabeSeite(req, res, url);
+    if (url.pathname.startsWith("/tagebuch-vorschau/")) return await tagebuchVorschau(req, res, url);
     if (url.pathname === "/tagebuch" || url.pathname.startsWith("/tagebuch/")) return await tagebuchSeite(req, res, url);
     if (!url.pathname.startsWith("/api/")) return await statisch(req, res, url);
 

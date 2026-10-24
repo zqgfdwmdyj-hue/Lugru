@@ -17,6 +17,7 @@ import { vorbereitungAnsicht } from "./vorbereitung.js";
 import { unterwegsAnsicht, nachUnterwegs, weckerPlanen } from "./unterwegs.js";
 import { kinderAnsicht } from "./kinder.js";
 import { flugAnsicht, fluege } from "./flug.js";
+import { uebersichtAnsicht } from "./uebersicht.js";
 import { planB, PLAN_B_IDEEN } from "./unterwegs-logik.js";
 import { bordkonto, inReisewaehrung, etappen, spritkosten } from "./unterwegs-logik.js";
 import { verbindungText } from "./unterwegs.js";
@@ -154,14 +155,90 @@ aktionen["reise-neu"] = () => {
 };
 
 $("#reiseWahl").addEventListener("change", (e) => e.target.value && reiseOeffnen(e.target.value));
+
+// ---------- Navigation: 6 Hauptbereiche, Unterbereiche, „Reise verwalten“, Kindermodus ----------
+
+/** Hauptbereiche und ihre Ansichten (die erste ist der Einstieg). */
+const GRUPPEN = {
+  uebersicht: ["uebersicht"],
+  reiseplan: ["plan", "verlauf", "hotels", "flug"],
+  vorbereitung: ["vorbereitung"],
+  unterwegs: ["unterwegs"],
+  kosten: ["kosten"],
+  erinnerungen: ["erlebnisse"],
+  verwalten: ["personen", "daten", "einstellungen"],
+  kinder: ["kinder"],
+  weltkarte: ["weltkarte"],
+};
+const gruppeVon = (ansicht) => Object.keys(GRUPPEN).find((g) => GRUPPEN[g].includes(ansicht)) ?? "uebersicht";
+const UNTER_NAMEN = () => ({
+  plan: "📅 Tage & Ausflüge",
+  verlauf: istKreuzfahrt() ? "🚢 Route & Häfen" : "🗺️ Reiseverlauf & Anreise",
+  hotels: "🏨 Unterkünfte",
+  flug: "✈️ Flug",
+  personen: "👥 Reisende & Zugänge",
+  daten: "📥 Import & Sicherung",
+  einstellungen: "⚙️ Reise & Freigabe",
+});
+const letzteJeGruppe = {};
+
+/** Ansichten mit Karte – und wie sie gezeigt wird (Liste / Geteilt / Karte, je Gerät gemerkt). */
+const KARTEN_ANSICHTEN = new Set(["plan", "verlauf", "hotels", "weltkarte"]);
+const schmal = () => window.matchMedia("(max-width: 900px)").matches;
+function kartenModus() {
+  let m = null;
+  try {
+    m = localStorage.getItem(`reiseplaner:karte:${schmal() ? "schmal" : "breit"}`);
+  } catch {}
+  return ["liste", "geteilt", "karte"].includes(m) ? m : schmal() ? "liste" : "geteilt";
+}
+aktionen["karten-modus"] = (el) => {
+  try {
+    localStorage.setItem(`reiseplaner:karte:${schmal() ? "schmal" : "breit"}`, el.dataset.modus);
+  } catch {}
+  navZeichnen();
+  karteZeichnen();
+  if (el.dataset.modus !== "liste") document.querySelector(".kartenbereich")?.scrollIntoView({ block: "nearest" });
+};
+
+function navZeichnen() {
+  const gruppe = gruppeVon(zustand.ansicht);
+  for (const b of document.querySelectorAll("#reiter button[data-gruppe]")) b.classList.toggle("aktiv", b.dataset.gruppe === gruppe);
+  const unter = (GRUPPEN[gruppe] ?? []).filter((a) => a !== "flug" || fluege().length || zustand.ansicht === "flug");
+  const namen = UNTER_NAMEN();
+  const mitKarte = Boolean(zustand.reise || zustand.ansicht === "weltkarte") && KARTEN_ANSICHTEN.has(zustand.ansicht);
+  const modus = mitKarte ? (zustand.ansicht === "weltkarte" && kartenModus() === "liste" ? "geteilt" : kartenModus()) : "aus";
+  const leiste = $("#unterreiter");
+  leiste.innerHTML = `${unter.length > 1 ? unter.map((a) => `<button data-ansicht="${a}" class="${a === zustand.ansicht ? "aktiv" : ""}">${esc(namen[a] ?? a)}</button>`).join("") : ""}
+    ${mitKarte ? `<span class="platz"></span><span class="kartenwahl" role="group" aria-label="Karte">${[["liste", "☰ Liste"], ["geteilt", "◧ Geteilt"], ["karte", "🗺️ Karte"]].filter(([m]) => !(m === "liste" && zustand.ansicht === "weltkarte")).map(([m, t]) => `<button data-aktion="karten-modus" data-modus="${m}" class="${modus === m ? "aktiv" : ""}" aria-pressed="${modus === m}">${t}</button>`).join("")}</span>` : ""}`;
+  leiste.hidden = !leiste.innerHTML.trim() || !zustand.reise && zustand.ansicht !== "weltkarte";
+  document.body.classList.toggle("karte-aus", modus === "aus" || modus === "liste");
+  document.body.classList.toggle("karte-nur", modus === "karte");
+  const kinder = zustand.ansicht === "kinder";
+  document.body.classList.toggle("kindermodus", kinder);
+  $("#kinderleiste").hidden = !kinder;
+  $("#reiter").hidden = !zustand.reise;
+  for (const b of document.querySelectorAll('[data-aktion="ansicht"][data-ziel="weltkarte"]')) b.classList.toggle("aktiv", zustand.ansicht === "weltkarte");
+}
+
 $("#reiter").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-gruppe]");
+  if (!b) return;
+  const g = b.dataset.gruppe;
+  ansichtWechseln(letzteJeGruppe[g] && GRUPPEN[g].includes(letzteJeGruppe[g]) ? letzteJeGruppe[g] : GRUPPEN[g][0]);
+});
+$("#unterreiter").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-ansicht]");
   if (b) ansichtWechseln(b.dataset.ansicht);
 });
+aktionen["ansicht"] = (el) => ansichtWechseln(el.dataset.ziel);
+aktionen["kindermodus-ende"] = () => ansichtWechseln(zustand.vorKindern && zustand.vorKindern !== "kinder" ? zustand.vorKindern : "uebersicht");
 
 function ansichtWechseln(ansicht) {
+  if (!gruppeVon(ansicht) || !Object.values(GRUPPEN).flat().includes(ansicht)) ansicht = "uebersicht";
+  if (ansicht === "kinder" && zustand.ansicht !== "kinder") zustand.vorKindern = zustand.ansicht;
   zustand.ansicht = ansicht;
-  for (const b of document.querySelectorAll("#reiter button")) b.classList.toggle("aktiv", b.dataset.ansicht === ansicht);
+  letzteJeGruppe[gruppeVon(ansicht)] = ansicht;
   alles();
   window.scrollTo({ top: 0 });
   if (ansicht === "weltkarte") weltkarteLaden().then(alles);
@@ -170,7 +247,8 @@ function ansichtWechseln(ansicht) {
 // ---------- Darstellung ----------
 
 function alles() {
-  $("#kiKnopfPlatz").innerHTML = kiKnopf();
+  $("#kiKnopfPlatz").innerHTML = zustand.ansicht === "kinder" ? "" : kiKnopf();
+  navZeichnen();
   if (zustand.ansicht === "weltkarte") {
     inhalt.innerHTML = weltkarteAnsicht();
     karteZeichnen();
@@ -190,36 +268,49 @@ function alles() {
     karteZeichnen();
     return;
   }
-  document.querySelector('[data-ansicht="verlauf"]').textContent = istKreuzfahrt() ? "Route & Häfen" : "Reiseverlauf";
-  // Reiter „✈️ Flug“ nur, wenn ein Flug eingetragen ist
-  document.querySelector('[data-ansicht="flug"]').hidden = !fluege().length && zustand.ansicht !== "flug";
-  const ansichten = { flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, kinder: kinderAnsicht };
-  inhalt.innerHTML = (ansichten[zustand.ansicht] ?? planAnsicht)();
+  const ansichten = { uebersicht: uebersichtAnsicht, flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, einstellungen: einstellungenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, kinder: kinderAnsicht };
+  inhalt.innerHTML = (ansichten[zustand.ansicht] ?? uebersichtAnsicht)();
   if (zustand.ansicht === "plan") nachPlan();
   if (zustand.ansicht === "unterwegs") nachUnterwegs();
   karteZeichnen();
 }
 setzeZeichner(alles);
 
-function hafenLeiste() {
+/** Tagesauswahl: vorheriger/nächster Tag und direkte Auswahl – ohne verschachtelte Scrollleisten. */
+function tagWahl() {
   const liste = haefen();
   if (!liste.length) {
     return `<div class="hinweis">Noch keine Tage eingetragen. <button class="link" data-aktion="zu-verlauf">${istKreuzfahrt() ? "Route eintragen" : "Reiseverlauf anlegen"} →</button>${!istKreuzfahrt() ? ` – oder unter „Unterkünfte“ ein Hotel anlegen und „Tage anlegen“ wählen.` : ""}</div>`;
   }
+  const i = Math.max(0, liste.findIndex((h) => h.id === zustand.hafenId));
   const kosten = reiseKosten(zustand.reise);
-  return `<div class="hafenleiste" role="tablist">${liste
-    .map((h, i) => {
-      const art = stationsArt(h);
-      const anzahl = ausfluegeIn(h.id).filter((a) => a.status !== "verworfen").length;
-      const gebucht = ausfluegeIn(h.id).some((a) => a.status === "gebucht");
-      return `<button class="hafenchip ${h.id === zustand.hafenId ? "aktiv" : ""} ${art === "seetag" ? "seetag" : ""}" data-aktion="hafen" data-id="${esc(h.id)}">
-        <span class="tag">Tag ${i + 1} · ${esc(datumText(h.datum))}</span>
-        <strong>${art === "seetag" ? "🌊 Seetag" : `${art === "hafen" ? "⚓ " : ""}${esc(h.name || "Ort")}`}</strong>
-        <span class="mini">${anzahl} ${art === "seetag" ? "an Bord" : "Ausfl."}${gebucht ? " · ✅" : ""}${kosten.jeHafen[h.id] ? ` · ${geld(kosten.jeHafen[h.id])}` : ""}</span>
-      </button>`;
-    })
-    .join("")}</div>`;
+  const h = liste[i];
+  const amTag = ausfluegeIn(h.id).filter((a) => a.status !== "verworfen");
+  const gebucht = amTag.filter((a) => a.status === "gebucht").length;
+  return `<div class="tagwahl">
+    <button class="knopf leise" data-aktion="tag-schritt" data-richtung="-1" ${i === 0 ? "disabled" : ""} aria-label="Vorheriger Tag">‹<span class="breit-nur"> Vorheriger</span></button>
+    <select data-aktion="tag-wahl" aria-label="Tag wählen">${liste.map((t, n) => {
+      const art = stationsArt(t);
+      const anzahl = ausfluegeIn(t.id).filter((a) => a.status !== "verworfen").length;
+      const ok = ausfluegeIn(t.id).some((a) => a.status === "gebucht");
+      return `<option value="${esc(t.id)}" ${t.id === h.id ? "selected" : ""}>Tag ${n + 1} · ${esc(datumText(t.datum))} · ${art === "seetag" ? "🌊 Seetag" : `${art === "hafen" ? "⚓ " : ""}${esc(t.name || "Ort")}`}${anzahl ? ` · ${anzahl}${ok ? " ✅" : ""}` : ""}</option>`;
+    }).join("")}</select>
+    <button class="knopf leise" data-aktion="tag-schritt" data-richtung="1" ${i === liste.length - 1 ? "disabled" : ""} aria-label="Nächster Tag"><span class="breit-nur">Nächster </span>›</button>
+  </div>
+  <p class="klein leise tagwahl-info">Tag ${i + 1} von ${liste.length} · ${amTag.length} ${stationsArt(h) === "seetag" ? "an Bord" : amTag.length === 1 ? "Ausflug" : "Ausflüge"}${gebucht ? ` · ${gebucht} gebucht` : ""}${kosten.jeHafen[h.id] ? ` · ${geld(kosten.jeHafen[h.id])}` : ""}</p>`;
 }
+
+aenderungen["tag-wahl"] = (el) => {
+  zustand.hafenId = el.value;
+  alles();
+};
+aktionen["tag-schritt"] = (el) => {
+  const liste = haefen();
+  const i = Math.max(0, liste.findIndex((h) => h.id === zustand.hafenId));
+  const neu = liste[Math.min(liste.length - 1, Math.max(0, i + Number(el.dataset.richtung)))];
+  if (neu) zustand.hafenId = neu.id;
+  alles();
+};
 
 function suchLinks(hafen) {
   const ort = (hafen.suchname || hafen.name || "").trim();
@@ -249,47 +340,110 @@ function suchLinks(hafen) {
   return `<div class="links">${links.map(([name, url, quelle]) => `<a class="linkchip" style="--farbe:${QUELLEN[quelle].farbe}" href="${esc(url)}" target="_blank" rel="noopener">${esc(name)} ↗</a>`).join("")}</div>`;
 }
 
-function planAnsicht() {
-  const h = hafenVon(zustand.hafenId);
-  let detail = "";
-  if (h && stationsArt(h) === "seetag") {
-    const liste = ausfluegeIn(h.id)
-      .map((a) => ({ a, b: bewertung(a, h, personen(), zustand.reise) }))
-      .sort((x, y) => (x.a.status === "verworfen") - (y.a.status === "verworfen") || (zeitZuMin(x.a.beginn) ?? 9999) - (zeitZuMin(y.a.beginn) ?? 9999));
-    detail = `<div class="karte-box"><h2>🌊 Seetag – ${esc(datumText(h.datum, { weekday: "long", day: "numeric", month: "long" }))}</h2>
-        <p class="leise">Zeit fürs Schiff: Spa, Friseur, Shows, Restaurants, Kinderclub, Kurse … – alles hier eintragen, mit Uhrzeit, Preis und wer mitmacht.</p>${h.notiz ? `<p class="notiz">${esc(h.notiz)}</p>` : ""}
-        <div class="kopfknoepfe"><button class="knopf leise" data-aktion="hafen-bearbeiten" data-id="${esc(h.id)}">Tag bearbeiten</button></div></div>
-      <div class="karte-box">
-        <div class="zeile"><h3>An Bord (${liste.filter((x) => x.a.status !== "verworfen").length})</h3>${personen().some(istKind) ? `<button class="knopf leise" data-aktion="kinderprogramm-neu">+ Kinderprogramm</button>` : ""}<button class="knopf" data-aktion="ausflug-neu">+ Aktivität</button></div>
-        ${dublettenHinweis(h)}
-        ${liste.length ? `<div class="ausfluege">${liste.map(({ a, b }) => ausflugKarte(a, b, h, { beste: false, guenstig: false })).join("")}</div>` : `<p class="leise">Noch nichts geplant.</p>`}
-      </div>`;
-  } else if (h) {
-    const art = stationsArt(h);
-    const start = startpunkt(h, zustand.reise.hotels);
-    const landgang = zeitZuMin(h.allesAnBord || h.abfahrt) - zeitZuMin(h.ankunft);
-    const fest = festeZeit(h, zustand.reise);
-    const etappe = etappen(zustand.reise).find((e) => e.id === h.id);
-    const verbindungen = (zustand.reise.verbindungen ?? []).filter((v) => v.status !== "verworfen" && (v.datum === h.datum || v.anDatum === h.datum));
-    const liste = ausfluegeIn(h.id).map((a) => ({ a, b: bewertung(a, h, personen(), zustand.reise) }));
-    const sortierer = {
-      punkte: (x, y) => y.b.punkte - x.b.punkte,
-      preis: (x, y) => x.b.kosten.offen - y.b.kosten.offen || x.b.kosten.summe - y.b.kosten.summe,
-      puffer: (x, y) => (y.b.zeit.puffer ?? -1e9) - (x.b.zeit.puffer ?? -1e9),
-      dauer: (x, y) => (zahl(y.a.dauerMin) ?? 0) - (zahl(x.a.dauerMin) ?? 0),
-      fahrzeit: (x, y) => (zahl(x.a.fahrzeitMin) ?? 0) - (zahl(y.a.fahrzeitMin) ?? 0),
-      beginn: (x, y) => (zeitZuMin(x.a.beginn) ?? 9999) - (zeitZuMin(y.a.beginn) ?? 9999),
-      stimmen: (x, y) => stimmenSumme(y.a) - stimmenSumme(x.a),
-    };
-    const statusRang = { gebucht: 0, favorit: 1, idee: 2, verworfen: 3 };
-    liste.sort((x, y) => (x.a.status === "verworfen") - (y.a.status === "verworfen") || sortierer[zustand.sortierung](x, y) || statusRang[x.a.status] - statusRang[y.a.status]);
-    const aktive = liste.filter((x) => x.a.status !== "verworfen");
-    // Markierungen nur unter Ausflügen mit bekanntem Preis – sonst wäre „ohne Preis“ immer am günstigsten
-    const mitPreis = aktive.filter((x) => x.b.kosten.summe > 0 && !x.b.kosten.offen);
-    const besteId = mitPreis.length > 1 ? [...mitPreis].sort(sortierer.punkte)[0].a.id : null;
-    const guenstigsteId = mitPreis.length > 1 ? [...mitPreis].sort(sortierer.preis)[0].a.id : null;
+const SORTIERUNGEN = { punkte: "Sinnvollste zuerst", stimmen: "Beliebteste (Abstimmung)", preis: "Günstigste zuerst", puffer: "Meiste Zeitreserve", beginn: "Beginn", dauer: "Längste", fahrzeit: "Kürzester Weg" };
+const SORTIER_ERKLAERUNG = "„Sinnvollste zuerst“ sortiert nach einem Punktwert: Interesse (1–5 Punkte × 20) zählt am meisten, dazu die Bewertung beim Anbieter. Abgezogen werden ein hoher Preis je Person und Stunde, ein knapper Puffer bis zur festen Zeit (z. B. „Alle an Bord“) und eine lange Anfahrt. Die Punkte sind nur innerhalb eines Tages vergleichbar – bei jedem Ausflug erklärt ⓘ die Rechnung.";
+aktionen["sortierung-erklaeren"] = () => alert(SORTIER_ERKLAERUNG);
+aktionen["plan-darstellung"] = (el) => {
+  zustand.planDarstellung = el.dataset.wert;
+  alles();
+};
+// Auf-/Zuklappen von „Ideen & Alternativen“ je Tag merken
+document.addEventListener("toggle", (e) => {
+  const d = e.target;
+  if (d.dataset?.klappe) (zustand.klappen ??= {})[d.dataset.klappe] = d.open;
+}, true);
+const klappeOffen = (schluessel, standard) => zustand.klappen?.[schluessel] ?? standard;
 
-    detail = `
+function vergleichsTabelle(liste, h) {
+  return `<div class="tabelle"><table class="vergleich"><thead><tr><th>Ausflug</th><th>Zeit</th><th>Wer</th><th class="zahl">Gesamt</th><th>Status</th><th class="zahl">Puffer</th></tr></thead><tbody>
+    ${liste.map(({ a, b }) => {
+      const z = b.zeit;
+      const dabei = personen().filter((p) => (a.teilnehmer ?? []).includes(p.id));
+      const konflikt = buchungsKonflikte(zustand.reise).has(a.id);
+      return `<tr class="status-${esc(a.status)}"><td data-label="Ausflug"><button class="link" data-aktion="ausflug-bearbeiten" data-id="${esc(a.id)}">${esc(a.titel)}</button>${konflikt ? " ⛔" : ""}<div class="klein leise">${esc((QUELLEN[a.quelle] ?? QUELLEN.sonstige).name)}</div></td>
+        <td class="klein" data-label="Zeit">${z.start != null && z.zurueck != null ? `${z.startAngenommen ? "ca. " : ""}${minZuZeit(z.start)}–${minZuZeit(z.zurueck)}` : a.beginn ? esc(a.beginn) : "–"}</td>
+        <td class="klein" data-label="Wer">${dabei.length === personen().length ? "alle" : dabei.length ? esc(dabei.map((p) => p.name.split(" ")[0]).join(", ")) : "–"}</td>
+        <td class="zahl" data-label="Gesamt">${kostenText(b.kosten)}</td>
+        <td class="klein" data-label="Status">${esc(STATUS[a.status] ?? "")}</td>
+        <td data-label="Puffer" class="zahl ${z.puffer == null ? "" : z.puffer < 0 ? "rot" : a.quelle !== "schiff" && z.puffer < 60 ? "gelb" : "gruen"}">${z.puffer != null ? `${z.annahmen.length ? "ca. " : ""}${z.puffer < 0 ? "−" : ""}${dauerText(Math.abs(z.puffer))}` : "–"}</td></tr>`;
+    }).join("")}</tbody></table></div>
+    <p class="klein leise">„ca.“ = mit angenommener Zeit (Beginn oder „Alle an Bord“ fehlt). ${stationsArt(h) === "hafen" ? "Schiffsausflüge: Transfer in der Dauer enthalten." : ""}</p>`;
+}
+
+function planAnsicht() {
+  const h = hafenVon(zustand.hafenId) ?? haefen()[0];
+  if (h && zustand.hafenId !== h.id) zustand.hafenId = h.id;
+  if (!h) return `${erinnerungBanner()}${tagWahl()}`;
+  const art = stationsArt(h);
+  const seetag = art === "seetag";
+  const liste = ausfluegeIn(h.id).map((a) => ({ a, b: bewertung(a, h, personen(), zustand.reise) }));
+  const sortierer = {
+    punkte: (x, y) => y.b.punkte - x.b.punkte,
+    preis: (x, y) => x.b.kosten.offen - y.b.kosten.offen || x.b.kosten.summe - y.b.kosten.summe,
+    puffer: (x, y) => (y.b.zeit.puffer ?? -1e9) - (x.b.zeit.puffer ?? -1e9),
+    dauer: (x, y) => (zahl(y.a.dauerMin) ?? 0) - (zahl(x.a.dauerMin) ?? 0),
+    fahrzeit: (x, y) => (zahl(x.a.fahrzeitMin) ?? 0) - (zahl(y.a.fahrzeitMin) ?? 0),
+    beginn: (x, y) => (zeitZuMin(x.a.beginn) ?? 9999) - (zeitZuMin(y.a.beginn) ?? 9999),
+    stimmen: (x, y) => stimmenSumme(y.a) - stimmenSumme(x.a),
+  };
+  const sortierung = sortierer[zustand.sortierung] ? zustand.sortierung : "punkte";
+  const statusRang = { gebucht: 0, favorit: 1, idee: 2, verworfen: 3 };
+  const aktive = liste.filter((x) => x.a.status !== "verworfen").sort((x, y) => sortierer[sortierung](x, y) || statusRang[x.a.status] - statusRang[y.a.status]);
+  const verworfen = liste.filter((x) => x.a.status === "verworfen");
+  const gebucht = aktive.filter((x) => x.a.status === "gebucht").sort((x, y) => (x.b.zeit.start ?? 9999) - (y.b.zeit.start ?? 9999));
+  const ideen = aktive.filter((x) => x.a.status !== "gebucht");
+  // Markierungen nur unter Ausflügen mit bekanntem Preis – sonst wäre „ohne Preis“ immer am günstigsten
+  const mitPreis = ideen.filter((x) => x.b.kosten.summe > 0 && !x.b.kosten.offen);
+  const besteId = ideen.length > 1 ? [...ideen].sort(sortierer.punkte)[0].a.id : null;
+  const guenstigsteId = mitPreis.length > 1 ? [...mitPreis].sort(sortierer.preis)[0].a.id : null;
+  const karte = ({ a, b }) => ausflugKarte(a, b, h, { beste: a.id === besteId, guenstig: a.id === guenstigsteId });
+  const tabelle = zustand.planDarstellung === "tabelle";
+  const knoepfe = `${seetag && personen().some(istKind) ? `<button class="knopf leise" data-aktion="kinderprogramm-neu">+ Kinderprogramm</button>` : ""}${seetag ? "" : `<button class="knopf leise" data-aktion="reservierung-neu">+ Reservierung</button>`}<button class="knopf" data-aktion="ausflug-neu">+ ${seetag ? "Aktivität" : "Ausflug"}</button>`;
+  const sortierFeld = `<label class="klein">Sortieren <select data-aktion="sortieren">${Object.entries(SORTIERUNGEN).map(([k, v]) => `<option value="${k}" ${sortierung === k ? "selected" : ""}>${v}</option>`).join("")}</select></label><button class="link klein" data-aktion="sortierung-erklaeren" aria-label="Wie wird sortiert?">ⓘ</button>`;
+  const darstellung = aktive.length > 1 ? `<span class="segment" role="group" aria-label="Darstellung"><button data-aktion="plan-darstellung" data-wert="karten" class="${tabelle ? "" : "aktiv"}">Karten</button><button data-aktion="plan-darstellung" data-wert="tabelle" class="${tabelle ? "aktiv" : ""}">Vergleich</button></span>` : "";
+
+  const inhaltTag = tabelle
+    ? `<div class="karte-box"><div class="zeile"><h3>Vergleich (${aktive.length})</h3><span class="platz"></span>${sortierFeld}${darstellung}</div>${dublettenHinweis(h)}${vergleichsTabelle(aktive, h)}<div class="zeile">${knoepfe}</div></div>`
+    : `<div class="karte-box">
+        <div class="zeile"><h3>📌 ${seetag ? "Gebucht an Bord" : "Tagesablauf – gebucht"} (${gebucht.length})</h3><span class="platz"></span>${darstellung}</div>
+        ${gebucht.length ? `<div class="ausfluege">${gebucht.map(karte).join("")}</div>` : `<p class="leise">Für diesen Tag ist noch nichts gebucht${ideen.length ? " – Ideen und Favoriten stehen darunter." : "."}</p>`}
+        <div class="zeile">${knoepfe}</div>
+      </div>
+      ${ideen.length ? `<details class="karte-box klappe" data-klappe="ideen:${esc(h.id)}" ${klappeOffen(`ideen:${h.id}`, !gebucht.length) ? "open" : ""}>
+        <summary><h3>💡 Ideen, Favoriten &amp; Alternativen (${ideen.length})</h3></summary>
+        <div class="zeile">${sortierFeld}</div>
+        ${dublettenHinweis(h)}
+        <div class="ausfluege">${ideen.map(karte).join("")}</div>
+      </details>` : dublettenHinweis(h)}`;
+
+  const kopf = seetag
+    ? `<div class="karte-box hafenkopf"><div><h2>🌊 Seetag</h2><div class="zeiten"><span>📅 ${esc(datumText(h.datum, { weekday: "long", day: "numeric", month: "long" }))}</span></div>
+        <p class="leise klein">Zeit fürs Schiff: Spa, Friseur, Shows, Restaurants, Kinderclub, Kurse … – mit Uhrzeit, Preis und wer mitmacht.</p>${h.notiz ? `<p class="notiz">${esc(h.notiz)}</p>` : ""}</div>
+        <div class="kopfknoepfe"><button class="knopf leise" data-aktion="hafen-bearbeiten" data-id="${esc(h.id)}">Tag bearbeiten</button></div></div>`
+    : tagKopf(h);
+  const finden = seetag
+    ? ""
+    : `<details class="karte-box klappe" data-klappe="finden:${esc(h.id)}" ${klappeOffen(`finden:${h.id}`, !aktive.length) ? "open" : ""}>
+        <summary><h3>🔎 Weitere Ausflüge finden in ${esc(h.suchname || h.name)}</h3></summary>
+        <p class="leise klein">Öffnet die Suche beim Anbieter (bei GetYourGuide mit Datum). Gefundenes mit „+ Ausflug“ eintragen – Link, Preis und Dauer übernehmen.</p>
+        ${zustand.info.ki ? `<p><button class="knopf leise" data-aktion="ki-oeffnen" data-senden="1" data-frage="${esc(`Schlage für den Tag ${datumText(h.datum)} in ${h.name} (stationId ${h.id}) die 3 besten Ausflüge für unsere Familie vor – passend zum Alter der Kinder, unseren Interessen (z. B. Tauchen, Tiere, Strand, frühere Bewertungen) und einem vernünftigen Budget. Prüfe jeweils, ob wir sicher vor der festen Zeit (z. B. „Alle an Bord“) zurück sind, und lege sie mit ausflug_vorschlagen an (nur echte Anbieter und Links).`)}">✨ 3 passende Ausflüge vorschlagen</button></p>` : ""}
+        ${suchLinks(h)}
+        ${zustand.info.gyg ? `<div class="gyg"><button class="knopf leise" data-aktion="gyg-laden" data-id="${esc(h.id)}">GetYourGuide-Angebote hier anzeigen</button><div id="gygListe"></div></div>` : ""}
+      </details>`;
+  const weg = verworfen.length
+    ? `<details class="karte-box klappe" data-klappe="verworfen:${esc(h.id)}" ${klappeOffen(`verworfen:${h.id}`, false) ? "open" : ""}><summary><h3 class="leise">🗑️ Verworfen (${verworfen.length})</h3></summary><div class="ausfluege">${verworfen.map(karte).join("")}</div></details>`
+    : "";
+  return `${erinnerungBanner()}${heuteHinweis()}${tagWahl()}${kopf}${inhaltTag}${finden}${weg}`;
+}
+
+function tagKopf(h) {
+  const art = stationsArt(h);
+  const start = startpunkt(h, zustand.reise.hotels);
+  const landgang = zeitZuMin(h.allesAnBord || h.abfahrt) - zeitZuMin(h.ankunft);
+  const fest = festeZeit(h, zustand.reise);
+  const etappe = etappen(zustand.reise).find((e) => e.id === h.id);
+  const verbindungen = (zustand.reise.verbindungen ?? []).filter((v) => v.status !== "verworfen" && (v.datum === h.datum || v.anDatum === h.datum));
+  return `
       <div class="karte-box hafenkopf">
         <div>
           <h2>${esc(h.name)}${h.land ? `<span class="leise">, ${esc(h.land)}</span>` : ""}</h2>
@@ -310,36 +464,7 @@ function planAnsicht() {
           ${hatKoord(h) ? `<a class="knopf leise" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${h.lat},${h.lng}">Google Maps ↗</a>` : ""}
           <button class="knopf leise" data-aktion="hafen-bearbeiten" data-id="${esc(h.id)}">Tag bearbeiten</button>
         </div>
-      </div>
-
-      <div class="karte-box">
-        <h3>Ausflüge finden in ${esc(h.suchname || h.name)}</h3>
-        <p class="leise klein">Öffnet die Suche beim Anbieter (bei GetYourGuide mit Datum). Gefundenes mit „+ Ausflug“ eintragen – Link, Preis und Dauer übernehmen.</p>
-        ${suchLinks(h)}
-        ${zustand.info.ki ? `<p><button class="knopf leise" data-aktion="ki-oeffnen" data-senden="1" data-frage="${esc(`Schlage für den Tag ${datumText(h.datum)} in ${h.name} (stationId ${h.id}) die 3 besten Ausflüge für unsere Familie vor – passend zum Alter der Kinder, unseren Interessen (z. B. Tauchen, Tiere, Strand, frühere Bewertungen) und einem vernünftigen Budget. Prüfe jeweils, ob wir sicher vor der festen Zeit (z. B. „Alle an Bord“) zurück sind, und lege sie mit ausflug_vorschlagen an (nur echte Anbieter und Links).`)}">✨ 3 passende Ausflüge vorschlagen</button></p>` : ""}
-        ${zustand.info.gyg ? `<div class="gyg"><button class="knopf leise" data-aktion="gyg-laden" data-id="${esc(h.id)}">GetYourGuide-Angebote hier anzeigen</button><div id="gygListe"></div></div>` : ""}
-      </div>
-
-      <div class="karte-box">
-        <div class="zeile">
-          <h3>Vergleich (${aktive.length})</h3>
-          <label class="klein">Sortieren:
-            <select data-aktion="sortieren">
-              ${Object.entries({ punkte: "Sinnvollste zuerst", stimmen: "Beliebteste (Abstimmung)", preis: "Günstigste zuerst", puffer: "Meiste Zeitreserve", beginn: "Beginn", dauer: "Längste", fahrzeit: "Kürzester Weg" })
-                .map(([k, v]) => `<option value="${k}" ${zustand.sortierung === k ? "selected" : ""}>${v}</option>`)
-                .join("")}
-            </select>
-          </label>
-          <button class="knopf leise" data-aktion="reservierung-neu">+ Reservierung</button>
-          <button class="knopf" data-aktion="ausflug-neu">+ Ausflug</button>
-        </div>
-        ${dublettenHinweis(h)}
-        ${liste.length ? `<div class="ausfluege">${liste.map(({ a, b }) => ausflugKarte(a, b, h, { beste: a.id === besteId, guenstig: a.id === guenstigsteId })).join("")}</div>` : `<p class="leise">Noch keine Ausflüge für diesen Tag. ${art === "hafen" ? "Trage die Schiffsausflüge ein (oder lies sie unter „Import &amp; KI“ ein) und ergänze Angebote von GetYourGuide &amp; Co." : "Sammle hier Ausflüge von GetYourGuide &amp; Co. oder eigene Ideen."}</p>`}
       </div>`;
-  } else {
-    detail = `<p class="leise">Wähle oben einen Tag.</p>`;
-  }
-  return `${erinnerungBanner()}${heuteHinweis()}${hafenLeiste()}${detail}`;
 }
 
 // „Heute vor … Jahren“ – einmal je Tag, wegklickbar
@@ -876,17 +1001,7 @@ aenderungen["mitglied-rolle"] = async (el) => {
 };
 
 function verlaufAnsicht() {
-  const r = zustand.reise;
   return `
-    <div class="karte-box">
-      <h3>Reise</h3>
-      <div class="formular drei">
-        <label>Name<input data-reise="name" value="${esc(r.name)}"></label>
-        <label>Art<select data-reise="art">${Object.entries(REISEARTEN).map(([k, t]) => `<option value="${k}" ${(r.art ?? "kreuzfahrt") === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
-        ${istKreuzfahrt() ? `<label>Schiff<input data-reise="schiff" value="${esc(r.schiff ?? "")}" placeholder="z. B. Mein Schiff 4"></label>` : ""}
-      </div>
-      ${istPlaner() ? `<label class="haken"><input type="checkbox" data-aktion="reise-oeffentlich" data-id="${esc(r.id)}" ${r.oeffentlich ? "checked" : ""}> 🌍 Im öffentlichen Reisetagebuch zeigen <span class="leise klein">(nur vergangene Tage, gebuchte Ausflüge/Unterkünfte, Bewertungen und Fotos – ohne Kosten und Planung)</span></label>` : ""}
-    </div>
     <div class="karte-box">
       <div class="zeile"><h3>${istKreuzfahrt() ? "Route" : "Tage"}</h3>${haefen().some((h) => stationsArt(h) !== "seetag" && !hatKoord(h)) ? `<button class="knopf leise" data-aktion="orte-suchen">📍 Fehlende Orte auf der Karte suchen</button>` : ""}<button class="knopf" data-aktion="hafen-neu">+ ${istKreuzfahrt() ? "Hafen / Seetag" : "Tag / Ort"}</button></div>
       <p class="leise klein">${istKreuzfahrt() ? "Die Zeiten stehen im Reiseplan bzw. in der Mein-Schiff-App. „Alle an Bord“ ist meist 30 Min. vor Abfahrt." : "Tage im Hotel kannst du auch unter „Unterkünfte“ → „Tage anlegen“ erzeugen; Startpunkt der Ausflüge ist dann das Hotel."}</p>
@@ -904,8 +1019,31 @@ function verlaufAnsicht() {
       </table></div>
     </div>
     ${verbindungenBox()}
-    ${!istKreuzfahrt() ? etappenBox() : ""}
-    ${istPlaner() ? `<div class="karte-box"><h3>Reise löschen</h3><p class="leise klein">Löscht Plan, Bewertungen, Tauchgänge und Fotos dieser Reise.</p><button class="knopf gefahr" data-aktion="reise-loeschen">Diese Reise löschen</button></div>` : ""}`;
+    ${!istKreuzfahrt() ? etappenBox() : ""}`;
+}
+
+// ---------- Reise verwalten: Name, Art, Freigabe – Löschen getrennt vom normalen Bearbeiten ----------
+
+function einstellungenAnsicht() {
+  const r = zustand.reise;
+  return `
+    <div class="karte-box">
+      <h3>Reise</h3>
+      <div class="formular drei">
+        <label>Name<input data-reise="name" value="${esc(r.name)}"></label>
+        <label>Art<select data-reise="art">${Object.entries(REISEARTEN).map(([k, t]) => `<option value="${k}" ${(r.art ?? "kreuzfahrt") === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+        ${istKreuzfahrt() ? `<label>Schiff<input data-reise="schiff" value="${esc(r.schiff ?? "")}" placeholder="z. B. Mein Schiff 4"></label>` : ""}
+      </div>
+    </div>
+    <div class="karte-box">
+      <h3>🌍 Öffentliches Reisetagebuch</h3>
+      ${istPlaner() ? `<label class="haken"><input type="checkbox" data-aktion="reise-oeffentlich" data-id="${esc(r.id)}" ${r.oeffentlich ? "checked" : ""}> In meinem öffentlichen Reisetagebuch zeigen</label>` : `<p class="klein leise">Nur Planer/innen schalten die Reise frei.</p>`}
+      <p class="leise klein">Sichtbar werden nur vergangene Tage, gebuchte Ausflüge und Unterkünfte, Bewertungen, Tauchgänge und Fotos – ohne Kosten, Planung, Buchungsnummern und 🔒-Fotos.</p>
+      ${istPlaner() ? `<div class="zeile"><a class="knopf leise" href="/tagebuch-vorschau/${esc(r.id)}" target="_blank" rel="noopener">👁️ Vorschau vor dem Teilen</a><button class="link" data-aktion="ansicht" data-ziel="weltkarte">Mein Tagebuch &amp; Weltkarte →</button></div>` : ""}
+    </div>
+    ${istPlaner() ? `<details class="karte-box gefahrzone"><summary><strong>Gefahrenbereich</strong> <span class="leise klein">– endgültige Aktionen</span></summary>
+      <p class="leise klein">Löscht Plan, Bewertungen, Tauchgänge, Fotos und Dateien dieser Reise für alle Mitreisenden. Vorher am besten unter „Import &amp; Sicherung“ eine Sicherung herunterladen.</p>
+      <button class="knopf gefahr" data-aktion="reise-loeschen">Diese Reise endgültig löschen …</button></details>` : ""}`;
 }
 
 // ---------- Anreise & Verbindungen ----------
@@ -1138,8 +1276,11 @@ function weltkarteZeichnen() {
 }
 
 function karteZeichnen() {
+  // Ausgeblendete Karte nicht zeichnen (Leaflet kann ohne Größe nicht rechnen) – beim Einblenden neu
+  if (document.body.classList.contains("karte-aus") || document.body.classList.contains("kindermodus")) return;
   karteInit();
   if (!karte) return;
+  karte.invalidateSize();
   ebene.clearLayers();
   for (const k of Object.keys(kartenMarker)) delete kartenMarker[k];
   const legende = $("#legende");
@@ -1460,14 +1601,18 @@ Object.assign(aktionen, {
     alles();
   },
   "auf-karte": (el) => {
+    if (!kartenMarker[el.dataset.id] && !hatKoord(ausflugMit(el.dataset.id)?.ziel)) return alert("Für diesen Ausflug ist noch kein Ziel auf der Karte eingetragen (Bearbeiten → Ziel / Treffpunkt).");
+    // Karte ausgeblendet („Liste“)? Dann geteilt einblenden
+    if (document.body.classList.contains("karte-aus")) aktionen["karten-modus"]({ dataset: { modus: "geteilt" } });
     const m = kartenMarker[el.dataset.id];
-    if (!m) return alert("Für diesen Ausflug ist noch kein Ziel auf der Karte eingetragen (Bearbeiten → Ziel / Treffpunkt).");
+    if (!m) return;
     m.openPopup();
     karte.setView(m.getLatLng(), Math.max(karte.getZoom(), 12));
     document.querySelector(".kartenbereich").scrollIntoView({ behavior: "smooth", block: "nearest" });
   },
   "dialog-zu": () => dialog().close(),
   flieg: (el) => {
+    if (document.body.classList.contains("karte-aus")) aktionen["karten-modus"]({ dataset: { modus: "geteilt" } });
     if (!karte) return;
     karte.flyTo([Number(el.dataset.lat), Number(el.dataset.lng)], Number(el.dataset.zoom) || 10, { duration: 1 });
     if (window.matchMedia("(max-width: 900px)").matches) document.querySelector(".kartenbereich").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1514,7 +1659,9 @@ Object.assign(aktionen, {
   },
   "reise-loeschen": async () => {
     const r = zustand.reise;
-    if (!confirm(`Reise „${r.name}“ mit allen Bewertungen, Tauchgängen und Fotos endgültig löschen?`)) return;
+    const eingabe = prompt(`Reise „${r.name}“ mit allen Bewertungen, Tauchgängen, Fotos und Dateien endgültig löschen?\n\nZur Bestätigung den Namen der Reise eintippen:`);
+    if (eingabe == null) return;
+    if (eingabe.trim() !== r.name.trim()) return alert("Der Name stimmt nicht – es wurde nichts gelöscht.");
     await anfrage(`/api/reisen/${r.id}`, { method: "DELETE" });
     lokalEntfernen(r.id);
     zustand.reise = null;
@@ -1736,7 +1883,7 @@ async function start() {
   const id = zustand.reisen.find((r) => r.id === gewuenscht)?.id ?? zustand.reisen.find((r) => r.id === letzte)?.id ?? zustand.reisen[0]?.id;
   if (id) await reiseOeffnen(id);
   else alles();
-  if (id && ansichtGewuenscht && document.querySelector(`#reiter button[data-ansicht="${CSS.escape(ansichtGewuenscht)}"]`)) ansichtWechseln(ansichtGewuenscht);
+  if (id && ansichtGewuenscht && Object.values(GRUPPEN).flat().includes(ansichtGewuenscht)) ansichtWechseln(ansichtGewuenscht);
 }
 
 setzeAbmeldung(() => anmeldenZeigen(start));

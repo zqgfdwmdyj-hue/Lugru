@@ -646,3 +646,33 @@ export function tauchProfilSvg(profil, { breite = 360, hoehe = 150 } = {}) {
   return `<svg class="tauchprofil" viewBox="0 0 ${breite} ${hoehe}" role="img" aria-label="Tiefenprofil: maximal ${String(tief[1]).replace(".", ",")} m nach ${Math.round(tief[0])} Minuten" style="width:100%;height:auto;display:block">
 ${raster}${zeiten}<polygon points="${flaeche}" fill="#1e88c8" fill-opacity=".25"/><polyline points="${linie}" fill="none" stroke="#1e88c8" stroke-width="2" stroke-linejoin="round"/><circle cx="${x(tief[0])}" cy="${y(tief[1])}" r="3.5" fill="#1e88c8"/></svg>`;
 }
+
+// ---------- Übernachtungen ----------
+
+const isoPlus = (iso, tage) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + tage)).toISOString().slice(0, 10);
+
+/**
+ * Nächte ohne gebuchte Unterkunft (nicht bei Kreuzfahrt und Tagesausflug).
+ * Nächte = vom ersten bis zum vorletzten Reisetag. Ergebnis: zusammenhängende Lücken
+ * [{ von, bis, naechte, nurGeplant }] – „nurGeplant“: es gibt nur Ideen/Favoriten für diese Nächte.
+ */
+export function fehlendeNaechte(reise) {
+  const art = reise?.art ?? "kreuzfahrt";
+  if (art === "kreuzfahrt" || art === "tagesausflug") return [];
+  const tage = [...new Set((reise.haefen ?? []).map((h) => h.datum).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d ?? "")))].sort();
+  if (tage.length < 2) return [];
+  const hotels = (reise.hotels ?? []).filter((h) => h.status !== "verworfen" && h.anreise && h.abreise);
+  const luecken = [];
+  for (let d = tage[0]; d < tage.at(-1); d = isoPlus(d, 1)) {
+    const passend = hotels.filter((h) => h.anreise <= d && d < h.abreise);
+    if (passend.some((h) => h.status === "gebucht")) continue;
+    const nurGeplant = passend.length > 0;
+    const letzte = luecken.at(-1);
+    if (letzte && isoPlus(letzte.bis, 1) === d && letzte.nurGeplant === nurGeplant) {
+      letzte.bis = d;
+      letzte.naechte++;
+    } else luecken.push({ von: d, bis: d, naechte: 1, nurGeplant });
+  }
+  // „bis“ = Abreisetag (Morgen nach der letzten Nacht)
+  return luecken.map((l) => ({ ...l, bis: isoPlus(l.bis, 1) }));
+}

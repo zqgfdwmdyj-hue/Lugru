@@ -62,7 +62,7 @@ code { background: var(--akzent-hell); padding: 0 4px; border-radius: 4px; font-
 }
 .reiter button.aktiv { color: var(--akzent); border-bottom-color: var(--akzent); font-weight: 600; }
 
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 42%); gap: 16px; padding: 16px; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 36%); gap: 16px; padding: 16px; align-items: start; }
 .inhalt { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .kartenbereich { position: sticky; top: 12px; }
 .karte { height: calc(100vh - 150px); min-height: 360px; border-radius: 10px; border: 1px solid var(--rand); background: var(--flaeche); }
@@ -659,4 +659,86 @@ form.art-hafen .ohne-hafen { display: none !important; }
   .annahme { background: #4a3000; color: #ffd8a8; }
   .annahme-text, .preis-offen { color: #ffb74d; }
   .warnungen.konflikt li { color: #ff8a80; }
+}
+
+
+/* ---------- Navigation: Hauptbereiche, Unterbereiche, Kartenmodus ---------- */
+.reiter .platz { flex: 1; }
+.reiter button.verwalten { color: var(--text); }
+.reiter button.kindermodus-knopf { margin: 6px 0 6px 6px; padding: 6px 14px; border: 2px solid #f5a623; border-radius: 99px; color: #8a4b00; background: #fff7e6; font-weight: 600; }
+.reiter button.kindermodus-knopf:hover { background: #ffe9c2; }
+.unterreiter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; background: var(--hg); border-bottom: 1px solid var(--rand); }
+.unterreiter[hidden] { display: none; }
+.unterreiter .platz { flex: 1; }
+.unterreiter > button { border: 1px solid var(--rand); background: var(--flaeche); color: var(--text); border-radius: 99px; padding: 6px 12px; font: inherit; font-size: 0.9rem; cursor: pointer; }
+.unterreiter > button.aktiv { border-color: var(--akzent); background: var(--akzent-hell); color: var(--akzent); font-weight: 600; }
+.kartenwahl, .segment { display: inline-flex; border: 1px solid var(--rand); border-radius: 8px; overflow: hidden; background: var(--flaeche); }
+.kartenwahl button, .segment button { border: 0; background: none; color: var(--text); padding: 6px 10px; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.kartenwahl button + button, .segment button + button { border-left: 1px solid var(--rand); }
+.kartenwahl button.aktiv, .segment button.aktiv { background: var(--akzent); color: #fff; }
+body.karte-aus .layout { grid-template-columns: minmax(0, 1fr); max-width: 1100px; margin: 0 auto; }
+body.karte-aus .kartenbereich { display: none; }
+body.karte-nur .layout { grid-template-columns: minmax(0, 1fr); }
+body.karte-nur .inhalt { display: none; }
+body.karte-nur .karte { height: calc(100vh - 170px); }
+@media (max-width: 900px) { body.karte-nur .karte { height: calc(100vh - 190px); } }
+.weltknopf.aktiv { background: var(--akzent-hell); }
+.breit-nur { display: inline; }
+@media (max-width: 600px) { .breit-nur { display: none; } }
+
+/* Kindermodus: eigene Oberfläche ohne Erwachsenen-Navigation und Karte */
+.kinderleiste { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 16px; background: linear-gradient(90deg, #fff3c4, #ffe0ec); border-bottom: 2px solid #f5a623; font-size: 1.05rem; }
+.kinderleiste[hidden] { display: none; }
+body.kindermodus .reiter, body.kindermodus .unterreiter, body.kindermodus .kartenbereich { display: none !important; }
+body.kindermodus .layout { grid-template-columns: minmax(0, 1fr); max-width: 900px; margin: 0 auto; }
+@media (prefers-color-scheme: dark) {
+  .kinderleiste { background: linear-gradient(90deg, #4a3a00, #4a1830); }
+  .reiter button.kindermodus-knopf { background: #3d2a00; color: #ffd27a; }
+}
+
+/* Tagesauswahl */
+.tagwahl { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.tagwahl select { width: 100%; min-width: 0; font: inherit; font-weight: 600; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--akzent); background: var(--flaeche); color: var(--text); }
+.tagwahl .knopf { padding: 9px 12px; }
+.tagwahl .knopf:disabled { opacity: 0.4; cursor: default; }
+.tagwahl-info { margin: -6px 0 0; }
+details.klappe > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.klappe > summary::-webkit-details-marker { display: none; }
+details.klappe > summary::before { content: "▸"; color: var(--leise); transition: transform 0.15s; }
+details.klappe[open] > summary::before { transform: rotate(90deg); }
+details.klappe > summary h3 { margin: 0; }
+details.klappe[open] > summary { margin-bottom: 10px; }
+table.vergleich td, table.vergleich th { vertical-align: top; }
+table.vergleich tr.status-gebucht td:first-child { border-left: 3px solid #2e7d32; }
+td.gelb { color: #b26a00; }
+td.gruen { color: #2e7d32; }
+
+/* Übersicht */
+.uebersichtkopf h2 { margin: 2px 0 4px; }
+.uebersichtkopf .status { margin: 8px 0; font-size: 1.05rem; opacity: 1; }
+.uebersichtkopf.status-bald .status { color: var(--akzent); }
+.uebersichtkopf.status-jetzt .status { color: #2e7d32; }
+button.kachel { text-align: left; font: inherit; color: var(--text); cursor: pointer; }
+button.kachel:hover { border-color: var(--akzent); }
+ul.aufgaben, ul.termine { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+ul.aufgaben li { padding: 8px 10px; border-radius: 8px; border-left: 4px solid var(--rand); background: var(--akzent-hell); }
+ul.aufgaben li.rot { border-left-color: #c62828; }
+ul.aufgaben li.gelb { border-left-color: #e69100; }
+ul.aufgaben li.info { border-left-color: var(--akzent); }
+ul.aufgaben .link, ul.termine .link { text-align: left; color: var(--text); text-decoration: none; }
+ul.termine li { padding: 6px 0; border-bottom: 1px solid var(--rand); }
+.termin-datum { display: inline-block; min-width: 9.5em; font-variant-numeric: tabular-nums; color: var(--leise); }
+.gefahrzone { border-color: #e57373; }
+.gefahrzone > summary { cursor: pointer; }
+table.vergleich .link { text-align: left; }
+@media (max-width: 600px) {
+  table.vergleich, table.vergleich tbody, table.vergleich tr, table.vergleich td { display: block; }
+  table.vergleich thead { display: none; }
+  table.vergleich tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; padding: 10px 6px; border-bottom: 1px solid var(--rand); }
+  table.vergleich td { padding: 0; border: 0; text-align: left; }
+  table.vergleich td:first-child { grid-column: 1 / -1; }
+  table.vergleich td::before { content: attr(data-label); display: block; font-size: 0.72rem; color: var(--leise); }
+  table.vergleich td:first-child::before { display: none; }
+  table.vergleich tr.status-gebucht td:first-child { border-left: 0; }
+  table.vergleich tr.status-gebucht { border-left: 3px solid #2e7d32; }
 }
