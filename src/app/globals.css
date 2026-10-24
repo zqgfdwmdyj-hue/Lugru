@@ -345,3 +345,16 @@ h2 { font-size: 16px; margin: 0; }
   .rev-row { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; }
   .rev-thumb { width: 44px; height: 44px; }
 }
+
+/* Kennzahl mit Herkunft (components/kpi.tsx) */
+.kpi-card { display: flex; flex-direction: column; gap: 4px; }
+.kpi-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.kpi-card .kpi-value { margin-top: 2px; }
+.kpi-missing { color: #5c3a00; background: var(--warn-soft); border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
+.kpi-meta { font-size: 11px; color: var(--muted); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--border); }
+.fix-list { display: flex; flex-direction: column; }
+.fix-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--border); }
+.fix-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fix-form .input { width: 120px; }
+/* Lange Tabellen: Kopfzeile bleibt beim Scrollen stehen */
+.sticky-head thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; box-shadow: inset 0 -1px 0 var(--border); }

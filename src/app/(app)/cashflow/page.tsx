@@ -5,6 +5,7 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { buildWeeks, projectPayouts } from "@/lib/money/cashflow";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addCashItem, deleteCashItem, saveStartBalance } from "./actions";
+import { Kpi } from "@/components/kpi";
 
 const IN = "#0f8a79";
 const OUT = "#d9480f";
@@ -37,6 +38,14 @@ export default async function CashflowPage() {
   const max = Math.max(1, ...weeks.map((w) => Math.max(w.inflow, w.outflow)));
   const claimSum = claims.reduce((n, c) => n + c.sum, 0);
   const planned = new Set(items.map((i) => i.description.toLowerCase()));
+  // Datenlage: ohne Startkontostand oder ohne Auszahlungsverlauf ist die Prognose nicht belastbar.
+  const asOf = tenant.settings.cash?.asOf ?? null;
+  const staleDays = asOf ? Math.floor((Date.parse(today) - Date.parse(asOf)) / 86_400_000) : null;
+  const gaps = [
+    start === null ? "Startkontostand" : staleDays !== null && staleDays > 14 ? `aktueller Kontostand (zuletzt vor ${staleDays} Tagen)` : null,
+    history.length === 0 ? "Amazon-Auszahlungen (Settlement-Reports)" : null,
+  ].filter((x): x is string => Boolean(x));
+  const forecastState = start === null ? "fehlt" : gaps.length ? "unvollstaendig" : "ok";
 
   const W = 760, H = 220, pad = 36, bw = (W - pad * 2) / weeks.length;
   const y = (v: number) => H - 28 - (v / max) * (H - 50);
@@ -47,18 +56,31 @@ export default async function CashflowPage() {
       <div className="grid-kpi">
         <div className="card card-pad">
           <div className="kpi-label">Kontostand (Start)</div>
-          <form action={saveStartBalance} style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <form action={saveStartBalance} style={{ display: "flex", gap: 6, marginTop: 6 }} id="kontostand">
             <label htmlFor="bal" className="sr-only">Kontostand</label>
             <input className="input num" id="bal" name="balance" defaultValue={start !== null ? String(start).replace(".", ",") : ""} placeholder="z. B. 12.500" />
-            <button className="btn btn-small" type="submit">OK</button>
+            <button className="btn btn-small" type="submit">Speichern</button>
           </form>
-          <div className="small muted" style={{ marginTop: 4 }}>{tenant.settings.cash?.asOf ? `Stand ${formatDate(tenant.settings.cash.asOf)}` : "noch nicht gesetzt"}</div>
+          <div className="small" style={{ marginTop: 4, color: start === null ? "var(--danger)" : undefined }} data-testid="cash-start-state">{asOf ? `Stand ${formatDate(asOf)}` : "noch nicht eingetragen – Prognose nicht möglich"}</div>
         </div>
-        <div className="card card-pad"><div className="kpi-label">In 8 Wochen (Plan)</div><div className="kpi-value" style={{ color: rows.at(-1)!.balance < 0 ? "var(--danger)" : undefined }}>{formatEuro(rows.at(-1)!.balance)}</div><div className="small muted">{start === null ? "ohne Startwert" : "inkl. Startwert"}</div></div>
+        <Kpi
+          testid="kpi-forecast"
+          label="Kontostand in 8 Wochen (Prognose)"
+          value={start === null ? "–" : formatEuro(rows.at(-1)!.balance)}
+          danger={start !== null && rows.at(-1)!.balance < 0}
+          state={forecastState}
+          note={start === null ? `Ein-/Ausgänge im Plan: ${formatEuro(rows.at(-1)!.balance)} (ohne Startwert)` : "Startwert + geplante Posten + geschätzte Amazon-Auszahlungen"}
+          missing={gaps}
+          fixHref="#kontostand"
+          fixLabel="eintragen"
+          source="Kontostand von Hand, Plan-Posten, Amazon-Abrechnungen"
+          stand={asOf ? formatDate(asOf) : undefined}
+        />
         <div className="card card-pad"><div className="kpi-label">Nächste Auszahlung (geschätzt)</div><div className="kpi-value">{payouts[0] ? formatEuro(payouts[0].amount) : "–"}</div><div className="small muted">{payouts[0] ? formatDate(payouts[0].date) : "Settlement-Reports importieren"}</div></div>
         <div className="card card-pad"><div className="kpi-label">Offene Ansprüche (Potenzial)</div><div className="kpi-value">{formatEuro(claimSum)}</div><div className="small muted">nicht im Plan enthalten</div></div>
       </div>
 
+      <div className="small muted" data-testid="cash-scope">Enthalten: Kontostand (von Hand), geplante Posten und geschätzte Amazon-Auszahlungen ({history.length ? `aus ${history.length} Abrechnungen` : "keine Abrechnungen importiert"}). Nicht enthalten: Auszahlungen von eBay, Temu und anderen Kanälen sowie offene Ansprüche.</div>
       <section className="card card-pad">
         <div className="between" style={{ marginBottom: 8 }}>
           <h2>Nächste 8 Wochen</h2>

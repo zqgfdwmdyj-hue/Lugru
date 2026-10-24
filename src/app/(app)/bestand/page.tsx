@@ -9,11 +9,14 @@ import { CHANNEL_LABEL } from "@/lib/labels";
 import { availableOf } from "@/lib/stock/channel-logic";
 import { listingsBySku, stockLevels } from "@/lib/stock/channel-sync";
 import { createCount, setOwnStock } from "./actions";
+import { Kpi } from "@/components/kpi";
+import { skuCostMap } from "@/lib/money/costs";
+import { COST_SOURCE_LABEL, stockValue } from "@/lib/money/profit-logic";
 
-const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Unverkäuflich", ladenhueter: "Ladenhüter" } as const;
+const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Unverkäuflich", ladenhueter: "Ladenhüter", "ohne-ek": "Ohne EK (unbewertet)", negativ: "Negativer Bestand" } as const;
 type View = keyof typeof VIEWS;
 
-type Row = { sku: string; title: string | null; asin: string | null; fba: number; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
+type Row = { sku: string; title: string | null; image: string | null; asin: string | null; fba: number; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
 
 export default async function BestandPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; q?: string }> }) {
   const session = await requireSession();
@@ -34,7 +37,9 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       ) x group by sku
     )
     select s.sku,
-           coalesce(p.title, ai.title) as title,
+           -- Name/Bild: Produkt, FBA-Bericht, sonst eindeutig über die SKU aus den Kanal-Angeboten
+           coalesce(p.title, ai.title, (select li.title from listings li where li.tenant_id = ${t} and (li.sku = s.sku or li.stock_sku = s.sku) order by (li.status = 'active') desc, li.updated_at desc limit 1)) as title,
+           (select coalesce(li.payload->'imageUrls'->>0, li.payload->>'image') from listings li where li.tenant_id = ${t} and (li.sku = s.sku or li.stock_sku = s.sku) and (li.payload ? 'imageUrls' or li.payload ? 'image') order by (li.status = 'active') desc limit 1) as image,
            coalesce(p.asin, ai.asin) as asin,
            coalesce(ai.fulfillable, 0) as fba,
            coalesce(ai.unsellable, 0) as unsellable,
@@ -55,12 +60,18 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
      order by (coalesce(ai.fulfillable,0) + coalesce(os.quantity,0)) * coalesce(l.unit_cost_net, 0) desc
      limit 2000`);
   const noSaleBefore = addDaysIso(todayIso(), -settings.aging.noSaleWarnDays);
+  const costs = await skuCostMap(t);
+  // EK aus der gemeinsamen Quelle (Charge → EK je SKU → eBay-Tool).
+  for (const r of res.rows) r.cost = costs.get(r.sku)?.cost ?? null;
+  const sv = stockValue(res.rows.map((r) => ({ sku: r.sku, units: r.fba + r.reserved + r.inbound, own: r.own })), costs);
+  const [inv] = await db.select({ snap: sql<string | null>`max(${schema.amazonInventory.snapshotDate})::text` }).from(schema.amazonInventory).where(eq(schema.amazonInventory.tenantId, t));
   let rows = res.rows;
   if (view === "fba") rows = rows.filter((r) => r.fba + r.inbound + r.reserved > 0);
   if (view === "eigen") rows = rows.filter((r) => r.own !== 0);
   if (view === "unverkaeuflich") rows = rows.filter((r) => r.unsellable > 0);
   if (view === "ladenhueter") rows = rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore));
-  const value = res.rows.reduce((n, r) => n + (r.fba + r.reserved + r.inbound + r.own) * (r.cost ?? 0), 0);
+  if (view === "ohne-ek") rows = rows.filter((r) => r.cost === null && r.fba + r.reserved + r.inbound + Math.max(0, r.own) > 0);
+  if (view === "negativ") rows = rows.filter((r) => r.own < 0);
   const units = res.rows.reduce((n, r) => n + r.fba + r.reserved + r.inbound, 0);
   const own = res.rows.reduce((n, r) => n + r.own, 0);
   const levels = await stockLevels(t);
@@ -75,9 +86,24 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
         <form action="/bestand" style={{ width: 340 }}><input type="hidden" name="ansicht" value={view} /><label htmlFor="bq" className="sr-only">Suche</label><input className="input" id="bq" name="q" defaultValue={sp.q} placeholder="SKU, ASIN, Titel" /></form>
       </div>
       <div className="grid-kpi">
-        <div className="card card-pad"><div className="kpi-label">Warenwert (EK)</div><div className="kpi-value">{formatEuro(value)}</div></div>
+        <Kpi
+          testid="kpi-stock-value"
+          label="Warenwert (EK, bewertet)"
+          value={formatEuro(sv.valued)}
+          state={sv.unvaluedUnits || sv.negative.length ? "unvollstaendig" : "ok"}
+          note={`${sv.valuedUnits} Einheiten mit EK`}
+          missing={[
+            ...(sv.unvaluedUnits ? [`EK für ${sv.unvaluedUnits} Einheiten (${sv.unvaluedSkus.length} SKU${sv.unvaluedSkus.length === 1 ? "" : "s"}) – nicht bewertet`] : []),
+          ]}
+          fixHref="/bestand?ansicht=ohne-ek"
+          fixLabel="ansehen"
+          source="FBA-Bericht, eigenes Lager, EK"
+          stand={inv?.snap ? formatDate(inv.snap) : undefined}
+        />
         <div className="card card-pad"><div className="kpi-label">Bei Amazon</div><div className="kpi-value">{units}</div><div className="small muted">verfügbar, reserviert, unterwegs</div></div>
-        <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value">{own}</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}</div>
+        <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value">{own}</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}
+          {sv.negative.length > 0 && <Link href="/bestand?ansicht=negativ" className="small" style={{ color: "var(--danger)" }} data-testid="stock-negative">{sv.negative.length} SKU{sv.negative.length === 1 ? "" : "s"} mit negativem Bestand ({sv.negativeUnits}) – nicht im Warenwert verrechnet →</Link>}
+        </div>
         <div className="card card-pad"><div className="kpi-label">Ladenhüter</div><div className="kpi-value">{res.rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore)).length}</div><div className="small muted">ohne Verkauf seit {settings.aging.noSaleWarnDays} Tagen</div></div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -85,19 +111,24 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       </div>
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
-          <table className="table">
+          <table className="table sticky-head">
             <thead><tr><th>SKU</th><th>Artikel</th><th className="right">FBA</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={9} className="muted">Keine Einträge. FBA-Bestandsbericht importieren oder eigenen Bestand eintragen.</td></tr>}
               {rows.slice(0, 500).map((r) => (
                 <tr key={r.sku}>
                   <td className="num small">{r.sku}</td>
-                  <td style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title ?? r.asin ?? "–"}</td>
+                  <td style={{ maxWidth: 320 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+                      {r.image && <img src={r.image} alt="" width={32} height={32} style={{ objectFit: "contain", borderRadius: 4, flex: "none" }} loading="lazy" />}
+                      <Link href={`/produkte?q=${encodeURIComponent(r.sku)}`} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? undefined}>{r.title ?? r.asin ?? "– Name fehlt –"}</Link>
+                    </div>
+                  </td>
                   <td className="num right">{r.fba}</td>
                   <td className="num right" style={{ color: r.unsellable ? "var(--danger)" : undefined }}>{r.unsellable || ""}</td>
                   <td className="num right">{r.inbound || ""}</td>
                   <td className="num right">
-                    {r.own || ""}
+                    <span style={{ color: r.own < 0 ? "var(--danger)" : undefined, fontWeight: r.own < 0 ? 600 : undefined }}>{r.own || ""}</span>
                     {(levels.get(r.sku)?.reserved ?? 0) > 0 && (
                       <div className="small" style={{ color: (levels.get(r.sku)!.reserved > r.own) ? "var(--danger)" : "var(--muted)" }}>
                         {levels.get(r.sku)!.reserved} reserviert · {availableOf(levels.get(r.sku))} frei
@@ -112,7 +143,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                       </Link>
                     ))}
                   </td>
-                  <td className="num right">{r.cost !== null ? formatEuro((r.fba + r.reserved + r.inbound + r.own) * r.cost) : "–"}</td>
+                  <td className="num right">{r.cost !== null ? <span title={`EK ${formatEuro(r.cost)} (${COST_SOURCE_LABEL[costs.get(r.sku)!.source]})`}>{formatEuro((r.fba + r.reserved + r.inbound + Math.max(0, r.own)) * r.cost)}</span> : <Link href={`/produkte?q=${encodeURIComponent(r.sku)}`} style={{ color: "var(--warn)" }} title="EK fehlt – nicht bewertet">EK fehlt</Link>}</td>
                   <td className="num small" style={{ color: !r.lastSale || r.lastSale < noSaleBefore ? "var(--warn)" : undefined }}>{formatDate(r.lastSale)}</td>
                 </tr>
               ))}

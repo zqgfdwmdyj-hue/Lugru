@@ -273,3 +273,20 @@ export const marketHistory = pgTable(
   },
   (t) => [uniqueIndex("market_hist_uq").on(t.tenantId, t.asin, t.day)],
 );
+
+/**
+ * EK je SKU ohne Charge (z. B. ältere eBay-Angebote ohne ASIN) – von Hand nachgetragen. Reihenfolge in der
+ * Gewinnrechnung und beim Lagerwert: Charge → dieser Eintrag → Einkaufspreis aus dem eBay-Tool.
+ */
+export const skuCosts = pgTable(
+  "sku_costs",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    sku: text("sku").notNull(),
+    unitCostNet: money("unit_cost_net").notNull(),
+    note: text("note"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("sku_costs_uq").on(t.tenantId, t.sku)],
+);

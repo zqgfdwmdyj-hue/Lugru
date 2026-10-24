@@ -1,6 +1,7 @@
 import "server-only";
 import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { CostInfo, OrderLine } from "./profit-logic";
 
 // Gewinn aus Amazon-Abrechnungen (Settlement) und EK je SKU.
 // Vereinfachungen (auch in der Oberfläche genannt): Umsatz wird mit dem Standard-MwSt-Satz
@@ -25,7 +26,7 @@ export type SkuProfit = {
   avgPrice: number | null;
 };
 
-export async function amazonProfit(tenantId: string, from: string, to: string, vatRate: number) {
+export async function amazonProfit(tenantId: string, from: string, to: string, vatRate: number, costs?: Map<string, CostInfo>) {
   const S = schema.amazonSettlementLines;
   const rows = await db
     .select({
@@ -53,7 +54,8 @@ export async function amazonProfit(tenantId: string, from: string, to: string, v
 
   const skus: SkuProfit[] = rows.map((r) => {
     const lot = bySku.get(r.sku!);
-    const unitCost = lot?.cost ? Number(lot.cost) : null;
+    // EK aus der gemeinsamen Quelle (Charge → von Hand → eBay-Tool), sonst wie bisher aus der Charge.
+    const unitCost = costs ? (costs.get(r.sku!)?.cost ?? null) : lot?.cost ? Number(lot.cost) : null;
     const netUnits = Math.max(0, r.units - r.refunds);
     const revenueNet = r.revenue / (1 + vatRate);
     const other = r.total - r.revenue - r.fees - r.promotions - r.reimb;
@@ -89,22 +91,28 @@ export async function amazonProfit(tenantId: string, from: string, to: string, v
   return { skus, nonSku };
 }
 
-/** Andere Kanäle: Umsatz aus Aufträgen minus EK (Gebühren der Kanäle sind nicht bekannt). */
-export async function otherChannelProfit(tenantId: string, from: string, to: string, vatRate: number) {
+/** Andere Kanäle: Auftragspositionen im Zeitraum (ohne stornierte) – Auswertung in profit-logic.ts. */
+export async function orderLines(tenantId: string, from: string, to: string): Promise<OrderLine[]> {
   const O = schema.orders;
   const I = schema.orderItems;
-  return db
-    .select({
-      channel: O.channel,
-      orders: sql<number>`count(distinct ${O.id})::int`,
-      revenue: sql<number>`coalesce(sum(${I.price} * ${I.quantity}), 0)::float`,
-      revenueNet: sql<number>`coalesce(sum(${I.price} * ${I.quantity}), 0)::float / ${1 + vatRate}`,
-      cogs: sql<number>`coalesce(sum(${schema.lots.unitCostNet} * ${I.quantity}), 0)::float`,
-      missingCost: sql<number>`count(*) filter (where ${schema.lots.unitCostNet} is null)::int`,
-    })
+  const rows = await db
+    .select({ orderId: O.id, externalId: O.externalId, channel: O.channel, orderDate: O.orderDate, fees: O.fees, sku: I.sku, title: I.title, qty: I.quantity, price: I.price })
     .from(O)
     .innerJoin(I, eq(I.orderId, O.id))
-    .leftJoin(schema.lots, and(eq(schema.lots.tenantId, tenantId), eq(schema.lots.sku, I.sku)))
-    .where(and(eq(O.tenantId, tenantId), ne(O.channel, "amazon"), ne(O.status, "cancelled"), gte(O.orderDate, new Date(`${from}T00:00:00Z`)), lte(O.orderDate, new Date(`${to}T23:59:59Z`))))
-    .groupBy(O.channel);
+    .where(and(eq(O.tenantId, tenantId), ne(O.channel, "amazon"), ne(O.status, "cancelled"), gte(O.orderDate, new Date(`${from}T00:00:00Z`)), lte(O.orderDate, new Date(`${to}T23:59:59Z`))));
+  return rows.map((r) => ({ orderId: r.orderId, externalId: r.externalId, channel: r.channel, orderDate: r.orderDate.toISOString().slice(0, 10), sku: r.sku, title: r.title, qty: r.qty, price: r.price, orderFees: r.fees }));
+}
+
+/** Datenstand: letzte Amazon-Abrechnung und letzter Auftrag je Kanal. */
+export async function dataStand(tenantId: string) {
+  const S = schema.amazonSettlementLines;
+  const [[settle], orders] = await Promise.all([
+    db.select({ last: sql<string | null>`max(${S.postedDate})::text` }).from(S).where(eq(S.tenantId, tenantId)),
+    db
+      .select({ channel: schema.orders.channel, last: sql<Date | null>`max(${schema.orders.updatedAt})` })
+      .from(schema.orders)
+      .where(eq(schema.orders.tenantId, tenantId))
+      .groupBy(schema.orders.channel),
+  ]);
+  return { settlement: settle?.last ?? null, orders: new Map<string, Date | null>(orders.map((o) => [o.channel, o.last ? new Date(o.last) : null])) };
 }

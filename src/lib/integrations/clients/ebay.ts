@@ -62,6 +62,8 @@ type EbayOrder = {
   orderFulfillmentStatus: string;
   buyer?: { username?: string };
   pricingSummary?: { total?: { value: string; currency: string } };
+  /** Gesamte eBay-Gebühren der Bestellung (Verkaufsprovision u. a.). */
+  totalMarketplaceFee?: { value: string; currency: string };
   fulfillmentStartInstructions?: { shippingStep?: { shipTo?: { fullName?: string; contactAddress?: { addressLine1?: string; addressLine2?: string; city?: string; postalCode?: string; countryCode?: string }; primaryPhone?: { phoneNumber?: string }; email?: string } } }[];
   lineItems: { lineItemId: string; sku?: string; legacyItemId?: string; variationAspects?: { name?: string; value?: string }[]; title?: string; quantity: number; lineItemCost?: { value: string } }[];
 };
@@ -82,6 +84,12 @@ async function legacySkus(tenantId: string, orders: EbayOrder[]) {
   };
 }
 
+/** eBay-Gebühren der Bestellung, falls geliefert – sonst bleibt das Feld leer („fehlt“, nie 0 €). */
+export function ebayFee(o: Pick<EbayOrder, "totalMarketplaceFee">): { fees: number; feesSource: string } | Record<string, never> {
+  const v = o.totalMarketplaceFee ? Number(o.totalMarketplaceFee.value) : NaN;
+  return Number.isFinite(v) ? { fees: Math.abs(v), feesSource: "api" } : {};
+}
+
 export async function syncEbayOrders(tenantId: string) {
   const c = await cfg(tenantId);
   if (!c) return { orders: 0 };
@@ -95,8 +103,12 @@ export async function syncEbayOrders(tenantId: string) {
     const shipTo = { name1: st?.fullName, name2: a.addressLine2 || undefined, street, houseNo, zip: a.postalCode, city: a.city, country: a.countryCode ?? "DE", phone: st?.primaryPhone?.phoneNumber, email: st?.email };
     const [row] = await db
       .insert(schema.orders)
-      .values({ tenantId, channel: "ebay", externalId: o.orderId, orderDate: new Date(o.creationDate), fulfillment: "FBM", status: "open", externalStatus: o.orderFulfillmentStatus, buyerName: st?.fullName ?? o.buyer?.username ?? null, shipTo, total: o.pricingSummary?.total ? Number(o.pricingSummary.total.value) : null })
-      .onConflictDoUpdate({ target: [schema.orders.tenantId, schema.orders.channel, schema.orders.externalId], set: { externalStatus: sql`excluded.external_status`, shipTo: sql`excluded.ship_to`, updatedAt: sql`now()` } })
+      .values({ tenantId, channel: "ebay", externalId: o.orderId, orderDate: new Date(o.creationDate), fulfillment: "FBM", status: "open", externalStatus: o.orderFulfillmentStatus, buyerName: st?.fullName ?? o.buyer?.username ?? null, shipTo, total: o.pricingSummary?.total ? Number(o.pricingSummary.total.value) : null, ...ebayFee(o) })
+      .onConflictDoUpdate({
+        target: [schema.orders.tenantId, schema.orders.channel, schema.orders.externalId],
+        // Gebühr nur ergänzen, nie eine von Hand eingetragene überschreiben.
+        set: { externalStatus: sql`excluded.external_status`, shipTo: sql`excluded.ship_to`, fees: sql`coalesce(${schema.orders.fees}, excluded.fees)`, feesSource: sql`coalesce(${schema.orders.feesSource}, excluded.fees_source)`, updatedAt: sql`now()` },
+      })
       .returning({ id: schema.orders.id, inserted: sql<boolean>`(xmax = 0)` });
     await db.delete(schema.orderItems).where(eq(schema.orderItems.orderId, row.id));
     await db.insert(schema.orderItems).values(o.lineItems.map((i) => ({ tenantId, orderId: row.id, externalItemId: i.lineItemId, sku: i.sku || legacy(i), title: i.title ?? null, quantity: i.quantity, price: i.lineItemCost ? Number(i.lineItemCost.value) / Math.max(1, i.quantity) : null })));

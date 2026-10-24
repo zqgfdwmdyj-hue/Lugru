@@ -22,6 +22,13 @@ export const orders = pgTable(
     buyerName: encryptedText("buyer_name"),
     shipTo: encryptedJson<Address>("ship_to"),
     total: money("total"),
+    /**
+     * Kanalgebühren der Bestellung (z. B. eBay „totalMarketplaceFee“), netto wie geliefert. null = unbekannt –
+     * wird in der Gewinnrechnung als „fehlt“ geführt, nie als 0 €.
+     */
+    fees: money("fees"),
+    /** Woher die Gebühr stammt: „api“ (vom Kanal geliefert) oder „manuell“. */
+    feesSource: text("fees_source"),
     currency: text("currency").notNull().default("EUR"),
     shipBy: timestamp("ship_by", { withTimezone: true }),
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
