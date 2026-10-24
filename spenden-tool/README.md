@@ -45,8 +45,19 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Preis), „Fotopreis übernehmen“ oder „Erkennung falsch“. Bis dahin gilt der eingetragene Preis.
 - **Kategorien:** Neue Fotos landen in „Noch zuordnen“; die KI darf diese Kategorie ersetzen, bestätigte
   Kategorien nicht. Abweichende KI-Vorschläge stehen unter „Prüfen“ zum einzelnen Übernehmen.
-- **MHD nur wo nötig:** pro Produkt „automatisch“ (Lebensmittel, Getränke, Babyprodukte), „ja“ oder „nein“ –
-  Spielzeug und Haushaltswaren zählen nicht als „MHD fehlt“.
+- **MHD nur wo nötig:** pro Produkt „automatisch“, „ja“ oder „nein“. Automatisch nach Produktart: Spielzeug,
+  Schwimmhilfen, Babyzubehör (Flaschen, Sauger, Windeln) und Haushaltswaren nie – auch wenn sie falsch unter
+  „Lebensmittel“ stehen; Babyprodukte nur, wenn sie nach Nahrung klingen (Brei, Gläschen, Snack, HiPP …).
+- **Kategorie-Auffälligkeiten:** z. B. Gewürze unter „Drogerie & Haushalt“ oder ein Schwimmsitz unter
+  „Lebensmittel“ erscheinen als offener Punkt; geändert wird erst mit „Übernehmen“, „Stimmt so“ blendet sie aus.
+- **Abgabeeinheit getrennt vom Preis bestätigen:** Vorschläge nur aus eindeutigen Angaben („6er-Pack“,
+  „6 x 125 g“, „10 Stück“) – nie aus Maßen, Gewichten, Altersangaben oder Modellnummern. Unter „Prüfen“ lassen
+  sich alle offenen Einheiten auf einmal bestätigen.
+- **Nie zwei Preise auf einem Bild:** Steht derselbe Preis im Foto, wird keiner dazugedruckt; ein abweichender wird
+  gezielt überklebt – oder, wenn seine Lage unbekannt ist, verlangt das Tool ein Foto ohne Preis. Noch nicht
+  geprüfte Fotos werden beim Öffnen von Collage/Social Media automatisch gelesen.
+- **Interne KI-Hinweise** („Marke nicht identifiziert“, „genaue Packungsgröße unbekannt“) erscheinen nie in den
+  Ausgaben; unter „Prüfen“ lassen sie sich in die interne Notiz verschieben. B-Ware zählt nicht als Vergleichspreis.
 - **Ideen (✨):** Die KI liest die Produkte einer Verteilung und schlägt Themenpakete (z. B. Halloween, Winter,
   Frühstück) mit Gesamtpreis, Rezepte aus den vorhandenen Sachen, einen fertigen Werbetext und Tipps fürs Team vor.
   Themen per Klick oder eigener Wunsch; Claude Sonnet, ca. 3–5 Cent je Durchlauf. Ergebnisse bleiben gespeichert.

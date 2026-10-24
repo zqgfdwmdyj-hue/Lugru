@@ -416,3 +416,14 @@ form.check-row { grid-template-columns: auto 1fr auto; }
 
 .tab-short { display: none; }
 @media (max-width: 420px) { .tab-long { display: none; } .tab-short { display: inline; font-size: 18px; } .tab { padding: 10px 11px; } }
+
+.unit-row { grid-template-columns: auto auto 1fr auto !important; }
+.unit-inputs { display: inline-flex; gap: 6px; align-items: center; }
+.cat-row { grid-template-columns: auto 1fr auto !important; }
+@media (max-width: 760px) {
+  .unit-row { grid-template-columns: auto auto 1fr !important; }
+  .unit-inputs { grid-column: 3; }
+  .cat-row { grid-template-columns: auto 1fr !important; }
+  .cat-row .conflict-actions { grid-column: 2; }
+}
+.pl-unit { display: flex; flex-direction: column; gap: 1px; }

@@ -2,6 +2,7 @@ import type { schema } from "@/db";
 import { ApplyForm } from "./apply-form";
 import { formatEuro } from "@/lib/numbers";
 import { donationShare } from "@/lib/pricing";
+import { cleanAiText, isSecondHand } from "@/lib/price-logic";
 import { AI_MODE_INFO, AI_MODES, aiCostUsd, defaultAiMode, isAiMode } from "@/lib/ai-modes";
 
 type Check = typeof schema.priceChecks.$inferSelect;
@@ -13,12 +14,15 @@ export function PriceCheckChip({ check }: { check: Check | undefined }) {
   if (!check) return null;
   if (check.status === "pending" || check.status === "running") return <span className="ai-chip">KI sucht …</span>;
   if (check.status === "error") return <span className="ai-chip" style={{ background: "var(--danger-soft)", color: "#7a1a12" }} title={check.error ?? ""}>KI: Fehler</span>;
-  if (check.mode === "erkennen") return <span className="ai-chip" title={check.summary ?? ""}>KI: erkannt</span>;
-  if (check.lowestPrice === null) return <span className="ai-chip" title={check.summary ?? ""}>KI: kein Preis</span>;
-  const best = check.offers[0];
+  const summary = cleanAiText(check.summary);
+  if (check.mode === "erkennen") return <span className="ai-chip" title={summary}>KI: erkannt</span>;
+  if (check.lowestPrice === null) return <span className="ai-chip" title={summary}>KI: kein Preis</span>;
+  // Vergleichspreis nur aus Neuware – B-Ware/Gebrauchtes ist kein fairer Maßstab.
+  const best = check.offers.find((o) => !isSecondHand(o.title, o.shop));
+  if (!best) return <span className="ai-chip" title={summary} style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>nur B-Ware gefunden</span>;
   return (
-    <a className="ai-chip" href={best?.url} target="_blank" rel="noreferrer" title={`${best?.shop}: ${best?.title}`}>
-      Handel ab {formatEuro(check.lowestPrice)}
+    <a className="ai-chip" href={best.url} target="_blank" rel="noreferrer" title={`${best.shop}: ${best.title}`}>
+      Handel (neu) ab {formatEuro(best.price)}
     </a>
   );
 }
@@ -34,14 +38,14 @@ export function PriceCheckBox({ check, eventId, unnamed = false }: { check: Chec
       <div>
         <div className="small muted">KI erkannt</div>
         <strong>{check.recognizedName}{check.recognizedVariant ? ` · ${check.recognizedVariant}` : ""}</strong>
-        {check.summary && <div className="small" style={{ marginTop: 2 }}>{check.summary}</div>}
+        {check.summary && <div className="small" style={{ marginTop: 2 }}>{cleanAiText(check.summary)}</div>}
       </div>
       {check.offers.length > 0 ? (
         <div>
           {check.offers.map((o, i) => (
             <div key={i} className="ai-offer">
               <a href={o.url} target="_blank" rel="noreferrer" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.title}>{o.shop}</a>
-              <span className="num" style={{ whiteSpace: "nowrap" }}>{formatEuro(o.price)}{o.unit ? <span className="muted"> ({o.unit})</span> : null}</span>
+              <span className="num" style={{ whiteSpace: "nowrap" }}>{isSecondHand(o.title, o.shop) && <span className="tag tag-warn" title="Zustand: B-Ware/gebraucht – nicht mit Neuware vergleichbar" style={{ marginRight: 6 }}>B-Ware</span>}{formatEuro(o.price)}{o.unit ? <span className="muted"> ({o.unit})</span> : null}</span>
             </div>
           ))}
         </div>

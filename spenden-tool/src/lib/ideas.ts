@@ -4,6 +4,7 @@ import { z } from "zod";
 import { POSTER_THEMES, type IdeaResult } from "@/db/schema";
 import { formatDate } from "@/lib/numbers";
 import { collagePrice, packLabel } from "@/lib/layout";
+import { publicText } from "@/lib/price-logic";
 
 // Ideen für eine Verteilung: Themenpakete, Rezepte und ein Werbetext – aus den Produkten des Tages.
 // Nur Text (keine Fotos, keine Websuche): Claude Sonnet, wenige Cent je Durchlauf.
@@ -86,7 +87,7 @@ export type IdeaProduct = { name: string; variant: string | null; category: stri
 export function productLines(items: IdeaProduct[]): string {
   return items
     .map((p) => {
-      const name = [p.name, p.variant].filter(Boolean).join(" ");
+      const name = [publicText(p.name), publicText(p.variant)].filter(Boolean).join(" ");
       const extra = [
         p.category,
         p.price !== null ? `Spendenempfehlung ${p.priceNote ? `${p.priceNote} ` : ""}${collagePrice(p.price)}` : "",

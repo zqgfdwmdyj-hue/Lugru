@@ -5,9 +5,9 @@ import { loadEventView, sourceLabel, type EventRow } from "@/lib/event-view";
 import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { AiModeSelect } from "@/components/price-check";
-import { UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { guessUnit, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { outputPrice } from "@/lib/layout";
-import { applyAllSuggestions, applyCategory, confirmItems, confirmProducts, researchEvent, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
+import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, researchEvent, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
 
 const euro = (v: number | null) => (v === null ? "–" : `${v.toFixed(2).replace(".", ",")} €`);
 const usd = (v: number) => `${v.toFixed(2).replace(".", ",")} $`;
@@ -34,7 +34,10 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
   const aiData = rows.filter((r) => has(r, "ki-angaben"));
   const compare = rows.filter((r) => has(r, "vergleich"));
   const unsorted = rows.filter((r) => r.product.category === UNSORTED_CATEGORY);
-  const catHints = rows.filter((r) => r.check?.status === "done" && r.check.recognizedCategory && r.check.recognizedCategory !== r.product.category);
+  const catHints = rows.filter((r) => r.catHint);
+  const units = rows.filter((r) => !r.unnamed && r.issues.some((i) => i.key === "einheit"));
+  const internal = rows.filter((r) => r.issues.some((i) => i.key === "intern"));
+  const oldPhoto = rows.filter((r) => r.issues.some((i) => i.key === "foto-alt"));
   const suggestions = rows.filter((r) => r.item.price === null && r.suggestion !== null && r.compare?.level !== "abweichend");
   const missing = [
     { key: "name", label: "ohne Namen" },
@@ -58,7 +61,10 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
           {unconfirmed.length > 0 && <a href="#unbestaetigt" className="chip">{unconfirmed.length} Preise unbestätigt</a>}
           {aiData.length > 0 && <a href="#ki-angaben" className="chip">{aiData.length} KI-Angaben</a>}
           {compare.length > 0 && <a href="#vergleich" className="chip">{compare.length} Preisvergleich unsicher</a>}
-          {(unsorted.length > 0 || catHints.length > 0) && <a href="#kategorien" className="chip">Kategorien</a>}
+          {oldPhoto.length > 0 && <a href="#foto-alt" className="chip chip-danger">{oldPhoto.length} Foto mit altem Preis</a>}
+          {units.length > 0 && <a href="#einheiten" className="chip">{units.length} Abgabeeinheit offen</a>}
+          {internal.length > 0 && <a href="#intern" className="chip">{internal.length} interne Hinweise im Text</a>}
+          {(unsorted.length > 0 || catHints.length > 0) && <a href="#kategorien" className="chip">{unsorted.length + catHints.length} Kategorie prüfen</a>}
           {missing.filter((m) => m.n).map((m) => <Link key={m.key} href={`${list}?status=${m.key}`} className="chip">{m.n} {m.label}</Link>)}
         </div>
       </section>
@@ -148,18 +154,88 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         </section>
       )}
 
+      {oldPhoto.length > 0 && (
+        <section id="foto-alt" className="card">
+          <div className="card-head"><h2>Fotos mit altem, abweichendem Preis ({oldPhoto.length})</h2></div>
+          <div className="small muted" style={{ padding: "8px 14px 0" }}>Der alte Preis im Foto lässt sich nicht gezielt verdecken. Damit nicht zwei Preise zu sehen sind, druckt die Collage keinen zusätzlichen – bitte ein Foto ohne Preis hochladen.</div>
+          <div className="check-list">
+            {oldPhoto.map((r) => (
+              <div key={r.item.id} className="check-row">
+                <Thumb r={r} size={64} />
+                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">Im Foto: „{r.state.printed?.text}“ · eingetragen: {outputPrice(r.item)}</span></span>
+                <Link href={`/produkte/${r.product.id}?zurueck=${id}`} className="btn btn-small">Neues Foto hochladen</Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {units.length > 0 && (
+        <form id="einheiten" action={confirmUnits.bind(null, id)} className="card">
+          <div className="card-head"><h2>Abgabeeinheit offen ({units.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte bestätigen</button></div>
+          <div className="small muted" style={{ padding: "8px 14px 0" }}>Worauf bezieht sich die Spendenempfehlung – ein Stück, eine Packung (wie viele?) oder ein Karton? Vorausgewählt ist nur ein Vorschlag aus Variante/Zusatz; gespeichert wird erst mit „Bestätigen“. Das ist getrennt von der Bestätigung des Preises.</div>
+          <div className="check-list">
+            {units.map((r) => {
+              const g = r.item.unit ? { unit: r.item.unit, count: r.item.unitCount } : guessUnit(r.item.priceNote, r.product.variant);
+              const problem = unitIssue({ unit: r.item.unit, unitCount: r.item.unitCount, unitConfirmed: r.item.unitConfirmed, price: r.item.price });
+              return (
+                <div key={r.item.id} className="check-row unit-row">
+                  <input type="checkbox" name="itemId" value={r.item.id} defaultChecked={!!g?.unit && !problem?.startsWith("Einzelstück")} aria-label={`${title(r)} bestätigen`} />
+                  <Thumb r={r} size={44} />
+                  <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">{euro(r.item.price)}{r.item.priceNote ? ` · Zusatz „${r.item.priceNote}“` : ""}{problem && problem !== "Abgabeeinheit offen" ? ` · ${problem}` : ""}</span></span>
+                  <span className="unit-inputs">
+                    <select className="select select-compact" name={`unit_${r.item.id}`} defaultValue={g?.unit ?? ""} aria-label="Abgabeeinheit">
+                      <option value="">nicht angeben</option>
+                      {Object.entries(UNITS).map(([k, u]) => <option key={k} value={k}>{u.label}</option>)}
+                    </select>
+                    <input className="input input-compact num" name={`unitcount_${r.item.id}`} defaultValue={g?.count ?? ""} placeholder="Stück" inputMode="numeric" aria-label="Stück je Einheit" style={{ width: 70 }} />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </form>
+      )}
+
+      {internal.length > 0 && (
+        <form id="intern" action={cleanInternalText.bind(null, id)} className="card">
+          <div className="card-head"><h2>Interne Hinweise in Name oder Variante ({internal.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte bereinigen</button></div>
+          <div className="small muted" style={{ padding: "8px 14px 0" }}>Solche Hinweise der KI stehen nie in Collage, Aushang oder Messenger. „Bereinigen“ verschiebt sie in die interne Notiz des Produkts.</div>
+          <div className="check-list">
+            {internal.map((r) => {
+              const n = splitInternal(r.product.name);
+              const v = splitInternal(r.product.variant);
+              return (
+                <label key={r.item.id} className="check-row">
+                  <input type="checkbox" name="productId" value={r.product.id} defaultChecked />
+                  <Thumb r={r} size={44} />
+                  <span className="check-text">
+                    <strong className="wrap-anywhere">{[n.clean || r.product.name, v.clean].filter(Boolean).join(" · ")}</strong>
+                    <span className="small muted">Interne Notiz: {[...n.notes, ...v.notes].join("; ")}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </form>
+      )}
+
       {(unsorted.length > 0 || catHints.length > 0) && (
         <section id="kategorien" className="card">
-          <div className="card-head"><h2>Kategorien</h2>{unsorted.length > 0 && <Link href={`${list}?status=kategorie`} className="btn btn-small">{unsorted.length} „{UNSORTED_CATEGORY}“ in der Liste zuordnen</Link>}</div>
+          <div className="card-head"><h2>Kategorien prüfen</h2>{unsorted.length > 0 && <Link href={`${list}?status=kategorie`} className="btn btn-small">{unsorted.length} „{UNSORTED_CATEGORY}“ in der Liste zuordnen</Link>}</div>
           {catHints.length > 0 && (
             <>
-              <div className="small muted" style={{ padding: "8px 14px 0" }}>Die KI würde diese Produkte anders einordnen. Nichts wird automatisch umsortiert – nur übernehmen, was passt.</div>
+              <div className="small muted" style={{ padding: "8px 14px 0" }}>Diese Kategorien wirken unpassend (nach Produktname oder KI). Nichts wird automatisch umsortiert – übernehmen oder bestätigen, dass es so stimmt.</div>
               <div className="check-list">
                 {catHints.map((r) => (
-                  <form key={r.item.id} className="check-row" action={applyCategory.bind(null, r.product.id, r.check!.recognizedCategory!, id)}>
+                  <form key={r.item.id} className="check-row cat-row">
+                    <input type="hidden" name="productId" value={r.product.id} />
                     <Thumb r={r} size={44} />
-                    <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">jetzt: {r.product.category} → KI: <strong>{r.check!.recognizedCategory}</strong></span></span>
-                    <button className="btn btn-small" type="submit">Übernehmen</button>
+                    <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">jetzt: {r.product.category} → Vorschlag: <strong>{r.catHint!.suggest}</strong> ({r.catHint!.reason})</span></span>
+                    <span className="conflict-actions">
+                      <button className="btn btn-small btn-primary" formAction={applyCategory.bind(null, r.product.id, r.catHint!.suggest, id)}>Übernehmen</button>
+                      <button className="btn btn-small" formAction={confirmCategories.bind(null, id)}>Stimmt so</button>
+                    </span>
                   </form>
                 ))}
               </div>

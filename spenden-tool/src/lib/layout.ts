@@ -1,7 +1,7 @@
 // Reine Logik für Collagen und Aushang – ohne Datenbank, damit sie auf Server und im Browser läuft.
 
 import type { CollageSettings } from "@/db/schema";
-import { pricePrefix, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { pricePrefix, publicText, UNSORTED_CATEGORY } from "@/lib/price-logic";
 
 export const DONATION_CATEGORIES = ["Babyprodukte", "Lebensmittel", "Getränke inkl. Pfand", "Drogerie & Haushalt", "Spielzeug", "Sonstiges"] as const;
 
@@ -170,7 +170,9 @@ export type FlyerSection = { category: string; lines: FlyerLine[] };
  * Ein Produkt mit einer Variante: „Red Bull 14€“ + Unterpunkt „24er Pack“.
  * Mehrere Varianten: „Getrocknete Tomaten“ + Unterpunkte „2kg 5€“, „5kg 10€“.
  */
-export function flyerSections(items: FlyerItem[]): FlyerSection[] {
+export function flyerSections(input: FlyerItem[]): FlyerSection[] {
+  // Interne Hinweise der KI („genaue Packungsgröße unbekannt“) erscheinen nie in Aushang oder Messenger.
+  const items = input.map((it) => ({ ...it, name: publicText(it.name), variant: it.variant ? publicText(it.variant) || null : null }));
   const byCat = new Map<string, Map<string, FlyerItem[]>>();
   for (const it of items) {
     // „Noch zuordnen“ ist nur intern – im Aushang steht das Produkt unter „Sonstiges“.

@@ -5,7 +5,7 @@ import { loadEventView, sourceLabel, type EventRow } from "@/lib/event-view";
 import { knownCategories, productPicker } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
-import { ISSUE_FILTERS, mhdRelevant, guessUnit, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applySuggestion, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
@@ -103,7 +103,7 @@ export default async function ProduktePage({ params, searchParams }: { params: P
         <div className="list-top">
           <ListControls listId={FORM} categories={usedCats} statuses={statuses} total={rows.length} initial={{ q: sp.q ?? "", kat: sp.kat ?? "", status: sp.status ?? "" }} />
           <div className="list-top-actions">
-            <span className="small muted">{open ? `${open} mit offenen Punkten` : rows.length ? "Alles geprüft" : ""}</span>
+            <span className="small muted">{open ? `${open} insgesamt mit offenen Punkten` : rows.length ? "Alles geprüft" : ""}</span>
             <button className="btn btn-small" type="submit" name="op" value="sort" title="Nach Kategorie und Name ordnen (wie im Aushang)">Sortieren</button>
           </div>
         </div>
@@ -138,6 +138,8 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
   const name = r.unnamed ? "" : product.name;
   const unit = unitLabel(item.unit, item.unitCount);
   const guess = !item.unit ? guessUnit(item.priceNote, product.variant) : null;
+  const unitProblem = unitIssue({ unit: item.unit, unitCount: item.unitCount, unitConfirmed: item.unitConfirmed, price: item.price });
+  const mhd = mhdAuto(product);
   const shownAs = outputPrice(item);
   const search = [product.name, product.variant, product.category, item.caption].filter(Boolean).join(" ").toLocaleLowerCase("de-DE");
   const k = (f: string) => `${f}_${item.id}`;
@@ -159,6 +161,8 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
         <div className="pl-unit">
           <span className="pl-label">Abgabe</span>
           {unit || item.priceNote ? <span>{unit || item.priceNote}</span> : <span className="muted" title="Abgabeeinheit unter „Details“ festlegen">{guess ? `${unitLabel(guess.unit, guess.count)}?` : "–"}</span>}
+          {/* Einheit wird getrennt vom Preis bestätigt */}
+          <span className={`small ${unitProblem ? "warn-text" : "muted"}`}>{unitProblem ? (item.unitConfirmed ? "prüfen" : "offen") : "bestätigt"}</span>
         </div>
         <div className="pl-price">
           <label className="pl-label" htmlFor={k("price")}>Spendenempfehlung</label>
@@ -189,11 +193,16 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
           {/* key: Auswahllisten übernehmen geänderte Werte vom Server sonst nicht (z. B. nach einer Stapelaktion) –
               dann würde das nächste Speichern den alten Wert zurückschreiben. */}
           <O name={kp("cat")} value={product.category} />
-          {r.check?.status === "done" && r.check.recognizedCategory && r.check.recognizedCategory !== product.category && <div className="small muted">KI-Vorschlag: {r.check.recognizedCategory}</div>}
+          {r.catHint && (
+            <div className="notice notice-warn small">
+              Kategorie auffällig: {r.catHint.reason} → Vorschlag „{r.catHint.suggest}“. Oben ändern oder{" "}
+              <button className="btn-link small" type="submit" name="op" value={`kategorie-ok:${item.id}`}>Kategorie stimmt</button>
+            </div>
+          )}
           <div className="field">
             <label className="label" htmlFor={kp("mhdmode")}>MHD nötig?</label>
             <select key={product.mhdMode ?? ""} className="select select-compact" id={kp("mhdmode")} name={kp("mhdmode")} defaultValue={product.mhdMode ?? ""}>
-              <option value="">Automatisch ({mhdRelevant({ category: product.category }) ? "ja" : "nein"}, nach Kategorie)</option>
+              <option value="">Automatisch: {mhd.relevant ? "ja" : "nein"} ({mhd.reason})</option>
               <option value="ja">Ja, MHD erfassen</option>
               <option value="nein">Nein (z. B. Spielzeug, Haushalt)</option>
             </select>
@@ -211,6 +220,8 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
                 {Object.entries(UNITS).map(([key, u]) => <option key={key} value={key}>{u.label}</option>)}
               </select>
               {guess && <span className="small muted">Vorschlag: {unitLabel(guess.unit, guess.count)}</span>}
+              {unitProblem && <span className="small warn-text">{unitProblem}</span>}
+              {unitProblem && item.unit && <button className="btn-link small" type="submit" name="op" value={`einheit-ok:${item.id}`} style={{ textAlign: "left" }}>Einheit stimmt so</button>}
             </div>
             <O name={k("unit")} value={item.unit ?? ""} />
             <div className="field">
@@ -249,7 +260,8 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
                 <button className="btn-link small" type="submit" formAction={applySuggestion.bind(null, check!.id, eventId)}>übernehmen</button>
               </div>
             )}
-            {check?.summary && <div className="small muted">{check.summary}</div>}
+            {check?.summary && <div className="small muted">KI-Notiz (intern): {cleanAiText(check.summary)}</div>}
+            {check?.offers.some((o) => isSecondHand(o.title, o.shop)) && <div className="small warn-text">Unter den Angeboten ist B-Ware/Gebrauchtes – zählt nicht als Vergleichspreis.</div>}
             {!r.unnamed && <div className="small muted">Selbst suchen: <PriceLinks name={product.name} variant={product.variant} /></div>}
             {ai && check?.status !== "pending" && check?.status !== "running" && (
               <div><button className="btn btn-small" type="submit" name="op" value={`ai:${item.id}`} title="KI erkennt das Produkt und sucht den Preis im Internet">{check ? "KI erneut suchen" : "Preis mit KI suchen"}</button></div>
@@ -269,7 +281,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
             <div className="field"><label className="label" htmlFor={k("qty")}>Menge (optional)</label><input className="input input-compact num" id={k("qty")} name={k("qty")} defaultValue={item.quantity ?? ""} inputMode="numeric" /></div>
             <O name={k("qty")} value={item.quantity !== null ? String(item.quantity) : ""} />
             <div className="field">
-              <label className="label" htmlFor={k("mhd")}>MHD{mhdRelevant(product) ? "" : " (nicht nötig)"}</label>
+              <label className="label" htmlFor={k("mhd")}>MHD{mhd.relevant ? "" : " (nicht nötig)"}</label>
               <input className="input input-compact num" type="date" id={k("mhd")} name={k("mhd")} defaultValue={item.bestBefore ?? ""} />
             </div>
             <O name={k("mhd")} value={item.bestBefore ?? ""} />

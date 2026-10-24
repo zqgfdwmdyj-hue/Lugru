@@ -9,7 +9,7 @@ import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
-import { comparability, isUnit, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { comparability, isUnit, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -178,13 +178,16 @@ export async function saveItems(fd: FormData) {
       }
     }
     if (fd.has(k("note")) && changed(k("note"))) set.priceNote = opt(fd, k("note"));
+    // Einheit von Hand festgelegt = Einheit bestätigt (unabhängig vom Preis).
     if (fd.has(k("unit")) && changed(k("unit"))) {
       const u = str(fd, k("unit"));
       set.unit = isUnit(u) ? u : null;
+      set.unitConfirmed = isUnit(u);
     }
     if (fd.has(k("unitcount")) && changed(k("unitcount"))) {
       const n = parseAmount(str(fd, k("unitcount")));
       set.unitCount = n === null || n < 1 || n > 10000 ? null : Math.round(n);
+      set.unitConfirmed = true;
     }
     if (fd.has(k("packprice")) && (changed(k("packprice")) || changed(k("packnote")))) {
       set.packNote = opt(fd, k("packnote"));
@@ -212,7 +215,11 @@ export async function saveItems(fd: FormData) {
     if (fd.has(k("variant")) && changed(k("variant"))) set.variant = opt(fd, k("variant"));
     // Leere Kategorie (z. B. „Neue Kategorie …“ noch ohne Text) ändert nichts.
     const cat = str(fd, k("cat"));
-    if (fd.has(k("cat")) && changed(k("cat")) && cat && cat !== "__neu__") set.category = cat.slice(0, 60);
+    if (fd.has(k("cat")) && changed(k("cat")) && cat && cat !== "__neu__") {
+      set.category = cat.slice(0, 60);
+      // Selbst gewählt = geprüft (keine Kategorie-Auffälligkeit mehr), außer „Noch zuordnen“.
+      set.categoryChecked = cat !== UNSORTED_CATEGORY;
+    }
     if (fd.has(k("mhdmode")) && changed(k("mhdmode"))) {
       const m = str(fd, k("mhdmode"));
       set.mhdMode = m === "ja" || m === "nein" ? m : null;
@@ -249,6 +256,12 @@ export async function saveItems(fd: FormData) {
   } else if (op === "confirm" && idx >= 0) {
     await db.update(I).set({ priceConfirmed: true }).where(and(eq(I.id, target), sql`${I.price} is not null`));
     what = "Preis bestätigt";
+  } else if (op === "einheit-ok" && idx >= 0) {
+    await db.update(I).set({ unitConfirmed: true }).where(eq(I.id, target));
+    what = "Abgabeeinheit bestätigt";
+  } else if (op === "kategorie-ok" && idx >= 0) {
+    await db.update(P).set({ categoryChecked: true, updatedAt: new Date() }).where(eq(P.id, items[idx].productId));
+    what = "Kategorie bestätigt";
   } else if (op === "angaben-ok" && idx >= 0) {
     await db.update(P).set({ reviewNote: null, updatedAt: new Date() }).where(eq(P.id, items[idx].productId));
     what = "KI-Angaben bestätigt";
@@ -268,7 +281,7 @@ export async function saveItems(fd: FormData) {
         revalidatePath(`/verteilung/${eventId}`, "layout");
         return;
       }
-      await db.update(P).set({ category: cat.slice(0, 60), updatedAt: new Date() }).where(inArray(P.id, pids));
+      await db.update(P).set({ category: cat.slice(0, 60), categoryChecked: cat !== UNSORTED_CATEGORY, updatedAt: new Date() }).where(inArray(P.id, pids));
       what = `${n} Produkt(e) der Kategorie „${cat}“ zugeordnet`;
     } else if (target === "col-on" || target === "col-off") {
       await db.update(I).set({ inCollage: target === "col-on" }).where(inArray(I.id, ids));
@@ -277,9 +290,16 @@ export async function saveItems(fd: FormData) {
       await db.update(I).set({ inFlyer: target === "fly-on" }).where(inArray(I.id, ids));
       what = `${n} Produkt(e) ${target === "fly-on" ? "in den" : "aus dem"} Aushang`;
     } else if (target === "confirm") {
+      // Preis und KI-Angaben – Abgabeeinheit und Kategorie werden getrennt bestätigt.
       await db.update(I).set({ priceConfirmed: true }).where(and(inArray(I.id, ids), sql`${I.price} is not null`));
       await db.update(P).set({ reviewNote: null }).where(inArray(P.id, pids));
-      what = `${n} Produkt(e) geprüft und bestätigt`;
+      what = `${n} Preis(e)/KI-Angaben bestätigt`;
+    } else if (target === "unit-ok") {
+      await db.update(I).set({ unitConfirmed: true }).where(inArray(I.id, ids));
+      what = `Abgabeeinheit bei ${n} Produkt(en) bestätigt`;
+    } else if (target === "cat-ok") {
+      await db.update(P).set({ categoryChecked: true }).where(inArray(P.id, pids));
+      what = `Kategorie bei ${n} Produkt(en) bestätigt`;
     } else if (target === "mhd-nein" || target === "mhd-ja" || target === "mhd-auto") {
       await db.update(P).set({ mhdMode: target === "mhd-auto" ? null : target === "mhd-ja" ? "ja" : "nein" }).where(inArray(P.id, pids));
       what = `MHD für ${n} Produkt(e): ${target === "mhd-nein" ? "nicht nötig" : target === "mhd-ja" ? "nötig" : "nach Kategorie"}`;
@@ -356,13 +376,68 @@ export async function confirmProducts(eventId: string, fd: FormData) {
   revalidatePath(`/verteilung/${id}`, "layout");
 }
 
+/** „Prüfen“: Abgabeeinheiten festlegen und bestätigen (je Zeile Einheit und Stückzahl). */
+export async function confirmUnits(eventId: string, fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = fd.getAll("itemId").map(String).filter((v) => uuid.safeParse(v).success);
+  let n = 0;
+  for (const itemId of ids) {
+    const u = str(fd, `unit_${itemId}`);
+    const c = parseAmount(str(fd, `unitcount_${itemId}`));
+    const done = await db
+      .update(I)
+      .set({ unit: isUnit(u) ? u : null, unitCount: isUnit(u) && u !== "stueck" && c !== null && c > 1 && c <= 10000 ? Math.round(c) : null, unitConfirmed: true })
+      .where(and(eq(I.id, itemId), eq(I.eventId, id)))
+      .returning({ id: I.id });
+    n += done.length;
+  }
+  if (n) await logActivity(me, `Abgabeeinheit bei ${n} Produkt(en) bestätigt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** „Prüfen“: Kategorie stimmt so – keine Auffälligkeit mehr anzeigen. */
+export async function confirmCategories(eventId: string, fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = fd.getAll("productId").map(String).filter((v) => uuid.safeParse(v).success);
+  if (ids.length === 0) return;
+  await db.update(P).set({ categoryChecked: true }).where(inArray(P.id, ids));
+  await logActivity(me, `Kategorie bei ${ids.length} Produkt(en) bestätigt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/**
+ * „Prüfen“: interne Hinweise aus Name/Variante entfernen („Marke nicht identifiziert“ …) – sie wandern in die
+ * Notiz des Produkts und erscheinen nicht mehr in Collage, Aushang und Messenger.
+ */
+export async function cleanInternalText(eventId: string, fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = fd.getAll("productId").map(String).filter((v) => uuid.safeParse(v).success);
+  if (ids.length === 0) return;
+  const rows = await db.select().from(P).where(inArray(P.id, ids));
+  for (const p of rows) {
+    const n = splitInternal(p.name);
+    const v = splitInternal(p.variant);
+    const notes = [...n.notes, ...v.notes];
+    if (!notes.length) continue;
+    await db
+      .update(P)
+      .set({ name: n.clean || p.name, variant: v.clean || null, note: [p.note, `Interner Hinweis: ${notes.join("; ")}`].filter(Boolean).join("\n"), updatedAt: new Date() })
+      .where(eq(P.id, p.id));
+  }
+  await logActivity(me, `Interne Hinweise bei ${rows.length} Produkt(en) aus Name/Variante entfernt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
 /** KI-Kategorie übernehmen (aus „Prüfen“) – nur für ausdrücklich gewählte Produkte. */
 export async function applyCategory(productId: string, category: string, eventId: string) {
   const me = await requireLogin();
   const id = uuid.parse(productId);
   const cat = category.trim().slice(0, 60);
   if (!cat) return;
-  await db.update(P).set({ category: cat, updatedAt: new Date() }).where(eq(P.id, id));
+  await db.update(P).set({ category: cat, categoryChecked: true, updatedAt: new Date() }).where(eq(P.id, id));
   await logActivity(me, `Kategorie „${cat}“ übernommen`, { productId: id, eventId: uuid.parse(eventId) });
   revalidatePath(`/verteilung/${eventId}`, "layout");
 }
@@ -500,6 +575,7 @@ export async function updateProduct(fd: FormData) {
       category: str(fd, "category") || UNSORTED_CATEGORY,
       price: price(fd, "price"),
       priceConfirmed: true,
+      categoryChecked: (str(fd, "category") || UNSORTED_CATEGORY) !== UNSORTED_CATEGORY,
       note: opt(fd, "note"),
       ...(fd.has("mhdMode") ? { mhdMode: fd.get("mhdMode") === "ja" ? ("ja" as const) : fd.get("mhdMode") === "nein" ? ("nein" as const) : null } : {}),
       // Von Hand gespeichert = Angaben geprüft.

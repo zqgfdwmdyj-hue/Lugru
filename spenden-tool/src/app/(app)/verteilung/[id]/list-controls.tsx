@@ -20,6 +20,7 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
   const [kat, setKat] = useState(initial.kat);
   const [status, setStatus] = useState(initial.status);
   const [shown, setShown] = useState(total);
+  const [shownOpen, setShownOpen] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const apply = useCallback(() => {
@@ -27,6 +28,7 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
     if (!list) return;
     const words = q.toLocaleLowerCase("de-DE").split(/\s+/).filter(Boolean);
     let n = 0;
+    let open = 0;
     let unchecked = false;
     for (const row of list.querySelectorAll<HTMLElement>("[data-row]")) {
       const text = row.dataset.search ?? "";
@@ -44,8 +46,10 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
         }
       }
       if (ok) n++;
+      if (ok && row.dataset.issues) open++;
     }
     setShown(n);
+    setShownOpen(open);
     if (unchecked) list.dispatchEvent(new Event("change", { bubbles: true }));
     const u = new URL(location.href);
     for (const [k, v] of [["q", q], ["kat", kat], ["status", status]] as const) {
@@ -117,7 +121,7 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
         {statuses.map((s) => <option key={s.key} value={s.key} disabled={s.count === 0}>{s.label} ({s.count})</option>)}
       </select>
       <span className="small muted list-count" aria-live="polite">
-        {filtered ? <>{shown} von {total} · <button type="button" className="btn-link small" onClick={reset}>Filter zurücksetzen</button></> : `${total} Produkte`}
+        {filtered ? <>{shown} von {total} angezeigt{shown ? `, davon ${shownOpen} mit offenen Punkten` : ""} · <button type="button" className="btn-link small" onClick={reset}>Filter zurücksetzen</button></> : `${total} Produkte`}
       </span>
     </div>
   );
@@ -186,7 +190,12 @@ export function BulkBar({ formId, categories, ai, costs }: { formId: string; cat
             <button className="btn btn-small" type="submit" name="op" value="bulk:mhd-nein" title="Kein MHD nötig, z. B. Spielzeug, Haushaltswaren">nicht nötig</button>
             <button className="btn btn-small" type="submit" name="op" value="bulk:mhd-auto" title="Nach Kategorie entscheiden">automatisch</button>
           </span>
-          <button className="btn btn-small" type="submit" name="op" value="bulk:confirm" title="Preise und KI-Angaben der Auswahl als geprüft markieren" onClick={confirmRun(`${count} Produkt(e) als geprüft markieren? Preise und KI-Angaben gelten dann als bestätigt.`)}>✓ Als geprüft markieren</button>
+          <span className="bulk-group">
+            <span className="small muted">Bestätigen</span>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:confirm" title="Preise und KI-Angaben der Auswahl als geprüft markieren" onClick={confirmRun(`Preise und KI-Angaben von ${count} Produkt(en) als geprüft markieren?\n\nAbgabeeinheit und Kategorie bleiben getrennt zu bestätigen.`)}>Preise</button>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:unit-ok" title="Abgabeeinheit so übernehmen, wie sie eingetragen ist" onClick={confirmRun(`Abgabeeinheit von ${count} Produkt(en) so bestätigen, wie sie eingetragen ist?`)}>Einheit</button>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:cat-ok" title="Kategorie stimmt so – keine Auffälligkeit mehr anzeigen">Kategorie</button>
+          </span>
           {ai && (
             <span className="bulk-group">
               <select className="select select-compact" name="stufe" value={stufe} onChange={(e) => setStufe(e.target.value)} aria-label="KI-Stufe">

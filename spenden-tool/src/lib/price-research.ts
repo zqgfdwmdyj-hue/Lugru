@@ -5,7 +5,7 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { DONATION_CATEGORIES, isPlaceholderName } from "@/lib/layout";
-import { UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { cleanAiText, isSecondHand, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { suggestDonationPrice } from "@/lib/pricing";
 import { parseAmount } from "@/lib/numbers";
 import { AI_MODE_INFO, type AiMode, isAiMode } from "@/lib/ai-modes";
@@ -66,6 +66,11 @@ export function parseResearch(text: string): ResearchResult {
   // Günstigste zuerst, doppelte Links raus
   const seen = new Set<string>();
   data.offers = data.offers.filter((o) => !seen.has(o.url) && seen.add(o.url)).sort((a, b) => a.price - b.price);
+  // Technische Markierungen der Websuche (<cite …>) nicht speichern.
+  data.summary = data.summary ? cleanAiText(data.summary) : data.summary;
+  data.name = cleanAiText(data.name);
+  data.variant = data.variant ? cleanAiText(data.variant) : data.variant;
+  for (const o of data.offers) o.title = cleanAiText(o.title);
   return data;
 }
 
@@ -145,7 +150,8 @@ async function runOne(checkId: string) {
     const [file] = product.imageFileId ? await db.select().from(schema.files).where(eq(schema.files.id, product.imageFileId)) : [];
     const mode = isAiMode(claimed.mode) ? claimed.mode : "genau";
     const { result, inputTokens, outputTokens, searches } = await research(mode, product, file ? { mimeType: file.mimeType, data: file.data } : null);
-    const lowest = result.offers[0]?.price ?? null;
+    // Vergleichspreis nur aus Neuware; B-Ware bleibt in der Liste, gekennzeichnet.
+    const lowest = result.offers.find((o) => !isSecondHand(o.title, o.shop))?.price ?? null;
     await db
       .update(C)
       .set({
@@ -167,14 +173,20 @@ async function runOne(checkId: string) {
     // Noch namenlose Produkte (nach dem Foto-Upload) bekommen den erkannten Namen direkt – als „unbestätigt“ markiert.
     if (isPlaceholderName(product.name)) {
       const unsure = result.summary && /unbekannt|unsicher|alternativ|ähnlich|nicht (?:exakt|genau|eindeutig)|vermutlich|nächst|möglicherweise/i.test(result.summary);
+      // Unsicherheiten („Marke nicht identifiziert“, „genaue Packungsgröße unbekannt“) gehören nicht in Name/Variante,
+      // sondern als interne Prüfnotiz ans Produkt.
+      const n = splitInternal(result.name);
+      const v = splitInternal(result.variant);
+      const notes = [...n.notes, ...v.notes];
       await db
         .update(schema.products)
         .set({
-          name: result.name,
-          variant: product.variant ?? result.variant ?? null,
+          name: n.clean || result.name,
+          variant: product.variant ?? (v.clean || null),
+          ...(notes.length ? { note: [product.note, `KI: ${notes.join("; ")}`].filter(Boolean).join("\n") } : {}),
           // Kategorie nur ersetzen, wenn noch keine zugeordnet ist.
           category: aiCategory && product.category === UNSORTED_CATEGORY ? aiCategory : product.category,
-          reviewNote: `Name${!product.variant && result.variant ? " und Variante" : ""} von der KI erkannt${unsure ? ` – ${result.summary!.slice(0, 200)}` : ""}`,
+          reviewNote: `Name${!product.variant && result.variant ? " und Variante" : ""} von der KI erkannt${notes.length ? ` – ${notes.join("; ")}` : unsure ? ` – ${cleanAiText(result.summary).slice(0, 200)}` : ""}`,
           updatedAt: new Date(),
         })
         // Nur, wenn inzwischen niemand selbst einen Namen eingetragen hat.

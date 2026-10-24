@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { isPlaceholderName } from "@/lib/layout";
-import { comparability, type Comparability, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
+import { categoryHint, comparability, type Comparability, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
+import { suggestDonationPrice } from "@/lib/pricing";
 import { latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
 
 /**
@@ -18,16 +19,21 @@ export const loadEventView = cache(async (id: string) => {
     const state = priceState(r.item, r.product.imageFileId, r.photo);
     const check = checks.get(r.product.id);
     const priced = check?.status === "done" && check.mode !== "erkennen" && check.lowestPrice !== null;
-    const compare: Comparability | null = priced ? comparability(r.product.variant, check) : null;
+    const compare: Comparability | null = priced ? comparability(r.product.variant, check, r.item.unit === "packung" || r.item.unit === "karton" ? r.item.unitCount : null) : null;
     const unnamed = isPlaceholderName(r.product.name);
     // Unsicherer Preisvergleich ist nur ein Thema, solange der Preis von der KI stammt und niemand ihn bestätigt hat –
     // oder noch gar kein Preis da ist und der KI-Vorschlag übernommen werden könnte.
     // Andere Packungsgröße als im Handel zeigen wir immer – die Empfehlung bezieht sich womöglich auf eine andere Einheit.
     const compareMatters = !!compare && (compare.level === "abweichend" || (r.item.priceSource === "ki" && !r.item.priceConfirmed) || r.item.price === null);
-    const issues: Issue[] = itemIssues({ unnamed, product: r.product, item: r.item, state, compare: compareMatters ? compare : null });
-    // KI-Vorschlag, der übernommen werden kann (nur ohne Preis und ohne Preis im Foto)
-    const suggestion = priced && check.suggestedPrice !== null && !state.printed ? check.suggestedPrice : null;
-    return { ...r, state, check, compare, unnamed, issues, suggestion };
+    const aiCategory = check?.status === "done" ? check.recognizedCategory : null;
+    const issues: Issue[] = itemIssues({ unnamed, product: r.product, item: r.item, state, compare: compareMatters ? compare : null, aiCategory });
+    const catHint = unnamed ? null : categoryHint(r.product, aiCategory);
+    // KI-Vorschlag, der übernommen werden kann (nur ohne Preis und ohne Preis im Foto) – aus dem günstigsten
+    // Angebot für Neuware, nie aus B-Ware/Gebrauchtem.
+    const fresh = priced ? check.offers.filter((o) => !isSecondHand(o.title, o.shop)) : [];
+    const freshSuggestion = fresh.length ? suggestDonationPrice(fresh[0].price) : null;
+    const suggestion = priced && freshSuggestion !== null && !state.printed ? freshSuggestion : null;
+    return { ...r, state, check, compare, unnamed, issues, suggestion, catHint };
   });
   const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running") || rows.some((r) => r.state.photo === "wird-gelesen");
   return { event, rows, busy };

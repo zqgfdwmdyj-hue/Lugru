@@ -1,6 +1,7 @@
 // Texte für Instagram und TikTok aus den Daten einer Verteilung – ohne KI, sofort und kostenlos.
 
 import { outputPrice } from "@/lib/layout";
+import { publicText } from "@/lib/price-logic";
 
 export type SocialProduct = { name: string; variant: string | null; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null };
 export type SocialEvent = { title: string; dateLabel: string; weekdayLong: string; eventTime: string | null; location: string | null };
@@ -19,7 +20,7 @@ export function priceLabel(p: SocialProduct): string {
 }
 
 function productLine(p: SocialProduct): string {
-  const name = [p.name, p.variant].filter(Boolean).join(" ");
+  const name = [publicText(p.name), publicText(p.variant)].filter(Boolean).join(" ");
   const price = priceLabel(p);
   return price ? `${name} – ${price}` : name;
 }
@@ -49,7 +50,7 @@ export function instagramCaption(e: SocialEvent, products: SocialProduct[], extr
 
 /** TikTok: kürzer, Hashtags direkt dahinter. */
 export function tiktokCaption(e: SocialEvent, products: SocialProduct[], extraTags: string[] = []): string {
-  const top = products.slice(0, 3).map((p) => p.name).join(", ");
+  const top = products.slice(0, 3).map((p) => publicText(p.name)).join(", ");
   const tags = ["foodsharing", "lebensmittelretten", "spenden", "fyp", "nachhaltig"].map((t) => `#${t}`);
   if (e.location) tags.push(hashtag(e.location));
   tags.push(...extraTags.map(hashtag).filter(Boolean));

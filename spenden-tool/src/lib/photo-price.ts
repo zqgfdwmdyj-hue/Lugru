@@ -1,5 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { after } from "next/server";
 import { claudeImage } from "@/lib/ai-image";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -105,4 +106,16 @@ export async function failStalePhotoPrices() {
         sql`not exists (select 1 from files x where x.printed_status = 'done' and x.printed_scanned_at > now() - interval '5 minutes')`,
       ),
     );
+}
+
+/**
+ * Vor Collage/Social Media: noch nicht geprüfte Fotos im Hintergrund lesen – sonst könnte ein eingebrannter Preis
+ * doppelt erscheinen. Jedes Foto nur einmal (Fotos mit „Erkennung falsch“ nie wieder).
+ */
+export async function readUnreadPhotos(eventId: string, productIds: string[]) {
+  if (productIds.length === 0 || !(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)) return 0;
+  await failStalePhotoPrices();
+  const fileIds = await queuePhotoPrices(productIds);
+  if (fileIds.length) after(() => runPhotoPrices(fileIds, eventId));
+  return fileIds.length;
 }

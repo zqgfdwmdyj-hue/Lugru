@@ -65,31 +65,30 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   const fullPrice = !price ? "" : inline ? `${note.charAt(0).toUpperCase()}${note.slice(1)} ${price}` : price;
   // Gemeinsame Preislogik: „foto“ = steht schon richtig im Foto (nicht doppelt), „aufkleber“ = eingetragener Preis
   // über den alten im Foto, „drucken“ = normal.
+  // „ersetzen“ = alter Preis im Foto lässt sich nicht gezielt verdecken → kein zweiter Preis (Hinweis: neues Foto).
+  // „foto“ mit ausdrücklich angehaktem Preis (alter Preis zu klein) → als Aufkleber genau über den alten, nie daneben.
   let stickered = false;
-  let plan: "normal" | "keep" | "sticker" = !img ? "normal" : tile.plan === "foto" ? "keep" : tile.plan === "aufkleber" ? "sticker" : "normal";
+  const forced = tile.plan === "foto" && st.priceSet && st.price && !!tile.printed?.box;
+  let plan: "normal" | "keep" | "sticker" = !img ? "normal" : tile.plan === "aufkleber" || forced ? "sticker" : tile.plan === "foto" || tile.plan === "ersetzen" ? "keep" : "normal";
   if (img && plan === "sticker" && st.price && fullPrice && tile.printed?.box) {
     const fill = colors.field ?? GREEN;
     const ink = colors.field ? colors.text : "#ffffff";
     // Auf dem Aufkleber mit Abgabeeinheit – genau wie in Aushang und Messenger („6er-Pack 2 €“).
     const stickerText = note && !inline ? `${note} ${price}` : fullPrice;
-    if (drawSticker(ctx, img, x, y, w, h, s.fit === "cover" ? "cover" : "contain", tile.printed.box, stickerText, fill, ink)) {
-      plan = "keep";
-      stickered = true;
-    }
-    else plan = "normal";
-  } else if (plan === "sticker") plan = "normal";
-  if (img && plan === "keep" && tile.printed?.box && s.fit === "cover" && fullPrice && tile.plan === "foto") {
-    // „Kachel füllen“ schneidet Ränder ab – ist der alte Preis dadurch angeschnitten, neu drucken.
+    stickered = drawSticker(ctx, img, x, y, w, h, s.fit === "cover" ? "cover" : "contain", tile.printed.box, stickerText, fill, ink);
+    // Lässt sich der alte Preis nicht sichtbar überkleben (abgeschnitten), keinen zweiten Preis daneben setzen.
+    plan = "keep";
+  } else if (plan === "sticker") plan = "keep";
+  if (img && plan === "keep" && !stickered && tile.printed?.box && s.fit === "cover" && fullPrice && tile.plan === "foto") {
+    // „Kachel füllen“ schneidet Ränder ab – ist der alte Preis dadurch praktisch ganz weg, neu drucken.
     const r = imageRect(img, x, y, w, h, "cover");
     const b = tile.printed.box;
     const bx = r.x + b.x * r.w, by = r.y + b.y * r.h, bw = b.w * r.w, bh = b.h * r.h;
     const vis = (Math.max(0, Math.min(bx + bw, x + w) - Math.max(bx, x)) * Math.max(0, Math.min(by + bh, y + h) - Math.max(by, y))) / (bw * bh);
-    if (vis < 0.8) plan = "normal";
+    if (vis < 0.2) plan = "normal";
   }
-  // Pro Bild abschaltbar: Preis, Name, Zusatztext (siehe Auswahl im Editor)
-  // Steht schon ein Preis im Foto, wird nur gedruckt, wenn „Preis“ für dieses Bild ausdrücklich angehakt ist
-  // (z. B. weil der Preis im Foto zu klein ist).
-  const ownPrice = st.price && (plan === "normal" || (st.priceSet && tile.plan === "foto"));
+  // Pro Bild abschaltbar: Preis, Name, Zusatztext. Ein zweiter Preis neben einem Preis im Foto wird nie gedruckt.
+  const ownPrice = st.price && plan === "normal";
   const priceLine = ownPrice ? fullPrice : "";
   // Lage der Schrift: festgelegt pro Produkt – sonst unten, bzw. oben, wenn unten schon ein Preis im Foto steht.
   const autoTop = img && plan !== "normal" && (tile.printed?.box ? tile.printed.box.y + tile.printed.box.h / 2 > 0.45 : true);
@@ -427,8 +426,9 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
           <div style={{ minWidth: 160 }}>
             <div className="label">Ausgewählt</div>
             <strong>{sel.name}</strong>
-            {sel.printed && sel.plan === "foto" && <div className="small muted" style={{ maxWidth: 240 }}>Preis steht schon richtig im Foto ({sel.printed.text}) – deshalb wird keiner dazugedruckt. Ist er im Foto zu klein, „Preis“ anhaken.</div>}
-            {sel.printed && sel.plan !== "foto" && <div className="small muted" style={{ maxWidth: 240 }}>Im Foto steht „{sel.printed.text}“ – eingetragen ist {collagePrice(sel.price)}. {sel.plan === "aufkleber" ? "Der eingetragene Preis wird über den alten gesetzt." : "Der alte Preis bleibt im Foto sichtbar – besser ein Foto ohne Preis verwenden."}</div>}
+            {sel.printed && sel.plan === "foto" && <div className="small muted" style={{ maxWidth: 260 }}>Preis steht schon richtig im Foto ({sel.printed.text}) – deshalb wird keiner dazugedruckt.{sel.printed.box ? " Ist er im Foto zu klein, „Preis“ anhaken – dann kommt er als Feld genau über den alten." : ""}</div>}
+            {sel.printed && sel.plan === "aufkleber" && <div className="small muted" style={{ maxWidth: 260 }}>Im Foto steht „{sel.printed.text}“ – eingetragen ist {collagePrice(sel.price)}. Der eingetragene Preis wird genau über den alten gesetzt.</div>}
+            {sel.plan === "ersetzen" && <div className="small warn-text" style={{ maxWidth: 260 }}>Im Foto steht „{sel.printed?.text}“, eingetragen ist {collagePrice(sel.price)}. Der alte Preis lässt sich nicht gezielt verdecken – bitte ein Foto ohne Preis hochladen. Bis dahin wird kein zweiter Preis aufs Bild gedruckt.</div>}
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
               {sel.image && <RotateButtons productId={sel.productId} />}
               <button className="btn btn-small" type="button" onClick={() => changeStyle([sel.productId], null)} disabled={Object.keys(styles[sel.productId] ?? {}).length === 0}>Zurücksetzen</button>
@@ -446,7 +446,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
             <div className="stack" style={{ gap: 4 }}>
               {([
                 ["name", "Name", selStyle.name ?? (sel.image ? s.showName : true)],
-                ["price", "Preis", selStyle.priceSet ? selStyle.price : sel.plan !== "foto"],
+                ["price", "Preis", selStyle.priceSet ? selStyle.price : sel.plan === "drucken" || sel.plan === "aufkleber"],
                 ["caption", "Zusatztext", selStyle.caption],
               ] as const).map(([key, label, on]) => (
                 <label key={key} className="small" style={{ whiteSpace: "nowrap" }}>

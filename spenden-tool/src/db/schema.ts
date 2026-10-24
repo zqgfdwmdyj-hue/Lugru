@@ -78,6 +78,8 @@ export const products = pgTable(
     reviewNote: text("review_note"),
     /** Ist ein MHD nötig? null = nach Kategorie (Lebensmittel, Getränke, Babyprodukte), "ja" / "nein" = festgelegt. */
     mhdMode: text("mhd_mode", { enum: ["ja", "nein"] }),
+    /** Kategorie von einem Menschen geprüft („Kategorie stimmt“ oder selbst gewählt) – dann keine Auffälligkeit mehr. */
+    categoryChecked: boolean("category_checked").notNull().default(false),
     archived: boolean("archived").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -119,6 +121,8 @@ export const eventItems = pgTable(
     unit: text("unit", { enum: ["stueck", "packung", "karton"] }),
     /** Stück je Packung bzw. Karton, z. B. 6 beim 6er-Pack. */
     unitCount: integer("unit_count"),
+    /** Abgabeeinheit von einem Menschen festgelegt/bestätigt – getrennt vom Preis. */
+    unitConfirmed: boolean("unit_confirmed").notNull().default(false),
     /** Woher der Preis kommt: manuell, foto (aus dem Foto gelesen), ki (KI-Vorschlag), vorlage (aus früherer Verteilung). */
     priceSource: text("price_source", { enum: ["manuell", "foto", "ki", "vorlage"] }),
     /** Von einem Menschen eingetragen oder bestätigt – unbestätigte Werte erscheinen unter „Prüfen“. */

@@ -65,7 +65,8 @@ function tile(ctx: Ctx, p: SocialItem, img: HTMLImageElement | undefined, x: num
   }
   ctx.restore();
   // Gemeinsame Preislogik: steht der Preis schon richtig im Foto, nicht doppelt; weicht er ab, Aufkleber über den alten.
-  if (img && p.plan === "foto") return;
+  // „ersetzen“: alter Preis lässt sich nicht verdecken → kein zweiter Preis daneben.
+  if (img && (p.plan === "foto" || p.plan === "ersetzen")) return;
   if (img && p.plan === "aufkleber" && p.printed?.box && drawSticker(ctx, img, x, y, w, h, "contain", p.printed.box, priceLabel(p), GREEN)) return;
   priceBadge(ctx, priceLabel(p), x + w / 2, y + h - Math.min(w, h) * 0.1, Math.round(Math.min(w, h) * 0.1), w * 0.9);
 }
@@ -160,7 +161,7 @@ function drawProduct(ctx: Ctx, d: SocialData, p: SocialItem, img: HTMLImageEleme
   const nameLines = wrap(ctx, p.name, W * 0.88, 2);
   // Steht der Preis schon richtig im Foto, keine zweite Plakette; weicht er ab, kommt ein Aufkleber über den alten.
   const sticker = !!img && p.plan === "aufkleber" && !!p.printed?.box;
-  const price = img && (p.plan === "foto" || sticker) ? "" : priceLabel(p);
+  const price = img && (p.plan === "foto" || p.plan === "ersetzen" || sticker) ? "" : priceLabel(p);
   const badge = Math.round(W * (story ? 0.085 : 0.066));
   const gap = W * 0.025;
   let bottom = H - (handle ? W * 0.11 : W * 0.04);

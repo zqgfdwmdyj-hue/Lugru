@@ -50,9 +50,9 @@ describe("Preis im Foto – Foto nie großflächig überdecken", () => {
     expect(priceState({ price: 5 }, F, read("2kg - 5€ 5kg - 10€", 5, null))).toMatchObject({ plan: "foto", conflict: false });
   });
 
-  it("Aufkleber nur mit glaubwürdiger, kleiner Lage – sonst normal drucken", () => {
+  it("Aufkleber nur mit glaubwürdiger, kleiner Lage – sonst kein zweiter Preis, neues Foto", () => {
     expect(normalizeBox([5, 20, 95, 98])).toBeNull();
-    expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, { x: 0, y: 0.2, w: 1, h: 0.8 })).plan).toBe("drucken");
+    expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, { x: 0, y: 0.2, w: 1, h: 0.8 })).plan).toBe("ersetzen");
     expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, { x: 0.1, y: 0.05, w: 0.8, h: 0.15 })).plan).toBe("aufkleber");
     expect(priceState({ price: 0.5 }, F, read("60 Cent", 0.6, null)).conflict).toBe(true);
     expect(priceState({ price: 0.6 }, F, read("60 Cent", 0.6, null)).conflict).toBe(false);
