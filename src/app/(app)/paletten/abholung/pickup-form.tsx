@@ -79,6 +79,10 @@ export function PickupForm({ pallets, gone = [], customers, today, preselect }: 
   const [pickedBy, setPickedBy] = useState("");
   const [camera, setCamera] = useState(false);
   const [signature, setSignature] = useState("");
+  // Die Unterschrift gilt genau für diese Auswahl, diesen Abholer und dieses Datum – ändert sich etwas, neu unterschreiben.
+  const [date, setDate] = useState(today);
+  const [signedKey, setSignedKey] = useState("");
+  const [padKey, setPadKey] = useState(0);
   const list = useMemo(() => pallets.filter((p) => !customer || (p.customer ?? "") === customer), [pallets, customer]);
 
   const add = (code: string) => {
@@ -105,6 +109,7 @@ export function PickupForm({ pallets, gone = [], customers, today, preselect }: 
     const fd = new FormData(e.currentTarget);
     for (const id of selected) fd.append("ids", id);
     fd.set("signature", signature);
+    fd.set("signedCodes", chosenCodes.join(","));
     start(() => action(fd));
   }
   if (state?.ok && state.id) {
@@ -119,6 +124,11 @@ export function PickupForm({ pallets, gone = [], customers, today, preselect }: 
     );
   }
   const chosen = pallets.filter((p) => selected.has(p.id));
+  const chosenCodes = [...chosen].map((p) => p.code).sort((a, b) => a.localeCompare(b, "de", { numeric: true }));
+  const currentKey = JSON.stringify([chosenCodes, pickedBy.trim(), date]);
+  const signatureValid = Boolean(signature) && signedKey === currentKey;
+  const signatureStale = Boolean(signature) && signedKey !== currentKey;
+  const resetSignature = () => { setSignature(""); setSignedKey(""); setPadKey((k) => k + 1); };
   return (
     <form onSubmit={submit} className="stack" style={{ gap: 12 }} data-testid="pickup-form">
       <div className="priv-grid">
@@ -161,7 +171,7 @@ export function PickupForm({ pallets, gone = [], customers, today, preselect }: 
       <div className="priv-grid">
         <div className="field"><label className="label" htmlFor="pu-by">Abgeholt von</label><input className="input" id="pu-by" name="pickedBy" required autoComplete="off" placeholder="Name des Fahrers" value={pickedBy} onChange={(e) => setPickedBy(e.target.value)} /></div>
         <div className="field"><label className="label" htmlFor="pu-plate">Kennzeichen (optional)</label><input className="input" id="pu-plate" name="plate" autoComplete="off" /></div>
-        <div className="field"><label className="label" htmlFor="pu-date">Datum</label><input className="input" id="pu-date" name="date" type="date" defaultValue={today} max={today} /></div>
+        <div className="field"><label className="label" htmlFor="pu-date">Datum</label><input className="input" id="pu-date" name="date" type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></div>
       </div>
       <div className="field"><label className="label" htmlFor="pu-note">Hinweis (optional)</label><input className="input" id="pu-note" name="note" autoComplete="off" placeholder="z. B. eine Palette mit beschädigter Folie" /></div>
       {chosen.length > 0 && (() => {
@@ -173,15 +183,22 @@ export function PickupForm({ pallets, gone = [], customers, today, preselect }: 
             <div className="small">Kunde{byCustomer.size === 1 ? "" : "n"}: {[...byCustomer].map(([c, n]) => `${c} (${n})`).join(", ")}</div>
             <div className="small num">{[...chosen].sort((a, b) => a.code.localeCompare(b.code, "de", { numeric: true })).map((p) => `${p.code}${p.location ? ` (${p.location})` : ""}`).join(", ")}</div>
             {byCustomer.size > 1 && <div className="small" style={{ color: "var(--warn)" }} data-testid="pickup-mixed">⚠ Paletten von {byCustomer.size} Kunden – bitte prüfen, ob das so stimmt.</div>}
-            {pickedBy.trim() && <div className="small">Abholer: {pickedBy.trim()}</div>}
+            <div className="small">Abholer: {pickedBy.trim() || <span style={{ color: "var(--warn)" }}>noch nicht eingetragen</span>} · Datum: {date ? date.split("-").reverse().join(".") : "–"}</div>
           </div>
         );
       })()}
       <div className="field">
         <span className="label">Unterschrift Abholer ({chosen.length} Palette{chosen.length === 1 ? "" : "n"} übernommen)</span>
-        <SignaturePad onChange={setSignature} />
+        <div className="small muted">Erst Auswahl, Abholer und Datum prüfen, dann unterschreiben – die Unterschrift gilt nur für genau diese Zusammenfassung.</div>
+        <SignaturePad key={padKey} onChange={(png) => { setSignature(png); setSignedKey(png ? currentKey : ""); }} />
+        {signatureStale && (
+          <div className="notice notice-warn small" data-testid="signature-stale">
+            Nach der Unterschrift wurde etwas geändert (Paletten, Abholer oder Datum) – bitte neu unterschreiben.{" "}
+            <button className="btn btn-small" type="button" onClick={resetSignature}>Unterschrift löschen</button>
+          </div>
+        )}
       </div>
-      <button className="btn btn-primary pal-big-btn" type="submit" disabled={pending || !chosen.length || !signature || !pickedBy.trim()} style={{ alignSelf: "flex-start" }} data-testid="pickup-submit">
+      <button className="btn btn-primary pal-big-btn" type="submit" disabled={pending || !chosen.length || !signatureValid || !pickedBy.trim()} style={{ alignSelf: "flex-start" }} data-testid="pickup-submit">
         {pending ? "Speichere …" : `${chosen.length} Palette${chosen.length === 1 ? "" : "n"} auslagern & Abholschein erstellen`}
       </button>
       {state && !state.ok && <div className="notice notice-warn" data-testid="pickup-error">{state.message}</div>}

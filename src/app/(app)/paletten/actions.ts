@@ -2,6 +2,7 @@
 
 import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { placeAll, type Placement } from "@/lib/pallets/placement";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -162,6 +163,12 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
   }
   const plan = (await palletContext(t)).settings.locations ?? [];
   if (location && plan.length && !plan.includes(location)) notes.push(`Stellplatz ${location} steht nicht im Lagerplan.`);
+  // Mehrere Paletten + ein Platz: vorher entschieden (alle dorthin, verteilen oder ohne Platz) – nie stillschweigend.
+  const placementIn = String(fd.get("placement") ?? "");
+  const placement: Placement | null = placementIn === "alle" || placementIn === "verteilen" || placementIn === "ohne" ? placementIn : null;
+  if (codes.length > 1 && location && !placement) return { ok: false, message: `Bitte wählen, wohin die ${codes.length} Paletten kommen: alle auf ${location}, auf freie Plätze verteilen oder ohne Stellplatz.`, at: Date.now() };
+  const placed = placeAll(codes.length, location, placement, plan, openRows.map((r) => r.location).filter((l): l is string => Boolean(l)));
+  if (placed.short) notes.push(`Für ${placed.short} Palette${placed.short === 1 ? "" : "n"} war kein freier Platz mehr – ohne Stellplatz eingelagert.`);
   let photoIds: string[];
   try {
     photoIds = await storePhotos(t, fd);
@@ -170,19 +177,24 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
   }
   const inserted = await db
     .insert(P)
-    .values(codes.map((c) => ({ tenantId: t, code: c, customer, note, location, contents, weightKg, inAt: day })))
+    .values(codes.map((c, i) => ({ tenantId: t, code: c, customer, note, location: placed.locations[i], contents, weightKg, inAt: day })))
     .returning({ id: P.id });
   if (photoIds.length) await db.insert(PH).values(inserted.flatMap((p) => photoIds.map((fileId) => ({ tenantId: t, palletId: p.id, fileId }))));
-  const busy = location ? openRows.filter((r) => r.location === location).map((r) => r.code) : [];
-  if (busy.length) notes.unshift(`Achtung: Auf ${location} steht schon ${busy.join(", ")}.`);
-  await logPalletEvent(t, inserted.map((r) => r.id), "ein", `Eingelagert${customer ? ` für ${customer}` : ""}${location ? ` auf ${location}` : ""}${codes.length > 1 ? ` (eine von ${codes.length}: ${codes[0]} bis ${codes[codes.length - 1]})` : ""}`, { day, userName: who(session) });
+  const usedPlaces = [...new Set(placed.locations.filter((l): l is string => Boolean(l)))];
+  const busyAt = usedPlaces.map((loc) => ({ loc, codes: openRows.filter((r) => r.location === loc).map((r) => r.code) })).filter((b) => b.codes.length);
+  if (busyAt.length) notes.unshift(busyAt.map((b) => `Achtung: Auf ${b.loc} steht schon ${b.codes.join(", ")}.`).join(" "));
+  if (placement === "alle" && codes.length > 1 && location) notes.push(`${codes.length} Paletten bewusst auf einen Platz (${location}).`);
+  for (const [i, row] of inserted.entries()) {
+    const loc = placed.locations[i];
+    await logPalletEvent(t, [row.id], "ein", `Eingelagert${customer ? ` für ${customer}` : ""}${loc ? ` auf ${loc}` : " ohne Stellplatz"}${codes.length > 1 ? ` (eine von ${codes.length}: ${codes[0]} bis ${codes[codes.length - 1]})` : ""}`, { day, userName: who(session) });
+  }
   revalidatePath("/paletten");
   const when = day.split("-").reverse().join(".");
   return {
     ok: true,
     message:
       (codes.length === 1 ? `Palette ${codes[0]} eingelagert – Timer läuft ab ${when}.` : `${codes.length} Paletten eingelagert, jede mit eigener Nummer: ${codes.join(", ")}.`) +
-      (location ? ` Stellplatz ${location}.` : "") +
+      (usedPlaces.length === 1 ? ` Stellplatz ${usedPlaces[0]}.` : usedPlaces.length > 1 ? ` Stellplätze: ${codes.map((c, i) => `${c} → ${placed.locations[i] ?? "ohne"}`).join(", ")}.` : "") +
       (photoIds.length ? ` ${photoIds.length} Foto${photoIds.length === 1 ? "" : "s"} gespeichert.` : ""),
     warn: notes.length ? notes.join(" ") : undefined,
     codes,
@@ -698,6 +710,12 @@ export async function pickupAction(_prev: PickupState, fd: FormData): Promise<Pi
   const rows = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt), inArray(P.id, ids)));
   if (!rows.length) return { ok: false, message: "Die ausgewählten Paletten sind nicht (mehr) eingelagert." };
   if (rows.length < ids.length) return { ok: false, message: `${ids.length - rows.length} der ausgewählten Paletten sind nicht mehr eingelagert – bitte Auswahl prüfen (Seite neu laden).` };
+  // Die Unterschrift gehört zu genau der Auswahl, die beim Unterschreiben zu sehen war.
+  if (fd.has("signedCodes")) {
+    const signed = String(fd.get("signedCodes") ?? "").split(",").map((c) => c.trim().toLowerCase()).filter(Boolean).sort().join(",");
+    const actual = rows.map((r) => r.code.toLowerCase()).sort().join(",");
+    if (signed !== actual) return { ok: false, message: "Die Unterschrift passt nicht zur Auswahl (Paletten wurden geändert) – bitte neu unterschreiben." };
+  }
   const fileId = await storeFile(t, `unterschrift-${day}.png`, "image/png", png);
   await db
     .update(P)

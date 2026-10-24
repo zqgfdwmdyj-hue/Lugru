@@ -564,3 +564,6 @@ h2 { font-size: 16px; margin: 0; }
 .pal-history li { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .pal-history li:last-child { border-bottom: 0; }
 @media (max-width: 600px) { .pal-history li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* Paletten-Auswertung: Hochrechnung des laufenden Monats gestreift */
+.pal-col-proj .pal-col-bar { background: repeating-linear-gradient(45deg, var(--accent) 0 4px, transparent 4px 8px); border: 1px dashed var(--accent); }

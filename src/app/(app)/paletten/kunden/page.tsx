@@ -46,7 +46,7 @@ export default async function PalettenKundenPage() {
         <table className="table" data-testid="customers">
           <thead><tr><th>Kunde</th><th className="right">Im Lager</th><th className="right">€/Monat</th><th className="right">Frei</th><th className="right">Ein / Aus</th><th>Monatsaufstellung</th></tr></thead>
           <tbody>
-            {list.length === 0 && <tr><td colSpan={6} className="muted">Noch keine Kunden – sie entstehen beim Einlagern oder hier unten.</td></tr>}
+            {list.length === 0 && <tr><td colSpan={6} className="muted" data-testid="customers-empty">{owner ? "Noch keine Kunden – sie entstehen beim Einlagern (Kundenname angeben) oder unten über „+ Kunde anlegen“." : "Noch keine Kunden – sie entstehen beim Einlagern, wenn du einen Kundennamen angibst. Eigene Preise je Kunde legt der Inhaber an."}</td></tr>}
             {list.map(({ name, row }) => {
               const r = ctx.ratesOf(name);
               return [

@@ -78,11 +78,11 @@ export default async function LagerplanPage() {
       )}
 
       <section className="card card-pad stack" id="einrichten" style={{ gap: 10 }}>
-        <h2>Lagerplan einrichten</h2>
+        <h2>{owner ? "Lagerplan einrichten" : "Lagerplan (richtet der Inhaber ein)"}</h2>
         {owner ? (
           <LocationsForm spec={s.locationsSpec ?? ""} count={plan.length} capacity={s.capacity} />
         ) : (
-          <div className="small muted">{plan.length ? `${plan.length} Stellplätze angelegt.` : "Noch keine Stellplätze."} Ändern kann der Inhaber.</div>
+          <div className="small" data-testid="plan-owner-only">{plan.length ? `${plan.length} Stellplätze angelegt. Ändern kann nur der Inhaber.` : <><strong>Fehlender Schritt:</strong> Der Inhaber legt die Stellplätze an (hier unter „Lagerplan einrichten“). Bis dahin kannst du einlagern, aber ohne Prüfung auf freie Plätze.</>}</div>
         )}
         <div className="small muted">Jeder Stellplatz hat eine eindeutige Bezeichnung (z. B. A-01). Beim Einlagern warnt das System bei belegtem Platz oder einem Platz, der nicht im Plan steht.</div>
       </section>

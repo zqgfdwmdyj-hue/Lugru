@@ -75,12 +75,12 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
             </>
           )}
         </div>
-        <div className="card card-pad"><div className="kpi-label">Freie Stellplätze</div><div className="kpi-value">{rates.locations?.length ? free.length : "–"}</div><div className="small muted">{rates.locations?.length ? free.slice(0, 6).join(", ") + (free.length > 6 ? " …" : "") : <Link href="/paletten/lagerplan#einrichten">Lagerplan einrichten</Link>}</div></div>
+        <div className="card card-pad"><div className="kpi-label">Freie Stellplätze</div><div className="kpi-value">{rates.locations?.length ? free.length : "–"}</div><div className="small muted" data-testid="plan-setup">{rates.locations?.length ? free.slice(0, 6).join(", ") + (free.length > 6 ? " …" : "") : session.role === "owner" ? <Link href="/paletten/lagerplan#einrichten">Lagerplan einrichten</Link> : "Noch kein Lagerplan – den legt der Inhaber an (Lagerplan → Einrichten)."}</div></div>
         <div className="card card-pad"><div className="kpi-label">Davon kostenpflichtig</div><div className="kpi-value">{chargeableNow}</div><div className="small muted">{allOpen.length - chargeableNow} noch in der freien Zeit</div></div>
       </div>
 
       <div id="scan">
-        <PalletScan key={mode ?? "x"} customers={customers} locations={[...new Set([...(rates.locations ?? []), ...locations])]} today={today} free={free} initialLocation={normalizeLocation(sp.platz) ?? undefined} initialMode={mode} initialCode={sp.code?.slice(0, 80)} />
+        <PalletScan key={mode ?? "x"} customers={customers} locations={[...new Set([...(rates.locations ?? []), ...locations])]} today={today} free={free} plan={rates.locations ?? []} initialLocation={normalizeLocation(sp.platz) ?? undefined} initialMode={mode} initialCode={sp.code?.slice(0, 80)} />
       </div>
 
       <section className="card" id="lager">

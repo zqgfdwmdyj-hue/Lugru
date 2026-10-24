@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { placeAll, type Placement } from "@/lib/pallets/placement";
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { scanPallet, type ScanState } from "./actions";
 import { PhotoPicker, type PickedPhoto } from "./photos";
@@ -79,7 +80,7 @@ function beep(ok: boolean) {
   } catch {}
 }
 
-export function PalletScan({ customers, locations, today, free = [], initialLocation, initialMode, initialCode }: { customers: string[]; locations: string[]; today: string; free?: string[]; initialLocation?: string; initialMode?: string; initialCode?: string }) {
+export function PalletScan({ customers, locations, today, free = [], plan = [], initialLocation, initialMode, initialCode }: { customers: string[]; locations: string[]; today: string; free?: string[]; plan?: string[]; initialLocation?: string; initialMode?: string; initialCode?: string }) {
   const [state, action] = useActionState<ScanState, FormData>(scanPallet, null);
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<Mode>(initialMode === "aus" || initialMode === "suchen" || initialMode === "ein" ? initialMode : "ein");
@@ -87,6 +88,15 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
   const [camera, setCamera] = useState(false);
   const [photos, setPhotos] = useState<PickedPhoto[]>([]);
   const [more, setMore] = useState(false);
+  // Mehrfach-Einlagerung: Anzahl, Platz und Platzierung vor dem Speichern sichtbar entscheiden.
+  const [cnt, setCnt] = useState(1);
+  const [loc, setLoc] = useState((initialLocation ?? "").toUpperCase());
+  const [placement, setPlacement] = useState<Placement | "">("");
+  const [hint, setHint] = useState<string | null>(null);
+  const occupied = plan.filter((p) => !free.includes(p));
+  const locNorm = loc.trim().toUpperCase().replace(/\s+/g, " ");
+  const locBusy = Boolean(locNorm) && plan.includes(locNorm) && !free.includes(locNorm);
+  const preview = cnt > 1 && locNorm && placement === "verteilen" ? placeAll(cnt, locNorm, "verteilen", plan, occupied) : null;
   const form = useRef<HTMLFormElement>(null);
   const input = useRef<HTMLInputElement>(null);
 
@@ -107,6 +117,10 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
         // Anzahl zurück auf 1 – sonst würde die nächste Palette versehentlich mehrfach angelegt.
         const count = form.current?.querySelector<HTMLInputElement>("#pal-count");
         if (count) count.value = "1";
+        setCnt(1);
+        setLoc("");
+        setPlacement("");
+        setHint(null);
       }
     }
     input.current?.focus();
@@ -125,6 +139,20 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
   };
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (mode === "ein" && cnt > 1 && locNorm && !placement) {
+      setHint(`Bitte zuerst wählen, wohin die ${cnt} Paletten kommen.`);
+      return;
+    }
+    if (mode === "ein") {
+      const warn = [
+        locBusy && placement !== "verteilen" && placement !== "ohne" ? `${locNorm} ist schon belegt.` : null,
+        cnt > 1 && placement === "alle" ? `Alle ${cnt} Paletten auf ${locNorm}.` : null,
+        preview?.short ? `Nur ${cnt - preview.short} freie Plätze – ${preview.short} Palette(n) ohne Stellplatz.` : null,
+        plan.length && cnt > free.length && placement !== "ohne" ? `Mehr Paletten (${cnt}) als freie Plätze (${free.length}).` : null,
+      ].filter(Boolean);
+      if (warn.length && !window.confirm(`${warn.join(" ")} Trotzdem einlagern?`)) return;
+    }
+    setHint(null);
     const fd = new FormData(e.currentTarget);
     if (mode === "ein") for (const p of photos) fd.append("photos", p.file, p.file.name);
     start(() => action(fd));
@@ -172,23 +200,38 @@ export function PalletScan({ customers, locations, today, free = [], initialLoca
             </div>
             <div className="field">
               <label className="label" htmlFor="pal-location">Stellplatz</label>
-              <input className="input" id="pal-location" name="location" list="pal-locations" autoComplete="off" placeholder="z. B. B-03" autoCapitalize="characters" defaultValue={initialLocation} />
+              <input className="input" id="pal-location" name="location" list="pal-locations" autoComplete="off" placeholder="z. B. B-03" autoCapitalize="characters" value={loc} onChange={(e) => setLoc(e.target.value)} />
+              {locBusy && <div className="small" style={{ color: "var(--warn)" }} data-testid="loc-busy">{locNorm} ist schon belegt.</div>}
               <datalist id="pal-locations">{locations.map((c) => <option key={c} value={c} />)}</datalist>
               {free.length > 0 && (
                 <div className="small" style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }} data-testid="free-places">
                   <span className="muted">frei:</span>
                   {free.slice(0, 5).map((f) => (
-                    <button key={f} type="button" className="btn-link small" onClick={() => { const i = form.current?.querySelector<HTMLInputElement>("#pal-location"); if (i) i.value = f; }}>{f}</button>
+                    <button key={f} type="button" className="btn-link small" onClick={() => setLoc(f)}>{f}</button>
                   ))}
                 </div>
               )}
             </div>
             <div className="field">
               <label className="label" htmlFor="pal-count">Anzahl Paletten</label>
-              <input className="input" id="pal-count" name="count" type="number" min={1} max={100} defaultValue={1} />
+              <input className="input" id="pal-count" name="count" type="number" min={1} max={100} defaultValue={1} onChange={(e) => setCnt(Math.max(1, Math.round(Number(e.target.value) || 1)))} />
               <div className="small muted">Mehrere: jede Palette bekommt eine eigene Nummer{code.trim() ? ` (${code.trim()}-1, ${code.trim()}-2 …)` : " (P-0001, P-0002 …)"}.</div>
+              {plan.length > 0 && cnt > free.length && <div className="small" style={{ color: "var(--warn)" }} data-testid="cap-warn">Nur {free.length} freie Plätze für {cnt} Paletten.</div>}
             </div>
           </div>
+          {cnt > 1 && locNorm && (
+            <fieldset className="field" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10 }} data-testid="placement">
+              <legend className="label" style={{ padding: "0 4px" }}>{cnt} Paletten – wohin?</legend>
+              <div className="pick-chips">
+                <label><input type="radio" name="placement" value="alle" checked={placement === "alle"} onChange={() => setPlacement("alle")} /><span>alle auf {locNorm}</span></label>
+                {plan.length > 0 && <label><input type="radio" name="placement" value="verteilen" checked={placement === "verteilen"} onChange={() => setPlacement("verteilen")} /><span>verteilen ab {locNorm}</span></label>}
+                <label><input type="radio" name="placement" value="ohne" checked={placement === "ohne"} onChange={() => setPlacement("ohne")} /><span>ohne Stellplatz</span></label>
+              </div>
+              {preview && <div className="small" data-testid="placement-preview">→ {preview.locations.map((l) => l ?? "ohne Platz").join(", ")}{preview.short ? <span style={{ color: "var(--warn)" }}> · {preview.short} ohne freien Platz</span> : null}</div>}
+              {placement === "alle" && <div className="small" style={{ color: "var(--warn)" }}>Alle {cnt} stehen dann auf einem Platz.</div>}
+            </fieldset>
+          )}
+          {hint && <div className="notice notice-warn small" data-testid="placement-hint">{hint}</div>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
             <div className="field" style={{ gridColumn: "span 2" }}>
               <label className="label" htmlFor="pal-contents">Inhalt</label>
