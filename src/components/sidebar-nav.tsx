@@ -1,159 +1,116 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
-import { areaForPath, canAccess } from "@/lib/auth/areas";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { areaForPath, canAccess } from "@/lib/auth/areas";
+import { activeItem, NAV_OPEN_COOKIE, visibleNav, type NavCounts, type NavItem, type NavSection } from "@/lib/nav";
+import type { Favorite } from "@/db/schema";
 
-export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number };
+export type { NavCounts };
 
-type Item = { href: string; label: string; badge?: number; alert?: boolean };
-type Group = { head?: string; items: Item[] };
+export type NavAccess = { isOwner: boolean; areas: string[] | null; privateAccess?: boolean };
 
-/** Farbe je Bereich – Streifen links und leichte Tönung, damit man die Gruppen auf einen Blick trennt. */
-const GROUP_COLOR: Record<string, string> = {
-  "": "#5b6670",
-  WaWi: "#1f7a5c",
-  Lager: "#0e7490",
-  Marken: "#c2410c",
-  eBay: "#2563eb",
-  "Amazon FBA": "#d97706",
-  "Einkauf & Buchhaltung": "#7c3aed",
-  Service: "#db2777",
-  Geld: "#15803d",
-  Privat: "#be185d",
-  System: "#475569",
-};
-
-export function SidebarNav({ counts, isOwner, areas, privateAccess = false }: { counts: NavCounts; isOwner: boolean; areas: string[] | null; privateAccess?: boolean }) {
+/** Sichtbare Bereiche für diese Person – gleiche Regeln wie im Proxy (canAccess). */
+export function useNav({ isOwner, areas, privateAccess = false }: NavAccess) {
   const pathname = usePathname();
   const search = useSearchParams();
+  const sections = useMemo(() => visibleNav((p) => canAccess({ role: isOwner ? "owner" : "staff", areas, privateAccess }, areaForPath(p)), isOwner), [isOwner, areas, privateAccess]);
+  const active = activeItem(sections, pathname, search);
+  return { pathname, search, sections, active };
+}
+
+function Badge({ item, counts }: { item: Pick<NavItem, "badge" | "alert">; counts: NavCounts }) {
+  const n = item.badge ? counts[item.badge] : 0;
+  if (!n) return null;
+  return <span className={`nav-badge${item.alert ? "" : " quiet"}`}>{n}</span>;
+}
+
+export function SidebarNav({ counts, favorites = [], openSaved = [], ...access }: NavAccess & { counts: NavCounts; favorites?: Favorite[]; openSaved?: string[] }) {
+  const { pathname, search, sections, active } = useNav(access);
   const gesperrt = search.get("gesperrt") === "1";
-  // Auf dem Handy das aufgeklappte Menü nach dem Seitenwechsel wieder schließen.
+  const activeKey = active?.section.key ?? (pathname === "/" ? "heute" : null);
+  // Aufgeklappt: der aktuelle Bereich und was man selbst geöffnet hat.
+  const [open, setOpen] = useState<Set<string>>(() => new Set([...openSaved, ...(activeKey ? [activeKey] : [])]));
+  useEffect(() => {
+    if (activeKey) setOpen((prev) => (prev.has(activeKey) ? prev : new Set([...prev, activeKey])));
+  }, [activeKey]);
+  // Auf dem Handy das Menü nach dem Seitenwechsel wieder schließen.
   useEffect(() => {
     const t = document.getElementById("nav-toggle") as HTMLInputElement | null;
     if (t) t.checked = false;
   }, [pathname, search]);
-  const groups: Group[] = [
-    {
-      items: [
-        { href: "/", label: "Start", badge: counts.tasks, alert: true },
-        { href: "/posteingang", label: "Posteingang", badge: counts.inbox, alert: true },
-        { href: "/kalender", label: "Kalender" },
-        { href: "/board", label: "Board" },
-        { href: "/wissen", label: "Wissen" },
-      ],
-    },
-    {
-      head: "WaWi",
-      items: [
-        { href: "/auftraege", label: "Aufträge & Versand", badge: counts.orders },
-        { href: "/einkauf", label: "Einkauf" },
-        { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
-        { href: "/chargen", label: "Chargen & Artikel" },
-        { href: "/bestand", label: "Bestand & Inventur" },
-        { href: "/artikel", label: "Artikelstamm" },
-        { href: "/listings", label: "Listings" },
-        { href: "/listings/temu", label: "eBay → Temu / Wawi" },
-        { href: "/listings/temu#rechner", label: "Temu-Rechner" },
-        { href: "/lieferanten", label: "Lieferanten-Feeds" },
-        { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
-        { href: "/lieferanten/chancen", label: "Chancen" },
-        { href: "/lieferanten/finden", label: "Großhändler finden" },
-      ],
-    },
-    { head: "Lager", items: [{ href: "/paletten", label: "Paletten-Lager" }] },
-    {
-      head: "Marken",
-      items: [
-        { href: "/marken", label: "Ideen & Saison" },
-        { href: "/marken/content", label: "Content-Plan" },
-        { href: "/marken/shop", label: "Shop-Analyse" },
-        { href: "/marken/profile", label: "Markenprofile" },
-      ],
-    },
-    {
-      head: "eBay",
-      items: [
-        { href: "/ebay", label: "Neues Angebot" },
-        { href: "/ebay/pruefen", label: "Angebote prüfen" },
-        { href: "/ebay?ansicht=artikel", label: "Artikel & Gewinn" },
-        { href: "/ebay?ansicht=verlauf", label: "Verlauf" },
-        { href: "/ebay?ansicht=rechnungen", label: "Rechnungen (eBay)" },
-        ...(isOwner ? [{ href: "/ebay?ansicht=einstellungen", label: "eBay-Einstellungen" }] : []),
-      ],
-    },
-    {
-      head: "Amazon FBA",
-      items: [
-        ...(isOwner ? [{ href: "/amazon-todos", label: "Amazon-ToDos", badge: counts.amazonTodos, alert: true }] : []),
-        { href: "/inbound", label: "Inbound" },
-        { href: "/ansprueche", label: "Ansprüche", badge: counts.claims },
-        { href: "/remissionen", label: "Remissionen" },
-      ],
-    },
-    {
-      head: "Einkauf & Buchhaltung",
-      items: [
-        { href: "/rechnungen", label: "Eingangsrechnungen", badge: counts.invoices },
-        { href: "/rechnungen/belege", label: "Belege scannen" },
-        { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
-        { href: "/rechnungen/kunden", label: "Kunden" },
-        { href: "/export", label: "COG-Export" },
-        { href: "/repricer", label: "Repricer (BQool)" },
-      ],
-    },
-    {
-      head: "Service",
-      items: [
-        { href: "/retouren", label: "Retouren" },
-        { href: "/faelle", label: "Fälle & A-bis-Z" },
-        { href: "/bewertungen", label: "Bewertungen" },
-      ],
-    },
-    { head: "Geld", items: [{ href: "/gewinn", label: "Gewinn" }, { href: "/cashflow", label: "Cash Flow" }] },
-    { head: "Privat", items: [{ href: "/privat", label: "Privat" }] },
-    {
-      head: "System",
-      items: [
-        { href: "/import", label: "Daten importieren" },
-        ...(isOwner ? [{ href: "/einstellungen", label: "Einstellungen" }, { href: "/anbindungen", label: "Anbindungen" }] : []),
-      ],
-    },
-  ];
 
-  const isActive = (href: string) => {
-    if (href.includes("?")) {
-      // Menüpunkte mit Ansicht (eBay): Pfad und Ansicht müssen passen.
-      const [p, q] = href.split("?");
-      return pathname === p && new URLSearchParams(q).get("ansicht") === search.get("ansicht");
-    }
-    if (href === "/ebay") return pathname === "/ebay" && !search.get("ansicht");
-    if (href === "/rechnungen") return pathname === "/rechnungen" || (pathname.startsWith("/rechnungen/") && !/^\/rechnungen\/(ausgang|kunden|belege)(\/|$)/.test(pathname));
-    if (href === "/einkauf") return pathname === "/einkauf" || (pathname.startsWith("/einkauf/") && !/^\/einkauf\/beschaffungsanalyse(\/|$)/.test(pathname));
-    if (href === "/listings") return pathname === "/listings" || (pathname.startsWith("/listings/") && !pathname.startsWith("/listings/temu"));
-    if (href === "/marken") return pathname === "/marken" || pathname.startsWith("/marken/ideen");
-    if (href === "/lieferanten") return pathname === "/lieferanten" || (pathname.startsWith("/lieferanten/") && !/^\/lieferanten\/(finden|abfrage|chancen)(\/|$)/.test(pathname));
-    return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
+  const toggle = (key: string) => {
+    const next = new Set(open);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setOpen(next);
+    document.cookie = `${NAV_OPEN_COOKIE}=${[...next].join(".")}; path=/; max-age=31536000; samesite=lax`;
   };
 
-  // Mitarbeiter sehen nur freigegebene Bereiche.
-  const visible = groups
-    .map((g) => ({ ...g, items: g.items.filter((it) => canAccess({ role: isOwner ? "owner" : "staff", areas, privateAccess }, areaForPath(it.href.split("?")[0]))) }))
-    .filter((g) => g.items.length > 0);
+  const main = sections.filter((s) => !s.helper);
+  const helpers = sections.filter((s) => s.helper);
+  const isActive = (s: NavSection, it: NavItem) => active?.section.key === s.key && active.item.href === it.href;
+  const currentHref = `${pathname}${search.toString() ? `?${search}` : ""}`;
 
   return (
-    <nav aria-label="Hauptnavigation">
+    <nav aria-label="Hauptnavigation" className="main-nav">
       {gesperrt && <div className="nav-locked">Dieser Bereich ist für dich nicht freigegeben.</div>}
-      {visible.map((g, i) => (
-        <div key={i} className="nav-group" style={{ ["--g" as string]: GROUP_COLOR[g.head ?? ""] ?? "#8a8f95" }}>
-          {g.head && <div className="nav-head">{g.head}</div>}
-          {g.items.map((item) => (
-            <Link key={item.href} href={item.href} className={`nav-link${isActive(item.href) ? " active" : ""}`}>
-              <span>{item.label}</span>
-              {item.badge ? (
-                <span className="nav-badge" style={item.alert ? undefined : { background: "var(--border-strong)", color: "var(--ink)" }}>{item.badge}</span>
-              ) : null}
+      {favorites.length > 0 && (
+        <div className="nav-favs" data-testid="nav-favorites">
+          <div className="nav-favs-head">★ Favoriten</div>
+          {favorites.map((f) => (
+            <Link key={f.href} href={f.href} className={`nav-link${f.href === currentHref ? " active" : ""}`}>
+              <span>{f.label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      {main.map((s) => {
+        const color = { ["--g" as string]: s.color };
+        const current = activeKey === s.key;
+        // Bereiche, die nur aus sich selbst bestehen (Privat), sind direkt ein Link.
+        if (s.items.length === 1 && s.items[0].label === s.label) {
+          const it = s.items[0];
+          return (
+            <div key={s.key} className={`nav-group single${current ? " current" : ""}`} style={color} data-section={s.key}>
+              <Link href={it.href} className={`nav-link nav-section-link${current ? " active" : ""}`} aria-current={current ? "page" : undefined}>
+                <span>{s.label}</span>
+                <Badge item={it} counts={counts} />
+              </Link>
+            </div>
+          );
+        }
+        const isOpen = open.has(s.key);
+        const sum = s.items.reduce((n, it) => n + (it.badge ? counts[it.badge] : 0), 0);
+        const alert = s.items.some((it) => it.alert && it.badge && counts[it.badge] > 0);
+        return (
+          <div key={s.key} className={`nav-group${current ? " current" : ""}${isOpen ? " open" : ""}`} style={color} data-section={s.key}>
+            <button type="button" className="nav-head" aria-expanded={isOpen} aria-controls={`nav-${s.key}`} onClick={() => toggle(s.key)}>
+              <span>{s.label}</span>
+              <span className="nav-head-end">
+                {!isOpen && sum > 0 && <span className={`nav-badge${alert ? "" : " quiet"}`}>{sum}</span>}
+                <span className="nav-caret" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>
+              </span>
+            </button>
+            {/* Eingeklappt bleiben die Links im Dokument (versteckt) – Suche, Tests und Bildschirmleser finden sie. */}
+            <div id={`nav-${s.key}`} hidden={!isOpen}>
+              {s.items.map((it) => (
+                <Link key={it.href} href={it.href} className={`nav-link${isActive(s, it) ? " active" : ""}`} aria-current={isActive(s, it) ? "page" : undefined}>
+                  <span>{it.label}</span>
+                  <Badge item={it} counts={counts} />
+                </Link>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {helpers.map((s) => (
+        <div key={s.key} className="nav-helpers" data-section={s.key}>
+          {s.items.map((it) => (
+            <Link key={it.href} href={it.href} className={`nav-link small${isActive(s, it) ? " active" : ""}`} aria-current={isActive(s, it) ? "page" : undefined}>
+              <span>{it.label}</span>
             </Link>
           ))}
         </div>

@@ -1,0 +1,167 @@
+// Navigation: sieben Hauptbereiche, Privat als eigener Bereich und feste Hilfsfunktionen.
+// Eine Quelle für Seitenleiste, Bereichs-Reiter und Handy-Menü. Ohne Server-Abhängigkeiten.
+
+export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number };
+
+/** Aufgeklappte Bereiche als Cookie – so rendert schon der Server den gemerkten Zustand (kein Springen). */
+export const NAV_OPEN_COOKIE = "nav-open";
+
+export type NavItem = {
+  href: string;
+  label: string;
+  badge?: keyof NavCounts;
+  /** Rot statt grau – Zähler, die Handlungsbedarf bedeuten. */
+  alert?: boolean;
+  /** Nur für Inhaber (Einstellungen, Amazon-ToDos …). */
+  owner?: boolean;
+  /** Zusätzliche Adressen, unter denen der Punkt aktiv ist (z. B. Aufgabenliste mit Bereichsfilter). */
+  also?: (path: string, q: URLSearchParams) => boolean;
+};
+
+export type NavSection = { key: string; label: string; color: string; items: NavItem[]; helper?: boolean };
+
+export const NAV: NavSection[] = [
+  {
+    key: "heute",
+    label: "Heute",
+    color: "#5b6670",
+    items: [
+      { href: "/", label: "Tagesübersicht", badge: "tasks", alert: true },
+      { href: "/?ansicht=liste", label: "Alle Aufgaben", also: (p, q) => p === "/" && Boolean(q.get("kat") && q.get("kat") !== "alle") },
+      { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
+      { href: "/kalender", label: "Termine" },
+    ],
+  },
+  {
+    key: "verkauf",
+    label: "Verkauf & Versand",
+    color: "#2563eb",
+    items: [
+      { href: "/auftraege", label: "Aufträge & Versand", badge: "orders" },
+      { href: "/listings", label: "Angebote (alle Kanäle)" },
+      { href: "/ebay", label: "Neues eBay-Angebot" },
+      { href: "/ebay/pruefen", label: "eBay-Angebote prüfen" },
+      { href: "/ebay?ansicht=artikel", label: "eBay-Artikel & Gewinn" },
+      { href: "/ebay?ansicht=verlauf", label: "eBay-Verlauf" },
+      { href: "/listings/temu", label: "eBay → Temu / Wawi" },
+      { href: "/listings/temu#rechner", label: "Temu-Rechner" },
+      { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
+      { href: "/repricer", label: "Repricer (BQool)" },
+    ],
+  },
+  {
+    key: "produkte",
+    label: "Produkte & Lager",
+    color: "#0e7490",
+    items: [
+      { href: "/produkte", label: "Produkte" },
+      { href: "/chargen", label: "Chargen" },
+      { href: "/bestand", label: "Bestand & Inventur" },
+      { href: "/artikel", label: "Artikelstamm (eigene Marken)" },
+      { href: "/inbound", label: "FBA-Inbound" },
+      { href: "/paletten", label: "Paletten-Lager" },
+    ],
+  },
+  {
+    key: "einkauf",
+    label: "Einkauf & Lieferanten",
+    color: "#7c3aed",
+    items: [
+      { href: "/einkauf", label: "Einkauf & Wareneingang" },
+      { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
+      { href: "/lieferanten", label: "Lieferanten-Feeds" },
+      { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
+      { href: "/lieferanten/chancen", label: "Chancen" },
+      { href: "/lieferanten/finden", label: "Großhändler finden" },
+      { href: "/board", label: "Kontakt-Board" },
+    ],
+  },
+  {
+    key: "service",
+    label: "Service & Ansprüche",
+    color: "#db2777",
+    items: [
+      { href: "/retouren", label: "Retouren" },
+      { href: "/ansprueche", label: "Ansprüche", badge: "claims" },
+      { href: "/remissionen", label: "Remissionen" },
+      { href: "/faelle", label: "Fälle & A-bis-Z" },
+      { href: "/bewertungen", label: "Bewertungen" },
+    ],
+  },
+  {
+    key: "finanzen",
+    label: "Finanzen",
+    color: "#15803d",
+    items: [
+      { href: "/gewinn", label: "Gewinn" },
+      { href: "/cashflow", label: "Cash Flow" },
+      { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices" },
+      { href: "/rechnungen/belege", label: "Belege scannen" },
+      { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
+      { href: "/ebay?ansicht=rechnungen", label: "eBay-Rechnungen" },
+      { href: "/rechnungen/kunden", label: "Kunden" },
+      { href: "/export", label: "COG-Export" },
+    ],
+  },
+  {
+    key: "marken",
+    label: "Marken & Content",
+    color: "#c2410c",
+    items: [
+      { href: "/marken", label: "Ideen & Saison" },
+      { href: "/marken/content", label: "Content-Plan" },
+      { href: "/marken/shop", label: "Shop-Analyse" },
+      { href: "/marken/profile", label: "Markenprofile" },
+    ],
+  },
+  { key: "privat", label: "Privat", color: "#be185d", items: [{ href: "/privat", label: "Privat" }] },
+  {
+    key: "hilfe",
+    label: "Hilfsfunktionen",
+    color: "#475569",
+    helper: true,
+    items: [
+      { href: "/wissen", label: "Wissen" },
+      { href: "/import", label: "Daten importieren" },
+      { href: "/einstellungen", label: "Einstellungen", owner: true },
+      { href: "/anbindungen", label: "Anbindungen", owner: true },
+      { href: "/ebay?ansicht=einstellungen", label: "eBay-Einstellungen", owner: true },
+    ],
+  },
+];
+
+/**
+ * Wie gut passt ein Menüpunkt zur aktuellen Adresse? 0 = gar nicht. Genaue Treffer und Punkte mit
+ * passender Ansicht schlagen Präfix-Treffer; der längste Pfad gewinnt (/ebay/pruefen vor /ebay).
+ */
+export function matchScore(item: Pick<NavItem, "href" | "also">, path: string, q: URLSearchParams): number {
+  if (item.href.includes("#")) return 0; // Sprungmarken (Temu-Rechner) nie als aktive Seite
+  const [hrefPath, rest = ""] = item.href.split("?");
+  if (item.also?.(path, q)) return 3000 + hrefPath.length;
+  const want = new URLSearchParams(rest);
+  const keys = [...want.keys()];
+  if (keys.length) {
+    if (path !== hrefPath) return 0;
+    return keys.every((k) => q.get(k) === want.get(k)) ? 2000 + hrefPath.length : 0;
+  }
+  if (path === hrefPath) return 1000 + hrefPath.length;
+  if (hrefPath !== "/" && path.startsWith(`${hrefPath}/`)) return hrefPath.length;
+  return 0;
+}
+
+/** Der aktive Menüpunkt (bestes Ergebnis über alle Bereiche) – oder null. */
+export function activeItem(sections: NavSection[], path: string, q: URLSearchParams): { section: NavSection; item: NavItem } | null {
+  let best: { section: NavSection; item: NavItem; score: number } | null = null;
+  for (const section of sections) {
+    for (const item of section.items) {
+      const score = matchScore(item, path, q);
+      if (score > 0 && (!best || score > best.score)) best = { section, item, score };
+    }
+  }
+  return best && { section: best.section, item: best.item };
+}
+
+/** Bereiche mit den Punkten, die diese Person sehen darf (Bereichs-Rechte, Inhaber-Punkte). */
+export function visibleNav(allowed: (path: string) => boolean, isOwner: boolean): NavSection[] {
+  return NAV.map((s) => ({ ...s, items: s.items.filter((it) => (!it.owner || isOwner) && allowed(it.href.split(/[?#]/)[0])) })).filter((s) => s.items.length > 0);
+}

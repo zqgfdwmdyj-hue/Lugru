@@ -153,10 +153,11 @@ export type TenantSettings = {
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };
 
+export type Favorite = { href: string; label: string };
 /** Persönliche Einstellungen (memberships.prefs). */
 export type MemberPrefs = {
   /** Favoriten in der Navigation und auf der Startseite (Pfad mit Abfrage, Bezeichnung). */
-  favorites?: { href: string; label: string }[];
+  favorites?: Favorite[];
   /** Kalender, die auf der Startseite nicht erscheinen sollen (z. B. private). */
   hiddenCalendars?: string[];
 };
