@@ -109,7 +109,7 @@ let nochmal = false;
 export function speichern() {
   if (!zustand.reise) return;
   lokalSichern(zustand.reise, true);
-  status("Ungespeichert …");
+  status("Speichert gleich …", "wartet");
   clearTimeout(speicherTimer);
   speicherTimer = setTimeout(jetztSpeichern, 700);
 }
@@ -121,12 +121,13 @@ async function jetztSpeichern() {
   }
   speichertGerade = true;
   const reise = zustand.reise;
+  status("Speichert …", "laeuft");
   try {
     const antwort = await anfrage(`/api/reisen/${reise.id}`, { method: "PUT", body: reise });
     reise.version = antwort.version;
     reise.geaendert = antwort.geaendert;
     lokalSichern(reise, false);
-    status("Gespeichert ✓");
+    status("✓ Gespeichert", "ok");
   } catch (e) {
     if (e.status === 409) {
       const aktuell = e.daten?.aktuell;
@@ -139,9 +140,9 @@ async function jetztSpeichern() {
         nochmal = true;
       }
     } else if (e.status === 401 || e.status === 403 || e.status === 404) {
-      status(e.message, true);
+      status(`⚠️ Fehler beim Speichern: ${e.message}`, "fehler");
     } else {
-      status("Offline – wird lokal gehalten und später gespeichert", true);
+      status("⚠️ Offline – auf dem Gerät gesichert, wird nachgeholt", "fehler");
       setTimeout(() => speichern(), 15_000);
     }
   } finally {
@@ -153,12 +154,23 @@ async function jetztSpeichern() {
   }
 }
 
-export function status(text, warnung = false) {
+/** Speicherstatus im Kopf: „wartet“, „laeuft“, „ok“, „fehler“ (true = Warnung, sonst Hinweis). */
+export function status(text, stufe = false) {
   const el = $("#speicherStatus");
   if (!el) return;
+  const art = stufe === true ? "fehler" : stufe || "info";
   el.textContent = text;
-  el.classList.toggle("warnung", warnung);
+  el.dataset.stufe = art;
+  el.classList.toggle("warnung", art === "fehler");
+  zustand.ungespeichert = art === "wartet" || art === "laeuft" || (art === "fehler" && text.startsWith("⚠️"));
 }
+
+// Nicht gespeicherte Änderungen: vor dem Schließen nachfragen
+window.addEventListener("beforeunload", (e) => {
+  if (!zustand.ungespeichert) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
 
 export async function beitraegeLaden() {
   if (!zustand.reise) return;

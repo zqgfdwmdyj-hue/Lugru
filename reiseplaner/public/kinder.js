@@ -13,7 +13,9 @@ import { geschichteBox, stimmeBox, rankingBox, kreativSeite, postkarteZeichnen, 
 import { LAENDER, landFuer, SPRACHEN, WOERTER, schatzAufgaben, RAETSEL, WITZE, ICH_SEHE_FARBEN, WER_FINDET, PANTOMIME, ABZEICHEN, packBild, mischen } from "./kinderdaten.js";
 
 const BILD = { tauchen: "🤿", schnorcheln: "🐠", strand: "🏖️", boot: "⛵", natur: "🥾", sport: "🏄", stadt: "🏛️", tiere: "🐒", kultur: "🎭", essen: "🍽️", bord: "🛳️", ausflug: "🗺️", tickets: "🎟️", park: "🎢", ski: "⛷️", kinderclub: "🧒" };
-const SEITEN = { heute: "☀️ Heute", flughafen: "✈️ Flughafen", pass: "🛂 Pass & Abzeichen", entdecken: "🔭 Entdecken", spiele: "🎲 Spiele", tagebuch: "📔 Tagebuch", kreativ: "🎨 Basteln & Sammeln", abend: "🌙 Abend", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
+const SEITEN = { heute: "☀️ Heute", entdecken: "🔭 Entdecken", spiele: "🎲 Spielen", tagebuch: "📔 Mein Tagebuch", flughafen: "✈️ Flughafen", pass: "🛂 Pass & Abzeichen", kreativ: "🎨 Basteln & Sammeln", abend: "🌙 Abend", sachen: "🎒 Meine Sachen", eltern: "👨‍👩‍👧 Für Eltern" };
+/** Die vier Hauptseiten für Kinder – alles andere unter „Mehr“. */
+const HAUPTSEITEN = ["heute", "entdecken", "spiele", "tagebuch"];
 const STIMMUNGEN = ["😄", "🙂", "😐", "🙁", "😢"];
 
 // ---------- Kennzahlen, Stempel, Abzeichen ----------
@@ -82,12 +84,14 @@ function wo(r, datum) {
     const anteil = (tageZwischen(vorher.datum, datum) + 0.5) / Math.max(1, tageZwischen(vorher.datum, naechster.datum));
     pos = { lat: vorher.lat + (naechster.lat - vorher.lat) * Math.min(anteil, 0.9), lng: vorher.lng + (naechster.lng - vorher.lng) * Math.min(anteil, 0.9) };
   } else pos = vorher ?? orte[0];
-  return { orte, pos, naechster: naechster ?? null, km: naechster ? Math.round(entfernungKm(pos, naechster)) : null, aufSee: heuteTag ? istSeetag(heuteTag) : false };
+  // Vor bzw. nach der Reise ist man (noch) nicht dort
+  const phase = datum < orte[0].datum ? "vorher" : datum > orte.at(-1).datum ? "nachher" : "unterwegs";
+  return { orte, pos, phase, naechster: phase === "unterwegs" ? naechster ?? null : null, km: phase === "unterwegs" && naechster ? Math.round(entfernungKm(pos, naechster)) : null, aufSee: heuteTag ? istSeetag(heuteTag) : false };
 }
 
 function karteSvg(r) {
   const w = wo(r, heute());
-  if (!w || w.orte.length < 2) return w ? `<p class="kind-text">📍 ${esc(w.pos.name ?? "")}</p>` : "";
+  if (!w || w.orte.length < 2) return w ? `<p class="kind-text">${w.phase === "vorher" ? "🧳 Hier startet eure Reise:" : w.phase === "nachher" ? "🏠 Hier wart ihr:" : "📍"} ${esc(w.pos.name ?? "")}</p>` : "";
   const lats = w.orte.map((o) => o.lat);
   const lngs = w.orte.map((o) => o.lng);
   const [s, n, west, ost] = [Math.min(...lats), Math.max(...lats), Math.min(...lngs), Math.max(...lngs)];
@@ -110,7 +114,7 @@ function karteSvg(r) {
     }).join("")}
     <text x="${sx.toFixed(1)}" y="${(sy + 6).toFixed(1)}" font-size="42" text-anchor="middle">${schiff}</text>
   </svg>
-  <p class="kind-text">${w.aufSee ? "🌊 Wir sind mitten auf dem Meer!" : `📍 Wir sind in <strong>${esc(w.pos.name ?? "")}</strong>.`}${w.naechster ? ` Bis <strong>${esc(w.naechster.name)}</strong> sind es noch ca. <strong>${w.km.toLocaleString("de-DE")} km</strong>.` : ""}</p>`;
+  <p class="kind-text">${w.phase === "vorher" ? `🧳 Hier startet eure Reise: <strong>${esc(w.orte[0].name ?? "")}</strong>. Die grünen Punkte zeigen später, wo ihr schon wart.` : w.phase === "nachher" ? "🏠 Die Reise ist vorbei – hier wart ihr überall!" : w.aufSee ? "🌊 Wir sind mitten auf dem Meer!" : `📍 Wir sind in <strong>${esc(w.pos.name ?? "")}</strong>.`}${w.naechster ? ` Bis <strong>${esc(w.naechster.name)}</strong> sind es noch ca. <strong>${w.km.toLocaleString("de-DE")} km</strong>.` : ""}</p>`;
 }
 
 // ---------- Türchen vor der Reise ----------
@@ -189,7 +193,7 @@ function seiteHeute(r) {
   let gross = "";
   if (c.phase === "leer") gross = `<div class="kind-gross">🗺️</div><p>Noch keine Reisetage eingetragen.</p>`;
   else if (c.phase === "vorher") gross = `<div class="kind-gross">${c.tage}</div><p class="kind-text">${c.tage === 1 ? "Nur noch <strong>einmal</strong> schlafen!" : `Noch <strong>${c.tage}</strong> Mal schlafen bis zur Reise!`}</p>`;
-  else if (c.phase === "unterwegs") gross = `<div class="kind-gross">Tag ${c.tagNr}</div><p class="kind-text">von ${c.tageGesamt} Tagen – noch ${c.tage} ${c.tage === 1 ? "Tag" : "Tage"} Urlaub!</p>`;
+  else if (c.phase === "unterwegs") gross = `<div class="kind-gross">Tag ${c.tagNr}</div><p class="kind-text">von ${c.tageGesamt} ${c.tageGesamt === 1 ? "Tag" : "Tagen"} – noch ${c.tage} ${c.tage === 1 ? "Tag" : "Tage"} Urlaub!</p>`;
   else gross = `<div class="kind-gross">🏠</div><p class="kind-text">Die Reise ist vorbei – schau dir deinen Pass und dein Tagebuch an!</p>`;
   const land = landFuer(tag);
   const u = tag ? unterkunftAm(tag.datum) : null;
@@ -205,7 +209,7 @@ function seiteHeute(r) {
       ${zimmer.length ? `<p class="kind-text">🛏️ ${u.id === "schiff" ? "Meine Kabine" : "Mein Zimmer"}: <strong>${zimmer.map((z) => esc(z.nummer || "?")).join(", ")}</strong>${zimmer[0].deck ? ` (${u.id === "schiff" ? "Deck" : "Etage"} ${esc(zimmer[0].deck)})` : ""}</p>` : ""}
       ${land ? `<p class="kind-text">${land.flagge} „Hallo“ heißt hier <strong>${esc(WOERTER[land.sprache]?.[0]?.[1] ?? "Hallo")}</strong> – <button class="link" data-aktion="kind-seite" data-seite="entdecken">mehr über ${esc(land.name)} →</button></p>` : ""}
     </div>` : ""}
-    <div class="karte-box"><h2>🗺️ Wo sind wir?</h2>${karteSvg(r)}</div>
+    <div class="karte-box"><h2>🗺️ ${c.phase === "vorher" ? "Unsere Route" : c.phase === "nachher" ? "Hier wart ihr" : "Wo sind wir?"}</h2>${karteSvg(r)}</div>
     ${zahlenSpassBox(r)}`;
 }
 
@@ -216,7 +220,7 @@ function seitePass(r) {
   const ab = ABZEICHEN.map((a) => ({ ...a, hat: verdient(a, p) }));
   return `
     <div class="karte-box kinderpass" id="kinderpass">
-      <div class="pass-kopf"><span class="pass-adler">🛂</span><div><h2>Reisepass von ${esc(vorname(p))}</h2><p class="leise">${esc(r.name)} · ${anzahl} von ${stempel.length} Stempeln</p></div></div>
+      <div class="pass-kopf"><span class="pass-adler">🛂</span><div><h2>Reisepass von ${esc(vorname(p))}</h2><p class="leise">${esc(r.name)} · ${anzahl} von ${stempel.length} ${stempel.length === 1 ? "Stempel" : "Stempeln"}</p></div></div>
       <div class="stempelseite">${stempel.map(stempelSvg).join("") || `<p class="leise">Noch keine Orte eingetragen.</p>`}</div>
       <div class="zeile keindruck"><button class="knopf" data-aktion="pass-drucken">🖨️ Pass drucken</button></div>
     </div>
@@ -785,7 +789,9 @@ export function kinderAnsicht() {
   if (seite === "flughafen") setTimeout(bordkarteZeichnen, 0);
   return `<div class="kinder">
     ${ks.length > 1 ? `<div class="kindwahl">${ks.map((k) => `<button class="kindknopf ${k.id === p?.id ? "an" : ""}" data-aktion="kind-waehlen" data-id="${esc(k.id)}">${esc(vorname(k))}</button>`).join("")}</div>` : ""}
-    <nav class="kinderseiten">${Object.entries(sichtbar).map(([k, t]) => `<button class="${k === seite ? "an" : ""}" data-aktion="kind-seite" data-seite="${k}">${t}</button>`).join("")}</nav>
+    <nav class="kinderseiten haupt">${HAUPTSEITEN.map((k) => `<button class="${k === seite ? "an" : ""}" data-aktion="kind-seite" data-seite="${k}">${sichtbar[k]}</button>`).join("")}</nav>
+    <details class="kindermehr" ${HAUPTSEITEN.includes(seite) ? "" : "open"}><summary>➕ Mehr: ${Object.keys(sichtbar).filter((k) => !HAUPTSEITEN.includes(k)).map((k) => sichtbar[k].split(" ")[0]).join(" ")}</summary>
+      <nav class="kinderseiten mehr">${Object.entries(sichtbar).filter(([k]) => !HAUPTSEITEN.includes(k)).map(([k, t]) => `<button class="${k === seite ? "an" : ""}" data-aktion="kind-seite" data-seite="${k}">${t}</button>`).join("")}</nav></details>
     ${inhalt}
   </div>`;
 }

@@ -9,6 +9,20 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
 
 ## Funktionen
 
+**Aufbau**
+- Sechs Bereiche je Reise: **Übersicht** (Status, nächste Termine, offene Aufgaben), **Reiseplan**
+  (Tage & Ausflüge, Route, Unterkünfte, Flug), **Vorbereitung**, **Unterwegs**, **Kosten**
+  (Reisekosten & Zahlungen, Urlaubskasse/Bordkonto & Abrechnung) und **Erinnerungen**.
+- **⚙️ Reise verwalten**: Reisende & Zugänge, Import & Sicherung, Name/Art/Freigabe – Löschen nur im
+  eingeklappten Gefahrenbereich mit Namensbestätigung.
+- **🌍 Weltkarte** oben für das ganze Konto; **🧒 Kindermodus** als eigene Oberfläche ohne
+  Erwachsenen-Navigation und Karte.
+- Die Karte erscheint nur im Reiseplan – umschaltbar *Liste / Geteilt / Karte*, je Gerät gemerkt.
+- Prüfungen: leere Preise sind **„Preis offen“** (eine 0 ist kostenlos) und Summen weisen darauf hin;
+  **mögliche Dubletten** und **Buchungskonflikte** (zeitgleich gebucht, beide Alternativen gebucht)
+  werden angezeigt, aber nie automatisch zusammengeführt; Puffer zeigen ihren Rechenweg und
+  kennzeichnen Annahmen (z. B. fehlendes „Alle an Bord“).
+
 **Planen**
 - Reisearten: Kreuzfahrt (Häfen mit Ankunft, Abfahrt, „Alle an Bord“, Seetage), Hotel-/Strandurlaub
   und Rundreise (Tage an Land; Startpunkt der Ausflüge ist das gebuchte Hotel).
@@ -69,8 +83,11 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
   Ausflügen – klingelt auch offline auf See und bei geschlossener App. Zusätzlich Hinweise in der App.
 - **Rückweg prüfen**: Standort (GPS) → Weg zum Schiff → „spätestens um … losfahren“ (mit Reserve,
   ohne Netz als Schätzung über die Luftlinie).
-- **Bordkonto** mit Budget (je Tag, je Kategorie) und **Kosten teilen**: wer hat bezahlt, für wen –
-  die App rechnet aus, wer wem wie viel schuldet (Kinder zahlen nicht mit, Dollar werden umgerechnet).
+- **Tickets & Treffpunkte** des Tages: Buchungsnummern, Treffpunkt mit Wegbeschreibung, Sitz/Terminal.
+- Unter **Kosten**: **Bordkonto/Urlaubskasse** mit Budget (je Tag, je Kategorie) und **Kosten teilen** –
+  wer hat bezahlt, für wen, wer schuldet wem (Kinder zahlen nicht mit, Dollar werden umgerechnet).
+  Reisekosten zeigen *gebucht / bezahlt / noch offen*; Ausgaben lassen sich mit einer Buchung
+  verknüpfen und zählen dann als bezahlt statt doppelt.
 - **Abstimmen** an jedem Ausflug: 👍/👎 je Person, Sortierung „Beliebteste“.
 - **KI-Ausflug-Check** („✨ Rechtzeitig zurück?“): Claude liest die Angebotsseite, prüft Dauer, Treffpunkt
   und Rückweg gegen „Alle an Bord“ und meldet 🟢/🟡/🔴 mit Risiken und Quellen.
@@ -107,9 +124,11 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
 - **„Heute vor … Jahren“**: Erinnerung an frühere Reisetage mit Fotos.
 
 **Weltkarte & öffentliches Reisetagebuch**
-- Reiter „🌍 Weltkarte“: rote Stecknadeln für alle Orte, an denen ihr wart (vergangene Reisetage aus allen
+- „🌍 Weltkarte“ (oben, für das ganze Konto): rote Stecknadeln für alle Orte, an denen ihr wart (vergangene Reisetage aus allen
   Reisen plus von Hand nachgetragene frühere Urlaube), Liste nach Ländern/Inseln – ein Klick und die Karte
   fliegt hin. Auch beim Planen und unter „Route & Häfen“ fliegt die Karte zum gewählten Ort.
+- **Vorschau vor dem Teilen** (Reise verwalten → Reise & Freigabe): zeigt genau, was im öffentlichen
+  Tagebuch erscheinen würde – nur für Planer/innen sichtbar.
 - `/tagebuch` ist **ohne Anmeldung** erreichbar: Karte mit roten Stecknadeln, Länder & Inseln, je
   freigegebener Reise die besuchten Orte, gebuchten Ausflüge und Unterkünfte mit Bewertungen und Fotos,
   Tauchgänge. Freigabe je Reise durch Planer/innen („Im öffentlichen Reisetagebuch zeigen“). Es erscheinen
@@ -127,7 +146,8 @@ Läuft **getrennt vom Seller-System**: eigener Container, eigener Port, eigene D
 **KI (Claude)**
 - **Plan einlesen**: Text aus ChatGPT einfügen oder PDF, Word, Text, Screenshots hochladen – die KI
   erkennt Tage/Häfen, Hotels, Ausflüge, Preise, Zeiten und weitere Kosten. Vorschau vor dem
-  Übernehmen; erneutes Einlesen ergänzt die Reise, statt sie zu verdoppeln.
+  Übernehmen mit neuen Einträgen, ergänzten Feldern und Posten ohne Preis; ähnliche Einträge werden
+  gegenübergestellt (aktualisieren / zusätzlich anlegen / überspringen) – nie still zusammengeführt.
 - **Assistent** (unten rechts „✨ KI“, an jedem Ausflug „KI fragen“): kennt die Reisedaten,
   kann im Web suchen, hinterfragt Puffer/Kosten/Kinder-Tauglichkeit und schlägt Ausflüge,
   Änderungen, Tage und Hotels vor, die man mit einem Klick übernimmt.

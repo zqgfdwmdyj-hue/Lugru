@@ -108,11 +108,11 @@ function bewertungDialog(zielArt, zielId) {
     ${fotoFeld(b.fotos ?? [], b.fotosPrivat ?? [])}
     <label class="haken"><input type="checkbox" name="privat" ${b.privat ? "checked" : ""}> 🔒 Ganze Bewertung nur für Mitreisende (auch Sterne und Kommentar nie teilen)</label>
     <div class="zeile">
-      ${b.id ? `<button type="button" class="knopf gefahr" data-aktion="bewertung-loeschen" data-id="${esc(b.id)}">Löschen</button>` : ""}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${b.id ? `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="bewertung-loeschen" data-id="${esc(b.id)}">Löschen</button></details>` : ""}
   </form>`);
   $("#bewertungForm").addEventListener("submit", async (e) => {
     const f = new FormData(e.target);
@@ -199,11 +199,11 @@ function tauchgangDialog(id, vorlage = {}) {
     ${fotoFeld(t.fotos ?? [], t.fotosPrivat ?? [])}
     <label class="haken"><input type="checkbox" name="privat" ${t.privat ? "checked" : ""}> 🔒 Ganzer Tauchgang nur für Mitreisende – nicht teilbar</label>
     <div class="zeile">
-      ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="tauchgang-loeschen" data-id="${esc(t.id)}">Löschen</button>`}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${neu ? "" : `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="tauchgang-loeschen" data-id="${esc(t.id)}">Löschen</button></details>`}
   </form>`, true);
   $("#tauchForm").addEventListener("submit", async (e) => {
     const f = Object.fromEntries(new FormData(e.target));
@@ -447,11 +447,11 @@ aktionen["album-zuordnen"] = (el) => {
     <label>Tag<select name="hafenId"><option value="">– ohne Tag –</option>${haefen().map((h) => `<option value="${esc(h.id)}" ${f.hafenId === h.id ? "selected" : ""}>${esc(datumText(h.datum))} – ${stationsArt(h) === "seetag" ? "Seetag" : esc(h.name)}</option>`).join("")}</select></label>
     <label>Ausflug<select name="ausflugId"><option value="">– keiner –</option>${zustand.reise.ausfluege.filter((a) => a.status !== "verworfen").map((a) => `<option value="${esc(a.id)}" ${f.ausflugId === a.id ? "selected" : ""}>${esc(datumText(hafenVon(a.hafenId)?.datum))} ${esc(a.titel)}</option>`).join("")}</select></label>
     <div class="zeile">
-      ${darf ? `<button type="button" class="knopf gefahr" data-aktion="album-loeschen" data-id="${esc(f.id)}">Foto löschen</button>` : ""}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok" ${darf ? "" : "disabled"}>Speichern</button>
     </div>
+    ${darf ? `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="album-loeschen" data-id="${esc(f.id)}">Foto löschen</button></details>` : ""}
   </form>`);
   const form = $("#albumForm");
   form.ausflugId.addEventListener("change", () => {

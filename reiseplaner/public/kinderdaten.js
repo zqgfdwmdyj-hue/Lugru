@@ -237,21 +237,25 @@ export function geschichteOhneKi({ kinder, ort, seetag, tier, erlebnis, schiff }
 /** Bekannte Schiffslängen in Metern (Mein Schiff). */
 export const SCHIFFSLAENGEN = [[/mein schiff (1|2|7)\b/i, 316], [/mein schiff (3|4|5|6)\b/i, 295], [/mein schiff/i, 300]];
 
+/** „1 Stunde“, „2 Stunden“ – Einzahl/Mehrzahl nach der gerundeten Zahl. */
+export const anzahlText = (n, eins, viele) => `${Math.round(n).toLocaleString("de-DE")} ${Math.round(n) === 1 ? eins : viele}`;
+
 export function zahlenSpass({ km, tage, orte, laender, schiff }) {
   const fakten = [];
   const zahl = (n) => Math.round(n).toLocaleString("de-DE");
+  const mz = anzahlText;
   if (km > 0) {
-    fakten.push(`🛳️ Wir sind schon ca. <strong>${zahl(km)} km</strong> unterwegs – das ist ${km > 600 ? `${(km / 612).toFixed(1).replace(".", ",")}-mal von Hamburg nach München` : `${zahl(km / 0.4)} Runden um einen Sportplatz`}!`);
-    fakten.push(`🚶 Zu Fuß bräuchtest du dafür etwa <strong>${zahl(km / 25)} Tage</strong> (25 km pro Tag).`);
-    fakten.push(`🐆 Ein Gepard (110 km/h) wäre <strong>${zahl(km / 110)} Stunden</strong> gerannt – ohne Pause!`);
-    fakten.push(`🐢 Eine Meeresschildkröte (ca. 2 km/h) bräuchte <strong>${zahl(km / 48)} Tage</strong> dafür.`);
+    fakten.push(`🛳️ Wir sind schon ca. <strong>${zahl(km)} km</strong> unterwegs – das ist ${km > 600 ? `${(km / 612).toFixed(1).replace(".", ",")}-mal von Hamburg nach München` : mz(km / 0.4, "Runde", "Runden") + " um einen Sportplatz"}!`);
+    fakten.push(`🚶 Zu Fuß bräuchtest du dafür etwa <strong>${mz(km / 25, "Tag", "Tage")}</strong> (25 km pro Tag).`);
+    fakten.push(`🐆 Ein Gepard (110 km/h) wäre <strong>${mz(km / 110, "Stunde", "Stunden")}</strong> gerannt – ohne Pause!`);
+    fakten.push(`🐢 Eine Meeresschildkröte (ca. 2 km/h) bräuchte <strong>${mz(km / 48, "Tag", "Tage")}</strong> dafür.`);
   }
   const laenge = SCHIFFSLAENGEN.find(([re]) => re.test(schiff ?? ""))?.[1];
   if (laenge) {
     fakten.push(`📏 Unser Schiff ist etwa <strong>${laenge} m</strong> lang – so lang wie <strong>${(laenge / 105).toFixed(1).replace(".", ",")} Fußballfelder</strong> hintereinander!`);
-    fakten.push(`🚌 Das sind ungefähr <strong>${zahl(laenge / 12)} Busse</strong> in einer Reihe.`);
+    fakten.push(`🚌 Das sind ungefähr <strong>${mz(laenge / 12, "Bus", "Busse")}</strong> in einer Reihe.`);
   }
-  if (tage) fakten.push(`📅 Die Reise dauert <strong>${tage} Tage</strong> – das sind <strong>${zahl(tage * 24)} Stunden</strong> Urlaub!`);
-  if (orte) fakten.push(`📍 <strong>${orte}</strong> Orte${laender ? ` in <strong>${laender}</strong> Ländern` : ""} – mehr als manche Leute in ihrem ganzen Leben sehen.`);
+  if (tage) fakten.push(`📅 Die Reise dauert <strong>${mz(tage, "Tag", "Tage")}</strong> – das sind <strong>${zahl(tage * 24)} Stunden</strong> Urlaub!`);
+  if (orte) fakten.push(`📍 <strong>${mz(orte, "Ort", "Orte")}</strong>${laender ? ` in <strong>${laender === 1 ? "einem Land" : `${laender} Ländern`}</strong>` : ""}${orte > 2 ? " – mehr als manche Leute in ihrem ganzen Leben sehen." : "!"}`);
   return fakten;
 }

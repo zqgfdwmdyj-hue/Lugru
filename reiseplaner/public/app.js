@@ -1135,11 +1135,11 @@ function verbindungDialog(id) {
     <fieldset><legend>Wer reist mit?</legend><div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="personen" value="${esc(p.id)}" ${(v.personen ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div></fieldset>
     <label>Notiz<textarea name="notiz" rows="2">${esc(v.notiz ?? "")}</textarea></label>
     <div class="zeile">
-      ${id ? `<button type="button" class="knopf gefahr" data-aktion="verbindung-loeschen" data-id="${esc(id)}">Löschen</button>` : ""}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${id ? `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="verbindung-loeschen" data-id="${esc(id)}">Löschen</button></details>` : ""}
   </form>`, true);
   const form = $("#verbindungForm");
   if (!v.vonOrt && v.von) $(".ortsq", form).value = v.von;
@@ -1237,37 +1237,54 @@ aktionen["sprit-uebernehmen"] = () => {
   alles();
 };
 
+const IMPORT_ARTEN = {
+  text: ["📝", "Text", "Reiseplan, ChatGPT-Plan, kopierte Ausflugsliste"],
+  datei: ["📎", "Datei / Foto", "PDF, Word, Screenshot, Buchungsbestätigung"],
+  tabelle: ["📊", "Tabelle", "CSV aus Excel oder Numbers"],
+  sicherung: ["💾", "Sicherung", "Ganze Reise speichern oder laden, drucken"],
+};
+
 function datenAnsicht() {
+  const art = zustand.importArt;
   const hs = haefen().filter((h) => stationsArt(h) !== "seetag");
-  return `
-    ${kiImportBox()}
-    <div class="karte-box">
-      <h3>Schiffsausflüge übernehmen (ohne KI)</h3>
-      <p class="leise klein">In der Mein-Schiff-App bzw. auf meinschiff.com die Ausflüge eines Hafens markieren, kopieren und hier einfügen.
-      Jeder Ausflug in einem eigenen Absatz (Leerzeile dazwischen); erste Zeile = Titel. Erkannt werden Preise
-      (Erwachsene/Kinder), Dauer („ca. 4 Std.“) und Beginn („09:30 Uhr“). Du siehst vor dem Übernehmen eine Vorschau.</p>
-      <label>Tag <select id="importHafen">${hs.map((h) => `<option value="${esc(h.id)}" ${h.id === zustand.hafenId ? "selected" : ""}>${esc(datumText(h.datum))} – ${esc(h.name)}</option>`).join("")}</select></label>
-      <textarea id="importText" rows="8" placeholder="Inselrundfahrt mit Weinprobe&#10;ca. 4,5 Std. · ab 09:00 Uhr&#10;Erwachsene 69 € · Kinder 49 €&#10;&#10;Altstadt zu Fuß&#10;ca. 2 Std.&#10;39 €"></textarea>
-      <div class="zeile"><button class="knopf leise" data-aktion="import-vorschau">Vorschau</button></div>
-      <div id="importVorschau"></div>
-    </div>
-    <div class="karte-box">
-      <h3>Tabelle (CSV, z. B. aus Excel)</h3>
-      <p class="leise klein">Spalten (Semikolon getrennt): <code>Datum;Hafen;Titel;Anbieter;Status;Beginn;Dauer (Min);Preis Erw;Preis Kind;Gruppenpreis;Link;Notiz</code>. Tage werden über Datum + Name zugeordnet.</p>
-      <div class="zeile">
-        <button class="knopf leise" data-aktion="csv-export">Ausflüge als CSV</button>
-        <label class="knopf leise">CSV importieren<input type="file" accept=".csv,text/csv" id="csvDatei" hidden></label>
-      </div>
-    </div>
-    <div class="karte-box">
-      <h3>Sicherung</h3>
-      <div class="zeile">
-        <button class="knopf leise" data-aktion="json-export">Ganze Reise herunterladen (JSON)</button>
-        <label class="knopf leise">Reise aus JSON laden<input type="file" accept=".json,application/json" id="jsonDatei" hidden></label>
-        <button class="knopf leise" data-aktion="drucken">Drucken</button>
-      </div>
-    </div>`;
+  const wahl = `<div class="karte-box"><h3>Was möchtest du einlesen?</h3>
+    <div class="importwahl">${Object.entries(IMPORT_ARTEN).map(([k, [sym, titel, text]]) => `<button class="importart ${art === k ? "aktiv" : ""}" data-aktion="import-art" data-art="${k}"><span class="sym">${sym}</span><strong>${titel}</strong><span class="klein leise">${text}</span></button>`).join("")}</div></div>`;
+  if (!art) return wahl;
+  const teile = {
+    text: () => `${kiImportBox()}
+      <details class="karte-box klappe"><summary><h3>Schiffsausflüge einfügen (ohne KI)</h3></summary>
+        <p class="leise klein">In der Mein-Schiff-App bzw. auf meinschiff.com die Ausflüge eines Hafens markieren, kopieren und hier einfügen. Jeder Ausflug in einem eigenen Absatz (Leerzeile dazwischen); erste Zeile = Titel. Erkannt werden Preise (Erwachsene/Kinder), Dauer („ca. 4 Std.“) und Beginn („09:30 Uhr“).</p>
+        <label>Tag <select id="importHafen">${hs.map((h) => `<option value="${esc(h.id)}" ${h.id === zustand.hafenId ? "selected" : ""}>${esc(datumText(h.datum))} – ${esc(h.name)}</option>`).join("")}</select></label>
+        <textarea id="importText" rows="8" placeholder="Inselrundfahrt mit Weinprobe&#10;ca. 4,5 Std. · ab 09:00 Uhr&#10;Erwachsene 69 € · Kinder 49 €&#10;&#10;Altstadt zu Fuß&#10;ca. 2 Std.&#10;39 €"></textarea>
+        <div class="zeile"><button class="knopf leise" data-aktion="import-vorschau">Vorschau</button></div>
+        <div id="importVorschau"></div>
+      </details>`,
+    datei: () => kiImportBox(),
+    tabelle: () => `<div class="karte-box">
+        <h3>Tabelle (CSV, z. B. aus Excel)</h3>
+        <p class="leise klein">Spalten (Semikolon getrennt): <code>Datum;Hafen;Titel;Anbieter;Status;Beginn;Dauer (Min);Preis Erw;Preis Kind;Gruppenpreis;Link;Notiz</code>. Tage werden über Datum + Name zugeordnet. Vor dem Übernehmen siehst du eine Vorschau mit möglichen Dubletten.</p>
+        <div class="zeile">
+          <label class="knopf">CSV wählen<input type="file" accept=".csv,text/csv" id="csvDatei" hidden></label>
+          <button class="knopf leise" data-aktion="csv-export">Ausflüge als CSV herunterladen</button>
+        </div>
+        <div id="csvVorschau"></div>
+      </div>`,
+    sicherung: () => `<div class="karte-box">
+        <h3>Sicherung</h3>
+        <p class="leise klein">Die Sicherung enthält die ganze Reise (ohne Fotos und Dateien). Beim Laden entsteht immer eine <strong>neue Kopie</strong> – die bestehende Reise bleibt unverändert.</p>
+        <div class="zeile">
+          <button class="knopf" data-aktion="json-export">Reise herunterladen (JSON)</button>
+          <label class="knopf leise">Reise aus JSON laden<input type="file" accept=".json,application/json" id="jsonDatei" hidden></label>
+          <button class="knopf leise" data-aktion="drucken">Drucken</button>
+        </div>
+      </div>`,
+  };
+  return `${wahl}${teile[art]()}`;
 }
+aktionen["import-art"] = (el) => {
+  zustand.importArt = zustand.importArt === el.dataset.art ? null : el.dataset.art;
+  alles();
+};
 
 // ---------- Karte ----------
 
@@ -1451,11 +1468,11 @@ function hafenDialog(id) {
     ${ortsSuche("ort", hatKoord(h) ? { lat: h.lat, lng: h.lng, name: h.ortName ?? h.name } : null)}</div>
     <label>Notiz<textarea name="notiz" rows="2">${esc(h.notiz ?? "")}</textarea></label>
     <div class="zeile">
-      ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="hafen-loeschen" data-id="${esc(h.id)}">Löschen</button>`}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${neu ? "" : `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="hafen-loeschen" data-id="${esc(h.id)}">Löschen</button></details>`}
   </form>`);
   const form = $("#hafenForm");
   if (!hatKoord(h) && h.name) $(".ortsq", form).value = h.name;
@@ -1840,7 +1857,10 @@ function importVorschau() {
     return;
   }
   el.innerHTML = `<div class="tabelle"><table><thead><tr><th></th><th>Titel</th><th>Beginn</th><th>Dauer</th><th class="zahl">Erw.</th><th class="zahl">Kind</th></tr></thead><tbody>
-    ${importListe.map((a, i) => `<tr><td><input type="checkbox" checked data-import="${i}"></td><td>${esc(a.titel)}${a.code ? ` <span class="leise klein">${esc(a.code)}</span>` : ""}</td><td>${esc(a.beginn || "–")}</td><td>${dauerText(a.dauerMin)}</td><td class="zahl">${a.preisErw != null ? geld(a.preisErw) : "–"}</td><td class="zahl">${a.preisKind != null ? geld(a.preisKind) : "–"}</td></tr>`).join("")}
+    ${importListe.map((a, i) => {
+      const doppelt = ausfluegeIn($("#importHafen")?.value).find((x) => titelAehnlich(x.titel, a.titel));
+      return `<tr><td><input type="checkbox" ${doppelt ? "" : "checked"} data-import="${i}"></td><td>${esc(a.titel)}${a.code ? ` <span class="leise klein">${esc(a.code)}</span>` : ""}${doppelt ? `<div class="klein warnung">🔁 Ähnlich wie „${esc(doppelt.titel)}“ – abgewählt</div>` : ""}</td><td>${esc(a.beginn || "–")}</td><td>${dauerText(a.dauerMin)}</td><td class="zahl">${a.preisErw != null ? geld(a.preisErw) : `<span class="preis-offen">offen</span>`}</td><td class="zahl">${a.preisKind != null ? geld(a.preisKind) : "–"}</td></tr>`;
+    }).join("")}
   </tbody></table></div>
   <p class="klein leise">Fehlt etwas oder stimmt nicht, kannst du es danach im Ausflug korrigieren.</p>
   <button class="knopf" data-aktion="import-uebernehmen">Ausgewählte übernehmen</button>`;
@@ -1898,42 +1918,61 @@ function csvZeilen(text) {
   return zeilen.filter((z) => z.some((x) => x.trim()));
 }
 
+let csvListe = [];
+/** CSV lesen und erst als Vorschau zeigen (neue Tage, mögliche Dubletten, Preise offen). */
 function csvImport(text) {
-  const [kopf, ...zeilen] = csvZeilen(text.replace(/^﻿/, ""));
+  const [kopf, ...zeilen] = csvZeilen(text.replace(/^\uFEFF/, ""));
   if (!kopf) return;
   const spalte = (name) => kopf.findIndex((k) => k.trim().toLowerCase().startsWith(name.toLowerCase()));
   const s = { datum: spalte("Datum"), hafen: spalte("Hafen"), titel: spalte("Titel"), anbieter: spalte("Anbieter"), status: spalte("Status"), beginn: spalte("Beginn"), dauer: spalte("Dauer"), erw: spalte("Preis Erw"), kind: spalte("Preis Kind"), gruppe: spalte("Gruppenpreis"), link: spalte("Link"), notiz: spalte("Notiz") };
   if (s.titel < 0) return alert("Spalte „Titel“ fehlt.");
   const r = zustand.reise;
-  let neu = 0;
+  csvListe = [];
   for (const z of zeilen) {
     const wert = (i) => (i >= 0 ? (z[i] ?? "").trim() : "");
     const titel = wert(s.titel);
     if (!titel) continue;
     const datum = wert(s.datum).replace(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/, (_, d, m, y) => `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`);
     const name = wert(s.hafen);
-    let h = r.haefen.find((x) => (datum ? x.datum === datum : true) && (!name || x.name.toLowerCase() === name.toLowerCase()));
-    if (!h && (datum || name)) {
-      h = { id: neueId(), datum, name: name || "Ort", art: istKreuzfahrt() ? "hafen" : "ort", ankunft: "", abfahrt: "", allesAnBord: "", lat: null, lng: null };
-      r.haefen.push(h);
-    }
-    if (!h) continue;
+    const tag = r.haefen.find((x) => (datum ? x.datum === datum : true) && (!name || x.name.toLowerCase() === name.toLowerCase()));
+    if (!tag && !datum && !name) continue;
     const anbieter = wert(s.anbieter).toLowerCase();
     const quelle = Object.entries(QUELLEN).find(([k, q]) => anbieter && (k === anbieter || q.name.toLowerCase() === anbieter))?.[0] ?? (anbieter ? "sonstige" : "schiff");
     const statusText = wert(s.status).toLowerCase();
     const st = Object.entries(STATUS).find(([k, t]) => k === statusText || t.toLowerCase() === statusText)?.[0] ?? "idee";
     const gruppe = zahl(wert(s.gruppe));
-    r.ausfluege.push({
-      id: neueId(), hafenId: h.id, titel, quelle, kategorie: "ausflug", status: st, beginn: wert(s.beginn), dauerMin: zahl(wert(s.dauer)),
-      preisArt: gruppe != null ? "gruppe" : "person", preisErw: zahl(wert(s.erw)), preisKind: zahl(wert(s.kind)), preisGruppe: gruppe,
-      link: sichereUrl(wert(s.link)), notiz: wert(s.notiz), interesse: 3, verkehr: "auto", teilnehmer: personen().map((p) => p.id),
+    const doppelt = tag ? ausfluegeIn(tag.id).find((x) => titelAehnlich(x.titel, titel)) : null;
+    csvListe.push({
+      datum, name, tagId: tag?.id ?? null, doppelt,
+      ausflug: { titel, quelle, kategorie: "ausflug", status: st, beginn: wert(s.beginn), dauerMin: zahl(wert(s.dauer)), preisArt: gruppe != null ? "gruppe" : "person", preisErw: zahl(wert(s.erw)), preisKind: zahl(wert(s.kind)), preisGruppe: gruppe, link: sichereUrl(wert(s.link)), notiz: wert(s.notiz), interesse: 3, verkehr: "auto", teilnehmer: personen().map((p) => p.id) },
     });
+  }
+  const el = $("#csvVorschau");
+  if (!csvListe.length) return (el.innerHTML = `<p class="leise">Keine Ausflüge erkannt.</p>`);
+  const neueTage = new Set(csvListe.filter((x) => !x.tagId).map((x) => `${x.datum}|${x.name}`)).size;
+  el.innerHTML = `<p class="klein"><strong>Vorschau:</strong> ${csvListe.length} Ausflüge${neueTage ? ` · ${neueTage} neue Tage` : ""} · ${csvListe.filter((x) => x.doppelt).length} mögliche Dubletten (abgewählt) · ${csvListe.filter((x) => x.ausflug.preisErw == null && x.ausflug.preisGruppe == null).length} ohne Preis</p>
+    <div class="tabelle"><table><tbody>${csvListe.map((x, i) => `<tr><td><input type="checkbox" data-csv="${i}" ${x.doppelt ? "" : "checked"}></td><td>${esc(x.ausflug.titel)}${x.doppelt ? `<div class="klein warnung">🔁 Ähnlich wie „${esc(x.doppelt.titel)}“</div>` : ""}</td><td class="klein">${esc(datumText(x.datum))} ${esc(x.name)}${x.tagId ? "" : ` <span class="leise">(neuer Tag)</span>`}</td><td class="klein">${esc(STATUS[x.ausflug.status])}</td><td class="zahl">${x.ausflug.preisGruppe != null ? geld(x.ausflug.preisGruppe) : x.ausflug.preisErw != null ? geld(x.ausflug.preisErw) : `<span class="preis-offen">offen</span>`}</td></tr>`).join("")}</tbody></table></div>
+    <button class="knopf" data-aktion="csv-uebernehmen">Ausgewählte übernehmen</button>`;
+}
+
+aktionen["csv-uebernehmen"] = () => {
+  const r = zustand.reise;
+  const gewaehlt = [...document.querySelectorAll("[data-csv]")].filter((c) => c.checked).map((c) => csvListe[Number(c.dataset.csv)]);
+  let neu = 0;
+  for (const x of gewaehlt) {
+    let h = x.tagId ? hafenVon(x.tagId) : r.haefen.find((t) => t.datum === x.datum && (!x.name || t.name.toLowerCase() === x.name.toLowerCase()));
+    if (!h) {
+      h = { id: neueId(), datum: x.datum, name: x.name || "Ort", art: istKreuzfahrt() ? "hafen" : "ort", ankunft: "", abfahrt: "", allesAnBord: "", lat: null, lng: null };
+      r.haefen.push(h);
+    }
+    r.ausfluege.push({ id: neueId(), hafenId: h.id, ...x.ausflug });
     neu++;
   }
   speichern();
-  alert(`${neu} Ausflüge importiert. Orte ohne Kartenpunkt bitte unter „${istKreuzfahrt() ? "Route & Häfen" : "Reiseverlauf"}“ ergänzen.`);
+  alert(`${neu} Ausflüge übernommen.${r.haefen.some((t) => stationsArt(t) !== "seetag" && !hatKoord(t)) ? ` Orte ohne Kartenpunkt bitte unter „${istKreuzfahrt() ? "Route & Häfen" : "Reiseverlauf"}“ ergänzen.` : ""}`);
+  $("#csvVorschau").innerHTML = "";
   alles();
-}
+};
 
 async function jsonImport(text) {
   let daten;

@@ -41,11 +41,11 @@ function zimmerDialog(id, unterkunft) {
     <fieldset><legend>Wer schläft hier?</legend><div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="personen" value="${esc(p.id)}" ${(z.personen ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div></fieldset>
     <label>Notiz<input name="notiz" value="${esc(z.notiz ?? "")}" placeholder="z. B. Verbindungstür zu 8125" maxlength="300"></label>
     <div class="zeile">
-      ${id ? `<button type="button" class="knopf gefahr" data-aktion="zimmer-loeschen" data-id="${esc(id)}">Löschen</button>` : ""}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${id ? `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="zimmer-loeschen" data-id="${esc(id)}">Löschen</button></details>` : ""}
   </form>`);
   $("#zimmerForm").addEventListener("submit", (e) => {
     const f = new FormData(e.target);
@@ -338,11 +338,11 @@ export function hotelDialog(id, vorlage = {}) {
     </fieldset>
     <label>Notiz<textarea name="notiz" rows="3">${esc(h.notiz ?? "")}</textarea></label>
     <div class="zeile">
-      ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="hotel-loeschen" data-id="${esc(h.id)}">Löschen</button>`}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${neu ? "" : `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="hotel-loeschen" data-id="${esc(h.id)}">Löschen</button></details>`}
   </form>`);
   const form = $("#hotelForm");
   if (!hatKoord(h) && h.name) $(".ortsq", form).value = `${h.name} ${h.ort ?? ""}`.trim();

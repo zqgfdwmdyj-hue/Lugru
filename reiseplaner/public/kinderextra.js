@@ -368,13 +368,13 @@ export function memoryBox() {
   if (!memory) memoryNeu();
   const fertig = memory.gefunden.size === memory.karten.length / 2;
   return `<div class="karte-box">
-    <div class="zeile"><h2>🃏 Memory</h2><span class="platz"></span><span class="klein">${memory.zuege} Züge</span><button class="knopf leise" data-aktion="memory-neu">Neu mischen</button></div>
+    <div class="zeile"><h2>🃏 Memory</h2><span class="platz"></span><span class="klein">${memory.zuege} ${memory.zuege === 1 ? "Zug" : "Züge"}</span><button class="knopf leise" data-aktion="memory-neu">Neu mischen</button></div>
     <p class="leise">Mit euren Urlaubsfotos und den Tieren der Reise.</p>
     <div class="memory">${memory.karten.map((k, i) => {
       const sichtbar = memory.offen.includes(i) || memory.gefunden.has(k.id);
       return `<button class="memory-karte ${sichtbar ? "auf" : ""} ${memory.gefunden.has(k.id) ? "gefunden" : ""}" data-aktion="memory" data-i="${i}" ${sichtbar ? "disabled" : ""}>${sichtbar ? k.html : "❓"}</button>`;
     }).join("")}</div>
-    ${fertig ? `<p class="kind-text">🎉 Geschafft in ${memory.zuege} Zügen!</p>` : ""}
+    ${fertig ? `<p class="kind-text">🎉 Geschafft in ${memory.zuege} ${memory.zuege === 1 ? "Zug" : "Zügen"}!</p>` : ""}
   </div>`;
 }
 aktionen["memory-neu"] = () => {
@@ -462,7 +462,7 @@ export function wimmelBox() {
     <div class="zeile"><h2>🔎 Wimmelbild</h2><span class="platz"></span><button class="knopf leise" data-aktion="wimmel-neu">Nächstes Bild</button></div>
     <p class="kind-text">Finde ${wimmel.name} ${wimmel.ziel}!</p>
     <div class="wimmel">${wimmel.felder.map((e, i) => `<button class="wimmel-feld ${wimmel.gefunden != null && e === wimmel.ziel ? "treffer" : ""}" data-aktion="wimmel" data-i="${i}">${e}</button>`).join("")}</div>
-    ${wimmel.gefunden != null ? `<p class="kind-text">🎉 Gefunden in ${wimmel.gefunden} Sekunden!</p>` : ""}
+    ${wimmel.gefunden != null ? `<p class="kind-text">🎉 Gefunden in ${wimmel.gefunden} ${wimmel.gefunden === 1 ? "Sekunde" : "Sekunden"}!</p>` : ""}
   </div>`;
 }
 aktionen["wimmel"] = (el) => {

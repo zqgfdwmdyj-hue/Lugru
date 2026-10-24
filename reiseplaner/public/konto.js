@@ -125,10 +125,18 @@ async function einladungZeigen(t, info, weiter) {
   }
   zeigeStart(`${kopf}
     ${formular("neuesKonto", `<input type="hidden" name="x">${FELD_NAME.replace('required', `required value="${esc(e.person)}"`)}${FELD_EMAIL}${FELD_PW_NEU}`, e.reise ? "Konto anlegen und beitreten" : "Konto anlegen",
-      `<p class="leise klein">Schon ein Konto? <button type="button" class="link" id="lieberAnmelden">Erst anmelden</button>, dann den Link erneut öffnen.</p>`)}`);
-  $("#lieberAnmelden").onclick = () => {
-    anmeldenZeigen(() => location.reload());
-  };
+      e.reise ? `<p class="leise klein">Schon ein Konto? <button type="button" class="link" id="lieberAnmelden">Anmelden</button> – die Einladung wird danach automatisch angenommen.</p>` : "")}`);
+  // Bestehendes Konto: nach der Anmeldung die Einladung direkt annehmen und zur Reise weiter
+  $("#lieberAnmelden")?.addEventListener("click", () => {
+    anmeldenZeigen(async () => {
+      try {
+        fertig(await anfrage(`/api/einladung/${t}`, { method: "POST", body: {} }));
+      } catch (err) {
+        alert(err.message);
+        location.href = "/";
+      }
+    });
+  });
   absenden("neuesKonto", async (d) => fertig(await anfrage(`/api/einladung/${t}`, { method: "POST", body: d })));
   return null;
 }

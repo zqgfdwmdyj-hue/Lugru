@@ -68,8 +68,10 @@ export function vorbereitungAnsicht() {
         <select data-aktion="pack-filter" aria-label="Für wen"><option value="">${fam ? "Gemeinsam + unsere Familie" : "Alle Einträge"}</option><option value="alle" ${filter === "alle" ? "selected" : ""}>Für alle gemeinsam</option>${fuerOptionen(filter, "–").replace('<option value="">–</option>', "")}</select>
       </div>
       ${pack.length ? `<div class="fortschritt"><span style="width:${Math.round((fertig / pack.length) * 100)}%"></span></div>` : ""}
-      <p class="leise klein">${fam ? "Einträge „für alle“ hakt jede Familie für sich ab – was ihr einpackt, gilt nicht für die anderen Familien." : "Gemeinsam für alle Mitreisenden – wer etwas einpackt, hakt es ab."} Vorschläge passend zur Reise:</p>
-      <div class="links"><button class="linkchip empfohlen" data-aktion="pack-auto" title="Alle ★-Vorlagen auf einmal, Pässe und Kinder-Sachen je Person">✨ Automatisch ergänzen</button>${Object.entries(PACKVORLAGEN).map(([k, v]) => `<button class="linkchip ${vorschlaege.includes(k) ? "empfohlen" : ""}" data-aktion="pack-vorlage" data-id="${k}">+ ${esc(v.name)}${vorschlaege.includes(k) ? " ★" : ""}</button>`).join("")}</div>
+      <p class="leise klein">${fam ? "Einträge „für alle“ hakt jede Familie für sich ab – was ihr einpackt, gilt nicht für die anderen Familien." : "Gemeinsam für alle Mitreisenden – wer etwas einpackt, hakt es ab."} Vorlagen passend zur Reise (★):</p>
+      <div class="links"><button class="linkchip empfohlen" data-aktion="pack-auto" title="Alle passenden Vorlagen auf einmal, Pässe und Kinder-Sachen je Person">✨ Automatisch ergänzen</button>${Object.entries(PACKVORLAGEN).filter(([k]) => vorschlaege.includes(k)).map(([k, v]) => `<button class="linkchip empfohlen" data-aktion="pack-vorlage" data-id="${k}">+ ${esc(v.name)} ★</button>`).join("")}</div>
+      <details class="klein weitere-vorlagen"><summary>Weitere Vorlagen (${Object.keys(PACKVORLAGEN).filter((k) => !vorschlaege.includes(k)).length})</summary>
+        <div class="links">${Object.entries(PACKVORLAGEN).filter(([k]) => !vorschlaege.includes(k)).map(([k, v]) => `<button class="linkchip" data-aktion="pack-vorlage" data-id="${k}">+ ${esc(v.name)}</button>`).join("")}</div></details>
       <form class="zeile eng packneu" id="packNeu">
         <input name="text" placeholder="z. B. Schnorchelmaske" maxlength="200" required aria-label="Neuer Eintrag">
         <input name="gruppe" placeholder="Gruppe" maxlength="60" list="packGruppen" aria-label="Gruppe">
@@ -85,21 +87,34 @@ export function vorbereitungAnsicht() {
       <div class="zeile"><h3>📄 Dokumente &amp; Fristen</h3><span class="platz"></span><button class="knopf" data-aktion="dokument-neu">+ Dokument</button></div>
       <p class="leise klein">Buchungsbestätigungen, Pässe (Ablaufdatum!), ESTA/eTA, Impfungen, Versicherung – mit Datei (PDF/Foto) und Frist. Nur für Mitreisende sichtbar.
       ${von ? `Reisebeginn: <strong>${esc(datumText(von, { day: "numeric", month: "long", year: "numeric" }))}</strong>.` : ""}</p>
-      ${e.dokumente.length ? `<div class="tabelle"><table class="dokumente"><thead><tr><th></th><th>Dokument</th><th>Für</th><th>Frist / gültig bis</th><th></th></tr></thead><tbody>
-        ${[...e.dokumente].sort((a, b) => (a.erledigt - b.erledigt) || String(a.frist || "9").localeCompare(String(b.frist || "9"))).map((d) => {
-          const datei = e.dateien.find((f) => f.id === d.dateiId);
-          return `<tr class="${d.erledigt ? "erledigt" : ""}"><td><input type="checkbox" data-aktion="dokument-haken" data-id="${esc(d.id)}" ${d.erledigt ? "checked" : ""} aria-label="Erledigt"></td>
-            <td><strong>${esc(d.titel)}</strong><div class="klein leise">${esc(DOKUMENT_ARTEN[d.art] ?? "")}</div>${d.notiz ? `<div class="klein">${esc(d.notiz)}</div>` : ""}
-              <div class="klein">${datei ? `<a href="/api/reisen/${esc(zustand.reise.id)}/dateien/${esc(datei.id)}" target="_blank" rel="noopener">📎 ${esc(datei.name)}</a>` : ""}${d.link ? ` <a href="${esc(d.link)}" target="_blank" rel="noopener">Link ↗</a>` : ""}</div></td>
-            <td class="klein">${esc(personName(d.personId) || "alle")}</td>
-            <td class="klein">${d.frist ? `⏰ ${esc(datumText(d.frist))}${d.fristZeit ? ` ${esc(d.fristZeit)}` : ""}` : ""}${d.gueltigBis ? `<div>gültig bis ${esc(datumText(d.gueltigBis, { day: "2-digit", month: "2-digit", year: "numeric" }))}</div>` : ""}</td>
-            <td><button class="link" data-aktion="dokument-bearbeiten" data-id="${esc(d.id)}">Bearbeiten</button></td></tr>`;
-        }).join("")}</tbody></table></div>` : `<p class="leise">Noch keine Dokumente.</p>`}
+      ${e.dokumente.length ? dokumenteNachPerson(e) : `<p class="leise">Noch keine Dokumente.</p>`}
       <p class="klein leise">Schnell anlegen:</p>
       <div class="links">${DOKUMENT_VORLAGEN.filter((v) => (!v.nurKreuzfahrt || istKreuzfahrt()) && (!v.nurTauchen || passendeVorlagen(zustand.reise).includes("tauchen"))).map((v, i) => `<button class="linkchip" data-aktion="dokument-vorlage" data-i="${DOKUMENT_VORLAGEN.indexOf(v)}">+ ${esc(v.titel)}${v.jePerson ? " (je Person)" : ""}</button>`).join("")}</div>
       ${e.dokumente.some((d) => d.frist && !d.erledigt) ? `<div class="zeile"><button class="knopf leise" data-aktion="fristen-kalender">📅 Fristen in den Kalender</button></div>` : ""}
     </div>
     ${offlineKartenBox()}`;
+}
+
+/** Dokumente je Person (gemeinsame zuerst), darin nach nächster Frist bzw. Ablaufdatum; Erledigtes ans Ende. */
+function dokumenteNachPerson(e) {
+  const naechstes = (d) => [d.frist, d.gueltigBis].filter(Boolean).sort()[0] || "9999";
+  const gruppen = new Map([["", []]]);
+  for (const p of personen()) gruppen.set(p.id, []);
+  for (const d of e.dokumente) {
+    const k = gruppen.has(d.personId ?? "") ? d.personId ?? "" : d.personId;
+    if (!gruppen.has(k)) gruppen.set(k, []);
+    gruppen.get(k).push(d);
+  }
+  return [...gruppen.entries()].filter(([, l]) => l.length).map(([id, liste]) => `<h4>${id ? esc(personName(id)) : "Für alle"} <span class="leise klein">(${liste.filter((d) => !d.erledigt).length} offen)</span></h4>
+    <div class="tabelle"><table class="dokumente"><tbody>
+    ${liste.sort((a, b) => a.erledigt - b.erledigt || naechstes(a).localeCompare(naechstes(b))).map((d) => {
+      const datei = e.dateien.find((f) => f.id === d.dateiId);
+      return `<tr class="${d.erledigt ? "erledigt" : ""}"><td><input type="checkbox" data-aktion="dokument-haken" data-id="${esc(d.id)}" ${d.erledigt ? "checked" : ""} aria-label="Erledigt"></td>
+        <td><strong>${esc(d.titel)}</strong><div class="klein leise">${esc(DOKUMENT_ARTEN[d.art] ?? "")}</div>${d.notiz ? `<div class="klein">${esc(d.notiz)}</div>` : ""}
+          <div class="klein">${datei ? `<a href="/api/reisen/${esc(zustand.reise.id)}/dateien/${esc(datei.id)}" target="_blank" rel="noopener">📎 ${esc(datei.name)}</a>` : ""}${d.link ? ` <a href="${esc(d.link)}" target="_blank" rel="noopener">Link ↗</a>` : ""}</div></td>
+        <td class="klein">${d.frist ? `⏰ ${esc(datumText(d.frist))}${d.fristZeit ? ` ${esc(d.fristZeit)}` : ""}` : ""}${d.gueltigBis ? `<div>gültig bis ${esc(datumText(d.gueltigBis, { day: "2-digit", month: "2-digit", year: "numeric" }))}</div>` : ""}</td>
+        <td><button class="link" data-aktion="dokument-bearbeiten" data-id="${esc(d.id)}">Bearbeiten</button></td></tr>`;
+    }).join("")}</tbody></table></div>`).join("");
 }
 
 // ---------- Offline-Karten ----------
@@ -122,7 +137,7 @@ function offlineKartenBox() {
       ? `<p class="leise klein">Speichert die Karten rund um alle ${orte.length} Orte der Reise (ca. 2 km Umkreis, bis Straßenebene) – damit die Karte auf See und im Ausland ohne Roaming funktioniert. Am besten im WLAN.</p>
          <div class="zeile"><button class="knopf" data-aktion="karten-offline" ${orte.length ? "" : "disabled"}>⬇️ Karten der Reise speichern</button><span class="klein leise" id="kartenStatus"></span></div>`
       : `<p class="leise klein">Jeder Kartenausschnitt, den ihr einmal angesehen habt, bleibt auf diesem Gerät gespeichert und funktioniert danach auch ohne Internet. Tipp: Vor der Reise im WLAN die Karte jedes Tages einmal öffnen und rund um Hafen bzw. Hotel etwas hineinzoomen.</p>
-         <p class="leise klein">Ganze Gebiete vorab herunterladen erlaubt OpenStreetMap nicht. Dafür kann auf dem Server ein Kartendienst eingetragen werden, der Offline-Nutzung erlaubt (KARTEN_KACHELN und KARTEN_OFFLINE=1).</p>`}
+         <p class="leise klein">Ganze Gebiete auf einmal herunterladen erlaubt der Kartendienst (OpenStreetMap) nicht – deshalb speichert die App nur, was ihr euch anseht.</p>`}
   </div>`;
 }
 
@@ -279,11 +294,11 @@ function dokumentDialog(id, vorlage = {}) {
     </fieldset>
     <label class="haken"><input type="checkbox" name="erledigt" ${d.erledigt ? "checked" : ""}> Erledigt</label>
     <div class="zeile">
-      ${id ? `<button type="button" class="knopf gefahr" data-aktion="dokument-loeschen" data-id="${esc(id)}">Löschen</button>` : ""}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${id ? `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="dokument-loeschen" data-id="${esc(id)}">Löschen</button></details>` : ""}
   </form>`);
   const form = $("#dokForm");
   $("#dokDateiWahl").addEventListener("change", async (ev) => {

@@ -374,11 +374,11 @@ function ausgabeDialog(id, vorlage = {}) {
       <div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="fuer" value="${esc(p.id)}" ${(x.fuer ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
     </fieldset>
     <div class="zeile">
-      ${id ? `<button type="button" class="knopf gefahr" data-aktion="ausgabe-loeschen" data-id="${esc(id)}">Löschen</button>` : ""}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${id ? `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><button type="button" class="knopf gefahr" data-aktion="ausgabe-loeschen" data-id="${esc(id)}">Löschen</button></details>` : ""}
   </form>`);
   $("#ausgabeForm").addEventListener("submit", async (ev) => {
     const f = new FormData(ev.target);

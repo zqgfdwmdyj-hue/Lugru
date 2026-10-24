@@ -24,8 +24,8 @@ export function kiImportBox() {
     <h3>📋 Reiseplan einlesen</h3>
     <p class="leise klein">Ganzen Plan einfügen – z. B. aus ChatGPT oder eigenen Notizen (Tage mit Datum, Liegezeiten, Ausflüge mit „GEBUCHT“/„ALTERNATIVE“, Zeiten und Preisen).
     „Erkennen“ arbeitet ohne KI und versteht Gesamtpreise („Preis gesamt für 6 Personen“), Preise pro Person, Kinderpreise und Dollar mit Euro-Angabe.
-    ${ki ? "Mit KI gehen zusätzlich freie Texte, PDF, Word-Dateien und Screenshots." : "Mit hinterlegtem <code>ANTHROPIC_API_KEY</code> gehen zusätzlich freie Texte, PDF, Word und Screenshots."}
-    Du siehst vorher, was übernommen wird – erneutes Einlesen ergänzt, statt zu verdoppeln.</p>
+    ${ki ? "Mit KI gehen zusätzlich freie Texte, PDF, Word-Dateien und Screenshots." : "Freie Texte, PDF, Word und Screenshots gehen nur mit KI – die ist auf diesem Server nicht eingerichtet."}
+    Vor dem Übernehmen siehst du neue Einträge, ergänzte Felder, mögliche Dubletten und Posten ohne Preis – nichts wird ungefragt zusammengeführt.</p>
     <textarea id="kiText" rows="8" placeholder="21.03.2027 – Castries, St. Lucia&#10;Liegezeit: 07:30–19:00&#10;AUSFLUG GEBUCHT:&#10;TUI Cruises – Delfinbeobachtung&#10;Zeit: 08:15–11:45&#10;Preis gesamt für 6 Personen: 275 €"></textarea>
     <div class="zeile">
       ${ki ? `<label class="knopf leise">📎 Dateien wählen<input type="file" id="kiDateien" multiple accept=".pdf,.docx,.txt,.md,.csv,.html,.ics,image/*" hidden></label><span id="kiDateiNamen" class="klein leise"></span>` : ""}
