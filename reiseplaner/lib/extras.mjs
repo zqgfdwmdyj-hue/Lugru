@@ -75,6 +75,8 @@ export function eintragAus(liste, d, { personen = [], familien = [], dateien = [
       ort: d.ort === "bord" ? "bord" : "land",
       bezahltVon: person(d.bezahltVon),
       fuer: [...new Set(fuer)],
+      // Zahlung für eine Buchung (z. B. „ausflug:<id>“): zählt dort als bezahlt, nicht doppelt
+      buchung: /^(ausflug|hotel|kabine|verbindung|kosten):[A-Za-z0-9-]{1,80}$/.test(String(d.buchung ?? "")) ? d.buchung : "",
     };
   }
   throw fehler(404, "Unbekannte Liste.");

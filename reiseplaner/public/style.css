@@ -742,3 +742,46 @@ table.vergleich .link { text-align: left; }
   table.vergleich tr.status-gebucht td:first-child { border-left: 0; }
   table.vergleich tr.status-gebucht { border-left: 3px solid #2e7d32; }
 }
+
+/* Ausflugsformular: Grundfelder zuerst, Rest einklappbar, Zusammenfassung vor dem Speichern */
+.ausflugform details.gruppe-klappe { border: 1px solid var(--rand); border-radius: 8px; padding: 8px 12px; }
+.ausflugform details.gruppe-klappe > summary { cursor: pointer; font-weight: 600; }
+.ausflugform details.gruppe-klappe > summary .klein { font-weight: 400; margin-left: 6px; }
+.ausflugform details.gruppe-klappe[open] > summary { margin-bottom: 8px; }
+.ausflugform.preis-unbekannt .preisfelder input { background: var(--hg); }
+.ausflugform label.kurz { max-width: 260px; }
+.zusammenfassung { background: var(--akzent-hell); border-radius: 8px; padding: 10px 12px; font-size: 0.92rem; }
+.zusammenfassung ul { margin: 6px 0 0; padding-left: 0; list-style: none; }
+.zusammenfassung ul li { margin: 2px 0; }
+details.gefahr-klein { margin-top: 6px; }
+details.gefahr-klein > summary { cursor: pointer; }
+
+/* Kosten: gebucht, bezahlt, offen */
+.betragfeld { width: 6.5em; text-align: right; font: inherit; padding: 4px 6px; border: 1px solid var(--rand); border-radius: 6px; background: var(--flaeche); color: var(--text); }
+.kachel.gelb strong { color: var(--gelb); }
+table.posten tr.favorit td { color: var(--leise); }
+table.posten tfoot th { border-top: 2px solid var(--rand); }
+ul.tickets { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+ul.tickets li { padding: 8px 10px; border-radius: 8px; background: var(--akzent-hell); }
+@media (max-width: 600px) {
+  table.posten, table.posten tbody, table.posten tr, table.posten td, table.posten tfoot, table.posten th { display: block; }
+  table.posten thead { display: none; }
+  table.posten tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--rand); }
+  table.posten td:first-child, table.posten tfoot th:first-child { grid-column: 1 / -1; }
+  table.posten td, table.posten th { text-align: left !important; padding: 0; border: 0; }
+  table.posten td:nth-child(2)::before { content: "Betrag"; } table.posten td:nth-child(3)::before { content: "Bezahlt"; } table.posten td:nth-child(4)::before { content: "Offen"; }
+  table.posten td::before { display: block; font-size: 0.72rem; color: var(--leise); }
+}
+
+/* Unterkunftssuche: Wünsche nach Themen, ausdrücklich Muss / Wunsch / Egal */
+details.wunschgruppe { border-top: 1px solid var(--rand); padding: 6px 0; }
+details.wunschgruppe > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.wunschzeile { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0 4px 10px; }
+.wunschzeile > span:first-child { flex: 1; min-width: 0; }
+.wunschzeile .segment { flex-shrink: 0; }
+.segment.klein button { padding: 4px 9px; font-size: 0.8rem; }
+.segment button.muss.aktiv { background: var(--akzent); }
+.segment button.schoen.aktiv { background: #5c8fc7; }
+.segment button.egal.aktiv { background: var(--leise); }
+span.wunschchip { cursor: default; }
+.suchzeitraum { background: var(--akzent-hell); padding: 6px 10px; border-radius: 8px; }

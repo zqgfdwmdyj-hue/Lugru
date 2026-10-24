@@ -1,6 +1,6 @@
 // Unterkünfte: Hotels sammeln, vergleichen, buchen – und mit den Reisetagen verknüpfen.
 import { zustand, $, esc, neueId, datumText, personen, hatKoord, geld, linkHtml, aktionen, speichern, neuZeichnen, dialogOeffnen, dialog, ortsSuche, ortAuslesen, sterneText } from "./kern.js";
-import { STATUS, VERPFLEGUNG, zahl, hotelKosten, naechte, istKind, QUELLEN, zimmerVon } from "./rechnen.js";
+import { STATUS, VERPFLEGUNG, zahl, hotelKosten, naechte, istKind, QUELLEN, zimmerVon, fehlendeNaechte } from "./rechnen.js";
 import { bewertungsZeile } from "./erlebnisse.js";
 
 export const hotels = () => zustand.reise?.hotels ?? [];
@@ -96,12 +96,15 @@ function suchLinks(ort, anreise, abreise) {
 
 // ---------- Wünsche an die Unterkunft (die KI berücksichtigt sie bei jeder Suche) ----------
 
-export const WUNSCH_MERKMALE = [
-  "Bungalow / Ferienhaus", "Ferienwohnung", "Hotel", "Eigenes Schlafzimmer je Familie", "Mehrere Bäder", "Küche", "Spülmaschine", "Waschmaschine",
-  "Strand ≤ 5 Min. zu Fuß", "Sandstrand", "Pool", "Kinderpool", "Kinderclub", "Spielplatz", "Klimaanlage", "WLAN", "Terrasse / Garten", "Grill",
-  "Parkplatz", "Babybett / Hochstuhl", "Haustiere erlaubt", "Ruhige Lage", "Restaurants zu Fuß", "Supermarkt in der Nähe", "Tauchbasis / Hausriff",
-  "All inclusive", "Frühstück", "Barrierefrei", "Kostenlos stornierbar",
-];
+/** Wünsche nach Themen – je Merkmal ausdrücklich „Muss“, „Wunsch“ oder „Egal“. */
+export const WUNSCH_GRUPPEN = {
+  "Art der Unterkunft": ["Bungalow / Ferienhaus", "Ferienwohnung", "Hotel"],
+  "Zimmer & Ausstattung": ["Eigenes Schlafzimmer je Familie", "Mehrere Bäder", "Küche", "Spülmaschine", "Waschmaschine", "Klimaanlage", "WLAN", "Terrasse / Garten", "Grill", "Babybett / Hochstuhl", "Barrierefrei"],
+  Lage: ["Strand ≤ 5 Min. zu Fuß", "Sandstrand", "Ruhige Lage", "Restaurants zu Fuß", "Supermarkt in der Nähe", "Parkplatz"],
+  "Kinder & Freizeit": ["Pool", "Kinderpool", "Kinderclub", "Spielplatz", "Tauchbasis / Hausriff"],
+  "Verpflegung & Buchung": ["All inclusive", "Frühstück", "Kostenlos stornierbar", "Haustiere erlaubt"],
+};
+export const WUNSCH_MERKMALE = Object.values(WUNSCH_GRUPPEN).flat();
 
 const wuensche = () => (zustand.reise.wuensche ??= { muss: [], schoen: [], text: "", budget: "", anreise: "", abreise: "" });
 
@@ -120,21 +123,37 @@ export function gruppeText(r = zustand.reise) {
   return `${ps.length} Personen${fam.length > 1 ? ` in ${fam.length} Familien` : ""}${teile.length ? ` – ${teile.join("; ")}` : ""}`;
 }
 
-function wunschBox(ort) {
+/** Suchzeitraum: eigener Zeitraum aus den Wünschen, sonst die erste fehlende Nacht, sonst die ganze Reise. */
+export function suchZeitraum() {
   const w = wuensche();
   const tage = [...(zustand.reise.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort();
-  const chip = (m) => {
-    const zustandM = w.muss.includes(m) ? "muss" : w.schoen.includes(m) ? "schoen" : "";
-    return `<button type="button" class="wunschchip ${zustandM}" data-aktion="wunsch-chip" data-wert="${esc(m)}" aria-pressed="${zustandM ? "true" : "false"}">${zustandM === "muss" ? "✓✓ " : zustandM === "schoen" ? "✓ " : ""}${esc(m)}</button>`;
-  };
+  const luecke = fehlendeNaechte(zustand.reise)[0];
+  return { anreise: w.anreise || luecke?.von || tage[0] || "", abreise: w.abreise || luecke?.bis || tage.at(-1) || "", eigen: Boolean(w.anreise || w.abreise) };
+}
+
+function wunschBox(ort) {
+  const w = wuensche();
+  const z = suchZeitraum();
+  const wahl = (m) => (w.muss.includes(m) ? "muss" : w.schoen.includes(m) ? "schoen" : "egal");
+  const zeile = (m) => `<div class="wunschzeile"><span>${esc(m)}</span><span class="segment klein" role="group" aria-label="${esc(m)}">${[["muss", "Muss"], ["schoen", "Wunsch"], ["egal", "Egal"]].map(([k, t]) => `<button type="button" data-aktion="wunsch-wahl" data-wert="${esc(m)}" data-wahl="${k}" class="${wahl(m) === k ? "aktiv" : ""} ${k}" aria-pressed="${wahl(m) === k}">${t}</button>`).join("")}</span></div>`;
+  const gewaehlt = [...w.muss.map((m) => `<span class="wunschchip muss">Muss: ${esc(m)}</span>`), ...w.schoen.map((m) => `<span class="wunschchip schoen">Wunsch: ${esc(m)}</span>`)];
   return `<div class="karte-box wunschbox">
-    <h3>🎯 Unsere Wünsche</h3>
-    <p class="klein">${esc(gruppeText())} <span class="leise">(aus „Personen“)</span></p>
-    <p class="klein leise">Antippen: einmal = <strong>muss sein</strong> (✓✓), zweimal = <strong>wäre schön</strong> (✓), dreimal = egal. Die KI berücksichtigt das bei jeder Suche und jedem Vorschlag.</p>
-    <div class="wunschchips">${WUNSCH_MERKMALE.map(chip).join("")}</div>
+    <h3>🔎 Unterkünfte suchen</h3>
+    <p class="klein">${esc(gruppeText())} <span class="leise">(aus „Reisende“)</span></p>
     <div class="formular drei">
-      <label>Anreise<input type="date" data-wunschfeld="anreise" value="${esc(w.anreise || tage[0] || "")}"></label>
-      <label>Abreise<input type="date" data-wunschfeld="abreise" value="${esc(w.abreise || tage.at(-1) || "")}"></label>
+      <label>Ort / Region<input id="hotelSuchort" value="${esc(ort)}" placeholder="z. B. Bayahibe"></label>
+      <label>Anreise<input type="date" data-wunschfeld="anreise" value="${esc(z.anreise)}"></label>
+      <label>Abreise<input type="date" data-wunschfeld="abreise" value="${esc(z.abreise)}"></label>
+    </div>
+    <p class="klein suchzeitraum">📅 Suchzeitraum: <strong>${z.anreise ? `${esc(datumText(z.anreise))} – ${esc(datumText(z.abreise))} · ${naechte(z.anreise, z.abreise)} ${naechte(z.anreise, z.abreise) === 1 ? "Nacht" : "Nächte"}` : "noch offen"}</strong> <span class="leise">– gilt für die Anbieter-Links und die KI-Suche${z.eigen ? "" : " (automatisch aus den Reisetagen)"}</span></p>
+    <div id="hotelLinks">${suchLinks(ort, z.anreise, z.abreise)}</div>
+    <h4>🎯 Unsere Wünsche ${gewaehlt.length ? `<span class="leise klein">(${gewaehlt.length})</span>` : ""}</h4>
+    ${gewaehlt.length ? `<div class="wunschchips">${gewaehlt.join("")}</div>` : `<p class="klein leise">Noch keine Wünsche gewählt – je Merkmal „Muss“, „Wunsch“ oder „Egal“.</p>`}
+    ${Object.entries(WUNSCH_GRUPPEN).map(([g, liste]) => {
+      const n = liste.filter((m) => wahl(m) !== "egal").length;
+      return `<details class="wunschgruppe" data-klappe="wunsch:${esc(g)}" ${zustand.klappen?.[`wunsch:${g}`] ?? n > 0 ? "open" : ""}><summary>${esc(g)}${n ? ` <span class="leise klein">(${n} gewählt)</span>` : ""}</summary>${liste.map(zeile).join("")}</details>`;
+    }).join("")}
+    <div class="formular zwei">
       <label>Budget<input data-wunschfeld="budget" value="${esc(w.budget)}" placeholder="z. B. 250 € pro Nacht für alle" maxlength="120"></label>
     </div>
     <label>Weitere Wünsche<textarea data-wunschfeld="text" rows="2" maxlength="2000" placeholder="z. B. 3 Familien wollen zusammen wohnen, aber jede mit eigenem Bad; Oma kann keine Treppen; Hund (15 kg) kommt mit">${esc(w.text)}</textarea></label>
@@ -142,14 +161,13 @@ function wunschBox(ort) {
   </div>`;
 }
 
-aktionen["wunsch-chip"] = (el) => {
+aktionen["wunsch-wahl"] = (el) => {
   const w = wuensche();
   const m = el.dataset.wert;
-  if (w.muss.includes(m)) {
-    w.muss = w.muss.filter((x) => x !== m);
-    w.schoen.push(m);
-  } else if (w.schoen.includes(m)) w.schoen = w.schoen.filter((x) => x !== m);
-  else w.muss.push(m);
+  w.muss = w.muss.filter((x) => x !== m);
+  w.schoen = w.schoen.filter((x) => x !== m);
+  if (el.dataset.wahl === "muss") w.muss.push(m);
+  if (el.dataset.wahl === "schoen") w.schoen.push(m);
   speichern();
   neuZeichnen();
 };
@@ -159,6 +177,8 @@ document.addEventListener("change", (e) => {
   if (!feld || !zustand.reise) return;
   wuensche()[feld] = String(e.target.value).trim();
   speichern();
+  // Zeitraum ändert die Anbieter-Links und die Anzeige
+  if (feld === "anreise" || feld === "abreise") neuZeichnen();
 });
 
 const deDatum = (iso) => String(iso).split("-").reverse().join(".");
@@ -166,9 +186,7 @@ const deDatum = (iso) => String(iso).split("-").reverse().join(".");
 /** Auftrag an die KI aus den Wünschen. */
 export function wunschAuftrag(ort) {
   const w = wuensche();
-  const tage = [...(zustand.reise.haefen ?? [])].map((h) => h.datum).filter(Boolean).sort();
-  const an = w.anreise || tage[0] || "";
-  const ab = w.abreise || tage.at(-1) || "";
+  const { anreise: an, abreise: ab } = suchZeitraum();
   return [
     `Such uns passende Unterkünfte${ort ? ` in/um ${ort}` : ""}${an ? ` vom ${deDatum(an)}` : ""}${ab ? ` bis ${deDatum(ab)}` : ""}.`,
     `Wir sind ${gruppeText()}.`,
@@ -186,41 +204,48 @@ aktionen["wunsch-suche"] = () => {
 };
 
 export function hotelsAnsicht() {
-  const liste = [...hotels()].sort((a, b) => String(a.anreise).localeCompare(String(b.anreise)) || (a.status === "verworfen") - (b.status === "verworfen"));
+  const liste = [...hotels()].sort((a, b) => String(a.anreise).localeCompare(String(b.anreise)));
+  const gebucht = liste.filter((h) => h.status === "gebucht");
+  const kandidaten = liste.filter((h) => h.status === "idee" || h.status === "favorit");
+  const verworfen = liste.filter((h) => h.status === "verworfen");
   const orte = [...new Set(liste.map((h) => h.ort).filter(Boolean))];
+  const ersterOrt = zustand.hotelSuchort ?? orte[0] ?? zustand.reise?.haefen?.find((x) => x.art === "ort")?.name ?? "";
+  const luecken = fehlendeNaechte(zustand.reise);
+  // Kandidaten je Zeitraum vergleichen
   const zeitraeume = new Map();
-  for (const h of liste) {
+  for (const h of kandidaten) {
     const k = `${h.anreise ?? ""}|${h.abreise ?? ""}|${h.ort ?? ""}`;
     if (!zeitraeume.has(k)) zeitraeume.set(k, []);
     zeitraeume.get(k).push(h);
   }
-  const ersterOrt = orte[0] ?? zustand.reise?.haefen?.find((x) => x.art === "ort")?.name ?? "";
   return `
     ${istKreuzfahrt() ? `<div class="karte-box">${zimmerListe("schiff", `Kabinen auf ${zustand.reise.schiff || "dem Schiff"}`, false)}</div>` : ""}
     <div class="karte-box">
-      <div class="zeile"><h3>Unterkünfte</h3><button class="knopf" data-aktion="hotel-neu">+ Unterkunft</button></div>
-      <p class="leise klein">Sammle Hotels oder Ferienwohnungen, vergleiche Preis, Lage und Ausstattung und markiere die gebuchte. Gebuchte Unterkünfte werden zum Startpunkt der Ausflüge an diesen Tagen und zählen in die Kosten.</p>
-      <label class="klein">Suche bei Anbietern für <input id="hotelSuchort" value="${esc(ersterOrt)}" placeholder="Ort, z. B. Hurghada"></label>
-      <div id="hotelLinks">${suchLinks(ersterOrt, liste[0]?.anreise, liste[0]?.abreise)}</div>
+      <div class="zeile"><h3>🏨 Gebuchte Unterkünfte (${gebucht.length})</h3><span class="platz"></span><button class="knopf" data-aktion="hotel-neu">+ Unterkunft</button></div>
+      ${gebucht.length ? `<div class="ausfluege">${gebucht.map((h) => hotelKarte(h, false)).join("")}</div>` : `<p class="leise">${istKreuzfahrt() ? "Hotel vor oder nach der Kreuzfahrt? Hier eintragen." : "Noch keine Unterkunft gebucht."}</p>`}
+      ${luecken.length ? `<h4>⚠️ Fehlende Übernachtungen</h4><ul class="aufgaben">${luecken.map((l) => `<li class="${l.nurGeplant ? "gelb" : "rot"}">${l.nurGeplant ? "Noch nicht gebucht" : "Keine Unterkunft"}: <strong>${esc(datumText(l.von))} – ${esc(datumText(l.bis))}</strong> (${l.naechte} ${l.naechte === 1 ? "Nacht" : "Nächte"})
+        <span class="knoepfe"><button class="link" data-aktion="luecke-suchen" data-von="${esc(l.von)}" data-bis="${esc(l.bis)}">Für diesen Zeitraum suchen</button> · <button class="link" data-aktion="luecke-eintragen" data-von="${esc(l.von)}" data-bis="${esc(l.bis)}">Unterkunft eintragen</button></span></li>`).join("")}</ul>` : ""}
     </div>
     ${istKreuzfahrt() && !liste.length ? "" : wunschBox(ersterOrt)}
-    ${
-      liste.length
-        ? [...zeitraeume.values()]
-            .map((gruppe) => {
-              const h0 = gruppe[0];
-              const aktive = gruppe.filter((h) => h.status !== "verworfen");
-              const mitPreis = aktive.filter((h) => !kosten(h).offen);
-              const guenstig = mitPreis.length > 1 ? [...mitPreis].sort((a, b) => kosten(a).summe - kosten(b).summe)[0].id : null;
-              return `<div class="karte-box">
-              <h3>${esc(h0.ort || "Ohne Ort")} <span class="leise klein">${h0.anreise ? `${esc(datumText(h0.anreise))} – ${esc(datumText(h0.abreise))} · ${naechte(h0.anreise, h0.abreise)} Nächte` : ""}</span></h3>
-              <div class="ausfluege">${gruppe.map((h) => hotelKarte(h, h.id === guenstig)).join("")}</div>
-            </div>`;
-            })
-            .join("")
-        : `<div class="karte-box"><p class="leise">Noch keine Unterkunft eingetragen.</p></div>`
-    }`;
+    ${kandidaten.length ? [...zeitraeume.values()].map((gruppe) => {
+      const h0 = gruppe[0];
+      const mitPreis = gruppe.filter((h) => !kosten(h).offen);
+      const guenstig = mitPreis.length > 1 ? [...mitPreis].sort((a, b) => kosten(a).summe - kosten(b).summe)[0].id : null;
+      return `<div class="karte-box">
+        <h3>💡 Zur Auswahl: ${esc(h0.ort || "Ohne Ort")} <span class="leise klein">${h0.anreise ? `${esc(datumText(h0.anreise))} – ${esc(datumText(h0.abreise))} · ${naechte(h0.anreise, h0.abreise)} Nächte` : ""}</span></h3>
+        <div class="ausfluege">${gruppe.map((h) => hotelKarte(h, h.id === guenstig)).join("")}</div>
+      </div>`;
+    }).join("") : ""}
+    ${verworfen.length ? `<details class="karte-box klappe"><summary><h3 class="leise">🗑️ Verworfen (${verworfen.length})</h3></summary><div class="ausfluege">${verworfen.map((h) => hotelKarte(h, false)).join("")}</div></details>` : ""}`;
 }
+
+aktionen["luecke-suchen"] = (el) => {
+  Object.assign(wuensche(), { anreise: el.dataset.von, abreise: el.dataset.bis });
+  speichern();
+  neuZeichnen();
+  document.querySelector(".wunschbox")?.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+aktionen["luecke-eintragen"] = (el) => hotelDialog(null, { anreise: el.dataset.von, abreise: el.dataset.bis, ort: $("#hotelSuchort")?.value ?? "" });
 
 function hotelKarte(h, guenstig) {
   const k = kosten(h);
@@ -377,8 +402,9 @@ aktionen["hotel-tage"] = (el) => {
 
 document.addEventListener("input", (e) => {
   if (e.target.id !== "hotelSuchort") return;
-  const h = hotels()[0];
-  $("#hotelLinks").innerHTML = suchLinks(e.target.value, h?.anreise, h?.abreise);
+  zustand.hotelSuchort = e.target.value;
+  const z = suchZeitraum();
+  $("#hotelLinks").innerHTML = suchLinks(e.target.value, z.anreise, z.abreise);
 });
 
 export function hotelStatusAendern(id, status) {

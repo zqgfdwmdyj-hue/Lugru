@@ -141,3 +141,51 @@ test("Import: Dubletten werden gegenübergestellt und nie still zusammengeführt
   planZusammenfuehren(kopie3, plan, { entscheidungen: { "ausfluege:1": "aktualisieren" } });
   assert.equal(kopie3.ausfluege[0].preisErw, 20);
 });
+
+test("Kostenposten: bezahlt aus Eingabe oder verknüpften Ausgaben – nie doppelt", async () => {
+  const { kostenPosten } = await import("../public/unterwegs-logik.js");
+  const reise = {
+    personen: [{ id: "a", typ: "erwachsen" }, { id: "b", typ: "erwachsen" }],
+    ausfluege: [
+      { id: "x", titel: "Bootstour", status: "gebucht", preisArt: "person", preisErw: 100, teilnehmer: ["a", "b"], bezahltBetrag: 50 },
+      { id: "y", titel: "Idee", status: "favorit", preisArt: "person", preisErw: 30, teilnehmer: ["a"] },
+      { id: "z", titel: "Ohne Preis", status: "gebucht", preisArt: "person", preisErw: null, teilnehmer: ["a"] },
+    ],
+    kosten: [{ id: "k", titel: "Flug", betrag: 800, status: "gebucht" }],
+    hotels: [],
+  };
+  const ausgaben = [{ betrag: 800, buchung: "kosten:k" }, { betrag: 60 }];
+  const p = kostenPosten(reise, ausgaben);
+  assert.equal(p.gebucht, 1000);
+  assert.equal(p.bezahlt, 850);
+  assert.equal(p.nochOffen, 150);
+  assert.equal(p.unterwegs, 60, "nur nicht verknüpfte Ausgaben zählen zusätzlich");
+  assert.equal(p.gesamt, 1060);
+  assert.equal(p.preisOffen, 1);
+  assert.equal(p.posten.find((x) => x.id === "z").rest, null);
+  assert.ok(!p.posten.some((x) => x.id === "y"), "Favoriten nur auf Wunsch");
+  assert.equal(kostenPosten(reise, ausgaben, { mitFavoriten: true }).geplant, 1030);
+});
+
+test("Weitere Kosten nur für ausgewählte Personen; Favoriten abschaltbar", () => {
+  const reise = { personen: [{ id: "a", typ: "erwachsen" }, { id: "b", typ: "erwachsen" }], ausfluege: [{ id: "f", status: "favorit", preisArt: "person", preisErw: 40, teilnehmer: ["a"] }], hotels: [], kosten: [{ id: "k", titel: "Tauchkurs", betrag: 300, status: "gebucht", personen: ["b"] }] };
+  const k = reiseKosten(reise);
+  assert.equal(k.jePerson.b, 300);
+  assert.equal(k.jePerson.a, 40);
+  assert.equal(reiseKosten(reise, { mitFavoriten: false }).jePerson.a, 0);
+});
+
+test("Fehlende Übernachtungen als Lücken", async () => {
+  const { fehlendeNaechte } = await import("../public/rechnen.js");
+  const l = fehlendeNaechte({ art: "hotel", haefen: [{ datum: "2027-03-19" }, { datum: "2027-03-25" }], hotels: [{ status: "gebucht", anreise: "2027-03-19", abreise: "2027-03-21" }, { status: "idee", anreise: "2027-03-22", abreise: "2027-03-24" }] });
+  assert.deepEqual(l.map((x) => [x.von, x.bis, x.naechte, x.nurGeplant]), [["2027-03-21", "2027-03-22", 1, false], ["2027-03-22", "2027-03-24", 2, true], ["2027-03-24", "2027-03-25", 1, false]]);
+  assert.deepEqual(fehlendeNaechte({ art: "kreuzfahrt", haefen: [{ datum: "2027-03-19" }, { datum: "2027-03-25" }] }), []);
+});
+
+test("Mindestalter getrennt von „Kinder gratis unter“", async () => {
+  const { zuJung, ausflugKosten } = await import("../public/rechnen.js");
+  const ps = [{ id: "e", typ: "erwachsen" }, { id: "k", name: "Mia", typ: "kind", alter: 7 }];
+  const a = { preisArt: "person", preisErw: 50, kostenlosBis: 6, mindestalter: 8, teilnehmer: ["e", "k"] };
+  assert.deepEqual(zuJung(a, ps).map((p) => p.name), ["Mia"]);
+  assert.equal(ausflugKosten(a, ps).summe, 100, "Mia (7) zahlt – gratis nur unter 6");
+});

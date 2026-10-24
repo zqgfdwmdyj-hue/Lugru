@@ -1,7 +1,7 @@
 // Reine Rechen- und Lesefunktionen für Vorbereitung und Unterwegs (Browser und Server, ohne DOM):
 // Packlisten-Vorlagen, Dokumente & Fristen, Kalender-Erinnerungen (ICS), Rückweg zum Schiff,
 // Bordkonto und „wer schuldet wem“, Foto-Zuordnung (EXIF), Tauchcomputer-Import, Tauchstatistik.
-import { zeitZuMin, minZuZeit, zahl, istKind, entfernungKm, festeZeit, familieVon, VERKEHRSMITTEL } from "./rechnen.js";
+import { zeitZuMin, minZuZeit, zahl, istKind, entfernungKm, festeZeit, familieVon, VERKEHRSMITTEL, ausflugKosten, hotelKosten, zimmerVon } from "./rechnen.js";
 
 export const DOKUMENT_ARTEN = {
   ausweis: "🛂 Reisepass / Ausweis",
@@ -946,3 +946,50 @@ export const FLUGLINIEN = [
   ["Emirates", "#d71921"], ["Turkish Airlines", "#c70a0c"], ["KLM", "#00a1de"], ["Air France", "#002157"], ["British Airways", "#075aaa"], ["Swiss", "#e30613"],
   ["Austrian", "#ef3340"], ["Qatar Airways", "#5c0632"], ["American Airlines", "#0078d2"], ["Delta", "#003366"], ["United", "#005daa"], ["Discover", "#ad0c2b"],
 ];
+
+
+// ---------- Kostenposten: gebucht, bezahlt, noch offen ----------
+
+/**
+ * Alle gebuchten (und optional favorisierten) Posten mit Betrag und Zahlungsstand.
+ * Bezahlt = von Hand eingetragener Betrag oder die Summe der mit der Buchung verknüpften Ausgaben
+ * (der höhere Wert) – so wird dieselbe Zahlung nie doppelt gezählt. Ausgaben ohne Buchung sind
+ * zusätzliche Kosten unterwegs.
+ */
+export function kostenPosten(reise, ausgaben = [], { mitFavoriten = false } = {}) {
+  const personen = reise?.personen ?? [];
+  const zaehltHier = (x) => x.status === "gebucht" || (mitFavoriten && x.status === "favorit");
+  const verknuepft = {};
+  let extra = 0;
+  for (const a of ausgaben ?? []) {
+    const b = inReisewaehrung(a, reise);
+    if (a.buchung) verknuepft[a.buchung] = (verknuepft[a.buchung] ?? 0) + b;
+    else extra += b;
+  }
+  const liste = [];
+  const dazu = (art, x, titel, k) => {
+    const schluessel = `${art}:${x.id}`;
+    const ueberAusgaben = r2(verknuepft[schluessel] ?? 0);
+    const vonHand = zahl(x.bezahltBetrag) ?? 0;
+    const betrag = k.offen ? null : r2(k.summe);
+    const bezahlt = r2(Math.max(vonHand, ueberAusgaben));
+    liste.push({ art, id: x.id, schluessel, titel, status: x.status ?? "gebucht", betrag, teilbetrag: r2(k.summe), offen: k.offen, bezahlt, ueberAusgaben, rest: betrag == null ? null : r2(Math.max(0, betrag - bezahlt)) });
+  };
+  for (const a of reise?.ausfluege ?? []) if (zaehltHier(a)) dazu("ausflug", a, a.titel, ausflugKosten(a, personen));
+  for (const h of reise?.hotels ?? []) if (zaehltHier(h)) dazu("hotel", h, h.name, hotelKosten(h, personen, zimmerVon(reise, h.id)));
+  for (const z of (reise?.zimmer ?? []).filter((x) => x.unterkunft === "schiff" && zahl(x.preis))) dazu("kabine", { ...z, status: "gebucht" }, `Kabine ${z.nummer || ""}`.trim(), { summe: zahl(z.preis), offen: false });
+  for (const v of reise?.verbindungen ?? []) if (zaehltHier(v) && zahl(v.preis) != null) dazu("verbindung", v, `${v.titel || "Verbindung"}${v.von ? ` ${v.von} → ${v.nach}` : ""}`, { summe: zahl(v.preis), offen: false });
+  for (const k of reise?.kosten ?? []) if (zaehltHier(k)) dazu("kosten", k, k.titel || "Posten", { summe: zahl(k.betrag) ?? 0, offen: zahl(k.betrag) == null });
+  const gebucht = liste.filter((x) => x.status === "gebucht");
+  const summe = (l, f) => r2(l.reduce((s, x) => s + (f(x) ?? 0), 0));
+  return {
+    posten: liste,
+    geplant: summe(liste, (x) => x.teilbetrag),
+    gebucht: summe(gebucht, (x) => x.teilbetrag),
+    bezahlt: summe(gebucht, (x) => (x.betrag == null ? x.bezahlt : Math.min(x.bezahlt, x.betrag))),
+    nochOffen: summe(gebucht, (x) => x.rest),
+    preisOffen: liste.filter((x) => x.offen).length,
+    unterwegs: r2(extra),
+    gesamt: r2(summe(gebucht, (x) => x.teilbetrag) + extra),
+  };
+}

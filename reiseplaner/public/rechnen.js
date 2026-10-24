@@ -209,8 +209,12 @@ export function familieVon(person, reise) {
 /** Zimmer/Kabinen einer Unterkunft („schiff“ oder Hotel-ID). */
 export const zimmerVon = (reise, unterkunft) => (reise?.zimmer ?? []).filter((z) => z.unterkunft === unterkunft);
 
-/** Gesamtkosten der Reise: je Hafen, je Person, je Familie, nach Status. */
-export function reiseKosten(reise) {
+/**
+ * Gesamtkosten der Reise: je Hafen, je Person, je Familie, nach Status.
+ * `mitFavoriten: false` → Aufteilungen (je Person/Familie/Tag) nur aus gebuchten Posten.
+ */
+export function reiseKosten(reise, { mitFavoriten = true } = {}) {
+  const modus = mitFavoriten ? "geplant" : "gebucht";
   const personen = reise.personen ?? [];
   const ids = new Set(personen.map((p) => p.id));
   const ergebnis = {
@@ -246,7 +250,7 @@ export function reiseKosten(reise) {
     if (status === "gebucht") teil.gebucht += betrag;
   };
   for (const h of reise.hotels ?? []) {
-    if (!zaehlt(h, "geplant")) continue;
+    if (!zaehlt(h, modus)) continue;
     const zimmer = zimmerVon(reise, h.id);
     const k = hotelKosten(h, personen, zimmer);
     if (k.offen) ergebnis.offen.push({ art: "Unterkunft", titel: h.name, status: h.status });
@@ -265,20 +269,21 @@ export function reiseKosten(reise) {
     verteilen(k, (z.personen ?? []).filter((p) => ids.has(p)));
   }
   for (const v of reise.verbindungen ?? []) {
-    if (!zaehlt(v, "geplant")) continue;
+    if (!zaehlt(v, modus)) continue;
     const k = zahl(v.preis) ?? 0;
     posten(ergebnis.verbindungen, v.status, k);
     verteilen(k, (v.personen ?? []).filter((p) => ids.has(p)));
   }
   for (const s of reise.kosten ?? []) {
-    if (!zaehlt(s, "geplant")) continue;
+    if (!zaehlt(s, modus)) continue;
     if (zahl(s.betrag) == null) ergebnis.offen.push({ art: "Kosten", titel: s.titel || "Posten ohne Namen", status: s.status });
     const k = zahl(s.betrag) ?? 0;
     posten(ergebnis.sonstiges, s.status, k);
-    verteilen(k);
+    // Individuelle Aufteilung: nur für ausgewählte Personen (sonst alle)
+    verteilen(k, (s.personen ?? []).filter((p) => ids.has(p)));
   }
   for (const a of reise.ausfluege ?? []) {
-    if (!zaehlt(a, "geplant")) continue;
+    if (!zaehlt(a, modus)) continue;
     const k = ausflugKosten(a, personen);
     if (k.offen) ergebnis.offen.push({ art: "Ausflug", titel: a.titel, status: a.status, hafenId: a.hafenId, teilweise: k.summe > 0 });
     posten(ergebnis.ausfluege, a.status, k.summe);
@@ -675,4 +680,11 @@ export function fehlendeNaechte(reise) {
   }
   // „bis“ = Abreisetag (Morgen nach der letzten Nacht)
   return luecken.map((l) => ({ ...l, bis: isoPlus(l.bis, 1) }));
+}
+
+/** Teilnehmende Kinder unter dem Mindestalter eines Ausflugs (z. B. Tauchen ab 10, Quad ab 16). */
+export function zuJung(ausflug, personen) {
+  const min = zahl(ausflug?.mindestalter);
+  if (min == null) return [];
+  return teilnehmer(ausflug, personen).filter((p) => istKind(p) && zahl(p.alter) != null && zahl(p.alter) < min);
 }

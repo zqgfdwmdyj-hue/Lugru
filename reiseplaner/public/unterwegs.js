@@ -101,14 +101,7 @@ function briefingOhneKi(h) {
 export function unterwegsAnsicht() {
   const tage = haefen();
   const h = tagFuerUnterwegs();
-  const k = bordkonto(zustand.extras.ausgaben, zustand.reise);
-  const familien = (zustand.reise.familien ?? []).length > 1;
-  const nachFamilie = familien && zustand.ausgleichNachFamilie !== false;
-  const a = ausgleich(zustand.extras.ausgaben, zustand.reise, { nachFamilie });
-  const einheitName = (id) => (id.startsWith("person:") ? personName(id.slice(7)) : (zustand.reise.familien ?? []).find((f) => f.id === id)?.name ?? personName(id));
   const briefing = h ? zustand.extras.briefings?.[h.id] : null;
-  const ausgaben = [...zustand.extras.ausgaben].sort((x, y) => String(y.datum).localeCompare(String(x.datum)) || String(y.erstellt).localeCompare(String(x.erstellt)));
-  const zeigeAlle = zustand.alleAusgaben;
   return `
     <div class="karte-box">
       <div class="zeile"><h3>☀️ Tagesbriefing</h3><span class="platz"></span>
@@ -138,6 +131,42 @@ export function unterwegsAnsicht() {
         <div id="rueckwegErgebnis"></div>` : ""}
     </div>
 
+    ${ticketsBox(h)}
+    <div class="karte-box zeile">
+      <span>💳 Unterwegs etwas bezahlt?</span><span class="platz"></span>
+      <button class="knopf" data-aktion="ausgabe-neu" data-ort="bord">+ Ausgabe</button>
+      <button class="link" data-aktion="ansicht" data-ziel="ausgaben">${istKreuzfahrtReise() ? "Bordkonto" : "Urlaubskasse"} &amp; Abrechnung →</button>
+    </div>`;
+}
+
+/** Tickets & Treffpunkte des Tages: gebuchte Ausflüge mit Buchungsnr., Treffpunkt und Link, Verbindungen mit Sitz/Terminal. */
+function ticketsBox(h) {
+  if (!h) return "";
+  const gebucht = zustand.reise.ausfluege.filter((a) => a.hafenId === h.id && a.status === "gebucht").sort((x, y) => String(x.beginn || "99").localeCompare(String(y.beginn || "99")));
+  const verb = verbindungenAm(h.datum);
+  if (!gebucht.length && !verb.length) return "";
+  return `<div class="karte-box">
+    <h3>🎟️ Tickets &amp; Treffpunkte – ${esc(datumText(h.datum))}</h3>
+    <ul class="tickets">
+      ${verb.map((v) => `<li>${verbindungText(v)}${[v.buchungsnr && `Buchung <strong>${esc(v.buchungsnr)}</strong>`, v.terminal && esc(v.terminal), v.sitz && `Sitz ${esc(v.sitz)}`].filter(Boolean).length ? `<div class="klein">${[v.buchungsnr && `Buchung <strong>${esc(v.buchungsnr)}</strong>`, v.terminal && esc(v.terminal), v.sitz && `Sitz ${esc(v.sitz)}`].filter(Boolean).join(" · ")}</div>` : ""}</li>`).join("")}
+      ${gebucht.map((a) => `<li><strong>${esc(a.beginn || "–")}</strong> ${esc(a.titel)}
+        <div class="klein">${[a.code && `Buchung <strong>${esc(a.code)}</strong>`, a.ziel?.name && `📍 Treffpunkt: ${esc(a.ziel.name)}`, a.oeffnungszeiten && `🕑 ${esc(a.oeffnungszeiten)}`].filter(Boolean).join(" · ") || "<span class='leise'>Keine Buchungsnummer oder kein Treffpunkt eingetragen</span>"}
+        ${a.ziel && Number.isFinite(a.ziel.lat) ? ` · <a href="https://www.google.com/maps/dir/?api=1&destination=${a.ziel.lat},${a.ziel.lng}" target="_blank" rel="noopener">Weg ↗</a>` : ""}${a.link ? ` · <a href="${esc(a.link)}" target="_blank" rel="noopener">Angebot ↗</a>` : ""}</div></li>`).join("")}
+    </ul>
+    <p class="klein leise">Tickets als Datei (PDF, Foto) liegen unter „Vorbereitung → Dokumente“.</p>
+  </div>`;
+}
+
+/** Ausgaben unterwegs: Urlaubskasse/Bordkonto, Abrechnung zwischen Personen/Familien, alle Ausgaben (im Bereich „Kosten“). */
+export function ausgabenAnsicht() {
+  const k = bordkonto(zustand.extras.ausgaben, zustand.reise);
+  const familien = (zustand.reise.familien ?? []).length > 1;
+  const nachFamilie = familien && zustand.ausgleichNachFamilie !== false;
+  const a = ausgleich(zustand.extras.ausgaben, zustand.reise, { nachFamilie });
+  const einheitName = (id) => (id.startsWith("person:") ? personName(id.slice(7)) : (zustand.reise.familien ?? []).find((f) => f.id === id)?.name ?? personName(id));
+  const ausgaben = [...zustand.extras.ausgaben].sort((x, y) => String(y.datum).localeCompare(String(x.datum)) || String(y.erstellt).localeCompare(String(x.erstellt)));
+  const zeigeAlle = zustand.alleAusgaben;
+  return `
     <div class="karte-box">
       <div class="zeile"><h3>💳 ${istKreuzfahrtReise() ? "Bordkonto" : "Urlaubskasse"}</h3><span class="platz"></span><button class="knopf" data-aktion="ausgabe-neu" data-ort="bord">+ ${istKreuzfahrtReise() ? "Ausgabe an Bord" : "Ausgabe"}</button></div>
       <div class="kacheln">
@@ -163,7 +192,7 @@ export function unterwegsAnsicht() {
     <div class="karte-box">
       <div class="zeile"><h3>Alle Ausgaben (${ausgaben.length})</h3><span class="platz"></span>${zustand.reise.waehrung !== "USD" ? `<label class="klein">1 $ = <input class="kurs" data-aktion="usd-kurs" inputmode="decimal" value="${esc(String(zustand.reise.kurse?.USD ?? 0.89).replace(".", ","))}"> ${esc(waehrung())}</label>` : ""}</div>
       ${ausgaben.length ? `<div class="tabelle"><table><thead><tr><th>Datum</th><th>Was</th><th>Bezahlt von</th><th>Für</th><th class="zahl">Betrag</th><th></th></tr></thead><tbody>
-        ${(zeigeAlle ? ausgaben : ausgaben.slice(0, 15)).map((x) => `<tr><td class="klein">${esc(datumText(x.datum))}</td><td>${esc(x.titel)} <div class="klein leise">${esc(AUSGABE_KATEGORIEN[x.kategorie] ?? "")}${x.ort === "bord" ? " · an Bord" : ""}</div></td>
+        ${(zeigeAlle ? ausgaben : ausgaben.slice(0, 15)).map((x) => `<tr><td class="klein">${esc(datumText(x.datum))}</td><td>${esc(x.titel)} <div class="klein leise">${esc(AUSGABE_KATEGORIEN[x.kategorie] ?? "")}${x.ort === "bord" ? " · an Bord" : ""}${x.buchung ? ` · 🔗 ${esc(buchungName(x.buchung))}` : ""}</div></td>
           <td class="klein">${x.bezahltVon ? esc(personName(x.bezahltVon)) : "–"}</td><td class="klein">${x.fuer?.length ? esc(x.fuer.map(personName).join(", ")) : x.bezahltVon ? "alle Erw." : "–"}</td>
           <td class="zahl">${geld(inReisewaehrung(x, zustand.reise))}${x.waehrung && x.waehrung !== waehrung() ? `<div class="klein leise">${esc(String(x.betrag).replace(".", ","))} ${esc(x.waehrung)}</div>` : ""}</td>
           <td><button class="link" data-aktion="ausgabe-bearbeiten" data-id="${esc(x.id)}">Bearbeiten</button></td></tr>`).join("")}
@@ -312,6 +341,19 @@ aktionen["rueckweg"] = async (el) => {
 
 // ---------- Ausgaben ----------
 
+/** Gebuchte Posten, mit denen eine Ausgabe verknüpft werden kann. */
+function buchungsAuswahl() {
+  const r = zustand.reise;
+  return [
+    ...(r.ausfluege ?? []).filter((a) => a.status === "gebucht").map((a) => [`ausflug:${a.id}`, `Ausflug: ${a.titel}`]),
+    ...(r.hotels ?? []).filter((x) => x.status === "gebucht").map((x) => [`hotel:${x.id}`, `Unterkunft: ${x.name}`]),
+    ...(r.zimmer ?? []).filter((z) => z.unterkunft === "schiff" && zahl(z.preis)).map((z) => [`kabine:${z.id}`, `Kabine ${z.nummer || ""}`]),
+    ...(r.verbindungen ?? []).filter((v) => v.status === "gebucht").map((v) => [`verbindung:${v.id}`, `Verbindung: ${v.titel || `${v.von} → ${v.nach}`}`]),
+    ...(r.kosten ?? []).filter((k) => k.status === "gebucht").map((k) => [`kosten:${k.id}`, `Kosten: ${k.titel || "Posten"}`]),
+  ];
+}
+export const buchungName = (schluessel) => buchungsAuswahl().find(([k]) => k === schluessel)?.[1] ?? "Buchung (entfernt)";
+
 function ausgabeDialog(id, vorlage = {}) {
   const x = id ? zustand.extras.ausgaben.find((y) => y.id === id) : { datum: tagFuerUnterwegs()?.datum ?? heute(), waehrung: waehrung(), kategorie: vorlage.ort === "bord" ? "getraenke" : "essen", fuer: [], bezahltVon: personen().find((p) => p.userId === zustand.ich?.id)?.id ?? "", ...vorlage };
   const erwachsene = personen().filter((p) => !istKind(p));
@@ -325,6 +367,8 @@ function ausgabeDialog(id, vorlage = {}) {
       <label>Kategorie<select name="kategorie">${Object.entries(AUSGABE_KATEGORIEN).map(([k, t]) => `<option value="${k}" ${x.kategorie === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
       <label>Wo<select name="ort"><option value="bord" ${x.ort === "bord" ? "selected" : ""}>${istKreuzfahrtReise() ? "An Bord (Bordkonto)" : "Urlaubskasse"}</option><option value="land" ${x.ort !== "bord" ? "selected" : ""}>${istKreuzfahrtReise() ? "An Land / sonst" : "Sonstiges (nur abrechnen)"}</option></select></label>
     </div>
+    <label>Zahlung für eine Buchung? <select name="buchung"><option value="">– nein, zusätzliche Ausgabe –</option>${buchungsAuswahl().map(([k, t]) => `<option value="${esc(k)}" ${x.buchung === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+    <p class="klein leise">Verknüpfte Zahlungen zählen bei der Buchung als „bezahlt“ und nicht zusätzlich – so wird nichts doppelt gerechnet.</p>
     <label>Bezahlt von<select name="bezahltVon"><option value="">– niemand Bestimmtes (nur Bordkonto) –</option>${personen().map((p) => `<option value="${esc(p.id)}" ${x.bezahltVon === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>
     <fieldset><legend>Für wen? (leer = alle Erwachsenen: ${esc(erwachsene.map((p) => p.name).join(", "))})</legend>
       <div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="fuer" value="${esc(p.id)}" ${(x.fuer ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
@@ -338,7 +382,7 @@ function ausgabeDialog(id, vorlage = {}) {
   </form>`);
   $("#ausgabeForm").addEventListener("submit", async (ev) => {
     const f = new FormData(ev.target);
-    const daten = { titel: f.get("titel"), betrag: zahl(f.get("betrag")), waehrung: f.get("waehrung"), datum: f.get("datum"), kategorie: f.get("kategorie"), ort: f.get("ort"), bezahltVon: f.get("bezahltVon"), fuer: f.getAll("fuer") };
+    const daten = { titel: f.get("titel"), betrag: zahl(f.get("betrag")), waehrung: f.get("waehrung"), datum: f.get("datum"), kategorie: f.get("kategorie"), ort: f.get("ort"), bezahltVon: f.get("bezahltVon"), fuer: f.getAll("fuer"), buchung: f.get("buchung") };
     try {
       const neu = await anfrage(`/api/reisen/${zustand.reise.id}/extras/ausgaben${id ? `/${id}` : ""}`, { method: id ? "PUT" : "POST", body: daten });
       const l = zustand.extras.ausgaben;

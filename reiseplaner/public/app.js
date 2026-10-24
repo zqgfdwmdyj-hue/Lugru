@@ -2,6 +2,7 @@ import {
   QUELLEN, STATUS, KATEGORIEN, zeitZuMin, minZuZeit, dauerText, zahl, istKind, sichereUrl,
   ausflugKosten, reiseKosten, zeitplan, bewertung, entfernungKm, textZuAusfluegen, startpunkt, hotelKosten,
   REISEARTEN, VERKEHRSMITTEL, festeZeit, familieVon, zimmerVon, moeglicheDubletten, buchungsKonflikte, punkteErklaerung,
+  zuJung, titelAehnlich,
 } from "./rechnen.js";
 import {
   zustand, $, esc, neueId, datumText, personen, haefen, hafenVon, ausfluegeIn, hatKoord, geld, istPlaner, linkHtml, stationsArt, istKreuzfahrt,
@@ -14,12 +15,12 @@ import { erlebnisseAnsicht, bewertungsZeile } from "./erlebnisse.js";
 import { kiImportBox, kiKnopf, kiPanel, koordinatenErgaenzen } from "./ki.js";
 import { weltkarteLaden, weltkarteAnsicht, weltkartePins } from "./weltkarte.js";
 import { vorbereitungAnsicht } from "./vorbereitung.js";
-import { unterwegsAnsicht, nachUnterwegs, weckerPlanen } from "./unterwegs.js";
+import { unterwegsAnsicht, nachUnterwegs, weckerPlanen, ausgabenAnsicht } from "./unterwegs.js";
 import { kinderAnsicht } from "./kinder.js";
 import { flugAnsicht, fluege } from "./flug.js";
 import { uebersichtAnsicht } from "./uebersicht.js";
 import { planB, PLAN_B_IDEEN } from "./unterwegs-logik.js";
-import { bordkonto, inReisewaehrung, etappen, spritkosten } from "./unterwegs-logik.js";
+import { etappen, spritkosten, kostenPosten } from "./unterwegs-logik.js";
 import { verbindungText } from "./unterwegs.js";
 import "./reisebuch.js";
 import "./teilen.js";
@@ -164,7 +165,7 @@ const GRUPPEN = {
   reiseplan: ["plan", "verlauf", "hotels", "flug"],
   vorbereitung: ["vorbereitung"],
   unterwegs: ["unterwegs"],
-  kosten: ["kosten"],
+  kosten: ["kosten", "ausgaben"],
   erinnerungen: ["erlebnisse"],
   verwalten: ["personen", "daten", "einstellungen"],
   kinder: ["kinder"],
@@ -179,6 +180,8 @@ const UNTER_NAMEN = () => ({
   personen: "👥 Reisende & Zugänge",
   daten: "📥 Import & Sicherung",
   einstellungen: "⚙️ Reise & Freigabe",
+  kosten: "📊 Reisekosten & Zahlungen",
+  ausgaben: istKreuzfahrt() ? "💳 Bordkonto & Abrechnung" : "💳 Urlaubskasse & Abrechnung",
 });
 const letzteJeGruppe = {};
 
@@ -268,7 +271,7 @@ function alles() {
     karteZeichnen();
     return;
   }
-  const ansichten = { uebersicht: uebersichtAnsicht, flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, einstellungen: einstellungenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, kinder: kinderAnsicht };
+  const ansichten = { uebersicht: uebersichtAnsicht, flug: flugAnsicht, plan: planAnsicht, hotels: hotelsAnsicht, erlebnisse: erlebnisseAnsicht, kosten: kostenAnsicht, personen: personenAnsicht, verlauf: verlaufAnsicht, daten: datenAnsicht, einstellungen: einstellungenAnsicht, vorbereitung: vorbereitungAnsicht, unterwegs: unterwegsAnsicht, ausgaben: ausgabenAnsicht, kinder: kinderAnsicht };
   inhalt.innerHTML = (ansichten[zustand.ansicht] ?? uebersichtAnsicht)();
   if (zustand.ansicht === "plan") nachPlan();
   if (zustand.ansicht === "unterwegs") nachUnterwegs();
@@ -535,6 +538,7 @@ function ausflugKarte(a, b, h, { beste, guenstig }) {
       ${z.puffer != null ? `<p class="klein leise rechenweg">⏱️ ${esc(z.rechenweg)}${z.annahmen.length ? `<br><span class="annahme-text">Annahme: ${esc(z.annahmen.join("; "))}</span>` : ""}</p>` : ""}
       ${z.warnungen.length ? `<ul class="warnungen">${z.warnungen.map((w) => `<li>⚠️ ${esc(w)}</li>`).join("")}</ul>` : ""}
       ${konfliktZeilen(a)}
+      ${zuJung(a, personen()).length ? `<ul class="warnungen">${zuJung(a, personen()).map((p) => `<li>⚠️ ${esc(p.name)} (${esc(p.alter)}) ist jünger als das Mindestalter (${esc(a.mindestalter)} J.)</li>`).join("")}</ul>` : ""}
       ${alternativenZeile(a)}
       ${kiCheckAnzeige(a)}
       ${a.status !== "verworfen" && personen().length > 1 ? stimmenLeiste(a) : ""}
@@ -809,74 +813,115 @@ function gygZeigen(h) {
     .join("")}</div>`;
 }
 
+const POSTEN_ART = { ausflug: "Ausflug", hotel: "Unterkunft", kabine: "Kabine", verbindung: "Verbindung", kosten: "Weitere Kosten" };
+
 function kostenAnsicht() {
   const r = zustand.reise;
-  const k = reiseKosten(r);
+  const mitFav = zustand.kostenMitFavoriten === true;
+  const k = reiseKosten(r, { mitFavoriten: mitFav });
+  const p = kostenPosten(r, zustand.extras.ausgaben, { mitFavoriten: mitFav });
   const ps = personen();
-  const zeilenHafen = haefen()
-    .map((h) => {
-      const gewaehlt = ausfluegeIn(h.id).filter((a) => a.status === "gebucht" || a.status === "favorit");
-      if (!gewaehlt.length) return "";
-      return `<tr><td>${esc(datumText(h.datum))}</td><td>${esc(h.name)}</td><td>${gewaehlt.map((a) => `${esc(a.titel)} <span class="leise klein">(${STATUS[a.status]}, ${kostenText(ausflugKosten(a, ps))})</span>`).join("<br>")}</td><td class="zahl">${geld(k.jeHafen[h.id] ?? 0)}</td></tr>`;
-    })
-    .join("");
-  const hotelZeilen = r.hotels
-    .filter((h) => h.status === "gebucht" || h.status === "favorit")
-    .map((h) => `<tr><td>${esc(h.name)} <span class="leise klein">(${STATUS[h.status]})</span></td><td class="klein">${esc(datumText(h.anreise))} – ${esc(datumText(h.abreise))}</td><td class="zahl">${geld(hotelKosten(h, ps, zimmerVon(r, h.id)).summe)}</td></tr>`)
-    .join("");
   const offenHinweis = k.offen.length
-    ? `<div class="hinweis warnung-box"><strong>⚠️ Summen unvollständig:</strong> ${k.offen.length} gezählte ${k.offen.length === 1 ? "Posten hat" : "Posten haben"} noch keinen Preis – sie zählen bisher mit 0 €.
+    ? `<div class="hinweis warnung-box"><strong>⚠️ Summen unvollständig:</strong> ${k.offen.length} ${k.offen.length === 1 ? "Posten hat" : "Posten haben"} noch keinen Preis – ${k.offen.length === 1 ? "er zählt" : "sie zählen"} bisher mit 0 €.
       <details class="klein"><summary>Welche?</summary><ul>${k.offen.map((o) => `<li>${esc(o.art)}: ${esc(o.titel)} <span class="leise">(${esc(STATUS[o.status] ?? "")}${o.teilweise ? ", Preis teilweise bekannt" : ""})</span></li>`).join("")}</ul></details></div>`
     : "";
+  const anzahl = (f) => p.posten.filter(f).length;
+  const zeilen = p.posten.map((x) => `<tr class="${x.status === "favorit" ? "favorit" : ""}">
+      <td>${esc(x.titel)}<div class="klein leise">${esc(POSTEN_ART[x.art])}${x.status === "favorit" ? " · ★ Favorit (noch nicht gebucht)" : ""}</div></td>
+      <td class="zahl">${x.offen ? `<span class="preis-offen">${x.teilbetrag ? `ab ${geld(x.teilbetrag)}` : "Preis offen"}</span>` : geld(x.betrag)}</td>
+      <td class="zahl">${x.status === "gebucht" ? `<input class="betragfeld" data-aktion="bezahlt" data-art="${esc(x.art)}" data-id="${esc(x.id)}" inputmode="decimal" value="${x.bezahlt ? esc(String(x.bezahlt).replace(".", ",")) : ""}" placeholder="0" aria-label="Bezahlt"> ${x.betrag != null && x.bezahlt < x.betrag ? `<button class="link klein" data-aktion="bezahlt-voll" data-art="${esc(x.art)}" data-id="${esc(x.id)}" data-betrag="${x.betrag}">voll</button>` : ""}${x.ueberAusgaben ? `<div class="klein leise">davon ${geld(x.ueberAusgaben)} über Ausgaben</div>` : ""}` : "–"}</td>
+      <td class="zahl ${x.rest ? "gelb" : ""}">${x.status !== "gebucht" ? "–" : x.rest == null ? "?" : x.rest ? geld(x.rest) : "✓"}</td></tr>`).join("");
   return `
     ${offenHinweis}
+    <div class="karte-box zeile">
+      <label class="haken"><input type="checkbox" data-aktion="kosten-favoriten" ${mitFav ? "checked" : ""}> Favoriten mit einrechnen <span class="leise klein">(noch nicht gebucht)</span></label>
+    </div>
     <div class="kacheln">
-      <div class="kachel"><span>Gebucht</span><strong>${geld(k.gebucht)}</strong></div>
-      <div class="kachel"><span>Gebucht + Favoriten</span><strong>${geld(k.geplant)}</strong></div>
-      <div class="kachel"><span>Je Person (Ø)</span><strong>${geld(ps.length ? k.geplant / ps.length : 0)}</strong></div>
+      ${mitFav ? `<div class="kachel"><span>Geplant</span><strong>${geld(p.geplant)}</strong><em>gebucht + Favoriten · ${anzahl(() => true)} Posten</em></div>` : ""}
+      <div class="kachel"><span>Gebucht</span><strong>${geld(p.gebucht)}</strong><em>${anzahl((x) => x.status === "gebucht")} gebuchte Posten</em></div>
+      <div class="kachel"><span>Bezahlt</span><strong>${geld(p.bezahlt)}</strong><em>Anzahlungen &amp; Zahlungen</em></div>
+      <div class="kachel ${p.nochOffen ? "gelb" : ""}"><span>Noch zu zahlen</span><strong>${geld(p.nochOffen)}</strong><em>gebucht − bezahlt${p.preisOffen ? ` · ${p.preisOffen} ohne Preis` : ""}</em></div>
+      <div class="kachel"><span>Unterwegs ausgegeben</span><strong>${geld(p.unterwegs)}</strong><em><button class="link klein" data-aktion="ansicht" data-ziel="ausgaben">zusätzliche Ausgaben →</button></em></div>
+      <div class="kachel"><span>Reise gesamt</span><strong>${geld(p.gesamt)}</strong><em>gebucht + unterwegs</em></div>
     </div>
-    ${zustand.extras.ausgaben.length ? `<div class="hinweis">Unterwegs tatsächlich ausgegeben: <strong>${geld(zustand.extras.ausgaben.reduce((sum, x) => sum + inReisewaehrung(x, r), 0))}</strong> (davon an Bord ${geld(bordkonto(zustand.extras.ausgaben, r).summe)}) <button class="link" data-aktion="zu-unterwegs">Bordkonto &amp; Abrechnung →</button></div>` : ""}
-    <div class="kacheln klein-kacheln">
-      <div class="kachel"><span>Ausflüge</span><strong>${geld(k.ausfluege.geplant)}</strong></div>
-      <div class="kachel"><span>Unterkünfte</span><strong>${geld(k.hotels.geplant)}</strong></div>
-      ${k.verbindungen.geplant ? `<div class="kachel"><span>Anreise &amp; Verbindungen</span><strong>${geld(k.verbindungen.geplant)}</strong></div>` : ""}
-      <div class="kachel"><span>Weitere Kosten</span><strong>${geld(k.sonstiges.geplant)}</strong></div>
+    <p class="klein leise">So wird gerechnet: <strong>Gebucht</strong> = alle Posten mit Status „Gebucht“ (Ausflüge nach Teilnehmenden, Unterkünfte nach Nächten/Zimmern, Kabinen, Verbindungen mit Preis, weitere Kosten). <strong>Bezahlt</strong> = je Posten der eingetragene Betrag oder die Summe der verknüpften Ausgaben (der höhere Wert, nie doppelt). <strong>Unterwegs ausgegeben</strong> = Ausgaben ohne Verknüpfung zu einer Buchung.</p>
+    <div class="karte-box">
+      <h3>📋 Alle Posten (${p.posten.length})</h3>
+      ${p.posten.length ? `<div class="tabelle"><table class="posten"><thead><tr><th>Posten</th><th class="zahl">Betrag</th><th class="zahl">Bezahlt</th><th class="zahl">Offen</th></tr></thead><tbody>${zeilen}</tbody>
+        <tfoot><tr><th>Gebucht</th><th class="zahl">${geld(p.gebucht)}</th><th class="zahl">${geld(p.bezahlt)}</th><th class="zahl">${geld(p.nochOffen)}</th></tr></tfoot></table></div>` : `<p class="leise">Noch nichts gebucht.${mitFav ? "" : " Favoriten lassen sich oben mit einrechnen."}</p>`}
     </div>
     <div class="karte-box">
-      <h3>Ausflüge je Tag</h3>
-      <p class="leise klein">Gezählt werden Einträge mit Status „Gebucht“ oder „Favorit“.</p>
-      <div class="tabelle"><table><thead><tr><th>Tag</th><th>Ort</th><th>Ausflüge</th><th class="zahl">Summe</th></tr></thead>
-      <tbody>${zeilenHafen || `<tr><td colspan="4" class="leise">Noch keine Ausflüge als Favorit oder gebucht.</td></tr>`}</tbody>
-      <tfoot><tr><th colspan="3">Ausflüge gesamt</th><th class="zahl">${geld(k.ausfluege.geplant)}</th></tr></tfoot></table></div>
-    </div>
-    ${hotelZeilen ? `<div class="karte-box"><h3>Unterkünfte</h3><div class="tabelle"><table><tbody>${hotelZeilen}</tbody></table></div></div>` : ""}
-    <div class="karte-box">
-      <div class="zeile"><h3>Weitere Kosten</h3><button class="knopf leise" data-aktion="kosten-neu">+ Posten</button></div>
-      <p class="leise klein">Flug, Kreuzfahrt-Grundpreis, Mietwagen, Trinkgeld, Versicherung … werden gleichmäßig auf alle verteilt.</p>
+      <div class="zeile"><h3>➕ Weitere Kosten</h3><span class="platz"></span><button class="knopf leise" data-aktion="kosten-neu">+ Posten</button></div>
+      <p class="leise klein">Flug, Kreuzfahrt-Grundpreis, Mietwagen, Versicherung … Standard: auf alle verteilt – über „Für wen?“ nur auf bestimmte Personen. Leerer Betrag = Preis offen.</p>
       ${r.kosten.length ? `<div class="kostenliste">${r.kosten.map((x) => `<div class="kostenzeile" data-id="${esc(x.id)}">
         <input data-kfeld="titel" value="${esc(x.titel ?? "")}" placeholder="z. B. Flug" aria-label="Posten">
-        <input data-kfeld="betrag" inputmode="decimal" value="${esc(x.betrag ?? "")}" placeholder="€" aria-label="Betrag">
-        <select data-kfeld="status" aria-label="Status">${["idee", "favorit", "gebucht"].map((s) => `<option value="${s}" ${x.status === s ? "selected" : ""}>${STATUS[s]}</option>`).join("")}</select>
+        <input data-kfeld="betrag" inputmode="decimal" value="${esc(x.betrag ?? "")}" placeholder="Preis offen" aria-label="Betrag">
+        <select data-kfeld="status" aria-label="Status">${["idee", "favorit", "gebucht"].map((st) => `<option value="${st}" ${x.status === st ? "selected" : ""}>${STATUS[st]}</option>`).join("")}</select>
+        <button class="link klein" data-aktion="kosten-aufteilen" data-id="${esc(x.id)}">${x.personen?.length ? `für ${x.personen.length} von ${ps.length}` : "für alle"}</button>
         <button class="link rot" data-aktion="kosten-loeschen" data-id="${esc(x.id)}" aria-label="Entfernen">✕</button></div>`).join("")}</div>` : ""}
     </div>
     ${(r.familien ?? []).length ? `<div class="karte-box">
-      <h3>Je Familie</h3>
+      <h3>👨‍👩‍👧 Je Familie <span class="leise klein">(${mitFav ? "gebucht + Favoriten" : "nur gebucht"})</span></h3>
       <label class="klein">Gemeinsame Kosten (Unterkunft ohne Zimmerpreise, weitere Kosten, Verbindungen) aufteilen
         <select data-reise="kostenTeilung"><option value="kopf" ${r.kostenTeilung !== "familie" ? "selected" : ""}>nach Köpfen</option><option value="familie" ${r.kostenTeilung === "familie" ? "selected" : ""}>zu gleichen Teilen je Familie</option></select></label>
-      <div class="tabelle"><table><tbody>${Object.entries(k.jeFamilie).map(([f, betrag]) => `<tr><td>${esc(familienName(f))}</td><td class="leise klein">${ps.filter((p) => familieVon(p, r) === f).map((p) => esc(p.name)).join(", ")}</td><td class="zahl">${geld(betrag)}</td></tr>`).join("")}</tbody></table></div>
-      <p class="leise klein">Ausflüge zählen nach Teilnahme, Zimmer mit Preis für ihre Bewohner.</p>
+      <div class="tabelle"><table><tbody>${Object.entries(k.jeFamilie).map(([f, betrag]) => `<tr><td>${esc(familienName(f))}</td><td class="leise klein">${ps.filter((x) => familieVon(x, r) === f).map((x) => esc(x.name)).join(", ")}</td><td class="zahl">${geld(betrag)}</td></tr>`).join("")}</tbody></table></div>
+      <p class="leise klein">Ausflüge zählen nach Teilnahme, Zimmer mit Preis für ihre Bewohner, weitere Kosten für die ausgewählten Personen. Ausgaben unterwegs rechnet „Ausgaben &amp; Abrechnung“ ab.</p>
     </div>` : ""}
     <div class="karte-box">
-      <h3>Je Person</h3>
+      <h3>🧍 Je Person <span class="leise klein">(${mitFav ? "gebucht + Favoriten" : "nur gebucht"})</span></h3>
       <div class="tabelle"><table><thead><tr><th>Name</th><th></th><th class="zahl">Anteil</th></tr></thead>
-      <tbody>${ps.map((p) => `<tr><td>${esc(p.name)}</td><td class="leise">${istKind(p) ? `Kind${p.alter ? `, ${esc(p.alter)} J.` : ""}` : "Erwachsen"}</td><td class="zahl">${geld(k.jePerson[p.id] ?? 0)}</td></tr>`).join("")}</tbody></table></div>
+      <tbody>${ps.map((x) => `<tr><td>${esc(x.name)}</td><td class="leise">${istKind(x) ? `Kind${x.alter ? `, ${esc(x.alter)} J.` : ""}` : "Erwachsen"}</td><td class="zahl">${geld(k.jePerson[x.id] ?? 0)}</td></tr>`).join("")}</tbody></table></div>
       <p class="leise klein">Ausflüge nach Teilnahme; Gruppenpreise und Zusatzkosten unter den Teilnehmenden; Zimmer/Kabinen mit Preis für ihre Bewohner; Verbindungen für die Mitreisenden; Unterkünfte und weitere Kosten ${r.kostenTeilung === "familie" ? "je Familie" : "nach Köpfen"} verteilt.</p>
     </div>
-    <div class="karte-box">
-      <h3>Ausflüge je Anbieter</h3>
-      <div class="tabelle"><table><tbody>${Object.entries(k.jeQuelle).map(([q, s]) => `<tr><td><span class="punkt" style="--farbe:${(QUELLEN[q] ?? QUELLEN.sonstige).farbe}"></span>${esc((QUELLEN[q] ?? QUELLEN.sonstige).name)}</td><td class="zahl">${geld(s)}</td></tr>`).join("") || `<tr><td class="leise">–</td></tr>`}</tbody></table></div>
-    </div>`;
+    <details class="karte-box klappe" data-klappe="kosten-auswertung" ${klappeOffen("kosten-auswertung", false) ? "open" : ""}>
+      <summary><h3>📈 Auswertungen</h3></summary>
+      <h4>Ausflüge je Tag</h4>
+      <div class="tabelle"><table><tbody>${haefen().map((h) => {
+        const gewaehlt = ausfluegeIn(h.id).filter((a) => a.status === "gebucht" || (mitFav && a.status === "favorit"));
+        return gewaehlt.length ? `<tr><td class="klein">${esc(datumText(h.datum))} ${esc(h.name)}</td><td>${gewaehlt.map((a) => `${esc(a.titel)} <span class="leise klein">(${STATUS[a.status]}, ${kostenText(ausflugKosten(a, ps))})</span>`).join("<br>")}</td><td class="zahl">${geld(k.jeHafen[h.id] ?? 0)}</td></tr>` : "";
+      }).join("") || `<tr><td class="leise">Noch keine Ausflüge gebucht.</td></tr>`}</tbody></table></div>
+      <h4>Ausflüge je Anbieter</h4>
+      <div class="tabelle"><table><tbody>${Object.entries(k.jeQuelle).map(([q, sum]) => `<tr><td><span class="punkt" style="--farbe:${(QUELLEN[q] ?? QUELLEN.sonstige).farbe}"></span>${esc((QUELLEN[q] ?? QUELLEN.sonstige).name)}</td><td class="zahl">${geld(sum)}</td></tr>`).join("") || `<tr><td class="leise">–</td></tr>`}</tbody></table></div>
+    </details>`;
 }
+
+aenderungen["kosten-favoriten"] = (el) => {
+  zustand.kostenMitFavoriten = el.checked;
+  alles();
+};
+const postenListe = { ausflug: () => zustand.reise.ausfluege, hotel: () => zustand.reise.hotels, kabine: () => zustand.reise.zimmer, verbindung: () => zustand.reise.verbindungen, kosten: () => zustand.reise.kosten };
+const postenMit = (art, id) => postenListe[art]?.().find((x) => x.id === id);
+aenderungen["bezahlt"] = (el) => {
+  const x = postenMit(el.dataset.art, el.dataset.id);
+  if (!x) return;
+  x.bezahltBetrag = zahl(el.value);
+  if (x.bezahltBetrag == null) delete x.bezahltBetrag;
+  speichern();
+  alles();
+};
+aktionen["bezahlt-voll"] = (el) => {
+  const x = postenMit(el.dataset.art, el.dataset.id);
+  if (!x) return;
+  x.bezahltBetrag = Number(el.dataset.betrag);
+  speichern();
+  alles();
+};
+aktionen["kosten-aufteilen"] = (el) => {
+  const x = zustand.reise.kosten.find((y) => y.id === el.dataset.id);
+  dialogOeffnen(`<form method="dialog" class="formular" id="aufteilenForm">
+    <h3>Für wen ist „${esc(x.titel || "dieser Posten")}“?</h3>
+    <p class="klein leise">Nichts ausgewählt = alle Mitreisenden. Verteilt wird ${zustand.reise.kostenTeilung === "familie" ? "zu gleichen Teilen je Familie" : "nach Köpfen"}.</p>
+    <div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="p" value="${esc(p.id)}" ${(x.personen ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
+    <div class="zeile"><span class="platz"></span><button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button><button class="knopf" value="ok">Übernehmen</button></div>
+  </form>`);
+  $("#aufteilenForm").addEventListener("submit", () => {
+    const l = new FormData($("#aufteilenForm")).getAll("p");
+    if (l.length && l.length < personen().length) x.personen = l;
+    else delete x.personen;
+    speichern();
+    alles();
+  });
+};
 
 aktionen["kosten-neu"] = () => {
   zustand.reise.kosten.push({ id: neueId(), titel: "", betrag: null, status: "gebucht" });
@@ -1446,62 +1491,96 @@ function hafenDialog(id) {
   });
 }
 
+/** Verständliche Zusammenfassung eines Ausflugs vor dem Speichern – mit Warnungen. */
+function ausflugZusammenfassung(w) {
+  const h = hafenVon(w.hafenId);
+  if (!h) return "";
+  const k = ausflugKosten(w, personen());
+  const z = zeitplan(w, h, zustand.reise);
+  const zeilen = [];
+  zeilen.push(`📅 ${esc(datumText(h.datum, { weekday: "short", day: "2-digit", month: "2-digit" }))} · ${stationsArt(h) === "seetag" ? "Seetag" : esc(h.name)}`);
+  zeilen.push(w.beginn && z.zurueck != null ? `🕘 ${esc(w.beginn)}–${minZuZeit(z.zurueck - (w.quelle === "schiff" ? 0 : zahl(w.fahrzeitMin) ?? 0))} (${dauerText(zahl(w.dauerMin))})${z.puffer != null ? ` · zurück ca. ${minZuZeit(z.zurueck)} · Puffer ${z.puffer < 0 ? "−" : ""}${dauerText(Math.abs(z.puffer))} bis ${esc(z.fest.titel)} ${esc(z.fest.zeit)}${z.annahmen.length ? " (mit Annahme)" : ""}` : ""}` : `🕘 ${w.beginn ? `ab ${esc(w.beginn)}` : "Beginn noch offen"}${zahl(w.dauerMin) ? ` · ${dauerText(zahl(w.dauerMin))}` : " · Dauer offen"}`);
+  zeilen.push(`👥 ${k.anzahl ? `${k.anzahl} ${k.anzahl === 1 ? "Person" : "Personen"} (${k.erwachsene} Erw., ${k.kinder} ${k.kinder === 1 ? "Kind" : "Kinder"})` : "noch niemand ausgewählt"}`);
+  zeilen.push(`💶 ${kostenText(k)}${!k.offen && k.anzahl ? ` · ${geld(k.summe / k.anzahl)} je Person` : ""}`);
+  zeilen.push(`📌 ${esc(STATUS[w.status] ?? "")} · ${esc((QUELLEN[w.quelle] ?? QUELLEN.sonstige).name)}`);
+  const warn = [];
+  if (!k.anzahl) warn.push("Niemand nimmt teil – bitte unter „Wer kommt mit?“ auswählen.");
+  for (const p of zuJung(w, personen())) warn.push(`${p.name} (${p.alter}) ist jünger als das Mindestalter von ${w.mindestalter} Jahren.`);
+  if (z.puffer != null && z.puffer < 0) warn.push(`Endet ${dauerText(-z.puffer)} nach „${z.fest.kurz}“.`);
+  if (w.status === "gebucht") {
+    const probe = { ...zustand.reise, ausfluege: [...zustand.reise.ausfluege.filter((x) => x.id !== w.id), w] };
+    for (const c of buchungsKonflikte(probe).get(w.id) ?? []) warn.push(`${c.grund} mit „${c.mit.titel}“${c.personen.length ? ` (${c.personen.join(", ")})` : ""}.`);
+  }
+  const aehnlich = ausfluegeIn(w.hafenId).find((x) => x.id !== w.id && x.status !== "verworfen" && w.titel && titelAehnlich(x.titel, w.titel));
+  if (aehnlich) warn.push(`Ähnlicher Eintrag am selben Tag: „${aehnlich.titel}“ – Dublette?`);
+  return `<strong>Zusammenfassung</strong><ul>${zeilen.map((x) => `<li>${x}</li>`).join("")}</ul>${warn.length ? `<ul class="warnungen">${warn.map((x) => `<li>⚠️ ${esc(x)}</li>`).join("")}</ul>` : ""}`;
+}
+
 function ausflugDialog(id, vorlage = {}) {
   const neu = !id;
   const a = id
     ? zustand.reise.ausfluege.find((x) => x.id === id)
     : { id: neueId(), hafenId: zustand.hafenId, quelle: stationsArt(hafenVon(zustand.hafenId)) === "ort" ? "getyourguide" : "schiff", kategorie: stationsArt(hafenVon(zustand.hafenId)) === "seetag" ? "bord" : "ausflug", status: "idee", preisArt: "person", teilnehmer: personen().map((p) => p.id), interesse: 3, verkehr: "auto", ...vorlage };
   const hs = haefen();
-  dialogOeffnen(`<form method="dialog" class="formular" id="ausflugForm">
+  const ohnePreis = a.preisErw == null && a.preisKind == null && a.preisGruppe == null;
+  const offen = (name, standard) => (standard ? "open" : "");
+  dialogOeffnen(`<form method="dialog" class="formular ausflugform" id="ausflugForm">
     <h3>${stationsArt(hafenVon(a.hafenId)) === "seetag" ? (neu ? "Aktivität an Bord hinzufügen" : "Aktivität bearbeiten") : neu ? "Ausflug hinzufügen" : "Ausflug bearbeiten"}</h3>
     <label>Titel<input name="titel" value="${esc(a.titel ?? "")}" required placeholder="z. B. Teide-Nationalpark mit Seilbahn"></label>
     <div class="formular drei">
-      <label>Tag<select name="hafenId">${hs.map((h) => `<option value="${esc(h.id)}" ${h.id === a.hafenId ? "selected" : ""}>${esc(datumText(h.datum))} – ${stationsArt(h) === "seetag" ? "🌊 Seetag" : esc(h.name)}</option>`).join("")}</select></label>
       <label>Anbieter<select name="quelle">${Object.entries(QUELLEN).map(([k, q]) => `<option value="${k}" ${a.quelle === k ? "selected" : ""}>${esc(q.name)}</option>`).join("")}</select></label>
-      <label>Art<select name="kategorie">${Object.entries(KATEGORIEN).map(([k, t]) => `<option value="${k}" ${(a.kategorie ?? "ausflug") === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+      <label>Tag<select name="hafenId">${hs.map((h) => `<option value="${esc(h.id)}" ${h.id === a.hafenId ? "selected" : ""}>${esc(datumText(h.datum))} – ${stationsArt(h) === "seetag" ? "🌊 Seetag" : esc(h.name)}</option>`).join("")}</select></label>
       <label>Status<select name="status">${Object.entries(STATUS).map(([k, t]) => `<option value="${k}" ${a.status === k ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      <label>Link zum Angebot<input name="link" type="url" value="${esc(a.link ?? "")}" placeholder="https://…"></label>
-      <label>Ausflugs-/Buchungs-Nr.<input name="code" value="${esc(a.code ?? "")}"></label>
-    </div>
-    <label>Öffnungszeiten / Zeitfenster<input name="oeffnungszeiten" value="${esc(a.oeffnungszeiten ?? "")}" placeholder="z. B. täglich 9–18 Uhr, Einlass im Zeitfenster 10:30" maxlength="300"></label>
-    <div class="formular drei">
       <label>Beginn<input type="time" name="beginn" value="${esc(a.beginn ?? "")}"></label>
       <label>Dauer (Std.)<input name="dauerStd" inputmode="decimal" value="${a.dauerMin ? String(Math.round((a.dauerMin / 60) * 100) / 100).replace(".", ",") : ""}" placeholder="z. B. 4,5"></label>
-      <label>Interesse<select name="interesse">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${Number(a.interesse ?? 3) === n ? "selected" : ""}>${"●".repeat(n)}${"○".repeat(5 - n)}</option>`).join("")}</select></label>
     </div>
     <fieldset>
       <legend>Preis</legend>
-      <div class="formular drei">
+      <label class="haken"><input type="checkbox" name="preisUnbekannt" ${ohnePreis ? "checked" : ""}> Preis noch unbekannt <span class="leise klein">(zählt als „Preis offen“, nicht als 0 €)</span></label>
+      <div class="formular drei preisfelder">
         <label>Abrechnung<select name="preisArt"><option value="person" ${a.preisArt !== "gruppe" ? "selected" : ""}>pro Person</option><option value="gruppe" ${a.preisArt === "gruppe" ? "selected" : ""}>pro Gruppe / Fahrzeug</option></select></label>
-        <label class="nur-person">Erwachsene (€)<input name="preisErw" inputmode="decimal" value="${esc(a.preisErw ?? "")}"></label>
+        <label class="nur-person">Erwachsene (€)<input name="preisErw" inputmode="decimal" value="${esc(a.preisErw ?? "")}" placeholder="0 = kostenlos"></label>
         <label class="nur-person">Kinder (€)<input name="preisKind" inputmode="decimal" value="${esc(a.preisKind ?? "")}" placeholder="leer = wie Erw."></label>
-        <label class="nur-person">Kinder gratis unter (Jahre)<input name="kostenlosBis" inputmode="numeric" value="${esc(a.kostenlosBis ?? "")}"></label>
+        <label class="nur-person">Kinder gratis unter (Jahre)<input name="kostenlosBis" inputmode="numeric" value="${esc(a.kostenlosBis ?? "")}" placeholder="z. B. 4"></label>
         <label class="nur-gruppe">Gruppenpreis (€)<input name="preisGruppe" inputmode="decimal" value="${esc(a.preisGruppe ?? "")}"></label>
-        <label>Zusatzkosten gesamt (€)<input name="zusatzkosten" inputmode="decimal" value="${esc(a.zusatzkosten ?? "")}" placeholder="Taxi, Eintritt …"></label>
-        <label>Bewertung beim Anbieter<input name="sterne" inputmode="decimal" value="${esc(a.sterne ?? "")}" placeholder="z. B. 4,7"></label>
       </div>
     </fieldset>
     <fieldset>
       <legend>Wer kommt mit?</legend>
       <div class="teilnehmer">${personen().map((p) => `<label class="haken"><input type="checkbox" name="teilnehmer" value="${esc(p.id)}" ${(a.teilnehmer ?? []).includes(p.id) ? "checked" : ""}> ${esc(p.name)}${istKind(p) ? ` <span class="leise">(Kind${p.alter ? `, ${esc(p.alter)}` : ""})</span>` : ""}</label>`).join("")}</div>
-      <div class="vorschau" id="kostenVorschau"></div>
+      <label class="kurz">Mindestalter (Jahre)<input name="mindestalter" inputmode="numeric" value="${esc(a.mindestalter ?? "")}" placeholder="z. B. 10 beim Tauchen"></label>
     </fieldset>
-    <fieldset>
-      <legend>Ziel / Treffpunkt auf der Karte</legend>
+    <details class="gruppe-klappe" ${offen("buchung", Boolean(a.link || a.code || a.oeffnungszeiten || a.sterne))}><summary>Buchung &amp; Details <span class="leise klein">Art, Link, Buchungsnr., Zeitfenster, Bewertung, Interesse</span></summary>
+      <div class="formular drei">
+        <label>Art<select name="kategorie">${Object.entries(KATEGORIEN).map(([k, t]) => `<option value="${k}" ${(a.kategorie ?? "ausflug") === k ? "selected" : ""}>${esc(t)}</option>`).join("")}</select></label>
+        <label>Link zum Angebot<input name="link" type="url" value="${esc(a.link ?? "")}" placeholder="https://…"></label>
+        <label>Ausflugs-/Buchungs-Nr.<input name="code" value="${esc(a.code ?? "")}"></label>
+        <label>Bewertung beim Anbieter<input name="sterne" inputmode="decimal" value="${esc(a.sterne ?? "")}" placeholder="z. B. 4,7"></label>
+        <label>Interesse<select name="interesse">${[1, 2, 3, 4, 5].map((n) => `<option value="${n}" ${Number(a.interesse ?? 3) === n ? "selected" : ""}>${"●".repeat(n)}${"○".repeat(5 - n)}</option>`).join("")}</select></label>
+      </div>
+      <label>Öffnungszeiten / Zeitfenster<input name="oeffnungszeiten" value="${esc(a.oeffnungszeiten ?? "")}" placeholder="z. B. täglich 9–18 Uhr, Einlass im Zeitfenster 10:30" maxlength="300"></label>
+    </details>
+    <details class="gruppe-klappe" ${offen("weg", Boolean(a.ziel || a.fahrzeitManuell))}><summary>Transfer &amp; Treffpunkt <span class="leise klein">Ort auf der Karte, Weg ab Schiff/Hotel</span></summary>
       ${ortsSuche("ziel", a.ziel)}
       <div class="formular drei">
         <label>Weg ab Schiff/Hotel<select name="verkehr"><option value="auto" ${a.verkehr !== "fuss" ? "selected" : ""}>Auto / Taxi / Bus</option><option value="fuss" ${a.verkehr === "fuss" ? "selected" : ""}>zu Fuß</option></select></label>
         <label>Fahrzeit je Richtung (Min.)<input name="fahrzeitMin" inputmode="numeric" value="${esc(a.fahrzeitManuell ? a.fahrzeitMin : "")}" placeholder="${a.fahrzeitMin != null && !a.fahrzeitManuell ? `automatisch: ${Math.round(a.fahrzeitMin)}` : "automatisch"}"></label>
       </div>
       <p class="klein leise">Bei Schiffsausflügen ist der Transfer in der Dauer enthalten – und das Schiff wartet, falls der Bus sich verspätet. Bei allen anderen Anbietern rechnet der Planer Hin- und Rückweg dazu.</p>
-    </fieldset>
-    <label>Notiz<textarea name="notiz" rows="3">${esc(a.notiz ?? "")}</textarea></label>
+    </details>
+    <details class="gruppe-klappe" ${offen("zusatz", a.zusatzkosten != null)}><summary>Zusatzkosten <span class="leise klein">Taxi, Eintritt vor Ort …</span></summary>
+      <label class="kurz">Zusatzkosten gesamt (€)<input name="zusatzkosten" inputmode="decimal" value="${esc(a.zusatzkosten ?? "")}" placeholder="wird unter den Teilnehmenden geteilt"></label>
+    </details>
+    <details class="gruppe-klappe" ${offen("notiz", Boolean(a.notiz))}><summary>Notizen</summary>
+      <textarea name="notiz" rows="3" aria-label="Notiz">${esc(a.notiz ?? "")}</textarea>
+    </details>
+    <div class="zusammenfassung" id="ausflugZusammenfassung" aria-live="polite"></div>
     <div class="zeile">
-      ${neu ? "" : `<button type="button" class="knopf gefahr" data-aktion="ausflug-loeschen" data-id="${esc(a.id)}">Löschen</button>`}
       <span class="platz"></span>
       <button type="button" class="knopf leise" data-aktion="dialog-zu">Abbrechen</button>
       <button class="knopf" value="ok">Speichern</button>
     </div>
+    ${neu ? "" : `<details class="gefahr-klein"><summary class="klein leise">Weitere Aktionen</summary><p class="klein leise">Statt zu löschen kannst du den Status auf „Verworfen“ setzen – dann bleibt der Eintrag zum Nachsehen erhalten.</p><button type="button" class="knopf gefahr" data-aktion="ausflug-loeschen" data-id="${esc(a.id)}">Ausflug löschen</button></details>`}
   </form>`);
   const form = $("#ausflugForm");
   const auslesen = () => {
@@ -1525,6 +1604,7 @@ function ausflugDialog(id, vorlage = {}) {
       preisKind: zahl(f.get("preisKind")),
       kostenlosBis: zahl(f.get("kostenlosBis")),
       preisGruppe: zahl(f.get("preisGruppe")),
+      mindestalter: zahl(f.get("mindestalter")),
       zusatzkosten: zahl(f.get("zusatzkosten")),
       sterne: zahl(f.get("sterne")),
       teilnehmer: f.getAll("teilnehmer"),
@@ -1535,13 +1615,21 @@ function ausflugDialog(id, vorlage = {}) {
       notiz: f.get("notiz"),
     };
   };
+  const unbekannt = form.preisUnbekannt;
+  const preisFelder = ["preisErw", "preisKind", "preisGruppe"].map((n) => form[n]);
+  // „Preis noch unbekannt“ leert die Preisfelder; wer einen Preis eintippt, hebt es auf
+  unbekannt.addEventListener("change", () => {
+    if (unbekannt.checked) for (const f of preisFelder) f.value = "";
+  });
+  for (const f of preisFelder) f.addEventListener("input", () => (unbekannt.checked = !preisFelder.some((x) => x.value.trim())));
   const vorschau = () => {
     const w = auslesen();
     form.classList.toggle("gruppe", w.preisArt === "gruppe");
-    const k = ausflugKosten(w, personen());
-    $("#kostenVorschau").innerHTML = `<strong>${geld(k.summe)}</strong> für ${k.erwachsene} Erwachsene und ${k.kinder} Kinder`;
+    form.classList.toggle("preis-unbekannt", unbekannt.checked);
+    $("#ausflugZusammenfassung").innerHTML = ausflugZusammenfassung({ ...a, ...w, fahrzeitMin: w.fahrzeitManuell ? w.fahrzeitWert : a.fahrzeitMin });
   };
   form.addEventListener("input", vorschau);
+  form.addEventListener("change", vorschau);
   vorschau();
   form.addEventListener("submit", () => {
     const w = auslesen();
