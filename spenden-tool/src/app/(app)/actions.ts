@@ -299,6 +299,28 @@ export async function resolvePhotoPrice(itemId: string, decision: "eingetragen" 
   revalidatePath(`/verteilung/${row.item.eventId}`, "layout");
 }
 
+/** „Prüfen“: angehakte Preise als bestätigt markieren. */
+export async function confirmItems(eventId: string, fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = fd.getAll("itemId").map(String).filter((v) => uuid.safeParse(v).success);
+  if (ids.length === 0) return;
+  const done = await db.update(I).set({ priceConfirmed: true }).where(and(eq(I.eventId, id), inArray(I.id, ids), sql`${I.price} is not null`)).returning({ id: I.id });
+  await logActivity(me, `${done.length} Preis(e) bestätigt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** „Prüfen“: von der KI eingetragene Namen/Varianten als richtig bestätigen. */
+export async function confirmProducts(eventId: string, fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = fd.getAll("productId").map(String).filter((v) => uuid.safeParse(v).success);
+  if (ids.length === 0) return;
+  await db.update(P).set({ reviewNote: null, updatedAt: new Date() }).where(inArray(P.id, ids));
+  await logActivity(me, `KI-Angaben bei ${ids.length} Produkt(en) bestätigt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
 /** KI-Kategorie übernehmen (aus „Prüfen“) – nur für ausdrücklich gewählte Produkte. */
 export async function applyCategory(productId: string, category: string, eventId: string) {
   const me = await requireLogin();
@@ -588,8 +610,8 @@ export async function applyAllSuggestions(eventId: string, fd: FormData) {
   const me = await requireLogin();
   await logActivity(me, "Alle KI-Vorschläge als Preis übernommen", { eventId: uuid.parse(eventId) });
   const id = uuid.parse(eventId);
-  // Erst die Eingaben der Liste speichern, damit nichts verloren geht.
-  await saveItems(fd);
+  // Aus der Produktliste heraus: erst deren Eingaben speichern, damit nichts verloren geht.
+  if ([...fd.keys()].some((k) => k.startsWith("row_"))) await saveItems(fd);
   const items = await db
     .select({ id: I.id, productId: I.productId, photoText: schema.files.printedPriceText, variant: P.variant })
     .from(I)

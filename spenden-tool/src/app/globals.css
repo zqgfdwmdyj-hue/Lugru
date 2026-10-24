@@ -314,3 +314,30 @@ h2 { font-size: 16px; margin: 0; }
 }
 .conflict-photo { width: 100%; max-height: 220px; object-fit: contain; background: #fff; border-radius: 6px; display: block; }
 @media (min-width: 1300px) { .pl-details { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ===== Prüfen ===== */
+.check-summary { display: flex; flex-direction: column; gap: 10px; }
+.summary-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-danger { background: var(--danger-soft); color: var(--danger); border-color: #f3b8b2; font-weight: 600; }
+.chip-done { color: var(--ok); border-style: dashed; }
+.wrap-anywhere { overflow-wrap: anywhere; }
+.conflict-card { display: grid; grid-template-columns: minmax(180px, 300px) 1fr; gap: 16px; padding: 14px; border-color: #f0c8a0; scroll-margin-top: 80px; }
+.conflict-card:target { box-shadow: 0 0 0 3px var(--warn-soft), 0 0 0 4px #e0a96d; }
+.conflict-big img { width: 100%; max-height: 300px; object-fit: contain; background: #f6f5f1; border-radius: 8px; display: block; }
+.compare-table { border-collapse: collapse; font-size: 13px; }
+.compare-table th { text-align: left; font-weight: 600; color: var(--muted); padding: 4px 14px 4px 0; vertical-align: top; white-space: nowrap; }
+.compare-table td { padding: 4px 0; }
+.check-list { display: flex; flex-direction: column; padding: 6px 0; }
+.check-row { display: grid; grid-template-columns: auto auto 1fr auto auto; gap: 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--row); cursor: default; }
+label.check-row { cursor: pointer; }
+.check-row:last-child { border-bottom: 0; }
+.check-row:not(:has(input[type=checkbox])) { grid-template-columns: auto 1fr auto auto; }
+form.check-row { grid-template-columns: auto 1fr auto; }
+.check-text { display: flex; flex-direction: column; min-width: 0; }
+.tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+@media (max-width: 760px) {
+  .conflict-card { grid-template-columns: 1fr; }
+  .check-row, .check-row:not(:has(input[type=checkbox])), form.check-row { grid-template-columns: auto auto 1fr; }
+  .check-row .num, .check-row > a, .check-row > .btn { grid-column: 3; justify-self: start; }
+  .compare-table th { white-space: normal; }
+}
