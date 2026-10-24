@@ -15,6 +15,8 @@ import { sendPendingToStotax, sendToStotax } from "@/lib/invoices/stotax";
 import { parseAmount } from "@/lib/numbers";
 
 const back = (msg: string, path = "/rechnungen/ausgang") => redirect(`${path}?${new URLSearchParams({ meldung: msg })}`);
+/** Nummernkreis und Bank stehen in den Einstellungen – dorthin zurück, wenn von dort gespeichert. */
+const settingsBack = (fd: FormData) => (msg: string) => (fd.get("zurueck") === "einstellungen" ? redirect(`/einstellungen?${new URLSearchParams({ meldung: msg })}#rechnungen`) : back(msg));
 const idOf = (fd: FormData) => z.coerce.number().int().positive().parse(fd.get("id"));
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const isRedirect = (e: unknown) => typeof (e as { digest?: string })?.digest === "string" && (e as { digest: string }).digest.startsWith("NEXT_REDIRECT");
@@ -96,6 +98,7 @@ export async function stotaxPendingAction(fd: FormData) {
 /** Nummernkreis aus der letzten Rechnungsnummer des bisherigen Programms übernehmen. */
 export async function numberingAction(fd: FormData) {
   const session = await requireArea("buchhaltung");
+  const back = settingsBack(fd);
   const edb = ebayDb(session.tenantId);
   const s = await getInvoiceSettings(edb);
   const last = String(fd.get("last") ?? "").trim();
@@ -121,6 +124,7 @@ export async function numberingAction(fd: FormData) {
 /** Bankverbindung und Zahlungsziel für B2B-Rechnungen. */
 export async function bankAction(fd: FormData) {
   const session = await requireArea("buchhaltung");
+  const back = settingsBack(fd);
   const edb = ebayDb(session.tenantId);
   const s = await getInvoiceSettings(edb);
   const iban = String(fd.get("iban") ?? "").replace(/\s+/g, "").toUpperCase();

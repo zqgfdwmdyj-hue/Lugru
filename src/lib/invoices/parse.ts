@@ -1,4 +1,5 @@
-import { parseAmount, parseDate } from "@/lib/numbers";
+import { parseAmount } from "@/lib/numbers";
+import { extractInvoiceDate } from "./checks";
 
 // Liest Eckdaten aus Rechnungen: Dateiname (Invoice Fetcher) und PDF-Text.
 
@@ -40,7 +41,6 @@ function lastAmountAfter(text: string, labels: RegExp): number | null {
 export function extractInvoiceFacts(text: string): InvoiceFacts {
   const t = text.replace(/ /g, " ");
   const num = /(?:rechnungs(?:-|\s)?(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))[:\s#]*([A-Z0-9][A-Z0-9\-/]{3,30})/i.exec(t)?.[1] ?? null;
-  const dateRaw = /(?:rechnungsdatum|invoice date|datum der rechnung|lieferdatum|datum)[:\s]*(\d{1,2}\.\d{1,2}\.\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})/i.exec(t)?.[1];
   const order =
     /\b(\d{3}-\d{7}-\d{7})\b/.exec(t)?.[1] ??
     /(?:bestell(?:ung|nummer|-nr\.?|nr\.?)|auftrags(?:nummer|nr\.?)|order\s*(?:no\.?|number|#|id))[:\s#]*([A-Z0-9][A-Z0-9\-/]{3,30})/i.exec(t)?.[1] ??
@@ -50,7 +50,8 @@ export function extractInvoiceFacts(text: string): InvoiceFacts {
   const asins = [...new Set([...t.matchAll(/\bB0[A-Z0-9]{8}\b/g)].map((m) => m[0]))];
   return {
     invoiceNumber: num,
-    invoiceDate: dateRaw ? parseDate(dateRaw) : null,
+    // Ohne Dateinamen – die volle Prüfung (mit Dateiname und Unsicherheit) macht extractInvoiceDate.
+    invoiceDate: extractInvoiceDate(t, null).date,
     orderNumber: order,
     totalGross: gross,
     totalNet: net,

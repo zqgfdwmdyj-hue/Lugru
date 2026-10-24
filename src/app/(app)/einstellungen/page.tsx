@@ -8,6 +8,7 @@ import { removeUser, saveSettings, saveSupplierName, setPrivateAccess } from "./
 import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
 import { STAFF_AREAS as AREAS } from "@/lib/auth/areas";
 import { formatSeen, isOnline } from "@/lib/auth/last-seen";
+import { InvoiceSettingsCards } from "../rechnungen/ausgang/settings-cards";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -25,8 +26,9 @@ function Field({ label, name, value, suffix, help, type = "text", width = 160 }:
 const pct = (n: number) => String(Math.round(n * 10000) / 100).replace(".", ",");
 const dec = (n: number) => String(n).replace(".", ",");
 
-export default async function EinstellungenPage() {
+export default async function EinstellungenPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireOwner();
+  const { meldung } = await searchParams;
   const s = await getSettings(session.tenantId);
   const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
@@ -133,6 +135,13 @@ export default async function EinstellungenPage() {
 
         <div><button className="btn btn-primary" type="submit">Einstellungen speichern</button></div>
       </form>
+
+      <section className="stack" id="rechnungen" style={{ gap: 10 }}>
+        <div className="between"><h2>Ausgangsrechnungen</h2><Link className="small" href="/rechnungen/ausgang">Zu den Ausgangsrechnungen →</Link></div>
+        {meldung && <div className="notice notice-info" data-testid="settings-msg">{meldung}</div>}
+        <InvoiceSettingsCards tenantId={session.tenantId} />
+        <div className="small muted">Absenderdaten (Firma, Anschrift, USt-ID) für Rechnungen: <Link href="/ebay?ansicht=einstellungen&tab=invoices">eBay-Einstellungen → Rechnungen</Link>. Stotax-Anbindung: <Link href="/anbindungen?p=stotax#stotax">Anbindungen</Link>.</div>
+      </section>
 
       <section className="card" style={{ overflow: "hidden" }}>
         <div className="card-head"><h2>Shops / Lieferanten</h2><span className="small muted">Kürzel aus den SKUs – hier einen lesbaren Namen vergeben</span></div>

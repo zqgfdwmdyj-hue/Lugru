@@ -8,18 +8,22 @@ import { listOutgoing } from "@/lib/invoices/outgoing";
 import { openDraftCount } from "@/lib/invoices/rechnungshelfer-service";
 import { inStotaxScope, stotaxBacklog, stotaxConfig } from "@/lib/invoices/stotax";
 import { formatEuro } from "@/lib/numbers";
-import { bankAction, cancelAction, mailAction, numberingAction, stotaxPendingAction, stotaxSendAction } from "./actions";
+import { cancelAction, mailAction, stotaxPendingAction, stotaxSendAction } from "./actions";
 
+const ARTEN = { alle: "Alle", b2b: "B2B", ebay: "eBay", storno: "Stornos" } as const;
 const fmtDate = (iso: string | Date) => new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 
-export default async function AusgangsrechnungenPage({ searchParams }: { searchParams: Promise<{ q?: string; meldung?: string }> }) {
+export default async function AusgangsrechnungenPage({ searchParams }: { searchParams: Promise<{ q?: string; meldung?: string; art?: string }> }) {
   const session = await requireArea("buchhaltung");
   const sp = await searchParams;
   const t = session.tenantId;
   const edb = ebayDb(t);
   const s = await getInvoiceSettings(edb);
   const year = new Date().getFullYear();
-  const [rows, cfg, seq, drafts] = await Promise.all([listOutgoing(t, { q: sp.q }), stotaxConfig(t), nextSeq(edb, year, s), openDraftCount(t)]);
+  const art = sp.art && sp.art in ARTEN ? (sp.art as keyof typeof ARTEN) : "alle";
+  const [all, cfg, seq, drafts] = await Promise.all([listOutgoing(t, { q: sp.q, limit: art === "alle" ? 200 : 2000 }), stotaxConfig(t), nextSeq(edb, year, s), openDraftCount(t)]);
+  // Eine Liste für eBay und B2B – Filter nach Art.
+  const rows = all.filter((r) => art === "alle" || (art === "storno" ? r.kind === "storno" : r.source === art && r.kind !== "storno")).slice(0, 200);
   const backlog = await stotaxBacklog(t, cfg);
   const missing = missingSellerData(s);
   const pendingSince = cfg ? backlog.filter((b) => new Date(b.createdAt) >= cfg.since).length : 0;
@@ -78,42 +82,34 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
           )}
         </section>
 
-        <section className="card card-pad stack" style={{ gap: 8 }} data-testid="numbering-card">
-          <h2>Rechnungsnummern</h2>
+        <section className="card card-pad stack" style={{ gap: 8 }} data-testid="invoice-settings-summary">
+          <h2>Nummern & Bank</h2>
           <div className="small">
             Nächste Nummer: <strong className="num" data-testid="next-number">{formatNumber(s, year, seq)}</strong>
-            {s.numberFormat ? <span className="muted"> · Format {s.numberFormat}{s.numberFormat.includes("{JJJJ}") ? " (jedes Jahr neu)" : " (durchlaufend)"}</span> : <span className="muted"> · Standard {s.prefix ?? "RE-"}JJJJ-NNNN</span>}
+            <br />
+            Bank: {s.iban ? <span className="num">…{s.iban.slice(-4)}</span> : <span style={{ color: "var(--warn)" }}>fehlt</span>} · Zahlungsziel {s.paymentDays ?? 14} Tage
           </div>
-          <div className="small muted">eBay- und B2B-Rechnungen teilen sich einen lückenlosen Nummernkreis. Für den Umstieg: letzte Rechnungsnummer aus Stotax eintragen – Format und nächste Nummer werden übernommen.</div>
-          <form action={numberingAction} style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap" }}>
-            <div className="field"><label className="label" htmlFor="nr-last">Letzte Nummer aus Stotax</label><input className="input num" id="nr-last" name="last" placeholder="z. B. 2026-0815" style={{ width: 170 }} /></div>
-            <button className="btn btn-small" type="submit">Übernehmen</button>
-          </form>
-        </section>
-
-        <section className="card card-pad stack" style={{ gap: 8 }}>
-          <h2>Bank & Zahlungsziel (B2B)</h2>
-          <form action={bankAction} className="stack" style={{ gap: 6 }}>
-            <div className="field"><label className="label" htmlFor="bk-iban">IBAN</label><input className="input num" id="bk-iban" name="iban" defaultValue={s.iban ?? ""} placeholder="DE…" /></div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <div className="field" style={{ flex: "1 1 120px" }}><label className="label" htmlFor="bk-bic">BIC</label><input className="input num" id="bk-bic" name="bic" defaultValue={s.bic ?? ""} /></div>
-              <div className="field" style={{ flex: "1 1 140px" }}><label className="label" htmlFor="bk-name">Bank</label><input className="input" id="bk-name" name="bankName" defaultValue={s.bankName ?? ""} /></div>
-              <div className="field" style={{ width: 90 }}><label className="label" htmlFor="bk-days">Ziel (Tage)</label><input className="input num" id="bk-days" name="paymentDays" defaultValue={s.paymentDays ?? 14} /></div>
-            </div>
-            <button className="btn btn-small" type="submit">Speichern</button>
-          </form>
+          {session.role === "owner" ? <Link className="btn btn-small" href="/einstellungen#rechnungen">In den Einstellungen ändern</Link> : <span className="small muted">Ändern kann der Inhaber unter Einstellungen.</span>}
         </section>
       </div>
 
-      <form action="/rechnungen/ausgang" style={{ maxWidth: 340 }}>
-        <label htmlFor="oq" className="sr-only">Suche</label>
-        <input className="input" id="oq" name="q" defaultValue={sp.q} placeholder="Nummer, Kunde, Bestellnummer" />
-      </form>
+      <div className="between" style={{ flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="out-filter">
+          {(Object.keys(ARTEN) as (keyof typeof ARTEN)[]).map((a) => (
+            <Link key={a} href={`/rechnungen/ausgang?${new URLSearchParams({ ...(a !== "alle" ? { art: a } : {}), ...(sp.q ? { q: sp.q } : {}) })}`} className={`chip${art === a ? " active" : ""}`}>{ARTEN[a]}</Link>
+          ))}
+        </div>
+        <form action="/rechnungen/ausgang" style={{ width: 340, maxWidth: "100%" }} role="search">
+          {art !== "alle" && <input type="hidden" name="art" value={art} />}
+          <label htmlFor="oq" className="sr-only">Suche</label>
+          <input className="input" id="oq" name="q" defaultValue={sp.q} placeholder="Nummer, Kunde, Bestellnummer" />
+        </form>
+      </div>
       <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
         <table className="table">
           <thead><tr><th>Nummer</th><th>Datum</th><th>Kunde</th><th>Art</th><th className="right">Brutto</th><th>Stotax</th><th></th></tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={7} className="muted">Noch keine Rechnungen.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="muted">{sp.q || art !== "alle" ? "Keine Rechnung zu diesem Filter." : "Noch keine Rechnungen."}</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} data-testid="out-row" data-number={r.number}>
                 <td className="num">{r.number}{r.cancels && <div className="small muted">Storno zu {r.cancels}</div>}</td>
