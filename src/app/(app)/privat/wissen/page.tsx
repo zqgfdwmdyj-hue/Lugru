@@ -58,7 +58,7 @@ const CARDS: Card[] = [
       "Zum Einstieg nennt jeder fünf Dinge, die er in der Woche am anderen geschätzt hat – der andere bedankt sich nur.",
       "Dann ein einziges Thema: abwechselnd sprechen (Ich-Botschaften) und zuhören, ohne zu verteidigen.",
       "Lösungen erst suchen, wenn beide sich verstanden fühlen („Ja, genau so geht es mir“).",
-      <>Festhalten unter <Link href="/privat/paar#gespraech">Paar → Paar-Gespräch</Link>.</>,
+      <>Festhalten unter <Link href="/privat/paar/gespraech">Partnerschaft → Paar-Gespräch</Link>.</>,
     ],
     sources: [{ label: "The Gottman Institute: State of the Union Meeting", url: "https://www.gottman.com/blog/state-of-the-union-meeting/" }],
   },

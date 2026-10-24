@@ -1,19 +1,21 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { avgOf, careOverview, dateStats, diaryReport, intimStats, kidsOverview, shiftMonth, taskState, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type SleepEntry, type TaskEntry, type ThanksEntry } from "@/lib/private/logic";
+import { avgOf, careOverview, dateStats, diaryReport, intimStats, kidsOverview, taskState, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type SleepEntry, type TaskEntry, type ThanksEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { PrintButton } from "@/components/print-button";
-import { PrivatHead, hoursLabel, monthLabel } from "../ui";
+import { MonthNav, PrivatHead, hoursLabel, monthLabel, monthParam } from "../ui";
 
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
-const num = (v: number | null) => (v === null ? "–" : String(v).replace(".", ","));
+const num = (v: number | null) => (v === null ? "nicht erfasst" : String(v).replace(".", ","));
+/** Anzahl · Stunden – oder „nicht erfasst“ (fehlende Einträge sind keine Null). */
+const ch = (t: { count: number; hours: number }) => (t.count ? `${t.count}× · ${hoursLabel(t.hours)}` : "nicht erfasst");
 
 /** Eine Seite je Monat – zum Ausdrucken oder als PDF für die Therapie. */
 export default async function RueckblickPage({ searchParams }: { searchParams: Promise<{ monat?: string }> }) {
   const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const today = todayIso();
-  const month = sp.monat && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.monat) ? sp.monat : today.slice(0, 7);
+  const month = monthParam(sp.monat);
   const [y, m] = month.split("-").map(Number);
   const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   const end = last < today ? last : today;
@@ -52,10 +54,9 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
   return (
     <>
       <div className="no-print">
-        <PrivatHead active="rueckblick" title="Monatsrückblick" pin={session.privatePin} sub={
-          <div style={{ display: "flex", gap: 6 }}>
-            <Link className="btn btn-small" href={`/privat/rueckblick?monat=${shiftMonth(month, -1)}`} aria-label="Voriger Monat">‹</Link>
-            {month < today.slice(0, 7) && <Link className="btn btn-small" href={`/privat/rueckblick?monat=${shiftMonth(month, 1)}`} aria-label="Nächster Monat">›</Link>}
+        <PrivatHead active="rueckblick" title="Monatsrückblick" pin={session.privatePin} month={month} sub={
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <MonthNav path="/privat/rueckblick" month={month} />
             <PrintButton label="Drucken / PDF" />
           </div>
         } />
@@ -66,20 +67,21 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
 
         <h3 style={{ margin: "6px 0 0", fontSize: 15 }}>Als Paar</h3>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Nähe / Intimität: <strong>{ist.inMonth}×</strong></li>
-          <li>🥂 Paarzeit: <strong>{ds.inMonth}×</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
-          <li>💛 Wertschätzungen notiert: {name.a} {th.a}× · {name.b} {th.b}×</li>
+          <li>Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong></li>
+          <li>🥂 Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
+          <li>💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a}× · ${name.b} ${th.b}×` : "nicht erfasst"}</li>
           <li>Stimmung als Paar (Ø 1–5): {name.a} {num(mood.a)} · {name.b} {num(mood.b)}</li>
         </ul>
 
-        <h3 style={{ margin: "8px 0 0", fontSize: 15 }}>Verteilung</h3>
+        <h3 style={{ margin: "8px 0 0", fontSize: 15 }}>Erfasste Zeiten</h3>
+        <div className="small muted">Nur was eingetragen ist – keine Bewertung, wer mehr leistet. Kinderzeit und Auszeit eines gemeinsamen Vorgangs zählen je in ihrer Zeile einmal.</div>
         <table className="table">
           <thead><tr><th></th><th className="right">{name.a}</th><th className="right">{name.b}</th><th></th></tr></thead>
           <tbody>
-            <Row label="Allein mit den Kindern" a={`${ko.totals.a.count}× · ${hoursLabel(ko.totals.a.hours)}`} b={`${ko.totals.b.count}× · ${hoursLabel(ko.totals.b.hours)}`} />
-            <Row label="Ausgeschlafen" a={`${so.totals.a.count}× · ${hoursLabel(so.totals.a.hours)}`} b={`${so.totals.b.count}× · ${hoursLabel(so.totals.b.hours)}`} />
-            <Row label="Auszeit für sich" a={`${to.totals.a.count}× · ${hoursLabel(to.totals.a.hours)}`} b={`${to.totals.b.count}× · ${hoursLabel(to.totals.b.hours)}`} />
-            <Row label="Familienaufgaben erledigt" a={`${careDone.a}×`} b={`${careDone.b}×`} note={`zuständig: ${co.owned.a} / ${co.owned.b}, beide ${co.owned.beide}, offen ${co.owned.offen}`} />
+            <Row label="Allein mit den Kindern" a={ch(ko.totals.a)} b={ch(ko.totals.b)} />
+            <Row label="Ausgeschlafen" a={ch(so.totals.a)} b={ch(so.totals.b)} />
+            <Row label="Auszeit für sich" a={ch(to.totals.a)} b={ch(to.totals.b)} />
+            <Row label="Familienaufgaben als erledigt eingetragen" a={careDone.a ? `${careDone.a}×` : "–"} b={careDone.b ? `${careDone.b}×` : "–"} note={`zuständig: ${co.owned.a} / ${co.owned.b}, beide ${co.owned.beide}, offen ${co.owned.offen}`} />
           </tbody>
         </table>
 

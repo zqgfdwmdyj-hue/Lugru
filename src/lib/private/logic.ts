@@ -34,7 +34,11 @@ export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
 };
 
 export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey | "beide"; closeness?: Ratings; note?: string };
-export type KidsEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; what?: string; kids?: string[] };
+/**
+ * Zeit-Einträge (Kinderzeit, Ausschlafen, Auszeit, Paarzeit). `linkId`: gemeinsamer Vorgang – z. B. A allein
+ * mit den Kindern, während B Auszeit hat. Jede Sicht zählt nur in ihrer eigenen Auswertung (nie doppelt).
+ */
+export type KidsEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string };
 export type TaskEntry = {
   title: string;
   source: "ads" | "paar" | "sonst";
@@ -50,9 +54,9 @@ export type TaskEntry = {
 };
 export type AppointmentEntry = { day: string; time?: string; with: "ads" | "paar" | "arzt" | "sonst"; notes?: string };
 /** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
-export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string };
+export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string };
 /** Ausschlafen: wer durfte wann wie lange länger schlafen (der andere übernimmt die Kinder). */
-export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string };
+export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string };
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;
@@ -61,6 +65,10 @@ export type DiaryEntry = {
   takenAt?: string;
   /** Alle Einnahmen des Tages (Uhrzeiten), z. B. bei zwei Gaben. */
   intakes?: string[];
+  /** Ausdrücklich nicht eingenommen (Anzahl geplanter Einnahmen) – anders als „nicht dokumentiert“. */
+  notTaken?: number;
+  /** Stück je Einnahme zum Zeitpunkt der Einnahme (Planänderungen wirken nicht rückwirkend). */
+  pieces?: number;
   onset?: string;
   wearOff?: string;
   focus?: Ratings;
@@ -98,9 +106,6 @@ export const SIDE_EFFECTS = [
   "Zähneknirschen / Kieferspannung",
   "Tics",
 ] as const;
-
-/** Bei diesen Einträgen gleich auf den Hinweis „ärztlich abklären“ zeigen. */
-export const URGENT_SIDE_EFFECTS = new Set(["Herzklopfen / Herzrasen", "Tics", "gedrückte Stimmung"]);
 
 export const RATING_FIELDS = [
   { key: "focus", label: "Konzentration", low: "zerstreut", high: "fokussiert" },
@@ -192,6 +197,35 @@ export function kidsHours(e: Pick<KidsEntry, "from" | "to" | "hours">): number {
   return e.hours && e.hours > 0 ? round1(e.hours) : 0;
 }
 
+/** Über Mitternacht? (bis früher als von) */
+export const overnight = (e: Pick<KidsEntry, "from" | "to">) => Boolean(e.from && e.to && e.to < e.from);
+
+/**
+ * Dauer aus der Eingabe prüfen: von–bis (auch über Mitternacht, dann zählt der Tag des Beginns) oder
+ * Stunden. Widersprüchliche Angaben (von–bis und abweichende Stunden), gleiche Zeiten oder nur eine Seite
+ * werden mit verständlicher Meldung abgelehnt, statt still eine davon zu nehmen.
+ */
+export function durationOf(e: { from?: string; to?: string; hours?: number }, maxHours = 16): { hours: number; overnight: boolean } | { error: string } {
+  if ((e.from && !e.to) || (!e.from && e.to)) {
+    if (e.hours && e.hours > 0) return { error: "Bitte entweder von–bis vollständig oder nur die Stunden angeben." };
+    return { error: e.from ? "Bitte auch „bis“ angeben – oder die Stunden." : "Bitte auch „von“ angeben – oder die Stunden." };
+  }
+  if (e.from && e.to) {
+    if (e.from === e.to) return { error: "„von“ und „bis“ sind gleich – bitte prüfen." };
+    const h = kidsHours({ from: e.from, to: e.to });
+    if (e.hours !== undefined && e.hours > 0 && Math.abs(e.hours - h) > 0.25) {
+      return { error: `von–bis ergibt ${String(h).replace(".", ",")} Std., angegeben sind ${String(e.hours).replace(".", ",")} Std. – bitte angleichen oder nur eins angeben.` };
+    }
+    if (h > maxHours) return { error: `${e.from}–${e.to} wären ${String(h).replace(".", ",")} Std.${overnight(e) ? " (über Mitternacht)" : ""} – bitte die Uhrzeiten prüfen.` };
+    return { hours: h, overnight: overnight(e) };
+  }
+  if (e.hours !== undefined && e.hours > 0) {
+    if (e.hours > maxHours) return { error: `Mehr als ${maxHours} Std. – bitte prüfen.` };
+    return { hours: round1(e.hours), overnight: false };
+  }
+  return { error: "Bitte von–bis oder die Stunden angeben." };
+}
+
 /** Je Person: Anzahl, Stunden; und je Tag beide Spalten nebeneinander. */
 export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
   const list = entries.filter((e) => e.day.startsWith(month)).sort((x, y) => x.day.localeCompare(y.day) || (x.from ?? "").localeCompare(y.from ?? ""));
@@ -211,16 +245,11 @@ export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
 // ---- Ausschlafen -----------------------------------------------------------------------------------
 
 /**
- * Wer ist als Nächstes mit Ausschlafen dran? Wer im Monat deutlich weniger hatte (mind. 2× weniger),
- * sonst abwechselnd: der andere als beim letzten Mal. Ohne Einträge: null.
+ * Im Wechsel: wer als Nächstes dran wäre – der andere als beim letzten Eintrag. Bewusst ohne
+ * Ausgleich nach gezählten Stunden (das wäre eine Bewertung, die die Zahlen nicht hergeben). Ohne Einträge: null.
  */
-export function nextSleeper(entries: (Pick<SleepEntry, "day" | "person"> & { at?: number })[], month: string): PartnerKey | null {
+export function nextSleeper(entries: (Pick<SleepEntry, "day" | "person"> & { at?: number })[], _month?: string): PartnerKey | null {
   if (!entries.length) return null;
-  const inMonth = entries.filter((e) => e.day.startsWith(month));
-  const a = inMonth.filter((e) => e.person === "a").length;
-  const b = inMonth.filter((e) => e.person === "b").length;
-  if (a - b >= 2) return "b";
-  if (b - a >= 2) return "a";
   // gleicher Tag: was zuletzt eingetragen wurde
   const last = [...entries].sort((x, y) => x.day.localeCompare(y.day) || (x.at ?? 0) - (y.at ?? 0)).pop()!;
   return last.person === "a" ? "b" : "a";
@@ -343,11 +372,16 @@ export const clip = (v: unknown, max: number) => String(v ?? "").trim().slice(0,
 // ---- Medikament: Einnahme und Vorrat ---------------------------------------------------------------
 
 /** Je Person: Medikament, Dosis, Stück je Einnahme, Einnahmen am Tag, Vorrat (Stand mit Zeitpunkt). */
+export type MedPlanVersion = { from: string; to: string; med: string; doseMg?: number; piecesPerIntake: number; intakesPerDay: number };
 export type MedPlan = {
   med: string;
   doseMg?: number;
   piecesPerIntake: number;
   intakesPerDay: number;
+  /** Gültig ab (Tag der letzten Planänderung). */
+  validFrom?: string;
+  /** Frühere Fassungen – damit Planänderungen alte Tage nicht umdeuten. */
+  history?: MedPlanVersion[];
   /** `atAsOf`: Einnahmen, die beim Zählen schon in derselben Minute eingetragen waren. */
   stock?: { count: number; asOf: string; atAsOf?: number };
   /** Warnen, wenn der Vorrat nur noch so viele Tage reicht. */
@@ -362,25 +396,78 @@ const stamp = (day: string, time = "00:00") => `${day}T${time.padStart(5, "0")}`
  * Vorrat: Bestand beim letzten Stand minus Einnahmen danach. Reicht noch … Tage; „knapp“, wenn das
  * höchstens `warnDays` sind.
  */
-export function medStock(plan: MedPlan, diary: Pick<DiaryEntry, "day" | "takenAt" | "intakes">[]) {
+export function medStock(plan: MedPlan, diary: Pick<DiaryEntry, "day" | "takenAt" | "intakes" | "pieces">[]) {
   if (!plan.stock) return null;
   const since = plan.stock.asOf.slice(0, 16);
   let taken = 0;
+  let pieces = 0;
   let sameMinute = 0;
+  let samePieces = plan.piecesPerIntake;
   for (const e of diary) {
     const times = e.intakes?.length ? e.intakes : e.takenAt ? [e.takenAt] : [];
     for (const t of times) {
       const s = stamp(e.day, t);
-      if (s > since) taken++;
-      else if (s === since) sameMinute++;
+      if (s > since) {
+        taken++;
+        pieces += e.pieces ?? planFor(plan, e.day).piecesPerIntake;
+      } else if (s === since) {
+        sameMinute++;
+        samePieces = e.pieces ?? planFor(plan, e.day).piecesPerIntake;
+      }
     }
   }
   // Einnahmen in genau der Minute des Zählens: nur die, die erst danach dazukamen.
-  taken += Math.max(0, sameMinute - (plan.stock.atAsOf ?? 0));
-  const remaining = Math.max(0, Math.round((plan.stock.count - taken * plan.piecesPerIntake) * 10) / 10);
+  const extra = Math.max(0, sameMinute - (plan.stock.atAsOf ?? 0));
+  taken += extra;
+  pieces += extra * samePieces;
+  const remaining = Math.max(0, Math.round((plan.stock.count - pieces) * 10) / 10);
   const perDay = Math.max(0.1, plan.piecesPerIntake * plan.intakesPerDay);
   const daysLeft = Math.floor(remaining / perDay);
   return { remaining, daysLeft, low: daysLeft <= plan.warnDays, taken };
+}
+
+/** Plan, der an diesem Tag galt (aktuelle Fassung oder eine frühere aus dem Verlauf). */
+export function planFor(plan: MedPlan, day: string): Omit<MedPlanVersion, "from" | "to"> {
+  const old = (plan.history ?? []).find((h) => day >= h.from && day <= h.to);
+  if (old && (!plan.validFrom || day < plan.validFrom)) return old;
+  return { med: plan.med, doseMg: plan.doseMg, piecesPerIntake: plan.piecesPerIntake, intakesPerDay: plan.intakesPerDay };
+}
+
+/**
+ * Plan ändern: Änderungen an Mittel, Dosis, Stück oder Einnahmen/Tag gelten ab heute; die bisherige
+ * Fassung wandert in den Verlauf (bis gestern). Tagebuch-Einträge bleiben, wie sie sind.
+ */
+export function changePlan(plan: MedPlan, next: Pick<MedPlan, "med" | "doseMg" | "piecesPerIntake" | "intakesPerDay" | "warnDays">, today: string, hadPlan: boolean): MedPlan {
+  const changed = plan.med !== next.med || plan.doseMg !== next.doseMg || plan.piecesPerIntake !== next.piecesPerIntake || plan.intakesPerDay !== next.intakesPerDay;
+  if (!hadPlan || !changed) return { ...plan, ...next, validFrom: plan.validFrom ?? today };
+  const from = plan.validFrom ?? "2000-01-01";
+  const history = [...(plan.history ?? [])];
+  // Mehrfach am selben Tag geändert: die heutige Zwischenfassung nicht aufheben.
+  if (from < today) history.push({ from, to: addDays(today, -1), med: plan.med, doseMg: plan.doseMg, piecesPerIntake: plan.piecesPerIntake, intakesPerDay: plan.intakesPerDay });
+  return { ...plan, ...next, validFrom: today, history: history.slice(-50) };
+}
+
+/** Einnahmen eines Tages: genommen, ausdrücklich nicht genommen, nicht dokumentiert. */
+export function intakeStatus(e: Pick<DiaryEntry, "intakes" | "takenAt" | "notTaken"> | undefined, perDay: number) {
+  const times = e?.intakes?.length ? e.intakes : e?.takenAt ? [e.takenAt] : [];
+  const notTaken = Math.max(0, e?.notTaken ?? 0);
+  const undocumented = Math.max(0, perDay - times.length - notTaken);
+  const label = !times.length && !notTaken
+    ? "nicht dokumentiert"
+    : [times.length ? `genommen ${times.join(", ")}` : "", notTaken ? `${notTaken}× bewusst nicht genommen` : "", undocumented ? `${undocumented} nicht dokumentiert` : ""].filter(Boolean).join(" · ");
+  return { times, notTaken, undocumented, complete: undocumented === 0, label };
+}
+
+/** Uhrzeiten aus einer Eingabe wie „08:00, 13:30“ (sortiert, ohne Doppelte). */
+export function parseTimes(v: unknown): string[] | null {
+  const parts = String(v ?? "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const p of parts) {
+    const m = /^(\d{1,2})[:.](\d{2})$/.exec(p);
+    if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+    out.push(`${m[1].padStart(2, "0")}:${m[2]}`);
+  }
+  return [...new Set(out)].sort();
 }
 
 /** Wie viele Einnahmen genau zu diesem Zeitpunkt (Minute) eingetragen sind – für den Vorrats-Stand. */

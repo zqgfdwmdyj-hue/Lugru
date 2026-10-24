@@ -57,7 +57,7 @@ export default async function FamiliePage() {
   return (
     <>
       <PrivatHead active="familie" title="Wer kümmert sich?" pin={session.privatePin} />
-      <div className="small muted">Der „Mental Load“: an was alles gedacht werden muss. Klar verteilt ist es leichter – und fairer.</div>
+      <div className="small muted">Der „Mental Load“: an was alles gedacht werden muss. Klar verteilt ist es leichter. Die Zahlen zeigen nur, was eingetragen ist – keine Bewertung, wer mehr leistet.</div>
 
       <section className="card card-pad stack">
         <h2>Verteilung</h2>
@@ -73,7 +73,7 @@ export default async function FamiliePage() {
               <span style={{ width: `${ov.shareA}%`, background: COLOR.a }} />
               <span style={{ width: `${100 - ov.shareA}%`, background: COLOR.b }} />
             </div>
-            <div className="small muted" data-testid="care-done">Erledigt in den letzten 30 Tagen: {name.a} {ov.doneBy.a}× · {name.b} {ov.doneBy.b}×</div>
+            <div className="small muted" data-testid="care-done">Als erledigt eingetragen (30 Tage): {name.a} {ov.doneBy.a}× · {name.b} {ov.doneBy.b}×</div>
           </>
         )}
         {ov.due.length > 0 && (

@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { CARE_SUGGESTIONS, SIDE_EFFECTS, clip, isDay, intakesAt, isTime, medStock, nextCareDate, num, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type KidsEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { randomUUID } from "node:crypto";
+import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, durationOf, isDay, intakesAt, isTime, medStock, nextCareDate, num, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
 import { addEntry, deleteAllPrivate, deleteEntry, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
 
 export type FormState = { ok: boolean; message: string } | null;
@@ -114,59 +115,90 @@ export async function addTalkAction(_prev: FormState, fd: FormData): Promise<For
   return done("Paar-Gespräch gespeichert.");
 }
 
+// ---- Zeit-Einträge: Paarzeit, Kinderzeit, Ausschlafen, Auszeit ---------------------------------------
+
+type TimeKind = "kinder" | "ausschlafen" | "auszeit" | "paarzeit";
+const TIME_KINDS: TimeKind[] = ["kinder", "ausschlafen", "auszeit", "paarzeit"];
+const MAX_HOURS: Record<TimeKind, number> = { kinder: 16, ausschlafen: 12, auszeit: 16, paarzeit: 24 };
+const WHO_MISSING: Record<Exclude<TimeKind, "paarzeit">, string> = { kinder: "Bitte wählen, wer mit den Kindern unterwegs war.", ausschlafen: "Bitte wählen, wer ausgeschlafen hat.", auszeit: "Bitte wählen, wer Auszeit hatte." };
+const dmyOf = (d: string) => d.split("-").reverse().join(".");
+const hoursText = (h: number) => `${String(h).replace(".", ",")} Std.`;
+
+/**
+ * Anlegen oder (mit `id`) ändern. Kinderzeit ↔ Auszeit lassen sich als ein Vorgang verknüpfen
+ * („währenddessen hatte der andere Auszeit“) – nur wenn ausdrücklich angehakt, nie automatisch.
+ */
+async function saveTimeEntry(kind: TimeKind, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate();
+  const editId = fd.get("id") ? uuid.safeParse(fd.get("id")) : null;
+  if (editId && !editId.success) return fail("Eintrag nicht gefunden.");
+  const day = dayOr(fd.get("day"));
+  if (day > todayIso()) return fail(kind === "paarzeit" ? "Bitte kein Datum in der Zukunft – geplante Dates als Termin eintragen." : "Bitte kein Datum in der Zukunft.");
+  const person = kind === "paarzeit" ? undefined : partner(fd.get("person"));
+  if (kind !== "paarzeit" && !person) return fail(WHO_MISSING[kind]);
+  const from = time(fd.get("from"));
+  const to = time(fd.get("to"));
+  const hoursIn = num(fd.get("hours"), 0, 72);
+  const dur = durationOf({ from, to, hours: hoursIn }, MAX_HOURS[kind]);
+  if ("error" in dur) return fail(dur.error);
+  const settings = await privateSettings(session.tenantId);
+  const base = { day, from, to, hours: from && to ? undefined : dur.hours };
+  const data =
+    kind === "paarzeit"
+      ? compact({ ...base, what: clip(fd.get("what"), 200), sitter: clip(fd.get("sitter"), 60), costEur: num(fd.get("costEur"), 0, 10000), rating: rating(fd.get("rating")), note: clip(fd.get("note"), 500) })
+      : kind === "kinder"
+        ? compact({ ...base, person, what: clip(fd.get("what"), 200), kids: fd.getAll("kids").map(String).filter((k) => settings.kids.includes(k)) })
+        : compact({ ...base, person, note: clip(fd.get("note"), kind === "auszeit" ? 200 : 300) });
+  const other: PartnerKey | undefined = person === "a" ? "b" : person === "b" ? "a" : undefined;
+  const linkKind: TimeKind | null = kind === "kinder" && fd.get("linkAuszeit") === "on" ? "auszeit" : kind === "auszeit" && fd.get("linkKinder") === "on" ? "kinder" : null;
+  const what = `${dmyOf(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}`;
+
+  if (editId?.success) {
+    const cur = (await loadEntries<Record<string, unknown>>(session, [kind])).find((e) => e.id === editId.data);
+    if (!cur) return fail("Eintrag nicht gefunden.");
+    const linkId = typeof cur.data.linkId === "string" ? cur.data.linkId : undefined;
+    await updateEntry(session, cur.id, kind, { ...data, ...(linkId ? { linkId } : {}), editedAt: new Date().toISOString() }, true);
+    // Verknüpfte Sicht (Kinderzeit/Auszeit) auf dieselbe Zeit bringen – es ist ein Vorgang.
+    let linked = 0;
+    if (linkId && (kind === "kinder" || kind === "auszeit")) {
+      const pk: TimeKind = kind === "kinder" ? "auszeit" : "kinder";
+      for (const e of (await loadEntries<Record<string, unknown>>(session, [pk])).filter((x) => x.data.linkId === linkId)) {
+        await updateEntry(session, e.id, pk, { day, from, to, hours: base.hours, editedAt: new Date().toISOString() });
+        linked++;
+      }
+    }
+    return done(`Geändert: ${what}${linked ? " – verknüpfter Eintrag angepasst" : ""}.`);
+  }
+
+  const linkId = linkKind && other ? randomUUID() : undefined;
+  await addEntry(session, kind, linkId ? { ...data, linkId } : data);
+  if (linkKind && other && linkId) {
+    await addEntry(session, linkKind, compact({ day, person: other, from, to, hours: base.hours, linkId }));
+  }
+  const label = kind === "paarzeit" ? "Paarzeit" : `${settings.partners[person!]}`;
+  const linkText = linkKind && other ? ` – zugleich ${linkKind === "auszeit" ? "Auszeit" : "Kinderzeit"} für ${settings.partners[other]} (zählt dort, nicht doppelt)` : "";
+  return done(`Eingetragen: ${label} am ${what}${linkText}.`);
+}
+
 /** Paarzeit: zu zweit unterwegs, Kinder bei Babysitterin & Co. */
 export async function addDateAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const session = await requirePrivate();
-  const day = dayOr(fd.get("day"));
-  if (day > todayIso()) return fail("Bitte kein Datum in der Zukunft – geplante Dates als Termin eintragen.");
-  const from = time(fd.get("from"));
-  const to = time(fd.get("to"));
-  await addEntry(session, "paarzeit", compact({
-    day,
-    from,
-    to,
-    hours: from && to ? undefined : num(fd.get("hours"), 0, 72),
-    what: clip(fd.get("what"), 200),
-    sitter: clip(fd.get("sitter"), 60),
-    costEur: num(fd.get("costEur"), 0, 10000),
-    rating: rating(fd.get("rating")),
-    note: clip(fd.get("note"), 500),
-  }));
-  return done(`Paarzeit am ${day.split("-").reverse().join(".")} eingetragen.`);
+  return saveTimeEntry("paarzeit", fd);
 }
-
-// ---- Kinder ------------------------------------------------------------------------------------------
 
 export async function addKidsAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const session = await requirePrivate();
-  const person = partner(fd.get("person"));
-  if (!person) return fail("Bitte wählen, wer mit den Kindern unterwegs war.");
-  const from = time(fd.get("from"));
-  const to = time(fd.get("to"));
-  const hours = num(fd.get("hours"), 0, 72);
-  if (!(from && to) && !hours) return fail("Bitte von–bis oder die Stunden angeben.");
-  const settings = await privateSettings(session.tenantId);
-  const kids = fd.getAll("kids").map(String).filter((k) => settings.kids.includes(k));
-  const entry: KidsEntry = compact({ day: dayOr(fd.get("day")), person, from, to, hours: from && to ? undefined : hours, what: clip(fd.get("what"), 200), kids });
-  await addEntry(session, "kinder", entry);
-  return done(`Eingetragen: ${settings.partners[person]} am ${entry.day.split("-").reverse().join(".")}.`);
+  return saveTimeEntry("kinder", fd);
 }
 
-// ---- Ausschlafen ---------------------------------------------------------------------------------------
-
 export async function addSleepAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const session = await requirePrivate();
-  const person = partner(fd.get("person"));
-  if (!person) return fail("Bitte wählen, wer ausgeschlafen hat.");
-  const day = dayOr(fd.get("day"));
-  if (day > todayIso()) return fail("Bitte kein Datum in der Zukunft.");
-  const from = time(fd.get("from"));
-  const to = time(fd.get("to"));
-  const hours = num(fd.get("hours"), 0, 24);
-  if (!(from && to) && !hours) return fail("Bitte von–bis (z. B. 06:30–09:30) oder die Stunden angeben.");
-  const settings = await privateSettings(session.tenantId);
-  await addEntry(session, "ausschlafen", compact({ day, person, from, to, hours: from && to ? undefined : hours, note: clip(fd.get("note"), 300) }));
-  return done(`Eingetragen: ${settings.partners[person]} hat am ${day.split("-").reverse().join(".")} ausgeschlafen.`);
+  return saveTimeEntry("ausschlafen", fd);
+}
+
+/** Schnell eintragen: Art wählen → Person → Zeit → speichern (alles Weitere optional). */
+export async function quickAddAction(prev: FormState, fd: FormData): Promise<FormState> {
+  const type = String(fd.get("type") ?? "");
+  if (type === "intim") return addIntimAction(prev, fd);
+  if ((TIME_KINDS as string[]).includes(type)) return saveTimeEntry(type as TimeKind, fd);
+  return fail("Bitte wählen, was du eintragen möchtest.");
 }
 
 // ---- Aufgaben & Termine ------------------------------------------------------------------------------
@@ -242,11 +274,14 @@ export async function saveDiaryAction(_prev: FormState, fd: FormData): Promise<F
   if (day > todayIso()) return fail("Bitte kein Datum in der Zukunft.");
   const effects = fd.getAll("sideEffects").map(String).filter((s) => (SIDE_EFFECTS as readonly string[]).includes(s));
   const other = clip(fd.get("otherEffect"), 60);
+  const intakesIn = fd.has("intakes") ? parseTimes(fd.get("intakes")) : undefined;
+  if (intakesIn === null) return fail("Einnahmen bitte als Uhrzeiten angeben, z. B. „08:00, 13:30“.");
   const entry: DiaryEntry = compact({
     day,
     med: clip(fd.get("med"), 60),
     doseMg: num(fd.get("doseMg"), 0, 1000),
-    takenAt: time(fd.get("takenAt")),
+    takenAt: fd.has("intakes") ? intakesIn?.[0] : time(fd.get("takenAt")),
+    notTaken: fd.has("notTaken") ? Math.max(0, Math.min(10, Math.round(Number(fd.get("notTaken")) || 0))) || undefined : undefined,
     onset: time(fd.get("onset")),
     wearOff: time(fd.get("wearOff")),
     focus: rating(fd.get("focus")),
@@ -267,13 +302,23 @@ export async function saveDiaryAction(_prev: FormState, fd: FormData): Promise<F
     note: clip(fd.get("note"), 2000),
   });
   const mine = (await loadEntries<DiaryEntry>(session, ["tagebuch"])).find((e) => e.userId === session.userId && e.data.day === day);
-  // Per „Jetzt genommen“ erfasste Einnahmen behalten; geänderte erste Uhrzeit übernehmen.
-  const intakes = [...(mine?.data.intakes ?? [])];
-  if (intakes.length && entry.takenAt && !intakes.includes(entry.takenAt)) {
-    intakes[0] = entry.takenAt;
-    intakes.sort();
+  if (intakesIn !== undefined) {
+    // Einnahmen aus dem Feld (auch nachgetragen oder korrigiert).
+    if (intakesIn.length) entry.intakes = intakesIn;
+  } else {
+    // Ältere Formulare: per „Jetzt genommen“ erfasste Einnahmen behalten; geänderte erste Uhrzeit übernehmen.
+    const intakes = [...(mine?.data.intakes ?? [])];
+    if (intakes.length && entry.takenAt && !intakes.includes(entry.takenAt)) {
+      intakes[0] = entry.takenAt;
+      intakes.sort();
+    }
+    if (intakes.length) entry.intakes = intakes;
   }
-  if (intakes.length) entry.intakes = intakes;
+  // Stück je Einnahme: was damals galt – eine spätere Planänderung ändert den Tag nicht.
+  if (entry.intakes?.length) {
+    const { plan } = await myMedPlan(session);
+    entry.pieces = mine?.data.pieces ?? planFor(plan, day).piecesPerIntake;
+  }
   if (mine) await updateEntry(session, mine.id, "tagebuch", entry, true);
   else await addEntry(session, "tagebuch", entry);
   return done(`Tagebuch für ${day.split("-").reverse().join(".")} gespeichert.`);
@@ -297,7 +342,16 @@ export async function deleteEntryAction(fd: FormData) {
   const session = await requirePrivate();
   const kind = String(fd.get("kind")) as PrivateKind;
   if (!KINDS.includes(kind)) return;
-  await deleteEntry(session, uuid.parse(fd.get("id")), kind);
+  const id = uuid.parse(fd.get("id"));
+  // Ein verknüpfter Vorgang (Kinderzeit + Auszeit) wird als Ganzes gelöscht.
+  if (kind === "kinder" || kind === "auszeit") {
+    const linkId = (await loadEntries<{ linkId?: string }>(session, [kind])).find((e) => e.id === id)?.data.linkId;
+    if (linkId) {
+      const pk = kind === "kinder" ? "auszeit" : "kinder";
+      for (const e of (await loadEntries<{ linkId?: string }>(session, [pk])).filter((x) => x.data.linkId === linkId)) await deleteEntry(session, e.id, pk);
+    }
+  }
+  await deleteEntry(session, id, kind);
   revalidatePath("/privat", "layout");
 }
 
@@ -308,17 +362,21 @@ export async function saveMedPlanAction(_prev: FormState, fd: FormData): Promise
   const med = clip(fd.get("med"), 60);
   if (!med) return fail("Bitte das Medikament eintragen.");
   const { id, plan } = await myMedPlan(session);
-  const next = {
-    ...plan,
-    med,
-    doseMg: num(fd.get("doseMg"), 0, 1000),
-    piecesPerIntake: num(fd.get("piecesPerIntake"), 0.25, 20) ?? 1,
-    intakesPerDay: num(fd.get("intakesPerDay"), 1, 10) ?? 1,
-    warnDays: num(fd.get("warnDays"), 0, 60) ?? 10,
-  };
+  const next = changePlan(
+    plan,
+    {
+      med,
+      doseMg: num(fd.get("doseMg"), 0, 1000),
+      piecesPerIntake: num(fd.get("piecesPerIntake"), 0.25, 20) ?? 1,
+      intakesPerDay: num(fd.get("intakesPerDay"), 1, 10) ?? 1,
+      warnDays: num(fd.get("warnDays"), 0, 60) ?? 10,
+    },
+    todayIso(),
+    Boolean(id),
+  );
   if (id) await updateEntry(session, id, "medplan", compact(next), true);
   else await addEntry(session, "medplan", compact(next));
-  return done("Medikament gespeichert.");
+  return done(next.validFrom === todayIso() && (next.history?.length ?? 0) > (plan.history?.length ?? 0) ? "Plan geändert – gilt ab heute, frühere Tage bleiben unverändert." : "Medikament gespeichert.");
 }
 
 /** Vorrat: „jetzt im Haus“ setzen oder eine neue Packung dazurechnen. */
@@ -349,7 +407,7 @@ export async function takeNowAction() {
   if (intakes.some((t) => Math.abs(toMin(t) - toMin(at)) < 10)) return;
   intakes.push(at);
   intakes.sort();
-  const patch = { intakes, takenAt: intakes[0], ...(plan.med && !mine?.data.med ? { med: plan.med } : {}), ...(plan.doseMg !== undefined && mine?.data.doseMg === undefined ? { doseMg: plan.doseMg } : {}) };
+  const patch = { intakes, takenAt: intakes[0], pieces: mine?.data.pieces ?? plan.piecesPerIntake, ...(plan.med && !mine?.data.med ? { med: plan.med } : {}), ...(plan.doseMg !== undefined && mine?.data.doseMg === undefined ? { doseMg: plan.doseMg } : {}) };
   if (mine) await updateEntry(session, mine.id, "tagebuch", patch);
   else await addEntry(session, "tagebuch", { day: today, ...patch });
   revalidatePath("/privat", "layout");
@@ -365,6 +423,21 @@ export async function undoIntakeAction() {
   intakes.pop();
   await updateEntry(session, mine.id, "tagebuch", { intakes, takenAt: intakes[0] });
   revalidatePath("/privat", "layout");
+}
+
+/** Heute eine geplante Einnahme bewusst nicht genommen (oder das zurücknehmen) – anders als „nicht dokumentiert“. */
+export async function skipIntakeAction(fd: FormData) {
+  const session = await requirePrivate();
+  const today = todayIso();
+  const { plan } = await myMedPlan(session);
+  const mine = (await loadEntries<DiaryEntry>(session, ["tagebuch"])).find((e) => e.userId === session.userId && e.data.day === today);
+  const taken = (mine?.data.intakes ?? (mine?.data.takenAt ? [mine.data.takenAt] : [])).length;
+  const cur = mine?.data.notTaken ?? 0;
+  const next = fd.get("undo") ? Math.max(0, cur - 1) : Math.min(Math.max(1, plan.intakesPerDay - taken), cur + 1);
+  if (mine) await updateEntry(session, mine.id, "tagebuch", { notTaken: next || undefined });
+  else if (next) await addEntry(session, "tagebuch", { day: today, notTaken: next, ...(plan.med ? { med: plan.med } : {}), ...(plan.doseMg !== undefined ? { doseMg: plan.doseMg } : {}) });
+  revalidatePath("/privat", "layout");
+  revalidatePath("/");
 }
 
 // ---- Routinen ---------------------------------------------------------------------------------------
@@ -470,18 +543,7 @@ export async function setCareOwnerAction(fd: FormData) {
 // ---- Auszeit (Zeit nur für sich) -----------------------------------------------------------------------
 
 export async function addTimeoutAction(_prev: FormState, fd: FormData): Promise<FormState> {
-  const session = await requirePrivate();
-  const person = partner(fd.get("person"));
-  if (!person) return fail("Bitte wählen, wer Auszeit hatte.");
-  const day = dayOr(fd.get("day"));
-  if (day > todayIso()) return fail("Bitte kein Datum in der Zukunft.");
-  const from = time(fd.get("from"));
-  const to = time(fd.get("to"));
-  const hours = num(fd.get("hours"), 0, 72);
-  if (!(from && to) && !hours) return fail("Bitte von–bis oder die Stunden angeben.");
-  const s = await privateSettings(session.tenantId);
-  await addEntry(session, "auszeit", compact({ day, person, from, to, hours: from && to ? undefined : hours, note: clip(fd.get("note"), 200) }));
-  return done(`Auszeit für ${s.partners[person]} eingetragen.`);
+  return saveTimeEntry("auszeit", fd);
 }
 
 // ---- Date-Ideen -------------------------------------------------------------------------------------

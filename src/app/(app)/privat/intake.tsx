@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type { Session } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { medStock, type DiaryEntry } from "@/lib/private/logic";
+import { intakeStatus, medStock, type DiaryEntry } from "@/lib/private/logic";
 import { loadEntries, myMedPlan } from "@/lib/private/service";
-import { saveMedPlanAction, stockAction, takeNowAction, undoIntakeAction } from "./actions";
+import { saveMedPlanAction, skipIntakeAction, stockAction, takeNowAction, undoIntakeAction } from "./actions";
 import { StateForm } from "./state-form";
 import { Disclosure } from "@/components/disclosure";
 
@@ -17,9 +17,11 @@ export async function IntakeCard({ session, full = false }: { session: Session; 
   const { id, plan } = await myMedPlan(session);
   const diary = (await loadEntries<DiaryEntry>(session, ["tagebuch"])).filter((e) => e.userId === session.userId).map((e) => e.data);
   const todayEntry = diary.find((e) => e.day === today);
-  const intakes = todayEntry?.intakes ?? (todayEntry?.takenAt ? [todayEntry.takenAt] : []);
+  const st = intakeStatus(todayEntry, plan.intakesPerDay);
+  const intakes = st.times;
   const stock = medStock(plan, diary);
   if (!full && !id) return null;
+  const dmy = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}`;
 
   return (
     <section className="card card-pad stack" data-testid="intake-card">
@@ -27,18 +29,30 @@ export async function IntakeCard({ session, full = false }: { session: Session; 
         <div>
           <h2 style={{ margin: 0 }}>💊 {plan.med || "Medikament"}{plan.doseMg !== undefined ? ` ${n(plan.doseMg)} mg` : ""}</h2>
           <div className="small muted" data-testid="intake-today">
-            {intakes.length ? `Heute genommen: ${intakes.join(", ")} Uhr${plan.intakesPerDay > 1 ? ` (${intakes.length} von ${plan.intakesPerDay})` : ""}` : "Heute noch nicht eingetragen."}
+            Heute ({plan.intakesPerDay} geplant): {st.label}
           </div>
+          {plan.validFrom && <div className="small muted">Plan gilt seit {dmy(plan.validFrom)}</div>}
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <form action={takeNowAction}>
             <button className="btn btn-primary" type="submit" disabled={!plan.med && full} data-testid="take-now" style={{ fontSize: 16, padding: "12px 18px" }}>
               Jetzt genommen
             </button>
           </form>
+          {st.undocumented > 0 && plan.med && (
+            <form action={skipIntakeAction}>
+              <button className="btn" type="submit" data-testid="skip-intake" title="Eine geplante Einnahme heute bewusst nicht genommen">heute nicht genommen</button>
+            </form>
+          )}
           {intakes.length > 0 && (
             <form action={undoIntakeAction}>
-              <button className="btn-link small" type="submit" title="Letzte Einnahme von heute zurücknehmen">rückgängig</button>
+              <button className="btn-link small" type="submit" title="Letzte Einnahme von heute zurücknehmen">Einnahme zurücknehmen</button>
+            </form>
+          )}
+          {st.notTaken > 0 && (
+            <form action={skipIntakeAction}>
+              <input type="hidden" name="undo" value="1" />
+              <button className="btn-link small" type="submit" data-testid="skip-undo">„nicht genommen“ zurücknehmen</button>
             </form>
           )}
         </div>
@@ -61,8 +75,18 @@ export async function IntakeCard({ session, full = false }: { session: Session; 
                 <div className="field"><label className="label" htmlFor="mp-per-day">Einnahmen am Tag</label><input className="input" id="mp-per-day" name="intakesPerDay" inputMode="numeric" defaultValue={n(plan.intakesPerDay)} /></div>
                 <div className="field"><label className="label" htmlFor="mp-warn">Warnen ab … Tagen Rest</label><input className="input" id="mp-warn" name="warnDays" inputMode="numeric" defaultValue={n(plan.warnDays)} /></div>
               </div>
-              <div className="small muted">Ändert die Ärztin die Dosis, hier anpassen – das Tagebuch übernimmt sie ab dann automatisch.</div>
+              <div className="small muted">Ändert die Ärztin die Dosis, hier anpassen – das gilt ab heute. Frühere Tage im Tagebuch bleiben, wie sie eingetragen sind.</div>
             </StateForm>
+            {(plan.history?.length ?? 0) > 0 && (
+              <div className="small" data-testid="plan-history">
+                <strong>Frühere Pläne</strong>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                  {[...plan.history!].reverse().map((h) => (
+                    <li key={`${h.from}-${h.to}`}>{h.from <= "2000-01-01" ? `bis ${dmy(h.to)}` : `${dmy(h.from)}–${dmy(h.to)}`}: {h.med}{h.doseMg !== undefined ? ` ${n(h.doseMg)} mg` : ""} · {n(h.piecesPerIntake)} Stück × {h.intakesPerDay}/Tag</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {id && (
               <StateForm action={stockAction} submit="Vorrat speichern" testid="stock-form">
                 <div className="priv-grid">

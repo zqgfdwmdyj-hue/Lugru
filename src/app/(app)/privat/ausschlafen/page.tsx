@@ -1,17 +1,18 @@
-import { todayIso } from "@/lib/dates";
 import { privateSettings, requirePrivate } from "@/lib/private/service";
 import { addSleepAction } from "../actions";
 import { FairPage } from "../fair";
+import { monthParam } from "../ui";
 
-export default async function AusschlafenPage({ searchParams }: { searchParams: Promise<{ monat?: string }> }) {
+export default async function AusschlafenPage({ searchParams }: { searchParams: Promise<{ monat?: string; bearbeiten?: string }> }) {
   const session = await requirePrivate();
   const sp = await searchParams;
-  const month = sp.monat && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.monat) ? sp.monat : todayIso().slice(0, 7);
+  const month = monthParam(sp.monat);
   const s = await privateSettings(session.tenantId);
   return (
     <FairPage
       session={session}
       month={month}
+      editId={sp.bearbeiten}
       cfg={{
         kind: "ausschlafen",
         tab: "ausschlafen",
@@ -19,9 +20,9 @@ export default async function AusschlafenPage({ searchParams }: { searchParams: 
         title: "Ausschlafen",
         heading: "Wer hat wie lange ausgeschlafen",
         who: "Wer hat ausgeschlafen?",
-        nextText: (n) => `😴 Als Nächstes darf ${n} ausschlafen`,
+        nextText: (n) => `😴 Im Wechsel wäre als Nächstes ${n} dran`,
         unit: "länger geschlafen",
-        shareText: "der Ausschlaf-Stunden",
+        shareText: "der erfassten Ausschlaf-Stunden",
         fromLabel: "sonst auf um",
         fromDefault: s.wakeTime,
         toLabel: "aufgestanden um",

@@ -11,7 +11,8 @@ export async function GET() {
   const body = {
     exportiert: new Date().toISOString(),
     hinweis: "Export aus dem Bereich „Privat“ des Seller-Systems. Vertraulich behandeln.",
-    einstellungen: { partner: settings.partners, kinder: settings.kids, therapie: settings.therapists },
+    // Umfang „familie“: nur Familieninfos – keine Therapie-Angaben.
+    einstellungen: session.privateScope === "familie" ? { partner: settings.partners, kinder: settings.kids } : { partner: settings.partners, kinder: settings.kids, therapie: settings.therapists },
     eintraege: entries
       .sort((a, b) => a.kind.localeCompare(b.kind) || String((a.data as { day?: string }).day ?? "").localeCompare(String((b.data as { day?: string }).day ?? "")))
       .map((e) => ({ art: e.kind, eigener: e.userId === session.userId, ...e.data })),

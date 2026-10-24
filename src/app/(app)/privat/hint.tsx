@@ -41,7 +41,7 @@ export async function PrivateHint({ session }: { session: Session }) {
   ].filter(Boolean);
   return (
     <Link href="/privat" className="notice notice-info small" data-testid="private-hint" style={{ textDecoration: "none", color: "inherit" }}>
-      🔒 <strong>Privat</strong>{parts.length ? `: ${parts.join(" · ")}` : " – alles erledigt"}
+      🔒 <strong>Privat</strong>{parts.length ? `: ${parts.join(" · ")}` : " – keine offenen Aufgaben, Termine oder Hinweise"}
     </Link>
   );
 }

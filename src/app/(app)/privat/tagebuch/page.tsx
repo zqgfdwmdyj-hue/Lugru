@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { RATING_FIELDS, SIDE_EFFECTS, URGENT_SIDE_EFFECTS, addDays, diarySeries, isDay, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
+import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, planFor, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
+import { Disclosure } from "@/components/disclosure";
 import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
 import { StateForm } from "../state-form";
@@ -44,12 +45,16 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
   const entry = mine.find((e) => e.data.day === day)?.data;
   const last = mine.find((e) => e.data.day < day)?.data;
   const { plan } = await myMedPlan(session);
-  const pre: Partial<DiaryEntry> = entry ?? { med: last?.med ?? (plan.med || undefined), doseMg: last?.doseMg ?? plan.doseMg, takenAt: last?.takenAt };
+  // Vorbelegung aus dem Plan, der an diesem Tag galt (nicht aus dem heutigen) – sonst vom Vortag.
+  const dayPlan = planFor(plan, day);
+  const pre: Partial<DiaryEntry> = entry ?? { med: dayPlan.med || last?.med, doseMg: dayPlan.med ? dayPlan.doseMg : last?.doseMg };
+  // Fremdes Tagebuch: den eigenen Plan nicht unterstellen (nur zeigen, was dort steht).
+  const perDay = viewing ? 0 : dayPlan.med ? dayPlan.intakesPerDay : 1;
+  const status = intakeStatus(entry, perDay);
   const observations = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).sort((a, b) => b.data.day.localeCompare(a.data.day));
   const aboutMe = observations.filter((o) => o.data.aboutUserId === session.userId);
   const byMe = observations.filter((o) => o.userId === session.userId);
   const nameOf = (id: string) => members.find((m) => m.userId === id)?.name ?? members.find((m) => m.userId === id)?.login ?? "?";
-  const urgent = (entry?.sideEffects ?? []).filter((x) => URGENT_SIDE_EFFECTS.has(x));
   const data = mine.map((e) => e.data);
   const streakDays = (() => {
     const days = new Set(data.map((d) => d.day));
@@ -83,18 +88,12 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
           </div>
         </div>
         {streakDays > 1 && !viewing && <div className="small muted">{streakDays} Tage am Stück eingetragen – stark.</div>}
-        {urgent.length > 0 && (
-          <div className="notice notice-warn small" data-testid="diary-urgent">
-            Du hast „{urgent.join("“, „")}“ eingetragen. Das bitte zeitnah mit deiner Ärztin/deinem Arzt besprechen (außerhalb der Sprechzeiten: 116 117).
-            Bei Brustschmerzen, Atemnot, Ohnmacht oder Gedanken, dir oder anderen etwas anzutun: sofort 112.
-          </div>
-        )}
 
         {viewing ? (
           entry ? (
             <div className="small stack" style={{ gap: 4 }}>
-              <div>{[entry.med, entry.doseMg !== undefined ? `${n(entry.doseMg)} mg` : "", entry.takenAt ? `um ${entry.takenAt}` : ""].filter(Boolean).join(" · ") || "kein Medikament eingetragen"}</div>
-              <div>{RATING_FIELDS.map((f) => `${f.label}: ${entry[f.key] ?? "–"}`).join(" · ")}</div>
+              <div>{[entry.med, entry.doseMg !== undefined ? `${n(entry.doseMg)} mg` : ""].filter(Boolean).join(" · ") || "kein Medikament eingetragen"} · Einnahme: {status.label}</div>
+              <div>{RATING_FIELDS.map((f) => `${f.label}: ${entry[f.key] ?? "nicht erfasst"}`).join(" · ")}</div>
               {entry.sideEffects?.length ? <div>Nebenwirkungen: {entry.sideEffects.join(", ")}</div> : null}
               {entry.good && <div>Gut: {entry.good}</div>}
               {entry.hard && <div>Schwer: {entry.hard}</div>}
@@ -104,37 +103,59 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
           <div key={day}>
             <StateForm action={saveDiaryAction} submit={entry ? "Änderungen speichern" : "Tag speichern"} testid="diary-form" keep>
               <input type="hidden" name="day" value={day} />
-              <h3 className="label" style={{ margin: 0 }}>Medikament</h3>
+              <div className="small muted">Kurz: Einnahme, drei Werte, Nebenwirkungen – dauert eine Minute. Alles Weitere unten aufklappen.</div>
+              <h3 className="label" style={{ margin: 0 }}>Einnahme {pre.med ? `· ${pre.med}${pre.doseMg !== undefined ? ` ${n(pre.doseMg)} mg` : ""}` : ""}</h3>
               <div className="priv-grid">
-                <div className="field"><label className="label" htmlFor="d-med">Name</label><input className="input" id="d-med" name="med" defaultValue={pre.med ?? ""} placeholder="z. B. Methylphenidat retard" autoComplete="off" /></div>
-                <div className="field"><label className="label" htmlFor="d-dose">Dosis (mg)</label><input className="input" id="d-dose" name="doseMg" inputMode="decimal" defaultValue={n(pre.doseMg)} /></div>
-                <div className="field"><label className="label" htmlFor="d-taken">eingenommen um{entry?.intakes && entry.intakes.length > 1 ? ` (alle: ${entry.intakes.join(", ")})` : ""}</label><input className="input" id="d-taken" name="takenAt" type="time" defaultValue={pre.takenAt ?? ""} /></div>
-                <div className="field"><label className="label" htmlFor="d-onset">Wirkung spürbar ab</label><input className="input" id="d-onset" name="onset" type="time" defaultValue={entry?.onset ?? ""} /></div>
-                <div className="field"><label className="label" htmlFor="d-wear">lässt nach um</label><input className="input" id="d-wear" name="wearOff" type="time" defaultValue={entry?.wearOff ?? ""} /></div>
+                <div className="field">
+                  <label className="label" htmlFor="d-intakes">eingenommen um</label>
+                  <input className="input" id="d-intakes" name="intakes" defaultValue={status.times.join(", ")} placeholder={perDay > 1 ? "z. B. 08:00, 13:00" : "z. B. 08:00"} inputMode="numeric" autoComplete="off" />
+                </div>
+                <div className="field">
+                  <label className="label" htmlFor="d-nottaken">bewusst nicht genommen</label>
+                  <select className="select" id="d-nottaken" name="notTaken" defaultValue={String(entry?.notTaken ?? 0)}>
+                    {Array.from({ length: Math.max(perDay, entry?.notTaken ?? 0) + 1 }, (_, i) => <option key={i} value={i}>{i === 0 ? "–" : `${i}× (ausgelassen)`}</option>)}
+                  </select>
+                </div>
               </div>
+              <div className="small muted" data-testid="diary-intake-status">{perDay} Einnahme{perDay === 1 ? "" : "n"} geplant: {status.label}. Leer gelassen heißt „nicht dokumentiert“ – nicht „nicht genommen“.</div>
               <h3 className="label" style={{ margin: "6px 0 0" }}>Wie war der Tag? (1 = schlecht, 5 = sehr gut)</h3>
               <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
-                {RATING_FIELDS.map((f) => <Rating key={f.key} name={f.key} label={f.label} low={f.low} high={f.high} value={entry?.[f.key]} />)}
-              </div>
-              <h3 className="label" style={{ margin: "6px 0 0" }}>Messwerte (wenn gemessen – am besten in Ruhe, immer zur ähnlichen Uhrzeit)</h3>
-              <div className="priv-grid">
-                <div className="field"><label className="label" htmlFor="d-sleep">Schlaf (Std.)</label><input className="input" id="d-sleep" name="sleepHours" inputMode="decimal" defaultValue={n(entry?.sleepHours)} /></div>
-                <div className="field"><label className="label" htmlFor="d-pulse">Puls (Ruhe)</label><input className="input" id="d-pulse" name="pulse" inputMode="numeric" defaultValue={n(entry?.pulse)} /></div>
-                <div className="field"><label className="label" htmlFor="d-sys">Blutdruck oben</label><input className="input" id="d-sys" name="bpSys" inputMode="numeric" defaultValue={n(entry?.bpSys)} /></div>
-                <div className="field"><label className="label" htmlFor="d-dia">Blutdruck unten</label><input className="input" id="d-dia" name="bpDia" inputMode="numeric" defaultValue={n(entry?.bpDia)} /></div>
-                <div className="field"><label className="label" htmlFor="d-weight">Gewicht (kg)</label><input className="input" id="d-weight" name="weightKg" inputMode="decimal" defaultValue={n(entry?.weightKg)} /></div>
-                <div className="field"><label className="label" htmlFor="d-coffee">Kaffee/Energy (Tassen)</label><input className="input" id="d-coffee" name="caffeine" inputMode="numeric" defaultValue={n(entry?.caffeine)} /></div>
+                {RATING_FIELDS.filter((f) => f.key === "focus" || f.key === "mood" || f.key === "sleepQuality").map((f) => <Rating key={f.key} name={f.key} label={f.label} low={f.low} high={f.high} value={entry?.[f.key]} />)}
               </div>
               <div className="field">
                 <span className="label">Nebenwirkungen heute</span>
                 <Chips name="sideEffects" options={SIDE_EFFECTS} values={entry?.sideEffects} />
                 <input className="input" name="otherEffect" placeholder="Sonstiges (optional)" style={{ marginTop: 6 }} defaultValue={(entry?.sideEffects ?? []).find((x) => !(SIDE_EFFECTS as readonly string[]).includes(x)) ?? ""} />
+                <div className="small muted">Das Tagebuch wertet nichts medizinisch aus. Fragen zu Nebenwirkungen bitte mit deiner Ärztin/deinem Arzt besprechen – Bereitschaftsdienst 116 117, im Notfall 112.</div>
               </div>
-              <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-                <div className="field"><label className="label" htmlFor="d-good">Was lief gut?</label><textarea className="input" id="d-good" name="good" rows={2} defaultValue={entry?.good ?? ""} /></div>
-                <div className="field"><label className="label" htmlFor="d-hard">Was war schwer?</label><textarea className="input" id="d-hard" name="hard" rows={2} defaultValue={entry?.hard ?? ""} /></div>
-              </div>
-              <div className="field"><label className="label" htmlFor="d-note">Notiz / Fragen an die Ärztin</label><textarea className="input" id="d-note" name="note" rows={2} defaultValue={entry?.note ?? ""} /></div>
+              <Disclosure summary="Weitere Angaben: Medikament, Wirkung, weitere Werte, Messwerte, Notizen" defaultOpen={Boolean(entry && (entry.onset || entry.wearOff || entry.calm || entry.energy || entry.appetite || entry.pulse || entry.weightKg || entry.good || entry.hard || entry.note))}>
+                <div className="stack" style={{ gap: 12, marginTop: 10 }} data-testid="diary-more">
+                  <div className="priv-grid">
+                    <div className="field"><label className="label" htmlFor="d-med">Medikament</label><input className="input" id="d-med" name="med" defaultValue={pre.med ?? ""} placeholder="z. B. Methylphenidat retard" autoComplete="off" /></div>
+                    <div className="field"><label className="label" htmlFor="d-dose">Dosis (mg)</label><input className="input" id="d-dose" name="doseMg" inputMode="decimal" defaultValue={n(pre.doseMg)} /></div>
+                    <div className="field"><label className="label" htmlFor="d-onset">Wirkung spürbar ab</label><input className="input" id="d-onset" name="onset" type="time" defaultValue={entry?.onset ?? ""} /></div>
+                    <div className="field"><label className="label" htmlFor="d-wear">lässt nach um</label><input className="input" id="d-wear" name="wearOff" type="time" defaultValue={entry?.wearOff ?? ""} /></div>
+                  </div>
+                  <div className="small muted">Medikament und Dosis gelten nur für diesen Tag – den Plan änderst du oben bei „Medikament & Vorrat“.</div>
+                  <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+                    {RATING_FIELDS.filter((f) => f.key !== "focus" && f.key !== "mood" && f.key !== "sleepQuality").map((f) => <Rating key={f.key} name={f.key} label={f.label} low={f.low} high={f.high} value={entry?.[f.key]} />)}
+                  </div>
+                  <h3 className="label" style={{ margin: "6px 0 0" }}>Messwerte (wenn gemessen – am besten in Ruhe, immer zur ähnlichen Uhrzeit)</h3>
+                  <div className="priv-grid">
+                    <div className="field"><label className="label" htmlFor="d-sleep">Schlaf (Std.)</label><input className="input" id="d-sleep" name="sleepHours" inputMode="decimal" defaultValue={n(entry?.sleepHours)} /></div>
+                    <div className="field"><label className="label" htmlFor="d-pulse">Puls (Ruhe)</label><input className="input" id="d-pulse" name="pulse" inputMode="numeric" defaultValue={n(entry?.pulse)} /></div>
+                    <div className="field"><label className="label" htmlFor="d-sys">Blutdruck oben</label><input className="input" id="d-sys" name="bpSys" inputMode="numeric" defaultValue={n(entry?.bpSys)} /></div>
+                    <div className="field"><label className="label" htmlFor="d-dia">Blutdruck unten</label><input className="input" id="d-dia" name="bpDia" inputMode="numeric" defaultValue={n(entry?.bpDia)} /></div>
+                    <div className="field"><label className="label" htmlFor="d-weight">Gewicht (kg)</label><input className="input" id="d-weight" name="weightKg" inputMode="decimal" defaultValue={n(entry?.weightKg)} /></div>
+                    <div className="field"><label className="label" htmlFor="d-coffee">Kaffee/Energy (Tassen)</label><input className="input" id="d-coffee" name="caffeine" inputMode="numeric" defaultValue={n(entry?.caffeine)} /></div>
+                  </div>
+                  <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+                    <div className="field"><label className="label" htmlFor="d-good">Was lief gut?</label><textarea className="input" id="d-good" name="good" rows={2} defaultValue={entry?.good ?? ""} /></div>
+                    <div className="field"><label className="label" htmlFor="d-hard">Was war schwer?</label><textarea className="input" id="d-hard" name="hard" rows={2} defaultValue={entry?.hard ?? ""} /></div>
+                  </div>
+                  <div className="field"><label className="label" htmlFor="d-note">Notiz / Fragen an die Ärztin</label><textarea className="input" id="d-note" name="note" rows={2} defaultValue={entry?.note ?? ""} /></div>
+                </div>
+              </Disclosure>
             </StateForm>
           </div>
         )}
@@ -147,14 +168,14 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
             <div className="priv-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 18 }} data-testid="diary-charts">
               {(["focus", "mood", "calm", "sleepQuality"] as const).map((k) => <Spark key={k} title={RATING_FIELDS.find((f) => f.key === k)!.label} series={diarySeries(data, k, today, 30)} />)}
             </div>
-            <div className="small muted">Je höher die Säule, desto besser (1–5). Ein oranger Strich oben markiert einen Tag mit neuer Dosis.</div>
+            <div className="small muted">Je höher die Säule, desto besser (1–5); graue Tage = nicht erfasst. Ein oranger Strich oben markiert einen Tag mit neuer Dosis. In der Tabelle heißt „–“: nicht erfasst.</div>
             <table className="table" style={{ marginTop: 6 }}>
-              <thead><tr><th>Tag</th><th>Dosis</th><th className="right">Konz.</th><th className="right">Stimm.</th><th className="right">Schlaf</th><th>Nebenwirkungen</th><th></th></tr></thead>
+              <thead><tr><th>Tag</th><th>Einnahme</th><th className="right">Konz.</th><th className="right">Stimm.</th><th className="right">Schlaf</th><th>Nebenwirkungen</th><th></th></tr></thead>
               <tbody>
                 {mine.slice(0, 14).map((e) => (
                   <tr key={e.id}>
                     <td className="num"><Link href={`/privat/tagebuch?tag=${e.data.day}${viewing ? `&von=${viewing.userId}` : ""}`}>{weekday(e.data.day)} {dm(e.data.day)}</Link></td>
-                    <td className="num">{e.data.doseMg !== undefined ? `${n(e.data.doseMg)} mg` : "–"}{e.data.takenAt ? <span className="muted"> {e.data.takenAt}</span> : null}</td>
+                    <td className="small">{e.data.doseMg !== undefined ? `${n(e.data.doseMg)} mg · ` : ""}{intakeStatus(e.data, viewing ? 0 : planFor(plan, e.data.day).med ? planFor(plan, e.data.day).intakesPerDay : 1).label}</td>
                     <td className="num right">{e.data.focus ?? "–"}</td>
                     <td className="num right">{e.data.mood ?? "–"}</td>
                     <td className="num right">{e.data.sleepHours !== undefined ? `${n(e.data.sleepHours)} h` : e.data.sleepQuality ?? "–"}</td>

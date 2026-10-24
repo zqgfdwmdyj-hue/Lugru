@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { kidsHours, kidsOverview, nextSleeper, shiftMonth, type SleepEntry } from "@/lib/private/logic";
+import { kidsHours, kidsOverview, nextSleeper, overnight, shiftMonth, type PartnerKey, type SleepEntry } from "@/lib/private/logic";
 import type { Session } from "@/lib/auth/session";
 import { loadEntries, myPartner, privateSettings, type Entry } from "@/lib/private/service";
 import { deleteEntryAction, type FormState } from "./actions";
 import { StateForm } from "./state-form";
-import { Choice, PrivatHead, dm, hoursLabel, monthLabel, weekday, type PrivatTab } from "./ui";
+import { Choice, MonthNav, PrivatHead, dm, hoursLabel, monthLabel, weekday, type PrivatTab } from "./ui";
 
 /** Gleiche Farben wie bei der Kinderzeit (auf Farbsehschwäche geprüft); Name steht immer dabei. */
 const COLOR = { a: "#0d9488", b: "#c2410c" } as const;
 
-function Cell({ list, kind }: { list: Entry<SleepEntry>[]; kind: string }) {
+function Cell({ list, kind, path, month, names }: { list: Entry<SleepEntry>[]; kind: string; path: string; month: string; names: Record<PartnerKey, string> }) {
   if (!list.length) return <span className="muted">–</span>;
   return (
     <div className="stack" style={{ gap: 4 }}>
@@ -19,11 +19,15 @@ function Cell({ list, kind }: { list: Entry<SleepEntry>[]; kind: string }) {
           <strong>{e.data.from && e.data.to ? `${e.data.from}–${e.data.to}` : ""}</strong>
           {e.data.from && e.data.to ? " · " : ""}
           {hoursLabel(kidsHours(e.data))}
+          {overnight(e.data) ? <span className="muted"> (über Mitternacht)</span> : null}
           {e.data.note ? <span className="muted"> · {e.data.note}</span> : null}
+          {e.data.linkId ? <span className="muted" data-testid="linked"> · 🔗 zugleich Kinderzeit {names[e.data.person === "a" ? "b" : "a"]}</span> : null}
+          {e.data.editedAt ? <span className="muted"> · geändert</span> : null}
+          <Link className="btn-link small" href={`${path}?monat=${month}&bearbeiten=${e.id}`} style={{ marginLeft: 6 }}>ändern</Link>
           <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={e.id} />
-            <button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="Eintrag löschen">×</button>
+            <button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="Eintrag löschen" title={e.data.linkId ? "löscht auch die verknüpfte Kinderzeit" : undefined}>×</button>
           </form>
         </div>
       ))}
@@ -51,8 +55,8 @@ export type FairConfig = {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
 };
 
-/** Seite „wer hatte wie viel …“ mit Ausgleich (Ausschlafen, Auszeit). */
-export async function FairPage({ session, month, cfg }: { session: Session; month: string; cfg: FairConfig }) {
+/** Seite „wer hatte wie viel …“ (Ausschlafen, Auszeit): erfasste Zeiten, neutral dargestellt. */
+export async function FairPage({ session, month, cfg, editId }: { session: Session; month: string; cfg: FairConfig; editId?: string }) {
   const today = todayIso();
   const s = await privateSettings(session.tenantId);
   const all = await loadEntries<SleepEntry>(session, [cfg.kind]);
@@ -64,16 +68,14 @@ export async function FairPage({ session, month, cfg }: { session: Session; mont
   const me = myPartner(s, session);
   const last3 = [1, 2, 3].map((i) => shiftMonth(month, -i)).map((m) => ({ m, ...kidsOverview(all.map((e) => e.data), m).totals }));
   const t = cfg.test;
+  const edit = editId ? all.find((e) => e.id === editId) : undefined;
+  const v = edit?.data;
+  const nn = (x: number | undefined) => (x === undefined ? "" : String(x).replace(".", ","));
+  const recorded = ov.totals.a.count + ov.totals.b.count;
 
   return (
     <>
-      <PrivatHead active={cfg.tab} title={cfg.title} pin={session.privatePin} sub={
-        <div style={{ display: "flex", gap: 6 }}>
-          <Link className="btn btn-small" href={`${cfg.path}?monat=${shiftMonth(month, -1)}`} aria-label="Voriger Monat">‹</Link>
-          <span className="btn btn-small" style={{ pointerEvents: "none" }}>{monthLabel(month)}</span>
-          <Link className="btn btn-small" href={`${cfg.path}?monat=${shiftMonth(month, 1)}`} aria-label="Nächster Monat">›</Link>
-        </div>
-      } />
+      <PrivatHead active={cfg.tab} title={cfg.title} pin={session.privatePin} month={month} sub={<MonthNav path={cfg.path} month={month} />} />
       {cfg.intro && <div className="small muted">{cfg.intro}</div>}
 
       {next && (
@@ -89,8 +91,17 @@ export async function FairPage({ session, month, cfg }: { session: Session; mont
           {(["a", "b"] as const).map((k) => (
             <div key={k} data-testid={`${t}-total-${k}`}>
               <div className="kpi-label"><i style={{ display: "inline-block", width: 10, height: 10, borderRadius: 5, background: COLOR[k], marginRight: 6 }} />{name[k]}</div>
-              <div className="kpi-value">{ov.totals[k].count}×</div>
-              <div className="small muted">{hoursLabel(ov.totals[k].hours)} {cfg.unit}</div>
+              {ov.totals[k].count ? (
+                <>
+                  <div className="kpi-value">{ov.totals[k].count}×</div>
+                  <div className="small muted">{hoursLabel(ov.totals[k].hours)} {cfg.unit}</div>
+                </>
+              ) : (
+                <>
+                  <div className="kpi-value muted" style={{ fontSize: 18 }} data-testid="not-recorded">nicht erfasst</div>
+                  <div className="small muted">keine Einträge in diesem Monat</div>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -103,21 +114,34 @@ export async function FairPage({ session, month, cfg }: { session: Session; mont
             <div className="small muted">{name.a} {ov.shareA} % · {name.b} {100 - ov.shareA} % {cfg.shareText}</div>
           </>
         )}
-        <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${name.a} ${x.a.count}× / ${name.b} ${x.b.count}×`).join(" · ")}</div>
+        <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${x.a.count + x.b.count ? `${name.a} ${x.a.count}× / ${name.b} ${x.b.count}×` : "nicht erfasst"}`).join(" · ")}</div>
+        {recorded > 0 && <div className="small muted">Nur erfasste Zeiten – sie sagen nichts darüber, wer mehr leistet oder braucht.</div>}
       </section>
 
-      <section className="card card-pad stack">
-        <h2>Eintragen</h2>
-        <StateForm action={cfg.action} submit="Eintragen" testid={`${t}-form`}>
-          <div className="field"><span className="label">{cfg.who}</span><Choice name="person" value={next ?? me} options={[{ value: "a", label: name.a }, { value: "b", label: name.b }]} /></div>
+      <section className="card card-pad stack" id="eintragen">
+        <h2>{edit ? "Eintrag ändern" : "Eintragen"}</h2>
+        <StateForm key={edit?.id ?? "neu"} action={cfg.action} submit={edit ? "Änderung speichern" : "Eintragen"} testid={`${t}-form`} keep={Boolean(edit)}>
+          {edit && <input type="hidden" name="id" value={edit.id} />}
+          <div className="field"><span className="label">{cfg.who}</span><Choice name="person" value={v?.person ?? next ?? me} options={[{ value: "a", label: name.a }, { value: "b", label: name.b }]} /></div>
           <div className="priv-grid">
-            <div className="field"><label className="label" htmlFor={`${t}-day`}>Tag</label><input className="input" id={`${t}-day`} name="day" type="date" defaultValue={today} max={today} /></div>
-            <div className="field"><label className="label" htmlFor={`${t}-from`}>{cfg.fromLabel}</label><input className="input" id={`${t}-from`} name="from" type="time" defaultValue={cfg.fromDefault} /></div>
-            <div className="field"><label className="label" htmlFor={`${t}-to`}>{cfg.toLabel}</label><input className="input" id={`${t}-to`} name="to" type="time" /></div>
-            <div className="field"><label className="label" htmlFor={`${t}-hours`}>oder Stunden</label><input className="input" id={`${t}-hours`} name="hours" inputMode="decimal" placeholder="z. B. 2,5" /></div>
+            <div className="field"><label className="label" htmlFor={`${t}-day`}>Tag</label><input className="input" id={`${t}-day`} name="day" type="date" defaultValue={v?.day ?? today} max={today} /></div>
+            <div className="field"><label className="label" htmlFor={`${t}-from`}>{cfg.fromLabel}</label><input className="input" id={`${t}-from`} name="from" type="time" defaultValue={v ? v.from ?? "" : cfg.fromDefault} /></div>
+            <div className="field"><label className="label" htmlFor={`${t}-to`}>{cfg.toLabel}</label><input className="input" id={`${t}-to`} name="to" type="time" defaultValue={v?.to ?? ""} /></div>
+            <div className="field"><label className="label" htmlFor={`${t}-hours`}>oder Stunden</label><input className="input" id={`${t}-hours`} name="hours" inputMode="decimal" placeholder="z. B. 2,5" defaultValue={v?.from ? "" : nn(v?.hours)} /></div>
           </div>
-          <div className="field"><label className="label" htmlFor={`${t}-note`}>Notiz (optional)</label><input className="input" id={`${t}-note`} name="note" autoComplete="off" placeholder={cfg.notePlaceholder} /></div>
+          <details open={Boolean(v?.note)}>
+            <summary className="small" style={{ cursor: "pointer" }}>Mehr Angaben (optional)</summary>
+            <div className="stack" style={{ gap: 10, marginTop: 8 }}>
+              <div className="field"><label className="label" htmlFor={`${t}-note`}>Notiz</label><input className="input" id={`${t}-note`} name="note" autoComplete="off" placeholder={cfg.notePlaceholder} defaultValue={v?.note ?? ""} /></div>
+              {cfg.kind === "auszeit" && !edit && (
+                <label className="check small" data-testid="link-kids">
+                  <input type="checkbox" name="linkKinder" /> Währenddessen war der/die andere allein mit den Kindern – auch als Kinderzeit eintragen (ein Vorgang, zählt je Sicht einmal)
+                </label>
+              )}
+            </div>
+          </details>
           {cfg.hint && <div className="small muted">{cfg.hint}</div>}
+          {edit && <Link className="small" href={`${cfg.path}?monat=${month}`}>fertig / abbrechen</Link>}
         </StateForm>
       </section>
 
@@ -126,15 +150,15 @@ export async function FairPage({ session, month, cfg }: { session: Session; mont
           <div className="head">Tag</div>
           <div className="head"><i style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: COLOR.a, marginRight: 5 }} />{name.a}</div>
           <div className="head"><i style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: COLOR.b, marginRight: 5 }} />{name.b}</div>
-          {ov.days.length === 0 && <div style={{ gridColumn: "1 / -1" }} className="muted">In diesem Monat noch nichts eingetragen.</div>}
+          {ov.days.length === 0 && <div style={{ gridColumn: "1 / -1" }} className="muted">In diesem Monat nichts erfasst.</div>}
           {ov.days.map((d) => [
             <div key={`${d.day}-d`} className="num">{weekday(d.day)} {dm(d.day)}</div>,
-            <div key={`${d.day}-a`}><Cell kind={cfg.kind} list={d.a.map((e) => byId.get((e as SleepEntry & { id: string }).id)!)} /></div>,
-            <div key={`${d.day}-b`}><Cell kind={cfg.kind} list={d.b.map((e) => byId.get((e as SleepEntry & { id: string }).id)!)} /></div>,
+            <div key={`${d.day}-a`}><Cell kind={cfg.kind} path={cfg.path} month={month} names={name} list={d.a.map((e) => byId.get((e as SleepEntry & { id: string }).id)!)} /></div>,
+            <div key={`${d.day}-b`}><Cell kind={cfg.kind} path={cfg.path} month={month} names={name} list={d.b.map((e) => byId.get((e as SleepEntry & { id: string }).id)!)} /></div>,
           ])}
           <div className="head">Summe</div>
-          <div className="head">{ov.totals.a.count}× · {hoursLabel(ov.totals.a.hours)}</div>
-          <div className="head">{ov.totals.b.count}× · {hoursLabel(ov.totals.b.hours)}</div>
+          <div className="head">{ov.totals.a.count ? `${ov.totals.a.count}× · ${hoursLabel(ov.totals.a.hours)}` : "nicht erfasst"}</div>
+          <div className="head">{ov.totals.b.count ? `${ov.totals.b.count}× · ${hoursLabel(ov.totals.b.hours)}` : "nicht erfasst"}</div>
         </div>
       </section>
     </>
