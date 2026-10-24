@@ -3,13 +3,13 @@ import { canAccess } from "@/lib/auth/areas";
 import type { Session } from "@/lib/auth/session";
 import { safeHref } from "@/lib/auth/prefs";
 import { todayIso } from "@/lib/dates";
-import { CHANNEL_LABEL } from "@/lib/labels";
+import { CHANNEL_LABEL, COST_SOURCE_LABEL as LOT_COST_SOURCE } from "@/lib/labels";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { amazonProfit, orderLines } from "@/lib/money/profit";
 import { COST_SOURCE_LABEL, summarizeAmazon, summarizeChannels, totalsOf } from "@/lib/money/profit-logic";
 import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
 import { skuCostMap } from "@/lib/money/costs";
-import { availableOf } from "@/lib/stock/channel-logic";
+import { availableOf, stockSkuOf, targetQuantity } from "@/lib/stock/channel-logic";
 import { getSettings } from "@/lib/settings";
 import type { ProductDetail } from "@/lib/products/service";
 import { Kpi } from "@/components/kpi";
@@ -156,7 +156,7 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
       <section className="card" style={{ overflow: "auto" }} id="ek">
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <h2>EK je SKU</h2>
-          <p className="small muted" style={{ margin: "4px 0 0" }}>Gilt überall gleich (Gewinn, Lagerwert, Produkte): Charge → EK von Hand → Einkaufspreis aus dem eBay-Tool. Abweichungen werden markiert, nicht überschrieben.</p>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>Gilt überall gleich (Gewinn, Lagerwert, Produkte): Charge → EK von Hand → Einkaufspreis aus dem eBay-Tool → bei Sets die Summe der Bestandteile → zuletzt der vom Mehrfachangebot geerbte EK. Abweichungen werden markiert, nicht überschrieben.</p>
         </div>
         <table className="table" data-testid="ek-table">
           <thead><tr><th>SKU</th><th>Quellen</th><th className="right">Gilt</th><th /></tr></thead>
@@ -165,12 +165,31 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
               <tr key={e.sku} data-testid="ek-row" style={e.sku === highlight ? { background: "var(--info-soft)" } : undefined}>
                 <td className="num small">{e.sku}</td>
                 <td className="small">
-                  {e.sources.length ? e.sources.map((s) => <span key={s.source} className="tag tag-neutral" style={{ marginRight: 4 }}>{s.label} {formatEuro(s.cost)}</span>) : <span className="muted">keine</span>}
+                  {e.sources.length ? (
+                    e.sources.map((s, i) => (
+                      <div key={i} data-testid="ek-source">
+                        <span className={`tag ${s.inherited ? "tag-warn" : "tag-neutral"}`} style={{ marginRight: 4 }}>{s.label}{s.inherited ? " · geerbt" : ""} {formatEuro(s.cost)}</span>
+                        {s.detail && <span className="muted">{s.detail}</span>}
+                      </div>
+                    ))
+                  ) : (
+                    <span className="muted">keine</span>
+                  )}
                   {e.conflict && <span className="tag tag-warn" data-testid="ek-conflict">weicht ab ({formatEuro(e.spread)})</span>}
                 </td>
-                <td className="num right">{e.effective ? <span title={COST_SOURCE_LABEL[e.effective.source]}>{formatEuro(e.effective.cost)}</span> : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
+                <td className="num right" data-testid="ek-effective">
+                  {e.effective ? (
+                    <>
+                      {formatEuro(e.effective.cost)}
+                      <div className="small muted" style={{ fontFamily: "inherit" }}>{COST_SOURCE_LABEL[e.effective.source]}{e.effective.inherited ? " (geerbt – bitte prüfen)" : ""}</div>
+                    </>
+                  ) : (
+                    <span style={{ color: "var(--warn)" }}>fehlt</span>
+                  )}
+                </td>
                 <td>
                   {canFix && !e.effective && !d.lots.some((l) => l.sku === e.sku) && <FixForm action={setSkuCostAction} hidden={{ sku: e.sku }} name="cost" label={`EK netto für ${e.sku}`} placeholder="EK netto €" testid="ek-fix" />}
+                  {canFix && e.effective?.inherited && !e.conflict && !d.lots.some((l) => l.sku === e.sku && l.unitCostNet !== null) && <FixForm action={setSkuCostAction} hidden={{ sku: e.sku }} name="cost" label={`Eigenen EK für ${e.sku} eintragen (statt geerbt)`} placeholder="eigener EK €" testid="ek-fix-inherited" />}
                   {canFix && e.conflict && !d.lots.some((l) => l.sku === e.sku && l.unitCostNet !== null) && <FixForm action={setSkuCostAction} hidden={{ sku: e.sku }} name="cost" label={`Richtigen EK für ${e.sku} festlegen`} placeholder="richtiger EK €" testid="ek-fix" />}
                 </td>
               </tr>
@@ -192,7 +211,7 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
                 <td className="num right">{l.quantity ?? "–"}</td>
                 <td className="num right">{l.unitCostNet !== null ? formatEuro(Number(l.unitCostNet)) : canFix ? <FixForm action={setLotCostAction} hidden={{ lotId: l.id }} name="cost" label={`EK für Charge ${l.sku}`} placeholder="EK €" testid="lot-fix" /> : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
                 <td className="small">{l.supplier ?? <span className="muted">–</span>}</td>
-                <td className="small muted">{l.unitCostSource ?? ""}</td>
+                <td className="small muted">{l.unitCostSource ? LOT_COST_SOURCE[l.unitCostSource] ?? l.unitCostSource : ""}</td>
               </tr>
             ))}
           </tbody>
@@ -280,20 +299,37 @@ function Angebote({ d }: { d: ProductDetail & object }) {
       <section className="card" style={{ overflow: "auto" }}>
         <div className="card-pad" style={{ paddingBottom: 0 }}><h2>Angebote in den Kanälen</h2></div>
         <table className="table" data-testid="offer-table">
-          <thead><tr><th>Kanal</th><th>Kanal-SKU</th><th>Lager-SKU</th><th>Status</th><th className="right">Preis</th><th className="right">Menge</th><th>Abgleich</th></tr></thead>
+          <thead><tr><th>Kanal</th><th>Kanal-SKU</th><th>Lager-SKU</th><th>Status</th><th className="right">Preis</th><th className="right" title="Was der Kanal laut Lager zeigen soll: verfügbar (Bestand − reserviert), ggf. begrenzt">Soll (Lager)</th><th className="right" title="Zuletzt an den Kanal gemeldete Menge">Zuletzt übertragen</th><th>Abgleich</th></tr></thead>
           <tbody>
-            {d.listings.length === 0 && <tr><td colSpan={7} className="muted small">In keinem Kanal angeboten.</td></tr>}
-            {d.listings.map((l) => (
-              <tr key={l.id}>
+            {d.listings.length === 0 && <tr><td colSpan={8} className="muted small">In keinem Kanal angeboten.</td></tr>}
+            {d.listings.map((l) => {
+              const lvl = d.levels.get(stockSkuOf(l));
+              const want = l.stockSync && lvl ? targetQuantity(l, availableOf(lvl)) : null;
+              const when = l.pushedAt ? l.pushedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : null;
+              const sync = !l.stockSync
+                ? "aus – Menge von Hand"
+                : l.status === "draft"
+                  ? "Entwurf – noch nicht abgeglichen"
+                  : l.status === "ended"
+                    ? "beendet – kein Abgleich"
+                    : !lvl
+                      ? "Lager-SKU unbekannt – kein Abgleich"
+                      : l.pushedQuantity === want
+                        ? `abgeglichen${when ? ` ${when}` : ""}`
+                        : `ausstehend (Soll ${want})`;
+              return (
+              <tr key={l.id} data-testid="offer-row">
                 <td>{CHANNEL_LABEL[l.channel] ?? l.channel}</td>
                 <td className="num small"><Link href={`/listings?sku=${encodeURIComponent(l.sku)}`}>{l.sku}</Link></td>
                 <td className="num small">{l.stockSku || <span className="muted">gleich</span>}</td>
                 <td><span className={`tag ${l.status === "active" ? "tag-ok" : l.status === "error" ? "tag-danger" : "tag-neutral"}`}>{STATUS_LABEL[l.status] ?? l.status}</span>{l.lastError && <div className="small" style={{ color: "var(--danger)" }}>{l.lastError}</div>}</td>
                 <td className="num right">{l.price !== null ? formatEuro(l.price) : "–"}</td>
-                <td className="num right">{l.pushedQuantity ?? l.quantity}</td>
-                <td className="small">{l.stockSync ? `folgt Lager${l.maxQuantity ? ` (max. ${l.maxQuantity})` : ""}` : "aus"}</td>
+                <td className="num right" data-testid="offer-want">{want ?? "–"}{want !== null && l.maxQuantity ? <div className="small muted">max. {l.maxQuantity}</div> : null}</td>
+                <td className="num right" data-testid="offer-pushed">{l.pushedQuantity ?? "–"}{when && <div className="small muted">{when}</div>}</td>
+                <td className="small" data-testid="offer-sync">{sync}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </section>

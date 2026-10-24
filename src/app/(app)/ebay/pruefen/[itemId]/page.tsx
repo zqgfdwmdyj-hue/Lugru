@@ -2,14 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireArea } from "@/lib/auth/session";
 import { GTIN_ASPECT } from "@/lib/ebay/pipeline/aspects";
-import type { Level } from "@/lib/ebay-review/logic";
+import { ISSUE_KIND_LABEL, issueKind, PRIORITY_LABEL, type IssueKind } from "@/lib/ebay-review/logic";
 import { reviewDetail } from "@/lib/ebay-review/service";
 import { aiSuggestAction, applyAction, recheckOneAction } from "../actions";
 import { ContentEditor } from "../content-editor";
 import { ActionButton, ReviseForm } from "../forms";
-import { euro, LEVEL_TAG, scoreClass } from "../ui";
+import { euro, issueTag, scoreClass } from "../ui";
 
-const LEVEL_HEAD: Record<Level, string> = { wichtig: "Wichtig", empfohlen: "Empfohlen", tipp: "Tipps" };
 const dateDe = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ itemId: string }> }) {
@@ -25,7 +24,6 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
   const trafficNote = row.traffic && "unavailable" in row.traffic ? row.traffic.unavailable : null;
   const ai = row.ai;
   const missing = f && defs ? defs.filter((x) => (x.required || x.recommended) && !GTIN_ASPECT.test(x.name) && !Object.keys(f.aspects).some((k) => k.toLowerCase() === x.name.toLowerCase())).slice(0, 24) : [];
-  const levels: Level[] = ["wichtig", "empfohlen", "tipp"];
   const applied = row.applied as { at?: string; changes?: string[] } | null;
   // Nach dem Senden lädt die Seite neu – die Rückmeldung bleibt eine Weile am Editor stehen.
   const recentApplied = applied?.at && Date.now() - Date.parse(applied.at) < 15 * 60_000 ? (applied.changes ?? []).join(" · ") : null;
@@ -57,16 +55,17 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
         {row.status === "fehler" && <div className="notice notice-error small">{row.message}</div>}
         {applied?.at && <div className="notice notice-info small" data-testid="applied">Zuletzt bei eBay geändert am {dateDe(applied.at)}: {(applied.changes ?? []).join(" · ")}</div>}
         {row.issues.length === 0 && row.score !== null && <div className="small" style={{ color: "var(--ok)" }}>Nichts zu verbessern – gut gemacht.</div>}
-        {levels.map((l) => {
-          const list = row.issues.filter((i) => i.level === l);
+        {(["fehler", "pflicht", "empfehlung"] as IssueKind[]).map((k) => {
+          const list = row.issues.filter((i) => issueKind(i.key) === k);
           if (!list.length) return null;
           return (
-            <div key={l} className="stack" style={{ gap: 6 }}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>{LEVEL_HEAD[l]} ({list.length})</h3>
-              <ul className="rev-issues" data-testid={`issues-${l}`}>
+            <div key={k} className="stack" style={{ gap: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>{ISSUE_KIND_LABEL[k]} ({list.length})</h3>
+              {k === "empfehlung" && <div className="small muted">Freiwillig – das Angebot ist auch ohne diese Punkte gültig. Priorität: hoch, mittel, niedrig.</div>}
+              <ul className="rev-issues" data-testid={`issues-${k}`}>
                 {list.map((i) => (
                   <li key={i.key}>
-                    <span className={`tag ${LEVEL_TAG[i.level]}`}>{i.area}</span> {i.text}
+                    <span className={`tag ${issueTag(i)}`}>{i.area}{k === "empfehlung" ? ` · ${PRIORITY_LABEL[i.level]}` : ""}</span> {i.text}
                   </li>
                 ))}
               </ul>

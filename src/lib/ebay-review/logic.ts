@@ -8,6 +8,38 @@ import { xmlAt, xmlList, xmlText, type XmlObject, type XmlValue } from "@/lib/xm
 // Vollständigkeit, Bilder, Preis inkl. Versand, Rücknahme, Bearbeitungszeit, Verkäuferleistung).
 
 export type Level = "wichtig" | "empfohlen" | "tipp";
+
+/**
+ * Art eines Hinweises – getrennt bewertet: technischer Fehler (eBay zeigt/verkauft nicht richtig),
+ * fehlende Pflichtangabe (eBay oder Gesetz verlangt sie) und Empfehlung (Sichtbarkeit/Verkauf, freiwillig).
+ */
+export type IssueKind = "fehler" | "pflicht" | "empfehlung";
+export const ISSUE_KIND_LABEL: Record<IssueKind, string> = { fehler: "Technische Fehler", pflicht: "Fehlende Pflichtangaben", empfehlung: "Empfehlungen für Sichtbarkeit und Verkauf" };
+const KIND_OF: Record<string, IssueKind> = { "menge-null": "fehler", "beschreibung-aktiv": "fehler", "merkmale-pflicht": "pflicht", gpsr: "pflicht", "ruecknahme-keine": "pflicht" };
+export const issueKind = (key: string): IssueKind => KIND_OF[key] ?? "empfehlung";
+/** Bei Empfehlungen ist die Stufe eine Priorität, kein Fehler. */
+export const PRIORITY_LABEL: Record<Level, string> = { wichtig: "hoch", empfohlen: "mittel", tipp: "niedrig" };
+
+/** Für den Markenvergleich: klein, ohne ®/™, Akzente und Satzzeichen. */
+const brandNorm = (s: string) =>
+  s
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[®™©]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß]+/g, " ")
+    .trim();
+const BRAND_NOISE = new Set(["gmbh", "ag", "inc", "ltd", "llc", "co", "kg", "corp", "corporation", "company", "group", "the", "und", "and", "germany", "deutschland", "europe"]);
+
+/** Steht die Marke im Titel? Ganze Marke oder ihr kennzeichnender Teil (z. B. „SanDisk“ in „SanDisk Corporation“). */
+export function brandInTitle(title: string, brand: string): boolean {
+  const t = ` ${brandNorm(title)} `;
+  const b = brandNorm(brand);
+  if (!b) return true;
+  if (t.includes(` ${b} `) || t.replace(/ /g, "").includes(b.replace(/ /g, ""))) return true;
+  const words = b.split(" ").filter((w) => w.length >= 3 && !BRAND_NOISE.has(w));
+  return words.length > 0 && words.some((w) => t.includes(` ${w} `));
+}
 export type Fix = "title" | "aspects" | "price" | "bestOffer";
 export type Issue = { key: string; level: Level; area: string; text: string; fix?: Fix };
 
@@ -192,7 +224,7 @@ export function titleIssues(f: Pick<ListingFacts, "title" | "conditionId" | "bra
   const dup = [...new Set(words.filter((w, i) => words.indexOf(w) !== i))];
   if (dup.length) out.push({ key: "titel-doppelt", level: "tipp", area: "Titel", text: `Doppelte Wörter: ${dup.slice(0, 5).join(", ")} – Wiederholungen bringen bei eBay keinen Vorteil.`, fix: "title" });
   if (f.conditionId === "1000" && /\bneu(e|er|es|wertig)?\b/i.test(t) && !/\bneuheit|neuauflage\b/i.test(t)) out.push({ key: "titel-neu", level: "tipp", area: "Titel", text: "„Neu“ steht schon im Artikelzustand – die Zeichen lieber für einen Suchbegriff nutzen.", fix: "title" });
-  if (f.brand && !t.toLowerCase().includes(f.brand.toLowerCase())) out.push({ key: "titel-marke", level: "empfohlen", area: "Titel", text: `Marke „${f.brand}“ fehlt im Titel – Käufer suchen oft mit Markennamen.`, fix: "title" });
+  if (f.brand && !brandInTitle(t, f.brand)) out.push({ key: "titel-marke", level: "empfohlen", area: "Titel", text: `Marke laut Merkmal „Marke“: „${f.brand}“ – im Titel „${t}“ nicht gefunden. Käufer suchen oft mit Markennamen. Steht die Marke anders geschrieben im Titel, das Merkmal prüfen.`, fix: "title" });
   return out;
 }
 
@@ -408,7 +440,8 @@ export function reviewListing(f: ListingFacts, ctx: ReviewContext): { score: num
   }
 
   const order: Record<Level, number> = { wichtig: 0, empfohlen: 1, tipp: 2 };
-  issues.sort((a, b) => order[a.level] - order[b.level]);
+  const kindOrder: Record<IssueKind, number> = { fehler: 0, pflicht: 1, empfehlung: 2 };
+  issues.sort((a, b) => kindOrder[issueKind(a.key)] - kindOrder[issueKind(b.key)] || order[a.level] - order[b.level]);
   return { score: scoreOf(issues), issues };
 }
 

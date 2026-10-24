@@ -2,20 +2,40 @@
 // Gewinn (nur Positionen, bei denen Preis, EK und Gebühren bekannt sind) getrennt. Fehlende Werte werden
 // gezählt und nie still als 0 € gerechnet. Reine Logik – Abfragen stehen in profit.ts / costs.ts.
 
-export type CostSource = "charge" | "manuell" | "ebay";
-export type CostInfo = { cost: number; source: CostSource };
+export type CostSource = "charge" | "manuell" | "ebay" | "set";
+/** `detail` = genaue Herkunft (z. B. Angebot/Variante), `inherited` = Wert stammt nicht von der SKU selbst. */
+export type CostInfo = { cost: number; source: CostSource; detail?: string; inherited?: boolean };
 
-export const COST_SOURCE_LABEL: Record<CostSource, string> = { charge: "Charge", manuell: "von Hand (EK je SKU)", ebay: "eBay-Tool" };
+export const COST_SOURCE_LABEL: Record<CostSource, string> = { charge: "Charge", manuell: "von Hand (EK je SKU)", ebay: "eBay-Tool", set: "Summe der Set-Bestandteile" };
 
-/** EK je SKU aus mehreren Quellen – die erste gefundene gewinnt (Charge → von Hand → eBay-Tool). */
-export function mergeCosts(...sources: [CostSource, Iterable<[string, number | null | undefined]>][]): Map<string, CostInfo> {
+/** [SKU, EK, Herkunft, geerbt] */
+export type CostPair = [string, number | null | undefined, string?, boolean?];
+
+/** EK je SKU aus mehreren Quellen – die erste gefundene gewinnt (Reihenfolge der Quellen). */
+export function mergeCosts(...sources: [CostSource, Iterable<CostPair>][]): Map<string, CostInfo> {
   const out = new Map<string, CostInfo>();
   for (const [source, entries] of sources) {
-    for (const [sku, cost] of entries) {
+    for (const [sku, cost, detail, inherited] of entries) {
       const k = sku?.trim();
       if (!k || out.has(k) || cost === null || cost === undefined || !Number.isFinite(cost) || cost < 0) continue;
-      out.set(k, { cost, source });
+      out.set(k, { cost, source, ...(detail ? { detail } : {}), ...(inherited ? { inherited: true } : {}) });
     }
+  }
+  return out;
+}
+
+/**
+ * EK eines Sets ohne eigenen EK: Summe der Bestandteile (Menge × EK), nur wenn alle Bestandteile einen EK
+ * haben. Sets sind in der Wawi virtuell (Bestand aus den Einzelsorten) – also zählen die Komponenten.
+ */
+export function setCostPairs(sets: { sku: string; components: { sku: string; qty: number }[] }[], known: Map<string, CostInfo>): CostPair[] {
+  const out: CostPair[] = [];
+  for (const s of sets) {
+    if (known.has(s.sku) || !s.components.length) continue;
+    const parts = s.components.map((c) => ({ c, info: known.get(c.sku) }));
+    if (parts.some((p) => !p.info)) continue;
+    const cost = Math.round(parts.reduce((n, p) => n + p.c.qty * p.info!.cost, 0) * 10000) / 10000;
+    out.push([s.sku, cost, s.components.map((c) => `${c.qty}× ${c.sku}`).join(" + ")]);
   }
   return out;
 }

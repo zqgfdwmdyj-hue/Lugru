@@ -51,7 +51,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
       <div className="stack">
         <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
           <table className="table sticky-head">
-            <thead><tr><th>Kanal</th><th>SKU</th><th>Titel</th><th className="right">Preis</th><th className="right" title="Eigenes Lager − reserviert">Wawi verfügbar</th><th className="right">Im Kanal</th><th>Abgleich</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Kanal</th><th>SKU</th><th>Titel</th><th className="right">Preis</th><th className="right" title="Eigenes Lager − reserviert">Wawi verfügbar</th><th className="right" title="Zuletzt an den Kanal gemeldete Menge (beim Anlegen oder beim Abgleich)">Zuletzt übertragen</th><th>Abgleich</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={9} className="muted">Noch keine Listings.</td></tr>}
               {rows.map((l) => {
@@ -86,7 +86,12 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                     {lvl && lvl.reserved > 0 && <div className="small muted">{lvl.reserved} reserviert</div>}
                     {lvl && lvl.reserved > lvl.onHand && <div className="small" style={{ color: "var(--danger)", fontWeight: 700 }}>Überverkauf</div>}
                   </td>
-                  <td className="num right">{l.pushedQuantity ?? l.quantity}{l.maxQuantity !== null && <div className="small muted">max. {l.maxQuantity}</div>}</td>
+                  <td className="num right">
+                    {l.pushedQuantity ?? <span className="muted">–</span>}
+                    {l.pushedAt && <div className="small muted">{l.pushedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</div>}
+                    {l.status === "draft" && <div className="small muted">Entwurf – Abgleich erst nach Freigabe</div>}
+                    {l.maxQuantity !== null && <div className="small muted">max. {l.maxQuantity}</div>}
+                  </td>
                   <td className="small" style={{ whiteSpace: "nowrap" }}>
                     {l.status !== "active" ? <span className="muted">–</span> : ebayNoStock ? (
                       <form action={ebayStockAction}>

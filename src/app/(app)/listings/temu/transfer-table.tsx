@@ -6,7 +6,7 @@ import { parseAmount } from "@/lib/numbers";
 import type { TemuPackage } from "@/lib/temu/goods";
 import { temuBasePrice, type TemuPriceRule } from "@/lib/temu/price";
 import type { Candidate } from "@/lib/temu/transfer";
-import { packOf, WIZARD_STATUS, wizardStatus, type WizardStatus } from "@/lib/temu/wizard";
+import { needsCheck, PACK_SOURCE_LABEL, packOf, packSource, sizeConflict, WIZARD_STATUS, wizardStatus, type WizardStatus } from "@/lib/temu/wizard";
 import { linkTemuAction, queueTransfersAction, type TransferState } from "./actions";
 
 type Pack = Partial<TemuPackage>;
@@ -32,6 +32,8 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [packs, setPacks] = useState<Record<string, Record<string, string>>>({});
+  // Tatsächliche Versandmaße je Angebot bestätigt (sonst gilt ein Standardpaket als ungeprüft).
+  const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("alle");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,20 +49,30 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
   const liveRule = { factor: (parseAmount(factor) ?? 0) / 100, food };
   const num = (v: string | undefined) => (v ? parseAmount(v) ?? undefined : undefined);
   const stdPack = Object.fromEntries(PACK_FIELDS.map(([k]) => [k, num(std[k])]).filter(([, v]) => v !== undefined)) as Pack;
-  const rowPack = (c: Candidate) => packOf(Object.fromEntries(PACK_FIELDS.map(([k]) => [k, num(packs[c.key]?.[k])])), c.pack, stdPack);
+  const rowEntered = (c: Candidate) => Object.fromEntries(PACK_FIELDS.map(([k]) => [k, num(packs[c.key]?.[k])]));
+  const rowPack = (c: Candidate) => packOf(rowEntered(c), c.pack, stdPack);
+  const sourceOf = (c: Candidate) => packSource(rowEntered(c), c.pack);
+  const checkOf = (c: Candidate) => needsCheck(c, rowPack(c), sourceOf(c), confirmed.has(c.key));
   const priceOf = (c: Candidate) => num(prices[c.key]) ?? temuBasePrice(c.price, liveRule);
-  const stateOf = (c: Candidate) => wizardStatus(c, priceOf(c), rowPack(c), { allowHttp });
+  const stateOf = (c: Candidate) => wizardStatus(c, priceOf(c), rowPack(c), { allowHttp, check: checkOf(c) });
   const busyJob = (c: Candidate) => c.job?.status === "wartet" || c.job?.status === "läuft";
   const matches = (c: Candidate, f: Filter) => (f === "alle" ? true : f === "ohne-wawi" ? !c.wawi : stateOf(c).status === f);
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return candidates.filter((c) => matches(c, filter) && (!needle || c.title.toLowerCase().includes(needle) || (c.sku ?? "").toLowerCase().includes(needle) || c.ref.includes(needle)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates, filter, q, factor, food, std, prices, packs]);
+  }, [candidates, filter, q, factor, food, std, prices, packs, confirmed]);
   const count = (f: Filter) => candidates.filter((c) => matches(c, f)).length;
   const chosen = candidates.filter((c) => picked.has(c.key));
   const ready = chosen.filter((c) => !c.temu && !busyJob(c) && stateOf(c).status === "entwurf");
   const blocked = chosen.filter((c) => !c.temu && !busyJob(c) && stateOf(c).status === "unvollstaendig");
+  const unchecked = chosen.filter((c) => !c.temu && !busyJob(c) && stateOf(c).status === "pruefen");
+  const setConfirm = (keys: string[], on: boolean) =>
+    setConfirmed((s) => {
+      const n = new Set(s);
+      for (const k of keys) if (on) n.add(k); else n.delete(k);
+      return n;
+    });
 
   function toggle(key: string, on: boolean) {
     setPicked((s) => {
@@ -76,7 +88,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
     const todo = target === "temu" ? ready : chosen.filter((c) => !c.wawi && !busyJob(c));
     const skipped = chosen.length - todo.length;
     if (!todo.length) {
-      setState({ ok: false, message: chosen.length ? (target === "temu" ? "Keins der gewählten Angebote ist bereit – siehe Schritt 4 „Prüfen“." : "Die Auswahl ist schon in der Wawi.") : "Bitte zuerst Angebote wählen (Schritt 1)." });
+      setState({ ok: false, message: chosen.length ? (target === "temu" ? "Keins der gewählten Angebote ist bereit – siehe Schritt 4 „Prüfen“ (unvollständig oder Maße noch nicht bestätigt)." : "Die Auswahl ist schon in der Wawi.") : "Bitte zuerst Angebote wählen (Schritt 1)." });
       return;
     }
     setBusy(true);
@@ -86,9 +98,9 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
         factorPercent: parseAmount(factor) ?? 0,
         food,
         pack: stdPack,
-        picks: todo.map((c) => ({ source: c.source, ref: c.ref, title: c.title, ...(num(prices[c.key]) ? { price: num(prices[c.key]) } : {}), pack: rowPack(c) })),
+        picks: todo.map((c) => ({ source: c.source, ref: c.ref, title: c.title, ...(num(prices[c.key]) ? { price: num(prices[c.key]) } : {}), pack: rowPack(c), ...(target === "temu" ? { packChecked: stateOf(c).status === "entwurf", packSource: confirmed.has(c.key) && sourceOf(c) === "standard" ? "standard-bestaetigt" : sourceOf(c) } : {}) })),
       });
-      setState(r && skipped ? { ...r, message: `${r.message} ${skipped} übersprungen (${target === "temu" ? "unvollständig, schon bei Temu oder in Arbeit" : "schon in der Wawi"}).` } : r);
+      setState(r && skipped ? { ...r, message: `${r.message} ${skipped} übersprungen (${target === "temu" ? "unvollständig, Maße nicht bestätigt, schon bei Temu oder in Arbeit" : "schon in der Wawi"}).` } : r);
       if (r?.ok) setPicked(new Set());
       router.refresh();
     } finally {
@@ -148,7 +160,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
       {step === 1 && (
         <section className="stack" data-testid="wizard-1">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {(["alle", "entwurf", "unvollstaendig", "in-arbeit", "veroeffentlicht", "fehlgeschlagen", "ohne-wawi"] as Filter[]).map((f) => (
+            {(["alle", "entwurf", "pruefen", "unvollstaendig", "in-arbeit", "veroeffentlicht", "fehlgeschlagen", "ohne-wawi"] as Filter[]).map((f) => (
               <button key={f} type="button" className={`chip${filter === f ? " active" : ""}`} onClick={() => setFilter(f)} data-testid={`wizard-filter-${f}`}>
                 {f === "alle" ? "Alle" : f === "ohne-wawi" ? "Nicht in der Wawi" : WIZARD_STATUS[f].label} ({count(f)})
               </button>
@@ -160,7 +172,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
               <thead>
                 <tr>
                   <th><input type="checkbox" aria-label="Alle sichtbaren auswählen" checked={allShown} onChange={(e) => setPicked((s) => { const n = new Set(s); for (const c of shown) if (!busyJob(c)) { if (e.target.checked) n.add(c.key); else n.delete(c.key); } return n; })} /></th>
-                  <th>Angebot</th><th className="right">eBay</th><th className="right">Menge</th><th>Stand</th>
+                  <th>Angebot</th><th className="right">eBay</th><th className="right" title="eBay-Menge · verfügbar in der Wawi">Menge</th><th>Stand</th>
                 </tr>
               </thead>
               <tbody>
@@ -170,7 +182,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
                     <td><input type="checkbox" aria-label={`Auswählen: ${c.title}`} checked={picked.has(c.key)} disabled={busyJob(c)} onChange={(e) => toggle(c.key, e.target.checked)} /></td>
                     {offerCell(c)}
                     <td className="num right">{c.variations ? "ab " : ""}{euro(c.price)}</td>
-                    <td className="num right">{c.quantity}</td>
+                    <td className="num right">{c.quantity}<div className="small muted">{c.wawiQty === null ? "nicht in Wawi" : `Wawi ${c.wawiQty}`}</div></td>
                     {statusCell(c)}
                   </tr>
                 ))}
@@ -232,7 +244,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
       {step === 3 && (
         <section className="stack" data-testid="wizard-3">
           <div className="card card-pad stack" style={{ gap: 6 }}>
-            <span className="label">Standardpaket (gilt, wenn in der Zeile und am Angebot nichts steht)</span>
+            <span className="label">Standardpaket (gilt, wenn in der Zeile und am Angebot nichts steht – muss je Angebot bestätigt werden)</span>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {PACK_FIELDS.map(([k, label]) => (
                 <input key={k} className="input" value={std[k] ?? ""} onChange={(e) => setStd((s) => ({ ...s, [k]: e.target.value }))} placeholder={label === "g" ? "Gramm" : `${label} cm`} aria-label={`Standardpaket ${label === "g" ? "Gewicht in Gramm" : `${label} in cm`}`} style={{ width: 80 }} />
@@ -241,21 +253,41 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
           </div>
           <section className="card" style={{ overflow: "auto" }}>
             <table className="table">
-              <thead><tr><th>Angebot</th><th>Paket (g · L × B × H cm)</th></tr></thead>
+              <thead><tr><th>Angebot</th><th>Paket (g · L × B × H cm)</th><th>Quelle · geprüft</th></tr></thead>
               <tbody>
-                {chosen.map((c) => (
-                  <tr key={c.key}>
+                {chosen.map((c) => {
+                  const src = sourceOf(c);
+                  const conflict = sizeConflict(c.title, rowPack(c));
+                  return (
+                  <tr key={c.key} data-testid="pack-row" data-key={c.key}>
                     {offerCell(c)}
                     <td style={{ whiteSpace: "nowrap" }}>
                       {PACK_FIELDS.map(([k, label]) => (
                         <input key={k} className="input num" value={packs[c.key]?.[k] ?? ""} onChange={(e) => setPacks((p) => ({ ...p, [c.key]: { ...p[c.key], [k]: e.target.value } }))} placeholder={plain(c.pack[k]) || plain(stdPack[k]) || label} aria-label={`Paket ${label} für ${c.title}`} style={{ width: 64, marginRight: 4 }} />
                       ))}
+                      {conflict && <div className="small" style={{ color: "var(--danger)", whiteSpace: "normal" }} data-testid="pack-conflict">Titel nennt {String(conflict).replace(".", ",")} cm – Paket ist kleiner. Bitte tatsächliche Versandmaße eintragen.</div>}
+                    </td>
+                    <td className="small" style={{ minWidth: 170 }}>
+                      <div className={src === "standard" ? "" : "muted"} style={src === "standard" ? { color: "var(--warn)" } : undefined} data-testid="pack-source">{PACK_SOURCE_LABEL[src]}{src === "standard" ? " – ungeprüft" : ""}</div>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                        <input type="checkbox" checked={confirmed.has(c.key)} onChange={(e) => setConfirm([c.key], e.target.checked)} data-testid="pack-confirm" />
+                        Versandmaße geprüft
+                      </label>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </section>
+          {chosen.some((c) => sourceOf(c) === "standard" && !sizeConflict(c.title, rowPack(c)) && !confirmed.has(c.key)) && (
+            <div className="small">
+              <button type="button" className="btn btn-small" onClick={() => { const keys = chosen.filter((c) => sourceOf(c) === "standard" && !sizeConflict(c.title, rowPack(c))).map((c) => c.key); if (confirm(`Für ${keys.length} Angebot(e) gilt das Standardpaket. Hast du geprüft, dass diese Artikel wirklich in dieses Paket passen und das Gewicht stimmt?`)) setConfirm(keys, true); }} data-testid="pack-confirm-all">
+                Standardpaket für alle passenden bestätigen …
+              </button>{" "}
+              <span className="muted">Angebote mit Größenwarnung musst du einzeln prüfen.</span>
+            </div>
+          )}
           {nav(2, 4, "Weiter zur Prüfung")}
         </section>
       )}
@@ -263,22 +295,27 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
       {step === 4 && (
         <section className="stack" data-testid="wizard-4">
           <div className="grid-kpi">
-            <div className="card card-pad"><div className="kpi-label">Bereit für Temu</div><div className="kpi-value" data-testid="wizard-ready">{ready.length}</div></div>
+            <div className="card card-pad"><div className="kpi-label">Bereit (vollständig und geprüft)</div><div className="kpi-value" data-testid="wizard-ready">{ready.length}</div></div>
+            <div className="card card-pad"><div className="kpi-label">Zu prüfen</div><div className="kpi-value" style={{ color: unchecked.length ? "var(--warn)" : undefined }} data-testid="wizard-unchecked">{unchecked.length}</div><div className="small muted">ausgefüllt, Maße nicht bestätigt – werden übersprungen</div></div>
             <div className="card card-pad"><div className="kpi-label">Unvollständig</div><div className="kpi-value" style={{ color: blocked.length ? "var(--warn)" : undefined }} data-testid="wizard-blocked">{blocked.length}</div><div className="small muted">werden übersprungen</div></div>
-            <div className="card card-pad"><div className="kpi-label">Schon bei Temu / in Arbeit</div><div className="kpi-value">{chosen.length - ready.length - blocked.length}</div></div>
+            <div className="card card-pad"><div className="kpi-label">Schon bei Temu / in Arbeit</div><div className="kpi-value">{chosen.length - ready.length - blocked.length - unchecked.length}</div></div>
           </div>
           <section className="card" style={{ overflow: "auto" }}>
             <table className="table">
-              <thead><tr><th>Angebot</th><th className="right">Temu-Preis</th><th>Paket</th><th>Stand</th></tr></thead>
+              <thead><tr><th>Angebot · SKU</th><th className="right">Temu-Preis</th><th className="right">Menge</th><th className="right">Gewicht</th><th>Maße (cm)</th><th>Datenquelle</th><th>Stand</th></tr></thead>
               <tbody>
-                {chosen.length === 0 && <tr><td colSpan={4} className="muted">Noch nichts ausgewählt – zurück zu Schritt 1.</td></tr>}
+                {chosen.length === 0 && <tr><td colSpan={7} className="muted">Noch nichts ausgewählt – zurück zu Schritt 1.</td></tr>}
                 {chosen.map((c) => {
                   const p = rowPack(c);
+                  const src = sourceOf(c);
                   return (
-                    <tr key={c.key} data-testid="transfer-row" data-key={c.key}>
+                    <tr key={c.key} data-testid="summary-row" data-key={c.key}>
                       {offerCell(c)}
-                      <td className="num right">{c.variations ? "je Variante" : priceOf(c) > 0 ? euro(priceOf(c)) : "–"}</td>
-                      <td className="small num">{p.weightG ?? "–"} g · {p.lengthCm ?? "–"} × {p.widthCm ?? "–"} × {p.heightCm ?? "–"}</td>
+                      <td className="num right">{c.variations ? "je Variante" : priceOf(c) > 0 ? euro(priceOf(c)) : "–"}<div className="small muted">{num(prices[c.key]) ? "eigener Preis" : "Rechner"}</div></td>
+                      <td className="num right" data-testid="summary-qty">{c.wawiQty ?? c.quantity}<div className="small muted">{c.wawiQty === null ? "eBay-Menge (nicht in Wawi)" : "verfügbar in der Wawi"}</div></td>
+                      <td className="num right">{p.weightG ?? "–"} g</td>
+                      <td className="small num">{p.lengthCm ?? "–"} × {p.widthCm ?? "–"} × {p.heightCm ?? "–"}</td>
+                      <td className="small" data-testid="summary-source">Paket: {PACK_SOURCE_LABEL[src]}{src === "standard" ? (confirmed.has(c.key) ? " (bestätigt)" : " – ungeprüft") : ""}</td>
                       {statusCell(c)}
                     </tr>
                   );
@@ -294,8 +331,8 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
         <section className="stack" data-testid="wizard-5">
           <div className="card card-pad stack" style={{ gap: 10 }}>
             <div className="small">
-              <strong>{ready.length}</strong> von {chosen.length} ausgewählten Angeboten sind bereit für Temu{blocked.length ? `, ${blocked.length} unvollständig (werden übersprungen)` : ""}.
-              Menge kommt aus der Wawi; Kategorie und Pflichtmerkmale ordnet Temu selbst zu – fehlt dort etwas, steht das Angebot danach auf „unvollständig“.
+              <strong>{ready.length}</strong> von {chosen.length} ausgewählten Angeboten sind bereit für Temu{unchecked.length ? `, ${unchecked.length} noch zu prüfen` : ""}{blocked.length ? `, ${blocked.length} unvollständig` : ""}{unchecked.length || blocked.length ? " (werden übersprungen)" : ""}.
+              Die Menge liest das System unmittelbar vor dem Einstellen noch einmal aus dem verfügbaren Wawi-Bestand (ohne Wawi-Eintrag: eBay-Menge). Kategorie und Pflichtmerkmale ordnet Temu selbst zu – fehlt dort etwas, steht das Angebot danach auf „unvollständig“.
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               <button className="btn btn-primary" type="button" disabled={busy || !temuConnected || !ready.length} onClick={() => void submit("temu")} data-testid="to-temu">

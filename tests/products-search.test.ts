@@ -25,3 +25,15 @@ describe("rankProductGroups", () => {
     expect(r[0]).toMatchObject({ key: "b", exact: true });
   });
 });
+
+describe("EK-Herkunft", () => {
+  it("Set ohne eigenen EK = Summe der Bestandteile; geerbter Wert erkennbar und zuletzt", async () => {
+    const { mergeCosts, setCostPairs } = await import("@/lib/money/profit-logic");
+    const base = mergeCosts(["charge", [["A", 2, "Einkauf"]]], ["ebay", [["B", 1.5, "Angebot 1, Variante B"]]]);
+    const sets = setCostPairs([{ sku: "SET", components: [{ sku: "A", qty: 2 }, { sku: "B", qty: 1 }] }, { sku: "SET2", components: [{ sku: "A", qty: 1 }, { sku: "X", qty: 1 }] }], base);
+    expect(sets).toEqual([["SET", 5.5, "2× A + 1× B"]]);
+    const all = mergeCosts(["charge", [["A", 2]]], ["set", sets], ["ebay", [["SET", 4.2, "EK des Mehrfachangebots", true], ["V3", 4.2, "EK des Mehrfachangebots", true]]]);
+    expect(all.get("SET")).toMatchObject({ cost: 5.5, source: "set" });
+    expect(all.get("V3")).toMatchObject({ cost: 4.2, source: "ebay", inherited: true });
+  });
+});

@@ -66,3 +66,22 @@ describe("Änderung senden (Trading API)", () => {
     expect(revisionSummary({ title: "T", price: 1, bestOffer: false, images: ["a"] }, { images: ["a", "b"], description: "x" })).toEqual(["Bilder: 1 → 2", "Beschreibung geändert"]);
   });
 });
+
+describe("Prüfrunde 2: Marke im Titel, Arten von Hinweisen", () => {
+  it("SanDisk wird gefunden – auch mit ®, Firmenzusatz oder anderer Schreibweise", async () => {
+    const { brandInTitle } = await import("@/lib/ebay-review/logic");
+    expect(brandInTitle("SanDisk Ultra 128 GB microSDXC", "SanDisk")).toBe(true);
+    expect(brandInTitle("SANDISK Extreme 64GB", "SanDisk®")).toBe(true);
+    expect(brandInTitle("Sandisk Ultra 128 GB", "SanDisk Corporation")).toBe(true);
+    expect(brandInTitle("Speicherkarte 128 GB", "SanDisk")).toBe(false);
+    expect(brandInTitle("Dr. Oetker Backpulver", "Dr.Oetker")).toBe(true);
+  });
+  it("Fehler und Pflicht getrennt von Empfehlungen; Meldung nennt Marke und Titel", async () => {
+    const { issueKind, titleIssues } = await import("@/lib/ebay-review/logic");
+    expect(issueKind("merkmale-pflicht")).toBe("pflicht");
+    expect(issueKind("beschreibung-aktiv")).toBe("fehler");
+    expect(issueKind("bilder-wenig")).toBe("empfehlung");
+    const i = titleIssues({ title: "Speicherkarte 128 GB microSDXC Class 10 für Kamera und Handy schnell", conditionId: "1000", brand: "SanDisk" }).find((x) => x.key === "titel-marke");
+    expect(i?.text).toMatch(/„SanDisk“ – im Titel „Speicherkarte 128 GB/);
+  });
+});

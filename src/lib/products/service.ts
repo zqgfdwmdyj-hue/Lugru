@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
-import { skuCostMap } from "@/lib/money/costs";
+import { loadCostPairs, mergeCostPairs, skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, type CostInfo } from "@/lib/money/profit-logic";
 import { loadSets } from "@/lib/stock/sets";
 import { stockLevels } from "@/lib/stock/channel-sync";
@@ -168,15 +168,24 @@ export async function productDetail(t: string, ref: { productId: string } | { sk
         .where(and(eq(I.tenantId, t), sql`(${lotIds.length ? sql`${schema.invoiceLots.lotId} in (${sql.join(lotIds.map((s) => sql`${s}`), sql`, `)})` : sql`false`} or ${poInvoiceIds.length ? sql`${I.id} in (${sql.join(poInvoiceIds.map((s) => sql`${s}`), sql`, `)})` : sql`false`})`))
     : [];
 
-  // EK je SKU: alle Quellen nebeneinander, gültiger Wert wie überall (Charge → von Hand → eBay-Tool).
-  const costs = await skuCostMap(t);
+  // EK je SKU: alle Quellen mit Herkunft nebeneinander – aus derselben Rechnung wie der gültige Wert
+  // (Charge → von Hand → eBay-Tool → Set-Summe → geerbt). Kein gültiger EK ohne sichtbare Quelle.
+  const pairs = await loadCostPairs(t);
+  const costs = mergeCostPairs(pairs);
   const ek = skus.map((sku) => {
     const sources: EkSource[] = [];
-    for (const l of lots) if (l.sku === sku && l.unitCostNet !== null) sources.push({ source: "charge", label: COST_SOURCE_LABEL.charge, cost: Number(l.unitCostNet) });
-    for (const m of manualCosts) if (m.sku === sku) sources.push({ source: "manuell", label: COST_SOURCE_LABEL.manuell, cost: Number(m.unitCostNet) });
-    const channelSkus = new Set([sku, ...listings.filter((l) => l.channel === "ebay" && (l.stockSku?.trim() || l.sku) === sku).map((l) => l.sku)]);
-    const e = ebayTool.find((x) => x.sku && channelSkus.has(x.sku) && x.purchasePrice !== null);
-    if (e) sources.push({ source: "ebay", label: COST_SOURCE_LABEL.ebay, cost: Number(e.purchasePrice) });
+    const add = (source: EkSource["source"], list: typeof pairs.charge) => {
+      for (const [k, cost, detail, inherited] of list) {
+        if (k.trim() !== sku || cost === null || cost === undefined) continue;
+        if (sources.some((x) => x.source === source && x.cost === cost && x.detail === detail)) continue;
+        sources.push({ source, label: COST_SOURCE_LABEL[source], cost: Number(cost), ...(detail ? { detail } : {}), ...(inherited ? { inherited: true } : {}) });
+      }
+    };
+    add("charge", pairs.charge);
+    add("manuell", pairs.manuell);
+    add("ebay", pairs.ebayOwn);
+    add("set", pairs.set);
+    add("ebay", pairs.ebayInherited);
     return ekCheck(sku, sources, costs.get(sku) ?? null);
   });
 

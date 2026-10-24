@@ -92,7 +92,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
         <summary style={{ cursor: "pointer" }}>Datenstand und Rechenweg</summary>
         <div className="stack" style={{ gap: 4, marginTop: 6 }}>
           <div>Stand: {standText}</div>
-          <div>Umsatz netto = Brutto ÷ (1 + {Math.round(settings.vatRate * 100)} % MwSt). EK in dieser Reihenfolge: Charge → „EK je SKU“ (von Hand) → Einkaufspreis aus dem eBay-Tool. Erstattete Einheiten gelten als zurück im Bestand.</div>
+          <div>Umsatz netto = Brutto ÷ (1 + {Math.round(settings.vatRate * 100)} % MwSt). EK in dieser Reihenfolge (wie auf der Produktseite, mit Herkunft): Charge → „EK je SKU“ (von Hand) → Einkaufspreis aus dem eBay-Tool (Variante/Einzelangebot) → bei Sets die Summe der Bestandteile → zuletzt der vom Mehrfachangebot geerbte EK (als „geerbt“ markiert). Erstattete Einheiten gelten als zurück im Bestand.</div>
           <div>Gebühren: Amazon aus der Abrechnung, eBay je Bestellung von eBay (ältere Bestellungen ohne Angabe → „fehlt“), Temu ohne eigene Gebühr (Basispreis), Manuell ohne Gebühr. Fehlende Werte zählen nie als 0 €.</div>
           <div>„Vorläufig“ = Umsatz − bekannte Kosten. „Vollständig berechnet“ = nur Positionen, bei denen Preis, EK und Gebühr bekannt sind – plus Amazon-Kosten ohne SKU.</div>
         </div>

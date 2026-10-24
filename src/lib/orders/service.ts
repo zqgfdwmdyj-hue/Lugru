@@ -11,6 +11,20 @@ import { adjustStock } from "@/lib/stock/sets";
 
 export const PACKAGING_GRAMS = 150;
 
+/**
+ * Artikelname einer Auftragsposition – gleiche Auflösung in Liste und Detail: Name aus dem Auftrag, sonst
+ * Produkt (Charge), Artikelstamm, Wawi-Angebot oder eBay-Tool zur SKU. `i` = Alias von order_items.
+ */
+export const itemNameSql = sql<string | null>`coalesce(
+  nullif(i.title, ''),
+  (select p.title from lots l join products p on p.id = l.product_id where l.tenant_id = i.tenant_id and l.sku = i.sku and p.title is not null limit 1),
+  (select a.title from articles a where a.tenant_id = i.tenant_id and a.sku = i.sku and a.title is not null limit 1),
+  (select li.title from listings li where li.tenant_id = i.tenant_id and (li.sku = i.sku or li.stock_sku = i.sku) and li.title is not null limit 1),
+  (select e.title from ebay_listings e where e.tenant_id = i.tenant_id and e.sku = i.sku and e.title is not null limit 1)
+)`;
+
+export type OrderItemLine = { q: number; sku: string | null; name: string | null };
+
 export async function storeFile(tenantId: string, name: string, mimeType: string, data: Buffer) {
   const [f] = await db
     .insert(schema.files)
@@ -22,12 +36,20 @@ export async function storeFile(tenantId: string, name: string, mimeType: string
 export async function loadOrder(tenantId: string, id: string) {
   const [order] = await db.select().from(schema.orders).where(and(eq(schema.orders.id, id), eq(schema.orders.tenantId, tenantId)));
   if (!order) return null;
-  const items = await db
+  const rows = await db
     .select({ item: schema.orderItems, weightGrams: schema.products.weightGrams, productTitle: schema.products.title })
     .from(schema.orderItems)
     .leftJoin(schema.lots, and(eq(schema.lots.tenantId, tenantId), eq(schema.lots.sku, schema.orderItems.sku)))
     .leftJoin(schema.products, eq(schema.products.id, schema.lots.productId))
-    .where(eq(schema.orderItems.orderId, id));
+    .where(and(eq(schema.orderItems.orderId, id), eq(schema.orderItems.tenantId, tenantId)));
+  // Mehrere Chargen derselben SKU: Position nur einmal; Name wie in der Liste auflösen.
+  const seen = new Set<string>();
+  const unique = rows.filter((r) => (seen.has(r.item.id) ? false : (seen.add(r.item.id), true)));
+  const names = unique.length
+    ? await db.execute<{ id: string; name: string | null }>(sql`select i.id, ${itemNameSql} as name from order_items i where i.tenant_id = ${tenantId} and i.order_id = ${id}`)
+    : { rows: [] };
+  const nameBy = new Map(names.rows.map((r) => [r.id, r.name]));
+  const items = unique.map((r) => ({ ...r, productTitle: nameBy.get(r.item.id) ?? r.productTitle }));
   const parcels = await db.select().from(schema.parcels).where(eq(schema.parcels.orderId, id));
   return { order, items, parcels };
 }

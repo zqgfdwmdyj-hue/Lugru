@@ -20,7 +20,17 @@ const Input = z.object({
   food: z.boolean(),
   pack,
   picks: z
-    .array(z.object({ source: z.enum(["attempt", "ebay"]), ref: z.string().min(1).max(40), title: z.string().max(300).optional(), price: z.number().optional(), pack: pack.optional() }))
+    .array(
+      z.object({
+        source: z.enum(["attempt", "ebay"]),
+        ref: z.string().min(1).max(40),
+        title: z.string().max(300).optional(),
+        price: z.number().optional(),
+        pack: pack.optional(),
+        packChecked: z.boolean().optional(),
+        packSource: z.enum(["zeile", "artikel", "standard", "standard-bestaetigt"]).optional(),
+      }),
+    )
     .min(1)
     .max(2000),
 });

@@ -2,7 +2,7 @@
 // zu Produkten bündeln (über die ASIN bzw. das Produkt), EK-Quellen abgleichen und eine Arbeitsliste
 // für fehlende oder unklare Zuordnungen bilden. Reine Logik – Abfragen in service.ts.
 
-import type { CostInfo } from "@/lib/money/profit-logic";
+import { COST_SOURCE_LABEL as COST_LABEL, type CostInfo } from "@/lib/money/profit-logic";
 
 /** Ein Treffer aus einer der Quellen (Charge, Lager, Angebot …) für eine SKU. */
 export type Candidate = {
@@ -82,10 +82,10 @@ export function rankProductGroups(groups: ProductGroup[], q: string): RankedGrou
 
 // ---- EK-Abgleich ---------------------------------------------------------------------------------
 
-export type EkSource = { source: "charge" | "manuell" | "ebay"; label: string; cost: number };
+export type EkSource = { source: "charge" | "manuell" | "ebay" | "set"; label: string; cost: number; detail?: string; inherited?: boolean };
 export type EkCheck = { sku: string; effective: CostInfo | null; sources: EkSource[]; conflict: boolean; spread: number };
 
-/** Weichen die EK-Quellen einer SKU voneinander ab (mehr als 2 % bzw. 1 Cent)? Gilt: Charge → von Hand → eBay-Tool. */
+/** Weichen die EK-Quellen einer SKU voneinander ab (mehr als 2 % bzw. 1 Cent)? Gilt: Charge → von Hand → eBay-Tool → Set-Summe → geerbt. */
 export function ekCheck(sku: string, sources: EkSource[], effective: CostInfo | null): EkCheck {
   const values = sources.map((s) => s.cost);
   const min = values.length ? Math.min(...values) : 0;
@@ -97,7 +97,7 @@ export function ekCheck(sku: string, sources: EkSource[], effective: CostInfo | 
 
 // ---- Arbeitsliste „Zuordnung prüfen“ ---------------------------------------------------------------
 
-export type IssueKind = "verkauft-unbekannt" | "angebot-ohne-lager" | "ebay-nicht-in-wawi" | "ek-fehlt" | "ek-abweichung" | "ean-mehrdeutig" | "bestand-ohne-angebot";
+export type IssueKind = "verkauft-unbekannt" | "angebot-ohne-lager" | "ebay-nicht-in-wawi" | "ek-fehlt" | "ek-abweichung" | "ek-geerbt" | "ean-mehrdeutig" | "bestand-ohne-angebot";
 
 export const ISSUE_LABEL: Record<IssueKind, { label: string; hint: string; level: "danger" | "warn" | "info" }> = {
   "verkauft-unbekannt": { label: "Verkaufte SKU ohne Zuordnung", hint: "Taucht in Aufträgen auf, ist aber weder Charge, Lager-SKU, Set noch Angebot – Bestand und EK fehlen.", level: "danger" },
@@ -105,6 +105,7 @@ export const ISSUE_LABEL: Record<IssueKind, { label: string; hint: string; level
   "ebay-nicht-in-wawi": { label: "eBay-Angebot nicht in der Wawi", hint: "Im eBay-Tool veröffentlicht, aber nicht als Angebot mit Lager verknüpft.", level: "warn" },
   "ek-fehlt": { label: "EK fehlt", hint: "Bestand oder Verkäufe ohne Einkaufspreis – Gewinn und Lagerwert bleiben unvollständig.", level: "warn" },
   "ek-abweichung": { label: "EK widersprüchlich", hint: "Charge, EK von Hand und eBay-Tool nennen unterschiedliche Preise.", level: "warn" },
+  "ek-geerbt": { label: "EK nur geerbt", hint: "Variante ohne eigenen EK – es gilt der EK des ganzen Mehrfachangebots. Stimmt das für diese Variante? Sonst eigenen EK eintragen.", level: "info" },
   "ean-mehrdeutig": { label: "EAN mehreren Produkten zugeordnet", hint: "Eine EAN zeigt auf mehrere ASINs – bitte prüfen, welche stimmt (nichts wird automatisch zusammengeführt).", level: "info" },
   "bestand-ohne-angebot": { label: "Lagerware ohne Angebot", hint: "Bestand im eigenen Lager, aber in keinem Kanal angeboten.", level: "info" },
 };
@@ -175,6 +176,11 @@ export function mappingIssues(i: MappingInput): Issue[] {
     if (!c.conflict) continue;
     out.push({ kind: "ek-abweichung", sku: c.sku, title: title(c.sku), detail: c.sources.map((s) => `${s.label} ${s.cost.toFixed(2).replace(".", ",")} €`).join(" · "), href: prod(c.sku, "einkauf") });
   }
+  for (const sku of relevant) {
+    const c = i.costs.get(sku);
+    if (!c?.inherited) continue;
+    out.push({ kind: "ek-geerbt", sku, title: title(sku), detail: `${c.cost.toFixed(2).replace(".", ",")} € · ${c.detail ?? COST_LABEL[c.source]}`, href: prod(sku, "einkauf") });
+  }
   for (const e of i.eanAsins) {
     if (e.asins.length < 2) continue;
     out.push({ kind: "ean-mehrdeutig", sku: e.ean, title: null, detail: `ASINs: ${e.asins.join(", ")}`, href: `/produkte?q=${encodeURIComponent(e.ean)}` });
@@ -183,6 +189,6 @@ export function mappingIssues(i: MappingInput): Issue[] {
     if (q <= 0 || listedStock.has(sku) || i.setComponents.has(sku)) continue;
     out.push({ kind: "bestand-ohne-angebot", sku, title: title(sku), detail: `${q} im Lager`, href: prod(sku) });
   }
-  const order: IssueKind[] = ["verkauft-unbekannt", "angebot-ohne-lager", "ebay-nicht-in-wawi", "ek-fehlt", "ek-abweichung", "ean-mehrdeutig", "bestand-ohne-angebot"];
+  const order: IssueKind[] = ["verkauft-unbekannt", "angebot-ohne-lager", "ebay-nicht-in-wawi", "ek-fehlt", "ek-abweichung", "ek-geerbt", "ean-mehrdeutig", "bestand-ohne-angebot"];
   return out.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.sku.localeCompare(b.sku));
 }

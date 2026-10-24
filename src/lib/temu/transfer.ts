@@ -8,6 +8,8 @@ import type { ListingAttempt } from "@/lib/ebay/types";
 import { ebayActiveItems, ebayConnected, ebayLegacyItem } from "@/lib/integrations/clients/ebay";
 import { temuConnected } from "@/lib/integrations/clients/temu";
 import { adoptLegacyEbayItem, linkEbayPublished } from "@/lib/stock/ebay-link";
+import { availableOf } from "@/lib/stock/channel-logic";
+import { stockLevels } from "@/lib/stock/channel-sync";
 import { TEMU_GOODS_STATUS, TEMU_PENDING_LABEL, type TemuPackage } from "./goods";
 import { publishListingToTemu, rememberTemuDefaults, temuDefaults, temuGoodsKey } from "./from-ebay";
 import type { TemuPriceRule } from "./price";
@@ -32,6 +34,8 @@ export type Candidate = {
   sku: string | null;
   price: number;
   quantity: number;
+  /** Verfügbar in der Wawi (Bestand − reserviert) über die Lager-SKU; null = nicht in der Wawi geführt. */
+  wawiQty: number | null;
   variations: number;
   ean: string | null;
   condition: string | null;
@@ -91,9 +95,21 @@ export async function transferCandidates(tenantId: string, opts: { fresh?: boole
     .where(and(eq(L.tenantId, tenantId), eq(L.channel, "temu"), sql`${L.payload} ? 'externalGoodsId'`));
   const temuBy = new Map<string, (typeof temuRows)[number]>();
   for (const r of temuRows) if (!temuBy.has(r.key) || r.active !== "active") temuBy.set(r.key, r);
-  const wawiIds = new Set(
-    (await db.select({ id: L.externalId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay"), sql`${L.externalId} is not null`))).map((r) => r.id!),
-  );
+  const ebayRows = await db.select({ id: L.externalId, sku: L.sku, stockSku: L.stockSku }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.channel, "ebay")));
+  const wawiIds = new Set(ebayRows.filter((r) => r.id).map((r) => r.id!));
+  const levels = await stockLevels(tenantId);
+  // Verfügbare Menge: über das Wawi-Angebot (Lager-SKU) bzw. die SKU selbst; Varianten zusammengezählt.
+  const qtyOf = (skus: string[], itemId?: string): number | null => {
+    const found = skus.length
+      ? skus.map((sku) => levels.get(ebayRows.find((r) => r.sku === sku)?.stockSku?.trim() || sku)).filter((l): l is NonNullable<typeof l> => Boolean(l))
+      : [];
+    if (!found.length && itemId) {
+      const row = ebayRows.find((r) => r.id === itemId);
+      const lvl = row ? levels.get(row.stockSku?.trim() || row.sku) : undefined;
+      return lvl ? availableOf(lvl) : null;
+    }
+    return found.length ? found.reduce((n, l) => n + availableOf(l), 0) : null;
+  };
   const jobs = await db.select().from(T).where(eq(T.tenantId, tenantId));
   const jobOf = (source: TransferSource, ref: string) => {
     const mine = jobs.filter((j) => j.source === source && j.ref === ref).sort((a, b) => +b.updatedAt - +a.updatedAt)[0];
@@ -120,6 +136,7 @@ export async function transferCandidates(tenantId: string, opts: { fresh?: boole
         sku: a.sku!,
         price: Math.min(...prices),
         quantity: a.variants ? a.variants.items.filter((i) => !i.set).reduce((s, i) => s + i.quantity, 0) : a.quantity,
+        wawiQty: qtyOf(a.variants ? a.variants.items.filter((i) => !i.set).map((i) => i.sku) : [a.sku!], a.listingId ?? undefined),
         variations: a.variants?.items.length ?? 0,
         ean: a.ean || null,
         condition: a.condition,
@@ -139,6 +156,7 @@ export async function transferCandidates(tenantId: string, opts: { fresh?: boole
       sku: i.sku,
       price: i.price,
       quantity: i.quantity,
+      wawiQty: qtyOf(i.sku ? [i.sku] : [], i.itemId),
       variations: i.variations,
       ean: null,
       condition: null,
@@ -178,7 +196,7 @@ async function packsByEan(tenantId: string, attempts: ListingAttempt[]): Promise
   return out;
 }
 
-export type TransferPick = { source: TransferSource; ref: string; title?: string; price?: number; pack?: Partial<TemuPackage> };
+export type TransferPick = { source: TransferSource; ref: string; title?: string; price?: number; pack?: Partial<TemuPackage>; packChecked?: boolean; packSource?: string };
 
 /** Ausgewählte Angebote in die Warteschlange; startet die Abarbeitung im Hintergrund. */
 export async function queueTransfers(
@@ -197,7 +215,12 @@ export async function queueTransfers(
       problems.push(`${p.title ?? p.ref}: Gewicht/Paketmaße fehlen – Standardpaket oben oder in der Zeile eintragen.`);
       continue;
     }
-    const input = { factor: opts.rule.factor, food: opts.rule.food, ...(p.price && p.price > 0 ? { price: p.price } : {}), ...pack };
+    // Vollständig ist nicht geprüft: ohne bestätigte Versandmaße geht nichts zu Temu.
+    if (target === "temu" && p.packChecked !== true) {
+      problems.push(`${p.title ?? p.ref}: Versandmaße nicht bestätigt – in Schritt 3 „Versandmaße geprüft“ anhaken.`);
+      continue;
+    }
+    const input = { factor: opts.rule.factor, food: opts.rule.food, ...(p.price && p.price > 0 ? { price: p.price } : {}), ...pack, ...(p.packSource ? { packSource: p.packSource } : {}) };
     await db
       .insert(T)
       .values({ tenantId, source: p.source, ref: p.ref, target, title: p.title?.slice(0, 200) ?? null, input, status: "wartet", message: null })
@@ -269,11 +292,11 @@ async function processTransfer(tenantId: string, job: Job): Promise<string> {
   if (job.target === "wawi") return wawiNote ?? "Schon in der Wawi.";
   if (a.condition !== "NEW") throw new Error("Gebraucht/B-Ware – über diese Funktion nur Neuware zu Temu. In der Wawi ist es trotzdem übernommen.");
   const single = !a.variants && a.sku;
-  const { goodsId, skus } = await publishListingToTemu(
+  const { goodsId, skus, quantity, fromWawi } = await publishListingToTemu(
     tenantId,
     a,
     { factor: input.factor, food: Boolean(input.food), prices: single && input.price ? { [a.sku!]: input.price } : {}, ...pack },
     job.source === "attempt" ? { attemptId: a.id } : { ebayItemId: job.ref },
   );
-  return `Bei Temu angelegt (Temu-Nr. ${goodsId}${skus > 1 ? `, ${skus} Varianten` : ""}) – Temu prüft.`;
+  return `Bei Temu angelegt (Temu-Nr. ${goodsId}${skus > 1 ? `, ${skus} Varianten` : ""}, Menge ${quantity} ${fromWawi ? "aus dem verfügbaren Wawi-Bestand, beim Einstellen geprüft" : "aus eBay – nicht in der Wawi"}) – Temu prüft.`;
 }

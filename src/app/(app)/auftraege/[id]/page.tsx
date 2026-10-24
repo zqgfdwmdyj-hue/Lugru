@@ -47,7 +47,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 {items.map(({ item, weightGrams, productTitle }) => (
                   <tr key={item.id}>
                     <td className="num">{item.sku ?? "–"}</td>
-                    <td>{item.title ?? productTitle ?? item.asin ?? "–"}</td>
+                    <td>{item.title ?? productTitle ?? item.asin ?? <span className="muted">Name unbekannt</span>}</td>
                     <td className="num right">{item.quantity}</td>
                     <td className="num right">{formatEuro(item.price)}</td>
                     <td className="num right">{weightGrams ? `${weightGrams} g` : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>

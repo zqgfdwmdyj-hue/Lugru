@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
-import { ISSUE_LABEL } from "@/lib/ebay-review/logic";
+import { ISSUE_LABEL, issueKind } from "@/lib/ebay-review/logic";
 import { reviewOverview, type CheckRow } from "@/lib/ebay-review/service";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
 import { aiWeakestAction, recheckAllAction, refreshAction } from "./actions";
 import { ActionButton } from "./forms";
-import { euro, LEVEL_TAG, scoreClass } from "./ui";
+import { euro, issueTag, scoreClass } from "./ui";
 
 type Params = { q?: string; punkt?: string; nur?: string; sort?: string };
 
@@ -17,14 +17,15 @@ export default async function EbayReviewPage({ searchParams }: { searchParams: P
   const q = (sp.q ?? "").trim().toLowerCase();
   let rows = data.rows.filter((r) => !q || r.title.toLowerCase().includes(q) || r.itemId.includes(q) || (r.sku ?? "").toLowerCase().includes(q));
   if (sp.punkt) rows = rows.filter((r) => r.issues.some((i) => i.key === sp.punkt));
-  if (sp.nur === "wichtig") rows = rows.filter((r) => r.issues.some((i) => i.level === "wichtig"));
+  // „Fehler & Pflicht“ (früher „wichtig“): nur Angebote mit technischen Fehlern oder fehlenden Pflichtangaben.
+  if (sp.nur === "wichtig" || sp.nur === "pflicht") rows = rows.filter((r) => r.issues.some((i) => issueKind(i.key) !== "empfehlung"));
   if (sp.nur === "ki") rows = rows.filter((r) => r.hasAi);
   const sort = sp.sort ?? "punkte";
   rows.sort((a, b) =>
     sort === "einblendungen" ? (a.impressions ?? Infinity) - (b.impressions ?? Infinity) : sort === "beobachter" ? (b.watchers ?? 0) - (a.watchers ?? 0) : (a.score ?? 101) - (b.score ?? 101) || a.title.localeCompare(b.title, "de"),
   );
   const checked = data.rows.filter((r) => r.score !== null).length;
-  const important = data.rows.filter((r) => r.issues.some((i) => i.level === "wichtig")).length;
+  const important = data.rows.filter((r) => r.issues.some((i) => issueKind(i.key) !== "empfehlung")).length;
   const link = (p: Partial<Params>) => {
     const u = new URLSearchParams();
     const merged = { ...sp, ...p };
@@ -59,7 +60,7 @@ export default async function EbayReviewPage({ searchParams }: { searchParams: P
           <div><div className="kpi-label">Laufende Angebote</div><div className="kpi-value">{data.rows.length}</div></div>
           <div><div className="kpi-label">Geprüft</div><div className="kpi-value">{checked}</div>{data.waiting > 0 && <div className="small muted" data-testid="waiting">{data.waiting} {data.running ? "in Arbeit …" : "warten auf den nächsten Durchgang"}</div>}</div>
           <div><div className="kpi-label">Ø Punkte</div><div className="kpi-value" data-testid="avg-score">{data.avgScore ?? "–"}</div><div className="small muted">von 100</div></div>
-          <div><div className="kpi-label">Mit wichtigen Punkten</div><div className="kpi-value">{important}</div></div>
+          <div><div className="kpi-label">Mit Fehlern oder fehlenden Pflichtangaben</div><div className="kpi-value" data-testid="kpi-pflicht">{important}</div><div className="small muted">Empfehlungen zählen hier nicht</div></div>
         </div>
         {data.top.length > 0 && (
           <div className="stack" style={{ gap: 6 }}>
@@ -85,7 +86,7 @@ export default async function EbayReviewPage({ searchParams }: { searchParams: P
         {sp.punkt && <input type="hidden" name="punkt" value={sp.punkt} />}
         <select className="select" name="nur" defaultValue={sp.nur ?? ""} aria-label="Filter">
           <option value="">alle</option>
-          <option value="wichtig">nur mit wichtigen Punkten</option>
+          <option value="pflicht">nur mit Fehlern/Pflichtangaben</option>
           <option value="ki">mit KI-Vorschlag</option>
         </select>
         <select className="select" name="sort" defaultValue={sort} aria-label="Sortierung">
@@ -126,7 +127,7 @@ function Row({ r }: { r: CheckRow }) {
         ) : top.length ? (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
             {top.map((i) => (
-              <span key={i.key} className={`tag ${LEVEL_TAG[i.level]}`}>{ISSUE_LABEL[i.key] ?? i.key}</span>
+              <span key={i.key} className={`tag ${issueTag(i)}`}>{ISSUE_LABEL[i.key] ?? i.key}</span>
             ))}
             {r.issues.length > 3 && <span className="tag tag-neutral">+{r.issues.length - 3}</span>}
             {r.hasAi && <span className="tag tag-info">KI-Vorschlag</span>}

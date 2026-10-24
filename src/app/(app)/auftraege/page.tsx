@@ -6,6 +6,7 @@ import { CHANNELS } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
+import { itemNameSql, type OrderItemLine } from "@/lib/orders/service";
 import { createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
 import { BatchForm } from "./batch-form";
 
@@ -29,7 +30,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
   const orders = await db
     .select({
       o: O,
-      items: sql<string>`(select string_agg(i.quantity || '× ' || coalesce(i.sku, i.title, '?'), ', ') from order_items i where i.order_id = ${O.id})`,
+      items: sql<OrderItemLine[] | null>`(select json_agg(json_build_object('q', i.quantity, 'sku', i.sku, 'name', ${itemNameSql})) from order_items i where i.order_id = ${O.id} and i.tenant_id = ${session.tenantId})`,
     })
     .from(O)
     .where(and(...where))
@@ -55,7 +56,16 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
               <td className="num"><Link href={`/auftraege/${o.id}`}>{o.externalId}</Link></td>
               <td className="num">{o.orderDate.toLocaleDateString("de-DE")}</td>
               <td>{o.shipTo?.name1 ?? o.buyerName ?? "–"}<div className="small muted">{[o.shipTo?.zip, o.shipTo?.city].filter(Boolean).join(" ")}</div></td>
-              <td className="small" style={{ maxWidth: 260 }}>{items ?? "–"}</td>
+              <td className="small" style={{ maxWidth: 300 }} data-testid="order-items">
+                {items?.length
+                  ? items.map((it, n) => (
+                      <div key={n}>
+                        {it.q}× {it.name ?? <span className="muted">Name unbekannt</span>}
+                        {it.sku && <span className="muted num"> · {it.sku}</span>}
+                      </div>
+                    ))
+                  : "–"}
+              </td>
               <td className="num right">{formatEuro(o.total)}</td>
               <td>{ORDER_STATUS_LABEL[o.status]}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
               <td className="num small">{o.trackingNumber ?? "–"}</td>

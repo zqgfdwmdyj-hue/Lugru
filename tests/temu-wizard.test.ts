@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packOf, wizardStatus, type WizardInput } from "@/lib/temu/wizard";
+import { needsCheck, packOf, packSource, sizeConflict, wizardStatus, type WizardInput } from "@/lib/temu/wizard";
 
 // Temu-Assistent: Zustände und fehlende Angaben. Fiktive Angebote.
 
@@ -30,5 +30,30 @@ describe("Zustand", () => {
 describe("Paket", () => {
   it("Zeile vor Angebot vor Standard", () => {
     expect(packOf({ weightG: 900 }, { weightG: 700, lengthCm: 40 }, full)).toEqual({ weightG: 900, lengthCm: 40, widthCm: 20, heightCm: 10 });
+  });
+});
+
+describe("Prüfrunde 2: vollständig ≠ geprüft", () => {
+  const base = { title: "Kochmesser 20 cm Edelstahl", image: "https://i.ebayimg.com/x.jpg", price: 30, variations: 0, condition: "NEW", pack: {}, temu: null, job: null };
+  const std = { weightG: 300, lengthCm: 10, widthCm: 10, heightCm: 5 };
+  it("Standardpaket allein ist „prüfen“, nicht „bereit“", () => {
+    const src = packSource({}, {});
+    expect(src).toBe("standard");
+    const check = needsCheck({ title: "Tasse" }, std, src, false);
+    expect(wizardStatus({ ...base, title: "Tasse" }, 25, std, { check }).status).toBe("pruefen");
+    expect(wizardStatus({ ...base, title: "Tasse" }, 25, std, { check: needsCheck({ title: "Tasse" }, std, src, true) }).status).toBe("entwurf");
+  });
+  it("Titel nennt 20 cm, Paket 10 cm → Warnung, auch mit Artikeldaten", () => {
+    expect(sizeConflict("Kochmesser 20 cm Edelstahl", std)).toBe(20);
+    expect(sizeConflict("Kochmesser 20cm", { ...std, lengthCm: 25 })).toBeNull();
+    expect(sizeConflict("Tasse 0,3 l", std)).toBeNull();
+    const check = needsCheck(base, std, "artikel", false);
+    expect(check[0]).toMatch(/Paket kleiner als im Titel genannt \(20 cm\)/);
+    expect(wizardStatus(base, 25, std, { check }).status).toBe("pruefen");
+  });
+  it("Quelle: Zeile vor Artikel vor Standard", () => {
+    expect(packSource({ weightG: 1, lengthCm: 1, widthCm: 1, heightCm: 1 }, {})).toBe("zeile");
+    expect(packSource({ weightG: 1 }, { lengthCm: 2, widthCm: 2, heightCm: 2 })).toBe("artikel");
+    expect(packSource({ weightG: 1 }, { lengthCm: 2 })).toBe("standard");
   });
 });
