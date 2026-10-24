@@ -210,7 +210,8 @@ export function hotelsAnsicht() {
             .map((gruppe) => {
               const h0 = gruppe[0];
               const aktive = gruppe.filter((h) => h.status !== "verworfen");
-              const guenstig = aktive.length > 1 ? [...aktive].sort((a, b) => kosten(a).summe - kosten(b).summe)[0].id : null;
+              const mitPreis = aktive.filter((h) => !kosten(h).offen);
+              const guenstig = mitPreis.length > 1 ? [...mitPreis].sort((a, b) => kosten(a).summe - kosten(b).summe)[0].id : null;
               return `<div class="karte-box">
               <h3>${esc(h0.ort || "Ohne Ort")} <span class="leise klein">${h0.anreise ? `${esc(datumText(h0.anreise))} – ${esc(datumText(h0.abreise))} · ${naechte(h0.anreise, h0.abreise)} Nächte` : ""}</span></h3>
               <div class="ausfluege">${gruppe.map((h) => hotelKarte(h, h.id === guenstig)).join("")}</div>
@@ -234,7 +235,7 @@ function hotelKarte(h, guenstig) {
     </div>
     <h4>${linkHtml(h.link, esc(h.name))}</h4>
     <div class="werte">
-      <div><span>Gesamt</span><strong>${geld(k.summe)}</strong><em>${k.naechte} Nächte${zahl(h.zimmer) > 1 ? ` · ${h.zimmer} Zimmer` : ""}</em></div>
+      <div><span>Gesamt</span><strong>${k.offen ? `<span class="preis-offen">Preis offen</span>` : geld(k.summe)}</strong><em>${k.naechte} Nächte${zahl(h.zimmer) > 1 ? ` · ${h.zimmer} Zimmer` : ""}</em></div>
       <div><span>Pro Nacht</span><strong>${k.proNacht != null ? geld(k.proNacht) : "–"}</strong></div>
       <div><span>Pro Person/Nacht</span><strong>${k.proPersonNacht != null ? geld(k.proPersonNacht) : "–"}</strong></div>
       <div><span>Gästebewertung</span><strong>${h.gaeste != null ? String(h.gaeste).replace(".", ",") : "–"}</strong><em>${esc(h.gaesteQuelle ?? "")}</em></div>

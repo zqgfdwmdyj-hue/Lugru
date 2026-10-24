@@ -735,13 +735,22 @@ export function tauchgangDoppelt(neu, vorhandene) {
  * Startet bei „Zuhause“, wenn eingetragen. km/min aus gespeicherter Berechnung, sonst Luftlinie × 1,3.
  */
 export function etappen(reise) {
+  // Kreuzfahrt: zwischen den Häfen fährt das Schiff – keine Autoetappen
+  if ((reise?.art ?? "kreuzfahrt") === "kreuzfahrt") return [];
+  // Reisetage mit Flug, Fähre, Zug oder Bus: diese Strecke wird nicht gefahren
+  const anderes = new Map();
+  for (const v of reise?.verbindungen ?? []) {
+    if (v.status === "verworfen" || ["mietwagen", "transfer", "sonstiges"].includes(v.art)) continue;
+    for (const d of [v.datum, v.anDatum].filter(Boolean)) if (!anderes.has(d)) anderes.set(d, v.art);
+  }
   const tage = [...(reise?.haefen ?? [])].filter((h) => (h.art ?? "hafen") !== "seetag" && Number.isFinite(h.lat)).sort((a, b) => String(a.datum).localeCompare(String(b.datum)));
   const liste = [];
   let vorher = Number.isFinite(reise?.zuhause?.lat) ? { ...reise.zuhause, id: "zuhause", name: reise.zuhause.name || "Zuhause" } : null;
   for (const h of tage) {
     if (vorher && (Math.abs(vorher.lat - h.lat) > 0.005 || Math.abs(vorher.lng - h.lng) > 0.005)) {
       const luft = entfernungKm(vorher, h);
-      liste.push({ id: h.id, datum: h.datum, von: vorher.name, nach: h.name, vonOrt: { lat: vorher.lat, lng: vorher.lng }, nachOrt: { lat: h.lat, lng: h.lng }, km: zahl(h.etappe?.km) ?? Math.round(luft * 1.3), min: zahl(h.etappe?.min), berechnet: h.etappe?.km != null });
+      const mittel = anderes.get(h.datum) ?? "auto";
+      liste.push({ id: h.id, datum: h.datum, von: vorher.name, nach: h.name, vonOrt: { lat: vorher.lat, lng: vorher.lng }, nachOrt: { lat: h.lat, lng: h.lng }, mittel, km: mittel === "auto" ? zahl(h.etappe?.km) ?? Math.round(luft * 1.3) : Math.round(luft), min: mittel === "auto" ? zahl(h.etappe?.min) : null, berechnet: mittel === "auto" && h.etappe?.km != null });
     }
     vorher = h;
   }

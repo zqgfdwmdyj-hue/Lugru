@@ -1,7 +1,7 @@
 // KI: Reisepläne (z. B. aus ChatGPT) einlesen und Assistent mit Änderungsvorschlägen.
 import { zustand, $, esc, geld, neueId, datumText, personen, hafenVon, aktionen, speichern, neuZeichnen, anfrage, haefen, ausfluegeIn, istKreuzfahrt } from "./kern.js";
 import { KATEGORIEN, QUELLEN, STATUS, VERPFLEGUNG, sichereUrl, zahl } from "./rechnen.js";
-import { planZusammenfuehren } from "./zusammenfuehren.js";
+import { planZusammenfuehren, importAbgleich } from "./zusammenfuehren.js";
 import { reiseplanAusText } from "./reiseplan-text.js";
 
 // ---------- Text der KI hübsch, aber sicher darstellen ----------
@@ -92,12 +92,61 @@ function vorschauZeigen() {
       ${liste("Verbindungen", p.verbindungen ?? [], (v) => `${esc(datumText(v.datum))} ${{ flug: "✈️", zug: "🚆", faehre: "⛴️", bus: "🚌", mietwagen: "🚗", transfer: "🚐" }[v.art] ?? "🧭"} ${esc(v.titel)} <span class="leise">${esc(v.von)} → ${esc(v.nach)}${v.abZeit ? ` · ${esc(v.abZeit)}${v.anZeit ? `–${esc(v.anZeit)}` : ""}` : ""}${v.anDatum && v.anDatum !== v.datum ? ` (an ${esc(datumText(v.anDatum))})` : ""}${v.details ? ` · ${esc(v.details)}` : ""}</span>`)}
       ${liste("Weitere Kosten", p.kosten, (k) => `${esc(k.titel)}${k.betrag != null ? ` · ${k.betrag} €` : ""}`)}
       ${liste("Personen", p.personen, (x) => `${esc(x.name)} <span class="leise">${x.typ === "kind" ? `Kind${x.alter ? `, ${x.alter}` : ""}` : "Erwachsen"}</span>`)}
+      ${zustand.reise ? abgleichHtml(p) : ""}
+      ${preiseOffenHtml(p)}
       <div class="zeile">
         ${zustand.reise ? `<button class="knopf" data-aktion="ki-uebernehmen">In „${esc(zustand.reise.name)}“ übernehmen</button>` : ""}
         <button class="knopf leise" data-aktion="ki-neue-reise">Als neue Reise anlegen</button>
         ${p.personen.length && zustand.reise ? `<label class="haken klein"><input type="checkbox" id="kiPersonen" ${zustand.reise.personen.length <= 1 ? "checked" : ""}> Personen aus dem Plan übernehmen (${p.personen.length})</label>` : ""}
       </div>
     </div>`;
+}
+
+// ---------- Abgleich mit der geöffneten Reise: Dubletten, Änderungen, unklare Preise ----------
+
+const ENTSCHEIDUNG = { aktualisieren: "Aktualisieren (nur leere Felder ergänzen)", zusaetzlich: "Zusätzlich anlegen", ueberspringen: "Überspringen" };
+const vorhandenText = (x) => {
+  const v = x.vorhanden;
+  const tag = v.hafenId ? zustand.reise.haefen.find((h) => h.id === v.hafenId) : null;
+  return `${esc(v.titel ?? v.name ?? "")} <span class="leise">(${[tag ? datumText(tag.datum) : v.datum ? datumText(v.datum) : v.anreise ? datumText(v.anreise) : "", STATUS[v.status] ?? "", v.beginn || v.abZeit || ""].filter(Boolean).map(esc).join(", ")})</span>`;
+};
+
+function abgleichHtml(p) {
+  const abgleich = importAbgleich(zustand.reise, p);
+  const aehnlich = abgleich.filter((x) => x.art === "aehnlich");
+  const gleich = abgleich.filter((x) => x.art === "gleich");
+  const auswahl = (x, standard) => `<select data-entscheidung="${esc(x.schluessel)}" aria-label="Was tun?">${standard ? "" : `<option value="">– bitte wählen –</option>`}${Object.entries(ENTSCHEIDUNG).map(([k, t]) => `<option value="${k}" ${k === standard ? "selected" : ""}>${t}</option>`).join("")}</select>`;
+  return `${aehnlich.length ? `<div class="abgleich warnung-box"><h4>🔁 Mögliche Dubletten (${aehnlich.length}) – bitte entscheiden</h4>
+      <ul class="klein">${aehnlich.map((x) => `<li><span class="leise">${esc(x.bereich)}:</span> neu „${esc(x.titel)}“ ⇄ vorhanden ${vorhandenText(x)}<br>${auswahl(x, "")}</li>`).join("")}</ul></div>` : ""}
+    ${gleich.length ? `<details class="abgleich"><summary class="klein">✓ ${gleich.length} Einträge gibt es schon – leere Felder werden ergänzt (ändern)</summary>
+      <ul class="klein">${gleich.map((x) => `<li><span class="leise">${esc(x.bereich)}:</span> ${vorhandenText(x)}<br>${auswahl(x, "aktualisieren")}</li>`).join("")}</ul></details>` : ""}
+    <div id="kiZusammenfassung" class="klein">${zusammenfassung(p)}</div>`;
+}
+
+const entscheidungen = () => Object.fromEntries([...document.querySelectorAll("[data-entscheidung]")].filter((s) => s.value).map((s) => [s.dataset.entscheidung, s.value]));
+
+/** Probelauf auf einer Kopie: was würde neu angelegt, was ergänzt? */
+function zusammenfassung(p, wahl = {}) {
+  const kopie = structuredClone(zustand.reise);
+  const z = planZusammenfuehren(kopie, p, { entscheidungen: wahl });
+  const neu = [z.tage && `${z.tage} Tage`, z.hotels && `${z.hotels} Unterkünfte`, z.ausfluege && `${z.ausfluege} Ausflüge`, z.verbindungen && `${z.verbindungen} Verbindungen`, z.kosten && `${z.kosten} Kosten`].filter(Boolean);
+  return `<p><strong>Vorschau:</strong> neu ${neu.join(", ") || "nichts"}${z.aktualisiert ? ` · ${z.aktualisiert} vorhandene Einträge ergänzt` : ""}${z.uebersprungen ? ` · ${z.uebersprungen} übersprungen` : ""}.</p>
+    ${z.aenderungen.length ? `<details><summary>Welche Felder werden ergänzt?</summary><ul>${z.aenderungen.map((x) => `<li>${esc(x.titel)}: ${x.felder.map(esc).join(", ")}</li>`).join("")}</ul></details>` : ""}`;
+}
+
+document.addEventListener("change", (e) => {
+  if (!e.target.dataset?.entscheidung || !importPlan || !zustand.reise) return;
+  const el = $("#kiZusammenfassung");
+  if (el) el.innerHTML = zusammenfassung(importPlan, entscheidungen());
+});
+
+function preiseOffenHtml(p) {
+  const offen = [
+    ...p.ausfluege.filter((a) => a.preisErw == null && a.preisGruppe == null).map((a) => `Ausflug: ${esc(a.titel)}`),
+    ...p.hotels.filter((h) => h.preis == null).map((h) => `Unterkunft: ${esc(h.name)}`),
+    ...p.kosten.filter((k) => k.betrag == null).map((k) => `Kosten: ${esc(k.titel)}`),
+  ];
+  return offen.length ? `<details class="abgleich"><summary class="klein">💶 ${offen.length} ohne Preis – werden als „Preis offen“ angelegt (nicht 0 €)</summary><ul class="klein">${offen.map((x) => `<li>${x}</li>`).join("")}</ul></details>` : "";
 }
 
 /** Häfen/Orte ohne Kartenpunkt über die Ortssuche finden (eine Anfrage pro Sekunde, Ergebnisse im Zwischenspeicher). */
@@ -135,11 +184,16 @@ export async function koordinatenErgaenzen(reise, fortschritt = () => {}) {
 }
 
 aktionen["ki-uebernehmen"] = async (el) => {
-  const z = planZusammenfuehren(zustand.reise, importPlan, { personenErsetzen: $("#kiPersonen")?.checked });
+  const offen = [...document.querySelectorAll("[data-entscheidung]")].filter((s) => !s.value);
+  if (offen.length) {
+    offen[0].focus();
+    return alert(`Bitte zuerst bei ${offen.length === 1 ? "der möglichen Dublette" : `den ${offen.length} möglichen Dubletten`} wählen: aktualisieren, zusätzlich anlegen oder überspringen.`);
+  }
+  const z = planZusammenfuehren(zustand.reise, importPlan, { personenErsetzen: $("#kiPersonen")?.checked, entscheidungen: entscheidungen() });
   el.disabled = true;
   const fehlend = await koordinatenErgaenzen(zustand.reise, (t) => ($("#kiVorschau").innerHTML = `<p class="leise">${esc(t)}</p>`));
   speichern();
-  alert(`Übernommen: ${z.tage} Tage, ${z.hotels} Unterkünfte, ${z.ausfluege} Ausflüge, ${z.verbindungen} Verbindungen (Flüge …), ${z.kosten} Kosten${z.aktualisiert ? `, ${z.aktualisiert} Einträge ergänzt` : ""}.${fehlend.length ? `\n\nNicht auf der Karte gefunden: ${[...new Set(fehlend)].join(", ")} – bitte unter „Route & Häfen“ suchen.` : ""}`);
+  alert(`Übernommen: ${z.tage} Tage, ${z.hotels} Unterkünfte, ${z.ausfluege} Ausflüge, ${z.verbindungen} Verbindungen (Flüge …), ${z.kosten} Kosten${z.aktualisiert ? `, ${z.aktualisiert} Einträge ergänzt` : ""}${z.uebersprungen ? `, ${z.uebersprungen} übersprungen` : ""}.${fehlend.length ? `\n\nNicht auf der Karte gefunden: ${[...new Set(fehlend)].join(", ")} – bitte unter „Route & Häfen“ suchen.` : ""}`);
   neuZeichnen();
 };
 

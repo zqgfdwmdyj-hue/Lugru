@@ -641,3 +641,22 @@ form.art-hafen .ohne-hafen { display: none !important; }
 .vorschlag .passt { color: #2e7d32; }
 .vorschlag .offen { color: #b26a00; }
 .wunschbox [data-aktion="wunsch-suche"] { white-space: normal; max-width: 100%; margin-top: 10px; }
+
+/* Preis offen, Annahmen, Konflikte, Dubletten */
+.preis-offen { color: #b26a00; font-weight: 600; white-space: nowrap; }
+.annahme { font-size: 0.75rem; background: #fff3e0; color: #8a4b00; border-radius: 6px; padding: 1px 6px; font-weight: 600; }
+.annahme-text { color: #8a4b00; }
+.rechenweg { margin: 6px 0 0; }
+.warnungen.konflikt li { color: #b00020; font-weight: 600; }
+.alternativen { margin: 6px 0 0; }
+.hinweis.dubletten ul { margin: 6px 0; padding-left: 18px; }
+.hinweis.dubletten li { margin-bottom: 4px; }
+.warnung-box { border-left: 4px solid #e69100; }
+.abgleich { margin: 10px 0; }
+.abgleich select { margin-top: 4px; max-width: 100%; }
+.teilnehmer.spalte { flex-direction: column; align-items: flex-start; }
+@media (prefers-color-scheme: dark) {
+  .annahme { background: #4a3000; color: #ffd8a8; }
+  .annahme-text, .preis-offen { color: #ffb74d; }
+  .warnungen.konflikt li { color: #ff8a80; }
+}

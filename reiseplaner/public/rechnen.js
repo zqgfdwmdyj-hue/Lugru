@@ -154,11 +154,25 @@ export function teilnehmer(ausflug, personen) {
   return personen.filter((p) => ids.has(p.id));
 }
 
-/** Gesamtpreis eines Ausflugs und Aufteilung je Person. */
+/**
+ * Ist der Preis für diese Person unbekannt? Leeres Feld = „Preis offen“, eine eingetragene 0 = kostenlos.
+ * Kinder unter „gratis unter“ sind immer bekannt (0 €).
+ */
+export function preisOffenFuer(ausflug, person) {
+  if (ausflug.preisArt === "gruppe") return zahl(ausflug.preisGruppe) == null;
+  if (!istKind(person)) return zahl(ausflug.preisErw) == null;
+  const frei = zahl(ausflug.kostenlosBis);
+  const alter = zahl(person.alter);
+  if (frei != null && alter != null && alter < frei) return false;
+  return zahl(ausflug.preisKind) == null && zahl(ausflug.preisErw) == null;
+}
+
+/** Gesamtpreis eines Ausflugs und Aufteilung je Person. `offen`: Preis (teilweise) unbekannt. */
 export function ausflugKosten(ausflug, personen) {
   const dabei = teilnehmer(ausflug, personen);
   const jePerson = {};
   let summe = 0;
+  const offen = dabei.some((p) => preisOffenFuer(ausflug, p));
   if (ausflug.preisArt === "gruppe") {
     summe = dabei.length ? zahl(ausflug.preisGruppe) ?? 0 : 0;
     for (const p of dabei) jePerson[p.id] = dabei.length ? summe / dabei.length : 0;
@@ -174,7 +188,7 @@ export function ausflugKosten(ausflug, personen) {
   summe += zusatz;
   for (const p of dabei) jePerson[p.id] += zusatz / dabei.length;
   const erwachsene = dabei.filter((p) => !istKind(p)).length;
-  return { summe: runde(summe), jePerson, anzahl: dabei.length, erwachsene, kinder: dabei.length - erwachsene };
+  return { summe: runde(summe), jePerson, anzahl: dabei.length, erwachsene, kinder: dabei.length - erwachsene, offen };
 }
 
 function runde(n) {
@@ -211,6 +225,7 @@ export function reiseKosten(reise) {
     jePerson: Object.fromEntries(personen.map((p) => [p.id, 0])),
     jeFamilie: {},
     jeQuelle: {},
+    offen: [], // gezählte Posten ohne Preis – die Summen sind dann unvollständig
   };
   // Gemeinsame Kosten: nach Köpfen oder zu gleichen Teilen je Familie (Einstellung der Reise)
   const verteilen = (betrag, nur = null) => {
@@ -234,6 +249,7 @@ export function reiseKosten(reise) {
     if (!zaehlt(h, "geplant")) continue;
     const zimmer = zimmerVon(reise, h.id);
     const k = hotelKosten(h, personen, zimmer);
+    if (k.offen) ergebnis.offen.push({ art: "Unterkunft", titel: h.name, status: h.status });
     posten(ergebnis.hotels, h.status, k.summe);
     ergebnis.jeHotel[h.id] = k.summe;
     if (k.jeZimmer) {
@@ -256,6 +272,7 @@ export function reiseKosten(reise) {
   }
   for (const s of reise.kosten ?? []) {
     if (!zaehlt(s, "geplant")) continue;
+    if (zahl(s.betrag) == null) ergebnis.offen.push({ art: "Kosten", titel: s.titel || "Posten ohne Namen", status: s.status });
     const k = zahl(s.betrag) ?? 0;
     posten(ergebnis.sonstiges, s.status, k);
     verteilen(k);
@@ -263,6 +280,7 @@ export function reiseKosten(reise) {
   for (const a of reise.ausfluege ?? []) {
     if (!zaehlt(a, "geplant")) continue;
     const k = ausflugKosten(a, personen);
+    if (k.offen) ergebnis.offen.push({ art: "Ausflug", titel: a.titel, status: a.status, hafenId: a.hafenId, teilweise: k.summe > 0 });
     posten(ergebnis.ausfluege, a.status, k.summe);
     ergebnis.jeHafen[a.hafenId] = (ergebnis.jeHafen[a.hafenId] ?? 0) + k.summe;
     ergebnis.jeQuelle[a.quelle] = (ergebnis.jeQuelle[a.quelle] ?? 0) + k.summe;
@@ -311,6 +329,7 @@ export function hotelKosten(hotel, personen = [], zimmerListe = []) {
   const anzahl = personen.length || 1;
   return {
     summe,
+    offen: !mitPreis.length && zahl(hotel.preis) == null,
     jeZimmer,
     naechte: n,
     proNacht: n ? runde(summe / n) : null,
@@ -343,21 +362,31 @@ export function festeZeit(tag, reise = null) {
   const art = tag.art ?? (tag.seetag ? "seetag" : "hafen");
   const tagOrt = Number.isFinite(tag.lat) ? { lat: tag.lat, lng: tag.lng, name: tag.name } : null;
   if (art === "hafen") {
-    const anBord = zeitZuMin(tag.allesAnBord) ?? (zeitZuMin(tag.abfahrt) != null ? zeitZuMin(tag.abfahrt) - 30 : null);
-    if (anBord != null) kandidaten.push({ min: anBord, titel: "Alle an Bord", kurz: "Alle an Bord", ort: tagOrt });
+    // Ohne „Alle an Bord“ gilt Abfahrt − 30 Min. – ausdrücklich als Annahme gekennzeichnet
+    const angegeben = zeitZuMin(tag.allesAnBord);
+    const anBord = angegeben ?? (zeitZuMin(tag.abfahrt) != null ? zeitZuMin(tag.abfahrt) - 30 : null);
+    if (anBord != null) {
+      kandidaten.push({
+        min: anBord, titel: "Alle an Bord", kurz: "Alle an Bord", ort: tagOrt, angenommen: angegeben == null,
+        grundlage: angegeben != null ? `„Alle an Bord“ ${tag.allesAnBord} laut Reiseplan` : `angenommen: Abfahrt ${tag.abfahrt} − 30 Min. („Alle an Bord“ fehlt)`,
+      });
+    }
   }
   const eigene = zeitZuMin(tag.festeZeit?.zeit);
-  if (eigene != null) kandidaten.push({ min: eigene, titel: tag.festeZeit.titel || "Feste Zeit", kurz: tag.festeZeit.titel || "Feste Zeit", ort: tagOrt });
+  if (eigene != null) kandidaten.push({ min: eigene, titel: tag.festeZeit.titel || "Feste Zeit", kurz: tag.festeZeit.titel || "Feste Zeit", ort: tagOrt, grundlage: `feste Zeit ${tag.festeZeit.zeit}${tag.festeZeit.titel ? ` (${tag.festeZeit.titel})` : ""}` });
   for (const h of reise?.hotels ?? []) {
     if (h.status !== "gebucht" || h.abreise !== tag.datum || zeitZuMin(h.checkout) == null) continue;
-    kandidaten.push({ min: zeitZuMin(h.checkout), titel: `Check-out ${h.name}`, kurz: "Check-out", ort: Number.isFinite(h.lat) ? { lat: h.lat, lng: h.lng, name: h.name } : null });
+    kandidaten.push({ min: zeitZuMin(h.checkout), titel: `Check-out ${h.name}`, kurz: "Check-out", ort: Number.isFinite(h.lat) ? { lat: h.lat, lng: h.lng, name: h.name } : null, grundlage: `Check-out ${h.checkout} (${h.name})` });
   }
   for (const v of reise?.verbindungen ?? []) {
     if (v.status === "verworfen" || v.datum !== tag.datum || zeitZuMin(v.abZeit) == null) continue;
     const vm = VERKEHRSMITTEL[v.art] ?? VERKEHRSMITTEL.sonstiges;
     const vorlauf = zahl(v.vorlaufMin) ?? vm.vorlauf;
     const ortName = v.von || vm.ort;
-    kandidaten.push({ min: zeitZuMin(v.abZeit) - vorlauf, titel: `${vorlauf ? `Spätestens ${ortName}` : ortName} – ${v.titel || vm.name} um ${v.abZeit}`, kurz: vorlauf ? `${vm.ort} (${v.titel || vm.name})` : v.titel || vm.name, ort: Number.isFinite(v.vonOrt?.lat) ? v.vonOrt : null });
+    kandidaten.push({
+      min: zeitZuMin(v.abZeit) - vorlauf, titel: `${vorlauf ? `Spätestens ${ortName}` : ortName} – ${v.titel || vm.name} um ${v.abZeit}`, kurz: vorlauf ? `${vm.ort} (${v.titel || vm.name})` : v.titel || vm.name, ort: Number.isFinite(v.vonOrt?.lat) ? v.vonOrt : null,
+      grundlage: `Abfahrt ${v.titel || vm.name} ${v.abZeit}${vorlauf ? ` − ${vorlauf} Min. Vorlauf${zahl(v.vorlaufMin) == null ? " (Standardwert)" : ""}` : ""}`, angenommen: Boolean(vorlauf) && zahl(v.vorlaufMin) == null,
+    });
   }
   if (!kandidaten.length) return null;
   const f = kandidaten.sort((a, b) => a.min - b.min)[0];
@@ -377,7 +406,9 @@ export function zeitplan(ausflug, hafen, reise = null) {
   const beginn = zeitZuMin(ausflug.beginn);
   const dauer = zahl(ausflug.dauerMin);
   const weg = ausflug.quelle === "schiff" ? 0 : zahl(ausflug.fahrzeitMin) ?? 0;
+  // Ohne Beginn: Start angenommen 30 Min. nach Ankunft (nur Schätzung, wird gekennzeichnet)
   const losVomSchiff = beginn != null ? beginn - weg : ankunft != null ? ankunft + 30 : null;
+  const startAngenommen = beginn == null && losVomSchiff != null;
   const start = beginn ?? (losVomSchiff != null ? losVomSchiff + weg : null);
   const zurueck = start != null && dauer != null ? start + dauer + weg : null;
   const puffer = zurueck != null && anBord != null ? anBord - zurueck : null;
@@ -392,7 +423,12 @@ export function zeitplan(ausflug, hafen, reise = null) {
       warnungen.push(fest.kurz === "Alle an Bord" ? "Weniger als 1 Std. Puffer – bei eigenen Ausflügen wartet das Schiff nicht." : `Weniger als 1 Std. Puffer bis „${fest.kurz}“ (${fest.zeit}).`);
     }
   }
-  return { losVomSchiff, start, zurueck, puffer, landgang, warnungen, fest };
+  const annahmen = [];
+  if (puffer != null && startAngenommen) annahmen.push(`Beginn fehlt – angenommen ${minZuZeit(start)} (Ankunft + 30 Min.)`);
+  if (puffer != null && fest?.angenommen) annahmen.push(fest.grundlage);
+  // Rechenweg für die Anzeige: Rückkehr = Beginn + Dauer (+ Rückweg) → Puffer bis zur festen Zeit
+  const rechenweg = puffer != null ? `Zurück ca. ${minZuZeit(zurueck)} (${beginn != null ? "Beginn" : "angen. Beginn"} ${minZuZeit(start)} + ${dauerText(dauer)}${weg ? ` + ${weg} Min. Rückweg` : ""}) · ${fest.titel} ${fest.zeit}` : "";
+  return { losVomSchiff, start, zurueck, puffer, landgang, warnungen, fest, startAngenommen, annahmen, rechenweg };
 }
 
 /** Punktwert für den Vergleich innerhalb eines Hafens (höher = sinnvoller). */
@@ -403,7 +439,7 @@ export function bewertung(ausflug, hafen, personen, reise = null) {
   const sterne = zahl(ausflug.sterne); // z. B. 4,7 von GetYourGuide
   const dauer = zahl(ausflug.dauerMin) ?? 0;
   const anzahl = Math.max(k.anzahl, 1);
-  const proPersonStunde = dauer > 0 ? k.summe / anzahl / (dauer / 60) : null;
+  const proPersonStunde = dauer > 0 && !k.offen ? k.summe / anzahl / (dauer / 60) : null;
   let punkte = interesse * 20; // 20–100
   if (sterne != null) punkte += (sterne - 4) * 15;
   if (proPersonStunde != null) punkte -= Math.min(proPersonStunde, 60) * 0.4;
@@ -415,6 +451,113 @@ export function bewertung(ausflug, hafen, personen, reise = null) {
   if (ausflug.quelle !== "schiff") punkte -= Math.min(zahl(ausflug.fahrzeitMin) ?? 0, 90) * 0.1;
   return { punkte: Math.round(punkte), proPersonStunde, kosten: k, zeit: z };
 }
+
+/** Erklärung des Punktwerts („Sinnvollste zuerst“) – dieselbe Rechnung wie in bewertung(). */
+export function punkteErklaerung(ausflug, b) {
+  const teile = [`Interesse ${zahl(ausflug.interesse) ?? 3}/5 = ${(zahl(ausflug.interesse) ?? 3) * 20}`];
+  const sterne = zahl(ausflug.sterne);
+  if (sterne != null) teile.push(`Anbieter-Bewertung ${String(sterne).replace(".", ",")} ★: ${sterne >= 4 ? "+" : "−"}${Math.abs(Math.round((sterne - 4) * 15))}`);
+  if (b.proPersonStunde != null) teile.push(`Preis je Person und Stunde: −${Math.round(Math.min(b.proPersonStunde, 60) * 0.4)}`);
+  else if (b.kosten.offen) teile.push("Preis offen: kein Preisabzug");
+  const z = b.zeit;
+  if (z.puffer != null) {
+    if (z.puffer < 0) teile.push("zu spät zurück: −80");
+    else if (ausflug.quelle !== "schiff" && z.puffer < 60) teile.push("knapper Puffer: −25");
+    else if (z.puffer >= 90) teile.push("viel Puffer: +5");
+  }
+  const weg = ausflug.quelle !== "schiff" ? Math.round(Math.min(zahl(ausflug.fahrzeitMin) ?? 0, 90) * 0.1) : 0;
+  if (weg) teile.push(`Anfahrt: −${weg}`);
+  return `${b.punkte} Punkte: ${teile.join(", ")}. Höher = besser für euch; nur innerhalb eines Tages vergleichbar.`;
+}
+
+// ---------- Dubletten, Alternativen und Buchungskonflikte ----------
+
+const FUELLWOERTER = new Set(["der", "die", "das", "den", "dem", "des", "und", "mit", "von", "vom", "zum", "zur", "zu", "im", "in", "am", "an", "auf", "fur", "ein", "eine", "einer", "the", "and", "of", "to", "tour", "tours", "ausflug", "inkl", "ca", "per", "pro", "fuer"]);
+/** Wortstämme eines Titels (klein, ohne Umlaute/Satzzeichen, je Wort die ersten 6 Zeichen). */
+export function titelWoerter(titel) {
+  return new Set(
+    String(titel ?? "")
+      .toLowerCase()
+      .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 1 && !FUELLWOERTER.has(w))
+      .map((w) => w.slice(0, 6)),
+  );
+}
+
+/** Ähnliche Titel: gleich, oder die Wörter des kürzeren stecken fast alle im längeren (mind. 2 gemeinsame bzw. 1 bei Ein-Wort-Titeln). */
+export function titelAehnlich(a, b) {
+  const x = titelWoerter(a);
+  const y = titelWoerter(b);
+  if (!x.size || !y.size) return false;
+  const gemeinsam = [...x].filter((w) => y.has(w)).length;
+  const kleiner = Math.min(x.size, y.size);
+  if (kleiner === 1) return gemeinsam === 1 && Math.max(x.size, y.size) <= 2;
+  return gemeinsam >= 2 && gemeinsam / kleiner >= 0.6;
+}
+
+/** Mögliche Dubletten innerhalb eines Tages (ohne verworfene und ohne als „keine Dublette“ markierte). */
+export function moeglicheDubletten(ausfluege) {
+  const paare = [];
+  const liste = (ausfluege ?? []).filter((a) => a.status !== "verworfen");
+  for (let i = 0; i < liste.length; i++) {
+    for (let j = i + 1; j < liste.length; j++) {
+      const a = liste[i];
+      const b = liste[j];
+      if (a.hafenId !== b.hafenId) continue;
+      if ((a.keineDublette ?? []).includes(b.id) || (b.keineDublette ?? []).includes(a.id)) continue;
+      if ((a.alternativen ?? []).includes(b.id) || (b.alternativen ?? []).includes(a.id)) continue;
+      if (titelAehnlich(a.titel, b.titel)) paare.push([a, b]);
+    }
+  }
+  return paare;
+}
+
+/**
+ * Buchungskonflikte je Ausflug: gebuchte Einträge am selben Tag, die sich zeitlich überschneiden und
+ * dieselbe Person betreffen – oder ausdrücklich verknüpfte Alternativen, die beide gebucht sind.
+ * Ergebnis: Map ausflugId → [{ mit, personen, grund, angenommen }]
+ */
+export function buchungsKonflikte(reise) {
+  const ergebnis = new Map();
+  const merken = (a, b, eintrag) => {
+    if (!ergebnis.has(a.id)) ergebnis.set(a.id, []);
+    ergebnis.get(a.id).push({ mit: b, ...eintrag });
+  };
+  const personen = reise.personen ?? [];
+  const tage = new Map((reise.haefen ?? []).map((h) => [h.id, h]));
+  const gebucht = (reise.ausfluege ?? []).filter((a) => a.status === "gebucht");
+  for (let i = 0; i < gebucht.length; i++) {
+    for (let j = i + 1; j < gebucht.length; j++) {
+      const a = gebucht[i];
+      const b = gebucht[j];
+      if (a.hafenId !== b.hafenId) continue;
+      const alternative = (a.alternativen ?? []).includes(b.id) || (b.alternativen ?? []).includes(a.id);
+      const gemeinsam = personen.filter((p) => (a.teilnehmer ?? []).includes(p.id) && (b.teilnehmer ?? []).includes(p.id)).map((p) => p.name);
+      let grund = "";
+      let angenommen = false;
+      if (alternative) grund = "Beide Alternativen sind gebucht";
+      else if (gemeinsam.length) {
+        const tag = tages(tage, a.hafenId);
+        const za = zeitplan(a, tag, reise);
+        const zb = zeitplan(b, tag, reise);
+        const vonA = za.losVomSchiff ?? za.start;
+        const vonB = zb.losVomSchiff ?? zb.start;
+        if (vonA != null && vonB != null && za.zurueck != null && zb.zurueck != null && vonA < zb.zurueck && vonB < za.zurueck) {
+          grund = "Zeitliche Überschneidung";
+          angenommen = za.startAngenommen || zb.startAngenommen;
+        }
+      }
+      if (!grund) continue;
+      const eintrag = { personen: gemeinsam, grund, angenommen };
+      merken(a, b, eintrag);
+      merken(b, a, eintrag);
+    }
+  }
+  return ergebnis;
+}
+const tages = (tage, id) => tage.get(id) ?? null;
 
 /** Luftlinie in km (Haversine). */
 export function entfernungKm(a, b) {

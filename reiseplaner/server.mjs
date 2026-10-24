@@ -140,6 +140,30 @@ function bewertungAus(d) {
   };
 }
 
+/**
+ * Gelöschtes Konto: Zugänge entfernen, Personen bleiben (ohne Kontoverknüpfung), der Name bleibt für
+ * Tauchgänge und Bewertungen unter `ehemaligeKonten` erhalten. Bleibt keine Planer/in, übernimmt die
+ * nächste Person mit Zugang – sonst die Verwaltung, die gelöscht hat.
+ */
+async function kontoAusReisenEntfernen(konto, ersatz) {
+  for (const d of (await readdir(REISEN_DIR)).filter((x) => /^[a-z0-9-]+\.json$/.test(x))) {
+    const id = d.slice(0, -5);
+    const r = await reiseLesen(id);
+    if (!r || !((r.mitglieder ?? []).some((x) => x.userId === konto.id) || (r.personen ?? []).some((x) => x.userId === konto.id))) continue;
+    await aendern(reiseDatei(id), null, (reise) => {
+      reise.ehemaligeKonten = { ...(reise.ehemaligeKonten ?? {}), [konto.id]: text(konto.name, 120) };
+      reise.mitglieder = (reise.mitglieder ?? []).filter((x) => x.userId !== konto.id);
+      for (const pp of reise.personen ?? []) if (pp.userId === konto.id) delete pp.userId;
+      if (!reise.mitglieder.some((x) => x.rolle === "planer")) {
+        if (reise.mitglieder[0]) reise.mitglieder[0].rolle = "planer";
+        else if (ersatz) reise.mitglieder.push({ userId: ersatz.id, rolle: "planer" });
+      }
+      // Neue Version: offene Bearbeitungen laden erst neu, statt die Änderung zu überschreiben
+      reise.version = Number(reise.version ?? 0) + 1;
+    });
+  }
+}
+
 const TAUCH_TEXT = ["datum", "tauchplatz", "ort", "basis", "einstieg", "beginn", "stroemung", "anzug", "flascheMaterial", "gas", "buddy", "guide", "sichtungen", "text", "textPrivat", "ausflugId", "taucherId"];
 const TAUCH_ZAHL = ["lat", "lng", "tauchzeitMin", "maxTiefe", "mittelTiefe", "wasserTemp", "luftTemp", "sicht", "blei", "flascheL", "nitroxProzent", "druckStart", "druckEnde", "sterne"];
 function tauchgangAus(d) {
@@ -369,8 +393,10 @@ async function api(req, res, url, ich) {
   if (t[1] === "benutzer" && t[2] && m === "DELETE") {
     if (!ich.admin) throw fehler(403, "Nur für die Verwaltung.");
     if (t[2] === ich.id) throw fehler(400, "Das eigene Konto kann hier nicht gelöscht werden.");
+    const weg = (await konten.alleBenutzer()).find((b) => b.id === t[2]);
     await konten.benutzerLoeschen(t[2]);
     konten.cacheLeeren();
+    if (weg) await kontoAusReisenEntfernen(weg, ich);
     return json(res, 200, { ok: true });
   }
 
@@ -442,7 +468,7 @@ async function api(req, res, url, ich) {
       const { reise, rolle } = await reiseMitRecht(id, ich);
       const alle = await konten.alleBenutzer();
       if (m === "GET" && !t[4]) {
-        return json(res, 200, (reise.mitglieder ?? []).map((mm) => ({ userId: mm.userId, rolle: mm.rolle, name: alle.find((b) => b.id === mm.userId)?.name ?? "(gelöscht)", email: rolle === "planer" ? alle.find((b) => b.id === mm.userId)?.email ?? "" : "" })));
+        return json(res, 200, (reise.mitglieder ?? []).map((mm) => ({ userId: mm.userId, rolle: mm.rolle, name: alle.find((b) => b.id === mm.userId)?.name ?? `${reise.ehemaligeKonten?.[mm.userId] || "Ehemaliges Konto"} (Konto gelöscht)`, geloescht: !alle.some((b) => b.id === mm.userId), email: rolle === "planer" ? alle.find((b) => b.id === mm.userId)?.email ?? "" : "" })));
       }
       if (rolle !== "planer") throw fehler(403, "Nur Planer/innen verwalten die Mitreisenden.");
       if (m === "POST" && !t[4]) {
@@ -490,6 +516,8 @@ async function api(req, res, url, ich) {
       const b = await beitraegeLesen(id);
       const sichtbar = new Set([...(reise.mitglieder ?? []).map((x) => x.userId), ...b.bewertungen.map((x) => x.autorId), ...b.tauchgaenge.map((x) => x.taucherId)]);
       const namen = Object.fromEntries((await konten.alleBenutzer()).filter((x) => sichtbar.has(x.id)).map((x) => [x.id, x.name]));
+      // Gelöschte Konten: Name bleibt bei Tauchgängen und Bewertungen erkennbar
+      for (const uid of sichtbar) if (uid && !namen[uid]) namen[uid] = `${reise.ehemaligeKonten?.[uid] || "Ehemaliges Konto"} (Konto gelöscht)`;
       return json(res, 200, { ...b, namen });
     }
     if (unter === "bewertungen") {
