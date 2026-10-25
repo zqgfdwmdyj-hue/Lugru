@@ -78,7 +78,7 @@ export async function aiSuggestAction(_prev: ActionState, fd: FormData): Promise
     const id = itemIdOf(fd);
     await suggestWithAi(session.tenantId, id);
     revalidatePath(`/ebay/pruefen/${id}`);
-    return { ok: true, message: "KI-Vorschlag ist da – unten prüfen und übernehmen." };
+    return { ok: true, message: "KI-Vorschlag ist unten eingetragen – markierte Felder prüfen, dann „Bei eBay ändern“." };
   } catch (e) {
     return fail(e);
   }
@@ -91,38 +91,6 @@ const money = (v: FormDataEntryValue | null) => {
   if (!Number.isFinite(n) || n <= 0 || n > 100000) throw new Error("Bitte einen gültigen Preis eingeben.");
   return Math.round(n * 100) / 100;
 };
-
-/** Titel, Merkmale (Felder „a:<Name>“), Preis und Preisvorschlag bei eBay ändern. */
-export async function applyAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const session = await requireArea("ebay");
-  try {
-    const id = itemIdOf(fd);
-    const aspects: Record<string, string[]> = {};
-    for (const [k, v] of fd.entries()) {
-      if (!k.startsWith("a:")) continue;
-      const name = k.slice(2).trim().slice(0, 65);
-      const values = String(v)
-        .split(/\s*;\s*/)
-        .map((x) => x.trim().slice(0, 65))
-        .filter(Boolean);
-      if (name && values.length) aspects[name] = values;
-    }
-    const title = String(fd.get("title") ?? "").trim();
-    const r: Revision = {
-      ...(title ? { title } : {}),
-      ...(Object.keys(aspects).length ? { aspects } : {}),
-      ...(fd.get("price") !== null ? { price: money(fd.get("price")) } : {}),
-      ...(fd.get("bestOfferField") ? { bestOffer: fd.get("bestOffer") === "on" } : {}),
-    };
-    if (r.price === undefined) delete r.price;
-    const changes = await applyRevision(session.tenantId, id, r);
-    revalidatePath(`/ebay/pruefen/${id}`);
-    revalidatePath("/ebay/pruefen");
-    return { ok: true, message: `Bei eBay geändert: ${changes.join(" · ")}` };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
 // ---- Bilder, Beschreibung, Merkmale (Inhalte-Editor) -------------------------------------------
 
@@ -167,6 +135,12 @@ export async function uploadImagesAction(fd: FormData): Promise<UploadResult> {
 
 export type ContentInput = {
   itemId: string;
+  /** Neuer Titel – nur wenn geändert. */
+  title?: string;
+  /** Neuer Preis ohne Versand – nur wenn geändert (nicht bei Varianten). */
+  price?: number;
+  /** Preisvorschlag an/aus – nur wenn geändert. */
+  bestOffer?: boolean;
   /** Vollständige, geordnete Bilderliste – nur wenn geändert. */
   images?: string[];
   /** Neue Beschreibung (HTML) – nur wenn geändert. */
@@ -175,12 +149,19 @@ export type ContentInput = {
   aspects?: Record<string, string[]>;
 };
 
-/** Bilder, Beschreibung und Merkmale bei eBay ändern (nur, was im Editor geändert wurde). */
+/** Titel, Preis, Preisvorschlag, Bilder, Beschreibung und Merkmale bei eBay ändern – nur, was im Editor geändert wurde, in einem Schritt. */
 export async function applyContentAction(input: ContentInput): Promise<ActionState> {
   const session = await requireArea("ebay");
   try {
     const id = checkItemId(input?.itemId);
     const r: Revision = {};
+    if (input.title !== undefined) {
+      const title = String(input.title).replace(/\s+/g, " ").trim();
+      if (!title) throw new Error("Der Titel darf nicht leer sein.");
+      r.title = title.slice(0, 80);
+    }
+    if (input.price !== undefined) r.price = money(String(input.price));
+    if (input.bestOffer !== undefined) r.bestOffer = Boolean(input.bestOffer);
     if (input.images !== undefined) {
       if (!Array.isArray(input.images) || input.images.some((u) => typeof u !== "string")) throw new Error("Ungültige Bilderliste.");
       r.images = input.images.map((u) => u.trim().slice(0, 1000));

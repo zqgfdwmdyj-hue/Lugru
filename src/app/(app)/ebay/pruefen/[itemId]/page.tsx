@@ -4,9 +4,9 @@ import { requireArea } from "@/lib/auth/session";
 import { GTIN_ASPECT } from "@/lib/ebay/pipeline/aspects";
 import { ISSUE_KIND_LABEL, issueKind, PRIORITY_LABEL, type IssueKind } from "@/lib/ebay-review/logic";
 import { reviewDetail } from "@/lib/ebay-review/service";
-import { aiSuggestAction, applyAction, recheckOneAction } from "../actions";
+import { aiSuggestAction, recheckOneAction } from "../actions";
 import { ContentEditor } from "../content-editor";
-import { ActionButton, ReviseForm } from "../forms";
+import { ActionButton } from "../forms";
 import { euro, issueTag, scoreClass } from "../ui";
 
 const dateDe = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
@@ -22,8 +22,11 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
   const m = row.market;
   const t = row.traffic && "impressions" in row.traffic ? row.traffic : null;
   const trafficNote = row.traffic && "unavailable" in row.traffic ? row.traffic.unavailable : null;
-  const ai = row.ai;
-  const missing = f && defs ? defs.filter((x) => (x.required || x.recommended) && !GTIN_ASPECT.test(x.name) && !Object.keys(f.aspects).some((k) => k.toLowerCase() === x.name.toLowerCase())).slice(0, 24) : [];
+  const lastAi = row.ai;
+  const applied0 = row.applied as { at?: string } | null;
+  // Ein Vorschlag, der älter ist als die letzte Änderung bei eBay, ist übernommen bzw. überholt – nicht erneut eintragen.
+  const ai = lastAi && (!applied0?.at || Date.parse(lastAi.at) > Date.parse(applied0.at)) ? lastAi : null;
+  const aiCount = ai ? [ai.title && ai.title !== f?.title ? "Titel" : null, Object.keys(ai.aspects ?? {}).length ? `${Object.keys(ai.aspects).length} Merkmal${Object.keys(ai.aspects).length === 1 ? "" : "e"}` : null, ai.description ? "Beschreibung" : null].filter(Boolean) : [];
   const applied = row.applied as { at?: string; changes?: string[] } | null;
   // Nach dem Senden lädt die Seite neu – die Rückmeldung bleibt eine Weile am Editor stehen.
   const recentApplied = applied?.at && Date.now() - Date.parse(applied.at) < 15 * 60_000 ? (applied.changes ?? []).join(" · ") : null;
@@ -137,45 +140,28 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
       )}
 
       {f && (
-        <section className="card card-pad stack">
+        <section className="card card-pad stack" id="inhalte">
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <h2 style={{ margin: 0 }}>Verbessern</h2>
-            <ActionButton action={aiSuggestAction} itemId={itemId} label={ai ? "Neuen KI-Vorschlag holen" : "KI-Vorschlag holen"} pending="KI denkt nach …" testid="ai-suggest" />
+            <ActionButton action={aiSuggestAction} itemId={itemId} label={lastAi ? "Neuen KI-Vorschlag holen" : "KI-Vorschlag holen"} pending="KI arbeitet … (bis zu 1 Minute)" testid="ai-suggest" />
           </div>
           {ai ? (
             <div className="notice notice-info small stack" style={{ gap: 4 }} data-testid="ai-box">
-              <div><strong>KI-Vorschlag</strong> vom {dateDe(ai.at)} – unten vorbelegt, bitte prüfen.</div>
-              {ai.title && <div>Titel: „{ai.title}“</div>}
-              {Object.keys(ai.aspects).length > 0 && <div>Merkmale: {Object.entries(ai.aspects).map(([k, v]) => `${k}: ${v.join(", ")}`).join(" · ")}</div>}
-              {ai.hints.length > 0 && <div>Tipps: {ai.hints.join(" · ")}</div>}
+              <div>
+                <strong>KI-Vorschlag vom {dateDe(ai.at)}</strong> – {aiCount.length ? <>unten eingetragen: {aiCount.join(", ")}. Mit <span className="tag tag-info">KI</span> markierte Felder prüfen, dann „Bei eBay ändern“.</> : "die KI hatte nichts zu verbessern."}
+              </div>
+              {ai.hints.length > 0 && <div>Tipps, die die KI nicht selbst eintragen kann: {ai.hints.join(" · ")}</div>}
             </div>
+          ) : lastAi ? (
+            <div className="small muted" data-testid="ai-used">Der KI-Vorschlag vom {dateDe(lastAi.at)} ist übernommen bzw. durch deine Änderung überholt – bei Bedarf einen neuen holen.</div>
           ) : (
-            <div className="small muted">Die KI schlägt einen Titel und fehlende Merkmale vor – nur aus den Angaben im Angebot, nichts erfunden. Kosten: ca. 1 Cent je Vorschlag.</div>
+            <div className="small muted">
+              Die KI trägt alles ein, was sich aus dem Angebot verbessern lässt: Titel, fehlende und ungenaue Merkmale und – wenn nötig – eine übersichtlichere Beschreibung. Nichts wird erfunden, nichts geht ohne deine Bestätigung zu eBay. Kosten: wenige Cent je Vorschlag.
+            </div>
           )}
-          <ReviseForm
-            key={ai?.at ?? "ohne-ki"}
-            action={applyAction}
-            itemId={itemId}
-            title={f.title}
-            suggestedTitle={ai?.title ?? null}
-            aspects={missing.map((x) => ({ name: x.name, required: x.required, values: x.values, selectionOnly: x.selectionOnly, multi: x.multi, suggested: (ai?.aspects[x.name] ?? []).join("; ") }))}
-            price={f.price}
-            suggestedPrice={m?.suggestedPrice ?? null}
-            canPrice={f.variations === 0}
-            bestOffer={f.bestOffer}
-            canBestOffer={f.variations === 0 && f.listingType === "FixedPriceItem"}
-          />
-        </section>
-      )}
-
-      {f && (
-        <section className="card card-pad stack" id="inhalte">
-          <div>
-            <h2 style={{ margin: 0 }}>Bilder, Beschreibung und Merkmale</h2>
-            <div className="small muted">Bilder ordnen, entfernen, per Link oder Datei hinzufügen oder von Amazon übernehmen; Beschreibung und alle Merkmale bearbeiten. Versand und Rücknahme änderst du in den Versand-/Rückgabeprofilen bei eBay.</div>
-          </div>
+          <div className="small muted">Bilder ordnen, entfernen, per Link oder Datei hinzufügen oder von Amazon übernehmen. Versand und Rücknahme änderst du in den Versand-/Rückgabeprofilen bei eBay.</div>
           <ContentEditor
-            key={`${row.checkedAt ?? ""}|${applied?.at ?? ""}`}
+            key={`${row.checkedAt ?? ""}|${applied?.at ?? ""}|${ai?.at ?? ""}`}
             itemId={itemId}
             images={f.images}
             descriptionHtml={f.descriptionHtml ?? null}
@@ -183,6 +169,12 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
             defs={(defs ?? []).filter((x) => !GTIN_ASPECT.test(x.name)).map((x) => ({ name: x.name, required: x.required, recommended: x.recommended, values: x.values, multi: x.multi }))}
             ean={f.ean}
             title={f.title}
+            price={f.price}
+            suggestedPrice={m?.suggestedPrice ?? null}
+            canPrice={f.variations === 0}
+            bestOffer={f.bestOffer}
+            canBestOffer={f.variations === 0 && f.listingType === "FixedPriceItem"}
+            ai={ai ? { at: ai.at, title: ai.title ?? null, aspects: ai.aspects ?? {}, description: ai.description ?? null } : null}
             recentApplied={recentApplied}
             disabled={session.readOnly}
           />

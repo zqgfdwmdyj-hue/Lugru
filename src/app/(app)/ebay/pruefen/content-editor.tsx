@@ -5,7 +5,16 @@ import { cleanImages, descriptionFromParts, MAX_IMAGES, sanitizeDescription, typ
 import { amazonContentAction, applyContentAction, uploadImagesAction, type ActionState } from "./actions";
 
 type AspectDef = { name: string; required: boolean; recommended: boolean; values: string[]; multi: boolean };
-type Row = { id: number; name: string; value: string };
+type Row = { id: number; name: string; value: string; ai?: boolean; before?: string };
+/** KI-Vorschlag, der in die Felder eingetragen wird (nur geänderte/neue Werte). */
+export type AiFill = { at: string; title: string | null; aspects: Record<string, string[]>; description: string | null };
+
+const euroText = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
+const parsePrice = (s: string) => {
+  const n = Number(s.trim().replace(/\s|€/g, "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
+};
+const AiMark = () => <span className="tag tag-info" title="von der KI eingetragen – bitte prüfen" data-testid="ai-mark">KI</span>;
 
 const join = (vs: string[]) => vs.join("; ");
 const split = (s: string) => s.split(/\s*;\s*/).map((x) => x.trim()).filter(Boolean);
@@ -25,9 +34,9 @@ const sameAspects = (a: Record<string, string[]>, b: Record<string, string[]>) =
 };
 
 /**
- * Bilder, Beschreibung und Merkmale eines laufenden eBay-Angebots bearbeiten: Bilder ordnen, entfernen, per
- * Link oder Datei hinzufügen oder von Amazon (Keepa) übernehmen; Beschreibung als HTML mit Vorschau; alle
- * Merkmale. Gesendet wird nur, was geändert wurde – erst nach Nachfrage.
+ * Ein laufendes eBay-Angebot verbessern: Titel, Preis, Preisvorschlag, Beschreibung (HTML mit Vorschau), alle
+ * Merkmale und Bilder (ordnen, entfernen, per Link/Datei/Amazon hinzufügen). Ein KI-Vorschlag wird direkt in die
+ * Felder eingetragen und markiert. Gesendet wird nur, was geändert wurde – in einem Schritt, erst nach Nachfrage.
  */
 export function ContentEditor({
   itemId,
@@ -37,6 +46,12 @@ export function ContentEditor({
   defs,
   ean,
   title,
+  price,
+  suggestedPrice = null,
+  canPrice = false,
+  bestOffer = false,
+  canBestOffer = false,
+  ai = null,
   recentApplied = null,
   disabled = false,
 }: {
@@ -48,12 +63,31 @@ export function ContentEditor({
   defs: AspectDef[];
   ean: string | null;
   title: string;
+  price: number;
+  /** Preis für Platz 3 bei gleicher EAN (aus dem Preisvergleich). */
+  suggestedPrice?: number | null;
+  /** Preis nur ohne Varianten änderbar. */
+  canPrice?: boolean;
+  bestOffer?: boolean;
+  canBestOffer?: boolean;
+  ai?: AiFill | null;
   /** Zuletzt gesendete Änderungen (die Seite lädt danach neu). */
   recentApplied?: string | null;
   disabled?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<ActionState>(null);
+
+  // ---- Titel, Preis, Preisvorschlag
+  const aiTitle = ai?.title && ai.title !== title ? ai.title : null;
+  const [t, setT] = useState(aiTitle ?? title);
+  const titleChanged = t.trim() !== title && t.trim().length > 0;
+  const [p, setP] = useState(price.toFixed(2).replace(".", ","));
+  const newPrice = parsePrice(p);
+  const priceChanged = canPrice && newPrice !== null && Math.abs(newPrice - price) >= 0.005;
+  const priceInvalid = canPrice && p.trim() !== "" && newPrice === null;
+  const [bo, setBo] = useState(bestOffer);
+  const boChanged = canBestOffer && bo !== bestOffer;
 
   // ---- Bilder
   const [images, setImages] = useState<string[]>(initialImages);
@@ -106,7 +140,8 @@ export function ContentEditor({
   };
 
   // ---- Beschreibung
-  const [desc, setDesc] = useState(descriptionHtml ?? "");
+  const aiDesc = descriptionHtml !== null && ai?.description ? ai.description : null;
+  const [desc, setDesc] = useState(aiDesc ?? descriptionHtml ?? "");
   const [preview, setPreview] = useState(false);
   const descChanged = descriptionHtml !== null && desc.trim() !== descriptionHtml.trim();
   const previewDoc = useMemo(
@@ -121,12 +156,19 @@ export function ContentEditor({
     const own = Object.entries(initialAspects).map(([k, v]) => mkRow(k, join(v)));
     const have = new Set(Object.keys(initialAspects).map((k) => k.toLowerCase()));
     const open = defs.filter((d) => (d.required || d.recommended) && !have.has(d.name.toLowerCase())).map((d) => mkRow(d.name, ""));
-    return [...own, ...open];
+    const all = [...own, ...open];
+    // KI-Werte eintragen: vorhandene Zeile ersetzen (bisherigen Wert merken) oder neue Zeile anhängen.
+    for (const [name, values] of Object.entries(ai?.aspects ?? {})) {
+      const i = all.findIndex((r) => r.name.trim().toLowerCase() === name.toLowerCase());
+      if (i >= 0) all[i] = { ...all[i], value: join(values), ai: true, before: all[i].value || undefined };
+      else all.push({ ...mkRow(name, join(values)), ai: true });
+    }
+    return all;
   });
   const aspects = rowsToAspects(rows);
   const aspectsChanged = !sameAspects(aspects, initialAspects);
   const defOf = (name: string) => defs.find((d) => d.name.toLowerCase() === name.trim().toLowerCase());
-  const setRow = (id: number, patch: Partial<Row>) => setRows((l) => l.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const setRow = (id: number, patch: Partial<Row>) => setRows((l) => l.map((r) => (r.id === id ? { ...r, ...patch, ...("value" in patch ? { ai: false } : {}) } : r)));
   const missingRequired = defs.filter((d) => d.required && !Object.keys(aspects).some((k) => k.toLowerCase() === d.name.toLowerCase()));
 
   // ---- Amazon (Keepa)
@@ -163,15 +205,26 @@ export function ContentEditor({
   };
   const bulletsHtml = amz ? descriptionFromParts({ bullets: amz.bullets }) : "";
 
-  const dirty = imagesChanged || descChanged || aspectsChanged;
-  const changeList = [imagesChanged && `Bilder (${initialImages.length} → ${images.length})`, descChanged && "Beschreibung", aspectsChanged && `Merkmale (${Object.keys(aspects).length})`].filter(Boolean) as string[];
+  const dirty = titleChanged || priceChanged || boChanged || imagesChanged || descChanged || aspectsChanged;
+  const changeList = [
+    titleChanged && "Titel",
+    priceChanged && newPrice !== null && `Preis (${euroText(price)} → ${euroText(newPrice)})`,
+    boChanged && `Preisvorschlag ${bo ? "an" : "aus"}`,
+    imagesChanged && `Bilder (${initialImages.length} → ${images.length})`,
+    descChanged && "Beschreibung",
+    aspectsChanged && `Merkmale (${Object.keys(aspects).length})`,
+  ].filter(Boolean) as string[];
   const send = () => {
     if (!dirty) return;
+    if (priceInvalid) return setResult({ ok: false, message: "Bitte einen gültigen Preis eingeben." });
     if (imagesChanged && !images.length) return setResult({ ok: false, message: "Mindestens ein Bild muss bleiben." });
     if (!window.confirm(`Jetzt bei eBay ändern: ${changeList.join(", ")}? Das Angebot wird sofort geändert.`)) return;
     start(async () => {
       const r = await applyContentAction({
         itemId,
+        ...(titleChanged ? { title: t.trim() } : {}),
+        ...(priceChanged && newPrice !== null ? { price: newPrice } : {}),
+        ...(boChanged ? { bestOffer: bo } : {}),
         ...(imagesChanged ? { images } : {}),
         ...(descChanged ? { description: desc } : {}),
         ...(aspectsChanged ? { aspects } : {}),
@@ -182,6 +235,52 @@ export function ContentEditor({
 
   return (
     <div className="stack" style={{ gap: 18 }} data-testid="content-editor">
+      {/* Titel */}
+      <div className="field">
+        <label className="label" htmlFor="ce-title" style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+          Titel <span className="muted small" data-testid="title-count">({t.length}/80)</span>
+          {aiTitle && t === aiTitle && <AiMark />}
+        </label>
+        <input className="input" id="ce-title" value={t} maxLength={80} onChange={(e) => setT(e.target.value)} autoComplete="off" data-testid="ce-title" />
+        <div className="small muted" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <span>Bisher: {title}</span>
+          {aiTitle && t !== aiTitle && <button type="button" className="btn-link small" onClick={() => setT(aiTitle)}>KI-Titel einsetzen</button>}
+          {t !== title && <button type="button" className="btn-link small" onClick={() => setT(title)}>zurück zum bisherigen</button>}
+        </div>
+      </div>
+
+      {/* Preis und Preisvorschlag */}
+      {(canPrice || canBestOffer) && (
+        <div className="rev-aspects">
+          {canPrice && (
+            <div className="field">
+              <label className="label" htmlFor="ce-price">Preis (ohne Versand)</label>
+              <input className="input" id="ce-price" inputMode="decimal" value={p} onChange={(e) => setP(e.target.value)} data-testid="ce-price" />
+              <div className="small muted">
+                Bisher {euroText(price)}
+                {suggestedPrice !== null && Math.abs(suggestedPrice - (newPrice ?? price)) >= 0.005 && (
+                  <>
+                    {" · "}
+                    <button type="button" className="btn-link small" onClick={() => setP(suggestedPrice.toFixed(2).replace(".", ","))} data-testid="use-price">
+                      Vorschlag {euroText(suggestedPrice)} einsetzen
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          {canBestOffer && (
+            <div className="field">
+              <span className="label">Preisvorschlag</span>
+              <label className="check">
+                <input type="checkbox" checked={bo} onChange={(e) => setBo(e.target.checked)} data-testid="ce-best-offer" /> Käufer dürfen einen Preis vorschlagen
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+      {!canPrice && <div className="small muted">Preis bei Angeboten mit Varianten bitte je Variante ändern.</div>}
+
       {/* Amazon / Keepa */}
       <details className="ce-box" data-testid="amazon-box">
         <summary>
@@ -318,11 +417,13 @@ export function ContentEditor({
       <div className="stack" style={{ gap: 8 }}>
         <div className="label" style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
           Beschreibung
+          {aiDesc && desc === aiDesc && <AiMark />}
           {descriptionHtml !== null && (
             <>
               <span className="small muted">({desc.length.toLocaleString("de-DE")} Zeichen, HTML)</span>
               <button type="button" className="btn-link small" onClick={() => setPreview((p) => !p)} data-testid="desc-preview-toggle">{preview ? "bearbeiten" : "Vorschau"}</button>
-              {descChanged && <button type="button" className="btn-link small" onClick={() => setDesc(descriptionHtml)}>zurücksetzen</button>}
+              {descChanged && <button type="button" className="btn-link small" onClick={() => setDesc(descriptionHtml)}>bisherige wiederherstellen</button>}
+              {aiDesc && desc !== aiDesc && <button type="button" className="btn-link small" onClick={() => setDesc(aiDesc)}>KI-Beschreibung einsetzen</button>}
             </>
           )}
         </div>
@@ -354,8 +455,14 @@ export function ContentEditor({
                       {d.values.slice(0, 200).map((v) => <option key={v} value={v} />)}
                     </datalist>
                   ) : null}
+                  {r.ai && r.before !== undefined && r.before !== r.value && (
+                    <div className="small muted" data-testid="aspect-before">
+                      bisher: {r.before} <button type="button" className="btn-link small" onClick={() => setRow(r.id, { value: r.before ?? "" })}>zurück</button>
+                    </div>
+                  )}
                 </div>
                 <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                  {r.ai && <AiMark />}
                   {d?.required && !r.value.trim() && <span className="tag tag-danger">Pflicht</span>}
                   <button type="button" className="ce-ico ce-del" onClick={() => setRows((l) => l.filter((x) => x.id !== r.id))} aria-label={`Merkmal ${r.name} entfernen`} title="entfernen">✕</button>
                 </span>
@@ -365,7 +472,7 @@ export function ContentEditor({
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" className="btn btn-small" onClick={() => setRows((l) => [...l, mkRow("", "")])} data-testid="aspect-add">Merkmal hinzufügen</button>
-          {aspectsChanged && <button type="button" className="btn-link small" onClick={() => setRows(Object.entries(initialAspects).map(([k, v]) => mkRow(k, join(v))))}>zurücksetzen</button>}
+          {aspectsChanged && <button type="button" className="btn-link small" onClick={() => setRows(Object.entries(initialAspects).map(([k, v]) => mkRow(k, join(v))))}>alle auf bisherigen Stand</button>}
           {missingRequired.length > 0 && <span className="small" style={{ color: "var(--danger)" }}>Pflicht fehlt: {missingRequired.map((d) => d.name).join(", ")}</span>}
         </div>
       </div>

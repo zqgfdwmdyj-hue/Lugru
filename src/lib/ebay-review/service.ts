@@ -418,7 +418,7 @@ export async function reviewOverview(tenantId: string) {
   };
 }
 
-export type CheckDetail = Omit<typeof C.$inferSelect, "facts" | "market" | "traffic" | "ai" | "issues"> & { facts: ListingFacts | null; market: Market | null; traffic: (Traffic & { unavailable?: string }) | { unavailable: string } | null; ai: (AiSuggestion & { at: string; model: string }) | null; issues: Issue[] };
+export type CheckDetail = Omit<typeof C.$inferSelect, "facts" | "market" | "traffic" | "ai" | "issues"> & { facts: ListingFacts | null; market: Market | null; traffic: (Traffic & { unavailable?: string }) | { unavailable: string } | null; ai: (Omit<AiSuggestion, "description"> & { description?: string | null; at: string; model: string }) | null; issues: Issue[] };
 
 export async function reviewDetail(tenantId: string, itemId: string): Promise<{ row: CheckDetail; defs: CategoryAspect[] | null } | null> {
   const [row] = await db.select().from(C).where(and(eq(C.tenantId, tenantId), eq(C.itemId, itemId)));
@@ -434,14 +434,20 @@ export async function reviewDetail(tenantId: string, itemId: string): Promise<{ 
 export async function suggestWithAi(tenantId: string, itemId: string): Promise<AiSuggestion> {
   const ai = await getIntegration(tenantId, "anthropic");
   if (!ai?.apiKey) throw new Error("Für KI-Vorschläge unter Anbindungen → KI (Claude) einen Schlüssel eintragen.");
-  const d = await reviewDetail(tenantId, itemId);
+  let d = await reviewDetail(tenantId, itemId);
   if (!d?.row.facts) throw new Error("Bitte das Angebot zuerst prüfen lassen.");
-  const f = d.row.facts;
+  // Ältere Prüfungen haben die Beschreibung noch nicht als HTML – erst frisch von eBay holen, sonst kann die KI sie nicht verbessern.
+  if (d.row.facts.descriptionHtml === undefined || d.row.facts.descriptionHtml === null) {
+    await checkNow(tenantId, itemId);
+    d = (await reviewDetail(tenantId, itemId)) ?? d;
+  }
+  const f = d.row.facts!;
   const defs = d.defs ?? [];
   const titles = (d.row.market?.items ?? []).map((i) => i.title).filter(Boolean);
   const model = modelFor(ai, "creative");
-  const r = await askClaude(ai.apiKey, aiPrompt(f, defs, titles), { model, task: "creative", maxTokens: 1500 });
-  const s = parseAiSuggestion(extractJsonObject(r.text), defs, f.aspects);
+  // Mehr Platz für die Antwort: Titel, alle Merkmale und ggf. eine ganze Beschreibung.
+  const r = await askClaude(ai.apiKey, aiPrompt(f, defs, titles), { model, task: "creative", maxTokens: 6000, timeoutMs: 180_000 });
+  const s = parseAiSuggestion(extractJsonObject(r.text), defs, f.aspects, f.descriptionHtml ?? f.descriptionText);
   if (!s) throw new Error("Die KI hat keinen brauchbaren Vorschlag geliefert – bitte noch einmal versuchen.");
   await db
     .update(C)
