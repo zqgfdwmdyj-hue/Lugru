@@ -71,7 +71,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
   return (
     <>
       <PrivatHead active="start" title="Heute" pin={session.privatePin} />
-      {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} />}
+      {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} tenantId={session.tenantId} userId={session.userId} userPartner={s.userPartner} />}
       {!session.privatePin && (
         <div className="notice notice-info small">Tipp: Unter <Link href="/privat/einstellungen">Einstellungen</Link> eine PIN setzen – dann fragt „Privat“ zusätzlich danach.</div>
       )}
@@ -179,7 +179,7 @@ async function FamilyOverview({ session, settings: s, today, blocked }: { sessio
   return (
     <>
       <PrivatHead active="start" title="Privat · Familie" pin={session.privatePin} />
-      {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} />}
+      {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} tenantId={session.tenantId} userId={session.userId} userPartner={s.userPartner} />}
       {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
       <section className="card card-pad stack">
         <h2>Schnell eintragen</h2>

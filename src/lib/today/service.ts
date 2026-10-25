@@ -25,13 +25,24 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
   const O = schema.orders;
   const C = schema.claims;
   const K = schema.cases;
+  // Überfällig = Frist schon vorbei (auch heute früher); heute fällig = Frist noch heute.
+  const now = new Date();
   const endOfToday = berlinMidnight(addDaysIso(today, 1));
   const endOfTomorrow = berlinMidnight(addDaysIso(today, 2));
   // Offene Sendungen wie in Navigation und Kalender: eigener Versand, offen oder Label erstellt.
-  // Ohne Versandfrist zählt wie heute (der Kalender zeigt sie ebenfalls heute).
+  // Getrennt gezählt: überfällig, heute fällig und Frist unbekannt (ohne Versandfrist) – nie in einer Zahl vermischt.
   const openShip = and(eq(O.tenantId, tenantId), eq(O.fulfillment, "FBM"), inArray(O.status, ["open", "label_created"]));
   const [[ship], [shipTomorrow], [shipLater], [neg], [claims], [expired], [cases]] = await Promise.all([
-    db.select({ n: count(), noDate: sql<number>`count(*) filter (where ${O.shipBy} is null)::int`, labelled: sql<number>`count(*) filter (where ${O.status} = 'label_created')::int` }).from(O).where(and(openShip, or(isNull(O.shipBy), lt(O.shipBy, endOfToday)))),
+    db
+      .select({
+        n: count(),
+        noDate: sql<number>`count(*) filter (where ${O.shipBy} is null)::int`,
+        overdue: sql<number>`count(*) filter (where ${O.shipBy} < ${now})::int`,
+        dueToday: sql<number>`count(*) filter (where ${O.shipBy} >= ${now} and ${O.shipBy} < ${endOfToday})::int`,
+        labelled: sql<number>`count(*) filter (where ${O.status} = 'label_created' and (${O.shipBy} is null or ${O.shipBy} < ${endOfToday}))::int`,
+      })
+      .from(O)
+      .where(and(openShip, or(isNull(O.shipBy), lt(O.shipBy, endOfToday)))),
     db.select({ n: count() }).from(O).where(and(openShip, gte(O.shipBy, endOfToday), lt(O.shipBy, endOfTomorrow))),
     db.select({ n: count(), next: min(O.shipBy) }).from(O).where(and(openShip, gte(O.shipBy, endOfTomorrow))),
     db.select({ n: count(), units: sql<number>`coalesce(sum(${schema.ownStock.quantity}), 0)::int` }).from(schema.ownStock).where(and(eq(schema.ownStock.tenantId, tenantId), lt(schema.ownStock.quantity, 0))),
@@ -44,7 +55,13 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
   ]);
   const euro = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
   const out: Signal[] = [];
-  if (ship.n) out.push({ key: "versand", label: `${ship.n} ${ship.n === 1 ? "Auftrag" : "Aufträge"} heute bzw. überfällig versenden`, detail: [ship.noDate ? `${ship.noDate} ohne Versandfrist` : null, ship.labelled ? `${ship.labelled} mit Label (Reiter „Label erstellt“)` : null].filter(Boolean).join(" · ") || undefined, count: ship.n, href: "/auftraege?ansicht=offen", level: "danger" });
+  const pl = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const dated = ship.overdue + ship.dueToday;
+  if (dated) {
+    const parts = [ship.overdue ? `${ship.overdue} überfällig` : null, ship.dueToday ? `${ship.dueToday} heute fällig` : null].filter(Boolean).join(", ");
+    out.push({ key: "versand", label: `${pl(dated, "Auftrag", "Aufträge")} versenden: ${parts}`, detail: ship.labelled ? `${ship.labelled} mit Label (Reiter „Label erstellt“)` : undefined, count: dated, href: "/auftraege?ansicht=offen", level: "danger" });
+  }
+  if (ship.noDate) out.push({ key: "versand-ohne-frist", label: `${pl(ship.noDate, "offener Auftrag", "offene Aufträge")} ohne Versandfrist`, detail: "Frist unbekannt – nicht als überfällig gezählt; bitte prüfen und versenden", count: ship.noDate, href: "/auftraege?ansicht=offen", level: "warn" });
   if (cases.n) out.push({ key: "faelle", label: `${cases.n} ${cases.n === 1 ? "Fall" : "Fälle"} mit Frist bis übermorgen`, detail: "A-bis-Z, eBay-Fälle", count: cases.n, href: "/faelle", level: "danger" });
   if (neg.n) out.push({ key: "negativ", label: `${neg.n} SKU${neg.n === 1 ? "" : "s"} mit negativem Bestand`, detail: `${neg.units} Stück – überverkauft oder falsch gebucht`, count: neg.n, href: "/bestand?ansicht=negativ", level: "danger" });
   if (claims.n) out.push({ key: "ansprueche", label: `${claims.n} Anspr${claims.n === 1 ? "uch läuft" : "üche laufen"} in 7 Tagen ab`, detail: `zusammen ${euro(claims.sum)}`, count: claims.n, href: "/ansprueche?ansicht=fristen", level: "warn" });

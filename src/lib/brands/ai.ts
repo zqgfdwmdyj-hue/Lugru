@@ -131,7 +131,7 @@ export const CONTENT_STATUS_LABEL: Record<string, [string, string]> = {
   idea: ["Idee", "tag-neutral"],
   filmed: ["Gedreht", "tag-info"],
   edited: ["Geschnitten", "tag-info"],
-  scheduled: ["Geplant", "tag-warn"],
+  scheduled: ["Fester Termin", "tag-warn"],
   published: ["Veröffentlicht", "tag-ok"],
 };
 

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { randomUUID } from "node:crypto";
-import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, durationOf, isDay, intakesAt, isTime, medStock, nextCareDate, num, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, durationOf, isDay, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
 import { addEntry, deleteAllPrivate, deleteEntry, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
 
 export type FormState = { ok: boolean; message: string } | null;
@@ -72,6 +72,10 @@ export async function saveSettingsAction(_prev: FormState, fd: FormData): Promis
     .slice(0, 10)
     .map((k) => k.slice(0, 30));
   const me = partner(fd.get("me"));
+  if (me && me !== cur.userPartner[session.userId]) {
+    const holder = partnerHolders(cur.userPartner, await privateMembers(session.tenantId), session.userId)[me];
+    if (holder) return fail(`„${me === "a" ? a : b}“ ist schon dem Konto „${holder}“ zugeordnet. Eine Person gehört genau zu einem Konto – Konten werden nicht zusammengeführt.`);
+  }
   const share = fd.get("shareDiary") === "on";
   const wake = time(fd.get("wakeTime"));
   await savePrivateSettings(session, {
@@ -482,6 +486,8 @@ export async function assignMeAction(fd: FormData) {
   const me = partner(fd.get("me"));
   if (!me) return;
   const cur = await privateSettings(session.tenantId);
+  // Schon an ein anderes Konto vergeben: nicht zusammenführen (Knopf ist dann ohnehin gesperrt).
+  if (partnerHolders(cur.userPartner, await privateMembers(session.tenantId), session.userId)[me]) return;
   await savePrivateSettings(session, { userPartner: { ...cur.userPartner, [session.userId]: me } });
   revalidatePath("/privat", "layout");
 }

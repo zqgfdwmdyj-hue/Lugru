@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { rowAnchor } from "@/lib/products/logic";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
@@ -70,15 +71,15 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
             {products.rows.length === 0 ? <div className="card-pad muted">Keine Treffer in SKU, Name, ASIN oder EAN.</div> : (
               <table className="table" data-testid="search-products"><tbody>
                 {products.rows.map((p) => (
-                  <tr key={p.key} data-testid="search-product">
+                  <tr key={p.key} id={rowAnchor(p.key)} data-testid="search-product" style={{ scrollMarginTop: 80 }}>
                     <td style={{ maxWidth: 380 }}>
-                      <Link href={`${p.href}?von=${encodeURIComponent(back)}`} style={{ fontWeight: 600 }}>{p.title ?? "– Name fehlt –"}</Link>
+                      <Link href={`${p.href}?von=${encodeURIComponent(`${back}#${rowAnchor(p.key)}`)}`} style={{ fontWeight: 600 }}>{p.title ?? "– Name fehlt –"}</Link>
                       {p.exact && <span className="tag tag-ok" style={{ marginLeft: 6 }}>genau</span>}
                       <div className="small muted num">{[p.asin, p.ean].filter(Boolean).join(" · ")}</div>
                     </td>
                     <td className="num small">
                       {p.skus.slice(0, 6).map((s, i) => (
-                        <span key={s}>{i > 0 && ", "}<Link href={`/produkte/sku/${encodeURIComponent(s)}?von=${encodeURIComponent(back)}`} style={p.matched.includes(s) ? { fontWeight: 700 } : undefined}>{s}</Link></span>
+                        <span key={s}>{i > 0 && ", "}<Link href={`/produkte/sku/${encodeURIComponent(s)}?von=${encodeURIComponent(`${back}#${rowAnchor(p.key)}`)}`} style={p.matched.includes(s) ? { fontWeight: 700 } : undefined}>{s}</Link></span>
                       ))}
                       {p.skus.length > 6 && ` … +${p.skus.length - 6}`}
                     </td>

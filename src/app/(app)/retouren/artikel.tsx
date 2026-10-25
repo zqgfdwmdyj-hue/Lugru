@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { reasonLabel } from "@/lib/returns/reconcile";
 import { formatEuro } from "@/lib/numbers";
 import type { Mode, SkuStat } from "@/lib/returns/reconcile";
 
@@ -70,7 +71,7 @@ export function Artikel({ stats, mode, sort, dir, q }: { stats: SkuStat[]; mode:
                 <td className="num right">{n1(s.notReturned)}</td>
                 <td className="num right">{formatEuro(s.refundAmount)}</td>
                 <td className="num right">{s.open ? formatEuro(s.open) : "–"}</td>
-                <td className="small">{s.topReasons.map((x) => `${x.reason} (${n1(x.count)})`).join(", ") || "–"}</td>
+                <td className="small">{s.topReasons.map((x) => `${reasonLabel(x.reason)} (${n1(x.count)})`).join(", ") || "–"}</td>
               </tr>
             ))}
           </tbody>

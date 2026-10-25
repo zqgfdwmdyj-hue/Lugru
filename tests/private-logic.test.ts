@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canAccess, homeFor } from "@/lib/auth/areas";
-import { dateStats, nextSleeper, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, monthGrid, num, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
+import { dateStats, nextSleeper, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, memberLabels, monthGrid, num, partnerHolders, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
 
 // Bereich „Privat“: Rechte und Auswertungen. Fiktive Daten.
 
@@ -161,5 +161,33 @@ describe("Seit der letzten Sitzung", () => {
       ],
     });
     expect(r).toMatchObject({ days: 14, intim: 2, dates: 1, sleepIn: { a: 1, b: 1 }, kidsHours: { a: 2, b: 1.5 }, tasksDone: 2, tasksOpen: 1 });
+  });
+});
+
+describe("memberLabels / partnerHolders (Prüfrunde 3)", () => {
+  const members = [
+    { userId: "u1", name: "Ludwig", login: "ludwig" },
+    { userId: "u2", name: "Ludwig Grunert", login: "lg@example.com" },
+    { userId: "u3", name: "Alexandra", login: "alex" },
+    { userId: "u4", name: null, login: "gast" },
+  ];
+  it("ähnliche Namen bekommen die Anmeldung als Zusatz, andere nicht", () => {
+    const l = memberLabels(members);
+    expect(l.get("u1")).toBe("Ludwig (Anmeldung: ludwig)");
+    expect(l.get("u2")).toBe("Ludwig Grunert (Anmeldung: lg@example.com)");
+    expect(l.get("u3")).toBe("Alexandra");
+    expect(l.get("u4")).toBe("gast");
+    expect(new Set(l.values()).size).toBe(4);
+  });
+  it("gleiche Namen bleiben getrennt", () => {
+    const l = memberLabels([{ userId: "x", name: "Ludwig", login: "a" }, { userId: "y", name: "ludwig ", login: "b" }]);
+    expect(l.get("x")).not.toBe(l.get("y"));
+  });
+  it("vergebene Partner-Rolle eines anderen Kontos wird gemeldet, die eigene nicht", () => {
+    const up = { u1: "a" as const, u3: "b" as const };
+    expect(partnerHolders(up, members, "u2")).toEqual({ a: "Ludwig (Anmeldung: ludwig)", b: "Alexandra" });
+    expect(partnerHolders(up, members, "u1")).toEqual({ b: "Alexandra" });
+    // Konto ohne Privat-Zugang (nicht in members) zählt nicht
+    expect(partnerHolders({ alt: "a" }, members, "u2")).toEqual({});
   });
 });

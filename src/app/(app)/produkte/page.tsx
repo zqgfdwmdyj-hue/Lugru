@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { rowAnchor } from "@/lib/products/logic";
 import { requireArea } from "@/lib/auth/session";
 import { formatEuro } from "@/lib/numbers";
 import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
@@ -69,12 +70,12 @@ async function ProductTable({ tenantId, q, view, seite, back }: { tenantId: stri
         <tbody>
           {shown.length === 0 && <tr><td colSpan={6} className="muted" data-testid="product-empty">{empty}</td></tr>}
           {shown.map((r) => (
-            <tr key={r.key} data-testid="product-row">
+            <tr key={r.key} id={rowAnchor(r.key)} data-testid="product-row" style={{ scrollMarginTop: 80 }}>
               <td style={{ maxWidth: 380 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
                   {r.image ? <img src={r.image} alt="" width={36} height={36} style={{ objectFit: "contain", borderRadius: 4, flex: "none", background: "var(--surface-2)" }} loading="lazy" /> : <span className="thumb-empty" aria-hidden="true" />}
                   <div style={{ minWidth: 0 }}>
-                    <Link href={`${r.href}?von=${encodeURIComponent(back)}`} style={{ fontWeight: 600, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? undefined}>{r.title ?? "– Name fehlt –"}</Link>
+                    <Link href={`${r.href}?von=${encodeURIComponent(`${back}#${rowAnchor(r.key)}`)}`} style={{ fontWeight: 600, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? undefined}>{r.title ?? "– Name fehlt –"}</Link>
                     <span className="small muted num">{[r.asin, r.ean].filter(Boolean).join(" · ")}</span>
                   </div>
                 </div>

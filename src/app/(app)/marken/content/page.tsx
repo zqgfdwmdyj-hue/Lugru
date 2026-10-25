@@ -6,7 +6,7 @@ import { CONTENT_STATUS_LABEL } from "@/lib/brands/ai";
 import { visibleBrands } from "@/lib/brands/access";
 import { formatDate } from "@/lib/numbers";
 import { deletePostAction, updatePostAction } from "../actions";
-import { contentPhase, isOverdue, PHASE_LABEL, PHASES, phaseOrder, postUnaccepted, type Phase } from "@/lib/brands/phases";
+import { contentDateKind, contentPhase, isOverdue, PHASE_LABEL, PHASES, phaseOrder, postUnaccepted, type Phase } from "@/lib/brands/phases";
 import { todayIso } from "@/lib/dates";
 import { CopyButton, SuggestContent } from "../forms";
 
@@ -37,7 +37,10 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
     posts.filter(({ p }) => !phase || contentPhase(p.status, p.plannedFor, p.source) === phase).map((x) => ({ ...x, source: x.p.source, date: x.p.plannedFor, done: x.p.status === "published" || postUnaccepted(x.p.status, x.p.source) })),
     today,
   );
-  const overdue = posts.filter(({ p }) => isOverdue(p.plannedFor, p.status === "published" || postUnaccepted(p.status, p.source), today)).length;
+  const late = (p: (typeof posts)[number]["p"]) => isOverdue(p.plannedFor, p.status === "published" || postUnaccepted(p.status, p.source), today);
+  // Nur ein fester Termin ist „überfällig“; ein verstrichenes Wunschdatum ist bloß ein Hinweis.
+  const overdue = posts.filter(({ p }) => late(p) && contentDateKind(p.status) === "termin").length;
+  const wishLate = posts.filter(({ p }) => late(p) && contentDateKind(p.status) === "wunsch").length;
   const brandById = new Map(brands.map((b) => [b.id, b]));
   const q = (p: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
@@ -51,7 +54,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
         <div><div className="crumb"><Link href="/marken">Marken</Link></div><h1>Content-Plan</h1></div>
       </div>
       <p className="muted" style={{ margin: 0, maxWidth: 860 }}>
-        Video-Ideen mit Hook, Ablauf, Szenen, Caption und Hashtags – für TikTok, YouTube (Zeitlux) und Instagram. Drehen, schneiden, Datum eintragen: geplante Posts stehen im Kalender.
+        Video-Ideen mit Hook, Ablauf, Szenen, Caption und Hashtags – für TikTok, YouTube (Zeitlux) und Instagram. Drehen, schneiden, Datum eintragen: Das Datum ist zunächst ein <strong>Wunschdatum</strong> (unverbindlich); erst mit Status „Fester Termin“ wird es zum <strong>verbindlichen Veröffentlichungstermin</strong>. Beides steht im Kalender, getrennt gekennzeichnet.
         Caption und Hashtags lassen sich mit einem Klick kopieren.
       </p>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -63,7 +66,12 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
           <Link key={ph} href={q({ status: undefined, phase: ph })} className={`chip${phase === ph ? " active" : ""}`} data-testid={`content-phase-${ph}`}>{PHASE_LABEL[ph]}{ph !== "veroeffentlichung" || phase === ph ? ` · ${byPhase(ph)}` : ""}</Link>
         ))}
       </div>
-      {overdue > 0 && <div className="notice notice-warn" data-testid="content-overdue">{overdue} Beitr{overdue === 1 ? "ag ist" : "äge sind"} überfällig (geplantes Datum vorbei, noch nicht veröffentlicht) – oben in der Liste.</div>}
+      {(overdue > 0 || wishLate > 0) && (
+        <div className="notice notice-warn" data-testid="content-overdue">
+          {overdue > 0 && <div data-testid="content-overdue-termin">{overdue} Beitr{overdue === 1 ? "ag ist" : "äge sind"} überfällig (fester Veröffentlichungstermin vorbei, noch nicht veröffentlicht) – oben in der Liste.</div>}
+          {wishLate > 0 && <div data-testid="content-overdue-wunsch">{wishLate} Wunschdat{wishLate === 1 ? "um" : "en"} verstrichen – unverbindlich: neues Datum eintragen oder mit „Fester Termin“ verbindlich festlegen.</div>}
+        </div>
+      )}
       <details className="small"><summary style={{ cursor: "pointer" }}>Nach einzelnem Status filtern</summary>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
           {Object.entries(CONTENT_STATUS_LABEL).map(([k, [l]]) => <Link key={k} href={q({ status: k, phase: undefined })} className={`chip${sp.status === k ? " active" : ""}`}>{l}</Link>)}
@@ -81,11 +89,14 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <span className="tag tag-neutral">{PHASE_LABEL[contentPhase(p.status, p.plannedFor, p.source)]}</span>
                   <span className={`tag ${CONTENT_STATUS_LABEL[p.status][1]}`}>{CONTENT_STATUS_LABEL[p.status][0]}</span>
-                  {isOverdue(p.plannedFor, p.status === "published" || postUnaccepted(p.status, p.source), today) && <span className="tag tag-danger" data-testid="content-late">überfällig</span>}
+                  {late(p) && (contentDateKind(p.status) === "termin" ? <span className="tag tag-danger" data-testid="content-late">überfällig</span> : <span className="tag tag-warn" data-testid="content-wish-late">Wunschdatum verstrichen</span>)}
                   {p.source === "ai" && <span className="tag tag-neutral">KI-Vorschlag</span>}
                   <span className="tag tag-neutral">{PLATFORM[p.platform]}</span>
                   {p.format && <span className="small muted">{p.format}</span>}
-                  <span className="small muted" style={{ marginLeft: "auto" }}>{b?.name}{idea ? ` · ${idea}` : ""}{p.plannedFor ? ` · geplant ${formatDate(p.plannedFor)}` : ""}</span>
+                  <span className="small muted" style={{ marginLeft: "auto" }} data-testid="content-date">
+                    {b?.name}{idea ? ` · ${idea}` : ""}
+                    {p.plannedFor ? (contentDateKind(p.status) === "termin" ? <> · <strong style={{ color: "var(--ink)" }} data-kind="termin">Veröffentlichung am {formatDate(p.plannedFor)} (fester Termin)</strong></> : <span data-kind="wunsch"> · Wunschdatum {formatDate(p.plannedFor)} (unverbindlich)</span>) : p.status === "scheduled" ? <span data-kind="termin-fehlt" style={{ color: "var(--danger)" }}> · Fester Termin ohne Datum – bitte eintragen</span> : ""}
+                  </span>
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 16 }}>„{p.hook}“</div>
                 {(p.script || p.shots.length > 0) && (
@@ -107,7 +118,10 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
                   <select className="input" name="status" defaultValue={p.status} style={{ width: "auto" }} aria-label="Status">
                     {Object.entries(CONTENT_STATUS_LABEL).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
                   </select>
-                  <input className="input" type="date" name="plannedFor" defaultValue={p.plannedFor ?? ""} style={{ width: "auto" }} aria-label="Geplant für" />
+                  <label className="small muted" style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                    {contentDateKind(p.status) === "termin" ? "Veröffentlichung am" : "Wunschdatum"}
+                    <input className="input" type="date" name="plannedFor" defaultValue={p.plannedFor ?? ""} style={{ width: "auto" }} aria-label={contentDateKind(p.status) === "termin" ? "Veröffentlichung am (fester Termin)" : "Wunschdatum (unverbindlich)"} />
+                  </label>
                   <input className="input" name="publishedUrl" defaultValue={p.publishedUrl ?? ""} placeholder="Link zum Video (nach dem Posten)" style={{ flex: "1 1 180px" }} />
                   <button className="btn btn-small" type="submit">Speichern</button>
                 </form>

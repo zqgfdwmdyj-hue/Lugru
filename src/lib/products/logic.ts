@@ -192,3 +192,9 @@ export function mappingIssues(i: MappingInput): Issue[] {
   const order: IssueKind[] = ["verkauft-unbekannt", "angebot-ohne-lager", "ebay-nicht-in-wawi", "ek-fehlt", "ek-abweichung", "ek-geerbt", "ean-mehrdeutig", "bestand-ohne-angebot"];
   return out.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || a.sku.localeCompare(b.sku));
 }
+
+/** Sprungmarke einer Zeile in Produktliste und Suche – „Zurück“ landet wieder an derselben Stelle. */
+export function rowAnchor(key: string): string {
+  return `p-${key.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 60)}`;
+}
+

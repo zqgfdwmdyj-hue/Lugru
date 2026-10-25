@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SideEffectsPicker } from "./side-effects";
 import { todayIso } from "@/lib/dates";
-import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, planFor, sideEffectState, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
+import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, memberLabels, planFor, sideEffectState, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
 import { Disclosure } from "@/components/disclosure";
 import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
@@ -56,7 +56,8 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
   const observations = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).sort((a, b) => b.data.day.localeCompare(a.data.day));
   const aboutMe = observations.filter((o) => o.data.aboutUserId === session.userId);
   const byMe = observations.filter((o) => o.userId === session.userId);
-  const nameOf = (id: string) => members.find((m) => m.userId === id)?.name ?? members.find((m) => m.userId === id)?.login ?? "?";
+  const labels = memberLabels(members);
+  const nameOf = (id: string) => labels.get(id) ?? "?";
   const data = mine.map((e) => e.data);
   const streakDays = (() => {
     const days = new Set(data.map((d) => d.day));
@@ -67,14 +68,14 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PrivatHead active="tagebuch" title={viewing ? `ADHS-Tagebuch von ${viewing.name ?? viewing.login}` : "ADHS-Tagebuch"} pin={session.privatePin} sub={
+      <PrivatHead active="tagebuch" title={viewing ? `ADHS-Tagebuch von ${nameOf(viewing.userId)}` : "ADHS-Tagebuch"} pin={session.privatePin} sub={
         <Link className="btn btn-small" href={`/privat/tagebuch/bericht${viewing ? `?von=${viewing.userId}` : ""}`}>Bericht für den Arzttermin</Link>
       } />
 
       {others.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <Link className={`chip${!viewing ? " active" : ""}`} href="/privat/tagebuch">Mein Tagebuch</Link>
-          {others.map((m) => <Link key={m.userId} className={`chip${viewing?.userId === m.userId ? " active" : ""}`} href={`/privat/tagebuch?von=${m.userId}`}>{m.name ?? m.login}</Link>)}
+          {others.map((m) => <Link key={m.userId} className={`chip${viewing?.userId === m.userId ? " active" : ""}`} href={`/privat/tagebuch?von=${m.userId}`}>{nameOf(m.userId)}</Link>)}
         </div>
       )}
 
@@ -208,7 +209,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
               <div className="field">
                 <label className="label" htmlFor="o-about">Über</label>
                 <select className="select" id="o-about" name="about">
-                  {members.filter((m) => m.userId !== session.userId).map((m) => <option key={m.userId} value={m.userId}>{m.name ?? m.login}</option>)}
+                  {members.filter((m) => m.userId !== session.userId).map((m) => <option key={m.userId} value={m.userId}>{nameOf(m.userId)}</option>)}
                 </select>
               </div>
               <div className="field"><label className="label" htmlFor="o-day">Tag</label><input className="input" id="o-day" name="day" type="date" defaultValue={today} max={today} /></div>

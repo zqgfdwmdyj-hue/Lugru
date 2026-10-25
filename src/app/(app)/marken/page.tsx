@@ -11,7 +11,7 @@ import { createIdeaAction } from "./actions";
 import { SuggestIdeas } from "./forms";
 import { BoxSuggest } from "../lieferanten/[id]/scan-form";
 import { getSettings } from "@/lib/settings";
-import { ideaPhase, ideaUnaccepted, isOverdue, PHASE_LABEL, PHASES, phaseOrder } from "@/lib/brands/phases";
+import { ideaDateKind, ideaPhase, ideaUnaccepted, isOverdue, PHASE_LABEL, PHASES, phaseOrder } from "@/lib/brands/phases";
 
 const COLUMNS = ["idea", "review", "planned", "in_progress", "live"] as const;
 
@@ -100,7 +100,7 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
                         <div className="small muted">
                           {i.targetPrice ? `VK ${formatEuro(Number(i.targetPrice))}` : ""}{margin !== null ? ` · Marge ca. ${formatEuro(margin)}` : ""}
                           {i.checklist.length && ["planned", "in_progress"].includes(i.status) ? ` · ${done}/${i.checklist.length} erledigt` : ""}
-                          {i.launchDate ? <span style={{ color: late ? "var(--danger)" : undefined }}> · Launch {formatDate(i.launchDate)}</span> : ""}
+                          {i.launchDate ? <span style={{ color: late ? "var(--danger)" : undefined }} data-kind={ideaDateKind(i.status)}> · {ideaDateKind(i.status) === "termin" ? `Launch ${formatDate(i.launchDate)}` : `Wunsch-Launch ${formatDate(i.launchDate)} (unverbindlich)`}</span> : ""}
                         </div>
                       </Link>
                     );

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { dispositionLabel, reasonLabel } from "@/lib/returns/reconcile";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { CHANNELS, RETURN_STATUSES } from "@/db/schema";
@@ -79,8 +80,12 @@ export default async function RetourenPage({ searchParams }: { searchParams: Pro
                     <td className="num small">{r.order_id ?? "–"}</td>
                     <td className="num small">{r.sku}</td>
                     <td className="num right">{r.quantity}</td>
-                    <td className="small" style={{ color: r.disposition && r.disposition !== "SELLABLE" ? "var(--warn)" : undefined }}>{r.disposition ?? "–"}</td>
-                    <td className="small">{r.reason ?? "–"}</td>
+                    <td className="small" style={{ color: r.disposition && r.disposition !== "SELLABLE" ? "var(--warn)" : undefined }} data-testid="return-disposition">
+                      {r.disposition ? <>{dispositionLabel(r.disposition)}{dispositionLabel(r.disposition) !== r.disposition && <div className="muted num" style={{ fontSize: 11 }}>{r.disposition}</div>}</> : "–"}
+                    </td>
+                    <td className="small" data-testid="return-reason">
+                      {r.reason ? <>{reasonLabel(r.reason)}{reasonLabel(r.reason) !== r.reason && <div className="muted num" style={{ fontSize: 11 }}>{r.reason}</div>}</> : "–"}
+                    </td>
                     <td className="num small">{r.lpn ?? "–"}{r.lot_id && <div><Link href={`/chargen/${r.lot_id}`}>{r.lot_sku}</Link></div>}</td>
                   </tr>
                 ))}
@@ -97,7 +102,7 @@ export default async function RetourenPage({ searchParams }: { searchParams: Pro
                     <td className="num"><Link href={`/retouren?ansicht=${view}&id=${r.id}`}>{r.orderRef}</Link></td>
                     <td className="num small">{r.sku ?? "–"}</td>
                     <td className="num right">{r.quantity}</td>
-                    <td className="small">{r.reason ?? "–"}</td>
+                    <td className="small">{r.reason ? reasonLabel(r.reason) : "–"}</td>
                     <td>{RETURN_STATUS_LABEL[r.status]}{r.condition ? <div className="small muted">{CONDITION[r.condition]}{r.restocked ? " · eingelagert" : ""}</div> : null}</td>
                     <td className="num right">{formatEuro(r.refundAmount)}</td>
                   </tr>

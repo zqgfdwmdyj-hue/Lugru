@@ -565,7 +565,8 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   r.get('/policies', h(async (_req, res) => {
     const settings = await getSettings(db);
     const [fulfillment, payment, ret] = await Promise.all([
-      getPolicies(db, settings, 'fulfillment'),
+      // Versandprofile mit Dienstleister, Preis und Bearbeitungszeit – für eine verständliche Auswahl.
+      getShippingPolicies(db, settings),
       getPolicies(db, settings, 'payment'),
       getPolicies(db, settings, 'return'),
     ]);

@@ -28,6 +28,14 @@ export function contentPhase(status: string, plannedFor: string | null, source?:
 export const ideaUnaccepted = (status: string) => status === "idea" || status === "review";
 export const postUnaccepted = (status: string, source: string) => source === "ai" && status === "idea";
 
+/**
+ * Art eines Datums: „termin“ = verbindlicher Veröffentlichungs-/Launch-Termin, „wunsch“ = Wunschdatum
+ * (unverbindlich). Beiträge: erst mit Status „Fester Termin“ (scheduled) verbindlich. Projekt-Ideen: ab „Geplant“.
+ */
+export type DateKind = "termin" | "wunsch";
+export const contentDateKind = (status: string): DateKind => (status === "scheduled" || status === "published" ? "termin" : "wunsch");
+export const ideaDateKind = (status: string): DateKind => (status === "planned" || status === "in_progress" || status === "live" ? "termin" : "wunsch");
+
 /** Überfällig: Termin vorbei und noch nicht veröffentlicht/live. */
 export function isOverdue(date: string | null, done: boolean, today: string): boolean {
   return Boolean(date) && !done && date! < today;

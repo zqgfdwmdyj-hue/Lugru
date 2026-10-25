@@ -162,7 +162,9 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
   for (const p of posts) {
     // KI-Vorschläge, die noch niemand angenommen hat (Status „Idee“), sind keine Termine.
     if (p.source === "ai" && p.status === "idea") continue;
-    out.push({ key: `post:${p.id}`, title: `${p.platform === "youtube" ? "YouTube" : p.platform === "instagram" ? "Instagram" : "TikTok"} (${brandNames.get(p.brandId) ?? ""}): ${p.hook}`.slice(0, 200), date: p.plannedFor!, description: [p.caption, p.hashtags].filter(Boolean).join("\n\n"), link: `/marken/content`, category: "Aufgabe", remind: true });
+    // Nur „Fester Termin“ ist verbindlich; sonst ist das Datum ein Wunschdatum (im Titel gekennzeichnet).
+    const fixed = p.status === "scheduled";
+    out.push({ key: `post:${p.id}`, title: `${fixed ? "Veröffentlichung" : "Wunschdatum"} ${p.platform === "youtube" ? "YouTube" : p.platform === "instagram" ? "Instagram" : "TikTok"} (${brandNames.get(p.brandId) ?? ""}): ${p.hook}`.slice(0, 200), date: p.plannedFor!, description: [fixed ? "Fester Veröffentlichungstermin." : "Wunschdatum – unverbindlich, erst mit Status „Fester Termin“ verbindlich.", p.caption, p.hashtags].filter(Boolean).join("\n\n"), link: `/marken/content`, category: "Aufgabe", remind: fixed });
   }
 
   // Fristen der Amazon-ToDos – je Tag ein Sammeltermin.

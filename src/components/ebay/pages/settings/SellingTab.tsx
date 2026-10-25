@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cleanPolicyName, shippingPolicyLabel, type ShippingPolicyInfo } from '@/lib/ebay/policy-label';
 import { api } from '../../api';
 import type { PolicyLists, SettingsData, TabContext } from './types';
 
@@ -157,7 +158,7 @@ export function SellingTab({ ctx }: { ctx: TabContext }) {
 
 function PolicySelect({ label, options, value, onChange }: {
   label: string;
-  options: { id: string; name: string }[];
+  options: ShippingPolicyInfo[];
   value: string;
   onChange: (v: string) => void;
 }) {
@@ -167,7 +168,7 @@ function PolicySelect({ label, options, value, onChange }: {
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">— bitte wählen —</option>
         {options.map((o) => (
-          <option key={o.id} value={o.id}>{o.name}</option>
+          <option key={o.id} value={o.id} title={o.name}>{o.service !== undefined || o.cost !== undefined || o.handlingDays !== undefined ? shippingPolicyLabel(o) : cleanPolicyName(o.name)}</option>
         ))}
       </select>
     </label>

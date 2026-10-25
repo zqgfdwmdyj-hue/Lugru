@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { addDays, diaryReport, intakeStatus, isDay, planFor, type AppointmentEntry, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
+import { addDays, diaryReport, intakeStatus, isDay, memberLabels, planFor, type AppointmentEntry, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
 import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { PrintButton } from "@/components/print-button";
 import { PrivatHead, dm, dmy } from "../../ui";
@@ -32,7 +32,8 @@ export default async function TagebuchBerichtPage({ searchParams }: { searchPara
   const entries = (await loadEntries<DiaryEntry>(session, ["tagebuch"])).filter((e) => e.userId === ownerId).map((e) => e.data);
   const r = diaryReport(entries, from, to);
   const obs = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).filter((o) => o.data.aboutUserId === ownerId && o.data.day >= from && o.data.day <= to).sort((a, b) => a.data.day.localeCompare(b.data.day));
-  const nameOf = (id: string) => members.find((m) => m.userId === id)?.name ?? members.find((m) => m.userId === id)?.login ?? "";
+  const labels = memberLabels(members);
+  const nameOf = (id: string) => labels.get(id) ?? "";
   const notes = r.entries.filter((e) => e.note || e.hard);
   const chosen = new Set<Part>(sp.auswahl ? ([] as string[]).concat(sp.teil ?? []).filter((x): x is Part => PARTS.some((p) => p.key === x)) : PARTS.filter((p) => p.on).map((p) => p.key));
   const own = ownerId === session.userId;
@@ -84,7 +85,7 @@ export default async function TagebuchBerichtPage({ searchParams }: { searchPara
       </div>
 
       <section className="card card-pad stack" data-testid="diary-report">
-        <h2>ADHS-Tagebuch {owner?.name ?? owner?.login ?? ""} – {dmy(from)} bis {dmy(to)}</h2>
+        <h2>ADHS-Tagebuch {owner ? nameOf(owner.userId) : ""} – {dmy(from)} bis {dmy(to)}</h2>
         <div className="small muted">{r.days} Tage eingetragen · Bewertungen 1 = schlecht bis 5 = sehr gut · „–“ = nicht erfasst · selbst geführt, ohne Auswertung oder Empfehlung, ersetzt keine ärztliche Untersuchung</div>
 
         {chosen.has("phasen") && <>

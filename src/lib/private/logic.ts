@@ -665,3 +665,38 @@ export function dateReminder(lastDay: string | null, today: string, days: number
   const since = daysBetween(lastDay, today);
   return since >= days ? since : null;
 }
+
+/**
+ * Eindeutige Anzeigenamen für Konten mit Privat-Zugang. Ähnliche Namen („Ludwig“ / „Ludwig Grunert“)
+ * bekommen die Anmeldung als Zusatz – die Konten bleiben getrennt, es wird nie nach Namen zusammengeführt.
+ */
+export function memberLabels(members: { userId: string; name: string | null; login: string }[]): Map<string, string> {
+  const norm = (s: string) => s.toLocaleLowerCase("de-DE").replace(/\s+/g, " ").trim();
+  const base = members.map((m) => ({ id: m.userId, name: (m.name ?? "").trim(), login: m.login }));
+  const similar = (a: string, b: string) => {
+    const x = norm(a), y = norm(b);
+    if (!x || !y) return false;
+    return x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `) || x.split(" ")[0] === y.split(" ")[0];
+  };
+  const out = new Map<string, string>();
+  for (const m of base) {
+    if (!m.name) { out.set(m.id, m.login); continue; }
+    const clash = base.some((o) => o.id !== m.id && o.name && similar(o.name, m.name));
+    out.set(m.id, clash ? `${m.name} (Anmeldung: ${m.login})` : m.name);
+  }
+  return out;
+}
+
+/**
+ * Wer hält welche Partner-Rolle (außer dem eigenen Konto)? Eine Rolle gehört genau einem Konto mit
+ * Privat-Zugang – ein zweites Konto wird nicht stillschweigend derselben Person zugeordnet.
+ */
+export function partnerHolders(userPartner: Record<string, PartnerKey>, members: { userId: string; name: string | null; login: string }[], self: string): Partial<Record<PartnerKey, string>> {
+  const labels = memberLabels(members);
+  const out: Partial<Record<PartnerKey, string>> = {};
+  for (const m of members) {
+    const k = userPartner[m.userId];
+    if (m.userId !== self && k && !out[k]) out[k] = labels.get(m.userId);
+  }
+  return out;
+}

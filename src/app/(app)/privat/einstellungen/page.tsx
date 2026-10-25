@@ -1,4 +1,5 @@
 import { myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
+import { memberLabels, partnerHolders } from "@/lib/private/logic";
 import { deleteAllAction, savePinAction, saveSettingsAction, saveStartHintAction } from "../actions";
 import { StateForm } from "../state-form";
 import { Choice, PrivatHead } from "../ui";
@@ -7,6 +8,8 @@ export default async function PrivatEinstellungenPage() {
   const session = await requirePrivate();
   const s = await privateSettings(session.tenantId);
   const members = await privateMembers(session.tenantId);
+  const labels = memberLabels(members);
+  const taken = partnerHolders(s.userPartner, members, session.userId);
   const me = myPartner(s, session);
   return (
     <>
@@ -36,7 +39,7 @@ export default async function PrivatEinstellungenPage() {
             <div className="field"><label className="label" htmlFor="pa">Partner 1</label><input className="input" id="pa" name="partnerA" defaultValue={s.partners.a} required /></div>
             <div className="field"><label className="label" htmlFor="pb">Partner 2</label><input className="input" id="pb" name="partnerB" defaultValue={s.partners.b} required /></div>
           </div>
-          <div className="field"><span className="label">Das bin ich (Konto „{session.name ?? session.email}“)</span><Choice name="me" value={me ?? undefined} options={[{ value: "a", label: s.partners.a }, { value: "b", label: s.partners.b }]} />{!me && <span className="small" style={{ color: "var(--warn)" }} data-testid="me-unset">Noch nicht festgelegt – bitte auswählen.</span>}</div>
+          <div className="field"><span className="label">Das bin ich (Konto „{session.name ?? session.email}“)</span><Choice name="me" value={me ?? undefined} options={(["a", "b"] as const).map((k) => ({ value: k, label: taken[k] ? `${s.partners[k]} (vergeben an „${taken[k]}“)` : s.partners[k], disabled: Boolean(taken[k]) }))} />{(taken.a || taken.b) && <span className="small muted" data-testid="me-taken">Eine Person gehört genau zu einem Konto – Konten mit ähnlichem Namen werden nicht zusammengeführt.</span>}{!me && <span className="small" style={{ color: "var(--warn)" }} data-testid="me-unset">Noch nicht festgelegt – bitte auswählen.</span>}</div>
           <div className="priv-grid">
             <div className="field"><label className="label" htmlFor="wake">Übliche Aufstehzeit (fürs Ausschlafen)</label><input className="input" id="wake" name="wakeTime" type="time" defaultValue={s.wakeTime} /></div>
             <div className="field"><label className="label" htmlFor="remind">„Zeit für ein Date?“ nach … Tagen (0 = aus)</label><input className="input" id="remind" name="dateReminderDays" type="number" min={0} max={365} defaultValue={s.dateReminderDays} /></div>
@@ -89,7 +92,7 @@ export default async function PrivatEinstellungenPage() {
       <section className="card card-pad stack">
         <h2>Wer hat Zugang</h2>
         <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {members.map((m) => <li key={m.userId}>{m.name ?? m.login}{m.userId === session.userId ? " (du)" : ""}{m.scope === "familie" ? " – nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten)" : ""}</li>)}
+          {members.map((m) => <li key={m.userId} data-testid="private-member">{labels.get(m.userId)}{m.userId === session.userId ? " (du)" : ""}{s.userPartner[m.userId] ? ` = ${s.userPartner[m.userId] === "a" ? "Partner 1" : "Partner 2"} „${s.partners[s.userPartner[m.userId]]}“` : " – noch keinem Partner zugeordnet"}{m.scope === "familie" ? " – nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten)" : ""}</li>)}
         </ul>
         <div className="small muted">
           Freigeben oder entziehen kann der Inhaber unter Einstellungen → Benutzer („Privat“: voll oder nur Familie). Der Zugang ist nie in „alle Bereiche“ enthalten – auch nicht für Inhaber –, und Nur-ansehen-Konten bekommen ihn nie.

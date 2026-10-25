@@ -43,7 +43,11 @@ const LOT_KIND: Record<string, string> = { purchase: "Einkauf", return: "Retoure
 export async function ProductHub({ session, d, base, tab, von, highlight, zeitraum }: { session: Session; d: ProductDetail & object; base: string; tab: Tab; von?: string; highlight?: string; zeitraum?: string }) {
   const tabs = (Object.keys(TABS) as Tab[]).filter((k) => (k === "ergebnis" ? canAccess(session, "geld") : k === "belege" ? canAccess(session, "buchhaltung") : true));
   const current: Tab = tabs.includes(tab) ? tab : "stammdaten";
-  const back = von && safeHref(von)?.startsWith("/produkte") ? von : "/produkte";
+  // Zurück dorthin, woher man kam: Produktliste (mit Filtern) oder Suche (mit Suchbegriff) – samt Sprungmarke der Zeile.
+  const safeVon = von ? safeHref(von) : null;
+  const back = safeVon && (safeVon.startsWith("/produkte") || safeVon.startsWith("/suche")) ? safeVon : "/produkte";
+  const backQ = back.startsWith("/suche") ? new URLSearchParams(back.split("?")[1]?.split("#")[0] ?? "").get("q") : null;
+  const backLabel = back.startsWith("/suche") ? `← Suche${backQ ? ` „${backQ}“` : ""}` : "← Produkte";
   const q = (t: Tab) => {
     const u = new URLSearchParams();
     if (t !== "stammdaten") u.set("tab", t);
@@ -64,7 +68,7 @@ export async function ProductHub({ session, d, base, tab, von, highlight, zeitra
         <div style={{ display: "flex", gap: 14, alignItems: "center", minWidth: 0 }}>
           {d.group.image && <img src={d.group.image} alt="" width={64} height={64} style={{ objectFit: "contain", borderRadius: 8, background: "var(--surface)", flex: "none" }} />}
           <div style={{ minWidth: 0 }}>
-            <div className="crumb"><Link href={back} data-testid="product-back">← Produkte</Link></div>
+            <div className="crumb"><Link href={back} data-testid="product-back">{backLabel}</Link></div>
             <h1 style={{ overflowWrap: "anywhere" }}>{title}</h1>
             <div className="small muted num" style={{ marginTop: 4 }}>
               {[d.product?.asin ?? d.group.asin ? `ASIN ${d.product?.asin ?? d.group.asin}` : null, d.product?.ean ?? d.group.ean ? `EAN ${d.product?.ean ?? d.group.ean}` : null, `${d.skus.length} SKU${d.skus.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}

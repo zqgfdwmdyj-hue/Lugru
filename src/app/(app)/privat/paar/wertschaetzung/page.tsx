@@ -20,7 +20,7 @@ export default async function WertschaetzungPage() {
   return (
     <>
       <PrivatHead active="danke" title="💛 Wertschätzung" pin={session.privatePin} />
-      {!me && <WhoAmI partners={s.partners} account={session.name ?? session.email} />}
+      {!me && <WhoAmI partners={s.partners} account={session.name ?? session.email} tenantId={session.tenantId} userId={session.userId} userPartner={s.userPartner} />}
 
       <section className="card card-pad stack" id="danke">
         <h2>Was ich heute geschätzt habe</h2>

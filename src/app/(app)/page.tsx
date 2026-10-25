@@ -258,7 +258,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
             )}
             <div className="card-pad" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
               <AddTask category="eigene" />
-              <Link className="btn btn-small" href="/?ansicht=liste">Alle Aufgaben ({open.length})</Link>
+              <Link className="btn btn-small" href="/?ansicht=liste" data-testid="all-tasks-link">{(() => { const ideas = open.filter((t) => isIdeaTask(t)).length; return `Alle Aufgaben (${open.length - ideas}${ideas ? ` · ${ideas} ${ideas === 1 ? "Idee" : "Ideen"}` : ""})`; })()}</Link>
             </div>
           </section>
 

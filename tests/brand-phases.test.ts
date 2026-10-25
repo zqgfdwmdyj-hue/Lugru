@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentPhase, ideaUnaccepted, postUnaccepted, ideaPhase, isOverdue, phaseOrder } from "@/lib/brands/phases";
+import { contentDateKind, contentPhase, ideaDateKind, ideaUnaccepted, postUnaccepted, ideaPhase, isOverdue, phaseOrder } from "@/lib/brands/phases";
 
 // Marken & Content: Phasen, Überfälliges, eigene vor KI.
 
@@ -37,5 +37,19 @@ describe("Nicht angenommene Ideen", () => {
     expect(postUnaccepted("filmed", "ai")).toBe(false);
     expect(ideaUnaccepted("review")).toBe(true);
     expect(ideaUnaccepted("planned")).toBe(false);
+  });
+});
+
+describe("Wunschdatum vs. fester Termin (Prüfrunde 3)", () => {
+  it("Beitrag: erst „Fester Termin“ ist verbindlich", () => {
+    for (const st of ["idea", "filmed", "edited"]) expect(contentDateKind(st)).toBe("wunsch");
+    expect(contentDateKind("scheduled")).toBe("termin");
+    expect(contentDateKind("published")).toBe("termin");
+  });
+  it("Projekt-Idee: ab „Geplant“ ist der Launch ein Termin", () => {
+    expect(ideaDateKind("idea")).toBe("wunsch");
+    expect(ideaDateKind("review")).toBe("wunsch");
+    expect(ideaDateKind("planned")).toBe("termin");
+    expect(ideaDateKind("in_progress")).toBe("termin");
   });
 });

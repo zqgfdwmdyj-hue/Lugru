@@ -176,12 +176,12 @@ export function Chips({ name, options, values = [] }: { name: string; options: r
 }
 
 /** Einfachauswahl als Chips (Radio). */
-export function Choice({ name, options, value }: { name: string; options: { value: string; label: string }[]; value?: string }) {
+export function Choice({ name, options, value }: { name: string; options: { value: string; label: string; disabled?: boolean }[]; value?: string }) {
   return (
     <div className="pick-chips">
       {options.map((o) => (
-        <label key={o.value}>
-          <input type="radio" name={name} value={o.value} defaultChecked={value === o.value} />
+        <label key={o.value} style={o.disabled ? { opacity: 0.55 } : undefined}>
+          <input type="radio" name={name} value={o.value} defaultChecked={value === o.value} disabled={o.disabled} />
           <span>{o.label}</span>
         </label>
       ))}
