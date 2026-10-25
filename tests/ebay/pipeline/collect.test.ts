@@ -460,3 +460,51 @@ describe('Treffer ohne Katalogdaten', () => {
     expect(changed.warnings?.some((w) => w.includes('keinen Katalogbezug'))).toBe(true);
   });
 });
+
+describe('Titel: dünner Katalogtitel überschreibt keinen aussagekräftigen Angebotstitel', () => {
+  // Regression (Prüfrunde 3): EAN 3168430327276 – Suchtreffer „Tefal Jamie Oliver Kochmesser 20 cm …“, Katalog nur „Tefal“.
+  const tefal: CatalogProduct = {
+    origin: 'catalog',
+    epid: 'E9',
+    title: 'Tefal',
+    imageUrls: ['https://i.ebayimg.com/t.jpg'],
+    aspects: { Marke: ['Tefal'] },
+    brand: 'Tefal',
+    categoryId: '20647',
+  };
+  const listingTitle = 'Tefal Jamie Oliver Kochmesser 20 cm Allzweckmesser Edelstahl';
+  const sel = { ref: 'v1|9|0', epid: 'E9', ean: '3168430327276', price: 30, quantity: 1, condition: 'NEW' as const };
+
+  it('übernimmt den Titel des gewählten Angebots und weist darauf hin', async () => {
+    const db = openMemoryDb();
+    const s = sources({ fetchItemByRef: vi.fn(async () => ({ product: tefal, gpsr, gtins: ['3168430327276'], listingTitle })) });
+    const a = await collectFromSelection(db, s, sel);
+    expect(a.title).toBe(listingTitle);
+    expect(a.title!.length).toBeGreaterThan(40);
+    expect(a.warnings?.some((w) => w.includes('nur „Tefal“') && w.includes('gewählten Angebots'))).toBe(true);
+    expect(a.catalogMatches?.[0].title).toBe(listingTitle);
+  });
+
+  it('aussagekräftiger Katalogtitel bleibt', async () => {
+    const db = openMemoryDb();
+    const s = sources({ fetchItemByRef: vi.fn(async () => ({ product, gpsr, listingTitle: 'Bohrer billig TOP' })) });
+    const a = await collectFromSelection(db, s, selection);
+    expect(a.title).toBe(product.title.slice(0, a.title!.length));
+    expect(a.warnings ?? []).toHaveLength(0);
+  });
+
+  it('Treffer-Wechsel nutzt dieselbe Regel', async () => {
+    const db = openMemoryDb();
+    const a = await collectFromSelection(db, sources(), selection);
+    const s = sources({ fetchItemByRef: vi.fn(async () => ({ product: tefal, gpsr: null, listingTitle })) });
+    const b = await recollectWithMatch(db, s, a.id, 'v1|9|0', 'E9');
+    expect(b.title).toBe(listingTitle);
+  });
+
+  it('ohne Angebotstitel: Fakten-Titel statt nur der Marke', async () => {
+    const db = openMemoryDb();
+    const s = sources({ fetchItemByRef: vi.fn(async () => ({ product: { ...tefal, aspects: { Marke: ['Tefal'], Produktart: ['Kochmesser'], Klingenlänge: ['20 cm'], Material: ['Edelstahl'] } }, gpsr })) });
+    const a = await collectFromSelection(db, s, sel);
+    expect(a.title!.split(' ').length).toBeGreaterThan(1);
+  });
+});

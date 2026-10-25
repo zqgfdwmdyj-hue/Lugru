@@ -6,7 +6,7 @@ import { parseAmount } from "@/lib/numbers";
 import type { TemuPackage } from "@/lib/temu/goods";
 import { temuBasePrice, type TemuPriceRule } from "@/lib/temu/price";
 import type { Candidate } from "@/lib/temu/transfer";
-import { needsCheck, PACK_SOURCE_LABEL, packOf, packSource, sizeConflict, WIZARD_STATUS, wizardStatus, type WizardStatus } from "@/lib/temu/wizard";
+import { confirmedFor, needsCheck, PACK_SOURCE_LABEL, packKey, packOf, packSource, sizeConflict, WIZARD_STATUS, wizardStatus, type WizardStatus } from "@/lib/temu/wizard";
 import { linkTemuAction, queueTransfersAction, type TransferState } from "./actions";
 
 type Pack = Partial<TemuPackage>;
@@ -32,8 +32,11 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [packs, setPacks] = useState<Record<string, Record<string, string>>>({});
-  // Tatsächliche Versandmaße je Angebot bestätigt (sonst gilt ein Standardpaket als ungeprüft).
-  const [confirmed, setConfirmed] = useState<Set<string>>(new Set());
+  // Bestätigte Versandmaße je Angebot – gespeichert als Fingerabdruck genau der geprüften Werte. Ändert sich danach
+  // ein Maß, das Gewicht oder das Standardpaket, passt der Fingerabdruck nicht mehr und die Bestätigung ist weg.
+  const [confirmedKeys, setConfirmedKeys] = useState<Map<string, string>>(new Map());
+  // Angebote, deren Bestätigung durch eine Änderung aufgehoben wurde (Hinweis in Schritt 3).
+  const [resetKeys, setResetKeys] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<Filter>("alle");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,7 +55,8 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
   const rowEntered = (c: Candidate) => Object.fromEntries(PACK_FIELDS.map(([k]) => [k, num(packs[c.key]?.[k])]));
   const rowPack = (c: Candidate) => packOf(rowEntered(c), c.pack, stdPack);
   const sourceOf = (c: Candidate) => packSource(rowEntered(c), c.pack);
-  const checkOf = (c: Candidate) => needsCheck(c, rowPack(c), sourceOf(c), confirmed.has(c.key));
+  const isConfirmed = (c: Candidate) => confirmedFor(confirmedKeys.get(c.key), rowPack(c));
+  const checkOf = (c: Candidate) => needsCheck(c, rowPack(c), sourceOf(c), isConfirmed(c));
   const priceOf = (c: Candidate) => num(prices[c.key]) ?? temuBasePrice(c.price, liveRule);
   const stateOf = (c: Candidate) => wizardStatus(c, priceOf(c), rowPack(c), { allowHttp, check: checkOf(c) });
   const busyJob = (c: Candidate) => c.job?.status === "wartet" || c.job?.status === "läuft";
@@ -61,18 +65,39 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
     const needle = q.trim().toLowerCase();
     return candidates.filter((c) => matches(c, filter) && (!needle || c.title.toLowerCase().includes(needle) || (c.sku ?? "").toLowerCase().includes(needle) || c.ref.includes(needle)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates, filter, q, factor, food, std, prices, packs, confirmed]);
+  }, [candidates, filter, q, factor, food, std, prices, packs, confirmedKeys]);
   const count = (f: Filter) => candidates.filter((c) => matches(c, f)).length;
   const chosen = candidates.filter((c) => picked.has(c.key));
   const ready = chosen.filter((c) => !c.temu && !busyJob(c) && stateOf(c).status === "entwurf");
   const blocked = chosen.filter((c) => !c.temu && !busyJob(c) && stateOf(c).status === "unvollstaendig");
   const unchecked = chosen.filter((c) => !c.temu && !busyJob(c) && stateOf(c).status === "pruefen");
-  const setConfirm = (keys: string[], on: boolean) =>
-    setConfirmed((s) => {
-      const n = new Set(s);
-      for (const k of keys) if (on) n.add(k); else n.delete(k);
+  // Jede Änderung an Zeile oder Standardpaket hebt betroffene Bestätigungen auf – auch wenn später wieder die alten Werte stehen.
+  useEffect(() => {
+    const stale = [...confirmedKeys].filter(([k, v]) => {
+      const c = candidates.find((x) => x.key === k);
+      return !c || v !== packKey(rowPack(c));
+    }).map(([k]) => k);
+    if (!stale.length) return;
+    setConfirmedKeys((prev) => {
+      const n = new Map(prev);
+      for (const k of stale) n.delete(k);
       return n;
     });
+    setResetKeys((prev) => new Set([...prev, ...stale]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packs, std]);
+  const setConfirm = (keys: string[], on: boolean) => {
+    if (on) setResetKeys((prev) => new Set([...prev].filter((k) => !keys.includes(k))));
+    setConfirmedKeys((s) => {
+      const n = new Map(s);
+      for (const k of keys) {
+        const c = candidates.find((x) => x.key === k);
+        if (on && c) n.set(k, packKey(rowPack(c)));
+        else n.delete(k);
+      }
+      return n;
+    });
+  };
 
   function toggle(key: string, on: boolean) {
     setPicked((s) => {
@@ -98,7 +123,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
         factorPercent: parseAmount(factor) ?? 0,
         food,
         pack: stdPack,
-        picks: todo.map((c) => ({ source: c.source, ref: c.ref, title: c.title, ...(num(prices[c.key]) ? { price: num(prices[c.key]) } : {}), pack: rowPack(c), ...(target === "temu" ? { packChecked: stateOf(c).status === "entwurf", packSource: confirmed.has(c.key) && sourceOf(c) === "standard" ? "standard-bestaetigt" : sourceOf(c) } : {}) })),
+        picks: todo.map((c) => ({ source: c.source, ref: c.ref, title: c.title, ...(num(prices[c.key]) ? { price: num(prices[c.key]) } : {}), pack: rowPack(c), ...(target === "temu" ? { packChecked: stateOf(c).status === "entwurf", packSource: isConfirmed(c) && sourceOf(c) === "standard" ? "standard-bestaetigt" : sourceOf(c), ...(isConfirmed(c) ? { packConfirmed: confirmedKeys.get(c.key) } : {}) } : {}) })),
       });
       setState(r && skipped ? { ...r, message: `${r.message} ${skipped} übersprungen (${target === "temu" ? "unvollständig, Maße nicht bestätigt, schon bei Temu oder in Arbeit" : "schon in der Wawi"}).` } : r);
       if (r?.ok) setPicked(new Set());
@@ -268,9 +293,10 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
                       {conflict && <div className="small" style={{ color: "var(--danger)", whiteSpace: "normal" }} data-testid="pack-conflict">Titel nennt {String(conflict).replace(".", ",")} cm – Paket ist kleiner. Bitte tatsächliche Versandmaße eintragen.</div>}
                     </td>
                     <td className="small" style={{ minWidth: 170 }}>
-                      <div className={src === "standard" ? "" : "muted"} style={src === "standard" ? { color: "var(--warn)" } : undefined} data-testid="pack-source">{PACK_SOURCE_LABEL[src]}{src === "standard" ? " – ungeprüft" : ""}</div>
+                      <div className={src === "standard" && !isConfirmed(c) ? "" : "muted"} style={src === "standard" && !isConfirmed(c) ? { color: "var(--warn)" } : undefined} data-testid="pack-source">{PACK_SOURCE_LABEL[src]}{src === "standard" ? (isConfirmed(c) ? " (bestätigt)" : " – ungeprüft") : ""}</div>
+                      {resetKeys.has(c.key) && !isConfirmed(c) && <div className="small" style={{ color: "var(--danger)" }} data-testid="pack-reset">Maße geändert – Bestätigung aufgehoben, bitte neu prüfen.</div>}
                       <label style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
-                        <input type="checkbox" checked={confirmed.has(c.key)} onChange={(e) => setConfirm([c.key], e.target.checked)} data-testid="pack-confirm" />
+                        <input type="checkbox" checked={isConfirmed(c)} onChange={(e) => setConfirm([c.key], e.target.checked)} data-testid="pack-confirm" />
                         Versandmaße geprüft
                       </label>
                     </td>
@@ -280,7 +306,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
               </tbody>
             </table>
           </section>
-          {chosen.some((c) => sourceOf(c) === "standard" && !sizeConflict(c.title, rowPack(c)) && !confirmed.has(c.key)) && (
+          {chosen.some((c) => sourceOf(c) === "standard" && !sizeConflict(c.title, rowPack(c)) && !isConfirmed(c)) && (
             <div className="small">
               <button type="button" className="btn btn-small" onClick={() => { const keys = chosen.filter((c) => sourceOf(c) === "standard" && !sizeConflict(c.title, rowPack(c))).map((c) => c.key); if (confirm(`Für ${keys.length} Angebot(e) gilt das Standardpaket. Hast du geprüft, dass diese Artikel wirklich in dieses Paket passen und das Gewicht stimmt?`)) setConfirm(keys, true); }} data-testid="pack-confirm-all">
                 Standardpaket für alle passenden bestätigen …
@@ -315,7 +341,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
                       <td className="num right" data-testid="summary-qty">{c.wawiQty ?? c.quantity}<div className="small muted">{c.wawiQty === null ? "eBay-Menge (nicht in Wawi)" : "verfügbar in der Wawi"}</div></td>
                       <td className="num right">{p.weightG ?? "–"} g</td>
                       <td className="small num">{p.lengthCm ?? "–"} × {p.widthCm ?? "–"} × {p.heightCm ?? "–"}</td>
-                      <td className="small" data-testid="summary-source">Paket: {PACK_SOURCE_LABEL[src]}{src === "standard" ? (confirmed.has(c.key) ? " (bestätigt)" : " – ungeprüft") : ""}</td>
+                      <td className="small" data-testid="summary-source">Paket: {PACK_SOURCE_LABEL[src]}{src === "standard" ? (isConfirmed(c) ? " (bestätigt)" : " – ungeprüft") : ""}</td>
                       {statusCell(c)}
                     </tr>
                   );

@@ -52,6 +52,19 @@ export function packSource(row: Partial<Record<keyof TemuPackage, number | undef
 }
 
 /**
+ * Fingerabdruck der Paketwerte (Gewicht, L, B, H). Eine Bestätigung gilt nur für genau diese Werte – jede
+ * Änderung (in der Zeile, am Artikel oder am Standardpaket) macht sie ungültig.
+ */
+export function packKey(p: Partial<TemuPackage>): string {
+  return PACK_KEYS.map((k) => (p[k] !== undefined && Number(p[k]) > 0 ? String(Math.round(Number(p[k]) * 100) / 100) : "")).join("|");
+}
+
+/** Bestätigt – und zwar für die aktuellen Werte? */
+export function confirmedFor(confirmedKey: string | undefined, pack: Partial<TemuPackage>): boolean {
+  return confirmedKey !== undefined && confirmedKey === packKey(pack);
+}
+
+/**
  * Plausibilität: nennt der Titel eine Länge in cm (z. B. „Kochmesser 20 cm“), die größer ist als die längste
  * Paketseite, passt das Paket nicht. Gibt die Länge zurück, sonst null.
  */

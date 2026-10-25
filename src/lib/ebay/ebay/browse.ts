@@ -117,6 +117,7 @@ export async function fetchItemByRef(
   gpsr: ReturnType<typeof extractGpsr>;
   gtins: string[];
   listingImages: string[];
+  listingTitle?: string;
 }> {
   const item = await getItem(db, settings, itemId);
   return {
@@ -124,7 +125,14 @@ export async function fetchItemByRef(
     gpsr: extractGpsr(item),
     gtins: extractGtins(item),
     listingImages: extractListingImages(item),
+    listingTitle: listingTitleOf(item),
   };
+}
+
+/** Titel des Angebots selbst (nicht des Katalogs) – Ersatz, wenn der Katalogtitel nur aus der Marke besteht. */
+function listingTitleOf(item: unknown): string | undefined {
+  const t = (item as { title?: unknown } | null)?.title;
+  return typeof t === 'string' && t.trim() ? t.trim() : undefined;
 }
 
 export interface FetchedItem {
@@ -132,6 +140,7 @@ export interface FetchedItem {
   product: CatalogProduct | null;
   gpsr: ReturnType<typeof extractGpsr>;
   listingImages: string[];
+  listingTitle?: string;
 }
 
 /**
@@ -155,7 +164,7 @@ export async function fetchItemByLegacyId(db: Db, settings: Settings, legacyId: 
     }
     // Erst nach diesem Versuch: ohne jeden Katalogbezug zählen die Fakten des Angebots.
     product ??= extractListingFacts(item);
-    return { ref, product, gpsr: extractGpsr(item), listingImages: extractListingImages(item) };
+    return { ref, product, gpsr: extractGpsr(item), listingImages: extractListingImages(item), listingTitle: listingTitleOf(item) };
   } catch (err) {
     // Variantenlisting? Über die Item-Gruppe versuchen; sonst Originalfehler werfen.
     const group = (await ebayFetch(
@@ -170,7 +179,9 @@ export async function fetchItemByLegacyId(db: Db, settings: Settings, legacyId: 
     let ref = `v1|${legacyId}|0`;
     // Bilder aus derselben Variante, die auch die Produktdaten liefert.
     let listingImages: string[] = [];
+    let listingTitle: string | undefined;
     for (const item of items) {
+      listingTitle ??= listingTitleOf(item);
       const extracted = extractCatalogProduct(item);
       if (extracted && !product) {
         product = extracted;
@@ -191,7 +202,7 @@ export async function fetchItemByLegacyId(db: Db, settings: Settings, legacyId: 
       listingImages = extractListingImages(first);
       if (typeof first.itemId === 'string') ref = first.itemId;
     }
-    return { ref, product, gpsr, listingImages };
+    return { ref, product, gpsr, listingImages, listingTitle };
   }
 }
 

@@ -57,3 +57,25 @@ describe("Prüfrunde 2: vollständig ≠ geprüft", () => {
     expect(packSource({ weightG: 1 }, { lengthCm: 2 })).toBe("standard");
   });
 });
+
+describe("Paketbestätigung an die geprüften Werte gebunden (Prüfrunde 3)", () => {
+  it("Fingerabdruck ändert sich mit jedem Maß und Gewicht", async () => {
+    const { packKey, confirmedFor } = await import("@/lib/temu/wizard");
+    const p30 = { weightG: 500, lengthCm: 30, widthCm: 10, heightCm: 5 };
+    const key = packKey(p30);
+    expect(confirmedFor(key, p30)).toBe(true);
+    expect(confirmedFor(key, { ...p30, lengthCm: 10 })).toBe(false);
+    expect(confirmedFor(key, { ...p30, weightG: 600 })).toBe(false);
+    expect(confirmedFor(undefined, p30)).toBe(false);
+    expect(packKey({ weightG: 500, lengthCm: 30 })).toBe("500|30||");
+  });
+  it("Kochmesser 20 cm: 30 cm bestätigt, dann 10 cm → wieder prüfen, Widerspruch wieder sichtbar", async () => {
+    const { packKey, confirmedFor, needsCheck } = await import("@/lib/temu/wizard");
+    const title = "Tefal Jamie Oliver Kochmesser 20 cm";
+    const confirmedKey = packKey({ weightG: 300, lengthCm: 30, widthCm: 10, heightCm: 5 });
+    const now = { weightG: 300, lengthCm: 10, widthCm: 10, heightCm: 5 };
+    const open = needsCheck({ title }, now, "standard", confirmedFor(confirmedKey, now));
+    expect(open.join(" ")).toMatch(/Paket kleiner als im Titel genannt \(20 cm\)/);
+    expect(open.join(" ")).toMatch(/Versandmaße bestätigen/);
+  });
+});

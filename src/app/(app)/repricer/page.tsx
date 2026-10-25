@@ -3,12 +3,16 @@ import { requireSession } from "@/lib/auth/session";
 import { formatEuro } from "@/lib/numbers";
 import { repricerRows } from "@/lib/repricer";
 import { getSettings } from "@/lib/settings";
+import { formatDate } from "@/lib/numbers";
+import { fbaReport } from "@/lib/stock/fba-report";
 
 export default async function RepricerPage({ searchParams }: { searchParams: Promise<{ nur?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const s = await getSettings(session.tenantId);
   const all = await repricerRows(session.tenantId);
+  // Ohne FBA-Bericht ist unbekannt, welche SKUs bei Amazon liegen – nicht „0 SKUs“.
+  const fr = await fbaReport(session.tenantId);
   const below = all.filter((r) => r.min !== null && r.price !== null && r.price < r.min);
   const rows = sp.nur === "unter" ? below : sp.nur === "ohne-ek" ? all.filter((r) => r.unitCost === null) : all;
   return (
@@ -21,7 +25,14 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
         </div>
       </div>
       <div className="grid-kpi">
-        <div className="card card-pad"><div className="kpi-label">SKUs mit Bestand</div><div className="kpi-value">{all.length}</div></div>
+        <div className="card card-pad" data-testid="kpi-repricer-skus">
+          <div className="kpi-label">SKUs mit Bestand bei Amazon</div>
+          {fr.missing ? (
+            <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt →</Link></>
+          ) : (
+            <><div className="kpi-value">{all.length}</div><div className="small" style={fr.stale ? { color: "var(--warn)" } : undefined}>{fr.stale ? `Stand ${formatDate(fr.snapshot)} – veraltet` : `laut Bericht vom ${formatDate(fr.snapshot)}`}</div></>
+          )}
+        </div>
         <div className="card card-pad"><div className="kpi-label">Aktueller Preis unter Mindestpreis</div><div className="kpi-value" style={{ color: below.length ? "var(--danger)" : undefined }}>{below.length}</div></div>
         <div className="card card-pad"><div className="kpi-label">Ohne EK (kein Mindestpreis)</div><div className="kpi-value">{all.filter((r) => r.unitCost === null).length}</div></div>
         <div className="card card-pad small muted">Mindestgewinn {formatEuro(s.pricing.minProfit)} · Provision {Math.round(s.pricing.referralRate * 100)} % (wenn keine Gebührenvorschau) · Max = Min × {String(s.pricing.maxPriceFactor).replace(".", ",")} bzw. Ziel-VK. <Link href="/einstellungen">Ändern</Link></div>
@@ -35,7 +46,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
         <table className="table">
           <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Bestand</th><th className="right">EK</th><th className="right">FBA-Gebühr</th><th className="right">Aktuell</th><th className="right">Min</th><th className="right">Max</th></tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={8} className="muted">Keine SKUs. FBA-Bestandsbericht importieren.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} className="muted" data-testid="repricer-empty">{fr.missing ? <>Der FBA-Bestandsbericht fehlt – welche SKUs bei Amazon liegen, ist unbekannt (nicht „kein Bestand“). <Link href="/import">Bericht importieren</Link>.</> : sp.nur ? "Keine SKUs in dieser Ansicht." : `Laut FBA-Bericht vom ${formatDate(fr.snapshot)} liegt keine Ware bei Amazon.`}</td></tr>}
             {rows.slice(0, 1000).map((r) => (
               <tr key={r.sku}>
                 <td className="num small">{r.sku}</td>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireSession } from "@/lib/auth/session";
 import { INBOUND_STATUS_LABEL } from "@/lib/labels";
 import { createShipment } from "./actions";
@@ -12,9 +13,9 @@ export default async function InboundPage() {
   const rows = await db
     .select({
       s: S,
-      skus: sql<number>`(select count(*)::int from inbound_items i where i.shipment_id = ${S.id})`,
-      units: sql<number>`(select coalesce(sum(scanned_quantity), 0)::int from inbound_items i where i.shipment_id = ${S.id})`,
-      boxes: sql<number>`(select count(*)::int from inbound_boxes b where b.shipment_id = ${S.id})`,
+      skus: sql<number>`(select count(*)::int from inbound_items i where i.shipment_id = ${qcol(S.id)})`,
+      units: sql<number>`(select coalesce(sum(scanned_quantity), 0)::int from inbound_items i where i.shipment_id = ${qcol(S.id)})`,
+      boxes: sql<number>`(select count(*)::int from inbound_boxes b where b.shipment_id = ${qcol(S.id)})`,
     })
     .from(S)
     .where(eq(S.tenantId, session.tenantId))

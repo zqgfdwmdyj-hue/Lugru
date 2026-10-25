@@ -29,6 +29,7 @@ const Input = z.object({
         pack: pack.optional(),
         packChecked: z.boolean().optional(),
         packSource: z.enum(["zeile", "artikel", "standard", "standard-bestaetigt"]).optional(),
+        packConfirmed: z.string().max(80).optional(),
       }),
     )
     .min(1)

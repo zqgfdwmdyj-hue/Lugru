@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { and, desc, eq, ne, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireArea } from "@/lib/auth/session";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { DOC_TYPE_LABEL, NEGATIVE, NOT_BOOKED, type DocType } from "@/lib/invoices/checks";
@@ -37,7 +38,7 @@ export default async function RechnungenPage({ searchParams }: { searchParams: P
   const signed = sql`case when ${I.docType} in (${sql.join(NOT_BOOKED.map((d) => sql`${d}`), sql`, `)}) then 0 when ${I.docType} in (${sql.join(NEGATIVE.map((d) => sql`${d}`), sql`, `)}) then -abs(coalesce(${I.totalGross}, 0)) else coalesce(${I.totalGross}, 0) end`;
   const [rows, [{ n: total }], totals, counts] = await Promise.all([
     db
-      .select({ i: I, supplier: schema.suppliers.code, lots: sql<number>`(select count(*)::int from invoice_lots l where l.invoice_id = ${I.id})` })
+      .select({ i: I, supplier: schema.suppliers.code, lots: sql<number>`(select count(*)::int from invoice_lots l where l.invoice_id = ${qcol(I.id)})` })
       .from(I)
       .leftJoin(schema.suppliers, eq(schema.suppliers.id, I.supplierId))
       .where(and(...where))

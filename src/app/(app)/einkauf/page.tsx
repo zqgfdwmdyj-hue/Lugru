@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
@@ -23,10 +24,10 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
       .select({
         po: PO,
         supplier: sql<string | null>`coalesce(${schema.suppliers.name}, ${schema.suppliers.code})`,
-        items: sql<number>`(select count(*)::int from purchase_order_items i where i.po_id = ${PO.id})`,
-        qty: sql<number>`(select coalesce(sum(i.quantity), 0)::int from purchase_order_items i where i.po_id = ${PO.id})`,
-        received: sql<number>`(select coalesce(sum(i.received), 0)::int from purchase_order_items i where i.po_id = ${PO.id})`,
-        total: sql<number>`(select coalesce(sum(i.quantity * i.unit_cost_gross), 0)::float from purchase_order_items i where i.po_id = ${PO.id})`,
+        items: sql<number>`(select count(*)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        qty: sql<number>`(select coalesce(sum(i.quantity), 0)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        received: sql<number>`(select coalesce(sum(i.received), 0)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        total: sql<number>`(select coalesce(sum(i.quantity * i.unit_cost_gross), 0)::float from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
       })
       .from(PO)
       .leftJoin(schema.suppliers, eq(schema.suppliers.id, PO.supplierId))

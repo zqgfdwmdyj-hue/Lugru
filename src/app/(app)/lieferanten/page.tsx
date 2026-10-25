@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireArea } from "@/lib/auth/session";
 import { createFeed } from "./actions";
 
@@ -8,7 +9,7 @@ export default async function LieferantenPage() {
   const session = await requireArea("lieferanten");
   const F = schema.supplierFeeds;
   const [feeds, suppliers] = await Promise.all([
-    db.select({ f: F, offers: sql<number>`(select count(*)::int from supplier_offers o where o.feed_id = ${F.id})` }).from(F).where(eq(F.tenantId, session.tenantId)).orderBy(desc(F.createdAt)),
+    db.select({ f: F, offers: sql<number>`(select count(*)::int from supplier_offers o where o.feed_id = ${qcol(F.id)})` }).from(F).where(eq(F.tenantId, session.tenantId)).orderBy(desc(F.createdAt)),
     db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code)),
   ]);
   return (

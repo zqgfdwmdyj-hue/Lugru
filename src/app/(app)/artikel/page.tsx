@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireArea } from "@/lib/auth/session";
 import { brandAllowed } from "@/lib/auth/areas";
 import { visibleBrands } from "@/lib/brands/access";
@@ -21,7 +22,7 @@ export default async function ArtikelPage({ searchParams }: { searchParams: Prom
   if (sp.q?.trim()) where.push(sql`(${A.title} ilike ${`%${sp.q.trim()}%`} or ${A.sku} ilike ${`%${sp.q.trim()}%`} or ${A.ean} = ${sp.q.trim()} or ${A.asin} = ${sp.q.trim().toUpperCase()})`);
   const rows = (
     await db
-      .select({ a: A, brand: schema.brands.name, image: sql<string | null>`(select i.file_id from article_images i where i.article_id = ${A.id} order by i.position, i.created_at limit 1)` })
+      .select({ a: A, brand: schema.brands.name, image: sql<string | null>`(select i.file_id from article_images i where i.article_id = ${qcol(A.id)} order by i.position, i.created_at limit 1)` })
       .from(A)
       .leftJoin(schema.brands, eq(schema.brands.id, A.brandId))
       .where(and(...where))

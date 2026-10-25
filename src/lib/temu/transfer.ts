@@ -7,6 +7,7 @@ import type { EbayActiveItem } from "@/lib/ebay/trading-map";
 import type { ListingAttempt } from "@/lib/ebay/types";
 import { ebayActiveItems, ebayConnected, ebayLegacyItem } from "@/lib/integrations/clients/ebay";
 import { temuConnected } from "@/lib/integrations/clients/temu";
+import { confirmedFor, needsCheck, packKey } from "@/lib/temu/wizard";
 import { adoptLegacyEbayItem, linkEbayPublished } from "@/lib/stock/ebay-link";
 import { availableOf } from "@/lib/stock/channel-logic";
 import { stockLevels } from "@/lib/stock/channel-sync";
@@ -196,7 +197,17 @@ async function packsByEan(tenantId: string, attempts: ListingAttempt[]): Promise
   return out;
 }
 
-export type TransferPick = { source: TransferSource; ref: string; title?: string; price?: number; pack?: Partial<TemuPackage>; packChecked?: boolean; packSource?: string };
+export type TransferPick = {
+  source: TransferSource;
+  ref: string;
+  title?: string;
+  price?: number;
+  pack?: Partial<TemuPackage>;
+  packChecked?: boolean;
+  packSource?: string;
+  /** Fingerabdruck der bestätigten Paketwerte (packKey) – muss zum gesendeten Paket passen. */
+  packConfirmed?: string;
+};
 
 /** Ausgewählte Angebote in die Warteschlange; startet die Abarbeitung im Hintergrund. */
 export async function queueTransfers(
@@ -219,6 +230,15 @@ export async function queueTransfers(
     if (target === "temu" && p.packChecked !== true) {
       problems.push(`${p.title ?? p.ref}: Versandmaße nicht bestätigt – in Schritt 3 „Versandmaße geprüft“ anhaken.`);
       continue;
+    }
+    // Auch auf dem Server: Standardpaket oder Widerspruch zum Titel nur mit Bestätigung genau dieser Werte.
+    if (target === "temu") {
+      const source = p.packSource?.startsWith("standard") ? "standard" : p.packSource === "zeile" ? "zeile" : "artikel";
+      const open = needsCheck({ title: p.title ?? "" }, pack, source, confirmedFor(p.packConfirmed, pack));
+      if (open.length) {
+        problems.push(`${p.title ?? p.ref}: ${open.join("; ")} – die Bestätigung gilt nur für die geprüften Maße (${packKey(pack).replace(/\|/g, " / ")}).`);
+        continue;
+      }
     }
     const input = { factor: opts.rule.factor, food: opts.rule.food, ...(p.price && p.price > 0 ? { price: p.price } : {}), ...pack, ...(p.packSource ? { packSource: p.packSource } : {}) };
     await db

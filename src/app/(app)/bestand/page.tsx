@@ -12,11 +12,12 @@ import { createCount, setOwnStock } from "./actions";
 import { Kpi } from "@/components/kpi";
 import { skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, stockValue } from "@/lib/money/profit-logic";
+import { fbaReport } from "@/lib/stock/fba-report";
 
 const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Unverkäuflich", ladenhueter: "Ladenhüter", "ohne-ek": "Ohne EK (unbewertet)", negativ: "Negativer Bestand" } as const;
 type View = keyof typeof VIEWS;
 
-type Row = { sku: string; title: string | null; image: string | null; asin: string | null; fba: number; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
+type Row = { sku: string; title: string | null; image: string | null; asin: string | null; fba: number; inReport: boolean; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
 
 export default async function BestandPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; q?: string }> }) {
   const session = await requireSession();
@@ -42,6 +43,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
            (select coalesce(li.payload->'imageUrls'->>0, li.payload->>'image') from listings li where li.tenant_id = ${t} and (li.sku = s.sku or li.stock_sku = s.sku) and (li.payload ? 'imageUrls' or li.payload ? 'image') order by (li.status = 'active') desc limit 1) as image,
            coalesce(p.asin, ai.asin) as asin,
            coalesce(ai.fulfillable, 0) as fba,
+           (ai.sku is not null) as "inReport",
            coalesce(ai.unsellable, 0) as unsellable,
            coalesce(ai.reserved, 0) as reserved,
            coalesce(ai.inbound_working + ai.inbound_shipped + ai.inbound_receiving, 0) as inbound,
@@ -65,6 +67,18 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
   for (const r of res.rows) r.cost = costs.get(r.sku)?.cost ?? null;
   const sv = stockValue(res.rows.map((r) => ({ sku: r.sku, units: r.fba + r.reserved + r.inbound, own: r.own })), costs);
   const [inv] = await db.select({ snap: sql<string | null>`max(${schema.amazonInventory.snapshotDate})::text` }).from(schema.amazonInventory).where(eq(schema.amazonInventory.tenantId, t));
+  // FBA-Spalte: Bericht fehlt (unbekannt) ≠ nicht im Bericht ≠ im Bericht mit 0; veralteter Bericht gekennzeichnet.
+  const fr = await fbaReport(t);
+  const fbaCell = (r: Row) =>
+    fr.missing ? (
+      <span className="muted" title="Kein FBA-Bestandsbericht – Bestand bei Amazon unbekannt" data-testid="fba-cell" data-state="unbekannt">?</span>
+    ) : !r.inReport ? (
+      <span className="muted" title="Nicht im FBA-Bestandsbericht – keine Ware bei Amazon gemeldet" data-testid="fba-cell" data-state="nicht-im-bericht">–</span>
+    ) : (
+      <span style={fr.stale ? { color: "var(--warn)" } : undefined} title={fr.stale ? `Stand ${formatDate(fr.snapshot)} – Bericht veraltet` : `laut Bericht vom ${formatDate(fr.snapshot)}`} data-testid="fba-cell" data-state={fr.stale ? "veraltet" : r.fba === 0 ? "bestaetigt-0" : "aktuell"}>
+        {r.fba}
+      </span>
+    );
   let rows = res.rows;
   if (view === "fba") rows = rows.filter((r) => r.fba + r.inbound + r.reserved > 0);
   if (view === "eigen") rows = rows.filter((r) => r.own !== 0);
@@ -120,9 +134,9 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           <table className="table sticky-head">
-            <thead><tr><th>SKU</th><th>Artikel</th><th className="right">FBA</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Artikel</th><th className="right" data-testid="fba-head">FBA{fr.missing ? <div className="small muted" style={{ fontWeight: 400 }}>Bericht fehlt</div> : fr.stale ? <div className="small" style={{ fontWeight: 400, color: "var(--warn)" }}>Stand {formatDate(fr.snapshot)}</div> : null}</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={9} className="muted">Keine Einträge. FBA-Bestandsbericht importieren oder eigenen Bestand eintragen.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={9} className="muted">{fr.missing ? <>Keine Einträge – der FBA-Bestandsbericht fehlt, der Amazon-Bestand ist unbekannt. <Link href="/import">Bericht importieren</Link> oder eigenen Bestand eintragen.</> : "Keine Einträge in dieser Ansicht."}</td></tr>}
               {rows.slice(0, 500).map((r) => (
                 <tr key={r.sku}>
                   <td className="num small">{r.sku}</td>
@@ -132,7 +146,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                       <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}`} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.title ?? undefined}>{r.title ?? r.asin ?? "– Name fehlt –"}</Link>
                     </div>
                   </td>
-                  <td className="num right">{r.fba}</td>
+                  <td className="num right">{fbaCell(r)}</td>
                   <td className="num right" style={{ color: r.unsellable ? "var(--danger)" : undefined }}>{r.unsellable || ""}</td>
                   <td className="num right">{r.inbound || ""}</td>
                   <td className="num right">

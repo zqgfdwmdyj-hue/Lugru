@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ConfirmButton } from "@/components/confirm-button";
 import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { CHANNELS } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
@@ -30,7 +31,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
   const orders = await db
     .select({
       o: O,
-      items: sql<OrderItemLine[] | null>`(select json_agg(json_build_object('q', i.quantity, 'sku', i.sku, 'name', ${itemNameSql})) from order_items i where i.order_id = ${O.id} and i.tenant_id = ${session.tenantId})`,
+      items: sql<OrderItemLine[] | null>`(select json_agg(json_build_object('q', i.quantity, 'sku', i.sku, 'name', ${itemNameSql})) from order_items i where i.order_id = ${qcol(O.id)} and i.tenant_id = ${session.tenantId})`,
     })
     .from(O)
     .where(and(...where))
@@ -57,14 +58,23 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
               <td className="num">{o.orderDate.toLocaleDateString("de-DE")}</td>
               <td>{o.shipTo?.name1 ?? o.buyerName ?? "–"}<div className="small muted">{[o.shipTo?.zip, o.shipTo?.city].filter(Boolean).join(" ")}</div></td>
               <td className="small" style={{ maxWidth: 300 }} data-testid="order-items">
-                {items?.length
-                  ? items.map((it, n) => (
-                      <div key={n}>
+                {items?.length ? (
+                  <>
+                    {items.slice(0, items.length > 3 ? 2 : 3).map((it, n) => (
+                      <div key={n} data-testid="order-item-line">
                         {it.q}× {it.name ?? <span className="muted">Name unbekannt</span>}
                         {it.sku && <span className="muted num"> · {it.sku}</span>}
                       </div>
-                    ))
-                  : "–"}
+                    ))}
+                    {items.length > 3 && (
+                      <div className="muted" data-testid="order-items-more">
+                        + {items.length - 2} weitere Positionen ({items.slice(2).reduce((n, it) => n + (Number(it.q) || 0), 0)} Stück) – insgesamt {items.reduce((n, it) => n + (Number(it.q) || 0), 0)} Stück
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="muted">keine Positionen erfasst</span>
+                )}
               </td>
               <td className="num right">{formatEuro(o.total)}</td>
               <td>{ORDER_STATUS_LABEL[o.status]}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>

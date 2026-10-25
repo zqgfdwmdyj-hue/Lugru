@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SideEffectsPicker } from "./side-effects";
 import { todayIso } from "@/lib/dates";
 import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, planFor, sideEffectState, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
 import { Disclosure } from "@/components/disclosure";
@@ -6,7 +7,7 @@ import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate
 import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
 import { StateForm } from "../state-form";
 import { IntakeCard } from "../intake";
-import { Chips, PrivatHead, Rating, dm, dmy, weekday } from "../ui";
+import { PrivatHead, Rating, dm, dmy, weekday } from "../ui";
 
 const n = (v: number | undefined) => (v === undefined ? "" : String(v).replace(".", ","));
 
@@ -129,11 +130,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
               </div>
               <div className="field">
                 <span className="label">Nebenwirkungen heute</span>
-                <label className="small" style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
-                  <input type="checkbox" name="noSideEffects" defaultChecked={Boolean(entry?.noSideEffects)} data-testid="no-side-effects" /> Keine Nebenwirkungen heute
-                </label>
-                <Chips name="sideEffects" options={SIDE_EFFECTS} values={entry?.sideEffects} />
-                <input className="input" name="otherEffect" placeholder="Sonstiges (optional)" style={{ marginTop: 6 }} defaultValue={(entry?.sideEffects ?? []).find((x) => !(SIDE_EFFECTS as readonly string[]).includes(x)) ?? ""} />
+                <SideEffectsPicker key={entry ? `${entry.day}|${(entry.sideEffects ?? []).join(",")}|${entry.noSideEffects ? 1 : 0}` : "neu"} options={SIDE_EFFECTS} values={entry?.sideEffects} none={Boolean(entry?.noSideEffects)} other={(entry?.sideEffects ?? []).find((x) => !(SIDE_EFFECTS as readonly string[]).includes(x)) ?? ""} />
                 <div className="small muted">Das Tagebuch wertet nichts medizinisch aus. Fragen zu Nebenwirkungen bitte mit deiner Ärztin/deinem Arzt besprechen – Bereitschaftsdienst 116 117, im Notfall 112.</div>
               </div>
               <Disclosure summary="Weitere Angaben: Medikament, Wirkung, weitere Werte, Messwerte, Notizen" defaultOpen={Boolean(entry && (entry.onset || entry.wearOff || entry.calm || entry.energy || entry.appetite || entry.pulse || entry.weightKg || entry.good || entry.hard || entry.note))}>
