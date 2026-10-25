@@ -451,3 +451,19 @@ export const jobRuns = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.name] })],
 );
+
+/**
+ * Einmal-Schlüssel für Formulare: Doppeltipp oder erneutes Absenden derselben Eingabe bucht nicht doppelt –
+ * die zweite Anfrage bekommt das Ergebnis der ersten. Einträge sind kurzlebig (werden nach 2 Tagen entfernt).
+ */
+export const formSubmissions = pgTable(
+  "form_submissions",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    key: text("key").notNull(),
+    result: jsonb("result"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("form_submissions_key_uq").on(t.tenantId, t.key)],
+);

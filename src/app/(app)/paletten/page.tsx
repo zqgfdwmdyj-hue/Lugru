@@ -6,7 +6,7 @@ import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { chargeableFrom, customerKey, freeLocations, normalizeLocation, storedDays } from "@/lib/pallets/billing";
-import { MONTH_RE, palletContext, palletPhotos } from "@/lib/pallets/service";
+import { MONTH_RE, activePickupsFor, palletContext, palletPhotos } from "@/lib/pallets/service";
 import { ConfirmButton } from "@/components/confirm-button";
 import { cancelPallet, checkOutPallet, undoCheckOut } from "./actions";
 import { PalletScan } from "./scan";
@@ -29,6 +29,7 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
   const allOpen = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt))).orderBy(P.inAt, P.code);
   const open = kunde ? allOpen.filter((p) => customerKey(p.customer) === customerKey(kunde)) : allOpen;
   const recentOut = await db.select().from(P).where(and(eq(P.tenantId, t), isNotNull(P.outAt))).orderBy(desc(P.updatedAt)).limit(30);
+  const pickups = await activePickupsFor(t, recentOut.filter((p) => !p.cancelledAt).map((p) => p.id));
   const used = (await db.selectDistinct({ c: P.customer }).from(P).where(and(eq(P.tenantId, t), isNotNull(P.customer)))).map((r) => r.c!.trim());
   const byKey = new Map<string, string>();
   for (const n of [...ctx.customers.map((c) => c.name), ...used]) if (n && !byKey.has(customerKey(n))) byKey.set(customerKey(n), n);
@@ -150,7 +151,11 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
                 <td className="num">{p.cancelledAt ? "–" : formatDate(p.outAt)}</td>
                 <td className="num right">{p.cancelledAt ? "–" : storedDays(p, today)}</td>
                 <td>
-                  {!p.cancelledAt && (
+                  {!p.cancelledAt && pickups.get(p.id) ? (
+                    <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }} data-testid="out-in-pickup">
+                      <a className="btn btn-small" href={`/paletten/abholschein/${pickups.get(p.id)!.id}`} target="_blank" rel="noreferrer" title={`Abgeholt von ${pickups.get(p.id)!.pickedBy} – Rücknahme nur für die ganze Abholung`}>Abholschein</a>
+                    </div>
+                  ) : !p.cancelledAt && (
                     <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
                       <form action={undoCheckOut}><input type="hidden" name="id" value={p.id} /><button className="btn btn-small" type="submit">Zurück ins Lager</button></form>
                       <form action={cancelPallet}>

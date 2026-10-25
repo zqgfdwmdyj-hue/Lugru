@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { placeAll, type Placement } from "@/lib/pallets/placement";
 import { useActionState, useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useSubmitKey } from "@/lib/use-submit-key";
 import { scanPallet, type ScanState } from "./actions";
 import { PhotoPicker, type PickedPhoto } from "./photos";
 
@@ -82,6 +83,7 @@ function beep(ok: boolean) {
 
 export function PalletScan({ customers, locations, today, free = [], plan = [], initialLocation, initialMode, initialCode }: { customers: string[]; locations: string[]; today: string; free?: string[]; plan?: string[]; initialLocation?: string; initialMode?: string; initialCode?: string }) {
   const [state, action] = useActionState<ScanState, FormData>(scanPallet, null);
+  const submitKey = useSubmitKey();
   const [pending, start] = useTransition();
   const [mode, setMode] = useState<Mode>(initialMode === "aus" || initialMode === "suchen" || initialMode === "ein" ? initialMode : "ein");
   const [code, setCode] = useState(initialCode ?? "");
@@ -108,6 +110,7 @@ export function PalletScan({ customers, locations, today, free = [], plan = [], 
     } catch {}
   }, [initialMode]);
   useEffect(() => {
+    if (state) submitKey.settled();
     if (state) beep(state.ok && !state.warn);
     if (state?.ok) {
       setCode("");
@@ -155,6 +158,7 @@ export function PalletScan({ customers, locations, today, free = [], plan = [], 
     setHint(null);
     const fd = new FormData(e.currentTarget);
     if (mode === "ein") for (const p of photos) fd.append("photos", p.file, p.file.name);
+    submitKey.stamp(fd);
     start(() => action(fd));
   }
   const f = state?.found;

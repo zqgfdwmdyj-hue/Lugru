@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { useSubmitKey } from "@/lib/use-submit-key";
 import { pickupAction, type PickupState } from "../actions";
 import { CameraScan } from "../scan";
 
@@ -72,6 +73,11 @@ function SignaturePad({ onChange }: { onChange: (png: string) => void }) {
 export function PickupForm({ pallets, gone = [], customers, today, preselect }: { pallets: Pallet[]; gone?: { code: string; outAt: string; cancelled: boolean }[]; customers: string[]; today: string; preselect?: string }) {
   const [state, action] = useActionState<PickupState, FormData>(pickupAction, null);
   const [pending, start] = useTransition();
+  const submitKey = useSubmitKey();
+  useEffect(() => {
+    if (state) submitKey.settled();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
   const [customer, setCustomer] = useState(preselect ?? "");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scan, setScan] = useState("");
@@ -110,6 +116,7 @@ export function PickupForm({ pallets, gone = [], customers, today, preselect }: 
     for (const id of selected) fd.append("ids", id);
     fd.set("signature", signature);
     fd.set("signedCodes", chosenCodes.join(","));
+    submitKey.stamp(fd);
     start(() => action(fd));
   }
   if (state?.ok && state.id) {

@@ -11,8 +11,9 @@ import { todayIso } from "@/lib/dates";
 import { parseAmount } from "@/lib/numbers";
 import { storeFile } from "@/lib/orders/service";
 import { changeRates, chargeableFrom, prevMonth, customerKey, inventoryCompare, nextPalletCodes, normalizeLocation, parseLocations, parseServices, ratesDiffer, storedDays, type RateVersion } from "@/lib/pallets/billing";
-import { MONTH_RE, dropOrphanPhotoFiles, loadMonthBill, logPalletEvent, palletContext, sendStatement } from "@/lib/pallets/service";
+import { MONTH_RE, activePickupsFor, dropOrphanPhotoFiles, loadMonthBill, logPalletEvent, palletContext, sendStatement } from "@/lib/pallets/service";
 import { listOutgoing } from "@/lib/invoices/outgoing";
+import { onceOnly, submitKeyOf } from "@/lib/once";
 
 const P = schema.pallets;
 const PH = schema.palletPhotos;
@@ -139,6 +140,12 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
     return { ok: true, message: `Palette ${open.code} ausgelagert${open.customer ? ` (${open.customer})` : ""}${open.location ? ` – Stellplatz ${open.location} ist frei` : ""}.`, codes: [open.code], at: Date.now() };
   }
 
+  // Doppeltipp / zweimal dieselbe Eingabe: nur einmal einlagern (die zweite Anfrage bekommt dieselbe Antwort).
+  return onceOnly(t, submitKeyOf(fd), () => storeIn(session, fd, code, day), { ok: false, message: "Wird gerade gebucht – bitte einen Moment warten und nicht erneut tippen.", at: Date.now() });
+}
+
+async function storeIn(session: Awaited<ReturnType<typeof requireArea>>, fd: FormData, code: string, day: string): Promise<NonNullable<ScanState>> {
+  const t = session.tenantId;
   const customer = await canonicalCustomer(t, text(fd, "customer", 120));
   const note = text(fd, "note", 300);
   const location = normalizeLocation(fd.get("location"));
@@ -175,10 +182,19 @@ export async function scanPallet(_prev: ScanState, fd: FormData): Promise<ScanSt
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
-  const inserted = await db
-    .insert(P)
-    .values(codes.map((c, i) => ({ tenantId: t, code: c, customer, note, location: placed.locations[i], contents, weightKg, inAt: day })))
-    .returning({ id: P.id });
+  let inserted: { id: string }[];
+  try {
+    inserted = await db
+      .insert(P)
+      .values(codes.map((c, i) => ({ tenantId: t, code: c, customer, note, location: placed.locations[i], contents, weightKg, inAt: day })))
+      .returning({ id: P.id });
+  } catch (e) {
+    // Zwei Geräte gleichzeitig mit derselben Nummer: die Datenbank lässt nur eine offene Palette je Nummer zu.
+    if ((e as { code?: string; cause?: { code?: string } }).code === "23505" || (e as { cause?: { code?: string } }).cause?.code === "23505") {
+      return { ok: false, message: `${codes.length === 1 ? `Palette „${codes[0]}“ ist` : `Eine der Paletten ${codes.join(", ")} ist`} gerade eben schon eingelagert worden (anderes Gerät). Nichts doppelt gebucht.`, at: Date.now() };
+    }
+    throw e;
+  }
   if (photoIds.length) await db.insert(PH).values(inserted.flatMap((p) => photoIds.map((fileId) => ({ tenantId: t, palletId: p.id, fileId }))));
   const usedPlaces = [...new Set(placed.locations.filter((l): l is string => Boolean(l)))];
   const busyAt = usedPlaces.map((loc) => ({ loc, codes: openRows.filter((r) => r.location === loc).map((r) => r.code) })).filter((b) => b.codes.length);
@@ -221,6 +237,8 @@ export async function undoCheckOut(fd: FormData) {
   const id = z.string().uuid().parse(fd.get("id"));
   const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
   if (!p || !p.outAt || p.cancelledAt) return;
+  // Teil eines Abholscheins: nur die ganze Abholung zurücknehmen (sonst widerspricht der Schein dem Bestand).
+  if ((await activePickupsFor(session.tenantId, [id])).size) return;
   const [clash] = await db.select({ id: P.id }).from(P).where(and(eq(P.tenantId, session.tenantId), isNull(P.outAt), eq(P.code, p.code)));
   if (clash) return; // Nummer ist inzwischen wieder belegt
   await db.update(P).set({ outAt: null, updatedAt: new Date() }).where(and(eq(P.id, id), eq(P.tenantId, session.tenantId)));
@@ -234,11 +252,14 @@ export async function updatePallet(fd: FormData) {
   const t = session.tenantId;
   const id = z.string().uuid().parse(fd.get("id"));
   const inAt = isoDate.parse(fd.get("inAt"));
+  const [before] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
+  if (!before || before.cancelledAt) return;
+  // Abgeholt (Abholschein mit Unterschrift): Auslagerungstag = Abholtag, hier nicht änderbar.
+  if ((await activePickupsFor(t, [id])).size) fd.delete("outAt");
   const outRaw = String(fd.get("outAt") ?? "").trim();
   const outAt = outRaw ? isoDate.parse(outRaw) : null;
   if (outAt && outAt < inAt) return;
-  const [before] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
-  if (!before || before.cancelledAt) return;
+  if (fd.has("outAt") === false && before.outAt && before.outAt < inAt) return;
   if (outAt === null && fd.has("outAt")) {
     // Wieder „im Lager“ nur, wenn die Nummer nicht inzwischen neu belegt ist.
     const [p] = await db.select({ code: P.code }).from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
@@ -282,6 +303,7 @@ export async function cancelPallet(fd: FormData) {
   const reason = text(fd, "reason", 200) ?? "Fehlbuchung";
   const [p] = await db.select().from(P).where(and(eq(P.id, id), eq(P.tenantId, t)));
   if (!p || p.cancelledAt) return;
+  if ((await activePickupsFor(t, [id])).size) return; // erst die Abholung zurücknehmen
   await db.update(P).set({ cancelledAt: new Date(), cancelReason: reason, outAt: p.outAt ?? p.inAt, updatedAt: new Date() }).where(and(eq(P.id, id), eq(P.tenantId, t)));
   await logPalletEvent(t, [id], "storno", `Storniert: ${reason}`, { userName: who(session) });
   revalidatePath("/paletten", "layout");
@@ -345,6 +367,11 @@ export type ChargeState = { ok: boolean; message: string } | null;
 
 export async function addCharge(_prev: ChargeState, fd: FormData): Promise<ChargeState> {
   const session = await requireArea("paletten");
+  // Doppeltipp: dieselbe Leistung nur einmal buchen.
+  return onceOnly(session.tenantId, submitKeyOf(fd), () => insertCharge(session, fd), { ok: false, message: "Wird gerade gespeichert – bitte nicht erneut tippen." });
+}
+
+async function insertCharge(session: Awaited<ReturnType<typeof requireArea>>, fd: FormData): Promise<NonNullable<ChargeState>> {
   const t = session.tenantId;
   const description = text(fd, "description", 120);
   if (!description) return { ok: false, message: "Bitte Leistung angeben (z. B. Folieren)." };
@@ -696,6 +723,13 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 /** Mehrere Paletten auf einmal auslagern, Abholer unterschreibt auf dem Handy → Abholschein. */
 export async function pickupAction(_prev: PickupState, fd: FormData): Promise<PickupState> {
   const session = await requireArea("paletten");
+  // Doppeltipp: ein Abholschein, und die zweite Anfrage zeigt dieselbe Bestätigung (statt „nicht mehr eingelagert“).
+  return onceOnly(session.tenantId, submitKeyOf(fd), () => bookPickup(session, fd), { ok: false, message: "Abholung wird gerade gebucht – bitte nicht erneut tippen." });
+}
+
+class PickupConflict extends Error {}
+
+async function bookPickup(session: Awaited<ReturnType<typeof requireArea>>, fd: FormData): Promise<NonNullable<PickupState>> {
   const t = session.tenantId;
   const ids = [...new Set(fd.getAll("ids").map(String))].filter((v) => z.string().uuid().safeParse(v).success).slice(0, 500);
   if (!ids.length) return { ok: false, message: "Bitte mindestens eine Palette auswählen oder scannen." };
@@ -717,25 +751,39 @@ export async function pickupAction(_prev: PickupState, fd: FormData): Promise<Pi
     if (signed !== actual) return { ok: false, message: "Die Unterschrift passt nicht zur Auswahl (Paletten wurden geändert) – bitte neu unterschreiben." };
   }
   const fileId = await storeFile(t, `unterschrift-${day}.png`, "image/png", png);
-  await db
-    .update(P)
-    .set({ outAt: sql`greatest(${P.inAt}, ${day}::date)`, updatedAt: new Date() })
-    .where(and(eq(P.tenantId, t), isNull(P.outAt), inArray(P.id, rows.map((r) => r.id))));
   const customers = [...new Set(rows.map((r) => r.customer?.trim()).filter(Boolean))];
-  const [pickup] = await db
-    .insert(schema.palletPickups)
-    .values({
-      tenantId: t,
-      customer: customers.length === 1 ? customers[0]! : customers.length ? customers.join(", ") : null,
-      day,
-      pickedBy,
-      plate: text(fd, "plate", 30),
-      note: text(fd, "note", 300),
-      palletIds: rows.map((r) => r.id),
-      codes: rows.map((r) => r.code).sort((a, b) => a.localeCompare(b, "de", { numeric: true })),
-      signatureFileId: fileId,
-    })
-    .returning({ id: schema.palletPickups.id });
+  // Auslagern und Abholschein gemeinsam: Hat ein anderes Gerät inzwischen eine dieser Paletten ausgelagert,
+  // wird nichts gebucht (kein zweiter Schein, keine halbe Abholung).
+  let pickup: { id: string };
+  try {
+    pickup = await db.transaction(async (tx) => {
+      const moved = await tx
+        .update(P)
+        .set({ outAt: sql`greatest(${P.inAt}, ${day}::date)`, updatedAt: new Date() })
+        .where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt), inArray(P.id, rows.map((r) => r.id))))
+        .returning({ id: P.id });
+      if (moved.length !== rows.length) throw new PickupConflict();
+      const [pu] = await tx
+        .insert(schema.palletPickups)
+        .values({
+          tenantId: t,
+          customer: customers.length === 1 ? customers[0]! : customers.length ? customers.join(", ") : null,
+          day,
+          pickedBy,
+          plate: text(fd, "plate", 30),
+          note: text(fd, "note", 300),
+          palletIds: rows.map((r) => r.id),
+          codes: rows.map((r) => r.code).sort((a, b) => a.localeCompare(b, "de", { numeric: true })),
+          signatureFileId: fileId,
+        })
+        .returning({ id: schema.palletPickups.id });
+      return pu;
+    });
+  } catch (e) {
+    if (!(e instanceof PickupConflict)) throw e;
+    await db.delete(schema.files).where(and(eq(schema.files.id, fileId), eq(schema.files.tenantId, t)));
+    return { ok: false, message: "Ein Teil dieser Paletten wurde gerade auf einem anderen Gerät ausgelagert – nichts gebucht. Bitte Seite neu laden und Auswahl prüfen." };
+  }
   await logPalletEvent(t, rows.map((r) => r.id), "abholung", `Abgeholt von ${pickedBy}${text(fd, "plate", 30) ? ` (${text(fd, "plate", 30)})` : ""} – Abholschein mit Unterschrift, ${rows.length} Palette${rows.length === 1 ? "" : "n"}`, { day, userName: who(session) });
   revalidatePath("/paletten", "layout");
   return { ok: true, message: `${rows.length} Palette${rows.length === 1 ? "" : "n"} ausgelagert – Abholschein ist fertig.`, id: pickup.id };

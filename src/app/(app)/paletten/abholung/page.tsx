@@ -31,7 +31,7 @@ export default async function AbholungPage({ searchParams }: { searchParams: Pro
       </section>
       <section className="card">
         <div className="card-head"><h2>Letzte Abholungen</h2></div>
-        <table className="table" data-testid="pickups">
+        <table className="table" data-testid="pickups" id="abholungen">
           <thead><tr><th>Datum</th><th>Kunde</th><th>Abgeholt von</th><th className="right">Paletten</th><th></th></tr></thead>
           <tbody>
             {recent.length === 0 && <tr><td colSpan={5} className="muted">Noch keine Abholung.</td></tr>}

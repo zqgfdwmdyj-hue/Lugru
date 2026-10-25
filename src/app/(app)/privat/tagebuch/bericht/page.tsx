@@ -30,12 +30,13 @@ export default async function TagebuchBerichtPage({ searchParams }: { searchPara
   const ownerId = sp.von && s.diaryShared.includes(sp.von) ? sp.von : session.userId;
   const owner = members.find((m) => m.userId === ownerId);
   const entries = (await loadEntries<DiaryEntry>(session, ["tagebuch"])).filter((e) => e.userId === ownerId).map((e) => e.data);
-  const r = diaryReport(entries, from, to);
   const obs = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).filter((o) => o.data.aboutUserId === ownerId && o.data.day >= from && o.data.day <= to).sort((a, b) => a.data.day.localeCompare(b.data.day));
   const labels = memberLabels(members);
   const nameOf = (id: string) => labels.get(id) ?? "";
-  const notes = r.entries.filter((e) => e.note || e.hard);
   const chosen = new Set<Part>(sp.auswahl ? ([] as string[]).concat(sp.teil ?? []).filter((x): x is Part => PARTS.some((p) => p.key === x)) : PARTS.filter((p) => p.on).map((p) => p.key));
+  // Messwerte abgewählt: gar nicht erst auswerten (auch nicht im Durchschnitt) – Vorschau = Ausdruck.
+  const r = diaryReport(entries, from, to, { vitals: chosen.has("mess") });
+  const notes = r.entries.filter((e) => e.note || e.hard);
   const own = ownerId === session.userId;
   const { plan } = await myMedPlan(session);
   const perDayOf = (day: string) => (own && planFor(plan, day).med ? planFor(plan, day).intakesPerDay : 0);
@@ -119,7 +120,7 @@ export default async function TagebuchBerichtPage({ searchParams }: { searchPara
           <div>Schlafqualität <strong>{n(r.averages.sleepQuality)}</strong></div>
           <div>Schlaf <strong>{n(r.averages.sleepHours, " h")}</strong></div>
           <div>Appetit <strong>{n(r.averages.appetite)}</strong></div>
-          <div>Puls <strong>{n(r.averages.pulse)}</strong></div>
+          {chosen.has("mess") && r.averages.pulse !== undefined && <div data-testid="report-avg-pulse">Puls <strong>{n(r.averages.pulse)}</strong></div>}
           {chosen.has("mess") && <div>Gewicht <strong>{r.weightChange === null ? "–" : `${r.weightChange > 0 ? "+" : ""}${n(r.weightChange, " kg")}`}</strong></div>}
         </div>
         </>}

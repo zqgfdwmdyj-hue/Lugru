@@ -355,8 +355,21 @@ export function sideEffectState(e: Pick<DiaryEntry, "sideEffects" | "noSideEffec
 }
 
 /** Zeitraum-Auswertung fürs Arztgespräch: Dosis-Phasen, Mittelwerte, Nebenwirkungen, Messwerte. */
-export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
-  const list = entries.filter((e) => e.day >= from && e.day <= to).sort((a, b) => a.day.localeCompare(b.day));
+/**
+ * Auswertung für den Arztbericht. `vitals: false` (Messwerte abgewählt) entfernt Puls, Blutdruck und Gewicht
+ * schon hier – aus Durchschnitt, Messwert-Tabelle und den Einzeltagen –, damit nichts davon in Vorschau
+ * oder Ausdruck/PDF gelangen kann.
+ */
+export function diaryReport(entries: DiaryEntry[], from: string, to: string, opts: { vitals?: boolean } = {}) {
+  const withVitals = opts.vitals !== false;
+  const list = entries
+    .filter((e) => e.day >= from && e.day <= to)
+    .sort((a, b) => a.day.localeCompare(b.day))
+    .map((e) => {
+      if (withVitals) return e;
+      const { pulse: _p, bpSys: _s, bpDia: _d, weightKg: _w, ...rest } = e;
+      return rest as DiaryEntry;
+    });
   const avg = (key: keyof DiaryEntry) => {
     const v = list.map((e) => e[key]).filter((x): x is number => typeof x === "number" && Number.isFinite(x));
     return v.length ? round1(v.reduce((s, x) => s + x, 0) / v.length) : null;
@@ -392,7 +405,7 @@ export function diaryReport(entries: DiaryEntry[], from: string, to: string) {
     days: list.length,
     entries: list,
     phases,
-    averages: { focus: avg("focus"), mood: avg("mood"), calm: avg("calm"), energy: avg("energy"), sleepQuality: avg("sleepQuality"), appetite: avg("appetite"), sleepHours: avg("sleepHours"), pulse: avg("pulse") },
+    averages: { focus: avg("focus"), mood: avg("mood"), calm: avg("calm"), energy: avg("energy"), sleepQuality: avg("sleepQuality"), appetite: avg("appetite"), sleepHours: avg("sleepHours"), ...(withVitals ? { pulse: avg("pulse") } : {}) } as Record<"focus" | "mood" | "calm" | "energy" | "sleepQuality" | "appetite" | "sleepHours", number | null> & { pulse?: number | null },
     sideEffects: [...effects.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count })),
     sideEffectDays: { erfasst: list.filter((e) => sideEffectState(e) === "erfasst").length, keine: list.filter((e) => sideEffectState(e) === "keine").length, offen: list.filter((e) => sideEffectState(e) === "nicht dokumentiert").length },
     vitals,

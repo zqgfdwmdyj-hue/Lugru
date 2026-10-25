@@ -130,6 +130,15 @@ describe("ADHS-Tagebuch", () => {
     expect(r.weightChange).toBe(-0.8);
     expect(r.vitals.find((v) => v.day === "2026-11-03")?.bp).toBe("128/82");
   });
+  it("Bericht ohne Messwerte: Puls, Blutdruck, Gewicht nirgends enthalten (Prüfrunde 3)", () => {
+    const r = diaryReport(list, "2026-10-26", "2026-11-04", { vitals: false });
+    expect("pulse" in r.averages).toBe(false);
+    expect(r.averages.focus).toBe(3.3);
+    expect(r.vitals).toEqual([]);
+    expect(r.weightChange).toBeNull();
+    expect(r.entries.some((e) => e.pulse !== undefined || e.bpSys !== undefined || e.bpDia !== undefined || e.weightKg !== undefined)).toBe(false);
+    expect(JSON.stringify(r)).not.toMatch(/pulse|bpSys|bpDia|weightKg|128\/82/);
+  });
   it("Verlauf: fehlende Tage leer", () => {
     const s = diarySeries(list, "focus", "2026-11-04", 10);
     expect(s).toHaveLength(10);

@@ -223,3 +223,19 @@ export async function dropOrphanPhotoFiles(tenantId: string, fileIds: string[]) 
   const drop = fileIds.filter((id) => !keep.has(id));
   if (drop.length) await db.delete(schema.files).where(and(eq(schema.files.tenantId, tenantId), inArray(schema.files.id, drop)));
 }
+
+/**
+ * Offene (nicht zurückgenommene) Abholungen je Palette. Solche Paletten werden nicht einzeln zurückgeholt,
+ * umdatiert oder storniert – sonst widerspräche der unterschriebene Abholschein Bestand und Abrechnung.
+ */
+export async function activePickupsFor(tenantId: string, palletIds: string[]) {
+  const out = new Map<string, { id: string; day: string; pickedBy: string }>();
+  if (!palletIds.length) return out;
+  const PU = schema.palletPickups;
+  const rows = await db
+    .select({ id: PU.id, day: PU.day, pickedBy: PU.pickedBy, palletIds: PU.palletIds })
+    .from(PU)
+    .where(and(eq(PU.tenantId, tenantId), isNull(PU.cancelledAt), sql`${PU.palletIds} ?| array[${sql.join(palletIds.map((p) => sql`${p}`), sql`, `)}]::text[]`));
+  for (const r of rows) for (const p of r.palletIds) if (palletIds.includes(p) && !out.has(p)) out.set(p, { id: r.id, day: r.day, pickedBy: r.pickedBy });
+  return out;
+}

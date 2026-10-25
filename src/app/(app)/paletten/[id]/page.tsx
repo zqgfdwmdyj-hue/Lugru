@@ -6,7 +6,7 @@ import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { chargeableFrom, customerKey, storedDays } from "@/lib/pallets/billing";
-import { palletContext, palletHistory, palletPhotos } from "@/lib/pallets/service";
+import { activePickupsFor, palletContext, palletHistory, palletPhotos } from "@/lib/pallets/service";
 import { cancelPallet, checkOutPallet, deleteCharge, deletePalletPhoto, undoCancelPallet, undoCheckOut, updatePallet } from "../actions";
 import { ConfirmButton } from "@/components/confirm-button";
 import { ChargeForm } from "../forms";
@@ -35,6 +35,8 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
     : [];
   const others = neighbours.filter((n) => n.id !== p.id);
   const history = await palletHistory(t, p.id);
+  // Abgeholt mit Abholschein: Rücknahme/Änderung des Auslagerns nur über die ganze Abholung.
+  const pickup = p.outAt && !p.cancelledAt ? (await activePickupsFor(t, [p.id])).get(p.id) ?? null : null;
   const KIND: Record<string, string> = { ein: "Eingelagert", aus: "Ausgelagert", abholung: "Abholung", zurueck: "Zurückgenommen", korrektur: "Korrektur", umlagern: "Umgelagert", storno: "Storno", inventur: "Inventur", leistung: "Leistung", foto: "Foto" };
   const when = (d: Date) => d.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
@@ -46,6 +48,8 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
           <a className="btn btn-small" href={`/etikett/palette?codes=${encodeURIComponent(p.code)}`} target="_blank" rel="noreferrer">Etikett</a>
           {p.cancelledAt ? (
             <form action={undoCancelPallet}><input type="hidden" name="id" value={p.id} /><ConfirmButton confirm="Storno zurücknehmen? Die Palette zählt dann wieder in Bestand und Abrechnung.">Storno zurücknehmen</ConfirmButton></form>
+          ) : pickup ? (
+            <a className="btn btn-small" href={`/paletten/abholschein/${pickup.id}`} target="_blank" rel="noreferrer">Abholschein</a>
           ) : p.outAt ? (
             <form action={undoCheckOut}><input type="hidden" name="id" value={p.id} /><button className="btn btn-small" type="submit">Zurück ins Lager</button></form>
           ) : (
@@ -53,6 +57,12 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
           )}
         </div>
       </div>
+      {pickup && (
+        <div className="notice notice-info" data-testid="in-pickup">
+          Abgeholt am {formatDate(pickup.day)} von {pickup.pickedBy} – Teil eines unterschriebenen Abholscheins. Auslagerungstag, „Zurück ins Lager“ und Storno gehen deshalb nur für die ganze Abholung:{" "}
+          <Link href="/paletten/abholung#abholungen">Abholung zurücknehmen</Link> (die Paletten sind dann wieder im Lager, der Schein bleibt als „zurückgenommen“ erhalten).
+        </div>
+      )}
       {p.cancelledAt && <div className="notice notice-error" data-testid="cancelled">Storniert am {when(p.cancelledAt)}{p.cancelReason ? ` – ${p.cancelReason}` : ""}. Zählt nicht in Bestand und Abrechnung; der Verlauf bleibt erhalten.</div>}
 
       <div className="grid-kpi">
@@ -72,7 +82,7 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
             <div className="field" style={{ gridColumn: "1 / -1" }}><label className="label" htmlFor="e-contents">Inhalt</label><input className="input" id="e-contents" name="contents" defaultValue={p.contents ?? ""} placeholder="z. B. 48 Kartons Shampoo" /></div>
             <div className="field" style={{ gridColumn: "1 / -1" }}><label className="label" htmlFor="e-note">Notiz</label><input className="input" id="e-note" name="note" defaultValue={p.note ?? ""} /></div>
             <div className="field"><label className="label" htmlFor="e-in">Eingelagert am</label><input className="input" id="e-in" name="inAt" type="date" defaultValue={p.inAt} max={today} required /></div>
-            <div className="field"><label className="label" htmlFor="e-out">Ausgelagert am</label><input className="input" id="e-out" name="outAt" type="date" defaultValue={p.outAt ?? ""} max={today} /></div>
+            <div className="field"><label className="label" htmlFor="e-out">Ausgelagert am</label>{pickup ? <input className="input" id="e-out" type="date" value={p.outAt ?? ""} readOnly disabled title="Abholtag laut Abholschein" /> : <input className="input" id="e-out" name="outAt" type="date" defaultValue={p.outAt ?? ""} max={today} />}</div>
             <div className="field" style={{ gridColumn: "1 / -1" }}><label className="label" htmlFor="e-reason">Grund der Änderung (für den Verlauf, optional)</label><input className="input" id="e-reason" name="reason" placeholder="z. B. falscher Stellplatz gescannt" /></div>
           </div>
           <button className="btn btn-primary" type="submit" style={{ alignSelf: "flex-start" }} disabled={Boolean(p.cancelledAt)}>Speichern</button>
@@ -138,7 +148,7 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
         )}
       </section>
 
-      {!p.cancelledAt && (
+      {!p.cancelledAt && !pickup && (
         <details className="card card-pad" data-testid="cancel-box">
           <summary className="small" style={{ cursor: "pointer", color: "var(--danger)" }}>Fehlbuchung stornieren …</summary>
           <form action={cancelPallet} className="stack" style={{ gap: 8, marginTop: 10 }}>

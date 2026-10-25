@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useSubmitKey } from "@/lib/use-submit-key";
 import { addCharge, markInvoicedAction, markPaidAction, saveLocationsAction, savePalletCustomer, savePalletRates, sendStatementAction, undoInvoicedAction, type ChargeState, type SaveState, type SendState } from "./actions";
 
 const num = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
@@ -8,9 +9,11 @@ const num = (n: number | null | undefined) => (n === null || n === undefined ? "
 /** Zusatzleistung erfassen (Folieren, Umpacken …) – Preis aus der Leistungsliste vorbelegt. */
 export function ChargeForm({ customers, services, pallets, today, customer, pallet }: { customers: string[]; services: { name: string; price: number }[]; pallets: string[]; today: string; customer?: string | null; pallet?: { id: string; code: string } }) {
   const [state, action, pending] = useActionState<ChargeState, FormData>(addCharge, null);
+  const submitKey = useSubmitKey();
   const price = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
+    if (state) submitKey.settled();
     if (state?.ok) {
       form.current?.querySelectorAll<HTMLInputElement>("input[name=description], input[name=unitPrice]").forEach((i) => (i.value = ""));
       const q = form.current?.querySelector<HTMLInputElement>("input[name=quantity]");
@@ -18,7 +21,7 @@ export function ChargeForm({ customers, services, pallets, today, customer, pall
     }
   }, [state]);
   return (
-    <form ref={form} action={action} className="stack" style={{ gap: 10 }} data-testid="charge-form">
+    <form ref={form} action={(fd: FormData) => action(submitKey.stamp(fd))} className="stack" style={{ gap: 10 }} data-testid="charge-form">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
         {pallet ? (
           <input type="hidden" name="pallet" value={pallet.id} />

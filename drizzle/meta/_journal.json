@@ -386,6 +386,13 @@
       "when": 1792845257126,
       "tag": "0054_paletten_verlauf",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792957070919,
+      "tag": "0055_einmal_absenden",
+      "breakpoints": true
     }
   ]
 }
