@@ -39,6 +39,8 @@ const Result = z.object({
     .nullish()
     .transform((list) => (list ?? []).flatMap((o) => { const r = Offer.safeParse(o); return r.success ? [r.data] : []; })),
   summary: z.string().nullish(),
+  // Zeigt das (erste) Foto die Vorder- oder Rückseite der Verpackung?
+  seite: z.preprocess((v) => (typeof v === "string" ? v.toLowerCase() : v), z.enum(["vorne", "hinten"]).nullish().catch(null)),
 });
 export type ResearchResult = z.infer<typeof Result>;
 
@@ -55,8 +57,10 @@ Antworte zum Schluss ausschließlich mit einem JSON-Objekt in einem \`\`\`json-B
   "variant": "Packungsgröße/Sorte, z. B. \\"500 g\\" oder null",
   "category": "eine von: ${DONATION_CATEGORIES.join(", ")}",
   "offers": [{ "shop": "Händler", "title": "Produkttitel beim Händler", "price": 2.49, "unit": "z. B. 1,99 €/kg oder null", "url": "https://..." }],
-  "summary": "Ein bis zwei Sätze auf Deutsch: was es ist und wie verlässlich die Preise sind"
-}`;
+  "summary": "Ein bis zwei Sätze auf Deutsch: was es ist und wie verlässlich die Preise sind",
+  "seite": "vorne oder hinten – zeigt das erste Foto die Vorderseite oder die Rückseite (Zutaten, Nährwerte, Barcode)?"
+}
+Weitere Fotos zeigen die Rückseite desselben Produkts – nutze sie für Packungsgröße, Sorte und Zutaten.`;
 
 /** Den JSON-Block aus der Antwort holen und prüfen. */
 export function parseResearch(text: string): ResearchResult {
@@ -77,11 +81,12 @@ export function parseResearch(text: string): ResearchResult {
 const RECOGNIZE_SYSTEM = `Du hilfst einer ehrenamtlichen Foodsharing-Gruppe in Deutschland. Erkenne das Produkt auf dem Foto: Marke, Produktname, Sorte, Packungsgröße. Keine Preissuche.
 
 Antworte ausschließlich mit einem JSON-Objekt in einem \`\`\`json-Block:
-{ "name": "Produktname ohne Packungsgröße", "variant": "Packungsgröße/Sorte oder null", "category": "eine von: ${DONATION_CATEGORIES.join(", ")}", "offers": [], "summary": "ein kurzer Satz, was es ist" }`;
+{ "name": "Produktname ohne Packungsgröße", "variant": "Packungsgröße/Sorte oder null", "category": "eine von: ${DONATION_CATEGORIES.join(", ")}", "offers": [], "summary": "ein kurzer Satz, was es ist", "seite": "vorne oder hinten (Rückseite mit Zutaten/Nährwerten/Barcode)" }
+Weitere Fotos zeigen die Rückseite desselben Produkts – nutze sie für Packungsgröße und Sorte.`;
 
 const LOCATION = { type: "approximate" as const, country: "DE", timezone: "Europe/Berlin" };
 
-async function research(mode: AiMode, product: { name: string; variant: string | null }, image: { mimeType: string; data: Buffer } | null) {
+async function research(mode: AiMode, product: { name: string; variant: string | null }, image: { mimeType: string; data: Buffer } | null, backs: { mimeType: string; data: Buffer }[] = []) {
   const client = new Anthropic();
   const info = AI_MODE_INFO[mode];
   const known = !isPlaceholderName(product.name) ? `Bekannt: ${product.name}${product.variant ? ` (${product.variant})` : ""}.` : "Name noch unbekannt.";
@@ -90,6 +95,8 @@ async function research(mode: AiMode, product: { name: string; variant: string |
   if (image) {
     content.push({ type: "image", source: await claudeImage(image) });
   }
+  // Rückseiten (Infofotos) – höchstens zwei, für Gewicht, Sorte und Zutaten.
+  for (const b of backs.slice(0, 2)) content.push({ type: "image", source: await claudeImage(b) });
   content.push({
     type: "text",
     text:
@@ -149,7 +156,13 @@ async function runOne(checkId: string) {
     if (!product) throw new Error("Produkt nicht gefunden.");
     const [file] = product.imageFileId ? await db.select().from(schema.files).where(eq(schema.files.id, product.imageFileId)) : [];
     const mode = isAiMode(claimed.mode) ? claimed.mode : "genau";
-    const { result, inputTokens, outputTokens, searches } = await research(mode, product, file ? { mimeType: file.mimeType, data: file.data } : null);
+    const backFiles = await db
+      .select({ mimeType: schema.files.mimeType, data: schema.files.data })
+      .from(schema.productPhotos)
+      .innerJoin(schema.files, eq(schema.files.id, schema.productPhotos.fileId))
+      .where(eq(schema.productPhotos.productId, product.id))
+      .limit(2);
+    const { result, inputTokens, outputTokens, searches } = await research(mode, product, file ? { mimeType: file.mimeType, data: file.data } : null, backFiles);
     // Vergleichspreis nur aus Neuware; B-Ware bleibt in der Liste, gekennzeichnet.
     const lowest = result.offers.find((o) => !isSecondHand(o.title, o.shop))?.price ?? null;
     await db
@@ -159,6 +172,7 @@ async function runOne(checkId: string) {
         recognizedName: result.name,
         recognizedVariant: result.variant ?? null,
         recognizedCategory: result.category && (DONATION_CATEGORIES as readonly string[]).includes(result.category) ? result.category : null,
+        recognizedSide: result.seite ?? null,
         offers: result.offers.slice(0, 5).map((o) => ({ ...o, unit: o.unit ?? null })),
         lowestPrice: lowest,
         suggestedPrice: suggestDonationPrice(lowest),

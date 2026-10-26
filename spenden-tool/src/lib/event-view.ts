@@ -3,7 +3,8 @@ import { cache } from "react";
 import { isPlaceholderName } from "@/lib/layout";
 import { categoryHint, comparability, type Comparability, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
 import { suggestDonationPrice } from "@/lib/pricing";
-import { latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
+import { extraPhotos, latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
+import { backsideCandidates } from "@/lib/backside";
 
 /**
  * Eine Verteilung mit allem, was die Reiter Produkte, Prüfen und Ausgabe brauchen – pro Anfrage nur einmal geladen
@@ -14,7 +15,7 @@ export const loadEventView = cache(async (id: string) => {
   const event = await loadEvent(id);
   if (!event) return null;
   const items = await loadEventItems(id);
-  const checks = await latestPriceChecks(items.map((r) => r.product.id));
+  const [checks, extras] = await Promise.all([latestPriceChecks(items.map((r) => r.product.id)), extraPhotos(items.map((r) => r.product.id))]);
   const rows = items.map((r) => {
     const state = priceState(r.item, r.product.imageFileId, r.photo);
     const check = checks.get(r.product.id);
@@ -33,10 +34,20 @@ export const loadEventView = cache(async (id: string) => {
     const fresh = priced ? check.offers.filter((o) => !isSecondHand(o.title, o.shop)) : [];
     const freshSuggestion = fresh.length ? suggestDonationPrice(fresh[0].price) : null;
     const suggestion = priced && freshSuggestion !== null && !state.printed ? freshSuggestion : null;
-    return { ...r, state, check, compare, unnamed, issues, suggestion, catHint };
+    return { ...r, state, check, compare, unnamed, issues, suggestion, catHint, backPhotos: extras.get(r.product.id) ?? [] };
   });
+  // Vorder- und Rückseite desselben Produkts als zwei Produkte? → Vorschlag zum Zusammenführen (nie automatisch).
+  const pairs = backsideCandidates(
+    rows.map((r) => ({ itemId: r.item.id, productId: r.product.id, name: r.product.name, variant: r.product.variant, side: r.check?.recognizedSide ?? null, distinctFrom: r.product.distinctFrom, hasPhoto: !!r.product.imageFileId })),
+  );
+  for (const p of pairs) {
+    for (const id of [p.front, p.back]) {
+      const row = rows.find((r) => r.item.id === id);
+      if (row) row.issues.unshift({ key: "rueckseite", label: "Mögliche Rückseite", level: "pruefen" });
+    }
+  }
   const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running") || rows.some((r) => r.state.photo === "wird-gelesen");
-  return { event, rows, busy };
+  return { event, rows, busy, pairs };
 });
 
 export type EventView = NonNullable<Awaited<ReturnType<typeof loadEventView>>>;

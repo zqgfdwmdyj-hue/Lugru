@@ -215,6 +215,9 @@ export function BulkBar({ formId, categories, ai, costs }: { formId: string; cat
               </button>
             </span>
           )}
+          {count === 2 && (
+            <button className="btn btn-small" type="submit" name="op" value="bulk:rueckseite" title="Die beiden sind dasselbe Produkt: das obere bleibt, das untere wird Rückseite/Infofoto" onClick={confirmRun("Die zwei ausgewählten zu einem Produkt zusammenführen?\n\nDas obere in der Liste bleibt (Vorderseite), das untere wird nur noch Infofoto (Rückseite) und erscheint nicht mehr als eigenes Produkt.")}>Zu einem Produkt (Rückseite)</button>
+          )}
           <button className="btn btn-small btn-danger-link" type="submit" name="op" value="bulk:remove" onClick={confirmRun(`${count} Produkt(e) aus dieser Verteilung entfernen? Sie bleiben in der Produktdatenbank.`)}>Entfernen</button>
         </div>
       )}

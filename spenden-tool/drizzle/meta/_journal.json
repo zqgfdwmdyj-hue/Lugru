@@ -120,6 +120,13 @@
       "when": 1792840830424,
       "tag": "0016_foto_leser",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793010669123,
+      "tag": "0017_rueckseiten",
+      "breakpoints": true
     }
   ]
 }

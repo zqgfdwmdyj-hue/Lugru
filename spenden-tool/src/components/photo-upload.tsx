@@ -20,6 +20,8 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
   const router = useRouter();
   const [status, setStatus] = useState("");
   const [report, setReport] = useState<{ ok: boolean; text: string } | null>(null);
+  // Vorder- und Rückseite abwechselnd fotografiert → jede zweite wird Infofoto statt eigenes Produkt.
+  const [pairs, setPairs] = useState(false);
 
   async function upload(files: File[]) {
     setReport(null);
@@ -28,12 +30,14 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
     let reused = 0;
     let already = 0;
     let similar = 0;
+    let backs = 0;
     const rejected: string[] = [];
     const failed: string[] = [];
     for (let i = 0; i < total; i += BATCH) {
       const part = files.slice(i, i + BATCH);
       const fd = new FormData();
       fd.set("eventId", eventId);
+      if (pairs) fd.set("paare", "1");
       fd.set("category", categoryBox.current?.querySelector<HTMLInputElement | HTMLSelectElement>("[name=category]")?.value || UNSORTED_CATEGORY);
       for (let j = 0; j < part.length; j++) {
         setStatus(`Foto ${i + j + 1} von ${total} wird vorbereitet …`);
@@ -54,12 +58,14 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
         reused += res.reused;
         already += res.alreadyInEvent;
         similar += res.similar;
+        backs += res.backs ?? 0;
         rejected.push(...res.rejected);
       } else failed.push(...part.map((f) => f.name));
     }
     setStatus("");
     router.refresh();
     const parts = [`${added} neu`];
+    if (backs) parts.push(`${backs} Rückseite(n) als Infofoto zugeordnet`);
     if (reused) parts.push(`${reused} schon in der Datenbank (wiedererkannt, nicht doppelt angelegt)`);
     if (already) parts.push(`${already} doppelt – schon in dieser Verteilung, übersprungen`);
     if (similar) parts.push(`${similar} ähnlich wie ein vorhandenes Foto – bitte prüfen (Produkte → Mögliche Doppelte)`);
@@ -105,6 +111,10 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
         <h2>Fotos hochladen</h2>
         <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Doppelte Fotos werden erkannt – auch verkleinert, neu gespeichert oder per WhatsApp verschickt – und nicht doppelt angelegt oder ausgewertet.</div>
         <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><span className="small muted">„{UNSORTED_CATEGORY}“: die KI schlägt eine vor, du ordnest später zu.</span><CategorySelect id="pc" name="category" value={UNSORTED_CATEGORY} categories={categories} /></div>
+        <label className="check" style={{ alignItems: "flex-start" }}>
+          <input type="checkbox" checked={pairs} onChange={(e) => setPairs(e.target.checked)} style={{ marginTop: 3 }} />
+          <span>Vorder- und Rückseite abwechselnd<br /><span className="small muted">1. Foto vorne, 2. Foto Rückseite des 1., 3. Foto vorne … – Rückseiten werden kein eigenes Produkt, nur Infofoto (Zutaten, Gewicht, MHD). Bitte in dieser Reihenfolge auswählen.</span></span>
+        </label>
         <button className="btn btn-primary" type="button" disabled={busy} onClick={() => input.current?.click()}>Fotos auswählen</button>
         {message}
       </div>

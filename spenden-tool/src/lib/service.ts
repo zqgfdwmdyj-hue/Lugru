@@ -55,6 +55,7 @@ export async function storeImage(file: File): Promise<string | null> {
 /** Fotos, die weder Produktfoto noch MHD-Foto sind (ersetzt, entfernt, Produkt zusammengeführt/gelöscht). */
 // Erst nach einer Stunde – ein Foto, das gerade hochgeladen wird, ist kurz noch keinem Produkt zugeordnet.
 const orphanFilter = sql`not exists (select 1 from products p where p.image_file_id = files.id)
+  and not exists (select 1 from product_photos pp where pp.file_id = files.id)
   and not exists (select 1 from event_items i where i.best_before_file_id = files.id)
   and files.created_at < now() - interval '1 hour'`;
 
@@ -122,11 +123,30 @@ export type PhotoEntry = { productId: string; sha: string; hash: string | null; 
 export async function photoIndex(): Promise<PhotoEntry[]> {
   // Ältere Fotos bekommen ihren Fingerabdruck beim Start (scripts/migrate.ts); hier nur noch ein kleiner Rest.
   await backfillPhotoHashes(20);
-  return db
+  const main = await db
     .select({ productId: P.id, sha: schema.files.sha256, hash: schema.files.phash, createdAt: P.createdAt })
     .from(P)
     .innerJoin(schema.files, eq(schema.files.id, P.imageFileId))
     .orderBy(asc(P.createdAt));
+  // Rückseiten/Infofotos zählen mit: dieselbe Rückseite noch einmal hochgeladen → vorhandenes Produkt.
+  const extra = await db
+    .select({ productId: schema.productPhotos.productId, sha: schema.files.sha256, hash: schema.files.phash, createdAt: schema.productPhotos.createdAt })
+    .from(schema.productPhotos)
+    .innerJoin(schema.files, eq(schema.files.id, schema.productPhotos.fileId));
+  return [...main, ...extra];
+}
+
+/** Rückseiten/Infofotos je Produkt (Datei-IDs, älteste zuerst). */
+export async function extraPhotos(productIds: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  if (productIds.length === 0) return map;
+  const rows = await db
+    .select({ productId: schema.productPhotos.productId, fileId: schema.productPhotos.fileId })
+    .from(schema.productPhotos)
+    .where(inArray(schema.productPhotos.productId, productIds))
+    .orderBy(asc(schema.productPhotos.createdAt));
+  for (const r of rows) map.set(r.productId, [...(map.get(r.productId) ?? []), r.fileId]);
+  return map;
 }
 
 /**
@@ -164,7 +184,8 @@ export async function duplicatePhotoGroups(): Promise<string[][]> {
     if (g) g.ids.push(e.productId);
     else groups.push({ anchor: e, ids: [e.productId] });
   }
-  return groups.map((g) => g.ids).filter((ids) => ids.length > 1);
+  // Ein Produkt mit Vorder- und Rückseite steht zweimal im Index – nur verschiedene Produkte zählen.
+  return groups.map((g) => [...new Set(g.ids)]).filter((ids) => ids.length > 1);
 }
 
 export async function loadEvent(id: string) {

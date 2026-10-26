@@ -8,7 +8,7 @@ import { AiModeSelect } from "@/components/price-check";
 import { guessUnit, mhdAuto, publicText, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { UnitReview } from "./unit-review";
 import { outputPrice } from "@/lib/layout";
-import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, researchEvent, setMhdMode, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
+import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, keepSeparate, mergeBackside, researchEvent, setMhdMode, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
 
 const euro = (v: number | null) => (v === null ? "–" : `${v.toFixed(2).replace(".", ",")} €`);
 const usd = (v: number) => `${v.toFixed(2).replace(".", ",")} $`;
@@ -25,7 +25,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const view = await loadEventView(id);
   if (!view) notFound();
-  const { rows } = view;
+  const { rows, pairs } = view;
   const ai = aiConfigured();
   const list = (`/verteilung/${id}`);
   const has = (r: EventRow, key: string) => r.issues.some((i) => i.key === key);
@@ -64,6 +64,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
           {aiData.length > 0 && <a href="#ki-angaben" className="chip">{aiData.length} KI-Angaben</a>}
           {compare.length > 0 && <a href="#vergleich" className="chip">{compare.length} Preisvergleich unsicher</a>}
           {oldPhoto.length > 0 && <a href="#foto-alt" className="chip chip-danger">{oldPhoto.length} Foto mit altem Preis</a>}
+          {pairs.length > 0 && <a href="#rueckseiten" className="chip chip-danger">{pairs.length} mögliche Rückseite(n)</a>}
           {mhdUnsure.length > 0 && <a href="#mhd-pruefen" className="chip">{mhdUnsure.length} MHD-Relevanz prüfen</a>}
           {units.length > 0 && <a href="#einheiten" className="chip">{units.length} Abgabeeinheit offen</a>}
           {internal.length > 0 && <a href="#intern" className="chip">{internal.length} interne Hinweise im Text</a>}
@@ -99,6 +100,31 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
               </div>
             </form>
           ))}
+        </section>
+      )}
+
+      {pairs.length > 0 && (
+        <section id="rueckseiten" className="stack">
+          <h2>Mögliche Rückseiten ({pairs.length})</h2>
+          <div className="small muted">Pro Foto entsteht ein Produkt. Diese Fotos zeigen wahrscheinlich dasselbe Produkt von vorne und hinten. Beim Zusammenführen wird die Rückseite nur noch Infofoto (Zutaten, Gewicht, MHD) – sie erscheint nicht mehr als eigenes Produkt in Collage, Aushang und Messenger.</div>
+          {pairs.map((p) => {
+            const f = rows.find((r) => r.item.id === p.front)!;
+            const b = rows.find((r) => r.item.id === p.back)!;
+            return (
+              <form key={p.front} className="card pair-card">
+                <div className="pair-photos">
+                  <figure><img src={`/datei/${f.product.imageFileId}?w=400`} alt="" /><figcaption><span className="tag tag-ok">Vorderseite – bleibt</span><strong className="wrap-anywhere">{title(f)}</strong><span className="small muted">{euro(f.item.price)}</span></figcaption></figure>
+                  <figure><img src={`/datei/${b.product.imageFileId}?w=400`} alt="" /><figcaption><span className="tag tag-neutral">Rückseite – wird Infofoto</span><strong className="wrap-anywhere">{title(b)}</strong><span className="small muted">{euro(b.item.price)}</span></figcaption></figure>
+                </div>
+                <div className="small muted">Grund: {p.reason}</div>
+                <div className="conflict-actions">
+                  <button className="btn btn-small btn-primary" formAction={mergeBackside.bind(null, id, f.product.id, b.product.id)}>Zusammenführen</button>
+                  <button className="btn btn-small" formAction={mergeBackside.bind(null, id, b.product.id, f.product.id)}>Andersherum (rechts ist vorne)</button>
+                  <button className="btn btn-small" formAction={keepSeparate.bind(null, id, f.product.id, b.product.id)}>Sind verschiedene Produkte</button>
+                </div>
+              </form>
+            );
+          })}
         </section>
       )}
 

@@ -317,13 +317,14 @@ export function priceState(item: PriceInput, imageFileId: string | null | undefi
 // ---------- Prüfstatus einer Zeile ----------
 
 export type Issue = { key: IssueKey; label: string; level: "fehlt" | "pruefen" };
-export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich";
+export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich" | "rueckseite";
 
 export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
   { key: "konflikt", label: "Preiswiderspruch" },
   { key: "foto-alt", label: "Foto zeigt alten Preis" },
   { key: "preis", label: "Ohne Preis" },
   { key: "name", label: "Ohne Namen" },
+  { key: "rueckseite", label: "Mögliche Rückseite" },
   { key: "preis-unbestaetigt", label: "Preis unbestätigt" },
   { key: "einheit", label: "Abgabeeinheit offen" },
   { key: "ki-angaben", label: "KI-Angaben prüfen" },

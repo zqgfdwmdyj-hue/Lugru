@@ -82,6 +82,8 @@ export const products = pgTable(
     mhdMode: text("mhd_mode", { enum: ["ja", "nein"] }),
     /** Kategorie von einem Menschen geprüft („Kategorie stimmt“ oder selbst gewählt) – dann keine Auffälligkeit mehr. */
     categoryChecked: boolean("category_checked").notNull().default(false),
+    /** Produkte, die ausdrücklich NICHT dasselbe sind (z. B. „Sind verschiedene Produkte“ bei möglicher Rückseite). */
+    distinctFrom: jsonb("distinct_from").$type<string[]>().notNull().default([]),
     archived: boolean("archived").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -168,6 +170,8 @@ export const priceChecks = pgTable(
     recognizedName: text("recognized_name"),
     recognizedVariant: text("recognized_variant"),
     recognizedCategory: text("recognized_category"),
+    /** Zeigt das Foto die Vorder- oder Rückseite? (KI) */
+    recognizedSide: text("recognized_side"),
     offers: jsonb("offers").$type<ShopOffer[]>().notNull().default([]),
     lowestPrice: money("lowest_price"),
     /** Vorschlag für den Spendenpreis. */
@@ -253,3 +257,19 @@ export const appSettings = pgTable("app_settings", {
   value: jsonb("value").$type<unknown>().notNull(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * Weitere Fotos eines Produkts, z. B. die Rückseite mit Zutaten, Gewicht oder MHD. Erscheinen nie auf Collage oder
+ * Social Media – nur als Information (und für die KI-Erkennung).
+ */
+export const productPhotos = pgTable(
+  "product_photos",
+  {
+    id: id(),
+    productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id").notNull().references(() => files.id, { onDelete: "cascade" }),
+    role: text("role", { enum: ["rueckseite", "info"] }).notNull().default("rueckseite"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("product_photos_product_idx").on(t.productId), uniqueIndex("product_photos_uq").on(t.productId, t.fileId)],
+);

@@ -4,12 +4,12 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
 import { isPlaceholderName } from "@/lib/layout";
-import { knownCategories, latestPriceChecks, productHistory, productsWithSamePhoto } from "@/lib/service";
+import { extraPhotos, knownCategories, latestPriceChecks, productHistory, productsWithSamePhoto } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckBox } from "@/components/price-check";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/app/(app)/actions";
+import { changeExtraPhoto, deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PriceLinks } from "@/components/price-links";
 import { CategorySelect } from "@/components/category-select";
@@ -23,7 +23,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
   const P = schema.products;
   const [product] = await db.select().from(P).where(eq(P.id, id));
   if (!product) notFound();
-  const [history, categories, twins, checks] = await Promise.all([
+  const [history, categories, twins, checks, extra] = await Promise.all([
     productHistory(id),
     knownCategories(),
     db
@@ -31,7 +31,9 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
       .from(P)
       .where(and(ne(P.id, id), sql`lower(${P.name}) = lower(${product.name})`, sql`coalesce(lower(${P.variant}), '') = coalesce(lower(${product.variant}), '')`)),
     latestPriceChecks([id]),
+    extraPhotos([id]),
   ]);
+  const backs = extra.get(id) ?? [];
   // Dazu Produkte mit (fast) demselben Foto, auch wenn sie anders heißen.
   const samePhoto = await productsWithSamePhoto(id);
   const known = new Set(twins.map((t) => t.id));
@@ -56,6 +58,21 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
             {product.imageFileId
               ? <div><a href={`/datei/${product.imageFileId}`} target="_blank"><img src={`/datei/${product.imageFileId}`} alt={product.name} style={{ maxWidth: 320, maxHeight: 320, borderRadius: 8, display: "block" }} /></a><div style={{ marginTop: 6 }}><RotateButtons productId={product.id} /></div></div>
               : <div className="muted" style={{ width: 240, height: 180, display: "grid", placeItems: "center", background: "var(--row)", borderRadius: 8 }}>noch kein Foto</div>}
+            {backs.length > 0 && (
+              <form className="stack" style={{ gap: 6 }}>
+                <div className="label">Rückseite / Infofotos</div>
+                <div className="small muted" style={{ maxWidth: 220 }}>Nur zur Information (Zutaten, Gewicht, MHD) – erscheinen nicht auf Collage oder Social Media.</div>
+                {backs.map((f) => (
+                  <div key={f} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <a href={`/datei/${f}`} target="_blank" rel="noreferrer"><img src={`/datei/${f}?w=200`} alt="Rückseite" style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 6 }} /></a>
+                    <span className="stack" style={{ gap: 4 }}>
+                      <button className="btn btn-small" formAction={changeExtraPhoto.bind(null, product.id, f, "hauptfoto")}>Als Hauptfoto</button>
+                      <button className="btn btn-small btn-danger-link" formAction={changeExtraPhoto.bind(null, product.id, f, "entfernen")}>Entfernen</button>
+                    </span>
+                  </div>
+                ))}
+              </form>
+            )}
             <div className="stack" style={{ flex: "1 1 260px", gap: 8 }}>
               <h2>Preis im Internet</h2>
               {!isPlaceholderName(product.name) && <div className="small">Kostenlos selbst nachschauen: <PriceLinks name={product.name} variant={product.variant} small={false} /></div>}

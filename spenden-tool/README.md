@@ -18,6 +18,11 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **Eine Preislogik für alles:** Collage, Aushang, Messenger und Social Media geben immer die eingetragene
   Spendenempfehlung mit ihrer **Abgabeeinheit** aus (Einzelstück, Mehrfachpackung mit Stückzahl, Karton). Preise aus
   dem Foto oder von der KI sind zunächst „unbestätigt“ und überschreiben nie einen eingetragenen Preis.
+- **Vorder- und Rückseite:** Rückseiten werden kein eigenes Produkt, sondern Infofoto (Zutaten, Gewicht, MHD) –
+  nie auf Collage oder Social Media; die KI-Erkennung nutzt sie mit. Drei Wege: beim Hochladen „Vorder- und
+  Rückseite abwechselnd“ (jedes zweite Foto ist die Rückseite des vorherigen), unter „Prüfen“ → „Mögliche
+  Rückseiten“ (gleicher/enthaltener Name, gleiche Größe; nur auf Klick) oder zwei Produkte auswählen → „Zu einem
+  Produkt (Rückseite)“. Auf der Produktseite lassen sich Infofotos zum Hauptfoto machen oder entfernen.
 - **Fotos drehen:** ↺ / ↻ unter jedem Foto in der Produktliste, auf der Produktseite und im Collage-Editor. Das
   gespeicherte Foto wird gedreht und gilt damit überall (Collage, Social Media, KI).
 - **Doppelte Fotos:** Jedes Foto bekommt einen Fingerabdruck. Dasselbe Foto wird wiedererkannt – auch verkleinert,

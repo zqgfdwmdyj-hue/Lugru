@@ -12,12 +12,14 @@ export function exportWarnings(rows: EventRow[]): string[] {
   const unread = n((r) => r.item.inCollage && r.state.unread);
   const units = n((r) => r.issues.some((i) => i.key === "einheit"));
   const internal = n((r) => r.issues.some((i) => i.key === "intern"));
+  const backs = n((r) => r.issues.some((i) => i.key === "rueckseite")) / 2;
   if (conflicts) out.push(`${conflicts} ungelöste(r) Preiswiderspruch/-widersprüche (ausgegeben wird der eingetragene Preis)`);
   if (noPrice) out.push(`${noPrice} ohne Preis`);
   if (unconfirmed) out.push(`${unconfirmed} Preis(e) unbestätigt`);
   if (unnamed) out.push(`${unnamed} ohne Namen`);
   if (oldVisible) out.push(`${oldVisible} Foto(s) zeigen einen alten, abweichenden Preis – bitte Foto ohne Preis hochladen`);
   if (unread) out.push(`${unread} Foto(s) noch nicht auf eingebrannte Preise geprüft (Gefahr doppelter Preise)`);
+  if (backs) out.push(`${backs} mögliche Rückseite(n) – dasselbe Produkt erscheint sonst doppelt`);
   if (units) out.push(`${units} Abgabeeinheit(en) offen`);
   if (internal) out.push(`${internal} Name(n)/Variante(n) mit internen KI-Hinweisen (werden in der Ausgabe weggelassen)`);
   return out;

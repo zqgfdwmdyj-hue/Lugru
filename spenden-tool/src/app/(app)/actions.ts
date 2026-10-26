@@ -307,6 +307,14 @@ export async function saveItems(fd: FormData) {
       await startChecks(pids, stufe(fd), { skipRecent: fd.get("bulk_neu") !== "on" });
       await startPhotoPrices(eventId, pids);
       what = `KI-Suche für ${n} ausgewählte Produkt(e) gestartet`;
+    } else if (target === "rueckseite") {
+      // Genau zwei: das obere in der Liste ist die Vorderseite, das untere wird ihr Infofoto.
+      if (selItems.length !== 2) {
+        revalidatePath(`/verteilung/${eventId}`, "layout");
+        return;
+      }
+      const name = await joinBackside(selItems[0].productId, selItems[1].productId);
+      what = `Vorder- und Rückseite zusammengeführt: ${name ?? ""}`;
     } else if (target === "remove") {
       await db.delete(I).where(inArray(I.id, ids));
       what = `${n} Produkt(e) aus der Verteilung entfernt`;
@@ -375,6 +383,86 @@ export async function markPhotoPrice(itemId: string, fd?: FormData) {
     .where(eq(schema.files.id, row.fileId));
   await logActivity(me, `Preis im Foto von Hand eingetragen (${text})`, { eventId: row.item.eventId, productId: row.item.productId });
   revalidatePath(`/verteilung/${row.item.eventId}`, "layout");
+}
+
+/**
+ * Vorder- und Rückseite zu einem Produkt zusammenführen: Die Rückseite wird Infofoto der Vorderseite (nie auf
+ * Collage/Social Media). Fehlende Angaben (Name, Variante, Kategorie, Preis) werden von der Rückseite ergänzt,
+ * Einträge in anderen Verteilungen umgehängt, dann wird das Rückseiten-Produkt gelöscht.
+ */
+async function joinBackside(frontId: string, backId: string): Promise<string | null> {
+  if (frontId === backId) return null;
+  const prods = await db.select().from(P).where(inArray(P.id, [frontId, backId]));
+  const front = prods.find((p) => p.id === frontId);
+  const back = prods.find((p) => p.id === backId);
+  if (!front || !back) return null;
+  const PP = schema.productPhotos;
+  const files = [back.imageFileId, ...(await db.select({ f: PP.fileId }).from(PP).where(eq(PP.productId, backId))).map((r) => r.f)].filter((f): f is string => !!f && f !== front.imageFileId);
+  if (files.length) await db.insert(PP).values(files.map((fileId) => ({ productId: frontId, fileId, role: "rueckseite" as const }))).onConflictDoNothing();
+  const set: Partial<typeof P.$inferInsert> = {};
+  if (isPlaceholderName(front.name) && !isPlaceholderName(back.name)) set.name = back.name;
+  if (!front.variant && back.variant) set.variant = back.variant;
+  if (front.category === UNSORTED_CATEGORY && back.category !== UNSORTED_CATEGORY) set.category = back.category;
+  if (front.price === null && back.price !== null) Object.assign(set, { price: back.price, priceConfirmed: back.priceConfirmed });
+  if (back.note) set.note = [front.note, back.note].filter(Boolean).join("\n");
+  if (Object.keys(set).length) await db.update(P).set({ ...set, updatedAt: new Date() }).where(eq(P.id, frontId));
+  // In Verteilungen mit beiden: fehlenden Preis der Vorderseite von der Rückseite übernehmen.
+  const both = await db.execute<{ fid: string; bid: string }>(sql`
+    select f.id as fid, b.id as bid from event_items f join event_items b on b.event_id = f.event_id
+     where f.product_id = ${frontId} and b.product_id = ${backId}`);
+  for (const r of both.rows) {
+    const [[fi], [bi]] = await Promise.all([db.select().from(I).where(eq(I.id, r.fid)), db.select().from(I).where(eq(I.id, r.bid))]);
+    if (fi && bi && fi.price === null && bi.price !== null) {
+      await db.update(I).set({ price: bi.price, priceSource: bi.priceSource, priceConfirmed: bi.priceConfirmed, priceNote: fi.priceNote ?? bi.priceNote, unit: fi.unit ?? bi.unit, unitCount: fi.unitCount ?? bi.unitCount, unitConfirmed: fi.unitConfirmed || bi.unitConfirmed }).where(eq(I.id, fi.id));
+    }
+  }
+  // Andere Verteilungen: Einträge der Rückseite umhängen (wo die Vorderseite noch fehlt).
+  await db.execute(sql`
+    update event_items i set product_id = ${frontId}
+     where i.product_id = ${backId}
+       and not exists (select 1 from event_items j where j.event_id = i.event_id and j.product_id = ${frontId})`);
+  await db.delete(P).where(eq(P.id, backId));
+  return isPlaceholderName(set.name ?? front.name) ? "ohne Namen" : (set.name ?? front.name);
+}
+
+/** „Prüfen“: vorgeschlagenes Paar zusammenführen (Rückseite wird Infofoto). */
+export async function mergeBackside(eventId: string, frontProductId: string, backProductId: string) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const name = await joinBackside(uuid.parse(frontProductId), uuid.parse(backProductId));
+  if (name) await logActivity(me, `Vorder- und Rückseite zusammengeführt: ${name}`, { eventId: id, productId: frontProductId });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** „Prüfen“: Das sind verschiedene Produkte – nicht mehr als mögliche Rückseite vorschlagen. */
+export async function keepSeparate(eventId: string, aProductId: string, bProductId: string) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const a = uuid.parse(aProductId);
+  const b = uuid.parse(bProductId);
+  await db.update(P).set({ distinctFrom: sql`${P.distinctFrom} || ${JSON.stringify([b])}::jsonb` }).where(eq(P.id, a));
+  await db.update(P).set({ distinctFrom: sql`${P.distinctFrom} || ${JSON.stringify([a])}::jsonb` }).where(eq(P.id, b));
+  await logActivity(me, "Mögliche Rückseite: sind verschiedene Produkte", { eventId: id, productId: a });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** Infofoto (Rückseite) wieder vom Produkt lösen oder zum Hauptfoto machen. */
+export async function changeExtraPhoto(productId: string, fileId: string, action: "hauptfoto" | "entfernen") {
+  const me = await requireLogin();
+  const pid = uuid.parse(productId);
+  const fid = uuid.parse(fileId);
+  z.enum(["hauptfoto", "entfernen"]).parse(action);
+  const PP = schema.productPhotos;
+  const [p] = await db.select().from(P).where(eq(P.id, pid));
+  if (!p) return;
+  await db.delete(PP).where(and(eq(PP.productId, pid), eq(PP.fileId, fid)));
+  if (action === "hauptfoto") {
+    // Bisheriges Hauptfoto wird Infofoto.
+    if (p.imageFileId) await db.insert(PP).values({ productId: pid, fileId: p.imageFileId, role: "info" }).onConflictDoNothing();
+    await db.update(P).set({ imageFileId: fid, updatedAt: new Date() }).where(eq(P.id, pid));
+  }
+  await logActivity(me, action === "hauptfoto" ? "Infofoto als Hauptfoto gesetzt" : "Infofoto entfernt", { productId: pid });
+  revalidatePath("/", "layout");
 }
 
 /** „Prüfen“: MHD-Relevanz für angehakte Produkte festlegen – „ja“ (Nahrung) oder „nein“ (Zubehör). */
@@ -492,7 +580,7 @@ export async function addToEvent(fd: FormData) {
  * zum Nachtragen) und landet direkt in der Aktion.
  */
 /** reused: schon in der Datenbank, jetzt in die Verteilung übernommen; alreadyInEvent: war schon drin; similar: neu, aber ähnlich wie ein vorhandenes. */
-export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; rejected: string[] };
+export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; backs: number; rejected: string[] };
 
 /**
  * Fotos hochladen – der Browser schickt sie in kleinen Portionen (siehe PhotoUpload), damit auch 50+ Fotos
@@ -500,7 +588,7 @@ export type UploadResult = { added: number; reused: number; alreadyInEvent: numb
  */
 export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   const me = await requireLogin();
-  const result: UploadResult = { added: 0, reused: 0, alreadyInEvent: 0, similar: 0, rejected: [] };
+  const result: UploadResult = { added: 0, reused: 0, alreadyInEvent: 0, similar: 0, backs: 0, rejected: [] };
   const eventId = uuid.parse(fd.get("eventId"));
   if (!(await loadEvent(eventId))) return result;
   // Neue Fotos landen in „Noch zuordnen“ – die KI darf das ersetzen, bestätigte Kategorien bleiben.
@@ -508,10 +596,28 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   const ids: string[] = [];
   const index = await photoIndex();
   const inEvent = new Set((await db.select({ id: I.productId }).from(I).where(eq(I.eventId, eventId))).map((r) => r.id));
-  for (const file of images(fd, "photos").slice(0, 20)) {
+  // „Vorder- und Rückseite abwechselnd“: jedes zweite Foto ist die Rückseite des vorherigen (nur Infofoto).
+  const pairs = fd.get("paare") === "1";
+  let lastFront: string | null = null;
+  const files = images(fd, "photos").slice(0, 20);
+  for (let n = 0; n < files.length; n++) {
+    const file = files[n];
     const img = await checkImage(file);
     if (!img) {
       result.rejected.push(file.name);
+      if (pairs && n % 2 === 0) lastFront = null;
+      continue;
+    }
+    if (pairs && n % 2 === 1) {
+      if (lastFront) {
+        const known = findPhoto(img, index);
+        if (!known || known.how === "ähnlich") {
+          const fileId = await storeChecked(img);
+          await db.insert(schema.productPhotos).values({ productId: lastFront, fileId, role: "rueckseite" }).onConflictDoNothing();
+          index.push({ productId: lastFront, sha: img.sha, hash: img.hash, createdAt: new Date() });
+        }
+        result.backs++;
+      }
       continue;
     }
     // Dasselbe Foto schon einmal hochgeladen (auch verkleinert, per WhatsApp o. ä.)? Dann das vorhandene Produkt
@@ -523,6 +629,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
         ids.push(found.productId);
         result.reused++;
       }
+      lastFront = found.productId;
       continue;
     }
     const fileId = await storeChecked(img);
@@ -533,6 +640,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     // Auch innerhalb derselben Auswahl doppelte Fotos erkennen.
     index.push({ productId: p.id, sha: img.sha, hash: img.hash, createdAt: p.createdAt });
     ids.push(p.id);
+    lastFront = p.id;
     result.added++;
     if (found) result.similar++;
   }

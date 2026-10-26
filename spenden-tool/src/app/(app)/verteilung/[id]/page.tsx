@@ -292,6 +292,12 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
 
         <div className="pl-detail-actions">
           {product.imageFileId && <span className="small muted" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>Foto drehen <RotateButtons productId={product.id} compact /></span>}
+          {r.backPhotos.length > 0 && (
+            <span className="small muted" style={{ display: "inline-flex", gap: 6, alignItems: "center" }} title="Rückseite/Infofoto – erscheint nicht auf Collage oder Social Media">
+              Rückseite:
+              {r.backPhotos.map((f) => <a key={f} href={`/datei/${f}`} target="_blank" rel="noreferrer"><img src={`/datei/${f}?w=200`} alt="Rückseite" className="thumb thumb-sm" /></a>)}
+            </span>
+          )}
           <span style={{ display: "inline-flex", gap: 4 }}>
             <button className="btn btn-small" type="submit" name="op" value={`up:${item.id}`} disabled={first} aria-label="Nach oben">↑</button>
             <button className="btn btn-small" type="submit" name="op" value={`down:${item.id}`} disabled={last} aria-label="Nach unten">↓</button>
