@@ -151,6 +151,6 @@ export async function requireArea(...areas: AreaKey[]): Promise<Session> {
 /** Nur für Inhaber (Einstellungen, Anbindungen, Benutzer). */
 export async function requireOwner(): Promise<Session> {
   const session = await requireSession();
-  if (session.role !== "owner") redirect("/");
+  if (session.role !== "owner") redirect(`${homeFor(session)}?gesperrt=inhaber`);
   return session;
 }

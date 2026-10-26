@@ -28,7 +28,6 @@ function Badge({ item, counts }: { item: Pick<NavItem, "badge" | "alert">; count
 
 export function SidebarNav({ counts, favorites = [], openSaved = [], ...access }: NavAccess & { counts: NavCounts; favorites?: Favorite[]; openSaved?: string[] }) {
   const { pathname, search, sections, active } = useNav(access);
-  const gesperrt = search.get("gesperrt") === "1";
   const activeKey = active?.section.key ?? (pathname === "/" ? "heute" : null);
   // Aufgeklappt: der aktuelle Bereich und was man selbst geöffnet hat.
   const [open, setOpen] = useState<Set<string>>(() => new Set([...openSaved, ...(activeKey ? [activeKey] : [])]));
@@ -56,7 +55,6 @@ export function SidebarNav({ counts, favorites = [], openSaved = [], ...access }
 
   return (
     <nav aria-label="Hauptnavigation" className="main-nav">
-      {gesperrt && <div className="nav-locked">Dieser Bereich ist für dich nicht freigegeben.</div>}
       {favorites.length > 0 && (
         <div className="nav-favs" data-testid="nav-favorites">
           <div className="nav-favs-head">★ Favoriten</div>

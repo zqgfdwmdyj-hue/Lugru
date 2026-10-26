@@ -7,6 +7,7 @@ import { NAV_OPEN_COOKIE } from "@/lib/nav";
 import { logout } from "@/app/login/actions";
 import { Suspense } from "react";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
+import { LockedBanner } from "@/components/locked-banner";
 import { AreaTabs } from "@/components/area-tabs";
 import { getPrefs } from "@/lib/auth/prefs";
 import { needsReview } from "@/lib/invoices/review";
@@ -58,6 +59,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
       <main className="main">
         {session.readOnly && <Suspense fallback={null}><ReadOnlyBanner /></Suspense>}
+        <Suspense fallback={null}><LockedBanner /></Suspense>
         <AreaTabs favorites={favorites} canFavorite={!session.readOnly} {...access} />
         {children}
       </main>
