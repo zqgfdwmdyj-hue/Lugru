@@ -24,7 +24,8 @@ export async function GET(request: Request) {
   if (!verifier) return back(base, "Anmeldung abgelaufen – bitte erneut „Mit sellerboard verbinden“.");
   try {
     await finishAuth(state.t, code, verifier);
-    await identifyAccount(state.t);
+    // Konto gleich ermitteln; klappt das nicht, holt der Abgleich es nach (Verbindung steht trotzdem).
+    await identifyAccount(state.t).catch(() => undefined);
     startSellerboardSync(state.t, "alles");
     return back(base, "ok");
   } catch (e) {
