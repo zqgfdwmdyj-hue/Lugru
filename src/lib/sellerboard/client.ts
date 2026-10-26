@@ -18,6 +18,47 @@ async function pace(tenantId: string) {
 
 let rpcId = 0;
 
+/**
+ * Event-Stream lesen, bis die JSON-RPC-Antwort (result/error) da ist – nicht auf das Stream-Ende warten:
+ * manche Server halten die Verbindung danach offen.
+ */
+async function readSse(r: Response): Promise<Record<string, unknown> | null> {
+  if (!r.body) return null;
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  let data: string[] = [];
+  const take = (): Record<string, unknown> | null => {
+    if (!data.length) return null;
+    const raw = data.join("\n");
+    data = [];
+    try {
+      const j = JSON.parse(raw) as Record<string, unknown>;
+      return "result" in j || "error" in j ? j : null;
+    } catch {
+      return null;
+    }
+  };
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      buf += done ? dec.decode() : dec.decode(value, { stream: true });
+      const lines = buf.split(/\r?\n/);
+      buf = done ? "" : (lines.pop() ?? "");
+      for (const line of done ? [...lines, ""] : lines) {
+        if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+        else if (line === "") {
+          const j = take();
+          if (j) return j;
+        }
+      }
+      if (done) return take();
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 /** Ein JSON-RPC-Aufruf; Antwort als JSON oder als Event-Stream. */
 async function rpc(token: string, method: string, params: unknown): Promise<{ status: number; body: Record<string, unknown> | null }> {
   const r = await fetch(mcpUrl(), {
@@ -26,21 +67,12 @@ async function rpc(token: string, method: string, params: unknown): Promise<{ st
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
     signal: AbortSignal.timeout(90_000),
   });
-  const text = await r.text();
-  if (!r.ok) return { status: r.status, body: null };
-  if ((r.headers.get("content-type") ?? "").includes("text/event-stream")) {
-    // Letzte „data:“-Zeile mit einer JSON-RPC-Antwort
-    const data = text.split(/\r?\n/).filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).filter(Boolean);
-    for (let i = data.length - 1; i >= 0; i--) {
-      try {
-        const j = JSON.parse(data[i]) as Record<string, unknown>;
-        if ("result" in j || "error" in j) return { status: r.status, body: j };
-      } catch {
-        // weiter
-      }
-    }
+  if (!r.ok) {
+    await r.body?.cancel().catch(() => undefined);
     return { status: r.status, body: null };
   }
+  if ((r.headers.get("content-type") ?? "").includes("text/event-stream")) return { status: r.status, body: await readSse(r) };
+  const text = await r.text();
   try {
     return { status: r.status, body: JSON.parse(text) as Record<string, unknown> };
   } catch {

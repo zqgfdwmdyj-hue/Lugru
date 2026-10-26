@@ -19,7 +19,16 @@ export type SbConfig = {
   lastCounts?: Record<string, number>;
   syncing?: string | null;
 };
-type SbSecrets = { clientId?: string; clientSecret?: string; redirectUri?: string; accessToken?: string; refreshToken?: string; expiresAt?: number };
+type SbSecrets = {
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  /** Laufende Anmeldung: PKCE-Prüfwert, Ende des state, gültig bis. */
+  pkce?: { v: string; s: string; exp: number } | null;
+};
 
 type Meta = { authorization_endpoint: string; token_endpoint: string; registration_endpoint?: string };
 let metaCache: { url: string; meta: Meta; at: number } | null = null;
@@ -105,6 +114,9 @@ export async function startAuth(tenantId: string, redirectUri: string, state: st
   }
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash("sha256").update(verifier).digest());
+  // Prüfwert serverseitig (verschlüsselt) merken: Am Handy landet der Rücksprung oft in einem anderen
+  // Browser-Fenster als der Start (Home-Bildschirm-App) – ein Cookie wäre dort nicht da.
+  await writeConn(tenantId, { secrets: { pkce: { v: verifier, s: state.slice(-24), exp: Date.now() + 30 * 60_000 } } });
   const u = new URL(meta.authorization_endpoint);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("client_id", clientId);
@@ -115,6 +127,15 @@ export async function startAuth(tenantId: string, redirectUri: string, state: st
   u.searchParams.set("code_challenge_method", "S256");
   u.searchParams.set("resource", mcpUrl());
   return { url: u.toString(), verifier };
+}
+
+/** Prüfwert der laufenden Anmeldung holen (nur passend zum state und nicht abgelaufen) und verbrauchen. */
+export async function takePkce(tenantId: string, stateTail: string): Promise<string | null> {
+  const cur = await readConn(tenantId);
+  const p = cur?.secrets.pkce;
+  if (!p || p.s !== stateTail || p.exp < Date.now()) return null;
+  await writeConn(tenantId, { secrets: { pkce: null } });
+  return p.v;
 }
 
 async function tokenRequest(body: Record<string, string>) {

@@ -40,6 +40,9 @@ export async function SellerboardCard({ tenantId, message }: { tenantId: string;
         {!connected ? (
           <div className="muted">
             „Mit sellerboard verbinden“ öffnet die Anmeldung bei sellerboard; dort den Lesezugriff erlauben. Das Seller-System speichert den Zugang verschlüsselt und gleicht danach selbst ab: Bestand alle 4 Stunden, alles andere täglich.
+            <div style={{ marginTop: 6 }} data-testid="sb-mobile-hint">
+              Am Handy: Bleibt die sellerboard-Seite auf „Loading…“ stehen, vorher im selben Browser bei sellerboard anmelden – oder einmal am Computer verbinden.
+            </div>
           </div>
         ) : (
           <>
