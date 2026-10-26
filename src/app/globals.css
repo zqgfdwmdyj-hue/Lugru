@@ -569,3 +569,54 @@ h2 { font-size: 16px; margin: 0; }
 
 /* Paletten-Auswertung: Hochrechnung des laufenden Monats gestreift */
 .pal-col-proj .pal-col-bar { background: repeating-linear-gradient(45deg, var(--accent) 0 4px, transparent 4px 8px); border: 1px dashed var(--accent); }
+
+/* Startseite: Verkäufe laut sellerboard (Amazon + eBay). Farben je Kanal geprüft (Kontrast, Farbsehschwäche). */
+.sales { --c-amazon: #2a78d6; --c-ebay: #eb6834; --c-profit: var(--accent); }
+.sales-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 22px; }
+.sales-tile { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; background: var(--surface); }
+.sales-tile-heute { border-color: var(--border-strong); box-shadow: inset 0 3px 0 var(--ink-2); }
+.sales-tile-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.sales-hero { font-size: 24px; font-weight: 600; line-height: 1.2; overflow-wrap: anywhere; }
+.sales-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.sales-fig-label { font-size: 12px; color: var(--muted); }
+.sales-fig-value { font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.sales-split { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.sales-split-item { white-space: nowrap; }
+.sales-note { color: #5c3a00; background: var(--warn-soft); border-radius: 6px; padding: 4px 8px; margin-top: 4px; }
+.sales-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 2px; }
+.sales-key-amazon { background: var(--c-amazon, #2a78d6); }
+.sales-key-ebay { background: var(--c-ebay, #eb6834); }
+.sales-trend { padding: 4px 22px 10px; position: relative; }
+.sales-trend-head, .sales-top-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.sales-legend { display: flex; gap: 12px; font-size: 12px; color: var(--ink-2); }
+.sales-chart { position: relative; }
+.sales-chart svg { display: block; overflow: visible; touch-action: pan-y; }
+.sales-chart-title { margin: 4px 0 2px; }
+.sales-grid-line { stroke: var(--row); stroke-width: 1; shape-rendering: crispEdges; }
+.sales-zero-line { stroke: var(--border-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.sales-tick { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; font-family: var(--sans); }
+.sales-bar-amazon { fill: var(--c-amazon); }
+.sales-bar-ebay { fill: var(--c-ebay); }
+.sales-bar-profit { fill: var(--c-profit); }
+.sales-hover-band { fill: var(--row); }
+.sales-kbd { position: absolute; inset: 0; pointer-events: none; border-radius: 6px; }
+.sales-kbd:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sales-tip { position: absolute; top: 18px; width: 190px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08); pointer-events: none; z-index: 2; }
+.sales-tip-row { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.sales-line { display: inline-block; width: 12px; height: 2px; border-radius: 1px; }
+.sales-line-amazon { background: var(--c-amazon); }
+.sales-line-ebay { background: var(--c-ebay); }
+.sales-top { padding: 6px 22px 4px; }
+.sales-scroll { overflow-x: auto; }
+.sales-top-table td, .sales-top-table th { padding-left: 8px; padding-right: 8px; }
+.sales .table th.right { text-align: right; }
+.sales-prod { display: flex; align-items: center; gap: 10px; min-width: 220px; }
+.sales-prod img, .sales-prod-ph { width: 36px; height: 36px; object-fit: contain; border-radius: 6px; background: #fff; border: 1px solid var(--border); flex-shrink: 0; }
+.sales-prod-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 360px; }
+.sales-prod-name a { color: inherit; text-decoration: none; }
+@media (max-width: 1100px) { .sales-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) {
+  .sales-tiles { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 16px; scrollbar-width: none; }
+  .sales-tile { flex: 0 0 82%; scroll-snap-align: start; }
+  .sales-trend, .sales-top { padding-left: 16px; padding-right: 16px; }
+}

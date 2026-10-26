@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, like, lt, sql } from "drizzle-orm";
+import { and, count, eq, inArray, like, lt, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { recordJob } from "@/lib/today/jobs";
@@ -7,12 +7,13 @@ import { syncClaims } from "@/lib/claims/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { sbAllPages, sbCall } from "./client";
 import { readConn, sbConnected, writeConn } from "./connection";
-import { mapFixCosts, mapInventory, mapMonths, mapProduct, mapShipments, mapSkuRows, reorderNow, type SbInventory, type SbProduct } from "./parse";
+import { dayBatches, mapFixCosts, mapInventory, mapKpis, mapMonths, mapProduct, mapShipments, mapSkuRows, mapTop, reorderNow, tilePeriods, type SbChannel, type SbInventory, type SbKpi, type SbProduct } from "./parse";
 
-// Abgleich mit sellerboard (nur lesend). „bestand“ = Bestand + Sendungen (alle 4 Std.), „alles“ zusätzlich
-// Produkte/EK, Monatswerte, Gewinn je SKU und Fixkosten (täglich). Läuft im Hintergrund, je Mandant einmal.
+// Abgleich mit sellerboard (nur lesend). „verkauf“ = Verkaufs-Kennzahlen Amazon + eBay (alle ~30 Min.),
+// „bestand“ = zusätzlich Bestand + Sendungen (alle 4 Std.), „alles“ zusätzlich Produkte/EK, Monatswerte,
+// Gewinn je SKU, Fixkosten und der 30-Tage-Verlauf (täglich). Läuft im Hintergrund, je Mandant einmal.
 
-export type SyncScope = "bestand" | "alles";
+export type SyncScope = "verkauf" | "bestand" | "alles";
 const running = new Set<string>();
 const chunks = <T,>(a: T[], n = 300) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 /** Doppelte Einträge (gleiche sellerboard-ID auf zwei Seiten) – der letzte gilt; sonst scheitert das Upsert. */
@@ -21,9 +22,9 @@ const uniqueBy = <T extends { sbId: string }>(a: T[]) => [...new Map(a.map((x) =
 /** Welches sellerboard-Konto (bei mehreren: das erste mit Daten). */
 export async function identifyAccount(tenantId: string) {
   const r = await sbCall(tenantId, "list_accounts");
-  const list = (r.accounts as { account_id?: string; name?: string }[] | undefined) ?? [];
+  const list = (r.accounts as { account_id?: string; name?: string; has_ebay?: boolean }[] | undefined) ?? [];
   const a = list[0];
-  if (a?.account_id) await writeConn(tenantId, { config: { accountId: a.account_id, accountName: a.name ?? undefined } });
+  if (a?.account_id) await writeConn(tenantId, { config: { accountId: a.account_id, accountName: a.name ?? undefined, hasEbay: a.has_ebay === true } });
 }
 
 const monthOf = (unix: number) => new Date(unix * 1000).toISOString().slice(0, 7);
@@ -200,6 +201,86 @@ async function syncFixCosts(t: string) {
   return costs.length;
 }
 
+const utcToday = () => new Date().toISOString().slice(0, 10);
+const TOOLS: Record<SbChannel, { period: string; table: string }> = {
+  amazon: { period: "dashboard_period", table: "dashboard_table" },
+  ebay: { period: "ebay_dashboard_period", table: "ebay_dashboard_table" },
+};
+
+async function saveKpis(t: string, channel: SbChannel, rows: SbKpi[], now: Date) {
+  const K = schema.sellerboardKpis;
+  for (const r of rows) {
+    const { fromDay, toDay, ...v } = r;
+    await db
+      .insert(K)
+      .values({ tenantId: t, channel, fromDay, toDay, ...v, syncedAt: now })
+      .onConflictDoUpdate({ target: [K.tenantId, K.channel, K.fromDay, K.toDay], set: { ...v, syncedAt: now } });
+  }
+}
+
+/** Meistverkaufte Produkte eines Tages; ist der Tag bei sellerboard nicht vorbereitet, einmal nachwärmen. */
+async function syncTop(t: string, channel: SbChannel, day: { start: number; fromDay: string }, now: Date) {
+  const args = { entry_type: "product", period_start: day.start, period_end: day.start, page: 1, count: 10, sort: "units desc" };
+  let reply: Record<string, unknown>;
+  try {
+    reply = await sbCall(t, TOOLS[channel].table, args);
+  } catch (e) {
+    if (!/NOT_WARMED|warm/i.test(e instanceof Error ? e.message : String(e))) throw e;
+    await sbCall(t, TOOLS[channel].period, { periods: [{ start: day.start, end: day.start }] });
+    reply = await sbCall(t, TOOLS[channel].table, args);
+  }
+  const rows = mapTop(reply).slice(0, 10);
+  const T = schema.sellerboardTop;
+  const total = Number(reply.total ?? rows.length) || 0;
+  await db
+    .insert(T)
+    .values({ tenantId: t, channel, day: day.fromDay, total, rows, syncedAt: now })
+    .onConflictDoUpdate({ target: [T.tenantId, T.channel, T.day], set: { total, rows, syncedAt: now } });
+}
+
+/**
+ * Verkaufs-Kennzahlen wie die sellerboard-Kacheln (heute, gestern, Monat bis heute, letzter Monat) je Kanal,
+ * Top-Produkte heute/gestern und – täglich oder wenn er fehlt – der Verlauf der letzten 30 Tage.
+ */
+async function syncSales(t: string, now: Date, withHistory: boolean) {
+  const conn = await readConn(t);
+  const channels: SbChannel[] = conn?.config.hasEbay === false ? ["amazon"] : ["amazon", "ebay"];
+  const today = utcToday();
+  const tiles = tilePeriods(today);
+  const K = schema.sellerboardKpis;
+  let days = 0;
+  for (const channel of channels) {
+    let reply: Record<string, unknown>;
+    try {
+      reply = await sbCall(t, TOOLS[channel].period, { periods: tiles.map((p) => ({ start: p.start, end: p.end })) });
+    } catch (e) {
+      // eBay nicht bei sellerboard angebunden: merken und künftig auslassen.
+      if (channel === "ebay" && /CHANNEL_NOT_CONNECTED|not connected/i.test(e instanceof Error ? e.message : String(e))) {
+        await writeConn(t, { config: { hasEbay: false } });
+        continue;
+      }
+      throw e;
+    }
+    await saveKpis(t, channel, mapKpis(reply), now);
+    for (const d of tiles.slice(0, 2)) await syncTop(t, channel, d, now);
+    const [have] = await db.select({ n: count() }).from(K).where(and(eq(K.tenantId, t), eq(K.channel, channel), sql`${K.fromDay} = ${K.toDay}`, sql`${K.fromDay} >= ${today}::date - 29`));
+    if (withHistory || (have?.n ?? 0) < 30) {
+      for (const batch of dayBatches(today, 30)) {
+        const r = await sbCall(t, TOOLS[channel].period, { periods: batch });
+        const rows = mapKpis(r);
+        await saveKpis(t, channel, rows, now);
+        days += rows.length;
+      }
+    }
+  }
+  // Aufräumen: alte „Monat bis heute“-Bereiche, Tage älter als 120 Tage, Top-Listen älter als 14 Tage.
+  await db.delete(K).where(and(eq(K.tenantId, t), ne(K.fromDay, K.toDay), lt(K.syncedAt, new Date(now.getTime() - 2 * 86_400_000))));
+  await db.delete(K).where(and(eq(K.tenantId, t), sql`${K.toDay} < ${today}::date - 120`));
+  const T = schema.sellerboardTop;
+  await db.delete(T).where(and(eq(T.tenantId, t), sql`${T.day} < ${today}::date - 14`));
+  return { channels: channels.length, days };
+}
+
 /** Ein Abgleich (wartet bis fertig). Fehler eines Teils halten die anderen nicht auf. */
 export async function syncSellerboard(tenantId: string, scope: SyncScope = "alles") {
   if (!(await sbConnected(tenantId))) return { skipped: true };
@@ -219,9 +300,16 @@ export async function syncSellerboard(tenantId: string, scope: SyncScope = "alle
     }
   };
   try {
-    await writeConn(tenantId, { config: { syncing: scope === "alles" ? "Abgleich läuft (alles) …" : "Abgleich läuft (Bestand) …" } });
+    if (scope !== "verkauf") await writeConn(tenantId, { config: { syncing: scope === "alles" ? "Abgleich läuft (alles) …" : "Abgleich läuft (Bestand) …" } });
     const conn = await readConn(tenantId);
-    if (!conn?.config.accountId) await step("Konto", () => identifyAccount(tenantId));
+    if (!conn?.config.accountId || conn.config.hasEbay === undefined) await step("Konto", () => identifyAccount(tenantId));
+    // Verkaufs-Kennzahlen (Startseite): eigener Stand und eigene Fehlermeldung – der kurze Abgleich alle
+    // 30 Minuten überschreibt nicht die Meldungen des großen Abgleichs.
+    const salesErrors = errors.length;
+    await step("Verkauf (Amazon + eBay)", async () => void (counts.verkaufTage = (await syncSales(tenantId, now, scope === "alles")).days));
+    const salesError = errors.length > salesErrors ? errors.pop()! : null;
+    await writeConn(tenantId, { config: { salesSyncedAt: new Date().toISOString(), salesError } });
+    if (scope === "verkauf") return { skipped: false, counts, errors: salesError ? [salesError] : [] };
     if (scope === "alles") await step("Produkte & EK", async () => void (counts.produkte = await syncProducts(tenantId, now)));
     await step("FBA-Bestand", async () => void (counts.bestand = await syncInventory(tenantId, now)));
     await step("FBA-Sendungen", async () => void (counts.sendungen = await syncShipments(tenantId, now)));

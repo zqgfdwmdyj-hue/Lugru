@@ -1,4 +1,4 @@
-import { date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { id, money, tenantId } from "./core";
 
 // Daten aus sellerboard (nur lesend über den sellerboard-Connector). Jede Zeile trägt den Abrufzeitpunkt,
@@ -96,6 +96,48 @@ export const sellerboardMonths = pgTable(
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.month] })],
+);
+
+/**
+ * Verkaufs-Kennzahlen je Kanal (amazon/ebay) und Zeitraum wie die sellerboard-Kacheln: ein Tag (von = bis) oder
+ * ein Bereich (Monat bis heute, letzter Monat). Tage sind UTC-Tage wie in sellerboard.
+ */
+export const sellerboardKpis = pgTable(
+  "sellerboard_kpis",
+  {
+    tenantId: tenantId(),
+    channel: text("channel").notNull(),
+    fromDay: date("from_day", { mode: "string" }).notNull(),
+    toDay: date("to_day", { mode: "string" }).notNull(),
+    sales: money("sales"),
+    orders: integer("orders"),
+    units: integer("units"),
+    refunds: integer("refunds"),
+    advertising: money("advertising"),
+    payout: money("payout"),
+    grossProfit: money("gross_profit"),
+    netProfit: money("net_profit"),
+    /** sellerboard meldet fehlende Einkaufspreise – Gewinn dort zu hoch. */
+    missingCost: boolean("missing_cost").notNull().default(false),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.fromDay, t.toDay] })],
+);
+
+export type SbTopRow = { name: string | null; sku: string | null; image: string | null; link: string | null; units: number; refunds: number; sales: number | null; netProfit: number | null };
+
+/** Meistverkaufte Produkte je Kanal und Tag (sellerboard-Produkttabelle, nach Einheiten). */
+export const sellerboardTop = pgTable(
+  "sellerboard_top",
+  {
+    tenantId: tenantId(),
+    channel: text("channel").notNull(),
+    day: date("day", { mode: "string" }).notNull(),
+    total: integer("total").notNull().default(0),
+    rows: jsonb("rows").$type<SbTopRow[]>().notNull().default([]),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.day] })],
 );
 
 /** Gewinn je SKU und Monat laut sellerboard. */

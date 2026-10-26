@@ -18,6 +18,11 @@ export type SbConfig = {
   lastSyncError?: string | null;
   lastCounts?: Record<string, number>;
   syncing?: string | null;
+  /** Konto hat eBay bei sellerboard angebunden (laut list_accounts). */
+  hasEbay?: boolean;
+  /** Letzter Abruf der Verkaufs-Kennzahlen (Startseite) und dessen Fehler. */
+  salesSyncedAt?: string;
+  salesError?: string | null;
 };
 type SbSecrets = {
   clientId?: string;

@@ -133,10 +133,12 @@ export async function runScheduledJobs(force = false) {
           await step(t, "Rechnungen an Stotax", () => sendPendingToStotax(t));
           await step(t, "Belege an Stotax", () => sendPendingReceipts(t));
         }
-      // sellerboard (nur lesend): alles einmal täglich, Bestand + Sendungen alle 4 Std. – im Hintergrund (dauert Minuten).
+      // sellerboard (nur lesend): alles einmal täglich, Bestand + Sendungen alle 4 Std., Verkaufs-Kennzahlen der
+      // Startseite alle ~30 Min. (in den größeren Abgleichen enthalten) – im Hintergrund.
       if (await sbConnected(t)) {
         if (due(`${t}:sb-daily`, 1435)) startSellerboardSync(t, "alles");
         else if (due(`${t}:sb-stock`, 239)) startSellerboardSync(t, "bestand");
+        else if (due(`${t}:sb-sales`, 29)) startSellerboardSync(t, "verkauf");
       }
       // Paletten-Lager: Erinnerungen (freie Zeit endet, lange Standzeit) und Monatsaufstellungen am Monatsanfang.
       if (force || due(`${t}:pallets`, 59)) {
