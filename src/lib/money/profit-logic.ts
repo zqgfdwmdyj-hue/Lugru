@@ -2,11 +2,11 @@
 // Gewinn (nur Positionen, bei denen Preis, EK und Gebühren bekannt sind) getrennt. Fehlende Werte werden
 // gezählt und nie still als 0 € gerechnet. Reine Logik – Abfragen stehen in profit.ts / costs.ts.
 
-export type CostSource = "charge" | "manuell" | "ebay" | "set";
+export type CostSource = "charge" | "manuell" | "ebay" | "set" | "sellerboard";
 /** `detail` = genaue Herkunft (z. B. Angebot/Variante), `inherited` = Wert stammt nicht von der SKU selbst. */
 export type CostInfo = { cost: number; source: CostSource; detail?: string; inherited?: boolean };
 
-export const COST_SOURCE_LABEL: Record<CostSource, string> = { charge: "Charge", manuell: "von Hand (EK je SKU)", ebay: "eBay-Tool", set: "Summe der Set-Bestandteile" };
+export const COST_SOURCE_LABEL: Record<CostSource, string> = { charge: "Charge", manuell: "von Hand (EK je SKU)", ebay: "eBay-Tool", set: "Summe der Set-Bestandteile", sellerboard: "sellerboard" };
 
 /** [SKU, EK, Herkunft, geerbt] */
 export type CostPair = [string, number | null | undefined, string?, boolean?];

@@ -114,6 +114,23 @@ describe("detectClaims", () => {
     expect(detectClaims(d, settings, today)[0]).toMatchObject({ type: "inbound_shortage", quantity: 3, expectedAmount: 30 });
   });
 
+  it("Wareneingang laut sellerboard: verschickt minus empfangen, nur abgeschlossen, eigener Scan hat Vorrang", () => {
+    const d = base();
+    const line = { sku: "SKU-1", fnsku: "X001TEST01", asin: "B0TEST0001", units: 10, received: 7 };
+    d.sbShipments = [
+      { amazonId: "FBA9", name: "SB", status: "CLOSED", createdOn: "2026-09-01", lastUpdate: "2026-09-20", lines: [line] },
+      { amazonId: "FBA8", name: "läuft", status: "RECEIVING", createdOn: "2026-09-20", lastUpdate: "2026-09-25", lines: [line] },
+    ];
+    // Amazon hat schon 1 Stück erstattet (Grund „inbound“)
+    d.reimbursements = [{ reimbursementId: "R1", date: "2026-09-22", reason: "Lost_Inbound", sku: "SKU-1", fnsku: "X001TEST01", orderId: null, caseId: null, amountPerUnit: 10, amountTotal: 10, quantityCash: 1, quantityTotal: 1 }] as ClaimData["reimbursements"];
+    const out = detectClaims(d, settings, today).filter((c) => c.type === "inbound_shortage");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ key: "inbound-sb:FBA9:X001TEST01", quantity: 2, expectedAmount: 20, reference: "FBA9" });
+    // gleiche Sendung im eigenen Inbound-Scan → nur die eigene Prüfung zählt
+    d.inbound = [{ id: "s1", name: "eigen", amazonShipmentId: "FBA9", shippedAt: "2026-09-01", items: [{ sku: "SKU-1", fnsku: "X001TEST01", asin: "B0TEST0001", scanned: 10 }] }];
+    expect(detectClaims(d, settings, today).filter((c) => c.key.startsWith("inbound-sb:"))).toHaveLength(0);
+  });
+
   it("Kleinstbeträge werden ignoriert", () => {
     const d = base();
     d.costBySku.set("SKU-1", 0.5);

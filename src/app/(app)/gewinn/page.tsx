@@ -9,6 +9,8 @@ import { FEE_FREE_CHANNELS, summarizeAmazon, summarizeChannels, totalsOf } from 
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
 import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
+import { and, desc, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
 
 const dt = (d: Date | null | undefined) => (d ? d.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Berlin" }) : "–");
 /** Kosten als positive Zahl zeigen, ohne „−0,00 €“. */
@@ -46,6 +48,13 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   const fix = `/gewinn/fehlend?zeitraum=${r}`;
   const sorted = [...skus].sort((a, b) => (sp.sort === "gut" ? (b.profit ?? -1e9) - (a.profit ?? -1e9) : (a.profit ?? 1e9) - (b.profit ?? 1e9)));
   const noData = !amazon && !channels.length;
+  // Vergleich mit sellerboard: Monatswerte (12 Monate) und – bei einem Kalendermonat – Gewinn je SKU.
+  const sbMonths = await db.select().from(schema.sellerboardMonths).where(eq(schema.sellerboardMonths.tenantId, t)).orderBy(desc(schema.sellerboardMonths.month)).limit(12);
+  const calMonth = r === "monat" || r === "vormonat" ? from.slice(0, 7) : null;
+  const sbSku = calMonth
+    ? new Map((await db.select().from(schema.sellerboardSkuMonths).where(and(eq(schema.sellerboardSkuMonths.tenantId, t), eq(schema.sellerboardSkuMonths.month, calMonth)))).map((x) => [x.sku, x]))
+    : null;
+  const sbThis = calMonth ? sbMonths.find((m) => m.month === calMonth) ?? null : null;
 
   return (
     <>
@@ -134,6 +143,36 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
         </table>
       </section>
 
+      {sbMonths.length > 0 && (
+        <section className="card" style={{ overflow: "auto" }} data-testid="sb-compare">
+          <div className="card-head">
+            <div>
+              <h2>Zum Vergleich: laut sellerboard</h2>
+              <div className="small muted" style={{ marginTop: 2 }}>
+                sellerboard rechnet mit seinen eigenen EK, Gebühren und Fixkosten (Stand {sbMonths[0].syncedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}). Abweichungen zur Rechnung oben zeigen, wo EK oder Abrechnungen fehlen.
+                {sbThis && <> · {RANGES[r]}: <strong data-testid="sb-month-profit">{formatEuro(sbThis.netProfit)}</strong> Nettogewinn laut sellerboard</>}
+              </div>
+            </div>
+          </div>
+          <table className="table">
+            <thead><tr><th>Monat</th><th className="right">Umsatz</th><th className="right">Einheiten</th><th className="right">Amazon-Gebühren</th><th className="right">Wareneinsatz</th><th className="right">Fixkosten</th><th className="right">Nettogewinn</th></tr></thead>
+            <tbody>
+              {sbMonths.map((m) => (
+                <tr key={m.month} data-testid="sb-month-row" style={calMonth === m.month ? { background: "var(--surface-2)" } : undefined}>
+                  <td className="num">{m.month.split("-").reverse().join("/")}</td>
+                  <td className="num right">{formatEuro(m.sales)}</td>
+                  <td className="num right">{m.units ?? "–"}</td>
+                  <td className="num right">{formatEuro(m.amazonFees === null ? null : -m.amazonFees)}</td>
+                  <td className="num right">{formatEuro(m.productCosts === null ? null : -m.productCosts)}</td>
+                  <td className="num right">{formatEuro(m.expenses === null ? null : -m.expenses)}</td>
+                  <td className="num right" style={{ fontWeight: 600, color: (m.netProfit ?? 0) < 0 ? "var(--danger)" : undefined }}>{formatEuro(m.netProfit)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           <div className="card-head">
@@ -145,7 +184,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
           </div>
           {skus.length === 0 ? <div className="card-pad small muted">Keine Amazon-Abrechnung in diesem Zeitraum.</div> : (
             <table className="table sticky-head">
-              <thead><tr><th>SKU</th><th className="right">Verkauft</th><th className="right">Erstattet</th><th className="right">Umsatz netto</th><th className="right">Gebühren</th><th className="right">EK</th><th className="right">Gewinn</th><th className="right">je Stk</th><th className="right">VK geplant / Ø</th></tr></thead>
+              <thead><tr><th>SKU</th><th className="right">Verkauft</th><th className="right">Erstattet</th><th className="right">Umsatz netto</th><th className="right">Gebühren</th><th className="right">EK</th><th className="right">Gewinn</th>{sbSku && <th className="right" title="Nettogewinn derselben SKU im selben Monat laut sellerboard">sellerboard</th>}<th className="right">je Stk</th><th className="right">VK geplant / Ø</th></tr></thead>
               <tbody>
                 {sorted.slice(0, 300).map((s) => {
                   const perUnit = s.profit !== null && s.units - s.refunds > 0 ? s.profit / (s.units - s.refunds) : null;
@@ -159,6 +198,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
                       <td className="num right">{formatEuro(s.fees)}</td>
                       <td className="num right">{s.cogs === null ? <Link href={`${fix}#ek`} style={{ color: "var(--warn)" }}>fehlt</Link> : formatEuro(s.cogs)}</td>
                       <td className="num right" style={{ fontWeight: 600, color: (s.profit ?? 0) < 0 ? "var(--danger)" : undefined }}>{s.profit === null ? <span className="muted" title="EK fehlt – kein Gewinn berechenbar">–</span> : formatEuro(s.profit)}</td>
+                      {sbSku && <td className="num right small" data-testid="sb-sku-profit">{sbSku.get(s.sku)?.netProfit === undefined || sbSku.get(s.sku)?.netProfit === null ? <span className="muted">–</span> : formatEuro(sbSku.get(s.sku)!.netProfit)}</td>}
                       <td className="num right">{formatEuro(perUnit)}</td>
                       <td className="num right small" style={{ color: priceDrop ? "var(--danger)" : undefined }}>{s.plannedPrice ? formatEuro(s.plannedPrice) : "–"} / {formatEuro(s.avgPrice)}</td>
                     </tr>

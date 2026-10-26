@@ -2,6 +2,7 @@
 // sich mit Beispieldaten testen lässt. Grundidee: Jede Einheit muss irgendwo sauber
 // landen. Was nicht aufgeht, wird ein Anspruch.
 
+import { shipmentShortages } from "@/lib/sellerboard/parse";
 import type { ClaimType } from "@/db/schema";
 import { addDaysIso } from "@/lib/dates";
 import type { ReturnClaim } from "@/lib/returns/reconcile";
@@ -80,6 +81,8 @@ export type ClaimData = {
   removalShipments?: RemovalShipmentRow[];
   removalShipmentMarks?: RemovalShipmentMark[];
   inbound: InboundShipment[];
+  /** FBA-Sendungen laut sellerboard (verschickt/empfangen je SKU) – für Sendungen ohne eigenen Inbound-Scan. */
+  sbShipments?: { amazonId: string | null; name: string | null; status: string; createdOn: string | null; lastUpdate: string | null; lines: { sku: string; fnsku: string | null; asin: string | null; units: number; received: number }[] }[];
   costBySku: Map<string, number>;
   costByAsin: Map<string, number>;
   asinBySku: Map<string, string>;
@@ -466,6 +469,44 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
         evidence: [
           { label: "Gescannt und verschickt", value: `${it.scanned} Einheiten (Sendung „${sh.name}“)`, source: "Inbound-Scan" },
           { label: "Von Amazon eingebucht", value: `${received} Einheiten`, source: "Bestandsprotokoll (Receipts)" },
+          { label: "Bereits erstattet", value: `${reimb}`, source: "Erstattungen" },
+        ],
+      });
+    }
+  }
+
+  // --- Fehlt beim Wareneingang (laut sellerboard) -------------------------------------------
+  // Für Sendungen, die nicht im eigenen FBA-Inbound gescannt wurden: verschickt (Sendungsplan) − von Amazon
+  // empfangen. Erst wenn die Sendung abgeschlossen ist bzw. seit der Wartezeit nichts mehr ankam.
+  const ownRefs = new Set(d.inbound.map((sh) => sh.amazonShipmentId));
+  for (const sh of d.sbShipments ?? []) {
+    if (!sh.amazonId || ownRefs.has(sh.amazonId)) continue;
+    const ref = sh.amazonId;
+    for (const l of shipmentShortages(sh, today, GRACE_DAYS.inbound)) {
+      const ledger = (receivedByShipment.get(`${ref}|${l.fnsku ?? ""}`) ?? 0) + (l.fnsku ? 0 : (receivedByShipment.get(`${ref}|${l.sku}`) ?? 0));
+      const received = Math.max(l.received, ledger);
+      const reimb = d.reimbursements
+        .filter((r) => (r.fnsku === l.fnsku || r.sku === l.sku) && /inbound/i.test(r.reason ?? ""))
+        .reduce((n, r) => n + r.quantityTotal, 0);
+      const missing = l.units - received - reimb;
+      if (missing <= 0) continue;
+      const cost = unitCost(d, l.sku, l.asin);
+      const since = sh.lastUpdate ?? sh.createdOn ?? today;
+      push({
+        key: `inbound-sb:${ref}:${l.fnsku ?? l.sku}`,
+        type: "inbound_shortage",
+        title: `${missing} × fehlt beim Wareneingang – ${ref}`,
+        sku: l.sku,
+        fnsku: l.fnsku,
+        asin: l.asin,
+        quantity: missing,
+        unitCost: cost,
+        expectedAmount: cost === null ? null : round2(cost * missing),
+        reference: ref,
+        eventDate: since,
+        evidence: [
+          { label: "Verschickt laut Sendungsplan", value: `${l.units} Einheiten (Sendung „${sh.name ?? ref}“)`, source: "sellerboard – FBA-Sendungen" },
+          { label: "Von Amazon empfangen", value: `${received} Einheiten · Status ${sh.status}${sh.lastUpdate ? ` seit ${sh.lastUpdate.split("-").reverse().join(".")}` : ""}`, source: ledger > l.received ? "Bestandsprotokoll (Receipts)" : "sellerboard – FBA-Sendungen" },
           { label: "Bereits erstattet", value: `${reimb}`, source: "Erstattungen" },
         ],
       });

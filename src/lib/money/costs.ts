@@ -6,11 +6,11 @@ import { mergeCosts, setCostPairs, type CostInfo, type CostPair } from "./profit
 
 // EK je SKU – eine Stelle für Gewinn, Lagerwert und Produktansicht. Reihenfolge: Charge (lots) → von Hand
 // nachgetragener EK je SKU (sku_costs) → Einkaufspreis aus dem eBay-Tool (Variante/Einzelangebot) → Summe der
-// Set-Bestandteile → vom Mehrfachangebot geerbter EK. Jeder Wert trägt seine Herkunft.
+// Set-Bestandteile → EK aus sellerboard → vom Mehrfachangebot geerbter EK. Jeder Wert trägt seine Herkunft.
 
 type Variants = { items?: { sku?: string; value?: string; purchasePrice?: number; set?: boolean }[] } | null;
 
-export type CostPairs = { charge: CostPair[]; manuell: CostPair[]; ebayOwn: CostPair[]; ebayInherited: CostPair[]; set: CostPair[] };
+export type CostPairs = { charge: CostPair[]; manuell: CostPair[]; ebayOwn: CostPair[]; ebayInherited: CostPair[]; set: CostPair[]; sellerboard?: CostPair[] };
 
 /**
  * Alle EK-Werte mit Herkunft, noch nicht zusammengeführt. eBay-Tool: EK der Variante bzw. des Einzelangebots
@@ -18,7 +18,7 @@ export type CostPairs = { charge: CostPair[]; manuell: CostPair[]; ebayOwn: Cost
  * so angezeigt (für Sets nie: dort zählt die Summe der Bestandteile).
  */
 export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
-  const [lots, manual, ebay, links, sets] = await Promise.all([
+  const [lots, manual, ebay, links, sets, sb] = await Promise.all([
     db.select({ sku: schema.lots.sku, cost: schema.lots.unitCostNet, date: schema.lots.purchaseDate, src: schema.lots.unitCostSource }).from(schema.lots).where(and(eq(schema.lots.tenantId, tenantId), isNotNull(schema.lots.unitCostNet))).orderBy(desc(schema.lots.purchaseDate)),
     db.select({ sku: schema.skuCosts.sku, cost: schema.skuCosts.unitCostNet }).from(schema.skuCosts).where(eq(schema.skuCosts.tenantId, tenantId)),
     db
@@ -33,6 +33,8 @@ export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
       .from(schema.listings)
       .where(and(eq(schema.listings.tenantId, tenantId), eq(schema.listings.channel, "ebay"), isNotNull(schema.listings.stockSku))),
     loadSets(tenantId),
+    // EK laut sellerboard (netto je Stück) – nur wo im Seller-System nichts Eigenes hinterlegt ist.
+    db.select({ sku: schema.sellerboardProducts.sku, cost: schema.sellerboardProducts.cost, at: schema.sellerboardProducts.syncedAt }).from(schema.sellerboardProducts).where(and(eq(schema.sellerboardProducts.tenantId, tenantId), isNotNull(schema.sellerboardProducts.cost))),
   ]);
   const setSkus = new Set(sets.map((s) => s.sku));
   const ebayOwn: CostPair[] = [];
@@ -58,12 +60,13 @@ export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
   const charge: CostPair[] = lots.map((l) => [l.sku, l.cost === null ? null : Number(l.cost), [l.date ? `Einkauf ${l.date.split("-").reverse().join(".")}` : "Charge", l.src === "inherited" ? "EK von Vorgänger-Charge" : null].filter(Boolean).join(" · "), l.src === "inherited"]);
   const manuell: CostPair[] = manual.map((m) => [m.sku, m.cost, "EK je SKU von Hand eingetragen"]);
   const base = mergeCosts(["charge", charge], ["manuell", manuell], ["ebay", ebayOwn]);
-  return { charge, manuell, ebayOwn, ebayInherited, set: setCostPairs(sets, base) };
+  const sellerboard: CostPair[] = sb.map((r) => [r.sku, r.cost, `laut sellerboard (Stand ${r.at.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})`]);
+  return { charge, manuell, ebayOwn, ebayInherited, set: setCostPairs(sets, base), sellerboard };
 }
 
-/** Gültiger EK je SKU: Charge → von Hand → eBay-Tool (eigen) → Set-Summe → eBay-Tool (geerbt). */
+/** Gültiger EK je SKU: Charge → von Hand → eBay-Tool (eigen) → Set-Summe → sellerboard → eBay-Tool (geerbt). */
 export function mergeCostPairs(p: CostPairs): Map<string, CostInfo> {
-  return mergeCosts(["charge", p.charge], ["manuell", p.manuell], ["ebay", p.ebayOwn], ["set", p.set], ["ebay", p.ebayInherited]);
+  return mergeCosts(["charge", p.charge], ["manuell", p.manuell], ["ebay", p.ebayOwn], ["set", p.set], ["sellerboard", p.sellerboard ?? []], ["ebay", p.ebayInherited]);
 }
 
 export async function skuCostMap(tenantId: string): Promise<Map<string, CostInfo>> {

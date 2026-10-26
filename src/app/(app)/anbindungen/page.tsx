@@ -6,10 +6,11 @@ import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { deleteIntegrationAction, requestAmazonReport, runAllNow, saveIntegrationAction } from "./actions";
 import { TestButton } from "./test-button";
+import { SellerboardCard } from "./sellerboard-card";
 
-export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
+export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string }> }) {
   const session = await requireOwner();
-  const { p } = await searchParams;
+  const { p, sellerboard } = await searchParams;
   const status = await integrationStatus(session.tenantId);
   const reports = await db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12);
 
@@ -59,6 +60,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           </div>
           <div className="card-pad small muted">Die eBay-Verbindung wird im eBay-Bereich eingerichtet (Zugang, Anmeldung, Verkaufsprofile, Artikelstandort) und gilt für alles, was mit eBay zu tun hat.</div>
         </section>
+        <SellerboardCard tenantId={session.tenantId} message={sellerboard} />
         {INTEGRATIONS.map((def) => {
           const st = status.get(def.provider);
           const open = p === def.provider;

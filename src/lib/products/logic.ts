@@ -82,7 +82,7 @@ export function rankProductGroups(groups: ProductGroup[], q: string): RankedGrou
 
 // ---- EK-Abgleich ---------------------------------------------------------------------------------
 
-export type EkSource = { source: "charge" | "manuell" | "ebay" | "set"; label: string; cost: number; detail?: string; inherited?: boolean };
+export type EkSource = { source: "charge" | "manuell" | "ebay" | "set" | "sellerboard"; label: string; cost: number; detail?: string; inherited?: boolean };
 export type EkCheck = { sku: string; effective: CostInfo | null; sources: EkSource[]; conflict: boolean; spread: number };
 
 /** Weichen die EK-Quellen einer SKU voneinander ab (mehr als 2 % bzw. 1 Cent)? Gilt: Charge → von Hand → eBay-Tool → Set-Summe → geerbt. */

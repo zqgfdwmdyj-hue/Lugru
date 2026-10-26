@@ -170,7 +170,7 @@ export async function productDetail(t: string, ref: { productId: string } | { sk
     : [];
 
   // EK je SKU: alle Quellen mit Herkunft nebeneinander – aus derselben Rechnung wie der gültige Wert
-  // (Charge → von Hand → eBay-Tool → Set-Summe → geerbt). Kein gültiger EK ohne sichtbare Quelle.
+  // (Charge → von Hand → eBay-Tool → Set-Summe → sellerboard → geerbt). Kein gültiger EK ohne sichtbare Quelle.
   const pairs = await loadCostPairs(t);
   const costs = mergeCostPairs(pairs);
   const ek = skus.map((sku) => {
@@ -186,6 +186,7 @@ export async function productDetail(t: string, ref: { productId: string } | { sk
     add("manuell", pairs.manuell);
     add("ebay", pairs.ebayOwn);
     add("set", pairs.set);
+    add("sellerboard", pairs.sellerboard ?? []);
     add("ebay", pairs.ebayInherited);
     return ekCheck(sku, sources, costs.get(sku) ?? null);
   });

@@ -393,6 +393,13 @@
       "when": 1792957070919,
       "tag": "0055_einmal_absenden",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793027444356,
+      "tag": "0056_sellerboard",
+      "breakpoints": true
     }
   ]
 }

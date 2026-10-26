@@ -5,6 +5,8 @@ import { requireOwner } from "@/lib/auth/session";
 import { integrationDef } from "@/lib/integrations/registry";
 import { deleteIntegration, saveIntegration } from "@/lib/integrations/store";
 import { testIntegration } from "@/lib/integrations/test";
+import { deleteConn } from "@/lib/sellerboard/connection";
+import { startSellerboardSync } from "@/lib/sellerboard/sync";
 
 export type TestState = { ok: boolean; message: string } | null;
 
@@ -43,5 +45,22 @@ export async function requestAmazonReport(fd: FormData) {
   const kind = String(fd.get("kind")) as keyof typeof REPORT_TYPES;
   if (!(kind in REPORT_TYPES)) return;
   await requestReport(session.tenantId, kind);
+  revalidatePath("/anbindungen");
+}
+
+// ---- sellerboard ------------------------------------------------------------------------------------
+
+export async function sellerboardSyncAction(formData: FormData) {
+  const session = await requireOwner();
+  startSellerboardSync(session.tenantId, formData.get("scope") === "bestand" ? "bestand" : "alles");
+  // kurz warten, damit „Abgleich läuft“ schon angezeigt wird
+  await new Promise((r) => setTimeout(r, 400));
+  revalidatePath("/anbindungen");
+}
+
+export async function sellerboardDisconnectAction() {
+  const session = await requireOwner();
+  // Nur die Verbindung (Zugang) wird entfernt; übernommene Daten bleiben mit ihrem Stand sichtbar.
+  await deleteConn(session.tenantId);
   revalidatePath("/anbindungen");
 }

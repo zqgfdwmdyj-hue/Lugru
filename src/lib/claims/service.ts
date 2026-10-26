@@ -11,7 +11,7 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
   const t = tenantId;
   const L = schema.amazonLedgerEvents;
   const RS = schema.amazonRemovalShipments;
-  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound, removalShipments, removalShipmentMarks] = await Promise.all([
+  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound, removalShipments, removalShipmentMarks, sbShipments, sbCosts] = await Promise.all([
     db
       .select({ rowHash: L.rowHash, date: L.eventDate, sku: L.sku, fnsku: L.fnsku, asin: L.asin, quantity: L.quantity, reason: L.reason, fulfillmentCenter: L.fulfillmentCenter, referenceId: L.referenceId })
       .from(L)
@@ -41,6 +41,9 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
       .select({ orderId: schema.amazonRemovalShipmentMarks.orderId, trackingNumber: schema.amazonRemovalShipmentMarks.trackingNumber, status: schema.amazonRemovalShipmentMarks.status })
       .from(schema.amazonRemovalShipmentMarks)
       .where(eq(schema.amazonRemovalShipmentMarks.tenantId, t)),
+    // FBA-Sendungen und EK laut sellerboard (falls verbunden)
+    db.select({ amazonId: schema.sellerboardShipments.amazonId, name: schema.sellerboardShipments.name, status: schema.sellerboardShipments.status, createdOn: schema.sellerboardShipments.createdOn, lastUpdate: schema.sellerboardShipments.lastUpdate, lines: schema.sellerboardShipments.lines }).from(schema.sellerboardShipments).where(eq(schema.sellerboardShipments.tenantId, t)),
+    db.select({ sku: schema.sellerboardProducts.sku, asin: schema.sellerboardProducts.asin, cost: schema.sellerboardProducts.cost }).from(schema.sellerboardProducts).where(and(eq(schema.sellerboardProducts.tenantId, t), isNotNull(schema.sellerboardProducts.cost))),
   ]);
 
   const costBySku = new Map<string, number>();
@@ -54,6 +57,13 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
     byAsin.set(l.asin, [...(byAsin.get(l.asin) ?? []), c]);
   }
   const costByAsin = new Map([...byAsin].map(([a, cs]) => [a, Math.round((cs.reduce((x, y) => x + y, 0) / cs.length) * 100) / 100]));
+  // EK laut sellerboard nur, wo aus den Chargen keiner bekannt ist.
+  for (const c of sbCosts) {
+    if (c.cost === null) continue;
+    if (!costBySku.has(c.sku)) costBySku.set(c.sku, Number(c.cost));
+    if (c.asin && !asinBySku.has(c.sku)) asinBySku.set(c.sku, c.asin);
+    if (c.asin && !costByAsin.has(c.asin)) costByAsin.set(c.asin, Number(c.cost));
+  }
 
   const shipments = new Map<string, ClaimData["inbound"][number]>();
   for (const r of inbound) {
@@ -97,6 +107,7 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
     removalShipments,
     removalShipmentMarks,
     inbound: [...shipments.values()],
+    sbShipments,
     costBySku,
     costByAsin,
     asinBySku,

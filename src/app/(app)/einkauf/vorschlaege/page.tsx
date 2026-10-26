@@ -3,6 +3,10 @@ import { requireSession } from "@/lib/auth/session";
 import { formatEuro } from "@/lib/numbers";
 import { purchaseSuggestions } from "@/lib/purchasing/service";
 import { SuggestSubmit } from "../forms";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { addDaysIso, todayIso } from "@/lib/dates";
+import { formatDate } from "@/lib/numbers";
 
 const clampInt = (v: string | undefined, def: number, min: number, max: number) => {
   const n = Number(v);
@@ -16,6 +20,16 @@ export default async function VorschlaegePage({ searchParams }: { searchParams: 
   const coverDays = clampInt(sp.reichweite, 30, 7, 365);
   const all = sp.alle === "1";
   const rows = await purchaseSuggestions(session.tenantId, { leadDays, coverDays, all });
+  // Nachbestellen laut sellerboard (eigene Rechnung mit Lieferzeiten/Puffer aus sellerboard) – nur Lesen.
+  const SBI = schema.sellerboardInventory;
+  const sbRows = await db
+    .select()
+    .from(SBI)
+    .where(and(eq(SBI.tenantId, session.tenantId), gt(SBI.qtyToReorder, 0), sql`upper(coalesce(${SBI.timeToReorder}, '')) in ('YES', 'SOON')`))
+    .orderBy(desc(sql`upper(coalesce(${SBI.timeToReorder}, '')) = 'YES'`), asc(SBI.daysToReorder), asc(SBI.daysLeft))
+    .limit(300);
+  const sbStand = sbRows[0]?.syncedAt ?? null;
+  const today = todayIso();
 
   return (
     <>
@@ -32,6 +46,44 @@ export default async function VorschlaegePage({ searchParams }: { searchParams: 
         <label className="small" style={{ display: "flex", gap: 6, alignItems: "center", paddingBottom: 10 }}><input type="checkbox" name="alle" value="1" defaultChecked={all} /> auch Artikel ohne Bedarf zeigen</label>
         <button className="btn" type="submit">Neu berechnen</button>
       </form>
+
+      {sbRows.length > 0 && (
+        <section className="card" style={{ overflow: "auto" }} id="sellerboard" data-testid="sb-reorder">
+          <div className="card-head">
+            <div>
+              <h2>Nachbestellen laut sellerboard</h2>
+              <div className="small muted" style={{ marginTop: 2 }}>
+                {sbRows.filter((r) => (r.timeToReorder ?? "").toUpperCase() === "YES").length} jetzt · {sbRows.filter((r) => (r.timeToReorder ?? "").toUpperCase() === "SOON").length} bald · Stand {sbStand ? sbStand.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–"} · sellerboard rechnet mit seinen eigenen Lieferzeiten und Puffern (dort einstellbar).
+              </div>
+            </div>
+            <span className="small muted">Investition ca. {formatEuro(sbRows.reduce((s, r) => s + (r.cost ?? 0) * r.qtyToReorder, 0))}{sbRows.some((r) => r.cost === null) ? " (ohne Artikel ohne EK)" : ""}</span>
+          </div>
+          <table className="table">
+            <thead><tr><th>Artikel</th><th className="right">FBA</th><th className="right">Unterwegs</th><th className="right">Pro Tag</th><th className="right">Reicht noch</th><th className="right">Menge</th><th>Bestellen bis</th><th className="right">EK × Menge</th></tr></thead>
+            <tbody>
+              {sbRows.map((r) => {
+                const now = (r.timeToReorder ?? "").toUpperCase() === "YES";
+                const by = r.daysToReorder === null ? null : r.daysToReorder <= 0 ? today : addDaysIso(today, r.daysToReorder);
+                return (
+                  <tr key={r.id} data-testid="sb-reorder-row" data-sku={r.sku}>
+                    <td style={{ maxWidth: 320 }}>
+                      <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}`} className="num">{r.sku}</Link>
+                      <div className="small" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name ?? ""}</div>
+                    </td>
+                    <td className="num right">{r.fbaStock}</td>
+                    <td className="num right">{r.inbound || "–"}</td>
+                    <td className="num right">{r.salesVelocity === null ? "–" : Number(r.salesVelocity).toLocaleString("de-DE")}</td>
+                    <td className="num right" style={r.daysLeft !== null && r.daysLeft < 14 ? { color: "var(--danger)", fontWeight: 600 } : undefined}>{r.daysLeft === null ? "–" : `${r.daysLeft} T.`}</td>
+                    <td className="num right"><strong>{r.qtyToReorder}</strong></td>
+                    <td>{now ? <span className="tag tag-danger">{r.daysToReorder !== null && r.daysToReorder < 0 ? `überfällig seit ${-r.daysToReorder} T.` : "jetzt"}</span> : <span className="tag tag-warn">bald{by ? ` – bis ${formatDate(by)}` : ""}</span>}</td>
+                    <td className="num right">{r.cost === null ? <span className="muted">EK fehlt</span> : formatEuro(r.cost * r.qtyToReorder)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       <SuggestSubmit>
         <section className="card" style={{ overflow: "auto" }}>

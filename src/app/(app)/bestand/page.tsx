@@ -75,7 +75,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
     ) : !r.inReport ? (
       <span className="muted" title="Nicht im FBA-Bestandsbericht – keine Ware bei Amazon gemeldet" data-testid="fba-cell" data-state="nicht-im-bericht">–</span>
     ) : (
-      <span style={fr.stale ? { color: "var(--warn)" } : undefined} title={fr.stale ? `Stand ${formatDate(fr.snapshot)} – Bericht veraltet` : `laut Bericht vom ${formatDate(fr.snapshot)}`} data-testid="fba-cell" data-state={fr.stale ? "veraltet" : r.fba === 0 ? "bestaetigt-0" : "aktuell"}>
+      <span style={fr.stale ? { color: "var(--warn)" } : undefined} title={fr.stale ? `Stand ${formatDate(fr.snapshot)} – veraltet` : fr.source === "sellerboard" ? `laut sellerboard, Stand ${formatDate(fr.snapshot)}` : `laut Bericht vom ${formatDate(fr.snapshot)}`} data-testid="fba-cell" data-state={fr.stale ? "veraltet" : r.fba === 0 ? "bestaetigt-0" : "aktuell"}>
         {r.fba}
       </span>
     );
@@ -134,7 +134,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           <table className="table sticky-head">
-            <thead><tr><th>SKU</th><th>Artikel</th><th className="right" data-testid="fba-head">FBA{fr.missing ? <div className="small muted" style={{ fontWeight: 400 }}>Bericht fehlt</div> : fr.stale ? <div className="small" style={{ fontWeight: 400, color: "var(--warn)" }}>Stand {formatDate(fr.snapshot)}</div> : null}</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Artikel</th><th className="right" data-testid="fba-head">FBA{fr.missing ? <div className="small muted" style={{ fontWeight: 400 }}>Bericht fehlt</div> : fr.stale ? <div className="small" style={{ fontWeight: 400, color: "var(--warn)" }}>Stand {formatDate(fr.snapshot)}</div> : fr.source === "sellerboard" ? <div className="small muted" style={{ fontWeight: 400 }} data-testid="fba-source">sellerboard, {formatDate(fr.snapshot)}</div> : null}</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={9} className="muted">{fr.missing ? <>Keine Einträge – der FBA-Bestandsbericht fehlt, der Amazon-Bestand ist unbekannt. <Link href="/import">Bericht importieren</Link> oder eigenen Bestand eintragen.</> : "Keine Einträge in dieser Ansicht."}</td></tr>}
               {rows.slice(0, 500).map((r) => (
