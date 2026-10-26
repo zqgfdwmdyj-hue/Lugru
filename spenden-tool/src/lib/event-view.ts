@@ -1,8 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { isPlaceholderName } from "@/lib/layout";
-import { categoryHint, comparability, type Comparability, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
-import { suggestDonationPrice } from "@/lib/pricing";
+import { categoryHint, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
+import { perPiece, suggestDonationPrice, suggestPackPrice } from "@/lib/pricing";
 import { extraPhotos, latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
 import { backsideCandidates } from "@/lib/backside";
 
@@ -31,10 +31,17 @@ export const loadEventView = cache(async (id: string) => {
     const catHint = unnamed ? null : categoryHint(r.product, aiCategory);
     // KI-Vorschlag, der übernommen werden kann (nur ohne Preis und ohne Preis im Foto) – aus dem günstigsten
     // Angebot für Neuware, nie aus B-Ware/Gebrauchtem.
-    const fresh = priced ? check.offers.filter((o) => !isSecondHand(o.title, o.shop)) : [];
-    const freshSuggestion = fresh.length ? suggestDonationPrice(fresh[0].price) : null;
+    // Stückpreis aus dem günstigsten Angebot (Kasten/Sixpack ÷ Flaschen) – nie der Liter- oder Kilopreis.
+    const fresh = priced ? check.offers.filter((o) => !isSecondHand(o.title, o.shop)).sort((a, b) => perPiece(a) - perPiece(b)) : [];
+    const piece = fresh.length ? perPiece(fresh[0]) : null;
+    // Abgabe: Einzelstück 1, Packung/Karton mit Stückzahl, sonst wie im Angebot.
+    const abgabe = r.item.unit === "packung" || r.item.unit === "karton" ? (r.item.unitCount ?? 1) : r.item.unit === "stueck" ? 1 : (fresh[0]?.count ?? 1);
+    const freshSuggestion = piece !== null ? suggestDonationPrice(piece * abgabe) : null;
     const suggestion = priced && freshSuggestion !== null && !state.printed ? freshSuggestion : null;
-    return { ...r, state, check, compare, unnamed, issues, suggestion, catHint, backPhotos: extras.get(r.product.id) ?? [] };
+    // Ganze Packung: 20 % vom Handelspreis (Getränke: normaler Anteil)
+    const drink = isDrink(r.product);
+    const packSuggestion = suggestPackPrice(piece, r.item.packCount, drink);
+    return { ...r, state, check, compare, unnamed, issues, suggestion, packSuggestion, drink, catHint, backPhotos: extras.get(r.product.id) ?? [] };
   });
   // Vorder- und Rückseite desselben Produkts als zwei Produkte? → Vorschlag zum Zusammenführen (nie automatisch).
   const pairs = backsideCandidates(

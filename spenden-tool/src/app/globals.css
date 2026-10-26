@@ -444,3 +444,13 @@ form.check-row { grid-template-columns: auto 1fr auto; }
 .pair-photos figure { margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .pair-photos img { width: 100%; max-height: 260px; object-fit: contain; background: #f6f5f1; border-radius: 8px; }
 .pair-photos figcaption { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.sub-legend { font-weight: 600; font-size: 12px; margin-top: 4px; color: var(--ink-2); }
+.upload-modes { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.upload-modes .check { align-items: flex-start; }
+.upload-modes input { margin-top: 3px; }
+
+/* Statistik */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.stat-row { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--row); text-decoration: none; color: var(--ink); }
+.stat-row:last-child { border-bottom: 0; }
+.stat-row:hover { background: var(--surface-2); color: var(--ink); }

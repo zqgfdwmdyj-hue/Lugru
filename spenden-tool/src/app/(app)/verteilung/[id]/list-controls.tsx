@@ -134,6 +134,8 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
 export function BulkBar({ formId, categories, ai, costs }: { formId: string; categories: string[]; ai: boolean; costs: Record<string, number> }) {
   const [count, setCount] = useState(0);
   const [stufe, setStufe] = useState("sparsam");
+  const [stockSel, setStockSel] = useState("kartons");
+  const [outcomeSel, setOutcomeSel] = useState("weg");
   useEffect(() => {
     const form = document.getElementById(formId);
     if (!form) return;
@@ -184,6 +186,27 @@ export function BulkBar({ formId, categories, ai, costs }: { formId: string; cat
             <span className="small muted">Aushang</span>
             <button className="btn btn-small" type="submit" name="op" value="bulk:fly-on">an</button>
             <button className="btn btn-small" type="submit" name="op" value="bulk:fly-off">aus</button>
+          </span>
+          <span className="bulk-group">
+            <select className="select select-compact" value={stockSel} onChange={(e) => setStockSel(e.target.value)} aria-label="Bestand für die Auswahl">
+              <option value="palette">Bestand: 1 Palette</option>
+              <option value="halbe-palette">Bestand: ½ Palette</option>
+              <option value="viertel-palette">Bestand: ¼ Palette</option>
+              <option value="kartons">Bestand: mehrere Kartons</option>
+              <option value="einzeln">Bestand: Einzelprodukt</option>
+              <option value="reste">Bestand: wenige / Reste</option>
+              <option value="leer">Bestand: leeren</option>
+            </select>
+            <button className="btn btn-small" type="submit" name="op" value={`bulk:stock-${stockSel}`}>Setzen</button>
+          </span>
+          <span className="bulk-group">
+            <select className="select select-compact" value={outcomeSel} onChange={(e) => setOutcomeSel(e.target.value)} aria-label="Ergebnis für die Auswahl">
+              <option value="weg">Ergebnis: alles weg</option>
+              <option value="wenig">Ergebnis: wenig übrig</option>
+              <option value="viel">Ergebnis: viel übrig</option>
+              <option value="leer">Ergebnis: offen</option>
+            </select>
+            <button className="btn btn-small" type="submit" name="op" value={`bulk:outcome-${outcomeSel}`}>Setzen</button>
           </span>
           <span className="bulk-group">
             <span className="small muted">MHD</span>

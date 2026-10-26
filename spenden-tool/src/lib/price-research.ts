@@ -5,6 +5,7 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { DONATION_CATEGORIES, isPlaceholderName } from "@/lib/layout";
+import { autoReadMhd } from "@/lib/mhd";
 import { cleanAiText, isSecondHand, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { suggestDonationPrice } from "@/lib/pricing";
 import { parseAmount } from "@/lib/numbers";
@@ -25,6 +26,8 @@ const Offer = z.object({
   // „1,49“, „1.49 €“ oder 1.49 – alles wird zur Zahl
   price: z.preprocess((v) => (typeof v === "string" ? parseAmount(v) : v), z.number().positive()),
   unit: z.string().nullish(),
+  // Stück/Flaschen im Angebot (Kasten 12, Sixpack 6, Einzelflasche 1)
+  menge: z.preprocess((v) => (typeof v === "string" ? parseAmount(v) : v), z.number().int().positive().max(1000).nullish().catch(null)),
   // Nur echte Webadressen – die Links landen anklickbar auf der Seite.
   url: z.string().url().refine((u) => /^https?:\/\//i.test(u)),
 });
@@ -49,14 +52,16 @@ const SYSTEM = `Du hilfst einer ehrenamtlichen Foodsharing-Gruppe in Deutschland
 Vorgehen:
 1. Erkenne das Produkt auf dem Foto so genau wie möglich: Marke, Produktname, Sorte, Packungsgröße/Inhalt. Wenn Name oder Variante schon angegeben sind, nutze sie als Hinweis.
 2. Suche im Internet nach aktuellen Preisen genau dieses Produkts in dieser Packungsgröße bei deutschen Händlern (Supermärkte, Discounter, Drogerien, Online-Shops, Amazon.de). Keine Preise aus anderen Ländern.
-3. Nenne die bis zu 5 günstigsten seriösen Angebote, jeweils mit direktem Link zur Produktseite. Preise in Euro inklusive Mehrwertsteuer, ohne Versand. Erfinde keine Preise oder Links – nur was du in den Suchergebnissen gefunden hast. Findest du das exakte Produkt nicht, nimm das nächstähnliche und schreibe das in die Zusammenfassung.
+3. Nenne die bis zu 5 günstigsten seriösen Angebote, jeweils mit direktem Link zur Produktseite. Preise in Euro inklusive Mehrwertsteuer, ohne Versand und ohne Pfand.
+   „price“ ist IMMER der Preis für das ganze Angebot (z. B. den ganzen Kasten, das Sixpack, die Packung) – NIE der Grundpreis pro Liter oder Kilogramm; den Grundpreis höchstens in „unit“. „menge“ = Anzahl Stück bzw. Flaschen in diesem Angebot (1 bei Einzelstück, 12 beim Kasten mit 12 Flaschen).
+   Bei Getränken: Angebote in der üblichen Gebindegröße (Flasche, Sixpack, Kasten) mit „menge“ angeben. Erfinde keine Preise oder Links – nur was du in den Suchergebnissen gefunden hast. Findest du das exakte Produkt nicht, nimm das nächstähnliche und schreibe das in die Zusammenfassung.
 
 Antworte zum Schluss ausschließlich mit einem JSON-Objekt in einem \`\`\`json-Block:
 {
   "name": "Produktname ohne Packungsgröße, z. B. \\"Bio Kimchi\\"",
   "variant": "Packungsgröße/Sorte, z. B. \\"500 g\\" oder null",
   "category": "eine von: ${DONATION_CATEGORIES.join(", ")}",
-  "offers": [{ "shop": "Händler", "title": "Produkttitel beim Händler", "price": 2.49, "unit": "z. B. 1,99 €/kg oder null", "url": "https://..." }],
+  "offers": [{ "shop": "Händler", "title": "Produkttitel beim Händler", "price": 2.49, "menge": 1, "unit": "Grundpreis z. B. 1,99 €/l oder null", "url": "https://..." }],
   "summary": "Ein bis zwei Sätze auf Deutsch: was es ist und wie verlässlich die Preise sind",
   "seite": "vorne oder hinten – zeigt das erste Foto die Vorderseite oder die Rückseite (Zutaten, Nährwerte, Barcode)?"
 }
@@ -173,7 +178,7 @@ async function runOne(checkId: string) {
         recognizedVariant: result.variant ?? null,
         recognizedCategory: result.category && (DONATION_CATEGORIES as readonly string[]).includes(result.category) ? result.category : null,
         recognizedSide: result.seite ?? null,
-        offers: result.offers.slice(0, 5).map((o) => ({ ...o, unit: o.unit ?? null })),
+        offers: result.offers.slice(0, 5).map(({ menge, ...o }) => ({ ...o, unit: o.unit ?? null, count: menge ?? null })),
         lowestPrice: lowest,
         suggestedPrice: suggestDonationPrice(lowest),
         summary: result.summary ?? null,
@@ -208,6 +213,8 @@ async function runOne(checkId: string) {
     } else if (aiCategory && product.category === UNSORTED_CATEGORY) {
       await db.update(schema.products).set({ category: aiCategory, updatedAt: new Date() }).where(and(eq(schema.products.id, product.id), eq(schema.products.category, UNSORTED_CATEGORY)));
     }
+    // Jetzt ist bekannt, was es ist: bei Lebensmitteln das MHD automatisch von den Fotos lesen.
+    await autoReadMhd([product.id]).catch((err) => console.error("MHD automatisch", err));
   } catch (e) {
     const message =
       e instanceof Anthropic.AuthenticationError ? "API-Schlüssel ungültig (ANTHROPIC_API_KEY prüfen)."

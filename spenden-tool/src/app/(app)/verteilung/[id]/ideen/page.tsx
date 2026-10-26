@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isDrink, packText } from "@/lib/price-logic";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -29,7 +30,7 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
   ]);
   const items = rows
     .filter((r) => !isPlaceholderName(r.product.name))
-    .map((r) => ({ name: r.product.name, variant: r.product.variant, price: r.item.price, priceNote: r.item.priceNote, packNote: r.item.packNote, packPrice: r.item.packPrice, image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
+    .map((r) => ({ name: r.product.name, variant: r.product.variant, price: r.item.price, priceNote: r.item.priceNote, packNote: r.item.packPrice != null ? packText(r.item, isDrink(r.product), r.product.variant) : null, packPrice: r.item.packPrice, image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
   // Plakat: Produktnamen der KI den Produkten (Foto, Spendenempfehlungen) zuordnen
   const posterData = (poster: IdeaPoster) => {
     const tiles: PosterTile[] = matchProducts(poster.hervorgehoben, items)

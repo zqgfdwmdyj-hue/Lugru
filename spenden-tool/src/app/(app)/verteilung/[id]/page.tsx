@@ -5,10 +5,10 @@ import { loadEventView, sourceLabel, type EventRow } from "@/lib/event-view";
 import { knownCategories, productPicker } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
-import { cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { OUTCOME_LABELS, PACK_KINDS, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { addToEvent, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
+import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
 import { PriceCheckChip } from "@/components/price-check";
 import { ImageForm } from "@/components/image-form";
 import { PhotoUpload } from "@/components/photo-upload";
@@ -156,7 +156,8 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
         </label>
         <div className="pl-name">
           <label htmlFor={`open-${item.id}`} className="pl-title">{name || <span className="muted">Ohne Namen – bitte eintragen</span>}</label>
-          <div className="small muted">{[product.variant, product.category].filter(Boolean).join(" · ")}</div>
+          <div className="small muted">{[product.variant, product.category, item.stock ? `Bestand: ${STOCK_LABELS[item.stock]}` : null].filter(Boolean).join(" · ")}</div>
+          {item.outcome && <div className="small muted">Ergebnis: {OUTCOME_LABELS[item.outcome]}</div>}
         </div>
         <div className="pl-unit">
           <span className="pl-label">Abgabe</span>
@@ -172,6 +173,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
           </span>
           <O name={k("price")} value={priceText(item.price)} />
           <span className={`small ${item.price !== null && !item.priceConfirmed ? "warn-text" : "muted"}`}>{sourceLabel(r)}</span>
+          {item.packPrice !== null && <span className="small">+ {packText(item, r.drink, product.variant)} {priceText(item.packPrice)} €</span>}
         </div>
         <div className="pl-status"><StatusTags r={r} /></div>
         <label htmlFor={`open-${item.id}`} className="btn btn-small pl-toggle"><span className="when-closed">Details bearbeiten</span><span className="when-open">Details schließen</span></label>
@@ -187,7 +189,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
           )}
           <div className="field"><label className="label" htmlFor={kp("name")}>Name</label><input className="input input-compact" id={kp("name")} name={kp("name")} defaultValue={name} placeholder="Name eintragen" /></div>
           <O name={kp("name")} value={name} />
-          <div className="field"><label className="label" htmlFor={kp("variant")}>Variante / Packungsgröße</label><input className="input input-compact" id={kp("variant")} name={kp("variant")} defaultValue={product.variant ?? ""} placeholder="z. B. 240 g, 6 x 125 g" /></div>
+          <div className="field"><label className="label" htmlFor={kp("variant")}>{r.drink ? "Inhalt je Flasche / Sorte" : "Variante / Packungsgröße"}</label><input className="input input-compact" id={kp("variant")} name={kp("variant")} defaultValue={product.variant ?? ""} placeholder="z. B. 240 g, 6 x 125 g" /></div>
           <O name={kp("variant")} value={product.variant ?? ""} />
           <div className="field"><label className="label" htmlFor={kp("cat")}>Kategorie</label><CategorySelect key={product.category} compact id={kp("cat")} name={kp("cat")} value={product.category} categories={categories} /></div>
           {/* key: Auswahllisten übernehmen geänderte Werte vom Server sonst nicht (z. B. nach einer Stapelaktion) –
@@ -236,15 +238,33 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
             <input className="input input-compact" id={k("note")} name={k("note")} defaultValue={item.priceNote ?? ""} placeholder="z. B. je, 3 Stück" />
           </div>
           <O name={k("note")} value={item.priceNote ?? ""} />
+          <div className="sub-legend">Zusätzlich: ganze Packung{r.drink ? " / Kasten" : " / Karton"}</div>
           <div className="form-grid">
-            <div className="field"><label className="label" htmlFor={k("packnote")}>Zusätzlich: ganze Packung</label><input className="input input-compact" id={k("packnote")} name={k("packnote")} defaultValue={item.packNote ?? ""} placeholder="z. B. ganzer Karton" /></div>
-            <O name={k("packnote")} value={item.packNote ?? ""} />
-            <div className="field"><label className="label" htmlFor={k("packprice")}>Empfehlung dafür €</label><input className="input input-compact num" id={k("packprice")} name={k("packprice")} defaultValue={priceText(item.packPrice)} inputMode="decimal" placeholder="z. B. 5" /></div>
+            <div className="field">
+              <label className="label" htmlFor={k("packkind")}>Art</label>
+              <select key={item.packKind ?? ""} className="select select-compact" id={k("packkind")} name={k("packkind")} defaultValue={item.packKind ?? ""}>
+                <option value="">–</option>
+                {Object.entries(PACK_KINDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </div>
+            <O name={k("packkind")} value={item.packKind ?? ""} />
+            <div className="field"><label className="label" htmlFor={k("packcount")}>{r.drink ? "Flaschen darin" : "Stück darin"}</label><input className="input input-compact num" id={k("packcount")} name={k("packcount")} defaultValue={item.packCount ?? ""} inputMode="numeric" placeholder={r.drink ? "z. B. 12" : "z. B. 24"} /></div>
+            <O name={k("packcount")} value={item.packCount ? String(item.packCount) : ""} />
+            <div className="field"><label className="label" htmlFor={k("packprice")}>Empfehlung €</label><input className="input input-compact num" id={k("packprice")} name={k("packprice")} defaultValue={priceText(item.packPrice)} inputMode="decimal" placeholder="z. B. 5" /></div>
             <O name={k("packprice")} value={priceText(item.packPrice)} />
           </div>
+          {r.packSuggestion && r.packSuggestion.price !== item.packPrice && (
+            <div className="small">
+              Vorschlag: <strong>{priceText(r.packSuggestion.price)} €</strong> ({Math.round(r.packSuggestion.share * 100)} % von {priceText(r.packSuggestion.retail)} € im Handel{r.drink ? ", Getränk" : ""}){" "}
+              <button className="btn-link small" type="submit" formAction={applyPackSuggestion.bind(null, item.id, r.packSuggestion.price)}>übernehmen</button>
+            </div>
+          )}
+          {r.drink && <div className="small muted">Inhalt je Flasche steht unter „Variante“ (z. B. 0,5 l) – daraus wird „Kasten (12 × 0,5 l)“.</div>}
+          <div className="field"><label className="label" htmlFor={k("packnote")}>Eigene Bezeichnung (optional)</label><input className="input input-compact" id={k("packnote")} name={k("packnote")} defaultValue={item.packNote ?? ""} placeholder={packText({ packKind: item.packKind, packCount: item.packCount }, r.drink, product.variant)} /></div>
+          <O name={k("packnote")} value={item.packNote ?? ""} />
           <div className="output-preview">
             <span className="small muted">So steht es in Collage, Aushang und Messenger:</span>
-            <strong>{shownAs || "kein Preis"}{item.packPrice !== null ? ` · ${item.packNote?.trim() || "ganze Packung"} ${priceText(item.packPrice)} €` : ""}</strong>
+            <strong>{shownAs || "kein Preis"}{item.packPrice !== null ? ` · ${packText(item, r.drink, product.variant)} ${priceText(item.packPrice)} €` : ""}</strong>
           </div>
           {item.price !== null && !item.priceConfirmed && <button className="btn btn-small" type="submit" name="op" value={`confirm:${item.id}`}>✓ Preis bestätigen</button>}
         </fieldset>
@@ -282,8 +302,25 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
             <div className="field"><label className="label" htmlFor={k("qty")}>Menge (optional)</label><input className="input input-compact num" id={k("qty")} name={k("qty")} defaultValue={item.quantity ?? ""} inputMode="numeric" /></div>
             <O name={k("qty")} value={item.quantity !== null ? String(item.quantity) : ""} />
             <div className="field">
+              <label className="label" htmlFor={k("stock")}>Bestand (ca.)</label>
+              <select key={item.stock ?? ""} className="select select-compact" id={k("stock")} name={k("stock")} defaultValue={item.stock ?? ""}>
+                <option value="">–</option>
+                {Object.entries(STOCK_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </div>
+            <O name={k("stock")} value={item.stock ?? ""} />
+            <div className="field">
+              <label className="label" htmlFor={k("outcome")}>Wie lief es? (nachher)</label>
+              <select key={item.outcome ?? ""} className="select select-compact" id={k("outcome")} name={k("outcome")} defaultValue={item.outcome ?? ""}>
+                <option value="">noch offen</option>
+                {Object.entries(OUTCOME_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+              </select>
+            </div>
+            <O name={k("outcome")} value={item.outcome ?? ""} />
+            <div className="field">
               <label className="label" htmlFor={k("mhd")}>MHD{mhd.relevant ? "" : " (nicht nötig)"}</label>
               <input className="input input-compact num" type="date" id={k("mhd")} name={k("mhd")} defaultValue={item.bestBefore ?? ""} />
+              {item.bestBeforeSource === "foto-ki" && <span className="small muted">automatisch aus dem Foto gelesen – bitte kurz prüfen</span>}
             </div>
             <O name={k("mhd")} value={item.bestBefore ?? ""} />
           </div>

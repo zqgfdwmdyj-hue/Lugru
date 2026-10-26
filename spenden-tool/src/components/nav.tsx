@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/", label: "Verteilungen" },
   { href: "/produkte", label: "Produkte" },
+  { href: "/statistik", label: "Statistik" },
 ];
 
 export function Nav({ admin = false }: { admin?: boolean }) {

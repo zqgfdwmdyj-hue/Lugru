@@ -139,6 +139,16 @@ export const eventItems = pgTable(
     /** Zusätzliche Spendenempfehlung für eine ganze Packung, z. B. „ganzer Karton“ für 5 €. */
     packNote: text("pack_note"),
     packPrice: money("pack_price"),
+    /** Art der ganzen Packung: Karton, Kasten (Getränke), Packung, Tray, Palette – siehe lib/price-logic.ts PACK_KINDS. */
+    packKind: text("pack_kind", { enum: ["karton", "kasten", "packung", "tray", "palette"] }),
+    /** Stück bzw. Flaschen in der ganzen Packung, z. B. 12 Flaschen im Kasten. */
+    packCount: integer("pack_count"),
+    /** Wie viel ist ungefähr da? (Palette, halbe/viertel Palette, mehrere Kartons, Einzelprodukt, wenige/Reste) */
+    stock: text("stock", { enum: ["palette", "halbe-palette", "viertel-palette", "kartons", "einzeln", "reste"] }),
+    /** Wie lief es? Nach der Verteilung erfasst – Grundlage der Statistik. */
+    outcome: text("outcome", { enum: ["weg", "wenig", "viel"] }),
+    /** Woher das MHD kommt: „foto-ki“ = automatisch von einem Foto gelesen (bitte kurz prüfen). */
+    bestBeforeSource: text("best_before_source"),
     /** Zusatztext auf der Collage. */
     caption: text("caption"),
     quantity: integer("quantity"),
@@ -154,7 +164,8 @@ export const eventItems = pgTable(
   (t) => [uniqueIndex("event_items_uq").on(t.eventId, t.productId), index("event_items_product_idx").on(t.productId)],
 );
 
-export type ShopOffer = { shop: string; title: string; price: number; url: string; unit?: string | null };
+/** count: Stück/Flaschen im Angebot (z. B. 12 beim Kasten) – price ist immer der Preis des ganzen Angebots. */
+export type ShopOffer = { shop: string; title: string; price: number; url: string; unit?: string | null; count?: number | null };
 export const PRICE_CHECK_STATUSES = ["pending", "running", "done", "error"] as const;
 
 /** KI-Preisrecherche: Was ist das Produkt, und was kostet es im Handel? */

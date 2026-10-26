@@ -8,7 +8,7 @@ import { AiModeSelect } from "@/components/price-check";
 import { guessUnit, mhdAuto, publicText, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { UnitReview } from "./unit-review";
 import { outputPrice } from "@/lib/layout";
-import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, keepSeparate, mergeBackside, researchEvent, setMhdMode, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
+import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, keepSeparate, mergeBackside, readEventMhd, researchEvent, setMhdMode, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
 
 const euro = (v: number | null) => (v === null ? "–" : `${v.toFixed(2).replace(".", ",")} €`);
 const usd = (v: number) => `${v.toFixed(2).replace(".", ",")} $`;
@@ -38,6 +38,8 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
   const catHints = rows.filter((r) => r.catHint);
   const units = rows.filter((r) => !r.unnamed && r.issues.some((i) => i.key === "einheit"));
   const internal = rows.filter((r) => r.issues.some((i) => i.key === "intern"));
+  // Lebensmittel ohne MHD, deren Fotos noch nicht ohne Ergebnis gelesen wurden
+  const mhdOpen = rows.filter((r) => r.issues.some((i) => i.key === "mhd") && r.item.bestBeforeSource !== "foto-ki-leer" && r.product.imageFileId).length;
   const mhdUnsure = rows.filter((r) => r.issues.some((i) => i.key === "mhd-pruefen"));
   const oldPhoto = rows.filter((r) => r.issues.some((i) => i.key === "foto-alt"));
   const suggestions = rows.filter((r) => r.item.price === null && r.suggestion !== null && r.compare?.level !== "abweichend");
@@ -298,6 +300,12 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         <div className="summary-chips">
           {missing.map((m) => m.n > 0 ? <Link key={m.key} href={`${list}?status=${m.key}`} className="chip">{m.n} {m.label} →</Link> : <span key={m.key} className="chip chip-done">✓ keine {m.label}</span>)}
         </div>
+        {ai && mhdOpen > 0 && (
+          <form action={readEventMhd.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span>{mhdOpen} Lebensmittel ohne MHD: Die KI liest das Datum von den Fotos ab (zuerst Rückseiten). Gelesene Daten sind als „automatisch gelesen“ markiert – bitte kurz prüfen. Ca. 0,2 Cent je Foto.</span>
+            <button className="btn btn-small" type="submit">MHD aus Fotos lesen</button>
+          </form>
+        )}
         {suggestions.length > 0 && (
           <form action={applyAllSuggestions.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <span>Für {suggestions.length} Produkt(e) ohne Preis gibt es einen vergleichbaren KI-Vorschlag. Übernommen werden sie als „unbestätigt“; eingetragene Preise bleiben unverändert.</span>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { UploadResult } from "@/app/(app)/actions";
 import { shrink } from "./image-form";
 import { CategorySelect } from "./category-select";
+import { chooseFrontPhoto } from "@/app/(app)/actions";
 import { UNSORTED_CATEGORY } from "@/lib/price-logic";
 
 const BATCH = 4;
@@ -20,8 +21,8 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
   const router = useRouter();
   const [status, setStatus] = useState("");
   const [report, setReport] = useState<{ ok: boolean; text: string } | null>(null);
-  // Vorder- und Rückseite abwechselnd fotografiert → jede zweite wird Infofoto statt eigenes Produkt.
-  const [pairs, setPairs] = useState(false);
+  // einzeln: jedes Foto ein Produkt · paare: Vorder-/Rückseite abwechselnd · ein-produkt: alle Fotos = ein Produkt
+  const [mode, setMode] = useState<"einzeln" | "paare" | "ein-produkt">("einzeln");
 
   async function upload(files: File[]) {
     setReport(null);
@@ -31,13 +32,15 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
     let already = 0;
     let similar = 0;
     let backs = 0;
+    let oneProduct: string | null = null;
     const rejected: string[] = [];
     const failed: string[] = [];
     for (let i = 0; i < total; i += BATCH) {
       const part = files.slice(i, i + BATCH);
       const fd = new FormData();
       fd.set("eventId", eventId);
-      if (pairs) fd.set("paare", "1");
+      fd.set("modus", mode);
+      if (mode === "ein-produkt" && oneProduct) fd.set("zu", oneProduct);
       fd.set("category", categoryBox.current?.querySelector<HTMLInputElement | HTMLSelectElement>("[name=category]")?.value || UNSORTED_CATEGORY);
       for (let j = 0; j < part.length; j++) {
         setStatus(`Foto ${i + j + 1} von ${total} wird vorbereitet …`);
@@ -59,13 +62,21 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
         already += res.alreadyInEvent;
         similar += res.similar;
         backs += res.backs ?? 0;
+        if (mode === "ein-produkt" && res.productId) oneProduct = res.productId;
         rejected.push(...res.rejected);
       } else failed.push(...part.map((f) => f.name));
+    }
+    // Mehrere Fotos eines Produkts: die KI wählt die Vorderseite als Titelbild.
+    if (mode === "ein-produkt" && oneProduct && total > 1 && ai) {
+      setStatus("KI wählt die Vorderseite als Titelbild …");
+      try {
+        await chooseFrontPhoto(oneProduct, eventId);
+      } catch {}
     }
     setStatus("");
     router.refresh();
     const parts = [`${added} neu`];
-    if (backs) parts.push(`${backs} Rückseite(n) als Infofoto zugeordnet`);
+    if (backs) parts.push(mode === "ein-produkt" ? `${backs} weitere(s) Foto(s) als Infofoto am selben Produkt` : `${backs} Rückseite(n) als Infofoto zugeordnet`);
     if (reused) parts.push(`${reused} schon in der Datenbank (wiedererkannt, nicht doppelt angelegt)`);
     if (already) parts.push(`${already} doppelt – schon in dieser Verteilung, übersprungen`);
     if (similar) parts.push(`${similar} ähnlich wie ein vorhandenes Foto – bitte prüfen (Produkte → Mögliche Doppelte)`);
@@ -111,10 +122,12 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
         <h2>Fotos hochladen</h2>
         <div className="small muted">Beliebig viele Fotos auf einmal – jedes wird ein Produkt in dieser Verteilung. Doppelte Fotos werden erkannt – auch verkleinert, neu gespeichert oder per WhatsApp verschickt – und nicht doppelt angelegt oder ausgewertet.</div>
         <div className="field" ref={categoryBox}><label className="label" htmlFor="pc">Kategorie für neue Produkte</label><span className="small muted">„{UNSORTED_CATEGORY}“: die KI schlägt eine vor, du ordnest später zu.</span><CategorySelect id="pc" name="category" value={UNSORTED_CATEGORY} categories={categories} /></div>
-        <label className="check" style={{ alignItems: "flex-start" }}>
-          <input type="checkbox" checked={pairs} onChange={(e) => setPairs(e.target.checked)} style={{ marginTop: 3 }} />
-          <span>Vorder- und Rückseite abwechselnd<br /><span className="small muted">1. Foto vorne, 2. Foto Rückseite des 1., 3. Foto vorne … – Rückseiten werden kein eigenes Produkt, nur Infofoto (Zutaten, Gewicht, MHD). Bitte in dieser Reihenfolge auswählen.</span></span>
-        </label>
+        <fieldset className="upload-modes">
+          <legend className="label">Wie sind die Fotos?</legend>
+          <label className="check"><input type="radio" name="upload-modus" checked={mode === "einzeln"} onChange={() => setMode("einzeln")} /> <span>Jedes Foto ist ein eigenes Produkt</span></label>
+          <label className="check"><input type="radio" name="upload-modus" checked={mode === "ein-produkt"} onChange={() => setMode("ein-produkt")} /> <span>Alle ausgewählten Fotos sind <strong>ein</strong> Produkt<br /><span className="small muted">z. B. vorne, hinten, Seite – wird ein Artikel; die KI nimmt die Vorderseite als Titelbild, die anderen sind Infofotos.</span></span></label>
+          <label className="check"><input type="radio" name="upload-modus" checked={mode === "paare"} onChange={() => setMode("paare")} /> <span>Vorder- und Rückseite abwechselnd<br /><span className="small muted">1. Foto vorne, 2. Foto Rückseite des 1., 3. vorne … – bitte in dieser Reihenfolge auswählen.</span></span></label>
+        </fieldset>
         <button className="btn btn-primary" type="button" disabled={busy} onClick={() => input.current?.click()}>Fotos auswählen</button>
         {message}
       </div>

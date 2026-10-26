@@ -1,9 +1,10 @@
 // Reine Logik für Collagen und Aushang – ohne Datenbank, damit sie auf Server und im Browser läuft.
 
 import type { CollageSettings } from "@/db/schema";
-import { pricePrefix, publicText, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { DONATION_CATEGORY_NAMES, pricePrefix, publicText, UNSORTED_CATEGORY } from "@/lib/price-logic";
 
-export const DONATION_CATEGORIES = ["Babyprodukte", "Lebensmittel", "Getränke inkl. Pfand", "Drogerie & Haushalt", "Spielzeug", "Sonstiges"] as const;
+/** Kategorien in Aushang-Reihenfolge – Süßes & Snacks in einer Reihe, Drogerie und Haushalt getrennt. */
+export const DONATION_CATEGORIES = DONATION_CATEGORY_NAMES;
 
 export const COLLAGE_FORMATS: Record<CollageSettings["format"], { label: string; width: number; height: number }> = {
   "4:5": { label: "Hochformat 4:5 (Messenger, Instagram)", width: 1080, height: 1350 },

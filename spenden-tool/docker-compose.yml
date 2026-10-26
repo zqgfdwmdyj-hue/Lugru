@@ -36,6 +36,7 @@ services:
       APP_URL: ${APP_URL:-http://localhost:3100}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PREISVORSCHLAG_ANTEIL: ${PREISVORSCHLAG_ANTEIL:-0.25}
+      PACKUNG_ANTEIL: ${PACKUNG_ANTEIL:-0.2}
       KI_MODUS: ${KI_MODUS:-}
   # Tägliche Sicherung der Datenbank (inkl. Fotos) nach ./backups, 14 Tage aufbewahrt
   backup:

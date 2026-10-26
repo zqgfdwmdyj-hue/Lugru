@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { packText } from "@/lib/price-logic";
+import { perPiece, suggestPackPrice } from "@/lib/pricing";
 import { categoryHint, cleanAiText, comparability, guessUnit, isSecondHand, itemIssues, mhdAuto, mhdRelevant, parseSize, pricePrefix, priceState, publicText, splitInternal, unitIssue, unitLabel, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { flyerSections, outputPrice } from "@/lib/layout";
 
@@ -145,7 +147,7 @@ describe("Produktart, MHD und Kategorie", () => {
     expect(categoryHint({ name: "Wiberg Chili-Fäden", category: "Drogerie & Haushalt" })?.suggest).toBe("Lebensmittel");
     expect(categoryHint({ name: "Wiberg Classic BBQ", category: "Drogerie & Haushalt" })?.suggest).toBe("Lebensmittel");
     expect(categoryHint({ name: "BEMA Schwimmsitz", category: "Lebensmittel" })?.suggest).toBe("Spielzeug");
-    expect(categoryHint({ name: "Spontex Tuchschwämme", category: "Lebensmittel" })?.suggest).toBe("Drogerie & Haushalt");
+    expect(categoryHint({ name: "Spontex Tuchschwämme", category: "Lebensmittel" })?.suggest).toBe("Haushalt");
     expect(categoryHint({ name: "Wiberg Chili-Fäden", category: "Drogerie & Haushalt", categoryChecked: true })).toBeNull();
     expect(categoryHint({ name: "Haferflocken", category: "Lebensmittel" })).toBeNull();
     expect(categoryHint({ name: "Getrocknete Tomaten", category: "Lebensmittel" })).toBeNull();
@@ -205,7 +207,45 @@ describe("MHD und Prüfstatus", () => {
   });
   it("unbestätigter Fotopreis und fehlendes MHD", () => {
     const state = priceState({ price: 0.5, priceConfirmed: false, priceSource: "foto" }, FILE, reading("50 Cent", 0.5));
-    const keys = itemIssues({ unnamed: false, product: { name: "Haferdrink", category: "Lebensmittel", imageFileId: FILE }, item: { bestBefore: null, inCollage: true, unit: "stueck", unitConfirmed: true }, state }).map((i) => i.key);
+    const keys = itemIssues({ unnamed: false, product: { name: "Haferflocken", category: "Lebensmittel", imageFileId: FILE }, item: { bestBefore: null, inCollage: true, unit: "stueck", unitConfirmed: true }, state }).map((i) => i.key);
     expect(keys).toEqual(["preis-unbestaetigt", "mhd"]);
+  });
+});
+
+describe("Feinere Kategorien", () => {
+  it("Drogerie und Haushalt getrennt, Süßes, Getränke, Tee, Pflege", () => {
+    expect(categoryHint({ name: "YEAUTY Tuchmaske", category: "Drogerie & Haushalt" })?.suggest).toBe("Hautpflege");
+    expect(categoryHint({ name: "Shampoo Kamille", category: "Drogerie & Haushalt" })?.suggest).toBe("Haarpflege");
+    expect(categoryHint({ name: "Zahnpasta", category: "Drogerie & Haushalt" })?.suggest).toBe("Drogerie");
+    expect(categoryHint({ name: "Spülmittel", category: "Drogerie & Haushalt" })?.suggest).toBe("Haushalt");
+    expect(categoryHint({ name: "Funny-frisch Jumpys Paprika", category: "Lebensmittel" })?.suggest).toBe("Süßes & Snacks");
+    expect(categoryHint({ name: "Kaugummi Minze", category: "Lebensmittel" })?.suggest).toBe("Süßes & Snacks");
+    expect(categoryHint({ name: "Tee Kamille", category: "Lebensmittel" })?.suggest).toBe("Tee & Nahrungsergänzung");
+    expect(categoryHint({ name: "Magnesium Brausetabletten", category: "Drogerie & Haushalt" })?.suggest).toBe("Tee & Nahrungsergänzung");
+    expect(categoryHint({ name: "Eistee Pfirsich", category: "Lebensmittel" })?.suggest).toBe("Getränke inkl. Pfand");
+    expect(categoryHint({ name: "HiPP Snackie", category: "Babyprodukte" })).toBeNull();
+    expect(categoryHint({ name: "Haferflocken", category: "Lebensmittel" })).toBeNull();
+  });
+  it("Süßes und Tee brauchen ein MHD, Pflege nicht", () => {
+    expect(mhdAuto({ category: "Süßes & Snacks", name: "Gummibärchen" }).relevant).toBe(true);
+    expect(mhdAuto({ category: "Tee & Nahrungsergänzung", name: "Vitamin C" }).relevant).toBe(true);
+    expect(mhdAuto({ category: "Hautpflege", name: "Handcreme" }).relevant).toBe(false);
+  });
+});
+
+describe("Ganze Packung / Kasten", () => {
+  it("Bezeichnung mit Anzahl und Inhalt", () => {
+    expect(packText({ packKind: "kasten", packCount: 12 }, true, "0,5 l")).toBe("Kasten (12 × 0,5 l)");
+    expect(packText({ packKind: "kasten", packCount: 24 }, true, "330 ml")).toBe("Kasten (24 × 330 ml)");
+    expect(packText({ packKind: "karton", packCount: 24 }, false, "23 g")).toBe("Karton (24 St.)");
+    expect(packText({ packKind: null, packCount: null }, false)).toBe("ganze Packung");
+    expect(packText({ packKind: "karton", packCount: 24, packNote: "ganzer Karton" })).toBe("ganzer Karton");
+  });
+  it("Vorschlag: 20 % vom Handelspreis der Packung, Getränke mit normalem Anteil", () => {
+    // Stückpreis aus einem Kasten-Angebot: 12 Flaschen für 9,60 € → 0,80 € je Flasche (nie der Literpreis)
+    expect(perPiece({ price: 9.6, count: 12 })).toBeCloseTo(0.8);
+    expect(suggestPackPrice(1, 24, false)).toEqual({ price: 4.8, retail: 24, share: 0.2 });
+    expect(suggestPackPrice(0.8, 12, true)).toEqual({ price: 2.4, retail: 9.6, share: 0.25 });
+    expect(suggestPackPrice(1, null, false)).toBeNull();
   });
 });

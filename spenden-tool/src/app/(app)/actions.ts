@@ -9,21 +9,22 @@ import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
-import { comparability, isUnit, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { comparability, isDrink, isPackKind, isUnit, packText, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
 import { type AiMode, defaultAiMode, isAiMode } from "@/lib/ai-modes";
-import { readBestBefore } from "@/lib/mhd";
+import { autoReadMhd, readBestBefore } from "@/lib/mhd";
 import { logActivity } from "@/lib/activity";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateIdeas, IDEA_MODES, type IdeaMode, isIdeaMode } from "@/lib/ideas";
 import { getSetting, setSetting, SETTINGS } from "@/lib/settings";
 import { formatDate } from "@/lib/numbers";
-import { failStalePhotoPrices, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
+import { failStalePhotoPrices, pickFrontPhoto, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
 
 const uuid = z.string().uuid();
+const STOCK_VALUES = ["palette", "halbe-palette", "viertel-palette", "kartons", "einzeln", "reste"] as const;
 const P = schema.products;
 const E = schema.events;
 const I = schema.eventItems;
@@ -61,7 +62,7 @@ export async function createEvent(fd: FormData) {
     const src = await loadEvent(copyFrom.data);
     if (src) {
       const items = await db.select().from(I).where(eq(I.eventId, src.id)).orderBy(I.sort);
-      await addProductsToEvent(ev.id, items.map((i) => i.productId), new Map(items.map((i) => [i.productId, { price: i.price, priceNote: i.priceNote, caption: i.caption, packNote: i.packNote, packPrice: i.packPrice, unit: i.unit, unitCount: i.unitCount, priceConfirmed: i.priceConfirmed }])));
+      await addProductsToEvent(ev.id, items.map((i) => i.productId), new Map(items.map((i) => [i.productId, { price: i.price, priceNote: i.priceNote, caption: i.caption, packNote: i.packNote, packPrice: i.packPrice, packKind: i.packKind, packCount: i.packCount, unit: i.unit, unitCount: i.unitCount, priceConfirmed: i.priceConfirmed }])));
       await db.update(E).set({ collage: src.collage }).where(eq(E.id, ev.id));
     }
   }
@@ -193,12 +194,31 @@ export async function saveItems(fd: FormData) {
       set.packNote = opt(fd, k("packnote"));
       set.packPrice = price(fd, k("packprice")) ?? parsePrintedPrice(str(fd, k("packprice")));
     }
+    if (fd.has(k("packkind")) && changed(k("packkind"))) {
+      const v = str(fd, k("packkind"));
+      set.packKind = isPackKind(v) ? v : null;
+    }
+    if (fd.has(k("packcount")) && changed(k("packcount"))) {
+      const n = parseAmount(str(fd, k("packcount")));
+      set.packCount = n === null || n < 2 || n > 10000 ? null : Math.round(n);
+    }
+    if (fd.has(k("stock")) && changed(k("stock"))) {
+      const v = str(fd, k("stock"));
+      set.stock = (STOCK_VALUES as readonly string[]).includes(v) ? (v as (typeof STOCK_VALUES)[number]) : null;
+    }
+    if (fd.has(k("outcome")) && changed(k("outcome"))) {
+      const v = str(fd, k("outcome"));
+      set.outcome = v === "weg" || v === "wenig" || v === "viel" ? v : null;
+    }
     if (fd.has(k("caption")) && changed(k("caption"))) set.caption = opt(fd, k("caption"));
     if (fd.has(k("qty")) && changed(k("qty"))) {
       const qty = parseAmount(str(fd, k("qty")));
       set.quantity = qty === null || qty < 0 || qty > 1e6 ? null : Math.round(qty);
     }
-    if (fd.has(k("mhd")) && changed(k("mhd"))) set.bestBefore = parseIsoDate(str(fd, k("mhd")));
+    if (fd.has(k("mhd")) && changed(k("mhd"))) {
+      set.bestBefore = parseIsoDate(str(fd, k("mhd")));
+      set.bestBeforeSource = set.bestBefore ? "manuell" : null;
+    }
     // Häkchen: unangehakt fehlt das Feld ganz – darum nur auswerten, wenn das Gegenstück „o_“ mitkam.
     if (fd.has(`o_${k("col")}`) && changed(k("col"))) set.inCollage = checkbox(k("col"));
     if (fd.has(`o_${k("fly")}`) && changed(k("fly"))) set.inFlyer = checkbox(k("fly"));
@@ -307,6 +327,14 @@ export async function saveItems(fd: FormData) {
       await startChecks(pids, stufe(fd), { skipRecent: fd.get("bulk_neu") !== "on" });
       await startPhotoPrices(eventId, pids);
       what = `KI-Suche für ${n} ausgewählte Produkt(e) gestartet`;
+    } else if (target.startsWith("stock-") || target.startsWith("outcome-")) {
+      // „stock-halbe-palette“ → Feld „stock“, Wert „halbe-palette“
+      const field = target.slice(0, target.indexOf("-")) as "stock" | "outcome";
+      const value = target.slice(target.indexOf("-") + 1);
+      const v = value === "leer" ? null : value;
+      if (field === "stock" && (v === null || (STOCK_VALUES as readonly string[]).includes(v))) await db.update(I).set({ stock: v as (typeof STOCK_VALUES)[number] | null }).where(inArray(I.id, ids));
+      if (field === "outcome" && (v === null || v === "weg" || v === "wenig" || v === "viel")) await db.update(I).set({ outcome: v }).where(inArray(I.id, ids));
+      what = `${field === "stock" ? "Bestand" : "Ergebnis"} für ${n} Produkt(e) eingetragen`;
     } else if (target === "rueckseite") {
       // Genau zwei: das obere in der Liste ist die Vorderseite, das untere wird ihr Infofoto.
       if (selItems.length !== 2) {
@@ -465,6 +493,38 @@ export async function changeExtraPhoto(productId: string, fileId: string, action
   revalidatePath("/", "layout");
 }
 
+/** „Prüfen“: MHD für Lebensmittel ohne Datum von den Fotos lesen lassen (im Hintergrund). */
+export async function readEventMhd(eventId: string) {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  if (!aiConfigured()) return;
+  const rows = await db.select({ productId: I.productId }).from(I).where(and(eq(I.eventId, id), sql`${I.bestBefore} is null`));
+  after(() => autoReadMhd(rows.map((r) => r.productId), id).then(() => undefined).catch((e) => console.error("MHD automatisch", e)));
+  await logActivity(me, "MHD aus Fotos lesen gestartet", { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** Nach „Alle Fotos = ein Produkt“: Die KI sucht unter den Fotos die Vorderseite als Titelbild aus. */
+export async function chooseFrontPhoto(productId: string, eventId: string) {
+  await requireLogin();
+  const pid = uuid.parse(productId);
+  const eid = uuid.parse(eventId);
+  if (aiConfigured()) after(() => pickFrontPhoto(pid).then(() => undefined).catch((e) => console.error("Titelbild wählen", e)));
+  revalidatePath(`/verteilung/${eid}`, "layout");
+}
+
+/** Vorschlag für die ganze Packung übernehmen (aus den Details einer Zeile). */
+export async function applyPackSuggestion(itemId: string, value: number, fd?: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(itemId);
+  const v = z.number().positive().max(10000).parse(value);
+  if (fd?.has("eventId")) await saveItems(fd);
+  const [it] = await db.update(I).set({ packPrice: Math.round(v * 100) / 100 }).where(eq(I.id, id)).returning({ eventId: I.eventId, productId: I.productId });
+  if (!it) return;
+  await logActivity(me, `Packungsvorschlag ${v.toFixed(2).replace(".", ",")} € übernommen`, { eventId: it.eventId, productId: it.productId });
+  revalidatePath(`/verteilung/${it.eventId}`, "layout");
+}
+
 /** „Prüfen“: MHD-Relevanz für angehakte Produkte festlegen – „ja“ (Nahrung) oder „nein“ (Zubehör). */
 export async function setMhdMode(eventId: string, mode: "ja" | "nein", fd: FormData) {
   const me = await requireLogin();
@@ -580,7 +640,7 @@ export async function addToEvent(fd: FormData) {
  * zum Nachtragen) und landet direkt in der Aktion.
  */
 /** reused: schon in der Datenbank, jetzt in die Verteilung übernommen; alreadyInEvent: war schon drin; similar: neu, aber ähnlich wie ein vorhandenes. */
-export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; backs: number; rejected: string[] };
+export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; backs: number; rejected: string[]; productId?: string | null };
 
 /**
  * Fotos hochladen – der Browser schickt sie in kleinen Portionen (siehe PhotoUpload), damit auch 50+ Fotos
@@ -597,7 +657,12 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   const index = await photoIndex();
   const inEvent = new Set((await db.select({ id: I.productId }).from(I).where(eq(I.eventId, eventId))).map((r) => r.id));
   // „Vorder- und Rückseite abwechselnd“: jedes zweite Foto ist die Rückseite des vorherigen (nur Infofoto).
-  const pairs = fd.get("paare") === "1";
+  // „Alle Fotos = ein Produkt“: das erste wird das Produkt, alle weiteren Infofotos (auch über mehrere Portionen:
+  // der Browser schickt die Produkt-ID der ersten Portion als „zu“ mit).
+  const mode = str(fd, "modus") || (fd.get("paare") === "1" ? "paare" : "einzeln");
+  const pairs = mode === "paare";
+  const continued = uuid.safeParse(fd.get("zu"));
+  let single: string | null = mode === "ein-produkt" && continued.success ? continued.data : null;
   let lastFront: string | null = null;
   const files = images(fd, "photos").slice(0, 20);
   for (let n = 0; n < files.length; n++) {
@@ -606,6 +671,16 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     if (!img) {
       result.rejected.push(file.name);
       if (pairs && n % 2 === 0) lastFront = null;
+      continue;
+    }
+    if (mode === "ein-produkt" && single) {
+      const known = findPhoto(img, index);
+      if (!known || known.how === "ähnlich") {
+        const fileId = await storeChecked(img);
+        await db.insert(schema.productPhotos).values({ productId: single, fileId, role: "info" }).onConflictDoNothing();
+        index.push({ productId: single, sha: img.sha, hash: img.hash, createdAt: new Date() });
+      }
+      result.backs++;
       continue;
     }
     if (pairs && n % 2 === 1) {
@@ -630,6 +705,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
         result.reused++;
       }
       lastFront = found.productId;
+      if (mode === "ein-produkt") single = found.productId;
       continue;
     }
     const fileId = await storeChecked(img);
@@ -641,6 +717,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     index.push({ productId: p.id, sha: img.sha, hash: img.hash, createdAt: p.createdAt });
     ids.push(p.id);
     lastFront = p.id;
+    if (mode === "ein-produkt") single = p.id;
     result.added++;
     if (found) result.similar++;
   }
@@ -648,9 +725,14 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   // Steht schon ein Preis auf dem Foto (alte Collage-Bilder)? Im Hintergrund ablesen und eintragen – jedes Foto
   // nur einmal, wiedererkannte Fotos gar nicht erneut.
   await startPhotoPrices(eventId, ids);
-  if (result.added + result.reused) await logActivity(me, `Fotos hochgeladen: ${result.added} neu, ${result.reused} wiedererkannt`, { eventId });
+  // Rückseiten zeigen oft das MHD: bei Lebensmitteln gleich mitlesen (im Hintergrund).
+  if (result.backs && aiConfigured()) {
+    const touched = [...new Set([...ids, ...(single ? [single] : [])])];
+    after(() => autoReadMhd(touched, eventId).then(() => undefined).catch((e) => console.error("MHD automatisch", e)));
+  }
+  if (result.added + result.reused) await logActivity(me, `Fotos hochgeladen: ${result.added} neu, ${result.reused} wiedererkannt${result.backs ? `, ${result.backs} Infofoto(s)` : ""}`, { eventId });
   revalidatePath(`/verteilung/${eventId}`, "layout");
-  return result;
+  return { ...result, productId: single };
 }
 
 async function startPhotoPrices(eventId: string, productIds: string[], opts: { again?: boolean; retry?: boolean } = {}) {
@@ -929,12 +1011,13 @@ export async function createIdeas(eventId: string, _prev: IdeasState, fd: FormDa
   const event = await loadEvent(id);
   if (!event) return { ok: false, message: "Verteilung nicht gefunden." };
   const rows = await db
-    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice })
+    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice, packKind: I.packKind, packCount: I.packCount })
     .from(I)
     .innerJoin(P, eq(P.id, I.productId))
     .where(eq(I.eventId, id))
     .orderBy(I.sort);
-  const items = rows.filter((r) => !isPlaceholderName(r.name));
+  // Packungsbezeichnung wie in Aushang und Collage („Kasten (12 × 0,5 l)“)
+  const items = rows.filter((r) => !isPlaceholderName(r.name)).map((r) => ({ ...r, packNote: r.packPrice != null ? packText(r, isDrink(r), r.variant) : r.packNote }));
   if (items.length === 0) return { ok: false, message: "Noch keine Produkte mit Namen in dieser Verteilung." };
   const themes = fd.getAll("thema").map(String).filter(Boolean).slice(0, 6);
   const wish = str(fd, "wunsch").slice(0, 500);

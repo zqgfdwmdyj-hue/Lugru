@@ -40,3 +40,57 @@ export async function readBestBefore(image: { mimeType: string; data: Buffer }):
   }
   return { date, raw, inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens };
 }
+
+/**
+ * MHD automatisch für Lebensmittel: Für Einträge ohne MHD, bei denen eins nötig ist, die Fotos des Produkts
+ * (zuerst Rückseiten/Infofotos, dann das Hauptfoto) ablesen. Gefundenes Datum wird als „foto-ki“ markiert (bitte
+ * kurz prüfen); ohne Ergebnis „foto-ki-leer“, damit dieselben Fotos nicht immer wieder gelesen werden.
+ */
+export async function autoReadMhd(productIds: string[], eventId?: string | null): Promise<number> {
+  if (productIds.length === 0 || !(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN)) return 0;
+  const { db, schema } = await import("@/db");
+  const { and, eq, inArray, isNull, or, ne, sql } = await import("drizzle-orm");
+  const { mhdRelevant } = await import("@/lib/price-logic");
+  const I = schema.eventItems;
+  const P = schema.products;
+  const rows = await db
+    .select({ item: I, product: P })
+    .from(I)
+    .innerJoin(P, eq(P.id, I.productId))
+    .where(
+      and(
+        inArray(I.productId, productIds),
+        isNull(I.bestBefore),
+        or(isNull(I.bestBeforeSource), ne(I.bestBeforeSource, "foto-ki-leer")),
+        eventId ? eq(I.eventId, eventId) : sql`true`,
+      ),
+    );
+  let found = 0;
+  for (const r of rows.filter((x) => mhdRelevant(x.product))) {
+    const extra = await db.select({ fileId: schema.productPhotos.fileId }).from(schema.productPhotos).where(eq(schema.productPhotos.productId, r.product.id));
+    const fileIds = [...extra.map((e) => e.fileId), r.product.imageFileId].filter((f): f is string => !!f).slice(0, 3);
+    let date: string | null = null;
+    let from: string | null = null;
+    for (const fid of fileIds) {
+      const [file] = await db.select({ mimeType: schema.files.mimeType, data: schema.files.data }).from(schema.files).where(eq(schema.files.id, fid));
+      if (!file) continue;
+      try {
+        const reading = await readBestBefore(file);
+        if (reading.date) {
+          date = reading.date;
+          from = fid;
+          break;
+        }
+      } catch (e) {
+        console.error("MHD automatisch lesen fehlgeschlagen", fid, e);
+      }
+    }
+    // Nur setzen, wenn inzwischen niemand selbst ein MHD eingetragen hat.
+    await db
+      .update(I)
+      .set(date ? { bestBefore: date, bestBeforeSource: "foto-ki", bestBeforeFileId: r.item.bestBeforeFileId ?? from } : { bestBeforeSource: "foto-ki-leer" })
+      .where(and(eq(I.id, r.item.id), isNull(I.bestBefore)));
+    if (date) found++;
+  }
+  return found;
+}

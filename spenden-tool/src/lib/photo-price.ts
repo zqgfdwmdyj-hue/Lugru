@@ -132,3 +132,34 @@ export async function readUnreadPhotos(eventId: string, productIds: string[]) {
   if (fileIds.length) after(() => runPhotoPrices(fileIds, eventId));
   return fileIds.length;
 }
+
+/**
+ * Mehrere Fotos eines Produkts („Alle Fotos = ein Produkt“): Die KI sucht die Vorderseite aus (Marke und Name groß,
+ * wie im Regal) – die wird Titelbild, alle anderen bleiben Infofotos. Kleinstes Modell, Bruchteil eines Cents.
+ */
+export async function pickFrontPhoto(productId: string): Promise<void> {
+  const [p] = await db.select({ imageFileId: P.imageFileId }).from(P).where(eq(P.id, productId));
+  if (!p?.imageFileId) return;
+  const PP = schema.productPhotos;
+  const extra = await db.select({ fileId: PP.fileId }).from(PP).where(eq(PP.productId, productId));
+  const ids = [p.imageFileId, ...extra.map((e) => e.fileId)].slice(0, 5);
+  if (ids.length < 2) return;
+  const files = await db.select({ id: F.id, mimeType: F.mimeType, data: F.data }).from(F).where(inArray(F.id, ids));
+  const ordered = ids.map((id) => files.find((f) => f.id === id)).filter((f): f is NonNullable<typeof f> => !!f);
+  const content: Anthropic.ContentBlockParam[] = [];
+  for (const [i, f] of ordered.entries()) {
+    content.push({ type: "text", text: `Bild ${i + 1}:` });
+    content.push({ type: "image", source: await claudeImage(f) });
+  }
+  content.push({ type: "text", text: `Alle Bilder zeigen dasselbe Produkt von verschiedenen Seiten. Welches Bild zeigt die Vorderseite (Marke und Produktname groß, so wie das Produkt im Regal steht – nicht Zutaten, Nährwerte oder Barcode)? Antworte nur mit JSON: {"vorne": Nummer des Bildes}` });
+  const response = await new Anthropic().messages.create({ model: "claude-haiku-4-5", max_tokens: 50, messages: [{ role: "user", content }] });
+  const text = response.content.map((b) => (b.type === "text" ? b.text : "")).join("");
+  const m = /"vorne"\s*:\s*(\d+)/.exec(text);
+  const idx = m ? Number(m[1]) - 1 : 0;
+  if (!(idx > 0 && idx < ordered.length)) return;
+  const front = ordered[idx].id;
+  // Bisheriges Titelbild wird Infofoto, das gewählte wird Titelbild.
+  await db.delete(PP).where(and(eq(PP.productId, productId), eq(PP.fileId, front)));
+  await db.insert(PP).values({ productId, fileId: p.imageFileId, role: "info" }).onConflictDoNothing();
+  await db.update(P).set({ imageFileId: front, updatedAt: new Date() }).where(eq(P.id, productId));
+}

@@ -5,7 +5,7 @@ import { cleanTileStyle, collageSettings, eventDateLabel } from "@/lib/layout";
 import { loadEventView } from "@/lib/event-view";
 import { readUnreadPhotos } from "@/lib/photo-price";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { publicText } from "@/lib/price-logic";
+import { isDrink, packText, publicText } from "@/lib/price-logic";
 import type { CollageSettings } from "@/db/schema";
 import { exportWarnings } from "@/lib/export-check";
 import { CollageEditor, type CollageTile } from "./collage-editor";
@@ -38,7 +38,7 @@ export default async function CollagePage({ params, searchParams }: { params: Pr
     unit: item.unit,
     unitCount: item.unitCount,
     caption: item.caption,
-    packNote: item.packNote,
+    packNote: packText(item, isDrink(product), product.variant),
     packPrice: item.packPrice,
     printed: state.printed,
     plan: state.plan,

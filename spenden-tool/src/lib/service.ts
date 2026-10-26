@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
 import { DONATION_CATEGORIES, flyerSections } from "@/lib/layout";
-import { UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { isDrink, packText, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import sharp from "sharp";
 import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
@@ -212,7 +212,7 @@ export function eventFlyerSections(rows: Awaited<ReturnType<typeof loadEventItem
   return flyerSections(
     rows
       .filter((r) => r.item.inFlyer)
-      .map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, unit: r.item.unit, unitCount: r.item.unitCount, bestBefore: r.item.bestBefore, packNote: r.item.packNote, packPrice: r.item.packPrice })),
+      .map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, unit: r.item.unit, unitCount: r.item.unitCount, bestBefore: r.item.bestBefore, packNote: packText(r.item, isDrink(r.product), r.product.variant), packPrice: r.item.packPrice })),
   );
 }
 
@@ -228,7 +228,7 @@ export async function lastPrices(productIds: string[]): Promise<Map<string, { pr
   return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, { price: r.price as number, confirmed: r.confirmed }]));
 }
 
-type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
+type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; packKind?: "karton" | "kasten" | "packung" | "tray" | "palette" | null; packCount?: number | null; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {
@@ -259,6 +259,8 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
           priceNote: given?.priceNote ?? null,
           caption: given?.caption ?? null,
           packNote: given?.packNote ?? null,
+          packKind: given?.packKind ?? null,
+          packCount: given?.packCount ?? null,
           packPrice: given?.packPrice ?? null,
           sort: max + (i + 1) * 10,
         };

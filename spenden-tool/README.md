@@ -72,8 +72,21 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Auswahl „Alles“, „Rezept-Ideen“ (5–8 Rezepte) oder „Verwendungs-Ideen“ (wofür man jedes Produkt nutzen kann).
   Dazu ein **Plakat** (A4, als Bild oder PDF) mit Fotos, „Einzeln“ und Packungs-Spendenempfehlung – die KI wählt Thema,
   Texte und Produkte, Fotos und Beträge kommen aus der Verteilung. Das Wort „Preis“ verwendet die KI nicht.
-- **Packungs-Spendenempfehlung:** pro Produkt zusätzlich z. B. „ganzer Karton“ 5 € – erscheint in Aushang,
-  Messenger-Text, Collage und Plakat.
+- **Ganze Packung / Karton / Kasten:** Art (Karton, Kasten, Packung, Tray, Palette) und Anzahl darin – bei
+  Getränken Flaschen je Kasten und Inhalt je Flasche („Kasten (12 × 0,5 l) 4 €“). Vorschlag: 20 % vom Handelspreis
+  der ganzen Packung (PACKUNG_ANTEIL), bei Getränken der normale Anteil. Die KI-Preissuche nennt immer den Preis des
+  ganzen Angebots (Kasten, Sixpack) und die Anzahl darin – nie den Liter- oder Kilopreis.
+- **Kategorien:** Babyprodukte, Lebensmittel, Süßes & Snacks, Getränke, Tee & Nahrungsergänzung, Hautpflege,
+  Haarpflege, Drogerie, Haushalt, Spielzeug, Sonstiges – in dieser Reihenfolge im Aushang. Bestehende Produkte der
+  alten Sammelkategorie „Drogerie & Haushalt“ werden nicht automatisch verschoben; „Prüfen“ schlägt die neue vor.
+- **Mehrere Fotos je Produkt:** Beim Hochladen „Alle ausgewählten Fotos sind ein Produkt“ – die KI nimmt die
+  Vorderseite als Titelbild, die übrigen werden Infofotos.
+- **MHD automatisch bei Lebensmitteln:** Nach der KI-Erkennung bzw. beim Hochladen mit Rückseite liest die KI das
+  Datum von den Fotos (zuerst Rückseiten); markiert als „automatisch gelesen – bitte prüfen“. Unter „Prüfen“ auch
+  von Hand startbar.
+- **Bestand (ca.) und Ergebnis:** pro Produkt „1 Palette / ½ / ¼ Palette / mehrere Kartons / Einzelprodukt / wenige
+  Reste“ und nach der Verteilung „alles weg / wenig übrig / viel übrig“ – einzeln oder als Stapelaktion.
+- **Statistik:** Renner und Ladenhüter, Kategorien nach Jahreszeit, am häufigsten dabei – je Jahr oder gesamt.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
   automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten. Immer nur das gewählte Format; Highlights

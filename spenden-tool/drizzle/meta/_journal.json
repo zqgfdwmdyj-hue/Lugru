@@ -127,6 +127,13 @@
       "when": 1793010669123,
       "tag": "0017_rueckseiten",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793048812369,
+      "tag": "0018_packung_bestand",
+      "breakpoints": true
     }
   ]
 }
