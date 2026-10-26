@@ -61,7 +61,7 @@ export function mapProduct(r: Obj): SbProduct | null {
   };
 }
 
-export type SbInventory = { sbId: string; sku: string; asin: string | null; fnsku: string | null; name: string | null; channel: string | null; fbaStock: number; reserved: number; inbound: number; salesVelocity: number | null; daysLeft: number | null; timeToReorder: string | null; daysToReorder: number | null; qtyToReorder: number; runningOut: string | null; cost: number | null };
+export type SbInventory = { sbId: string; sku: string; asin: string | null; fnsku: string | null; name: string | null; channel: string | null; fbaStock: number; reserved: number; inbound: number; salesVelocity: number | null; daysLeft: number | null; timeToReorder: string | null; daysToReorder: number | null; qtyToReorder: number; runningOut: string | null; cost: number | null; stockValue: number | null };
 
 /**
  * Bestandszeile. „Reserviert“ wie im FBA-Bericht: Kundenbestellungen + Umlagerung + Bearbeitung (sellerboards
@@ -91,6 +91,7 @@ export function mapInventory(r: Obj): SbInventory | null {
     qtyToReorder: Math.max(0, int(r.QtyToReorder)),
     runningOut: str(r.RunningOutOfStock),
     cost: cost !== null && cost > 0 ? cost : null,
+    stockValue: num(r.StockAtCostPrice),
   };
 }
 
@@ -302,6 +303,90 @@ export function sumKpis(rows: Partial<SbKpi>[]): KpiSum {
     s.missingCost ||= r.missingCost === true;
   }
   return s;
+}
+
+// ---- Kennzahlen je Produkt (30 Tage) und eBay-Bestellmengen – Grundlage der Hebel
+
+export type SbSkuStat = {
+  sku: string; name: string | null; asin: string | null; image: string | null; link: string | null;
+  units: number; refunds: number; sales: number | null; netProfit: number | null; grossProfit: number | null;
+  fees: number | null; productCosts: number | null; advertising: number | null; vat: number | null; refundCost: number | null;
+  avgPrice: number | null; price: number | null; sessions: number | null; conversion: number | null;
+  stock: number | null; daysLeft: number | null; salesVelocity: number | null; timeToReorder: string | null; stockValue: number | null;
+  costMissing: boolean;
+};
+
+/** Produktzeilen der Produkttabelle (Amazon oder eBay) für einen Zeitraum. */
+export function mapSkuStats(reply: Obj): SbSkuStat[] {
+  const https = (v: unknown) => {
+    const s = str(v);
+    return s && /^https:\/\//i.test(s) ? s : null;
+  };
+  const out: SbSkuStat[] = [];
+  for (const r of (reply.result as Obj[] | undefined) ?? []) {
+    const i = (r.Info ?? r) as Obj;
+    const sku = str(i.SKU);
+    if (!sku) continue;
+    const variant = str(i.variant_name);
+    const cost = num(i.Cost);
+    out.push({
+      sku,
+      name: str(i.Name) ? `${str(i.Name)}${variant ? ` (${variant})` : ""}` : null,
+      asin: str(i.ASIN),
+      image: https(i.Image),
+      link: https(i.LinkToAmazon) ?? https(i.Link),
+      units: Math.max(0, int(i.Units)),
+      refunds: Math.max(0, int(i.Refunds)),
+      sales: num(i.Sales),
+      netProfit: num(i.NetProfit),
+      grossProfit: num(i.GrossProfit),
+      fees: num(i.AmazonFees) ?? num(i.Fees),
+      productCosts: num(i.ProductCosts),
+      advertising: num(i.Advertising),
+      vat: num(i.VAT),
+      refundCost: num(i.ProductRefunds),
+      avgPrice: num(i.AverageSalesPrice) ?? (num(i.Sales) !== null && int(i.Units) > 0 ? Math.round((num(i.Sales)! / int(i.Units)) * 100) / 100 : null),
+      price: num(i.Price),
+      sessions: num(i.sessions) === null ? null : int(i.sessions),
+      conversion: num(i.unitSessionPercentage),
+      stock: num(i.Stock) === null ? null : int(i.Stock),
+      daysLeft: num(i.DaysOfStockLeft) === null ? null : int(i.DaysOfStockLeft),
+      salesVelocity: num(i.SalesVelocity),
+      timeToReorder: str(i.TimeToReorder),
+      stockValue: num(i.StockAtCostPrice),
+      costMissing: r.exclamation_product_cost === true || ((cost === null || cost <= 0) && (num(i.ProductCosts) ?? 0) === 0),
+    });
+  }
+  return out;
+}
+
+export type SbEbayUnits = { day: string; sku: string; units: number; unitsWithCost: number };
+
+/** eBay-Bestellpositionen → Einheiten je UTC-Tag und SKU (mit/ohne EK in sellerboard). */
+export function mapEbayOrderUnits(reply: Obj): SbEbayUnits[] {
+  const m = new Map<string, SbEbayUnits>();
+  for (const r of (reply.result as Obj[] | undefined) ?? []) {
+    const i = (r.Info ?? r) as Obj;
+    const sku = str(i.SKU);
+    const day = dayOf(i.OrderDate);
+    if (!sku || !day) continue;
+    const units = Math.max(0, int(i.Units));
+    const withCost = i.CostSet === true || (num(i.Cost) ?? 0) > 0 || (num(i.ProductCosts) ?? 0) < 0;
+    const k = `${day}|${sku}`;
+    const cur = m.get(k) ?? { day, sku, units: 0, unitsWithCost: 0 };
+    cur.units += units;
+    if (withCost) cur.unitsWithCost += units;
+    m.set(k, cur);
+  }
+  return [...m.values()];
+}
+
+/** Die letzten n abgeschlossenen UTC-Tage (bis gestern) als ein Zeitraum. */
+export function lastDays(todayUtc: string, n: number) {
+  const t = unixDay(todayUtc);
+  const start = t - n * DAY;
+  const end = t - DAY;
+  return { start, end, fromDay: isoOf(start), toDay: isoOf(end) };
 }
 
 /** Sammelaufgabe „Nachbestellen“: nur was sellerboard ausdrücklich als „jetzt“ markiert. */

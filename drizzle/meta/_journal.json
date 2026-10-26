@@ -407,6 +407,13 @@
       "when": 1793038993252,
       "tag": "0057_sellerboard_verkauf",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793041950164,
+      "tag": "0058_hebel",
+      "breakpoints": true
     }
   ]
 }

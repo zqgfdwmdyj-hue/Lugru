@@ -28,7 +28,7 @@ function Figure({ label, value, negative = false, testid }: { label: string; val
   );
 }
 
-function Tile({ t, channels }: { t: SalesTile; channels: SbChannel[] }) {
+function Tile({ t, channels, ownCost }: { t: SalesTile; channels: SbChannel[]; ownCost: boolean }) {
   const s = t.total;
   const has = Object.keys(t.byChannel).length > 0;
   const missing = channels.filter((c) => t.byChannel[c]?.missingCost);
@@ -64,7 +64,9 @@ function Tile({ t, channels }: { t: SalesTile; channels: SbChannel[] }) {
           )}
           {missing.length > 0 && (
             <div className="sales-note small" data-testid="sales-missing-cost">
-              Einkaufspreise fehlen in sellerboard ({missing.map((c) => CHANNEL_LABEL[c]).join(", ")}) – Gewinn dort zu hoch.
+              {ownCost && missing.every((c) => c === "ebay")
+                ? "Für einige eBay-Artikel fehlt der EK auch im Seller-System – Gewinn dort zu hoch. Unter Hebel → „EK fehlt“ nachtragen."
+                : `Einkaufspreise fehlen in sellerboard (${missing.map((c) => CHANNEL_LABEL[c]).join(", ")}) – Gewinn dort zu hoch.`}
             </div>
           )}
         </>
@@ -89,8 +91,9 @@ export function SalesOverviewSection({ data }: { data: SalesOverview }) {
         </div>
       )}
       <div className="sales-tiles" data-testid="sales-tiles">
-        {data.tiles.map((t) => <Tile key={t.key} t={t} channels={data.channels} />)}
+        {data.tiles.map((t) => <Tile key={t.key} t={t} channels={data.channels} ownCost={data.ebayOwnCost} />)}
       </div>
+      {data.ebayOwnCost && <div className="card-pad small muted" style={{ paddingTop: 0 }} data-testid="sales-ebay-owncost">eBay-Gewinn mit deinem EK aus dem Seller-System gerechnet (sellerboard kennt dort keinen EK).</div>}
       <SalesTrend days={data.days} channels={data.channels} />
       <TopProducts top={data.top} />
       <div className="card-pad small" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>

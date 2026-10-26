@@ -13,6 +13,8 @@ import { calendarVisible } from "@/lib/calendar/visibility";
 import { PrivateHint } from "./privat/hint";
 import { loadSalesOverview } from "@/lib/sellerboard/sales";
 import { SalesOverviewSection } from "./sales-overview";
+import { loadHebel } from "@/lib/hebel/service";
+import { HebelTeaser } from "./hebel-teaser";
 import { toggleCalendarAction } from "./start-actions";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -210,6 +212,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   // ---- Tagesübersicht
   // Verkäufe (sellerboard, Amazon + eBay) nur für wer „Geld“ sehen darf.
   const sales = canAccess(session, "geld") ? await loadSalesOverview(session.tenantId).catch(() => null) : null;
+  const hebel = sales ? await loadHebel(session.tenantId).catch(() => null) : null;
   const urgent = mySignals.filter((s) => s.level === "danger");
   const warn = mySignals.filter((s) => s.level === "warn");
   const info = mySignals.filter((s) => s.level === "info");
@@ -218,6 +221,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
       {head}
       <PrivateHint session={session} />
       {sales && <SalesOverviewSection data={sales} />}
+      {hebel && <HebelTeaser data={hebel} />}
 
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0, gap: 16 }}>

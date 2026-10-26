@@ -52,6 +52,8 @@ export const sellerboardInventory = pgTable(
     qtyToReorder: integer("qty_to_reorder").notNull().default(0),
     runningOut: text("running_out"),
     cost: money("cost"),
+    /** Lagerwert zum EK laut sellerboard (StockAtCostPrice). */
+    stockValue: money("stock_value"),
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
   },
   (t) => [uniqueIndex("sb_inventory_uq").on(t.tenantId, t.sbId), index("sb_inventory_sku_idx").on(t.tenantId, t.sku)],
@@ -138,6 +140,95 @@ export const sellerboardTop = pgTable(
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.day] })],
+);
+
+/**
+ * Kennzahlen je Produkt über die letzten 30 abgeschlossenen Tage (Grundlage der Hebel: Verlust, Marge,
+ * Erstattungen, Kaufquote, Preis-Spielraum). Je Abgleich komplett ersetzt.
+ */
+export const sellerboardSkuStats = pgTable(
+  "sellerboard_sku_stats",
+  {
+    tenantId: tenantId(),
+    channel: text("channel").notNull(),
+    sku: text("sku").notNull(),
+    name: text("name"),
+    asin: text("asin"),
+    image: text("image"),
+    link: text("link"),
+    units: integer("units").notNull().default(0),
+    refunds: integer("refunds").notNull().default(0),
+    sales: money("sales"),
+    netProfit: money("net_profit"),
+    grossProfit: money("gross_profit"),
+    /** Amazon- bzw. eBay-Gebühren (negativ). */
+    fees: money("fees"),
+    productCosts: money("product_costs"),
+    advertising: money("advertising"),
+    vat: money("vat"),
+    /** Kosten der Erstattungen (negativ). */
+    refundCost: money("refund_cost"),
+    /** Durchschnittlicher Verkaufspreis (brutto) und aktueller Angebotspreis. */
+    avgPrice: money("avg_price"),
+    price: money("price"),
+    sessions: integer("sessions"),
+    /** Kaufquote in % (Einheiten je Besuch). */
+    conversion: numeric("conversion", { precision: 8, scale: 2 }),
+    stock: integer("stock"),
+    daysLeft: integer("days_left"),
+    salesVelocity: numeric("sales_velocity", { precision: 10, scale: 2 }),
+    timeToReorder: text("time_to_reorder"),
+    stockValue: money("stock_value"),
+    /** sellerboard kennt keinen EK (Gewinn dort ohne Wareneinsatz). */
+    costMissing: boolean("cost_missing").notNull().default(false),
+    fromDay: date("from_day", { mode: "string" }).notNull(),
+    toDay: date("to_day", { mode: "string" }).notNull(),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.sku] })],
+);
+
+/** Verkaufte eBay-Einheiten je Tag und SKU (aus den Bestellpositionen) – für den eBay-Gewinn mit eigenem EK. */
+export const sellerboardEbayUnits = pgTable(
+  "sellerboard_ebay_units",
+  {
+    tenantId: tenantId(),
+    day: date("day", { mode: "string" }).notNull(),
+    sku: text("sku").notNull(),
+    units: integer("units").notNull().default(0),
+    /** Einheiten, für die sellerboard schon einen EK abgezogen hat. */
+    unitsWithCost: integer("units_with_cost").notNull().default(0),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.day, t.sku] })],
+);
+
+/** Buy-Box laut Keepa für Hebel-Kandidaten (täglich, sparsam mit Tokens). */
+export const hebelKeepa = pgTable(
+  "hebel_keepa",
+  {
+    tenantId: tenantId(),
+    asin: text("asin").notNull(),
+    buyBoxPrice: money("buy_box_price"),
+    hasBuyBox: boolean("has_buy_box"),
+    buyBoxIsAmazon: boolean("buy_box_is_amazon").notNull().default(false),
+    buyBoxIsFba: boolean("buy_box_is_fba").notNull().default(false),
+    buyBoxSellerId: text("buy_box_seller_id"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.asin] })],
+);
+
+/** Ausgeblendete Hebel („erledigt / später“) bis zu einem Datum. */
+export const hebelDismissals = pgTable(
+  "hebel_dismissals",
+  {
+    tenantId: tenantId(),
+    key: text("key").notNull(),
+    until: date("until", { mode: "string" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.key] })],
 );
 
 /** Gewinn je SKU und Monat laut sellerboard. */

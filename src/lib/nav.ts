@@ -95,6 +95,7 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/gewinn", label: "Gewinn" },
       { href: "/cashflow", label: "Cash Flow" },
+      { href: "/hebel", label: "Hebel: Umsatz & Marge" },
       { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices" },
       { href: "/rechnungen/belege", label: "Belege scannen" },
       { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },

@@ -620,3 +620,25 @@ h2 { font-size: 16px; margin: 0; }
   .sales-tile { flex: 0 0 82%; scroll-snap-align: start; }
   .sales-trend, .sales-top { padding-left: 16px; padding-right: 16px; }
 }
+
+/* Hebel für Umsatz und Marge */
+.hebel-summary { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.hebel-list { display: flex; flex-direction: column; gap: 10px; }
+.hebel-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.hebel-card-main { display: flex; gap: 12px; align-items: flex-start; }
+.hebel-img { width: 44px; height: 44px; object-fit: contain; border-radius: 6px; border: 1px solid var(--border); background: #fff; flex-shrink: 0; display: inline-block; }
+.hebel-name { font-weight: 600; overflow-wrap: anywhere; }
+.hebel-headline { margin-top: 4px; }
+.hebel-action { margin-top: 4px; color: var(--ink-2); }
+.hebel-facts { margin-top: 4px; }
+.hebel-impact { text-align: right; display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; min-width: 90px; font-variant-numeric: tabular-nums; }
+.hebel-impact strong { font-size: 17px; }
+.hebel-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.hebel-teaser-row { display: flex; gap: 10px; align-items: center; padding: 8px 22px; border-top: 1px solid var(--row); text-decoration: none; color: inherit; }
+.hebel-teaser-row:hover { background: var(--surface-2); }
+@media (max-width: 600px) {
+  .hebel-card-main { flex-wrap: wrap; }
+  .hebel-impact { flex-direction: row; gap: 6px; align-items: baseline; min-width: 0; width: 100%; justify-content: flex-start; }
+  .hebel-teaser-row { padding: 8px 16px; }
+}
+.sales, .hebel-teaser { margin-bottom: 16px; }

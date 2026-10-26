@@ -7,7 +7,8 @@ import { syncClaims } from "@/lib/claims/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { sbAllPages, sbCall } from "./client";
 import { readConn, sbConnected, writeConn } from "./connection";
-import { dayBatches, mapFixCosts, mapInventory, mapKpis, mapMonths, mapProduct, mapShipments, mapSkuRows, mapTop, reorderNow, tilePeriods, type SbChannel, type SbInventory, type SbKpi, type SbProduct } from "./parse";
+import { dayBatches, lastDays, mapEbayOrderUnits, mapFixCosts, mapInventory, mapKpis, mapMonths, mapProduct, mapShipments, mapSkuRows, mapSkuStats, mapTop, reorderNow, tilePeriods, type SbChannel, type SbInventory, type SbKpi, type SbProduct, type SbSkuStat } from "./parse";
+import { refreshHebelTasks, syncHebelKeepa } from "@/lib/hebel/service";
 
 // Abgleich mit sellerboard (nur lesend). „verkauf“ = Verkaufs-Kennzahlen Amazon + eBay (alle ~30 Min.),
 // „bestand“ = zusätzlich Bestand + Sendungen (alle 4 Std.), „alles“ zusätzlich Produkte/EK, Monatswerte,
@@ -80,7 +81,7 @@ async function syncInventory(t: string, now: Date) {
       .values(part.map((r) => ({ tenantId: t, ...r, salesVelocity: r.salesVelocity === null ? null : String(r.salesVelocity), syncedAt: now })))
       .onConflictDoUpdate({
         target: [S.tenantId, S.sbId],
-        set: { sku: sql`excluded.sku`, asin: sql`excluded.asin`, fnsku: sql`excluded.fnsku`, name: sql`excluded.name`, channel: sql`excluded.channel`, fbaStock: sql`excluded.fba_stock`, reserved: sql`excluded.reserved`, inbound: sql`excluded.inbound`, salesVelocity: sql`excluded.sales_velocity`, daysLeft: sql`excluded.days_left`, timeToReorder: sql`excluded.time_to_reorder`, daysToReorder: sql`excluded.days_to_reorder`, qtyToReorder: sql`excluded.qty_to_reorder`, runningOut: sql`excluded.running_out`, cost: sql`excluded.cost`, syncedAt: sql`excluded.synced_at` },
+        set: { sku: sql`excluded.sku`, asin: sql`excluded.asin`, fnsku: sql`excluded.fnsku`, name: sql`excluded.name`, channel: sql`excluded.channel`, fbaStock: sql`excluded.fba_stock`, reserved: sql`excluded.reserved`, inbound: sql`excluded.inbound`, salesVelocity: sql`excluded.sales_velocity`, daysLeft: sql`excluded.days_left`, timeToReorder: sql`excluded.time_to_reorder`, daysToReorder: sql`excluded.days_to_reorder`, qtyToReorder: sql`excluded.qty_to_reorder`, runningOut: sql`excluded.running_out`, cost: sql`excluded.cost`, stockValue: sql`excluded.stock_value`, syncedAt: sql`excluded.synced_at` },
       });
   }
   if (rows.length) await db.delete(S).where(and(eq(S.tenantId, t), lt(S.syncedAt, now)));
@@ -263,6 +264,12 @@ async function syncSales(t: string, now: Date, withHistory: boolean) {
     }
     await saveKpis(t, channel, mapKpis(reply), now);
     for (const d of tiles.slice(0, 2)) await syncTop(t, channel, d, now);
+    // eBay: Bestellmengen je SKU (für den Gewinn mit EK aus dem Seller-System) – heute/gestern laufend,
+    // 31 Tage und letzter Monat beim großen Abgleich.
+    if (channel === "ebay") {
+      const d31 = { start: tiles[0].start - 30 * 86_400, end: tiles[0].end, fromDay: new Date((tiles[0].start - 30 * 86_400) * 1000).toISOString().slice(0, 10), toDay: tiles[0].toDay };
+      await syncEbayUnits(t, withHistory ? [d31, tiles[3]] : [tiles[1], tiles[0]], now);
+    }
     const [have] = await db.select({ n: count() }).from(K).where(and(eq(K.tenantId, t), eq(K.channel, channel), sql`${K.fromDay} = ${K.toDay}`, sql`${K.fromDay} >= ${today}::date - 29`));
     if (withHistory || (have?.n ?? 0) < 30) {
       for (const batch of dayBatches(today, 30)) {
@@ -279,6 +286,86 @@ async function syncSales(t: string, now: Date, withHistory: boolean) {
   const T = schema.sellerboardTop;
   await db.delete(T).where(and(eq(T.tenantId, t), sql`${T.day} < ${today}::date - 14`));
   return { channels: channels.length, days };
+}
+
+const isNotWarmed = (e: unknown) => /NOT_WARMED|not warmed/i.test(e instanceof Error ? e.message : String(e));
+
+/** Alle Seiten einer Dashboard-Tabelle; ist der Zeitraum nicht (mehr) vorbereitet, einmal nachwärmen. */
+async function tablePages(t: string, channel: SbChannel, args: Record<string, unknown> & { period_start: number; period_end: number }, count: number, maxPages: number) {
+  const rows: Record<string, unknown>[] = [];
+  let total = Infinity;
+  let warmed = false;
+  for (let page = 1; page <= maxPages && (page - 1) * count < total; ) {
+    let reply: Record<string, unknown>;
+    try {
+      reply = await sbCall(t, TOOLS[channel].table, { ...args, page, count });
+    } catch (e) {
+      if (!isNotWarmed(e) || warmed) throw e;
+      await sbCall(t, TOOLS[channel].period, { periods: [{ start: args.period_start, end: args.period_end }] });
+      warmed = true;
+      continue;
+    }
+    const list = (reply.result as Record<string, unknown>[] | undefined) ?? [];
+    total = Number(reply.total ?? list.length);
+    rows.push(...list);
+    if (!list.length) break;
+    page++;
+  }
+  return { result: rows, total: rows.length };
+}
+
+/** Kennzahlen je Produkt über die letzten 30 abgeschlossenen Tage (Amazon und eBay), komplett ersetzt. */
+async function syncSkuStats(t: string, now: Date) {
+  const conn = await readConn(t);
+  const channels: SbChannel[] = conn?.config.hasEbay === false ? ["amazon"] : ["amazon", "ebay"];
+  const p = lastDays(utcToday(), 30);
+  const S = schema.sellerboardSkuStats;
+  let n = 0;
+  for (const channel of channels) {
+    await sbCall(t, TOOLS[channel].period, { periods: [{ start: p.start, end: p.end }] });
+    const reply = await tablePages(t, channel, { entry_type: "product", period_start: p.start, period_end: p.end, sort: "sales desc" }, 35, 60);
+    const merged = new Map<string, SbSkuStat>();
+    for (const r of mapSkuStats(reply)) {
+      const cur = merged.get(r.sku);
+      if (!cur) merged.set(r.sku, r);
+      else {
+        // Gleiche SKU mehrfach (z. B. Marktplätze): Mengen und Beträge zusammenzählen.
+        const add = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+        Object.assign(cur, { units: cur.units + r.units, refunds: cur.refunds + r.refunds, sales: add(cur.sales, r.sales), netProfit: add(cur.netProfit, r.netProfit), grossProfit: add(cur.grossProfit, r.grossProfit), fees: add(cur.fees, r.fees), productCosts: add(cur.productCosts, r.productCosts), advertising: add(cur.advertising, r.advertising), vat: add(cur.vat, r.vat), refundCost: add(cur.refundCost, r.refundCost), sessions: add(cur.sessions, r.sessions) });
+      }
+    }
+    const rows = [...merged.values()];
+    for (const part of chunks(rows)) {
+      await db
+        .insert(S)
+        .values(part.map((r) => ({ tenantId: t, channel, ...r, salesVelocity: r.salesVelocity === null ? null : String(r.salesVelocity), conversion: r.conversion === null ? null : String(r.conversion), fromDay: p.fromDay, toDay: p.toDay, syncedAt: now })))
+        .onConflictDoUpdate({
+          target: [S.tenantId, S.channel, S.sku],
+          set: Object.fromEntries(["name", "asin", "image", "link", "units", "refunds", "sales", "net_profit", "gross_profit", "fees", "product_costs", "advertising", "vat", "refund_cost", "avg_price", "price", "sessions", "conversion", "stock", "days_left", "sales_velocity", "time_to_reorder", "stock_value", "cost_missing", "from_day", "to_day", "synced_at"].map((c) => [c.replace(/_([a-z])/g, (_, x: string) => x.toUpperCase()), sql.raw(`excluded.${c}`)])),
+        });
+    }
+    // Was in den 30 Tagen nicht mehr verkauft wurde, fällt heraus.
+    await db.delete(S).where(and(eq(S.tenantId, t), eq(S.channel, channel), lt(S.syncedAt, now)));
+    n += rows.length;
+  }
+  return n;
+}
+
+/** eBay-Bestellmengen je Tag/SKU für Zeiträume (je höchstens 31 Tage); vorhandene Tage werden ersetzt. */
+async function syncEbayUnits(t: string, ranges: { start: number; end: number; fromDay: string; toDay: string }[], now: Date) {
+  const conn = await readConn(t);
+  if (conn?.config.hasEbay === false) return 0;
+  const U = schema.sellerboardEbayUnits;
+  let n = 0;
+  for (const r of ranges) {
+    const reply = await tablePages(t, "ebay", { entry_type: "order_item", period_start: r.start, period_end: r.end, sort: "orderdate desc" }, 50, 60);
+    const rows = mapEbayOrderUnits(reply).filter((x) => x.day >= r.fromDay && x.day <= r.toDay);
+    await db.delete(U).where(and(eq(U.tenantId, t), sql`${U.day} between ${r.fromDay} and ${r.toDay}`));
+    for (const part of chunks(rows)) await db.insert(U).values(part.map((x) => ({ tenantId: t, ...x, syncedAt: now })));
+    n += rows.length;
+  }
+  await db.delete(U).where(and(eq(U.tenantId, t), sql`${U.day} < ${utcToday()}::date - 70`));
+  return n;
 }
 
 /** Ein Abgleich (wartet bis fertig). Fehler eines Teils halten die anderen nicht auf. */
@@ -320,7 +407,10 @@ export async function syncSellerboard(tenantId: string, scope: SyncScope = "alle
         counts.skuMonat = r.skuRows;
       });
       await step("Fixkosten", async () => void (counts.fixkosten = await syncFixCosts(tenantId)));
+      await step("Produkte 30 Tage (Hebel)", async () => void (counts.hebelProdukte = await syncSkuStats(tenantId, now)));
+      await step("Keepa Buy Box (Hebel)", async () => void (counts.keepa = await syncHebelKeepa(tenantId)));
     }
+    if (scope === "alles" || scope === "bestand") await step("Hebel-Aufgaben", async () => void (counts.hebel = await refreshHebelTasks(tenantId)));
     // Fehlmengen aus den Sendungen gleich als Ansprüche prüfen.
     await step("Ansprüche aus Sendungen", async () => void (await syncClaims(tenantId)));
     await writeConn(tenantId, { config: { syncing: null, lastSyncAt: new Date().toISOString(), lastSyncError: errors.length ? errors.join(" · ").slice(0, 800) : null, lastCounts: { ...((await readConn(tenantId))?.config.lastCounts ?? {}), ...counts } } });
