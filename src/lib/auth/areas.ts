@@ -15,7 +15,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "lieferanten", label: "Lieferanten-Feeds und Großhändler finden (Scannen, Keepa-Prüfung, Boxen, Einkaufsanfragen)", paths: ["/lieferanten"], home: "/lieferanten" },
   { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse)", paths: ["/marken"], home: "/marken" },
   { key: "ebay", label: "eBay", paths: ["/ebay", "/api/ebay"], home: "/ebay" },
-  { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen)", paths: ["/amazon-todos", "/inbound", "/ansprueche", "/remissionen"], home: "/amazon-todos" },
+  { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen, SAS-Programm)", paths: ["/amazon-todos", "/inbound", "/ansprueche", "/remissionen", "/sas"], home: "/amazon-todos" },
   { key: "buchhaltung", label: "Einkauf & Buchhaltung (Rechnungen, COG-Export, Repricer)", paths: ["/rechnungen", "/export", "/repricer"], home: "/rechnungen" },
   { key: "service", label: "Service (Retouren, Fälle, Bewertungen)", paths: ["/retouren", "/faelle", "/bewertungen"], home: "/retouren" },
   { key: "geld", label: "Geld (Gewinn, Cash Flow, Hebel)", paths: ["/gewinn", "/cashflow", "/hebel"], home: "/gewinn" },

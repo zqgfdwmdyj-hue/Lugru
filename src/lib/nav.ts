@@ -46,6 +46,7 @@ export const NAV: NavSection[] = [
       { href: "/listings/temu", label: "eBay → Temu / Wawi" },
       { href: "/listings/temu#rechner", label: "Temu-Rechner" },
       { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
+      { href: "/sas", label: "Amazon SAS-Programm" },
       { href: "/repricer", label: "Repricer (BQool)" },
     ],
   },

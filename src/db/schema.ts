@@ -20,3 +20,4 @@ export * from "./tables/exports";
 export * from "./tables/pallets";
 export * from "./tables/private";
 export * from "./tables/sellerboard";
+export * from "./tables/sas";

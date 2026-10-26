@@ -41,10 +41,10 @@ describe("Sichtbarkeit", () => {
     expect(k.some((x) => x.startsWith("privat"))).toBe(false);
     expect(k).toContain("hilfe:5");
   });
-  it("Mitarbeiter nur mit „Geld“: Finanzen mit Gewinn und Cash Flow, keine Inhaber-Punkte", () => {
+  it("Mitarbeiter nur mit „Geld“: Finanzen mit Gewinn, Cash Flow und Hebel, keine Inhaber-Punkte", () => {
     const sections = visibleNav((p) => canAccess({ role: "staff", areas: ["geld"] }, areaForPath(p)), false);
     const fin = sections.find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Cash Flow"]);
+    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Cash Flow", "Hebel: Umsatz & Marge"]);
     expect(sections.find((s) => s.key === "verkauf")).toBeUndefined();
     // Wissen und Importe sind eigene Bereiche, Einstellungen nur für Inhaber – also keine Hilfsfunktionen.
     expect(sections.find((s) => s.key === "hilfe")).toBeUndefined();

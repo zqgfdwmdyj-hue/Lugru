@@ -105,6 +105,32 @@ Unter **Anbindungen** steht bei jedem Dienst eine Schritt-für-Schritt-Anleitung
 
 **Amazon-ToDos** (Amazon FBA → Amazon-ToDos, nur Inhaber; aus dem Retouren-Tool übernommen): Amazon-Systemmails aus allen verbundenen Postfächern werden nach jedem Abruf (alle 15 Minuten) vorgefiltert und eingestuft – mit Claude-Schlüssel (Anbindungen → KI) per KI, sonst nach Regeln. Kacheln, Filter, Sortierung, Suche, Frist-Countdown, ASIN-Links ins Seller Central, Notizfeld. Freigabe-Mails zur selben ASIN erledigen ältere Aufgaben automatisch. Offene Fristen stehen im Kalender, auf der Startseite gibt es eine Sammelaufgabe, hohe Prioritäten optional nach Discord (Anbindungen → Discord).
 
+**Amazon SAS-Programm** (Verkauf & Versand → Amazon SAS-Programm, Bereich „Amazon“), mit fünf Reitern:
+- **Überblick**:
+  - Countdown bis zur Black-Week-Frist (vorbelegt 06.11.) und bis zum nächsten Consultant-Termin, dazu der Stand des Authorized-Reseller-Pilots.
+  - „Als Nächstes“ mit den fälligsten Schritten.
+  - Ansprechpartner (Consultant, PSTAM) und Termine unter „Bearbeiten“.
+  - **„Fahrplan anlegen“** legt die 11 Programm-Schritte als Aufgaben an. Sie stehen auch auf der Startseite. Ein zweiter Klick legt nichts doppelt an.
+  - Das Business-Plan-Update ist 2 Tage vor dem Termin fällig.
+- **Aufgaben**:
+  - Nach Modul gruppiert (Authorized Reseller, Black Week, Portfolio, Termine …).
+  - Je Aufgabe „wartet auf“ (ich / Consultant / Amazon), Datum und Erledigt-Haken.
+  - Eigene Aufgaben lassen sich ergänzen.
+- **Marken (Audit)**:
+  - Markenliste einlesen (XLSX/CSV, erste Spalte, oder je Zeile eine Marke). Die Datei landet auch unter Unterlagen.
+  - Je Marke werden Produkte, Umsatz und Stück der letzten 30 Tage (aus sellerboard), Rechnungen und Lieferanten-Angebote gezählt.
+  - „Vorschlag“ wählt zuerst Marken mit Belegen, dann die mit dem meisten Umsatz.
+  - Höchstens 10 Marken: die 11. wird abgelehnt.
+  - Mail-Text an den Consultant zum Kopieren oder per Mail-Programm.
+  - „Als eingereicht markieren“ hakt die Auswahl ab und legt „Mail vom Appeal Team“ (+14 Tage) und „Rolle bestätigt?“ (+28 Tage) an.
+- **Black Week**:
+  - Liste der berechtigten ASINs mit Mindestrabatt einlesen (Datei oder Text, z. B. `ASIN;Mindestrabatt`).
+  - Je ASIN: Deal-Preis, Gewinn je Stück nach Rabatt (mit EK aus dem Seller-System und den Gebühren aus sellerboard), Bestand und eine Empfehlung „lohnt / knapp / Verlust / unklar“.
+  - Mit „Ja“ markierte ASINs stehen in einer Liste zum Kopieren für den Consultant.
+- **Unterlagen & Support**:
+  - Präsentation, Listen und Nachweise hochladen. Sie werden verschlüsselt gespeichert.
+  - Tabelle „Wen kontaktiere ich wofür?“ (Consultant, Premium Seller Support, PSTAM, Account Health, EPS).
+
 **KI-Kosten** (Anbindungen → KI (Claude) → „Kosten / Qualität“): *Ausgewogen* (Vorgabe) nimmt das günstige Haiku für Mails und Recherche und Sonnet für Ideen, Skripte und Listings; *Sparsam* überall Haiku, *Qualität* überall Sonnet. Ein „eigenes Modell“ überschreibt die Auswahl – leer lassen, sonst greift die Stufe nicht. Monatslimit zusätzlich in console.anthropic.com → Settings → Limits setzen.
 
 **Lieferanten scannen** (WaWi → Lieferanten-Feeds → Feed anlegen/öffnen): neben CSV/Excel gibt es „Seite oder Liste scannen“:
