@@ -9,6 +9,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const lastCall = new Map<string, number>();
 const GAP_MS = Number(process.env.SELLERBOARD_GAP_MS ?? 400);
 const PREPARING_WAIT_MS = Number(process.env.SELLERBOARD_PREPARING_MS ?? 3000);
+const NET_RETRY_MS = Number(process.env.SELLERBOARD_NET_RETRY_MS ?? 1000);
+
+/** Kurzer Grund eines Netzwerkfehlers, z. B. „terminated: other side closed“. */
+function netError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  const cause = e instanceof Error && e.cause instanceof Error ? e.cause.message : "";
+  return (cause && cause !== msg ? `${msg}: ${cause}` : msg).slice(0, 160);
+}
 
 async function pace(tenantId: string) {
   const wait = (lastCall.get(tenantId) ?? 0) + GAP_MS - Date.now();
@@ -87,9 +95,20 @@ export async function sbCall(tenantId: string, tool: string, args: Record<string
   let token = await accessToken(tenantId);
   let refreshed = false;
   let rateTries = 0;
+  let netTries = 0;
   for (let preparing = 0; preparing < 40; ) {
     await pace(tenantId);
-    const { status, body } = await rpc(token, "tools/call", params);
+    let reply: Awaited<ReturnType<typeof rpc>>;
+    try {
+      reply = await rpc(token, "tools/call", params);
+    } catch (e) {
+      // Verbindung mittendrin abgebrochen („terminated“, „fetch failed“, Zeitüberschreitung): Lesen ist gefahrlos
+      // wiederholbar – mit wachsender Pause noch einmal.
+      if (++netTries > 5) throw new Error(`sellerboard (${tool}): Verbindung abgebrochen (${netError(e)}) – mehrfach versucht.`);
+      await sleep(Math.min(30_000, NET_RETRY_MS * 2 ** netTries));
+      continue;
+    }
+    const { status, body } = reply;
     if (status === 401 && !refreshed) {
       token = await accessToken(tenantId, true);
       refreshed = true;
@@ -100,7 +119,14 @@ export async function sbCall(tenantId: string, tool: string, args: Record<string
       await sleep(Math.min(30_000, 1000 * 2 ** rateTries));
       continue;
     }
-    if (!body) throw new Error(`sellerboard: unerwartete Antwort (HTTP ${status}).`);
+    if (!body) {
+      // Stream ohne vollständige Antwort beendet – wie ein Abbruch behandeln.
+      if (++netTries <= 5) {
+        await sleep(Math.min(30_000, NET_RETRY_MS * 2 ** netTries));
+        continue;
+      }
+      throw new Error(`sellerboard (${tool}): unvollständige Antwort (HTTP ${status}) – mehrfach versucht.`);
+    }
     if (body.error) throw new Error(`sellerboard: ${String((body.error as { message?: string }).message ?? "Fehler")}`);
     const result = body.result as { content?: { type: string; text?: string }[]; isError?: boolean; structuredContent?: Record<string, unknown> } | undefined;
     const text = (result?.content ?? []).filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
