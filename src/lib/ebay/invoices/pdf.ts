@@ -35,7 +35,7 @@ export function formatEuro(n: number, currency = 'EUR'): string {
 
 export function formatDate(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('de-DE', { timeZone: "Europe/Berlin", day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 export function wrap(text: string, font: PDFFont, size: number, width: number): string[] {

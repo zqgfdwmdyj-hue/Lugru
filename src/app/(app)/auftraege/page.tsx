@@ -55,7 +55,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
               <td>{view === "offen" && <input type="checkbox" name="ids" value={o.id} aria-label="Auswählen" defaultChecked />}</td>
               <td><span className="tag tag-neutral">{CHANNEL_LABEL[o.channel]}</span></td>
               <td className="num"><Link href={`/auftraege/${o.id}`}>{o.externalId}</Link></td>
-              <td className="num">{o.orderDate.toLocaleDateString("de-DE")}</td>
+              <td className="num">{o.orderDate.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</td>
               <td>{o.shipTo?.name1 ?? o.buyerName ?? "–"}<div className="small muted">{[o.shipTo?.zip, o.shipTo?.city].filter(Boolean).join(" ")}</div></td>
               <td className="small" style={{ maxWidth: 300 }} data-testid="order-items">
                 {items?.length ? (

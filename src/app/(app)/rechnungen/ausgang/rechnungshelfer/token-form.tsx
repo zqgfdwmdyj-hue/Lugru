@@ -25,7 +25,7 @@ export function TokenForm({ hint, createdAt }: { hint?: string; createdAt?: stri
           <div className="notice notice-warn small">Jetzt kopieren und in Discord eintragen – der Schlüssel wird nur dieses eine Mal angezeigt.</div>
         </>
       ) : hint ? (
-        <div className="small">Bearer rh_…{hint} <span className="muted">· erzeugt am {new Date(createdAt ?? "").toLocaleDateString("de-DE")}</span></div>
+        <div className="small">Bearer rh_…{hint} <span className="muted">· erzeugt am {new Date(createdAt ?? "").toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span></div>
       ) : (
         <div className="small muted">Noch kein Schlüssel – ohne Schlüssel nimmt das System nichts an.</div>
       )}

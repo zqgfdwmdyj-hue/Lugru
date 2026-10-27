@@ -165,14 +165,32 @@ function commonHref(list: TaskLite[]): string | null {
 
 export type Freshness = { key: string; label: string; last: Date | null; maxAgeDays: number; href: string; stale: boolean; missing: boolean };
 
-export type AreaState = "fehler" | "fehlt" | "veraltet" | "unvollstaendig" | "aktuell";
-export const AREA_STATE_LABEL: Record<AreaState, string> = { fehler: "Fehler", fehlt: "fehlt", veraltet: "veraltet", unvollstaendig: "unvollständig", aktuell: "aktuell" };
+export type AreaState = "fehler" | "fehlt" | "veraltet" | "unvollstaendig" | "ersatz" | "aktuell";
+export const AREA_STATE_LABEL: Record<AreaState, string> = { fehler: "Fehler", fehlt: "fehlt", veraltet: "veraltet", unvollstaendig: "unvollständig", ersatz: "Ersatzquelle", aktuell: "aktuell" };
+
+/**
+ * Ersatzquelle für einen fehlenden/veralteten Bericht (z. B. FBA-Bestand aus sellerboard): wofür sie reicht
+ * und wofür der Bericht weiterhin nötig ist.
+ */
+export type Substitute = { label: string; last: Date; covers: string[]; needs: string[] };
+
+/** FBA-Bestand: was der sellerboard-Bestand abdeckt und was nur der Amazon-Bestandsbericht liefert. */
+export const FBA_SUBSTITUTE = {
+  covers: ["Bestand & Lagerwert", "Produktseiten", "Repricer", "Nachbestellung", "Hebel (Ladenhüter)"],
+  needs: ["nicht verkaufbare Einheiten (Remissionen, Warnung „unverkäuflich“)", "Aufteilung „unterwegs“ in angelegt / versendet / in Annahme"],
+};
 
 /** Zustand je Bereich und die passende nächste Aktion (Text + Ziel). */
-export function areaStep(a: { key: string; missing: boolean; stale: boolean; error: string | null; via?: string; empty?: boolean }): { state: AreaState; step: string | null; href: string | null } {
+export function areaStep(a: { key: string; missing: boolean; stale: boolean; error: string | null; via?: string; empty?: boolean; substitute?: Substitute | null }): { state: AreaState; step: string | null; href: string | null } {
   const report = a.key.startsWith("report:");
   const job = a.key.startsWith("job:");
   if (a.error) return { state: "fehler", step: job ? "Anbindung prüfen und Abruf neu starten" : "Fehler ansehen und erneut importieren", href: job ? "/anbindungen" : "/import#upload" };
+  if ((a.missing || a.stale) && a.substitute)
+    return {
+      state: "ersatz",
+      step: `${a.missing ? "Bericht fehlt" : "Bericht veraltet"}; ${a.substitute.label} – reicht für: ${a.substitute.covers.join(", ")}. Bericht weiter nötig für: ${a.substitute.needs.join("; ")}.`,
+      href: "/anbindungen?p=amazon_sp#amazon_sp",
+    };
   if (a.missing) return { state: "fehlt", step: report ? "Bericht automatisch holen lassen (Anbindungen → Amazon) oder unten hochladen" : job ? "Anbindung einrichten" : "Export hochladen", href: report ? "/anbindungen?p=amazon_sp#amazon_sp" : job ? "/anbindungen" : "/import#upload" };
   if (a.empty) return { state: "unvollstaendig", step: "Letzter Bericht war leer – Zeitraum prüfen und neu holen", href: "/import#upload" };
   if (a.stale) return { state: "veraltet", step: report && a.via === "api" ? "Automatischer Abruf hängt – Anbindung prüfen" : report ? "Neuen Bericht hochladen oder automatisch holen lassen" : job ? "Abruf läuft nicht mehr – Anbindung prüfen" : "Neuen Export hochladen", href: report && a.via !== "api" ? "/import#upload" : "/anbindungen" };

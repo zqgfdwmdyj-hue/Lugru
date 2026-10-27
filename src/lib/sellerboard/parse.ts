@@ -390,6 +390,6 @@ export function lastDays(todayUtc: string, n: number) {
 }
 
 /** Sammelaufgabe „Nachbestellen“: nur was sellerboard ausdrücklich als „jetzt“ markiert. */
-export function reorderNow(rows: Pick<SbInventory, "timeToReorder" | "qtyToReorder">[]) {
+export function reorderNow<T extends Pick<SbInventory, "timeToReorder" | "qtyToReorder">>(rows: T[]): T[] {
   return rows.filter((r) => (r.timeToReorder ?? "").toUpperCase() === "YES" && r.qtyToReorder > 0);
 }

@@ -19,7 +19,7 @@ interface IdealoResult {
 }
 
 function formatDay(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString('de-DE', { timeZone: "Europe/Berlin", day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
 /** Preisvergleich bei idealo: günstigster Anbieter und Preisverlauf, daneben der eigene Preis. */

@@ -13,7 +13,7 @@ import { ActionMenu } from "@/components/action-menu";
 import { ConfirmButton } from "@/components/confirm-button";
 
 const ARTEN = { alle: "Alle", b2b: "B2B", ebay: "eBay", storno: "Stornos" } as const;
-const fmtDate = (iso: string | Date) => new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtDate = (iso: string | Date) => new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" });
 
 export default async function AusgangsrechnungenPage({ searchParams }: { searchParams: Promise<{ q?: string; meldung?: string; art?: string }> }) {
   const session = await requireArea("buchhaltung");
@@ -124,7 +124,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
                 <td className="num right">{formatEuro(r.totalGross)}</td>
                 <td className="small">
                   {r.stotaxSentAt ? (
-                    <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE")}`}>übertragen</span>
+                    <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`}>übertragen</span>
                   ) : cfg && !inStotaxScope(cfg, r.source) ? (
                     <span className="muted" title="eBay-Umsätze bucht AccountOne – nicht an Stotax">über AccountOne</span>
                   ) : cfg ? (

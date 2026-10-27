@@ -92,7 +92,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             {l.mailedAt ? (
               <div className="small" data-testid="compose-sent">
                 Gesendet am {l.mailedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} an {l.mailedTo}{l.mailFrom ? ` von ${l.mailFrom}` : ""}.
-                {l.repliedAt ? <><br /><strong>Antwort erhalten</strong> am {l.repliedAt.toLocaleDateString("de-DE")} – siehe Posteingang.</> : " Antworten werden automatisch erkannt."}
+                {l.repliedAt ? <><br /><strong>Antwort erhalten</strong> am {l.repliedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} – siehe Posteingang.</> : " Antworten werden automatisch erkannt."}
                 {hasList && (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }} data-testid="after-send">
                     {nextHref && <Link className="btn btn-primary" href={nextHref}>Weiter zur nächsten Firma →</Link>}

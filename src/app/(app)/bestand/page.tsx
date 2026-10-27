@@ -13,8 +13,9 @@ import { Kpi } from "@/components/kpi";
 import { skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, stockValue } from "@/lib/money/profit-logic";
 import { fbaReport } from "@/lib/stock/fba-report";
+import { breakdownText, fbaBreakdown, STOCK_TERMS } from "@/lib/stock/breakdown";
 
-const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Unverkäuflich", ladenhueter: "Ladenhüter", "ohne-ek": "Ohne EK (unbewertet)", negativ: "Negativer Bestand" } as const;
+const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Nicht verkaufbar", ladenhueter: "Ladenhüter", "ohne-ek": "Ohne EK (unbewertet)", negativ: "Negativer Bestand" } as const;
 type View = keyof typeof VIEWS;
 
 type Row = { sku: string; title: string | null; image: string | null; asin: string | null; fba: number; inReport: boolean; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
@@ -86,7 +87,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
   if (view === "ladenhueter") rows = rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore));
   if (view === "ohne-ek") rows = rows.filter((r) => r.cost === null && r.fba + r.reserved + r.inbound + Math.max(0, r.own) > 0);
   if (view === "negativ") rows = rows.filter((r) => r.own < 0);
-  const units = res.rows.reduce((n, r) => n + r.fba + r.reserved + r.inbound, 0);
+  const amazon = fbaBreakdown(res.rows.map((r) => ({ fulfillable: r.fba, reserved: r.reserved, inboundShipped: r.inbound, unsellable: r.unsellable })));
   const own = res.rows.reduce((n, r) => n + r.own, 0);
   const levels = await stockLevels(t);
   const channelRows = await listingsBySku(t, rows.slice(0, 500).filter((r) => r.own !== 0 || levels.has(r.sku)).map((r) => r.sku));
@@ -112,13 +113,17 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
           ]}
           fixHref="/bestand?ansicht=ohne-ek"
           fixLabel="ansehen"
-          source="FBA-Bericht, eigenes Lager, EK"
+          source={`${fr.source === "sellerboard" ? "sellerboard-Bestand" : "FBA-Bestandsbericht"}, eigenes Lager, gültiger EK`}
           stand={inv?.snap ? formatDate(inv.snap) : undefined}
         />
         <div className="card card-pad" data-testid="kpi-fba">
-          <div className="kpi-label">Bei Amazon</div>
+          <div className="kpi-label" title={STOCK_TERMS.gesamt.hint}>Bei Amazon – {STOCK_TERMS.gesamt.label}</div>
           {inv?.snap ? (
-            <><div className="kpi-value">{units}</div><div className="small muted">verfügbar, reserviert, unterwegs · Bericht vom {formatDate(inv.snap)}</div></>
+            <>
+              <div className="kpi-value" data-testid="fba-total">{amazon.gesamt}</div>
+              <div className="small" data-testid="fba-breakdown">{breakdownText(amazon)}</div>
+              <div className="small muted">laut {fr.source === "sellerboard" ? "sellerboard" : "Bestandsbericht"}, Stand {formatDate(inv.snap)}</div>
+            </>
           ) : (
             <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt – nicht „0“ →</Link></>
           )}
@@ -134,9 +139,9 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           <table className="table sticky-head">
-            <thead><tr><th>SKU</th><th>Artikel</th><th className="right" data-testid="fba-head">FBA{fr.missing ? <div className="small muted" style={{ fontWeight: 400 }}>Bericht fehlt</div> : fr.stale ? <div className="small" style={{ fontWeight: 400, color: "var(--warn)" }}>Stand {formatDate(fr.snapshot)}</div> : fr.source === "sellerboard" ? <div className="small muted" style={{ fontWeight: 400 }} data-testid="fba-source">sellerboard, {formatDate(fr.snapshot)}</div> : null}</th><th className="right">Unverk.</th><th className="right">Unterwegs</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
+            <thead><tr><th>SKU</th><th>Artikel</th><th className="right" data-testid="fba-head" title={STOCK_TERMS.verkaufbar.hint}>Verkaufbar{fr.missing ? <div className="small muted" style={{ fontWeight: 400 }}>Bericht fehlt</div> : fr.stale ? <div className="small" style={{ fontWeight: 400, color: "var(--warn)" }}>Stand {formatDate(fr.snapshot)}</div> : fr.source === "sellerboard" ? <div className="small muted" style={{ fontWeight: 400 }} data-testid="fba-source">sellerboard, {formatDate(fr.snapshot)}</div> : null}</th><th className="right" title={STOCK_TERMS.reserviert.hint}>Reserviert</th><th className="right" title={STOCK_TERMS.unterwegs.hint}>Unterwegs</th><th className="right" title={STOCK_TERMS.nichtVerkaufbar.hint}>Nicht verk.</th><th className="right">Eigenes Lager</th><th>Kanäle (Menge)</th><th className="right">Wert</th><th>Letzter Verkauf</th></tr></thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={9} className="muted">{fr.missing ? <>Keine Einträge – der FBA-Bestandsbericht fehlt, der Amazon-Bestand ist unbekannt. <Link href="/import">Bericht importieren</Link> oder eigenen Bestand eintragen.</> : "Keine Einträge in dieser Ansicht."}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={10} className="muted">{fr.missing ? <>Keine Einträge – der FBA-Bestandsbericht fehlt, der Amazon-Bestand ist unbekannt. <Link href="/import">Bericht importieren</Link> oder eigenen Bestand eintragen.</> : "Keine Einträge in dieser Ansicht."}</td></tr>}
               {rows.slice(0, 500).map((r) => (
                 <tr key={r.sku}>
                   <td className="num small">{r.sku}</td>
@@ -147,8 +152,9 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                     </div>
                   </td>
                   <td className="num right">{fbaCell(r)}</td>
-                  <td className="num right" style={{ color: r.unsellable ? "var(--danger)" : undefined }}>{r.unsellable || ""}</td>
+                  <td className="num right">{r.reserved || ""}</td>
                   <td className="num right">{r.inbound || ""}</td>
+                  <td className="num right" style={{ color: r.unsellable ? "var(--danger)" : undefined }}>{r.unsellable || ""}</td>
                   <td className="num right">
                     <span style={{ color: r.own < 0 ? "var(--danger)" : undefined, fontWeight: r.own < 0 ? 600 : undefined }}>{r.own || ""}</span>
                     {(levels.get(r.sku)?.reserved ?? 0) > 0 && (
@@ -194,7 +200,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
             </form>
             {counts.map((c) => (
               <Link key={c.id} href={`/bestand/inventur/${c.id}`} className="between small" style={{ textDecoration: "none" }}>
-                <span>{c.name}</span><span className="muted">{c.status === "open" ? "offen" : `gebucht ${c.bookedAt?.toLocaleDateString("de-DE")}`}</span>
+                <span>{c.name}</span><span className="muted">{c.status === "open" ? "offen" : `gebucht ${c.bookedAt?.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`}</span>
               </Link>
             ))}
           </section>

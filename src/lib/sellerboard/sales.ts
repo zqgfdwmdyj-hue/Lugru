@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { skuCostMap } from "@/lib/money/costs";
 import { db, schema } from "@/db";
 import { readConn } from "./connection";
@@ -135,5 +135,76 @@ export async function loadSalesOverview(tenantId: string, todayUtc = new Date().
     days,
     top: { heute: topFor(tiles[0].fromDay), gestern: topFor(tiles[1].fromDay) },
     ebayOwnCost: ebayOwn,
+  };
+}
+
+export type SbRange = {
+  from: string;
+  to: string;
+  /** Umsatz brutto (inkl. USt.) wie im sellerboard-Dashboard. */
+  sales: number;
+  grossProfit: number;
+  netProfit: number;
+  orders: number;
+  units: number;
+  channels: SbChannel[];
+  /** Alle Tage des Zeitraums vorhanden (oder genau dieser Zeitraum gespeichert). */
+  complete: boolean;
+  daysCovered: number;
+  daysWanted: number;
+  ebayOwnCost: boolean;
+  missingCost: boolean;
+};
+
+/**
+ * sellerboard-Werte für einen beliebigen Zeitraum (für die Überleitung auf der Gewinnseite): genau gespeicherter
+ * Zeitraum (Monat bis heute, letzter Monat) oder Summe der Tageswerte (letzte 30 Tage). eBay mit eigenem EK wie
+ * auf der Startseite. null = keine sellerboard-Werte.
+ */
+export async function sellerboardRange(tenantId: string, from: string, to: string): Promise<SbRange | null> {
+  const K = schema.sellerboardKpis;
+  const U = schema.sellerboardEbayUnits;
+  const [exact, dayRows, unitRows, costs] = await Promise.all([
+    db.select().from(K).where(and(eq(K.tenantId, tenantId), eq(K.fromDay, from), eq(K.toDay, to))),
+    db.select().from(K).where(and(eq(K.tenantId, tenantId), sql`${K.fromDay} = ${K.toDay}`, gte(K.fromDay, from), lte(K.fromDay, to))),
+    db.select().from(U).where(and(eq(U.tenantId, tenantId), gte(U.day, from), lte(U.day, to))),
+    skuCostMap(tenantId),
+  ]);
+  const daysWanted = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+  const rows = exact.length && from !== to ? exact : dayRows;
+  if (!rows.length) return null;
+  const own = new Map<string, number>();
+  for (const [sku, c] of costs) if (c.source !== "sellerboard" && c.cost > 0) own.set(sku, c.cost);
+  let ebayOwn = false;
+  let missingCost = false;
+  const kpis = rows.map((r) => {
+    let k = toKpi(r);
+    if (r.channel === "ebay") {
+      const e = ebayOwnCost(unitRows, r.fromDay, r.toDay, own);
+      if (e.covered) {
+        ebayOwn = true;
+        k = { ...k, netProfit: k.netProfit === null ? null : k.netProfit - e.ek, grossProfit: k.grossProfit === null ? null : k.grossProfit - e.ek, missingCost: e.missing };
+      }
+    }
+    if (k.missingCost) missingCost = true;
+    return k;
+  });
+  const sum = sumKpis(kpis);
+  const daysCovered = rows === exact ? daysWanted : new Set(dayRows.map((r) => r.fromDay)).size;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    from,
+    to,
+    sales: r2(sum.sales),
+    grossProfit: r2(sum.grossProfit),
+    netProfit: r2(sum.netProfit),
+    orders: sum.orders,
+    units: sum.units,
+    channels: [...new Set(rows.map((r) => r.channel as SbChannel))],
+    complete: daysCovered >= daysWanted,
+    daysCovered,
+    daysWanted,
+    ebayOwnCost: ebayOwn,
+    missingCost,
   };
 }

@@ -19,7 +19,7 @@ async function ownShipment(tenantId: string, id: string) {
 
 export async function createShipment(fd: FormData) {
   const session = await requireArea("amazon");
-  const name = String(fd.get("name") ?? "").trim() || `Sendung ${new Date().toLocaleDateString("de-DE")}`;
+  const name = String(fd.get("name") ?? "").trim() || `Sendung ${new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`;
   const [row] = await db.insert(schema.inboundShipments).values({ tenantId: session.tenantId, name, createdBy: session.userId }).returning({ id: schema.inboundShipments.id });
   await db.insert(schema.inboundBoxes).values({ tenantId: session.tenantId, shipmentId: row.id, number: 1 });
   redirect(`/inbound/${row.id}`);

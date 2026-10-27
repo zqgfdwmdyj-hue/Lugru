@@ -38,7 +38,7 @@ export default async function EbayTransferPage({ searchParams }: { searchParams:
       {data.ebay.error && <div className="notice notice-error" data-testid="ebay-error">Ältere eBay-Angebote konnten nicht geladen werden: {data.ebay.error}</div>}
       {!data.temuConnected && <div className="notice notice-info">Temu ist nicht verbunden – unter <Link href="/anbindungen?p=temu#temu">Anbindungen → Temu</Link> einrichten. „Nur in die Wawi übernehmen“ geht auch ohne.</div>}
       <div className="small muted" data-testid="transfer-summary">
-        {data.candidates.length} Angebote ({legacy} ältere direkt bei eBay){data.ebay.loadedAt ? ` · von eBay geladen ${new Date(data.ebay.loadedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}` : ""}
+        {data.candidates.length} Angebote ({legacy} ältere direkt bei eBay){data.ebay.loadedAt ? ` · von eBay geladen ${new Date(data.ebay.loadedAt).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })}` : ""}
         {data.running ? " · Übernahme läuft …" : ""}
       </div>
       {failed > 0 && (

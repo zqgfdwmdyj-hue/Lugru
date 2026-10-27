@@ -45,7 +45,7 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                 <td className="small" style={{ maxWidth: 260 }}>{r.textExcerpt ?? ""}</td>
                 <td className="small" style={{ maxWidth: 240 }}>
                   {r.stotaxSentAt ? (
-                    <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE")}`}>übertragen</span>
+                    <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`}>übertragen</span>
                   ) : cfg ? (
                     <form action={resendAction} style={{ display: "inline" }}>
                       <input type="hidden" name="id" value={r.id} />

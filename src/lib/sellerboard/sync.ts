@@ -7,6 +7,7 @@ import { syncClaims } from "@/lib/claims/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { sbAllPages, sbCall } from "./client";
 import { readConn, sbConnected, writeConn } from "./connection";
+import { isReturnSku } from "@/lib/money/ek-logic";
 import { dayBatches, lastDays, mapEbayOrderUnits, mapFixCosts, mapInventory, mapKpis, mapMonths, mapProduct, mapShipments, mapSkuRows, mapSkuStats, mapTop, reorderNow, tilePeriods, type SbChannel, type SbInventory, type SbKpi, type SbProduct, type SbSkuStat } from "./parse";
 import { refreshHebelTasks, syncHebelKeepa } from "@/lib/hebel/service";
 
@@ -114,14 +115,17 @@ async function syncInventory(t: string, now: Date) {
   }
 
   // Eine Sammelaufgabe statt vieler einzelner.
-  const now2 = reorderNow(rows);
+  // Retouren-SKUs (einzelne zurückgekommene Einheiten) sind nicht beim Lieferanten nachbestellbar – eigene Zeile.
+  const all = reorderNow(rows);
+  const now2 = all.filter((r) => !isReturnSku(r.sku));
+  const rets = all.length - now2.length;
   const key = "sellerboard-reorder";
   if (now2.length) {
     await upsertSystemTask(db, t, key, {
       title: `${now2.length} Produkt${now2.length === 1 ? "" : "e"} jetzt nachbestellen (laut sellerboard)`,
-      notes: "sellerboard rechnet mit Abverkauf, Lieferzeit und Puffer. Liste mit Menge und spätestem Bestelldatum unter Einkauf → Bestellvorschläge.",
+      notes: `sellerboard rechnet mit Abverkauf, Lieferzeit und Puffer. Liste mit Menge, Kapitalbedarf (gültiger EK netto) und spätestem Bestelldatum unter Einkauf → Bestellvorschläge.${rets ? ` Dazu ${rets} Retouren-SKU${rets === 1 ? "" : "s"} – Beschaffung über den Ursprungsartikel prüfen.` : ""}`,
       category: "einkauf",
-      link: "/einkauf/vorschlaege#sellerboard",
+      link: "/einkauf/vorschlaege?weg=sellerboard",
       dueDate: today,
     });
   } else await resolveSystemTask(db, t, key);

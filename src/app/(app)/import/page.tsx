@@ -57,9 +57,17 @@ export default async function ImportPage() {
                     <td className="num">{a.last ? a.last.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "–"}</td>
                     <td className="small">{a.key.startsWith("job:") ? "Hintergrund-Abruf" : a.key === "uploads" ? "Upload" : a.via === "api" ? "Schnittstelle" : a.last ? "Upload" : "–"}</td>
                     <td>
-                      {a.error ? <span className="tag tag-danger" title={a.error}>Fehler: {a.error.slice(0, 80)}</span> : a.missing ? <span className="tag tag-warn">fehlt</span> : a.empty ? <span className="tag tag-warn">unvollständig</span> : a.stale ? <span className="tag tag-warn">veraltet (älter als {a.maxAgeDays} Tag{a.maxAgeDays === 1 ? "" : "e"})</span> : <span className="tag tag-ok">aktuell</span>}
+                      {a.error ? <span className="tag tag-danger" title={a.error}>Fehler: {a.error.slice(0, 80)}</span> : st.state === "ersatz" ? <span className="tag tag-info" data-testid="data-area-substitute">{a.missing ? "Bericht fehlt" : "Bericht veraltet"} · sellerboard ✓</span> : a.missing ? <span className="tag tag-warn">fehlt</span> : a.empty ? <span className="tag tag-warn">unvollständig</span> : a.stale ? <span className="tag tag-warn">veraltet (älter als {a.maxAgeDays} Tag{a.maxAgeDays === 1 ? "" : "e"})</span> : <span className="tag tag-ok">aktuell</span>}
                     </td>
-                    <td className="small" data-testid="data-area-step">{st.step ? (st.href ? <Link href={st.href}>{st.step} →</Link> : st.step) : <span className="muted">–</span>}</td>
+                    <td className="small" data-testid="data-area-step">
+                      {st.state === "ersatz" && a.substitute ? (
+                        <>
+                          <div>{a.substitute.label}.</div>
+                          <div><span className="muted">Reicht für:</span> {a.substitute.covers.join(", ")}.</div>
+                          <div><span className="muted">Bericht weiter nötig für:</span> {a.substitute.needs.join("; ")} – <Link href={st.href ?? "/import#upload"}>Bericht automatisch holen lassen</Link> oder unten hochladen.</div>
+                        </>
+                      ) : st.step ? (st.href ? <Link href={st.href}>{st.step} →</Link> : st.step) : <span className="muted">–</span>}
+                    </td>
                   </tr>
                   );
                 })}

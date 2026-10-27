@@ -82,12 +82,14 @@ export function rankProductGroups(groups: ProductGroup[], q: string): RankedGrou
 
 // ---- EK-Abgleich ---------------------------------------------------------------------------------
 
-export type EkSource = { source: "charge" | "manuell" | "ebay" | "set" | "sellerboard"; label: string; cost: number; detail?: string; inherited?: boolean };
+/** `ignored` = wird angezeigt, zählt aber nie (z. B. 0,01-€-Platzhalter aus sellerboard). */
+export type EkSource = { source: "charge" | "manuell" | "ebay" | "set" | "sellerboard"; label: string; cost: number; detail?: string; inherited?: boolean; ignored?: boolean };
 export type EkCheck = { sku: string; effective: CostInfo | null; sources: EkSource[]; conflict: boolean; spread: number };
 
 /** Weichen die EK-Quellen einer SKU voneinander ab (mehr als 2 % bzw. 1 Cent)? Gilt: Charge → von Hand → eBay-Tool → Set-Summe → geerbt. */
 export function ekCheck(sku: string, sources: EkSource[], effective: CostInfo | null): EkCheck {
-  const values = sources.map((s) => s.cost);
+  // Ein Platzhalter neben einem gültigen EK ist eine Abweichung; ohne gültigen EK bleibt es „EK fehlt“.
+  const values = sources.filter((s) => !s.ignored || effective).map((s) => s.cost);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 0;
   const spread = Math.round((max - min) * 10000) / 10000;
@@ -104,7 +106,7 @@ export const ISSUE_LABEL: Record<IssueKind, { label: string; hint: string; level
   "angebot-ohne-lager": { label: "Angebot ohne Lager-SKU", hint: "Die Wawi-SKU des Angebots gibt es im Lager nicht – Menge kann nicht abgeglichen werden.", level: "danger" },
   "ebay-nicht-in-wawi": { label: "eBay-Angebot nicht in der Wawi", hint: "Im eBay-Tool veröffentlicht, aber nicht als Angebot mit Lager verknüpft.", level: "warn" },
   "ek-fehlt": { label: "EK fehlt", hint: "Bestand oder Verkäufe ohne Einkaufspreis – Gewinn und Lagerwert bleiben unvollständig.", level: "warn" },
-  "ek-abweichung": { label: "EK widersprüchlich", hint: "Charge, EK von Hand und eBay-Tool nennen unterschiedliche Preise.", level: "warn" },
+  "ek-abweichung": { label: "EK widersprüchlich", hint: "Charge, EK von Hand, eBay-Tool oder sellerboard nennen unterschiedliche Preise. Es gilt der Wert nach der festen Reihenfolge – bitte prüfen, welcher stimmt.", level: "warn" },
   "ek-geerbt": { label: "EK nur geerbt", hint: "Variante ohne eigenen EK – es gilt der EK des ganzen Mehrfachangebots. Stimmt das für diese Variante? Sonst eigenen EK eintragen.", level: "info" },
   "ean-mehrdeutig": { label: "EAN mehreren Produkten zugeordnet", hint: "Eine EAN zeigt auf mehrere ASINs – bitte prüfen, welche stimmt (nichts wird automatisch zusammengeführt).", level: "info" },
   "bestand-ohne-angebot": { label: "Lagerware ohne Angebot", hint: "Bestand im eigenen Lager, aber in keinem Kanal angeboten.", level: "info" },

@@ -10,6 +10,7 @@ import { COST_SOURCE_LABEL, summarizeAmazon, summarizeChannels, totalsOf } from 
 import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
 import { skuCostMap } from "@/lib/money/costs";
 import { availableOf, stockSkuOf, targetQuantity } from "@/lib/stock/channel-logic";
+import { breakdownText, fbaBreakdown, STOCK_TERMS } from "@/lib/stock/breakdown";
 import { getSettings } from "@/lib/settings";
 import type { ProductDetail } from "@/lib/products/service";
 import { Kpi } from "@/components/kpi";
@@ -57,7 +58,7 @@ export async function ProductHub({ session, d, base, tab, von, highlight, zeitra
   };
   const title = d.product?.title ?? d.group.title ?? d.skus[0] ?? "Produkt";
   const own = d.ownRows.reduce((n, r) => n + r.quantity, 0);
-  const fba = d.fbaRows.reduce((n, r) => n + r.fulfillable + r.reserved + r.inboundWorking + r.inboundShipped + r.inboundReceiving, 0);
+  const fbaB = fbaBreakdown(d.fbaRows);
   const activeOffers = d.listings.filter((l) => l.status === "active").length;
   const ekMissing = d.ek.filter((e) => !e.effective).length;
   const ekConflict = d.ek.filter((e) => e.conflict).length;
@@ -79,7 +80,7 @@ export async function ProductHub({ session, d, base, tab, von, highlight, zeitra
       <div className="grid-kpi" data-testid="product-kpis">
         <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value" style={{ color: own < 0 ? "var(--danger)" : undefined }}>{own}</div></div>
         <div className="card card-pad" data-testid="kpi-fba">
-          <div className="kpi-label">Bei Amazon</div>
+          <div className="kpi-label" title={STOCK_TERMS.gesamt.hint}>Bei Amazon – {STOCK_TERMS.gesamt.label}</div>
           {d.fbaReport.missing ? (
             <>
               <div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div>
@@ -87,8 +88,9 @@ export async function ProductHub({ session, d, base, tab, von, highlight, zeitra
             </>
           ) : (
             <>
-              <div className="kpi-value">{fba}</div>
-              <div className="small" style={{ color: d.fbaReport.stale ? "var(--warn)" : "var(--muted)" }}>laut Bericht vom {formatDate(d.fbaReport.snapshot)}{d.fbaReport.stale ? " – veraltet" : ""}</div>
+              <div className="kpi-value" data-testid="kpi-fba-total">{fbaB.gesamt}</div>
+              <div className="small" data-testid="kpi-fba-breakdown">{breakdownText(fbaB)}</div>
+              <div className="small" style={{ color: d.fbaReport.stale ? "var(--warn)" : "var(--muted)" }}>laut {d.fbaReport.source === "sellerboard" ? "sellerboard" : "Bestandsbericht"} vom {formatDate(d.fbaReport.snapshot)}{d.fbaReport.stale ? " – veraltet" : ""}</div>
             </>
           )}
         </div>
@@ -173,7 +175,7 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
       <section className="card" style={{ overflow: "auto" }} id="ek">
         <div className="card-pad" style={{ paddingBottom: 0 }}>
           <h2>EK je SKU</h2>
-          <p className="small muted" style={{ margin: "4px 0 0" }}>Gilt überall gleich (Gewinn, Lagerwert, Produkte): Charge → EK von Hand → Einkaufspreis aus dem eBay-Tool → bei Sets die Summe der Bestandteile → zuletzt der vom Mehrfachangebot geerbte EK. Abweichungen werden markiert, nicht überschrieben.</p>
+          <p className="small muted" style={{ margin: "4px 0 0" }}>Gilt überall gleich – Produkt, Gewinn, Lagerwert, Nachbestellung, Repricer, Hebel und SAS-Deals: Charge → EK von Hand → Einkaufspreis aus dem eBay-Tool → bei Sets die Summe der Bestandteile → EK laut sellerboard → zuletzt der vom Mehrfachangebot geerbte EK. Platzhalter aus sellerboard (0,01 €) zählen nie. Abweichungen werden markiert, nicht überschrieben.</p>
         </div>
         <table className="table" data-testid="ek-table">
           <thead><tr><th>SKU</th><th>Quellen</th><th className="right">Gilt</th><th /></tr></thead>
@@ -185,7 +187,7 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
                   {e.sources.length ? (
                     e.sources.map((s, i) => (
                       <div key={i} data-testid="ek-source">
-                        <span className={`tag ${s.inherited ? "tag-warn" : "tag-neutral"}`} style={{ marginRight: 4 }}>{s.label}{s.inherited ? " · geerbt" : ""} {formatEuro(s.cost)}</span>
+                        <span className={`tag ${s.ignored ? "tag-neutral" : s.inherited ? "tag-warn" : "tag-neutral"}`} style={{ marginRight: 4, ...(s.ignored ? { textDecoration: "line-through" } : {}) }} data-ignored={s.ignored ? "1" : undefined}>{s.label}{s.inherited ? " · geerbt" : ""} {formatEuro(s.cost)}</span>
                         {s.detail && <span className="muted">{s.detail}</span>}
                       </div>
                     ))
@@ -260,11 +262,18 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
 }
 
 function Bestand({ d }: { d: ProductDetail & object }) {
+  const fbaB = fbaBreakdown(d.fbaRows);
   return (
     <div className="stack" style={{ gap: 16 }}>
       <section className="card" style={{ overflow: "auto" }}>
         <table className="table" data-testid="stock-table">
-          <thead><tr><th>SKU</th><th className="right">Eigenes Lager</th><th className="right">Reserviert</th><th className="right">Frei</th><th>Lagerplatz</th><th className="right">Amazon verkaufbar</th><th className="right">Unterwegs</th><th className="right">Nicht verkaufbar</th></tr></thead>
+          <thead>
+            <tr><th rowSpan={2}>SKU</th><th colSpan={4} style={{ textAlign: "center" }}>Eigenes Lager</th><th colSpan={5} style={{ textAlign: "center" }}>Bei Amazon</th></tr>
+            <tr>
+              <th className="right">Bestand</th><th className="right" title="Durch offene Aufträge gebunden">Reserviert</th><th className="right">Frei</th><th>Lagerplatz</th>
+              <th className="right" title={STOCK_TERMS.verkaufbar.hint}>Verkaufbar</th><th className="right" title={STOCK_TERMS.reserviert.hint}>Reserviert</th><th className="right" title={STOCK_TERMS.unterwegs.hint}>Unterwegs</th><th className="right" title={STOCK_TERMS.nichtVerkaufbar.hint}>Nicht verkaufbar</th><th className="right" title={STOCK_TERMS.gesamt.hint}>Gesamt</th>
+            </tr>
+          </thead>
           <tbody>
             {d.skus.map((s) => {
               const o = d.ownRows.find((r) => r.sku === s);
@@ -277,16 +286,26 @@ function Bestand({ d }: { d: ProductDetail & object }) {
                   <td className="num right">{lvl?.reserved || ""}</td>
                   <td className="num right">{lvl ? availableOf(lvl) : ""}</td>
                   <td className="small">{o?.location ?? ""}</td>
-                  <td className="num right">{d.fbaReport.missing ? <span className="muted" title="FBA-Bestandsbericht fehlt">unbekannt</span> : a ? a.fulfillable : <span className="muted" title="laut Bericht nicht bei Amazon">0</span>}</td>
+                  <td className="num right" data-testid="stock-sellable">{d.fbaReport.missing ? <span className="muted" title="FBA-Bestand unbekannt">unbekannt</span> : a ? a.fulfillable : <span className="muted" title="laut Bestand nicht bei Amazon">0</span>}</td>
+                  <td className="num right" data-testid="stock-reserved">{a ? a.reserved || "" : ""}</td>
                   <td className="num right">{a ? a.inboundWorking + a.inboundShipped + a.inboundReceiving || "" : ""}</td>
                   <td className="num right" style={{ color: a?.unsellable ? "var(--danger)" : undefined }}>{a?.unsellable || ""}</td>
+                  <td className="num right" data-testid="stock-total">{a ? fbaBreakdown([a]).gesamt : ""}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
         <div className="small muted" style={{ padding: "8px 14px" }} data-testid="fba-stand">
-          {d.fbaReport.missing ? <>Amazon-Bestand unbekannt – es wurde noch kein FBA-Bestandsbericht importiert (<Link href="/import">Import</Link>).</> : <>Amazon-Bestand laut Bericht vom {formatDate(d.fbaReport.snapshot)}{d.fbaReport.stale ? " – veraltet, bitte neuen Bericht holen" : ""}.</>}
+          {d.fbaReport.missing ? (
+            <>Amazon-Bestand unbekannt – weder FBA-Bestandsbericht noch sellerboard-Bestand vorhanden (<Link href="/import">Import</Link>).</>
+          ) : (
+            <>
+              Amazon-Bestand laut {d.fbaReport.source === "sellerboard" ? "sellerboard" : "Bestandsbericht"} vom {formatDate(d.fbaReport.snapshot)}{d.fbaReport.stale ? " – veraltet, bitte neu abgleichen" : ""}. Gesamt = verkaufbar + reserviert + unterwegs + nicht verkaufbar.
+              {fbaB.gesamt > fbaB.verkaufbar && <> Davon sofort verkaufbar: {fbaB.verkaufbar}; reserviert heißt bei Amazon gebunden (Kundenbestellung, Umlagerung, Prüfung).</>}
+              {d.fbaReport.source === "sellerboard" && " Nicht verkaufbare Einheiten liefert nur der Amazon-Bestandsbericht."}
+            </>
+          )}
         </div>
       </section>
       {d.sets.length > 0 && (

@@ -34,7 +34,7 @@ export default async function MappePage({ params }: { params: Promise<{ id: stri
     <main style={{ maxWidth: 900, margin: "0 auto", padding: 32, background: "#fff", fontSize: 13 }}>
       <style>{`@media print { .no-print { display: none } body { background: #fff } main { padding: 0 } }`}</style>
       <div className="no-print" style={{ marginBottom: 16 }}><PrintButton /></div>
-      <div className="small muted">{session.tenantName} · Nachweis-Mappe · erstellt am {new Date().toLocaleDateString("de-DE")}</div>
+      <div className="small muted">{session.tenantName} · Nachweis-Mappe · erstellt am {new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</div>
       <h1 style={{ fontSize: 22, margin: "6px 0 4px" }}>{claim.title}</h1>
       <div>{CLAIM_TYPE_LABEL[claim.type]} · Status: {CLAIM_STATUS_LABEL[claim.status][0]}{claim.amazonCaseId ? ` · Amazon-Fall ${claim.amazonCaseId}` : ""}</div>
 

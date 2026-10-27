@@ -111,7 +111,7 @@ export function formatPrice(p: number, currency = 'EUR'): string {
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  return new Date(iso).toLocaleString('de-DE', { timeZone: "Europe/Berlin", dateStyle: 'short', timeStyle: 'short' });
 }
 
 export function formatPercent(value: number): string {

@@ -136,7 +136,7 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
         externalId: c.references.caseId ?? null,
         orderRef: c.references.amazonOrder ?? c.references.ebayOrder ?? null,
         deadline: due,
-        notes: `Aus Mail vom ${m.receivedAt.toLocaleDateString("de-DE")}`,
+        notes: `Aus Mail vom ${m.receivedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`,
       });
     }
     if (c.references.caseId) {

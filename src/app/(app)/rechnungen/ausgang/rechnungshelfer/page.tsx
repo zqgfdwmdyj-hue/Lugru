@@ -10,7 +10,7 @@ import { createNowAction, discardAction, settingsAction } from "./actions";
 import { ImportForm } from "./import-form";
 import { Copy, TokenForm } from "./token-form";
 
-const fmt = (d: Date | string) => new Date(d).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmt = (d: Date | string) => new Date(d).toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const STATUS: Record<string, { label: string; tag: string }> = {
   offen: { label: "offen", tag: "tag-warn" },
   erstellt: { label: "erstellt", tag: "tag-ok" },

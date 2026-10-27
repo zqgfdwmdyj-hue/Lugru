@@ -631,6 +631,14 @@ h2 { font-size: 16px; margin: 0; }
 .hebel-headline { margin-top: 4px; }
 .hebel-action { margin-top: 4px; color: var(--ink-2); }
 .hebel-facts { margin-top: 4px; }
+.hebel-parts { margin-top: 4px; color: var(--ink-2); }
+.hebel-basis { margin-top: 6px; }
+.hebel-basis summary { cursor: pointer; color: var(--link, var(--accent)); }
+.hebel-basis ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); }
+.hebel-basis li { margin: 2px 0; }
+.hebel-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.hebel-totals > div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.hebel-totals strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 .hebel-impact { text-align: right; display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; min-width: 90px; font-variant-numeric: tabular-nums; }
 .hebel-impact strong { font-size: 17px; }
 .hebel-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
@@ -640,6 +648,7 @@ h2 { font-size: 16px; margin: 0; }
   .hebel-card-main { flex-wrap: wrap; }
   .hebel-impact { flex-direction: row; gap: 6px; align-items: baseline; min-width: 0; width: 100%; justify-content: flex-start; }
   .hebel-teaser-row { padding: 8px 16px; }
+  .hebel-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .sales, .hebel-teaser { margin-bottom: 16px; }
 
@@ -666,3 +675,17 @@ h2 { font-size: 16px; margin: 0; }
   .sas-item { padding: 10px 16px; flex-wrap: wrap; }
   .sas-item-meta { flex-direction: row; align-items: center; width: 100%; justify-content: flex-start; padding-left: 34px; }
 }
+
+/* Bestellvorschläge: Filterzeile */
+.reorder-filter { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.reorder-filter .field { margin: 0; }
+
+/* Startseite: kompakte Verkaufszahlen, Details zum Aufklappen */
+.sales-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 4px 22px 12px; }
+.sales-kpi { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; background: var(--surface); }
+.sales-kpi-main { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sales-more { border-top: 1px solid var(--border); }
+.sales-more > summary { cursor: pointer; padding: 12px 22px; font-weight: 600; font-size: 14px; }
+.today-insights { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 1100px) { .sales-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .sales-kpis { padding: 4px 16px 12px; gap: 8px; } .sales-more > summary { padding: 12px 16px; } }

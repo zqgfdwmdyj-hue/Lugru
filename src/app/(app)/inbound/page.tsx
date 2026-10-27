@@ -45,7 +45,7 @@ export default async function InboundPage() {
                 <td className="num right">{skus}</td>
                 <td className="num right">{units}</td>
                 <td className="num right">{boxes}</td>
-                <td className="num">{s.createdAt.toLocaleDateString("de-DE")}</td>
+                <td className="num">{s.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</td>
               </tr>
             ))}
           </tbody>

@@ -131,7 +131,7 @@ export function InvoicesTab() {
       </label>
       <p className="muted">
         Läuft alle 15 Minuten im Hintergrund.
-        {f.startDate ? ` Abgerechnet werden Bestellungen ab ${new Date(f.startDate).toLocaleString('de-DE')}.` : ' Beim Einschalten zählen nur Bestellungen ab diesem Zeitpunkt — ältere lassen sich auf der Seite Rechnungen einzeln abrechnen.'}
+        {f.startDate ? ` Abgerechnet werden Bestellungen ab ${new Date(f.startDate).toLocaleString('de-DE', { timeZone: "Europe/Berlin" })}.` : ' Beim Einschalten zählen nur Bestellungen ab diesem Zeitpunkt — ältere lassen sich auf der Seite Rechnungen einzeln abrechnen.'}
       </p>
       <label className="check">
         <input type="checkbox" checked={Boolean(f.autoSend)} onChange={(e) => set({ autoSend: e.target.checked })} />

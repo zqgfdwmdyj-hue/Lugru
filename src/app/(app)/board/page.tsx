@@ -46,8 +46,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
                   {[...new Set(l.findings.map((f) => f.source))].map((s) => <span key={s} className="tag tag-neutral">{FINDING_LABEL[s]}</span>)}
                   {l.status === "entwurf" && <span className="tag tag-info">Entwurf</span>}
                   {c.key === "angeschrieben" && days !== null && <span className={`tag ${days >= FOLLOW_UP_DAYS ? "tag-warn" : "tag-neutral"}`}>vor {days} T. angeschrieben</span>}
-                  {c.key === "follow_up" && (l.followUpAt ? <span className="tag tag-neutral">nachgefasst {l.followUpAt.toLocaleDateString("de-DE")}</span> : <span className="tag tag-warn">nachfassen</span>)}
-                  {l.repliedAt && <span className="tag tag-ok">Antwort {l.repliedAt.toLocaleDateString("de-DE")}</span>}
+                  {c.key === "follow_up" && (l.followUpAt ? <span className="tag tag-neutral">nachgefasst {l.followUpAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span> : <span className="tag tag-warn">nachfassen</span>)}
+                  {l.repliedAt && <span className="tag tag-ok">Antwort {l.repliedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span>}
                   {l.supplierId && <span className="tag tag-ok">Lieferant</span>}
                 </div>
                 {c.key === "preisliste" && (

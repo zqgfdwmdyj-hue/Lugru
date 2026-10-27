@@ -5,6 +5,8 @@ import { repricerRows } from "@/lib/repricer";
 import { getSettings } from "@/lib/settings";
 import { formatDate } from "@/lib/numbers";
 import { fbaReport } from "@/lib/stock/fba-report";
+import { breakdownText } from "@/lib/stock/breakdown";
+import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
 
 export default async function RepricerPage({ searchParams }: { searchParams: Promise<{ nur?: string }> }) {
   const session = await requireSession();
@@ -30,7 +32,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
           {fr.missing ? (
             <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt →</Link></>
           ) : (
-            <><div className="kpi-value">{all.length}</div><div className="small" style={fr.stale ? { color: "var(--warn)" } : undefined}>{fr.stale ? `Stand ${formatDate(fr.snapshot)} – veraltet` : `laut Bericht vom ${formatDate(fr.snapshot)}`}</div></>
+            <><div className="kpi-value">{all.length}</div><div className="small" style={fr.stale ? { color: "var(--warn)" } : undefined}>{fr.stale ? `Stand ${formatDate(fr.snapshot)} – veraltet` : `laut ${fr.source === "sellerboard" ? "sellerboard" : "Bericht"} vom ${formatDate(fr.snapshot)}`}</div></>
           )}
         </div>
         <div className="card card-pad"><div className="kpi-label">Aktueller Preis unter Mindestpreis</div><div className="kpi-value" style={{ color: below.length ? "var(--danger)" : undefined }}>{below.length}</div></div>
@@ -44,15 +46,19 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
       </div>
       <section className="card" style={{ overflow: "auto" }}>
         <table className="table">
-          <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Bestand</th><th className="right">EK</th><th className="right">FBA-Gebühr</th><th className="right">Aktuell</th><th className="right">Min</th><th className="right">Max</th></tr></thead>
+          <thead><tr><th>SKU</th><th>Artikel</th><th className="right" title="Verkaufbar + reserviert + unterwegs (nicht verkaufbar zählt nicht)">Bestand</th><th className="right" title="Gültiger EK netto – gleicher Rechenweg wie Produkt, Gewinn und Nachbestellung">EK netto</th><th className="right">FBA-Gebühr</th><th className="right">Aktuell</th><th className="right">Min</th><th className="right">Max</th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={8} className="muted" data-testid="repricer-empty">{fr.missing ? <>Der FBA-Bestandsbericht fehlt – welche SKUs bei Amazon liegen, ist unbekannt (nicht „kein Bestand“). <Link href="/import">Bericht importieren</Link>.</> : sp.nur ? "Keine SKUs in dieser Ansicht." : `Laut FBA-Bericht vom ${formatDate(fr.snapshot)} liegt keine Ware bei Amazon.`}</td></tr>}
             {rows.slice(0, 1000).map((r) => (
               <tr key={r.sku}>
                 <td className="num small">{r.sku}</td>
                 <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title ?? r.asin}</td>
-                <td className="num right">{r.stock}</td>
-                <td className="num right">{formatEuro(r.unitCost)}</td>
+                <td className="num right" title={breakdownText(r.breakdown)}>{r.stock}</td>
+                <td className="num right" data-testid="repricer-ek" data-sku={r.sku}>
+                  {r.unitCost === null ? <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} style={{ color: "var(--warn)" }}>fehlt</Link> : formatEuro(r.unitCost)}
+                  {r.costSource && <div className="small muted" style={{ fontFamily: "inherit" }}>{COST_SOURCE_LABEL[r.costSource]}</div>}
+                  {r.sbCostNote && <div className="small" style={{ color: "var(--warn)", fontFamily: "inherit" }} data-testid="repricer-sb-note">sellerboard {formatEuro(r.sbCostNote.value)}{r.sbCostNote.placeholder ? " (Platzhalter)" : " weicht ab"}</div>}
+                </td>
                 <td className="num right">{formatEuro(r.fbaFee)}{r.feeEstimated ? " ~" : ""}</td>
                 <td className="num right" style={{ color: r.min !== null && r.price !== null && r.price < r.min ? "var(--danger)" : undefined }}>{formatEuro(r.price)}</td>
                 <td className="num right" style={{ fontWeight: 600 }}>{formatEuro(r.min)}</td>
@@ -62,7 +68,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
           </tbody>
         </table>
       </section>
-      <div className="small muted">„~“ = geschätzte FBA-Gebühr (Gebührenvorschau importieren für echte Werte). Die BQool-Spalten bitte beim ersten Import mit der BQool-Vorlage abgleichen.</div>
+      <div className="small muted">EK = gültiger Einkaufspreis netto (Charge → von Hand → eBay-Tool → Set → sellerboard → geerbt), derselbe Wert wie in Produkt, Gewinn und Nachbestellung. „~“ = geschätzte FBA-Gebühr (Gebührenvorschau importieren für echte Werte). Die BQool-Spalten bitte beim ersten Import mit der BQool-Vorlage abgleichen.</div>
     </>
   );
 }

@@ -1,4 +1,5 @@
 import "server-only";
+import { FBA_SUBSTITUTE, type Substitute } from "./logic";
 import { and, count, eq, gte, inArray, isNull, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
@@ -88,21 +89,28 @@ const JOB_AREAS: [string, string, string][] = [
   ["Rechnungen", "Rechnungen aus Drive", "/rechnungen"],
 ];
 
-export type DataArea = Freshness & { error: string | null; via?: string; empty?: boolean };
+export type DataArea = Freshness & { error: string | null; via?: string; empty?: boolean; substitute?: Substitute | null };
 
 /** Datenstand je Bereich: Amazon-Berichte (Upload oder automatisch), manuelle Importe, Hintergrund-Abrufe. */
 export async function dataAreas(tenantId: string): Promise<DataArea[]> {
   const R = schema.reportImports;
-  const [reports, [uploads], jobs] = await Promise.all([
+  const [reports, [uploads], jobs, [sbStock]] = await Promise.all([
     db.select({ kind: R.reportType, last: max(R.createdAt), via: sql<string>`(array_agg(${R.via} order by ${R.createdAt} desc))[1]`, lastRows: sql<number>`(array_agg(${R.rows} order by ${R.createdAt} desc))[1]` }).from(R).where(and(eq(R.tenantId, tenantId), ne(R.rows, -1))).groupBy(R.reportType),
     db.select({ last: max(schema.importRuns.createdAt) }).from(schema.importRuns).where(eq(schema.importRuns.tenantId, tenantId)),
     db.select().from(schema.jobRuns).where(eq(schema.jobRuns.tenantId, tenantId)),
+    db.select({ last: max(schema.sellerboardInventory.syncedAt) }).from(schema.sellerboardInventory).where(eq(schema.sellerboardInventory.tenantId, tenantId)),
   ]);
+  // FBA-Bestand aus sellerboard (höchstens 2 Tage alt) ersetzt den Amazon-Bestandsbericht für die meisten Zwecke.
+  const sbLast = sbStock?.last ? new Date(sbStock.last) : null;
+  const fbaSubstitute: Substitute | null =
+    sbLast && Date.now() - sbLast.getTime() <= 2 * 86_400_000
+      ? { label: `sellerboard-Bestand vorhanden (Stand ${sbLast.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })})`, last: sbLast, ...FBA_SUBSTITUTE }
+      : null;
   const byKind = new Map(reports.map((r) => [r.kind, r]));
   const kinds = [...new Set([...REPORT_CORE, ...reports.map((r) => r.kind as ReportKind)])].filter((k) => k in REPORT_KINDS);
-  const items: (Omit<Freshness, "stale" | "missing"> & { error: string | null; via?: string; empty?: boolean })[] = kinds.map((k) => {
+  const items: (Omit<Freshness, "stale" | "missing"> & { error: string | null; via?: string; empty?: boolean; substitute?: Substitute | null })[] = kinds.map((k) => {
     const r = byKind.get(k);
-    return { key: `report:${k}`, label: `Amazon: ${REPORT_KINDS[k].split(" (")[0]}`, last: r?.last ? new Date(r.last) : null, maxAgeDays: REPORT_AGE[k] ?? 30, href: "/import", error: null, via: r?.via, empty: r ? Number(r.lastRows) === 0 : undefined };
+    return { key: `report:${k}`, label: k === "inventory" ? "Amazon: FBA-Bestandsbericht" : `Amazon: ${REPORT_KINDS[k].split(" (")[0]}`, last: r?.last ? new Date(r.last) : null, maxAgeDays: REPORT_AGE[k] ?? 30, href: "/import", error: null, via: r?.via, empty: r ? Number(r.lastRows) === 0 : undefined, substitute: k === "inventory" ? fbaSubstitute : null };
   });
   items.push({ key: "uploads", label: "Datei-Importe (von Hand)", last: uploads?.last ? new Date(uploads.last) : null, maxAgeDays: 30, href: "/import", error: null });
   for (const [name, label, href] of JOB_AREAS) {
@@ -112,5 +120,5 @@ export async function dataAreas(tenantId: string): Promise<DataArea[]> {
     items.push({ key: `job:${name}`, label, last: j.lastOkAt, maxAgeDays: 1, href, error: failing });
   }
   const fr = freshness(items, new Date());
-  return fr.map((f, i) => ({ ...f, error: items[i].error, via: items[i].via, empty: items[i].empty }));
+  return fr.map((f, i) => ({ ...f, error: items[i].error, via: items[i].via, empty: items[i].empty, substitute: items[i].substitute ?? null }));
 }

@@ -448,7 +448,7 @@ export async function markInvoicedAction(_prev: SendState, fd: FormData): Promis
   if (!MONTH_RE.test(month) || !customer) return { ok: false, message: "Monat oder Kunde fehlt." };
   if (!invoiceNo) return { ok: false, message: "Bitte die Rechnungsnummer angeben." };
   const cur = await statementRow(t, customer, month);
-  if (cur?.invoicedAt) return { ok: false, message: `Schon in Rechnung gestellt (Nr. ${cur.invoiceNo ?? "?"}, ${cur.invoicedAt.toLocaleDateString("de-DE")}) – keine zweite Rechnung.` };
+  if (cur?.invoicedAt) return { ok: false, message: `Schon in Rechnung gestellt (Nr. ${cur.invoiceNo ?? "?"}, ${cur.invoicedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}) – keine zweite Rechnung.` };
   const dup = await db.select({ month: ST.month, customer: ST.customer }).from(ST).where(and(eq(ST.tenantId, t), sql`lower(${ST.invoiceNo}) = lower(${invoiceNo})`)).limit(1);
   if (dup.length) return { ok: false, message: `Rechnungsnummer ${invoiceNo} ist schon bei ${dup[0].customer} (${dup[0].month}) eingetragen.` };
   const bill = await loadMonthBill(t, month);

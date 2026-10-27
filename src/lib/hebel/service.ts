@@ -5,25 +5,47 @@ import { skuCostMap } from "@/lib/money/costs";
 import { keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
 import { parseKeepaOwn } from "@/lib/brands/shop";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
-import { computeHebel, hebelTask, summarize, HEBEL_INFO, type BuyBox, type Hebel, type HebelSummary, type HebelType, type StatInput, type StockInput } from "./rules";
+import { getSettings } from "@/lib/settings";
+import { computeHebel, hebelTask, summarize, totals, DEFAULT_ASSUMPTIONS, HEBEL_INFO, type Assumptions, type BuyBox, type Hebel, type HebelSummary, type HebelType, type StatInput, type StockInput } from "./rules";
 
 // Hebel laden (für Seite, Startseite und Aufgaben), Buy Box per Keepa nachholen, Aufgaben pflegen.
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-export type HebelData = { list: Hebel[]; summary: HebelSummary[]; statsFrom: string | null; statsTo: string | null; syncedAt: Date | null; dismissed: number };
+export type HebelData = {
+  list: Hebel[];
+  summary: HebelSummary[];
+  totals: ReturnType<typeof totals>;
+  statsFrom: string | null;
+  statsTo: string | null;
+  /** Anzahl Produktzeilen (30 Tage) – 0 = Abgleich „Produkte 30 Tage“ noch nicht gelaufen. */
+  statsCount: number;
+  syncedAt: Date | null;
+  /** Stand des Bestands aus sellerboard (für Ladenhüter). */
+  stockAt: Date | null;
+  /** Letzter Fehler beim Abruf der 30-Tage-Werte. */
+  statsError: string | null;
+  assumptions: Assumptions;
+  dismissed: number;
+};
 
 export async function loadHebel(tenantId: string): Promise<HebelData> {
   const S = schema.sellerboardSkuStats;
   const I = schema.sellerboardInventory;
   const K = schema.hebelKeepa;
   const D = schema.hebelDismissals;
-  const [stats, stock, keepa, dism, costs] = await Promise.all([
+  const U = schema.sellerboardEbayUnits;
+  const J = schema.jobRuns;
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const [stats, stock, keepa, dism, costs, settings, ebayUnits, [job]] = await Promise.all([
     db.select().from(S).where(eq(S.tenantId, tenantId)),
     db.select().from(I).where(and(eq(I.tenantId, tenantId), gte(I.fbaStock, 1))),
     db.select().from(K).where(eq(K.tenantId, tenantId)),
     db.select().from(D).where(and(eq(D.tenantId, tenantId), gte(D.until, todayIso()))),
     skuCostMap(tenantId),
+    getSettings(tenantId),
+    db.select().from(U).where(and(eq(U.tenantId, tenantId), gte(U.day, since))),
+    db.select().from(J).where(and(eq(J.tenantId, tenantId), eq(J.name, "sellerboard: Produkte 30 Tage (Hebel)"))).limit(1),
   ]);
   const ownCost = new Map<string, number>();
   for (const [sku, c] of costs) {
@@ -53,18 +75,34 @@ export async function loadHebel(tenantId: string): Promise<HebelData> {
     timeToReorder: r.timeToReorder,
     costMissing: r.costMissing,
   }));
-  // Ladenhüter: je SKU zusammengefasst (mehrere FNSKU/Marktplätze möglich).
+  // Ladenhüter: je SKU zusammengefasst (mehrere FNSKU/Marktplätze möglich), bewertet mit dem gültigen EK –
+  // nicht mit dem Lagerwert aus sellerboard (der rechnet mit dem EK in sellerboard, ggf. 0,01-€-Platzhalter).
   const bySku = new Map<string, StockInput>();
   for (const r of stock) {
     const cur = bySku.get(r.sku);
     const v = r.salesVelocity === null ? null : Number(r.salesVelocity);
-    if (!cur) bySku.set(r.sku, { sku: r.sku, name: r.name, asin: r.asin, fbaStock: r.fbaStock, daysLeft: r.daysLeft, salesVelocity: v, stockValue: r.stockValue, cost: r.cost });
-    else Object.assign(cur, { fbaStock: cur.fbaStock + r.fbaStock, stockValue: cur.stockValue === null && r.stockValue === null ? null : (cur.stockValue ?? 0) + (r.stockValue ?? 0), salesVelocity: cur.salesVelocity === null && v === null ? null : (cur.salesVelocity ?? 0) + (v ?? 0), daysLeft: null });
+    if (!cur) bySku.set(r.sku, { sku: r.sku, name: r.name, asin: r.asin, fbaStock: r.fbaStock, reserved: r.reserved, inbound: r.inbound, daysLeft: r.daysLeft, salesVelocity: v, cost: costs.get(r.sku)?.cost ?? null });
+    else Object.assign(cur, { fbaStock: cur.fbaStock + r.fbaStock, reserved: (cur.reserved ?? 0) + r.reserved, inbound: (cur.inbound ?? 0) + r.inbound, salesVelocity: cur.salesVelocity === null && v === null ? null : (cur.salesVelocity ?? 0) + (v ?? 0), daysLeft: null });
   }
   const buyBox = new Map<string, BuyBox>(keepa.map((k) => [k.asin, { price: k.buyBoxPrice, hasBuyBox: k.hasBuyBox, isAmazon: k.buyBoxIsAmazon }]));
-  const list = computeHebel({ stats: statInputs, stock: [...bySku.values()], ownCost, buyBox, dismissed: new Set(dism.map((d) => d.key)) });
   const first = stats[0];
-  return { list, summary: summarize(list), statsFrom: first?.fromDay ?? null, statsTo: first?.toDay ?? null, syncedAt: first?.syncedAt ?? null, dismissed: dism.length };
+  const assumptions: Assumptions = { storagePerUnitMonth: settings.pricing.storageFee ?? DEFAULT_ASSUMPTIONS.storagePerUnitMonth, capitalRatePa: DEFAULT_ASSUMPTIONS.capitalRatePa };
+  const list = computeHebel({ stats: statInputs, stock: [...bySku.values()], ownCost, buyBox, dismissed: new Set(dism.map((d) => d.key)), assumptions, period: { from: first?.fromDay ?? null, to: first?.toDay ?? null } });
+  // eBay-Verkäufe ohne EK (weder sellerboard noch Seller-System) – dieselbe Liste, auf die die Startseite verweist.
+  const known = new Set(list.filter((h) => h.type === "ek_fehlt").map((h) => h.sku));
+  const missing = new Map<string, number>();
+  for (const u of ebayUnits) if (u.units > u.unitsWithCost && !costs.has(u.sku) && !known.has(u.sku)) missing.set(u.sku, (missing.get(u.sku) ?? 0) + u.units - u.unitsWithCost);
+  const dismissed = new Set(dism.map((d) => d.key));
+  for (const [sku, n] of missing) {
+    const key = `ek_fehlt:ebay:${sku}`;
+    if (dismissed.has(key)) continue;
+    const st = stats.find((x) => x.sku === sku);
+    list.push({ key, type: "ek_fehlt", channel: "ebay", sku, name: st?.name ?? null, asin: st?.asin ?? null, image: st?.image ?? null, link: null, impact: 0, contribution: 0, saving: 0, capital: 0, basis: [`${n} Stück auf eBay verkauft (seit ${since.split("-").reverse().join(".")}), weder im Seller-System noch in sellerboard ein EK.`], headline: `Kein EK hinterlegt – ${n} auf eBay verkauft, Gewinn auf der Startseite zu hoch`, action: "EK im Seller-System eintragen (Produkt → Chargen & Einkauf).", facts: [] });
+  }
+  const summary = summarize(list);
+  const jobError = job && job.lastErrorAt && (!job.lastOkAt || job.lastErrorAt > job.lastOkAt) ? job.lastError : null;
+  const stockAt = stock.reduce<Date | null>((m, r) => (!m || r.syncedAt > m ? r.syncedAt : m), null);
+  return { list, summary, totals: totals(summary), statsFrom: first?.fromDay ?? null, statsTo: first?.toDay ?? null, statsCount: stats.length, syncedAt: first?.syncedAt ?? null, stockAt, statsError: jobError, assumptions, dismissed: dism.length };
 }
 
 /** Eine Sammelaufgabe je Hebel-Art (Wirkung ab 20 € bzw. EK fehlt); nichts mehr da → automatisch erledigt. */

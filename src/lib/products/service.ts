@@ -2,7 +2,8 @@ import "server-only";
 import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
-import { loadCostPairs, mergeCostPairs, skuCostMap } from "@/lib/money/costs";
+import { loadCostPairs, mergeCostPairs, sellerboardCostMap, skuCostMap } from "@/lib/money/costs";
+import { isPlaceholderCost } from "@/lib/money/ek-logic";
 import { COST_SOURCE_LABEL, type CostInfo } from "@/lib/money/profit-logic";
 import { loadSets } from "@/lib/stock/sets";
 import { fbaReport } from "@/lib/stock/fba-report";
@@ -188,6 +189,9 @@ export async function productDetail(t: string, ref: { productId: string } | { sk
     add("set", pairs.set);
     add("sellerboard", pairs.sellerboard ?? []);
     add("ebay", pairs.ebayInherited);
+    for (const [k, cost, detail] of pairs.sellerboardPlaceholder ?? []) {
+      if (k.trim() === sku && cost !== null && cost !== undefined) sources.push({ source: "sellerboard", label: `${COST_SOURCE_LABEL.sellerboard} (Platzhalter)`, cost: Number(cost), ...(detail ? { detail } : {}), ignored: true });
+    }
     return ekCheck(sku, sources, costs.get(sku) ?? null);
   });
 
@@ -220,7 +224,7 @@ export async function mappingWorklist(t: string): Promise<Issue[]> {
     db.execute<{ ean: string; asins: string[] }>(sql`select ean, array_agg(distinct asin order by asin) as asins from products where tenant_id = ${t} and ean is not null and ean <> '' group by ean having count(distinct asin) > 1 limit 200`),
     candidates(t),
   ]);
-  const costs = await skuCostMap(t);
+  const [costs, sbCosts] = await Promise.all([skuCostMap(t), sellerboardCostMap(t)]);
   const titles = new Map<string, string>();
   for (const g of groupCandidates(cands)) for (const s of g.skus) if (g.title) titles.set(s, g.title);
   const ekChecks = [...new Set([...lots.map((l) => l.sku), ...manual.map((m) => m.sku), ...ebayTool.map((e) => e.sku).filter((s): s is string => Boolean(s))])].map((sku) => {
@@ -229,6 +233,9 @@ export async function mappingWorklist(t: string): Promise<Issue[]> {
     for (const m of manual) if (m.sku === sku) sources.push({ source: "manuell", label: COST_SOURCE_LABEL.manuell, cost: Number(m.cost) });
     const e = ebayTool.find((x) => x.sku === sku && x.purchasePrice !== null);
     if (e) sources.push({ source: "ebay", label: COST_SOURCE_LABEL.ebay, cost: Number(e.purchasePrice) });
+    // sellerboard nur zum Vergleich, wenn es auch einen eigenen Wert gibt (sonst gilt sellerboard ohnehin).
+    const sb = sbCosts.get(sku);
+    if (sb !== undefined && sources.length) sources.push({ source: "sellerboard", label: COST_SOURCE_LABEL.sellerboard, cost: sb, ...(isPlaceholderCost(sb) ? { ignored: true } : {}) });
     return ekCheck(sku, sources, costs.get(sku) ?? null);
   });
   return mappingIssues({

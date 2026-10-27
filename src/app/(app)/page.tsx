@@ -15,6 +15,8 @@ import { loadSalesOverview } from "@/lib/sellerboard/sales";
 import { SalesOverviewSection } from "./sales-overview";
 import { loadHebel } from "@/lib/hebel/service";
 import { HebelTeaser } from "./hebel-teaser";
+import { sellerboardReorder } from "@/lib/purchasing/reorder";
+import { reorderTotals } from "@/lib/purchasing/reorder-logic";
 import { toggleCalendarAction } from "./start-actions";
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -213,6 +215,9 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   // Verkäufe (sellerboard, Amazon + eBay) nur für wer „Geld“ sehen darf.
   const sales = canAccess(session, "geld") ? await loadSalesOverview(session.tenantId).catch(() => null) : null;
   const hebel = sales ? await loadHebel(session.tenantId).catch(() => null) : null;
+  // Nachbestellen (sellerboard) kompakt bei den Empfehlungen – Details unter Einkauf → Bestellvorschläge.
+  const reorder = canAccess(session, "wawi") ? await sellerboardReorder(session.tenantId).then((r) => (r.rows.length ? reorderTotals(r.rows) : null)).catch(() => null) : null;
+  const eur0 = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
   const urgent = mySignals.filter((s) => s.level === "danger");
   const warn = mySignals.filter((s) => s.level === "warn");
   const info = mySignals.filter((s) => s.level === "info");
@@ -220,8 +225,6 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
     <>
       {head}
       <PrivateHint session={session} />
-      {sales && <SalesOverviewSection data={sales} />}
-      {hebel && <HebelTeaser data={hebel} />}
 
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0, gap: 16 }}>
@@ -287,6 +290,33 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                 ))}
               </div>
             </section>
+          )}
+
+          {/* Kennzahlen kompakt (Diagramme und Listen aufklappbar), danach Empfehlungen und Nachbestellungen. */}
+          {(sales || hebel || reorder) && (
+            <div className="today-insights" data-testid="today-insights">
+              {sales && <SalesOverviewSection data={sales} />}
+              {hebel && <HebelTeaser data={hebel} />}
+              {reorder && (
+                <section className="card card-pad" data-testid="reorder-teaser">
+                  <div className="between" style={{ gap: 8, flexWrap: "wrap" }}>
+                    <h2>Nachbestellen</h2>
+                    <Link href="/einkauf/vorschlaege?weg=sellerboard" className="small">Bestellvorschläge →</Link>
+                  </div>
+                  <div className="small" style={{ marginTop: 6 }}>
+                    {reorder.byUrgency.ueberfaellig + reorder.byUrgency.jetzt} jetzt bzw. überfällig · {reorder.byUrgency.bald} bald · Kapitalbedarf netto <strong>{eur0(reorder.capital)}</strong> ({reorder.withCapital} Artikel mit gültigem EK)
+                  </div>
+                  {(reorder.noEk > 0 || reorder.returns > 0 || reorder.noSource > 0) && (
+                    <div className="small" style={{ marginTop: 4 }}>
+                      <span className="muted">Prüfen: </span>
+                      {[reorder.noEk ? <Link key="ek" href="/einkauf/vorschlaege?weg=sellerboard&pruefen=ek_fehlt">{reorder.noEk} ohne EK</Link> : null, reorder.returns ? <Link key="r" href="/einkauf/vorschlaege?weg=sellerboard&pruefen=retoure">{reorder.returns} Retouren</Link> : null, reorder.noSource ? <Link key="q" href="/einkauf/vorschlaege?weg=sellerboard&pruefen=quelle">{reorder.noSource} Bezugsquelle unklar</Link> : null]
+                        .filter(Boolean)
+                        .reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, " · ", el] : [el]), [])}
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
           )}
 
           <section className="card" data-testid="today-later">
@@ -372,8 +402,8 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                   {problems.slice(0, 8).map((a) => (
                     <Link key={a.key} href={a.href} className="between" style={{ textDecoration: "none", color: "inherit", gap: 8 }} data-testid="data-problem">
                       <span style={{ minWidth: 0 }}>{a.label}</span>
-                      <span className="num small" style={{ color: a.error ? "var(--danger)" : "var(--warn)", whiteSpace: "nowrap" }} title={a.error ?? undefined}>
-                        {a.error ? "Fehler" : a.missing ? "fehlt" : `${a.last!.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}`}
+                      <span className="num small" style={{ color: a.error ? "var(--danger)" : a.substitute ? "var(--muted)" : "var(--warn)", whiteSpace: "nowrap" }} title={a.error ?? (a.substitute ? `${a.substitute.label} – reicht für ${a.substitute.covers.join(", ")}` : undefined)} data-testid={a.substitute ? "data-problem-substitute" : undefined}>
+                        {a.error ? "Fehler" : a.substitute ? `${a.missing ? "fehlt" : "veraltet"} · sellerboard ✓` : a.missing ? "fehlt" : `${a.last!.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}`}
                       </span>
                     </Link>
                   ))}

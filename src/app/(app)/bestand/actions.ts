@@ -29,7 +29,7 @@ export async function setOwnStock(fd: FormData) {
 
 export async function createCount(fd: FormData) {
   const session = await requireArea("wawi");
-  const name = String(fd.get("name") ?? "").trim() || `Inventur ${new Date().toLocaleDateString("de-DE")}`;
+  const name = String(fd.get("name") ?? "").trim() || `Inventur ${new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`;
   const [c] = await db.insert(schema.inventoryCounts).values({ tenantId: session.tenantId, name, createdBy: session.userId }).returning();
   const stock = await db.select().from(schema.ownStock).where(eq(schema.ownStock.tenantId, session.tenantId));
   if (stock.length) await db.insert(schema.inventoryCountLines).values(stock.map((s) => ({ tenantId: session.tenantId, countId: c.id, sku: s.sku, expected: s.quantity, counted: 0 })));

@@ -120,7 +120,7 @@ export default async function RechnungPage({ params, searchParams }: { params: P
             <form action={stotaxInvoiceAction} className="small" data-testid="inv-stotax">
               <input type="hidden" name="id" value={inv.id} />
               {inv.stotaxSentAt ? (
-                <span className="tag tag-ok">an Stotax übertragen am {new Date(inv.stotaxSentAt).toLocaleDateString("de-DE")}</span>
+                <span className="tag tag-ok">an Stotax übertragen am {new Date(inv.stotaxSentAt).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span>
               ) : (
                 <>
                   {inv.stotaxError && <div style={{ color: "var(--danger)" }}>{inv.stotaxError}</div>}

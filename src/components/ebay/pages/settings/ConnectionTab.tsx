@@ -8,7 +8,7 @@ function formatDate(iso: string | null): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? ''
-    : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    : d.toLocaleDateString('de-DE', { timeZone: "Europe/Berlin", day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 export function ConnectionTab({ ctx }: { ctx: TabContext }) {

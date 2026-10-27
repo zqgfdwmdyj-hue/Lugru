@@ -9,7 +9,7 @@ import { ContentEditor } from "../content-editor";
 import { ActionButton } from "../forms";
 import { euro, issueTag, scoreClass } from "../ui";
 
-const dateDe = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
+const dateDe = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
 
 export default async function ReviewDetailPage({ params }: { params: Promise<{ itemId: string }> }) {
   const session = await requireArea("ebay");
@@ -51,7 +51,7 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
             <div className="kpi-label">Punkte</div>
             <div className="kpi-value"><span className={`tag ${scoreClass(row.score)}`} style={{ fontSize: 22 }} data-testid="detail-score">{row.score ?? "–"}</span> <span className="small muted">von 100</span></div>
             <div className="small muted">
-              Art.-Nr. {itemId}{row.sku ? ` · SKU ${row.sku}` : ""} · {row.source === "tool" ? "aus dem eBay-Tool" : "direkt bei eBay eingestellt"} · geprüft {row.checkedAt ? new Date(row.checkedAt).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "noch nicht"}
+              Art.-Nr. {itemId}{row.sku ? ` · SKU ${row.sku}` : ""} · {row.source === "tool" ? "aus dem eBay-Tool" : "direkt bei eBay eingestellt"} · geprüft {row.checkedAt ? new Date(row.checkedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "noch nicht"}
             </div>
           </div>
         </div>

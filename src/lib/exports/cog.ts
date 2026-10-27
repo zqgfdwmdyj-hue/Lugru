@@ -67,7 +67,7 @@ export async function cogReminder(tenantId: string): Promise<{ due: boolean; cha
     notes: [
       "AccountOne braucht die Einkaufspreise netto je SKU – tax.fish bewertet damit die PAN-EU-Verbringungen (Pro-forma-Rechnungen).",
       `Einkauf & Buchhaltung → COG-Export → CSV herunterladen, in AccountOne unter Benutzer → Artikelstammdaten → Einkaufspreis hochladen (Jahr eintragen).`,
-      last ? `Letzter Download: ${last.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}.` : "Bisher noch nie heruntergeladen.",
+      last ? `Letzter Download: ${last.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" })}.` : "Bisher noch nie heruntergeladen.",
       missing.n ? `Achtung: ${missing.n} Chargen ohne EK – fehlen in der Liste (Chargen → Ohne EK).` : "",
     ]
       .filter(Boolean)

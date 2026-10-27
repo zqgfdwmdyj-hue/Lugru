@@ -2,6 +2,7 @@ import "server-only";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { loadSets } from "@/lib/stock/sets";
+import { isPlaceholderCost } from "./ek-logic";
 import { mergeCosts, setCostPairs, type CostInfo, type CostPair } from "./profit-logic";
 
 // EK je SKU – eine Stelle für Gewinn, Lagerwert und Produktansicht. Reihenfolge: Charge (lots) → von Hand
@@ -10,7 +11,16 @@ import { mergeCosts, setCostPairs, type CostInfo, type CostPair } from "./profit
 
 type Variants = { items?: { sku?: string; value?: string; purchasePrice?: number; set?: boolean }[] } | null;
 
-export type CostPairs = { charge: CostPair[]; manuell: CostPair[]; ebayOwn: CostPair[]; ebayInherited: CostPair[]; set: CostPair[]; sellerboard?: CostPair[] };
+export type CostPairs = {
+  charge: CostPair[];
+  manuell: CostPair[];
+  ebayOwn: CostPair[];
+  ebayInherited: CostPair[];
+  set: CostPair[];
+  sellerboard?: CostPair[];
+  /** EK-Platzhalter aus sellerboard (z. B. 0,01 €) – werden angezeigt, gelten aber nie. */
+  sellerboardPlaceholder?: CostPair[];
+};
 
 /**
  * Alle EK-Werte mit Herkunft, noch nicht zusammengeführt. eBay-Tool: EK der Variante bzw. des Einzelangebots
@@ -60,15 +70,27 @@ export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
   const charge: CostPair[] = lots.map((l) => [l.sku, l.cost === null ? null : Number(l.cost), [l.date ? `Einkauf ${l.date.split("-").reverse().join(".")}` : "Charge", l.src === "inherited" ? "EK von Vorgänger-Charge" : null].filter(Boolean).join(" · "), l.src === "inherited"]);
   const manuell: CostPair[] = manual.map((m) => [m.sku, m.cost, "EK je SKU von Hand eingetragen"]);
   const base = mergeCosts(["charge", charge], ["manuell", manuell], ["ebay", ebayOwn]);
-  const sellerboard: CostPair[] = sb.map((r) => [r.sku, r.cost, `laut sellerboard (Stand ${r.at.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})`]);
-  return { charge, manuell, ebayOwn, ebayInherited, set: setCostPairs(sets, base), sellerboard };
+  const stand = (at: Date) => `laut sellerboard (Stand ${at.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})`;
+  const sellerboard: CostPair[] = sb.filter((r) => !isPlaceholderCost(r.cost)).map((r) => [r.sku, r.cost, stand(r.at)]);
+  const sellerboardPlaceholder: CostPair[] = sb.filter((r) => isPlaceholderCost(r.cost)).map((r) => [r.sku, r.cost, `${stand(r.at)} – Platzhalter, zählt nicht als EK`]);
+  return { charge, manuell, ebayOwn, ebayInherited, set: setCostPairs(sets, base), sellerboard, sellerboardPlaceholder };
 }
 
-/** Gültiger EK je SKU: Charge → von Hand → eBay-Tool (eigen) → Set-Summe → sellerboard → eBay-Tool (geerbt). */
+/**
+ * Gültiger EK je SKU: Charge → von Hand → eBay-Tool (eigen) → Set-Summe → sellerboard → eBay-Tool (geerbt).
+ * Die eine Stelle für Produkt, Gewinn, Lagerwert, Nachbestellung, Repricer, Hebel und SAS-Deals.
+ */
 export function mergeCostPairs(p: CostPairs): Map<string, CostInfo> {
   return mergeCosts(["charge", p.charge], ["manuell", p.manuell], ["ebay", p.ebayOwn], ["set", p.set], ["sellerboard", p.sellerboard ?? []], ["ebay", p.ebayInherited]);
 }
 
 export async function skuCostMap(tenantId: string): Promise<Map<string, CostInfo>> {
   return mergeCostPairs(await loadCostPairs(tenantId));
+}
+
+/** EK laut sellerboard je SKU (auch Platzhalter) – nur zum Vergleich mit dem gültigen EK. */
+export async function sellerboardCostMap(tenantId: string): Promise<Map<string, number>> {
+  const P = schema.sellerboardProducts;
+  const rows = await db.select({ sku: P.sku, cost: P.cost }).from(P).where(and(eq(P.tenantId, tenantId), isNotNull(P.cost)));
+  return new Map(rows.filter((r) => r.cost !== null).map((r) => [r.sku, r.cost!]));
 }

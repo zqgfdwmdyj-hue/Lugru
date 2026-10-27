@@ -157,7 +157,7 @@ async function autoClose(tenantId: string, info: typeof T.$inferSelect): Promise
   if (!ids.length) return 0;
   await db
     .update(T)
-    .set({ status: "done", closedAt: new Date(), closedBy: `automatisch: ${info.summary ?? info.subject ?? "Freigabe"} (${info.receivedAt.toLocaleDateString("de-DE")})`, updatedAt: new Date() })
+    .set({ status: "done", closedAt: new Date(), closedBy: `automatisch: ${info.summary ?? info.subject ?? "Freigabe"} (${info.receivedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})`, updatedAt: new Date() })
     .where(and(eq(T.tenantId, tenantId), inArray(T.id, ids)));
   return ids.length;
 }
