@@ -13,7 +13,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "paletten", label: "Paletten-Lager (Paletten ein- und auslagern, Monatsabrechnung)", paths: ["/paletten", "/etikett/palette"], home: "/paletten" },
   { key: "artikel", label: "Artikelstamm (eigene Produkte, Bilder, Texte, Amazon/eBay)", paths: ["/artikel"], home: "/artikel" },
   { key: "lieferanten", label: "Lieferanten-Feeds und Großhändler finden (Scannen, Keepa-Prüfung, Boxen, Einkaufsanfragen)", paths: ["/lieferanten"], home: "/lieferanten" },
-  { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse)", paths: ["/marken"], home: "/marken" },
+  { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse, Uhren: Buy & Flip)", paths: ["/marken"], home: "/marken" },
   { key: "ebay", label: "eBay", paths: ["/ebay", "/api/ebay"], home: "/ebay" },
   { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen, SAS-Programm)", paths: ["/amazon-todos", "/inbound", "/ansprueche", "/remissionen", "/sas"], home: "/amazon-todos" },
   { key: "buchhaltung", label: "Einkauf & Buchhaltung (Rechnungen, COG-Export, Repricer)", paths: ["/rechnungen", "/export", "/repricer"], home: "/rechnungen" },

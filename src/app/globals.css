@@ -927,3 +927,33 @@ h2 { font-size: 16px; margin: 0; }
 .nav-caret { color: var(--ink-2); }
 /* Bereichsfarbe als Text (Brotkrümel, Bereichsname) etwas dunkler – mindestens 4,5:1 auf dem Seitenhintergrund. */
 .crumb { color: color-mix(in srgb, var(--area) 80%, #000); }
+
+/* Uhren Buy & Flip (Marken → Zeitlux): Lernpfad, Rechner, Deals, Marktpreise */
+.flip-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 640px) {
+  .flip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .flip-grid > [style*="span 2"] { grid-column: 1 / -1 !important; }
+  .flip-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.flip label.check { display: flex; gap: 8px; align-items: flex-start; line-height: 1.35; cursor: pointer; }
+.flip label.check input { margin-top: 2px; flex-shrink: 0; }
+.flip-right { color: var(--ok); font-weight: 700; }
+.flip-wrong { color: var(--danger); text-decoration: line-through; }
+.flip-ok-text { color: #14532d; }
+.flip-bad-text { color: #7f1d1d; }
+.flip-neg { color: var(--danger); }
+.flip-lesson ul { padding-left: 18px; margin: 4px 0 0; }
+.flip-lesson li { margin-bottom: 4px; }
+.flip-progress { height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.flip-progress > span { display: block; height: 100%; background: var(--area); }
+.flip-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.flip-list > li { border: 1px solid var(--border); border-left: 4px solid var(--area); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+.flip-list > li.done { border-left-color: var(--ok); }
+.flip-checklist { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.flip-checklist button { display: flex; gap: 8px; align-items: flex-start; width: 100%; text-align: left; background: none; border: 0; padding: 4px 0; font: inherit; color: var(--ink); cursor: pointer; }
+.flip-checklist .box { width: 18px; height: 18px; border: 2px solid var(--border-strong); border-radius: 4px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; margin-top: 1px; }
+.flip-checklist .on .box { background: var(--ok); border-color: var(--ok); color: #fff; }
+.flip-checklist .on .t { color: var(--muted); text-decoration: line-through; }
+.flip-ai { white-space: pre-wrap; line-height: 1.5; }
+.flip .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.flip-kpis .kpi-value { font-size: clamp(18px, 5.4vw, 28px); overflow-wrap: anywhere; }

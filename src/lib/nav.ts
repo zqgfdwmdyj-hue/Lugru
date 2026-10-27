@@ -120,6 +120,7 @@ export const NAV: NavSection[] = [
       { href: "/marken", label: "Ideen & Saison" },
       { href: "/marken/content", label: "Content-Plan" },
       { href: "/marken/shop", label: "Shop-Analyse" },
+      { href: "/marken/uhren", label: "Uhren: Buy & Flip" },
       { href: "/marken/profile", label: "Markenprofile" },
     ],
   },
@@ -145,6 +146,13 @@ export const NAV: NavSection[] = [
  * Seitenleiste – so zeigt jede Leiste genau eine Ebene: Seitenleiste = Bereiche und Seiten, Reiter = Unterseiten.
  */
 export const SUBPAGES: Record<string, NavItem[]> = {
+  "/marken/uhren": [
+    { href: "/marken/uhren", label: "Übersicht" },
+    { href: "/marken/uhren/lernen", label: "Lernen" },
+    { href: "/marken/uhren/rechner", label: "Rechner" },
+    { href: "/marken/uhren/deals", label: "Deals" },
+    { href: "/marken/uhren/preise", label: "Marktpreise" },
+  ],
   "/paletten": [
     { href: "/paletten", label: "Lager" },
     { href: "/paletten/lagerplan", label: "Lagerplan" },
