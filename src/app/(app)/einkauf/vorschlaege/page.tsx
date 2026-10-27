@@ -173,7 +173,7 @@ function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof 
                     {r.orderBy && r.urgency === "bald" && <div className="small muted">bis {formatDate(r.orderBy)}</div>}
                   </td>
                   <td className="num right" data-testid="reorder-ek">
-                    {r.ek ? formatEuro(r.ek.cost) : <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} style={{ color: "var(--warn)" }}>fehlt</Link>}
+                    {r.ek ? formatEuro(r.ek.cost) : <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} className="tag tag-missing">fehlt</Link>}
                     {r.ek && <div className="small muted" style={{ fontFamily: "inherit" }}>{COST_SOURCE_LABEL[r.ek.source]}{r.ek.inherited ? " · geerbt" : ""}</div>}
                     {r.sbCompare?.deviates && <div className="small" style={{ color: "var(--warn)", fontFamily: "inherit" }} data-testid="reorder-sb-note">sellerboard {formatEuro(r.sbCompare.value)}{r.sbCompare.placeholder ? " (Platzhalter)" : ""}</div>}
                   </td>
@@ -275,7 +275,7 @@ async function WawiWay({ tenantId, sp, leadDays, coverDays, vatRate }: { tenantI
                       <div className="small muted">{r.bestOffer ? `Feed${r.bestOffer.stock != null ? `, ${r.bestOffer.stock} verfügbar` : ""}` : r.lastSupplier ? `zuletzt ${formatDate(r.lastDate)}` : fl.quelle ? <span style={{ color: "var(--warn)" }}>unklar – prüfen</span> : ""}</div>
                     </td>
                     <td className="num right" data-testid="wawi-ek">
-                      {r.ekNet !== null ? formatEuro(r.ekNet) : <span style={{ color: "var(--warn)" }}>fehlt</span>}
+                      {r.ekNet !== null ? formatEuro(r.ekNet) : <span className="tag tag-missing">fehlt</span>}
                       {r.ekSource && <div className="small muted" style={{ fontFamily: "inherit" }}>{COST_SOURCE_LABEL[r.ekSource]}</div>}
                     </td>
                     <td className="right"><input className="input" name={`ek:${r.asin}`} defaultValue={ek} inputMode="decimal" style={{ width: 84, textAlign: "right" }} aria-label="EK brutto für die Bestellung" /></td>

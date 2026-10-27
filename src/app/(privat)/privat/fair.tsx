@@ -28,7 +28,7 @@ function Cell({ list, kind, path, month, names }: { list: Entry<SleepEntry>[]; k
           <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={e.id} />
-            <button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="Eintrag löschen" title={e.data.linkId ? "löscht auch die verknüpfte Kinderzeit" : undefined}>×</button>
+            <button className="btn-link x-danger" type="submit" aria-label="Eintrag löschen" title={e.data.linkId ? "löscht auch die verknüpfte Kinderzeit" : undefined}>×</button>
           </form>
         </div>
       ))}

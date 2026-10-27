@@ -33,7 +33,7 @@ export default async function WertschaetzungPage() {
             {thanks.slice(0, 20).map((t) => (
               <li key={t.id} className="small">
                 <strong>{dm(t.data.day)}</strong> {t.data.from === "a" ? s.partners.a : s.partners.b}: {t.data.text}
-                <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="danke" /><input type="hidden" name="id" value={t.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="löschen">×</button></form>
+                <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="danke" /><input type="hidden" name="id" value={t.id} /><button className="btn-link x-danger" type="submit" aria-label="löschen">×</button></form>
               </li>
             ))}
           </ul>

@@ -21,7 +21,7 @@ export async function InvoiceSettingsCards({ tenantId }: { tenantId: string }) {
         <form action={numberingAction} style={{ display: "flex", gap: 6, alignItems: "flex-end", flexWrap: "wrap" }}>
           <input type="hidden" name="zurueck" value="einstellungen" />
           <div className="field"><label className="label" htmlFor="nr-last">Letzte Nummer aus Stotax</label><input className="input num" id="nr-last" name="last" placeholder="z. B. 2026-0815" style={{ width: 170 }} /></div>
-          <button className="btn btn-small" type="submit">Übernehmen</button>
+          <button className="btn btn-primary btn-small" type="submit">Übernehmen</button>
         </form>
       </section>
       <section className="card card-pad stack" style={{ gap: 8 }} data-testid="bank-card">
@@ -34,7 +34,7 @@ export async function InvoiceSettingsCards({ tenantId }: { tenantId: string }) {
             <div className="field" style={{ flex: "1 1 140px" }}><label className="label" htmlFor="bk-name">Bank</label><input className="input" id="bk-name" name="bankName" defaultValue={s.bankName ?? ""} /></div>
             <div className="field" style={{ width: 90 }}><label className="label" htmlFor="bk-days">Ziel (Tage)</label><input className="input num" id="bk-days" name="paymentDays" defaultValue={s.paymentDays ?? 14} /></div>
           </div>
-          <button className="btn btn-small" type="submit">Speichern</button>
+          <button className="btn btn-primary btn-small" type="submit">Speichern</button>
         </form>
       </section>
     </div>

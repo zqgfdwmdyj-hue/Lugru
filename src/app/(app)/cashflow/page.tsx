@@ -59,7 +59,7 @@ export default async function CashflowPage() {
           <form action={saveStartBalance} style={{ display: "flex", gap: 6, marginTop: 6 }} id="kontostand">
             <label htmlFor="bal" className="sr-only">Kontostand</label>
             <input className="input num" id="bal" name="balance" defaultValue={start !== null ? String(start).replace(".", ",") : ""} placeholder="z. B. 12.500" />
-            <button className="btn btn-small" type="submit">Speichern</button>
+            <button className="btn btn-primary btn-small" type="submit">Speichern</button>
           </form>
           <div className="small" style={{ marginTop: 4, color: start === null ? "var(--danger)" : undefined }} data-testid="cash-start-state">{asOf ? `Stand ${formatDate(asOf)}` : "noch nicht eingetragen – Prognose nicht möglich"}</div>
         </div>
@@ -141,7 +141,7 @@ export default async function CashflowPage() {
                   <td className="num">{formatDate(i.date)}</td>
                   <td>{i.description}<div className="small muted">{i.category}{i.recurrence !== "none" ? ` · ${i.recurrence === "monthly" ? "monatlich" : "wöchentlich"}` : ""}</div></td>
                   <td className="num right" style={{ color: i.amount < 0 ? "var(--danger)" : "var(--ok)" }}>{formatEuro(i.amount)}</td>
-                  <td className="right"><form action={deleteCashItem}><input type="hidden" name="id" value={i.id} /><button className="btn-link small" type="submit">löschen</button></form></td>
+                  <td className="right"><form action={deleteCashItem}><input type="hidden" name="id" value={i.id} /><button className="btn-link small danger" type="submit">löschen</button></form></td>
                 </tr>
               ))}
             </tbody>

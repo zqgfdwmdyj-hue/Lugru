@@ -66,7 +66,7 @@ export default async function PoPage({ params }: { params: Promise<{ id: string 
                     <td className="num right">{formatEuro(netFromGross(Number(i.unitCostGross), Number(i.vatRate)))}</td>
                     <td className="num right">{i.targetPrice ? formatEuro(Number(i.targetPrice)) : "–"}</td>
                     <td className="small" style={{ overflowWrap: "anywhere", minWidth: 160 }}>{i.lotId ? <Link href={`/chargen/${i.lotId}`} className="num">{i.sku}</Link> : <span className="muted">beim Eingang</span>}</td>
-                    <td>{editable && i.received === 0 && <form action={removeItemAction}><input type="hidden" name="id" value={i.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>Entfernen</button></form>}</td>
+                    <td>{editable && i.received === 0 && <form action={removeItemAction}><input type="hidden" name="id" value={i.id} /><button className="btn-link small danger" type="submit">Entfernen</button></form>}</td>
                   </tr>
                 ))}
               </tbody>

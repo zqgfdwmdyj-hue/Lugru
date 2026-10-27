@@ -156,7 +156,7 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
                 <tr key={c.id} style={{ background: todayPick ? "var(--accent-soft)" : undefined }}>
                   <td><input type="checkbox" name="ids" value={c.id} aria-label="Auswählen" /></td>
                   <td className="small">{CLAIM_TYPE_LABEL[c.type]}</td>
-                  <td><Link href={`/ansprueche/${c.id}`}>{c.title}</Link>{c.expectedAmount === null && <span className="small" style={{ color: "var(--danger)" }}> · EK fehlt</span>}</td>
+                  <td><Link href={`/ansprueche/${c.id}`}>{c.title}</Link>{c.expectedAmount === null && <span className="tag tag-missing" style={{ marginLeft: 6 }}>EK fehlt</span>}</td>
                   <td className="num right">{c.quantity}</td>
                   <td className="num right">{formatEuro(c.expectedAmount)}</td>
                   <td className="num">{formatDate(c.eventDate)}</td>

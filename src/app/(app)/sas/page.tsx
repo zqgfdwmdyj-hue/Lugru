@@ -84,7 +84,7 @@ function ItemRow({ it, readOnly }: { it: SasItem; readOnly: boolean }) {
               {SAS_WAITING.map((w) => <option key={w} value={w}>{WAITING_LABEL[w]}</option>)}
             </select>
             <input type="date" name="dueDate" defaultValue={it.dueDate ?? ""} aria-label="Fällig am" disabled={readOnly} />
-            <button className="btn btn-small" type="submit" disabled={readOnly}>Speichern</button>
+            <button className="btn btn-primary btn-small" type="submit" disabled={readOnly}>Speichern</button>
           </form>
         )}
       </div>
@@ -435,7 +435,7 @@ function Docs({ docs, ro }: { docs: Awaited<ReturnType<typeof loadDocuments>>; r
               </div>
               <form action={deleteDocumentAction}>
                 <input type="hidden" name="id" value={doc.id} />
-                <button className="btn-link small" type="submit" disabled={ro}>Löschen</button>
+                <button className="btn-link small danger" type="submit" disabled={ro}>Löschen</button>
               </form>
             </div>
           ))

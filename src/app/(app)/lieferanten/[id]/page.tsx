@@ -214,7 +214,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                 <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="pricesGross" defaultChecked={feed.pricesGross} /> Preise sind brutto</label>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" type="submit">Speichern</button>
+                <button className="btn btn-primary" type="submit">Speichern</button>
                 <button className="btn btn-primary" type="submit" formAction={pullNowAction}>Speichern &amp; jetzt abrufen</button>
               </div>
             </form>
@@ -234,7 +234,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
               </div>
             </div>
             <div className="small muted">Aufschlag auf den EK für Fracht, Zoll und Einfuhrkosten (US-Ware grob 30–50 %). Süßigkeiten: 7 % USt. Großhandelspreise gelten meist je Karton („24 x 9g“) – das System teilt durch die Kartongröße und rechnet Gewinn je Einheit gegen den Amazon-Preis.</div>
-            <button className="btn btn-small" type="submit">Speichern</button>
+            <button className="btn btn-primary btn-small" type="submit">Speichern</button>
           </form>
           <FeedUpload feedId={feed.id} mapping={feed.mapping} />
           {rows.length > 0 && (

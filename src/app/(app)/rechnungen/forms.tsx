@@ -19,7 +19,7 @@ export function InvoiceUpload() {
     <form action={action} className="stack" style={{ gap: 6 }}>
       <label className="label" htmlFor="inv-files">PDFs hochladen</label>
       <input className="input" id="inv-files" name="files" type="file" accept="application/pdf,.pdf" multiple required />
-      <button className="btn btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>
+      <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>
       {state && <div className={`notice small ${state.ok ? "notice-ok" : "notice-error"}`}>{state.message}</div>}
     </form>
   );

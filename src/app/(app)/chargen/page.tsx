@@ -136,7 +136,7 @@ export default async function ChargenPage({
                   {r.kind === "return" ? <span className="tag tag-info">RETOURE</span> : r.kind === "unknown" ? <span className="tag tag-warn">UNBEKANNT</span> : <span className="tag tag-neutral">EINKAUF {r.skuSchema}</span>}
                 </td>
                 <td className="num right" style={{ color: r.cost === null ? "var(--danger)" : undefined }}>
-                  {r.cost === null ? "fehlt" : formatEuro(r.cost)}
+                  {r.cost === null ? <span className="tag tag-missing">fehlt</span> : formatEuro(r.cost)}
                 </td>
                 <td className="small">{r.source ? COST_SOURCE_LABEL[r.source] : "–"}</td>
               </tr>

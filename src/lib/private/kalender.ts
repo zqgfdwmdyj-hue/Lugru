@@ -140,10 +140,12 @@ export type CalItem = {
   note?: string;
   calendar?: string;
   color?: string;
+  /** Kürzel des Familienkalenders (z. B. „Fa“) – Kalender nie nur über die Farbe unterscheiden. */
+  abbr?: string;
 };
 
 type Row<T> = { id: string; data: T };
-export type ExternEvent = { id: string; title: string; day: string; endDay?: string | null; time?: string | null; calendar: string; color?: string | null };
+export type ExternEvent = { id: string; title: string; day: string; endDay?: string | null; time?: string | null; calendar: string; color?: string | null; abbr?: string };
 
 export type CalendarInput = {
   names: { a: string; b: string };
@@ -253,7 +255,7 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
   for (const ev of input.extern ?? []) {
     const end = ev.endDay && ev.endDay > ev.day ? ev.endDay : undefined;
     if (ev.day > to || (end ?? ev.day) < from) continue;
-    out.push({ key: `extern:${ev.id}`, kind: "extern", day: ev.day, ...(end ? { endDay: end } : {}), ...(ev.time ? { from: ev.time } : {}), title: ev.title, people: ["a", "b"], href: "", calendar: ev.calendar, color: ev.color ?? undefined });
+    out.push({ key: `extern:${ev.id}`, kind: "extern", day: ev.day, ...(end ? { endDay: end } : {}), ...(ev.time ? { from: ev.time } : {}), title: ev.title, people: ["a", "b"], href: "", calendar: ev.calendar, color: ev.color ?? undefined, ...(ev.abbr ? { abbr: ev.abbr } : {}) });
   }
   return out;
 }

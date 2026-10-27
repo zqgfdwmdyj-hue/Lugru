@@ -76,7 +76,7 @@ export default async function IdeaPage({ params, searchParams }: { params: Promi
           {article ? (
             <Link className="btn" href={`/artikel/${article.id}`}>Artikelstamm: {article.sku}</Link>
           ) : (
-            <form action={ideaToArticleAction}><input type="hidden" name="id" value={i.id} /><button className="btn" type="submit">In Artikelstamm übernehmen</button></form>
+            <form action={ideaToArticleAction}><input type="hidden" name="id" value={i.id} /><button className="btn btn-primary" type="submit">In Artikelstamm übernehmen</button></form>
           )}
           {(NEXT[i.status] ?? []).map(([s, text], n) => (
             <form key={s} action={setIdeaStatusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={s} /><button className={`btn${n === 0 ? " btn-primary" : ""}`} type="submit">{text}</button></form>

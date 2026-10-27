@@ -141,7 +141,7 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
                 ]
             ).map((x) => (
               <li key={x.label} data-testid="return-source" data-present={x.n > 0 ? "1" : "0"}>
-                {x.n > 0 ? <span style={{ color: "var(--ok)" }}>✓ vorhanden</span> : <span style={{ color: "var(--warn)" }}>fehlt</span>} – {x.label}
+                {x.n > 0 ? <span style={{ color: "var(--ok)" }}>✓ vorhanden</span> : <span className="tag tag-missing">fehlt</span>} – {x.label}
                 {x.n > 0 ? <span className="muted"> ({x.n.toLocaleString("de-DE")} Zeilen)</span> : <span className="muted"> – {x.need}</span>}
               </li>
             ))}

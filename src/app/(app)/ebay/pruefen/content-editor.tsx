@@ -363,7 +363,7 @@ export function ContentEditor({
                     ))}
                   </div>
                   <div>
-                    <button type="button" className="btn btn-small" disabled={!pickAsp.size} onClick={takeAspects} data-testid="amazon-aspects">Merkmale übernehmen ({pickAsp.size})</button>
+                    <button type="button" className="btn btn-primary btn-small" disabled={!pickAsp.size} onClick={takeAspects} data-testid="amazon-aspects">Merkmale übernehmen ({pickAsp.size})</button>
                   </div>
                 </div>
               )}

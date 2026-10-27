@@ -10,6 +10,8 @@ import { refreshImportReminder } from "@/lib/tasks/system";
 import { BUCKET_LABEL, bucketCounts, bucketOf, isIdeaTask, planDay, type Bucket, type TaskLite } from "@/lib/today/logic";
 import { dataAreas, todaySignals } from "@/lib/today/service";
 import { calendarVisible } from "@/lib/calendar/visibility";
+import { textOn } from "@/lib/calendar/colors";
+import { calendarPalette } from "@/lib/calendar/palette";
 import { PrivateHint } from "@/app/(privat)/privat/hint";
 import { Suspense } from "react";
 import { TodayInsights } from "./today-insights";
@@ -64,7 +66,7 @@ function TaskRow({ task, today, step = false, idea = false }: { task: Task | Tas
             {"systemKey" in task && task.systemKey === null && "createdBy" in task && (
               <form action={deleteTask}>
                 <input type="hidden" name="id" value={task.id} />
-                <button type="submit" className="btn-link" aria-label="Aufgabe löschen" title="Löschen" style={{ color: "var(--muted)", fontSize: 18, lineHeight: 1 }}>×</button>
+                <button type="submit" className="btn-link x-danger" aria-label="Aufgabe löschen" title="Löschen" style={{ fontSize: 18, lineHeight: 1 }}>×</button>
               </form>
             )}
           </span>
@@ -133,6 +135,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   const allowed = appointments.filter((a) => calendarVisible(session, a.calendarName, calState?.staffCalendars));
   const blockedCalendars = new Set(appointments.filter((a) => !calendarVisible(session, a.calendarName, calState?.staffCalendars)).map((a) => a.calendarName)).size;
   const calendars = [...new Set(allowed.map((a) => a.calendarName))].sort();
+  const { colors: calColors, abbr: calAbbr } = await calendarPalette(session.tenantId);
   const hidden = new Set(prefs.hiddenCalendars ?? []);
   const shownAppointments = allowed.filter((a) => !hidden.has(a.calendarName)).slice(0, 12);
   const timeOf = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
@@ -340,6 +343,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                     <div key={a.id} style={{ display: "flex", gap: 10 }}>
                       <span className="num" style={{ width: 64, flexShrink: 0 }}>{dueLabel(a.day, today)}</span>
                       <span style={{ minWidth: 0 }}>
+                        <b className="cal-abbr" style={{ ["--c" as string]: calColors.get(a.calendarName), ["--t" as string]: textOn(calColors.get(a.calendarName)) }} title={a.calendarName}>{calAbbr.get(a.calendarName)}</b>
                         {!a.allDay && <span className="num muted">{timeOf(a.startsAt)} </span>}
                         {a.title}
                         {a.location && <span className="muted"> · {a.location}</span>}
@@ -354,7 +358,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                   {calendars.map((c) => (
                     <form key={c} action={toggleCalendarAction}>
                       <input type="hidden" name="calendar" value={c} />
-                      <button type="submit" className={`chip${hidden.has(c) ? "" : " active"}`} title={hidden.has(c) ? "einblenden" : "ausblenden (z. B. private Kalender)"}>{hidden.has(c) ? "＋" : "✓"} {c}</button>
+                      <button type="submit" className={`chip${hidden.has(c) ? "" : " active"}`} title={hidden.has(c) ? "einblenden" : "ausblenden (z. B. private Kalender)"}><b className="cal-abbr" style={{ ["--c" as string]: calColors.get(c), ["--t" as string]: textOn(calColors.get(c)) }}>{calAbbr.get(c)}</b>{hidden.has(c) ? "＋ " : ""}{c}</button>
                     </form>
                   ))}
                 </div>
@@ -372,8 +376,8 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                   {problems.slice(0, 8).map((a) => (
                     <Link key={a.key} href={a.href} className="between" style={{ textDecoration: "none", color: "inherit", gap: 8 }} data-testid="data-problem">
                       <span style={{ minWidth: 0 }}>{a.label}</span>
-                      <span className="num small" style={{ color: a.error ? "var(--danger)" : a.substitute ? "var(--muted)" : "var(--warn)", whiteSpace: "nowrap" }} title={a.error ?? (a.substitute ? `${a.substitute.label} – reicht für ${a.substitute.covers.join(", ")}` : undefined)} data-testid={a.substitute ? "data-problem-substitute" : undefined}>
-                        {a.error ? "Fehler" : a.substitute ? `${a.missing ? "fehlt" : "veraltet"} · sellerboard ✓` : a.missing ? "fehlt" : `${a.last!.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}`}
+                      <span className={`tag ${a.error ? "tag-danger" : a.substitute ? "tag-info" : a.missing ? "tag-missing" : "tag-warn"}`} style={{ whiteSpace: "nowrap" }} title={a.error ?? (a.substitute ? `${a.substitute.label} – reicht für ${a.substitute.covers.join(", ")}` : undefined)} data-testid={a.substitute ? "data-problem-substitute" : undefined}>
+                        {a.error ? "Fehler" : a.substitute ? `${a.missing ? "fehlt" : "veraltet"} · sellerboard ✓` : a.missing ? "fehlt" : `veraltet ${a.last!.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" })}`}
                       </span>
                     </Link>
                   ))}

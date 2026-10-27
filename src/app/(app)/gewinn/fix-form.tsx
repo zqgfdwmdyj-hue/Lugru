@@ -26,7 +26,7 @@ export function FixForm({
         <input key={k} type="hidden" name={k} value={v} />
       ))}
       <input className="input num" name={name} aria-label={label} placeholder={placeholder ?? label} inputMode="decimal" required />
-      <button className="btn btn-small" type="submit" disabled={pending}>{pending ? "…" : "Speichern"}</button>
+      <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "…" : "Speichern"}</button>
       {state && <span className="small" role="status" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</span>}
     </form>
   );

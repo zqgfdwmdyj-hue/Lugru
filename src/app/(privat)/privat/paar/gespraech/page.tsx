@@ -50,7 +50,7 @@ export default async function GespraechPage() {
                   {t.data.appreciationsA && <div><strong>{s.partners.a}:</strong> {t.data.appreciationsA}</div>}
                   {t.data.appreciationsB && <div><strong>{s.partners.b}:</strong> {t.data.appreciationsB}</div>}
                   {t.data.agreed && <div><strong>Vereinbart:</strong> {t.data.agreed}</div>}
-                  <form action={deleteEntryAction}><input type="hidden" name="kind" value="gespraech" /><input type="hidden" name="id" value={t.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>
+                  <form action={deleteEntryAction}><input type="hidden" name="kind" value="gespraech" /><input type="hidden" name="id" value={t.id} /><button className="btn-link small danger" type="submit">löschen</button></form>
                 </div>
               </details>
             ))}

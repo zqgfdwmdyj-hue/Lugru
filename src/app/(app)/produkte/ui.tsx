@@ -97,7 +97,7 @@ export async function ProductHub({ session, d, base, tab, von, highlight, zeitra
         <div className="card card-pad"><div className="kpi-label">Aktive Angebote</div><div className="kpi-value">{activeOffers}</div></div>
         <div className="card card-pad">
           <div className="kpi-label">EK</div>
-          <div className="kpi-value">{d.ek.length === 1 && d.ek[0].effective ? formatEuro(d.ek[0].effective.cost) : ekMissing ? <span style={{ color: "var(--warn)", fontSize: 18 }}>fehlt</span> : `${d.ek.length} SKUs`}</div>
+          <div className="kpi-value">{d.ek.length === 1 && d.ek[0].effective ? formatEuro(d.ek[0].effective.cost) : ekMissing ? <span className="tag tag-missing" style={{ fontSize: 15 }}>fehlt</span> : `${d.ek.length} SKUs`}</div>
           {(ekMissing > 0 || ekConflict > 0) && <Link className="small" href={q("einkauf")} style={{ color: "var(--warn)" }}>{[ekMissing ? `${ekMissing} ohne EK` : null, ekConflict ? `${ekConflict} widersprüchlich` : null].filter(Boolean).join(" · ")} →</Link>}
         </div>
       </div>
@@ -203,7 +203,7 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
                       <div className="small muted" style={{ fontFamily: "inherit" }}>{COST_SOURCE_LABEL[e.effective.source]}{e.effective.inherited ? " (geerbt – bitte prüfen)" : ""}</div>
                     </>
                   ) : (
-                    <span style={{ color: "var(--warn)" }}>fehlt</span>
+                    <span className="tag tag-missing">fehlt</span>
                   )}
                 </td>
                 <td>
@@ -228,7 +228,7 @@ function Einkauf({ d, highlight, canFix }: { d: ProductDetail & object; highligh
                 <td className="small">{LOT_KIND[l.kind]}</td>
                 <td className="small">{formatDate(l.purchaseDate ?? l.returnDate)}{l.estimated ? " (geschätzt)" : ""}</td>
                 <td className="num right">{l.quantity ?? "–"}</td>
-                <td className="num right">{l.unitCostNet !== null ? formatEuro(Number(l.unitCostNet)) : canFix ? <FixForm action={setLotCostAction} hidden={{ lotId: l.id }} name="cost" label={`EK für Charge ${l.sku}`} placeholder="EK €" testid="lot-fix" /> : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
+                <td className="num right">{l.unitCostNet !== null ? formatEuro(Number(l.unitCostNet)) : canFix ? <FixForm action={setLotCostAction} hidden={{ lotId: l.id }} name="cost" label={`EK für Charge ${l.sku}`} placeholder="EK €" testid="lot-fix" /> : <span className="tag tag-missing">fehlt</span>}</td>
                 <td className="small">{l.supplier ?? <span className="muted">–</span>}</td>
                 <td className="small muted">{l.unitCostSource ? LOT_COST_SOURCE[l.unitCostSource] ?? l.unitCostSource : ""}</td>
               </tr>

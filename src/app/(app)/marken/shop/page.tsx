@@ -61,7 +61,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
                     <div className="small muted num">{p.asin}{p.fetchedAt ? ` · Stand ${p.fetchedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}` : ""}</div>
                     {p.lastError && <div className="small" style={{ color: "var(--danger)" }}>{p.lastError}</div>}
                   </div>
-                  <form action={removeProductAction}><input type="hidden" name="id" value={p.id} /><button className="btn-link small muted" type="submit">Entfernen</button></form>
+                  <form action={removeProductAction}><input type="hidden" name="id" value={p.id} /><button className="btn-link small danger" type="submit">Entfernen</button></form>
                 </div>
                 {d && (
                   <div className="shop-kpis">

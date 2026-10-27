@@ -3,6 +3,7 @@ import { and, eq, gte, lte, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
 import { isBusinessCalendar } from "@/lib/calendar/visibility";
+import { calendarPalette } from "@/lib/calendar/palette";
 import { DEFAULT_CALENDAR_NAME } from "@/lib/calendar/sync";
 import { getIntegration } from "@/lib/integrations/store";
 import { addDays, type AppointmentEntry, type DateEntry, type IntimEntry, type KidsEntry, type SleepEntry } from "./logic";
@@ -26,12 +27,14 @@ async function familyEvents(tenantId: string, from: string, to: string, exportCa
   ]);
   const staff = tenant[0]?.settings.calendar?.staffCalendars;
   const push = cfg?.calendarName || DEFAULT_CALENDAR_NAME;
-  return rows
-    .filter((ev) => !isBusinessCalendar(ev.calendarName, staff, push) && !(exportCalendar && ev.calendarName.trim().toLowerCase() === exportCalendar.trim().toLowerCase()))
+  const own = rows.filter((ev) => !isBusinessCalendar(ev.calendarName, staff, push) && !(exportCalendar && ev.calendarName.trim().toLowerCase() === exportCalendar.trim().toLowerCase()));
+  // Gleiche Farbe und gleiches Kürzel wie im Geschäftskalender (deutlich verschieden von Privat-Arten und anderen Kalendern).
+  const { colors, abbr } = await calendarPalette(tenantId);
+  return own
     .map((ev) => {
       // Ende inklusiv: ganztägig endet iCalendar am Folgetag 00:00, mit Uhrzeit zählt der Tag des Endes.
       const endDay = ev.endsAt ? (ev.allDay ? addDays(ev.endsAt.toISOString().slice(0, 10), -1) : berlinDay(new Date(ev.endsAt.getTime() - 1))) : null;
-      return { id: ev.id, title: ev.title, day: ev.day, endDay, time: ev.allDay ? null : berlinTime(ev.startsAt), calendar: ev.calendarName, color: ev.color };
+      return { id: ev.id, title: ev.title, day: ev.day, endDay, time: ev.allDay ? null : berlinTime(ev.startsAt), calendar: ev.calendarName, color: colors.get(ev.calendarName) ?? ev.color, abbr: abbr.get(ev.calendarName) };
     });
 }
 
@@ -57,5 +60,6 @@ export async function privateCalendar(session: Session, from: string, to: string
   );
   const active = rituals.filter((r) => r.data.active && r.data.from <= today && (!r.data.until || r.data.until >= today)).sort((a, b) => b.data.from.localeCompare(a.data.from))[0] ?? null;
   const rhythm = active ? touchRhythm(touches.map((t) => t.data), active.data) : null;
-  return { settings, items, ritual: active, rituals, rhythm, periods, externCount: extern.length };
+  const externCalendars = [...new Map(extern.map((e) => [e.calendar, { name: e.calendar, color: e.color ?? "#6e6e73", abbr: e.abbr ?? "" }])).values()];
+  return { settings, items, ritual: active, rituals, rhythm, periods, externCount: extern.length, externCalendars };
 }

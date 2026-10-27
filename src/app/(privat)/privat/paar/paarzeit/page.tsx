@@ -85,7 +85,7 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
                   <td className="small">{line(e.data) || "–"}{e.data.note ? <div className="muted">{e.data.note}</div> : null}{e.data.editedAt ? <span className="muted"> · geändert</span> : null}<StatusTag status={e.data.status} /></td>
                   <td className="right" style={{ whiteSpace: "nowrap" }}>
                     <Link className="btn-link small" href={`/privat/eintrag/${e.id}`}>ändern</Link>{" "}
-                    <form action={deleteEntryAction} style={{ display: "inline" }}><input type="hidden" name="kind" value="paarzeit" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>
+                    <form action={deleteEntryAction} style={{ display: "inline" }}><input type="hidden" name="kind" value="paarzeit" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small danger" type="submit">löschen</button></form>
                   </td>
                 </tr>
               ))}
@@ -102,7 +102,7 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
               <div key={i.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <form action={toggleIdeaAction}><input type="hidden" name="id" value={i.id} /><button className={`btn btn-small${i.data.done ? " btn-primary" : ""}`} type="submit" aria-pressed={Boolean(i.data.done)} title="gemacht / noch offen">{i.data.done ? "✓" : "○"}</button></form>
                 <span className="small" style={{ textDecoration: i.data.done ? "line-through" : undefined, flex: 1 }}>{i.data.text}</span>
-                <form action={deleteEntryAction}><input type="hidden" name="kind" value="dateidee" /><input type="hidden" name="id" value={i.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="Idee löschen">×</button></form>
+                <form action={deleteEntryAction}><input type="hidden" name="kind" value="dateidee" /><input type="hidden" name="id" value={i.id} /><button className="btn-link x-danger" type="submit" aria-label="Idee löschen">×</button></form>
               </div>
             ))}
           </div>

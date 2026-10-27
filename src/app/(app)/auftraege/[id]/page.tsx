@@ -50,7 +50,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                     <td>{item.title ?? productTitle ?? item.asin ?? <span className="muted">Name unbekannt</span>}</td>
                     <td className="num right">{item.quantity}</td>
                     <td className="num right">{formatEuro(item.price)}</td>
-                    <td className="num right">{weightGrams ? `${weightGrams} g` : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
+                    <td className="num right">{weightGrams ? `${weightGrams} g` : <span className="tag tag-missing">fehlt</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -71,7 +71,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 {f("email", "E-Mail", 260)}{f("phone", "Telefon", 180)}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <button className="btn" type="submit">Adresse speichern</button>
+                <button className="btn btn-primary" type="submit">Adresse speichern</button>
                 <a className="btn" href={`/auftraege/adressetiketten?ids=${order.id}`} target="_blank" rel="noreferrer" data-testid="address-label" title="Nur Name und Anschrift – Brother QL-800, Papier 62 mm × 29 mm, Skalierung 100 %">Adressetikett 62 × 29 mm</a>
               </div>
             </form>

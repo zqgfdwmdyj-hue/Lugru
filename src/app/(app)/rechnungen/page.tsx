@@ -80,7 +80,15 @@ export default async function RechnungenPage({ searchParams }: { searchParams: P
       <div className="grid-kpi">
         <div className="card card-pad"><div className="kpi-label">Wareneinkauf</div><div className="kpi-value">{formatEuro(tk("goods").sum)}</div><div className="small muted">{tk("goods").n} Belege, Gutschriften abgezogen</div></div>
         <div className="card card-pad"><div className="kpi-label">Betriebskosten</div><div className="kpi-value">{formatEuro(tk("expense").sum)}</div><div className="small muted">{tk("expense").n} Belege</div></div>
-        <div className="card card-pad"><div className="kpi-label">Zu prüfen</div><div className="kpi-value">{count.get("pruefen") ?? 0}</div><div className="small muted">unklare Art, unsicheres Datum, mögliche Duplikate</div></div>
+        {(count.get("pruefen") ?? 0) > 0 ? (
+          <Link href="/rechnungen?ansicht=pruefen" className="card card-pad kpi-attn" style={{ color: "inherit", textDecoration: "none" }} data-testid="kpi-review">
+            <div className="kpi-label">Zu prüfen – Handlungsbedarf</div>
+            <div className="kpi-value">{count.get("pruefen")}</div>
+            <div className="small">unklare Art, unsicheres Datum, mögliche Duplikate · <strong>Jetzt prüfen →</strong></div>
+          </Link>
+        ) : (
+          <div className="card card-pad kpi-ok" data-testid="kpi-review"><div className="kpi-label">Zu prüfen</div><div className="kpi-value">0</div><div className="small muted">nichts offen</div></div>
+        )}
         <div className="card card-pad"><DriveSync /></div>
       </div>
       {excluded > 0 && <div className="small muted">Nicht in den Summen: {excluded} Auftragsbestätigung{excluded === 1 ? "" : "en"}, Lieferscheine bzw. Mahnungen und alle ignorierten Belege.</div>}

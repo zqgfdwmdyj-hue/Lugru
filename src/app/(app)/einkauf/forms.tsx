@@ -71,7 +71,7 @@ export function PoEditForm({ po }: { po: PoFields }) {
       <div className="field"><label className="label" htmlFor="po-s">Versandkosten brutto</label><input className="input" id="po-s" name="shippingCostGross" inputMode="decimal" defaultValue={po.shippingCostGross ?? ""} /></div>
       <div className="field"><label className="label" htmlFor="po-n">Notiz</label><textarea className="textarea" id="po-n" name="notes" defaultValue={po.notes ?? ""} style={{ minHeight: 60 }} /></div>
       <Notice state={state} />
-      <div><button className="btn btn-small" type="submit" disabled={pending}>Speichern</button></div>
+      <div><button className="btn btn-primary btn-small" type="submit" disabled={pending}>Speichern</button></div>
     </form>
   );
 }

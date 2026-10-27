@@ -13,6 +13,9 @@ export type DayEntry = {
   link: string | null;
   location?: string | null;
   overdue?: boolean;
+  /** Kürzel des eigenen Kalenders bzw. Symbol der Systemkategorie – Bedeutung nie nur über die Farbe. */
+  abbr?: string;
+  icon?: string;
 };
 
 /** "2026-10" → gültiger Monat, sonst der aktuelle. */

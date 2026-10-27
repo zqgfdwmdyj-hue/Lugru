@@ -147,7 +147,7 @@ export default async function PalettenAbrechnungPage({ searchParams }: { searchP
                     <td className="right">
                       <form action={deleteCharge}>
                         <input type="hidden" name="id" value={x.charge.id} />
-                        <button className="btn-link small" type="submit" title="Leistung löschen" style={{ color: "var(--danger)" }}>löschen</button>
+                        <button className="btn-link small danger" type="submit" title="Leistung löschen">löschen</button>
                       </form>
                     </td>
                     <td className="num right">{formatEuro(x.amount)}</td>

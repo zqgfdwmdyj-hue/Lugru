@@ -151,7 +151,7 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
                 <form action={saveNoteAction} style={{ display: "flex", gap: 6 }}>
                   <input type="hidden" name="id" value={x.id} />
                   <input className="input" name="note" defaultValue={x.note ?? ""} placeholder="Notiz, z. B. „Unterlagen am 30.09. hochgeladen“" style={{ flex: 1, fontSize: 13 }} aria-label="Notiz" />
-                  <button className="btn btn-small" type="submit">Notiz speichern</button>
+                  <button className="btn btn-primary btn-small" type="submit">Notiz speichern</button>
                 </form>
                 <div style={{ display: "flex", gap: 8 }}>
                   {x.status === "open" ? (

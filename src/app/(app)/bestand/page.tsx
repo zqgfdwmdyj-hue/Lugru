@@ -171,7 +171,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                       </Link>
                     ))}
                   </td>
-                  <td className="num right">{r.cost !== null ? <span title={`EK ${formatEuro(r.cost)} (${COST_SOURCE_LABEL[costs.get(r.sku)!.source]})`}>{formatEuro((r.fba + r.reserved + r.inbound + Math.max(0, r.own)) * r.cost)}</span> : <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} style={{ color: "var(--warn)" }} title="EK fehlt – nicht bewertet">EK fehlt</Link>}</td>
+                  <td className="num right">{r.cost !== null ? <span title={`EK ${formatEuro(r.cost)} (${COST_SOURCE_LABEL[costs.get(r.sku)!.source]})`}>{formatEuro((r.fba + r.reserved + r.inbound + Math.max(0, r.own)) * r.cost)}</span> : <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} className="tag tag-missing" title="EK fehlt – nicht bewertet">EK fehlt</Link>}</td>
                   <td className="num small" style={{ color: !r.lastSale || r.lastSale < noSaleBefore ? "var(--warn)" : undefined }}>{formatDate(r.lastSale)}</td>
                 </tr>
               ))}
@@ -188,7 +188,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
                 <div className="field"><label className="label" htmlFor="os-l">Lagerplatz</label><input className="input" id="os-l" name="location" /></div>
               </div>
               <div className="field"><label className="label" htmlFor="os-r">Grund</label><input className="input" id="os-r" name="reason" placeholder="Wareneingang, Korrektur …" /></div>
-              <button className="btn" type="submit">Speichern</button>
+              <button className="btn btn-primary" type="submit">Speichern</button>
             </form>
           </section>
           <section className="card card-pad stack">

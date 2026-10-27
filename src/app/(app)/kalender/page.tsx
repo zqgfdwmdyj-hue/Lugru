@@ -9,20 +9,16 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { createTask } from "@/lib/tasks/actions";
 import { calendarVisible, isBusinessCalendar, seesAllCalendars } from "@/lib/calendar/visibility";
+import { SYSTEM_CATEGORIES, textOn } from "@/lib/calendar/colors";
+import { calendarPalette } from "@/lib/calendar/palette";
 import { saveStaffCalendarsAction } from "./actions";
 import { SyncButton } from "./sync-button";
 
 // Monatsansicht wie in Apple Kalender: eigene Termine (aus den verbundenen Kalendern, in deren Farbe)
 // und alles mit Datum aus dem System – Aufgaben, Fristen, Versand, Ansprüche, geplante Zahlungen.
 
-const SYSTEM_COLORS: Record<string, string> = {
-  Aufgabe: "#0E6B5F",
-  Fall: "#B42318",
-  Ansprüche: "#8A4F00",
-  Versand: "#1F5FAE",
-  Geld: "#1C6B3A",
-};
-const SYSTEM_LABELS: Record<string, string> = { Aufgabe: "Aufgabe", Fall: "Frist", Ansprüche: "Ansprüche", Versand: "Versand", Geld: "Geld" };
+const SYSTEM_COLORS: Record<string, string> = Object.fromEntries(Object.entries(SYSTEM_CATEGORIES).map(([k, v]) => [k, v.color]));
+const SYSTEM_LABELS: Record<string, string> = Object.fromEntries(Object.entries(SYSTEM_CATEGORIES).map(([k, v]) => [k, v.label]));
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const MAX_IN_CELL = 4;
 
@@ -88,8 +84,10 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
     : events.filter((ev) => calendarVisible(session, ev.calendarName, staffCalendars) && (scope === "alle" || (scope === "geschaeft") === isBusinessCalendar(ev.calendarName, staffCalendars, pushName)));
   const hiddenCalendars = restricted ? 0 : new Set(events.filter((ev) => !calendarVisible(session, ev.calendarName, staffCalendars)).map((ev) => ev.calendarName)).size;
   const allCalendarNames = [...new Set([...(calState?.read ?? []).map((r) => r.name), ...events.map((e) => e.calendarName)])].sort((a, b) => a.localeCompare(b, "de"));
+  // Ähnliche Kalenderfarben (z. B. Familie/Privat beide gelb) bekommen eine deutlich andere Ersatzfarbe, dazu ein Kürzel.
+  const { colors: calColors, abbr: calAbbr } = await calendarPalette(session.tenantId);
   for (const ev of visibleEvents) {
-    const color = ev.color ?? "#6E6E73";
+    const color = calColors.get(ev.calendarName) ?? "#6E6E73";
     calendars.set(ev.calendarName, color);
     const endDay = ev.endsAt ? (ev.allDay ? ev.endsAt.toISOString().slice(0, 10) : addDaysIso(berlinDay(new Date(ev.endsAt.getTime() - 1)), 1)) : null;
     const days = spreadDays(ev.day, endDay, from, to);
@@ -102,6 +100,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
         label: ev.calendarName,
         link: null,
         location: ev.location,
+        abbr: calAbbr.get(ev.calendarName),
       }),
     );
   }
@@ -113,8 +112,9 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
       id: d.key,
       title: d.title,
       time: null,
-      color: SYSTEM_COLORS[d.category] ?? "#0E6B5F",
+      color: SYSTEM_COLORS[d.category] ?? "#2563eb",
       label: SYSTEM_LABELS[d.category] ?? d.category,
+      icon: SYSTEM_CATEGORIES[d.category]?.icon ?? "☑",
       link: d.link,
       overdue: d.date < today,
     });
@@ -178,7 +178,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                 <input type="checkbox" name="calendar" value={n} defaultChecked={(staffCalendars ?? []).some((x) => x.toLowerCase() === n.toLowerCase())} /> {n}
               </label>
             ))}
-            <button className="btn btn-small" type="submit" style={{ alignSelf: "flex-start" }}>Speichern</button>
+            <button className="btn btn-primary btn-small" type="submit" style={{ alignSelf: "flex-start" }}>Speichern</button>
           </form>
         </details>
       )}
@@ -189,10 +189,10 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
             <h2>{monthTitle(month)}</h2>
             <div className="cal-legend small">
               {[...calendars].map(([name, color]) => (
-                <span key={name}><i style={{ background: color }} />{name}</span>
+                <span key={name}><b className="cal-abbr" style={{ ["--c" as string]: color, ["--t" as string]: textOn(color) }}>{calAbbr.get(name)}</b>{name}</span>
               ))}
-              {Object.entries(SYSTEM_LABELS).map(([k, label]) => (
-                <span key={k}><i style={{ background: SYSTEM_COLORS[k] }} />{label}</span>
+              {Object.entries(SYSTEM_CATEGORIES).map(([k, c]) => (
+                <span key={k}><b className="cal-abbr" style={{ ["--c" as string]: c.color, ["--t" as string]: textOn(c.color) }}>{c.icon}</b>{c.label}</span>
               ))}
             </div>
           </div>
@@ -209,6 +209,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                   <span className="cal-items">
                     {list.slice(0, MAX_IN_CELL).map((e) => (
                       <span key={e.id} className={`cal-ev${e.time ? "" : " cal-ev-allday"}${e.overdue ? " cal-ev-overdue" : ""}`} style={{ ["--c" as string]: e.color }} title={`${e.time ? `${e.time} ` : ""}${e.title}`}>
+                        {(e.abbr || e.icon) && <b className="cal-abbr" style={{ ["--c" as string]: e.color, ["--t" as string]: textOn(e.color) }} aria-label={e.label}>{e.abbr ?? e.icon}</b>}
                         {e.time && <span className="cal-time">{e.time}</span>}
                         {e.title}
                       </span>
@@ -237,7 +238,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                   <div key={e.id} style={{ display: "flex", gap: 10 }}>
                     <span style={{ width: 4, borderRadius: 2, background: e.color, flexShrink: 0 }} />
                     <span style={{ minWidth: 0 }}>
-                      <span className="small muted">{e.time ?? "ganztägig"} · {e.label}{e.overdue ? " · überfällig" : ""}</span>
+                      <span className="small muted">{(e.abbr || e.icon) && <b className="cal-abbr" style={{ ["--c" as string]: e.color, ["--t" as string]: textOn(e.color) }}>{e.abbr ?? e.icon}</b>}{e.time ?? "ganztägig"} · {e.label}{e.overdue ? " · überfällig" : ""}</span>
                       <br />
                       {e.link ? <Link href={e.link}>{e.title}</Link> : e.title}
                       {e.location && <span className="small muted"> · {e.location}</span>}

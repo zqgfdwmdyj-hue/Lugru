@@ -129,7 +129,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
                 <SenderPicker options={senderOptions} defaultId={l.mailFromId && senders.boxes.some((b) => b.id === l.mailFromId) ? l.mailFromId : senders.defaultId} canEdit={canAccess(session, "posteingang")} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <button className="btn btn-primary" type="submit">Gelesen – jetzt senden</button>
-                  <button className="btn" type="submit" formAction={composeSaveAction}>Speichern</button>
+                  <button className="btn btn-primary" type="submit" formAction={composeSaveAction}>Speichern</button>
                   <button className="btn" type="submit" formAction={redraftAction}>Neu formulieren (KI)</button>
                 </div>
                 <div className="small muted">Geht über das gewählte Postfach (beim nächsten Mal wieder vorausgewählt) · höchstens {DAILY_MAIL_LIMIT} pro Tag · nie doppelt an dieselbe Firma (auch nicht über eine andere Marke).</div>
@@ -208,7 +208,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
             <h2>Angaben</h2>
             <div className="field"><label className="label" htmlFor="kind">Einstufung</label><select className="select" id="kind" name="kind" defaultValue={l.kind}>{LEAD_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k][0]}</option>)}</select></div>
             <div className="field"><label className="label" htmlFor="notes">Notizen</label><textarea className="textarea" id="notes" name="notes" defaultValue={l.notes ?? ""} style={{ minHeight: 60 }} /></div>
-            <div><button className="btn" type="submit">Speichern</button></div>
+            <div><button className="btn btn-primary" type="submit">Speichern</button></div>
           </form>
         </div>
 
@@ -224,7 +224,7 @@ export default async function LeadPage({ params, searchParams }: { params: Promi
               {l.status !== "neu" && !l.mailedAt && <button className="btn btn-small" type="submit" name="status" value="neu">Zurücksetzen</button>}
             </form>
             {l.supplierId ? <div className="small">Als Lieferant angelegt – unter Einkauf auswählbar.</div> : (
-              <form action={toSupplierAction}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit">Als Lieferant anlegen</button></form>
+              <form action={toSupplierAction}><input type="hidden" name="id" value={l.id} /><button className="btn btn-primary btn-small" type="submit">Als Lieferant anlegen</button></form>
             )}
           </section>
         </aside>

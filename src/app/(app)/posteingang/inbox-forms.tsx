@@ -19,7 +19,7 @@ export function EmlUpload() {
     <form action={action} className="stack" style={{ gap: 6 }}>
       <label className="label" htmlFor="eml">Mails als .eml hochladen (zum Testen)</label>
       <input className="input" id="eml" name="files" type="file" accept=".eml,message/rfc822" multiple required />
-      <button className="btn btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>
+      <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>
       {state && <div className={`notice small ${state.ok ? "notice-ok" : "notice-error"}`}>{state.message}</div>}
     </form>
   );

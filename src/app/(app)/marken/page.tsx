@@ -88,10 +88,10 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
                     const done = i.checklist.filter((c) => c.done).length;
                     const late = isOverdue(i.launchDate, i.status === "live" || ideaUnaccepted(i.status), today);
                     return (
-                      <Link key={i.id} href={`/marken/ideen/${i.id}`} className="idea-card" style={{ borderLeftColor: b?.color ?? "var(--accent)" }} data-testid="idea-card">
+                      <Link key={i.id} href={`/marken/ideen/${i.id}`} className="idea-card" data-testid="idea-card">
                         <div className="small muted">
-                          {b?.name}{i.occasion ? ` · ${occasionByKey(i.occasion)?.name ?? i.occasion}` : ""}
-                          {i.status === "review" && <span className="tag tag-info" style={{ marginLeft: 6 }}>prüfen</span>}
+                          {b && <span className="brand-dot" style={{ background: b.color ?? "var(--area)" }} aria-hidden="true" />}{b?.name}{i.occasion ? ` · ${occasionByKey(i.occasion)?.name ?? i.occasion}` : ""}
+                          {i.status === "review" && <span className="tag tag-warn" style={{ marginLeft: 6 }}>prüfen</span>}
                           {i.source === "ai" && <span className="tag tag-neutral" style={{ marginLeft: 6 }}>KI-Vorschlag</span>}
                           {late && <span className="tag tag-danger" style={{ marginLeft: 6 }} data-testid="idea-overdue">überfällig</span>}
                         </div>

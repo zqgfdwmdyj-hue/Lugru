@@ -140,7 +140,7 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
               <input type="hidden" name="caseId" value={claim.amazonCaseId ?? ""} />
               <label className="label" htmlFor="notes">Notizen</label>
               <textarea className="textarea" id="notes" name="notes" defaultValue={claim.notes ?? ""} style={{ minHeight: 100 }} />
-              <button className="btn btn-small" type="submit">Speichern</button>
+              <button className="btn btn-primary btn-small" type="submit">Speichern</button>
             </form>
           </section>
 

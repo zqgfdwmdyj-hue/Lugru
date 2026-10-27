@@ -27,7 +27,7 @@ function Cell({ list, month, names }: { list: Entry<KidsEntry>[]; month: string;
           <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}>
             <input type="hidden" name="kind" value="kinder" />
             <input type="hidden" name="id" value={e.id} />
-            <button className="btn-link small" type="submit" style={{ color: "var(--danger)" }} aria-label="Eintrag löschen" title={e.data.linkId ? "löscht auch die verknüpfte Auszeit" : undefined}>×</button>
+            <button className="btn-link x-danger" type="submit" aria-label="Eintrag löschen" title={e.data.linkId ? "löscht auch die verknüpfte Auszeit" : undefined}>×</button>
           </form>
         </div>
       ))}

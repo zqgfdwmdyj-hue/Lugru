@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { textOn } from "@/lib/calendar/colors";
 import { todayIso } from "@/lib/dates";
 import { addDays, isDay, monthGrid, shiftMonth, type PartnerKey } from "@/lib/private/logic";
 import { CAL_KIND_LABEL, INTIMATE_KINDS, filterItems, itemsByDay, weekDays, type CalKind } from "@/lib/private/kalender";
@@ -179,7 +180,12 @@ export default async function PrivatKalenderPage({ searchParams }: { searchParam
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <Link className="big-add" href={addHref(view === "tag" || anchor !== today ? anchor : today)} data-testid="pk-add">＋ Eintragen</Link>
-          {cal.externCount > 0 && <span className="small muted">Grau: Termine aus euren verbundenen Familienkalendern (nur lesen, geschäftliche Kalender sind ausgeblendet).</span>}
+          {cal.externCalendars.length > 0 && (
+            <span className="small muted" data-testid="pk-extern-legend">
+              Aus euren verbundenen Kalendern (nur lesen, geschäftliche ausgeblendet):{" "}
+              {cal.externCalendars.map((c) => <span key={c.name} style={{ marginRight: 8, whiteSpace: "nowrap" }}><b className="cal-abbr" style={{ "--c": c.color, "--t": textOn(c.color) } as React.CSSProperties}>{c.abbr}</b>{c.name}</span>)}
+            </span>
+          )}
         </div>
       </section>
     </>

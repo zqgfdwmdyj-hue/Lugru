@@ -62,7 +62,7 @@ export default async function AufgabenPage() {
             <textarea className="input" name="notes" rows={2} defaultValue={t.data.notes ?? ""} placeholder="Worum geht’s genau (Anleitung der Therapeutin)" />
             <textarea className="input" name="reflection" rows={2} defaultValue={t.data.reflection ?? ""} placeholder="Wie lief’s? Was war schwer, was hat geholfen?" />
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-small" type="submit">Speichern</button>
+              <button className="btn btn-primary btn-small" type="submit">Speichern</button>
               <button className="btn-link small" type="submit" formAction={deleteEntryAction} name="kind" value="aufgabe" style={{ color: "var(--danger)" }}>Aufgabe löschen</button>
             </div>
           </form>
@@ -138,7 +138,7 @@ export default async function AufgabenPage() {
                   <input type="hidden" name="id" value={a.id} />
                   <div className="small"><strong>{dm(a.data.day)}{a.data.time ? ` ${a.data.time}` : ""}</strong> · {a.data.title || withLabel(a.data.with)}</div>
                   <textarea className="input" name="notes" rows={2} defaultValue={a.data.notes ?? ""} placeholder="Was wurde besprochen? Was nehmen wir mit?" />
-                  <button className="btn btn-small" type="submit" style={{ alignSelf: "flex-start" }}>Notiz speichern</button>
+                  <button className="btn btn-primary btn-small" type="submit" style={{ alignSelf: "flex-start" }}>Notiz speichern</button>
                 </form>
               ))}
             </div>

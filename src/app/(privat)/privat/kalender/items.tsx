@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { textOn } from "@/lib/calendar/colors";
 import { STATUS_LABEL } from "@/lib/private/logic";
 import { KIND_STYLE, STATUS_ICON } from "@/lib/private/kind-style";
 import { CAL_KIND_LABEL, type CalItem, type CalKind, type DayItem } from "@/lib/private/kalender";
@@ -29,12 +30,12 @@ export function ItemChip({ item, isNew, showStatus = true, day }: { item: DayIte
     <>
       {showStatus && (
         <span className="pk-st">
-          <span aria-hidden="true">{KIND_STYLE[item.kind].icon} </span>
-          {CAL_KIND_LABEL[item.kind]}
-          {item.status && item.kind !== "periode" && item.kind !== "extern" ? <> · <span className="pk-sym" aria-hidden="true">{item.skipped ? "✕" : STATUS_ICON[item.status]}</span> {statusText(item)}</> : item.kind === "extern" && item.calendar ? ` · ${item.calendar}` : ""}
+          {item.kind === "extern" && item.abbr ? <b className="cal-abbr" style={{ "--c": colorOf(item), "--t": textOn(colorOf(item)) } as React.CSSProperties}>{item.abbr}</b> : <span aria-hidden="true">{KIND_STYLE[item.kind].icon} </span>}
+          {item.kind === "extern" && item.calendar ? `Kalender ${item.calendar}` : CAL_KIND_LABEL[item.kind]}
+          {item.status && item.kind !== "periode" && item.kind !== "extern" ? <> · <span className="pk-sym" aria-hidden="true">{item.skipped ? "✕" : STATUS_ICON[item.status]}</span> {statusText(item)}</> : ""}
         </span>
       )}
-      {!showStatus && !quiet && <span aria-hidden="true">{item.status && item.kind !== "extern" && item.kind !== "periode" ? (item.skipped ? "✕" : STATUS_ICON[item.status]) : KIND_STYLE[item.kind].icon} </span>}
+      {!showStatus && !quiet && (item.kind === "extern" && item.abbr ? <b className="cal-abbr" style={{ "--c": colorOf(item), "--t": textOn(colorOf(item)) } as React.CSSProperties}>{item.abbr}</b> : <span aria-hidden="true">{item.status && item.kind !== "extern" && item.kind !== "periode" ? (item.skipped ? "✕" : STATUS_ICON[item.status]) : KIND_STYLE[item.kind].icon} </span>)}
       {time && <span className="pk-time">{time}</span>}
       <span className="pk-title">{quiet ? "\u00a0" : `${item.title}${cont ? " (Fortsetzung)" : ""}`}</span>
     </>

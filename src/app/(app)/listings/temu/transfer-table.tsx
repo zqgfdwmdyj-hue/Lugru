@@ -216,7 +216,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
           </section>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {nav(null, 2, "Weiter zum Preis")}
-            <button className="btn" type="button" disabled={busy || !picked.size} onClick={() => void submit("wawi")} data-testid="to-wawi" title="eBay-Angebot in die Wawi: Bestand aus der eBay-Menge, ab jetzt mit allen Kanälen abgeglichen – braucht keinen Preis und kein Paket">
+            <button className="btn btn-primary" type="button" disabled={busy || !picked.size} onClick={() => void submit("wawi")} data-testid="to-wawi" title="eBay-Angebot in die Wawi: Bestand aus der eBay-Menge, ab jetzt mit allen Kanälen abgeglichen – braucht keinen Preis und kein Paket">
               Nur in die Wawi übernehmen ({picked.size})
             </button>
           </div>
@@ -364,7 +364,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
               <button className="btn btn-primary" type="button" disabled={busy || !temuConnected || !ready.length} onClick={() => void submit("temu")} data-testid="to-temu">
                 {ready.length} auf Temu einstellen
               </button>
-              <button className="btn" type="button" disabled={busy || !picked.size} onClick={() => void submit("wawi")} data-testid="to-wawi-5">Nur in die Wawi übernehmen ({picked.size})</button>
+              <button className="btn btn-primary" type="button" disabled={busy || !picked.size} onClick={() => void submit("wawi")} data-testid="to-wawi-5">Nur in die Wawi übernehmen ({picked.size})</button>
               {busy && <span className="small muted">Reihe ein …</span>}
               {!temuConnected && <span className="small" style={{ color: "var(--warn)" }}>Temu ist nicht verbunden.</span>}
             </div>

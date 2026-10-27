@@ -1,19 +1,20 @@
-// Farbe und Symbol je Privat-Art – gleich in Kalender, Eintragen, Startseite und Rückblick. Die Bedeutung
+// Farbe und Symbol je Privat-Art (Farbabstand CIEDE2000 ≥ 22 zwischen allen Arten, z. B. Streicheln rosa ≠ Massage
+// apricot) – gleich in Kalender, Eintragen, Startseite und Rückblick. Die Bedeutung
 // steht immer zusätzlich als Text daneben (nie nur über die Farbe).
 
 import type { EntryStatus } from "./logic";
 import type { CalKind } from "./kalender";
 
 export const KIND_STYLE: Record<CalKind, { color: string; icon: string }> = {
-  termin: { color: "#475569", icon: "📌" },
-  kinder: { color: "#2563eb", icon: "🧒" },
-  auszeit: { color: "#0f9f76", icon: "🌿" },
-  ausschlafen: { color: "#ca8a04", icon: "😴" },
+  termin: { color: "#78716c", icon: "📌" },
+  kinder: { color: "#0284c7", icon: "🧒" },
+  auszeit: { color: "#059669", icon: "🌿" },
+  ausschlafen: { color: "#854d0e", icon: "😴" },
   paarzeit: { color: "#7c3aed", icon: "🥂" },
-  naehe: { color: "#e11d48", icon: "❤️" },
+  naehe: { color: "#dc2626", icon: "❤️" },
   streicheln: { color: "#ec4899", icon: "🤲" },
-  massage: { color: "#db2777", icon: "💆" },
-  periode: { color: "#8e1652", icon: "🩸" },
+  massage: { color: "#d97706", icon: "💆" },
+  periode: { color: "#9d174d", icon: "🩸" },
   extern: { color: "#6e6e73", icon: "📅" },
 };
 

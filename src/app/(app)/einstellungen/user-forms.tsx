@@ -87,7 +87,7 @@ export function AccessForm({ userId, areas, brandIds, readOnly, allAreas, brands
         <span><strong>Nur ansehen</strong> – sieht die freigegebenen Bereiche, kann aber nichts ändern, senden, hochladen oder bei Keepa/Amazon/eBay abfragen (z. B. für Prüfer oder einen Testzugang).</span>
       </label>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button className="btn btn-small" type="submit" disabled={pending}>Rechte speichern</button>
+        <button className="btn btn-primary btn-small" type="submit" disabled={pending}>Rechte speichern</button>
         {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</span>}
       </div>
     </form>

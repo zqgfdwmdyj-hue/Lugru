@@ -55,7 +55,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
                 <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title ?? r.asin}</td>
                 <td className="num right" title={breakdownText(r.breakdown)}>{r.stock}</td>
                 <td className="num right" data-testid="repricer-ek" data-sku={r.sku}>
-                  {r.unitCost === null ? <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} style={{ color: "var(--warn)" }}>fehlt</Link> : formatEuro(r.unitCost)}
+                  {r.unitCost === null ? <Link href={`/produkte/sku/${encodeURIComponent(r.sku)}?tab=einkauf`} className="tag tag-missing">fehlt</Link> : formatEuro(r.unitCost)}
                   {r.costSource && <div className="small muted" style={{ fontFamily: "inherit" }}>{COST_SOURCE_LABEL[r.costSource]}</div>}
                   {r.sbCostNote && <div className="small" style={{ color: "var(--warn)", fontFamily: "inherit" }} data-testid="repricer-sb-note">sellerboard {formatEuro(r.sbCostNote.value)}{r.sbCostNote.placeholder ? " (Platzhalter)" : " weicht ab"}</div>}
                 </td>

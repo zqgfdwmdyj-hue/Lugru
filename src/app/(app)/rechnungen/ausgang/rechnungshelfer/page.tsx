@@ -157,7 +157,7 @@ export default async function RechnungshelferPage({ searchParams }: { searchPara
               <input type="checkbox" name="mailCustomer" defaultChecked={Boolean(cfg.mailCustomer)} />
               Erstellte Rechnung gleich an den Kunden mailen (wenn beim Kunden eine E-Mail steht)
             </label>
-            <div><button className="btn btn-small" type="submit">Speichern</button></div>
+            <div><button className="btn btn-primary btn-small" type="submit">Speichern</button></div>
           </form>
         </section>
       </div>

@@ -78,12 +78,12 @@ export default async function ShipmentPage({ params }: { params: Promise<{ id: s
                             <input className="input" name="heightCm" placeholder="H cm" defaultValue={p.heightCm ?? ""} aria-label="Höhe" style={{ padding: "4px 6px", fontSize: 12 }} />
                             <input className="input" name="prep" placeholder="Prep, z. B. Beutel" defaultValue={p.prepInstructions ?? ""} aria-label="Prep" style={{ gridColumn: "span 3", padding: "4px 6px", fontSize: 12 }} />
                             <label className="small" style={{ display: "flex", gap: 4, alignItems: "center" }}><input type="checkbox" name="hazmat" defaultChecked={p.isHazmat} /> Gefahrgut</label>
-                            <button className="btn btn-small" type="submit" style={{ gridColumn: "span 4" }}>Speichern</button>
+                            <button className="btn btn-primary btn-small" type="submit" style={{ gridColumn: "span 4" }}>Speichern</button>
                           </form>
                         </details>
                       )}
                     </td>
-                    <td className="num">{item.fnsku ?? <span style={{ color: "var(--danger)" }}>fehlt</span>}</td>
+                    <td className="num">{item.fnsku ?? <span className="tag tag-missing">fehlt</span>}</td>
                     <td className="num right">{cost ? formatEuro(cost) : "–"}</td>
                     <td className="right">
                       {editable ? (
@@ -104,7 +104,7 @@ export default async function ShipmentPage({ params }: { params: Promise<{ id: s
                       {editable && (
                         <form action={removeItem} style={{ display: "inline" }}>
                           <input type="hidden" name="itemId" value={item.id} />
-                          <button className="btn-link" type="submit" aria-label="Entfernen" style={{ marginLeft: 6, color: "var(--muted)" }}>×</button>
+                          <button className="btn-link x-danger" type="submit" aria-label="Entfernen" style={{ marginLeft: 6 }}>×</button>
                         </form>
                       )}
                     </td>
@@ -131,7 +131,7 @@ export default async function ShipmentPage({ params }: { params: Promise<{ id: s
                     {(["lengthCm", "widthCm", "heightCm", "weightKg"] as const).map((k) => (
                       <input key={k} className="input num" name={k} defaultValue={b[k] ?? ""} placeholder={{ lengthCm: "L", widthCm: "B", heightCm: "H", weightKg: "kg" }[k]} aria-label={k} style={{ padding: "4px 6px", fontSize: 12 }} disabled={!editable} />
                     ))}
-                    {editable && <button className="btn btn-small" type="submit" style={{ gridColumn: "span 4" }}>Maße speichern</button>}
+                    {editable && <button className="btn btn-primary btn-small" type="submit" style={{ gridColumn: "span 4" }}>Maße speichern</button>}
                   </form>
                   {content.length > 0 && (
                     <div className="small muted" style={{ marginTop: 6 }}>

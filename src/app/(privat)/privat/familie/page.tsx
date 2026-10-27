@@ -48,7 +48,7 @@ export default async function FamiliePage() {
             <option value="beide">beide</option>
           </select>
           <button className="btn btn-small" type="submit">ändern</button>
-          <button className="btn-link small" type="submit" formAction={deleteEntryAction} name="kind" value="zustaendig" style={{ color: "var(--danger)", marginLeft: "auto" }}>löschen</button>
+          <button className="btn-link small danger" type="submit" formAction={deleteEntryAction} name="kind" value="zustaendig" style={{ marginLeft: "auto" }}>löschen</button>
         </form>
       </div>
     );

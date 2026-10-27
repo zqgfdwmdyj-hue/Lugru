@@ -33,7 +33,7 @@ export function ImageUpload({ id }: { id: string }) {
     <form action={action} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="id" value={id} />
       <input className="input" type="file" name="images" multiple accept="image/jpeg,image/png,image/webp" aria-label="Bilder" />
-      <button className="btn btn-small" type="submit" disabled={pending}>{pending ? "Lade hoch …" : "Bilder hochladen"}</button>
+      <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lade hoch …" : "Bilder hochladen"}</button>
       <Notice state={state} />
     </form>
   );

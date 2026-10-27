@@ -29,7 +29,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         <form action={syncNowAction}><input type="hidden" name="kanal" value={sp.kanal ?? ""} /><button className="btn btn-primary" type="submit">Bestand jetzt abgleichen</button></form>
         <Link className="btn" href="/listings/temu" title="Alle eBay-Angebote (auch ältere) auf Temu einstellen oder in die Wawi übernehmen">eBay-Angebote übernehmen (Temu/Wawi)</Link>
-        <form action={adoptEbayAction}><button className="btn" type="submit" title="Angebote aus dem eBay-Tool in die Wawi holen und fehlenden Wawi-Bestand aus der eBay-Menge anlegen">eBay-Angebote aus dem Tool übernehmen</button></form>
+        <form action={adoptEbayAction}><button className="btn btn-primary" type="submit" title="Angebote aus dem eBay-Tool in die Wawi holen und fehlenden Wawi-Bestand aus der eBay-Menge anlegen">eBay-Angebote aus dem Tool übernehmen</button></form>
         <form action={linkAmazonFbmAction}><button className="btn" type="submit" title="SKUs aus Amazon-FBM-Bestellungen mit eigenem Lager">Amazon FBM verknüpfen</button></form>
         <form action={draftsFromOwnStock} style={{ display: "flex", gap: 6 }}>
           <label htmlFor="dch" className="sr-only">Kanal</label>
@@ -124,7 +124,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                       <form action={publishAction} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit" title={atTemu ? "Schon bei Temu – fragt nur den Stand ab (aktiv, unvollständig, Entwurf)" : undefined}>{atTemu ? "Stand abfragen" : l.status === "active" ? "Aktualisieren" : "Einstellen"}</button></form>
                     )}
                     <Link className="btn-link small" href={`/listings?sku=${encodeURIComponent(l.sku)}&kanal=${l.channel}`} style={{ marginLeft: 8 }}>bearbeiten</Link>
-                    <form action={deleteListing} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 8, color: "var(--muted)" }}>×</button></form>
+                    <form action={deleteListing} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn-link x-danger" type="submit" style={{ marginLeft: 8 }}>×</button></form>
                   </td>
                 </tr>
                 );

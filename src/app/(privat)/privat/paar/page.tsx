@@ -91,7 +91,7 @@ export default async function PaarPage({ searchParams }: { searchParams: Promise
                     <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 8 }}>
                       <input type="hidden" name="kind" value="intim" />
                       <input type="hidden" name="id" value={e.id} />
-                      <button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button>
+                      <button className="btn-link small danger" type="submit">löschen</button>
                     </form>
                   </li>
                 ))}

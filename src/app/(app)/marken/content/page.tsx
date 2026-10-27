@@ -85,8 +85,9 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
             const b = brandById.get(p.brandId);
             const post = [p.caption, p.hashtags].filter(Boolean).join("\n\n");
             return (
-              <article key={p.id} className="card card-pad stack" style={{ gap: 8, borderLeft: `4px solid ${b?.color ?? "var(--accent)"}` }}>
+              <article key={p.id} className="card card-pad stack" style={{ gap: 8 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {b && <span className="small" style={{ fontWeight: 650 }}><span className="brand-dot" style={{ background: b.color ?? "var(--area)" }} aria-hidden="true" />{b.name}</span>}
                   <span className="tag tag-neutral">{PHASE_LABEL[contentPhase(p.status, p.plannedFor, p.source)]}</span>
                   <span className={`tag ${CONTENT_STATUS_LABEL[p.status][1]}`}>{CONTENT_STATUS_LABEL[p.status][0]}</span>
                   {late(p) && (contentDateKind(p.status) === "termin" ? <span className="tag tag-danger" data-testid="content-late">überfällig</span> : <span className="tag tag-warn" data-testid="content-wish-late">Wunschdatum verstrichen</span>)}
@@ -94,8 +95,8 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
                   <span className="tag tag-neutral">{PLATFORM[p.platform]}</span>
                   {p.format && <span className="small muted">{p.format}</span>}
                   <span className="small muted" style={{ marginLeft: "auto" }} data-testid="content-date">
-                    {b?.name}{idea ? ` · ${idea}` : ""}
-                    {p.plannedFor ? (contentDateKind(p.status) === "termin" ? <> · <strong style={{ color: "var(--ink)" }} data-kind="termin">Veröffentlichung am {formatDate(p.plannedFor)} (fester Termin)</strong></> : <span data-kind="wunsch"> · Wunschdatum {formatDate(p.plannedFor)} (unverbindlich)</span>) : p.status === "scheduled" ? <span data-kind="termin-fehlt" style={{ color: "var(--danger)" }}> · Fester Termin ohne Datum – bitte eintragen</span> : ""}
+                    {idea ?? ""}
+                    {p.plannedFor ? (contentDateKind(p.status) === "termin" ? <>{idea ? " · " : ""}<strong style={{ color: "var(--ink)" }} data-kind="termin">Veröffentlichung am {formatDate(p.plannedFor)} (fester Termin)</strong></> : <span data-kind="wunsch">{idea ? " · " : ""}Wunschdatum {formatDate(p.plannedFor)} (unverbindlich)</span>) : p.status === "scheduled" ? <span data-kind="termin-fehlt" style={{ color: "var(--danger)" }}>{idea ? " · " : ""}Fester Termin ohne Datum – bitte eintragen</span> : ""}
                   </span>
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 16 }}>„{p.hook}“</div>
@@ -123,9 +124,9 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
                     <input className="input" type="date" name="plannedFor" defaultValue={p.plannedFor ?? ""} style={{ width: "auto" }} aria-label={contentDateKind(p.status) === "termin" ? "Veröffentlichung am (fester Termin)" : "Wunschdatum (unverbindlich)"} />
                   </label>
                   <input className="input" name="publishedUrl" defaultValue={p.publishedUrl ?? ""} placeholder="Link zum Video (nach dem Posten)" style={{ flex: "1 1 180px" }} />
-                  <button className="btn btn-small" type="submit">Speichern</button>
+                  <button className="btn btn-primary btn-small" type="submit">Speichern</button>
                 </form>
-                <form action={deletePostAction}><input type="hidden" name="id" value={p.id} /><button className="btn-link small muted" type="submit">Löschen</button></form>
+                <form action={deletePostAction}><input type="hidden" name="id" value={p.id} /><button className="btn-link small danger" type="submit">Löschen</button></form>
               </article>
             );
           })}

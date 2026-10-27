@@ -254,7 +254,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                   {m.userId !== session.userId && (
                     <div className="stack" style={{ gap: 4, alignItems: "flex-end" }}>
                       <SetPasswordForm userId={m.userId} login={m.email} />
-                      <form action={removeUser}><input type="hidden" name="userId" value={m.userId} /><button className="btn-link small" style={{ color: "var(--danger)" }}>Entfernen</button></form>
+                      <form action={removeUser}><input type="hidden" name="userId" value={m.userId} /><button className="btn-link small danger">Entfernen</button></form>
                     </div>
                   )}
                 </td>

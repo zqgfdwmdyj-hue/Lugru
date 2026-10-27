@@ -57,7 +57,7 @@ export default async function KundenPage({ searchParams }: { searchParams: Promi
         {nextNo && <div className="small muted">Kundennummer {nextNo} ist nach deinem bisherigen Muster vorgeschlagen.</div>}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn btn-primary" type="submit">Kunde anlegen</button>
-          <button className="btn" type="submit" name="next" value="rechnung">Anlegen und Rechnung schreiben</button>
+          <button className="btn btn-primary" type="submit" name="next" value="rechnung">Anlegen und Rechnung schreiben</button>
         </div>
       </form>
     </>

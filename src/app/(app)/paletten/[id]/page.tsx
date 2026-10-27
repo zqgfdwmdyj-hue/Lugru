@@ -123,7 +123,7 @@ export default async function PaletteDetailPage({ params }: { params: Promise<{ 
                   <td>{c.description}</td>
                   <td className="num right">{String(c.quantity).replace(".", ",")} × {formatEuro(c.unitPrice)}</td>
                   <td className="num right">{formatEuro(Math.round(c.quantity * c.unitPrice * 100) / 100)}</td>
-                  <td className="right"><form action={deleteCharge}><input type="hidden" name="id" value={c.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form></td>
+                  <td className="right"><form action={deleteCharge}><input type="hidden" name="id" value={c.id} /><button className="btn-link small danger" type="submit">löschen</button></form></td>
                 </tr>
               ))}
             </tbody>

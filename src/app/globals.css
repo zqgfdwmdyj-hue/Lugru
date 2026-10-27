@@ -8,7 +8,7 @@
   --ink: #1b1d1f;
   --ink-2: #3d4247;
   --muted: #5b6168;
-  --border: #e2e0da;
+  --border: #dcd9d2;
   --border-strong: #cfccc4;
   --row: #efede8;
   --accent: #0e6b5f;
@@ -24,16 +24,20 @@
   --info-soft: #f1f5f9;
   /* Bereichsfarben (Orientierung): aktiver Menüpunkt, Überschrift, Symbole, dezente Flächen, Hauptaktion.
      Statusfarben (--ok grün, --warn gelb, --danger rot) sind davon getrennt und nur für Zustände. */
-  --area-heute: #2563eb;
-  --area-verkauf: #0f766e;
-  --area-produkte: #155e75;
-  --area-einkauf: #c2410c;
-  --area-finanzen: #6d28d9;
-  --area-service: #1e3a8a;
-  --area-marken: #a21caf;
-  --area-privat: #be185d;
-  --area-hilfe: #475569;
-  --area: #475569;
+  /* Gewählt per Farbabstand (CIEDE2000 ≥ 19 zwischen allen Paaren) und Kontrast (weiße Schrift ≥ 4,5:1). */
+  --area-heute: #2563eb;      /* Blau */
+  --area-verkauf: #0f766e;    /* Türkis */
+  --area-produkte: #172554;   /* Dunkelblau */
+  --area-einkauf: #c2410c;    /* Orange */
+  --area-finanzen: #7e22ce;   /* Violett */
+  --area-service: #57534e;    /* Schiefergrau */
+  --area-marken: #db2777;     /* Magenta */
+  --area-privat: #881337;     /* Beere (Privat) */
+  --area-hilfe: #57534e;
+  --area: #57534e;
+  /* Rahmen von Eingabefeldern, Nebenaktionen und Auswahl-Chips: mindestens 3:1 gegen Weiß. */
+  --control-border: #8c877f;
+  --link: #1d4ed8;
   --radius: 10px;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --sans: "IBM Plex Sans", system-ui, sans-serif;
@@ -44,8 +48,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { font-family: var(--sans); color: var(--ink); background: var(--bg); font-size: 14px; line-height: 1.45; }
-a { color: var(--accent); }
-a:hover { color: var(--accent-ink); }
+a { color: var(--link); text-underline-offset: 2px; }
+a:hover { color: color-mix(in srgb, var(--link) 75%, #000); }
 h1 { font-size: 26px; margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 h2 { font-size: 16px; margin: 0; }
 .num { font-family: var(--mono); }
@@ -269,7 +273,9 @@ h2 { font-size: 16px; margin: 0; }
 .idea-board { display: grid; grid-template-columns: repeat(4, minmax(200px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
 .idea-col { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
 .idea-col-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
-.idea-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.idea-card { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--ink); text-decoration: none; }
+/* Marke als kleiner Farbpunkt – kein farbiger Rand, der wie eine Warnung wirkt. */
+.brand-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: 0; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
 .idea-card:hover { box-shadow: 0 1px 4px rgba(0,0,0,.08); text-decoration: none; }
 @media (max-width: 760px) { .idea-board { grid-template-columns: repeat(4, 78vw); } }
 @media (max-width: 900px) { .profile-grid { grid-template-columns: minmax(0, 1fr) !important; } }
@@ -810,8 +816,16 @@ h2 { font-size: 16px; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
 .assign-form { display: flex; flex-direction: row !important; align-items: center; flex-wrap: wrap; }
 
-/* ===== Farbsystem: Bereichsfarbe je Seite =====
-   Die Bereichsleiste oben (data-area) bestimmt --area für die ganze Seite; Privat hat Rosé/Beere. */
+
+/* =====================================================================================================
+   Farb- und Gestaltungssystem
+   1. Bereichsfarbe (--area) nur für Orientierung: Navigation, Überschriften, Links, Hauptaktion.
+   2. Statusfarben nur für Zustände – immer mit Symbol und Text: ✓ erledigt (grün), ! zu prüfen (gelb),
+      ? fehlt (gelb, gestrichelt), ✕ Fehler/dringend (rot).
+   3. Aktive Auswahl überall gleich: kräftig gefüllt, weiße fette Schrift, zusätzlich ✓ bzw. Balken.
+   4. Knöpfe: Hauptaktion gefüllt, Nebenaktion mit Rahmen, Löschen rot umrandet.
+   Helle Tönungen unterscheiden Bereiche nicht – das tun Symbol, Balken und Vollfarbe.
+   ===================================================================================================== */
 .main:has(> .area-bar[data-area="heute"]) { --area: var(--area-heute); }
 .main:has(> .area-bar[data-area="verkauf"]) { --area: var(--area-verkauf); }
 .main:has(> .area-bar[data-area="produkte"]) { --area: var(--area-produkte); }
@@ -820,33 +834,93 @@ h2 { font-size: 16px; margin: 0; }
 .main:has(> .area-bar[data-area="finanzen"]) { --area: var(--area-finanzen); }
 .main:has(> .area-bar[data-area="marken"]) { --area: var(--area-marken); }
 .main:has(> .area-bar[data-area="hilfe"]) { --area: var(--area-hilfe); }
-.pshell { --area: var(--area-privat); }
+.pshell { --area: #9d174d; }
+.main, .pshell { --link: color-mix(in srgb, var(--area) 88%, #000); }
 
-/* Überschriften: Bereich (klein, farbig) über dem Titel, farbiger Balken am Titel. */
-.crumb { color: var(--area); font-weight: 600; letter-spacing: .01em; }
+/* Überschriften */
+.crumb { color: var(--area); font-weight: 650; letter-spacing: .01em; }
+.crumb a { color: inherit; }
 .page-head h1 { position: relative; padding-left: 14px; }
 .page-head h1::before { content: ""; position: absolute; left: 0; top: .16em; bottom: .16em; width: 5px; border-radius: 3px; background: var(--area); }
-/* Karten: ruhige weiße Fläche, Kopf dezent in der Bereichsfarbe. */
-.card-head { background: color-mix(in srgb, var(--area) 6%, var(--surface)); border-radius: 12px 12px 0 0; }
-.card-head h2 { color: color-mix(in srgb, var(--area) 70%, var(--ink)); }
-.grid-kpi > .card { border-top: 3px solid color-mix(in srgb, var(--area) 55%, var(--surface)); }
-.kpi-label { color: color-mix(in srgb, var(--area) 55%, var(--muted)); font-weight: 600; }
+.card-head { border-bottom: 2px solid color-mix(in srgb, var(--area) 35%, var(--border)); }
+.card-head h2 { color: color-mix(in srgb, var(--area) 75%, var(--ink)); }
+.grid-kpi > .card { border-top: 3px solid var(--area); }
+.kpi-label { color: var(--ink-2); font-weight: 650; }
 
-/* Seitenleiste: Symbol je Bereich, aktiver Punkt in der Bereichsfarbe. */
+/* Seitenleiste: Symbol + Vollfarb-Balken je Bereich, keine blassen Flächen; aktueller Bereich leicht getönt. */
+.nav-group { background: transparent; border-left: 5px solid var(--g, #8a8f95); }
+.nav-group.current { background: color-mix(in srgb, var(--g) 9%, var(--sidebar)); }
+.nav-group.current > .nav-head { color: var(--g); }
 .nav-ico { display: inline-block; width: 22px; font-size: 14px; line-height: 1; }
-.nav-group .nav-link.active { color: color-mix(in srgb, var(--g) 85%, #000); font-weight: 650; background: color-mix(in srgb, var(--g) 13%, var(--surface)); box-shadow: inset 3px 0 0 var(--g); }
-.nav-group.current { background: color-mix(in srgb, var(--g) 10%, transparent); }
-.area-tab.active { color: color-mix(in srgb, var(--g) 85%, #000); }
+.nav-group .nav-link.active, .nav-group.single .nav-section-link.active { background: var(--g); color: #fff; font-weight: 700; box-shadow: inset 4px 0 0 rgba(255, 255, 255, .55); }
+.nav-group .nav-link.active .nav-badge.quiet { background: rgba(255,255,255,.85); }
+.nav-group[data-section="privat"] { margin-top: 10px; }
+.nav-link.soon, .nav-link.soon:hover { color: var(--muted); }
 
-/* Status: grün = erledigt/erfolgreich, gelb = prüfen, rot = Fehler/dringend – mit Symbol. */
+/* Aktive Auswahl – überall gleich: gefüllt, weiß, fett, mit ✓ (Filter, Reiter, Umschalter, Auswahl-Chips). */
+.chip { border-color: var(--control-border); color: var(--ink); }
+.chip.active, .area-tab.active, .pk-seg a.active, .pick-chips input:checked + span, .rate-row input:checked + span, .kb-cat.active, .wizard-step.active, .pal-action.active {
+  background: var(--area); border-color: var(--area); color: #fff; font-weight: 700;
+}
+.chip.active::before, .area-tab.active::before, .pk-seg a.active::before, .pick-chips input:checked + span::before, .kb-cat.active::before, .pal-action.active::before { content: "✓ "; }
+.wizard-step.active .wizard-num { background: #fff; color: var(--area); }
+.area-tab { border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; }
+.area-tab.active { border-bottom-color: color-mix(in srgb, var(--area) 70%, #000); }
+.pick-chips span { border-color: var(--control-border); }
+.rate-row span { border-color: var(--control-border); }
+.kind-chip { border-color: var(--c); border-left-width: 4px; }
+.kind-chip.active { background: var(--c); border-color: var(--c); color: #fff; }
+
+/* Knöpfe */
+.btn { border-color: var(--control-border); }
+.btn-primary { background: var(--area); border-color: var(--area); color: #fff; font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.14); }
+.btn-primary:hover { background: color-mix(in srgb, var(--area) 80%, #000); border-color: color-mix(in srgb, var(--area) 80%, #000); color: #fff; }
+.btn-primary:focus-visible, .btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--area) 45%, transparent); outline-offset: 2px; }
+.btn-danger, .btn.btn-danger { background: var(--surface); border: 1.5px solid var(--danger); color: var(--danger); font-weight: 650; }
+.btn-danger:hover, .btn.btn-danger:hover { background: var(--danger); color: #fff; }
+.btn-link.danger, .link-danger { color: var(--danger) !important; font-weight: 650; text-decoration: underline; }
+.btn-link.danger::before, .link-danger::before, .btn-danger::before { content: "✕ "; }
+.btn:disabled, .btn-primary:disabled, .btn[aria-disabled="true"] { opacity: 1; background: #efede7; color: #6b6f75; border: 1.5px dashed var(--control-border); box-shadow: none; cursor: not-allowed; }
+.big-add { background: var(--area); border-color: var(--area); }
+.big-add:hover { background: color-mix(in srgb, var(--area) 80%, #000); }
+
+/* Eingaben: Rahmen kontrastreich, Platzhalter lesbar */
+.input, .select, .textarea { border-color: var(--control-border); }
+.input::placeholder, .textarea::placeholder { color: #6b6f75; }
+
+/* Status – Symbol + Text, überall gleich */
+.tag { border: 1px solid transparent; }
+.tag-ok { color: #14532d; background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.tag-warn { color: #713f12; background: var(--warn-soft); border-color: #e3b341; }
+.tag-missing { color: #713f12; background: var(--surface); border: 1.5px dashed #ca8a04; }
+.tag-danger, .tag-critical { color: #7f1d1d; background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+.tag-info { color: var(--ink-2); background: var(--info-soft); border-color: var(--border); }
 .tag-ok::before { content: "✓ "; }
 .tag-warn::before { content: "! "; font-weight: 800; }
+.tag-missing::before { content: "? "; font-weight: 800; }
 .tag-danger::before, .tag-critical::before { content: "✕ "; }
-.kind-chip { border-color: color-mix(in srgb, var(--c) 55%, var(--surface)); }
-.kind-chip.active { background: var(--c); border-color: var(--c); color: #fff; }
-.rb-li { list-style: none; margin-left: -18px; display: flex; align-items: center; gap: 6px; padding: 2px 0; flex-wrap: wrap; }
 .signal-warn { border-left-color: #ca8a04; }
-.big-add { background: var(--area); border-color: var(--area); }
-.big-add:hover { background: color-mix(in srgb, var(--area) 82%, #000); }
-.crumb a { color: inherit; }
-.pk-seg a.active { background: var(--area); }
+/* Kennzahl mit Handlungsbedarf (z. B. Rechnungen „Zu prüfen“) */
+.kpi-attn { background: var(--warn-soft); border-color: #e3b341 !important; border-top: 4px solid #ca8a04 !important; }
+.kpi-attn .kpi-label { color: #713f12; }
+.kpi-attn .kpi-label::before { content: "! "; font-weight: 800; }
+.kpi-attn .kpi-value { color: #713f12; }
+.kpi-ok .kpi-label::before { content: "✓ "; color: var(--ok); }
+
+/* Privat */
+.rb-li { list-style: none; margin-left: -18px; display: flex; align-items: center; gap: 6px; padding: 2px 0; flex-wrap: wrap; }
+.pnav-item.active { background: var(--area); color: #fff; box-shadow: inset 0 -4px 0 rgba(255,255,255,.5); }
+.pnav-item.active .pnav-add .pnav-icon, .pnav-add.active .pnav-icon { background: #fff; color: var(--area); }
+
+/* Kalender: Kürzel je Kalender, Symbol je Kategorie */
+.cal-abbr { display: inline-block; min-width: 18px; padding: 0 3px; margin-right: 3px; border-radius: 3px; background: var(--c); color: #fff; font-size: 10px; font-weight: 800; text-align: center; line-height: 14px; vertical-align: 1px; }
+.cal-legend .cal-abbr { margin-right: 4px; }
+.x-danger { color: var(--danger) !important; font-weight: 800; font-size: 16px; line-height: 1; }
+.danger-link { font-weight: 650; text-decoration: underline; }
+.danger-link::before { content: "✕ "; }
+.pk-st .cal-abbr { text-transform: none; }
+.cal-abbr { color: var(--t, #fff); }
+.nav-group.current > .nav-head, .area-name { color: color-mix(in srgb, var(--g) 72%, #000); }
+.nav-caret { color: var(--ink-2); }
+/* Bereichsfarbe als Text (Brotkrümel, Bereichsname) etwas dunkler – mindestens 4,5:1 auf dem Seitenhintergrund. */
+.crumb { color: color-mix(in srgb, var(--area) 80%, #000); }

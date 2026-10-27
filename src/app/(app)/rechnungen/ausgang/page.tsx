@@ -89,7 +89,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
           <div className="small">
             Nächste Nummer: <strong className="num" data-testid="next-number">{formatNumber(s, year, seq)}</strong>
             <br />
-            Bank: {s.iban ? <span className="num">…{s.iban.slice(-4)}</span> : <span style={{ color: "var(--warn)" }}>fehlt</span>} · Zahlungsziel {s.paymentDays ?? 14} Tage
+            Bank: {s.iban ? <span className="num">…{s.iban.slice(-4)}</span> : <span className="tag tag-missing">fehlt</span>} · Zahlungsziel {s.paymentDays ?? 14} Tage
           </div>
           {session.role === "owner" ? <Link className="btn btn-small" href="/einstellungen#rechnungen">In den Einstellungen ändern</Link> : <span className="small muted">Ändern kann der Inhaber unter Einstellungen.</span>}
         </section>

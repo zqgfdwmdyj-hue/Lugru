@@ -48,14 +48,14 @@ export default async function MailPage({ params }: { params: Promise<{ id: strin
           </section>
           <section className="card card-pad stack">
             <h2>Bearbeiten</h2>
-            {m.taskId ? <div className="small">✓ Als To-do auf der Startseite</div> : <form action={createTaskFromMail}><input type="hidden" name="id" value={m.id} /><button className="btn btn-small" type="submit">To-do anlegen</button></form>}
+            {m.taskId ? <div className="small">✓ Als To-do auf der Startseite</div> : <form action={createTaskFromMail}><input type="hidden" name="id" value={m.id} /><button className="btn btn-primary btn-small" type="submit">To-do anlegen</button></form>}
             <form action={correctMail} className="stack" style={{ gap: 6 }} data-testid="mail-correct">
               <input type="hidden" name="id" value={m.id} />
               <label className="small" htmlFor="topic">Thema</label>
               <select className="select" id="topic" name="topic" defaultValue={TOPICS.includes(topic) ? topic : "other"}>{TOPICS.map((t) => <option key={t} value={t}>{TOPIC_LABEL[t]}</option>)}</select>
               <label className="small" htmlFor="cat">Wichtigkeit</label>
               <select className="select" id="cat" name="category" defaultValue={m.category}>{MAIL_CATEGORIES.map((c) => <option key={c} value={c}>{MAIL_CATEGORY_LABEL[c][0]}</option>)}</select>
-              <button className="btn btn-small" type="submit">Einordnung speichern</button>
+              <button className="btn btn-primary btn-small" type="submit">Einordnung speichern</button>
             </form>
             {!m.archived && <form action={archiveMails}><input type="hidden" name="id" value={m.id} /><button className="btn-link small" type="submit">Archivieren</button></form>}
           </section>

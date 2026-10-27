@@ -186,7 +186,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
                     <td className="num right">{e.data.mood ?? "–"}</td>
                     <td className="num right">{e.data.sleepHours !== undefined ? `${n(e.data.sleepHours)} h` : e.data.sleepQuality ?? "–"}</td>
                     <td className="small">{e.data.sideEffects?.join(", ") || <span className="muted">–</span>}</td>
-                    <td className="right">{!viewing && <form action={deleteEntryAction}><input type="hidden" name="kind" value="tagebuch" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>}</td>
+                    <td className="right">{!viewing && <form action={deleteEntryAction}><input type="hidden" name="kind" value="tagebuch" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small danger" type="submit">löschen</button></form>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -224,7 +224,7 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
               {byMe.slice(0, 30).map((o) => (
                 <li key={o.id} className="small">
                   <strong>{dm(o.data.day)}</strong> über {nameOf(o.data.aboutUserId)}: {o.data.text}
-                  <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="beobachtung" /><input type="hidden" name="id" value={o.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>
+                  <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="beobachtung" /><input type="hidden" name="id" value={o.id} /><button className="btn-link small danger" type="submit">löschen</button></form>
                 </li>
               ))}
             </ul>
