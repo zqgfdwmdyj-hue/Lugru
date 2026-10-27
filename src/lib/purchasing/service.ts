@@ -258,6 +258,8 @@ export type SuggestionRow = {
   daily: number;
   daysLeft: number | null;
   need: number;
+  /** Fehlbestand in Stück (Bestand + bestellt unter 0) – sofort prüfen. */
+  shortfall: number;
 };
 
 export async function purchaseSuggestions(tenantId: string, opts: { leadDays: number; coverDays: number; all?: boolean }): Promise<SuggestionRow[]> {
@@ -381,7 +383,7 @@ export async function purchaseSuggestions(tenantId: string, opts: { leadDays: nu
   });
   return out
     .filter((r) => opts.all || r.need > 0)
-    .sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || b.daily - a.daily);
+    .sort((a, b) => b.shortfall - a.shortfall || (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || b.daily - a.daily);
 }
 
 /** Vorschläge je Lieferant als Bestellentwürfe anlegen (bestehende Entwürfe werden ergänzt). */

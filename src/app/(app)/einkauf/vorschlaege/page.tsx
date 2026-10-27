@@ -268,7 +268,9 @@ async function WawiWay({ tenantId, sp, leadDays, coverDays, vatRate }: { tenantI
                       {stock}
                       <div className="small muted">{r.fba} / {r.inbound} / {r.own} / {r.onOrder}</div>
                     </td>
-                    <td className="num right" style={r.daysLeft !== null && r.daysLeft < leadDays ? { color: "var(--danger)", fontWeight: 600 } : undefined}>{r.daysLeft === null ? "–" : `${r.daysLeft} T.`}</td>
+                    <td className="num right" style={r.shortfall > 0 || (r.daysLeft !== null && r.daysLeft < leadDays) ? { color: "var(--danger)", fontWeight: 600 } : undefined}>
+                      {r.shortfall > 0 ? <span data-testid="wawi-shortfall">Fehlbestand: {r.shortfall} Stück<div className="small" style={{ fontWeight: 400 }}>sofort prüfen</div></span> : r.daysLeft === null ? "–" : `${r.daysLeft} T.`}
+                    </td>
                     <td className="right"><input className="input" name={`qty:${r.asin}`} defaultValue={r.need || ""} inputMode="numeric" style={{ width: 64, textAlign: "right" }} aria-label="Menge" /></td>
                     <td>
                       <input className="input" name={`sup:${r.asin}`} defaultValue={sup} style={{ width: 110 }} aria-label="Lieferant" />

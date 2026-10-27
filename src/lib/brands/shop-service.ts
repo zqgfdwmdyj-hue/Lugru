@@ -5,7 +5,7 @@ import { askClaude, modelFor } from "@/lib/ai/claude";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey, keepaProducts, keepaSellerNames } from "@/lib/integrations/clients/keepa";
-import { asinFrom, listingPrompt, parseKeepaOwn, parseTikTokExport } from "./shop";
+import { asinFrom, listingPrompt, parseKeepaOwn, parseTikTokImport } from "./shop";
 
 const P = schema.brandProducts;
 const SNAP = schema.productSnapshots;
@@ -104,10 +104,10 @@ export async function tiktokTopSellers(tenantId: string, brandId: string, n = 15
 }
 
 export async function importTikTok(tenantId: string, brandId: string, fileName: string, rows: string[][]) {
-  const items = parseTikTokExport(rows);
+  const { items, columns, currency } = parseTikTokImport(rows);
   if (!items.length) throw new Error("In der Datei wurden keine Produkte gefunden.");
-  await db.insert(MI).values({ tenantId, brandId, source: "helium10-tiktok", fileName, items });
-  return items.length;
+  await db.insert(MI).values({ tenantId, brandId, source: "helium10-tiktok", fileName, items, meta: { columns, currency } });
+  return { n: items.length, columns, currency, suspect: items.filter((i) => i.revenueSuspect).length };
 }
 
 export async function suggestListing(tenantId: string, productId: string) {

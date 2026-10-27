@@ -7,6 +7,8 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { CONTENT_STATUSES, IDEA_KINDS, IDEA_STATUSES, type ChecklistItem } from "@/db/tables/brands";
 import { requireArea } from "@/lib/auth/session";
+import { contentIssues, fixYears } from "@/lib/brands/content-check";
+import { todayIso } from "@/lib/dates";
 import { checklistFor } from "@/lib/brands/ai";
 import { OCCASIONS } from "@/lib/brands/occasions";
 import { generateContent, generateIdeas, refreshBrandPlanning } from "@/lib/brands/service";
@@ -157,6 +159,12 @@ export async function updatePostAction(fd: FormData) {
   await ownPost(s, id);
   const status = z.enum(CONTENT_STATUSES).parse(fd.get("status"));
   const planned = str(fd, "plannedFor");
+  // Vor festem Termin bzw. Veröffentlichung: Jahreszahl und Anlass prüfen (z. B. „#halloween2025“ für 2026).
+  if ((status === "scheduled" || status === "published") && fd.get("geprueft") !== "on") {
+    const [p] = await db.select().from(schema.contentPosts).where(and(eq(schema.contentPosts.id, id), eq(schema.contentPosts.tenantId, s.tenantId)));
+    const issues = p ? contentIssues(p, /^\d{4}-\d{2}-\d{2}$/.test(planned) ? planned : null, todayIso()) : [];
+    if (issues.length) redirect(`/marken/content?hinweis=${encodeURIComponent(`Noch nicht freigegeben: ${issues.map((i) => i.text).join(" ")} Korrigieren oder „geprüft“ anhaken.`)}#post-${id}`);
+  }
   await db
     .update(schema.contentPosts)
     .set({
@@ -301,4 +309,18 @@ export async function purchaseIdeaAction(_prev: BrandState, fd: FormData): Promi
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
   redirect(target);
+}
+
+/** Veraltete Jahreszahlen in einem Beitrag korrigieren (nur die gemeldeten). */
+export async function fixPostYearAction(fd: FormData) {
+  const s = await requireArea("marken");
+  const id = uuid.parse(fd.get("id"));
+  await ownPost(s, id);
+  const [p] = await db.select().from(schema.contentPosts).where(and(eq(schema.contentPosts.id, id), eq(schema.contentPosts.tenantId, s.tenantId)));
+  if (!p) return;
+  const issues = contentIssues(p, p.plannedFor, todayIso());
+  if (!issues.some((i) => i.kind === "jahr")) return;
+  const f = fixYears(p, issues);
+  await db.update(schema.contentPosts).set({ ...f, updatedAt: new Date() }).where(and(eq(schema.contentPosts.id, id), eq(schema.contentPosts.tenantId, s.tenantId)));
+  revalidatePath("/marken", "layout");
 }

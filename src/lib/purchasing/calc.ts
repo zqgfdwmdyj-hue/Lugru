@@ -32,7 +32,8 @@ export type SuggestInput = {
   coverDays: number;
 };
 
-export type Suggestion = { daily: number; daysLeft: number | null; need: number };
+/** `shortfall`: Fehlbestand (Bestand + bestellt unter 0) – dann ist die Reichweite 0, nicht negativ. */
+export type Suggestion = { daily: number; daysLeft: number | null; need: number; shortfall: number };
 
 /**
  * Wie viel nachkaufen? Tagesabsatz aus 30 und 90 Tagen gewichtet (jüngere Verkäufe zählen mehr),
@@ -40,9 +41,11 @@ export type Suggestion = { daily: number; daysLeft: number | null; need: number 
  */
 export function suggest(i: SuggestInput): Suggestion {
   const daily = 0.6 * (i.sold30 / 30) + 0.4 * (i.sold90 / 90);
-  if (daily <= 0) return { daily: 0, daysLeft: null, need: 0 };
+  const shortfall = Math.max(0, -(i.stock + i.onOrder));
+  if (daily <= 0) return { daily: 0, daysLeft: null, need: 0, shortfall };
   const need = Math.max(0, Math.ceil(daily * (i.leadDays + i.coverDays) - i.stock - i.onOrder));
-  return { daily: Math.round(daily * 100) / 100, daysLeft: Math.floor((i.stock + i.onOrder) / daily), need };
+  // Negativer Bestand reicht nicht „−41 Tage“, sondern ist ein Fehlbestand (Reichweite 0).
+  return { daily: Math.round(daily * 100) / 100, daysLeft: Math.max(0, Math.floor((i.stock + i.onOrder) / daily)), need, shortfall };
 }
 
 export const PO_STATUS_LABEL: Record<string, [string, string]> = {

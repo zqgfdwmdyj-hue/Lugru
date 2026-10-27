@@ -2,6 +2,8 @@ import Link from "next/link";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { qcol } from "@/db/qcol";
+import { spellingGroups } from "@/lib/masterdata";
+import { SpellingCheck, suspiciousOf } from "./spelling-check";
 import { requireArea } from "@/lib/auth/session";
 import { createFeed } from "./actions";
 
@@ -21,6 +23,7 @@ export default async function LieferantenPage() {
           <Link className="btn btn-primary" href="/lieferanten/chancen">Chancen</Link>
         </div>
       </div>
+      <SpellingCheck title="Lieferanten-Stammdaten prüfen" groups={spellingGroups(suppliers.map((x) => x.name ?? x.code))} suspicious={suspiciousOf(suppliers.map((x) => x.name))} />
       <div className="row">
         <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
           <table className="table sticky-head">

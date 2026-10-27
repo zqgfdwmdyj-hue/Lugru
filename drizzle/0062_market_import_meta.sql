@@ -1,0 +1,1 @@
+ALTER TABLE "market_imports" ADD COLUMN "meta" jsonb DEFAULT '{}'::jsonb NOT NULL;

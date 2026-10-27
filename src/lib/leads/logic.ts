@@ -276,6 +276,13 @@ const COUNTRIES: Record<string, string> = {
   TR: "Türkei", CN: "China", HK: "Hongkong", US: "USA", AE: "Vereinigte Arabische Emirate",
   CA: "Kanada", JP: "Japan", KR: "Südkorea", TW: "Taiwan", IN: "Indien", VN: "Vietnam", TH: "Thailand", AU: "Australien",
   IL: "Israel", UA: "Ukraine", RS: "Serbien", IS: "Island", MX: "Mexiko", BR: "Brasilien",
+  // Weitere Herkunftsländer von Lieferanten und Herstellern (sonst blieb z. B. „MY“ neben „Malaysia“ stehen).
+  MY: "Malaysia", SG: "Singapur", ID: "Indonesien", PH: "Philippinen", PK: "Pakistan", BD: "Bangladesch", LK: "Sri Lanka", KH: "Kambodscha",
+  MM: "Myanmar", NP: "Nepal", MO: "Macau", MN: "Mongolei", NZ: "Neuseeland", ZA: "Südafrika", EG: "Ägypten", MA: "Marokko", TN: "Tunesien",
+  KE: "Kenia", NG: "Nigeria", ET: "Äthiopien", SA: "Saudi-Arabien", QA: "Katar", KW: "Kuwait", BH: "Bahrain", OM: "Oman", JO: "Jordanien",
+  LB: "Libanon", IR: "Iran", AR: "Argentinien", CL: "Chile", CO: "Kolumbien", PE: "Peru", UY: "Uruguay", RU: "Russland", BY: "Belarus",
+  MD: "Moldau", AL: "Albanien", MK: "Nordmazedonien", BA: "Bosnien und Herzegowina", ME: "Montenegro", XK: "Kosovo", GE: "Georgien",
+  AM: "Armenien", AZ: "Aserbaidschan", KZ: "Kasachstan", UZ: "Usbekistan", MC: "Monaco", SM: "San Marino", AD: "Andorra",
 };
 /** Ländercode (DE) → Name wie im Verpackungsregister (Deutschland). */
 export const countryName = (v: string | null | undefined) => {
@@ -304,7 +311,16 @@ const COUNTRY_ALIASES: Record<string, string[]> = {
   AE: ["United Arab Emirates", "UAE", "VAE", "ARE"],
   CA: ["Canada", "CAN"], JP: ["Japan", "JPN"], KR: ["South Korea", "Korea", "Republic of Korea", "Korea, Republik", "Republik Korea", "KOR"],
   TW: ["Taiwan", "TWN", "Republic of China"], IN: ["India", "IND"], VN: ["Viet Nam", "Vietnam", "VNM"], TH: ["Thailand", "THA"],
-  AU: ["Australia", "AUS"], IL: ["Israel", "ISR"], UA: ["Ukraine", "UKR"], RS: ["Serbia", "SRB"], IS: ["Iceland", "ISL"], MX: ["Mexico", "MEX"], BR: ["Brazil", "BRA"],
+  AU: ["Australia", "AUS"], IL: ["Israel", "ISR"], UA: ["Ukraine", "UKR"], RS: ["Serbia", "SRB"], IS: ["Iceland", "ISL"], MX: ["Mexico", "MEX"], BR: ["Brazil", "BRA", "Brasil"],
+  MY: ["MYS"], SG: ["Singapore", "SGP"], ID: ["Indonesia", "IDN"], PH: ["Philippines", "PHL"], PK: ["PAK"], BD: ["Bangladesh", "BGD"], LK: ["LKA"],
+  KH: ["Cambodia", "KHM"], MM: ["Burma", "MMR"], NP: ["NPL"], MO: ["Macao", "MAC"], MN: ["Mongolia", "MNG"], NZ: ["New Zealand", "NZL"],
+  ZA: ["South Africa", "ZAF"], EG: ["Egypt", "EGY"], MA: ["Morocco", "MAR", "Maroc"], TN: ["Tunisia", "TUN"], KE: ["Kenya", "KEN"], NG: ["NGA"],
+  ET: ["Ethiopia", "ETH"], SA: ["Saudi Arabia", "SAU"], QA: ["Qatar", "QAT"], KW: ["KWT"], BH: ["BHR"], OM: ["OMN"], JO: ["Jordan", "JOR"],
+  LB: ["Lebanon", "LBN"], IR: ["IRN"], AR: ["Argentina", "ARG"], CL: ["CHL"], CO: ["Colombia", "COL"], PE: ["PER"], UY: ["URY"],
+  RU: ["Russia", "Russian Federation", "RUS", "Russische Föderation"], BY: ["Belarus", "BLR", "Weißrussland"], MD: ["Moldova", "MDA", "Moldawien"],
+  AL: ["Albania", "ALB"], MK: ["North Macedonia", "Macedonia", "MKD", "Mazedonien"], BA: ["Bosnia and Herzegovina", "Bosnia", "BIH", "Bosnien"],
+  ME: ["MNE"], XK: ["XKX"], GE: ["Georgia", "GEO"], AM: ["Armenia", "ARM"], AZ: ["Azerbaijan", "AZE"], KZ: ["Kazakhstan", "KAZ"],
+  UZ: ["Uzbekistan", "UZB"], MC: ["MCO"], SM: ["SMR"], AD: ["AND"],
 };
 const COUNTRY_KEY = new Map<string, string>();
 for (const [code, name] of Object.entries(COUNTRIES)) {
@@ -325,6 +341,15 @@ export function countryGroups(): [string, string[]][] {
   const out = new Map<string, string[]>();
   for (const [alias, name] of COUNTRY_KEY) out.set(name, [...(out.get(name) ?? []), alias]);
   return [...out];
+}
+
+/**
+ * Unbekannte Länderangaben (z. B. ein Kürzel, das keinem Land zugeordnet ist) – zum Prüfen vorlegen statt
+ * stillschweigend als eigenes „Land“ zu führen.
+ */
+export function unknownCountry(v: string | null | undefined): boolean {
+  const t = (v ?? "").trim();
+  return Boolean(t) && countryKey(t) === t && !COUNTRY_KEY.has(t.toLowerCase());
 }
 
 /** Alle bekannten Schreibweisen (klein) eines Landes – für den Datenbankfilter. */

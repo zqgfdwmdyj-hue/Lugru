@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { headers } from "next/headers";
 import { and, eq, sql } from "drizzle-orm";
+import { spellingGroups } from "@/lib/masterdata";
+import { SpellingCheck, suspiciousOf } from "../spelling-check";
 import { db, schema } from "@/db";
 import { LEAD_SOURCES, type LeadSource } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
@@ -8,7 +10,7 @@ import { getSettings as ebaySettings } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { getIntegration } from "@/lib/integrations/store";
-import { brandMatches, countryKey, countryRank, dedupeBrands, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
+import { brandMatches, countryKey, countryRank, unknownCountry, dedupeBrands, isBrandNote, leadBrandHits, priorContact } from "@/lib/leads/logic";
 import { baseWhere, countryKeySql, inView, LEAD_VIEWS, listOrder, listQuery, NO_COUNTRY, parseListContext, viewWhere, type LeadView, type ListSort } from "@/lib/leads/list";
 import { lucidBookmarkletHref } from "@/lib/leads/lucid-bookmarklet";
 import { brandLoadStatus, contactContext, DAILY_MAIL_LIMIT, missingBrandCount, missingBrandIds, sendBlocker, sentToday } from "@/lib/leads/service";
@@ -56,6 +58,17 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
     const res = await db.select({ key: sql<string | null>`${countryKeySql}`, n: sql<number>`count(*)::int` }).from(L).where(and(...baseAllCountries, ...viewWhere(view))).groupBy(sql`1`);
     for (const r of res) byCountry.set(r.key, Number(r.n));
   }
+  // Nachvollziehbar: welche Schreibweisen zu einem Land zusammengefasst sind (in den Daten selbst bleibt alles, wie es ist).
+  const spellings = new Map<string, string[]>();
+  for (const r of await db.select({ raw: sql<string>`trim(${L.country})`, n: sql<number>`count(*)::int` }).from(L).where(and(eq(L.tenantId, t), sql`nullif(trim(${L.country}), '') is not null`)).groupBy(sql`1`)) {
+    const k = countryKey(r.raw) ?? r.raw;
+    spellings.set(k, [...(spellings.get(k) ?? []), `${r.raw} (${r.n})`]);
+  }
+  // Stammdaten prüfen: Firmen- und Markennamen in mehreren Schreibweisen, auffällige Marken (Platzhalter, Kürzel).
+  const master = await db.select({ name: L.companyName, brands: L.brands }).from(L).where(eq(L.tenantId, t)).limit(5000);
+  const leadBrands = master.flatMap((x) => x.brands ?? []);
+  const nameGroups = spellingGroups(master.map((x) => x.name));
+  const brandGroups = spellingGroups(leadBrands);
   const countries = [...byCountry].sort(([a, x], [b, y]) => {
     const [ra, na] = countryRank(a);
     const [rb, nb] = countryRank(b);
@@ -230,14 +243,15 @@ export default async function GrosshaendlerFindenPage({ searchParams }: { search
         <Link href={listHref({ quelle: null })} className={`chip${!quelle ? " active" : ""}`}>alle</Link>
         {QUELLEN.map((q) => <Link key={q} href={listHref({ quelle: q })} className={`chip${quelle === q ? " active" : ""}`}>{FINDING_LABEL[q]}</Link>)}
       </div>
+      <SpellingCheck title="Stammdaten prüfen" groups={[...nameGroups, ...brandGroups]} suspicious={suspiciousOf(leadBrands)} />
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="country-filter">
         <span className="small muted">Land:</span>
         <Link href={listHref({ land: "" })} className={`chip${!land ? " active" : ""}`}>alle</Link>
         {countries.map(([key, n]) => {
           const value = key ?? NO_COUNTRY;
           return (
-            <Link key={value} href={listHref({ land: value })} className={`chip${land === value ? " active" : ""}`} data-testid="country-chip" data-country={value}>
-              {key ?? "ohne Land"} <span className="muted">{n}</span>
+            <Link key={value} href={listHref({ land: value })} className={`chip${land === value ? " active" : ""}`} data-testid="country-chip" data-country={value} title={key && unknownCountry(key) ? `„${key}“ ist keinem Land zugeordnet – bitte prüfen` : key && (spellings.get(key)?.length ?? 0) > 1 ? `zusammengefasst: ${spellings.get(key)!.join(", ")}` : undefined}>
+              {key ?? "ohne Land"}{key && unknownCountry(key) ? " ?" : ""} <span className="muted">{n}</span>
             </Link>
           );
         })}
