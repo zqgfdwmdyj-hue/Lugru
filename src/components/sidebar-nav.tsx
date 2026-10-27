@@ -74,7 +74,7 @@ export function SidebarNav({ counts, favorites = [], openSaved = [], ...access }
           return (
             <div key={s.key} className={`nav-group single${current ? " current" : ""}`} style={color} data-section={s.key}>
               <Link href={it.href} className={`nav-link nav-section-link${current ? " active" : ""}`} aria-current={current ? "page" : undefined}>
-                <span>{s.label}</span>
+                <span>{s.icon && <span className="nav-ico" aria-hidden="true">{s.icon}</span>}{s.label}</span>
                 <Badge item={it} counts={counts} />
               </Link>
             </div>
@@ -86,7 +86,7 @@ export function SidebarNav({ counts, favorites = [], openSaved = [], ...access }
         return (
           <div key={s.key} className={`nav-group${current ? " current" : ""}${isOpen ? " open" : ""}`} style={color} data-section={s.key}>
             <button type="button" className="nav-head" aria-expanded={isOpen} aria-controls={`nav-${s.key}`} onClick={() => toggle(s.key)}>
-              <span>{s.label}</span>
+              <span>{s.icon && <span className="nav-ico" aria-hidden="true">{s.icon}</span>}{s.label}</span>
               <span className="nav-head-end">
                 {!isOpen && sum > 0 && <span className={`nav-badge${alert ? "" : " quiet"}`}>{sum}</span>}
                 <span className="nav-caret" aria-hidden="true">{isOpen ? "▾" : "▸"}</span>

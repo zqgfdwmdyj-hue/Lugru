@@ -52,8 +52,8 @@ export function AreaTabs({ favorites = [], canFavorite, ...access }: NavAccess &
   const tabs = !sub && section && !section.helper && section.items.length > 1 ? section.items : [];
   if (!section && !canFavorite) return null;
   return (
-    <div className="area-bar" style={{ ["--g" as string]: section?.color ?? "#5b6670" }} data-testid="area-bar">
-      {section && !section.helper && <span className="area-name">{sub ? active!.item.label : section.label}</span>}
+    <div className="area-bar" style={{ ["--g" as string]: section?.color ?? "var(--area-hilfe)" }} data-testid="area-bar" data-area={section?.key ?? "keiner"}>
+      {section && !section.helper && <span className="area-name">{section.icon && <span aria-hidden="true">{section.icon} </span>}{sub ? active!.item.label : section.label}</span>}
       {sub && (
         <nav className="area-tabs" aria-label={`${active!.item.label}: Unterseiten`} data-testid="sub-tabs">
           {sub.map((it) => {

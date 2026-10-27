@@ -1,21 +1,11 @@
 import Link from "next/link";
 import { STATUS_LABEL } from "@/lib/private/logic";
+import { KIND_STYLE, STATUS_ICON } from "@/lib/private/kind-style";
 import { CAL_KIND_LABEL, type CalItem, type CalKind, type DayItem } from "@/lib/private/kalender";
 import { occurrenceAction, setStatusAction } from "../eintrag-actions";
 
-/** Farben je Art – der Name der Art und der Status stehen immer zusätzlich als Text dabei. */
-export const KIND_COLOR: Record<CalKind, string> = {
-  termin: "#1f5fae",
-  kinder: "#0d9488",
-  auszeit: "#7c3aed",
-  ausschlafen: "#4f46e5",
-  paarzeit: "#c2410c",
-  naehe: "#be185d",
-  streicheln: "#db2777",
-  massage: "#9d174d",
-  periode: "#b91c1c",
-  extern: "#6e6e73",
-};
+/** Farben je Art – der Name der Art und der Status stehen immer zusätzlich als Text (und Symbol) dabei. */
+export const KIND_COLOR: Record<CalKind, string> = Object.fromEntries(Object.entries(KIND_STYLE).map(([k, v]) => [k, v.color])) as Record<CalKind, string>;
 export const colorOf = (i: Pick<CalItem, "kind" | "color">) => (i.kind === "extern" && i.color ? i.color : KIND_COLOR[i.kind]);
 
 /** Text zum Status: „geplant“, „stattgefunden“, „ausgefallen“, bei Serien zusätzlich „ausgelassen“. */
@@ -37,7 +27,14 @@ export function ItemChip({ item, isNew, showStatus = true, day }: { item: DayIte
   const quiet = cont && !showStatus && day !== undefined && new Date(`${day}T12:00:00Z`).getUTCDay() !== 1;
   const body = (
     <>
-      {showStatus && <span className="pk-st">{CAL_KIND_LABEL[item.kind]}{statusText(item) && item.kind !== "periode" && item.kind !== "extern" ? ` · ${statusText(item)}` : item.kind === "extern" && item.calendar ? ` · ${item.calendar}` : ""}</span>}
+      {showStatus && (
+        <span className="pk-st">
+          <span aria-hidden="true">{KIND_STYLE[item.kind].icon} </span>
+          {CAL_KIND_LABEL[item.kind]}
+          {item.status && item.kind !== "periode" && item.kind !== "extern" ? <> · <span className="pk-sym" aria-hidden="true">{item.skipped ? "✕" : STATUS_ICON[item.status]}</span> {statusText(item)}</> : item.kind === "extern" && item.calendar ? ` · ${item.calendar}` : ""}
+        </span>
+      )}
+      {!showStatus && !quiet && <span aria-hidden="true">{item.status && item.kind !== "extern" && item.kind !== "periode" ? (item.skipped ? "✕" : STATUS_ICON[item.status]) : KIND_STYLE[item.kind].icon} </span>}
       {time && <span className="pk-time">{time}</span>}
       <span className="pk-title">{quiet ? "\u00a0" : `${item.title}${cont ? " (Fortsetzung)" : ""}`}</span>
     </>
@@ -90,9 +87,14 @@ export function StatusButtons({ item, today }: { item: CalItem; today: string })
 export function Legend() {
   return (
     <div className="pk-legend" data-testid="pk-legend">
-      <span><i className="geplant" /> gestrichelt = geplant (zählt noch nicht)</span>
-      <span><i /> gefüllt = stattgefunden</span>
-      <span style={{ textDecoration: "line-through" }}>ausgefallen</span>
+      <span><i className="geplant" /> ○ geplant – farbiger Rahmen, zählt noch nicht</span>
+      <span><i /> ✓ stattgefunden – gefüllt</span>
+      <span><i className="ausgefallen" /> ✕ ausgefallen</span>
     </div>
   );
+}
+
+/** Farbpunkte mit Symbol je Art (für Filter, Eintragen und Rückblick). */
+export function KindDot({ kind }: { kind: CalKind }) {
+  return <span className="kind-dot" style={{ "--c": KIND_STYLE[kind].color } as React.CSSProperties} aria-hidden="true">{KIND_STYLE[kind].icon}</span>;
 }

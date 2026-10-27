@@ -16,12 +16,24 @@
   --accent-soft: #e3f0ed;
   --ok: #1c6b3a;
   --ok-soft: #e3f3e8;
-  --warn: #8a4f00;
-  --warn-soft: #fdf1dc;
+  --warn: #854d0e;
+  --warn-soft: #fef6d8;
   --danger: #b42318;
   --danger-soft: #fde8e6;
-  --info: #1f5fae;
-  --info-soft: #e6eefa;
+  --info: #475569;
+  --info-soft: #f1f5f9;
+  /* Bereichsfarben (Orientierung): aktiver Menüpunkt, Überschrift, Symbole, dezente Flächen, Hauptaktion.
+     Statusfarben (--ok grün, --warn gelb, --danger rot) sind davon getrennt und nur für Zustände. */
+  --area-heute: #2563eb;
+  --area-verkauf: #0f766e;
+  --area-produkte: #155e75;
+  --area-einkauf: #c2410c;
+  --area-finanzen: #6d28d9;
+  --area-service: #1e3a8a;
+  --area-marken: #a21caf;
+  --area-privat: #be185d;
+  --area-hilfe: #475569;
+  --area: #475569;
   --radius: 10px;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --sans: "IBM Plex Sans", system-ui, sans-serif;
@@ -104,8 +116,10 @@ h2 { font-size: 16px; margin: 0; }
 
 .btn { font: inherit; font-size: 14px; font-weight: 600; border-radius: 8px; padding: 9px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
 .btn:hover { background: var(--surface-2); color: var(--ink); }
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn-primary:hover { background: var(--accent-ink); color: #fff; }
+/* Hauptaktion: überall gleich (kräftig gefüllt, fett) in der Farbe des Bereichs. */
+.btn-primary { background: var(--area); border-color: var(--area); color: #fff; font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.btn-primary:hover { background: color-mix(in srgb, var(--area) 82%, #000); border-color: color-mix(in srgb, var(--area) 82%, #000); color: #fff; }
+.btn-primary:focus-visible { outline: 3px solid color-mix(in srgb, var(--area) 40%, transparent); outline-offset: 2px; }
 .btn-small { font-size: 13px; padding: 6px 10px; }
 .btn-link { background: none; border: none; color: var(--accent); padding: 0; font-weight: 600; cursor: pointer; font: inherit; }
 .btn:disabled { opacity: .55; cursor: not-allowed; }
@@ -125,13 +139,14 @@ h2 { font-size: 16px; margin: 0; }
 .tag-neutral { color: var(--ink-2); background: var(--row); }
 
 .chip { font: inherit; font-size: 13px; border: 1px solid #d5d2ca; background: var(--surface); color: var(--ink-2); border-radius: 14px; padding: 5px 12px; text-decoration: none; }
-.chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.chip.active { background: var(--area); color: #fff; border-color: var(--area); }
 
-.notice { padding: 10px 14px; border-radius: 8px; font-size: 13px; }
-.notice-ok { background: var(--ok-soft); color: #14472a; }
-.notice-warn { background: var(--warn-soft); color: #5c3a00; }
-.notice-error { background: var(--danger-soft); color: #7a1a12; }
-.notice-info { background: var(--info-soft); color: #173f73; }
+/* Hinweise kompakt; nur Warnung (gelb) und Fehler (rot) fallen auf, Info bleibt ruhig. */
+.notice { padding: 7px 12px; border-radius: 8px; font-size: 13px; border-left: 4px solid transparent; line-height: 1.4; }
+.notice-ok { background: var(--ok-soft); color: #14472a; border-left-color: var(--ok); }
+.notice-warn { background: var(--warn-soft); color: #5c3a00; border-left-color: #ca8a04; }
+.notice-error { background: var(--danger-soft); color: #7a1a12; border-left-color: var(--danger); }
+.notice-info { background: var(--surface-2); color: var(--ink-2); border-left-color: var(--border-strong); }
 
 /* To-dos */
 .todo { display: flex; align-items: center; gap: 14px; padding: 11px 22px; border-bottom: 1px solid var(--row); }
@@ -733,10 +748,10 @@ h2 { font-size: 16px; margin: 0; }
 .pk-wday-head:hover { text-decoration: none; }
 .pk-today .pk-wday-head .pk-num { background: #d70015; color: #fff; border-radius: 50%; width: 22px; height: 22px; line-height: 22px; text-align: center; display: inline-block; }
 .pk-add-day { font-size: 16px; line-height: 1; color: var(--muted); text-decoration: none; padding: 0 4px; }
-.pk-item { display: block; font-size: 12px; line-height: 1.3; padding: 3px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 18%, var(--surface)); overflow-wrap: anywhere; min-width: 0; }
+.pk-item { display: block; font-size: 12px; line-height: 1.3; padding: 3px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; border: 1.5px solid color-mix(in srgb, var(--c) 45%, var(--surface)); border-left: 4px solid var(--c); background: color-mix(in srgb, var(--c) 15%, var(--surface)); overflow-wrap: anywhere; min-width: 0; }
 .pk-item:hover { text-decoration: none; filter: brightness(.97); }
-/* Geplant: nur Umriss (gestrichelt); stattgefunden: gefüllt; ausgefallen: durchgestrichen. Der Status steht immer auch als Text dabei. */
-.pk-item.st-geplant { background: var(--surface); border-style: dashed; }
+/* Geplant: farbiger Rahmen, weiße Fläche (○); stattgefunden: dezent gefüllt (✓); ausgefallen: grau, durchgestrichen (✕). Status steht immer auch als Text dabei. */
+.pk-item.st-geplant { background: var(--surface); border: 2px solid var(--c); border-left-width: 4px; }
 .pk-item.st-ausgefallen { background: var(--surface-2); border-color: var(--border-strong); color: var(--muted); }
 .pk-item.st-ausgefallen .pk-title { text-decoration: line-through; }
 .pk-item.pk-span { border-radius: 0; border-left-width: 0; border-right-width: 0; }
@@ -755,8 +770,11 @@ h2 { font-size: 16px; margin: 0; }
 .pk-row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .pk-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .pk-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.pk-legend i { width: 18px; height: 11px; border-radius: 3px; border: 1.5px solid var(--c, var(--ink-2)); background: color-mix(in srgb, var(--c, var(--ink-2)) 18%, var(--surface)); display: inline-block; }
-.pk-legend i.geplant { background: var(--surface); border-style: dashed; }
+.pk-legend i { width: 18px; height: 11px; border-radius: 3px; border: 1.5px solid color-mix(in srgb, var(--c, var(--area)) 45%, var(--surface)); background: color-mix(in srgb, var(--c, var(--area)) 18%, var(--surface)); display: inline-block; }
+.pk-legend i.geplant { background: var(--surface); border: 2px solid var(--c, var(--area)); }
+.pk-legend i.ausgefallen { background: var(--surface-2); border-color: var(--border-strong); }
+.pk-sym { font-weight: 800; }
+.kind-dot { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--c) 16%, var(--surface)); border: 1.5px solid var(--c); font-size: 13px; flex: none; }
 .pk-dayhead { font-weight: 700; font-size: 14px; margin: 14px 0 4px; }
 @media (max-width: 760px) {
   /* Woche am Handy: Tage untereinander statt sieben schmaler Spalten. */
@@ -767,13 +785,14 @@ h2 { font-size: 16px; margin: 0; }
 }
 .pk-dots { display: none; gap: 2px; flex-wrap: wrap; justify-content: center; }
 .pk-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); border: 1px solid var(--c); }
-.pk-dots i.geplant { background: transparent; }
+.pk-dots i.geplant { background: var(--surface); border-width: 2px; }
 @media (max-width: 760px) { .pk-month .pk-dots { display: flex; } }
 .pk-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .pk-art { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px; }
 .pk-art a { display: flex; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 13px; min-height: 44px; }
-.pk-art a.active { border-color: #be185d; box-shadow: inset 0 0 0 1px #be185d; background: #fdf2f7; }
-.pk-art i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.pk-art a { border-left: 4px solid var(--c); }
+.pk-art a.active { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); background: color-mix(in srgb, var(--c) 12%, var(--surface)); }
+.pk-art .kind-dot { width: 26px; height: 26px; }
 .pk-status { display: flex; gap: 6px; flex-wrap: wrap; }
 .big-add { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 10px 22px; font-size: 16px; border-radius: 12px; background: #be185d; border-color: #be185d; color: #fff; text-decoration: none; font-weight: 700; }
 .big-add:hover { background: #9d174d; color: #fff; text-decoration: none; }
@@ -790,3 +809,44 @@ h2 { font-size: 16px; margin: 0; }
 @keyframes skel { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
 .assign-form { display: flex; flex-direction: row !important; align-items: center; flex-wrap: wrap; }
+
+/* ===== Farbsystem: Bereichsfarbe je Seite =====
+   Die Bereichsleiste oben (data-area) bestimmt --area für die ganze Seite; Privat hat Rosé/Beere. */
+.main:has(> .area-bar[data-area="heute"]) { --area: var(--area-heute); }
+.main:has(> .area-bar[data-area="verkauf"]) { --area: var(--area-verkauf); }
+.main:has(> .area-bar[data-area="produkte"]) { --area: var(--area-produkte); }
+.main:has(> .area-bar[data-area="einkauf"]) { --area: var(--area-einkauf); }
+.main:has(> .area-bar[data-area="service"]) { --area: var(--area-service); }
+.main:has(> .area-bar[data-area="finanzen"]) { --area: var(--area-finanzen); }
+.main:has(> .area-bar[data-area="marken"]) { --area: var(--area-marken); }
+.main:has(> .area-bar[data-area="hilfe"]) { --area: var(--area-hilfe); }
+.pshell { --area: var(--area-privat); }
+
+/* Überschriften: Bereich (klein, farbig) über dem Titel, farbiger Balken am Titel. */
+.crumb { color: var(--area); font-weight: 600; letter-spacing: .01em; }
+.page-head h1 { position: relative; padding-left: 14px; }
+.page-head h1::before { content: ""; position: absolute; left: 0; top: .16em; bottom: .16em; width: 5px; border-radius: 3px; background: var(--area); }
+/* Karten: ruhige weiße Fläche, Kopf dezent in der Bereichsfarbe. */
+.card-head { background: color-mix(in srgb, var(--area) 6%, var(--surface)); border-radius: 12px 12px 0 0; }
+.card-head h2 { color: color-mix(in srgb, var(--area) 70%, var(--ink)); }
+.grid-kpi > .card { border-top: 3px solid color-mix(in srgb, var(--area) 55%, var(--surface)); }
+.kpi-label { color: color-mix(in srgb, var(--area) 55%, var(--muted)); font-weight: 600; }
+
+/* Seitenleiste: Symbol je Bereich, aktiver Punkt in der Bereichsfarbe. */
+.nav-ico { display: inline-block; width: 22px; font-size: 14px; line-height: 1; }
+.nav-group .nav-link.active { color: color-mix(in srgb, var(--g) 85%, #000); font-weight: 650; background: color-mix(in srgb, var(--g) 13%, var(--surface)); box-shadow: inset 3px 0 0 var(--g); }
+.nav-group.current { background: color-mix(in srgb, var(--g) 10%, transparent); }
+.area-tab.active { color: color-mix(in srgb, var(--g) 85%, #000); }
+
+/* Status: grün = erledigt/erfolgreich, gelb = prüfen, rot = Fehler/dringend – mit Symbol. */
+.tag-ok::before { content: "✓ "; }
+.tag-warn::before { content: "! "; font-weight: 800; }
+.tag-danger::before, .tag-critical::before { content: "✕ "; }
+.kind-chip { border-color: color-mix(in srgb, var(--c) 55%, var(--surface)); }
+.kind-chip.active { background: var(--c); border-color: var(--c); color: #fff; }
+.rb-li { list-style: none; margin-left: -18px; display: flex; align-items: center; gap: 6px; padding: 2px 0; flex-wrap: wrap; }
+.signal-warn { border-left-color: #ca8a04; }
+.big-add { background: var(--area); border-color: var(--area); }
+.big-add:hover { background: color-mix(in srgb, var(--area) 82%, #000); }
+.crumb a { color: inherit; }
+.pk-seg a.active { background: var(--area); }

@@ -18,13 +18,14 @@ export type NavItem = {
   also?: (path: string, q: URLSearchParams) => boolean;
 };
 
-export type NavSection = { key: string; label: string; color: string; items: NavItem[]; helper?: boolean };
+export type NavSection = { key: string; label: string; color: string; icon?: string; items: NavItem[]; helper?: boolean };
 
 export const NAV: NavSection[] = [
   {
     key: "heute",
     label: "Heute",
-    color: "#5b6670",
+    color: "var(--area-heute)",
+    icon: "📋",
     items: [
       { href: "/", label: "Tagesübersicht", badge: "tasks", alert: true },
       { href: "/?ansicht=liste", label: "Alle Aufgaben", also: (p, q) => p === "/" && Boolean(q.get("kat") && q.get("kat") !== "alle") },
@@ -35,7 +36,8 @@ export const NAV: NavSection[] = [
   {
     key: "verkauf",
     label: "Verkauf & Versand",
-    color: "#2563eb",
+    color: "var(--area-verkauf)",
+    icon: "🚚",
     items: [
       { href: "/auftraege", label: "Aufträge & Versand", badge: "orders" },
       { href: "/listings", label: "Angebote (alle Kanäle)" },
@@ -53,7 +55,8 @@ export const NAV: NavSection[] = [
   {
     key: "produkte",
     label: "Produkte & Lager",
-    color: "#0e7490",
+    color: "var(--area-produkte)",
+    icon: "📦",
     items: [
       { href: "/produkte", label: "Produkte" },
       { href: "/chargen", label: "Chargen" },
@@ -66,7 +69,8 @@ export const NAV: NavSection[] = [
   {
     key: "einkauf",
     label: "Einkauf & Lieferanten",
-    color: "#7c3aed",
+    color: "var(--area-einkauf)",
+    icon: "🛒",
     items: [
       { href: "/einkauf", label: "Einkauf & Wareneingang" },
       { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
@@ -80,7 +84,8 @@ export const NAV: NavSection[] = [
   {
     key: "service",
     label: "Service & Ansprüche",
-    color: "#db2777",
+    color: "var(--area-service)",
+    icon: "🛟",
     items: [
       { href: "/retouren", label: "Retouren" },
       { href: "/ansprueche", label: "Ansprüche", badge: "claims" },
@@ -92,7 +97,8 @@ export const NAV: NavSection[] = [
   {
     key: "finanzen",
     label: "Finanzen",
-    color: "#15803d",
+    color: "var(--area-finanzen)",
+    icon: "💶",
     items: [
       { href: "/gewinn", label: "Gewinn" },
       { href: "/cashflow", label: "Cash Flow" },
@@ -108,7 +114,8 @@ export const NAV: NavSection[] = [
   {
     key: "marken",
     label: "Marken & Content",
-    color: "#c2410c",
+    color: "var(--area-marken)",
+    icon: "🎨",
     items: [
       { href: "/marken", label: "Ideen & Saison" },
       { href: "/marken/content", label: "Content-Plan" },
@@ -116,11 +123,12 @@ export const NAV: NavSection[] = [
       { href: "/marken/profile", label: "Markenprofile" },
     ],
   },
-  { key: "privat", label: "Privat", color: "#be185d", items: [{ href: "/privat", label: "Privat" }] },
+  { key: "privat", label: "Privat", color: "var(--area-privat)", icon: "🔒", items: [{ href: "/privat", label: "Privat" }] },
   {
     key: "hilfe",
     label: "Hilfsfunktionen",
-    color: "#475569",
+    color: "var(--area-hilfe)",
+    icon: "🧰",
     helper: true,
     items: [
       { href: "/wissen", label: "Wissen" },

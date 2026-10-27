@@ -2,7 +2,8 @@ import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { avgOf, careOverview, dateStats, diaryReport, intimStats, kidsOverview, taskState, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type SleepEntry, type TaskEntry, type ThanksEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
-import type { TouchEntry } from "@/lib/private/kalender";
+import type { CalKind, TouchEntry } from "@/lib/private/kalender";
+import { KindDot } from "../kalender/items";
 import { PrintButton } from "@/components/print-button";
 import { MonthNav, PrivatHead, hoursLabel, monthLabel, monthParam } from "../ui";
 
@@ -52,8 +53,8 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
   const mood = { a: avgOf(moods.filter((e) => e.data.person === "a" && e.data.day.startsWith(month)).map((e) => e.data.value)), b: avgOf(moods.filter((e) => e.data.person === "b" && e.data.day.startsWith(month)).map((e) => e.data.value)) };
   const myDiary = diaryReport(diary.filter((e) => e.userId === session.userId).map((e) => e.data), `${month}-01`, end);
 
-  const Row = ({ label, a, b, note }: { label: string; a: React.ReactNode; b: React.ReactNode; note?: React.ReactNode }) => (
-    <tr><td>{label}</td><td className="num right">{a}</td><td className="num right">{b}</td><td className="small muted">{note}</td></tr>
+  const Row = ({ label, a, b, note, icon }: { label: string; a: React.ReactNode; b: React.ReactNode; note?: React.ReactNode; icon?: CalKind }) => (
+    <tr><td>{icon && <><KindDot kind={icon} />{" "}</>}{label}</td><td className="num right">{a}</td><td className="num right">{b}</td><td className="small muted">{note}</td></tr>
   );
 
   return (
@@ -72,10 +73,10 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
 
         <h3 style={{ margin: "6px 0 0", fontSize: 15 }}>Als Paar</h3>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong></li>
-          <li>🥂 Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
+          <li className="rb-li"><KindDot kind="naehe" /> Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong></li>
+          <li className="rb-li"><KindDot kind="paarzeit" /> Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
           <li>💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a ? `${th.a}×` : "keine notiert"} · ${name.b} ${th.b ? `${th.b}×` : "keine notiert"}` : "nicht erfasst"}</li>
-          <li>Streicheln / Massage (bestätigt): {touchCount("streicheln", "stattgefunden") + touchCount("massage", "stattgefunden") ? <strong>{touchCount("streicheln", "stattgefunden")}× Streicheln · {touchCount("massage", "stattgefunden")}× Massage</strong> : "nicht erfasst"}{touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen") ? <span className="muted"> · {touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen")}× ausgefallen/ausgelassen</span> : null}</li>
+          <li className="rb-li"><KindDot kind="streicheln" /> Streicheln / Massage (bestätigt): {touchCount("streicheln", "stattgefunden") + touchCount("massage", "stattgefunden") ? <strong>{touchCount("streicheln", "stattgefunden")}× Streicheln · {touchCount("massage", "stattgefunden")}× Massage</strong> : "nicht erfasst"}{touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen") ? <span className="muted"> · {touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen")}× ausgefallen/ausgelassen</span> : null}</li>
           <li>Stimmung als Paar (Ø 1–5): {name.a} {num(mood.a)} · {name.b} {num(mood.b)}</li>
         </ul>
 
@@ -84,9 +85,9 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
         <table className="table">
           <thead><tr><th></th><th className="right">{name.a}</th><th className="right">{name.b}</th><th></th></tr></thead>
           <tbody>
-            <Row label="Allein mit den Kindern" a={ch(ko.totals.a)} b={ch(ko.totals.b)} />
-            <Row label="Ausgeschlafen" a={ch(so.totals.a)} b={ch(so.totals.b)} />
-            <Row label="Auszeit für sich" a={ch(to.totals.a)} b={ch(to.totals.b)} />
+            <Row icon="kinder" label="Allein mit den Kindern" a={ch(ko.totals.a)} b={ch(ko.totals.b)} />
+            <Row icon="ausschlafen" label="Ausgeschlafen" a={ch(so.totals.a)} b={ch(so.totals.b)} />
+            <Row icon="auszeit" label="Auszeit für sich" a={ch(to.totals.a)} b={ch(to.totals.b)} />
             <Row label="Familienaufgaben als erledigt eingetragen" a={careDone.a ? `${careDone.a}×` : "nicht erfasst"} b={careDone.b ? `${careDone.b}×` : "nicht erfasst"} note={`zuständig: ${co.owned.a} / ${co.owned.b}, beide ${co.owned.beide}, offen ${co.owned.offen}`} />
           </tbody>
         </table>

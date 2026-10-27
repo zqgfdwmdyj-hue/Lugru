@@ -6,6 +6,7 @@ import { privateCalendar } from "@/lib/private/calendar-data";
 import { requirePrivate } from "@/lib/private/service";
 import { PrivatHead, dm, dmy, monthLabel, weekday } from "../ui";
 import { ItemChip, KIND_COLOR, Legend, StatusButtons } from "./items";
+import { KIND_STYLE } from "@/lib/private/kind-style";
 
 // Gemeinsamer Privatkalender: Woche (Standard), Monat, Tagesliste. Alles aus den vorhandenen Einträgen –
 // nichts wird doppelt erfasst. Filter nach Person und Art; jeder Eintrag lässt sich öffnen und ändern.
@@ -103,7 +104,7 @@ export default async function PrivatKalenderPage({ searchParams }: { searchParam
             <summary className="small" style={{ cursor: "pointer" }}>Arten filtern{picked.size ? ` (${picked.size} gewählt)` : ""}</summary>
             <div className="priv-tabs" style={{ marginTop: 6 }}>
               {kindsAllowed.map((k) => (
-                <Link key={k} href={toggleKind(k)} className={`chip${picked.has(k) ? " active" : ""}`} style={{ borderColor: KIND_COLOR[k] }} data-testid={`pk-kind-${k}`}>{CAL_KIND_LABEL[k]}</Link>
+                <Link key={k} href={toggleKind(k)} className={`chip kind-chip${picked.has(k) ? " active" : ""}`} style={{ "--c": KIND_COLOR[k] } as React.CSSProperties} data-testid={`pk-kind-${k}`}><span aria-hidden="true">{KIND_STYLE[k].icon} </span>{CAL_KIND_LABEL[k]}</Link>
               ))}
               {picked.size > 0 && <Link href={q({ art: null })} className="chip">alle Arten</Link>}
             </div>

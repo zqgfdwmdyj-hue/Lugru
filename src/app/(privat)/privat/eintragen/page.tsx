@@ -4,7 +4,8 @@ import { isDay, memberLabels } from "@/lib/private/logic";
 import type { RitualEntry } from "@/lib/private/kalender";
 import { loadEntries, myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { ART_LABEL, EntryForm, FAMILY_ARTEN, type Art } from "../entry-form";
-import { KIND_COLOR } from "../kalender/items";
+import { KIND_COLOR, KindDot } from "../kalender/items";
+import type { CalKind } from "@/lib/private/kalender";
 import { PrivatHead, dmy, weekday } from "../ui";
 
 const ARTEN: Art[] = ["termin", "kinder", "auszeit", "ausschlafen", "paarzeit", "naehe", "zuwendung", "periode"];
@@ -37,14 +38,14 @@ export default async function EintragenPage({ searchParams }: { searchParams: Pr
         <nav className="pk-art" aria-label="Was eintragen?" data-testid="art-picker">
           {arten.map((a) => (
             <Link key={a} href={href(a)} className={a === art ? "active" : ""} aria-current={a === art ? "page" : undefined} style={{ "--c": COLOR[a] } as React.CSSProperties} data-testid={`art-${a}`}>
-              <i aria-hidden="true" />{ART_LABEL[a]}
+              <KindDot kind={(a === "zuwendung" ? "streicheln" : a) as CalKind} />{ART_LABEL[a]}
             </Link>
           ))}
         </nav>
       </section>
       {art ? (
         <section className="card card-pad stack" data-testid={`form-${art}`}>
-          <h2>{ART_LABEL[art]}</h2>
+          <h2 style={{ display: "flex", gap: 8, alignItems: "center" }}><KindDot kind={(art === "zuwendung" ? "streicheln" : art) as CalKind} />{ART_LABEL[art]}</h2>
           <EntryForm art={art} today={today} day={day} settings={settings} me={me} members={others} ritual={ritual} />
         </section>
       ) : (
