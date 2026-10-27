@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
+import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIssues, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { INTIMATE_KINDS, itemsByDay } from "@/lib/private/kalender";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { loadEntries, myMedPlan, myPartner, requirePrivate } from "@/lib/private/service";
@@ -58,6 +58,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
     family ? Promise.resolve(null) : myMedPlan(session),
   ]);
   const myRoutines = routines.filter((r) => r.userId === session.userId);
+  const linkProblems = linkIssues(timeout, kids, s.partners);
   const routinesOpen = myRoutines.filter((r) => !routineState(r.data, today).doneToday);
   const careDue = careOverview(care.map((e) => e.data), today).due.filter((t) => t.next! <= today);
   const moodDone = moods.some((e) => e.userId === session.userId && e.data.day === today);
@@ -73,7 +74,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
   const ko = kidsOverview(kids.map((e) => e.data), month);
   const so = kidsOverview(sleep.map((e) => e.data), month);
   const to = kidsOverview(timeout.map((e) => e.data), month);
-  const nextSleep = nextSleeper(sleep.map((e) => ({ ...e.data, at: e.createdAt.getTime() })));
+  const nextSleep = nextSleeper(sleep.map((e) => ({ ...e.data, at: e.createdAt.getTime() })), today);
   const pair = (t: { a: { count: number; hours: number }; b: { count: number; hours: number } }, unit: "h" | "x") =>
     t.a.count + t.b.count ? `${s.partners.a} ${t.a.count ? (unit === "h" ? hoursLabel(t.a.hours) : `${t.a.count}×`) : "–"} · ${s.partners.b} ${t.b.count ? (unit === "h" ? hoursLabel(t.b.hours) : `${t.b.count}×`) : "–"}` : null;
 
@@ -83,6 +84,11 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
       {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} tenantId={session.tenantId} userId={session.userId} userPartner={s.userPartner} />}
       {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
 
+      {linkProblems.length > 0 && (
+        <div className="notice notice-warn small" data-testid="link-warning">
+          {linkProblems.length === 1 ? "Eine verknüpfte Auszeit/Kinderzeit passt" : `${linkProblems.length} verknüpfte Auszeiten/Kinderzeiten passen`} nicht zusammen (z. B. beide Seiten bei derselben Person). <Link href="/privat/pruefen">Prüfen und reparieren →</Link>
+        </div>
+      )}
       <section className="card card-pad stack" data-testid="today">
         <h2>Heute</h2>
         {todays.length === 0 ? (

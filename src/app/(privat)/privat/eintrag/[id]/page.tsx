@@ -32,13 +32,16 @@ export default async function EintragPage({ params, searchParams }: { params: Pr
   const linkId = entry.data.linkId as string | undefined;
   const [members, linked, rituals] = await Promise.all([
     art === "periode" ? privateMembers(session.tenantId) : Promise.resolve([]),
-    linkId && (entry.kind === "kinder" || entry.kind === "auszeit") ? loadEntries<{ linkId?: string; person?: "a" | "b" }>(session, [entry.kind === "kinder" ? "auszeit" : "kinder"]) : Promise.resolve([]),
+    linkId && (entry.kind === "kinder" || entry.kind === "auszeit") ? loadEntries<{ linkId?: string; person?: "a" | "b" | "beide" }>(session, [entry.kind === "kinder" ? "auszeit" : "kinder"]) : Promise.resolve([]),
     art === "zuwendung" ? loadEntries<RitualEntry>(session, ["ritual"]) : Promise.resolve([]),
   ]);
   const labels = memberLabels(members);
   const others = members.filter((m) => m.userId !== session.userId).map((m) => ({ userId: m.userId, label: labels.get(m.userId) ?? m.login }));
   const link = linked.find((l) => l.data.linkId === linkId);
-  const linkedName = link ? `${entry.kind === "kinder" ? "Auszeit" : "Kinderzeit"} ${link.data.person ? settings.partners[link.data.person] : ""}`.trim() : null;
+  const linkedPerson = link?.data.person;
+  const linkedName = link ? `${entry.kind === "kinder" ? "Auszeit" : "Kinderzeit"} ${linkedPerson === "a" || linkedPerson === "b" ? settings.partners[linkedPerson] : linkedPerson === "beide" ? "beide zusammen" : ""}`.trim() : null;
+  // Verknüpfung widersprüchlich (z. B. Auszeit und Kinderzeit bei derselben Person)?
+  const linkBroken = Boolean(link && (link.data.person === entry.data.person || link.data.person === "beide" || entry.data.person === "beide"));
   const seriesId = entry.data.seriesId as string | undefined;
   const series = seriesId ? rituals.find((r) => r.id === seriesId) : undefined;
   const back = `/privat/kalender?tag=${day}`;
@@ -58,6 +61,7 @@ export default async function EintragPage({ params, searchParams }: { params: Pr
           {status ? <>Status: <strong>{STATUS_LABEL[status]}</strong>{status === "geplant" ? " – zählt erst, wenn es stattgefunden hat" : status === "ausgefallen" ? " – zählt nicht" : ""}</> : null}
           {period ? <>Periode {dmy(period.start)}{period.end ? ` bis ${dmy(period.end)}` : " – läuft"} · {periodDays(period, today)} Tag{periodDays(period, today) === 1 ? "" : "e"}</> : null}
           {linkedName ? <> · 🔗 verknüpft mit {linkedName}</> : null}
+          {linkBroken ? <span className="tag tag-warn" style={{ marginLeft: 6 }} data-testid="link-broken"><Link href="/privat/pruefen">passt nicht zusammen – prüfen</Link></span> : null}
           {entry.data.fromEvent ? <span data-testid="entry-from-event"> · aus dem Familienkalender übernommen (dort unverändert; löschen zeigt den Termin wieder als Familientermin)</span> : null}
         </div>
         {editable ? (

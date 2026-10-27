@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requirePrivate } from "@/lib/private/service";
-import { endPeriod, handleOccurrence, saveAppointment, saveNaehe, savePeriod, saveRitual, saveTimeEntry, saveTouches, setStatus, type OccurrenceOp, type SaveResult } from "@/lib/private/save";
+import { endPeriod, handleOccurrence, repairLink, saveAppointment, saveNaehe, savePeriod, saveRitual, saveTimeEntry, saveTouches, setStatus, type OccurrenceOp, type SaveResult } from "@/lib/private/save";
 import type { FormState } from "./actions";
 
 // Gemeinsamer Privatkalender: ein Formular für alle Arten („Eintragen“), Ändern je Eintrag, Status,
@@ -85,4 +85,12 @@ export async function endPeriodAction(_prev: FormState, fd: FormData): Promise<F
   if (!r.ok) return { ok: false, message: r.message };
   revalidatePath("/privat", "layout");
   return { ok: true, message: r.message };
+}
+
+/** Widerspruch zwischen verknüpfter Auszeit und Kinderzeit reparieren – gewählte Variante. */
+export async function repairLinkAction(fd: FormData) {
+  const session = await requirePrivate();
+  const r = await repairLink(session, String(fd.get("key") ?? ""), fd.get("fix"));
+  revalidatePath("/privat", "layout");
+  redirect(`/privat/pruefen?${r.ok ? "ok" : "fehler"}=${encodeURIComponent(r.message.slice(0, 200))}`);
 }

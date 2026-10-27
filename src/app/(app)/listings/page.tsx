@@ -8,6 +8,7 @@ import { formatEuro } from "@/lib/numbers";
 import { ebayToolLink } from "@/lib/ebay/tool-link";
 import { availableOf, stockSkuOf, targetQuantity } from "@/lib/stock/channel-logic";
 import { channelsWithStockApi, stockLevels } from "@/lib/stock/channel-sync";
+import { loadSets } from "@/lib/stock/sets";
 import { UNKNOWN_SKU } from "@/lib/stock/ebay-link";
 import { adoptEbayAction, confirmManualAction, deleteListing, draftsFromOwnStock, ebayStockAction, linkAmazonFbmAction, publishAction, saveListing, setListingStockAction, syncNowAction, toggleSyncAction } from "./actions";
 
@@ -20,7 +21,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
   const where: SQL[] = [eq(L.tenantId, session.tenantId)];
   if (CHANNELS.includes(sp.kanal as never)) where.push(eq(L.channel, sp.kanal as never));
   const rows = await db.select().from(L).where(and(...where)).orderBy(desc(L.updatedAt)).limit(500);
-  const levels = await stockLevels(session.tenantId);
+  const [levels, sets] = await Promise.all([stockLevels(session.tenantId), loadSets(session.tenantId)]);
+  const setSkus = new Set(sets.map((x) => x.sku));
   const withApi = new Set(await channelsWithStockApi(session.tenantId));
   return (
     <>
@@ -81,8 +83,9 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                     ) : l.lastError && <div className="small" style={{ color: l.stockSync || l.status !== "active" ? "var(--danger)" : "var(--warn)" }}>{l.lastError}</div>}
                   </td>
                   <td className="num right">{formatEuro(l.price)}</td>
-                  <td className="num right" title={lvl ? `Lager ${lvl.onHand} − reserviert ${lvl.reserved}` : "kein eigener Lagereintrag"}>
+                  <td className="num right" title={lvl ? (setSkus.has(ssku) ? `Set: aus den Bestandteilen bildbar (${lvl.onHand})` : `Eigenes Lager ${lvl.onHand} − reserviert ${lvl.reserved} (Bestand & Inventur)`) : "kein eigener Lagereintrag"}>
                     {lvl ? availableOf(lvl) : "–"}
+                    {lvl && setSkus.has(ssku) && <div className="small muted" data-testid="set-hint">Set aus Bestandteilen</div>}
                     {lvl && lvl.reserved > 0 && <div className="small muted">{lvl.reserved} reserviert</div>}
                     {lvl && lvl.reserved > lvl.onHand && <div className="small" style={{ color: "var(--danger)", fontWeight: 700 }}>Überverkauf</div>}
                   </td>

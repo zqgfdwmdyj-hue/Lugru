@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canAccess, homeFor } from "@/lib/auth/areas";
-import { dateStats, nextSleeper, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, memberLabels, monthGrid, num, partnerHolders, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
+import { dateStats, nextSleeper, diaryReport, diarySeries, intimStats, kidsHours, kidsOverview, memberLabels, monthGrid, num, partnerHolders, rating, sinceSummary, taskState, weekStart, type DiaryEntry, type TaskEntry, lastTaken, linkIssues } from "@/lib/private/logic";
 
 // Bereich „Privat“: Rechte und Auswertungen. Fiktive Daten.
 
@@ -198,5 +198,61 @@ describe("memberLabels / partnerHolders (Prüfrunde 3)", () => {
     expect(partnerHolders(up, members, "u1")).toEqual({ b: "Alexandra" });
     // Konto ohne Privat-Zugang (nicht in members) zählt nicht
     expect(partnerHolders({ alt: "a" }, members, "u2")).toEqual({});
+  });
+});
+
+describe("Zuletzt / Wechsel nur aus Stattgefundenem bis heute", () => {
+  it("geplante und künftige Einträge zählen nicht als „zuletzt“", () => {
+    const all = [
+      { day: "2026-10-20", person: "a" as const, status: "stattgefunden" as const },
+      { day: "2026-10-25", person: "b" as const },
+      { day: "2026-11-02", person: "b" as const, status: "geplant" as const },
+      { day: "2026-11-03", person: "a" as const },
+    ];
+    expect(lastTaken(all, "2026-10-27")?.day).toBe("2026-10-25");
+    expect(nextSleeper(all, "2026-10-27")).toBe("a");
+    // Ohne Datum (alte Aufrufe mit Monat): keine Begrenzung nach heute.
+    expect(lastTaken(all, "2026-10")?.day).toBe("2026-11-03");
+    expect(lastTaken([{ day: "2026-11-02", person: "b" as const, status: "geplant" as const }], "2026-10-27")).toBeNull();
+  });
+});
+
+describe("Verknüpfte Auszeit/Kinderzeit prüfen", () => {
+  const names = { a: "Anna", b: "Ben" };
+  const az = (person: "a" | "b", extra: Record<string, unknown> = {}) => ({ id: "az1", data: { day: "2026-10-28", from: "18:00", to: "21:00", status: "geplant" as const, person, linkId: "L1", ...extra } });
+  const kz = (person: "a" | "b" | "beide", extra: Record<string, unknown> = {}) => ({ id: "kz1", data: { day: "2026-10-28", from: "18:00", to: "21:00", status: "geplant" as const, person, linkId: "L1", ...extra } });
+
+  it("stimmig: keine Meldung", () => {
+    expect(linkIssues([az("b")], [kz("a")], names)).toEqual([]);
+  });
+
+  it("beide Seiten bei derselben Person: zwei Varianten, zuletzt bearbeitete Seite zuerst", () => {
+    const [i] = linkIssues([az("a", { editedAt: "2026-10-27T10:00:00Z" })], [kz("a", { editedAt: "2026-10-20T10:00:00Z" })], names);
+    expect(i.key).toBe("L1:person");
+    expect(i.text).toContain("beide bei Anna");
+    expect(i.fixes.map((f) => f.label)).toEqual(["Auszeit Anna, Kinder bei Ben", "Auszeit Ben, Kinder bei Anna"]);
+    expect(i.fixes[0].changes).toEqual([{ id: "kz1", kind: "kinder", data: expect.objectContaining({ person: "b", linkId: "L1", from: "18:00" }) }]);
+    expect(i.fixes[1].changes[0]).toMatchObject({ id: "az1", kind: "auszeit", data: { person: "b" } });
+    const [j] = linkIssues([az("a", { editedAt: "2026-10-20T10:00:00Z" })], [kz("a", { editedAt: "2026-10-27T10:00:00Z" })], names);
+    expect(j.fixes[0].label).toBe("Auszeit Ben, Kinder bei Anna");
+  });
+
+  it("abweichende Zeit oder Planung", () => {
+    const [i] = linkIssues([az("b", { to: "22:00" })], [kz("a", { status: "stattgefunden" })], names);
+    expect(i.key).toBe("L1:zeit");
+    expect(i.fixes).toHaveLength(2);
+    expect(i.fixes.some((f) => f.changes[0].kind === "kinder" && f.changes[0].data.to === "22:00" && f.changes[0].data.status === "geplant")).toBe(true);
+  });
+
+  it("Partner fehlt, „beide zusammen“ verknüpft, mehrfach verknüpft", () => {
+    const [alone] = linkIssues([az("b")], [], names);
+    expect(alone.key).toBe("L1:allein");
+    expect(alone.fixes[0].changes[0].data).not.toHaveProperty("linkId");
+    const [both] = linkIssues([az("b")], [kz("beide")], names);
+    expect(both.key).toBe("L1:beide");
+    expect(both.fixes[0].changes.every((c) => !("linkId" in c.data))).toBe(true);
+    const [many] = linkIssues([az("b"), { ...az("a"), id: "az2" }], [kz("a")], names);
+    expect(many.key).toBe("L1:mehrfach");
+    expect(many.fixes).toEqual([]);
   });
 });

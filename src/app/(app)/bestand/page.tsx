@@ -17,6 +17,12 @@ import { breakdownText, fbaBreakdown, STOCK_TERMS } from "@/lib/stock/breakdown"
 
 const VIEWS = { alle: "Alle", fba: "FBA", eigen: "Eigenes Lager", unverkaeuflich: "Nicht verkaufbar", ladenhueter: "Ladenhüter", "ohne-ek": "Ohne EK (unbewertet)", negativ: "Negativer Bestand" } as const;
 type View = keyof typeof VIEWS;
+const ROW_LIMIT = 5000;
+
+async function loadSetRows(tenantId: string) {
+  const S = schema.stockSets;
+  return db.select({ sku: S.sku, title: S.title, components: S.components }).from(S).where(eq(S.tenantId, tenantId)).orderBy(S.sku).then((r) => r.map((x) => ({ ...x, components: x.components ?? [] })));
+}
 
 type Row = { sku: string; title: string | null; image: string | null; asin: string | null; fba: number; inReport: boolean; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
 
@@ -26,9 +32,15 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "alle";
   const t = session.tenantId;
   const settings = await getSettings(t);
+  // Nur SKUs mit Bestand (Amazon oder eigenes Lager) – früher kamen alle Amazon-SKUs (auch mit 0) in die Liste,
+  // nach Warenwert sortiert und bei 2.000 abgeschnitten: eigenes Lager ohne EK fiel dann heraus und die Kennzahl
+  // „Eigenes Lager“ zeigte 0, obwohl die Listings (gleiche Quelle own_stock) Bestand zeigten. Bei Suche alle SKUs.
   const res = await db.execute<Row>(sql`
     with skus as (
-      select sku from amazon_inventory where tenant_id = ${t}
+      select sku from amazon_inventory
+       where tenant_id = ${t}
+         and (${sp.q ? sql`true` : sql`false`}
+              or coalesce(fulfillable, 0) + coalesce(reserved, 0) + coalesce(unsellable, 0) + coalesce(inbound_working, 0) + coalesce(inbound_shipped, 0) + coalesce(inbound_receiving, 0) <> 0)
       union select sku from own_stock where tenant_id = ${t}
     ),
     last_sale as (
@@ -60,12 +72,16 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       left join products p on p.id = l.product_id
       left join last_sale ls on ls.sku = s.sku
      where ${sp.q ? sql`(s.sku ilike ${"%" + sp.q + "%"} or coalesce(p.asin, ai.asin) ilike ${"%" + sp.q + "%"} or coalesce(p.title, ai.title) ilike ${"%" + sp.q + "%"})` : sql`true`}
-     order by (coalesce(ai.fulfillable,0) + coalesce(os.quantity,0)) * coalesce(l.unit_cost_net, 0) desc
-     limit 2000`);
+     order by coalesce(ai.fulfillable, 0) + coalesce(ai.reserved, 0) + abs(coalesce(os.quantity, 0)) desc, s.sku
+     limit ${ROW_LIMIT}`);
+  const truncated = res.rows.length >= ROW_LIMIT;
   const noSaleBefore = addDaysIso(todayIso(), -settings.aging.noSaleWarnDays);
   const costs = await skuCostMap(t);
   // EK aus der gemeinsamen Quelle (Charge → EK je SKU → eBay-Tool).
   for (const r of res.rows) r.cost = costs.get(r.sku)?.cost ?? null;
+  // Wertvollstes zuerst – erst nach dem EK aus der gemeinsamen Quelle (ohne EK nach Stückzahl).
+  const valueOf = (r: Row) => (r.fba + r.reserved + r.inbound + Math.max(0, r.own)) * (r.cost ?? 0);
+  res.rows.sort((a, b) => valueOf(b) - valueOf(a) || b.fba + b.own - (a.fba + a.own));
   const sv = stockValue(res.rows.map((r) => ({ sku: r.sku, units: r.fba + r.reserved + r.inbound, own: r.own })), costs);
   const [inv] = await db.select({ snap: sql<string | null>`max(${schema.amazonInventory.snapshotDate})::text` }).from(schema.amazonInventory).where(eq(schema.amazonInventory.tenantId, t));
   // FBA-Spalte: Bericht fehlt (unbekannt) ≠ nicht im Bericht ≠ im Bericht mit 0; veralteter Bericht gekennzeichnet.
@@ -88,8 +104,10 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
   if (view === "ohne-ek") rows = rows.filter((r) => r.cost === null && r.fba + r.reserved + r.inbound + Math.max(0, r.own) > 0);
   if (view === "negativ") rows = rows.filter((r) => r.own < 0);
   const amazon = fbaBreakdown(res.rows.map((r) => ({ fulfillable: r.fba, reserved: r.reserved, inboundShipped: r.inbound, unsellable: r.unsellable })));
-  const own = res.rows.reduce((n, r) => n + r.own, 0);
-  const levels = await stockLevels(t);
+  // Kennzahl direkt aus der gemeinsamen Quelle (own_stock) – nie aus einer gekürzten Liste.
+  const [ownAgg] = await db.select({ units: sql<number>`coalesce(sum(${schema.ownStock.quantity}), 0)::int`, skus: sql<number>`count(*) filter (where ${schema.ownStock.quantity} <> 0)::int` }).from(schema.ownStock).where(eq(schema.ownStock.tenantId, t));
+  const own = ownAgg?.units ?? 0;
+  const [levels, sets] = await Promise.all([stockLevels(t), loadSetRows(t)]);
   const channelRows = await listingsBySku(t, rows.slice(0, 500).filter((r) => r.own !== 0 || levels.has(r.sku)).map((r) => r.sku));
   const reservedTotal = [...levels.values()].reduce((n, l) => n + l.reserved, 0);
   const counts = await db.select().from(schema.inventoryCounts).where(eq(schema.inventoryCounts.tenantId, t)).orderBy(desc(schema.inventoryCounts.createdAt)).limit(5);
@@ -128,7 +146,8 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
             <><div className="kpi-value muted" style={{ fontSize: 18 }}>unbekannt</div><Link className="small" href="/import" style={{ color: "var(--warn)" }}>FBA-Bestandsbericht fehlt – nicht „0“ →</Link></>
           )}
         </div>
-        <div className="card card-pad"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value">{own}</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}
+        <div className="card card-pad" data-testid="kpi-own"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value" data-testid="own-total">{own}</div><div className="small muted">{ownAgg?.skus ?? 0} SKU{ownAgg?.skus === 1 ? "" : "s"} · gleiche Quelle wie „Wawi verfügbar“ in den Listings</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}
+          {sets.length > 0 && <a href="#sets" className="small" data-testid="own-sets">+ {sets.length} Set{sets.length === 1 ? "" : "s"} aus Bestandteilen (nicht doppelt gezählt) →</a>}
           {sv.negative.length > 0 && <Link href="/bestand?ansicht=negativ" className="small" style={{ color: "var(--danger)" }} data-testid="stock-negative">{sv.negative.length} SKU{sv.negative.length === 1 ? "" : "s"} mit negativem Bestand ({sv.negativeUnits}) – nicht im Warenwert verrechnet →</Link>}
         </div>
         <div className="card card-pad"><div className="kpi-label">Ladenhüter</div><div className="kpi-value">{res.rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore)).length}</div><div className="small muted">ohne Verkauf seit {settings.aging.noSaleWarnDays} Tagen</div></div>
@@ -136,6 +155,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/bestand?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
       </div>
+      {truncated && <div className="notice notice-warn small" data-testid="stock-truncated">Mehr als {ROW_LIMIT.toLocaleString("de-DE")} SKUs mit Bestand – die Liste zeigt die ersten. Für einzelne Artikel oben suchen. Die Kennzahlen zählen trotzdem alles.</div>}
       <div className="row">
         <section className="card" style={{ flexGrow: 1, minWidth: 0, overflow: "auto" }}>
           <table className="table sticky-head">
@@ -179,6 +199,21 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
           </table>
         </section>
         <aside className="col-side">
+          {sets.length > 0 && (
+            <section className="card card-pad stack" id="sets" data-testid="stock-sets">
+              <h2>Sets aus Bestandteilen</h2>
+              <p className="small muted" style={{ margin: 0 }}>Kein eigenes Lager: „Wawi verfügbar“ in den Listings ist, was sich aus den Bestandteilen bilden lässt.</p>
+              {sets.slice(0, 50).map((x) => {
+                const lvl = levels.get(x.sku);
+                return (
+                  <div key={x.sku} className="small" data-testid="stock-set">
+                    <strong className="num">{x.sku}</strong>{x.title ? ` · ${x.title}` : ""}: <strong>{lvl ? availableOf(lvl) : "–"}</strong> bildbar
+                    <div className="muted">{x.components.map((c) => { const cl = levels.get(c.sku); return `${c.qty}× ${c.sku} (${cl ? `${availableOf(cl)} frei` : "kein Lagereintrag"})`; }).join(" · ")}</div>
+                  </div>
+                );
+              })}
+            </section>
+          )}
           <section className="card card-pad stack">
             <h2>Eigenes Lager buchen</h2>
             <form action={setOwnStock} className="stack" style={{ gap: 8 }}>

@@ -2,7 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { todayIso } from "@/lib/dates";
 import type { Session } from "@/lib/auth/session";
-import { addDays, clip, defaultStatus, durationOf, isDay, isTime, num, rating, statusOf, statusProblem, type AppointmentEntry, type EntryStatus, type PartnerKey } from "./logic";
+import { addDays, clip, defaultStatus, durationOf, isDay, isTime, linkIssues, num, rating, statusOf, statusProblem, type AppointmentEntry, type EntryStatus, type KidsEntry, type PartnerKey, type SleepEntry } from "./logic";
 import { eventRefFrom, isoWeekday, parseOccurrence, periodProblem, ritualOccurrences, slotKey, type PeriodEntry, type RitualEntry, type RitualSlot, type TouchEntry, type TouchKind } from "./kalender";
 import { addEntry, loadEntries, loadEntry, myPartner, privateMembers, privateSettings, updateEntry, type PrivateKind } from "./service";
 
@@ -60,7 +60,8 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   const base = { day, from, to, hours: from && to ? undefined : dur.hours, status, extern, fromEvent: fromEventOf(fd, cur?.data.fromEvent) };
   // „Wer übernimmt in dieser Zeit die Kinder?“ (Auszeit) bzw. „Hatte … währenddessen Auszeit?“ (Kinderzeit)
   const kidsBy = String(fd.get("kidsBy") ?? "");
-  const wantsLink = (kind === "auszeit" && (kidsBy === "partner" || fd.get("linkKinder") === "on")) || (kind === "kinder" && fd.get("linkAuszeit") === "on");
+  // „beide zusammen“ (Kinderzeit) hat keine andere Person, die Auszeit haben könnte – dann keine Verknüpfung.
+  const wantsLink = person !== "beide" && ((kind === "auszeit" && (kidsBy === "partner" || fd.get("linkKinder") === "on")) || (kind === "kinder" && fd.get("linkAuszeit") === "on"));
   const asked = fd.get("linkQuestion") === "1";
   const data =
     kind === "paarzeit"
@@ -71,12 +72,14 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   const other = person && person !== "beide" ? otherOf(person) : undefined;
   const linkKind: TimeKind | null = kind === "kinder" ? "auszeit" : kind === "auszeit" ? "kinder" : null;
   const what = `${dmy(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}${status !== "stattgefunden" ? ` (${status})` : ""}`;
-  const linkedPatch = { day, from, to, hours: base.hours, status, editedAt: new Date().toISOString() };
+  // Der verknüpfte Eintrag gehört immer der jeweils anderen Person (Auszeit A ↔ Kinder bei B) – auch nach
+  // einem Personenwechsel. Früher blieb die Person dort stehen: „Auszeit Alexandra · Kinder bei Alexandra“.
+  const linkedPatch = { day, from, to, hours: base.hours, status, ...(other ? { person: other } : {}), editedAt: new Date().toISOString() };
 
   if (cur) {
     let linkId = typeof cur.data.linkId === "string" ? cur.data.linkId : undefined;
     let note = "";
-    if (linkKind && linkId && asked && !wantsLink) {
+    if (linkKind && linkId && ((asked && !wantsLink) || person === "beide")) {
       // Verknüpfung ausdrücklich gelöst: beide Einträge bleiben, nur nicht mehr verbunden (nichts wird gelöscht).
       for (const e of (await loadEntries<Record<string, unknown>>(session, [linkKind])).filter((x) => x.data.linkId === linkId)) {
         const { linkId: _drop, ...rest } = e.data;
@@ -342,4 +345,24 @@ export async function setStatus(session: Session, id: string, statusIn: unknown)
     for (const x of (await loadEntries<{ linkId?: string }>(session, [pk])).filter((x) => x.data.linkId === e.data.linkId)) await updateEntry(session, x.id, pk, { status });
   }
   return { ok: true, message: `Status: ${status}.`, id, day: e.data.day };
+}
+
+// ---- Verknüpfungen reparieren -----------------------------------------------------------------------
+
+/** Widersprüche zwischen verknüpfter Auszeit und Kinderzeit (siehe linkIssues) – aus den aktuellen Daten. */
+export async function currentLinkIssues(session: Session) {
+  const [auszeit, kinder, settings] = await Promise.all([loadEntries<SleepEntry>(session, ["auszeit"]), loadEntries<KidsEntry>(session, ["kinder"]), privateSettings(session.tenantId)]);
+  return linkIssues(auszeit, kinder, settings.partners);
+}
+
+/**
+ * Einen Vorschlag anwenden – nur nach ausdrücklicher Wahl. Die Vorschläge werden aus den aktuellen Daten neu
+ * berechnet (nicht aus dem Formular übernommen); hat sich inzwischen etwas geändert, passiert nichts.
+ */
+export async function repairLink(session: Session, key: unknown, fixIndex: unknown): Promise<SaveResult> {
+  const issue = (await currentLinkIssues(session)).find((i) => i.key === key);
+  const fix = issue?.fixes[Number(fixIndex)];
+  if (!issue || !fix) return fail("Dieser Widerspruch ist schon behoben oder hat sich geändert – bitte die Liste neu laden.");
+  for (const c of fix.changes) await updateEntry(session, c.id, c.kind, { ...c.data, editedAt: new Date().toISOString() }, true);
+  return { ok: true, message: `Repariert: ${fix.label}.`, day: issue.day };
 }

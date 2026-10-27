@@ -368,13 +368,22 @@ export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
  * Im Wechsel: wer als Nächstes dran wäre – der andere als beim letzten Eintrag. Bewusst ohne
  * Ausgleich nach gezählten Stunden (das wäre eine Bewertung, die die Zahlen nicht hergeben). Ohne Einträge: null.
  */
-export function nextSleeper(all: (Pick<SleepEntry, "day" | "person" | "status"> & { at?: number })[], _month?: string): PartnerKey | null {
-  // Nur tatsächlich genommene Zeit: ein geplanter Morgen macht noch niemanden „dran gewesen“.
-  const entries = all.filter(happened);
-  if (!entries.length) return null;
-  // gleicher Tag: was zuletzt eingetragen wurde
-  const last = [...entries].sort((x, y) => x.day.localeCompare(y.day) || (x.at ?? 0) - (y.at ?? 0)).pop()!;
+export function nextSleeper(all: (Pick<SleepEntry, "day" | "person" | "status"> & { at?: number })[], today?: string): PartnerKey | null {
+  const last = lastTaken(all, today);
+  if (!last) return null;
   return last.person === "a" ? "b" : "a";
+}
+
+/**
+ * Der letzte tatsächlich genommene Eintrag (für „zuletzt …“ und den Wechsel): nur stattgefundene, nie aus
+ * der Zukunft – ein geplanter Abend am 02.11. ist am 27.10. noch nicht „zuletzt“. Gleicher Tag: zuletzt eingetragen.
+ * `today` als JJJJ-MM-TT; ältere Aufrufe mit Monat (JJJJ-MM) begrenzen nicht.
+ */
+export function lastTaken<E extends Pick<SleepEntry, "day" | "status"> & { at?: number }>(all: E[], today?: string): E | null {
+  const until = today && /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : null;
+  const entries = all.filter((e) => happened(e) && (!until || e.day <= until));
+  if (!entries.length) return null;
+  return [...entries].sort((x, y) => x.day.localeCompare(y.day) || (x.at ?? 0) - (y.at ?? 0)).pop()!;
 }
 
 // ---- Aufgaben --------------------------------------------------------------------------------------
@@ -767,4 +776,66 @@ export function partnerHolders(userPartner: Record<string, PartnerKey>, members:
     if (m.userId !== self && k && !out[k]) out[k] = labels.get(m.userId);
   }
   return out;
+}
+
+// ---- Verknüpfte Auszeit/Kinderzeit prüfen ----------------------------------------------------------
+
+type LinkRow<T> = { id: string; data: T };
+export type LinkChange = { id: string; kind: "auszeit" | "kinder"; data: Record<string, unknown> };
+export type LinkFix = { label: string; changes: LinkChange[] };
+/** Ein Widerspruch in einem verknüpften Vorgang (Auszeit ↔ Kinderzeit) mit Reparatur-Vorschlägen (der erste empfohlen). */
+export type LinkIssue = { key: string; linkId: string; day: string; text: string; auszeitIds: string[]; kinderIds: string[]; fixes: LinkFix[] };
+
+const timeOf = (e: { day: string; from?: string; to?: string; hours?: number; status?: EntryStatus }) => ({ day: e.day, from: e.from, to: e.to, hours: e.hours, status: statusOf(e) });
+const timeText = (e: { day: string; from?: string; to?: string; hours?: number }) => `${e.day.split("-").reverse().join(".")}${e.from && e.to ? ` ${e.from}–${e.to}` : e.hours ? `, ${String(e.hours).replace(".", ",")} Std.` : ""}`;
+const without = (d: Record<string, unknown>, k: string) => Object.fromEntries(Object.entries(d).filter(([x]) => x !== k));
+const compactData = (d: Record<string, unknown>) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined));
+
+/**
+ * Widersprüche zwischen verknüpfter Auszeit und Kinderzeit finden: dieselbe Person auf beiden Seiten, abweichende
+ * Zeit bzw. Status, fehlender oder doppelter Partner. Nichts wird automatisch geändert – die Vorschläge
+ * werden erst nach Bestätigung angewendet. Empfohlen (zuerst) ist die Seite, die zuletzt bearbeitet wurde.
+ */
+export function linkIssues(auszeit: LinkRow<SleepEntry>[], kinder: LinkRow<KidsEntry>[], names: { a: string; b: string }): LinkIssue[] {
+  const ids = new Set([...auszeit, ...kinder].map((e) => e.data.linkId).filter((x): x is string => Boolean(x)));
+  const out: LinkIssue[] = [];
+  const who = (p: KidsEntry["person"]) => (p === "beide" ? "beide" : names[p]);
+  for (const linkId of ids) {
+    const a = auszeit.filter((e) => e.data.linkId === linkId);
+    const k = kinder.filter((e) => e.data.linkId === linkId);
+    const day = (a[0] ?? k[0])!.data.day;
+    const base = { linkId, day, auszeitIds: a.map((e) => e.id), kinderIds: k.map((e) => e.id) };
+    if (a.length > 1 || k.length > 1) {
+      out.push({ ...base, key: `${linkId}:mehrfach`, text: `${timeText({ day })}: ${a.length} Auszeit- und ${k.length} Kinderzeit-Einträge hängen zusammen – bitte einzeln öffnen und prüfen.`, fixes: [] });
+      continue;
+    }
+    if (!a.length || !k.length) {
+      const only = (a[0] ?? k[0])!;
+      const kind = a.length ? "auszeit" : "kinder";
+      out.push({ ...base, key: `${linkId}:allein`, text: `${timeText(only.data)}: ${kind === "auszeit" ? "Auszeit" : "Kinderzeit"} ${who(only.data.person)} ist als verknüpft markiert, der andere Eintrag fehlt.`, fixes: [{ label: "Verknüpfung lösen (Eintrag bleibt)", changes: [{ id: only.id, kind, data: without(only.data as Record<string, unknown>, "linkId") }] }] });
+      continue;
+    }
+    const [x, y] = [a[0], k[0]];
+    const auszeitNewer = (x.data.editedAt ?? "") >= (y.data.editedAt ?? "");
+    if (y.data.person === "beide") {
+      out.push({ ...base, key: `${linkId}:beide`, text: `${timeText(x.data)}: Kinderzeit „beide zusammen“ ist mit Auszeit ${names[x.data.person]} verknüpft – das passt nicht zusammen.`, fixes: [{ label: "Verknüpfung lösen (beide Einträge bleiben)", changes: [{ id: x.id, kind: "auszeit", data: without(x.data, "linkId") }, { id: y.id, kind: "kinder", data: without(y.data, "linkId") }] }] });
+      continue;
+    }
+    if (x.data.person === y.data.person) {
+      const p = x.data.person;
+      const o: PartnerKey = p === "a" ? "b" : "a";
+      const keepAuszeit: LinkFix = { label: `Auszeit ${names[p]}, Kinder bei ${names[o]}`, changes: [{ id: y.id, kind: "kinder", data: { ...y.data, person: o } }] };
+      const keepKinder: LinkFix = { label: `Auszeit ${names[o]}, Kinder bei ${names[p]}`, changes: [{ id: x.id, kind: "auszeit", data: { ...x.data, person: o } }] };
+      out.push({ ...base, key: `${linkId}:person`, text: `${timeText(x.data)}: Auszeit und Kinderzeit stehen beide bei ${names[p]}. Richtig ist eine der beiden Varianten:`, fixes: auszeitNewer ? [keepAuszeit, keepKinder] : [keepKinder, keepAuszeit] });
+      continue;
+    }
+    const tx = timeOf(x.data);
+    const ty = timeOf(y.data);
+    if (JSON.stringify(tx) !== JSON.stringify(ty)) {
+      const asAuszeit: LinkFix = { label: `Wie die Auszeit: ${timeText(x.data)} (${tx.status})`, changes: [{ id: y.id, kind: "kinder", data: compactData({ ...y.data, ...tx }) }] };
+      const asKinder: LinkFix = { label: `Wie die Kinderzeit: ${timeText(y.data)} (${ty.status})`, changes: [{ id: x.id, kind: "auszeit", data: compactData({ ...x.data, ...ty }) }] };
+      out.push({ ...base, key: `${linkId}:zeit`, text: `Auszeit ${names[x.data.person]} (${timeText(x.data)}, ${tx.status}) und Kinderzeit ${names[y.data.person as PartnerKey]} (${timeText(y.data)}, ${ty.status}) weichen voneinander ab.`, fixes: auszeitNewer ? [asAuszeit, asKinder] : [asKinder, asAuszeit] });
+    }
+  }
+  return out.sort((p, q) => q.day.localeCompare(p.day));
 }

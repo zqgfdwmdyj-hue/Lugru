@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { addDays, clockChangeOn, clockShiftHours, kidsHours, kidsOverview, nextSleeper, overnight, shiftMonth, upcomingClockChange, type PartnerKey, type SleepEntry } from "@/lib/private/logic";
+import { addDays, clockChangeOn, clockShiftHours, kidsHours, kidsOverview, lastTaken, nextSleeper, overnight, shiftMonth, upcomingClockChange, type PartnerKey, type SleepEntry } from "@/lib/private/logic";
 import type { Session } from "@/lib/auth/session";
 import { loadEntries, myPartner, privateSettings, type Entry } from "@/lib/private/service";
 import { deleteEntryAction, type FormState } from "./actions";
@@ -85,8 +85,10 @@ export async function FairPage({ session, month, cfg, editId }: { session: Sessi
   const byId = new Map(all.map((e) => [e.id, e]));
   const ov = kidsOverview(all.map((e) => ({ ...e.data, id: e.id })), month);
   const name = s.partners;
-  const next = nextSleeper(all.map((e) => ({ ...e.data, at: e.createdAt.getTime() })), today.slice(0, 7));
-  const last = [...all].sort((x, y) => y.data.day.localeCompare(x.data.day) || y.createdAt.getTime() - x.createdAt.getTime())[0]?.data;
+  // „zuletzt“ und Wechsel nur aus Stattgefundenem bis heute – nie aus geplanten oder künftigen Einträgen.
+  const timeline = all.map((e) => ({ ...e.data, at: e.createdAt.getTime() }));
+  const next = nextSleeper(timeline, today);
+  const last = lastTaken(timeline, today);
   const me = myPartner(s, session);
   const last3 = [1, 2, 3].map((i) => shiftMonth(month, -i)).map((m) => ({ m, ...kidsOverview(all.map((e) => e.data), m).totals }));
   const t = cfg.test;
