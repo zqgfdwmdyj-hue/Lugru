@@ -3,13 +3,14 @@ import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { detectDocType, extractInvoiceDate, findDuplicates, type DupRow, type InvoiceChecks } from "./checks";
-import { parseInvoiceFileName } from "./parse";
+import { extractInvoiceFacts, parseInvoiceFileName, plausibleInvoiceNumber } from "./parse";
 
 // Rechnungsprüfung: Erkennung (Datum, Belegart, Duplikate) für neue und vorhandene Rechnungen.
 // Vorhandene Daten werden nie still geändert – ein abweichendes Datum wird als Vorschlag hinterlegt.
 
 /** Erhöhen, wenn sich die Prüflogik ändert – dann werden alle Rechnungen einmal neu geprüft. */
-export const CHECK_VERSION = 1;
+/** 2: „kein Rechnungsbeleg“ (AGB, Garantie, Werbung) und unplausible Rechnungsnummern („jederzeit“, „Fragen“). */
+export const CHECK_VERSION = 2;
 
 type Row = typeof schema.invoices.$inferSelect;
 
@@ -32,6 +33,7 @@ export function analyzeNew(text: string, fileName: string) {
   const checks: InvoiceChecks = { v: CHECK_VERSION };
   if (date.uncertain) checks.date = { uncertain: date.uncertain, suggestion: date.suggestion ?? null };
   if (doc.uncertain) checks.docType = { uncertain: doc.uncertain };
+  if (doc.notInvoice) checks.notInvoice = doc.notInvoice;
   return { invoiceDate: date.date, docType: doc.type, checks };
 }
 
@@ -84,7 +86,10 @@ export async function recheckInvoices(tenantId: string, opts: { ids?: string[]; 
       const d = detectDocType(text, r.fileName);
       docType = d.type;
       if (d.uncertain) next.docType = { uncertain: d.uncertain };
+      if (d.notInvoice) next.notInvoice = d.notInvoice;
     }
+    // Früher als Nummer gelesene Wörter („jederzeit“, „Fragen“) durch eine plausible ersetzen – oder leeren.
+    const invoiceNumber = r.invoiceNumber && !plausibleInvoiceNumber(r.invoiceNumber) && r.source !== "scan" ? extractInvoiceFacts(text).invoiceNumber : r.invoiceNumber;
     if (!manual.includes("date") && r.source !== "scan") {
       const name = parseInvoiceFileName(r.fileName);
       const found = extractInvoiceDate(text, name.date, todayIso());
@@ -95,11 +100,11 @@ export async function recheckInvoices(tenantId: string, opts: { ids?: string[]; 
       }
     }
     if (!r.checks.notDuplicate) {
-      const dups = findDuplicates(dupRow({ ...r, docType }), others.map(dupRow));
+      const dups = findDuplicates(dupRow({ ...r, docType, invoiceNumber }), others.map(dupRow));
       if (dups.length) next.duplicateOf = dups;
     }
     if (next.date || next.docType || next.duplicateOf) flagged++;
-    await db.update(I).set({ docType, checks: next }).where(and(eq(I.id, r.id), eq(I.tenantId, tenantId)));
+    await db.update(I).set({ docType, invoiceNumber, checks: next }).where(and(eq(I.id, r.id), eq(I.tenantId, tenantId)));
   }
   return { checked: rows.length, flagged };
 }
@@ -111,4 +116,4 @@ export const hasOpenCheck = sql`(${schema.invoices.checks} ? 'date' or ${schema.
  * SQL-Bedingung „zu prüfen“ – eine Definition für Reiter „Prüfen“, Zähler in der Navigation und die
  * Aufgabe: nicht ignoriert und (neu, zur Prüfung oder mit offenem Prüfhinweis).
  */
-export const needsReview = sql`(${schema.invoices.status} <> 'ignored' and (${schema.invoices.status} in ('new', 'review') or ${hasOpenCheck}))`;
+export const needsReview = sql`(${schema.invoices.status} <> 'ignored' and ${schema.invoices.docType} <> 'keinbeleg' and (${schema.invoices.status} in ('new', 'review') or ${hasOpenCheck}))`;

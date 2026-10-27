@@ -1,9 +1,9 @@
 import "server-only";
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { skuCostMap } from "@/lib/money/costs";
 import { storeFile } from "@/lib/orders/service";
-import { brandFacts, brandKey, dealCalc, FAHRPLAN, parseBrandList, suggestBrands, type DealRow, type DealResult, type SasModule, type SasWaiting } from "./logic";
+import { brandFacts, brandKey, brandSnippet, dealCalc, FAHRPLAN, parseBrandList, suggestBrands, type DealRow, type DealResult, type SasModule, type SasWaiting } from "./logic";
 
 // Amazon SAS-Programm: Stand, Aufgaben (gekoppelt an die normalen Aufgaben), Marken, Deals, Unterlagen.
 
@@ -115,7 +115,8 @@ export async function recomputeBrandFacts(tenantId: string) {
   const [products, stats, invoices, offers] = await Promise.all([
     db.select({ name: schema.sellerboardProducts.name }).from(schema.sellerboardProducts).where(eq(schema.sellerboardProducts.tenantId, tenantId)),
     db.select({ name: schema.sellerboardSkuStats.name, sales: schema.sellerboardSkuStats.sales, units: schema.sellerboardSkuStats.units }).from(schema.sellerboardSkuStats).where(eq(schema.sellerboardSkuStats.tenantId, tenantId)),
-    db.select({ text: schema.invoices.textExcerpt, vendor: schema.invoices.vendor }).from(schema.invoices).where(eq(schema.invoices.tenantId, tenantId)),
+    // Nur echte Rechnungen (keine AGB, Werbung, Bestätigungen …) und nichts Aussortiertes.
+    db.select({ text: schema.invoices.textExcerpt, vendor: schema.invoices.vendor }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.docType, "rechnung"), ne(schema.invoices.status, "ignored"))),
     db.select({ title: schema.supplierOffers.title }).from(schema.supplierOffers).where(eq(schema.supplierOffers.tenantId, tenantId)),
   ]);
   const facts = brandFacts(
@@ -134,6 +135,42 @@ export async function recomputeBrandFacts(tenantId: string) {
 }
 
 export type SasBrand = typeof schema.sasBrands.$inferSelect;
+
+/** Kennzahlen neu rechnen, wenn der letzte Stand älter als 12 Stunden ist (Umsätze und Belege ändern sich täglich). */
+export async function refreshBrandFactsIfStale(tenantId: string) {
+  const [r] = await db.select({ at: sql<Date | null>`min(${B.computedAt})`, n: sql<number>`count(*)::int` }).from(B).where(eq(B.tenantId, tenantId));
+  if (!r?.n) return false;
+  if (r.at && Date.now() - new Date(r.at).getTime() < 12 * 3_600_000) return false;
+  await recomputeBrandFacts(tenantId);
+  return true;
+}
+
+/** Woher der 30-Tage-Umsatz kommt und ob überhaupt Daten da sind (sellerboard, je Produkt). */
+export async function salesCoverage(tenantId: string) {
+  const S = schema.sellerboardSkuStats;
+  const [r] = await db
+    .select({ rows: sql<number>`count(*)::int`, named: sql<number>`count(${S.name})::int`, withSales: sql<number>`count(*) filter (where coalesce(${S.sales}, 0) > 0)::int`, from: sql<string | null>`min(${S.fromDay})::text`, to: sql<string | null>`max(${S.toDay})::text`, synced: sql<Date | null>`max(${S.syncedAt})` })
+    .from(S)
+    .where(eq(S.tenantId, tenantId));
+  return { rows: r?.rows ?? 0, named: r?.named ?? 0, withSales: r?.withSales ?? 0, from: r?.from ?? null, to: r?.to ?? null, synced: r?.synced ? new Date(r.synced) : null };
+}
+
+/** Belege, in denen die Marke vorkommt – mit Ausschnitt zum Nachprüfen (Bankdaten/Fußzeilen ausgenommen). */
+export async function brandEvidence(tenantId: string, brandId: string) {
+  const [b] = await db.select().from(B).where(and(eq(B.tenantId, tenantId), eq(B.id, brandId)));
+  if (!b) return null;
+  const I = schema.invoices;
+  const rows = await db
+    .select({ id: I.id, vendor: I.vendor, fileName: I.fileName, invoiceDate: I.invoiceDate, invoiceNumber: I.invoiceNumber, totalGross: I.totalGross, text: I.textExcerpt })
+    .from(I)
+    .where(and(eq(I.tenantId, tenantId), eq(I.docType, "rechnung"), ne(I.status, "ignored")))
+    .orderBy(desc(I.invoiceDate));
+  const hits = rows
+    .map((r) => ({ ...r, snippet: brandSnippet(b.brand, `${r.vendor ?? ""} ${r.text ?? ""}`) }))
+    .filter((r) => r.snippet)
+    .map(({ text: _t, ...r }) => r);
+  return { brand: b, hits: hits.slice(0, 60), total: hits.length };
+}
 
 export async function loadBrands(tenantId: string): Promise<SasBrand[]> {
   return db.select().from(B).where(eq(B.tenantId, tenantId)).orderBy(asc(B.brand));

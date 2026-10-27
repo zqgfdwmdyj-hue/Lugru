@@ -4,12 +4,14 @@ import { createdAt, files, id, lots, money, suppliers, tenantId, updatedAt } fro
 export const INVOICE_KINDS = ["goods", "expense", "unknown"] as const;
 export const INVOICE_STATUSES = ["new", "matched", "review", "ignored"] as const;
 /** Belegart laut Erkennung (Text/Dateiname) oder von Hand. */
-export const DOC_TYPES = ["rechnung", "gutschrift", "storno", "bestaetigung", "lieferschein", "mahnung", "quittung", "unbekannt"] as const;
+export const DOC_TYPES = ["rechnung", "gutschrift", "storno", "bestaetigung", "lieferschein", "mahnung", "quittung", "keinbeleg", "unbekannt"] as const;
 export type InvoiceChecks = {
   /** Datum unsicher: Grund und – falls es einen gibt – ein Vorschlag (ISO). */
   date?: { uncertain: string; suggestion?: string | null };
   /** Belegart nicht sicher erkannt. */
   docType?: { uncertain: string };
+  /** Als „kein Rechnungsbeleg“ aussortiert (AGB, Garantie, Werbung …): woran erkannt. */
+  notInvoice?: string;
   /** Mögliche Duplikate (IDs) mit Grund – nur Hinweis, nichts wird gelöscht. */
   duplicateOf?: { id: string; reason: string }[];
   /** Von Hand bestätigt: kein Duplikat. */

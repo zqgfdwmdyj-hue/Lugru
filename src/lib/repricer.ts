@@ -25,7 +25,10 @@ export type RepricerRow = {
   target: number | null;
   min: number | null;
   max: number | null;
+  /** FBA-Gebühr pauschal (keine Gebührenvorschau). */
   feeEstimated: boolean;
+  /** Provision pauschal aus den Einstellungen (keine Gebührenvorschau). */
+  refEstimated: boolean;
 };
 
 /** Alle SKUs mit Bestand – mit Mindest- und Maximalpreis aus dem gültigen EK (gleicher Rechenweg wie überall). */
@@ -74,6 +77,7 @@ export async function repricerRows(tenantId: string): Promise<RepricerRow[]> {
       min: mm?.min ?? null,
       max: mm?.max ?? null,
       feeEstimated: r.fee === null,
+      refEstimated: r.ref === null,
     };
   });
 }

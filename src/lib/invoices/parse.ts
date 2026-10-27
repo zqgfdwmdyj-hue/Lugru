@@ -17,6 +17,14 @@ export function parseInvoiceFileName(name: string): { date: string | null; sourc
   return { date: m[1], sourceKey: key.length ? key.join("-") : null };
 }
 
+/** Rechnungsnummer plausibel? Mindestens eine Ziffer, kein bloßes Wort, keine Uhrzeit/Datum allein. */
+export function plausibleInvoiceNumber(v: string | null | undefined): boolean {
+  const s = (v ?? "").trim();
+  if (s.length < 3 || s.length > 30 || !/\d/.test(s)) return false;
+  if (/^\d{1,2}[./]\d{1,2}[./]\d{2,4}$/.test(s) || /^\d{1,2}:\d{2}$/.test(s)) return false;
+  return true;
+}
+
 export type InvoiceFacts = {
   invoiceNumber: string | null;
   invoiceDate: string | null;
@@ -40,7 +48,8 @@ function lastAmountAfter(text: string, labels: RegExp): number | null {
 
 export function extractInvoiceFacts(text: string): InvoiceFacts {
   const t = text.replace(/ /g, " ");
-  const num = /(?:rechnungs(?:-|\s)?(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))[:\s#]*([A-Z0-9][A-Z0-9\-/]{3,30})/i.exec(t)?.[1] ?? null;
+  // Erster plausibler Treffer: „Rechnungsnummer: Fragen? …“ oder „… jederzeit“ sind keine Nummern.
+  const num = [...t.matchAll(/(?:rechnungs(?:-|\s)?(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))[:\s#]*([A-Z0-9][A-Z0-9\-/]{3,30})/gi)].map((m) => m[1]).find(plausibleInvoiceNumber) ?? null;
   const order =
     /\b(\d{3}-\d{7}-\d{7})\b/.exec(t)?.[1] ??
     /(?:bestell(?:ung|nummer|-nr\.?|nr\.?)|auftrags(?:nummer|nr\.?)|order\s*(?:no\.?|number|#|id))[:\s#]*([A-Z0-9][A-Z0-9\-/]{3,30})/i.exec(t)?.[1] ??

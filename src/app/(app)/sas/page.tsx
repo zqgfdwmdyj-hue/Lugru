@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { CopyButton } from "@/components/copy-button";
 import { auditMail, daysUntil, MODULE_LABEL, WAITING_LABEL, type SasModule, type SasWaiting } from "@/lib/sas/logic";
-import { getProgram, loadBrands, loadDeals, loadDocuments, loadItems, type SasBrand, type SasDealView, type SasItem, type SasProgram } from "@/lib/sas/service";
+import { brandEvidence, getProgram, refreshBrandFactsIfStale, loadBrands, loadDeals, loadDocuments, loadItems, salesCoverage, type SasBrand, type SasDealView, type SasItem, type SasProgram } from "@/lib/sas/service";
+import { BrandStatusSelect } from "./brand-status";
 import { SAS_BRAND_STATUS, SAS_DEAL_STATUS, SAS_MODULES, SAS_WAITING } from "@/db/tables/sas";
 import {
   addItemAction,
@@ -96,7 +97,7 @@ function ItemRow({ it, readOnly }: { it: SasItem; readOnly: boolean }) {
   );
 }
 
-export default async function SasPage({ searchParams }: { searchParams: Promise<{ tab?: string; ok?: string; fehler?: string; filter?: string }> }) {
+export default async function SasPage({ searchParams }: { searchParams: Promise<{ tab?: string; ok?: string; fehler?: string; filter?: string; q?: string; sort?: string; belege?: string }> }) {
   const session = await requireArea("amazon");
   const sp = await searchParams;
   const tab: Tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as Tab) : "uebersicht";
@@ -105,6 +106,8 @@ export default async function SasPage({ searchParams }: { searchParams: Promise<
   const [prog, items] = await Promise.all([getProgram(t), loadItems(t)]);
   const open = items.filter((i) => i.status !== "done");
   const nextSteps = [...open].sort((a, b) => (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999") || a.sortOrder - b.sortOrder).slice(0, 5);
+  // Markenliste: Kennzahlen täglich frisch (Umsatz, Belege) – nicht bei Nur-ansehen-Konten.
+  if (tab === "marken" && !ro) await refreshBrandFactsIfStale(t);
 
   return (
     <>
@@ -130,7 +133,7 @@ export default async function SasPage({ searchParams }: { searchParams: Promise<
 
       {tab === "uebersicht" && <Overview prog={prog} nextSteps={nextSteps} hasPlan={items.some((i) => i.templateKey)} ro={ro} />}
       {tab === "aufgaben" && <Tasks items={items} ro={ro} />}
-      {tab === "marken" && <Brands prog={prog} brands={await loadBrands(t)} filter={sp.filter ?? "alle"} ro={ro} />}
+      {tab === "marken" && <Brands prog={prog} brands={await loadBrands(t)} filter={sp.filter ?? "alle"} q={(sp.q ?? "").trim().slice(0, 60)} sort={sp.sort ?? "umsatz"} coverage={await salesCoverage(t)} evidence={sp.belege && /^[0-9a-f-]{36}$/i.test(sp.belege) ? await brandEvidence(t, sp.belege) : null} ro={ro} />}
       {tab === "blackweek" && <Deals prog={prog} deals={await loadDeals(t)} ro={ro} />}
       {tab === "unterlagen" && <Docs docs={await loadDocuments(t)} ro={ro} />}
     </>
@@ -229,12 +232,22 @@ function Tasks({ items, ro }: { items: SasItem[]; ro: boolean }) {
   );
 }
 
-function Brands({ prog, brands, filter, ro }: { prog: SasProgram; brands: SasBrand[]; filter: string; ro: boolean }) {
+type Coverage = Awaited<ReturnType<typeof salesCoverage>>;
+type Evidence = Awaited<ReturnType<typeof brandEvidence>>;
+const SORTS: [string, string][] = [["umsatz", "Umsatz"], ["belege", "Belege"], ["name", "Name"], ["status", "Status"]];
+
+function Brands({ prog, brands, filter, q, sort, coverage, evidence, ro }: { prog: SasProgram; brands: SasBrand[]; filter: string; q: string; sort: string; coverage: Coverage; evidence: Evidence; ro: boolean }) {
   const selected = brands.filter((b) => b.selected);
   const withEvidence = brands.filter((b) => (b.invoices ?? 0) > 0);
-  const shown = (filter === "ausgewaehlt" ? selected : filter === "belege" ? withEvidence : filter === "umsatz" ? brands.filter((b) => Number(b.sales30 ?? 0) > 0) : brands).sort(
-    (a, b) => Number(b.selected) - Number(a.selected) || Number(b.sales30 ?? 0) - Number(a.sales30 ?? 0) || a.brand.localeCompare(b.brand, "de"),
-  );
+  const salesKnown = coverage.withSales > 0;
+  const withSales = brands.filter((b) => Number(b.sales30 ?? 0) > 0).length;
+  const ql = q.toLowerCase();
+  const order = (a: SasBrand, b: SasBrand) =>
+    sort === "name" ? a.brand.localeCompare(b.brand, "de") : sort === "belege" ? (b.invoices ?? 0) - (a.invoices ?? 0) || a.brand.localeCompare(b.brand, "de") : sort === "status" ? a.status.localeCompare(b.status) || a.brand.localeCompare(b.brand, "de") : Number(b.sales30 ?? 0) - Number(a.sales30 ?? 0) || (b.invoices ?? 0) - (a.invoices ?? 0) || a.brand.localeCompare(b.brand, "de");
+  const shown = (filter === "ausgewaehlt" ? selected : filter === "belege" ? withEvidence : filter === "umsatz" ? brands.filter((b) => Number(b.sales30 ?? 0) > 0) : brands)
+    .filter((b) => !ql || b.brand.toLowerCase().includes(ql))
+    .sort((a, b) => Number(b.selected) - Number(a.selected) || order(a, b));
+  const link = (p: Record<string, string>) => `/sas?${new URLSearchParams({ tab: "marken", filter, ...(q ? { q } : {}), sort, ...p })}`;
   const mail = auditMail(selected.map((b) => b.brand), prog.consultantName);
   const computed = brands.find((b) => b.computedAt)?.computedAt ?? null;
   return (
@@ -256,18 +269,55 @@ function Brands({ prog, brands, filter, ro }: { prog: SasProgram; brands: SasBra
           <div className="card-head" style={{ flexWrap: "wrap", gap: 8 }}>
             <h2>Marken <span className="small muted" style={{ fontWeight: 400 }}>{brands.length} · {withEvidence.length} mit Belegen · <strong data-testid="sas-selected-count">{selected.length}/10</strong> ausgewählt</span></h2>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <form action={suggestBrandsAction}><button className="btn btn-small" type="submit" disabled={ro} data-testid="sas-suggest">10 vorschlagen (Belege + Umsatz)</button></form>
+              <form action={suggestBrandsAction}><button className="btn btn-small" type="submit" disabled={ro} data-testid="sas-suggest" title={salesKnown ? undefined : "Ohne Umsatzdaten zählen nur Belege und Lieferanten-Angebote"}>{salesKnown ? "10 vorschlagen (Belege + Umsatz)" : "10 vorschlagen (nur nach Belegen – Umsatz fehlt)"}</button></form>
               <form action={recomputeBrandsAction}><button className="btn btn-small" type="submit" disabled={ro}>Neu berechnen</button></form>
             </div>
           </div>
           <div className="card-pad small muted" style={{ paddingTop: 0 }}>
-            Für den Audit zählen Marken, deren legitimen Einkauf du belegen kannst. Vorschlag: zuerst Marken mit Rechnungen, dann nach Umsatz. {computed ? `Stand ${computed.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Berlin" })}.` : ""}
+            Für den Audit zählen Marken, deren legitimen Einkauf du belegen kannst. Vorschlag: zuerst Marken mit Rechnungen, dann nach Umsatz. Belege = Eingangsrechnungen (keine AGB, Werbung, Bestätigungen), in deren Text die Marke steht – Bankverbindung und Fußzeilen zählen nicht. {computed ? `Stand ${computed.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Berlin" })}.` : ""}
           </div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 22px 10px" }}>
+          <div className="card-pad small" style={{ paddingTop: 0 }} data-testid="sas-sales-coverage">
+            {coverage.rows === 0 ? (
+              <div className="notice notice-warn">Umsatz 30 Tage: <strong>keine Daten</strong> – sellerboard hat noch keine Produktumsätze geliefert (Anbindungen → sellerboard prüfen, danach „Neu berechnen“). Bis dahin bewertet der Vorschlag nur Belege und Lieferanten-Angebote, nicht den Umsatz.</div>
+            ) : !salesKnown ? (
+              <div className="notice notice-warn">Umsatz 30 Tage: sellerboard liefert {coverage.rows} Produkte, aber keines mit Umsatz (Stand {coverage.synced?.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" }) ?? "–"}). Der Vorschlag ist deshalb keine Umsatzbewertung.</div>
+            ) : withSales === 0 ? (
+              <div className="notice notice-warn">Umsatz 30 Tage: {coverage.withSales} Produkte mit Umsatz laut sellerboard, aber in keinem Produktnamen kommt eine der Marken vor – die Zuordnung läuft über den Namen. Der Vorschlag ist deshalb keine Umsatzbewertung.</div>
+            ) : (
+              <span className="muted">Umsatz 30 Tage: sellerboard, {coverage.from ? `${coverage.from.split("-").reverse().join(".")}–${coverage.to!.split("-").reverse().join(".")}` : ""} · {coverage.withSales} Produkte mit Umsatz · {withSales} von {brands.length} Marken zugeordnet (über den Produktnamen). „–“ = kein Treffer.</span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 22px 10px", alignItems: "center" }}>
             {[["alle", "Alle"], ["ausgewaehlt", "Ausgewählt"], ["belege", "Mit Belegen"], ["umsatz", "Mit Umsatz"]].map(([k, l]) => (
-              <Link key={k} href={`/sas?tab=marken&filter=${k}`} className={`chip${filter === k ? " active" : ""}`}>{l}</Link>
+              <Link key={k} href={link({ filter: k })} className={`chip${filter === k ? " active" : ""}`}>{l}</Link>
             ))}
+            <form action="/sas" style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+              <input type="hidden" name="tab" value="marken" />
+              <input type="hidden" name="filter" value={filter} />
+              <input type="hidden" name="sort" value={sort} />
+              <input className="input" name="q" defaultValue={q} placeholder="Marke suchen" aria-label="Marke suchen" style={{ width: 170, padding: "4px 8px" }} data-testid="sas-brand-search" />
+            </form>
+            <span className="small muted">Sortieren:</span>
+            {SORTS.map(([k, l]) => <Link key={k} href={link({ sort: k })} className={`chip${sort === k ? " active" : ""}`} data-testid={`sas-sort-${k}`}>{l}</Link>)}
           </div>
+          {evidence && (
+            <div className="card-pad" style={{ paddingTop: 0 }} data-testid="sas-evidence">
+              <div className="notice notice-info small">
+                <div className="between"><strong>Belege für „{evidence.brand.brand}“: {evidence.total}</strong><Link href={link({})}>schließen ✕</Link></div>
+                {evidence.total === 0 ? <div>Keine Rechnung enthält die Marke (Bankverbindung und Fußzeilen ausgenommen).</div> : (
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                    {evidence.hits.map((h) => (
+                      <li key={h.id} style={{ marginBottom: 4 }}>
+                        <Link href={`/rechnungen/${h.id}`}>{h.vendor ?? h.fileName}</Link> <span className="muted">{h.invoiceDate ? h.invoiceDate.split("-").reverse().join(".") : ""}{h.invoiceNumber ? ` · Nr. ${h.invoiceNumber}` : ""}</span>
+                        <div className="muted">„{h.snippet}“</div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {evidence.total > evidence.hits.length && <div className="muted">… und {evidence.total - evidence.hits.length} weitere.</div>}
+              </div>
+            </div>
+          )}
           <div className="sales-scroll">
             <table className="table">
               <thead>
@@ -294,18 +344,12 @@ function Brands({ prog, brands, filter, ro }: { prog: SasProgram; brands: SasBra
                       </form>
                     </td>
                     <td><strong>{b.brand}</strong></td>
-                    <td className="right num">{Number(b.sales30 ?? 0) > 0 ? eur0(Number(b.sales30)) : "–"}</td>
+                    <td className="right num" title={coverage.rows === 0 ? "keine Umsatzdaten von sellerboard" : Number(b.sales30 ?? 0) > 0 ? undefined : "kein Produkt mit dieser Marke im Namen"}>{Number(b.sales30 ?? 0) > 0 ? eur0(Number(b.sales30)) : coverage.rows === 0 ? "?" : "–"}</td>
                     <td className="right num">{b.products || "–"}</td>
-                    <td className="right num" style={(b.invoices ?? 0) > 0 ? { color: "var(--ok)", fontWeight: 600 } : undefined}>{b.invoices || "–"}</td>
+                    <td className="right num" style={(b.invoices ?? 0) > 0 ? { color: "var(--ok)", fontWeight: 600 } : undefined}>{(b.invoices ?? 0) > 0 ? <Link href={link({ belege: b.id })} title="Belege mit Fundstelle ansehen" data-testid="sas-brand-evidence">{b.invoices}</Link> : "–"}</td>
                     <td className="right num">{b.supplierOffers || "–"}</td>
                     <td>
-                      <form action={brandStatusAction} style={{ display: "flex", gap: 4 }}>
-                        <input type="hidden" name="id" value={b.id} />
-                        <select name="status" defaultValue={b.status} aria-label="Status" disabled={ro}>
-                          {SAS_BRAND_STATUS.map((s) => <option key={s} value={s}>{BRAND_STATUS[s]}</option>)}
-                        </select>
-                        <button className="btn btn-small" type="submit" disabled={ro}>OK</button>
-                      </form>
+                      <BrandStatusSelect id={b.id} status={b.status} options={SAS_BRAND_STATUS.map((s) => [s, BRAND_STATUS[s]])} action={brandStatusAction} disabled={ro} />
                     </td>
                   </tr>
                 ))}

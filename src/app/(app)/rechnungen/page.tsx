@@ -10,7 +10,7 @@ import { BulkForm } from "@/components/bulk-form";
 import { bulkInvoiceAction } from "./actions";
 import { DriveSync, InvoiceUpload } from "./forms";
 
-const VIEWS = { pruefen: "Prüfen", ware: "Wareneinkauf", kosten: "Betriebskosten", alle: "Alle", ignoriert: "Ignoriert" } as const;
+const VIEWS = { pruefen: "Prüfen", ware: "Wareneinkauf", kosten: "Betriebskosten", alle: "Alle", keinbeleg: "Kein Beleg (aussortiert)", ignoriert: "Ignoriert" } as const;
 type View = keyof typeof VIEWS;
 const KIND: Record<string, [string, string]> = { goods: ["WARE", "tag-info"], expense: ["KOSTEN", "tag-neutral"], unknown: ["UNKLAR", "tag-warn"] };
 const STATUS: Record<string, string> = { new: "neu", matched: "zugeordnet", review: "prüfen", ignored: "ignoriert" };
@@ -26,9 +26,11 @@ export default async function RechnungenPage({ searchParams }: { searchParams: P
   const t = session.tenantId;
   const viewWhere: Record<View, SQL | undefined> = {
     pruefen: needsReview,
-    ware: and(eq(I.kind, "goods"), ne(I.status, "ignored")),
-    kosten: and(eq(I.kind, "expense"), ne(I.status, "ignored")),
+    ware: and(eq(I.kind, "goods"), ne(I.status, "ignored"), ne(I.docType, "keinbeleg")),
+    kosten: and(eq(I.kind, "expense"), ne(I.status, "ignored"), ne(I.docType, "keinbeleg")),
     alle: undefined,
+    // AGB, Garantie, Werbung …: nicht in „Prüfen“, nicht in den Summen – hier nachsehen und bei Bedarf Belegart ändern.
+    keinbeleg: and(eq(I.docType, "keinbeleg"), ne(I.status, "ignored")),
     ignoriert: eq(I.status, "ignored"),
   };
   const where: SQL[] = [eq(I.tenantId, t)];
@@ -135,7 +137,7 @@ export default async function RechnungenPage({ searchParams }: { searchParams: P
                         <td className="small">{i.vendor ?? i.sourceKey ?? "–"}{supplier ? ` · ${supplier}` : ""}</td>
                         <td>
                           <span className={`tag ${KIND[i.kind][1]}`}>{KIND[i.kind][0]}</span>
-                          {i.docType !== "rechnung" && <div><span className={`tag ${c.docType ? "tag-warn" : "tag-neutral"}`} title={c.docType?.uncertain} data-testid="inv-doctype">{DOC_TYPE_LABEL[i.docType as DocType]}{c.docType ? "?" : ""}</span></div>}
+                          {i.docType !== "rechnung" && <div><span className={`tag ${c.docType ? "tag-warn" : "tag-neutral"}`} title={c.docType?.uncertain ?? c.notInvoice} data-testid="inv-doctype">{DOC_TYPE_LABEL[i.docType as DocType]}{c.docType ? "?" : ""}</span></div>}
                         </td>
                         <td className="num small">{i.invoiceNumber ?? i.orderNumber ?? "–"}</td>
                         <td className="num right" style={{ color: NEGATIVE.includes(i.docType as DocType) ? "var(--ok)" : NOT_BOOKED.includes(i.docType as DocType) ? "var(--muted)" : undefined }}>{NEGATIVE.includes(i.docType as DocType) && i.totalGross ? "−" : ""}{formatEuro(i.totalGross)}</td>

@@ -16,11 +16,12 @@ export const DOC_TYPE_LABEL: Record<DocType, string> = {
   lieferschein: "Lieferschein",
   mahnung: "Mahnung",
   quittung: "Quittung / Kassenbon",
+  keinbeleg: "Kein Rechnungsbeleg (AGB, Garantie, Werbung …)",
   unbekannt: "nicht erkannt",
 };
 
 /** Belegarten, die kein eigener Buchungsbeleg sind (zählen nicht in die Summen). */
-export const NOT_BOOKED: DocType[] = ["bestaetigung", "lieferschein", "mahnung"];
+export const NOT_BOOKED: DocType[] = ["bestaetigung", "lieferschein", "mahnung", "keinbeleg"];
 /** Belegarten, deren Betrag abgezogen wird. */
 export const NEGATIVE: DocType[] = ["gutschrift", "storno"];
 
@@ -120,11 +121,43 @@ const DOC_RULES: [DocType, RegExp][] = [
   ["rechnung", /\b(rechnung|invoice|faktura|factura|facture|fattura)\b/i],
 ];
 
+/** Dokumente, die keine Rechnung sind, aber oft „Rechnung“ erwähnen (AGB, Garantie, Widerruf, Werbung …). */
+const NOT_INVOICE: [string, RegExp][] = [
+  ["AGB", /\b(allgemeine\s+geschäftsbedingungen|allgemeine\s+verkaufsbedingungen|agb|terms\s+(and|&)\s+conditions)\b/i],
+  ["Garantie", /\b(garantiebedingungen|garantieerklärung|garantiekarte|garantieschein|herstellergarantie|warranty\s+(card|terms|conditions))\b/i],
+  ["Widerrufsbelehrung", /\b(widerrufsbelehrung|muster-?widerrufsformular|widerrufsformular)\b/i],
+  ["Datenschutz", /\b(datenschutzerklärung|datenschutzhinweise|privacy\s+policy)\b/i],
+  ["Werbung", /\b(newsletter|prospekt|katalog|sonderangebot|jetzt\s+bestellen|angebot\s+gültig|rabattcode|gutscheincode|unsubscribe|abmelden)\b/i],
+  ["Anleitung", /\b(bedienungsanleitung|gebrauchsanweisung|sicherheitshinweise|konformitätserklärung|user\s+manual)\b/i],
+];
+
+/** Merkmale einer echten Rechnung: Nummer mit Ziffern, Gesamtbetrag, Umsatzsteuersatz. */
+export function invoiceSignals(text: string): number {
+  const number = /(rechnungs(?:-|\s)?(?:nummer|nr\.?)|invoice\s*(?:no\.?|number|#))[:\s#]*[A-Za-z]{0,6}[-/]?\d/i.test(text);
+  const amount = /(gesamtbetrag|rechnungsbetrag|endbetrag|zu zahlen|gesamtsumme|summe brutto|bruttobetrag|total)[^\n\d-]{0,40}\d/i.test(text);
+  const vat = /\b(mwst|ust|umsatzsteuer|vat)\b[^\n]{0,40}\d{1,2}([.,]\d+)?\s*%/i.test(text);
+  return Number(number) + Number(amount) + Number(vat);
+}
+
+/**
+ * Kein Rechnungsbeleg? Nur wenn der Kopf (Dateiname + erste ~600 Zeichen) klar nach AGB, Garantie, Werbung …
+ * aussieht UND kaum Rechnungsmerkmale da sind – eine echte Rechnung mit AGB im Anhang bleibt Rechnung.
+ */
+export function notInvoiceReason(text: string, fileName = ""): string | null {
+  const head = `${fileName} ${text.slice(0, 600)}`;
+  const hit = NOT_INVOICE.find(([, re]) => re.test(head));
+  if (!hit) return null;
+  return invoiceSignals(text) <= 1 ? `${hit[0]} erkannt, keine Rechnungsmerkmale (Nummer, Gesamtbetrag, USt-Satz)` : null;
+}
+
 /**
  * Belegart: das Wort im Kopf (erste ~600 Zeichen) zählt mehr als irgendwo im Text. Eine „Rechnung“, die
- * eine Gutschrift ist, heißt fast immer im Kopf so. Nicht erkannt → „unbekannt“ (unsicher).
+ * eine Gutschrift ist, heißt fast immer im Kopf so. AGB, Garantie, Werbung ohne Rechnungsmerkmale →
+ * „kein Rechnungsbeleg“. Nicht erkannt → „unbekannt“ (unsicher).
  */
-export function detectDocType(text: string, fileName = ""): { type: DocType; uncertain?: string } {
+export function detectDocType(text: string, fileName = ""): { type: DocType; uncertain?: string; notInvoice?: string } {
+  const not = notInvoiceReason(text, fileName);
+  if (not) return { type: "keinbeleg", notInvoice: not };
   const head = `${fileName} ${text.slice(0, 600)}`;
   // Im Kopf gewinnt das Wort, das zuerst steht („Rechnung … Lieferschein liegt bei“ bleibt Rechnung).
   const first = DOC_RULES.map(([type, re]) => ({ type, at: head.search(re) })).filter((x) => x.at >= 0).sort((a, b) => a.at - b.at)[0];

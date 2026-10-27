@@ -141,7 +141,8 @@ type Inv = typeof schema.invoices.$inferSelect;
 /** Prüfhinweise mit Knöpfen – nichts wird ohne Bestätigung geändert. */
 function CheckNotes({ inv, dups }: { inv: Inv; dups: { id: string; fileName: string; date: string | null; total: number | null; status: string }[] }) {
   const c = inv.checks;
-  if (!c.date && !c.docType && !dups.length) return null;
+  const aussortiert = inv.docType === "keinbeleg" && Boolean(c.notInvoice);
+  if (!c.date && !c.docType && !dups.length && !aussortiert) return null;
   const btn = (op: string, label: string, primary = false) => (
     <form action={resolveCheckAction} style={{ display: "inline" }}>
       <input type="hidden" name="id" value={inv.id} />
@@ -160,6 +161,7 @@ function CheckNotes({ inv, dups }: { inv: Inv; dups: { id: string; fileName: str
           </span>
         </div>
       )}
+      {inv.docType === "keinbeleg" && c.notInvoice && <div data-testid="check-notinvoice"><strong>Aussortiert – kein Rechnungsbeleg:</strong> {c.notInvoice}. Ist es doch eine Rechnung? Rechts die Belegart ändern und speichern.</div>}
       {c.docType && <div data-testid="check-doctype"><strong>Belegart unsicher:</strong> {c.docType.uncertain} – erkannt: {DOC_TYPE_LABEL[inv.docType as DocType]}. Rechts prüfen und speichern.</div>}
       {dups.length > 0 && (
         <div className="stack" style={{ gap: 6 }} data-testid="check-dup">

@@ -62,6 +62,31 @@ export function brandRegex(brand: string): RegExp {
 
 export type BrandFacts = { products: number; sales30: number; units30: number; invoices: number; supplierOffers: number };
 
+/**
+ * Rechnungstext ohne Bankverbindung und Fußzeile: „BIC: COBADEFF…“, IBAN, SWIFT, Steuer- und Registerangaben
+ * sind keine Markenbelege (die Marke „BiC“ traf sonst fast jede Rechnung).
+ */
+export function invoiceTextForBrands(text: string): string {
+  // BIC/SWIFT nur mit echtem Code (Großbuchstaben, Länderkennung, 8 oder 11 Zeichen) – „BIC Cristal“ bleibt.
+  const country = "(?:DE|AT|CH|NL|BE|LU|FR|IT|ES|PT|PL|CZ|DK|SE|FI|NO|GB|IE|HU|SK|SI|HR|RO|BG|GR|LT|LV|EE|US|CN|HK|TR)";
+  const bic = new RegExp(`(?:[Ss][Ww][Ii][Ff][Tt][\\s-]*)?(?:[Bb][Ii][Cc]|[Ss][Ww][Ii][Ff][Tt])(?:\\s*[-/]?\\s*[Cc]ode)?\\s*[:.]?\\s*[A-Z]{4}${country}[A-Z0-9]{2}(?:[A-Z0-9]{3})?\\b`, "g");
+  return text
+    .replace(bic, " ")
+    .replace(/\biban\s*[:.]?\s*[A-Z]{2}\d{2}(\s?[A-Z0-9]{2,4}){2,8}/gi, " ")
+    .replace(/\b(bankverbindung|bank\s*name|kontoinhaber|ust[-.\s]*id(nr|-nr)?\.?|steuer[-\s]*nr\.?|steuernummer|hrb\s*\d+|amtsgericht|registergericht|geschäftsführer(in)?)\b[^\n·|]{0,60}/gi, " ");
+}
+
+/** Wo eine Marke in einem Beleg vorkommt (Ausschnitt) – zum Nachprüfen der Zuordnung. */
+export function brandSnippet(brand: string, text: string, width = 50): string | null {
+  const clean = invoiceTextForBrands(text);
+  const m = brandRegex(brand).exec(clean);
+  if (!m) return null;
+  const at = m.index + m[1].length;
+  const from = Math.max(0, at - width);
+  const to = Math.min(clean.length, at + brandKey(brand).length + width);
+  return `${from > 0 ? "…" : ""}${clean.slice(from, to).replace(/\s+/g, " ").trim()}${to < clean.length ? "…" : ""}`;
+}
+
 /** Kennzahlen je Marke aus Produktnamen (sellerboard), 30-Tage-Werten, Rechnungstexten und Lieferanten-Angeboten. */
 export function brandFacts(
   brands: string[],
@@ -70,7 +95,7 @@ export function brandFacts(
   const low = (s: string | null) => (s ?? "").toLowerCase();
   const products = data.products.map((p) => low(p.name));
   const stats = data.stats.map((s) => ({ name: low(s.name), sales: s.sales ?? 0, units: s.units }));
-  const invoices = data.invoices.map((i) => i.text.toLowerCase());
+  const invoices = data.invoices.map((i) => invoiceTextForBrands(i.text).toLowerCase());
   const offers = data.offers.map((o) => low(o.title));
   const out = new Map<string, BrandFacts>();
   for (const b of brands) {
@@ -89,7 +114,10 @@ export function brandFacts(
   return out;
 }
 
-/** Vorschlag für den Audit: zuerst Marken mit Belegen (Rechnungen), dann nach Umsatz; höchstens n. */
+/**
+ * Vorschlag für den Audit: zuerst Marken mit Belegen (Rechnungen), dann nach Umsatz; höchstens n.
+ * Ohne Umsatzdaten (sellerboard) zählen nur Belege und Lieferanten – der Aufrufer muss das kennzeichnen.
+ */
 export function suggestBrands<T extends { brand: string; invoices: number | null; supplierOffers: number | null; sales30: number | null }>(brands: T[], n = 10): T[] {
   const ev = (b: T) => ((b.invoices ?? 0) > 0 ? 2 : 0) + ((b.supplierOffers ?? 0) > 0 ? 1 : 0);
   return [...brands]
