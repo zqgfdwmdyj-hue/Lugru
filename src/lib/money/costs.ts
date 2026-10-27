@@ -28,7 +28,7 @@ export type CostPairs = {
  * so angezeigt (für Sets nie: dort zählt die Summe der Bestandteile).
  */
 export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
-  const [lots, manual, ebay, links, sets, sb] = await Promise.all([
+  const [lots, manual, ebay, links, sets, sb, sbInv] = await Promise.all([
     db.select({ sku: schema.lots.sku, cost: schema.lots.unitCostNet, date: schema.lots.purchaseDate, src: schema.lots.unitCostSource }).from(schema.lots).where(and(eq(schema.lots.tenantId, tenantId), isNotNull(schema.lots.unitCostNet))).orderBy(desc(schema.lots.purchaseDate)),
     db.select({ sku: schema.skuCosts.sku, cost: schema.skuCosts.unitCostNet }).from(schema.skuCosts).where(eq(schema.skuCosts.tenantId, tenantId)),
     db
@@ -45,6 +45,8 @@ export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
     loadSets(tenantId),
     // EK laut sellerboard (netto je Stück) – nur wo im Seller-System nichts Eigenes hinterlegt ist.
     db.select({ sku: schema.sellerboardProducts.sku, cost: schema.sellerboardProducts.cost, at: schema.sellerboardProducts.syncedAt }).from(schema.sellerboardProducts).where(and(eq(schema.sellerboardProducts.tenantId, tenantId), isNotNull(schema.sellerboardProducts.cost))),
+    // Manche SKUs kennt sellerboard nur aus der Bestandsliste (dort mit EK) – gleicher Wert, zweite Fundstelle.
+    db.select({ sku: schema.sellerboardInventory.sku, cost: schema.sellerboardInventory.cost, at: schema.sellerboardInventory.syncedAt }).from(schema.sellerboardInventory).where(and(eq(schema.sellerboardInventory.tenantId, tenantId), isNotNull(schema.sellerboardInventory.cost))),
   ]);
   const setSkus = new Set(sets.map((s) => s.sku));
   const ebayOwn: CostPair[] = [];
@@ -71,8 +73,10 @@ export async function loadCostPairs(tenantId: string): Promise<CostPairs> {
   const manuell: CostPair[] = manual.map((m) => [m.sku, m.cost, "EK je SKU von Hand eingetragen"]);
   const base = mergeCosts(["charge", charge], ["manuell", manuell], ["ebay", ebayOwn]);
   const stand = (at: Date) => `laut sellerboard (Stand ${at.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})`;
-  const sellerboard: CostPair[] = sb.filter((r) => !isPlaceholderCost(r.cost)).map((r) => [r.sku, r.cost, stand(r.at)]);
-  const sellerboardPlaceholder: CostPair[] = sb.filter((r) => isPlaceholderCost(r.cost)).map((r) => [r.sku, r.cost, `${stand(r.at)} – Platzhalter, zählt nicht als EK`]);
+  const known = new Set(sb.map((r) => r.sku));
+  const sbAll = [...sb, ...sbInv.filter((r) => !known.has(r.sku))];
+  const sellerboard: CostPair[] = sbAll.filter((r) => !isPlaceholderCost(r.cost)).map((r) => [r.sku, r.cost, stand(r.at)]);
+  const sellerboardPlaceholder: CostPair[] = sbAll.filter((r) => isPlaceholderCost(r.cost)).map((r) => [r.sku, r.cost, `${stand(r.at)} – Platzhalter, zählt nicht als EK`]);
   return { charge, manuell, ebayOwn, ebayInherited, set: setCostPairs(sets, base), sellerboard, sellerboardPlaceholder };
 }
 
@@ -91,6 +95,12 @@ export async function skuCostMap(tenantId: string): Promise<Map<string, CostInfo
 /** EK laut sellerboard je SKU (auch Platzhalter) – nur zum Vergleich mit dem gültigen EK. */
 export async function sellerboardCostMap(tenantId: string): Promise<Map<string, number>> {
   const P = schema.sellerboardProducts;
-  const rows = await db.select({ sku: P.sku, cost: P.cost }).from(P).where(and(eq(P.tenantId, tenantId), isNotNull(P.cost)));
-  return new Map(rows.filter((r) => r.cost !== null).map((r) => [r.sku, r.cost!]));
+  const I = schema.sellerboardInventory;
+  const [rows, inv] = await Promise.all([
+    db.select({ sku: P.sku, cost: P.cost }).from(P).where(and(eq(P.tenantId, tenantId), isNotNull(P.cost))),
+    db.select({ sku: I.sku, cost: I.cost }).from(I).where(and(eq(I.tenantId, tenantId), isNotNull(I.cost))),
+  ]);
+  const out = new Map<string, number>();
+  for (const r of [...rows, ...inv]) if (r.cost !== null && !out.has(r.sku)) out.set(r.sku, r.cost);
+  return out;
 }
