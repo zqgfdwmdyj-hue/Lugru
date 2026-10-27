@@ -4,7 +4,7 @@ import { clockShiftHours, kidsHours, kidsOverview, overnight, shiftMonth, type K
 import { loadEntries, myPartner, privateSettings, requirePrivate, type Entry } from "@/lib/private/service";
 import { addKidsAction, deleteEntryAction } from "../actions";
 import { StateForm } from "../state-form";
-import { Chips, Choice, MonthNav, PrivatHead, clockShiftLabel, dm, hoursLabel, monthLabel, monthParam, weekday } from "../ui";
+import { Chips, Choice, MonthNav, PrivatHead, clockShiftLabel, dm, hoursLabel, monthLabel, monthParam, weekday, StatusTag } from "../ui";
 
 /** Farben je Person (geprüft auf Farbsehschwäche); Name steht immer dabei. */
 const COLOR = { a: "#0d9488", b: "#c2410c" } as const;
@@ -22,8 +22,8 @@ function Cell({ list, month, names }: { list: Entry<KidsEntry>[]; month: string;
           {e.data.what ? ` · ${e.data.what}` : ""}
           {e.data.kids?.length ? <span className="muted"> · {e.data.kids.join(", ")}</span> : null}
           {e.data.linkId ? <span className="muted" data-testid="linked"> · 🔗 zugleich Auszeit {names[e.data.person === "a" ? "b" : "a"]}</span> : null}
-          {e.data.editedAt ? <span className="muted"> · geändert</span> : null}
-          <Link className="btn-link small" href={`/privat/kinder?monat=${month}&bearbeiten=${e.id}#eintragen`} style={{ marginLeft: 6 }}>ändern</Link>
+          {e.data.editedAt ? <span className="muted"> · geändert</span> : null}<StatusTag status={e.data.status} />
+          <Link className="btn-link small" href={`/privat/eintrag/${e.id}`} style={{ marginLeft: 6 }}>ändern</Link>
           <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}>
             <input type="hidden" name="kind" value="kinder" />
             <input type="hidden" name="id" value={e.id} />

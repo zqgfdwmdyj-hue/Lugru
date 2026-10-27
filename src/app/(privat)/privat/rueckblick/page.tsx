@@ -2,6 +2,7 @@ import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { avgOf, careOverview, dateStats, diaryReport, intimStats, kidsOverview, taskState, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type SleepEntry, type TaskEntry, type ThanksEntry } from "@/lib/private/logic";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
+import type { TouchEntry } from "@/lib/private/kalender";
 import { PrintButton } from "@/components/print-button";
 import { MonthNav, PrivatHead, hoursLabel, monthLabel, monthParam } from "../ui";
 
@@ -21,7 +22,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
   const end = last < today ? last : today;
   const s = await privateSettings(session.tenantId);
   const name = s.partners;
-  const [intim, dates, kids, sleep, timeout, tasks, care, thanks, moods, diary] = await Promise.all([
+  const [intim, dates, kids, sleep, timeout, tasks, care, thanks, moods, diary, touches] = await Promise.all([
     loadEntries<IntimEntry>(session, ["intim"]),
     loadEntries<DateEntry>(session, ["paarzeit"]),
     loadEntries<KidsEntry>(session, ["kinder"]),
@@ -32,7 +33,11 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
     loadEntries<ThanksEntry>(session, ["danke"]),
     loadEntries<MoodEntry>(session, ["stimmung"]),
     loadEntries<DiaryEntry>(session, ["tagebuch"]),
+    loadEntries<TouchEntry>(session, ["zuwendung"]),
   ]);
+  // Streicheln/Massage: nur bestätigte zählen; ausgefallene getrennt (Geplantes nie).
+  const inMonth = touches.map((t) => t.data).filter((t) => t.day.startsWith(month) && t.day <= end);
+  const touchCount = (k: TouchEntry["kind"], st: TouchEntry["status"]) => inMonth.filter((t) => t.kind === k && t.status === st).length;
   const ist = intimStats(intim.map((e) => e.data), month, end);
   const ds = dateStats(dates.map((e) => e.data), month, end);
   const ko = kidsOverview(kids.map((e) => e.data), month);
@@ -70,6 +75,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
           <li>Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong></li>
           <li>🥂 Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
           <li>💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a ? `${th.a}×` : "keine notiert"} · ${name.b} ${th.b ? `${th.b}×` : "keine notiert"}` : "nicht erfasst"}</li>
+          <li>Streicheln / Massage (bestätigt): {touchCount("streicheln", "stattgefunden") + touchCount("massage", "stattgefunden") ? <strong>{touchCount("streicheln", "stattgefunden")}× Streicheln · {touchCount("massage", "stattgefunden")}× Massage</strong> : "nicht erfasst"}{touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen") ? <span className="muted"> · {touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen")}× ausgefallen/ausgelassen</span> : null}</li>
           <li>Stimmung als Paar (Ø 1–5): {name.a} {num(mood.a)} · {name.b} {num(mood.b)}</li>
         </ul>
 

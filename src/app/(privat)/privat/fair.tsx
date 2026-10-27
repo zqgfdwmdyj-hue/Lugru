@@ -5,7 +5,7 @@ import type { Session } from "@/lib/auth/session";
 import { loadEntries, myPartner, privateSettings, type Entry } from "@/lib/private/service";
 import { deleteEntryAction, type FormState } from "./actions";
 import { StateForm } from "./state-form";
-import { Choice, MonthNav, PrivatHead, clockShiftLabel, dm, hoursLabel, monthLabel, weekday, type PrivatTab } from "./ui";
+import { Choice, MonthNav, PrivatHead, clockShiftLabel, dm, hoursLabel, monthLabel, weekday, type PrivatTab, StatusTag } from "./ui";
 
 /** Gleiche Farben wie bei der Kinderzeit (auf Farbsehschwäche geprüft); Name steht immer dabei. */
 const COLOR = { a: "#0d9488", b: "#c2410c" } as const;
@@ -23,8 +23,8 @@ function Cell({ list, kind, path, month, names }: { list: Entry<SleepEntry>[]; k
           {clockShiftHours(e.data) ? <span className="muted" data-testid="clock-shift"> ({clockShiftLabel(clockShiftHours(e.data))})</span> : null}
           {e.data.note ? <span className="muted"> · {e.data.note}</span> : null}
           {e.data.linkId ? <span className="muted" data-testid="linked"> · 🔗 zugleich Kinderzeit {names[e.data.person === "a" ? "b" : "a"]}</span> : null}
-          {e.data.editedAt ? <span className="muted"> · geändert</span> : null}
-          <Link className="btn-link small" href={`${path}?monat=${month}&bearbeiten=${e.id}`} style={{ marginLeft: 6 }}>ändern</Link>
+          {e.data.editedAt ? <span className="muted"> · geändert</span> : null}<StatusTag status={e.data.status} />
+          <Link className="btn-link small" href={`/privat/eintrag/${e.id}`} style={{ marginLeft: 6 }}>ändern</Link>
           <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}>
             <input type="hidden" name="kind" value={kind} />
             <input type="hidden" name="id" value={e.id} />

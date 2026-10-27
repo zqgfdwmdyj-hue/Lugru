@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { randomUUID } from "node:crypto";
-import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, durationOf, isDay, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { saveTimeEntry as saveTime, TIME_KINDS, type TimeKind } from "@/lib/private/save";
+import { exportTargetProblem } from "@/lib/private/export-sync";
 import { addEntry, deleteAllPrivate, deleteEntry, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
 
 export type FormState = { ok: boolean; message: string } | null;
@@ -30,6 +31,8 @@ export async function unlockAction(_prev: FormState, fd: FormData): Promise<Form
   const err = await unlockPrivate(session, String(fd.get("pin") ?? ""));
   if (err) return fail(err);
   const back = String(fd.get("back") ?? "");
+  // Rahmen (Navigation) neu aufbauen – im gesperrten Zustand war er leer.
+  revalidatePath("/privat", "layout");
   redirect(back.startsWith("/privat") && !back.startsWith("/privat/entsperren") ? back : "/privat");
 }
 
@@ -90,6 +93,19 @@ export async function saveSettingsAction(_prev: FormState, fd: FormData): Promis
   return done("Gespeichert.");
 }
 
+/** Ausdrücklicher Export einzelner Einträge in einen eigenen Kalender (neutral, Standard aus). */
+export async function saveExternSyncAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate({ full: true });
+  const enabled = fd.get("enabled") === "on";
+  const calendar = clip(fd.get("calendar"), 60) ?? "Privat";
+  if (enabled) {
+    const problem = await exportTargetProblem(session.tenantId, calendar);
+    if (problem) return fail(problem);
+  }
+  await savePrivateSettings(session, { externSync: { enabled, calendar } });
+  return done(enabled ? `Export an: nur einzeln angehakte Einträge, neutral als „Privater Termin“ im eigenen Kalender „${calendar}“ – beim nächsten Abgleich.` : "Export aus – früher übertragene „Private Termine“ werden beim nächsten Abgleich wieder entfernt.");
+}
+
 // ---- Paar --------------------------------------------------------------------------------------------
 
 export async function addIntimAction(_prev: FormState, fd: FormData): Promise<FormState> {
@@ -121,67 +137,11 @@ export async function addTalkAction(_prev: FormState, fd: FormData): Promise<For
 
 // ---- Zeit-Einträge: Paarzeit, Kinderzeit, Ausschlafen, Auszeit ---------------------------------------
 
-type TimeKind = "kinder" | "ausschlafen" | "auszeit" | "paarzeit";
-const TIME_KINDS: TimeKind[] = ["kinder", "ausschlafen", "auszeit", "paarzeit"];
-const MAX_HOURS: Record<TimeKind, number> = { kinder: 16, ausschlafen: 12, auszeit: 16, paarzeit: 24 };
-const WHO_MISSING: Record<Exclude<TimeKind, "paarzeit">, string> = { kinder: "Bitte wählen, wer mit den Kindern unterwegs war.", ausschlafen: "Bitte wählen, wer ausgeschlafen hat.", auszeit: "Bitte wählen, wer Auszeit hatte." };
-const dmyOf = (d: string) => d.split("-").reverse().join(".");
-const hoursText = (h: number) => `${String(h).replace(".", ",")} Std.`;
-
-/**
- * Anlegen oder (mit `id`) ändern. Kinderzeit ↔ Auszeit lassen sich als ein Vorgang verknüpfen
- * („währenddessen hatte der andere Auszeit“) – nur wenn ausdrücklich angehakt, nie automatisch.
- */
+/** Anlegen oder (mit `id`) ändern – Prüfung und Verknüpfung in src/lib/private/save.ts. */
 async function saveTimeEntry(kind: TimeKind, fd: FormData): Promise<FormState> {
   const session = await requirePrivate();
-  const editId = fd.get("id") ? uuid.safeParse(fd.get("id")) : null;
-  if (editId && !editId.success) return fail("Eintrag nicht gefunden.");
-  const day = dayOr(fd.get("day"));
-  if (day > todayIso()) return fail(kind === "paarzeit" ? "Bitte kein Datum in der Zukunft – geplante Dates als Termin eintragen." : "Bitte kein Datum in der Zukunft.");
-  const person = kind === "paarzeit" ? undefined : partner(fd.get("person"));
-  if (kind !== "paarzeit" && !person) return fail(WHO_MISSING[kind]);
-  const from = time(fd.get("from"));
-  const to = time(fd.get("to"));
-  const hoursIn = num(fd.get("hours"), 0, 72);
-  const dur = durationOf({ day, from, to, hours: hoursIn }, MAX_HOURS[kind]);
-  if ("error" in dur) return fail(dur.error);
-  const settings = await privateSettings(session.tenantId);
-  const base = { day, from, to, hours: from && to ? undefined : dur.hours };
-  const data =
-    kind === "paarzeit"
-      ? compact({ ...base, what: clip(fd.get("what"), 200), sitter: clip(fd.get("sitter"), 60), costEur: num(fd.get("costEur"), 0, 10000), rating: rating(fd.get("rating")), note: clip(fd.get("note"), 500) })
-      : kind === "kinder"
-        ? compact({ ...base, person, what: clip(fd.get("what"), 200), kids: fd.getAll("kids").map(String).filter((k) => settings.kids.includes(k)) })
-        : compact({ ...base, person, note: clip(fd.get("note"), kind === "auszeit" ? 200 : 300) });
-  const other: PartnerKey | undefined = person === "a" ? "b" : person === "b" ? "a" : undefined;
-  const linkKind: TimeKind | null = kind === "kinder" && fd.get("linkAuszeit") === "on" ? "auszeit" : kind === "auszeit" && fd.get("linkKinder") === "on" ? "kinder" : null;
-  const what = `${dmyOf(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}`;
-
-  if (editId?.success) {
-    const cur = (await loadEntries<Record<string, unknown>>(session, [kind])).find((e) => e.id === editId.data);
-    if (!cur) return fail("Eintrag nicht gefunden.");
-    const linkId = typeof cur.data.linkId === "string" ? cur.data.linkId : undefined;
-    await updateEntry(session, cur.id, kind, { ...data, ...(linkId ? { linkId } : {}), editedAt: new Date().toISOString() }, true);
-    // Verknüpfte Sicht (Kinderzeit/Auszeit) auf dieselbe Zeit bringen – es ist ein Vorgang.
-    let linked = 0;
-    if (linkId && (kind === "kinder" || kind === "auszeit")) {
-      const pk: TimeKind = kind === "kinder" ? "auszeit" : "kinder";
-      for (const e of (await loadEntries<Record<string, unknown>>(session, [pk])).filter((x) => x.data.linkId === linkId)) {
-        await updateEntry(session, e.id, pk, { day, from, to, hours: base.hours, editedAt: new Date().toISOString() });
-        linked++;
-      }
-    }
-    return done(`Geändert: ${what}${linked ? " – verknüpfter Eintrag angepasst" : ""}.`);
-  }
-
-  const linkId = linkKind && other ? randomUUID() : undefined;
-  await addEntry(session, kind, linkId ? { ...data, linkId } : data);
-  if (linkKind && other && linkId) {
-    await addEntry(session, linkKind, compact({ day, person: other, from, to, hours: base.hours, linkId }));
-  }
-  const label = kind === "paarzeit" ? "Paarzeit" : `${settings.partners[person!]}`;
-  const linkText = linkKind && other ? ` – zugleich ${linkKind === "auszeit" ? "Auszeit" : "Kinderzeit"} für ${settings.partners[other]} (zählt dort, nicht doppelt)` : "";
-  return done(`Eingetragen: ${label} am ${what}${linkText}.`);
+  const r = await saveTime(session, kind, fd);
+  return r.ok ? done(r.message) : fail(r.message);
 }
 
 /** Paarzeit: zu zweit unterwegs, Kinder bei Babysitterin & Co. */
@@ -343,7 +303,7 @@ export async function addObservationAction(_prev: FormState, fd: FormData): Prom
 
 // ---- Löschen (alle Arten) ----------------------------------------------------------------------------
 
-const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "auszeit", "routine", "danke", "stimmung", "zustaendig", "dateidee", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech"];
+const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "auszeit", "routine", "danke", "stimmung", "zustaendig", "dateidee", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech", "periode", "zuwendung", "ritual"];
 
 export async function deleteEntryAction(fd: FormData) {
   const session = await requirePrivate();
@@ -360,6 +320,9 @@ export async function deleteEntryAction(fd: FormData) {
   }
   await deleteEntry(session, id, kind);
   revalidatePath("/privat", "layout");
+  // Von der Detailseite aus: zurück in den Kalender (der Eintrag ist ja weg).
+  const back = String(fd.get("back") ?? "");
+  if (back.startsWith("/privat")) redirect(back);
 }
 
 // ---- Medikament: Plan, Vorrat, Einnahme per Tipp -------------------------------------------------------

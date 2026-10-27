@@ -689,3 +689,93 @@ h2 { font-size: 16px; margin: 0; }
 .today-insights { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 1100px) { .sales-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .sales-kpis { padding: 4px 16px 12px; gap: 8px; } .sales-more > summary { padding: 12px 16px; } }
+
+/* ---- Privat: eigener Rahmen statt Geschäfts-Seitenleiste ---- */
+.pshell { min-height: 100vh; display: flex; flex-direction: column; }
+.ptop { position: sticky; top: 0; z-index: 20; background: #f6eef2; border-bottom: 1px solid #e6d3dc; padding: 8px 20px 6px; display: flex; flex-direction: column; gap: 6px; }
+.ptop-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ptop-brand { font-weight: 700; font-size: 16px; color: var(--ink); text-decoration: none; }
+.ptop-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.pmain { max-width: 1180px; width: 100%; margin: 0 auto; }
+.pnav { display: grid; gap: 4px; max-width: 720px; }
+.pnav-item { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 2px; border-radius: 8px; color: var(--ink-2); text-decoration: none; font-size: 13px; font-weight: 600; min-width: 0; min-height: 44px; justify-content: center; }
+.pnav-item:hover { background: #eddde5; color: var(--ink); text-decoration: none; }
+.pnav-item.active { background: var(--surface); color: #9d174d; box-shadow: inset 0 -3px 0 #be185d; }
+.pnav-icon { font-size: 16px; line-height: 1.1; }
+.pnav-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pnav-add .pnav-icon { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 50%; background: #be185d; color: #fff; font-size: 15px; }
+.pnav-more > summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; display: inline-block; padding: 2px 0; }
+.pnav-more > summary::before { content: "▸ "; }
+.pnav-more[open] > summary::before { content: "▾ "; }
+.pnav-more-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; padding: 8px 0 6px; }
+.pnav-more-link { font-size: 14px; color: var(--ink); text-decoration: none; padding: 4px 0; }
+.pnav-more-link[aria-current="page"] { font-weight: 700; color: #9d174d; }
+@media (max-width: 760px) {
+  .ptop { padding: 6px 10px 4px; }
+  .pnav-item { font-size: 11px; padding: 5px 0; }
+  .pnav-label { font-size: 11px; }
+}
+@media (display-mode: standalone) { .ptop { top: env(safe-area-inset-top); } }
+@media print { .ptop { display: none !important; } }
+
+/* ---- Privatkalender ---- */
+.pk-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.pk-seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.pk-seg a { padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--ink-2); text-decoration: none; background: var(--surface); }
+.pk-seg a + a { border-left: 1px solid var(--border-strong); }
+.pk-seg a.active { background: var(--ink); color: #fff; }
+.pk-filters { display: flex; flex-direction: column; gap: 6px; }
+.pk-filters .chip { cursor: pointer; }
+.pk-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--border); }
+.pk-wday { border-right: 1px solid var(--border); padding: 6px 5px 10px; min-width: 0; min-height: 160px; display: flex; flex-direction: column; gap: 4px; }
+.pk-wday:last-child { border-right: 0; }
+.pk-wday-head { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; text-decoration: none; }
+.pk-wday-head:hover { text-decoration: none; }
+.pk-today .pk-wday-head .pk-num { background: #d70015; color: #fff; border-radius: 50%; width: 22px; height: 22px; line-height: 22px; text-align: center; display: inline-block; }
+.pk-add-day { font-size: 16px; line-height: 1; color: var(--muted); text-decoration: none; padding: 0 4px; }
+.pk-item { display: block; font-size: 12px; line-height: 1.3; padding: 3px 6px; border-radius: 6px; color: var(--ink); text-decoration: none; border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 18%, var(--surface)); overflow-wrap: anywhere; min-width: 0; }
+.pk-item:hover { text-decoration: none; filter: brightness(.97); }
+/* Geplant: nur Umriss (gestrichelt); stattgefunden: gefüllt; ausgefallen: durchgestrichen. Der Status steht immer auch als Text dabei. */
+.pk-item.st-geplant { background: var(--surface); border-style: dashed; }
+.pk-item.st-ausgefallen { background: var(--surface-2); border-color: var(--border-strong); color: var(--muted); }
+.pk-item.st-ausgefallen .pk-title { text-decoration: line-through; }
+.pk-item.pk-span { border-radius: 0; border-left-width: 0; border-right-width: 0; }
+.pk-item.pk-span.part-start { border-radius: 6px 0 0 6px; border-left-width: 1.5px; }
+.pk-item.pk-span.part-end { border-radius: 0 6px 6px 0; border-right-width: 1.5px; }
+.pk-item.pk-new { box-shadow: 0 0 0 3px color-mix(in srgb, #be185d 45%, transparent); }
+.pk-st { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; color: var(--muted); text-transform: uppercase; }
+.pk-time { font-variant-numeric: tabular-nums; color: var(--muted); margin-right: 3px; }
+.pk-month .cal-day { min-height: 92px; }
+.pk-month .pk-item { font-size: 11px; padding: 1px 4px; }
+.pk-month .pk-st { display: none; }
+.pk-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.pk-list > li { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.pk-list > li:last-child { border-bottom: 0; }
+.pk-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: start; }
+.pk-row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.pk-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.pk-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.pk-legend i { width: 18px; height: 11px; border-radius: 3px; border: 1.5px solid var(--c, var(--ink-2)); background: color-mix(in srgb, var(--c, var(--ink-2)) 18%, var(--surface)); display: inline-block; }
+.pk-legend i.geplant { background: var(--surface); border-style: dashed; }
+.pk-dayhead { font-weight: 700; font-size: 14px; margin: 14px 0 4px; }
+@media (max-width: 760px) {
+  /* Woche am Handy: Tage untereinander statt sieben schmaler Spalten. */
+  .pk-week { grid-template-columns: minmax(0, 1fr); }
+  .pk-wday { border-right: 0; border-bottom: 1px solid var(--border); min-height: 0; padding: 8px 2px; }
+  .pk-wday-head { font-size: 13px; }
+  .pk-month .pk-item { display: none; }
+}
+.pk-dots { display: none; gap: 2px; flex-wrap: wrap; justify-content: center; }
+.pk-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); border: 1px solid var(--c); }
+.pk-dots i.geplant { background: transparent; }
+@media (max-width: 760px) { .pk-month .pk-dots { display: flex; } }
+.pk-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.pk-art { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px; }
+.pk-art a { display: flex; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--ink); text-decoration: none; font-weight: 600; font-size: 13px; min-height: 44px; }
+.pk-art a.active { border-color: #be185d; box-shadow: inset 0 0 0 1px #be185d; background: #fdf2f7; }
+.pk-art i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); flex: none; }
+.pk-status { display: flex; gap: 6px; flex-wrap: wrap; }
+.big-add { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 10px 22px; font-size: 16px; border-radius: 12px; background: #be185d; border-color: #be185d; color: #fff; text-decoration: none; font-weight: 700; }
+.big-add:hover { background: #9d174d; color: #fff; text-decoration: none; }
+/* Name im Chip (z. B. „Ben“ in „Wer übernimmt die Kinder?“) ohne eigenen Rahmen. */
+.pick-chips span span { display: inline; border: 0; padding: 0; background: none; border-radius: 0; font-size: inherit; }

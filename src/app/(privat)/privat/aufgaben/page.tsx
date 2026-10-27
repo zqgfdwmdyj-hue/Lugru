@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { sinceSummary, taskState, type AppointmentEntry, type DateEntry, type IntimEntry, type KidsEntry, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { loadEntries, myPartner, privateSettings, requirePrivate, type Entry } from "@/lib/private/service";
-import { addAppointmentAction, addTaskAction, deleteEntryAction, saveAppointmentNotesAction, saveTaskNoteAction, toggleTaskAction } from "../actions";
+import { addTaskAction, deleteEntryAction, saveAppointmentNotesAction, saveTaskNoteAction, toggleTaskAction } from "../actions";
 import { StateForm } from "../state-form";
-import { Choice, PrivatHead, dm, dmy, hoursLabel, weekday } from "../ui";
+import { Choice, PrivatHead, StatusTag, dm, dmy, hoursLabel, weekday } from "../ui";
 
 export default async function AufgabenPage() {
   const session = await requirePrivate({ full: true });
@@ -118,21 +119,16 @@ export default async function AufgabenPage() {
           <ul style={{ margin: 0, paddingLeft: 18 }} data-testid="appointments">
             {upcoming.map((a) => (
               <li key={a.id}>
-                <strong>{weekday(a.data.day)} {dmy(a.data.day)}{a.data.time ? ` ${a.data.time}` : ""}</strong> · {withLabel(a.data.with)}
+                <strong>{weekday(a.data.day)} {dmy(a.data.day)}{a.data.time ? ` ${a.data.time}` : ""}</strong> · {a.data.title || withLabel(a.data.with)}
                 {a.data.day === today && <span className="tag tag-warn" style={{ marginLeft: 6 }}>heute</span>}
-                <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="termin" /><input type="hidden" name="id" value={a.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>
+                <StatusTag status={a.data.status} />
+                <Link className="btn-link small" href={`/privat/eintrag/${a.id}`} style={{ marginLeft: 6 }}>öffnen</Link>
               </li>
             ))}
           </ul>
         )}
-        <div className="small muted">Private Termine stehen nur hier (verschlüsselt) und werden nicht mit dem Kalender abgeglichen. Termine aus deinen verbundenen Kalendern siehst du unter <a href="/kalender">Kalender</a>.</div>
-        <StateForm action={addAppointmentAction} submit="Termin speichern" testid="appointment-form">
-          <div className="priv-grid">
-            <div className="field"><label className="label" htmlFor="ap-day">Tag</label><input className="input" id="ap-day" name="day" type="date" required /></div>
-            <div className="field"><label className="label" htmlFor="ap-time">Uhrzeit</label><input className="input" id="ap-time" name="time" type="time" /></div>
-          </div>
-          <div className="field"><span className="label">Bei</span><Choice name="with" value="paar" options={[{ value: "ads", label: s.therapists.ads }, { value: "paar", label: s.therapists.paar }, { value: "arzt", label: "Arzt/Ärztin" }, { value: "sonst", label: "sonstiges" }]} /></div>
-        </StateForm>
+        <div className="small muted">Private Termine stehen verschlüsselt im <Link href="/privat/kalender">Privatkalender</Link> und gehen nie automatisch in einen verbundenen Kalender (nur einzeln angehakt, neutral als „Privater Termin“).</div>
+        <Link className="btn" href="/privat/eintragen?art=termin" style={{ alignSelf: "flex-start" }} data-testid="appointment-add">＋ Termin eintragen</Link>
         {past.length > 0 && (
           <details>
             <summary style={{ cursor: "pointer", fontWeight: 600 }}>Vergangene Termine & Notizen ({past.length})</summary>
@@ -140,7 +136,7 @@ export default async function AufgabenPage() {
               {past.map((a) => (
                 <form key={a.id} action={saveAppointmentNotesAction} className="stack" style={{ gap: 4 }}>
                   <input type="hidden" name="id" value={a.id} />
-                  <div className="small"><strong>{dm(a.data.day)}{a.data.time ? ` ${a.data.time}` : ""}</strong> · {withLabel(a.data.with)}</div>
+                  <div className="small"><strong>{dm(a.data.day)}{a.data.time ? ` ${a.data.time}` : ""}</strong> · {a.data.title || withLabel(a.data.with)}</div>
                   <textarea className="input" name="notes" rows={2} defaultValue={a.data.notes ?? ""} placeholder="Was wurde besprochen? Was nehmen wir mit?" />
                   <button className="btn btn-small" type="submit" style={{ alignSelf: "flex-start" }}>Notiz speichern</button>
                 </form>

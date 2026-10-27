@@ -1,6 +1,6 @@
 import { myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { memberLabels, partnerHolders } from "@/lib/private/logic";
-import { deleteAllAction, savePinAction, saveSettingsAction, saveStartHintAction } from "../actions";
+import { deleteAllAction, saveExternSyncAction, savePinAction, saveSettingsAction, saveStartHintAction } from "../actions";
 import { StateForm } from "../state-form";
 import { Choice, PrivatHead } from "../ui";
 
@@ -57,6 +57,20 @@ export default async function PrivatEinstellungenPage() {
       </section>
       )}
 
+      {session.privateScope === "voll" && (
+        <section className="card card-pad stack" data-testid="extern-sync">
+          <h2>Kalender-Export {s.externSync.enabled ? <span className="tag tag-warn">an</span> : <span className="tag">aus</span>}</h2>
+          <p className="small muted" style={{ margin: 0 }}>
+            Private Einträge gehen nie automatisch in einen Kalender – weder in den geschäftlichen noch in einen geteilten. Ist der Export an, landen <strong>nur einzeln angehakte</strong> Termine, Kinderzeiten, Auszeiten, Ausschlafen und Paarzeiten in einem <strong>eigenen</strong> Kalender – ganztägig, nur mit dem Titel „Privater Termin“, ohne Uhrzeit, Namen oder Inhalt. Periode, Nähe, Streicheln und Massage nie.
+          </p>
+          <StateForm action={saveExternSyncAction} submit="Speichern" testid="extern-sync-form" keep>
+            <label className="check small"><input type="checkbox" name="enabled" defaultChecked={s.externSync.enabled} /> Export einzeln angehakter Einträge einschalten</label>
+            <div className="field" style={{ maxWidth: 320 }}><label className="label small" htmlFor="ext-cal">Eigener Kalender (wird bei Bedarf angelegt)</label><input className="input" id="ext-cal" name="calendar" defaultValue={s.externSync.calendar} maxLength={60} /></div>
+            <div className="small muted">Nicht erlaubt: der Kalender „Seller-System“ und Kalender, die für Mitarbeiter freigegeben sind.</div>
+          </StateForm>
+        </section>
+      )}
+
       <section className="card card-pad stack">
         <h2>PIN-Sperre {session.privatePin ? <span className="tag tag-ok">an</span> : <span className="tag">aus</span>}</h2>
         <p className="small muted" style={{ margin: 0 }}>
@@ -96,7 +110,7 @@ export default async function PrivatEinstellungenPage() {
         </ul>
         <div className="small muted">
           Freigeben oder entziehen kann der Inhaber unter Einstellungen → Benutzer („Privat“: voll oder nur Familie). Der Zugang ist nie in „alle Bereiche“ enthalten – auch nicht für Inhaber –, und Nur-ansehen-Konten bekommen ihn nie.
-          Alle Einträge liegen verschlüsselt in der Datenbank (auch in Sicherungen), werden mit nichts abgeglichen (kein Kalender, keine Aufgabenliste, keine KI) und nirgends sonst angezeigt.
+          Alle Einträge liegen verschlüsselt in der Datenbank (auch in Sicherungen), werden mit nichts abgeglichen (keine Aufgabenliste, keine KI, kein Kalender – außer einzeln angehakten Einträgen bei eingeschaltetem Export, dann nur neutral) und nirgends sonst angezeigt.
         </div>
       </section>
     </>

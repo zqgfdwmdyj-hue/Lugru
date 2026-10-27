@@ -8,7 +8,7 @@ import { monthGrid, monthTitle, parseMonth, shiftMonth, spreadDays, type DayEntr
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { createTask } from "@/lib/tasks/actions";
-import { calendarVisible } from "@/lib/calendar/visibility";
+import { calendarVisible, isBusinessCalendar, seesAllCalendars } from "@/lib/calendar/visibility";
 import { saveStaffCalendarsAction } from "./actions";
 import { SyncButton } from "./sync-button";
 
@@ -29,7 +29,9 @@ const MAX_IN_CELL = 4;
 const berlinDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 const berlinTime = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
 
-export default async function KalenderPage({ searchParams }: { searchParams: Promise<{ monat?: string; tag?: string }> }) {
+type Scope = "alle" | "geschaeft" | "privat";
+
+export default async function KalenderPage({ searchParams }: { searchParams: Promise<{ monat?: string; tag?: string; sicht?: string }> }) {
   const session = await requireArea("kalender");
   const sp = await searchParams;
   const today = todayIso();
@@ -38,6 +40,9 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
   const from = grid[0];
   const to = grid[grid.length - 1];
   const selected = sp.tag && /^\d{4}-\d{2}-\d{2}$/.test(sp.tag) && sp.tag >= from && sp.tag <= to ? sp.tag : today.startsWith(month) ? today : `${month}-01`;
+  // Geschäft = Fälligkeiten des Systems + für Mitarbeiter freigegebene Kalender; Privat = die übrigen verbundenen Kalender.
+  const canPrivate = seesAllCalendars(session);
+  const scope: Scope = canPrivate && (sp.sicht === "geschaeft" || sp.sicht === "privat") ? sp.sicht : "alle";
 
   const E = schema.calendarEvents;
   const [cal, tenant, events, desired] = await Promise.all([
@@ -77,7 +82,10 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
   }
   // Eigene Kalender: Inhaber und Privat-Zugang alle, andere nur die freigegebenen (Familie/Privat nie ungefragt).
   const staffCalendars = calState?.staffCalendars;
-  const visibleEvents = restricted ? [] : events.filter((ev) => calendarVisible(session, ev.calendarName, staffCalendars));
+  const pushName = cal?.calendarName || "Seller-System";
+  const visibleEvents = restricted
+    ? []
+    : events.filter((ev) => calendarVisible(session, ev.calendarName, staffCalendars) && (scope === "alle" || (scope === "geschaeft") === isBusinessCalendar(ev.calendarName, staffCalendars, pushName)));
   const hiddenCalendars = restricted ? 0 : new Set(events.filter((ev) => !calendarVisible(session, ev.calendarName, staffCalendars)).map((ev) => ev.calendarName)).size;
   const allCalendarNames = [...new Set([...(calState?.read ?? []).map((r) => r.name), ...events.map((e) => e.calendarName)])].sort((a, b) => a.localeCompare(b, "de"));
   for (const ev of visibleEvents) {
@@ -97,7 +105,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
       }),
     );
   }
-  for (const d of desired) {
+  for (const d of scope === "privat" ? [] : desired) {
     if (session.role === "staff" && (restricted || session.brandIds !== null) && !linkAllowed(session, d.link)) continue;
     if (hiddenIdeas.has(d.key)) continue;
     if (d.date < from || d.date > to) continue;
@@ -113,7 +121,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
   }
   for (const list of byDay.values()) list.sort((a, b) => (a.link ? 1 : 0) - (b.link ? 1 : 0) || (a.time ?? "").localeCompare(b.time ?? ""));
 
-  const href = (m: string, tag?: string) => `/kalender?monat=${m}${tag ? `&tag=${tag}` : ""}`;
+  const href = (m: string, tag?: string, sicht: Scope = scope) => `/kalender?monat=${m}${tag ? `&tag=${tag}` : ""}${sicht !== "alle" ? `&sicht=${sicht}` : ""}`;
   const dayList = byDay.get(selected) ?? [];
   const selectedLabel = new Date(`${selected}T12:00:00Z`).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -145,6 +153,16 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
         </div>
       ) : null}
 
+      {canPrivate && (
+        <div className="between" style={{ flexWrap: "wrap" }}>
+          <div className="priv-tabs" role="group" aria-label="Welche Termine" data-testid="calendar-scope">
+            {(["alle", "geschaeft", "privat"] as const).map((k) => (
+              <Link key={k} href={href(month, sp.tag, k)} className={`chip${scope === k ? " active" : ""}`} aria-current={scope === k ? "true" : undefined}>{k === "alle" ? "Alle" : k === "geschaeft" ? "Geschäft" : "Privat & Familie"}</Link>
+            ))}
+          </div>
+          {session.privateAccess && <Link className="small" href="/privat/kalender">Privatkalender (Kinderzeit, Paarzeit, Termine …) →</Link>}
+        </div>
+      )}
       {hiddenCalendars > 0 && (
         <div className="notice notice-info small" data-testid="calendars-hidden">
           Termine aus {hiddenCalendars} eigenen Kalender{hiddenCalendars === 1 ? "" : "n"} des Inhabers sind für dein Konto ausgeblendet (privat bzw. nicht freigegeben). Fälligkeiten des Systems stehen vollständig hier.

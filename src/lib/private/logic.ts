@@ -20,6 +20,11 @@ export type PrivateSettings = {
    * (Standard, keine Inhalte) oder Hinweise (Tagebuch offen, Termin, Rezept …).
    */
   startHint: Record<string, StartHint>;
+  /**
+   * Ausdrücklicher Export einzelner privater Einträge in einen eigenen Kalender – nur neutral als „Privater
+   * Termin“ (ganztägig, ohne Inhalt), nie Periode, Nähe, Streicheln/Massage. Standard: aus.
+   */
+  externSync: { enabled: boolean; calendar: string };
 };
 export type StartHint = "aus" | "link" | "hinweise";
 export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
@@ -31,14 +36,34 @@ export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {
   wakeTime: "06:30",
   dateReminderDays: 21,
   startHint: {},
+  externSync: { enabled: false, calendar: "Privat" },
 };
+
+/**
+ * Planung und Rückblick getrennt: geplant (zählt nirgends), stattgefunden (zählt in den Auswertungen),
+ * ausgefallen (bleibt sichtbar, zählt nicht). Ältere Einträge ohne Status waren immer nachträglich erfasst
+ * und gelten als stattgefunden.
+ */
+export type EntryStatus = "geplant" | "stattgefunden" | "ausgefallen";
+export const STATUS_LABEL: Record<EntryStatus, string> = { geplant: "geplant", stattgefunden: "stattgefunden", ausgefallen: "ausgefallen" };
+export const statusOf = (e: { status?: EntryStatus | string } | null | undefined): EntryStatus =>
+  e?.status === "geplant" || e?.status === "ausgefallen" ? e.status : "stattgefunden";
+/** Zählt in Auswertungen (Monatssummen, „als Nächstes dran“, Rückblick). */
+export const happened = (e: { status?: EntryStatus | string } | null | undefined) => statusOf(e) === "stattgefunden";
+/** Was in der Zukunft liegt, kann noch nicht stattgefunden haben. */
+export function statusProblem(day: string, status: EntryStatus, today: string): string | null {
+  if (status === "stattgefunden" && day > today) return "Was in der Zukunft liegt, kann noch nicht stattgefunden haben – bitte „geplant“ wählen.";
+  return null;
+}
+/** Vorbelegung: Zukunft = geplant, sonst stattgefunden. */
+export const defaultStatus = (day: string, today: string): EntryStatus => (day > today ? "geplant" : "stattgefunden");
 
 export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey | "beide"; closeness?: Ratings; note?: string };
 /**
  * Zeit-Einträge (Kinderzeit, Ausschlafen, Auszeit, Paarzeit). `linkId`: gemeinsamer Vorgang – z. B. A allein
  * mit den Kindern, während B Auszeit hat. Jede Sicht zählt nur in ihrer eigenen Auswertung (nie doppelt).
  */
-export type KidsEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string };
+export type KidsEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean };
 export type TaskEntry = {
   title: string;
   source: "ads" | "paar" | "sonst";
@@ -52,11 +77,16 @@ export type TaskEntry = {
   notes?: string;
   reflection?: string;
 };
-export type AppointmentEntry = { day: string; time?: string; with: "ads" | "paar" | "arzt" | "sonst"; notes?: string };
+/**
+ * Privater Termin: Therapie/Arzt wie bisher, dazu Familien- und private Termine mit Titel. `person`: wen es
+ * betrifft (für den Personenfilter), `extern`: ausdrücklich als neutraler „Privater Termin“ in den Apple-Kalender.
+ */
+export type AppointmentEntry = { day: string; time?: string; to?: string; with: "ads" | "paar" | "arzt" | "familie" | "privat" | "sonst"; title?: string; person?: PartnerKey | "beide"; notes?: string; status?: EntryStatus; extern?: boolean };
 /** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
-export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string };
+export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean };
 /** Ausschlafen: wer durfte wann wie lange länger schlafen (der andere übernimmt die Kinder). */
-export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string };
+/** `kidsBy`: bei Auszeit – wer die Kinder übernimmt, wenn es nicht der Partner ist (dann ohne Kinderzeit-Eintrag). */
+export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string };
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;
@@ -167,7 +197,9 @@ export function intimStats(entries: Pick<IntimEntry, "day">[], month: string, to
 }
 
 /** Paarzeit: Anzahl und Stunden im Monat, zuletzt, Ø Abstand (90 Tage), Babysitter-Kosten im Monat. */
-export function dateStats(entries: DateEntry[], month: string, today: string) {
+export function dateStats(all: DateEntry[], month: string, today: string) {
+  // Nur was stattgefunden hat – geplante oder ausgefallene Dates zählen nicht.
+  const entries = all.filter(happened);
   const inMonth = entries.filter((e) => e.day.startsWith(month));
   const days = [...new Set(entries.map((e) => e.day))].filter((d) => d <= today).sort();
   const last = days[days.length - 1] ?? null;
@@ -294,20 +326,27 @@ export function durationOf(e: { day?: string; from?: string; to?: string; hours?
   return { error: "Bitte von–bis oder die Stunden angeben." };
 }
 
-/** Je Person: Anzahl, Stunden; und je Tag beide Spalten nebeneinander. */
+/**
+ * Je Person: Anzahl, Stunden (nur stattgefunden); je Tag beide Spalten nebeneinander (alle Einträge, auch
+ * geplante und ausgefallene – die Liste zeigt den Status). `planned`: geplante Einträge im Monat.
+ */
 export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
   const list = entries.filter((e) => e.day.startsWith(month)).sort((x, y) => x.day.localeCompare(y.day) || (x.from ?? "").localeCompare(y.from ?? ""));
   const totals = { a: { count: 0, hours: 0 }, b: { count: 0, hours: 0 } };
+  const planned = { a: 0, b: 0 };
   const byDay = new Map<string, { a: E[]; b: E[] }>();
   for (const e of list) {
-    totals[e.person].count++;
-    totals[e.person].hours = round1(totals[e.person].hours + kidsHours(e));
+    if (statusOf(e) === "geplant") planned[e.person]++;
+    if (happened(e)) {
+      totals[e.person].count++;
+      totals[e.person].hours = round1(totals[e.person].hours + kidsHours(e));
+    }
     const row = byDay.get(e.day) ?? { a: [], b: [] };
     row[e.person].push(e);
     byDay.set(e.day, row);
   }
   const sum = totals.a.hours + totals.b.hours;
-  return { totals, shareA: sum ? Math.round((totals.a.hours / sum) * 100) : null, days: [...byDay.entries()].map(([day, r]) => ({ day, ...r })) };
+  return { totals, planned, shareA: sum ? Math.round((totals.a.hours / sum) * 100) : null, days: [...byDay.entries()].map(([day, r]) => ({ day, ...r })) };
 }
 
 // ---- Ausschlafen -----------------------------------------------------------------------------------
@@ -316,7 +355,9 @@ export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
  * Im Wechsel: wer als Nächstes dran wäre – der andere als beim letzten Eintrag. Bewusst ohne
  * Ausgleich nach gezählten Stunden (das wäre eine Bewertung, die die Zahlen nicht hergeben). Ohne Einträge: null.
  */
-export function nextSleeper(entries: (Pick<SleepEntry, "day" | "person"> & { at?: number })[], _month?: string): PartnerKey | null {
+export function nextSleeper(all: (Pick<SleepEntry, "day" | "person" | "status"> & { at?: number })[], _month?: string): PartnerKey | null {
+  // Nur tatsächlich genommene Zeit: ein geplanter Morgen macht noch niemanden „dran gewesen“.
+  const entries = all.filter(happened);
   if (!entries.length) return null;
   // gleicher Tag: was zuletzt eingetragen wurde
   const last = [...entries].sort((x, y) => x.day.localeCompare(y.day) || (x.at ?? 0) - (y.at ?? 0)).pop()!;
@@ -426,17 +467,17 @@ export function diarySeries(entries: DiaryEntry[], key: RatingKey, today: string
 /** Für die nächste Sitzung: was seit dem letzten Termin passiert ist. */
 export function sinceSummary(input: { since: string; today: string; intim: IntimEntry[]; kids: KidsEntry[]; tasks: TaskEntry[]; dates?: DateEntry[]; sleep?: SleepEntry[] }) {
   const { since, today } = input;
-  const kids = input.kids.filter((e) => e.day >= since && e.day <= today);
+  const kids = input.kids.filter((e) => happened(e) && e.day >= since && e.day <= today);
   const hours = { a: 0, b: 0 };
   for (const e of kids) hours[e.person] = round1(hours[e.person] + kidsHours(e));
   const done = input.tasks.filter((t) => (t.repeat === "einmal" ? t.done && (t.doneAt ?? "") >= since : (t.checks ?? []).some((d) => d >= since)));
   return {
     days: daysBetween(since, today),
     intim: input.intim.filter((e) => e.day >= since && e.day <= today).length,
-    dates: (input.dates ?? []).filter((e) => e.day >= since && e.day <= today).length,
+    dates: (input.dates ?? []).filter((e) => happened(e) && e.day >= since && e.day <= today).length,
     sleepIn: {
-      a: (input.sleep ?? []).filter((e) => e.person === "a" && e.day >= since && e.day <= today).length,
-      b: (input.sleep ?? []).filter((e) => e.person === "b" && e.day >= since && e.day <= today).length,
+      a: (input.sleep ?? []).filter((e) => happened(e) && e.person === "a" && e.day >= since && e.day <= today).length,
+      b: (input.sleep ?? []).filter((e) => happened(e) && e.person === "b" && e.day >= since && e.day <= today).length,
     },
     kidsHours: hours,
     kidsCount: { a: kids.filter((e) => e.person === "a").length, b: kids.filter((e) => e.person === "b").length },

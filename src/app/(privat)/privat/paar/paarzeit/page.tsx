@@ -5,7 +5,7 @@ import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/serv
 import { addDateAction, addIdeaAction, deleteEntryAction, toggleIdeaAction } from "../../actions";
 import { AddPanel } from "../../add-panel";
 import { StateForm } from "../../state-form";
-import { Counted, MonthNav, PrivatHead, Rating, clockShiftLabel, dm, hoursLabel, monthLabel, monthParam, weekday } from "../../ui";
+import { Counted, MonthNav, PrivatHead, Rating, clockShiftLabel, dm, hoursLabel, monthLabel, monthParam, weekday, StatusTag } from "../../ui";
 
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 const n = (v: number | undefined) => (v === undefined ? "" : String(v).replace(".", ","));
@@ -82,9 +82,9 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
               {inMonth.map((e) => (
                 <tr key={e.id}>
                   <td className="num" style={{ whiteSpace: "nowrap" }}>{weekday(e.data.day)} {dm(e.data.day)}</td>
-                  <td className="small">{line(e.data) || "–"}{e.data.note ? <div className="muted">{e.data.note}</div> : null}{e.data.editedAt ? <span className="muted"> · geändert</span> : null}</td>
+                  <td className="small">{line(e.data) || "–"}{e.data.note ? <div className="muted">{e.data.note}</div> : null}{e.data.editedAt ? <span className="muted"> · geändert</span> : null}<StatusTag status={e.data.status} /></td>
                   <td className="right" style={{ whiteSpace: "nowrap" }}>
-                    <Link className="btn-link small" href={`/privat/paar/paarzeit?monat=${month}&bearbeiten=${e.id}`}>ändern</Link>{" "}
+                    <Link className="btn-link small" href={`/privat/eintrag/${e.id}`}>ändern</Link>{" "}
                     <form action={deleteEntryAction} style={{ display: "inline" }}><input type="hidden" name="kind" value="paarzeit" /><input type="hidden" name="id" value={e.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>löschen</button></form>
                   </td>
                 </tr>

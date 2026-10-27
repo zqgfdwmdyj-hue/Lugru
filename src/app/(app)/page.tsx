@@ -10,7 +10,7 @@ import { refreshImportReminder } from "@/lib/tasks/system";
 import { BUCKET_LABEL, bucketCounts, bucketOf, isIdeaTask, planDay, type Bucket, type TaskLite } from "@/lib/today/logic";
 import { dataAreas, todaySignals } from "@/lib/today/service";
 import { calendarVisible } from "@/lib/calendar/visibility";
-import { PrivateHint } from "./privat/hint";
+import { PrivateHint } from "@/app/(privat)/privat/hint";
 import { loadSalesOverview } from "@/lib/sellerboard/sales";
 import { SalesOverviewSection } from "./sales-overview";
 import { loadHebel } from "@/lib/hebel/service";

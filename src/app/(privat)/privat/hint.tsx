@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Session } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { addDays, dateReminder, dateStats, medStock, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
+import { addDays, dateReminder, dateStats, medStock, statusOf, taskState, type AppointmentEntry, type DateEntry, type DiaryEntry, type TaskEntry } from "@/lib/private/logic";
 import { loadEntries, myMedPlan, privateSettings } from "@/lib/private/service";
 
 /**
@@ -31,7 +31,7 @@ export async function PrivateHint({ session }: { session: Session }) {
   const hasDiary = diary.some((e) => e.userId === session.userId);
   const diaryToday = diary.some((e) => e.userId === session.userId && e.data.day === today);
   const open = tasks.filter((t) => taskState(t.data, today).open).length;
-  const soon = appts.filter((a) => a.data.day === today || a.data.day === addDays(today, 1)).sort((a, b) => a.data.day.localeCompare(b.data.day) || (a.data.time ?? "").localeCompare(b.data.time ?? ""))[0];
+  const soon = appts.filter((a) => statusOf(a.data) !== "ausgefallen" && (a.data.day === today || a.data.day === addDays(today, 1))).sort((a, b) => a.data.day.localeCompare(b.data.day) || (a.data.time ?? "").localeCompare(b.data.time ?? ""))[0];
   const parts = [
     hasDiary && !diaryToday ? "Tagebuch heute noch offen" : null,
     open ? `${open} Aufgabe${open === 1 ? "" : "n"} offen` : null,

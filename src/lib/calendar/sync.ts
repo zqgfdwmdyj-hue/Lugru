@@ -9,6 +9,12 @@ import { parseFeedList } from "./feeds";
 import { expandCalendar } from "./recur";
 import { collectDesired } from "./items";
 import { hashDesired, planCalendarChanges, planPush, uidFor, type DesiredItem, type RemoteItem, type StoredItem } from "./plan";
+import { exportCalendarProblem } from "@/lib/private/export-logic";
+import { privateExport } from "@/lib/private/export-sync";
+
+/** Einträge des privaten Exports (eigener Kalender) – nie mit den geschäftlichen vermischen. */
+const PRIVATE_KEY = "priv:";
+const isPrivateKey = (k: string) => k.startsWith(PRIVATE_KEY);
 
 export const DEFAULT_CALENDAR_NAME = "Seller-System";
 const berlinDay = (iso: string) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date(iso));
@@ -162,8 +168,10 @@ async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeo
 
   // 2. Änderungen aus dem Kalender übernehmen.
   const I = schema.calendarItems;
-  const loadStored = async (): Promise<StoredItem[]> =>
+  const loadAll = async (): Promise<StoredItem[]> =>
     (await db.select().from(I).where(eq(I.tenantId, tenantId))).map((s) => ({ id: s.id, sourceKey: s.sourceKey, uid: s.uid, href: s.href, etag: s.etag, hash: s.hash, date: s.date, title: s.title, taskId: s.taskId }));
+  // Geschäftlicher Kalender: alles außer dem privaten Export.
+  const loadStored = async () => (await loadAll()).filter((x) => !isPrivateKey(x.sourceKey));
   const remoteRaw = await client.events(sysHref);
   const remote: RemoteItem[] = [];
   for (const r of remoteRaw) {
@@ -231,9 +239,51 @@ async function runSync(tenantId: string, c: NonNullable<Awaited<ReturnType<typeo
     removed++;
   }
 
+  // 3b. Privater Export – nur wenn ausdrücklich eingeschaltet, in einen eigenen Kalender, nur neutral
+  //     („Privater Termin“, ganztägig, ohne Inhalt). Ausgeschaltet: früher exportierte Termine wieder entfernen.
+  const today = todayIso();
+  const priv = await privateExport(tenantId, addDaysIso(today, -60), addDaysIso(today, 180));
+  const privStored = (await loadAll()).filter((x) => isPrivateKey(x.sourceKey));
+  const privOk = priv.enabled && !exportCalendarProblem(priv.calendar, c.calendarName, state.staffCalendars);
+  let privHref: string | null = null;
+  if (privOk) {
+    const k = eventCalendars.find((x) => x.href !== sysHref && x.name.trim().toLowerCase() === priv.calendar.trim().toLowerCase());
+    privHref = k?.href ?? (await client.createCalendar(home, priv.calendar));
+    const privRemote = new Map<string, string | null>();
+    for (const r of await client.events(privHref)) {
+      const ev = parseEvents(r.ics).find((e) => !e.recurrenceId);
+      if (ev) privRemote.set(ev.uid, r.etag);
+    }
+    const pp = planPush(privStored, priv.items);
+    const neutral = (d: DesiredItem, uid: string) => buildEvent({ uid, title: d.title, date: d.date, description: "" }, now);
+    for (const d of pp.create) {
+      const uid = uidFor(tenantId, d.key);
+      const href = new URL(`${uid.split("@")[0]}.ics`, privHref).toString();
+      const etag = await client.put(href, neutral(d, uid), privRemote.get(uid) ?? null);
+      await db
+        .insert(I)
+        .values({ tenantId, sourceKey: d.key, uid, href, etag, hash: hashDesired(d), date: d.date, title: d.title, taskId: null })
+        .onConflictDoUpdate({ target: [I.tenantId, I.uid], set: { sourceKey: d.key, hash: hashDesired(d), date: d.date, title: d.title, etag, updatedAt: now } });
+    }
+    for (const { item, desired: d } of pp.update) {
+      const etag = await client.put(item.href, neutral(d, item.uid), privRemote.get(item.uid) ?? item.etag);
+      await db.update(I).set({ hash: hashDesired(d), date: d.date, title: d.title, etag, updatedAt: now }).where(eq(I.id, item.id));
+    }
+    for (const x of pp.remove) {
+      await client.remove(x.href).catch(() => {});
+      await db.delete(I).where(eq(I.id, x.id));
+    }
+  } else {
+    for (const x of privStored) {
+      await client.remove(x.href).catch(() => {});
+      await db.delete(I).where(eq(I.id, x.id));
+    }
+  }
+
   // 4. Eigene Termine der übrigen Kalender lesen (3 Monate zurück bis 1 Jahr voraus – für die Kalenderansicht).
   //    Unbekannte Namen in „Eigene Kalender anzeigen" werden gemeldet; passt keiner, werden alle gelesen.
-  const others = eventCalendars.filter((k) => k.href !== sysHref);
+  // Der private Export-Kalender wird nicht zurückgelesen (sonst stünde „Privater Termin“ doppelt im Privatkalender).
+  const others = eventCalendars.filter((k) => k.href !== sysHref && k.href !== privHref);
   const known = new Set(others.map((k) => k.name.toLowerCase()));
   const unknownNames = c.readOnly.filter((n) => !known.has(n));
   const wanted = c.readOnly.filter((n) => known.has(n));

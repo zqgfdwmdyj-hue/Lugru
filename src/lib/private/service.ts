@@ -14,9 +14,9 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
-const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung"]);
+const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode"]);
 /** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
 const PERSONAL_KINDS = new Set<string>(["medplan", "routine"]);
 /** Was Personen mit Umfang „familie“ sehen und eintragen dürfen – gemeinsame Familieninfos, sonst nichts. */
@@ -72,6 +72,7 @@ export async function privateSettings(tenantId: string): Promise<PrivateSettings
     wakeTime: d.wakeTime ?? DEFAULT_PRIVATE_SETTINGS.wakeTime,
     dateReminderDays: typeof d.dateReminderDays === "number" ? d.dateReminderDays : DEFAULT_PRIVATE_SETTINGS.dateReminderDays,
     startHint: d.startHint ?? {},
+    externSync: { ...DEFAULT_PRIVATE_SETTINGS.externSync, ...(d.externSync ?? {}) },
   };
 }
 
@@ -95,20 +96,40 @@ export function myPartner(s: PrivateSettings, session: Pick<Session, "userId">):
  * Einträge lesen (entschlüsselt). Tagebuch: eigenes und freigegebene; Beobachtungen: eigene und
  * die über mich. Alles andere teilen sich alle mit Privat-Zugang.
  */
+type Row = typeof E.$inferSelect;
+/** Sichtbarkeit eines Eintrags für diese Sitzung (nach dem Entschlüsseln). */
+function visibleTo(session: Session, r: Row, diaryShared: string[]): boolean {
+  if (!kindAllowed(session, r.kind as PrivateKind)) return false;
+  if (PERSONAL_KINDS.has(r.kind)) return r.userId === session.userId;
+  if (r.kind === "tagebuch") return r.userId === session.userId || diaryShared.includes(r.userId);
+  if (r.kind === "beobachtung") return r.userId === session.userId || (r.data as { aboutUserId?: string }).aboutUserId === session.userId;
+  // Periode: nur wer sie eingetragen hat und ausdrücklich freigegebene Konten.
+  if (r.kind === "periode") {
+    const share = (r.data as { shareWith?: unknown }).shareWith;
+    return r.userId === session.userId || (Array.isArray(share) && share.includes(session.userId));
+  }
+  return true;
+}
+const toEntry = <T,>(r: Row): Entry<T> => ({ id: r.id, userId: r.userId, kind: r.kind as PrivateKind, data: r.data as T, createdAt: r.createdAt, updatedAt: r.updatedAt });
+
 export async function loadEntries<T = Record<string, unknown>>(session: Session, kinds: PrivateKind[]): Promise<Entry<T>[]> {
   kinds = kinds.filter((k) => kindAllowed(session, k));
   if (!kinds.length) return [];
   const rows = await db.select().from(E).where(and(eq(E.tenantId, session.tenantId), inArray(E.kind, kinds)));
-  const settings = kinds.includes("tagebuch") ? await privateSettings(session.tenantId) : null;
-  return rows
-    .filter((r) => {
-      if (PERSONAL_KINDS.has(r.kind)) return r.userId === session.userId;
-      if (r.kind === "tagebuch") return r.userId === session.userId || settings!.diaryShared.includes(r.userId);
-      if (r.kind === "beobachtung") return r.userId === session.userId || (r.data as { aboutUserId?: string }).aboutUserId === session.userId;
-      return true;
-    })
-    .map((r) => ({ id: r.id, userId: r.userId, kind: r.kind as PrivateKind, data: r.data as T, createdAt: r.createdAt, updatedAt: r.updatedAt }));
+  const shared = kinds.includes("tagebuch") ? (await privateSettings(session.tenantId)).diaryShared : [];
+  return rows.filter((r) => visibleTo(session, r, shared)).map((r) => toEntry<T>(r));
 }
+
+/** Ein Eintrag (beliebiger Art) – nur wenn diese Sitzung ihn sehen darf. Einstellungen nie. */
+export async function loadEntry<T = Record<string, unknown>>(session: Session, id: string): Promise<Entry<T> | null> {
+  const [row] = await db.select().from(E).where(and(eq(E.id, id), eq(E.tenantId, session.tenantId), ne(E.kind, "einstellungen")));
+  if (!row) return null;
+  const shared = row.kind === "tagebuch" ? (await privateSettings(session.tenantId)).diaryShared : [];
+  return visibleTo(session, row, shared) ? toEntry<T>(row) : null;
+}
+
+/** Darf diese Sitzung den Eintrag ändern? (Eigene Arten nur der Verfasser.) */
+export const canEdit = (session: Pick<Session, "userId">, e: Pick<Entry, "kind" | "userId">) => !OWN_KINDS.has(e.kind) || e.userId === session.userId;
 
 export async function addEntry(session: Session, kind: PrivateKind, data: Record<string, unknown>) {
   if (!kindAllowed(session, kind)) throw new Error("Dafür reicht der Privat-Zugang nicht.");

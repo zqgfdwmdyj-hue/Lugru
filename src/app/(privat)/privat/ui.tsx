@@ -2,117 +2,41 @@ import Link from "next/link";
 import { getSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { shiftMonth } from "@/lib/private/logic";
-import { lockAction } from "./actions";
+import { FAMILY_TABS, GROUPS, type PrivatTab } from "./nav-data";
 
-/**
- * Navigation in Gruppen statt zwölf gleichrangiger Reiter: Heute, Partnerschaft, Familienalltag,
- * Gesundheit – Rückblick, Wissen und Einstellungen unter „Mehr“. `month`: Seiten mit Monatsfilter.
- */
-const GROUPS = [
-  {
-    key: "heute",
-    label: "Heute",
-    tabs: [
-      { key: "start", href: "/privat", label: "Tagesübersicht" },
-      { key: "aufgaben", href: "/privat/aufgaben", label: "Aufgaben & Termine" },
-      { key: "routinen", href: "/privat/routinen", label: "Routinen" },
-    ],
-  },
-  {
-    key: "paar",
-    label: "Partnerschaft",
-    short: "Paar",
-    tabs: [
-      { key: "paar", href: "/privat/paar", label: "Nähe", month: true },
-      { key: "paarzeit", href: "/privat/paar/paarzeit", label: "Paarzeit", month: true },
-      { key: "danke", href: "/privat/paar/wertschaetzung", label: "Wertschätzung" },
-      { key: "gespraech", href: "/privat/paar/gespraech", label: "Paar-Gespräch" },
-    ],
-  },
-  {
-    key: "familie",
-    label: "Familienalltag",
-    short: "Familie",
-    tabs: [
-      { key: "kinder", href: "/privat/kinder", label: "Kinderzeit", month: true },
-      { key: "ausschlafen", href: "/privat/ausschlafen", label: "Ausschlafen", month: true },
-      { key: "auszeit", href: "/privat/auszeit", label: "Auszeit", month: true },
-      { key: "familie", href: "/privat/familie", label: "Wer kümmert sich" },
-    ],
-  },
-  {
-    key: "gesundheit",
-    label: "Gesundheit",
-    tabs: [
-      { key: "tagebuch", href: "/privat/tagebuch", label: "ADHS-Tagebuch" },
-      { key: "bericht", href: "/privat/tagebuch/bericht", label: "Arztbericht" },
-    ],
-  },
-  {
-    key: "mehr",
-    label: "Mehr",
-    tabs: [
-      { key: "rueckblick", href: "/privat/rueckblick", label: "Rückblick", month: true },
-      { key: "wissen", href: "/privat/wissen", label: "Wissen" },
-      { key: "einstellungen", href: "/privat/einstellungen", label: "Einstellungen" },
-    ],
-  },
-] as const;
-export type PrivatTab = (typeof GROUPS)[number]["tabs"][number]["key"];
-/** Reiter für Personen mit Umfang „familie“ (nur gemeinsame Familieninfos). */
-const FAMILY_TABS = new Set<PrivatTab>(["start", "kinder", "ausschlafen", "auszeit", "familie", "einstellungen"]);
+export type { PrivatTab } from "./nav-data";
 
 /** Monat in Links mitnehmen (gemeinsamer Monatsfilter für Familienzeiten, Paarzeit und Rückblick). */
 const withMonth = (href: string, month: string | undefined, monthly: boolean) => (monthly && month ? `${href}?monat=${month}` : href);
 
-/** Kopf aller Privat-Seiten: Titel, Gruppen mit Unterreitern und – mit PIN – „Sperren“. */
-export async function PrivatHead({ active, title, pin, sub, month }: { active: PrivatTab; title: string; pin: boolean; sub?: React.ReactNode; month?: string }) {
+/**
+ * Kopf aller Privat-Seiten: Bereich, Titel und – auf Detailseiten – die Reiter der Gruppe. Die Hauptnavigation
+ * (Heute · Kalender · Eintragen · Rückblick · Einstellungen) und „Sperren“ stehen im Rahmen darüber.
+ */
+export async function PrivatHead({ active, title, sub, month }: { active: PrivatTab; title: string; pin?: boolean; sub?: React.ReactNode; month?: string }) {
   const family = (await getSession())?.privateScope === "familie";
   const groups = GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((t) => !family || FAMILY_TABS.has(t.key)) })).filter((g) => g.tabs.length);
-  const current = groups.find((g) => g.tabs.some((t) => t.key === active)) ?? groups[0];
+  const current = groups.find((g) => g.tabs.some((t) => t.key === active));
   const monthOf = month && month !== todayIso().slice(0, 7) ? month : undefined;
+  const top = ["start", "kalender", "eintragen", "rueckblick", "einstellungen"].includes(active);
   return (
     <>
       <div className="page-head">
         <div>
-          <div className="crumb">🔒 Privat – nur für euch</div>
+          <div className="crumb">🔒 Privat{current && !top ? ` › ${current.label}` : ""} – nur für euch</div>
           <h1>{title}</h1>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {sub}
-          {pin && (
-            <form action={lockAction}>
-              <button className="btn btn-small" type="submit" title="Privat sofort sperren (PIN nötig)">Sperren</button>
-            </form>
-          )}
-        </div>
+        {sub && <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>{sub}</div>}
       </div>
-      <nav className="priv-nav" aria-label="Privat" data-testid="priv-tabs">
-        <div className="priv-groups" role="list">
-          {groups.map((g) => {
-            const first = g.tabs[0] as { href: string; month?: boolean };
-            return (
-              <Link key={g.key} role="listitem" href={withMonth(first.href, monthOf, Boolean(first.month))} className={`priv-group${g.key === current.key ? " active" : ""}`} aria-current={g.key === current.key ? "true" : undefined} data-testid={`priv-group-${g.key}`}>
-                {"short" in g ? (
-                  <>
-                    <span className="priv-lg">{g.label}</span>
-                    <span className="priv-sm">{g.short}</span>
-                  </>
-                ) : g.label}
-              </Link>
-            );
-          })}
-        </div>
-        {current.tabs.length > 1 && (
-          <div className="priv-tabs" data-testid="priv-subtabs">
-            {current.tabs.map((t) => (
-              <Link key={t.key} href={withMonth(t.href, monthOf, "month" in t && Boolean(t.month))} className={`chip${t.key === active ? " active" : ""}`} aria-current={t.key === active ? "page" : undefined}>
-                {t.label}
-              </Link>
-            ))}
-          </div>
-        )}
-      </nav>
+      {current && !top && current.tabs.length > 1 && (
+        <nav className="priv-tabs" aria-label={current.label} data-testid="priv-subtabs">
+          {current.tabs.map((t) => (
+            <Link key={t.key} href={withMonth(t.href, monthOf, "month" in t && Boolean(t.month))} className={`chip${t.key === active ? " active" : ""}`} aria-current={t.key === active ? "page" : undefined}>
+              {t.label}
+            </Link>
+          ))}
+        </nav>
+      )}
     </>
   );
 }
@@ -198,3 +122,9 @@ export const monthLabel = (m: string) => `${MONTHS[Number(m.slice(5, 7)) - 1]} $
 export const hoursLabel = (h: number) => `${String(h).replace(".", ",")} Std.`;
 /** „inkl. Zeitumstellung +1 Std.“ für Zeitspannen über die Umstellung (2–3 Uhr nachts). */
 export const clockShiftLabel = (shift: number) => (shift ? `inkl. Zeitumstellung ${shift > 0 ? "+" : "−"}${hoursLabel(Math.abs(shift))}` : "");
+
+/** Status in Listen: „geplant“ / „ausgefallen“ als Kennzeichen (stattgefunden braucht keins). */
+export function StatusTag({ status }: { status?: string }) {
+  if (status !== "geplant" && status !== "ausgefallen") return null;
+  return <span className={`tag ${status === "geplant" ? "tag-info" : "tag-neutral"}`} style={{ marginLeft: 6 }} data-testid="status-tag">{status === "geplant" ? "geplant – zählt noch nicht" : "ausgefallen"}</span>;
+}
