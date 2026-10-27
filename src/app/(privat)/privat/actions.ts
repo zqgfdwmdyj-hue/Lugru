@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, memberLabels, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
 import { saveTimeEntry as saveTime, TIME_KINDS, type TimeKind } from "@/lib/private/save";
 import { exportTargetProblem } from "@/lib/private/export-sync";
 import { addEntry, deleteAllPrivate, deleteEntry, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
@@ -453,6 +453,33 @@ export async function assignMeAction(fd: FormData) {
   if (partnerHolders(cur.userPartner, await privateMembers(session.tenantId), session.userId)[me]) return;
   await savePrivateSettings(session, { userPartner: { ...cur.userPartner, [session.userId]: me } });
   revalidatePath("/privat", "layout");
+}
+
+/**
+ * Inhaber: einem Konto mit Privat-Zugang die Person zuordnen (oder die Zuordnung lösen). Eine Person gehört
+ * genau einem Konto – ist sie schon vergeben, erst dort lösen (Konten werden nie zusammengeführt).
+ */
+export async function assignPartnerAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate({ full: true });
+  const target = uuid.safeParse(fd.get("userId"));
+  if (!target.success) return fail("Konto nicht gefunden.");
+  if (target.data !== session.userId && session.role !== "owner") return fail("Andere Konten kann nur der Inhaber zuordnen.");
+  const members = await privateMembers(session.tenantId);
+  if (!members.some((m) => m.userId === target.data)) return fail("Dieses Konto hat keinen Privat-Zugang.");
+  const raw = String(fd.get("partner") ?? "");
+  const p = partner(raw);
+  if (raw && !p) return fail("Bitte eine Person wählen.");
+  const cur = await privateSettings(session.tenantId);
+  const labels = memberLabels(members);
+  if (p) {
+    const holder = Object.entries(cur.userPartner).find(([u, k]) => k === p && u !== target.data && members.some((m) => m.userId === u));
+    if (holder) return fail(`„${cur.partners[p]}“ ist gerade dem Konto „${labels.get(holder[0])}“ zugeordnet – dort zuerst auf „nicht zugeordnet“ stellen. Konten werden nie zusammengeführt.`);
+  }
+  const next = { ...cur.userPartner };
+  if (p) next[target.data] = p;
+  else delete next[target.data];
+  await savePrivateSettings(session, { userPartner: next });
+  return done(p ? `Konto „${labels.get(target.data)}“ ist jetzt ${cur.partners[p]}.` : `Konto „${labels.get(target.data)}“ ist keiner Person mehr zugeordnet.`);
 }
 
 export async function addThanksAction(_prev: FormState, fd: FormData): Promise<FormState> {

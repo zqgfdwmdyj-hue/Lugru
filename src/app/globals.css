@@ -789,3 +789,4 @@ h2 { font-size: 16px; margin: 0; }
 .skel-block { height: 260px; }
 @keyframes skel { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+.assign-form { display: flex; flex-direction: row !important; align-items: center; flex-wrap: wrap; }

@@ -1,6 +1,6 @@
 import { myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
 import { memberLabels, partnerHolders } from "@/lib/private/logic";
-import { deleteAllAction, saveExternSyncAction, savePinAction, saveSettingsAction, saveStartHintAction } from "../actions";
+import { assignPartnerAction, deleteAllAction, saveExternSyncAction, savePinAction, saveSettingsAction, saveStartHintAction } from "../actions";
 import { StateForm } from "../state-form";
 import { Choice, PrivatHead } from "../ui";
 
@@ -103,10 +103,33 @@ export default async function PrivatEinstellungenPage() {
         </details>
       </section>
 
-      <section className="card card-pad stack">
-        <h2>Wer hat Zugang</h2>
-        <ul style={{ margin: 0, paddingLeft: 18 }}>
-          {members.map((m) => <li key={m.userId} data-testid="private-member">{labels.get(m.userId)}{m.userId === session.userId ? " (du)" : ""}{s.userPartner[m.userId] ? ` = ${s.userPartner[m.userId] === "a" ? "Partner 1" : "Partner 2"} „${s.partners[s.userPartner[m.userId]]}“` : " – noch keinem Partner zugeordnet"}{m.scope === "familie" ? " – nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten)" : ""}</li>)}
+      <section className="card card-pad stack" data-testid="members">
+        <h2>Wer hat Zugang – und wer ist wer</h2>
+        <ul className="pk-list">
+          {members.map((m) => {
+            const cur = s.userPartner[m.userId];
+            const editable = session.privateScope === "voll" && (session.role === "owner" || m.userId === session.userId);
+            return (
+              <li key={m.userId} data-testid="private-member">
+                <div className="between" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <span>
+                    <strong>{labels.get(m.userId)}</strong>{m.userId === session.userId ? " (du)" : ""}
+                    <span className="small muted"> · {cur ? `ist ${s.partners[cur]}` : "keiner Person zugeordnet"}{m.scope === "familie" ? " · nur Familie" : ""}</span>
+                  </span>
+                  {editable && (
+                    <StateForm action={assignPartnerAction} submit="Zuordnen" testid={`assign-${m.login}`} keep className="assign-form">
+                      <input type="hidden" name="userId" value={m.userId} />
+                      <select className="select" name="partner" defaultValue={cur ?? ""} aria-label={`Person für ${labels.get(m.userId)}`} style={{ width: "auto" }}>
+                        <option value="">nicht zugeordnet</option>
+                        <option value="a">{s.partners.a}</option>
+                        <option value="b">{s.partners.b}</option>
+                      </select>
+                    </StateForm>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
         <div className="small muted">
           Freigeben oder entziehen kann der Inhaber unter Einstellungen → Benutzer („Privat“: voll oder nur Familie). Der Zugang ist nie in „alle Bereiche“ enthalten – auch nicht für Inhaber –, und Nur-ansehen-Konten bekommen ihn nie.

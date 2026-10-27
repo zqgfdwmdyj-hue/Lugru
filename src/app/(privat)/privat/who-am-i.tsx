@@ -28,7 +28,7 @@ export async function WhoAmI({ partners, account, tenantId, userId, userPartner 
           Eine Person gehört genau zu einem Konto – Konten mit ähnlichem Namen werden nicht zusammengeführt. Ist das andere Konto ein altes von dir, entzieht der Inhaber dort den Privat-Zugang (Einstellungen → Benutzer).
         </div>
       )}
-      <div className="small muted">Namen anpassen oder Zuordnung ändern: Privat → Einstellungen.</div>
+      <div className="small muted">Namen anpassen oder Zuordnung ändern: Privat → Einstellungen. Der Inhaber kann dort auch andere Konten zuordnen.</div>
     </section>
   );
 }
