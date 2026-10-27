@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { packText } from "@/lib/price-logic";
+import { packText, stripInternal, stripInternalDeep } from "@/lib/price-logic";
 import { perPiece, suggestPackPrice } from "@/lib/pricing";
 import { categoryHint, cleanAiText, comparability, guessUnit, isSecondHand, itemIssues, mhdAuto, mhdRelevant, parseSize, pricePrefix, priceState, publicText, splitInternal, unitIssue, unitLabel, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { flyerSections, outputPrice } from "@/lib/layout";
@@ -214,8 +214,11 @@ describe("MHD und Prüfstatus", () => {
 
 describe("Feinere Kategorien", () => {
   it("Drogerie und Haushalt getrennt, Süßes, Getränke, Tee, Pflege", () => {
-    expect(categoryHint({ name: "YEAUTY Tuchmaske", category: "Drogerie & Haushalt" })?.suggest).toBe("Hautpflege");
-    expect(categoryHint({ name: "Shampoo Kamille", category: "Drogerie & Haushalt" })?.suggest).toBe("Haarpflege");
+    // Haut- und Haarpflege gehören zur Drogerie
+    expect(categoryHint({ name: "YEAUTY Tuchmaske", category: "Drogerie & Haushalt" })?.suggest).toBe("Drogerie");
+    expect(categoryHint({ name: "Shampoo Kamille", category: "Drogerie & Haushalt" })?.suggest).toBe("Drogerie");
+    expect(categoryHint({ name: "Shampoo Kamille", category: "Drogerie" })).toBeNull();
+    expect(categoryHint({ name: "Handcreme", category: "Hautpflege" })?.suggest).toBe("Drogerie");
     expect(categoryHint({ name: "Zahnpasta", category: "Drogerie & Haushalt" })?.suggest).toBe("Drogerie");
     expect(categoryHint({ name: "Spülmittel", category: "Drogerie & Haushalt" })?.suggest).toBe("Haushalt");
     expect(categoryHint({ name: "Funny-frisch Jumpys Paprika", category: "Lebensmittel" })?.suggest).toBe("Süßes & Snacks");
@@ -224,6 +227,14 @@ describe("Feinere Kategorien", () => {
     expect(categoryHint({ name: "Magnesium Brausetabletten", category: "Drogerie & Haushalt" })?.suggest).toBe("Tee & Nahrungsergänzung");
     expect(categoryHint({ name: "Eistee Pfirsich", category: "Lebensmittel" })?.suggest).toBe("Getränke inkl. Pfand");
     expect(categoryHint({ name: "HiPP Snackie", category: "Babyprodukte" })).toBeNull();
+  });
+  it("Produkttyp vor Geschmack", () => {
+    expect(categoryHint({ name: "Powerade Golden Mango", category: "Getränke inkl. Pfand" })).toBeNull();
+    expect(categoryHint({ name: "Becks Trinkschokoladenpulver", category: "Lebensmittel" })).toBeNull();
+    expect(categoryHint({ name: "Mango Chutney", category: "Lebensmittel" })).toBeNull();
+    expect(categoryHint({ name: "Powerade Golden Mango", category: "Lebensmittel" })?.suggest).toBe("Getränke inkl. Pfand");
+    expect(categoryHint({ name: "Bitzee", category: "Lebensmittel" })?.suggest).toBe("Spielzeug");
+    expect(categoryHint({ name: "Baby Einstein Magic Touch Piano", category: "Lebensmittel" })?.suggest).toBe("Spielzeug");
     expect(categoryHint({ name: "Haferflocken", category: "Lebensmittel" })).toBeNull();
   });
   it("Süßes und Tee brauchen ein MHD, Pflege nicht", () => {
@@ -247,5 +258,14 @@ describe("Ganze Packung / Kasten", () => {
     expect(suggestPackPrice(1, 24, false)).toEqual({ price: 4.8, retail: 24, share: 0.2 });
     expect(suggestPackPrice(0.8, 12, true)).toEqual({ price: 2.4, retail: 9.6, share: 0.25 });
     expect(suggestPackPrice(1, null, false)).toBeNull();
+  });
+});
+
+describe("Gespeicherte Ideen bereinigen", () => {
+  it("Recherche-Anmerkungen raus, Prosa bleibt", () => {
+    expect(stripInternal("• Thai Style Nudeln – Marke nicht identifiziert")).toBe("• Thai Style Nudeln");
+    expect(stripInternal("Kekse (genaue Packungsgröße unbekannt), Tee")).toBe("Kekse, Tee");
+    expect(stripInternal("Das wird wahrscheinlich ein toller Tag – kommt vorbei!")).toBe("Das wird wahrscheinlich ein toller Tag – kommt vorbei!");
+    expect(stripInternalDeep({ pakete: [{ produkte: ["Thai Style Nudeln – Marke nicht identifiziert", "Reis"] }], n: 3 })).toEqual({ pakete: [{ produkte: ["Thai Style Nudeln", "Reis"] }], n: 3 });
   });
 });

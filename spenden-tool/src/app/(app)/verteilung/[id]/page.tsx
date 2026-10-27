@@ -17,6 +17,7 @@ import { MhdPhoto } from "@/components/mhd-photo";
 import { CategorySelect } from "@/components/category-select";
 import { UnsavedGuard } from "@/components/unsaved-guard";
 import { RotateButtons } from "@/components/rotate-buttons";
+import { AddPhotos } from "@/components/add-photos";
 import { AddPanel, BulkBar, ListControls } from "./list-controls";
 
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
@@ -41,6 +42,8 @@ export default async function ProduktePage({ params, searchParams }: { params: P
     { key: "fertig", label: "✓ Fertig", count: rows.filter((r) => r.issues.length === 0).length },
   ];
   const conflicts = rows.filter((r) => r.state.conflict).length;
+  const pastEvent = view.event.eventDate <= new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  const withoutOutcome = rows.filter((r) => !r.item.outcome).length;
   const open = rows.filter((r) => r.issues.length > 0).length;
   const addInitial = ["fotos", "datenbank", "manuell"].includes(sp.hinzufuegen ?? "") ? sp.hinzufuegen! : rows.length === 0 ? "fotos" : "";
 
@@ -91,6 +94,12 @@ export default async function ProduktePage({ params, searchParams }: { params: P
         }
       />
 
+      {pastEvent && withoutOutcome > 0 && (
+        <div className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span>Die Verteilung ist vorbei: Wie lief es? Für {withoutOutcome} von {rows.length} Produkten fehlt noch das Ergebnis.</span>
+          <Link href={`/verteilung/${id}/ergebnisse`} className="btn btn-small btn-primary">Ergebnisse erfassen</Link>
+        </div>
+      )}
       {conflicts > 0 && (
         <div className="notice notice-warn">
           {conflicts === 1 ? "Bei einem Produkt widersprechen" : `Bei ${conflicts} Produkten widersprechen`} sich Foto und eingetragener Preis. Ausgegeben wird überall der eingetragene Preis. <Link href={`/verteilung/${id}/pruefen`}>Jetzt prüfen</Link>
@@ -320,7 +329,13 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
             <div className="field">
               <label className="label" htmlFor={k("mhd")}>MHD{mhd.relevant ? "" : " (nicht nötig)"}</label>
               <input className="input input-compact num" type="date" id={k("mhd")} name={k("mhd")} defaultValue={item.bestBefore ?? ""} />
-              {item.bestBeforeSource === "foto-ki" && <span className="small muted">automatisch aus dem Foto gelesen – bitte kurz prüfen</span>}
+              {item.bestBeforeSource === "foto-ki" && (
+                <span className="small warn-text">
+                  Automatisch aus dem Foto gelesen – stimmt es?{" "}
+                  <button className="btn-link small" type="submit" name="op" value={`mhd-ok:${item.id}`}>✓ MHD stimmt</button>
+                  <span className="muted"> (sonst Datum oben korrigieren)</span>
+                </span>
+              )}
             </div>
             <O name={k("mhd")} value={item.bestBefore ?? ""} />
           </div>
@@ -329,6 +344,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
 
         <div className="pl-detail-actions">
           {product.imageFileId && <span className="small muted" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>Foto drehen <RotateButtons productId={product.id} compact /></span>}
+          <AddPhotos productId={product.id} />
           {r.backPhotos.length > 0 && (
             <span className="small muted" style={{ display: "inline-flex", gap: 6, alignItems: "center" }} title="Rückseite/Infofoto – erscheint nicht auf Collage oder Social Media">
               Rückseite:

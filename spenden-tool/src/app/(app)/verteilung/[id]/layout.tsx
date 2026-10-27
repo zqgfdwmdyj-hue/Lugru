@@ -18,6 +18,8 @@ export default async function VerteilungLayout({ children, params }: { children:
   if (!view) notFound();
   const { event, rows, busy } = view;
   const open = rows.filter((r) => r.issues.length > 0).length;
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  const past = event.eventDate <= today;
   const value = rows.reduce((s, r) => s + (r.item.price ?? 0) * (r.item.quantity ?? 0), 0);
   return (
     <>
@@ -27,7 +29,7 @@ export default async function VerteilungLayout({ children, params }: { children:
         <h1>{eventDateLabel(event.eventDate)}{event.eventTime ? ` · ${event.eventTime}` : ""}</h1>
         <div className="small muted">{event.title}{event.location ? ` · ${event.location}` : ""} · {rows.length} Produkte{value ? ` · Warenwert ${formatEuro(value)}` : ""}</div>
       </div>
-      <EventTabs id={id} open={open} />
+      <EventTabs id={id} open={open} past={past} results={rows.filter((r) => !r.item.outcome).length} />
       {children}
     </>
   );

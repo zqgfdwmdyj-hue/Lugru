@@ -50,17 +50,19 @@ export default async function StatistikPage({ searchParams }: { searchParams: Pr
   ]);
   const t = totals.rows[0] ?? { events: 0, items: 0, rated: 0, weg: 0, value: 0 };
   const rated = products.rows.filter((p) => p.rated > 0);
-  const hits = [...rated].sort((a, b) => b.weg / b.rated - a.weg / a.rated || b.rated - a.rated).filter((p) => p.weg > 0).slice(0, 15);
-  const flops = [...rated].filter((p) => p.viel > 0).sort((a, b) => b.viel / b.rated - a.viel / a.rated || b.rated - a.rated).slice(0, 10);
+  // Rangfolge gedämpft: ein einzelnes Ergebnis zählt weniger als viele (Anteil bei n+1 Ergebnissen).
+  const hits = [...rated].filter((p) => p.weg > 0).sort((a, b) => b.weg / (b.rated + 1) - a.weg / (a.rated + 1) || b.rated - a.rated).slice(0, 15);
+  const flops = [...rated].filter((p) => p.viel > 0).sort((a, b) => b.viel / (b.rated + 1) - a.viel / (a.rated + 1) || b.rated - a.rated).slice(0, 10);
+  const share = (k: number, n: number, what: string) => `${pct(k, n)} ${what} · ${n} ${n === 1 ? "Ergebnis" : "Ergebnisse"}`;
   const frequent = [...products.rows].sort((a, b) => b.times - a.times).slice(0, 15);
   const categories = [...new Set(cats.rows.map((c) => c.category))].sort((a, b) => a.localeCompare(b, "de"));
   const cell = (c: string, s: string) => cats.rows.find((r) => r.category === c && r.season === s);
 
-  const Row = ({ p, right }: { p: ProductStat; right: string }) => (
+  const Row = ({ p, right, weak }: { p: ProductStat; right: string; weak?: boolean }) => (
     <Link href={`/produkte/${p.id}`} className="stat-row">
       {p.image_file_id ? <img src={`/datei/${p.image_file_id}?w=200`} alt="" className="thumb thumb-sm" loading="lazy" /> : <span className="thumb thumb-sm" />}
       <span className="wrap-anywhere"><strong>{p.name}</strong>{p.variant ? <span className="muted"> · {p.variant}</span> : null}<span className="small muted" style={{ display: "block" }}>{p.category} · zuletzt {formatDate(p.last)}</span></span>
-      <span className="small" style={{ textAlign: "right" }}>{right}</span>
+      <span className="small" style={{ textAlign: "right" }}>{right}{weak && <span className="muted" style={{ display: "block" }}>noch wenig belastbar</span>}</span>
     </Link>
   );
 
@@ -77,8 +79,8 @@ export default async function StatistikPage({ searchParams }: { searchParams: Pr
 
       <div className="grid-kpi">
         <div className="card card-pad"><div className="kpi-label">Verteilungen</div><div className="kpi-value">{t.events}</div></div>
-        <div className="card card-pad"><div className="kpi-label">Produkte angeboten</div><div className="kpi-value">{t.items}</div></div>
-        <div className="card card-pad"><div className="kpi-label">„Alles weg“</div><div className="kpi-value">{pct(t.weg, t.rated)}</div><div className="small muted">von {t.rated} mit erfasstem Ergebnis</div></div>
+        <div className="card card-pad"><div className="kpi-label">Produktangebote</div><div className="kpi-value">{t.items}</div><div className="small muted">Produkt-Einträge in den Verteilungen – keine abgegebenen Stückzahlen</div></div>
+        <div className="card card-pad"><div className="kpi-label">„Alles weg“</div><div className="kpi-value">{pct(t.weg, t.rated)}</div><div className="small muted">von {t.rated} mit Ergebnis · {t.items - t.rated} ohne Rückmeldung</div></div>
         <div className="card card-pad"><div className="kpi-label">Warenwert*</div><div className="kpi-value">{t.value ? formatEuro(t.value) : "–"}</div><div className="small muted">* nur mit eingetragener Menge</div></div>
       </div>
 
@@ -91,16 +93,16 @@ export default async function StatistikPage({ searchParams }: { searchParams: Pr
       <div className="stat-grid">
         <section className="card">
           <div className="card-head"><h2>Renner – oft alles weg</h2></div>
-          {hits.length === 0 ? <div className="card-pad small muted">Noch keine Daten.</div> : hits.map((p) => <Row key={p.id} p={p} right={`${p.weg} von ${p.rated}× alles weg`} />)}
+          {hits.length === 0 ? <div className="card-pad small muted">Noch keine Daten.</div> : hits.map((p) => <Row key={p.id} p={p} right={share(p.weg, p.rated, "alles weg")} weak={p.rated < 3} />)}
         </section>
         <section className="card">
           <div className="card-head"><h2>Ladenhüter – viel übrig</h2></div>
-          {flops.length === 0 ? <div className="card-pad small muted">Noch keine Daten.</div> : flops.map((p) => <Row key={p.id} p={p} right={`${p.viel} von ${p.rated}× viel übrig`} />)}
+          {flops.length === 0 ? <div className="card-pad small muted">Noch keine Daten.</div> : flops.map((p) => <Row key={p.id} p={p} right={share(p.viel, p.rated, "viel übrig")} weak={p.rated < 3} />)}
         </section>
       </div>
 
       <section className="card" style={{ overflow: "auto" }}>
-        <div className="card-head"><h2>Kategorien nach Jahreszeit</h2><span className="small muted">wie oft dabei · Anteil „alles weg“</span></div>
+        <div className="card-head"><h2>Kategorien nach Jahreszeit</h2><span className="small muted">Produktangebote (Einträge, keine Stückzahlen) · Anteil „alles weg“ von den Einträgen mit Ergebnis</span></div>
         <table className="table">
           <thead><tr><th>Kategorie</th>{SEASONS.map((s) => <th key={s} className="right">{s}</th>)}</tr></thead>
           <tbody>
@@ -110,7 +112,7 @@ export default async function StatistikPage({ searchParams }: { searchParams: Pr
                 <td>{c}</td>
                 {SEASONS.map((s) => {
                   const x = cell(c, s);
-                  return <td key={s} className="right num">{x ? <>{x.times}×{x.rated ? <span className="muted"> · {pct(x.weg, x.rated)}</span> : null}</> : <span className="muted">–</span>}</td>;
+                  return <td key={s} className="right num">{x ? <>{x.times} Angebote{x.rated ? <span className="muted"> · {pct(x.weg, x.rated)} weg (von {x.rated})</span> : null}</> : <span className="muted">–</span>}</td>;
                 })}
               </tr>
             ))}
@@ -120,7 +122,7 @@ export default async function StatistikPage({ searchParams }: { searchParams: Pr
 
       <section className="card">
         <div className="card-head"><h2>Am häufigsten dabei</h2></div>
-        {frequent.length === 0 ? <div className="card-pad small muted">Noch keine Daten.</div> : frequent.map((p) => <Row key={p.id} p={p} right={`${p.times}× dabei${p.rated ? ` · ${pct(p.weg, p.rated)} alles weg` : ""}`} />)}
+        {frequent.length === 0 ? <div className="card-pad small muted">Noch keine Daten.</div> : frequent.map((p) => <Row key={p.id} p={p} right={`in ${p.times} ${p.times === 1 ? "Verteilung" : "Verteilungen"}${p.rated ? ` · ${share(p.weg, p.rated, "alles weg")}` : ""}`} />)}
       </section>
     </>
   );

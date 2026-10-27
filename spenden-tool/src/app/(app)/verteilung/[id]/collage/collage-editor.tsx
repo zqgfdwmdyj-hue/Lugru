@@ -226,7 +226,20 @@ function toBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 
 export function CollageEditor({ eventId, tiles, initial, header, fileBase, warnings = [] }: { eventId: string; tiles: CollageTile[]; initial: CollageSettings; header: { title: string; date: string }; fileBase: string; warnings?: string[] }) {
   /** Vor dem Speichern/Teilen: offene Punkte (fehlende Preise, Widersprüche) zusammenfassen und nachfragen. */
-  const okToExport = () => !warnings.length || confirm(`Vor dem Export bitte beachten:\n\n• ${warnings.join("\n• ")}\n\nTrotzdem speichern?`);
+  // Keine Browser-Rückfrage (confirm): die blockiert die Seite – automatisierte Tests und manche Browser kommen dann
+  // nicht weiter. Stattdessen ein Hinweis in der Seite mit „Trotzdem exportieren“ / „Abbrechen“.
+  const [ask, setAsk] = useState<null | { label: string; run: () => void }>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const guard = (label: string, run: () => void) => (!warnings.length || acknowledged ? run() : setAsk({ label, run }));
+  // Fortschritt und Abbrechen bei großen Exporten
+  const [progress, setProgress] = useState<null | { label: string; done: number; total: number }>(null);
+  const cancel = useRef(false);
+  const step = async (label: string, done: number, total: number) => {
+    setProgress({ label, done, total });
+    // Der Oberfläche Luft lassen (Fortschritt zeichnen, „Abbrechen“ annehmen).
+    await new Promise((r) => setTimeout(r, 0));
+    if (cancel.current) throw new Error("abgebrochen");
+  };
   const [s, setS] = useState<CollageSettings>(initial);
   const [images, setImages] = useState<Loaded | null>(null);
   const imagesRef = useRef<Loaded | null>(null);
@@ -302,16 +315,26 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
 
   const files = async (only?: number) => {
     const out: File[] = [];
-    for (let i = 0; i < pages.length; i++) {
-      if (only !== undefined && i !== only) continue;
+    const todo = pages.map((_, i) => i).filter((i) => only === undefined || i === only);
+    for (const [n, i] of todo.entries()) {
+      await step("Bilder erzeugen", n, todo.length);
       const c = canvases.current[i];
       if (c) out.push(new File([await toBlob(c)], `${fileBase}-${i + 1}.jpg`, { type: "image/jpeg" }));
     }
     return out;
   };
+  /** Fehler verständlich melden (Abbrechen ist kein Fehler). */
+  const fail = (e: unknown, what: string) => {
+    if (e instanceof Error && e.message === "abgebrochen") setInfo("Export abgebrochen.");
+    else setMessage(`${what} – ${e instanceof Error && e.message ? e.message : "unbekannter Fehler"}. Bitte erneut versuchen oder die Bilder einzeln speichern.`);
+  };
   const download = async (only?: number) => {
-    if (!okToExport()) return;
-    for (const f of await files(only)) {
+    cancel.current = false;
+    setMessage("");
+    try {
+      const list = await files(only);
+      for (const [n, f] of list.entries()) {
+        await step("Bilder speichern", n, list.length);
       const url = URL.createObjectURL(f);
       const a = document.createElement("a");
       a.href = url;
@@ -320,35 +343,54 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
       // Safari fragt bei jedem Bild nach – die Datei muss so lange verfügbar bleiben.
       setTimeout(() => URL.revokeObjectURL(url), 120000);
       await new Promise((r) => setTimeout(r, 700));
+      }
+    } catch (e) {
+      fail(e, "Bilder konnten nicht gespeichert werden");
+    } finally {
+      setProgress(null);
     }
   };
   /** Alle Collage-Bilder als eine PDF-Datei, Seite für Seite untereinander – ein Klick, eine Datei. */
   const [pdfBusy, setPdfBusy] = useState(false);
   const downloadPdf = async () => {
-    if (!okToExport()) return;
+    cancel.current = false;
+    setMessage("");
     setPdfBusy(true);
     try {
       const list: PdfPage[] = [];
-      for (const c of canvases.current.slice(0, pages.length)) {
+      const cs = canvases.current.slice(0, pages.length);
+      for (const [n, c] of cs.entries()) {
+        await step("PDF: Seite", n, cs.length);
         if (!c) continue;
         list.push({ jpeg: new Uint8Array(await (await toBlob(c)).arrayBuffer()), width: c.width, height: c.height });
       }
+      await step("PDF zusammenstellen", cs.length, cs.length);
       const file = new File([jpegsToPdf(list, { a4: s.format === "a4" }) as BlobPart], `${fileBase}.pdf`, { type: "application/pdf" });
       const url = URL.createObjectURL(file);
       const a = document.createElement("a");
       a.href = url;
       a.download = file.name;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch {
-      setMessage("PDF konnte nicht erstellt werden – bitte die Bilder einzeln speichern.");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setInfo(`PDF mit ${list.length} Seiten gespeichert (${Math.round(file.size / 1024)} KB).`);
+    } catch (e) {
+      fail(e, "PDF konnte nicht erstellt werden");
     } finally {
       setPdfBusy(false);
+      setProgress(null);
     }
   };
   const share = async () => {
-    if (!okToExport()) return;
-    const list = await files();
+    cancel.current = false;
+    let list: File[];
+    try {
+      list = await files();
+    } catch (e) {
+      fail(e, "Bilder konnten nicht erzeugt werden");
+      return;
+    } finally {
+      setProgress(null);
+    }
     if (!navigator.canShare?.({ files: list })) {
       setMessage("Teilen wird von diesem Browser nicht unterstützt – bitte „Alle speichern“ nutzen.");
       return;
@@ -410,17 +452,34 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
           }}>Als Vorlage speichern</button>
         <div style={{ flexGrow: 1 }} />
         <div style={{ display: "flex", gap: 8 }}>
-          {canShare && <button className="btn btn-primary" type="button" onClick={share} disabled={!images}>Teilen …</button>}
+          {canShare && <button className="btn btn-primary" type="button" onClick={() => guard("Teilen", share)} disabled={!images || !!progress}>Teilen …</button>}
           {pages.length > 1 ? (
             <>
-              <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={downloadPdf} disabled={!images || pdfBusy} title="Alle Collage-Bilder untereinander in einer Datei – zum Drucken oder Weiterschicken">{pdfBusy ? "Erstelle PDF …" : `Alle ${pages.length} als PDF (1 Datei)`}</button>
-              <button className="btn" type="button" onClick={() => download()} disabled={!images} title="Jedes Bild als eigene Datei – manche Browser (Safari) fragen dann bei jedem Bild nach">Einzeln als Bilder</button>
+              <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={() => guard("PDF speichern", downloadPdf)} disabled={!images || pdfBusy || !!progress} title="Alle Collage-Bilder untereinander in einer Datei – zum Drucken oder Weiterschicken">{pdfBusy ? "Erstelle PDF …" : `Alle ${pages.length} als PDF (1 Datei)`}</button>
+              <button className="btn" type="button" onClick={() => guard("Bilder speichern", () => download())} disabled={!images || !!progress} title="Jedes Bild als eigene Datei – manche Browser (Safari) fragen dann bei jedem Bild nach">Einzeln als Bilder</button>
             </>
           ) : (
-            <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={() => download()} disabled={!images}>Bild speichern</button>
+            <button className={`btn${canShare ? "" : " btn-primary"}`} type="button" onClick={() => guard("Bild speichern", () => download())} disabled={!images || !!progress}>Bild speichern</button>
           )}
         </div>
       </section>
+      {ask && (
+        <div className="notice notice-warn export-ask" role="alertdialog" aria-label="Vor dem Export">
+          <strong>Vor dem Export bitte beachten:</strong>
+          <ul>{warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-small btn-primary" type="button" onClick={() => { const run = ask.run; setAsk(null); setAcknowledged(true); run(); }}>Trotzdem: {ask.label}</button>
+            <button className="btn btn-small" type="button" onClick={() => setAsk(null)}>Abbrechen</button>
+          </div>
+        </div>
+      )}
+      {progress && (
+        <div className="notice notice-info export-progress" role="status">
+          <span>{progress.label} {Math.min(progress.done + 1, progress.total)} von {progress.total} …</span>
+          <progress max={progress.total} value={progress.done} />
+          <button className="btn btn-small" type="button" onClick={() => { cancel.current = true; }}>Abbrechen</button>
+        </div>
+      )}
       {message && <div className="notice notice-warn">{message}</div>}
       {info && <div className="notice notice-ok">{info}</div>}
       {images && !sel && <div className="small muted">Tipp: Auf ein Produkt in der Collage tippen – dort lassen sich Name, Preis und Zusatztext einzeln ein- und ausschalten, Lage und Farbe festlegen und das Foto drehen.</div>}
@@ -513,7 +572,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
             </div>
             <figcaption style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }} className="small muted">
               <span>Bild {i + 1} · {p.length} Produkte</span>
-              <button className="btn btn-small" type="button" onClick={() => download(i)} disabled={!images}>Speichern</button>
+              <button className="btn btn-small" type="button" onClick={() => guard("Bild speichern", () => download(i))} disabled={!images || !!progress}>Speichern</button>
             </figcaption>
           </figure>
         ))}

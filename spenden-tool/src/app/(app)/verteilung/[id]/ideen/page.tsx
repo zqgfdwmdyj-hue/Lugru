@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isDrink, packText } from "@/lib/price-logic";
+import { isDrink, packText, publicText, stripInternalDeep } from "@/lib/price-logic";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -30,7 +30,7 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
   ]);
   const items = rows
     .filter((r) => !isPlaceholderName(r.product.name))
-    .map((r) => ({ name: r.product.name, variant: r.product.variant, price: r.item.price, priceNote: r.item.priceNote, packNote: r.item.packPrice != null ? packText(r.item, isDrink(r.product), r.product.variant) : null, packPrice: r.item.packPrice, image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
+    .map((r) => ({ name: publicText(r.product.name), variant: r.product.variant ? publicText(r.product.variant) || null : null, price: r.item.price, priceNote: r.item.priceNote, packNote: r.item.packPrice != null ? packText(r.item, isDrink(r.product), r.product.variant) : null, packPrice: r.item.packPrice, image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
   // Plakat: Produktnamen der KI den Produkten (Foto, Spendenempfehlungen) zuordnen
   const posterData = (poster: IdeaPoster) => {
     const tiles: PosterTile[] = matchProducts(poster.hervorgehoben, items)
@@ -64,7 +64,8 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
       )}
 
       {ideas.map((idea) => {
-        const r = idea.result;
+        // Anzeige und Kopieren ohne Recherche-Anmerkungen („Marke nicht identifiziert“); gespeichert bleibt das Original.
+        const r = stripInternalDeep(idea.result);
         return (
           <section key={idea.id} className="card card-pad stack idea-card" style={{ gap: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>

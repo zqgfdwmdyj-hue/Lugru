@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/numbers";
 import { createEvent } from "./actions";
 import { InstallHint } from "@/components/install-hint";
 
-type Row = { e: typeof schema.events.$inferSelect; items: number; noPrice: number; unconfirmed: number };
+type Row = { e: typeof schema.events.$inferSelect; items: number; noPrice: number; unconfirmed: number; noOutcome: number };
 
 export default async function SpendenPage({ searchParams }: { searchParams: Promise<{ archiv?: string }> }) {
   await requireLogin();
@@ -19,6 +19,7 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
         items: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id)`,
         noPrice: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id and i.price is null)`,
         unconfirmed: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id and i.price is not null and not i.price_confirmed)`,
+        noOutcome: sql<number>`(select count(*)::int from event_items i where i.event_id = events.id and i.outcome is null)`,
       })
       .from(E)
       .orderBy(desc(E.eventDate), desc(E.createdAt))
@@ -39,6 +40,8 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
   const allPast = sp.archiv === "alle";
   const archive = allPast ? past : past.slice(0, 8);
   const latest = events[0];
+  // Letzte vergangene Verteilungen mit offenen Ergebnissen (höchstens zwei, jüngste zuerst)
+  const followUp = past.filter((r) => r.items > 0 && r.noOutcome > 0).slice(0, 2);
   // „Letzte übernehmen“: am Samstag nach der letzten (bzw. nach heute, wenn die letzte vorbei ist).
   const copyDate = latest ? saturdayAfter(latest.e.eventDate > today ? latest.e.eventDate : today) : nextSat;
 
@@ -55,7 +58,7 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
               <input type="hidden" name="subtitle" value={latest.e.subtitle ?? ""} />
               <input type="hidden" name="location" value={latest.e.location ?? ""} />
               <input type="hidden" name="copyFrom" value={latest.e.id} />
-              <button className="btn" type="submit" title={`Neue Verteilung am ${formatDate(copyDate)} mit allen Produkten und Preisen vom ${formatDate(latest.e.eventDate)}`}>
+              <button className="btn" type="submit" title={`Neue Verteilung am ${formatDate(copyDate)} mit allen Produkten und Preisen vom ${formatDate(latest.e.eventDate)} – Bestand und Ergebnisse werden nicht übernommen`}>
                 ↻ Letzte übernehmen ({latest.items})
               </button>
             </form>
@@ -83,6 +86,7 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
               <option value="">– leer beginnen –</option>
               {events.slice(0, 30).map(({ e, items }) => <option key={e.id} value={e.id}>{formatDate(e.eventDate)} · {e.title} ({items})</option>)}
             </select>
+            <span className="small muted">Übernommen werden Produkte, Preise, Einheiten und Packungsangaben. Bestand und Ergebnisse („Wie lief es?“) gehören zur jeweiligen Verteilung und werden nicht übernommen.</span>
           </div>
           <div><button className="btn btn-primary" type="submit">Anlegen</button></div>
         </form>
@@ -101,7 +105,15 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
       {current.length > 0 && (
         <section className="stack" style={{ gap: 8 }}>
           <h2>Aktuell & geplant</h2>
-          <div className="event-cards">{current.map((r) => <EventCard key={r.e.id} r={r} weekday={weekday(r.e.eventDate)} upcoming />)}</div>
+          <div className="event-cards">{current.map((r) => <EventCard key={r.e.id} r={r} weekday={weekday(r.e.eventDate)} upcoming={r.e.eventDate > today} />)}</div>
+        </section>
+      )}
+
+      {followUp.length > 0 && (
+        <section className="stack" style={{ gap: 8 }}>
+          <h2>Nachbereitung: Wie lief es?</h2>
+          <div className="small muted">Für diese Verteilungen fehlen noch Ergebnisse (alles weg / wenig übrig / viel übrig) – Grundlage der Statistik.</div>
+          <div className="event-cards">{followUp.map((r) => <EventCard key={r.e.id} r={r} weekday={weekday(r.e.eventDate)} />)}</div>
         </section>
       )}
 
@@ -113,7 +125,7 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
               <Link key={r.e.id} href={`/verteilung/${r.e.id}`} className="archive-row">
                 <span className="num">{weekday(r.e.eventDate)} {formatDate(r.e.eventDate)}</span>
                 <span className="archive-title">{r.e.title}{r.e.location ? <span className="muted"> · {r.e.location}</span> : null}</span>
-                <span className="small muted">{r.items} Produkte</span>
+                <span className="small muted">{r.items} Produkte{r.items > 0 ? (r.noOutcome ? ` · ${r.noOutcome} ohne Ergebnis` : " · Ergebnisse ✓") : ""}</span>
               </Link>
             ))}
           </div>
@@ -143,6 +155,7 @@ function EventCard({ r, weekday, upcoming }: { r: Row; weekday: string; upcoming
         <Link href={base} className="btn btn-small btn-primary">Produkte</Link>
         <Link href={`${base}/pruefen`} className="btn btn-small">Prüfen</Link>
         <Link href={`${base}/ausgabe`} className="btn btn-small">Ausgabe</Link>
+        {!upcoming && r.items > 0 && <Link href={`${base}/ergebnisse`} className="btn btn-small">Ergebnisse ({r.items - r.noOutcome}/{r.items})</Link>}
       </div>
     </div>
   );

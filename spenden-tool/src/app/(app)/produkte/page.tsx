@@ -2,9 +2,11 @@ import Link from "next/link";
 import { requireLogin } from "@/lib/auth";
 import { duplicatePhotoGroups, knownCategories, PRODUCT_FILTERS, type ProductFilter, searchProducts } from "@/lib/service";
 import { db, schema } from "@/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { createProduct, mergeProducts } from "@/app/(app)/actions";
+import { createProduct, mergeProducts, setProductCategory } from "@/app/(app)/actions";
+import { categoryHint } from "@/lib/price-logic";
+import { isPlaceholderName } from "@/lib/layout";
 import { ImageForm } from "@/components/image-form";
 import { CategorySelect } from "@/components/category-select";
 import { UNSORTED_CATEGORY } from "@/lib/price-logic";
@@ -19,7 +21,18 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
   const archiv = sp.archiv === "1";
   const list = sp.ansicht === "liste";
   const filter = (sp.filter && sp.filter in PRODUCT_FILTERS ? sp.filter : null) as ProductFilter | null;
-  const [products, categories] = await Promise.all([searchProducts({ q, category: kat, archived: archiv, filter }), knownCategories()]);
+  const katPruefen = sp.filter === "kategorie";
+  const [products, categories, all] = await Promise.all([
+    searchProducts({ q, category: kat, archived: archiv, filter }),
+    knownCategories(),
+    db.select({ id: schema.products.id, name: schema.products.name, variant: schema.products.variant, category: schema.products.category, categoryChecked: schema.products.categoryChecked, imageFileId: schema.products.imageFileId }).from(schema.products).where(eq(schema.products.archived, false)),
+  ]);
+  // Alte Bestände mit auffälliger Kategorie – auch Produkte, die noch in keiner Verteilung waren. Nur Vorschläge.
+  const catIssues = all
+    .filter((p) => !isPlaceholderName(p.name))
+    .map((p) => ({ p, hint: categoryHint(p) }))
+    .filter((x): x is { p: (typeof all)[number]; hint: NonNullable<ReturnType<typeof categoryHint>> } => !!x.hint)
+    .sort((a, b) => a.p.category.localeCompare(b.p.category, "de") || a.p.name.localeCompare(b.p.name, "de"));
   // Produkte mit (fast) demselben Foto – nur berechnen, wenn die Ansicht geöffnet ist (vergleicht alle Fotos).
   const doppelt = sp.doppelt === "1";
   const groups = doppelt ? await duplicatePhotoGroups() : [];
@@ -84,6 +97,7 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
         {(Object.entries(PRODUCT_FILTERS) as [ProductFilter, string][]).map(([k, label]) => (
           <Link key={k} href={link({ filter: filter === k ? undefined : k })} className={`chip${filter === k ? " active" : ""}`}>{label}</Link>
         ))}
+        <Link href={katPruefen ? "/produkte" : "/produkte?filter=kategorie"} className={`chip${katPruefen ? " active" : ""}`}>Kategorie prüfen ({catIssues.length})</Link>
         <Link href={link({ archiv: archiv ? undefined : "1" })} className={`chip${archiv ? " active" : ""}`}>Archiv</Link>
         <Link href={doppelt ? "/produkte" : "/produkte?doppelt=1"} className={`chip${doppelt ? " active" : ""}`}>Mögliche Doppelte{doppelt ? ` (${groups.length})` : ""}</Link>
         <span className="small muted" style={{ alignSelf: "center" }}>{products.length}{products.length >= 500 ? "+" : ""} Produkte{kat ? ` in „${kat}“` : ""}</span>
@@ -114,7 +128,28 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
         </section>
       )}
 
-      {!doppelt && (
+      {katPruefen && (
+        <section className="card">
+          <div className="card-head"><h2>Kategorie prüfen ({catIssues.length})</h2></div>
+          <div className="small muted" style={{ padding: "8px 14px 0" }}>Alte Einträge, deren Kategorie nicht zum Produkt passt (z. B. Spielzeug unter „Lebensmittel“) oder in einer alten Sammelkategorie stehen – auch wenn sie noch in keiner Verteilung waren. Geändert wird nur auf Klick.</div>
+          {catIssues.length === 0 && <div className="card-pad muted">Alles stimmig.</div>}
+          <div className="check-list">
+            {catIssues.slice(0, 50).map(({ p, hint }) => (
+              <form key={p.id} className="check-row cat-row">
+                {p.imageFileId ? <img src={`/datei/${p.imageFileId}?w=200`} alt="" className="thumb thumb-sm" loading="lazy" /> : <span className="thumb thumb-sm" />}
+                <span className="check-text"><Link href={`/produkte/${p.id}`} className="wrap-anywhere"><strong>{p.name}</strong>{p.variant ? ` · ${p.variant}` : ""}</Link><span className="small muted">jetzt: {p.category} → Vorschlag: <strong>{hint.suggest}</strong> ({hint.reason})</span></span>
+                <span className="conflict-actions">
+                  <button className="btn btn-small btn-primary" formAction={setProductCategory.bind(null, p.id, hint.suggest)}>Übernehmen</button>
+                  <button className="btn btn-small" formAction={setProductCategory.bind(null, p.id, null)}>Stimmt so</button>
+                </span>
+              </form>
+            ))}
+          </div>
+          {catIssues.length > 50 && <div className="card-pad small muted">Die ersten 50 von {catIssues.length} – erledigte verschwinden, dann rücken die nächsten nach.</div>}
+        </section>
+      )}
+
+      {!doppelt && !katPruefen && (
         <section>
           {products.length === 0 && <div className="card card-pad muted">Keine Produkte gefunden.</div>}
           {list ? (

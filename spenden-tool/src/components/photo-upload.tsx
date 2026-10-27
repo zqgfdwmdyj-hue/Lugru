@@ -76,6 +76,7 @@ export function PhotoUpload({ eventId, action, variant = "button", categories = 
     setStatus("");
     router.refresh();
     const parts = [`${added} neu`];
+    if (mode === "paare" && total % 2 === 1) parts.push("das letzte Foto hatte keine Rückseite – es wurde als eigenes Produkt angelegt (Rückseite später über „Weitere Fotos hinzufügen“ ergänzen)");
     if (backs) parts.push(mode === "ein-produkt" ? `${backs} weitere(s) Foto(s) als Infofoto am selben Produkt` : `${backs} Rückseite(n) als Infofoto zugeordnet`);
     if (reused) parts.push(`${reused} schon in der Datenbank (wiedererkannt, nicht doppelt angelegt)`);
     if (already) parts.push(`${already} doppelt – schon in dieser Verteilung, übersprungen`);

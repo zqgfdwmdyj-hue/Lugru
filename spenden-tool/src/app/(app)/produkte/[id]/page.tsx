@@ -13,6 +13,7 @@ import { changeExtraPhoto, deleteProduct, mergeProducts, researchProduct, update
 import { ImageForm } from "@/components/image-form";
 import { PriceLinks } from "@/components/price-links";
 import { CategorySelect } from "@/components/category-select";
+import { AddPhotos } from "@/components/add-photos";
 import { RotateButtons } from "@/components/rotate-buttons";
 
 export default async function SpendenProduktPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ zurueck?: string }> }) {
@@ -58,6 +59,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
             {product.imageFileId
               ? <div><a href={`/datei/${product.imageFileId}`} target="_blank"><img src={`/datei/${product.imageFileId}`} alt={product.name} style={{ maxWidth: 320, maxHeight: 320, borderRadius: 8, display: "block" }} /></a><div style={{ marginTop: 6 }}><RotateButtons productId={product.id} /></div></div>
               : <div className="muted" style={{ width: 240, height: 180, display: "grid", placeItems: "center", background: "var(--row)", borderRadius: 8 }}>noch kein Foto</div>}
+            <div><AddPhotos productId={product.id} label="📷 Weitere Fotos (Rückseite, Zutaten …)" /></div>
             {backs.length > 0 && (
               <form className="stack" style={{ gap: 6 }}>
                 <div className="label">Rückseite / Infofotos</div>

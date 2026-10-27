@@ -76,17 +76,28 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Getränken Flaschen je Kasten und Inhalt je Flasche („Kasten (12 × 0,5 l) 4 €“). Vorschlag: 20 % vom Handelspreis
   der ganzen Packung (PACKUNG_ANTEIL), bei Getränken der normale Anteil. Die KI-Preissuche nennt immer den Preis des
   ganzen Angebots (Kasten, Sixpack) und die Anzahl darin – nie den Liter- oder Kilopreis.
-- **Kategorien:** Babyprodukte, Lebensmittel, Süßes & Snacks, Getränke, Tee & Nahrungsergänzung, Hautpflege,
-  Haarpflege, Drogerie, Haushalt, Spielzeug, Sonstiges – in dieser Reihenfolge im Aushang. Bestehende Produkte der
-  alten Sammelkategorie „Drogerie & Haushalt“ werden nicht automatisch verschoben; „Prüfen“ schlägt die neue vor.
+- **Kategorien:** Babyprodukte, Lebensmittel, Süßes & Snacks, Getränke, Tee & Nahrungsergänzung, Drogerie (inkl.
+  Haut- und Haarpflege), Haushalt, Spielzeug, Sonstiges – in dieser Reihenfolge im Aushang. Die alten Kategorien
+  „Drogerie & Haushalt“, „Hautpflege“ und „Haarpflege“ werden nicht mehr angeboten und nicht automatisch verschoben.
+  Erkannt wird nach Produktart vor Geschmack: „Powerade Golden Mango“ bleibt Getränk, „Trinkschokoladenpulver“
+  Lebensmittel, „Mango Chutney“ wird nicht wegen „Mango“ umsortiert.
+- **Kategorie prüfen (Produktdatenbank):** Produkte → „Kategorie prüfen“ listet alle Produkte mit unpassender oder
+  alter Kategorie – auch solche, die nie in einer Verteilung waren (z. B. Bitzee unter Lebensmittel). Je Produkt
+  „Übernehmen“ oder „Stimmt so“; nichts wird automatisch geändert.
 - **Mehrere Fotos je Produkt:** Beim Hochladen „Alle ausgewählten Fotos sind ein Produkt“ – die KI nimmt die
-  Vorderseite als Titelbild, die übrigen werden Infofotos.
+  Vorderseite als Titelbild, die übrigen werden Infofotos. Nachträglich: in den Produktdetails bzw. auf der
+  Produktseite „Weitere Fotos hinzufügen“ – es entsteht kein neuer Artikel.
 - **MHD automatisch bei Lebensmitteln:** Nach der KI-Erkennung bzw. beim Hochladen mit Rückseite liest die KI das
   Datum von den Fotos (zuerst Rückseiten); markiert als „automatisch gelesen – bitte prüfen“. Unter „Prüfen“ auch
-  von Hand startbar.
+  von Hand startbar. In den Produktdetails „✓ MHD stimmt“ oder Datum korrigieren.
 - **Bestand (ca.) und Ergebnis:** pro Produkt „1 Palette / ½ / ¼ Palette / mehrere Kartons / Einzelprodukt / wenige
-  Reste“ und nach der Verteilung „alles weg / wenig übrig / viel übrig“ – einzeln oder als Stapelaktion.
-- **Statistik:** Renner und Ladenhüter, Kategorien nach Jahreszeit, am häufigsten dabei – je Jahr oder gesamt.
+  Reste“ und nach der Verteilung „alles weg / wenig übrig / viel übrig“. Für vergangene Verteilungen gibt es den
+  Reiter „Ergebnisse“ (ein Tipp je Produkt) und einen Hinweis auf der Startseite. „Noch offen“ (keine Rückmeldung)
+  zählt nicht als „viel übrig“. Beim Kopieren einer Verteilung werden Bestand, Ergebnisse und MHD nicht übernommen.
+- **Statistik:** Renner und Ladenhüter (Anteil plus Anzahl der Ergebnisse), Kategorien nach Jahreszeit, am häufigsten
+  dabei – je Jahr oder gesamt. Gezählt werden Produktangebote (Einträge), keine abgegebenen Stückzahlen.
+- **Export ohne Blockieren:** Collage, PDF und Social-Media-Bilder zeigen offene Punkte als Hinweis auf der Seite
+  (kein Browser-Dialog), dazu Fortschritt, „Abbrechen“ und eine verständliche Fehlermeldung.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,
   Preisliste als Bild, Video/Reel für TikTok & Instagram (MP4) und fertige Texte mit Hashtags –
   automatisch aus der Verteilung, direkt im Browser, ohne KI-Kosten. Immer nur das gewählte Format; Highlights
@@ -168,6 +179,7 @@ npm run db:migrate
 npm run dev          # http://localhost:3100
 npm test
 npm run typecheck
+npm run e2e          # Ablauftests im Browser, siehe e2e/README.md
 ```
 
 Schema ändern: `src/db/schema.ts` anpassen, dann `npm run db:generate` und `npm run db:migrate`.

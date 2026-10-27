@@ -276,6 +276,9 @@ export async function saveItems(fd: FormData) {
   } else if (op === "confirm" && idx >= 0) {
     await db.update(I).set({ priceConfirmed: true }).where(and(eq(I.id, target), sql`${I.price} is not null`));
     what = "Preis bestätigt";
+  } else if (op === "mhd-ok" && idx >= 0) {
+    await db.update(I).set({ bestBeforeSource: "bestaetigt" }).where(eq(I.id, target));
+    what = "Automatisch gelesenes MHD bestätigt";
   } else if (op === "einheit-ok" && idx >= 0) {
     await db.update(I).set({ unitConfirmed: true }).where(eq(I.id, target));
     what = "Abgabeeinheit bestätigt";
@@ -474,6 +477,45 @@ export async function keepSeparate(eventId: string, aProductId: string, bProduct
   revalidatePath(`/verteilung/${id}`, "layout");
 }
 
+/**
+ * Weitere Fotos zu einem vorhandenen Produkt (Rückseite, Zutaten, MHD) – es entsteht kein neuer Artikel.
+ * Hat das Produkt noch kein Foto, wird das erste zum Titelbild.
+ */
+export async function addProductPhotos(productId: string, fd: FormData): Promise<{ added: number; skipped: number }> {
+  const me = await requireLogin();
+  const id = uuid.parse(productId);
+  const [p] = await db.select({ imageFileId: P.imageFileId }).from(P).where(eq(P.id, id));
+  if (!p) return { added: 0, skipped: 0 };
+  const PP = schema.productPhotos;
+  const have = new Set([p.imageFileId, ...(await db.select({ f: PP.fileId }).from(PP).where(eq(PP.productId, id))).map((r) => r.f)].filter(Boolean));
+  const haveSha = have.size ? new Set((await db.select({ sha: schema.files.sha256 }).from(schema.files).where(inArray(schema.files.id, [...have] as string[]))).map((r) => r.sha)) : new Set<string>();
+  let added = 0;
+  let skipped = 0;
+  let main = p.imageFileId;
+  for (const file of images(fd, "photos").slice(0, 10)) {
+    const img = await checkImage(file);
+    // Dasselbe Foto hängt schon an diesem Produkt → nicht doppelt.
+    if (!img || haveSha.has(img.sha)) {
+      skipped++;
+      continue;
+    }
+    const fileId = await storeChecked(img);
+    haveSha.add(img.sha);
+    if (!main) {
+      await db.update(P).set({ imageFileId: fileId, updatedAt: new Date() }).where(eq(P.id, id));
+      main = fileId;
+    } else await db.insert(PP).values({ productId: id, fileId, role: "info" }).onConflictDoNothing();
+    added++;
+  }
+  if (added) {
+    await logActivity(me, `${added} Foto(s) zum Produkt hinzugefügt`, { productId: id });
+    // Neue Rückseite → MHD bei Lebensmitteln gleich mitlesen.
+    if (aiConfigured()) after(() => autoReadMhd([id]).then(() => undefined).catch((e) => console.error("MHD automatisch", e)));
+  }
+  revalidatePath("/", "layout");
+  return { added, skipped };
+}
+
 /** Infofoto (Rückseite) wieder vom Produkt lösen oder zum Hauptfoto machen. */
 export async function changeExtraPhoto(productId: string, fileId: string, action: "hauptfoto" | "entfernen") {
   const me = await requireLogin();
@@ -612,6 +654,35 @@ export async function cleanInternalText(eventId: string, fd: FormData) {
   }
   await logActivity(me, `Interne Hinweise bei ${rows.length} Produkt(en) aus Name/Variante entfernt`, { eventId: id });
   revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** „Ergebnisse erfassen“: Wie lief es? – ein Klick je Produkt (null = noch offen). */
+export async function setOutcome(itemId: string, outcome: "weg" | "wenig" | "viel" | null) {
+  await requireLogin();
+  const id = uuid.parse(itemId);
+  const v = outcome === null ? null : z.enum(["weg", "wenig", "viel"]).parse(outcome);
+  const [it] = await db.update(I).set({ outcome: v }).where(eq(I.id, id)).returning({ eventId: I.eventId });
+  if (it) revalidatePath(`/verteilung/${it.eventId}`, "layout");
+}
+
+/** „Ergebnisse erfassen“: alle noch offenen auf einmal setzen (z. B. „alles weg“). */
+export async function setOpenOutcomes(eventId: string, outcome: "weg" | "wenig" | "viel") {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const v = z.enum(["weg", "wenig", "viel"]).parse(outcome);
+  const done = await db.update(I).set({ outcome: v }).where(and(eq(I.eventId, id), sql`${I.outcome} is null`)).returning({ id: I.id });
+  await logActivity(me, `Ergebnis „${v}“ für ${done.length} offene Produkt(e) gesetzt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+}
+
+/** Produktdatenbank → „Kategorie prüfen“: Vorschlag übernehmen oder „Stimmt so“ (für alte Bestände ohne Verteilung). */
+export async function setProductCategory(productId: string, category: string | null) {
+  const me = await requireLogin();
+  const id = uuid.parse(productId);
+  const cat = category?.trim().slice(0, 60) || null;
+  await db.update(P).set({ ...(cat ? { category: cat } : {}), categoryChecked: true, updatedAt: new Date() }).where(eq(P.id, id));
+  await logActivity(me, cat ? `Kategorie „${cat}“ übernommen` : "Kategorie bestätigt", { productId: id });
+  revalidatePath("/produkte");
 }
 
 /** KI-Kategorie übernehmen (aus „Prüfen“) – nur für ausdrücklich gewählte Produkte. */

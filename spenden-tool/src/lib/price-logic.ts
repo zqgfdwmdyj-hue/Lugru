@@ -138,7 +138,7 @@ function sentenceAround(text: string, at: number): string {
 const has = (t: string, words: string[]) =>
   words.find((w) => (w.startsWith("^") ? new RegExp(`(?:^|[^a-zäöüß])${w.slice(1)}`).test(t) : t.includes(w)))?.replace(/^\^/, "") ?? null;
 /** Eindeutig keine Lebensmittel – egal, in welcher Kategorie sie (vielleicht falsch) stehen. */
-const TOY = ["spielzeug", "plüsch", "puzzle", "malbuch", "spielkarten", "steckspiel", "seifenblasen", "kuscheltier", "bauklötze", "ball ", "puppe", "lego", "schwimmflügel", "schwimmsitz", "schwimmring", "schwimmreifen", "wasserspielzeug", "sandspielzeug", "badespielzeug", "wasserfarben", "farbkasten", "spardose", "^knete", "stifte", "furby", "sammelkarten", "figur"];
+const TOY = ["spielzeug", "plüsch", "puzzle", "malbuch", "spielkarten", "steckspiel", "seifenblasen", "kuscheltier", "bauklötze", "ball ", "puppe", "lego", "schwimmflügel", "schwimmsitz", "schwimmring", "schwimmreifen", "wasserspielzeug", "sandspielzeug", "badespielzeug", "wasserfarben", "farbkasten", "spardose", "^knete", "stifte", "furby", "sammelkarten", "figur", "bitzee", "baby einstein", "piano", "klavier", "rassel", "spieluhr", "tamagotchi", "kreisel", "roboter", "dinosaurier", "bilderbuch", "kinderbuch"];
 const BABY_GEAR = ["babyflasche", "glasflasche", "trinkflasche", "milchflasche", "trinklernbecher", "sauger", "schnuller", "beißring", "windel", "feuchttücher", "lätzchen", "babybody", "strampler", "wärmflasche", "fieberthermometer", "nasensauger", "schwimm", "nuk ", "mam ", "avent", "bema "];
 const SKIN = ["hautcreme", "handcreme", "gesichtscreme", "sonnencreme", "wundschutzcreme", "babycreme", "bodylotion", "lotion", "gesichtsmaske", "tuchmaske", "sheet mask", "peeling", "serum", "lippenpflege", "lippenbalsam", "körperöl", "babyöl", "duschgel", "duschcreme", "seife", "badesalz", "badezusatz", "make-up", "makeup", "nagellack", "hautpflege", "yeauty"];
 const HAIR = ["shampoo", "spülung", "haarkur", "haarspray", "haargel", "haarfarbe", "conditioner", "haaröl", "haarpflege", "haarmaske", "trockenshampoo"];
@@ -147,11 +147,17 @@ const HOUSEHOLD = ["schwamm", "tuchschwämme", "spültuch", "spülmittel", "wasc
 /** Nahrungsergänzung und Tee (oft aus der Drogerie, aber mit MHD). */
 const TEA_SUPPLEMENT = ["^tee ", "kräutertee", "früchtetee", "kamillentee", "pfefferminztee", "grüntee", "schwarztee", "teebeutel", "nahrungsergänzung", "vitamin", "magnesium", "zink", "brausetabletten", "omega-3", "eisen + ", "multivitamin", "probiotik"];
 const SWEETS = ["schokolade", "gummibärchen", "fruchtgummi", "bonbon", "kaugummi", "lakritz", "chips", "flips", "jumpys", "salzstangen", "popcorn", "praline", "keks", "kekse", "waffel", "marshmallow", "lolli", "karamell", "knabber", "cracker", "erdnüsse", "studentenfutter", "müsliriegel", "schokoriegel", "fondant", "süßigkeit", "halley", "kinder riegel", "snack"];
-const DRINKS = ["eistee", "mineralwasser", "wasser", "saft", "limonade", "^cola", "cola zero", "energy", "drink", "schorle", "sprudel", "smoothie", "^bier", "radler", "getränk", "nektar", "sirup", "eiskaffee"];
-const FOOD = ["gewürz", "chili", "bbq", "barbecue", "pfeffer", "paprika", "curry", "kräuter", "salz", "zimt", "oregano", "gyros", "grillgewürz", "sauce", "soße", "dressing", "brühe", "nudeln", "^reis", "mehl", "zucker", "öl", "essig", "senf", "ketchup", "honig", "marmelade", "riegel", "müsli", "haferflocken", "brei", "gläschen", "püree", "quetschie", "joghurt", "milch", "tee", "kaffee", "kapseln", "espresso", "zwieback", "brot", "dose", "konserve", "suppe", "linsen", "bohnen", "kichererbsen", "mais", "thunfisch", "pesto", "gnocchi", "tortellini", "wraps", "fruchtpüree", "babymilch", "anfangsmilch", "folgemilch", "hipp", "alete", "bebivita", "milupa", "aptamil", "humana", "holle", "freche freunde", "wiberg", "ostmann", "fuchs gewürze", "knorr", "maggi", "dessert", "pudding", "grieß", "apfel", "birne", "banane", "pfirsich", "mango", "beere", "frucht", "obst", "gemüse", "karotte", "möhre", "pastinake", "kürbis", "kartoffel", "pasta", "menü", "mahlzeit", "abendbrei", "milchbrei", "getreide", "dinkel", "hirse", "puffs", "sticks", "bällchen", "teekeks", "trinkmahlzeit", "babynahrung", "kindernahrung", "säuglingsnahrung"];
+const DRINKS = ["powerade", "gatorade", "red bull", "monster energy", "fanta", "sprite", "capri-sun", "capri sun", "sportgetränk", "isotonisch", "eistee", "mineralwasser", "wasser", "saft", "limonade", "^cola", "cola zero", "energy", "drink", "schorle", "sprudel", "smoothie", "^bier", "radler", "getränk", "nektar", "sirup", "eiskaffee"];
+/**
+ * Geschmack/Sorte („Mango“, „Apfel“, „Paprika“): sagt nur „essbar“, nie welche Lebensmittel-Kategorie – sonst würde
+ * „Powerade Golden Mango“ zu Lebensmittel oder „Trinkschokoladenpulver“ zu Süßem.
+ */
+const FLAVOR = ["apfel", "birne", "banane", "pfirsich", "mango", "beere", "erdbeer", "himbeer", "kirsch", "zitrone", "orange", "vanille", "karamell", "frucht", "obst", "gemüse", "karotte", "möhre", "pastinake", "kürbis", "kartoffel", "paprika", "chili", "kräuter", "kokos", "nuss"];
+/** Produkttypen und Marken für Lebensmittel (ohne Geschmacksangaben). */
+const FOOD = ["trinkschokolade", "kakaopulver", "kakao", "pulver", "instant", "backmischung", "gewürz", "bbq", "barbecue", "pfeffer", "curry", "salz", "zimt", "oregano", "gyros", "grillgewürz", "sauce", "soße", "dressing", "brühe", "nudeln", "^reis", "mehl", "zucker", "öl", "essig", "senf", "ketchup", "honig", "marmelade", "riegel", "müsli", "haferflocken", "brei", "gläschen", "püree", "quetschie", "joghurt", "milch", "tee", "kaffee", "kapseln", "espresso", "zwieback", "brot", "dose", "konserve", "suppe", "linsen", "bohnen", "kichererbsen", "mais", "thunfisch", "pesto", "gnocchi", "tortellini", "wraps", "fruchtpüree", "babymilch", "anfangsmilch", "folgemilch", "hipp", "alete", "bebivita", "milupa", "aptamil", "humana", "holle", "freche freunde", "wiberg", "ostmann", "fuchs gewürze", "knorr", "maggi", "dessert", "pudding", "grieß", "pasta", "menü", "mahlzeit", "abendbrei", "milchbrei", "getreide", "dinkel", "hirse", "puffs", "sticks", "bällchen", "teekeks", "trinkmahlzeit", "babynahrung", "kindernahrung", "säuglingsnahrung"];
 
 export type ProductKindName = "lebensmittel" | "suesses" | "getraenk" | "tee" | "babyzubehoer" | "hautpflege" | "haarpflege" | "drogerie" | "haushalt" | "spielzeug";
-export type ProductKind = { kind: ProductKindName; word: string };
+export type ProductKind = { kind: ProductKindName; word: string; flavorOnly?: boolean };
 /** Lebensmittel im weiteren Sinn – brauchen ein MHD. */
 const FOOD_KINDS = new Set<ProductKindName>(["lebensmittel", "suesses", "getraenk", "tee"]);
 /** Passende Kategorie je Produktart (siehe DONATION_CATEGORIES). */
@@ -161,8 +167,9 @@ export const KIND_CATEGORY: Record<ProductKindName, string> = {
   getraenk: "Getränke inkl. Pfand",
   tee: "Tee & Nahrungsergänzung",
   babyzubehoer: "Babyprodukte",
-  hautpflege: "Hautpflege",
-  haarpflege: "Haarpflege",
+  // Haut- und Haarpflege gehören zur Drogerie (keine eigenen Kategorien).
+  hautpflege: "Drogerie",
+  haarpflege: "Drogerie",
   drogerie: "Drogerie",
   haushalt: "Haushalt",
   spielzeug: "Spielzeug",
@@ -171,23 +178,37 @@ export const KIND_CATEGORY: Record<ProductKindName, string> = {
 /** Was für ein Produkt ist das – nach Name und Variante. null = nicht eindeutig. Nichtlebensmittel haben Vorrang. */
 export function productKind(name: string | null | undefined, variant?: string | null): ProductKind | null {
   const t = ` ${name ?? ""} ${variant ?? ""} `.toLocaleLowerCase("de-DE");
-  const order: [ProductKindName, string[]][] = [
+  // Nichtlebensmittel zuerst: ein „Schoko-Duschgel“ ist Pflege, kein Süßes.
+  const nonFood: [ProductKindName, string[]][] = [
     ["spielzeug", TOY],
     ["babyzubehoer", BABY_GEAR],
     ["hautpflege", SKIN],
     ["haarpflege", HAIR],
     ["drogerie", DRUGSTORE],
     ["haushalt", HOUSEHOLD],
+  ];
+  for (const [kind, words] of nonFood) {
+    const w = has(t, words);
+    if (w) return { kind, word: w.trim() };
+  }
+  // Lebensmittel: der längste Produkttyp gewinnt („trinkschokolade“ vor „schokolade“, „powerade“ statt „mango“).
+  const food: [ProductKindName, string[]][] = [
     ["getraenk", DRINKS],
     ["tee", TEA_SUPPLEMENT],
     ["suesses", SWEETS],
     ["lebensmittel", FOOD],
   ];
-  for (const [kind, words] of order) {
-    const w = has(t, words);
-    if (w) return { kind, word: w.trim() };
+  let best: ProductKind | null = null;
+  for (const [kind, words] of food) {
+    for (const w of words) {
+      const hit = has(t, [w]);
+      if (hit && (!best || hit.trim().length > best.word.length)) best = { kind, word: hit.trim() };
+    }
   }
-  return null;
+  if (best) return best;
+  // Nur ein Geschmack erkannt: essbar, aber keine bestimmte Lebensmittel-Kategorie.
+  const flavor = has(t, FLAVOR);
+  return flavor ? { kind: "lebensmittel", word: flavor.trim(), flavorOnly: true } : null;
 }
 
 /** Getränk? (für Kasten/Flaschen-Angaben und Preisvorschlag) */
@@ -240,21 +261,25 @@ export function categoryHint(p: { name: string; variant?: string | null; categor
   if (p.category === "Babyprodukte") return null;
   if (kind) {
     const suggest = KIND_CATEGORY[kind.kind];
+    // Nur Geschmack erkannt (z. B. „Mango“) – unter einer Lebensmittel-Kategorie kein Grund zur Änderung.
+    if (kind.flavorOnly && (FOOD_CATEGORIES.has(p.category) || p.category === "Babyprodukte")) return null;
     if (suggest !== p.category) {
       // Nicht jede Abweichung ist ein Fehler: Getränke/Tee/Süßes unter „Lebensmittel“ sind nur zu grob, eigene
       // Kategorien (z. B. „Kaffee“) bleiben unangetastet, solange sie zur Art passen.
-      const known = (DONATION_CATEGORY_NAMES as readonly string[]).includes(p.category) || p.category === "Drogerie & Haushalt";
-      if (known) return { suggest, reason: FOOD_KINDS.has(kind.kind) === FOOD_CATEGORIES.has(p.category) ? `genauer: „${kind.word}“` : FOOD_KINDS.has(kind.kind) ? `klingt nach Lebensmittel („${kind.word}“)` : `kein Lebensmittel („${kind.word}“)` };
+      const known = (DONATION_CATEGORY_NAMES as readonly string[]).includes(p.category) || (LEGACY_CATEGORIES as readonly string[]).includes(p.category);
+      if (known) return { suggest, reason: FOOD_KINDS.has(kind.kind) === FOOD_CATEGORIES.has(p.category) ? `genauer: „${kind.word}“` : `„${kind.word}“ gehört zu ${suggest}` };
     }
     return null;
   }
-  if (p.category === "Drogerie & Haushalt" && aiCategory && aiCategory !== p.category) return { suggest: aiCategory, reason: "Kategorie aufteilen (KI-Vorschlag)" };
+  if ((LEGACY_CATEGORIES as readonly string[]).includes(p.category)) return { suggest: aiCategory && aiCategory !== p.category ? aiCategory : p.category === "Drogerie & Haushalt" ? "Drogerie" : "Drogerie", reason: "alte Kategorie – bitte Drogerie oder Haushalt wählen" };
   if (aiCategory && aiCategory !== p.category) return { suggest: aiCategory, reason: "KI-Vorschlag" };
   return null;
 }
 
 /** Vorgegebene Kategorien in Aushang-Reihenfolge (hier, damit lib/layout.ts und diese Datei sie teilen). */
-export const DONATION_CATEGORY_NAMES = ["Babyprodukte", "Lebensmittel", "Süßes & Snacks", "Getränke inkl. Pfand", "Tee & Nahrungsergänzung", "Hautpflege", "Haarpflege", "Drogerie", "Haushalt", "Spielzeug", "Sonstiges"] as const;
+export const DONATION_CATEGORY_NAMES = ["Babyprodukte", "Lebensmittel", "Süßes & Snacks", "Getränke inkl. Pfand", "Tee & Nahrungsergänzung", "Drogerie", "Haushalt", "Spielzeug", "Sonstiges"] as const;
+/** Alte Kategorien: werden nicht mehr angeboten; Produkte darin erscheinen unter „Kategorie prüfen“. */
+export const LEGACY_CATEGORIES = ["Drogerie & Haushalt", "Hautpflege", "Haarpflege"] as const;
 
 // ---------- Ganze Packung / Kasten ----------
 
@@ -282,6 +307,32 @@ export function packText(i: { packKind?: string | null; packCount?: number | nul
 /** Formulierungen der KI, die nur fürs Team gedacht sind („genaue Packungsgröße unbekannt“, „alternativ …“). */
 // Nur echte Recherche-Kommentare. Sachliche Angaben wie „ca. 12 cm Höhe“ oder „ca. 60–80 g“ bleiben öffentlich.
 const INTERNAL = /(unbekannt|unklar|nicht (?:identifiziert|erkennbar|lesbar|eindeutig|verifiziert|gefunden|bestätigt)|vermutlich|wahrscheinlich|möglicherweise|alternativ|ähnlich wie|oder ähnlich|keine (?:angabe|info)|siehe foto|laut (?:foto|bild) nicht|marke unklar)/i;
+
+/** Eindeutige Recherche-Kommentare – nur diese werden aus freiem Text (Ideen, Werbetext) entfernt. */
+const RESEARCH = /(unbekannt|unklar|nicht (?:identifiziert|erkennbar|lesbar|verifiziert)|alternativ (?:verfügbar|erhältlich)|keine (?:angabe|info)|siehe foto|marke unklar)/i;
+
+/**
+ * Freier Text (gespeicherte Ideen, Pakete, Werbetext): Recherche-Anmerkungen wie „Thai Style Nudeln – Marke nicht
+ * identifiziert“ oder „(genaue Packungsgröße unbekannt)“ entfernen, der übrige Text bleibt wörtlich erhalten.
+ */
+export function stripInternal(text: string): string {
+  return text
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(/\s*[([]([^)\]\n]*)[)\]]/g, (m, inner: string) => (RESEARCH.test(inner) ? "" : m))
+        .replace(/(\s[–-]\s|,\s*|;\s*)([^,;–\n]*)/g, (m, _sep: string, seg: string) => (RESEARCH.test(seg) && seg.length < 90 ? "" : m)),
+    )
+    .join("\n");
+}
+
+/** Alle Texte eines gespeicherten Objekts (z. B. Ideen) bereinigen – für Anzeige und Kopieren; das Original bleibt. */
+export function stripInternalDeep<T>(value: T): T {
+  if (typeof value === "string") return stripInternal(value) as T;
+  if (Array.isArray(value)) return value.map((v) => stripInternalDeep(v)) as T;
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripInternalDeep(v)])) as T;
+  return value;
+}
 
 /** Name/Variante ohne interne Hinweise – so erscheinen sie in Collage, Aushang, Messenger und Social Media. */
 export function splitInternal(text: string | null | undefined): { clean: string; notes: string[] } {
@@ -383,7 +434,7 @@ export function priceState(item: PriceInput, imageFileId: string | null | undefi
 // ---------- Prüfstatus einer Zeile ----------
 
 export type Issue = { key: IssueKey; label: string; level: "fehlt" | "pruefen" };
-export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich" | "rueckseite";
+export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich" | "rueckseite" | "mhd-ki";
 
 export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
   { key: "konflikt", label: "Preiswiderspruch" },
@@ -400,6 +451,7 @@ export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
   { key: "kategorie-pruefen", label: "Kategorie prüfen" },
   { key: "mhd", label: "MHD fehlt" },
   { key: "mhd-pruefen", label: "MHD-Relevanz prüfen" },
+  { key: "mhd-ki", label: "MHD automatisch gelesen" },
   { key: "foto", label: "Ohne Foto" },
 ];
 
@@ -417,7 +469,7 @@ export function unitIssue(item: { unit: string | null; unitCount: number | null;
 export function itemIssues(o: {
   unnamed: boolean;
   product: { name: string; variant?: string | null; category: string; categoryChecked?: boolean | null; mhdMode?: string | null; reviewNote?: string | null; imageFileId: string | null };
-  item: { bestBefore: string | null; inCollage: boolean; unit?: string | null; unitCount?: number | null; unitConfirmed?: boolean | null; price?: number | null };
+  item: { bestBefore: string | null; bestBeforeSource?: string | null; inCollage: boolean; unit?: string | null; unitCount?: number | null; unitConfirmed?: boolean | null; price?: number | null };
   state: PriceState;
   compare?: Comparability | null;
   aiCategory?: string | null;
@@ -439,6 +491,8 @@ export function itemIssues(o: {
   // Unklar, ob Nahrung (z. B. unbekanntes Babyprodukt): nicht auslassen, sondern ausdrücklich prüfen lassen.
   if (!o.item.bestBefore && mhd.unsure) out.push({ key: "mhd-pruefen", label: "MHD-Relevanz prüfen", level: "pruefen" });
   else if (!o.item.bestBefore && mhd.relevant) out.push({ key: "mhd", label: "MHD fehlt", level: "fehlt" });
+  // Von der KI vom Foto gelesen: kurz bestätigen oder korrigieren.
+  if (o.item.bestBefore && o.item.bestBeforeSource === "foto-ki") out.push({ key: "mhd-ki", label: "MHD prüfen (KI)", level: "pruefen" });
   if (!o.product.imageFileId && o.item.inCollage) out.push({ key: "foto", label: "Foto fehlt", level: "fehlt" });
   return out;
 }

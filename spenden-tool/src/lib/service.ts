@@ -4,7 +4,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { PriceBox } from "@/db/schema";
 import { DONATION_CATEGORIES, flyerSections } from "@/lib/layout";
-import { isDrink, packText, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { isDrink, LEGACY_CATEGORIES, packText, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import sharp from "sharp";
 import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
@@ -286,7 +286,9 @@ export async function productHistory(productId: string) {
 export async function knownCategories(): Promise<string[]> {
   const rows = await db.selectDistinct({ c: P.category }).from(P);
   const set = new Set<string>(DONATION_CATEGORIES);
-  for (const r of rows) set.add(r.c);
+  // Alte Sammelkategorien („Drogerie & Haushalt“, „Hautpflege“, „Haarpflege“) nicht mehr anbieten – Produkte darin
+  // zeigen ihren Wert weiter an und erscheinen unter „Kategorie prüfen“.
+  for (const r of rows) if (!(LEGACY_CATEGORIES as readonly string[]).includes(r.c)) set.add(r.c);
   set.add(UNSORTED_CATEGORY);
   return [...set];
 }

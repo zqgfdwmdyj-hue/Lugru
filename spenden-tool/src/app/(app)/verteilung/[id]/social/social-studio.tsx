@@ -284,10 +284,12 @@ function Preview({ t, i, ready }: { t: Template; i: number; ready: boolean }) {
   return <canvas ref={ref} style={{ width: "100%", aspectRatio: `${t.w} / ${t.h}`, borderRadius: 6, background: "var(--row)", display: "block" }} />;
 }
 
-async function renderFiles(t: Template, fileBase: string, only?: number): Promise<File[]> {
+async function renderFiles(t: Template, fileBase: string, only?: number, step?: (done: number, total: number) => Promise<void>): Promise<File[]> {
   const out: File[] = [];
+  const total = only !== undefined ? 1 : t.count;
   for (let i = 0; i < t.count; i++) {
     if (only !== undefined && i !== only) continue;
+    await step?.(out.length, total);
     const c = document.createElement("canvas");
     c.width = t.w;
     c.height = t.h;
@@ -422,22 +424,47 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
   }, [imgs, ordered, hl, sections, data, drawHandle, items.length]);
 
   /** Vor dem Speichern/Teilen: offene Punkte nennen und nachfragen. */
-  const okToExport = () => !warnings.length || confirm(`Vor dem Export bitte beachten:\n\n• ${warnings.join("\n• ")}\n\nTrotzdem speichern?`);
-  const save = async (t: Template, only?: number) => okToExport() && downloadFiles(await renderFiles(t, data.fileBase, only));
-  const share = async (t: Template) => {
-    if (!okToExport()) return;
-    const files = await renderFiles(t, data.fileBase);
-    if (!(await shareFiles(files, data.title))) setMessage("Teilen geht in diesem Browser nicht – bitte speichern und in der App hochladen.");
+  // Kein blockierender Browser-Dialog: Hinweis im Seiteninhalt, Fortschritt mit Abbrechen.
+  const [ask, setAsk] = useState<null | { label: string; run: () => void }>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const guard = (label: string, run: () => void) => (!warnings.length || acknowledged ? run() : setAsk({ label, run }));
+  const [progress, setProgress] = useState<null | { label: string; done: number; total: number }>(null);
+  const cancel = useRef(false);
+  const stepper = (label: string) => async (done: number, total: number) => {
+    setProgress({ label, done, total });
+    await new Promise((r) => setTimeout(r, 0));
+    if (cancel.current) throw new Error("abgebrochen");
   };
+  const fail = (e: unknown, what: string) =>
+    setMessage(e instanceof Error && e.message === "abgebrochen" ? "Export abgebrochen." : `${what} hat nicht geklappt${e instanceof Error && e.message ? ` (${e.message})` : ""}. Bitte erneut versuchen – bei sehr vielen Bildern einzeln speichern.`);
+  const exportRun = async (what: string, fn: () => Promise<void>) => {
+    cancel.current = false;
+    setMessage("");
+    try {
+      await fn();
+    } catch (e) {
+      fail(e, what);
+    } finally {
+      setProgress(null);
+    }
+  };
+  const save = (t: Template, only?: number) => guard(only !== undefined ? "Bild speichern" : "speichern", () => void exportRun("Speichern", async () => downloadFiles(await renderFiles(t, data.fileBase, only, stepper("Bild")))));
+  const share = (t: Template) =>
+    guard("teilen", () =>
+      void exportRun("Teilen", async () => {
+        const files = await renderFiles(t, data.fileBase, undefined, stepper("Bild"));
+        if (!(await shareFiles(files, data.title))) setMessage("Teilen geht in diesem Browser nicht – bitte speichern und in der App hochladen.");
+      }),
+    );
 
   /** Reel/TikTok: Titelbild, dann jedes Highlight, dann die Preisliste – als Video aufgenommen. */
   async function makeVideo() {
+    cancel.current = false;
     const mime = videoMime();
     if (!mime || !imgs) {
       setMessage("Dieser Browser kann keine Videos erzeugen – bitte Chrome, Edge oder Safari (aktuell) verwenden.");
       return;
     }
-    if (!okToExport()) return;
     const W = STORY.w;
     const H = STORY.h;
     const slides: { draw: (c: Ctx) => void; secs: number }[] = [
@@ -459,13 +486,14 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
     const total = slides.reduce((n, s) => n + s.secs, 0);
     let elapsed = 0;
     for (const s of slides) {
+      if (cancel.current) break;
       // Folie einmal vorzeichnen, dann leicht heranzoomen (wirkt lebendiger).
       const pre = document.createElement("canvas");
       pre.width = W;
       pre.height = H;
       s.draw(pre.getContext("2d")!);
       const start = performance.now();
-      while (performance.now() - start < s.secs * 1000) {
+      while (performance.now() - start < s.secs * 1000 && !cancel.current) {
         const t = (performance.now() - start) / (s.secs * 1000);
         const z = 1 + 0.04 * t;
         sctx.fillStyle = "#fff";
@@ -479,6 +507,12 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
     }
     rec.stop();
     await done;
+    stream.getTracks().forEach((tr) => tr.stop());
+    if (cancel.current) {
+      setVideo({ busy: false, progress: 0 });
+      setMessage("Video abgebrochen.");
+      return;
+    }
     const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
     const file = new File(chunks, `${data.fileBase}-reel.${ext}`, { type: mime.split(";")[0] });
     setVideo({ busy: false, progress: 1, url: URL.createObjectURL(file), file });
@@ -565,6 +599,23 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
       )}
 
       {warnings.length > 0 && <div className="notice notice-warn"><strong>Vor dem Export:</strong> {warnings.join(" · ")}</div>}
+      {ask && (
+        <div className="notice notice-warn export-ask" role="alertdialog" aria-label="Vor dem Export">
+          <strong>Vor dem Export bitte beachten:</strong>
+          <ul>{warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-small btn-primary" type="button" onClick={() => { const run = ask.run; setAsk(null); setAcknowledged(true); run(); }}>Trotzdem: {ask.label}</button>
+            <button className="btn btn-small" type="button" onClick={() => setAsk(null)}>Abbrechen</button>
+          </div>
+        </div>
+      )}
+      {progress && (
+        <div className="notice notice-info export-progress" role="status">
+          <span>{progress.label} {Math.min(progress.done + 1, progress.total)} von {progress.total} …</span>
+          <progress max={progress.total} value={progress.done} />
+          <button className="btn btn-small" type="button" onClick={() => { cancel.current = true; }}>Abbrechen</button>
+        </div>
+      )}
       {message && <div className="notice notice-warn">{message}</div>}
       {!imgs && format !== "texte" && <div className="notice notice-info">Lade Fotos …</div>}
 
@@ -573,8 +624,8 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <div><h2>{t.title}</h2><div className="small muted">{t.hint} · {t.count} {t.count === 1 ? "Bild" : "Bilder"}</div></div>
             <div style={{ display: "flex", gap: 6 }}>
-              {canShare && <button className="btn btn-small btn-primary" type="button" onClick={() => share(t)}>Teilen …</button>}
-              <button className={`btn btn-small${canShare ? "" : " btn-primary"}`} type="button" onClick={() => save(t)}>{t.count > 1 ? `Alle ${t.count} speichern` : "Speichern"}</button>
+              {canShare && <button className="btn btn-small btn-primary" type="button" disabled={!!progress} onClick={() => share(t)}>Teilen …</button>}
+              <button className={`btn btn-small${canShare ? "" : " btn-primary"}`} type="button" disabled={!!progress} onClick={() => save(t)}>{t.count > 1 ? `Alle ${t.count} speichern` : "Speichern"}</button>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${t.h > t.w * 1.5 ? 140 : 170}px, 1fr))`, gap: 10 }}>
@@ -596,7 +647,8 @@ export function SocialStudio({ eventId, data, items, sections, format: initialFo
             <select className="select" id="vs" value={secondsPer} onChange={(e) => setSecondsPer(Number(e.target.value))} style={{ width: 90 }} disabled={video.busy}>
               {[1, 1.5, 2, 3].map((s) => <option key={s} value={s}>{String(s).replace(".", ",")} s</option>)}
             </select>
-            <button className="btn btn-primary" type="button" onClick={makeVideo} disabled={video.busy}>{video.busy ? `Nehme auf … ${Math.round(video.progress * 100)} %` : "Video erstellen"}</button>
+            <button className="btn btn-primary" type="button" onClick={() => guard("Video erstellen", () => void makeVideo().catch((e) => { setVideo({ busy: false, progress: 0 }); fail(e, "Das Video"); }))} disabled={video.busy || !!progress}>{video.busy ? `Nehme auf … ${Math.round(video.progress * 100)} %` : "Video erstellen"}</button>
+            {video.busy && <button className="btn btn-small" type="button" onClick={() => { cancel.current = true; }}>Abbrechen</button>}
             {video.file && !video.busy && (
               <>
                 <button className="btn" type="button" onClick={() => downloadFiles([video.file!])}>Video speichern</button>
