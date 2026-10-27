@@ -13,7 +13,7 @@ import { withModern } from "@/lib/ebay/modern";
 import { ebayFetch, EbayHttpError } from "@/lib/ebay/ebay/http";
 import { getCategoryAspects } from "@/lib/ebay/ebay/taxonomy";
 import type { CategoryAspect } from "@/lib/ebay/pipeline/aspects";
-import { tradingBody } from "@/lib/ebay/trading-map";
+import { isInventoryManagedError, tradingBody } from "@/lib/ebay/trading-map";
 import type { Settings } from "@/lib/ebay/types";
 import { ebayActiveItems } from "@/lib/integrations/clients/ebay";
 import { getIntegration } from "@/lib/integrations/store";
@@ -568,7 +568,15 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
         // Preis (nur ohne Varianten, siehe oben) über bulkUpdateInventory.
         if (rev.price !== undefined) await bulkUpdateInventory(gc, [{ listingId: itemId, fixedPrice: rev.price }]);
       },
-      async () => void (await trading(c, "ReviseFixedPriceItem", reviseXml(itemId, rev))),
+      async () => {
+        try {
+          await trading(c, "ReviseFixedPriceItem", reviseXml(itemId, rev));
+        } catch (e) {
+          // Über die Inventory API eingestellt (z. B. mit einem anderen Programm): dort ändern.
+          if (!isInventoryManagedError(e)) throw e;
+          await reviseInventory(c, await inventoryTargetFor(c, itemId, f.sku), rev, opts.replaceAspects ? rev.aspects ?? null : wantAspects ?? {}, Boolean(opts.replaceAspects));
+        }
+      },
       listingOk(c),
     );
 
@@ -629,12 +637,55 @@ export async function amazonContentFor(tenantId: string, itemId: string, code?: 
 const OFFER_READONLY = ["offerId", "status", "listing", "warnings"];
 
 /** Übers eBay-Tool eingestellte Angebote: Inventory API (aktuellen Stand holen, ändern, zurückschreiben). */
+/** Was über die Inventory API geändert wird: Artikel (bzw. Variantengruppe) per SKU und das eBay-Angebot (Offer). */
+type InvTarget = { sku: string; offerId: string | null; isGroup: boolean };
+
 async function reviseViaInventory(c: Conn, attemptId: number, rev: Revision, added: Record<string, string[]> | null, replace = false) {
   const a = await getAttempt(c.edb, attemptId);
   if (!a?.sku) throw new Error("Angebot im eBay-Tool nicht gefunden.");
+  const isGroup = Boolean(a.variants?.items?.length);
+  await reviseInventory(c, { sku: a.sku, offerId: a.offerId ?? null, isGroup }, rev, added, replace);
+  // Das eBay-Tool zeigt danach dieselben Werte.
+  await updateAttempt(c.edb, attemptId, {
+    ...(rev.title ? { title: rev.title } : {}),
+    ...(Object.keys(added ?? {}).length ? { aspects: replace && added ? added : mergeAspects(a.aspects ?? {}, added ?? {}) } : {}),
+    ...(rev.images ? { imageUrls: rev.images } : {}),
+    ...(rev.description !== undefined ? { description: rev.description } : {}),
+    ...(rev.price !== undefined && !isGroup ? { price: rev.price } : {}),
+  });
+}
+
+/**
+ * Angebot aus einem anderen Programm, das über die Inventory API angelegt wurde (die Trading API lehnt das
+ * Ändern ab): Artikel bzw. Variantengruppe per SKU finden und das Offer genau dieses eBay-Angebots.
+ */
+async function inventoryTargetFor(c: Conn, itemId: string, sku: string | null): Promise<InvTarget> {
+  const foreign = "Dieses Angebot wurde mit einem anderen Programm über eBays Inventory-Schnittstelle eingestellt";
+  if (!sku) throw new Error(`${foreign}, eBay nennt aber keine SKU dazu – bitte in dem Programm ändern, mit dem es eingestellt wurde.`);
   const inv = `${c.base}/sell/inventory/v1`;
   const h = await userHeaders(c);
-  const isGroup = Boolean(a.variants?.items?.length);
+  const s = encodeURIComponent(sku);
+  const notFound = (e: unknown) => e instanceof EbayHttpError && e.status === 404;
+  const item = await ebayFetch(`${inv}/inventory_item/${s}`, { headers: h }).catch((e: unknown) => (notFound(e) ? null : Promise.reject(e)));
+  if (!item) {
+    const group = await ebayFetch(`${inv}/inventory_item_group/${s}`, { headers: h }).catch((e: unknown) => (notFound(e) ? null : Promise.reject(e)));
+    if (group) return { sku, offerId: null, isGroup: true };
+    throw new Error(`${foreign}, die SKU „${sku}“ ist dort aber nicht (mehr) zu finden – bitte im ursprünglichen Programm ändern.`);
+  }
+  const r = (await ebayFetch(`${inv}/offer?sku=${s}&marketplace_id=${MARKETPLACE}`, { headers: h }).catch(() => null)) as { offers?: { offerId: string; listing?: { listingId?: string } }[] } | null;
+  const offers = r?.offers ?? [];
+  const offer = offers.find((o) => o.listing?.listingId === itemId) ?? (offers.length === 1 ? offers[0] : undefined);
+  return { sku, offerId: offer?.offerId ?? null, isGroup: false };
+}
+
+/** Titel, Merkmale, Bilder, Beschreibung, Preis und Preisvorschlag über die Inventory API ändern (gilt sofort fürs laufende Angebot). */
+async function reviseInventory(c: Conn, a: InvTarget, rev: Revision, added: Record<string, string[]> | null, replace = false) {
+  const inv = `${c.base}/sell/inventory/v1`;
+  const h = await userHeaders(c);
+  const isGroup = a.isGroup;
+  const needsOffer = rev.price !== undefined || rev.bestOffer !== undefined || (rev.description !== undefined && !isGroup);
+  // Vorher prüfen, damit nichts nur halb geändert wird.
+  if (needsOffer && !a.offerId) throw new Error("eBay nennt zu diesem Angebot kein passendes Offer – Preis, Preisvorschlag bzw. Beschreibung bitte bei eBay oder im Programm ändern, mit dem es eingestellt wurde. Nichts wurde geändert.");
   const aspectsOf = (cur: Record<string, string[]>) => (replace && added ? added : mergeAspects(cur, added ?? {}));
   const touchesItem = rev.title || Object.keys(added ?? {}).length || rev.images || rev.description !== undefined;
   if (touchesItem) {
@@ -650,8 +701,7 @@ async function reviseViaInventory(c: Conn, attemptId: number, rev: Revision, add
       await ebayFetch(`${inv}/inventory_item/${encodeURIComponent(a.sku)}`, { method: "PUT", headers: h, body: JSON.stringify(body) });
     }
   }
-  if (rev.price !== undefined || rev.bestOffer !== undefined || (rev.description !== undefined && !isGroup)) {
-    if (!a.offerId) throw new Error("Zum Angebot fehlt die eBay-Angebotsnummer (Offer) – Preis/Beschreibung bitte im eBay-Tool ändern.");
+  if (needsOffer && a.offerId) {
     const o = (await ebayFetch(`${inv}/offer/${encodeURIComponent(a.offerId)}`, { headers: h })) as Record<string, unknown> & { pricingSummary?: Record<string, unknown>; listingPolicies?: Record<string, unknown> & { bestOfferTerms?: Record<string, unknown> } };
     const body: Record<string, unknown> = { ...o };
     for (const k of OFFER_READONLY) delete body[k];
@@ -660,12 +710,4 @@ async function reviseViaInventory(c: Conn, attemptId: number, rev: Revision, add
     if (rev.description !== undefined) body.listingDescription = rev.description;
     await ebayFetch(`${inv}/offer/${encodeURIComponent(a.offerId)}`, { method: "PUT", headers: h, body: JSON.stringify(body) });
   }
-  // Das eBay-Tool zeigt danach dieselben Werte.
-  await updateAttempt(c.edb, attemptId, {
-    ...(rev.title ? { title: rev.title } : {}),
-    ...(Object.keys(added ?? {}).length ? { aspects: replace && added ? added : mergeAspects(a.aspects ?? {}, added ?? {}) } : {}),
-    ...(rev.images ? { imageUrls: rev.images } : {}),
-    ...(rev.description !== undefined ? { description: rev.description } : {}),
-    ...(rev.price !== undefined && !isGroup ? { price: rev.price } : {}),
-  });
 }

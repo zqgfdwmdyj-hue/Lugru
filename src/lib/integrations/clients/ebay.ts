@@ -13,7 +13,7 @@ import { bulkUpdateInventory, fetchActiveListings, fetchListing, type GqlConn } 
 import { activeFromListing, legacyFromListing } from "@/lib/ebay/listing-map";
 import { withModern } from "@/lib/ebay/modern";
 import type { Settings } from "@/lib/ebay/types";
-import { activeItems, escXml, inventoryStatusXml, legacyItem, matchSpecifics, tradingBody, type EbayActiveItem, type LegacyItem } from "@/lib/ebay/trading-map";
+import { activeItems, escXml, inventoryStatusXml, isInventoryManagedError, legacyItem, matchSpecifics, tradingBody, type EbayActiveItem, type LegacyItem } from "@/lib/ebay/trading-map";
 import type { XmlObject } from "@/lib/xml";
 import { registerTester } from "../test";
 
@@ -185,23 +185,41 @@ registerStockPusher("ebay", async (tenantId, l, quantity) => {
       tenantId,
       "Menge setzen",
       () => bulkUpdateInventory(gqlConn(c), [{ listingId: itemId, sku: ebaySku, availableQuantity: quantity }]),
-      async () => void (await trading(c, "ReviseInventoryStatus", inventoryStatusXml(itemId, quantity, ebaySku))),
+      async () => {
+        try {
+          await trading(c, "ReviseInventoryStatus", inventoryStatusXml(itemId, quantity, ebaySku));
+        } catch (e) {
+          // Angebot aus einem anderen Programm über die Inventory API: Menge dort setzen (per SKU).
+          if (!isInventoryManagedError(e) || !payload.ebaySku) throw e;
+          await pushInventoryQuantity(c, payload.ebaySku, quantity, null, itemId);
+        }
+      },
       c.listingOk,
     );
     return;
   }
-  let offerId = payload.offerId;
+  const offerId = await pushInventoryQuantity(c, l.sku, quantity, payload.offerId ?? null);
+  return offerId && offerId !== payload.offerId ? { payload: { offerId } } : undefined;
+});
+
+/**
+ * Menge über die Inventory API: Bestand des Artikels und – falls bekannt – die Angebotsmenge in einem Aufruf.
+ * Ohne Angebotsnummer wird sie per SKU gesucht (bei `listingId` das Angebot genau dieses eBay-Angebots).
+ */
+async function pushInventoryQuantity(c: Conn, sku: string, quantity: number, knownOfferId: string | null, listingId?: string): Promise<string | undefined> {
+  let offerId = knownOfferId ?? undefined;
   if (!offerId) {
-    const r = await api<{ offers?: { offerId: string }[] }>(c, "GET", `/sell/inventory/v1/offer?sku=${encodeURIComponent(l.sku)}`).catch(() => null);
-    offerId = r?.offers?.[0]?.offerId;
+    const r = await api<{ offers?: { offerId: string; listing?: { listingId?: string } }[] }>(c, "GET", `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`).catch(() => null);
+    const offers = r?.offers ?? [];
+    offerId = (listingId ? offers.find((o) => o.listing?.listingId === listingId) : undefined)?.offerId ?? offers[0]?.offerId;
   }
   const res = await api<{ responses?: { statusCode: number; sku?: string; offerId?: string; errors?: { message?: string; longMessage?: string }[] }[] }>(c, "POST", "/sell/inventory/v1/bulk_update_price_quantity", {
-    requests: [{ sku: l.sku, shipToLocationAvailability: { quantity }, ...(offerId ? { offers: [{ offerId, availableQuantity: quantity }] } : {}) }],
+    requests: [{ sku, shipToLocationAvailability: { quantity }, ...(offerId ? { offers: [{ offerId, availableQuantity: quantity }] } : {}) }],
   });
   const bad = (res.responses ?? []).find((r) => r.statusCode >= 300);
   if (bad) throw new Error((bad.errors ?? []).map((e) => e.longMessage ?? e.message).filter(Boolean).join("; ") || `eBay-Status ${bad.statusCode}`);
-  return offerId && offerId !== payload.offerId ? { payload: { offerId } } : undefined;
-});
+  return offerId;
+}
 
 /**
  * Was eBay gerade für eine SKU anbietet – nach allen Verkäufen (eBay zieht verkaufte Stück

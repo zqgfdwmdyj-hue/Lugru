@@ -32,6 +32,16 @@ export function tradingBody(xml: string, call: string): XmlObject {
   return body;
 }
 
+/**
+ * eBay lehnt Trading-Änderungen (ReviseFixedPriceItem, ReviseInventoryStatus) an Angeboten ab, die über die
+ * Inventory API angelegt wurden („warenbestandsbasierte Angebotsverwaltung … nicht unterstützt“). Die lassen
+ * sich nur über die Inventory API ändern.
+ */
+export function isInventoryManagedError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  return /warenbestandsbasiert|inventory[- ]based listing/i.test(e.message);
+}
+
 export const escXml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 const num = (v: XmlValue | undefined) => {
