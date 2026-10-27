@@ -447,6 +447,8 @@ export const jobRuns = pgTable(
     lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
     lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
     lastError: text("last_error"),
+    /** Dauer des letzten Laufs (ms) – zeigt, welcher Abruf den Server wie lange beschäftigt. */
+    lastDurationMs: integer("last_duration_ms"),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.name] })],

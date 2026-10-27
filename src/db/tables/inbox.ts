@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, integrations, tasks, tenantId, updatedAt } from "./core";
 
@@ -48,5 +49,7 @@ export const emails = pgTable(
   (t) => [
     uniqueIndex("emails_key_uq").on(t.tenantId, t.messageKey),
     index("emails_received_idx").on(t.tenantId, t.receivedAt),
+    // Zähler „wichtig“ in der Seitenleiste läuft bei jedem Seitenaufruf – nur offene Mails im Index.
+    index("emails_open_category_idx").on(t.tenantId, t.category).where(sql`archived = false`),
   ],
 );

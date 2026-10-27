@@ -1,7 +1,8 @@
 import "server-only";
 import bcrypt from "bcryptjs";
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db, schema } from "@/db";
 import { homeFor } from "@/lib/auth/areas";
 import { requireSession, type Session } from "@/lib/auth/session";
@@ -59,8 +60,10 @@ export async function privateMembers(tenantId: string) {
     .where(and(eq(schema.memberships.tenantId, tenantId), eq(schema.memberships.privateAccess, true), eq(schema.memberships.readOnly, false)));
 }
 
+const settingsRow = cache(async (tenantId: string) => (await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.kind, "einstellungen"))).limit(1))[0]);
+
 export async function privateSettings(tenantId: string): Promise<PrivateSettings & { id: string | null }> {
-  const [row] = await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.kind, "einstellungen"))).limit(1);
+  const row = await settingsRow(tenantId);
   const d = (row?.data ?? {}) as Partial<PrivateSettings>;
   return {
     id: row?.id ?? null,
@@ -112,10 +115,18 @@ function visibleTo(session: Session, r: Row, diaryShared: string[]): boolean {
 }
 const toEntry = <T,>(r: Row): Entry<T> => ({ id: r.id, userId: r.userId, kind: r.kind as PrivateKind, data: r.data as T, createdAt: r.createdAt, updatedAt: r.updatedAt });
 
+/**
+ * Alle Privat-Einträge der Firma – während einer Seitendarstellung nur einmal aus der Datenbank (statt je Art
+ * eine Abfrage). In Server Actions greift der Zwischenspeicher nicht (React-`cache` gilt nur beim Darstellen),
+ * dort wird also immer frisch gelesen.
+ */
+const tenantRows = cache(async (tenantId: string) => db.select().from(E).where(and(eq(E.tenantId, tenantId), ne(E.kind, "einstellungen"))));
+
 export async function loadEntries<T = Record<string, unknown>>(session: Session, kinds: PrivateKind[]): Promise<Entry<T>[]> {
   kinds = kinds.filter((k) => kindAllowed(session, k));
   if (!kinds.length) return [];
-  const rows = await db.select().from(E).where(and(eq(E.tenantId, session.tenantId), inArray(E.kind, kinds)));
+  const wanted = new Set<string>(kinds);
+  const rows = (await tenantRows(session.tenantId)).filter((r) => wanted.has(r.kind));
   const shared = kinds.includes("tagebuch") ? (await privateSettings(session.tenantId)).diaryShared : [];
   return rows.filter((r) => visibleTo(session, r, shared)).map((r) => toEntry<T>(r));
 }

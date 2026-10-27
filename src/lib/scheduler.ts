@@ -37,6 +37,7 @@ import { todayIso } from "@/lib/dates";
 import { recordJob } from "@/lib/today/jobs";
 import { sbConnected } from "@/lib/sellerboard/connection";
 import { startSellerboardSync } from "@/lib/sellerboard/sync";
+import { jobEnded, jobStarted } from "@/lib/perf";
 
 // Hintergrund-Abrufe. Läuft im Server-Prozess (alle 15 Minuten) oder per /api/cron.
 
@@ -49,13 +50,17 @@ const due = (key: string, minutes: number) => {
 };
 
 async function step(tenantId: string, name: string, fn: () => Promise<unknown>) {
+  const t0 = Date.now();
+  jobStarted(name);
   try {
     await fn();
-    void recordJob(tenantId, name, null);
+    void recordJob(tenantId, name, null, Date.now() - t0);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[Hintergrund] ${name}:`, msg);
-    void recordJob(tenantId, name, msg);
+    void recordJob(tenantId, name, msg, Date.now() - t0);
+  } finally {
+    jobEnded(name);
   }
 }
 

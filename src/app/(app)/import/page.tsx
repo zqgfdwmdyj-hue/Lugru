@@ -2,6 +2,7 @@ import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
+import { SystemLoad } from "./system-load";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { ImportForm } from "./import-form";
 import { areaStep } from "@/lib/today/logic";
@@ -74,6 +75,7 @@ export default async function ImportPage() {
               </tbody>
             </table>
           </section>
+          {session.role === "owner" && <SystemLoad tenantId={session.tenantId} />}
           <div id="upload"><ImportForm /></div>
           <section className="card" style={{ overflow: "auto" }}>
             <div className="card-head"><h2>Letzte Importe</h2></div>

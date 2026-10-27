@@ -3,6 +3,7 @@ import { and, count, eq, inArray, like, lt, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { recordJob } from "@/lib/today/jobs";
+import { jobEnded, jobStarted } from "@/lib/perf";
 import { syncClaims } from "@/lib/claims/service";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { sbAllPages, sbCall } from "./client";
@@ -381,13 +382,18 @@ export async function syncSellerboard(tenantId: string, scope: SyncScope = "alle
   const counts: Record<string, number> = {};
   const errors: string[] = [];
   const step = async (name: string, fn: () => Promise<void>) => {
+    const t0 = Date.now();
+    const job = `sellerboard: ${name}`;
+    jobStarted(job);
     try {
       await fn();
-      void recordJob(tenantId, `sellerboard: ${name}`, null);
+      void recordJob(tenantId, job, null, Date.now() - t0);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(`${name}: ${msg}`);
-      void recordJob(tenantId, `sellerboard: ${name}`, msg);
+      void recordJob(tenantId, job, msg, Date.now() - t0);
+    } finally {
+      jobEnded(job);
     }
   };
   try {

@@ -779,3 +779,13 @@ h2 { font-size: 16px; margin: 0; }
 .big-add:hover { background: #9d174d; color: #fff; text-decoration: none; }
 /* Name im Chip (z. B. „Ben“ in „Wer übernimmt die Kinder?“) ohne eigenen Rahmen. */
 .pick-chips span span { display: inline; border: 0; padding: 0; background: none; border-radius: 0; font-size: inherit; }
+
+/* Ladezustand beim Seitenwechsel */
+.skel-page { display: flex; flex-direction: column; gap: 16px; }
+.skel-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.skel { border-radius: 12px; background: linear-gradient(90deg, var(--row) 0%, var(--surface-2) 50%, var(--row) 100%); background-size: 200% 100%; animation: skel 1.2s ease-in-out infinite; }
+.skel-title { height: 34px; width: min(320px, 70%); border-radius: 8px; }
+.skel-card { height: 92px; }
+.skel-block { height: 260px; }
+@keyframes skel { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
