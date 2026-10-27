@@ -556,6 +556,7 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
   // Bilder von außerhalb (Keepa/Amazon, eigene Links) erst zu eBay kopieren – eBay zeigt nur eigene Bilder zuverlässig.
   if (rev.images) rev.images = await Promise.all(rev.images.map((u) => (isEbayHosted(u) ? u : externalToEps(c, u))));
 
+  let viaInventory = false;
   if (d.row.source === "tool" && d.row.attemptId) await reviseViaInventory(c, d.row.attemptId, rev, opts.replaceAspects ? rev.aspects ?? null : wantAspects ?? {}, Boolean(opts.replaceAspects));
   else
     await withModern(
@@ -572,9 +573,14 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
         try {
           await trading(c, "ReviseFixedPriceItem", reviseXml(itemId, rev));
         } catch (e) {
-          // Über die Inventory API eingestellt (z. B. mit einem anderen Programm): dort ändern.
-          if (!isInventoryManagedError(e)) throw e;
-          await reviseInventory(c, await inventoryTargetFor(c, itemId, f.sku), rev, opts.replaceAspects ? rev.aspects ?? null : wantAspects ?? {}, Boolean(opts.replaceAspects));
+          // Über die Inventory API eingestellt (z. B. mit einem anderen Programm): dort ändern. Erkannt an eBays
+          // Meldung bzw. Fehlernummer – oder, falls die anders lautet, daran, dass eBay zu genau diesem Angebot
+          // ein Offer in der Inventory API führt.
+          const target = isInventoryManagedError(e) ? await inventoryTargetFor(c, itemId, f.sku) : await inventoryOfferOf(c, itemId, f.sku);
+          if (!target) throw e;
+          console.warn(`[eBay] Angebot ${itemId}: Trading lehnt ab, ändere über die Inventory API – ${e instanceof Error ? e.message : e}`);
+          await reviseInventory(c, target, rev, opts.replaceAspects ? rev.aspects ?? null : wantAspects ?? {}, Boolean(opts.replaceAspects));
+          viaInventory = true;
         }
       },
       listingOk(c),
@@ -589,6 +595,7 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
   } catch {
     // Prüfung läuft beim nächsten Durchgang – die Änderung ist trotzdem bei eBay.
   }
+  if (viaInventory) summary.push("über eBays Inventory-Schnittstelle (Angebot aus anderem Programm)");
   return summary;
 }
 
@@ -676,6 +683,22 @@ async function inventoryTargetFor(c: Conn, itemId: string, sku: string | null): 
   const offers = r?.offers ?? [];
   const offer = offers.find((o) => o.listing?.listingId === itemId) ?? (offers.length === 1 ? offers[0] : undefined);
   return { sku, offerId: offer?.offerId ?? null, isGroup: false };
+}
+
+/**
+ * Führt eBay zu genau diesem Angebot ein Offer in der Inventory API? Dann wird es dort verwaltet – auch wenn die
+ * Ablehnung der Trading API anders formuliert ist. Ohne Treffer oder bei Fehlern: null (dann gilt eBays Meldung).
+ */
+async function inventoryOfferOf(c: Conn, itemId: string, sku: string | null): Promise<InvTarget | null> {
+  if (!sku) return null;
+  try {
+    const h = await userHeaders(c);
+    const r = (await ebayFetch(`${c.base}/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${MARKETPLACE}`, { headers: h })) as { offers?: { offerId: string; listing?: { listingId?: string } }[] } | null;
+    const offer = r?.offers?.find((o) => o.listing?.listingId === itemId);
+    return offer ? { sku, offerId: offer.offerId, isGroup: false } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Titel, Merkmale, Bilder, Beschreibung, Preis und Preisvorschlag über die Inventory API ändern (gilt sofort fürs laufende Angebot). */

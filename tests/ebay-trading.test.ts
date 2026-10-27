@@ -130,4 +130,10 @@ describe("Angebote aus der Inventory API (anderes Programm)", () => {
     expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Der Titel ist zu lang.", []))).toBe(false);
     expect(isInventoryManagedError("warenbestandsbasiert")).toBe(false);
   });
+  it("erkennt die Ablehnung auch an eBays Fehlernummer und trotz unsichtbarer Zeichen", () => {
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Vorgang nicht möglich.", ["21919474"]))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Die warenbestands\u00ADbasierte Angebotsverwaltung wird derzeit nicht unterstützt.", []))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): This operation is not allowed for inventory items.", []))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Der Preis ist zu niedrig.", ["21919999"]))).toBe(false);
+  });
 });

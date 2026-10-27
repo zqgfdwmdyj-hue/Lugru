@@ -189,8 +189,10 @@ registerStockPusher("ebay", async (tenantId, l, quantity) => {
         try {
           await trading(c, "ReviseInventoryStatus", inventoryStatusXml(itemId, quantity, ebaySku));
         } catch (e) {
-          // Angebot aus einem anderen Programm über die Inventory API: Menge dort setzen (per SKU).
-          if (!isInventoryManagedError(e) || !payload.ebaySku) throw e;
+          // Angebot aus einem anderen Programm über die Inventory API: Menge dort setzen (per SKU). Erkannt an
+          // eBays Meldung/Fehlernummer oder daran, dass eBay zu genau diesem Angebot ein Offer führt.
+          if (!payload.ebaySku) throw e;
+          if (!isInventoryManagedError(e) && !(await inventoryOfferId(c, payload.ebaySku, itemId))) throw e;
           await pushInventoryQuantity(c, payload.ebaySku, quantity, null, itemId);
         }
       },
@@ -201,6 +203,12 @@ registerStockPusher("ebay", async (tenantId, l, quantity) => {
   const offerId = await pushInventoryQuantity(c, l.sku, quantity, payload.offerId ?? null);
   return offerId && offerId !== payload.offerId ? { payload: { offerId } } : undefined;
 });
+
+/** Offer-Nummer, wenn eBay das Angebot `listingId` in der Inventory API unter dieser SKU führt – sonst null. */
+async function inventoryOfferId(c: Conn, sku: string, listingId: string): Promise<string | null> {
+  const r = await api<{ offers?: { offerId: string; listing?: { listingId?: string } }[] }>(c, "GET", `/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`).catch(() => null);
+  return r?.offers?.find((o) => o.listing?.listingId === listingId)?.offerId ?? null;
+}
 
 /**
  * Menge über die Inventory API: Bestand des Artikels und – falls bekannt – die Angebotsmenge in einem Aufruf.
