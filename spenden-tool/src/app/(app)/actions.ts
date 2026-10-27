@@ -706,6 +706,19 @@ export async function setOutcome(itemId: string, outcome: "weg" | "wenig" | "vie
   if (it) revalidatePath(`/verteilung/${it.eventId}`, "layout");
 }
 
+/** Mehrere angezeigte (gefilterte) Produkte auf einmal – nur noch offene, Erfasstes bleibt unangetastet. */
+export async function setOutcomes(eventId: string, itemIds: string[], outcome: "weg" | "wenig" | "viel"): Promise<number> {
+  const me = await requireLogin();
+  const id = uuid.parse(eventId);
+  const ids = z.array(uuid).max(1000).parse(itemIds);
+  const v = z.enum(["weg", "wenig", "viel"]).parse(outcome);
+  if (ids.length === 0) return 0;
+  const done = await db.update(I).set({ outcome: v }).where(and(eq(I.eventId, id), inArray(I.id, ids), sql`${I.outcome} is null`)).returning({ id: I.id });
+  await logActivity(me, `Ergebnis „${v}“ für ${done.length} Produkt(e) gesetzt`, { eventId: id });
+  revalidatePath(`/verteilung/${id}`, "layout");
+  return done.length;
+}
+
 /** „Ergebnisse erfassen“: alle noch offenen auf einmal setzen (z. B. „alles weg“). */
 export async function setOpenOutcomes(eventId: string, outcome: "weg" | "wenig" | "viel") {
   const me = await requireLogin();

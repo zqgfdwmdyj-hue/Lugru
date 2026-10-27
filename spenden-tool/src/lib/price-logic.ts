@@ -140,8 +140,9 @@ const has = (t: string, words: string[]) =>
 /** Eindeutig keine Lebensmittel – egal, in welcher Kategorie sie (vielleicht falsch) stehen. */
 const TOY = ["spielzeug", "plüsch", "puzzle", "malbuch", "spielkarten", "steckspiel", "seifenblasen", "kuscheltier", "bauklötze", "ball ", "puppe", "lego", "schwimmflügel", "schwimmsitz", "schwimmring", "schwimmreifen", "wasserspielzeug", "sandspielzeug", "badespielzeug", "wasserfarben", "farbkasten", "spardose", "^knete", "stifte", "furby", "sammelkarten", "figur", "bitzee", "baby einstein", "piano", "klavier", "rassel", "spieluhr", "tamagotchi", "kreisel", "roboter", "dinosaurier", "bilderbuch", "kinderbuch"];
 const BABY_GEAR = ["babyflasche", "glasflasche", "trinkflasche", "milchflasche", "trinklernbecher", "sauger", "schnuller", "beißring", "windel", "feuchttücher", "lätzchen", "babybody", "strampler", "wärmflasche", "fieberthermometer", "nasensauger", "schwimm", "nuk ", "mam ", "avent", "bema "];
-const SKIN = ["hautcreme", "handcreme", "gesichtscreme", "sonnencreme", "wundschutzcreme", "babycreme", "bodylotion", "lotion", "gesichtsmaske", "tuchmaske", "sheet mask", "peeling", "serum", "lippenpflege", "lippenbalsam", "körperöl", "babyöl", "duschgel", "duschcreme", "seife", "badesalz", "badezusatz", "make-up", "makeup", "nagellack", "hautpflege", "yeauty"];
-const HAIR = ["shampoo", "spülung", "haarkur", "haarspray", "haargel", "haarfarbe", "conditioner", "haaröl", "haarpflege", "haarmaske", "trockenshampoo"];
+const SKIN = ["parfum", "parfüm", "eau de", "bodyspray", "körperspray", "duschschaum", "handseife", "hautcreme", "handcreme", "gesichtscreme", "sonnencreme", "wundschutzcreme", "babycreme", "bodylotion", "lotion", "gesichtsmaske", "tuchmaske", "sheet mask", "peeling", "serum", "lippenpflege", "lippenbalsam", "körperöl", "babyöl", "duschgel", "duschcreme", "seife", "badesalz", "badezusatz", "make-up", "makeup", "nagellack", "hautpflege", "yeauty"];
+// „Hair“, „Styling“, „Gel“: Produkttyp schlägt Duft-/Sortenangaben wie „Bambus & Orange“.
+const HAIR = ["haar", "hair", "styling", "^gel ", "festiger", "pomade", "haarwachs", "haarlack", "glanzspray", "lockenspray", "shampoo", "spülung", "haarkur", "haarspray", "haargel", "haarfarbe", "conditioner", "haaröl", "haarpflege", "haarmaske", "trockenshampoo"];
 const DRUGSTORE = ["zahnpasta", "zahncreme", "zahnbürste", "zahnseide", "mundspülung", "^deo", "rasier", "pflaster", "tampons", "binden", "slipeinlagen", "wattepads", "wattestäbchen", "kondome", "desinfektion"];
 const HOUSEHOLD = ["schwamm", "tuchschwämme", "spültuch", "spülmittel", "waschmittel", "weichspüler", "reiniger", "müllbeutel", "küchenrolle", "toilettenpapier", "taschentücher", "batterie", "kerze", "kugelschreiber", "teelicht", "brotdose", "frischhaltedose", "vorratsdose", "alufolie", "frischhaltefolie", "backpapier", "spülmaschinentabs", "geschirrtabs"];
 /** Nahrungsergänzung und Tee (oft aus der Drogerie, aber mit MHD). */
@@ -238,7 +239,8 @@ export function mhdAuto(p: { category: string; mhdMode?: string | null; name?: s
     return kind ? { relevant: true, reason: `Babynahrung („${kind.word}“)`, unsure: false } : { relevant: true, reason: "Babyprodukt – Nahrung oder Zubehör? bitte festlegen", unsure: true };
   }
   // Klingt eindeutig nach Lebensmittel (auch wenn die Kategorie nicht passt – das meldet „Kategorie prüfen“).
-  if (kind) return { relevant: true, reason: `klingt nach Lebensmittel („${kind.word}“)`, unsure: false };
+  // Nur Geschmack/Duft („Orange“, „Mango“) reicht nicht: Ein „Styling Gel Bambus & Orange“ unter Drogerie hat kein MHD.
+  if (kind && !kind.flavorOnly) return { relevant: true, reason: `klingt nach Lebensmittel („${kind.word}“)`, unsure: false };
   if (p.category === UNSORTED_CATEGORY) return { relevant: true, reason: "Kategorie noch offen – bitte festlegen", unsure: true };
   return { relevant: false, reason: p.category, unsure: false };
 }
@@ -261,8 +263,8 @@ export function categoryHint(p: { name: string; variant?: string | null; categor
   if (p.category === "Babyprodukte") return null;
   if (kind) {
     const suggest = KIND_CATEGORY[kind.kind];
-    // Nur Geschmack erkannt (z. B. „Mango“) – unter einer Lebensmittel-Kategorie kein Grund zur Änderung.
-    if (kind.flavorOnly && (FOOD_CATEGORIES.has(p.category) || p.category === "Babyprodukte")) return null;
+    // Nur Geschmack/Duft erkannt („Mango“, „Orange“) – nie ein Grund, die Kategorie zu ändern.
+    if (kind.flavorOnly) return null;
     if (suggest !== p.category) {
       // Nicht jede Abweichung ist ein Fehler: Getränke/Tee/Süßes unter „Lebensmittel“ sind nur zu grob, eigene
       // Kategorien (z. B. „Kaffee“) bleiben unangetastet, solange sie zur Art passen.
@@ -453,6 +455,53 @@ export function priceState(item: PriceInput, imageFileId: string | null | undefi
 
 export type Issue = { key: IssueKey; label: string; level: "fehlt" | "pruefen" };
 export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich" | "rueckseite" | "mhd-ki" | "mehrere";
+
+/**
+ * Rangfolge der Prüfhinweise: 1 = zuerst klären (Preis/Konflikt – sonst steht Falsches im Aushang),
+ * 2 = prüfen, 3 = optional (stört die Ausgabe nicht).
+ */
+export const ISSUE_TIER: Record<IssueKey, 1 | 2 | 3> = {
+  konflikt: 1, "foto-alt": 1, preis: 1, name: 1, rueckseite: 1, mehrere: 1,
+  "preis-unbestaetigt": 2, vergleich: 2, einheit: 2, "ki-angaben": 2, mhd: 2, "mhd-pruefen": 2, "mhd-ki": 2, kategorie: 2, "kategorie-pruefen": 2,
+  intern: 3, foto: 3,
+};
+export const TIER_LABELS = { 1: "Zuerst klären", 2: "Prüfen", 3: "Optional" } as const;
+
+/** Was der Hinweis bedeutet und was zu tun ist – für die aufklappbaren Details je Produkt. */
+export const ISSUE_HELP: Record<IssueKey, string> = {
+  konflikt: "Im Foto steht ein anderer Preis als eingetragen – entscheiden, welcher gilt.",
+  "foto-alt": "Das Foto zeigt einen alten Preis, der sich nicht verdecken lässt – bitte ein Foto ohne Preis hochladen.",
+  preis: "Noch keine Spendenempfehlung – ohne Preis erscheint das Produkt ohne Betrag.",
+  name: "Noch kein Name – erscheint sonst nicht im Aushang.",
+  rueckseite: "Wahrscheinlich die Rückseite eines anderen Produkts – zusammenführen, sonst steht es doppelt da.",
+  mehrere: "Auf dem Foto sind mehrere verschiedene Produkte – bitte einzeln fotografieren.",
+  "preis-unbestaetigt": "Preis aus Foto oder KI übernommen – kurz ansehen und bestätigen.",
+  vergleich: "Der Handelspreis bezieht sich evtl. auf eine andere Packungsgröße.",
+  einheit: "Worauf bezieht sich der Preis – Stück, Packung oder Karton?",
+  "ki-angaben": "Name/Variante hat die KI eingetragen – bitte kurz prüfen.",
+  mhd: "Lebensmittel ohne MHD – Datum eintragen oder von der Rückseite lesen lassen.",
+  "mhd-pruefen": "Unklar, ob Nahrung (MHD nötig) oder Zubehör.",
+  "mhd-ki": "MHD automatisch vom Foto gelesen – bitte bestätigen oder korrigieren.",
+  kategorie: "Noch keiner Kategorie zugeordnet – steht sonst unter „Sonstiges“.",
+  "kategorie-pruefen": "Die Kategorie passt vermutlich nicht zum Produkt.",
+  intern: "Interner KI-Hinweis im Namen – erscheint nicht in der Ausgabe, kann bereinigt werden.",
+  foto: "Kein Foto – erscheint nicht auf der Collage.",
+};
+
+/** Wichtigste zuerst (stabile Reihenfolge innerhalb einer Stufe). */
+export function sortIssues<T extends { key: IssueKey }>(issues: T[]): T[] {
+  return issues.map((x, n) => ({ x, n })).sort((a, b) => ISSUE_TIER[a.x.key] - ISSUE_TIER[b.x.key] || a.n - b.n).map((e) => e.x);
+}
+
+/** Ein Satz je Produkt: „Zuerst klären: Preis fehlt · außerdem 2 zu prüfen“. */
+export function issueSummary(issues: { key: IssueKey; label: string }[]): string {
+  if (issues.length === 0) return "Alles erledigt";
+  const sorted = sortIssues(issues);
+  const top = ISSUE_TIER[sorted[0].key];
+  const first = sorted.filter((i) => ISSUE_TIER[i.key] === top).map((i) => i.label);
+  const rest = sorted.length - first.length;
+  return `${TIER_LABELS[top]}: ${first.join(", ")}${rest ? ` · außerdem ${rest} weitere${rest === 1 ? "r Punkt" : " Punkte"}` : ""}`;
+}
 
 export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
   { key: "mehrere", label: "Mehrere Produkte im Foto" },

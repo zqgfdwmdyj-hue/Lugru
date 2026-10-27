@@ -110,6 +110,17 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   zählt nicht als „viel übrig“. Beim Kopieren einer Verteilung werden Bestand, Ergebnisse und MHD nicht übernommen.
 - **Statistik:** Renner und Ladenhüter (Anteil plus Anzahl der Ergebnisse), Kategorien nach Jahreszeit, am häufigsten
   dabei – je Jahr oder gesamt. Gezählt werden Produktangebote (Einträge), keine abgegebenen Stückzahlen.
+- **Farbsystem:** Produkte blau, Prüfen bernstein, Ausgabe violett, Ergebnisse türkis – für aktive Reiter,
+  Bereichsüberschriften und Hauptaktionen. Status immer mit Farbe, Symbol und Text: ✓ grün (ok/alles weg),
+  ! bernstein (prüfen/wenig übrig), ✕ rot-koralle (Fehler/viel übrig), ○ grau (offen). Fließtext 16 px,
+  Nebenangaben mindestens 14 px, Knöpfe auf dem Handy mindestens 44 px hoch.
+- **Prüfen in drei Stufen:** ① Zuerst klären (Preiswiderspruch, alter Fotopreis, Rückseite, ohne Preis/Namen,
+  mehrere Produkte im Foto), ② Prüfen (unbestätigt, Vergleich, KI-Angaben, Einheit, MHD, Kategorie), ③ Optional
+  (interne Hinweise, ohne Foto). MHD-Hinweise in einem Block. „Je Produkt“: ein Satz Zusammenfassung, aufklappbar.
+- **Ergebnisliste:** Suche, Kategorie und Status (offen/erfasst/je Ergebnis) kombinierbar, Fortschritt und Filter
+  bleiben beim Scrollen oben. Ein Tipp speichert sofort, „↺ zurücksetzen“ macht es rückgängig.
+- **Startseite:** je Verteilung eine Hauptaktion nach Stand (Fotos hochladen → Prüfen → Ausgabe → Ergebnisse),
+  Nachbereitung und Archiv kompakt.
 - **Export ohne Blockieren:** Collage, PDF und Social-Media-Bilder zeigen offene Punkte als Hinweis auf der Seite
   (kein Browser-Dialog), dazu Fortschritt, „Abbrechen“ und eine verständliche Fehlermeldung.
 - **Social Media:** Story (9:16), Feed-Titelbild (4:5), Karussell (ein Produkt pro Bild), Story-Serie,

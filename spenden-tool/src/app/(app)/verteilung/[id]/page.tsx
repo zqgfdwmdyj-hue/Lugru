@@ -7,7 +7,7 @@ import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { stockPrice } from "@/lib/pricing";
 import { autoAiMode } from "@/lib/settings";
-import { OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { mhdLabel, outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
@@ -98,14 +98,14 @@ export default async function ProduktePage({ params, searchParams }: { params: P
       />
 
       {pastEvent && withoutOutcome > 0 && (
-        <div className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span>Die Verteilung ist vorbei: Wie lief es? Für {withoutOutcome} von {rows.length} Produkten fehlt noch das Ergebnis.</span>
-          <Link href={`/verteilung/${id}/ergebnisse`} className="btn btn-small btn-primary">Ergebnisse erfassen</Link>
+        <div className="notice notice-results" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span>📊 Die Verteilung ist vorbei: Wie lief es? Für {withoutOutcome} von {rows.length} Produkten fehlt noch das Ergebnis.</span>
+          <Link href={`/verteilung/${id}/ergebnisse`} className="btn btn-small btn-results">Ergebnisse erfassen</Link>
         </div>
       )}
       {conflicts > 0 && (
-        <div className="notice notice-warn">
-          {conflicts === 1 ? "Bei einem Produkt widersprechen" : `Bei ${conflicts} Produkten widersprechen`} sich Foto und eingetragener Preis. Ausgegeben wird überall der eingetragene Preis. <Link href={`/verteilung/${id}/pruefen`}>Jetzt prüfen</Link>
+        <div className="notice notice-error">
+          ✕ {conflicts === 1 ? "Bei einem Produkt widersprechen" : `Bei ${conflicts} Produkten widersprechen`} sich Foto und eingetragener Preis. Ausgegeben wird überall der eingetragene Preis. <Link href={`/verteilung/${id}/pruefen`}>Jetzt prüfen</Link>
         </div>
       )}
       {view.busy && <div className="notice notice-info">KI arbeitet im Hintergrund (Fotos lesen / Preise suchen) … die Seite aktualisiert sich von selbst.</div>}
@@ -136,10 +136,10 @@ export default async function ProduktePage({ params, searchParams }: { params: P
 const O = ({ name, value }: { name: string; value: string }) => <input type="hidden" name={`o_${name}`} value={value} />;
 
 function StatusTags({ r }: { r: EventRow }) {
-  if (r.issues.length === 0) return <span className="tag tag-ok">✓ Fertig</span>;
+  if (r.issues.length === 0) return <span className="tag tag-ok">Fertig</span>;
   return (
     <>
-      {r.issues.slice(0, 3).map((i) => <span key={i.key} className={`tag ${i.key === "konflikt" ? "tag-danger" : i.level === "fehlt" ? "tag-warn" : "tag-info"}`}>{i.label}</span>)}
+      {r.issues.slice(0, 3).map((i) => <span key={i.key} className={`tag ${ISSUE_TIER[i.key] === 1 ? "tag-danger" : ISSUE_TIER[i.key] === 2 ? "tag-warn" : "tag-neutral"}`} title={ISSUE_HELP[i.key]}>{i.label}</span>)}
       {r.issues.length > 3 && <span className="tag tag-neutral">+{r.issues.length - 3}</span>}
     </>
   );
@@ -172,7 +172,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
           <label htmlFor={`open-${item.id}`} className="pl-title">{name || <span className="muted">Ohne Namen – bitte eintragen</span>}</label>
           <div className="small muted">
             {[product.variant, product.category, item.stock ? `Bestand: ${STOCK_LABELS[item.stock]}` : null].filter(Boolean).join(" · ")}
-            {item.bestBefore ? <span className={item.bestBeforeSource === "foto-ki" ? "warn-text" : ""}> · {mhdLabel(item.bestBefore)}{item.bestBeforeSource === "foto-ki" ? " (KI – prüfen)" : ""}</span> : mhd.relevant && !mhd.unsure ? <span className="warn-text"> · MHD fehlt</span> : null}
+            {item.bestBefore ? <span className={item.bestBeforeSource === "foto-ki" ? "warn-text" : ""}> · {mhdLabel(item.bestBefore)}{item.bestBeforeSource === "foto-ki" ? " (KI – prüfen)" : ""}</span> : null}
           </div>
           {item.outcome && <div className="small muted">Ergebnis: {OUTCOME_LABELS[item.outcome]}</div>}
         </div>

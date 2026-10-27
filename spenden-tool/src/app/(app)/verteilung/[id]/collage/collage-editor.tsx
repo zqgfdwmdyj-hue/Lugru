@@ -552,7 +552,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
                 const col = TILE_COLORS[c];
                 return (
                   <button key={c} type="button" title={col.label} aria-label={`Farbe ${col.label}`} aria-pressed={selStyle.color === c} onClick={() => changeStyle([sel.productId], { ...styles[sel.productId], pos: selStyle.pos, color: c })}
-                    style={{ minWidth: 40, height: 30, padding: "0 8px", borderRadius: 6, cursor: "pointer", fontWeight: 800, fontSize: 13, color: col.text, background: col.field ?? (col.veil === "dark" ? "#55606a" : "#e9e6dd"), border: selStyle.color === c ? "3px solid #ffd60a" : "1px solid #8a949c", boxShadow: selStyle.color === c ? "0 0 0 1px #1b1d1f" : "none" }}>
+                    style={{ minWidth: 40, height: 30, padding: "0 8px", borderRadius: 6, cursor: "pointer", fontWeight: 800, fontSize: 14, color: col.text, background: col.field ?? (col.veil === "dark" ? "#55606a" : "#e9e6dd"), border: selStyle.color === c ? "3px solid #ffd60a" : "1px solid #8a949c", boxShadow: selStyle.color === c ? "0 0 0 1px #1b1d1f" : "none" }}>
                     Aa
                   </button>
                 );

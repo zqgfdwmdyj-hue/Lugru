@@ -110,36 +110,63 @@ export default async function SpendenPage({ searchParams }: { searchParams: Prom
       )}
 
       {followUp.length > 0 && (
-        <section className="stack" style={{ gap: 8 }}>
-          <h2>Nachbereitung: Wie lief es?</h2>
-          <div className="small muted">Für diese Verteilungen fehlen noch Ergebnisse (alles weg / wenig übrig / viel übrig) – Grundlage der Statistik.</div>
-          <div className="event-cards">{followUp.map((r) => <EventCard key={r.e.id} r={r} weekday={weekday(r.e.eventDate)} />)}</div>
+        <section className="card follow-up">
+          <div className="card-head"><h2>📊 Nachbereitung: Wie lief es?</h2><span className="small muted">Grundlage der Statistik</span></div>
+          {followUp.map((r) => {
+            const done = r.items - r.noOutcome;
+            return (
+              <div key={r.e.id} className="follow-row">
+                <span className="follow-text">
+                  <strong className="wrap-anywhere">{weekday(r.e.eventDate)} {formatDate(r.e.eventDate)} · {r.e.title}</strong>
+                  <span className="small muted">{done} von {r.items} erfasst</span>
+                  <span className="progress-bar" aria-hidden="true"><span style={{ width: `${Math.round((done / r.items) * 100)}%` }} /></span>
+                </span>
+                <Link href={`/verteilung/${r.e.id}/ergebnisse`} className="btn btn-results">Ergebnisse erfassen</Link>
+              </div>
+            );
+          })}
         </section>
       )}
 
       {past.length > 0 && (
-        <section className="stack" style={{ gap: 8 }}>
-          <div className="between"><h2>Archiv</h2><span className="small muted">{past.length} frühere Verteilungen</span></div>
-          <div className="card archive-list">
+        <details className="card archive" open={sp.archiv === "alle" || undefined}>
+          <summary className="card-head"><h2>🗂 Archiv</h2><span className="small muted">{past.length} frühere Verteilungen – antippen</span></summary>
+          <div className="archive-list">
             {archive.map((r) => (
               <Link key={r.e.id} href={`/verteilung/${r.e.id}`} className="archive-row">
                 <span className="num">{weekday(r.e.eventDate)} {formatDate(r.e.eventDate)}</span>
                 <span className="archive-title">{r.e.title}{r.e.location ? <span className="muted"> · {r.e.location}</span> : null}</span>
-                <span className="small muted">{r.items} Produkte{r.items > 0 ? (r.noOutcome ? ` · ${r.noOutcome} ohne Ergebnis` : " · Ergebnisse ✓") : ""}</span>
+                <span className="archive-meta">
+                  <span className="small muted">{r.items} Produkte</span>
+                  {r.items > 0 && (r.noOutcome ? <span className="tag tag-neutral">{r.noOutcome} ohne Ergebnis</span> : <span className="tag tag-ok">Ergebnisse</span>)}
+                </span>
               </Link>
             ))}
           </div>
-          {past.length > archive.length && <Link href="/?archiv=alle" className="small">Alle {past.length} anzeigen</Link>}
-        </section>
+          {past.length > archive.length && <div className="card-pad"><Link href="/?archiv=alle" className="small">Alle {past.length} anzeigen</Link></div>}
+        </details>
       )}
     </>
   );
+}
+
+/**
+ * Eine klare Hauptaktion je Verteilung – je nach Stand: erst Fotos, dann Prüfen, dann Ausgabe; danach Ergebnisse.
+ * Farbe des Knopfs = Bereich (Produkte blau, Prüfen bernstein, Ausgabe violett, Ergebnisse türkis).
+ */
+function mainAction(r: Row, base: string, upcoming: boolean): { href: string; label: string; cls: string } {
+  const open = r.noPrice + r.unconfirmed;
+  if (r.items === 0) return { href: base, label: "📷 Fotos hochladen", cls: "btn-products" };
+  if (!upcoming && r.noOutcome > 0 && r.e.eventDate < new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })) return { href: `${base}/ergebnisse`, label: `📊 Ergebnisse erfassen (${r.items - r.noOutcome}/${r.items})`, cls: "btn-results" };
+  if (open > 0) return { href: `${base}/pruefen`, label: `🔍 Prüfen: ${open} offen`, cls: "btn-check" };
+  return { href: `${base}/ausgabe`, label: "🖨 Ausgabe erstellen", cls: "btn-output" };
 }
 
 function EventCard({ r, weekday, upcoming }: { r: Row; weekday: string; upcoming?: boolean }) {
   const { e } = r;
   const base = `/verteilung/${e.id}`;
   const open = r.noPrice + r.unconfirmed;
+  const main = mainAction(r, base, !!upcoming);
   return (
     <div className="card event-card">
       <Link href={base} className="event-card-main">
@@ -147,15 +174,16 @@ function EventCard({ r, weekday, upcoming }: { r: Row; weekday: string; upcoming
         <strong className="wrap-anywhere">{e.title}</strong>
         <span className="small muted">{e.location ? `${e.location} · ` : ""}{r.items} Produkte</span>
         <span>
-          {upcoming && <span className="tag tag-info">geplant</span>}{" "}
-          {r.items > 0 && (open ? <span className="tag tag-warn">{r.noPrice ? `${r.noPrice} ohne Preis` : ""}{r.noPrice && r.unconfirmed ? " · " : ""}{r.unconfirmed ? `${r.unconfirmed} unbestätigt` : ""}</span> : <span className="tag tag-ok">✓ Preise vollständig</span>)}
+          {upcoming && <span className="tag tag-neutral">geplant</span>}{" "}
+          {r.items > 0 && (open ? <span className="tag tag-warn">{r.noPrice ? `${r.noPrice} ohne Preis` : ""}{r.noPrice && r.unconfirmed ? " · " : ""}{r.unconfirmed ? `${r.unconfirmed} unbestätigt` : ""}</span> : <span className="tag tag-ok">Preise vollständig</span>)}
         </span>
       </Link>
       <div className="event-card-actions">
-        <Link href={base} className="btn btn-small btn-primary">Produkte</Link>
-        <Link href={`${base}/pruefen`} className="btn btn-small">Prüfen</Link>
-        <Link href={`${base}/ausgabe`} className="btn btn-small">Ausgabe</Link>
-        {!upcoming && r.items > 0 && <Link href={`${base}/ergebnisse`} className="btn btn-small">Ergebnisse ({r.items - r.noOutcome}/{r.items})</Link>}
+        <Link href={main.href} className={`btn ${main.cls} event-main-action`}>{main.label}</Link>
+        <span className="event-more small">
+          <Link href={base}>Produkte</Link> · <Link href={`${base}/pruefen`}>Prüfen</Link> · <Link href={`${base}/ausgabe`}>Ausgabe</Link>
+          {!upcoming && r.items > 0 && <> · <Link href={`${base}/ergebnisse`}>Ergebnisse</Link></>}
+        </span>
       </div>
     </div>
   );

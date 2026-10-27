@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { packText, stripInternal, stripInternalDeep } from "@/lib/price-logic";
 import { perPiece, suggestPackPrice } from "@/lib/pricing";
-import { categoryHint, cleanAiText, comparability, guessUnit, isSecondHand, itemIssues, mhdAuto, mhdRelevant, parseSize, pricePrefix, priceState, publicText, splitInternal, unitIssue, unitLabel, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { categoryHint, productKind, cleanAiText, comparability, guessUnit, isSecondHand, itemIssues, mhdAuto, mhdRelevant, parseSize, pricePrefix, priceState, publicText, splitInternal, unitIssue, unitLabel, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { flyerSections, outputPrice } from "@/lib/layout";
 
 const FILE = "11111111-1111-1111-1111-111111111111";
@@ -236,6 +236,30 @@ describe("Feinere Kategorien", () => {
     expect(categoryHint({ name: "Bitzee", category: "Lebensmittel" })?.suggest).toBe("Spielzeug");
     expect(categoryHint({ name: "Baby Einstein Magic Touch Piano", category: "Lebensmittel" })?.suggest).toBe("Spielzeug");
     expect(categoryHint({ name: "Haferflocken", category: "Lebensmittel" })).toBeNull();
+  });
+  it("Pflegeprodukt mit Duftangabe: Kategorie und MHD gemeinsam richtig", () => {
+    const gel = { name: "Schoenenberger ExtraHair Styling Gel", variant: "Bambus & Orange" };
+    expect(productKind(gel.name, gel.variant)?.kind).toBe("haarpflege");
+    for (const category of ["Drogerie", "Lebensmittel", UNSORTED_CATEGORY]) expect(mhdAuto({ ...gel, category }).relevant).toBe(false);
+    expect(categoryHint({ ...gel, category: "Drogerie" })).toBeNull();
+    expect(categoryHint({ ...gel, category: "Lebensmittel" })?.suggest).toBe("Drogerie");
+    expect(categoryHint({ name: "Schoenenberger ExtraHair Styling Gel – Bambus & Orange", category: "Lebensmittel" })?.suggest).toBe("Drogerie");
+    expect(productKind("Balea Shampoo Orange & Ingwer")?.kind).toBe("haarpflege");
+    expect(productKind("Duschgel Mango")?.kind).toBe("hautpflege");
+    expect(productKind("Bodylotion Kokos")?.kind).toBe("hautpflege");
+    expect(mhdAuto({ name: "Haarspray Vanille", category: "Drogerie" }).relevant).toBe(false);
+  });
+  it("Geschmack allein ändert weder Kategorie noch MHD einer Drogerie-Kategorie", () => {
+    expect(categoryHint({ name: "Duftkerze Orange", category: "Haushalt" })).toBeNull();
+    expect(mhdAuto({ name: "Raumduft Orange", category: "Haushalt" }).relevant).toBe(false);
+    expect(categoryHint({ name: "Orangen Raumspray", category: "Drogerie" })).toBeNull();
+    // Unsortiert mit nur einem Geschmack: lieber nachfragen als raten.
+    expect(mhdAuto({ name: "Bambus Orange", category: UNSORTED_CATEGORY }).unsure).toBe(true);
+    // Echte Lebensmittel bleiben Lebensmittel.
+    expect(productKind("Orangensaft")?.kind).toBe("getraenk");
+    expect(mhdAuto({ name: "Mango Chutney", category: "Lebensmittel" }).relevant).toBe(true);
+    expect(productKind("Nuss-Nougat-Creme")?.kind).not.toBe("hautpflege");
+    expect(productKind("Haferflocken")?.kind).toBe("lebensmittel");
   });
   it("Süßes und Tee brauchen ein MHD, Pflege nicht", () => {
     expect(mhdAuto({ category: "Süßes & Snacks", name: "Gummibärchen" }).relevant).toBe(true);

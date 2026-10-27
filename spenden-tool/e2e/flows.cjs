@@ -109,12 +109,13 @@ async function photo(dir, name, rgb, w = 640) {
 
     // 4: Ergebnis speichern → neu laden → Statistik
     await q("update event_items set stock = 'kartons' where id = $1", [a.id]);
-    await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?alle=1`);
-    const rowA = page.locator(".outcome-row", { hasText: "E2E Haferkekse" });
+    await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse`, { waitUntil: "networkidle" });
+    const rowA = page.locator(".outcome-item", { hasText: "E2E Haferkekse" });
     await rowA.locator("button.outcome-weg").click();
-    await page.waitForLoadState("networkidle");
-    await page.reload();
-    ok(await page.locator(".outcome-row", { hasText: "E2E Haferkekse" }).locator("button.outcome-weg[aria-pressed=true]").count() === 1, "Ergebnis nach Neuladen gespeichert (alles weg)");
+    ok(await rowA.locator("button.outcome-weg[aria-pressed=true]").count() === 1, "Gewähltes Ergebnis sofort deutlich markiert");
+    ok(await until(async () => (await q("select outcome from event_items where id = $1", [a.id]))[0].outcome === "weg"), "Ergebnis sofort gespeichert");
+    await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?status=alle`);
+    ok(await page.locator(".outcome-item", { hasText: "E2E Haferkekse" }).locator("button.outcome-weg[aria-pressed=true]").count() === 1, "Ergebnis nach Neuladen gespeichert (alles weg)");
     ok((await q("select outcome from event_items where id = $1", [a.id]))[0].outcome === "weg", "Ergebnis in der Datenbank");
     await page.goto(`${BASE}/statistik?jahr=2026`);
     const renner = await page.locator("section", { hasText: "Renner" }).innerText();
@@ -133,6 +134,50 @@ async function photo(dir, name, rgb, w = 640) {
     const copied = (await q("select price::float, pack_kind, pack_count, pack_price::float, stock, outcome, best_before from event_items where event_id = $1 and product_id = $2", [copyId, a.product_id]))[0];
     ok(copied && copied.price === 0.5 && copied.pack_kind === "karton" && copied.pack_count === 24 && copied.pack_price === 5, "Kopie übernimmt Preis und Packungsangabe");
     ok(copied && copied.stock === null && copied.outcome === null && copied.best_before === null, "Kopie übernimmt Bestand, Ergebnis und MHD nicht");
+
+    // 4b: Suche und kombinierte Filter in der Ergebnisliste, dann Zurücksetzen → Statistik ohne Eintrag
+    await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?status=alle`, { waitUntil: "networkidle" });
+    const shownNames = async () => (await page.locator(".outcome-item .outcome-name").allInnerTexts()).join(" | ");
+    await page.fill(".outcome-filters input[type=search]", "hafer");
+    ok((await page.locator(".outcome-item").count()) === 1 && /Haferkekse/.test(await shownNames()), "Suche findet „hafer“", await shownNames());
+    await page.selectOption(".outcome-filters select", "Tee & Nahrungsergänzung");
+    ok((await page.locator(".outcome-item").count()) === 0, "Suche + andere Kategorie → nichts");
+    await page.fill(".outcome-filters input[type=search]", "");
+    ok((await page.locator(".outcome-item").count()) === 1 && /Kräutertee/.test(await shownNames()), "Nur Kategorie → Kräutertee");
+    await page.selectOption(".outcome-filters select", "");
+    await page.locator(".outcome-sticky .chip", { hasText: "Erfasst" }).click();
+    ok((await page.locator(".outcome-item").count()) === 1 && /Haferkekse/.test(await shownNames()), "Status „Erfasst“ zeigt nur erfasste");
+    await page.locator(".outcome-sticky .chip", { hasText: "Noch offen" }).click();
+    ok((await page.locator(".outcome-item").count()) === 1 && /Kräutertee/.test(await shownNames()), "Status „Noch offen“ zeigt nur offene");
+    await page.selectOption(".outcome-filters select", "Lebensmittel");
+    ok((await page.locator(".outcome-item").count()) === 0, "Noch offen + Lebensmittel → nichts (kombiniert)");
+    ok((await page.locator(".outcome-progress").innerText()).includes("1 von 2 erfasst"), "Fortschritt „1 von 2 erfasst“");
+    await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?status=alle`, { waitUntil: "networkidle" });
+    await page.locator(".outcome-item", { hasText: "E2E Haferkekse" }).locator(".outcome-reset").click();
+    ok(await until(async () => (await q("select outcome from event_items where id = $1", [a.id]))[0].outcome === null), "Zurücksetzen speichert sofort");
+    await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?status=alle`);
+    ok(await page.locator(".outcome-item", { hasText: "E2E Haferkekse" }).locator("button[aria-pressed=true]").count() === 0, "Nach Neuladen wieder offen");
+    await page.goto(`${BASE}/statistik?jahr=2026`);
+    ok(!(await page.locator("section", { hasText: "Renner" }).innerText()).includes("E2E Haferkekse"), "Statistik ohne zurückgesetztes Ergebnis");
+
+    // 4c: PDF mit mehreren Seiten (26 Produkte, Standard 9–12 je Bild)
+    const [fileRow] = await q("select image_file_id from products where id = $1", [a.product_id]);
+    for (let n = 1; n <= 24; n++) {
+      const [pr] = await q("insert into products (name, category, image_file_id) values ($1, 'Lebensmittel', $2) returning id", [`E2E PDF ${n}`, fileRow.image_file_id]);
+      await q("insert into event_items (event_id, product_id, price, price_confirmed, sort) values ($1, $2, 1, true, $3)", [eventId, pr.id, 1000 + n]);
+    }
+    await page.goto(`${BASE}/verteilung/${eventId}/collage`);
+    await page.waitForFunction(() => !document.body.innerText.includes("Lade Fotos"), null, { timeout: 60000 });
+    const pdfBtn = page.getByRole("button", { name: /als PDF/ });
+    const expectedPages = Number(((await pdfBtn.innerText()).match(/Alle (\d+)/) || [])[1] || 0);
+    const dlPromise = page.waitForEvent("download", { timeout: 60000 }).catch(() => null);
+    await pdfBtn.click();
+    const ask = page.getByRole("button", { name: /Trotzdem: PDF/ });
+    if (await ask.isVisible({ timeout: 2000 }).catch(() => false)) await ask.click();
+    const dl = await dlPromise;
+    const pdf = dl ? fs.readFileSync(await dl.path()).toString("latin1") : "";
+    const pdfPages = (pdf.match(/\/Type\s*\/Page[^s]/g) || []).length;
+    ok(expectedPages >= 2 && pdfPages === expectedPages, "PDF-Export mit mehreren Seiten", `${pdfPages} Seiten (erwartet ${expectedPages})`);
 
     // 7: KI erkennt nach dem Hochladen selbst, Kartei öffnet sich, Preis vorausgefüllt (unbestätigt)
     await page.goto(`${BASE}/`);
@@ -201,6 +246,21 @@ async function photo(dir, name, rgb, w = 640) {
     await q("update event_items set best_before = '2026-12-24', best_before_source = 'manuell' where id = $1", [singleItem.id]);
     await page.goto(`${BASE}/verteilung/${futureId}`);
     ok((await page.locator(`#p-${single} .pl-name`).innerText()).includes("MHD 24.12.26"), "MHD steht in der Produktzeile");
+
+    // 13: Schmaler Handybildschirm (360 px): nichts ragt seitlich heraus, Touchflächen ≥ 44 px, Text ≥ 14 px
+    await page.setViewportSize({ width: 360, height: 780 });
+    for (const [u, what] of [["/", "Startseite"], [`/verteilung/${eventId}`, "Produktliste"], [`/verteilung/${eventId}/pruefen`, "Prüfen"], [`/verteilung/${eventId}/ergebnisse?status=alle`, "Ergebnisse"], [`/verteilung/${eventId}/ausgabe`, "Ausgabe"]]) {
+      await page.goto(BASE + u, { waitUntil: "networkidle" });
+      const m = await page.evaluate(() => ({
+        over: document.documentElement.scrollWidth - innerWidth,
+        small: [...document.querySelectorAll("body *")].filter((el) => el.offsetParent !== null && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && parseFloat(getComputedStyle(el).fontSize) < 14).length,
+        tiny: [...document.querySelectorAll("button, a.btn, .chip, select, input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file])")].filter((el) => { const r = el.getBoundingClientRect(); return el.offsetParent !== null && r.height > 0 && r.height < 44; }).length,
+      }));
+      ok(m.over <= 0 && m.small === 0 && m.tiny === 0, `Handy 360 px: ${what}`, `seitlich ${m.over}px · Text < 14px: ${m.small} · Knöpfe < 44px: ${m.tiny}`);
+    }
+    const btnRows = await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?status=alle`).then(() => page.locator(".outcome-item").first().locator(".outcome-btn").evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().top))));
+    ok(btnRows.length === 3 && new Set(btnRows).size === 1, "Ergebnisknöpfe nebeneinander in einer Zeile (Text bricht um)");
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     ok(errors.length === 0, "keine Fehler im Browser", errors.slice(0, 3).join(" | "));
   } catch (e) {

@@ -11,6 +11,11 @@ Geprüft wird:
 4. Ergebnis erfassen („Ergebnisse“-Reiter) → neu laden → Statistik (Renner, Kennzahlen)
 5. Verteilung kopieren → Preise/Packungen übernommen, Bestand/Ergebnis/MHD nicht
 6. Packungs-/Kartonempfehlung gleich in Collage, Aushang und Messenger-Text
+7. KI füllt nach dem Hochladen aus, „mehrere Produkte im Foto“, neues Produkt mit mehreren Fotos, Varianten,
+   Preis nach Bestand, MHD in der Zeile
+8. Ergebnisliste: Suche und kombinierte Filter, Zurücksetzen → Neuladen → Statistik
+9. PDF-Export mit mehreren Seiten
+10. Schmaler Handybildschirm (360 px): nichts ragt heraus, Text ≥ 14 px, Knöpfe ≥ 44 px
 
 ## Ausführen
 

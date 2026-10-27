@@ -5,9 +5,9 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
 const ITEMS = [
-  { href: "/", label: "Verteilungen" },
-  { href: "/produkte", label: "Produkte" },
-  { href: "/statistik", label: "Statistik" },
+  { href: "/", label: "Verteilungen", icon: "📅", area: "produkte" },
+  { href: "/produkte", label: "Produkte", icon: "📦", area: "produkte" },
+  { href: "/statistik", label: "Statistik", icon: "📊", area: "ergebnisse" },
 ];
 
 export function Nav({ admin = false }: { admin?: boolean }) {
@@ -20,8 +20,10 @@ export function Nav({ admin = false }: { admin?: boolean }) {
   const active = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/verteilung") : pathname.startsWith(href));
   return (
     <nav aria-label="Hauptnavigation">
-      {[...ITEMS, ...(admin ? [{ href: "/verwaltung", label: "Verwaltung" }] : []), { href: "/konto", label: "Mein Konto" }].map((i) => (
-        <Link key={i.href} href={i.href} className={`nav-link${active(i.href) ? " active" : ""}`}>{i.label}</Link>
+      {[...ITEMS, ...(admin ? [{ href: "/verwaltung", label: "Verwaltung", icon: "⚙", area: "neutral" }] : []), { href: "/konto", label: "Mein Konto", icon: "👤", area: "neutral" }].map((i) => (
+        <Link key={i.href} href={i.href} className={`nav-link nav-${i.area}${active(i.href) ? " active" : ""}`} aria-current={active(i.href) ? "page" : undefined}>
+          <span><span aria-hidden="true" className="nav-icon">{i.icon}</span> {i.label}</span>
+        </Link>
       ))}
     </nav>
   );

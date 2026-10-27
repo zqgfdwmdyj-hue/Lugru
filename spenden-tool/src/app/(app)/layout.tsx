@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="sidebar-foot">
           <Link href="/konto" className="small" style={{ display: "block", marginBottom: 4 }}>👤 {me.name}</Link>
           <form action={logout}>
-            <button className="btn-link" type="submit" style={{ fontSize: 12 }}>Abmelden</button>
+            <button className="btn-link" type="submit" style={{ fontSize: 14 }}>Abmelden</button>
           </form>
         </div>
       </aside>

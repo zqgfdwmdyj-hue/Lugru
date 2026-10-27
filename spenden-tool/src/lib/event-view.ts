@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { isPlaceholderName } from "@/lib/layout";
-import { categoryHint, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
+import { categoryHint, sortIssues, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
 import { perPiece, suggestDonationPrice, suggestPackPrice } from "@/lib/pricing";
 import { extraPhotos, latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
 import { backsideCandidates } from "@/lib/backside";
@@ -53,6 +53,8 @@ export const loadEventView = cache(async (id: string) => {
       if (row) row.issues.unshift({ key: "rueckseite", label: "Mögliche Rückseite", level: "pruefen" });
     }
   }
+  // Wichtigste Hinweise zuerst (Preis/Konflikt vor Prüfen vor Optionalem).
+  for (const r of rows) r.issues = sortIssues(r.issues);
   const busy = [...checks.values()].some((c) => c.status === "pending" || c.status === "running") || rows.some((r) => r.state.photo === "wird-gelesen");
   return { event, rows, busy, pairs };
 });

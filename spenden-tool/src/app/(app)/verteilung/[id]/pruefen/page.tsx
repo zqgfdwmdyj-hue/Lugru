@@ -5,7 +5,7 @@ import { loadEventView, sourceLabel, type EventRow } from "@/lib/event-view";
 import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { AiModeSelect } from "@/components/price-check";
-import { guessUnit, mhdAuto, publicText, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { guessUnit, ISSUE_HELP, ISSUE_TIER, issueSummary, mhdAuto, TIER_LABELS, publicText, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { UnitReview } from "./unit-review";
 import { outputPrice } from "@/lib/layout";
 import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, keepSeparate, mergeBackside, readEventMhd, researchEvent, setMhdMode, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
@@ -43,15 +43,21 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
   const mhdUnsure = rows.filter((r) => r.issues.some((i) => i.key === "mhd-pruefen"));
   const oldPhoto = rows.filter((r) => r.issues.some((i) => i.key === "foto-alt"));
   const suggestions = rows.filter((r) => r.item.price === null && r.suggestion !== null && r.compare?.level !== "abweichend");
-  const missing = [
-    { key: "name", label: "ohne Namen" },
-    { key: "preis", label: "ohne Preis" },
-    { key: "mhd", label: "ohne MHD (nur wo nötig)" },
-    { key: "foto", label: "ohne Foto (Collage)" },
-  ].map((m) => ({ ...m, n: rows.filter((r) => has(r, m.key)).length }));
   const unread = rows.filter((r) => r.state.unread).length;
   const missingForAi = rows.filter((r) => r.item.price === null || r.unnamed).length;
   const done = rows.filter((r) => r.issues.length === 0).length;
+  // Stufen: 1 zuerst klären, 2 prüfen, 3 optional (siehe ISSUE_TIER)
+  const tierCount = (t: 1 | 2 | 3) => rows.filter((r) => r.issues.some((i) => ISSUE_TIER[i.key] === t)).length;
+  const first = [
+    { key: "preis", label: "ohne Preis" },
+    { key: "name", label: "ohne Namen" },
+    { key: "mehrere", label: "mehrere Produkte im Foto" },
+  ].map((m) => ({ ...m, n: rows.filter((r) => has(r, m.key)).length }));
+  const noPhoto = rows.filter((r) => has(r, "foto")).length;
+  const mhdMissing = rows.filter((r) => has(r, "mhd")).length;
+  const mhdKi = rows.filter((r) => has(r, "mhd-ki")).length;
+  const mhdTotal = mhdMissing + mhdKi + mhdUnsure.length;
+  const issueRows = rows.filter((r) => r.issues.length > 0).sort((a, b) => ISSUE_TIER[a.issues[0].key] - ISSUE_TIER[b.issues[0].key] || title(a).localeCompare(title(b), "de"));
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -60,21 +66,42 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
           <h2>{rows.length - done === 0 ? "✓ Alles geprüft" : `${rows.length - done} von ${rows.length} Produkten mit offenen Punkten`}</h2>
           <div className="small muted">Ausgegeben wird überall die eingetragene Spendenempfehlung. Was die KI oder die Fotoerkennung vorschlägt, gilt erst, wenn es hier bestätigt oder übernommen wird.</div>
         </div>
-        <div className="summary-chips">
-          {conflicts.length > 0 && <a href="#widersprueche" className="chip chip-danger">{conflicts.length} Preiswiderspruch</a>}
-          {unconfirmed.length > 0 && <a href="#unbestaetigt" className="chip">{unconfirmed.length} Preise unbestätigt</a>}
-          {aiData.length > 0 && <a href="#ki-angaben" className="chip">{aiData.length} KI-Angaben</a>}
-          {compare.length > 0 && <a href="#vergleich" className="chip">{compare.length} Preisvergleich unsicher</a>}
-          {oldPhoto.length > 0 && <a href="#foto-alt" className="chip chip-danger">{oldPhoto.length} Foto mit altem Preis</a>}
-          {pairs.length > 0 && <a href="#rueckseiten" className="chip chip-danger">{pairs.length} mögliche Rückseite(n)</a>}
-          {mhdUnsure.length > 0 && <a href="#mhd-pruefen" className="chip">{mhdUnsure.length} MHD-Relevanz prüfen</a>}
-          {units.length > 0 && <a href="#einheiten" className="chip">{units.length} Abgabeeinheit offen</a>}
-          {internal.length > 0 && <a href="#intern" className="chip">{internal.length} interne Hinweise im Text</a>}
-          {(unsorted.length > 0 || catHints.length > 0) && <a href="#kategorien" className="chip">{unsorted.length + catHints.length} Kategorie prüfen</a>}
-          {missing.filter((m) => m.n).map((m) => <Link key={m.key} href={`${list}?status=${m.key}`} className="chip">{m.n} {m.label}</Link>)}
+        <div className="tier-summary">
+          <div className="tier-line tier-1">
+            <strong>① {TIER_LABELS[1]} ({tierCount(1)})</strong>
+            <span className="summary-chips">
+              {conflicts.length > 0 && <a href="#widersprueche" className="chip chip-danger">{conflicts.length} Preiswiderspruch</a>}
+              {oldPhoto.length > 0 && <a href="#foto-alt" className="chip chip-danger">{oldPhoto.length} Foto mit altem Preis</a>}
+              {pairs.length > 0 && <a href="#rueckseiten" className="chip chip-danger">{pairs.length} mögliche Rückseite(n)</a>}
+              {first.filter((m) => m.n).map((m) => <Link key={m.key} href={`${list}?status=${m.key}`} className="chip chip-danger">{m.n} {m.label}</Link>)}
+              {tierCount(1) === 0 && <span className="chip chip-done">✓ nichts</span>}
+            </span>
+          </div>
+          <div className="tier-line tier-2">
+            <strong>② {TIER_LABELS[2]} ({tierCount(2)})</strong>
+            <span className="summary-chips">
+              {unconfirmed.length > 0 && <a href="#unbestaetigt" className="chip chip-warn">{unconfirmed.length} Preise unbestätigt</a>}
+              {compare.length > 0 && <a href="#vergleich" className="chip chip-warn">{compare.length} Preisvergleich unsicher</a>}
+              {aiData.length > 0 && <a href="#ki-angaben" className="chip chip-warn">{aiData.length} KI-Angaben</a>}
+              {units.length > 0 && <a href="#einheiten" className="chip chip-warn">{units.length} Abgabeeinheit offen</a>}
+              {mhdTotal > 0 && <a href="#mhd" className="chip chip-warn">{mhdTotal} MHD</a>}
+              {(unsorted.length > 0 || catHints.length > 0) && <a href="#kategorien" className="chip chip-warn">{unsorted.length + catHints.length} Kategorie</a>}
+              {tierCount(2) === 0 && <span className="chip chip-done">✓ nichts</span>}
+            </span>
+          </div>
+          <div className="tier-line tier-3">
+            <strong>③ {TIER_LABELS[3]} ({tierCount(3)})</strong>
+            <span className="summary-chips">
+              {internal.length > 0 && <a href="#optional" className="chip">{internal.length} interne Hinweise im Text</a>}
+              {noPhoto > 0 && <Link href={`${list}?status=foto`} className="chip">{noPhoto} ohne Foto (Collage)</Link>}
+              {tierCount(3) === 0 && <span className="chip chip-done">✓ nichts</span>}
+            </span>
+          </div>
         </div>
+        {issueRows.length > 0 && <a href="#je-produkt" className="small">Alle {issueRows.length} Produkte einzeln mit Zusammenfassung ansehen ↓</a>}
       </section>
 
+      {tierCount(1) > 0 && <h2 className="tier-head tier-1">① {TIER_LABELS[1]}: Preise und Konflikte</h2>}
       {conflicts.length > 0 && (
         <section id="widersprueche" className="stack">
           <h2>Preiswidersprüche: Foto und Angabe passen nicht zusammen</h2>
@@ -105,6 +132,22 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         </section>
       )}
 
+      {oldPhoto.length > 0 && (
+        <section id="foto-alt" className="card">
+          <div className="card-head"><h2>Fotos mit altem, abweichendem Preis ({oldPhoto.length})</h2></div>
+          <div className="small muted" style={{ padding: "8px 14px 0" }}>Der alte Preis im Foto lässt sich nicht gezielt verdecken. Damit nicht zwei Preise zu sehen sind, druckt die Collage keinen zusätzlichen – bitte ein Foto ohne Preis hochladen.</div>
+          <div className="check-list">
+            {oldPhoto.map((r) => (
+              <div key={r.item.id} className="check-row">
+                <Thumb r={r} size={64} />
+                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">Im Foto: „{r.state.printed?.text}“ · eingetragen: {outputPrice(r.item)}</span></span>
+                <Link href={`/produkte/${r.product.id}?zurueck=${id}`} className="btn btn-small">Neues Foto hochladen</Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {pairs.length > 0 && (
         <section id="rueckseiten" className="stack">
           <h2>Mögliche Rückseiten ({pairs.length})</h2>
@@ -130,22 +173,22 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         </section>
       )}
 
-      {oldPhoto.length > 0 && (
-        <section id="foto-alt" className="card">
-          <div className="card-head"><h2>Fotos mit altem, abweichendem Preis ({oldPhoto.length})</h2></div>
-          <div className="small muted" style={{ padding: "8px 14px 0" }}>Der alte Preis im Foto lässt sich nicht gezielt verdecken. Damit nicht zwei Preise zu sehen sind, druckt die Collage keinen zusätzlichen – bitte ein Foto ohne Preis hochladen.</div>
-          <div className="check-list">
-            {oldPhoto.map((r) => (
-              <div key={r.item.id} className="check-row">
-                <Thumb r={r} size={64} />
-                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">Im Foto: „{r.state.printed?.text}“ · eingetragen: {outputPrice(r.item)}</span></span>
-                <Link href={`/produkte/${r.product.id}?zurueck=${id}`} className="btn btn-small">Neues Foto hochladen</Link>
-              </div>
-            ))}
+      {(first.some((m) => m.n) || suggestions.length > 0) && (
+        <section className="card card-pad stack" style={{ gap: 10 }}>
+          <h2>Fehlende Preise und Namen</h2>
+          <div className="summary-chips">
+            {first.map((m) => m.n > 0 ? <Link key={m.key} href={`${list}?status=${m.key}`} className="chip chip-danger">{m.n} {m.label} →</Link> : <span key={m.key} className="chip chip-done">✓ keine {m.label}</span>)}
           </div>
+          {suggestions.length > 0 && (
+            <form action={applyAllSuggestions.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <span>Für {suggestions.length} Produkt(e) ohne Preis gibt es einen vergleichbaren KI-Vorschlag. Übernommen werden sie als „unbestätigt“; eingetragene Preise bleiben unverändert.</span>
+              <button className="btn btn-small" type="submit">{suggestions.length} KI-Vorschläge eintragen</button>
+            </form>
+          )}
         </section>
       )}
 
+      {tierCount(2) > 0 && <h2 className="tier-head tier-2">② {TIER_LABELS[2]}</h2>}
       {unconfirmed.length > 0 && (
         <form id="unbestaetigt" action={confirmItems.bind(null, id)} className="card">
           <div className="card-head"><h2>Unbestätigte Preise ({unconfirmed.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte bestätigen</button></div>
@@ -158,22 +201,6 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
                 <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">{sourceLabel(r)}{r.compare && r.compare.level !== "passt" ? ` · ${r.compare.reason}` : ""}</span></span>
                 <span className="num">{outputPrice(r.item)}</span>
                 <Link href={`${list}?q=${encodeURIComponent(r.unnamed ? "" : r.product.name)}`} className="small">ändern</Link>
-              </label>
-            ))}
-          </div>
-        </form>
-      )}
-
-      {aiData.length > 0 && (
-        <form id="ki-angaben" action={confirmProducts.bind(null, id)} className="card">
-          <div className="card-head"><h2>Von der KI eingetragen ({aiData.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte stimmen</button></div>
-          <div className="check-list">
-            {aiData.map((r) => (
-              <label key={r.item.id} className="check-row">
-                <input type="checkbox" name="productId" value={r.product.id} />
-                <Thumb r={r} size={44} />
-                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">{r.product.category} · {r.product.reviewNote}</span></span>
-                <Link href={`${list}?q=${encodeURIComponent(r.product.name)}`} className="small">ändern</Link>
               </label>
             ))}
           </div>
@@ -201,6 +228,22 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         </section>
       )}
 
+      {aiData.length > 0 && (
+        <form id="ki-angaben" action={confirmProducts.bind(null, id)} className="card">
+          <div className="card-head"><h2>Von der KI eingetragen ({aiData.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte stimmen</button></div>
+          <div className="check-list">
+            {aiData.map((r) => (
+              <label key={r.item.id} className="check-row">
+                <input type="checkbox" name="productId" value={r.product.id} />
+                <Thumb r={r} size={44} />
+                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">{r.product.category} · {r.product.reviewNote}</span></span>
+                <Link href={`${list}?q=${encodeURIComponent(r.product.name)}`} className="small">ändern</Link>
+              </label>
+            ))}
+          </div>
+        </form>
+      )}
+
       {units.length > 0 && (
         <form action={confirmUnits.bind(null, id)}>
           <UnitReview
@@ -226,29 +269,23 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         </form>
       )}
 
-      {internal.length > 0 && (
-        <form id="intern" action={cleanInternalText.bind(null, id)} className="card">
-          <div className="card-head"><h2>Interne Hinweise in Name oder Variante ({internal.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte bereinigen</button></div>
-          <div className="small muted" style={{ padding: "8px 14px 0" }}>Solche Hinweise der KI stehen nie in Collage, Aushang oder Messenger. „Bereinigen“ verschiebt sie in die interne Notiz des Produkts.</div>
-          <div className="check-list">
-            {internal.map((r) => {
-              const n = splitInternal(r.product.name);
-              const v = splitInternal(r.product.variant);
-              return (
-                <label key={r.item.id} className="check-row">
-                  <input type="checkbox" name="productId" value={r.product.id} defaultChecked />
-                  <Thumb r={r} size={44} />
-                  <span className="check-text">
-                    {/* Vorschau = genau der Text, der in Collage, Aushang und Messenger steht (publicText) */}
-                    <span className="small">Bisher: <span className="muted">{[r.product.name, r.product.variant].filter(Boolean).join(" · ")}</span></span>
-                    <strong className="wrap-anywhere">Ausgabe: {[publicText(r.product.name), publicText(r.product.variant)].filter(Boolean).join(" · ")}</strong>
-                    <span className="small muted">Wird interne Notiz: {[...n.notes, ...v.notes].join("; ")}</span>
-                  </span>
-                </label>
-              );
-            })}
+      {mhdTotal > 0 && (
+        <section id="mhd" className="card">
+          <div className="card-head"><h2>MHD ({mhdTotal})</h2></div>
+          <div className="card-pad stack" style={{ gap: 8 }}>
+            <div className="summary-chips">
+              {mhdMissing > 0 && <Link href={`${list}?status=mhd`} className="chip chip-warn">{mhdMissing} Lebensmittel ohne MHD →</Link>}
+              {mhdKi > 0 && <Link href={`${list}?status=mhd-ki`} className="chip chip-warn">{mhdKi} automatisch gelesen – bestätigen →</Link>}
+              {mhdUnsure.length > 0 && <a href="#mhd-pruefen" className="chip chip-warn">{mhdUnsure.length} unklar: Nahrung oder Zubehör?</a>}
+            </div>
+            {ai && mhdOpen > 0 && (
+              <form action={readEventMhd.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <span>Die KI liest das Datum von den Fotos ab (zuerst Rückseiten) für {mhdOpen} Produkt(e). Gelesene Daten sind als „automatisch gelesen“ markiert. Ca. 0,2 Cent je Foto.</span>
+                <button className="btn btn-small" type="submit">MHD aus Fotos lesen</button>
+              </form>
+            )}
           </div>
-        </form>
+        </section>
       )}
 
       {mhdUnsure.length > 0 && (
@@ -295,24 +332,73 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
         </details>
       )}
 
-      <section className="card card-pad stack" style={{ gap: 10 }}>
-        <h2>Fehlende Angaben</h2>
-        <div className="summary-chips">
-          {missing.map((m) => m.n > 0 ? <Link key={m.key} href={`${list}?status=${m.key}`} className="chip">{m.n} {m.label} →</Link> : <span key={m.key} className="chip chip-done">✓ keine {m.label}</span>)}
-        </div>
-        {ai && mhdOpen > 0 && (
-          <form action={readEventMhd.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <span>{mhdOpen} Lebensmittel ohne MHD: Die KI liest das Datum von den Fotos ab (zuerst Rückseiten). Gelesene Daten sind als „automatisch gelesen“ markiert – bitte kurz prüfen. Ca. 0,2 Cent je Foto.</span>
-            <button className="btn btn-small" type="submit">MHD aus Fotos lesen</button>
-          </form>
-        )}
-        {suggestions.length > 0 && (
-          <form action={applyAllSuggestions.bind(null, id)} className="notice notice-info" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <span>Für {suggestions.length} Produkt(e) ohne Preis gibt es einen vergleichbaren KI-Vorschlag. Übernommen werden sie als „unbestätigt“; eingetragene Preise bleiben unverändert.</span>
-            <button className="btn btn-small" type="submit">{suggestions.length} KI-Vorschläge eintragen</button>
-          </form>
-        )}
-      </section>
+      {internal.length > 0 && (
+        <details id="optional" className="card review-block">
+          <summary className="card-head"><h2>③ Optional ({tierCount(3)})</h2><span className="small muted">stört die Ausgabe nicht</span></summary>
+          <div className="card-pad stack" style={{ gap: 10 }}>
+      {internal.length > 0 && (
+        <form id="intern" action={cleanInternalText.bind(null, id)}>
+          <div className="card-head"><h2>Interne Hinweise in Name oder Variante ({internal.length})</h2><button className="btn btn-small btn-primary" type="submit">Angehakte bereinigen</button></div>
+          <div className="small muted" style={{ padding: "8px 14px 0" }}>Solche Hinweise der KI stehen nie in Collage, Aushang oder Messenger. „Bereinigen“ verschiebt sie in die interne Notiz des Produkts.</div>
+          <div className="check-list">
+            {internal.map((r) => {
+              const n = splitInternal(r.product.name);
+              const v = splitInternal(r.product.variant);
+              return (
+                <label key={r.item.id} className="check-row">
+                  <input type="checkbox" name="productId" value={r.product.id} defaultChecked />
+                  <Thumb r={r} size={44} />
+                  <span className="check-text">
+                    {/* Vorschau = genau der Text, der in Collage, Aushang und Messenger steht (publicText) */}
+                    <span className="small">Bisher: <span className="muted">{[r.product.name, r.product.variant].filter(Boolean).join(" · ")}</span></span>
+                    <strong className="wrap-anywhere">Ausgabe: {[publicText(r.product.name), publicText(r.product.variant)].filter(Boolean).join(" · ")}</strong>
+                    <span className="small muted">Wird interne Notiz: {[...n.notes, ...v.notes].join("; ")}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </form>
+      )}
+
+          </div>
+        </details>
+      )}
+      {internal.length === 0 && noPhoto > 0 && (
+        <section className="card card-pad small muted">③ Optional: <Link href={`${list}?status=foto`}>{noPhoto} Produkt(e) ohne Foto</Link> – erscheinen nicht auf der Collage.</section>
+      )}
+
+      {issueRows.length > 0 && (
+        <details id="je-produkt" className="card review-block" open={issueRows.length <= 12 || undefined}>
+          <summary className="card-head"><h2>Je Produkt ({issueRows.length})</h2><span className="small muted">wichtigste zuerst · antippen für Details</span></summary>
+          <div className="issue-products">
+            {issueRows.map((r) => {
+              const top = ISSUE_TIER[r.issues[0].key];
+              return (
+                <details key={r.item.id} className={`issue-product tier-${top}`}>
+                  <summary>
+                    <Thumb r={r} size={44} />
+                    <span className="check-text">
+                      <strong className="wrap-anywhere">{title(r)}</strong>
+                      <span className="small">{issueSummary(r.issues)}</span>
+                    </span>
+                    <span className={`tag ${top === 1 ? "tag-danger" : top === 2 ? "tag-warn" : "tag-neutral"}`}>{r.issues.length}</span>
+                  </summary>
+                  <ul className="issue-detail">
+                    {r.issues.map((i) => (
+                      <li key={i.key} className={`tier-${ISSUE_TIER[i.key]}`}>
+                        <strong>{ISSUE_TIER[i.key] === 1 ? "✕" : ISSUE_TIER[i.key] === 2 ? "!" : "○"} {i.label}</strong>
+                        <span className="small muted"> – {ISSUE_HELP[i.key]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link href={`${list}?offen=${r.product.id}#p-${r.product.id}`} className="btn btn-small">In der Liste bearbeiten</Link>
+                </details>
+              );
+            })}
+          </div>
+        </details>
+      )}
 
       {ai ? (
         <div className="tool-grid">
