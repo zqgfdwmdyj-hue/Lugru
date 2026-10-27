@@ -76,6 +76,15 @@ export function OutcomeList({ eventId, rows, stockLabels, initial }: { eventId: 
       }
     });
   };
+  // Grundeinstellung: offene zuerst (sind alle erfasst: alle). „Filter zurücksetzen“ führt dorthin zurück.
+  const baseFilter: Filter = all.some((r) => !r.outcome) ? "offen" : "alle";
+  const filtered = !!(q.trim() || cat || filter !== baseFilter);
+  const resetFilters = () => {
+    setQ("");
+    setCat("");
+    setFilter(baseFilter);
+    setSticky(new Set());
+  };
   const changeFilter = (f: Filter) => {
     setFilter(f);
     setSticky(new Set());
@@ -116,6 +125,11 @@ export function OutcomeList({ eventId, rows, stockLabels, initial }: { eventId: 
             <option value="">Alle Kategorien</option>
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+          {filtered && (
+            <button type="button" className="btn outcome-reset-filters" onClick={resetFilters} aria-label="Filter zurücksetzen" title="Suche, Kategorie und Status zurücksetzen">
+              ✕ <span>Filter zurücksetzen</span>
+            </button>
+          )}
         </div>
         <div className="summary-chips" role="group" aria-label="Status">
           {FILTERS.map((f) => (
@@ -130,7 +144,12 @@ export function OutcomeList({ eventId, rows, stockLabels, initial }: { eventId: 
         <span>{shown.length} angezeigt</span>
         {shownOpen.length > 1 && <button type="button" className="btn btn-small" onClick={bulk}>Angezeigte offene ({shownOpen.length}): „alles weg“</button>}
       </div>
-      {shown.length === 0 && <div className="card-pad muted">{done === rows.length ? "✓ Für alle Produkte ist ein Ergebnis erfasst." : "Keine Produkte für diese Suche/Filter."}</div>}
+      {shown.length === 0 && (
+        <div className="card-pad muted">
+          {done === rows.length && !filtered ? "✓ Für alle Produkte ist ein Ergebnis erfasst." : "Keine Produkte für diese Suche/Filter."}{" "}
+          {filtered && <button type="button" className="btn btn-small" onClick={resetFilters}>✕ Filter zurücksetzen</button>}
+        </div>
+      )}
       <ul className="outcome-items">
         {shown.map((r) => (
           <li key={r.id} className={`outcome-item outcome-is-${r.outcome ?? "offen"}`}>

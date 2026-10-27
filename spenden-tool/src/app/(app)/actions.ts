@@ -10,7 +10,7 @@ import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
 import { stockPrice } from "@/lib/pricing";
-import { comparability, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { categoryHint, comparability, LEGACY_CATEGORIES, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -737,6 +737,28 @@ export async function setProductCategory(productId: string, category: string | n
   await db.update(P).set({ ...(cat ? { category: cat } : {}), categoryChecked: true, updatedAt: new Date() }).where(eq(P.id, id));
   await logActivity(me, cat ? `Kategorie „${cat}“ übernommen` : "Kategorie bestätigt", { productId: id });
   revalidatePath("/produkte");
+}
+
+/**
+ * Alte Sammelkategorien („Drogerie & Haushalt“, „Hautpflege“, „Haarpflege“) auflösen – nur auf ausdrücklichen Klick.
+ * Ziel je Produkt: Vorschlag nach Produktart, sonst KI-Kategorie, sonst „Drogerie“.
+ */
+export async function resolveLegacyCategories(): Promise<void> {
+  const me = await requireLogin();
+  const rows = await db.select({ id: P.id, name: P.name, variant: P.variant, category: P.category }).from(P).where(inArray(P.category, [...LEGACY_CATEGORIES]));
+  if (rows.length === 0) return;
+  const checks = await latestPriceChecks(rows.map((r) => r.id));
+  const moved = new Map<string, number>();
+  for (const r of rows) {
+    const c = checks.get(r.id);
+    const hint = categoryHint({ ...r, categoryChecked: false }, c?.status === "done" ? c.recognizedCategory : null);
+    const target = hint && !(LEGACY_CATEGORIES as readonly string[]).includes(hint.suggest) ? hint.suggest : "Drogerie";
+    await db.update(P).set({ category: target, categoryChecked: true, updatedAt: new Date() }).where(eq(P.id, r.id));
+    moved.set(target, (moved.get(target) ?? 0) + 1);
+  }
+  await logActivity(me, `Alte Kategorien aufgelöst: ${[...moved].map(([k, n]) => `${n} → ${k}`).join(", ")}`);
+  revalidatePath("/produkte");
+  revalidatePath("/", "layout");
 }
 
 /** KI-Kategorie übernehmen (aus „Prüfen“) – nur für ausdrücklich gewählte Produkte. */

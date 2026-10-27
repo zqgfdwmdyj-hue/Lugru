@@ -5,7 +5,7 @@ import { loadEventView, sourceLabel, type EventRow } from "@/lib/event-view";
 import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { AiModeSelect } from "@/components/price-check";
-import { guessUnit, ISSUE_HELP, ISSUE_TIER, issueSummary, mhdAuto, TIER_LABELS, publicText, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { guessUnit, LEGACY_CATEGORIES, ISSUE_HELP, ISSUE_TIER, issueSummary, mhdAuto, TIER_LABELS, publicText, splitInternal, unitIssue, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { UnitReview } from "./unit-review";
 import { outputPrice } from "@/lib/layout";
 import { applyAllSuggestions, applyCategory, cleanInternalText, confirmCategories, confirmItems, confirmProducts, confirmUnits, keepSeparate, mergeBackside, readEventMhd, researchEvent, setMhdMode, resolvePhotoPrice, scanEventPhotoPrices } from "@/app/(app)/actions";
@@ -54,6 +54,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
     { key: "mehrere", label: "mehrere Produkte im Foto" },
   ].map((m) => ({ ...m, n: rows.filter((r) => has(r, m.key)).length }));
   const noPhoto = rows.filter((r) => has(r, "foto")).length;
+  const legacyRows = rows.filter((r) => (LEGACY_CATEGORIES as readonly string[]).includes(r.product.category)).length;
   const mhdMissing = rows.filter((r) => has(r, "mhd")).length;
   const mhdKi = rows.filter((r) => has(r, "mhd-ki")).length;
   const mhdTotal = mhdMissing + mhdKi + mhdUnsure.length;
@@ -311,6 +312,11 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
       {(unsorted.length > 0 || catHints.length > 0) && (
         <details id="kategorien" className="card review-block" open={unsorted.length + catHints.length <= 8 || undefined}>
           <summary className="card-head"><h2>Kategorien prüfen ({unsorted.length + catHints.length})</h2>{unsorted.length > 0 && <Link href={`${list}?status=kategorie`} className="btn btn-small">{unsorted.length} „{UNSORTED_CATEGORY}“ in der Liste zuordnen</Link>}</summary>
+          {legacyRows > 0 && (
+            <div className="notice notice-warn" style={{ margin: "10px 14px 0" }}>
+              {legacyRows} Produkt(e) stehen noch in einer alten Kategorie (z. B. „Drogerie & Haushalt“). <Link href="/produkte?filter=kategorie">Alle alten Kategorien auf einmal verteilen →</Link>
+            </div>
+          )}
           {catHints.length > 0 && (
             <>
               <div className="small muted" style={{ padding: "8px 14px 0" }}>Diese Kategorien wirken unpassend (nach Produktname oder KI). Nichts wird automatisch umsortiert – übernehmen oder bestätigen, dass es so stimmt.</div>

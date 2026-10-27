@@ -69,7 +69,7 @@ export function UnitReview({ rows, units }: { rows: UnitRow[]; units: Record<str
       </div>
       <div className="check-list">
         {rows.map((r) => (
-          <div key={r.itemId} className="check-row unit-row" hidden={!visible.has(r.itemId)}>
+          <div key={r.itemId} className="check-row unit-row" hidden={!visible.has(r.itemId)} aria-hidden={!visible.has(r.itemId) || undefined}>
             <input type="checkbox" name="itemId" value={r.itemId} checked={checked.has(r.itemId)} onChange={(e) => toggle(r.itemId, e.target.checked)} aria-label={`${r.title} bestätigen`} />
             {r.thumb ? <img src={r.thumb} alt="" className="thumb" style={{ width: 44, height: 44 }} loading="lazy" /> : <span className="thumb thumb-empty" style={{ width: 44, height: 44 }}>–</span>}
             <span className="check-text">

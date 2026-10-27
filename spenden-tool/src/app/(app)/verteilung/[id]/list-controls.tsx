@@ -37,6 +37,14 @@ export function ListControls({ listId, categories, statuses, total, initial }: {
         (!kat || row.dataset.cat === kat) &&
         (status === STATUS_ALL || (status === "fertig" ? !row.dataset.issues : (row.dataset.issues ?? "").split(" ").includes(status)));
       row.hidden = !ok;
+      // Auch für Screenreader und Vorlese-Werkzeuge ausblenden (Warnsymbole ausgeblendeter Produkte).
+      if (ok) {
+        row.removeAttribute("aria-hidden");
+        row.inert = false;
+      } else {
+        row.setAttribute("aria-hidden", "true");
+        row.inert = true;
+      }
       // Ausgeblendete Zeilen nicht versehentlich in Stapelaktionen mitnehmen.
       if (!ok) {
         const box = row.querySelector<HTMLInputElement>("input[name=sel]");

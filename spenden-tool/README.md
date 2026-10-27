@@ -84,6 +84,8 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **Kategorie prüfen (Produktdatenbank):** Produkte → „Kategorie prüfen“ listet alle Produkte mit unpassender oder
   alter Kategorie – auch solche, die nie in einer Verteilung waren (z. B. Bitzee unter Lebensmittel). Je Produkt
   „Übernehmen“ oder „Stimmt so“; nichts wird automatisch geändert.
+  Alte Sammelkategorien („Drogerie & Haushalt“, „Hautpflege“, „Haarpflege“) lassen sich dort mit einem Klick
+  auflösen (Vorschau, wohin wie viele gehen: nach Produktart, KI-Erkennung, sonst „Drogerie“).
 - **Mehrere Fotos je Produkt:** Beim Hochladen „Alle ausgewählten Fotos sind ein Produkt“ – die KI nimmt die
   Vorderseite als Titelbild, die übrigen werden Infofotos. Nachträglich: in den Produktdetails bzw. auf der
   Produktseite „Weitere Fotos hinzufügen“ – es entsteht kein neuer Artikel. Auch „Neues Produkt“ nimmt mehrere
@@ -118,7 +120,8 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   mehrere Produkte im Foto), ② Prüfen (unbestätigt, Vergleich, KI-Angaben, Einheit, MHD, Kategorie), ③ Optional
   (interne Hinweise, ohne Foto). MHD-Hinweise in einem Block. „Je Produkt“: ein Satz Zusammenfassung, aufklappbar.
 - **Ergebnisliste:** Suche, Kategorie und Status (offen/erfasst/je Ergebnis) kombinierbar, Fortschritt und Filter
-  bleiben beim Scrollen oben. Ein Tipp speichert sofort, „↺ zurücksetzen“ macht es rückgängig.
+  bleiben beim Scrollen oben. Ein Tipp speichert sofort, „↺ zurücksetzen“ macht es rückgängig. „✕ Filter
+  zurücksetzen“ löscht Suche, Kategorie und Status auf einmal. Reiter-Zähler: „Prüfen 79 offen“, „Ergebnisse 0/79“.
 - **Startseite:** je Verteilung eine Hauptaktion nach Stand (Fotos hochladen → Prüfen → Ausgabe → Ergebnisse),
   Nachbereitung und Archiv kompakt.
 - **Export ohne Blockieren:** Collage, PDF und Social-Media-Bilder zeigen offene Punkte als Hinweis auf der Seite

@@ -257,7 +257,9 @@ export function mhdRelevant(p: { category: string; mhdMode?: string | null; name
  * Vorschlag der KI. Ändert nichts – nur ein Hinweis zum Prüfen.
  */
 export function categoryHint(p: { name: string; variant?: string | null; category: string; categoryChecked?: boolean | null }, aiCategory?: string | null): { suggest: string; reason: string } | null {
-  if (p.categoryChecked || p.category === UNSORTED_CATEGORY) return null;
+  const legacy = (LEGACY_CATEGORIES as readonly string[]).includes(p.category);
+  // Alte Kategorien bleiben auffällig, auch wenn jemand „Stimmt so“ gewählt hat – sie werden nicht mehr angeboten.
+  if ((p.categoryChecked && !legacy) || p.category === UNSORTED_CATEGORY) return null;
   const kind = productKind(p.name, p.variant);
   // Babyprodukte bleiben Babyprodukte (Babynahrung, -pflege, -zubehör, -spielzeug).
   if (p.category === "Babyprodukte") return null;

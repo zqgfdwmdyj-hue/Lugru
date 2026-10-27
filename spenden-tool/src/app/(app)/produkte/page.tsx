@@ -4,8 +4,8 @@ import { duplicatePhotoGroups, knownCategories, PRODUCT_FILTERS, type ProductFil
 import { db, schema } from "@/db";
 import { eq, inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { createProduct, mergeProducts, setProductCategory } from "@/app/(app)/actions";
-import { categoryHint } from "@/lib/price-logic";
+import { createProduct, mergeProducts, resolveLegacyCategories, setProductCategory } from "@/app/(app)/actions";
+import { categoryHint, LEGACY_CATEGORIES } from "@/lib/price-logic";
 import { isPlaceholderName } from "@/lib/layout";
 import { ImageForm } from "@/components/image-form";
 import { CategorySelect } from "@/components/category-select";
@@ -33,6 +33,15 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
     .map((p) => ({ p, hint: categoryHint(p) }))
     .filter((x): x is { p: (typeof all)[number]; hint: NonNullable<ReturnType<typeof categoryHint>> } => !!x.hint)
     .sort((a, b) => a.p.category.localeCompare(b.p.category, "de") || a.p.name.localeCompare(b.p.name, "de"));
+  // Alte Sammelkategorien (Vorschau, wohin sie verteilt würden – ohne KI-Kategorie, die kommt beim Auflösen dazu)
+  const legacy = all.filter((p) => (LEGACY_CATEGORIES as readonly string[]).includes(p.category));
+  const legacyNames = [...new Set(legacy.map((p) => p.category))];
+  const legacyPreview = new Map<string, number>();
+  for (const p of legacy) {
+    const h = categoryHint({ ...p, categoryChecked: false });
+    const t = h && !(LEGACY_CATEGORIES as readonly string[]).includes(h.suggest) ? h.suggest : "Drogerie";
+    legacyPreview.set(t, (legacyPreview.get(t) ?? 0) + 1);
+  }
   // Produkte mit (fast) demselben Foto – nur berechnen, wenn die Ansicht geöffnet ist (vergleicht alle Fotos).
   const doppelt = sp.doppelt === "1";
   const groups = doppelt ? await duplicatePhotoGroups() : [];
@@ -132,6 +141,15 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
         <section className="card">
           <div className="card-head"><h2>Kategorie prüfen ({catIssues.length})</h2></div>
           <div className="small muted" style={{ padding: "8px 14px 0" }}>Alte Einträge, deren Kategorie nicht zum Produkt passt (z. B. Spielzeug unter „Lebensmittel“) oder in einer alten Sammelkategorie stehen – auch wenn sie noch in keiner Verteilung waren. Geändert wird nur auf Klick.</div>
+          {legacy.length > 0 && (
+            <form action={resolveLegacyCategories} className="notice notice-warn legacy-box">
+              <span>
+                <strong>Alte Kategorien auflösen:</strong> {legacy.length} Produkte stehen noch unter {legacyNames.map((n) => `„${n}“`).join(", ")}. Sie werden auf die neuen Kategorien verteilt – nach Produktart bzw. KI-Erkennung, sonst „Drogerie“:{" "}
+                {[...legacyPreview].map(([k, n]) => `${n} → ${k}`).join(" · ")}. Danach erscheint die alte Kategorie nirgends mehr.
+              </span>
+              <button className="btn btn-check" type="submit">Alle {legacy.length} jetzt verteilen</button>
+            </form>
+          )}
           {catIssues.length === 0 && <div className="card-pad muted">Alles stimmig.</div>}
           <div className="check-list">
             {catIssues.slice(0, 50).map(({ p, hint }) => (

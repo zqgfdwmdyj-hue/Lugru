@@ -29,7 +29,7 @@ export default async function VerteilungLayout({ children, params }: { children:
         <h1>{eventDateLabel(event.eventDate)}{event.eventTime ? ` · ${event.eventTime}` : ""}</h1>
         <div className="small muted">{event.title}{event.location ? ` · ${event.location}` : ""} · {rows.length} Produkte{value ? ` · Warenwert ${formatEuro(value)}` : ""}</div>
       </div>
-      <EventTabs id={id} open={open} past={past} results={rows.filter((r) => !r.item.outcome).length} />
+      <EventTabs id={id} open={open} past={past} results={rows.filter((r) => !r.item.outcome).length} total={rows.length} />
       {children}
     </>
   );

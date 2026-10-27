@@ -148,7 +148,7 @@ describe("Produktart, MHD und Kategorie", () => {
     expect(categoryHint({ name: "Wiberg Classic BBQ", category: "Drogerie & Haushalt" })?.suggest).toBe("Lebensmittel");
     expect(categoryHint({ name: "BEMA Schwimmsitz", category: "Lebensmittel" })?.suggest).toBe("Spielzeug");
     expect(categoryHint({ name: "Spontex Tuchschwämme", category: "Lebensmittel" })?.suggest).toBe("Haushalt");
-    expect(categoryHint({ name: "Wiberg Chili-Fäden", category: "Drogerie & Haushalt", categoryChecked: true })).toBeNull();
+    expect(categoryHint({ name: "Wiberg Chili-Fäden", category: "Drogerie & Haushalt", categoryChecked: true })?.suggest).toBe("Lebensmittel");
     expect(categoryHint({ name: "Haferflocken", category: "Lebensmittel" })).toBeNull();
     expect(categoryHint({ name: "Getrocknete Tomaten", category: "Lebensmittel" })).toBeNull();
     expect(categoryHint({ name: "Basmati Reis", category: "Lebensmittel" })).toBeNull();
@@ -248,6 +248,13 @@ describe("Feinere Kategorien", () => {
     expect(productKind("Duschgel Mango")?.kind).toBe("hautpflege");
     expect(productKind("Bodylotion Kokos")?.kind).toBe("hautpflege");
     expect(mhdAuto({ name: "Haarspray Vanille", category: "Drogerie" }).relevant).toBe(false);
+  });
+  it("alte Kategorien bleiben auffällig, auch nach „Stimmt so“", () => {
+    expect(categoryHint({ name: "Spülschwamm", category: "Drogerie & Haushalt", categoryChecked: true })?.suggest).toBe("Haushalt");
+    expect(categoryHint({ name: "Duschgel Mango", category: "Hautpflege", categoryChecked: true })?.suggest).toBe("Drogerie");
+    expect(categoryHint({ name: "Irgendwas", category: "Drogerie & Haushalt", categoryChecked: true })?.suggest).toBe("Drogerie");
+    expect(categoryHint({ name: "Irgendwas", category: "Drogerie & Haushalt" }, "Haushalt")?.suggest).toBe("Haushalt");
+    expect(categoryHint({ name: "Spülschwamm", category: "Haushalt", categoryChecked: true })).toBeNull();
   });
   it("Geschmack allein ändert weder Kategorie noch MHD einer Drogerie-Kategorie", () => {
     expect(categoryHint({ name: "Duftkerze Orange", category: "Haushalt" })).toBeNull();

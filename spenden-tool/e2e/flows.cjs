@@ -151,6 +151,12 @@ async function photo(dir, name, rgb, w = 640) {
     ok((await page.locator(".outcome-item").count()) === 1 && /Kräutertee/.test(await shownNames()), "Status „Noch offen“ zeigt nur offene");
     await page.selectOption(".outcome-filters select", "Lebensmittel");
     ok((await page.locator(".outcome-item").count()) === 0, "Noch offen + Lebensmittel → nichts (kombiniert)");
+    await page.fill(".outcome-filters input[type=search]", "xyz");
+    ok(await page.getByText("Keine Produkte für diese Suche/Filter.").isVisible(), "Kein Treffer → verständlicher Hinweis");
+    await page.locator(".outcome-reset-filters").click();
+    ok((await page.inputValue(".outcome-filters input[type=search]")) === "" && (await page.inputValue(".outcome-filters select")) === "" && (await page.locator(".outcome-item").count()) === 1, "„Filter zurücksetzen“ löscht Suche, Kategorie und Status");
+    const tabs = await page.locator(".tabs").innerText();
+    ok(/Prüfen\s*\d+ offen/.test(tabs) && /Ergebnisse\s*1\/2/.test(tabs), "Reiter-Zähler verständlich („N offen“, „1/2“)", tabs.replace(/\s+/g, " "));
     ok((await page.locator(".outcome-progress").innerText()).includes("1 von 2 erfasst"), "Fortschritt „1 von 2 erfasst“");
     await page.goto(`${BASE}/verteilung/${eventId}/ergebnisse?status=alle`, { waitUntil: "networkidle" });
     await page.locator(".outcome-item", { hasText: "E2E Haferkekse" }).locator(".outcome-reset").click();
@@ -246,6 +252,16 @@ async function photo(dir, name, rgb, w = 640) {
     await q("update event_items set best_before = '2026-12-24', best_before_source = 'manuell' where id = $1", [singleItem.id]);
     await page.goto(`${BASE}/verteilung/${futureId}`);
     ok((await page.locator(`#p-${single} .pl-name`).innerText()).includes("MHD 24.12.26"), "MHD steht in der Produktzeile");
+
+    // 12b: Gefilterte Produktliste – ausgeblendete Zeilen auch für Screenreader weg
+    await page.goto(`${BASE}/verteilung/${futureId}`, { waitUntil: "networkidle" });
+    await page.fill(".list-search input", "zzz-kein-treffer");
+    await page.waitForTimeout(300);
+    const a11y = await page.evaluate(() => [...document.querySelectorAll("[data-row]")].map((r) => ({ hidden: r.hidden, aria: r.getAttribute("aria-hidden"), inert: r.inert })));
+    ok(a11y.length > 0 && a11y.every((r) => r.hidden && r.aria === "true" && r.inert), "Ausgeblendete Zeilen: hidden + aria-hidden + inert", JSON.stringify(a11y[0]));
+    // Filter-Auswahl (Optionen „MHD fehlt (n)“) gehört dazu – geprüft werden nur Inhalte der Produktzeilen.
+    const snap = await page.locator(".product-list").ariaSnapshot();
+    ok(!/Details bearbeiten|auswählen\b(?! sichtbar)|Spendenempfehlung/.test(snap.replace(/Alle sichtbaren auswählen/g, "")), "Keine Inhalte ausgeblendeter Produkte im Barrierefreiheitsbaum", snap.split("\n").filter((l) => /Details|auswählen|Spenden/.test(l)).slice(0, 3).join(" | "));
 
     // 13: Schmaler Handybildschirm (360 px): nichts ragt seitlich heraus, Touchflächen ≥ 44 px, Text ≥ 14 px
     await page.setViewportSize({ width: 360, height: 780 });

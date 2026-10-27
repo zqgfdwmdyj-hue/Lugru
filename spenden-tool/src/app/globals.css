@@ -42,6 +42,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Ausgeblendet heißt ausgeblendet – auch wenn eine Klasse display: grid/flex setzt (sonst bleiben gefilterte Zeilen sichtbar bzw. vorlesbar). */
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body { font-family: var(--sans); color: var(--ink); background: var(--bg); font-size: 16px; line-height: 1.5; }
 a { color: var(--accent); }
@@ -692,3 +694,6 @@ form.check-row { grid-template-columns: auto 1fr auto; }
   .outcome-sticky .summary-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
   .outcome-sticky .summary-chips .chip { flex-shrink: 0; }
 }
+.legacy-box { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 10px 14px 0; }
+.outcome-reset-filters { flex: none; white-space: nowrap; color: var(--results); border-color: var(--results); }
+@media (max-width: 480px) { .outcome-reset-filters span { display: none; } .outcome-reset-filters { padding: 8px 12px; } }
