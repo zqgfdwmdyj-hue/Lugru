@@ -296,3 +296,13 @@ describe("Ändern bei eBay", () => {
     );
   });
 });
+
+describe("Warenbestandsbasierte Angebote erkennen", () => {
+  it("erkennt eBays Ablehnung von ReviseFixedPriceItem (Deutsch, Englisch, Fehlercode)", async () => {
+    const { isInventoryManaged } = await import("@/lib/ebay-review/logic");
+    expect(isInventoryManaged(new Error("eBay (ReviseFixedPriceItem): Die warenbestandsbasierte Angebotsverwaltung wird derzeit von diesem Tool nicht unterstützt. Bitte probieren Sie es mit dem Tool, in dem Sie das Angebot erstellt haben."))).toBe(true);
+    expect(isInventoryManaged(new Error("eBay (ReviseFixedPriceItem): Inventory-based listing management is not currently supported by this tool. Please refer to the tool used to create this listing."))).toBe(true);
+    expect(isInventoryManaged(Object.assign(new Error("eBay (ReviseFixedPriceItem): abgelehnt"), { codes: ["21919474"] }))).toBe(true);
+    expect(isInventoryManaged(new Error("eBay (ReviseFixedPriceItem): Der Titel ist zu lang."))).toBe(false);
+  });
+});

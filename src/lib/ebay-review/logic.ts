@@ -639,6 +639,17 @@ export type Revision = {
   description?: string;
 };
 
+/**
+ * Lehnt eBay die Änderung ab, weil das Angebot über die Inventory API („warenbestandsbasiert“) verwaltet wird?
+ * Dann geht es nur über die Inventory API (Fehler 21919474 bzw. der Text auf Deutsch/Englisch).
+ */
+export function isInventoryManaged(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  const codes = (e as { codes?: unknown })?.codes;
+  if (Array.isArray(codes) && codes.map(String).includes("21919474")) return true;
+  return /warenbestandsbasiert|inventory[- ]based|inventory api|in dem Sie das Angebot erstellt|tool (?:you|that) used to create/i.test(msg);
+}
+
 /** Rumpf für ReviseFixedPriceItem. Merkmale werden als vollständige Liste geschickt (eBay ersetzt sie). */
 export function reviseXml(itemId: string, r: Revision): string {
   const parts = [`<ItemID>${escXml(itemId)}</ItemID>`];
