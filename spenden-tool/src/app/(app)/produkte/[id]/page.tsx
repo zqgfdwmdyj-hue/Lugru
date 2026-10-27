@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
-import { isPlaceholderName } from "@/lib/layout";
+import { isPlaceholderName, mhdLabel } from "@/lib/layout";
 import { extraPhotos, knownCategories, latestPriceChecks, productHistory, productsWithSamePhoto } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -16,10 +16,12 @@ import { CategorySelect } from "@/components/category-select";
 import { AddPhotos } from "@/components/add-photos";
 import { RotateButtons } from "@/components/rotate-buttons";
 
-export default async function SpendenProduktPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ zurueck?: string }> }) {
+export default async function SpendenProduktPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ zurueck?: string; neu?: string }> }) {
   await requireLogin();
   const { id } = await params;
-  const zurueck = (await searchParams).zurueck ?? "";
+  const sp = await searchParams;
+  const zurueck = sp.zurueck ?? "";
+  const isNew = sp.neu === "1";
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const P = schema.products;
   const [product] = await db.select().from(P).where(eq(P.id, id));
@@ -35,6 +37,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
     extraPhotos([id]),
   ]);
   const backs = extra.get(id) ?? [];
+  const lastMhd = history.find((h) => h.bestBefore);
   // Dazu Produkte mit (fast) demselben Foto, auch wenn sie anders heißen.
   const samePhoto = await productsWithSamePhoto(id);
   const known = new Set(twins.map((t) => t.id));
@@ -52,7 +55,12 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
     <>
       <datalist id="spenden-kategorien">{categories.map((c) => <option key={c} value={c} />)}</datalist>
       <div className="crumb">{back ? <Link href={back}>Zurück zur Verteilung</Link> : <Link href="/produkte">Produkte</Link>}</div>
-      <div className="page-head"><div><h1>{product.name}{product.variant ? ` · ${product.variant}` : ""}</h1><div className="small muted">{product.category}{product.archived ? " · archiviert" : ""}</div></div></div>
+      <div className="page-head"><div><h1>{product.name}{product.variant ? ` · ${product.variant}` : ""}</h1><div className="small muted">{product.category}{lastMhd ? ` · ${mhdLabel(lastMhd.bestBefore)}` : ""}{product.archived ? " · archiviert" : ""}</div></div></div>
+      {isNew && (
+        <div className="notice notice-ok">
+          Neu angelegt – bitte kurz kontrollieren.{busy ? " Die KI erkennt das Produkt gerade und füllt Name, Größe und Kategorie aus (die Seite aktualisiert sich)." : ""}
+        </div>
+      )}
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <section className="card card-pad" style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -148,6 +156,10 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
                 <option value="ja">Ja, MHD erfassen</option>
                 <option value="nein">Nein (z. B. Spielzeug, Haushalt)</option>
               </select>
+              <span className="small muted">
+                {lastMhd ? <>Zuletzt: <strong>{mhdLabel(lastMhd.bestBefore)}</strong> (Verteilung {formatDate(lastMhd.eventDate)}). </> : null}
+                Das Datum gilt je Lieferung – eintragen in der Verteilung unter „Details bearbeiten“ → MHD-Datum, oder automatisch vom Foto der Rückseite.
+              </span>
             </div>
             <div className="field"><label className="label" htmlFor="nt">Notiz</label><textarea className="input" id="nt" name="note" rows={2} defaultValue={product.note ?? ""} /></div>
             <div className="field"><label className="label" htmlFor="ni">{product.imageFileId ? "Foto ersetzen" : "Foto"}</label><input className="input" id="ni" name="image" type="file" accept="image/*" /></div>

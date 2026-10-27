@@ -5,8 +5,10 @@ import { loadEventView, sourceLabel, type EventRow } from "@/lib/event-view";
 import { knownCategories, productPicker } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
-import { OUTCOME_LABELS, PACK_KINDS, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
-import { outputPrice } from "@/lib/layout";
+import { stockPrice } from "@/lib/pricing";
+import { autoAiMode } from "@/lib/settings";
+import { OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { mhdLabel, outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
 import { PriceCheckChip } from "@/components/price-check";
@@ -23,7 +25,7 @@ import { AddPanel, BulkBar, ListControls } from "./list-controls";
 const priceText = (v: number | null) => (v === null ? "" : v.toFixed(2).replace(".", ","));
 const FORM = "produktliste";
 
-export default async function ProduktePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string; kat?: string; status?: string; dbq?: string; hinzufuegen?: string }> }) {
+export default async function ProduktePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ q?: string; kat?: string; status?: string; dbq?: string; hinzufuegen?: string; offen?: string }> }) {
   await requireLogin();
   const { id } = await params;
   const sp = await searchParams;
@@ -33,6 +35,7 @@ export default async function ProduktePage({ params, searchParams }: { params: P
   const dbq = (sp.dbq ?? "").trim().slice(0, 80);
   const [picker, categories] = await Promise.all([productPicker(id, dbq), knownCategories()]);
   const ai = aiConfigured();
+  const autoAi = ai && !!(await autoAiMode());
 
   const catCounts = new Map<string, number>();
   for (const r of rows) catCounts.set(r.product.category, (catCounts.get(r.product.category) ?? 0) + 1);
@@ -51,7 +54,7 @@ export default async function ProduktePage({ params, searchParams }: { params: P
     <>
       <AddPanel
         initial={addInitial}
-        photos={<PhotoUpload eventId={id} action={uploadPhotos} variant="card" categories={categories} ai={ai} />}
+        photos={<PhotoUpload eventId={id} action={uploadPhotos} variant="card" categories={categories} ai={ai} autoAi={autoAi} />}
         database={
           <form action={addToEvent} className="card card-pad stack" style={{ gap: 8 }}>
             <input type="hidden" name="eventId" value={id} />
@@ -83,12 +86,12 @@ export default async function ProduktePage({ params, searchParams }: { params: P
             <input type="hidden" name="eventId" value={id} />
             <h2>Neues Produkt anlegen</h2>
             <div className="form-grid">
-              <div className="field"><label className="label" htmlFor="nn">Name</label><input className="input" id="nn" name="name" required placeholder="z. B. Getrocknete Tomaten" /></div>
+              <div className="field"><label className="label" htmlFor="nn">Name</label><input className="input" id="nn" name="name" placeholder="leer lassen = KI erkennt vom Foto" /></div>
               <div className="field"><label className="label" htmlFor="nv">Variante / Größe</label><input className="input" id="nv" name="variant" placeholder="z. B. 500 g" /></div>
               <div className="field"><label className="label" htmlFor="np">Spendenempfehlung €</label><input className="input" id="np" name="price" inputMode="decimal" placeholder="0,50" /></div>
               <div className="field"><label className="label" htmlFor="nc">Kategorie</label><CategorySelect id="nc" name="category" value={UNSORTED_CATEGORY} categories={categories} /></div>
             </div>
-            <div className="field"><label className="label" htmlFor="ni">Foto (optional)</label><input className="input" id="ni" name="image" type="file" accept="image/*" /></div>
+            <div className="field"><label className="label" htmlFor="ni">Fotos (optional, mehrere möglich)</label><input className="input" id="ni" name="image" type="file" accept="image/*" multiple /><span className="small muted">Vorder- und Rückseite (mit MHD) – die KI nimmt die Vorderseite als Titelbild und füllt Name, Größe und Kategorie aus. Mit Fotos darf der Name leer bleiben.</span></div>
             <button className="btn btn-primary" type="submit">Anlegen und hinzufügen</button>
           </ImageForm>
         }
@@ -120,7 +123,7 @@ export default async function ProduktePage({ params, searchParams }: { params: P
         {rows.length === 0 && <div className="card-pad muted">Noch keine Produkte. Oben „📷 Fotos hochladen“ wählen – am Handy öffnet sich direkt die Kamera oder die Fotomediathek.</div>}
         <div className="pl">
           {rows.map((r, i) => (
-            <ProductRow key={r.item.id} r={r} eventId={id} categories={categories} ai={ai} first={i === 0} last={i === rows.length - 1} />
+            <ProductRow key={r.item.id} r={r} eventId={id} categories={categories} ai={ai} first={i === 0} last={i === rows.length - 1} open={sp.offen === r.product.id} />
           ))}
         </div>
         <UnsavedGuard formId={FORM} eventId={id} save={saveItems} />
@@ -142,7 +145,7 @@ function StatusTags({ r }: { r: EventRow }) {
   );
 }
 
-function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; eventId: string; categories: string[]; ai: boolean; first: boolean; last: boolean }) {
+function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: EventRow; eventId: string; categories: string[]; ai: boolean; first: boolean; last: boolean; open?: boolean }) {
   const { item, product, state, check } = r;
   const name = r.unnamed ? "" : product.name;
   const unit = unitLabel(item.unit, item.unitCount);
@@ -150,14 +153,16 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
   const unitProblem = unitIssue({ unit: item.unit, unitCount: item.unitCount, unitConfirmed: item.unitConfirmed, price: item.price });
   const mhd = mhdAuto(product);
   const shownAs = outputPrice(item);
+  // Viel da (Palette, Kartons)? Dann eher günstiger – nur als Vorschlag.
+  const stockHint = stockPrice(item.price, item.stock);
   const search = [product.name, product.variant, product.category, item.caption].filter(Boolean).join(" ").toLocaleLowerCase("de-DE");
   const k = (f: string) => `${f}_${item.id}`;
   const kp = (f: string) => `${f}_${product.id}`;
   return (
-    <div className="pl-row" data-row data-search={search} data-cat={product.category} data-issues={r.issues.map((x) => x.key).join(" ")}>
+    <div className="pl-row" id={`p-${product.id}`} data-row data-search={search} data-cat={product.category} data-issues={r.issues.map((x) => x.key).join(" ")}>
       <input type="hidden" name={`row_${item.id}`} value="1" />
       {/* Auf-/Zuklappen ohne JavaScript – funktioniert auch, bevor die Seite fertig geladen ist. */}
-      <input type="checkbox" id={`open-${item.id}`} className="pl-open sr-only" aria-label={`Details zu ${name || "Produkt ohne Namen"}`} />
+      <input type="checkbox" id={`open-${item.id}`} className="pl-open sr-only" defaultChecked={open} aria-label={`Details zu ${name || "Produkt ohne Namen"}`} />
       <div className="pl-main">
         <input type="checkbox" name="sel" value={item.id} className="pl-sel" aria-label={`${name || "Produkt ohne Namen"} auswählen`} />
         <label htmlFor={`open-${item.id}`} className="pl-photo" title="Details bearbeiten">
@@ -165,7 +170,10 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
         </label>
         <div className="pl-name">
           <label htmlFor={`open-${item.id}`} className="pl-title">{name || <span className="muted">Ohne Namen – bitte eintragen</span>}</label>
-          <div className="small muted">{[product.variant, product.category, item.stock ? `Bestand: ${STOCK_LABELS[item.stock]}` : null].filter(Boolean).join(" · ")}</div>
+          <div className="small muted">
+            {[product.variant, product.category, item.stock ? `Bestand: ${STOCK_LABELS[item.stock]}` : null].filter(Boolean).join(" · ")}
+            {item.bestBefore ? <span className={item.bestBeforeSource === "foto-ki" ? "warn-text" : ""}> · {mhdLabel(item.bestBefore)}{item.bestBeforeSource === "foto-ki" ? " (KI – prüfen)" : ""}</span> : mhd.relevant && !mhd.unsure ? <span className="warn-text"> · MHD fehlt</span> : null}
+          </div>
           {item.outcome && <div className="small muted">Ergebnis: {OUTCOME_LABELS[item.outcome]}</div>}
         </div>
         <div className="pl-unit">
@@ -182,7 +190,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
           </span>
           <O name={k("price")} value={priceText(item.price)} />
           <span className={`small ${item.price !== null && !item.priceConfirmed ? "warn-text" : "muted"}`}>{sourceLabel(r)}</span>
-          {item.packPrice !== null && <span className="small">+ {packText(item, r.drink, product.variant)} {priceText(item.packPrice)} €</span>}
+          {packOffers(item, r.drink, product.variant).map((pk) => <span key={pk.label + pk.price} className="small">+ {pk.label} {priceText(pk.price)} €</span>)}
         </div>
         <div className="pl-status"><StatusTags r={r} /></div>
         <label htmlFor={`open-${item.id}`} className="btn btn-small pl-toggle"><span className="when-closed">Details bearbeiten</span><span className="when-open">Details schließen</span></label>
@@ -191,6 +199,12 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
       <div className="pl-details">
         <fieldset>
           <legend>Produkt</legend>
+          {check?.status === "done" && check.multipleProducts && (
+            <div className="notice notice-warn small">
+              📷 Auf dem Foto sind <strong>mehrere verschiedene Produkte</strong> – die KI kann sie nicht sicher trennen. Bitte jedes Produkt einzeln fotografieren und neu hochladen (dieses dann entfernen).{" "}
+              <button className="btn-link small" type="submit" name="op" value={`mehrere-ok:${item.id}`}>Ist nur ein Produkt</button>
+            </div>
+          )}
           {product.reviewNote && (
             <div className="notice notice-info small">
               🤖 {product.reviewNote}. <button className="btn-link small" type="submit" name="op" value={`angaben-ok:${item.id}`}>Angaben stimmen</button>
@@ -220,6 +234,19 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
             {mhd.unsure && !product.mhdMode && <span className="small warn-text">MHD-Relevanz prüfen: Ist das Nahrung (ja) oder Zubehör (nein)?</span>}
           </div>
           <O name={kp("mhdmode")} value={product.mhdMode ?? ""} />
+          <div className="field">
+            <label className="label" htmlFor={k("mhd")}>MHD-Datum{mhd.relevant ? "" : " (nicht nötig)"}</label>
+            <input className="input input-compact num" type="date" id={k("mhd")} name={k("mhd")} defaultValue={item.bestBefore ?? ""} />
+            {item.bestBeforeSource === "foto-ki" && (
+              <span className="small warn-text">
+                Automatisch aus dem Foto gelesen – stimmt es?{" "}
+                <button className="btn-link small" type="submit" name="op" value={`mhd-ok:${item.id}`}>✓ MHD stimmt</button>
+                <span className="muted"> (sonst Datum oben korrigieren)</span>
+              </span>
+            )}
+          </div>
+          <O name={k("mhd")} value={item.bestBefore ?? ""} />
+          <MhdPhoto itemId={item.id} fileId={item.bestBeforeFileId} action={uploadMhdPhoto.bind(null, item.id)} />
         </fieldset>
 
         <fieldset>
@@ -247,7 +274,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
             <input className="input input-compact" id={k("note")} name={k("note")} defaultValue={item.priceNote ?? ""} placeholder="z. B. je, 3 Stück" />
           </div>
           <O name={k("note")} value={item.priceNote ?? ""} />
-          <div className="sub-legend">Zusätzlich: ganze Packung{r.drink ? " / Kasten" : " / Karton"}</div>
+          <div className="sub-legend">Varianten: ganze Packung{r.drink ? " / Kasten" : " / Karton"}, Palette … (je eigene Empfehlung)</div>
           <div className="form-grid">
             <div className="field">
               <label className="label" htmlFor={k("packkind")}>Art</label>
@@ -271,11 +298,39 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
           {r.drink && <div className="small muted">Inhalt je Flasche steht unter „Variante“ (z. B. 0,5 l) – daraus wird „Kasten (12 × 0,5 l)“.</div>}
           <div className="field"><label className="label" htmlFor={k("packnote")}>Eigene Bezeichnung (optional)</label><input className="input input-compact" id={k("packnote")} name={k("packnote")} defaultValue={item.packNote ?? ""} placeholder={packText({ packKind: item.packKind, packCount: item.packCount }, r.drink, product.variant)} /></div>
           <O name={k("packnote")} value={item.packNote ?? ""} />
+          {item.morePacks.map((m, n) => (
+            <div key={n} className="more-pack">
+              <div className="form-grid">
+                <div className="field">
+                  <label className="label" htmlFor={k(`mpk${n}`)}>Weitere Variante {n + 2}</label>
+                  <select key={m.kind ?? ""} className="select select-compact" id={k(`mpk${n}`)} name={k(`mpk${n}`)} defaultValue={m.kind ?? ""}>
+                    <option value="">–</option>
+                    {Object.entries(PACK_KINDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                  </select>
+                </div>
+                <O name={k(`mpk${n}`)} value={m.kind ?? ""} />
+                <div className="field"><label className="label" htmlFor={k(`mpc${n}`)}>{r.drink ? "Flaschen darin" : "Stück darin"}</label><input className="input input-compact num" id={k(`mpc${n}`)} name={k(`mpc${n}`)} defaultValue={m.count ?? ""} inputMode="numeric" /></div>
+                <O name={k(`mpc${n}`)} value={m.count ? String(m.count) : ""} />
+                <div className="field"><label className="label" htmlFor={k(`mpp${n}`)}>Empfehlung €</label><input className="input input-compact num" id={k(`mpp${n}`)} name={k(`mpp${n}`)} defaultValue={priceText(m.price)} inputMode="decimal" /></div>
+                <O name={k(`mpp${n}`)} value={priceText(m.price)} />
+              </div>
+              <div className="field"><label className="label" htmlFor={k(`mpn${n}`)}>Eigene Bezeichnung (optional)</label><input className="input input-compact" id={k(`mpn${n}`)} name={k(`mpn${n}`)} defaultValue={m.note ?? ""} placeholder={packText({ packKind: m.kind, packCount: m.count }, r.drink, product.variant)} /></div>
+              <O name={k(`mpn${n}`)} value={m.note ?? ""} />
+              <button className="btn-link small" type="submit" name="op" value={`pack-del:${item.id}.${n}`}>Variante {n + 2} entfernen</button>
+            </div>
+          ))}
+          <div><button className="btn btn-small" type="submit" name="op" value={`pack-add:${item.id}`}>+ weitere Variante (z. B. Karton und Palette)</button></div>
           <div className="output-preview">
             <span className="small muted">So steht es in Collage, Aushang und Messenger:</span>
-            <strong>{shownAs || "kein Preis"}{item.packPrice !== null ? ` · ${packText(item, r.drink, product.variant)} ${priceText(item.packPrice)} €` : ""}</strong>
+            <strong>{[shownAs || "kein Preis", ...packOffers(item, r.drink, product.variant).map((pk) => `${pk.label} ${priceText(pk.price)} €`)].join(" · ")}</strong>
           </div>
           {item.price !== null && !item.priceConfirmed && <button className="btn btn-small" type="submit" name="op" value={`confirm:${item.id}`}>✓ Preis bestätigen</button>}
+          {stockHint && (
+            <div className="small">
+              Viel Bestand ({STOCK_LABELS[item.stock!]}): eher <strong>{priceText(stockHint.price)} €</strong> statt {priceText(item.price)} €, damit es weggeht{" "}
+              <button className="btn-link small" type="submit" name="op" value={`bestand-preis:${item.id}`}>übernehmen</button>
+            </div>
+          )}
         </fieldset>
 
         <fieldset>
@@ -326,20 +381,7 @@ function ProductRow({ r, eventId, categories, ai, first, last }: { r: EventRow; 
               </select>
             </div>
             <O name={k("outcome")} value={item.outcome ?? ""} />
-            <div className="field">
-              <label className="label" htmlFor={k("mhd")}>MHD{mhd.relevant ? "" : " (nicht nötig)"}</label>
-              <input className="input input-compact num" type="date" id={k("mhd")} name={k("mhd")} defaultValue={item.bestBefore ?? ""} />
-              {item.bestBeforeSource === "foto-ki" && (
-                <span className="small warn-text">
-                  Automatisch aus dem Foto gelesen – stimmt es?{" "}
-                  <button className="btn-link small" type="submit" name="op" value={`mhd-ok:${item.id}`}>✓ MHD stimmt</button>
-                  <span className="muted"> (sonst Datum oben korrigieren)</span>
-                </span>
-              )}
-            </div>
-            <O name={k("mhd")} value={item.bestBefore ?? ""} />
           </div>
-          <MhdPhoto itemId={item.id} fileId={item.bestBeforeFileId} action={uploadMhdPhoto.bind(null, item.id)} />
         </fieldset>
 
         <div className="pl-detail-actions">

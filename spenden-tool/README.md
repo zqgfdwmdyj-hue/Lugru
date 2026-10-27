@@ -86,10 +86,24 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   „Übernehmen“ oder „Stimmt so“; nichts wird automatisch geändert.
 - **Mehrere Fotos je Produkt:** Beim Hochladen „Alle ausgewählten Fotos sind ein Produkt“ – die KI nimmt die
   Vorderseite als Titelbild, die übrigen werden Infofotos. Nachträglich: in den Produktdetails bzw. auf der
-  Produktseite „Weitere Fotos hinzufügen“ – es entsteht kein neuer Artikel.
+  Produktseite „Weitere Fotos hinzufügen“ – es entsteht kein neuer Artikel. Auch „Neues Produkt“ nimmt mehrere
+  Fotos; ohne Namen erkennt die KI das Produkt. Danach öffnet sich gleich die Kartei zum Kontrollieren (ebenso nach
+  dem Hochladen eines einzelnen Fotos). Die gewählte Upload-Art merkt sich das Gerät.
+- **Fotoregel:** jedes Produkt einzeln fotografieren, Vorder- und Rückseite (bzw. Unterseite mit MHD). Sieht die KI
+  mehrere verschiedene Produkte auf einem Foto, erscheint „Mehrere Produkte im Foto“ mit der Bitte, einzeln neu zu
+  fotografieren.
+- **KI nach dem Hochladen (Verwaltung):** erkennt jedes neue Produkt selbst und füllt Name, Größe, Kategorie, MHD
+  und einen Preisvorschlag aus – der Preis gilt als „unbestätigt“, bis jemand kontrolliert. Stufe wählbar oder aus;
+  Standard ist die KI_MODUS-Stufe.
+- **Varianten:** neben dem Einzelpreis beliebig viele Varianten mit eigener Empfehlung (Packung, Karton, Kasten,
+  Tray, Palette – „+ weitere Variante“). Erscheinen in Collage (höchstens zwei Zeilen), Aushang, Messenger und Ideen.
+  Abgabeeinheit und Varianten werden beim nächsten Hinzufügen des Produkts übernommen.
+- **Preis nach Bestand:** Ist viel da (Palette, Kartons), schlägt die Liste einen günstigeren Preis vor (Palette
+  60 %, ½ Palette 70 %, ¼ Palette 80 %, Kartons 90 %) – Übernahme nur auf Klick.
 - **MHD automatisch bei Lebensmitteln:** Nach der KI-Erkennung bzw. beim Hochladen mit Rückseite liest die KI das
   Datum von den Fotos (zuerst Rückseiten); markiert als „automatisch gelesen – bitte prüfen“. Unter „Prüfen“ auch
-  von Hand startbar. In den Produktdetails „✓ MHD stimmt“ oder Datum korrigieren.
+  von Hand startbar. In den Produktdetails steht das MHD-Datum direkt unter „MHD nötig?“ („✓ MHD stimmt“ oder
+  korrigieren); in der Produktzeile steht „MHD 12.10.26“ bzw. „MHD fehlt“, auf der Produktseite das letzte MHD.
 - **Bestand (ca.) und Ergebnis:** pro Produkt „1 Palette / ½ / ¼ Palette / mehrere Kartons / Einzelprodukt / wenige
   Reste“ und nach der Verteilung „alles weg / wenig übrig / viel übrig“. Für vergangene Verteilungen gibt es den
   Reiter „Ergebnisse“ (ein Tipp je Produkt) und einen Hinweis auf der Startseite. „Noch offen“ (keine Rückmeldung)

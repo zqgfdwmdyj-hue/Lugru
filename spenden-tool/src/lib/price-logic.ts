@@ -302,6 +302,24 @@ export function packText(i: { packKind?: string | null; packCount?: number | nul
   return vol ? `${kind} (${n} × ${vol})` : `${kind} (${n} ${drink ? "Fl." : "St."})`;
 }
 
+export type PackOffer = { label: string; price: number };
+type PackSource = { packKind?: string | null; packCount?: number | null; packNote?: string | null; packPrice?: number | null; morePacks?: { kind: string | null; count: number | null; price: number | null; note: string | null }[] | null };
+
+/**
+ * Alle Varianten mit eigener Spendenempfehlung neben dem Einzelpreis – „Packung (6 St.) 2 €“, „Karton (24 St.) 5 €“.
+ * Gleiche Grundlage für Liste, Collage, Aushang, Messenger und Ideen. Varianten ohne Preis erscheinen nicht.
+ */
+export function packOffers(i: PackSource, drink = false, variant?: string | null): PackOffer[] {
+  const out: PackOffer[] = [];
+  if (i.packPrice != null) out.push({ label: packText(i, drink, variant), price: i.packPrice });
+  for (const m of i.morePacks ?? []) {
+    if (m.price == null) continue;
+    out.push({ label: packText({ packKind: m.kind, packCount: m.count, packNote: m.note }, drink, variant), price: m.price });
+  }
+  // Nach Preis aufsteigend: kleine Packung vor Karton vor Palette.
+  return out.sort((a, b) => a.price - b.price);
+}
+
 // ---------- Interne Hinweise aus Namen/Varianten heraushalten ----------
 
 /** Formulierungen der KI, die nur fürs Team gedacht sind („genaue Packungsgröße unbekannt“, „alternativ …“). */
@@ -434,9 +452,10 @@ export function priceState(item: PriceInput, imageFileId: string | null | undefi
 // ---------- Prüfstatus einer Zeile ----------
 
 export type Issue = { key: IssueKey; label: string; level: "fehlt" | "pruefen" };
-export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich" | "rueckseite" | "mhd-ki";
+export type IssueKey = "name" | "preis" | "konflikt" | "foto-alt" | "preis-unbestaetigt" | "einheit" | "ki-angaben" | "intern" | "kategorie" | "kategorie-pruefen" | "mhd" | "mhd-pruefen" | "foto" | "vergleich" | "rueckseite" | "mhd-ki" | "mehrere";
 
 export const ISSUE_FILTERS: { key: IssueKey; label: string }[] = [
+  { key: "mehrere", label: "Mehrere Produkte im Foto" },
   { key: "konflikt", label: "Preiswiderspruch" },
   { key: "foto-alt", label: "Foto zeigt alten Preis" },
   { key: "preis", label: "Ohne Preis" },
@@ -473,8 +492,11 @@ export function itemIssues(o: {
   state: PriceState;
   compare?: Comparability | null;
   aiCategory?: string | null;
+  /** KI sieht mehrere verschiedene Produkte auf dem Foto. */
+  multiple?: boolean;
 }): Issue[] {
   const out: Issue[] = [];
+  if (o.multiple) out.push({ key: "mehrere", label: "Mehrere Produkte im Foto", level: "fehlt" });
   if (o.unnamed) out.push({ key: "name", label: "Name fehlt", level: "fehlt" });
   if (o.state.conflict) out.push({ key: "konflikt", label: o.state.photo === "fehlt-eingetragen" ? "Preis nur im Foto" : "Preis ≠ Foto", level: "pruefen" });
   else if (o.state.plan === "ersetzen") out.push({ key: "foto-alt", label: "Foto zeigt alten Preis", level: "pruefen" });

@@ -4,7 +4,10 @@ import { db, schema } from "@/db";
 import { hasAdmin, requireAdmin } from "@/lib/auth";
 import { recentActivity } from "@/lib/activity";
 import { orphanFileStats } from "@/lib/service";
-import { cleanupFiles } from "./actions";
+import { cleanupFiles, saveAutoAi } from "./actions";
+import { autoAiMode } from "@/lib/settings";
+import { AI_MODE_ESTIMATE, AI_MODE_INFO, AI_MODES } from "@/lib/ai-modes";
+import { aiConfigured } from "@/lib/price-research";
 import { CreateUserForm, UserRow } from "./forms";
 
 const when = (d: Date | null) =>
@@ -13,11 +16,12 @@ const when = (d: Date | null) =>
 export default async function VerwaltungPage({ searchParams }: { searchParams: Promise<{ erster?: string }> }) {
   const me = await requireAdmin();
   const sp = await searchParams;
-  const [users, admin, orphans, log] = await Promise.all([
+  const [users, admin, orphans, log, auto] = await Promise.all([
     db.select().from(schema.users).orderBy(asc(schema.users.name)),
     hasAdmin(),
     orphanFileStats(),
     recentActivity({ limit: 100 }),
+    autoAiMode(),
   ]);
 
   return (
@@ -60,6 +64,15 @@ export default async function VerwaltungPage({ searchParams }: { searchParams: P
 
         <aside className="col-side">
           <CreateUserForm first={!admin} />
+          <form action={saveAutoAi} className="card card-pad stack" style={{ gap: 8 }}>
+            <h2>KI nach dem Hochladen</h2>
+            <div className="small muted">Erkennt jedes neue Produkt auf dem Foto selbst und füllt Name, Größe, Kategorie, MHD und einen Preisvorschlag aus (als „unbestätigt“) – ihr kontrolliert nur noch.{aiConfigured() ? "" : " Dafür muss ein KI-Schlüssel eingerichtet sein."}</div>
+            <select className="select" name="autoAi" defaultValue={auto ?? "aus"} aria-label="KI nach dem Hochladen">
+              {AI_MODES.map((m) => <option key={m} value={m}>{AI_MODE_INFO[m].label} (ca. {(AI_MODE_ESTIMATE[m] * 100).toFixed(1).replace(".", ",")} Cent je Produkt)</option>)}
+              <option value="aus">Aus – nur per Knopf starten</option>
+            </select>
+            <button className="btn" type="submit">Speichern</button>
+          </form>
           <form action={cleanupFiles} className="card card-pad stack" style={{ gap: 8 }}>
             <h2>Aufräumen</h2>
             <div className="small muted">Fotos, die nirgends mehr verwendet werden – ersetzt, entfernt oder von zusammengeführten Produkten. Sie machen Datenbank und Sicherungen unnötig groß.</div>

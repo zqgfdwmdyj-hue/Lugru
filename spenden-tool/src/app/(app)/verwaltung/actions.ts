@@ -9,6 +9,8 @@ import { requireAdmin, requireLogin, startSession } from "@/lib/auth";
 import { generatePassword, hashPassword, MIN_PASSWORD, normalizeEmail, normalizeLogin, verifyPassword } from "@/lib/password";
 import { logActivity } from "@/lib/activity";
 import { deleteOrphanFiles } from "@/lib/service";
+import { SETTINGS, setSetting } from "@/lib/settings";
+import { AI_MODE_INFO, isAiMode } from "@/lib/ai-modes";
 
 const U = schema.users;
 const uuid = z.string().uuid();
@@ -162,5 +164,15 @@ export async function cleanupFiles(): Promise<void> {
   const me = await requireAdmin();
   const { count, bytes } = await deleteOrphanFiles();
   await logActivity(me, `Aufgeräumt: ${count} ungenutzte Fotos (${(bytes / 1024 / 1024).toFixed(1)} MB) gelöscht`);
+  revalidatePath("/verwaltung");
+}
+
+/** KI nach dem Hochladen automatisch starten (oder aus). Gilt fürs ganze Team. */
+export async function saveAutoAi(fd: FormData): Promise<void> {
+  const me = await requireAdmin();
+  const v = String(fd.get("autoAi") ?? "");
+  const value = v === "aus" || isAiMode(v) ? v : "aus";
+  await setSetting(SETTINGS.autoAi, value);
+  await logActivity(me, `KI nach dem Hochladen: ${value === "aus" ? "aus" : AI_MODE_INFO[value as keyof typeof AI_MODE_INFO].label}`);
   revalidatePath("/verwaltung");
 }

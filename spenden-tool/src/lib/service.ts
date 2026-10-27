@@ -2,9 +2,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { PriceBox } from "@/db/schema";
+import type { MorePack, PriceBox } from "@/db/schema";
 import { DONATION_CATEGORIES, flyerSections } from "@/lib/layout";
-import { isDrink, LEGACY_CATEGORIES, packText, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { isDrink, LEGACY_CATEGORIES, packOffers, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import sharp from "sharp";
 import { closestPhoto, photoHash, photoMatch } from "@/lib/image-hash";
 
@@ -212,7 +212,7 @@ export function eventFlyerSections(rows: Awaited<ReturnType<typeof loadEventItem
   return flyerSections(
     rows
       .filter((r) => r.item.inFlyer)
-      .map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, unit: r.item.unit, unitCount: r.item.unitCount, bestBefore: r.item.bestBefore, packNote: packText(r.item, isDrink(r.product), r.product.variant), packPrice: r.item.packPrice })),
+      .map((r) => ({ ...r.product, price: r.item.price, priceNote: r.item.priceNote, unit: r.item.unit, unitCount: r.item.unitCount, bestBefore: r.item.bestBefore, packs: packOffers(r.item, isDrink(r.product), r.product.variant) })),
   );
 }
 
@@ -228,7 +228,7 @@ export async function lastPrices(productIds: string[]): Promise<Map<string, { pr
   return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, { price: r.price as number, confirmed: r.confirmed }]));
 }
 
-type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; packKind?: "karton" | "kasten" | "packung" | "tray" | "palette" | null; packCount?: number | null; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
+type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; packKind?: "karton" | "kasten" | "packung" | "tray" | "palette" | null; packCount?: number | null; morePacks?: MorePack[]; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {
@@ -236,6 +236,8 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
   const products = await db.select({ id: P.id, price: P.price, confirmed: P.priceConfirmed }).from(P).where(inArray(P.id, productIds));
   if (products.length === 0) return 0;
   const last = await lastPrices(products.map((p) => p.id));
+  // Abgabeeinheit und Varianten (Packung, Karton …) vom letzten Mal übernehmen – einmal angelegt, immer wieder auswählbar.
+  const prevSetup = presets ? new Map<string, typeof I.$inferSelect>() : await lastItemSetup(products.map((p) => p.id));
   const [{ max }] = await db.select({ max: sql<number>`coalesce(max(${I.sort}), 0)::int` }).from(I).where(eq(I.eventId, eventId));
   const order = new Map(productIds.map((id, i) => [id, i]));
   products.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -243,16 +245,18 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
     .insert(I)
     .values(
       products.map((p, i) => {
-        const given = presets?.get(p.id);
+        const setup = prevSetup.get(p.id);
+        const given = presets?.get(p.id) ?? (setup ? { price: null, priceNote: setup.priceNote, caption: null, unit: setup.unit, unitCount: setup.unitCount, packNote: setup.packNote, packKind: setup.packKind, packCount: setup.packCount, packPrice: setup.packPrice, morePacks: setup.morePacks, fromSetup: true } : undefined);
         const prev = last.get(p.id);
-        const price = given ? given.price : (prev?.price ?? p.price ?? null);
+        const fromSetup = !!given && "fromSetup" in given;
+        const price = given && !fromSetup ? given.price : (prev?.price ?? p.price ?? null);
         // Bestätigt nur, wenn der Preis dort schon bestätigt war – unbestätigte Foto-/KI-Preise bleiben zur Prüfung.
-        const confirmed = given ? (given.priceConfirmed ?? false) : prev ? prev.confirmed : p.confirmed;
+        const confirmed = given && !fromSetup ? (given.priceConfirmed ?? false) : prev ? prev.confirmed : p.confirmed;
         return {
           eventId,
           productId: p.id,
           price,
-          priceSource: price === null ? null : (given?.priceSource ?? ("vorlage" as const)),
+          priceSource: price === null ? null : ((given && !fromSetup ? given.priceSource : null) ?? ("vorlage" as const)),
           priceConfirmed: price !== null && confirmed,
           unit: given?.unit ?? null,
           unitCount: given?.unitCount ?? null,
@@ -262,6 +266,8 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
           packKind: given?.packKind ?? null,
           packCount: given?.packCount ?? null,
           packPrice: given?.packPrice ?? null,
+          morePacks: given?.morePacks ?? [],
+          unitConfirmed: fromSetup && !!given?.unit,
           sort: max + (i + 1) * 10,
         };
       }),
@@ -270,6 +276,18 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
     .returning({ id: I.id });
   await db.update(E).set({ updatedAt: new Date() }).where(eq(E.id, eventId));
   return inserted.length;
+}
+
+/** Abgabeeinheit und Varianten aus der letzten Verteilung je Produkt (nur, wo etwas festgelegt war). */
+async function lastItemSetup(productIds: string[]) {
+  if (productIds.length === 0) return new Map<string, typeof I.$inferSelect>();
+  const rows = await db
+    .selectDistinctOn([I.productId], { item: I })
+    .from(I)
+    .innerJoin(E, eq(E.id, I.eventId))
+    .where(and(inArray(I.productId, productIds), sql`(${I.unit} is not null or ${I.packPrice} is not null or jsonb_array_length(${I.morePacks}) > 0)`))
+    .orderBy(I.productId, desc(E.eventDate), desc(I.createdAt));
+  return new Map(rows.map((r) => [r.item.productId, r.item]));
 }
 
 /** Wann und zu welchem Preis ein Produkt dabei war. */

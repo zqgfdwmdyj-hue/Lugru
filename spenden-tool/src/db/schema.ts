@@ -143,6 +143,8 @@ export const eventItems = pgTable(
     packKind: text("pack_kind", { enum: ["karton", "kasten", "packung", "tray", "palette"] }),
     /** Stück bzw. Flaschen in der ganzen Packung, z. B. 12 Flaschen im Kasten. */
     packCount: integer("pack_count"),
+    /** Weitere Varianten neben Einzelpreis und ganzer Packung, z. B. „Packung (6 St.) 2 €“ und „Karton (24 St.) 5 €“. */
+    morePacks: jsonb("more_packs").$type<MorePack[]>().notNull().default([]),
     /** Wie viel ist ungefähr da? (Palette, halbe/viertel Palette, mehrere Kartons, Einzelprodukt, wenige/Reste) */
     stock: text("stock", { enum: ["palette", "halbe-palette", "viertel-palette", "kartons", "einzeln", "reste"] }),
     /** Wie lief es? Nach der Verteilung erfasst – Grundlage der Statistik. */
@@ -164,6 +166,9 @@ export const eventItems = pgTable(
   (t) => [uniqueIndex("event_items_uq").on(t.eventId, t.productId), index("event_items_product_idx").on(t.productId)],
 );
 
+/** Eine weitere Abgabe-Variante (Packung, Karton …) mit eigener Spendenempfehlung. */
+export type MorePack = { kind: "karton" | "kasten" | "packung" | "tray" | "palette" | null; count: number | null; price: number | null; note: string | null };
+
 /** count: Stück/Flaschen im Angebot (z. B. 12 beim Kasten) – price ist immer der Preis des ganzen Angebots. */
 export type ShopOffer = { shop: string; title: string; price: number; url: string; unit?: string | null; count?: number | null };
 export const PRICE_CHECK_STATUSES = ["pending", "running", "done", "error"] as const;
@@ -183,6 +188,8 @@ export const priceChecks = pgTable(
     recognizedCategory: text("recognized_category"),
     /** Zeigt das Foto die Vorder- oder Rückseite? (KI) */
     recognizedSide: text("recognized_side"),
+    /** Die KI sieht mehrere verschiedene Produkte auf dem Foto (z. B. Bonbons und Kaugummis) – bitte einzeln fotografieren. */
+    multipleProducts: boolean("multiple_products").notNull().default(false),
     offers: jsonb("offers").$type<ShopOffer[]>().notNull().default([]),
     lowestPrice: money("lowest_price"),
     /** Vorschlag für den Spendenpreis. */

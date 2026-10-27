@@ -26,8 +26,8 @@ const ok = (cond, what, extra = "") => { console.log(`${cond ? "✓" : "✗"} ${
 const until = async (fn, ms = 30000) => { const t = Date.now(); for (;;) { const v = await fn(); if (v) return v; if (Date.now() - t > ms) return v; await new Promise((r) => setTimeout(r, 500)); } };
 
 /** Einfache Testfotos: einfarbig mit Rauschen, jedes mit eigener Prüfsumme. */
-async function photo(dir, name, rgb) {
-  const w = 640, h = 640, buf = Buffer.alloc(w * h * 3);
+async function photo(dir, name, rgb, w = 640) {
+  const h = 640, buf = Buffer.alloc(w * h * 3);
   for (let i = 0; i < w * h; i++) { const n = (Math.random() * 40) | 0; buf[i * 3] = rgb[0] + n; buf[i * 3 + 1] = rgb[1] + n; buf[i * 3 + 2] = rgb[2] + n; }
   const file = path.join(dir, name);
   await sharp(buf, { raw: { width: w, height: h, channels: 3 } }).jpeg({ quality: 80 }).toFile(file);
@@ -45,7 +45,8 @@ async function photo(dir, name, rgb) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (d) => d.accept());
-  let eventId = null, copyId = null;
+  let eventId = null, copyId = null, futureId = null;
+  const extraProducts = [];
   try {
     await page.goto(`${BASE}/login`);
     await page.fill("#password", PASSWORD);
@@ -133,6 +134,74 @@ async function photo(dir, name, rgb) {
     ok(copied && copied.price === 0.5 && copied.pack_kind === "karton" && copied.pack_count === 24 && copied.pack_price === 5, "Kopie übernimmt Preis und Packungsangabe");
     ok(copied && copied.stock === null && copied.outcome === null && copied.best_before === null, "Kopie übernimmt Bestand, Ergebnis und MHD nicht");
 
+    // 7: KI erkennt nach dem Hochladen selbst, Kartei öffnet sich, Preis vorausgefüllt (unbestätigt)
+    await page.goto(`${BASE}/`);
+    await page.locator("summary", { hasText: "Neue Verteilung" }).click();
+    await page.fill("#ed", "2026-12-05");
+    await page.fill("#ti", `${TITLE} Zukunft`);
+    await page.selectOption("#cf", "");
+    await Promise.all([page.waitForURL(/\/verteilung\/[0-9a-f-]{36}$/), page.click("button:text-is('Anlegen')")]);
+    futureId = page.url().split("/").pop();
+    const uploadOne = async (file) => {
+      await page.check("input[name=upload-modus] >> nth=0");
+      const [ch] = await Promise.all([page.waitForEvent("filechooser"), page.click("button:text-is('Fotos auswählen')")]);
+      const before = page.url();
+      await ch.setFiles([file]);
+      await page.waitForURL((u) => u.searchParams.has("offen") && u.href !== before, { timeout: 60000 });
+      return new URL(page.url()).searchParams.get("offen");
+    };
+    const single = await uploadOne(await photo(dir, "c-einzeln.jpg", [120, 90, 30]));
+    const singleItem = (await q("select id from event_items where event_id = $1 and product_id = $2", [futureId, single]))[0];
+    ok(!!singleItem && (await page.locator(`#open-${singleItem.id}`).isChecked()), "Ein Foto → Kartei des neuen Produkts geöffnet");
+    const filled = await until(async () => { const r = (await q("select i.price::float, i.price_source, i.price_confirmed, p.name from event_items i join products p on p.id = i.product_id where i.id = $1", [singleItem.id]))[0]; return r.price !== null && r.name !== "Neues Produkt" && !/^Produkt/.test(r.name) && r; }, 60000);
+    ok(filled && filled.price_source === "ki" && filled.price_confirmed === false, "KI füllt Name und Preis selbst aus (unbestätigt, zum Kontrollieren)", filled ? `${filled.name} · ${filled.price} €` : "nichts ausgefüllt");
+
+    // 8: Zwei Produkte auf einem Foto → deutlicher Hinweis
+    const multi = await uploadOne(await photo(dir, "d-mehrere.jpg", [30, 120, 160], 950));
+    const flagged = await until(async () => (await q("select multiple_products from price_checks where product_id = $1 and status = 'done'", [multi])).some((r) => r.multiple_products), 60000);
+    ok(flagged, "KI meldet „mehrere Produkte im Foto“");
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${multi}`);
+    ok((await page.locator(`#p-${multi}`).innerText()).includes("mehrere verschiedene Produkte"), "Hinweis in der Kartei: bitte einzeln fotografieren");
+
+    // 9: Neues Produkt mit mehreren Fotos, ohne Namen → Vorderseite und Name von der KI, Kartei öffnet sich
+    await page.goto(`${BASE}/produkte`);
+    await page.locator("summary", { hasText: "Neues Produkt" }).click();
+    await page.setInputFiles("#ni", [await photo(dir, "e-hinten.jpg", [200, 200, 200]), await photo(dir, "e-vorne.jpg", [220, 40, 120])]);
+    await Promise.all([page.waitForURL(/\/produkte\/[0-9a-f-]{36}\?neu=1/, { timeout: 60000 }), page.locator(".db-new-form button[type=submit]").click()]);
+    const newId = new URL(page.url()).pathname.split("/").pop();
+    extraProducts.push(newId);
+    ok(true, "Neues Produkt → Kartei geöffnet");
+    const recognized = await until(async () => { const r = (await q("select p.name, p.image_file_id, f.name as file from products p left join files f on f.id = p.image_file_id where p.id = $1", [newId]))[0]; return r.file === "e-vorne.jpg" && !/Neues Produkt|^Produkt/.test(r.name) && r; }, 60000);
+    ok(!!recognized, "Mehrere Fotos: KI wählt Vorderseite als Titelbild und erkennt den Namen", recognized ? recognized.name : "");
+    ok((await q("select count(*)::int n from product_photos where product_id = $1", [newId]))[0].n === 1, "Rückseite als Infofoto am selben Produkt");
+
+    // 10: Mehrere Varianten (Karton + Palette) in Liste und Aushang
+    await q("update event_items set price = 0.5, unit = 'stueck', pack_kind = 'karton', pack_count = 24, pack_price = 5, in_flyer = true where id = $1", [singleItem.id]);
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`);
+    await page.locator(`button[value='pack-add:${singleItem.id}']`).click();
+    await page.waitForSelector(`#mpk0_${singleItem.id}`);
+    await page.selectOption(`#mpk0_${singleItem.id}`, "palette");
+    await page.fill(`#mpc0_${singleItem.id}`, "600");
+    await page.fill(`#mpp0_${singleItem.id}`, "50");
+    await page.locator(`#mpp0_${singleItem.id}`).blur();
+    await page.locator("button[type=submit]", { hasText: /Speichern/ }).first().click().catch(() => {});
+    const packs = await until(async () => { const r = (await q("select more_packs from event_items where id = $1", [singleItem.id]))[0].more_packs; return r[0]?.price === 50 && r; });
+    ok(packs && packs[0].kind === "palette" && packs[0].count === 600, "Weitere Variante gespeichert (Palette, 600 St., 50 €)");
+    const aus2 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
+    ok(/Karton \(24 St\.\)[^<]{0,12}5/.test(aus2) && /Palette \(600 St\.\)[^<]{0,12}50/.test(aus2), "Aushang zeigt beide Varianten");
+
+    // 11: Viel Bestand → günstigerer Vorschlag
+    await q("update event_items set stock = 'palette', price = 1, price_confirmed = true where id = $1", [singleItem.id]);
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`);
+    await page.locator(`button[value='bestand-preis:${singleItem.id}']`).click();
+    const cheaper = await until(async () => (await q("select price::float p from event_items where id = $1", [singleItem.id]))[0].p === 0.6);
+    ok(cheaper, "Bestand 1 Palette: Vorschlag 0,60 € statt 1 € übernommen");
+
+    // 12: MHD in der zugeklappten Zeile sichtbar
+    await q("update event_items set best_before = '2026-12-24', best_before_source = 'manuell' where id = $1", [singleItem.id]);
+    await page.goto(`${BASE}/verteilung/${futureId}`);
+    ok((await page.locator(`#p-${single} .pl-name`).innerText()).includes("MHD 24.12.26"), "MHD steht in der Produktzeile");
+
     ok(errors.length === 0, "keine Fehler im Browser", errors.slice(0, 3).join(" | "));
   } catch (e) {
     failed++;
@@ -141,9 +210,10 @@ async function photo(dir, name, rgb) {
     console.error("  Bildschirmfoto:", path.join(dir, "fehler.png"));
   } finally {
     // Aufräumen: Test-Verteilungen und nur dafür angelegte Produkte
-    const ids = [eventId, copyId].filter(Boolean);
+    const ids = [eventId, copyId, futureId].filter(Boolean);
     if (ids.length && !process.env.E2E_KEEP) {
       const prods = (await q("select distinct product_id from event_items where event_id = any($1)", [ids])).map((r) => r.product_id);
+      prods.push(...extraProducts);
       await q("delete from events where id = any($1)", [ids]);
       await q("delete from products p where p.id = any($1) and p.created_at >= $2 and not exists (select 1 from event_items i where i.product_id = p.id)", [prods, start]);
     }

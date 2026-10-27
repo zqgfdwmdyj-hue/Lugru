@@ -1,4 +1,11 @@
 const http = require('http');
+// Breite des ersten Bilds der Anfrage (JPEG-Kopf) – Testbilder mit 950 px Breite zeigen „mehrere Produkte“.
+function firstImageWidth(reqJson) {
+  const b64 = (JSON.stringify(reqJson.messages || []).match(/"data":"([^"]+)"/) || [])[1] || '';
+  const buf = Buffer.from(b64, 'base64');
+  for (let i = 2; i < buf.length - 9; ) { if (buf[i] !== 0xff) break; const m = buf[i + 1], len = buf.readUInt16BE(i + 2); if (m >= 0xc0 && m <= 0xc2) return buf.readUInt16BE(i + 7); i += 2 + len; }
+  return 0;
+}
 let n = 0;
 http.createServer((req, res) => {
   let body = '';
@@ -59,7 +66,7 @@ http.createServer((req, res) => {
       { shop: 'REWE', title: name + ' 500g', price: 3.49, unit: '6,98 €/kg', url: 'https://shop.rewe.de/p/beispiel-' + n },
       { shop: 'dm', title: name, price: 2.95, unit: null, url: 'https://www.dm.de/beispiel-' + n },
       { shop: 'Amazon.de', title: name + ' (Vorratspack)', price: 4.19, unit: null, url: 'https://www.amazon.de/dp/BEISPIEL' + n },
-    ], summary: (hasImage ? 'Auf dem Foto erkannt. ' : '') + 'Testantwort vom Mock-Server.' };
+    ], summary: (hasImage ? 'Auf dem Foto erkannt. ' : '') + 'Testantwort vom Mock-Server.', mehrere: firstImageWidth(reqJson) === 950 };
     setTimeout(() => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ id: 'msg_' + n, type: 'message', role: 'assistant', model: reqJson.model, stop_reason: 'end_turn', stop_sequence: null,

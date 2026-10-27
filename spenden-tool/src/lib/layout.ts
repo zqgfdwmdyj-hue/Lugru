@@ -139,7 +139,7 @@ export function balancedPages<T>(items: T[], perPage: number): T[][] {
   return pages;
 }
 
-export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null; bestBefore?: string | null; packNote?: string | null; packPrice?: number | null };
+export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null; bestBefore?: string | null; packs?: { label: string; price: number }[] };
 
 /**
  * Preis mit Abgabeeinheit, wie er überall erscheint: „je 40 Cent“, „6er-Pack 2 €“ (Collage/Social Media) bzw.
@@ -152,10 +152,9 @@ export function outputPrice(i: { price: number | null; priceNote?: string | null
   return prefix ? `${prefix} ${p}` : p;
 }
 
-/** „ganzer Karton 5€“ – Spendenempfehlung für eine ganze Packung; leer, wenn keine. */
-export function packLabel(packNote: string | null | undefined, packPrice: number | null | undefined): string {
-  const p = flyerPrice(packPrice);
-  return p ? `${packNote?.trim() || "ganze Packung"} ${p}` : "";
+/** „Karton (24 St.) 5€ · Palette 50€“ – Spendenempfehlungen für ganze Packungen; leer, wenn keine. */
+export function packLabel(packs: { label: string; price: number }[] | null | undefined): string {
+  return (packs ?? []).map((p) => `${p.label.trim() || "ganze Packung"} ${flyerPrice(p.price)}`).join(" · ");
 }
 export type FlyerLine = { text: string; price: string; mhd: string; sub: { text: string; price: string; mhd: string }[] };
 
@@ -196,7 +195,7 @@ export function flyerSections(input: FlyerItem[]): FlyerSection[] {
     lines: [...byCat.get(category)!.values()].map((group) => {
       const withPrice = (it: FlyerItem) => {
         const single = outputPrice(it, "flyer");
-        return [single, packLabel(it.packNote, it.packPrice)].filter(Boolean).join(" · ");
+        return [single, packLabel(it.packs)].filter(Boolean).join(" · ");
       };
       if (group.length === 1) {
         const it = group[0];

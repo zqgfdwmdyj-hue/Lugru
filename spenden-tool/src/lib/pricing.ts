@@ -32,3 +32,17 @@ export function suggestPackPrice(piece: number | null, count: number | null | un
   const share = packShare(drink);
   return { price: Math.max(0.1, Math.round(retail * share * 10) / 10), retail, share };
 }
+
+/**
+ * Viel da → etwas günstiger, damit es weggeht. Faktor auf die Spendenempfehlung je Bestand (ca.):
+ * Palette 60 %, ½ Palette 70 %, ¼ Palette 80 %, mehrere Kartons 90 %; Einzelprodukt und Reste unverändert.
+ */
+export const STOCK_FACTOR: Record<string, number> = { palette: 0.6, "halbe-palette": 0.7, "viertel-palette": 0.8, kartons: 0.9, einzeln: 1, reste: 1 };
+
+/** Vorschlag bei viel Bestand – null, wenn der Bestand den Preis nicht ändert oder nichts gespart würde. */
+export function stockPrice(price: number | null, stock: string | null | undefined): { price: number; factor: number } | null {
+  const factor = stock ? (STOCK_FACTOR[stock] ?? 1) : 1;
+  if (price === null || !(price > 0) || factor >= 1) return null;
+  const p = Math.max(0.1, Math.round(price * factor * 10) / 10);
+  return p < price ? { price: p, factor } : null;
+}

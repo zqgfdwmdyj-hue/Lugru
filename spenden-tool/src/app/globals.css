@@ -467,3 +467,6 @@ form.check-row { grid-template-columns: auto 1fr auto; }
 .export-ask ul { margin: 6px 0 8px; padding-left: 18px; }
 .export-progress { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .export-progress progress { flex: 1 1 160px; height: 10px; }
+
+/* Weitere Varianten (Packung, Karton, Palette …) in den Produktdetails */
+.more-pack { border-top: 1px dashed var(--border); padding-top: 8px; margin-top: 4px; display: grid; gap: 6px; }

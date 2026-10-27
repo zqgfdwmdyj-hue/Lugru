@@ -27,7 +27,7 @@ export const loadEventView = cache(async (id: string) => {
     // Andere Packungsgröße als im Handel zeigen wir immer – die Empfehlung bezieht sich womöglich auf eine andere Einheit.
     const compareMatters = !!compare && (compare.level === "abweichend" || (r.item.priceSource === "ki" && !r.item.priceConfirmed) || r.item.price === null);
     const aiCategory = check?.status === "done" ? check.recognizedCategory : null;
-    const issues: Issue[] = itemIssues({ unnamed, product: r.product, item: r.item, state, compare: compareMatters ? compare : null, aiCategory });
+    const issues: Issue[] = itemIssues({ unnamed, product: r.product, item: r.item, state, compare: compareMatters ? compare : null, aiCategory, multiple: check?.status === "done" && check.multipleProducts });
     const catHint = unnamed ? null : categoryHint(r.product, aiCategory);
     // KI-Vorschlag, der übernommen werden kann (nur ohne Preis und ohne Preis im Foto) – aus dem günstigsten
     // Angebot für Neuware, nie aus B-Ware/Gebrauchtem.

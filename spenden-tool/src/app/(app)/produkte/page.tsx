@@ -81,13 +81,13 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
         <details className="db-new">
           <summary className="btn btn-primary">+ Neues Produkt</summary>
           <ImageForm action={createProduct} className="card card-pad stack db-new-form" style={{ gap: 8 }}>
-            <div className="field"><label className="label" htmlFor="nn">Name</label><input className="input" id="nn" name="name" required /></div>
+            <div className="field"><label className="label" htmlFor="nn">Name</label><input className="input" id="nn" name="name" placeholder="leer lassen = KI erkennt vom Foto" /></div>
             <div className="form-grid">
               <div className="field"><label className="label" htmlFor="nv">Variante / Größe</label><input className="input" id="nv" name="variant" placeholder="z. B. 8er Pack, 500 g" /></div>
               <div className="field"><label className="label" htmlFor="np">Spendenempfehlung €</label><input className="input" id="np" name="price" inputMode="decimal" /></div>
             </div>
             <div className="field"><label className="label" htmlFor="nc">Kategorie</label><CategorySelect id="nc" name="category" value={kat || UNSORTED_CATEGORY} categories={categories} /></div>
-            <div className="field"><label className="label" htmlFor="ni">Foto (optional)</label><input className="input" id="ni" name="image" type="file" accept="image/*" /></div>
+            <div className="field"><label className="label" htmlFor="ni">Fotos (optional, mehrere möglich)</label><input className="input" id="ni" name="image" type="file" accept="image/*" multiple /><span className="small muted">Vorder- und Rückseite (mit MHD) – die KI nimmt die Vorderseite als Titelbild und füllt Name, Größe und Kategorie aus. Mit Fotos darf der Name leer bleiben.</span></div>
             <button className="btn btn-primary" type="submit">Anlegen</button>
           </ImageForm>
         </details>

@@ -1,12 +1,13 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { claudeImage } from "@/lib/ai-image";
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { DONATION_CATEGORIES, isPlaceholderName } from "@/lib/layout";
 import { autoReadMhd } from "@/lib/mhd";
-import { cleanAiText, isSecondHand, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { cleanAiText, comparability, isSecondHand, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { autoAiMode } from "@/lib/settings";
 import { suggestDonationPrice } from "@/lib/pricing";
 import { parseAmount } from "@/lib/numbers";
 import { AI_MODE_INFO, type AiMode, isAiMode } from "@/lib/ai-modes";
@@ -44,6 +45,8 @@ const Result = z.object({
   summary: z.string().nullish(),
   // Zeigt das (erste) Foto die Vorder- oder Rückseite der Verpackung?
   seite: z.preprocess((v) => (typeof v === "string" ? v.toLowerCase() : v), z.enum(["vorne", "hinten"]).nullish().catch(null)),
+  // Zeigt das erste Foto mehrere verschiedene Produkte (z. B. Bonbons und Kaugummis)?
+  mehrere: z.preprocess((v) => (v === "true" || v === "ja" ? true : v === "false" || v === "nein" ? false : v), z.boolean().nullish().catch(null)),
 });
 export type ResearchResult = z.infer<typeof Result>;
 
@@ -63,7 +66,8 @@ Antworte zum Schluss ausschließlich mit einem JSON-Objekt in einem \`\`\`json-B
   "category": "eine von: ${DONATION_CATEGORIES.join(", ")}",
   "offers": [{ "shop": "Händler", "title": "Produkttitel beim Händler", "price": 2.49, "menge": 1, "unit": "Grundpreis z. B. 1,99 €/l oder null", "url": "https://..." }],
   "summary": "Ein bis zwei Sätze auf Deutsch: was es ist und wie verlässlich die Preise sind",
-  "seite": "vorne oder hinten – zeigt das erste Foto die Vorderseite oder die Rückseite (Zutaten, Nährwerte, Barcode)?"
+  "seite": "vorne oder hinten – zeigt das erste Foto die Vorderseite oder die Rückseite (Zutaten, Nährwerte, Barcode)?",
+  "mehrere": "true, wenn auf dem ersten Foto zwei oder mehr VERSCHIEDENE Produkte zu sehen sind (z. B. Bonbons und Kaugummis, verschiedene Sorten nebeneinander) – dann beschreibe nur das größte/vorderste; false bei einem Produkt (mehrere gleiche Packungen zählen als ein Produkt)"
 }
 Weitere Fotos zeigen die Rückseite desselben Produkts – nutze sie für Packungsgröße, Sorte und Zutaten.`;
 
@@ -86,7 +90,7 @@ export function parseResearch(text: string): ResearchResult {
 const RECOGNIZE_SYSTEM = `Du hilfst einer ehrenamtlichen Foodsharing-Gruppe in Deutschland. Erkenne das Produkt auf dem Foto: Marke, Produktname, Sorte, Packungsgröße. Keine Preissuche.
 
 Antworte ausschließlich mit einem JSON-Objekt in einem \`\`\`json-Block:
-{ "name": "Produktname ohne Packungsgröße", "variant": "Packungsgröße/Sorte oder null", "category": "eine von: ${DONATION_CATEGORIES.join(", ")}", "offers": [], "summary": "ein kurzer Satz, was es ist", "seite": "vorne oder hinten (Rückseite mit Zutaten/Nährwerten/Barcode)" }
+{ "name": "Produktname ohne Packungsgröße", "variant": "Packungsgröße/Sorte oder null", "category": "eine von: ${DONATION_CATEGORIES.join(", ")}", "offers": [], "summary": "ein kurzer Satz, was es ist", "seite": "vorne oder hinten (Rückseite mit Zutaten/Nährwerten/Barcode)", "mehrere": "true, wenn auf dem ersten Foto zwei oder mehr VERSCHIEDENE Produkte zu sehen sind (mehrere gleiche Packungen = false)" }
 Weitere Fotos zeigen die Rückseite desselben Produkts – nutze sie für Packungsgröße und Sorte.`;
 
 const LOCATION = { type: "approximate" as const, country: "DE", timezone: "Europe/Berlin" };
@@ -178,6 +182,7 @@ async function runOne(checkId: string) {
         recognizedVariant: result.variant ?? null,
         recognizedCategory: result.category && (DONATION_CATEGORIES as readonly string[]).includes(result.category) ? result.category : null,
         recognizedSide: result.seite ?? null,
+        multipleProducts: result.mehrere === true,
         offers: result.offers.slice(0, 5).map(({ menge, ...o }) => ({ ...o, unit: o.unit ?? null, count: menge ?? null })),
         lowestPrice: lowest,
         suggestedPrice: suggestDonationPrice(lowest),
@@ -213,6 +218,9 @@ async function runOne(checkId: string) {
     } else if (aiCategory && product.category === UNSORTED_CATEGORY) {
       await db.update(schema.products).set({ category: aiCategory, updatedAt: new Date() }).where(and(eq(schema.products.id, product.id), eq(schema.products.category, UNSORTED_CATEGORY)));
     }
+    // Felder ausfüllen, damit nur noch kontrolliert werden muss: Preisvorschlag als „unbestätigt“ in kommende
+    // Verteilungen eintragen (nur ohne Preis, nicht bei Preis im Foto, nicht bei anderer Packungsgröße).
+    if (!result.mehrere && (await autoAiMode())) await fillSuggestedPrice(product.id).catch((err) => console.error("Preis vorausfüllen", err));
     // Jetzt ist bekannt, was es ist: bei Lebensmitteln das MHD automatisch von den Fotos lesen.
     await autoReadMhd([product.id]).catch((err) => console.error("MHD automatisch", err));
   } catch (e) {
@@ -226,6 +234,29 @@ async function runOne(checkId: string) {
     console.error("Preisrecherche fehlgeschlagen", checkId, e);
     await db.update(C).set({ status: "error", error: message, finishedAt: new Date() }).where(eq(C.id, checkId));
   }
+}
+
+/** Preisvorschlag der letzten Recherche in kommende Verteilungen eintragen – unbestätigt, zum Kontrollieren. */
+async function fillSuggestedPrice(productId: string) {
+  const [c] = await db.select().from(C).where(and(eq(C.productId, productId), eq(C.status, "done"))).orderBy(desc(C.createdAt)).limit(1);
+  if (!c || c.suggestedPrice === null) return;
+  const [p] = await db
+    .select({ variant: schema.products.variant, printed: schema.files.printedPriceText })
+    .from(schema.products)
+    .leftJoin(schema.files, eq(schema.files.id, schema.products.imageFileId))
+    .where(eq(schema.products.id, productId));
+  if (!p || p.printed) return;
+  if (comparability(p.variant, c).level === "abweichend") return;
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  const I = schema.eventItems;
+  const E = schema.events;
+  const items = await db
+    .select({ id: I.id })
+    .from(I)
+    .innerJoin(E, eq(E.id, I.eventId))
+    .where(and(eq(I.productId, productId), sql`${I.price} is null`, sql`${E.eventDate} >= ${today}`));
+  if (items.length === 0) return;
+  await db.update(I).set({ price: c.suggestedPrice, priceSource: "ki", priceConfirmed: false }).where(inArray(I.id, items.map((i) => i.id)));
 }
 
 /**

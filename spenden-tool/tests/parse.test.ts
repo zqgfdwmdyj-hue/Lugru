@@ -112,7 +112,7 @@ describe("Ideen", () => {
     expect(themeSuggestions(10)[0]).toBe("Halloween");
     expect(themeSuggestions(12)[0]).toBe("Weihnachten");
     expect(productLines([{ name: "Kimchi", variant: null, category: "Lebensmittel", price: 0.5, priceNote: "je", quantity: 12, bestBefore: "2026-10-30" }])).toBe("- Kimchi (Lebensmittel, Spendenempfehlung je 50 Cent, Menge 12, MHD 30.10.2026)");
-    expect(productLines([{ name: "Bifi", variant: null, category: "Lebensmittel", price: 0.4, priceNote: null, quantity: null, bestBefore: null, packNote: "ganzer Karton", packPrice: 5 }])).toBe("- Bifi (Lebensmittel, Spendenempfehlung 40 Cent, Packung: ganzer Karton 5€)");
+    expect(productLines([{ name: "Bifi", variant: null, category: "Lebensmittel", price: 0.4, priceNote: null, quantity: null, bestBefore: null, packs: [{ label: "ganzer Karton", price: 5 }] }])).toBe("- Bifi (Lebensmittel, Spendenempfehlung 40 Cent, Packung: ganzer Karton 5€)");
   });
 });
 

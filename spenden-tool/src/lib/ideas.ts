@@ -82,7 +82,7 @@ const Result = z.object({
     .catch(null),
 });
 
-export type IdeaProduct = { name: string; variant: string | null; category: string; price: number | null; priceNote: string | null; quantity: number | null; bestBefore: string | null; packNote?: string | null; packPrice?: number | null };
+export type IdeaProduct = { name: string; variant: string | null; category: string; price: number | null; priceNote: string | null; quantity: number | null; bestBefore: string | null; packs?: { label: string; price: number }[] };
 
 export function productLines(items: IdeaProduct[]): string {
   return items
@@ -91,7 +91,7 @@ export function productLines(items: IdeaProduct[]): string {
       const extra = [
         p.category,
         p.price !== null ? `Spendenempfehlung ${p.priceNote ? `${p.priceNote} ` : ""}${collagePrice(p.price)}` : "",
-        packLabel(p.packNote, p.packPrice) ? `Packung: ${packLabel(p.packNote, p.packPrice)}` : "",
+        packLabel(p.packs) ? `Packung: ${packLabel(p.packs)}` : "",
         p.quantity ? `Menge ${p.quantity}` : "",
         p.bestBefore ? `MHD ${formatDate(p.bestBefore)}` : "",
       ].filter(Boolean);

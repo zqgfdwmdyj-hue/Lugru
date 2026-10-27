@@ -14,7 +14,7 @@ import { BAND, drawBlurBackground, drawImage, drawSticker, fitFont, FONT, GREEN,
 import type { PrintedInfo } from "@/lib/printed-price";
 
 /** plan: aus der gemeinsamen Preislogik (lib/price-logic.ts) – drucken, Foto zeigt ihn schon, oder Aufkleber über den alten. */
-export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null; caption: string | null; printed: PrintedInfo; plan: PriceState["plan"]; style: TileStyle; packNote?: string | null; packPrice?: number | null };
+export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null; caption: string | null; printed: PrintedInfo; plan: PriceState["plan"]; style: TileStyle; packs?: { label: string; price: number }[] };
 type Rect = { productId: string; x: number; y: number; w: number; h: number };
 
 /**
@@ -106,7 +106,8 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
   if (note && !inline && ownPrice && price) lines.push({ text: note, size: side * 0.09 });
   if (priceLine) lines.push({ text: priceLine, size: side * 0.16, isPrice: true });
   // Spendenempfehlung für die ganze Packung als zweite, kleinere Zeile
-  if ((ownPrice || stickered) && tile.packPrice != null) lines.push({ text: `${tile.packNote?.trim() || "ganze Packung"} ${collagePrice(tile.packPrice)}`, size: side * 0.075 });
+  // Packungs-Varianten: höchstens zwei Zeilen, sonst wird die Kachel unlesbar.
+  if (ownPrice || stickered) for (const pk of (tile.packs ?? []).slice(0, 2)) lines.push({ text: `${pk.label.trim() || "ganze Packung"} ${collagePrice(pk.price)}`, size: side * 0.075 });
   if (tile.caption && st.caption) {
     ctx.font = `${Math.round(side * 0.055)}px ${FONT}`;
     for (const l of wrap(ctx, tile.caption, maxW, 3)) lines.push({ text: l, size: side * 0.055 });
@@ -290,7 +291,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
       const c = canvases.current[i];
       if (!c) return [];
       const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
-      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packNote, t.packPrice, t.priceNote, t.unit, t.unitCount, t.plan, t.caption, t.name, t.printed?.text])]);
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packs, t.priceNote, t.unit, t.unitCount, t.plan, t.caption, t.name, t.printed?.text])]);
       if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
       drawn.current.set(c, key);
       changed = true;

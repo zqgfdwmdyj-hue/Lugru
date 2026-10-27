@@ -72,7 +72,7 @@ describe("Abgabeeinheit", () => {
     expect(pricePrefix({ unit: "packung", unitCount: 6, priceNote: "je Pack" })).toBe("je Pack");
   });
   it("gleicher Text in Aushang und Collage", () => {
-    const i = { price: 0.4, unit: "stueck", unitCount: null, packNote: "ganzer Karton", packPrice: 5 };
+    const i = { price: 0.4, unit: "stueck", unitCount: null, packs: [{ label: "ganzer Karton", price: 5 }] };
     expect(outputPrice(i)).toBe("je 40 Cent");
     expect(outputPrice(i, "flyer")).toBe("je 0,40€");
     const [sec] = flyerSections([{ name: "Zebra Riegel", variant: "23 g", category: "Lebensmittel", ...i }]);
@@ -267,5 +267,23 @@ describe("Gespeicherte Ideen bereinigen", () => {
     expect(stripInternal("Kekse (genaue Packungsgröße unbekannt), Tee")).toBe("Kekse, Tee");
     expect(stripInternal("Das wird wahrscheinlich ein toller Tag – kommt vorbei!")).toBe("Das wird wahrscheinlich ein toller Tag – kommt vorbei!");
     expect(stripInternalDeep({ pakete: [{ produkte: ["Thai Style Nudeln – Marke nicht identifiziert", "Reis"] }], n: 3 })).toEqual({ pakete: [{ produkte: ["Thai Style Nudeln", "Reis"] }], n: 3 });
+  });
+});
+
+describe("Varianten und Bestand", () => {
+  it("listet alle Varianten mit Preis, günstigste zuerst", async () => {
+    const { packOffers } = await import("@/lib/price-logic");
+    const offers = packOffers({ packKind: "palette", packCount: 600, packPrice: 50, morePacks: [{ kind: "karton", count: 24, price: 5, note: null }, { kind: "tray", count: 6, price: null, note: null }] });
+    expect(offers).toEqual([{ label: "Karton (24 St.)", price: 5 }, { label: "Palette (600 St.)", price: 50 }]);
+    const { packLabel } = await import("@/lib/layout");
+    expect(packLabel(offers)).toBe("Karton (24 St.) 5€ · Palette (600 St.) 50€");
+  });
+  it("schlägt bei viel Bestand einen günstigeren Preis vor", async () => {
+    const { stockPrice } = await import("@/lib/pricing");
+    expect(stockPrice(1, "palette")).toEqual({ price: 0.6, factor: 0.6 });
+    expect(stockPrice(1, "kartons")).toEqual({ price: 0.9, factor: 0.9 });
+    expect(stockPrice(1, "reste")).toBeNull();
+    expect(stockPrice(0.1, "palette")).toBeNull();
+    expect(stockPrice(null, "palette")).toBeNull();
   });
 });

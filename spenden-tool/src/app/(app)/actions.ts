@@ -9,7 +9,8 @@ import { db, schema } from "@/db";
 import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
-import { comparability, isDrink, isPackKind, isUnit, packText, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { stockPrice } from "@/lib/pricing";
+import { comparability, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -18,7 +19,7 @@ import { autoReadMhd, readBestBefore } from "@/lib/mhd";
 import { logActivity } from "@/lib/activity";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateIdeas, IDEA_MODES, type IdeaMode, isIdeaMode } from "@/lib/ideas";
-import { getSetting, setSetting, SETTINGS } from "@/lib/settings";
+import { autoAiMode, getSetting, setSetting, SETTINGS } from "@/lib/settings";
 import { formatDate } from "@/lib/numbers";
 import { failStalePhotoPrices, pickFrontPhoto, queuePhotoPrices, runPhotoPrices } from "@/lib/photo-price";
 import { hasSeveralPrices, parsePrintedPrice } from "@/lib/printed-price";
@@ -62,7 +63,7 @@ export async function createEvent(fd: FormData) {
     const src = await loadEvent(copyFrom.data);
     if (src) {
       const items = await db.select().from(I).where(eq(I.eventId, src.id)).orderBy(I.sort);
-      await addProductsToEvent(ev.id, items.map((i) => i.productId), new Map(items.map((i) => [i.productId, { price: i.price, priceNote: i.priceNote, caption: i.caption, packNote: i.packNote, packPrice: i.packPrice, packKind: i.packKind, packCount: i.packCount, unit: i.unit, unitCount: i.unitCount, priceConfirmed: i.priceConfirmed }])));
+      await addProductsToEvent(ev.id, items.map((i) => i.productId), new Map(items.map((i) => [i.productId, { price: i.price, priceNote: i.priceNote, caption: i.caption, packNote: i.packNote, packPrice: i.packPrice, packKind: i.packKind, packCount: i.packCount, morePacks: i.morePacks, unit: i.unit, unitCount: i.unitCount, priceConfirmed: i.priceConfirmed }])));
       await db.update(E).set({ collage: src.collage }).where(eq(E.id, ev.id));
     }
   }
@@ -202,6 +203,19 @@ export async function saveItems(fd: FormData) {
       const n = parseAmount(str(fd, k("packcount")));
       set.packCount = n === null || n < 2 || n > 10000 ? null : Math.round(n);
     }
+    // Weitere Varianten: nur geänderte Felder kommen an – auf die gespeicherte Liste anwenden.
+    if (it.morePacks.length) {
+      const list = it.morePacks.map((m) => ({ ...m }));
+      let touched = false;
+      list.forEach((m, n) => {
+        const f = (x: string) => k(`${x}${n}`);
+        if (fd.has(f("mpk")) && changed(f("mpk"))) { const v = str(fd, f("mpk")); m.kind = isPackKind(v) ? v : null; touched = true; }
+        if (fd.has(f("mpc")) && changed(f("mpc"))) { const c = parseAmount(str(fd, f("mpc"))); m.count = c === null || c < 2 || c > 100000 ? null : Math.round(c); touched = true; }
+        if (fd.has(f("mpp")) && changed(f("mpp"))) { m.price = price(fd, f("mpp")) ?? parsePrintedPrice(str(fd, f("mpp"))); touched = true; }
+        if (fd.has(f("mpn")) && changed(f("mpn"))) { m.note = opt(fd, f("mpn")); touched = true; }
+      });
+      if (touched) set.morePacks = list;
+    }
     if (fd.has(k("stock")) && changed(k("stock"))) {
       const v = str(fd, k("stock"));
       set.stock = (STOCK_VALUES as readonly string[]).includes(v) ? (v as (typeof STOCK_VALUES)[number]) : null;
@@ -254,6 +268,17 @@ export async function saveItems(fd: FormData) {
   }
 
   const [op, target] = str(fd, "op").split(":");
+  // Varianten hinzufügen/entfernen (Ziel „<Eintrag>“ bzw. „<Eintrag>.<Nummer>“).
+  if (op === "pack-add" || op === "pack-del") {
+    const [itemId, nr] = (target ?? "").split(".");
+    const [cur] = await db.select({ morePacks: I.morePacks }).from(I).where(and(eq(I.id, itemId), eq(I.eventId, eventId)));
+    if (cur) {
+      const list = op === "pack-add" ? [...cur.morePacks, { kind: null, count: null, price: null, note: null }].slice(0, 6) : cur.morePacks.filter((_, n) => n !== Number(nr));
+      await db.update(I).set({ morePacks: list }).where(eq(I.id, itemId));
+    }
+    revalidatePath(`/verteilung/${eventId}`, "layout");
+    return;
+  }
   const idx = items.findIndex((i) => i.id === target);
   const selected = fd.getAll("sel").map(String).filter((v) => items.some((i) => i.id === v));
   const selItems = items.filter((i) => selected.includes(i.id));
@@ -276,6 +301,14 @@ export async function saveItems(fd: FormData) {
   } else if (op === "confirm" && idx >= 0) {
     await db.update(I).set({ priceConfirmed: true }).where(and(eq(I.id, target), sql`${I.price} is not null`));
     what = "Preis bestätigt";
+  } else if (op === "mehrere-ok" && idx >= 0) {
+    await db.update(schema.priceChecks).set({ multipleProducts: false }).where(eq(schema.priceChecks.productId, items[idx].productId));
+    what = "Foto zeigt nur ein Produkt";
+  } else if (op === "bestand-preis" && idx >= 0) {
+    const [cur] = await db.select({ price: I.price, stock: I.stock }).from(I).where(eq(I.id, target));
+    const hint = cur ? stockPrice(cur.price, cur.stock) : null;
+    if (hint) await db.update(I).set({ price: hint.price, priceSource: "manuell", priceConfirmed: true }).where(eq(I.id, target));
+    what = "Preis an den Bestand angepasst";
   } else if (op === "mhd-ok" && idx >= 0) {
     await db.update(I).set({ bestBeforeSource: "bestaetigt" }).where(eq(I.id, target));
     what = "Automatisch gelesenes MHD bestätigt";
@@ -551,7 +584,15 @@ export async function chooseFrontPhoto(productId: string, eventId: string) {
   await requireLogin();
   const pid = uuid.parse(productId);
   const eid = uuid.parse(eventId);
-  if (aiConfigured()) after(() => pickFrontPhoto(pid).then(() => undefined).catch((e) => console.error("Titelbild wählen", e)));
+  const auto = aiConfigured() ? await autoAiMode() : null;
+  // Erst Vorderseite wählen, dann erkennen (die Erkennung nimmt das Titelbild als Hauptfoto).
+  if (auto) await failStaleChecks();
+  const ids = auto ? await queuePriceChecks([pid], auto, { skipRecent: true }) : [];
+  if (aiConfigured())
+    after(async () => {
+      await pickFrontPhoto(pid).catch((e) => console.error("Titelbild wählen", e));
+      if (ids.length) await runPriceChecks(ids);
+    });
   revalidatePath(`/verteilung/${eid}`, "layout");
 }
 
@@ -711,7 +752,7 @@ export async function addToEvent(fd: FormData) {
  * zum Nachtragen) und landet direkt in der Aktion.
  */
 /** reused: schon in der Datenbank, jetzt in die Verteilung übernommen; alreadyInEvent: war schon drin; similar: neu, aber ähnlich wie ein vorhandenes. */
-export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; backs: number; rejected: string[]; productId?: string | null };
+export type UploadResult = { added: number; reused: number; alreadyInEvent: number; similar: number; backs: number; rejected: string[]; productId?: string | null; newIds?: string[] };
 
 /**
  * Fotos hochladen – der Browser schickt sie in kleinen Portionen (siehe PhotoUpload), damit auch 50+ Fotos
@@ -725,6 +766,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   // Neue Fotos landen in „Noch zuordnen“ – die KI darf das ersetzen, bestätigte Kategorien bleiben.
   const category = str(fd, "category") || UNSORTED_CATEGORY;
   const ids: string[] = [];
+  const created: string[] = [];
   const index = await photoIndex();
   const inEvent = new Set((await db.select({ id: I.productId }).from(I).where(eq(I.eventId, eventId))).map((r) => r.id));
   // „Vorder- und Rückseite abwechselnd“: jedes zweite Foto ist die Rückseite des vorherigen (nur Infofoto).
@@ -787,12 +829,19 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
     // Auch innerhalb derselben Auswahl doppelte Fotos erkennen.
     index.push({ productId: p.id, sha: img.sha, hash: img.hash, createdAt: p.createdAt });
     ids.push(p.id);
+    created.push(p.id);
     lastFront = p.id;
     if (mode === "ein-produkt") single = p.id;
     result.added++;
     if (found) result.similar++;
   }
   await addProductsToEvent(eventId, ids);
+  // KI erkennt neue Produkte gleich selbst (Name, Kategorie, Preisvorschlag) – außer bei „alle Fotos = ein Produkt“:
+  // dort startet sie erst, wenn alle Fotos da sind und die Vorderseite gewählt ist (chooseFrontPhoto).
+  if (created.length && mode !== "ein-produkt") {
+    const auto = await autoAiMode();
+    if (auto) await startChecks(created, auto, { skipRecent: true });
+  }
   // Steht schon ein Preis auf dem Foto (alte Collage-Bilder)? Im Hintergrund ablesen und eintragen – jedes Foto
   // nur einmal, wiedererkannte Fotos gar nicht erneut.
   await startPhotoPrices(eventId, ids);
@@ -803,7 +852,7 @@ export async function uploadPhotos(fd: FormData): Promise<UploadResult> {
   }
   if (result.added + result.reused) await logActivity(me, `Fotos hochgeladen: ${result.added} neu, ${result.reused} wiedererkannt${result.backs ? `, ${result.backs} Infofoto(s)` : ""}`, { eventId });
   revalidatePath(`/verteilung/${eventId}`, "layout");
-  return { ...result, productId: single };
+  return { ...result, productId: single, newIds: created };
 }
 
 async function startPhotoPrices(eventId: string, productIds: string[], opts: { again?: boolean; retry?: boolean } = {}) {
@@ -834,26 +883,51 @@ export async function clearPrintedPrice(fileId: string, back: string, fd?: FormD
 
 // ---------- Produkte ----------
 
+/**
+ * Neues Produkt von Hand – mit beliebig vielen Fotos (vorne, hinten, Seite). Die KI wählt die Vorderseite als
+ * Titelbild und erkennt das Produkt; ohne Namen genügen die Fotos. Danach öffnet sich die Kartei zum Kontrollieren.
+ */
 export async function createProduct(fd: FormData) {
   const me = await requireLogin();
-  const name = str(fd, "name");
-  if (!name) return;
-  const image = images(fd, "image")[0];
-  const imageFileId = image ? await storeImage(image) : null;
+  const files = images(fd, "image").slice(0, 8);
+  const checked = (await Promise.all(files.map((f) => checkImage(f)))).filter((x): x is NonNullable<typeof x> => !!x);
+  const typed = str(fd, "name");
+  if (!typed && checked.length === 0) return;
+  const name = typed || PLACEHOLDER_NAME;
+  const fileIds: string[] = [];
+  for (const img of checked) fileIds.push(await storeChecked(img));
   const [p] = await db
     .insert(P)
-    .values({ name, variant: opt(fd, "variant"), category: str(fd, "category") || UNSORTED_CATEGORY, price: price(fd, "price"), note: opt(fd, "note"), imageFileId })
+    .values({ name, variant: opt(fd, "variant"), category: str(fd, "category") || UNSORTED_CATEGORY, price: price(fd, "price"), note: opt(fd, "note"), imageFileId: fileIds[0] ?? null })
     .returning({ id: P.id });
+  if (fileIds.length > 1) await db.insert(schema.productPhotos).values(fileIds.slice(1).map((fileId) => ({ productId: p.id, fileId, role: "info" as const }))).onConflictDoNothing();
   const eventId = uuid.safeParse(fd.get("eventId"));
-  await logActivity(me, `Produkt „${name}“ angelegt`, { productId: p.id, eventId: eventId.success ? eventId.data : null });
-  if (eventId.success && (await loadEvent(eventId.data))) {
+  const inEvent = eventId.success && !!(await loadEvent(eventId.data));
+  await logActivity(me, `Produkt „${typed || "ohne Namen"}“ angelegt${fileIds.length ? ` (${fileIds.length} Foto${fileIds.length > 1 ? "s" : ""})` : ""}`, { productId: p.id, eventId: inEvent ? eventId.data! : null });
+  if (inEvent) {
     const pr = price(fd, "price");
     // Von Hand angelegt = eingetragener, bestätigter Preis.
-    await addProductsToEvent(eventId.data, [p.id], new Map([[p.id, { price: pr, priceNote: null, caption: null, priceConfirmed: pr !== null, priceSource: pr === null ? null : ("manuell" as const) }]]));
-    revalidatePath(`/verteilung/${eventId.data}`, "layout");
-    return;
+    await addProductsToEvent(eventId.data!, [p.id], new Map([[p.id, { price: pr, priceNote: null, caption: null, priceConfirmed: pr !== null, priceSource: pr === null ? null : ("manuell" as const) }]]));
+  }
+  // Fotos da: Vorderseite wählen, dann erkennen (Name, Kategorie, Preisvorschlag, MHD) – im Hintergrund.
+  if (fileIds.length && aiConfigured()) {
+    const auto = await autoAiMode();
+    const mode = auto ?? (typed ? null : ("erkennen" as const));
+    // Gleich einreihen (die Kartei zeigt „KI arbeitet …“), ausführen erst nach der Wahl des Titelbilds.
+    if (mode) await failStaleChecks();
+    const ids = mode ? await queuePriceChecks([p.id], mode) : [];
+    after(async () => {
+      if (fileIds.length > 1) await pickFrontPhoto(p.id).catch((e) => console.error("Titelbild wählen", e));
+      if (ids.length) await runPriceChecks(ids);
+    });
   }
   revalidatePath("/produkte");
+  // Gleich die Kartei öffnen – zum Kontrollieren, ohne danach suchen zu müssen.
+  if (inEvent) {
+    revalidatePath(`/verteilung/${eventId.data}`, "layout");
+    redirect(`/verteilung/${eventId.data}?offen=${p.id}#p-${p.id}`);
+  }
+  redirect(`/produkte/${p.id}?neu=1`);
 }
 
 export async function updateProduct(fd: FormData) {
@@ -1082,13 +1156,13 @@ export async function createIdeas(eventId: string, _prev: IdeasState, fd: FormDa
   const event = await loadEvent(id);
   if (!event) return { ok: false, message: "Verteilung nicht gefunden." };
   const rows = await db
-    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice, packKind: I.packKind, packCount: I.packCount })
+    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice, packKind: I.packKind, packCount: I.packCount, morePacks: I.morePacks })
     .from(I)
     .innerJoin(P, eq(P.id, I.productId))
     .where(eq(I.eventId, id))
     .orderBy(I.sort);
   // Packungsbezeichnung wie in Aushang und Collage („Kasten (12 × 0,5 l)“)
-  const items = rows.filter((r) => !isPlaceholderName(r.name)).map((r) => ({ ...r, packNote: r.packPrice != null ? packText(r, isDrink(r), r.variant) : r.packNote }));
+  const items = rows.filter((r) => !isPlaceholderName(r.name)).map((r) => ({ ...r, packs: packOffers(r, isDrink(r), r.variant) }));
   if (items.length === 0) return { ok: false, message: "Noch keine Produkte mit Namen in dieser Verteilung." };
   const themes = fd.getAll("thema").map(String).filter(Boolean).slice(0, 6);
   const wish = str(fd, "wunsch").slice(0, 500);

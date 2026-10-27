@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isDrink, packText, publicText, stripInternalDeep } from "@/lib/price-logic";
+import { isDrink, packOffers, publicText, stripInternalDeep } from "@/lib/price-logic";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -30,7 +30,7 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
   ]);
   const items = rows
     .filter((r) => !isPlaceholderName(r.product.name))
-    .map((r) => ({ name: publicText(r.product.name), variant: r.product.variant ? publicText(r.product.variant) || null : null, price: r.item.price, priceNote: r.item.priceNote, packNote: r.item.packPrice != null ? packText(r.item, isDrink(r.product), r.product.variant) : null, packPrice: r.item.packPrice, image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
+    .map((r) => ({ name: publicText(r.product.name), variant: r.product.variant ? publicText(r.product.variant) || null : null, price: r.item.price, priceNote: r.item.priceNote, packs: packOffers(r.item, isDrink(r.product), r.product.variant), image: r.product.imageFileId ? `/datei/${r.product.imageFileId}` : null }));
   // Plakat: Produktnamen der KI den Produkten (Foto, Spendenempfehlungen) zuordnen
   const posterData = (poster: IdeaPoster) => {
     const tiles: PosterTile[] = matchProducts(poster.hervorgehoben, items)
@@ -40,8 +40,8 @@ export default async function IdeenPage({ params }: { params: Promise<{ id: stri
         name: [item!.name, item!.variant].filter(Boolean).join(" "),
         image: item!.image,
         single: item!.price != null ? `${item!.priceNote ? `${item!.priceNote} ` : ""}${formatEuro(item!.price)}` : "",
-        pack: item!.packPrice != null ? formatEuro(item!.packPrice) : null,
-        packLabel: item!.packNote ?? null,
+        pack: item!.packs[0] ? formatEuro(item!.packs[0].price) : null,
+        packLabel: item!.packs[0]?.label ?? null,
       }));
     const groups: PosterGroup[] = poster.gruppen.slice(0, 3).map((g) => ({
       titel: g.titel,

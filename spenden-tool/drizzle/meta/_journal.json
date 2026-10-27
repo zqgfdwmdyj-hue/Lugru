@@ -134,6 +134,13 @@
       "when": 1793048812369,
       "tag": "0018_packung_bestand",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793118733715,
+      "tag": "0019_varianten_mehrere",
+      "breakpoints": true
     }
   ]
 }
