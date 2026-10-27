@@ -13,6 +13,7 @@ import { calendarVisible } from "@/lib/calendar/visibility";
 import { textOn } from "@/lib/calendar/colors";
 import { calendarPalette } from "@/lib/calendar/palette";
 import { PrivateHint } from "@/app/(privat)/privat/hint";
+import { TaskNotes } from "@/components/task-notes";
 import { Suspense } from "react";
 import { TodayInsights } from "./today-insights";
 import { toggleCalendarAction } from "./start-actions";
@@ -54,7 +55,7 @@ function TaskRow({ task, today, step = false, idea = false }: { task: Task | Tas
       </form>
       <div style={{ flexGrow: 1, minWidth: 0 }}>
         <div className="todo-title">{task.link && !done ? <Link href={task.link} style={{ color: "inherit", textDecoration: "none" }}>{task.title}</Link> : task.title}</div>
-        {task.notes && <div className="todo-notes">{task.notes}</div>}
+        <TaskNotes notes={task.notes} />
       </div>
       <div className="todo-meta">
         <span className={tagClass}>{task.priority === "critical" ? "KRITISCH" : (CATEGORY_LABEL[task.category] ?? task.category).toUpperCase()}</span>

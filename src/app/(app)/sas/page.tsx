@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { CopyButton } from "@/components/copy-button";
+import { TaskNotes } from "@/components/task-notes";
 import { auditMail, daysUntil, MODULE_LABEL, WAITING_LABEL, type SasModule, type SasWaiting } from "@/lib/sas/logic";
 import { brandEvidence, getProgram, refreshBrandFactsIfStale, loadBrands, loadDeals, loadDocuments, loadItems, salesCoverage, type SasBrand, type SasDealView, type SasItem, type SasProgram } from "@/lib/sas/service";
 import { BrandStatusSelect } from "./brand-status";
@@ -77,7 +78,7 @@ function ItemRow({ it, readOnly }: { it: SasItem; readOnly: boolean }) {
           {it.priority === "critical" && !done && <span className="tag tag-critical" style={{ marginRight: 6 }}>WICHTIG</span>}
           {it.title}
         </div>
-        {it.notes && <div className="small muted" style={{ marginTop: 2 }}>{it.notes}</div>}
+        <TaskNotes notes={it.notes} className="small muted sas-item-notes" />
         {!done && (
           <form action={updateItemAction} className="sas-item-edit">
             <input type="hidden" name="taskId" value={it.taskId} />

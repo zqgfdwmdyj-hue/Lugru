@@ -59,31 +59,38 @@ h2 { font-size: 16px; margin: 0; }
 /* Grundgerüst */
 .shell { display: flex; min-height: 100vh; }
 .sidebar { width: 244px; flex-shrink: 0; background: var(--sidebar); border-right: 1px solid #dcdad3; padding: 20px 12px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-.brand { display: flex; align-items: center; gap: 10px; padding: 0 12px 16px; font-weight: 700; font-size: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 12px 12px; font-weight: 700; font-size: 16px; }
 .brand-mark { width: 28px; height: 28px; border-radius: 7px; display: block; flex: none; }
-.nav-link { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 6px; font-size: 14px; color: var(--ink-2); text-decoration: none; }
+.nav-link { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; font-size: 13.5px; color: var(--ink-2); text-decoration: none; }
 .nav-link:hover { background: #e2e0d9; color: var(--ink); }
 .nav-link.active { background: var(--surface); color: var(--ink); font-weight: 600; }
-.nav-link.small { font-size: 13px; padding: 5px 12px; }
+.nav-link.small { font-size: 13px; padding: 4px 10px; }
 .nav-link.soon { color: #8b9096; cursor: default; }
 .nav-link.soon:hover { background: none; color: #8b9096; }
 .nav-drawer { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .nav-close, .nav-backdrop { display: none; }
-.main-nav { display: flex; flex-direction: column; gap: 4px; }
+.main-nav { display: flex; flex-direction: column; gap: 3px; }
+/* Zählerzeile: offene Punkte aller Bereiche auf einen Blick, ohne aufzuklappen. */
+.nav-counters { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 8px; margin-bottom: 3px; border-bottom: 1px solid #dcdad3; }
+.nav-counter { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 3px 2px 7px; border-radius: 12px; background: var(--surface); color: var(--ink-2); text-decoration: none; border: 1px solid #dcdad3; border-left: 3px solid var(--g, #8a8f95); }
+.nav-counter:hover { color: var(--ink); text-decoration: none; border-color: var(--g, #8a8f95); }
+.nav-counter b { font-family: var(--mono); font-size: 11.5px; font-weight: 600; border-radius: 9px; padding: 0 6px; background: var(--border-strong); color: var(--ink); }
+.nav-counter.alert b { background: var(--danger); color: #fff; }
 .nav-group { padding: 0 0 0 4px; border-left: 4px solid var(--g, #8a8f95); border-radius: 6px; background: color-mix(in srgb, var(--g, #8a8f95) 6%, transparent); }
 .nav-group.open { padding-bottom: 4px; }
 .nav-group.current { background: color-mix(in srgb, var(--g, #8a8f95) 14%, transparent); }
-.nav-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; font: inherit; font-size: 13.5px; font-weight: 700; color: #111; background: none; border: 0; padding: 9px 10px 9px 8px; cursor: pointer; text-align: left; border-radius: 6px; }
+.nav-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; font: inherit; font-size: 13.5px; font-weight: 700; color: #111; background: none; border: 0; padding: 7px 8px 7px 6px; cursor: pointer; text-align: left; border-radius: 6px; }
 .nav-head:hover { background: color-mix(in srgb, var(--g, #8a8f95) 12%, transparent); }
 .nav-head:focus-visible, .nav-link:focus-visible { outline: 2px solid var(--g, var(--accent)); outline-offset: -2px; }
 .nav-group.current > .nav-head { color: var(--g); }
 .nav-head-end { display: inline-flex; align-items: center; gap: 6px; }
 .nav-caret { font-size: 11px; color: var(--muted); width: 10px; text-align: center; }
 .nav-group .nav-link.active { box-shadow: inset 3px 0 0 var(--g, var(--accent)); }
-.nav-group.single .nav-section-link { font-weight: 700; font-size: 13.5px; color: #111; padding: 9px 10px 9px 8px; }
+.nav-group.single .nav-section-link { font-weight: 700; font-size: 13.5px; color: #111; padding: 7px 8px 7px 6px; }
 .nav-group.single .nav-section-link.active { background: var(--surface); color: var(--g); box-shadow: none; }
-.nav-favs { padding: 2px 0 6px; margin-bottom: 4px; border-bottom: 1px solid #dcdad3; }
-.nav-favs-head { font-size: 12px; font-weight: 700; color: var(--muted); padding: 4px 12px; }
+.nav-favs { padding: 0 0 5px; margin-bottom: 3px; border-bottom: 1px solid #dcdad3; }
+.nav-favs-head { font-size: 12px; font-weight: 700; color: var(--muted); padding: 2px 10px; }
+.nav-favs .nav-link { padding: 4px 10px; font-size: 13px; }
 .nav-helpers { margin-top: 10px; padding-top: 8px; border-top: 1px solid #dcdad3; }
 .nav-badge { font-family: var(--mono); font-size: 12px; border-radius: 10px; padding: 0 7px; background: var(--danger); color: #fff; }
 .nav-badge.quiet { background: var(--border-strong); color: var(--ink); }
@@ -157,6 +164,16 @@ h2 { font-size: 16px; margin: 0; }
 .todo:last-child { border-bottom: none; }
 .todo-title { font-size: 15px; font-weight: 600; }
 .todo-notes { font-size: 12px; color: var(--muted); margin-top: 2px; }
+/* Lange Notizen: Wirkung + erster Schritt sichtbar, der Rest zum Aufklappen. */
+.notes-fold > summary { cursor: pointer; list-style: none; }
+.notes-fold > summary::-webkit-details-marker { display: none; }
+.notes-fold > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.notes-effect { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: 9px; background: var(--surface-2); color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.notes-toggle::after { content: "mehr ▾"; color: var(--accent); white-space: nowrap; }
+.notes-fold[open] > summary .notes-short { display: none; }
+.notes-fold[open] .notes-toggle::after { content: "weniger ▴"; }
+.notes-full { white-space: pre-line; margin-top: 2px; }
+.sas-item-notes { margin-top: 2px; }
 .todo-done .todo-title { text-decoration: line-through; }
 .todo-done { opacity: .55; }
 .todo-check { width: 20px; height: 20px; border-radius: 5px; border: 2px solid var(--border-strong); background: var(--surface); cursor: pointer; flex-shrink: 0; padding: 0; display: flex; align-items: center; justify-content: center; }
@@ -238,13 +255,52 @@ h2 { font-size: 16px; margin: 0; }
 .cal-num { align-self: flex-end; font-size: 13px; font-variant-numeric: tabular-nums; width: 24px; height: 24px; line-height: 24px; text-align: center; border-radius: 50%; }
 .cal-today .cal-num { background: #d70015; color: #fff; font-weight: 600; }
 .cal-items { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.cal-ev { font-size: 11.5px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 5px; border-radius: 4px; border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) 10%, transparent); }
+.cal-ev { display: block; font-size: 11.5px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 1px 5px; border-radius: 4px; border-left: 3px solid var(--c); background: color-mix(in srgb, var(--c) 10%, transparent); }
 .cal-ev-allday { background: color-mix(in srgb, var(--c) 22%, transparent); }
 .cal-ev-overdue { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c) 60%, transparent); opacity: .75; }
 .cal-time { color: var(--muted); margin-right: 4px; font-variant-numeric: tabular-nums; }
 .cal-more { font-size: 11px; color: var(--muted); padding-left: 5px; }
 .cal-dots { display: none; gap: 3px; justify-content: center; flex-wrap: wrap; }
-.cal-dots i { width: 6px; height: 6px; border-radius: 50%; }
+.cal-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+/* Fälligkeiten aus dem System (Aufgaben, Fristen …) umrandet statt gefüllt – Termine aus eigenen Kalendern gefüllt. */
+.cal-ev-sys, .cal-ev-sys.cal-ev-allday { background: var(--surface); border: 1px dashed color-mix(in srgb, var(--c) 60%, transparent); border-left: 3px solid var(--c); padding: 0 4px; }
+.cal-dots i.sys { background: transparent; box-shadow: inset 0 0 0 1.5px var(--c); }
+.cal-ev-wrap { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.cal-ev-link { display: block; min-width: 0; color: inherit; text-decoration: none; }
+.cal-ev-link:hover { text-decoration: none; }
+.cal-ev-link:hover .cal-ev { box-shadow: 0 0 0 1px var(--c); }
+.cal-legend-kinds { display: inline-flex; align-items: center; gap: 5px; }
+.cal-ev-sample { display: inline-block; font-size: 11px; color: var(--ink); }
+.cal-side { width: 320px; }
+/* Monat am Desktop: Titel zweizeilig statt nach wenigen Zeichen abgeschnitten. */
+@media (min-width: 1101px) {
+  .cal-day .cal-ev { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+}
+/* Woche: sieben volle Spalten, jeder Eintrag ganz; auf schmalen Bildschirmen untereinander. */
+.cal-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--border); }
+.cal-week-day { display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 12px; border-right: 1px solid var(--border); min-width: 0; min-height: 240px; }
+.cal-week-day:last-child { border-right: 0; }
+.cal-week-day.cal-sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.cal-week-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink); text-decoration: none; padding: 3px 5px; border-radius: 6px; }
+.cal-week-head:hover { background: var(--surface-2); text-decoration: none; }
+.cal-week-day.cal-today .cal-week-head > span:first-child { color: #d70015; }
+.cal-week-items { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-week .cal-ev { font-size: 12.5px; line-height: 1.4; padding: 3px 6px; }
+.cal-week .cal-ev-sys { padding: 2px 5px; }
+@media (max-width: 1100px) {
+  .cal-week { grid-template-columns: minmax(0, 1fr); }
+  .cal-week-day { min-height: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .cal-week-day:last-child { border-bottom: 0; }
+}
+/* Agenda und Tagesliste */
+.cal-agenda { display: flex; flex-direction: column; gap: 12px; }
+.cal-agenda-day { border-top: 1px solid var(--border); padding-top: 10px; }
+.cal-agenda-day h3 { font-size: 14px; margin: 0 0 8px; }
+.cal-agenda-today h3 { color: #d70015; }
+.cal-agenda-past { opacity: .7; }
+.cal-line { display: flex; gap: 10px; }
+.cal-line-bar { width: 4px; border-radius: 2px; background: var(--c); flex-shrink: 0; }
+.cal-line-sys .cal-line-bar { width: 0; background: none; border-left: 3px dotted var(--c); border-radius: 0; }
 @media (max-width: 760px) {
   .cal-day { min-height: 54px; align-items: center; padding: 4px 2px; }
   .cal-num { align-self: center; }

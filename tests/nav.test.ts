@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { areaForPath, canAccess } from "@/lib/auth/areas";
-import { activeItem, NAV, visibleNav } from "@/lib/nav";
+import { activeItem, NAV, navCounters, openSections, visibleNav } from "@/lib/nav";
 
 // Navigation: aktiver Bereich und Unterpunkt, Sichtbarkeit nach Rechten.
 
@@ -52,5 +52,27 @@ describe("Sichtbarkeit", () => {
   it("jede Adresse kommt nur einmal vor", () => {
     const hrefs = NAV.flatMap((s) => s.items.map((i) => i.href));
     expect(new Set(hrefs).size).toBe(hrefs.length);
+  });
+});
+
+describe("verdichtete Seitenleiste", () => {
+  const counts = { tasks: 5, inbox: 0, orders: 12, claims: 3, invoices: 2262, amazonTodos: 1 };
+  it("Zählerzeile: nur Punkte mit Zähler, Handlungsbedarf zuerst, dann nach Anzahl", () => {
+    const c = navCounters(NAV, counts);
+    expect(c.map((x) => `${x.label}:${x.n}`)).toEqual(["Aufgaben:5", "Amazon-ToDos:1", "Belege prüfen:2262", "Versand:12", "Ansprüche:3"]);
+    expect(c.every((x) => x.n > 0)).toBe(true);
+    expect(c[0]).toMatchObject({ href: "/", alert: true, section: "heute" });
+  });
+  it("Zählerzeile berücksichtigt nur sichtbare Bereiche", () => {
+    const staff = visibleNav((p) => canAccess({ role: "staff", areas: ["verkauf"], privateAccess: false }, areaForPath(p)), false);
+    const c = navCounters(staff, counts);
+    expect(c.some((x) => x.label === "Belege prüfen")).toBe(false);
+    expect(c.some((x) => x.label === "Amazon-ToDos")).toBe(false);
+  });
+  it("offen ist nur der aktuelle Bereich plus von Hand geöffnete", () => {
+    expect([...openSections("verkauf", new Set(), false)]).toEqual(["verkauf"]);
+    expect([...openSections("verkauf", new Set(["finanzen"]), false)].sort()).toEqual(["finanzen", "verkauf"]);
+    expect([...openSections("verkauf", new Set(), true)]).toEqual([]);
+    expect([...openSections(null, new Set(), false)]).toEqual([]);
   });
 });

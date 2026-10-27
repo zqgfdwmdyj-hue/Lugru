@@ -16,7 +16,30 @@ export type DayEntry = {
   /** Kürzel des eigenen Kalenders bzw. Symbol der Systemkategorie – Bedeutung nie nur über die Farbe. */
   abbr?: string;
   icon?: string;
+  /** Fälligkeit aus dem System (Aufgabe, Frist …) statt eigener Termin – wird umrandet statt gefüllt gezeigt. */
+  system?: boolean;
 };
+
+export type CalendarView = "monat" | "woche" | "agenda";
+
+/** Ansicht aus der Adresse – unbekannt → Monat. */
+export function parseView(value: string | undefined): CalendarView {
+  return value === "woche" || value === "agenda" ? value : "monat";
+}
+
+/** Montag bis Sonntag der Woche, in der der Tag liegt. */
+export function weekDays(day: string): string[] {
+  const weekday = (new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7; // Mo = 0
+  const start = addDaysIso(day, -weekday);
+  return Array.from({ length: 7 }, (_, i) => addDaysIso(start, i));
+}
+
+/** „27.10.–2.11.2026“ bzw. „28.12.2026–3.1.2027“ – Überschrift der Wochenansicht. */
+export function weekTitle(days: string[]): string {
+  const a = days[0], b = days[days.length - 1];
+  const dm = (d: string) => `${Number(d.slice(8))}.${Number(d.slice(5, 7))}.`;
+  return a.slice(0, 4) === b.slice(0, 4) ? `${dm(a)}–${dm(b)}${b.slice(0, 4)}` : `${dm(a)}${a.slice(0, 4)}–${dm(b)}${b.slice(0, 4)}`;
+}
 
 /** "2026-10" → gültiger Monat, sonst der aktuelle. */
 export function parseMonth(value: string | undefined, today: string): string {

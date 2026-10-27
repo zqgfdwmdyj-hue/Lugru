@@ -1,9 +1,7 @@
 import { and, count, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { cookies } from "next/headers";
 import { SidebarNav } from "@/components/sidebar-nav";
-import { NAV_OPEN_COOKIE } from "@/lib/nav";
 import { logout } from "@/app/login/actions";
 import { Suspense } from "react";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -27,7 +25,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
   const access = { isOwner: session.role === "owner", areas: session.areas, privateAccess: session.privateAccess };
   const favorites = prefs.favorites ?? [];
-  const openSaved = ((await cookies()).get(NAV_OPEN_COOKIE)?.value ?? "").split(".").filter((k) => /^[a-z]{2,20}$/.test(k));
 
   return (
     <div className="shell">
@@ -45,7 +42,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <SidebarNav
             counts={{ tasks: tasks.n, inbox: inbox.n, orders: orders.n, claims: claims.n, invoices: invoices.n, amazonTodos: amazonTodos.n }}
             favorites={favorites}
-            openSaved={openSaved}
             {...access}
           />
           <div className="sidebar-foot">

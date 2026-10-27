@@ -51,9 +51,13 @@ export function colorDistance(h1: string, h2: string): number {
   return Math.sqrt((dLp / Sl) ** 2 + (dCp / Sc) ** 2 + (dHp / Sh) ** 2 + Rt * (dCp / Sc) * (dHp / Sh));
 }
 
-/** Systemkategorien im Geschäftskalender: Farbe (passend zum Bereich) und Symbol. */
+/**
+ * Systemkategorien im Geschäftskalender: Farbe (passend zum Bereich) und Symbol. Aufgaben bewusst dunkel-neutral
+ * statt blau – eigene Kalender (Familie, iCloud-Standard) sind oft blau; Fälligkeiten werden zusätzlich umrandet
+ * statt gefüllt gezeigt.
+ */
 export const SYSTEM_CATEGORIES: Record<string, { color: string; icon: string; label: string }> = {
-  Aufgabe: { color: "#2563eb", icon: "☑", label: "Aufgabe" },
+  Aufgabe: { color: "#1f2937", icon: "☑", label: "Aufgabe" },
   Fall: { color: "#b91c1c", icon: "⚖", label: "Frist" },
   Ansprüche: { color: "#57534e", icon: "€", label: "Ansprüche" },
   Versand: { color: "#0f766e", icon: "📦", label: "Versand" },

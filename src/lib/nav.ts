@@ -16,6 +16,8 @@ export type NavItem = {
   owner?: boolean;
   /** Zusätzliche Adressen, unter denen der Punkt aktiv ist (z. B. Aufgabenliste mit Bereichsfilter). */
   also?: (path: string, q: URLSearchParams) => boolean;
+  /** Kurzname für die Zählerzeile oben in der Seitenleiste („Aufgaben 5“). */
+  short?: string;
 };
 
 export type NavSection = { key: string; label: string; color: string; icon?: string; items: NavItem[]; helper?: boolean };
@@ -27,7 +29,7 @@ export const NAV: NavSection[] = [
     color: "var(--area-heute)",
     icon: "📋",
     items: [
-      { href: "/", label: "Tagesübersicht", badge: "tasks", alert: true },
+      { href: "/", label: "Tagesübersicht", badge: "tasks", alert: true, short: "Aufgaben" },
       { href: "/?ansicht=liste", label: "Alle Aufgaben", also: (p, q) => p === "/" && Boolean(q.get("kat") && q.get("kat") !== "alle") },
       { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
       { href: "/kalender", label: "Termine" },
@@ -39,7 +41,7 @@ export const NAV: NavSection[] = [
     color: "var(--area-verkauf)",
     icon: "🚚",
     items: [
-      { href: "/auftraege", label: "Aufträge & Versand", badge: "orders" },
+      { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
       { href: "/listings", label: "Angebote (alle Kanäle)" },
       { href: "/ebay", label: "Neues eBay-Angebot" },
       { href: "/ebay/pruefen", label: "eBay-Angebote prüfen" },
@@ -103,7 +105,7 @@ export const NAV: NavSection[] = [
       { href: "/gewinn", label: "Gewinn" },
       { href: "/cashflow", label: "Cash Flow" },
       { href: "/hebel", label: "Hebel: Umsatz & Marge" },
-      { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices" },
+      { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices", short: "Belege prüfen" },
       { href: "/rechnungen/belege", label: "Belege scannen" },
       { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
       { href: "/ebay?ansicht=rechnungen", label: "eBay-Rechnungen" },
@@ -208,4 +210,31 @@ export function activeItem(sections: NavSection[], path: string, q: URLSearchPar
 /** Bereiche mit den Punkten, die diese Person sehen darf (Bereichs-Rechte, Inhaber-Punkte). */
 export function visibleNav(allowed: (path: string) => boolean, isOwner: boolean): NavSection[] {
   return NAV.map((s) => ({ ...s, items: s.items.filter((it) => (!it.owner || isOwner) && allowed(it.href.split(/[?#]/)[0])) })).filter((s) => s.items.length > 0);
+}
+
+export type NavCounter = { href: string; label: string; n: number; alert: boolean; color: string; section: string };
+
+/**
+ * Zählerzeile oben in der Seitenleiste: alle Punkte mit Zähler > 0 aus den sichtbaren Bereichen – rote
+ * (Handlungsbedarf) zuerst, dann nach Anzahl. So sind wichtige Zahlen erreichbar, ohne Bereiche aufzuklappen.
+ */
+export function navCounters(sections: NavSection[], counts: NavCounts): NavCounter[] {
+  const out: NavCounter[] = [];
+  for (const s of sections) {
+    for (const it of s.items) {
+      const n = it.badge ? counts[it.badge] : 0;
+      if (n > 0) out.push({ href: it.href, label: it.short ?? it.label, n, alert: Boolean(it.alert), color: s.color, section: s.key });
+    }
+  }
+  return out.sort((a, b) => Number(b.alert) - Number(a.alert) || b.n - a.n);
+}
+
+/**
+ * Aufgeklappte Bereiche: der aktuelle (außer man hat ihn selbst zugeklappt) und was seit dem letzten
+ * Seitenwechsel von Hand geöffnet wurde. Früher besuchte Bereiche bleiben nicht offen – die Leiste bleibt kurz.
+ */
+export function openSections(activeKey: string | null, manual: ReadonlySet<string>, closedActive: boolean): Set<string> {
+  const out = new Set(manual);
+  if (activeKey && !closedActive) out.add(activeKey);
+  return out;
 }

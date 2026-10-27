@@ -29,6 +29,11 @@ describe("Kalenderfarben unterscheidbar", () => {
     for (const c of cats) expect(c.icon.length).toBeGreaterThan(0);
     for (let i = 0; i < cats.length; i++) for (let j = i + 1; j < cats.length; j++) expect(colorDistance(cats[i].color, cats[j].color)).toBeGreaterThan(15);
   });
+  it("Aufgaben sind nicht blau – klar verschieden von typischen Familien-/Standardkalendern und Privat-Arten", () => {
+    const task = SYSTEM_CATEGORIES.Aufgabe.color;
+    for (const blue of ["#1BADF8", "#007AFF", "#2196F3", "#039BE5", "#3F51B5", "#4285F4", "#2563eb"]) expect(colorDistance(task, blue), blue).toBeGreaterThanOrEqual(18);
+    for (const [k, v] of Object.entries(KIND_STYLE)) expect(colorDistance(task, v.color), k).toBeGreaterThanOrEqual(18);
+  });
   it("Privat-Arten: Streicheln und Massage deutlich verschieden, alle Paare ≥ 20", () => {
     const k = Object.entries(KIND_STYLE).filter(([key]) => key !== "extern");
     expect(colorDistance(KIND_STYLE.streicheln.color, KIND_STYLE.massage.color)).toBeGreaterThan(30);
