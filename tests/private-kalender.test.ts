@@ -3,6 +3,8 @@ import { dateStats, defaultStatus, happened, kidsOverview, nextSleeper, sinceSum
 import {
   buildCalendarItems,
   defaultRitual,
+  eventRef,
+  eventRefFrom,
   filterItems,
   isoWeekday,
   itemsByDay,
@@ -198,5 +200,75 @@ describe("Externer Kalender: nur ausdrücklich, nur neutral", () => {
     expect(isBusinessCalendar("Seller-System", [], "Seller-System")).toBe(true);
     expect(isBusinessCalendar("Team", ["team"], "Seller-System")).toBe(true);
     expect(isBusinessCalendar("Familie", ["team"], "Seller-System")).toBe(false);
+  });
+});
+
+describe("Familienkalender-Termin übernehmen (z. B. Eishockey als Paarzeit)", () => {
+  const start = new Date("2026-11-01T14:00:00Z");
+  const ref = eventRef("test-uid-eishockey@example", start);
+  const extern = [
+    { id: "ev-1", ref, title: "Eishockeyspiel", day: "2026-11-01", time: "15:00", calendar: "Familie", abbr: "Fa" },
+    { id: "ev-2", ref: eventRef("test-uid-halloween@example", new Date("2026-10-31T15:00:00Z")), title: "Halloween", day: "2026-10-31", time: "16:00", calendar: "Familie" },
+  ];
+
+  it("Kennung aus UID und Beginn, nur gültige werden übernommen", () => {
+    expect(ref).toBe("test-uid-eishockey@example|2026-11-01T14:00:00.000Z");
+    expect(eventRefFrom(ref)).toBe(ref);
+    expect(eventRefFrom("a|b|2026-11-01T14:00:00.000Z")).toBe("a|b|2026-11-01T14:00:00.000Z");
+    expect(eventRefFrom("kein-termin")).toBeUndefined();
+    expect(eventRefFrom("x|2026-11-01")).toBeUndefined();
+    expect(eventRefFrom("x\n|2026-11-01T14:00:00.000Z")).toBeUndefined();
+    expect(eventRefFrom(42)).toBeUndefined();
+  });
+
+  it("noch nicht übernommen: Termin antippbar (öffnet Eintragen)", () => {
+    const items = buildCalendarItems({ names, today: TODAY, extern }, "2026-10-26", "2026-11-01");
+    const e = items.find((i) => i.key === "extern:ev-1")!;
+    expect(e.href).toBe("/privat/eintragen?vom=ev-1");
+  });
+
+  it("übernommen: Privat-Eintrag ersetzt den Termin, mit Herkunft – kein Doppel", () => {
+    const items = buildCalendarItems(
+      {
+        names,
+        today: TODAY,
+        extern,
+        paarzeit: [{ id: "p1", data: { day: "2026-11-01", from: "15:00", to: "18:00", what: "Eishockeyspiel", status: "geplant", fromEvent: ref } }],
+        kinder: [{ id: "k1", data: { day: "2026-10-31", person: "beide", from: "16:00", to: "19:00", what: "Halloween", status: "geplant", fromEvent: extern[1].ref } }],
+      },
+      "2026-10-26",
+      "2026-11-01",
+    );
+    expect(items.filter((i) => i.kind === "extern")).toEqual([]);
+    const p = items.find((i) => i.kind === "paarzeit")!;
+    expect(p).toMatchObject({ title: "Paarzeit · Eishockeyspiel", fromCalendar: "Familie", status: "geplant" });
+    const k = items.find((i) => i.kind === "kinder")!;
+    expect(k).toMatchObject({ title: "Kinderzeit zusammen · Halloween", people: ["a", "b"], fromCalendar: "Familie" });
+    // Für jede Person sichtbar.
+    expect(filterItems(items, { person: "b" }).map((i) => i.kind).sort()).toEqual(["kinder", "paarzeit"]);
+  });
+
+  it("Termin verschoben (anderer Beginn) → erscheint wieder, der Privat-Eintrag bleibt", () => {
+    const moved = [{ ...extern[0], ref: eventRef("test-uid-eishockey@example", new Date("2026-11-01T15:00:00Z")), time: "16:00" }];
+    const items = buildCalendarItems({ names, today: TODAY, extern: moved, paarzeit: [{ id: "p1", data: { day: "2026-11-01", status: "geplant", hours: 3, fromEvent: ref } }] }, "2026-10-26", "2026-11-01");
+    expect(items.map((i) => i.kind).sort()).toEqual(["extern", "paarzeit"]);
+    expect(items.find((i) => i.kind === "paarzeit")?.fromCalendar).toBe("Familienkalender");
+  });
+});
+
+describe("Kinderzeit „beide zusammen“", () => {
+  const e = (person: KidsEntry["person"], day: string, from: string, to: string, status?: KidsEntry["status"]): KidsEntry => ({ day, person, from, to, ...(status ? { status } : {}) });
+  it("eigene Summe, nicht im Anteil „allein mit den Kindern“", () => {
+    const ov = kidsOverview([e("a", "2026-10-03", "10:00", "14:00"), e("b", "2026-10-04", "10:00", "12:00"), e("beide", "2026-10-31", "16:00", "19:00"), e("beide", "2026-10-30", "10:00", "12:00", "geplant")], "2026-10");
+    expect(ov.totals).toEqual({ a: { count: 1, hours: 4 }, b: { count: 1, hours: 2 } });
+    expect(ov.together).toEqual({ count: 1, hours: 3 });
+    expect(ov.shareA).toBe(67);
+    expect(ov.planned).toEqual({ a: 0, b: 0 });
+    expect(ov.days.find((d) => d.day === "2026-10-31")).toMatchObject({ a: [], b: [], both: [expect.objectContaining({ person: "beide" })] });
+  });
+  it("Sitzungs-Rückblick zählt nur allein verbrachte Zeit", () => {
+    const s = sinceSummary({ since: "2026-10-01", today: TODAY, intim: [], tasks: [], kids: [e("a", "2026-10-03", "10:00", "14:00"), e("beide", "2026-10-05", "10:00", "14:00")] });
+    expect(s.kidsHours).toEqual({ a: 4, b: 0 });
+    expect(s.kidsCount).toEqual({ a: 1, b: 0 });
   });
 });

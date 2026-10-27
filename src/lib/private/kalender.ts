@@ -2,7 +2,7 @@
 // Ausschlafen, Paarzeit, Nähe, Streicheln/Massage (auch aus dem Abendritual), Periode und die verbundenen
 // Familienkalender. Reine Logik ohne Datenbank, damit testbar.
 
-import { addDays, statusOf, weekStart, type AppointmentEntry, type DateEntry, type EntryStatus, type IntimEntry, type KidsEntry, type PartnerKey, type SleepEntry } from "./logic";
+import { addDays, statusOf, weekStart, type AppointmentEntry, type DateEntry, type EntryStatus, type IntimEntry, type KidsEntry, type KidsPerson, type PartnerKey, type SleepEntry } from "./logic";
 
 const other = (p: PartnerKey): PartnerKey => (p === "a" ? "b" : "a");
 
@@ -142,10 +142,21 @@ export type CalItem = {
   color?: string;
   /** Kürzel des Familienkalenders (z. B. „Fa“) – Kalender nie nur über die Farbe unterscheiden. */
   abbr?: string;
+  /** Aus einem Familienkalender-Termin übernommen (Name des Kalenders). */
+  fromCalendar?: string;
 };
 
 type Row<T> = { id: string; data: T };
-export type ExternEvent = { id: string; title: string; day: string; endDay?: string | null; time?: string | null; calendar: string; color?: string | null; abbr?: string };
+/**
+ * Termin aus einem verbundenen Familienkalender. `id` gilt nur bis zum nächsten Abgleich; `ref` (UID +
+ * Beginn) bleibt gleich und verbindet einen übernommenen Privat-Eintrag dauerhaft mit dem Termin.
+ */
+export type ExternEvent = { id: string; ref?: string; title: string; day: string; endDay?: string | null; time?: string | null; calendar: string; color?: string | null; abbr?: string };
+
+/** Dauerhafte Kennung eines Kalendertermins (auch bei Serien eindeutig: je Vorkommen eigener Beginn). */
+export const eventRef = (uid: string, startsAt: Date) => `${uid}|${startsAt.toISOString()}`;
+/** Nur eine gültige Termin-Kennung (UID|Beginn) übernehmen – sonst nichts. */
+export const eventRefFrom = (v: unknown) => (typeof v === "string" && v.length <= 400 && /^[^\r\n]{1,350}\|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(v) ? v : undefined);
 
 export type CalendarInput = {
   names: { a: string; b: string };
@@ -171,13 +182,23 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
   const n = input.names;
   const inRange = (d: string) => d >= from && d <= to;
   const out: CalItem[] = [];
+  const who = (p: KidsPerson) => (p === "beide" ? "beide" : n[p]);
+  const whom = (p: KidsPerson): PartnerKey[] => (p === "beide" ? ["a", "b"] : [p]);
+  // Übernommene Familienkalender-Termine: der Privat-Eintrag ersetzt den Termin in dieser Ansicht.
+  const calName = new Map((input.extern ?? []).filter((e) => e.ref).map((e) => [e.ref!, e.calendar]));
+  const adopted = new Set<string>();
+  const origin = (e: { fromEvent?: string }) => {
+    if (!e.fromEvent) return {};
+    adopted.add(e.fromEvent);
+    return { fromCalendar: calName.get(e.fromEvent) ?? CAL_KIND_LABEL.extern };
+  };
 
   for (const t of input.termine ?? []) {
     const e = t.data;
     if (!inRange(e.day)) continue;
     const base = e.title?.trim() || (e.with === "ads" ? input.therapists?.ads : e.with === "paar" ? input.therapists?.paar : e.with === "arzt" ? "Arzttermin" : e.with === "familie" ? "Familientermin" : "Privater Termin") || "Termin";
     const people: PartnerKey[] = e.person === "a" ? ["a"] : e.person === "b" ? ["b"] : ["a", "b"];
-    out.push({ key: `termin:${t.id}`, kind: "termin", id: t.id, day: e.day, ...(e.time ? { from: e.time } : {}), ...(e.to ? { to: e.to } : {}), title: base, people, status: statusOf(e), href: edit(t.id), note: e.notes });
+    out.push({ key: `termin:${t.id}`, kind: "termin", id: t.id, day: e.day, ...(e.time ? { from: e.time } : {}), ...(e.to ? { to: e.to } : {}), title: base, people, status: statusOf(e), href: edit(t.id), note: e.notes, ...origin(e) });
   }
 
   // Auszeit mit verknüpfter Kinderzeit (ein Vorgang): ein Kalendereintrag für beide Personen.
@@ -194,27 +215,28 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
       id: a.id,
       day: e.day,
       ...span(e),
-      title: linked ? `Auszeit ${n[e.person]} · Kinder bei ${n[linked.data.person]}` : `Auszeit ${n[e.person]}`,
-      people: linked ? [e.person, linked.data.person] : [e.person],
+      title: linked ? `Auszeit ${n[e.person]} · Kinder bei ${who(linked.data.person)}` : `Auszeit ${n[e.person]}`,
+      people: linked ? [...new Set([e.person, ...whom(linked.data.person)])] : [e.person],
       status: statusOf(e),
       href: edit(a.id),
       note: e.note,
+      ...origin(e),
     });
   }
   for (const k of input.kinder ?? []) {
     const e = k.data;
     if (!inRange(e.day) || usedKids.has(k.id)) continue;
-    out.push({ key: `kinder:${k.id}`, kind: "kinder", id: k.id, day: e.day, ...span(e), title: `Kinderzeit ${n[e.person]}${e.what ? ` · ${e.what}` : ""}`, people: [e.person], status: statusOf(e), href: edit(k.id) });
+    out.push({ key: `kinder:${k.id}`, kind: "kinder", id: k.id, day: e.day, ...span(e), title: `Kinderzeit ${e.person === "beide" ? "zusammen" : n[e.person]}${e.what ? ` · ${e.what}` : ""}`, people: whom(e.person), status: statusOf(e), href: edit(k.id), ...origin(e) });
   }
   for (const s of input.ausschlafen ?? []) {
     const e = s.data;
     if (!inRange(e.day)) continue;
-    out.push({ key: `ausschlafen:${s.id}`, kind: "ausschlafen", id: s.id, day: e.day, ...span(e), title: `Ausschlafen ${n[e.person]}`, people: [e.person], status: statusOf(e), href: edit(s.id), note: e.note });
+    out.push({ key: `ausschlafen:${s.id}`, kind: "ausschlafen", id: s.id, day: e.day, ...span(e), title: `Ausschlafen ${n[e.person]}`, people: [e.person], status: statusOf(e), href: edit(s.id), note: e.note, ...origin(e) });
   }
   for (const p of input.paarzeit ?? []) {
     const e = p.data;
     if (!inRange(e.day)) continue;
-    out.push({ key: `paarzeit:${p.id}`, kind: "paarzeit", id: p.id, day: e.day, ...span(e), title: `Paarzeit${e.what ? ` · ${e.what}` : ""}`, people: ["a", "b"], status: statusOf(e), href: edit(p.id), note: e.note });
+    out.push({ key: `paarzeit:${p.id}`, kind: "paarzeit", id: p.id, day: e.day, ...span(e), title: `Paarzeit${e.what ? ` · ${e.what}` : ""}`, people: ["a", "b"], status: statusOf(e), href: edit(p.id), note: e.note, ...origin(e) });
   }
   for (const x of input.naehe ?? []) {
     const e = x.data;
@@ -255,7 +277,10 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
   for (const ev of input.extern ?? []) {
     const end = ev.endDay && ev.endDay > ev.day ? ev.endDay : undefined;
     if (ev.day > to || (end ?? ev.day) < from) continue;
-    out.push({ key: `extern:${ev.id}`, kind: "extern", day: ev.day, ...(end ? { endDay: end } : {}), ...(ev.time ? { from: ev.time } : {}), title: ev.title, people: ["a", "b"], href: "", calendar: ev.calendar, color: ev.color ?? undefined, ...(ev.abbr ? { abbr: ev.abbr } : {}) });
+    // Schon als Paarzeit, Kinderzeit … übernommen: nur noch der Privat-Eintrag, kein Doppel.
+    if (ev.ref && adopted.has(ev.ref)) continue;
+    // Antippen → „Eintragen“ mit Tag, Uhrzeit und Titel des Termins (Art wählen, speichern).
+    out.push({ key: `extern:${ev.id}`, kind: "extern", day: ev.day, ...(end ? { endDay: end } : {}), ...(ev.time ? { from: ev.time } : {}), title: ev.title, people: ["a", "b"], href: `/privat/eintragen?vom=${encodeURIComponent(ev.id)}`, calendar: ev.calendar, color: ev.color ?? undefined, ...(ev.abbr ? { abbr: ev.abbr } : {}) });
   }
   return out;
 }

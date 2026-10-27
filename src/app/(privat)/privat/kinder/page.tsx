@@ -87,6 +87,9 @@ export default async function KinderPage({ searchParams }: { searchParams: Promi
             <div className="small muted">Anteil an den erfassten Stunden: {name.a} {ov.shareA} % · {name.b} {100 - ov.shareA} % – nur was eingetragen ist, keine Bewertung.</div>
           </>
         )}
+        {ov.together.count > 0 && (
+          <div className="small" data-testid="kids-together-total">Zusammen mit den Kindern (beide): {hoursLabel(ov.together.hours)} · {ov.together.count}× – zählt nicht im Anteil „allein“.</div>
+        )}
         <div className="small muted">Vormonate: {last3.map((x) => `${monthLabel(x.m).split(" ")[0].slice(0, 3)} ${x.a.count + x.b.count ? `${name.a} ${x.a.count ? h(x.a.hours) : "nicht erfasst"} / ${name.b} ${x.b.count ? h(x.b.hours) : "nicht erfasst"}` : "nicht erfasst"}`).join(" · ")}</div>
       </section>
 
@@ -128,6 +131,9 @@ export default async function KinderPage({ searchParams }: { searchParams: Promi
             <div key={`${d.day}-d`} className="num">{weekday(d.day)} {dm(d.day)}</div>,
             <div key={`${d.day}-a`}><Cell month={month} names={name} list={d.a.map((e) => byId.get((e as KidsEntry & { id: string }).id)!)} /></div>,
             <div key={`${d.day}-b`}><Cell month={month} names={name} list={d.b.map((e) => byId.get((e as KidsEntry & { id: string }).id)!)} /></div>,
+            ...(d.both.length
+              ? [<div key={`${d.day}-both`} style={{ gridColumn: "2 / -1" }} data-testid="kids-together"><span className="small muted">beide zusammen: </span><Cell month={month} names={name} list={d.both.map((e) => byId.get((e as KidsEntry & { id: string }).id)!)} /></div>]
+              : []),
           ])}
           <div className="head">Summe</div>
           <div className="head">{ov.totals.a.count ? `${hoursLabel(ov.totals.a.hours)} · ${ov.totals.a.count}×` : "nicht erfasst"}</div>

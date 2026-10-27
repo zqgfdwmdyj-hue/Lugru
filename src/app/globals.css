@@ -919,6 +919,9 @@ h2 { font-size: 16px; margin: 0; }
 .danger-link { font-weight: 650; text-decoration: underline; }
 .danger-link::before { content: "✕ "; }
 .pk-st .cal-abbr { text-transform: none; }
+/* Familienkalender-Termin antippen = übernehmen (Paarzeit, Kinderzeit …); übernommene Einträge zeigen die Herkunft. */
+.pk-adopt { float: right; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--ink-2); }
+.pk-from { text-transform: none; letter-spacing: 0; font-weight: 600; }
 .cal-abbr { color: var(--t, #fff); }
 .nav-group.current > .nav-head, .area-name { color: color-mix(in srgb, var(--g) 72%, #000); }
 .nav-caret { color: var(--ink-2); }

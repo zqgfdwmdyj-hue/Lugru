@@ -7,35 +7,70 @@ import { calendarPalette } from "@/lib/calendar/palette";
 import { DEFAULT_CALENDAR_NAME } from "@/lib/calendar/sync";
 import { getIntegration } from "@/lib/integrations/store";
 import { addDays, type AppointmentEntry, type DateEntry, type IntimEntry, type KidsEntry, type SleepEntry } from "./logic";
-import { buildCalendarItems, touchRhythm, type ExternEvent, type PeriodEntry, type RitualEntry, type TouchEntry } from "./kalender";
+import { buildCalendarItems, eventRef, touchRhythm, type ExternEvent, type PeriodEntry, type RitualEntry, type TouchEntry } from "./kalender";
 import { loadEntries, privateSettings } from "./service";
 
 const berlinDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 const berlinTime = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
 
+type EventRow = typeof schema.calendarEvents.$inferSelect;
+
+/** Nur private/Familien-Kalender: keine geschäftlichen und nicht der eigene Export-Kalender. */
+async function familyFilter(tenantId: string, exportCalendar: string | null) {
+  const [cfg, tenant] = await Promise.all([getIntegration(tenantId, "apple_calendar"), db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId))]);
+  const staff = tenant[0]?.settings.calendar?.staffCalendars;
+  const push = cfg?.calendarName || DEFAULT_CALENDAR_NAME;
+  return (ev: Pick<EventRow, "calendarName">) => !isBusinessCalendar(ev.calendarName, staff, push) && !(exportCalendar && ev.calendarName.trim().toLowerCase() === exportCalendar.trim().toLowerCase());
+}
+
 /** Termine aus den verbundenen privaten/Familien-Kalendern (nicht die geschäftlichen) im Zeitraum. */
 async function familyEvents(tenantId: string, from: string, to: string, exportCalendar: string | null): Promise<ExternEvent[]> {
   const E = schema.calendarEvents;
-  const [cfg, tenant, rows] = await Promise.all([
-    getIntegration(tenantId, "apple_calendar"),
-    db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId)),
+  const [isFamily, rows] = await Promise.all([
+    familyFilter(tenantId, exportCalendar),
     db
       .select()
       .from(E)
       .where(and(eq(E.tenantId, tenantId), lte(E.day, to), or(gte(E.day, from), gte(E.endsAt, new Date(`${from}T00:00:00Z`)))))
       .orderBy(E.allDay, E.startsAt),
   ]);
-  const staff = tenant[0]?.settings.calendar?.staffCalendars;
-  const push = cfg?.calendarName || DEFAULT_CALENDAR_NAME;
-  const own = rows.filter((ev) => !isBusinessCalendar(ev.calendarName, staff, push) && !(exportCalendar && ev.calendarName.trim().toLowerCase() === exportCalendar.trim().toLowerCase()));
+  const own = rows.filter(isFamily);
   // Gleiche Farbe und gleiches Kürzel wie im Geschäftskalender (deutlich verschieden von Privat-Arten und anderen Kalendern).
   const { colors, abbr } = await calendarPalette(tenantId);
   return own
     .map((ev) => {
       // Ende inklusiv: ganztägig endet iCalendar am Folgetag 00:00, mit Uhrzeit zählt der Tag des Endes.
       const endDay = ev.endsAt ? (ev.allDay ? addDays(ev.endsAt.toISOString().slice(0, 10), -1) : berlinDay(new Date(ev.endsAt.getTime() - 1))) : null;
-      return { id: ev.id, title: ev.title, day: ev.day, endDay, time: ev.allDay ? null : berlinTime(ev.startsAt), calendar: ev.calendarName, color: colors.get(ev.calendarName) ?? ev.color, abbr: abbr.get(ev.calendarName) };
+      return { id: ev.id, ref: eventRef(ev.uid, ev.startsAt), title: ev.title, day: ev.day, endDay, time: ev.allDay ? null : berlinTime(ev.startsAt), calendar: ev.calendarName, color: colors.get(ev.calendarName) ?? ev.color, abbr: abbr.get(ev.calendarName) };
     });
+}
+
+/** Vorbelegung zum Übernehmen eines Familienkalender-Termins (Paarzeit, Kinderzeit …). */
+export type EventPrefill = { ref: string; calendar: string; title: string; day: string; from?: string; to?: string; allDay: boolean };
+
+/**
+ * Ein Termin aus einem Familienkalender (nie ein geschäftlicher) für „Eintragen“: Tag, Uhrzeit und Titel.
+ * Das Ende wird nur übernommen, wenn es am selben Tag liegt oder kurz nach Mitternacht (über Nacht).
+ */
+export async function familyEventPrefill(session: Session, id: string): Promise<EventPrefill | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const E = schema.calendarEvents;
+  const settings = await privateSettings(session.tenantId);
+  const [[ev], isFamily] = await Promise.all([
+    db.select().from(E).where(and(eq(E.tenantId, session.tenantId), eq(E.id, id))),
+    familyFilter(session.tenantId, settings.externSync.enabled ? settings.externSync.calendar : null),
+  ]);
+  if (!ev || !isFamily(ev)) return null;
+  const base = { ref: eventRef(ev.uid, ev.startsAt), calendar: ev.calendarName, title: ev.title.trim().slice(0, 200), day: ev.day, allDay: ev.allDay };
+  if (ev.allDay) return base;
+  const from = berlinTime(ev.startsAt);
+  let to: string | undefined;
+  if (ev.endsAt && ev.endsAt > ev.startsAt) {
+    const endDay = berlinDay(ev.endsAt);
+    const end = berlinTime(ev.endsAt);
+    if (endDay === ev.day || (endDay === addDays(ev.day, 1) && end < from)) to = end;
+  }
+  return { ...base, from, ...(to && to !== from ? { to } : {}) };
 }
 
 /** Alles für den Privatkalender im Zeitraum – aus den vorhandenen Einträgen, ohne Doppelerfassung. */

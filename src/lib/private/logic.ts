@@ -63,7 +63,10 @@ export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey |
  * Zeit-Einträge (Kinderzeit, Ausschlafen, Auszeit, Paarzeit). `linkId`: gemeinsamer Vorgang – z. B. A allein
  * mit den Kindern, während B Auszeit hat. Jede Sicht zählt nur in ihrer eigenen Auswertung (nie doppelt).
  */
-export type KidsEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean };
+/** „beide“: zusammen mit den Kindern (z. B. Ausflug) – zählt nicht in „allein mit den Kindern“. */
+export type KidsPerson = PartnerKey | "beide";
+/** `fromEvent`: aus einem Familienkalender-Termin übernommen (Kennung des Termins, siehe eventRef). */
+export type KidsEntry = { day: string; person: KidsPerson; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string };
 export type TaskEntry = {
   title: string;
   source: "ads" | "paar" | "sonst";
@@ -81,12 +84,12 @@ export type TaskEntry = {
  * Privater Termin: Therapie/Arzt wie bisher, dazu Familien- und private Termine mit Titel. `person`: wen es
  * betrifft (für den Personenfilter), `extern`: ausdrücklich als neutraler „Privater Termin“ in den Apple-Kalender.
  */
-export type AppointmentEntry = { day: string; time?: string; to?: string; with: "ads" | "paar" | "arzt" | "familie" | "privat" | "sonst"; title?: string; person?: PartnerKey | "beide"; notes?: string; status?: EntryStatus; extern?: boolean };
+export type AppointmentEntry = { day: string; time?: string; to?: string; with: "ads" | "paar" | "arzt" | "familie" | "privat" | "sonst"; title?: string; person?: PartnerKey | "beide"; notes?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string };
 /** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
-export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean };
+export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string };
 /** Ausschlafen: wer durfte wann wie lange länger schlafen (der andere übernimmt die Kinder). */
 /** `kidsBy`: bei Auszeit – wer die Kinder übernimmt, wenn es nicht der Partner ist (dann ohne Kinderzeit-Eintrag). */
-export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string };
+export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string; fromEvent?: string };
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;
@@ -333,20 +336,30 @@ export function durationOf(e: { day?: string; from?: string; to?: string; hours?
 export function kidsOverview<E extends KidsEntry>(entries: E[], month: string) {
   const list = entries.filter((e) => e.day.startsWith(month)).sort((x, y) => x.day.localeCompare(y.day) || (x.from ?? "").localeCompare(y.from ?? ""));
   const totals = { a: { count: 0, hours: 0 }, b: { count: 0, hours: 0 } };
+  /** Zusammen mit den Kindern – eigene Summe, nicht im Anteil „allein“. */
+  const together = { count: 0, hours: 0 };
   const planned = { a: 0, b: 0 };
-  const byDay = new Map<string, { a: E[]; b: E[] }>();
+  const byDay = new Map<string, { a: E[]; b: E[]; both: E[] }>();
   for (const e of list) {
+    const row = byDay.get(e.day) ?? { a: [], b: [], both: [] };
+    byDay.set(e.day, row);
+    if (e.person === "beide") {
+      if (happened(e)) {
+        together.count++;
+        together.hours = round1(together.hours + kidsHours(e));
+      }
+      row.both.push(e);
+      continue;
+    }
     if (statusOf(e) === "geplant") planned[e.person]++;
     if (happened(e)) {
       totals[e.person].count++;
       totals[e.person].hours = round1(totals[e.person].hours + kidsHours(e));
     }
-    const row = byDay.get(e.day) ?? { a: [], b: [] };
     row[e.person].push(e);
-    byDay.set(e.day, row);
   }
   const sum = totals.a.hours + totals.b.hours;
-  return { totals, planned, shareA: sum ? Math.round((totals.a.hours / sum) * 100) : null, days: [...byDay.entries()].map(([day, r]) => ({ day, ...r })) };
+  return { totals, together, planned, shareA: sum ? Math.round((totals.a.hours / sum) * 100) : null, days: [...byDay.entries()].map(([day, r]) => ({ day, ...r })) };
 }
 
 // ---- Ausschlafen -----------------------------------------------------------------------------------
@@ -467,9 +480,10 @@ export function diarySeries(entries: DiaryEntry[], key: RatingKey, today: string
 /** Für die nächste Sitzung: was seit dem letzten Termin passiert ist. */
 export function sinceSummary(input: { since: string; today: string; intim: IntimEntry[]; kids: KidsEntry[]; tasks: TaskEntry[]; dates?: DateEntry[]; sleep?: SleepEntry[] }) {
   const { since, today } = input;
-  const kids = input.kids.filter((e) => happened(e) && e.day >= since && e.day <= today);
+  // Nur „allein mit den Kindern“ – gemeinsame Zeit (beide) zählt hier nicht.
+  const kids = input.kids.filter((e) => happened(e) && e.day >= since && e.day <= today && e.person !== "beide");
   const hours = { a: 0, b: 0 };
-  for (const e of kids) hours[e.person] = round1(hours[e.person] + kidsHours(e));
+  for (const e of kids) if (e.person !== "beide") hours[e.person] = round1(hours[e.person] + kidsHours(e));
   const done = input.tasks.filter((t) => (t.repeat === "einmal" ? t.done && (t.doneAt ?? "") >= since : (t.checks ?? []).some((d) => d >= since)));
   return {
     days: daysBetween(since, today),

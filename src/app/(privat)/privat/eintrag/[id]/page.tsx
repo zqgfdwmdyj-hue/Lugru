@@ -58,6 +58,7 @@ export default async function EintragPage({ params, searchParams }: { params: Pr
           {status ? <>Status: <strong>{STATUS_LABEL[status]}</strong>{status === "geplant" ? " – zählt erst, wenn es stattgefunden hat" : status === "ausgefallen" ? " – zählt nicht" : ""}</> : null}
           {period ? <>Periode {dmy(period.start)}{period.end ? ` bis ${dmy(period.end)}` : " – läuft"} · {periodDays(period, today)} Tag{periodDays(period, today) === 1 ? "" : "e"}</> : null}
           {linkedName ? <> · 🔗 verknüpft mit {linkedName}</> : null}
+          {entry.data.fromEvent ? <span data-testid="entry-from-event"> · aus dem Familienkalender übernommen (dort unverändert; löschen zeigt den Termin wieder als Familientermin)</span> : null}
         </div>
         {editable ? (
           <>

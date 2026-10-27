@@ -193,6 +193,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
         <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
           <li>Gestrichelt = geplant (zählt in keiner Auswertung), gefüllt = stattgefunden, durchgestrichen = ausgefallen.</li>
           <li>„nicht erfasst“ heißt: nichts eingetragen – nicht „keine Zeit gehabt“.</li>
+          <li>Termin aus dem Familienkalender antippen („übernehmen ›“) → als Paarzeit, Kinderzeit (auch „beide zusammen“), Auszeit … übernehmen. Tag, Uhrzeit und Titel sind schon eingetragen; danach steht er nur noch als diese Art im Privatkalender.</li>
           <li>Private Einträge gehen nie automatisch in einen geschäftlichen oder geteilten Kalender.</li>
           {!family && <li><Link href="/privat/wissen">Wichtig in der Einstellungsphase & Warnzeichen →</Link></li>}
           {!session.privatePin && <li>Tipp: Unter <Link href="/privat/einstellungen">Einstellungen</Link> eine PIN setzen – dann fragt „Privat“ zusätzlich danach.</li>}

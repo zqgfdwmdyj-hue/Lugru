@@ -182,7 +182,7 @@ export default async function PrivatKalenderPage({ searchParams }: { searchParam
           <Link className="big-add" href={addHref(view === "tag" || anchor !== today ? anchor : today)} data-testid="pk-add">＋ Eintragen</Link>
           {cal.externCalendars.length > 0 && (
             <span className="small muted" data-testid="pk-extern-legend">
-              Aus euren verbundenen Kalendern (nur lesen, geschäftliche ausgeblendet):{" "}
+              Aus euren verbundenen Kalendern (geschäftliche ausgeblendet; antippen = als Paarzeit, Kinderzeit … übernehmen):{" "}
               {cal.externCalendars.map((c) => <span key={c.name} style={{ marginRight: 8, whiteSpace: "nowrap" }}><b className="cal-abbr" style={{ "--c": c.color, "--t": textOn(c.color) } as React.CSSProperties}>{c.abbr}</b>{c.name}</span>)}
             </span>
           )}

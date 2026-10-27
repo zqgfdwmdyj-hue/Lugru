@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { todayIso } from "@/lib/dates";
 import type { Session } from "@/lib/auth/session";
 import { addDays, clip, defaultStatus, durationOf, isDay, isTime, num, rating, statusOf, statusProblem, type AppointmentEntry, type EntryStatus, type PartnerKey } from "./logic";
-import { isoWeekday, parseOccurrence, periodProblem, ritualOccurrences, slotKey, type PeriodEntry, type RitualEntry, type RitualSlot, type TouchEntry, type TouchKind } from "./kalender";
+import { eventRefFrom, isoWeekday, parseOccurrence, periodProblem, ritualOccurrences, slotKey, type PeriodEntry, type RitualEntry, type RitualSlot, type TouchEntry, type TouchKind } from "./kalender";
 import { addEntry, loadEntries, loadEntry, myPartner, privateMembers, privateSettings, updateEntry, type PrivateKind } from "./service";
 
 // Speichern der Kalender-Einträge (Termine, Familienzeiten, Nähe, Streicheln/Massage, Periode, Abendritual).
@@ -24,6 +24,7 @@ export const parseStatus = (v: unknown): EntryStatus | undefined => (v === "gepl
 const statusFrom = (fd: FormData, day: string, today: string, current?: unknown) => parseStatus(fd.get("status")) ?? parseStatus(current) ?? defaultStatus(day, today);
 /** Ausdrücklich in den verbundenen Kalender – nur angehakt, nie automatisch. */
 const externFrom = (fd: FormData) => (fd.get("extern") === "on" ? true : undefined);
+const fromEventOf = (fd: FormData, cur?: unknown) => eventRefFrom(fd.get("fromEvent")) ?? eventRefFrom(cur);
 
 // ---- Kinderzeit, Ausschlafen, Auszeit, Paarzeit ---------------------------------------------------------
 
@@ -46,7 +47,8 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   const status = statusFrom(fd, day, today, cur?.data.status);
   const problem = statusProblem(day, status, today);
   if (problem) return fail(problem);
-  const person = kind === "paarzeit" ? undefined : partnerOf(fd.get("person"));
+  // Kinderzeit auch „beide zusammen“ (zählt nicht als „allein mit den Kindern“).
+  const person = kind === "paarzeit" ? undefined : kind === "kinder" && fd.get("person") === "beide" ? ("beide" as const) : partnerOf(fd.get("person"));
   if (kind !== "paarzeit" && !person) return fail(WHO_MISSING[kind]);
   const from = time(fd.get("from"));
   const to = time(fd.get("to"));
@@ -55,7 +57,7 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   if ("error" in dur) return fail(dur.error);
   const settings = await privateSettings(session.tenantId);
   const extern = externFrom(fd);
-  const base = { day, from, to, hours: from && to ? undefined : dur.hours, status, extern };
+  const base = { day, from, to, hours: from && to ? undefined : dur.hours, status, extern, fromEvent: fromEventOf(fd, cur?.data.fromEvent) };
   // „Wer übernimmt in dieser Zeit die Kinder?“ (Auszeit) bzw. „Hatte … währenddessen Auszeit?“ (Kinderzeit)
   const kidsBy = String(fd.get("kidsBy") ?? "");
   const wantsLink = (kind === "auszeit" && (kidsBy === "partner" || fd.get("linkKinder") === "on")) || (kind === "kinder" && fd.get("linkAuszeit") === "on");
@@ -66,7 +68,7 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
       : kind === "kinder"
         ? compact({ ...base, person, what: clip(fd.get("what"), 200), kids: fd.getAll("kids").map(String).filter((k) => settings.kids.includes(k)) })
         : compact({ ...base, person, note: clip(fd.get("note"), kind === "auszeit" ? 200 : 300), kidsBy: kind === "auszeit" && kidsBy === "andere" ? clip(fd.get("kidsByName"), 60) ?? "jemand anderes" : undefined });
-  const other = person ? otherOf(person) : undefined;
+  const other = person && person !== "beide" ? otherOf(person) : undefined;
   const linkKind: TimeKind | null = kind === "kinder" ? "auszeit" : kind === "auszeit" ? "kinder" : null;
   const what = `${dmy(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}${status !== "stattgefunden" ? ` (${status})` : ""}`;
   const linkedPatch = { day, from, to, hours: base.hours, status, editedAt: new Date().toISOString() };
@@ -102,7 +104,7 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   const linkId = linkKind && wantsLink && other ? randomUUID() : undefined;
   const id = await addEntry(session, kind, linkId ? { ...data, linkId } : data);
   if (linkKind && linkId && other) await addEntry(session, linkKind, compact({ day, person: other, from, to, hours: base.hours, status, linkId }));
-  const label = kind === "paarzeit" ? "Paarzeit" : `${settings.partners[person!]}`;
+  const label = kind === "paarzeit" ? "Paarzeit" : person === "beide" ? "Kinderzeit zusammen" : `${settings.partners[person!]}`;
   const linkText = linkId && other ? ` – zugleich ${linkKind === "auszeit" ? "Auszeit" : "Kinderzeit"} für ${settings.partners[other]} (zählt dort, nicht doppelt)` : "";
   return { ok: true, message: `Eingetragen: ${label} am ${what}${linkText}.`, id, day };
 }
@@ -137,6 +139,7 @@ export async function saveAppointment(session: Session, fd: FormData): Promise<S
     notes: clip(fd.get("notes"), 4000),
     status,
     extern: externFrom(fd),
+    fromEvent: fromEventOf(fd, cur?.data.fromEvent),
   };
   if (!entry.title && (entry.with === "privat" || entry.with === "familie")) return fail("Bitte einen Titel angeben.");
   if (cur) {

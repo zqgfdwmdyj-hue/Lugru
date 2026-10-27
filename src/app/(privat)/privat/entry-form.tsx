@@ -37,16 +37,21 @@ type Ctx = {
   members?: { userId: string; label: string }[];
   ritual?: RitualEntry | null;
   linkedName?: string | null;
+  /** Aus einem Familienkalender-Termin übernommen (dauerhafte Kennung des Termins). */
+  fromEvent?: string;
 };
+
+/** Arten, in die man einen Familienkalender-Termin übernehmen kann. */
+export const ADOPT_ARTEN: Art[] = ["paarzeit", "kinder", "auszeit", "ausschlafen", "termin"];
 
 const names = (s: PrivateSettings) => s.partners;
 
-function Who({ ctx, label, name = "person" }: { ctx: Ctx; label: string; name?: string }) {
-  const cur = (ctx.data?.[name] as PartnerKey | undefined) ?? ctx.me ?? undefined;
+function Who({ ctx, label, name = "person", both }: { ctx: Ctx; label: string; name?: string; both?: string }) {
+  const cur = (ctx.data?.[name] as string | undefined) ?? ctx.me ?? undefined;
   return (
     <div className="field">
       <span className="label">{label}</span>
-      <Choice name={name} value={cur} options={[{ value: "a", label: names(ctx.settings).a }, { value: "b", label: names(ctx.settings).b }]} />
+      <Choice name={name} value={cur} options={[{ value: "a", label: names(ctx.settings).a }, { value: "b", label: names(ctx.settings).b }, ...(both ? [{ value: "beide", label: both }] : [])]} />
     </div>
   );
 }
@@ -128,7 +133,8 @@ function KinderFields({ ctx }: { ctx: Ctx }) {
   const d = (ctx.data ?? {}) as Partial<KidsEntry>;
   return (
     <>
-      <Who ctx={ctx} label="Wer ist mit den Kindern?" />
+      <Who ctx={ctx} label="Wer ist mit den Kindern?" both="beide zusammen" />
+      <span className="small muted" style={{ marginTop: -6 }}>„beide zusammen“ (z. B. Ausflug, Halloween) zählt nicht als „allein mit den Kindern“.</span>
       <Day ctx={ctx} />
       <Times ctx={ctx} />
       <Status ctx={ctx} />
@@ -144,7 +150,7 @@ function KinderFields({ ctx }: { ctx: Ctx }) {
         </div>
       )}
       <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend className="label small">Hatte <OtherName names={ctx.settings.partners} initial={d.person ?? ctx.me} /> währenddessen Auszeit?</legend>
+        <legend className="label small">Hatte <OtherName names={ctx.settings.partners} initial={d.person === "beide" ? null : (d.person ?? ctx.me)} /> währenddessen Auszeit? (nicht bei „beide zusammen“)</legend>
         <input type="hidden" name="linkQuestion" value="1" />
         <label className="check small"><input type="checkbox" name="linkAuszeit" defaultChecked={Boolean(d.linkId)} /> Ja – als Auszeit mit eintragen (ein Vorgang, Datum und Zeit gelten für beide, jede Zeit zählt nur einmal)</label>
         {d.linkId && ctx.linkedName && <span className="small muted">Verknüpft mit: {ctx.linkedName}. Haken entfernen löst nur die Verknüpfung, der andere Eintrag bleibt.</span>}
@@ -301,6 +307,7 @@ export function EntryForm(ctx: Ctx) {
     <StateForm action={saveEntryAction} submit={ctx.id ? "Änderung speichern" : SUBMIT[ctx.art]} testid="entry-form" keep>
       <input type="hidden" name="art" value={ctx.art} />
       {ctx.id && <input type="hidden" name="id" value={ctx.id} />}
+      {ctx.fromEvent && <input type="hidden" name="fromEvent" value={ctx.fromEvent} />}
       <F ctx={ctx} />
       <Extern ctx={ctx} />
     </StateForm>

@@ -33,6 +33,8 @@ export function ItemChip({ item, isNew, showStatus = true, day }: { item: DayIte
           {item.kind === "extern" && item.abbr ? <b className="cal-abbr" style={{ "--c": colorOf(item), "--t": textOn(colorOf(item)) } as React.CSSProperties}>{item.abbr}</b> : <span aria-hidden="true">{KIND_STYLE[item.kind].icon} </span>}
           {item.kind === "extern" && item.calendar ? `Kalender ${item.calendar}` : CAL_KIND_LABEL[item.kind]}
           {item.status && item.kind !== "periode" && item.kind !== "extern" ? <> · <span className="pk-sym" aria-hidden="true">{item.skipped ? "✕" : STATUS_ICON[item.status]}</span> {statusText(item)}</> : ""}
+          {item.fromCalendar ? <span className="pk-from" data-testid="pk-from"> · aus Kalender {item.fromCalendar}</span> : null}
+          {item.kind === "extern" && item.href ? <span className="pk-adopt" aria-hidden="true">übernehmen ›</span> : null}
         </span>
       )}
       {!showStatus && !quiet && (item.kind === "extern" && item.abbr ? <b className="cal-abbr" style={{ "--c": colorOf(item), "--t": textOn(colorOf(item)) } as React.CSSProperties}>{item.abbr}</b> : <span aria-hidden="true">{item.status && item.kind !== "extern" && item.kind !== "periode" ? (item.skipped ? "✕" : STATUS_ICON[item.status]) : KIND_STYLE[item.kind].icon} </span>)}
@@ -41,7 +43,7 @@ export function ItemChip({ item, isNew, showStatus = true, day }: { item: DayIte
     </>
   );
   const style = { "--c": colorOf(item) } as React.CSSProperties;
-  const label = `${item.title} – ${CAL_KIND_LABEL[item.kind]}${item.status ? `, ${statusText(item)}` : ""}`;
+  const label = `${item.title} – ${CAL_KIND_LABEL[item.kind]}${item.status ? `, ${statusText(item)}` : ""}${item.fromCalendar ? `, aus Kalender ${item.fromCalendar}` : ""}${item.kind === "extern" && item.href ? " – antippen, um ihn als Paarzeit, Kinderzeit … zu übernehmen" : ""}`;
   return item.href ? (
     <Link href={item.href} className={cls} style={style} aria-label={label} data-testid="pk-item" data-kind={item.kind} data-status={item.status ?? ""} data-new={isNew ? "1" : undefined}>{body}</Link>
   ) : (
