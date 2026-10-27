@@ -10,6 +10,7 @@ import { dispatch } from "./routes/dispatch";
 import { linkEbayPublished } from "@/lib/stock/ebay-link";
 import { publishAttemptToTemu, temuPanel } from "@/lib/temu/from-ebay";
 import { refreshTrafficSoon } from "@/lib/ebay-review/service";
+import { modernStatus } from "./modern";
 import type { Router } from "./routes/router";
 
 /** Routen, die nur der Inhaber aufrufen darf: Zugangsdaten, Verbindung, Rechnungsabsender, Sicherung. */
@@ -34,6 +35,7 @@ function routersFor(db: Db, tenantId: string): Router[] {
     },
     // Neu verbunden (z. B. mit „Verkehrsdaten“): Einblendungen und Klicks sofort für alle geprüften Angebote holen.
     onConnected: () => refreshTrafficSoon(tenantId),
+    modernStatus: () => modernStatus(tenantId),
   };
   return [apiRouter(db, hooks), invoiceRouter(db, invoiceDeps(db, tenantId)), maintenanceRouter(db, backupDir())];
 }

@@ -5,8 +5,11 @@ import { askClaude, modelFor } from "@/lib/ai/claude";
 import { extractJsonObject } from "@/lib/claims/sc-removal";
 import { getAttempt, getSettings, getToken, listAttempts, updateAttempt } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
-import { getAppAccessToken, getUserAccessToken } from "@/lib/ebay/ebay/auth";
-import { ACCEPT_LANGUAGE, apiBase, CONTENT_LANGUAGE, MARKETPLACE } from "@/lib/ebay/ebay/config";
+import { getAppAccessToken, getUserAccessToken, listingGranted } from "@/lib/ebay/ebay/auth";
+import { ACCEPT_LANGUAGE, apiBase, CONTENT_LANGUAGE, graphqlUrl, MARKETPLACE } from "@/lib/ebay/ebay/config";
+import { bulkUpdateInventory, fetchListing, updateListing, type GqlConn } from "@/lib/ebay/listing-api";
+import { factsFromListing, updateInput } from "@/lib/ebay/listing-map";
+import { withModern } from "@/lib/ebay/modern";
 import { ebayFetch, EbayHttpError } from "@/lib/ebay/ebay/http";
 import { getCategoryAspects } from "@/lib/ebay/ebay/taxonomy";
 import type { CategoryAspect } from "@/lib/ebay/pipeline/aspects";
@@ -15,7 +18,7 @@ import type { Settings } from "@/lib/ebay/types";
 import { ebayActiveItems } from "@/lib/integrations/clients/ebay";
 import { getIntegration } from "@/lib/integrations/store";
 import { todayIso } from "@/lib/dates";
-import { uploadPictureToEps } from "@/lib/ebay/ebay/pictures";
+import { uploadPictureToEps, urlToEps } from "@/lib/ebay/ebay/pictures";
 import { isAsin } from "@/lib/ebay/keepa/keepa";
 import { keepaByCode, keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
 import { xmlAt, xmlText } from "@/lib/xml";
@@ -53,14 +56,42 @@ const PAUSE_MS = Number(process.env.EBAY_REVIEW_PAUSE_MS ?? 400);
 const TRADING_VERSION = "1415";
 const TRAFFIC_DAYS = 30;
 
-type Conn = { edb: ReturnType<typeof ebayDb>; settings: Settings; base: string };
+type Conn = { tenantId: string; edb: ReturnType<typeof ebayDb>; settings: Settings; base: string; refreshToken: string };
 
 async function conn(tenantId: string): Promise<Conn | null> {
   const edb = ebayDb(tenantId);
   const settings = await getSettings(edb);
   if (!settings.clientId || !settings.clientSecret) return null;
-  if (!(await getToken(edb, settings.env, "user"))?.refreshToken) return null;
-  return { edb, settings, base: apiBase(settings.env) };
+  const refreshToken = (await getToken(edb, settings.env, "user"))?.refreshToken;
+  if (!refreshToken) return null;
+  return { tenantId, edb, settings, base: apiBase(settings.env), refreshToken };
+}
+
+/** Neue Listing-API (GraphQL) mit dem Benutzer-Token. */
+async function gqlConn(c: Conn): Promise<GqlConn> {
+  return { url: graphqlUrl(c.settings.env), token: await getUserAccessToken(c.edb, c.settings), marketplaceId: MARKETPLACE };
+}
+const listingOk = (c: Conn) => listingGranted(c.settings, c.refreshToken);
+
+/**
+ * Verkäufername des eigenen Kontos (für den Preisvergleich: eigene Angebote nicht als Mitbewerber zählen).
+ * Die neue Listing-API liefert ihn nicht – über die Browse API des Angebots, einmal je Mandant gemerkt.
+ */
+const sellerNames = new Map<string, string>();
+async function ownSellerName(c: Conn, itemId: string): Promise<string | null> {
+  const known = sellerNames.get(c.tenantId);
+  if (known) return known;
+  try {
+    const h = await appHeaders(c);
+    const id = encodeURIComponent(itemId.replace(/\D/g, ""));
+    const one = (await ebayFetch(`${c.base}/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${id}`, { headers: h }).catch(() => null)) as { seller?: { username?: string } } | null;
+    const group = one?.seller?.username ? null : ((await ebayFetch(`${c.base}/buy/browse/v1/item/get_items_by_item_group?item_group_id=${id}`, { headers: h }).catch(() => null)) as { items?: { seller?: { username?: string } }[] } | null);
+    const name = one?.seller?.username ?? group?.items?.[0]?.seller?.username ?? null;
+    if (name) sellerNames.set(c.tenantId, name);
+    return name;
+  } catch {
+    return null;
+  }
 }
 
 async function mustConn(tenantId: string): Promise<Conn> {
@@ -273,8 +304,16 @@ async function categoriesFor(c: Conn, title: string): Promise<CategoryHint[] | n
 }
 
 async function getFacts(c: Conn, itemId: string): Promise<ListingFacts> {
-  const body = await trading(c, "GetItem", `<ItemID>${itemId.replace(/\D/g, "")}</ItemID><DetailLevel>ReturnAll</DetailLevel><IncludeItemSpecifics>true</IncludeItemSpecifics><IncludeWatchCount>true</IncludeWatchCount>`);
-  return factsFromItem(body);
+  return withModern(
+    c.tenantId,
+    "Angebot prüfen (lesen)",
+    async () => {
+      const [l, seller] = await Promise.all([fetchListing(await gqlConn(c), itemId.replace(/\D/g, "")), ownSellerName(c, itemId)]);
+      return factsFromListing(l, seller);
+    },
+    async () => factsFromItem(await trading(c, "GetItem", `<ItemID>${itemId.replace(/\D/g, "")}</ItemID><DetailLevel>ReturnAll</DetailLevel><IncludeItemSpecifics>true</IncludeItemSpecifics><IncludeWatchCount>true</IncludeWatchCount>`)),
+    listingOk(c),
+  );
 }
 
 async function checkOne(c: Conn, tenantId: string, itemId: string, traffic: TrafficResult) {
@@ -518,7 +557,20 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
   if (rev.images) rev.images = await Promise.all(rev.images.map((u) => (isEbayHosted(u) ? u : externalToEps(c, u))));
 
   if (d.row.source === "tool" && d.row.attemptId) await reviseViaInventory(c, d.row.attemptId, rev, opts.replaceAspects ? rev.aspects ?? null : wantAspects ?? {}, Boolean(opts.replaceAspects));
-  else await trading(c, "ReviseFixedPriceItem", reviseXml(itemId, rev));
+  else
+    await withModern(
+      tenantId,
+      "Angebot ändern",
+      async () => {
+        const gc = await gqlConn(c);
+        const input = updateInput(itemId, rev);
+        if (input) await updateListing(gc, input);
+        // Preis (nur ohne Varianten, siehe oben) über bulkUpdateInventory.
+        if (rev.price !== undefined) await bulkUpdateInventory(gc, [{ listingId: itemId, fixedPrice: rev.price }]);
+      },
+      async () => void (await trading(c, "ReviseFixedPriceItem", reviseXml(itemId, rev))),
+      listingOk(c),
+    );
 
   await db
     .update(C)
@@ -534,6 +586,12 @@ export async function applyRevision(tenantId: string, itemId: string, r: Revisio
 
 /** Bild von einer Adresse (Amazon, eigener Server …) zu eBay (EPS) kopieren – eBay lädt es selbst herunter. */
 async function externalToEps(c: Conn, url: string): Promise<string> {
+  // Neu: Media API (createImageFromUrl); bei Fehler wie bisher über die Trading API.
+  const modern = await urlToEps(c.edb, c.settings, url).catch((e: unknown) => {
+    console.warn(`[eBay] Bild per Adresse: Media API fehlgeschlagen, nutze Trading API – ${e instanceof Error ? e.message : e}`);
+    return null;
+  });
+  if (modern) return modern;
   let body;
   try {
     body = await trading(c, "UploadSiteHostedPictures", `<ExternalPictureURL>${url.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</ExternalPictureURL><PictureSet>Standard</PictureSet><ExtensionInDays>30</ExtensionInDays>`);

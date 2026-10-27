@@ -7,8 +7,11 @@ import { ManualStockError, registerStockPusher } from "@/lib/stock/channel-sync"
 import { splitStreet } from "@/lib/shipping/countries";
 import { getSettings, getToken } from "@/lib/ebay/db/db";
 import { ebayDb } from "@/lib/ebay/db/pg";
-import { getUserAccessToken } from "@/lib/ebay/ebay/auth";
-import { apiBase, MARKETPLACE } from "@/lib/ebay/ebay/config";
+import { getUserAccessToken, listingGranted } from "@/lib/ebay/ebay/auth";
+import { apiBase, graphqlUrl, MARKETPLACE } from "@/lib/ebay/ebay/config";
+import { bulkUpdateInventory, fetchActiveListings, fetchListing, type GqlConn } from "@/lib/ebay/listing-api";
+import { activeFromListing, legacyFromListing } from "@/lib/ebay/listing-map";
+import { withModern } from "@/lib/ebay/modern";
 import type { Settings } from "@/lib/ebay/types";
 import { activeItems, escXml, inventoryStatusXml, legacyItem, matchSpecifics, tradingBody, type EbayActiveItem, type LegacyItem } from "@/lib/ebay/trading-map";
 import type { XmlObject } from "@/lib/xml";
@@ -18,7 +21,7 @@ import { registerTester } from "../test";
 // Die Verbindung (App-Schlüssel, Umgebung, Anmeldung) ist dieselbe wie im eBay-Listing-Tool
 // (eBay → eBay-Einstellungen → Verbindung).
 
-type Conn = { base: string; token: string; marketplaceId: string; settings: Settings };
+type Conn = { tenantId: string; base: string; token: string; marketplaceId: string; settings: Settings; listingOk: boolean | null };
 
 /** Verbindung des Mandanten oder null, wenn keine eBay-Anmeldung besteht. */
 async function cfg(tenantId: string): Promise<Conn | null> {
@@ -28,8 +31,11 @@ async function cfg(tenantId: string): Promise<Conn | null> {
   const stored = await getToken(db, settings.env, "user");
   if (!stored?.refreshToken) return null;
   const token = await getUserAccessToken(db, settings);
-  return { base: apiBase(settings.env), token, marketplaceId: MARKETPLACE, settings };
+  return { tenantId, base: apiBase(settings.env), token, marketplaceId: MARKETPLACE, settings, listingOk: listingGranted(settings, stored.refreshToken) };
 }
+
+/** Neue Listing-API (GraphQL) mit demselben Token. */
+const gqlConn = (c: Conn): GqlConn => ({ url: graphqlUrl(c.settings.env), token: c.token, marketplaceId: c.marketplaceId });
 
 /** Besteht eine eBay-Verbindung? (für den Hintergrund-Abruf) */
 export async function ebayConnected(tenantId: string): Promise<boolean> {
@@ -173,7 +179,15 @@ registerStockPusher("ebay", async (tenantId, l, quantity) => {
   if (payload.trading && payload.itemId) {
     const variation = Boolean(payload.specifics?.length);
     if (variation && !payload.ebaySku) throw new ManualStockError("Variante ohne SKU bei eBay – bei eBay je Variante eine SKU eintragen, dann geht es automatisch");
-    await trading(c, "ReviseInventoryStatus", inventoryStatusXml(payload.itemId, quantity, variation ? payload.ebaySku : null));
+    const itemId = payload.itemId;
+    const ebaySku = variation ? payload.ebaySku : null;
+    await withModern(
+      tenantId,
+      "Menge setzen",
+      () => bulkUpdateInventory(gqlConn(c), [{ listingId: itemId, sku: ebaySku, availableQuantity: quantity }]),
+      async () => void (await trading(c, "ReviseInventoryStatus", inventoryStatusXml(itemId, quantity, ebaySku))),
+      c.listingOk,
+    );
     return;
   }
   let offerId = payload.offerId;
@@ -220,7 +234,7 @@ export async function ebayQuantity(tenantId: string, sku: string): Promise<numbe
   return Math.max(0, q);
 }
 
-// ---- Ältere Angebote (Trading API) ---------------------------------------------------------
+// ---- Ältere Angebote: neue Listing-API, Rückfall Trading API ----------------------------------
 
 /** Am Wawi-Angebot gemerkt: Artikelnummer, SKU bei eBay (falls vergeben), Variantenmerkmale. */
 export type LegacyPayload = { trading?: boolean; itemId?: string; ebaySku?: string | null; specifics?: { name: string; value: string }[] };
@@ -243,21 +257,35 @@ async function trading(c: Conn, call: string, inner: string): Promise<XmlObject>
 }
 
 async function getLegacyItem(c: Conn, itemId: string): Promise<LegacyItem> {
-  return legacyItem(await trading(c, "GetItem", `<ItemID>${escXml(itemId)}</ItemID><DetailLevel>ReturnAll</DetailLevel><IncludeItemSpecifics>true</IncludeItemSpecifics>`));
+  return withModern(
+    c.tenantId,
+    "Angebot lesen",
+    async () => legacyFromListing(await fetchListing(gqlConn(c), itemId)),
+    async () => legacyItem(await trading(c, "GetItem", `<ItemID>${escXml(itemId)}</ItemID><DetailLevel>ReturnAll</DetailLevel><IncludeItemSpecifics>true</IncludeItemSpecifics>`)),
+    c.listingOk,
+  );
 }
 
 /** Alle laufenden Angebote des eBay-Kontos – auch die nicht übers eBay-Tool eingestellten. */
 export async function ebayActiveItems(tenantId: string): Promise<EbayActiveItem[]> {
   const c = await cfg(tenantId);
   if (!c) throw new Error("eBay ist nicht verbunden (eBay → eBay-Einstellungen → Verbindung).");
-  const out: EbayActiveItem[] = [];
-  for (let page = 1, pages = 1; page <= pages && page <= 100; page++) {
-    const body = await trading(c, "GetMyeBaySelling", `<ActiveList><Include>true</Include><Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>${page}</PageNumber></Pagination></ActiveList><DetailLevel>ReturnAll</DetailLevel>`);
-    const r = activeItems(body);
-    pages = r.pages;
-    out.push(...r.items);
-  }
-  return out;
+  return withModern(
+    tenantId,
+    "Angebotsliste",
+    async () => (await fetchActiveListings(gqlConn(c))).map(activeFromListing).filter((i) => i.itemId),
+    async () => {
+      const out: EbayActiveItem[] = [];
+      for (let page = 1, pages = 1; page <= pages && page <= 100; page++) {
+        const body = await trading(c, "GetMyeBaySelling", `<ActiveList><Include>true</Include><Pagination><EntriesPerPage>200</EntriesPerPage><PageNumber>${page}</PageNumber></Pagination></ActiveList><DetailLevel>ReturnAll</DetailLevel>`);
+        const r = activeItems(body);
+        pages = r.pages;
+        out.push(...r.items);
+      }
+      return out;
+    },
+    c.listingOk,
+  );
 }
 
 /** Ein eBay-Angebot mit allen Angaben (Beschreibung, Bilder, Merkmale, Varianten, EAN). */

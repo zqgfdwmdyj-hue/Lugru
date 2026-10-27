@@ -4,7 +4,7 @@ import {
   getAttempt, getSetting, getSettings, getToken, listAttempts, listUnconfirmedPurchases, setSetting, updateAttempt,
 } from '../db/db';
 import { getPolicies, getShippingPolicies, optInToBusinessPolicies } from '../ebay/account';
-import { buildConsentUrl, exchangeCode, extractCodeFromRedirectUrl, isExpired } from '../ebay/auth';
+import { buildConsentUrl, exchangeCode, extractCodeFromRedirectUrl, isExpired, listingGranted } from '../ebay/auth';
 import { fetchItemByLegacyId, fetchItemByRef, fetchItemGroup, lookupByEan, searchListings } from '../ebay/browse';
 import { listingUrl } from '../ebay/config';
 import { makeInventoryApi } from '../ebay/inventory';
@@ -156,6 +156,8 @@ export interface ApiHooks {
   };
   /** Nach dem (Neu-)Verbinden mit eBay, z. B. Verkehrsdaten nachladen. Läuft im Hintergrund. */
   onConnected?: () => void;
+  /** Letzter Erfolg bzw. Rückfall der neuen eBay-Listing-Schnittstelle (für die Verbindungsseite). */
+  modernStatus?: () => Promise<{ tradingOnly: boolean; lastOkAt: string | null; lastErrorAt: string | null; lastError: string | null }>;
 }
 
 export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
@@ -596,7 +598,7 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   // --- eBay-Verbindung ---
 
   r.get('/auth/url', h(async (req, res) => {
-    res.json({ url: buildConsentUrl(await getSettings(db), { withOrders: req.query.orders !== '0', withAnalytics: req.query.analytics !== '0' }) });
+    res.json({ url: buildConsentUrl(await getSettings(db), { withOrders: req.query.orders !== '0', withAnalytics: req.query.analytics !== '0', withListing: req.query.listing !== '0' }) });
   }));
 
   r.post('/auth/code', h(async (req, res) => {
@@ -621,6 +623,9 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
       connectionExpiresAt: connected ? userToken?.refreshExpiresAt ?? null : null,
       policiesOk: Boolean(s.fulfillmentPolicyId && s.paymentPolicyId && s.returnPolicyId),
       locationOk: Boolean(s.merchantLocationKey),
+      listingApi: connected && hooks.modernStatus
+        ? { granted: listingGranted(s, userToken!.refreshToken!), ...(await hooks.modernStatus().catch(() => null)) }
+        : null,
     });
   }));
 
