@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handleMcpMessage, type McpDeps } from "@/lib/assistant/mcp";
 import { basicAuth, parseScope, pkceChallenge, redirectAllowed, scopeText, verifyPkce, withParams, authServerMetadata, protectedResourceMetadata } from "@/lib/assistant/oauth-logic";
-import { toolAllowed } from "@/lib/assistant/permissions";
+import { accountRights, toolAllowed } from "@/lib/assistant/permissions";
 import { inputSchema } from "@/lib/assistant/schema";
 import { safeNext } from "@/lib/auth/next-path";
 import type { Session } from "@/lib/auth/session";
@@ -154,5 +154,31 @@ describe("Öffentliche Adresse für Claude (PUBLIC_URL)", async () => {
     expect(claudeReachable("https://192.168.1.5").ok).toBe(false);
     expect(claudeReachable("https://server.tail1234.ts.net:8443").ok).toBe(true);
     expect(claudeReachable("https://lugruseller.de").ok).toBe(true);
+  });
+});
+
+describe("Wer darf was – je Konto und Weg (Einstellungen → Claude)", () => {
+  const tl = (name: string, o: Partial<ToolDef> = {}) => ({ name, area: null, write: false, ...o }) as Pick<ToolDef, "name" | "area" | "write" | "ownerOnly" | "privat">;
+  const tools = [
+    tl("ueberblick"),
+    tl("sendungen", { area: "paletten" }),
+    tl("sendung_status", { area: "paletten", write: true }),
+    tl("umsatz", { area: "wawi" }),
+    tl("amazon_todos", { area: "wawi", ownerOnly: true }),
+    tl("privat_termin", { area: "privat", privat: true, write: true }),
+  ];
+  it("Inhaber: Fragefeld ohne Privat, Claude mit Privat", () => {
+    const r = accountRights(tools, session(), { allowWrite: true });
+    expect(r.fragefeld).toEqual({ lesen: ["ueberblick", "sendungen", "umsatz", "amazon_todos"], aendern: ["sendung_status"] });
+    expect(r.claude?.aendern).toEqual(["sendung_status", "privat_termin"]);
+  });
+  it("Lager (nur Paletten): nur Palettenwerkzeuge, kein Claude-Konnektor", () => {
+    const r = accountRights(tools, session({ role: "staff", areas: ["paletten"], privateAccess: false }), { allowWrite: true });
+    expect(r.fragefeld).toEqual({ lesen: ["ueberblick", "sendungen"], aendern: ["sendung_status"] });
+    expect(r.claude).toBeNull();
+  });
+  it("Nur-ansehen-Konto und Fragefeld ohne Ändern: nichts Änderndes", () => {
+    expect(accountRights(tools, session({ role: "staff", areas: ["paletten", "wawi"], readOnly: true }), { allowWrite: true }).fragefeld.aendern).toEqual([]);
+    expect(accountRights(tools, session(), { allowWrite: false }).fragefeld.aendern).toEqual([]);
   });
 });

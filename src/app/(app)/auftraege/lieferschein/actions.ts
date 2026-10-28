@@ -9,7 +9,7 @@ import { parseWsMax } from "@/lib/shipping/warensendung";
 import { parseWeightInput } from "@/lib/shipping/weight";
 import type { ShipChoice } from "@/lib/shipping/packing-slip";
 
-export type SlipState = { rows: SlipRow[]; error?: string; note?: string; labels?: SlipLabels } | null;
+export type SlipState = { rows: SlipRow[]; error?: string; note?: string; labels?: SlipLabels; unclear?: number } | null;
 
 const CHOICES = ["warensendung", "dhl", "pruefen"] as const;
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -58,7 +58,7 @@ async function saveWeights(prev: SlipState, fd: FormData): Promise<SlipState> {
     saved++;
   }
   revalidatePath("/auftraege/lieferschein");
-  return { rows: await refreshed(session.tenantId, rows), labels: prev?.labels, note: [saved ? `${saved} Artikel gespeichert – gilt ab jetzt für jede Sendung dieser Artikel.` : "Keine Änderung.", bad.length ? `Nicht verstanden: ${bad.join(", ")} (z. B. 0,3 für 0,3 kg oder 300 g)` : ""].filter(Boolean).join(" ") };
+  return { rows: await refreshed(session.tenantId, rows), labels: prev?.labels, unclear: bad.length || undefined, note: [saved ? `${saved} Artikel gespeichert – gilt ab jetzt für jede Sendung dieser Artikel.` : "Keine Änderung.", bad.length ? `Nicht verstanden: ${bad.join(", ")} (z. B. 0,3 für 0,3 kg oder 300 g)` : ""].filter(Boolean).join(" ") };
 }
 
 /** Offene Aufträge übernehmen (vorher neu abrufen) – gleiche Automatik wie beim Lieferschein. */

@@ -15,6 +15,7 @@ import { MailboxManager } from "../posteingang/mailbox-manager";
 import { getIntegration } from "@/lib/integrations/store";
 import { imCreds, imPageFormats, type ImPageFormat } from "@/lib/integrations/clients/deutschepost";
 import { isLabelPrinterFormat } from "@/lib/shipping/internetmarke";
+import { AddressCheck } from "./address-check";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -79,6 +80,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
         </span>
       </div>
       {meldung && <div className="notice notice-info" data-testid="settings-msg">{meldung}</div>}
+      <AddressCheck />
 
       <form action={saveSettings} className="stack" style={{ gap: 16 }}>
         <section className="card card-pad stack" style={{ gap: 14 }}>

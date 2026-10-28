@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideShipper, parseMonthParam, prepCsv, prepSummary, type PrepRow } from "@/lib/shipping/prep";
+import { decideShipper, monthsBack, parseMonthParam, prepCsv, prepExplain, prepSummary, type PrepRow } from "@/lib/shipping/prep";
 
 // Prep Center – erfundene Aufträge.
 const row = (units: number, product: string, over: Partial<PrepRow> = {}): PrepRow => ({ orderId: "o", externalId: "399-1", channel: "Amazon", day: "2026-10-28", name: "Erika Test", place: "12345 Ort", units, items: `${units}× Testsocken`, product, tracking: null, status: "Versendet", ...over });
@@ -30,5 +30,19 @@ describe("Monatsübersicht", () => {
   it("Monat aus der Adresse", () => {
     expect(parseMonthParam("2026-09", "2026-10-28")).toBe("2026-09");
     expect(parseMonthParam("2026-13", "2026-10-28")).toBe("2026-10");
+  });
+});
+
+describe("Prep Center: Monate und Erklärung für den Assistenten", () => {
+  it("monthsBack über den Jahreswechsel", () => {
+    expect(monthsBack("2026-02", 4)).toEqual(["2025-11", "2025-12", "2026-01", "2026-02"]);
+    expect(monthsBack("2026-10", 1)).toEqual(["2026-10"]);
+  });
+  it("Erklärung nennt Gebühren, Standard-Versender und die Abgrenzung zum Palettenlager", () => {
+    const t = prepExplain({ name: "Test-Prep", defaultShipper: "prep", feeShipment: 2.5, feeExtraItem: 0.5 });
+    expect(t).toContain("2,50 € je Sendung + 0,50 € je weiteres Stück");
+    expect(t).toContain("sonst Standard = Test-Prep");
+    expect(t).toContain("Palettenlager");
+    expect(prepExplain({ name: "", defaultShipper: "self", feeShipment: 0, feeExtraItem: 0 })).toContain("noch keine Gebühren hinterlegt");
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 
 export type BulkResult = { ok: boolean; message: string } | null;
 export type BulkOp = { op: string; label: string; confirm?: string; primary?: boolean; danger?: boolean };
@@ -13,7 +14,9 @@ export type BulkOp = { op: string; label: string; confirm?: string; primary?: bo
 export function BulkForm({ action, ops, children, testid = "bulk" }: { action: (prev: BulkResult, fd: FormData) => Promise<BulkResult>; ops: BulkOp[]; children: React.ReactNode; testid?: string }) {
   const [state, dispatch, pending] = useActionState<BulkResult, FormData>(action, null);
   const [count, setCount] = useState(0);
-  const form = useRef<HTMLFormElement>(null);
+  // Auswahl bleibt bei einem Fehler stehen (nochmal versuchen); nach Erfolg ist sie leer.
+  const keep = useKeepForm(state, dispatch, { resetOnSuccess: true });
+  const form = keep.ref;
   const recount = () => setCount(form.current?.querySelectorAll('input[name="ids"]:checked').length ?? 0);
   // Nach der Aktion verschwinden Zeilen ggf. aus der Liste – Anzahl neu zählen.
   useEffect(recount, [state]);
@@ -21,6 +24,7 @@ export function BulkForm({ action, ops, children, testid = "bulk" }: { action: (
     <form
       ref={form}
       action={dispatch}
+      onSubmit={keep.onSubmit}
       className="stack"
       data-testid={testid}
       onChange={(e) => {

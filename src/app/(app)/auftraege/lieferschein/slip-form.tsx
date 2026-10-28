@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { PostFormatHint } from "../post-format-hint";
 import { SHIP_CHOICE_LABEL, type ShipChoice } from "@/lib/shipping/packing-slip";
 import { WS_OPTIONS } from "@/lib/shipping/warensendung";
@@ -18,6 +19,12 @@ const kgText = (g: number | null) => (g === null ? "" : (g / 1000).toLocaleStrin
 export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, weights, prepName, postFormat }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState; weights: SkuWeightInfo[]; prepName: string; postFormat: { name: string; labelPrinter: boolean } }) {
   // Warensendung: über die Schnittstelle kaufen (wenn eingerichtet) oder CSV für den Internetmarke-Shop.
   const [state, action, pending] = useActionState<SlipState, FormData>(slipAction, initial);
+  // Eingaben bleiben nach Fehlern stehen (Datei, Kanal, Versandart je Bestellung); Datei und Gewichte leeren sich
+  // erst nach Erfolg – die Gewichtszeilen zeigen dann die gespeicherten Werte.
+  const keepUpload = useKeepForm(state, action, { resetOnSuccess: true });
+  const keepOpen = useKeepForm(state, action);
+  const keepWeights = useKeepForm(state, action, { resetOnSuccess: (s) => Boolean(s && !s.error && !s.unclear) });
+  const keepPreview = useKeepForm(state, action);
   const rows = state?.rows ?? [];
   const labels = state?.labels;
   const open = rows.filter((r) => !r.done);
@@ -32,7 +39,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
   return (
     <div className="stack" style={{ gap: 16 }}>
       <div className="slip-sources">
-        <form action={action} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-upload">
+        <form action={action} ref={keepUpload.ref} onSubmit={keepUpload.onSubmit} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-upload">
           <h2>Amazon-Lieferschein</h2>
           <label className="label" htmlFor="slip-pdf">PDF aus Seller Central (eine Bestellung je Seite)</label>
           <input className="input" id="slip-pdf" name="pdf" type="file" accept="application/pdf,.pdf" required data-testid="slip-file" />
@@ -43,7 +50,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
             <button className="btn btn-primary" type="submit" disabled={pending} data-testid="slip-read">{pending ? "Bitte warten …" : "Lieferschein einlesen"}</button>
           </div>
         </form>
-        <form action={action} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-open">
+        <form action={action} ref={keepOpen.ref} onSubmit={keepOpen.onSubmit} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-open">
           <input type="hidden" name="intent" value="open" />
           <h2>Offene Aufträge</h2>
           <label className="label" htmlFor="slip-channel">Kanal (Name und Anschrift kommen aus dem Auftrag)</label>
@@ -92,7 +99,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
         </section>
       )}
 
-      <form action={action} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-weights">
+      <form action={action} ref={keepWeights.ref} onSubmit={keepWeights.onSubmit} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-weights">
         <input type="hidden" name="intent" value="weights" />
         <h2>Artikel: Gewicht & Warensendung{skus.length ? ` (${skus.length - missing} vollständig${missing ? `, ${missing} offen` : ""})` : ""}</h2>
         <span className="small muted">
@@ -153,7 +160,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
       </form>
 
       {rows.length > 0 && (
-        <form action={action} className="stack" style={{ gap: 10 }} data-testid="slip-preview">
+        <form action={action} ref={keepPreview.ref} onSubmit={keepPreview.onSubmit} className="stack" style={{ gap: 10 }} data-testid="slip-preview">
           <input type="hidden" name="intent" value="create" />
           <section className="card" style={{ overflow: "auto" }}>
             <table className="table">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { importScAction, type ScImportState } from "../actions";
 
 const ALLOWED = /^https:\/\/sellercentral(-europe|-japan)?\.amazon\.[a-z.]+$/;
@@ -19,7 +20,9 @@ export function ScBookmark({ href }: { href: string }) {
 export function ScCapture() {
   const [state, action, pending] = useActionState<ScImportState, FormData>(importScAction, null);
   const [data, setData] = useState("");
-  const form = useRef<HTMLFormElement>(null);
+  // Eingefügte Daten bleiben nach dem Übernehmen stehen (bei einem Fehler nochmal versuchen).
+  const keep = useKeepForm(state, action);
+  const form = keep.ref;
   const sent = useRef(false);
 
   useEffect(() => {
@@ -39,7 +42,7 @@ export function ScCapture() {
 
   const r = state?.result;
   return (
-    <form ref={form} action={action} className="card card-pad stack" style={{ gap: 10 }}>
+    <form ref={form} action={action} onSubmit={keep.onSubmit} className="card card-pad stack" style={{ gap: 10 }}>
       <h2>Erfasste Daten</h2>
       <textarea className="textarea" name="data" rows={5} value={data} onChange={(e) => setData(e.target.value)} placeholder="Hier einfügen (Strg+V) – Daten vom Lesezeichen oder kopierte Auftragsseite" style={{ fontSize: 12, minHeight: 100 }} />
       <button className="btn btn-primary" type="submit" disabled={pending || !data.trim()}>{pending ? "Lese Pakete …" : "Übernehmen und Ansprüche prüfen"}</button>

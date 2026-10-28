@@ -66,3 +66,31 @@ export function prepCsv(rows: PrepRow[]): string {
 export function parseMonthParam(v: string | undefined, today: string): string {
   return v && /^\d{4}-(0[1-9]|1[0-2])$/.test(v) ? v : today.slice(0, 7);
 }
+
+/** Die letzten `n` Monate bis einschließlich `month` („2026-10“), älteste zuerst. */
+export function monthsBack(month: string, n: number): string[] {
+  const [y, m] = month.split("-").map(Number);
+  const out: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(y, m - 1 - i, 1));
+    out.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+  }
+  return out;
+}
+
+const euro = (n: number) => `${n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+
+/**
+ * Wie der Versand über das Prep Center im Seller-System funktioniert – feste Erklärung mit den eingestellten Werten,
+ * damit der Assistent nicht raten muss (Fragen wie „Was macht das Prep Center?“, „Wie wird abgerechnet?“).
+ */
+export function prepExplain(p: { name: string; defaultShipper: "self" | "prep"; feeShipment: number; feeExtraItem: number }): string {
+  const name = p.name || "Prep Center";
+  const fees = p.feeShipment > 0 || p.feeExtraItem > 0 ? `${euro(p.feeShipment)} je Sendung + ${euro(p.feeExtraItem)} je weiteres Stück in derselben Sendung` : "noch keine Gebühren hinterlegt (Einstellungen → Prep Center)";
+  return [
+    `${name} = externer Dienstleister, der Händlerversand-Aufträge (FBM: eBay, Amazon, …) für uns verpackt und verschickt. Nicht zu verwechseln mit dem Palettenlager (Paletten von Kunden).`,
+    `Wer eine Sendung verschickt („verschickt von“: ich oder ${name}), steht an jedem Auftrag: automatisch aus der Einstellung je Artikel („Wer verschickt“ unter Lieferschein → Artikel), sonst Standard = ${p.defaultShipper === "prep" ? name : "ich selbst"}. Enthält ein Auftrag einen Artikel, den ich selbst verschicke, verschicke ich den ganzen Auftrag. Beim Erstellen der Labels je Bestellung änderbar.`,
+    `Gezählt wird je Monat: Sendungen (Tag = versendet, sonst Label erstellt), Stück und Versandart. Erwartete Kosten = ${fees}. Damit die Rechnung des ${name} abhaken (Monatsübersicht unter Aufträge → Prep Center, CSV-Export).`,
+    "Sendungen ohne Angabe, wer verschickt hat, fehlen in der Zählung – sie stehen als „noch nicht zugeordnet“ in der Monatsübersicht.",
+  ].join(" ");
+}

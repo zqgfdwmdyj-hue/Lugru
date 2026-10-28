@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
-import { inputSchema, prepareCall, runTool, toolsFor } from "./registry";
+import { inputSchema, logNotRun, prepareCall, runTool, toolsFor } from "./registry";
 import type { ToolCtx } from "./types";
 
 // Fragefeld im Seller-System: Claude-API (offizielle Bibliothek) mit den gemeinsamen Werkzeugen.
@@ -34,7 +34,7 @@ function systemPrompt(ctx: ToolCtx) {
     ctx.canWrite
       ? "Ändernde Werkzeuge nur nutzen, wenn die Person das ausdrücklich möchte. Die Person bestätigt jede Änderung selbst im Fragefeld; wurde sie abgelehnt, nicht erneut versuchen, sondern nachfragen."
       : "Diese Person darf über das Fragefeld nichts ändern – nur lesen. Bei Änderungswünschen sagen, wo das im Seller-System geht.",
-    "Begriffe: „Prep Center“ = Versanddienstleister, der FBM-Aufträge für uns verschickt (Werkzeug „prep_center“, Aufträge mit verschickt_von). „Palettenlager“ = Lager für Paletten von Kunden mit Anlieferungen/Speditions-Sendungen (Werkzeuge „paletten“, „sendungen“) – nicht verwechseln. „Sendungen“ ohne Zusatz: nachfragen oder beides prüfen.",
+    "Begriffe: „Prep Center“ = Versanddienstleister, der FBM-Aufträge für uns verschickt. Fragen dazu immer zuerst mit „prep_center“ beantworten (Monat, Sendungen, Stück, Kosten je Monat, wie „verschickt von“ festgelegt wird) – nicht aus Auftragslisten oder Fristen ableiten; einzelne Aufträge über „auftraege“ mit verschickt_von. „Palettenlager“ = Lager für Paletten von Kunden mit Anlieferungen/Speditions-Sendungen (Werkzeuge „paletten“, „sendungen“) – nicht verwechseln. „Sendungen“ ohne Zusatz: nachfragen oder beides prüfen.",
     "Zum Privatbereich hast du hier keinen Zugriff.",
     "Das heutige Datum steht in der <kontext>-Notiz der jeweils neuesten Nachricht (Europe/Berlin).",
   ].join("\n");
@@ -113,6 +113,7 @@ export async function* chatTurn(ctx: ToolCtx, opts: { chatId?: string | null; te
     const results: BetaToolResultBlockParam[] = [];
     for (const u of pending.toolUses) {
       if (u.write && opts.confirm !== true) {
+        await logNotRun(ctx, u.name, u.input, opts.text ? "Nicht ausgeführt (neue Nachricht statt Bestätigung)" : "Abgelehnt (Vorschlag nicht bestätigt)").catch((e) => console.error("[Assistent] Protokoll:", e));
         results.push({ type: "tool_result", tool_use_id: u.id, is_error: true, content: opts.text ? "Nicht ausgeführt – die Person hat stattdessen eine neue Nachricht geschrieben." : "Nicht ausgeführt – die Person hat die Änderung abgelehnt." });
         continue;
       }

@@ -9,7 +9,7 @@ import { productSearch } from "@/lib/products/service";
 import { sellerboardRange } from "@/lib/sellerboard/sales";
 import { stockLevels } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { parseMonthParam, prepSummary } from "@/lib/shipping/prep";
+import { monthsBack, parseMonthParam, prepExplain, prepSummary } from "@/lib/shipping/prep";
 import { prepMonthRows, unassignedMonthRows } from "@/lib/shipping/prep-service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, isoDate, json, round2, uuid } from "./common";
@@ -89,31 +89,50 @@ export const prepCenter = defineTool({
   name: "prep_center",
   title: "Versand über das Prep Center",
   description:
-    "Was das Prep Center (Versanddienstleister, der FBM-Aufträge für uns verschickt – NICHT das Palettenlager) in einem Monat verschickt hat: Anzahl Sendungen, Stück, je Versandart, erwartete Kosten laut hinterlegten Gebühren, dazu wie viele Sendungen im Monat noch keinem Versender zugeordnet sind. Optional die Liste je Sendung. Für „Wie viele Sendungen hat das Prep Center diesen Monat?“, „Stimmt die Rechnung vom Prep Center?“.",
+    "Alles zum Prep Center (externer Versanddienstleister, der FBM-Aufträge für uns verschickt – NICHT das Palettenlager): je Monat Sendungen, Stück, Versandarten und erwartete Kosten laut hinterlegten Gebühren; mit „monate“ die Entwicklung über mehrere Monate (Kosten je Monat); dazu, wie viele Sendungen noch keinem Versender zugeordnet sind, und eine feste Erklärung, wie „verschickt von“ und die Abrechnung funktionieren. Optional die Liste je Sendung. Immer dieses Werkzeug nutzen bei Fragen wie „Was macht das Prep Center?“, „Wie viele Sendungen hat das Prep Center diesen Monat?“, „Was kostet das Prep Center je Monat?“, „Stimmt die Rechnung vom Prep Center?“.",
   area: "wawi",
   write: false,
   input: z.object({
     monat: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Monat als JJJJ-MM").optional().describe("Standard: aktueller Monat"),
-    mit_liste: z.boolean().default(false).describe("Auch die einzelnen Sendungen zeigen"),
+    monate: z.number().int().min(1).max(12).default(1).describe("Anzahl Monate bis einschließlich „monat“ – ab 2 mit Verlauf je Monat"),
+    mit_liste: z.boolean().default(false).describe("Auch die einzelnen Sendungen des Monats zeigen"),
     limit: z.number().int().min(1).max(300).default(50),
   }),
   run: async (ctx, i) => {
     const t = ctx.session.tenantId;
     const month = parseMonthParam(i.monat, ctx.today);
-    const [settings, rows, open] = await Promise.all([getSettings(t), prepMonthRows(t, month), unassignedMonthRows(t, month)]);
-    const sum = prepSummary(rows, { feeShipment: settings.prep.feeShipment, feeExtraItem: settings.prep.feeExtraItem });
+    const settings = await getSettings(t);
+    const fees = { feeShipment: settings.prep.feeShipment, feeExtraItem: settings.prep.feeExtraItem };
+    const months = monthsBack(month, i.monate);
+    const per = await Promise.all(months.map(async (m) => ({ m, rows: await prepMonthRows(t, m), open: (await unassignedMonthRows(t, m)).length })));
+    const cur = per.at(-1)!;
+    const sum = prepSummary(cur.rows, fees);
     return json({
       prep_center: settings.prep.name || "Prep Center",
+      so_funktioniert_es: prepExplain(settings.prep),
+      einstellungen: {
+        standard_versender: settings.prep.defaultShipper === "prep" ? settings.prep.name || "Prep Center" : "ich selbst",
+        gebuehr_je_sendung: settings.prep.feeShipment || undefined,
+        gebuehr_je_weiteres_stueck: settings.prep.feeExtraItem || undefined,
+      },
       monat: month,
       sendungen: sum.shipments,
       stueck: sum.units,
       je_versandart: sum.byProduct.map((b) => ({ versandart: b.product, sendungen: b.shipments, stueck: b.units })),
       erwartete_kosten: sum.expected ?? undefined,
       kosten_hinweis: sum.expected === null ? "Keine Gebühren hinterlegt (Einstellungen → Prep Center)." : undefined,
-      noch_nicht_zugeordnet: open.length || undefined,
-      zuordnung_hinweis: open.length ? `${open.length} Sendung(en) in diesem Monat ohne Angabe, wer verschickt hat – in der Monatsübersicht zuordnen, sonst fehlen sie hier.` : undefined,
-      liste: i.mit_liste ? rows.slice(0, i.limit).map((r) => ({ tag: r.day, kanal: r.channel, bestellnummer: r.externalId, stueck: r.units, artikel: r.items, versandart: r.product, sendungsnummer: r.tracking ?? undefined, status: r.status, link: abs(ctx, `/auftraege/${r.orderId}`) })) : undefined,
+      noch_nicht_zugeordnet: cur.open || undefined,
+      zuordnung_hinweis: cur.open ? `${cur.open} Sendung(en) in diesem Monat ohne Angabe, wer verschickt hat – in der Monatsübersicht zuordnen, sonst fehlen sie hier.` : undefined,
+      verlauf:
+        per.length > 1
+          ? per.map(({ m, rows, open }) => {
+              const s = prepSummary(rows, fees);
+              return { monat: m, sendungen: s.shipments, stueck: s.units, erwartete_kosten: s.expected ?? undefined, noch_nicht_zugeordnet: open || undefined };
+            })
+          : undefined,
+      liste: i.mit_liste ? cur.rows.slice(0, i.limit).map((r) => ({ tag: r.day, kanal: r.channel, bestellnummer: r.externalId, stueck: r.units, artikel: r.items, versandart: r.product, sendungsnummer: r.tracking ?? undefined, status: r.status, link: abs(ctx, `/auftraege/${r.orderId}`) })) : undefined,
       link: abs(ctx, `/auftraege/prep-center?monat=${month}`),
+      einstellungen_link: abs(ctx, "/einstellungen#prep"),
     });
   },
 });

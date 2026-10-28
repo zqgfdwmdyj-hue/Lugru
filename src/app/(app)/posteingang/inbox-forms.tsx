@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { sendTestMail, syncNow, uploadEml, type InboxState } from "./actions";
 
 export function SyncButton() {
@@ -15,8 +16,9 @@ export function SyncButton() {
 
 export function EmlUpload() {
   const [state, action, pending] = useActionState<InboxState, FormData>(uploadEml, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }} data-testid="eml-upload">
       <label className="label" htmlFor="eml">Mails als .eml hochladen (zum Testen)</label>
       <input className="input" id="eml" name="files" type="file" accept=".eml,message/rfc822" multiple required />
       <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>

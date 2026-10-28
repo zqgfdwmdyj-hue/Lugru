@@ -25,12 +25,12 @@ export const toolByName = (name: string) => ALL_TOOLS.find((t) => t.name === nam
 
 export { inputSchema };
 
-export type ParsedCall = { ok: true; tool: ToolDef; input: unknown } | { ok: false; error: string };
+export type ParsedCall = { ok: true; tool: ToolDef; input: unknown } | { ok: false; error: string; denied?: boolean };
 
 /** Werkzeug finden, Freigabe und Eingabe prüfen – ohne auszuführen (für Bestätigungen). */
 export function prepareCall(ctx: Pick<ToolCtx, "session" | "canWrite" | "privat">, name: string, raw: unknown): ParsedCall {
   const tool = toolByName(name);
-  if (!tool || !toolAllowed(ctx, tool)) return { ok: false, error: `Werkzeug „${name}“ ist für dieses Konto nicht freigegeben.` };
+  if (!tool || !toolAllowed(ctx, tool)) return { ok: false, denied: true, error: `Werkzeug „${name}“ ist für dieses Konto nicht freigegeben.` };
   const parsed = tool.input.safeParse(raw ?? {});
   if (!parsed.success) return { ok: false, error: `Eingabe ungültig: ${z.prettifyError(parsed.error)}` };
   return { ok: true, tool, input: parsed.data };
@@ -38,7 +38,11 @@ export function prepareCall(ctx: Pick<ToolCtx, "session" | "canWrite" | "privat"
 
 export async function runTool(ctx: ToolCtx, name: string, raw: unknown): Promise<ToolOut> {
   const call = prepareCall(ctx, name, raw);
-  if (!call.ok) return { text: call.error, isError: true };
+  if (!call.ok) {
+    // Ohne Recht (auch bei direktem Aufruf am Werkzeugkasten vorbei) – abweisen und protokollieren.
+    if (call.denied) await logNotRun(ctx, name, raw, "Abgewiesen (nicht freigegeben)").catch((e) => console.error("[Assistent] Protokoll:", e));
+    return { text: call.error, isError: true };
+  }
   const { tool, input } = call;
   let out: ToolOut;
   try {
@@ -51,6 +55,26 @@ export async function runTool(ctx: ToolCtx, name: string, raw: unknown): Promise
   if (out.text.length > MAX_TEXT) out = { ...out, text: `${out.text.slice(0, MAX_TEXT)} … (gekürzt – bitte genauer eingrenzen)` };
   await logUse(ctx, tool, input, out).catch((e) => console.error("[Assistent] Protokoll:", e));
   return out;
+}
+
+/**
+ * Nicht ausgeführte Aufrufe protokollieren: ohne Recht („Abgewiesen …“) oder vorgeschlagene Änderung, die die Person
+ * abgelehnt hat („Abgelehnt …“). Nur Werkzeugname und Kurzbeschreibung, keine Inhalte.
+ */
+export async function logNotRun(ctx: Pick<ToolCtx, "session" | "channel">, name: string, raw: unknown, reason: string) {
+  const tool = toolByName(name);
+  const parsed = tool?.input.safeParse(raw ?? {});
+  const what = tool ? (tool.write && parsed?.success ? (tool.summary?.(parsed.data as never) ?? tool.title) : tool.title) : `unbekanntes Werkzeug „${name.slice(0, 60)}“`;
+  await db.insert(schema.assistantLog).values({
+    tenantId: ctx.session.tenantId,
+    userId: ctx.session.userId,
+    channel: ctx.channel,
+    tool: name.slice(0, 80),
+    write: tool?.write ?? false,
+    ok: false,
+    // Bei lesenden Werkzeugen steht der Name schon in der Zeile – nur der Grund.
+    summary: tool && what === tool.title ? reason : `${reason}: ${what}`,
+  });
 }
 
 async function logUse(ctx: ToolCtx, tool: ToolDef, input: unknown, out: ToolOut) {
