@@ -233,7 +233,7 @@ type Preset = { price: number | null; priceNote: string | null; caption: string 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {
   if (productIds.length === 0) return 0;
-  const products = await db.select({ id: P.id, price: P.price, confirmed: P.priceConfirmed }).from(P).where(inArray(P.id, productIds));
+  const products = await db.select({ id: P.id, price: P.price, confirmed: P.priceConfirmed, defaults: P.itemDefaults }).from(P).where(inArray(P.id, productIds));
   if (products.length === 0) return 0;
   const last = await lastPrices(products.map((p) => p.id));
   // Abgabeeinheit und Varianten (Packung, Karton …) vom letzten Mal übernehmen – einmal angelegt, immer wieder auswählbar.
@@ -245,8 +245,9 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
     .insert(I)
     .values(
       products.map((p, i) => {
-        const setup = prevSetup.get(p.id);
-        const given = presets?.get(p.id) ?? (setup ? { price: null, priceNote: setup.priceNote, caption: null, unit: setup.unit, unitCount: setup.unitCount, packNote: setup.packNote, packKind: setup.packKind, packCount: setup.packCount, packPrice: setup.packPrice, morePacks: setup.morePacks, fromSetup: true } : undefined);
+        // Vorlage aus der Produktkartei hat Vorrang vor dem letzten Mal.
+        const setup = p.defaults ?? prevSetup.get(p.id);
+        const given = presets?.get(p.id) ?? (setup ? { price: null, priceNote: setup.priceNote, caption: p.defaults?.caption ?? null, unit: setup.unit, unitCount: setup.unitCount, packNote: setup.packNote, packKind: setup.packKind, packCount: setup.packCount, packPrice: setup.packPrice, morePacks: setup.morePacks, fromSetup: true } : undefined);
         const prev = last.get(p.id);
         const fromSetup = !!given && "fromSetup" in given;
         const price = given && !fromSetup ? given.price : (prev?.price ?? p.price ?? null);
@@ -268,6 +269,7 @@ export async function addProductsToEvent(eventId: string, productIds: string[], 
           packPrice: given?.packPrice ?? null,
           morePacks: given?.morePacks ?? [],
           unitConfirmed: fromSetup && !!given?.unit,
+          ...(p.defaults && !presets?.get(p.id) ? { inCollage: p.defaults.inCollage, inFlyer: p.defaults.inFlyer } : {}),
           sort: max + (i + 1) * 10,
         };
       }),

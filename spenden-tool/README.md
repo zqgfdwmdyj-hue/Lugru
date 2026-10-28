@@ -91,6 +91,10 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Produktseite „Weitere Fotos hinzufügen“ – es entsteht kein neuer Artikel. Auch „Neues Produkt“ nimmt mehrere
   Fotos; ohne Namen erkennt die KI das Produkt. Danach öffnet sich gleich die Kartei zum Kontrollieren (ebenso nach
   dem Hochladen eines einzelnen Fotos). Die gewählte Upload-Art merkt sich das Gerät.
+- **Produktkartei „Für Verteilungen“:** dieselben Felder wie in den Details der Produktliste (Abgabeeinheit, Inhalt,
+  Text vor dem Preis, Varianten, Text auf dem Bild, Collage/Aushang, dazu Bestand und MHD der kommenden Verteilung).
+  Gespeichert als Vorlage am Produkt und sofort in alle kommenden Verteilungen übernommen; Änderungen in der
+  Produktliste halten die Vorlage aktuell.
 - **Fotoregel:** jedes Produkt einzeln fotografieren, Vorder- und Rückseite (bzw. Unterseite mit MHD). Sieht die KI
   mehrere verschiedene Produkte auf einem Foto, erscheint „Mehrere Produkte im Foto“ mit der Bitte, einzeln neu zu
   fotografieren.

@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import type { CollageSettings } from "@/db/schema";
+import type { CollageSettings, ItemDefaults } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
 import { stockPrice } from "@/lib/pricing";
@@ -237,6 +237,12 @@ export async function saveItems(fd: FormData) {
     if (fd.has(`o_${k("col")}`) && changed(k("col"))) set.inCollage = checkbox(k("col"));
     if (fd.has(`o_${k("fly")}`) && changed(k("fly"))) set.inFlyer = checkbox(k("fly"));
     if (Object.keys(set).length) await db.update(I).set(set).where(eq(I.id, it.id));
+    // Gibt es eine Vorlage aus der Produktkartei, bleibt sie auf dem Stand der letzten Änderung.
+    const keys = ["unit", "unitCount", "priceNote", "caption", "packKind", "packCount", "packPrice", "packNote", "morePacks", "inCollage", "inFlyer"] as const;
+    const synced = Object.fromEntries(keys.filter((k) => k in set).map((k) => [k, set[k]]));
+    if (Object.keys(synced).length) {
+      await db.execute(sql`update products set item_defaults = item_defaults || ${JSON.stringify(synced)}::jsonb where id = ${it.productId} and item_defaults is not null`);
+    }
   }
   // Produktangaben (Name, Variante, Kategorie, MHD nötig?) – gelten auch für spätere Verteilungen.
   for (const productId of new Set(items.map((i) => i.productId))) {
@@ -1014,6 +1020,63 @@ export async function updateProduct(fd: FormData) {
   const back = str(fd, "back");
   revalidatePath(`/produkte/${id}`);
   if (back.startsWith("/verteilung/")) redirect(back);
+}
+
+/**
+ * Produktkartei → „Für Verteilungen“: Abgabeeinheit, Text vor dem Preis, Varianten, Text auf dem Bild und Ausgabe als
+ * Vorlage am Produkt speichern und sofort in alle kommenden Verteilungen mit diesem Produkt übernehmen. Bestand und
+ * MHD-Datum gelten nur für die kommenden Verteilungen (sie hängen an der Lieferung, nicht am Produkt).
+ */
+export async function saveProductDefaults(fd: FormData) {
+  const me = await requireLogin();
+  const id = uuid.parse(fd.get("productId"));
+  const int = (k: string, min: number) => {
+    const n = parseAmount(str(fd, k));
+    return n === null || n < min || n > 100000 ? null : Math.round(n);
+  };
+  const u = str(fd, "unit");
+  const pk = str(fd, "packKind");
+  const morePacks = [0, 1, 2, 3, 4, 5]
+    .map((n) => {
+      const kind = str(fd, `mp${n}k`);
+      const pr = price(fd, `mp${n}p`) ?? parsePrintedPrice(str(fd, `mp${n}p`));
+      return { kind: isPackKind(kind) ? kind : null, count: int(`mp${n}c`, 2), price: pr, note: opt(fd, `mp${n}n`) };
+    })
+    .filter((m) => m.kind || m.price !== null || m.note);
+  const d: ItemDefaults = {
+    unit: isUnit(u) ? u : null,
+    unitCount: isUnit(u) && u !== "stueck" ? int("unitCount", 2) : null,
+    priceNote: opt(fd, "priceNote"),
+    caption: opt(fd, "caption"),
+    packKind: isPackKind(pk) ? pk : null,
+    packCount: int("packCount", 2),
+    packPrice: price(fd, "packPrice") ?? parsePrintedPrice(str(fd, "packPrice")),
+    packNote: opt(fd, "packNote"),
+    morePacks,
+    inCollage: fd.get("inCollage") === "on",
+    inFlyer: fd.get("inFlyer") === "on",
+  };
+  const [prod] = await db.update(P).set({ itemDefaults: d, ...(fd.has("amount") ? { amount: opt(fd, "amount")?.slice(0, 40) ?? null } : {}), updatedAt: new Date() }).where(eq(P.id, id)).returning({ name: P.name });
+  if (!prod) return;
+  // In kommende Verteilungen übernehmen (Vergangenes bleibt für den Rückblick unverändert).
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  const upcoming = await db.select({ id: I.id, eventId: I.eventId }).from(I).innerJoin(E, eq(E.id, I.eventId)).where(and(eq(I.productId, id), sql`${E.eventDate} >= ${today}`));
+  const stock = str(fd, "stock");
+  const mhd = parseIsoDate(str(fd, "mhd"));
+  if (upcoming.length) {
+    await db
+      .update(I)
+      .set({
+        ...d,
+        unitConfirmed: !!d.unit,
+        ...(stock === "leer" ? { stock: null } : (STOCK_VALUES as readonly string[]).includes(stock) ? { stock: stock as (typeof STOCK_VALUES)[number] } : {}),
+        ...(mhd ? { bestBefore: mhd, bestBeforeSource: "manuell" } : {}),
+      })
+      .where(inArray(I.id, upcoming.map((x) => x.id)));
+    for (const ev of new Set(upcoming.map((x) => x.eventId))) revalidatePath(`/verteilung/${ev}`, "layout");
+  }
+  await logActivity(me, `Vorlage für Verteilungen bei „${prod.name}“ gespeichert${upcoming.length ? ` – in ${upcoming.length} kommende Verteilung(en) übernommen` : ""}`, { productId: id });
+  revalidatePath(`/produkte/${id}`);
 }
 
 /** Löscht ein Produkt nur, wenn es noch in keiner Aktion war – sonst wird es archiviert. */

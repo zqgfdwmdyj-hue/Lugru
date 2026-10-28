@@ -69,6 +69,8 @@ export const products = pgTable(
     variant: text("variant"),
     /** Inhalt/Menge, z. B. „1,5 kg“ oder „0,5 l“ – steht in Collage, Aushang und Messenger vor dem Preis. */
     amount: text("amount"),
+    /** Vorlage für neue Verteilungen aus der Produktkartei: Abgabeeinheit, Text vor dem Preis, Varianten, Ausgabe. */
+    itemDefaults: jsonb("item_defaults").$type<ItemDefaults>(),
     category: text("category").notNull().default("Lebensmittel"),
     /** Zuletzt verwendeter Spendenpreis – Vorschlag für die nächste Verteilung. */
     price: money("price"),
@@ -167,6 +169,21 @@ export const eventItems = pgTable(
   },
   (t) => [uniqueIndex("event_items_uq").on(t.eventId, t.productId), index("event_items_product_idx").on(t.productId)],
 );
+
+/** Vorlage je Produkt für neue Verteilungen (aus der Produktkartei). */
+export type ItemDefaults = {
+  unit: "stueck" | "packung" | "karton" | "kasten" | "tray" | "palette" | null;
+  unitCount: number | null;
+  priceNote: string | null;
+  caption: string | null;
+  packKind: "karton" | "kasten" | "packung" | "tray" | "palette" | null;
+  packCount: number | null;
+  packPrice: number | null;
+  packNote: string | null;
+  morePacks: MorePack[];
+  inCollage: boolean;
+  inFlyer: boolean;
+};
 
 /** Eine weitere Abgabe-Variante (Packung, Karton …) mit eigener Spendenempfehlung. */
 export type MorePack = { kind: "karton" | "kasten" | "packung" | "tray" | "palette" | null; count: number | null; price: number | null; note: string | null };

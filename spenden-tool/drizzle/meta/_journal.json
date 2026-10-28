@@ -148,6 +148,13 @@
       "when": 1793210249475,
       "tag": "0020_inhalt_menge",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793216102822,
+      "tag": "0021_produkt_vorlage",
+      "breakpoints": true
     }
   ]
 }
