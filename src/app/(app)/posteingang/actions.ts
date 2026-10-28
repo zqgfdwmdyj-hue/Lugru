@@ -9,7 +9,7 @@ import { MAIL_CATEGORIES } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { rememberLeadSender } from "@/lib/leads/service";
 import { MANUAL_RULE, TOPICS, TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
-import { ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
+import { applyMailUpgrades, ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
 import { sendMail, setDefaultSender } from "@/lib/mail/accounts";
 
 export type InboxState = { ok: boolean; message: string } | null;
@@ -58,6 +58,14 @@ export async function correctMail(fd: FormData) {
     }
   }
   revalidatePath("/", "layout");
+}
+
+/** Mails mit den aktuellen Regeln neu einstufen – nur hochstufen, von Hand korrigierte bleiben (nur auf Klick). */
+export async function applyMailUpgradesAction() {
+  const session = await requireArea("posteingang");
+  const n = await applyMailUpgrades(session.tenantId);
+  revalidatePath("/", "layout");
+  redirect(`/posteingang?ansicht=wichtig&hochgestuft=${n}`);
 }
 
 export async function archiveMails(fd: FormData) {

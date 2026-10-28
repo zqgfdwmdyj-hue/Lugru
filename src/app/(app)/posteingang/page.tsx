@@ -4,14 +4,15 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { TOPIC_LABEL, isUncertainRule, type Topic } from "@/lib/inbox/classify";
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
-import { archiveMails } from "./actions";
+import { mailUpgrades } from "@/lib/inbox/service";
+import { applyMailUpgradesAction, archiveMails } from "./actions";
 import { EmlUpload } from "./inbox-forms";
 import { MailboxStatus } from "./mailbox-manager";
 
 const VIEWS = { wichtig: "Wichtig", kritisch: "Kritisch", handeln: "Handeln", info: "Info", unwichtig: "Unwichtig", archiv: "Archiv" } as const;
 type View = keyof typeof VIEWS;
 
-export default async function PosteingangPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; verbunden?: string; fehler?: string }> }) {
+export default async function PosteingangPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; verbunden?: string; fehler?: string; hochgestuft?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "wichtig";
@@ -19,13 +20,32 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
   const where: SQL[] = [eq(E.tenantId, session.tenantId), eq(E.archived, view === "archiv")];
   const cat = { wichtig: ["critical", "action"], kritisch: ["critical"], handeln: ["action"], info: ["info"], unwichtig: ["noise"], archiv: null }[view];
   if (cat) where.push(inArray(E.category, cat as ("critical" | "action" | "info" | "noise")[]));
-  const mails = await db.select().from(E).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200);
+  const [mails, upgrades] = await Promise.all([db.select().from(E).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200), mailUpgrades(session.tenantId)]);
 
   return (
     <>
       <div className="page-head"><div><div className="crumb">Heute</div><h1>Posteingang</h1></div></div>
       {sp.verbunden && <div className="notice notice-ok">Postfach {sp.verbunden} verbunden.</div>}
       {sp.fehler && <div className="notice notice-error">{sp.fehler}</div>}
+      {sp.hochgestuft && <div className="notice notice-ok" data-testid="mail-upgraded">{sp.hochgestuft === "1" ? "1 Mail" : `${sp.hochgestuft} Mails`} höher eingestuft – sie stehen jetzt unter „Wichtig“, mit Aufgabe auf der Startseite.</div>}
+      {upgrades.length > 0 && (
+        <div className="notice notice-warn" data-testid="mail-upgrades">
+          <strong>{upgrades.length === 1 ? "1 Mail der letzten 60 Tage würde" : `${upgrades.length} Mails der letzten 60 Tage würden`} mit den aktuellen Regeln höher eingestuft</strong> (z. B. Zahlungsprobleme, die als „Info“ ankamen):
+          <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
+            {upgrades.slice(0, 5).map(({ r, c }) => (
+              <li key={r.id}>
+                <Link href={`/posteingang/${r.id}`}>{r.subject || "(ohne Betreff)"}</Link>{" "}
+                <span className="small muted">{MAIL_CATEGORY_LABEL[r.category][0]} → <strong>{MAIL_CATEGORY_LABEL[c.category][0]}</strong> · {TOPIC_LABEL[c.topic]}</span>
+              </li>
+            ))}
+          </ul>
+          {upgrades.length > 5 && <div className="small muted">… und {upgrades.length - 5} weitere.</div>}
+          <form action={applyMailUpgradesAction} style={{ marginTop: 6 }}>
+            <button className="btn btn-small btn-primary" type="submit" data-testid="mail-upgrades-apply">Höher einstufen und Aufgaben anlegen</button>
+            <span className="small muted" style={{ marginLeft: 8 }}>Nur hochstufen – von Hand korrigierte Mails bleiben, wie sie sind.</span>
+          </form>
+        </div>
+      )}
 
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
@@ -60,7 +80,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
           <MailboxStatus tenantId={session.tenantId} isOwner={session.role === "owner"} />
           <section className="card card-pad"><EmlUpload /></section>
           <section className="card card-pad small muted">
-            Kritisch und „Handeln“ werden automatisch zu To-dos. „unsicher“ heißt: nur Absender oder Text passte – in der Mail lässt sich Thema und Wichtigkeit korrigieren. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
+            Kritisch und „Handeln“ werden automatisch zu To-dos. Zahlungsprobleme (Zahlung/Karte/Lastschrift fehlgeschlagen, offene Beträge, Mahnungen, Auszahlung gestoppt) sind immer kritisch – auch von Bank, PayPal oder Hosting-Anbietern. „unsicher“ heißt: nur Absender oder Text passte – in der Mail lässt sich Thema und Wichtigkeit korrigieren. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
           </section>
         </aside>
       </div>

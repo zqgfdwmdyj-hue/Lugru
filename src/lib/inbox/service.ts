@@ -1,13 +1,13 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, ne, or } from "drizzle-orm";
 import { simpleParser } from "mailparser";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { gmailFetchRaw, graphFetch, type GraphMessage } from "@/lib/integrations/clients/mail";
 import { mailboxCredentials } from "@/lib/mail/accounts";
 import { imapFetchRaw } from "@/lib/mail/connect";
-import { classifyMail, TOPIC_LABEL, type Topic } from "./classify";
+import { classifyMail, MANUAL_RULE, TOPIC_LABEL, type Classification, type Topic } from "./classify";
 import { noiseReason } from "@/lib/amazon-todos/logic";
 
 export type ParsedMail = {
@@ -77,7 +77,7 @@ const CASE_TYPE: Partial<Record<Topic, (typeof schema.CASE_TYPES)[number]>> = {
 
 /** Speichert eine Mail (Dubletten über alle Postfächer hinweg erkannt) und legt Aufgaben an. */
 /** Amazon-Mails, die weiter als Einzelaufgabe/Fall laufen (Fälle-Modul). */
-const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message", "registration"]);
+const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message", "registration", "payment_problem"]);
 
 export async function ingestMail(tenantId: string, mailboxId: string | null, m: ParsedMail): Promise<"new" | "duplicate" | "ignored"> {
   const c = classifyMail({ from: `${m.fromName ?? ""} <${m.fromAddress}>`, subject: m.subject, body: m.text });
@@ -104,27 +104,33 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     .returning();
   if (!row) return "duplicate";
 
+  await createMailTask(tenantId, { id: row.id, subject: m.subject, fromName: m.fromName ?? null, fromAddress: m.fromAddress, receivedAt: m.receivedAt }, c);
+  return "new";
+}
+
+/** Kritische und „Handeln“-Mails als Aufgabe (und ggf. als Fall) anlegen – beim Eingang und beim Hochstufen. */
+async function createMailTask(tenantId: string, mail: { id: string; subject: string; fromName: string | null; fromAddress: string; receivedAt: Date }, c: Pick<Classification, "category" | "topic" | "source" | "references" | "dueInDays">) {
   // Amazon-Systemmails (Produktsicherheit, Reaktivierung, Echtheitsprüfung …) führt das Modul
   // Amazon-ToDos mit Frist und KI-Einstufung – hier keine zusätzliche Einzelaufgabe.
-  const fromLine = `${m.fromName ?? ""} <${m.fromAddress}>`;
-  const handledByTodos = noiseReason({ from: fromLine, subject: m.subject }) === null && !KEEP_AS_TASK.has(c.topic);
+  const fromLine = `${mail.fromName ?? ""} <${mail.fromAddress}>`;
+  const handledByTodos = noiseReason({ from: fromLine, subject: mail.subject }) === null && !KEEP_AS_TASK.has(c.topic);
   if ((c.category === "critical" || c.category === "action") && !handledByTodos) {
     const refs = Object.values(c.references).join(" · ");
-    const due = c.dueInDays !== null ? addDaysIso(todayIso(m.receivedAt), c.dueInDays) : null;
+    const due = c.dueInDays !== null ? addDaysIso(todayIso(mail.receivedAt), c.dueInDays) : null;
     const [task] = await db
       .insert(schema.tasks)
       .values({
         tenantId,
-        title: clip(`${TOPIC_LABEL[c.topic]}: ${m.subject}`, 280),
-        notes: clip(`${m.fromName ?? m.fromAddress}${refs ? ` · ${refs}` : ""}`, 500),
+        title: clip(`${TOPIC_LABEL[c.topic]}: ${mail.subject}`, 280),
+        notes: clip(`${mail.fromName ?? mail.fromAddress}${refs ? ` · ${refs}` : ""}`, 500),
         priority: c.category === "critical" ? "critical" : "normal",
         category: CATEGORY_FOR_TASK[c.source ?? ""] ?? "support",
         dueDate: due,
-        link: `/posteingang/${row.id}`,
-        systemKey: `mail:${row.id}`,
+        link: `/posteingang/${mail.id}`,
+        systemKey: `mail:${mail.id}`,
       })
       .returning({ id: schema.tasks.id });
-    await db.update(schema.emails).set({ taskId: task.id }).where(eq(schema.emails.id, row.id));
+    await db.update(schema.emails).set({ taskId: task.id }).where(eq(schema.emails.id, mail.id));
 
     const caseType = CASE_TYPE[c.topic];
     if (caseType) {
@@ -132,19 +138,53 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
         tenantId,
         channel: c.source === "ebay" ? "ebay" : c.source === "tiktok" ? "tiktok" : c.source === "temu" ? "temu" : "amazon",
         type: caseType,
-        title: clip(m.subject, 200),
+        title: clip(mail.subject, 200),
         externalId: c.references.caseId ?? null,
         orderRef: c.references.amazonOrder ?? c.references.ebayOrder ?? null,
         deadline: due,
-        notes: `Aus Mail vom ${m.receivedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`,
+        notes: `Aus Mail vom ${mail.receivedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`,
       });
     }
     if (c.references.caseId) {
       const claims = await db.select({ id: schema.claims.id }).from(schema.claims).where(and(eq(schema.claims.tenantId, tenantId), eq(schema.claims.amazonCaseId, c.references.caseId)));
-      for (const cl of claims) await db.insert(schema.claimEvents).values({ tenantId, claimId: cl.id, action: "Mail zum Fall", note: clip(m.subject, 200) });
+      for (const cl of claims) await db.insert(schema.claimEvents).values({ tenantId, claimId: cl.id, action: "Mail zum Fall", note: clip(mail.subject, 200) });
     }
   }
-  return "new";
+}
+
+// --- Einstufung mit neuen Regeln prüfen ------------------------------------------------------
+
+const RANK = { noise: 0, info: 1, action: 2, critical: 3 } as const;
+
+/**
+ * Welche offenen Mails der letzten Wochen würden mit den aktuellen Regeln höher eingestuft (z. B. Zahlungsprobleme,
+ * die früher als „Info“ ankamen)? Nie herabstufen, von Hand korrigierte Mails nie anfassen.
+ */
+export async function mailUpgrades(tenantId: string, days = 60) {
+  const E = schema.emails;
+  const since = new Date(Date.now() - days * 86_400_000);
+  const rows = await db
+    .select({ id: E.id, subject: E.subject, fromName: E.fromName, fromAddress: E.fromAddress, bodyText: E.bodyText, receivedAt: E.receivedAt, category: E.category, topic: E.topic, taskId: E.taskId })
+    .from(E)
+    .where(and(eq(E.tenantId, tenantId), eq(E.archived, false), gte(E.receivedAt, since), inArray(E.category, ["noise", "info", "action"]), or(isNull(E.matchedRule), ne(E.matchedRule, MANUAL_RULE))))
+    .limit(1000);
+  return rows
+    .map((r) => ({ r, c: classifyMail({ from: `${r.fromName ?? ""} <${r.fromAddress ?? ""}>`, subject: r.subject ?? "", body: r.bodyText ?? "" }, r.receivedAt) }))
+    .filter((x) => x.c.relevant && RANK[x.c.category] > RANK[x.r.category]);
+}
+
+/** Hochstufen übernehmen (nur auf Klick): Einstufung, Thema, Regel; fehlende Aufgabe anlegen, Priorität anheben. */
+export async function applyMailUpgrades(tenantId: string): Promise<number> {
+  const list = await mailUpgrades(tenantId);
+  for (const { r, c } of list) {
+    await db.update(schema.emails).set({ category: c.category, topic: c.topic, matchedRule: c.rule }).where(and(eq(schema.emails.tenantId, tenantId), eq(schema.emails.id, r.id)));
+    if (r.taskId) {
+      if (c.category === "critical") await db.update(schema.tasks).set({ priority: "critical" }).where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.id, r.taskId)));
+    } else {
+      await createMailTask(tenantId, { id: r.id, subject: r.subject ?? "", fromName: r.fromName, fromAddress: r.fromAddress ?? "", receivedAt: r.receivedAt }, c);
+    }
+  }
+  return list.length;
 }
 
 // --- Postfächer abrufen ---------------------------------------------------------------

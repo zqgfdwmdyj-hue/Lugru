@@ -20,6 +20,40 @@ describe("classifyMail", () => {
     expect([c.category, c.topic]).toEqual([category, topic]);
   });
 
+  it.each([
+    [amazon, "Ihre Zahlungsmethode wurde abgelehnt", "payment_problem"],
+    [amazon, "Aktion erforderlich: Aktualisieren Sie Ihre Zahlungsinformationen", "payment_problem"],
+    [amazon, "Ihr Verkäuferkonto weist einen negativen Saldo auf", "payment_problem"],
+    ["eBay <ebay@ebay.de>", "Ihre eBay-Rechnung ist überfällig", "payment_problem"],
+    ["eBay <ebay@ebay.de>", "Lastschrift für Ihre Verkäufergebühren fehlgeschlagen", "payment_problem"],
+    [amazon, "Ihre Auszahlung konnte nicht durchgeführt werden", "payment_hold"],
+    [amazon, "Bankkonto für Auszahlungen ungültig", "payment_hold"],
+    ["Amazon <seller@amazon.com>", "Action needed: your payment method was declined", "payment_problem"],
+  ])("Zahlungsproblem: %s / %s → kritisch (%s)", (from, subject, topic) => {
+    const c = classifyMail({ from, subject, body: "" });
+    expect([c.category, c.topic, c.relevant]).toEqual(["critical", topic, true]);
+  });
+  it("Zahlungsproblem nur im Text → kritisch (unsicher); harmlose Zahlungs-Hinweise bleiben Info", () => {
+    const body = classifyMail({ from: amazon, subject: "Wichtige Information zu Ihrem Konto", body: "Leider ist die Zahlung Ihrer Verkäufergebühren fehlgeschlagen. Bitte prüfen Sie Ihre Karte." });
+    expect([body.category, body.topic, body.uncertain]).toEqual(["critical", "payment_problem", true]);
+    const ok = classifyMail({ from: "eBay <ebay@ebay.de>", subject: "Verkauft – jetzt versenden", body: "Der Käufer hat bezahlt. Zahlung erhalten am 28.10." });
+    expect([ok.category, ok.topic]).toEqual(["info", "order_info"]);
+    const payout = classifyMail({ from: amazon, subject: "Ihre Auszahlung ist unterwegs", body: "Wir haben 1.234,56 € an Ihre Bank überwiesen." });
+    expect(payout.category).toBe("info");
+  });
+  it("Zahlungsprobleme auch von Bank, PayPal, Hosting – andere Mails dieser Absender nicht", () => {
+    const pp = classifyMail({ from: "PayPal <service@paypal.de>", subject: "Ihre Zahlung wurde abgelehnt", body: "" });
+    expect([pp.relevant, pp.category, pp.topic, pp.source]).toEqual([true, "critical", "payment_problem", null]);
+    const host = classifyMail({ from: "Hoster <billing@hoster.example>", subject: "Zahlungserinnerung zu Rechnung R-2026-10", body: "" });
+    expect([host.relevant, host.category]).toEqual([true, "critical"]);
+    const news = classifyMail({ from: "PayPal <news@paypal.de>", subject: "Neue Funktionen für Ihr Geschäftskonto", body: "Zahlung fehlgeschlagen? Nicht mit uns." });
+    expect(news.relevant).toBe(false);
+  });
+  it("Letztes Netz: Geld-Wort + Problem-Wort ohne Regel → zu erledigen statt Info", () => {
+    const c = classifyMail({ from: amazon, subject: "Hinweis zu Ihrem Verkäuferkonto", body: "Die Gebühren für September sind weiterhin offen." });
+    expect([c.category, c.topic, c.uncertain]).toEqual(["action", "payment_problem", true]);
+  });
+
   it("Registrierungsrückfrage ist keine Käufernachricht", () => {
     const c = classifyMail({ from: "Amazon <noreply@marketplace.amazon.de>", subject: "Rückfrage zu Ihrer Registrierung als Verkäufer", body: "" });
     expect([c.topic, c.category, c.uncertain]).toEqual(["registration", "action", false]);

@@ -9,6 +9,7 @@ export type Topic =
   | "account_health"
   | "listing_blocked"
   | "payment_hold"
+  | "payment_problem"
   | "ip_complaint"
   | "a_to_z"
   | "chargeback"
@@ -27,7 +28,8 @@ export type Topic =
 export const TOPIC_LABEL: Record<Topic, string> = {
   account_health: "Kontozustand",
   listing_blocked: "Angebot gesperrt / Nachweis gefordert",
-  payment_hold: "Auszahlung einbehalten",
+  payment_hold: "Auszahlung einbehalten / fehlgeschlagen",
+  payment_problem: "Zahlungsproblem",
   ip_complaint: "Rechteverletzung",
   a_to_z: "A-bis-Z-Garantie",
   chargeback: "Rückbelastung",
@@ -87,12 +89,62 @@ const SOURCES: [Classification["source"], RegExp][] = [
   ["dhl", /dhl\.(de|com)/i],
 ];
 
-type Rule = { topic: Topic; category: MailCategory; subject?: RegExp; body?: RegExp; from?: RegExp; dueInDays?: number; /** Betreffmuster auch am Textanfang suchen. */ bodyStart?: boolean };
+type Rule = {
+  topic: Topic;
+  category: MailCategory;
+  subject?: RegExp;
+  body?: RegExp;
+  from?: RegExp;
+  dueInDays?: number;
+  /** Betreffmuster auch am Textanfang suchen. */
+  bodyStart?: boolean;
+  /** Eigenes (strengeres) Muster für den Textanfang statt des Betreffmusters. */
+  head?: RegExp;
+};
+
+// ---- Geld: Auszahlungen und Zahlungsprobleme – lieber einmal zu oft „kritisch“ als übersehen.
+const ANY = "[^.\\n]{0,40}";
+/** Auszahlung an uns gestoppt, fehlgeschlagen oder einbehalten; Bankkonto für Auszahlungen ungültig. */
+const PAYOUT_PROBLEM = new RegExp(
+  [
+    `auszahlung(en)?${ANY}(zurückgehalten|einbehalten|ausgesetzt|fehlgeschlagen|konnte nicht|gestoppt|verzögert|abgelehnt|nicht möglich|nicht durchgeführt|gesperrt|storniert)`,
+    `zahlungen${ANY}(einbehalten|ausgesetzt|gesperrt|zurückgehalten)`,
+    `(disbursement|payout|transfer)s?${ANY}(hold|deactivat|failed|suspend|delayed|unsuccessful|returned)`,
+    `funds${ANY}(held|on hold|reserve)`,
+    `(konto)?reserve${ANY}(erhöht|increased|angepasst|eingerichtet)`,
+    `bank(konto|verbindung|daten)${ANY}(ungültig|abgelehnt|nicht verifiziert|nicht bestätigt|zurückgewiesen)`,
+  ].join("|"),
+  "i",
+);
+/** Zahlung von uns fehlgeschlagen/abgelehnt, offene Beträge, Mahnungen, Karte/Lastschrift-Probleme. */
+const PAYMENT_PROBLEM = new RegExp(
+  [
+    `zahlung(en|smethode|sart|sinformationen|sdaten|smittel)?\\b${ANY}(fehlgeschlagen|abgelehnt|nicht (möglich|erfolgreich|durchgeführt|ausgeführt|verarbeitet)|konnte nicht|ausstehend|überfällig|offen\\b|aktualisieren|ungültig|abgelaufen|zurückgewiesen)`,
+    `(aktualisieren|überprüfen|ändern|bestätigen) sie (ihre|die) (zahlungs\\w*|bankverbindung|kreditkarte|bankdaten|karte)`,
+    `(kredit)?karte${ANY}(abgelehnt|abgelaufen|ungültig|nicht belastet|konnte nicht)`,
+    `(lastschrift|abbuchung|einzug|sepa)${ANY}(fehlgeschlagen|zurück|nicht möglich|abgelehnt|konnte nicht)`,
+    "rücklastschrift|zahlungserinnerung|mahnung|letzte erinnerung|inkasso|zahlungsverzug|zahlungsrückstand",
+    "(offene[rn]?|ausstehende[rn]?|fällige[rn]?|negative[rn]?|unbezahlte[rn]?|überfällige[rn]?) (betrag|beträge|saldo|kontostand|rechnung|rechnungen|gebühren|forderung|zahlung|zahlungen)",
+    `(saldo|kontostand|guthaben)${ANY}(negativ|im minus|nicht ausreichend|unzureichend)`,
+    `(rechnung|gebühren|beiträge|abonnement)${ANY}(nicht bezahlt|unbezahlt|überfällig|konnten nicht (abgebucht|eingezogen))`,
+    `payment${ANY}(failed|declined|unsuccessful|past due|overdue|required|issue|problem|on hold|rejected)`,
+    `(card|payment method)${ANY}(declined|expired|failed|invalid)`,
+    "update (your )?(payment|billing|card)",
+    "(unpaid|outstanding|overdue|negative|past due) (balance|invoice|fees|amount)",
+    "insufficient funds|account (is )?past due|final notice",
+  ].join("|"),
+  "i",
+);
+/** Für den Textanfang nur eindeutige Formulierungen (dort stehen auch „Zahlung erhalten“-Hinweise). */
+const PAYMENT_PROBLEM_STRONG = /zahlung\w*[^.\n]{0,40}(fehlgeschlagen|abgelehnt|zurückgewiesen|konnte nicht)|rücklastschrift|mahnung|inkasso|zahlungsverzug|negative[rn]? (saldo|kontostand)|(saldo|kontostand)[^.\n]{0,40}(negativ|im minus)|(kredit)?karte[^.\n]{0,40}(abgelehnt|abgelaufen)|(lastschrift|abbuchung|einzug)[^.\n]{0,40}(fehlgeschlagen|abgelehnt|nicht möglich)|payment[^.\n]{0,40}(failed|declined|past due|overdue)|insufficient funds|card[^.\n]{0,40}declined|unpaid balance|past due/i;
+/** Letztes Netz: Geld-Wort und Problem-Wort nah beieinander → mindestens „zu erledigen“. */
+const MONEY_SIGNAL = /(zahlung|betrag|gebühr|rechnung|saldo|kontostand|auszahlung|lastschrift|kreditkarte|payment|invoice|balance|payout|fee)[^.\n]{0,60}(fehlgeschlagen|abgelehnt|offen|ausstehend|überfällig|gesperrt|ungültig|problem|failed|declined|overdue|suspended|due)|(fehlgeschlagen|abgelehnt|überfällig|gesperrt|failed|declined|overdue)[^.\n]{0,60}(zahlung|betrag|gebühr|rechnung|auszahlung|payment|invoice|payout)/i;
 
 // Reihenfolge = Priorität. Die erste passende Regel gewinnt.
 const RULES: Rule[] = [
   { topic: "account_health", category: "critical", subject: /kontozustand|account health|(konto|account).*(deaktivier|gesperrt|sperrung|suspend)|(deaktivier|sperrung).*(konto|verkaufsrecht)|verkäuferkonto.*(eingeschränkt|überprüf)|richtlinienversto|policy violation|handlungsbedarf|action required/i, dueInDays: 1 },
-  { topic: "payment_hold", category: "critical", subject: /auszahlung.*(zurückgehalten|einbehalten|ausgesetzt)|zahlungen.*einbehalten|disbursement.*(hold|deactivat)|funds.*held/i, dueInDays: 1 },
+  { topic: "payment_hold", category: "critical", subject: PAYOUT_PROBLEM, dueInDays: 1 },
+  { topic: "payment_problem", category: "critical", subject: PAYMENT_PROBLEM, head: PAYMENT_PROBLEM_STRONG, dueInDays: 1 },
   { topic: "ip_complaint", category: "critical", subject: /rechteinhaber|rechtsverletzung|urheberrecht|markenrecht|intellectual property|infring/i, dueInDays: 2 },
   { topic: "listing_blocked", category: "critical", subject: /(angebot|artikel|listing|asin).*(entfernt|deaktiviert|gesperrt|blockiert|removed|deactivated|suppressed)|rechnung(en)?.*(anfordern|vorlegen|einreichen)|echtheit|authenticit|produktsicherheit|produktkonformit|compliance.*(erforderlich|required)|dokumente.*(erforderlich|anfordern)/i, dueInDays: 2 },
   { topic: "a_to_z", category: "action", subject: /a-bis-z|a-to-z|a-z-garantie|garantieantrag/i, dueInDays: 2 },
@@ -148,6 +200,12 @@ export function classifyMail(m: MailInput, today = new Date()): Classification {
   const text = `${m.subject}\n${m.body}`;
   const references = extractReferences(text);
   if (!source) {
+    // Zahlungsprobleme auch von Bank, PayPal, Hosting, Lieferanten … – sonst würden sie gar nicht gespeichert.
+    const money = PAYOUT_PROBLEM.test(m.subject) ? "payment_hold" : PAYMENT_PROBLEM.test(m.subject) ? "payment_problem" : null;
+    if (money) {
+      const due = extractDeadlineDays(text, today) ?? 1;
+      return { relevant: true, source: null, category: "critical", topic: money, rule: `${money} · Betreff, Absender ohne Marktplatz`, uncertain: false, references, dueInDays: due };
+    }
     return { relevant: false, source: null, category: "info", topic: "other", rule: "kein Marktplatz-Absender", uncertain: false, references, dueInDays: null };
   }
   const head = m.body.slice(0, 600);
@@ -159,7 +217,7 @@ export function classifyMail(m: MailInput, today = new Date()): Classification {
       let why = "Betreff";
       if (r.subject && !r.subject.test(m.subject)) {
         const bodyOk = r.category === "critical" ? pass === 1 : r.bodyStart && pass === 2;
-        if (!bodyOk || !r.subject.test(head)) continue;
+        if (!bodyOk || !(r.head ?? r.subject).test(head)) continue;
         why = "nur im Text erkannt";
       } else if (pass === 2) continue;
       if (r.body && !r.body.test(m.body)) continue;
@@ -168,6 +226,9 @@ export function classifyMail(m: MailInput, today = new Date()): Classification {
       const due = extractDeadlineDays(text, today) ?? r.dueInDays ?? null;
       return { relevant: true, source, category: r.category, topic: r.topic, rule: uncertain ? `${r.topic} · ${why} ${UNSICHER}` : r.topic, uncertain, references, dueInDays: due };
     }
+  }
+  if (MONEY_SIGNAL.test(`${m.subject}\n${head}`)) {
+    return { relevant: true, source, category: "action", topic: "payment_problem", rule: `payment_problem · Geld-Stichwort mit Problem-Wort ${UNSICHER}`, uncertain: true, references, dueInDays: extractDeadlineDays(text, today) ?? 2 };
   }
   const noise = /abbestellen|unsubscribe|newsletter/i.test(m.body);
   return { relevant: true, source, category: noise ? "noise" : "info", topic: noise ? "marketing" : "other", rule: noise ? "newsletter-merkmal" : `keine regel ${UNSICHER}`, uncertain: !noise, references, dueInDays: null };
