@@ -21,6 +21,18 @@ export function imAddress(a: Address): ImAddress {
   return { name, ...(extra ? { additionalName: extra } : {}), addressLine1: line1, postalCode: cut(a.zip, 10), city: cut(a.city, 50), country: toIso3(a.country) };
 }
 
+/** Druckformat für Etikettendrucker (Rolle) – z. B. Brother QL, DYMO. */
+export const isLabelPrinterFormat = (name: string) => /brother|dymo|endlos|rolle|seiko|leitz|zebra/i.test(name);
+
+/**
+ * Welches Druckformat die nächste Warensendung bekommt (steht im PDF fest, sobald gekauft): Name und ob es ein
+ * Etikettendrucker-Format ist. Ohne Auswahl gilt Nr. 1 = DIN A4 Normalpapier.
+ */
+export function postFormatInfo(p: { pageFormatId: number; pageFormatName?: string | null }): { name: string; labelPrinter: boolean } {
+  const name = p.pageFormatName?.trim() || (p.pageFormatId === 1 ? "DIN A4 Normalpapier" : `Format Nr. ${p.pageFormatId}`);
+  return { name, labelPrinter: isLabelPrinterFormat(name) };
+}
+
 /** Position auf dem Bogen: Etiketten von links nach rechts, dann nach unten, dann nächste Seite. */
 export function labelPosition(index: number, labelX: number, labelY: number): { page: number; labelX: number; labelY: number } {
   const perPage = Math.max(1, labelX) * Math.max(1, labelY);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imAddress, imCheckoutBody, imError, labelPosition, WARENSENDUNG } from "@/lib/shipping/internetmarke";
+import { imAddress, imCheckoutBody, imError, isLabelPrinterFormat, labelPosition, postFormatInfo, WARENSENDUNG } from "@/lib/shipping/internetmarke";
 import { untrackedPost } from "@/lib/orders/tracking";
 
 // Deutsche Post INTERNETMARKE: Anfrage für Warensendungen mit Anschrift. Erfundene Adressen.
@@ -47,5 +47,17 @@ describe("Versandmeldung ohne Sendungsnummer (Warensendung)", () => {
     expect(untrackedPost({ ...base, channel: "ebay" })).toBe(true);
     expect(untrackedPost({ ...base, channel: "temu" })).toBe(false);
     expect(untrackedPost({ ...base, trackingNumber: "123" })).toBe(false);
+  });
+});
+
+describe("Druckformat der Warensendung (Hinweis vor dem Kauf)", () => {
+  it("ohne Auswahl: Nr. 1 = DIN A4, kein Etikettendrucker", () => {
+    expect(postFormatInfo({ pageFormatId: 1, pageFormatName: "" })).toEqual({ name: "DIN A4 Normalpapier", labelPrinter: false });
+    expect(postFormatInfo({ pageFormatId: 17 })).toEqual({ name: "Format Nr. 17", labelPrinter: false });
+  });
+  it("Brother-Rolle wird als Etikettendrucker erkannt", () => {
+    expect(postFormatInfo({ pageFormatId: 99, pageFormatName: "Brother DK-22205 Endlos-Etikett 62mm" })).toEqual({ name: "Brother DK-22205 Endlos-Etikett 62mm", labelPrinter: true });
+    expect(isLabelPrinterFormat("DIN A4 Normalpapier")).toBe(false);
+    expect(isLabelPrinterFormat("DYMO LabelWriter 99014")).toBe(true);
   });
 });

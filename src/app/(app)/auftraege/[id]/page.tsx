@@ -11,6 +11,8 @@ import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
 import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction } from "../actions";
 import { LabelForm } from "./label-form";
+import { PostFormatHint } from "../post-format-hint";
+import { postFormatInfo } from "@/lib/shipping/internetmarke";
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
@@ -131,6 +133,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               {order.status === "open" && (
                 <Link className="btn btn-small" href={`/auftraege/lieferschein?ids=${order.id}`} data-testid="order-warensendung">Als Warensendung / automatisch …</Link>
               )}
+              {order.status === "open" && <PostFormatHint {...postFormatInfo(settings.post)} compact />}
               {settings.dhl.sandbox && <div className="small muted">DHL-Sandbox aktiv – Labels sind Testlabels.</div>}
               {parcels.map((p) => (
                 <div key={p.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8, fontSize: 13 }}>

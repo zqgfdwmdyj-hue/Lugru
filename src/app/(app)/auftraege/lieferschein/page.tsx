@@ -4,6 +4,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { imCreds } from "@/lib/integrations/clients/deutschepost";
 import { getSettings } from "@/lib/settings";
 import { SlipForm } from "./slip-form";
+import { postFormatInfo } from "@/lib/shipping/internetmarke";
 import { readOrders } from "@/lib/shipping/slip-service";
 import { weightOverview } from "@/lib/shipping/weights-service";
 
@@ -29,7 +30,7 @@ export default async function LieferscheinPage({ searchParams }: { searchParams:
         </form>
       </div>
       {!shipperOk && <div className="notice notice-warn small">Absenderadresse fehlt – <Link href="/einstellungen">Einstellungen → Versand</Link>.</div>}
-      <SlipForm postReady={Boolean(imCreds(post))} dhlReady={Boolean(dhl?.apiKey && dhl.username && dhl.password)} postPrice={settings.post.price} sandbox={settings.dhl.sandbox} initial={initial} weights={weights} prepName={settings.prep.name || "Prep Center"} />
+      <SlipForm postReady={Boolean(imCreds(post))} dhlReady={Boolean(dhl?.apiKey && dhl.username && dhl.password)} postPrice={settings.post.price} sandbox={settings.dhl.sandbox} initial={initial} weights={weights} prepName={settings.prep.name || "Prep Center"} postFormat={postFormatInfo(settings.post)} />
     </>
   );
 }

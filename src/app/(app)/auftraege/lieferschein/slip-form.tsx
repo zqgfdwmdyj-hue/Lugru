@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { PostFormatHint } from "../post-format-hint";
 import { SHIP_CHOICE_LABEL, type ShipChoice } from "@/lib/shipping/packing-slip";
 import { WS_OPTIONS } from "@/lib/shipping/warensendung";
 import { splitVariant } from "@/lib/shipping/variant";
@@ -14,7 +15,7 @@ const kgText = (g: number | null) => (g === null ? "" : (g / 1000).toLocaleStrin
  * Labels in einem Schritt: Amazon-Lieferschein hochladen oder offene Aufträge (z. B. eBay) übernehmen →
  * Vorschau mit Versandart je Bestellung (1 Stück → Warensendung, ab 2 → DHL) → ein Knopf für alle Labels.
  */
-export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, weights, prepName }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState; weights: SkuWeightInfo[]; prepName: string }) {
+export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, weights, prepName, postFormat }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState; weights: SkuWeightInfo[]; prepName: string; postFormat: { name: string; labelPrinter: boolean } }) {
   // Warensendung: über die Schnittstelle kaufen (wenn eingerichtet) oder CSV für den Internetmarke-Shop.
   const [state, action, pending] = useActionState<SlipState, FormData>(slipAction, initial);
   const rows = state?.rows ?? [];
@@ -198,6 +199,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
                 <option value="api" disabled={!postReady}>über die Internetmarke-Schnittstelle kaufen (PDF){postReady ? "" : " – noch nicht eingerichtet"}</option>
                 <option value="csv">als CSV-Datei für den Internetmarke-Shop (dort bezahlen &amp; drucken)</option>
               </select>
+              {postReady && <PostFormatHint {...postFormat} />}
             </div>
           )}
           {open.length > 0 && (

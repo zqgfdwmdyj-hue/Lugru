@@ -14,6 +14,7 @@ import { InvoiceSettingsCards } from "../rechnungen/ausgang/settings-cards";
 import { MailboxManager } from "../posteingang/mailbox-manager";
 import { getIntegration } from "@/lib/integrations/store";
 import { imCreds, imPageFormats, type ImPageFormat } from "@/lib/integrations/clients/deutschepost";
+import { isLabelPrinterFormat } from "@/lib/shipping/internetmarke";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -32,7 +33,6 @@ const pct = (n: number) => String(Math.round(n * 10000) / 100).replace(".", ",")
 const dec = (n: number) => String(n).replace(".", ",");
 
 /** Formate für Etikettendrucker (Brother, Dymo, Rollen) zuerst anbieten. */
-const isLabelPrinterFormat = (name: string) => /brother|dymo|endlos|rolle|seiko|leitz|zebra/i.test(name);
 
 export default async function EinstellungenPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireOwner();
@@ -184,7 +184,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </div>
         </section>
 
-        <section className="card card-pad stack" style={{ gap: 14 }} data-testid="settings-post">
+        <section className="card card-pad stack" style={{ gap: 14, scrollMarginTop: 70 }} id="warensendung" data-testid="settings-post">
           <h2>Warensendung (Deutsche Post)</h2>
           <span className="small muted">
             Für „Lieferschein → Labels“: ein Stück geht als Warensendung über die INTERNETMARKE (Porto mit Anschrift, bezahlt aus der Portokasse), ab zwei Stück als DHL-Paket. Absender wie oben.{" "}
