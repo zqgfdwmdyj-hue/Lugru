@@ -1077,6 +1077,10 @@ export async function saveProductDefaults(fd: FormData) {
   }
   await logActivity(me, `Vorlage für Verteilungen bei „${prod.name}“ gespeichert${upcoming.length ? ` – in ${upcoming.length} kommende Verteilung(en) übernommen` : ""}`, { productId: id });
   revalidatePath(`/produkte/${id}`);
+  revalidatePath("/produkte");
+  // Aus der Übersicht: aufgeklappt bleiben und „Gespeichert“ zeigen.
+  const back = str(fd, "back");
+  if (back.startsWith("/produkte")) redirect(`${back}${back.includes("?") ? "&" : "?"}gespeichert=${id}#d-${id}`);
 }
 
 /** Löscht ein Produkt nur, wenn es noch in keiner Aktion war – sonst wird es archiviert. */

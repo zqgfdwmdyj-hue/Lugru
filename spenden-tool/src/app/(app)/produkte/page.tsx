@@ -6,12 +6,13 @@ import { eq, inArray } from "drizzle-orm";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { createProduct, mergeProducts, resolveLegacyCategories, setProductCategory } from "@/app/(app)/actions";
 import { categoryHint, LEGACY_CATEGORIES } from "@/lib/price-logic";
+import { ProductDefaultsForm, productDefaultsData } from "./defaults-form";
 import { isPlaceholderName } from "@/lib/layout";
 import { ImageForm } from "@/components/image-form";
 import { CategorySelect } from "@/components/category-select";
 import { UNSORTED_CATEGORY } from "@/lib/price-logic";
 
-type SP = { q?: string; kat?: string; archiv?: string; doppelt?: string; ansicht?: string; filter?: string };
+type SP = { q?: string; kat?: string; archiv?: string; doppelt?: string; ansicht?: string; filter?: string; offen?: string; gespeichert?: string };
 
 export default async function SpendenProduktePage({ searchParams }: { searchParams: Promise<SP> }) {
   await requireLogin();
@@ -48,6 +49,10 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
   const groupProducts = doppelt && groups.length
     ? new Map((await db.select().from(schema.products).where(inArray(schema.products.id, groups.flat()))).map((p) => [p.id, p]))
     : new Map();
+  // Aufgeklapptes Produkt: „Für Verteilungen“ direkt in der Übersicht (nur dieses eine wird geladen).
+  const openId = /^[0-9a-f-]{36}$/i.test(sp.offen ?? "") ? sp.offen! : null;
+  const openRow = openId ? products.find((x) => x.p.id === openId) : undefined;
+  const openData = openRow ? await productDefaultsData(openRow.p) : null;
   const link = (o: Partial<SP>) => {
     const cur: SP = { q: q || undefined, kat: kat || undefined, archiv: archiv ? "1" : undefined, ansicht: list ? "liste" : undefined, filter: filter ?? undefined };
     const u = new URLSearchParams();
@@ -173,7 +178,8 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
           {list ? (
             <div className="card db-list">
               {products.map(({ p, times, lastUsed }) => (
-                <Link key={p.id} href={`/produkte/${p.id}`} className="db-row">
+                <div key={p.id} id={`d-${p.id}`} className={`db-item${openId === p.id ? " open" : ""}`}>
+                <Link href={`/produkte/${p.id}`} className="db-row">
                   {p.imageFileId ? <img src={`/datei/${p.imageFileId}?w=200`} alt="" className="thumb thumb-sm" loading="lazy" /> : <span className="thumb thumb-sm thumb-empty">–</span>}
                   <span className="db-name"><strong>{p.name}</strong>{p.variant ? <span className="muted"> · {p.variant}</span> : null}</span>
                   <span className="db-meta">
@@ -183,12 +189,16 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
                   </span>
                   <span className="num db-price">{p.price !== null ? formatEuro(p.price) : <span className="tag tag-warn">ohne Preis</span>}</span>
                 </Link>
+                <Link href={openId === p.id ? `${link({})}#d-${p.id}` : `${link({ offen: p.id })}#d-${p.id}`} scroll={false} className="btn btn-small db-toggle" aria-expanded={openId === p.id}>{openId === p.id ? "Details schließen" : "Details bearbeiten"}</Link>
+                {openId === p.id && openData && <DetailsPanel data={openData} back={link({ offen: p.id })} saved={sp.gespeichert === p.id} />}
+                </div>
               ))}
             </div>
           ) : (
             <div className="spenden-grid">
               {products.map(({ p, times, lastUsed }) => (
-                <Link key={p.id} href={`/produkte/${p.id}`} className="card spenden-tile">
+                <div key={p.id} id={`d-${p.id}`} className={`db-tile-wrap${openId === p.id ? " open" : ""}`}>
+                <Link href={`/produkte/${p.id}`} className="card spenden-tile">
                   {p.imageFileId ? <img src={`/datei/${p.imageFileId}?w=400`} alt="" loading="lazy" /> : <span className="spenden-noimg">kein Foto</span>}
                   <span style={{ padding: "8px 10px" }}>
                     <strong style={{ display: "block", overflowWrap: "anywhere" }}>{p.name}</strong>
@@ -200,11 +210,24 @@ export default async function SpendenProduktePage({ searchParams }: { searchPara
                     </span>
                   </span>
                 </Link>
+                <Link href={openId === p.id ? `${link({})}#d-${p.id}` : `${link({ offen: p.id })}#d-${p.id}`} scroll={false} className="btn btn-small db-toggle" aria-expanded={openId === p.id}>{openId === p.id ? "Schließen" : "Details bearbeiten"}</Link>
+                {openId === p.id && openData && <DetailsPanel data={openData} back={link({ offen: p.id })} saved={sp.gespeichert === p.id} />}
+                </div>
               ))}
             </div>
           )}
         </section>
       )}
     </>
+  );
+}
+
+/** Aufgeklappte Details eines Produkts in der Übersicht – dieselben Felder wie in der Kartei. */
+function DetailsPanel({ data, back, saved }: { data: Awaited<ReturnType<typeof productDefaultsData>>; back: string; saved: boolean }) {
+  return (
+    <div className="db-details">
+      {saved && <div className="notice notice-ok" role="status">✓ Gespeichert{data.upcoming.length ? ` – auch in ${data.upcoming.length} kommender Verteilung${data.upcoming.length === 1 ? "" : "en"} übernommen` : ""}.</div>}
+      <ProductDefaultsForm data={data} back={back} compact />
+    </div>
   );
 }

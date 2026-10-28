@@ -361,3 +361,13 @@ describe("Getränke im Ganzen: Kasten, Tray, Palette als Abgabeeinheit", () => {
     expect(unitLabel("kasten", 20)).toBe("Kasten (20 Flaschen)");
   });
 });
+
+describe("Variante „mehrere Stück“", () => {
+  it("Angebot über mehrere Einzelne – ohne Packungswort", async () => {
+    const { packText, packOffers } = await import("@/lib/price-logic");
+    expect(packText({ packKind: "mehrere", packCount: 5 })).toBe("5 Stück");
+    expect(packOffers({ packPrice: null, morePacks: [{ kind: "mehrere", count: 5, price: 2, note: null }] })).toEqual([{ label: "5 Stück", price: 2 }]);
+    const { packLabel } = await import("@/lib/layout");
+    expect(packLabel([{ label: "5 Stück", price: 2 }])).toBe("5 Stück 2€");
+  });
+});

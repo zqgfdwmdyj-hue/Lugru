@@ -91,6 +91,10 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
   Produktseite „Weitere Fotos hinzufügen“ – es entsteht kein neuer Artikel. Auch „Neues Produkt“ nimmt mehrere
   Fotos; ohne Namen erkennt die KI das Produkt. Danach öffnet sich gleich die Kartei zum Kontrollieren (ebenso nach
   dem Hochladen eines einzelnen Fotos). Die gewählte Upload-Art merkt sich das Gerät.
+- **Produktübersicht:** In Bilder- und Listenansicht „Details bearbeiten“ je Produkt – klappt dieselben Felder wie
+  die Kartei direkt in der Übersicht auf (nur das geöffnete Produkt wird geladen) und bleibt nach dem Speichern offen.
+- **Variante „Mehrere Stück (Angebot)“:** keine echte Mehrfachpackung, sondern ein Angebot über mehrere Einzelne,
+  z. B. Kartoffelknödel „5 Stück 2 €“.
 - **Produktkartei „Für Verteilungen“:** dieselben Felder wie in den Details der Produktliste (Abgabeeinheit, Inhalt,
   Text vor dem Preis, Varianten, Text auf dem Bild, Collage/Aushang, dazu Bestand und MHD der kommenden Verteilung).
   Gespeichert als Vorlage am Produkt und sofort in alle kommenden Verteilungen übernommen; Änderungen in der

@@ -337,7 +337,8 @@ export const LEGACY_CATEGORIES = ["Drogerie & Haushalt", "Hautpflege", "Haarpfle
 
 // ---------- Ganze Packung / Kasten ----------
 
-export const PACK_KINDS = { karton: "Karton", kasten: "Kasten", packung: "Packung", tray: "Tray", palette: "Palette" } as const;
+// „mehrere“: keine echte Mehrfachpackung, sondern ein Angebot über mehrere Einzelne („5 Stück 2 €“, z. B. Kartoffelknödel).
+export const PACK_KINDS = { karton: "Karton", kasten: "Kasten", packung: "Packung", tray: "Tray", palette: "Palette", mehrere: "Mehrere Stück (Angebot)" } as const;
 export type PackKind = keyof typeof PACK_KINDS;
 export const isPackKind = (v: unknown): v is PackKind => typeof v === "string" && v in PACK_KINDS;
 
@@ -348,8 +349,9 @@ export const isPackKind = (v: unknown): v is PackKind => typeof v === "string" &
 export function packText(i: { packKind?: string | null; packCount?: number | null; packNote?: string | null }, drink = false, variant?: string | null): string {
   const note = i.packNote?.trim();
   if (note) return note;
-  const kind = isPackKind(i.packKind) ? PACK_KINDS[i.packKind] : drink ? "Kasten" : "ganze Packung";
   const n = i.packCount && i.packCount > 1 ? i.packCount : null;
+  if (i.packKind === "mehrere") return n ? `${n} Stück` : "mehrere Stück";
+  const kind = isPackKind(i.packKind) ? PACK_KINDS[i.packKind] : drink ? "Kasten" : "ganze Packung";
   if (!n) return kind;
   const size = drink ? parseSize(variant) : null;
   const vol = size && size.base === "ml" && size.total < 5000 ? (size.total >= 1000 ? `${String(size.total / 1000).replace(".", ",")} l` : size.total % 100 === 0 && size.total >= 100 ? `${String(size.total / 1000).replace(".", ",")} l` : `${size.total} ml`) : null;

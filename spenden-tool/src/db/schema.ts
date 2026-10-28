@@ -144,7 +144,7 @@ export const eventItems = pgTable(
     packNote: text("pack_note"),
     packPrice: money("pack_price"),
     /** Art der ganzen Packung: Karton, Kasten (Getränke), Packung, Tray, Palette – siehe lib/price-logic.ts PACK_KINDS. */
-    packKind: text("pack_kind", { enum: ["karton", "kasten", "packung", "tray", "palette"] }),
+    packKind: text("pack_kind", { enum: ["karton", "kasten", "packung", "tray", "palette", "mehrere"] }),
     /** Stück bzw. Flaschen in der ganzen Packung, z. B. 12 Flaschen im Kasten. */
     packCount: integer("pack_count"),
     /** Weitere Varianten neben Einzelpreis und ganzer Packung, z. B. „Packung (6 St.) 2 €“ und „Karton (24 St.) 5 €“. */
@@ -176,7 +176,7 @@ export type ItemDefaults = {
   unitCount: number | null;
   priceNote: string | null;
   caption: string | null;
-  packKind: "karton" | "kasten" | "packung" | "tray" | "palette" | null;
+  packKind: "karton" | "kasten" | "packung" | "tray" | "palette" | "mehrere" | null;
   packCount: number | null;
   packPrice: number | null;
   packNote: string | null;
@@ -186,7 +186,7 @@ export type ItemDefaults = {
 };
 
 /** Eine weitere Abgabe-Variante (Packung, Karton …) mit eigener Spendenempfehlung. */
-export type MorePack = { kind: "karton" | "kasten" | "packung" | "tray" | "palette" | null; count: number | null; price: number | null; note: string | null };
+export type MorePack = { kind: "karton" | "kasten" | "packung" | "tray" | "palette" | "mehrere" | null; count: number | null; price: number | null; note: string | null };
 
 /** count: Stück/Flaschen im Angebot (z. B. 12 beim Kasten) – price ist immer der Preis des ganzen Angebots. */
 export type ShopOffer = { shop: string; title: string; price: number; url: string; unit?: string | null; count?: number | null };

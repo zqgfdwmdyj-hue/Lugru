@@ -1,22 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
 import { isPlaceholderName, mhdLabel } from "@/lib/layout";
-import { amountFromVariant, guessUnit, isDrink, mhdAuto, PACK_KINDS, packOffers, packText, STOCK_LABELS, unitLabel, UNITS } from "@/lib/price-logic";
-import { outputPrice } from "@/lib/layout";
 import { extraPhotos, knownCategories, latestPriceChecks, productHistory, productsWithSamePhoto } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AiModeSelect, PriceCheckBox } from "@/components/price-check";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { changeExtraPhoto, saveProductDefaults, deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/app/(app)/actions";
+import { changeExtraPhoto, deleteProduct, mergeProducts, researchProduct, updateProduct } from "@/app/(app)/actions";
 import { ImageForm } from "@/components/image-form";
 import { PriceLinks } from "@/components/price-links";
 import { CategorySelect } from "@/components/category-select";
 import { AddPhotos } from "@/components/add-photos";
 import { RotateButtons } from "@/components/rotate-buttons";
+import { ProductDefaultsForm, productDefaultsData } from "../defaults-form";
 
 export default async function SpendenProduktPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ zurueck?: string; neu?: string }> }) {
   await requireLogin();
@@ -40,31 +39,6 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
   ]);
   const backs = extra.get(id) ?? [];
   const lastMhd = history.find((h) => h.bestBefore);
-  // „Für Verteilungen“: Vorlage am Produkt, sonst die kommende bzw. letzte Verteilung mit diesem Produkt.
-  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
-  const items = await db
-    .select({ item: schema.eventItems, eventDate: schema.events.eventDate })
-    .from(schema.eventItems)
-    .innerJoin(schema.events, eq(schema.events.id, schema.eventItems.eventId))
-    .where(eq(schema.eventItems.productId, id))
-    .orderBy(desc(schema.events.eventDate));
-  const upcoming = items.filter((x) => x.eventDate >= today).reverse().map((x) => ({ ...x.item, eventDate: x.eventDate }));
-  const from = upcoming[0] ?? items[0]?.item ?? null;
-  const base = product.itemDefaults ?? {
-    unit: from?.unit ?? null,
-    unitCount: from?.unitCount ?? null,
-    priceNote: from?.priceNote ?? null,
-    caption: from?.caption ?? null,
-    packKind: from?.packKind ?? null,
-    packCount: from?.packCount ?? null,
-    packPrice: from?.packPrice ?? null,
-    packNote: from?.packNote ?? null,
-    morePacks: from?.morePacks ?? [],
-    inCollage: from?.inCollage ?? true,
-    inFlyer: from?.inFlyer ?? true,
-  };
-  const drink = isDrink(product);
-  const unitGuess = guessUnit(base.priceNote, product.variant, drink);
   // Dazu Produkte mit (fast) demselben Foto, auch wenn sie anders heißen.
   const samePhoto = await productsWithSamePhoto(id);
   const known = new Set(twins.map((t) => t.id));
@@ -129,81 +103,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
               {check && <PriceCheckBox check={check} eventId={/^[0-9a-f-]{36}$/i.test(zurueck) ? zurueck : undefined} unnamed={isPlaceholderName(product.name)} />}
             </div>
           </section>
-          <form action={saveProductDefaults} className="card product-defaults">
-            <input type="hidden" name="productId" value={id} />
-            <div className="card-head">
-              <h2>Für Verteilungen</h2>
-              <span className="small muted">{upcoming.length ? `gilt sofort für ${upcoming.length} kommende Verteilung${upcoming.length === 1 ? "" : "en"} (${upcoming.map((u) => formatDate(u.eventDate)).join(", ")}) und als Vorlage` : "Vorlage für die nächste Verteilung mit diesem Produkt"}</span>
-            </div>
-            <div className="pd-grid">
-              <fieldset>
-                <legend>Spendenempfehlung</legend>
-                <div className="form-grid">
-                  <div className="field">
-                    <label className="label" htmlFor="pd-unit">Abgabeeinheit</label>
-                    <select className="select" id="pd-unit" name="unit" defaultValue={base.unit ?? ""}>
-                      <option value="">nicht angegeben</option>
-                      {Object.entries(UNITS).map(([key, u]) => <option key={key} value={key}>{u.label}</option>)}
-                    </select>
-                    {!base.unit && unitGuess && <span className="small muted">Vorschlag: {unitLabel(unitGuess.unit, unitGuess.count)}</span>}
-                  </div>
-                  <div className="field"><label className="label" htmlFor="pd-count">{drink ? "Flaschen / Stück darin" : "Stück je Einheit"}</label><input className="input" id="pd-count" name="unitCount" defaultValue={base.unitCount ?? ""} inputMode="numeric" placeholder={drink ? "z. B. 20" : "z. B. 6"} /></div>
-                </div>
-                <div className="field"><label className="label" htmlFor="pd-amount">Inhalt / Menge (optional)</label><input className="input" id="pd-amount" name="amount" defaultValue={product.amount ?? ""} placeholder={amountFromVariant(product.variant) ? `z. B. ${amountFromVariant(product.variant)}` : drink ? "z. B. 0,5 l" : "z. B. 1,5 kg"} /></div>
-                <div className="field"><label className="label" htmlFor="pd-note">Eigener Text vor dem Preis (optional)</label><input className="input" id="pd-note" name="priceNote" defaultValue={base.priceNote ?? ""} placeholder="z. B. je, 3 Stück" /></div>
-              </fieldset>
-              <fieldset>
-                <legend>Varianten (je eigene Empfehlung)</legend>
-                {[{ kind: base.packKind, count: base.packCount, price: base.packPrice, note: base.packNote }, ...base.morePacks, ...(base.packKind || base.packPrice != null ? [{ kind: null, count: null, price: null, note: null }] : [])].slice(0, 6).map((m, n) => {
-                  const pre = n === 0 ? { k: "packKind", c: "packCount", p: "packPrice", t: "packNote" } : { k: `mp${n - 1}k`, c: `mp${n - 1}c`, p: `mp${n - 1}p`, t: `mp${n - 1}n` };
-                  return (
-                    <div key={n} className={n ? "more-pack" : undefined}>
-                      <div className="form-grid">
-                        <div className="field">
-                          <label className="label" htmlFor={`pd-${pre.k}`}>{n === 0 ? "Art" : `Variante ${n + 1}`}</label>
-                          <select className="select" id={`pd-${pre.k}`} name={pre.k} defaultValue={m.kind ?? ""}>
-                            <option value="">–</option>
-                            {Object.entries(PACK_KINDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                          </select>
-                        </div>
-                        <div className="field"><label className="label" htmlFor={`pd-${pre.c}`}>{drink ? "Flaschen darin" : "Stück darin"}</label><input className="input" id={`pd-${pre.c}`} name={pre.c} defaultValue={m.count ?? ""} inputMode="numeric" /></div>
-                        <div className="field"><label className="label" htmlFor={`pd-${pre.p}`}>Empfehlung €</label><input className="input" id={`pd-${pre.p}`} name={pre.p} defaultValue={m.price != null ? m.price.toFixed(2).replace(".", ",") : ""} inputMode="decimal" /></div>
-                      </div>
-                      <div className="field"><label className="label" htmlFor={`pd-${pre.t}`}>Eigene Bezeichnung (optional)</label><input className="input" id={`pd-${pre.t}`} name={pre.t} defaultValue={m.note ?? ""} placeholder={packText({ packKind: m.kind, packCount: m.count }, drink, product.variant)} /></div>
-                    </div>
-                  );
-                })}
-                <span className="small muted">Nach dem Speichern erscheint eine leere Zeile für die nächste Variante. Alle Felder einer Variante leeren = entfernen.</span>
-              </fieldset>
-              <fieldset>
-                <legend>Ausgabe & Bestand</legend>
-                <label className="check"><input type="checkbox" name="inCollage" defaultChecked={base.inCollage} /> Auf der Collage / Social Media</label>
-                <label className="check"><input type="checkbox" name="inFlyer" defaultChecked={base.inFlyer} /> Im Aushang / Messenger-Text</label>
-                <div className="field"><label className="label" htmlFor="pd-caption">Text auf dem Bild</label><input className="input" id="pd-caption" name="caption" defaultValue={base.caption ?? ""} placeholder="z. B. vegan, nur heute" /></div>
-                {upcoming.length > 0 && (
-                  <>
-                    <div className="field">
-                      <label className="label" htmlFor="pd-stock">Bestand (ca.) – kommende Verteilung</label>
-                      <select className="select" id="pd-stock" name="stock" defaultValue="">
-                        <option value="">{upcoming[0].stock ? `unverändert (${STOCK_LABELS[upcoming[0].stock]})` : "unverändert"}</option>
-                        {Object.entries(STOCK_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-                        <option value="leer">leeren</option>
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label className="label" htmlFor="pd-mhd">MHD-Datum – kommende Verteilung{mhdAuto(product).relevant ? "" : " (nicht nötig)"}</label>
-                      <input className="input" type="date" id="pd-mhd" name="mhd" defaultValue={upcoming[0].bestBefore ?? ""} />
-                    </div>
-                  </>
-                )}
-              </fieldset>
-            </div>
-            <div className="output-preview" style={{ margin: "0 14px" }}>
-              <span className="small muted">So steht es in Collage, Aushang und Messenger:</span>
-              <strong>{[outputPrice({ price: upcoming[0]?.price ?? product.price, priceNote: base.priceNote, unit: base.unit, unitCount: base.unitCount, amount: product.amount }) || "kein Preis", ...packOffers(base, drink, product.variant).map((pk) => `${pk.label} ${pk.price.toFixed(2).replace(".", ",")} €`)].join(" · ")}</strong>
-            </div>
-            <div className="card-pad"><button className="btn btn-primary" type="submit">Für Verteilungen speichern</button></div>
-          </form>
+          <ProductDefaultsForm data={await productDefaultsData(product)} />
           <section className="card" style={{ overflow: "auto" }}>
             <div className="card-head"><h2>Verlauf</h2><span className="small muted">{history.length}× verteilt</span></div>
             <table className="table">

@@ -290,15 +290,35 @@ async function photo(dir, name, rgb, w = 640) {
 
     // 12c: Produktkartei „Für Verteilungen“ – gleiche Felder, gilt sofort für die kommende Verteilung
     await page.goto(`${BASE}/produkte/${single}`, { waitUntil: "networkidle" });
-    await page.selectOption("#pd-unit", "kasten");
-    await page.fill("#pd-count", "20");
-    await page.fill("#pd-caption", "E2E Kartei");
+    const kx = `#pd-${single.slice(0, 8)}-`;
+    await page.selectOption(`${kx}unit`, "kasten");
+    await page.fill(`${kx}count`, "20");
+    await page.fill(`${kx}caption`, "E2E Kartei");
     await page.locator(".product-defaults button[type=submit]").click();
     const synced = await until(async () => { const r = (await q("select unit, unit_count, caption from event_items where id = $1", [singleItem.id]))[0]; return r.unit === "kasten" && r.unit_count === 20 && r.caption === "E2E Kartei" && r; });
     ok(!!synced, "Kartei: Abgabeeinheit und Text auf dem Bild in der kommenden Verteilung übernommen");
     ok(!!(await q("select item_defaults from products where id = $1", [single]))[0].item_defaults, "Kartei: Vorlage am Produkt gespeichert");
     await page.goto(`${BASE}/produkte/${single}`, { waitUntil: "networkidle" });
-    ok((await page.inputValue("#pd-unit")) === "kasten" && (await page.locator(".product-defaults .output-preview").innerText()).includes("Kasten (20"), "Kartei zeigt den gespeicherten Stand und die Vorschau");
+    ok((await page.inputValue(`${kx}unit`)) === "kasten" && (await page.locator(".product-defaults .output-preview").innerText()).includes("Kasten (20"), "Kartei zeigt den gespeicherten Stand und die Vorschau");
+
+    // 12d: Produktübersicht – Details aufklappen, Variante „mehrere Stück“ (5 Stück 2 €) speichern
+    const [{ name: singleName }] = await q("select name from products where id = $1", [single]);
+    for (const ansicht of ["liste", ""]) {
+      await page.goto(`${BASE}/produkte?${ansicht ? "ansicht=liste&" : ""}q=${encodeURIComponent(singleName)}`, { waitUntil: "networkidle" });
+      await page.locator(`#d-${single} .db-toggle`).click();
+      await page.waitForSelector(`#d-${single} .product-defaults`, { timeout: 15000 });
+      ok(true, `Übersicht (${ansicht || "Bilder"}): Details klappen direkt auf`);
+    }
+    const px = kx.slice(1);
+    await page.selectOption(`#${px}packKind`, "mehrere");
+    await page.fill(`#${px}packCount`, "5");
+    await page.fill(`#${px}packPrice`, "2");
+    await page.fill(`#${px}packNote`, "");
+    await Promise.all([page.waitForURL(/gespeichert=/), page.locator(`#d-${single} .product-defaults button[type=submit]`).click()]);
+    ok(await page.locator(`#d-${single} .notice-ok`).isVisible(), "Übersicht: „Gespeichert“ und bleibt aufgeklappt");
+    ok(await until(async () => (await q("select pack_kind, pack_count, pack_price::float p from event_items where id = $1", [singleItem.id]))[0].pack_kind === "mehrere"), "„Mehrere Stück“ in die kommende Verteilung übernommen");
+    const aus5 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
+    ok(/5 Stück 2/.test(aus5), "Aushang: „5 Stück 2€“ (kein Packungswort)");
 
     // 13: Schmaler Handybildschirm (360 px): nichts ragt seitlich heraus, Touchflächen ≥ 44 px, Text ≥ 14 px
     await page.setViewportSize({ width: 360, height: 780 });
