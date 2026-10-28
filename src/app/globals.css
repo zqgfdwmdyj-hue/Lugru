@@ -72,7 +72,9 @@ h2 { font-size: 16px; margin: 0; }
 .main-nav { display: flex; flex-direction: column; gap: 3px; }
 /* Zählerzeile: offene Punkte aller Bereiche auf einen Blick, ohne aufzuklappen. */
 .nav-counters { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 8px; margin-bottom: 3px; border-bottom: 1px solid #dcdad3; }
-.nav-counter { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 3px 2px 7px; border-radius: 12px; background: var(--surface); color: var(--ink-2); text-decoration: none; border: 1px solid #dcdad3; border-left: 3px solid var(--g, #8a8f95); }
+/* Bereichsfarbe als Punkt vor dem Namen – ein farbiger Rand würde sich an der Rundung zur „(“-Klammer biegen. */
+.nav-counter { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 3px 2px 8px; border-radius: 12px; background: var(--surface); color: var(--ink-2); text-decoration: none; border: 1px solid #dcdad3; }
+.nav-counter::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--g, #8a8f95); flex: none; }
 .nav-counter:hover { color: var(--ink); text-decoration: none; border-color: var(--g, #8a8f95); }
 .nav-counter b { font-family: var(--mono); font-size: 11.5px; font-weight: 600; border-radius: 9px; padding: 0 6px; background: var(--border-strong); color: var(--ink); }
 .nav-counter.alert b { background: var(--danger); color: #fff; }
