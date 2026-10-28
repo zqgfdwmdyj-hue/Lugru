@@ -31,6 +31,9 @@ function Field({ label, name, value, suffix, help, type = "text", width = 160 }:
 const pct = (n: number) => String(Math.round(n * 10000) / 100).replace(".", ",");
 const dec = (n: number) => String(n).replace(".", ",");
 
+/** Formate für Etikettendrucker (Brother, Dymo, Rollen) zuerst anbieten. */
+const isLabelPrinterFormat = (name: string) => /brother|dymo|endlos|rolle|seiko|leitz|zebra/i.test(name);
+
 export default async function EinstellungenPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireOwner();
   const { meldung } = await searchParams;
@@ -195,11 +198,23 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                 <label className="label" htmlFor="post_pageFormat">Druckformat</label>
                 <select className="select" id="post_pageFormat" name="post_pageFormat" defaultValue={((f) => (f ? `${f.id}:${f.labelX}:${f.labelY}:${f.name}` : `${s.post.pageFormatId}:${s.post.labelX}:${s.post.labelY}`))(pageFormats.find((f) => f.id === s.post.pageFormatId))} style={{ maxWidth: 360 }}>
                   {!pageFormats.some((f) => f.id === s.post.pageFormatId) && <option value={`${s.post.pageFormatId}:${s.post.labelX}:${s.post.labelY}`}>{s.post.pageFormatName || `Format ${s.post.pageFormatId}`}</option>}
-                  {pageFormats.map((f) => (
-                    <option key={f.id} value={`${f.id}:${f.labelX}:${f.labelY}:${f.name}`}>{f.name}{f.labelX * f.labelY > 1 ? ` (${f.labelX * f.labelY} je Seite)` : ""}</option>
-                  ))}
+                  {[
+                    { label: "Etikettendrucker (Rolle)", list: pageFormats.filter((f) => isLabelPrinterFormat(f.name)) },
+                    { label: "Bogen und Normalpapier", list: pageFormats.filter((f) => !isLabelPrinterFormat(f.name)) },
+                  ]
+                    .filter((g) => g.list.length)
+                    .map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.list.map((f) => (
+                          <option key={f.id} value={`${f.id}:${f.labelX}:${f.labelY}:${f.name}`}>{f.name}{f.labelX * f.labelY > 1 ? ` (${f.labelX * f.labelY} je Seite)` : ""}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                 </select>
                 <span className="small muted">Etikettenbogen, Rolle oder Normalpapier – wie in der Portokasse.</span>
+                <span className="small muted" data-testid="post-brother-hint">
+                  <strong>Brother QL (z. B. QL-800):</strong> 62 × 29 mm (DK-11209) bietet die Post für die Internetmarke nicht an – die Marke darf auch nicht verkleinert werden. Für Warensendungen die Rolle <strong>DK-22205 (62 mm endlos)</strong> oder DK-11202 (62 × 100) einlegen und hier „Brother DK-22205 Endlos-Etikett 62mm“ wählen: ein Etikett mit Marke, Empfänger und Absender. Drucken mit 100 % („Tatsächliche Größe“), nicht „an Seite anpassen“. Die 62 × 29-Etiketten bleiben für Adressaufkleber.
+                </span>
               </div>
             ) : (
               <Field label="Druckformat (Nr.)" name="post_pageFormatId" value={s.post.pageFormatId} width={80} help={pageFormatError ? `Liste nicht abrufbar: ${pageFormatError}` : "1 = DIN A4 Normalpapier; Auswahl erscheint nach Einrichtung der Anbindung"} />
