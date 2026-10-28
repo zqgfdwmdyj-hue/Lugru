@@ -98,7 +98,7 @@ export default async function AusgangsrechnungenPage({ searchParams }: { searchP
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="out-filter">
           {(Object.keys(ARTEN) as (keyof typeof ARTEN)[]).map((a) => (
-            <Link key={a} href={`/rechnungen/ausgang?${new URLSearchParams({ ...(a !== "alle" ? { art: a } : {}), ...(sp.q ? { q: sp.q } : {}) })}`} className={`chip${art === a ? " active" : ""}`}>{ARTEN[a]}</Link>
+            <Link key={a} href={`/rechnungen/ausgang?${new URLSearchParams({ ...(a !== "alle" ? { art: a } : {}), ...(sp.q ? { q: sp.q } : {}) })}`} className={`chip${art === a ? " active" : ""}`} aria-current={art === a ? "true" : undefined}>{ARTEN[a]}</Link>
           ))}
         </div>
         <form action="/rechnungen/ausgang" style={{ width: 340, maxWidth: "100%" }} role="search">

@@ -23,8 +23,11 @@ export default async function RitualPage({ searchParams }: { searchParams: Promi
   const n = s.partners;
   const rhythm = current ? touchRhythm(touches.map((t) => t.data), current.data) : null;
   const handled = new Set(touches.map((t) => t.data.occurrence).filter((o): o is string => Boolean(o)));
-  const next = current ? ritualOccurrences(current.id, current.data, today, addDays(today, 6), handled) : [];
-  const has = (wd: number, k: "streicheln" | "massage") => r.slots.some((x) => x.weekday === wd && x.kind === k);
+  const abfolge = r.mode === "abfolge";
+  // Abfolge: die nächsten Abende über zwei Wochen, damit man die Reihenfolge sieht.
+  const next = current ? ritualOccurrences(current.id, current.data, today, addDays(today, abfolge ? 13 : 6), handled).slice(0, 8) : [];
+  const has = (wd: number, k: "streicheln" | "massage") => !abfolge && r.slots.some((x) => x.weekday === wd && x.kind === k);
+  const evening = (wd: number) => abfolge && r.slots.some((x) => x.weekday === wd);
   const giver = (k: "streicheln" | "massage") => r.slots.find((x) => x.kind === k)?.giver ?? (k === "streicheln" ? "a" : "b");
   const timeOf = (k: "streicheln" | "massage") => r.slots.find((x) => x.kind === k)?.time;
 
@@ -38,9 +41,9 @@ export default async function RitualPage({ searchParams }: { searchParams: Promi
           <div className="small muted">{rhythm.lastMassage ? `Letzte bestätigte Massage: ${dmy(rhythm.lastMassage)}.` : "Noch keine Massage bestätigt."} Es zählt nur, was als „stattgefunden“ bestätigt ist – Geplantes nie.</div>
           {next.length > 0 && (
             <div className="stack" style={{ gap: 4 }}>
-              <div className="label small">Die nächsten Abende (geplant)</div>
+              <div className="label small">Die nächsten Abende (geplant){abfolge ? ` – Abfolge ${r.strokesPerMassage}× Streicheln, dann Massage` : ""}</div>
               {next.map((o) => (
-                <Link key={o.key} href={`/privat/eintrag/serie?vorkommen=${encodeURIComponent(o.key)}`} className="small">
+                <Link key={o.key} href={`/privat/eintrag/serie?vorkommen=${encodeURIComponent(o.key)}`} className="small" data-testid="ritual-next" data-kind={o.slot.kind}>
                   {weekday(o.day)} {dm(o.day)} · {o.slot.kind === "massage" ? `${n[o.slot.giver]} massiert ${n[o.slot.receiver]}` : `${n[o.slot.giver]} streichelt ${n[o.slot.receiver]}`}
                 </Link>
               ))}
@@ -54,10 +57,22 @@ export default async function RitualPage({ searchParams }: { searchParams: Promi
         <p className="small muted">
           {current ? "Änderungen gelten für die noch offenen Abende. Bestätigte, verschobene oder ausgelassene Abende bleiben, wie sie sind. Ändert sich der Ablauf ab einem späteren Tag, bleiben frühere Wochen unverändert." : "Vorschlag nach eurem Ablauf: Mo–Do Streicheln, Di und Do zusätzlich Massage, Fr–So frei. Alles anpassbar."}
         </p>
-        <StateForm action={saveRitualAction} submit={current ? "Vorlage speichern" : "Vorlage anlegen"} testid="ritual-form" keep>
+        <StateForm action={saveRitualAction} submit={current ? "Vorlage speichern" : "Vorlage anlegen"} testid="ritual-form" keep className="stack ritual-form">
           {current && <input type="hidden" name="id" value={current.id} />}
           <div className="field"><label className="label small" htmlFor="r-title">Name</label><input className="input" id="r-title" name="title" defaultValue={r.title} maxLength={60} /></div>
-          <div className="table-wrap">
+          <div className="field">
+            <span className="label small">Ablauf</span>
+            <Choice name="modus" value={abfolge ? "abfolge" : "woche"} options={[{ value: "woche", label: "Feste Wochentage" }, { value: "abfolge", label: "Abfolge: n× Streicheln, dann Massage" }]} />
+          </div>
+          <fieldset className="field nur-abfolge" style={{ border: 0, padding: 0, margin: 0 }} data-testid="ritual-evenings">
+            <legend className="label small">An welchen Abenden? Der Reihe nach: Streicheln, Streicheln …, dann Massage – egal an welchem Wochentag.</legend>
+            <div className="pick-chips">
+              {WEEKDAY_SHORT.map((w, i) => (
+                <label key={w}><input type="checkbox" name={`a-${i + 1}`} defaultChecked={abfolge ? evening(i + 1) : i < 4} /><span>{w}</span></label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="table-wrap nur-woche">
             <table className="table" style={{ maxWidth: 520 }} data-testid="ritual-grid">
               <thead>
                 <tr><th>Tag</th><th>Streicheln</th><th>Massage</th></tr>

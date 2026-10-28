@@ -74,8 +74,8 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
 
       {others.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link className={`chip${!viewing ? " active" : ""}`} href="/privat/tagebuch">Mein Tagebuch</Link>
-          {others.map((m) => <Link key={m.userId} className={`chip${viewing?.userId === m.userId ? " active" : ""}`} href={`/privat/tagebuch?von=${m.userId}`}>{nameOf(m.userId)}</Link>)}
+          <Link className={`chip${!viewing ? " active" : ""}`} aria-current={!viewing ? "true" : undefined} href="/privat/tagebuch">Mein Tagebuch</Link>
+          {others.map((m) => <Link key={m.userId} className={`chip${viewing?.userId === m.userId ? " active" : ""}`} aria-current={viewing?.userId === m.userId ? "true" : undefined} href={`/privat/tagebuch?von=${m.userId}`}>{nameOf(m.userId)}</Link>)}
         </div>
       )}
 

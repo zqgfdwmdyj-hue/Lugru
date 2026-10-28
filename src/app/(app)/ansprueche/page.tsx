@@ -3,6 +3,8 @@ import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES, type ClaimType } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
+import { KpiMeta } from "@/components/kpi";
+import { jobStand } from "@/lib/today/jobs";
 import { dataAreas } from "@/lib/today/service";
 import { submittedInWindow } from "@/lib/claims/service";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -29,7 +31,7 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "warteschlange";
   const type = CLAIM_TYPES.includes(sp.art as ClaimType) ? (sp.art as ClaimType) : null;
-  const settings = await getSettings(session.tenantId);
+  const [settings, stand] = await Promise.all([getSettings(session.tenantId), jobStand(session.tenantId, ["Ansprüche", "Amazon-Reports abholen"])]);
   const C = schema.claims;
   const t = session.tenantId;
   const today = todayIso();
@@ -98,6 +100,7 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
         </div>
       </div>
 
+      <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi">
         <div className="card card-pad" data-testid="claims-open">
           <div className="kpi-label">Offen (alle Arten)</div><div className="kpi-value">{formatEuro(open.sum)}</div>
@@ -111,14 +114,16 @@ export default async function AnspruechePage({ searchParams }: { searchParams: P
           <div className="small muted">{window.used} eingereicht · Reset {resetAt}</div>
         </div>
       </div>
+      <KpiMeta period="offen: alle bis heute · zurückgeholt: gesamt" source="Amazon-Berichte (Lagerbewegungen, Erstattungen, Remissionen) und eigene Fälle" stand={stand.text} fehler={stand.fehler} />
+      </div>
 
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={link(v)} className={`chip${view === v ? " active" : ""}`} data-testid={`claims-tab-${v}`}>{VIEWS[v]} · {tabCount(v)}</Link>)}
+          {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={link(v)} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined} data-testid={`claims-tab-${v}`}>{VIEWS[v]} · {tabCount(v)}</Link>)}
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link href={link(view, null)} className={`chip${!type ? " active" : ""}`}>Alle Arten</Link>
-          {CLAIM_TYPES.filter((x) => x !== "other").map((x) => <Link key={x} href={link(view, x)} className={`chip${type === x ? " active" : ""}`}>{CLAIM_TYPE_LABEL[x]}</Link>)}
+          <Link href={link(view, null)} className={`chip${!type ? " active" : ""}`} aria-current={!type ? "true" : undefined}>Alle Arten</Link>
+          {CLAIM_TYPES.filter((x) => x !== "other").map((x) => <Link key={x} href={link(view, x)} className={`chip${type === x ? " active" : ""}`} aria-current={type === x ? "true" : undefined}>{CLAIM_TYPE_LABEL[x]}</Link>)}
         </div>
       </div>
 

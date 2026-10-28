@@ -105,8 +105,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
         <div><div className="crumb">Übersicht</div><h1>Board</h1></div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {leadsAllowed && <Link href="/board" className={`chip${board === "grosshandel" ? " active" : ""}`}>Großhändler</Link>}
-        {tasksAllowed && <Link href="/board?b=todos" className={`chip${board === "todos" ? " active" : ""}`}>Meine To-dos</Link>}
+        {leadsAllowed && <Link href="/board" className={`chip${board === "grosshandel" ? " active" : ""}`} aria-current={board === "grosshandel" ? "true" : undefined}>Großhändler</Link>}
+        {tasksAllowed && <Link href="/board?b=todos" className={`chip${board === "todos" ? " active" : ""}`} aria-current={board === "todos" ? "true" : undefined}>Meine To-dos</Link>}
         {board === "todos" && <Link href={all ? "/board?b=todos" : "/board?b=todos&alle=1"} className="small" style={{ marginLeft: 8 }}>{all ? "nur eigene Aufgaben" : "alle Aufgaben zeigen"}</Link>}
         <span className="small muted" style={{ marginLeft: "auto" }}>Karten ziehen – oder unten an der Karte „→ Spalte“ wählen.</span>
       </div>

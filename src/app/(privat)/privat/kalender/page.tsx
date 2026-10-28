@@ -96,16 +96,16 @@ export default async function PrivatKalenderPage({ searchParams }: { searchParam
 
         <div className="pk-filters" data-testid="pk-filters">
           <div className="priv-tabs" aria-label="Person">
-            <Link href={q({ person: null })} className={`chip${!person ? " active" : ""}`}>Alle</Link>
+            <Link href={q({ person: null })} className={`chip${!person ? " active" : ""}`} aria-current={!person ? "true" : undefined}>Alle</Link>
             {(["a", "b"] as const).map((p) => (
-              <Link key={p} href={q({ person: p })} className={`chip${person === p ? " active" : ""}`} data-testid={`pk-person-${p}`}>{names[p]}</Link>
+              <Link key={p} href={q({ person: p })} className={`chip${person === p ? " active" : ""}`} aria-current={person === p ? "true" : undefined} data-testid={`pk-person-${p}`}>{names[p]}</Link>
             ))}
           </div>
           <details open={picked.size > 0}>
             <summary className="small" style={{ cursor: "pointer" }}>Arten filtern{picked.size ? ` (${picked.size} gewählt)` : ""}</summary>
             <div className="priv-tabs" style={{ marginTop: 6 }}>
               {kindsAllowed.map((k) => (
-                <Link key={k} href={toggleKind(k)} className={`chip kind-chip${picked.has(k) ? " active" : ""}`} style={{ "--c": KIND_COLOR[k] } as React.CSSProperties} data-testid={`pk-kind-${k}`}><span aria-hidden="true">{KIND_STYLE[k].icon} </span>{CAL_KIND_LABEL[k]}</Link>
+                <Link key={k} href={toggleKind(k)} className={`chip kind-chip${picked.has(k) ? " active" : ""}`} aria-current={picked.has(k) ? "true" : undefined} style={{ "--c": KIND_COLOR[k] } as React.CSSProperties} data-testid={`pk-kind-${k}`}><span aria-hidden="true">{KIND_STYLE[k].icon} </span>{CAL_KIND_LABEL[k]}</Link>
               ))}
               {picked.size > 0 && <Link href={q({ art: null })} className="chip">alle Arten</Link>}
             </div>

@@ -5,7 +5,7 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { buildWeeks, projectPayouts } from "@/lib/money/cashflow";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addCashItem, deleteCashItem, saveStartBalance } from "./actions";
-import { Kpi } from "@/components/kpi";
+import { Kpi, KpiMeta } from "@/components/kpi";
 
 const IN = "#0f8a79";
 const OUT = "#d9480f";
@@ -53,6 +53,7 @@ export default async function CashflowPage() {
   return (
     <>
       <div className="page-head"><div><div className="crumb">Geld</div><h1>Cash Flow</h1></div></div>
+      <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi">
         <div className="card card-pad">
           <div className="kpi-label">Kontostand (Start)</div>
@@ -76,11 +77,13 @@ export default async function CashflowPage() {
           source="Kontostand von Hand, Plan-Posten, Amazon-Abrechnungen"
           stand={asOf ? formatDate(asOf) : undefined}
         />
-        <div className="card card-pad"><div className="kpi-label">Nächste Auszahlung (geschätzt)</div><div className="kpi-value">{payouts[0] ? formatEuro(payouts[0].amount) : "–"}</div><div className="small muted">{payouts[0] ? formatDate(payouts[0].date) : "Settlement-Reports importieren"}</div></div>
+        <div className="card card-pad"><div className="kpi-label">Nächste Auszahlung (geschätzt)</div><div className="kpi-value">{payouts[0] ? <>≈ {formatEuro(payouts[0].amount)}</> : <span className="muted" style={{ fontSize: 16 }}>keine Daten</span>}</div><div className="small muted">{payouts[0] ? formatDate(payouts[0].date) : "Settlement-Reports importieren"}</div></div>
         <div className="card card-pad"><div className="kpi-label">Offene Ansprüche (Potenzial)</div><div className="kpi-value">{formatEuro(claimSum)}</div><div className="small muted">nicht im Plan enthalten</div></div>
       </div>
 
       <div className="small muted" data-testid="cash-scope">Enthalten: Kontostand (von Hand), geplante Posten und geschätzte Amazon-Auszahlungen ({history.length ? `aus ${history.length} Abrechnungen` : "keine Abrechnungen importiert"}). Nicht enthalten: Auszahlungen von eBay, Temu und anderen Kanälen sowie offene Ansprüche.</div>
+      <KpiMeta period="nächste 8 Wochen" source="Kontostand (von Hand), Plan-Posten, Amazon-Abrechnungen" stand={`Kontostand ${asOf ? formatDate(asOf) : "fehlt"} · ${history.length ? `${history.length} Abrechnungen` : "keine Abrechnung importiert"}`} />
+      </div>
       <section className="card card-pad">
         <div className="between" style={{ marginBottom: 8 }}>
           <h2>Nächste 8 Wochen</h2>

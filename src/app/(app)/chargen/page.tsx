@@ -107,7 +107,7 @@ export default async function ChargenPage({
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {(Object.keys(FILTERS) as Filter[]).map((f) => (
-          <Link key={f} href={link({ filter: f })} className={`chip${filter === f ? " active" : ""}`}>{FILTERS[f]}</Link>
+          <Link key={f} href={link({ filter: f })} className={`chip${filter === f ? " active" : ""}`} aria-current={filter === f ? "true" : undefined}>{FILTERS[f]}</Link>
         ))}
       </div>
 

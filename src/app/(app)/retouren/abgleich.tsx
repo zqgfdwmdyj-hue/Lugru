@@ -113,8 +113,8 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
     <>
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${fba ? " active" : ""}`} href="/retouren?ansicht=abgleich&modus=fba">Versand durch Amazon (FBA)</Link>
-          <Link className={`chip${!fba ? " active" : ""}`} href="/retouren?ansicht=abgleich&modus=fbm">Händlerversand (FBM)</Link>
+          <Link className={`chip${fba ? " active" : ""}`} aria-current={fba ? "true" : undefined} href="/retouren?ansicht=abgleich&modus=fba">Versand durch Amazon (FBA)</Link>
+          <Link className={`chip${!fba ? " active" : ""}`} aria-current={!fba ? "true" : undefined} href="/retouren?ansicht=abgleich&modus=fbm">Händlerversand (FBM)</Link>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <form action={redetect}><button className="btn btn-small" type="submit" title="Ansprüche nach geänderten Einstellungen neu berechnen">Neu prüfen</button></form>
@@ -209,7 +209,7 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
       <div className="between" style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {filters.map((f) => (
-            <Link key={f.id} href={link({ filter: f.id })} className={`chip${current === f.id ? " active" : ""}`}>{f.label} <span style={{ opacity: 0.6 }}>{f.n}</span></Link>
+            <Link key={f.id} href={link({ filter: f.id })} className={`chip${current === f.id ? " active" : ""}`} aria-current={current === f.id ? "true" : undefined}>{f.label} <span style={{ opacity: 0.6 }}>{f.n}</span></Link>
           ))}
         </div>
         <form style={{ display: "flex", gap: 6 }}>

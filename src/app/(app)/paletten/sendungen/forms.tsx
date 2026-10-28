@@ -36,11 +36,11 @@ function BaseFields({ v, customers, idPrefix }: { v: BaseValues; customers: stri
     <>
       <fieldset className="ship-dir" style={{ border: 0, padding: 0, margin: 0, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <legend className="label">Was kommt bzw. geht raus?</legend>
-        <label className={`pal-action${direction === "ein" ? " active" : ""}`} style={{ cursor: "pointer" }}>
+        <label className={`pal-action${direction === "ein" ? " active" : ""}`} aria-current={direction === "ein" ? "true" : undefined} style={{ cursor: "pointer" }}>
           <input type="radio" name="direction" value="ein" checked={direction === "ein"} onChange={() => setDirection("ein")} style={{ marginRight: 6 }} data-testid="ship-dir-ein" />
           ⬇ Anlieferung ins Lager
         </label>
-        <label className={`pal-action${direction === "aus" ? " active" : ""}`} style={{ cursor: "pointer" }}>
+        <label className={`pal-action${direction === "aus" ? " active" : ""}`} aria-current={direction === "aus" ? "true" : undefined} style={{ cursor: "pointer" }}>
           <input type="radio" name="direction" value="aus" checked={direction === "aus"} onChange={() => setDirection("aus")} style={{ marginRight: 6 }} data-testid="ship-dir-aus" />
           ⬆ Versand an Kunden
         </label>

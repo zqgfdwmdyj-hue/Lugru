@@ -128,8 +128,8 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="chancen-tabs">
-        <Link href={qs({ quelle: "", lf: "" })} className={`chip${!manual ? " active" : ""}`}>Listen (automatisch, alle 24 Std.)</Link>
-        <Link href={qs({ quelle: "manuell", lf: "" })} className={`chip${manual ? " active" : ""}`}>Manuell gezogen (Seller-Knopf){scanStats.total ? ` · ${scanStats.total}` : ""}</Link>
+        <Link href={qs({ quelle: "", lf: "" })} className={`chip${!manual ? " active" : ""}`} aria-current={!manual ? "true" : undefined}>Listen (automatisch, alle 24 Std.)</Link>
+        <Link href={qs({ quelle: "manuell", lf: "" })} className={`chip${manual ? " active" : ""}`} aria-current={manual ? "true" : undefined}>Manuell gezogen (Seller-Knopf){scanStats.total ? ` · ${scanStats.total}` : ""}</Link>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="chancen-msg">{sp.meldung}</div>}
       <AutoRefresh active={Boolean(mrun?.running)} everyMs={3000} />
@@ -181,11 +181,11 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       </form>
       {feeds.length > 1 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link href={qs({ lf: "" })} className={`chip${only.length === 0 ? " active" : ""}`}>Alle Lieferanten</Link>
+          <Link href={qs({ lf: "" })} className={`chip${only.length === 0 ? " active" : ""}`} aria-current={only.length === 0 ? "true" : undefined}>Alle Lieferanten</Link>
           {feeds.map((f) => {
             const on = only.includes(f.id);
             const next = on ? only.filter((x) => x !== f.id) : [...only, f.id];
-            return <Link key={f.id} href={qs({ lf: next.join(",") })} className={`chip${on ? " active" : ""}`}>{f.name}</Link>;
+            return <Link key={f.id} href={qs({ lf: next.join(",") })} className={`chip${on ? " active" : ""}`} aria-current={on ? "true" : undefined}>{f.name}</Link>;
           })}
         </div>
       )}

@@ -2,9 +2,10 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { todayIso } from "@/lib/dates";
 import type { Session } from "@/lib/auth/session";
-import { addDays, clip, defaultStatus, durationOf, isDay, isTime, linkIssues, num, rating, statusOf, statusProblem, type AppointmentEntry, type EntryStatus, type KidsEntry, type PartnerKey, type SleepEntry } from "./logic";
-import { eventRefFrom, isoWeekday, parseOccurrence, periodProblem, ritualOccurrences, slotKey, type PeriodEntry, type RitualEntry, type RitualSlot, type TouchEntry, type TouchKind } from "./kalender";
-import { addEntry, loadEntries, loadEntry, myPartner, privateMembers, privateSettings, updateEntry, type PrivateKind } from "./service";
+import { addDays, clip, daysBetween, defaultStatus, durationOf, isDay, isTime, linkIssues, num, rating, statusOf, statusProblem, type AppointmentEntry, type EntryStatus, type KidsEntry, type PartnerKey, type SleepEntry } from "./logic";
+import { eventRefFrom, isoWeekday, parseOccurrence, periodProblem, ritualOccurrences, slotKey, touchRhythm, type PeriodEntry, type RitualEntry, type RitualSlot, type TouchEntry, type TouchKind } from "./kalender";
+import { changesTiming, REPEAT_LABEL, repeatDays, seriesDeleteIds, seriesScope, seriesTargets, type SeriesScope } from "./serie";
+import { addEntry, deleteEntry, loadEntries, loadEntry, myPartner, privateMembers, privateSettings, updateEntry, type PrivateKind } from "./service";
 
 // Speichern der Kalender-Einträge (Termine, Familienzeiten, Nähe, Streicheln/Massage, Periode, Abendritual).
 // Die Aufrufer (Server Actions) holen die Sitzung über requirePrivate(); hier nur Prüfen und Schreiben.
@@ -37,12 +38,17 @@ const WHO_MISSING: Record<Exclude<TimeKind, "paarzeit">, string> = { kinder: "Bi
  * Anlegen oder (mit `id`) ändern. Kinderzeit ↔ Auszeit als ein Vorgang („wer übernimmt die Kinder?“) – nur
  * wenn ausdrücklich gewählt, nie automatisch. Datum, Zeit und Status gelten dann für beide Einträge; jede
  * Person zählt nur in ihrer eigenen Auswertung (Auszeit bzw. Kinderzeit), nie doppelt.
+ *
+ * Wiederholen (neu): wöchentlich oder alle 2 Wochen bis zu einem Tag – je Termin ein eigener Eintrag mit
+ * gemeinsamer Serie. Ändern einer Serie: „nur dieser“ (wird zur Ausnahme), „dieser und alle folgenden“ oder
+ * „alle“ – Erledigtes und einzeln geänderte Einträge bleiben dabei, wie sie sind.
  */
 export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormData): Promise<SaveResult> {
   const today = todayIso();
   const editId = String(fd.get("id") ?? "") || null;
   const day = isDay(fd.get("day")) ? String(fd.get("day")) : today;
-  const cur = editId ? (await loadEntries<Record<string, unknown>>(session, [kind])).find((e) => e.id === editId) : undefined;
+  const all = await loadEntries<Record<string, unknown>>(session, [kind]);
+  const cur = editId ? all.find((e) => e.id === editId) : undefined;
   if (editId && !cur) return fail("Eintrag nicht gefunden.");
   const status = statusFrom(fd, day, today, cur?.data.status);
   const problem = statusProblem(day, status, today);
@@ -57,60 +63,107 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   if ("error" in dur) return fail(dur.error);
   const settings = await privateSettings(session.tenantId);
   const extern = externFrom(fd);
-  const base = { day, from, to, hours: from && to ? undefined : dur.hours, status, extern, fromEvent: fromEventOf(fd, cur?.data.fromEvent) };
+  const hours = from && to ? undefined : dur.hours;
   // „Wer übernimmt in dieser Zeit die Kinder?“ (Auszeit) bzw. „Hatte … währenddessen Auszeit?“ (Kinderzeit)
   const kidsBy = String(fd.get("kidsBy") ?? "");
   // „beide zusammen“ (Kinderzeit) hat keine andere Person, die Auszeit haben könnte – dann keine Verknüpfung.
   const wantsLink = person !== "beide" && ((kind === "auszeit" && (kidsBy === "partner" || fd.get("linkKinder") === "on")) || (kind === "kinder" && fd.get("linkAuszeit") === "on"));
   const asked = fd.get("linkQuestion") === "1";
-  const data =
+  // Gilt bei Serien für alle betroffenen Einträge …
+  const shared: Record<string, unknown> =
     kind === "paarzeit"
-      ? compact({ ...base, what: clip(fd.get("what"), 200), sitter: clip(fd.get("sitter"), 60), costEur: num(fd.get("costEur"), 0, 10000), rating: rating(fd.get("rating")), note: clip(fd.get("note"), 500) })
+      ? { what: clip(fd.get("what"), 200), sitter: clip(fd.get("sitter"), 60) }
       : kind === "kinder"
-        ? compact({ ...base, person, what: clip(fd.get("what"), 200), kids: fd.getAll("kids").map(String).filter((k) => settings.kids.includes(k)) })
-        : compact({ ...base, person, note: clip(fd.get("note"), kind === "auszeit" ? 200 : 300), kidsBy: kind === "auszeit" && kidsBy === "andere" ? clip(fd.get("kidsByName"), 60) ?? "jemand anderes" : undefined });
+        ? { person, what: clip(fd.get("what"), 200), kids: fd.getAll("kids").map(String).filter((k) => settings.kids.includes(k)) }
+        : { person, note: clip(fd.get("note"), kind === "auszeit" ? 200 : 300), kidsBy: kind === "auszeit" && kidsBy === "andere" ? clip(fd.get("kidsByName"), 60) ?? "jemand anderes" : undefined };
+  // … das hier nur für den geöffneten Eintrag (Kosten, Bewertung, Notiz eines Dates).
+  const own: Record<string, unknown> = kind === "paarzeit" ? { costEur: num(fd.get("costEur"), 0, 10000), rating: rating(fd.get("rating")), note: clip(fd.get("note"), 500) } : {};
+  const OWN_KEYS = Object.keys(own);
+  const build = (d: string, st: EntryStatus, extra: Record<string, unknown>): Record<string, unknown> => compact({ day: d, from, to, hours, status: st, extern, ...shared, ...extra });
   const other = person && person !== "beide" ? otherOf(person) : undefined;
   const linkKind: TimeKind | null = kind === "kinder" ? "auszeit" : kind === "auszeit" ? "kinder" : null;
   const what = `${dmy(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}${status !== "stattgefunden" ? ` (${status})` : ""}`;
-  // Der verknüpfte Eintrag gehört immer der jeweils anderen Person (Auszeit A ↔ Kinder bei B) – auch nach
-  // einem Personenwechsel. Früher blieb die Person dort stehen: „Auszeit Alexandra · Kinder bei Alexandra“.
-  const linkedPatch = { day, from, to, hours: base.hours, status, ...(other ? { person: other } : {}), editedAt: new Date().toISOString() };
+  const linkedRows = linkKind ? await loadEntries<Record<string, unknown>>(session, [linkKind]) : [];
+  const linkedEntry = (d: string, st: EntryStatus, linkId: string, rep: Record<string, unknown>) => compact({ day: d, person: other, from, to, hours, status: st, linkId, ...rep });
 
-  if (cur) {
-    let linkId = typeof cur.data.linkId === "string" ? cur.data.linkId : undefined;
+  /** Einen Eintrag ändern – samt verknüpfter Kinderzeit/Auszeit. Gibt einen Hinweis zur Verknüpfung zurück. */
+  async function editOne(e: { id: string; data: Record<string, unknown> }, data: Record<string, unknown>): Promise<string> {
+    const d = String(data.day);
+    const st = data.status as EntryStatus;
+    const rep = { repeatId: e.data.repeatId, repeatEvery: e.data.repeatEvery };
+    let linkId = typeof e.data.linkId === "string" ? e.data.linkId : undefined;
     let note = "";
     if (linkKind && linkId && ((asked && !wantsLink) || person === "beide")) {
       // Verknüpfung ausdrücklich gelöst: beide Einträge bleiben, nur nicht mehr verbunden (nichts wird gelöscht).
-      for (const e of (await loadEntries<Record<string, unknown>>(session, [linkKind])).filter((x) => x.data.linkId === linkId)) {
-        const { linkId: _drop, ...rest } = e.data;
-        await updateEntry(session, e.id, linkKind, rest, true);
+      for (const x of linkedRows.filter((x) => x.data.linkId === linkId)) {
+        const { linkId: _drop, ...rest } = x.data;
+        await updateEntry(session, x.id, linkKind, rest, true);
       }
       linkId = undefined;
       note = ` – Verknüpfung gelöst, der ${linkKind === "kinder" ? "Kinderzeit" : "Auszeit"}-Eintrag bleibt bestehen (bei Bedarf dort löschen)`;
     }
     if (linkKind && !linkId && wantsLink && other) {
       linkId = randomUUID();
-      await addEntry(session, linkKind, compact({ day, person: other, from, to, hours: base.hours, status, linkId }));
+      await addEntry(session, linkKind, linkedEntry(d, st, linkId, rep));
       note = ` – zugleich ${linkKind === "auszeit" ? "Auszeit" : "Kinderzeit"} für ${settings.partners[other]} eingetragen`;
     } else if (linkKind && linkId) {
+      // Der verknüpfte Eintrag gehört immer der jeweils anderen Person (Auszeit A ↔ Kinder bei B) – auch nach
+      // einem Personenwechsel. Früher blieb die Person dort stehen: „Auszeit Alexandra · Kinder bei Alexandra“.
       let n = 0;
-      for (const e of (await loadEntries<Record<string, unknown>>(session, [linkKind])).filter((x) => x.data.linkId === linkId)) {
-        await updateEntry(session, e.id, linkKind, linkedPatch);
+      for (const x of linkedRows.filter((x) => x.data.linkId === linkId)) {
+        await updateEntry(session, x.id, linkKind, { day: d, from, to, hours, status: st, ...(other ? { person: other } : {}), editedAt: new Date().toISOString() });
         n++;
       }
       if (n) note = " – verknüpfter Eintrag angepasst";
     }
-    await updateEntry(session, cur.id, kind, { ...data, ...(linkId ? { linkId } : {}), editedAt: new Date().toISOString() }, true);
-    return { ok: true, message: `Geändert: ${what}${note}.`, id: cur.id, day };
+    await updateEntry(session, e.id, kind, { ...data, ...(linkId ? { linkId } : {}), editedAt: new Date().toISOString() }, true);
+    return note;
   }
 
-  const linkId = linkKind && wantsLink && other ? randomUUID() : undefined;
-  const id = await addEntry(session, kind, linkId ? { ...data, linkId } : data);
-  if (linkKind && linkId && other) await addEntry(session, linkKind, compact({ day, person: other, from, to, hours: base.hours, status, linkId }));
+  if (cur) {
+    const scope = seriesScope(fd.get("umfang"));
+    const { targets, kept } = seriesTargets(all as unknown as SeriesRow[], cur as unknown as SeriesRow, scope);
+    const delta = daysBetween(String(cur.data.day), day);
+    let note = "";
+    for (const t of targets) {
+      const isCur = t.id === cur.id;
+      const rep = { repeatId: t.data.repeatId, repeatEvery: t.data.repeatEvery };
+      const data = isCur
+        ? build(day, status, { ...own, fromEvent: fromEventOf(fd, cur.data.fromEvent), ...rep })
+        : build(addDays(t.data.day, delta), parseStatus(t.data.status) ?? "geplant", { ...pick(t.data, OWN_KEYS), fromEvent: (t.data as Record<string, unknown>).fromEvent, ...rep });
+      // Nur diesen einen Termin anders gelegt → Ausnahme; spätere Änderungen der Serie lassen ihn dann in Ruhe.
+      if (isCur && scope === "dieser" && cur.data.repeatId && (cur.data.exception === true || changesTiming(cur.data, data))) data.exception = true;
+      const n = await editOne(t, data);
+      if (isCur) note = n;
+    }
+    return { ok: true, message: `Geändert: ${what}${note}${seriesNote(scope, targets.length, kept)}.`, id: cur.id, day };
+  }
+
+  const rep = repeatDays(day, fd.get("wiederholung"), fd.get("bis"));
+  if ("error" in rep) return fail(rep.error);
+  const series = rep.days.length > 1 ? { repeatId: randomUUID(), repeatEvery: rep.every } : {};
+  let firstId = "";
+  let linked = false;
+  for (const d of rep.days) {
+    const st = d === day ? status : defaultStatus(d, today);
+    const linkId = linkKind && wantsLink && other ? randomUUID() : undefined;
+    const id = await addEntry(session, kind, build(d, st, { ...(d === day ? { ...own, fromEvent: fromEventOf(fd) } : {}), ...series, linkId }));
+    firstId ||= id;
+    if (linkKind && linkId) {
+      await addEntry(session, linkKind, linkedEntry(d, st, linkId, series));
+      linked = true;
+    }
+  }
   const label = kind === "paarzeit" ? "Paarzeit" : person === "beide" ? "Kinderzeit zusammen" : `${settings.partners[person!]}`;
-  const linkText = linkId && other ? ` – zugleich ${linkKind === "auszeit" ? "Auszeit" : "Kinderzeit"} für ${settings.partners[other]} (zählt dort, nicht doppelt)` : "";
-  return { ok: true, message: `Eingetragen: ${label} am ${what}${linkText}.`, id, day };
+  const linkText = linked && other ? ` – zugleich ${linkKind === "auszeit" ? "Auszeit" : "Kinderzeit"} für ${settings.partners[other]} (zählt dort, nicht doppelt)` : "";
+  return { ok: true, message: `Eingetragen: ${label} am ${what}${linkText}${repeatNote(rep)}.`, id: firstId, day };
 }
+
+type SeriesRow = { id: string; data: { day: string; status?: string; exception?: boolean; repeatId?: string; repeatEvery?: number } };
+const pick = (o: Record<string, unknown>, keys: string[]) => Object.fromEntries(keys.map((k) => [k, o[k]]));
+const repeatNote = (rep: { days: string[]; every?: number }) => (rep.days.length > 1 ? ` – ${rep.days.length} Termine, ${REPEAT_LABEL[rep.every ?? 7]} bis ${dmy(rep.days[rep.days.length - 1])}` : "");
+const seriesNote = (scope: SeriesScope, n: number, kept: number) =>
+  scope === "dieser" ? "" : ` – ${n} ${n === 1 ? "Eintrag" : "Einträge"} der Serie geändert${kept ? `, ${kept} ${kept === 1 ? "bleibt" : "bleiben"} unverändert (schon erledigt oder einzeln geändert)` : ""}`;
 
 // ---- Termine --------------------------------------------------------------------------------------------
 
@@ -121,7 +174,8 @@ export async function saveAppointment(session: Session, fd: FormData): Promise<S
   if (!isDay(fd.get("day"))) return fail("Bitte ein Datum angeben.");
   const day = String(fd.get("day"));
   const editId = String(fd.get("id") ?? "") || null;
-  const cur = editId ? (await loadEntries<AppointmentEntry>(session, ["termin"])).find((e) => e.id === editId) : undefined;
+  const all = await loadEntries<AppointmentEntry>(session, ["termin"]);
+  const cur = editId ? all.find((e) => e.id === editId) : undefined;
   if (editId && !cur) return fail("Eintrag nicht gefunden.");
   const status = statusFrom(fd, day, today, cur?.data.status);
   const problem = statusProblem(day, status, today);
@@ -132,25 +186,41 @@ export async function saveAppointment(session: Session, fd: FormData): Promise<S
   if (from && to && to <= from) return fail("Das Ende liegt vor dem Beginn – bitte prüfen.");
   const w = String(fd.get("with") ?? "");
   const p = fd.get("person");
-  const entry: AppointmentEntry = {
-    day,
+  // Gilt bei Serien für alle betroffenen Termine; Notizen gehören zum einzelnen Termin.
+  const shared = {
     time: from,
     to,
     with: (WITH as readonly string[]).includes(w) ? (w as AppointmentEntry["with"]) : "privat",
     title: clip(fd.get("title"), 120),
-    person: p === "a" || p === "b" ? p : "beide",
-    notes: clip(fd.get("notes"), 4000),
-    status,
+    person: partnerOf(p) ?? ("beide" as const),
     extern: externFrom(fd),
-    fromEvent: fromEventOf(fd, cur?.data.fromEvent),
   };
-  if (!entry.title && (entry.with === "privat" || entry.with === "familie")) return fail("Bitte einen Titel angeben.");
+  if (!shared.title && (shared.with === "privat" || shared.with === "familie")) return fail("Bitte einen Titel angeben.");
+  const notes = clip(fd.get("notes"), 4000);
   if (cur) {
-    await updateEntry(session, cur.id, "termin", compact({ ...cur.data, ...entry }), true);
-    return { ok: true, message: `Termin am ${dmy(day)} geändert.`, id: cur.id, day };
+    const scope = seriesScope(fd.get("umfang"));
+    const { targets, kept } = seriesTargets(all as unknown as SeriesRow[], cur as unknown as SeriesRow, scope);
+    const delta = daysBetween(cur.data.day, day);
+    for (const t of targets) {
+      const isCur = t.id === cur.id;
+      const next: AppointmentEntry = isCur
+        ? { ...cur.data, ...shared, day, status, notes, fromEvent: fromEventOf(fd, cur.data.fromEvent), exception: undefined }
+        : { ...(t.data as unknown as AppointmentEntry), ...shared, day: addDays(t.data.day, delta) };
+      if (isCur && scope === "dieser" && cur.data.repeatId && (cur.data.exception === true || changesTiming(cur.data, next))) next.exception = true;
+      await updateEntry(session, t.id, "termin", compact(next), true);
+    }
+    return { ok: true, message: `Termin am ${dmy(day)} geändert${seriesNote(scope, targets.length, kept)}.`, id: cur.id, day };
   }
-  const id = await addEntry(session, "termin", compact(entry));
-  return { ok: true, message: `Termin am ${dmy(day)} gespeichert.`, id, day };
+  const rep = repeatDays(day, fd.get("wiederholung"), fd.get("bis"));
+  if ("error" in rep) return fail(rep.error);
+  const series = rep.days.length > 1 ? { repeatId: randomUUID(), repeatEvery: rep.every } : {};
+  let firstId = "";
+  for (const d of rep.days) {
+    const entry: AppointmentEntry = { day: d, ...shared, status: d === day ? status : defaultStatus(d, today), ...(d === day ? { notes, fromEvent: fromEventOf(fd) } : {}), ...series };
+    const id = await addEntry(session, "termin", compact(entry));
+    firstId ||= id;
+  }
+  return { ok: true, message: `Termin am ${dmy(day)} gespeichert${repeatNote(rep)}.`, id: firstId, day };
 }
 
 // ---- Nähe -------------------------------------------------------------------------------------------------
@@ -267,33 +337,44 @@ export async function saveRitual(session: Session, fd: FormData): Promise<SaveRe
   const massageGiver = partnerOf(fd.get("massage-giver")) ?? "b";
   const strokeTime = time(fd.get("streicheln-time"));
   const massageTime = time(fd.get("massage-time"));
+  const mode = fd.get("modus") === "abfolge" ? ("abfolge" as const) : ("woche" as const);
+  const slot = (wd: number, kind: TouchKind): RitualSlot => kind === "streicheln" ? compact({ weekday: wd, kind, giver: strokeGiver, receiver: otherOf(strokeGiver), time: strokeTime }) : compact({ weekday: wd, kind, giver: massageGiver, receiver: otherOf(massageGiver), time: massageTime });
   const slots: RitualSlot[] = [];
   for (let wd = 1; wd <= 7; wd++) {
-    if (fd.get(`s-${wd}-streicheln`) === "on") slots.push(compact({ weekday: wd, kind: "streicheln" as const, giver: strokeGiver, receiver: otherOf(strokeGiver), time: strokeTime }));
-    if (fd.get(`s-${wd}-massage`) === "on") slots.push(compact({ weekday: wd, kind: "massage" as const, giver: massageGiver, receiver: otherOf(massageGiver), time: massageTime }));
+    if (mode === "abfolge") {
+      // Abfolge: an jedem gewählten Abend beide Plätze – welcher dran ist, ergibt die Reihenfolge.
+      if (fd.get(`a-${wd}`) === "on") slots.push(slot(wd, "streicheln"), slot(wd, "massage"));
+      continue;
+    }
+    if (fd.get(`s-${wd}-streicheln`) === "on") slots.push(slot(wd, "streicheln"));
+    if (fd.get(`s-${wd}-massage`) === "on") slots.push(slot(wd, "massage"));
   }
-  if (!slots.length) return fail("Bitte mindestens einen Tag ankreuzen.");
+  if (!slots.length) return fail(mode === "abfolge" ? "Bitte mindestens einen Abend für die Abfolge ankreuzen." : "Bitte mindestens einen Tag ankreuzen.");
   const strokesPerMassage = Math.round(num(fd.get("strokesPerMassage"), 1, 14) ?? 2);
   const title = clip(fd.get("title"), 60) ?? "Unser Abendritual";
   const validFrom = isDay(fd.get("from")) ? String(fd.get("from")) : today;
   const until = isDay(fd.get("until")) ? String(fd.get("until")) : undefined;
   if (until && until < validFrom) return fail("„Endet am“ liegt vor dem Beginn.");
-  const next: RitualEntry = compact({ title, slots, from: validFrom, until, strokesPerMassage, active: true });
+  // Abfolge setzt beim tatsächlichen Stand an (bestätigte Streicheleinheiten seit der letzten Massage).
+  const offset = mode === "abfolge" ? Math.min(strokesPerMassage, touchRhythm((await loadEntries<TouchEntry>(session, ["zuwendung"])).map((t) => t.data), { slots, strokesPerMassage }).count) : undefined;
+  const next: RitualEntry = compact({ title, slots, from: validFrom, until, strokesPerMassage, active: true, mode: mode === "abfolge" ? mode : undefined, offset: offset || undefined });
   const editId = String(fd.get("id") ?? "") || null;
+  const plan = mode === "abfolge" ? ` Abfolge: ${strokesPerMassage}× Streicheln, dann Massage${offset ? ` – startet beim aktuellen Stand (${offset}/${strokesPerMassage})` : ""}.` : "";
   if (editId) {
     const cur = (await loadEntries<RitualEntry>(session, ["ritual"])).find((e) => e.id === editId);
     if (!cur) return fail("Vorlage nicht gefunden.");
-    const sameSlots = JSON.stringify(cur.data.slots) === JSON.stringify(slots);
-    if (cur.data.from < validFrom && !sameSlots) {
+    const sameFlow = JSON.stringify(cur.data.slots) === JSON.stringify(slots) && (cur.data.mode ?? "woche") === mode && (mode === "woche" || cur.data.strokesPerMassage === strokesPerMassage);
+    if (cur.data.from < validFrom && !sameFlow) {
       await updateEntry(session, cur.id, "ritual", { until: addDays(validFrom, -1) });
       const id = await addEntry(session, "ritual", next);
-      return { ok: true, message: `Neuer Ablauf gilt ab ${dmy(validFrom)} – frühere Wochen bleiben unverändert, bestätigte Einträge auch.`, id, day: validFrom };
+      return { ok: true, message: `Neuer Ablauf gilt ab ${dmy(validFrom)} – frühere Wochen bleiben unverändert, bestätigte Einträge auch.${plan}`, id, day: validFrom };
     }
-    await updateEntry(session, cur.id, "ritual", { ...next, from: cur.data.from < validFrom ? cur.data.from : validFrom }, true);
-    return { ok: true, message: "Vorlage gespeichert – bestätigte, verschobene oder ausgelassene Termine bleiben, wie sie sind.", id: cur.id, day: validFrom };
+    // Gleicher Ablauf: Reihenfolge und Startstand der Abfolge bleiben, wie sie waren.
+    await updateEntry(session, cur.id, "ritual", { ...next, from: cur.data.from < validFrom ? cur.data.from : validFrom, ...(sameFlow ? { offset: cur.data.offset } : {}) }, true);
+    return { ok: true, message: `Vorlage gespeichert – bestätigte, verschobene oder ausgelassene Termine bleiben, wie sie sind.${plan}`, id: cur.id, day: validFrom };
   }
   const id = await addEntry(session, "ritual", next);
-  return { ok: true, message: `„${title}“ angelegt – ab ${dmy(validFrom)} im Kalender (geplant, zählt erst nach Bestätigung).`, id, day: validFrom };
+  return { ok: true, message: `„${title}“ angelegt – ab ${dmy(validFrom)} im Kalender (geplant, zählt erst nach Bestätigung).${plan}`, id, day: validFrom };
 }
 
 export type OccurrenceOp = "stattgefunden" | "ausgefallen" | "auslassen" | "verschieben";
@@ -365,4 +446,26 @@ export async function repairLink(session: Session, key: unknown, fixIndex: unkno
   if (!issue || !fix) return fail("Dieser Widerspruch ist schon behoben oder hat sich geändert – bitte die Liste neu laden.");
   for (const c of fix.changes) await updateEntry(session, c.id, c.kind, { ...c.data, editedAt: new Date().toISOString() }, true);
   return { ok: true, message: `Repariert: ${fix.label}.`, day: issue.day };
+}
+
+// ---- Löschen ----------------------------------------------------------------------------------------------
+
+/**
+ * Löschen – bei Serien nach ausdrücklicher Wahl nur diesen, diesen und alle folgenden oder die ganze Serie.
+ * Ein verknüpfter Vorgang (Kinderzeit + Auszeit) wird als Ganzes gelöscht. Gibt die Anzahl zurück.
+ */
+export async function deleteEntries(session: Session, kind: PrivateKind, id: string, scopeIn: unknown): Promise<number> {
+  const all = await loadEntries<Record<string, unknown>>(session, [kind]);
+  const cur = all.find((e) => e.id === id);
+  if (!cur) return (await deleteEntry(session, id, kind)) ? 1 : 0;
+  const ids = new Set(seriesDeleteIds(all as unknown as SeriesRow[], cur as unknown as SeriesRow, seriesScope(scopeIn)));
+  const linkKind: PrivateKind | null = kind === "kinder" ? "auszeit" : kind === "auszeit" ? "kinder" : null;
+  const linked = linkKind ? await loadEntries<{ linkId?: string }>(session, [linkKind]) : [];
+  let n = 0;
+  for (const x of all.filter((e) => ids.has(e.id))) {
+    const linkId = x.data.linkId;
+    if (linkKind && linkId) for (const l of linked.filter((l) => l.data.linkId === linkId)) await deleteEntry(session, l.id, linkKind);
+    if (await deleteEntry(session, x.id, kind)) n++;
+  }
+  return n;
 }

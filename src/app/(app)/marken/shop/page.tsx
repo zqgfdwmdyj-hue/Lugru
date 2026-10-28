@@ -42,7 +42,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
         {hasKeepa && products.length > 0 && <RefreshButton />}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {brands.map((b) => <Link key={b.id} href={`/marken/shop?marke=${b.id}`} className={`chip${brand.id === b.id ? " active" : ""}`}>{b.name}</Link>)}
+        {brands.map((b) => <Link key={b.id} href={`/marken/shop?marke=${b.id}`} className={`chip${brand.id === b.id ? " active" : ""}`} aria-current={brand.id === b.id ? "true" : undefined}>{b.name}</Link>)}
       </div>
       {!hasKeepa && (
         <div className="notice notice-info small">Für Preise, Rang und Bewertungen der eigenen Produkte unter <Link href="/anbindungen?p=keepa#keepa">Anbindungen → Keepa</Link> den Schlüssel eintragen (oder im eBay-Tool unter Bildquellen).</div>

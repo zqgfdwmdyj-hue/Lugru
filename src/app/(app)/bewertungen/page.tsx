@@ -24,8 +24,8 @@ export default async function BewertungenPage({ searchParams }: { searchParams: 
       <div className="page-head">
         <div><div className="crumb">Service</div><h1>Bewertungen</h1></div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${negative ? " active" : ""}`} href="/bewertungen">Neutral & negativ</Link>
-          <Link className={`chip${!negative ? " active" : ""}`} href="/bewertungen?ansicht=alle">Alle</Link>
+          <Link className={`chip${negative ? " active" : ""}`} aria-current={negative ? "true" : undefined} href="/bewertungen">Neutral & negativ</Link>
+          <Link className={`chip${!negative ? " active" : ""}`} aria-current={!negative ? "true" : undefined} href="/bewertungen?ansicht=alle">Alle</Link>
         </div>
       </div>
       <div className="grid-kpi">

@@ -58,9 +58,9 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
       <ShipmentNotices session={session} />
 
       <nav className="pal-actions" aria-label="Lagerarbeit" data-testid="pal-actions">
-        <Link href="/paletten?aktion=ein#scan" className={`pal-action${mode === "ein" ? " active" : ""}`}><span aria-hidden="true">⬇</span>Einlagern</Link>
+        <Link href="/paletten?aktion=ein#scan" className={`pal-action${mode === "ein" ? " active" : ""}`} aria-current={mode === "ein" ? "true" : undefined}><span aria-hidden="true">⬇</span>Einlagern</Link>
         <Link href="/paletten/abholung" className="pal-action"><span aria-hidden="true">⬆</span>Auslagern / Abholung</Link>
-        <Link href="/paletten?aktion=suchen#scan" className={`pal-action${mode === "suchen" ? " active" : ""}`}><span aria-hidden="true">🔍</span>Palette suchen</Link>
+        <Link href="/paletten?aktion=suchen#scan" className={`pal-action${mode === "suchen" ? " active" : ""}`} aria-current={mode === "suchen" ? "true" : undefined}><span aria-hidden="true">🔍</span>Palette suchen</Link>
         <Link href="/paletten/inventur" className="pal-action"><span aria-hidden="true">☑</span>Inventur</Link>
         <Link href="/paletten/sendungen" className="pal-action"><span aria-hidden="true">🚚</span>Sendungen</Link>
       </nav>

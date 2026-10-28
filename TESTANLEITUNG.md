@@ -303,3 +303,27 @@ docker compose stop app
 docker compose exec -T db pg_restore -U seller -d seller --clean --if-exists < backups/sellersystem-auto-JJJJ-MM-TT_hh-mm-ss.dump
 docker compose start app
 ```
+
+## 9. Testumgebung und automatische Prüfungen
+
+**Testumgebung auf dem Server** – läuft neben dem echten System, mit eigener Datenbank (`seller_test`) und erfundenen
+Daten. Mails werden abgefangen (Einstellungen → Testumgebung), Labels, Amazon-/eBay-Meldungen und Claude nur
+simuliert, alles andere nach außen gesperrt. Oben steht auf jeder Seite ein violettes Band „TESTUMGEBUNG“.
+
+```
+sudo bash /opt/seller-system/deploy/testumgebung.sh an              # einrichten/starten, zeigt Zugang und Passwort
+sudo bash /opt/seller-system/deploy/testumgebung.sh pruefen         # Kurzprüfung: getrennt vom echten System?
+sudo bash /opt/seller-system/deploy/testumgebung.sh zuruecksetzen   # Testdaten frisch
+sudo bash /opt/seller-system/deploy/testumgebung.sh domain test.deine-domain.de   # optional: per https von außen
+sudo bash /opt/seller-system/deploy/testumgebung.sh aus             # anhalten (Daten bleiben), „aus --loeschen“ = weg
+```
+
+Ohne Domain ist sie nur auf dem Server erreichbar (`http://127.0.0.1:3041`), z. B. per SSH-Tunnel:
+`ssh -L 3041:127.0.0.1:3041 root@<Server>` und dann im Browser `http://localhost:3041`.
+Konten: `inhaber`, `lager`, `buero`, `pruefer`, `familie` – alle mit dem Passwort aus der Ausgabe von „an“.
+`update.sh` bringt die Testumgebung automatisch mit auf den neuen Stand.
+
+**Automatische Prüfungen** – laufen bei jedem Update auf GitHub (Actions → „Prüfung“) gegen eine frische
+Test-Datenbank: Typen, 1.270+ Unit-Tests, Build und die Ablaufprüfungen im Browser (Desktop + Handy). Ergebnis als
+Haken/X am Commit; die Übersicht je Reiter (automatisch / live / noch offen) steht in **PRUEFSTAND.md** bzw. in der
+Zusammenfassung des Laufs. Details und wie man eine Prüfung ergänzt: `e2e/README.md`.

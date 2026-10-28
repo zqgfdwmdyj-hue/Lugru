@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { dealResult } from "@/lib/watches/logic";
+import { dealResult, filterDeals } from "@/lib/watches/logic";
 import { asDealLike, listDeals, requireFlip } from "@/lib/watches/service";
 import { saveDealAction } from "../actions";
 import { DealFields } from "../deal-fields";
@@ -16,23 +16,33 @@ const FILTERS = [
 ] as const;
 
 /** Deal-Tagebuch: alle Uhren vom Beobachten bis zum Verkauf, echte und Übungs-Deals. */
-export default async function DealsPage({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
+export default async function DealsPage({ searchParams }: { searchParams: Promise<{ f?: string; uebung?: string }> }) {
   const { session, brandName } = await requireFlip();
   const sp = await searchParams;
   const f = FILTERS.find((x) => x.key === sp.f)?.key ?? "offen";
+  // Übungs-Deals zählen standardmäßig nirgends mit (auch nicht unter „Verworfen“) – nur eingeblendet oder unter „Übung“.
+  const mitUebung = sp.uebung === "1";
   const today = todayIso();
   const all = await listDeals(session.tenantId);
-  const shown = all.filter((d) => (f === "alle" ? true : f === "uebung" ? d.practice : f === "offen" ? !["verkauft", "verworfen"].includes(d.status) : d.status === f));
+  const shown = filterDeals(all, f, mitUebung);
+  const nUebung = all.filter((d) => d.practice).length;
+  const href = (key: string, ue: boolean) => `/marken/uhren/deals?f=${key}${ue ? "&uebung=1" : ""}`;
   return (
     <div className="flip stack" style={{ gap: 16 }}>
       <FlipHead title="Deals" brand={brandName} sub="Vom Beobachten über Ankauf bis zum Verkauf – mit Prüfliste, Rechnung und Lernnotiz." />
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="deal-filters">
         {FILTERS.map((x) => (
-          <Link key={x.key} href={`/marken/uhren/deals?f=${x.key}`} className={`chip${f === x.key ? " active" : ""}`}>
-            {x.label} · {all.filter((d) => (x.key === "alle" ? true : x.key === "uebung" ? d.practice : x.key === "offen" ? !["verkauft", "verworfen"].includes(d.status) : d.status === x.key)).length}
+          <Link key={x.key} href={href(x.key, mitUebung)} className={`chip${f === x.key ? " active" : ""}`} aria-current={f === x.key ? "page" : undefined} data-testid={`deal-filter-${x.key}`}>
+            {x.label} · {filterDeals(all, x.key, mitUebung).length}
           </Link>
         ))}
+        {f !== "uebung" && nUebung > 0 && (
+          <Link href={href(f, !mitUebung)} className={`chip${mitUebung ? " active" : ""}`} aria-pressed={mitUebung} data-testid="deal-uebung-toggle" style={{ marginLeft: "auto" }}>
+            🧪 {mitUebung ? `Übungs-Deals ausblenden` : `Übungs-Deals einblenden (${nUebung})`}
+          </Link>
+        )}
       </div>
+      {mitUebung && f !== "uebung" && <div className="notice notice-info small" data-testid="deal-uebung-hint">Inklusive Übungs-Deals (nur auf dem Papier) – in Kennzahlen zählen sie nie mit.</div>}
 
       {shown.length === 0 ? (
         <p className="small muted">Hier ist noch nichts. Unten einen Deal anlegen – zum Üben reicht eine Anzeige, die dich interessiert.</p>

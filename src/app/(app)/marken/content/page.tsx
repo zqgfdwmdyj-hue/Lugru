@@ -60,12 +60,12 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
         Caption und Hashtags lassen sich mit einem Klick kopieren.
       </p>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <Link href={q({ marke: undefined })} className={`chip${!brand ? " active" : ""}`}>Alle Marken</Link>
-        {brands.map((b) => <Link key={b.id} href={q({ marke: b.id })} className={`chip${brand?.id === b.id ? " active" : ""}`}>{b.name}</Link>)}
+        <Link href={q({ marke: undefined })} className={`chip${!brand ? " active" : ""}`} aria-current={!brand ? "true" : undefined}>Alle Marken</Link>
+        {brands.map((b) => <Link key={b.id} href={q({ marke: b.id })} className={`chip${brand?.id === b.id ? " active" : ""}`} aria-current={brand?.id === b.id ? "true" : undefined}>{b.name}</Link>)}
         <span style={{ width: 12 }} />
-        <Link href={q({ status: undefined, phase: undefined })} className={`chip${!sp.status && !phase ? " active" : ""}`}>Alle offenen</Link>
+        <Link href={q({ status: undefined, phase: undefined })} className={`chip${!sp.status && !phase ? " active" : ""}`} aria-current={!sp.status && !phase ? "true" : undefined}>Alle offenen</Link>
         {PHASES.map((ph) => (
-          <Link key={ph} href={q({ status: undefined, phase: ph })} className={`chip${phase === ph ? " active" : ""}`} data-testid={`content-phase-${ph}`}>{PHASE_LABEL[ph]}{ph !== "veroeffentlichung" || phase === ph ? ` · ${byPhase(ph)}` : ""}</Link>
+          <Link key={ph} href={q({ status: undefined, phase: ph })} className={`chip${phase === ph ? " active" : ""}`} aria-current={phase === ph ? "true" : undefined} data-testid={`content-phase-${ph}`}>{PHASE_LABEL[ph]}{ph !== "veroeffentlichung" || phase === ph ? ` · ${byPhase(ph)}` : ""}</Link>
         ))}
       </div>
       {(overdue > 0 || wishLate > 0) && (
@@ -76,7 +76,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
       )}
       <details className="small"><summary style={{ cursor: "pointer" }}>Nach einzelnem Status filtern</summary>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-          {Object.entries(CONTENT_STATUS_LABEL).map(([k, [l]]) => <Link key={k} href={q({ status: k, phase: undefined })} className={`chip${sp.status === k ? " active" : ""}`}>{l}</Link>)}
+          {Object.entries(CONTENT_STATUS_LABEL).map(([k, [l]]) => <Link key={k} href={q({ status: k, phase: undefined })} className={`chip${sp.status === k ? " active" : ""}`} aria-current={sp.status === k ? "true" : undefined}>{l}</Link>)}
         </div>
       </details>
 

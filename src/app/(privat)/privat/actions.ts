@@ -6,9 +6,9 @@ import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, memberLabels, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
-import { saveTimeEntry as saveTime, TIME_KINDS, type TimeKind } from "@/lib/private/save";
+import { deleteEntries, saveTimeEntry as saveTime, TIME_KINDS, type TimeKind } from "@/lib/private/save";
 import { exportTargetProblem } from "@/lib/private/export-sync";
-import { addEntry, deleteAllPrivate, deleteEntry, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
+import { addEntry, deleteAllPrivate, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
 
 export type FormState = { ok: boolean; message: string } | null;
 const done = (message: string): FormState => {
@@ -310,15 +310,8 @@ export async function deleteEntryAction(fd: FormData) {
   const kind = String(fd.get("kind")) as PrivateKind;
   if (!KINDS.includes(kind)) return;
   const id = uuid.parse(fd.get("id"));
-  // Ein verknüpfter Vorgang (Kinderzeit + Auszeit) wird als Ganzes gelöscht.
-  if (kind === "kinder" || kind === "auszeit") {
-    const linkId = (await loadEntries<{ linkId?: string }>(session, [kind])).find((e) => e.id === id)?.data.linkId;
-    if (linkId) {
-      const pk = kind === "kinder" ? "auszeit" : "kinder";
-      for (const e of (await loadEntries<{ linkId?: string }>(session, [pk])).filter((x) => x.data.linkId === linkId)) await deleteEntry(session, e.id, pk);
-    }
-  }
-  await deleteEntry(session, id, kind);
+  // Ein verknüpfter Vorgang (Kinderzeit + Auszeit) wird als Ganzes gelöscht; Serien nach Wahl („umfang“).
+  await deleteEntries(session, kind, id, fd.get("umfang"));
   revalidatePath("/privat", "layout");
   // Von der Detailseite aus: zurück in den Kalender (der Eintrag ist ja weg).
   const back = String(fd.get("back") ?? "");

@@ -67,3 +67,21 @@ export function Kpi({
     </div>
   );
 }
+
+/**
+ * Herkunft einer Gruppe von Kennzahlen – unter die Kacheln: Zeitraum · Quelle · Stand (und Hinweis, wenn der letzte
+ * Abruf fehlschlug). Die Kacheln stehen dann in einem Element mit `data-kpi-group`.
+ */
+export function KpiMeta({ period, source, stand, fehler, testid = "kpi-meta" }: { period?: string; source: string; stand: string; fehler?: string | null; testid?: string }) {
+  return (
+    <div className="kpi-meta" data-testid={testid}>
+      {period && <>Zeitraum: {period} · </>}Quelle: {source} · Stand: {stand}
+      {fehler && (
+        <span style={{ color: "var(--warn)" }} title={fehler}>
+          {" "}
+          · letzter Abruf fehlgeschlagen
+        </span>
+      )}
+    </div>
+  );
+}

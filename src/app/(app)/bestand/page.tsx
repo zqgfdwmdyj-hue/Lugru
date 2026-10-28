@@ -9,7 +9,7 @@ import { CHANNEL_LABEL } from "@/lib/labels";
 import { availableOf } from "@/lib/stock/channel-logic";
 import { listingsBySku, stockLevels } from "@/lib/stock/channel-sync";
 import { createCount, setOwnStock } from "./actions";
-import { Kpi } from "@/components/kpi";
+import { Kpi, KpiMeta } from "@/components/kpi";
 import { skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, stockValue } from "@/lib/money/profit-logic";
 import { fbaReport } from "@/lib/stock/fba-report";
@@ -118,6 +118,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
         <div><div className="crumb">WaWi</div><h1>Bestand & Inventur</h1></div>
         <form action="/bestand" style={{ width: 340 }}><input type="hidden" name="ansicht" value={view} /><label htmlFor="bq" className="sr-only">Suche</label><input className="input" id="bq" name="q" defaultValue={sp.q} placeholder="SKU, ASIN, Titel" /></form>
       </div>
+      <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi">
         <Kpi
           testid="kpi-stock-value"
@@ -152,8 +153,10 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
         </div>
         <div className="card card-pad"><div className="kpi-label">Ladenhüter</div><div className="kpi-value">{res.rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore)).length}</div><div className="small muted">ohne Verkauf seit {settings.aging.noSaleWarnDays} Tagen</div></div>
       </div>
+      <KpiMeta source={`Bei Amazon: ${fr.source === "sellerboard" ? "sellerboard" : "FBA-Bestandsbericht"}; eigenes Lager und EK im Seller-System`} stand={inv?.snap ? `Amazon ${formatDate(inv.snap)}${fr.stale ? " – veraltet" : ""} · eigenes Lager aktuell` : "Amazon unbekannt (Bericht fehlt) · eigenes Lager aktuell"} />
+      </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/bestand?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+        {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/bestand?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
       </div>
       {truncated && <div className="notice notice-warn small" data-testid="stock-truncated">Mehr als {ROW_LIMIT.toLocaleString("de-DE")} SKUs mit Bestand – die Liste zeigt die ersten. Für einzelne Artikel oben suchen. Die Kennzahlen zählen trotzdem alles.</div>}
       <div className="row">

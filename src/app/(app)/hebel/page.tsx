@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { KpiMeta } from "@/components/kpi";
 import { requireArea } from "@/lib/auth/session";
 import { loadHebel } from "@/lib/hebel/service";
 import { DEFAULT_THRESHOLDS, HEBEL_INFO, type Hebel, type HebelType } from "@/lib/hebel/rules";
@@ -125,16 +126,19 @@ export default async function HebelPage({ searchParams }: { searchParams: Promis
         </div>
       ) : (
         <>
+          <div className="stack" style={{ gap: 6 }} data-kpi-group>
           <div className="hebel-totals" data-testid="hebel-totals">
-            <div><span className="small muted">Je Monat (Deckungsbeitrag + Ersparnis)</span><strong>{eur0(data.totals.impact)}</strong></div>
+            <div><span className="small muted">Je Monat, geschätzt (Deckungsbeitrag + Ersparnis)</span><strong>≈ {eur0(data.totals.impact)}</strong></div>
             <div><span className="small muted">davon zusätzlicher Deckungsbeitrag</span><strong>{eur0(data.totals.contribution)}</strong></div>
             <div><span className="small muted">davon Kostenersparnis</span><strong>{eur0(data.totals.saving)}</strong></div>
             <div><span className="small muted">Gebundenes Kapital (einmalig)</span><strong data-testid="hebel-total-capital">{eur0(data.totals.capital)}</strong></div>
           </div>
+          <KpiMeta period={period ?? "noch keine Produktwerte"} source="sellerboard je Produkt, Amazon-Bestand, EK im Seller-System, Keepa (Buy Box)" stand={data.syncedAt ? data.syncedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "noch kein Abgleich"} fehler={data.statsError} />
+          </div>
           <div className="hebel-summary" data-testid="hebel-summary">
-            <Link href="/hebel" className={`chip${typ ? "" : " active"}`}>Alle · {data.list.length}</Link>
+            <Link href="/hebel" className={`chip${typ ? "" : " active"}`} aria-current={!(typ) ? "true" : undefined}>Alle · {data.list.length}</Link>
             {chips.map((s) => (
-              <Link key={s.type} href={`/hebel?typ=${s.type}`} className={`chip${typ === s.type ? " active" : ""}`} data-testid={`hebel-chip-${s.type}`}>
+              <Link key={s.type} href={`/hebel?typ=${s.type}`} className={`chip${typ === s.type ? " active" : ""}`} aria-current={typ === s.type ? "true" : undefined} data-testid={`hebel-chip-${s.type}`}>
                 {HEBEL_INFO[s.type].label} · {s.count}
                 {s.impact > 0 ? ` · ${eur0(s.impact)}/Monat` : ""}
                 {s.capital > 0 ? ` · ${eur0(s.capital)} Kapital` : ""}

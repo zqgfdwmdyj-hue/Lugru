@@ -14,6 +14,7 @@ import { appVersion } from "@/lib/version";
 import { canAccess } from "@/lib/auth/areas";
 import { unreadNotices } from "@/lib/pallets/shipment-service";
 import { AssistantBar } from "@/components/assistant-bar";
+import { TestBanner } from "@/components/test-banner";
 import { assistantAvailable } from "@/lib/assistant/chat";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -36,6 +37,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const favorites = prefs.favorites ?? [];
 
   return (
+    <>
+    <TestBanner />
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
@@ -71,5 +74,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {children}
       </main>
     </div>
+    </>
   );
 }

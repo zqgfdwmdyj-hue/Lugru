@@ -211,3 +211,20 @@ export function parseCosts(text: string): { items: { label: string; amount: numb
 }
 
 export const costsText = (costs: { label: string; amount: number }[]) => costs.map((c) => `${c.label}: ${String(c.amount).replace(".", ",")}`).join("\n");
+
+export const DEAL_FILTERS = ["offen", "verkauft", "verworfen", "uebung", "alle"] as const;
+export type DealFilter = (typeof DEAL_FILTERS)[number];
+
+/**
+ * Deals für Listen, Zähler und Kennzahlen: Übungs-Deals (nur auf dem Papier) zählen nirgends mit – außer sie werden
+ * ausdrücklich eingeblendet (`mitUebung`) oder der Filter „Übung“ ist gewählt.
+ */
+export function filterDeals<T extends { status: string; practice: boolean }>(deals: T[], f: DealFilter, mitUebung = false): T[] {
+  return deals.filter((d) => {
+    if (f === "uebung") return d.practice;
+    if (d.practice && !mitUebung) return false;
+    if (f === "alle") return true;
+    if (f === "offen") return d.status !== "verkauft" && d.status !== "verworfen";
+    return d.status === f;
+  });
+}

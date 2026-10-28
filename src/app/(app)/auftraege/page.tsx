@@ -123,7 +123,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
       </div>
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={link(v)} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+          {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={link(v)} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
           {sp.kanal && <Link href={`/auftraege?ansicht=${view}`} className="chip">Kanal: {CHANNEL_LABEL[sp.kanal as keyof typeof CHANNEL_LABEL] ?? sp.kanal} ×</Link>}
         </div>
         {view === "label" && orders.length > 0 && (

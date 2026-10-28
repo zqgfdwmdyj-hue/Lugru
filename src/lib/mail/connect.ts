@@ -2,6 +2,7 @@ import "server-only";
 import { resolveMx } from "node:dns/promises";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
+import { assertOutbound } from "@/lib/testenv";
 import { domainOf, explainMailError, parseAutoconfig, presetForDomain, presetForMx, type ServerSettings } from "./servers";
 
 // IMAP/SMTP mit Passwort bzw. App-Passwort: Einstellungen ermitteln, prüfen, abrufen, senden.
@@ -42,6 +43,7 @@ export async function detectServers(address: string): Promise<ServerSettings | n
 export type Account = ServerSettings & { address: string; password: string };
 
 function imap(a: Account) {
+  assertOutbound(a.imapHost);
   return new ImapFlow({
     host: a.imapHost,
     port: a.imapPort,
@@ -56,6 +58,7 @@ function imap(a: Account) {
 }
 
 function smtp(a: Account) {
+  assertOutbound(a.smtpHost);
   return nodemailer.createTransport({
     host: a.smtpHost,
     port: a.smtpPort,

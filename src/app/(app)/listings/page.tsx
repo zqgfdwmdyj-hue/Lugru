@@ -47,8 +47,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
         danach gehen alle anderen Kanäle sofort herunter. Kanäle ohne Schnittstelle (TikTok …) bekommen eine Aufgabe mit der Zielmenge.
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <Link href="/listings" className={`chip${!sp.kanal ? " active" : ""}`}>Alle</Link>
-        {CHANNELS.filter((c) => c !== "manual").map((c) => <Link key={c} href={`/listings?kanal=${c}`} className={`chip${sp.kanal === c ? " active" : ""}`}>{CHANNEL_LABEL[c]}</Link>)}
+        <Link href="/listings" className={`chip${!sp.kanal ? " active" : ""}`} aria-current={!sp.kanal ? "true" : undefined}>Alle</Link>
+        {CHANNELS.filter((c) => c !== "manual").map((c) => <Link key={c} href={`/listings?kanal=${c}`} className={`chip${sp.kanal === c ? " active" : ""}`} aria-current={sp.kanal === c ? "true" : undefined}>{CHANNEL_LABEL[c]}</Link>)}
       </div>
       <div className="stack">
         <section className="card" style={{ minWidth: 0, overflow: "auto" }}>

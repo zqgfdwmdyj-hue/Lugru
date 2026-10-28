@@ -2,11 +2,14 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { safeNext } from "@/lib/auth/next-path";
 import { LoginForm } from "./login-form";
+import { TestBanner } from "@/components/test-banner";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ weiter?: string }> }) {
   const next = safeNext((await searchParams).weiter);
   if (await getSession()) redirect(next ?? "/");
   return (
+    <>
+    <TestBanner />
     <main style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
       <div className="card card-pad" style={{ width: 380, padding: 28 }}>
         <div className="brand" style={{ padding: "0 0 18px" }}>
@@ -19,5 +22,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <LoginForm next={next} />
       </div>
     </main>
+    </>
   );
 }

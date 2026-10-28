@@ -89,18 +89,18 @@ export default async function WissenPage({
 
       <div className="kb">
         <aside className="card" style={{ padding: "14px 10px" }}>
-          <Link className={`kb-cat${!kat ? " active" : ""}`} href={catLink()}>
+          <Link className={`kb-cat${!kat ? " active" : ""}`} aria-current={!kat ? "true" : undefined} href={catLink()}>
             <span>Alle</span><span className="num muted">{total}</span>
           </Link>
           <div className="kb-head">Bereiche</div>
           {KNOWLEDGE_CATEGORIES.map((c) => (
-            <Link key={c} className={`kb-cat${kat === c ? " active" : ""}`} href={catLink(c)}>
+            <Link key={c} className={`kb-cat${kat === c ? " active" : ""}`} aria-current={kat === c ? "true" : undefined} href={catLink(c)}>
               <span>{c}</span><span className="num muted">{countOf.get(c) ?? 0}</span>
             </Link>
           ))}
           <div className="kb-head">Textbausteine</div>
           {SNIPPET_CATEGORIES.map((c) => (
-            <Link key={c} className={`kb-cat${kat === c ? " active" : ""}`} href={catLink(c)}>
+            <Link key={c} className={`kb-cat${kat === c ? " active" : ""}`} aria-current={kat === c ? "true" : undefined} href={catLink(c)}>
               <span>{c}</span><span className="num muted">{countOf.get(c) ?? 0}</span>
             </Link>
           ))}
@@ -113,7 +113,7 @@ export default async function WissenPage({
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 20px 8px" }} data-testid="wissen-areas">
             {AREAS.map((a) => (
-              <Link key={a} className={`chip${bereich === a ? " active" : ""}`} href={catLink(a === "recherche" ? undefined : kat, a)} data-testid={`wissen-area-${a}`}>{AREA_LABEL[a]} · {areaCount[a]}</Link>
+              <Link key={a} className={`chip${bereich === a ? " active" : ""}`} aria-current={bereich === a ? "true" : undefined} href={catLink(a === "recherche" ? undefined : kat, a)} data-testid={`wissen-area-${a}`}>{AREA_LABEL[a]} · {areaCount[a]}</Link>
             ))}
           </div>
           {bereich === "recherche" && (

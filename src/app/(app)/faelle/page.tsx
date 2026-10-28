@@ -26,8 +26,8 @@ export default async function FaellePage({ searchParams }: { searchParams: Promi
       <div className="page-head">
         <div><div className="crumb">Service</div><h1>Fälle & A-bis-Z</h1></div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${open ? " active" : ""}`} href="/faelle">Offen</Link>
-          <Link className={`chip${!open ? " active" : ""}`} href="/faelle?ansicht=erledigt">Erledigt</Link>
+          <Link className={`chip${open ? " active" : ""}`} aria-current={open ? "true" : undefined} href="/faelle">Offen</Link>
+          <Link className={`chip${!open ? " active" : ""}`} aria-current={!open ? "true" : undefined} href="/faelle?ansicht=erledigt">Erledigt</Link>
         </div>
       </div>
       <div className="row">

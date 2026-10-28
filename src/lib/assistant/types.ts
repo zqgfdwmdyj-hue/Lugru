@@ -35,6 +35,12 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
   privat?: boolean;
   input: S;
   run: (ctx: ToolCtx, input: z.infer<S>) => Promise<ToolOut | string>;
+  /**
+   * Woher kommen die Daten (lesende Werkzeuge)? `jobs` = Namen der Hintergrund-Abrufe (Einstellungen → Abrufe),
+   * deren letzter Erfolg als Datenstand angegeben wird; „sellerboard:*“ = alle sellerboard-Abrufe. Ohne Angabe:
+   * im Seller-System erfasst, immer aktuell.
+   */
+  quelle?: { text: string; jobs?: string[] };
   /** Zusammenfassung für Bestätigung und Protokoll, z. B. „Termin 30.10. → 01.11.“. */
   summary?: (input: z.infer<S>) => string;
 };

@@ -839,6 +839,12 @@ h2 { font-size: 16px; margin: 0; }
 .pk-list > li:last-child { border-bottom: 0; }
 .pk-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: start; }
 .pk-row-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+/* Wiederholen: „bis“ nur, wenn eine Wiederholung gewählt ist */
+.pk-repeat:has(input[name="wiederholung"][value=""]:checked) .pk-repeat-bis { display: none; }
+.pk-rep { font-size: 0.9em; margin-left: 2px; }
+/* Abendritual: Tabelle bzw. Abfolge je nach gewähltem Ablauf */
+.ritual-form:has(input[name="modus"][value="abfolge"]:checked) .nur-woche,
+.ritual-form:has(input[name="modus"][value="woche"]:checked) .nur-abfolge { display: none; }
 .pk-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .pk-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .pk-legend i { width: 18px; height: 11px; border-radius: 3px; border: 1.5px solid color-mix(in srgb, var(--c, var(--area)) 45%, var(--surface)); background: color-mix(in srgb, var(--c, var(--area)) 18%, var(--surface)); display: inline-block; }
@@ -1056,3 +1062,7 @@ h2 { font-size: 16px; margin: 0; }
   .asst-panel { top: 0; right: 0; bottom: 0; left: 0; width: auto; border-radius: 0; border: 0; }
   .asst-bar-input { font-size: 16px; }
 }
+
+/* Testumgebung: eigene Farbe (violett), nicht mit Status- oder Bereichsfarben zu verwechseln. */
+.test-banner { position: sticky; top: 0; z-index: 60; background: repeating-linear-gradient(135deg, #4c1d95 0 18px, #5b21b6 18px 36px); color: #fff; font-size: 13px; line-height: 1.35; padding: 6px 12px; text-align: center; }
+.test-banner strong { letter-spacing: 0.04em; }

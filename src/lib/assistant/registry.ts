@@ -10,6 +10,10 @@ import { BUERO } from "./tools/buero";
 import { PALETTEN } from "./tools/paletten";
 import { PRIVAT } from "./tools/privat";
 import { WAWI } from "./tools/wawi";
+import { berlinDateTime } from "./tools/common";
+import { jobStand } from "@/lib/today/jobs";
+import { withStand, type Datenstand } from "./stand";
+export { withStand };
 
 // Alle Werkzeuge an einer Stelle: wer darf was (Bereich, Inhaber, Privat, Ändern), Eingabe prüfen,
 // ausführen und protokollieren. Claude-Konnektor und Fragefeld rufen nur hierüber auf.
@@ -52,9 +56,20 @@ export async function runTool(ctx: ToolCtx, name: string, raw: unknown): Promise
     console.error(`[Assistent] ${tool.name}:`, e);
     out = { text: `Fehler bei „${tool.title}“: ${e instanceof Error ? e.message : String(e)}`, isError: true };
   }
+  // Lesende Ergebnisse immer mit Quelle und Datenstand – damit Antworten sagen können, wie aktuell die Zahlen sind.
+  if (!tool.write && !out.isError) out = { ...out, text: withStand(out.text, await datenstand(ctx.session.tenantId, tool).catch(() => null)) };
   if (out.text.length > MAX_TEXT) out = { ...out, text: `${out.text.slice(0, MAX_TEXT)} … (gekürzt – bitte genauer eingrenzen)` };
   await logUse(ctx, tool, input, out).catch((e) => console.error("[Assistent] Protokoll:", e));
   return out;
+}
+
+/** Quelle und Stand der Daten eines Werkzeugs: letzter erfolgreicher Hintergrund-Abruf (job_runs) oder „aktuell“. */
+export async function datenstand(tenantId: string, tool: Pick<ToolDef, "quelle">): Promise<Datenstand> {
+  const q = tool.quelle ?? { text: "im Seller-System erfasst" };
+  const abgerufen = berlinDateTime(new Date()) ?? "";
+  if (!q.jobs?.length) return { quelle: q.text, stand: "aktuell (direkt aus dem Seller-System)", abgerufen };
+  const st = await jobStand(tenantId, q.jobs);
+  return { quelle: q.text, stand: st.text === "noch kein Abruf" ? "noch kein Abruf – Anbindung prüfen (Anbindungen)" : st.text, abgerufen, letzter_fehler: st.fehler ?? undefined };
 }
 
 /**

@@ -1,0 +1,48 @@
+# Testumgebung neben dem echten System – einrichten mit:  sudo bash /opt/seller-system/deploy/testumgebung.sh an
+#
+# Eigene Datenbank (seller_test im selben Postgres), eigener Schlüssel, erfundene Daten. Mails werden abgefangen,
+# Verbindungen ins Internet gesperrt; Post, DHL, Amazon, eBay, Claude … laufen gegen die Testdienste, die Schreib-
+# aktionen nur simulieren. Erreichbar nur auf diesem Server (127.0.0.1:TEST_PORT) – oder über eine eigene
+# Subdomain (testumgebung.sh domain test.deine-domain.de).
+services:
+  app:
+    # gleiches Programm für echtes System und Testumgebung (nur einmal bauen)
+    image: seller-system-app
+  app-test:
+    image: seller-system-app
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      testdienste:
+        condition: service_started
+    ports:
+      - "127.0.0.1:${TEST_PORT:-3041}:3000"
+    environment:
+      DATABASE_URL: postgres://seller:seller@db:5432/seller_test
+      APP_SECRET: ${TEST_APP_SECRET:?TEST_APP_SECRET fehlt – bitte deploy/testumgebung.sh an}
+      APP_URL: ${TEST_URL:-http://127.0.0.1:3041}
+      TESTUMGEBUNG: "1"
+      ENABLE_SCHEDULER: "0"
+      TEST_ERLAUBT: ${TEST_ERLAUBT:-}
+      TESTDIENSTE_URL: http://testdienste:4010
+      ANTHROPIC_BASE_URL: http://testdienste:4010/anthropic
+      INTERNETMARKE_BASE_URL: http://testdienste:4010/im
+      DHL_API_BASE_URL: http://testdienste:4010/dhl
+      DHL_TRACKING_BASE_URL: http://testdienste:4010/dhl-track
+      AMAZON_SP_BASE_URL: http://testdienste:4010/amazon
+      AMAZON_LWA_URL: http://testdienste:4010/amazon-lwa
+      EBAY_API_BASE_URL: http://testdienste:4010/ebay
+      EBAY_MEDIA_URL: http://testdienste:4010/ebay/media
+      EBAY_GRAPHQL_URL: http://testdienste:4010/ebay/graphql
+      TEMU_BASE_URL: http://testdienste:4010/temu
+      KEEPA_BASE_URL: http://testdienste:4010/keepa
+      ECB_RATES_URL: http://testdienste:4010/ecb
+  testdienste:
+    image: seller-system-app
+    pull_policy: never
+    restart: unless-stopped
+    command: ["node", "scripts/testdienste.mjs"]
+    environment:
+      TESTDIENSTE_URL: http://testdienste:4010

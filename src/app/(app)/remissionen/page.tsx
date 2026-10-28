@@ -81,8 +81,8 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
       <div className="page-head">
         <div><div className="crumb">Amazon FBA</div><h1>Remissionen</h1></div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${view === "offen" ? " active" : ""}`} href="/remissionen">Eingang offen</Link>
-          <Link className={`chip${view === "alle" ? " active" : ""}`} href="/remissionen?ansicht=alle">Alle Aufträge</Link>
+          <Link className={`chip${view === "offen" ? " active" : ""}`} aria-current={view === "offen" ? "true" : undefined} href="/remissionen">Eingang offen</Link>
+          <Link className={`chip${view === "alle" ? " active" : ""}`} aria-current={view === "alle" ? "true" : undefined} href="/remissionen?ansicht=alle">Alle Aufträge</Link>
           <Link className="btn btn-primary btn-small" href="/remissionen/erfassen">Tendron-Pakete aus Seller Central holen</Link>
         </div>
       </div>

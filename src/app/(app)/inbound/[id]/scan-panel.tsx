@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { scanAction, type ScanState } from "../actions";
+import { useKeepForm } from "@/components/keep-form";
 
 function beep(ok: boolean) {
   try {
@@ -20,7 +21,11 @@ function beep(ok: boolean) {
 
 export function ScanPanel({ shipmentId, boxes, disabled }: { shipmentId: string; boxes: { id: string; number: number }[]; disabled: boolean }) {
   const [state, action, pending] = useActionState<ScanState, FormData>(scanAction, null);
+  // Nicht das ganze Formular zurücksetzen: sonst springt die Karton-Anzeige auf Karton 1, während weiter in den
+  // gewählten Karton gebucht wird. Nach jedem Scan nur Scanfeld leeren und Menge auf 1.
+  const keep = useKeepForm(state, action);
   const input = useRef<HTMLInputElement>(null);
+  const qty = useRef<HTMLInputElement>(null);
   const [boxId, setBoxId] = useState<string>(boxes.at(-1)?.id ?? "");
   const [autoPrint, setAutoPrint] = useState(false);
   const [printSrc, setPrintSrc] = useState<string | null>(null);
@@ -38,6 +43,13 @@ export function ScanPanel({ shipmentId, boxes, disabled }: { shipmentId: string;
   useEffect(() => {
     if (!boxes.some((b) => b.id === boxId) && boxes.length) setBoxId(boxes.at(-1)!.id);
   }, [boxes, boxId]);
+
+  // Nach jeder Antwort (auch bei Fehler): Scanfeld leer, Menge 1 – bereit für den nächsten Scan.
+  useEffect(() => {
+    if (!state) return;
+    if (input.current) input.current.value = "";
+    if (qty.current) qty.current.value = "1";
+  }, [state]);
 
   useEffect(() => {
     if (!state) return;
@@ -64,14 +76,14 @@ export function ScanPanel({ shipmentId, boxes, disabled }: { shipmentId: string;
 
   return (
     <div className="card" style={{ padding: "18px 20px", borderWidth: 2, borderColor: "var(--accent)" }}>
-      <form action={action} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="inbound-scan">
         {hidden}
         <div className="between" style={{ flexWrap: "wrap" }}>
           <label htmlFor="code" style={{ fontSize: 13, fontWeight: 600, color: "var(--accent)" }}>Scannen: FNSKU, EAN, SKU oder ASIN · Menge davor möglich, z. B. „6*X001…“</label>
           <div style={{ display: "flex", gap: 14, alignItems: "center", fontSize: 13 }}>
             <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
               Karton
-              <select className="select" style={{ width: 90, padding: "4px 8px" }} value={boxId} onChange={(e) => { setBoxId(e.target.value); try { localStorage.setItem(`inbound.box.${shipmentId}`, e.target.value); } catch {} input.current?.focus(); }}>
+              <select className="select" style={{ width: 90, padding: "4px 8px" }} value={boxId} data-testid="inbound-box" onChange={(e) => { setBoxId(e.target.value); try { localStorage.setItem(`inbound.box.${shipmentId}`, e.target.value); } catch {} input.current?.focus(); }}>
                 {boxes.map((b) => <option key={b.id} value={b.id}>{b.number}</option>)}
               </select>
             </label>
@@ -83,7 +95,7 @@ export function ScanPanel({ shipmentId, boxes, disabled }: { shipmentId: string;
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <label htmlFor="qty" className="sr-only">Menge</label>
-          <input id="qty" name="quantity" defaultValue="1" inputMode="numeric" className="input" style={{ width: 80, fontSize: 22, fontFamily: "var(--mono)", textAlign: "center" }} disabled={disabled} />
+          <input ref={qty} id="qty" name="quantity" defaultValue="1" inputMode="numeric" className="input" style={{ width: 80, fontSize: 22, fontFamily: "var(--mono)", textAlign: "center" }} disabled={disabled} />
           <input
             ref={input}
             id="code"

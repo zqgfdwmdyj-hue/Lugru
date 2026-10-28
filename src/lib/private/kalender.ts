@@ -2,7 +2,7 @@
 // Ausschlafen, Paarzeit, Nähe, Streicheln/Massage (auch aus dem Abendritual), Periode und die verbundenen
 // Familienkalender. Reine Logik ohne Datenbank, damit testbar.
 
-import { addDays, statusOf, weekStart, type AppointmentEntry, type DateEntry, type EntryStatus, type IntimEntry, type KidsEntry, type KidsPerson, type PartnerKey, type SleepEntry } from "./logic";
+import { addDays, daysBetween, statusOf, weekStart, type AppointmentEntry, type DateEntry, type EntryStatus, type IntimEntry, type KidsEntry, type KidsPerson, type PartnerKey, type SleepEntry } from "./logic";
 
 const other = (p: PartnerKey): PartnerKey => (p === "a" ? "b" : "a");
 
@@ -43,8 +43,14 @@ export type TouchEntry = { day: string; kind: TouchKind; giver: PartnerKey; rece
 
 /** Ein fester Platz im Wochenablauf: Wochentag (1 = Montag … 7 = Sonntag), Art, wer gibt, wer empfängt. */
 export type RitualSlot = { weekday: number; kind: TouchKind; giver: PartnerKey; receiver: PartnerKey; time?: string };
-/** „Unser Abendritual“: Wochenvorlage; nach `strokesPerMassage` bestätigten Streicheleinheiten eine Massage. */
-export type RitualEntry = { title: string; slots: RitualSlot[]; from: string; until?: string; strokesPerMassage: number; active: boolean };
+/**
+ * „Unser Abendritual“. Zwei Arten:
+ * - `woche` (Standard): feste Wochentage für Streicheln und Massage (Tabelle);
+ * - `abfolge`: an den gewählten Abenden der Reihe nach `strokesPerMassage`× Streicheln, dann eine Massage
+ *   („zweimal Streicheln, danach Massage“). `offset` = schon erledigte Streicheleinheiten beim Start, damit
+ *   eine neue Fassung beim tatsächlichen Stand weitermacht. Dazu stehen je Abend beide Plätze in `slots`.
+ */
+export type RitualEntry = { title: string; slots: RitualSlot[]; from: string; until?: string; strokesPerMassage: number; active: boolean; mode?: "woche" | "abfolge"; offset?: number };
 
 export const WEEKDAY_SHORT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 export const isoWeekday = (day: string) => ((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
@@ -72,6 +78,23 @@ export function ritualOccurrences(seriesId: string, r: RitualEntry, from: string
   const out: { key: string; day: string; slot: RitualSlot }[] = [];
   const start = from > r.from ? from : r.from;
   const end = r.until && r.until < to ? r.until : to;
+  if (r.mode === "abfolge") {
+    // Der wievielte Abend seit Beginn? Daraus folgt Streicheln oder Massage – unabhängig vom Ausschnitt.
+    const evenings = new Set(r.slots.map((s) => s.weekday));
+    const cycle = Math.max(1, r.strokesPerMassage) + 1;
+    let index = eveningsBetween(r.from, start, evenings) + Math.max(0, Math.min(r.offset ?? 0, cycle - 1));
+    for (let d = start; d <= end; d = addDays(d, 1)) {
+      const wd = isoWeekday(d);
+      if (!evenings.has(wd)) continue;
+      const kind: TouchKind = index % cycle === cycle - 1 ? "massage" : "streicheln";
+      index++;
+      const slot = r.slots.find((s) => s.weekday === wd && s.kind === kind);
+      if (!slot) continue;
+      const key = occurrenceKey(seriesId, d, slot);
+      if (!handled.has(key)) out.push({ key, day: d, slot });
+    }
+    return out;
+  }
   for (let d = start; d <= end; d = addDays(d, 1)) {
     const wd = isoWeekday(d);
     for (const slot of r.slots.filter((s) => s.weekday === wd)) {
@@ -80,6 +103,15 @@ export function ritualOccurrences(seriesId: string, r: RitualEntry, from: string
     }
   }
   return out;
+}
+
+/** Anzahl der Ritual-Abende von `from` (einschließlich) bis `to` (ausschließlich). */
+function eveningsBetween(from: string, to: string, evenings: Set<number>) {
+  if (to <= from) return 0;
+  const weeks = Math.floor(daysBetween(from, to) / 7);
+  let n = weeks * evenings.size;
+  for (let d = addDays(from, weeks * 7); d < to; d = addDays(d, 1)) if (evenings.has(isoWeekday(d))) n++;
+  return n;
 }
 
 /**
@@ -144,6 +176,9 @@ export type CalItem = {
   abbr?: string;
   /** Aus einem Familienkalender-Termin übernommen (Name des Kalenders). */
   fromCalendar?: string;
+  /** Teil einer Serie (Wiederholung); `exception` = dieser Termin wurde einzeln geändert. */
+  repeat?: boolean;
+  exception?: boolean;
 };
 
 type Row<T> = { id: string; data: T };
@@ -176,6 +211,7 @@ export type CalendarInput = {
 
 const edit = (id: string) => `/privat/eintrag/${id}`;
 const span = (e: { from?: string; to?: string }) => ({ ...(e.from ? { from: e.from } : {}), ...(e.to ? { to: e.to } : {}) });
+const rep = (e: { repeatId?: string; exception?: boolean }) => (e.repeatId ? { repeat: true, ...(e.exception ? { exception: true } : {}) } : {});
 
 /** Alle Einträge zwischen `from` und `to` (Tage), eine Liste ohne Duplikate. */
 export function buildCalendarItems(input: CalendarInput, from: string, to: string): CalItem[] {
@@ -198,7 +234,7 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
     if (!inRange(e.day)) continue;
     const base = e.title?.trim() || (e.with === "ads" ? input.therapists?.ads : e.with === "paar" ? input.therapists?.paar : e.with === "arzt" ? "Arzttermin" : e.with === "familie" ? "Familientermin" : "Privater Termin") || "Termin";
     const people: PartnerKey[] = e.person === "a" ? ["a"] : e.person === "b" ? ["b"] : ["a", "b"];
-    out.push({ key: `termin:${t.id}`, kind: "termin", id: t.id, day: e.day, ...(e.time ? { from: e.time } : {}), ...(e.to ? { to: e.to } : {}), title: base, people, status: statusOf(e), href: edit(t.id), note: e.notes, ...origin(e) });
+    out.push({ key: `termin:${t.id}`, kind: "termin", id: t.id, day: e.day, ...(e.time ? { from: e.time } : {}), ...(e.to ? { to: e.to } : {}), title: base, people, status: statusOf(e), href: edit(t.id), note: e.notes, ...origin(e), ...rep(e) });
   }
 
   // Auszeit mit verknüpfter Kinderzeit (ein Vorgang): ein Kalendereintrag für beide Personen.
@@ -221,22 +257,23 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
       href: edit(a.id),
       note: e.note,
       ...origin(e),
+      ...rep(e),
     });
   }
   for (const k of input.kinder ?? []) {
     const e = k.data;
     if (!inRange(e.day) || usedKids.has(k.id)) continue;
-    out.push({ key: `kinder:${k.id}`, kind: "kinder", id: k.id, day: e.day, ...span(e), title: `Kinderzeit ${e.person === "beide" ? "zusammen" : n[e.person]}${e.what ? ` · ${e.what}` : ""}`, people: whom(e.person), status: statusOf(e), href: edit(k.id), ...origin(e) });
+    out.push({ key: `kinder:${k.id}`, kind: "kinder", id: k.id, day: e.day, ...span(e), title: `Kinderzeit ${e.person === "beide" ? "zusammen" : n[e.person]}${e.what ? ` · ${e.what}` : ""}`, people: whom(e.person), status: statusOf(e), href: edit(k.id), ...origin(e), ...rep(e) });
   }
   for (const s of input.ausschlafen ?? []) {
     const e = s.data;
     if (!inRange(e.day)) continue;
-    out.push({ key: `ausschlafen:${s.id}`, kind: "ausschlafen", id: s.id, day: e.day, ...span(e), title: `Ausschlafen ${n[e.person]}`, people: [e.person], status: statusOf(e), href: edit(s.id), note: e.note, ...origin(e) });
+    out.push({ key: `ausschlafen:${s.id}`, kind: "ausschlafen", id: s.id, day: e.day, ...span(e), title: `Ausschlafen ${n[e.person]}`, people: [e.person], status: statusOf(e), href: edit(s.id), note: e.note, ...origin(e), ...rep(e) });
   }
   for (const p of input.paarzeit ?? []) {
     const e = p.data;
     if (!inRange(e.day)) continue;
-    out.push({ key: `paarzeit:${p.id}`, kind: "paarzeit", id: p.id, day: e.day, ...span(e), title: `Paarzeit${e.what ? ` · ${e.what}` : ""}`, people: ["a", "b"], status: statusOf(e), href: edit(p.id), note: e.note, ...origin(e) });
+    out.push({ key: `paarzeit:${p.id}`, kind: "paarzeit", id: p.id, day: e.day, ...span(e), title: `Paarzeit${e.what ? ` · ${e.what}` : ""}`, people: ["a", "b"], status: statusOf(e), href: edit(p.id), note: e.note, ...origin(e), ...rep(e) });
   }
   for (const x of input.naehe ?? []) {
     const e = x.data;

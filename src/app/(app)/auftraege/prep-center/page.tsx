@@ -7,6 +7,8 @@ import { getSettings } from "@/lib/settings";
 import { parseMonthParam, prepSummary, type PrepRow } from "@/lib/shipping/prep";
 import { prepMonthRows, unassignedMonthRows } from "@/lib/shipping/prep-service";
 import { assignShipperAction } from "./actions";
+import { KpiMeta } from "@/components/kpi";
+import { jobStand } from "@/lib/today/jobs";
 
 // Monatsübersicht: was hat das Prep Center für mich verschickt (Sendungen, Stück, Versandarten) – zum Abgleich mit
 // seiner Rechnung. Die Labels kommen aus dem System; festgehalten wird je Auftrag, wer verschickt hat.
@@ -14,7 +16,7 @@ export default async function PrepCenterPage({ searchParams }: { searchParams: P
   const session = await requireArea("wawi");
   const sp = await searchParams;
   const month = parseMonthParam(sp.monat, todayIso());
-  const [settings, rows, open] = await Promise.all([getSettings(session.tenantId), prepMonthRows(session.tenantId, month), unassignedMonthRows(session.tenantId, month)]);
+  const [settings, rows, open, stand] = await Promise.all([getSettings(session.tenantId), prepMonthRows(session.tenantId, month), unassignedMonthRows(session.tenantId, month), jobStand(session.tenantId, ["Amazon-Bestellungen", "eBay-Bestellungen", "Temu-Bestellungen"])]);
   const name = settings.prep.name || "Prep Center";
   const sum = prepSummary(rows, settings.prep);
   const table = (list: PrepRow[], assign: boolean) => (
@@ -55,11 +57,19 @@ export default async function PrepCenterPage({ searchParams }: { searchParams: P
         </div>
       </div>
 
+      <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi" data-testid="prep-kpis">
         <div className="card card-pad"><div className="kpi-label">Sendungen</div><div className="kpi-value">{sum.shipments}</div></div>
         <div className="card card-pad"><div className="kpi-label">Stück verschickt</div><div className="kpi-value">{sum.units}</div></div>
         <div className="card card-pad"><div className="kpi-label">Versandarten</div><div className="small" style={{ marginTop: 6 }}>{sum.byProduct.length ? sum.byProduct.map((b) => <div key={b.product}>{b.product}: {b.shipments} ({b.units} Stück)</div>) : "–"}</div></div>
-        <div className="card card-pad"><div className="kpi-label">Erwartet laut Gebühren</div><div className="kpi-value">{sum.expected !== null ? formatEuro(sum.expected) : "–"}</div>{sum.expected === null && <div className="small muted">Gebühren unter <Link href="/einstellungen#prep">Einstellungen → Prep Center</Link> eintragen</div>}{sum.expected !== null && <div className="small muted">{formatEuro(settings.prep.feeShipment)} je Sendung + {formatEuro(settings.prep.feeExtraItem)} je weiteres Stück</div>}</div>
+        <div className="card card-pad"><div className="kpi-label">Erwartet laut Gebühren</div><div className="kpi-value">{sum.expected !== null ? formatEuro(sum.expected) : <span className="muted" style={{ fontSize: 16 }}>keine Gebühren hinterlegt</span>}</div>{sum.expected === null && <div className="small muted">Gebühren unter <Link href="/einstellungen#prep">Einstellungen → Prep Center</Link> eintragen</div>}{sum.expected !== null && <div className="small muted">{formatEuro(settings.prep.feeShipment)} je Sendung + {formatEuro(settings.prep.feeExtraItem)} je weiteres Stück</div>}</div>
+      </div>
+      {open.length > 0 && (
+        <div className="small kpi-missing" data-testid="prep-incomplete">
+          Unvollständig: {open.length} Sendung{open.length === 1 ? "" : "en"} im Monat ohne Angabe „verschickt von“ – fehlen in den Zahlen. <a href="#offen">zuordnen →</a>
+        </div>
+      )}
+      <KpiMeta period={monthTitle(month)} source="Aufträge mit „verschickt von: Prep Center“ (Amazon, eBay, Temu)" stand={stand.text} fehler={stand.fehler} />
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -68,7 +78,7 @@ export default async function PrepCenterPage({ searchParams }: { searchParams: P
       </div>
 
       {open.length > 0 && (
-        <section className="card" style={{ overflow: "auto" }} data-testid="prep-open">
+        <section className="card" style={{ overflow: "auto" }} data-testid="prep-open" id="offen">
           <div className="card-head" style={{ flexWrap: "wrap", gap: 8 }}>
             <h2>{open.length} Sendung{open.length === 1 ? "" : "en"} im {monthTitle(month)} ohne Zuordnung</h2>
             <form action={assignShipperAction} style={{ display: "flex", gap: 6 }}>

@@ -42,7 +42,7 @@ export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: 
             ["datei", "Foto / PDF"],
           ] as const
         ).map(([m, l]) => (
-          <button key={m} type="button" className={`chip${mode === m ? " active" : ""}`} onClick={() => setMode(m)}>{l}</button>
+          <button key={m} type="button" className={`chip${mode === m ? " active" : ""}`} aria-pressed={mode === m} onClick={() => setMode(m)}>{l}</button>
         ))}
       </div>
 

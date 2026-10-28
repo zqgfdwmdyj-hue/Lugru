@@ -124,7 +124,7 @@ export default async function SasPage({ searchParams }: { searchParams: Promise<
       </p>
       <nav className="sas-tabs" aria-label="SAS-Bereiche">
         {TABS.map((x) => (
-          <Link key={x.key} href={`/sas?tab=${x.key}`} className={`chip${tab === x.key ? " active" : ""}`} data-testid={`sas-tab-${x.key}`}>
+          <Link key={x.key} href={`/sas?tab=${x.key}`} className={`chip${tab === x.key ? " active" : ""}`} aria-current={tab === x.key ? "true" : undefined} data-testid={`sas-tab-${x.key}`}>
             {x.label}
             {x.key === "aufgaben" && open.length ? ` · ${open.length}` : ""}
           </Link>
@@ -301,7 +301,7 @@ function Brands({ prog, brands, filter, q, sort, coverage, evidence, onlyUnsure,
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 22px 10px", alignItems: "center" }}>
             {[["alle", "Alle"], ["ausgewaehlt", "Ausgewählt"], ["belege", "Mit Belegen"], ...(unsureTotal ? [["pruefen", "Belege prüfen"]] : []), ["umsatz", "Mit Umsatz"], ["kein_umsatz", "Kein Umsatz"], ["keine_daten", "Keine Daten"]].map(([k, l]) => (
-              <Link key={k} href={link({ filter: k })} className={`chip${filter === k ? " active" : ""}`} data-testid={`sas-filter-${k}`}>{l}</Link>
+              <Link key={k} href={link({ filter: k })} className={`chip${filter === k ? " active" : ""}`} aria-current={filter === k ? "true" : undefined} data-testid={`sas-filter-${k}`}>{l}</Link>
             ))}
             <form action="/sas" style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
               <input type="hidden" name="tab" value="marken" />
@@ -310,7 +310,7 @@ function Brands({ prog, brands, filter, q, sort, coverage, evidence, onlyUnsure,
               <input className="input" name="q" defaultValue={q} placeholder="Marke suchen" aria-label="Marke suchen" style={{ width: 170, padding: "4px 8px" }} data-testid="sas-brand-search" />
             </form>
             <span className="small muted">Sortieren:</span>
-            {SORTS.map(([k, l]) => <Link key={k} href={link({ sort: k })} className={`chip${sort === k ? " active" : ""}`} data-testid={`sas-sort-${k}`}>{l}</Link>)}
+            {SORTS.map(([k, l]) => <Link key={k} href={link({ sort: k })} className={`chip${sort === k ? " active" : ""}`} aria-current={sort === k ? "true" : undefined} data-testid={`sas-sort-${k}`}>{l}</Link>)}
           </div>
           {evidence && <EvidencePanel evidence={evidence} close={link({})} filterLink={(nur) => `${link({ belege: evidence.brand.id, ...(nur ? { nur } : {}) })}#belege`} onlyUnsure={onlyUnsure} keep={{ filter, sort, q }} ro={ro} />}
           <div className="sales-scroll">

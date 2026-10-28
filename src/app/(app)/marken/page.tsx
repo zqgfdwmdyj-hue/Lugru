@@ -57,9 +57,9 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
       )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <Link href={href({ marke: undefined })} className={`chip${!brand ? " active" : ""}`}>Alle Marken</Link>
+        <Link href={href({ marke: undefined })} className={`chip${!brand ? " active" : ""}`} aria-current={!brand ? "true" : undefined}>Alle Marken</Link>
         {brands.map((b) => (
-          <Link key={b.id} href={href({ marke: b.id })} className={`chip${brand?.id === b.id ? " active" : ""}`}>
+          <Link key={b.id} href={href({ marke: b.id })} className={`chip${brand?.id === b.id ? " active" : ""}`} aria-current={brand?.id === b.id ? "true" : undefined}>
             <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: b.color ?? "var(--accent)", marginRight: 6 }} />
             {b.name}
           </Link>

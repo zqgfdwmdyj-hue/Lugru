@@ -71,7 +71,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`/gewinn?zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`}>{RANGES[k]}</Link>)}
+          {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`/gewinn?zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`} aria-current={r === k ? "true" : undefined}>{RANGES[k]}</Link>)}
         </div>
       </div>
 
@@ -217,8 +217,8 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
           <div className="card-head">
             <h2>Je SKU (Amazon)</h2>
             <div style={{ display: "flex", gap: 6 }}>
-              <Link className={`chip${sp.sort !== "gut" ? " active" : ""}`} href={`/gewinn?zeitraum=${r}`}>Schlechteste zuerst</Link>
-              <Link className={`chip${sp.sort === "gut" ? " active" : ""}`} href={`/gewinn?zeitraum=${r}&sort=gut`}>Beste zuerst</Link>
+              <Link className={`chip${sp.sort !== "gut" ? " active" : ""}`} aria-current={sp.sort !== "gut" ? "true" : undefined} href={`/gewinn?zeitraum=${r}`}>Schlechteste zuerst</Link>
+              <Link className={`chip${sp.sort === "gut" ? " active" : ""}`} aria-current={sp.sort === "gut" ? "true" : undefined} href={`/gewinn?zeitraum=${r}&sort=gut`}>Beste zuerst</Link>
             </div>
           </div>
           {skus.length === 0 ? <div className="card-pad small muted">Keine Amazon-Abrechnung in diesem Zeitraum.</div> : (

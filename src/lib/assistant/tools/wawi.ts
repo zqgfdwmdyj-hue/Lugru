@@ -12,7 +12,7 @@ import { getSettings } from "@/lib/settings";
 import { monthsBack, parseMonthParam, prepExplain, prepSummary } from "@/lib/shipping/prep";
 import { prepMonthRows, unassignedMonthRows } from "@/lib/shipping/prep-service";
 import { defineTool } from "../types";
-import { abs, berlinDateTime, isoDate, json, round2, uuid } from "./common";
+import { abs, berlinDateTime, dmy, isoDate, json, round2, uuid } from "./common";
 
 const O = schema.orders;
 const I = schema.orderItems;
@@ -35,6 +35,7 @@ export const auftraege = defineTool({
     "Aufträge (Amazon FBM, eBay, Temu …) suchen oder nach Status listen: offen (noch zu versenden), Label erstellt, versendet, storniert. Mit Suche nach Käufername, Bestellnummer, PLZ oder Artikel. Für „Was muss heute raus?“, „Hat Frau X schon ein Label?“.",
   area: "wawi",
   write: false,
+  quelle: { text: "Aufträge aus Amazon, eBay und Temu", jobs: ["Amazon-Bestellungen", "eBay-Bestellungen", "Temu-Bestellungen"] },
   input: z.object({
     suche: z.string().trim().min(2).max(100).optional(),
     status: z.enum(["offen", "label", "versendet", "storniert", "retoure", "alle"]).default("offen"),
@@ -63,8 +64,11 @@ export const auftraege = defineTool({
         .limit(i.limit);
     }
     const items = await itemsOf(t, rows.map((o) => o.id));
+    // Link zur passenden Liste – auch wenn sie gerade leer ist (z. B. alles versendet).
+    const ansicht = i.suche ? "alle" : i.status === "storniert" || i.status === "retoure" ? "alle" : i.status;
     return json({
       anzahl: rows.length,
+      link: abs(ctx, i.suche ? `/auftraege?q=${encodeURIComponent(i.suche)}` : `/auftraege?ansicht=${ansicht}`),
       auftraege: rows.map((o) => ({
         id: o.id,
         kanal: o.channel,
@@ -92,6 +96,7 @@ export const prepCenter = defineTool({
     "Alles zum Prep Center (externer Versanddienstleister, der FBM-Aufträge für uns verschickt – NICHT das Palettenlager): je Monat Sendungen, Stück, Versandarten und erwartete Kosten laut hinterlegten Gebühren; mit „monate“ die Entwicklung über mehrere Monate (Kosten je Monat); dazu, wie viele Sendungen noch keinem Versender zugeordnet sind, und eine feste Erklärung, wie „verschickt von“ und die Abrechnung funktionieren. Optional die Liste je Sendung. Immer dieses Werkzeug nutzen bei Fragen wie „Was macht das Prep Center?“, „Wie viele Sendungen hat das Prep Center diesen Monat?“, „Was kostet das Prep Center je Monat?“, „Stimmt die Rechnung vom Prep Center?“.",
   area: "wawi",
   write: false,
+  quelle: { text: "Aufträge aus Amazon, eBay und Temu (verschickt von)", jobs: ["Amazon-Bestellungen", "eBay-Bestellungen", "Temu-Bestellungen"] },
   input: z.object({
     monat: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Monat als JJJJ-MM").optional().describe("Standard: aktueller Monat"),
     monate: z.number().int().min(1).max(12).default(1).describe("Anzahl Monate bis einschließlich „monat“ – ab 2 mit Verlauf je Monat"),
@@ -143,6 +148,7 @@ export const auftrag = defineTool({
   description: "Ein Auftrag mit Positionen, Lieferadresse, Status, Sendungsnummer, Paketen und Notiz. Kennung (id) oder Bestellnummer angeben.",
   area: "wawi",
   write: false,
+  quelle: { text: "Aufträge aus Amazon, eBay und Temu", jobs: ["Amazon-Bestellungen", "eBay-Bestellungen", "Temu-Bestellungen"] },
   input: z.object({ id_oder_nummer: z.string().trim().min(3).max(80) }),
   run: async (ctx, { id_oder_nummer }) => {
     const t = ctx.session.tenantId;
@@ -203,6 +209,7 @@ export const produkte = defineTool({
   description: "Sucht Produkte (SKU, EAN, ASIN, Name) und zeigt je SKU den Wawi-Bestand: im Lager, in offenen Aufträgen reserviert, verfügbar – dazu FBA-Bestand bei Amazon, falls vorhanden. Für „Wie viele haben wir noch von …?“.",
   area: "wawi",
   write: false,
+  quelle: { text: "Produkte, Chargen und Bestand (eigenes Lager, Amazon, eBay)", jobs: ["Amazon-Reports abholen", "Bestandsabgleich Kanäle"] },
   input: z.object({ suche: z.string().trim().min(2).max(100), limit: z.number().int().min(1).max(30).default(10) }),
   run: async (ctx, i) => {
     const t = ctx.session.tenantId;
@@ -250,6 +257,7 @@ export const umsatz = defineTool({
   description: "Umsatz (brutto), Bestellungen, Einheiten und Gewinn laut sellerboard für einen Zeitraum – vordefiniert (heute, gestern, 7_tage, 30_tage, monat = laufender Monat, letzter_monat) oder mit von/bis.",
   area: "geld",
   write: false,
+  quelle: { text: "sellerboard", jobs: ["sellerboard:*"] },
   input: z.object({ zeitraum: z.enum(PRESETS).optional(), von: isoDate.optional(), bis: isoDate.optional() }),
   run: async (ctx, i) => {
     const today = ctx.today;
@@ -267,7 +275,7 @@ export const umsatz = defineTool({
     if (to < from) return { text: "„bis“ liegt vor „von“.", isError: true };
     const r = await sellerboardRange(ctx.session.tenantId, from, to);
     if (!r) return "Keine sellerboard-Werte für diesen Zeitraum (sellerboard nicht verbunden oder noch nicht abgeglichen).";
-    return json({ von: r.from, bis: r.to, umsatz_brutto: round2(r.sales), bruttogewinn: round2(r.grossProfit), nettogewinn: round2(r.netProfit), bestellungen: r.orders, einheiten: r.units, kanaele: r.channels, vollstaendig: r.complete, tage: `${r.daysCovered} von ${r.daysWanted}`, ek_fehlt_teilweise: r.missingCost || undefined });
+    return json({ zeitraum: `${dmy(r.from)} – ${dmy(r.to)}`, von: r.from, bis: r.to, link: abs(ctx, "/gewinn"), umsatz_brutto: round2(r.sales), bruttogewinn: round2(r.grossProfit), nettogewinn: round2(r.netProfit), bestellungen: r.orders, einheiten: r.units, kanaele: r.channels, vollstaendig: r.complete, tage: `${r.daysCovered} von ${r.daysWanted}`, ek_fehlt_teilweise: r.missingCost || undefined });
   },
 });
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { KpiMeta } from "@/components/kpi";
 import { requireSession } from "@/lib/auth/session";
 import { formatEuro } from "@/lib/numbers";
 import { repricerRows } from "@/lib/repricer";
@@ -29,6 +30,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
           <a className="btn" href="/repricer/export?format=de">Als Tabelle (deutsch)</a>
         </div>
       </div>
+      <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi">
         <div className="card card-pad" data-testid="kpi-repricer-skus">
           <div className="kpi-label">SKUs mit Bestand bei Amazon</div>
@@ -46,8 +48,10 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
             <><div className="kpi-value" style={{ color: below.length ? "var(--danger)" : undefined }} data-testid="below-value">{below.length}</div><div className="small muted" data-testid="below-coverage">geprüft: {cov.checkable} von {cov.total} SKUs{cov.noPrice ? ` · ${cov.noPrice} ohne aktuellen Preis` : ""}{cov.noMin ? ` · ${cov.noMin} ohne Mindestpreis` : ""}</div></>
           )}
         </div>
-        <div className="card card-pad"><div className="kpi-label">Ohne EK (kein Mindestpreis)</div><div className="kpi-value">{all.filter((r) => r.unitCost === null).length}</div></div>
+        <div className="card card-pad" data-testid="kpi-no-cost"><div className="kpi-label">Ohne EK (kein Mindestpreis)</div><div className="kpi-value">{all.filter((r) => r.unitCost === null).length}</div>{all.some((r) => r.unitCost === null) && <Link className="small" href="/produkte?ansicht=zuordnung&art=ek-fehlt">betroffene Artikel → EK nachtragen</Link>}</div>
         <div className="card card-pad small muted">Mindestgewinn {formatEuro(s.pricing.minProfit)} · Provision {Math.round(s.pricing.referralRate * 100)} % (wenn keine Gebührenvorschau) · Max = Min × {String(s.pricing.maxPriceFactor).replace(".", ",")} bzw. Ziel-VK. <Link href="/einstellungen">Ändern</Link></div>
+      </div>
+      <KpiMeta source="FBA-Bestand (Bestandsbericht bzw. sellerboard), aktuelle Preise, EK im Seller-System" stand={fr.missing ? "kein Bestandsbericht" : `${formatDate(fr.snapshot)}${fr.stale ? " – veraltet" : ""}`} />
       </div>
       {cov.estimated > 0 && (
         <div className="notice notice-warn small" data-testid="estimated-warning">
@@ -55,11 +59,11 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
         </div>
       )}
       <div style={{ display: "flex", gap: 6 }}>
-        <Link href="/repricer" className={`chip${!sp.nur ? " active" : ""}`}>Alle</Link>
-        <Link href="/repricer?nur=unter" className={`chip${sp.nur === "unter" ? " active" : ""}`}>Unter Mindestpreis</Link>
-        <Link href="/repricer?nur=ohne-ek" className={`chip${sp.nur === "ohne-ek" ? " active" : ""}`}>Ohne EK</Link>
-        <Link href="/repricer?nur=ohne-preis" className={`chip${sp.nur === "ohne-preis" ? " active" : ""}`}>Ohne aktuellen Preis · {cov.noPrice}</Link>
-        <Link href="/repricer?nur=geschaetzt" className={`chip${sp.nur === "geschaetzt" ? " active" : ""}`}>Geschätzte Gebühren · {cov.estimated}</Link>
+        <Link href="/repricer" className={`chip${!sp.nur ? " active" : ""}`} aria-current={!sp.nur ? "true" : undefined}>Alle</Link>
+        <Link href="/repricer?nur=unter" className={`chip${sp.nur === "unter" ? " active" : ""}`} aria-current={sp.nur === "unter" ? "true" : undefined}>Unter Mindestpreis</Link>
+        <Link href="/repricer?nur=ohne-ek" className={`chip${sp.nur === "ohne-ek" ? " active" : ""}`} aria-current={sp.nur === "ohne-ek" ? "true" : undefined}>Ohne EK</Link>
+        <Link href="/repricer?nur=ohne-preis" className={`chip${sp.nur === "ohne-preis" ? " active" : ""}`} aria-current={sp.nur === "ohne-preis" ? "true" : undefined}>Ohne aktuellen Preis · {cov.noPrice}</Link>
+        <Link href="/repricer?nur=geschaetzt" className={`chip${sp.nur === "geschaetzt" ? " active" : ""}`} aria-current={sp.nur === "geschaetzt" ? "true" : undefined}>Geschätzte Gebühren · {cov.estimated}</Link>
       </div>
       <section className="card" style={{ overflow: "auto" }}>
         <table className="table">

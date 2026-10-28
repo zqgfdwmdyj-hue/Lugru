@@ -173,13 +173,13 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
             </h2>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {FILTERS.map((f) => (
-                <Link key={f} href={f === "alle" ? "/?ansicht=liste" : `/?kat=${f}`} className={`chip${filter === f ? " active" : ""}`}>{f === "alle" ? "Alle" : CATEGORY_LABEL[f]}</Link>
+                <Link key={f} href={f === "alle" ? "/?ansicht=liste" : `/?kat=${f}`} className={`chip${filter === f ? " active" : ""}`} aria-current={filter === f ? "true" : undefined}>{f === "alle" ? "Alle" : CATEGORY_LABEL[f]}</Link>
               ))}
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 22px 10px" }}>
             {BUCKETS.map((b) => (
-              <Link key={b} href={`/?ansicht=liste${filter !== "alle" ? `&kat=${filter}` : ""}${zeit === b ? "" : `&zeit=${b}`}`} className={`chip${zeit === b ? " active" : ""}`} data-testid={`list-count-${b}`}>{BUCKET_LABEL[b]} · {listCounts[b]}</Link>
+              <Link key={b} href={`/?ansicht=liste${filter !== "alle" ? `&kat=${filter}` : ""}${zeit === b ? "" : `&zeit=${b}`}`} className={`chip${zeit === b ? " active" : ""}`} aria-current={zeit === b ? "true" : undefined} data-testid={`list-count-${b}`}>{BUCKET_LABEL[b]} · {listCounts[b]}</Link>
             ))}
           </div>
           <div style={{ padding: "0 22px 10px" }}><AddTask category={filter === "alle" ? "eigene" : filter} /></div>
@@ -359,7 +359,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                   {calendars.map((c) => (
                     <form key={c} action={toggleCalendarAction}>
                       <input type="hidden" name="calendar" value={c} />
-                      <button type="submit" className={`chip${hidden.has(c) ? "" : " active"}`} title={hidden.has(c) ? "einblenden" : "ausblenden (z. B. private Kalender)"}><b className="cal-abbr" style={{ ["--c" as string]: calColors.get(c), ["--t" as string]: textOn(calColors.get(c)) }}>{calAbbr.get(c)}</b>{hidden.has(c) ? "＋ " : ""}{c}</button>
+                      <button type="submit" className={`chip${hidden.has(c) ? "" : " active"}`} aria-pressed={!(hidden.has(c))} title={hidden.has(c) ? "einblenden" : "ausblenden (z. B. private Kalender)"}><b className="cal-abbr" style={{ ["--c" as string]: calColors.get(c), ["--t" as string]: textOn(calColors.get(c)) }}>{calAbbr.get(c)}</b>{hidden.has(c) ? "＋ " : ""}{c}</button>
                     </form>
                   ))}
                 </div>

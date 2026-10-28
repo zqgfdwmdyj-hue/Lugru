@@ -32,6 +32,7 @@ export const ueberblick = defineTool({
     "Überblick für heute: was ansteht (Versand, Fristen, Ansprüche, Fälle), offene und bis heute fällige Aufgaben, Paletten-Sendungen heute/überfällig, Umsatz heute/gestern/Monat. Nimm das als Einstieg bei Fragen wie „Was steht heute an?“, „Was ist offen?“, „Wie läuft es?“.",
   area: null,
   write: false,
+  quelle: { text: "Seller-System: Aufgaben, Aufträge, Paletten, Posteingang", jobs: ["Amazon-Bestellungen", "eBay-Bestellungen", "Postfächer"] },
   input: z.object({}),
   run: async (ctx) => {
     const s = ctx.session;
@@ -70,6 +71,7 @@ export const suche = defineTool({
     "Sucht überall, wo die Person Zugriff hat: Produkte (SKU, EAN, ASIN, Name), Aufträge (Name, Bestellnummer, PLZ, Artikel), Paletten, Paletten-Sendungen (Titel, Sendungsnummer, Kunde), Aufgaben und Wissen. Nimm das, wenn unklar ist, wo etwas steht, oder bei einem Namen/einer Nummer.",
   area: null,
   write: false,
+  quelle: { text: "Seller-System (Suche über alle Bereiche)" },
   input: z.object({ text: z.string().trim().min(2).max(100).describe("Suchbegriff: Name, Bestellnummer, SKU, EAN, Palettennummer, Sendungsnummer …") }),
   run: async (ctx, { text }) => {
     const s = ctx.session;
@@ -124,6 +126,7 @@ export const aufgaben = defineTool({
   description: "Listet Aufgaben (offen oder erledigt), optional nach Text, Fälligkeit oder Kategorie gefiltert. Für „Welche Aufgaben habe ich?“, „Was ist diese Woche fällig?“.",
   area: ["start", "kalender"],
   write: false,
+  quelle: { text: "Aufgaben im Seller-System" },
   input: z.object({
     status: z.enum(["offen", "erledigt"]).default("offen"),
     suche: z.string().trim().max(100).optional(),
@@ -146,7 +149,7 @@ export const aufgaben = defineTool({
       .orderBy(i.status === "erledigt" ? desc(T.completedAt) : sql`${T.dueDate} asc nulls last`)
       .limit(400);
     const vis = rows.filter((x) => visibleTask(s, x));
-    return json({ anzahl: vis.length, aufgaben: vis.slice(0, i.limit).map((x) => taskBrief(x, ctx)) });
+    return json({ anzahl: vis.length, aufgaben: vis.slice(0, i.limit).map((x) => taskBrief(x, ctx)), link: abs(ctx, "/?ansicht=liste") });
   },
 });
 
@@ -217,6 +220,7 @@ export const kalender = defineTool({
     "Termine im Zeitraum: Fristen, Versandtage, Aufgaben mit Datum, Paletten-Anlieferungen, Termine aus den verbundenen Kalendern – und bei freigegebenem Privatbereich auch private Einträge (Kinderzeit, Auszeit, Paarzeit, private Termine). Für „Was steht nächste Woche an?“, „Wann kommt …?“.",
   area: "kalender",
   write: false,
+  quelle: { text: "Kalender im Seller-System und verbundene Kalender", jobs: ["Kalender"] },
   input: z.object({ von: isoDate, bis: isoDate.describe("Höchstens 92 Tage nach „von“") }),
   run: async (ctx, { von, bis }) => {
     if (bis < von) return { text: "„bis“ liegt vor „von“.", isError: true };

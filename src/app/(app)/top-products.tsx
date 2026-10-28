@@ -17,7 +17,7 @@ export function TopProducts({ top }: { top: { heute: { rows: TopItem[]; total: n
         <strong>Produkte</strong>
         <div className="seg" role="tablist" aria-label="Zeitraum">
           {(["heute", "gestern"] as const).map((k) => (
-            <button key={k} type="button" role="tab" aria-selected={tab === k} className={`chip${tab === k ? " active" : ""}`} onClick={() => setTab(k)} data-testid={`sales-top-${k}`}>
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={`chip${tab === k ? " active" : ""}`} aria-pressed={tab === k} onClick={() => setTab(k)} data-testid={`sales-top-${k}`}>
               {k === "heute" ? "Heute" : "Gestern"}
             </button>
           ))}

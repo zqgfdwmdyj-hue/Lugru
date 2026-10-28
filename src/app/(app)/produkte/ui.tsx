@@ -421,7 +421,7 @@ async function Ergebnis({ session, d, base, zeitraum }: { session: Session; d: P
   return (
     <div className="stack" style={{ gap: 14 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`${base}${sep}zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`}>{RANGES[k]}</Link>)}
+        {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`${base}${sep}zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`} aria-current={r === k ? "true" : undefined}>{RANGES[k]}</Link>)}
       </div>
       {units === 0 ? (
         <div className="notice notice-info" data-testid="result-empty">Keine Verkäufe dieses Produkts im Zeitraum {period}. (Amazon zählt erst mit der Abrechnung.)</div>

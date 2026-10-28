@@ -20,6 +20,7 @@ export const paletten = defineTool({
   description: "Eingelagerte Paletten (oder auch ausgelagerte) mit Kunde, Stellplatz, Inhalt, Einlagerungsdatum und Lagertagen – optional nach Kunde oder Suchbegriff gefiltert. Dazu Anzahl je Kunde. Für „Wie viele Paletten hat Kunde X?“, „Wo steht Palette P-0012?“.",
   area: "paletten",
   write: false,
+  quelle: { text: "Palettenlager im Seller-System" },
   input: z.object({
     kunde: z.string().trim().max(120).optional(),
     suche: z.string().trim().max(80).optional().describe("Palettennummer, Inhalt, Stellplatz oder Notiz"),
@@ -68,6 +69,7 @@ export const sendungen = defineTool({
   description: "Sendungen per Spedition oder Paketdienst im Palettenlager: Anlieferungen ins Lager und Versand an Kunden, mit Termin, Status, Sendungsnummer und aktuellem Stand. Für „Welche Paletten kommen diese Woche?“, „Ist die Lieferung von X schon da?“.",
   area: "paletten",
   write: false,
+  quelle: { text: "Palettenlager im Seller-System; DHL-Verfolgung", jobs: ["Paletten-Sendungen"] },
   input: z.object({
     richtung: z.enum(["ein", "aus"]).optional().describe("ein = Anlieferung ins Lager, aus = Versand an Kunden"),
     nur_offen: z.boolean().default(true),
@@ -81,7 +83,7 @@ export const sendungen = defineTool({
     if (i.nur_offen) where.push(inArray(S.status, ["geplant", "unterwegs", "verzoegert", "problem"]));
     if (i.suche) where.push(or(ilike(S.title, likeOf(i.suche)), ilike(S.trackingNo, likeOf(i.suche)), ilike(S.customer, likeOf(i.suche)), ilike(S.place, likeOf(i.suche)))!);
     const rows = await db.select().from(S).where(and(...where)).orderBy(i.nur_offen ? sql`${S.plannedDate} asc nulls last` : desc(S.updatedAt)).limit(i.limit);
-    return json({ heute: ctx.today, anzahl: rows.length, sendungen: rows.map((x) => shipBrief(ctx, x)) });
+    return json({ heute: ctx.today, anzahl: rows.length, sendungen: rows.map((x) => shipBrief(ctx, x)), link: abs(ctx, "/paletten/sendungen") });
   },
 });
 
@@ -91,6 +93,7 @@ export const sendung = defineTool({
   description: "Eine Paletten-Sendung mit Verlauf (Terminverschiebungen, Status, Notizen), Fotos und aktiven Kunden-Links.",
   area: "paletten",
   write: false,
+  quelle: { text: "Palettenlager im Seller-System; DHL-Verfolgung", jobs: ["Paletten-Sendungen"] },
   input: z.object({ id: uuid }),
   run: async (ctx, { id }) => {
     const data = await loadShipment(ctx.session.tenantId, id);

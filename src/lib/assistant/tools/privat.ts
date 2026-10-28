@@ -4,7 +4,7 @@ import { privateCalendar } from "@/lib/private/calendar-data";
 import { saveAppointment, saveTimeEntry, setStatus } from "@/lib/private/save";
 import { loadEntries, privateSettings, type PrivateKind } from "@/lib/private/service";
 import { defineTool, type ToolCtx } from "../types";
-import { isoDate, json, uuid } from "./common";
+import { abs, isoDate, json, uuid } from "./common";
 
 // Privatbereich – nur über den Claude-Konnektor des Inhabers mit ausdrücklicher Privat-Freigabe (ctx.privat).
 // Es gelten dieselben Sichtbarkeitsregeln wie auf den Privat-Seiten (eigenes Tagebuch, Freigaben, Umfang).
@@ -32,14 +32,17 @@ export const privatKalender = defineTool({
   area: "privat",
   privat: true,
   write: false,
+  quelle: { text: "Privatbereich und Familienkalender", jobs: ["Kalender"] },
   input: z.object({ von: isoDate, bis: isoDate.describe("Höchstens 92 Tage nach „von“") }),
   run: async (ctx, { von, bis }) => {
     if (bis < von) return { text: "„bis“ liegt vor „von“.", isError: true };
     const pc = await privateCalendar(ctx.session, von, bis, ctx.today);
     const names = pc.settings.partners;
     return json({
+      zeitraum: `${von} – ${bis}`,
       personen: names,
       eintraege: pc.items.map((x) => ({ id: x.id, tag: x.day, bis_tag: x.endDay, von: x.from, bis: x.to, art: x.kind, titel: x.title, personen: x.people.map((p) => names[p]), status: x.status, notiz: x.note, kalender: x.calendar })),
+      link: abs(ctx, `/privat/kalender?tag=${von}`),
     });
   },
 });
@@ -51,6 +54,7 @@ export const privatEintraege = defineTool({
   area: "privat",
   privat: true,
   write: false,
+  quelle: { text: "Privatbereich im Seller-System" },
   input: z.object({ arten: z.array(z.enum(KINDS)).min(1).max(6), von: isoDate.optional(), bis: isoDate.optional(), limit: z.number().int().min(1).max(200).default(60) }),
   run: async (ctx, i) => {
     const rows = await loadEntries<Record<string, unknown>>(ctx.session, i.arten as PrivateKind[]);
@@ -61,7 +65,7 @@ export const privatEintraege = defineTool({
     });
     const dayOf = (e: (typeof rows)[number]) => String(e.data.day ?? e.data.start ?? e.data.due ?? "");
     inRange.sort((a, b) => dayOf(b).localeCompare(dayOf(a)));
-    return json({ personen: (await privateSettings(ctx.session.tenantId)).partners, anzahl: inRange.length, eintraege: inRange.slice(0, i.limit).map((e) => ({ id: e.id, art: e.kind, daten: e.data, eigener: e.userId === ctx.session.userId })) });
+    return json({ zeitraum: i.von || i.bis ? `${i.von ?? "…"} – ${i.bis ?? "…"}` : "alle", personen: (await privateSettings(ctx.session.tenantId)).partners, anzahl: inRange.length, eintraege: inRange.slice(0, i.limit).map((e) => ({ id: e.id, art: e.kind, daten: e.data, eigener: e.userId === ctx.session.userId, link: abs(ctx, `/privat/eintrag/${e.id}`) })), link: abs(ctx, "/privat") });
   },
 });
 

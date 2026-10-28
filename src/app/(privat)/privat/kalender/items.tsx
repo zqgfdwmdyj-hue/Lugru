@@ -40,10 +40,11 @@ export function ItemChip({ item, isNew, showStatus = true, day }: { item: DayIte
       {!showStatus && !quiet && (item.kind === "extern" && item.abbr ? <b className="cal-abbr" style={{ "--c": colorOf(item), "--t": textOn(colorOf(item)) } as React.CSSProperties}>{item.abbr}</b> : <span aria-hidden="true">{item.status && item.kind !== "extern" && item.kind !== "periode" ? (item.skipped ? "✕" : STATUS_ICON[item.status]) : KIND_STYLE[item.kind].icon} </span>)}
       {time && <span className="pk-time">{time}</span>}
       <span className="pk-title">{quiet ? "\u00a0" : `${item.title}${cont ? " (Fortsetzung)" : ""}`}</span>
+      {item.repeat && !quiet ? <span className="pk-rep" title={item.exception ? "Serie – dieser Termin einzeln geändert" : "Serie"} aria-hidden="true">🔁{item.exception ? "✎" : ""}</span> : null}
     </>
   );
   const style = { "--c": colorOf(item) } as React.CSSProperties;
-  const label = `${item.title} – ${CAL_KIND_LABEL[item.kind]}${item.status ? `, ${statusText(item)}` : ""}${item.fromCalendar ? `, aus Kalender ${item.fromCalendar}` : ""}${item.kind === "extern" && item.href ? " – antippen, um ihn als Paarzeit, Kinderzeit … zu übernehmen" : ""}`;
+  const label = `${item.title} – ${CAL_KIND_LABEL[item.kind]}${item.status ? `, ${statusText(item)}` : ""}${item.fromCalendar ? `, aus Kalender ${item.fromCalendar}` : ""}${item.repeat ? `, Serie${item.exception ? " (einzeln geändert)" : ""}` : ""}${item.kind === "extern" && item.href ? " – antippen, um ihn als Paarzeit, Kinderzeit … zu übernehmen" : ""}`;
   return item.href ? (
     <Link href={item.href} className={cls} style={style} aria-label={label} data-testid="pk-item" data-kind={item.kind} data-status={item.status ?? ""} data-new={isNew ? "1" : undefined}>{body}</Link>
   ) : (

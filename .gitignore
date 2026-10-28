@@ -12,3 +12,8 @@ next-env.d.ts
 
 # Programmstand, schreibt deploy/update.sh
 /VERSION
+
+# Automatische Ablaufprüfungen (npm run e2e)
+/test-results/
+/playwright-report/
+/blob-report/

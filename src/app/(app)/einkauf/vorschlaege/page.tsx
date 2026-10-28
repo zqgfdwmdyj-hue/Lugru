@@ -46,8 +46,8 @@ export default async function VorschlaegePage({ searchParams }: { searchParams: 
         Kapitalbedarf = Menge × EK netto, ohne Versand und Umsatzsteuer.
       </p>
       <nav className="prod-tabs" aria-label="Rechenweg" data-testid="reorder-ways">
-        <Link href={href({ weg: "sellerboard" }, {})} className={`chip${weg === "sellerboard" ? " active" : ""}`} data-testid="way-sellerboard">A · Nachbestellen laut sellerboard ({sb.rows.length})</Link>
-        <Link href={href({ weg: "wawi" }, {})} className={`chip${weg === "wawi" ? " active" : ""}`} data-testid="way-wawi">B · Eigene WaWi-Rechnung</Link>
+        <Link href={href({ weg: "sellerboard" }, {})} className={`chip${weg === "sellerboard" ? " active" : ""}`} aria-current={weg === "sellerboard" ? "true" : undefined} data-testid="way-sellerboard">A · Nachbestellen laut sellerboard ({sb.rows.length})</Link>
+        <Link href={href({ weg: "wawi" }, {})} className={`chip${weg === "wawi" ? " active" : ""}`} aria-current={weg === "wawi" ? "true" : undefined} data-testid="way-wawi">B · Eigene WaWi-Rechnung</Link>
       </nav>
       {weg === "sellerboard" ? <SellerboardWay sp={sp} data={sb} /> : <WawiWay tenantId={session.tenantId} sp={sp} leadDays={leadDays} coverDays={coverDays} vatRate={settings.vatRate} />}
     </>
@@ -103,10 +103,10 @@ function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof 
       <div className="card card-pad" data-testid="reorder-checks">
         <div className="small" style={{ marginBottom: 6 }}><strong>Prüfliste</strong> – Fälle, die nicht einfach nachbestellt werden sollten:</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link href={href(base, { pruefen: undefined, seite: undefined })} className={`chip${f.pruefen === "alle" ? " active" : ""}`}>Alle · {all.length}</Link>
-          <Link href={href(base, { pruefen: "regulaer", seite: undefined })} className={`chip${f.pruefen === "regulaer" ? " active" : ""}`} data-testid="check-regulaer">Regulär nachbestellbar · {all.filter((r) => r.regular).length}</Link>
+          <Link href={href(base, { pruefen: undefined, seite: undefined })} className={`chip${f.pruefen === "alle" ? " active" : ""}`} aria-current={f.pruefen === "alle" ? "true" : undefined}>Alle · {all.length}</Link>
+          <Link href={href(base, { pruefen: "regulaer", seite: undefined })} className={`chip${f.pruefen === "regulaer" ? " active" : ""}`} aria-current={f.pruefen === "regulaer" ? "true" : undefined} data-testid="check-regulaer">Regulär nachbestellbar · {all.filter((r) => r.regular).length}</Link>
           {(Object.keys(CHECK_LABEL) as ReorderCheck[]).map((k) => (
-            <Link key={k} href={href(base, { pruefen: k, seite: undefined })} className={`chip${f.pruefen === k ? " active" : ""}`} title={CHECK_LABEL[k].hint} data-testid={`check-${k}`}>
+            <Link key={k} href={href(base, { pruefen: k, seite: undefined })} className={`chip${f.pruefen === k ? " active" : ""}`} aria-current={f.pruefen === k ? "true" : undefined} title={CHECK_LABEL[k].hint} data-testid={`check-${k}`}>
               {CHECK_LABEL[k].label} · {checkCount(k)}
             </Link>
           ))}
@@ -230,8 +230,8 @@ async function WawiWay({ tenantId, sp, leadDays, coverDays, vatRate }: { tenantI
         <div className="card card-pad">
           <div className="kpi-label">Prüfliste</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-            <Link className={`chip${!pruefen || pruefen === "alle" ? " active" : ""}`} href={href(base, { q: sp.q })}>Alle</Link>
-            {(["ek_fehlt", "retoure", "quelle"] as const).map((k) => <Link key={k} className={`chip${pruefen === k ? " active" : ""}`} href={href(base, { q: sp.q, pruefen: k })} title={CHECK_LABEL[k].hint} data-testid={`wawi-check-${k}`}>{k === "retoure" ? "Nur Retouren-Ware" : CHECK_LABEL[k].label} · {counts[k]}</Link>)}
+            <Link className={`chip${!pruefen || pruefen === "alle" ? " active" : ""}`} aria-current={!pruefen || pruefen === "alle" ? "true" : undefined} href={href(base, { q: sp.q })}>Alle</Link>
+            {(["ek_fehlt", "retoure", "quelle"] as const).map((k) => <Link key={k} className={`chip${pruefen === k ? " active" : ""}`} aria-current={pruefen === k ? "true" : undefined} href={href(base, { q: sp.q, pruefen: k })} title={CHECK_LABEL[k].hint} data-testid={`wawi-check-${k}`}>{k === "retoure" ? "Nur Retouren-Ware" : CHECK_LABEL[k].label} · {counts[k]}</Link>)}
           </div>
         </div>
       </div>

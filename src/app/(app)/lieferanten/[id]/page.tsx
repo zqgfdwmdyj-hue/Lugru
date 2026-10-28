@@ -246,10 +246,10 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
       </div>
       <div className="stack">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href={chip()} className={`chip${!sp.nur ? " active" : ""}`}>Alle</Link>
-            <Link href={chip("amazon")} className={`chip${sp.nur === "amazon" ? " active" : ""}`}>Auf Amazon</Link>
-            <Link href={chip("gewinn")} className={`chip${sp.nur === "gewinn" ? " active" : ""}`}>Mit Gewinn</Link>
-            <Link href={chip("treffer")} className={`chip${sp.nur === "treffer" ? " active" : ""}`}>Passt zu meinen Artikeln</Link>
+            <Link href={chip()} className={`chip${!sp.nur ? " active" : ""}`} aria-current={!sp.nur ? "true" : undefined}>Alle</Link>
+            <Link href={chip("amazon")} className={`chip${sp.nur === "amazon" ? " active" : ""}`} aria-current={sp.nur === "amazon" ? "true" : undefined}>Auf Amazon</Link>
+            <Link href={chip("gewinn")} className={`chip${sp.nur === "gewinn" ? " active" : ""}`} aria-current={sp.nur === "gewinn" ? "true" : undefined}>Mit Gewinn</Link>
+            <Link href={chip("treffer")} className={`chip${sp.nur === "treffer" ? " active" : ""}`} aria-current={sp.nur === "treffer" ? "true" : undefined}>Passt zu meinen Artikeln</Link>
             <form style={{ marginLeft: "auto" }}>
               {sp.nur && <input type="hidden" name="nur" value={sp.nur} />}
               <input className="input" name="q" defaultValue={sp.q ?? ""} placeholder="Suchen …" style={{ width: 180 }} />

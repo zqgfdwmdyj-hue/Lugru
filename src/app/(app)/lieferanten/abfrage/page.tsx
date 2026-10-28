@@ -52,10 +52,10 @@ export default async function AbfragePage({ searchParams }: { searchParams: Prom
       </form>
       {feeds.length > 1 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link href={link([])} className={`chip${only.length === 0 ? " active" : ""}`}>Alle Lieferanten</Link>
+          <Link href={link([])} className={`chip${only.length === 0 ? " active" : ""}`} aria-current={only.length === 0 ? "true" : undefined}>Alle Lieferanten</Link>
           {feeds.map((f) => {
             const on = only.includes(f.id);
-            return <Link key={f.id} href={link(on ? only.filter((x) => x !== f.id) : [...only, f.id])} className={`chip${on ? " active" : ""}`}>{f.name}</Link>;
+            return <Link key={f.id} href={link(on ? only.filter((x) => x !== f.id) : [...only, f.id])} className={`chip${on ? " active" : ""}`} aria-current={on ? "true" : undefined}>{f.name}</Link>;
           })}
         </div>
       )}

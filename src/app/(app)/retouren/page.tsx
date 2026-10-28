@@ -33,7 +33,7 @@ export default async function RetourenPage({ searchParams }: { searchParams: Pro
     <div className="page-head">
       <div><div className="crumb">Service</div><h1>Retouren</h1></div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {NAV.map(([k, label]) => <Link key={k} className={`chip${ansicht === k ? " active" : ""}`} href={`/retouren?ansicht=${k}`}>{label}</Link>)}
+        {NAV.map(([k, label]) => <Link key={k} className={`chip${ansicht === k ? " active" : ""}`} aria-current={ansicht === k ? "true" : undefined} href={`/retouren?ansicht=${k}`}>{label}</Link>)}
       </div>
     </div>
   );

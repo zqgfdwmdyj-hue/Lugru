@@ -50,7 +50,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/posteingang?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/posteingang?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
           </div>
           <form action={archiveMails} className="card" style={{ overflow: "auto" }}>
             <table className="table sticky-head">

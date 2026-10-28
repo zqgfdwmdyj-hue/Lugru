@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { gmailSend, googleToken, graphSend, microsoftToken, MS_SCOPES, MS_SCOPES_READONLY } from "@/lib/integrations/clients/mail";
 import { getIntegration } from "@/lib/integrations/store";
 import { smtpSend, type Account } from "./connect";
+import { isTestEnv } from "@/lib/testenv";
 import type { ServerSettings } from "./servers";
 
 // Postfächer als Konten: Zugang lesen (OAuth-Token oder IMAP/SMTP-Passwort) und zentral senden.
@@ -126,6 +127,11 @@ export async function sendMail(tenantId: string, mail: OutgoingMail, opts: { mai
   const { boxes, defaultId } = await senderMailboxes(tenantId);
   const id = opts.mailboxId || defaultId;
   const box = boxes.find((b) => b.id === id);
+  // Testumgebung: nie wirklich senden – die Mail landet unter Einstellungen → Testumgebung.
+  if (isTestEnv()) {
+    await db.insert(schema.testMails).values({ tenantId, to: mail.to.slice(0, 1000), subject: mail.subject.slice(0, 500), text: mail.text, attachments: mail.attachments?.map((a) => a.filename).join(", ") || null });
+    return { from: box?.address ?? "testumgebung@example.invalid" };
+  }
   if (!box) {
     throw new Error(boxes.length === 0 ? "Kein Postfach zum Senden verbunden – bitte unter Posteingang ein Postfach verbinden." : "Das gewählte Absender-Postfach ist nicht mehr verbunden.");
   }

@@ -35,7 +35,7 @@ export default async function ProduktePage({ searchParams }: { searchParams: Pro
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {(Object.keys(VIEWS) as View[]).map((v) => (
-          <Link key={v} href={listHref({ q: v === "zuordnung" ? "" : q, ansicht: v })} className={`chip${view === v ? " active" : ""}`} data-testid={`view-${v}`}>
+          <Link key={v} href={listHref({ q: v === "zuordnung" ? "" : q, ansicht: v })} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined} data-testid={`view-${v}`}>
             {VIEWS[v]}
             {v === "zuordnung" && issues.length > 0 ? ` · ${issues.length}` : ""}
           </Link>
@@ -121,9 +121,9 @@ function Worklist({ issues, art }: { issues: Awaited<ReturnType<typeof mappingWo
     <section className="stack" data-testid="worklist">
       <div className="small muted">Hier wird nichts automatisch zusammengeführt oder gelöscht – jede Zeile führt zur Stelle, an der du es klärst.</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <Link href={listHref({ ansicht: "zuordnung" })} className={`chip${!active ? " active" : ""}`}>Alle · {issues.length}</Link>
+        <Link href={listHref({ ansicht: "zuordnung" })} className={`chip${!active ? " active" : ""}`} aria-current={!active ? "true" : undefined}>Alle · {issues.length}</Link>
         {kinds.map((k) => (
-          <Link key={k} href={listHref({ ansicht: "zuordnung", art: k })} className={`chip${active === k ? " active" : ""}`} data-testid={`issue-filter-${k}`}>
+          <Link key={k} href={listHref({ ansicht: "zuordnung", art: k })} className={`chip${active === k ? " active" : ""}`} aria-current={active === k ? "true" : undefined} data-testid={`issue-filter-${k}`}>
             {ISSUE_LABEL[k].label} · {issues.filter((i) => i.kind === k).length}
           </Link>
         ))}

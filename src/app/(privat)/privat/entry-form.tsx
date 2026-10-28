@@ -1,9 +1,10 @@
 import { defaultStatus, statusOf, type AppointmentEntry, type DateEntry, type EntryStatus, type IntimEntry, type KidsEntry, type PartnerKey, type PrivateSettings, type SleepEntry } from "@/lib/private/logic";
 import type { PeriodEntry, RitualEntry, TouchEntry } from "@/lib/private/kalender";
+import { REPEAT_LABEL, type seriesInfo } from "@/lib/private/serie";
 import { saveEntryAction } from "./eintrag-actions";
 import { OtherName, StatusField } from "./form-helpers";
 import { StateForm } from "./state-form";
-import { Choice, Rating } from "./ui";
+import { Choice, Rating, dmy } from "./ui";
 
 // Ein Formular je Art – dasselbe zum Anlegen („Eintragen“) und zum Ändern (Detailseite). So gibt es jede
 // Angabe nur einmal, und der Eintrag erscheint sofort im Kalender und auf seiner Detailseite.
@@ -39,6 +40,8 @@ type Ctx = {
   linkedName?: string | null;
   /** Aus einem Familienkalender-Termin übernommen (dauerhafte Kennung des Termins). */
   fromEvent?: string;
+  /** Teil einer Serie (Wiederholung) – Überblick für „nur dieser / folgende / alle“. */
+  series?: ReturnType<typeof seriesInfo>;
 };
 
 /** Arten, in die man einen Familienkalender-Termin übernehmen kann. */
@@ -89,6 +92,45 @@ function Extern({ ctx }: { ctx: Ctx }) {
       <input type="checkbox" name="extern" defaultChecked={ctx.data?.extern === true} /> Zusätzlich in den eigenen Export-Kalender „{ctx.settings.externSync.calendar}“ – nur als neutraler „Privater Termin“ (ganztägig, ohne Inhalt). Standard: aus.
       {!ctx.settings.externSync.enabled && <span className="muted"> Wirkt erst, wenn der Export unter Einstellungen eingeschaltet ist.</span>}
     </label>
+  );
+}
+
+/** Arten, die sich wiederholen lassen (wöchentlich, alle 2 Wochen). */
+export const REPEAT_ARTEN: Art[] = ["termin", "kinder", "auszeit", "ausschlafen", "paarzeit"];
+
+/** Neu: Wiederholung wählen. Ändern: gilt für „nur diesen“, „diesen und alle folgenden“ oder „alle“. */
+function Repeat({ ctx }: { ctx: Ctx }) {
+  if (!REPEAT_ARTEN.includes(ctx.art)) return null;
+  if (ctx.id) {
+    const s = ctx.series;
+    if (!s) return null;
+    return (
+      <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }} data-testid="series-scope">
+        <legend className="label small">🔁 Serie {REPEAT_LABEL[s.every] ?? ""}: {s.count} Termine ({dmy(s.first)} – {dmy(s.last)}), dieser ist Nr. {s.position}{s.exceptions ? ` · ${s.exceptions} einzeln geändert` : ""}</legend>
+        <span className="label small">Änderung gilt für</span>
+        <div className="pick-chips" role="radiogroup" aria-label="Änderung gilt für">
+          <label><input type="radio" name="umfang" value="dieser" defaultChecked /><span>nur diesen Termin</span></label>
+          <label><input type="radio" name="umfang" value="folgende" /><span>diesen und alle folgenden ({s.following})</span></label>
+          <label><input type="radio" name="umfang" value="alle" /><span>alle der Serie</span></label>
+        </div>
+        <span className="small muted">Nur diesen Termin auf einen anderen Tag oder eine andere Uhrzeit legen = Ausnahme; spätere Änderungen der Serie lassen ihn in Ruhe. Bei „folgende“/„alle“ wandern alle offenen Termine mit – schon Erledigtes und Ausnahmen bleiben, wie sie sind. Der Status gilt immer nur für diesen Termin.</span>
+      </fieldset>
+    );
+  }
+  return (
+    <fieldset className="field pk-repeat" style={{ border: 0, padding: 0, margin: 0 }} data-testid="repeat">
+      <legend className="label small">Wiederholen (optional)</legend>
+      <div className="pick-chips" role="radiogroup" aria-label="Wiederholen">
+        <label><input type="radio" name="wiederholung" value="" defaultChecked /><span>nicht</span></label>
+        <label><input type="radio" name="wiederholung" value="woche" /><span>wöchentlich</span></label>
+        <label><input type="radio" name="wiederholung" value="2wochen" /><span>alle 2 Wochen</span></label>
+      </div>
+      <div className="field pk-repeat-bis" style={{ maxWidth: 190 }}>
+        <label className="label small" htmlFor="f-bis">bis einschließlich</label>
+        <input className="input" id="f-bis" type="date" name="bis" min={ctx.day} />
+      </div>
+      <span className="small muted">Jeder Termin wird ein eigener Eintrag (höchstens ein Jahr): einzeln bestätigen, verschieben oder absagen – die Serie bleibt.</span>
+    </fieldset>
   );
 }
 
@@ -309,6 +351,7 @@ export function EntryForm(ctx: Ctx) {
       {ctx.id && <input type="hidden" name="id" value={ctx.id} />}
       {ctx.fromEvent && <input type="hidden" name="fromEvent" value={ctx.fromEvent} />}
       <F ctx={ctx} />
+      <Repeat ctx={ctx} />
       <Extern ctx={ctx} />
     </StateForm>
   );

@@ -67,7 +67,7 @@ export default async function FehlendPage({ searchParams }: { searchParams: Prom
       <div className="page-head">
         <div><div className="crumb"><Link href={`/gewinn?zeitraum=${r}`}>Finanzen · Gewinn</Link></div><h1>Fehlende Werte nachtragen</h1><div className="small muted" style={{ marginTop: 4 }}>{formatDate(from)} – {formatDate(to)}</div></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`/gewinn/fehlend?zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`}>{RANGES[k]}</Link>)}
+          {(Object.keys(RANGES) as Range[]).map((k) => <Link key={k} href={`/gewinn/fehlend?zeitraum=${k}`} className={`chip${r === k ? " active" : ""}`} aria-current={r === k ? "true" : undefined}>{RANGES[k]}</Link>)}
         </div>
       </div>
       {total === 0 && <div className="notice notice-info" data-testid="nothing-missing">Für diesen Zeitraum fehlt nichts – der Gewinn ist vollständig berechnet.</div>}

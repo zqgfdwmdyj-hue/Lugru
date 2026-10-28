@@ -110,9 +110,9 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
           </form>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Link href={href({ kat: undefined })} className={`chip${!sp.kat ? " active" : ""}`}>Alle Kategorien</Link>
+            <Link href={href({ kat: undefined })} className={`chip${!sp.kat ? " active" : ""}`} aria-current={!sp.kat ? "true" : undefined}>Alle Kategorien</Link>
             {cats.map((c) => (
-              <Link key={c.category} href={href({ kat: c.category, filter: "offen" })} className={`chip${sp.kat === c.category ? " active" : ""}`}>
+              <Link key={c.category} href={href({ kat: c.category, filter: "offen" })} className={`chip${sp.kat === c.category ? " active" : ""}`} aria-current={sp.kat === c.category ? "true" : undefined}>
                 {categoryLabel(c.category)} {c.n}{c.overdue ? ` (${c.overdue} abgelaufen)` : ""}
               </Link>
             ))}

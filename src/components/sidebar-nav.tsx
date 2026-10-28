@@ -82,7 +82,7 @@ export function SidebarNav({ counts, favorites = [], ...access }: NavAccess & { 
         <div className="nav-favs" data-testid="nav-favorites">
           <div className="nav-favs-head">★ Favoriten</div>
           {favorites.map((f) => (
-            <Link key={f.href} href={f.href} className={`nav-link${f.href === currentHref ? " active" : ""}`}>
+            <Link key={f.href} href={f.href} className={`nav-link${f.href === currentHref ? " active" : ""}`} aria-current={f.href === currentHref ? "true" : undefined}>
               <span>{f.label}</span>
             </Link>
           ))}

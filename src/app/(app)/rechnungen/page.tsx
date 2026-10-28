@@ -98,7 +98,7 @@ export default async function RechnungenPage({ searchParams }: { searchParams: P
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {(Object.keys(VIEWS) as View[]).map((v) => (
-              <Link key={v} href={href({ ansicht: v })} className={`chip${view === v ? " active" : ""}`} data-testid={`inv-view-${v}`}>{VIEWS[v]} · {count.get(v) ?? 0}</Link>
+              <Link key={v} href={href({ ansicht: v })} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined} data-testid={`inv-view-${v}`}>{VIEWS[v]} · {count.get(v) ?? 0}</Link>
             ))}
           </div>
           <BulkForm

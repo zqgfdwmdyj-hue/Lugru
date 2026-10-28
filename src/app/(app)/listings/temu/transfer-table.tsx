@@ -186,7 +186,7 @@ export function TransferTable({ candidates, rule, pack, temuConnected, running, 
         <section className="stack" data-testid="wizard-1">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             {(["alle", "entwurf", "pruefen", "unvollstaendig", "in-arbeit", "veroeffentlicht", "fehlgeschlagen", "ohne-wawi"] as Filter[]).map((f) => (
-              <button key={f} type="button" className={`chip${filter === f ? " active" : ""}`} onClick={() => setFilter(f)} data-testid={`wizard-filter-${f}`}>
+              <button key={f} type="button" className={`chip${filter === f ? " active" : ""}`} aria-pressed={filter === f} onClick={() => setFilter(f)} data-testid={`wizard-filter-${f}`}>
                 {f === "alle" ? "Alle" : f === "ohne-wawi" ? "Nicht in der Wawi" : WIZARD_STATUS[f].label} ({count(f)})
               </button>
             ))}

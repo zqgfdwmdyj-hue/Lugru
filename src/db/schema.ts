@@ -23,3 +23,4 @@ export * from "./tables/sellerboard";
 export * from "./tables/sas";
 export * from "./tables/watches";
 export * from "./tables/assistant";
+export * from "./tables/testenv";

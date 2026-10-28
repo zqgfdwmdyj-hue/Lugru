@@ -50,7 +50,7 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/einkauf?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/einkauf?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
           </div>
           <section className="card" style={{ overflow: "auto" }}>
             <table className="table sticky-head">

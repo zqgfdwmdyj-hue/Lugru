@@ -14,6 +14,7 @@ export const rechnungenOffen = defineTool({
   description: "Eingangsrechnungen, die noch geprüft oder zugeordnet werden müssen (neu, „prüfen“ oder mit offener Prüfung) – Lieferant, Nummer, Datum, Betrag. Optional nach Lieferant/Nummer filtern.",
   area: "buchhaltung",
   write: false,
+  quelle: { text: "Rechnungen (Upload, Google Drive, Postfächer)", jobs: ["Rechnungen", "Postfächer"] },
   input: z.object({ suche: z.string().trim().max(80).optional(), limit: z.number().int().min(1).max(100).default(30) }),
   run: async (ctx, i) => {
     const R = schema.invoices;
@@ -33,6 +34,7 @@ export const ansprueche = defineTool({
   description: "Offene Erstattungsansprüche gegenüber Amazon (verloren, beschädigt, Retouren …) mit erwartetem Betrag, sortiert nach Frist (früheste zuerst, ohne Frist am Ende) und Tagen bis zur Frist. Für „Wie viel Geld steht bei Amazon noch aus?“, „Welche Fristen laufen ab?“ – mit frist_in_tagen nur die bald fälligen.",
   area: "amazon",
   write: false,
+  quelle: { text: "Ansprüche aus Amazon-Berichten", jobs: ["Ansprüche", "Amazon-Reports abholen"] },
   input: z.object({
     status: z.enum(["offen", "eingereicht", "alle_offenen"]).default("alle_offenen"),
     frist_in_tagen: z.number().int().min(0).max(365).optional().describe("Nur Ansprüche, deren Frist in höchstens so vielen Tagen abläuft (auch schon abgelaufene)"),
@@ -66,6 +68,7 @@ export const amazonTodos = defineTool({
   area: "amazon",
   ownerOnly: true,
   write: false,
+  quelle: { text: "Amazon-ToDos aus Seller-Central-Mails", jobs: ["Amazon-ToDos"] },
   input: z.object({ limit: z.number().int().min(1).max(100).default(30) }),
   run: async (ctx, i) => {
     const A = schema.amazonTodos;
@@ -85,6 +88,7 @@ export const posteingang = defineTool({
   description: "Neueste Mails aus den verbundenen Postfächern (nicht archiviert) mit Absender, Betreff, Einstufung und Vorschau – optional nur wichtige oder nach Text gefiltert.",
   area: "posteingang",
   write: false,
+  quelle: { text: "Verbundene Postfächer", jobs: ["Postfächer"] },
   input: z.object({ nur_wichtige: z.boolean().default(false), suche: z.string().trim().max(80).optional(), limit: z.number().int().min(1).max(50).default(20) }),
   run: async (ctx, i) => {
     const M = schema.emails;
@@ -102,6 +106,7 @@ export const wissen = defineTool({
   description: "Durchsucht die Wissenssammlung (Anleitungen, Notizen, Textbausteine, Recherche) nach Titel und Inhalt. Für „Wie mache ich …?“, „Was hatten wir zu … notiert?“.",
   area: "wissen",
   write: false,
+  quelle: { text: "Wissensdatenbank im Seller-System" },
   input: z.object({ suche: z.string().trim().min(2).max(100), limit: z.number().int().min(1).max(20).default(8) }),
   run: async (ctx, i) => {
     const K = schema.knowledgeEntries;
@@ -112,7 +117,7 @@ export const wissen = defineTool({
       .where(and(eq(K.tenantId, ctx.session.tenantId), or(ilike(K.title, like), ilike(K.body, like), sql`exists (select 1 from unnest(${K.tags}) tg where tg ilike ${like})`)))
       .orderBy(asc(K.title))
       .limit(i.limit);
-    return json({ eintraege: rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, art: k.kind, herkunft: k.origin, stichworte: k.tags, text: k.body.slice(0, 2500) })) });
+    return json({ eintraege: rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, art: k.kind, herkunft: k.origin, stichworte: k.tags, text: k.body.slice(0, 2500), link: abs(ctx, `/wissen/${k.id}`) })), link: abs(ctx, "/wissen") });
   },
 });
 

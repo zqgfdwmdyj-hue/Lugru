@@ -68,7 +68,7 @@ export default async function EbayReviewPage({ searchParams }: { searchParams: P
             <div className="small muted">Häufigste Punkte – antippen zum Filtern:</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="top-issues">
               {data.top.map(([k, n]) => (
-                <Link key={k} href={link({ punkt: sp.punkt === k ? undefined : k })} className={`chip ${sp.punkt === k ? "active" : ""}`}>
+                <Link key={k} href={link({ punkt: sp.punkt === k ? undefined : k })} className={`chip ${sp.punkt === k ? "active" : ""}`} aria-current={sp.punkt === k ? "true" : undefined}>
                   {ISSUE_LABEL[k] ?? k} · {n}
                 </Link>
               ))}

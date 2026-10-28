@@ -1,5 +1,7 @@
 // Bereich „Privat“: Datentypen und Auswertungen – ohne Datenbank, damit testbar.
 
+import type { RepeatFields } from "./serie";
+
 export type PartnerKey = "a" | "b";
 export type Ratings = 1 | 2 | 3 | 4 | 5;
 
@@ -66,7 +68,7 @@ export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey |
 /** „beide“: zusammen mit den Kindern (z. B. Ausflug) – zählt nicht in „allein mit den Kindern“. */
 export type KidsPerson = PartnerKey | "beide";
 /** `fromEvent`: aus einem Familienkalender-Termin übernommen (Kennung des Termins, siehe eventRef). */
-export type KidsEntry = { day: string; person: KidsPerson; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string };
+export type KidsEntry = { day: string; person: KidsPerson; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
 export type TaskEntry = {
   title: string;
   source: "ads" | "paar" | "sonst";
@@ -84,12 +86,12 @@ export type TaskEntry = {
  * Privater Termin: Therapie/Arzt wie bisher, dazu Familien- und private Termine mit Titel. `person`: wen es
  * betrifft (für den Personenfilter), `extern`: ausdrücklich als neutraler „Privater Termin“ in den Apple-Kalender.
  */
-export type AppointmentEntry = { day: string; time?: string; to?: string; with: "ads" | "paar" | "arzt" | "familie" | "privat" | "sonst"; title?: string; person?: PartnerKey | "beide"; notes?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string };
+export type AppointmentEntry = { day: string; time?: string; to?: string; with: "ads" | "paar" | "arzt" | "familie" | "privat" | "sonst"; title?: string; person?: PartnerKey | "beide"; notes?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
 /** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
-export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string };
+export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
 /** Ausschlafen: wer durfte wann wie lange länger schlafen (der andere übernimmt die Kinder). */
 /** `kidsBy`: bei Auszeit – wer die Kinder übernimmt, wenn es nicht der Partner ist (dann ohne Kinderzeit-Eintrag). */
-export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string; fromEvent?: string };
+export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string; fromEvent?: string } & RepeatFields;
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;

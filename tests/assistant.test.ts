@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handleMcpMessage, type McpDeps } from "@/lib/assistant/mcp";
 import { basicAuth, parseScope, pkceChallenge, redirectAllowed, scopeText, verifyPkce, withParams, authServerMetadata, protectedResourceMetadata } from "@/lib/assistant/oauth-logic";
 import { accountRights, toolAllowed } from "@/lib/assistant/permissions";
+import { withStand } from "@/lib/assistant/stand";
 import { inputSchema } from "@/lib/assistant/schema";
 import { safeNext } from "@/lib/auth/next-path";
 import type { Session } from "@/lib/auth/session";
@@ -180,5 +181,17 @@ describe("Wer darf was – je Konto und Weg (Einstellungen → Claude)", () => {
   it("Nur-ansehen-Konto und Fragefeld ohne Ändern: nichts Änderndes", () => {
     expect(accountRights(tools, session({ role: "staff", areas: ["paletten", "wawi"], readOnly: true }), { allowWrite: true }).fragefeld.aendern).toEqual([]);
     expect(accountRights(tools, session(), { allowWrite: false }).fragefeld.aendern).toEqual([]);
+  });
+});
+
+describe("Werkzeug-Ergebnisse: Quelle und Datenstand anhängen", () => {
+  const stand = { quelle: "sellerboard", stand: "zuletzt abgerufen 28.10.2026, 14:05", abgerufen: "28.10.2026, 15:00" };
+  it("JSON-Ergebnis bekommt das Feld „datenstand“", () => {
+    expect(JSON.parse(withStand(JSON.stringify({ umsatz: 10, link: "/gewinn" }), stand))).toEqual({ umsatz: 10, link: "/gewinn", datenstand: stand });
+  });
+  it("Text-Ergebnis bekommt eine letzte Zeile; ohne Stand unverändert", () => {
+    expect(withStand("Keine Werte.", stand)).toBe("Keine Werte.\n\nDatenstand: sellerboard – zuletzt abgerufen 28.10.2026, 14:05");
+    expect(withStand("[1,2]", stand)).toContain("Datenstand:");
+    expect(withStand("x", null)).toBe("x");
   });
 });

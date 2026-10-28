@@ -33,8 +33,8 @@ export function Artikel({ stats, mode, sort, dir, q }: { stats: SkuStat[]; mode:
     <>
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${mode === "fba" ? " active" : ""}`} href="/retouren?ansicht=artikel&modus=fba">Versand durch Amazon (FBA)</Link>
-          <Link className={`chip${mode === "fbm" ? " active" : ""}`} href="/retouren?ansicht=artikel&modus=fbm">Händlerversand (FBM)</Link>
+          <Link className={`chip${mode === "fba" ? " active" : ""}`} aria-current={mode === "fba" ? "true" : undefined} href="/retouren?ansicht=artikel&modus=fba">Versand durch Amazon (FBA)</Link>
+          <Link className={`chip${mode === "fbm" ? " active" : ""}`} aria-current={mode === "fbm" ? "true" : undefined} href="/retouren?ansicht=artikel&modus=fbm">Händlerversand (FBM)</Link>
         </div>
         <form style={{ display: "flex", gap: 6 }}>
           <input type="hidden" name="ansicht" value="artikel" />

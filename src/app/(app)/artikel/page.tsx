@@ -36,9 +36,9 @@ export default async function ArtikelPage({ searchParams }: { searchParams: Prom
         <div><div className="crumb">WaWi</div><h1>Artikelstamm</h1><div className="small muted">Eigene Produkte an einem Ort: Stammdaten, Bilder, Texte, Pflichtangaben und der Stand bei Amazon und eBay.</div></div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        <Link href="/artikel" className={`chip${!sp.marke && !sp.status ? " active" : ""}`}>Alle</Link>
-        {brands.map((b) => <Link key={b.id} href={`/artikel?marke=${b.id}`} className={`chip${sp.marke === b.id ? " active" : ""}`}>{b.name}</Link>)}
-        {(["entwurf", "aktiv", "archiv"] as const).map((st) => <Link key={st} href={`/artikel?status=${st}${sp.marke ? `&marke=${sp.marke}` : ""}`} className={`chip${sp.status === st ? " active" : ""}`}>{STATUS[st][0].toLowerCase()}</Link>)}
+        <Link href="/artikel" className={`chip${!sp.marke && !sp.status ? " active" : ""}`} aria-current={!sp.marke && !sp.status ? "true" : undefined}>Alle</Link>
+        {brands.map((b) => <Link key={b.id} href={`/artikel?marke=${b.id}`} className={`chip${sp.marke === b.id ? " active" : ""}`} aria-current={sp.marke === b.id ? "true" : undefined}>{b.name}</Link>)}
+        {(["entwurf", "aktiv", "archiv"] as const).map((st) => <Link key={st} href={`/artikel?status=${st}${sp.marke ? `&marke=${sp.marke}` : ""}`} className={`chip${sp.status === st ? " active" : ""}`} aria-current={sp.status === st ? "true" : undefined}>{STATUS[st][0].toLowerCase()}</Link>)}
         <form style={{ marginLeft: "auto" }}><input className="input" name="q" defaultValue={sp.q ?? ""} placeholder="SKU, Titel, EAN, ASIN …" style={{ width: 220 }} /></form>
       </div>
       <div className="row">
