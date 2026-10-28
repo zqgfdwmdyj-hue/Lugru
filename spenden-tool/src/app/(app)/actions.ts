@@ -201,7 +201,7 @@ export async function saveItems(fd: FormData) {
     }
     if (fd.has(k("packcount")) && changed(k("packcount"))) {
       const n = parseAmount(str(fd, k("packcount")));
-      set.packCount = n === null || n < 2 || n > 10000 ? null : Math.round(n);
+      set.packCount = n === null || n < 1 || n > 10000 ? null : Math.round(n);
     }
     // Weitere Varianten: nur geänderte Felder kommen an – auf die gespeicherte Liste anwenden.
     if (it.morePacks.length) {
@@ -210,7 +210,7 @@ export async function saveItems(fd: FormData) {
       list.forEach((m, n) => {
         const f = (x: string) => k(`${x}${n}`);
         if (fd.has(f("mpk")) && changed(f("mpk"))) { const v = str(fd, f("mpk")); m.kind = isPackKind(v) ? v : null; touched = true; }
-        if (fd.has(f("mpc")) && changed(f("mpc"))) { const c = parseAmount(str(fd, f("mpc"))); m.count = c === null || c < 2 || c > 100000 ? null : Math.round(c); touched = true; }
+        if (fd.has(f("mpc")) && changed(f("mpc"))) { const c = parseAmount(str(fd, f("mpc"))); m.count = c === null || c < 1 || c > 100000 ? null : Math.round(c); touched = true; }
         if (fd.has(f("mpp")) && changed(f("mpp"))) { m.price = price(fd, f("mpp")) ?? parsePrintedPrice(str(fd, f("mpp"))); touched = true; }
         if (fd.has(f("mpn")) && changed(f("mpn"))) { m.note = opt(fd, f("mpn")); touched = true; }
       });
@@ -1040,16 +1040,16 @@ export async function saveProductDefaults(fd: FormData) {
     .map((n) => {
       const kind = str(fd, `mp${n}k`);
       const pr = price(fd, `mp${n}p`) ?? parsePrintedPrice(str(fd, `mp${n}p`));
-      return { kind: isPackKind(kind) ? kind : null, count: int(`mp${n}c`, 2), price: pr, note: opt(fd, `mp${n}n`) };
+      return { kind: isPackKind(kind) ? kind : null, count: int(`mp${n}c`, 1), price: pr, note: opt(fd, `mp${n}n`) };
     })
     .filter((m) => m.kind || m.price !== null || m.note);
   const d: ItemDefaults = {
     unit: isUnit(u) ? u : null,
-    unitCount: isUnit(u) && u !== "stueck" ? int("unitCount", 2) : null,
+    unitCount: isUnit(u) && u !== "stueck" && u !== "kg" && u !== "liter" ? int("unitCount", 2) : null,
     priceNote: opt(fd, "priceNote"),
     caption: opt(fd, "caption"),
     packKind: isPackKind(pk) ? pk : null,
-    packCount: int("packCount", 2),
+    packCount: int("packCount", 1),
     packPrice: price(fd, "packPrice") ?? parsePrintedPrice(str(fd, "packPrice")),
     packNote: opt(fd, "packNote"),
     morePacks,

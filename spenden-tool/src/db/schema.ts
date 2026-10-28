@@ -126,7 +126,7 @@ export const eventItems = pgTable(
     /** Steht vor dem Preis, z. B. „je“ oder „3er Packung“ – freier Text, überschreibt die Anzeige der Abgabeeinheit. */
     priceNote: text("price_note"),
     /** Worauf sich die Spendenempfehlung bezieht: Einzelstück, Mehrfachpackung oder Karton (siehe lib/price-logic.ts). */
-    unit: text("unit", { enum: ["stueck", "packung", "karton", "kasten", "tray", "palette"] }),
+    unit: text("unit", { enum: ["stueck", "packung", "karton", "kasten", "tray", "palette", "kg", "liter"] }),
     /** Stück je Packung bzw. Karton, z. B. 6 beim 6er-Pack. */
     unitCount: integer("unit_count"),
     /** Abgabeeinheit von einem Menschen festgelegt/bestätigt – getrennt vom Preis. */
@@ -144,7 +144,7 @@ export const eventItems = pgTable(
     packNote: text("pack_note"),
     packPrice: money("pack_price"),
     /** Art der ganzen Packung: Karton, Kasten (Getränke), Packung, Tray, Palette – siehe lib/price-logic.ts PACK_KINDS. */
-    packKind: text("pack_kind", { enum: ["karton", "kasten", "packung", "tray", "palette", "mehrere"] }),
+    packKind: text("pack_kind", { enum: ["karton", "kasten", "packung", "tray", "palette", "mehrere", "kg", "liter"] }),
     /** Stück bzw. Flaschen in der ganzen Packung, z. B. 12 Flaschen im Kasten. */
     packCount: integer("pack_count"),
     /** Weitere Varianten neben Einzelpreis und ganzer Packung, z. B. „Packung (6 St.) 2 €“ und „Karton (24 St.) 5 €“. */
@@ -172,11 +172,11 @@ export const eventItems = pgTable(
 
 /** Vorlage je Produkt für neue Verteilungen (aus der Produktkartei). */
 export type ItemDefaults = {
-  unit: "stueck" | "packung" | "karton" | "kasten" | "tray" | "palette" | null;
+  unit: "stueck" | "packung" | "karton" | "kasten" | "tray" | "palette" | "kg" | "liter" | null;
   unitCount: number | null;
   priceNote: string | null;
   caption: string | null;
-  packKind: "karton" | "kasten" | "packung" | "tray" | "palette" | "mehrere" | null;
+  packKind: "karton" | "kasten" | "packung" | "tray" | "palette" | "mehrere" | "kg" | "liter" | null;
   packCount: number | null;
   packPrice: number | null;
   packNote: string | null;
@@ -186,7 +186,7 @@ export type ItemDefaults = {
 };
 
 /** Eine weitere Abgabe-Variante (Packung, Karton …) mit eigener Spendenempfehlung. */
-export type MorePack = { kind: "karton" | "kasten" | "packung" | "tray" | "palette" | "mehrere" | null; count: number | null; price: number | null; note: string | null };
+export type MorePack = { kind: "karton" | "kasten" | "packung" | "tray" | "palette" | "mehrere" | "kg" | "liter" | null; count: number | null; price: number | null; note: string | null };
 
 /** count: Stück/Flaschen im Angebot (z. B. 12 beim Kasten) – price ist immer der Preis des ganzen Angebots. */
 export type ShopOffer = { shop: string; title: string; price: number; url: string; unit?: string | null; count?: number | null };

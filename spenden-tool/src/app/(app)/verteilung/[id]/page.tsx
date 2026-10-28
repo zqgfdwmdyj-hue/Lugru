@@ -7,7 +7,7 @@ import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { stockPrice } from "@/lib/pricing";
 import { autoAiMode } from "@/lib/settings";
-import { amountFromVariant, isMultiUnit, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { amountFromVariant, isMultiUnit, packCountLabel, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { mhdLabel, outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
@@ -294,7 +294,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
               </select>
             </div>
             <O name={k("packkind")} value={item.packKind ?? ""} />
-            <div className="field"><label className="label" htmlFor={k("packcount")}>{r.drink ? "Flaschen darin" : "Stück darin"}</label><input className="input input-compact num" id={k("packcount")} name={k("packcount")} defaultValue={item.packCount ?? ""} inputMode="numeric" placeholder={r.drink ? "z. B. 12" : "z. B. 24"} /></div>
+            <div className="field"><label className="label" htmlFor={k("packcount")}>{packCountLabel(item.packKind, r.drink)}</label><input className="input input-compact num" id={k("packcount")} name={k("packcount")} defaultValue={item.packCount ?? ""} inputMode="numeric" placeholder={r.drink ? "z. B. 12" : "z. B. 24"} /></div>
             <O name={k("packcount")} value={item.packCount ? String(item.packCount) : ""} />
             <div className="field"><label className="label" htmlFor={k("packprice")}>Empfehlung €</label><input className="input input-compact num" id={k("packprice")} name={k("packprice")} defaultValue={priceText(item.packPrice)} inputMode="decimal" placeholder="z. B. 5" /></div>
             <O name={k("packprice")} value={priceText(item.packPrice)} />
@@ -319,7 +319,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
                   </select>
                 </div>
                 <O name={k(`mpk${n}`)} value={m.kind ?? ""} />
-                <div className="field"><label className="label" htmlFor={k(`mpc${n}`)}>{r.drink ? "Flaschen darin" : "Stück darin"}</label><input className="input input-compact num" id={k(`mpc${n}`)} name={k(`mpc${n}`)} defaultValue={m.count ?? ""} inputMode="numeric" /></div>
+                <div className="field"><label className="label" htmlFor={k(`mpc${n}`)}>{packCountLabel(m.kind, r.drink)}</label><input className="input input-compact num" id={k(`mpc${n}`)} name={k(`mpc${n}`)} defaultValue={m.count ?? ""} inputMode="numeric" /></div>
                 <O name={k(`mpc${n}`)} value={m.count ? String(m.count) : ""} />
                 <div className="field"><label className="label" htmlFor={k(`mpp${n}`)}>Empfehlung €</label><input className="input input-compact num" id={k(`mpp${n}`)} name={k(`mpp${n}`)} defaultValue={priceText(m.price)} inputMode="decimal" /></div>
                 <O name={k(`mpp${n}`)} value={priceText(m.price)} />

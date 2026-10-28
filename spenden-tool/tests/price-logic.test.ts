@@ -371,3 +371,22 @@ describe("Variante „mehrere Stück“", () => {
     expect(packLabel([{ label: "5 Stück", price: 2 }])).toBe("5 Stück 2€");
   });
 });
+
+describe("Lose Ware nach Gewicht/Menge: kg und Liter", () => {
+  it("Abgabeeinheit je kg / je Liter", async () => {
+    const { outputPrice } = await import("@/lib/layout");
+    expect(outputPrice({ price: 2, unit: "kg" })).toBe("je kg 2 €");
+    expect(outputPrice({ price: 1.5, unit: "liter" }, "flyer")).toBe("je Liter 1,50€");
+    // Inhalt/Menge ändert die Angabe je kg nicht
+    expect(outputPrice({ price: 2, unit: "kg", amount: "5 kg" })).toBe("je kg 2 €");
+  });
+  it("Varianten nach Gewicht: 1 kg, 2 kg, 5 kg", async () => {
+    const { packOffers, packCountLabel } = await import("@/lib/price-logic");
+    expect(packOffers({ packKind: "kg", packCount: 2, packPrice: 5, morePacks: [{ kind: "kg", count: 5, price: 10, note: null }, { kind: "liter", count: 1, price: 1, note: null }] })).toEqual([
+      { label: "1 l", price: 1 },
+      { label: "2 kg", price: 5 },
+      { label: "5 kg", price: 10 },
+    ]);
+    expect(packCountLabel("kg")).toBe("Menge in kg");
+  });
+});

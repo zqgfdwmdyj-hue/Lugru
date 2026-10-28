@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { isPlaceholderName } from "@/lib/layout";
-import { categoryHint, isMultiUnit, sortIssues, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
+import { categoryHint, isMeasureUnit, isMultiUnit, sortIssues, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
 import { perPiece, suggestDonationPrice, suggestPackPrice } from "@/lib/pricing";
 import { extraPhotos, latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
 import { backsideCandidates } from "@/lib/backside";
@@ -37,7 +37,8 @@ export const loadEventView = cache(async (id: string) => {
     // Abgabe: Einzelstück 1, Packung/Karton mit Stückzahl, sonst wie im Angebot.
     // Abgabe: Einzelstück 1, Packung/Karton/Kasten/Tray/Palette mit Stückzahl (ohne Angabe: wie im Angebot, z. B. Kasten 20).
     const abgabe = isMultiUnit(r.item.unit) ? (r.item.unitCount ?? fresh[0]?.count ?? 1) : r.item.unit === "stueck" ? 1 : (fresh[0]?.count ?? 1);
-    const freshSuggestion = piece !== null ? suggestDonationPrice(piece * abgabe) : null;
+    // Je kg/Liter lässt sich aus Handelsangeboten (Packungen) nicht sicher umrechnen – kein Vorschlag.
+    const freshSuggestion = piece !== null && !isMeasureUnit(r.item.unit) ? suggestDonationPrice(piece * abgabe) : null;
     const suggestion = priced && freshSuggestion !== null && !state.printed ? freshSuggestion : null;
     // Ganze Packung: 20 % vom Handelspreis (Getränke: normaler Anteil)
     const drink = isDrink(r.product);

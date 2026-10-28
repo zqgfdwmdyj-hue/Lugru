@@ -19,11 +19,16 @@ export const UNITS = {
   kasten: { label: "Kasten (Getränke)", hint: "z. B. 20 × 0,5 l" },
   tray: { label: "Tray", hint: "z. B. 24 Dosen" },
   palette: { label: "Palette", hint: "ganze Palette" },
+  // Lose Ware nach Gewicht/Menge, z. B. getrocknete Tomaten: Preis je Kilogramm bzw. Liter.
+  kg: { label: "pro Kilogramm", hint: "Preis je kg" },
+  liter: { label: "pro Liter", hint: "Preis je Liter" },
 } as const;
 export type Unit = keyof typeof UNITS;
 export const isUnit = (v: unknown): v is Unit => typeof v === "string" && v in UNITS;
 /** Einheiten mit Stückzahl darin (alles außer Einzelstück). */
-export const isMultiUnit = (v: unknown): boolean => isUnit(v) && v !== "stueck";
+export const isMultiUnit = (v: unknown): boolean => isUnit(v) && v !== "stueck" && v !== "kg" && v !== "liter";
+/** Preis je Kilogramm/Liter statt je Stück */
+export const isMeasureUnit = (v: unknown): boolean => v === "kg" || v === "liter";
 /** Bezeichnung ganzer Gebinde vor dem Preis */
 const BULK_NAME: Record<string, string> = { karton: "Karton", kasten: "Kasten", tray: "Tray", palette: "Palette" };
 /** Kästen zählen Flaschen, sonst Stück. */
@@ -35,6 +40,8 @@ export type UnitInfo = { unit: string | null; unitCount: number | null; priceNot
 export function unitLabel(unit: string | null | undefined, count: number | null | undefined): string {
   const n = count && count > 1 ? count : null;
   if (unit === "stueck") return "Einzelstück";
+  if (unit === "kg") return "pro kg";
+  if (unit === "liter") return "pro Liter";
   if (unit === "packung") return n ? `${n}er-Pack` : "Packung";
   if (unit && BULK_NAME[unit]) return n ? `${BULK_NAME[unit]} (${n} ${unit === "kasten" ? "Flaschen" : "Stück"})` : BULK_NAME[unit];
   return "";
@@ -48,6 +55,8 @@ export function pricePrefix(i: UnitInfo): string {
   const note = i.priceNote?.trim();
   if (note) return note;
   const n = i.unitCount && i.unitCount > 1 ? i.unitCount : null;
+  if (i.unit === "kg") return "je kg";
+  if (i.unit === "liter") return "je Liter";
   // Inhalt/Menge („1,5 kg“, „0,5 l“) steht vor dem Preis – bei Packungen je Stück: „6 × 0,5 l“.
   const a = i.amount?.trim();
   if (a) {
@@ -338,9 +347,11 @@ export const LEGACY_CATEGORIES = ["Drogerie & Haushalt", "Hautpflege", "Haarpfle
 // ---------- Ganze Packung / Kasten ----------
 
 // „mehrere“: keine echte Mehrfachpackung, sondern ein Angebot über mehrere Einzelne („5 Stück 2 €“, z. B. Kartoffelknödel).
-export const PACK_KINDS = { karton: "Karton", kasten: "Kasten", packung: "Packung", tray: "Tray", palette: "Palette", mehrere: "Mehrere Stück (Angebot)" } as const;
+export const PACK_KINDS = { karton: "Karton", kasten: "Kasten", packung: "Packung", tray: "Tray", palette: "Palette", mehrere: "Mehrere Stück (Angebot)", kg: "Kilogramm (kg)", liter: "Liter" } as const;
 export type PackKind = keyof typeof PACK_KINDS;
 export const isPackKind = (v: unknown): v is PackKind => typeof v === "string" && v in PACK_KINDS;
+/** Beschriftung des Mengenfelds einer Variante */
+export const packCountLabel = (kind: string | null | undefined, drink = false) => (kind === "kg" ? "Menge in kg" : kind === "liter" ? "Menge in Liter" : kind === "mehrere" ? "Anzahl Stück" : drink ? "Flaschen darin" : "Stück darin");
 
 /**
  * Bezeichnung der ganzen Packung: eigener Text, sonst aus Art und Anzahl – bei Getränken mit Inhalt je Flasche:
@@ -349,6 +360,9 @@ export const isPackKind = (v: unknown): v is PackKind => typeof v === "string" &
 export function packText(i: { packKind?: string | null; packCount?: number | null; packNote?: string | null }, drink = false, variant?: string | null): string {
   const note = i.packNote?.trim();
   if (note) return note;
+  // Nach Gewicht/Menge: „2 kg“, „5 l“ (auch 1 kg).
+  if (i.packKind === "kg") return i.packCount ? `${i.packCount} kg` : "je kg";
+  if (i.packKind === "liter") return i.packCount ? `${i.packCount} l` : "je Liter";
   const n = i.packCount && i.packCount > 1 ? i.packCount : null;
   if (i.packKind === "mehrere") return n ? `${n} Stück` : "mehrere Stück";
   const kind = isPackKind(i.packKind) ? PACK_KINDS[i.packKind] : drink ? "Kasten" : "ganze Packung";

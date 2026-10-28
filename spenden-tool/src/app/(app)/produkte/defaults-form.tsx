@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { formatDate } from "@/lib/numbers";
 import { outputPrice } from "@/lib/layout";
-import { amountFromVariant, guessUnit, isDrink, mhdAuto, PACK_KINDS, packOffers, packText, STOCK_LABELS, unitLabel, UNITS } from "@/lib/price-logic";
+import { amountFromVariant, packCountLabel, guessUnit, isDrink, mhdAuto, PACK_KINDS, packOffers, packText, STOCK_LABELS, unitLabel, UNITS } from "@/lib/price-logic";
 import { saveProductDefaults } from "@/app/(app)/actions";
 
 type Product = typeof schema.products.$inferSelect;
@@ -83,7 +83,7 @@ export function ProductDefaultsForm({ data, back, compact = false }: { data: Awa
                           {Object.entries(PACK_KINDS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                         </select>
                       </div>
-                      <div className="field"><label className="label" htmlFor={`${px}${pre.c}`}>{drink ? "Flaschen darin" : "Stück darin"}</label><input className="input" id={`${px}${pre.c}`} name={pre.c} defaultValue={m.count ?? ""} inputMode="numeric" /></div>
+                      <div className="field"><label className="label" htmlFor={`${px}${pre.c}`}>{packCountLabel(m.kind, drink)}</label><input className="input" id={`${px}${pre.c}`} name={pre.c} defaultValue={m.count ?? ""} inputMode="numeric" /></div>
                       <div className="field"><label className="label" htmlFor={`${px}${pre.p}`}>Empfehlung €</label><input className="input" id={`${px}${pre.p}`} name={pre.p} defaultValue={m.price != null ? m.price.toFixed(2).replace(".", ",") : ""} inputMode="decimal" /></div>
                     </div>
                     <div className="field"><label className="label" htmlFor={`${px}${pre.t}`}>Eigene Bezeichnung (optional)</label><input className="input" id={`${px}${pre.t}`} name={pre.t} defaultValue={m.note ?? ""} placeholder={packText({ packKind: m.kind, packCount: m.count }, drink, product.variant)} /></div>

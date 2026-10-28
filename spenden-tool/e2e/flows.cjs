@@ -320,6 +320,20 @@ async function photo(dir, name, rgb, w = 640) {
     const aus5 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
     ok(/5 Stück 2/.test(aus5), "Aushang: „5 Stück 2€“ (kein Packungswort)");
 
+    // 12e: Lose Ware (z. B. getrocknete Tomaten): je kg plus Varianten 2 kg / 5 kg
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`, { waitUntil: "networkidle" });
+    await page.selectOption(`#unit_${singleItem.id}`, "kg");
+    await page.fill(`#price_${singleItem.id}`, "2");
+    await page.selectOption(`#packkind_${singleItem.id}`, "kg");
+    await page.fill(`#packcount_${singleItem.id}`, "5");
+    await page.fill(`#packprice_${singleItem.id}`, "8");
+    await page.fill(`#packnote_${singleItem.id}`, "");
+    await page.locator(`#packnote_${singleItem.id}`).blur();
+    await page.locator("button[type=submit]", { hasText: /Speichern/ }).first().click().catch(() => {});
+    ok(await until(async () => { const r = (await q("select unit, pack_kind, pack_count from event_items where id = $1", [singleItem.id]))[0]; return r.unit === "kg" && r.pack_kind === "kg" && r.pack_count === 5; }), "Abgabeeinheit „pro Kilogramm“ und Variante „5 kg“ gespeichert");
+    const aus6 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
+    ok(/je kg 2(,00)?€/.test(aus6) && /5 kg 8/.test(aus6), "Aushang: „je kg 2€ · 5 kg 8€“", (aus6.match(/je kg[^<]{0,30}/) || [""])[0]);
+
     // 13: Schmaler Handybildschirm (360 px): nichts ragt seitlich heraus, Touchflächen ≥ 44 px, Text ≥ 14 px
     await page.setViewportSize({ width: 360, height: 780 });
     for (const [u, what] of [["/", "Startseite"], [`/verteilung/${eventId}`, "Produktliste"], [`/verteilung/${eventId}/pruefen`, "Prüfen"], [`/verteilung/${eventId}/ergebnisse?status=alle`, "Ergebnisse"], [`/verteilung/${eventId}/ausgabe`, "Ausgabe"]]) {
