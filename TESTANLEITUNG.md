@@ -314,9 +314,17 @@ simuliert, alles andere nach außen gesperrt. Oben steht auf jeder Seite ein vio
 sudo bash /opt/seller-system/deploy/testumgebung.sh an              # einrichten/starten, zeigt Zugang und Passwort
 sudo bash /opt/seller-system/deploy/testumgebung.sh pruefen         # Kurzprüfung: getrennt vom echten System?
 sudo bash /opt/seller-system/deploy/testumgebung.sh zuruecksetzen   # Testdaten frisch
+sudo bash /opt/seller-system/deploy/testumgebung.sh domain test.deine-domain.de --pruefen   # nur Voraussetzungen prüfen
 sudo bash /opt/seller-system/deploy/testumgebung.sh domain test.deine-domain.de   # optional: per https von außen
+sudo bash /opt/seller-system/deploy/testumgebung.sh domain aus                    # öffentliche Adresse wieder entfernen
 sudo bash /opt/seller-system/deploy/testumgebung.sh aus             # anhalten (Daten bleiben), „aus --loeschen“ = weg
 ```
+
+**Eigene Adresse (z. B. test.deine-domain.de):** Vorher beim Domain-Anbieter einen DNS-Eintrag anlegen – Typ A,
+Name `test`, Wert = IP des Servers – und warten, bis er sichtbar ist. „--pruefen“ zeigt, ob alles bereit ist
+(DNS, Caddy, Port nur lokal, echtes System in Ordnung) und ändert nichts. Beim Einrichten sichert das Skript das
+Caddyfile, prüft danach das echte System und stellt bei einem Problem sofort die alte Fassung wieder her. Der Port
+der Testumgebung bleibt nur lokal; die Seite ist für Suchmaschinen gesperrt, Anmeldung wie gewohnt.
 
 Ohne Domain ist sie nur auf dem Server erreichbar (`http://127.0.0.1:3041`), z. B. per SSH-Tunnel:
 `ssh -L 3041:127.0.0.1:3041 root@<Server>` und dann im Browser `http://localhost:3041`.
