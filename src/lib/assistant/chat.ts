@@ -34,6 +34,7 @@ function systemPrompt(ctx: ToolCtx) {
     ctx.canWrite
       ? "Ändernde Werkzeuge nur nutzen, wenn die Person das ausdrücklich möchte. Die Person bestätigt jede Änderung selbst im Fragefeld; wurde sie abgelehnt, nicht erneut versuchen, sondern nachfragen."
       : "Diese Person darf über das Fragefeld nichts ändern – nur lesen. Bei Änderungswünschen sagen, wo das im Seller-System geht.",
+    "Begriffe: „Prep Center“ = Versanddienstleister, der FBM-Aufträge für uns verschickt (Werkzeug „prep_center“, Aufträge mit verschickt_von). „Palettenlager“ = Lager für Paletten von Kunden mit Anlieferungen/Speditions-Sendungen (Werkzeuge „paletten“, „sendungen“) – nicht verwechseln. „Sendungen“ ohne Zusatz: nachfragen oder beides prüfen.",
     "Zum Privatbereich hast du hier keinen Zugriff.",
     `Heute ist ${ctx.today} (Europe/Berlin).`,
   ].join("\n");
@@ -46,6 +47,7 @@ const STATUS: Record<string, string> = {
   kalender: "Lese den Kalender …",
   auftraege: "Lese Aufträge …",
   auftrag: "Lese den Auftrag …",
+  prep_center: "Lese den Versand über das Prep Center …",
   produkte: "Prüfe Bestand …",
   umsatz: "Lese Umsatzzahlen …",
   paletten: "Lese das Palettenlager …",

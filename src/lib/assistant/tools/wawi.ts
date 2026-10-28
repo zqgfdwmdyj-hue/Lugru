@@ -8,6 +8,9 @@ import { loadOrder } from "@/lib/orders/service";
 import { productSearch } from "@/lib/products/service";
 import { sellerboardRange } from "@/lib/sellerboard/sales";
 import { stockLevels } from "@/lib/stock/channel-sync";
+import { getSettings } from "@/lib/settings";
+import { parseMonthParam, prepSummary } from "@/lib/shipping/prep";
+import { prepMonthRows, unassignedMonthRows } from "@/lib/shipping/prep-service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, isoDate, json, round2, uuid } from "./common";
 
@@ -35,19 +38,23 @@ export const auftraege = defineTool({
   input: z.object({
     suche: z.string().trim().min(2).max(100).optional(),
     status: z.enum(["offen", "label", "versendet", "storniert", "retoure", "alle"]).default("offen"),
+    verschickt_von: z.enum(["alle", "ich", "prep_center"]).default("alle").describe("Nur Aufträge, die ich selbst bzw. das Prep Center verschickt"),
     limit: z.number().int().min(1).max(100).default(30),
   }),
   run: async (ctx, i) => {
     const t = ctx.session.tenantId;
     let rows: (typeof O.$inferSelect)[];
+    const shipper = i.verschickt_von === "prep_center" ? "prep" : i.verschickt_von === "ich" ? "self" : null;
     if (i.suche) {
       const ids = await searchOrderIds(t, i.suche, i.limit);
       rows = ids.length ? await db.select().from(O).where(and(eq(O.tenantId, t), inArray(O.id, ids))).orderBy(desc(O.orderDate)) : [];
       if (i.status !== "alle") rows = rows.filter((o) => (STATUS_IN[i.status as keyof typeof STATUS_IN] as readonly string[]).includes(o.status));
+      if (shipper) rows = rows.filter((o) => o.shippedBy === shipper);
     } else {
       const where = [eq(O.tenantId, t)];
       if (i.status !== "alle") where.push(inArray(O.status, [...STATUS_IN[i.status]]));
       if (i.status === "offen" || i.status === "label") where.push(eq(O.fulfillment, "FBM"));
+      if (shipper) where.push(eq(O.shippedBy, shipper));
       rows = await db
         .select()
         .from(O)
@@ -74,6 +81,39 @@ export const auftraege = defineTool({
         positionen: items.get(o.id) ?? [],
         link: abs(ctx, `/auftraege/${o.id}`),
       })),
+    });
+  },
+});
+
+export const prepCenter = defineTool({
+  name: "prep_center",
+  title: "Versand über das Prep Center",
+  description:
+    "Was das Prep Center (Versanddienstleister, der FBM-Aufträge für uns verschickt – NICHT das Palettenlager) in einem Monat verschickt hat: Anzahl Sendungen, Stück, je Versandart, erwartete Kosten laut hinterlegten Gebühren, dazu wie viele Sendungen im Monat noch keinem Versender zugeordnet sind. Optional die Liste je Sendung. Für „Wie viele Sendungen hat das Prep Center diesen Monat?“, „Stimmt die Rechnung vom Prep Center?“.",
+  area: "wawi",
+  write: false,
+  input: z.object({
+    monat: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Monat als JJJJ-MM").optional().describe("Standard: aktueller Monat"),
+    mit_liste: z.boolean().default(false).describe("Auch die einzelnen Sendungen zeigen"),
+    limit: z.number().int().min(1).max(300).default(50),
+  }),
+  run: async (ctx, i) => {
+    const t = ctx.session.tenantId;
+    const month = parseMonthParam(i.monat, ctx.today);
+    const [settings, rows, open] = await Promise.all([getSettings(t), prepMonthRows(t, month), unassignedMonthRows(t, month)]);
+    const sum = prepSummary(rows, { feeShipment: settings.prep.feeShipment, feeExtraItem: settings.prep.feeExtraItem });
+    return json({
+      prep_center: settings.prep.name || "Prep Center",
+      monat: month,
+      sendungen: sum.shipments,
+      stueck: sum.units,
+      je_versandart: sum.byProduct.map((b) => ({ versandart: b.product, sendungen: b.shipments, stueck: b.units })),
+      erwartete_kosten: sum.expected ?? undefined,
+      kosten_hinweis: sum.expected === null ? "Keine Gebühren hinterlegt (Einstellungen → Prep Center)." : undefined,
+      noch_nicht_zugeordnet: open.length || undefined,
+      zuordnung_hinweis: open.length ? `${open.length} Sendung(en) in diesem Monat ohne Angabe, wer verschickt hat – in der Monatsübersicht zuordnen, sonst fehlen sie hier.` : undefined,
+      liste: i.mit_liste ? rows.slice(0, i.limit).map((r) => ({ tag: r.day, kanal: r.channel, bestellnummer: r.externalId, stueck: r.units, artikel: r.items, versandart: r.product, sendungsnummer: r.tracking ?? undefined, status: r.status, link: abs(ctx, `/auftraege/${r.orderId}`) })) : undefined,
+      link: abs(ctx, `/auftraege/prep-center?monat=${month}`),
     });
   },
 });
@@ -212,5 +252,5 @@ export const umsatz = defineTool({
   },
 });
 
-export const WAWI = [auftraege, auftrag, auftragNotiz, produkte, umsatz];
+export const WAWI = [auftraege, auftrag, auftragNotiz, prepCenter, produkte, umsatz];
 

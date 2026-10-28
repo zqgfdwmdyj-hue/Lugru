@@ -20,6 +20,7 @@ function instructions(ctx: Pick<ToolCtx, "session" | "canWrite" | "privat" | "to
   return [
     `Seller-System von ${ctx.session.tenantName} (Online-Handel: Amazon, eBay, Temu, eigenes Lager, Palettenlager für Kunden). Angemeldet: ${ctx.session.name || ctx.session.email}.`,
     "Antworte auf Deutsch. Nutze „ueberblick“ als Einstieg, „suche“ wenn unklar ist, wo etwas steht.",
+    "Begriffe: „Prep Center“ = Versanddienstleister für FBM-Aufträge (Werkzeug „prep_center“); „Palettenlager“ = Paletten von Kunden mit Speditions-Sendungen („paletten“, „sendungen“) – nicht verwechseln.",
     ctx.canWrite ? "Ändernde Werkzeuge nur auf ausdrücklichen Wunsch und mit genau den genannten Angaben benutzen; im Zweifel vorher nachfragen." : "Diese Verbindung darf nur lesen.",
     ctx.privat ? "Der Privatbereich ist freigegeben (privat_*): vertraulich behandeln, nicht ungefragt mit Geschäftlichem vermischen." : "",
     `Heute ist ${ctx.today}. Links in den Antworten führen ins Seller-System.`,
