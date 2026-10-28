@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { SHIP_CHOICE_LABEL, type ShipChoice } from "@/lib/shipping/packing-slip";
 import { WS_OPTIONS } from "@/lib/shipping/warensendung";
+import { splitVariant } from "@/lib/shipping/variant";
 import { slipAction, type SlipState } from "./actions";
 import type { SkuWeightInfo } from "@/lib/shipping/weights-service";
 
@@ -100,7 +101,16 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
         <div className="slip-weights">
           {skus.map((s, i) => (
             <div key={`${s.sku}:${s.grams}:${s.wsMax}`} className="field" data-testid="slip-weight" data-sku={s.sku}>
-              <label className="label small" htmlFor={`w_${i}`} title={s.sku}>{s.title.length > 60 ? `${s.title.slice(0, 58)} …` : s.title}</label>
+              {(() => {
+                // Größe/Farbe immer sichtbar – sonst sehen M und L nach dem Kürzen gleich aus.
+                const v = splitVariant(s.title);
+                return (
+                  <label className="label small" htmlFor={`w_${i}`} title={`${s.title} · ${s.sku}`}>
+                    {v.base.length > 55 ? `${v.base.slice(0, 53)} …` : v.base}
+                    {v.variant && <span className="slip-variant" data-testid="slip-variant">{v.variant}</span>}
+                  </label>
+                );
+              })()}
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <input className="input" id={`w_${i}`} name={`w_${i}`} defaultValue={kgText(s.grams)} placeholder="z. B. 0,3" inputMode="decimal" style={{ width: 80 }} aria-label="Gewicht je Stück in kg" />
                 <span className="small muted">kg</span>

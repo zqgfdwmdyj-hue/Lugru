@@ -11,18 +11,23 @@ import { itemNameSql, type OrderItemLine } from "@/lib/orders/service";
 import { createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
 import { BatchForm } from "./batch-form";
 import { openLabels } from "@/lib/shipping/label-pdfs";
+import { searchOrderIds } from "@/lib/orders/search";
 
 const VIEWS = { offen: "Zu versenden", label: "Label erstellt", versendet: "Versendet", fehler: "Meldung offen", fba: "FBA", alle: "Alle" } as const;
 type View = keyof typeof VIEWS;
 
-export default async function AuftraegePage({ searchParams }: { searchParams: Promise<{ ansicht?: string; kanal?: string; meldung?: string }> }) {
+export default async function AuftraegePage({ searchParams }: { searchParams: Promise<{ ansicht?: string; kanal?: string; meldung?: string; q?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "offen";
+  // Suche (Name, Bestellnummer, Ort/PLZ, Artikel) über alle Status – z. B. „schon übertragen?“
+  const q = (sp.q ?? "").trim().slice(0, 100);
+  const hits = q ? await searchOrderIds(session.tenantId, q) : null;
+  const view: View = hits ? "alle" : sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "offen";
   const O = schema.orders;
   const where: SQL[] = [eq(O.tenantId, session.tenantId)];
+  if (hits) where.push(hits.length ? inArray(O.id, hits) : sql`false`);
   if (CHANNELS.includes(sp.kanal as never)) where.push(eq(O.channel, sp.kanal as never));
-  switch (view) {
+  if (!hits) switch (view) {
     case "offen": where.push(eq(O.fulfillment, "FBM"), eq(O.status, "open")); break;
     case "label": where.push(eq(O.status, "label_created")); break;
     case "versendet": where.push(eq(O.fulfillment, "FBM"), inArray(O.status, ["shipped", "delivered"])); break;
@@ -80,7 +85,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
                 )}
               </td>
               <td className="num right">{formatEuro(o.total)}</td>
-              <td>{ORDER_STATUS_LABEL[o.status]}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
+              <td>{ORDER_STATUS_LABEL[o.status]}{o.carrier && o.status !== "open" && <div className="small muted">{o.carrier}</div>}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
               <td className="num small">{o.trackingNumber ?? (o.carrier === "Deutsche Post" ? "Warensendung" : "–")}</td>
             </tr>
           ))}
@@ -101,6 +106,13 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
         </div>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="orders-msg">{sp.meldung}</div>}
+      <form action="/auftraege" className="orders-search" data-testid="orders-search">
+        <label htmlFor="oq" className="sr-only">Aufträge suchen</label>
+        <input id="oq" name="q" type="search" className="input" defaultValue={q} placeholder="Name, Bestellnummer, PLZ/Ort oder Artikel suchen – z. B. „schon übertragen?“" />
+        <button className="btn" type="submit">Suchen</button>
+        {q && <Link className="btn-link small" href="/auftraege">zurücksetzen</Link>}
+      </form>
+      {hits && <div className="small muted" data-testid="orders-search-count">{hits.length ? `${hits.length} Treffer für „${q}“ (alle Status, letzte 18 Monate)` : `Kein Auftrag zu „${q}“ gefunden (letzte 18 Monate).`}</div>}
       <div className="grid-kpi">
         {(["amazon", "ebay", "tiktok", "temu"] as const).map((c) => (
           <Link key={c} href={`/auftraege?ansicht=offen&kanal=${c}`} className="card card-pad" style={{ textDecoration: "none", color: "inherit" }}>

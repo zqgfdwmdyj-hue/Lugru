@@ -1,11 +1,13 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { rowAnchor } from "@/lib/products/logic";
-import { and, eq, ilike, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { formatEuro } from "@/lib/numbers";
 import { productSearch } from "@/lib/products/service";
+import { searchOrderIds } from "@/lib/orders/search";
+import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 
 export default async function SuchePage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const session = await requireSession();
@@ -41,6 +43,12 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
       ])
     : [{ rows: [], total: 0 }, [], [], []];
   const exact = products.rows.filter((p) => p.exact);
+  // Aufträge: Name/Anschrift sind verschlüsselt – Suche in den entschlüsselten Feldern (z. B. „schon übertragen?“).
+  const orderIds = q ? await searchOrderIds(session.tenantId, q, 10) : [];
+  const orderRows = orderIds.length
+    ? await db.select({ id: schema.orders.id, externalId: schema.orders.externalId, channel: schema.orders.channel, status: schema.orders.status, carrier: schema.orders.carrier, orderDate: schema.orders.orderDate, shipTo: schema.orders.shipTo, buyerName: schema.orders.buyerName }).from(schema.orders).where(and(eq(schema.orders.tenantId, session.tenantId), inArray(schema.orders.id, orderIds)))
+    : [];
+  orderRows.sort((a, b) => b.orderDate.getTime() - a.orderDate.getTime());
   const back = `/suche?q=${encodeURIComponent(q)}`;
 
   return (
@@ -66,6 +74,20 @@ export default async function SuchePage({ searchParams }: { searchParams: Promis
               ))}
             </div>
           )}
+          <section className="card" style={{ overflow: "hidden" }} data-testid="search-orders">
+            <div className="card-head"><h2>Aufträge</h2><span className="small muted"><Link href={`/auftraege?q=${encodeURIComponent(q)}`}>in Aufträge öffnen</Link></span></div>
+            {orderRows.length === 0 ? <div className="card-pad muted">Keine Treffer in Name, Bestellnummer, PLZ/Ort oder Artikel.</div> : (
+              <table className="table"><tbody>
+                {orderRows.map((o) => (
+                  <tr key={o.id}>
+                    <td className="num"><Link href={`/auftraege/${o.id}`}>{o.externalId}</Link><div className="small muted">{CHANNEL_LABEL[o.channel]} · {o.orderDate.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</div></td>
+                    <td>{o.shipTo?.name1 ?? o.buyerName ?? "–"}<div className="small muted">{[o.shipTo?.zip, o.shipTo?.city].filter(Boolean).join(" ")}</div></td>
+                    <td>{ORDER_STATUS_LABEL[o.status]}{o.carrier && o.status !== "open" ? <div className="small muted">{o.carrier}</div> : null}</td>
+                  </tr>
+                ))}
+              </tbody></table>
+            )}
+          </section>
           <section className="card" style={{ overflow: "hidden" }}>
             <div className="card-head"><h2>Produkte</h2><span className="small muted">{products.total > products.rows.length ? `erste ${products.rows.length} von ${products.total} – ` : ""}<Link href={`/produkte?ansicht=alle&q=${encodeURIComponent(q)}`}>in Produkte öffnen</Link></span></div>
             {products.rows.length === 0 ? <div className="card-pad muted">Keine Treffer in SKU, Name, ASIN oder EAN.</div> : (

@@ -1019,3 +1019,6 @@ h2 { font-size: 16px; margin: 0; }
 /* Labels: Warensendung & DHL – zwei Quellen nebeneinander, Gewichte als Raster */
 .slip-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
 .slip-weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.slip-variant { display: block; margin-top: 2px; font-weight: 700; color: var(--ink); }
+.orders-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.orders-search .input { flex: 1 1 320px; max-width: 560px; }
