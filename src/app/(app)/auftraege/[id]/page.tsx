@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
@@ -87,7 +88,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               {parcels.map((p) => (
                 <div key={p.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8, fontSize: 13 }}>
                   <div className="between">
-                    <span className="num">{p.trackingNumber ?? "–"}</span>
+                    <span className="num">{p.carrier !== "DHL" ? `${p.carrier}${p.trackingNumber ? ` · Frankier-ID ${p.trackingNumber}` : ""}` : p.trackingNumber ?? "–"}</span>
                     <span className={`tag ${p.status === "created" ? "tag-ok" : p.status === "error" ? "tag-critical" : "tag-neutral"}`}>{p.status === "created" ? "LABEL" : p.status === "error" ? "FEHLER" : "STORNIERT"}</span>
                   </div>
                   <div className="small muted">{p.product} · {p.weightKg} kg · {p.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</div>
@@ -95,7 +96,11 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                     {p.labelFileId && <a className="btn btn-small" href={`/datei/${p.labelFileId}`} target="_blank" rel="noreferrer">Label drucken</a>}
                     {p.status === "created" && order.status === "label_created" && (
-                      <form action={cancelLabelAction}><input type="hidden" name="parcelId" value={p.id} /><button className="btn btn-small" type="submit">Stornieren</button></form>
+                      p.carrier !== "DHL" ? (
+                        <form action={cancelLabelAction}><input type="hidden" name="parcelId" value={p.id} /><ConfirmButton className="btn btn-small" confirm={`Warensendung verwerfen? Der Auftrag ist danach wieder offen. Das Porto erstattet die Post nicht automatisch – Erstattung in der Portokasse beantragen${p.trackingNumber ? ` (Frankier-ID ${p.trackingNumber})` : ""}.`}>Verwerfen</ConfirmButton></form>
+                      ) : (
+                        <form action={cancelLabelAction}><input type="hidden" name="parcelId" value={p.id} /><button className="btn btn-small" type="submit">Stornieren</button></form>
+                      )
                     )}
                   </div>
                 </div>

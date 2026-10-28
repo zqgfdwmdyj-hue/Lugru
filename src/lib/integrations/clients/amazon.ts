@@ -240,8 +240,9 @@ registerTrackingUploader("amazon", async (tenantId, order, items) => {
     packageDetail: {
       packageReferenceId: "1",
       carrierCode: order.carrier ?? "DHL",
-      shippingMethod: "Paket",
-      trackingNumber: order.trackingNumber,
+      // Warensendung (Deutsche Post) hat keine Sendungsnummer – dann ohne melden.
+      shippingMethod: order.carrier === "Deutsche Post" ? "Warensendung" : "Paket",
+      ...(order.trackingNumber ? { trackingNumber: order.trackingNumber } : {}),
       shipDate: (order.shippedAt ?? new Date()).toISOString(),
       orderItems: items.map((i) => ({ orderItemId: i.externalItemId, quantity: i.quantity })),
     },

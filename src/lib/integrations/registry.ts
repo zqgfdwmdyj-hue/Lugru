@@ -77,6 +77,23 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "deutschepost",
+    name: "Deutsche Post INTERNETMARKE (Warensendung)",
+    purpose: "Porto mit Anschrift kaufen – z. B. Warensendung für Lieferscheine mit einem Stück. Bezahlt wird aus der Portokasse.",
+    fields: [
+      { key: "clientId", label: "Client-ID / API-Key (developer.dhl.com)", secret: true },
+      { key: "clientSecret", label: "Client-Secret", secret: true },
+      { key: "username", label: "Portokasse – E-Mail" },
+      { key: "password", label: "Portokasse – Passwort", secret: true },
+    ],
+    setup: [
+      "developer.dhl.com → App anlegen → API „Deutsche Post INTERNETMARKE (Post & Parcel Germany)“ hinzufügen und freischalten lassen (Formular deutschepost.de/formular-ima) → Client-ID (API-Key) und Client-Secret kopieren.",
+      "Portokasse (portokasse.deutschepost.de) mit Guthaben; dort unter „Meine Daten → Geschäftsanwendungen“ die Anwendung freigeben – sonst lehnt die Post die Anmeldung ab.",
+      "Hier eintragen und „Verbindung testen“ – angezeigt wird das Guthaben der Portokasse.",
+      "Produkt, Preis und Druckformat unter Einstellungen → Versand (Vorgabe: Warensendung 290, 2,70 €).",
+    ],
+  },
+  {
     provider: "google",
     name: "Google (Gmail-Postfächer)",
     purpose: "Nur nötig für „Mit Google anmelden“ – einfacher geht es mit App-Passwort unter Posteingang → Postfach verbinden.",

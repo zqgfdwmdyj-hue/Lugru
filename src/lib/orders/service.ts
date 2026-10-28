@@ -8,6 +8,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
 import { syncSoon, wawiSku } from "@/lib/stock/channel-sync";
 import { adjustStock } from "@/lib/stock/sets";
+import { untrackedPost } from "./tracking";
 
 export const PACKAGING_GRAMS = 150;
 
@@ -104,7 +105,20 @@ export async function createLabel(opts: { tenantId: string; orderId: string; wei
 
 export async function cancelLabel(tenantId: string, parcelId: string) {
   const [p] = await db.select().from(schema.parcels).where(and(eq(schema.parcels.id, parcelId), eq(schema.parcels.tenantId, tenantId)));
-  if (!p?.trackingNumber || p.status !== "created") return;
+  if (!p || p.status !== "created") return;
+  // Warensendung (Deutsche Post): kein Storno bei DHL – Label verwerfen, Auftrag wieder offen. Das Porto
+  // erstattet die Post nur auf Antrag (Portokasse); darauf weist die Auftragsseite hin.
+  if (p.carrier !== "DHL") {
+    await db.update(schema.parcels).set({ status: "cancelled" }).where(eq(schema.parcels.id, parcelId));
+    if (p.orderId) {
+      await db
+        .update(schema.orders)
+        .set({ status: "open", trackingNumber: null, carrier: null, updatedAt: new Date() })
+        .where(and(eq(schema.orders.id, p.orderId), eq(schema.orders.tenantId, tenantId), eq(schema.orders.status, "label_created"), eq(schema.orders.carrier, p.carrier)));
+    }
+    return;
+  }
+  if (!p.trackingNumber) return;
   const settings = await getSettings(tenantId);
   const creds = await getIntegration(tenantId, "dhl");
   if (creds?.apiKey) await cancelDhlLabel({ apiKey: creds.apiKey, username: creds.username, password: creds.password }, settings.dhl.sandbox, p.trackingNumber);
@@ -157,7 +171,8 @@ export async function markShipped(tenantId: string, orderId: string, userId: str
 export async function uploadTracking(tenantId: string, orderId: string) {
   await import("@/lib/integrations/clients");
   const data = await loadOrder(tenantId, orderId);
-  if (!data?.order.trackingNumber) return;
+  // Ohne Sendungsnummer nur die Warensendung bei Amazon melden (Deutsche Post, keine Sendungsverfolgung).
+  if (!data || (!data.order.trackingNumber && !untrackedPost(data.order))) return;
   const fn = uploaders.get(data.order.channel);
   if (!fn) {
     await db.update(schema.orders).set({ trackingUploadError: "Keine Schnittstelle – bitte manuell im Kanal eintragen oder per Datei melden." }).where(eq(schema.orders.id, orderId));

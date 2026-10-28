@@ -26,6 +26,24 @@ const str = (fd: FormData, key: string) => {
   return v === "" ? undefined : v;
 };
 
+/** Warensendung: Produkt, Preis, Druckformat („id:spalten:zeilen:name“ aus der Auswahl oder nur die Nummer). */
+function postSettings(fd: FormData): NonNullable<TenantSettings["post"]> {
+  const fmt = str(fd, "post_pageFormat");
+  const m = fmt ? /^(\d+):(\d+):(\d+)(?::(.*))?$/.exec(fmt) : null;
+  const id = m ? Number(m[1]) : num(fd, "post_pageFormatId");
+  const code = num(fd, "post_productCode");
+  const grams = num(fd, "post_itemGrams");
+  return {
+    productCode: code !== undefined ? Math.round(code) : undefined,
+    price: num(fd, "post_price"),
+    pageFormatId: id !== undefined ? Math.round(id) : undefined,
+    labelX: m ? Number(m[2]) : id !== undefined ? 1 : undefined,
+    labelY: m ? Number(m[3]) : id !== undefined ? 1 : undefined,
+    pageFormatName: m?.[4]?.slice(0, 120) || undefined,
+    itemGrams: grams !== undefined ? Math.round(grams) : undefined,
+  };
+}
+
 export async function saveSettings(fd: FormData) {
   const session = await requireOwner();
   const windowDays: Record<string, number> = {};
@@ -62,6 +80,7 @@ export async function saveSettings(fd: FormData) {
       labelFormat: str(fd, "dhl_labelFormat"),
       kleinpaketMaxKg: num(fd, "dhl_kleinpaketMaxKg"),
     },
+    post: postSettings(fd),
     pricing: {
       referralRate: pct(fd, "referralRate"),
       minProfit: num(fd, "minProfit"),

@@ -12,6 +12,8 @@ import { STAFF_AREAS as AREAS } from "@/lib/auth/areas";
 import { formatSeen, isOnline } from "@/lib/auth/last-seen";
 import { InvoiceSettingsCards } from "../rechnungen/ausgang/settings-cards";
 import { MailboxManager } from "../posteingang/mailbox-manager";
+import { getIntegration } from "@/lib/integrations/store";
+import { imCreds, imPageFormats, type ImPageFormat } from "@/lib/integrations/clients/deutschepost";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -33,6 +35,17 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   const session = await requireOwner();
   const { meldung } = await searchParams;
   const s = await getSettings(session.tenantId);
+  // Druckformate der Internetmarke (nur mit Anschrift) – wenn die Anbindung steht, als Auswahl.
+  const im = imCreds(await getIntegration(session.tenantId, "deutschepost"));
+  let pageFormats: ImPageFormat[] | null = null;
+  let pageFormatError: string | null = null;
+  if (im) {
+    try {
+      pageFormats = (await imPageFormats(im)).filter((f) => f.isAddressPossible);
+    } catch (e) {
+      pageFormatError = e instanceof Error ? e.message : String(e);
+    }
+  }
   const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
   const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
   const pairs = similarSuppliers(suppliers);
@@ -145,6 +158,33 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input type="checkbox" name="dhl_sandbox" defaultChecked={s.dhl.sandbox} /> DHL-Sandbox verwenden (Testlabels, nichts wird berechnet)
           </label>
+        </section>
+
+        <section className="card card-pad stack" style={{ gap: 14 }} data-testid="settings-post">
+          <h2>Warensendung (Deutsche Post)</h2>
+          <span className="small muted">
+            Für „Lieferschein → Labels“: ein Stück geht als Warensendung über die INTERNETMARKE (Porto mit Anschrift, bezahlt aus der Portokasse), ab zwei Stück als DHL-Paket. Absender wie oben.{" "}
+            {im ? "Anbindung eingerichtet." : <Link href="/anbindungen?p=deutschepost#deutschepost">Anbindung einrichten</Link>}
+          </span>
+          <div style={grid}>
+            <Field label="Produktnummer (PPL)" name="post_productCode" value={s.post.productCode} width={100} help="290 = Warensendung bis 1.000 g" />
+            <Field label="Preis je Sendung" name="post_price" value={dec(s.post.price)} suffix="€" width={90} help="muss zur aktuellen Preisliste passen" />
+            {pageFormats?.length ? (
+              <div className="field">
+                <label className="label" htmlFor="post_pageFormat">Druckformat</label>
+                <select className="select" id="post_pageFormat" name="post_pageFormat" defaultValue={((f) => (f ? `${f.id}:${f.labelX}:${f.labelY}:${f.name}` : `${s.post.pageFormatId}:${s.post.labelX}:${s.post.labelY}`))(pageFormats.find((f) => f.id === s.post.pageFormatId))} style={{ maxWidth: 360 }}>
+                  {!pageFormats.some((f) => f.id === s.post.pageFormatId) && <option value={`${s.post.pageFormatId}:${s.post.labelX}:${s.post.labelY}`}>{s.post.pageFormatName || `Format ${s.post.pageFormatId}`}</option>}
+                  {pageFormats.map((f) => (
+                    <option key={f.id} value={`${f.id}:${f.labelX}:${f.labelY}:${f.name}`}>{f.name}{f.labelX * f.labelY > 1 ? ` (${f.labelX * f.labelY} je Seite)` : ""}</option>
+                  ))}
+                </select>
+                <span className="small muted">Etikettenbogen, Rolle oder Normalpapier – wie in der Portokasse.</span>
+              </div>
+            ) : (
+              <Field label="Druckformat (Nr.)" name="post_pageFormatId" value={s.post.pageFormatId} width={80} help={pageFormatError ? `Liste nicht abrufbar: ${pageFormatError}` : "1 = DIN A4 Normalpapier; Auswahl erscheint nach Einrichtung der Anbindung"} />
+            )}
+            <Field label="Gewicht je Stück (für DHL)" name="post_itemGrams" value={s.post.itemGrams} suffix="g" width={80} help="wenn beim Artikel kein Gewicht hinterlegt ist" />
+          </div>
         </section>
 
         <div><button className="btn btn-primary" type="submit">Einstellungen speichern</button></div>

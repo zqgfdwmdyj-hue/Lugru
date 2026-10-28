@@ -25,7 +25,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     case "offen": where.push(eq(O.fulfillment, "FBM"), eq(O.status, "open")); break;
     case "label": where.push(eq(O.status, "label_created")); break;
     case "versendet": where.push(eq(O.fulfillment, "FBM"), inArray(O.status, ["shipped", "delivered"])); break;
-    case "fehler": where.push(eq(O.fulfillment, "FBM"), sql`${O.trackingNumber} is not null and ${O.trackingUploadedAt} is null`); break;
+    case "fehler": where.push(eq(O.fulfillment, "FBM"), sql`(${O.trackingNumber} is not null or (${O.carrier} = 'Deutsche Post' and ${O.status} = 'shipped')) and ${O.trackingUploadedAt} is null`); break;
     case "fba": where.push(eq(O.fulfillment, "FBA")); break;
   }
   const orders = await db
@@ -78,7 +78,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
               </td>
               <td className="num right">{formatEuro(o.total)}</td>
               <td>{ORDER_STATUS_LABEL[o.status]}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
-              <td className="num small">{o.trackingNumber ?? "–"}</td>
+              <td className="num small">{o.trackingNumber ?? (o.carrier === "Deutsche Post" ? "Warensendung" : "–")}</td>
             </tr>
           ))}
         </tbody>
@@ -92,6 +92,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
         <div><div className="crumb">WaWi</div><h1>Aufträge & Versand</h1></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <form action={fetchOrdersNow}><button className="btn btn-primary" type="submit" title="eBay-, Amazon-FBM- und Temu-Bestellungen holen, danach Bestand in allen Kanälen abgleichen">Bestellungen jetzt abrufen</button></form>
+          <Link className="btn btn-primary" href="/auftraege/lieferschein" data-testid="slip-link">Lieferschein → Labels</Link>
           <a className="btn" href="/auftraege/vorlage">CSV-Vorlage</a>
           <a className="btn" href="/auftraege/versandbestaetigung">Amazon-Versandbestätigung (Datei)</a>
         </div>

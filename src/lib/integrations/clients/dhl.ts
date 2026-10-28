@@ -8,8 +8,9 @@ import { registerTester } from "../test";
 
 export type DhlCreds = { apiKey: string; username: string; password: string };
 
+// DHL_API_BASE_URL nur für Tests (nachgebildete Schnittstelle), sonst die echten Adressen.
 const base = (sandbox: boolean) =>
-  sandbox ? "https://api-sandbox.dhl.com/parcel/de/shipping/v2" : "https://api-eu.dhl.com/parcel/de/shipping/v2";
+  process.env.DHL_API_BASE_URL || (sandbox ? "https://api-sandbox.dhl.com/parcel/de/shipping/v2" : "https://api-eu.dhl.com/parcel/de/shipping/v2");
 
 function headers(c: DhlCreds) {
   return {

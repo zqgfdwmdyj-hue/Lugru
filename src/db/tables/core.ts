@@ -91,6 +91,16 @@ export type TenantSettings = {
     labelFormat?: string;
     kleinpaketMaxKg?: number;
   };
+  /** Deutsche Post INTERNETMARKE (Warensendung): Produkt/Preis laut PPL, Druckformat, Gewicht je Stück für DHL. */
+  post?: {
+    productCode?: number;
+    price?: number;
+    pageFormatId?: number;
+    pageFormatName?: string;
+    labelX?: number;
+    labelY?: number;
+    itemGrams?: number;
+  };
   pricing?: {
     referralRate?: number;
     minProfit?: number;
