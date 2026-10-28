@@ -11,6 +11,7 @@ import { getSettings } from "@/lib/settings";
 import { syncSoon } from "@/lib/stock/channel-sync";
 import { parsePackingSlip, shipChoice, type ShipChoice, type SlipOrder } from "./packing-slip";
 import { WARENSENDUNG } from "./internetmarke";
+import { imCsvProblem, internetmarkeCsv, IM_CSV_MAX } from "./internetmarke-csv";
 import { orderShipWeight, type SkuWeightInfo } from "./weights-service";
 import type { WeightSource } from "./weight";
 import { CHANNEL_LABEL } from "@/lib/labels";
@@ -189,7 +190,15 @@ export async function readOrders(tenantId: string, ids: string[]): Promise<SlipR
 }
 
 export type SlipResult = { orderId: string; orderNo: string; ok: boolean; message: string; kind: ShipChoice };
-export type SlipLabels = { results: SlipResult[]; fileId: string | null; postFileId: string | null; dhlFileId: string | null; walletCents: number | null };
+export type SlipLabels = { results: SlipResult[]; fileId: string | null; postFileId: string | null; dhlFileId: string | null; walletCents: number | null; csvFileId: string | null; csvCount: number };
+
+/** Warensendung über die Schnittstelle kaufen oder als CSV-Datei für den Internetmarke-Shop. */
+export type PostMode = "api" | "csv";
+
+/** Vorgabe: Schnittstelle, wenn eingerichtet – sonst CSV-Datei. */
+export async function defaultPostMode(tenantId: string): Promise<PostMode> {
+  return imCreds(await getIntegration(tenantId, "deutschepost")) ? "api" : "csv";
+}
 
 /** Alle PDFs zu einem zusammenfügen (Warensendungen zuerst, dann DHL). */
 async function mergePdfs(parts: Buffer[]): Promise<Buffer> {
@@ -205,12 +214,12 @@ async function mergePdfs(parts: Buffer[]): Promise<Buffer> {
  * Labels für die gewählten Aufträge: alle Warensendungen in einem Kauf (ein PDF), DHL je Auftrag. Aufträge mit
  * Label oder versendet werden übersprungen (nichts doppelt kaufen). Ergebnis: ein gemeinsames PDF zum Drucken.
  */
-export async function createSlipLabels(tenantId: string, picks: { orderId: string; choice: ShipChoice }[]): Promise<SlipLabels> {
+export async function createSlipLabels(tenantId: string, picks: { orderId: string; choice: ShipChoice }[], postMode?: PostMode): Promise<SlipLabels> {
   // Doppelklick/zweiter Tab: nie zweimal Porto kaufen.
   if (running.has(tenantId)) throw new Error("Labels werden gerade schon erstellt – bitte kurz warten und die Seite neu laden.");
   running.add(tenantId);
   try {
-    return await createSlipLabelsNow(tenantId, picks);
+    return await createSlipLabelsNow(tenantId, picks, postMode ?? (await defaultPostMode(tenantId)));
   } finally {
     running.delete(tenantId);
   }
@@ -218,7 +227,7 @@ export async function createSlipLabels(tenantId: string, picks: { orderId: strin
 
 const running = new Set<string>();
 
-async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; choice: ShipChoice }[]): Promise<SlipLabels> {
+async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; choice: ShipChoice }[], postMode: PostMode): Promise<SlipLabels> {
   const settings = await getSettings(tenantId);
   const results: SlipResult[] = [];
   const post: SlipRow[] = [];
@@ -238,7 +247,38 @@ async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; c
   let postPdf: Buffer | null = null;
   let postFileId: string | null = null;
   let walletCents: number | null = null;
-  if (post.length) {
+  let csvFileId: string | null = null;
+  let csvCount = 0;
+  if (post.length && postMode === "csv") {
+    // Ohne Schnittstelle: Adressdatei für den Internetmarke-Shop (Produkt „Warensendung“ dort wählen).
+    const s = settings.shipper;
+    const ready: { row: SlipRow; to: Address }[] = [];
+    if (!s.name1 || !s.street || !s.zip || !s.city) {
+      for (const r of post) results.push({ orderId: r.orderId, orderNo: r.orderNo, ok: false, message: "Absenderadresse fehlt (Einstellungen → Versand).", kind: "warensendung" });
+    } else {
+      for (const r of post) {
+        const d = await loadOrder(tenantId, r.orderId);
+        const to = d?.order.shipTo ?? {};
+        const problem = imCsvProblem(to);
+        if (problem) results.push({ orderId: r.orderId, orderNo: r.orderNo, ok: false, message: `nicht in der CSV: ${problem} – im Auftrag ergänzen`, kind: "warensendung" });
+        else ready.push({ row: r, to });
+      }
+    }
+    if (ready.length > IM_CSV_MAX - 1) {
+      for (const x of ready.splice(IM_CSV_MAX - 1)) results.push({ orderId: x.row.orderId, orderNo: x.row.orderNo, ok: false, message: `mehr als ${IM_CSV_MAX - 1} Adressen – bitte in einem zweiten Durchgang`, kind: "warensendung" });
+    }
+    if (ready.length) {
+      const stampCsv = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "");
+      csvFileId = await storeFile(tenantId, `Internetmarke_Warensendung_${stampCsv}.csv`, "text/csv; charset=windows-1252", internetmarkeCsv(s, ready.map((x) => x.to)));
+      csvCount = ready.length;
+      for (const [i, { row: r }] of ready.entries()) {
+        await db.insert(schema.parcels).values({ tenantId, orderId: r.orderId, carrier: POST_CARRIER, product: "Warensendung (CSV für Internetmarke-Shop)", weightKg: String(r.weightKg), trackingNumber: null, labelFileId: null, status: "created" });
+        // Wie beim Kauf über die Schnittstelle: „Label erstellt“, damit nichts doppelt entsteht; Porto im Shop.
+        await db.update(schema.orders).set({ status: "label_created", carrier: POST_CARRIER, trackingNumber: null, updatedAt: new Date() }).where(and(eq(schema.orders.id, r.orderId), eq(schema.orders.tenantId, tenantId)));
+        results.push({ orderId: r.orderId, orderNo: r.orderNo, ok: true, message: `Warensendung · CSV-Zeile ${i + 1} (Porto im Internetmarke-Shop kaufen)`, kind: "warensendung" });
+      }
+    }
+  } else if (post.length) {
     try {
       const creds = imCreds(await getIntegration(tenantId, "deutschepost"));
       if (!creds) throw new Error("Deutsche Post (INTERNETMARKE) ist noch nicht eingerichtet – Anbindungen → Deutsche Post.");
@@ -287,5 +327,5 @@ async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; c
   const dhlFileId = dhlPdfs.length ? await storeFile(tenantId, `DHL_${stamp}.pdf`, "application/pdf", await mergePdfs(dhlPdfs)) : null;
   const all = [...(postPdf ? [postPdf] : []), ...dhlPdfs];
   const fileId = all.length > 1 ? await storeFile(tenantId, `Labels_${stamp}.pdf`, "application/pdf", await mergePdfs(all)) : (postFileId ?? dhlFileId);
-  return { results, fileId, postFileId, dhlFileId, walletCents };
+  return { results, fileId, postFileId, dhlFileId, walletCents, csvFileId, csvCount };
 }

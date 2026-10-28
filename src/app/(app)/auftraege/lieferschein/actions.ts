@@ -108,8 +108,9 @@ async function createSlip(prev: SlipState, fd: FormData): Promise<SlipState> {
     return { orderId, choice: (CHOICES as readonly string[]).includes(c) ? (c as ShipChoice) : "pruefen" };
   });
   if (!picks.some((p) => p.choice !== "pruefen")) return { rows, error: "Keine Sendung ausgewählt." };
+  const mode = fd.get("postMode");
   try {
-    const labels = await createSlipLabels(session.tenantId, picks);
+    const labels = await createSlipLabels(session.tenantId, picks, mode === "api" || mode === "csv" ? mode : undefined);
     revalidatePath("/auftraege", "layout");
     return { rows: await refreshed(session.tenantId, rows), labels };
   } catch (e) {

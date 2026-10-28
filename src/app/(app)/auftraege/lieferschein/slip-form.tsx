@@ -12,6 +12,7 @@ const kgText = (g: number | null) => (g === null ? "" : (g / 1000).toLocaleStrin
  * Vorschau mit Versandart je Bestellung (1 Stück → Warensendung, ab 2 → DHL) → ein Knopf für alle Labels.
  */
 export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState }) {
+  // Warensendung: über die Schnittstelle kaufen (wenn eingerichtet) oder CSV für den Internetmarke-Shop.
   const [state, action, pending] = useActionState<SlipState, FormData>(slipAction, initial);
   const rows = state?.rows ?? [];
   const labels = state?.labels;
@@ -68,6 +69,17 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: {
             {labels.postFileId && labels.dhlFileId && <a className="btn" href={`/datei/${labels.postFileId}`} target="_blank" rel="noreferrer" data-testid="slip-pdf-post">Nur Warensendungen</a>}
             {labels.postFileId && labels.dhlFileId && <a className="btn" href={`/datei/${labels.dhlFileId}`} target="_blank" rel="noreferrer" data-testid="slip-pdf-dhl">Nur DHL</a>}
           </div>
+          {labels.csvFileId && (
+            <div className="notice notice-info stack" style={{ gap: 6 }} data-testid="slip-csv">
+              <div><a className="btn btn-primary" href={`/datei/${labels.csvFileId}`} data-testid="slip-csv-link">CSV für Internetmarke herunterladen ({labels.csvCount} Warensendung{labels.csvCount === 1 ? "" : "en"})</a></div>
+              <ol className="small" style={{ margin: 0, paddingLeft: 18 }}>
+                <li>Datei <strong>nicht</strong> in Excel öffnen (sonst ändert sich das Format).</li>
+                <li><a href="https://shop.deutschepost.de/internetmarke" target="_blank" rel="noreferrer">Internetmarke-Shop</a> öffnen → Produkt <strong>„Warensendung“</strong> wählen.</li>
+                <li>„Absender und Empfänger hinzufügen“ → „Datei auswählen“ → die CSV hochladen (Zeile 1 = Absender, danach {labels.csvCount} Empfänger in der Reihenfolge der Tabelle).</li>
+                <li>Bezahlen und drucken. Die Aufträge stehen schon auf „Label erstellt“.</li>
+              </ol>
+            </div>
+          )}
           {labels.walletCents !== null && <span className="small muted">Guthaben Portokasse danach: {eur(labels.walletCents / 100)}</span>}
           <span className="small muted">Danach unter Aufträge → „Label erstellt“ → „Alle als versendet markieren“: Amazon bzw. eBay bekommen die Versandmeldung (Warensendung ohne Sendungsnummer).</span>
         </section>
@@ -133,17 +145,26 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: {
               </tbody>
             </table>
           </section>
+          {open.length > 0 && count("warensendung") > 0 && (
+            <div className="field" style={{ maxWidth: 520 }}>
+              <label className="label" htmlFor="slip-postmode">Warensendungen</label>
+              <select className="select" id="slip-postmode" name="postMode" defaultValue={postReady ? "api" : "csv"} data-testid="slip-postmode">
+                <option value="api" disabled={!postReady}>über die Internetmarke-Schnittstelle kaufen (PDF){postReady ? "" : " – noch nicht eingerichtet"}</option>
+                <option value="csv">als CSV-Datei für den Internetmarke-Shop (dort bezahlen &amp; drucken)</option>
+              </select>
+            </div>
+          )}
           {open.length > 0 && (
             <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <button className="btn btn-primary" type="submit" disabled={pending || (!postReady && !dhlReady)} data-testid="slip-create">
+              <button className="btn btn-primary" type="submit" disabled={pending} data-testid="slip-create">
                 {pending ? "Bitte warten …" : count("warensendung") + count("dhl") > 0 ? `Labels erstellen: ${count("warensendung")} × Warensendung, ${count("dhl")} × DHL` : "Labels für die Auswahl erstellen"}
               </button>
               <span className="small muted">
-                Warensendungen ca. {eur(count("warensendung") * postPrice)} aus der Portokasse{sandbox ? " · DHL-Sandbox aktiv (Testlabels)" : ""}. Eine Auswahl oben ändern geht vor dem Erstellen.
+                Warensendungen ca. {eur(count("warensendung") * postPrice)}{sandbox ? " · DHL-Sandbox aktiv (Testlabels)" : ""}. Eine Auswahl oben ändern geht vor dem Erstellen.
               </span>
             </div>
           )}
-          {!postReady && count("warensendung") > 0 && <div className="notice notice-warn small">Deutsche Post ist noch nicht eingerichtet – <a href="/anbindungen?p=deutschepost#deutschepost">Anbindungen → Deutsche Post INTERNETMARKE</a>. Bis dahin gehen nur DHL-Labels.</div>}
+          {!postReady && count("warensendung") > 0 && <div className="notice notice-info small">Internetmarke-Schnittstelle noch nicht eingerichtet – Warensendungen kommen als <strong>CSV-Datei für den Internetmarke-Shop</strong>, DHL-Labels wie gewohnt. Später: <a href="/anbindungen?p=deutschepost#deutschepost">Anbindungen → Deutsche Post INTERNETMARKE</a>.</div>}
           {!dhlReady && count("dhl") > 0 && <div className="notice notice-warn small">DHL ist noch nicht eingerichtet – Anbindungen → DHL und Einstellungen → Versand.</div>}
         </form>
       )}
