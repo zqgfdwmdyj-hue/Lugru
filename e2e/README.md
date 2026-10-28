@@ -29,6 +29,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `sendungen.spec.ts` | Speditions-Sendung: verschieben, Meldung an alle, Kunden-Link, Ablauf/Widerruf |
 | `rechte.spec.ts` | Claude-Konnektor und Fragefeld mit mehreren Konten: Rechte, Vorschläge, Protokoll |
 | `werkzeuge.spec.ts` | Jedes lesende Claude-Werkzeug: Beschreibung, Antwort, Quelle + Datenstand, Links |
+| `keepa.spec.ts` | Keepa-Werkzeuge: Produkt, Länder-Vergleich, Zwischenspeicher, Rechte (gegen den Keepa-Nachbau) |
 | `fragefeld.spec.ts` | Altes Gespräch fortsetzen (kein 400), Prep-Center-Zahlen |
 | `kennzahlen.spec.ts` | Jede Kennzahl mit Zeitraum/Quelle/Stand, keine kaputten Werte |
 | `uebungsdaten.spec.ts` | Übungs-Deals zählen nirgends mit, Schalter blendet sie ein |

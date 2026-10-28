@@ -7,6 +7,7 @@ import type { ToolCtx, ToolDef, ToolOut } from "./types";
 import { ALLGEMEIN } from "./tools/allgemein";
 import { BESTAND } from "./tools/bestand";
 import { BUERO } from "./tools/buero";
+import { KEEPA } from "./tools/keepa";
 import { PALETTEN } from "./tools/paletten";
 import { PRIVAT } from "./tools/privat";
 import { WAWI } from "./tools/wawi";
@@ -18,7 +19,7 @@ export { withStand };
 // Alle Werkzeuge an einer Stelle: wer darf was (Bereich, Inhaber, Privat, Ändern), Eingabe prüfen,
 // ausführen und protokollieren. Claude-Konnektor und Fragefeld rufen nur hierüber auf.
 
-export const ALL_TOOLS: ToolDef[] = [...ALLGEMEIN, ...WAWI, ...BESTAND, ...PALETTEN, ...BUERO, ...PRIVAT];
+export const ALL_TOOLS: ToolDef[] = [...ALLGEMEIN, ...WAWI, ...BESTAND, ...KEEPA, ...PALETTEN, ...BUERO, ...PRIVAT];
 
 /** Antworten nicht beliebig groß werden lassen (Kosten, Kontext). */
 const MAX_TEXT = 60_000;

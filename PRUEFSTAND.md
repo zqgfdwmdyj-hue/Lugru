@@ -1,6 +1,6 @@
 # Prüfstand je Reiter
 
-Letzter Lauf der Ablaufprüfungen: **28.10.2026, 20:54** · 35 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 120 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
+Letzter Lauf der Ablaufprüfungen: **28.10.2026, 23:54** · 38 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 128 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
 
 Erzeugt mit `npm run pruefstand` aus `e2e/pruefstand.ts` (Abläufe, Live-Prüfungen) und dem letzten Lauf. Nicht von Hand bearbeiten.
 
@@ -74,7 +74,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Hilfsfunktionen | Daten importieren `/import` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Einstellungen `/einstellungen` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Anbindungen `/anbindungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 2/2 Abläufe | – | – |
+| Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 5/5 Abläufe | – | – |
 | Hilfsfunktionen | eBay-Einstellungen `/ebay?ansicht=einstellungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | Fragefeld | ✓ 2/2 Abläufe | 👁 behoben | – |
 | Übergreifend | Server (Port, Adresse, Testumgebung) | – | 👁 befund | 2 |
@@ -230,6 +230,9 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 |---|---|---|---|
 | Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten | nicht angebotene Werkzeuge abgewiesen und protokolliert; Änderungen nur als Vorschlag | ✓ bestanden (desktop) | `rechte.spec.ts` |
 | Jedes lesende Werkzeug einzeln | Beschreibung, Antwort ohne Fehler, Quelle + Datenstand, Links öffnen echte Seiten | ✓ bestanden (desktop) | `werkzeuge.spec.ts` |
+| Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag) | Zahlen aus dem Keepa-Nachbau, zweiter Aufruf aus dem Zwischenspeicher (keine neue Keepa-Abfrage), unbekannte ASIN klar benannt | ✓ bestanden (desktop) | `keepa.spec.ts` |
+| Keepa: Länder vergleichen | DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“ | ✓ bestanden (desktop) | `keepa.spec.ts` |
+| Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon) | Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen | ✓ bestanden (desktop) | `keepa.spec.ts` |
 
 ### Übergreifend › Fragefeld
 
@@ -248,7 +251,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (34 Abläufe + Oberfläche auf 66 Seiten): 34 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
+**Automatisch** (37 Abläufe + Oberfläche auf 66 Seiten): 37 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
 
 **Live geprüft:**
 

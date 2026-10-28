@@ -24,3 +24,4 @@ export * from "./tables/sas";
 export * from "./tables/watches";
 export * from "./tables/assistant";
 export * from "./tables/testenv";
+export * from "./tables/keepa";

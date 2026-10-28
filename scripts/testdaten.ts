@@ -102,6 +102,7 @@ await integ("anthropic", {}, { apiKey: "test-ki-schluessel" });
 await integ("deutschepost", { clientId: "test-client", username: "portokasse@example.invalid" }, { clientSecret: "test-secret", password: "test-passwort" });
 await integ("dhl", { username: "test-dhl" }, { apiKey: "test-dhl-key", password: "test-passwort" });
 await integ("dhl_tracking", {}, { apiKey: "test-track-key" });
+await integ("keepa", {}, { apiKey: "test-keepa-schluessel" });
 await integ("amazon_sp", { clientId: "amzn.test", sellerId: "TESTSELLER", marketplaceIds: "A1PA6795UKMFR9" }, { clientSecret: "test-secret", refreshToken: "test-refresh" });
 
 // 5) Artikel: Gewicht, Warensendung, wer verschickt

@@ -7,7 +7,11 @@ export function withStand(text: string, stand: Datenstand | null): string {
   if (!stand) return text;
   try {
     const o = JSON.parse(text) as unknown;
-    if (o && typeof o === "object" && !Array.isArray(o)) return JSON.stringify({ ...o, datenstand: stand });
+    if (o && typeof o === "object" && !Array.isArray(o)) {
+      // Werkzeuge mit eigenem Datenstand (z. B. Keepa: Zwischenspeicher, Abrufzeit) behalten ihren.
+      if ((o as { datenstand?: unknown }).datenstand) return text;
+      return JSON.stringify({ ...o, datenstand: stand });
+    }
   } catch {
     /* kein JSON */
   }

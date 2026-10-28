@@ -92,6 +92,9 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Rechte: Konnektor (nur Inhaberin) und Fragefeld mit drei Konten", erwartet: "nicht angebotene Werkzeuge abgewiesen und protokolliert; Änderungen nur als Vorschlag", tests: ["rechte.spec.ts › Claude-Konnektor"] },
       { ablauf: "Jedes lesende Werkzeug einzeln", erwartet: "Beschreibung, Antwort ohne Fehler, Quelle + Datenstand, Links öffnen echte Seiten", tests: ["werkzeuge.spec.ts › Jedes lesende Werkzeug"] },
+      { ablauf: "Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag)", erwartet: "Zahlen aus dem Keepa-Nachbau, zweiter Aufruf aus dem Zwischenspeicher (keine neue Keepa-Abfrage), unbekannte ASIN klar benannt", tests: ["keepa.spec.ts › keepa_produkt"] },
+      { ablauf: "Keepa: Länder vergleichen", erwartet: "DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“", tests: ["keepa.spec.ts › keepa_vergleich"] },
+      { ablauf: "Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon)", erwartet: "Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen", tests: ["keepa.spec.ts › Rechte"] },
     ],
   },
   Fragefeld: {

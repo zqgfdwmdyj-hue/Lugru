@@ -135,9 +135,57 @@ async function route(req, url, body) {
   if (p.startsWith("/ebay/")) return req.method === "GET" ? json({ total: 0, orders: [], inventoryItems: [], offers: [], href: url.href }) : json({ simuliert: true });
   // Temu, Keepa, EZB
   if (p.startsWith("/temu/")) return json({ success: true, result: {} });
-  if (p.startsWith("/keepa/")) return json({ tokensLeft: 100, products: [], asinList: [] });
+  if (p.startsWith("/keepa/product")) return json(keepaProdukte(url));
+  if (p.startsWith("/keepa/")) return json({ tokensLeft: keepaTokens, products: [], asinList: [] });
   if (p.startsWith("/ecb")) return [200, `<?xml version="1.0"?><gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref"><Cube><Cube time="2026-10-28"><Cube currency="USD" rate="1.08"/><Cube currency="GBP" rate="0.85"/><Cube currency="PLN" rate="4.30"/></Cube></Cube></gesmes:Envelope>`, "application/xml"];
   return [404, { title: "Nicht nachgebildet", path: p }];
+}
+
+// Keepa-Nachbau: erfundener Verlauf über 365 Tage je ASIN und Land (Amazon zeitweise nicht auf Lager, Buy Box
+// wechselt zwischen Amazon, einem FBA- und einem FBM-Händler). ASINs, die mit „B0FEHLT“ beginnen, kennt Keepa nicht.
+let keepaTokens = 1200;
+const KEEPA_LAND = {
+  3: { basis: 1999, verkauft: 50, amazon: "A3JWKAKR8XB7XF" },
+  4: { basis: 2149, verkauft: 20, amazon: "A1X6FK5RDHNB96" },
+  8: { basis: 2099, verkauft: 0, amazon: "A11IL2PNWYJU7H" },
+  9: { basis: 2249, verkauft: 30, amazon: "A1AT7YVPFBWXBL" },
+  2: { basis: 1799, verkauft: 100, amazon: "A3P5ROKL5A1OLE" },
+};
+function keepaProdukte(url) {
+  const asins = (url.searchParams.get("asin") ?? "").split(",").filter(Boolean);
+  const land = KEEPA_LAND[Number(url.searchParams.get("domain"))] ?? KEEPA_LAND[3];
+  keepaTokens -= asins.length * (1 + (url.searchParams.get("buybox") === "1" ? 2 : 0));
+  const now = Date.now();
+  const km = (ms) => Math.round(ms / 60000) - 21564000;
+  const products = asins
+    .filter((a) => !a.startsWith("B0FEHLT"))
+    .map((asin) => {
+      const csv = [];
+      const [amazon, rang, angebote, bb, fba, fbm, bbHist] = [[], [], [], [], [], [], []];
+      for (let d = 365; d >= 0; d -= 5) {
+        const t = km(now - d * 86400000 - 3600000);
+        const phase = Math.floor(d / 5) % 6;
+        amazon.push(t, phase === 4 ? -1 : land.basis + phase * 50);
+        bb.push(t, land.basis - 50 + phase * 40, phase === 5 ? 299 : 0);
+        rang.push(t, 2000 + phase * 500);
+        angebote.push(t, 10 + phase);
+        fba.push(t, 6 + phase);
+        fbm.push(t, 4);
+        bbHist.push(String(t), phase === 4 ? "A1TESTFBA00001" : phase === 5 ? "A2TESTFBM00002" : land.amazon);
+      }
+      Object.assign(csv, { 0: amazon, 3: rang, 11: angebote, 18: bb, 34: fba, 35: fbm });
+      return {
+        asin,
+        title: `Testprodukt ${asin} (erfunden)`,
+        csv: Array.from({ length: 36 }, (_, i) => csv[i] ?? null),
+        availabilityAmazon: 0,
+        monthlySold: land.verkauft,
+        lastUpdate: km(now - 3600000),
+        stats: { outOfStockPercentage30: [17], outOfStockPercentage90: [17], outOfStockPercentageInInterval: [17], buyBoxStats: { [land.amazon]: { percentageWon: 67, isFBA: true }, A1TESTFBA00001: { percentageWon: 17, isFBA: true }, A2TESTFBM00002: { percentageWon: 16, isFBA: false } } },
+        buyBoxSellerIdHistory: bbHist,
+      };
+    });
+  return { tokensLeft: keepaTokens, products };
 }
 
 const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : "?");
