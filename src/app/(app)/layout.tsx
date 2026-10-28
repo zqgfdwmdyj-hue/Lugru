@@ -10,6 +10,7 @@ import { AreaTabs } from "@/components/area-tabs";
 import { getPrefs } from "@/lib/auth/prefs";
 import { needsReview } from "@/lib/invoices/review";
 import { bindingTask } from "@/lib/today/service";
+import { appVersion } from "@/lib/version";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
@@ -50,6 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <form action={logout}>
               <button className="btn-link" type="submit" style={{ fontSize: 12 }}>Abmelden</button>
             </form>
+            {appVersion() && <span title="Programmstand – nach update.sh sollte hier der neue Stand stehen" data-testid="app-version">Stand {appVersion()}</span>}
           </div>
         </div>
       </aside>

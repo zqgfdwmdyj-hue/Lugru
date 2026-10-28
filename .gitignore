@@ -9,3 +9,6 @@ next-env.d.ts
 
 # Datensicherungen (enthalten Geschäftsdaten)
 /backups/
+
+# Programmstand, schreibt deploy/update.sh
+/VERSION
