@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { SHIP_CHOICE_LABEL, type ShipChoice } from "@/lib/shipping/packing-slip";
 import { slipAction, type SlipState } from "./actions";
+import type { SkuWeightInfo } from "@/lib/shipping/weights-service";
 
 const eur = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
 const kgText = (g: number | null) => (g === null ? "" : (g / 1000).toLocaleString("de-DE", { maximumFractionDigits: 3 }));
@@ -11,7 +12,7 @@ const kgText = (g: number | null) => (g === null ? "" : (g / 1000).toLocaleStrin
  * Labels in einem Schritt: Amazon-Lieferschein hochladen oder offene Aufträge (z. B. eBay) übernehmen →
  * Vorschau mit Versandart je Bestellung (1 Stück → Warensendung, ab 2 → DHL) → ein Knopf für alle Labels.
  */
-export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState }) {
+export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, weights }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState; weights: SkuWeightInfo[] }) {
   // Warensendung: über die Schnittstelle kaufen (wenn eingerichtet) oder CSV für den Internetmarke-Shop.
   const [state, action, pending] = useActionState<SlipState, FormData>(slipAction, initial);
   const rows = state?.rows ?? [];
@@ -20,7 +21,9 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: {
   const count = (c: ShipChoice) => open.filter((r) => r.choice === c).length;
   const resultFor = (id: string) => labels?.results.find((x) => x.orderId === id);
   // Artikel der offenen Sendungen – Gewicht je Stück einmal eintragen, gilt dann für alle Sendungen.
-  const skus = [...new Map(rows.flatMap((r) => r.skus).map((s) => [s.sku, s])).values()].sort((a, b) => Number(a.grams !== null) - Number(b.grams !== null) || a.title.localeCompare(b.title, "de"));
+  // Alle bekannten Artikel (letzte Aufträge + hinterlegte Gewichte), dazu die der aktuellen Tabelle – immer sichtbar.
+  const skus = [...new Map([...weights, ...rows.flatMap((r) => r.skus)].map((s) => [s.sku, s])).values()].sort((a, b) => Number(a.grams !== null) - Number(b.grams !== null) || a.title.localeCompare(b.title, "de"));
+  const missing = skus.filter((s) => s.grams === null).length;
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -85,10 +88,9 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: {
         </section>
       )}
 
-      {skus.length > 0 && (
-        <form action={action} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-weights">
+      <form action={action} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-weights">
           <input type="hidden" name="intent" value="weights" />
-          <h2>Gewicht je Artikel</h2>
+          <h2>Gewicht je Artikel{skus.length ? ` (${skus.length - missing} hinterlegt${missing ? `, ${missing} ${missing === 1 ? "fehlt" : "fehlen"}` : ""})` : ""}</h2>
           <span className="small muted">Versandgewicht für <strong>ein Stück inkl. Verpackung</strong> – einmal eintragen, dann rechnet jede Sendung Stück × Gewicht (z. B. 2 × 0,3 kg = 0,6 kg). Gilt für Amazon und eBay gleich.</span>
           <div className="slip-weights">
             {skus.map((s, i) => (
@@ -104,10 +106,18 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: {
                 <input type="hidden" name={`o_${i}`} value={kgText(s.grams)} />
               </div>
             ))}
+            <div className="field" data-testid="slip-weight-new">
+              <label className="label small" htmlFor={`s_${skus.length}`}>Weiterer Artikel (SKU)</label>
+              <input className="input" id={`s_${skus.length}`} name={`s_${skus.length}`} placeholder="SKU" style={{ width: 180 }} />
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input className="input" name={`w_${skus.length}`} placeholder="z. B. 0,3" inputMode="decimal" aria-label="Gewicht je Stück" style={{ width: 90 }} />
+                <span className="small muted">kg</span>
+              </div>
+              <input type="hidden" name={`o_${skus.length}`} value="" />
+            </div>
           </div>
           <div><button className="btn" type="submit" disabled={pending} data-testid="slip-save-weights">Gewichte speichern & neu rechnen</button></div>
-        </form>
-      )}
+      </form>
 
       {rows.length > 0 && (
         <form action={action} className="stack" style={{ gap: 10 }} data-testid="slip-preview">

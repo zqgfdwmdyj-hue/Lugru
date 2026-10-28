@@ -45,6 +45,7 @@ async function saveWeights(prev: SlipState, fd: FormData): Promise<SlipState> {
     await saveSkuWeight(session.tenantId, sku, grams);
     saved++;
   }
+  revalidatePath("/auftraege/lieferschein");
   return { rows: await refreshed(session.tenantId, rows), labels: prev?.labels, note: [saved ? `${saved} Gewicht(e) gespeichert – gilt ab jetzt für jede Sendung dieser Artikel.` : "Keine Änderung.", bad.length ? `Nicht verstanden: ${bad.join(", ")} (z. B. 0,3 für 0,3 kg oder 300 g)` : ""].filter(Boolean).join(" ") };
 }
 
