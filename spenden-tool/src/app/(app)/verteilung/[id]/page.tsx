@@ -7,7 +7,7 @@ import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { stockPrice } from "@/lib/pricing";
 import { autoAiMode } from "@/lib/settings";
-import { ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { amountFromVariant, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { mhdLabel, outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
@@ -152,7 +152,9 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
   const guess = !item.unit ? guessUnit(item.priceNote, product.variant) : null;
   const unitProblem = unitIssue({ unit: item.unit, unitCount: item.unitCount, unitConfirmed: item.unitConfirmed, price: item.price });
   const mhd = mhdAuto(product);
-  const shownAs = outputPrice(item);
+  const shownAs = outputPrice({ ...item, amount: product.amount });
+  // Inhalt/Menge aus der Variante vorschlagen („1,5 kg Gastrodose“ → „1,5 kg“)
+  const amountHint = amountFromVariant(product.variant);
   // Viel da (Palette, Kartons)? Dann eher günstiger – nur als Vorschlag.
   const stockHint = stockPrice(item.price, item.stock);
   const search = [product.name, product.variant, product.category, item.caption].filter(Boolean).join(" ").toLocaleLowerCase("de-DE");
@@ -214,6 +216,13 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
           <O name={kp("name")} value={name} />
           <div className="field"><label className="label" htmlFor={kp("variant")}>{r.drink ? "Inhalt je Flasche / Sorte" : "Variante / Packungsgröße"}</label><input className="input input-compact" id={kp("variant")} name={kp("variant")} defaultValue={product.variant ?? ""} placeholder="z. B. 240 g, 6 x 125 g" /></div>
           <O name={kp("variant")} value={product.variant ?? ""} />
+          <div className="field">
+            <label className="label" htmlFor={kp("amount")}>Inhalt / Menge (optional)</label>
+            <input className="input input-compact" id={kp("amount")} name={kp("amount")} defaultValue={product.amount ?? ""} placeholder={amountHint ? `z. B. ${amountHint}` : r.drink ? "z. B. 0,5 l" : "z. B. 1,5 kg"} />
+            <span className="small muted">Steht in Collage, Aushang und Messenger vor dem Preis{item.priceNote ? " – außer es gibt einen eigenen Text vor dem Preis" : ""}.</span>
+            {amountHint && !product.amount && <button className="btn-link small" type="submit" name="op" value={`menge:${item.id}`} style={{ textAlign: "left" }}>„{amountHint}“ aus der Variante übernehmen</button>}
+          </div>
+          <O name={kp("amount")} value={product.amount ?? ""} />
           <div className="field"><label className="label" htmlFor={kp("cat")}>Kategorie</label><CategorySelect key={product.category} compact id={kp("cat")} name={kp("cat")} value={product.category} categories={categories} /></div>
           {/* key: Auswahllisten übernehmen geänderte Werte vom Server sonst nicht (z. B. nach einer Stapelaktion) –
               dann würde das nächste Speichern den alten Wert zurückschreiben. */}

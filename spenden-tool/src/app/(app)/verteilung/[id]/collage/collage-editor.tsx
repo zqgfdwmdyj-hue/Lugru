@@ -14,7 +14,7 @@ import { BAND, drawBlurBackground, drawImage, drawSticker, fitFont, FONT, GREEN,
 import type { PrintedInfo } from "@/lib/printed-price";
 
 /** plan: aus der gemeinsamen Preislogik (lib/price-logic.ts) – drucken, Foto zeigt ihn schon, oder Aufkleber über den alten. */
-export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null; caption: string | null; printed: PrintedInfo; plan: PriceState["plan"]; style: TileStyle; packs?: { label: string; price: number }[] };
+export type CollageTile = { id: string; productId: string; image: string | null; name: string; price: number | null; priceNote: string | null; amount?: string | null; unit?: string | null; unitCount?: number | null; caption: string | null; printed: PrintedInfo; plan: PriceState["plan"]; style: TileStyle; packs?: { label: string; price: number }[] };
 type Rect = { productId: string; x: number; y: number; w: number; h: number };
 
 /**
@@ -59,7 +59,7 @@ function drawTile(ctx: CanvasRenderingContext2D, tile: CollageTile, img: HTMLIma
 
   const price = collagePrice(tile.price);
   // Abgabeeinheit bzw. eigener Zusatz – gleiche Logik wie Aushang und Messenger.
-  const note = pricePrefix({ unit: tile.unit ?? null, unitCount: tile.unitCount ?? null, priceNote: tile.priceNote });
+  const note = pricePrefix({ unit: tile.unit ?? null, unitCount: tile.unitCount ?? null, priceNote: tile.priceNote, amount: tile.amount });
   // Kurzer Zusatz („je“) in dieselbe Zeile, längerer („3er Packung“) darüber.
   const inline = note && note.length <= 4;
   // Ohne Preis kein Zusatz („Je“ allein ergibt keinen Sinn).
@@ -291,7 +291,7 @@ export function CollageEditor({ eventId, tiles, initial, header, fileBase, warni
       const c = canvases.current[i];
       if (!c) return [];
       const label = pages.length > 1 ? `${i + 1}/${pages.length}` : "";
-      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packs, t.priceNote, t.unit, t.unitCount, t.plan, t.caption, t.name, t.printed?.text])]);
+      const key = JSON.stringify([s, header, label, p.map((t) => [t.id, t.image, !!(t.image && images.has(t.image)), t.style, t.price, t.packs, t.priceNote, t.amount, t.unit, t.unitCount, t.plan, t.caption, t.name, t.printed?.text])]);
       if (drawn.current.get(c) === key && rectsRef.current[i]) return rectsRef.current[i];
       drawn.current.set(c, key);
       changed = true;

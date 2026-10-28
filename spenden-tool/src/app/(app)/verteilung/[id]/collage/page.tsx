@@ -35,6 +35,7 @@ export default async function CollagePage({ params, searchParams }: { params: Pr
     name: [publicText(product.name), publicText(product.variant)].filter(Boolean).join(" "),
     price: item.price,
     priceNote: item.priceNote,
+    amount: product.amount,
     unit: item.unit,
     unitCount: item.unitCount,
     caption: item.caption,

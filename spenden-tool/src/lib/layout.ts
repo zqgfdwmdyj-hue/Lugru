@@ -139,16 +139,16 @@ export function balancedPages<T>(items: T[], perPage: number): T[][] {
   return pages;
 }
 
-export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null; bestBefore?: string | null; packs?: { label: string; price: number }[] };
+export type FlyerItem = { name: string; variant: string | null; category: string; price: number | null; priceNote?: string | null; amount?: string | null; unit?: string | null; unitCount?: number | null; bestBefore?: string | null; packs?: { label: string; price: number }[] };
 
 /**
  * Preis mit Abgabeeinheit, wie er überall erscheint: „je 40 Cent“, „6er-Pack 2 €“ (Collage/Social Media) bzw.
  * „je 0,40€“ (Aushang/Messenger, style "flyer").
  */
-export function outputPrice(i: { price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null }, style: "collage" | "flyer" = "collage"): string {
+export function outputPrice(i: { price: number | null; priceNote?: string | null; unit?: string | null; unitCount?: number | null; amount?: string | null }, style: "collage" | "flyer" = "collage"): string {
   const p = style === "flyer" ? flyerPrice(i.price) : collagePrice(i.price);
   if (!p) return "";
-  const prefix = pricePrefix({ unit: i.unit ?? null, unitCount: i.unitCount ?? null, priceNote: i.priceNote });
+  const prefix = pricePrefix({ unit: i.unit ?? null, unitCount: i.unitCount ?? null, priceNote: i.priceNote, amount: i.amount });
   return prefix ? `${prefix} ${p}` : p;
 }
 

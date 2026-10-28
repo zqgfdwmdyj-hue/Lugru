@@ -4,6 +4,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireLogin } from "@/lib/auth";
 import { isPlaceholderName, mhdLabel } from "@/lib/layout";
+import { amountFromVariant } from "@/lib/price-logic";
 import { extraPhotos, knownCategories, latestPriceChecks, productHistory, productsWithSamePhoto } from "@/lib/service";
 import { aiConfigured } from "@/lib/price-research";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -147,6 +148,7 @@ export default async function SpendenProduktPage({ params, searchParams }: { par
               <div className="field"><label className="label" htmlFor="nv">Variante</label><input className="input" id="nv" name="variant" defaultValue={product.variant ?? ""} /></div>
               <div className="field"><label className="label" htmlFor="np">Preis €</label><input className="input" id="np" name="price" inputMode="decimal" defaultValue={product.price !== null ? product.price.toFixed(2).replace(".", ",") : ""} /></div>
             </div>
+            <div className="field"><label className="label" htmlFor="na">Inhalt / Menge (optional)</label><input className="input" id="na" name="amount" defaultValue={product.amount ?? ""} placeholder={amountFromVariant(product.variant) ? `z. B. ${amountFromVariant(product.variant)}` : "z. B. 1,5 kg oder 0,5 l"} /><span className="small muted">Steht in Collage, Aushang und Messenger vor dem Preis.</span></div>
             {product.reviewNote && <div className="notice notice-info small">🤖 {product.reviewNote}. Mit „Speichern“ gelten die Angaben als geprüft.</div>}
             <div className="field"><label className="label" htmlFor="nc">Kategorie</label><CategorySelect id="nc" name="category" value={product.category} categories={categories} /></div>
             <div className="field">

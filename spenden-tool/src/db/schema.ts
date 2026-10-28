@@ -67,6 +67,8 @@ export const products = pgTable(
     name: text("name").notNull(),
     /** z. B. „5kg“, „8er Pack“ – im Aushang als Unterpunkt. */
     variant: text("variant"),
+    /** Inhalt/Menge, z. B. „1,5 kg“ oder „0,5 l“ – steht in Collage, Aushang und Messenger vor dem Preis. */
+    amount: text("amount"),
     category: text("category").notNull().default("Lebensmittel"),
     /** Zuletzt verwendeter Spendenpreis – Vorschlag für die nächste Verteilung. */
     price: money("price"),

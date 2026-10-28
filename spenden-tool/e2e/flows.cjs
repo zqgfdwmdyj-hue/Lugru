@@ -241,6 +241,17 @@ async function photo(dir, name, rgb, w = 640) {
     const aus2 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
     ok(/Karton \(24 St\.\)[^<]{0,12}5/.test(aus2) && /Palette \(600 St\.\)[^<]{0,12}50/.test(aus2), "Aushang zeigt beide Varianten");
 
+    // 10b: Inhalt/Menge aus der Variante → steht vor dem Preis in Aushang und Messenger
+    await q("update products set variant = '1,5 kg Gastrodose', amount = null where id = $1", [single]);
+    await q("update event_items set price_note = null, unit = null where id = $1", [singleItem.id]);
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`, { waitUntil: "networkidle" });
+    await page.locator(`button[value='menge:${singleItem.id}']`).click();
+    ok(await until(async () => (await q("select amount from products where id = $1", [single]))[0].amount === "1,5 kg"), "Inhalt „1,5 kg“ aus der Variante übernommen");
+    const aus3 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
+    ok(/1,5 kg 0,50/.test(aus3), "Aushang: „1,5 kg 0,50€“ ohne eigenen Text vor dem Preis");
+    await page.goto(`${BASE}/verteilung/${futureId}/ausgabe`);
+    ok((await page.locator("#messenger").innerText()).includes("1,5 kg 0,50"), "Messenger: Inhalt vor dem Preis");
+
     // 11: Viel Bestand → günstigerer Vorschlag
     await q("update event_items set stock = 'palette', price = 1, price_confirmed = true where id = $1", [singleItem.id]);
     await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`);

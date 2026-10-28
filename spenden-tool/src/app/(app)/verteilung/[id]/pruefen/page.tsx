@@ -119,7 +119,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
                     <tr><th>Im Foto erkannt</th><td>„{r.state.printed!.text}“{r.state.printed!.price !== null ? ` = ${euro(r.state.printed!.price)}` : ""}{r.state.suspicious && <span className="tag tag-warn" style={{ marginLeft: 6 }}>Erkennung wohl falsch</span>}</td></tr>
                     <tr><th>Eingetragen</th><td>{euro(r.item.price)} <span className="small muted">{sourceLabel(r)}</span></td></tr>
                     {r.suggestion !== null && <tr><th>KI-Vorschlag</th><td>{euro(r.suggestion)}</td></tr>}
-                    <tr><th>Wird ausgegeben</th><td><strong>{outputPrice(r.item) || "kein Preis"}</strong></td></tr>
+                    <tr><th>Wird ausgegeben</th><td><strong>{outputPrice({ ...r.item, amount: r.product.amount }) || "kein Preis"}</strong></td></tr>
                   </tbody>
                 </table>
                 <div className="conflict-actions">
@@ -141,7 +141,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
             {oldPhoto.map((r) => (
               <div key={r.item.id} className="check-row">
                 <Thumb r={r} size={64} />
-                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">Im Foto: „{r.state.printed?.text}“ · eingetragen: {outputPrice(r.item)}</span></span>
+                <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">Im Foto: „{r.state.printed?.text}“ · eingetragen: {outputPrice({ ...r.item, amount: r.product.amount })}</span></span>
                 <Link href={`/produkte/${r.product.id}?zurueck=${id}`} className="btn btn-small">Neues Foto hochladen</Link>
               </div>
             ))}
@@ -200,7 +200,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
                 <input type="checkbox" name="itemId" value={r.item.id} defaultChecked />
                 <Thumb r={r} size={44} />
                 <span className="check-text"><strong className="wrap-anywhere">{title(r)}</strong><span className="small muted">{sourceLabel(r)}{r.compare && r.compare.level !== "passt" ? ` · ${r.compare.reason}` : ""}</span></span>
-                <span className="num">{outputPrice(r.item)}</span>
+                <span className="num">{outputPrice({ ...r.item, amount: r.product.amount })}</span>
                 <Link href={`${list}?q=${encodeURIComponent(r.unnamed ? "" : r.product.name)}`} className="small">ändern</Link>
               </label>
             ))}
@@ -221,7 +221,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
                   <span className={`small ${r.compare!.level === "abweichend" ? "warn-text" : "muted"}`}>{r.compare!.level === "abweichend" ? "✗ nicht vergleichbar" : "? unsicher"}: {r.compare!.reason}</span>
                   {r.check?.offers[0] && <span className="small muted">Handel: {r.check.offers[0].shop} „{r.check.offers[0].title}“ {euro(r.check.offers[0].price)}</span>}
                 </span>
-                <span className="num">{outputPrice(r.item) || "–"}</span>
+                <span className="num">{outputPrice({ ...r.item, amount: r.product.amount }) || "–"}</span>
                 <Link href={`${list}?q=${encodeURIComponent(r.product.name)}`} className="small">Einheit/Preis ändern</Link>
               </div>
             ))}

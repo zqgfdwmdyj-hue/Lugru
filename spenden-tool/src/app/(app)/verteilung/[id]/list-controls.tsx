@@ -222,6 +222,10 @@ export function BulkBar({ formId, categories, ai, costs }: { formId: string; cat
             <button className="btn btn-small" type="submit" name="op" value="bulk:mhd-auto" title="Nach Kategorie entscheiden">automatisch</button>
           </span>
           <span className="bulk-group">
+            <span className="small muted">Inhalt</span>
+            <button className="btn btn-small" type="submit" name="op" value="bulk:menge" title="Inhalt/Menge (z. B. 1,5 kg, 0,5 l) aus der Variante übernehmen – nur wo noch keiner eingetragen ist">aus Variante</button>
+          </span>
+          <span className="bulk-group">
             <span className="small muted">Bestätigen</span>
             <button className="btn btn-small" type="submit" name="op" value="bulk:confirm" title="Preise und KI-Angaben der Auswahl als geprüft markieren" onClick={confirmRun(`Preise und KI-Angaben von ${count} Produkt(en) als geprüft markieren?\n\nAbgabeeinheit und Kategorie bleiben getrennt zu bestätigen.`)}>Preise</button>
             <button className="btn btn-small" type="submit" name="op" value="bulk:unit-ok" title="Abgabeeinheit so übernehmen, wie sie eingetragen ist" onClick={confirmRun(`Abgabeeinheit von ${count} Produkt(en) so bestätigen, wie sie eingetragen ist?`)}>Einheit</button>

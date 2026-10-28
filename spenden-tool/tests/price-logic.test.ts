@@ -318,3 +318,26 @@ describe("Varianten und Bestand", () => {
     expect(stockPrice(null, "palette")).toBeNull();
   });
 });
+
+describe("Inhalt/Menge vor dem Preis", () => {
+  it("schlägt den Inhalt aus der Variante vor", async () => {
+    const { amountFromVariant } = await import("@/lib/price-logic");
+    expect(amountFromVariant("1,5 kg Gastrodose")).toBe("1,5 kg");
+    expect(amountFromVariant("0.5L")).toBe("0,5 l");
+    expect(amountFromVariant("1000 ml")).toBe("1 l");
+    expect(amountFromVariant("33 cl")).toBe("330 ml");
+    expect(amountFromVariant("2500g")).toBe("2,5 kg");
+    expect(amountFromVariant("6 x 125 g")).toBeNull();
+    expect(amountFromVariant("Größe M")).toBeNull();
+    expect(amountFromVariant("200 g / 400 g")).toBeNull();
+  });
+  it("steht vor dem Preis – eigener Text hat Vorrang, Packungen je Stück", async () => {
+    const { outputPrice } = await import("@/lib/layout");
+    expect(outputPrice({ price: 10, amount: "1,5 kg" })).toBe("1,5 kg 10 €");
+    expect(outputPrice({ price: 10, amount: "1,5 kg", unit: "stueck" }, "flyer")).toBe("1,5 kg 10€");
+    expect(outputPrice({ price: 3, amount: "0,5 l", unit: "packung", unitCount: 6 })).toBe("6 × 0,5 l 3 €");
+    expect(outputPrice({ price: 3, amount: "0,5 l", unit: "karton", unitCount: 24 })).toBe("Karton (24 × 0,5 l) 3 €");
+    expect(outputPrice({ price: 3, amount: "0,5 l", priceNote: "Sonderpreis" })).toBe("Sonderpreis 3 €");
+    expect(outputPrice({ price: 0.5, unit: "stueck" })).toBe("je 50 Cent");
+  });
+});

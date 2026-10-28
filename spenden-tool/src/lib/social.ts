@@ -3,7 +3,7 @@
 import { outputPrice } from "@/lib/layout";
 import { publicText } from "@/lib/price-logic";
 
-export type SocialProduct = { name: string; variant: string | null; price: number | null; priceNote: string | null; unit?: string | null; unitCount?: number | null };
+export type SocialProduct = { name: string; variant: string | null; price: number | null; priceNote: string | null; amount?: string | null; unit?: string | null; unitCount?: number | null };
 export type SocialEvent = { title: string; dateLabel: string; weekdayLong: string; eventTime: string | null; location: string | null };
 
 const BASE_TAGS = ["foodsharing", "lebensmittelretten", "spenden", "nachhaltigkeit", "zerowaste", "rettenstattwegwerfen"];

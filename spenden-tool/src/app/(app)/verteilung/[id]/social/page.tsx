@@ -31,6 +31,7 @@ export default async function SocialPage({ params, searchParams }: { params: Pro
     variant: product.variant ? publicText(product.variant) || null : null,
     price: item.price,
     priceNote: item.priceNote,
+    amount: product.amount,
     unit: item.unit,
     unitCount: item.unitCount,
     caption: item.caption,

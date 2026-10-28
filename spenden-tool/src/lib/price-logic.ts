@@ -19,7 +19,7 @@ export const UNITS = {
 export type Unit = keyof typeof UNITS;
 export const isUnit = (v: unknown): v is Unit => typeof v === "string" && v in UNITS;
 
-export type UnitInfo = { unit: string | null; unitCount: number | null; priceNote?: string | null };
+export type UnitInfo = { unit: string | null; unitCount: number | null; priceNote?: string | null; amount?: string | null };
 
 /** „Einzelstück“, „6er-Pack“, „Karton (24 Stück)“ – leer, wenn keine Einheit festgelegt ist. */
 export function unitLabel(unit: string | null | undefined, count: number | null | undefined): string {
@@ -38,10 +38,37 @@ export function pricePrefix(i: UnitInfo): string {
   const note = i.priceNote?.trim();
   if (note) return note;
   const n = i.unitCount && i.unitCount > 1 ? i.unitCount : null;
+  // Inhalt/Menge („1,5 kg“, „0,5 l“) steht vor dem Preis – bei Packungen je Stück: „6 × 0,5 l“.
+  const a = i.amount?.trim();
+  if (a) {
+    if (i.unit === "packung") return n ? `${n} × ${a}` : `Packung ${a}`;
+    if (i.unit === "karton") return n ? `Karton (${n} × ${a})` : `Karton ${a}`;
+    return a;
+  }
   if (i.unit === "stueck") return "je";
   if (i.unit === "packung") return n ? `${n}er-Pack` : "Packung";
   if (i.unit === "karton") return n ? `Karton (${n} St.)` : "Karton";
   return "";
+}
+
+/**
+ * Inhalt/Menge aus der Variante als Vorschlag: „1,5 kg Gastrodose“ → „1,5 kg“, „0.5L“ → „0,5 l“, „1000 ml“ → „1 l“.
+ * Mehrfachpackungen („6 x 125 g“) und mehrere Angaben ergeben keinen Vorschlag – das bleibt eine Entscheidung.
+ */
+export function amountFromVariant(variant: string | null | undefined): string | null {
+  if (!variant) return null;
+  const t = variant.toLowerCase();
+  if (/\d\s*[x×]\s*\d/.test(t)) return null;
+  const all = [...t.matchAll(/(\d+(?:[.,]\d+)?)\s*(kg|gr|g|ml|cl|l)(?![a-zäöü])/g)];
+  if (all.length !== 1) return null;
+  let v = Number(all[0][1].replace(",", "."));
+  let u = all[0][2] === "gr" ? "g" : all[0][2];
+  if (!(v > 0)) return null;
+  if (u === "cl") [v, u] = [v * 10, "ml"];
+  if (u === "g" && v >= 1000) [v, u] = [v / 1000, "kg"];
+  if (u === "ml" && v >= 1000) [v, u] = [v / 1000, "l"];
+  const num = String(Math.round(v * 1000) / 1000).replace(".", ",");
+  return `${num} ${u}`;
 }
 
 /**

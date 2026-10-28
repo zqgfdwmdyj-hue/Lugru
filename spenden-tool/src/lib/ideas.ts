@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { POSTER_THEMES, type IdeaResult } from "@/db/schema";
 import { formatDate } from "@/lib/numbers";
-import { collagePrice, packLabel } from "@/lib/layout";
+import { outputPrice, packLabel } from "@/lib/layout";
 import { publicText } from "@/lib/price-logic";
 
 // Ideen für eine Verteilung: Themenpakete, Rezepte und ein Werbetext – aus den Produkten des Tages.
@@ -82,7 +82,7 @@ const Result = z.object({
     .catch(null),
 });
 
-export type IdeaProduct = { name: string; variant: string | null; category: string; price: number | null; priceNote: string | null; quantity: number | null; bestBefore: string | null; packs?: { label: string; price: number }[] };
+export type IdeaProduct = { name: string; variant: string | null; category: string; price: number | null; priceNote: string | null; amount?: string | null; quantity: number | null; bestBefore: string | null; packs?: { label: string; price: number }[] };
 
 export function productLines(items: IdeaProduct[]): string {
   return items
@@ -90,7 +90,7 @@ export function productLines(items: IdeaProduct[]): string {
       const name = [publicText(p.name), publicText(p.variant)].filter(Boolean).join(" ");
       const extra = [
         p.category,
-        p.price !== null ? `Spendenempfehlung ${p.priceNote ? `${p.priceNote} ` : ""}${collagePrice(p.price)}` : "",
+        p.price !== null ? `Spendenempfehlung ${outputPrice(p)}` : "",
         packLabel(p.packs) ? `Packung: ${packLabel(p.packs)}` : "",
         p.quantity ? `Menge ${p.quantity}` : "",
         p.bestBefore ? `MHD ${formatDate(p.bestBefore)}` : "",

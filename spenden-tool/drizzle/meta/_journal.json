@@ -141,6 +141,13 @@
       "when": 1793118733715,
       "tag": "0019_varianten_mehrere",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793210249475,
+      "tag": "0020_inhalt_menge",
+      "breakpoints": true
     }
   ]
 }

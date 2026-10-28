@@ -97,6 +97,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **KI nach dem Hochladen (Verwaltung):** erkennt jedes neue Produkt selbst und füllt Name, Größe, Kategorie, MHD
   und einen Preisvorschlag aus – der Preis gilt als „unbestätigt“, bis jemand kontrolliert. Stufe wählbar oder aus;
   Standard ist die KI_MODUS-Stufe.
+- **Inhalt / Menge (optional):** am Produkt, z. B. „1,5 kg“ oder „0,5 l“ – steht in Collage, Aushang und Messenger
+  automatisch vor dem Preis („1,5 kg 10 €“, bei Packungen „6 × 0,5 l 3 €“). Vorschlag aus der Variante mit einem
+  Klick bzw. als Stapelaktion „Inhalt aus Variante“; ein eigener Text vor dem Preis hat Vorrang.
 - **Varianten:** neben dem Einzelpreis beliebig viele Varianten mit eigener Empfehlung (Packung, Karton, Kasten,
   Tray, Palette – „+ weitere Variante“). Erscheinen in Collage (höchstens zwei Zeilen), Aushang, Messenger und Ideen.
   Abgabeeinheit und Varianten werden beim nächsten Hinzufügen des Produkts übernommen.

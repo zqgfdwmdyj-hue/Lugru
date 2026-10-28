@@ -10,7 +10,7 @@ import type { CollageSettings } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
 import { stockPrice } from "@/lib/pricing";
-import { categoryHint, comparability, LEGACY_CATEGORIES, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { amountFromVariant, categoryHint, comparability, LEGACY_CATEGORIES, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -241,12 +241,13 @@ export async function saveItems(fd: FormData) {
   // Produktangaben (Name, Variante, Kategorie, MHD nötig?) – gelten auch für spätere Verteilungen.
   for (const productId of new Set(items.map((i) => i.productId))) {
     const k = (f: string) => `${f}_${productId}`;
-    if (!["name", "variant", "cat", "mhdmode"].some((f) => fd.has(k(f)))) continue;
+    if (!["name", "variant", "amount", "cat", "mhdmode"].some((f) => fd.has(k(f)))) continue;
     const set: Partial<typeof P.$inferInsert> = {};
     const name = str(fd, k("name"));
     // Leerer Name = noch ohne Namen (Platzhalter bleibt).
     if (fd.has(k("name")) && name && changed(k("name"))) set.name = name;
     if (fd.has(k("variant")) && changed(k("variant"))) set.variant = opt(fd, k("variant"));
+    if (fd.has(k("amount")) && changed(k("amount"))) set.amount = opt(fd, k("amount"))?.slice(0, 40) ?? null;
     // Leere Kategorie (z. B. „Neue Kategorie …“ noch ohne Text) ändert nichts.
     const cat = str(fd, k("cat"));
     if (fd.has(k("cat")) && changed(k("cat")) && cat && cat !== "__neu__") {
@@ -301,6 +302,11 @@ export async function saveItems(fd: FormData) {
   } else if (op === "confirm" && idx >= 0) {
     await db.update(I).set({ priceConfirmed: true }).where(and(eq(I.id, target), sql`${I.price} is not null`));
     what = "Preis bestätigt";
+  } else if (op === "menge" && idx >= 0) {
+    const [p] = await db.select({ variant: P.variant }).from(P).where(eq(P.id, items[idx].productId));
+    const a = amountFromVariant(p?.variant);
+    if (a) await db.update(P).set({ amount: a, updatedAt: new Date() }).where(and(eq(P.id, items[idx].productId), sql`${P.amount} is null`));
+    what = "Inhalt/Menge aus der Variante übernommen";
   } else if (op === "mehrere-ok" && idx >= 0) {
     await db.update(schema.priceChecks).set({ multipleProducts: false }).where(eq(schema.priceChecks.productId, items[idx].productId));
     what = "Foto zeigt nur ein Produkt";
@@ -353,6 +359,18 @@ export async function saveItems(fd: FormData) {
     } else if (target === "unit-ok") {
       await db.update(I).set({ unitConfirmed: true }).where(inArray(I.id, ids));
       what = `Abgabeeinheit bei ${n} Produkt(en) bestätigt`;
+    } else if (target === "menge") {
+      // Inhalt/Menge aus der Variante – nur wo noch keiner steht und die Variante eindeutig ist.
+      const ps = await db.select({ id: P.id, variant: P.variant, amount: P.amount }).from(P).where(inArray(P.id, pids));
+      let done = 0;
+      for (const p of ps) {
+        const a = !p.amount ? amountFromVariant(p.variant) : null;
+        if (a) {
+          await db.update(P).set({ amount: a, updatedAt: new Date() }).where(eq(P.id, p.id));
+          done++;
+        }
+      }
+      what = `Inhalt/Menge bei ${done} von ${n} Produkt(en) aus der Variante übernommen`;
     } else if (target === "cat-ok") {
       await db.update(P).set({ categoryChecked: true }).where(inArray(P.id, pids));
       what = `Kategorie bei ${n} Produkt(en) bestätigt`;
@@ -977,6 +995,7 @@ export async function updateProduct(fd: FormData) {
     .set({
       name,
       variant: opt(fd, "variant"),
+      ...(fd.has("amount") ? { amount: opt(fd, "amount")?.slice(0, 40) ?? null } : {}),
       category: str(fd, "category") || UNSORTED_CATEGORY,
       price: price(fd, "price"),
       priceConfirmed: true,
@@ -1191,7 +1210,7 @@ export async function createIdeas(eventId: string, _prev: IdeasState, fd: FormDa
   const event = await loadEvent(id);
   if (!event) return { ok: false, message: "Verteilung nicht gefunden." };
   const rows = await db
-    .select({ name: P.name, variant: P.variant, category: P.category, price: I.price, priceNote: I.priceNote, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice, packKind: I.packKind, packCount: I.packCount, morePacks: I.morePacks })
+    .select({ name: P.name, variant: P.variant, amount: P.amount, category: P.category, price: I.price, priceNote: I.priceNote, unit: I.unit, unitCount: I.unitCount, quantity: I.quantity, bestBefore: I.bestBefore, packNote: I.packNote, packPrice: I.packPrice, packKind: I.packKind, packCount: I.packCount, morePacks: I.morePacks })
     .from(I)
     .innerJoin(P, eq(P.id, I.productId))
     .where(eq(I.eventId, id))
