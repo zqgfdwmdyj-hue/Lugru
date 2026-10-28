@@ -253,3 +253,69 @@ export function loadText(s: { palletCount: number | null; cartonCount: number | 
   if (s.cartonCount) parts.push(`${s.cartonCount} Karton${s.cartonCount === 1 ? "" : "s"}`);
   return parts.join(" · ");
 }
+
+// ---------------------------------------------------------------------------------------------------------
+// Eingaben (Formular oder Assistent) prüfen
+
+export type ShipmentBase = {
+  direction: Direction;
+  title: string;
+  customer: string | null;
+  place: string | null;
+  carrier: string;
+  carrierName: string | null;
+  trackingNo: string | null;
+  trackingUrl: string | null;
+  palletCount: number | null;
+  cartonCount: number | null;
+  note: string | null;
+};
+
+const oneLine = (v: unknown, max: number) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, max) || null;
+const countOf = (v: unknown) => {
+  const n = Math.round(Number(String(v ?? "").trim() || "0"));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 9999) : null;
+};
+
+/** Stammdaten einer Sendung aus Formularfeldern bzw. Werkzeug-Eingaben – Fehlertext oder geprüfte Werte. */
+export function parseShipmentBase(get: (key: string) => unknown): ShipmentBase | string {
+  const d = get("direction");
+  const direction = d === "aus" ? "aus" : d === "ein" ? "ein" : null;
+  if (!direction) return "Bitte wählen: Anlieferung ins Lager oder Versand an Kunden.";
+  const title = oneLine(get("title"), 160);
+  if (!title) return "Bitte eine Bezeichnung eingeben (z. B. „12 Paletten Shampoo“ oder die Auftragsnummer).";
+  const carrier = String(get("carrier") ?? "");
+  if (!CARRIER_KEYS.includes(carrier)) return "Bitte Spedition bzw. Paketdienst wählen.";
+  const rawUrl = String(get("trackingUrl") ?? "").trim();
+  const trackingUrl = safeUrl(rawUrl);
+  if (rawUrl && !trackingUrl) return "Der Link zur Sendungsverfolgung muss mit https:// beginnen.";
+  return {
+    direction,
+    title,
+    customer: oneLine(get("customer"), 120),
+    place: oneLine(get("place"), 160),
+    carrier,
+    carrierName: carrier === "andere" ? oneLine(get("carrierName"), 80) : null,
+    trackingNo: cleanTrackingNo(String(get("trackingNo") ?? "")),
+    trackingUrl,
+    palletCount: countOf(get("palletCount")),
+    cartonCount: countOf(get("cartonCount")),
+    note: String(get("note") ?? "").trim().slice(0, 2000) || null,
+  };
+}
+
+/** Ankündigung für den Verlauf – ohne interne Notiz, der Kunde sieht sie im Link. */
+export function createdText(b: ShipmentBase, plannedDate: string | null, plannedTime: string | null) {
+  const what = b.direction === "ein" ? "Anlieferung angekündigt" : "Versand angelegt";
+  const parts = [loadText(b), carrierLabel(b.carrier, b.carrierName), plannedDate ? `Termin ${dmy(plannedDate)}${plannedTime ? ` (${plannedTime})` : ""}` : "Termin noch offen"].filter(Boolean);
+  return `${what}: ${parts.join(" · ")}`;
+}
+
+/** Text für eine Terminänderung (Tag und/oder Zeitfenster). */
+export function shiftEventText(cur: { plannedDate: string | null; plannedTime: string | null }, newDate: string | null, plannedTime: string | null, reason: string | null) {
+  if (newDate === cur.plannedDate) return `Zeitfenster geändert: ${plannedTime ?? "offen"}${reason ? ` – ${reason}` : ""}`;
+  const timeNote = plannedTime && plannedTime !== cur.plannedTime ? `, Zeitfenster ${plannedTime}` : "";
+  return `${shiftText(cur.plannedDate, newDate, reason)}${timeNote}`;
+}
+
+export const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);

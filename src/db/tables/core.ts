@@ -164,6 +164,8 @@ export type TenantSettings = {
     /** Letzte Inventur. */
     lastInventory?: { at: string; scanned: number; found: number; missing: number; unknown: number };
   };
+  /** KI-Assistent im Seller-System (Fragefeld oben): an/aus, Modell, Änderungen erlauben. */
+  assistant?: { enabled?: boolean; model?: string; allowWrite?: boolean };
   /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };

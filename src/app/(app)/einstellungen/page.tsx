@@ -70,7 +70,10 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
     <>
       <div className="page-head">
         <div><div className="crumb">System</div><h1>Einstellungen</h1></div>
-        <Link className="btn" href="/anbindungen">Anbindungen →</Link>
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Link className="btn" href="/einstellungen/claude">Claude & KI-Assistent →</Link>
+          <Link className="btn" href="/anbindungen">Anbindungen →</Link>
+        </span>
       </div>
       {meldung && <div className="notice notice-info" data-testid="settings-msg">{meldung}</div>}
 

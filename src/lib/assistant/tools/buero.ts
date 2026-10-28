@@ -1,0 +1,119 @@
+import "server-only";
+import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { z } from "zod";
+import { db, schema } from "@/db";
+import { needsReview } from "@/lib/invoices/review";
+import { defineTool } from "../types";
+import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
+
+export const rechnungenOffen = defineTool({
+  name: "rechnungen_offen",
+  title: "Rechnungen zu prüfen",
+  description: "Eingangsrechnungen, die noch geprüft oder zugeordnet werden müssen (neu, „prüfen“ oder mit offener Prüfung) – Lieferant, Nummer, Datum, Betrag. Optional nach Lieferant/Nummer filtern.",
+  area: "buchhaltung",
+  write: false,
+  input: z.object({ suche: z.string().trim().max(80).optional(), limit: z.number().int().min(1).max(100).default(30) }),
+  run: async (ctx, i) => {
+    const R = schema.invoices;
+    const where = [eq(R.tenantId, ctx.session.tenantId), needsReview];
+    if (i.suche) where.push(or(ilike(R.vendor, likeOf(i.suche)), ilike(R.invoiceNumber, likeOf(i.suche)), ilike(R.fileName, likeOf(i.suche)))!);
+    const [rows, [{ n }]] = await Promise.all([
+      db.select().from(R).where(and(...where)).orderBy(desc(R.invoiceDate)).limit(i.limit),
+      db.select({ n: sql<number>`count(*)::int` }).from(R).where(and(...where)),
+    ]);
+    return json({ anzahl: n, rechnungen: rows.map((r) => ({ id: r.id, lieferant: r.vendor, nummer: r.invoiceNumber, datum: r.invoiceDate, brutto: round2(r.totalGross), netto: round2(r.totalNet), art: r.kind, status: r.status, datei: r.fileName })), link: abs(ctx, "/rechnungen") });
+  },
+});
+
+export const ansprueche = defineTool({
+  name: "ansprueche",
+  title: "Amazon-Ansprüche",
+  description: "Offene Erstattungsansprüche gegenüber Amazon (verloren, beschädigt, Retouren …) mit erwartetem Betrag und Frist. Für „Wie viel Geld steht bei Amazon noch aus?“, „Welche Fristen laufen ab?“.",
+  area: "amazon",
+  write: false,
+  input: z.object({ status: z.enum(["offen", "eingereicht", "alle_offenen"]).default("alle_offenen"), limit: z.number().int().min(1).max(100).default(40) }),
+  run: async (ctx, i) => {
+    const C = schema.claims;
+    const statuses = i.status === "offen" ? ["detected", "queued"] : i.status === "eingereicht" ? ["submitted"] : ["detected", "queued", "submitted"];
+    const where = and(eq(C.tenantId, ctx.session.tenantId), inArray(C.status, statuses as (typeof C.$inferSelect.status)[]));
+    const [rows, [sum]] = await Promise.all([
+      db.select().from(C).where(where).orderBy(sql`${C.deadline} asc nulls last`).limit(i.limit),
+      db.select({ n: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${C.expectedAmount}),0)::float` }).from(C).where(where),
+    ]);
+    return json({ anzahl: sum.n, erwartet_gesamt: round2(sum.total), ansprueche: rows.map((c) => ({ id: c.id, titel: c.title, art: c.type, status: c.status, sku: c.sku, menge: c.quantity, erwartet: round2(c.expectedAmount), frist: c.deadline, amazon_fall: c.amazonCaseId })), link: abs(ctx, "/ansprueche") });
+  },
+});
+
+export const amazonTodos = defineTool({
+  name: "amazon_todos",
+  title: "Amazon-ToDos",
+  description: "Offene ToDos aus Amazon-Systemmails (Kontozustand, Angebote gesperrt, Dokumente angefordert …) mit Priorität und Frist.",
+  area: "amazon",
+  ownerOnly: true,
+  write: false,
+  input: z.object({ limit: z.number().int().min(1).max(100).default(30) }),
+  run: async (ctx, i) => {
+    const A = schema.amazonTodos;
+    const rows = await db
+      .select()
+      .from(A)
+      .where(and(eq(A.tenantId, ctx.session.tenantId), eq(A.status, "open")))
+      .orderBy(sql`case ${A.priority} when 'high' then 0 when 'normal' then 1 else 2 end`, sql`${A.deadline} asc nulls last`)
+      .limit(i.limit);
+    return json({ anzahl: rows.length, todos: rows.map((x) => ({ id: x.id, betreff: x.subject, kategorie: x.category, prioritaet: x.priority, frist: x.deadline, zusammenfassung: x.summary, asins: x.asins, eingegangen: berlinDateTime(x.receivedAt) })), link: abs(ctx, "/amazon-todos") });
+  },
+});
+
+export const posteingang = defineTool({
+  name: "posteingang",
+  title: "Posteingang",
+  description: "Neueste Mails aus den verbundenen Postfächern (nicht archiviert) mit Absender, Betreff, Einstufung und Vorschau – optional nur wichtige oder nach Text gefiltert.",
+  area: "posteingang",
+  write: false,
+  input: z.object({ nur_wichtige: z.boolean().default(false), suche: z.string().trim().max(80).optional(), limit: z.number().int().min(1).max(50).default(20) }),
+  run: async (ctx, i) => {
+    const M = schema.emails;
+    const where = [eq(M.tenantId, ctx.session.tenantId), eq(M.archived, false)];
+    if (i.nur_wichtige) where.push(eq(M.category, "critical"));
+    if (i.suche) where.push(or(ilike(M.subject, likeOf(i.suche)), ilike(M.fromAddress, likeOf(i.suche)), ilike(M.fromName, likeOf(i.suche)))!);
+    const rows = await db.select().from(M).where(and(...where)).orderBy(desc(M.receivedAt)).limit(i.limit);
+    return json({ mails: rows.map((m) => ({ id: m.id, von: m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress, betreff: m.subject, eingegangen: berlinDateTime(m.receivedAt), einstufung: m.category, thema: m.topic, vorschau: m.snippet?.slice(0, 300) })), link: abs(ctx, "/posteingang") });
+  },
+});
+
+export const wissen = defineTool({
+  name: "wissen",
+  title: "Wissen durchsuchen",
+  description: "Durchsucht die Wissenssammlung (Anleitungen, Notizen, Textbausteine, Recherche) nach Titel und Inhalt. Für „Wie mache ich …?“, „Was hatten wir zu … notiert?“.",
+  area: "wissen",
+  write: false,
+  input: z.object({ suche: z.string().trim().min(2).max(100), limit: z.number().int().min(1).max(20).default(8) }),
+  run: async (ctx, i) => {
+    const K = schema.knowledgeEntries;
+    const like = likeOf(i.suche);
+    const rows = await db
+      .select()
+      .from(K)
+      .where(and(eq(K.tenantId, ctx.session.tenantId), or(ilike(K.title, like), ilike(K.body, like), sql`exists (select 1 from unnest(${K.tags}) tg where tg ilike ${like})`)))
+      .orderBy(asc(K.title))
+      .limit(i.limit);
+    return json({ eintraege: rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, art: k.kind, herkunft: k.origin, stichworte: k.tags, text: k.body.slice(0, 2500) })) });
+  },
+});
+
+export const wissenAnlegen = defineTool({
+  name: "wissen_anlegen",
+  title: "Notiz ins Wissen",
+  description: "Legt eine Notiz in der Wissenssammlung an (z. B. Ablauf, Kontakt, Absprache), damit alle mit Zugriff sie finden.",
+  area: "wissen",
+  write: true,
+  input: z.object({ titel: z.string().trim().min(1).max(200), text: z.string().trim().min(1).max(20000), kategorie: z.string().trim().min(1).max(60).default("Notizen"), stichworte: z.array(z.string().trim().min(1).max(40)).max(10).default([]) }),
+  summary: (i) => `Wissen: „${i.titel}“`,
+  run: async (ctx, i) => {
+    const K = schema.knowledgeEntries;
+    const [row] = await db.insert(K).values({ tenantId: ctx.session.tenantId, kind: "article", category: i.kategorie, title: i.titel, body: i.text, tags: i.stichworte, origin: "notiz", updatedBy: ctx.session.userId }).returning({ id: K.id });
+    return json({ ok: true, meldung: "Notiz gespeichert.", id: row.id, link: abs(ctx, "/wissen") });
+  },
+});
+
+export const BUERO = [rechnungenOffen, ansprueche, amazonTodos, posteingang, wissen, wissenAnlegen];

@@ -13,6 +13,8 @@ import { bindingTask } from "@/lib/today/service";
 import { appVersion } from "@/lib/version";
 import { canAccess } from "@/lib/auth/areas";
 import { unreadNotices } from "@/lib/pallets/shipment-service";
+import { AssistantBar } from "@/components/assistant-bar";
+import { assistantAvailable } from "@/lib/assistant/chat";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
@@ -28,6 +30,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ]);
   const access = { isOwner: session.role === "owner", areas: session.areas, privateAccess: session.privateAccess };
   // Meldungen zu Paletten-Sendungen (Termin verschoben, angekommen …) für alle mit Zugriff aufs Palettenlager.
+  // Fragefeld oben: nur wenn eingeschaltet und ein KI-Schlüssel hinterlegt ist.
+  const assistant = await assistantAvailable(t).catch(() => null);
   const pallets = canAccess(session, "paletten") ? (await unreadNotices(session, prefs.shipmentNoticesSeenAt ?? null, 1).catch(() => ({ count: 0 }))).count : 0;
   const favorites = prefs.favorites ?? [];
 
@@ -60,6 +64,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
       <main className="main">
+        {assistant?.enabled && assistant.hasKey && <AssistantBar name={(session.name || session.email).split(" ")[0]} />}
         {session.readOnly && <Suspense fallback={null}><ReadOnlyBanner /></Suspense>}
         <Suspense fallback={null}><LockedBanner /></Suspense>
         <AreaTabs favorites={favorites} canFavorite={!session.readOnly} {...access} />

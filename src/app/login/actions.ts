@@ -7,6 +7,7 @@ import { db, schema } from "@/db";
 import { homeFor } from "@/lib/auth/areas";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { normalizeLogin } from "@/lib/auth/username";
+import { safeNext } from "@/lib/auth/next-path";
 
 // Einfache Bremse gegen Durchprobieren von Passwörtern (pro Prozess).
 const attempts = new Map<string, { count: number; until: number }>();
@@ -52,6 +53,9 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const now = new Date();
   await db.update(schema.users).set({ lastLoginAt: now, lastSeenAt: now }).where(eq(schema.users.id, user.id));
   await createSession(user.id, membership.tenantId);
+  // Claude-Freigabe: nach dem Login zurück zur Freigabe-Seite.
+  const next = safeNext(formData.get("weiter"));
+  if (next) redirect(next);
   // Gleich auf die eigene Startseite (z. B. nur Paletten-Lager oder nur Privat), ohne „gesperrt“-Umweg.
   redirect(homeFor({ role: membership.role, areas: membership.areas ?? null, privateAccess: membership.privateAccess, readOnly: membership.role === "staff" && membership.readOnly }));
 }

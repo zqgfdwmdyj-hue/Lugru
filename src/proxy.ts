@@ -32,7 +32,10 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   if (!token) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
-    return NextResponse.redirect(new URL("/login", request.url));
+    const login = new URL("/login", request.url);
+    // Claude-Freigabe: nach dem Login dorthin zurück.
+    if (path === "/oauth/authorize") login.searchParams.set("weiter", `${path}${request.nextUrl.search}`);
+    return NextResponse.redirect(login);
   }
   const area = areaForPath(path);
   const access = await accessFor(token).catch(() => null);
@@ -54,9 +57,11 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // api/assistent (Fragefeld) prüft die Sitzung selbst – auch Nur-ansehen-Konten dürfen lesend fragen.
+  // api/mcp (Claude-Konnektor) und .well-known (OAuth-Metadaten): eigene Anmeldung per Bearer-Token.
   // sendung/<token>: Sendungsverfolgung für Kunden ohne Anmeldung – die Seite prüft den befristeten Link selbst.
   // api/ebay und api/import ohne Proxy (große Uploads würden sonst gekürzt) – sie prüfen Sitzung und Bereich selbst.
   // api/sellerboard/callback: Rücksprung landet am Handy oft in einem Fenster ohne Anmeldung; geschützt durch
   // signierten state + serverseitigen PKCE-Prüfwert.
-  matcher: ["/((?!login|sendung/|api/oauth|api/cron|api/ebay|api/import|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: ["/((?!login|sendung/|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
 };

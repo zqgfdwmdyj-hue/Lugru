@@ -39,7 +39,7 @@ describe("Sichtbarkeit", () => {
   it("Inhaber ohne Privat-Recht sieht alle Geschäftsbereiche, Privat nicht", () => {
     const k = keys(true, null);
     expect(k.some((x) => x.startsWith("privat"))).toBe(false);
-    expect(k).toContain("hilfe:5");
+    expect(k).toContain("hilfe:6");
   });
   it("Mitarbeiter nur mit „Geld“: Finanzen mit Gewinn, Cash Flow und Hebel, keine Inhaber-Punkte", () => {
     const sections = visibleNav((p) => canAccess({ role: "staff", areas: ["geld"] }, areaForPath(p)), false);

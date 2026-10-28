@@ -140,6 +140,7 @@ export const NAV: NavSection[] = [
       { href: "/import", label: "Daten importieren" },
       { href: "/einstellungen", label: "Einstellungen", owner: true },
       { href: "/anbindungen", label: "Anbindungen", owner: true },
+      { href: "/einstellungen/claude", label: "Claude & KI-Assistent", owner: true },
       { href: "/ebay?ansicht=einstellungen", label: "eBay-Einstellungen", owner: true },
     ],
   },

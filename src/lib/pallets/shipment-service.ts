@@ -11,7 +11,8 @@ import { sendMail } from "@/lib/mail/accounts";
 import { appUrl } from "@/lib/oauth/state";
 import { getSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
-import { carrierLabel, dmy, isOpen, isOverdue, linkExpiry, trackingUpdate, type Direction } from "./shipments";
+import { capitalize, carrierLabel, createdText, dmy, isOpen, isOverdue, linkExpiry, shiftEventText, statusAfterShift, statusLabel, trackingUpdate, type Direction, type ShipmentBase } from "./shipments";
+import { customerKey } from "./billing";
 
 const S = schema.palletShipments;
 const E = schema.palletShipmentEvents;
@@ -20,7 +21,7 @@ const L = schema.palletShipmentLinks;
 
 export type Shipment = typeof S.$inferSelect;
 export type ShipmentEvent = typeof E.$inferSelect;
-type Actor = { userId: string | null; userName: string | null };
+export type Actor = { userId: string | null; userName: string | null };
 
 /** Offene Sendungen und die erledigten der letzten 60 Tage. */
 export async function loadShipments(tenantId: string) {
@@ -253,4 +254,66 @@ export async function refreshShipments(tenantId: string, today: string) {
 
 export function noticeTitle(n: { direction: Direction; title: string }) {
   return `${n.direction === "ein" ? "Anlieferung" : "Versand"}: ${n.title}`;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Ändern – gemeinsam für die Seite „Sendungen“ und den Assistenten (Claude)
+
+export type ShipResult = { ok: boolean; message: string; id?: string };
+
+export async function getShipment(tenantId: string, id: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const [s] = await db.select().from(S).where(and(eq(S.tenantId, tenantId), eq(S.id, id)));
+  return s ?? null;
+}
+
+/** Gleiche Schreibweise wie im Kundenstamm des Palettenlagers (sonst „Müller“ und „müller“). */
+export async function canonicalCustomer(tenantId: string, name: string | null) {
+  if (!name) return null;
+  const PC = schema.palletCustomers;
+  const [known] = await db.select({ name: PC.name }).from(PC).where(and(eq(PC.tenantId, tenantId), sql`lower(${PC.name}) = ${customerKey(name)}`));
+  return known?.name ?? name;
+}
+
+export async function createShipmentRecord(tenantId: string, actor: Actor, b: ShipmentBase, plannedDate: string | null, plannedTime: string | null, photos: { ids: string[]; shared: boolean } = { ids: [], shared: true }): Promise<string> {
+  const customer = await canonicalCustomer(tenantId, b.customer);
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(S)
+      .values({ tenantId, ...b, customer, plannedDate, plannedTime, firstDate: plannedDate, createdBy: actor.userId })
+      .returning();
+    await logShipmentEvent(tx, tenantId, row, { kind: "angelegt", text: createdText(b, plannedDate, plannedTime), notice: true, newDate: plannedDate, status: "geplant" }, actor);
+    if (photos.ids.length) {
+      await tx.insert(PH).values(photos.ids.map((fileId) => ({ tenantId, shipmentId: row.id, fileId, shared: photos.shared })));
+      await logShipmentEvent(tx, tenantId, row, { kind: "foto", text: `${photos.ids.length} Foto${photos.ids.length === 1 ? "" : "s"} hinzugefügt`, internal: !photos.shared }, actor);
+    }
+    return row.id;
+  });
+}
+
+/** Termin bzw. Zeitfenster ändern – später als geplant = „verzögert“, Meldung an alle. */
+export async function shiftShipment(tenantId: string, actor: Actor, s: Shipment, newDate: string | null, plannedTime: string | null, reason: string | null): Promise<ShipResult> {
+  if (newDate === s.plannedDate && plannedTime === s.plannedTime) return { ok: false, message: "Termin und Zeitfenster sind unverändert." };
+  const status = statusAfterShift(s.status, s.plannedDate, newDate);
+  const text = shiftEventText(s, newDate, plannedTime, reason);
+  await db.transaction(async (tx) => {
+    await tx.update(S).set({ plannedDate: newDate, plannedTime, firstDate: s.firstDate ?? s.plannedDate ?? newDate, status, updatedAt: new Date() }).where(and(eq(S.tenantId, tenantId), eq(S.id, s.id)));
+    await logShipmentEvent(tx, tenantId, s, { kind: "termin", text, notice: true, oldDate: s.plannedDate, newDate, status: status !== s.status ? status : null }, actor);
+  });
+  return { ok: true, message: `${text} – alle mit Paletten-Zugriff sehen die Meldung.`, id: s.id };
+}
+
+/** Status und/oder Stand („wo ist sie gerade“). Statuswechsel sind Meldungen an alle. */
+export async function setShipmentStatus(tenantId: string, actor: Actor, s: Shipment, status: ShipmentStatus, location: string | null): Promise<ShipResult> {
+  if (status === s.status && location === s.location) return { ok: false, message: "Nichts geändert." };
+  const deliveredAt = status === "zugestellt" ? (s.deliveredAt ?? new Date()) : null;
+  await db.transaction(async (tx) => {
+    await tx.update(S).set({ status, location, deliveredAt, updatedAt: new Date() }).where(and(eq(S.tenantId, tenantId), eq(S.id, s.id)));
+    if (status !== s.status) {
+      await logShipmentEvent(tx, tenantId, s, { kind: "status", text: `${capitalize(statusLabel(status, s.direction))}${location && location !== s.location ? ` – ${location}` : ""}`, notice: true, status }, actor);
+    } else {
+      await logShipmentEvent(tx, tenantId, s, { kind: "standort", text: `Stand: ${location ?? "–"}` }, actor);
+    }
+  });
+  return { ok: true, message: status !== s.status ? `Status „${statusLabel(status, s.direction)}“ gespeichert – alle mit Paletten-Zugriff sehen die Meldung.` : "Stand gespeichert.", id: s.id };
 }
