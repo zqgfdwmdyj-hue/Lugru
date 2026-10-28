@@ -10,6 +10,7 @@ import { formatEuro } from "@/lib/numbers";
 import { itemNameSql, type OrderItemLine } from "@/lib/orders/service";
 import { createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
 import { BatchForm } from "./batch-form";
+import { openLabels } from "@/lib/shipping/label-pdfs";
 
 const VIEWS = { offen: "Zu versenden", label: "Label erstellt", versendet: "Versendet", fehler: "Meldung offen", fba: "FBA", alle: "Alle" } as const;
 type View = keyof typeof VIEWS;
@@ -43,6 +44,8 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     .where(and(eq(O.tenantId, session.tenantId), eq(O.fulfillment, "FBM"), eq(O.status, "open")))
     .groupBy(O.channel);
 
+  // „Label erstellt“: alle fertigen Label-PDFs auf einmal drucken (Warensendungen per CSV haben keins).
+  const labelsOpen = view === "label" && orders.length ? await openLabels(session.tenantId, sp.kanal ? orders.map(({ o }) => o.id) : undefined) : null;
   const link = (v: View) => `/auftraege?ansicht=${v}${sp.kanal ? `&kanal=${sp.kanal}` : ""}`;
   const table = (
     <section className="card" style={{ overflow: "auto" }}>
@@ -111,8 +114,18 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
           {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={link(v)} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
           {sp.kanal && <Link href={`/auftraege?ansicht=${view}`} className="chip">Kanal: {CHANNEL_LABEL[sp.kanal as keyof typeof CHANNEL_LABEL] ?? sp.kanal} ×</Link>}
         </div>
-        {view === "label" && orders.length > 0 && <form action={markAllLabeledShipped}><ConfirmButton className="btn" confirm={`Alle ${orders.length} Aufträge mit Label als versendet markieren? Die Sendungsnummern gehen an die Marktplätze.`}>Alle als versendet markieren</ConfirmButton></form>}
+        {view === "label" && orders.length > 0 && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {labelsOpen && labelsOpen.fileIds.length > 0 && (
+              <a className="btn btn-primary" href={`/auftraege/labels${sp.kanal ? `?ids=${orders.map(({ o }) => o.id).join(",")}` : ""}`} target="_blank" rel="noreferrer" data-testid="print-all-labels">
+                Alle Labels drucken ({labelsOpen.orders - labelsOpen.withoutPdf} Aufträge, ein PDF)
+              </a>
+            )}
+            <form action={markAllLabeledShipped}><ConfirmButton className="btn" confirm={`Alle ${orders.length} Aufträge mit Label als versendet markieren? Die Sendungsnummern gehen an die Marktplätze.`}>Alle als versendet markieren</ConfirmButton></form>
+          </div>
+        )}
       </div>
+      {labelsOpen && labelsOpen.withoutPdf > 0 && <div className="small muted" data-testid="labels-csv-hint">{labelsOpen.withoutPdf} Auftrag/Aufträge ohne PDF (Warensendung per CSV) – Porto wird im Internetmarke-Shop gedruckt.</div>}
       {view === "offen" ? <BatchForm>{table}</BatchForm> : table}
       <details className="card card-pad">
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Auftrag von Hand anlegen</summary>

@@ -1,6 +1,5 @@
 import "server-only";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { PDFDocument } from "pdf-lib";
 import { extractText, getDocumentProxy } from "unpdf";
 import { db, schema } from "@/db";
 import type { Address } from "@/db/schema";
@@ -12,6 +11,7 @@ import { syncSoon } from "@/lib/stock/channel-sync";
 import { parsePackingSlip, shipChoice, type ShipChoice, type SlipOrder } from "./packing-slip";
 import { WARENSENDUNG } from "./internetmarke";
 import { imCsvProblem, internetmarkeCsv, IM_CSV_MAX } from "./internetmarke-csv";
+import { mergePdfs } from "./label-pdfs";
 import { orderShipWeight, type SkuWeightInfo } from "./weights-service";
 import type { WeightSource } from "./weight";
 import { CHANNEL_LABEL } from "@/lib/labels";
@@ -200,15 +200,6 @@ export async function defaultPostMode(tenantId: string): Promise<PostMode> {
   return imCreds(await getIntegration(tenantId, "deutschepost")) ? "api" : "csv";
 }
 
-/** Alle PDFs zu einem zusammenfügen (Warensendungen zuerst, dann DHL). */
-async function mergePdfs(parts: Buffer[]): Promise<Buffer> {
-  const out = await PDFDocument.create();
-  for (const p of parts) {
-    const src = await PDFDocument.load(p);
-    for (const page of await out.copyPages(src, src.getPageIndices())) out.addPage(page);
-  }
-  return Buffer.from(await out.save());
-}
 
 /**
  * Labels für die gewählten Aufträge: alle Warensendungen in einem Kauf (ein PDF), DHL je Auftrag. Aufträge mit
