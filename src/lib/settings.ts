@@ -54,6 +54,8 @@ export const DEFAULT_SETTINGS = {
     labelFormat: "910-300-700",
     kleinpaketMaxKg: 1,
   },
+  /** Prep Center: Standard „ich verschicke selbst“; Gebühren 0 = nicht hinterlegt (nur zählen, nicht rechnen). */
+  prep: { name: "Prep Center", defaultShipper: "self" as "self" | "prep", feeShipment: 0, feeExtraItem: 0 },
   /** Warensendung (PPL 290, bis 1.000 g) – Preis ändert sich mit der Preisliste der Post; Format 1 = DIN A4 Normalpapier. */
   post: { productCode: 290, price: 2.7, pageFormatId: 1, pageFormatName: "", labelX: 1, labelY: 1, itemGrams: 300 },
   pricing: { referralRate: 0.15, minProfit: 1, maxPriceFactor: 2, defaultFbaFee: 3.5, storageFee: 0.1, minRoi: 0.2 },
@@ -102,6 +104,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     shipper: { ...d.shipper, ...(s.shipper ?? {}) },
     dhl: { ...d.dhl, ...(s.dhl ?? {}) },
     post: { ...d.post, ...(s.post ?? {}) },
+    prep: { ...d.prep, ...(s.prep ?? {}) },
     pricing: { ...d.pricing, ...(s.pricing ?? {}) },
     aging: { ...d.aging, ...(s.aging ?? {}) },
     drive: { ...d.drive, ...(s.drive ?? {}) },

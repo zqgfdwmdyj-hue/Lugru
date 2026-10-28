@@ -85,7 +85,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
                 )}
               </td>
               <td className="num right">{formatEuro(o.total)}</td>
-              <td>{ORDER_STATUS_LABEL[o.status]}{o.carrier && o.status !== "open" && <div className="small muted">{o.carrier}</div>}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
+              <td>{ORDER_STATUS_LABEL[o.status]}{o.carrier && o.status !== "open" && <div className="small muted">{o.carrier}{o.shippedBy === "prep" ? " · Prep Center" : ""}</div>}{o.trackingUploadError && <div className="small" style={{ color: "var(--warn)" }}>Meldung offen</div>}</td>
               <td className="num small">{o.trackingNumber ?? (o.carrier === "Deutsche Post" ? "Warensendung" : "–")}</td>
             </tr>
           ))}
@@ -132,6 +132,12 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
               <a className="btn btn-primary" href={`/auftraege/labels${sp.kanal ? `?ids=${orders.map(({ o }) => o.id).join(",")}` : ""}`} target="_blank" rel="noreferrer" data-testid="print-all-labels">
                 Alle Labels drucken ({labelsOpen.orders - labelsOpen.withoutPdf} Aufträge, ein PDF)
               </a>
+            )}
+            {labelsOpen && labelsOpen.fileIds.length > 0 && orders.some(({ o }) => o.shippedBy === "prep") && (
+              <>
+                <a className="btn" href={`/auftraege/labels?von=prep${sp.kanal ? `&ids=${orders.map(({ o }) => o.id).join(",")}` : ""}`} target="_blank" rel="noreferrer" data-testid="print-prep-labels">Nur fürs Prep Center</a>
+                <a className="btn" href={`/auftraege/labels?von=self${sp.kanal ? `&ids=${orders.map(({ o }) => o.id).join(",")}` : ""}`} target="_blank" rel="noreferrer" data-testid="print-self-labels">Nur meine</a>
+              </>
             )}
             <form action={markAllLabeledShipped}><ConfirmButton className="btn" confirm={`Alle ${orders.length} Aufträge mit Label als versendet markieren? Die Sendungsnummern gehen an die Marktplätze.`}>Alle als versendet markieren</ConfirmButton></form>
           </div>

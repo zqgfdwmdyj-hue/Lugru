@@ -91,6 +91,8 @@ export type TenantSettings = {
     labelFormat?: string;
     kleinpaketMaxKg?: number;
   };
+  /** Prep Center: wer standardmäßig verschickt und welche Gebühren es berechnet (für den Rechnungsabgleich). */
+  prep?: { name?: string; defaultShipper?: "self" | "prep"; feeShipment?: number; feeExtraItem?: number };
   /** Deutsche Post INTERNETMARKE (Warensendung): Produkt/Preis laut PPL, Druckformat, Gewicht je Stück für DHL. */
   post?: {
     productCode?: number;

@@ -6,6 +6,9 @@ export const CHANNELS = ["amazon", "ebay", "tiktok", "temu", "kaufland", "shop",
 export type Channel = (typeof CHANNELS)[number];
 
 export const ORDER_STATUSES = ["open", "label_created", "shipped", "delivered", "cancelled", "returned"] as const;
+/** Wer verschickt: „self“ = selbst, „prep“ = Prep Center. */
+export const SHIPPERS = ["self", "prep"] as const;
+export type Shipper = (typeof SHIPPERS)[number];
 
 export const orders = pgTable(
   "orders",
@@ -33,6 +36,8 @@ export const orders = pgTable(
     shipBy: timestamp("ship_by", { withTimezone: true }),
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
     carrier: text("carrier"),
+    /** Wer packt und verschickt: selbst oder das Prep Center (für die Monatsabrechnung). null = nicht festgelegt. */
+    shippedBy: text("shipped_by", { enum: SHIPPERS }),
     trackingNumber: text("tracking_number"),
     trackingUploadedAt: timestamp("tracking_uploaded_at", { withTimezone: true }),
     trackingUploadError: text("tracking_upload_error"),
@@ -97,6 +102,8 @@ export const skuWeights = pgTable(
     sku: text("sku").notNull(),
     grams: integer("grams"),
     wsMax: integer("ws_max"),
+    /** Wer diesen Artikel normalerweise verschickt (liegt bei mir / im Prep Center); null = Standard aus den Einstellungen. */
+    shipFrom: text("ship_from", { enum: SHIPPERS }),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.sku] })],

@@ -88,6 +88,9 @@ describe("Lieferschein", () => {
     const [at] = parsePackingSlip([page({ no: "307-7777777-7777777", addr: ["Anna Test", "Testgasse 7", "1010 Wien", "Österreich"], items: [item(1, ["Artikel A"], "SKU-A", "10000000000008")] })]);
     expect(shipChoice(at)).toBe("dhl");
   });
+  it("„Lieferadresse unvollständig“ (klein geschrieben „adresse“) → prüfen", () => {
+    expect(shipChoice({ quantity: 1, shipTo: { country: "DEU" }, warnings: ["Lieferadresse unvollständig"] })).toBe("pruefen");
+  });
   it("Seiten ohne Bestellnummer vor der ersten Bestellung werden ignoriert", () => {
     expect(parsePackingSlip(["Deckblatt\nirgendwas"])).toEqual([]);
   });

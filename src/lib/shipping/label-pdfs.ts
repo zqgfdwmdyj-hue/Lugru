@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, or, type SQL } from "drizzle-orm";
 import { PDFDocument } from "pdf-lib";
 import { db, schema } from "@/db";
 
@@ -22,11 +22,14 @@ export type OpenLabels = { fileIds: string[]; orders: number; withoutPdf: number
  * der Versandfrist. Eine Datei für mehrere Aufträge (Warensendungen aus einem Kauf) nur einmal. Aufträge ohne
  * PDF (Warensendung per CSV im Internetmarke-Shop) werden gezählt.
  */
-export async function openLabels(tenantId: string, ids?: string[]): Promise<OpenLabels> {
+export async function openLabels(tenantId: string, ids?: string[], shipper?: "self" | "prep"): Promise<OpenLabels> {
   const O = schema.orders;
   const P = schema.parcels;
-  const where = [eq(O.tenantId, tenantId), eq(O.status, "label_created")];
+  const where: SQL[] = [eq(O.tenantId, tenantId), eq(O.status, "label_created")];
   if (ids?.length) where.push(inArray(O.id, ids));
+  // „meine“ = alles, was nicht ausdrücklich das Prep Center verschickt.
+  if (shipper === "prep") where.push(eq(O.shippedBy, "prep"));
+  if (shipper === "self") where.push(or(isNull(O.shippedBy), eq(O.shippedBy, "self"))!);
   const orders = await db.select({ id: O.id }).from(O).where(and(...where)).orderBy(asc(O.shipBy), asc(O.orderDate));
   if (!orders.length) return { fileIds: [], orders: 0, withoutPdf: 0 };
   const parcels = await db

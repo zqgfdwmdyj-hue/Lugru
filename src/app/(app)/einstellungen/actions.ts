@@ -81,6 +81,12 @@ export async function saveSettings(fd: FormData) {
       kleinpaketMaxKg: num(fd, "dhl_kleinpaketMaxKg"),
     },
     post: postSettings(fd),
+    prep: {
+      name: str(fd, "prep_name")?.slice(0, 60),
+      defaultShipper: fd.get("prep_default") === "prep" ? "prep" : "self",
+      feeShipment: num(fd, "prep_feeShipment"),
+      feeExtraItem: num(fd, "prep_feeExtraItem"),
+    },
     pricing: {
       referralRate: pct(fd, "referralRate"),
       minProfit: num(fd, "minProfit"),

@@ -11,6 +11,7 @@ import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { cancelLabel, createLabel, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
 import { orderShipWeight, saveSkuShipping } from "@/lib/shipping/weights-service";
+import { ensureShipper } from "@/lib/shipping/slip-service";
 import { parseWsMax } from "@/lib/shipping/warensendung";
 import { parseWeightInput } from "@/lib/shipping/weight";
 import { getSettings } from "@/lib/settings";
@@ -27,6 +28,7 @@ export async function createLabelAction(_prev: LabelState, fd: FormData): Promis
   const product = fd.get("product") === "kleinpaket" ? "kleinpaket" : "paket";
   try {
     const r = await createLabel({ tenantId: session.tenantId, orderId, weightKg, product });
+    await ensureShipper(session.tenantId, orderId);
     revalidatePath("/auftraege", "layout");
     return { ok: true, message: `Label erstellt: ${r.trackingNumber}${r.sandbox ? " (Sandbox – Testlabel)" : ""}${r.warnings.length ? ` · Hinweise: ${r.warnings.join("; ")}` : ""}`, fileId: r.fileId };
   } catch (e) {
@@ -60,6 +62,7 @@ export async function batchLabels(_prev: BatchState, fd: FormData): Promise<Batc
     const w = sw.kg;
     try {
       const r = await createLabel({ tenantId: session.tenantId, orderId: id, weightKg: w, product: w <= settings.dhl.kleinpaketMaxKg ? "kleinpaket" : "paket" });
+      await ensureShipper(session.tenantId, id);
       results.push({ id, ref, ok: true, message: `${r.trackingNumber} (${w} kg)`, fileId: r.fileId });
     } catch (e) {
       results.push({ id, ref, ok: false, message: e instanceof Error ? e.message : String(e) });
@@ -163,5 +166,14 @@ export async function saveSkuWeightAction(fd: FormData) {
   const grams = raw === "" ? 0 : parseWeightInput(raw);
   const ws = fd.has("ws") ? parseWsMax(String(fd.get("ws") ?? "")) : undefined;
   if (sku) await saveSkuShipping(session.tenantId, sku, { ...(grams !== null ? { grams: grams || null } : {}), ...(ws !== undefined ? { wsMax: ws } : {}) });
+  revalidatePath(`/auftraege/${orderId}`);
+}
+
+/** Wer verschickt diesen Auftrag (ich / Prep Center) – für die Monatsübersicht des Prep Centers. */
+export async function saveShipperAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const orderId = uuid.parse(fd.get("orderId"));
+  const v = String(fd.get("shipper") ?? "");
+  await db.update(schema.orders).set({ shippedBy: v === "self" || v === "prep" ? v : null, updatedAt: new Date() }).where(and(eq(schema.orders.id, orderId), eq(schema.orders.tenantId, session.tenantId)));
   revalidatePath(`/auftraege/${orderId}`);
 }

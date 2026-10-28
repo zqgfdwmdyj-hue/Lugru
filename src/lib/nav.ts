@@ -43,6 +43,7 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
       { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
+      { href: "/auftraege/prep-center", label: "Prep Center: Versand je Monat" },
       { href: "/listings", label: "Angebote (alle Kanäle)" },
       { href: "/ebay", label: "Neues eBay-Angebot" },
       { href: "/ebay/pruefen", label: "eBay-Angebote prüfen" },

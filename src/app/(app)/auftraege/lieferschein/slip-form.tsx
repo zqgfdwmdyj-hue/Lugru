@@ -14,7 +14,7 @@ const kgText = (g: number | null) => (g === null ? "" : (g / 1000).toLocaleStrin
  * Labels in einem Schritt: Amazon-Lieferschein hochladen oder offene Aufträge (z. B. eBay) übernehmen →
  * Vorschau mit Versandart je Bestellung (1 Stück → Warensendung, ab 2 → DHL) → ein Knopf für alle Labels.
  */
-export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, weights }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState; weights: SkuWeightInfo[] }) {
+export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, weights, prepName }: { postReady: boolean; dhlReady: boolean; postPrice: number; sandbox: boolean; initial: SlipState; weights: SkuWeightInfo[]; prepName: string }) {
   // Warensendung: über die Schnittstelle kaufen (wenn eingerichtet) oder CSV für den Internetmarke-Shop.
   const [state, action, pending] = useActionState<SlipState, FormData>(slipAction, initial);
   const rows = state?.rows ?? [];
@@ -100,7 +100,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
         </span>
         <div className="slip-weights">
           {skus.map((s, i) => (
-            <div key={`${s.sku}:${s.grams}:${s.wsMax}`} className="field" data-testid="slip-weight" data-sku={s.sku}>
+            <div key={`${s.sku}:${s.grams}:${s.wsMax}:${s.shipFrom}`} className="field" data-testid="slip-weight" data-sku={s.sku}>
               {(() => {
                 // Größe/Farbe immer sichtbar – sonst sehen M und L nach dem Kürzen gleich aus.
                 const v = splitVariant(s.title);
@@ -126,6 +126,12 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
               <input type="hidden" name={`s_${i}`} value={s.sku} />
               <input type="hidden" name={`o_${i}`} value={kgText(s.grams)} />
               <input type="hidden" name={`ows_${i}`} value={s.wsMax === null ? "" : String(s.wsMax)} />
+              <select className="select" name={`sf_${i}`} defaultValue={s.shipFrom ?? ""} aria-label="Wer verschickt diesen Artikel" data-testid="slip-shipfrom" style={{ maxWidth: 200 }}>
+                <option value="">Versand: Standard</option>
+                <option value="self">Versand: ich</option>
+                <option value="prep">Versand: {prepName}</option>
+              </select>
+              <input type="hidden" name={`osf_${i}`} value={s.shipFrom ?? ""} />
             </div>
           ))}
           <div className="field" data-testid="slip-weight-new">
@@ -170,6 +176,10 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
                               {(["warensendung", "dhl", "pruefen"] as const).map((c) => <option key={c} value={c}>{c === "pruefen" ? "nicht versenden (prüfen)" : SHIP_CHOICE_LABEL[c]}</option>)}
                             </select>
                             <div className="small" style={{ color: r.wsNeedsSetup ? "var(--warn)" : "var(--muted)" }} data-testid="slip-reason">{r.reason}{r.wsNeedsSetup ? " – oben bei „Artikel“ festlegen" : ""}</div>
+                            <select key={`${r.orderId}:sh:${r.shipper}`} className="select" name={`shipper_${r.orderId}`} defaultValue={r.shipper} aria-label={`Wer verschickt ${r.orderNo}`} data-testid="slip-shipper" style={{ marginTop: 4 }}>
+                              <option value="self">verschickt: ich</option>
+                              <option value="prep">verschickt: {prepName}</option>
+                            </select>
                             <div className="small" data-testid="slip-weight-note" style={{ color: r.weightSource === "geschaetzt" ? "var(--warn)" : "var(--muted)" }}>{r.weightNote}</div>
                           </>
                         )}

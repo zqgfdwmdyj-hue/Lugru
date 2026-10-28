@@ -35,17 +35,19 @@ async function saveWeights(prev: SlipState, fd: FormData): Promise<SlipState> {
   const rows = prev?.rows ?? [];
   const bad: string[] = [];
   let saved = 0;
-  const indexes = new Set([...fd.keys()].map((k) => /^(?:w|ws)_(\d+)$/.exec(k)?.[1]).filter((x): x is string => Boolean(x)));
+  const indexes = new Set([...fd.keys()].map((k) => /^(?:w|ws|sf)_(\d+)$/.exec(k)?.[1]).filter((x): x is string => Boolean(x)));
   for (const i of indexes) {
     const sku = String(fd.get(`s_${i}`) ?? "").trim();
     if (!sku) continue;
-    const patch: { grams?: number | null; wsMax?: number | null } = {};
+    const patch: { grams?: number | null; wsMax?: number | null; shipFrom?: "self" | "prep" | null } = {};
     const raw = String(fd.get(`w_${i}`) ?? "").trim();
     if (fd.has(`w_${i}`) && raw !== String(fd.get(`o_${i}`) ?? "")) {
       const grams = raw === "" ? 0 : parseWeightInput(raw);
       if (grams === null) bad.push(`${sku}: „${raw}“`);
       else patch.grams = grams || null;
     }
+    const sf = String(fd.get(`sf_${i}`) ?? "");
+    if (fd.has(`sf_${i}`) && sf !== String(fd.get(`osf_${i}`) ?? "")) patch.shipFrom = sf === "self" || sf === "prep" ? sf : null;
     const ws = String(fd.get(`ws_${i}`) ?? "");
     if (fd.has(`ws_${i}`) && ws !== String(fd.get(`ows_${i}`) ?? "")) {
       const v = parseWsMax(ws);
@@ -68,7 +70,7 @@ async function openOrders(fd: FormData): Promise<SlipState> {
     const { rows, note } = await readOpenOrders(session.tenantId, channel, fd.get("refresh") === "on");
     revalidatePath("/auftraege");
     if (fd.get("direkt") !== "on" || !rows.length) return { rows, note };
-    const labels = await createSlipLabels(session.tenantId, rows.filter((r) => !r.done && r.choice !== "pruefen").map((r) => ({ orderId: r.orderId, choice: r.choice })));
+    const labels = await createSlipLabels(session.tenantId, rows.filter((r) => !r.done && r.choice !== "pruefen").map((r) => ({ orderId: r.orderId, choice: r.choice, shipper: r.shipper })));
     revalidatePath("/auftraege", "layout");
     return { rows: await refreshed(session.tenantId, rows), note, labels };
   } catch (e) {
@@ -100,7 +102,7 @@ async function readSlipFile(fd: FormData): Promise<SlipState> {
     const note = unreadable ? `${unreadable} Bestellung(en) konnten nicht zugeordnet werden.` : undefined;
     if (fd.get("direkt") !== "on" || session.readOnly) return { rows, note };
     // Ein Schritt: alles, was eindeutig ist, sofort erstellen; „prüfen“ bleibt stehen.
-    const labels = await createSlipLabels(session.tenantId, rows.filter((r) => !r.done && r.choice !== "pruefen").map((r) => ({ orderId: r.orderId, choice: r.choice })));
+    const labels = await createSlipLabels(session.tenantId, rows.filter((r) => !r.done && r.choice !== "pruefen").map((r) => ({ orderId: r.orderId, choice: r.choice, shipper: r.shipper })));
     revalidatePath("/auftraege", "layout");
     return { rows: await refreshed(session.tenantId, rows), note, labels };
   } catch (e) {
@@ -116,7 +118,8 @@ async function createSlip(prev: SlipState, fd: FormData): Promise<SlipState> {
   const ids = fd.getAll("orderId").map(String).filter((s) => z.string().uuid().safeParse(s).success);
   const picks = ids.map((orderId) => {
     const c = String(fd.get(`choice_${orderId}`) ?? "");
-    return { orderId, choice: (CHOICES as readonly string[]).includes(c) ? (c as ShipChoice) : "pruefen" };
+    const sh = String(fd.get(`shipper_${orderId}`) ?? "");
+    return { orderId, choice: (CHOICES as readonly string[]).includes(c) ? (c as ShipChoice) : "pruefen", ...(sh === "self" || sh === "prep" ? { shipper: sh as "self" | "prep" } : {}) };
   });
   if (!picks.some((p) => p.choice !== "pruefen")) return { rows, error: "Keine Sendung ausgewählt." };
   const mode = fd.get("postMode");

@@ -176,7 +176,7 @@ export function parsePackingSlip(pages: string[]): SlipOrder[] {
  * Deutschlands; bei unsicher gelesenen Daten lieber prüfen lassen.
  */
 export function shipChoice(o: Pick<SlipOrder, "quantity" | "shipTo" | "warnings">): ShipChoice {
-  if (o.quantity < 1 || o.warnings.some((w) => /Adresse|Positionen|Land/.test(w))) return "pruefen";
+  if (o.quantity < 1 || o.warnings.some((w) => /adresse|positionen|land/i.test(w))) return "pruefen";
   if (o.quantity === 1) return (o.shipTo.country ?? "DEU") === "DEU" ? "warensendung" : "dhl";
   return "dhl";
 }

@@ -160,6 +160,24 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </label>
         </section>
 
+        <section className="card card-pad stack" style={{ gap: 14 }} id="prep" data-testid="settings-prep">
+          <h2>Prep Center</h2>
+          <span className="small muted">Je Auftrag wird festgehalten, wer verschickt: du selbst oder das Prep Center (Labels kommen aus dem System). Die Monatsübersicht unter Aufträge → „Prep Center: Versand je Monat“ zählt Sendungen und Stück zum Abgleich mit seiner Rechnung.</span>
+          <div style={grid}>
+            <Field label="Name" name="prep_name" value={s.prep.name} width={220} />
+            <div className="field">
+              <label className="label" htmlFor="prep_default">Verschickt standardmäßig</label>
+              <select className="select" id="prep_default" name="prep_default" defaultValue={s.prep.defaultShipper}>
+                <option value="self">ich selbst</option>
+                <option value="prep">Prep Center</option>
+              </select>
+              <span className="small muted">je Artikel abweichend unter „Labels: Warensendung &amp; DHL“</span>
+            </div>
+            <Field label="Gebühr je Sendung" name="prep_feeShipment" value={dec(s.prep.feeShipment)} suffix="€" width={90} help="0 = nur zählen" />
+            <Field label="je weiteres Stück" name="prep_feeExtraItem" value={dec(s.prep.feeExtraItem)} suffix="€" width={90} help="ab dem 2. Stück einer Sendung" />
+          </div>
+        </section>
+
         <section className="card card-pad stack" style={{ gap: 14 }} data-testid="settings-post">
           <h2>Warensendung (Deutsche Post)</h2>
           <span className="small muted">

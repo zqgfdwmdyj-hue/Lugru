@@ -9,7 +9,7 @@ import { orderShipWeight, skuShippingMap } from "@/lib/shipping/weights-service"
 import { WS_OPTIONS, warensendungCheck } from "@/lib/shipping/warensendung";
 import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveSkuWeightAction } from "../actions";
+import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction } from "../actions";
 import { LabelForm } from "./label-form";
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -116,6 +116,16 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           {order.fulfillment === "FBM" && (
             <section className="card card-pad stack">
               <h2>Versand</h2>
+              <form action={saveShipperAction} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }} data-testid="order-shipper">
+                <input type="hidden" name="orderId" value={order.id} />
+                <label className="small" htmlFor="shipper">Verschickt von</label>
+                <select className="select" id="shipper" name="shipper" defaultValue={order.shippedBy ?? sw.shipper} style={{ padding: "4px 6px" }}>
+                  <option value="self">ich selbst</option>
+                  <option value="prep">{settings.prep.name || "Prep Center"}</option>
+                </select>
+                <button className="btn btn-small" type="submit">Speichern</button>
+                {!order.shippedBy && <span className="small muted">Vorschlag – noch nicht gespeichert</span>}
+              </form>
               {order.status === "open" && <LabelForm orderId={order.id} weightKg={weight} suggestKlein={weight !== null && weight <= settings.dhl.kleinpaketMaxKg} disabled={false} />}
               {order.status === "open" && weight !== null && <div className="small muted" data-testid="order-weight-note">Gewicht: {sw.note}</div>}
               {order.status === "open" && (

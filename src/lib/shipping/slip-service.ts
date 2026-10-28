@@ -10,6 +10,7 @@ import { getSettings } from "@/lib/settings";
 import { syncSoon } from "@/lib/stock/channel-sync";
 import { parsePackingSlip, type ShipChoice, type SlipOrder } from "./packing-slip";
 import { warensendungCheck } from "./warensendung";
+import type { ShipperKey } from "./prep";
 import { imCsvProblem, internetmarkeCsv, IM_CSV_MAX } from "./internetmarke-csv";
 import { mergePdfs } from "./label-pdfs";
 import { orderShipWeight, type SkuWeightInfo } from "./weights-service";
@@ -39,6 +40,8 @@ export type SlipRow = {
   skus: SkuWeightInfo[];
   /** Warensendung für einen Artikel noch nicht festgelegt – einmal eintragen, dann geht es automatisch. */
   wsNeedsSetup: boolean;
+  /** Wer verschickt (ich / Prep Center) – am Auftrag festgelegt oder Vorschlag aus Artikel/Einstellungen. */
+  shipper: ShipperKey;
   /** Auftrag hat schon ein Label bzw. ist versendet – wird nicht noch einmal gekauft. */
   done: string | null;
   warnings: string[];
@@ -112,7 +115,8 @@ export async function slipRow(tenantId: string, orderId: string, slip?: SlipOrde
   const warnings = [...(slip?.warnings ?? [])];
   if (needsAddress(to)) warnings.push("Lieferadresse unvollständig");
   const w = await orderShipWeight(tenantId, data);
-  const unsure = quantity < 1 || warnings.some((x) => /Adresse|Positionen|Land/.test(x));
+  // Groß-/Kleinschreibung egal: „Lieferadresse unvollständig“ ist genauso unsicher wie „Adresse unvollständig“.
+  const unsure = quantity < 1 || warnings.some((x) => /adresse|positionen|land/i.test(x));
   const ws = warensendungCheck({ country: to.country, items: w.items, weightKg: w.kg });
   const choice: ShipChoice = unsure ? "pruefen" : ws.ok ? "warensendung" : "dhl";
   const reason = unsure ? warnings[0] ?? "Menge unklar" : ws.reason;
@@ -132,6 +136,7 @@ export async function slipRow(tenantId: string, orderId: string, slip?: SlipOrde
     weightSource: w.source,
     skus: w.skus,
     wsNeedsSetup: !unsure && ws.needsSetup,
+    shipper: w.shipper,
     done,
     warnings,
   };
@@ -208,7 +213,7 @@ export async function defaultPostMode(tenantId: string): Promise<PostMode> {
  * Labels für die gewählten Aufträge: alle Warensendungen in einem Kauf (ein PDF), DHL je Auftrag. Aufträge mit
  * Label oder versendet werden übersprungen (nichts doppelt kaufen). Ergebnis: ein gemeinsames PDF zum Drucken.
  */
-export async function createSlipLabels(tenantId: string, picks: { orderId: string; choice: ShipChoice }[], postMode?: PostMode): Promise<SlipLabels> {
+export async function createSlipLabels(tenantId: string, picks: { orderId: string; choice: ShipChoice; shipper?: ShipperKey }[], postMode?: PostMode): Promise<SlipLabels> {
   // Doppelklick/zweiter Tab: nie zweimal Porto kaufen.
   if (running.has(tenantId)) throw new Error("Labels werden gerade schon erstellt – bitte kurz warten und die Seite neu laden.");
   running.add(tenantId);
@@ -221,7 +226,7 @@ export async function createSlipLabels(tenantId: string, picks: { orderId: strin
 
 const running = new Set<string>();
 
-async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; choice: ShipChoice }[], postMode: PostMode): Promise<SlipLabels> {
+async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; choice: ShipChoice; shipper?: ShipperKey }[], postMode: PostMode): Promise<SlipLabels> {
   const settings = await getSettings(tenantId);
   const results: SlipResult[] = [];
   const post: SlipRow[] = [];
@@ -273,6 +278,17 @@ async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; c
       }
     }
   } else if (post.length) {
+    // Unvollständige Anschrift: diese Sendung einzeln melden – sie darf den Kauf der übrigen nicht aufhalten.
+    for (const r of [...post]) {
+      const d = await loadOrder(tenantId, r.orderId);
+      const to = d?.order.shipTo ?? {};
+      if (!to.name1?.trim() || !to.street?.trim() || !to.zip?.trim() || !to.city?.trim()) {
+        post.splice(post.indexOf(r), 1);
+        results.push({ orderId: r.orderId, orderNo: r.orderNo, ok: false, message: "Anschrift unvollständig – im Auftrag ergänzen, dann erneut", kind: "warensendung" });
+      }
+    }
+  }
+  if (post.length && postMode !== "csv") {
     try {
       const creds = imCreds(await getIntegration(tenantId, "deutschepost"));
       if (!creds) throw new Error("Deutsche Post (INTERNETMARKE) ist noch nicht eingerichtet – Anbindungen → Deutsche Post.");
@@ -321,5 +337,21 @@ async function createSlipLabelsNow(tenantId: string, picks: { orderId: string; c
   const dhlFileId = dhlPdfs.length ? await storeFile(tenantId, `DHL_${stamp}.pdf`, "application/pdf", await mergePdfs(dhlPdfs)) : null;
   const all = [...(postPdf ? [postPdf] : []), ...dhlPdfs];
   const fileId = all.length > 1 ? await storeFile(tenantId, `Labels_${stamp}.pdf`, "application/pdf", await mergePdfs(all)) : (postFileId ?? dhlFileId);
+  // Wer verschickt: für jeden erfolgreichen Auftrag festhalten (Auswahl in der Tabelle, sonst Vorschlag) –
+  // daraus entsteht die Monatsübersicht fürs Prep Center.
+  const shipperOf = new Map<string, ShipperKey>();
+  for (const p of picks) shipperOf.set(p.orderId, p.shipper ?? (await slipRow(tenantId, p.orderId))?.shipper ?? settings.prep.defaultShipper);
+  for (const r of results) {
+    if (!r.ok) continue;
+    await db.update(schema.orders).set({ shippedBy: shipperOf.get(r.orderId) ?? settings.prep.defaultShipper }).where(and(eq(schema.orders.id, r.orderId), eq(schema.orders.tenantId, tenantId)));
+  }
   return { results, fileId, postFileId, dhlFileId, walletCents, csvFileId, csvCount };
+}
+
+/** Nach einem Label ohne Auswahl (Sammel-Labels, Auftragsseite): „Versand durch“ setzen, falls noch leer. */
+export async function ensureShipper(tenantId: string, orderId: string) {
+  const data = await loadOrder(tenantId, orderId);
+  if (!data || data.order.shippedBy) return;
+  const w = await orderShipWeight(tenantId, data);
+  await db.update(schema.orders).set({ shippedBy: w.shipper }).where(and(eq(schema.orders.id, orderId), eq(schema.orders.tenantId, tenantId)));
 }
