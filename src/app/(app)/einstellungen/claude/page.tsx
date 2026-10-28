@@ -6,6 +6,7 @@ import { requireOwner } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
 import { appUrl } from "@/lib/oauth/state";
+import { claudeReachable, publicUrl } from "@/lib/public-url";
 import { listGrants } from "@/lib/assistant/oauth-service";
 import { scopeText } from "@/lib/assistant/oauth-logic";
 import { ALL_TOOLS } from "@/lib/assistant/registry";
@@ -18,7 +19,9 @@ export default async function ClaudeSettingsPage() {
   const session = await requireOwner();
   const t = session.tenantId;
   const h = await headers();
-  const base = appUrl(new Request("http://x", { headers: { host: h.get("x-forwarded-host") ?? h.get("host") ?? "", "x-forwarded-proto": h.get("x-forwarded-proto") ?? "https" } }));
+  // Claude erreicht den Konnektor nur über eine öffentliche https-Adresse (PUBLIC_URL, sonst die normale Adresse).
+  const base = publicUrl() ?? appUrl(new Request("http://x", { headers: { host: h.get("x-forwarded-host") ?? h.get("host") ?? "", "x-forwarded-proto": h.get("x-forwarded-proto") ?? "https" } }));
+  const reach = claudeReachable(base);
   const [grants, s, key, log, usage] = await Promise.all([
     listGrants(t),
     getSettings(t),
@@ -52,7 +55,16 @@ export default async function ClaudeSettingsPage() {
           <li>In Claude: <strong>Einstellungen → Konnektoren → Eigenen Konnektor hinzufügen</strong>.</li>
           <li>Name „Seller-System“, als URL diese Adresse einfügen:</li>
         </ol>
-        <CopyUrl url={`${base}/api/mcp`} />
+        {reach.ok ? (
+          <CopyUrl url={`${base}/api/mcp`} />
+        ) : (
+          <div className="notice notice-warn small" data-testid="claude-not-public">
+            <strong>Noch keine öffentliche Adresse:</strong> {base} – {reach.reason}. Claude ruft den Konnektor aus dem Internet auf, das Seller-System läuft aber nur in deinem privaten Netz (Tailscale).
+            <div style={{ marginTop: 6 }}>Einmal auf dem Server ausführen – gibt über Tailscale Funnel <strong>nur</strong> Anmeldung und Konnektor frei (plus Kunden-Links für Sendungen), der Rest bleibt privat:</div>
+            <pre className="num" style={{ margin: "6px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>sudo bash /opt/seller-system/deploy/claude-oeffentlich.sh</pre>
+            <div>Danach diese Seite neu laden – hier steht dann die https-Adresse zum Kopieren.</div>
+          </div>
+        )}
         <ol className="small" start={3} style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
           <li>„Verbinden“ → Seller-System-Anmeldung → <strong>Erlauben</strong> (Ändern und Privatbereich dort an- oder abwählen).</li>
           <li>Im Chat fragen, z. B. „Welche Paletten kommen diese Woche?“ oder „Trag morgen 15–18 Uhr Kinderzeit für mich ein“.</li>

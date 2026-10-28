@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { publicOrigins } from "./src/lib/public-url";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["pg", "bwip-js"],
@@ -11,7 +12,9 @@ const nextConfig: NextConfig = {
     return [{ source: "/oauth/:path*", headers: [{ key: "X-Frame-Options", value: "DENY" }, { key: "Content-Security-Policy", value: "frame-ancestors 'none'" }] }];
   },
   experimental: {
-    serverActions: { bodySizeLimit: "20mb" },
+    // Hinter einem Proxy mit öffentlicher Adresse (PUBLIC_URL, z. B. Tailscale Funnel für Claude) kommen Login und
+    // Freigabe von dieser Adresse – dort als erlaubter Ursprung, damit die Formulare nicht abgewiesen werden.
+    serverActions: { bodySizeLimit: "20mb", allowedOrigins: publicOrigins() },
   },
 };
 

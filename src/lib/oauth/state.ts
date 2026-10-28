@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { publicUrl } from "@/lib/public-url";
 
 // Signierter OAuth-„state“: schützt den Rückruf vor Fälschung und trägt Mandant/Benutzer.
 
@@ -60,3 +61,12 @@ export function appUrl(request?: Request): string {
   }
   return "http://localhost:3000";
 }
+
+/**
+ * Adresse, unter der Claude den Konnektor erreicht (Metadaten, Anmeldung, /api/mcp): die öffentliche PUBLIC_URL,
+ * wenn gesetzt (App sonst nur im privaten Netz), sonst die normale Adresse.
+ */
+export function claudeBaseUrl(request?: Request): string {
+  return publicUrl() ?? appUrl(request);
+}
+

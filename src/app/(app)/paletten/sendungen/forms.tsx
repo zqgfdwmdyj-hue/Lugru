@@ -214,11 +214,12 @@ export function AddShipmentPhotos({ id }: { id: string }) {
 type LinkRow = { id: string; path: string | null; state: "aktiv" | "abgelaufen" | "widerrufen"; until: string; views: number; photos: boolean };
 
 /** Kunden-Link: erstellen, kopieren, teilen (WhatsApp, Mail …), zurückziehen. */
-export function ShareLinks({ id, links, title, customerEmail }: { id: string; links: LinkRow[]; title: string; customerEmail: string | null }) {
+export function ShareLinks({ id, links, title, customerEmail, publicBase = null }: { id: string; links: LinkRow[]; title: string; customerEmail: string | null; publicBase?: string | null }) {
   const [state, action, pending] = useActionState<ShipState, FormData>(shipmentAction, null);
   const keep = useKeepForm(state, action);
   const [origin, setOrigin] = useState("");
-  useEffect(() => setOrigin(window.location.origin), []);
+  // Kunden sind nicht im eigenen Netz: mit öffentlicher Adresse (PUBLIC_URL) gilt die, sonst die aktuelle.
+  useEffect(() => setOrigin(publicBase ?? window.location.origin), [publicBase]);
   const fresh = state?.ok && state.link ? state.link : null;
   const active = links.filter((l) => l.state === "aktiv" && l.path);
   const shown = fresh && !active.some((l) => l.path === fresh) ? [{ id: "neu", path: fresh, state: "aktiv" as const, until: "", views: 0, photos: true }, ...active] : active;

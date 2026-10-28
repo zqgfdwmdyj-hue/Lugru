@@ -10,6 +10,7 @@ import { loadShipment } from "@/lib/pallets/shipment-service";
 import { DIRECTION_LABEL, STATUS_TONE, carrierLabel, carrierOf, delayDays, dmy, isOverdue, linkState, loadText, statusLabel, trackingLink } from "@/lib/pallets/shipments";
 import { SHIPMENT_STATUSES } from "@/db/schema";
 import { AddShipmentPhotos, EditShipmentForm, ShareLinks, ShipAction } from "../forms";
+import { publicUrl } from "@/lib/public-url";
 import { ShipmentNotices } from "../notices";
 import { ConfirmButton } from "@/components/confirm-button";
 
@@ -143,7 +144,7 @@ export default async function SendungPage({ params, searchParams }: { params: Pr
 
       <section className="card" data-testid="ship-share">
         <div className="card-head"><h2>Link für den Kunden</h2><span className="small muted">Ohne Anmeldung, nur diese Sendung, läuft automatisch ab. Interne Notizen und Namen sieht der Kunde nie.</span></div>
-        <div className="card-pad"><ShareLinks id={s.id} links={linkRows} title={s.title} customerEmail={customerEmail} /></div>
+        <div className="card-pad"><ShareLinks id={s.id} links={linkRows} title={s.title} customerEmail={customerEmail} publicBase={publicUrl()} /></div>
       </section>
 
       <section className="card" data-testid="ship-photos">

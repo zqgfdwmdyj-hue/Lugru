@@ -7,6 +7,7 @@ import { customerKey, storedDays } from "@/lib/pallets/billing";
 import { createShareLink, createShipmentRecord, getShipment, loadShipment, logShipmentEvent, setShipmentStatus, shiftShipment } from "@/lib/pallets/shipment-service";
 import { CARRIERS, CARRIER_KEYS, LINK_DAYS, carrierLabel, delayDays, linkState, loadText, parseShipmentBase, statusLabel, trackingLink } from "@/lib/pallets/shipments";
 import { defineTool } from "../types";
+import { publicUrl } from "@/lib/public-url";
 import { abs, actorOf, berlinDateTime, isoDate, json, likeOf, uuid } from "./common";
 
 const P = schema.pallets;
@@ -99,7 +100,7 @@ export const sendung = defineTool({
       interne_notiz: data.shipment.note,
       zugestellt_am: berlinDateTime(data.shipment.deliveredAt),
       fotos: data.photos.length,
-      kunden_links: data.links.filter((l) => linkState(l) === "aktiv").map((l) => ({ link: abs(ctx, `/sendung/${l.token}`), gueltig_bis: berlinDateTime(l.expiresAt), geoeffnet: l.views })),
+      kunden_links: data.links.filter((l) => linkState(l) === "aktiv").map((l) => ({ link: `${publicUrl() ?? ctx.baseUrl}/sendung/${l.token}`, gueltig_bis: berlinDateTime(l.expiresAt), geoeffnet: l.views })),
       verlauf: data.events.map((e) => ({ zeit: berlinDateTime(e.createdAt), text: e.text, von: e.userName, meldung_an_alle: e.notice || undefined, intern: e.internal || undefined })),
     });
   },
@@ -197,7 +198,7 @@ export const sendungKundenlink = defineTool({
     if (!s) return { text: "Sendung nicht gefunden.", isError: true };
     const token = await createShareLink(ctx.session.tenantId, s.id, { days: i.tage, showPhotos: i.fotos, userId: ctx.session.userId });
     await logShipmentEvent(db, ctx.session.tenantId, s, { kind: "link", text: `Kunden-Link erstellt (${i.tage} Tage gültig${i.fotos ? ", mit Fotos" : ", ohne Fotos"})`, internal: true }, actorOf(ctx));
-    return json({ ok: true, link: abs(ctx, `/sendung/${token}`), gueltig_tage: i.tage });
+    return json({ ok: true, link: `${publicUrl() ?? ctx.baseUrl}/sendung/${token}`, gueltig_tage: i.tage });
   },
 });
 

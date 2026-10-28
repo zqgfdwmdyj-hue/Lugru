@@ -135,3 +135,24 @@ describe("MCP (JSON-RPC)", () => {
     expect(await handleMcpMessage({ jsonrpc: "2.0", id: 7, method: "ping" }, ctx, deps)).toEqual({ jsonrpc: "2.0", id: 7, result: {} });
   });
 });
+
+describe("Öffentliche Adresse für Claude (PUBLIC_URL)", async () => {
+  const { publicUrl, publicOrigins, claudeReachable } = await import("@/lib/public-url");
+  it("PUBLIC_URL wird ohne Pfad/Schrägstrich übernommen, Unsinn ignoriert", () => {
+    expect(publicUrl({ PUBLIC_URL: "https://server.tail1234.ts.net:8443/" })).toBe("https://server.tail1234.ts.net:8443");
+    expect(publicUrl({ PUBLIC_URL: "  " })).toBeNull();
+    expect(publicUrl({ PUBLIC_URL: "ftp://x" })).toBeNull();
+    expect(publicUrl({})).toBeNull();
+  });
+  it("erlaubte Ursprünge für Login/Freigabe hinter dem Proxy", () => {
+    expect(publicOrigins({ PUBLIC_URL: "https://server.tail1234.ts.net:8443" })).toEqual(["server.tail1234.ts.net:8443", "server.tail1234.ts.net"]);
+    expect(publicOrigins({})).toEqual([]);
+  });
+  it("Claude braucht https und eine Adresse außerhalb des privaten Netzes", () => {
+    expect(claudeReachable("http://100.72.182.44:3020").ok).toBe(false);
+    expect(claudeReachable("https://100.72.182.44:3020").reason).toContain("privaten Netz");
+    expect(claudeReachable("https://192.168.1.5").ok).toBe(false);
+    expect(claudeReachable("https://server.tail1234.ts.net:8443").ok).toBe(true);
+    expect(claudeReachable("https://lugruseller.de").ok).toBe(true);
+  });
+});
