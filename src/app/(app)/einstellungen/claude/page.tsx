@@ -59,10 +59,14 @@ export default async function ClaudeSettingsPage() {
           <CopyUrl url={`${base}/api/mcp`} />
         ) : (
           <div className="notice notice-warn small" data-testid="claude-not-public">
-            <strong>Noch keine öffentliche Adresse:</strong> {base} – {reach.reason}. Claude ruft den Konnektor aus dem Internet auf, das Seller-System läuft aber nur in deinem privaten Netz (Tailscale).
-            <div style={{ marginTop: 6 }}>Einmal auf dem Server ausführen – gibt über Tailscale Funnel <strong>nur</strong> Anmeldung und Konnektor frei (plus Kunden-Links für Sendungen), der Rest bleibt privat:</div>
-            <pre className="num" style={{ margin: "6px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>sudo bash /opt/seller-system/deploy/claude-oeffentlich.sh</pre>
-            <div>Danach diese Seite neu laden – hier steht dann die https-Adresse zum Kopieren.</div>
+            <strong>Noch keine öffentliche Adresse:</strong> {base} – {reach.reason}. Claude ruft den Konnektor aus dem Internet auf und braucht dafür eine https-Adresse.
+            <div style={{ marginTop: 6 }}>Einmal einrichten – freigegeben werden <strong>nur</strong> Anmeldung, Freigabe-Seite und Konnektor (plus Kunden-Links für Sendungen), alles andere bleibt zu:</div>
+            <ol style={{ margin: "6px 0", paddingLeft: 18 }}>
+              <li>Beim Domain-Anbieter einen DNS-Eintrag anlegen: Typ A, Name z. B. <strong>claude</strong>, Wert = IP des Servers.</li>
+              <li>Auf dem Server (mit Webserver Caddy):</li>
+            </ol>
+            <pre className="num" style={{ margin: "6px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>sudo bash /opt/seller-system/deploy/claude-oeffentlich.sh domain claude.deine-domain.de</pre>
+            <div>Ohne Zusatz zeigt das Skript, welche Variante zum Server passt (auch Tailscale). Danach diese Seite neu laden – hier steht dann die https-Adresse zum Kopieren.</div>
           </div>
         )}
         <ol className="small" start={3} style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>

@@ -1,93 +1,190 @@
 #!/usr/bin/env bash
-# Claude-Konnektor (claude.ai) erreichbar machen, wenn das Seller-System nur im privaten Netz (Tailscale) läuft.
+# Claude-Konnektor (claude.ai) öffentlich mit https erreichbar machen – ohne das ganze Seller-System freizugeben.
 #
-# Claude ruft den Konnektor aus dem Internet auf und verlangt https://. Dieses Skript gibt über Tailscale Funnel
-# NUR die Pfade öffentlich frei, die Claude für Anmeldung und Konnektor braucht – plus die befristeten
-# Kunden-Links für Sendungen. Alles andere (Aufträge, Einstellungen, Privatbereich …) bleibt nur über Tailscale
-# erreichbar. Öffentlich sind damit: die Login-Seite (mit Sperre nach Fehlversuchen), die Freigabe-Seite für
-# Claude, der Konnektor selbst (nur mit Zugangs-Token) und Kunden-Links (nur mit geheimem, befristetem Link).
+# Claude ruft den Konnektor aus dem Internet auf und verlangt https://. Freigegeben werden NUR: Login,
+# Freigabe-Seite für Claude, der Konnektor (/api/mcp, nur mit Zugangs-Token), die Metadaten (/.well-known),
+# Skripte/Logo der Login-Seite und die befristeten Kunden-Links für Sendungen. Alles andere (Aufträge,
+# Einstellungen, Privatbereich …) antwortet unter dieser Adresse mit „nicht freigegeben“.
 #
-# Aufruf als root auf dem Server:
-#   bash /opt/seller-system/deploy/claude-oeffentlich.sh          # einrichten (oder erneut einrichten)
-#   bash /opt/seller-system/deploy/claude-oeffentlich.sh status   # anzeigen
-#   bash /opt/seller-system/deploy/claude-oeffentlich.sh aus      # wieder schließen
-# Anderer Port als 8443 (Funnel erlaubt 443, 8443, 10000):  CLAUDE_PORT=10000 bash …/claude-oeffentlich.sh
+# Aufruf als root auf dem Server – je nach Server eine der Varianten:
+#   bash /opt/seller-system/deploy/claude-oeffentlich.sh domain claude.deine-domain.de
+#        Webserver Caddy auf dem Server (Ports 80/443): eigene Subdomain mit https. Vorher beim Domain-Anbieter
+#        einen DNS-Eintrag (A-Record) für die Subdomain auf die IP dieses Servers anlegen.
+#   bash /opt/seller-system/deploy/claude-oeffentlich.sh tailscale
+#        Server im Tailscale-Netz: Tailscale Funnel (Port 8443, anderer Port: CLAUDE_PORT=10000 …).
+#   bash /opt/seller-system/deploy/claude-oeffentlich.sh url https://seller.deine-domain.de
+#        Das ganze Seller-System läuft schon unter einer https-Adresse: nur diese Adresse eintragen.
+#   bash /opt/seller-system/deploy/claude-oeffentlich.sh status
+#   bash /opt/seller-system/deploy/claude-oeffentlich.sh aus      # Freigabe wieder schließen
 set -euo pipefail
 cd /opt/seller-system
 
-MODE="${1:-an}"
-PORT="${CLAUDE_PORT:-8443}"
-PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /sendung /api/public/sendung)
+MODE="${1:-}"
+ARG="${2:-}"
+CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
+TS_PORT="${CLAUDE_PORT:-8443}"
+PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung)
+BEGIN="# seller-system-claude BEGIN"
+END="# seller-system-claude END"
 
-command -v tailscale >/dev/null || { echo "ABBRUCH: tailscale ist auf diesem Server nicht installiert."; exit 1; }
 [ -f .env ] || { echo "ABBRUCH: /opt/seller-system/.env fehlt."; exit 1; }
-case "$PORT" in 443|8443|10000) ;; *) echo "ABBRUCH: Tailscale Funnel erlaubt nur die Ports 443, 8443 oder 10000."; exit 1 ;; esac
-
+mkdir -p backups
 val() { grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }
 set_env() {
   if grep -qE "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else printf '%s=%s\n' "$1" "$2" >> .env; fi
-  cp .env backups/env-sicherung 2>/dev/null && chmod 600 backups/env-sicherung || true
+  cp .env backups/env-sicherung && chmod 600 backups/env-sicherung
 }
 compose() {
   if grep -q "^COMPOSE_FILE=" .env 2>/dev/null; then docker compose "$@"; else docker compose -f docker-compose.yml -f deploy/docker-compose.hetzner.yml "$@"; fi
 }
+APP_PORT="$(val APP_PORT)"; APP_PORT="${APP_PORT:-3020}"
+LOCAL="http://127.0.0.1:$APP_PORT"
+server_ip() { hostname -I | tr ' ' '\n' | grep -E '^[0-9]+\.' | grep -vE '^(127|10|172\.(1[6-9]|2[0-9]|3[01])|192\.168)\.' | head -1; }
 
-if [ "$MODE" = "status" ]; then
-  tailscale funnel status || true
-  echo "PUBLIC_URL=$(val PUBLIC_URL)"
-  exit 0
-fi
-
-if [ "$MODE" = "aus" ]; then
-  for p in "${PATHS[@]}"; do tailscale funnel --https="$PORT" --set-path="$p" off >/dev/null 2>&1 || true; done
-  set_env PUBLIC_URL ""
+restart_app() {
+  echo "==> Starte die App mit der neuen Adresse neu (Daten bleiben erhalten)"
   compose up -d app
-  echo "Geschlossen. Claude erreicht das Seller-System nicht mehr; Kunden-Links gehen nur noch im eigenen Netz."
-  exit 0
-fi
+  for _ in $(seq 1 60); do curl -fsS -o /dev/null --max-time 5 "$LOCAL/login" && return 0; sleep 2; done
+  echo "    Hinweis: Die App antwortet noch nicht unter $LOCAL – „docker compose ps“ prüfen."
+}
+check_public() {
+  local base="$1"
+  echo "==> Prüfe $base (beim ersten Mal holt der Webserver das Zertifikat – bis zu 1–2 Minuten)"
+  for _ in $(seq 1 "${CHECK_TRIES:-24}"); do
+    if curl -fsS --max-time 10 "$base/.well-known/oauth-protected-resource/api/mcp" 2>/dev/null | grep -q "\"resource\":\"$base/api/mcp\""; then
+      echo "    ok – Claude findet den Konnektor."
+      return 0
+    fi
+    sleep 5
+  done
+  echo "    Noch keine Antwort. Später prüfen:  curl $base/.well-known/oauth-protected-resource/api/mcp"
+}
+done_msg() {
+  echo
+  echo "Fertig. In Claude (Einstellungen → Konnektoren → Eigenen Konnektor hinzufügen) als URL eintragen:"
+  echo "  $1/api/mcp"
+  echo "(Steht auch im Seller-System unter Einstellungen → Claude & KI-Assistent.)"
+  echo "Wieder schließen:  bash /opt/seller-system/deploy/claude-oeffentlich.sh aus"
+}
+caddy_remove_block() {
+  [ -f "$CADDYFILE" ] && grep -qF "$BEGIN" "$CADDYFILE" || return 1
+  sed -i "/^$BEGIN/,/^$END/d" "$CADDYFILE"
+}
+caddy_reload() {
+  if ! caddy validate --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1; then
+    echo "ABBRUCH: Die Caddy-Konfiguration ist so nicht gültig – alte Fassung wird wiederhergestellt."
+    cp "$1" "$CADDYFILE"
+    caddy validate --config "$CADDYFILE" --adapter caddyfile 2>&1 | tail -3 || true
+    exit 1
+  fi
+  if systemctl is-active --quiet caddy 2>/dev/null; then systemctl reload caddy; else caddy reload --config "$CADDYFILE" --adapter caddyfile; fi
+}
 
-BIND_IP="$(val BIND_IP)"
-APP_PORT="$(val APP_PORT)"
-if [ -z "$BIND_IP" ] || [ -z "$APP_PORT" ]; then
-  echo "ABBRUCH: BIND_IP/APP_PORT fehlen in .env. Das Skript ist für die Einrichtung im privaten Netz (install-intern.sh)."
-  echo "Mit eigener Domain und HTTPS (install.sh) braucht es das nicht – dort gilt die Domain direkt."
-  exit 1
-fi
-TARGET="http://$BIND_IP:$APP_PORT"
+case "$MODE" in
+  status)
+    echo "PUBLIC_URL=$(val PUBLIC_URL)"
+    [ -f "$CADDYFILE" ] && grep -qF "$BEGIN" "$CADDYFILE" && { echo "Caddy-Freigabe:"; sed -n "/^$BEGIN/,/^$END/p" "$CADDYFILE"; }
+    command -v tailscale >/dev/null && tailscale funnel status || true
+    ;;
 
-DNS="$(tailscale status --json --peers=false | sed -n 's/.*"DNSName": *"\([^"]*\)".*/\1/p' | head -1)"
-DNS="${DNS%.}"
-[ -n "$DNS" ] || { echo "ABBRUCH: Tailscale-Name dieses Servers nicht gefunden (MagicDNS an? „tailscale status“ prüfen)."; exit 1; }
-if [ "$PORT" = "443" ]; then PUBLIC="https://$DNS"; else PUBLIC="https://$DNS:$PORT"; fi
+  aus)
+    if [ -f "$CADDYFILE" ] && grep -qF "$BEGIN" "$CADDYFILE"; then
+      bak="backups/Caddyfile-$(date +%Y-%m-%d_%H-%M-%S)"; cp "$CADDYFILE" "$bak"
+      caddy_remove_block && caddy_reload "$bak"
+      echo "Caddy-Freigabe entfernt (Sicherung: $bak)."
+    fi
+    if command -v tailscale >/dev/null; then
+      for p in "${PATHS[@]}"; do tailscale funnel --https="$TS_PORT" --set-path="$p" off >/dev/null 2>&1 || true; done
+    fi
+    set_env PUBLIC_URL ""
+    restart_app
+    echo "Geschlossen. Claude erreicht das Seller-System nicht mehr."
+    ;;
 
-echo "==> Prüfe, ob das Seller-System unter $TARGET antwortet"
-curl -fsS -o /dev/null --max-time 10 "$TARGET/login" || { echo "ABBRUCH: $TARGET/login antwortet nicht – läuft die App? (docker compose ps)"; exit 1; }
+  domain)
+    DOMAIN="$(printf '%s' "$ARG" | tr 'A-Z' 'a-z' | sed 's|^https\?://||; s|/.*$||')"
+    printf '%s' "$DOMAIN" | grep -qE '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$' || { echo "ABBRUCH: Bitte eine Adresse angeben, z. B.:  … claude-oeffentlich.sh domain claude.deine-domain.de"; exit 1; }
+    command -v caddy >/dev/null || { echo "ABBRUCH: Caddy ist auf diesem Server nicht installiert (Variante „tailscale“ oder „url“ nutzen)."; exit 1; }
+    [ -f "$CADDYFILE" ] || { echo "ABBRUCH: $CADDYFILE nicht gefunden (anderer Ort? CADDYFILE=/pfad/Caddyfile davor setzen)."; exit 1; }
+    curl -fsS -o /dev/null --max-time 10 "$LOCAL/login" || { echo "ABBRUCH: Das Seller-System antwortet nicht unter $LOCAL – läuft die App? (docker compose ps)"; exit 1; }
+    IP="$(server_ip)"
+    DNS_IPS="$( (getent ahostsv4 "$DOMAIN" 2>/dev/null || true) | awk '{print $1}' | sort -u | tr '\n' ' ')"
+    if [ -z "$IP" ] || ! printf ' %s ' "$DNS_IPS" | grep -q " $IP "; then
+      echo "ABBRUCH: $DOMAIN zeigt noch nicht auf diesen Server."
+      echo "  Beim Domain-Anbieter einen DNS-Eintrag anlegen:  Typ A,  Name: ${DOMAIN%%.*} (bzw. $DOMAIN),  Wert: ${IP:-<IP dieses Servers>}"
+      echo "  Aktuell zeigt $DOMAIN auf: ${DNS_IPS:-nichts}. Nach dem Anlegen ein paar Minuten warten, dann das Skript erneut starten."
+      exit 1
+    fi
+    # Gibt es die Adresse schon außerhalb unseres Blocks? Dann nichts anfassen.
+    if sed "/^$BEGIN/,/^$END/d" "$CADDYFILE" | grep -qE "(^|[[:space:],])(https?://)?$DOMAIN([[:space:],:{]|$)"; then
+      echo "ABBRUCH: $DOMAIN steht schon in $CADDYFILE (für etwas anderes). Bitte eine eigene Subdomain nehmen, z. B. claude.${DOMAIN#*.}"
+      exit 1
+    fi
+    bak="backups/Caddyfile-$(date +%Y-%m-%d_%H-%M-%S)"; cp "$CADDYFILE" "$bak"
+    echo "==> Trage $DOMAIN in $CADDYFILE ein (Sicherung: $bak)"
+    caddy_remove_block || true
+    {
+      echo ""
+      echo "$BEGIN – Freigabe für den Claude-Konnektor (deploy/claude-oeffentlich.sh), nur diese Pfade"
+      echo "$DOMAIN {"
+      echo "	encode gzip"
+      echo "	@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/*"
+      echo "	handle @frei {"
+      echo "		reverse_proxy 127.0.0.1:$APP_PORT"
+      echo "	}"
+      echo "	handle {"
+      echo "		respond \"Nicht freigegeben\" 404"
+      echo "	}"
+      echo "}"
+      echo "$END"
+    } >> "$CADDYFILE"
+    caddy_reload "$bak"
+    PUBLIC="https://$DOMAIN"
+    set_env PUBLIC_URL "$PUBLIC"
+    restart_app
+    check_public "$PUBLIC"
+    done_msg "$PUBLIC"
+    ;;
 
-echo "==> Gebe über Tailscale Funnel frei (Port $PORT): ${PATHS[*]}"
-echo "    Ist Funnel für dein Tailnet noch nicht erlaubt, zeigt Tailscale einen Link – im Browser öffnen, erlauben, das Skript läuft dann weiter."
-YES=()
-tailscale funnel --help 2>&1 | grep -q -- "-yes" && YES=(--yes)
-for p in "${PATHS[@]}"; do
-  tailscale funnel --bg "${YES[@]}" --https="$PORT" --set-path="$p" "$TARGET$p"
-done
+  url)
+    PUBLIC="$(printf '%s' "$ARG" | sed 's|/*$||')"
+    printf '%s' "$PUBLIC" | grep -qE '^https://[^/]+$' || { echo "ABBRUCH: Bitte die https-Adresse angeben, z. B.:  … claude-oeffentlich.sh url https://seller.deine-domain.de"; exit 1; }
+    curl -fsS -o /dev/null --max-time 15 "$PUBLIC/login" || { echo "ABBRUCH: $PUBLIC/login antwortet nicht."; exit 1; }
+    set_env PUBLIC_URL "$PUBLIC"
+    restart_app
+    check_public "$PUBLIC"
+    done_msg "$PUBLIC"
+    ;;
 
-echo "==> Trage PUBLIC_URL=$PUBLIC ein und starte die App neu (Daten bleiben erhalten)"
-set_env PUBLIC_URL "$PUBLIC"
-compose up -d app
+  tailscale)
+    command -v tailscale >/dev/null || { echo "ABBRUCH: tailscale ist auf diesem Server nicht installiert."; exit 1; }
+    case "$TS_PORT" in 443|8443|10000) ;; *) echo "ABBRUCH: Tailscale Funnel erlaubt nur die Ports 443, 8443 oder 10000."; exit 1 ;; esac
+    BIND_IP="$(val BIND_IP)"; [ -z "$BIND_IP" ] || [ "$BIND_IP" = "0.0.0.0" ] && BIND_IP=127.0.0.1
+    TARGET="http://$BIND_IP:$APP_PORT"
+    curl -fsS -o /dev/null --max-time 10 "$TARGET/login" || { echo "ABBRUCH: $TARGET/login antwortet nicht – läuft die App?"; exit 1; }
+    DNS="$(tailscale status --json --peers=false | sed -n 's/.*"DNSName": *"\([^"]*\)".*/\1/p' | head -1)"; DNS="${DNS%.}"
+    [ -n "$DNS" ] || { echo "ABBRUCH: Tailscale-Name dieses Servers nicht gefunden (MagicDNS an?)."; exit 1; }
+    if [ "$TS_PORT" = "443" ]; then PUBLIC="https://$DNS"; else PUBLIC="https://$DNS:$TS_PORT"; fi
+    echo "==> Gebe über Tailscale Funnel frei (Port $TS_PORT): ${PATHS[*]}"
+    echo "    Ist Funnel für dein Tailnet noch nicht erlaubt, zeigt Tailscale einen Link – öffnen, erlauben, es geht dann weiter."
+    YES=(); tailscale funnel --help 2>&1 | grep -q -- "-yes" && YES=(--yes)
+    for p in "${PATHS[@]}"; do tailscale funnel --bg "${YES[@]}" --https="$TS_PORT" --set-path="$p" "$TARGET$p"; done
+    set_env PUBLIC_URL "$PUBLIC"
+    restart_app
+    check_public "$PUBLIC"
+    done_msg "$PUBLIC"
+    ;;
 
-echo "==> Warte auf die App"
-for _ in $(seq 1 60); do curl -fsS -o /dev/null --max-time 5 "$TARGET/login" && break; sleep 2; done
-
-echo "==> Prüfe die öffentliche Adresse"
-if curl -fsS --max-time 15 "$PUBLIC/.well-known/oauth-protected-resource/api/mcp" | grep -q "\"resource\":\"$PUBLIC/api/mcp\""; then
-  echo "    ok – Claude findet den Konnektor."
-else
-  echo "    Hinweis: Die Prüfung von hier aus ging nicht (manchmal braucht das Zertifikat beim ersten Mal 1–2 Minuten)."
-  echo "    Später nochmal:  curl $PUBLIC/.well-known/oauth-protected-resource/api/mcp"
-fi
-
-echo
-echo "Fertig. In Claude als Konnektor-URL eintragen:"
-echo "  $PUBLIC/api/mcp"
-echo "(Steht auch unter Einstellungen → Claude & KI-Assistent.)"
-echo "Wieder schließen:  bash /opt/seller-system/deploy/claude-oeffentlich.sh aus"
+  *)
+    IP="$(server_ip)"
+    echo "Welche Variante passt zu diesem Server?"
+    if command -v caddy >/dev/null && [ -f "$CADDYFILE" ]; then
+      echo "  Hier läuft der Webserver Caddy → eigene Subdomain mit https:"
+      echo "    1. Beim Domain-Anbieter DNS-Eintrag anlegen: Typ A, z. B. Name „claude“, Wert ${IP:-<IP dieses Servers>}"
+      echo "    2. bash /opt/seller-system/deploy/claude-oeffentlich.sh domain claude.deine-domain.de"
+    fi
+    command -v tailscale >/dev/null && echo "  Tailscale ist installiert →  bash /opt/seller-system/deploy/claude-oeffentlich.sh tailscale"
+    echo "  Läuft das Seller-System schon komplett unter https →  bash /opt/seller-system/deploy/claude-oeffentlich.sh url https://…"
+    exit 1
+    ;;
+esac
