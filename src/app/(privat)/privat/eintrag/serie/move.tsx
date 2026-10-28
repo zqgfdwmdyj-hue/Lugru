@@ -1,14 +1,16 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import type { FormState } from "../../actions";
 import { moveOccurrenceAction } from "../../eintrag-actions";
 
 /** Nur diesen Termin auf einen anderen Tag (und/oder eine andere Uhrzeit) legen. */
 export function MoveOccurrence({ occurrence, day, time, today }: { occurrence: string; day: string; time?: string; today: string }) {
   const [state, dispatch, pending] = useActionState<FormState, FormData>(moveOccurrenceAction, null);
+  const keepDispatch = useKeepForm(state, dispatch);
   return (
-    <form action={dispatch} className="stack" style={{ gap: 8 }} data-testid="occ-move">
+    <form action={dispatch} ref={keepDispatch.ref} onSubmit={keepDispatch.onSubmit} className="stack" style={{ gap: 8 }} data-testid="occ-move">
       <input type="hidden" name="vorkommen" value={occurrence} />
       <div className="label">Verschieben</div>
       <div className="pk-form-grid">

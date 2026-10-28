@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, type ReactNode } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { amazonAction, ebayAction, ebayCategoriesAction, generateTextsAction, productTypesAction, saveArticleAction, setEbayCategoryAction, setProductTypeAction, uploadImagesAction, type ArticleState } from "../actions";
 
 function Notice({ state }: { state: ArticleState }) {
@@ -15,8 +16,9 @@ function Notice({ state }: { state: ArticleState }) {
 
 export function SaveForm({ id, children }: { id: string; children: ReactNode }) {
   const [state, action, pending] = useActionState<ArticleState, FormData>(saveArticleAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 14 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 14 }}>
       <input type="hidden" name="id" value={id} />
       {children}
       <div className="save-bar" style={{ position: "sticky", bottom: 0, background: "var(--bg)", padding: "10px 0", display: "flex", gap: 10, alignItems: "center", borderTop: "1px solid var(--border)" }}>
@@ -29,8 +31,9 @@ export function SaveForm({ id, children }: { id: string; children: ReactNode }) 
 
 export function ImageUpload({ id }: { id: string }) {
   const [state, action, pending] = useActionState<ArticleState, FormData>(uploadImagesAction, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="id" value={id} />
       <input className="input" type="file" name="images" multiple accept="image/jpeg,image/png,image/webp" aria-label="Bilder" />
       <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lade hoch …" : "Bilder hochladen"}</button>
@@ -41,8 +44,9 @@ export function ImageUpload({ id }: { id: string }) {
 
 export function AiTextsButton({ id, hasAi }: { id: string; hasAi: boolean }) {
   const [state, action, pending] = useActionState<ArticleState, FormData>(generateTextsAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="id" value={id} />
       <button className="btn btn-small" type="submit" disabled={pending || !hasAi} title={hasAi ? "" : "KI-Schlüssel fehlt (Anbindungen → KI)"}>{pending ? "Schreibe …" : "KI: Titel, Stichpunkte & Beschreibung schreiben"}</button>
       <Notice state={state} />
@@ -53,10 +57,11 @@ export function AiTextsButton({ id, hasAi }: { id: string; hasAi: boolean }) {
 /** Suche mit Auswahlliste (Amazon-Produkttyp, eBay-Kategorie). */
 export function OptionSearch({ id, kind, placeholder }: { id: string; kind: "producttype" | "ebaycat"; placeholder: string }) {
   const [state, action, pending] = useActionState<ArticleState, FormData>(kind === "producttype" ? productTypesAction : ebayCategoriesAction, null);
+  const keep = useKeepForm(state, action);
   const setAction = kind === "producttype" ? setProductTypeAction : setEbayCategoryAction;
   return (
     <div className="stack" style={{ gap: 6 }}>
-      <form action={action} style={{ display: "flex", gap: 6 }}>
+      <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "flex", gap: 6 }}>
         <input type="hidden" name="id" value={id} />
         <input className="input" name="q" placeholder={placeholder} style={{ flex: 1 }} />
         <button className="btn btn-small" type="submit" disabled={pending}>{pending ? "Suche …" : "Vorschläge"}</button>
@@ -76,8 +81,9 @@ export function OptionSearch({ id, kind, placeholder }: { id: string; kind: "pro
 
 export function AmazonButtons({ id, ready }: { id: string; ready: boolean }) {
   const [state, action, pending] = useActionState<ArticleState, FormData>(amazonAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="id" value={id} />
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button className="btn btn-small" type="submit" name="op" value="pruefen" disabled={pending}>Mit Amazon prüfen</button>
@@ -92,8 +98,9 @@ export function AmazonButtons({ id, ready }: { id: string; ready: boolean }) {
 
 export function EbayButton({ id, disabled }: { id: string; disabled: boolean }) {
   const [state, action, pending] = useActionState<ArticleState, FormData>(ebayAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="id" value={id} />
       <button className="btn btn-small btn-primary" type="submit" disabled={pending || disabled}>{pending ? "Lade Bilder zu eBay …" : "Als Entwurf ins eBay-Tool"}</button>
       <Notice state={state} />

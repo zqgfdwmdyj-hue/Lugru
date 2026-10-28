@@ -1,8 +1,10 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
+import { addDaysIso } from "@/lib/dates";
 import { needsReview } from "@/lib/invoices/review";
+import { daysLeft } from "@/lib/stock/discrepancies";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
 
@@ -28,19 +30,32 @@ export const rechnungenOffen = defineTool({
 export const ansprueche = defineTool({
   name: "ansprueche",
   title: "Amazon-Ansprüche",
-  description: "Offene Erstattungsansprüche gegenüber Amazon (verloren, beschädigt, Retouren …) mit erwartetem Betrag und Frist. Für „Wie viel Geld steht bei Amazon noch aus?“, „Welche Fristen laufen ab?“.",
+  description: "Offene Erstattungsansprüche gegenüber Amazon (verloren, beschädigt, Retouren …) mit erwartetem Betrag, sortiert nach Frist (früheste zuerst, ohne Frist am Ende) und Tagen bis zur Frist. Für „Wie viel Geld steht bei Amazon noch aus?“, „Welche Fristen laufen ab?“ – mit frist_in_tagen nur die bald fälligen.",
   area: "amazon",
   write: false,
-  input: z.object({ status: z.enum(["offen", "eingereicht", "alle_offenen"]).default("alle_offenen"), limit: z.number().int().min(1).max(100).default(40) }),
+  input: z.object({
+    status: z.enum(["offen", "eingereicht", "alle_offenen"]).default("alle_offenen"),
+    frist_in_tagen: z.number().int().min(0).max(365).optional().describe("Nur Ansprüche, deren Frist in höchstens so vielen Tagen abläuft (auch schon abgelaufene)"),
+    limit: z.number().int().min(1).max(100).default(40),
+  }),
   run: async (ctx, i) => {
     const C = schema.claims;
     const statuses = i.status === "offen" ? ["detected", "queued"] : i.status === "eingereicht" ? ["submitted"] : ["detected", "queued", "submitted"];
-    const where = and(eq(C.tenantId, ctx.session.tenantId), inArray(C.status, statuses as (typeof C.$inferSelect.status)[]));
+    const where = and(eq(C.tenantId, ctx.session.tenantId), inArray(C.status, statuses as (typeof C.$inferSelect.status)[]), i.frist_in_tagen !== undefined ? lte(C.deadline, addDaysIso(ctx.today, i.frist_in_tagen)) : undefined);
     const [rows, [sum]] = await Promise.all([
       db.select().from(C).where(where).orderBy(sql`${C.deadline} asc nulls last`).limit(i.limit),
       db.select({ n: sql<number>`count(*)::int`, total: sql<number>`coalesce(sum(${C.expectedAmount}),0)::float` }).from(C).where(where),
     ]);
-    return json({ anzahl: sum.n, erwartet_gesamt: round2(sum.total), ansprueche: rows.map((c) => ({ id: c.id, titel: c.title, art: c.type, status: c.status, sku: c.sku, menge: c.quantity, erwartet: round2(c.expectedAmount), frist: c.deadline, amazon_fall: c.amazonCaseId })), link: abs(ctx, "/ansprueche") });
+    return json({
+      anzahl: sum.n,
+      erwartet_gesamt: round2(sum.total),
+      sortierung: "nach Frist, früheste zuerst",
+      ansprueche: rows.map((c) => {
+        const d = daysLeft(ctx.today, c.deadline);
+        return { id: c.id, titel: c.title, art: c.type, status: c.status, sku: c.sku, menge: c.quantity, erwartet: round2(c.expectedAmount), frist: c.deadline, tage_bis_frist: d ?? undefined, frist_abgelaufen: d !== null && d < 0 ? true : undefined, amazon_fall: c.amazonCaseId };
+      }),
+      link: abs(ctx, "/ansprueche"),
+    });
   },
 });
 

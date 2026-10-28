@@ -1,14 +1,16 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { batchLabels, type BatchState } from "./actions";
 
 /** Umschließt die Auftragstabelle; erzeugt Labels für die ausgewählten Aufträge. */
 export function BatchForm({ children }: { children: React.ReactNode }) {
   const [state, action, pending] = useActionState<BatchState, FormData>(batchLabels, null);
+  const keepAction = useKeepForm(state, action);
   const ok = state?.results.filter((r) => r.ok) ?? [];
   return (
-    <form action={action} className="stack">
+    <form action={action} ref={keepAction.ref} onSubmit={keepAction.onSubmit} className="stack">
       {children}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button

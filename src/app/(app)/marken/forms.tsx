@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { marketHelium10Action, marketKeepaAction, saveBrandAction, saveIdeaAction, suggestContentAction, suggestIdeasAction, type BrandState } from "./actions";
 
 function Notice({ state }: { state: BrandState }) {
@@ -10,8 +11,9 @@ function Notice({ state }: { state: BrandState }) {
 
 export function SuggestIdeas({ brandId, occasion, label = "KI: 5 Ideen vorschlagen", withWish = false }: { brandId: string; occasion?: string; label?: string; withWish?: boolean }) {
   const [state, action, pending] = useActionState<BrandState, FormData>(suggestIdeasAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="brandId" value={brandId} />
       {occasion && <input type="hidden" name="occasion" value={occasion} />}
       {withWish && <textarea className="textarea" name="wish" placeholder="Optional: Wunsch oder Richtung, z. B. „Box unter 25 €“, „Mystery-Box“, „Uhrenetui aus Leder für 3 Uhren“" style={{ minHeight: 60 }} />}
@@ -23,8 +25,9 @@ export function SuggestIdeas({ brandId, occasion, label = "KI: 5 Ideen vorschlag
 
 export function SuggestContent({ brandId, ideaId, withTopic = false }: { brandId: string; ideaId?: string; withTopic?: boolean }) {
   const [state, action, pending] = useActionState<BrandState, FormData>(suggestContentAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="brandId" value={brandId} />
       {ideaId && <input type="hidden" name="ideaId" value={ideaId} />}
       {withTopic && <input className="input" name="topic" placeholder="Thema, z. B. „Takis-Geschmackstest“ oder „Uhrenrolle für die Reise“" />}
@@ -61,8 +64,9 @@ export function CopyButton({ text, label = "Kopieren" }: { text: string; label?:
 
 export function SaveForm({ children, kind }: { children: React.ReactNode; kind: "idea" | "brand" }) {
   const [state, action, pending] = useActionState<BrandState, FormData>(kind === "idea" ? saveIdeaAction : saveBrandAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 12 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 12 }}>
       {children}
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Speichere …" : "Speichern"}</button>
@@ -74,10 +78,12 @@ export function SaveForm({ children, kind }: { children: React.ReactNode; kind: 
 
 export function MarketForms({ ideaId, term }: { ideaId: string; term: string }) {
   const [kState, kAction, kPending] = useActionState<BrandState, FormData>(marketKeepaAction, null);
+  const keepKAction = useKeepForm(kState, kAction);
   const [hState, hAction, hPending] = useActionState<BrandState, FormData>(marketHelium10Action, null);
+  const keepHAction = useKeepForm(hState, hAction);
   return (
     <div className="stack" style={{ gap: 10 }}>
-      <form action={kAction} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      <form action={kAction} ref={keepKAction.ref} onSubmit={keepKAction.onSubmit} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input type="hidden" name="id" value={ideaId} />
         <input className="input" name="term" defaultValue={term} placeholder="Suchbegriff wie auf Amazon" style={{ flex: "1 1 240px" }} aria-label="Suchbegriff" />
         <button className="btn btn-small" type="submit" disabled={kPending}>{kPending ? "Frage Keepa …" : "Ähnliche Produkte (Keepa)"}</button>
@@ -85,7 +91,7 @@ export function MarketForms({ ideaId, term }: { ideaId: string; term: string }) 
       <Notice state={kState} />
       <details className="small">
         <summary style={{ cursor: "pointer" }}>Oder Helium-10-Export hochladen (Xray → Export)</summary>
-        <form action={hAction} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+        <form action={hAction} ref={keepHAction.ref} onSubmit={keepHAction.onSubmit} style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
           <input type="hidden" name="id" value={ideaId} />
           <input className="input" name="file" type="file" accept=".csv,.xlsx,.xls" required style={{ flex: "1 1 240px" }} />
           <button className="btn btn-small" type="submit" disabled={hPending}>{hPending ? "Lese …" : "Übernehmen"}</button>

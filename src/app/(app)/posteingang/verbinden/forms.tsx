@@ -1,13 +1,15 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { connectImap, finishPaste, type ConnectState, type PasteState } from "./actions";
 
 export function ImapForm() {
   const [state, action, pending] = useActionState<ConnectState, FormData>(connectImap, null);
+  const keep = useKeepForm(state, action);
   const s = state?.settings;
   return (
-    <form action={action} className="stack" style={{ gap: 12 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 12 }}>
       <div className="field">
         <label className="label" htmlFor="address">E-Mail-Adresse</label>
         <input className="input" id="address" name="address" type="email" required autoComplete="off" placeholder="info@deine-firma.de" defaultValue={state?.address ?? ""} key={state?.address ?? ""} />
@@ -46,8 +48,9 @@ export function ImapForm() {
 
 export function PasteForm({ provider }: { provider: "google" | "microsoft" }) {
   const [state, action, pending] = useActionState<PasteState, FormData>(finishPaste, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 8 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 8 }}>
       <label className="label" htmlFor={`url-${provider}`}>2. Adresse aus der Browserzeile hier einfügen</label>
       <input className="input" id={`url-${provider}`} name="url" required placeholder="http://localhost/?state=…&code=…" style={{ fontFamily: "var(--mono)", fontSize: 12 }} />
       <div><button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Verbinde …" : "Verbinden"}</button></div>

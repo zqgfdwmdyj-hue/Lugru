@@ -42,10 +42,10 @@ export default async function UhrenPage() {
       <section className="stack" data-testid="flip-stats">
         <h2>Deine Zahlen (echte Deals)</h2>
         <div className="grid-kpi flip-kpis">
-          <div className="card card-pad kpi-card"><div className="kpi-label">Verkauft</div><div className="kpi-value">{real.sold}</div><div className="small muted">{real.losses ? `${real.losses} mit Verlust` : "ohne Verlust"}</div></div>
-          <div className="card card-pad kpi-card"><div className="kpi-label">Gewinn gesamt</div><div className={`kpi-value${real.profit < 0 ? " flip-neg" : ""}`}>{real.sold ? eur(real.profit) : "–"}</div><div className="small muted">vor Einkommensteuer</div></div>
-          <div className="card card-pad kpi-card"><div className="kpi-label">Ø Marge / Standzeit</div><div className="kpi-value">{pct(real.avgMarginPct)}</div><div className="small muted">{real.avgDays !== null ? `Ø ${real.avgDays} Tage bis Verkauf` : "noch keine Verkäufe"}</div></div>
-          <div className="card card-pad kpi-card"><div className="kpi-label">Gebundenes Geld</div><div className="kpi-value">{eur(real.openCapital)}</div><div className="small muted">{real.open} Uhr{real.open === 1 ? "" : "en"} gekauft, nicht verkauft</div></div>
+          <div className="card card-pad kpi-card" data-testid="flip-kpi-sold"><div className="kpi-label">Verkauft</div><div className="kpi-value">{real.sold}</div><div className="small muted">{real.losses ? `${real.losses} mit Verlust` : "ohne Verlust"}</div></div>
+          <div className="card card-pad kpi-card" data-testid="flip-kpi-profit"><div className="kpi-label">Gewinn gesamt</div><div className={`kpi-value${real.profit < 0 ? " flip-neg" : ""}`}>{real.sold ? eur(real.profit) : "–"}</div><div className="small muted">vor Einkommensteuer</div></div>
+          <div className="card card-pad kpi-card" data-testid="flip-kpi-margin"><div className="kpi-label">Ø Marge / Standzeit</div><div className="kpi-value">{pct(real.avgMarginPct)}</div><div className="small muted">{real.avgDays !== null ? `Ø ${real.avgDays} Tage bis Verkauf` : "noch keine Verkäufe"}</div></div>
+          <div className="card card-pad kpi-card" data-testid="flip-kpi-capital"><div className="kpi-label">Gebundenes Geld</div><div className="kpi-value">{eur(real.openCapital)}</div><div className="small muted">{real.open} Uhr{real.open === 1 ? "" : "en"} gekauft, nicht verkauft</div></div>
         </div>
         <div className="small muted">
           Übungs-Deals (nur auf dem Papier): {practice.length}{practiceStats.sold ? ` · ${practiceStats.sold} „verkauft“, zusammen ${eur(practiceStats.profit)}` : ""} · Marktpreise notiert für {refs} Referenz{refs === 1 ? "" : "en"}.

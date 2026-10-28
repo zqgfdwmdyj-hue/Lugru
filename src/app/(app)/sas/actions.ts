@@ -20,6 +20,7 @@ import {
   saveProgram,
   selectBrand,
   setBrandStatus,
+  setEvidenceVerdict,
   setDealStatus,
   updateItem,
 } from "@/lib/sas/service";
@@ -132,6 +133,22 @@ export async function submitPilotAction() {
   back("marken", { ok: "Als eingereicht markiert. Die Mail vom Appeal Team ist als Aufgabe in ca. 2 Wochen eingetragen." });
 }
 
+/** Zuordnung Marke ↔ Beleg: „stimmt“, „falsch“ (zählt dann nicht) oder zurücksetzen. Zurück in die Beleg-Liste. */
+export async function evidenceVerdictAction(fd: FormData) {
+  const s = await requireArea("amazon");
+  const brandId = z.string().uuid().parse(fd.get("brandId"));
+  const invoiceId = z.string().uuid().parse(fd.get("invoiceId"));
+  const v = z.enum(["stimmt", "falsch", "zuruecksetzen"]).parse(fd.get("verdict"));
+  await setEvidenceVerdict(s.tenantId, s.userId, brandId, invoiceId, v === "zuruecksetzen" ? null : v);
+  revalidatePath("/sas");
+  const q = new URLSearchParams({ tab: "marken", belege: brandId });
+  for (const k of ["filter", "sort", "q", "nur"]) {
+    const val = str(fd.get(k));
+    if (val) q.set(k, val.slice(0, 60));
+  }
+  redirect(`/sas?${q.toString()}#b-${invoiceId}`);
+}
+
 export async function brandStatusAction(fd: FormData) {
   const s = await requireArea("amazon");
   await setBrandStatus(s.tenantId, z.string().uuid().parse(fd.get("id")), z.enum(SAS_BRAND_STATUS).parse(fd.get("status")));
@@ -180,12 +197,14 @@ export async function uploadDocumentAction(fd: FormData) {
   if (!file) back("unterlagen", { fehler: "Bitte eine Datei wählen." });
   if (file!.size > 15 * 1024 * 1024) back("unterlagen", { fehler: "Datei zu groß (höchstens 15 MB)." });
   const kind = z.enum(["praesentation", "markenliste", "asin_liste", "nachweis", "sonstiges"]).catch("sonstiges").parse(fd.get("kind"));
-  await addDocument(s.tenantId, file!.name || "Unterlage", file!.type || "application/octet-stream", Buffer.from(await file!.arrayBuffer()), kind);
+  const r = await addDocument(s.tenantId, file!.name || "Unterlage", file!.type || "application/octet-stream", Buffer.from(await file!.arrayBuffer()), kind);
+  if (!r.stored && r.existing)
+    back("unterlagen", { fehler: `Diese Datei liegt schon hier („${r.existing.name}“ vom ${r.existing.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}) – nicht doppelt abgelegt.` });
   back("unterlagen", { ok: "Hochgeladen." });
 }
 
 export async function deleteDocumentAction(fd: FormData) {
   const s = await requireArea("amazon");
   await deleteDocument(s.tenantId, z.string().uuid().parse(fd.get("id")));
-  back("unterlagen", { ok: "Gelöscht." });
+  back("unterlagen", { ok: fd.get("doppel") === "1" ? "Doppel entfernt – das Original bleibt." : "Gelöscht." });
 }

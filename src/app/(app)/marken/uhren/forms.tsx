@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { flipCalc, maxBuy, TAX_LABEL, TAX_MODES, TAX_SHORT, type TaxMode } from "@/lib/watches/calc";
 import type { Quiz as QuizItem } from "@/lib/watches/lessons";
 import { parseEuro, parsePct } from "@/lib/watches/logic";
@@ -18,11 +19,15 @@ function Notice({ state }: { state: FlipState }) {
   );
 }
 
-/** Formular mit Rückmeldung (Fehler bleiben stehen, Eingaben bleiben erhalten). */
-export function FlipForm({ action, submit, pending: pendingLabel = "Speichert …", testid, children, className = "stack" }: { action: (s: FlipState, fd: FormData) => Promise<FlipState>; submit: string; pending?: string; testid?: string; children: React.ReactNode; className?: string }) {
+/**
+ * Formular mit Rückmeldung: Bei Fehlern bleiben alle Eingaben stehen; nach dem Speichern zeigt es die gespeicherten
+ * Werte (Auswahlfelder springen nicht zurück). `resetOnSuccess` leert es nach Erfolg (z. B. „Preis notieren“).
+ */
+export function FlipForm({ action, submit, pending: pendingLabel = "Speichert …", testid, children, className = "stack", resetOnSuccess = false }: { action: (s: FlipState, fd: FormData) => Promise<FlipState>; submit: string; pending?: string; testid?: string; children: React.ReactNode; className?: string; resetOnSuccess?: boolean }) {
   const [state, run, pending] = useActionState<FlipState, FormData>(action, null);
+  const keep = useKeepForm(state, run, { resetOnSuccess });
   return (
-    <form action={run} className={className} data-testid={testid}>
+    <form action={run} ref={keep.ref} onSubmit={keep.onSubmit} className={className} data-testid={testid}>
       {children}
       <div>
         <button className="btn btn-primary" type="submit" disabled={pending} aria-busy={pending}>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import type { FormState } from "./actions";
 
 /**
  * Formular mit Rückmeldung (gespeichert / Fehler). Nach dem Speichern werden die Felder geleert,
- * außer `keep` ist gesetzt (z. B. Tagebuch – dort bleibt der Tag stehen).
+ * außer `keep` ist gesetzt (z. B. Tagebuch, Bearbeiten – dort bleibt alles stehen). Bei Fehlern bleibt immer alles stehen.
  */
 export function StateForm({
   action,
@@ -23,12 +24,10 @@ export function StateForm({
   className?: string;
 }) {
   const [state, dispatch, pending] = useActionState<FormState, FormData>(action, null);
-  const form = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    if (state?.ok && !keep) form.current?.reset();
-  }, [state, keep]);
+  // Bei Fehlern bleibt alles stehen; mit `keep` auch nach dem Speichern (Auswahlfelder springen nicht zurück).
+  const form = useKeepForm(state, dispatch, { resetOnSuccess: !keep });
   return (
-    <form ref={form} action={dispatch} className={className} style={{ gap: 12 }} data-testid={testid}>
+    <form ref={form.ref} action={dispatch} onSubmit={form.onSubmit} className={className} style={{ gap: 12 }} data-testid={testid}>
       {children}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Speichere …" : submit}</button>

@@ -1,5 +1,6 @@
-import { boolean, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { createdAt, files, id, tasks, tenantId, updatedAt } from "./core";
+import { boolean, date, index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { createdAt, files, id, tasks, tenantId, updatedAt, users } from "./core";
+import { invoices } from "./invoices";
 
 // Amazon SAS-Programm (Strategic Account Services, Reseller): Programm-Stand, Aufgaben (an die normalen
 // Aufgaben gekoppelt, damit sie auf der Startseite erscheinen), Marken für den Authorized-Reseller-Audit,
@@ -58,12 +59,35 @@ export const sasBrands = pgTable(
     products: integer("products"),
     sales30: numeric("sales30", { precision: 14, scale: 2 }),
     units30: integer("units30"),
+    /** Zeilen der 30-Tage-Auswertung mit der Marke (auch ohne Verkauf): 0 + keine Produkte = „keine Daten“. */
+    salesRows: integer("sales_rows"),
     invoices: integer("invoices"),
+    /** davon vom Nutzer bestätigt bzw. mit Hinweis „prüfen“ (noch nicht bestätigt) */
+    invoicesConfirmed: integer("invoices_confirmed"),
+    invoicesUnsure: integer("invoices_unsure"),
     supplierOffers: integer("supplier_offers"),
     computedAt: timestamp("computed_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("sas_brands_uq").on(t.tenantId, t.brandKey)],
+);
+
+/** Entscheidung des Nutzers, ob ein gefundener Beleg wirklich zur Marke gehört („falsch“ zählt nicht mehr). */
+export const sasBrandEvidence = pgTable(
+  "sas_brand_evidence",
+  {
+    tenantId: tenantId(),
+    brandId: uuid("brand_id")
+      .notNull()
+      .references(() => sasBrands.id, { onDelete: "cascade" }),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    verdict: text("verdict", { enum: ["stimmt", "falsch"] }).notNull(),
+    checkedBy: uuid("checked_by").references(() => users.id, { onDelete: "set null" }),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.brandId, t.invoiceId] }), index("sas_brand_evidence_tenant_idx").on(t.tenantId)],
 );
 
 /** Berechtigte ASINs für Deals (Liste des Consultants) mit Mindestrabatt. */

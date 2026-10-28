@@ -27,7 +27,7 @@ export default async function PreisePage({ searchParams }: { searchParams: Promi
 
       <section className="card card-pad stack" data-testid="price-new">
         <h2>Preis notieren</h2>
-        <FlipForm action={addPriceAction} submit="Notieren" testid="price-form">
+        <FlipForm action={addPriceAction} submit="Notieren" testid="price-form" resetOnSuccess>
           <div className="flip-grid">
             <div className="field"><label className="label small" htmlFor="p-ref">Referenz *</label><input className="input" id="p-ref" name="reference" defaultValue={ref} required autoComplete="off" data-testid="p-ref" /></div>
             <div className="field"><label className="label small" htmlFor="p-label">Marke / Modell</label><input className="input" id="p-label" name="label" placeholder="z. B. Omega Speedmaster" autoComplete="off" /></div>

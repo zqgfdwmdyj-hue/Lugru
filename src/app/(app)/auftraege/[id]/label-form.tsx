@@ -1,12 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { createLabelAction, type LabelState } from "../actions";
 
 export function LabelForm({ orderId, weightKg, suggestKlein, disabled }: { orderId: string; weightKg: number | null; suggestKlein: boolean; disabled: boolean }) {
   const [state, action, pending] = useActionState<LabelState, FormData>(createLabelAction, null);
+  const keepAction = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10 }}>
+    <form action={action} ref={keepAction.ref} onSubmit={keepAction.onSubmit} className="stack" style={{ gap: 10 }}>
       <input type="hidden" name="orderId" value={orderId} />
       <div style={{ display: "flex", gap: 8, alignItems: "end" }}>
         <div className="field">

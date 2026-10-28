@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import type { FixState } from "./actions";
 
 /** Ein Betragsfeld mit Speichern und Rückmeldung in der Zeile – für die Liste „fehlende Werte“. */
@@ -20,8 +21,9 @@ export function FixForm({
   testid?: string;
 }) {
   const [state, dispatch, pending] = useActionState<FixState, FormData>(action, null);
+  const keepDispatch = useKeepForm(state, dispatch);
   return (
-    <form action={dispatch} className="fix-form" data-testid={testid}>
+    <form action={dispatch} ref={keepDispatch.ref} onSubmit={keepDispatch.onSubmit} className="fix-form" data-testid={testid}>
       {Object.entries(hidden).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />
       ))}

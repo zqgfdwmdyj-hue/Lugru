@@ -1,14 +1,16 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { addUser, changePassword, setUserPassword, updateAccess, type UserState } from "./actions";
 
 const noAutoFix = { autoCapitalize: "none", autoCorrect: "off", spellCheck: false } as const;
 
 export function AddUserForm() {
   const [state, action, pending] = useActionState<UserState, FormData>(addUser, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} className="stack" style={{ gap: 10 }} data-testid="add-user">
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }} data-testid="add-user">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, alignItems: "end" }}>
         <div className="field"><label className="label" htmlFor="u-login">Benutzername</label><input className="input" id="u-login" name="login" required minLength={3} maxLength={60} autoComplete="off" placeholder="z. B. lager1" {...noAutoFix} /></div>
         <div className="field"><label className="label" htmlFor="u-name">Name (optional)</label><input className="input" id="u-name" name="name" /></div>
@@ -27,10 +29,11 @@ export function AddUserForm() {
 /** Inhaber vergibt einem Benutzer ein neues Passwort. */
 export function SetPasswordForm({ userId, login }: { userId: string; login: string }) {
   const [state, action, pending] = useActionState<UserState, FormData>(setUserPassword, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
     <details data-testid="set-password">
       <summary className="small" style={{ cursor: "pointer" }}>Passwort vergeben</summary>
-      <form action={action} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", paddingTop: 6, justifyContent: "flex-end" }}>
+      <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", paddingTop: 6, justifyContent: "flex-end" }}>
         <input type="hidden" name="userId" value={userId} />
         <input className="input" name="password" type="text" required minLength={8} autoComplete="new-password" aria-label={`Neues Passwort für ${login}`} placeholder="neues Passwort" style={{ width: 170, padding: "5px 8px", fontSize: 13 }} {...noAutoFix} />
         <button className="btn btn-small" type="submit" disabled={pending}>Setzen</button>
@@ -42,8 +45,9 @@ export function SetPasswordForm({ userId, login }: { userId: string; login: stri
 
 export function PasswordForm() {
   const [state, action, pending] = useActionState<UserState, FormData>(changePassword, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
       <div className="field" style={{ width: 280 }}><label className="label" htmlFor="pw">Neues Passwort</label><input className="input" id="pw" name="password" type="password" autoComplete="new-password" required minLength={10} /></div>
       <button className="btn" type="submit" disabled={pending}>Ändern</button>
       {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-error"}`}>{state.message}</div>}
@@ -53,8 +57,9 @@ export function PasswordForm() {
 
 export function AccessForm({ userId, areas, brandIds, readOnly, allAreas, brands }: { userId: string; areas: string[] | null; brandIds: string[] | null; readOnly: boolean; allAreas: { key: string; label: string }[]; brands: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState<UserState, FormData>(updateAccess, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10, padding: "10px 0" }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10, padding: "10px 0" }}>
       <input type="hidden" name="userId" value={userId} />
       <div className="stack" style={{ gap: 4 }}>
         <strong className="small">Bereiche</strong>

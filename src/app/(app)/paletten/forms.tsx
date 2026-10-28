@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { useSubmitKey } from "@/lib/use-submit-key";
 import { addCharge, markInvoicedAction, markPaidAction, saveLocationsAction, savePalletCustomer, savePalletRates, sendStatementAction, undoInvoicedAction, type ChargeState, type SaveState, type SendState } from "./actions";
 
@@ -11,7 +12,9 @@ export function ChargeForm({ customers, services, pallets, today, customer, pall
   const [state, action, pending] = useActionState<ChargeState, FormData>(addCharge, null);
   const submitKey = useSubmitKey();
   const price = useRef<HTMLInputElement>(null);
-  const form = useRef<HTMLFormElement>(null);
+  const send = (fd: FormData) => action(submitKey.stamp(fd));
+  const keep = useKeepForm(state, send);
+  const form = keep.ref;
   useEffect(() => {
     if (state) submitKey.settled();
     if (state?.ok) {
@@ -21,7 +24,7 @@ export function ChargeForm({ customers, services, pallets, today, customer, pall
     }
   }, [state]);
   return (
-    <form ref={form} action={(fd: FormData) => action(submitKey.stamp(fd))} className="stack" style={{ gap: 10 }} data-testid="charge-form">
+    <form ref={form} action={send} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }} data-testid="charge-form">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
         {pallet ? (
           <input type="hidden" name="pallet" value={pallet.id} />
@@ -119,8 +122,9 @@ function ValidFrom({ id, month }: { id: string; month: string }) {
 /** Standard-Konditionen und Einstellungen des Palettenlagers (Inhaber). */
 export function RatesForm({ rates }: { rates: Rates }) {
   const [state, action, pending] = useActionState<SaveState, FormData>(savePalletRates, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 12 }} data-testid="rates-form">
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 12 }} data-testid="rates-form">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
         <div className="field"><label className="label" htmlFor="r-price">Preis je Stellplatz und Monat (€)</label><input className="input" id="r-price" name="pricePerMonth" inputMode="decimal" defaultValue={num(rates.pricePerMonth)} /></div>
         <div className="field"><label className="label" htmlFor="r-free">Kostenfreie Tage</label><input className="input" id="r-free" name="freeDays" type="number" min={0} max={365} defaultValue={rates.freeDays} /></div>
@@ -168,8 +172,9 @@ export function RatesForm({ rates }: { rates: Rates }) {
 /** Lagerplan einrichten (Inhaber) – direkt im Lagerbereich. */
 export function LocationsForm({ spec, count, capacity }: { spec: string; count: number; capacity: number }) {
   const [state, action, pending] = useActionState<SaveState, FormData>(saveLocationsAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10 }} data-testid="locations-form">
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }} data-testid="locations-form">
       <div className="field">
         <label className="label" htmlFor="l-spec">Stellplätze – Bereiche wie „A-01..A-20“ oder einzelne Namen, je Zeile oder mit Komma{count ? ` · jetzt ${count} Plätze` : ""}</label>
         <textarea className="input" id="l-spec" name="locations" rows={4} defaultValue={spec} placeholder={"A-01..A-20\nB-01..B-20\nTor 1"} />
@@ -189,6 +194,7 @@ export function LocationsForm({ spec, count, capacity }: { spec: string; count: 
 /** Stand je Kunde und Monat: in Rechnung gestellt (mit Nummer, nur einmal) und bezahlt. */
 export function InvoiceStatus({ customer, month, invoicedAt, invoiceNo, paidAt, invoicedTotal, total, owner }: { customer: string; month: string; invoicedAt: string | null; invoiceNo: string | null; paidAt: string | null; invoicedTotal: number | null; total: number; owner: boolean }) {
   const [state, action, pending] = useActionState<SendState, FormData>(markInvoicedAction, null);
+  const keep = useKeepForm(state, action);
   const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
   if (invoicedAt) {
     const changed = invoicedTotal !== null && Math.abs(invoicedTotal - total) >= 0.005;
@@ -214,7 +220,7 @@ export function InvoiceStatus({ customer, month, invoicedAt, invoiceNo, paidAt, 
     );
   }
   return (
-    <form action={action} style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }} data-testid="invoice-form">
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }} data-testid="invoice-form">
       <input type="hidden" name="customer" value={customer} />
       <input type="hidden" name="month" value={month} />
       <input className="input" name="invoiceNo" placeholder="Rechnungsnr." aria-label={`Rechnungsnummer für ${customer}`} style={{ width: 130, padding: "4px 8px" }} />
@@ -229,11 +235,12 @@ type Customer = { id?: string; name: string; email: string | null; pricePerMonth
 /** Eigene Konditionen und E-Mail eines Kunden (leer = Standard). */
 export function CustomerForm({ customer, defaults, month }: { customer: Customer | null; defaults: Pick<Rates, "pricePerMonth" | "freeDays" | "mode" | "inFee" | "outFee">; month: string }) {
   const [state, action, pending] = useActionState<SaveState, FormData>(savePalletCustomer, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: !customer });
   const [email, setEmail] = useState(customer?.email ?? "");
   const c = customer;
   const p = c?.id ?? "neu";
   return (
-    <form action={action} className="stack" style={{ gap: 10 }} data-testid={c ? "customer-form-edit" : "customer-form-new"}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }} data-testid={c ? "customer-form-edit" : "customer-form-new"}>
       {c?.id && <input type="hidden" name="id" value={c.id} />}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
         {c ? <input type="hidden" name="name" value={c.name} /> : (

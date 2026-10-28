@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { addItemAction, createPoAction, draftsFromSuggestions, receiveAction, updatePoAction, type PoState } from "./actions";
 
 function Notice({ state }: { state: PoState }) {
@@ -10,8 +11,9 @@ function Notice({ state }: { state: PoState }) {
 
 export function NewPoForm({ suppliers, today }: { suppliers: { code: string; name: string | null }[]; today: string }) {
   const [state, action, pending] = useActionState<PoState, FormData>(createPoAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="card card-pad stack" style={{ gap: 10 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="card card-pad stack" style={{ gap: 10 }}>
       <h2>Neue Bestellung</h2>
       <div className="field">
         <label className="label" htmlFor="supplier">Lieferant / Shop (Kürzel)</label>
@@ -35,8 +37,9 @@ export function NewPoForm({ suppliers, today }: { suppliers: { code: string; nam
 
 export function AddItemForm({ poId }: { poId: string }) {
   const [state, action, pending] = useActionState<PoState, FormData>(addItemAction, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} className="stack" style={{ gap: 8, padding: 14, borderTop: "1px solid var(--border)" }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 8, padding: 14, borderTop: "1px solid var(--border)" }}>
       <input type="hidden" name="poId" value={poId} />
       <div className="po-add">
         <input className="input" name="asin" required placeholder="ASIN" aria-label="ASIN" maxLength={10} style={{ fontFamily: "var(--mono)" }} />
@@ -56,8 +59,9 @@ type PoFields = { id: string; supplierOrderNo: string | null; orderDate: string 
 
 export function PoEditForm({ po }: { po: PoFields }) {
   const [state, action, pending] = useActionState<PoState, FormData>(updatePoAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }}>
       <input type="hidden" name="poId" value={po.id} />
       <div className="field"><label className="label" htmlFor="po-no">Bestellnummer beim Shop</label><input className="input" id="po-no" name="supplierOrderNo" defaultValue={po.supplierOrderNo ?? ""} /></div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -78,8 +82,9 @@ export function PoEditForm({ po }: { po: PoFields }) {
 
 export function ReceiveForm({ poId, items }: { poId: string; items: { id: string; asin: string; title: string | null; open: number }[] }) {
   const [state, action, pending] = useActionState<PoState, FormData>(receiveAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }}>
       <input type="hidden" name="poId" value={poId} />
       <div className="small muted">Gelieferte Menge je Position eintragen (vorbelegt mit dem offenen Rest). Es entstehen Chargen mit SKU und der Bestand im eigenen Lager steigt.</div>
       {items.map((i) => (
@@ -97,8 +102,9 @@ export function ReceiveForm({ poId, items }: { poId: string; items: { id: string
 
 export function SuggestSubmit({ children }: { children: React.ReactNode }) {
   const [state, action, pending] = useActionState<PoState, FormData>(draftsFromSuggestions, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack">
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack">
       {children}
       <Notice state={state} />
       <div><button className="btn btn-primary" type="submit" disabled={pending}>Angekreuzte als Bestellentwurf anlegen</button></div>

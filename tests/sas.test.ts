@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { auditMail, brandFacts, brandRegex, daysUntil, dealCalc, FAHRPLAN, parseBrandList, parseDealList, suggestBrands } from "@/lib/sas/logic";
+import { auditMail, brandFacts, brandRegex, daysUntil, dealCalc, evidenceCheck, evidenceKey, FAHRPLAN, findDuplicateDocs, parseBrandList, parseDealList, salesState, suggestBrands } from "@/lib/sas/logic";
 
 // Amazon SAS-Programm – fiktive Marken und ASINs.
 
@@ -20,8 +20,31 @@ describe("Markenliste", () => {
       invoices: [{ text: "Rechnung Großhandel GmbH … 10x Alpha Kabel" }, { text: "nichts" }],
       offers: [{ title: "Gamma Box 3er" }],
     });
-    expect(f.get("alpha")).toEqual({ products: 2, sales30: 150.5, units30: 7, invoices: 1, supplierOffers: 0 });
-    expect(f.get("gamma")).toEqual({ products: 1, sales30: 0, units30: 0, invoices: 0, supplierOffers: 1 });
+    expect(f.get("alpha")).toEqual({ products: 2, sales30: 150.5, units30: 7, salesRows: 2, invoices: 1, invoicesConfirmed: 0, invoicesUnsure: 0, supplierOffers: 0 });
+    expect(f.get("gamma")).toEqual({ products: 1, sales30: 0, units30: 0, salesRows: 0, invoices: 0, invoicesConfirmed: 0, invoicesUnsure: 0, supplierOffers: 1 });
+  });
+  it("Umsatz-Spalte: Betrag, „kein Umsatz“, „keine Daten“ oder „?“", () => {
+    expect(salesState({ sales30: "120.00", products: 2, salesRows: 2 }, 50)).toBe("umsatz");
+    expect(salesState({ sales30: "0", products: 3, salesRows: 0 }, 50)).toBe("kein_umsatz");
+    expect(salesState({ sales30: 0, products: 0, salesRows: 1 }, 50)).toBe("kein_umsatz");
+    expect(salesState({ sales30: 0, products: 0, salesRows: 0 }, 50)).toBe("keine_daten");
+    expect(salesState({ sales30: null, products: null, salesRows: null }, 50)).toBe("keine_daten");
+    expect(salesState({ sales30: 0, products: 5, salesRows: 5 }, 0)).toBe("keine_quelle");
+  });
+  it("Belege: „falsch“ markierte zählen nicht, bestätigte und zu prüfende werden gezählt", () => {
+    const f = brandFacts(["BiC"], {
+      products: [],
+      stats: [],
+      invoices: [
+        { id: "r1", vendor: "Bürobedarf Muster GmbH", text: "Pos. 1  20 Stk  Kugelschreiber BIC Cristal blau  4,00 €" },
+        { id: "r2", vendor: "Papeterie Beispiel", text: "Lieferung frei Haus\nbestellt über bic-shop.example.de" },
+        { id: "r3", vendor: "Händler Test", text: "Feuerzeug BIC Maxi" },
+        { id: "r4", vendor: "Nichts KG", text: "Schrauben M4" },
+      ],
+      offers: [],
+      verdicts: new Map([[evidenceKey("bic", "r3"), "falsch" as const], [evidenceKey("bic", "r1"), "stimmt" as const]]),
+    });
+    expect(f.get("bic")).toMatchObject({ invoices: 2, invoicesConfirmed: 1, invoicesUnsure: 1 });
   });
   it("Vorschlag: erst Belege, dann Umsatz; Marken ohne beides fallen weg; höchstens n", () => {
     const b = (brand: string, invoices: number, sales30: number, supplierOffers = 0) => ({ brand, invoices, sales30, supplierOffers });
@@ -33,6 +56,41 @@ describe("Markenliste", () => {
     expect(m.body).toMatch(/^Hallo Max,/);
     expect(m.body).toMatch(/1\. Alpha\n2\. Beta/);
     expect(m.subject).toMatch(/Authorized Reseller/);
+  });
+});
+
+describe("Nachweis je Beleg (Fundstelle + Einschätzung)", () => {
+  it("Lieferant ist die Marke → sicher", () => {
+    expect(evidenceCheck("Testmarke Alpha", "Testmarke Alpha GmbH", "Rechnung 4711")).toMatchObject({ level: "sicher", reason: "Lieferant ist die Marke selbst" });
+  });
+  it("Rechnungsposition mit Menge/Preis → sicher; die belastbarste Fundstelle zählt", () => {
+    const r = evidenceCheck("BiC", "Bürobedarf Muster GmbH", "Fragen? info@bic-fans.example.de\n20 Stk Kugelschreiber BIC Cristal 4,00 €");
+    expect(r?.level).toBe("sicher");
+    expect(r?.snippet).toContain("Kugelschreiber BIC Cristal");
+  });
+  it("nur in Web-/Mail-Adresse oder neben Bankangaben → prüfen", () => {
+    expect(evidenceCheck("BiC", "Shop", "Bestellt über www.bic-shop.example.de")?.reason).toBe("nur in einer Web- oder Mail-Adresse");
+    expect(evidenceCheck("Sparfuchs", "Shop", "Bitte per Überweisung an Sparfuchs eG zahlen")).toMatchObject({ level: "pruefen", reason: "steht bei Bankangaben" });
+    // ganze Bankzeilen („Kontoinhaber …“) zählen gar nicht
+    expect(evidenceCheck("Sparfuchs", "Shop", "Kontoinhaber Sparfuchs eG")).toBeNull();
+  });
+  it("kurzer Name nur kleingeschrieben → prüfen; großgeschrieben ohne Preis → im Text", () => {
+    expect(evidenceCheck("BiC", "Shop", "die bic Lieferung kam spät")?.reason).toBe("kurzer Name, nur kleingeschrieben");
+    expect(evidenceCheck("BiC", "Shop", "Hinweis zu BIC Produkten folgt")?.level).toBe("text");
+  });
+  it("Bankcode „BIC: COBADEFFXXX“ ist kein Fund", () => {
+    expect(evidenceCheck("BiC", "Shop", "IBAN DE12 3456 7890 1234 5678 90 BIC: COBADEFFXXX")).toBeNull();
+  });
+});
+
+describe("Unterlagen doppelt", () => {
+  const d = (id: string, name: string, size: number, sha: string, day: string) => ({ id, name, size, sha256: sha, createdAt: new Date(`${day}T10:00:00Z`) });
+  it("gleicher Inhalt → doppelt (Original = ältestes); gleicher Name/Größe, anderer Inhalt → nur ähnlich", () => {
+    const m = findDuplicateDocs([d("b", "Markenliste.xlsx", 900, "aaa", "2026-10-21"), d("a", "Markenliste.xlsx", 900, "aaa", "2026-10-20"), d("c", "Markenliste.xlsx", 900, "bbb", "2026-10-22"), d("e", "Präsentation.pdf", 5000, "ccc", "2026-10-20")]);
+    expect(m.get("b")).toMatchObject({ kind: "doppelt", of: { id: "a" } });
+    expect(m.get("c")).toMatchObject({ kind: "aehnlich", of: { id: "a" } });
+    expect(m.has("a")).toBe(false);
+    expect(m.has("e")).toBe(false);
   });
 });
 

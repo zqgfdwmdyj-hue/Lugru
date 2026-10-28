@@ -748,6 +748,13 @@ h2 { font-size: 16px; margin: 0; }
 .sas-form-wide { grid-column: 1 / -1; }
 .sas-contact { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .sas-mail-text { width: 100%; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.sas-evidence-row { padding: 8px 0; border-top: 1px solid var(--row); overflow-wrap: anywhere; scroll-margin-top: 70px; }
+.sas-import > summary { cursor: pointer; list-style: none; }
+.sas-import > summary::-webkit-details-marker { display: none; }
+.sas-import > summary h2::after { content: " ▸"; color: var(--muted); font-weight: 400; }
+.sas-import[open] > summary h2::after { content: " ▾"; }
+.sas-evidence-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sas-evidence-actions { display: flex; gap: 6px; margin-top: 4px; }
 @media (max-width: 700px) {
   .sas-counts, .sas-form, .sas-contact { grid-template-columns: minmax(0, 1fr); }
   .sas-counts { padding: 0 16px 14px; }

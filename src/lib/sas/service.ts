@@ -1,9 +1,10 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { skuCostMap } from "@/lib/money/costs";
 import { storeFile } from "@/lib/orders/service";
-import { brandFacts, brandKey, brandSnippet, dealCalc, FAHRPLAN, parseBrandList, suggestBrands, type DealRow, type DealResult, type SasModule, type SasWaiting } from "./logic";
+import { brandFacts, brandKey, dealCalc, evidenceCheck, evidenceKey, FAHRPLAN, parseBrandList, suggestBrands, type DealRow, type DealResult, type SasModule, type SasWaiting } from "./logic";
 
 // Amazon SAS-Programm: Stand, Aufgaben (gekoppelt an die normalen Aufgaben), Marken, Deals, Unterlagen.
 
@@ -109,26 +110,30 @@ export async function importBrands(tenantId: string, values: string[]): Promise<
 }
 
 /** Kennzahlen je Marke neu berechnen (Produkte/Umsatz laut sellerboard, Belege, Lieferanten-Angebote). */
-export async function recomputeBrandFacts(tenantId: string) {
-  const brands = await db.select().from(B).where(eq(B.tenantId, tenantId));
+export async function recomputeBrandFacts(tenantId: string, onlyIds?: string[]) {
+  const brands = await db.select().from(B).where(onlyIds ? and(eq(B.tenantId, tenantId), inArray(B.id, onlyIds.length ? onlyIds : ["00000000-0000-0000-0000-000000000000"])) : eq(B.tenantId, tenantId));
   if (!brands.length) return 0;
-  const [products, stats, invoices, offers] = await Promise.all([
+  const E = schema.sasBrandEvidence;
+  const [products, stats, invoices, offers, checks] = await Promise.all([
     db.select({ name: schema.sellerboardProducts.name }).from(schema.sellerboardProducts).where(eq(schema.sellerboardProducts.tenantId, tenantId)),
     db.select({ name: schema.sellerboardSkuStats.name, sales: schema.sellerboardSkuStats.sales, units: schema.sellerboardSkuStats.units }).from(schema.sellerboardSkuStats).where(eq(schema.sellerboardSkuStats.tenantId, tenantId)),
     // Nur echte Rechnungen (keine AGB, Werbung, Bestätigungen …) und nichts Aussortiertes.
-    db.select({ text: schema.invoices.textExcerpt, vendor: schema.invoices.vendor }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.docType, "rechnung"), ne(schema.invoices.status, "ignored"))),
+    db.select({ id: schema.invoices.id, text: schema.invoices.textExcerpt, vendor: schema.invoices.vendor }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.docType, "rechnung"), ne(schema.invoices.status, "ignored"))),
     db.select({ title: schema.supplierOffers.title }).from(schema.supplierOffers).where(eq(schema.supplierOffers.tenantId, tenantId)),
+    db.select({ brandId: E.brandId, invoiceId: E.invoiceId, verdict: E.verdict }).from(E).where(eq(E.tenantId, tenantId)),
   ]);
+  const keyOf = new Map(brands.map((b) => [b.id, b.brandKey]));
+  const verdicts = new Map(checks.filter((c) => keyOf.has(c.brandId)).map((c) => [evidenceKey(keyOf.get(c.brandId)!, c.invoiceId), c.verdict]));
   const facts = brandFacts(
     brands.map((b) => b.brand),
-    { products, stats, invoices: invoices.map((i) => ({ text: `${i.vendor ?? ""} ${i.text ?? ""}` })), offers },
+    { products, stats, invoices: invoices.map((i) => ({ id: i.id, vendor: i.vendor, text: i.text ?? "" })), offers, verdicts },
   );
   const now = new Date();
   for (const b of brands) {
     const f = facts.get(b.brandKey);
     await db
       .update(B)
-      .set({ products: f?.products ?? 0, sales30: String(f?.sales30 ?? 0), units30: f?.units30 ?? 0, invoices: f?.invoices ?? 0, supplierOffers: f?.supplierOffers ?? 0, computedAt: now })
+      .set({ products: f?.products ?? 0, sales30: String(f?.sales30 ?? 0), units30: f?.units30 ?? 0, salesRows: f?.salesRows ?? 0, invoices: f?.invoices ?? 0, invoicesConfirmed: f?.invoicesConfirmed ?? 0, invoicesUnsure: f?.invoicesUnsure ?? 0, supplierOffers: f?.supplierOffers ?? 0, computedAt: now })
       .where(and(eq(B.tenantId, tenantId), eq(B.id, b.id)));
   }
   return brands.length;
@@ -155,21 +160,61 @@ export async function salesCoverage(tenantId: string) {
   return { rows: r?.rows ?? 0, named: r?.named ?? 0, withSales: r?.withSales ?? 0, from: r?.from ?? null, to: r?.to ?? null, synced: r?.synced ? new Date(r.synced) : null };
 }
 
-/** Belege, in denen die Marke vorkommt – mit Ausschnitt zum Nachprüfen (Bankdaten/Fußzeilen ausgenommen). */
+/**
+ * Belege, in denen die Marke vorkommt – mit Fundstelle, Einschätzung (sicher / Text / prüfen) und der Entscheidung
+ * des Nutzers. Zu prüfende zuerst; als falsch markierte stehen am Ende (zählen nicht, lassen sich zurücknehmen).
+ */
 export async function brandEvidence(tenantId: string, brandId: string) {
   const [b] = await db.select().from(B).where(and(eq(B.tenantId, tenantId), eq(B.id, brandId)));
   if (!b) return null;
   const I = schema.invoices;
-  const rows = await db
-    .select({ id: I.id, vendor: I.vendor, fileName: I.fileName, invoiceDate: I.invoiceDate, invoiceNumber: I.invoiceNumber, totalGross: I.totalGross, text: I.textExcerpt })
-    .from(I)
-    .where(and(eq(I.tenantId, tenantId), eq(I.docType, "rechnung"), ne(I.status, "ignored")))
-    .orderBy(desc(I.invoiceDate));
+  const E = schema.sasBrandEvidence;
+  const [rows, checks] = await Promise.all([
+    db
+      .select({ id: I.id, vendor: I.vendor, fileName: I.fileName, invoiceDate: I.invoiceDate, invoiceNumber: I.invoiceNumber, totalGross: I.totalGross, text: I.textExcerpt })
+      .from(I)
+      .where(and(eq(I.tenantId, tenantId), eq(I.docType, "rechnung"), ne(I.status, "ignored")))
+      .orderBy(desc(I.invoiceDate)),
+    db.select({ invoiceId: E.invoiceId, verdict: E.verdict, checkedAt: E.checkedAt }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.brandId, brandId))),
+  ]);
+  const verdictOf = new Map(checks.map((c) => [c.invoiceId, c]));
+  const order = (h: { verdict: string | null; level: string }) => (h.verdict === "falsch" ? 9 : h.verdict === "stimmt" ? 5 : h.level === "pruefen" ? 0 : h.level === "text" ? 1 : 2);
   const hits = rows
-    .map((r) => ({ ...r, snippet: brandSnippet(b.brand, `${r.vendor ?? ""} ${r.text ?? ""}`) }))
-    .filter((r) => r.snippet)
-    .map(({ text: _t, ...r }) => r);
-  return { brand: b, hits: hits.slice(0, 60), total: hits.length };
+    .map(({ text, ...r }) => {
+      const check = evidenceCheck(b.brand, r.vendor, text ?? "");
+      const v = verdictOf.get(r.id);
+      return check ? { ...r, ...check, verdict: v?.verdict ?? null, checkedAt: v?.checkedAt ?? null } : null;
+    })
+    .filter((h): h is NonNullable<typeof h> => h !== null)
+    .sort((x, y) => order(x) - order(y));
+  const counted = hits.filter((h) => h.verdict !== "falsch");
+  const summary = {
+    total: counted.length,
+    sicher: counted.filter((h) => h.verdict === null && h.level === "sicher").length,
+    text: counted.filter((h) => h.verdict === null && h.level === "text").length,
+    pruefen: counted.filter((h) => h.verdict === null && h.level === "pruefen").length,
+    bestaetigt: counted.filter((h) => h.verdict === "stimmt").length,
+    falsch: hits.length - counted.length,
+  };
+  return { brand: b, hits: hits.slice(0, 150), shown: Math.min(150, hits.length), all: hits.length, summary };
+}
+
+/** Zuordnung Marke ↔ Beleg bestätigen, als falsch markieren oder zurücksetzen (null). Danach Kennzahlen der Marke neu. */
+export async function setEvidenceVerdict(tenantId: string, userId: string, brandId: string, invoiceId: string, verdict: "stimmt" | "falsch" | null) {
+  const E = schema.sasBrandEvidence;
+  const [[b], [inv]] = await Promise.all([
+    db.select({ id: B.id }).from(B).where(and(eq(B.tenantId, tenantId), eq(B.id, brandId))),
+    db.select({ id: schema.invoices.id }).from(schema.invoices).where(and(eq(schema.invoices.tenantId, tenantId), eq(schema.invoices.id, invoiceId))),
+  ]);
+  if (!b || !inv) return false;
+  if (verdict === null) await db.delete(E).where(and(eq(E.tenantId, tenantId), eq(E.brandId, brandId), eq(E.invoiceId, invoiceId)));
+  else
+    await db
+      .insert(E)
+      .values({ tenantId, brandId, invoiceId, verdict, checkedBy: userId })
+      .onConflictDoUpdate({ target: [E.brandId, E.invoiceId], set: { verdict, checkedBy: userId, checkedAt: new Date() } });
+  await recomputeBrandFacts(tenantId, [brandId]);
+  return true;
 }
 
 export async function loadBrands(tenantId: string): Promise<SasBrand[]> {
@@ -264,15 +309,27 @@ export async function deleteDeals(tenantId: string) {
 
 // ---- Unterlagen
 
-export async function addDocument(tenantId: string, name: string, mime: string, data: Buffer, kind: (typeof schema.sasDocuments.$inferInsert)["kind"]) {
+/** Unterlage ablegen – außer derselbe Inhalt liegt schon da (dann nichts Neues, Hinweis auf die vorhandene). */
+export async function addDocument(tenantId: string, name: string, mime: string, data: Buffer, kind: (typeof schema.sasDocuments.$inferInsert)["kind"]): Promise<{ stored: boolean; existing: { name: string; createdAt: Date } | null }> {
+  const SD = schema.sasDocuments;
+  const sha = createHash("sha256").update(data).digest("hex");
+  const [same] = await db
+    .select({ name: SD.name, createdAt: SD.createdAt })
+    .from(SD)
+    .innerJoin(schema.files, and(eq(schema.files.id, SD.fileId), eq(schema.files.tenantId, tenantId)))
+    .where(and(eq(SD.tenantId, tenantId), eq(schema.files.sha256, sha)))
+    .orderBy(asc(SD.createdAt))
+    .limit(1);
+  if (same) return { stored: false, existing: same };
   const fileId = await storeFile(tenantId, name, mime, data);
-  await db.insert(schema.sasDocuments).values({ tenantId, fileId, name, kind });
+  await db.insert(SD).values({ tenantId, fileId, name, kind });
+  return { stored: true, existing: null };
 }
 
 export async function loadDocuments(tenantId: string) {
   const SD = schema.sasDocuments;
   return db
-    .select({ id: SD.id, name: SD.name, kind: SD.kind, createdAt: SD.createdAt, size: schema.files.size, mimeType: schema.files.mimeType })
+    .select({ id: SD.id, name: SD.name, kind: SD.kind, createdAt: SD.createdAt, size: schema.files.size, mimeType: schema.files.mimeType, sha256: schema.files.sha256 })
     .from(SD)
     .innerJoin(schema.files, and(eq(schema.files.id, SD.fileId), eq(schema.files.tenantId, tenantId)))
     .where(eq(SD.tenantId, tenantId))

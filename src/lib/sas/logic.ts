@@ -60,7 +60,37 @@ export function brandRegex(brand: string): RegExp {
   return new RegExp(`(^|[^\\p{L}\\p{N}])${esc(brandKey(brand))}($|[^\\p{L}\\p{N}])`, "iu");
 }
 
-export type BrandFacts = { products: number; sales30: number; units30: number; invoices: number; supplierOffers: number };
+export type BrandFacts = {
+  products: number;
+  sales30: number;
+  units30: number;
+  /** Zeilen der 30-Tage-Auswertung mit dieser Marke (auch ohne Verkauf) – trennt „kein Umsatz“ von „keine Daten“. */
+  salesRows: number;
+  /** Belege, die die Marke enthalten – ohne die, die der Nutzer als falsch markiert hat. */
+  invoices: number;
+  /** davon vom Nutzer bestätigt */
+  invoicesConfirmed: number;
+  /** davon mit Hinweis „prüfen“ und noch nicht bestätigt */
+  invoicesUnsure: number;
+  supplierOffers: number;
+};
+
+/**
+ * Umsatz-Spalte einer Marke: Betrag, „kein Umsatz“ (Produkte sind da, in 30 Tagen nichts verkauft),
+ * „keine Daten“ (Marke steht in keinem sellerboard-Produkt) oder „?“ (sellerboard hat gar nichts geliefert).
+ */
+export type SalesState = "umsatz" | "kein_umsatz" | "keine_daten" | "keine_quelle";
+export function salesState(b: { sales30: number | string | null; products: number | null; salesRows: number | null }, sourceRows: number): SalesState {
+  if (sourceRows === 0) return "keine_quelle";
+  if (Number(b.sales30 ?? 0) > 0) return "umsatz";
+  return (b.products ?? 0) > 0 || (b.salesRows ?? 0) > 0 ? "kein_umsatz" : "keine_daten";
+}
+export const SALES_STATE: Record<SalesState, { label: string; hint: string }> = {
+  umsatz: { label: "Umsatz", hint: "" },
+  kein_umsatz: { label: "kein Umsatz", hint: "Produkte dieser Marke sind in sellerboard, aber in den letzten 30 Tagen wurde nichts verkauft." },
+  keine_daten: { label: "keine Daten", hint: "Die Marke steht in keinem sellerboard-Produktnamen – anders geschrieben oder nicht im Sortiment. Umsatz unbekannt, nicht 0." },
+  keine_quelle: { label: "?", hint: "sellerboard hat noch keine Produktumsätze geliefert." },
+};
 
 /**
  * Rechnungstext ohne Bankverbindung und Fußzeile: „BIC: COBADEFF…“, IBAN, SWIFT, Steuer- und Registerangaben
@@ -76,26 +106,87 @@ export function invoiceTextForBrands(text: string): string {
     .replace(/\b(bankverbindung|bank\s*name|kontoinhaber|ust[-.\s]*id(nr|-nr)?\.?|steuer[-\s]*nr\.?|steuernummer|hrb\s*\d+|amtsgericht|registergericht|geschäftsführer(in)?)\b[^\n·|]{0,60}/gi, " ");
 }
 
+const cut = (text: string, at: number, len: number, width: number) => {
+  const from = Math.max(0, at - width);
+  const to = Math.min(text.length, at + len + width);
+  return `${from > 0 ? "…" : ""}${text.slice(from, to).replace(/\s+/g, " ").trim()}${to < text.length ? "…" : ""}`;
+};
+
 /** Wo eine Marke in einem Beleg vorkommt (Ausschnitt) – zum Nachprüfen der Zuordnung. */
 export function brandSnippet(brand: string, text: string, width = 50): string | null {
   const clean = invoiceTextForBrands(text);
   const m = brandRegex(brand).exec(clean);
   if (!m) return null;
-  const at = m.index + m[1].length;
-  const from = Math.max(0, at - width);
-  const to = Math.min(clean.length, at + brandKey(brand).length + width);
-  return `${from > 0 ? "…" : ""}${clean.slice(from, to).replace(/\s+/g, " ").trim()}${to < clean.length ? "…" : ""}`;
+  return cut(clean, m.index + m[1].length, brandKey(brand).length, width);
 }
+
+/** Wie belastbar ein Fund ist: „sicher“ (Lieferant oder Rechnungsposition), „prüfen“ (verdächtige Stelle), sonst „Text“. */
+export type EvidenceLevel = "sicher" | "text" | "pruefen";
+export type EvidenceCheck = { snippet: string; level: EvidenceLevel; reason: string };
+
+const BANK_NEAR = /(^|[^\p{L}])(iban|swift|bic|blz|konto(nummer|inhaber)?|kto|bankverbindung|bank|sparkasse|volksbank|commerzbank|postbank|überweisung|zahlungsempfänger)($|[^\p{L}])/iu;
+const ITEM_LINE = /(\d+[.,]\d{2}\s*(€|eur)?|\b\d+\s*(x|stk\.?|stück|st\.|pcs|pck|vpe|ve)\b|\b(art(ikel)?[-.\s]*nr|ean|menge|pos\.?)\b)/i;
+
+/**
+ * Jede Fundstelle der Marke ansehen und die belastbarste nehmen. „prüfen“, wenn die Marke nur neben Bankangaben,
+ * nur in einer Web-/Mail-Adresse oder (bei kurzen Namen wie „BiC“) nur kleingeschrieben im Fließtext steht.
+ */
+export function evidenceCheck(brand: string, vendor: string | null, text: string): EvidenceCheck | null {
+  const k = brandKey(brand);
+  const re = brandRegex(brand);
+  if (vendor && re.test(vendor.toLowerCase())) {
+    const snip = brandSnippet(brand, `${vendor} ${text}`) ?? vendor;
+    return { snippet: snip, level: "sicher", reason: "Lieferant ist die Marke selbst" };
+  }
+  const clean = invoiceTextForBrands(text);
+  const all = new RegExp(re.source, "giu");
+  const rank: Record<EvidenceLevel, number> = { sicher: 3, text: 2, pruefen: 1 };
+  let best: EvidenceCheck | null = null;
+  for (const m of clean.matchAll(all)) {
+    const at = (m.index ?? 0) + m[1].length;
+    const word = clean.slice(at, at + k.length);
+    const lineStart = clean.lastIndexOf("\n", at) + 1;
+    const lineEnd = clean.indexOf("\n", at);
+    // Zeile der Fundstelle; ohne Zeilenumbrüche (manche PDFs) nur die nähere Umgebung.
+    const fullLine = clean.slice(lineStart, lineEnd < 0 ? clean.length : lineEnd);
+    const line = fullLine.length > 160 ? clean.slice(Math.max(0, at - 60), at + k.length + 60) : fullLine;
+    // Umgebung ohne die Fundstelle selbst (sonst wäre „BiC“ immer „bei Bankangaben“).
+    const near = `${clean.slice(Math.max(0, at - 40), at)} ${clean.slice(at + k.length, at + k.length + 40)}`;
+    const tokenStart = Math.max(clean.lastIndexOf(" ", at - 1), clean.lastIndexOf("\n", at - 1)) + 1;
+    const rest = clean.slice(at).search(/\s/);
+    const token = clean.slice(tokenStart, rest < 0 ? clean.length : at + rest);
+    const snippet = cut(clean, at, k.length, 50);
+    let c: EvidenceCheck;
+    if (/@|www\.|https?:|\.(de|com|eu|net|org|at|ch|shop|info)\b/i.test(token)) c = { snippet, level: "pruefen", reason: "nur in einer Web- oder Mail-Adresse" };
+    else if (BANK_NEAR.test(near)) c = { snippet, level: "pruefen", reason: "steht bei Bankangaben" };
+    else if (k.length <= 3 && word === word.toLowerCase()) c = { snippet, level: "pruefen", reason: "kurzer Name, nur kleingeschrieben" };
+    else if (ITEM_LINE.test(line)) c = { snippet, level: "sicher", reason: "Rechnungsposition mit Menge/Preis" };
+    else c = { snippet, level: "text", reason: "im Rechnungstext" };
+    if (!best || rank[c.level] > rank[best.level]) best = c;
+    if (best.level === "sicher") break;
+  }
+  return best;
+}
+
+/** Schlüssel für eine Nutzer-Entscheidung „stimmt/falsch“ zu Marke + Beleg. */
+export const evidenceKey = (brandKeyValue: string, invoiceId: string) => `${brandKeyValue}\u0000${invoiceId}`;
 
 /** Kennzahlen je Marke aus Produktnamen (sellerboard), 30-Tage-Werten, Rechnungstexten und Lieferanten-Angeboten. */
 export function brandFacts(
   brands: string[],
-  data: { products: { name: string | null }[]; stats: { name: string | null; sales: number | null; units: number }[]; invoices: { text: string }[]; offers: { title: string | null }[] },
+  data: {
+    products: { name: string | null }[];
+    stats: { name: string | null; sales: number | null; units: number }[];
+    invoices: { id?: string; vendor?: string | null; text: string }[];
+    offers: { title: string | null }[];
+    /** Entscheidungen des Nutzers je Marke + Beleg (evidenceKey → stimmt/falsch). */
+    verdicts?: Map<string, "stimmt" | "falsch">;
+  },
 ): Map<string, BrandFacts> {
   const low = (s: string | null) => (s ?? "").toLowerCase();
   const products = data.products.map((p) => low(p.name));
   const stats = data.stats.map((s) => ({ name: low(s.name), sales: s.sales ?? 0, units: s.units }));
-  const invoices = data.invoices.map((i) => invoiceTextForBrands(i.text).toLowerCase());
+  const invoices = data.invoices.map((i) => ({ id: i.id ?? "", vendor: i.vendor ?? null, raw: i.text, low: invoiceTextForBrands(`${i.vendor ?? ""} ${i.text}`).toLowerCase() }));
   const offers = data.offers.map((o) => low(o.title));
   const out = new Map<string, BrandFacts>();
   for (const b of brands) {
@@ -105,11 +196,24 @@ export function brandFacts(
     const hit = (s: string) => s.includes(k) && re.test(s);
     let sales = 0;
     let units = 0;
+    let rows = 0;
     for (const s of stats) if (hit(s.name)) {
       sales += s.sales;
       units += s.units;
+      rows++;
     }
-    out.set(k, { products: products.filter(hit).length, sales30: Math.round(sales * 100) / 100, units30: units, invoices: invoices.filter(hit).length, supplierOffers: offers.filter(hit).length });
+    let inv = 0;
+    let confirmed = 0;
+    let unsure = 0;
+    for (const i of invoices) {
+      if (!hit(i.low)) continue;
+      const v = i.id ? data.verdicts?.get(evidenceKey(k, i.id)) : undefined;
+      if (v === "falsch") continue;
+      inv++;
+      if (v === "stimmt") confirmed++;
+      else if (evidenceCheck(b, i.vendor, i.raw)?.level === "pruefen") unsure++;
+    }
+    out.set(k, { products: products.filter(hit).length, sales30: Math.round(sales * 100) / 100, units30: units, salesRows: rows, invoices: inv, invoicesConfirmed: confirmed, invoicesUnsure: unsure, supplierOffers: offers.filter(hit).length });
   }
   return out;
 }
@@ -207,6 +311,35 @@ export function dealCalc(d: DealInput): DealResult {
   const verdict = profit < 0 ? "verlust" : profit >= 0.5 && margin >= 3 ? "lohnt" : "knapp";
   const reason = verdict === "verlust" ? `Mit ${disc} % Rabatt ${profit.toFixed(2).replace(".", ",")} € je Stück – nicht einreichen.` : verdict === "knapp" ? "Kaum Gewinn nach Rabatt – nur für Ranking/Abverkauf." : "Gewinn auch nach Rabatt.";
   return { dealPrice, profit, profitNow: p(d.price), margin, verdict, reason };
+}
+
+// ---- Unterlagen
+
+export type DocLike = { id: string; name: string; size: number; sha256: string; createdAt: Date };
+export type DocDuplicate = { kind: "doppelt"; of: DocLike } | { kind: "aehnlich"; of: DocLike };
+
+/**
+ * Doppelte Unterlagen: gleicher Inhalt (Prüfsumme) = „doppelt“ – das älteste Exemplar bleibt das Original.
+ * Gleicher Name und gleiche Größe, aber anderer Inhalt = nur „ähnlich“ (nicht entfernen vorschlagen).
+ */
+export function findDuplicateDocs(docs: DocLike[]): Map<string, DocDuplicate> {
+  const sorted = [...docs].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+  const firstBySha = new Map<string, DocLike>();
+  const firstByName = new Map<string, DocLike>();
+  const out = new Map<string, DocDuplicate>();
+  for (const d of sorted) {
+    const orig = firstBySha.get(d.sha256);
+    if (orig) {
+      out.set(d.id, { kind: "doppelt", of: orig });
+      continue;
+    }
+    firstBySha.set(d.sha256, d);
+    const nk = `${d.name.trim().toLowerCase()}\u0000${d.size}`;
+    const same = firstByName.get(nk);
+    if (same) out.set(d.id, { kind: "aehnlich", of: same });
+    else firstByName.set(nk, d);
+  }
+  return out;
 }
 
 /** Tage bis zu einem Datum (negativ = vorbei). */

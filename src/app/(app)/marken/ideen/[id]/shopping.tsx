@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { purchaseIdeaAction, type BrandState } from "../../actions";
 
 /** Alle Produktseiten öffnen und Liste kopieren – im Browser des Nutzers. */
@@ -59,8 +60,9 @@ export function ShoppingTools({ urls, text }: { urls: string[]; text: string }) 
 
 export function PurchaseButton({ id, boxes }: { id: string; boxes: number }) {
   const [state, action, pending] = useActionState<BrandState, FormData>(purchaseIdeaAction, null);
+  const keepAction = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keepAction.ref} onSubmit={keepAction.onSubmit} className="stack" style={{ gap: 6 }}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="boxes" value={boxes} />
       <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lege an …" : `Als Einkauf anlegen (${boxes} Boxen)`}</button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { useSubmitKey } from "@/lib/use-submit-key";
 import { CARRIERS, LINK_DAYS } from "@/lib/pallets/shipments";
 import { PhotoPicker, type PickedPhoto } from "../photos";
@@ -153,12 +154,10 @@ const addDays = (iso: string, d: number) => {
 /** Kleines Formular für eine Aktion an der Sendung (Termin, Status, Notiz …) mit Rückmeldung. */
 export function ShipAction({ id, intent, children, testid, className = "stack", resetOnOk = false }: { id: string; intent: string; children: React.ReactNode; testid?: string; className?: string; resetOnOk?: boolean }) {
   const [state, action, pending] = useActionState<ShipState, FormData>(shipmentAction, null);
-  const form = useRef<HTMLFormElement>(null);
-  useEffect(() => {
-    if (state?.ok && resetOnOk) form.current?.reset();
-  }, [state, resetOnOk]);
+  // Eingaben bleiben bei Fehlern stehen; Auswahlfelder zeigen nach dem Speichern den gespeicherten Wert.
+  const keep = useKeepForm(state, action, { resetOnSuccess: resetOnOk });
   return (
-    <form ref={form} action={action} className={className} style={{ gap: 8 }} data-testid={testid} aria-busy={pending}>
+    <form ref={keep.ref} action={action} onSubmit={keep.onSubmit} className={className} style={{ gap: 8 }} data-testid={testid} aria-busy={pending}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="intent" value={intent} />
       {children}
@@ -217,6 +216,7 @@ type LinkRow = { id: string; path: string | null; state: "aktiv" | "abgelaufen" 
 /** Kunden-Link: erstellen, kopieren, teilen (WhatsApp, Mail …), zurückziehen. */
 export function ShareLinks({ id, links, title, customerEmail }: { id: string; links: LinkRow[]; title: string; customerEmail: string | null }) {
   const [state, action, pending] = useActionState<ShipState, FormData>(shipmentAction, null);
+  const keep = useKeepForm(state, action);
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
   const fresh = state?.ok && state.link ? state.link : null;
@@ -224,7 +224,7 @@ export function ShareLinks({ id, links, title, customerEmail }: { id: string; li
   const shown = fresh && !active.some((l) => l.path === fresh) ? [{ id: "neu", path: fresh, state: "aktiv" as const, until: "", views: 0, photos: true }, ...active] : active;
   return (
     <div className="stack" style={{ gap: 10 }}>
-      <form action={action} className="stack" style={{ gap: 8 }} data-testid="ship-link-form">
+      <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 8 }} data-testid="ship-link-form">
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="intent" value="link" />
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>

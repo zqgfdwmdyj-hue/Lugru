@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { saveAssistantSettings, type ClaudeState } from "./actions";
 
 export function CopyUrl({ url }: { url: string }) {
@@ -29,8 +30,9 @@ export function CopyUrl({ url }: { url: string }) {
 
 export function AssistantSettings({ v, hasKey }: { v: { enabled: boolean; model: string; allowWrite: boolean }; hasKey: boolean }) {
   const [state, action, pending] = useActionState<ClaudeState, FormData>(saveAssistantSettings, null);
+  const keepAction = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10 }} data-testid="assistant-settings">
+    <form action={action} ref={keepAction.ref} onSubmit={keepAction.onSubmit} className="stack" style={{ gap: 10 }} data-testid="assistant-settings">
       <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <input type="checkbox" name="enabled" defaultChecked={v.enabled} /> Fragefeld oben im Seller-System anzeigen (für alle Konten)
       </label>

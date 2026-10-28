@@ -477,6 +477,13 @@
       "when": 1793191221879,
       "tag": "0067_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793193785142,
+      "tag": "0068_sas_pruefung",
+      "breakpoints": true
     }
   ]
 }
