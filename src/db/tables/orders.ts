@@ -86,15 +86,17 @@ export const parcels = pgTable(
 );
 
 /**
- * Versandgewicht je Stück (inkl. Verpackung) zur Wawi-SKU – einmal eingetragen, gilt für alle Kanäle
- * (Amazon, eBay …). Gewicht einer Sendung = Stück × Gewicht.
+ * Versandangaben je Artikel (Wawi-SKU) – einmal eingetragen, gelten für alle Kanäle (Amazon, eBay …):
+ * Versandgewicht je Stück inkl. Verpackung (Sendung = Stück × Gewicht) und wie viele Stück in eine
+ * Warensendung passen (höchstens 35,3 × 25 × 5 cm): null = nicht festgelegt, 0 = nie, n = bis n Stück.
  */
 export const skuWeights = pgTable(
   "sku_weights",
   {
     tenantId: tenantId(),
     sku: text("sku").notNull(),
-    grams: integer("grams").notNull(),
+    grams: integer("grams"),
+    wsMax: integer("ws_max"),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.sku] })],

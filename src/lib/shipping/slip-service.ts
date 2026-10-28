@@ -8,8 +8,8 @@ import { imBuyLabels, imCreds } from "@/lib/integrations/clients/deutschepost";
 import { createLabel, loadOrder, storeFile } from "@/lib/orders/service";
 import { getSettings } from "@/lib/settings";
 import { syncSoon } from "@/lib/stock/channel-sync";
-import { parsePackingSlip, shipChoice, type ShipChoice, type SlipOrder } from "./packing-slip";
-import { WARENSENDUNG } from "./internetmarke";
+import { parsePackingSlip, type ShipChoice, type SlipOrder } from "./packing-slip";
+import { warensendungCheck } from "./warensendung";
 import { imCsvProblem, internetmarkeCsv, IM_CSV_MAX } from "./internetmarke-csv";
 import { mergePdfs } from "./label-pdfs";
 import { orderShipWeight, type SkuWeightInfo } from "./weights-service";
@@ -37,6 +37,8 @@ export type SlipRow = {
   weightSource: WeightSource;
   /** Artikel der Sendung mit eingetragenem Versandgewicht (oder null). */
   skus: SkuWeightInfo[];
+  /** Warensendung für einen Artikel noch nicht festgelegt – einmal eintragen, dann geht es automatisch. */
+  wsNeedsSetup: boolean;
   /** Auftrag hat schon ein Label bzw. ist versendet – wird nicht noch einmal gekauft. */
   done: string | null;
   warnings: string[];
@@ -98,7 +100,10 @@ async function insertItems(tenantId: string, orderId: string, o: SlipOrder) {
   await db.insert(schema.orderItems).values(o.items.map((it) => ({ tenantId, orderId, sku: it.sku, asin: it.asin, title: it.title.slice(0, 300), quantity: it.quantity, externalItemId: it.lineId })));
 }
 
-/** Zeile der Vorschau zu einem Auftrag: Versandart nach Stückzahl, Gewicht, ob schon erledigt. */
+/**
+ * Zeile der Vorschau zu einem Auftrag: Versandart nach den Bedingungen der Warensendung (je Artikel festgelegt,
+ * wie viele Stück hineinpassen; Gewicht; nur Inland) – sonst DHL. Unsicher gelesene Daten → prüfen.
+ */
 export async function slipRow(tenantId: string, orderId: string, slip?: SlipOrder): Promise<SlipRow | null> {
   const data = await loadOrder(tenantId, orderId);
   if (!data) return null;
@@ -107,13 +112,10 @@ export async function slipRow(tenantId: string, orderId: string, slip?: SlipOrde
   const warnings = [...(slip?.warnings ?? [])];
   if (needsAddress(to)) warnings.push("Lieferadresse unvollständig");
   const w = await orderShipWeight(tenantId, data);
-  let choice = shipChoice({ quantity, shipTo: to, warnings });
-  let reason = choice === "warensendung" ? "1 Stück" : choice === "dhl" ? (quantity === 1 ? "1 Stück, aber Ausland – Warensendung nur innerhalb Deutschlands" : `${quantity} Stück`) : warnings[0] ?? "Menge unklar";
-  // Warensendung nur bis 1.000 g: schwerer → DHL (nur bei bekanntem Gewicht, nicht beim Schätzwert).
-  if (choice === "warensendung" && w.source !== "geschaetzt" && w.kg * 1000 > WARENSENDUNG.maxGrams) {
-    choice = "dhl";
-    reason = `1 Stück, aber ${w.kg.toLocaleString("de-DE")} kg – Warensendung nur bis 1 kg`;
-  }
+  const unsure = quantity < 1 || warnings.some((x) => /Adresse|Positionen|Land/.test(x));
+  const ws = warensendungCheck({ country: to.country, items: w.items, weightKg: w.kg });
+  const choice: ShipChoice = unsure ? "pruefen" : ws.ok ? "warensendung" : "dhl";
+  const reason = unsure ? warnings[0] ?? "Menge unklar" : ws.reason;
   const done = data.order.status !== "open" ? (data.order.status === "label_created" ? `Label schon erstellt${data.order.carrier ? ` (${data.order.carrier})` : ""}` : data.order.status === "cancelled" ? "storniert" : "schon versendet") : null;
   return {
     orderId,
@@ -129,6 +131,7 @@ export async function slipRow(tenantId: string, orderId: string, slip?: SlipOrde
     weightNote: w.note,
     weightSource: w.source,
     skus: w.skus,
+    wsNeedsSetup: !unsure && ws.needsSetup,
     done,
     warnings,
   };

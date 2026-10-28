@@ -10,7 +10,8 @@ import { syncChannelStock, syncSoon } from "@/lib/stock/channel-sync";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { cancelLabel, createLabel, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
-import { orderShipWeight, saveSkuWeight } from "@/lib/shipping/weights-service";
+import { orderShipWeight, saveSkuShipping } from "@/lib/shipping/weights-service";
+import { parseWsMax } from "@/lib/shipping/warensendung";
 import { parseWeightInput } from "@/lib/shipping/weight";
 import { getSettings } from "@/lib/settings";
 import { TEMU_MASKED_NOTE } from "@/lib/orders/temu";
@@ -160,6 +161,7 @@ export async function saveSkuWeightAction(fd: FormData) {
   const sku = String(fd.get("sku") ?? "").trim();
   const raw = String(fd.get("kg") ?? "").trim();
   const grams = raw === "" ? 0 : parseWeightInput(raw);
-  if (sku && grams !== null) await saveSkuWeight(session.tenantId, sku, grams);
+  const ws = fd.has("ws") ? parseWsMax(String(fd.get("ws") ?? "")) : undefined;
+  if (sku) await saveSkuShipping(session.tenantId, sku, { ...(grams !== null ? { grams: grams || null } : {}), ...(ws !== undefined ? { wsMax: ws } : {}) });
   revalidatePath(`/auftraege/${orderId}`);
 }

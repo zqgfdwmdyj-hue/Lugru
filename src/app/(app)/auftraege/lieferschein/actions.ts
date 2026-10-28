@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { createSlipLabels, readOpenOrders, readSlip, slipRow, type SlipLabels, type SlipRow } from "@/lib/shipping/slip-service";
-import { saveSkuWeight } from "@/lib/shipping/weights-service";
+import { saveSkuShipping } from "@/lib/shipping/weights-service";
+import { parseWsMax } from "@/lib/shipping/warensendung";
 import { parseWeightInput } from "@/lib/shipping/weight";
 import type { ShipChoice } from "@/lib/shipping/packing-slip";
 
@@ -25,28 +26,37 @@ export async function slipAction(prev: SlipState, fd: FormData): Promise<SlipSta
   return readSlipFile(fd);
 }
 
-/** Versandgewicht je Artikel speichern – gilt ab sofort für alle Sendungen dieses Artikels (alle Kanäle). */
+/**
+ * Versandangaben je Artikel speichern (Gewicht je Stück, Warensendung bis … Stück) – gilt ab sofort für alle
+ * Sendungen dieses Artikels (alle Kanäle). Nur geänderte Felder werden geschrieben.
+ */
 async function saveWeights(prev: SlipState, fd: FormData): Promise<SlipState> {
   const session = await requireArea("wawi");
   const rows = prev?.rows ?? [];
   const bad: string[] = [];
   let saved = 0;
-  for (const [key, value] of fd.entries()) {
-    const m = /^w_(\d+)$/.exec(key);
-    if (!m) continue;
-    const sku = String(fd.get(`s_${m[1]}`) ?? "");
-    const raw = String(value).trim();
-    if (!sku || raw === String(fd.get(`o_${m[1]}`) ?? "")) continue;
-    const grams = raw === "" ? 0 : parseWeightInput(raw);
-    if (grams === null) {
-      bad.push(`${sku}: „${raw}“`);
-      continue;
+  const indexes = new Set([...fd.keys()].map((k) => /^(?:w|ws)_(\d+)$/.exec(k)?.[1]).filter((x): x is string => Boolean(x)));
+  for (const i of indexes) {
+    const sku = String(fd.get(`s_${i}`) ?? "").trim();
+    if (!sku) continue;
+    const patch: { grams?: number | null; wsMax?: number | null } = {};
+    const raw = String(fd.get(`w_${i}`) ?? "").trim();
+    if (fd.has(`w_${i}`) && raw !== String(fd.get(`o_${i}`) ?? "")) {
+      const grams = raw === "" ? 0 : parseWeightInput(raw);
+      if (grams === null) bad.push(`${sku}: „${raw}“`);
+      else patch.grams = grams || null;
     }
-    await saveSkuWeight(session.tenantId, sku, grams);
+    const ws = String(fd.get(`ws_${i}`) ?? "");
+    if (fd.has(`ws_${i}`) && ws !== String(fd.get(`ows_${i}`) ?? "")) {
+      const v = parseWsMax(ws);
+      if (v !== undefined) patch.wsMax = v;
+    }
+    if (!Object.keys(patch).length) continue;
+    await saveSkuShipping(session.tenantId, sku, patch);
     saved++;
   }
   revalidatePath("/auftraege/lieferschein");
-  return { rows: await refreshed(session.tenantId, rows), labels: prev?.labels, note: [saved ? `${saved} Gewicht(e) gespeichert – gilt ab jetzt für jede Sendung dieser Artikel.` : "Keine Änderung.", bad.length ? `Nicht verstanden: ${bad.join(", ")} (z. B. 0,3 für 0,3 kg oder 300 g)` : ""].filter(Boolean).join(" ") };
+  return { rows: await refreshed(session.tenantId, rows), labels: prev?.labels, note: [saved ? `${saved} Artikel gespeichert – gilt ab jetzt für jede Sendung dieser Artikel.` : "Keine Änderung.", bad.length ? `Nicht verstanden: ${bad.join(", ")} (z. B. 0,3 für 0,3 kg oder 300 g)` : ""].filter(Boolean).join(" ") };
 }
 
 /** Offene Aufträge übernehmen (vorher neu abrufen) – gleiche Automatik wie beim Lieferschein. */

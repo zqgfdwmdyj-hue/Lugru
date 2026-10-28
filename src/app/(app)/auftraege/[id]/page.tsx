@@ -5,7 +5,8 @@ import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
 import { loadOrder } from "@/lib/orders/service";
-import { orderShipWeight, skuWeightMap } from "@/lib/shipping/weights-service";
+import { orderShipWeight, skuShippingMap } from "@/lib/shipping/weights-service";
+import { WS_OPTIONS, warensendungCheck } from "@/lib/shipping/warensendung";
 import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
 import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveSkuWeightAction } from "../actions";
@@ -24,7 +25,8 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   const weight = sw.source === "geschaetzt" ? null : sw.kg;
   // Versandgewicht je Stück pro Position (an der Lager-SKU) – hier direkt eintragbar.
   const keys = await Promise.all(items.map((i) => (i.item.sku ? wawiSku(session.tenantId, order.channel, i.item.sku) : Promise.resolve(null))));
-  const skuGrams = await skuWeightMap(session.tenantId, keys.filter((k): k is string => Boolean(k)));
+  const skuInfo = await skuShippingMap(session.tenantId, keys.filter((k): k is string => Boolean(k)));
+  const ws = warensendungCheck({ country: order.shipTo?.country, items: sw.items, weightKg: sw.kg });
   const kgText = (g: number) => (g / 1000).toLocaleString("de-DE", { maximumFractionDigits: 3 });
   const a = order.shipTo ?? {};
   const f = (name: keyof typeof a, label: string, width?: number) => (
@@ -51,11 +53,12 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           <section className="card" style={{ overflow: "hidden" }}>
             <div className="card-head"><h2>Artikel</h2><span className="num">{formatEuro(order.total)}</span></div>
             <table className="table">
-              <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Menge</th><th className="right">Preis</th><th className="right">Versandgewicht je Stück</th></tr></thead>
+              <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Menge</th><th className="right">Preis</th><th className="right">Je Stück: Gewicht · Warensendung</th></tr></thead>
               <tbody>
                 {items.map(({ item, weightGrams, productTitle }, n) => {
                   const key = keys[n];
-                  const g = key ? skuGrams.get(key) ?? null : null;
+                  const g = key ? skuInfo.get(key)?.grams ?? null : null;
+                  const wsMax = key ? skuInfo.get(key)?.wsMax ?? null : null;
                   return (
                     <tr key={item.id}>
                       <td className="num">{item.sku ?? "–"}</td>
@@ -69,6 +72,9 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                             <input type="hidden" name="sku" value={key} />
                             <input className="input" name="kg" defaultValue={g !== null ? kgText(g) : ""} placeholder={weightGrams ? kgText(weightGrams) : "0,3"} inputMode="decimal" aria-label={`Versandgewicht je Stück ${item.sku}`} style={{ width: 70, padding: "4px 6px" }} />
                             <span className="small muted">kg</span>
+                            <select className="select" name="ws" defaultValue={wsMax === null ? "" : String(wsMax)} aria-label={`Warensendung bis … Stück ${item.sku}`} style={{ padding: "4px 6px", maxWidth: 150 }} data-testid="item-ws">
+                              {WS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value === "" ? "Warensendung: ?" : o.value === "0" ? "Warensendung: nie" : `Warensendung ${o.label}`}</option>)}
+                            </select>
                             <button className="btn btn-small" type="submit">Speichern</button>
                           </form>
                         ) : (
@@ -82,6 +88,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
               </tbody>
             </table>
             <div className="small muted" style={{ padding: "8px 14px" }} data-testid="order-weight-sum">Sendung: {sw.note} · gilt für alle Aufträge mit diesem Artikel (Amazon und eBay)</div>
+            <div className="small" style={{ padding: "0 14px 10px", color: ws.ok ? "var(--ok)" : ws.needsSetup ? "var(--warn)" : "var(--muted)" }} data-testid="order-ws">Warensendung: {ws.ok ? "ja – " : "nein – "}{ws.reason}</div>
           </section>
 
           {order.fulfillment === "FBM" && (

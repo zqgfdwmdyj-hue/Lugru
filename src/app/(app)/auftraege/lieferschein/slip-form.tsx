@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { SHIP_CHOICE_LABEL, type ShipChoice } from "@/lib/shipping/packing-slip";
+import { WS_OPTIONS } from "@/lib/shipping/warensendung";
 import { slipAction, type SlipState } from "./actions";
 import type { SkuWeightInfo } from "@/lib/shipping/weights-service";
 
@@ -22,8 +23,9 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
   const resultFor = (id: string) => labels?.results.find((x) => x.orderId === id);
   // Artikel der offenen Sendungen – Gewicht je Stück einmal eintragen, gilt dann für alle Sendungen.
   // Alle bekannten Artikel (letzte Aufträge + hinterlegte Gewichte), dazu die der aktuellen Tabelle – immer sichtbar.
-  const skus = [...new Map([...weights, ...rows.flatMap((r) => r.skus)].map((s) => [s.sku, s])).values()].sort((a, b) => Number(a.grams !== null) - Number(b.grams !== null) || a.title.localeCompare(b.title, "de"));
-  const missing = skus.filter((s) => s.grams === null).length;
+  const done = (x: { grams: number | null; wsMax: number | null }) => Number(x.grams !== null) + Number(x.wsMax !== null);
+  const skus = [...new Map([...weights, ...rows.flatMap((r) => r.skus)].map((s) => [s.sku, s])).values()].sort((a, b) => done(a) - done(b) || a.title.localeCompare(b.title, "de"));
+  const missing = skus.filter((s) => s.grams === null || s.wsMax === null).length;
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -59,7 +61,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
           </div>
         </form>
       </div>
-      <span className="small muted">1 Stück → Warensendung (Deutsche Post, {eur(postPrice)}) · ab 2 Stück → DHL-Paket · „bitte prüfen“ wird nicht gekauft. Bestellungen „bitte prüfen“ und alles mit Label bleiben stehen.</span>
+      <span className="small muted">Warensendung (Deutsche Post, {eur(postPrice)}), wenn alle Artikel laut Festlegung hineinpassen, höchstens 1 kg und Inland – sonst DHL-Paket. „bitte prüfen“ wird nicht gekauft, alles mit Label bleibt stehen.</span>
 
       {state?.error && <div className="notice notice-error" data-testid="slip-error">{state.error}</div>}
       {state?.note && <div className="notice notice-info" data-testid="slip-note">{state.note}</div>}
@@ -89,34 +91,48 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
       )}
 
       <form action={action} className="card card-pad stack" style={{ gap: 10 }} data-testid="slip-weights">
-          <input type="hidden" name="intent" value="weights" />
-          <h2>Gewicht je Artikel{skus.length ? ` (${skus.length - missing} hinterlegt${missing ? `, ${missing} ${missing === 1 ? "fehlt" : "fehlen"}` : ""})` : ""}</h2>
-          <span className="small muted">Versandgewicht für <strong>ein Stück inkl. Verpackung</strong> – einmal eintragen, dann rechnet jede Sendung Stück × Gewicht (z. B. 2 × 0,3 kg = 0,6 kg). Gilt für Amazon und eBay gleich.</span>
-          <div className="slip-weights">
-            {skus.map((s, i) => (
-              <div key={s.sku} className="field" data-testid="slip-weight" data-sku={s.sku}>
-                <label className="label small" htmlFor={`w_${i}`} title={s.sku}>{s.title.length > 60 ? `${s.title.slice(0, 58)} …` : s.title}</label>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input className="input" id={`w_${i}`} name={`w_${i}`} defaultValue={kgText(s.grams)} placeholder="z. B. 0,3" inputMode="decimal" style={{ width: 90 }} />
-                  <span className="small muted">kg</span>
-                  {s.grams === null && <span className="tag tag-warn">fehlt</span>}
-                </div>
-                <span className="small muted num">{s.sku}</span>
-                <input type="hidden" name={`s_${i}`} value={s.sku} />
-                <input type="hidden" name={`o_${i}`} value={kgText(s.grams)} />
-              </div>
-            ))}
-            <div className="field" data-testid="slip-weight-new">
-              <label className="label small" htmlFor={`s_${skus.length}`}>Weiterer Artikel (SKU)</label>
-              <input className="input" id={`s_${skus.length}`} name={`s_${skus.length}`} placeholder="SKU" style={{ width: 180 }} />
+        <input type="hidden" name="intent" value="weights" />
+        <h2>Artikel: Gewicht & Warensendung{skus.length ? ` (${skus.length - missing} vollständig${missing ? `, ${missing} offen` : ""})` : ""}</h2>
+        <span className="small muted">
+          Je Artikel einmal: <strong>Gewicht für ein Stück inkl. Verpackung</strong> (Sendung = Stück × Gewicht) und <strong>wie viele Stück in eine Warensendung passen</strong>.
+          Bedingungen der Post: höchstens 35,3 × 25 × <strong>5 cm</strong> dick, bis 1.000 g, nur innerhalb Deutschlands, Ware ohne persönliche Mitteilung (Lieferschein darf rein). Passt es nicht oder ist nichts festgelegt, geht die Sendung als DHL.
+        </span>
+        <div className="slip-weights">
+          {skus.map((s, i) => (
+            <div key={`${s.sku}:${s.grams}:${s.wsMax}`} className="field" data-testid="slip-weight" data-sku={s.sku}>
+              <label className="label small" htmlFor={`w_${i}`} title={s.sku}>{s.title.length > 60 ? `${s.title.slice(0, 58)} …` : s.title}</label>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input className="input" name={`w_${skus.length}`} placeholder="z. B. 0,3" inputMode="decimal" aria-label="Gewicht je Stück" style={{ width: 90 }} />
+                <input className="input" id={`w_${i}`} name={`w_${i}`} defaultValue={kgText(s.grams)} placeholder="z. B. 0,3" inputMode="decimal" style={{ width: 80 }} aria-label="Gewicht je Stück in kg" />
                 <span className="small muted">kg</span>
+                {s.grams === null && <span className="tag tag-warn">fehlt</span>}
               </div>
-              <input type="hidden" name={`o_${skus.length}`} value="" />
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select className="select" name={`ws_${i}`} defaultValue={s.wsMax === null ? "" : String(s.wsMax)} aria-label="Warensendung bis … Stück" data-testid="slip-ws" style={{ maxWidth: 170 }}>
+                  {WS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value === "" ? "Warensendung: ?" : o.value === "0" ? "Warensendung: nie" : `Warensendung ${o.label}`}</option>)}
+                </select>
+                {s.wsMax === null && <span className="tag tag-warn">festlegen</span>}
+              </div>
+              <span className="small muted num">{s.sku}</span>
+              <input type="hidden" name={`s_${i}`} value={s.sku} />
+              <input type="hidden" name={`o_${i}`} value={kgText(s.grams)} />
+              <input type="hidden" name={`ows_${i}`} value={s.wsMax === null ? "" : String(s.wsMax)} />
             </div>
+          ))}
+          <div className="field" data-testid="slip-weight-new">
+            <label className="label small" htmlFor={`s_${skus.length}`}>Weiterer Artikel (SKU)</label>
+            <input className="input" id={`s_${skus.length}`} name={`s_${skus.length}`} placeholder="SKU" style={{ width: 180 }} />
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input className="input" name={`w_${skus.length}`} placeholder="z. B. 0,3" inputMode="decimal" aria-label="Gewicht je Stück" style={{ width: 80 }} />
+              <span className="small muted">kg</span>
+            </div>
+            <select className="select" name={`ws_${skus.length}`} defaultValue="" aria-label="Warensendung bis … Stück" style={{ maxWidth: 170 }}>
+              {WS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value === "" ? "Warensendung: ?" : o.value === "0" ? "Warensendung: nie" : `Warensendung ${o.label}`}</option>)}
+            </select>
+            <input type="hidden" name={`o_${skus.length}`} value="" />
+            <input type="hidden" name={`ows_${skus.length}`} value="" />
           </div>
-          <div><button className="btn" type="submit" disabled={pending} data-testid="slip-save-weights">Gewichte speichern & neu rechnen</button></div>
+        </div>
+        <div><button className="btn" type="submit" disabled={pending} data-testid="slip-save-weights">Speichern & neu rechnen</button></div>
       </form>
 
       {rows.length > 0 && (
@@ -143,7 +159,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial, wei
                             <select key={`${r.orderId}:${r.choice}`} className="select" name={`choice_${r.orderId}`} defaultValue={r.choice} aria-label={`Versandart ${r.orderNo}`} data-testid="slip-choice">
                               {(["warensendung", "dhl", "pruefen"] as const).map((c) => <option key={c} value={c}>{c === "pruefen" ? "nicht versenden (prüfen)" : SHIP_CHOICE_LABEL[c]}</option>)}
                             </select>
-                            <div className="small muted">{r.reason}</div>
+                            <div className="small" style={{ color: r.wsNeedsSetup ? "var(--warn)" : "var(--muted)" }} data-testid="slip-reason">{r.reason}{r.wsNeedsSetup ? " – oben bei „Artikel“ festlegen" : ""}</div>
                             <div className="small" data-testid="slip-weight-note" style={{ color: r.weightSource === "geschaetzt" ? "var(--warn)" : "var(--muted)" }}>{r.weightNote}</div>
                           </>
                         )}

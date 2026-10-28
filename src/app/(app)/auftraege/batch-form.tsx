@@ -21,7 +21,7 @@ export function BatchForm({ children }: { children: React.ReactNode }) {
             window.location.href = `/auftraege/lieferschein?ids=${ids.join(",")}`;
           }}
         >
-          Labels automatisch (1 Stück Warensendung, ab 2 DHL) …
+          Labels automatisch (Warensendung, wenn sie passt – sonst DHL) …
         </button>
         <button className="btn" type="submit" disabled={pending}>{pending ? "Erstelle Labels …" : "Nur DHL-Labels für Auswahl"}</button>
         <span className="small muted">Gewicht aus den Artikeldaten + 150 g Verpackung; bis zur Kleinpaket-Grenze automatisch als Kleinpaket.</span>

@@ -449,6 +449,13 @@
       "when": 1793170135822,
       "tag": "0063_sku_weights",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793183642825,
+      "tag": "0064_sku_warensendung",
+      "breakpoints": true
     }
   ]
 }
