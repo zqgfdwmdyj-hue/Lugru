@@ -1,8 +1,8 @@
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { formatDate } from "@/lib/numbers";
-import { outputPrice } from "@/lib/layout";
-import { amountFromVariant, packCountLabel, guessUnit, isDrink, mhdAuto, PACK_KINDS, packOffers, packText, STOCK_LABELS, unitLabel, UNITS } from "@/lib/price-logic";
+import { collagePrice, outputPrice } from "@/lib/layout";
+import { amountFromVariant, packCountLabel, unitCountLabel, guessUnit, isDrink, mhdAuto, PACK_KINDS, packOffers, packText, STOCK_LABELS, unitLabel, UNITS } from "@/lib/price-logic";
 import { saveProductDefaults } from "@/app/(app)/actions";
 
 type Product = typeof schema.products.$inferSelect;
@@ -64,7 +64,7 @@ export function ProductDefaultsForm({ data, back, compact = false }: { data: Awa
                   </select>
                   {!base.unit && unitGuess && <span className="small muted">Vorschlag: {unitLabel(unitGuess.unit, unitGuess.count)}</span>}
                 </div>
-                <div className="field"><label className="label" htmlFor={`${px}count`}>{drink ? "Flaschen / Stück darin" : "Stück je Einheit"}</label><input className="input" id={`${px}count`} name="unitCount" defaultValue={base.unitCount ?? ""} inputMode="numeric" placeholder={drink ? "z. B. 20" : "z. B. 6"} /></div>
+                <div className="field"><label className="label" htmlFor={`${px}count`}>{unitCountLabel(base.unit, drink)}</label><input className="input" id={`${px}count`} name="unitCount" defaultValue={base.unitCount ?? ""} inputMode="numeric" placeholder={drink ? "z. B. 20" : "z. B. 6"} /></div>
               </div>
               <div className="field"><label className="label" htmlFor={`${px}amount`}>Inhalt / Menge (optional)</label><input className="input" id={`${px}amount`} name="amount" defaultValue={product.amount ?? ""} placeholder={amountFromVariant(product.variant) ? `z. B. ${amountFromVariant(product.variant)}` : drink ? "z. B. 0,5 l" : "z. B. 1,5 kg"} /></div>
               <div className="field"><label className="label" htmlFor={`${px}note`}>Eigener Text vor dem Preis (optional)</label><input className="input" id={`${px}note`} name="priceNote" defaultValue={base.priceNote ?? ""} placeholder="z. B. je, 3 Stück" /></div>
@@ -117,7 +117,7 @@ export function ProductDefaultsForm({ data, back, compact = false }: { data: Awa
           </div>
           <div className="output-preview" style={{ margin: "0 14px" }}>
             <span className="small muted">So steht es in Collage, Aushang und Messenger:</span>
-            <strong>{[outputPrice({ price: upcoming[0]?.price ?? product.price, priceNote: base.priceNote, unit: base.unit, unitCount: base.unitCount, amount: product.amount }) || "kein Preis", ...packOffers(base, drink, product.variant).map((pk) => `${pk.label} ${pk.price.toFixed(2).replace(".", ",")} €`)].join(" · ")}</strong>
+            <strong>{[outputPrice({ price: upcoming[0]?.price ?? product.price, priceNote: base.priceNote, unit: base.unit, unitCount: base.unitCount, amount: product.amount }) || "kein Preis", ...packOffers(base, drink, product.variant).map((pk) => `${pk.label} ${collagePrice(pk.price)}`)].join(" · ")}</strong>
           </div>
           <div className="card-pad"><button className="btn btn-primary" type="submit">Für Verteilungen speichern</button></div>
         </form>

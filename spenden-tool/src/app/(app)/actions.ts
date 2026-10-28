@@ -10,7 +10,7 @@ import type { CollageSettings, ItemDefaults } from "@/db/schema";
 import { requireLogin } from "@/lib/auth";
 import { collageSettings, isPlaceholderName, nameFromFilename, PLACEHOLDER_NAME, cleanTileStyle, type TileStyle } from "@/lib/layout";
 import { stockPrice } from "@/lib/pricing";
-import { amountFromVariant, categoryHint, comparability, LEGACY_CATEGORIES, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { amountFromVariant, categoryHint, comparability, isMeasureUnit, LEGACY_CATEGORIES, isDrink, isPackKind, isUnit, packOffers, splitInternal, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { addProductsToEvent, rotateProductPhoto, checkImage, findPhoto, latestPriceChecks, loadEvent, photoIndex, storeChecked, storeImage } from "@/lib/service";
 import { parseAmount, parseIsoDate } from "@/lib/numbers";
 import { aiConfigured, failStaleChecks, queuePriceChecks, runPriceChecks } from "@/lib/price-research";
@@ -185,6 +185,8 @@ export async function saveItems(fd: FormData) {
       const u = str(fd, k("unit"));
       set.unit = isUnit(u) ? u : null;
       set.unitConfirmed = isUnit(u);
+      // Wechsel zwischen Stück-Einheiten und Gewicht/Liter: alte Zahl passt nicht mehr („Kasten 20“ ≠ „20 kg“).
+      if (isMeasureUnit(set.unit) !== isMeasureUnit(it.unit) && !(fd.has(k("unitcount")) && changed(k("unitcount")))) set.unitCount = null;
     }
     if (fd.has(k("unitcount")) && changed(k("unitcount"))) {
       const n = parseAmount(str(fd, k("unitcount")));
@@ -1045,7 +1047,7 @@ export async function saveProductDefaults(fd: FormData) {
     .filter((m) => m.kind || m.price !== null || m.note);
   const d: ItemDefaults = {
     unit: isUnit(u) ? u : null,
-    unitCount: isUnit(u) && u !== "stueck" && u !== "kg" && u !== "liter" ? int("unitCount", 2) : null,
+    unitCount: isUnit(u) && u !== "stueck" ? int("unitCount", u === "kg" || u === "liter" ? 1 : 2) : null,
     priceNote: opt(fd, "priceNote"),
     caption: opt(fd, "caption"),
     packKind: isPackKind(pk) ? pk : null,

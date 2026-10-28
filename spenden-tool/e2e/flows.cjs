@@ -333,6 +333,16 @@ async function photo(dir, name, rgb, w = 640) {
     ok(await until(async () => { const r = (await q("select unit, pack_kind, pack_count from event_items where id = $1", [singleItem.id]))[0]; return r.unit === "kg" && r.pack_kind === "kg" && r.pack_count === 5; }), "Abgabeeinheit „pro Kilogramm“ und Variante „5 kg“ gespeichert");
     const aus6 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
     ok(/je kg 2(,00)?€/.test(aus6) && /5 kg 8/.test(aus6), "Aushang: „je kg 2€ · 5 kg 8€“", (aus6.match(/je kg[^<]{0,30}/) || [""])[0]);
+    // Wie bei den Varianten: Abgabeeinheit Kilogramm mit Menge 2 → „2 kg 5 €“ (Beutel), Beschriftung „Menge in kg“
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`, { waitUntil: "networkidle" });
+    ok((await page.locator(`label[for=unitcount_${singleItem.id}]`).innerText()) === "Menge in kg", "Abgabeeinheit kg: Feld heißt „Menge in kg“");
+    await page.fill(`#unitcount_${singleItem.id}`, "2");
+    await page.fill(`#price_${singleItem.id}`, "5");
+    await page.locator(`#price_${singleItem.id}`).blur();
+    await page.locator("button[type=submit]", { hasText: /Speichern/ }).first().click().catch(() => {});
+    ok(await until(async () => (await q("select unit_count from event_items where id = $1", [singleItem.id]))[0].unit_count === 2), "Menge 2 kg gespeichert");
+    const aus7 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
+    ok(/2 kg 5€ · 5 kg 8€/.test(aus7), "Aushang: „2 kg 5€ · 5 kg 8€“ ohne eigenen Text", (aus7.match(/2 kg[^<]{0,30}/) || [""])[0]);
 
     // 13: Schmaler Handybildschirm (360 px): nichts ragt seitlich heraus, Touchflächen ≥ 44 px, Text ≥ 14 px
     await page.setViewportSize({ width: 360, height: 780 });

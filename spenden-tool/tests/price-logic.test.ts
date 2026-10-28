@@ -376,6 +376,10 @@ describe("Lose Ware nach Gewicht/Menge: kg und Liter", () => {
   it("Abgabeeinheit je kg / je Liter", async () => {
     const { outputPrice } = await import("@/lib/layout");
     expect(outputPrice({ price: 2, unit: "kg" })).toBe("je kg 2 €");
+    // Wie bei den Varianten: Menge eingetragen → „2 kg 5 €“ (KLUTH Tomaten 2-kg-Beutel)
+    expect(outputPrice({ price: 5, unit: "kg", unitCount: 2 })).toBe("2 kg 5 €");
+    expect(outputPrice({ price: 5, unit: "kg", unitCount: 1 }, "flyer")).toBe("1 kg 5€");
+    expect(outputPrice({ price: 3, unit: "liter", unitCount: 5 })).toBe("5 l 3 €");
     expect(outputPrice({ price: 1.5, unit: "liter" }, "flyer")).toBe("je Liter 1,50€");
     // Inhalt/Menge ändert die Angabe je kg nicht
     expect(outputPrice({ price: 2, unit: "kg", amount: "5 kg" })).toBe("je kg 2 €");
@@ -388,5 +392,10 @@ describe("Lose Ware nach Gewicht/Menge: kg und Liter", () => {
       { label: "5 kg", price: 10 },
     ]);
     expect(packCountLabel("kg")).toBe("Menge in kg");
+    const { unitCountLabel, amountMissingUnit } = await import("@/lib/price-logic");
+    expect(unitCountLabel("kg")).toBe("Menge in kg");
+    expect(unitCountLabel("kasten", true)).toBe("Flaschen pro Kasten");
+    expect(amountMissingUnit("2")).toBe(true);
+    expect(amountMissingUnit("2 kg")).toBe(false);
   });
 });

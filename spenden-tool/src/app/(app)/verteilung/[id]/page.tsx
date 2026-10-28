@@ -7,8 +7,8 @@ import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { stockPrice } from "@/lib/pricing";
 import { autoAiMode } from "@/lib/settings";
-import { amountFromVariant, isMultiUnit, packCountLabel, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
-import { mhdLabel, outputPrice } from "@/lib/layout";
+import { amountFromVariant, amountMissingUnit, isMultiUnit, packCountLabel, unitCountLabel, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { collagePrice, mhdLabel, outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
 import { PriceCheckChip } from "@/components/price-check";
@@ -192,7 +192,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
           </span>
           <O name={k("price")} value={priceText(item.price)} />
           <span className={`small ${item.price !== null && !item.priceConfirmed ? "warn-text" : "muted"}`}>{sourceLabel(r)}</span>
-          {packOffers(item, r.drink, product.variant).map((pk) => <span key={pk.label + pk.price} className="small">+ {pk.label} {priceText(pk.price)} €</span>)}
+          {packOffers(item, r.drink, product.variant).map((pk) => <span key={pk.label + pk.price} className="small">+ {pk.label} {collagePrice(pk.price)}</span>)}
         </div>
         <div className="pl-status"><StatusTags r={r} /></div>
         <label htmlFor={`open-${item.id}`} className="btn btn-small pl-toggle"><span className="when-closed">Details bearbeiten</span><span className="when-open">Details schließen</span></label>
@@ -220,6 +220,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
             <label className="label" htmlFor={kp("amount")}>Inhalt / Menge (optional)</label>
             <input className="input input-compact" id={kp("amount")} name={kp("amount")} defaultValue={product.amount ?? ""} placeholder={amountHint ? `z. B. ${amountHint}` : r.drink ? "z. B. 0,5 l" : "z. B. 1,5 kg"} />
             <span className="small muted">Steht in Collage, Aushang und Messenger vor dem Preis{item.priceNote ? " – außer es gibt einen eigenen Text vor dem Preis" : ""}.</span>
+            {amountMissingUnit(product.amount) && <span className="small warn-text">Bitte mit Einheit, z. B. „{product.amount?.trim()} kg“ oder „{product.amount?.trim()} l“ – bei Abgabe nach Gewicht reicht die Abgabeeinheit „Kilogramm“ mit Menge.</span>}
             {amountHint && !product.amount && <button className="btn-link small" type="submit" name="op" value={`menge:${item.id}`} style={{ textAlign: "left" }}>„{amountHint}“ aus der Variante übernehmen</button>}
           </div>
           <O name={kp("amount")} value={product.amount ?? ""} />
@@ -274,7 +275,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
             </div>
             <O name={k("unit")} value={item.unit ?? ""} />
             <div className="field">
-              <label className="label" htmlFor={k("unitcount")}>{item.unit === "kasten" || (r.drink && isMultiUnit(item.unit)) ? "Flaschen darin" : "Stück je Einheit"}</label>
+              <label className="label" htmlFor={k("unitcount")}>{unitCountLabel(item.unit, r.drink)}</label>
               <input className="input input-compact num" id={k("unitcount")} name={k("unitcount")} defaultValue={item.unitCount ?? ""} inputMode="numeric" placeholder="z. B. 6" />
             </div>
             <O name={k("unitcount")} value={item.unitCount ? String(item.unitCount) : ""} />
@@ -332,7 +333,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
           <div><button className="btn btn-small" type="submit" name="op" value={`pack-add:${item.id}`}>+ weitere Variante (z. B. Karton und Palette)</button></div>
           <div className="output-preview">
             <span className="small muted">So steht es in Collage, Aushang und Messenger:</span>
-            <strong>{[shownAs || "kein Preis", ...packOffers(item, r.drink, product.variant).map((pk) => `${pk.label} ${priceText(pk.price)} €`)].join(" · ")}</strong>
+            <strong>{[shownAs || "kein Preis", ...packOffers(item, r.drink, product.variant).map((pk) => `${pk.label} ${collagePrice(pk.price)}`)].join(" · ")}</strong>
           </div>
           {item.price !== null && !item.priceConfirmed && <button className="btn btn-small" type="submit" name="op" value={`confirm:${item.id}`}>✓ Preis bestätigen</button>}
           {stockHint && (

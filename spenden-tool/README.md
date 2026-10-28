@@ -108,8 +108,9 @@ Seller-Tool und hat eigene Datenbank, eigenen Login und eigenen Start.
 - **Abgabeeinheit Kasten, Tray, Palette:** Für Getränke (und alles, was nur im Ganzen abgegeben wird) gilt der Preis
   direkt für das Gebinde – kein Flaschenpreis nötig. Ausgabe z. B. „Kasten (20 × 0,5 l) 4 €“. Getränke bekommen
   „Kasten“ als Vorschlag; der KI-Vorschlag rechnet mit der Flaschenzahl des Kastens.
-- **Lose Ware nach Gewicht/Menge:** Abgabeeinheit „pro Kilogramm“ bzw. „pro Liter“ („je kg 2 €“) und Varianten
-  „Kilogramm“/„Liter“ mit Menge („2 kg 5 €“, „5 kg 8 €“), z. B. getrocknete Tomaten. Kein KI-Preisvorschlag je kg.
+- **Lose Ware nach Gewicht/Menge:** Abgabeeinheit und Varianten „Kilogramm (kg)“ bzw. „Liter“ mit Menge – genau
+  gleich bedient: „2 kg 5 € · 5 kg 10 € · 10 kg 18 €“; ohne Menge „je kg 2 €“. Das Mengenfeld heißt je nach Einheit
+  „Menge in kg“, „Flaschen pro Kasten“ usw. Kein KI-Preisvorschlag je kg.
 - **Inhalt / Menge (optional):** am Produkt, z. B. „1,5 kg“ oder „0,5 l“ – steht in Collage, Aushang und Messenger
   automatisch vor dem Preis („1,5 kg 10 €“, bei Packungen „6 × 0,5 l 3 €“). Vorschlag aus der Variante mit einem
   Klick bzw. als Stapelaktion „Inhalt aus Variante“; ein eigener Text vor dem Preis hat Vorrang.

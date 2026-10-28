@@ -42,7 +42,8 @@ export const loadEventView = cache(async (id: string) => {
     const suggestion = priced && freshSuggestion !== null && !state.printed ? freshSuggestion : null;
     // Ganze Packung: 20 % vom Handelspreis (Getränke: normaler Anteil)
     const drink = isDrink(r.product);
-    const packSuggestion = suggestPackPrice(piece, r.item.packCount, drink);
+    // Varianten nach Gewicht/Menge (kg, Liter) lassen sich nicht aus Stückpreisen hochrechnen.
+    const packSuggestion = r.item.packKind === "kg" || r.item.packKind === "liter" ? null : suggestPackPrice(piece, r.item.packCount, drink);
     return { ...r, state, check, compare, unnamed, issues, suggestion, packSuggestion, drink, catHint, backPhotos: extras.get(r.product.id) ?? [] };
   });
   // Vorder- und Rückseite desselben Produkts als zwei Produkte? → Vorschlag zum Zusammenführen (nie automatisch).

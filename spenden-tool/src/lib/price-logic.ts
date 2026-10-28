@@ -20,8 +20,8 @@ export const UNITS = {
   tray: { label: "Tray", hint: "z. B. 24 Dosen" },
   palette: { label: "Palette", hint: "ganze Palette" },
   // Lose Ware nach Gewicht/Menge, z. B. getrocknete Tomaten: Preis je Kilogramm bzw. Liter.
-  kg: { label: "pro Kilogramm", hint: "Preis je kg" },
-  liter: { label: "pro Liter", hint: "Preis je Liter" },
+  kg: { label: "Kilogramm (kg)", hint: "Menge in kg, z. B. 2 → „2 kg 5 €“; leer = je kg" },
+  liter: { label: "Liter", hint: "Menge in Liter; leer = je Liter" },
 } as const;
 export type Unit = keyof typeof UNITS;
 export const isUnit = (v: unknown): v is Unit => typeof v === "string" && v in UNITS;
@@ -40,8 +40,8 @@ export type UnitInfo = { unit: string | null; unitCount: number | null; priceNot
 export function unitLabel(unit: string | null | undefined, count: number | null | undefined): string {
   const n = count && count > 1 ? count : null;
   if (unit === "stueck") return "Einzelstück";
-  if (unit === "kg") return "pro kg";
-  if (unit === "liter") return "pro Liter";
+  if (unit === "kg") return count ? `${count} kg` : "pro kg";
+  if (unit === "liter") return count ? `${count} l` : "pro Liter";
   if (unit === "packung") return n ? `${n}er-Pack` : "Packung";
   if (unit && BULK_NAME[unit]) return n ? `${BULK_NAME[unit]} (${n} ${unit === "kasten" ? "Flaschen" : "Stück"})` : BULK_NAME[unit];
   return "";
@@ -55,8 +55,9 @@ export function pricePrefix(i: UnitInfo): string {
   const note = i.priceNote?.trim();
   if (note) return note;
   const n = i.unitCount && i.unitCount > 1 ? i.unitCount : null;
-  if (i.unit === "kg") return "je kg";
-  if (i.unit === "liter") return "je Liter";
+  // Nach Gewicht/Menge wie bei den Varianten: Menge eingetragen → „2 kg“, sonst „je kg“.
+  if (i.unit === "kg") return i.unitCount ? `${i.unitCount} kg` : "je kg";
+  if (i.unit === "liter") return i.unitCount ? `${i.unitCount} l` : "je Liter";
   // Inhalt/Menge („1,5 kg“, „0,5 l“) steht vor dem Preis – bei Packungen je Stück: „6 × 0,5 l“.
   const a = i.amount?.trim();
   if (a) {
@@ -350,6 +351,11 @@ export const LEGACY_CATEGORIES = ["Drogerie & Haushalt", "Hautpflege", "Haarpfle
 export const PACK_KINDS = { karton: "Karton", kasten: "Kasten", packung: "Packung", tray: "Tray", palette: "Palette", mehrere: "Mehrere Stück (Angebot)", kg: "Kilogramm (kg)", liter: "Liter" } as const;
 export type PackKind = keyof typeof PACK_KINDS;
 export const isPackKind = (v: unknown): v is PackKind => typeof v === "string" && v in PACK_KINDS;
+/** Beschriftung des Mengenfelds der Abgabeeinheit – passt sich an wie bei den Varianten. */
+export const unitCountLabel = (unit: string | null | undefined, drink = false) =>
+  unit === "kg" ? "Menge in kg" : unit === "liter" ? "Menge in Liter" : unit === "kasten" ? "Flaschen pro Kasten" : unit === "tray" ? (drink ? "Flaschen/Dosen pro Tray" : "Stück pro Tray") : unit === "karton" ? "Stück pro Karton" : unit === "palette" ? "Stück pro Palette" : unit === "packung" ? "Stück pro Packung" : "Stück je Einheit";
+/** Nur eine Zahl ohne Einheit („2“) – im Feld Inhalt/Menge missverständlich. */
+export const amountMissingUnit = (a: string | null | undefined) => !!a && /^\s*\d+(?:[.,]\d+)?\s*$/.test(a);
 /** Beschriftung des Mengenfelds einer Variante */
 export const packCountLabel = (kind: string | null | undefined, drink = false) => (kind === "kg" ? "Menge in kg" : kind === "liter" ? "Menge in Liter" : kind === "mehrere" ? "Anzahl Stück" : drink ? "Flaschen darin" : "Stück darin");
 
