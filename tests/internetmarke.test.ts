@@ -38,13 +38,14 @@ describe("INTERNETMARKE-Anfrage", () => {
   });
 });
 
-describe("Amazon-Versandbestätigung ohne Sendungsnummer", () => {
+describe("Versandmeldung ohne Sendungsnummer (Warensendung)", () => {
   const base = { channel: "amazon", carrier: "Deutsche Post", trackingNumber: null, status: "shipped" };
-  it("nur Warensendung über Amazon, erst wenn versendet", () => {
+  it("nur Warensendung über Amazon/eBay, erst wenn versendet", () => {
     expect(untrackedPost(base)).toBe(true);
     expect(untrackedPost({ ...base, status: "label_created" })).toBe(false);
     expect(untrackedPost({ ...base, carrier: "DHL" })).toBe(false);
-    expect(untrackedPost({ ...base, channel: "ebay" })).toBe(false);
+    expect(untrackedPost({ ...base, channel: "ebay" })).toBe(true);
+    expect(untrackedPost({ ...base, channel: "temu" })).toBe(false);
     expect(untrackedPost({ ...base, trackingNumber: "123" })).toBe(false);
   });
 });

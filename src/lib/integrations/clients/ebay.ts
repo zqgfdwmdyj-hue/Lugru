@@ -129,8 +129,8 @@ registerTrackingUploader("ebay", async (tenantId, order, items) => {
   await api(c, "POST", `/sell/fulfillment/v1/order/${encodeURIComponent(order.externalId)}/shipping_fulfillment`, {
     lineItems: items.filter((i) => i.externalItemId).map((i) => ({ lineItemId: i.externalItemId, quantity: i.quantity })),
     shippedDate: (order.shippedAt ?? new Date()).toISOString(),
-    shippingCarrierCode: order.carrier ?? "DHL",
-    trackingNumber: order.trackingNumber,
+    // Warensendung (Deutsche Post) hat keine Sendungsnummer: nur als versendet melden.
+    ...(order.trackingNumber ? { shippingCarrierCode: order.carrier ?? "DHL", trackingNumber: order.trackingNumber } : {}),
   });
 });
 

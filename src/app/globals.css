@@ -1013,3 +1013,7 @@ h2 { font-size: 16px; margin: 0; }
 .flip-ai { white-space: pre-wrap; line-height: 1.5; }
 .flip .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .flip-kpis .kpi-value { font-size: clamp(18px, 5.4vw, 28px); overflow-wrap: anywhere; }
+
+/* Labels: Warensendung & DHL – zwei Quellen nebeneinander, Gewichte als Raster */
+.slip-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.slip-weights { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }

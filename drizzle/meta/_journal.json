@@ -442,6 +442,13 @@
       "when": 1793134598241,
       "tag": "0062_market_import_meta",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793170135822,
+      "tag": "0063_sku_weights",
+      "breakpoints": true
     }
   ]
 }

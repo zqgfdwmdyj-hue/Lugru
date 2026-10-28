@@ -42,7 +42,7 @@ export const NAV: NavSection[] = [
     icon: "🚚",
     items: [
       { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
-      { href: "/auftraege/lieferschein", label: "Lieferschein → Labels" },
+      { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
       { href: "/listings", label: "Angebote (alle Kanäle)" },
       { href: "/ebay", label: "Neues eBay-Angebot" },
       { href: "/ebay/pruefen", label: "eBay-Angebote prüfen" },

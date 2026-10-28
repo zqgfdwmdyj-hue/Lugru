@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
-import { createSlipLabels, readSlip, slipRow, type SlipLabels, type SlipRow } from "@/lib/shipping/slip-service";
+import { createSlipLabels, readOpenOrders, readSlip, slipRow, type SlipLabels, type SlipRow } from "@/lib/shipping/slip-service";
+import { saveSkuWeight } from "@/lib/shipping/weights-service";
+import { parseWeightInput } from "@/lib/shipping/weight";
 import type { ShipChoice } from "@/lib/shipping/packing-slip";
 
 export type SlipState = { rows: SlipRow[]; error?: string; note?: string; labels?: SlipLabels } | null;
@@ -11,9 +13,56 @@ export type SlipState = { rows: SlipRow[]; error?: string; note?: string; labels
 const CHOICES = ["warensendung", "dhl", "pruefen"] as const;
 const MAX_BYTES = 20 * 1024 * 1024;
 
-/** Ein Formular-Ablauf: „create“ erstellt Labels für die Vorschau, sonst wird ein Lieferschein eingelesen. */
+/**
+ * Ein Formular-Ablauf: „create“ erstellt Labels, „weights“ speichert Gewichte je Artikel, „open“ übernimmt offene
+ * Aufträge (z. B. eBay), sonst wird ein Lieferschein eingelesen.
+ */
 export async function slipAction(prev: SlipState, fd: FormData): Promise<SlipState> {
-  return fd.get("intent") === "create" ? createSlip(prev, fd) : readSlipFile(fd);
+  const intent = fd.get("intent");
+  if (intent === "create") return createSlip(prev, fd);
+  if (intent === "weights") return saveWeights(prev, fd);
+  if (intent === "open") return openOrders(fd);
+  return readSlipFile(fd);
+}
+
+/** Versandgewicht je Artikel speichern – gilt ab sofort für alle Sendungen dieses Artikels (alle Kanäle). */
+async function saveWeights(prev: SlipState, fd: FormData): Promise<SlipState> {
+  const session = await requireArea("wawi");
+  const rows = prev?.rows ?? [];
+  const bad: string[] = [];
+  let saved = 0;
+  for (const [key, value] of fd.entries()) {
+    const m = /^w_(\d+)$/.exec(key);
+    if (!m) continue;
+    const sku = String(fd.get(`s_${m[1]}`) ?? "");
+    const raw = String(value).trim();
+    if (!sku || raw === String(fd.get(`o_${m[1]}`) ?? "")) continue;
+    const grams = raw === "" ? 0 : parseWeightInput(raw);
+    if (grams === null) {
+      bad.push(`${sku}: „${raw}“`);
+      continue;
+    }
+    await saveSkuWeight(session.tenantId, sku, grams);
+    saved++;
+  }
+  return { rows: await refreshed(session.tenantId, rows), labels: prev?.labels, note: [saved ? `${saved} Gewicht(e) gespeichert – gilt ab jetzt für jede Sendung dieser Artikel.` : "Keine Änderung.", bad.length ? `Nicht verstanden: ${bad.join(", ")} (z. B. 0,3 für 0,3 kg oder 300 g)` : ""].filter(Boolean).join(" ") };
+}
+
+/** Offene Aufträge übernehmen (vorher neu abrufen) – gleiche Automatik wie beim Lieferschein. */
+async function openOrders(fd: FormData): Promise<SlipState> {
+  const session = await requireArea("wawi");
+  const ch = String(fd.get("channel") ?? "ebay");
+  const channel = ch === "amazon" || ch === "alle" ? ch : "ebay";
+  try {
+    const { rows, note } = await readOpenOrders(session.tenantId, channel, fd.get("refresh") === "on");
+    revalidatePath("/auftraege");
+    if (fd.get("direkt") !== "on" || !rows.length) return { rows, note };
+    const labels = await createSlipLabels(session.tenantId, rows.filter((r) => !r.done && r.choice !== "pruefen").map((r) => ({ orderId: r.orderId, choice: r.choice })));
+    revalidatePath("/auftraege", "layout");
+    return { rows: await refreshed(session.tenantId, rows), note, labels };
+  } catch (e) {
+    return { rows: [], error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /** Zeilen nach dem Erstellen frisch aus der Datenbank (Status „Label schon erstellt“), Lesehinweise bleiben. */

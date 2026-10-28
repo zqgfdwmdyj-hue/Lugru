@@ -1,4 +1,4 @@
-import { index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { encryptedJson, encryptedText } from "./encrypted";
 import { type Address, createdAt, files, id, lots, money, tenantId, updatedAt } from "./core";
 
@@ -83,4 +83,19 @@ export const parcels = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("parcels_order_idx").on(t.tenantId, t.orderId)],
+);
+
+/**
+ * Versandgewicht je Stück (inkl. Verpackung) zur Wawi-SKU – einmal eingetragen, gilt für alle Kanäle
+ * (Amazon, eBay …). Gewicht einer Sendung = Stück × Gewicht.
+ */
+export const skuWeights = pgTable(
+  "sku_weights",
+  {
+    tenantId: tenantId(),
+    sku: text("sku").notNull(),
+    grams: integer("grams").notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.sku] })],
 );

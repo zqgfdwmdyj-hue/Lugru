@@ -9,7 +9,8 @@ import { CHANNELS } from "@/db/schema";
 import { syncChannelStock, syncSoon } from "@/lib/stock/channel-sync";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
-import { cancelLabel, createLabel, estimateWeightKg, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
+import { cancelLabel, createLabel, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
+import { orderShipWeight } from "@/lib/shipping/weights-service";
 import { getSettings } from "@/lib/settings";
 import { TEMU_MASKED_NOTE } from "@/lib/orders/temu";
 
@@ -48,11 +49,13 @@ export async function batchLabels(_prev: BatchState, fd: FormData): Promise<Batc
       results.push({ id, ref, ok: false, message: "hat schon ein Label oder ist versandt" });
       continue;
     }
-    const w = estimateWeightKg(data.items);
-    if (w === null) {
-      results.push({ id, ref, ok: false, message: "Artikelgewicht fehlt – im Auftrag von Hand angeben" });
+    // Versandgewicht je Artikel (einmal eingetragen) × Stück, sonst Artikeldaten + Verpackung; Schätzwert nicht.
+    const sw = await orderShipWeight(session.tenantId, data);
+    if (sw.source === "geschaetzt") {
+      results.push({ id, ref, ok: false, message: "Gewicht fehlt – unter „Labels: Warensendung & DHL“ einmal je Artikel eintragen oder im Auftrag angeben" });
       continue;
     }
+    const w = sw.kg;
     try {
       const r = await createLabel({ tenantId: session.tenantId, orderId: id, weightKg: w, product: w <= settings.dhl.kleinpaketMaxKg ? "kleinpaket" : "paket" });
       results.push({ id, ref, ok: true, message: `${r.trackingNumber} (${w} kg)`, fileId: r.fileId });

@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
-import { estimateWeightKg, loadOrder } from "@/lib/orders/service";
+import { loadOrder } from "@/lib/orders/service";
+import { orderShipWeight } from "@/lib/shipping/weights-service";
 import { getSettings } from "@/lib/settings";
 import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress } from "../actions";
 import { LabelForm } from "./label-form";
@@ -17,7 +18,9 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   if (!data) notFound();
   const { order, items, parcels } = data;
   const settings = await getSettings(session.tenantId);
-  const weight = estimateWeightKg(items);
+  // Versandgewicht: einmal je Artikel eingetragen × Stück, sonst Artikeldaten + Verpackung (Schätzwert nicht vorbelegen).
+  const sw = await orderShipWeight(session.tenantId, data);
+  const weight = sw.source === "geschaetzt" ? null : sw.kg;
   const a = order.shipTo ?? {};
   const f = (name: keyof typeof a, label: string, width?: number) => (
     <div className="field" style={width ? { width } : undefined}>
@@ -84,6 +87,10 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
             <section className="card card-pad stack">
               <h2>Versand</h2>
               {order.status === "open" && <LabelForm orderId={order.id} weightKg={weight} suggestKlein={weight !== null && weight <= settings.dhl.kleinpaketMaxKg} disabled={false} />}
+              {order.status === "open" && weight !== null && <div className="small muted" data-testid="order-weight-note">Gewicht: {sw.note}</div>}
+              {order.status === "open" && (
+                <Link className="btn btn-small" href={`/auftraege/lieferschein?ids=${order.id}`} data-testid="order-warensendung">Als Warensendung / automatisch …</Link>
+              )}
               {settings.dhl.sandbox && <div className="small muted">DHL-Sandbox aktiv – Labels sind Testlabels.</div>}
               {parcels.map((p) => (
                 <div key={p.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8, fontSize: 13 }}>

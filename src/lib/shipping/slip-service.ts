@@ -1,16 +1,19 @@
 import "server-only";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { PDFDocument } from "pdf-lib";
 import { extractText, getDocumentProxy } from "unpdf";
 import { db, schema } from "@/db";
 import type { Address } from "@/db/schema";
 import { getIntegration } from "@/lib/integrations/store";
 import { imBuyLabels, imCreds } from "@/lib/integrations/clients/deutschepost";
-import { createLabel, estimateWeightKg, loadOrder, PACKAGING_GRAMS, storeFile } from "@/lib/orders/service";
+import { createLabel, loadOrder, storeFile } from "@/lib/orders/service";
 import { getSettings } from "@/lib/settings";
 import { syncSoon } from "@/lib/stock/channel-sync";
 import { parsePackingSlip, shipChoice, type ShipChoice, type SlipOrder } from "./packing-slip";
 import { WARENSENDUNG } from "./internetmarke";
+import { orderShipWeight, type SkuWeightInfo } from "./weights-service";
+import type { WeightSource } from "./weight";
+import { CHANNEL_LABEL } from "@/lib/labels";
 
 // Amazon-Lieferschein → Aufträge → Labels in einem Ablauf: 1 Stück = Warensendung (INTERNETMARKE),
 // ab 2 Stück = DHL. Aufträge werden angelegt bzw. den schon abgerufenen zugeordnet (Bestellnummer).
@@ -18,6 +21,8 @@ import { WARENSENDUNG } from "./internetmarke";
 export type SlipRow = {
   orderId: string;
   orderNo: string;
+  /** Verkaufskanal (Amazon, eBay …). */
+  channel: string;
   name: string;
   place: string;
   quantity: number;
@@ -26,6 +31,11 @@ export type SlipRow = {
   /** Warum diese Versandart (oder warum prüfen). */
   reason: string;
   weightKg: number;
+  /** Rechenweg („2 × 0,3 kg = 0,6 kg“) und Herkunft des Gewichts. */
+  weightNote: string;
+  weightSource: WeightSource;
+  /** Artikel der Sendung mit eingetragenem Versandgewicht (oder null). */
+  skus: SkuWeightInfo[];
   /** Auftrag hat schon ein Label bzw. ist versendet – wird nicht noch einmal gekauft. */
   done: string | null;
   warnings: string[];
@@ -91,31 +101,33 @@ async function insertItems(tenantId: string, orderId: string, o: SlipOrder) {
 export async function slipRow(tenantId: string, orderId: string, slip?: SlipOrder): Promise<SlipRow | null> {
   const data = await loadOrder(tenantId, orderId);
   if (!data) return null;
-  const settings = await getSettings(tenantId);
   const to = data.order.shipTo ?? {};
   const quantity = data.items.reduce((n, i) => n + i.item.quantity, 0);
   const warnings = [...(slip?.warnings ?? [])];
   if (needsAddress(to)) warnings.push("Lieferadresse unvollständig");
-  const known = estimateWeightKg(data.items);
-  const weightKg = known ?? Math.round(quantity * settings.post.itemGrams + PACKAGING_GRAMS) / 1000;
+  const w = await orderShipWeight(tenantId, data);
   let choice = shipChoice({ quantity, shipTo: to, warnings });
   let reason = choice === "warensendung" ? "1 Stück" : choice === "dhl" ? (quantity === 1 ? "1 Stück, aber Ausland – Warensendung nur innerhalb Deutschlands" : `${quantity} Stück`) : warnings[0] ?? "Menge unklar";
-  // Warensendung nur bis 1.000 g (bzw. was in den Einstellungen steht): schwerer → DHL.
-  if (choice === "warensendung" && known !== null && known * 1000 > WARENSENDUNG.maxGrams) {
+  // Warensendung nur bis 1.000 g: schwerer → DHL (nur bei bekanntem Gewicht, nicht beim Schätzwert).
+  if (choice === "warensendung" && w.source !== "geschaetzt" && w.kg * 1000 > WARENSENDUNG.maxGrams) {
     choice = "dhl";
-    reason = `1 Stück, aber ${known.toLocaleString("de-DE")} kg – Warensendung nur bis 1 kg`;
+    reason = `1 Stück, aber ${w.kg.toLocaleString("de-DE")} kg – Warensendung nur bis 1 kg`;
   }
   const done = data.order.status !== "open" ? (data.order.status === "label_created" ? `Label schon erstellt${data.order.carrier ? ` (${data.order.carrier})` : ""}` : data.order.status === "cancelled" ? "storniert" : "schon versendet") : null;
   return {
     orderId,
     orderNo: data.order.externalId,
+    channel: CHANNEL_LABEL[data.order.channel] ?? data.order.channel,
     name: [to.name1, to.name2].filter(Boolean).join(", ") || data.order.buyerName || "–",
     place: [to.zip, to.city].filter(Boolean).join(" "),
     quantity,
     items: data.items.map((i) => `${i.item.quantity}× ${i.productTitle ?? i.item.title ?? i.item.sku ?? "?"}`).join(" · "),
     choice,
     reason,
-    weightKg,
+    weightKg: w.kg,
+    weightNote: w.note,
+    weightSource: w.source,
+    skus: w.skus,
     done,
     warnings,
   };
@@ -134,6 +146,46 @@ export async function readSlip(tenantId: string, pdf: Buffer): Promise<{ rows: S
     if (r) rows.push(r);
   }
   return { rows, unreadable: orders.length - rows.length };
+}
+
+/** Offene Aufträge (ohne Lieferschein) übernehmen – z. B. eBay: vorher neu abrufen, dann wie beim Lieferschein. */
+export async function readOpenOrders(tenantId: string, channel: "ebay" | "amazon" | "alle", refresh: boolean): Promise<{ rows: SlipRow[]; note?: string }> {
+  const notes: string[] = [];
+  if (refresh) {
+    const { ebayConnected, syncEbayOrders } = await import("@/lib/integrations/clients/ebay");
+    const { syncFbmOrders } = await import("@/lib/integrations/clients/amazon");
+    const run = async (name: string, fn: () => Promise<{ orders: number }>) => {
+      try {
+        const r = await fn();
+        if (r.orders) notes.push(`${name}: ${r.orders} neu abgerufen`);
+      } catch (e) {
+        notes.push(`${name}: Abruf fehlgeschlagen (${e instanceof Error ? e.message : String(e)}) – gezeigt wird der letzte Stand`);
+      }
+    };
+    if (channel !== "amazon" && (await ebayConnected(tenantId))) await run("eBay", () => syncEbayOrders(tenantId));
+    if (channel !== "ebay" && (await getIntegration(tenantId, "amazon_sp"))) await run("Amazon", () => syncFbmOrders(tenantId));
+  }
+  const O = schema.orders;
+  const where = [eq(O.tenantId, tenantId), eq(O.fulfillment, "FBM"), eq(O.status, "open")];
+  if (channel !== "alle") where.push(eq(O.channel, channel));
+  const open = await db.select({ id: O.id }).from(O).where(and(...where)).orderBy(asc(O.shipBy), asc(O.orderDate)).limit(200);
+  const rows: SlipRow[] = [];
+  for (const o of open) {
+    const r = await slipRow(tenantId, o.id);
+    if (r) rows.push(r);
+  }
+  if (!rows.length) notes.push(`Keine offenen ${channel === "ebay" ? "eBay-" : channel === "amazon" ? "Amazon-" : ""}Aufträge zum Versenden.`);
+  return { rows, note: notes.join(" · ") || undefined };
+}
+
+/** Bestimmte Aufträge übernehmen (Auswahl aus der Auftragsliste). */
+export async function readOrders(tenantId: string, ids: string[]): Promise<SlipRow[]> {
+  const rows: SlipRow[] = [];
+  for (const id of ids.slice(0, 200)) {
+    const r = await slipRow(tenantId, id);
+    if (r) rows.push(r);
+  }
+  return rows;
 }
 
 export type SlipResult = { orderId: string; orderNo: string; ok: boolean; message: string; kind: ShipChoice };
