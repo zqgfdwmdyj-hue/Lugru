@@ -1,7 +1,7 @@
 // Navigation: sieben Hauptbereiche, Privat als eigener Bereich und feste Hilfsfunktionen.
 // Eine Quelle für Seitenleiste, Bereichs-Reiter und Handy-Menü. Ohne Server-Abhängigkeiten.
 
-export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number };
+export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number; pallets: number };
 
 /** Aufgeklappte Bereiche als Cookie – so rendert schon der Server den gemerkten Zustand (kein Springen). */
 export const NAV_OPEN_COOKIE = "nav-open";
@@ -67,7 +67,7 @@ export const NAV: NavSection[] = [
       { href: "/bestand", label: "Bestand & Inventur" },
       { href: "/artikel", label: "Artikelstamm (eigene Marken)" },
       { href: "/inbound", label: "FBA-Inbound" },
-      { href: "/paletten", label: "Paletten-Lager" },
+      { href: "/paletten", label: "Paletten-Lager", badge: "pallets", alert: true, short: "Paletten-Meldungen" },
     ],
   },
   {
@@ -159,6 +159,7 @@ export const SUBPAGES: Record<string, NavItem[]> = {
   ],
   "/paletten": [
     { href: "/paletten", label: "Lager" },
+    { href: "/paletten/sendungen", label: "Sendungen" },
     { href: "/paletten/lagerplan", label: "Lagerplan" },
     { href: "/paletten/abholung", label: "Abholung" },
     { href: "/paletten/inventur", label: "Inventur" },

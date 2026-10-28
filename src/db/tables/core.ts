@@ -155,6 +155,8 @@ export type TenantSettings = {
     capacity?: number;
     longStayDays?: number;
     remindFreeEnd?: boolean;
+    /** Meldungen zu Speditions-Sendungen zusätzlich per E-Mail an alle mit Zugriff aufs Palettenlager. */
+    shipmentMail?: boolean;
     services?: { name: string; price: number }[];
     /** Stellplätze laut Lagerplan (z. B. aus „A-01..A-20“). */
     locations?: string[];
@@ -173,6 +175,8 @@ export type MemberPrefs = {
   favorites?: Favorite[];
   /** Kalender, die auf der Startseite nicht erscheinen sollen (z. B. private). */
   hiddenCalendars?: string[];
+  /** Meldungen zu Speditions-Sendungen bis hierhin gesehen (ISO-Zeitpunkt). */
+  shipmentNoticesSeenAt?: string;
 };
 
 export const tenants = pgTable("tenants", {

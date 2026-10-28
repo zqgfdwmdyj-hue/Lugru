@@ -54,8 +54,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // sendung/<token>: Sendungsverfolgung für Kunden ohne Anmeldung – die Seite prüft den befristeten Link selbst.
   // api/ebay und api/import ohne Proxy (große Uploads würden sonst gekürzt) – sie prüfen Sitzung und Bereich selbst.
   // api/sellerboard/callback: Rücksprung landet am Handy oft in einem Fenster ohne Anmeldung; geschützt durch
   // signierten state + serverseitigen PKCE-Prüfwert.
-  matcher: ["/((?!login|api/oauth|api/cron|api/ebay|api/import|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: ["/((?!login|sendung/|api/oauth|api/cron|api/ebay|api/import|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
 };

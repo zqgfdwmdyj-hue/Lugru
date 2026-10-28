@@ -77,6 +77,17 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "dhl_tracking",
+    name: "DHL Sendungsverfolgung (Paletten-Sendungen)",
+    purpose: "Sendungen im Palettenlager mit DHL (Paket, Express, Freight) automatisch verfolgen: Ort, neuer Liefertag, Zustellung – mit Meldung an alle.",
+    fields: [{ key: "apiKey", label: "API-Key (developer.dhl.com)", secret: true }],
+    setup: [
+      "developer.dhl.com → App öffnen (oder neu anlegen) → API „Shipment Tracking – Unified“ hinzufügen → API-Key kopieren. Ist es dieselbe App wie für den DHL-Versand, ist es auch derselbe Key.",
+      "Hier eintragen und „Verbindung testen“.",
+      "Danach fragt das System für offene DHL-Sendungen im Palettenlager etwa alle 3 Stunden den Stand ab.",
+    ],
+  },
+  {
     provider: "deutschepost",
     name: "Deutsche Post INTERNETMARKE (Warensendung)",
     purpose: "Porto mit Anschrift kaufen – z. B. Warensendung für Lieferscheine mit einem Stück. Bezahlt wird aus der Portokasse.",

@@ -11,6 +11,8 @@ import { getPrefs } from "@/lib/auth/prefs";
 import { needsReview } from "@/lib/invoices/review";
 import { bindingTask } from "@/lib/today/service";
 import { appVersion } from "@/lib/version";
+import { canAccess } from "@/lib/auth/areas";
+import { unreadNotices } from "@/lib/pallets/shipment-service";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
@@ -25,6 +27,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getPrefs(session),
   ]);
   const access = { isOwner: session.role === "owner", areas: session.areas, privateAccess: session.privateAccess };
+  // Meldungen zu Paletten-Sendungen (Termin verschoben, angekommen …) für alle mit Zugriff aufs Palettenlager.
+  const pallets = canAccess(session, "paletten") ? (await unreadNotices(session, prefs.shipmentNoticesSeenAt ?? null, 1).catch(() => ({ count: 0 }))).count : 0;
   const favorites = prefs.favorites ?? [];
 
   return (
@@ -41,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="nav-drawer">
           <label htmlFor="nav-toggle" className="nav-close">✕ Schließen</label>
           <SidebarNav
-            counts={{ tasks: tasks.n, inbox: inbox.n, orders: orders.n, claims: claims.n, invoices: invoices.n, amazonTodos: amazonTodos.n }}
+            counts={{ tasks: tasks.n, inbox: inbox.n, orders: orders.n, claims: claims.n, invoices: invoices.n, amazonTodos: amazonTodos.n, pallets }}
             favorites={favorites}
             {...access}
           />

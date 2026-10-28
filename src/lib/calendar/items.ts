@@ -7,6 +7,7 @@ import { formatEuro } from "@/lib/numbers";
 import { categoryLabel } from "@/lib/amazon-todos/logic";
 import { todoDeadlines } from "@/lib/amazon-todos/service";
 import { isIdeaTask } from "@/lib/today/logic";
+import { carrierLabel, loadText } from "@/lib/pallets/shipments";
 
 /** Ein Termin, den das System im Kalender haben möchte. */
 export type Desired = {
@@ -115,6 +116,25 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
       link: "/auftraege",
       category: "Versand",
       remind: true,
+    });
+  }
+
+  // Paletten-Sendungen (Spedition/Paketdienst): erwartete Anlieferungen und Versand an Kunden.
+  const PS = schema.palletShipments;
+  const shipments = await db
+    .select()
+    .from(PS)
+    .where(and(eq(PS.tenantId, t), inArray(PS.status, ["geplant", "unterwegs", "verzoegert", "problem"]), isNotNull(PS.plannedDate), gte(PS.plannedDate, from), lte(PS.plannedDate, to)));
+  for (const s of shipments) {
+    const load = loadText(s);
+    out.push({
+      key: `pship:${s.id}`,
+      title: `${s.direction === "ein" ? "Anlieferung" : "Versand"}: ${s.title}${load ? ` (${load})` : ""}${s.status === "verzoegert" ? " – verschoben" : ""}`.slice(0, 200),
+      date: s.plannedDate!,
+      description: [carrierLabel(s.carrier, s.carrierName), s.trackingNo ? `Sendungsnummer ${s.trackingNo}` : null, s.plannedTime ? `Zeitfenster ${s.plannedTime}` : null, s.place, s.location ? `Stand: ${s.location}` : null].filter(Boolean).join("\n"),
+      link: `/paletten/sendungen/${s.id}`,
+      category: "Versand",
+      remind: s.direction === "ein",
     });
   }
 

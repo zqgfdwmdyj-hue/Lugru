@@ -104,7 +104,7 @@ export function SendStatementButton({ customer, month, email, sentAt, error }: {
   );
 }
 
-type Rates = { pricePerMonth: number; freeDays: number; mode: "monat" | "anteilig"; inFee: number; outFee: number; capacity: number; longStayDays: number; remindFreeEnd: boolean; servicesText: string; locationsSpec: string; locationsCount: number; pricesAre: "netto" | "brutto"; month: string };
+type Rates = { pricePerMonth: number; freeDays: number; mode: "monat" | "anteilig"; inFee: number; outFee: number; capacity: number; longStayDays: number; remindFreeEnd: boolean; shipmentMail?: boolean; servicesText: string; locationsSpec: string; locationsCount: number; pricesAre: "netto" | "brutto"; month: string };
 
 /** „Gilt ab“ für Preisänderungen – frühere Monate behalten die damaligen Konditionen. */
 function ValidFrom({ id, month }: { id: string; month: string }) {
@@ -138,6 +138,9 @@ export function RatesForm({ rates }: { rates: Rates }) {
       </div>
       <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
         <input type="checkbox" name="remindFreeEnd" defaultChecked={rates.remindFreeEnd} /> Aufgabe, wenn die freie Lagerzeit heute oder morgen endet
+      </label>
+      <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input type="checkbox" name="shipmentMail" defaultChecked={rates.shipmentMail} data-testid="rates-shipment-mail" /> Meldungen zu Sendungen (Termin verschoben, angekommen, Problem) zusätzlich per E-Mail an alle mit Zugriff aufs Palettenlager
       </label>
       <div className="field">
         <label className="label" htmlFor="r-services">Zusatzleistungen mit Preis (eine je Zeile: Name = Preis)</label>

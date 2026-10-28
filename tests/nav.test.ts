@@ -56,7 +56,7 @@ describe("Sichtbarkeit", () => {
 });
 
 describe("verdichtete Seitenleiste", () => {
-  const counts = { tasks: 5, inbox: 0, orders: 12, claims: 3, invoices: 2262, amazonTodos: 1 };
+  const counts = { tasks: 5, inbox: 0, orders: 12, claims: 3, invoices: 2262, amazonTodos: 1, pallets: 0 };
   it("Zählerzeile: nur Punkte mit Zähler, Handlungsbedarf zuerst, dann nach Anzahl", () => {
     const c = navCounters(NAV, counts);
     expect(c.map((x) => `${x.label}:${x.n}`)).toEqual(["Aufgaben:5", "Amazon-ToDos:1", "Belege prüfen:2262", "Versand:12", "Ansprüche:3"]);

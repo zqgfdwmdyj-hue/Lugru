@@ -95,7 +95,7 @@ export default async function PalettenKundenPage() {
       <section className="card card-pad stack" style={{ gap: 12 }} id="standard">
         <h2>Standard-Konditionen & Einstellungen</h2>
         {owner ? (
-          <RatesForm rates={{ ...defaults, capacity: s.capacity, longStayDays: s.longStayDays, remindFreeEnd: s.remindFreeEnd, servicesText: servicesText(s.services), locationsSpec: s.locationsSpec ?? "", locationsCount: s.locations?.length ?? 0, pricesAre: s.pricesAre ?? "netto", month }} />
+          <RatesForm rates={{ ...defaults, capacity: s.capacity, longStayDays: s.longStayDays, remindFreeEnd: s.remindFreeEnd, shipmentMail: s.shipmentMail, servicesText: servicesText(s.services), locationsSpec: s.locationsSpec ?? "", locationsCount: s.locations?.length ?? 0, pricesAre: s.pricesAre ?? "netto", month }} />
         ) : (
           <div className="small">
             {formatEuro(s.pricePerMonth)} je Stellplatz und Monat · {s.freeDays} Tage frei · Einlagern {formatEuro(s.inFee)} · Auslagern {formatEuro(s.outFee)}

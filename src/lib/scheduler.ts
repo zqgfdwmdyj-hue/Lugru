@@ -26,6 +26,7 @@ import { adoptEbayAttempts, ensureEbayStock } from "@/lib/stock/ebay-link";
 import { sendPendingReceipts } from "@/lib/invoices/receipts";
 import { sendPendingToStotax } from "@/lib/invoices/stotax";
 import { cogReminder } from "@/lib/exports/cog";
+import { refreshShipments } from "@/lib/pallets/shipment-service";
 import { detectReplies, loadMissingBrands } from "@/lib/leads/service";
 import { autoFollowUps } from "@/lib/board/service";
 import { pullDueFeeds, refreshMarket } from "@/lib/suppliers/feed-service";
@@ -149,6 +150,7 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:pallets`, 59)) {
         await step(t, "Paletten-Erinnerungen", () => refreshPalletReminders(t, todayIso()));
         await step(t, "Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
+        await step(t, "Paletten-Sendungen", () => refreshShipments(t, todayIso()));
       }
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);

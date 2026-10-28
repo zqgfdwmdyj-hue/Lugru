@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { createdAt, files, id, money, tenantId, updatedAt } from "./core";
+import { createdAt, files, id, money, tenantId, updatedAt, users } from "./core";
+import { encryptedText } from "./encrypted";
 
 /**
  * Eingelagerte Paletten (Palettenstellplätze für Kunden). Ab `inAt` läuft die Lagerzeit,
@@ -165,3 +166,125 @@ export const palletEvents = pgTable(
 
 /** Konditionen, die bis einschließlich `until` (JJJJ-MM) galten. */
 export type RateVersion = { until: string; pricePerMonth: number | null; freeDays: number | null; mode: "monat" | "anteilig" | null; inFee: number | null; outFee: number | null };
+
+export const SHIPMENT_DIRECTIONS = ["ein", "aus"] as const;
+export const SHIPMENT_STATUSES = ["geplant", "unterwegs", "verzoegert", "zugestellt", "problem", "storniert"] as const;
+export type ShipmentStatus = (typeof SHIPMENT_STATUSES)[number];
+
+/**
+ * Sendungen per Spedition oder Paketdienst: Anlieferung ins Lager („ein“) oder Versand an einen Kunden („aus“),
+ * Paletten oder Kartons. `plannedDate` ist der aktuell erwartete Tag, `firstDate` der zuerst genannte –
+ * jede Verschiebung steht im Verlauf (pallet_shipment_events).
+ */
+export const palletShipments = pgTable(
+  "pallet_shipments",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    direction: text("direction", { enum: SHIPMENT_DIRECTIONS }).notNull(),
+    /** Kunde des Palettenlagers (wie pallets.customer), optional. */
+    customer: text("customer"),
+    /** Kurzbezeichnung, z. B. „12 Paletten Shampoo“ oder Auftragsnummer. */
+    title: text("title").notNull(),
+    /** Von wo (Anlieferung) bzw. wohin (Versand) – Ort oder Firma. */
+    place: text("place"),
+    /** Schlüssel aus der Spediteursliste (dhl, schenker …) oder „andere“. */
+    carrier: text("carrier").notNull(),
+    /** Name bei „andere“. */
+    carrierName: text("carrier_name"),
+    trackingNo: text("tracking_no"),
+    /** Eigener Link zur Sendungsverfolgung (z. B. aus der Mail des Spediteurs). */
+    trackingUrl: text("tracking_url"),
+    palletCount: integer("pallet_count"),
+    cartonCount: integer("carton_count"),
+    plannedDate: date("planned_date"),
+    /** Zeitfenster, z. B. „8–12 Uhr“. */
+    plannedTime: text("planned_time"),
+    firstDate: date("first_date"),
+    status: text("status", { enum: SHIPMENT_STATUSES }).notNull().default("geplant"),
+    /** Wo ist die Sendung gerade (letzte Meldung, z. B. „Im Depot Nürnberg“) – auch für den Kunden sichtbar. */
+    location: text("location"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    /** Interne Notiz – nie im Kunden-Link. */
+    note: text("note"),
+    /** Automatische Sendungsverfolgung (DHL) – letzter Abruf und Fehler. */
+    trackedAt: timestamp("tracked_at", { withTimezone: true }),
+    trackError: text("track_error"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("pallet_shipments_tenant_idx").on(t.tenantId, t.status, t.plannedDate)],
+);
+
+export const SHIPMENT_EVENT_KINDS = ["angelegt", "termin", "status", "standort", "foto", "link", "notiz", "geaendert", "automatisch", "ueberfaellig"] as const;
+export type ShipmentEventKind = (typeof SHIPMENT_EVENT_KINDS)[number];
+
+/**
+ * Verlauf je Sendung. `notice` = Meldung für alle mit Zugriff aufs Palettenlager (Termin verschoben,
+ * angekommen, Problem …); `internal` = nie im Kunden-Link (Notizen, Links, Änderungen).
+ */
+export const palletShipmentEvents = pgTable(
+  "pallet_shipment_events",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    shipmentId: uuid("shipment_id")
+      .notNull()
+      .references(() => palletShipments.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: SHIPMENT_EVENT_KINDS }).notNull(),
+    text: text("text").notNull(),
+    oldDate: date("old_date"),
+    newDate: date("new_date"),
+    status: text("status", { enum: SHIPMENT_STATUSES }),
+    notice: boolean("notice").notNull().default(false),
+    internal: boolean("internal").notNull().default(false),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+    userName: text("user_name"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("pallet_shipment_events_idx").on(t.shipmentId, t.createdAt), index("pallet_shipment_notices_idx").on(t.tenantId, t.notice, t.createdAt)],
+);
+
+/** Fotos zur Sendung (verladene Paletten, Lieferschein, Schaden). `shared` = im Kunden-Link sichtbar. */
+export const palletShipmentPhotos = pgTable(
+  "pallet_shipment_photos",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    shipmentId: uuid("shipment_id")
+      .notNull()
+      .references(() => palletShipments.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    shared: boolean("shared").notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [index("pallet_shipment_photos_idx").on(t.shipmentId)],
+);
+
+/**
+ * Befristete Links für Kunden (ohne Anmeldung). Gesucht wird über den Hash; der Link selbst liegt
+ * verschlüsselt, damit man ihn später noch einmal kopieren kann.
+ */
+export const palletShipmentLinks = pgTable(
+  "pallet_shipment_links",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    shipmentId: uuid("shipment_id")
+      .notNull()
+      .references(() => palletShipments.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    token: encryptedText("token").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    showPhotos: boolean("show_photos").notNull().default(true),
+    views: integer("views").notNull().default(0),
+    lastViewedAt: timestamp("last_viewed_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("pallet_shipment_links_hash_uq").on(t.tokenHash), index("pallet_shipment_links_ship_idx").on(t.shipmentId)],
+);

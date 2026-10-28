@@ -11,6 +11,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { cancelPallet, checkOutPallet, undoCheckOut } from "./actions";
 import { PalletScan } from "./scan";
 import { Occupancy } from "./tabs";
+import { ShipmentNotices } from "./sendungen/notices";
 
 const kg = (n: number | null) => (n ? `${String(n).replace(".", ",")} kg` : "");
 
@@ -54,11 +55,14 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
         <span className="small muted">{formatEuro(rates.pricePerMonth)} je Stellplatz und Monat · {rates.freeDays} Tage frei · <Link href="/paletten/abrechnung">Abrechnung</Link></span>
       </div>
 
+      <ShipmentNotices session={session} />
+
       <nav className="pal-actions" aria-label="Lagerarbeit" data-testid="pal-actions">
         <Link href="/paletten?aktion=ein#scan" className={`pal-action${mode === "ein" ? " active" : ""}`}><span aria-hidden="true">⬇</span>Einlagern</Link>
         <Link href="/paletten/abholung" className="pal-action"><span aria-hidden="true">⬆</span>Auslagern / Abholung</Link>
         <Link href="/paletten?aktion=suchen#scan" className={`pal-action${mode === "suchen" ? " active" : ""}`}><span aria-hidden="true">🔍</span>Palette suchen</Link>
         <Link href="/paletten/inventur" className="pal-action"><span aria-hidden="true">☑</span>Inventur</Link>
+        <Link href="/paletten/sendungen" className="pal-action"><span aria-hidden="true">🚚</span>Sendungen</Link>
       </nav>
 
       <div className="grid-kpi" data-testid="pal-stock">

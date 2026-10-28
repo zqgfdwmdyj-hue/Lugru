@@ -10,6 +10,7 @@ import { requireArea, requireOwner } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { parseAmount } from "@/lib/numbers";
 import { storeFile } from "@/lib/orders/service";
+import { storePhotos } from "@/lib/pallets/photos";
 import { changeRates, chargeableFrom, prevMonth, customerKey, inventoryCompare, nextPalletCodes, normalizeLocation, parseLocations, parseServices, ratesDiffer, storedDays, type RateVersion } from "@/lib/pallets/billing";
 import { MONTH_RE, activePickupsFor, dropOrphanPhotoFiles, loadMonthBill, logPalletEvent, palletContext, sendStatement } from "@/lib/pallets/service";
 import { listOutgoing } from "@/lib/invoices/outgoing";
@@ -46,24 +47,6 @@ const amount = (fd: FormData, key: string) => {
   const v = parseAmount(fd.get(key));
   return v === null || !Number.isFinite(v) || v < 0 ? null : Math.round(v * 100) / 100;
 };
-
-const PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_PHOTOS = 8;
-
-/** Hochgeladene Fotos prüfen und speichern – gibt die Datei-IDs zurück. */
-async function storePhotos(tenantId: string, fd: FormData): Promise<string[]> {
-  const files = fd.getAll("photos").filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f && f.size > 0);
-  if (files.length > MAX_PHOTOS) throw new Error(`Höchstens ${MAX_PHOTOS} Fotos auf einmal.`);
-  const ids: string[] = [];
-  for (const f of files) {
-    if (!PHOTO_TYPES.has(f.type)) throw new Error(`„${f.name}“: bitte ein Foto (JPG, PNG oder WebP).`);
-    if (f.size > 8 * 1024 * 1024) throw new Error(`„${f.name}“ ist größer als 8 MB.`);
-    // Dateiname nur mit einfachen Zeichen – er landet später im Download-Header.
-    const name = (f.name || "palette.jpg").normalize("NFKD").replace(/[^\w.-]+/g, "_").slice(-120) || "palette.jpg";
-    ids.push(await storeFile(tenantId, name, f.type, Buffer.from(await f.arrayBuffer())));
-  }
-  return ids;
-}
 
 /** Gleicher Kunde = gleiche Schreibweise (sonst zerfällt die Abrechnung in „Müller“ und „müller“). */
 async function canonicalCustomer(tenantId: string, name: string | null): Promise<string | null> {
@@ -533,6 +516,7 @@ export async function savePalletRates(_prev: SaveState, fd: FormData): Promise<S
     capacity,
     longStayDays,
     remindFreeEnd: fd.get("remindFreeEnd") === "on",
+    shipmentMail: fd.get("shipmentMail") === "on",
     services: parseServices(String(fd.get("services") ?? "")),
     // Lagerplan nur, wenn das Feld mitkommt (er wird jetzt im Lagerplan eingerichtet).
     ...(fd.has("locations") ? { locationsSpec: String(fd.get("locations") ?? "").slice(0, 4000), locations: parseLocations(String(fd.get("locations") ?? "")) } : {}),

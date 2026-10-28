@@ -76,6 +76,8 @@ export const DEFAULT_SETTINGS = {
     longStayDays: 90,
     /** Aufgabe am Vortag, wenn die freie Zeit endet. */
     remindFreeEnd: true,
+    /** Meldungen zu Sendungen (Termin verschoben, angekommen …) auch per E-Mail an alle mit Paletten-Zugriff. */
+    shipmentMail: false,
     services: [] as { name: string; price: number }[],
     locations: [] as string[],
     locationsSpec: "",
