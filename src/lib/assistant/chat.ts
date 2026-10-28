@@ -36,9 +36,15 @@ function systemPrompt(ctx: ToolCtx) {
       : "Diese Person darf über das Fragefeld nichts ändern – nur lesen. Bei Änderungswünschen sagen, wo das im Seller-System geht.",
     "Begriffe: „Prep Center“ = Versanddienstleister, der FBM-Aufträge für uns verschickt (Werkzeug „prep_center“, Aufträge mit verschickt_von). „Palettenlager“ = Lager für Paletten von Kunden mit Anlieferungen/Speditions-Sendungen (Werkzeuge „paletten“, „sendungen“) – nicht verwechseln. „Sendungen“ ohne Zusatz: nachfragen oder beides prüfen.",
     "Zum Privatbereich hast du hier keinen Zugriff.",
-    `Heute ist ${ctx.today} (Europe/Berlin).`,
+    "Das heutige Datum steht in der <kontext>-Notiz der jeweils neuesten Nachricht (Europe/Berlin).",
   ].join("\n");
 }
+
+// Der Grundtext (system) und die frühere Unterhaltung dürfen sich zwischen zwei Anfragen eines Chats nicht ändern –
+// sonst passen Claudes gespeicherte Denk-Schritte nicht mehr. Darum steht das Datum nicht im Grundtext, sondern
+// als kleine Notiz an jeder neuen Nachricht (wird im Verlauf nicht angezeigt).
+const KONTEXT = "<kontext>";
+const contextNote = (ctx: ToolCtx) => ({ type: "text" as const, text: `${KONTEXT}Heute ist ${ctx.today} (Europe/Berlin).</kontext>` });
 
 const STATUS: Record<string, string> = {
   ueberblick: "Schaue, was heute ansteht …",
@@ -114,10 +120,10 @@ export async function* chatTurn(ctx: ToolCtx, opts: { chatId?: string | null; te
       const out = await runTool(ctx, u.name, u.input);
       results.push({ type: "tool_result", tool_use_id: u.id, content: out.text, ...(out.isError ? { is_error: true } : {}) });
     }
-    messages.push({ role: "user", content: opts.text ? [...results, { type: "text", text: opts.text }] : results });
+    messages.push({ role: "user", content: opts.text ? [...results, contextNote(ctx), { type: "text", text: opts.text }] : results });
     pending = null;
   } else if (opts.text) {
-    messages.push({ role: "user", content: opts.text });
+    messages.push({ role: "user", content: [contextNote(ctx), { type: "text", text: opts.text }] });
   } else {
     return yield { type: "error", message: "Bitte eine Frage eingeben." };
   }
@@ -147,8 +153,12 @@ export async function* chatTurn(ctx: ToolCtx, opts: { chatId?: string | null; te
         tools: apiTools,
         messages,
         output_config: { effort: "medium" },
+        // Passt ein gespeicherter Denk-Schritt nicht mehr zur Unterhaltung (z. B. nach einem Update mit geändertem
+        // Grundtext oder neuen Werkzeugen), wird nur dieser verworfen – statt die ganze Anfrage abzulehnen.
+        thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
         cache_control: { type: "ephemeral" },
-        ...(fallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+        betas: ["thinking-binding-controls-2026-08-01", ...(fallback ? ["server-side-fallback-2026-07-01"] : [])],
+        ...(fallback ? { fallbacks: "default" as const } : {}),
       });
     } catch (e) {
       await save();
@@ -210,7 +220,7 @@ export function visibleTranscript(messages: BetaMessageParam[]) {
   const out: { role: "user" | "assistant"; text: string }[] = [];
   for (const m of messages) {
     if (m.role === "user") {
-      const text = typeof m.content === "string" ? m.content : m.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
+      const text = typeof m.content === "string" ? m.content : m.content.filter((b) => b.type === "text" && !(b as { text: string }).text.startsWith(KONTEXT)).map((b) => (b as { text: string }).text).join("\n");
       if (text.trim()) out.push({ role: "user", text });
     } else if (m.role === "assistant" && Array.isArray(m.content)) {
       const text = m.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n").trim();
