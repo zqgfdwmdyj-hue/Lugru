@@ -250,7 +250,7 @@ export default async function PruefenPage({ params }: { params: Promise<{ id: st
           <UnitReview
             units={Object.fromEntries(Object.entries(UNITS).map(([k, u]) => [k, u.label]))}
             rows={units.map((r) => {
-              const g = r.item.unit ? { unit: r.item.unit, count: r.item.unitCount, sure: true } : guessUnit(r.item.priceNote, r.product.variant);
+              const g = r.item.unit ? { unit: r.item.unit, count: r.item.unitCount, sure: true } : guessUnit(r.item.priceNote, r.product.variant, r.drink);
               const problem = g ? unitIssue({ unit: g.unit, unitCount: g.count, unitConfirmed: true, price: r.item.price }) : null;
               return {
                 itemId: r.item.id,

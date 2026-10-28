@@ -228,7 +228,7 @@ export async function lastPrices(productIds: string[]): Promise<Map<string, { pr
   return new Map(rows.filter((r) => r.price !== null).map((r) => [r.productId, { price: r.price as number, confirmed: r.confirmed }]));
 }
 
-type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | null; unitCount?: number | null; packKind?: "karton" | "kasten" | "packung" | "tray" | "palette" | null; packCount?: number | null; morePacks?: MorePack[]; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
+type Preset = { price: number | null; priceNote: string | null; caption: string | null; packNote?: string | null; packPrice?: number | null; unit?: "stueck" | "packung" | "karton" | "kasten" | "tray" | "palette" | null; unitCount?: number | null; packKind?: "karton" | "kasten" | "packung" | "tray" | "palette" | null; packCount?: number | null; morePacks?: MorePack[]; priceConfirmed?: boolean; priceSource?: "manuell" | "foto" | "ki" | "vorlage" | null };
 
 /** Nimmt Produkte in eine Verteilung auf (bereits enthaltene werden übersprungen). */
 export async function addProductsToEvent(eventId: string, productIds: string[], presets?: Map<string, Preset>) {

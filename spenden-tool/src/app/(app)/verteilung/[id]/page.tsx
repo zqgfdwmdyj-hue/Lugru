@@ -7,7 +7,7 @@ import { aiConfigured } from "@/lib/price-research";
 import { AI_MODE_ESTIMATE } from "@/lib/ai-modes";
 import { stockPrice } from "@/lib/pricing";
 import { autoAiMode } from "@/lib/settings";
-import { amountFromVariant, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
+import { amountFromVariant, isMultiUnit, ISSUE_HELP, ISSUE_TIER, OUTCOME_LABELS, PACK_KINDS, packOffers, packText, STOCK_LABELS, cleanAiText, ISSUE_FILTERS, isSecondHand, mhdAuto, guessUnit, unitIssue, unitLabel, UNITS, UNSORTED_CATEGORY } from "@/lib/price-logic";
 import { mhdLabel, outputPrice } from "@/lib/layout";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { addToEvent, applyPackSuggestion, applySuggestion, markPhotoPrice, createProduct, resolvePhotoPrice, saveItems, uploadMhdPhoto, uploadPhotos } from "@/app/(app)/actions";
@@ -149,7 +149,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
   const { item, product, state, check } = r;
   const name = r.unnamed ? "" : product.name;
   const unit = unitLabel(item.unit, item.unitCount);
-  const guess = !item.unit ? guessUnit(item.priceNote, product.variant) : null;
+  const guess = !item.unit ? guessUnit(item.priceNote, product.variant, r.drink) : null;
   const unitProblem = unitIssue({ unit: item.unit, unitCount: item.unitCount, unitConfirmed: item.unitConfirmed, price: item.price });
   const mhd = mhdAuto(product);
   const shownAs = outputPrice({ ...item, amount: product.amount });
@@ -268,12 +268,13 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
                 {Object.entries(UNITS).map(([key, u]) => <option key={key} value={key}>{u.label}</option>)}
               </select>
               {guess && <span className="small muted">Vorschlag: {unitLabel(guess.unit, guess.count)}</span>}
+              {r.drink && (!item.unit || item.unit === "stueck") && <span className="small muted">Getränke im Ganzen? Dann Kasten, Tray oder Palette wählen – der Preis gilt für das ganze Gebinde, kein Flaschenpreis nötig.</span>}
               {unitProblem && <span className="small warn-text">{unitProblem}</span>}
               {unitProblem && item.unit && <button className="btn-link small" type="submit" name="op" value={`einheit-ok:${item.id}`} style={{ textAlign: "left" }}>Einheit stimmt so</button>}
             </div>
             <O name={k("unit")} value={item.unit ?? ""} />
             <div className="field">
-              <label className="label" htmlFor={k("unitcount")}>Stück je Einheit</label>
+              <label className="label" htmlFor={k("unitcount")}>{item.unit === "kasten" || (r.drink && isMultiUnit(item.unit)) ? "Flaschen darin" : "Stück je Einheit"}</label>
               <input className="input input-compact num" id={k("unitcount")} name={k("unitcount")} defaultValue={item.unitCount ?? ""} inputMode="numeric" placeholder="z. B. 6" />
             </div>
             <O name={k("unitcount")} value={item.unitCount ? String(item.unitCount) : ""} />
@@ -283,7 +284,7 @@ function ProductRow({ r, eventId, categories, ai, first, last, open }: { r: Even
             <input className="input input-compact" id={k("note")} name={k("note")} defaultValue={item.priceNote ?? ""} placeholder="z. B. je, 3 Stück" />
           </div>
           <O name={k("note")} value={item.priceNote ?? ""} />
-          <div className="sub-legend">Varianten: ganze Packung{r.drink ? " / Kasten" : " / Karton"}, Palette … (je eigene Empfehlung)</div>
+          <div className="sub-legend">{isMultiUnit(item.unit) && item.unit !== "packung" ? "Weitere Gebinde, z. B. Palette (je eigene Empfehlung)" : `Varianten: ganze Packung${r.drink ? " / Kasten" : " / Karton"}, Palette … (je eigene Empfehlung)`}</div>
           <div className="form-grid">
             <div className="field">
               <label className="label" htmlFor={k("packkind")}>Art</label>

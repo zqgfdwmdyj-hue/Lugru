@@ -252,6 +252,20 @@ async function photo(dir, name, rgb, w = 640) {
     await page.goto(`${BASE}/verteilung/${futureId}/ausgabe`);
     ok((await page.locator("#messenger").innerText()).includes("1,5 kg 0,50"), "Messenger: Inhalt vor dem Preis");
 
+    // 10c: Getränke im Ganzen – Kasten als Abgabeeinheit, Preis gilt für den Kasten
+    await q("update event_items set unit = 'stueck', unit_count = null, price = 4 where id = $1", [singleItem.id]);
+    await q("update products set amount = '0,5 l', category = 'Getränke inkl. Pfand' where id = $1", [single]);
+    await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`, { waitUntil: "networkidle" });
+    await page.selectOption(`#unit_${singleItem.id}`, "kasten");
+    await page.fill(`#unitcount_${singleItem.id}`, "20");
+    await page.locator(`#unitcount_${singleItem.id}`).blur();
+    await page.locator("button[type=submit]", { hasText: /Speichern/ }).first().click().catch(() => {});
+    ok(await until(async () => { const r = (await q("select unit, unit_count from event_items where id = $1", [singleItem.id]))[0]; return r.unit === "kasten" && r.unit_count === 20; }), "Abgabeeinheit „Kasten“ mit 20 Flaschen gespeichert");
+    const aus4 = await (await page.goto(`${BASE}/aushang/${futureId}`)).text();
+    ok(/Kasten \(20 × 0,5 l\) 4/.test(aus4), "Aushang: „Kasten (20 × 0,5 l) 4€“ – kein Flaschenpreis");
+    await q("update event_items set unit = null, unit_count = null, price = 0.5 where id = $1", [singleItem.id]);
+    await q("update products set amount = null, category = 'Lebensmittel' where id = $1", [single]);
+
     // 11: Viel Bestand → günstigerer Vorschlag
     await q("update event_items set stock = 'palette', price = 1, price_confirmed = true where id = $1", [singleItem.id]);
     await page.goto(`${BASE}/verteilung/${futureId}?offen=${single}`);

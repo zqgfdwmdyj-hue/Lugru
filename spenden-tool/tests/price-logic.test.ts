@@ -341,3 +341,23 @@ describe("Inhalt/Menge vor dem Preis", () => {
     expect(outputPrice({ price: 0.5, unit: "stueck" })).toBe("je 50 Cent");
   });
 });
+
+describe("Getränke im Ganzen: Kasten, Tray, Palette als Abgabeeinheit", () => {
+  it("Preis gilt für das ganze Gebinde – Text vor dem Preis", async () => {
+    const { outputPrice } = await import("@/lib/layout");
+    expect(outputPrice({ price: 4, unit: "kasten", unitCount: 20 })).toBe("Kasten (20 Fl.) 4 €");
+    expect(outputPrice({ price: 4, unit: "kasten", unitCount: 20, amount: "0,5 l" }, "flyer")).toBe("Kasten (20 × 0,5 l) 4€");
+    expect(outputPrice({ price: 3, unit: "tray", unitCount: 24 })).toBe("Tray (24 St.) 3 €");
+    expect(outputPrice({ price: 50, unit: "palette" })).toBe("Palette 50 €");
+  });
+  it("Vorschlag: Getränke als Kasten statt Einzelflasche", async () => {
+    const { guessUnit, unitLabel } = await import("@/lib/price-logic");
+    expect(guessUnit(null, "0,5 l", true)).toEqual({ unit: "kasten", count: null, sure: false });
+    expect(guessUnit(null, "20 x 0,5 l", true)).toEqual({ unit: "kasten", count: 20, sure: true });
+    expect(guessUnit(null, "6 x 1,5 l", true)).toEqual({ unit: "packung", count: 6, sure: true });
+    expect(guessUnit("Tray 24 Dosen", null, true)?.unit).toBe("tray");
+    expect(guessUnit("ganze Palette", null)?.unit).toBe("palette");
+    expect(guessUnit("Karton mit 24", null)?.unit).toBe("karton");
+    expect(unitLabel("kasten", 20)).toBe("Kasten (20 Flaschen)");
+  });
+});

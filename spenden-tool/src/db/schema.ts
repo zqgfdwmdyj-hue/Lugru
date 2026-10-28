@@ -124,7 +124,7 @@ export const eventItems = pgTable(
     /** Steht vor dem Preis, z. B. „je“ oder „3er Packung“ – freier Text, überschreibt die Anzeige der Abgabeeinheit. */
     priceNote: text("price_note"),
     /** Worauf sich die Spendenempfehlung bezieht: Einzelstück, Mehrfachpackung oder Karton (siehe lib/price-logic.ts). */
-    unit: text("unit", { enum: ["stueck", "packung", "karton"] }),
+    unit: text("unit", { enum: ["stueck", "packung", "karton", "kasten", "tray", "palette"] }),
     /** Stück je Packung bzw. Karton, z. B. 6 beim 6er-Pack. */
     unitCount: integer("unit_count"),
     /** Abgabeeinheit von einem Menschen festgelegt/bestätigt – getrennt vom Preis. */

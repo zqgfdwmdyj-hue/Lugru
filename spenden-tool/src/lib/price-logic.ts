@@ -15,9 +15,19 @@ export const UNITS = {
   stueck: { label: "Einzelstück", hint: "z. B. ein Riegel, eine Dose" },
   packung: { label: "Mehrfachpackung", hint: "z. B. 6er-Pack" },
   karton: { label: "Karton", hint: "ganzer Karton / ganze Kiste" },
+  // Getränke werden meist nur im Ganzen abgegeben – dann gilt der Preis gleich für Kasten, Tray oder Palette.
+  kasten: { label: "Kasten (Getränke)", hint: "z. B. 20 × 0,5 l" },
+  tray: { label: "Tray", hint: "z. B. 24 Dosen" },
+  palette: { label: "Palette", hint: "ganze Palette" },
 } as const;
 export type Unit = keyof typeof UNITS;
 export const isUnit = (v: unknown): v is Unit => typeof v === "string" && v in UNITS;
+/** Einheiten mit Stückzahl darin (alles außer Einzelstück). */
+export const isMultiUnit = (v: unknown): boolean => isUnit(v) && v !== "stueck";
+/** Bezeichnung ganzer Gebinde vor dem Preis */
+const BULK_NAME: Record<string, string> = { karton: "Karton", kasten: "Kasten", tray: "Tray", palette: "Palette" };
+/** Kästen zählen Flaschen, sonst Stück. */
+const pieceWord = (unit: string | null | undefined) => (unit === "kasten" ? "Fl." : "St.");
 
 export type UnitInfo = { unit: string | null; unitCount: number | null; priceNote?: string | null; amount?: string | null };
 
@@ -26,7 +36,7 @@ export function unitLabel(unit: string | null | undefined, count: number | null 
   const n = count && count > 1 ? count : null;
   if (unit === "stueck") return "Einzelstück";
   if (unit === "packung") return n ? `${n}er-Pack` : "Packung";
-  if (unit === "karton") return n ? `Karton (${n} Stück)` : "Karton";
+  if (unit && BULK_NAME[unit]) return n ? `${BULK_NAME[unit]} (${n} ${unit === "kasten" ? "Flaschen" : "Stück"})` : BULK_NAME[unit];
   return "";
 }
 
@@ -42,12 +52,12 @@ export function pricePrefix(i: UnitInfo): string {
   const a = i.amount?.trim();
   if (a) {
     if (i.unit === "packung") return n ? `${n} × ${a}` : `Packung ${a}`;
-    if (i.unit === "karton") return n ? `Karton (${n} × ${a})` : `Karton ${a}`;
+    if (i.unit && BULK_NAME[i.unit]) return n ? `${BULK_NAME[i.unit]} (${n} × ${a})` : `${BULK_NAME[i.unit]} ${a}`;
     return a;
   }
   if (i.unit === "stueck") return "je";
   if (i.unit === "packung") return n ? `${n}er-Pack` : "Packung";
-  if (i.unit === "karton") return n ? `Karton (${n} St.)` : "Karton";
+  if (i.unit && BULK_NAME[i.unit]) return n ? `${BULK_NAME[i.unit]} (${n} ${pieceWord(i.unit)})` : BULK_NAME[i.unit];
   return "";
 }
 
@@ -76,7 +86,17 @@ export function amountFromVariant(variant: string | null | undefined): string | 
  * Nur eindeutige Angaben zählen: „6er-Pack“, „6 x 125 g“, „10 Stück“, „Karton mit 24 Dosen“. Maße („68 x 64 cm“),
  * Gewichte („240 g“), Altersangaben („3–6 Jahre“, „ab 6 Monaten“) und Modellnummern ergeben nie eine Stückzahl.
  */
-export function guessUnit(priceNote: string | null | undefined, variant: string | null | undefined): { unit: Unit; count: number | null; sure: boolean } | null {
+export function guessUnit(priceNote: string | null | undefined, variant: string | null | undefined, drink = false): { unit: Unit; count: number | null; sure: boolean } | null {
+  const g = guessUnitRaw(priceNote, variant);
+  if (!drink) return g;
+  // Getränke werden im Ganzen abgegeben: ab 10 Flaschen ist es ein Kasten, ohne Angabe ist der Kasten der Vorschlag.
+  if (!g) return { unit: "kasten", count: null, sure: false };
+  if (g.unit === "packung" && g.count && g.count >= 10) return { unit: "kasten", count: g.count, sure: g.sure };
+  if (g.unit === "stueck") return { unit: "kasten", count: null, sure: false };
+  return g;
+}
+
+function guessUnitRaw(priceNote: string | null | undefined, variant: string | null | undefined): { unit: Unit; count: number | null; sure: boolean } | null {
   let t = ` ${priceNote ?? ""} ${variant ?? ""} `.toLowerCase().replace(/,/g, ".");
   if (!t.trim()) return null;
   // Erst alles entfernen, was nach Zahl aussieht, aber keine Stückzahl ist.
@@ -92,7 +112,10 @@ export function guessUnit(priceNote: string | null | undefined, variant: string 
   const pieces = /(\d{1,3})\s*(?:stück|stk\.?|st\.|kapseln|beutel|riegel|dosen|flaschen|rollen|tüten|gläser|päckchen)(?![a-zäöü])/.exec(t);
   const count = [multi, pack, pieces].map((m) => (m ? Number(m[1]) : 0)).find((n) => n > 1 && n <= 500) ?? null;
   // „sure“: eindeutige Stückzahl. Einzelstück- und Karton-ohne-Anzahl-Vorschläge bleiben unsicher.
-  if (/karton|kiste|\btray\b|palette/.test(t)) return { unit: "karton", count, sure: !!count };
+  if (/palette/.test(t)) return { unit: "palette", count, sure: !!count };
+  if (/\btray\b/.test(t)) return { unit: "tray", count, sure: !!count };
+  if (/kasten/.test(t)) return { unit: "kasten", count, sure: !!count };
+  if (/karton|kiste/.test(t)) return { unit: "karton", count, sure: !!count };
   if (count) return { unit: "packung", count, sure: true };
   if (/einzel|\bje\b|\b1\s*(?:stück|stk|st\.)|\bstück\b/.test(t)) return { unit: "stueck", count: null, sure: false };
   return null;

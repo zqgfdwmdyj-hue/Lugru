@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { isPlaceholderName } from "@/lib/layout";
-import { categoryHint, sortIssues, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
+import { categoryHint, isMultiUnit, sortIssues, comparability, type Comparability, isDrink, isSecondHand, itemIssues, type Issue, priceState, type PriceState } from "@/lib/price-logic";
 import { perPiece, suggestDonationPrice, suggestPackPrice } from "@/lib/pricing";
 import { extraPhotos, latestPriceChecks, loadEvent, loadEventItems } from "@/lib/service";
 import { backsideCandidates } from "@/lib/backside";
@@ -20,7 +20,7 @@ export const loadEventView = cache(async (id: string) => {
     const state = priceState(r.item, r.product.imageFileId, r.photo);
     const check = checks.get(r.product.id);
     const priced = check?.status === "done" && check.mode !== "erkennen" && check.lowestPrice !== null;
-    const compare: Comparability | null = priced ? comparability(r.product.variant, check, r.item.unit === "packung" || r.item.unit === "karton" ? r.item.unitCount : null) : null;
+    const compare: Comparability | null = priced ? comparability(r.product.variant, check, isMultiUnit(r.item.unit) ? r.item.unitCount : null) : null;
     const unnamed = isPlaceholderName(r.product.name);
     // Unsicherer Preisvergleich ist nur ein Thema, solange der Preis von der KI stammt und niemand ihn bestätigt hat –
     // oder noch gar kein Preis da ist und der KI-Vorschlag übernommen werden könnte.
@@ -35,7 +35,8 @@ export const loadEventView = cache(async (id: string) => {
     const fresh = priced ? check.offers.filter((o) => !isSecondHand(o.title, o.shop)).sort((a, b) => perPiece(a) - perPiece(b)) : [];
     const piece = fresh.length ? perPiece(fresh[0]) : null;
     // Abgabe: Einzelstück 1, Packung/Karton mit Stückzahl, sonst wie im Angebot.
-    const abgabe = r.item.unit === "packung" || r.item.unit === "karton" ? (r.item.unitCount ?? 1) : r.item.unit === "stueck" ? 1 : (fresh[0]?.count ?? 1);
+    // Abgabe: Einzelstück 1, Packung/Karton/Kasten/Tray/Palette mit Stückzahl (ohne Angabe: wie im Angebot, z. B. Kasten 20).
+    const abgabe = isMultiUnit(r.item.unit) ? (r.item.unitCount ?? fresh[0]?.count ?? 1) : r.item.unit === "stueck" ? 1 : (fresh[0]?.count ?? 1);
     const freshSuggestion = piece !== null ? suggestDonationPrice(piece * abgabe) : null;
     const suggestion = priced && freshSuggestion !== null && !state.printed ? freshSuggestion : null;
     // Ganze Packung: 20 % vom Handelspreis (Getränke: normaler Anteil)
