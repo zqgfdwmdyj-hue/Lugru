@@ -10,7 +10,8 @@ import { syncChannelStock, syncSoon } from "@/lib/stock/channel-sync";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
 import { cancelLabel, createLabel, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
-import { orderShipWeight } from "@/lib/shipping/weights-service";
+import { orderShipWeight, saveSkuWeight } from "@/lib/shipping/weights-service";
+import { parseWeightInput } from "@/lib/shipping/weight";
 import { getSettings } from "@/lib/settings";
 import { TEMU_MASKED_NOTE } from "@/lib/orders/temu";
 
@@ -150,4 +151,15 @@ export async function fetchOrdersNow() {
   const r = await syncChannelStock(t);
   msgs.push(`Bestandsabgleich: ${r.pushed} Mengen übertragen${r.manual ? `, ${r.manual} von Hand` : ""}${r.oversold.length ? `, ÜBERVERKAUF ${r.oversold.join(", ")}` : ""}`);
   redirect(`/auftraege?${new URLSearchParams({ meldung: msgs.join(" · ") })}`);
+}
+
+/** Versandgewicht je Stück für einen Artikel (Lager-SKU) – aus dem Auftrag heraus; leer = löschen. */
+export async function saveSkuWeightAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const orderId = uuid.parse(fd.get("orderId"));
+  const sku = String(fd.get("sku") ?? "").trim();
+  const raw = String(fd.get("kg") ?? "").trim();
+  const grams = raw === "" ? 0 : parseWeightInput(raw);
+  if (sku && grams !== null) await saveSkuWeight(session.tenantId, sku, grams);
+  revalidatePath(`/auftraege/${orderId}`);
 }

@@ -5,9 +5,10 @@ import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
 import { loadOrder } from "@/lib/orders/service";
-import { orderShipWeight } from "@/lib/shipping/weights-service";
+import { orderShipWeight, skuWeightMap } from "@/lib/shipping/weights-service";
+import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress } from "../actions";
+import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveSkuWeightAction } from "../actions";
 import { LabelForm } from "./label-form";
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
@@ -21,6 +22,10 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   // Versandgewicht: einmal je Artikel eingetragen × Stück, sonst Artikeldaten + Verpackung (Schätzwert nicht vorbelegen).
   const sw = await orderShipWeight(session.tenantId, data);
   const weight = sw.source === "geschaetzt" ? null : sw.kg;
+  // Versandgewicht je Stück pro Position (an der Lager-SKU) – hier direkt eintragbar.
+  const keys = await Promise.all(items.map((i) => (i.item.sku ? wawiSku(session.tenantId, order.channel, i.item.sku) : Promise.resolve(null))));
+  const skuGrams = await skuWeightMap(session.tenantId, keys.filter((k): k is string => Boolean(k)));
+  const kgText = (g: number) => (g / 1000).toLocaleString("de-DE", { maximumFractionDigits: 3 });
   const a = order.shipTo ?? {};
   const f = (name: keyof typeof a, label: string, width?: number) => (
     <div className="field" style={width ? { width } : undefined}>
@@ -46,19 +51,37 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           <section className="card" style={{ overflow: "hidden" }}>
             <div className="card-head"><h2>Artikel</h2><span className="num">{formatEuro(order.total)}</span></div>
             <table className="table">
-              <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Menge</th><th className="right">Preis</th><th className="right">Gewicht</th></tr></thead>
+              <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Menge</th><th className="right">Preis</th><th className="right">Versandgewicht je Stück</th></tr></thead>
               <tbody>
-                {items.map(({ item, weightGrams, productTitle }) => (
-                  <tr key={item.id}>
-                    <td className="num">{item.sku ?? "–"}</td>
-                    <td>{item.title ?? productTitle ?? item.asin ?? <span className="muted">Name unbekannt</span>}</td>
-                    <td className="num right">{item.quantity}</td>
-                    <td className="num right">{formatEuro(item.price)}</td>
-                    <td className="num right">{weightGrams ? `${weightGrams} g` : <span className="tag tag-missing">fehlt</span>}</td>
-                  </tr>
-                ))}
+                {items.map(({ item, weightGrams, productTitle }, n) => {
+                  const key = keys[n];
+                  const g = key ? skuGrams.get(key) ?? null : null;
+                  return (
+                    <tr key={item.id}>
+                      <td className="num">{item.sku ?? "–"}</td>
+                      <td>{item.title ?? productTitle ?? item.asin ?? <span className="muted">Name unbekannt</span>}</td>
+                      <td className="num right">{item.quantity}</td>
+                      <td className="num right">{formatEuro(item.price)}</td>
+                      <td className="right">
+                        {key ? (
+                          <form action={saveSkuWeightAction} style={{ display: "inline-flex", gap: 4, alignItems: "center", justifyContent: "flex-end" }} data-testid="item-weight">
+                            <input type="hidden" name="orderId" value={order.id} />
+                            <input type="hidden" name="sku" value={key} />
+                            <input className="input" name="kg" defaultValue={g !== null ? kgText(g) : ""} placeholder={weightGrams ? kgText(weightGrams) : "0,3"} inputMode="decimal" aria-label={`Versandgewicht je Stück ${item.sku}`} style={{ width: 70, padding: "4px 6px" }} />
+                            <span className="small muted">kg</span>
+                            <button className="btn btn-small" type="submit">Speichern</button>
+                          </form>
+                        ) : (
+                          <span className="muted">–</span>
+                        )}
+                        {key && g === null && <div className="small" style={{ color: "var(--warn)" }}>{weightGrams ? `Artikeldaten ${weightGrams} g + Verpackung` : "fehlt – wird geschätzt"}</div>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <div className="small muted" style={{ padding: "8px 14px" }} data-testid="order-weight-sum">Sendung: {sw.note} · gilt für alle Aufträge mit diesem Artikel (Amazon und eBay)</div>
           </section>
 
           {order.fulfillment === "FBM" && (

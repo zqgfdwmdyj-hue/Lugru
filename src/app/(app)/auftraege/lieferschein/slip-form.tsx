@@ -20,7 +20,7 @@ export function SlipForm({ postReady, dhlReady, postPrice, sandbox, initial }: {
   const count = (c: ShipChoice) => open.filter((r) => r.choice === c).length;
   const resultFor = (id: string) => labels?.results.find((x) => x.orderId === id);
   // Artikel der offenen Sendungen – Gewicht je Stück einmal eintragen, gilt dann für alle Sendungen.
-  const skus = [...new Map(open.flatMap((r) => r.skus).map((s) => [s.sku, s])).values()].sort((a, b) => Number(a.grams !== null) - Number(b.grams !== null) || a.title.localeCompare(b.title, "de"));
+  const skus = [...new Map(rows.flatMap((r) => r.skus).map((s) => [s.sku, s])).values()].sort((a, b) => Number(a.grams !== null) - Number(b.grams !== null) || a.title.localeCompare(b.title, "de"));
 
   return (
     <div className="stack" style={{ gap: 16 }}>
