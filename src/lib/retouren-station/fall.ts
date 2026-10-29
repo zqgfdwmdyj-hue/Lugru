@@ -10,7 +10,7 @@ import { getSettings } from "@/lib/settings";
 import { kleinSchluessel, loeschen, teilSchluessel } from "@/lib/medien/ablage";
 import { anspruchsArt, BEFUND_TEXT, fallDateien, naechsterZaehler, retSku, verbleibVorschlag } from "./logic";
 import { BEFUND_EN, falltextVorlage, FalltextSchema, jsonAus, promptFalltext, type FallFakten, type ProduktKi } from "./ki";
-import { entscheidungFuer } from "./service";
+import { entscheidungFuer, ordneZu } from "./service";
 
 // Nach „Fertig“: Entscheidung frisch rechnen, Falltexte (DE/EN), RET-Chargen mit geerbtem EK, Ansprüche anlegen.
 // Außerdem: Fälle für die Anspruchs-Erkennung, Fall-Paket für die Seite, Aufräumen nach der Aufbewahrungsfrist.
@@ -163,6 +163,20 @@ export type StationFall = {
  * Kunden kann später kommen, Amazon kann inzwischen gezahlt haben) und gespeichert.
  */
 export async function stationFaelle(tenantId: string): Promise<StationFall[]> {
+  // LPN war beim Prüfen noch nicht im Kundenretouren-Bericht? Jetzt noch einmal nachschlagen.
+  const ohneRetoure = await db
+    .select()
+    .from(Pos)
+    .where(and(eq(Pos.tenantId, tenantId), eq(Pos.zuordnung, "lpn"), isNull(Pos.bestellnummer), isNotNull(Pos.lpn), isNotNull(Pos.befund), ne(Pos.befund, "ok")))
+    .limit(200);
+  for (const x of ohneRetoure) {
+    const z = await ordneZu(tenantId, x.lpn!);
+    if (!z.bestellnummer) continue;
+    await db
+      .update(Pos)
+      .set({ fnsku: z.fnsku ?? x.fnsku, sku: z.sku ?? x.sku, asin: z.asin ?? x.asin, titel: z.titel ?? x.titel, bestellnummer: z.bestellnummer, rueckgabeDatum: z.rueckgabeDatum ?? null, rueckgabegrund: z.rueckgabegrund ?? null, kundenkommentar: z.kundenkommentar ?? null, amazonZustand: z.amazonZustand ?? null, entscheidung: "warten", updatedAt: new Date() })
+      .where(eq(Pos.id, x.id));
+  }
   const rows = await db
     .select({ x: Pos, remissionId: P.remissionId })
     .from(Pos)

@@ -317,7 +317,7 @@ async function laufenderFall(tenantId: string, orderId: string, eigenerSchluesse
 
 type Zuordnung = Partial<typeof Pos.$inferInsert> & { zuordnung: "lpn" | "fnsku" | "ean" | "sku" | "unbekannt" };
 
-async function ordneZu(tenantId: string, roh: string): Promise<Zuordnung> {
+export async function ordneZu(tenantId: string, roh: string): Promise<Zuordnung> {
   const code = erkenneCode(roh);
   const wert = code?.wert ?? roh.trim().toUpperCase();
   if (code?.art === "lpn") {

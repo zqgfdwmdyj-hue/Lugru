@@ -1,6 +1,6 @@
 # Prüfstand je Reiter
 
-Letzter Lauf der Ablaufprüfungen: **29.10.2026, 03:44** · 43 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 112 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
+Letzter Lauf der Ablaufprüfungen: **29.10.2026, 17:34** · 45 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 140 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
 
 Erzeugt mit `npm run pruefstand` aus `e2e/pruefstand.ts` (Abläufe, Live-Prüfungen) und dem letzten Lauf. Nicht von Hand bearbeiten.
 
@@ -49,6 +49,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Service & Ansprüche | Retouren `/retouren` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Service & Ansprüche | Ansprüche `/ansprueche` | ✓ 2/2 Abläufe | – | – |
 | Service & Ansprüche | Remissionen `/remissionen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
+| Service & Ansprüche | Retouren-Station & Fälle `/remissionen/pruefungen` | ✓ 3/3 Abläufe | – | 3 |
 | Service & Ansprüche | Fälle & A-bis-Z `/faelle` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Service & Ansprüche | Bewertungen `/bewertungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Finanzen | Gewinn `/gewinn` | ✓ 1/1 Abläufe | – | – |
@@ -74,7 +75,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Hilfsfunktionen | Daten importieren `/import` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Einstellungen `/einstellungen` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Anbindungen `/anbindungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 7/7 Abläufe | – | 2 |
+| Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 8/8 Abläufe | – | 2 |
 | Hilfsfunktionen | eBay-Einstellungen `/ebay?ansicht=einstellungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | Fragefeld | ✓ 2/2 Abläufe | 👁 behoben | – |
 | Übergreifend | Server (Port, Adresse, Testumgebung) | – | 👁 befund | 2 |
@@ -166,6 +167,18 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Kennzahlen | Herkunft je Kennzahl | ✓ bestanden (desktop) | `kennzahlen.spec.ts` |
 | Als eingereicht markieren (über Claude) | nur mit Freigabe „ändern“; Status, Fallnummer, Zeitpunkt und Protokolleintrag „über Claude“; zweiter Aufruf ändert nichts Falsches | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
 
+### Service & Ansprüche › Retouren-Station & Fälle (`/remissionen/pruefungen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Retouren-Station: Paket mit 4 Artikeln ohne Tastatur/Maus (Sprache + Handscanner) | Remission über Etikett, Lieferschein-Abgleich, LPN → Kundenretoure; Fall nur ab Schwelle und wenn Amazon nicht gezahlt hat; KI-Warnung bei Abweichung; Netz weg → Warteschlange; Video je Paket | ✓ bestanden (desktop) | `retouren-station.spec.ts` |
+| Fall-Paket und Eingereicht | Text DE/EN, Fotos 1_Versandetikett … 4_Inhalt in fester Reihenfolge, ZIP, Anspruch mit Betrag/Frist, Fallnummer + Eingereicht im Verlauf; RET-SKU mit EK der Charge | ✓ bestanden (desktop) | `retouren-station.spec.ts` |
+| Rechte der Station | ohne Bereich Amazon kein Zugriff auf Station, Schnittstelle und Fotos | ✓ bestanden (desktop) | `retouren-station.spec.ts` |
+
+- – Offen: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
+- – Offen: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
+- – Offen: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
+
 ### Finanzen › Gewinn (`/gewinn`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -240,6 +253,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Keepa: Länder vergleichen | DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“ | ✓ bestanden (desktop) | `keepa.spec.ts` |
 | Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon) | Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen | ✓ bestanden (desktop) | `keepa.spec.ts` |
 | Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live | Berichte unter Anbindungen anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
+| Neue Werkzeuge ohne Neustart (notifications/tools/list_changed) | Ereignis-Kanal meldet beim Verbinden „tools/list_changed“ | ✓ bestanden (desktop) | `retouren-station.spec.ts` |
 | Rechte der neuen Werkzeuge im Fragefeld | Büro: Posteingang, Repricer, Angebote live (über Wawi → Lieferanten); keine Buy Box, Listung, Lageralter, Ansprüche, Anbindungen | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
 
 - – Offen: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
@@ -262,7 +276,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (42 Abläufe + Oberfläche auf 66 Seiten): 42 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
+**Automatisch** (46 Abläufe + Oberfläche auf 67 Seiten): 46 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
 
 **Live geprüft:**
 
@@ -283,6 +297,9 @@ Tagesübersicht (`/`) · Alle Aufgaben (`/?ansicht=liste`) · Angebote (alle Kan
 - Posteingang: Entwurf echt senden (nur mit echtem Postfach)
 - Posteingang: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
+- Retouren-Station & Fälle: Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell
+- Retouren-Station & Fälle: Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen
+- Retouren-Station & Fälle: Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen
 - Privat: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
 - Privat: Live nie prüfen (echte private Daten)
 - Claude & KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
