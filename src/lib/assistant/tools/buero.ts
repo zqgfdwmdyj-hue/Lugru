@@ -34,7 +34,7 @@ export const ansprueche = defineTool({
   description: "Offene Erstattungsansprüche gegenüber Amazon (verloren, beschädigt, Retouren …) mit erwartetem Betrag, sortiert nach Frist (früheste zuerst, ohne Frist am Ende) und Tagen bis zur Frist. Für „Wie viel Geld steht bei Amazon noch aus?“, „Welche Fristen laufen ab?“ – mit frist_in_tagen nur die bald fälligen.",
   area: "amazon",
   write: false,
-  quelle: { text: "Ansprüche aus Amazon-Berichten", jobs: ["Ansprüche", "Amazon-Reports abholen"] },
+  quelle: { text: "Ansprüche aus Amazon-Berichten", jobs: ["Ansprüche", "Amazon-Reports abholen"], importe: true },
   input: z.object({
     status: z.enum(["offen", "eingereicht", "alle_offenen"]).default("alle_offenen"),
     frist_in_tagen: z.number().int().min(0).max(365).optional().describe("Nur Ansprüche, deren Frist in höchstens so vielen Tagen abläuft (auch schon abgelaufene)"),
@@ -54,7 +54,7 @@ export const ansprueche = defineTool({
       sortierung: "nach Frist, früheste zuerst",
       ansprueche: rows.map((c) => {
         const d = daysLeft(ctx.today, c.deadline);
-        return { id: c.id, titel: c.title, art: c.type, status: c.status, sku: c.sku, menge: c.quantity, erwartet: round2(c.expectedAmount), frist: c.deadline, tage_bis_frist: d ?? undefined, frist_abgelaufen: d !== null && d < 0 ? true : undefined, amazon_fall: c.amazonCaseId };
+        return { id: c.id, titel: c.title, art: c.type, status: c.status, sku: c.sku, menge: c.quantity, erwartet: round2(c.expectedAmount), frist: c.deadline, tage_bis_frist: d ?? undefined, frist_abgelaufen: d !== null && d < 0 ? true : undefined, amazon_fall: c.amazonCaseId, link: abs(ctx, `/ansprueche/${c.id}`) };
       }),
       link: abs(ctx, "/ansprueche"),
     });

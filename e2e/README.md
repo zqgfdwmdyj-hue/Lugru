@@ -30,6 +30,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `rechte.spec.ts` | Claude-Konnektor und Fragefeld mit mehreren Konten: Rechte, Vorschläge, Protokoll |
 | `werkzeuge.spec.ts` | Jedes lesende Claude-Werkzeug: Beschreibung, Antwort, Quelle + Datenstand, Links |
 | `keepa.spec.ts` | Keepa-Werkzeuge: Produkt, Länder-Vergleich, Zwischenspeicher, Rechte (gegen den Keepa-Nachbau) |
+| `geschaeft.spec.ts` | Antwort-Entwurf (Senden nur mit Häkchen), Archivieren, Anspruch eingereicht, BQool-Export + „repricer“, Amazon je Land (Buy Box, Listung, Lageralter, Angebote live), Rechte |
 | `fragefeld.spec.ts` | Altes Gespräch fortsetzen (kein 400), Prep-Center-Zahlen |
 | `kennzahlen.spec.ts` | Jede Kennzahl mit Zeitraum/Quelle/Stand, keine kaputten Werte |
 | `uebungsdaten.spec.ts` | Übungs-Deals zählen nirgends mit, Schalter blendet sie ein |

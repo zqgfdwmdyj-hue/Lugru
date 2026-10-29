@@ -103,7 +103,7 @@ await integ("deutschepost", { clientId: "test-client", username: "portokasse@exa
 await integ("dhl", { username: "test-dhl" }, { apiKey: "test-dhl-key", password: "test-passwort" });
 await integ("dhl_tracking", {}, { apiKey: "test-track-key" });
 await integ("keepa", {}, { apiKey: "test-keepa-schluessel" });
-await integ("amazon_sp", { clientId: "amzn.test", sellerId: "TESTSELLER", marketplaceIds: "A1PA6795UKMFR9" }, { clientSecret: "test-secret", refreshToken: "test-refresh" });
+await integ("amazon_sp", { clientId: "amzn.test", sellerId: "TESTSELLER", marketplaceIds: "A1PA6795UKMFR9,A13V1IB3VIYZZH" }, { clientSecret: "test-secret", refreshToken: "test-refresh" });
 
 // 5) Artikel: Gewicht, Warensendung, wer verschickt
 await db.insert(schema.skuWeights).values([
@@ -182,6 +182,13 @@ await db.insert(schema.tasks).values([
   { tenantId: T, title: "Testaufgabe: Lieferantenrechnung prüfen", category: "eigene", dueDate: day(1) },
   { tenantId: T, title: "Testaufgabe: Paletten zählen", category: "eigene", dueDate: day(3) },
 ]);
+
+// 10b) Posteingang und Erstattungsanspruch (für Antwort-Entwurf und „als eingereicht markieren“)
+await db.insert(schema.emails).values([
+  { tenantId: T, messageKey: "<testanfrage-1@example.invalid>", fromAddress: "lieferant@example.invalid", fromName: "Test Lieferant", subject: "Testanfrage: Lieferzeit Testsocken", receivedAt: new Date(Date.now() - 86400_000), snippet: "Wann können Sie die nächste Bestellung abnehmen?", bodyText: "Guten Tag,\n\nwann können Sie die nächste Bestellung Testsocken abnehmen? Wir hätten 200 Stück ab KW 46.\n\nGrüße\nTest Lieferant (erfunden)", category: "action" as const },
+  { tenantId: T, messageKey: "<testnewsletter-1@example.invalid>", fromAddress: "news@example.invalid", fromName: "Test Newsletter", subject: "Testnewsletter Oktober", receivedAt: new Date(Date.now() - 2 * 86400_000), snippet: "Neuigkeiten (erfunden)", bodyText: "Neuigkeiten (erfunden).", category: "noise" as const },
+]);
+await db.insert(schema.claims).values({ tenantId: T, type: "lost_warehouse" as const, status: "detected" as const, detectionKey: "test-verloren-1", title: "Testanspruch: 3 Testsocken im Lager verloren (erfunden)", sku: "TEST-SOCKEN", fnsku: "X00TEST0001", asin: "B0TEST0001", quantity: 3, unitCost: 2.1, expectedAmount: 29.97, eventDate: day(-20), deadline: day(5) });
 
 // 11) Privatbereich (nur Inhaberin voll, „Fiona Familie“ nur Familieninfos). Das Wort PRIVATGEHEIM darf nirgends
 // außerhalb des Privatbereichs auftauchen – die Prüfungen suchen danach (Suche, Kalender, Fragefeld, Claude ohne Freigabe).

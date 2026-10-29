@@ -40,7 +40,7 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
    * deren letzter Erfolg als Datenstand angegeben wird; „sellerboard:*“ = alle sellerboard-Abrufe. Ohne Angabe:
    * im Seller-System erfasst, immer aktuell.
    */
-  quelle?: { text: string; jobs?: string[] };
+  quelle?: { text: string; jobs?: string[]; /** Auch Datei-Importe von Amazon-Berichten zählen als Datenstand. */ importe?: boolean };
   /** Zusammenfassung für Bestätigung und Protokoll, z. B. „Termin 30.10. → 01.11.“. */
   summary?: (input: z.infer<S>) => string;
 };

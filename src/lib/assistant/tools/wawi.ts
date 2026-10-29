@@ -209,7 +209,7 @@ export const produkte = defineTool({
   description: "Sucht Produkte (SKU, EAN, ASIN, Name) und zeigt je SKU den Wawi-Bestand: im Lager, in offenen Aufträgen reserviert, verfügbar – dazu FBA-Bestand bei Amazon, falls vorhanden. Für „Wie viele haben wir noch von …?“.",
   area: "wawi",
   write: false,
-  quelle: { text: "Produkte, Chargen und Bestand (eigenes Lager, Amazon, eBay)", jobs: ["Amazon-Reports abholen", "Bestandsabgleich Kanäle"] },
+  quelle: { text: "Produkte, Chargen und Bestand (eigenes Lager, Amazon, eBay)", jobs: ["Amazon-Reports abholen", "Bestandsabgleich Kanäle"], importe: true },
   input: z.object({ suche: z.string().trim().min(2).max(100), limit: z.number().int().min(1).max(30).default(10) }),
   run: async (ctx, i) => {
     const t = ctx.session.tenantId;

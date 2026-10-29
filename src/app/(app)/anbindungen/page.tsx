@@ -4,13 +4,28 @@ import { integrationStatus } from "@/lib/integrations/store";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
-import { deleteIntegrationAction, requestAmazonReport, runAllNow, saveIntegrationAction } from "./actions";
+import { MARKT_BERICHTE, berichtVonTyp } from "@/lib/amazon-markt/store";
+import { landVonId } from "@/lib/amazon-markt/logic";
+import { deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
 import { TestButton } from "./test-button";
 import { SellerboardCard } from "./sellerboard-card";
 
-export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string }> }) {
+const MARKT_NAME: Record<keyof typeof MARKT_BERICHTE, string> = { buybox: "Buy-Box-Anteil (Sales and Traffic)", listungen: "Listung (Alle Angebote)", lageralter: "Lageralter (Bestandsplanung)" };
+const AMZ_MSG: Record<string, (n: number) => string> = {
+  angefordert: (n) => `${n} Bericht${n === 1 ? "" : "e"} je Land angefordert – Amazon braucht meist einige Minuten, dann „Fertige Berichte abholen“.`,
+  fehler: (n) => `${n} angefordert, mindestens eine Anforderung schlug fehl (siehe Liste).`,
+  abgeholt: (n) => (n ? `${n} fertige Bericht${n === 1 ? "" : "e"} übernommen.` : "Noch nichts fertig – in ein paar Minuten erneut versuchen."),
+};
+/** „GET_SALES_AND_TRAFFIC_REPORT@A1PA…“ → „Buy-Box-Anteil (Sales and Traffic) DE“ */
+function berichtName(t: string) {
+  const [typ, mp] = t.split("@");
+  const b = mp ? berichtVonTyp(typ) : null;
+  return b ? `${MARKT_NAME[b]} ${landVonId(mp) ?? mp}` : t;
+}
+
+export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string; amz?: string; n?: string }> }) {
   const session = await requireOwner();
-  const { p, sellerboard } = await searchParams;
+  const { p, sellerboard, amz, n } = await searchParams;
   const status = await integrationStatus(session.tenantId);
   const reports = await db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12);
 
@@ -31,7 +46,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           <h2>Hintergrund-Abrufe</h2>
           <form action={runAllNow}><button className="btn btn-small" type="submit">Jetzt alles abrufen</button></form>
         </div>
-        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich), Rechnungen stündlich.</div>
+        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich, Buy Box/Listung/Lageralter je Land täglich), Rechnungen stündlich.</div>
         {status.get("amazon_sp") && (
           <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="rk" className="small">Amazon-Report sofort anfordern:</label>
@@ -39,11 +54,25 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
             <button className="btn btn-small" type="submit">Anfordern</button>
           </form>
         )}
+        {status.get("amazon_sp") && (
+          <div id="amazon-berichte" className="stack" style={{ gap: 6 }} data-testid="amazon-berichte">
+            <form action={requestMarktBerichteNow} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <label htmlFor="mb" className="small">Je Land (alle Marktplätze der Anbindung):</label>
+              <select className="select" id="mb" name="bericht" style={{ width: 280, maxWidth: "100%" }}>
+                <option value="alle">Buy Box, Listung und Lageralter</option>
+                {Object.entries(MARKT_NAME).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <button className="btn btn-small" type="submit">Anfordern</button>
+            </form>
+            <form action={fetchAmazonReportsNow}><button className="btn btn-small" type="submit">Fertige Berichte abholen</button></form>
+            {amz && AMZ_MSG[amz] && <div className={`notice ${amz === "fehler" ? "notice-warn" : amz === "abgeholt" && Number(n) > 0 ? "notice-ok" : "notice-info"}`} data-testid="amazon-berichte-msg" role="status">{AMZ_MSG[amz](Number(n) || 0)}</div>}
+          </div>
+        )}
         {reports.length > 0 && (
           <table className="table">
             <tbody>
               {reports.map((r) => (
-                <tr key={r.id}><td className="num small">{r.requestedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</td><td className="small">{r.reportType}</td><td className="small">{r.status === "pending" ? "wartet auf Amazon" : r.status === "done" ? "übernommen" : `Fehler: ${r.error ?? ""}`}</td></tr>
+                <tr key={r.id}><td className="num small">{r.requestedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</td><td className="small">{berichtName(r.reportType)}</td><td className="small">{r.status === "pending" ? "wartet auf Amazon" : r.status === "done" ? "übernommen" : `Fehler: ${r.error ?? ""}`}</td></tr>
               ))}
             </tbody>
           </table>

@@ -85,6 +85,8 @@ export type OutgoingMail = {
   text: string;
   html?: string;
   replyTo?: string;
+  /** Antwort auf eine Mail: deren Message-ID (hält den Verlauf im Mailprogramm zusammen). */
+  inReplyTo?: string;
   attachments?: { filename: string; content: Buffer | Uint8Array; contentType?: string }[];
 };
 
@@ -111,6 +113,8 @@ export async function buildRaw(from: { name?: string; address: string }, mail: O
     from: from.name ? { name: from.name, address: from.address } : from.address,
     to: mail.to,
     replyTo: mail.replyTo,
+    inReplyTo: mail.inReplyTo,
+    references: mail.inReplyTo,
     subject: mail.subject,
     text: mail.text,
     html: mail.html,

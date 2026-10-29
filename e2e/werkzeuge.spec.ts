@@ -49,9 +49,12 @@ test.describe("Einstellungen – Claude & KI-Assistent (Werkzeuge)", () => {
     const [ship] = await sql<{ id: string }>("select id from pallet_shipments order by created_at limit 1");
     const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
     const inSieben = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date(Date.now() + 7 * 86400_000));
+    const [mail] = await sql<{ id: string }>("select id from emails where message_key = '<testanfrage-1@example.invalid>'");
     const beispiel: Record<string, unknown> = { asin: "B0TEST0001", id_oder_nummer: "TEST-AMZ-1001", id: ship.id, von: heute, bis: inSieben, suchbegriff: "Test", q: "Test", text: "Test", frage: "Test" };
+    // Werkzeuge, deren „id“ etwas anderes meint als eine Sendung
+    const jeWerkzeug: Record<string, Record<string, unknown>> = { mail: { id: mail.id } };
     const wert = (k: string, p: Prop = {}) => (k in beispiel ? beispiel[k] : p.enum ? p.enum[0] : p.type === "array" ? (p.items?.enum ? [p.items.enum[0]] : []) : p.type === "number" || p.type === "integer" ? 1 : p.type === "boolean" ? false : "Test");
-    const args = (t: Tool) => Object.fromEntries((t.inputSchema.required ?? []).map((k) => [k, wert(k, t.inputSchema.properties?.[k])]));
+    const args = (t: Tool) => ({ ...Object.fromEntries((t.inputSchema.required ?? []).map((k) => [k, wert(k, t.inputSchema.properties?.[k])])), ...jeWerkzeug[t.name] });
 
     const offen: string[] = [];
     const alleLinks = new Set<string>();

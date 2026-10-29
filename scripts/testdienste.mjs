@@ -9,6 +9,7 @@
 // Übersicht:  GET /__log (alle Aufrufe), GET /__ki (Anfragen an die Test-KI), POST /__reset
 import http from "node:http";
 import { createHash } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 
 const PORT = Number(process.env.TESTDIENSTE_PORT || 4010);
@@ -126,6 +127,25 @@ async function route(req, url, body) {
   }
   // Amazon (Anmeldung + Selling Partner API)
   if (p.startsWith("/amazon-lwa")) return json({ access_token: "test-amazon-token", token_type: "bearer", expires_in: 3600 });
+  if (p.startsWith("/amazon-doc/")) {
+    const r = berichte.get(p.split("/").pop());
+    if (!r) return [404, { errors: [{ code: "NotFound", message: "Dokument unbekannt" }] }];
+    return [200, r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? gzipSync(Buffer.from(JSON.stringify(salesTraffic(r)))) : Buffer.from(berichtTsv(r)), r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? "application/gzip" : "text/tab-separated-values; charset=utf-8"];
+  }
+  if (p === "/amazon/reports/2021-06-30/reports" && req.method === "POST") {
+    const b = parsed();
+    const id = `TESTREP${++berichtNr}`;
+    berichte.set(id, { typ: b.reportType, mp: (b.marketplaceIds ?? [])[0] ?? "A1PA6795UKMFR9", von: b.dataStartTime ?? null, bis: b.dataEndTime ?? null });
+    return json({ reportId: id });
+  }
+  const rep = /^\/amazon\/reports\/2021-06-30\/(reports|documents)\/([A-Z0-9]+)$/.exec(p);
+  if (rep && req.method === "GET") {
+    const r = berichte.get(rep[2]);
+    // Berichte je Land sind sofort fertig; andere Reports kennt der Nachbau nicht (wie bisher).
+    if (r && MARKT_TYPEN.has(r.typ)) return json(rep[1] === "reports" ? { reportId: rep[2], reportType: r.typ, processingStatus: "DONE", reportDocumentId: rep[2] } : { reportDocumentId: rep[2], url: `${SELF}/amazon-doc/${rep[2]}`, ...(r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? { compressionAlgorithm: "GZIP" } : {}) });
+  }
+  const off = /^\/amazon\/products\/pricing\/v0\/items\/([^/]+)\/offers$/.exec(p);
+  if (off && req.method === "GET") return angebote(decodeURIComponent(off[1]), url.searchParams.get("MarketplaceId") ?? "");
   if (p.startsWith("/amazon/")) {
     if (req.method !== "GET") return json({ payload: {}, status: "ACCEPTED", feedId: `TEST-${Date.now()}` });
     return json({ payload: { Orders: [], NextToken: null }, orders: [], items: [], inventorySummaries: [], pagination: {} });
@@ -186,6 +206,84 @@ function keepaProdukte(url) {
       };
     });
   return { tokensLeft: keepaTokens, products };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Amazon-Berichte je Land (Buy Box, Alle Angebote, Bestandsplanung) und Angebote live. Erfundene Testartikel
+// TEST-SOCKEN (B0TEST0001), TEST-TASSE (B0TEST0002), TEST-KABEL (B0TEST0003). DE: alle drei, FR: Tasse fehlt.
+const berichte = new Map();
+let berichtNr = 0;
+const MARKT_TYPEN = new Set(["GET_SALES_AND_TRAFFIC_REPORT", "GET_MERCHANT_LISTINGS_ALL_DATA", "GET_FBA_INVENTORY_PLANNING_DATA"]);
+const MP = {
+  A1PA6795UKMFR9: { land: "DE", amazon: "A3JWKAKR8XB7XF", cur: "EUR" },
+  A13V1IB3VIYZZH: { land: "FR", amazon: "A1X6FK5RDHNB96", cur: "EUR" },
+  APJ6JRA9NG5V4: { land: "IT", amazon: "A11IL2PNWYJU7H", cur: "EUR" },
+  A1RKKUPIHCS9HS: { land: "ES", amazon: "A1AT7YVPFBWXBL", cur: "EUR" },
+  A1F83G8C2ARO7P: { land: "UK", amazon: "A3P5ROKL5A1OLE", cur: "GBP" },
+};
+const mpOf = (id) => MP[id] ?? MP.A1PA6795UKMFR9;
+
+function salesTraffic(r) {
+  const m = mpOf(r.mp);
+  const z = (asin, sku, units, preis, sessions, bb) => ({
+    parentAsin: asin,
+    childAsin: asin,
+    sku,
+    salesByAsin: { unitsOrdered: units, orderedProductSales: { amount: Math.round(units * preis * 100) / 100, currencyCode: m.cur }, totalOrderItems: units },
+    trafficByAsin: { sessions, pageViews: Math.round(sessions * 1.3), buyBoxPercentage: bb, unitSessionPercentage: Math.round((units / sessions) * 1000) / 10 },
+  });
+  const zeilen = m.land === "DE" ? [z("B0TEST0001", "TEST-SOCKEN", 42, 9.99, 310, 92.5), z("B0TEST0002", "TEST-TASSE", 6, 14.9, 240, 41.2)] : [z("B0TEST0001", "TEST-SOCKEN", 8, 10.49, 95, 63)];
+  return { reportSpecification: { reportType: r.typ, reportOptions: { dateGranularity: "DAY", asinGranularity: "CHILD" }, dataStartTime: r.von ?? "2026-09-28", dataEndTime: r.bis ?? "2026-10-27", marketplaceIds: [r.mp] }, salesAndTrafficByDate: [], salesAndTrafficByAsin: zeilen };
+}
+
+function berichtTsv(r) {
+  const m = mpOf(r.mp);
+  const tsv = (head, rows) => [head, ...rows].map((x) => x.join("\t")).join("\n") + "\n";
+  if (r.typ === "GET_MERCHANT_LISTINGS_ALL_DATA") {
+    // DE liefert die Spalten auf Deutsch, die anderen Länder auf Englisch – wie Amazon.
+    const head = m.land === "DE" ? ["Artikelbezeichnung", "Angebotsnummer", "Händler-SKU", "Preis", "Menge", "Erstellungsdatum", "ASIN 1", "Versender", "Status"] : ["item-name", "listing-id", "seller-sku", "price", "quantity", "open-date", "asin1", "fulfillment-channel", "status"];
+    const de = m.land === "DE";
+    const rows = [["Testsocken (erfunden)", "1001TEST", "TEST-SOCKEN", de ? "9,99" : "10.49", "", "2025-03-14 10:22:33 MEZ", "B0TEST0001", "AMAZON_EU", de ? "Aktiv" : "Active"]];
+    if (de) rows.push(["Testtasse (erfunden)", "1002TEST", "TEST-TASSE", "14,90", "5", "2025-05-02 08:00:00 MESZ", "B0TEST0002", "DEFAULT", "Aktiv"]);
+    rows.push(["Testkabel (erfunden)", "1003TEST", "TEST-KABEL", de ? "4,99" : "5.49", "0", "2024-11-20 12:00:00 MEZ", "B0TEST0003", "DEFAULT", de ? "Inaktiv" : "Inactive"]);
+    return tsv(head, rows);
+  }
+  const head = ["snapshot-date", "sku", "fnsku", "asin", "product-name", "condition", "available", "inv-age-0-to-90-days", "inv-age-91-to-180-days", "inv-age-181-to-270-days", "inv-age-271-to-365-days", "inv-age-365-plus-days", "currency", "estimated-storage-cost-next-month", "quantity-to-be-charged-ais-181-210-days", "estimated-ais-181-210-days", "quantity-to-be-charged-ais-211-240-days", "estimated-ais-211-240-days", "recommended-action", "fba-inventory-level-health-status"];
+  const rows = m.land === "DE"
+    ? [
+        ["2026-10-28", "TEST-SOCKEN", "X00TEST0001", "B0TEST0001", "Testsocken (erfunden)", "New", "25", "15", "4", "6", "0", "0", m.cur, "0.84", "4", "2.28", "2", "1.14", "Create removal order", "Excess"],
+        ["2026-10-28", "TEST-TASSE", "X00TEST0002", "B0TEST0002", "Testtasse (erfunden)", "New", "5", "5", "0", "0", "0", "0", m.cur, "0.21", "0", "0", "0", "0", "No action required", "Healthy"],
+      ]
+    : [["2026-10-28", "TEST-SOCKEN", "X00TEST0001", "B0TEST0001", "Testsocken (erfunden)", "New", "3", "3", "0", "0", "0", "0", m.cur, "0.09", "0", "0", "0", "0", "No action required", "Healthy"]];
+  return tsv(head, rows);
+}
+
+// getItemOffers: B0TEST0001 – wir haben die Buy Box (DE), B0TEST0002 – Amazon hat sie; „B0FEHLT…“ kennt Amazon nicht.
+function angebote(asin, mpId) {
+  if (/^B0FEHLT/i.test(asin)) return [400, { errors: [{ code: "InvalidInput", message: `Client Referenced Invalid ASIN ${asin}`, details: "" }] }];
+  const m = mpOf(mpId);
+  const money = (Amount) => ({ Amount, CurrencyCode: m.cur });
+  const offer = (SellerId, preis, versand, fba, bb, mine = false, rating = 98) => ({ SellerId, MyOffer: mine, SubCondition: "new", ListingPrice: money(preis), Shipping: money(versand), IsFulfilledByAmazon: fba, IsBuyBoxWinner: bb, IsFeaturedMerchant: true, SellerFeedbackRating: { SellerPositiveFeedbackRating: rating, FeedbackCount: 1200 } });
+  const wir = asin.toUpperCase() === "B0TEST0001" && m.land === "DE";
+  const offers = wir
+    ? [offer("TESTSELLER", 9.99, 0, true, true, true), offer("A1TESTFBA00001", 10.49, 0, true, false), offer("A2TESTFBM00002", 8.99, 2.99, false, false, false, 91)]
+    : [offer(m.amazon, 14.9, 0, true, true, false, 100), offer("TESTSELLER", 15.49, 0, true, false, true), offer("A2TESTFBM00002", 13.99, 3.5, false, false, false, 91)];
+  const fba = offers.filter((o) => o.IsFulfilledByAmazon);
+  const fbm = offers.filter((o) => !o.IsFulfilledByAmazon);
+  const land = (o) => Math.round((o.ListingPrice.Amount + o.Shipping.Amount) * 100) / 100;
+  const winner = offers.find((o) => o.IsBuyBoxWinner);
+  return [200, { payload: {
+    ASIN: asin, status: "Success", ItemCondition: "New", marketplaceId: mpId,
+    Identifier: { MarketplaceId: mpId, ASIN: asin, ItemCondition: "New" },
+    Summary: {
+      TotalOfferCount: offers.length,
+      NumberOfOffers: [{ condition: "new", fulfillmentChannel: "Amazon", OfferCount: fba.length }, { condition: "new", fulfillmentChannel: "Merchant", OfferCount: fbm.length }],
+      LowestPrices: [{ condition: "new", fulfillmentChannel: "Amazon", LandedPrice: money(Math.min(...fba.map(land))), ListingPrice: money(Math.min(...fba.map((o) => o.ListingPrice.Amount))), Shipping: money(0) }, { condition: "new", fulfillmentChannel: "Merchant", LandedPrice: money(Math.min(...fbm.map(land))), ListingPrice: money(Math.min(...fbm.map((o) => o.ListingPrice.Amount))), Shipping: money(Math.min(...fbm.map((o) => o.Shipping.Amount))) }],
+      BuyBoxPrices: [{ condition: "New", LandedPrice: money(land(winner)), ListingPrice: winner.ListingPrice, Shipping: winner.Shipping }],
+      SalesRankings: [{ ProductCategoryId: "test_display_on_website", Rank: wir ? 1234 : 5678 }],
+    },
+    Offers: offers,
+  } }];
 }
 
 const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : "?");

@@ -15,8 +15,11 @@ const FRUEHER = "vor dem 28.10.2026";
 export const PRUEFSTAND: Record<string, Reiter> = {
   "/": { offen: ["Aufgaben anlegen, erledigen, verschieben", "Tageskennzahlen"] },
   "/posteingang": {
-    abläufe: [{ ablauf: ".eml-Datei hochladen", erwartet: "Rückmeldung, Dateiauswahl danach leer", tests: ["formulare.spec.ts › Posteingang: .eml hochladen"] }],
-    offen: ["Mails abrufen (nur echte Postfächer)", "Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test"],
+    abläufe: [
+      { ablauf: ".eml-Datei hochladen", erwartet: "Rückmeldung, Dateiauswahl danach leer", tests: ["formulare.spec.ts › Posteingang: .eml hochladen"] },
+      { ablauf: "Antwort-Entwurf (über Claude) prüfen und senden", erwartet: "Entwurf an der Mail; ohne Häkchen „Geprüft“ wird nicht gesendet; mit Häkchen landet die Mail in den Test-Mails und der Entwurf ist als gesendet markiert", tests: ["geschaeft.spec.ts › Antwort-Entwurf"] },
+    ],
+    offen: ["Mails abrufen (nur echte Postfächer)", "Entwurf echt senden (nur mit echtem Postfach)", "Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test"],
   },
   "/kalender": {
     abläufe: [{ ablauf: "Geschäftskalender als Büro-Konto und als Inhaberin", erwartet: "keine privaten Einträge (Testwort PRIVATGEHEIM erscheint nicht)", tests: ["privat.spec.ts › Privates bleibt privat"] }],
@@ -41,7 +44,13 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Frage im Fragefeld „Was kostet uns das Prep Center?“", erwartet: "exakte Zahlen je Monat aus den Testdaten + Erklärung", tests: ["fragefeld.spec.ts › Prep Center"] },
     ],
   },
-  "/repricer": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] }] },
+  "/repricer": {
+    abläufe: [
+      { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] },
+      { ablauf: "BQool-Export „Manage Listings“ hochladen", erwartet: "Rückmeldung mit Anzahl je Marktplatz, Auffälligkeiten (ohne Min, pausiert, ohne Regel) in der Tabelle und im Werkzeug „repricer“", tests: ["geschaeft.spec.ts › BQool-Export"] },
+    ],
+    offen: ["Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen"],
+  },
   "/bestand": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl, keine kaputten Werte", tests: ["kennzahlen.spec.ts › Bestand"] },
@@ -55,7 +64,12 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Notiz über Claude bzw. Fragefeld", erwartet: "nur mit Recht; Mitarbeiter als Vorschlag mit Ausführen/Ablehnen", tests: ["rechte.spec.ts › Claude-Konnektor"] },
     ],
   },
-  "/ansprueche": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl", tests: ["kennzahlen.spec.ts › Ansprüche"] }] },
+  "/ansprueche": {
+    abläufe: [
+      { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl", tests: ["kennzahlen.spec.ts › Ansprüche"] },
+      { ablauf: "Als eingereicht markieren (über Claude)", erwartet: "nur mit Freigabe „ändern“; Status, Fallnummer, Zeitpunkt und Protokolleintrag „über Claude“; zweiter Aufruf ändert nichts Falsches", tests: ["geschaeft.spec.ts › Archivieren und „Anspruch eingereicht“"] },
+    ],
+  },
   "/gewinn": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand; keine kaputten Werte", tests: ["kennzahlen.spec.ts › Gewinn"] }] },
   "/cashflow": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Schätzungen mit „≈“, „keine Daten“ statt 0", tests: ["kennzahlen.spec.ts › Cash Flow"] }] },
   "/hebel": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "geschätzte Werte gekennzeichnet", tests: ["kennzahlen.spec.ts › Hebel"] }] },
@@ -95,7 +109,10 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag)", erwartet: "Zahlen aus dem Keepa-Nachbau, zweiter Aufruf aus dem Zwischenspeicher (keine neue Keepa-Abfrage), unbekannte ASIN klar benannt", tests: ["keepa.spec.ts › keepa_produkt"] },
       { ablauf: "Keepa: Länder vergleichen", erwartet: "DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“", tests: ["keepa.spec.ts › keepa_vergleich"] },
       { ablauf: "Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon)", erwartet: "Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen", tests: ["keepa.spec.ts › Rechte"] },
+      { ablauf: "Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live", erwartet: "Berichte unter Anbindungen anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land", tests: ["geschaeft.spec.ts › Amazon je Land"] },
+      { ablauf: "Rechte der neuen Werkzeuge im Fragefeld", erwartet: "Büro: Posteingang, Repricer, Angebote live (über Wawi → Lieferanten); keine Buy Box, Listung, Lageralter, Ansprüche, Anbindungen", tests: ["geschaeft.spec.ts › Rechte im Fragefeld"] },
     ],
+    offen: ["Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)", "getItemOffers-Ratenlimit im Betrieb beobachten"],
   },
   Fragefeld: {
     abläufe: [

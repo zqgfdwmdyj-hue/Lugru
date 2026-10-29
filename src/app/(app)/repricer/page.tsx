@@ -9,6 +9,9 @@ import { fbaReport } from "@/lib/stock/fba-report";
 import { breakdownText } from "@/lib/stock/breakdown";
 import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
 import { isEstimated, repricerCoverage } from "@/lib/repricer-logic";
+import { HINWEIS_TEXT } from "@/lib/bqool/logic";
+import { bqoolStand } from "@/lib/bqool/service";
+import { BqoolUpload } from "./bqool-upload";
 
 export default async function RepricerPage({ searchParams }: { searchParams: Promise<{ nur?: string }> }) {
   const session = await requireSession();
@@ -19,6 +22,8 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
   const fr = await fbaReport(session.tenantId);
   const below = all.filter((r) => r.min !== null && r.price !== null && r.price < r.min);
   const cov = repricerCoverage(all);
+  const bq = await bqoolStand(session.tenantId);
+  const bqProbleme = bq.zeilen.filter((z) => z.hinweise.length).sort((a, b) => a.hinweise.length - b.hinweise.length).reverse();
   const rows = sp.nur === "unter" ? below : sp.nur === "ohne-ek" ? all.filter((r) => r.unitCost === null) : sp.nur === "ohne-preis" ? all.filter((r) => r.price === null) : sp.nur === "geschaetzt" ? all.filter((r) => r.min !== null && isEstimated(r)) : all;
   return (
     <>
@@ -58,6 +63,41 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
           <strong>{cov.estimated} von {cov.exact + cov.estimated} Mindestpreisen sind geschätzt:</strong> ohne Gebührenvorschau rechnet das System mit pauschal {formatEuro(s.pricing.defaultFbaFee)} FBA-Gebühr bzw. {Math.round(s.pricing.referralRate * 100)} % Provision. Vor dem Einsatz in BQool die <Link href="/import">Gebührenvorschau importieren</Link> – der BQool-Export enthält geschätzte Werte nur, wenn du es ausdrücklich wählst. <Link href="/repricer?nur=geschaetzt">Geschätzte ansehen →</Link>
         </div>
       )}
+      <section className="card card-pad stack" data-testid="bqool-section">
+        <h2>BQool: Regeln, Min/Max und Buy Box laut Export</h2>
+        {bq.stand.length === 0 ? (
+          <div className="small muted">Noch kein BQool-Export eingelesen. Dann siehst du hier – und Claude im Werkzeug „repricer“ – je SKU und Land die Regel, Mindest- und Höchstpreis aus BQool und ob der Mindestpreis unter dem des Seller-Systems liegt.</div>
+        ) : (
+          <>
+            <div className="small" data-testid="bqool-stand">{bq.stand.map((x) => `${x.marktplatz}: ${bq.zeilen.filter((z) => z.marktplatz === x.marktplatz).length} SKUs, eingelesen ${x.am ? x.am.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "?"}`).join(" · ")}</div>
+            {bqProbleme.length === 0 ? (
+              <div className="notice notice-ok small">Keine Auffälligkeiten: alle BQool-Mindestpreise liegen auf oder über dem Mindestpreis des Seller-Systems (soweit ein EK bekannt ist).</div>
+            ) : (
+              <div style={{ overflow: "auto" }}>
+                <table className="table" data-testid="bqool-problems">
+                  <thead><tr><th>Land</th><th>SKU</th><th>Regel</th><th className="right">Preis</th><th className="right">Min BQool</th><th className="right" title="Mindestpreis des Seller-Systems aus EK, Gebühren und Mindestgewinn">Min System</th><th className="right">Max BQool</th><th>Buy Box</th><th>Prüfen</th></tr></thead>
+                  <tbody>
+                    {bqProbleme.slice(0, 100).map((z) => (
+                      <tr key={`${z.marktplatz}|${z.sku}`}>
+                        <td>{z.marktplatz}</td>
+                        <td className="num small">{z.sku}</td>
+                        <td className="small">{z.regel ?? "–"}{z.status === "pausiert" ? " (pausiert)" : ""}</td>
+                        <td className="num right">{formatEuro(z.preis)}</td>
+                        <td className="num right" style={{ color: z.hinweise.includes("min_unter_untergrenze") ? "var(--danger)" : undefined, fontWeight: 600 }}>{formatEuro(z.min)}</td>
+                        <td className="num right">{formatEuro(z.untergrenze)}</td>
+                        <td className="num right">{formatEuro(z.max)}</td>
+                        <td className="small">{z.eigeneBuybox === true ? "✓ wir" : z.eigeneBuybox === false ? `✕ ${z.buyboxGewinner ?? "andere"}` : (z.buyboxGewinner ?? "–")}{z.buyboxPreis !== null ? ` · ${formatEuro(z.buyboxPreis)}` : ""}</td>
+                        <td className="small">{z.hinweise.map((h) => HINWEIS_TEXT[h]).join("; ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+        <BqoolUpload />
+      </section>
       <div style={{ display: "flex", gap: 6 }}>
         <Link href="/repricer" className={`chip${!sp.nur ? " active" : ""}`} aria-current={!sp.nur ? "true" : undefined}>Alle</Link>
         <Link href="/repricer?nur=unter" className={`chip${sp.nur === "unter" ? " active" : ""}`} aria-current={sp.nur === "unter" ? "true" : undefined}>Unter Mindestpreis</Link>

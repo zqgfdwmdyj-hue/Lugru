@@ -16,7 +16,7 @@ export const bestandsabweichungen = defineTool({
     "Wo Soll und Ist beim Bestand nicht zusammenpassen: FBA-Sendungen mit Fehlmenge (verschickt > empfangen), offene Inventuren mit Differenz, negativer Bestand im eigenen Lager, Ware, die Amazon gerade sucht oder die unverkäuflich ist, und Bestand, der sich mangels Zuordnung nicht abgleichen lässt. Größte Differenz zuerst. Nur lesen – korrigiert wird nichts. Für „Wo stimmt der Bestand nicht?“.",
   area: "wawi",
   write: false,
-  quelle: { text: "FBA-Sendungen, Inventuren, eigenes Lager, Amazon-Bestandsberichte", jobs: ["Amazon-Reports abholen", "Bestandsabgleich Kanäle"] },
+  quelle: { text: "FBA-Sendungen, Inventuren, eigenes Lager, Amazon-Bestandsberichte", jobs: ["Amazon-Reports abholen", "Bestandsabgleich Kanäle"], importe: true },
   input: z.object({
     art: z.enum(["alle", ...DISCREPANCY_KINDS]).default("alle").describe("Nur eine Art von Abweichung oder alle"),
     limit: z.number().int().min(1).max(200).default(50),
@@ -62,7 +62,7 @@ export const fehlendeEinkaufspreise = defineTool({
     "SKUs mit Bestand oder Verkäufen (90 Tage), für die kein gültiger Einkaufspreis hinterlegt ist (sellerboard-Platzhalter 0,01 € zählen nicht) – meiste Stück zuerst. Optional auch SKUs, bei denen Charge, EK von Hand, eBay-Tool und sellerboard unterschiedliche Preise nennen. Ohne EK sind Gewinn und Lagerwert unvollständig.",
   area: "wawi",
   write: false,
-  quelle: { text: "Chargen und Einkaufspreise im Seller-System, Bestand", jobs: ["Amazon-Reports abholen"] },
+  quelle: { text: "Chargen und Einkaufspreise im Seller-System, Bestand", jobs: ["Amazon-Reports abholen"], importe: true },
   input: z.object({ mit_widerspruechen: z.boolean().default(false).describe("Auch widersprüchliche EK zeigen"), limit: z.number().int().min(1).max(200).default(50) }),
   run: async (ctx, i) => {
     const issues = await mappingWorklist(ctx.session.tenantId);

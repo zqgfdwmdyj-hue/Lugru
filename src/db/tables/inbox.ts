@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { createdAt, id, integrations, tasks, tenantId, updatedAt } from "./core";
+import { createdAt, id, integrations, tasks, tenantId, updatedAt, users } from "./core";
 
 export const MAIL_CATEGORIES = ["critical", "action", "info", "noise"] as const;
 export type MailCategory = (typeof MAIL_CATEGORIES)[number];
@@ -52,4 +52,29 @@ export const emails = pgTable(
     // Zähler „wichtig“ in der Seitenleiste läuft bei jedem Seitenaufruf – nur offene Mails im Index.
     index("emails_open_category_idx").on(t.tenantId, t.category).where(sql`archived = false`),
   ],
+);
+
+/**
+ * Antwort-Entwürfe zu einer Mail (z. B. von Claude vorbereitet). Gesendet wird nur per Klick im Seller-System –
+ * nie automatisch. `via`: claude | app (Fragefeld) | hand.
+ */
+export const emailDrafts = pgTable(
+  "email_drafts",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    emailId: uuid("email_id")
+      .notNull()
+      .references(() => emails.id, { onDelete: "cascade" }),
+    to: text("to").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    via: text("via").notNull().default("hand"),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentFrom: text("sent_from"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("email_drafts_email_idx").on(t.tenantId, t.emailId)],
 );

@@ -143,3 +143,41 @@ export async function removeMailbox(fd: FormData) {
   if (box.integrationId) await db.delete(schema.integrations).where(and(eq(schema.integrations.id, box.integrationId), eq(schema.integrations.tenantId, session.tenantId)));
   revalidatePath("/", "layout");
 }
+
+/**
+ * Antwort-Entwurf speichern, senden oder verwerfen (Formular an der Mail). Senden nur mit Häkchen „geprüft“ –
+ * Entwürfe (z. B. von Claude) gehen nie ungeprüft raus. Antwort hängt sich per In-Reply-To an den Verlauf.
+ */
+export async function draftAction(fd: FormData) {
+  const session = await requireArea("posteingang");
+  const id = uuid.parse(fd.get("draftId"));
+  const D = schema.emailDrafts;
+  const [d] = await db.select().from(D).where(and(eq(D.tenantId, session.tenantId), eq(D.id, id)));
+  if (!d) return;
+  const back = (q: string) => redirect(`/posteingang/${d.emailId}?entwurf=${q}#entwurf`);
+  const op = String(fd.get("op") ?? "");
+  if (op === "verwerfen") {
+    await db.delete(D).where(and(eq(D.tenantId, session.tenantId), eq(D.id, d.id)));
+    revalidatePath("/posteingang");
+    back("verworfen");
+  }
+  if (d.sentAt) back("schon-gesendet");
+  const to = String(fd.get("to") ?? "").trim().slice(0, 200);
+  const subject = String(fd.get("subject") ?? "").trim().slice(0, 300);
+  const body = String(fd.get("body") ?? "").slice(0, 20_000);
+  if (!z.string().email().safeParse(to.split(/[,;]\s*/)[0]).success || !subject || !body.trim()) back("unvollstaendig");
+  await db.update(D).set({ to, subject, body, updatedAt: new Date() }).where(and(eq(D.tenantId, session.tenantId), eq(D.id, d.id)));
+  if (op !== "senden") back("gespeichert");
+  if (fd.get("geprueft") !== "on") back("nicht-bestaetigt");
+  const [m] = await db.select({ key: schema.emails.messageKey }).from(schema.emails).where(and(eq(schema.emails.tenantId, session.tenantId), eq(schema.emails.id, d.emailId)));
+  let ok = false;
+  try {
+    const { from } = await sendMail(session.tenantId, { to, subject, text: body, inReplyTo: m?.key?.startsWith("<") ? m.key : undefined });
+    await db.update(D).set({ sentAt: new Date(), sentFrom: from }).where(eq(D.id, d.id));
+    ok = true;
+  } catch (e) {
+    console.error("[Posteingang] Entwurf senden:", e);
+  }
+  revalidatePath("/posteingang");
+  back(ok ? "gesendet" : "fehler");
+}

@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { toolAllowed } from "./permissions";
 import { inputSchema } from "./schema";
@@ -8,6 +9,9 @@ import { ALLGEMEIN } from "./tools/allgemein";
 import { BESTAND } from "./tools/bestand";
 import { BUERO } from "./tools/buero";
 import { KEEPA } from "./tools/keepa";
+import { GESCHAEFT } from "./tools/geschaeft";
+import { BEARBEITEN } from "./tools/bearbeiten";
+import { AMAZON_MARKT } from "./tools/amazon-markt";
 import { PALETTEN } from "./tools/paletten";
 import { PRIVAT } from "./tools/privat";
 import { WAWI } from "./tools/wawi";
@@ -19,7 +23,7 @@ export { withStand };
 // Alle Werkzeuge an einer Stelle: wer darf was (Bereich, Inhaber, Privat, Ändern), Eingabe prüfen,
 // ausführen und protokollieren. Claude-Konnektor und Fragefeld rufen nur hierüber auf.
 
-export const ALL_TOOLS: ToolDef[] = [...ALLGEMEIN, ...WAWI, ...BESTAND, ...KEEPA, ...PALETTEN, ...BUERO, ...PRIVAT];
+export const ALL_TOOLS: ToolDef[] = [...ALLGEMEIN, ...WAWI, ...BESTAND, ...GESCHAEFT, ...BEARBEITEN, ...AMAZON_MARKT, ...KEEPA, ...PALETTEN, ...BUERO, ...PRIVAT];
 
 /** Antworten nicht beliebig groß werden lassen (Kosten, Kontext). */
 const MAX_TEXT = 60_000;
@@ -70,6 +74,12 @@ export async function datenstand(tenantId: string, tool: Pick<ToolDef, "quelle">
   const abgerufen = berlinDateTime(new Date()) ?? "";
   if (!q.jobs?.length) return { quelle: q.text, stand: "aktuell (direkt aus dem Seller-System)", abgerufen };
   const st = await jobStand(tenantId, q.jobs);
+  // Amazon-Berichte kommen oft als Datei-Upload statt über die Schnittstelle – dann zählt der letzte Import.
+  if (q.importe) {
+    const RI = schema.reportImports;
+    const [imp] = await db.select({ at: RI.createdAt, via: RI.via }).from(RI).where(eq(RI.tenantId, tenantId)).orderBy(desc(RI.createdAt)).limit(1);
+    if (imp && (!st.at || imp.at > st.at)) return { quelle: q.text, stand: `zuletzt eingelesen ${berlinDateTime(imp.at)} (${imp.via === "api" ? "Schnittstelle" : "Datei-Upload"})`, abgerufen, letzter_fehler: st.fehler ?? undefined };
+  }
   return { quelle: q.text, stand: st.text === "noch kein Abruf" ? "noch kein Abruf – Anbindung prüfen (Anbindungen)" : st.text, abgerufen, letzter_fehler: st.fehler ?? undefined };
 }
 

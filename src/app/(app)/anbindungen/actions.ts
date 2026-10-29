@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireOwner } from "@/lib/auth/session";
 import { integrationDef } from "@/lib/integrations/registry";
 import { deleteIntegration, saveIntegration } from "@/lib/integrations/store";
@@ -46,6 +47,41 @@ export async function requestAmazonReport(fd: FormData) {
   if (!(kind in REPORT_TYPES)) return;
   await requestReport(session.tenantId, kind);
   revalidatePath("/anbindungen");
+}
+
+/** Berichte je Land (Buy Box, Listung, Lageralter) sofort anfordern – sonst täglich automatisch. */
+export async function requestMarktBerichteNow(fd: FormData) {
+  const session = await requireOwner();
+  const { amazonLaender, requestMarktBericht } = await import("@/lib/integrations/clients/amazon");
+  const { MARKT_BERICHTE } = await import("@/lib/amazon-markt/store");
+  type B = keyof typeof MARKT_BERICHTE;
+  const wahl = String(fd.get("bericht") ?? "alle");
+  const berichte = (wahl === "alle" ? Object.keys(MARKT_BERICHTE) : wahl in MARKT_BERICHTE ? [wahl] : []) as B[];
+  const laender = await amazonLaender(session.tenantId);
+  // Amazon erlaubt nur wenige Anforderungen kurz hintereinander – höchstens 15 auf einmal.
+  const plan = laender.flatMap((land) => berichte.map((b) => ({ land, b }))).slice(0, 15);
+  let n = 0;
+  let fehler = false;
+  for (const x of plan) {
+    try {
+      await requestMarktBericht(session.tenantId, x.b, x.land);
+      n++;
+    } catch (e) {
+      fehler = true;
+      console.error("Bericht je Land", x.b, x.land, e instanceof Error ? e.message : e);
+    }
+  }
+  revalidatePath("/anbindungen");
+  redirect(`/anbindungen?amz=${fehler ? "fehler" : "angefordert"}&n=${n}#amazon-berichte`);
+}
+
+/** Fertige Amazon-Reports jetzt abholen (sonst alle 15 Minuten). */
+export async function fetchAmazonReportsNow() {
+  const session = await requireOwner();
+  const { processPendingReports } = await import("@/lib/integrations/clients/amazon");
+  const r = await processPendingReports(session.tenantId);
+  revalidatePath("/", "layout");
+  redirect(`/anbindungen?amz=abgeholt&n=${r.processed}#amazon-berichte`);
 }
 
 // ---- sellerboard ------------------------------------------------------------------------------------

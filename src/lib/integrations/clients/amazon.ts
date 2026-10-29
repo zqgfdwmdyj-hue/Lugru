@@ -9,6 +9,8 @@ import { splitStreet } from "@/lib/shipping/countries";
 import { registerStockPusher } from "@/lib/stock/channel-sync";
 import { registerTrackingUploader } from "@/lib/orders/service";
 import { getIntegration } from "../store";
+import { berichtVonTyp, MARKT_BERICHTE, speichereMarktBericht, type MarktBericht } from "@/lib/amazon-markt/store";
+import { landVonId, MARKTPLATZ_IDS, type Land } from "@/lib/amazon-markt/logic";
 import { registerTester } from "../test";
 
 // Amazon Selling Partner API (Europa). Seit 2023 genügt das LWA-Token, keine AWS-Signatur.
@@ -126,6 +128,15 @@ export async function processPendingReports(tenantId: string) {
         await db.update(schema.apiReportRequests).set({ status: r.processingStatus === "CANCELLED" ? "done" : "error", error: r.processingStatus, processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
         continue;
       }
+      // Berichte je Land („TYP@Marktplatz-ID“): Buy Box, Listung, Lageralter.
+      const [typ, mpId] = p.reportType.split("@");
+      const markt = mpId ? berichtVonTyp(typ) : null;
+      if (markt && landVonId(mpId)) {
+        await speichereMarktBericht(tenantId, markt, landVonId(mpId)!, await downloadDocument(c, r.reportDocumentId));
+        await db.update(schema.apiReportRequests).set({ status: "done", processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
+        processed++;
+        continue;
+      }
       const kind = KIND_BY_TYPE.get(p.reportType)!;
       await applyReport({ tenantId, kind, table: readTable(await downloadDocument(c, r.reportDocumentId)), fileName: `SP-API ${p.reportType}`, via: "api" });
       await db.update(schema.apiReportRequests).set({ status: "done", processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
@@ -167,6 +178,76 @@ export async function scheduleReports(tenantId: string) {
       .where(and(eq(schema.apiReportRequests.tenantId, tenantId), eq(schema.apiReportRequests.reportType, REPORT_TYPES[kind]), gte(schema.apiReportRequests.requestedAt, new Date(Date.now() - hours * 3600_000))));
     if (recent.n === 0) await requestReport(tenantId, kind).catch((e) => console.error("Report-Anforderung", kind, e));
   }
+}
+
+// --- Berichte je Land: Buy-Box-Anteil, Listung, Lageralter ------------------------------
+
+const MARKT_ABSTAND_STD: Record<MarktBericht, number> = { buybox: 24, listungen: 24, lageralter: 24 };
+const berlinTag = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
+
+/** Länder der Anbindung (Marktplatz-IDs unter Anbindungen → Amazon). */
+export async function amazonLaender(tenantId: string): Promise<Land[]> {
+  const c = await creds(tenantId);
+  return c ? c.marketplaceIds.map(landVonId).filter((l): l is Land => l !== null) : [];
+}
+
+/** Fordert einen Bericht für ein Land an (Buy Box: letzte 30 Tage je ASIN). */
+export async function requestMarktBericht(tenantId: string, bericht: MarktBericht, land: Land) {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden.");
+  const body: Record<string, unknown> = { reportType: MARKT_BERICHTE[bericht], marketplaceIds: [MARKTPLATZ_IDS[land]] };
+  if (bericht === "buybox") {
+    body.dataStartTime = berlinTag(new Date(Date.now() - 30 * 86400_000));
+    body.dataEndTime = berlinTag(new Date(Date.now() - 86400_000));
+    body.reportOptions = { dateGranularity: "DAY", asinGranularity: "CHILD" };
+  }
+  const r = await sp<{ reportId: string }>(c, "POST", "/reports/2021-06-30/reports", body);
+  await db.insert(schema.apiReportRequests).values({ tenantId, reportType: `${MARKT_BERICHTE[bericht]}@${MARKTPLATZ_IDS[land]}`, reportId: r.reportId }).onConflictDoNothing();
+  return r.reportId;
+}
+
+/**
+ * Berichte je Land nach Plan anfordern – höchstens `max` je Lauf (Amazon erlaubt nur wenige Anforderungen je
+ * Minute), die ältesten zuerst.
+ */
+export async function scheduleMarktBerichte(tenantId: string, max = 4) {
+  const laender = await amazonLaender(tenantId);
+  if (!laender.length) return { angefordert: 0 };
+  const R = schema.apiReportRequests;
+  const recent = await db.select({ t: R.reportType, at: R.requestedAt }).from(R).where(and(eq(R.tenantId, tenantId), gte(R.requestedAt, new Date(Date.now() - 48 * 3600_000))));
+  const last = new Map<string, number>();
+  for (const r of recent) last.set(r.t, Math.max(last.get(r.t) ?? 0, r.at.getTime()));
+  const due = laender
+    .flatMap((land) => (Object.keys(MARKT_BERICHTE) as MarktBericht[]).map((b) => ({ land, b, at: last.get(`${MARKT_BERICHTE[b]}@${MARKTPLATZ_IDS[land]}`) ?? 0 })))
+    .filter((x) => Date.now() - x.at > MARKT_ABSTAND_STD[x.b] * 3600_000)
+    .sort((a, b) => a.at - b.at)
+    .slice(0, max);
+  let n = 0;
+  for (const x of due) {
+    try {
+      await requestMarktBericht(tenantId, x.b, x.land);
+      n++;
+    } catch (e) {
+      console.error("Bericht je Land", x.b, x.land, e instanceof Error ? e.message : e);
+    }
+  }
+  return { angefordert: n };
+}
+
+// --- Angebote live (Pricing-API) ----------------------------------------------------------
+
+const offerCache = new Map<string, { at: number; data: unknown }>();
+
+/** Aktuelle Angebote zu einer ASIN (getItemOffers, Zustand neu). 10 Min. zwischengespeichert – Amazon erlaubt ca. 1 Abfrage je 2 s. */
+export async function itemOffers(tenantId: string, asin: string, land: Land): Promise<{ payload: unknown; eigeneId: string | null; abgerufen: Date; ausSpeicher: boolean }> {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden (Anbindungen → Amazon).");
+  const key = `${tenantId}|${asin}|${land}`;
+  const hit = offerCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return { payload: hit.data, eigeneId: c.sellerId, abgerufen: new Date(hit.at), ausSpeicher: true };
+  const data = await sp<unknown>(c, "GET", `/products/pricing/v0/items/${encodeURIComponent(asin)}/offers?MarketplaceId=${MARKTPLATZ_IDS[land]}&ItemCondition=New`);
+  offerCache.set(key, { at: Date.now(), data });
+  return { payload: data, eigeneId: c.sellerId, abgerufen: new Date(), ausSpeicher: false };
 }
 
 // --- Bestellungen (FBM) mit Adresse -------------------------------------------------

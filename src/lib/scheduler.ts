@@ -4,7 +4,7 @@ import { syncClaims } from "@/lib/claims/service";
 import { syncAllMailboxes } from "@/lib/inbox/service";
 import { runAmazonTodos } from "@/lib/amazon-todos/service";
 import { syncDrive, refreshInvoiceTasks } from "@/lib/invoices/service";
-import { fetchSettlements, processPendingReports, scheduleReports, syncFbmOrders } from "@/lib/integrations/clients/amazon";
+import { fetchSettlements, processPendingReports, scheduleMarktBerichte, scheduleReports, syncFbmOrders } from "@/lib/integrations/clients/amazon";
 import { ebayConnected, syncEbayOrders } from "@/lib/integrations/clients/ebay";
 import { refreshTemuListings, linkTemuBySku, syncTemuOrders, temuConnected } from "@/lib/integrations/clients/temu";
 import { ebayDb } from "@/lib/ebay/db/pg";
@@ -91,6 +91,7 @@ export async function runScheduledJobs(force = false) {
         if (force || due(`${t}:amz-reports`, 14)) {
           await step(t, "Amazon-Reports abholen", () => processPendingReports(t));
           await step(t, "Amazon-Reports anfordern", () => scheduleReports(t));
+          await step(t, "Amazon-Berichte je Land anfordern", () => scheduleMarktBerichte(t));
         }
         if (force || due(`${t}:amz-settlements`, 180)) await step(t, "Abrechnungen", () => fetchSettlements(t));
       }

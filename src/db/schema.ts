@@ -25,3 +25,5 @@ export * from "./tables/watches";
 export * from "./tables/assistant";
 export * from "./tables/testenv";
 export * from "./tables/keepa";
+export * from "./tables/bqool";
+export * from "./tables/amazon-markt";
