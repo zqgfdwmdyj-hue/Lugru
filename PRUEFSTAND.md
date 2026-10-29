@@ -1,6 +1,6 @@
 # Prüfstand je Reiter
 
-Letzter Lauf der Ablaufprüfungen: **28.10.2026, 23:54** · 38 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 128 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
+Letzter Lauf der Ablaufprüfungen: **29.10.2026, 03:44** · 43 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 112 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
 
 Erzeugt mit `npm run pruefstand` aus `e2e/pruefstand.ts` (Abläufe, Live-Prüfungen) und dem letzten Lauf. Nicht von Hand bearbeiten.
 
@@ -12,7 +12,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 |---|---|---|---|---|
 | Heute | Tagesübersicht `/` | ✓ nur Oberfläche | – | 2 |
 | Heute | Alle Aufgaben `/?ansicht=liste` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Heute | Posteingang `/posteingang` | ✓ 1/1 Abläufe | – | 2 |
+| Heute | Posteingang `/posteingang` | ✓ 2/2 Abläufe | – | 3 |
 | Heute | Termine `/kalender` | ✓ 1/1 Abläufe | – | – |
 | Verkauf & Versand | Aufträge & Versand `/auftraege` | ✓ 2/2 Abläufe | – | – |
 | Verkauf & Versand | Labels: Warensendung & DHL `/auftraege/lieferschein` | ✓ 4/4 Abläufe | – | – |
@@ -25,7 +25,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Verkauf & Versand | eBay → Temu / Wawi `/listings/temu` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Verkauf & Versand | Amazon-ToDos `/amazon-todos` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Verkauf & Versand | Amazon SAS-Programm `/sas` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Verkauf & Versand | Repricer (BQool) `/repricer` | ✓ 1/1 Abläufe | – | – |
+| Verkauf & Versand | Repricer (BQool) `/repricer` | ✓ 2/2 Abläufe | – | 1 |
 | Produkte & Lager | Produkte `/produkte` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Produkte & Lager | Chargen `/chargen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Produkte & Lager | Bestand & Inventur `/bestand` | ✓ 2/2 Abläufe | – | – |
@@ -47,7 +47,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Einkauf & Lieferanten | Großhändler finden `/lieferanten/finden` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Einkauf & Lieferanten | Kontakt-Board `/board` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Service & Ansprüche | Retouren `/retouren` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Service & Ansprüche | Ansprüche `/ansprueche` | ✓ 1/1 Abläufe | – | – |
+| Service & Ansprüche | Ansprüche `/ansprueche` | ✓ 2/2 Abläufe | – | – |
 | Service & Ansprüche | Remissionen `/remissionen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Service & Ansprüche | Fälle & A-bis-Z `/faelle` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Service & Ansprüche | Bewertungen `/bewertungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
@@ -74,7 +74,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Hilfsfunktionen | Daten importieren `/import` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Einstellungen `/einstellungen` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Anbindungen `/anbindungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 5/5 Abläufe | – | – |
+| Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 7/7 Abläufe | – | 2 |
 | Hilfsfunktionen | eBay-Einstellungen `/ebay?ansicht=einstellungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | Fragefeld | ✓ 2/2 Abläufe | 👁 behoben | – |
 | Übergreifend | Server (Port, Adresse, Testumgebung) | – | 👁 befund | 2 |
@@ -95,8 +95,10 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | .eml-Datei hochladen | Rückmeldung, Dateiauswahl danach leer | ✓ bestanden (desktop) | `formulare.spec.ts` |
+| Antwort-Entwurf (über Claude) prüfen und senden | Entwurf an der Mail; ohne Häkchen „Geprüft“ wird nicht gesendet; mit Häkchen landet die Mail in den Test-Mails und der Entwurf ist als gesendet markiert | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
 
 - – Offen: Mails abrufen (nur echte Postfächer)
+- – Offen: Entwurf echt senden (nur mit echtem Postfach)
 - – Offen: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
 
 ### Heute › Termine (`/kalender`)
@@ -133,6 +135,9 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Kennzahlen | Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln | ✓ bestanden (desktop) | `kennzahlen.spec.ts` |
+| BQool-Export „Manage Listings“ hochladen | Rückmeldung mit Anzahl je Marktplatz, Auffälligkeiten (ohne Min, pausiert, ohne Regel) in der Tabelle und im Werkzeug „repricer“ | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
+
+- – Offen: Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
 
 ### Produkte & Lager › Bestand & Inventur (`/bestand`)
 
@@ -159,6 +164,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Kennzahlen | Herkunft je Kennzahl | ✓ bestanden (desktop) | `kennzahlen.spec.ts` |
+| Als eingereicht markieren (über Claude) | nur mit Freigabe „ändern“; Status, Fallnummer, Zeitpunkt und Protokolleintrag „über Claude“; zweiter Aufruf ändert nichts Falsches | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
 
 ### Finanzen › Gewinn (`/gewinn`)
 
@@ -233,6 +239,11 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Keepa: Produkt (aktuell, 30/90/180 Tage, Buy-Box-Anteile, Wert je Tag) | Zahlen aus dem Keepa-Nachbau, zweiter Aufruf aus dem Zwischenspeicher (keine neue Keepa-Abfrage), unbekannte ASIN klar benannt | ✓ bestanden (desktop) | `keepa.spec.ts` |
 | Keepa: Länder vergleichen | DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“ | ✓ bestanden (desktop) | `keepa.spec.ts` |
 | Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon) | Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen | ✓ bestanden (desktop) | `keepa.spec.ts` |
+| Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live | Berichte unter Anbindungen anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
+| Rechte der neuen Werkzeuge im Fragefeld | Büro: Posteingang, Repricer, Angebote live (über Wawi → Lieferanten); keine Buy Box, Listung, Lageralter, Ansprüche, Anbindungen | ✓ bestanden (desktop) | `geschaeft.spec.ts` |
+
+- – Offen: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
+- – Offen: getItemOffers-Ratenlimit im Betrieb beobachten
 
 ### Übergreifend › Fragefeld
 
@@ -251,7 +262,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (37 Abläufe + Oberfläche auf 66 Seiten): 37 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
+**Automatisch** (42 Abläufe + Oberfläche auf 66 Seiten): 42 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
 
 **Live geprüft:**
 
@@ -269,8 +280,12 @@ Tagesübersicht (`/`) · Alle Aufgaben (`/?ansicht=liste`) · Angebote (alle Kan
 - Tagesübersicht: Aufgaben anlegen, erledigen, verschieben
 - Tagesübersicht: Tageskennzahlen
 - Posteingang: Mails abrufen (nur echte Postfächer)
+- Posteingang: Entwurf echt senden (nur mit echtem Postfach)
 - Posteingang: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
+- Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
 - Privat: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
 - Privat: Live nie prüfen (echte private Daten)
+- Claude & KI-Assistent: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
+- Claude & KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
 - Server (Port, Adresse, Testumgebung): `deploy/absichern.sh` auf dem echten Server ausführen (siehe ABNAHME.md, Teil B)
 - Server (Port, Adresse, Testumgebung): `deploy/testumgebung.sh an` + `pruefen` auf dem Server
