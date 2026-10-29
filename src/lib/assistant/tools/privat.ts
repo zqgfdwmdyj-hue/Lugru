@@ -3,6 +3,8 @@ import { z } from "zod";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { saveAppointment, saveTimeEntry, setStatus } from "@/lib/private/save";
 import { loadEntries, privateSettings, type PrivateKind } from "@/lib/private/service";
+import { privatFinanzen as finanzenLaden } from "@/lib/private/geld-service";
+import type { Anlage, Einkommen, Erinnerung, Fixkosten, Steuerfrage } from "@/lib/private/geld";
 import { defineTool, type ToolCtx } from "../types";
 import { abs, isoDate, json, uuid } from "./common";
 
@@ -157,4 +159,35 @@ export const privatStatus = defineTool({
   },
 });
 
-export const PRIVAT = [privatKalender, privatEintraege, privatTermin, privatZeit, privatStatus];
+export const privatFinanzen = defineTool({
+  name: "privat_finanzen",
+  title: "Privates Geld",
+  description:
+    "Privates Geld der angemeldeten Person (nur Privatbereich): Gehalt/Ausschüttung aus der GmbH (geplant/erhalten), private Fixkosten je Monat, Rücklagen-Ziele mit Stand, Anlagen, Monatsübersicht Privatkonto (Einnahmen, Ausgaben, größte Ausgaben), fällige Erinnerungen und offene Fragen für den Steuerberater. Keine Steuerberatung.",
+  area: "privat",
+  privat: true,
+  write: false,
+  quelle: { text: "Privatbereich (eigene Einträge, Kontoauszüge Privatkonto)" },
+  input: z.object({ monat: z.string().regex(/^\d{4}-\d{2}$/).optional().describe("JJJJ-MM, Standard: aktueller Monat") }),
+  run: async (ctx, i) => {
+    if (ctx.session.privateScope === "familie") return { text: "Privates Geld gehört nicht zum Familien-Zugang.", isError: true };
+    const g = await finanzenLaden(ctx.session, ctx.today, i.monat);
+    return json({
+      monat: g.monat,
+      hinweis: "Nur Zahlen und Erinnerungen – steuerliche Fragen mit dem Steuerberater klären.",
+      einkommen_jahr: g.summen.einkommenJahr,
+      einkommen: g.einkommen.map((e) => e.data as Einkommen).filter((e) => e.monat.startsWith(g.monat.slice(0, 4))).map((e) => ({ monat: e.monat, art: e.art, betrag: e.betrag, status: e.status })),
+      fixkosten_je_monat: g.summen.fixkostenMonat,
+      fixkosten: g.fixkosten.map((e) => e.data as Fixkosten).map((f) => ({ name: f.name, betrag: f.betrag, rhythmus: f.rhythmus })),
+      ruecklagen: g.summen.ruecklagen.map((r) => ({ name: r.name, prozent: r.prozent, fehlt: r.fehlt, monate_bis_ziel: r.monateBisZiel })),
+      anlagen: g.anlagen.map((e) => e.data as Anlage).map((a) => ({ name: a.name, art: a.art, wert: a.wert, stand_am: a.standAm, sparrate: a.sparrate })),
+      anlagen_und_ruecklagen: g.summen.vermoegen,
+      privatkonto: g.konto.letzterImport ? { kontostand: g.konto.stand, monat: g.konto.monat, letzter_import_bis: g.konto.letzterImport.bis } : "noch kein Kontoauszug",
+      erinnerungen_faellig: g.faellig.map((e: Erinnerung) => ({ titel: e.titel, faellig: e.faellig })),
+      fragen_steuerberater: g.offeneFragen.map((e) => (e.data as Steuerfrage).frage),
+      link: abs(ctx, `/privat/geld${i.monat ? `?monat=${i.monat}` : ""}`),
+    });
+  },
+});
+
+export const PRIVAT = [privatFinanzen, privatKalender, privatEintraege, privatTermin, privatZeit, privatStatus];

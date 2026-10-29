@@ -34,3 +34,13 @@ export async function feedFromLeadAction(fd: FormData) {
   const feedId = await feedFromLead(session.tenantId, uuid.parse(fd.get("id")));
   redirect(`/lieferanten/${feedId}`);
 }
+
+/** Zuständig setzen (oder entfernen); passende Anleitungen hängen automatisch an. */
+export async function zuweisenAction(fd: FormData) {
+  const session = await requireArea("start");
+  const id = uuid.parse(fd.get("id"));
+  const wer = String(fd.get("wer") ?? "");
+  const { aufgabeZuweisen } = await import("@/lib/zeit/service");
+  await aufgabeZuweisen(session.tenantId, id, wer ? uuid.parse(wer) : null);
+  redirect(`/board?b=todos${fd.get("alle") === "1" ? "&alle=1" : ""}`);
+}

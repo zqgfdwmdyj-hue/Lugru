@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { KpiMeta } from "@/components/kpi";
 import { notFound } from "next/navigation";
 import { and, desc, eq, ilike, ne, or } from "drizzle-orm";
 import { z } from "zod";
@@ -58,7 +59,8 @@ export default async function EchtheitOrdnerPage({ params, searchParams }: { par
       </div>
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
 
-      <div className="grid-kpi" style={{ marginBottom: 14 }}>
+      <div className="stack" style={{ gap: 6, marginBottom: 14 }} data-kpi-group>
+      <div className="grid-kpi">
         <div className="card card-pad">
           <div className="kpi-label">Rechnungen</div>
           <div className="kpi-value" data-testid="echtheit-belege">{o.summe.belege}</div>
@@ -75,7 +77,8 @@ export default async function EchtheitOrdnerPage({ params, searchParams }: { par
           <div className="small muted">Echtheit, Konto, Reaktivierung …</div>
         </div>
       </div>
-      <p className="small muted" style={{ marginTop: -6 }}>Quelle: Rechnungen im Seller-System, Chargen (Einkauf), sellerboard (verkaufte Stück je Monat), Amazon-ToDos aus Systemmails.</p>
+      <KpiMeta period="Verkauf: letzte 12 Monate" source="Rechnungen im Seller-System, Chargen (Einkauf), sellerboard (verkaufte Stück je Monat), Amazon-ToDos aus Systemmails" stand={new Date().toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} />
+      </div>
 
       {o.faelle.length > 0 && (
         <>
@@ -136,7 +139,7 @@ export default async function EchtheitOrdnerPage({ params, searchParams }: { par
             <div key={b.id} className="card card-pad small" data-testid="echtheit-beleg" style={b.urteil === "falsch" ? { opacity: 0.55 } : undefined}>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
                 <span>
-                  <strong>{b.vendor ?? "–"}</strong> · {dmy(b.invoiceDate)} · Nr. {b.invoiceNumber ?? "–"} · {eur(b.totalGross)}{" "}
+                  <strong>{b.vendor ?? "–"}</strong> · {dmy(b.invoiceDate)} · Nr. {b.invoiceNumber ?? "–"}{buchhaltung ? ` · ${eur(b.totalGross)}` : ""}{" "}
                   <span className={`tag ${ART[b.art].tag}`} title={b.grund}>{ART[b.art].text}</span>
                   {b.urteil === "stimmt" && b.art !== "manuell" && <span className="tag tag-ok">bestätigt</span>}
                   {b.urteil === "falsch" && <span className="tag">falsch – zählt nicht</span>}
@@ -170,7 +173,7 @@ export default async function EchtheitOrdnerPage({ params, searchParams }: { par
           <form key={k.id} action={belegZuordnenAction} className="small" style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
             <input type="hidden" name="marke" value={o.marke.id} />
             <input type="hidden" name="rechnung" value={k.id} />
-            <span>{k.vendor ?? k.fileName} · {dmy(k.invoiceDate)} · Nr. {k.invoiceNumber ?? "–"} · {eur(k.totalGross)}</span>
+            <span>{k.vendor ?? k.fileName} · {dmy(k.invoiceDate)} · Nr. {k.invoiceNumber ?? "–"}{buchhaltung ? ` · ${eur(k.totalGross)}` : ""}</span>
             <button className="btn btn-small" type="submit" data-testid="echtheit-zuordnen">zuordnen</button>
           </form>
         ))}

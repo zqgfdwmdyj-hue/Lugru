@@ -11,6 +11,10 @@ const SEITEN = [
   { pfad: "/marken/uhren", name: "Uhren" },
   { pfad: "/auftraege/prep-center", name: "Prep Center" },
   { pfad: "/hebel", name: "Hebel" },
+  { pfad: "/kapital", name: "Kapital-Ampel" },
+  { pfad: "/verlust", name: "Verlust-Stopp" },
+  { pfad: "/amazon-business", name: "Amazon Business" },
+  { pfad: "/calls/offen", name: "Offene Punkte Consultant" },
 ];
 
 test.describe("Finanzen, WaWi, Amazon – Kennzahlen", () => {

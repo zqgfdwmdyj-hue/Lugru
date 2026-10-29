@@ -2,10 +2,11 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { canAccess } from "@/lib/auth/areas";
 import { daysSince, FOLLOW_UP_DAYS, LEAD_COLUMNS, TASK_COLUMNS } from "@/lib/board/logic";
-import { leadBoard, taskBoard } from "@/lib/board/service";
+import { leadBoard, taskBoard, teamMitglieder } from "@/lib/board/service";
+import { anleitungTitel } from "@/lib/zeit/service";
 import { FINDING_LABEL } from "@/lib/leads/labels";
 import { Kanban, type KanbanColumn } from "@/components/kanban";
-import { addTaskAction, feedFromLeadAction, moveLeadAction, moveTaskAction } from "./actions";
+import { addTaskAction, feedFromLeadAction, moveLeadAction, moveTaskAction, zuweisenAction } from "./actions";
 
 const MAX_CARDS = 60;
 
@@ -60,7 +61,11 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
       };
     });
   } else {
-    const cols = await taskBoard(session.tenantId, all);
+    const cols = await taskBoard(session.tenantId, all, session.userId);
+    const team = await teamMitglieder(session.tenantId);
+    const nameVon = new Map(team.map((m) => [m.id, m.name || m.email]));
+    const alleIds = [...new Set([...cols.values()].flat().flatMap((t) => t.anleitungIds))];
+    const anlTitel = await anleitungTitel(session.tenantId, alleIds);
     columns = TASK_COLUMNS.map((c) => {
       const rows = cols.get(c.key) ?? [];
       return {
@@ -90,7 +95,24 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
                   {t.dueDate && <span className={`tag ${overdue ? "tag-danger" : "tag-neutral"}`}>fällig {t.dueDate.split("-").reverse().join(".")}</span>}
                   {t.priority === "critical" && <span className="tag tag-danger">wichtig</span>}
                   {t.category !== "eigene" && <span className="tag tag-neutral">{t.category}</span>}
+                  {t.assigneeId && <span className="tag tag-neutral" data-testid="task-zustaendig">→ {nameVon.get(t.assigneeId) ?? "?"}</span>}
                 </div>
+                {t.anleitungIds.length > 0 && (
+                  <div className="small" data-testid="task-anleitungen">
+                    {t.anleitungIds.filter((a) => anlTitel.has(a)).map((a) => <div key={a}>📘 <Link href={`/wissen/${a}`} draggable={false}>{anlTitel.get(a)}</Link></div>)}
+                  </div>
+                )}
+                {team.length > 1 && t.status === "open" && (
+                  <form action={zuweisenAction} style={{ display: "flex", gap: 4 }}>
+                    <input type="hidden" name="id" value={t.id} />
+                    {all && <input type="hidden" name="alle" value="1" />}
+                    <select className="select" name="wer" defaultValue={t.assigneeId ?? ""} aria-label="Zuständig" style={{ height: 28, fontSize: 12, flex: 1 }} data-testid="task-wer">
+                      <option value="">niemand Bestimmtes</option>
+                      {team.map((m) => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+                    </select>
+                    <button className="btn btn-small" type="submit" data-testid="task-zuweisen">zuweisen</button>
+                  </form>
+                )}
               </>
             ),
           };

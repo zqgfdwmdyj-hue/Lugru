@@ -15,13 +15,13 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
-const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode"]);
+const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode", "privatgeld"]);
 /** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
-const PERSONAL_KINDS = new Set<string>(["medplan", "routine"]);
+const PERSONAL_KINDS = new Set<string>(["medplan", "routine", "privatgeld"]);
 /** Was Personen mit Umfang „familie“ sehen und eintragen dürfen – gemeinsame Familieninfos, sonst nichts. */
-export const FAMILY_KINDS = new Set<PrivateKind>(["kinder", "ausschlafen", "auszeit", "zustaendig"]);
+export const FAMILY_KINDS = new Set<PrivateKind>(["kinder", "ausschlafen", "auszeit", "zustaendig", "familienaufgabe"]);
 
 /** Darf diese Sitzung Einträge dieser Art sehen bzw. anlegen? (Umfang „familie“ nur Familieninfos.) */
 export function kindAllowed(session: Pick<Session, "privateScope">, kind: PrivateKind): boolean {
@@ -76,6 +76,7 @@ export async function privateSettings(tenantId: string): Promise<PrivateSettings
     dateReminderDays: typeof d.dateReminderDays === "number" ? d.dateReminderDays : DEFAULT_PRIVATE_SETTINGS.dateReminderDays,
     startHint: d.startHint ?? {},
     externSync: { ...DEFAULT_PRIVATE_SETTINGS.externSync, ...(d.externSync ?? {}) },
+    familienFairness: d.familienFairness ?? false,
   };
 }
 

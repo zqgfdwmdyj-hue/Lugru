@@ -561,6 +561,20 @@
       "when": 1793299787557,
       "tag": "0079_amazon_business",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793300394302,
+      "tag": "0080_zeit_anleitungen",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793300760809,
+      "tag": "0081_call_archiv",
+      "breakpoints": true
     }
   ]
 }

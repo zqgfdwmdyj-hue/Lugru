@@ -101,14 +101,14 @@ export async function feedFromLead(tenantId: string, id: string) {
 // ---- Eigene Aufgaben --------------------------------------------------------------------------
 
 /** Eigene Aufgaben (oder alle offenen) nach Spalten; erledigte der letzten 14 Tage. */
-export async function taskBoard(tenantId: string, all: boolean) {
+export async function taskBoard(tenantId: string, all: boolean, userId?: string) {
   const rows = await db
     .select()
     .from(T)
     .where(
       and(
         eq(T.tenantId, tenantId),
-        all ? sql`true` : or(eq(T.category, "eigene"), sql`${T.boardColumn} is not null`),
+        all ? sql`true` : or(eq(T.category, "eigene"), sql`${T.boardColumn} is not null`, userId ? eq(T.assigneeId, userId) : sql`false`),
         or(eq(T.status, "open"), gte(T.completedAt, new Date(Date.now() - 14 * 86_400_000))),
       ),
     )
@@ -138,3 +138,12 @@ export const boardCounts = async (tenantId: string) => {
     .where(and(eq(L.tenantId, tenantId), inArray(L.status, ["follow_up", "antwort"])));
   return r ?? { followUp: 0, replies: 0 };
 };
+
+/** Mitglieder der Firma (für „zuständig“). */
+export async function teamMitglieder(tenantId: string) {
+  return db
+    .select({ id: schema.users.id, name: schema.users.name, email: schema.users.email, role: schema.memberships.role })
+    .from(schema.memberships)
+    .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
+    .where(eq(schema.memberships.tenantId, tenantId));
+}

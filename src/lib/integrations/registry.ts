@@ -276,6 +276,20 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["Discord → Server-Einstellungen → Integrationen → Webhooks → „Neuer Webhook“ → Kanal wählen (z. B. „todo“) → „Webhook-URL kopieren“ → hier einfügen und testen."],
   },
   {
+    provider: "discord_calls",
+    name: "Discord – Call-Kanal (Consultant-Calls) – optional",
+    purpose: "Einmal pro Woche neue Google-Docs-Transkripte aus dem Discord-Kanal ins Call-Archiv holen; die KI zieht daraus Vereinbarungen, Aufgaben, Entscheidungen und offene Fragen.",
+    fields: [
+      { key: "botToken", label: "Bot-Token", secret: true, help: "Discord-Bot mit dem Recht „Nachrichtenverlauf lesen“ in diesem Kanal." },
+      { key: "kanalId", label: "Kanal-ID", placeholder: "z. B. 123456789012345678", help: "Discord → Einstellungen → Erweitert → Entwicklermodus an → Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
+    ],
+    setup: [
+      "discord.com/developers → New Application → Bot → „Reset Token“ → Token kopieren und hier eintragen.",
+      "OAuth2 → URL Generator: „bot“ mit „View Channels“ und „Read Message History“ → Bot auf den Server einladen.",
+      "Die Google Docs müssen für „Jeder mit dem Link“ lesbar sein – oder die Drive-Anbindung mit Dienstkonto hat Zugriff.",
+    ],
+  },
+  {
     provider: "lugru_deals",
     name: "Lugru Deals (Shop-Monitor) – optional",
     purpose:

@@ -65,6 +65,16 @@ function kiAnswer(req, b) {
     const m = { ean: finde(/barcode|ean|gtin/i), asin: finde(/amazon|asin/i), supplierSku: finde(/code|art|sku/i), title: finde(/produkt|bezeichnung|name/i), price: finde(/netto|preis|ek/i), stock: finde(/lager|bestand/i), moq: finde(/vpe|mindest|moq/i), url: null };
     return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
   }
+  // Call-Archiv: Punkte aus dem Test-Transkript (wörtliche Zitate, damit die Call-Stelle gefunden wird).
+  if (/Du liest das Transkript eines Calls mit dem Amazon-Consultant/.test(text) && !stale) {
+    const punkte = [
+      { art: "aufgabe", text: "Liste der zehn Audit-Marken an den Consultant schicken", verantwortlich: "ich", frist: "2026-10-23", zitat: "Schick mir bis Freitag die Liste der zehn Marken" },
+      { art: "aufgabe", text: "Mindestrabatt für Bundles intern klären", verantwortlich: "consultant", frist: null, zitat: "Das kläre ich intern" },
+      { art: "frage", text: "Gilt der Mindestrabatt auch für Bundles?", verantwortlich: null, frist: null, zitat: "Gilt der Mindestrabatt auch für Bundles?" },
+      { art: "entscheidung", text: "Black-Week-Deals nur mit Gewinn", verantwortlich: null, frist: null, zitat: "Black-Week-Deals nur mit Gewinn" },
+    ];
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ punkte }) }], "end_turn")];
+  }
   const st = stationKi(text);
   if (st && !stale) return [200, reply(b, [{ type: "text", text: JSON.stringify(st) }], "end_turn")];
   if (stale && !drop) {
@@ -254,6 +264,18 @@ async function route(req, url, body) {
   }
   // Lexware Office (Lexoffice): Kontakte, Rechnungen, Zahlungsstand, Gutschriften, PDF – alles nur im Speicher.
   if (p.startsWith("/lexoffice/")) return lexoffice(req, p.slice("/lexoffice".length), url, parsed());
+  // Google Docs (öffentlicher Export): Dokumente, deren ID mit „TESTCALL“ beginnt, liefern ein erfundenes Transkript.
+  if (p.startsWith("/gdocs/document/d/")) {
+    const id = p.split("/")[4] ?? "";
+    if (!id.startsWith("TESTCALL")) return [302, "", "text/html"];
+    return [200, `Consultant-Call (Testdaten, erfunden) ${id}\n\nConsultant: Hallo Ludwig, schön dass es klappt.\nLudwig: Hallo! Wie besprochen habe ich die Markenliste vorbereitet.\nConsultant: Super. Schick mir bis Freitag die Liste der zehn Marken für den Audit.\nLudwig: Mache ich. Gilt der Mindestrabatt auch für Bundles?\nConsultant: Das kläre ich intern und melde mich bis nächste Woche.\nLudwig: Gut, dann machen wir Black-Week-Deals nur mit Gewinn.\n`, "text/plain; charset=utf-8"];
+  }
+  // Discord-API (Bot liest den Call-Kanal): eine Nachricht mit Link auf ein Test-Doc.
+  if (p.startsWith("/discord-api/channels/")) {
+    if (req.headers.authorization !== "Bot test-bot-token") return [401, { message: "401: Unauthorized", code: 0 }];
+    if (p.endsWith("/messages")) return json([{ id: "900000000000000001", timestamp: "2026-10-21T15:00:00.000Z", content: "Consultant-Call 21.10.2026 https://docs.google.com/document/d/TESTCALLdiscord0000000001/edit" }]);
+    return json({ id: p.split("/")[3], name: "calls-test" });
+  }
   // Discord-Webhook (B2B-Kanal): Nachricht nur mitschreiben.
   if (p.startsWith("/discord/")) {
     remember(discord, { at: new Date().toISOString(), content: String(parsed().content ?? "") });
@@ -387,7 +409,7 @@ function angebote(asin, mpId) {
   } }];
 }
 
-const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/lexoffice") ? "Lexoffice" : "?");
+const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : "?");
 
 http
   .createServer(async (req, res) => {

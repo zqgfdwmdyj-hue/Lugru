@@ -13,6 +13,8 @@ import { SYSTEM_CATEGORIES, textOn } from "@/lib/calendar/colors";
 import { calendarPalette } from "@/lib/calendar/palette";
 import { saveStaffCalendarsAction } from "./actions";
 import { SyncButton } from "./sync-button";
+import { ladeBloecke } from "@/lib/zeit/service";
+import { bloeckeAm } from "@/lib/zeit/bloecke";
 
 // Monats-, Wochen- und Agendaansicht wie in Apple Kalender: eigene Termine (aus den verbundenen Kalendern, in
 // deren Farbe, gefüllt) und alles mit Datum aus dem System – Aufgaben, Fristen, Versand, Ansprüche, geplante
@@ -161,6 +163,24 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
       system: true,
     });
   }
+  // Feste freie Zeiten (nur die eigenen) und reservierte Kapazität (für alle) je Tag.
+  if (scope !== "privat") {
+    const bloecke = (await ladeBloecke(session.tenantId)).filter((b) => b.art === "reserviert" || b.userId === session.userId);
+    for (let d = from; d <= to; d = addDaysIso(d, 1)) {
+      for (const b of bloeckeAm(bloecke, d)) {
+        push(d, {
+          id: `zb:${b.id}:${d}`,
+          title: b.art === "frei" ? `${b.titel}${b.ganztags ? "" : ` ab ${b.vonZeit ?? ""}`} – keine Geschäftsaufgaben` : `${b.titel}: ${String(b.stunden ?? 0).replace(".", ",")} Std. reserviert`,
+          time: b.ganztags ? null : b.vonZeit,
+          color: b.art === "frei" ? "#334155" : "#a16207",
+          label: b.art === "frei" ? "Frei" : "Reserviert",
+          icon: b.art === "frei" ? "🌙" : "⏳",
+          link: b.art === "frei" ? "/kalender/zeiten" : (b.link ?? "/kalender/zeiten"),
+          system: true,
+        });
+      }
+    }
+  }
   for (const list of byDay.values()) list.sort((a, b) => (a.system ? 1 : 0) - (b.system ? 1 : 0) || (a.time ?? "").localeCompare(b.time ?? ""));
 
   const href = (m: string, tag?: string, sicht: Scope = scope, ansicht: CalendarView = view) =>
@@ -213,6 +233,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {connected && <SyncButton />}
+          <Link className="btn" href="/kalender/zeiten" data-testid="kalender-zeiten">Freie Zeiten</Link>
           <div className="priv-tabs" role="group" aria-label="Ansicht" data-testid="calendar-view">
             {(["monat", "woche", "agenda"] as const).map((v) => (
               <Link key={v} href={href(v === "woche" ? selected.slice(0, 7) : month, selected, scope, v)} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined} data-testid={`view-${v}`}>{VIEW_LABEL[v]}</Link>

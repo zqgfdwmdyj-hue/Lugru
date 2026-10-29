@@ -33,3 +33,12 @@ registerTester("discord", async (v) => {
   await postDiscord(v.webhookUrl, "✅ Seller-System ist verbunden – hier erscheinen neue Amazon-ToDos mit hoher Priorität.");
   return "Testnachricht gesendet – bitte im Discord-Kanal nachsehen.";
 });
+
+registerTester("discord_calls", async (v) => {
+  if (!v.botToken || !/^\d{15,25}$/.test(v.kanalId ?? "")) throw new Error("Bot-Token und Kanal-ID (nur Ziffern) eintragen.");
+  const base = (process.env.DISCORD_API_BASE_URL || "https://discord.com/api/v10").replace(/\/$/, "");
+  const r = await fetch(`${base}/channels/${v.kanalId}`, { headers: { Authorization: `Bot ${v.botToken}` }, signal: AbortSignal.timeout(15_000) });
+  if (!r.ok) throw new Error(`Discord hat abgelehnt (${r.status}) – Token oder Kanal-ID prüfen, Bot muss im Server sein.`);
+  const k = (await r.json()) as { name?: string };
+  return `Verbunden – Kanal „${k.name ?? v.kanalId}“ ist lesbar.`;
+});

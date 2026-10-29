@@ -19,10 +19,10 @@ const AREAS = Object.keys(AREA_LABEL) as Area[];
 export default async function WissenPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; kat?: string; herkunft?: string; bereich?: string; nur?: string }>;
+  searchParams: Promise<{ q?: string; kat?: string; herkunft?: string; bereich?: string; nur?: string; pruefen?: string }>;
 }) {
   const session = await requireSession();
-  const { q = "", kat, herkunft: rawOrigin, bereich: rawArea, nur } = await searchParams;
+  const { q = "", kat, herkunft: rawOrigin, bereich: rawArea, nur, pruefen } = await searchParams;
   // Alte Links mit ?herkunft=… landen im passenden Einstieg.
   const herkunft = rawOrigin && rawOrigin in ORIGIN ? (rawOrigin as Origin) : null;
   const K = schema.knowledgeEntries;
@@ -34,6 +34,8 @@ export default async function WissenPage({
   if (bereich === "wissen") where.push(sql`${K.origin} <> 'recherche'`);
   if (bereich === "anleitung" || bereich === "notiz" || bereich === "recherche") where.push(eq(K.origin, bereich));
   if (kat) where.push(eq(K.category, kat));
+  // Anleitungen zur Prüfung: nie geprüft oder zuletzt vor mehr als 6 Monaten.
+  if (pruefen === "1") where.push(sql`${K.kind} = 'anleitung' and (${K.verifiedAt} is null or ${K.verifiedAt} < now() - interval '183 days')`);
   const doc = sql`to_tsvector('german', ${K.title} || ' ' || ${K.body})`;
   if (query) {
     where.push(
@@ -84,6 +86,7 @@ export default async function WissenPage({
           <input id="wq" name="q" type="search" className="input" defaultValue={query} placeholder="Durchsuchen: „fehlende Einheiten“, „Kleinpaket“, „A-bis-Z“ …" style={{ height: 46, fontSize: 15, borderWidth: 2, borderColor: "var(--accent)" }} />
         </form>
         <Link className="btn" href="/wissen/recherche" style={{ height: 46 }}>Themen-Recherche</Link>
+        <Link className="btn" href="/wissen/neu?art=anleitung" style={{ height: 46 }} data-testid="wissen-neue-anleitung">+ Anleitung</Link>
         <Link className="btn btn-primary" href="/wissen/neu" style={{ height: 46 }}>+ Neuer Eintrag</Link>
       </div>
 

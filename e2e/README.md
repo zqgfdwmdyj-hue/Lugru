@@ -38,6 +38,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `privat.spec.ts` | Serien mit Ausnahmen, Abendritual-Abfolge, Schutz privater Inhalte |
 | `oberflaeche.spec.ts` | **alle** Menüseiten: Status mit Text, aktive Auswahl markiert, deaktiviert erkennbar, Kontrast, Handy ohne Querscrollen |
 | `testumgebung.spec.ts` | Banner, Sperre nach außen, Übersicht der abgefangenen Mails |
+| `teil2.spec.ts` | Liquidität (Kontoauszug, Amex, Reserve rot), Kapital-Ampel, Verlust-Stopp mit Ausnahme, Echtheits-Ordner + ZIP, Amazon Business (Bericht, Staffelpreise, Freigabe, Datei), Call-Archiv (Google Doc, KI-Punkte, Aufgaben, Discord), Anleitungen beim Zuweisen, freie Zeiten, Familien-Zugang, Assistenz ohne Finanzdaten, privates Geld |
 
 Testkonten (Passwort aus `TESTDATEN_PASSWORT`, in den Prüfungen fest): `inhaber` (Inhaberin, Privat voll),
 `lager` (nur Palettenlager), `buero` (Büro), `pruefer` (nur ansehen), `familie` (nur Privat „Familie“).

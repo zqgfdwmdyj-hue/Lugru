@@ -104,6 +104,7 @@ await integ("deutschepost", { clientId: "test-client", username: "portokasse@exa
 await integ("dhl", { username: "test-dhl" }, { apiKey: "test-dhl-key", password: "test-passwort" });
 await integ("dhl_tracking", {}, { apiKey: "test-track-key" });
 await integ("keepa", {}, { apiKey: "test-keepa-schluessel" });
+await integ("discord_calls", { kanalId: "123456789012345678" }, { botToken: "test-bot-token" });
 await integ("amazon_sp", { clientId: "amzn.test", sellerId: "TESTSELLER", marketplaceIds: "A1PA6795UKMFR9,A13V1IB3VIYZZH" }, { clientSecret: "test-secret", refreshToken: "test-refresh" });
 
 // 5) Artikel: Gewicht, Warensendung, wer verschickt

@@ -170,6 +170,15 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Rechnungsaufgaben", () => refreshInvoiceTasks(t));
         await step(t, "Import-Erinnerung", () => refreshImportReminder(t, s.importReminderDays));
       }
+      // Call-Archiv: neue Transkripte aus dem Discord-Kanal, einmal pro Woche.
+      if (await has("discord_calls")) if (force || due(`${t}:calls`, 10079)) await step(t, "Call-Archiv (Discord)", async () => (await import("@/lib/calls/service")).discordCallsImport(t, todayIso()));
+      // Planung: Standard-Freizeiten/Retourenwelle einmalig, Aufgaben aus freien Tagen schieben, Anleitungen prüfen.
+      if (force || due(`${t}:planung`, 179)) {
+        const z = await import("@/lib/zeit/service");
+        await step(t, "Planung einrichten", () => z.planungEinrichten(t, todayIso()));
+        await step(t, "Freie Zeiten", () => z.freieZeitenAnwenden(t, todayIso()));
+        await step(t, "Anleitungen prüfen", () => z.anleitungenPruefen(t));
+      }
     }
     return { skipped: false };
   } finally {

@@ -158,6 +158,8 @@ export type TenantSettings = {
   kapital?: { zielRendite?: number; geringRendite?: number; gruenReichweite?: number; rotReichweite?: number };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
+  /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */
+  planung?: { standardFrei?: boolean; retourenwelle?: boolean };
   liquiditaet?: {
     reserve?: number;
     steuern?: { name: string; betrag: number; monate: number[]; tag: number }[];
@@ -464,6 +466,10 @@ export const tasks = pgTable(
     systemKey: text("system_key"),
     link: text("link"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    /** Zuständig (z. B. Assistenz/VA); leer = niemand Bestimmtes. */
+    assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
+    /** Beim Zuweisen automatisch angehängte Anleitungen (Wissens-Einträge). */
+    anleitungIds: jsonb("anleitung_ids").$type<string[]>().notNull().default([]),
     createdAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
@@ -473,19 +479,33 @@ export const tasks = pgTable(
   ],
 );
 
+export type AnleitungFelder = {
+  zweck: string;
+  wann: string;
+  /** Zuständig (Name oder Rolle, z. B. „Assistenz“). */
+  wer: string;
+  schritte: string[];
+  zugaenge: string[];
+  fehler: string[];
+  /** Aufgabentypen, an die die Anleitung beim Zuweisen angehängt wird: „kategorie:amazon“, „schluessel:verlust“, „titel:Remission“. */
+  aufgabenTypen: string[];
+};
+
 export const knowledgeEntries = pgTable(
   "knowledge_entries",
   {
     id: id(),
     tenantId: tenantId(),
-    kind: text("kind", { enum: ["article", "snippet"] }).notNull().default("article"),
+    kind: text("kind", { enum: ["article", "snippet", "anleitung"] }).notNull().default("article"),
     category: text("category").notNull(),
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz. */
     origin: text("origin", { enum: ["recherche", "anleitung", "notiz"] }).notNull().default("notiz"),
-    /** Von jemandem als geprüft/verlässlich bestätigt. */
+    /** Nur bei kind = „anleitung“: Zweck, wann, wer, Schritte, Zugänge, häufige Fehler, Aufgabentypen. */
+    anleitung: jsonb("anleitung").$type<AnleitungFelder>(),
+    /** Von jemandem als geprüft/verlässlich bestätigt („zuletzt geprüft am“ bei Anleitungen). */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     verifiedBy: uuid("verified_by").references(() => users.id, { onDelete: "set null" }),
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),

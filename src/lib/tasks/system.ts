@@ -1,6 +1,8 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db, schema, type Db, type Tx } from "@/db";
+import { todayIso } from "@/lib/dates";
+import { ausweichDatum } from "@/lib/zeit/ausweich";
 
 type SystemTask = {
   title: string;
@@ -21,6 +23,9 @@ export async function upsertSystemTask(
   key: string,
   task: SystemTask,
 ) {
+  // Feste freie Tage: Fälligkeit auf den nächsten Arbeitstag (außer heute + wichtig).
+  const dueDate = await ausweichDatum(tenantId, task.dueDate, task.priority, todayIso()).catch(() => task.dueDate ?? null);
+  task = { ...task, dueDate };
   await conn
     .insert(schema.tasks)
     .values({

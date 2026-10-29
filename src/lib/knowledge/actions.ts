@@ -6,17 +6,27 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
+import { anleitungText, leseAnleitung } from "./anleitung";
 
 const entry = z.object({
   title: z.string().trim().min(1, "Titel fehlt").max(200),
   category: z.string().trim().min(1).max(80),
-  kind: z.enum(["article", "snippet"]),
+  kind: z.enum(["article", "snippet", "anleitung"]),
   body: z.string().max(50_000),
   tags: z.string().max(500),
   origin: z.enum(["recherche", "anleitung", "notiz"]).catch("notiz"),
 });
 
 function read(formData: FormData) {
+  const e = parse(formData);
+  if (e.kind !== "anleitung") return { ...e, anleitung: null };
+  // Anleitung: Felder strukturiert speichern; der Text (für Suche und Anzeige) entsteht aus den Feldern + Ergänzungen.
+  const anleitung = leseAnleitung((k) => formData.get(k));
+  const extra = e.body.trim();
+  return { ...e, origin: "anleitung" as const, anleitung, body: [anleitungText(anleitung), extra ? `Ergänzungen:\n${extra}` : ""].filter(Boolean).join("\n\n") };
+}
+
+function parse(formData: FormData) {
   return entry.parse({
     title: formData.get("title"),
     category: formData.get("category"),

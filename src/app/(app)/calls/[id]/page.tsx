@@ -1,0 +1,115 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { z } from "zod";
+import { requireArea } from "@/lib/auth/session";
+import { ausschnitt, istEigeneAufgabe, PUNKT_TEXT, type PunktArt } from "@/lib/calls/logic";
+import { callDetail } from "@/lib/calls/service";
+import { neuAuswertenAction, punktAnlegenAction, punktStatusAction, uebernehmenAction } from "../actions";
+
+const dmy = (iso: string | null) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : null);
+const ARTEN: PunktArt[] = ["aufgabe", "vereinbarung", "entscheidung", "frage"];
+const STATUS = { vorschlag: { text: "Vorschlag", tag: "tag-warn" }, uebernommen: { text: "übernommen", tag: "tag-ok" }, verworfen: { text: "verworfen", tag: "" }, geklaert: { text: "geklärt", tag: "tag-ok" } } as const;
+
+export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string }> }) {
+  const session = await requireArea("amazon");
+  const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) notFound();
+  const sp = await searchParams;
+  const d = await callDetail(session.tenantId, id);
+  if (!d) notFound();
+  const { call: c, punkte } = d;
+  const vorschlaege = punkte.filter((p) => p.status === "vorschlag");
+
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <div className="crumb"><Link href="/calls">Consultant-Calls</Link> · {dmy(c.datum)}</div>
+          <h1>{c.titel}</h1>
+        </div>
+        <form action={neuAuswertenAction}>
+          <input type="hidden" name="id" value={c.id} />
+          <button className="btn" type="submit" title="Unbearbeitete Vorschläge werden ersetzt; Übernommenes bleibt.">KI neu auswerten</button>
+        </form>
+      </div>
+      {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
+      {c.auswertung === "fehler" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Auswertung fehlgeschlagen: {c.auswertungFehler}</div>}
+      {c.auswertung === "ohne_ki" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Ohne KI-Anbindung – Punkte unten von Hand ergänzen (<Link href="/anbindungen#anthropic">Anbindungen → Claude</Link>).</div>}
+
+      <form action={uebernehmenAction}>
+        <input type="hidden" name="call" value={c.id} />
+        {ARTEN.map((art) => {
+          const liste = punkte.filter((p) => p.art === art);
+          if (!liste.length) return null;
+          return (
+            <section key={art} className="card card-pad" style={{ marginBottom: 12 }} data-testid={`call-${art}`}>
+              <h2 style={{ marginTop: 0 }}>{art === "frage" ? "Offene Fragen" : `${PUNKT_TEXT[art]}en`}</h2>
+              <div className="stack" style={{ gap: 8 }}>
+                {liste.map((p) => (
+                  <div key={p.id} id={`p-${p.id}`} className="small" data-testid="call-punkt" data-status={p.status} style={{ borderLeft: "3px solid var(--line, #ddd)", paddingLeft: 10, opacity: p.status === "verworfen" ? 0.55 : 1 }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                      {p.status === "vorschlag" && <input type="checkbox" name="punkt" value={p.id} defaultChecked={art !== "frage"} aria-label="übernehmen" />}
+                      <strong>{p.text}</strong>
+                      <span className={`tag ${STATUS[p.status].tag}`}>{STATUS[p.status].text}</span>
+                      {p.verantwortlich && <span className="muted">→ {p.verantwortlich}</span>}
+                      {p.frist && <span className="muted">bis {dmy(p.frist)}</span>}
+                      {art === "aufgabe" && !istEigeneAufgabe(p) && <span className="tag">beim Consultant</span>}
+                    </div>
+                    {p.position !== null && <div className="muted" style={{ marginTop: 3 }}>Call-Stelle: „{ausschnitt(c.transkript, p.position, 220)}“</div>}
+                    {p.taskId && <div style={{ marginTop: 3 }}>Aufgabe: {p.aufgabeTitel} – {p.aufgabeStatus === "done" ? "erledigt ✓" : "offen"}</div>}
+                    <div style={{ display: "flex", gap: 10, marginTop: 3 }}>
+                      {p.status === "vorschlag" && (
+                        <button className="btn-link small" formAction={punktStatusAction} name="verwerfen" value={p.id} type="submit">
+                          verwerfen
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })}
+        <input type="hidden" name="status" value="verworfen" />
+        {vorschlaege.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <button className="btn btn-primary" type="submit" data-testid="call-uebernehmen">Ausgewählte übernehmen</button>
+            <span className="small muted" style={{ marginLeft: 10 }}>Eigene Aufgaben werden Aufgaben (Amazon/SAS) mit Link hierher; Fragen und Punkte beim Consultant landen bei „Offene Punkte“.</span>
+          </div>
+        )}
+      </form>
+
+      {punkte.filter((p) => p.art === "frage" && p.status === "uebernommen").length > 0 && (
+        <div className="small" style={{ marginBottom: 14 }}>
+          {punkte
+            .filter((p) => p.art === "frage" && p.status === "uebernommen")
+            .map((p) => (
+              <form key={p.id} action={punktStatusAction} style={{ display: "inline-block", marginRight: 10 }}>
+                <input type="hidden" name="call" value={c.id} />
+                <input type="hidden" name="punkt" value={p.id} />
+                <input type="hidden" name="status" value="geklaert" />
+                <button className="btn-link small" type="submit">„{p.text.slice(0, 40)}“ als geklärt markieren</button>
+              </form>
+            ))}
+        </div>
+      )}
+
+      <details className="card card-pad" style={{ marginBottom: 14 }}>
+        <summary><strong>Punkt von Hand ergänzen</strong></summary>
+        <form action={punktAnlegenAction} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end", marginTop: 8 }}>
+          <input type="hidden" name="call" value={c.id} />
+          <label className="small">Art<select name="art">{ARTEN.map((a) => <option key={a} value={a}>{PUNKT_TEXT[a]}</option>)}</select></label>
+          <label className="small" style={{ flex: 1, minWidth: 220 }}>Text<input name="text" required /></label>
+          <label className="small">Wer<input name="wer" placeholder="ich / consultant" style={{ width: 110 }} /></label>
+          <label className="small">Frist<input name="frist" placeholder="TT.MM.JJJJ" style={{ width: 110 }} /></label>
+          <button className="btn" type="submit">Hinzufügen</button>
+        </form>
+      </details>
+
+      <details className="card card-pad">
+        <summary><strong>Transkript</strong> <span className="small muted">({c.transkript.length.toLocaleString("de-DE")} Zeichen)</span></summary>
+        <div className="small" style={{ whiteSpace: "pre-wrap", marginTop: 8, maxHeight: 600, overflow: "auto" }}>{c.transkript}</div>
+      </details>
+    </>
+  );
+}

@@ -6,6 +6,7 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { verifyEntry, deleteEntry } from "@/lib/knowledge/actions";
 import { formatDate } from "@/lib/numbers";
+import { pruefungFaellig } from "@/lib/knowledge/anleitung";
 import { CopyButton } from "@/components/copy-button";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -43,7 +44,9 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
                 {entry.origin === "anleitung" ? "Anleitung" : entry.origin === "recherche" ? "Recherche (automatisch, ungeprüft)" : "Eigene Notiz"}
                 {entry.verifiedAt ? ` ✓ geprüft am ${formatDate(entry.verifiedAt.toISOString())}` : ""}
               </span>
-              {entry.kind === "snippet" ? "Textbaustein" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
+              {entry.kind === "snippet" ? "Textbaustein" : entry.kind === "anleitung" ? "Anleitung" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
+              {entry.kind === "anleitung" && pruefungFaellig(entry.verifiedAt) && <span className="tag tag-warn" style={{ marginLeft: 6 }} data-testid="entry-pruefen">Prüfung fällig</span>}
+              {entry.anleitung?.wer && <> · zuständig: {entry.anleitung.wer}</>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <form action={verifyEntry}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-verify">{entry.verifiedAt ? "Prüfung zurücknehmen" : entry.origin === "recherche" ? "Geprüft – als Anleitung übernehmen" : "Als geprüft markieren"}</button></form>

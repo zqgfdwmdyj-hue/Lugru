@@ -32,3 +32,5 @@ export * from "./tables/b2b";
 export * from "./tables/bank";
 export * from "./tables/verlust";
 export * from "./tables/echtheit";
+export * from "./tables/zeit";
+export * from "./tables/calls";

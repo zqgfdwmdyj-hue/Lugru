@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { ABDECKUNG_TEXT } from "@/lib/echtheit/logic";
 import { markenListe, markeFinden, markenOrdner } from "@/lib/echtheit/service";
+import { canAccess } from "@/lib/auth/areas";
 import { defineTool } from "../types";
 import { abs, json } from "./common";
 
@@ -42,13 +43,15 @@ export const markenBelege = defineTool({
     const o = await markenOrdner(ctx.session.tenantId, m.id, ctx.today);
     if (!o) return json({ gefunden: false, link: abs(ctx, "/echtheit") });
     const zaehlt = o.belege.filter((b) => b.urteil !== "falsch");
+    // Beträge nur mit Zugriff auf die Buchhaltung.
+    const betraege = canAccess(ctx.session, "buchhaltung");
     return json({
       marke: o.marke.marke,
       schreibweisen: o.marke.aliase.length ? o.marke.aliase : undefined,
       zeitraum_verkauf: "letzte 12 Monate",
       abdeckung: { prozent: o.abdeckung.quote, verkauft: o.abdeckung.verkauft, gekauft_mit_rechnung: o.abdeckung.gekauftBelegt, gekauft_ohne_rechnung: o.abdeckung.gekauftOhneBeleg, luecken: o.abdeckung.luecken },
       artikel: o.abdeckung.zeilen.slice(0, 50).map((z) => ({ sku: z.sku, asin: z.asin ?? undefined, name: z.name ?? undefined, verkauft: z.verkauft, mit_rechnung: z.gekauftBelegt, ohne_rechnung: z.gekauftOhneBeleg || undefined, status: ABDECKUNG_TEXT[z.status] })),
-      rechnungen: zaehlt.slice(0, 50).map((b) => ({ datum: b.invoiceDate, lieferant: b.vendor, nummer: b.invoiceNumber, brutto: b.totalGross, nachweis: b.art === "charge" ? "über Charge" : b.art === "manuell" ? "von Hand" : b.art === "sicher" ? "Rechnungsposition" : b.art === "pruefen" ? "prüfen" : "im Text", bestaetigt: b.urteil === "stimmt" || b.art === "manuell" || undefined })),
+      rechnungen: zaehlt.slice(0, 50).map((b) => ({ datum: b.invoiceDate, lieferant: b.vendor, nummer: b.invoiceNumber, brutto: betraege ? b.totalGross : undefined, nachweis: b.art === "charge" ? "über Charge" : b.art === "manuell" ? "von Hand" : b.art === "sicher" ? "Rechnungsposition" : b.art === "pruefen" ? "prüfen" : "im Text", bestaetigt: b.urteil === "stimmt" || b.art === "manuell" || undefined })),
       rechnungen_gesamt: zaehlt.length,
       faelle: o.faelle.map((f) => ({ art: f.kategorie, betreff: f.betreff, status: f.status === "open" ? "offen" : "erledigt", frist: f.frist ?? undefined, asins: f.asins.length ? f.asins : undefined })),
       audit_paket: abs(ctx, `/echtheit/${o.marke.id}/paket`),

@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
 import { needsReview } from "@/lib/invoices/review";
 import { daysLeft } from "@/lib/stock/discrepancies";
+import { anleitungText, normTypen } from "@/lib/knowledge/anleitung";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
 
@@ -123,16 +124,38 @@ export const wissen = defineTool({
 
 export const wissenAnlegen = defineTool({
   name: "wissen_anlegen",
-  title: "Notiz ins Wissen",
-  description: "Legt eine Notiz in der Wissenssammlung an (z. B. Ablauf, Kontakt, Absprache), damit alle mit Zugriff sie finden.",
+  title: "Notiz oder Anleitung ins Wissen",
+  description:
+    "Legt eine Notiz in der Wissenssammlung an (z. B. Ablauf, Kontakt, Absprache), damit alle mit Zugriff sie finden. Mit kategorie „Anleitung“ entsteht eine Schritt-für-Schritt-Anleitung (SOP) mit Zweck, wann, wer, Schritten, Zugängen, häufigen Fehlern und Aufgabentypen – sie gilt als ungeprüft, bis Ludwig sie prüft.",
   area: "wissen",
   write: true,
-  input: z.object({ titel: z.string().trim().min(1).max(200), text: z.string().trim().min(1).max(20000), kategorie: z.string().trim().min(1).max(60).default("Notizen"), stichworte: z.array(z.string().trim().min(1).max(40)).max(10).default([]) }),
+  input: z.object({
+    titel: z.string().trim().min(1).max(200),
+    text: z.string().trim().max(20000).default(""),
+    kategorie: z.string().trim().min(1).max(60).default("Notizen"),
+    stichworte: z.array(z.string().trim().min(1).max(40)).max(10).default([]),
+    zweck: z.string().trim().max(1000).optional().describe("Nur Anleitung: wozu"),
+    wann: z.string().trim().max(500).optional().describe("Nur Anleitung: wann/auslöser"),
+    wer: z.string().trim().max(200).optional().describe("Nur Anleitung: zuständig (Name oder Rolle)"),
+    schritte: z.array(z.string().trim().min(1).max(500)).max(60).optional().describe("Nur Anleitung: Schritte in Reihenfolge"),
+    zugaenge: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+    haeufige_fehler: z.array(z.string().trim().min(1).max(500)).max(20).optional(),
+    aufgabentypen: z.array(z.string().trim().min(1).max(80)).max(20).optional().describe("„kategorie:amazon“, „schluessel:remission“ oder Stichwort im Aufgabentitel"),
+  }),
   summary: (i) => `Wissen: „${i.titel}“`,
   run: async (ctx, i) => {
     const K = schema.knowledgeEntries;
-    const [row] = await db.insert(K).values({ tenantId: ctx.session.tenantId, kind: "article", category: i.kategorie, title: i.titel, body: i.text, tags: i.stichworte, origin: "notiz", updatedBy: ctx.session.userId }).returning({ id: K.id });
-    return json({ ok: true, meldung: "Notiz gespeichert.", id: row.id, link: abs(ctx, "/wissen") });
+    const istAnleitung = /^anleitung/i.test(i.kategorie) || (i.schritte?.length ?? 0) > 0;
+    if (!istAnleitung) {
+      if (!i.text) return json({ ok: false, meldung: "Text fehlt." });
+      const [row] = await db.insert(K).values({ tenantId: ctx.session.tenantId, kind: "article", category: i.kategorie, title: i.titel, body: i.text, tags: i.stichworte, origin: "notiz", updatedBy: ctx.session.userId }).returning({ id: K.id });
+      return json({ ok: true, meldung: "Notiz gespeichert.", id: row.id, link: abs(ctx, `/wissen/${row.id}`) });
+    }
+    if (!i.schritte?.length) return json({ ok: false, meldung: "Eine Anleitung braucht mindestens einen Schritt (schritte)." });
+    const anleitung = { zweck: i.zweck ?? "", wann: i.wann ?? "", wer: i.wer ?? "", schritte: i.schritte, zugaenge: i.zugaenge ?? [], fehler: i.haeufige_fehler ?? [], aufgabenTypen: normTypen(i.aufgabentypen ?? []) };
+    const body = [anleitungText(anleitung), i.text ? `Ergänzungen:\n${i.text}` : ""].filter(Boolean).join("\n\n");
+    const [row] = await db.insert(K).values({ tenantId: ctx.session.tenantId, kind: "anleitung", category: "Anleitungen", title: i.titel, body, tags: i.stichworte, origin: "anleitung", anleitung, updatedBy: ctx.session.userId }).returning({ id: K.id });
+    return json({ ok: true, meldung: "Anleitung gespeichert – ungeprüft, bis Ludwig sie prüft (Aufgabe „Anleitungen prüfen“).", id: row.id, link: abs(ctx, `/wissen/${row.id}`) });
   },
 });
 

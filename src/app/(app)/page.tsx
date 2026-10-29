@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { heuteZeit } from "@/lib/zeit/service";
+import { rueckfrageVerschiebenAction } from "./kalender/zeiten/actions";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
@@ -94,6 +96,35 @@ function AddTask({ category }: { category: string }) {
         <div className="small muted" style={{ flexBasis: "100%" }}>Erscheint in den Aufgaben der Firma und – mit Datum – im Kalender (auch im verbundenen Apple-Kalender „Seller-System“). Private Aufgaben gehören in den Privat-Bereich.</div>
       </form>
     </details>
+  );
+}
+
+/** Freie Zeit / reservierte Kapazität heute; Rückfrage bei „wichtig + Frist heute“ an einem freien Tag. */
+async function ZeitHeute({ tenantId, userId, today }: { tenantId: string; userId: string; today: string }) {
+  const z = await heuteZeit(tenantId, userId, today).catch(() => null);
+  if (!z || (!z.frei.length && !z.reserviert.stunden)) return null;
+  return (
+    <div className="card card-pad small" style={{ marginBottom: 14 }} data-testid="zeit-heute">
+      {z.frei.map((b) => (
+        <div key={b.id}>🌙 <strong>{b.titel}</strong>{b.ganztags ? " – heute keine Geschäftsaufgaben" : ` ab ${b.vonZeit} – danach Feierabend`}.</div>
+      ))}
+      {z.reserviert.bloecke.map((b) => (
+        <div key={b.id}>⏳ Heute reserviert: <strong>{String(b.stunden ?? 0).replace(".", ",")} Std. {b.titel}</strong>{b.link && <> – <Link href={b.link}>öffnen</Link></>}</div>
+      ))}
+      {z.rueckfragen.length > 0 && (
+        <div style={{ marginTop: 6 }} data-testid="zeit-rueckfrage">
+          <strong>Rückfrage:</strong> heute ist frei, aber {z.rueckfragen.length === 1 ? "eine wichtige Aufgabe ist" : `${z.rueckfragen.length} wichtige Aufgaben sind`} heute fällig:
+          {z.rueckfragen.map((t) => (
+            <form key={t.id} action={rueckfrageVerschiebenAction} style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
+              <input type="hidden" name="id" value={t.id} />
+              <span>{t.link ? <Link href={t.link}>{t.title}</Link> : t.title}</span>
+              <button className="btn btn-small" type="submit">auf nächsten Arbeitstag</button>
+              <span className="muted">oder heute erledigen</span>
+            </form>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -219,6 +250,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
     <>
       {head}
       <PrivateHint session={session} />
+      <ZeitHeute tenantId={session.tenantId} userId={session.userId} today={today} />
 
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0, gap: 16 }}>

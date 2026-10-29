@@ -83,7 +83,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       "Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)",
       "Echter VIES-Abruf mit eigener USt-IdNr. (Kennung der qualifizierten Abfrage)",
       "Discord-Webhook im echten B2B-Kanal",
-      "Prep-Tool: Name und Importformat fehlen noch – Export ist neutral (CSV/XLSX/PDF)",
+      "PrepTool (preptool.de): API-Anbindung folgt, sobald Instanz-Adresse und OpenAPI-Datei vorliegen – bis dahin Export neutral (CSV/XLSX/PDF)",
       "Steuer: Reverse Charge nur, wenn die Ware Deutschland verlässt – bei FBA-Versand in DE mit dem Steuerberater klären",
     ],
   },
@@ -94,8 +94,42 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
   },
   "/gewinn": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand; keine kaputten Werte", tests: ["kennzahlen.spec.ts › Gewinn"] }] },
-  "/cashflow": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Schätzungen mit „≈“, „keine Daten“ statt 0", tests: ["kennzahlen.spec.ts › Cash Flow"] }] },
+  "/cashflow": {
+    abläufe: [
+      { ablauf: "Kennzahlen", erwartet: "Schätzungen mit „≈“, „keine Daten“ statt 0", tests: ["kennzahlen.spec.ts › Cash Flow"] },
+      { ablauf: "Kontoauszug einlesen, Amex erkannt, großer Einkauf in der Amex-Woche", erwartet: "Woche „unter Reserve“, Was-wäre-wenn meldet Unterschreitung", tests: ["teil2.spec.ts › Liquidität"] },
+    ],
+  },
   "/hebel": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "geschätzte Werte gekennzeichnet", tests: ["kennzahlen.spec.ts › Hebel"] }] },
+  "/kapital": {
+    abläufe: [
+      { ablauf: "Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen", erwartet: "Ampel rot, „Nicht nachbestellen“", tests: ["teil2.spec.ts › Kapital-Ampel"] },
+      { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand", tests: ["kennzahlen.spec.ts › Kapital-Ampel"] },
+    ],
+  },
+  "/verlust": {
+    abläufe: [
+      { ablauf: "2 von 3 Tagen im Minus → Fall + wichtige Aufgabe; Ausnahme → Aufgabe erledigt, Wochensumme sichtbar", erwartet: "Aufgabe „verlust-<SKU>“ offen/wichtig bzw. nicht mehr offen", tests: ["teil2.spec.ts › Kapital-Ampel"] },
+      { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand", tests: ["kennzahlen.spec.ts › Verlust-Stopp"] },
+    ],
+    offen: ["Echte sellerboard-Tageswerte je Produkt (kommen mit dem täglichen Komplett-Abgleich)"],
+  },
+  "/echtheit": { abläufe: [{ ablauf: "Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket", erwartet: "Beleg + SKU im Ordner, ZIP (PK…)", tests: ["teil2.spec.ts › Echtheits-Ordner"] }] },
+  "/amazon-business": {
+    abläufe: [
+      { ablauf: "Geschäftsbericht (CSV) hochladen, Staffelpreis-Vorschlag übernehmen, Freigabe, Upload-Datei", erwartet: "B2B-Werte je ASIN, Status freigegeben, Datei mit business-price", tests: ["teil2.spec.ts › Amazon Business"] },
+      { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand", tests: ["kennzahlen.spec.ts › Amazon Business"] },
+    ],
+    offen: ["Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen"],
+  },
+  "/calls": {
+    abläufe: [{ ablauf: "Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal", erwartet: "4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, 1 neuer Call aus Discord", tests: ["teil2.spec.ts › Call-Archiv"] }],
+    offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs"],
+  },
+  "/kalender/zeiten": { abläufe: [{ ablauf: "Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick", erwartet: "Fälligkeit verschoben, Rückblick sichtbar", tests: ["teil2.spec.ts › Feste freie Zeiten"] }] },
+  "/board": { abläufe: [{ ablauf: "Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie", erwartet: "📘-Link auf der Karte, auch bei der Assistenz", tests: ["teil2.spec.ts › Anleitung im Wissen"] }] },
+  "/privat/familienaufgaben": { abläufe: [{ ablauf: "Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft", erwartet: "nur Familienliste + Familienkalender", tests: ["teil2.spec.ts › Familien-Zugang"] }] },
+  "/privat/geld": { abläufe: [{ ablauf: "Frage für den Steuerberater, nur für die eigene Person", erwartet: "Hinweis „keine Steuerberatung“, Familien-Zugang gesperrt", tests: ["teil2.spec.ts › Privates Geld"] }] },
   "/rechnungen": { abläufe: [{ ablauf: "Rechnung hochladen, Sammelbearbeitung", erwartet: "Upload leert nach Erfolg; Auswahl bleibt bei Fehlschlag; Rückfrage abgelehnt = nichts passiert", tests: ["formulare.spec.ts › Rechnungen"] }] },
   "/import": { abläufe: [{ ablauf: "Unbekannte Datei importieren", erwartet: "Fehler, Datei bleibt ausgewählt", tests: ["formulare.spec.ts › Import"] }] },
   "/marken/uhren": {

@@ -6,6 +6,8 @@ export type PartnerKey = "a" | "b";
 export type Ratings = 1 | 2 | 3 | 4 | 5;
 
 export type PrivateSettings = {
+  /** Familien-Aufgaben: Fairness-Übersicht (wer hat wie viel übernommen) – standardmäßig aus. */
+  familienFairness?: boolean;
   partners: { a: string; b: string };
   kids: string[];
   therapists: { ads: string; paar: string };

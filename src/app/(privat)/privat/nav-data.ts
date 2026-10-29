@@ -39,6 +39,7 @@ export const GROUPS = [
       { key: "ausschlafen", href: "/privat/ausschlafen", label: "Ausschlafen", month: true },
       { key: "auszeit", href: "/privat/auszeit", label: "Auszeit", month: true },
       { key: "familie", href: "/privat/familie", label: "Wer kümmert sich" },
+      { key: "familienaufgaben", href: "/privat/familienaufgaben", label: "Familien-Aufgaben" },
     ],
   },
   {
@@ -58,10 +59,11 @@ export const GROUPS = [
       { key: "eintragen", href: "/privat/eintragen", label: "Eintragen" },
       { key: "rueckblick", href: "/privat/rueckblick", label: "Rückblick", month: true },
       { key: "wissen", href: "/privat/wissen", label: "Wissen" },
+      { key: "geld", href: "/privat/geld", label: "Geld" },
       { key: "einstellungen", href: "/privat/einstellungen", label: "Einstellungen" },
     ],
   },
 ] as const;
 export type PrivatTab = (typeof GROUPS)[number]["tabs"][number]["key"];
 /** Seiten für Personen mit Umfang „familie“ (nur gemeinsame Familieninfos). */
-export const FAMILY_TABS = new Set<PrivatTab>(["start", "kalender", "eintragen", "kinder", "ausschlafen", "auszeit", "familie", "einstellungen"]);
+export const FAMILY_TABS = new Set<PrivatTab>(["start", "kalender", "eintragen", "kinder", "ausschlafen", "auszeit", "familie", "familienaufgaben", "einstellungen"]);

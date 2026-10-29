@@ -29,7 +29,7 @@ export function visibleTask(s: Session, t: { link: string | null; createdBy: str
 export const PRIORITY_IN = { wichtig: "critical", normal: "normal", niedrig: "low" } as const;
 export const PRIORITY_OUT: Record<string, string> = { critical: "wichtig", normal: "normal", low: "niedrig" };
 
-export const taskBrief = (t: { id: string; title: string; dueDate: string | null; priority: string; category: string; status: string; notes: string | null; link: string | null }, ctx: ToolCtx) => ({
+export const taskBrief = (t: { id: string; title: string; dueDate: string | null; priority: string; category: string; status: string; notes: string | null; link: string | null; assigneeId?: string | null; anleitungIds?: string[] }, ctx: ToolCtx) => ({
   id: t.id,
   titel: t.title,
   faellig: t.dueDate,
@@ -37,5 +37,7 @@ export const taskBrief = (t: { id: string; title: string; dueDate: string | null
   kategorie: t.category,
   status: t.status === "done" ? "erledigt" : "offen",
   notiz: t.notes ? t.notes.slice(0, 300) : undefined,
+  zugewiesen: t.assigneeId ? true : undefined,
+  anleitungen: t.anleitungIds?.length ? t.anleitungIds.map((id) => abs(ctx, `/wissen/${id}`)) : undefined,
   link: t.link ? abs(ctx, t.link) : undefined,
 });

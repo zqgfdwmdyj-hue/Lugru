@@ -4,6 +4,7 @@ import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIs
 import { INTIMATE_KINDS, itemsByDay } from "@/lib/private/kalender";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { loadEntries, myMedPlan, myPartner, requirePrivate } from "@/lib/private/service";
+import type { FamilienAufgabe } from "@/lib/private/familie-aufgaben";
 import { toggleTaskAction } from "./actions";
 import { IntakeCard } from "./intake";
 import { ItemChip, StatusButtons } from "./kalender/items";
@@ -28,6 +29,25 @@ function TodayRow({ icon, label, state, tone = "muted", href, testid, children }
  * Privat-Startseite: nur „Heute“, „Diese Woche“ und ein zentraler Knopf „Eintragen“. Monatszahlen und
  * Erklärungen eingeklappt darunter. Alles kommt aus dem gemeinsamen Privatkalender.
  */
+/** Fällige Familien-Aufgaben (überfällig, heute, nächste 3 Tage) – auch für den Familien-Zugang. */
+async function FamilienAufgabenHeute({ session, today }: { session: Awaited<ReturnType<typeof requirePrivate>>; today: string }) {
+  const liste = (await loadEntries<FamilienAufgabe>(session, ["familienaufgabe"])).filter((e) => !e.data.abgeschlossen && e.data.faellig && e.data.faellig <= addDays(today, 3)).sort((a, b) => a.data.faellig!.localeCompare(b.data.faellig!));
+  if (!liste.length) return null;
+  return (
+    <section className="card card-pad" data-testid="start-familienaufgaben">
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <strong>Familien-Aufgaben</strong>
+        <Link className="small" href="/privat/familienaufgaben">alle</Link>
+      </div>
+      <ul className="small" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+        {liste.slice(0, 8).map((e) => (
+          <li key={e.id} style={e.data.faellig! < today ? { color: "var(--danger)" } : undefined}>{e.data.titel} · {e.data.faellig! < today ? "überfällig seit " : ""}{dmy(e.data.faellig!)}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default async function PrivatStartPage({ searchParams }: { searchParams: Promise<{ nurfamilie?: string }> }) {
   const session = await requirePrivate();
   const today = todayIso();
@@ -83,6 +103,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
       <PrivatHead active="start" title={`${weekday(today)}, ${dmy(today)}`} sub={<Link className="big-add" href="/privat/eintragen" data-testid="start-add">＋ Eintragen</Link>} />
       {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} tenantId={session.tenantId} userId={session.userId} userPartner={s.userPartner} />}
       {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
+      <FamilienAufgabenHeute session={session} today={today} />
 
       {linkProblems.length > 0 && (
         <div className="notice notice-warn small" data-testid="link-warning">
