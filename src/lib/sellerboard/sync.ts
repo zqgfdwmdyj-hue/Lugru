@@ -11,6 +11,7 @@ import { readConn, sbConnected, writeConn } from "./connection";
 import { isReturnSku } from "@/lib/money/ek-logic";
 import { dayBatches, lastDays, mapEbayOrderUnits, mapFixCosts, mapInventory, mapKpis, mapMonths, mapProduct, mapShipments, mapSkuRows, mapSkuStats, mapTop, reorderNow, tilePeriods, type SbChannel, type SbInventory, type SbKpi, type SbProduct, type SbSkuStat } from "./parse";
 import { refreshHebelTasks, syncHebelKeepa } from "@/lib/hebel/service";
+import { refreshVerlustTasks } from "@/lib/money/verlust-service";
 
 // Abgleich mit sellerboard (nur lesend). „verkauf“ = Verkaufs-Kennzahlen Amazon + eBay (alle ~30 Min.),
 // „bestand“ = zusätzlich Bestand + Sendungen (alle 4 Std.), „alles“ zusätzlich Produkte/EK, Monatswerte,
@@ -356,6 +357,36 @@ async function syncSkuStats(t: string, now: Date) {
   return n;
 }
 
+/** Gewinn je SKU für jeden der letzten 3 abgeschlossenen Tage (Verlust-Stopp); je Tag ersetzt, 21 Tage aufbewahrt. */
+async function syncSkuDays(t: string, now: Date) {
+  const conn = await readConn(t);
+  const channels: SbChannel[] = conn?.config.hasEbay === false ? ["amazon"] : ["amazon", "ebay"];
+  const D = schema.sellerboardSkuTage;
+  const today = utcToday();
+  let n = 0;
+  for (const channel of channels) {
+    for (let back = 3; back >= 1; back--) {
+      const p = lastDays(today, back);
+      const day = { start: p.start, end: p.start, fromDay: p.fromDay };
+      await sbCall(t, TOOLS[channel].period, { periods: [{ start: day.start, end: day.end }] });
+      const reply = await tablePages(t, channel, { entry_type: "product", period_start: day.start, period_end: day.end, sort: "sales desc" }, 35, 20);
+      const merged = new Map<string, { sku: string; asin: string | null; name: string | null; units: number; sales: number | null; netProfit: number | null; avgPrice: number | null }>();
+      for (const r of mapSkuStats(reply)) {
+        const cur = merged.get(r.sku);
+        const add = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
+        if (!cur) merged.set(r.sku, { sku: r.sku, asin: r.asin, name: r.name, units: r.units, sales: r.sales, netProfit: r.netProfit, avgPrice: r.avgPrice });
+        else Object.assign(cur, { units: cur.units + r.units, sales: add(cur.sales, r.sales), netProfit: add(cur.netProfit, r.netProfit) });
+      }
+      const rows = [...merged.values()].filter((r) => r.units > 0 || (r.netProfit ?? 0) !== 0);
+      await db.delete(D).where(and(eq(D.tenantId, t), eq(D.channel, channel), eq(D.day, day.fromDay)));
+      for (const part of chunks(rows)) await db.insert(D).values(part.map((r) => ({ tenantId: t, channel, day: day.fromDay, ...r, syncedAt: now })));
+      n += rows.length;
+    }
+  }
+  await db.delete(D).where(and(eq(D.tenantId, t), sql`${D.day} < ${today}::date - 21`));
+  return n;
+}
+
 /** eBay-Bestellmengen je Tag/SKU für Zeiträume (je höchstens 31 Tage); vorhandene Tage werden ersetzt. */
 async function syncEbayUnits(t: string, ranges: { start: number; end: number; fromDay: string; toDay: string }[], now: Date) {
   const conn = await readConn(t);
@@ -419,6 +450,8 @@ export async function syncSellerboard(tenantId: string, scope: SyncScope = "alle
       await step("Fixkosten", async () => void (counts.fixkosten = await syncFixCosts(tenantId)));
       await step("Produkte 30 Tage (Hebel)", async () => void (counts.hebelProdukte = await syncSkuStats(tenantId, now)));
       await step("Keepa Buy Box (Hebel)", async () => void (counts.keepa = await syncHebelKeepa(tenantId)));
+      await step("Gewinn je Produkt und Tag", async () => void (counts.produktTage = await syncSkuDays(tenantId, now)));
+      await step("Verlust-Stopp", async () => void (counts.verlust = await refreshVerlustTasks(tenantId, todayIso())));
     }
     if (scope === "alles" || scope === "bestand") await step("Hebel-Aufgaben", async () => void (counts.hebel = await refreshHebelTasks(tenantId)));
     // Fehlmengen aus den Sendungen gleich als Ansprüche prüfen.

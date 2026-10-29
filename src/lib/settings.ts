@@ -86,6 +86,11 @@ export const DEFAULT_SETTINGS = {
     lieferadresse: "",
     minMarge: 0.1,
   },
+  /** Kapital-Ampel: Ziel 30 % Jahresrendite auf gebundenes Kapital, gering < 5 %, grün ≤ 60 Tage Reichweite, rot > 120. */
+  kapital: { zielRendite: 0.3, geringRendite: 0.05, gruenReichweite: 60, rotReichweite: 120 },
+  amazonBusiness: { stufen: [3, 10, 25], rabatte: [3, 5, 8], minGewinn: 1 },
+  /** Liquidität: 5.000 € Reserve, Bestellvorschläge einrechnen, Lieferantenrechnungen ohne Zahlungsziel = sofort bezahlt. */
+  liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, zahlungszielStandard: 0 },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
   pallets: {
     pricePerMonth: 14,
@@ -135,6 +140,9 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     drive: { ...d.drive, ...(s.drive ?? {}) },
     returns: { ...d.returns, ...(s.returns ?? {}) },
     retourenStation: { ...d.retourenStation, ...(s.retourenStation ?? {}) },
+    kapital: { ...d.kapital, ...(s.kapital ?? {}) },
+    amazonBusiness: { ...d.amazonBusiness, ...(s.amazonBusiness ?? {}) },
+    liquiditaet: { ...d.liquiditaet, ...(s.liquiditaet ?? {}) },
     b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
     pallets: { ...d.pallets, ...(s.pallets ?? {}) },
     assistant: { ...d.assistant, ...(s.assistant ?? {}) },

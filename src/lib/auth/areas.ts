@@ -15,10 +15,10 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "lieferanten", label: "Lieferanten-Feeds und Großhändler finden (Scannen, Keepa-Prüfung, Boxen, Einkaufsanfragen)", paths: ["/lieferanten"], home: "/lieferanten" },
   { key: "marken", label: "Marken (Ideen, Content, Shop-Analyse, Uhren: Buy & Flip)", paths: ["/marken"], home: "/marken" },
   { key: "ebay", label: "eBay", paths: ["/ebay", "/api/ebay"], home: "/ebay" },
-  { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen, SAS-Programm)", paths: ["/amazon-todos", "/inbound", "/ansprueche", "/remissionen", "/sas"], home: "/amazon-todos" },
+  { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen, SAS-Programm, Echtheits-Ordner, Amazon Business)", paths: ["/amazon-todos", "/inbound", "/ansprueche", "/remissionen", "/sas", "/echtheit", "/amazon-business"], home: "/amazon-todos" },
   { key: "buchhaltung", label: "Einkauf & Buchhaltung (Rechnungen, COG-Export, Repricer)", paths: ["/rechnungen", "/export", "/repricer"], home: "/rechnungen" },
   { key: "service", label: "Service (Retouren, Fälle, Bewertungen)", paths: ["/retouren", "/faelle", "/bewertungen"], home: "/retouren" },
-  { key: "geld", label: "Geld (Gewinn, Cash Flow, Hebel)", paths: ["/gewinn", "/cashflow", "/hebel"], home: "/gewinn" },
+  { key: "geld", label: "Geld (Gewinn, Liquidität, Hebel, Kapital, Verlust-Stopp)", paths: ["/gewinn", "/cashflow", "/hebel", "/kapital", "/verlust"], home: "/gewinn" },
   { key: "b2b", label: "B2B-Deals (Deals für Prep-Kunden, B2B-Kunden, Sammelbestellungen)", paths: ["/b2b"], home: "/b2b" },
   // Eigenes Recht (memberships.privateAccess) – nie Teil von „alle Bereiche“, auch nicht beim Inhaber.
   { key: "privat", label: "Privat (Paar, Kinder, Therapie, Tagebuch)", paths: ["/privat"], home: "/privat" },

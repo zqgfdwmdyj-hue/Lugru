@@ -247,3 +247,25 @@ export const sellerboardSkuMonths = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.month, t.sku] })],
 );
+
+/**
+ * Gewinn je SKU und Tag (letzte abgeschlossene Tage, für den Verlust-Stopp). Je Tag komplett ersetzt, nach
+ * 21 Tagen gelöscht.
+ */
+export const sellerboardSkuTage = pgTable(
+  "sellerboard_sku_tage",
+  {
+    tenantId: tenantId(),
+    channel: text("channel").notNull(),
+    day: date("day", { mode: "string" }).notNull(),
+    sku: text("sku").notNull(),
+    asin: text("asin"),
+    name: text("name"),
+    units: integer("units").notNull().default(0),
+    sales: money("sales"),
+    netProfit: money("net_profit"),
+    avgPrice: money("avg_price"),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.day, t.sku] }), index("sb_sku_tage_sku_idx").on(t.tenantId, t.sku)],
+);

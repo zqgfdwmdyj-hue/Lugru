@@ -3,10 +3,12 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { purchaseSuggestions } from "@/lib/purchasing/service";
 import { sellerboardReorder } from "@/lib/purchasing/reorder";
+import { ampelJeSku } from "@/lib/money/kapital-service";
 import { CHECK_LABEL, filterReorder, reorderTotals, URGENCY_LABEL, type ReorderCheck, type ReorderFilter, type Urgency } from "@/lib/purchasing/reorder-logic";
 import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
 import { reachText } from "@/lib/stock/breakdown";
 import { getSettings } from "@/lib/settings";
+import { todayIso } from "@/lib/dates";
 import { SuggestSubmit } from "../forms";
 
 // Bestellvorschläge: zwei getrennt benannte Rechenwege (A: sellerboard, B: eigene WaWi-Rechnung). Beide nutzen
@@ -20,7 +22,7 @@ const numOrNull = (v: string | undefined) => (v === undefined || v.trim() === ""
 const eur0 = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const PAGE = 50;
 
-type SP = { weg?: string; q?: string; dring?: string; pruefen?: string; marge?: string; kapital?: string; sort?: string; seite?: string; lieferzeit?: string; reichweite?: string; alle?: string };
+type SP = { weg?: string; q?: string; dring?: string; pruefen?: string; marge?: string; kapital?: string; sort?: string; seite?: string; lieferzeit?: string; reichweite?: string; alle?: string; rot?: string };
 
 function href(base: SP, patch: Partial<SP>) {
   const u = new URLSearchParams();
@@ -31,7 +33,7 @@ function href(base: SP, patch: Partial<SP>) {
 export default async function VorschlaegePage({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const [sb, settings] = await Promise.all([sellerboardReorder(session.tenantId), getSettings(session.tenantId)]);
+  const [sb, settings, ampel] = await Promise.all([sellerboardReorder(session.tenantId), getSettings(session.tenantId), ampelJeSku(session.tenantId, todayIso()).catch(() => new Map<string, "gruen" | "gelb" | "rot">())]);
   const weg = sp.weg === "wawi" || sp.weg === "sellerboard" ? sp.weg : sb.rows.length ? "sellerboard" : "wawi";
   const leadDays = clampInt(sp.lieferzeit, 14, 0, 120);
   const coverDays = clampInt(sp.reichweite, 30, 7, 365);
@@ -49,13 +51,13 @@ export default async function VorschlaegePage({ searchParams }: { searchParams: 
         <Link href={href({ weg: "sellerboard" }, {})} className={`chip${weg === "sellerboard" ? " active" : ""}`} aria-current={weg === "sellerboard" ? "true" : undefined} data-testid="way-sellerboard">A · Nachbestellen laut sellerboard ({sb.rows.length})</Link>
         <Link href={href({ weg: "wawi" }, {})} className={`chip${weg === "wawi" ? " active" : ""}`} aria-current={weg === "wawi" ? "true" : undefined} data-testid="way-wawi">B · Eigene WaWi-Rechnung</Link>
       </nav>
-      {weg === "sellerboard" ? <SellerboardWay sp={sp} data={sb} /> : <WawiWay tenantId={session.tenantId} sp={sp} leadDays={leadDays} coverDays={coverDays} vatRate={settings.vatRate} />}
+      {weg === "sellerboard" ? <SellerboardWay sp={sp} data={sb} ampel={ampel} /> : <WawiWay tenantId={session.tenantId} sp={sp} leadDays={leadDays} coverDays={coverDays} vatRate={settings.vatRate} />}
     </>
   );
 }
 
-function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof sellerboardReorder>> }) {
-  const base: SP = { weg: "sellerboard", q: sp.q, dring: sp.dring, pruefen: sp.pruefen, marge: sp.marge, kapital: sp.kapital, sort: sp.sort };
+function SellerboardWay({ sp, data, ampel }: { sp: SP; data: Awaited<ReturnType<typeof sellerboardReorder>>; ampel: Map<string, "gruen" | "gelb" | "rot"> }) {
+  const base: SP = { weg: "sellerboard", q: sp.q, dring: sp.dring, pruefen: sp.pruefen, marge: sp.marge, kapital: sp.kapital, sort: sp.sort, rot: sp.rot };
   const f: ReorderFilter = {
     q: sp.q,
     dring: (["ueberfaellig", "jetzt", "bald"] as const).includes(sp.dring as Urgency) ? (sp.dring as Urgency) : "alle",
@@ -64,7 +66,9 @@ function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof 
     kapitalMin: numOrNull(sp.kapital),
     sort: sp.sort === "kapital" || sp.sort === "marge" ? sp.sort : "dring",
   };
-  const all = data.rows;
+  // Kapital-Ampel rot (Geld liegt, Rendite gering, Preis unter Break-even) → nicht vorschlagen; auf Wunsch zeigen.
+  const rote = data.rows.filter((r) => ampel.get(r.sku) === "rot");
+  const all = sp.rot === "1" ? data.rows : data.rows.filter((r) => ampel.get(r.sku) !== "rot");
   const t = reorderTotals(all);
   const list = filterReorder(all, f);
   const shown = reorderTotals(list);
@@ -72,7 +76,7 @@ function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof 
   const pages = Math.max(1, Math.ceil(list.length / PAGE));
   const rows = list.slice((page - 1) * PAGE, page * PAGE);
   const checkCount = (k: ReorderCheck) => all.filter((r) => r.checks.includes(k)).length;
-  if (!all.length)
+  if (!all.length && !rote.length)
     return (
       <div className="card card-pad small" data-testid="sb-reorder-empty">
         sellerboard meldet gerade nichts zum Nachbestellen – oder der Bestand wurde noch nicht abgeglichen (<Link href="/anbindungen#sellerboard">Anbindungen → sellerboard</Link>). Die eigene Rechnung steht unter <Link href={href({ weg: "wawi" }, {})}>B · Eigene WaWi-Rechnung</Link>.
@@ -85,6 +89,15 @@ function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof 
         Berücksichtigter Bestand: <strong>verkaufbar + reserviert + unterwegs zu Amazon</strong>; eigenes Lager und offene WaWi-Bestellungen zählen in dieser Rechnung nicht.
         Stand {data.syncedAt ? data.syncedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–"} Uhr.
       </div>
+      {rote.length > 0 && (
+        <div className="card card-pad small" data-testid="reorder-rot-hinweis">
+          {sp.rot === "1" ? (
+            <>Artikel mit <strong>roter Kapital-Ampel</strong> werden mit angezeigt ({rote.length}) – dort bindet Ware Geld ohne ausreichende Rendite. <Link href={href(base, { rot: undefined, seite: undefined })}>Wieder ausblenden</Link></>
+          ) : (
+            <>{rote.length} Artikel mit <strong>roter Kapital-Ampel</strong> ausgeblendet (nicht nachbestellen – siehe <Link href="/kapital?filter=rot">Kapital-Ampel</Link>). <Link href={href(base, { rot: "1", seite: undefined })} data-testid="reorder-rot-zeigen">Trotzdem zeigen</Link></>
+          )}
+        </div>
+      )}
       <div className="grid-kpi" data-testid="sb-reorder-totals">
         <div className="card card-pad">
           <div className="kpi-label">Kapitalbedarf netto (regulär)</div>
@@ -157,6 +170,7 @@ function SellerboardWay({ sp, data }: { sp: SP; data: Awaited<ReturnType<typeof 
                       </div>
                     )}
                     {!r.isReturn && <div className="small muted">{r.source ?? <span style={{ color: "var(--warn)" }}>Bezugsquelle unklar – Beschaffung prüfen</span>}</div>}
+                    {ampel.get(r.sku) && <Link href={`/kapital?q=${encodeURIComponent(r.sku)}`} className={`tag ${ampel.get(r.sku) === "rot" ? "tag-danger" : ampel.get(r.sku) === "gelb" ? "tag-warn" : "tag-ok"}`} data-testid="reorder-ampel">Kapital {ampel.get(r.sku) === "rot" ? "rot – nicht nachbestellen" : ampel.get(r.sku)}</Link>}
                     {r.checks.filter((c) => c !== "retoure").length > 0 && (
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>{r.checks.filter((c) => c !== "retoure").map((c) => <span key={c} className="tag tag-warn" title={CHECK_LABEL[c].hint}>{CHECK_LABEL[c].label}</span>)}</div>
                     )}

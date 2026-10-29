@@ -29,3 +29,6 @@ export * from "./tables/bqool";
 export * from "./tables/amazon-markt";
 export * from "./tables/retouren-station";
 export * from "./tables/b2b";
+export * from "./tables/bank";
+export * from "./tables/verlust";
+export * from "./tables/echtheit";

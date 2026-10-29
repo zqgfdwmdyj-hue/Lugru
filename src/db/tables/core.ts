@@ -150,6 +150,22 @@ export type TenantSettings = {
     minMarge?: number;
   };
   cash?: { startBalance?: number; asOf?: string };
+  /**
+   * Liquiditätsvorschau: Mindestreserve, Steuertermine (Schätzung), Kreditkarte (Abbuchungstag/Betrag, falls nicht aus
+   * dem Kontoauszug erkannt), ignorierte wiederkehrende Abbuchungen (Prüfwerte), Bestellvorschläge einrechnen.
+   */
+  /** Kapital-Ampel: Ziel-Jahresrendite, „gering“, Reichweiten-Grenzen (Tage). */
+  kapital?: { zielRendite?: number; geringRendite?: number; gruenReichweite?: number; rotReichweite?: number };
+  /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
+  amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
+  liquiditaet?: {
+    reserve?: number;
+    steuern?: { name: string; betrag: number; monate: number[]; tag: number }[];
+    kreditkarte?: { tag?: number; betrag?: number };
+    ignoriert?: string[];
+    bestellvorschlaege?: boolean;
+    zahlungszielStandard?: number;
+  };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
   /** `staffCalendars`: eigene Kalender, die Mitarbeiter ohne Privat-Zugang sehen dürfen (sonst keine). */
   calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[]; staffCalendars?: string[] };

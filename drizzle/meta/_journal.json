@@ -533,6 +533,34 @@
       "when": 1793293323990,
       "tag": "0075_b2b_deals",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793298150564,
+      "tag": "0076_bank_liquiditaet",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793299024080,
+      "tag": "0077_verlust_stopp",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793299377612,
+      "tag": "0078_echtheit_ordner",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793299787557,
+      "tag": "0079_amazon_business",
+      "breakpoints": true
     }
   ]
 }

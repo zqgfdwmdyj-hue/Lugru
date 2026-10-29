@@ -8,6 +8,7 @@ import { loadHebel } from "@/lib/hebel/service";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { integrationStatus } from "@/lib/integrations/store";
 import { sellerboardReorder } from "@/lib/purchasing/reorder";
+import { ampelJeSku } from "@/lib/money/kapital-service";
 import { CHECK_LABEL, filterReorder, reorderTotals, URGENCY_LABEL, type ReorderCheck, type Urgency } from "@/lib/purchasing/reorder-logic";
 import { daysUntil, MODULE_LABEL, WAITING_LABEL } from "@/lib/sas/logic";
 import { getProgram, loadBrands, loadDeals, loadItems } from "@/lib/sas/service";
@@ -80,9 +81,12 @@ export const bestellvorschlaege = defineTool({
     suche: z.string().trim().max(80).optional().describe("SKU, ASIN oder Name"),
     sortierung: z.enum(["dring", "kapital", "marge"]).default("dring"),
     limit: z.number().int().min(1).max(200).default(100),
+    rote_zeigen: z.boolean().default(false).describe("Auch Artikel mit roter Kapital-Ampel (Standard: ausgeblendet – nicht nachbestellen)"),
   }),
   run: async (ctx, i) => {
-    const { rows, syncedAt } = await sellerboardReorder(ctx.session.tenantId);
+    const [{ rows: alle, syncedAt }, ampel] = await Promise.all([sellerboardReorder(ctx.session.tenantId), ampelJeSku(ctx.session.tenantId, ctx.today).catch(() => new Map<string, "gruen" | "gelb" | "rot">())]);
+    const rote = alle.filter((r) => ampel.get(r.sku) === "rot").length;
+    const rows = i.rote_zeigen ? alle : alle.filter((r) => ampel.get(r.sku) !== "rot");
     const list = filterReorder(rows, { q: i.suche, dring: i.dringlichkeit as Urgency | "alle", pruefen: i.pruefen as ReorderCheck | "alle" | "regulaer", sort: i.sortierung });
     const t = reorderTotals(list);
     return json({
@@ -105,10 +109,12 @@ export const bestellvorschlaege = defineTool({
         bezugsquelle: r.source ?? undefined,
         pruefen: r.checks.length ? r.checks.map((c) => CHECK_LABEL[c].label) : undefined,
         retoure_von: r.isReturn ? (r.origin ?? "unbekannt") : undefined,
+        kapital_ampel: ampel.get(r.sku),
         link: abs(ctx, `/einkauf/vorschlaege?q=${encodeURIComponent(r.sku)}`),
       })),
       hinweis: list.length > i.limit ? `Nur die ersten ${i.limit} von ${list.length}.` : undefined,
-      legende: { kapital_netto: "gültiger EK × Menge; null = EK fehlt oder Retoure", ek_netto: "null = kein gültiger EK" },
+      rote_kapital_ampel_ausgeblendet: !i.rote_zeigen && rote ? rote : undefined,
+      legende: { kapital_netto: "gültiger EK × Menge; null = EK fehlt oder Retoure", ek_netto: "null = kein gültiger EK", kapital_ampel: "rot = Geld liegt mit zu wenig Rendite / Preis unter Break-even – nicht nachbestellen (Werkzeug kapital_ampel)" },
       link: abs(ctx, "/einkauf/vorschlaege"),
     });
   },

@@ -3,6 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { readTable } from "@/lib/tabular";
 import { leseBestandsplanung, leseListings, leseSalesTraffic, type Land } from "./logic";
+import { speichereB2bPeriode } from "@/lib/amazon-business/store";
+import { leseSalesTrafficB2b } from "@/lib/amazon-business/logic";
 
 // Amazon-Berichte je Land speichern (je Land und Bericht komplett ersetzen) – vom Abruf über die Schnittstelle
 // (processPendingReports) aufgerufen. Ohne Bezug zur Schnittstelle selbst, damit kein Kreis entsteht.
@@ -30,6 +32,9 @@ export async function speichereMarktBericht(tenantId: string, bericht: MarktBeri
       for (let i = 0; i < uniq.length; i += 500) await tx.insert(B).values(uniq.slice(i, i + 500));
       n = uniq.length;
     });
+    // B2B-Werte (Amazon Business) aus demselben Bericht für die Auswertung je Zeitraum.
+    const b = leseSalesTrafficB2b(JSON.parse(new TextDecoder("utf-8").decode(bytes)));
+    if (b.von && b.bis) await speichereB2bPeriode(tenantId, b.land ?? landIn, b.von, b.bis, b.zeilen, "api");
   } else if (bericht === "listungen") {
     const t = readTable(bytes);
     const zeilen = [...new Map(leseListings(t.headers, t.rows).map((z) => [z.sku, z])).values()];
