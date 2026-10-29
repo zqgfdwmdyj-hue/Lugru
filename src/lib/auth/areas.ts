@@ -2,7 +2,7 @@
 // alles oder nur die freigegebenen Bereiche (und bei „Marken“ ggf. nur bestimmte Marken).
 // Ohne Server-Abhängigkeiten – wird in proxy.ts, Seiten und Server Actions genutzt.
 
-export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld" | "privat";
+export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld" | "b2b" | "privat";
 
 export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string }[] = [
   { key: "start", label: "Start & Aufgaben", paths: ["/"], home: "/" },
@@ -19,6 +19,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "buchhaltung", label: "Einkauf & Buchhaltung (Rechnungen, COG-Export, Repricer)", paths: ["/rechnungen", "/export", "/repricer"], home: "/rechnungen" },
   { key: "service", label: "Service (Retouren, Fälle, Bewertungen)", paths: ["/retouren", "/faelle", "/bewertungen"], home: "/retouren" },
   { key: "geld", label: "Geld (Gewinn, Cash Flow, Hebel)", paths: ["/gewinn", "/cashflow", "/hebel"], home: "/gewinn" },
+  { key: "b2b", label: "B2B-Deals (Deals für Prep-Kunden, B2B-Kunden, Sammelbestellungen)", paths: ["/b2b"], home: "/b2b" },
   // Eigenes Recht (memberships.privateAccess) – nie Teil von „alle Bereiche“, auch nicht beim Inhaber.
   { key: "privat", label: "Privat (Paar, Kinder, Therapie, Tagebuch)", paths: ["/privat"], home: "/privat" },
 ];

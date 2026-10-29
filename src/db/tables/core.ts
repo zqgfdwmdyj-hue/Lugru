@@ -127,6 +127,24 @@ export type TenantSettings = {
    * (danach automatisch gelöscht, solange kein offener Anspruch daran hängt), optionales Aktivierungswort.
    */
   retourenStation?: { minBetrag?: number; aufbewahrungTage?: number; aktivierungswort?: string; aktivierungAn?: boolean };
+  /**
+   * B2B-Deals: verkaufende Firma (Rechnungen über Lexoffice), Marktplätze der Auswertung, Mindest-ROI für Kunden,
+   * Mengenfaktor gegen Preiskampf, max. Kunden je ASIN, nur bezahlte Reservierungen bestellen, Fehlmengen-Regel,
+   * Prep-Gebühr und Versandanteil je Stück, „fast weg“-Schwelle, USt-Satz.
+   */
+  b2b?: {
+    firma?: { name?: string; handelsname?: string; strasse?: string; plz?: string; ort?: string; land?: string; ustId?: string; email?: string; telefon?: string };
+    marktplaetze?: string[];
+    minKundenRoi?: number;
+    mengenFaktor?: number;
+    maxKundenProAsin?: number;
+    nurBezahlteBestellen?: boolean;
+    fehlmengenRegel?: "anteilig" | "zeitpunkt";
+    prepGebuehr?: number;
+    versandAnteil?: number;
+    fastWegProzent?: number;
+    ustSatz?: number;
+  };
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
   /** `staffCalendars`: eigene Kalender, die Mitarbeiter ohne Privat-Zugang sehen dürfen (sonst keine). */

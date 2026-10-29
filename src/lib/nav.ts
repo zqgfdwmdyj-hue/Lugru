@@ -82,6 +82,8 @@ export const NAV: NavSection[] = [
       { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
       { href: "/lieferanten/chancen", label: "Chancen" },
       { href: "/lieferanten/finden", label: "Großhändler finden" },
+      { href: "/b2b", label: "B2B-Deals" },
+      { href: "/b2b/kunden", label: "B2B-Kunden" },
       { href: "/board", label: "Kontakt-Board" },
     ],
   },

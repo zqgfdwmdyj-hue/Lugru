@@ -217,6 +217,20 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "lexoffice",
+    name: "Lexoffice / Lexware Office (Rechnungen B2B-Deals)",
+    purpose: "Vorkasse-Rechnungen und Gutschriften für B2B-Deals im Namen der Deal-Firma (Einstellungen → B2B-Deals), Zahlungseingang zurück ins Seller-System.",
+    fields: [{ key: "apiKey", label: "API-Schlüssel", secret: true, help: "Schlüssel der Firma, auf die die Deals laufen (z. B. Wittmann & Grunert GmbH)." }],
+    setup: ["In Lexware Office (Lexoffice) → Erweiterungen → „Public API“ → Schlüssel erzeugen und hier eintragen.", "„Verbindung testen“ zeigt den Firmennamen des Kontos – er muss zur Deal-Firma passen."],
+  },
+  {
+    provider: "discord_b2b",
+    name: "Discord – B2B-Deal-Kanal",
+    purpose: "Neue Deals, „fast weg“ und „geschlossen“ automatisch als Nachricht in den B2B-Kanal der Deal-Gruppe (mit Link ins Kundenportal).",
+    fields: [{ key: "webhookUrl", label: "Webhook-Adresse", secret: true, placeholder: "https://discord.com/api/webhooks/…" }],
+    setup: ["Discord → Kanal-Einstellungen → Integrationen → Webhooks → Neuer Webhook → „Webhook-URL kopieren“ und hier eintragen."],
+  },
+  {
     provider: "keepa",
     name: "Keepa (Amazon-Marktdaten)",
     purpose: "Für Ideen und Kalkulationen: ähnliche Produkte auf amazon.de mit Preis, FBA-Gebühr, Provision und Verkäufen im Monat. Auch für Amazon-Bilder im eBay-Tool.",

@@ -28,3 +28,4 @@ export * from "./tables/keepa";
 export * from "./tables/bqool";
 export * from "./tables/amazon-markt";
 export * from "./tables/retouren-station";
+export * from "./tables/b2b";

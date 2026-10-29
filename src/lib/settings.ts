@@ -70,6 +70,20 @@ export const DEFAULT_SETTINGS = {
   returns: { graceFba: 45, claimFba: 60, graceFbm: 21, marketplace: "sellercentral.amazon.de" },
   /** Retouren-Station: Fall ab 15 € Erstattung, Fotos/Videos 180 Tage, Aktivierungswort aus. */
   retourenStation: { minBetrag: 15, aufbewahrungTage: 180, aktivierungswort: "Station", aktivierungAn: false },
+  /** B2B-Deals: Firma bitte unter Einstellungen eintragen (Standard laut Bauauftrag: Wittmann & Grunert GmbH / AdelPrep). */
+  b2b: {
+    firma: { name: "", handelsname: "", strasse: "", plz: "", ort: "", land: "DE", ustId: "", email: "", telefon: "" },
+    marktplaetze: ["DE", "FR", "IT", "ES", "NL", "BE", "PL", "SE"],
+    minKundenRoi: 0.15,
+    mengenFaktor: 1,
+    maxKundenProAsin: 3,
+    nurBezahlteBestellen: true,
+    fehlmengenRegel: "anteilig" as "anteilig" | "zeitpunkt",
+    prepGebuehr: 0,
+    versandAnteil: 0,
+    fastWegProzent: 0.8,
+    ustSatz: 0.19,
+  },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
   pallets: {
     pricePerMonth: 14,
@@ -119,6 +133,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     drive: { ...d.drive, ...(s.drive ?? {}) },
     returns: { ...d.returns, ...(s.returns ?? {}) },
     retourenStation: { ...d.retourenStation, ...(s.retourenStation ?? {}) },
+    b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
     pallets: { ...d.pallets, ...(s.pallets ?? {}) },
     assistant: { ...d.assistant, ...(s.assistant ?? {}) },
   };
