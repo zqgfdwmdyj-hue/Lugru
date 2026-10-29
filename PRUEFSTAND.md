@@ -1,6 +1,6 @@
 # Prüfstand je Reiter
 
-Letzter Lauf der Ablaufprüfungen: **29.10.2026, 20:34** · 67 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 207 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
+Letzter Lauf der Ablaufprüfungen: **29.10.2026, 22:12** · 68 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 194 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
 
 Erzeugt mit `npm run pruefstand` aus `e2e/pruefstand.ts` (Abläufe, Live-Prüfungen) und dem letzten Lauf. Nicht von Hand bearbeiten.
 
@@ -25,7 +25,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Verkauf & Versand | eBay → Temu / Wawi `/listings/temu` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Verkauf & Versand | Amazon-ToDos `/amazon-todos` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Verkauf & Versand | Amazon SAS-Programm `/sas` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
-| Verkauf & Versand | Consultant-Calls `/calls` | ✓ 2/2 Abläufe | – | 2 |
+| Verkauf & Versand | Calls (Consultant & Gruppe) `/calls` | ✓ 3/3 Abläufe | – | 2 |
 | Verkauf & Versand | Echtheits-Ordner `/echtheit` | ✓ 1/1 Abläufe | – | – |
 | Verkauf & Versand | Amazon Business `/amazon-business` | ✓ 2/2 Abläufe | – | 1 |
 | Verkauf & Versand | Repricer (BQool) `/repricer` | ✓ 2/2 Abläufe | – | 1 |
@@ -141,12 +141,13 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Kennzahlen | Zeitraum = Monat, Stand = letzter Bestellabruf, fehlende Gebühren als Text statt 0 | ✓ bestanden (desktop) | `kennzahlen.spec.ts` |
 | Frage im Fragefeld „Was kostet uns das Prep Center?“ | exakte Zahlen je Monat aus den Testdaten + Erklärung | ✓ bestanden (desktop) | `fragefeld.spec.ts` |
 
-### Verkauf & Versand › Consultant-Calls (`/calls`)
+### Verkauf & Versand › Calls (Consultant & Gruppe) (`/calls`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal | 4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, Zusammenfassung mit Teilnehmern, 1 neuer Call aus Discord | ✓ bestanden (desktop) | `teil2.spec.ts` |
 | Umzug aus dem bisherigen Call-Archiv: Export (JSON) hochladen, zweimal | Call mit Zusammenfassung und Google-Doc-Link, 3 Vorschläge; zweiter Import: „1 waren schon da“ | ✓ bestanden (desktop) | `teil2.spec.ts` |
+| Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen | 4 Calls mit Datum aus Dateiname/Kopfzeile, KI im Hintergrund fertig, Datum geändert; zweites Hochladen: Kopie (gleicher Inhalt) und Link übersprungen | ✓ bestanden (desktop) | `teil2.spec.ts` |
 
 - – Offen: Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - – Offen: Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
@@ -374,7 +375,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (66 Abläufe + Oberfläche auf 77 Seiten): 66 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
+**Automatisch** (67 Abläufe + Oberfläche auf 77 Seiten): 67 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
 
 **Live geprüft:**
 
@@ -394,8 +395,8 @@ Tagesübersicht (`/`) · Alle Aufgaben (`/?ansicht=liste`) · Angebote (alle Kan
 - Posteingang: Mails abrufen (nur echte Postfächer)
 - Posteingang: Entwurf echt senden (nur mit echtem Postfach)
 - Posteingang: Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test
-- Consultant-Calls: Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
-- Consultant-Calls: Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
+- Calls (Consultant & Gruppe): Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
+- Calls (Consultant & Gruppe): Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
 - Amazon Business: Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen
 - Repricer (BQool): Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen
 - B2B-Deals: Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)
