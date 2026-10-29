@@ -93,6 +93,7 @@ export async function mcpVerbinden(browser: Browser, B: string, rolle: Rolle, op
   const rpc = async (method: string, params: unknown) => (await (await post("/api/mcp", { jsonrpc: "2.0", id: ++id, method, params }, { Authorization: `Bearer ${tok.access_token}`, Accept: "application/json, text/event-stream", "MCP-Protocol-Version": "2025-06-18" })).json()).result;
   return {
     scope: tok.scope,
+    token: tok.access_token,
     tools: async () => ((await rpc("tools/list", {})).tools as { name: string }[]).map((t) => t.name),
     call: async (name: string, args: unknown = {}) => ((await rpc("tools/call", { name, arguments: args })) as { content: { text: string }[] }).content[0].text,
   };

@@ -47,6 +47,8 @@ export const CLAIM_TYPES = [
   "removal_shipment_stuck",
   "return_damaged",
   "return_wrong_item",
+  /** An der Retouren-Station geprüft: leer, benutzt, beschädigt oder unvollständig zurückgekommen. */
+  "return_condition",
   "refund_too_high",
   "fbm_safet",
   "other",
@@ -120,6 +122,11 @@ export type TenantSettings = {
   drive?: { folderId?: string };
   /** Retouren-Abgleich: Wartezeiten in Tagen. */
   returns?: { graceFba?: number; claimFba?: number; graceFbm?: number; marketplace?: string };
+  /**
+   * Retouren-Station: Fall erst ab diesem an den Kunden erstatteten Betrag, Aufbewahrung von Fotos/Videos in Tagen
+   * (danach automatisch gelöscht, solange kein offener Anspruch daran hängt), optionales Aktivierungswort.
+   */
+  retourenStation?: { minBetrag?: number; aufbewahrungTage?: number; aktivierungswort?: string; aktivierungAn?: boolean };
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
   /** `staffCalendars`: eigene Kalender, die Mitarbeiter ohne Privat-Zugang sehen dürfen (sonst keine). */

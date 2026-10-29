@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { defineTool } from "../types";
 import { abs, json, uuid } from "./common";
+import { markiereEingereicht } from "@/lib/claims/eingereicht";
 
 // Ändernde Werkzeuge für Posteingang und Ansprüche. Wie alle ändernden Werkzeuge: im Fragefeld erst als Vorschlag
 // (Ausführen/Ablehnen), im Claude-Konnektor nur mit Freigabe „ändern“; alles steht im Protokoll.
@@ -61,14 +62,9 @@ export const anspruchEingereicht = defineTool({
   input: z.object({ id: uuid, fallnummer: z.string().trim().min(3).max(40).optional().describe("Amazon-Fallnummer (Case-ID)"), notiz: z.string().trim().max(500).optional() }),
   summary: (i) => `Anspruch als eingereicht markieren${i.fallnummer ? ` (Fall ${i.fallnummer})` : ""}`,
   run: async (ctx, i) => {
-    const C = schema.claims;
-    const [c] = await db.select({ id: C.id, title: C.title, status: C.status, caseId: C.amazonCaseId }).from(C).where(and(eq(C.tenantId, ctx.session.tenantId), eq(C.id, i.id)));
-    if (!c) return { text: "Anspruch nicht gefunden.", isError: true };
-    if (["reimbursed", "partial", "rejected", "dismissed"].includes(c.status)) return { text: `Der Anspruch „${c.title}“ ist schon abgeschlossen (${c.status}) – nichts geändert.`, isError: true };
-    const caseId = i.fallnummer ?? c.caseId ?? null;
-    await db.update(C).set({ status: "submitted", amazonCaseId: caseId, submittedAt: c.status === "submitted" ? undefined : new Date(), updatedAt: new Date() }).where(and(eq(C.tenantId, ctx.session.tenantId), eq(C.id, c.id)));
-    await db.insert(schema.claimEvents).values({ tenantId: ctx.session.tenantId, claimId: c.id, userId: ctx.session.userId, action: `eingereicht${caseId ? ` (Fall ${caseId})` : ""} – über ${ctx.channel === "claude" ? "Claude" : "den Assistenten"}`, note: i.notiz ?? null });
-    return json({ ok: true, anspruch: c.title, status: "eingereicht", fallnummer: caseId ?? undefined, meldung: c.status === "submitted" ? "War schon eingereicht – Fallnummer/Notiz ergänzt." : "Als eingereicht markiert.", link: abs(ctx, `/ansprueche/${c.id}`) });
+    const r = await markiereEingereicht(ctx.session.tenantId, i.id, { fallnummer: i.fallnummer, notiz: i.notiz, userId: ctx.session.userId, via: ctx.channel === "claude" ? "Claude" : "den Assistenten" });
+    if (!r.ok) return { text: r.fehler, isError: true };
+    return json({ ok: true, anspruch: r.titel, status: "eingereicht", fallnummer: r.fallnummer ?? undefined, meldung: r.schonEingereicht ? "War schon eingereicht – Fallnummer/Notiz ergänzt." : "Als eingereicht markiert.", link: abs(ctx, `/ansprueche/${i.id}`) });
   },
 });
 

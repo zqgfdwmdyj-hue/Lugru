@@ -250,6 +250,26 @@ export async function itemOffers(tenantId: string, asin: string, land: Land): Pr
   return { payload: data, eigeneId: c.sellerId, abgerufen: new Date(), ausSpeicher: false };
 }
 
+// --- Produktbild (Katalog) ------------------------------------------------------------
+
+const bildCache = new Map<string, { at: number; url: string | null }>();
+
+/** Hauptbild einer ASIN aus dem Amazon-Katalog (für den KI-Abgleich an der Retouren-Station). 24 Std. gemerkt. */
+export async function katalogBild(tenantId: string, asin: string): Promise<string | null> {
+  const c = await creds(tenantId);
+  if (!c) return null;
+  const key = `${tenantId}|${asin}`;
+  const hit = bildCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600_000) return hit.url;
+  const r = await sp<{ images?: { marketplaceId?: string; images?: { variant?: string; link?: string; width?: number }[] }[] }>(c, "GET", `/catalog/2022-04-01/items/${encodeURIComponent(asin)}?marketplaceIds=${c.marketplaceIds[0]}&includedData=images`).catch(() => null);
+  const bilder = (r?.images ?? []).flatMap((x) => x.images ?? []);
+  // MAIN in mittlerer Größe (~1000 px) genügt fürs Vergleichen.
+  const main = bilder.filter((b) => b.variant === "MAIN" && b.link).sort((a, b) => Math.abs((a.width ?? 0) - 1000) - Math.abs((b.width ?? 0) - 1000))[0];
+  const url = main?.link ?? bilder.find((b) => b.link)?.link ?? null;
+  bildCache.set(key, { at: Date.now(), url });
+  return url;
+}
+
 // --- Bestellungen (FBM) mit Adresse -------------------------------------------------
 
 type SpOrder = {

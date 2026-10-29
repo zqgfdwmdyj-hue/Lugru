@@ -64,6 +64,14 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Notiz über Claude bzw. Fragefeld", erwartet: "nur mit Recht; Mitarbeiter als Vorschlag mit Ausführen/Ablehnen", tests: ["rechte.spec.ts › Claude-Konnektor"] },
     ],
   },
+  "/remissionen/pruefungen": {
+    abläufe: [
+      { ablauf: "Retouren-Station: Paket mit 4 Artikeln ohne Tastatur/Maus (Sprache + Handscanner)", erwartet: "Remission über Etikett, Lieferschein-Abgleich, LPN → Kundenretoure; Fall nur ab Schwelle und wenn Amazon nicht gezahlt hat; KI-Warnung bei Abweichung; Netz weg → Warteschlange; Video je Paket", tests: ["retouren-station.spec.ts › Paket mit 4 Artikeln"] },
+      { ablauf: "Fall-Paket und Eingereicht", erwartet: "Text DE/EN, Fotos 1_Versandetikett … 4_Inhalt in fester Reihenfolge, ZIP, Anspruch mit Betrag/Frist, Fallnummer + Eingereicht im Verlauf; RET-SKU mit EK der Charge", tests: ["retouren-station.spec.ts › Paket mit 4 Artikeln"] },
+      { ablauf: "Rechte der Station", erwartet: "ohne Bereich Amazon kein Zugriff auf Station, Schnittstelle und Fotos", tests: ["retouren-station.spec.ts › Rechte"] },
+    ],
+    offen: ["Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell", "Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen", "Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen"],
+  },
   "/ansprueche": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl", tests: ["kennzahlen.spec.ts › Ansprüche"] },
@@ -110,6 +118,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Keepa: Länder vergleichen", erwartet: "DE/FR/IT/ES/UK nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als „nicht bei Keepa“", tests: ["keepa.spec.ts › keepa_vergleich"] },
       { ablauf: "Keepa-Werkzeuge nur mit Recht (Lieferanten oder Amazon)", erwartet: "Lager-Konto bekommt sie nicht, direkter Aufruf abgewiesen", tests: ["keepa.spec.ts › Rechte"] },
       { ablauf: "Amazon je Land: Buy Box, Listung, Lageralter (Berichte) und Angebote live", erwartet: "Berichte unter Anbindungen anfordern/abholen; Werte aus dem Amazon-Nachbau je Land; Angebote live mit 10-Min.-Zwischenspeicher; unbekannte ASIN als Fehler je Land", tests: ["geschaeft.spec.ts › Amazon je Land"] },
+      { ablauf: "Neue Werkzeuge ohne Neustart (notifications/tools/list_changed)", erwartet: "Ereignis-Kanal meldet beim Verbinden „tools/list_changed“", tests: ["retouren-station.spec.ts › Paket mit 4 Artikeln"] },
       { ablauf: "Rechte der neuen Werkzeuge im Fragefeld", erwartet: "Büro: Posteingang, Repricer, Angebote live (über Wawi → Lieferanten); keine Buy Box, Listung, Lageralter, Ansprüche, Anbindungen", tests: ["geschaeft.spec.ts › Rechte im Fragefeld"] },
     ],
     offen: ["Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)", "getItemOffers-Ratenlimit im Betrieb beobachten"],

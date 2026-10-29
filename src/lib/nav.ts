@@ -94,6 +94,7 @@ export const NAV: NavSection[] = [
       { href: "/retouren", label: "Retouren" },
       { href: "/ansprueche", label: "Ansprüche", badge: "claims" },
       { href: "/remissionen", label: "Remissionen" },
+      { href: "/remissionen/pruefungen", label: "Retouren-Station & Fälle" },
       { href: "/faelle", label: "Fälle & A-bis-Z" },
       { href: "/bewertungen", label: "Bewertungen" },
     ],

@@ -6,6 +6,7 @@ import { shipmentShortages } from "@/lib/sellerboard/parse";
 import type { ClaimType } from "@/db/schema";
 import { addDaysIso } from "@/lib/dates";
 import type { ReturnClaim } from "@/lib/returns/reconcile";
+import type { StationFall } from "@/lib/retouren-station/fall";
 
 export type LedgerAdjustment = {
   rowHash: string;
@@ -76,6 +77,8 @@ export type ClaimData = {
   reimbursements: Reimbursement[];
   /** Aus dem Retouren-Abgleich (Erstattung ↔ Rücksendung ↔ Zahlung von Amazon). */
   returnClaims: ReturnClaim[];
+  /** An der Retouren-Station geprüft: leer, benutzt, beschädigt, unvollständig oder falsches Produkt (nur „Fall“). */
+  stationFaelle?: StationFall[];
   removals: RemovalOrder[];
   /** Einzelne Pakete der Remissionen (Report „Remissionssendungen“) und deine Einordnung. */
   removalShipments?: RemovalShipmentRow[];
@@ -357,6 +360,40 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
       reference: r.reference,
       eventDate: r.eventDate,
       evidence: r.evidence,
+    });
+  }
+
+  // --- Retouren-Station: Kundenretoure nicht im erstatteten Zustand -----------------------
+  // Gleiche Bestellung wie ein Anspruch aus dem Retouren-Abgleich (falscher Artikel / beschädigt) → ein Anspruch
+  // mit beiden Nachweisen, kein zweiter Fall bei Amazon.
+  for (const s of d.stationFaelle ?? []) {
+    const datum = (x: string) => x.split("-").reverse().join(".");
+    const ev = [
+      { label: "Befund (Prüfung bei Eingang)", value: `${s.befund}${s.notiz ? ` – ${s.notiz}` : ""}`, source: "Retouren-Station" },
+      { label: "LPN", value: s.lpn ?? "–", source: "FBA-Kundenrücksendungen" },
+      { label: "Kunde erstattet", value: `${s.refund.toFixed(2).replace(".", ",")} €${s.returnDate ? ` · Rückgabe am ${datum(s.returnDate)}` : ""}`, source: "Transaktionen" },
+      ...(s.remissionId ? [{ label: "Remission", value: s.remissionId, source: "Retouren-Station" }] : []),
+      { label: "Fotos", value: "Versandetikett, Lieferschein, Produkt mit LPN, Inhalt (Fall-Paket der Retouren-Station)", source: "Retouren-Station" },
+    ];
+    const gleich = out.find((c) => c.reference === s.orderId && (c.type === s.type || (s.type === "return_condition" && c.type === "return_damaged")) && (!c.sku || !s.sku || c.sku === s.sku));
+    if (gleich) {
+      gleich.evidence = [...gleich.evidence, ...ev];
+      continue;
+    }
+    push({
+      key: s.key,
+      type: s.type,
+      title: `${s.type === "return_wrong_item" ? "Falscher Artikel zurück" : `Retoure ${s.befund.split(" (")[0]}`} – Bestellung ${s.orderId}`,
+      sku: s.sku,
+      fnsku: s.fnsku,
+      asin: s.asin,
+      quantity: 1,
+      unitCost: unitCost(d, s.sku, s.asin),
+      // Amazon soll den an den Kunden erstatteten Betrag ersetzen (Schwelle und Ansage rechnen damit).
+      expectedAmount: round2(s.refund),
+      reference: s.orderId,
+      eventDate: s.returnDate ?? s.inspectedAt,
+      evidence: ev,
     });
   }
 

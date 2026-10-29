@@ -1066,3 +1066,34 @@ h2 { font-size: 16px; margin: 0; }
 /* Testumgebung: eigene Farbe (violett), nicht mit Status- oder Bereichsfarben zu verwechseln. */
 .test-banner { position: sticky; top: 0; z-index: 60; background: repeating-linear-gradient(135deg, #4c1d95 0 18px, #5b21b6 18px 36px); color: #fff; font-size: 13px; line-height: 1.35; padding: 6px 12px; text-align: center; }
 .test-banner strong { letter-spacing: 0.04em; }
+
+/* ---- Retouren-Station (Vollbild, groß und kontrastreich, bedienbar per Sprache) ---- */
+.station { min-height: 100vh; display: flex; flex-direction: column; background: #111416; color: #f4f4f2; font-size: 18px; }
+.station .muted { color: #b9bec4; }
+.station a { color: #9fd9cf; }
+.station a.btn { color: var(--ink); }
+.station-kopf { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; background: #1b1f22; border-bottom: 1px solid #2c3236; }
+.station-kopf strong { font-size: 20px; margin-right: 8px; }
+.station-chip { font-size: 14px; padding: 3px 10px; border-radius: 14px; background: #2c3236; color: #e6e8ea; }
+.station-chip.gut { background: #1d4d3a; color: #d7f5e6; }
+.station-chip.schlecht { background: #6b1f1a; color: #ffe1dd; }
+.station-chip.rec { background: #8a1c14; color: #fff; }
+.station-raster { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 12px; padding: 12px 16px; }
+.station-bild { position: relative; background: #000; border-radius: 10px; overflow: hidden; min-height: 50vh; }
+.station-bild video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.station-blitz { position: absolute; inset: 0; background: rgba(255, 255, 255, 0.55); pointer-events: none; }
+.station-start { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; text-align: center; background: rgba(0, 0, 0, 0.6); padding: 16px; }
+.station-startknopf { font-size: 26px; padding: 18px 36px; }
+.station-ansage { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 18px; font-size: 28px; font-weight: 600; line-height: 1.25; background: rgba(0, 0, 0, 0.72); color: #fff; }
+.station-gehoert { position: absolute; top: 10px; left: 10px; right: 10px; font-size: 18px; color: #e6e8ea; background: rgba(0, 0, 0, 0.5); padding: 4px 10px; border-radius: 6px; }
+.station-daten { display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.station-block { background: #1b1f22; border: 1px solid #2c3236; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.station-label { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa1a8; }
+.station-gross { font-size: 24px; font-weight: 700; line-height: 1.2; }
+.station-warn { color: #ffd27a; font-weight: 600; }
+.station-liste { margin: 0; padding-left: 22px; }
+.station-fuss { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 16px 12px; border-top: 1px solid #2c3236; }
+@media (max-width: 900px) {
+  .station-raster { grid-template-columns: 1fr; }
+  .station-ansage { font-size: 22px; }
+}

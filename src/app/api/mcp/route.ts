@@ -1,6 +1,6 @@
 import { todayIso } from "@/lib/dates";
 import { appUrl, claudeBaseUrl } from "@/lib/oauth/state";
-import { handleMcpMessage, type McpDeps, type RpcResponse } from "@/lib/assistant/mcp";
+import { handleMcpMessage, TOOLS_LIST_CHANGED, type McpDeps, type RpcResponse } from "@/lib/assistant/mcp";
 import { inputSchema, runTool, toolsFor } from "@/lib/assistant/registry";
 import { grantFromAccessToken } from "@/lib/assistant/oauth-service";
 import { CORS, jsonResponse, preflight } from "@/lib/assistant/http";
@@ -45,9 +45,55 @@ export async function POST(req: Request) {
   return res ? jsonResponse(res) : new Response(null, { status: 202, headers: CORS });
 }
 
-// Kein Event-Stream und keine Sitzungen: GET/DELETE gibt es nicht (laut MCP erlaubt).
-export async function GET() {
-  return new Response("Nur POST (MCP Streamable HTTP ohne Event-Stream).", { status: 405, headers: { ...CORS, Allow: "POST, OPTIONS" } });
+/**
+ * Ereignis-Kanal (SSE) für Meldungen vom Server: Beim Verbinden meldet er „tools/list_changed“, damit der Client die
+ * Werkzeugliste neu holt (nach einem Update kommen neue Werkzeuge so ohne Neustart des Chats an). Danach hält ein
+ * Lebenszeichen die Verbindung offen; nach 25 Minuten schließt der Server, der Client verbindet sich neu.
+ */
+export async function GET(req: Request) {
+  if (!(req.headers.get("accept") ?? "").includes("text/event-stream")) {
+    return new Response("Ereignis-Kanal nur mit „Accept: text/event-stream“.", { status: 405, headers: { ...CORS, Allow: "GET, POST, OPTIONS" } });
+  }
+  const token = /^Bearer\s+(.+)$/i.exec(req.headers.get("authorization") ?? "")?.[1]?.trim() ?? null;
+  const auth = await grantFromAccessToken(token);
+  if (!auth) return token ? unauthorized(req, "Zugang abgelaufen oder getrennt", "token expired or revoked") : unauthorized(req, "Anmeldung nötig", "authorization required");
+  const enc = new TextEncoder();
+  let ping: ReturnType<typeof setInterval> | undefined;
+  let ende: ReturnType<typeof setTimeout> | undefined;
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(enc.encode(`event: message\ndata: ${JSON.stringify(TOOLS_LIST_CHANGED)}\n\n`));
+      ping = setInterval(() => {
+        try {
+          c.enqueue(enc.encode(": ping\n\n"));
+        } catch {
+          clearInterval(ping);
+        }
+      }, 25_000);
+      ende = setTimeout(() => {
+        clearInterval(ping);
+        try {
+          c.close();
+        } catch {
+          /* schon zu */
+        }
+      }, 25 * 60_000);
+      req.signal.addEventListener("abort", () => {
+        clearInterval(ping);
+        clearTimeout(ende);
+        try {
+          c.close();
+        } catch {
+          /* schon zu */
+        }
+      });
+    },
+    cancel() {
+      clearInterval(ping);
+      clearTimeout(ende);
+    },
+  });
+  return new Response(stream, { headers: { ...CORS, "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" } });
 }
 export async function DELETE() {
   return new Response(null, { status: 405, headers: { ...CORS, Allow: "POST, OPTIONS" } });

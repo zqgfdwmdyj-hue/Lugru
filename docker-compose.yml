@@ -32,8 +32,11 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       CRON_SECRET: ${CRON_SECRET:-}
       BACKUP_DIR: /backups
+      # Fotos/Videos der Retouren-Station (verschlüsselt, nicht in der Datenbank-Sicherung)
+      MEDIA_DIR: /medien
     volumes:
       - ./backups:/backups
+      - medien:/medien
   # Tägliche Sicherung der ganzen Datenbank nach ./backups (siehe deploy/backup.sh).
   backup:
     image: postgres:16
@@ -52,3 +55,4 @@ services:
     entrypoint: ["sh", "/backup.sh"]
 volumes:
   dbdata:
+  medien:

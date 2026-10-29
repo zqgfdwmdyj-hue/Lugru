@@ -183,6 +183,30 @@ await db.insert(schema.tasks).values([
   { tenantId: T, title: "Testaufgabe: Paletten zählen", category: "eigene", dueDate: day(3) },
 ]);
 
+// 10a) Retouren-Station: Remission „ZtestRem01“ (Sendung TESTTRACK0001) mit 4 Kundenretouren (erfundene LPNs).
+//      …0001 leer → Fall (34,99 €) · …0002 OK → RET-SKU mit EK 3,40 · …0003 unter der Schwelle (9,99 €)
+//      · …0004 Amazon hat schon erstattet.
+await db.insert(schema.amazonRemovalOrders).values([
+  { tenantId: T, requestDate: day(-10), orderId: "ZtestRem01", orderType: "Return", orderStatus: "Completed", sku: "TEST-SOCKEN", fnsku: "X00TEST0001", disposition: "Unsellable", requestedQuantity: 2, shippedQuantity: 2 },
+  { tenantId: T, requestDate: day(-10), orderId: "ZtestRem01", orderType: "Return", orderStatus: "Completed", sku: "TEST-TASSE", fnsku: "X00TEST0002", disposition: "Unsellable", requestedQuantity: 1, shippedQuantity: 1 },
+]);
+await db.insert(schema.amazonRemovalShipments).values([
+  { tenantId: T, rowHash: "rs-test-1", requestDate: day(-10), orderId: "ZtestRem01", shipmentDate: day(-8), sku: "TEST-SOCKEN", fnsku: "X00TEST0001", disposition: "Unsellable", shippedQuantity: 2, carrier: "DHL", trackingNumber: "TESTTRACK0001", orderType: "Return" },
+  { tenantId: T, rowHash: "rs-test-2", requestDate: day(-10), orderId: "ZtestRem01", shipmentDate: day(-8), sku: "TEST-TASSE", fnsku: "X00TEST0002", disposition: "Unsellable", shippedQuantity: 1, carrier: "DHL", trackingNumber: "TESTTRACK0001", orderType: "Return" },
+]);
+const retoure = (n: number, sku: string, asin: string, fnsku: string, title: string, reason: string, disposition: string, comment: string | null) => ({
+  tenantId: T, rowHash: `cr-test-${n}`, returnDate: day(-20), orderId: `302-0000000-000010${n}`, sku, asin, fnsku, title, quantity: 1, fulfillmentCenter: "TST1", disposition, reason, status: "Unit returned to inventory", lpn: `LPNTE00000000${n}`, customerComments: comment,
+});
+await db.insert(schema.amazonCustomerReturns).values([
+  retoure(1, "TEST-SOCKEN", "B0TEST0001", "X00TEST0001", "Testsocken (erfunden)", "DEFECTIVE", "CUSTOMER_DAMAGED", "Funktioniert nicht (erfunden)"),
+  retoure(2, "TEST-TASSE", "B0TEST0002", "X00TEST0002", "Testtasse (erfunden)", "UNWANTED_ITEM", "SELLABLE", null),
+  retoure(3, "TEST-SOCKEN", "B0TEST0001", "X00TEST0001", "Testsocken (erfunden)", "NOT_AS_DESCRIBED", "CUSTOMER_DAMAGED", null),
+  retoure(4, "TEST-SOCKEN", "B0TEST0001", "X00TEST0001", "Testsocken (erfunden)", "DEFECTIVE", "DEFECTIVE", null),
+]);
+const erstattung = (n: number, sku: string, betrag: number) => ({ tenantId: T, rowHash: `tx-test-refund-${n}`, date: day(-25), kind: "refund", type: "Erstattung", orderId: `302-0000000-000010${n}`, sku, description: "Testartikel (erfunden)", quantity: 1, channel: "fba", productSales: -betrag, total: -betrag });
+await db.insert(schema.amazonTransactions).values([erstattung(1, "TEST-SOCKEN", 34.99), erstattung(2, "TEST-TASSE", 14.9), erstattung(3, "TEST-SOCKEN", 9.99), erstattung(4, "TEST-SOCKEN", 29.99)]);
+await db.insert(schema.amazonReimbursements).values({ tenantId: T, rowHash: "rb-test-4", approvalDate: day(-5), reimbursementId: "TESTRB0004", orderId: "302-0000000-0000104", reason: "CustomerReturn", sku: "TEST-SOCKEN", fnsku: "X00TEST0001", asin: "B0TEST0001", condition: "Sellable", currency: "EUR", amountPerUnit: 29.99, amountTotal: 29.99, quantityCash: 1, quantityTotal: 1 });
+
 // 10b) Posteingang und Erstattungsanspruch (für Antwort-Entwurf und „als eingereicht markieren“)
 await db.insert(schema.emails).values([
   { tenantId: T, messageKey: "<testanfrage-1@example.invalid>", fromAddress: "lieferant@example.invalid", fromName: "Test Lieferant", subject: "Testanfrage: Lieferzeit Testsocken", receivedAt: new Date(Date.now() - 86400_000), snippet: "Wann können Sie die nächste Bestellung abnehmen?", bodyText: "Guten Tag,\n\nwann können Sie die nächste Bestellung Testsocken abnehmen? Wir hätten 200 Stück ab KW 46.\n\nGrüße\nTest Lieferant (erfunden)", category: "action" as const },

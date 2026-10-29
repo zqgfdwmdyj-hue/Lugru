@@ -39,6 +39,9 @@ services:
       TEMU_BASE_URL: http://testdienste:4010/temu
       KEEPA_BASE_URL: http://testdienste:4010/keepa
       ECB_RATES_URL: http://testdienste:4010/ecb
+      MEDIA_DIR: /medien
+    volumes:
+      - medien_test:/medien
   testdienste:
     image: seller-system-app
     pull_policy: never
@@ -46,3 +49,5 @@ services:
     command: ["node", "scripts/testdienste.mjs"]
     environment:
       TESTDIENSTE_URL: http://testdienste:4010
+volumes:
+  medien_test:

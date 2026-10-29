@@ -105,6 +105,15 @@ export async function saveSettings(fd: FormData) {
       graceFbm: num(fd, "returns_graceFbm"),
       marketplace: [str(fd, "returns_marketplace")].find((m) => m && /^sellercentral[a-z-]*\.amazon\.[a-z.]+$/.test(m)),
     },
+    retourenStation: {
+      minBetrag: num(fd, "rs_minBetrag"),
+      aufbewahrungTage: (() => {
+        const v = num(fd, "rs_aufbewahrungTage");
+        return v === undefined ? undefined : Math.max(7, Math.round(v));
+      })(),
+      aktivierungswort: str(fd, "rs_aktivierungswort")?.slice(0, 30),
+      aktivierungAn: fd.get("rs_aktivierungAn") === "on",
+    },
   };
   const name = str(fd, "tenantName");
   await db

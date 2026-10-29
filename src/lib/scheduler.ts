@@ -153,6 +153,8 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
         await step(t, "Paletten-Sendungen", () => refreshShipments(t, todayIso()));
       }
+      // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).
+      if (force || due("medien-aufraeumen", 1435)) await step(t, "Retouren-Station: Medien aufräumen", async () => (await import("@/lib/retouren-station/fall")).medienAufraeumen());
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);
         await step(t, "Ansprüche", () => syncClaims(t));

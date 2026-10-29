@@ -83,6 +83,7 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
         <div style={{ display: "flex", gap: 6 }}>
           <Link className={`chip${view === "offen" ? " active" : ""}`} aria-current={view === "offen" ? "true" : undefined} href="/remissionen">Eingang offen</Link>
           <Link className={`chip${view === "alle" ? " active" : ""}`} aria-current={view === "alle" ? "true" : undefined} href="/remissionen?ansicht=alle">Alle Aufträge</Link>
+          <Link className="btn btn-small" href="/remissionen/pruefungen">Retouren-Station & Fälle</Link>
           <Link className="btn btn-primary btn-small" href="/remissionen/erfassen">Tendron-Pakete aus Seller Central holen</Link>
         </div>
       </div>

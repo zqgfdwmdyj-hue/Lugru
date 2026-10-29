@@ -54,6 +54,9 @@ function kiAnswer(req, b) {
   const results = parts.filter((p) => p.type === "tool_result");
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
+  // Retouren-Station: Etikett, Lieferschein, Produktabgleich, Code, Falltext – feste erfundene JSON-Antworten.
+  const st = stationKi(text);
+  if (st && !stale) return [200, reply(b, [{ type: "text", text: JSON.stringify(st) }], "end_turn")];
   if (stale && !drop) {
     const i = msgs.findIndex((m) => m.role === "assistant" && Array.isArray(m.content) && m.content.some((p) => p.type === "thinking" && p.signature !== want));
     return [400, { type: "error", error: { type: "invalid_request_error", message: `messages.${i}.content.0: Invalid \`signature\` in \`thinking\` block. The block is bound to a different conversation. Remove the block, or set block_binding.prefix_mismatch_behavior to "drop_block".` } }];
@@ -82,6 +85,24 @@ function kiAnswer(req, b) {
   if (auf) return [200, reply(b, [{ type: "text", text: "Ich lege das an:" }, use("aufgabe_anlegen", { titel: auf[1].trim(), faellig: "2026-11-02" })], "tool_use")];
   if (/auftr/i.test(text)) return [200, reply(b, [use("auftraege", {})], "tool_use")];
   return [200, reply(b, [{ type: "text", text: `Hallo aus der Test-KI (${stale ? `${stale} alter Denk-Schritt verworfen` : "kein alter Denk-Schritt"}).` }], "end_turn")];
+}
+
+/** Test-KI für die Retouren-Station (Remission „ZtestRem01“, Sendung TESTTRACK0001; Testtasse = „passt nicht“). */
+function stationKi(text) {
+  if (/Versandetikett eines Pakets/.test(text)) return { sendungsnummer: "TESTTRACK0001", versender: "DHL", remissions_id: null, absender: "Amazon Testlager (erfunden)", unsicher: false };
+  if (/Lieferschein \(Packliste\)/.test(text))
+    return { remissions_id: "ZtestRem01", positionen: [{ sku: "TEST-SOCKEN", fnsku: "X00TEST0001", titel: "Testsocken (erfunden)", menge: 2 }, { sku: "TEST-TASSE", fnsku: "X00TEST0002", titel: "Testtasse (erfunden)", menge: 1 }], unsicher: false };
+  if (/Du prüfst Amazon-Kundenretouren/.test(text))
+    return /Testtasse/.test(text)
+      ? { passt: "nein", begruendung: "Foto zeigt keine Tasse (Test)", sichtbare_maengel: [], vollstaendig: "unklar", gebrauchsspuren: "keine", vorschlag_befund: "falsches_produkt", code_text: null }
+      : { passt: "ja", begruendung: "Passt zum Titel (Test)", sichtbare_maengel: [], vollstaendig: "ja", gebrauchsspuren: "keine", vorschlag_befund: "ok", code_text: null };
+  if (/Lies auf diesem Foto die LPN/.test(text)) return { code: null };
+  if (/Seller Support: Eine Kundenretoure/.test(text)) {
+    const lpn = /LPN: (\S+)/.exec(text)?.[1] ?? "–";
+    const best = /Bestellnummer: (\S+)/.exec(text)?.[1] ?? "–";
+    return { betreff: `Kundenretoure nicht im erstatteten Zustand – ${best}`, text_de: `Guten Tag,\n\ndie Kundenretoure zur Bestellung ${best} (LPN ${lpn}) kam leer zurück. Fotos 1–5 im Anhang. (Testtext)`, text_en: `Hello,\n\nthe customer return for order ${best} (LPN ${lpn}) arrived empty. See photos 1–5. (test text)` };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -144,6 +165,10 @@ async function route(req, url, body) {
     // Berichte je Land sind sofort fertig; andere Reports kennt der Nachbau nicht (wie bisher).
     if (r && MARKT_TYPEN.has(r.typ)) return json(rep[1] === "reports" ? { reportId: rep[2], reportType: r.typ, processingStatus: "DONE", reportDocumentId: rep[2] } : { reportDocumentId: rep[2], url: `${SELF}/amazon-doc/${rep[2]}`, ...(r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? { compressionAlgorithm: "GZIP" } : {}) });
   }
+  const kat = /^\/amazon\/catalog\/2022-04-01\/items\/([^/]+)$/.exec(p);
+  if (kat && req.method === "GET") return json({ asin: kat[1], images: [{ marketplaceId: url.searchParams.get("marketplaceIds") ?? "A1PA6795UKMFR9", images: [{ variant: "MAIN", link: `${SELF}/amazon-bild/${kat[1]}.jpg`, height: 1000, width: 1000 }] }] });
+  // Erfundenes „Produktbild“ (JPEG-Kopf genügt dem Nachbau)
+  if (p.startsWith("/amazon-bild/")) return [200, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 0xff, 0xd9]), "image/jpeg"];
   const off = /^\/amazon\/products\/pricing\/v0\/items\/([^/]+)\/offers$/.exec(p);
   if (off && req.method === "GET") return angebote(decodeURIComponent(off[1]), url.searchParams.get("MarketplaceId") ?? "");
   if (p.startsWith("/amazon/")) {

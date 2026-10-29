@@ -26,4 +26,6 @@ export const E2E_ENV: Record<string, string> = {
   KEEPA_BASE_URL: `${TD}/keepa`,
   ECB_RATES_URL: `${TD}/ecb`,
   NEXT_TELEMETRY_DISABLED: "1",
+  // Fotos/Videos der Retouren-Station (verschlüsselt) – eigener Ordner nur für die Prüfungen
+  MEDIA_DIR: process.env.E2E_MEDIA_DIR || `${process.cwd()}/.e2e-medien`,
 };

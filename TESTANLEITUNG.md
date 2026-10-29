@@ -304,6 +304,25 @@ docker compose exec -T db pg_restore -U seller -d seller --clean --if-exists < b
 docker compose start app
 ```
 
+## 8a. Retouren-Station (Remissionen prüfen per Kamera und Sprache)
+
+Seite: **Remissionen → Retouren-Station & Fälle → „Retouren-Station öffnen“** (`/remissionen/station`, Vollbild ohne Seitenleiste). Nur Retouren aus Remissionen – allgemeine Erstattungsfälle bleiben bei den Ansprüchen.
+
+**Arbeitsplatz:** Kamera senkrecht über dem Tisch (4K-Webcam oder Dokumentenkamera am Arm), gleichmäßiges Licht, Headset oder Konferenzmikrofon, Lautsprecher, optional ein USB-Handscanner (arbeitet als Tastatur). Rechner/Tablet mit **Chrome** – die Spracherkennung (Web Speech API) gibt es nur dort, und Kamera/Mikrofon nur über **https** (die normale Adresse des Systems).
+
+**Ablauf:** einmal „Station starten“ tippen (Kamera/Mikrofon erlauben) – danach nur Sprache:
+„Neues Paket“ → „Etikett“ (Foto, KI liest Sendungsnummer → Remission, Ansage „Remission …, 5 Positionen erwartet“) → „Lieferschein“ (Abgleich, Ansage bei Abweichung) → „Produkt“ (Foto + LPN per Kamera oder Handscanner → Kundenretoure: Grund, Kommentar, Erstattung) → „Foto“ (beliebig oft, KI vergleicht mit dem Amazon-Bild) → Befund „Zustand OK“ / „leer“ / „falsches Produkt“ / „benutzt“ / „beschädigt“ / „unvollständig“ → „Notiz …“ → „Nächstes Produkt“ … → „Fertig“.
+Außerdem: „Nochmal“ (letztes Foto ersetzen), „Löschen“ (Schritt zurück), „Abbrechen“ (zweimal = Paket abbrechen), „Wiederholen“, „Hilfe“, „Remission manuell“ / „Remission 2“, „SKU …“ (buchstabiert), „Verbleib B-Ware/eBay/einlagern/entsorgen/Hersteller“.
+Ein Handscanner-Scan einer LPN/FNSKU startet den Produkt-Schritt direkt. Ohne Netz bleiben Fotos und Befehle im Browser und gehen später hoch (Anzeige „Netz weg – x wartet“).
+
+**Regeln (Einstellungen → Retouren-Station / Ansprüche):** Fall nur, wenn der Befund nicht OK ist, der Kunde mindestens **15 €** erstattet bekam (einstellbar) und Amazon für die Bestellung noch nichts gezahlt hat. Frist je Art ab Rückgabedatum („Retoure leer/benutzt/beschädigt (geprüft)“, „Anderer Artikel zurück“) – bitte mit der aktuellen Amazon-Richtlinie abgleichen. Optional ein Aktivierungswort („Station Etikett“), damit Gespräche im Raum nichts auslösen. Die KI entscheidet nie: der gesprochene Befund zählt, die KI warnt nur bei Abweichung.
+
+**Nach „Fertig“:** je Fall ein **Fall-Paket** (Betreff, Text DE/EN zum Kopieren, Fotos `1_Versandetikett.jpg`, `2_Lieferschein.jpg`, `3_Produkt_LPN.jpg`, `4_Inhalt_1.jpg` … als ZIP, Link zum Video) und ein Anspruch mit Betrag und Frist. Nach dem Einreichen in Seller Central die **Fallnummer** im Fall-Paket eintragen → „Eingereicht“ (ein Fall automatisch eröffnen erlaubt Amazon nicht). Einwandfreie Ware (Verbleib FBA, B-Ware, eBay) bekommt eine **RET-SKU** nach dem bestehenden Schema mit dem **EK der Ursprungs-Charge** (nicht 0,01 €). Claude sieht offene Fälle über das Werkzeug `retouren_pruefungen`.
+
+**Fotos und Videos** liegen verschlüsselt (AES-256-GCM, Schlüssel aus `APP_SECRET`) im Docker-Volume `seller-system_medien`, nicht in der Datenbank – sie sind deshalb **nicht** in der täglichen Datenbank-Sicherung. Nach der Aufbewahrungsfrist (Standard 180 Tage) werden sie automatisch gelöscht, außer an einem Artikel des Pakets hängt noch ein offener Anspruch. Versandetiketten (Namen/Adressen) gehen nur verkleinert an die KI, der gelesene Text wird nicht gespeichert – nur Sendungsnummer, Versender und Remissions-ID.
+
+**Datenquellen:** Kundenretouren (mit LPN), Remissionsaufträge, Remissionssendungen, Erstattungen und Transaktionen kommen über die Amazon-Schnittstelle (Anbindungen → Amazon, täglich) oder als Datei-Upload. Den Stand der Kundenretouren zeigt die Station oben an.
+
 ## 9. Testumgebung und automatische Prüfungen
 
 **Testumgebung auf dem Server** – läuft neben dem echten System, mit eigener Datenbank (`seller_test`) und erfundenen

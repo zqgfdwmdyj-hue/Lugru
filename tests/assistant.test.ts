@@ -116,7 +116,7 @@ describe("MCP (JSON-RPC)", () => {
   const deps: McpDeps = { tools: [tool], schemaOf: () => ({ type: "object", properties: {} }), call: async (name) => (name === "ueberblick" ? { text: '{"heute":"2026-10-28"}' } : { text: "unbekannt", isError: true }) };
   it("initialize: Version des Programms, sonst die neueste", async () => {
     const r = await handleMcpMessage({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, ctx, deps);
-    expect(r).toMatchObject({ id: 1, result: { protocolVersion: "2025-06-18", capabilities: { tools: { listChanged: false } }, serverInfo: { name: "seller-system" } } });
+    expect(r).toMatchObject({ id: 1, result: { protocolVersion: "2025-06-18", capabilities: { tools: { listChanged: true } }, serverInfo: { name: "seller-system" } } });
     expect((r!.result as { instructions: string }).instructions).toContain("Testfirma");
     const r2 = await handleMcpMessage({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "1999-01-01" } }, ctx, deps);
     expect((r2!.result as { protocolVersion: string }).protocolVersion).toBe("2025-11-25");

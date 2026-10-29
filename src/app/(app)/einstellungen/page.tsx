@@ -124,6 +124,17 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <div className="small muted">Amazon ändert diese Fristen immer wieder. Prüfe die aktuelle Richtlinie in Seller Central.</div>
         </section>
 
+        <section className="card card-pad stack" style={{ gap: 14 }} id="retouren-station">
+          <h2>Retouren-Station</h2>
+          <div style={grid}>
+            <Field label="Fall erst ab Erstattung an den Kunden" name="rs_minBetrag" value={dec(s.retourenStation.minBetrag)} suffix="€" width={80} />
+            <Field label="Fotos und Videos aufbewahren" name="rs_aufbewahrungTage" value={s.retourenStation.aufbewahrungTage} suffix="Tage" width={80} help="Solange ein Anspruch offen ist, bleiben sie" />
+            <Field label="Aktivierungswort" name="rs_aktivierungswort" value={s.retourenStation.aktivierungswort} width={140} />
+            <label className="check small" style={{ alignSelf: "end" }}><input type="checkbox" name="rs_aktivierungAn" defaultChecked={s.retourenStation.aktivierungAn} /> Befehle nur nach dem Aktivierungswort</label>
+          </div>
+          <div className="small muted">Mit Aktivierungswort lösen Gespräche im Raum nichts aus: „Station Etikett“ statt nur „Etikett“. Die Frist für Fälle aus der Station steht oben bei „{CLAIM_TYPE_LABEL.return_condition}“ (falsches Produkt: „{CLAIM_TYPE_LABEL.return_wrong_item}“) – gezählt ab dem Rückgabedatum.</div>
+        </section>
+
         <section className="card card-pad stack" style={{ gap: 14 }}>
           <h2>Preise & Repricer</h2>
           <div style={grid}>

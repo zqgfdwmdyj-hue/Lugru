@@ -6,12 +6,13 @@ import { getSettings, type ResolvedSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { loadReturnClaims } from "@/lib/returns/service";
 import { detectClaims, type ClaimData } from "./rules";
+import { anspruecheVerknuepfen, stationFaelle } from "@/lib/retouren-station/fall";
 
 export async function loadClaimData(tenantId: string): Promise<ClaimData> {
   const t = tenantId;
   const L = schema.amazonLedgerEvents;
   const RS = schema.amazonRemovalShipments;
-  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound, removalShipments, removalShipmentMarks, sbShipments, sbCosts] = await Promise.all([
+  const [adjustments, receipts, reimbursements, returnClaims, removals, lots, inbound, removalShipments, removalShipmentMarks, sbShipments, sbCosts, station] = await Promise.all([
     db
       .select({ rowHash: L.rowHash, date: L.eventDate, sku: L.sku, fnsku: L.fnsku, asin: L.asin, quantity: L.quantity, reason: L.reason, fulfillmentCenter: L.fulfillmentCenter, referenceId: L.referenceId })
       .from(L)
@@ -44,6 +45,11 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
     // FBA-Sendungen und EK laut sellerboard (falls verbunden)
     db.select({ amazonId: schema.sellerboardShipments.amazonId, name: schema.sellerboardShipments.name, status: schema.sellerboardShipments.status, createdOn: schema.sellerboardShipments.createdOn, lastUpdate: schema.sellerboardShipments.lastUpdate, lines: schema.sellerboardShipments.lines }).from(schema.sellerboardShipments).where(eq(schema.sellerboardShipments.tenantId, t)),
     db.select({ sku: schema.sellerboardProducts.sku, asin: schema.sellerboardProducts.asin, cost: schema.sellerboardProducts.cost }).from(schema.sellerboardProducts).where(and(eq(schema.sellerboardProducts.tenantId, t), isNotNull(schema.sellerboardProducts.cost))),
+    // Retouren-Station: geprüfte Artikel mit Befund ≠ OK (Entscheidung wird dabei frisch gerechnet)
+    stationFaelle(t).catch((e) => {
+      console.error("[Ansprüche] Retouren-Station:", e instanceof Error ? e.message : e);
+      return [];
+    }),
   ]);
 
   const costBySku = new Map<string, number>();
@@ -89,6 +95,7 @@ export async function loadClaimData(tenantId: string): Promise<ClaimData> {
       quantityTotal: r.quantityTotal,
     })),
     returnClaims,
+    stationFaelle: station,
     removals: removals.map((r) => ({
       orderId: r.orderId,
       orderType: r.orderType,
@@ -215,6 +222,7 @@ export async function syncClaims(tenantId: string) {
          and c.status in ('submitted', 'partial')`);
   });
 
+  await anspruecheVerknuepfen(tenantId).catch((e) => console.error("[Ansprüche] Station verknüpfen:", e instanceof Error ? e.message : e));
   await refreshClaimTasks(tenantId, settings);
   return { candidates: candidates.length, created };
 }

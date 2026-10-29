@@ -3,8 +3,9 @@ import type { ToolCtx, ToolDef, ToolOut } from "./types";
 /** Was der MCP-Teil vom Werkzeug-Register braucht (in Tests ersetzbar). */
 export type McpDeps = { tools: ToolDef[]; schemaOf: (t: ToolDef) => Record<string, unknown>; call: (name: string, args: unknown) => Promise<ToolOut> };
 
-// MCP-Server (Streamable HTTP, ohne Sitzungs-ID und ohne Event-Stream): JSON-RPC rein, JSON raus.
-// claude.ai ruft initialize, tools/list und tools/call auf; Werkzeuge kommen aus dem gemeinsamen Register.
+// MCP-Server (Streamable HTTP, ohne Sitzungs-ID): JSON-RPC rein, JSON raus. claude.ai ruft initialize, tools/list
+// und tools/call auf; Werkzeuge kommen aus dem gemeinsamen Register. Über den Ereignis-Kanal (GET) meldet der Server
+// „notifications/tools/list_changed“ – so sehen laufende Chats neue Werkzeuge nach einem Update ohne Neustart.
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 export const SERVER_INFO = { name: "seller-system", title: "Seller-System", version: "1.0.0" };
@@ -44,7 +45,7 @@ export async function handleMcpMessage(msg: unknown, ctx: Pick<ToolCtx, "session
       const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
       return ok(id, {
         protocolVersion: MCP_PROTOCOL_VERSIONS.includes(asked) ? asked : MCP_PROTOCOL_VERSIONS[0],
-        capabilities: { tools: { listChanged: false } },
+        capabilities: { tools: { listChanged: true } },
         serverInfo: SERVER_INFO,
         instructions: instructions(ctx),
       });
@@ -76,3 +77,6 @@ export async function handleMcpMessage(msg: unknown, ctx: Pick<ToolCtx, "session
       return fail(id, -32601, `Methode nicht unterstützt: ${m.method}`);
   }
 }
+
+/** Benachrichtigung „Werkzeugliste geändert“ (ohne id – der Client holt tools/list neu). */
+export const TOOLS_LIST_CHANGED = { jsonrpc: "2.0", method: "notifications/tools/list_changed" } as const;
