@@ -5,25 +5,26 @@ import { callDetail, callsListe } from "@/lib/calls/service";
 import { defineTool } from "../types";
 import { abs, json } from "./common";
 
-// Call-Archiv (nur lesen): Calls mit dem Consultant und die daraus gezogenen Punkte.
+// Call-Archiv (nur lesen): Calls mit dem Consultant, Wochen-Calls der Deal-Gruppe und die daraus gezogenen Punkte.
 
 export const calls = defineTool({
   name: "calls",
-  title: "Consultant-Calls",
+  title: "Calls (Consultant & Deal-Gruppe)",
   description:
-    "Liste der Calls mit dem Amazon-Consultant (SAS-Programm) im Call-Archiv: Datum, Titel, Quelle, wie viele Punkte noch zu prüfen sind, Aufgaben und offene Fragen. Optional Zeitraum. Für Details und Punkte eines Calls „call_aufgaben“ mit der call_id.",
+    "Liste der Calls im Call-Archiv – Calls mit dem Amazon-Consultant (SAS-Programm) und Wochen-Calls der Deal-Gruppe: Datum, Titel, Art, Quelle, Überblick, wie viele Punkte noch zu prüfen sind, Aufgaben und offene Fragen. Optional Zeitraum und Art. Für Details und Punkte eines Calls „call_aufgaben“ mit der call_id.",
   area: "amazon",
   write: false,
   quelle: { text: "Call-Archiv im Seller-System (Import aus Google Docs/Discord, KI-Auswertung)" },
   input: z.object({
     von: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("ab Datum (JJJJ-MM-TT)"),
     bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("bis Datum (JJJJ-MM-TT)"),
+    art: z.enum(["consultant", "gruppe"]).optional().describe("nur Consultant-Calls oder nur Wochen-Calls der Deal-Gruppe"),
   }),
   run: async (ctx, i) => {
-    const liste = await callsListe(ctx.session.tenantId, { von: i.von, bis: i.bis });
+    const liste = await callsListe(ctx.session.tenantId, { von: i.von, bis: i.bis, art: i.art });
     return json({
       zeitraum: i.von || i.bis ? { von: i.von ?? "Anfang", bis: i.bis ?? "heute" } : "alle",
-      calls: liste.map((c) => ({ call_id: c.id, datum: c.datum, titel: c.titel, quelle: c.quelle, teilnehmer: c.zusammenfassung?.teilnehmer?.length ? c.zusammenfassung.teilnehmer : undefined, ueberblick: c.zusammenfassung?.ueberblick || undefined, auswertung: c.auswertung, zu_pruefen: c.vorschlaege, aufgaben: c.aufgaben, offene_fragen: c.fragenOffen, link: abs(ctx, `/calls/${c.id}`) })),
+      calls: liste.map((c) => ({ call_id: c.id, datum: c.datum, titel: c.titel, art: c.art === "gruppe" ? "Wochen-Call Deal-Gruppe" : "Consultant-Call", quelle: c.quelle, teilnehmer: c.zusammenfassung?.teilnehmer?.length ? c.zusammenfassung.teilnehmer : undefined, ueberblick: c.zusammenfassung?.ueberblick || undefined, auswertung: c.auswertung, zu_pruefen: c.vorschlaege, aufgaben: c.aufgaben, offene_fragen: c.fragenOffen, link: abs(ctx, `/calls/${c.id}`) })),
       offene_punkte: abs(ctx, "/calls/offen"),
       link: abs(ctx, "/calls"),
     });
@@ -34,7 +35,7 @@ export const callAufgaben = defineTool({
   name: "call_aufgaben",
   title: "Punkte eines Calls",
   description:
-    "Zusammenfassung (Überblick, Teilnehmer, Themen) sowie Vereinbarungen, Aufgaben (mit Verantwortlichem, Frist und Stand der Aufgabe), Entscheidungen und offene Fragen eines Calls mit dem Consultant – mit Fundstelle im Transkript. Die call_id kommt aus „calls“.",
+    "Zusammenfassung (Überblick, Teilnehmer, Themen) sowie Vereinbarungen, Aufgaben (mit Verantwortlichem, Frist und Stand der Aufgabe), Entscheidungen und offene Fragen eines Calls (Consultant oder Deal-Gruppe) – mit Fundstelle im Transkript. Die call_id kommt aus „calls“.",
   area: "amazon",
   write: false,
   quelle: { text: "Call-Archiv im Seller-System" },
@@ -45,7 +46,7 @@ export const callAufgaben = defineTool({
     const d = await callDetail(ctx.session.tenantId, id);
     if (!d) return json({ gefunden: false, link: abs(ctx, "/calls") });
     return json({
-      call: { call_id: d.call.id, titel: d.call.titel, datum: d.call.datum, auswertung: d.call.auswertung, google_doc: d.call.quelleUrl ?? undefined },
+      call: { call_id: d.call.id, titel: d.call.titel, datum: d.call.datum, art: d.call.art === "gruppe" ? "Wochen-Call Deal-Gruppe" : "Consultant-Call", auswertung: d.call.auswertung, google_doc: d.call.quelleUrl ?? undefined },
       zusammenfassung: d.call.zusammenfassung ? { ueberblick: d.call.zusammenfassung.ueberblick, teilnehmer: d.call.zusammenfassung.teilnehmer, themen: d.call.zusammenfassung.themen } : undefined,
       punkte: d.punkte.map((p) => ({ art: PUNKT_TEXT[p.art], text: p.text, verantwortlich: p.verantwortlich ?? undefined, frist: p.frist ?? undefined, status: p.status, aufgabe: p.taskId ? (p.aufgabeStatus === "done" ? "erledigt" : "offen") : undefined, zitat: p.zitat ?? undefined, link: abs(ctx, `/calls/${p.callId}#p-${p.id}`) })),
       link: abs(ctx, `/calls/${d.call.id}`),

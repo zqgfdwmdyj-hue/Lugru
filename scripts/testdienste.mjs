@@ -66,7 +66,7 @@ function kiAnswer(req, b) {
     return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
   }
   // Call-Archiv: Punkte aus dem Test-Transkript (wörtliche Zitate, damit die Call-Stelle gefunden wird).
-  if (/Du liest das Transkript eines Calls mit dem Amazon-Consultant/.test(text) && !stale) {
+  if (/Du liest das Transkript eines (Calls mit dem Amazon-Consultant|Wochen-Calls einer Deal-Gruppe)/.test(text) && !stale) {
     const punkte = [
       { art: "aufgabe", text: "Liste der zehn Audit-Marken an den Consultant schicken", verantwortlich: "ich", frist: "2026-10-23", zitat: "Schick mir bis Freitag die Liste der zehn Marken" },
       { art: "aufgabe", text: "Mindestrabatt für Bundles intern klären", verantwortlich: "consultant", frist: null, zitat: "Das kläre ich intern" },
@@ -268,7 +268,7 @@ async function route(req, url, body) {
   if (p.startsWith("/gdocs/document/d/")) {
     const id = p.split("/")[4] ?? "";
     if (!id.startsWith("TESTCALL")) return [302, "", "text/html"];
-    return [200, `Consultant-Call (Testdaten, erfunden) ${id}\n\nConsultant: Hallo Ludwig, schön dass es klappt.\nLudwig: Hallo! Wie besprochen habe ich die Markenliste vorbereitet.\nConsultant: Super. Schick mir bis Freitag die Liste der zehn Marken für den Audit.\nLudwig: Mache ich. Gilt der Mindestrabatt auch für Bundles?\nConsultant: Das kläre ich intern und melde mich bis nächste Woche.\nLudwig: Gut, dann machen wir Black-Week-Deals nur mit Gewinn.\n`, "text/plain; charset=utf-8"];
+    return [200, `Consultant-Call (Testdaten, erfunden) ${id}\n\nConsultant: Hallo Ludwig, schön dass es klappt.\nLudwig: Hallo! Wie besprochen habe ich die Markenliste vorbereitet.\nConsultant: Super. Schick mir bis Freitag die Liste der zehn Marken für den Audit.\nLudwig: Mache ich. Gilt der Mindestrabatt auch für Bundles?\nConsultant: Das kläre ich intern und melde mich bis nächste Woche.\nLudwig: Gut, dann machen wir Black-Week-Deals nur mit Gewinn.\nConsultant: Bis dann. (Testnotiz ${id})\n`, "text/plain; charset=utf-8"];
   }
   // Discord-API (Bot liest den Call-Kanal): eine Nachricht mit Link auf ein Test-Doc.
   if (p.startsWith("/discord-api/channels/")) {

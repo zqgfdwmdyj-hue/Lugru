@@ -172,6 +172,8 @@ export async function runScheduledJobs(force = false) {
       }
       // Call-Archiv: neue Transkripte aus dem Discord-Kanal, einmal pro Woche.
       if (await has("discord_calls")) if (force || due(`${t}:calls`, 10079)) await step(t, "Call-Archiv (Discord)", async () => (await import("@/lib/calls/service")).discordCallsImport(t, todayIso()));
+      // Call-Archiv: noch nicht ausgewertete Calls (Sammel-Import, Discord) nacheinander von der KI auswerten lassen.
+      if (force || due(`${t}:call-auswertung`, 29)) await step(t, "Call-Auswertung", async () => (await import("@/lib/calls/service")).offeneCallsAuswerten(t, 20));
       // Planung: Standard-Freizeiten/Retourenwelle einmalig, Aufgaben aus freien Tagen schieben, Anleitungen prüfen.
       if (force || due(`${t}:planung`, 179)) {
         const z = await import("@/lib/zeit/service");

@@ -1,5 +1,6 @@
 // Teil 2 – Geld, Risiko, Team, Familie (Module 13–23). Alles mit erfundenen Daten (Testmarke, TEST-SKUs).
 import { aktion, alsPerson, anmelden, expect, sql, test } from "./helfer";
+import { createZip } from "../src/lib/ebay/export/zip";
 
 const TAG = 86_400_000;
 const iso = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
@@ -130,6 +131,7 @@ test.describe("Teil 2 – Team", () => {
   test("Call-Archiv: Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link zur Call-Stelle; Offene Punkte; Discord", async ({ page }) => {
     await anmelden(page, "inhaber");
     await page.goto("/calls");
+    await page.getByTestId("calls-einzeln").locator("summary").click();
     await page.getByTestId("calls-link").fill("https://docs.google.com/document/d/TESTCALLimport00000000001/edit");
     await Promise.all([page.waitForURL(/\/calls\/[0-9a-f-]{36}/), page.getByTestId("calls-import").click()]);
     await expect(page.getByTestId("call-punkt")).toHaveCount(4);
@@ -144,10 +146,14 @@ test.describe("Teil 2 – Team", () => {
     await expect(page.getByTestId("offen-aufgaben")).toContainText("Liste der zehn Audit-Marken");
     // Discord-Kanal (Test-Bot) → neuer Call
     await page.goto("/calls");
-    await page.locator("details", { hasText: "Call importieren" }).locator("summary").click();
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
     await Promise.all([page.waitForURL(/meldung=/), page.getByRole("button", { name: "Jetzt aus Discord holen" }).click()]);
     await expect(page.locator("[role=status]")).toContainText("1 neue Calls aus Discord");
     await expect(page.getByTestId("calls-zeile").filter({ hasText: "Consultant-Call 21.10.2026" })).toBeVisible();
+    // ältere Nachrichten nachholen: derselbe Link ist schon da
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-discord-nachholen").click()]);
+    await expect(page.locator("[role=status]")).toContainText("0 neue Calls aus Discord (1 Nachrichten gelesen)");
   });
 
   test("Umzug aus dem bisherigen Call-Archiv: Export (JSON) → Call mit Zusammenfassung, Vorschläge, kein Doppel", async ({ page }) => {
@@ -158,7 +164,7 @@ test.describe("Teil 2 – Team", () => {
     const datei = { name: "call-archiv-test.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(exportDatei)) };
     await anmelden(page, "inhaber");
     await page.goto("/calls");
-    await page.locator("details", { hasText: "Call importieren" }).evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
     await page.getByTestId("calls-archiv-datei").setInputFiles(datei);
     await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-archiv-import").click()]);
     await expect(page.locator("[role=status]")).toContainText("1 Calls übernommen");
@@ -168,10 +174,61 @@ test.describe("Teil 2 – Team", () => {
     await expect(page.locator('[data-testid="call-punkt"][data-status="vorschlag"]')).toHaveCount(3);
     // zweiter Import derselben Datei: nichts doppelt
     await page.goto("/calls");
-    await page.locator("details", { hasText: "Call importieren" }).evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
     await page.getByTestId("calls-archiv-datei").setInputFiles(datei);
     await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-archiv-import").click()]);
     await expect(page.locator("[role=status]")).toContainText("1 waren schon da");
+  });
+
+  test("Wochen-Calls der Deal-Gruppe auf einmal: Word, ZIP (Text + Untertitel), Link → Auswertung im Hintergrund, kein Doppel", async ({ page }) => {
+    // erfundene Transkripte – lang genug für die Inhalts-Kennung
+    const transkript = (thema: string) => Array.from({ length: 12 }, (_, i) => `Sprecher ${i % 3} (Test): ${thema} – Testsatz ${i} über Deals, Retouren und Lager.`).join("\n");
+    const docx = (text: string) =>
+      createZip([
+        { name: "[Content_Types].xml", data: "<Types/>" },
+        { name: "word/document.xml", data: `<w:document><w:body>${text.split("\n").map((z) => `<w:p><w:r><w:t>${z}</w:t></w:r></w:p>`).join("")}</w:body></w:document>` },
+      ]);
+    const vtt = `WEBVTT\n\n${transkript("Untertitel-Call").split("\n").map((z, i) => `${i + 1}\n00:00:0${i % 10}.000 --> 00:00:0${i % 10}.900\n<v ${z.split(":")[0]}>${z.split(": ")[1]}`).join("\n\n")}\n`;
+    const zip = createZip([
+      { name: "Wochen-Calls/Call 2026-09-12.txt", data: transkript("Text-Call") },
+      { name: "Wochen-Calls/Call 2026-09-19.vtt", data: vtt },
+      { name: "__MACOSX/Wochen-Calls/._Call 2026-09-12.txt", data: "x" },
+    ]);
+    const wordDatei = { name: "Call 2026-09-05.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: docx(transkript("Word-Call")) };
+    const zipDatei = { name: "wochen-calls.zip", mimeType: "application/zip", buffer: zip };
+    await anmelden(page, "inhaber");
+    await page.goto("/calls");
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.getByTestId("calls-sammel-bezeichnung").fill("Wochen-Call Testgruppe");
+    await page.getByTestId("calls-dateien").setInputFiles([wordDatei, zipDatei]);
+    await page.getByTestId("calls-links").fill("Bea (Test) — 26.09.2026 18:01\nhttps://docs.google.com/document/d/TESTCALLgruppe00000000001/edit");
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-sammel-import").click()]);
+    await expect(page.locator("[role=status]")).toContainText("4 Calls übernommen");
+    for (const d of ["05.09.2026", "12.09.2026", "19.09.2026", "26.09.2026"]) await expect(page.getByTestId("calls-zeile").filter({ hasText: `Wochen-Call Testgruppe ${d}` }).filter({ hasText: "Deal-Gruppe" })).toBeVisible();
+    // Die KI wertet im Hintergrund aus (Testdienst) – bis nichts mehr wartet.
+    await expect(async () => {
+      await page.reload();
+      await expect(page.getByTestId("calls-wartend")).toHaveCount(0);
+    }).toPass({ timeout: 60_000 });
+    await page.getByTestId("calls-zeile").filter({ hasText: "Wochen-Call Testgruppe 05.09.2026" }).getByRole("link").first().click();
+    await expect(page.getByTestId("call-zusammenfassung")).toContainText("Consultant (Test), Ludwig (Test)");
+    await expect(page.getByTestId("call-punkt").first()).toBeVisible();
+    // Titel und Datum von Hand ändern
+    await page.getByTestId("call-bearbeiten").locator("summary").click();
+    await page.getByTestId("call-bearbeiten").locator('input[name="datum"]').fill("06.09.2026");
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("call-bearbeiten").getByRole("button", { name: "Speichern" }).click()]);
+    await expect(page.locator(".crumb")).toContainText("06.09.2026 · Deal-Gruppe");
+    // Noch einmal: dieselbe Word-Datei unter anderem Namen und der Text des Google Docs als Datei → nichts doppelt
+    const [{ n }] = await sql<{ n: number }>("select count(*)::int as n from calls where quelle_ref = 'gdoc:TESTCALLgruppe00000000001'");
+    expect(n).toBe(1);
+    await page.goto("/calls");
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.getByTestId("calls-dateien").setInputFiles([{ ...wordDatei, name: "Kopie vom Word-Call.docx" }]);
+    await page.getByTestId("calls-links").fill("https://docs.google.com/document/d/TESTCALLgruppe00000000001/edit");
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-sammel-import").click()]);
+    await expect(page.locator("[role=status]")).toContainText("0 Calls übernommen");
+    await expect(page.locator("[role=status]")).toContainText("2 waren schon da");
+    await expect(page.locator("[role=status]")).toContainText("Kopie vom Word-Call.docx (= „Wochen-Call Testgruppe 05.09.2026“");
   });
 
   test("Anleitung im Wissen → Aufgabe zuweisen hängt sie an; Bea sieht die Aufgabe mit Anleitung", async ({ page, browser }) => {

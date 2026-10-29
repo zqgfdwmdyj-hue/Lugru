@@ -277,9 +277,17 @@ export const INTEGRATIONS: IntegrationDef[] = [
   },
   {
     provider: "discord_calls",
-    name: "Discord – Call-Kanal (Consultant-Calls) – optional",
+    name: "Discord – Call-Kanal (Consultant- oder Gruppen-Calls) – optional",
     purpose: "Einmal pro Woche neue Google-Docs-Transkripte aus dem Discord-Kanal ins Call-Archiv holen; die KI zieht daraus Vereinbarungen, Aufgaben, Entscheidungen und offene Fragen.",
     fields: [
+      {
+        key: "art",
+        label: "Art der Calls",
+        options: [
+          { value: "gruppe", label: "Wochen-Calls der Deal-Gruppe" },
+          { value: "consultant", label: "Calls mit dem Consultant" },
+        ],
+      },
       { key: "botToken", label: "Bot-Token", secret: true, help: "Discord-Bot mit dem Recht „Nachrichtenverlauf lesen“ in diesem Kanal." },
       { key: "kanalId", label: "Kanal-ID", placeholder: "z. B. 123456789012345678", help: "Discord → Einstellungen → Erweitert → Entwicklermodus an → Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
     ],

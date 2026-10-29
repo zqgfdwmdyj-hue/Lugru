@@ -53,7 +53,7 @@ export const NAV: NavSection[] = [
       { href: "/listings/temu#rechner", label: "Temu-Rechner" },
       { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
       { href: "/sas", label: "Amazon SAS-Programm" },
-      { href: "/calls", label: "Consultant-Calls" },
+      { href: "/calls", label: "Calls (Consultant & Gruppe)" },
       { href: "/echtheit", label: "Echtheits-Ordner" },
       { href: "/amazon-business", label: "Amazon Business" },
       { href: "/repricer", label: "Repricer (BQool)" },

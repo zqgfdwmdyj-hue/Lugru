@@ -2,7 +2,7 @@ import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uui
 import { createdAt, id, tasks, tenantId } from "./core";
 import { encryptedText } from "./encrypted";
 
-// Call-Archiv (Calls mit dem Amazon-Consultant): Transkript (verschlüsselt), daraus von der KI gezogene Punkte
+// Call-Archiv (Calls mit dem Amazon-Consultant und Wochen-Calls der Deal-Gruppe): Transkript (verschlüsselt), daraus von der KI gezogene Punkte
 // (Vereinbarungen, Aufgaben, Entscheidungen, offene Fragen) – Aufgaben erst nach Bestätigung.
 
 /** Zusammenfassung wie im bisherigen Call-Archiv: Überblick, Themen mit Kernaussagen, Teilnehmer. */
@@ -15,9 +15,13 @@ export const calls = pgTable(
     tenantId: tenantId(),
     titel: text("titel").notNull(),
     datum: date("datum", { mode: "string" }).notNull(),
-    quelle: text("quelle", { enum: ["text", "google_doc", "discord", "archiv"] }).notNull(),
-    /** „gdoc:<ID>“ bzw. „archiv:<ID>“ – gegen doppelten Import. */
+    quelle: text("quelle", { enum: ["text", "google_doc", "discord", "archiv", "datei"] }).notNull(),
+    /** Einzel-Call mit dem Consultant oder Wochen-Call der Deal-Gruppe (andere Auswertung der Aufgaben). */
+    art: text("art", { enum: ["consultant", "gruppe"] }).notNull().default("consultant"),
+    /** „gdoc:<ID>“, „archiv:<ID>“ bzw. „datei:<Kennung>“ – gegen doppelten Import. */
     quelleRef: text("quelle_ref"),
+    /** Prüfsumme über den Inhalt – erkennt denselben Call aus verschiedenen Quellen (Doc, Word, PDF). */
+    inhaltKennung: text("inhalt_kennung"),
     /** Link zum Google-Dokument (falls bekannt). */
     quelleUrl: text("quelle_url"),
     zusammenfassung: jsonb("zusammenfassung").$type<CallZusammenfassung>(),
@@ -26,7 +30,7 @@ export const calls = pgTable(
     auswertungFehler: text("auswertung_fehler"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("calls_quelle_uq").on(t.tenantId, t.quelleRef), index("calls_datum_idx").on(t.tenantId, t.datum)],
+  (t) => [uniqueIndex("calls_quelle_uq").on(t.tenantId, t.quelleRef), index("calls_datum_idx").on(t.tenantId, t.datum), index("calls_inhalt_idx").on(t.tenantId, t.inhaltKennung)],
 );
 
 export const CALL_PUNKT_ARTEN = ["vereinbarung", "aufgabe", "entscheidung", "frage"] as const;

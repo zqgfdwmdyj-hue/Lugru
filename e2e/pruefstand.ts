@@ -126,6 +126,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal", erwartet: "4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, Zusammenfassung mit Teilnehmern, 1 neuer Call aus Discord", tests: ["teil2.spec.ts › Call-Archiv"] },
       { ablauf: "Umzug aus dem bisherigen Call-Archiv: Export (JSON) hochladen, zweimal", erwartet: "Call mit Zusammenfassung und Google-Doc-Link, 3 Vorschläge; zweiter Import: „1 waren schon da“", tests: ["teil2.spec.ts › Umzug aus dem bisherigen Call-Archiv"] },
+      { ablauf: "Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen", erwartet: "4 Calls mit Datum aus Dateiname/Kopfzeile, KI im Hintergrund fertig, Datum geändert; zweites Hochladen: Kopie (gleicher Inhalt) und Link übersprungen", tests: ["teil2.spec.ts › Wochen-Calls der Deal-Gruppe"] },
     ],
     offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs", "Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)"],
   },

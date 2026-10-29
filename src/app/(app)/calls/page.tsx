@@ -2,40 +2,89 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { callsListe } from "@/lib/calls/service";
 import { getIntegration } from "@/lib/integrations/store";
-import { archivImportAction, callImportAction, discordImportAction } from "./actions";
+import { archivImportAction, callImportAction, discordImportAction, sammelImportAction } from "./actions";
 
-// Call-Archiv: Calls mit dem Amazon-Consultant, Import (Text, Google-Doc, Discord) und was daraus folgt.
+// Call-Archiv: Calls mit dem Amazon-Consultant und Wochen-Calls der Deal-Gruppe – Import (Dateien/ZIP, Links,
+// Text, Discord) und was daraus folgt.
 
 const dmy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", archiv: "altes Call-Archiv" } as const;
+const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", archiv: "altes Call-Archiv", datei: "Datei" } as const;
 
 export default async function CallsPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("amazon");
   const sp = await searchParams;
   const [liste, discord] = await Promise.all([callsListe(session.tenantId), getIntegration(session.tenantId, "discord_calls")]);
+  const wartend = liste.filter((c) => c.auswertung === "offen").length;
 
   return (
     <>
       <div className="page-head">
         <div>
           <div className="crumb">Amazon · SAS</div>
-          <h1>Consultant-Calls</h1>
+          <h1>Calls</h1>
+          <div className="small muted">Consultant-Calls und Wochen-Calls der Deal-Gruppe</div>
         </div>
         <Link className="btn btn-primary" href="/calls/offen" data-testid="calls-offen-link">Offene Punkte für den nächsten Call</Link>
       </div>
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
+      {wartend > 0 && (
+        <div className="notice small" style={{ marginBottom: 12 }} data-testid="calls-wartend">
+          {wartend} {wartend === 1 ? "Call wartet" : "Calls warten"} auf die KI-Auswertung – läuft nacheinander im Hintergrund (je Call etwa eine Minute). <Link href="/calls">Neu laden</Link>
+        </div>
+      )}
 
       <details className="card card-pad" style={{ marginBottom: 14 }} open={liste.length === 0}>
-        <summary><strong>Call importieren</strong></summary>
-        <form action={callImportAction} className="stack" style={{ gap: 8, marginTop: 10, maxWidth: 820 }}>
+        <summary><strong>Calls importieren</strong></summary>
+        <form action={sammelImportAction} className="stack" style={{ gap: 8, marginTop: 10, maxWidth: 820 }} data-testid="calls-sammel">
+          <div><strong>Mehrere Calls auf einmal</strong> <span className="small muted">– z. B. alle Wochen-Calls der Deal-Gruppe</span></div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <label className="small" style={{ flex: 2, minWidth: 220 }}>Titel<input name="titel" placeholder="z. B. Consultant-Call Oktober" /></label>
-            <label className="small" style={{ flex: 1, minWidth: 120 }}>Datum<input name="datum" placeholder="TT.MM.JJJJ" /></label>
+            <label className="small" style={{ flex: 1, minWidth: 200 }}>
+              Art
+              <select name="art" defaultValue="gruppe" data-testid="calls-sammel-art">
+                <option value="gruppe">Wochen-Calls der Deal-Gruppe</option>
+                <option value="consultant">Calls mit dem Consultant</option>
+              </select>
+            </label>
+            <label className="small" style={{ flex: 2, minWidth: 220 }}>
+              Bezeichnung (optional)
+              <input name="bezeichnung" placeholder="z. B. Wochen-Call Deal-Gruppe → „… 12.09.2026“" data-testid="calls-sammel-bezeichnung" />
+            </label>
           </div>
-          <label className="small">Google-Docs-Link<input name="link" placeholder="https://docs.google.com/document/d/…" data-testid="calls-link" /></label>
-          <label className="small">… oder Transkript einfügen<textarea name="text" rows={6} data-testid="calls-text" /></label>
-          <div><button className="btn btn-primary" type="submit" data-testid="calls-import">Importieren und auswerten</button></div>
+          <label className="small">
+            Dateien
+            <input type="file" name="dateien" multiple accept=".docx,.odt,.pdf,.txt,.md,.vtt,.srt,.zip" data-testid="calls-dateien" />
+          </label>
+          <div className="small muted">Word, PDF, Text, Untertitel (.vtt/.srt) oder ein ZIP – z. B. Google-Drive-Ordner → „Herunterladen“. Zusammen bis 20 MB. Das Datum kommt aus dem Dateinamen oder dem Anfang des Transkripts.</div>
+          <label className="small">
+            … und/oder Google-Docs-Links bzw. kopierte Discord-Nachrichten
+            <textarea name="links" rows={4} placeholder={"https://docs.google.com/document/d/…\nhttps://docs.google.com/document/d/…"} data-testid="calls-links" />
+          </label>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="btn btn-primary" type="submit" data-testid="calls-sammel-import">Alle importieren</button>
+            <span className="small muted">Schon vorhandene Calls werden übersprungen. Die KI wertet danach einen nach dem anderen aus.</span>
+          </div>
         </form>
+
+        <details style={{ marginTop: 14 }} data-testid="calls-einzeln">
+          <summary className="small"><strong>Einzelner Call</strong> (Link oder Transkript, sofort ausgewertet)</summary>
+          <form action={callImportAction} className="stack" style={{ gap: 8, marginTop: 10, maxWidth: 820 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <label className="small" style={{ flex: 2, minWidth: 220 }}>Titel<input name="titel" placeholder="z. B. Consultant-Call Oktober" /></label>
+              <label className="small" style={{ flex: 1, minWidth: 120 }}>Datum<input name="datum" placeholder="TT.MM.JJJJ" /></label>
+              <label className="small" style={{ flex: 1, minWidth: 160 }}>
+                Art
+                <select name="art" defaultValue="consultant">
+                  <option value="consultant">Consultant-Call</option>
+                  <option value="gruppe">Wochen-Call Deal-Gruppe</option>
+                </select>
+              </label>
+            </div>
+            <label className="small">Google-Docs-Link<input name="link" placeholder="https://docs.google.com/document/d/…" data-testid="calls-link" /></label>
+            <label className="small">… oder Transkript einfügen<textarea name="text" rows={6} data-testid="calls-text" /></label>
+            <div><button className="btn btn-primary" type="submit" data-testid="calls-import">Importieren und auswerten</button></div>
+          </form>
+        </details>
+
         <form action={archivImportAction} className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
           <span><strong>Umzug aus dem bisherigen Call-Archiv:</strong> Export-Datei (JSON) mit Zusammenfassung und Transkript</span>
           <input type="file" name="datei" accept=".json,application/json" required data-testid="calls-archiv-datei" />
@@ -45,6 +94,8 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
           {discord?.botToken ? (
             <form action={discordImportAction} style={{ display: "inline" }}>
               Der Discord-Kanal wird einmal pro Woche gelesen. <button className="btn-link small" type="submit">Jetzt aus Discord holen</button>
+              {" · "}
+              <button className="btn-link small" type="submit" name="nachholen" value="1" data-testid="calls-discord-nachholen">Ältere Nachrichten nachholen (bis 2.000)</button>
             </form>
           ) : (
             <>Wöchentlich automatisch aus dem Discord-Kanal: <Link href="/anbindungen#discord_calls">Anbindungen → Discord – Call-Kanal</Link>.</>
@@ -71,7 +122,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
               {liste.map((c) => (
                 <tr key={c.id} data-testid="calls-zeile">
                   <td className="num">{dmy(c.datum)}</td>
-                  <td><Link href={`/calls/${c.id}`}>{c.titel}</Link>{c.zusammenfassung?.teilnehmer?.length ? <div className="small muted">{c.zusammenfassung.teilnehmer.join(", ")}</div> : null}{c.auswertung === "fehler" && <div className="small" style={{ color: "var(--danger)" }}>Auswertung fehlgeschlagen</div>}{c.auswertung === "ohne_ki" && <div className="small muted">ohne KI</div>}</td>
+                  <td><Link href={`/calls/${c.id}`}>{c.titel}</Link>{c.art === "gruppe" && <span className="tag" style={{ marginLeft: 6 }}>Deal-Gruppe</span>}{c.auswertung === "offen" && <div className="small muted">wartet auf KI-Auswertung …</div>}{c.zusammenfassung?.teilnehmer?.length ? <div className="small muted">{c.zusammenfassung.teilnehmer.join(", ")}</div> : null}{c.auswertung === "fehler" && <div className="small" style={{ color: "var(--danger)" }}>Auswertung fehlgeschlagen</div>}{c.auswertung === "ohne_ki" && <div className="small muted">ohne KI</div>}</td>
                   <td className="small">{QUELLE[c.quelle]}</td>
                   <td className="right num">{c.vorschlaege ? <span className="tag tag-warn">{c.vorschlaege}</span> : "0"}</td>
                   <td className="right num">{c.aufgaben}</td>

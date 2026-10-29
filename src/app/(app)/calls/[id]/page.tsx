@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { ausschnitt, istEigeneAufgabe, PUNKT_TEXT, type PunktArt } from "@/lib/calls/logic";
 import { callDetail } from "@/lib/calls/service";
-import { neuAuswertenAction, punktAnlegenAction, punktStatusAction, uebernehmenAction } from "../actions";
+import { callBearbeitenAction, neuAuswertenAction, punktAnlegenAction, punktStatusAction, uebernehmenAction } from "../actions";
 
 const dmy = (iso: string | null) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : null);
 const ARTEN: PunktArt[] = ["aufgabe", "vereinbarung", "entscheidung", "frage"];
@@ -24,7 +24,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
     <>
       <div className="page-head">
         <div>
-          <div className="crumb"><Link href="/calls">Consultant-Calls</Link> · {dmy(c.datum)}</div>
+          <div className="crumb"><Link href="/calls">Calls</Link> · {dmy(c.datum)}{c.art === "gruppe" ? " · Deal-Gruppe" : ""}</div>
           <h1>{c.titel}</h1>
         </div>
         <form action={neuAuswertenAction}>
@@ -33,6 +33,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
         </form>
       </div>
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
+      {c.auswertung === "offen" && <div className="notice small" style={{ marginBottom: 12 }}>Wartet auf die KI-Auswertung (läuft im Hintergrund) – Seite später neu laden oder „KI neu auswerten“.</div>}
       {c.auswertung === "fehler" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Auswertung fehlgeschlagen: {c.auswertungFehler}</div>}
       {c.auswertung === "ohne_ki" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Ohne KI-Anbindung – Punkte unten von Hand ergänzen (<Link href="/anbindungen#anthropic">Anbindungen → Claude</Link>).</div>}
 
@@ -71,7 +72,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
                       <span className={`tag ${STATUS[p.status].tag}`}>{STATUS[p.status].text}</span>
                       {p.verantwortlich && <span className="muted">→ {p.verantwortlich}</span>}
                       {p.frist && <span className="muted">bis {dmy(p.frist)}</span>}
-                      {art === "aufgabe" && !istEigeneAufgabe(p) && <span className="tag">beim Consultant</span>}
+                      {art === "aufgabe" && !istEigeneAufgabe(p) && <span className="tag">{c.art === "gruppe" ? "andere Person" : "beim Consultant"}</span>}
                     </div>
                     {p.position !== null && <div className="muted" style={{ marginTop: 3 }}>Call-Stelle: „{ausschnitt(c.transkript, p.position, 220)}“</div>}
                     {p.taskId && <div style={{ marginTop: 3 }}>Aufgabe: {p.aufgabeTitel} – {p.aufgabeStatus === "done" ? "erledigt ✓" : "offen"}</div>}
@@ -111,6 +112,23 @@ export default async function CallPage({ params, searchParams }: { params: Promi
             ))}
         </div>
       )}
+
+      <details className="card card-pad" style={{ marginBottom: 14 }} data-testid="call-bearbeiten">
+        <summary><strong>Titel und Datum ändern</strong></summary>
+        <form action={callBearbeitenAction} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end", marginTop: 8 }}>
+          <input type="hidden" name="id" value={c.id} />
+          <label className="small" style={{ flex: 1, minWidth: 220 }}>Titel<input name="titel" defaultValue={c.titel} required /></label>
+          <label className="small">Datum<input name="datum" defaultValue={dmy(c.datum) ?? ""} placeholder="TT.MM.JJJJ" style={{ width: 110 }} required /></label>
+          <label className="small">
+            Art
+            <select name="art" defaultValue={c.art}>
+              <option value="consultant">Consultant-Call</option>
+              <option value="gruppe">Wochen-Call Deal-Gruppe</option>
+            </select>
+          </label>
+          <button className="btn" type="submit">Speichern</button>
+        </form>
+      </details>
 
       <details className="card card-pad" style={{ marginBottom: 14 }}>
         <summary><strong>Punkt von Hand ergänzen</strong></summary>

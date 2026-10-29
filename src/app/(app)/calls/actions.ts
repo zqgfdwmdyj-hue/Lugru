@@ -2,14 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { parseDate } from "@/lib/numbers";
-import { archivImportieren, callAuswerten, callImportieren, discordCallsImport, punktAnlegen, punkteUebernehmen, punktStatus } from "@/lib/calls/service";
-import { datumAusText } from "@/lib/calls/logic";
+import { archivImportieren, callAuswerten, callBearbeiten, callImportieren, callsSammelImport, discordCallsImport, offeneCallsAuswerten, punktAnlegen, punkteUebernehmen, punktStatus } from "@/lib/calls/service";
+import { datumAusText, type CallArt } from "@/lib/calls/logic";
 
 const ID = z.string().uuid();
+const ART = (v: FormDataEntryValue | null): CallArt => (v === "gruppe" ? "gruppe" : "consultant");
 const zurueck = (pfad: string, m: string) => `${pfad}${pfad.includes("?") ? "&" : "?"}meldung=${encodeURIComponent(m)}`;
 
 /** Transkript als Text oder Google-Docs-Link importieren; die KI wertet gleich aus. */
@@ -20,12 +22,13 @@ export async function callImportAction(fd: FormData) {
   const titelRoh = String(fd.get("titel") ?? "").trim();
   const datumRoh = String(fd.get("datum") ?? "").trim();
   const datum = (datumRoh && parseDate(datumRoh)) || datumAusText(`${titelRoh} ${text.slice(0, 300)}`, todayIso());
-  const titel = titelRoh || `Consultant-Call ${datum.split("-").reverse().join(".")}`;
+  const art = ART(fd.get("art"));
+  const titel = titelRoh || `${art === "gruppe" ? "Wochen-Call Deal-Gruppe" : "Consultant-Call"} ${datum.split("-").reverse().join(".")}`;
   if (!link && text.trim().length < 20) redirect(zurueck("/calls", "Bitte Transkript einfügen oder einen Google-Docs-Link angeben."));
   if (text.length > 400_000) redirect(zurueck("/calls", "Transkript zu lang (höchstens 400.000 Zeichen)."));
   let r: Awaited<ReturnType<typeof callImportieren>>;
   try {
-    r = await callImportieren(session.tenantId, link ? { titel, datum, link, quelle: "google_doc" } : { titel, datum, text, quelle: "text" });
+    r = await callImportieren(session.tenantId, link ? { titel, datum, link, quelle: "google_doc", art } : { titel, datum, text, quelle: "text", art });
   } catch (e) {
     redirect(zurueck("/calls", e instanceof Error ? e.message : String(e)));
   }
@@ -33,17 +36,58 @@ export async function callImportAction(fd: FormData) {
   redirect(zurueck(`/calls/${r.id}`, !r.neu ? "Dieser Call ist schon im Archiv." : r.fehler ? `Importiert – Auswertung: ${r.fehler}` : `Importiert – ${r.punkte} Punkte zur Prüfung.`));
 }
 
-export async function discordImportAction() {
+export async function discordImportAction(fd: FormData) {
   const session = await requireArea("amazon");
+  const nachholen = fd.get("nachholen") === "1";
   let m: string;
   try {
-    const r = await discordCallsImport(session.tenantId, todayIso());
-    m = `${r.neu} neue Calls aus Discord.${r.fehler.length ? ` Probleme: ${r.fehler.join(" · ")}` : ""}`;
+    const r = await discordCallsImport(session.tenantId, todayIso(), { nachrichten: nachholen ? 2000 : 50 });
+    m = `${r.neu} neue Calls aus Discord${nachholen ? ` (${r.gelesen} Nachrichten gelesen)` : ""}.${r.neu ? " Die KI wertet sie nacheinander aus." : ""}${r.fehler.length ? ` Probleme: ${r.fehler.join(" · ")}` : ""}`;
+    if (r.neu) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
   } catch (e) {
     m = e instanceof Error ? e.message : String(e);
   }
   revalidatePath("/calls");
   redirect(zurueck("/calls", m.slice(0, 500)));
+}
+
+/** Mehrere Calls auf einmal: Dateien (Word, PDF, Text, Untertitel, ZIP) und/oder eingefügte Links/Discord-Nachrichten. */
+export async function sammelImportAction(fd: FormData) {
+  const session = await requireArea("amazon");
+  const art = ART(fd.get("art"));
+  const bezeichnung = String(fd.get("bezeichnung") ?? "").trim().slice(0, 120) || null;
+  const linkText = String(fd.get("links") ?? "").slice(0, 200_000);
+  const dateien: { name: string; daten: Uint8Array }[] = [];
+  let groesse = 0;
+  for (const f of fd.getAll("dateien")) {
+    if (!(f instanceof File) || !f.size) continue;
+    groesse += f.size;
+    if (groesse > 20 * 1024 * 1024) redirect(zurueck("/calls", "Zusammen höchstens 20 MB – bitte in mehreren Schritten hochladen."));
+    dateien.push({ name: f.name, daten: new Uint8Array(await f.arrayBuffer()) });
+  }
+  if (!dateien.length && !/docs\.google\.com\/document/.test(linkText)) redirect(zurueck("/calls", "Bitte Dateien auswählen oder Google-Docs-Links einfügen."));
+  const r = await callsSammelImport(session.tenantId, { art, bezeichnung, linkText, dateien, heute: todayIso() });
+  if (r.neu) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
+  revalidatePath("/calls");
+  const teile = [
+    `${r.neu} Calls übernommen${r.neu ? " – die KI wertet sie nacheinander aus" : ""}.`,
+    r.ohneDatum ? `${r.ohneDatum} ohne erkennbares Datum (heute eingetragen – im Call unter „Titel und Datum ändern“ korrigieren).` : "",
+    r.vorhanden.length ? `${r.vorhanden.length} waren schon da: ${r.vorhanden.slice(0, 5).join(" · ")}${r.vorhanden.length > 5 ? " …" : ""}.` : "",
+    r.fehler.length ? `Nicht übernommen: ${r.fehler.slice(0, 5).join(" · ")}${r.fehler.length > 5 ? ` … (+${r.fehler.length - 5})` : ""}.` : "",
+  ];
+  redirect(zurueck("/calls", teile.filter(Boolean).join(" ").slice(0, 1500)));
+}
+
+export async function callBearbeitenAction(fd: FormData) {
+  const session = await requireArea("amazon");
+  const id = ID.parse(fd.get("id"));
+  const titel = String(fd.get("titel") ?? "").trim();
+  const datum = parseDate(String(fd.get("datum") ?? "").trim());
+  if (!titel || !datum) redirect(zurueck(`/calls/${id}`, "Bitte Titel und Datum (TT.MM.JJJJ) angeben."));
+  await callBearbeiten(session.tenantId, id, { titel, datum, art: ART(fd.get("art")) });
+  revalidatePath(`/calls/${id}`);
+  revalidatePath("/calls");
+  redirect(zurueck(`/calls/${id}`, "Gespeichert."));
 }
 
 export async function neuAuswertenAction(fd: FormData) {
