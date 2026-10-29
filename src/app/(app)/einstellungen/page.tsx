@@ -135,6 +135,45 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <div className="small muted">Mit Aktivierungswort lösen Gespräche im Raum nichts aus: „Station Etikett“ statt nur „Etikett“. Die Frist für Fälle aus der Station steht oben bei „{CLAIM_TYPE_LABEL.return_condition}“ (falsches Produkt: „{CLAIM_TYPE_LABEL.return_wrong_item}“) – gezählt ab dem Rückgabedatum.</div>
         </section>
 
+        <section className="card card-pad stack" style={{ gap: 14, scrollMarginTop: 70 }} id="b2b" data-testid="settings-b2b">
+          <h2>B2B-Deals</h2>
+          <div className="small muted">Firma, auf die Deals und Rechnungen laufen (Rechnungen über Lexoffice dieser Firma – Schlüssel unter Anbindungen).</div>
+          <div style={grid}>
+            <Field label="Firma (Rechnungen)" name="b2b_firma_name" value={s.b2b.firma.name} width={220} />
+            <Field label="Handelsname im Portal" name="b2b_firma_handelsname" value={s.b2b.firma.handelsname} width={220} />
+            <Field label="Straße" name="b2b_firma_strasse" value={s.b2b.firma.strasse} width={220} />
+            <Field label="PLZ" name="b2b_firma_plz" value={s.b2b.firma.plz} width={90} />
+            <Field label="Ort" name="b2b_firma_ort" value={s.b2b.firma.ort} width={160} />
+            <Field label="Land" name="b2b_firma_land" value={s.b2b.firma.land} width={60} />
+            <Field label="USt-IdNr." name="b2b_firma_ustId" value={s.b2b.firma.ustId} width={160} />
+            <Field label="E-Mail für Kunden" name="b2b_firma_email" value={s.b2b.firma.email} width={220} />
+            <Field label="Telefon" name="b2b_firma_telefon" value={s.b2b.firma.telefon} width={160} />
+          </div>
+          <div className="field">
+            <span className="label">Marktplätze in der Auswertung</span>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {["DE", "FR", "IT", "ES", "NL", "BE", "PL", "SE", "UK"].map((m) => <label key={m} className="check small"><input type="checkbox" name="b2b_mp" value={m} defaultChecked={s.b2b.marktplaetze.includes(m)} /> {m}</label>)}
+            </div>
+          </div>
+          <div style={grid}>
+            <Field label="Mindest-ROI für Kunden" name="b2b_minKundenRoi" value={pct(s.b2b.minKundenRoi)} suffix="%" width={70} help="Darunter warnt die Rechenhilfe" />
+            <Field label="Mengenfaktor" name="b2b_mengenFaktor" value={dec(s.b2b.mengenFaktor)} suffix="× Verkäufe/Monat" width={70} help="Vorschlag max. Gesamtmenge je Deal" />
+            <Field label="Max. Kunden je ASIN" name="b2b_maxKundenProAsin" value={s.b2b.maxKundenProAsin} width={70} />
+            <Field label="Prep-Gebühr je Stück" name="b2b_prepGebuehr" value={dec(s.b2b.prepGebuehr)} suffix="€" width={70} help="In der Kundenrechnung" />
+            <Field label="Versandanteil je Stück" name="b2b_versandAnteil" value={dec(s.b2b.versandAnteil)} suffix="€" width={70} help="Großhändler → Prep, in unserem Verdienst" />
+            <Field label="„Fast weg“ ab" name="b2b_fastWegProzent" value={pct(s.b2b.fastWegProzent)} suffix="% vergeben" width={70} />
+            <Field label="USt-Satz Inland" name="b2b_ustSatz" value={pct(s.b2b.ustSatz)} suffix="%" width={70} />
+            <div className="field">
+              <label className="label" htmlFor="b2b_fehlmengenRegel">Bei Fehlmenge kürzen</label>
+              <select className="input" id="b2b_fehlmengenRegel" name="b2b_fehlmengenRegel" defaultValue={s.b2b.fehlmengenRegel} style={{ width: 220 }}>
+                <option value="anteilig">anteilig nach Menge</option>
+                <option value="zeitpunkt">nach Reservierungszeitpunkt</option>
+              </select>
+            </div>
+            <label className="check small" style={{ alignSelf: "end" }}><input type="checkbox" name="b2b_nurBezahlteBestellen" defaultChecked={s.b2b.nurBezahlteBestellen} /> Nur bezahlte Reservierungen bestellen</label>
+          </div>
+        </section>
+
         <section className="card card-pad stack" style={{ gap: 14 }}>
           <h2>Preise & Repricer</h2>
           <div style={grid}>

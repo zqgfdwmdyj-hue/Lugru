@@ -39,6 +39,8 @@ services:
       TEMU_BASE_URL: http://testdienste:4010/temu
       KEEPA_BASE_URL: http://testdienste:4010/keepa
       ECB_RATES_URL: http://testdienste:4010/ecb
+      VIES_URL: http://testdienste:4010/vies
+      LEXOFFICE_BASE_URL: http://testdienste:4010/lexoffice
       MEDIA_DIR: /medien
     volumes:
       - medien_test:/medien

@@ -107,6 +107,8 @@ function stationKi(text) {
 
 // ---------------------------------------------------------------------------------------------------------
 const carts = new Map();
+let viesNr = 0;
+let discord = [];
 let shopOrder = 900000;
 let shipNo = 3400000000;
 
@@ -182,7 +184,20 @@ async function route(req, url, body) {
   if (p.startsWith("/temu/")) return json({ success: true, result: {} });
   if (p.startsWith("/keepa/product")) return json(keepaProdukte(url));
   if (p.startsWith("/keepa/")) return json({ tokensLeft: keepaTokens, products: [], asinList: [] });
-  if (p.startsWith("/ecb")) return [200, `<?xml version="1.0"?><gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref"><Cube><Cube time="2026-10-28"><Cube currency="USD" rate="1.08"/><Cube currency="GBP" rate="0.85"/><Cube currency="PLN" rate="4.30"/></Cube></Cube></gesmes:Envelope>`, "application/xml"];
+  if (p.startsWith("/ecb")) return [200, `<?xml version="1.0"?><gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref"><Cube><Cube time="2026-10-28"><Cube currency="USD" rate="1.08"/><Cube currency="GBP" rate="0.85"/><Cube currency="PLN" rate="4.30"/><Cube currency="SEK" rate="11.50"/></Cube></Cube></gesmes:Envelope>`, "application/xml"];
+  // EU-Prüfung USt-IdNr. (VIES): Nummer mit „999“ ungültig, mit „000“ Land nicht erreichbar, sonst gültig.
+  if (p.startsWith("/vies")) {
+    const b = parsed();
+    const nr = String(b.vatNumber ?? "");
+    if (nr.startsWith("000")) return json({ actionSucceed: false, errorWrappers: [{ error: "MS_UNAVAILABLE" }] });
+    const valid = !nr.startsWith("999");
+    return json({ countryCode: b.countryCode, vatNumber: nr, requestDate: new Date().toISOString(), valid, requestIdentifier: b.requesterNumber ? `WAPITEST${String(++viesNr).padStart(6, "0")}` : "", name: valid ? `Testhandel ${b.countryCode} SARL` : "---", address: valid ? "1 Rue de l'Exemple, 75000 Paris" : "---" });
+  }
+  // Discord-Webhook (B2B-Kanal): Nachricht nur mitschreiben.
+  if (p.startsWith("/discord/")) {
+    remember(discord, { at: new Date().toISOString(), content: String(parsed().content ?? "") });
+    return [204, ""];
+  }
   return [404, { title: "Nicht nachgebildet", path: p }];
 }
 
@@ -311,7 +326,7 @@ function angebote(asin, mpId) {
   } }];
 }
 
-const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : "?");
+const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/lexoffice") ? "Lexoffice" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -324,9 +339,11 @@ http
     };
     if (url.pathname === "/__log") return send(200, log);
     if (url.pathname === "/__ki") return send(200, ki);
+    if (url.pathname === "/__discord") return send(200, discord);
     if (url.pathname === "/__reset" && req.method === "POST") {
       log = [];
       ki = [];
+      discord = [];
       return send(200, { ok: true });
     }
     if (url.pathname === "/__gesund") return send(200, { ok: true });

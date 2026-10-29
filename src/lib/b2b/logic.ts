@@ -38,6 +38,25 @@ export function kundenGewinn(o: { vkBrutto: number; mwstSatz: number; provision:
   return { vkNetto: r2(vkNetto), gebuehren: r2(gebuehren), kosten: r2(kosten), gewinn: r2(gewinn), roi: kosten > 0 ? r2((gewinn / kosten) * 100) : null, marge: vkNetto > 0 ? r2((gewinn / vkNetto) * 100) : null };
 }
 
+/**
+ * Kundenrechnung aus einer gespeicherten Prognose (Buy Box in EUR, Gebühren in EUR) – für die Live-Rechenhilfe
+ * und je Kunde abweichende Preise, ohne Keepa neu abzufragen.
+ */
+export function kundeAusPrognose(p: { vkEur: number | null; mwstSatz: number; gebuehren: number | null }, kundenpreis: number | null, prepGebuehr?: number | null): { gewinn: number | null; roi: number | null; marge: number | null } {
+  if (p.vkEur === null || p.gebuehren === null || kundenpreis === null) return { gewinn: null, roi: null, marge: null };
+  const vkNetto = p.vkEur / (1 + p.mwstSatz);
+  const kosten = kundenpreis + (prepGebuehr ?? 0);
+  const gewinn = vkNetto - p.gebuehren - kosten;
+  return { gewinn: r2(gewinn), roi: kosten > 0 ? r2((gewinn / kosten) * 100) : null, marge: vkNetto > 0 ? r2((gewinn / vkNetto) * 100) : null };
+}
+
+/** Bestes Land (höchster ROI) einer Prognose. */
+export function besterMarkt(prognose: Record<string, { roiKunde: number | null; verkaeufeMonat: number | null }>): { land: string; roi: number; verkaeufe: number | null } | null {
+  let best: { land: string; roi: number; verkaeufe: number | null } | null = null;
+  for (const [land, p] of Object.entries(prognose)) if (p.roiKunde !== null && (!best || p.roiKunde > best.roi)) best = { land, roi: p.roiKunde, verkaeufe: p.verkaeufeMonat };
+  return best;
+}
+
 export type Warnung = { art: "unser_minus" | "kunde_roi" | "kein_preis" | "eigene_konkurrenz" | "aktionsmuster" | "freigabe_fehlt"; text: string };
 
 /** Warnungen zur Preisfindung: Kunde unter Mindest-ROI im besten Land, wir im Minus, kein Kundenpreis. */
@@ -216,6 +235,8 @@ export function bilanz(k: { bewertung: string; abweichungProzent: number | null 
 // ---- Status ----------------------------------------------------------------------------------------
 
 export const DEAL_STATUS_TEXT: Record<DealStatus, string> = { entwurf: "Entwurf", aktiv: "offen", geschlossen: "geschlossen", bestellt: "bestellt", angekommen: "angekommen", verteilt: "verteilt", erledigt: "erledigt", verfallen: "verfallen" };
+export const DEAL_STATUS_TAG: Record<DealStatus, string> = { entwurf: "tag-neutral", aktiv: "tag-ok", geschlossen: "tag-info", bestellt: "tag-info", angekommen: "tag-info", verteilt: "tag-ok", erledigt: "tag-neutral", verfallen: "tag-warn" };
+export const RES_STATUS_TAG: Record<ReservierungStatus, string> = { reserviert: "tag-info", vorkasse_offen: "tag-warn", bezahlt: "tag-ok", bestellt: "tag-info", angekommen: "tag-info", an_prep: "tag-ok", erledigt: "tag-neutral", storniert: "tag-neutral", erstattet: "tag-neutral" };
 export const RES_STATUS_TEXT: Record<ReservierungStatus, string> = { reserviert: "reserviert", vorkasse_offen: "Vorkasse offen", bezahlt: "bezahlt", bestellt: "bestellt", angekommen: "angekommen", an_prep: "an Prep übergeben", erledigt: "erledigt", storniert: "storniert", erstattet: "erstattet" };
 
 /** Sammelbestellung fällig? MOQ erreicht (bezahlt bzw. reserviert) oder Frist vorbei. */

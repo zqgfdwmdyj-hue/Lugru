@@ -26,6 +26,40 @@ const str = (fd: FormData, key: string) => {
   return v === "" ? undefined : v;
 };
 
+/** B2B-Deals: Firma, Marktplätze, Grenzen. Leere Felder fallen auf den Standard zurück. */
+function b2bSettings(fd: FormData): NonNullable<TenantSettings["b2b"]> {
+  const t = (k: string, max = 120) => str(fd, k)?.slice(0, max);
+  const ganz = (k: string, min: number) => {
+    const v = num(fd, k);
+    return v === undefined ? undefined : Math.max(min, Math.round(v));
+  };
+  const mp = fd.getAll("b2b_mp").map(String).filter((m) => /^(DE|FR|IT|ES|NL|BE|PL|SE|UK)$/.test(m));
+  const regel = str(fd, "b2b_fehlmengenRegel");
+  return {
+    firma: {
+      name: t("b2b_firma_name"),
+      handelsname: t("b2b_firma_handelsname"),
+      strasse: t("b2b_firma_strasse"),
+      plz: t("b2b_firma_plz", 12),
+      ort: t("b2b_firma_ort"),
+      land: t("b2b_firma_land", 2)?.toUpperCase(),
+      ustId: t("b2b_firma_ustId", 20)?.toUpperCase().replace(/\s/g, ""),
+      email: t("b2b_firma_email"),
+      telefon: t("b2b_firma_telefon", 40),
+    },
+    marktplaetze: mp.length ? mp : undefined,
+    minKundenRoi: pct(fd, "b2b_minKundenRoi"),
+    mengenFaktor: num(fd, "b2b_mengenFaktor"),
+    maxKundenProAsin: ganz("b2b_maxKundenProAsin", 1),
+    nurBezahlteBestellen: fd.get("b2b_nurBezahlteBestellen") === "on",
+    fehlmengenRegel: regel === "zeitpunkt" ? "zeitpunkt" : "anteilig",
+    prepGebuehr: num(fd, "b2b_prepGebuehr"),
+    versandAnteil: num(fd, "b2b_versandAnteil"),
+    fastWegProzent: pct(fd, "b2b_fastWegProzent"),
+    ustSatz: pct(fd, "b2b_ustSatz"),
+  };
+}
+
 /** Warensendung: Produkt, Preis, Druckformat („id:spalten:zeilen:name“ aus der Auswahl oder nur die Nummer). */
 function postSettings(fd: FormData): NonNullable<TenantSettings["post"]> {
   const fmt = str(fd, "post_pageFormat");
@@ -114,6 +148,7 @@ export async function saveSettings(fd: FormData) {
       aktivierungswort: str(fd, "rs_aktivierungswort")?.slice(0, 30),
       aktivierungAn: fd.get("rs_aktivierungAn") === "on",
     },
+    b2b: b2bSettings(fd),
   };
   const name = str(fd, "tenantName");
   await db

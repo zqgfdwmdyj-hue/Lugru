@@ -12,7 +12,7 @@ import path from "node:path";
 const MAGIC = Buffer.from("SM1");
 
 export function medienOrdner(): string {
-  return path.resolve(process.env.MEDIA_DIR || path.join(process.cwd(), "medien"));
+  return path.resolve(/*turbopackIgnore: true*/ process.env.MEDIA_DIR || path.join(/*turbopackIgnore: true*/ process.cwd(), "medien"));
 }
 
 function schluessel(): Buffer {
@@ -24,7 +24,7 @@ function schluessel(): Buffer {
 /** Pfad innerhalb der Ablage – nur Mandant/Monat/UUID, nie etwas aus Eingaben. */
 function voll(key: string): string {
   if (!/^[0-9a-f-]{36}\/\d{4}-\d{2}\/[0-9a-f-]{36}(\.(\d{1,4}|k))?$/.test(key)) throw new Error("Ungültiger Ablage-Schlüssel.");
-  return path.join(medienOrdner(), key);
+  return path.join(/*turbopackIgnore: true*/ medienOrdner(), key);
 }
 
 export function neuerSchluessel(tenantId: string, jetzt = new Date()): string {

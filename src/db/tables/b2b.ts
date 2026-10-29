@@ -115,20 +115,28 @@ export type DealStatus = (typeof DEAL_STATUS)[number];
 export type DealPrognose = Record<
   string,
   {
+    /** Buy-Box-Preis brutto in Landeswährung (aktuell, Ø 90 Tage, Tief 12 Monate). */
     vk: number | null;
     vk90: number | null;
     tief12: number | null;
+    /** Aktueller Buy-Box-Preis brutto umgerechnet in EUR (Grundlage der Kundenrechnung). */
+    vkEur: number | null;
     verkaeufeMonat: number | null;
     angeboteFba: number | null;
     angeboteFbm: number | null;
     amazonProzent: number | null;
+    /** Amazon-Gebühren je Stück in EUR (Provision + FBA). */
     gebuehren: number | null;
+    gebuehrenGeschaetzt?: boolean;
     mwstSatz: number;
-    waehrung: "EUR" | "GBP";
+    waehrung: string;
     /** Gewinn/ROI für den Kunden beim Kundenpreis (Prognose, ohne Garantie). */
     gewinnKunde: number | null;
     roiKunde: number | null;
     aktionsmuster?: string | null;
+    quelle?: "keepa" | "amazon" | null;
+    abgerufen?: string | null;
+    fehler?: string | null;
   }
 >;
 

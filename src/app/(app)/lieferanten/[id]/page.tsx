@@ -37,6 +37,7 @@ const SYM: Record<string, string> = { USD: "$", GBP: "£" };
 
 export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string; freigabe?: string; alle?: string }> }) {
   const session = await requireArea("lieferanten");
+  const b2bErlaubt = canAccess(session, "b2b");
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -182,6 +183,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                         {sel && !sel.ok && sel.link && <div><a href={sel.link} target="_blank" rel="noreferrer">Freischaltung beantragen ↗</a></div>}
                         {r.market?.amazonSells && <div><span className="tag tag-warn" title="Amazon verkauft selbst – Buy Box schwer zu bekommen">Amazon verkauft selbst</span></div>}
                         {r.market?.offers ? <div className="muted">{r.market.offers} Anbieter</div> : null}
+                        {b2bErlaubt && <div><Link href={`/b2b/neu?angebot=${r.id}`} data-testid="als-deal">Als B2B-Deal →</Link></div>}
                       </td>
                     </tr>
                   );

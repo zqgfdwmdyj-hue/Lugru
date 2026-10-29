@@ -7,6 +7,7 @@
 // Ohne TESTDATEN_PASSWORT wird ein zufälliges Passwort erzeugt und am Ende ausgegeben (gilt für alle Testkonten).
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
@@ -221,6 +222,29 @@ await db.insert(schema.privateEntries).values([
   { tenantId: T, userId: users.inhaber, kind: "termin", data: { day: day(2), time: "17:00", with: "paar", title: "PRIVATGEHEIM Termin", person: "beide", status: "geplant" } },
   { tenantId: T, userId: users.inhaber, kind: "paarzeit", data: { day: day(4), from: "19:00", to: "22:00", what: "PRIVATGEHEIM Date", status: "geplant" } },
   { tenantId: T, userId: users.inhaber, kind: "kinder", data: { day: day(1), person: "b", from: "15:00", to: "17:00", what: "Familienausflug Spielplatz", status: "geplant" } },
+]);
+
+// 12) B2B-Deals: Deal-Firma, Discord/Lexoffice gegen die Testdienste, Großhändler mit und ohne Vertriebsfreigabe,
+// drei erfundene Firmenkunden (DE, FR mit USt-IdNr., DE). Deals legen die Ablaufprüfungen selbst an.
+const td = process.env.TESTDIENSTE_URL || "http://127.0.0.1:4010";
+await db.execute(sql`update tenants set settings = settings || ${JSON.stringify({ b2b: { firma: { name: "Test Prep GmbH", handelsname: "TestPrep", strasse: "Prepweg 1", plz: "12345", ort: "Musterstadt", land: "DE", ustId: "DE999999999", email: "deals@example.invalid" }, marktplaetze: ["DE", "FR", "IT", "ES", "NL"], prepGebuehr: 0.6 } })}::jsonb where id = ${T}`);
+await integ("discord_b2b", {}, { webhookUrl: `${td}/discord/test-webhook` });
+await integ("lexoffice", {}, { apiKey: "test-lexoffice-schluessel" });
+const [gh, ghOhne] = await db
+  .insert(schema.suppliers)
+  .values([
+    { tenantId: T, code: "TESTGH", name: "Test-Großhandel (erfunden)" },
+    { tenantId: T, code: "TESTSEL", name: "Test-Selektiv GmbH (erfunden)" },
+  ])
+  .returning();
+await db.insert(schema.lieferantenProfile).values([
+  { tenantId: T, supplierId: gh.id, email: "bestellung@example.invalid", wiederverkaufErlaubt: true, marktplatzErlaubt: true, vertriebQuelle: "Testmail vom Großhändler (erfunden)", vertriebGeprueftAm: new Date(), lieferzeitTage: 5 },
+  { tenantId: T, supplierId: ghOhne.id, wiederverkaufErlaubt: null, marktplatzErlaubt: null },
+]);
+await db.insert(schema.b2bKunden).values([
+  { tenantId: T, firma: "Testhändler Nord GmbH", ansprechpartner: "Nora Nord", email: "kunde-nord@example.invalid", plz: "20000", ort: "Teststadt", land: "DE", ustId: "DE111111111" },
+  { tenantId: T, firma: "Testhandel Paris SARL", ansprechpartner: "Pierre Test", email: "kunde-paris@example.invalid", plz: "75000", ort: "Paris", land: "FR", ustId: "FR12345678901" },
+  { tenantId: T, firma: "Testshop Süd e.K.", ansprechpartner: "Sven Süd", email: "kunde-sued@example.invalid", plz: "80000", ort: "Testdorf", land: "DE" },
 ]);
 
 await pool.end();

@@ -1,0 +1,19 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getSession } from "@/lib/auth/session";
+import { canAccess } from "@/lib/auth/areas";
+import { blattPdf } from "@/lib/b2b/blatt-pdf";
+import { dealBlatt, ladeDeal, portalLink } from "@/lib/b2b/service";
+
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
+  if (!canAccess(session, "b2b")) return NextResponse.json({ error: "Keine Freigabe für B2B-Deals." }, { status: 403 });
+  const { id } = await params;
+  if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Ungültig." }, { status: 400 });
+  const d = await ladeDeal(session.tenantId, id);
+  if (!d) return NextResponse.json({ error: "Nicht gefunden." }, { status: 404 });
+  const b = await dealBlatt(session.tenantId, d);
+  const pdf = await blattPdf({ firma: b.firma, nr: d.nr, titel: d.titel, asin: d.asin, ean: d.ean, marke: d.marke, preis: d.kundenpreisNetto, mindestmenge: d.mindestmengeKunde, maxProKunde: d.maxProKunde, rest: b.rest, frist: d.frist, hinweis: d.hinweis, laender: b.laender, link: portalLink(d.id), stand: d.updatedAt });
+  return new NextResponse(Buffer.from(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="Deal-${d.nr}.pdf"`, "cache-control": "private, no-store" } });
+}
