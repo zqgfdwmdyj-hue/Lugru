@@ -122,9 +122,15 @@ test.describe("Privat – Kalender, Serien und Schutz", () => {
     }
     // „nur Familie“: Kinderzeit ja, Paar-Termine und Paarzeit nein – auch nicht per direktem Link
     const fp = await alsPerson(browser, "familie");
-    await fp.goto(`/privat/kalender?ansicht=tag&tag=${plus(HEUTE, 1)}`);
-    await expect(fp.locator('[data-testid="pk-item"]', { hasText: "Familienausflug" })).toHaveCount(1);
-    for (const n of [2, 4]) {
+    // Testdaten liegen „morgen“, „in 2 Tagen“ und „in 4 Tagen“ ab dem Anlegen – läuft die Prüfung über Mitternacht,
+    // ist alles einen Tag früher. Deshalb je einen Tag Spielraum statt eines festen Datums.
+    let ausflug = 0;
+    for (const n of [0, 1]) {
+      await fp.goto(`/privat/kalender?ansicht=tag&tag=${plus(HEUTE, n)}`);
+      ausflug += await fp.locator('[data-testid="pk-item"]', { hasText: "Familienausflug" }).count();
+    }
+    expect(ausflug, "Kinderzeit für „nur Familie“ sichtbar").toBe(1);
+    for (const n of [1, 2, 3, 4]) {
       await fp.goto(`/privat/kalender?ansicht=tag&tag=${plus(HEUTE, n)}`);
       expect(await fp.locator("main").textContent()).not.toContain(GEHEIM);
     }
