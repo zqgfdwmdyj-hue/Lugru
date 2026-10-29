@@ -131,6 +131,11 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:stock-sync`, 4)) await step(t, "Bestandsabgleich Kanäle", () => syncChannelStock(t));
       if (await has("apple_calendar")) if (force || due(`${t}:calendar`, 14)) await step(t, "Kalender", () => syncCalendar(t));
       if (force || due(`${t}:research`, 59)) await step(t, "Themen-Recherche", () => runResearchIfDue(t));
+      // B2B-Deals: abgelaufene Fristen schließen, Vorkasse-Zahlungen aus Lexoffice holen.
+      if (force || due(`${t}:b2b`, 59)) {
+        await step(t, "B2B-Deals Fristen", async () => (await import("@/lib/b2b/service")).fristenPruefen(t));
+        if (await has("lexoffice")) await step(t, "B2B-Zahlungen (Lexoffice)", async () => (await import("@/lib/b2b/ablauf")).zahlungenAbgleichen(t));
+      }
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step(t, "Rechnungen", () => syncDrive(t, 100));
       // EK-Liste für AccountOne (tax.fish braucht die EKs für PAN-EU-Verbringungen): Erinnerung bei Neuem, höchstens alle 4 Wochen.
       if (force || due(`${t}:cog-reminder`, 720)) await step(t, "EK-Liste AccountOne", () => cogReminder(t));

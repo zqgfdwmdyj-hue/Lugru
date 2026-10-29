@@ -13,3 +13,4 @@ import "./discord";
 import "./keepa";
 import "./stotax";
 import "./lugru-deals";
+import "./lexoffice";

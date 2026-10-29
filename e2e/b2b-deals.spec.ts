@@ -7,6 +7,8 @@ import { aktion, anmelden, expect, marke, sql, test } from "./helfer";
 
 const plus = (n: number) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date(Date.now() + n * 86400_000));
 const discord = async (): Promise<{ content: string }[]> => (await fetch(`${TD}/__discord`)).json();
+type LexBeleg = { id: string; art: "invoices" | "credit-notes"; nummer: string; brutto: number; netto: number; steuerArt: string; vorgaenger: string | null; menge: number; bezahlt: boolean };
+const lexBelege = async (): Promise<LexBeleg[]> => (await fetch(`${TD}/__lexoffice`)).json();
 
 async function dealAnlegen(page: Page, o: { asin: string; lieferant: string; ek: string; preis: string; moq?: string; max?: string; maxJe?: string; min?: string }) {
   await page.goto("/b2b/neu");
@@ -87,8 +89,8 @@ test.describe("B2B-Deals", () => {
     await sql("update lieferanten_profile set wiederverkauf_erlaubt = null, marktplatz_erlaubt = null where supplier_id = (select id from suppliers where code = 'TESTSEL')");
   });
 
-  test("Deal mit 3 Kunden: Prognose, Rechenhilfe, Discord, VIES, Einladung, Reservieren mit Grenzen, Portal isoliert", async ({ page, browser }) => {
-    test.setTimeout(180_000);
+  test("Abnahme: Deal mit 3 Kunden und Fehlmenge – Prognose, Rechenhilfe, Discord, VIES, Portal, Rechnungen, Bestellung, Wareneingang, Gutschriften, Export", async ({ page, browser }) => {
+    test.setTimeout(240_000);
     await anmelden(page, "inhaber");
     const asin = `B0E2E${marke()}`;
     const id = await dealAnlegen(page, { asin, lieferant: "Test-Großhandel (erfunden) (TESTGH)", ek: "6,37", preis: "11,50", moq: "40", max: "60", maxJe: "30", min: "10" });
@@ -162,6 +164,74 @@ test.describe("B2B-Deals", () => {
     await expect(page.locator('[data-testid="reservierungen"] tbody tr')).toHaveCount(3);
     await expect(page.locator('[data-testid="deal-reserviert"]')).toContainText("60");
     await expect(page.locator('[data-testid="deal-reserviert"]')).toContainText("✓ erreicht");
+
+    // ---- Abnahme: kompletter Ablauf mit Fehlmenge -------------------------------------------------
+    // 1) Vorkasse-Rechnungen über Lexoffice (Nachbau), Paris mit Reverse Charge
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="rechnungen-erstellen"]')]);
+    await expect(page.locator('[data-testid="deal-meldung"]')).toContainText("3 Vorkasse-Rechnung(en) erstellt");
+    const rechnungen = (await lexBelege()).filter((b) => b.art === "invoices");
+    await expect.poll(async () => (await sql("select 1 from deal_reservierungen where deal_id = $1 and status = 'vorkasse_offen'", [id])).length).toBe(3);
+    const res = await sql<{ firma: string; rechnung_id: string; status: string }>("select k.firma, r.rechnung_id, r.status from deal_reservierungen r join b2b_kunden k on k.id = r.kunde_id where r.deal_id = $1 order by k.firma", [id]);
+    expect(res.map((r) => r.status)).toEqual(["vorkasse_offen", "vorkasse_offen", "vorkasse_offen"]);
+    const beleg = (fid: string) => rechnungen.find((b) => b.id === fid)!;
+    expect(beleg(res[0].rechnung_id)).toMatchObject({ steuerArt: "intraCommunitySupply", brutto: 230, menge: 20 });
+    expect(beleg(res[1].rechnung_id)).toMatchObject({ steuerArt: "net", netto: 345, brutto: 410.55, menge: 30 });
+    // 2) Zahlungseingang (alle drei) → Abgleich
+    for (const r of res) await fetch(`${TD}/__lexoffice/bezahlt/${r.rechnung_id}`, { method: "POST" });
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="zahlungen-pruefen"]')]);
+    await expect(page.locator('[data-testid="deal-meldung"]')).toContainText("3 von 3");
+    // 3) Sammelbestellung: Entwurf → Freigabe (Inhaber) → Senden nur mit Haken
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="bestellung-entwurf"]')]);
+    await expect(page.locator('[data-testid="bestellung-freigabe"]')).toContainText("60 Stück");
+    await expect(page.locator("#an")).toHaveValue("bestellung@example.invalid");
+    await expect(page.locator("#text")).toHaveValue(/60 × Testprodukt/);
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="bestellung-freigeben"]')]);
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="bestellung-senden"]')]);
+    await expect(page.locator('[data-testid="deal-meldung"]')).toContainText("anhaken");
+    expect((await sql("select 1 from test_mails where \"to\" = 'bestellung@example.invalid'")).length).toBe(0);
+    await page.check('[data-testid="bestellung-geprueft"]');
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="bestellung-senden"]')]);
+    await expect(page.locator('[data-testid="deal-status"]')).toHaveText("bestellt");
+    await expect.poll(async () => (await sql("select 1 from test_mails where \"to\" = 'bestellung@example.invalid'")).length).toBe(1);
+    // 4) Wareneingang: 54 statt 60 → anteilig gekürzt (18/27/9), drei Gutschriften, Reklamations-Entwurf
+    await page.fill('[data-testid="eingang"]', "54");
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="eingang-buchen"]')]);
+    await expect(page.locator('[data-testid="deal-meldung"]')).toContainText("es fehlen 6 Stück");
+    const zu = await sql<{ firma: string; zugeteilt: number; status: string; gutschrift_betrag: number | null }>("select k.firma, r.zugeteilt, r.status, r.gutschrift_betrag::float as gutschrift_betrag from deal_reservierungen r join b2b_kunden k on k.id = r.kunde_id where r.deal_id = $1 order by k.firma", [id]);
+    expect(zu.map((r) => [r.zugeteilt, r.status, r.gutschrift_betrag])).toEqual([
+      [18, "angekommen", 23],
+      [27, "angekommen", 41.06],
+      [9, "angekommen", 13.69],
+    ]);
+    const gutschriften = (await lexBelege()).filter((b) => b.art === "credit-notes" && res.some((r) => r.rechnung_id === b.vorgaenger));
+    expect(gutschriften.map((g) => g.menge).sort()).toEqual([1, 2, 3]);
+    await expect(page.locator('[data-testid="reklamation"] textarea')).toHaveValue(/es fehlen 6 Stück/);
+    await page.check('[data-testid="reklamation"] input[name="geprueft"]');
+    await Promise.all([page.waitForURL(/meldung=Reklamation/), page.click('[data-testid="reklamation-senden"]')]);
+    await expect.poll(async () => (await sql("select 1 from test_mails where \"to\" = 'bestellung@example.invalid' and subject like 'Fehlmenge%'")).length).toBe(1);
+    // 5) Export je Kunde für das Prep-Tool (CSV/XLSX/PDF), Übergabe, erledigt
+    const csv = await (await page.request.get(`/b2b/${id}/export?format=csv&kunde=${(await sql<{ id: string }>("select id from b2b_kunden where firma = 'Testhandel Paris SARL'"))[0].id}`)).text();
+    expect(csv).toContain("Kunde;Amazon-Name;Land;Deal;ASIN;EAN;Titel;Menge");
+    expect(csv).toContain(`Testhandel Paris SARL;;FR;${nr};${asin};`);
+    expect(csv.trim().split("\r\n")).toHaveLength(2);
+    expect(csv.trim().endsWith(";18")).toBe(true);
+    for (const f of ["xlsx", "pdf"]) expect((await page.request.get(`/b2b/${id}/export?format=${f}`)).status()).toBe(200);
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="an-prep"]')]);
+    await expect(page.locator('[data-testid="deal-status"]')).toHaveText("verteilt");
+    await Promise.all([page.waitForURL(/meldung=/), page.click('[data-testid="erledigt"]')]);
+    await expect(page.locator('[data-testid="deal-status"]')).toHaveText("erledigt");
+    // Portal: Paris sieht gekürzte Menge, Rechnung und Gutschrift (PDF) – nur eigene
+    await paris.goto("/portal/reservierungen");
+    await expect(paris.locator('[data-testid="portal-reservierungen"]')).toContainText("geliefert 18");
+    await expect(paris.locator('[data-testid="portal-reservierungen"]')).toContainText("RE-TEST-");
+    const resParis = (await sql<{ id: string }>("select r.id from deal_reservierungen r join b2b_kunden k on k.id = r.kunde_id where r.deal_id = $1 and k.firma = 'Testhandel Paris SARL'", [id]))[0].id;
+    const resNord = (await sql<{ id: string }>("select r.id from deal_reservierungen r join b2b_kunden k on k.id = r.kunde_id where r.deal_id = $1 and k.firma = 'Testhändler Nord GmbH'", [id]))[0].id;
+    const pdf1 = await paris.request.get(`/portal/beleg/${resParis}/rechnung`);
+    expect(pdf1.status()).toBe(200);
+    expect(pdf1.headers()["content-type"]).toContain("application/pdf");
+    expect((await paris.request.get(`/portal/beleg/${resParis}/gutschrift`)).status()).toBe(200);
+    // fremde Rechnung (Nord) nicht abrufbar
+    expect((await paris.request.get(`/portal/beleg/${resNord}/rechnung`)).status()).toBe(404);
   });
 
   test("Portal: falsches Passwort, gesperrter Zugang, abgemeldet ohne Cookie", async ({ page, browser }) => {

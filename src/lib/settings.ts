@@ -83,6 +83,7 @@ export const DEFAULT_SETTINGS = {
     versandAnteil: 0,
     fastWegProzent: 0.8,
     ustSatz: 0.19,
+    lieferadresse: "",
   },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
   pallets: {

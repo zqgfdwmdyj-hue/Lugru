@@ -5,6 +5,7 @@ import type { DealStatus, OfferMarket } from "@/db/schema";
 import { appUrl } from "@/lib/oauth/state";
 import { publicUrl } from "@/lib/public-url";
 import { getIntegration } from "@/lib/integrations/store";
+import { postDiscord } from "@/lib/integrations/clients/discord";
 import { getSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/dates";
 import type { DealEingabe } from "./eingabe";
@@ -238,16 +239,18 @@ export async function discordMelden(tenantId: string, id: string, art: keyof typ
   if (d.discord[art]) return { gesendet: false, grund: "schon gemeldet" };
   const blatt = await dealBlatt(tenantId, d);
   const text = art === "neu" ? blatt.text : `Deal #${d.nr}: ${d.titel}${art === "fastWeg" && blatt.rest !== null ? ` – nur noch ${blatt.rest} Stück frei` : ""}\n${portalLink(d.id)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ content: `**${KOPF[art]}**\n${text}`.slice(0, 1990), allowed_mentions: { parse: [] } }),
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`Discord antwortet ${res.status}`);
+  await postDiscord(url, `**${KOPF[art]}**\n${text}`);
   await db
     .update(D)
     .set({ discord: sql`${D.discord} || ${JSON.stringify({ [art]: new Date().toISOString() })}::jsonb` })
     .where(and(eq(D.tenantId, tenantId), eq(D.id, id)));
   return { gesendet: true };
+}
+
+/** Abgelaufene Reservierungsfristen: offene Deals schließen (Discord „geschlossen“). */
+export async function fristenPruefen(tenantId: string): Promise<number> {
+  const heute = todayIso();
+  const faellig = await db.select({ id: D.id }).from(D).where(and(eq(D.tenantId, tenantId), eq(D.status, "aktiv"), sql`${D.frist} < ${heute}::date`));
+  for (const d of faellig) await schliessen(tenantId, d.id);
+  return faellig.length;
 }

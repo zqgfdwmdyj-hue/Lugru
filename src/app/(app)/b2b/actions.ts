@@ -188,3 +188,103 @@ export async function discordNochmalAction(fd: FormData) {
   const r = await discordMelden(session.tenantId, id, art).catch((e) => ({ gesendet: false, grund: e instanceof Error ? e.message : String(e) }));
   zurueck(id, meldung(r.gesendet ? "An Discord gesendet." : `Nicht gesendet: ${r.grund}.`));
 }
+
+// ---- Ablauf nach dem Reservieren ------------------------------------------------------------------
+
+export async function rechnungenAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const { rechnungenErstellen } = await import("@/lib/b2b/ablauf");
+  const r = await rechnungenErstellen(session.tenantId, id, { mailen: fd.get("mailen") === "on" });
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(`${r.erstellt} Vorkasse-Rechnung(en) erstellt${r.mails ? `, ${r.mails} per Mail gesendet` : ""}.${r.fehler.length ? ` Fehler: ${r.fehler.join(" · ")}` : ""}`));
+}
+
+export async function zahlungenAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const { zahlungenAbgleichen } = await import("@/lib/b2b/ablauf");
+  const r = await zahlungenAbgleichen(session.tenantId, id).catch((e) => ({ geprueft: 0, bezahlt: 0, fehler: e instanceof Error ? e.message : String(e) }));
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung("fehler" in r ? `Zahlungsabgleich fehlgeschlagen: ${r.fehler}` : `Zahlungen geprüft: ${r.bezahlt} von ${r.geprueft} offenen jetzt bezahlt.`));
+}
+
+export async function bestellungEntwurfAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const eigene = ganz(fd, "eigeneMenge");
+  const { bestellungEntwerfen } = await import("@/lib/b2b/ablauf");
+  const r = await bestellungEntwerfen(session.tenantId, id, { eigeneMenge: eigene ?? undefined });
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(r.ok ? `Bestell-Entwurf über ${r.menge} Stück erstellt – bitte prüfen und freigeben.` : r.fehler));
+}
+
+/** Freigabe der Bestellung nur durch Inhaber. */
+export async function bestellungFreigebenAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  if (session.role !== "owner") zurueck(id, meldung("Bestellungen gibt nur der Inhaber frei."));
+  const { bestellungFreigeben } = await import("@/lib/b2b/ablauf");
+  const r = await bestellungFreigeben(session.tenantId, id, session.userId, { an: text(fd, "an"), betreff: text(fd, "betreff") ?? "", text: String(fd.get("text") ?? "") });
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(r.ok ? "Bestellung freigegeben – jetzt senden." : r.fehler!));
+}
+
+export async function bestellungSendenAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const { bestellungSenden } = await import("@/lib/b2b/ablauf");
+  const r = await bestellungSenden(session.tenantId, id, { geprueft: fd.get("geprueft") === "on" }).catch((e) => ({ ok: false as const, fehler: e instanceof Error ? e.message : String(e) }));
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(r.ok ? `Bestellung gesendet.${r.storniert ? ` ${r.storniert} nicht bezahlte Reservierung(en) storniert.` : ""}` : r.fehler));
+}
+
+export async function verfallenAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const { verfallenLassen } = await import("@/lib/b2b/ablauf");
+  const r = await verfallenLassen(session.tenantId, id);
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(`Deal verfallen: ${r.storniert} Reservierung(en) storniert${r.zuErstatten ? `, ${r.zuErstatten} bereits bezahlt – Geld zurücküberweisen (Gutschrift ist erstellt)` : ""}.`));
+}
+
+export async function wareneingangAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const n = ganz(fd, "eingang");
+  const { wareneingangBuchen } = await import("@/lib/b2b/ablauf");
+  const r = await wareneingangBuchen(session.tenantId, id, n ?? -1).catch((e) => ({ ok: false as const, fehler: e instanceof Error ? e.message : String(e) }));
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(r.ok ? (r.fehlt ? `Wareneingang gebucht – es fehlen ${r.fehlt} Stück: gekürzt, ${r.gutschriften} Gutschrift(en) erstellt, Reklamation als Entwurf.` : "Wareneingang gebucht – vollständig.") : r.fehler));
+}
+
+export async function reklamationAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const { reklamationSenden } = await import("@/lib/b2b/ablauf");
+  const r = await reklamationSenden(session.tenantId, id, { geprueft: fd.get("geprueft") === "on", text: String(fd.get("text") ?? "") });
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(r.ok ? "Reklamation gesendet." : r.fehler!));
+}
+
+export async function anPrepAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const kunde = z.string().uuid().nullable().catch(null).parse(fd.get("kundeId"));
+  const { anPrepUebergeben } = await import("@/lib/b2b/ablauf");
+  const n = await anPrepUebergeben(session.tenantId, id, kunde);
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, meldung(`${n} Reservierung(en) als an das Prep Center übergeben markiert.`));
+}
+
+export async function erledigtAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const id = uuid.parse(fd.get("id"));
+  const d = await ladeDeal(session.tenantId, id);
+  if (d?.status === "verteilt") {
+    await setzeStatus(session.tenantId, id, "erledigt");
+    await db.update(schema.dealReservierungen).set({ status: "erledigt", updatedAt: new Date() }).where(and(eq(schema.dealReservierungen.tenantId, session.tenantId), eq(schema.dealReservierungen.dealId, id), eq(schema.dealReservierungen.status, "an_prep")));
+  }
+  revalidatePath(`/b2b/${id}`);
+  zurueck(id, "meldung=gespeichert");
+}

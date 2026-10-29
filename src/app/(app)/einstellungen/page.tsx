@@ -172,6 +172,11 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
             </div>
             <label className="check small" style={{ alignSelf: "end" }}><input type="checkbox" name="b2b_nurBezahlteBestellen" defaultChecked={s.b2b.nurBezahlteBestellen} /> Nur bezahlte Reservierungen bestellen</label>
           </div>
+          <div className="field">
+            <label className="label" htmlFor="b2b_lieferadresse">Lieferanschrift für Großhändler (Prep Center)</label>
+            <textarea className="input" id="b2b_lieferadresse" name="b2b_lieferadresse" rows={3} defaultValue={s.b2b.lieferadresse} style={{ maxWidth: 420 }} />
+            <span className="small muted">Steht in der Bestell-Mail an den Großhändler.</span>
+          </div>
         </section>
 
         <section className="card card-pad stack" style={{ gap: 14 }}>

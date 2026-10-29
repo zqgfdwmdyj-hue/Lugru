@@ -16,6 +16,9 @@ import { dealBlatt, dealReservierungen, freischaltHindernisse, portalLink, vertr
 import { discordNochmalAction, freischaltenAction, kundenpreisAction, maxGesamtAction, preisAction, prognoseAction, schliessenAction, verwerfenAction, dealSpeichernAction } from "../actions";
 import { DealFelder } from "../deal-felder";
 import { Rechner, WartenAufPrognose, type RechnerLand } from "./rechner";
+import { Ablauf } from "./ablauf";
+import { bestellStand } from "@/lib/b2b/ablauf";
+import { lexofficeKey } from "@/lib/integrations/clients/lexoffice";
 
 const MELDUNGEN: Record<string, string> = {
   angelegt: "Deal als Entwurf angelegt.",
@@ -63,6 +66,8 @@ export default async function DealPage({ params, searchParams }: { params: Promi
   const frisch = Date.now() - d.createdAt.getTime() < 90_000;
   const muster = laender.filter((l) => l.aktionsmuster);
   const meldung = sp.meldung ? (MELDUNGEN[sp.meldung] ?? sp.meldung) : null;
+  const st = d.status === "entwurf" ? null : await bestellStand(t, d);
+  const lexoffice = Boolean(await lexofficeKey(t));
 
   return (
     <>
@@ -140,12 +145,14 @@ export default async function DealPage({ params, searchParams }: { params: Promi
         </section>
       )}
 
+      {st && <Ablauf d={d} st={st} inhaber={session.role === "owner"} lexoffice={lexoffice} />}
+
       <section className="card" style={{ overflow: "auto" }}>
-        <div className="card-head"><h2>Reservierungen</h2><span className="small muted">Rechnung, Zahlung und Bestellung folgen im nächsten Schritt</span></div>
+        <div className="card-head"><h2>Reservierungen</h2></div>
         <table className="table" data-testid="reservierungen">
-          <thead><tr><th>Kunde</th><th className="right">Menge</th><th className="right">Preis netto</th><th>Steuer</th><th>Status</th><th>Rechnung</th><th>Reserviert am</th></tr></thead>
+          <thead><tr><th>Kunde</th><th className="right">Menge</th><th className="right">Preis netto</th><th>Steuer</th><th>Status</th><th>Rechnung</th><th>Reserviert am</th><th>Prep</th></tr></thead>
           <tbody>
-            {res.length === 0 && <tr><td colSpan={7} className="muted">Noch keine Reservierungen.</td></tr>}
+            {res.length === 0 && <tr><td colSpan={8} className="muted">Noch keine Reservierungen.</td></tr>}
             {res.map(({ r, firma }) => (
               <tr key={r.id}>
                 <td>{firma}</td>
@@ -153,8 +160,9 @@ export default async function DealPage({ params, searchParams }: { params: Promi
                 <td className="num right">{formatEuro(r.preisNetto)}</td>
                 <td className="small">{r.reverseCharge ? "Reverse Charge" : "mit USt"}</td>
                 <td><span className={`tag ${RES_STATUS_TAG[r.status]}`}>{RES_STATUS_TEXT[r.status]}</span></td>
-                <td className="small num">{r.rechnungNr ?? "–"}{r.rechnungBrutto !== null ? <div>{formatEuro(r.rechnungBrutto)}</div> : null}</td>
+                <td className="small num">{r.rechnungNr ?? "–"}{r.rechnungBrutto !== null ? <div>{formatEuro(r.rechnungBrutto)}{r.bezahltAm ? " · bezahlt" : ""}</div> : null}{r.gutschriftBetrag !== null ? <div style={{ color: "var(--danger)" }}>Gutschrift {formatEuro(r.gutschriftBetrag)}</div> : null}</td>
                 <td className="small num">{r.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
+                <td className="small">{["angekommen", "an_prep", "erledigt"].includes(r.status) ? (["csv", "xlsx", "pdf"] as const).map((f) => <a key={f} href={`/b2b/${d.id}/export?format=${f}&kunde=${r.kundeId}`} style={{ marginRight: 6 }} data-testid={`export-kunde-${f}`}>{f.toUpperCase()}</a>) : r.exportiertAm ? "exportiert" : "–"}</td>
               </tr>
             ))}
           </tbody>

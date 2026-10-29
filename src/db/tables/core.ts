@@ -144,6 +144,8 @@ export type TenantSettings = {
     versandAnteil?: number;
     fastWegProzent?: number;
     ustSatz?: number;
+    /** Lieferanschrift für Großhändler-Bestellungen (Prep Center), mehrzeilig. */
+    lieferadresse?: string;
   };
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */

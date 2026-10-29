@@ -106,6 +106,55 @@ function stationKi(text) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
+const lex = { kontakte: new Map(), belege: new Map(), bezahlt: new Set(), nr: 0, gnr: 0 };
+async function lexoffice(req, p, url, b) {
+  const json = (o, code = 200) => [code, o];
+  const uuid = () => crypto.randomUUID();
+  if (p === "/v1/profile") return json({ companyName: "Test Prep GmbH", organizationId: "test-org" });
+  if (p === "/v1/contacts" && req.method === "POST") {
+    if (!b.company?.name) return json({ message: "company.name fehlt" }, 406);
+    const id = uuid();
+    lex.kontakte.set(id, b);
+    return json({ id, resourceUri: `/v1/contacts/${id}`, version: 1 });
+  }
+  const summe = (b) => {
+    let netto = 0;
+    let steuer = 0;
+    for (const li of b.lineItems ?? []) {
+      const n = Math.round(li.quantity * li.unitPrice.netAmount * 100) / 100;
+      netto += n;
+      steuer += Math.round(n * (li.unitPrice.taxRatePercentage ?? 0)) / 100;
+    }
+    netto = Math.round(netto * 100) / 100;
+    steuer = Math.round(steuer * 100) / 100;
+    return { currency: "EUR", totalNetAmount: netto, totalTaxAmount: steuer, totalGrossAmount: Math.round((netto + steuer) * 100) / 100 };
+  };
+  const neu = (art, b) => {
+    if (!lex.kontakte.has(b.address?.contactId)) return json({ message: "Kontakt unbekannt" }, 406);
+    if (art === "credit-notes" && !lex.belege.has(url.searchParams.get("precedingSalesVoucherId"))) return json({ message: "Vorgänger unbekannt" }, 406);
+    const id = uuid();
+    const voucherNumber = art === "invoices" ? `RE-TEST-${String(++lex.nr).padStart(4, "0")}` : `GS-TEST-${String(++lex.gnr).padStart(4, "0")}`;
+    lex.belege.set(id, { id, art, voucherNumber, totalPrice: summe(b), taxType: b.taxConditions?.taxType, vorgaenger: url.searchParams.get("precedingSalesVoucherId"), b });
+    return json({ id, resourceUri: `/v1/${art}/${id}`, version: 1 });
+  };
+  if ((p === "/v1/invoices" || p === "/v1/credit-notes") && req.method === "POST") return neu(p.slice(4), b);
+  const m = /^\/v1\/(invoices|credit-notes)\/([0-9a-f-]{36})(\/file)?$/.exec(p);
+  if (m && req.method === "GET") {
+    const x = lex.belege.get(m[2]);
+    if (!x) return json({ message: "nicht gefunden" }, 404);
+    if (m[3]) return [200, await pdf([`${x.art === "invoices" ? "Rechnung" : "Gutschrift"} ${x.voucherNumber}`, `Brutto ${x.totalPrice.totalGrossAmount} EUR (Testbeleg)`]), "application/pdf"];
+    return json({ id: x.id, voucherNumber: x.voucherNumber, voucherStatus: lex.bezahlt.has(x.id) ? "paid" : "open", totalPrice: x.totalPrice, taxConditions: { taxType: x.taxType } });
+  }
+  const z = /^\/v1\/payments\/([0-9a-f-]{36})$/.exec(p);
+  if (z) {
+    const x = lex.belege.get(z[1]);
+    if (!x) return json({ message: "nicht gefunden" }, 404);
+    const paid = lex.bezahlt.has(x.id);
+    return json({ openAmount: paid ? 0 : x.totalPrice.totalGrossAmount, paymentStatus: paid ? "balanced" : "openRevenue", currency: "EUR", voucherType: "invoice", voucherStatus: paid ? "paid" : "open" });
+  }
+  return json({ message: "nicht nachgebildet" }, 404);
+}
+
 const carts = new Map();
 let viesNr = 0;
 let discord = [];
@@ -193,6 +242,8 @@ async function route(req, url, body) {
     const valid = !nr.startsWith("999");
     return json({ countryCode: b.countryCode, vatNumber: nr, requestDate: new Date().toISOString(), valid, requestIdentifier: b.requesterNumber ? `WAPITEST${String(++viesNr).padStart(6, "0")}` : "", name: valid ? `Testhandel ${b.countryCode} SARL` : "---", address: valid ? "1 Rue de l'Exemple, 75000 Paris" : "---" });
   }
+  // Lexware Office (Lexoffice): Kontakte, Rechnungen, Zahlungsstand, Gutschriften, PDF – alles nur im Speicher.
+  if (p.startsWith("/lexoffice/")) return lexoffice(req, p.slice("/lexoffice".length), url, parsed());
   // Discord-Webhook (B2B-Kanal): Nachricht nur mitschreiben.
   if (p.startsWith("/discord/")) {
     remember(discord, { at: new Date().toISOString(), content: String(parsed().content ?? "") });
@@ -340,6 +391,12 @@ http
     if (url.pathname === "/__log") return send(200, log);
     if (url.pathname === "/__ki") return send(200, ki);
     if (url.pathname === "/__discord") return send(200, discord);
+    // Prüf-Hilfen Lexoffice: Belege ansehen, Rechnungen als bezahlt markieren (wie ein Zahlungseingang).
+    if (url.pathname === "/__lexoffice") return send(200, [...lex.belege.values()].map((x) => ({ id: x.id, art: x.art, nummer: x.voucherNumber, brutto: x.totalPrice.totalGrossAmount, netto: x.totalPrice.totalNetAmount, steuerArt: x.taxType, vorgaenger: x.vorgaenger, menge: x.b.lineItems?.[0]?.quantity, bezahlt: lex.bezahlt.has(x.id) })));
+    if (url.pathname.startsWith("/__lexoffice/bezahlt/") && req.method === "POST") {
+      lex.bezahlt.add(url.pathname.split("/").pop());
+      return send(200, { ok: true });
+    }
     if (url.pathname === "/__reset" && req.method === "POST") {
       log = [];
       ki = [];
