@@ -129,6 +129,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs", "Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)"],
   },
+  "/calls/offen": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl, keine kaputten Werte", tests: ["kennzahlen.spec.ts › Offene Punkte Consultant"] }] },
   "/kalender/zeiten": { abläufe: [{ ablauf: "Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick", erwartet: "Fälligkeit verschoben, Rückblick sichtbar", tests: ["teil2.spec.ts › Feste freie Zeiten"] }] },
   "/board": { abläufe: [{ ablauf: "Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie", erwartet: "📘-Link auf der Karte, auch bei der Assistenz", tests: ["teil2.spec.ts › Anleitung im Wissen"] }] },
   "/privat/familienaufgaben": { abläufe: [{ ablauf: "Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft", erwartet: "nur Familienliste + Familienkalender", tests: ["teil2.spec.ts › Familien-Zugang"] }] },
@@ -160,7 +161,10 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     offen: ["Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests", "Live nie prüfen (echte private Daten)"],
   },
   "/einstellungen": {
-    abläufe: [{ ablauf: "Testumgebung: Banner, Sperre nach außen, Übersicht", erwartet: "Banner auf jeder Seite, Verbindungen nach außen gesperrt, Mails abgefangen", tests: ["testumgebung.spec.ts › Banner"] }],
+    abläufe: [
+      { ablauf: "Testumgebung: Banner, Sperre nach außen, Übersicht", erwartet: "Banner auf jeder Seite, Verbindungen nach außen gesperrt, Mails abgefangen", tests: ["testumgebung.spec.ts › Banner"] },
+      { ablauf: "Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen", erwartet: "gesperrt, keine Finanz- oder Privatdaten", tests: ["teil2.spec.ts › Assistenz (Büro)"] },
+    ],
   },
   "/einstellungen/claude": {
     abläufe: [

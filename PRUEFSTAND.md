@@ -79,10 +79,11 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Privat | Privat `/privat` | ✓ 3/3 Abläufe | – | 2 |
 | Hilfsfunktionen | Wissen `/wissen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Hilfsfunktionen | Daten importieren `/import` | ✓ 1/1 Abläufe | – | – |
-| Hilfsfunktionen | Einstellungen `/einstellungen` | ✓ 1/1 Abläufe | – | – |
+| Hilfsfunktionen | Einstellungen `/einstellungen` | ✓ 2/2 Abläufe | – | – |
 | Hilfsfunktionen | Anbindungen `/anbindungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Hilfsfunktionen | Claude & KI-Assistent `/einstellungen/claude` | ✓ 8/8 Abläufe | – | 2 |
 | Hilfsfunktionen | eBay-Einstellungen `/ebay?ansicht=einstellungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
+| Übergreifend | /calls/offen `/calls/offen` | ✓ 1/1 Abläufe | – | – |
 | Übergreifend | /kalender/zeiten `/kalender/zeiten` | ✓ 1/1 Abläufe | – | – |
 | Übergreifend | /privat/familienaufgaben `/privat/familienaufgaben` | ✓ 1/1 Abläufe | – | – |
 | Übergreifend | /privat/geld `/privat/geld` | ✓ 1/1 Abläufe | – | – |
@@ -314,6 +315,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Testumgebung: Banner, Sperre nach außen, Übersicht | Banner auf jeder Seite, Verbindungen nach außen gesperrt, Mails abgefangen | ✓ bestanden (desktop + handy) | `testumgebung.spec.ts` |
+| Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen | gesperrt, keine Finanz- oder Privatdaten | ✓ bestanden (desktop) | `teil2.spec.ts` |
 
 ### Hilfsfunktionen › Claude & KI-Assistent (`/einstellungen/claude`)
 
@@ -330,6 +332,12 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 - – Offen: Amazon-Berichte je Land mit echtem Konto (Marktplätze unter Anbindungen → Amazon eintragen)
 - – Offen: getItemOffers-Ratenlimit im Betrieb beobachten
+
+### Übergreifend › /calls/offen (`/calls/offen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Kennzahlen | Herkunft je Kennzahl, keine kaputten Werte | ✓ bestanden (desktop) | `kennzahlen.spec.ts` |
 
 ### Übergreifend › /kalender/zeiten (`/kalender/zeiten`)
 
@@ -366,7 +374,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (64 Abläufe + Oberfläche auf 76 Seiten): 64 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
+**Automatisch** (66 Abläufe + Oberfläche auf 77 Seiten): 66 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
 
 **Live geprüft:**
 
@@ -405,8 +413,3 @@ Tagesübersicht (`/`) · Alle Aufgaben (`/?ansicht=liste`) · Angebote (alle Kan
 - Claude & KI-Assistent: getItemOffers-Ratenlimit im Betrieb beobachten
 - Server (Port, Adresse, Testumgebung): `deploy/absichern.sh` auf dem echten Server ausführen (siehe ABNAHME.md, Teil B)
 - Server (Port, Adresse, Testumgebung): `deploy/testumgebung.sh an` + `pruefen` auf dem Server
-
-## Prüfungen ohne Zuordnung zu einem Reiter
-
-- kennzahlen.spec.ts › Finanzen, WaWi, Amazon – Kennzahlen › Offene Punkte Consultant: jede Kennzahl mit Herkunft, keine kaputten Werte – bitte in e2e/pruefstand.ts eintragen
-- teil2.spec.ts › Teil 2 – Familie & Zugänge › Assistenz (Büro) sieht keine Finanz- oder Privatdaten – bitte in e2e/pruefstand.ts eintragen
