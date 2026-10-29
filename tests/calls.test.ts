@@ -58,3 +58,46 @@ describe("Call-Stelle", () => {
     expect(zitatPosition(t, null)).toBeNull();
   });
 });
+
+describe("Umzug aus dem bisherigen Call-Archiv", async () => {
+  const { leseArchivExport, leseKiZusammenfassung, fristAus } = await import("@/lib/calls/logic");
+  const call = {
+    id: "c20260101-TEST01",
+    date: "2026-01-14",
+    title: "Test-Call (erfunden)",
+    sourceUrl: "https://docs.google.com/document/d/TESTDOC00000000000000001/edit",
+    summary: {
+      title: "x",
+      overview: "Erfundener Überblick.",
+      topics: [{ name: "Lager", points: ["Punkt A"] }, { name: "", points: [] }],
+      decisions: ["Retouren selbst prüfen"],
+      todos: [{ task: "Testliste schicken", owner: "Ludwig", due: "bis 16.01." }, "Ohne Details", { task: "", owner: "x" }],
+      open_questions: ["Gilt das auch für FR?"],
+      participants: ["Ludwig", "Consultant"],
+    },
+  };
+  it("ein Call mit Zusammenfassung; To-dos, Entscheidungen, Fragen → Punkte; Transkript aus chunks", () => {
+    const r = leseArchivExport({ calls: [call], chunks: [{ callId: call.id, n: 1, text: "Teil 2." }, { callId: call.id, n: 0, text: "Teil 1. " }] });
+    expect(r.fehler).toBeNull();
+    const c = r.calls[0];
+    expect(c).toMatchObject({ externeId: call.id, datum: "2026-01-14", titel: "Test-Call (erfunden)", quelleUrl: call.sourceUrl, transkript: "Teil 1. Teil 2." });
+    expect(c.zusammenfassung).toEqual({ ueberblick: "Erfundener Überblick.", teilnehmer: ["Ludwig", "Consultant"], themen: [{ name: "Lager", punkte: ["Punkt A"] }] });
+    expect(c.punkte).toEqual([
+      { art: "aufgabe", text: "Testliste schicken", verantwortlich: "Ludwig", frist: "2026-01-16", zitat: null },
+      { art: "aufgabe", text: "Ohne Details", verantwortlich: null, frist: null, zitat: null },
+      { art: "entscheidung", text: "Retouren selbst prüfen", verantwortlich: null, frist: null, zitat: null },
+      { art: "frage", text: "Gilt das auch für FR?", verantwortlich: null, frist: null, zitat: null },
+    ]);
+  });
+  it("auch als einzelnes Objekt oder Liste; fremde Links und kaputtes Datum werden ignoriert", () => {
+    expect(leseArchivExport({ ...call, transcript: "Text" }).calls[0].transkript).toBe("Text");
+    expect(leseArchivExport([{ ...call, sourceUrl: "https://example.com/x" }]).calls[0].quelleUrl).toBeNull();
+    expect(leseArchivExport({ date: "14.01.2026" }).fehler).toContain("Keine Calls");
+  });
+  it("Frist aus freier Angabe, KI-Zusammenfassung lesen", () => {
+    expect(fristAus("2026-02-03", "2026-01-14")).toBe("2026-02-03");
+    expect(fristAus("Freitag", "2026-01-14")).toBeNull();
+    expect(leseKiZusammenfassung('{"ueberblick":"Ü","teilnehmer":["A"],"themen":[{"name":"T","punkte":["p"]}],"punkte":[]}')).toEqual({ ueberblick: "Ü", teilnehmer: ["A"], themen: [{ name: "T", punkte: ["p"] }] });
+    expect(leseKiZusammenfassung('{"punkte":[]}')).toBeNull();
+  });
+});

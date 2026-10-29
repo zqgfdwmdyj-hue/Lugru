@@ -6,7 +6,7 @@ import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { parseDate } from "@/lib/numbers";
-import { callAuswerten, callImportieren, discordCallsImport, punktAnlegen, punkteUebernehmen, punktStatus } from "@/lib/calls/service";
+import { archivImportieren, callAuswerten, callImportieren, discordCallsImport, punktAnlegen, punkteUebernehmen, punktStatus } from "@/lib/calls/service";
 import { datumAusText } from "@/lib/calls/logic";
 
 const ID = z.string().uuid();
@@ -85,4 +85,21 @@ export async function punktAnlegenAction(fd: FormData) {
   await punktAnlegen(session.tenantId, id, { art: z.enum(["vereinbarung", "aufgabe", "entscheidung", "frage"]).parse(fd.get("art")), text, verantwortlich: String(fd.get("wer") ?? "").trim().slice(0, 60) || null, frist: fristRoh ? parseDate(fristRoh) : null });
   revalidatePath(`/calls/${id}`);
   redirect(`/calls/${id}`);
+}
+
+/** Einmaliger Umzug: Export-Datei (JSON) aus dem bisherigen Call-Archiv. */
+export async function archivImportAction(fd: FormData) {
+  const session = await requireArea("amazon");
+  const datei = fd.get("datei");
+  if (!(datei instanceof File) || datei.size === 0) redirect(zurueck("/calls", "Bitte die Export-Datei (JSON) auswählen."));
+  if (datei.size > 20 * 1024 * 1024) redirect(zurueck("/calls", "Datei zu groß (höchstens 20 MB)."));
+  let roh: unknown;
+  try {
+    roh = JSON.parse(await datei.text());
+  } catch {
+    redirect(zurueck("/calls", "Die Datei ist kein gültiges JSON."));
+  }
+  const r = await archivImportieren(session.tenantId, roh);
+  revalidatePath("/calls");
+  redirect(zurueck("/calls", r.fehler ?? `${r.neu} Calls übernommen${r.vorhanden ? `, ${r.vorhanden} waren schon da` : ""}. To-dos, Entscheidungen und Fragen stehen zur Prüfung im Call.`));
 }

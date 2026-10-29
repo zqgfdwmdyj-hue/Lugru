@@ -23,7 +23,7 @@ export const calls = defineTool({
     const liste = await callsListe(ctx.session.tenantId, { von: i.von, bis: i.bis });
     return json({
       zeitraum: i.von || i.bis ? { von: i.von ?? "Anfang", bis: i.bis ?? "heute" } : "alle",
-      calls: liste.map((c) => ({ call_id: c.id, datum: c.datum, titel: c.titel, quelle: c.quelle, auswertung: c.auswertung, zu_pruefen: c.vorschlaege, aufgaben: c.aufgaben, offene_fragen: c.fragenOffen, link: abs(ctx, `/calls/${c.id}`) })),
+      calls: liste.map((c) => ({ call_id: c.id, datum: c.datum, titel: c.titel, quelle: c.quelle, teilnehmer: c.zusammenfassung?.teilnehmer?.length ? c.zusammenfassung.teilnehmer : undefined, ueberblick: c.zusammenfassung?.ueberblick || undefined, auswertung: c.auswertung, zu_pruefen: c.vorschlaege, aufgaben: c.aufgaben, offene_fragen: c.fragenOffen, link: abs(ctx, `/calls/${c.id}`) })),
       offene_punkte: abs(ctx, "/calls/offen"),
       link: abs(ctx, "/calls"),
     });
@@ -34,7 +34,7 @@ export const callAufgaben = defineTool({
   name: "call_aufgaben",
   title: "Punkte eines Calls",
   description:
-    "Vereinbarungen, Aufgaben (mit Verantwortlichem, Frist und Stand der Aufgabe), Entscheidungen und offene Fragen eines Calls mit dem Consultant – mit Fundstelle im Transkript. Die call_id kommt aus „calls“.",
+    "Zusammenfassung (Überblick, Teilnehmer, Themen) sowie Vereinbarungen, Aufgaben (mit Verantwortlichem, Frist und Stand der Aufgabe), Entscheidungen und offene Fragen eines Calls mit dem Consultant – mit Fundstelle im Transkript. Die call_id kommt aus „calls“.",
   area: "amazon",
   write: false,
   quelle: { text: "Call-Archiv im Seller-System" },
@@ -45,7 +45,8 @@ export const callAufgaben = defineTool({
     const d = await callDetail(ctx.session.tenantId, id);
     if (!d) return json({ gefunden: false, link: abs(ctx, "/calls") });
     return json({
-      call: { call_id: d.call.id, titel: d.call.titel, datum: d.call.datum, auswertung: d.call.auswertung },
+      call: { call_id: d.call.id, titel: d.call.titel, datum: d.call.datum, auswertung: d.call.auswertung, google_doc: d.call.quelleUrl ?? undefined },
+      zusammenfassung: d.call.zusammenfassung ? { ueberblick: d.call.zusammenfassung.ueberblick, teilnehmer: d.call.zusammenfassung.teilnehmer, themen: d.call.zusammenfassung.themen } : undefined,
       punkte: d.punkte.map((p) => ({ art: PUNKT_TEXT[p.art], text: p.text, verantwortlich: p.verantwortlich ?? undefined, frist: p.frist ?? undefined, status: p.status, aufgabe: p.taskId ? (p.aufgabeStatus === "done" ? "erledigt" : "offen") : undefined, zitat: p.zitat ?? undefined, link: abs(ctx, `/calls/${p.callId}#p-${p.id}`) })),
       link: abs(ctx, `/calls/${d.call.id}`),
     });

@@ -73,7 +73,7 @@ function kiAnswer(req, b) {
       { art: "frage", text: "Gilt der Mindestrabatt auch für Bundles?", verantwortlich: null, frist: null, zitat: "Gilt der Mindestrabatt auch für Bundles?" },
       { art: "entscheidung", text: "Black-Week-Deals nur mit Gewinn", verantwortlich: null, frist: null, zitat: "Black-Week-Deals nur mit Gewinn" },
     ];
-    return [200, reply(b, [{ type: "text", text: JSON.stringify({ punkte }) }], "end_turn")];
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ ueberblick: "Test-Call: Markenliste für den Audit, Mindestrabatt bei Bundles, Black-Week-Deals.", teilnehmer: ["Consultant (Test)", "Ludwig (Test)"], themen: [{ name: "Audit", punkte: ["Liste der zehn Marken bis Freitag"] }], punkte }) }], "end_turn")];
   }
   const st = stationKi(text);
   if (st && !stale) return [200, reply(b, [{ type: "text", text: JSON.stringify(st) }], "end_turn")];

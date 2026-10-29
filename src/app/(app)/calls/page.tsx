@@ -2,12 +2,12 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { callsListe } from "@/lib/calls/service";
 import { getIntegration } from "@/lib/integrations/store";
-import { callImportAction, discordImportAction } from "./actions";
+import { archivImportAction, callImportAction, discordImportAction } from "./actions";
 
 // Call-Archiv: Calls mit dem Amazon-Consultant, Import (Text, Google-Doc, Discord) und was daraus folgt.
 
 const dmy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord" } as const;
+const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", archiv: "altes Call-Archiv" } as const;
 
 export default async function CallsPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("amazon");
@@ -35,6 +35,11 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
           <label className="small">Google-Docs-Link<input name="link" placeholder="https://docs.google.com/document/d/…" data-testid="calls-link" /></label>
           <label className="small">… oder Transkript einfügen<textarea name="text" rows={6} data-testid="calls-text" /></label>
           <div><button className="btn btn-primary" type="submit" data-testid="calls-import">Importieren und auswerten</button></div>
+        </form>
+        <form action={archivImportAction} className="small" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 12 }}>
+          <span><strong>Umzug aus dem bisherigen Call-Archiv:</strong> Export-Datei (JSON) mit Zusammenfassung und Transkript</span>
+          <input type="file" name="datei" accept=".json,application/json" required data-testid="calls-archiv-datei" />
+          <button className="btn btn-small" type="submit" data-testid="calls-archiv-import">Übernehmen</button>
         </form>
         <div className="small muted" style={{ marginTop: 10 }}>
           {discord?.botToken ? (
@@ -66,7 +71,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
               {liste.map((c) => (
                 <tr key={c.id} data-testid="calls-zeile">
                   <td className="num">{dmy(c.datum)}</td>
-                  <td><Link href={`/calls/${c.id}`}>{c.titel}</Link>{c.auswertung === "fehler" && <div className="small" style={{ color: "var(--danger)" }}>Auswertung fehlgeschlagen</div>}{c.auswertung === "ohne_ki" && <div className="small muted">ohne KI</div>}</td>
+                  <td><Link href={`/calls/${c.id}`}>{c.titel}</Link>{c.zusammenfassung?.teilnehmer?.length ? <div className="small muted">{c.zusammenfassung.teilnehmer.join(", ")}</div> : null}{c.auswertung === "fehler" && <div className="small" style={{ color: "var(--danger)" }}>Auswertung fehlgeschlagen</div>}{c.auswertung === "ohne_ki" && <div className="small muted">ohne KI</div>}</td>
                   <td className="small">{QUELLE[c.quelle]}</td>
                   <td className="right num">{c.vorschlaege ? <span className="tag tag-warn">{c.vorschlaege}</span> : "0"}</td>
                   <td className="right num">{c.aufgaben}</td>

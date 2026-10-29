@@ -5,7 +5,7 @@ import { askClaude, modelFor } from "@/lib/ai/claude";
 import { addDaysIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { driveToken } from "@/lib/integrations/clients/drive";
-import { bereinigeTranskript, datumAusText, googleDocId, googleDocLinks, istEigeneAufgabe, kiAuftrag, leseKiPunkte, zitatPosition, type PunktArt } from "./logic";
+import { bereinigeTranskript, datumAusText, googleDocId, googleDocLinks, istEigeneAufgabe, kiAuftrag, leseArchivExport, leseKiPunkte, leseKiZusammenfassung, zitatPosition, type PunktArt } from "./logic";
 
 // Call-Archiv: Import (Text, Google-Doc-Link, wöchentlich aus einem Discord-Kanal), KI-Auswertung, Vorschläge →
 // Aufgaben nach Bestätigung, offene Punkte für den nächsten Call.
@@ -57,7 +57,7 @@ export async function callImportieren(
   if (transkript.length < 20) throw new Error("Das Transkript ist leer oder zu kurz.");
   const [row] = await db
     .insert(C)
-    .values({ tenantId, titel: e.titel.slice(0, 200), datum: e.datum, quelle: e.quelle, quelleRef: ref, transkript })
+    .values({ tenantId, titel: e.titel.slice(0, 200), datum: e.datum, quelle: e.quelle, quelleRef: ref, quelleUrl: e.link && googleDocId(e.link) ? `https://docs.google.com/document/d/${googleDocId(e.link)}/edit` : null, transkript })
     .onConflictDoNothing()
     .returning({ id: C.id });
   if (!row) {
@@ -80,16 +80,45 @@ export async function callAuswerten(tenantId: string, callId: string): Promise<{
   try {
     const antwort = await askClaude(k.apiKey, kiAuftrag(c.titel, c.datum, c.transkript), { model: k.model, task: "simple", maxTokens: 4000, timeoutMs: 120_000 });
     const punkte = leseKiPunkte(antwort.text);
+    const zusammenfassung = leseKiZusammenfassung(antwort.text);
     await db.delete(P).where(and(eq(P.tenantId, tenantId), eq(P.callId, callId), eq(P.status, "vorschlag")));
     if (punkte.length)
       await db.insert(P).values(punkte.map((p) => ({ tenantId, callId, art: p.art, text: p.text, verantwortlich: p.verantwortlich, frist: p.frist, zitat: p.zitat, position: zitatPosition(c.transkript, p.zitat) })));
-    await db.update(C).set({ auswertung: "fertig", auswertungFehler: null }).where(eq(C.id, callId));
+    await db.update(C).set({ auswertung: "fertig", auswertungFehler: null, ...(zusammenfassung ? { zusammenfassung } : {}) }).where(eq(C.id, callId));
     return { punkte: punkte.length, fehler: null };
   } catch (e) {
     const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
     await db.update(C).set({ auswertung: "fehler", auswertungFehler: msg }).where(eq(C.id, callId));
     return { punkte: 0, fehler: msg };
   }
+}
+
+/**
+ * Einmaliger Umzug aus dem bisherigen Call-Archiv (claude.ai-Seite): Export-Datei (JSON) mit Zusammenfassung und
+ * Transkript. To-dos, Entscheidungen und offene Fragen werden Vorschläge (Aufgaben erst nach Bestätigung). Calls,
+ * die es schon gibt (gleiches Google-Doc oder gleiche Archiv-ID), werden übersprungen.
+ */
+export async function archivImportieren(tenantId: string, roh: unknown): Promise<{ neu: number; vorhanden: number; fehler: string | null }> {
+  const { calls: liste, fehler } = leseArchivExport(roh);
+  if (fehler) return { neu: 0, vorhanden: 0, fehler };
+  let neu = 0;
+  let vorhanden = 0;
+  for (const a of liste) {
+    const docId = a.quelleUrl ? googleDocId(a.quelleUrl) : null;
+    const ref = docId ? `gdoc:${docId}` : `archiv:${a.externeId}`;
+    const [row] = await db
+      .insert(C)
+      .values({ tenantId, titel: a.titel, datum: a.datum, quelle: "archiv", quelleRef: ref, quelleUrl: a.quelleUrl, transkript: bereinigeTranskript(a.transkript) || "(Im Export war kein Transkript enthalten.)", zusammenfassung: a.zusammenfassung, auswertung: "fertig" })
+      .onConflictDoNothing()
+      .returning({ id: C.id });
+    if (!row) {
+      vorhanden++;
+      continue;
+    }
+    if (a.punkte.length) await db.insert(P).values(a.punkte.map((p) => ({ tenantId, callId: row.id, art: p.art, text: p.text, verantwortlich: p.verantwortlich, frist: p.frist })));
+    neu++;
+  }
+  return { neu, vorhanden, fehler: null };
 }
 
 /** Punkt von Hand ergänzen (z. B. ohne KI). */
@@ -138,7 +167,7 @@ export async function punktStatus(tenantId: string, id: string, status: "verworf
 
 export async function callsListe(tenantId: string, o: { von?: string; bis?: string } = {}) {
   const calls = await db
-    .select({ id: C.id, titel: C.titel, datum: C.datum, quelle: C.quelle, auswertung: C.auswertung, auswertungFehler: C.auswertungFehler })
+    .select({ id: C.id, titel: C.titel, datum: C.datum, quelle: C.quelle, auswertung: C.auswertung, auswertungFehler: C.auswertungFehler, zusammenfassung: C.zusammenfassung })
     .from(C)
     .where(and(eq(C.tenantId, tenantId), o.von ? gte(C.datum, o.von) : undefined, o.bis ? lte(C.datum, o.bis) : undefined))
     .orderBy(desc(C.datum), desc(C.createdAt))

@@ -123,8 +123,11 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     offen: ["Übertragung der Staffelpreise über die Amazon-Schnittstelle (Listings, B2B-Angebot) – live mit echter Freigabe prüfen"],
   },
   "/calls": {
-    abläufe: [{ ablauf: "Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal", erwartet: "4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, 1 neuer Call aus Discord", tests: ["teil2.spec.ts › Call-Archiv"] }],
-    offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs"],
+    abläufe: [
+      { ablauf: "Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal", erwartet: "4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, Zusammenfassung mit Teilnehmern, 1 neuer Call aus Discord", tests: ["teil2.spec.ts › Call-Archiv"] },
+      { ablauf: "Umzug aus dem bisherigen Call-Archiv: Export (JSON) hochladen, zweimal", erwartet: "Call mit Zusammenfassung und Google-Doc-Link, 3 Vorschläge; zweiter Import: „1 waren schon da“", tests: ["teil2.spec.ts › Umzug aus dem bisherigen Call-Archiv"] },
+    ],
+    offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs", "Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)"],
   },
   "/kalender/zeiten": { abläufe: [{ ablauf: "Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick", erwartet: "Fälligkeit verschoben, Rückblick sichtbar", tests: ["teil2.spec.ts › Feste freie Zeiten"] }] },
   "/board": { abläufe: [{ ablauf: "Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie", erwartet: "📘-Link auf der Karte, auch bei der Assistenz", tests: ["teil2.spec.ts › Anleitung im Wissen"] }] },

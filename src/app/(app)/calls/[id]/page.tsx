@@ -36,6 +36,24 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       {c.auswertung === "fehler" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Auswertung fehlgeschlagen: {c.auswertungFehler}</div>}
       {c.auswertung === "ohne_ki" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Ohne KI-Anbindung – Punkte unten von Hand ergänzen (<Link href="/anbindungen#anthropic">Anbindungen → Claude</Link>).</div>}
 
+      {(c.zusammenfassung || c.quelleUrl) && (
+        <section className="card card-pad" style={{ marginBottom: 12 }} data-testid="call-zusammenfassung">
+          {c.zusammenfassung?.teilnehmer?.length ? <div className="small muted">Teilnehmer: {c.zusammenfassung.teilnehmer.join(", ")}</div> : null}
+          {c.zusammenfassung?.ueberblick && <p style={{ margin: "6px 0 0", maxWidth: 820 }}>{c.zusammenfassung.ueberblick}</p>}
+          {c.zusammenfassung?.themen?.length ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, marginTop: 10 }}>
+              {c.zusammenfassung.themen.map((t) => (
+                <div key={t.name} className="small">
+                  <strong>{t.name}</strong>
+                  {t.punkte.length > 0 && <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>{t.punkte.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {c.quelleUrl && <div className="small" style={{ marginTop: 8 }}><a href={c.quelleUrl} target="_blank" rel="noreferrer noopener">Google-Dokument öffnen</a></div>}
+        </section>
+      )}
+
       <form action={uebernehmenAction}>
         <input type="hidden" name="call" value={c.id} />
         {ARTEN.map((art) => {

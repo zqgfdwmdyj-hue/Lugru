@@ -1,9 +1,12 @@
-import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tasks, tenantId } from "./core";
 import { encryptedText } from "./encrypted";
 
 // Call-Archiv (Calls mit dem Amazon-Consultant): Transkript (verschlüsselt), daraus von der KI gezogene Punkte
 // (Vereinbarungen, Aufgaben, Entscheidungen, offene Fragen) – Aufgaben erst nach Bestätigung.
+
+/** Zusammenfassung wie im bisherigen Call-Archiv: Überblick, Themen mit Kernaussagen, Teilnehmer. */
+export type CallZusammenfassung = { ueberblick: string; themen: { name: string; punkte: string[] }[]; teilnehmer: string[] };
 
 export const calls = pgTable(
   "calls",
@@ -12,9 +15,12 @@ export const calls = pgTable(
     tenantId: tenantId(),
     titel: text("titel").notNull(),
     datum: date("datum", { mode: "string" }).notNull(),
-    quelle: text("quelle", { enum: ["text", "google_doc", "discord"] }).notNull(),
-    /** Google-Doc-ID bzw. Discord-Nachricht – gegen doppelten Import. */
+    quelle: text("quelle", { enum: ["text", "google_doc", "discord", "archiv"] }).notNull(),
+    /** „gdoc:<ID>“ bzw. „archiv:<ID>“ – gegen doppelten Import. */
     quelleRef: text("quelle_ref"),
+    /** Link zum Google-Dokument (falls bekannt). */
+    quelleUrl: text("quelle_url"),
+    zusammenfassung: jsonb("zusammenfassung").$type<CallZusammenfassung>(),
     transkript: encryptedText("transkript").notNull(),
     auswertung: text("auswertung", { enum: ["offen", "fertig", "fehler", "ohne_ki"] }).notNull().default("offen"),
     auswertungFehler: text("auswertung_fehler"),

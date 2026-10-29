@@ -133,6 +133,7 @@ test.describe("Teil 2 – Team", () => {
     await page.getByTestId("calls-link").fill("https://docs.google.com/document/d/TESTCALLimport00000000001/edit");
     await Promise.all([page.waitForURL(/\/calls\/[0-9a-f-]{36}/), page.getByTestId("calls-import").click()]);
     await expect(page.getByTestId("call-punkt")).toHaveCount(4);
+    await expect(page.getByTestId("call-zusammenfassung")).toContainText("Consultant (Test), Ludwig (Test)");
     await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("call-uebernehmen").click()]);
     const [t] = await sql<{ title: string; link: string; category: string; due_date: string }>("select title, link, category, due_date::text from tasks where title like 'Liste der zehn Audit-Marken%'");
     expect(t).toMatchObject({ category: "amazon", due_date: "2026-10-23" });
@@ -147,6 +148,30 @@ test.describe("Teil 2 – Team", () => {
     await Promise.all([page.waitForURL(/meldung=/), page.getByRole("button", { name: "Jetzt aus Discord holen" }).click()]);
     await expect(page.locator("[role=status]")).toContainText("1 neue Calls aus Discord");
     await expect(page.getByTestId("calls-zeile").filter({ hasText: "Consultant-Call 21.10.2026" })).toBeVisible();
+  });
+
+  test("Umzug aus dem bisherigen Call-Archiv: Export (JSON) → Call mit Zusammenfassung, Vorschläge, kein Doppel", async ({ page }) => {
+    const exportDatei = {
+      calls: [{ id: "cTEST-ARCHIV-1", date: "2026-09-17", title: "Archiv-Testcall (erfunden)", sourceUrl: "https://docs.google.com/document/d/TESTARCHIV00000000000001/edit", summary: { overview: "Erfundener Überblick aus dem Archiv.", topics: [{ name: "Lager", points: ["Testpunkt"] }], decisions: ["Testentscheidung"], todos: [{ task: "Test-To-do aus dem Archiv", owner: "Ludwig", due: "2026-09-24" }], open_questions: ["Testfrage aus dem Archiv?"], participants: ["Ludwig (Test)", "Consultant (Test)"] } }],
+      chunks: [{ callId: "cTEST-ARCHIV-1", n: 0, text: "Consultant: Testtranskript aus dem Archiv." }],
+    };
+    const datei = { name: "call-archiv-test.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(exportDatei)) };
+    await anmelden(page, "inhaber");
+    await page.goto("/calls");
+    await page.locator("details", { hasText: "Call importieren" }).evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.getByTestId("calls-archiv-datei").setInputFiles(datei);
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-archiv-import").click()]);
+    await expect(page.locator("[role=status]")).toContainText("1 Calls übernommen");
+    await page.getByTestId("calls-zeile").filter({ hasText: "Archiv-Testcall (erfunden)" }).getByRole("link").click();
+    await expect(page.getByTestId("call-zusammenfassung")).toContainText("Erfundener Überblick aus dem Archiv.");
+    await expect(page.getByTestId("call-zusammenfassung")).toContainText("Ludwig (Test), Consultant (Test)");
+    await expect(page.locator('[data-testid="call-punkt"][data-status="vorschlag"]')).toHaveCount(3);
+    // zweiter Import derselben Datei: nichts doppelt
+    await page.goto("/calls");
+    await page.locator("details", { hasText: "Call importieren" }).evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.getByTestId("calls-archiv-datei").setInputFiles(datei);
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-archiv-import").click()]);
+    await expect(page.locator("[role=status]")).toContainText("1 waren schon da");
   });
 
   test("Anleitung im Wissen → Aufgabe zuweisen hängt sie an; Bea sieht die Aufgabe mit Anleitung", async ({ page, browser }) => {

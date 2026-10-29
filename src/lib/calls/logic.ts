@@ -32,13 +32,96 @@ export function bereinigeTranskript(t: string, max = 120_000): string {
 export function kiAuftrag(titel: string, datum: string, transkript: string): string {
   return [
     "Du liest das Transkript eines Calls mit dem Amazon-Consultant (SAS-Programm) eines Online-Händlers (Ludwig, LuGru GmbH).",
-    "Ziehe heraus: Vereinbarungen, Aufgaben (mit Verantwortlichem und Frist, falls genannt), Entscheidungen und offene Fragen.",
-    'Antworte NUR mit JSON: {"punkte":[{"art":"vereinbarung|aufgabe|entscheidung|frage","text":"kurz, deutsch, eindeutig","verantwortlich":"ich|consultant|Name|null","frist":"JJJJ-MM-TT|null","zitat":"wörtlicher kurzer Ausschnitt (max. 120 Zeichen) aus dem Transkript"}]}',
+    "Schreibe eine deutsche Zusammenfassung (Überblick, Teilnehmer, Themen mit Kernaussagen) und ziehe heraus: Vereinbarungen, Aufgaben (mit Verantwortlichem und Frist, falls genannt), Entscheidungen und offene Fragen.",
+    'Antworte NUR mit JSON: {"ueberblick":"3–5 Sätze","teilnehmer":["Name"],"themen":[{"name":"Thema","punkte":["Kernaussage"]}],"punkte":[{"art":"vereinbarung|aufgabe|entscheidung|frage","text":"kurz, deutsch, eindeutig","verantwortlich":"ich|consultant|Name|null","frist":"JJJJ-MM-TT|null","zitat":"wörtlicher kurzer Ausschnitt (max. 120 Zeichen) aus dem Transkript"}]}',
     "Regeln: nichts erfinden; Frist nur, wenn im Call genannt (relative Angaben wie „bis Freitag“ vom Call-Datum aus rechnen); höchstens 40 Punkte; Wiederholungen zusammenfassen.",
     `Call: ${titel} am ${datum}`,
     "Transkript:",
     transkript,
   ].join("\n");
+}
+
+/** Zusammenfassung aus der KI-Antwort (Überblick, Teilnehmer, Themen). */
+export function leseKiZusammenfassung(antwort: string): { ueberblick: string; teilnehmer: string[]; themen: { name: string; punkte: string[] }[] } | null {
+  const json = /\{[\s\S]*\}/.exec(antwort)?.[0];
+  if (!json) return null;
+  try {
+    const o = JSON.parse(json) as Record<string, unknown>;
+    return normZusammenfassung(o.ueberblick ?? o.overview, o.teilnehmer ?? o.participants, o.themen ?? o.topics);
+  } catch {
+    return null;
+  }
+}
+
+const liste = (v: unknown) => (Array.isArray(v) ? v : []);
+const str = (v: unknown, max = 500) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+function normZusammenfassung(ueberblick: unknown, teilnehmer: unknown, themen: unknown) {
+  const z = {
+    ueberblick: str(ueberblick, 3000),
+    teilnehmer: liste(teilnehmer).map((x) => str(x, 80)).filter(Boolean).slice(0, 30),
+    themen: liste(themen)
+      .map((t) => {
+        const o = (t ?? {}) as Record<string, unknown>;
+        return { name: str(o.name, 120), punkte: liste(o.punkte ?? o.points).map((x) => str(x, 400)).filter(Boolean).slice(0, 20) };
+      })
+      .filter((t) => t.name)
+      .slice(0, 30),
+  };
+  return z.ueberblick || z.themen.length || z.teilnehmer.length ? z : null;
+}
+
+/** Datum aus freier Angabe („2026-10-23“, „23.10.2026“, „23.10.“ mit Jahr des Calls) – sonst null. */
+export function fristAus(v: unknown, callDatum: string): string | null {
+  const s = str(v, 40);
+  if (!s) return null;
+  const iso = /\b(20\d{2})-(\d{2})-(\d{2})\b/.exec(s);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const de = /\b(\d{1,2})\.(\d{1,2})\.(20\d{2})?/.exec(s);
+  if (de) return `${de[3] ?? callDatum.slice(0, 4)}-${de[2].padStart(2, "0")}-${de[1].padStart(2, "0")}`;
+  return null;
+}
+
+export type ArchivCall = { externeId: string; datum: string; titel: string; quelleUrl: string | null; transkript: string; zusammenfassung: ReturnType<typeof normZusammenfassung>; punkte: Punkt[] };
+
+/**
+ * Export aus dem bisherigen Call-Archiv (claude.ai-Seite) lesen: ein Call, eine Liste oder {calls, chunks}.
+ * Felder: id, date, title, sourceUrl, summary {overview, topics, decisions, todos{task, owner, due}, open_questions,
+ * participants}; Transkript als transcript/text oder in chunks ({callId, n, text}).
+ */
+export function leseArchivExport(roh: unknown): { calls: ArchivCall[]; fehler: string | null } {
+  const o = (roh ?? {}) as Record<string, unknown>;
+  const chunks = liste(o.chunks).map((c) => (c ?? {}) as Record<string, unknown>);
+  const rohCalls = Array.isArray(roh) ? roh : Array.isArray(o.calls) ? (o.calls as unknown[]) : o.date || o.datum ? [roh] : [];
+  const calls: ArchivCall[] = [];
+  for (const x of rohCalls) {
+    const c = (x ?? {}) as Record<string, unknown>;
+    const datum = str(c.date ?? c.datum, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(datum)) continue;
+    const id = str(c.id ?? c.externeId, 80) || `ohne-id-${datum}`;
+    const eigene = liste(c.chunks).length ? liste(c.chunks) : chunks.filter((k) => k.callId === c.id);
+    const teile = eigene.map((k, i) => (typeof k === "string" ? { n: i, text: k } : { n: Number((k as Record<string, unknown>).n ?? i), text: typeof (k as Record<string, unknown>).text === "string" ? ((k as Record<string, unknown>).text as string).slice(0, 200_000) : "" }));
+    const transkript = str(c.transcript ?? c.transkript ?? c.text, 400_000) || teile.sort((a, b) => a.n - b.n).map((t) => t.text).join("");
+    const s = (c.summary ?? c.zusammenfassung ?? {}) as Record<string, unknown>;
+    const punkte: Punkt[] = [
+      ...liste(s.todos).map((t) => {
+        const a = typeof t === "string" ? { task: t } : ((t ?? {}) as Record<string, unknown>);
+        return { art: "aufgabe" as const, text: str(a.task ?? a.text, 400), verantwortlich: str(a.owner ?? a.verantwortlich, 60) || null, frist: fristAus(a.due ?? a.frist, datum), zitat: null };
+      }),
+      ...liste(s.decisions).map((d) => ({ art: "entscheidung" as const, text: str(d, 400), verantwortlich: null, frist: null, zitat: null })),
+      ...liste(s.open_questions).map((q) => ({ art: "frage" as const, text: str(q, 400), verantwortlich: null, frist: null, zitat: null })),
+    ].filter((p) => p.text.length >= 3);
+    calls.push({
+      externeId: id,
+      datum,
+      titel: str(c.title ?? c.titel, 200) || str(s.title, 200) || `Consultant-Call ${datum.split("-").reverse().join(".")}`,
+      quelleUrl: /^https:\/\/docs\.google\.com\//.test(str(c.sourceUrl ?? c.quelleUrl, 500)) ? str(c.sourceUrl ?? c.quelleUrl, 500) : null,
+      transkript,
+      zusammenfassung: normZusammenfassung(s.overview ?? s.ueberblick, s.participants ?? s.teilnehmer, s.topics ?? s.themen),
+      punkte,
+    });
+  }
+  return { calls, fehler: calls.length ? null : "Keine Calls in der Datei erkannt (erwartet: date im Format JJJJ-MM-TT, dazu title, summary, Transkript)." };
 }
 
 /** KI-Antwort prüfen: nur gültige Arten, Texte gekürzt, Datum geprüft, Doppel entfernt. */
