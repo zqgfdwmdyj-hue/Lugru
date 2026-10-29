@@ -146,6 +146,8 @@ export type TenantSettings = {
     ustSatz?: number;
     /** Lieferanschrift für Großhändler-Bestellungen (Prep Center), mehrzeilig. */
     lieferadresse?: string;
+    /** Unsere Mindestmarge auf den EK für die Ampel im Preislisten-Scanner (0.1 = 10 %). */
+    minMarge?: number;
   };
   cash?: { startBalance?: number; asOf?: string };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */

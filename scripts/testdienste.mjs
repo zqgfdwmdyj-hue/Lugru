@@ -55,6 +55,16 @@ function kiAnswer(req, b) {
   const resultText = results.map((r) => (typeof r.content === "string" ? r.content : (r.content ?? []).map((x) => x.text).join(""))).join("\n");
   remember(ki, { at: new Date().toISOString(), beta: req.headers["anthropic-beta"] ?? null, thinking: b.thinking ?? null, tools: (b.tools ?? []).map((t) => t.name), prefix: prefixHash(b), staleThinking: stale, dropBlock: drop, text, toolResult: resultText || null, toolError: results.some((r) => r.is_error) });
   // Retouren-Station: Etikett, Lieferschein, Produktabgleich, Code, Falltext – feste erfundene JSON-Antworten.
+  // B2B: Spalten einer Preisliste zuordnen (erfundene, aber nachvollziehbare Regeln wie eine KI)
+  if (/Ordne die Spalten einer Großhändler-Preisliste zu/.test(text) && !stale) {
+    let kopf = [];
+    try {
+      kopf = JSON.parse(/Spalten: (\[.*\])/.exec(text)?.[1] ?? "[]");
+    } catch {}
+    const finde = (re) => kopf.find((h) => re.test(h)) ?? null;
+    const m = { ean: finde(/barcode|ean|gtin/i), asin: finde(/amazon|asin/i), supplierSku: finde(/code|art|sku/i), title: finde(/produkt|bezeichnung|name/i), price: finde(/netto|preis|ek/i), stock: finde(/lager|bestand/i), moq: finde(/vpe|mindest|moq/i), url: null };
+    return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
+  }
   const st = stationKi(text);
   if (st && !stale) return [200, reply(b, [{ type: "text", text: JSON.stringify(st) }], "end_turn")];
   if (stale && !drop) {

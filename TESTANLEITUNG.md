@@ -323,6 +323,26 @@ Ein Handscanner-Scan einer LPN/FNSKU startet den Produkt-Schritt direkt. Ohne Ne
 
 **Datenquellen:** Kundenretouren (mit LPN), Remissionsaufträge, Remissionssendungen, Erstattungen und Transaktionen kommen über die Amazon-Schnittstelle (Anbindungen → Amazon, täglich) oder als Datei-Upload. Den Stand der Kundenretouren zeigt die Station oben an.
 
+## 8b. B2B-Deals für Prep-Center-Kunden
+
+Seite: **Einkauf → B2B-Deals** (`/b2b`, Bereich „B2B-Deals“). Kunden haben ein eigenes **Kundenportal** unter `/portal` mit eigener Anmeldung – sie sehen nur Deals und ihre eigenen Reservierungen, Rechnungen und Gutschriften, nichts aus dem Seller-System.
+
+**Einrichten (einmal):** Einstellungen → **B2B-Deals**: Firma, auf die Deals und Rechnungen laufen (Name, Anschrift, USt-IdNr.), Marktplätze, Mindest-ROI für Kunden, unsere Mindestmarge, Mengenfaktor, max. Kunden je ASIN, Prep-Gebühr, Versandanteil, Fehlmengen-Regel, Lieferanschrift (Prep Center). Anbindungen → **Lexoffice** (API-Schlüssel dieser Firma) und **Discord – B2B-Deal-Kanal** (Webhook). Für jeden Lieferanten unter **Lieferanten-Freigaben** klären, ob Wiederverkauf und Marktplatz-Verkauf erlaubt sind (mit Nachweis) – ohne das lässt sich kein Deal freischalten.
+
+**Ablauf:**
+1. **Preisliste auswerten** (B2B-Deals → Preislisten je Land): Datei hochladen (unklare Spalten ordnet die KI zu) oder der Lieferant schickt sie per Mail an ein verbundenes Postfach (Absender = Profil-E-Mail bzw. gleiche Firmen-Domain → automatisch übernommen, Aufgabe mit Link). Je Artikel und Land: Buy Box (aktuell, Ø 90 Tage, Tief 12 Monate), Verkäufe, Angebote, Amazon-Anteil, Gebühren, Gewinn/ROI beim EK, **Kundenpreis-Vorschlag** und Ampel; Packungs- und Aktions-Warnungen; Filter und CSV-Export. NL/BE/PL/SE (nicht bei Keepa) erst im Deal über Amazon live.
+2. **Deal anlegen** (aus der Zeile oder manuell) → Prognose je Land läuft im Hintergrund → **Rechenhilfe**: Kundenpreis eintippen, sofort unser Verdienst und Gewinn/ROI des Kunden je Land, Warnungen; Mengen-Vorschlag (Verkäufe/Monat × Faktor − eigener Bestand); abweichende Preise je Kunde.
+3. **Freischalten** (nur mit Kundenpreis, Frist, Vertriebsfreigabe) → im Portal sichtbar, Discord „neu“, Abo-Mails nur mit Haken. Deal-Blatt als Text (kopieren) und PDF (ohne EK).
+4. **Kunden** (B2B-Kunden): anlegen, USt-IdNr. **bei VIES prüfen** (Reverse Charge nur mit gültiger Nummer aus einem anderen EU-Land), **Einladungs-Link** (7 Tage, einmalig; per Mail nur mit Haken). Kunden reservieren im Portal mit Bestätigung der Bedingungen; Grenzen: Mindestmenge, max. je Kunde, max. gesamt, max. Kunden. Ab der „fast weg“-Schwelle Discord-Meldung, bei ausverkauft oder Fristende schließt der Deal.
+5. **Vorkasse-Rechnungen** (Lexoffice) → **Zahlungen prüfen** (stündlich auch automatisch) → **Bestell-Entwurf** an den Großhändler (MOQ erreicht; sonst Restmenge selbst übernehmen oder Deal verfallen lassen = Gutschriften) → **Freigabe durch den Inhaber** → **Senden nur mit „Geprüft – jetzt senden“**. Nicht bezahlte Reservierungen werden dabei storniert (Gutschrift).
+6. **Wareneingang** im Prep Center buchen: bei Fehlmenge wird gekürzt (anteilig oder nach Reservierungszeitpunkt, eigene Restmenge zuerst), je Kunde eine Gutschrift erstellt und eine Reklamation an den Großhändler als Entwurf vorbereitet (Senden mit Haken).
+7. **Übergabe ans Prep Center**: Export je Kunde oder alle als CSV/XLSX/PDF (neutral, da das Prep-Tool selbst nicht angepasst werden kann) → „als übergeben markieren“ → „Deal erledigt“.
+8. **Bilanz** (B2B-Deals → Bilanz): Umsatz, EK, unser Gewinn je Deal; **Erfolgskontrolle** 30 und 60 Tage nach Wareneingang (Ø Buy Box gegen Prognose, ±10 % = wie prognostiziert), täglich automatisch oder per Knopf.
+
+**Claude:** lesen `preislisten`, `preisliste_auswerten`, `deals`, `deal`, `deal_bilanz`, `b2b_kunden` (ohne Kontaktdaten); ändern `deal_anlegen`, `deal_preis_setzen`, `deal_freischalten` (Abo-Mails nur mit `mails=true`). Neue Werkzeuge meldet der Konnektor beim Verbinden (`tools/list_changed`).
+
+**Rechtliches/Steuer:** Prognosen ohne Garantie (steht im Portal, auf dem Deal-Blatt und in den Bedingungen); Kunden prüfen die Markenfreigabe selbst. Reverse Charge setzt voraus, dass die Ware Deutschland verlässt – geht sie an ein FBA-Lager in Deutschland, ist es ggf. eine Inlandslieferung mit USt: **mit dem Steuerberater klären**.
+
 ## 9. Testumgebung und automatische Prüfungen
 
 **Testumgebung auf dem Server** – läuft neben dem echten System, mit eigener Datenbank (`seller_test`) und erfundenen

@@ -157,6 +157,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           </div>
           <div style={grid}>
             <Field label="Mindest-ROI für Kunden" name="b2b_minKundenRoi" value={pct(s.b2b.minKundenRoi)} suffix="%" width={70} help="Darunter warnt die Rechenhilfe" />
+            <Field label="Unsere Mindestmarge" name="b2b_minMarge" value={pct(s.b2b.minMarge)} suffix="% auf EK" width={70} help="Ampel im Preislisten-Scanner" />
             <Field label="Mengenfaktor" name="b2b_mengenFaktor" value={dec(s.b2b.mengenFaktor)} suffix="× Verkäufe/Monat" width={70} help="Vorschlag max. Gesamtmenge je Deal" />
             <Field label="Max. Kunden je ASIN" name="b2b_maxKundenProAsin" value={s.b2b.maxKundenProAsin} width={70} />
             <Field label="Prep-Gebühr je Stück" name="b2b_prepGebuehr" value={dec(s.b2b.prepGebuehr)} suffix="€" width={70} help="In der Kundenrechnung" />

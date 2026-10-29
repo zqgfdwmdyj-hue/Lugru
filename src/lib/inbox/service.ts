@@ -18,6 +18,8 @@ export type ParsedMail = {
   subject: string;
   receivedAt: Date;
   text: string;
+  /** Tabellen-Anhänge (CSV/Excel) – für Preislisten von Lieferanten (B2B-Deals); werden nicht gespeichert. */
+  tabellen?: { name: string; data: Uint8Array }[];
 };
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);
@@ -50,6 +52,10 @@ export async function parseRaw(raw: Buffer, providerMessageId?: string): Promise
     subject: m.subject ?? "",
     receivedAt: m.date ?? new Date(),
     text,
+    tabellen: (m.attachments ?? [])
+      .filter((a) => /\.(csv|xlsx|xls)$/i.test(a.filename ?? "") && a.size <= 5_000_000)
+      .slice(0, 3)
+      .map((a) => ({ name: a.filename ?? "Preisliste", data: new Uint8Array(a.content) })),
   };
 }
 
@@ -80,6 +86,11 @@ const CASE_TYPE: Partial<Record<Topic, (typeof schema.CASE_TYPES)[number]>> = {
 const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message", "registration", "payment_problem"]);
 
 export async function ingestMail(tenantId: string, mailboxId: string | null, m: ParsedMail): Promise<"new" | "duplicate" | "ignored"> {
+  // Preisliste eines bekannten Lieferanten im Anhang → in dessen „per Mail“-Preisliste übernehmen (B2B-Deals).
+  if (m.tabellen?.length) {
+    const { preislisteAusMail } = await import("@/lib/b2b/preislisten-mail");
+    await preislisteAusMail(tenantId, { messageKey: m.messageKey, fromAddress: m.fromAddress, subject: m.subject, tabellen: m.tabellen }).catch((e) => console.error("[Preisliste aus Mail]", e instanceof Error ? e.message : e));
+  }
   const c = classifyMail({ from: `${m.fromName ?? ""} <${m.fromAddress}>`, subject: m.subject, body: m.text });
   if (!c.relevant) return "ignored";
   const [row] = await db

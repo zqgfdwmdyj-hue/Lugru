@@ -45,6 +45,8 @@ export default async function B2bDealsPage({ searchParams }: { searchParams: Pro
       <div className="page-head">
         <div><div className="crumb">Einkauf</div><h1>B2B-Deals</h1></div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Link className="btn" href="/b2b/preislisten">Preislisten je Land</Link>
+          <Link className="btn" href="/b2b/bilanz">Bilanz</Link>
           <Link className="btn" href="/b2b/kunden">B2B-Kunden</Link>
           <Link className="btn" href="/b2b/lieferanten">Lieferanten-Freigaben</Link>
           <Link className="btn btn-primary" href="/b2b/neu" data-testid="deal-neu">Deal anlegen</Link>

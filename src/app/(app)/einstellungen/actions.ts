@@ -58,6 +58,7 @@ function b2bSettings(fd: FormData): NonNullable<TenantSettings["b2b"]> {
     fastWegProzent: pct(fd, "b2b_fastWegProzent"),
     ustSatz: pct(fd, "b2b_ustSatz"),
     lieferadresse: str(fd, "b2b_lieferadresse")?.slice(0, 500),
+    minMarge: pct(fd, "b2b_minMarge"),
   };
 }
 

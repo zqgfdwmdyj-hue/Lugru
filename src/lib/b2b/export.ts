@@ -10,7 +10,11 @@ export const EXPORT_SPALTEN = ["Kunde", "Amazon-Name", "Land", "Deal", "ASIN", "
 const werte = (z: ExportZeile) => [z.kunde, z.amazonName ?? "", z.land, String(z.deal), z.asin, z.ean ?? "", z.titel, String(z.menge)];
 
 export function exportCsv(zeilen: ExportZeile[]): string {
-  const zelle = (v: string) => (/[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+  const zelle = (roh: string) => {
+    // Formeln aus fremden Texten (z. B. „=HYPERLINK(…)“ im Titel) nicht ausführen lassen
+    const v = /^[=+\-@\t]/.test(roh) && !/^-?\d+([.,]\d+)?$/.test(roh) ? `'${roh}` : roh;
+    return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  };
   return "﻿" + [EXPORT_SPALTEN.join(";"), ...zeilen.map((z) => werte(z).map(zelle).join(";"))].join("\r\n") + "\r\n";
 }
 

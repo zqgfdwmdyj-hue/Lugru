@@ -136,6 +136,8 @@ export async function runScheduledJobs(force = false) {
         await step(t, "B2B-Deals Fristen", async () => (await import("@/lib/b2b/service")).fristenPruefen(t));
         if (await has("lexoffice")) await step(t, "B2B-Zahlungen (Lexoffice)", async () => (await import("@/lib/b2b/ablauf")).zahlungenAbgleichen(t));
       }
+      // B2B-Deals: Erfolgskontrolle 30/60 Tage nach Wareneingang (Keepa, einmal am Tag).
+      if (force || due(`${t}:b2b-kontrolle`, 719)) await step(t, "B2B-Erfolgskontrolle", async () => (await import("@/lib/b2b/kontrolle")).erfolgskontrolle(t));
       if (await has("google_drive")) if (force || due(`${t}:drive`, 59)) await step(t, "Rechnungen", () => syncDrive(t, 100));
       // EK-Liste für AccountOne (tax.fish braucht die EKs für PAN-EU-Verbringungen): Erinnerung bei Neuem, höchstens alle 4 Wochen.
       if (force || due(`${t}:cog-reminder`, 720)) await step(t, "EK-Liste AccountOne", () => cogReminder(t));

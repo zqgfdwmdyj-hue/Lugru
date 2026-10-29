@@ -81,6 +81,10 @@ describe("Rechte je Werkzeug", () => {
     expect(toolAllowed({ session: lager, canWrite: true, privat: false }, t({ area: "wawi" }))).toBe(false);
     expect(toolAllowed({ session: lager, canWrite: true, privat: false }, t({ area: ["start", "kalender"] }))).toBe(false);
     expect(toolAllowed({ session: lager, canWrite: true, privat: false }, t({ area: null }))).toBe(true);
+    // B2B-Deals: nur mit Bereich „b2b“ (z. B. Büro ohne B2B sieht deals/deal_anlegen nicht)
+    const buero = session({ role: "staff", areas: ["start", "posteingang", "kalender", "wawi", "buchhaltung"], privateAccess: false });
+    expect(toolAllowed({ session: buero, canWrite: true, privat: false }, t({ area: "b2b" }))).toBe(false);
+    expect(toolAllowed({ session: { ...buero, areas: ["b2b"] }, canWrite: true, privat: false }, t({ area: "b2b", write: true }))).toBe(true);
   });
   it("Ändern nur mit Freigabe und nie für Nur-ansehen-Konten", () => {
     expect(toolAllowed({ session: lager, canWrite: false, privat: false }, t({ area: "paletten", write: true }))).toBe(false);

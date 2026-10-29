@@ -72,6 +72,21 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Echte Hardware: Spracherkennung im Lager (Lärm), LPN-Erkennung per Kamera ≥ 95 % bei gutem Licht, Handscanner-Modell", "Echte KI-Erkennung von Etikett/Lieferschein mit echten Paketen", "Fristen der Anspruchsarten mit der aktuellen Amazon-Richtlinie abgleichen"],
   },
+  "/b2b": {
+    abläufe: [
+      { ablauf: "Deal anlegen, Prognose je Land, Rechenhilfe, Freischalten nur mit Vertriebsfreigabe, Discord", erwartet: "Prognose DE/FR/IT/ES (Keepa) und NL (Amazon live); Warnung bei negativem Verdienst; ohne Freigabe des Lieferanten kein Freischalten; Discord „neu“, „fast weg“, „geschlossen“", tests: ["b2b-deals.spec.ts › Freischalten nur mit Vertriebsfreigabe", "b2b-deals.spec.ts › Abnahme"] },
+      { ablauf: "Abnahme: 1 Deal, 3 Kunden, 1 Fehlmenge", erwartet: "VIES → Reverse Charge nur FR; Mengengrenzen im Portal; Vorkasse-Rechnungen (Lexoffice), Zahlungsabgleich, Bestellung Entwurf → Freigabe → Senden nur mit Haken; Wareneingang 54/60 → anteilig 18/27/9, 3 Gutschriften, Reklamation; Export CSV/XLSX/PDF; verteilt → erledigt", tests: ["b2b-deals.spec.ts › Abnahme"] },
+      { ablauf: "Kundenportal getrennt", erwartet: "eigene Anmeldung (Einladungs-Link, einmalig); nur eigene Reservierungen und Belege; kein Zugang ins Seller-System, Mitarbeiter-Anmeldung gilt im Portal nicht", tests: ["b2b-deals.spec.ts › Abnahme", "b2b-deals.spec.ts › Portal"] },
+      { ablauf: "Preislisten je Land, Lieferanten-Mail, Claude-Werkzeuge, Erfolgskontrolle", erwartet: "KI ordnet unklare Spalten zu; Ampel/Filter/Export; Deal aus Zeile; Mail-Anhang wird übernommen (Aufgabe); deal_anlegen/preis/freischalten protokolliert, Kunden ohne Kontaktdaten; Kontrolle 30/60 Tage je Land", tests: ["b2b-preislisten.spec.ts › Preisliste", "b2b-preislisten.spec.ts › Lieferanten-Antwort", "b2b-preislisten.spec.ts › Claude-Werkzeuge", "b2b-preislisten.spec.ts › Erfolgskontrolle"] },
+    ],
+    offen: [
+      "Echte Lexoffice-Anbindung mit dem Schlüssel der Deal-Firma (Rechnungsnummern, Reverse-Charge-Text, PDF)",
+      "Echter VIES-Abruf mit eigener USt-IdNr. (Kennung der qualifizierten Abfrage)",
+      "Discord-Webhook im echten B2B-Kanal",
+      "Prep-Tool: Name und Importformat fehlen noch – Export ist neutral (CSV/XLSX/PDF)",
+      "Steuer: Reverse Charge nur, wenn die Ware Deutschland verlässt – bei FBA-Versand in DE mit dem Steuerberater klären",
+    ],
+  },
   "/ansprueche": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl", tests: ["kennzahlen.spec.ts › Ansprüche"] },

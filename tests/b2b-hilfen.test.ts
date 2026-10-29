@@ -47,3 +47,10 @@ describe("Export fürs Prep-Tool", () => {
     expect(csv).toContain('"Test; Handel";;DE;7;B0TEST0001;4000000000017;"Testsocken ""Gr. 42""";18');
   });
 });
+
+describe("Export: keine Formeln aus fremden Texten", () => {
+  it("Titel mit = wird als Text exportiert, Zahlen bleiben Zahlen", () => {
+    const csv = exportCsv([{ kunde: "Test GmbH", amazonName: null, land: "DE", deal: 1, asin: "B0TEST0001", ean: null, titel: "=HYPERLINK(\"x\")", menge: 5, reservierung: "x" }]);
+    expect(csv).toContain(`;"'=HYPERLINK(""x"")";5`);
+  });
+});

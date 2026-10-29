@@ -5,7 +5,7 @@ import type { DealPrognose, OfferMarket } from "@/db/schema";
 import { eurRates } from "@/lib/fx/ecb";
 import { itemOffers } from "@/lib/integrations/clients/amazon";
 import { MARKTPLATZ_IDS, verdichteAngebote, type Land } from "@/lib/amazon-markt/logic";
-import { buyboxAnteile, MARKTPLAETZE, type Marktplatz } from "@/lib/keepa/auswertung";
+import { buyboxAnteile, MARKTPLAETZE, type KeepaStand, type Marktplatz } from "@/lib/keepa/auswertung";
 import { keepaMarkt } from "@/lib/keepa/markt";
 import { getSettings } from "@/lib/settings";
 import { aktionsmuster, kundeAusPrognose, MWST, tief12 } from "./logic";
@@ -31,7 +31,34 @@ export async function gebuehrenFuer(tenantId: string, asin: string, market?: Off
   return { provision, fba, geschaetzt: fbaEigen === null && !market?.fbaFee };
 }
 
-const KEEPA_LAENDER = new Set(Object.keys(MARKTPLAETZE));
+export const KEEPA_LAENDER = new Set(Object.keys(MARKTPLAETZE));
+
+/** Marktwerte eines Landes aus dem Keepa-Stand (für Deal-Prognose und Preislisten-Scanner gleich). */
+export function keepaEintrag(st: KeepaStand, mp: Marktplatz, inEur: (b: number | null, w: string) => number | null, now: number) {
+  const bbTage = st.verlauf.map((z) => z[1]);
+  const vk = st.aktuell.buybox ?? st.kennzahlen["30"].buybox.schnitt;
+  const anteile = buyboxAnteile(st.buybox_verlauf, st.buybox_stats, MARKTPLAETZE[mp].amazonId, now - 90 * TAG, now);
+  return {
+    waehrung: st.waehrung as string,
+    vk,
+    vk90: st.kennzahlen["90"].buybox.schnitt,
+    tief12: tief12(bbTage),
+    vkEur: inEur(vk, st.waehrung),
+    verkaeufeMonat: st.aktuell.monatlich_verkauft,
+    angeboteFba: st.aktuell.angebote_fba,
+    angeboteFbm: st.aktuell.angebote_fbm,
+    amazonProzent: anteile ? anteile.amazon_prozent : null,
+    aktionsmuster: aktionsmuster(bbTage)?.text ?? null,
+  };
+}
+
+/** Umrechnung in EUR zum EZB-Kurs (1 EUR = Kurs × Fremdwährung). */
+export const inEurMit = (kurse: Record<string, number>) => (betrag: number | null, waehrung: string) => {
+  if (betrag === null) return null;
+  if (waehrung === "EUR") return betrag;
+  const k = kurse[waehrung];
+  return k ? r2(betrag / k) : null;
+};
 
 export type PrognoseErgebnis = { prognose: DealPrognose; titel: string | null; hinweise: string[] };
 
@@ -39,12 +66,7 @@ export type PrognoseErgebnis = { prognose: DealPrognose; titel: string | null; h
 export async function dealPrognose(tenantId: string, asin: string, o: { laender: string[]; kundenpreis: number | null; prepGebuehr: number | null; market?: OfferMarket | null }, now = Date.now()): Promise<PrognoseErgebnis> {
   const geb = await gebuehrenFuer(tenantId, asin, o.market);
   const kurse = await eurRates();
-  const inEur = (betrag: number | null, waehrung: string) => {
-    if (betrag === null) return null;
-    if (waehrung === "EUR") return betrag;
-    const k = kurse[waehrung];
-    return k ? r2(betrag / k) : null;
-  };
+  const inEur = inEurMit(kurse);
   const prognose: DealPrognose = {};
   const hinweise: string[] = [];
   let titel: string | null = null;
@@ -62,25 +84,7 @@ export async function dealPrognose(tenantId: string, asin: string, o: { laender:
         if (!st) e = { ...leer, quelle: "keepa", abgerufen: r.abgerufen.toISOString(), fehler: "Keepa kennt die ASIN hier nicht." };
         else {
           titel ??= st.titel;
-          const bbTage = st.verlauf.map((z) => z[1]);
-          const vk = st.aktuell.buybox ?? st.kennzahlen["30"].buybox.schnitt;
-          const anteile = buyboxAnteile(st.buybox_verlauf, st.buybox_stats, MARKTPLAETZE[mp].amazonId, now - 90 * TAG, now);
-          e = {
-            ...leer,
-            waehrung: st.waehrung,
-            vk,
-            vk90: st.kennzahlen["90"].buybox.schnitt,
-            tief12: tief12(bbTage),
-            vkEur: inEur(vk, st.waehrung),
-            verkaeufeMonat: st.aktuell.monatlich_verkauft,
-            angeboteFba: st.aktuell.angebote_fba,
-            angeboteFbm: st.aktuell.angebote_fbm,
-            amazonProzent: anteile ? anteile.amazon_prozent : null,
-            aktionsmuster: aktionsmuster(bbTage)?.text ?? null,
-            quelle: "keepa",
-            abgerufen: r.abgerufen.toISOString(),
-            fehler: r.warnung ?? null,
-          };
+          e = { ...leer, ...keepaEintrag(st, mp, inEur, now), quelle: "keepa", abgerufen: r.abgerufen.toISOString(), fehler: r.warnung ?? null };
         }
       } else if (land in MARKTPLATZ_IDS) {
         const r = await itemOffers(tenantId, asin, land as Land);
