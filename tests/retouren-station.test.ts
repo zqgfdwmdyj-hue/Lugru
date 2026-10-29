@@ -238,6 +238,8 @@ describe("Fall-Paket: Dateinamen und ZIP", () => {
     writeFileSync(f, zip);
     const out = execFileSync("unzip", ["-t", f]).toString();
     expect(out).toContain("No errors detected");
-    expect(execFileSync("unzip", ["-p", f, "Falltext_Übersicht.txt"]).toString()).toBe("Hallo Amazon");
+    // Umlaute im Namen (UTF-8-Kennzeichen) – mit Pythons ZIP-Leser geprüft, unzip hängt dafür von der Spracheinstellung ab.
+    const py = 'import sys, zipfile, json; z = zipfile.ZipFile(sys.argv[1]); print(json.dumps({"namen": z.namelist(), "text": z.read("Falltext_Übersicht.txt").decode()}))';
+    expect(JSON.parse(execFileSync("python3", ["-I", "-c", py, f]).toString())).toEqual({ namen: ["1_Versandetikett.jpg", "Falltext_Übersicht.txt"], text: "Hallo Amazon" });
   });
 });
