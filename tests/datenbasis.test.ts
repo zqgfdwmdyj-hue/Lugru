@@ -72,6 +72,28 @@ describe("Nachbestellen laut sellerboard", () => {
     ...o,
   });
 
+  it("B15.5: eine Rechnung für den Kapitalbedarf – rote Ampel und angelegte Einkäufe heraus, Retouren und fehlender EK nicht als 0 €", async () => {
+    const { kapitalbedarf, KAPITALBEDARF_DEFINITION } = await import("@/lib/purchasing/reorder-logic");
+    const costs = new Map([
+      ["AMZ_A", { cost: 10, source: "charge" as const }],
+      ["AMZ_B", { cost: 5, source: "charge" as const }],
+      ["AMZ_C", { cost: 2, source: "charge" as const }],
+    ]);
+    const rows = buildReorderRows(
+      [row({ sku: "AMZ_A", asin: "B0TESTA001", qtyToReorder: 3 }), row({ sku: "AMZ_B", asin: "B0TESTB002", qtyToReorder: 4 }), row({ sku: "AMZ_C", asin: "B0TESTC003", qtyToReorder: 10 }), row({ sku: "AMZ_D", asin: "B0TESTD004", qtyToReorder: 1 })],
+      ctx({ costs }),
+    );
+    const alle = kapitalbedarf(rows);
+    expect(alle.capital).toBe(30 + 20 + 20);
+    expect(alle.noEk).toBe(1);
+    const k = kapitalbedarf(rows, { weg: (r) => r.sku === "AMZ_C", angelegteAsins: new Set(["B0TESTB002"]) });
+    expect(k.capital).toBe(30);
+    expect(k.rote).toBe(1);
+    expect(k.angelegt).toBe(1);
+    expect(k.rows.map((r) => r.sku)).toEqual(["AMZ_A", "AMZ_D"]);
+    expect(KAPITALBEDARF_DEFINITION).toMatch(/netto.*Menge laut sellerboard × gültiger EK.*roter Kapital-Ampel.*schon im Einkauf angelegt/);
+  });
+
   it("Kapital mit gültigem EK netto, nicht mit dem sellerboard-Platzhalter", () => {
     const [r] = buildReorderRows([row({ sbCost: 0.01 })], ctx());
     expect(r.capital).toBe(30);

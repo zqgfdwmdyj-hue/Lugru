@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, gte, lte, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import type { CostInfo, OrderLine } from "./profit-logic";
+import { abrechnungNetto, istGeldbewegung, type CostInfo, type OrderLine } from "./profit-logic";
 
 // Gewinn aus Amazon-Abrechnungen (Settlement) und EK je SKU.
 // Vereinfachungen (auch in der Oberfläche genannt): Umsatz wird mit dem Standard-MwSt-Satz
@@ -19,6 +19,10 @@ export type SkuProfit = {
   promotions: number;
   reimbursements: number;
   other: number;
+  /** Gebühren + Aktionen (netto) + Erstattungen + Sonstiges – alles außer Umsatz, USt. und EK. */
+  costsExCogs: number;
+  /** USt. eigens ausgewiesen → „Principal“ ist schon netto. */
+  vatSeparate: boolean;
   unitCost: number | null;
   cogs: number | null;
   profit: number | null;
@@ -34,8 +38,12 @@ export async function amazonProfit(tenantId: string, from: string, to: string, v
       units: sql<number>`coalesce(sum(${S.quantity}) filter (where ${S.transactionType} = 'Order' and ${S.amountType} = 'ItemPrice' and ${S.amountDescription} = 'Principal'), 0)::int`,
       refunds: sql<number>`count(*) filter (where ${S.transactionType} ilike 'Refund%' and ${S.amountType} = 'ItemPrice' and ${S.amountDescription} = 'Principal')::int`,
       revenue: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.amountType} = 'ItemPrice' and ${S.amountDescription} in ('Principal', 'Shipping', 'GiftWrap')), 0)::float`,
+      // USt. eigens ausgewiesen (Umsatzsteuer-Berechnungsservice) bzw. von Amazon einbehalten – kein Ertrag/Aufwand.
+      tax: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.amountDescription} ilike '%tax%' and coalesce(${S.amountType}, '') not ilike '%withheld%' and ${S.amountDescription} not ilike '%facilitator%' and coalesce(${S.amountType}, '') <> 'ItemFees'), 0)::float`,
+      taxLines: sql<number>`count(*) filter (where ${S.amountDescription} ilike '%tax%' and coalesce(${S.amountType}, '') not ilike '%withheld%' and ${S.amountDescription} not ilike '%facilitator%' and coalesce(${S.amountType}, '') <> 'ItemFees')::int`,
+      withheld: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.amountType} ilike '%withheld%' or ${S.amountDescription} ilike '%facilitator%'), 0)::float`,
       fees: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.amountType} = 'ItemFees'), 0)::float`,
-      promotions: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.amountType} = 'Promotion'), 0)::float`,
+      promotions: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.amountType} = 'Promotion' and coalesce(${S.amountDescription}, '') not ilike '%tax%'), 0)::float`,
       reimb: sql<number>`coalesce(sum(${S.amount}) filter (where ${S.transactionType} ilike '%reimburs%' or ${S.amountDescription} ilike any (array['%reimburs%', 'WAREHOUSE_%', 'COMPENSATED_%', 'FREE_REPLACEMENT_REFUND_ITEMS'])), 0)::float`,
       total: sql<number>`coalesce(sum(${S.amount}), 0)::float`,
     })
@@ -57,10 +65,9 @@ export async function amazonProfit(tenantId: string, from: string, to: string, v
     // EK aus der gemeinsamen Quelle (Charge → von Hand → eBay-Tool), sonst wie bisher aus der Charge.
     const unitCost = costs ? (costs.get(r.sku!)?.cost ?? null) : lot?.cost ? Number(lot.cost) : null;
     const netUnits = Math.max(0, r.units - r.refunds);
-    const revenueNet = r.revenue / (1 + vatRate);
-    const other = r.total - r.revenue - r.fees - r.promotions - r.reimb;
+    const { revenueNet, other, costsExCogs } = abrechnungNetto({ revenue: r.revenue, collectedTax: r.tax, taxLines: r.taxLines, withheldTax: r.withheld, fees: r.fees, promotions: r.promotions, reimb: r.reimb, total: r.total }, vatRate);
     const cogs = unitCost === null ? null : unitCost * netUnits;
-    const profit = cogs === null ? null : revenueNet + r.fees + r.promotions / (1 + vatRate) + r.reimb + other - cogs;
+    const profit = cogs === null ? null : revenueNet + costsExCogs - cogs;
     return {
       sku: r.sku!,
       asin: lot?.asin ?? null,
@@ -73,6 +80,8 @@ export async function amazonProfit(tenantId: string, from: string, to: string, v
       promotions: r.promotions,
       reimbursements: r.reimb,
       other,
+      costsExCogs,
+      vatSeparate: r.taxLines > 0,
       unitCost,
       cogs,
       profit,
@@ -81,14 +90,17 @@ export async function amazonProfit(tenantId: string, from: string, to: string, v
     };
   });
 
-  const nonSku = await db
+  const ohneSku = await db
     .select({ description: S.amountDescription, type: S.transactionType, amount: sql<number>`sum(${S.amount})::float` })
     .from(S)
     .where(and(eq(S.tenantId, tenantId), gte(S.postedDate, from), lte(S.postedDate, to), sql`${S.sku} is null`))
     .groupBy(S.amountDescription, S.transactionType)
     .orderBy(sql`sum(${S.amount})`);
+  // Rücklagen, Kartenabbuchungen u. Ä. verschieben nur Geld – getrennt zeigen, nicht im Ergebnis.
+  const nonSku = ohneSku.filter((x) => !istGeldbewegung(x.description, x.type));
+  const transfers = ohneSku.filter((x) => istGeldbewegung(x.description, x.type));
 
-  return { skus, nonSku };
+  return { skus, nonSku, transfers };
 }
 
 /** Andere Kanäle: Auftragspositionen im Zeitraum (ohne stornierte) – Auswertung in profit-logic.ts. */

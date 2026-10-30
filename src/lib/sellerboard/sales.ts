@@ -161,12 +161,13 @@ export type SbRange = {
  * Zeitraum (Monat bis heute, letzter Monat) oder Summe der Tageswerte (letzte 30 Tage). eBay mit eigenem EK wie
  * auf der Startseite. null = keine sellerboard-Werte.
  */
-export async function sellerboardRange(tenantId: string, from: string, to: string): Promise<SbRange | null> {
+export async function sellerboardRange(tenantId: string, from: string, to: string, nurKanal?: SbChannel): Promise<SbRange | null> {
   const K = schema.sellerboardKpis;
   const U = schema.sellerboardEbayUnits;
+  const kanal = nurKanal ? eq(K.channel, nurKanal) : undefined;
   const [exact, dayRows, unitRows, costs] = await Promise.all([
-    db.select().from(K).where(and(eq(K.tenantId, tenantId), eq(K.fromDay, from), eq(K.toDay, to))),
-    db.select().from(K).where(and(eq(K.tenantId, tenantId), sql`${K.fromDay} = ${K.toDay}`, gte(K.fromDay, from), lte(K.fromDay, to))),
+    db.select().from(K).where(and(eq(K.tenantId, tenantId), eq(K.fromDay, from), eq(K.toDay, to), kanal)),
+    db.select().from(K).where(and(eq(K.tenantId, tenantId), sql`${K.fromDay} = ${K.toDay}`, gte(K.fromDay, from), lte(K.fromDay, to), kanal)),
     db.select().from(U).where(and(eq(U.tenantId, tenantId), gte(U.day, from), lte(U.day, to))),
     skuCostMap(tenantId),
   ]);

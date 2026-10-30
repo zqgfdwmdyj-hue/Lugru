@@ -7,9 +7,8 @@ import { HEBEL_INFO, type HebelType } from "@/lib/hebel/rules";
 import { loadHebel } from "@/lib/hebel/service";
 import { INTEGRATIONS } from "@/lib/integrations/registry";
 import { integrationStatus } from "@/lib/integrations/store";
-import { sellerboardReorder } from "@/lib/purchasing/reorder";
-import { ampelJeSku } from "@/lib/money/kapital-service";
-import { CHECK_LABEL, filterReorder, reorderTotals, URGENCY_LABEL, type ReorderCheck, type Urgency } from "@/lib/purchasing/reorder-logic";
+import { bestellvorschlaegeGemeinsam } from "@/lib/purchasing/reorder";
+import { CHECK_LABEL, filterReorder, KAPITALBEDARF_DEFINITION, reorderTotals, URGENCY_LABEL, type ReorderCheck, type Urgency } from "@/lib/purchasing/reorder-logic";
 import { daysUntil, MODULE_LABEL, WAITING_LABEL } from "@/lib/sas/logic";
 import { getProgram, loadBrands, loadDeals, loadItems } from "@/lib/sas/service";
 import { getSettings } from "@/lib/settings";
@@ -85,14 +84,15 @@ export const bestellvorschlaege = defineTool({
     rote_zeigen: z.boolean().default(false).describe("Auch Artikel mit roter Kapital-Ampel (Standard: ausgeblendet – nicht nachbestellen)"),
   }),
   run: async (ctx, i) => {
-    const [{ rows: alle, syncedAt }, ampel] = await Promise.all([sellerboardReorder(ctx.session.tenantId), ampelJeSku(ctx.session.tenantId, ctx.today).catch(() => new Map<string, "gruen" | "gelb" | "rot">())]);
-    const rote = alle.filter((r) => ampel.get(r.sku) === "rot").length;
-    const rows = i.rote_zeigen ? alle : alle.filter((r) => ampel.get(r.sku) !== "rot");
-    const list = filterReorder(rows, { q: i.suche, dring: i.dringlichkeit as Urgency | "alle", pruefen: i.pruefen as ReorderCheck | "alle" | "regulaer", sort: i.sortierung });
+    // B15.5: gleiche Rechnung wie Startseite, Bestellvorschläge und Liquidität.
+    const k = await bestellvorschlaegeGemeinsam(ctx.session.tenantId, ctx.today, { rotZeigen: i.rote_zeigen });
+    const { syncedAt, ampel } = k;
+    const rote = k.roteGesamt;
+    const list = filterReorder(k.rows, { q: i.suche, dring: i.dringlichkeit as Urgency | "alle", pruefen: i.pruefen as ReorderCheck | "alle" | "regulaer", sort: i.sortierung });
     const t = reorderTotals(list);
     return json({
       stand_sellerboard: berlinDateTime(syncedAt) ?? "noch kein Abgleich",
-      summe: { produkte: list.length, kapitalbedarf_netto: t.capital, mit_ek: t.withCapital, ohne_ek: t.noEk, retouren: t.returns, quelle_unklar: t.noSource, je_dringlichkeit: t.byUrgency },
+      summe: { produkte: list.length, kapitalbedarf_netto: t.capital, schon_im_einkauf_angelegt: k.angelegt || undefined, mit_ek: t.withCapital, ohne_ek: t.noEk, retouren: t.returns, quelle_unklar: t.noSource, je_dringlichkeit: t.byUrgency },
       vorschlaege: list.slice(0, i.limit).map((r) => ({
         sku: r.sku,
         asin: r.asin ?? undefined,
@@ -115,6 +115,7 @@ export const bestellvorschlaege = defineTool({
       })),
       hinweis: list.length > i.limit ? `Nur die ersten ${i.limit} von ${list.length}.` : undefined,
       rote_kapital_ampel_ausgeblendet: !i.rote_zeigen && rote ? rote : undefined,
+      definition: KAPITALBEDARF_DEFINITION,
       legende: { kapital_netto: "gültiger EK × Menge; null = EK fehlt oder Retoure", ek_netto: "null = kein gültiger EK", kapital_ampel: "rot = Geld liegt mit zu wenig Rendite / Preis unter Break-even – nicht nachbestellen (Werkzeug kapital_ampel)" },
       link: abs(ctx, "/einkauf/vorschlaege"),
     });

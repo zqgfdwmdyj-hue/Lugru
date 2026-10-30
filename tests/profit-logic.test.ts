@@ -90,3 +90,45 @@ describe("Lagerwert", () => {
     expect(v.negativeUnits).toBe(-3);
   });
 });
+
+describe("B15.4: Amazon-Zeile und Quelle je Zeile", () => {
+  it("USt. eigens ausgewiesen: Principal ist netto, USt. kein Ertrag; einbehaltene Steuer kein Aufwand", async () => {
+    const { abrechnungNetto } = await import("@/lib/money/profit-logic");
+    // erfunden: 1.000 € netto + 190 € USt., Gebühren −300 €
+    const mitUst = abrechnungNetto({ revenue: 1000, collectedTax: 190, taxLines: 4, withheldTax: 0, fees: -300, promotions: 0, reimb: 0, total: 890 }, 0.19);
+    expect(mitUst.revenueNet).toBe(1000);
+    expect(mitUst.costsExCogs).toBe(-300);
+    expect(mitUst.revenueNet + mitUst.costsExCogs).toBe(700);
+    // ohne USt.-Zeilen: Principal brutto → ÷ 1,19; einbehaltene Steuer (UK) wird nicht doppelt abgezogen
+    const brutto = abrechnungNetto({ revenue: 1190, collectedTax: 0, taxLines: 0, withheldTax: -50, fees: -300, promotions: -11.9, reimb: 20, total: 848.1 }, 0.19);
+    expect(brutto.revenueNet).toBeCloseTo(1000, 6);
+    expect(brutto.promotionsNet).toBeCloseTo(-10, 6);
+    expect(brutto.other).toBeCloseTo(0, 6);
+    expect(brutto.costsExCogs).toBeCloseTo(-290, 6);
+  });
+
+  it("Rücklagen und Kartenabbuchungen sind Geldbewegungen, Lager- und Werbekosten nicht", async () => {
+    const { istGeldbewegung } = await import("@/lib/money/profit-logic");
+    expect(istGeldbewegung("Previous Reserve Amount Balance", "other-transaction")).toBe(true);
+    expect(istGeldbewegung("Current Reserve Amount", null)).toBe(true);
+    expect(istGeldbewegung("Successful charge", "other-transaction")).toBe(true);
+    expect(istGeldbewegung("Payable to Amazon", null)).toBe(true);
+    expect(istGeldbewegung("Storage Fee", "other-transaction")).toBe(false);
+    expect(istGeldbewegung("Cost of Advertising", "ServiceFee")).toBe(false);
+    expect(istGeldbewegung("FBA Inbound Transportation Fee", null)).toBe(false);
+  });
+
+  it("Quelle: Abrechnung deckt Zeitraum → Abrechnung; sonst sellerboard; ohne sellerboard Hinweis", async () => {
+    const { amazonQuelle } = await import("@/lib/money/profit-logic");
+    expect(amazonQuelle({ abrechnungBis: "2026-10-31", bis: "2026-10-31", hatAbrechnung: true, sb: { complete: true } })).toMatchObject({ art: "abrechnung", unvollstaendig: false });
+    expect(amazonQuelle({ abrechnungBis: "2026-10-16", bis: "2026-10-30", hatAbrechnung: true, sb: { complete: true } })).toEqual({ art: "sellerboard", text: "sellerboard – Amazon-Abrechnung bis 16.10.", unvollstaendig: false });
+    expect(amazonQuelle({ abrechnungBis: "2026-10-16", bis: "2026-10-30", hatAbrechnung: true, sb: { complete: false } })).toMatchObject({ art: "abrechnung", unvollstaendig: true });
+    expect(amazonQuelle({ abrechnungBis: null, bis: "2026-10-30", hatAbrechnung: false, sb: null })).toMatchObject({ art: "keine" });
+  });
+
+  it("Summen mit sellerboard-Ersatz: Amazon-Teil ersetzt, andere Kanäle bleiben", async () => {
+    const { mitAmazonErsatz } = await import("@/lib/money/profit-logic");
+    const e = mitAmazonErsatz({ revenueNet: 1500, provisional: 600 }, { revenueNet: 1000, provisional: 379 }, { sales: 2380, netProfit: -525 }, 0.19);
+    expect(e).toEqual({ amazonRevenueNet: 2000, amazonResult: -525, revenueNet: 2500, provisional: -304 });
+  });
+});

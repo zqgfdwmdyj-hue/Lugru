@@ -124,6 +124,54 @@ export function summarizeChannels(lines: OrderLine[], costs: Map<string, CostInf
   return out.sort((a, b) => b.revenueNet - a.revenueNet);
 }
 
+/**
+ * Summen einer SKU aus der Amazon-Abrechnung (Beträge wie im Bericht: Erlöse positiv, Kosten negativ).
+ * `taxLines` = Anzahl Zeilen, in denen Amazon die USt. eigens ausweist („Tax“, „ShippingTax“ …).
+ */
+export type SettlementSums = { revenue: number; collectedTax: number; taxLines: number; withheldTax: number; fees: number; promotions: number; reimb: number; total: number };
+
+/**
+ * Netto-Umsatz und Kosten ohne EK einer SKU (B15.4: die Amazon-Zeile hat USt.-Zeilen als Ertrag gezählt).
+ * - Weist Amazon die USt. eigens aus (Umsatzsteuer-Berechnungsservice), ist „Principal“ schon netto; die USt. geht
+ *   ans Finanzamt und ist kein Ertrag.
+ * - Sonst ist „Principal“ brutto → ÷ (1 + USt.-Satz).
+ * - Von Amazon einbehaltene Steuer (Marketplace Facilitator) ist kein Aufwand: der Umsatz ist schon netto gerechnet.
+ */
+export function abrechnungNetto(s: SettlementSums, vatRate: number) {
+  const netto = s.taxLines > 0;
+  const revenueNet = netto ? s.revenue : s.revenue / (1 + vatRate);
+  const promotionsNet = netto ? s.promotions : s.promotions / (1 + vatRate);
+  const other = s.total - s.revenue - s.collectedTax - s.withheldTax - s.fees - s.promotions - s.reimb;
+  return { revenueNet, promotionsNet, other, costsExCogs: s.fees + promotionsNet + s.reimb + other };
+}
+
+/**
+ * Amazon-Zeilen ohne SKU, die Geld nur verschieben (Rücklage, Abbuchung von der Karte, Kredit-Tilgung …) – kein
+ * Gewinn oder Verlust. Eine freigegebene Rücklage aus der Vorperiode machte das Ergebnis sonst schöner, als es ist.
+ */
+const GELDBEWEGUNG = /reserve|payable to amazon|successful charge|failed disbursement|disbursement|unavailable balance|transfer|loan|lending/i;
+export const istGeldbewegung = (description: string | null, type: string | null) => GELDBEWEGUNG.test(`${description ?? ""} ${type ?? ""}`);
+
+/**
+ * Quelle der Amazon-Zeile (B15.4): Abrechnung, solange sie den Zeitraum abdeckt; sonst sellerboard als Ersatz
+ * (zählt Bestellungen sofort). Ohne vollständige sellerboard-Werte bleibt es bei der Abrechnung mit Hinweis.
+ */
+export type AmazonQuelle = { art: "abrechnung" | "sellerboard" | "keine"; text: string; unvollstaendig: boolean };
+export function amazonQuelle(o: { abrechnungBis: string | null; bis: string; hatAbrechnung: boolean; sb: { complete: boolean } | null }): AmazonQuelle {
+  const d = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+  const bis = o.abrechnungBis ? `Amazon-Abrechnung bis ${d(o.abrechnungBis)}` : "noch keine Amazon-Abrechnung";
+  if (o.abrechnungBis && o.abrechnungBis >= o.bis) return { art: "abrechnung", text: `Amazon-Abrechnung (bis ${d(o.abrechnungBis)})`, unvollstaendig: false };
+  if (o.sb?.complete) return { art: "sellerboard", text: `sellerboard – ${bis}`, unvollstaendig: false };
+  if (o.hatAbrechnung) return { art: "abrechnung", text: `${bis} – Zeitraum danach fehlt`, unvollstaendig: true };
+  return { art: "keine", text: "keine Amazon-Daten", unvollstaendig: true };
+}
+
+/** Summen, wenn die Amazon-Zeile aus sellerboard kommt (Umsatz netto ≈ brutto ÷ (1 + USt.)). */
+export function mitAmazonErsatz(tot: { revenueNet: number; provisional: number }, amazon: { revenueNet: number; provisional: number } | null, sb: { sales: number; netProfit: number }, vatRate: number) {
+  const sbNet = round2(sb.sales / (1 + vatRate));
+  return { amazonRevenueNet: sbNet, amazonResult: round2(sb.netProfit), revenueNet: round2(tot.revenueNet - (amazon?.revenueNet ?? 0) + sbNet), provisional: round2(tot.provisional - (amazon?.provisional ?? 0) + sb.netProfit) };
+}
+
 /** Amazon je SKU (aus der Abrechnung) – Gebühren sind dort immer enthalten, nur der EK kann fehlen. */
 export type AmazonSkuLine = { sku: string; units: number; revenueNet: number; costsExCogs: number; cogs: number | null };
 

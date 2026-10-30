@@ -5,7 +5,7 @@ import { CHANNEL_LABEL } from "@/lib/labels";
 import { Kpi } from "@/components/kpi";
 import { skuCostMap } from "@/lib/money/costs";
 import { amazonProfit, dataStand, orderLines } from "@/lib/money/profit";
-import { FEE_FREE_CHANNELS, summarizeAmazon, summarizeChannels, totalsOf } from "@/lib/money/profit-logic";
+import { amazonQuelle, FEE_FREE_CHANNELS, mitAmazonErsatz, summarizeAmazon, summarizeChannels, totalsOf } from "@/lib/money/profit-logic";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
 import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
@@ -26,17 +26,21 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   const t = session.tenantId;
   const settings = await getSettings(t);
   const costs = await skuCostMap(t);
-  const [{ skus, nonSku }, lines, stand] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to), dataStand(t)]);
+  const [{ skus, nonSku, transfers }, lines, stand, sbAmazon] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to), dataStand(t), sellerboardRange(t, from, to, "amazon")]);
 
   const nonSkuTotal = nonSku.reduce((n, x) => n + x.amount, 0);
   const amazon = skus.length || nonSku.length
     ? summarizeAmazon(
-        skus.map((s) => ({ sku: s.sku, units: s.units, revenueNet: s.revenueNet, costsExCogs: s.fees + s.promotions / (1 + settings.vatRate) + s.reimbursements + s.other, cogs: s.cogs })),
+        skus.map((s) => ({ sku: s.sku, units: s.units, revenueNet: s.revenueNet, costsExCogs: s.costsExCogs, cogs: s.cogs })),
         nonSkuTotal,
       )
     : null;
   const channels = summarizeChannels(lines, costs, settings.vatRate);
   const tot = totalsOf(amazon, channels);
+  // B15.4: Quelle je Zeile – Amazon aus der Abrechnung, solange sie den Zeitraum abdeckt, sonst sellerboard.
+  const aq = amazonQuelle({ abrechnungBis: stand.settlement, bis: to, hatAbrechnung: Boolean(amazon), sb: sbAmazon });
+  const ersatz = aq.art === "sellerboard" && sbAmazon ? mitAmazonErsatz(tot, amazon, sbAmazon, settings.vatRate) : null;
+  const kanalQuelle = (c: string) => `Aufträge (${CHANNEL_LABEL[c] ?? c}, Stand ${dt(stand.orders.get(c))})`;
   const fees = skus.reduce((n, s) => n + s.fees, 0);
   const cogs = skus.reduce((n, s) => n + (s.cogs ?? 0), 0) + channels.reduce((n, c) => n + c.cogsKnown, 0);
   const period = `${formatDate(from)} – ${formatDate(to)}`;
@@ -48,7 +52,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   ].filter((x): x is string => Boolean(x));
   const fix = `/gewinn/fehlend?zeitraum=${r}`;
   const sorted = [...skus].sort((a, b) => (sp.sort === "gut" ? (b.profit ?? -1e9) - (a.profit ?? -1e9) : (a.profit ?? 1e9) - (b.profit ?? 1e9)));
-  const noData = !amazon && !channels.length;
+  const noData = !amazon && !channels.length && !ersatz;
   // Vergleich mit sellerboard: Monatswerte (12 Monate) und – bei einem Kalendermonat – Gewinn je SKU.
   const sbMonths = await db.select().from(schema.sellerboardMonths).where(eq(schema.sellerboardMonths.tenantId, t)).orderBy(desc(schema.sellerboardMonths.month)).limit(12);
   const calMonth = r === "monat" || r === "vormonat" ? from.slice(0, 7) : null;
@@ -67,7 +71,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
           <div className="crumb">Finanzen</div>
           <h1>Gewinn aus Abrechnungen und Aufträgen</h1>
           <div className="small muted" style={{ marginTop: 4 }} data-testid="profit-scope">
-            {period} · Quelle: Amazon-Abrechnungen und Aufträge im Seller-System · Umsatz <strong>netto</strong> (ohne USt.) · EK: gültiger EK aus dem Seller-System · <Link href="#ueberleitung">Vergleich mit sellerboard (Startseite)</Link>
+            {period} · Quelle je Zeile (Tabelle „Je Kanal“): Amazon-Abrechnung, solange sie den Zeitraum abdeckt, sonst sellerboard; andere Kanäle aus den Aufträgen · Umsatz <strong>netto</strong> (ohne USt.) · EK: gültiger EK aus dem Seller-System · <Link href="#ueberleitung">Vergleich mit sellerboard (Startseite)</Link>
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -84,14 +88,14 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       )}
 
       <div className="grid-kpi">
-        <Kpi testid="kpi-revenue" label="Umsatz netto (alle Kanäle)" value={formatEuro(tot.revenueNet)} state={tot.missing.priceLines ? "unvollstaendig" : "ok"} missing={tot.missing.priceLines ? [`Preis für ${plural(tot.missing.priceLines, "Position", "Positionen")}`] : undefined} fixHref={`${fix}#preis`} period={period} source="Amazon-Abrechnungen, Aufträge" stand={stand.settlement ? formatDate(stand.settlement) : undefined} />
+        <Kpi testid="kpi-revenue" label="Umsatz netto (alle Kanäle)" value={formatEuro(ersatz ? ersatz.revenueNet : tot.revenueNet)} note={ersatz ? "Amazon laut sellerboard (Abrechnung fehlt noch)" : undefined} state={tot.missing.priceLines ? "unvollstaendig" : "ok"} missing={tot.missing.priceLines ? [`Preis für ${plural(tot.missing.priceLines, "Position", "Positionen")}`] : undefined} fixHref={`${fix}#preis`} period={period} source="Amazon-Abrechnungen, Aufträge" stand={stand.settlement ? formatDate(stand.settlement) : undefined} />
         <Kpi
           testid="kpi-provisional"
           label="Vorläufiges Ergebnis"
-          value={formatEuro(tot.provisional)}
-          danger={tot.provisional < 0}
+          value={formatEuro(ersatz ? ersatz.provisional : tot.provisional)}
+          danger={(ersatz ? ersatz.provisional : tot.provisional) < 0}
           state={tot.complete ? "ok" : "unvollstaendig"}
-          note="Umsatz minus bekannte Kosten (Gebühren, EK, sonstige)"
+          note={ersatz ? `Amazon: Gewinn laut sellerboard (${aq.text}); übrige Kanäle: Umsatz minus bekannte Kosten` : "Umsatz minus bekannte Kosten (Gebühren, EK, sonstige)"}
           missing={missing}
           fixHref={fix}
           period={period}
@@ -149,11 +153,23 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       <section className="card" style={{ overflow: "auto" }} data-testid="channels">
         <div className="card-head"><h2>Je Kanal</h2></div>
         <table className="table">
-          <thead><tr><th>Kanal</th><th className="right">Umsatz netto</th><th className="right">EK (bekannt)</th><th className="right">Gebühren (bekannt)</th><th className="right">Vorläufig</th><th className="right">Vollständig</th><th>Fehlt</th></tr></thead>
+          <thead><tr><th>Kanal</th><th>Quelle</th><th className="right">Umsatz netto</th><th className="right">EK (bekannt)</th><th className="right">Gebühren (bekannt)</th><th className="right">Vorläufig</th><th className="right">Vollständig</th><th>Fehlt</th></tr></thead>
           <tbody>
-            {amazon && (
-              <tr>
+            {ersatz && sbAmazon && (
+              <tr data-testid="channel-amazon" data-quelle="sellerboard">
                 <td>Amazon</td>
+                <td className="small" data-testid="channel-amazon-quelle">{aq.text}{!sbAmazon.complete ? ` (nur ${sbAmazon.daysCovered} von ${sbAmazon.daysWanted} Tagen)` : ""}</td>
+                <td className="num right" title={`sellerboard ${formatEuro(sbAmazon.sales)} brutto ÷ ${(1 + settings.vatRate).toLocaleString("de-DE")}`}>≈ {formatEuro(ersatz.amazonRevenueNet)}</td>
+                <td className="num right muted small" colSpan={2}>in sellerboard enthalten</td>
+                <td className="num right" style={{ fontWeight: 600, color: ersatz.amazonResult < 0 ? "var(--danger)" : undefined }} title="Gewinn laut sellerboard (mit Werbung und Fixkosten aus sellerboard)">{formatEuro(ersatz.amazonResult)}</td>
+                <td className="num right small muted">{amazon ? <span title="Nur bis zur letzten Abrechnung">Abrechnung: {formatEuro(amazon.provisional)}</span> : "–"}</td>
+                <td className="small muted">Abrechnung folgt</td>
+              </tr>
+            )}
+            {amazon && !ersatz && (
+              <tr data-testid="channel-amazon" data-quelle="abrechnung">
+                <td>Amazon</td>
+                <td className="small" data-testid="channel-amazon-quelle" style={aq.unvollstaendig ? { color: "var(--warn)" } : undefined}>{aq.text}</td>
                 <td className="num right">{formatEuro(amazon.revenueNet)}</td>
                 <td className="num right">{formatEuro(skus.reduce((n, s) => n + (s.cogs ?? 0), 0))}</td>
                 <td className="num right">{formatEuro(neg(fees))}</td>
@@ -165,6 +181,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
             {channels.map((c) => (
               <tr key={c.channel} data-testid={`channel-${c.channel}`}>
                 <td>{CHANNEL_LABEL[c.channel] ?? c.channel}<div className="small muted">{plural(c.orders, "Bestellung", "Bestellungen")}</div></td>
+                <td className="small">{kanalQuelle(c.channel)}</td>
                 <td className="num right">{formatEuro(c.revenueNet)}</td>
                 <td className="num right">{formatEuro(c.cogsKnown)}</td>
                 <td className="num right">{FEE_FREE_CHANNELS.has(c.channel) ? <span className="muted small">keine</span> : formatEuro(c.feesKnown)}</td>
@@ -253,6 +270,13 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
             {nonSku.length === 0 && <div className="small muted">Keine im Zeitraum.</div>}
             {nonSku.map((n, i) => <div key={i} className="between small"><span>{n.description ?? n.type ?? "–"}</span><span className="num">{formatEuro(n.amount)}</span></div>)}
           </section>
+          {transfers.length > 0 && (
+            <section className="card card-pad stack" data-testid="profit-transfers">
+              <h2>Geldbewegungen (nicht im Ergebnis)</h2>
+              <div className="small muted">Rücklagen, Kartenabbuchungen u. Ä. verschieben nur Geld zwischen Amazon und Bank – kein Gewinn, kein Verlust.</div>
+              {transfers.map((n, i) => <div key={i} className="between small"><span>{n.description ?? n.type ?? "–"}</span><span className="num">{formatEuro(n.amount)}</span></div>)}
+            </section>
+          )}
           <section className="card card-pad small muted">
             „VK geplant“ ist der Zielpreis aus der Arbitrage-One-SKU – rot, wenn der tatsächliche Ø-Preis über 10 % darunter liegt.
           </section>

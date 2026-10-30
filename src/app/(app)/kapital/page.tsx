@@ -6,6 +6,10 @@ import { kapitalAmpel } from "@/lib/money/kapital-service";
 import type { Ampel } from "@/lib/money/kapital";
 import { getSettings } from "@/lib/settings";
 import { kapitalZieleAction } from "./actions";
+import { KAPITALBEDARF_DEFINITION } from "@/lib/purchasing/reorder-logic";
+
+/** B15.5: Begriff klar abgrenzen – gebundenes Kapital ist Ware, die schon da ist; Kapitalbedarf ist, was nachbestellt werden müsste. */
+const GEBUNDEN_DEFINITION = "Gebundenes Kapital = Ware, die schon da ist: Bestand bei Amazon (verkaufbar, reserviert, unterwegs) + eigenes Lager × gültiger EK (netto). Artikel ohne EK sind nicht enthalten.";
 
 // Kapital-Ampel je Produkt: Wo liegt Geld, das zu wenig verdient? Gebundenes Kapital, Gewinn 90 Tage,
 // Jahresrendite auf das gebundene Kapital, Reichweite, Lageralter, Preis gegen Break-even.
@@ -63,9 +67,9 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
           <div className="stack" style={{ gap: 6 }} data-kpi-group>
             <div className="grid-kpi" data-testid="kapital-summen">
               <div className="card card-pad">
-                <div className="kpi-label">Gebundenes Kapital gesamt</div>
-                <div className="kpi-value" data-testid="kapital-gesamt">{eur0(data.summe.gesamt)}</div>
-                <div className="small muted">{data.zeilen.length} Produkte{ohneEk ? ` · ${ohneEk} ohne EK (nicht enthalten)` : ""}</div>
+                <div className="kpi-label" title={GEBUNDEN_DEFINITION} style={{ cursor: "help" }}>Gebundenes Kapital gesamt ⓘ</div>
+                <div className="kpi-value" data-testid="kapital-gesamt" title={GEBUNDEN_DEFINITION}>{eur0(data.summe.gesamt)}</div>
+                <div className="small muted">{data.zeilen.length} Produkte{ohneEk ? ` · ${ohneEk} ohne EK (nicht enthalten)` : ""} · <Link href="/einkauf/vorschlaege?weg=sellerboard" title={KAPITALBEDARF_DEFINITION}>nicht dasselbe wie der Kapitalbedarf der Bestellvorschläge</Link></div>
               </div>
               <div className="card card-pad">
                 <div className="kpi-label">davon rot</div>

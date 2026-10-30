@@ -62,7 +62,7 @@ export const AMPEL_TEXT: Record<Ampel, string> = { gruen: "Grün – kaufen", ge
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
-const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : String(n).replace(".", ","));
+const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : n.toLocaleString("de-DE", { maximumFractionDigits: 1 }));
 
 /** EK netto aus der Eingabe (brutto → netto mit deutscher USt). */
 export const ekNettoAus = (ek: number, istNetto: boolean, ust = 0.19) => (istNetto ? ek : r2(ek / (1 + ust)));
@@ -121,14 +121,14 @@ export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: Deal
   const mAkt = b.aktuell ?? m90;
   if ((m90.marge ?? -999) < e.zielMarge) rot.push(`Marge beim 90-Tage-Mittel nur ${pz(m90.marge)} % (Ziel ${e.zielMarge} %).`);
   else if ((mAkt.marge ?? -999) < e.zielMarge) gelb.push(`Beim aktuellen Preis nur ${pz(mAkt.marge)} % Marge – der Preis liegt gerade unter dem Mittel.`);
-  if (b.amazonProzent !== null && b.amazonProzent >= 80) rot.push(`Amazon hält die Buy Box ${b.amazonProzent} % der Zeit.`);
-  else if (b.amazonProzent !== null && b.amazonProzent >= e.amazonMaxProzent) gelb.push(`Amazon hält die Buy Box ${b.amazonProzent} % der Zeit.`);
+  if (b.amazonProzent !== null && b.amazonProzent >= 80) rot.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
+  else if (b.amazonProzent !== null && b.amazonProzent >= e.amazonMaxProzent) gelb.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
   // Hoher Amazon-Anteil in einem anderen Land: mindestens Gelb (Amazon drückt den Preis oft EU-weit).
   for (const l of laender) if (l.land !== b.land && l.amazonProzent !== null && l.amazonProzent >= Math.max(e.amazonMaxProzent, 80)) gelb.push(`Amazon hält in ${l.land} die Buy Box ${pz(l.amazonProzent)} % der Zeit.`);
   if (b.vkEur !== null && b.vk90Eur !== null && b.vk90Eur > 0) {
     const verfall = Math.round(((b.vk90Eur - b.vkEur) / b.vk90Eur) * 100);
-    if (verfall >= e.preisverfallProzent * 2) rot.push(`Starker Preisverfall: aktuell ${verfall} % unter dem 90-Tage-Mittel.`);
-    else if (verfall >= e.preisverfallProzent) gelb.push(`Preis ${verfall} % unter dem 90-Tage-Mittel.`);
+    if (verfall >= e.preisverfallProzent * 2) rot.push(`Starker Preisverfall: aktuell ${pz(verfall)} % unter dem 90-Tage-Mittel.`);
+    else if (verfall >= e.preisverfallProzent) gelb.push(`Preis ${pz(verfall)} % unter dem 90-Tage-Mittel.`);
   }
   if (b.angebote !== null && b.angebote > e.maxAngebote) rot.push(`${b.angebote} Angebote (mehr als ${e.maxAngebote}).`);
   // Aktionspreise in irgendeinem Land drücken den Preis auch anderswo – alle nennen.
@@ -143,7 +143,7 @@ export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: Deal
   const satz1 = `Bestes Land ${b.land}: ${eur(m90.gewinn)} Gewinn je Stück beim 90-Tage-Mittel (${pz(m90.marge)} % Marge, ROI ${pz(m90.roi)} %)${b.aktuell && b.schnitt90 ? `, aktuell ${eur(b.aktuell.gewinn)}` : ""}.`;
   const satz2 =
     a.unsProMonat !== null
-      ? `Realistisch etwa ${Math.round(a.unsProMonat)} Stück im Monat (${verkaeufe} Verkäufe${geschaetzt ? ` – geschätzt aus ${geschaetzt.aus} über die Marktgröße` : ""}, ${b.angebote ?? "?"} Angebote) – empfohlen ${a.empfohlen!.von}–${a.empfohlen!.bis} Stück${a.tage !== null ? `, die Wunschmenge reicht für etwa ${a.tage} Tage` : ""}.`
+      ? `Realistisch etwa ${Math.round(a.unsProMonat)} Stück im Monat für uns (${verkaeufe} Verkäufe aller Anbieter${geschaetzt ? ` – geschätzt aus ${geschaetzt.aus} über die Marktgröße` : ""}, ${b.angebote ?? "?"} Angebote) – empfohlen ${a.empfohlen!.von}–${a.empfohlen!.bis} Stück${a.tage !== null ? `, die Wunschmenge reicht für etwa ${a.tage} Tage` : ""}.`
       : "Verkäufe je Monat unbekannt.";
   const satz3 = rot.length ? `Dagegen: ${rot.join(" ")}` : gelb.length ? `Achtung: ${gelb.join(" ")}` : "Keine Warnzeichen.";
   return { ampel, bestes: b, rot, gelb, begruendung: [satz1, satz2, satz3].join(" "), abverkauf: a, verkaeufeGeschaetzt: geschaetzt };

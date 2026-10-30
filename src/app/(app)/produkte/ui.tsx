@@ -406,7 +406,7 @@ async function Ergebnis({ session, d, base, zeitraum }: { session: Session; d: P
   const [{ skus }, lines] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to)]);
   const az = skus.filter((s) => skuSet.has(s.sku));
   const mine = lines.filter((l) => l.sku && skuSet.has(l.sku));
-  const amazon = az.length ? summarizeAmazon(az.map((s) => ({ sku: s.sku, units: s.units, revenueNet: s.revenueNet, costsExCogs: s.fees + s.promotions / (1 + settings.vatRate) + s.reimbursements + s.other, cogs: s.cogs })), 0) : null;
+  const amazon = az.length ? summarizeAmazon(az.map((s) => ({ sku: s.sku, units: s.units, revenueNet: s.revenueNet, costsExCogs: s.costsExCogs, cogs: s.cogs })), 0) : null;
   const channels = summarizeChannels(mine, costs, settings.vatRate);
   const tot = totalsOf(amazon, channels);
   const units = az.reduce((n, s) => n + s.units, 0) + mine.reduce((n, l) => n + l.qty, 0);

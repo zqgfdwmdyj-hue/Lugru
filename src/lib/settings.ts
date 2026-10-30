@@ -165,7 +165,7 @@ export const DEFAULT_SETTINGS = {
   tagesplan: { arbeitszeit: ARBEITSZEIT_STANDARD, personen: {} as Record<string, Arbeitszeit>, vorziehen: 2 },
   amazonBusiness: { stufen: [3, 10, 25], rabatte: [3, 5, 8], minGewinn: 1 },
   /** Liquidität: 5.000 € Reserve, Bestellvorschläge einrechnen, Lieferantenrechnungen ohne Zahlungsziel = sofort bezahlt. */
-  liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, vorschlaegeEinrechnen: false, zahlungszielStandard: 0 },
+  liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, vorschlaegeEinrechnen: false, zahlungszielStandard: 0, wareneinkaufPlanen: true },
   /** Palettenlager: 14 € je Stellplatz und Monat, die ersten 5 Tage kostenfrei. */
   pallets: {
     pricePerMonth: 14,

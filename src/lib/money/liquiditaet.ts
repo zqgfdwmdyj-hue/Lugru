@@ -4,13 +4,14 @@
 import { addDaysIso } from "@/lib/dates";
 import { weekStart } from "./cashflow";
 
-export type PostenArt = "amazon" | "ebay" | "temu" | "b2b" | "rechnung" | "einkauf" | "vorschlag" | "grosshaendler" | "kreditkarte" | "fixkosten" | "steuer" | "plan" | "szenario";
+export type PostenArt = "amazon" | "ebay" | "temu" | "b2b" | "rechnung" | "einkauf" | "wareneinkauf" | "vorschlag" | "grosshaendler" | "kreditkarte" | "fixkosten" | "steuer" | "plan" | "szenario";
 export const POSTEN_TEXT: Record<PostenArt, string> = {
   amazon: "Amazon-Auszahlung",
   ebay: "eBay-Auszahlung",
   temu: "Temu-Auszahlung",
   b2b: "B2B-Forderung",
   rechnung: "Lieferantenrechnung",
+  wareneinkauf: "Wareneinkauf (Ø aus Rechnungen)",
   einkauf: "Einkauf (angelegt/bestellt)",
   vorschlag: "Möglicher Einkauf (nicht freigegeben)",
   grosshaendler: "Großhändler (B2B-Deal)",
@@ -119,3 +120,25 @@ export function woechentlich(o: { betragProWoche: number; heute: string; wochen:
 
 /** Erste Woche, in der die Reserve unterschritten wird (oder null). */
 export const ersteRoteWoche = (w: LiqWoche[]) => w.find((x) => x.ampel === "rot") ?? null;
+
+/**
+ * B15.6: üblicher Wareneinkauf je Woche (Ø der Warenrechnungen) als Planposten – je Woche nur der Rest, der nicht
+ * schon durch konkret angelegte Einkäufe/Lieferantenrechnungen dieser Woche gedeckt ist (sonst doppelt). Freitags.
+ */
+export function wareneinkaufPlan(o: { proWoche: number; heute: string; wochen: number; konkret: Posten[] }): Posten[] {
+  if (!(o.proWoche > 0)) return [];
+  const erste = weekStart(o.heute);
+  const out: Posten[] = [];
+  for (let i = 0; i < o.wochen; i++) {
+    const von = addDaysIso(erste, i * 7);
+    const bis = addDaysIso(von, 6);
+    const schon = o.konkret.filter((p) => (p.art === "einkauf" || p.art === "rechnung" || p.art === "grosshaendler") && p.datum >= von && p.datum <= bis && !p.nichtEingerechnet).reduce((n, p) => n - Math.min(0, p.betrag), 0);
+    const rest = Math.round((o.proWoche - schon) * 100) / 100;
+    const tag = addDaysIso(von, 4) < o.heute ? o.heute : addDaysIso(von, 4);
+    if (rest > 0 && tag <= bis) out.push({ datum: tag, betrag: -rest, label: `Wareneinkauf (Ø ${Math.round(o.proWoche).toLocaleString("de-DE")} €/Woche aus Rechnungen${schon > 0 ? ", abzüglich angelegter Einkäufe" : ""})`, art: "wareneinkauf", geschaetzt: true });
+  }
+  return out;
+}
+
+/** Alter des Kontostands in Tagen (null = unbekannt). Ab 7 Tagen warnt die Liquidität. */
+export const kontostandAlter = (stand: string | null, heute: string) => (stand ? Math.round((Date.parse(`${heute}T12:00:00Z`) - Date.parse(`${stand.slice(0, 10)}T12:00:00Z`)) / 86_400_000) : null);

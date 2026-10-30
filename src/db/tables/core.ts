@@ -196,6 +196,8 @@ export type TenantSettings = {
     bestellvorschlaege?: boolean;
     vorschlaegeEinrechnen?: boolean;
     zahlungszielStandard?: number;
+    /** Üblichen Wareneinkauf je Woche (Ø Warenrechnungen) als Planposten einrechnen (Standard: an). */
+    wareneinkaufPlanen?: boolean;
   };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
   /** `staffCalendars`: eigene Kalender, die Mitarbeiter ohne Privat-Zugang sehen dürfen (sonst keine). */

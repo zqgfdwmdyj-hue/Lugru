@@ -8,7 +8,8 @@ import { dealAmpelEinstellungenAction } from "./actions";
 // Deal-Ampel (Einkaufs-Prüfung): ein Deal – z. B. aus der Deal-Gruppe – in Sekunden bewerten.
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${n.toFixed(2).replace(".", ",")} €`);
-const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${n} %`);
+/** Prozent im deutschen Format („1,9 %“), höchstens eine Nachkommastelle. */
+const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${n.toLocaleString("de-DE", { maximumFractionDigits: 1 })} %`);
 const AMPEL_TAG = { gruen: "tag-ok", gelb: "tag-warn", rot: "tag-danger" } as const;
 
 export default async function DealAmpelPage({ searchParams }: { searchParams: Promise<{ code?: string; ek?: string; netto?: string; menge?: string; laender?: string; gespeichert?: string }> }) {
@@ -82,7 +83,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
                   <th className="right">Gewinn jetzt</th>
                   <th className="right">Gewinn Ø 90</th>
                   <th className="right">Marge Ø 90</th>
-                  <th className="right">Verk./Monat</th>
+                  <th className="right" title="Verkäufe aller Anbieter im Monat (Keepa); ≈ = geschätzt, dieselbe Zahl wie im Text">Verkäufe/Monat</th>
                   <th className="right">Angebote</th>
                   <th className="right">Amazon</th>
                   <th>Hinweis</th>
@@ -98,7 +99,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
                     <td className="num right">{eur(l.aktuell?.gewinn)}</td>
                     <td className="num right">{eur(l.schnitt90?.gewinn)}</td>
                     <td className="num right">{pz(l.schnitt90?.marge)}</td>
-                    <td className="num right">{l.verkaeufeMonat ?? "–"}</td>
+                    <td className="num right" data-testid={r.bestes?.land === l.land ? "deal-ampel-verkaeufe-bestes" : undefined}>{l.verkaeufeMonat ?? (r.bestes?.land === l.land && r.verkaeufeGeschaetzt ? <span title={`geschätzt aus ${r.verkaeufeGeschaetzt.aus} über die Marktgröße – dieselbe Zahl wie im Text`}>≈ {r.verkaeufeGeschaetzt.wert}</span> : "–")}</td>
                     <td className="num right">{l.angebote ?? "–"}</td>
                     <td className="num right">{pz(l.amazonProzent)}</td>
                     <td className="small">{[l.aktionsmuster, l.fehler].filter(Boolean).join(" · ") || ""}</td>

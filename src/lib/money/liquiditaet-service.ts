@@ -1,21 +1,22 @@
 import "server-only";
-import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
 import { kontostand, letzterImport, umsaetzeSeit, wiederkehrend } from "@/lib/bank/service";
 import { termineBis } from "@/lib/bank/logic";
 import { ekFuerMenge } from "@/lib/b2b/eingabe";
-import { sellerboardReorder } from "@/lib/purchasing/reorder";
+import { angelegteAsins, sellerboardReorder } from "@/lib/purchasing/reorder";
+import { kapitalbedarf } from "@/lib/purchasing/reorder-logic";
 import { getSettings } from "@/lib/settings";
 import { ampelJeSku } from "./kapital-service";
 import { addMonthsIso, projectPayouts, weekStart } from "./cashflow";
-import { liquiditaetWochen, steuerPosten, woechentlich, type LiqWoche, type Posten } from "./liquiditaet";
+import { kontostandAlter, liquiditaetWochen, steuerPosten, wareneinkaufPlan, woechentlich, type LiqWoche, type Posten } from "./liquiditaet";
 
 // Liquiditätsvorschau: sammelt alle Zu- und Abflüsse der nächsten Wochen aus den vorhandenen Daten und rechnet
 // Woche für Woche den Kontostand gegen die Mindestreserve. Jede Quelle meldet, ob sie Daten hatte.
 
-export type Quelle = { name: string; status: "ok" | "keine_daten" | "aus"; hinweis?: string };
-export type Liquiditaet = { wochen: LiqWoche[]; start: number | null; startStand: string | null; startQuelle: "bank" | "hand" | null; reserve: number; quellen: Quelle[]; posten: Posten[]; szenario: Posten | null; ohneSzenario: LiqWoche[] | null };
+export type Quelle = { name: string; status: "ok" | "keine_daten" | "aus" | "veraltet"; hinweis?: string };
+export type Liquiditaet = { wochen: LiqWoche[]; start: number | null; startStand: string | null; kontostandAlterTage: number | null; startQuelle: "bank" | "hand" | null; reserve: number; quellen: Quelle[]; posten: Posten[]; szenario: Posten | null; ohneSzenario: LiqWoche[] | null };
 
 export async function liquiditaet(tenantId: string, o: { heute: string; wochen?: number; szenario?: { betrag: number; datum: string; label: string } | null; ausschliessen?: (z: { sku: string; asin: string | null }) => boolean }): Promise<Liquiditaet> {
   const t = tenantId;
@@ -33,7 +34,9 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
   const hand = tenant?.settings.cash?.startBalance ?? null;
   const start = bank?.saldo ?? hand;
   const startStand = bank?.stand ?? tenant?.settings.cash?.asOf ?? null;
-  quellen.push({ name: "Kontostand", status: start === null ? "keine_daten" : "ok", hinweis: bank ? `Kontoauszug bis ${bank.stand}` : hand !== null ? "von Hand eingetragen" : "Kontoauszug hochladen oder Kontostand eintragen" });
+  const alter = kontostandAlter(startStand, heute);
+  const alt = alter !== null && alter > 7;
+  quellen.push({ name: "Kontostand", status: start === null ? "keine_daten" : alt ? "veraltet" : "ok", hinweis: `${bank ? `Kontoauszug bis ${bank.stand}` : hand !== null ? "von Hand eingetragen" : "Kontoauszug hochladen oder Kontostand eintragen"}${alt ? ` – ${alter} Tage alt: neuen Kontoauszug hochladen, sonst stimmt die Vorschau nicht` : ""}` });
 
   // Amazon: Rhythmus und Ø der letzten Abrechnungen
   const st = await db.select({ datum: schema.amazonSettlements.depositDate, betrag: schema.amazonSettlements.totalAmount }).from(schema.amazonSettlements).where(and(eq(schema.amazonSettlements.tenantId, t), isNotNull(schema.amazonSettlements.depositDate))).orderBy(desc(schema.amazonSettlements.depositDate)).limit(12);
@@ -117,19 +120,18 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
   // eigene Zeile – sie ändern den Kontostand nicht, außer „Vorschläge einrechnen“ ist eingeschaltet.
   if (L.bestellvorschlaege) {
     const r = await sellerboardReorder(t).catch(() => ({ rows: [], syncedAt: null }));
-    // Standard: Artikel mit roter Kapital-Ampel werden nicht nachbestellt → nicht einrechnen.
+    // B15.5: gleiche Rechnung wie Startseite und Bestellvorschläge – rote Kapital-Ampel und schon angelegte
+    // Einkäufe heraus (die zählen oben als Einkauf bzw. Rechnung).
     const ampel = o.ausschliessen || !r.rows.length ? null : await ampelJeSku(t, heute).catch(() => null);
     const weg = o.ausschliessen ?? ((z: { sku: string }) => ampel?.get(z.sku) === "rot");
+    const angelegt = r.rows.length ? await angelegteAsins(t).catch(() => new Set<string>()) : new Set<string>();
+    for (const a of freigegebeneAsins) angelegt.add(a);
+    const k = kapitalbedarf(r.rows, { weg: (z) => weg({ sku: z.sku, asin: z.asin }), angelegteAsins: angelegt });
+    const rot = k.rote;
     let n = 0;
-    let rot = 0;
     let summe = 0;
-    for (const z of r.rows) {
-      if (!z.regular || z.capital === null || z.capital <= 0) continue;
-      if (z.asin && freigegebeneAsins.has(z.asin)) continue;
-      if (weg({ sku: z.sku, asin: z.asin })) {
-        rot++;
-        continue;
-      }
+    for (const z of k.rows) {
+      if (z.isReturn || z.capital === null || z.capital <= 0) continue;
       posten.push({ datum: z.orderBy && z.orderBy > heute ? z.orderBy : heute, betrag: -z.capital, label: `Vorschlag ${z.name ?? z.sku}`.slice(0, 80), art: "vorschlag", geschaetzt: true, nichtEingerechnet: !L.vorschlaegeEinrechnen });
       summe += z.capital;
       n++;
@@ -137,7 +139,7 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     quellen.push({
       name: "Bestellvorschläge",
       status: r.rows.length ? "ok" : "keine_daten",
-      hinweis: `${n} mögliche Einkäufe (${Math.round(summe).toLocaleString("de-DE")} €) ${L.vorschlaegeEinrechnen ? "eingerechnet" : "nur als eigene Zeile – erst im Einkauf angelegt zählen sie"}${rot ? ` · ${rot} mit roter Kapital-Ampel weggelassen` : ""}`,
+      hinweis: `${n} mögliche Einkäufe (${Math.round(summe).toLocaleString("de-DE")} €) ${L.vorschlaegeEinrechnen ? "eingerechnet" : "nur als eigene Zeile – erst im Einkauf angelegt zählen sie"}${rot ? ` · ${rot} mit roter Kapital-Ampel weggelassen` : ""}${k.angelegt ? ` · ${k.angelegt} schon im Einkauf angelegt` : ""} – gleiche Rechnung wie Startseite und Bestellvorschläge`,
     });
   } else quellen.push({ name: "Bestellvorschläge", status: "aus" });
 
@@ -176,6 +178,18 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     }
   }
 
+  // B15.6: üblicher Wareneinkauf je Woche (Ø Warenrechnungen der letzten 8 Wochen) – sonst fehlt der Einkauf ganz.
+  if (L.wareneinkaufPlanen !== false) {
+    const I = schema.invoices;
+    const [w] = await db
+      .select({ summe: sql<number>`coalesce(sum(${I.totalGross}), 0)::float`, n: sql<number>`count(*)::int` })
+      .from(I)
+      .where(and(eq(I.tenantId, t), eq(I.kind, "goods"), ne(I.status, "ignored"), gte(I.invoiceDate, addDaysIso(heute, -56)), lte(I.invoiceDate, heute)));
+    const proWoche = w.n >= 2 ? w.summe / 8 : 0;
+    posten.push(...wareneinkaufPlan({ proWoche, heute, wochen, konkret: posten }));
+    quellen.push({ name: "Wareneinkauf (Ø Rechnungen)", status: proWoche > 0 ? "ok" : "keine_daten", hinweis: proWoche > 0 ? `Ø ${Math.round(proWoche).toLocaleString("de-DE")} € je Woche aus ${w.n} Warenrechnungen (8 Wochen) – abzüglich konkret angelegter Einkäufe` : "noch zu wenige Warenrechnungen (Eingangsrechnungen) für einen Durchschnitt" });
+  }
+
   // Steuertermine (Schätzung aus den Einstellungen)
   posten.push(...steuerPosten(L.steuern, heute, ende));
   quellen.push({ name: "Steuertermine", status: L.steuern.length ? "ok" : "keine_daten", hinweis: L.steuern.length ? `${L.steuern.length} hinterlegt (Schätzung)` : "in den Einstellungen unten pflegen" });
@@ -183,5 +197,5 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
   const szenario: Posten | null = o.szenario ? { datum: o.szenario.datum, betrag: -Math.abs(o.szenario.betrag), label: o.szenario.label || "Geplanter Einkauf (Was wäre wenn)", art: "szenario", geschaetzt: false } : null;
   const basis = { heute, wochen, start, reserve: L.reserve };
   const ohneSzenario = szenario ? liquiditaetWochen({ ...basis, posten }) : null;
-  return { wochen: liquiditaetWochen({ ...basis, posten: szenario ? [...posten, szenario] : posten }), start, startStand, startQuelle: bank ? "bank" : hand !== null ? "hand" : null, reserve: L.reserve, quellen, posten, szenario, ohneSzenario };
+  return { wochen: liquiditaetWochen({ ...basis, posten: szenario ? [...posten, szenario] : posten }), start, startStand, kontostandAlterTage: kontostandAlter(startStand, heute), startQuelle: bank ? "bank" : hand !== null ? "hand" : null, reserve: L.reserve, quellen, posten, szenario, ohneSzenario };
 }

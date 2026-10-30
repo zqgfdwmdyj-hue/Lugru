@@ -3,8 +3,8 @@ import type { Session } from "@/lib/auth/session";
 import { canAccess } from "@/lib/auth/areas";
 import { loadSalesOverview } from "@/lib/sellerboard/sales";
 import { loadHebel } from "@/lib/hebel/service";
-import { sellerboardReorder } from "@/lib/purchasing/reorder";
-import { reorderTotals } from "@/lib/purchasing/reorder-logic";
+import { bestellvorschlaegeGemeinsam } from "@/lib/purchasing/reorder";
+import { KAPITALBEDARF_DEFINITION } from "@/lib/purchasing/reorder-logic";
 import { SalesOverviewSection } from "./sales-overview";
 import { HebelTeaser } from "./hebel-teaser";
 
@@ -21,7 +21,8 @@ export async function TodayInsights({ session }: { session: Session }) {
     geld ? loadSalesOverview(session.tenantId).catch(() => null) : null,
     geld ? loadHebel(session.tenantId).catch(() => null) : null,
     // Nachbestellen (sellerboard) kompakt – Details unter Einkauf → Bestellvorschläge.
-    canAccess(session, "wawi") ? sellerboardReorder(session.tenantId).then((r) => (r.rows.length ? reorderTotals(r.rows) : null)).catch(() => null) : null,
+    // B15.5: gleiche Rechnung wie Bestellvorschläge, Liquidität und Claude (rote Kapital-Ampel und angelegte Einkäufe heraus).
+    canAccess(session, "wawi") ? bestellvorschlaegeGemeinsam(session.tenantId).then((k) => (k.alle.length ? k : null)).catch(() => null) : null,
   ]);
   if (!sales && !hebel && !reorder) return null;
   return (
@@ -35,7 +36,8 @@ export async function TodayInsights({ session }: { session: Session }) {
             <Link href="/einkauf/vorschlaege?weg=sellerboard" className="small">Bestellvorschläge →</Link>
           </div>
           <div className="small" style={{ marginTop: 6 }}>
-            {reorder.byUrgency.ueberfaellig + reorder.byUrgency.jetzt} jetzt bzw. überfällig · {reorder.byUrgency.bald} bald · Kapitalbedarf netto <strong>{eur0(reorder.capital)}</strong> ({reorder.withCapital} Artikel mit gültigem EK)
+            {reorder.byUrgency.ueberfaellig + reorder.byUrgency.jetzt} jetzt bzw. überfällig · {reorder.byUrgency.bald} bald ·{" "}
+            <span title={KAPITALBEDARF_DEFINITION} data-testid="reorder-teaser-capital" style={{ textDecoration: "underline dotted", cursor: "help" }}>Kapitalbedarf netto <strong>{eur0(reorder.capital)}</strong></span> ({reorder.withCapital} Artikel mit gültigem EK{reorder.rote ? ` · ${reorder.rote} mit roter Kapital-Ampel nicht gezählt` : ""}{reorder.angelegt ? ` · ${reorder.angelegt} schon angelegt` : ""})
           </div>
           {(reorder.noEk > 0 || reorder.returns > 0 || reorder.noSource > 0) && (
             <div className="small" style={{ marginTop: 4 }}>

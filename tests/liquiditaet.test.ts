@@ -71,3 +71,38 @@ describe("Bestellvorschläge vor der Freigabe", () => {
     expect(w[0]).toMatchObject({ moeglich: 0, ab: 6000, ampel: "rot" });
   });
 });
+
+describe("B15: Wareneinkauf aus Rechnungen und Kontostand-Alter", () => {
+  it("plant den Ø-Wareneinkauf je Woche am Freitag, abzüglich schon angelegter Einkäufe", async () => {
+    const { wareneinkaufPlan } = await import("@/lib/money/liquiditaet");
+    // heute Do 29.10.2026 → Woche 1 Fr 30.10., Woche 2 Fr 06.11. (dort 1.500 € schon angelegt)
+    const plan = wareneinkaufPlan({ proWoche: 2000, heute: "2026-10-29", wochen: 3, konkret: [p("2026-11-04", -1500, "einkauf", "Einkauf (erfunden)")] });
+    expect(plan.map((x) => [x.datum, x.betrag])).toEqual([
+      ["2026-10-30", -2000],
+      ["2026-11-06", -500],
+      ["2026-11-13", -2000],
+    ]);
+    expect(plan.every((x) => x.art === "wareneinkauf" && x.geschaetzt)).toBe(true);
+    expect(plan[1].label).toContain("abzüglich");
+  });
+
+  it("nichts planen, wenn der Einkauf der Woche den Schnitt schon deckt oder kein Schnitt bekannt ist", async () => {
+    const { wareneinkaufPlan } = await import("@/lib/money/liquiditaet");
+    expect(wareneinkaufPlan({ proWoche: 1000, heute: "2026-10-29", wochen: 1, konkret: [p("2026-10-28", -1200, "rechnung")] })).toEqual([]);
+    expect(wareneinkaufPlan({ proWoche: 0, heute: "2026-10-29", wochen: 4, konkret: [] })).toEqual([]);
+  });
+
+  it("am Samstag landet der Posten der laufenden Woche auf heute", async () => {
+    const { wareneinkaufPlan } = await import("@/lib/money/liquiditaet");
+    const plan = wareneinkaufPlan({ proWoche: 800, heute: "2026-10-31", wochen: 1, konkret: [] });
+    expect(plan).toHaveLength(1);
+    expect(plan[0].datum).toBe("2026-10-31");
+  });
+
+  it("Kontostand-Alter in Tagen", async () => {
+    const { kontostandAlter } = await import("@/lib/money/liquiditaet");
+    expect(kontostandAlter("2026-10-20", "2026-10-30")).toBe(10);
+    expect(kontostandAlter("2026-10-30T08:00:00Z", "2026-10-30")).toBe(0);
+    expect(kontostandAlter(null, "2026-10-30")).toBeNull();
+  });
+});

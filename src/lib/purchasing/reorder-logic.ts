@@ -156,3 +156,19 @@ export function reorderTotals(rows: ReorderRow[]) {
     byUrgency: { ueberfaellig: rows.filter((r) => r.urgency === "ueberfaellig").length, jetzt: rows.filter((r) => r.urgency === "jetzt").length, bald: rows.filter((r) => r.urgency === "bald").length },
   };
 }
+
+/**
+ * B15.5: eine Definition für „Kapitalbedarf Bestellvorschläge“ – Startseite, Bestellvorschläge, Liquidität,
+ * Kapital-Ampel und Claude rechnen gleich und zeigen diesen Text als Erklärung.
+ */
+export const KAPITALBEDARF_DEFINITION =
+  "Kapitalbedarf netto (ohne USt.) = vorgeschlagene Menge laut sellerboard × gültiger EK. Ware unterwegs zu Amazon ist in der Menge schon berücksichtigt. Nicht enthalten: Artikel mit roter Kapital-Ampel (nicht nachbestellen), Retouren, Artikel ohne EK (gezählt, nicht als 0 €) und Artikel, die schon im Einkauf angelegt oder bestellt sind.";
+
+export type Kapitalbedarf = ReturnType<typeof reorderTotals> & { rows: ReorderRow[]; rote: number; angelegt: number };
+
+/** Gemeinsame Rechnung: rote Ampel (bzw. `weg`) und schon angelegte Einkäufe (ASIN) heraus, dann Summen. */
+export function kapitalbedarf(rows: ReorderRow[], o: { weg?: (r: ReorderRow) => boolean; angelegteAsins?: Set<string> } = {}): Kapitalbedarf {
+  const ohneRot = o.weg ? rows.filter((r) => !o.weg!(r)) : rows;
+  const offen = o.angelegteAsins?.size ? ohneRot.filter((r) => !(r.asin && o.angelegteAsins!.has(r.asin))) : ohneRot;
+  return { ...reorderTotals(offen), rows: offen, rote: rows.length - ohneRot.length, angelegt: ohneRot.length - offen.length };
+}

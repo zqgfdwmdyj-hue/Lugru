@@ -46,6 +46,11 @@ export default async function LiquiditaetPage({ searchParams }: { searchParams: 
     <>
       <div className="page-head"><div><div className="crumb">Geld</div><h1>Liquidität (8 Wochen)</h1></div></div>
       {sp.meldung && <div className="notice notice-info" data-testid="liqui-meldung">{sp.meldung}</div>}
+      {l.kontostandAlterTage !== null && l.kontostandAlterTage > 7 && (
+        <div className="notice notice-warn" data-testid="liqui-kontostand-alt" style={{ marginBottom: 12 }}>
+          Kontostand ist {l.kontostandAlterTage} Tage alt (Stand {formatDate(l.startStand)}) – die Vorschau startet von einem alten Wert. <a href="/uploads">Neuen Kontoauszug hochladen</a>.
+        </div>
+      )}
       <div className="stack" style={{ gap: 6 }} data-kpi-group>
         <div className="grid-kpi">
           <div className="card card-pad">
@@ -138,7 +143,7 @@ export default async function LiquiditaetPage({ searchParams }: { searchParams: 
         {l.quellen.map((q) => (
           <div key={q.name} className="between small">
             <span>{q.name}</span>
-            <span><span className={`tag ${q.status === "ok" ? "tag-ok" : q.status === "aus" ? "tag-neutral" : "tag-warn"}`}>{q.status === "ok" ? "da" : q.status === "aus" ? "aus" : "fehlt"}</span> <span className="muted">{q.hinweis}</span></span>
+            <span><span className={`tag ${q.status === "ok" ? "tag-ok" : q.status === "aus" ? "tag-neutral" : "tag-warn"}`}>{q.status === "ok" ? "da" : q.status === "aus" ? "aus" : q.status === "veraltet" ? "veraltet" : "fehlt"}</span> <span className="muted">{q.hinweis}</span></span>
           </div>
         ))}
       </section>
