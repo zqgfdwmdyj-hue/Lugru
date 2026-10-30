@@ -90,3 +90,12 @@ export async function bookCount(fd: FormData) {
   syncSoon(session.tenantId);
   revalidatePath("/bestand", "layout");
 }
+
+/** B15.3 Reparatur (nur auf Klick): eigene Abbuchungen von Prep-Center-Aufträgen zurückbuchen. */
+export async function prepAbbuchungenZurueckAction() {
+  const session = await requireArea("wawi");
+  const { prepAbbuchungenZurueck } = await import("@/lib/orders/service");
+  const n = await prepAbbuchungenZurueck(session.tenantId, session.userId);
+  revalidatePath("/bestand");
+  redirect(`/bestand?ansicht=negativ&meldung=${encodeURIComponent(`${n} Prep-Center-Auftr${n === 1 ? "ag" : "äge"} zurückgebucht – eigenes Lager korrigiert.`)}`);
+}

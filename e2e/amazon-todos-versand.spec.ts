@@ -17,9 +17,9 @@ test.describe("Amazon-ToDos mit dem Versand abgleichen", () => {
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
     // Aufträge: 1 versendet (selbst – nicht Prep Center, damit die Prep-Center-Monatszahlen anderer Prüfungen stimmen),
     // 2 mit Label, 3 offen und Versandfrist gestern abgelaufen
-    const auftrag = (n: number, status: string, shipByStd: number, shippedBy: string | null = null) =>
-      sql("insert into orders (tenant_id, channel, external_id, order_date, fulfillment, status, ship_by, shipped_by, buyer_name, total) values ($1, 'amazon', $2, now() - interval '2 days', 'FBM', $3, now() + ($4 || ' hours')::interval, $5, 'Testkunde (erfunden)', 19.9)", [T, nr(n), status, String(shipByStd), shippedBy]);
-    await auftrag(1, "shipped", -20, "self");
+    const auftrag = (n: number, status: string, shipByStd: number, shippedBy: string | null = null, bestaetigt = false) =>
+      sql("insert into orders (tenant_id, channel, external_id, order_date, fulfillment, status, ship_by, shipped_by, buyer_name, total, tracking_uploaded_at) values ($1, 'amazon', $2, now() - interval '2 days', 'FBM', $3, now() + ($4 || ' hours')::interval, $5, 'Testkunde (erfunden)', 19.9, $6)", [T, nr(n), status, String(shipByStd), shippedBy, bestaetigt ? new Date() : null]);
+    await auftrag(1, "shipped", -20, "self", true);
     await auftrag(2, "label_created", 10);
     await auftrag(3, "open", -24);
     // Altbestand: ein offenes ToDo aus einer Bestell-Mail (vor der Umstellung entstanden)
@@ -48,8 +48,9 @@ test.describe("Amazon-ToDos mit dem Versand abgleichen", () => {
     // 1) Bestell-Mails sind keine ToDos (auch nicht die mit „Batterie“ im Titel)
     const [keine] = await sql<{ c: string }>("select count(*) c from amazon_todos where tenant_id = $1 and message_key like $2", [T, `<v_-${m}@%`]);
     expect(keine.c).toBe("0");
-    // 2) Status folgt dem Auftrag: versendet/Label → archiviert; offen → bleibt; FBA-Info → archiviert
-    expect(await mailArchiviert(`v2-${m}`)).toBe(true);
+    // 2) Status folgt dem Auftrag: versendet + an Amazon bestätigt → archiviert; Label/offen → bleibt (B15); FBA-Info → archiviert
+    expect(await mailArchiviert(`v1-${m}`)).toBe(true);
+    expect(await mailArchiviert(`v2-${m}`)).toBe(false);
     expect(await mailArchiviert(`v3-${m}`)).toBe(false);
     expect(await mailArchiviert(`fba-${m}`)).toBe(true);
     // 3) EIN Sammel-ToDo für überfällige FBM-Aufträge und eins für fehlende Bestellungen
@@ -73,8 +74,23 @@ test.describe("Amazon-ToDos mit dem Versand abgleichen", () => {
     expect(iEpr).toBeLessThan(iUeber);
     await expect(page.getByTestId("todo-bestellungen").filter({ hasText: nr(3) }).getByRole("link", { name: new RegExp(nr(3)) })).toHaveAttribute("href", /\/auftraege\//);
 
-    // 6) Auftrag 3 wird versendet → nächster Lauf: Mail archiviert, Sammel-ToDo erledigt (sofern sonst nichts offen)
-    await sql("update orders set status = 'shipped', shipped_at = now() where tenant_id = $1 and external_id = $2", [T, nr(3)]);
+    // 6) B15: Auftrag 3 wird versendet (Prep Center, ohne Sendungsnummer), Amazon weiß es nicht → Mail bleibt, Alarm auf
+    //    der Startseite, Sammel-ToDo; Datei laden → „in Seller Central hochgeladen“ → nächster Lauf: Mail archiviert
+    await sql("update orders set status = 'shipped', shipped_at = now() - interval '3 hours' where tenant_id = $1 and external_id = $2", [T, nr(3)]);
+    await Promise.all([aktion(page), page.getByRole("button", { name: "↻ Mails prüfen" }).click()]);
+    expect(await mailArchiviert(`v3-${m}`)).toBe(false);
+    const [unb] = await sql<{ bestellnummern: string[]; status: string }>("select bestellnummern, status from amazon_todos where tenant_id = $1 and message_key = 'sammel:fbm-unbestaetigt'", [T]);
+    expect(unb.status).toBe("open");
+    expect(unb.bestellnummern).toContain(nr(3));
+    await page.goto("/");
+    await expect(page.locator("body")).toContainText("versendet, aber bei Amazon nicht bestätigt");
+    await page.goto("/auftraege?ansicht=fehler");
+    const datei = await page.request.get("/auftraege/versandbestaetigung");
+    expect(await datei.text()).toContain(`${nr(3)}\t\t\t`);
+    await Promise.all([aktion(page), page.getByTestId("bestaetigung-hochgeladen").click()]);
+    await expect(page.getByTestId("orders-msg")).toContainText("als an Amazon gemeldet markiert");
+    expect((await sql<{ t: string | null }>("select tracking_uploaded_at t from orders where tenant_id = $1 and external_id = $2", [T, nr(3)]))[0].t).not.toBeNull();
+    await page.goto("/amazon-todos");
     await Promise.all([aktion(page), page.getByRole("button", { name: "↻ Mails prüfen" }).click()]);
     await expect.poll(() => mailArchiviert(`v3-${m}`), { timeout: 30_000 }).toBe(true);
     const [nach] = await sql<{ bestellnummern: string[] }>("select bestellnummern from amazon_todos where tenant_id = $1 and message_key = 'sammel:fbm-ueberfaellig'", [T]);

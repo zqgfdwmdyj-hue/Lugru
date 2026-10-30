@@ -7,7 +7,7 @@ import { notifyDiscord } from "@/lib/integrations/clients/discord";
 import { getIntegration } from "@/lib/integrations/store";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { BATCH_SIZE, categoryLabel, deadlineFromText, extractAsins, extractSkus, kontozustandLink, marktplatzAus, MAX_TOKENS, noiseReason, parseTriage, pflichtRegel, todosClosedBy, triageByRules, triagePrompt, type TriageMail, type TriageResult } from "./logic";
-import { altToDosSchliessen, bestellMailsAbgleichen, bestellnummernAus, istBestellMail, istFbaVersandMail, SAMMEL, sammelWiederOeffnen, ueberfaellig, versandfrist, type AuftragKurz } from "./versand";
+import { altToDosSchliessen, anAmazonBestaetigt, bestellMailsAbgleichen, bestellnummernAus, istBestellMail, istFbaVersandMail, SAMMEL, sammelWiederOeffnen, ueberfaellig, versandfrist, type AuftragKurz } from "./versand";
 
 // Amazon-ToDos: Amazon-Systemmails aus allen verbundenen Postfächern einstufen und als Aufgaben
 // mit Frist führen. Läuft nach jedem Postfach-Abruf; die Erledigung passiert im Seller Central.
@@ -271,8 +271,8 @@ export async function versandAbgleich(tenantId: string, now = Date.now()): Promi
   const offeneTodos = await db.select({ id: T.id, subject: T.subject, category: T.category, bodyShort: T.bodyShort }).from(T).where(and(eq(T.tenantId, tenantId), eq(T.status, "open")));
   const alt = offeneTodos.filter((t) => istBestellMail(t.subject) || istFbaVersandMail(t.subject));
   const nummern = [...new Set([...mails.flatMap((m) => bestellnummernAus(`${m.subject ?? ""}\n${m.body}`)), ...alt.flatMap((t) => bestellnummernAus(`${t.subject ?? ""}\n${t.bodyShort ?? ""}`))])];
-  const auftragSpalten = { id: O.id, externalId: O.externalId, status: O.status, fulfillment: O.fulfillment, shipBy: O.shipBy, orderDate: O.orderDate };
-  const kurz = (r: { id: string; externalId: string; status: string; fulfillment: string; shipBy: Date | null; orderDate: Date }): AuftragKurz => ({ ...r, shipBy: r.shipBy?.toISOString() ?? null, orderDate: r.orderDate.toISOString() });
+  const auftragSpalten = { id: O.id, externalId: O.externalId, status: O.status, fulfillment: O.fulfillment, shipBy: O.shipBy, orderDate: O.orderDate, trackingUploadedAt: O.trackingUploadedAt, externalStatus: O.externalStatus };
+  const kurz = (r: { id: string; externalId: string; status: string; fulfillment: string; shipBy: Date | null; orderDate: Date; trackingUploadedAt: Date | null; externalStatus: string | null }): AuftragKurz => ({ id: r.id, externalId: r.externalId, status: r.status, fulfillment: r.fulfillment, shipBy: r.shipBy?.toISOString() ?? null, orderDate: r.orderDate.toISOString(), bestaetigt: anAmazonBestaetigt(r) });
   const zuMails = nummern.length ? (await db.select(auftragSpalten).from(O).where(and(eq(O.tenantId, tenantId), eq(O.channel, "amazon"), inArray(O.externalId, nummern)))).map(kurz) : [];
   // Offene Amazon-FBM-Aufträge der letzten 30 Tage für „nach Versandfrist noch offen“
   const offen = (await db.select(auftragSpalten).from(O).where(and(eq(O.tenantId, tenantId), eq(O.channel, "amazon"), eq(O.fulfillment, "FBM"), eq(O.status, "open"), gte(O.orderDate, seit)))).map(kurz);
@@ -293,6 +293,17 @@ export async function versandAbgleich(tenantId: string, now = Date.now()): Promi
     priority: "high",
     deadline: ueber[0] ? ueber[0].frist.slice(0, 10) : null,
     text: ueber.map((a) => `${a.externalId} – Versandfrist ${dmy(versandfrist(a))}`).join("\n"),
+  });
+  // B15: versendet, aber Amazon weiß es nicht (ohne Schnittstelle) – Versandbestätigung als Datei hochladen.
+  const { offeneBestaetigungen } = await import("@/lib/orders/bestaetigung");
+  const unb = await offeneBestaetigungen(tenantId, new Date(now));
+  await sammelToDo(tenantId, now, {
+    ...SAMMEL.unbestaetigt,
+    nummern: unb.map((a) => a.externalId),
+    titel: (n) => `${n} FBM-Auftr${n === 1 ? "ag" : "äge"} versendet, aber bei Amazon nicht bestätigt`,
+    priority: "high",
+    deadline: unb[0]?.frist ? unb[0].frist.slice(0, 10) : null,
+    text: `Versandbestätigung als Datei hochladen: Aufträge → „Meldung offen“ → Datei laden → in Seller Central hochladen → „Hochgeladen“ bestätigen.\n${unb.map((a) => `${a.externalId}${a.frist ? ` – Frist ${dmy(a.frist)}` : ""}${a.tracking ? "" : " – ohne Sendungsnummer"}`).join("\n")}`,
   });
   await sammelToDo(tenantId, now, {
     ...SAMMEL.fehlt,

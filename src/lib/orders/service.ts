@@ -154,7 +154,8 @@ export async function markShipped(tenantId: string, orderId: string, userId: str
     .where(eq(schema.orders.id, orderId));
 
   // Eigenes Lager abbuchen (nur einmal) – auf die Wawi-SKU, auch wenn der Kanal eine eigene SKU führt.
-  if (!alreadyShipped && data.order.fulfillment === "FBM") {
+  // Verschickt das Prep Center, kommt die Ware aus dessen Bestand – nicht vom eigenen Lager (B15.3).
+  if (!alreadyShipped && data.order.fulfillment === "FBM" && data.order.shippedBy !== "prep") {
     const touched: string[] = [];
     for (const { item } of data.items) {
       if (!item.sku) continue;
@@ -192,4 +193,59 @@ export async function openOrderIds(tenantId: string, ids: string[]) {
     .select({ id: schema.orders.id })
     .from(schema.orders)
     .where(and(eq(schema.orders.tenantId, tenantId), inArray(schema.orders.id, ids)));
+}
+
+
+// --- Versender geändert / Prep-Center-Abbuchungen (B15.3) ---------------------------------------------------
+
+const S_M = schema.stockMovements;
+const ref = (o: { channel: string; externalId: string }) => `${o.channel} ${o.externalId}`;
+
+/** Netto-Abbuchung vom eigenen Lager je SKU für einen Auftrag (Versand und spätere Korrekturen). */
+async function abbuchungJeSku(tenantId: string, reference: string) {
+  return db
+    .select({ sku: S_M.sku, netto: sql<number>`sum(${S_M.delta})::int` })
+    .from(S_M)
+    .where(and(eq(S_M.tenantId, tenantId), eq(S_M.reference, reference), sql`${S_M.reason} like 'Versand%'`))
+    .groupBy(S_M.sku);
+}
+
+/**
+ * Versender eines schon versendeten FBM-Auftrags geändert: Prep Center → eigene Abbuchung zurückbuchen; doch selbst →
+ * jetzt vom eigenen Lager abbuchen. Nur, was wirklich gebucht ist – doppelt wird nichts.
+ */
+export async function versenderUmbuchen(tenantId: string, orderId: string, neu: "self" | "prep" | null, userId: string | null) {
+  const data = await loadOrder(tenantId, orderId);
+  if (!data || data.order.fulfillment !== "FBM" || !["shipped", "delivered"].includes(data.order.status)) return;
+  const r = ref(data.order);
+  const gebucht = (await abbuchungJeSku(tenantId, r)).filter((x) => x.netto !== 0);
+  const touched: string[] = [];
+  if (neu === "prep") {
+    for (const g of gebucht) if (g.netto < 0) touched.push(...(await adjustStock(tenantId, g.sku, -g.netto, "Versand: Prep Center statt eigenes Lager", r, userId)));
+  } else if (!gebucht.length) {
+    for (const { item } of data.items) {
+      if (!item.sku) continue;
+      const sku = await wawiSku(tenantId, data.order.channel, item.sku);
+      touched.push(...(await adjustStock(tenantId, sku, -item.quantity, "Versand: doch eigenes Lager", r, userId)));
+    }
+  }
+  if (touched.length) syncSoon(tenantId, touched);
+}
+
+/** Reparatur-Vorschlag: Prep-Center-Aufträge, die trotzdem vom eigenen Lager abgebucht haben (alte Buchungen). */
+export async function prepAbbuchungen(tenantId: string) {
+  const O = schema.orders;
+  const rows = await db
+    .select({ id: O.id, channel: O.channel, externalId: O.externalId, netto: sql<number>`coalesce((select sum(m.delta) from stock_movements m where m.tenant_id = ${tenantId} and m.reference = ${O.channel} || ' ' || ${O.externalId} and m.reason like 'Versand%'), 0)::int` })
+    .from(O)
+    .where(and(eq(O.tenantId, tenantId), eq(O.fulfillment, "FBM"), eq(O.shippedBy, "prep"), inArray(O.status, ["shipped", "delivered"])));
+  const betroffen = rows.filter((x) => x.netto < 0);
+  return { auftraege: betroffen.length, stueck: betroffen.reduce((n, x) => n - x.netto, 0), ids: betroffen.map((x) => x.id) };
+}
+
+/** Reparatur anwenden (nur auf ausdrücklichen Klick): eigene Abbuchungen der Prep-Center-Aufträge zurückbuchen. */
+export async function prepAbbuchungenZurueck(tenantId: string, userId: string | null): Promise<number> {
+  const { ids } = await prepAbbuchungen(tenantId);
+  for (const id of ids) await versenderUmbuchen(tenantId, id, "prep", userId);
+  return ids.length;
 }

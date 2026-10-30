@@ -50,7 +50,7 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
   }
   const prioOrder = sql`case ${T.priority} when 'high' then 0 when 'medium' then 1 else 2 end`;
   // Compliance/Konto vor Versand-Sammel-ToDos vor Logistik-Infos
-  const katOrder = sql`case when ${T.category} in ('logistik_info') then 2 when ${T.category} in ('versand_ueberfaellig', 'import_luecke') then 1 else 0 end`;
+  const katOrder = sql`case when ${T.category} in ('logistik_info') then 2 when ${T.category} in ('versand_ueberfaellig', 'versand_unbestaetigt', 'import_luecke') then 1 else 0 end`;
   const orderBy =
     sort === "prio" ? [katOrder, prioOrder, sql`${T.deadline} asc nulls last`, desc(T.receivedAt)]
     : sort === "frist" ? [sql`${T.deadline} asc nulls last`, prioOrder, desc(T.receivedAt)]

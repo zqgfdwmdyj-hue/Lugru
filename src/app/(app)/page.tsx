@@ -11,7 +11,10 @@ import { createTask, deleteTask, toggleTask } from "@/lib/tasks/actions";
 import { refreshImportReminder } from "@/lib/tasks/system";
 import { BUCKET_LABEL, bucketCounts, bucketOf, isIdeaTask, planDay, type Bucket, type TaskLite } from "@/lib/today/logic";
 import { dataAreas, todaySignals } from "@/lib/today/service";
-import { calendarVisible } from "@/lib/calendar/visibility";
+import { calendarVisible, isBusinessCalendar } from "@/lib/calendar/visibility";
+import { DEFAULT_CALENDAR_NAME } from "@/lib/calendar/sync";
+import { getIntegration as integrationLaden } from "@/lib/integrations/store";
+import { PRIVAT_BELEGT } from "@/lib/tagesplan/service";
 import { textOn } from "@/lib/calendar/colors";
 import { calendarPalette } from "@/lib/calendar/palette";
 import { PrivateHint } from "@/app/(privat)/privat/hint";
@@ -173,6 +176,9 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   const { colors: calColors, abbr: calAbbr } = await calendarPalette(session.tenantId);
   const hidden = new Set(prefs.hiddenCalendars ?? []);
   const shownAppointments = allowed.filter((a) => !hidden.has(a.calendarName)).slice(0, 12);
+  // B15.2: Private/Familien-Kalender auf der Startseite nur als „Privat belegt“ + Uhrzeit – nie Titel, Ort oder Beträge.
+  const pushKalender = (await integrationLaden(session.tenantId, "apple_calendar").catch(() => null))?.calendarName || DEFAULT_CALENDAR_NAME;
+  const privatTermin = (name: string) => !isBusinessCalendar(name, calState?.staffCalendars, pushKalender);
   const timeOf = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
   const problems = areas.filter((a) => a.missing || a.stale || a.error);
 
@@ -381,8 +387,8 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                       <span style={{ minWidth: 0 }}>
                         <b className="cal-abbr" style={{ ["--c" as string]: calColors.get(a.calendarName), ["--t" as string]: textOn(calColors.get(a.calendarName)) }} title={a.calendarName}>{calAbbr.get(a.calendarName)}</b>
                         {!a.allDay && <span className="num muted">{timeOf(a.startsAt)} </span>}
-                        {a.title}
-                        {a.location && <span className="muted"> · {a.location}</span>}
+                        {privatTermin(a.calendarName) ? <span className="muted" data-testid="termin-privat">{PRIVAT_BELEGT}</span> : a.title}
+                        {a.location && !privatTermin(a.calendarName) && <span className="muted"> · {a.location}</span>}
                       </span>
                     </div>
                   ))}

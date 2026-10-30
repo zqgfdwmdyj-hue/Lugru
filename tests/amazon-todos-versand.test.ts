@@ -93,3 +93,31 @@ describe("Abgleich mit den Aufträgen", () => {
     expect(sammelWiederOeffnen(["A"], ["A", "C"])).toBe(true);
   });
 });
+
+import { anAmazonBestaetigt, auftragErledigt, erledigbarNachVersand } from "@/lib/amazon-todos/versand";
+import { bestaetigungsDatei, carrierCode } from "@/lib/orders/bestaetigung-logic";
+
+describe("B15.1 Versandbestätigung an Amazon", () => {
+  it("ToDo erst erledigt, wenn an Amazon bestätigt – intern versendet reicht nicht", () => {
+    expect(auftragErledigt({ status: "shipped", bestaetigt: false })).toBe(false);
+    expect(auftragErledigt({ status: "shipped", bestaetigt: true })).toBe(true);
+    expect(auftragErledigt({ status: "cancelled", bestaetigt: false })).toBe(true);
+    expect(auftragErledigt({ status: "open", bestaetigt: true })).toBe(false);
+    expect(anAmazonBestaetigt({ trackingUploadedAt: null, externalStatus: "Unshipped" })).toBe(false);
+    expect(anAmazonBestaetigt({ trackingUploadedAt: null, externalStatus: "Shipped" })).toBe(true);
+    expect(anAmazonBestaetigt({ trackingUploadedAt: "2026-10-30T10:00:00Z", externalStatus: null })).toBe(true);
+    const r = erledigbarNachVersand([{ id: "t1", subject: "Verkauft, Jetzt liefern", bestellnummern: ["302-0000000-0000001"], bodyShort: null }], [{ externalId: "302-0000000-0000001", status: "shipped", bestaetigt: false }]);
+    expect(r).toEqual({ passend: [], aus: [{ id: "t1", grund: "nicht an Amazon bestätigt" }] });
+  });
+  it("Datei: Prep Center ohne Sendungsnummer als „Other“, DHL mit Sendungsnummer", () => {
+    expect(carrierCode("DHL Paket")).toEqual({ code: "DHL", name: "" });
+    expect(carrierCode(null)).toEqual({ code: "Other", name: "Prep Center" });
+    const d = bestaetigungsDatei([
+      { externalId: "302-0000000-0000001", versendetAm: "2026-10-29T09:00:00Z", tracking: "00340434000000000001", carrier: "DHL" },
+      { externalId: "302-0000000-0000002", versendetAm: "2026-10-29T09:00:00Z", tracking: null, carrier: null },
+    ]).split("\r\n");
+    expect(d[0]).toBe("order-id\torder-item-id\tquantity\tship-date\tcarrier-code\tcarrier-name\ttracking-number\tship-method");
+    expect(d[1]).toBe("302-0000000-0000001\t\t\t2026-10-29\tDHL\t\t00340434000000000001\t");
+    expect(d[2]).toBe("302-0000000-0000002\t\t\t2026-10-29\tOther\tPrep Center\t\t");
+  });
+});

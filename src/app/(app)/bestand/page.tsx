@@ -8,7 +8,8 @@ import { getSettings } from "@/lib/settings";
 import { CHANNEL_LABEL } from "@/lib/labels";
 import { availableOf } from "@/lib/stock/channel-logic";
 import { listingsBySku, stockLevels } from "@/lib/stock/channel-sync";
-import { createCount, setOwnStock } from "./actions";
+import { createCount, prepAbbuchungenZurueckAction, setOwnStock } from "./actions";
+import { prepAbbuchungen } from "@/lib/orders/service";
 import { Kpi, KpiMeta } from "@/components/kpi";
 import { skuCostMap } from "@/lib/money/costs";
 import { COST_SOURCE_LABEL, stockValue } from "@/lib/money/profit-logic";
@@ -26,7 +27,7 @@ async function loadSetRows(tenantId: string) {
 
 type Row = { sku: string; title: string | null; image: string | null; asin: string | null; fba: number; inReport: boolean; unsellable: number; reserved: number; inbound: number; own: number; location: string | null; cost: number | null; lastSale: string | null; since: string | null };
 
-export default async function BestandPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; q?: string }> }) {
+export default async function BestandPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; q?: string; meldung?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "alle";
@@ -107,7 +108,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
   // Kennzahl direkt aus der gemeinsamen Quelle (own_stock) – nie aus einer gekürzten Liste.
   const [ownAgg] = await db.select({ units: sql<number>`coalesce(sum(${schema.ownStock.quantity}), 0)::int`, skus: sql<number>`count(*) filter (where ${schema.ownStock.quantity} <> 0)::int` }).from(schema.ownStock).where(eq(schema.ownStock.tenantId, t));
   const own = ownAgg?.units ?? 0;
-  const [levels, sets] = await Promise.all([stockLevels(t), loadSetRows(t)]);
+  const [levels, sets, prepFehl] = await Promise.all([stockLevels(t), loadSetRows(t), prepAbbuchungen(t)]);
   const channelRows = await listingsBySku(t, rows.slice(0, 500).filter((r) => r.own !== 0 || levels.has(r.sku)).map((r) => r.sku));
   const reservedTotal = [...levels.values()].reduce((n, l) => n + l.reserved, 0);
   const counts = await db.select().from(schema.inventoryCounts).where(eq(schema.inventoryCounts.tenantId, t)).orderBy(desc(schema.inventoryCounts.createdAt)).limit(5);
@@ -118,6 +119,7 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
         <div><div className="crumb">WaWi</div><h1>Bestand & Inventur</h1></div>
         <form action="/bestand" style={{ width: 340 }}><input type="hidden" name="ansicht" value={view} /><label htmlFor="bq" className="sr-only">Suche</label><input className="input" id="bq" name="q" defaultValue={sp.q} placeholder="SKU, ASIN, Titel" /></form>
       </div>
+      {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       <div className="stack" style={{ gap: 6 }} data-kpi-group>
       <div className="grid-kpi">
         <Kpi
@@ -150,6 +152,12 @@ export default async function BestandPage({ searchParams }: { searchParams: Prom
         <div className="card card-pad" data-testid="kpi-own"><div className="kpi-label">Eigenes Lager</div><div className="kpi-value" data-testid="own-total">{own}</div><div className="small muted">{ownAgg?.skus ?? 0} SKU{ownAgg?.skus === 1 ? "" : "s"} · gleiche Quelle wie „Wawi verfügbar“ in den Listings</div>{reservedTotal > 0 && <div className="small muted">{reservedTotal} in offenen Aufträgen reserviert</div>}
           {sets.length > 0 && <a href="#sets" className="small" data-testid="own-sets">+ {sets.length} Set{sets.length === 1 ? "" : "s"} aus Bestandteilen (nicht doppelt gezählt) →</a>}
           {sv.negative.length > 0 && <Link href="/bestand?ansicht=negativ" className="small" style={{ color: "var(--danger)" }} data-testid="stock-negative">{sv.negative.length} SKU{sv.negative.length === 1 ? "" : "s"} mit negativem Bestand ({sv.negativeUnits}) – nicht im Warenwert verrechnet →</Link>}
+          {prepFehl.auftraege > 0 && (
+            <form action={prepAbbuchungenZurueckAction} className="small" data-testid="prep-reparatur" style={{ marginTop: 6 }}>
+              <span style={{ color: "var(--warn)" }}>{prepFehl.auftraege} Prep-Center-Auftr{prepFehl.auftraege === 1 ? "ag hat" : "äge haben"} {prepFehl.stueck} Stück vom eigenen Lager abgebucht (Ware kam vom Prep Center).</span>{" "}
+              <button className="btn btn-small" type="submit">Zurückbuchen</button>
+            </form>
+          )}
         </div>
         <div className="card card-pad"><div className="kpi-label">Ladenhüter</div><div className="kpi-value">{res.rows.filter((r) => r.fba + r.own > 0 && (!r.lastSale || r.lastSale < noSaleBefore)).length}</div><div className="small muted">ohne Verkauf seit {settings.aging.noSaleWarnDays} Tagen</div></div>
       </div>

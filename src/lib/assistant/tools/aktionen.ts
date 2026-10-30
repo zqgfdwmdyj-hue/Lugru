@@ -3,7 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { refreshTodoTask } from "@/lib/amazon-todos/service";
-import { bestellnummernAus, erledigbarNachVersand } from "@/lib/amazon-todos/versand";
+import { anAmazonBestaetigt, bestellnummernAus, erledigbarNachVersand } from "@/lib/amazon-todos/versand";
 import { todayIso } from "@/lib/dates";
 import { refreshVerlustTasks } from "@/lib/money/verlust-service";
 import { defineTool, type ToolCtx, type Vorschau } from "../types";
@@ -37,7 +37,10 @@ async function todoAuswahl(ctx: ToolCtx, i: TodoIn) {
     .limit(MAX + 1);
   if (!i.nur_versendete) return { passend: rows, aus: [] as { id: string; grund: string; titel: string }[] };
   const nrn = [...new Set(rows.flatMap((r) => (r.bestellnummern.length ? r.bestellnummern : bestellnummernAus(`${r.subject ?? ""}\n${r.bodyShort ?? ""}`))))];
-  const auftraege = nrn.length ? await db.select({ externalId: O.externalId, status: O.status }).from(O).where(and(eq(O.tenantId, t), inArray(O.externalId, nrn))) : [];
+  // B15: nur, wenn auch an Amazon bestätigt (nicht nur intern versendet).
+  const auftraege = nrn.length
+    ? (await db.select({ externalId: O.externalId, status: O.status, trackingUploadedAt: O.trackingUploadedAt, externalStatus: O.externalStatus, channel: O.channel }).from(O).where(and(eq(O.tenantId, t), inArray(O.externalId, nrn)))).map((a) => ({ externalId: a.externalId, status: a.status, bestaetigt: a.channel !== "amazon" || anAmazonBestaetigt(a) }))
+    : [];
   const e = erledigbarNachVersand(rows, auftraege);
   const ok = new Set(e.passend);
   const titel = new Map(rows.map((r) => [r.id, r.summary ?? r.subject ?? r.id]));

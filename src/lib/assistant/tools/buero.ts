@@ -90,7 +90,7 @@ export const amazonTodos = defineTool({
       .from(A)
       .where(and(...where))
       // Compliance/Konto vor Versand-Sammel-ToDos vor Logistik; dann Priorität und Frist
-      .orderBy(sql`case when ${A.category} in ('logistik_info') then 2 when ${A.category} in ('versand_ueberfaellig', 'import_luecke') then 1 else 0 end`, sql`case ${A.priority} when 'high' then 0 when 'medium' then 1 else 2 end`, sql`${A.deadline} asc nulls last`)
+      .orderBy(sql`case when ${A.category} in ('logistik_info') then 2 when ${A.category} in ('versand_ueberfaellig', 'versand_unbestaetigt', 'import_luecke') then 1 else 0 end`, sql`case ${A.priority} when 'high' then 0 when 'medium' then 1 else 2 end`, sql`${A.deadline} asc nulls last`)
       .limit(i.limit);
     const [ausgeblendet] = i.kategorie ? [undefined] : await db.select({ n: sql<number>`count(*)::int` }).from(A).where(and(eq(A.tenantId, t), eq(A.status, "open"), inArray(A.category, [...LOGISTIK_KATEGORIEN])));
     const nummern = [...new Set(rows.flatMap((x) => x.bestellnummern))];

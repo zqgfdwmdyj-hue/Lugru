@@ -153,7 +153,8 @@ test.describe("Teil 2 – Team", () => {
     await anmelden(page, "inhaber");
     await page.goto("/calls");
     // „Calls importieren“ ist zu, sobald schon Calls im Archiv sind (z. B. Chat-Zusammenfassungen anderer Prüfungen).
-    if (!(await page.getByTestId("calls-einzeln").isVisible())) await page.locator("summary", { hasText: "Calls importieren" }).click();
+    await page.getByTestId("calls-einzeln").waitFor({ state: "attached" });
+    await page.locator("details", { has: page.getByTestId("calls-einzeln") }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
     await page.getByTestId("calls-einzeln").locator("summary").click();
     await page.getByTestId("calls-link").fill("https://docs.google.com/document/d/TESTCALLimport00000000001/edit");
     await Promise.all([page.waitForURL(/\/calls\/[0-9a-f-]{36}/), page.getByTestId("calls-import").click()]);

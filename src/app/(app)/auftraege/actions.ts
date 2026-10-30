@@ -174,6 +174,21 @@ export async function saveShipperAction(fd: FormData) {
   const session = await requireArea("wawi");
   const orderId = uuid.parse(fd.get("orderId"));
   const v = String(fd.get("shipper") ?? "");
-  await db.update(schema.orders).set({ shippedBy: v === "self" || v === "prep" ? v : null, updatedAt: new Date() }).where(and(eq(schema.orders.id, orderId), eq(schema.orders.tenantId, session.tenantId)));
+  const neu = v === "self" || v === "prep" ? v : null;
+  await db.update(schema.orders).set({ shippedBy: neu, updatedAt: new Date() }).where(and(eq(schema.orders.id, orderId), eq(schema.orders.tenantId, session.tenantId)));
+  // Schon versendet: Lager passend umbuchen (Prep Center = nicht vom eigenen Lager).
+  await import("@/lib/orders/service").then((x) => x.versenderUmbuchen(session.tenantId, orderId, neu, session.userId));
   revalidatePath(`/auftraege/${orderId}`);
+}
+
+/** B15.1: Versandbestätigung in Seller Central hochgeladen → Aufträge gelten als an Amazon gemeldet; ToDos/Erinnerung folgen. */
+export async function bestaetigungHochgeladen(fd: FormData) {
+  const session = await requireArea("wawi");
+  const ids = fd.getAll("id").map(String).filter((x) => uuid.safeParse(x).success);
+  const { alsHochgeladenMarkieren, bestaetigungErinnern } = await import("@/lib/orders/bestaetigung");
+  const n = await alsHochgeladenMarkieren(session.tenantId, ids);
+  await bestaetigungErinnern(session.tenantId).catch(() => null);
+  await import("@/lib/amazon-todos/service").then((x) => x.versandAbgleich(session.tenantId)).catch(() => null);
+  revalidatePath("/auftraege");
+  redirect(`/auftraege?ansicht=fehler&meldung=${encodeURIComponent(`${n} Auftr${n === 1 ? "ag" : "äge"} als an Amazon gemeldet markiert.`)}`);
 }

@@ -8,7 +8,8 @@ import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
 import { itemNameSql, type OrderItemLine } from "@/lib/orders/service";
-import { createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
+import { bestaetigungHochgeladen, createManualOrder, fetchOrdersNow, markAllLabeledShipped } from "./actions";
+import { offeneBestaetigungen } from "@/lib/orders/bestaetigung";
 import { BatchForm } from "./batch-form";
 import { openLabels } from "@/lib/shipping/label-pdfs";
 import { searchOrderIds } from "@/lib/orders/search";
@@ -31,7 +32,8 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     case "offen": where.push(eq(O.fulfillment, "FBM"), eq(O.status, "open")); break;
     case "label": where.push(eq(O.status, "label_created")); break;
     case "versendet": where.push(eq(O.fulfillment, "FBM"), inArray(O.status, ["shipped", "delivered"])); break;
-    case "fehler": where.push(eq(O.fulfillment, "FBM"), sql`(${O.trackingNumber} is not null or (${O.carrier} = 'Deutsche Post' and ${O.status} = 'shipped')) and ${O.trackingUploadedAt} is null`); break;
+    // Meldung offen: versendet, aber dem Kanal nicht gemeldet – Amazon auch ohne Sendungsnummer (z. B. Prep Center).
+    case "fehler": where.push(eq(O.fulfillment, "FBM"), sql`${O.trackingUploadedAt} is null and ((${O.channel} = 'amazon' and ${O.status} in ('shipped', 'delivered') and coalesce(lower(${O.externalStatus}), '') not in ('shipped', 'delivered', 'canceled', 'cancelled')) or ${O.trackingNumber} is not null or (${O.carrier} = 'Deutsche Post' and ${O.status} = 'shipped'))`); break;
     case "fba": where.push(eq(O.fulfillment, "FBA")); break;
   }
   const orders = await db
@@ -43,6 +45,7 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
     .where(and(...where))
     .orderBy(view === "offen" ? sql`${O.shipBy} asc nulls last` : desc(O.orderDate))
     .limit(300);
+  const bestaetigung = view === "fehler" ? await offeneBestaetigungen(session.tenantId, new Date(), { ohneWartezeit: true }) : [];
   const counts = await db
     .select({ channel: O.channel, n: sql<number>`count(*)::int` })
     .from(O)
@@ -106,6 +109,21 @@ export default async function AuftraegePage({ searchParams }: { searchParams: Pr
         </div>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="orders-msg">{sp.meldung}</div>}
+      {view === "fehler" && bestaetigung.length > 0 && (
+        <div className="notice notice-warn" data-testid="bestaetigung-box" style={{ marginBottom: 12 }}>
+          <strong>{bestaetigung.length} Amazon-Auftr{bestaetigung.length === 1 ? "ag" : "äge"} versendet, aber bei Amazon nicht bestätigt</strong>
+          {bestaetigung[0].frist && <> – früheste Versandfrist {new Date(bestaetigung[0].frist).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</>}
+          <ol className="small" style={{ margin: "6px 0", paddingLeft: 18 }}>
+            <li><a href="/auftraege/versandbestaetigung" data-testid="bestaetigung-datei">Versandbestätigung (Datei) laden</a></li>
+            <li>In Seller Central unter Bestellungen → Bestellberichte hochladen → „Versandbestätigung“ hochladen</li>
+            <li>Hier bestätigen – dann gelten die Aufträge als an Amazon gemeldet, die Erinnerung endet und die Amazon-ToDos schließen sich</li>
+          </ol>
+          <form action={bestaetigungHochgeladen}>
+            {bestaetigung.map((b) => <input key={b.id} type="hidden" name="id" value={b.id} />)}
+            <button className="btn btn-small" type="submit" data-testid="bestaetigung-hochgeladen">In Seller Central hochgeladen ({bestaetigung.length})</button>
+          </form>
+        </div>
+      )}
       <form action="/auftraege" className="orders-search" data-testid="orders-search">
         <label htmlFor="oq" className="sr-only">Aufträge suchen</label>
         <input id="oq" name="q" type="search" className="input" defaultValue={q} placeholder="Name, Bestellnummer, PLZ/Ort oder Artikel suchen – z. B. „schon übertragen?“" />

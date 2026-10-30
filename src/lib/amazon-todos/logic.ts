@@ -222,6 +222,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
   freigabe_info: "Freigabe",
   logistik_info: "Logistik-Info",
   versand_ueberfaellig: "Versandfrist abgelaufen (FBM)",
+  versand_unbestaetigt: "Versendet, bei Amazon nicht bestätigt",
   import_luecke: "Bestellung fehlt im Tool",
   auto_remission: "Automatische Remission",
   sonstiges: "Sonstiges",

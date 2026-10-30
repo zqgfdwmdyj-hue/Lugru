@@ -27,7 +27,8 @@ test.describe("Assistent führt Aufträge aus", () => {
     const st = ["shipped", "label_created", "open"];
     const auftragIds: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const [o] = await sql<{ id: string }>("insert into orders (tenant_id, channel, external_id, order_date, fulfillment, status, buyer_name, total) values ($1, 'amazon', $2, now() - interval '1 day', 'FBM', $3, 'Testkunde (erfunden)', 9.9) returning id", [T, nummern[i], st[i]]);
+      // Versendet/Label: an Amazon bestätigt (B15 – sonst bleibt das ToDo offen)
+      const [o] = await sql<{ id: string }>("insert into orders (tenant_id, channel, external_id, order_date, fulfillment, status, buyer_name, total, tracking_uploaded_at) values ($1, 'amazon', $2, now() - interval '1 day', 'FBM', $3, 'Testkunde (erfunden)', 9.9, $4) returning id", [T, nummern[i], st[i], i < 2 ? new Date() : null]);
       auftragIds.push(o.id);
       await sql("insert into amazon_todos (tenant_id, message_key, received_at, subject, summary, category, priority, status, source, bestellnummern) values ($1, $2, now(), $3, $3, $4, 'high', 'open', 'ai', $5)", [T, `b11-${m}-${i}`, `Verkauft, Jetzt liefern: TEST-B11-${i} (erfunden) ${m}`, kat, JSON.stringify([nummern[i]])]);
     }
@@ -89,8 +90,12 @@ test.describe("Assistent führt Aufträge aus", () => {
     // 6) Gleiche Aktion per Claude-Konnektor → gleiches Ergebnis, im Verlauf als „Claude“
     const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
     expect(await mcp.tools()).toEqual(expect.arrayContaining(["amazon_todo_erledigen", "auftrag_status", "verlust_ausnahme", "mail_markieren"]));
-    const r = JSON.parse(await mcp.call("amazon_todo_erledigen", { kategorie: kat, nur_versendete: true }));
-    expect(r.erledigt).toBe(3); // inzwischen ist auch Auftrag 3 versendet
+    // Auftrag 3 ist intern versendet, aber noch nicht an Amazon bestätigt → ToDo bleibt (B15); nach der Bestätigung: erledigt
+    let r = JSON.parse(await mcp.call("amazon_todo_erledigen", { kategorie: kat, nur_versendete: true }));
+    expect(r.erledigt).toBe(2);
+    await sql("update orders set tracking_uploaded_at = now() where id = $1", [auftragIds[2]]);
+    r = JSON.parse(await mcp.call("amazon_todo_erledigen", { kategorie: kat, nur_versendete: true }));
+    expect(r.erledigt).toBe(1); // jetzt auch Auftrag 3 (versendet und bestätigt)
     expect(await todoStatus()).toEqual(["done", "done", "done"]);
     await page.goto("/assistent-verlauf");
     await expect(page.getByTestId("verlauf-eintrag").filter({ hasText: "Amazon-ToDos erledigen" }).first()).toContainText("Claude");

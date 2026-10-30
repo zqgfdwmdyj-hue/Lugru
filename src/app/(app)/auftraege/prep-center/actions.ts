@@ -14,5 +14,8 @@ export async function assignShipperAction(fd: FormData) {
   const ids = fd.getAll("orderId").map(String).filter((s) => z.string().uuid().safeParse(s).success).slice(0, 3000);
   if (!ids.length) return;
   await db.update(schema.orders).set({ shippedBy: v, updatedAt: new Date() }).where(and(eq(schema.orders.tenantId, session.tenantId), inArray(schema.orders.id, ids)));
+  // Schon versendete Aufträge: Lager passend umbuchen (Prep Center = nicht vom eigenen Lager).
+  const { versenderUmbuchen } = await import("@/lib/orders/service");
+  for (const id of ids) await versenderUmbuchen(session.tenantId, id, v, session.userId);
   revalidatePath("/auftraege/prep-center");
 }

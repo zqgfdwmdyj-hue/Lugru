@@ -1,6 +1,7 @@
 import "server-only";
 import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { isTestEnv } from "@/lib/testenv";
 import type { Session } from "@/lib/auth/session";
 import { ACCESS_TTL_S, CODE_TTL_S, REFRESH_TTL_DAYS, parseScope, randomToken, redirectAllowed, sha256hex, verifyPkce } from "./oauth-logic";
 
@@ -20,7 +21,8 @@ export async function registerClient(body: Record<string, unknown>) {
   if (bad) return err("invalid_redirect_uri", `Rücksprung-Adresse nicht erlaubt: ${bad.slice(0, 200)}`);
   // Bremse gegen massenhaftes Registrieren (ohne Anmeldung erreichbar).
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(C).where(gt(C.createdAt, new Date(Date.now() - 3600_000)));
-  if (n >= 30) return err("temporarily_unavailable", "Zu viele Registrierungen – bitte später erneut.", 429);
+  // Testumgebung: die Ablaufprüfungen verbinden viele Konnektoren hintereinander – dort großzügiger.
+  if (n >= (isTestEnv() ? 500 : 30)) return err("temporarily_unavailable", "Zu viele Registrierungen – bitte später erneut.", 429);
   const method = body.token_endpoint_auth_method === "none" ? "none" : body.token_endpoint_auth_method === "client_secret_post" ? "client_secret_post" : body.token_endpoint_auth_method === undefined ? "none" : "client_secret_basic";
   const clientId = `ss_${randomToken(18)}`;
   const secret = method === "none" ? null : randomToken(32);

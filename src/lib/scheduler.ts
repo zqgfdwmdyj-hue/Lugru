@@ -178,6 +178,8 @@ export async function runScheduledJobs(force = false) {
       // Geburtstage & Jahrestage: 14 und 3 Tage vorher, am Tag selbst (je Stufe einmal, nur Push an Privat-Zugang).
       if (force || due(`${t}:jahrestage`, 179)) await step(t, "Geburtstage & Jahrestage", async () => (await import("@/lib/private/erinnerungen")).jahrestagErinnerungen(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
+      // B15.1: Erinnerung „Versandbestätigung bei Amazon hochladen“, solange versendete Aufträge nicht gemeldet sind.
+      if (force || due(`${t}:amazon-bestaetigung`, 59)) await step(t, "Amazon: Versandbestätigung", async () => (await import("@/lib/orders/bestaetigung")).bestaetigungErinnern(t));
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).
       if (force || due("medien-aufraeumen", 1435)) await step(t, "Retouren-Station: Medien aufräumen", async () => (await import("@/lib/retouren-station/fall")).medienAufraeumen());

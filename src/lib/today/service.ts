@@ -71,6 +71,20 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
     const next = shipLater.next ? new Date(shipLater.next).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "Europe/Berlin" }) : null;
     out.push({ key: "versand-spaeter", label: `${shipLater.n} weitere ${shipLater.n === 1 ? "Sendung" : "Sendungen"} mit Frist ab übermorgen`, detail: next ? `nächste Frist ${next}` : undefined, count: shipLater.n, href: "/auftraege?ansicht=offen", level: "info" });
   }
+  // B15.1: versendet, aber Amazon kennt den Versand nicht (ohne Schnittstelle) – mit Frist, bis die Datei hochgeladen ist.
+  const unb = await import("@/lib/orders/bestaetigung").then((x) => x.offeneBestaetigungen(tenantId, now)).catch(() => []);
+  if (unb.length) {
+    const frist = unb.find((u) => u.frist)?.frist ?? null;
+    const dringend = !frist || new Date(frist) < endOfTomorrow;
+    out.unshift({
+      key: "amazon-bestaetigung",
+      label: `${pl(unb.length, "Auftrag", "Aufträge")} versendet, aber bei Amazon nicht bestätigt${frist ? ` – Frist ${new Date(frist).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit" })}` : ""}`,
+      detail: "Versandbestätigung als Datei laden, in Seller Central hochladen, dann bestätigen",
+      count: unb.length,
+      href: "/auftraege?ansicht=fehler",
+      level: dringend ? "danger" : "warn",
+    });
+  }
   if (expired.n) out.push({ key: "abgelaufen", label: `${expired.n} Anspr${expired.n === 1 ? "uch" : "üche"} mit abgelaufener Frist, nicht eingereicht`, count: expired.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
   return out;
 }
