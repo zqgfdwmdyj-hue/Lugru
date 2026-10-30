@@ -49,6 +49,8 @@ export const invoices = pgTable(
     textExcerpt: text("text_excerpt"),
     /** Händler/Aussteller (bei Belegen von der KI gelesen). */
     vendor: text("vendor"),
+    /** Firma (Buchhaltung je Firma); leer = Hauptfirma. */
+    firma: text("firma"),
     /** Stand der Übertragung an Stotax Select (Mail2Select). */
     stotaxSentAt: timestamp("stotax_sent_at", { withTimezone: true }),
     stotaxTriedAt: timestamp("stotax_tried_at", { withTimezone: true }),

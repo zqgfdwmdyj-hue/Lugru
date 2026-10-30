@@ -13,9 +13,9 @@ type Bereich = "geschaeft" | "privat";
 const wer = (bereich: Bereich, userId: string | null) => (bereich === "privat" ? eq(U.userId, userId ?? "00000000-0000-0000-0000-000000000000") : isNull(U.userId));
 const werSaldo = (bereich: Bereich, userId: string | null) => (bereich === "privat" ? eq(S.userId, userId ?? "00000000-0000-0000-0000-000000000000") : isNull(S.userId));
 
-export async function kontoauszugImportieren(tenantId: string, bereich: Bereich, userId: string | null, bytes: Uint8Array, o: { saldoBank?: number | null } = {}) {
+export async function kontoauszugImportieren(tenantId: string, bereich: Bereich, userId: string | null, bytes: Uint8Array, o: { saldoBank?: number | null; firma?: string | null } = {}) {
   const a = leseKontoauszug(bytes);
-  if (!a.umsaetze.length && !a.salden.length) return { neu: 0, doppelt: 0, von: null as string | null, bis: null as string | null, salden: 0, format: a.format };
+  if (!a.umsaetze.length && !a.salden.length) return { neu: 0, doppelt: 0, von: null as string | null, bis: null as string | null, salden: 0, format: a.format, summe: 0, konto: a.konto, endsaldo: null as { datum: string; saldo: number } | null };
   const werte = a.umsaetze.map((u) => ({
     tenantId,
     bereich,
@@ -28,6 +28,8 @@ export async function kontoauszugImportieren(tenantId: string, bereich: Bereich,
     waehrung: u.waehrung,
     gegenpartei: u.gegenpartei,
     zweck: u.zweck.slice(0, 1000),
+    gegenIban: u.iban,
+    firma: bereich === "geschaeft" ? (o.firma ?? null) : null,
     buchungstext: u.buchungstext,
     glaeubigerId: u.glaeubigerId,
     mandat: u.mandat,
@@ -44,7 +46,8 @@ export async function kontoauszugImportieren(tenantId: string, bereich: Bereich,
     const v = { tenantId, bereich, userId: bereich === "privat" ? userId : null, konto: a.konto ?? "", datum: s.datum, saldo: s.saldo, quelle: s.quelle };
     await db.insert(S).values(v).onConflictDoUpdate({ target: [S.tenantId, S.bereich, S.konto, S.datum], set: { saldo: s.saldo, quelle: s.quelle } });
   }
-  return { neu, doppelt: werte.length - neu, von: tage[0] ?? null, bis: tage[tage.length - 1] ?? null, salden: salden.length, format: a.format };
+  const summe = Math.round(a.umsaetze.reduce((n, u) => n + u.betrag, 0) * 100) / 100;
+  return { neu, doppelt: werte.length - neu, von: tage[0] ?? null, bis: tage[tage.length - 1] ?? null, salden: salden.length, format: a.format, summe, konto: a.konto, endsaldo: salden.sort((x, y) => y.datum.localeCompare(x.datum))[0] ?? null };
 }
 
 /** Aktueller Kontostand: jüngster bekannter Saldo + spätere Umsätze (je Konto summiert). */

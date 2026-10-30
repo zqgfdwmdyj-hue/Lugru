@@ -138,6 +138,8 @@ export async function deleteReceipt(tenantId: string, id: string) {
   const [row] = await db.select({ fileId: I.fileId, sent: I.stotaxSentAt }).from(I).where(and(eq(I.tenantId, tenantId), eq(I.id, id), eq(I.source, "scan")));
   if (!row) return;
   if (row.sent) throw new ReceiptError("Schon an Stotax übertragen – dort löschen bzw. dem Steuerberater Bescheid geben.");
+  const [inBuchhaltung] = await db.select({ id: schema.belegZuordnungen.id }).from(schema.belegZuordnungen).where(and(eq(schema.belegZuordnungen.tenantId, tenantId), eq(schema.belegZuordnungen.invoiceId, id))).limit(1);
+  if (inBuchhaltung) throw new ReceiptError("Der Beleg ist in der Buchhaltung einer Zahlung zugeordnet – dort erst die Zuordnung lösen (Belege bleiben aufbewahrungspflichtig).");
   await db.delete(I).where(and(eq(I.tenantId, tenantId), eq(I.id, id)));
   if (row.fileId) await db.delete(schema.files).where(and(eq(schema.files.tenantId, tenantId), eq(schema.files.id, row.fileId)));
 }

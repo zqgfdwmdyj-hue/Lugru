@@ -5,7 +5,8 @@ import { encryptedText } from "./encrypted";
 // Kontoauszüge: Geschäftskonto (Liquidität) und Privatkonto (Privat → Geld) getrennt über „bereich“. Namen und
 // Verwendungszweck verschlüsselt; „gruppe“ ist ein Prüfwert zum Zusammenfassen wiederkehrender Abbuchungen.
 
-export const BANK_BEREICHE = ["geschaeft", "privat"] as const;
+/** „kreditkarte“ = Einzelumsätze der Firmen-Kreditkarte (Amex) – nie in Liquidität/Kontostand eingerechnet. */
+export const BANK_BEREICHE = ["geschaeft", "privat", "kreditkarte"] as const;
 
 export const bankUmsaetze = pgTable(
   "bank_umsaetze",
@@ -23,6 +24,10 @@ export const bankUmsaetze = pgTable(
     waehrung: text("waehrung").notNull().default("EUR"),
     gegenpartei: encryptedText("gegenpartei"),
     zweck: encryptedText("zweck"),
+    /** IBAN der Gegenpartei (für den Abgleich mit Belegen). */
+    gegenIban: encryptedText("gegen_iban"),
+    /** Firma (Buchhaltung je Firma); leer = Hauptfirma. */
+    firma: text("firma"),
     buchungstext: text("buchungstext"),
     glaeubigerId: text("glaeubiger_id"),
     mandat: text("mandat"),

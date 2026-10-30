@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
+import { buchhaltungStatus } from "@/lib/buchhaltung/service";
 import { addDaysIso } from "@/lib/dates";
 import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
 import { fristenListe } from "@/lib/private/fristen-service";
@@ -159,4 +160,44 @@ export const fristenTool = defineTool({
   },
 });
 
-export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool];
+// ---- Modul 5: Buchhaltung ---------------------------------------------------------------------------------
+
+export const buchhaltungStatusTool = defineTool({
+  name: "buchhaltung_status",
+  title: "Buchhaltung: Stand des Monats",
+  description:
+    "Stand der Buchhaltung je Firma (LuGru/WiGru) und Monat: Belege neu/unsicher, Zahlungen ohne Beleg, Belege ohne Zahlung, Abstimmungsgrad in %, offene Zuordnungs- und Buchungsvorschläge, festgeschrieben ja/nein, Export für den Steuerberater erstellt ja/nein, letzte Kontoauszug-Uploads. Für „Wie weit ist die Buchhaltung für Oktober?“, „Was fehlt dem Steuerberater?“. Keine Steuerberatung.",
+  area: "geld",
+  write: false,
+  quelle: { text: "Kontoauszüge (Sparkasse/Amex-Uploads) und Belege im Seller-System" },
+  input: z.object({
+    monat: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).describe("JJJJ-MM"),
+    firma: z.string().max(40).optional().describe("Standard: Hauptfirma"),
+  }),
+  run: async (ctx, i) => {
+    const s = await buchhaltungStatus(ctx.session.tenantId, i.monat, i.firma);
+    const letzterImport = (art: string) => s.importe.find((x) => x.art === art);
+    const imp = (art: string) => {
+      const x = letzterImport(art);
+      return x ? { zeitraum: `${x.von ?? "?"} – ${x.bis ?? "?"}`, hochgeladen: x.createdAt.toISOString().slice(0, 10), endsaldo: x.endsaldo ?? undefined } : "noch kein Upload";
+    };
+    return json({
+      firma: s.firma,
+      monat: s.monat,
+      firmen: s.firmen,
+      abstimmungsgrad_prozent: s.abstimmungsgrad,
+      zahlungen: { gesamt: s.zahlungen.gesamt, zugeordnet: s.zahlungen.zugeordnet, vorschlaege_offen: s.zahlungen.vorschlaege, ohne_beleg: s.zahlungen.ohneBeleg },
+      belege: { im_monat: s.belege.gesamt, neu: s.belege.neu, unsicher: s.belege.unsicher, ohne_zahlung: s.belege.ohneZahlung },
+      buchungen: s.buchungen,
+      festgeschrieben: s.buchungen.festgeschrieben > 0 && s.buchungen.vorschlag === 0 && s.buchungen.bestaetigt === 0,
+      export_erstellt: s.export ? { am: s.export.am.toISOString().slice(0, 10), art: s.export.art === "datev" ? "DATEV" : "CSV + Belege (ZIP)", buchungen: s.export.buchungen } : false,
+      uploads: { sparkasse: imp("sparkasse"), amex: imp("amex") },
+      zahlungen_ohne_beleg: s.listen.ohneBeleg.slice(0, 15).map((z) => ({ datum: z.datum, betrag: z.betrag, gegenpartei: z.gegenpartei.slice(0, 60), amex: z.karte || undefined })),
+      belege_ohne_zahlung: s.listen.belegeOhneZahlung.slice(0, 15).map((b) => ({ datum: b.datum, offen: b.rest, lieferant: b.lieferant, nummer: b.nummer })),
+      hinweis: "Nur Stand und Vorschläge – steuerliche Bewertung beim Steuerberater.",
+      link: abs(ctx, `/buchhaltung?firma=${encodeURIComponent(s.firma)}&monat=${s.monat}`),
+    });
+  },
+});
+
+export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool, buchhaltungStatusTool];

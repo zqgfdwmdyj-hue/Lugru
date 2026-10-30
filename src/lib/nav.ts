@@ -148,6 +148,7 @@ export const NAV: NavSection[] = [
       { href: "/hebel", label: "Hebel: Umsatz & Marge" },
       { href: "/kapital", label: "Kapital-Ampel" },
       { href: "/verlust", label: "Verlust-Stopp" },
+      { href: "/buchhaltung", label: "Buchhaltung (Abgleich, DATEV)" },
       { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices", short: "Belege prüfen" },
       { href: "/rechnungen/belege", label: "Belege scannen" },
       { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },

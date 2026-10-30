@@ -34,3 +34,4 @@ export * from "./tables/verlust";
 export * from "./tables/echtheit";
 export * from "./tables/zeit";
 export * from "./tables/calls";
+export * from "./tables/buchhaltung";
