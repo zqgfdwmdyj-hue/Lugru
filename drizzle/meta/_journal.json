@@ -610,6 +610,13 @@
       "when": 1793351680984,
       "tag": "0086_buchhaltung",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1793353785729,
+      "tag": "0087_uploads",
+      "breakpoints": true
     }
   ]
 }

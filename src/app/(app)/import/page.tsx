@@ -42,6 +42,7 @@ export default async function ImportPage() {
   return (
     <>
       <div className="page-head"><div><div className="crumb">Daten</div><h1>Daten importieren</h1></div></div>
+      <div className="notice notice-info small" style={{ marginBottom: 12 }}>Alle Dateien an einer Stelle (auch Kontoauszüge, Belege, BQool, Calls): <Link href="/uploads">Uploads</Link>.</div>
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <section className="card" id="datenstand" data-testid="data-areas" style={{ overflow: "auto" }}>

@@ -51,7 +51,7 @@ export const bankSalden = pgTable(
     konto: text("konto").notNull().default(""),
     datum: date("datum", { mode: "string" }).notNull(),
     saldo: money("saldo").notNull(),
-    quelle: text("quelle", { enum: ["camt", "csv", "hand"] }).notNull(),
+    quelle: text("quelle", { enum: ["camt", "csv", "pdf", "hand"] }).notNull(),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("bank_salden_uq").on(t.tenantId, t.bereich, t.konto, t.datum)],

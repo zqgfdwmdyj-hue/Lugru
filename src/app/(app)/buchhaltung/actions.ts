@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
 import { requireArea, requireOwner } from "@/lib/auth/session";
 import { abgleichLaufen, amexImportieren, belegeAnfordern, belegFirmaSetzen, buchhaltungStatus, buchungAendern, buchungenBestaetigen, buchungStornieren, BuchhaltungFehler, monatFestschreiben, monatOk, sparkasseImportieren, ustBerichtImportieren, zuordnungAblehnen, zuordnungBestaetigen, zuordnungManuell } from "@/lib/buchhaltung/service";
+import { importMeldung } from "@/lib/bank/service";
 import { parseAmount } from "@/lib/numbers";
 
 // Buchhaltung (Bereich „Geld“): Uploads, Abgleich, Bestätigen, Festschreiben. Alles wird protokolliert.
@@ -27,7 +28,7 @@ async function mit(fd: FormData, fn: () => Promise<string>) {
   try {
     ziel_ = ziel(fd, await fn());
   } catch (e) {
-    if (e instanceof BuchhaltungFehler || (e instanceof Error && /Spalten|Bericht|Datum/.test(e.message))) ziel_ = ziel(fd, e.message, true);
+    if (e instanceof BuchhaltungFehler || (e instanceof Error && /Spalten|Bericht|Datum|PDF|Kontoauszug/.test(e.message))) ziel_ = ziel(fd, e.message, true);
     else throw e;
   }
   revalidatePath("/buchhaltung");
@@ -52,7 +53,7 @@ export async function sparkasseAction(fd: FormData) {
     if (!d) throw new BuchhaltungFehler("Bitte die CSV-Datei der Sparkasse wählen.");
     const saldo = parseAmount(fd.get("saldo"));
     const r = await sparkasseImportieren(w, firmaAus(fd), d, saldo);
-    return `Sparkasse: ${r.neu} neue Buchungen${r.doppelt ? `, ${r.doppelt} schon vorhanden` : ""}${r.endsaldo !== null ? ` · Anfangssaldo ${r.anfangssaldo?.toFixed(2).replace(".", ",")} € → Endsaldo ${r.endsaldo.toFixed(2).replace(".", ",")} €` : ""}.`;
+    return `Sparkasse: ${importMeldung(r.bank).replace(/\.$/, "")}${r.endsaldo !== null && r.anfangssaldo !== null ? ` · Anfangssaldo ${r.anfangssaldo.toFixed(2).replace(".", ",")} € → Endsaldo ${r.endsaldo.toFixed(2).replace(".", ",")} €` : ""}.`;
   });
 }
 

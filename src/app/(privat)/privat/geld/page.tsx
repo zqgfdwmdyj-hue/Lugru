@@ -90,7 +90,7 @@ export default async function PrivatGeldPage({ searchParams }: { searchParams: P
           <p className="small muted">Noch kein Kontoauszug vom Privatkonto.</p>
         )}
         <form action={privatKontoAction} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end", marginTop: 10 }}>
-          <label className="small">Kontoauszug (CSV oder CAMT)<input type="file" name="datei" accept=".csv,.xml,.txt" required data-testid="geld-kontoauszug" /></label>
+          <label className="small">Kontoauszug (CSV, CAMT oder PDF)<input type="file" name="datei" accept=".csv,.xml,.txt,.pdf" required data-testid="geld-kontoauszug" /></label>
           <label className="small">Kontostand laut Bank (optional)<input name="saldo" inputMode="decimal" style={{ width: 120 }} /></label>
           <button className="btn" type="submit">Einlesen</button>
         </form>

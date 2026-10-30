@@ -83,10 +83,11 @@ export default async function BuchhaltungPage({ searchParams }: { searchParams: 
       {/* 1. Hochladen */}
       <section className="card card-pad" style={{ marginBottom: 14 }}>
         <h2 style={{ marginTop: 0 }}>1. Kontoauszüge hochladen</h2>
+        <p className="small muted" style={{ marginTop: -6 }}>Geht auch zentral für alles: <Link href="/uploads">Uploads</Link> erkennt die Datei selbst.</p>
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
           <form action={sparkasseAction} className="small" style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
             {hidden}
-            <label>Sparkasse (CSV-CAMT)<input type="file" name="datei" accept=".csv,.txt,.xml" data-testid="bh-sparkasse" /></label>
+            <label>Sparkasse (CSV, CAMT oder PDF)<input type="file" name="datei" accept=".csv,.txt,.xml,.pdf" data-testid="bh-sparkasse" /></label>
             <label>Saldo laut Bank (optional)<input name="saldo" inputMode="decimal" style={{ width: 110 }} /></label>
             <button className="btn" type="submit" data-testid="bh-sparkasse-hochladen">Einlesen</button>
           </form>

@@ -52,13 +52,13 @@ const meldung = (s: string) => `/cashflow?meldung=${encodeURIComponent(s)}`;
 export async function kontoauszugAction(fd: FormData) {
   const session = await requireArea("geld");
   const datei = fd.get("datei");
-  if (!(datei instanceof File) || datei.size === 0) redirect(meldung("Bitte eine Datei wählen (CSV oder CAMT/XML)."));
+  if (!(datei instanceof File) || datei.size === 0) redirect(meldung("Bitte eine Datei wählen (CSV, CAMT/XML oder PDF)."));
   if (datei.size > 10_000_000) redirect(meldung("Datei zu groß (max. 10 MB)."));
-  const { kontoauszugImportieren } = await import("@/lib/bank/service");
+  const { importMeldung, kontoauszugImportieren } = await import("@/lib/bank/service");
   let text: string;
   try {
     const r = await kontoauszugImportieren(session.tenantId, "geschaeft", null, new Uint8Array(await datei.arrayBuffer()), { saldoBank: parseAmount(fd.get("saldo")) });
-    text = `${r.neu} neue Buchungen${r.doppelt ? `, ${r.doppelt} schon vorhanden` : ""}${r.von ? ` (${r.von} bis ${r.bis})` : ""}${r.salden ? `, Kontostand übernommen` : r.format === "csv" ? " – ohne Kontostand: bitte „Kontostand laut Bank“ mit angeben" : ""}.`;
+    text = importMeldung(r);
   } catch (e) {
     text = e instanceof Error ? e.message : "Datei nicht lesbar.";
   }

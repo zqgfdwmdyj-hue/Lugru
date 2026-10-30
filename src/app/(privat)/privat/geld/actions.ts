@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { kontoauszugImportieren } from "@/lib/bank/service";
+import { importMeldung, kontoauszugImportieren } from "@/lib/bank/service";
 import { todayIso } from "@/lib/dates";
 import { parseAmount } from "@/lib/numbers";
 import { erinnerungErledigt, STANDARD_ERINNERUNGEN, type Erinnerung, type GeldEintrag } from "@/lib/private/geld";
@@ -106,7 +106,7 @@ export async function privatKontoAction(fd: FormData) {
   let m: string;
   try {
     const r = await kontoauszugImportieren(session.tenantId, "privat", session.userId, new Uint8Array(await datei.arrayBuffer()), { saldoBank: parseAmount(fd.get("saldo")) });
-    m = `${r.neu} neue Buchungen eingelesen${r.doppelt ? `, ${r.doppelt} schon vorhanden` : ""}.`;
+    m = importMeldung(r);
   } catch (e) {
     m = e instanceof Error ? e.message : String(e);
   }

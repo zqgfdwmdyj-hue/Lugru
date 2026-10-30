@@ -59,13 +59,14 @@ export async function sparkasseImportieren(wer: Wer, firma: string | null, datei
   const f = await firmaPruefen(wer.tenantId, firma);
   const r = await kontoauszugImportieren(wer.tenantId, "geschaeft", null, datei.bytes, { saldoBank, firma: f.firma });
   const endsaldo = r.endsaldo?.saldo ?? null;
-  const anfangssaldo = endsaldo !== null ? r2(endsaldo - r.summe) : null;
+  // PDF: Anfangssaldo steht im Auszug; sonst aus Endsaldo minus Umsätze.
+  const anfangssaldo = r.anfangPdf ? r.anfangPdf.saldo : endsaldo !== null ? r2(endsaldo - r.summe) : null;
   const [imp] = await db
     .insert(schema.buchhaltungImporte)
     .values({ tenantId: wer.tenantId, firma: f.firma, art: "sparkasse", dateiname: datei.name.slice(0, 200), von: r.von, bis: r.bis, neu: r.neu, doppelt: r.doppelt, summe: r.summe, anfangssaldo, endsaldo, userId: wer.userId })
     .returning({ id: schema.buchhaltungImporte.id });
   await protokoll(db, wer, "import", imp.id, "sparkasse", null, { datei: datei.name, von: r.von, bis: r.bis, neu: r.neu, doppelt: r.doppelt, summe: r.summe, anfangssaldo, endsaldo });
-  return { ...r, anfangssaldo, endsaldo, firma: f.firma };
+  return { bank: r, neu: r.neu, doppelt: r.doppelt, von: r.von, bis: r.bis, anfangssaldo, endsaldo, firma: f.firma };
 }
 
 export async function amexImportieren(wer: Wer, firma: string | null, datei: { name: string; bytes: Uint8Array }) {

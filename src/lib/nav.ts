@@ -35,6 +35,7 @@ export const NAV: NavSection[] = [
       { href: "/kalender/tagesplan", label: "Tagesplan" },
       { href: "/delegation", label: "Delegation", owner: true },
       { href: "/kalender/feierabend", label: "Feierabend" },
+      { href: "/uploads", label: "Uploads (alles hochladen)" },
       { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
       { href: "/kalender", label: "Termine" },
     ],

@@ -23,7 +23,7 @@ export type Umsatz = {
   mandat: string | null;
   saldoDanach: number | null;
 };
-export type Auszug = { format: "csv" | "camt"; konto: string | null; umsaetze: Umsatz[]; salden: { datum: string; saldo: number }[] };
+export type Auszug = { format: "csv" | "camt" | "pdf"; konto: string | null; umsaetze: Umsatz[]; salden: { datum: string; saldo: number }[] };
 
 const norm = (h: string) =>
   h

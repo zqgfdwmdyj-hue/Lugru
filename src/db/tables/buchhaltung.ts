@@ -151,3 +151,22 @@ export const buchhaltungProtokoll = pgTable(
   },
   (t) => [index("bh_protokoll_idx").on(t.tenantId, t.createdAt)],
 );
+
+/** Zentrale Uploads: jede Datei mit erkannter Art und Ergebnis (Verlauf auf der Seite „Uploads“). */
+export const uploads = pgTable(
+  "uploads",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    userId: uuid("user_id"),
+    dateiname: text("dateiname").notNull(),
+    groesse: integer("groesse").notNull().default(0),
+    art: text("art"),
+    ok: boolean("ok").notNull(),
+    zusammenfassung: text("zusammenfassung").notNull(),
+    hinweise: jsonb("hinweise").$type<string[]>().notNull().default([]),
+    link: text("link"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("uploads_idx").on(t.tenantId, t.createdAt)],
+);

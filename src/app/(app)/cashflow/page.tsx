@@ -146,9 +146,9 @@ export default async function LiquiditaetPage({ searchParams }: { searchParams: 
       <div className="row">
         <section className="card card-pad stack" style={{ flexGrow: 1, minWidth: 0, gap: 10 }} id="kontoauszug">
           <h2>Kontoauszug (Sparkasse)</h2>
-          <div className="small muted">Online-Banking → Umsätze → Export „CSV-CAMT“ oder „CAMT“ (XML, enthält den Kontostand). Bei CSV den Kontostand laut Bank zum letzten Buchungstag mit angeben. Doppelt hochgeladene Buchungen werden erkannt.</div>
+          <div className="small muted">Online-Banking → Umsätze → Export „CSV-CAMT“ oder „CAMT“ (XML, enthält den Kontostand) – oder der Kontoauszug als PDF (mit Saldo-Kontrolle). Bei CSV den Kontostand laut Bank zum letzten Buchungstag mit angeben. Doppelt hochgeladene Buchungen werden erkannt. Alles zentral: <Link href="/uploads">Uploads</Link>.</div>
           <form action={kontoauszugAction} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
-            <div className="field"><label className="label" htmlFor="ka-datei">Datei</label><input className="input" id="ka-datei" name="datei" type="file" accept=".csv,.xml,.txt" required data-testid="ka-datei" /></div>
+            <div className="field"><label className="label" htmlFor="ka-datei">Datei</label><input className="input" id="ka-datei" name="datei" type="file" accept=".csv,.xml,.txt,.pdf" required data-testid="ka-datei" /></div>
             <div className="field"><label className="label" htmlFor="ka-saldo">Kontostand laut Bank (bei CSV)</label><input className="input num" id="ka-saldo" name="saldo" inputMode="decimal" style={{ width: 140 }} data-testid="ka-saldo" /></div>
             <SubmitButton label="Einlesen" pendingLabel="Lese ein …" testId="ka-einlesen" />
           </form>
