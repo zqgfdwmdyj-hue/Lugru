@@ -123,7 +123,8 @@ export const verlust_stopp = defineTool({
       .where(and(eq(T.tenantId, ctx.session.tenantId), like(T.systemKey, "verlust-%"), eq(T.status, "open")))
       .limit(50);
     return json({
-      regel: `${VERLUST_REGEL.tage} von ${VERLUST_REGEL.fenster} Tagen im Minus (nur Tage mit Verkauf) oder ≥ ${VERLUST_REGEL.stueck} Stück mit Verlust`,
+      regel: `Nur der Gewinn aus dem Verkauf zählt: ${VERLUST_REGEL.tage} von ${VERLUST_REGEL.fenster} Tagen mit Verkauf im Minus oder ≥ ${VERLUST_REGEL.stueck} Stück mit Verlust. Erstattungen, Abschreibung/Entfernung und Lager lösen nicht aus.`,
+      zerlegung_quelle: v.amazonBericht ? "Amazon-Transaktionsbericht (Erstattungen, Entsorgung/Entfernung, Lager) + sellerboard" : "sellerboard (Erstattungen); Abschreibung/Lager ohne Amazon-Transaktionsbericht nicht getrennt",
       zeitraum: { von: v.fenster[0], bis: v.fenster[v.fenster.length - 1], tage_mit_daten: v.tageMitDaten },
       stand_sellerboard: berlinDateTime(v.stand) ?? "noch kein Abgleich",
       faelle: v.faelle.map((f) => ({
@@ -131,8 +132,10 @@ export const verlust_stopp = defineTool({
         asin: f.asin ?? undefined,
         name: f.name ?? undefined,
         ausloeser: f.grund,
-        tage: f.tage.map((t) => ({ tag: t.day, gewinn: t.gewinn, stueck: t.units })),
+        tage: f.tage.map((t) => ({ tag: t.day, stueck: t.units, verkauf: t.verkauf, erstattungen: t.erstattungen || undefined, abschreibung_entfernung: t.abschreibung || undefined, lager_sonstiges: t.lager || undefined, gesamt: t.gewinn })),
+        summe_verkauf_3_tage: f.summeVerkauf,
         summe_3_tage: f.summe,
+        vorschlag: f.liquidation ? `BQool-Regel „${f.bqool?.regel}“ – vermutlich bewusster Abverkauf: auf der Seite als Ausnahme übernehmen.` : undefined,
         preis_durchschnitt: f.preis,
         break_even: f.breakEven,
         buybox: f.buybox ? { preis: f.buybox.preis, quelle: f.buybox.quelle, amazon: f.buybox.amazon || undefined } : null,
@@ -141,6 +144,14 @@ export const verlust_stopp = defineTool({
       })),
       kosten_ohne_verkauf: v.kostenOhneVerkauf.length
         ? { schwelle_je_woche: v.schwelle, zeitraum: "letzte 7 Tage", artikel: v.kostenOhneVerkauf.slice(0, 30).map((k) => ({ sku: k.sku, asin: k.asin ?? undefined, name: k.name ?? undefined, summe: k.summe, tage: k.tage.map((x) => ({ tag: x.day, kosten: x.kosten })) })) }
+        : undefined,
+      erstattungen_abschreibungen: v.nichtVerkauf.length
+        ? {
+            schwelle_je_woche: v.schwelle,
+            zeitraum: "letzte 7 Tage",
+            hinweis: "Lösen keinen Verlust-Stopp aus: Erstattungen → Hebel „Viele Erstattungen“, Abschreibung/Entfernung → Amazon-Fälle.",
+            artikel: v.nichtVerkauf.slice(0, 30).map((k) => ({ sku: k.sku, asin: k.asin ?? undefined, name: k.name ?? undefined, erstattungen: k.erstattungen, abschreibung_entfernung: k.abschreibung, weiter: k.ziele.map((z) => (z === "hebel_erstattungen" ? abs(ctx, "/hebel?typ=erstattungen") : abs(ctx, `/amazon-todos?q=${encodeURIComponent(k.asin ?? k.sku)}`))) })),
+          }
         : undefined,
       ausnahmen: v.ausnahmen.map((a) => ({ sku: a.sku, name: a.name ?? undefined, grund: a.grund, bis: a.bis ?? "unbefristet", aktiv: a.aktiv, gewinn_7_tage: a.woche.tageMitDaten ? a.woche.summe : null, stueck_7_tage: a.woche.stueck })),
       offene_aufgaben: offen.map((a) => ({ titel: a.titel, sku: a.schluessel?.replace(/^verlust-/, ""), seit: a.faellig ?? undefined, notiz: a.notiz?.slice(0, 600) ?? undefined })),

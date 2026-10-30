@@ -265,6 +265,9 @@ export const sellerboardSkuTage = pgTable(
     sales: money("sales"),
     netProfit: money("net_profit"),
     avgPrice: money("avg_price"),
+    /** Erstattungen am Tag (Anzahl) und ihre Kosten laut sellerboard (ProductRefunds) – für die Zerlegung im Verlust-Stopp. */
+    refunds: integer("refunds").notNull().default(0),
+    refundCost: money("refund_cost"),
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.channel, t.day, t.sku] }), index("sb_sku_tage_sku_idx").on(t.tenantId, t.sku)],

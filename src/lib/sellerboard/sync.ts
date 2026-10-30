@@ -370,12 +370,12 @@ async function syncSkuDays(t: string, now: Date) {
       const day = { start: p.start, end: p.start, fromDay: p.fromDay };
       await sbCall(t, TOOLS[channel].period, { periods: [{ start: day.start, end: day.end }] });
       const reply = await tablePages(t, channel, { entry_type: "product", period_start: day.start, period_end: day.end, sort: "sales desc" }, 35, 20);
-      const merged = new Map<string, { sku: string; asin: string | null; name: string | null; units: number; sales: number | null; netProfit: number | null; avgPrice: number | null }>();
+      const merged = new Map<string, { sku: string; asin: string | null; name: string | null; units: number; sales: number | null; netProfit: number | null; avgPrice: number | null; refunds: number; refundCost: number | null }>();
       for (const r of mapSkuStats(reply)) {
         const cur = merged.get(r.sku);
         const add = (a: number | null, b: number | null) => (a === null && b === null ? null : (a ?? 0) + (b ?? 0));
-        if (!cur) merged.set(r.sku, { sku: r.sku, asin: r.asin, name: r.name, units: r.units, sales: r.sales, netProfit: r.netProfit, avgPrice: r.avgPrice });
-        else Object.assign(cur, { units: cur.units + r.units, sales: add(cur.sales, r.sales), netProfit: add(cur.netProfit, r.netProfit) });
+        if (!cur) merged.set(r.sku, { sku: r.sku, asin: r.asin, name: r.name, units: r.units, sales: r.sales, netProfit: r.netProfit, avgPrice: r.avgPrice, refunds: r.refunds, refundCost: r.refundCost });
+        else Object.assign(cur, { units: cur.units + r.units, sales: add(cur.sales, r.sales), netProfit: add(cur.netProfit, r.netProfit), refunds: cur.refunds + r.refunds, refundCost: add(cur.refundCost, r.refundCost) });
       }
       const rows = [...merged.values()].filter((r) => r.units > 0 || (r.netProfit ?? 0) !== 0);
       // Leere Antwort für einen Tag, der schon Werte hat: eher ein Aussetzer bei sellerboard als „nichts verkauft“ –

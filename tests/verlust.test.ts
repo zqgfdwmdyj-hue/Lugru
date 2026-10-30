@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ausnahmeAktiv, fensterMitDaten, fensterTage, kostenOhneVerkauf, pruefeVerlust, verlustAufgabe, wochenSumme, type TagWert } from "@/lib/money/verlust";
+import { amazonAnteile, anteilVonTransaktion, ausnahmeAktiv, fensterMitDaten, fensterTage, istLiquidation, kostenOhneVerkauf, nichtVerkaufAnteile, pruefeVerlust, verlustAufgabe, wochenSumme, zerlegeTag, type TagWert } from "@/lib/money/verlust";
 
 // Verlust-Stopp: Auslöser 2 von 3 Tagen im Minus oder ≥ 5 Stück mit Verlust. Erfundene Werte.
 
@@ -92,5 +92,53 @@ describe("Tage ohne Verkauf (Meldung 30.10.)", () => {
     const k = kostenOhneVerkauf(werte, HEUTE, 5);
     expect(k).toEqual([{ sku: "K", asin: "B0TEST0001", name: "Test K", summe: -5.5, tage: [{ day: "2026-10-23", kosten: -3 }, { day: "2026-10-27", kosten: -2.5 }] }]);
     expect(kostenOhneVerkauf(werte, HEUTE, 1).map((x) => x.sku)).toEqual(["K", "L"]);
+  });
+});
+
+// B9.6: Tagesgewinn zerlegen – nur der Verkauf löst aus.
+describe("Zerlegung", () => {
+  it("Verkauf = Gewinn ohne Erstattungen, Abschreibung, Lager; ohne Verkauf alles unter Lager & Sonstiges", () => {
+    expect(zerlegeTag({ units: 2, gewinn: -3, refundCost: 5 })).toEqual({ verkauf: 2, erstattungen: -5, abschreibung: 0, lager: 0 });
+    expect(zerlegeTag({ units: 1, gewinn: -6 }, { erstattungen: -2, abschreibung: -3, lager: -0.5 })).toEqual({ verkauf: -0.5, erstattungen: -2, abschreibung: -3, lager: -0.5 });
+    expect(zerlegeTag({ units: 0, gewinn: -1.2, refundCost: 0 })).toEqual({ verkauf: 0, erstattungen: 0, abschreibung: 0, lager: -1.2 });
+    expect(zerlegeTag({ units: 3, gewinn: null }).verkauf).toBeNull();
+  });
+
+  it("Erstattung an Verkaufstagen ist kein Verlust-Stopp", () => {
+    const werte: TagWert[] = [
+      { ...w("2026-10-27", "E", 2, -4), refundCost: 9 },
+      { ...w("2026-10-28", "E", 1, -1), refundCost: 3 },
+    ];
+    expect(pruefeVerlust(werte, HEUTE)).toEqual([]);
+    const n = nichtVerkaufAnteile(werte, HEUTE, 5);
+    expect(n).toEqual([expect.objectContaining({ sku: "E", erstattungen: -12, ziele: ["hebel_erstattungen"] })]);
+  });
+
+  it("echter Verlust aus dem Verkauf löst weiter aus und zeigt Erstattungen getrennt", () => {
+    const [f] = pruefeVerlust([{ ...w("2026-10-27", "V", 2, -6), refundCost: 1 }, w("2026-10-28", "V", 1, -2)], HEUTE);
+    expect(f).toMatchObject({ sku: "V", verlustTage: 2, summeVerkauf: -7, erstattungen: -1, summe: -8 });
+    expect(verlustAufgabe(f, { breakEven: null, buybox: null, bqool: null }).notiz).toContain("Nicht mitgezählt: Erstattungen");
+  });
+
+  it("Amazon-Transaktionen: Erstattung, Entsorgung/Entfernung, Lager", () => {
+    expect(anteilVonTransaktion({ kind: "refund", type: "Refund", description: null })).toBe("erstattungen");
+    expect(anteilVonTransaktion({ kind: "other", type: "FBA Inventory Fee", description: "FBA Removal Order: Disposal Fee" })).toBe("abschreibung");
+    expect(anteilVonTransaktion({ kind: "other", type: "FBA Inventory Fee", description: "FBA storage fee" })).toBe("lager");
+    expect(anteilVonTransaktion({ kind: "sale", type: "Order", description: "Testsocken" })).toBeNull();
+    const m = amazonAnteile([
+      { date: "2026-10-27", sku: "A", kind: "other", type: null, description: "Disposal Fee", total: -0.5 },
+      { date: "2026-10-27", sku: "A", kind: "other", type: null, description: "Disposal Fee", total: -0.25 },
+      { date: "2026-10-27", sku: "A", kind: "sale", type: "Order", description: null, total: 10 },
+    ]);
+    expect(m.get("A|2026-10-27")).toEqual({ erstattungen: 0, abschreibung: -0.75, lager: 0 });
+    // Entsorgung an einem Verkaufstag macht den Verkauf nicht zum Verlust
+    expect(pruefeVerlust([w("2026-10-27", "A", 1, -0.2), w("2026-10-28", "A", 1, -0.1)], HEUTE, undefined, undefined, new Map([["A|2026-10-27", { erstattungen: 0, abschreibung: -0.75, lager: 0 }], ["A|2026-10-28", { erstattungen: 0, abschreibung: -0.75, lager: 0 }]]))).toEqual([]);
+  });
+
+  it("BQool-Regel Liquidation → Ausnahme vorschlagen", () => {
+    expect(istLiquidation("Liquidation")).toBe(true);
+    expect(istLiquidation("Abverkauf DE")).toBe(true);
+    expect(istLiquidation("Standard")).toBe(false);
+    expect(istLiquidation(null)).toBe(false);
   });
 });

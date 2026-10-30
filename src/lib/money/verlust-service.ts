@@ -5,7 +5,7 @@ import { addDaysIso } from "@/lib/dates";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { breakEvenJeSku } from "./kapital-service";
 import { getSettings } from "@/lib/settings";
-import { ausnahmeAktiv, fensterMitDaten, kostenOhneVerkauf, pruefeVerlust, verlustAufgabe, wochenSumme, VERLUST_REGEL, type KostenOhneVerkauf, type TagWert, type VerlustFall } from "./verlust";
+import { amazonAnteile, ausnahmeAktiv, fensterMitDaten, istLiquidation, kostenOhneVerkauf, nichtVerkaufAnteile, pruefeVerlust, verlustAufgabe, wochenSumme, VERLUST_REGEL, type KostenOhneVerkauf, type NichtVerkauf, type TagWert, type VerlustFall } from "./verlust";
 
 // Verlust-Stopp: täglich nach dem sellerboard-Abgleich. Fälle → wichtige Aufgabe je SKU (mit Break-even, Buy Box,
 // BQool-Regel); bewusste Verlustverkäufe stehen als Ausnahme mit Wochensumme daneben.
@@ -15,21 +15,32 @@ export type VerlustFallMehr = VerlustFall & {
   buybox: { preis: number | null; quelle: string; amazon?: boolean } | null;
   bqool: { regel: string | null; min: number | null; max: number | null; marktplatz: string } | null;
   aufgabe: { titel: string; notiz: string };
+  /** BQool-Regel Liquidation/Abverkauf → als Ausnahme vorschlagen. */
+  liquidation: boolean;
 };
 export type VerlustAusnahme = { sku: string; name: string | null; grund: string; bis: string | null; aktiv: boolean; angelegtAm: Date; woche: { summe: number; stueck: number; tageMitDaten: number } };
 
-export async function verlustStopp(tenantId: string, heute: string): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; schwelle: number }> {
+export async function verlustStopp(
+  tenantId: string,
+  heute: string,
+): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; nichtVerkauf: NichtVerkauf[]; amazonBericht: boolean; schwelle: number }> {
   const t = tenantId;
   const D = schema.sellerboardSkuTage;
-  const rows = await db.select().from(D).where(and(eq(D.tenantId, t), gte(D.day, addDaysIso(heute, -8))));
-  const werte: TagWert[] = rows.map((r) => ({ day: r.day, sku: r.sku, asin: r.asin, name: r.name, units: r.units, netProfit: r.netProfit, avgPrice: r.avgPrice }));
+  const X = schema.amazonTransactions;
+  const [rows, tx] = await Promise.all([
+    db.select().from(D).where(and(eq(D.tenantId, t), gte(D.day, addDaysIso(heute, -8)))),
+    // Amazon-Transaktionsbericht: Erstattungen, Entsorgung/Entfernung und Lagergebühren je SKU und Tag (wenn importiert).
+    db.select({ date: X.date, sku: X.sku, kind: X.kind, type: X.type, description: X.description, total: X.total }).from(X).where(and(eq(X.tenantId, t), gte(X.date, addDaysIso(heute, -8)))),
+  ]);
+  const amz = amazonAnteile(tx);
+  const werte: TagWert[] = rows.map((r) => ({ day: r.day, sku: r.sku, asin: r.asin, name: r.name, units: r.units, netProfit: r.netProfit, avgPrice: r.avgPrice, refundCost: r.refundCost }));
   const fenster = fensterMitDaten(werte, heute);
   const tageMitDaten = fenster.filter((d) => rows.some((r) => r.day === d));
   const stand = rows.reduce<Date | null>((m, r) => (!m || r.syncedAt > m ? r.syncedAt : m), null);
   const A = schema.verlustAusnahmen;
   const ausn = await db.select().from(A).where(eq(A.tenantId, t));
   const aktiv = new Set(ausn.filter((a) => ausnahmeAktiv(a, heute)).map((a) => a.sku));
-  const roh = pruefeVerlust(werte, heute, undefined, fenster).filter((f) => !aktiv.has(f.sku));
+  const roh = pruefeVerlust(werte, heute, undefined, fenster, amz).filter((f) => !aktiv.has(f.sku));
 
   const skus = roh.map((f) => f.sku);
   const asins = [...new Set(roh.map((f) => f.asin).filter((a): a is string => !!a))];
@@ -47,14 +58,25 @@ export async function verlustStopp(tenantId: string, heute: string): Promise<{ f
     const b = bq.filter((x) => x.sku === f.sku).sort((x, y) => (x.marktplatz === "DE" ? -1 : y.marktplatz === "DE" ? 1 : 0))[0];
     const bqool = b ? { regel: b.regel, min: b.min, max: b.max, marktplatz: b.marktplatz } : null;
     const breakEven = be.get(f.sku) ?? null;
-    return { ...f, breakEven, buybox, bqool, aufgabe: verlustAufgabe(f, { breakEven, buybox, bqool, bqoolExport: bqAlle.n > 0 }) };
+    return { ...f, breakEven, buybox, bqool, liquidation: istLiquidation(bqool?.regel), aufgabe: verlustAufgabe(f, { breakEven, buybox, bqool, bqoolExport: bqAlle.n > 0 }) };
   });
   const namen = new Map(rows.map((r) => [r.sku, r.name]));
   const ausnahmen = ausn
     .map((a) => ({ sku: a.sku, name: namen.get(a.sku) ?? null, grund: a.grund, bis: a.bis, aktiv: ausnahmeAktiv(a, heute), angelegtAm: a.angelegtAm, woche: wochenSumme(werte, a.sku, heute) }))
     .sort((x, y) => x.woche.summe - y.woche.summe);
   const schwelle = (await getSettings(t)).verlust.kostenOhneVerkaufSchwelle;
-  return { faelle, ausnahmen, stand, tageMitDaten, fenster, bqoolExport: bqAlle.n > 0, kostenOhneVerkauf: kostenOhneVerkauf(werte, heute, schwelle).filter((k) => !aktiv.has(k.sku)), schwelle };
+  return {
+    faelle,
+    ausnahmen,
+    stand,
+    tageMitDaten,
+    fenster,
+    bqoolExport: bqAlle.n > 0,
+    kostenOhneVerkauf: kostenOhneVerkauf(werte, heute, schwelle).filter((k) => !aktiv.has(k.sku)),
+    nichtVerkauf: nichtVerkaufAnteile(werte, heute, schwelle, amz),
+    amazonBericht: tx.length > 0,
+    schwelle,
+  };
 }
 
 /**
@@ -72,7 +94,7 @@ export async function refreshVerlustTasks(tenantId: string, heute: string): Prom
     jetzt.add(key);
     await upsertSystemTask(db, tenantId, key, { title: `Verlust-Stopp: ${f.name ?? f.sku}`.slice(0, 200), notes: f.aufgabe.notiz, priority: "critical", category: "geld", link: `/verlust?q=${encodeURIComponent(f.sku)}`, dueDate: heute });
     const alt = offen.find((o) => o.key === key);
-    const letzterVerlust = [...f.tage].reverse().find((x) => x.units > 0 && x.gewinn !== null && x.gewinn < 0)?.day;
+    const letzterVerlust = [...f.tage].reverse().find((x) => x.units > 0 && x.verkauf !== null && x.verkauf < 0)?.day;
     if (alt?.status === "done" && alt.completedAt && letzterVerlust && alt.completedAt < new Date(`${letzterVerlust}T00:00:00Z`)) {
       await db.update(T).set({ status: "open", completedAt: null }).where(and(eq(T.tenantId, tenantId), eq(T.systemKey, key)));
     }

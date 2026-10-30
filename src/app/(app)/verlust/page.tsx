@@ -20,6 +20,7 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
   const q = (sp.q ?? "").trim().toLowerCase();
   const faelle = q ? v.faelle.filter((f) => f.sku.toLowerCase().includes(q) || (f.asin ?? "").toLowerCase().includes(q) || (f.name ?? "").toLowerCase().includes(q)) : v.faelle;
   const summe = v.faelle.reduce((n, f) => n + f.summe, 0);
+  const summeVerkauf = v.faelle.reduce((n, f) => n + f.summeVerkauf, 0);
   const ausnahmenWoche = v.ausnahmen.filter((a) => a.aktiv).reduce((n, a) => n + a.woche.summe, 0);
   const stand = v.stand ? v.stand.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "noch kein Abgleich";
   const fensterText = `${dmy(v.fenster[0])} – ${dmy(v.fenster[v.fenster.length - 1])}`;
@@ -34,7 +35,8 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
       </div>
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
       <p className="small muted" style={{ margin: "0 0 14px", maxWidth: 860 }}>
-        Täglich nach dem sellerboard-Abgleich: Ist-Gewinn je Produkt der letzten {VERLUST_REGEL.fenster} abgeschlossenen Tage. Auslöser: an {VERLUST_REGEL.tage} von {VERLUST_REGEL.fenster} Tagen im Minus (nur Tage mit Verkauf) oder mindestens {VERLUST_REGEL.stueck} Stück mit Verlust verkauft. Ein Minus ohne Verkauf (Lagergebühr, Erstattungskosten) steht unten getrennt als „Kosten ohne Verkauf“.
+        Täglich nach dem sellerboard-Abgleich: Gewinn je Produkt der letzten {VERLUST_REGEL.fenster} abgeschlossenen Tage, zerlegt in a) Verkauf, b) Erstattungen/Rücksendungen, c) Abschreibung/Entfernung, d) Lager & Sonstiges. Auslöser ist nur a): an {VERLUST_REGEL.tage} von {VERLUST_REGEL.fenster} Tagen mit Verkauf im Minus oder mindestens {VERLUST_REGEL.stueck} Stück mit Verlust verkauft. b) und c) stehen unten getrennt (Hebel „Viele Erstattungen“ bzw. Amazon-Fälle), ein Minus ohne Verkauf als „Kosten ohne Verkauf“.
+        {v.amazonBericht ? " Erstattungen, Entsorgung/Entfernung und Lagergebühren kommen aus dem Amazon-Transaktionsbericht." : " Ohne Amazon-Transaktionsbericht: Erstattungen aus sellerboard, Abschreibung und Lager nicht getrennt."}
         Je Fall entsteht eine <strong>wichtige Aufgabe</strong> mit Break-even, Buy Box (Keepa) und BQool-Regel. Bewusste Verlustverkäufe (Abverkauf, Liquidation) als Ausnahme markieren.
       </p>
 
@@ -57,8 +59,9 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
             <div className="small muted">ohne Ausnahmen</div>
           </div>
           <div className="card card-pad">
-            <div className="kpi-label">Gewinn der Fälle (3 Tage)</div>
-            <div className="kpi-value" style={summe < 0 ? { color: "var(--danger)" } : undefined}>{v.tageMitDaten.length ? eur(summe) : "keine Daten"}</div>
+            <div className="kpi-label">Verkaufsgewinn der Fälle (3 Tage)</div>
+            <div className="kpi-value" style={summeVerkauf < 0 ? { color: "var(--danger)" } : undefined}>{v.tageMitDaten.length ? eur(summeVerkauf) : "keine Daten"}</div>
+            <div className="small muted">gesamt mit Erstattungen u. a. {eur(summe)}</div>
           </div>
           <div className="card card-pad">
             <div className="kpi-label">Ausnahmen (7 Tage)</div>
@@ -85,12 +88,25 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
               </div>
               <div className="small" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 6 }}>
                 {f.tage.map((t) => (
-                  <span key={t.day} style={t.gewinn !== null && t.gewinn < 0 ? { color: "var(--danger)" } : undefined}>
-                    {dm(t.day)}: {t.gewinn === null ? "–" : eur(t.gewinn)}{t.units ? ` (${t.units} St.)` : ""}
+                  <span key={t.day} style={t.units > 0 && t.verkauf !== null && t.verkauf < 0 ? { color: "var(--danger)" } : undefined} title={`Gesamt ${t.gewinn === null ? "–" : eur(t.gewinn)} · Erstattungen ${eur(t.erstattungen)} · Abschreibung/Entfernung ${eur(t.abschreibung)} · Lager & Sonstiges ${eur(t.lager)}`}>
+                    {dm(t.day)}: Verkauf {t.verkauf === null ? "–" : eur(t.verkauf)}{t.units ? ` (${t.units} St.)` : ""}
                   </span>
                 ))}
-                <strong>Summe {eur(f.summe)}</strong>
+                <strong>Summe Verkauf {eur(f.summeVerkauf)}</strong>
               </div>
+              {(f.erstattungen < 0 || f.abschreibung < 0) && (
+                <div className="small muted" style={{ marginTop: 4 }} data-testid="verlust-zerlegung">
+                  Nicht mitgezählt: Erstattungen {eur(f.erstattungen)} · Abschreibung/Entfernung {eur(f.abschreibung)} · gesamt {eur(f.summe)}
+                </div>
+              )}
+              {f.liquidation && (
+                <form action={ausnahmeAction} className="notice notice-info small" style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} data-testid="verlust-liquidation">
+                  <input type="hidden" name="sku" value={f.sku} />
+                  <input type="hidden" name="grund" value={`BQool-Regel ${f.bqool?.regel ?? "Liquidation"} (bewusster Abverkauf)`} />
+                  <span>BQool-Regel „{f.bqool?.regel}“ – vermutlich bewusster Abverkauf.</span>
+                  <button className="btn btn-small" type="submit" data-testid="verlust-liquidation-uebernehmen">Als Ausnahme übernehmen</button>
+                </form>
+              )}
               <div className="small" style={{ marginTop: 6 }} data-testid="verlust-daten">
                 Ø Preis {f.preis !== null ? eur(f.preis) : "–"} · Break-even {f.breakEven !== null ? <strong>{eur(f.breakEven)}</strong> : "unbekannt"} · Buy Box {f.buybox ? `${f.buybox.preis !== null ? eur(f.buybox.preis) : "keine"}${f.buybox.amazon ? " (Amazon)" : ""} – ${f.buybox.quelle}` : "keine Keepa-Daten"} ·{" "}
                 BQool {f.bqool ? `${f.bqool.marktplatz}: ${f.bqool.regel ?? "–"}, Min ${f.bqool.min !== null ? eur(f.bqool.min) : "–"}` : "nicht im Export"}
@@ -111,6 +127,47 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      <h2 style={{ marginTop: 18 }}>Erstattungen und Abschreibungen</h2>
+      <p className="small muted" style={{ margin: "0 0 8px", maxWidth: 860 }}>
+        b) Erstattungen/Rücksendungen und c) Abschreibung/Entfernung der letzten 7 Tage – lösen keinen Verlust-Stopp aus. Viele Erstattungen → Hebel „Viele Erstattungen“ (Ursache, Listing, Verpackung); Entsorgung/Entfernung → Amazon-Fälle (prüfen, ggf. Erstattung beantragen). Ab {eur(v.schwelle)} je Artikel und Woche.
+      </p>
+      {v.nichtVerkauf.length === 0 ? (
+        <div className="card card-pad small muted" data-testid="verlust-nichtverkauf-keine">Keine Artikel über der Schwelle.</div>
+      ) : (
+        <div className="table-wrap card">
+          <table className="table" data-testid="verlust-nichtverkauf">
+            <thead>
+              <tr>
+                <th>Produkt</th>
+                <th className="right">Erstattungen</th>
+                <th className="right">Abschreibung/Entfernung</th>
+                <th>Weiter</th>
+              </tr>
+            </thead>
+            <tbody>
+              {v.nichtVerkauf.map((k) => (
+                <tr key={k.sku} data-testid="verlust-nichtverkauf-zeile" data-sku={k.sku}>
+                  <td>
+                    {k.name ?? k.sku}
+                    <div className="small muted">
+                      {k.sku}
+                      {k.asin ? ` · ${k.asin}` : ""}
+                    </div>
+                  </td>
+                  <td className="right num" style={k.erstattungen < 0 ? { color: "var(--danger)" } : undefined}>{eur(k.erstattungen)}</td>
+                  <td className="right num" style={k.abschreibung < 0 ? { color: "var(--danger)" } : undefined}>{eur(k.abschreibung)}</td>
+                  <td className="small" style={{ whiteSpace: "nowrap" }}>
+                    {k.ziele.includes("hebel_erstattungen") && <Link href={`/hebel?typ=erstattungen&q=${encodeURIComponent(k.sku)}`}>Hebel: Viele Erstattungen</Link>}
+                    {k.ziele.length > 1 && <br />}
+                    {k.ziele.includes("amazon_faelle") && <Link href={`/amazon-todos?q=${encodeURIComponent(k.asin ?? k.sku)}`}>Amazon-Fälle</Link>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
