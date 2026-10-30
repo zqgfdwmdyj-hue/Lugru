@@ -153,15 +153,17 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
   const sichtbar = offen.filter((x) => !restricted || (x.link ? linkAllowed(session, x.link) : x.createdBy === session.userId || x.assigneeId === session.userId));
   const meine = sichtbar.filter((x) => (x.assigneeId === session.userId && !x.zustaendigExtern) || (session.role === "owner" && !x.assigneeId && !x.zustaendigExtern));
   const sperren = await sperrenLaden(session, o.start, ende, o.heute, mitPrivat);
+  // Heute: Überfälliges zählt als heute fällig. Blick in die Zukunft: was vorher fällig ist, wird vorher erledigt.
+  const imPlan = meine.filter((x) => !x.dueDate || o.start <= o.heute || x.dueDate >= o.start);
   const ergebnis = planeTage({
     start: o.start,
     tage,
-    aufgaben: meine.map((x) => ({ id: x.id, titel: x.title, faellig: x.dueDate && x.dueDate < o.start ? o.start : x.dueDate, prioritaet: x.priority, aufwand: x.aufwand ?? schaetzeAufwand(x.title), geschaetzt: !x.aufwand, link: x.link })),
+    aufgaben: imPlan.map((x) => ({ id: x.id, titel: x.title, faellig: x.dueDate && x.dueDate < o.start ? o.start : x.dueDate, prioritaet: x.priority, aufwand: x.aufwand ?? schaetzeAufwand(x.title), geschaetzt: !x.aufwand, link: x.link })),
     arbeitszeit: az,
     sperrenAm: (tag) => sperren.get(tag) ?? [],
     vorziehen: s.tagesplan.vorziehen,
   });
-  const ueberfaellig = meine.filter((x) => x.dueDate && x.dueDate < o.start).length;
+  const ueberfaellig = o.start <= o.heute ? meine.filter((x) => x.dueDate && x.dueDate < o.start).length : 0;
   if (ueberfaellig) hinweise.push(`${ueberfaellig} überfällige Aufgabe${ueberfaellig === 1 ? "" : "n"} zählt als heute fällig.`);
 
   // Wartet auf …: Aufgaben, die andere erledigen (nur für den Inhaber sichtbar).

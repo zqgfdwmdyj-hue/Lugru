@@ -42,6 +42,10 @@ describe("Abnahme Modul 1", () => {
     expect(r.tage[0].geplant.some((g) => g.id === "l1")).toBe(true);
     expect(r.verschoben.find((v) => v.id === "l2")?.neu).toBe("2026-11-04");
   });
+  it("Auszeit mit Uhrzeit über die ganze Arbeitszeit → Konflikt nennt die Auszeit", () => {
+    const r = planeTage({ start: "2026-11-03", tage: 1, arbeitszeit: ARBEITSZEIT_STANDARD, sperrenAm: () => [{ von: "08:00", bis: "18:00", titel: "Auszeit", art: "privat" }], aufgaben: [a("x", { faellig: "2026-11-03", titel: "Frist" })] });
+    expect(r.tage[0].konflikte[0].text).toBe("Frist fällt in „Auszeit“");
+  });
   it("wichtige Aufgabe heute fällig, passt nicht mehr → Konflikt, Tag rot", () => {
     const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { prioritaet: "critical", aufwand: "M" }), a("2", { prioritaet: "critical", aufwand: "S" })] });
     expect(r.tage[0].ampel).toBe("rot");

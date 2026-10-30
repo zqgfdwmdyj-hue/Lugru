@@ -128,7 +128,10 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
     const s = sperren(a.faellig);
     const ganz = s.find((x) => x.ganztags && x.art !== "reserviert");
     if (ganz || !az || !freieFenster(az, s).length) {
-      const grund = ganz ? `Frist fällt in „${ganz.titel}“` : !az ? "Frist fällt auf einen freien Tag" : "Frist fällt auf einen Tag ohne freie Zeit";
+      // Was blockiert den Tag? Ganztägig – sonst die Sperre mit der größten Überschneidung mit der Arbeitszeit.
+      const ueber = (x: Sperre) => (az ? Math.max(0, Math.min(min(x.bis), min(az.bis)) - Math.max(min(x.von), min(az.von))) : 0);
+      const blocker = ganz ?? [...s].filter((x) => x.art !== "reserviert" && ueber(x) > 0).sort((a, b) => ueber(b) - ueber(a))[0];
+      const grund = blocker ? `Frist fällt in „${blocker.titel}“` : !az ? "Frist fällt auf einen freien Tag" : "Frist fällt auf einen Tag ohne freie Zeit";
       konfliktAm.set(a.faellig, [...(konfliktAm.get(a.faellig) ?? []), { aufgabeId: a.id, titel: a.titel, text: grund }]);
     }
   }
