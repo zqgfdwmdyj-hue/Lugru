@@ -1,6 +1,6 @@
 # Prüfstand je Reiter
 
-Letzter Lauf der Ablaufprüfungen: **29.10.2026, 22:12** · 68 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 194 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
+Letzter Lauf der Ablaufprüfungen: **30.10.2026, 07:59** · 68 bestanden · 0 fehlgeschlagen · 0 erst im zweiten Versuch · Dauer 271 s. Testumgebung mit erfundenen Daten, keine echten Dienste.
 
 Erzeugt mit `npm run pruefstand` aus `e2e/pruefstand.ts` (Abläufe, Live-Prüfungen) und dem letzten Lauf. Nicht von Hand bearbeiten.
 
@@ -77,7 +77,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Marken & Content | Uhren: Buy & Flip › Marktpreise `/marken/uhren/preise` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Marken & Content | Markenprofile `/marken/profile` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Privat `/privat` | ✓ 3/3 Abläufe | – | 2 |
-| Hilfsfunktionen | Wissen `/wissen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
+| Hilfsfunktionen | Wissen `/wissen` | ✓ 2/2 Abläufe | – | – |
 | Hilfsfunktionen | Daten importieren `/import` | ✓ 1/1 Abläufe | – | – |
 | Hilfsfunktionen | Einstellungen `/einstellungen` | ✓ 2/2 Abläufe | – | – |
 | Hilfsfunktionen | Anbindungen `/anbindungen` | ✓ nur Oberfläche | – | Funktionen ungeprüft |
@@ -147,7 +147,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 |---|---|---|---|
 | Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal | 4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, Zusammenfassung mit Teilnehmern, 1 neuer Call aus Discord | ✓ bestanden (desktop) | `teil2.spec.ts` |
 | Umzug aus dem bisherigen Call-Archiv: Export (JSON) hochladen, zweimal | Call mit Zusammenfassung und Google-Doc-Link, 3 Vorschläge; zweiter Import: „1 waren schon da“ | ✓ bestanden (desktop) | `teil2.spec.ts` |
-| Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen | 4 Calls mit Datum aus Dateiname/Kopfzeile, KI im Hintergrund fertig, Datum geändert; zweites Hochladen: Kopie (gleicher Inhalt) und Link übersprungen | ✓ bestanden (desktop) | `teil2.spec.ts` |
+| Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen | 4 Calls mit Datum aus Dateiname/Kopfzeile, KI im Hintergrund fertig, Wissen aus dem Call im Wissen (Quelle, Einschätzung, Suche), Datum geändert; zweites Hochladen: Kopie (gleicher Inhalt) und Link übersprungen | ✓ bestanden (desktop) | `teil2.spec.ts` |
 
 - – Offen: Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs
 - – Offen: Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)
@@ -305,6 +305,13 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 - – Offen: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
 - – Offen: Live nie prüfen (echte private Daten)
 
+### Hilfsfunktionen › Wissen (`/wissen`)
+
+| Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
+|---|---|---|---|
+| Wissen aus Calls: KI-Auszug je Call, Bereich „Aus Calls“, Eintrag mit Quelle, Suche | Einträge mit Einschätzung und Link zum Call, im Bereich „Aus Calls“ und in der Suche | ✓ bestanden (desktop) | `teil2.spec.ts` |
+| Anleitung anlegen und beim Zuweisen anhängen | Anleitung im Wissen, 📘 an der Aufgabe | ✓ bestanden (desktop) | `teil2.spec.ts` |
+
 ### Hilfsfunktionen › Daten importieren (`/import`)
 
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
@@ -375,7 +382,7 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (67 Abläufe + Oberfläche auf 77 Seiten): 67 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
+**Automatisch** (69 Abläufe + Oberfläche auf 77 Seiten): 69 bestanden, 0 fehlgeschlagen, 0 nicht gelaufen.
 
 **Live geprüft:**
 
@@ -384,9 +391,9 @@ Funktionen noch nicht automatisch geprüft – nur Seite + Oberfläche.
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 45 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 44 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesübersicht (`/`) · Alle Aufgaben (`/?ansicht=liste`) · Angebote (alle Kanäle) (`/listings`) · Neues eBay-Angebot (`/ebay`) · eBay-Angebote prüfen (`/ebay/pruefen`) · eBay-Artikel & Gewinn (`/ebay?ansicht=artikel`) · eBay-Verlauf (`/ebay?ansicht=verlauf`) · eBay → Temu / Wawi (`/listings/temu`) · Amazon-ToDos (`/amazon-todos`) · Amazon SAS-Programm (`/sas`) · Produkte (`/produkte`) · Chargen (`/chargen`) · Artikelstamm (eigene Marken) (`/artikel`) · Paletten-Lager (`/paletten`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Einkauf & Wareneingang (`/einkauf`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Lieferanten-Feeds (`/lieferanten`) · Lieferanten-Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Fälle & A-bis-Z (`/faelle`) · Bewertungen (`/bewertungen`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · eBay-Rechnungen (`/ebay?ansicht=rechnungen`) · Kunden (`/rechnungen/kunden`) · COG-Export (`/export`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Markenprofile (`/marken/profile`) · Wissen (`/wissen`) · Anbindungen (`/anbindungen`) · eBay-Einstellungen (`/ebay?ansicht=einstellungen`)
+Tagesübersicht (`/`) · Alle Aufgaben (`/?ansicht=liste`) · Angebote (alle Kanäle) (`/listings`) · Neues eBay-Angebot (`/ebay`) · eBay-Angebote prüfen (`/ebay/pruefen`) · eBay-Artikel & Gewinn (`/ebay?ansicht=artikel`) · eBay-Verlauf (`/ebay?ansicht=verlauf`) · eBay → Temu / Wawi (`/listings/temu`) · Amazon-ToDos (`/amazon-todos`) · Amazon SAS-Programm (`/sas`) · Produkte (`/produkte`) · Chargen (`/chargen`) · Artikelstamm (eigene Marken) (`/artikel`) · Paletten-Lager (`/paletten`) · Paletten-Lager › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager › Abholung (`/paletten/abholung`) · Paletten-Lager › Inventur (`/paletten/inventur`) · Paletten-Lager › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager › Auswertung (`/paletten/uebersicht`) · Einkauf & Wareneingang (`/einkauf`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Lieferanten-Feeds (`/lieferanten`) · Lieferanten-Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Fälle & A-bis-Z (`/faelle`) · Bewertungen (`/bewertungen`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · eBay-Rechnungen (`/ebay?ansicht=rechnungen`) · Kunden (`/rechnungen/kunden`) · COG-Export (`/export`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Markenprofile (`/marken/profile`) · Anbindungen (`/anbindungen`) · eBay-Einstellungen (`/ebay?ansicht=einstellungen`)
 
 **Bekannte offene Punkte:**
 
