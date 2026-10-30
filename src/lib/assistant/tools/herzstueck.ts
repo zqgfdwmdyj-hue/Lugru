@@ -4,6 +4,7 @@ import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
 import { buchhaltungStatus } from "@/lib/buchhaltung/service";
 import { personen, zustaendigSetzen } from "@/lib/delegieren/service";
+import { feierabend } from "@/lib/feierabend/service";
 import { addDaysIso } from "@/lib/dates";
 import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
 import { fristenListe } from "@/lib/private/fristen-service";
@@ -230,4 +231,36 @@ export const aufgabeZuweisenTool = defineTool({
   },
 });
 
-export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool, buchhaltungStatusTool, aufgabeZuweisenTool];
+// ---- Modul 10: Feierabend ---------------------------------------------------------------------------------
+
+export const feierabendTool = defineTool({
+  name: "feierabend",
+  title: "Feierabend-Check",
+  description:
+    "Abend-Check: heute erledigt, noch offen (rutscht auf morgen), morgen Termine, Top-3-Aufgaben und Sperrzeiten (privat nur „Privat belegt“, außer mit_privat). Mit rueckblick: true (sonntags automatisch) Wochenrückblick – erledigte Aufgaben je Person, mit Privat-Freigabe auch Familienzeit-Stunden und Paarzeit ja/nein.",
+  area: "kalender",
+  write: false,
+  quelle: { text: "Aufgaben, Kalender und Privatbereich im Seller-System" },
+  input: z.object({ rueckblick: z.boolean().default(false), mit_privat: z.boolean().default(false) }),
+  run: async (ctx, i) => {
+    const f = await feierabend(ctx.session, { heute: ctx.today, mitPrivat: i.mit_privat && ctx.privat, rueckblick: i.rueckblick });
+    return json({
+      heute: f.heute,
+      erledigt: f.erledigt.map((e) => e.titel),
+      offen_rutscht_auf_morgen: f.offen.map((o) => ({ id: o.id, titel: o.titel, frist: o.frist, wichtig: o.wichtig || undefined })),
+      morgen: {
+        datum: f.morgen,
+        arbeitszeit: f.morgenArbeitszeit ? `${f.morgenArbeitszeit.von}–${f.morgenArbeitszeit.bis}` : "kein Arbeitstag",
+        termine: f.morgenTermine.map((s) => ({ von: s.von, bis: s.bis, titel: s.titel })),
+        sperrzeiten: f.morgenSperren.map((s) => ({ von: s.ganztags ? "ganztägig" : s.von, bis: s.ganztags ? undefined : s.bis, titel: s.titel })),
+        top3: f.morgenTop3.map((g) => ({ titel: g.titel, von: g.von, aufwand: AUFWAND_TEXT[g.aufwand] })),
+        konflikte: f.morgenKonflikte.length ? f.morgenKonflikte.map((k) => `${k.titel}: ${k.text}`) : undefined,
+      },
+      wochenrueckblick: f.rueckblick ?? undefined,
+      hinweis: f.offen.length ? "Verschieben nur auf Wunsch: aufgabe_verschieben oder im Seller-System „Auf morgen schieben“." : undefined,
+      link: abs(ctx, "/kalender/feierabend"),
+    });
+  },
+});
+
+export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool, buchhaltungStatusTool, aufgabeZuweisenTool, feierabendTool];

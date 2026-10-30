@@ -34,6 +34,7 @@ export const NAV: NavSection[] = [
       { href: "/?ansicht=liste", label: "Alle Aufgaben", also: (p, q) => p === "/" && Boolean(q.get("kat") && q.get("kat") !== "alle") },
       { href: "/kalender/tagesplan", label: "Tagesplan" },
       { href: "/delegation", label: "Delegation", owner: true },
+      { href: "/kalender/feierabend", label: "Feierabend" },
       { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
       { href: "/kalender", label: "Termine" },
     ],
