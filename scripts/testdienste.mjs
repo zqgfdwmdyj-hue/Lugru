@@ -65,6 +65,25 @@ function kiAnswer(req, b) {
     const m = { ean: finde(/barcode|ean|gtin/i), asin: finde(/amazon|asin/i), supplierSku: finde(/code|art|sku/i), title: finde(/produkt|bezeichnung|name/i), price: finde(/netto|preis|ek/i), stock: finde(/lager|bestand/i), moq: finde(/vpe|mindest|moq/i), url: null };
     return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
   }
+  // Deal-Eingang: Angebote aus der Nachricht – je Zeile mit Preis ein Angebot (wie eine KI, erfundene Regeln):
+  // ASIN/EAN übernehmen, Preis vor „netto/brutto/€“, „ab N“ = Mindestmenge, „6x/6er“ = Packung; Absender aus „Name:“.
+  if (/Erkenne die Angebote in dieser Nachricht/.test(text) && !stale) {
+    const nachricht = /Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "";
+    const angebote = [];
+    let quelle = null;
+    for (const roh of nachricht.split("\n")) {
+      const q = /^\s*(?:\[[^\]]+\]\s*)?([A-ZÄÖÜ][\wäöüß]{1,20}):\s/.exec(roh);
+      if (q) quelle ??= q[1];
+      const z = roh.replace(/^\s*(?:\[[^\]]+\]\s*)?[^:]{1,25}:\s*/, "");
+      const preis = /(\d{1,5}[.,]\d{2})\s*(?:€|eur)?\s*(netto|brutto)?/i.exec(z.replace(/\b\d{8,14}\b/g, ""));
+      if (!preis) continue;
+      const asin = /\b(B0[A-Z0-9]{8})\b/.exec(z)?.[1] ?? null;
+      const ean = /\b(\d{13})\b/.exec(z)?.[1] ?? null;
+      const name = z.slice(0, z.indexOf(preis[1])).replace(/\b(B0[A-Z0-9]{8}|\d{13})\b/g, "").trim() || null;
+      angebote.push({ asin, ean, name, marke: name ? name.split(" ")[0] : null, ek: Number(preis[1].replace(",", ".")), ek_netto: preis[2] ? preis[2].toLowerCase() === "netto" : null, waehrung: "EUR", menge: null, moq: Number(/ab\s*(\d+)/i.exec(z)?.[1] ?? 0) || null, packung: Number(/(\d+)\s*(?:x|er)\b/i.exec(name ?? "")?.[1] ?? 0) || null });
+    }
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ quelle, angebote }) }], "end_turn")];
+  }
   // VA über Discord: Nachricht der Assistenz einordnen (erfundene Regeln wie eine KI).
   if (/Ordne die Nachricht der Assistenz/.test(text) && !stale) {
     const n = (/Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "").trim();
@@ -338,7 +357,19 @@ async function route(req, url, body) {
   if (p.startsWith("/ebay/")) return req.method === "GET" ? json({ total: 0, orders: [], inventoryItems: [], offers: [], href: url.href }) : json({ simuliert: true });
   // Temu, Keepa, EZB
   if (p.startsWith("/temu/")) return json({ success: true, result: {} });
+  if (p.startsWith("/keepa/product") && url.searchParams.get("code")) {
+    // EAN → ASIN: erfundene ASIN aus den letzten Ziffern; mit Marktdaten wie bei der ASIN-Abfrage
+    const asins = url.searchParams.get("code").split(",").map((c) => `B0EAN${c.slice(-5)}`);
+    url.searchParams.set("asin", asins.join(","));
+    return json(keepaProdukte(url));
+  }
   if (p.startsWith("/keepa/product")) return json(keepaProdukte(url));
+  if (p.startsWith("/keepa/search")) {
+    // Titelsuche: einzeln und als 6er-Pack (erfunden) – zum Prüfen der Packungsgröße
+    const term = url.searchParams.get("term") ?? "";
+    const basis = term.replace(/\b\d+\s*(x|er)\b/gi, "").replace(/\s+/g, " ").trim();
+    return json({ tokensLeft: keepaTokens, products: [{ asin: "B0TESTW001", title: `${basis} (erfunden)`, stats: { current: [] } }, { asin: "B0TESTW006", title: `${basis} 6er Pack (erfunden)`, packageQuantity: 6, stats: { current: [] } }] });
+  }
   if (p.startsWith("/keepa/")) return json({ tokensLeft: keepaTokens, products: [], asinList: [] });
   if (p.startsWith("/ecb")) return [200, `<?xml version="1.0"?><gesmes:Envelope xmlns:gesmes="http://www.gesmes.org/xml/2002-08-01" xmlns="http://www.ecb.int/vocabulary/2002-08-01/eurofxref"><Cube><Cube time="2026-10-28"><Cube currency="USD" rate="1.08"/><Cube currency="GBP" rate="0.85"/><Cube currency="PLN" rate="4.30"/><Cube currency="SEK" rate="11.50"/></Cube></Cube></gesmes:Envelope>`, "application/xml"];
   // EU-Prüfung USt-IdNr. (VIES): Nummer mit „999“ ungültig, mit „000“ Land nicht erreichbar, sonst gültig.

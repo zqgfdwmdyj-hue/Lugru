@@ -116,6 +116,7 @@ export const NAV: NavSection[] = [
     color: "var(--area-einkauf)",
     icon: "🛒",
     items: [
+      { href: "/deal-eingang", label: "Deal-Eingang (WhatsApp teilen)" },
       { href: "/lieferanten/deal-ampel", label: "Deal-Ampel (Einkauf prüfen)" },
       { href: "/einkauf", label: "Einkauf & Wareneingang" },
       { href: "/einkauf/ek-import", label: "EK-Import (→ sellerboard)" },
