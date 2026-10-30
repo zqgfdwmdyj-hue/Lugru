@@ -418,6 +418,37 @@ function angebote(asin, mpId) {
   } }];
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Web-Nachbau für die Browser-Automatik (sellerboard-Kostenimport, BQool-Upload): Anmeldeseite (E-Mail mit „2fa“ →
+// Bestätigungscode, Passwort „falsch“ → Anmeldung wieder), Upload-Seite nur mit Sitzungs-Cookie, Erfolgsmeldung.
+const webUploads = [];
+function webNachbau(req, res, url, body) {
+  const [, dienst, seite] = /^\/web-([a-z]+)\/([a-z]+)/.exec(url.pathname) ?? [];
+  const html = (code, inhalt, extra = {}) => {
+    res.writeHead(code, { "Content-Type": "text/html; charset=utf-8", ...extra });
+    res.end(`<!doctype html><html><body><h1>${dienst} (Testnachbau)</h1>${inhalt}</body></html>`);
+  };
+  const angemeldet = (req.headers.cookie ?? "").includes(`sid=ok-${dienst}`);
+  if (seite === "login" && req.method === "POST") {
+    const f = new URLSearchParams(body);
+    if ((f.get("email") ?? "").includes("2fa")) return html(200, '<p>Zwei-Faktor-Anmeldung: Bitte Bestätigungscode eingeben</p><form method="post"><input autocomplete="one-time-code" name="code"><button type="submit">Weiter</button></form>');
+    if (f.get("password") === "falsch") return html(200, '<p>Falsches Passwort</p><form method="post"><input type="email" name="email"><input type="password" name="password"><button type="submit">Anmelden</button></form>');
+    res.writeHead(302, { Location: `/web-${dienst}/upload`, "Set-Cookie": `sid=ok-${dienst}; Path=/` });
+    return res.end();
+  }
+  if (seite === "login") return html(200, '<form method="post"><input type="email" name="email"><input type="password" name="password"><button type="submit">Anmelden</button></form>');
+  if (!angemeldet) {
+    res.writeHead(302, { Location: `/web-${dienst}/login` });
+    return res.end();
+  }
+  if (seite === "upload" && req.method === "POST") {
+    const name = /filename="([^"]+)"/.exec(body)?.[1] ?? "?";
+    webUploads.push({ dienst, name, groesse: body.length, at: new Date().toISOString() });
+    return html(200, `<p>Import erfolgreich: ${name} übernommen</p>`);
+  }
+  return html(200, '<form method="post" enctype="multipart/form-data"><input type="file" name="datei"><button type="submit">Hochladen</button></form>');
+}
+
 const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : "?");
 
 http
@@ -430,6 +461,8 @@ http
       res.end(Buffer.isBuffer(data) || typeof data === "string" ? data : JSON.stringify(data));
     };
     if (url.pathname === "/__log") return send(200, log);
+    if (url.pathname === "/__web") return send(200, webUploads);
+    if (url.pathname.startsWith("/web-")) return webNachbau(req, res, url, body);
     if (url.pathname === "/__ki") return send(200, ki);
     if (url.pathname === "/__discord") return send(200, discord);
     // Prüf-Hilfen Lexoffice: Belege ansehen, Rechnungen als bezahlt markieren (wie ein Zahlungseingang).

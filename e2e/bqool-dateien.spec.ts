@@ -1,7 +1,7 @@
 // BQool-Dateien aus dem System (B7 Teil 3): Ist-Stand per Upload, Soll-Regel „Liquidation“ mit Untergrenze, Export
 // je Land im Format der angenommenen Datei, SKU ohne EK nur in „EK fehlt“, Werkzeug bqool_export_vorschau.
 // Erfundene SKUs.
-import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
+import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test, testdienste } from "./helfer";
 
 const ERSTE = "FileType = repricing,  Version = 1.2.5 (Please do not edit this line or this will result in error when uploading)";
 const KOPF = "Channel\tSellerSKU\tCost\tAdditional Cost\tRule Name\tMin Price\tMax Price\tShipping\tadd-delete\tGroup\tEnable Repricing";
@@ -56,6 +56,18 @@ test.describe("BQool-Dateien", () => {
       expect(fr.split("\n")).toContain(`Amazon FR\t${mitEk}\t5.95\t\tLiquidation\t12.99\t25.98\t0.00\t\t\t1`);
       const zip = await page.request.get(await page.getByTestId("bq-zip").getAttribute("href") as string);
       expect(zip.headers()["content-type"]).toBe("application/zip");
+
+      // Übertragen nur mit Bestätigung; dann je Land eine Datei auf den Web-Nachbau
+      const vorher = (await testdienste.web()).filter((w) => w.dienst === "bqool").length;
+      await Promise.all([aktion(page), page.getByTestId("bq-automatik").getByRole("button").click()]);
+      await expect(page.getByRole("status")).toContainText("Bitte bestätigen");
+      expect((await testdienste.web()).filter((w) => w.dienst === "bqool").length).toBe(vorher);
+      await page.getByTestId("bq-automatik").locator('input[name="bestaetigt"]').check();
+      await Promise.all([aktion(page), page.getByTestId("bq-automatik").getByRole("button").click()]);
+      await expect(page.getByRole("status")).toContainText("2 Dateien bei BQool hochgeladen", { timeout: 90_000 });
+      const hoch = (await testdienste.web()).filter((w) => w.dienst === "bqool").slice(vorher);
+      expect(hoch.map((w) => w.name.replace(/_\d{4}-\d{2}-\d{2}/, ""))).toEqual(["BQool_DE.txt", "BQool_FR.txt"]);
+      await expect(page.getByTestId("bq-uebertragung")).toContainText("hochgeladen");
 
       // Claude: Vorschau lesen
       const c = await mcpVerbinden(browser, baseURL!, "inhaber");

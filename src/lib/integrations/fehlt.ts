@@ -6,6 +6,8 @@ export const FEHLT_OHNE: Record<string, string> = {
   anthropic: "KI-Auswertungen: Calls und Wissen aus Calls, Rechnungen auslesen, Retouren-Station, Preislisten-Spalten",
   lexoffice: "B2B-Rechnungen und Zahlungsabgleich der Deals",
   discord_calls: "wöchentlicher Import der Calls aus dem Discord-Kanal",
+  sellerboard_web: "EK automatisch zu sellerboard übertragen (sonst Importdatei herunterladen)",
+  bqool_web: "BQool-Dateien automatisch hochladen (sonst ZIP herunterladen)",
   discord_b2b: "Meldung neuer Deals im B2B-Kanal",
   google_drive: "Rechnungen aus Google Drive, private Google Docs der Calls",
 };

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { ekImport, ekImporte } from "@/lib/ek-import/service";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { uebernehmenAction, verwerfenAction, vorschauAction } from "./actions";
+import { anSellerboardAction, uebernehmenAction, verwerfenAction, vorschauAction } from "./actions";
 
 // EK-Import: ArbitrageOne-Liste nur noch hier hochladen → Vorschau → übernehmen → sellerboard-Datei/Übertragung → Gegenprüfung.
 
@@ -48,7 +48,11 @@ export default async function EkImportPage({ searchParams }: { searchParams: Pro
           {aktiv.status === "uebernommen" && (
             <div className="stack small" data-testid="ek-sellerboard">
               <div>sellerboard: <b>{SB[aktiv.sellerboard]}</b>{aktiv.geprueftAm ? ` · Gegenprüfung ${formatDate(aktiv.geprueftAm.toISOString())}: ${aktiv.pruefung?.abweichend.length ? `${aktiv.pruefung.abweichend.length} Abweichungen` : "alles gleich"}` : " · Gegenprüfung folgt am nächsten Tag"}</div>
-              <div><a className="btn" href={`/einkauf/ek-import/datei?id=${aktiv.id}`} data-testid="ek-sellerboard-datei">sellerboard-Importdatei herunterladen</a> <span className="muted">→ in sellerboard unter Produkte → Kosten importieren hochladen</span></div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <a className="btn" href={`/einkauf/ek-import/datei?id=${aktiv.id}`} data-testid="ek-sellerboard-datei">sellerboard-Importdatei herunterladen</a>
+                {!session.readOnly && <form action={anSellerboardAction}><input type="hidden" name="id" value={aktiv.id} /><button className="btn" type="submit" data-testid="ek-sellerboard-automatik">An sellerboard übertragen (Browser)</button></form>}
+                <span className="muted">Datei: in sellerboard unter Produkte → Kosten importieren hochladen. Automatik: braucht die Anbindung „sellerboard – Anmeldung“.</span>
+              </div>
               {aktiv.sellerboardProtokoll.length > 0 && <ul style={{ margin: 0 }}>{aktiv.sellerboardProtokoll.map((p, i) => <li key={i}>{formatDate(p.zeit)} {p.text}</li>)}</ul>}
             </div>
           )}

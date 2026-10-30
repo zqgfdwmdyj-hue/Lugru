@@ -1,7 +1,7 @@
 // EK-Import (B7 Teil 2): ArbitrageOne-Liste über Uploads → Vorschau (geändert/neu/unbekannt, Warnung > 20 %) →
 // übernehmen → sellerboard-Importdatei (.xls, ASIN | SKU | Cost). Erfundene SKUs und Preise.
 import * as XLSX from "xlsx";
-import { aktion, anmelden, expect, marke, sql, test } from "./helfer";
+import { aktion, anmelden, expect, marke, sql, test, testdienste } from "./helfer";
 
 function xls(rows: (string | number)[][]) {
   const wb = XLSX.utils.book_new();
@@ -40,6 +40,27 @@ test.describe("EK-Import", () => {
       expect(rows.slice(1).map((x) => x[1])).toEqual([alt]); // Platzhalter 0,01 nicht in der Datei
       await page.reload();
       await expect(page.getByTestId("ek-sellerboard")).toContainText("Importdatei heruntergeladen");
+
+      // Browser-Automatik gegen den Web-Nachbau: anmelden, Datei hochladen, Erfolg + Protokoll mit Bildschirmfotos
+      const vorher = (await testdienste.web()).filter((w) => w.dienst === "sellerboard").length;
+      await Promise.all([aktion(page), page.getByTestId("ek-sellerboard-automatik").click()]);
+      await expect(page.getByRole("status")).toContainText("Automatisch zu sellerboard übertragen", { timeout: 90_000 });
+      const web = (await testdienste.web()).filter((w) => w.dienst === "sellerboard");
+      expect(web.length).toBe(vorher + 1);
+      expect(web.at(-1)!.name).toMatch(/^sellerboard_Kosten_.*\.xls$/);
+      await expect(page.getByTestId("ek-sellerboard")).toContainText("automatisch übertragen");
+      expect(Number((await sql<{ c: string }>("select count(*) c from files where name like 'automatik-automatik-sellerboard-%'"))[0].c)).toBeGreaterThan(0);
+
+      // Zwei-Faktor-Anmeldung → Abbruch, Aufgabe, kein Upload
+      await sql("update integrations set config = config || '{\"email\": \"einkauf-2fa@example.invalid\"}'::jsonb where tenant_id = $1 and provider = 'sellerboard_web'", [T]);
+      try {
+        await Promise.all([aktion(page), page.getByTestId("ek-sellerboard-automatik").click()]);
+        await expect(page.getByRole("status")).toContainText("Zwei-Faktor-Anmeldung verlangt", { timeout: 90_000 });
+        expect((await testdienste.web()).filter((w) => w.dienst === "sellerboard").length).toBe(vorher + 1);
+        expect((await sql("select 1 from tasks where tenant_id = $1 and system_key like 'automatik-sellerboard-%' and title like '%abgebrochen%' and status = 'open'", [T])).length).toBeGreaterThan(0);
+      } finally {
+        await sql("update integrations set config = config || '{\"email\": \"einkauf@example.invalid\"}'::jsonb where tenant_id = $1 and provider = 'sellerboard_web'", [T]);
+      }
     } finally {
       await sql("delete from lots where tenant_id = $1 and sku like $2", [T, `TEST-EK-%${m}`]);
     }

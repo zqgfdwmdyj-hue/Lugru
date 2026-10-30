@@ -124,3 +124,15 @@ export async function katalogAction(fd: FormData) {
   revalidatePath(PFAD);
   zurueck("Regeln gespeichert. Änderungen an Regeln bitte auch in BQool selbst eintragen – das System ändert keine BQool-Regeln.");
 }
+
+/** Freigegebenen Export per Browser-Automatik bei BQool hochladen – nur mit ausdrücklicher Bestätigung. */
+export async function anBqoolAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("export") ?? "");
+  if (fd.get("bestaetigt") !== "1") zurueck("Bitte bestätigen, dass die Freigabe geprüft ist – erst dann ändert BQool die Preise.", `&export=${id}`);
+  const { anBqoolUebertragen } = await import("@/lib/automatik/uebertragen");
+  const r = await anBqoolUebertragen(s.tenantId, id);
+  revalidatePath(PFAD);
+  zurueck(r.text, `&export=${id}`);
+}
+

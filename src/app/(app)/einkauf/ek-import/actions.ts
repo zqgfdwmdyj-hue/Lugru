@@ -48,3 +48,13 @@ export async function verwerfenAction(fd: FormData) {
   await ekImportVerwerfen(s.tenantId, String(fd.get("id") ?? ""));
   redirect(ziel(null, "Vorschau verworfen – nichts übernommen."));
 }
+
+export async function anSellerboardAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id") ?? "");
+  const { anSellerboardUebertragen } = await import("@/lib/automatik/uebertragen");
+  const r = await anSellerboardUebertragen(s.tenantId, id);
+  revalidatePath(PFAD);
+  redirect(ziel(id, r.text));
+}
+

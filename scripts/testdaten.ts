@@ -231,6 +231,9 @@ const td = process.env.TESTDIENSTE_URL || "http://127.0.0.1:4010";
 await db.execute(sql`update tenants set settings = settings || ${JSON.stringify({ b2b: { firma: { name: "Test Prep GmbH", handelsname: "TestPrep", strasse: "Prepweg 1", plz: "12345", ort: "Musterstadt", land: "DE", ustId: "DE999999999", email: "deals@example.invalid" }, marktplaetze: ["DE", "FR", "IT", "ES", "NL"], prepGebuehr: 0.6 } })}::jsonb where id = ${T}`);
 await integ("discord_b2b", {}, { webhookUrl: `${td}/discord/test-webhook` });
 await integ("lexoffice", {}, { apiKey: "test-lexoffice-schluessel" });
+// Browser-Automatik gegen den Web-Nachbau der Testdienste
+await integ("sellerboard_web", { email: "einkauf@example.invalid", loginUrl: `${td}/web-sellerboard/login`, importUrl: `${td}/web-sellerboard/upload` }, { password: "test-passwort" });
+await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload` }, { password: "test-passwort" });
 const [gh, ghOhne] = await db
   .insert(schema.suppliers)
   .values([

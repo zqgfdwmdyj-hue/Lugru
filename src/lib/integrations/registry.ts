@@ -276,6 +276,38 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["Discord → Server-Einstellungen → Integrationen → Webhooks → „Neuer Webhook“ → Kanal wählen (z. B. „todo“) → „Webhook-URL kopieren“ → hier einfügen und testen."],
   },
   {
+    provider: "sellerboard_web",
+    name: "sellerboard – Anmeldung für den Kostenimport (Browser-Automatik) – optional",
+    purpose: "EK nach dem EK-Import auf Knopfdruck zu sellerboard übertragen (Produkte → Kosten importieren). Ohne diese Anbindung: Importdatei herunterladen und selbst hochladen.",
+    fields: [
+      { key: "email", label: "Anmelde-E-Mail" },
+      { key: "password", label: "Passwort", secret: true },
+      { key: "loginUrl", label: "Anmeldeseite", placeholder: "https://app.sellerboard.com/de/auth/login" },
+      { key: "importUrl", label: "Seite „Kosten importieren“", help: "In sellerboard die Seite zum Kostenimport öffnen und die Adresse aus der Adresszeile hier einfügen." },
+    ],
+    setup: [
+      "Am besten einen eigenen sellerboard-Benutzer ohne Zwei-Faktor-Anmeldung nur für den Import anlegen – mit Zwei-Faktor bricht die Automatik ab und legt eine Aufgabe an.",
+      "Die Automatik läuft nur auf Knopfdruck, nie von selbst; jeder Schritt wird mit Bildschirmfoto protokolliert.",
+      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+    ],
+  },
+  {
+    provider: "bqool_web",
+    name: "BQool – Anmeldung für den Datei-Upload (Browser-Automatik) – optional",
+    purpose: "Freigegebene BQool-Dateien je Land auf Knopfdruck bei BQool hochladen. Ohne diese Anbindung: ZIP herunterladen und selbst hochladen.",
+    fields: [
+      { key: "email", label: "Anmelde-E-Mail" },
+      { key: "password", label: "Passwort", secret: true },
+      { key: "loginUrl", label: "Anmeldeseite", placeholder: "https://www.bqool.com/login" },
+      { key: "uploadUrl", label: "Seite „Repricing-Datei hochladen“", help: "In BQool die Upload-Seite öffnen und die Adresse aus der Adresszeile hier einfügen." },
+    ],
+    setup: [
+      "Mit Zwei-Faktor-Anmeldung bricht die Automatik ab und legt eine Aufgabe an – dann die Dateien als ZIP herunterladen.",
+      "Preise ändern sich erst nach Freigabe auf der Seite „BQool-Dateien“ und einem Klick auf „An BQool übertragen“.",
+      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+    ],
+  },
+  {
     provider: "discord_calls",
     name: "Discord – Call-Kanal (Consultant- oder Gruppen-Calls) – optional",
     purpose: "Einmal pro Woche neue Google-Docs-Transkripte aus dem Discord-Kanal ins Call-Archiv holen; die KI zieht daraus Vereinbarungen, Aufgaben, Entscheidungen und offene Fragen.",

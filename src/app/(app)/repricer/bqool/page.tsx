@@ -4,7 +4,7 @@ import { EXPORT_LAENDER } from "@/lib/bqool/export-logic";
 import { bqoolExporte, bqoolVorschau, zuweisungen } from "@/lib/bqool/export-service";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
-import { exportErzeugenAction, istUebernehmenAction, katalogAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
+import { anBqoolAction, exportErzeugenAction, istUebernehmenAction, katalogAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
 
 // BQool-Dateien direkt aus dem System: Ist (BQool) → Soll (Regeln hier), Freigabe vor jedem Export, Download je Land/ZIP.
 
@@ -59,8 +59,18 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
             {(aktiv.laender as string[]).map((l) => (
               <span key={l}> · <a href={`/repricer/bqool/datei?export=${aktiv.id}&land=${l}`} data-testid={`bq-datei-${l}`}>{l} ({aktiv.anzahl[l] ?? 0})</a></span>
             ))}
+            {aktiv.uebertragung && <span data-testid="bq-uebertragung"> · BQool: {{ laeuft: "Übertragung läuft", fertig: "hochgeladen ✓", fehler: "Übertragung abgebrochen" }[aktiv.uebertragung]}</span>}
           </div>
         )}
+        {aktiv && kannSchreiben && (
+          <form action={anBqoolAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="bq-automatik">
+            <input type="hidden" name="export" value={aktiv.id} />
+            <label><input type="checkbox" name="bestaetigt" value="1" /> Freigabe geprüft – Preise bei BQool jetzt ändern</label>
+            <button className="btn" type="submit">An BQool übertragen (Browser)</button>
+            <span className="muted">braucht die Anbindung „BQool – Anmeldung“; sonst ZIP herunterladen.</span>
+          </form>
+        )}
+        {aktiv && aktiv.protokoll.length > 0 && <ul className="small muted" style={{ margin: 0 }}>{aktiv.protokoll.slice(-6).map((p, i) => <li key={i}>{p.text}</li>)}</ul>}
       </section>
 
       {v.laender.map((l) => {
