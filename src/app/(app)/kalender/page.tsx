@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InsAuto } from "@/components/ins-auto";
 import { and, eq, gte, lte, notInArray, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
@@ -53,7 +54,7 @@ function EntryChip({ e, wrap = false }: { e: DayEntry; wrap?: boolean }) {
 }
 
 /** Ein Eintrag als Zeile (Tagesliste, Agenda): Uhrzeit, Quelle, voller Titel, Link ins System. */
-function EntryLine({ e }: { e: DayEntry }) {
+function EntryLine({ e, auto = false }: { e: DayEntry; auto?: boolean }) {
   return (
     <div className={`cal-line${e.system ? " cal-line-sys" : ""}`} style={{ ["--c" as string]: e.color }} data-kind={e.system ? "faellig" : "termin"}>
       <span className="cal-line-bar" />
@@ -62,6 +63,7 @@ function EntryLine({ e }: { e: DayEntry }) {
         <br />
         {e.link ? <Link href={e.link}>{e.title}</Link> : e.title}
         {e.location && <span className="small muted"> · {e.location}</span>}
+        {auto && e.location && !e.system && <> <InsAuto ziel={e.location} /></>}
       </span>
     </div>
   );
@@ -326,7 +328,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                 <div key={d} className={`cal-agenda-day${d === today ? " cal-agenda-today" : ""}${d < today ? " cal-agenda-past" : ""}`} id={`tag-${d}`} data-day={d}>
                   <h3>{dayLong(d)}{d === today ? " · heute" : ""}</h3>
                   <div className="stack" style={{ gap: 8, fontSize: 14 }}>
-                    {(byDay.get(d) ?? []).map((e) => <EntryLine key={e.id} e={e} />)}
+                    {(byDay.get(d) ?? []).map((e) => <EntryLine key={e.id} e={e} auto={session.role === "owner"} />)}
                   </div>
                 </div>
               ))}
@@ -375,7 +377,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                 <div className="small muted">Nichts eingetragen.</div>
               ) : (
                 <div className="stack" style={{ gap: 10, fontSize: 14 }}>
-                  {dayList.map((e) => <EntryLine key={e.id} e={e} />)}
+                  {dayList.map((e) => <EntryLine key={e.id} e={e} auto={session.role === "owner"} />)}
                 </div>
               )}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>{newTask}</div>

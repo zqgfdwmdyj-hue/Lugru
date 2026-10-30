@@ -29,6 +29,8 @@ export const E2E_ENV: Record<string, string> = {
   LEXOFFICE_BASE_URL: `${TD}/lexoffice`,
   GOOGLE_DOCS_BASE_URL: `${TD}/gdocs`,
   DISCORD_API_BASE_URL: `${TD}/discord-api`,
+  TESLA_BASE_URL: `${TD}/tesla`,
+  TWILIO_BASE_URL: `${TD}/twilio`,
   NEXT_TELEMETRY_DISABLED: "1",
   // Fotos/Videos der Retouren-Station (verschlüsselt) – eigener Ordner nur für die Prüfungen
   MEDIA_DIR: process.env.E2E_MEDIA_DIR || `${process.cwd()}/.e2e-medien`,

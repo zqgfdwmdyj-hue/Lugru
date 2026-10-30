@@ -140,6 +140,18 @@ export const DEFAULT_SETTINGS = {
    * den Privatkalender des Inhabers statt in den Posteingang; Vorabend-Erinnerung mit Abfahrt (Minuten vorher).
    */
   posteingang: { autoArchiv: true, terminMails: true, vorabendUm: "18:00", abfahrtVorher: 30 },
+  /**
+   * Handy & Tesla (B13): Orte (Ziel-Erkennung für Briefing und Fahrtenbuch), Fahrzeit vor Terminen mit Ort, Minuten je
+   * Anruf, SMS nur an Ludwigs Nummer (Tageslimit, Ruhezeit, Deal-Schwelle), Verspätungs-Toleranz, Tesla-Fahrzeug.
+   */
+  mobil: {
+    orte: { lager: [] as string[], prep: [] as string[], palettenlager: [] as string[], zuhause: "" },
+    fahrzeitMin: 20,
+    jeAnrufMin: 5,
+    sms: { an: false, nummer: "", limit: 10, ruheVon: "20:00", ruheBis: "07:30", dealSchwelle: 100 },
+    verspaetungToleranz: 10,
+    tesla: { vin: "", vorheizen: false },
+  },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
   /** Buchhaltung je Firma (nur LuGru/WiGru – nicht AdelPrep): SKR04, DATEV-Nummern vom Steuerberater, Geldkonten. */
@@ -203,6 +215,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     faelle: { ...d.faelle, ...(s.faelle ?? {}), fristen: { ...d.faelle.fristen, ...(s.faelle?.fristen ?? {}) } },
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
     posteingang: { ...d.posteingang, ...(s.posteingang ?? {}) },
+    mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
     va: { ...d.va, ...(s.va ?? {}) },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
     bqool: { ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool,

@@ -1,7 +1,7 @@
-import { index, pgTable, text, timestamp, uuid, integer } from "drizzle-orm/pg-core";
+import { index, numeric, pgTable, text, timestamp, uniqueIndex, uuid, integer } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, users } from "./core";
 import { apiTokens } from "./deal-eingang";
-import { encryptedJson } from "./encrypted";
+import { encryptedJson, encryptedText } from "./encrypted";
 
 // Handy-Endpunkte (/api/mobil/*): Protokoll je Aufruf (für Rate-Limit und Nachvollziehbarkeit) und die
 // Eingangsliste der Schnellerfassung (Diktate, die bestätigt werden müssen). Diktate können Privates enthalten –
@@ -49,4 +49,55 @@ export const schnellEingaenge = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("schnell_eingaenge_user_idx").on(t.tenantId, t.userId, t.status)],
+);
+
+/**
+ * Wichtige Meldungen per SMS (B13): nur an Ludwigs Nummer, kurz und vorlesbar, mit Kurz-Code [F12] für die Antwort
+ * (VA / SPÄTER / OK / KAUFEN n). Keine Kunden- oder Privatdaten. Antworten lösen nur Aufgaben oder Entwürfe aus.
+ */
+export const smsMeldungen = pgTable(
+  "sms_meldungen",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Kurz-Code, z. B. „F12“ (je Mandant fortlaufend). */
+    ref: text("ref").notNull(),
+    art: text("art", { enum: ["konto", "frist", "deal", "va", "test"] }).notNull(),
+    text: encryptedText("text").notNull(),
+    /** Bezug: Aufgabe, Deal-Eingang oder Amazon-Vorgang (typ:id). */
+    bezug: text("bezug"),
+    /** Eindeutiger Schlüssel gegen doppelte SMS (z. B. „deal:<id>“). */
+    schluessel: text("schluessel").notNull(),
+    status: text("status", { enum: ["gesendet", "unterdrueckt", "fehler", "beantwortet"] }).notNull(),
+    grund: text("grund"),
+    antwort: encryptedText("antwort"),
+    ergebnis: text("ergebnis"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("sms_meldungen_key_uq").on(t.tenantId, t.schluessel), index("sms_meldungen_ref_idx").on(t.tenantId, t.ref)],
+);
+
+/**
+ * Fahrtenbuch (B13): Fahrten aus der Tesla Fleet API. Vorschlag geschäftlich/privat aus Orten und Kalender, Ludwig
+ * bestätigt je Fahrt. Adressen verschlüsselt; private Fahrten zeigen im Geschäftsbereich nur „privat“.
+ */
+export const fahrten = pgTable(
+  "fahrten",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Kennung der Fahrt beim Fahrzeug (gegen Dubletten). */
+    quelleId: text("quelle_id").notNull(),
+    beginn: timestamp("beginn", { withTimezone: true }).notNull(),
+    ende: timestamp("ende", { withTimezone: true }),
+    start: encryptedText("start"),
+    ziel: encryptedText("ziel"),
+    km: numeric("km", { precision: 8, scale: 1, mode: "number" }).notNull(),
+    vorschlag: text("vorschlag", { enum: ["geschaeftlich", "privat"] }).notNull(),
+    art: text("art", { enum: ["geschaeftlich", "privat"] }),
+    zweck: encryptedText("zweck"),
+    bestaetigtAt: timestamp("bestaetigt_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("fahrten_quelle_uq").on(t.tenantId, t.quelleId), index("fahrten_beginn_idx").on(t.tenantId, t.beginn)],
 );

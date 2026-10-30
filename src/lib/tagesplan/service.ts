@@ -70,6 +70,8 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
   const staffCalendars = tenant?.settings.calendar?.staffCalendars;
   const pushName = (await getIntegration(t, "apple_calendar"))?.calendarName || DEFAULT_CALENDAR_NAME;
   const privat = session.privateAccess ? await privateSettings(t) : null;
+  const fahrzeit = Math.max(0, (await getSettings(t)).mobil.fahrzeitMin);
+  const minuten = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const exportName = privat?.externSync.enabled ? privat.externSync.calendar : null;
 
   // 1) Verbundene Kalender (ohne den eigenen Push-Kalender – dort stehen die Aufgaben selbst – und ohne den Export der Privat-Einträge).
@@ -90,6 +92,11 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
       const a = tag === startTag ? berlinTime(ev.startsAt) : "00:00";
       const b = ev.endsAt && tag === endeTag ? berlinTime(ev.endsAt) : ev.endsAt ? "23:59" : berlinTime(new Date(ev.startsAt.getTime() + 3600_000));
       add(tag, geschaeft ? { von: a, bis: b, titel: ev.title, art: "termin" } : { von: a, bis: b, titel: mitPrivat ? ev.title : PRIVAT_BELEGT, art: "privat" });
+      // Handy & Tesla (B13): vor geschäftlichen Terminen mit Ort die Fahrzeit blocken – dort passen Anrufe hinein.
+      if (geschaeft && ev.location?.trim() && tag === startTag && a !== "00:00") {
+        const vonFahrt = hhmmPlus("00:00", Math.max(0, minuten(a) - fahrzeit));
+        add(tag, { von: vonFahrt, bis: a, titel: `Fahrzeit → ${ev.title} (Anrufe möglich)`, art: "termin" });
+      }
     }
   }
 

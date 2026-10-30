@@ -14,3 +14,5 @@ import "./keepa";
 import "./stotax";
 import "./lugru-deals";
 import "./lexoffice";
+import "./tesla";
+import "./sms";

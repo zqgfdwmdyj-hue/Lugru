@@ -38,7 +38,9 @@ export const NAV: NavSection[] = [
       { href: "/uploads", label: "Uploads (alles hochladen)" },
       { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
       { href: "/schnell", label: "Schnellerfassung (Sprache)" },
+      { href: "/scan", label: "Scan mit Ampel" },
       { href: "/kalender", label: "Termine" },
+      { href: "/kalender/fahrten", label: "Fahrtenbuch", owner: true },
     ],
   },
   {
@@ -190,6 +192,7 @@ export const NAV: NavSection[] = [
       { href: "/einstellungen", label: "Einstellungen", owner: true },
       { href: "/anbindungen", label: "Anbindungen", owner: true },
       { href: "/einstellungen/claude", label: "Claude & KI-Assistent", owner: true },
+      { href: "/einstellungen/handy", label: "Handy & Tesla", owner: true },
       { href: "/ebay?ansicht=einstellungen", label: "eBay-Einstellungen", owner: true },
     ],
   },

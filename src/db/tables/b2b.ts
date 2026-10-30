@@ -88,6 +88,9 @@ export const lieferantenProfile = pgTable(
       .notNull()
       .references(() => suppliers.id, { onDelete: "cascade" }),
     email: text("email"),
+    /** Adresse (Ziel-Erkennung für Fahrt-Briefing und Fahrtenbuch) und Telefon (Anrufe in der Fahrzeit). */
+    adresse: text("adresse"),
+    telefon: text("telefon"),
     mindestbestellwert: geld("mindestbestellwert"),
     versandkosten: geld("versandkosten"),
     zahlungszielTage: integer("zahlungsziel_tage"),

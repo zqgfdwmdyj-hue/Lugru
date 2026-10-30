@@ -25,6 +25,17 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
   const titel = `${o.update ? "Update: " : ""}Deal ${e.ampel ? AMPEL_EMOJI[e.ampel] : "📄"}${e.quelle ? ` · ${e.quelle}` : ""}`;
   const r = await melden(tenantId, an, { titel, text: e.zusammenfassung ?? "Geprüft – bitte im Deal-Eingang ansehen.", link: `/deal-eingang/${e.id}` });
   await db.update(E).set({ pushAm: new Date() }).where(eq(E.id, e.id));
+  // SMS (B13, falls eingerichtet): nur grüne Deals, deren Gewinn (empfohlene Menge × Gewinn/Stück) über der Schwelle liegt.
+  if (e.ampel === "gruen" && !o.update) {
+    const { getSettings } = await import("@/lib/settings");
+    const schwelle = (await getSettings(tenantId)).mobil.sms.dealSchwelle;
+    const best = e.zeilen.filter((z) => z.ampel === "gruen" && z.gewinn !== null).sort((a, b) => (b.gewinn ?? 0) * (b.empfohlen ?? 1) - (a.gewinn ?? 0) * (a.empfohlen ?? 1))[0];
+    const summe = best ? (best.gewinn ?? 0) * (best.empfohlen ?? 1) : 0;
+    if (best && summe >= schwelle) {
+      const { smsMelden } = await import("@/lib/mobil/sms");
+      await smsMelden(tenantId, { art: "deal", kern: `Grüner Deal${e.quelle ? ` (${e.quelle})` : ""}: ${best.bestesLand ?? ""} ${(best.gewinn ?? 0).toFixed(2).replace(".", ",")} € je Stück, ROI ${Math.round(best.roi ?? 0)} %${best.empfohlen ? `, empfohlen ${best.empfohlen} Stück` : ""}`.replace(/\s+/g, " "), schluessel: `deal:${e.id}`, bezug: `deal:${e.id}`, codes: ["KAUFEN n", "SPÄTER", "OK"] }).catch(() => null);
+    }
+  }
   return r;
 }
 

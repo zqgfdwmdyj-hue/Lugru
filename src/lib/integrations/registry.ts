@@ -388,6 +388,41 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "tesla",
+    name: "Tesla (Fleet API) – optional",
+    purpose: "Navi-Ziel aus dem Seller-System ins Auto („Ins Auto“), Ankunftszeit für Verspätungs-Entwürfe, Fahrten fürs Fahrtenbuch, Vorheizen nur auf Knopfdruck. Kein Laden, keine Fernsteuerung sonst.",
+    fields: [
+      { key: "accessToken", label: "Access-Token", secret: true, help: "Nur auf dem Server gespeichert – nie in der Oberfläche oder in Protokollen." },
+      { key: "refreshToken", label: "Refresh-Token", secret: true },
+      { key: "clientId", label: "Client-ID (Tesla-Entwicklerkonto)" },
+      { key: "clientSecret", label: "Client-Secret", secret: true },
+      { key: "vin", label: "Fahrgestellnummer (VIN)", placeholder: "z. B. XP7Y…" },
+      { key: "region", label: "Region", options: [{ value: "eu", label: "Europa" }, { value: "na", label: "Nordamerika" }] },
+      { key: "befehlsProxy", label: "Befehls-Proxy (optional)", placeholder: "https://…", help: "Adresse des „Tesla Vehicle Command Proxy“ – neuere Fahrzeuge (z. B. Model Y Juniper) nehmen Befehle nur signiert an." },
+    ],
+    setup: [
+      "developer.tesla.com → Anwendung registrieren (Fleet API), Scopes: Fahrzeuginformationen, Fahrzeugstandort, Fahrzeugbefehle (ohne Laden).",
+      "Öffentlichen Schlüssel unter https://<deine Adresse>/.well-known/appspecific/com.tesla.3p.public-key.pem bereitstellen und den Schlüssel im Auto koppeln (Tesla-App → Sicherheit).",
+      "Für signierte Befehle den „Vehicle Command Proxy“ auf dem Server starten und oben als Befehls-Proxy eintragen.",
+      "Token per OAuth holen und hier eintragen, „Verbindung testen“ zeigt den Fahrzeugnamen.",
+    ],
+  },
+  {
+    provider: "twilio",
+    name: "SMS (Twilio) – optional",
+    purpose: "Nur Wichtiges als SMS an deine Nummer (Konto/Angebot deaktiviert, Frist morgen, grüner Deal über Schwelle, VA-Rückfrage) – der Tesla liest sie vor; Antwort per Sprache: VA / SPÄTER / OK / KAUFEN n.",
+    fields: [
+      { key: "accountSid", label: "Account SID", placeholder: "AC…" },
+      { key: "authToken", label: "Auth-Token", secret: true, help: "Prüft auch die Antworten (Signatur)." },
+      { key: "absender", label: "Absender-Nummer", placeholder: "+49…" },
+    ],
+    setup: [
+      "twilio.com → Konto (Region Irland/EU wählen) → Nummer mit SMS kaufen → Account SID, Auth-Token und Nummer hier eintragen.",
+      "Bei der Nummer unter „Messaging → A message comes in“ den Webhook https://<deine Adresse>/api/sms/antwort (POST) eintragen.",
+      "Deine Handynummer und das Tageslimit stehen unter Einstellungen → Handy & Tesla. Keine Kunden- oder Privatdaten in SMS.",
+    ],
+  },
+  {
     provider: "anthropic",
     name: "KI (Claude) – optional",
     purpose: "Stuft Amazon-Systemmails ein, fasst die Themen-Recherche zusammen und schreibt Marken-Ideen, Video-Skripte und Listing-Vorschläge. Ohne Schlüssel arbeiten Mails und Recherche mit festen Regeln.",

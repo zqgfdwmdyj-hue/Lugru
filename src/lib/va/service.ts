@@ -487,6 +487,14 @@ async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: stri
   await c.dc.senden(th.threadId, BOT[c.sprache].rueckfrageBeiLudwig, { still: true }).catch(() => "");
   const { notifyDiscord } = await import("@/lib/integrations/clients/discord");
   await notifyDiscord(c.t, `❓ Rückfrage der VA zu „${taskTitle ?? "Aufgabe"}“: ${text.slice(0, 300)}`).catch(() => false);
+  // SMS (B13, falls eingerichtet): nur bei Rückfragen zu wichtigen Aufgaben – ohne den Text der VA.
+  if (lt && th.taskId) {
+    const [orig] = await db.select({ priority: T.priority }).from(T).where(and(eq(T.tenantId, c.t), eq(T.id, th.taskId)));
+    if (orig?.priority === "critical") {
+      const { smsMelden } = await import("@/lib/mobil/sms");
+      await smsMelden(c.t, { art: "va", kern: `VA-Rückfrage zu „${(taskTitle ?? "Aufgabe").slice(0, 60)}“`, schluessel: `va:${key}`, bezug: `task:${lt.id}`, codes: ["SPÄTER", "OK"] }).catch(() => null);
+    }
+  }
 }
 
 async function erinnern(c: Ctx) {

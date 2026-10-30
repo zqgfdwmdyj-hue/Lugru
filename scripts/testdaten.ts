@@ -75,6 +75,8 @@ const [tenant] = await db
       prep: { name: "Test-Prep-Center", defaultShipper: "self", feeShipment: 2.5, feeExtraItem: 0.5 },
       pallets: { shipmentMail: true },
       assistant: { enabled: true, allowWrite: true, model: "claude-opus-5-5" },
+      // Handy & Tesla: erfundene Orte und Testnummer; Ruhezeit so, dass die Prüfungen tagsüber und nachts laufen.
+      mobil: { orte: { lager: ["Lagerweg 1, 12345 Musterstadt"], prep: ["Prepstraße 5, 12345 Musterstadt"], palettenlager: [], zuhause: "Wohnweg 9, 12345 Musterstadt" }, fahrzeitMin: 20, jeAnrufMin: 5, sms: { an: true, nummer: "+4900000000002", limit: 50, ruheVon: "23:59", ruheBis: "00:00", dealSchwelle: 50 }, verspaetungToleranz: 10, tesla: { vin: "TESTVIN0000000001", vorheizen: false } },
     } as never,
   })
   .returning();
@@ -235,6 +237,9 @@ await integ("lexoffice", {}, { apiKey: "test-lexoffice-schluessel" });
 await integ("sellerboard_web", { email: "einkauf@example.invalid", loginUrl: `${td}/web-sellerboard/login`, importUrl: `${td}/web-sellerboard/upload` }, { password: "test-passwort" });
 await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload` }, { password: "test-passwort" });
 // VA über Discord: Fantasie-IDs (Testdienste), VA = Konto „buero“ (Bea Büro).
+// Handy & Tesla (B13): erfundenes Fahrzeug und SMS-Konto in den Testdiensten.
+await integ("tesla", { vin: "TESTVIN0000000001", region: "eu" }, { accessToken: "test-tesla-token" });
+await integ("twilio", { accountSid: "ACTEST0000", absender: "+4900000000001" }, { authToken: "test-twilio-token" });
 await integ("discord_va", { serverId: "500000000000000001", kanalId: "800000000000000001", vaDiscordId: "700000000000000001", vaEmail: "buero" }, { botToken: "test-bot-token" });
 // Bea schreibt im Test Deutsch (die echte VA: Englisch – Standard „Sprache der VA“); der Sprach-Test stellt um.
 await db.update(schema.users).set({ sprache: "de" }).where(eq(schema.users.email, "buero"));

@@ -170,6 +170,15 @@ export type TenantSettings = {
   dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string };
   /** Posteingang auf null: automatisch archivieren, Termin-Mails in den Privatkalender, Vorabend-Erinnerung. */
   posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number };
+  /** Handy & Tesla: Orte, Fahrzeit, SMS (nur eigene Nummer), Verspätung, Fahrzeug. */
+  mobil?: {
+    orte?: { lager?: string[]; prep?: string[]; palettenlager?: string[]; zuhause?: string };
+    fahrzeitMin?: number;
+    jeAnrufMin?: number;
+    sms?: { an?: boolean; nummer?: string; limit?: number; ruheVon?: string; ruheBis?: string; dealSchwelle?: number };
+    verspaetungToleranz?: number;
+    tesla?: { vin?: string; vorheizen?: boolean };
+  };
   bqool?: { standardRegel?: string; katalog?: { name: string; laender: ("DE" | "FR" | "IT" | "ES")[] | null; strategie: string; staffel: { bisTage: number | null; marge: number; unterregel?: "Sales Booster" | "Equalizer" }[] | null; festeUntergrenze: boolean; risiko: boolean; hinweis: string }[]; abverkaufRegel?: { DE?: string; sonst?: string }; costUst?: number; markenRegeln?: { marke: string; land: "DE" | "FR" | "IT" | "ES" | null; regel: string }[]; elektronikMarken?: string[]; elektronikLaender?: ("DE" | "FR" | "IT" | "ES")[]; maxFaktor?: number; fixGebuehr?: number; zusatzkosten?: number; laender?: ("DE" | "FR" | "IT" | "ES")[]; format?: { channel: Record<"DE" | "FR" | "IT" | "ES", string>; shipping: string; addDelete: string; group: string; enable: string; tabsErsteZeile: number; zeilenende: "\r\n" | "\n"; bom: boolean; schlussUmbruch: boolean; ausVorlage: boolean } | null };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
@@ -494,6 +503,8 @@ export const tasks = pgTable(
     aufwand: text("aufwand", { enum: ["S", "M", "L"] }),
     /** Angefangen (Board „In Arbeit“) – mit „erledigt“ ergibt das die tatsächliche Dauer zum Lernen des Aufwands. */
     begonnenAm: timestamp("begonnen_am", { withTimezone: true }),
+    /** Anruf-Aufgaben (B13): Telefonnummer – aus Lieferant/Kunde/Kontakt oder von Hand; für „Anrufe in der Fahrzeit“. */
+    telefon: text("telefon"),
     createdAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },

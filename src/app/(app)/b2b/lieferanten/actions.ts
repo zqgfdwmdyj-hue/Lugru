@@ -40,6 +40,8 @@ export async function profilSpeichernAction(fd: FormData) {
   };
   const werte = {
     email: t(fd, "email", 200),
+    adresse: t(fd, "adresse", 300),
+    telefon: (t(fd, "telefon", 40) ?? "").replace(/[^\d+ /()-]/g, "").trim() || null,
     mindestbestellwert: zahl("mindestbestellwert"),
     versandkosten: zahl("versandkosten"),
     zahlungszielTage: ganz("zahlungszielTage"),

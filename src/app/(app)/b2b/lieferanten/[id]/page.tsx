@@ -7,6 +7,7 @@ import { requireArea } from "@/lib/auth/session";
 import { SubmitButton } from "@/components/submit-button";
 import { DEAL_STATUS_TAG, DEAL_STATUS_TEXT } from "@/lib/b2b/logic";
 import { profilSpeichernAction } from "../actions";
+import { InsAuto } from "@/components/ins-auto";
 
 const dez = (n: number | null | undefined) => (n === null || n === undefined ? "" : String(n).replace(".", ","));
 
@@ -42,7 +43,10 @@ export default async function LieferantProfilPage({ params, searchParams }: { pa
     <>
       <div className="page-head">
         <div><div className="crumb"><Link href="/b2b/lieferanten">Lieferanten-Freigaben</Link></div><h1>{s.name ?? s.code}</h1></div>
-        <Link className="btn" href={`/lieferanten`}>Zu den Preislisten</Link>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {p?.adresse && session.role === "owner" && <InsAuto ziel={p.adresse} />}
+          <Link className="btn" href={`/lieferanten`}>Zu den Preislisten</Link>
+        </div>
       </div>
       {sp.meldung && <div className={`notice ${sp.meldung === "gespeichert" ? "notice-ok" : "notice-warn"}`} data-testid="profil-meldung">{sp.meldung === "gespeichert" ? "Gespeichert." : sp.meldung}</div>}
       <form action={profilSpeichernAction} className="card card-pad stack" style={{ gap: 12 }}>
@@ -66,6 +70,8 @@ export default async function LieferantProfilPage({ params, searchParams }: { pa
         <h2 style={{ marginTop: 8 }}>Konditionen</h2>
         <div style={grid}>
           <div className="field"><label className="label" htmlFor="p-email">Bestell-E-Mail</label><input className="input" id="p-email" name="email" type="email" defaultValue={p?.email ?? ""} /></div>
+          <div className="field"><label className="label" htmlFor="p-adr">Adresse (Abholung, Fahrt-Briefing)</label><input className="input" id="p-adr" name="adresse" defaultValue={p?.adresse ?? ""} /></div>
+          <div className="field"><label className="label" htmlFor="p-tel">Telefon (Anrufe in der Fahrzeit)</label><input className="input" id="p-tel" name="telefon" type="tel" defaultValue={p?.telefon ?? ""} style={{ width: 170 }} /></div>
           <div className="field"><label className="label" htmlFor="p-mbw">Mindestbestellwert €</label><input className="input" id="p-mbw" name="mindestbestellwert" inputMode="decimal" defaultValue={dez(p?.mindestbestellwert)} style={{ width: 110 }} /></div>
           <div className="field"><label className="label" htmlFor="p-vk">Versandkosten €</label><input className="input" id="p-vk" name="versandkosten" inputMode="decimal" defaultValue={dez(p?.versandkosten)} style={{ width: 110 }} /></div>
           <div className="field"><label className="label" htmlFor="p-zz">Zahlungsziel (Tage)</label><input className="input" id="p-zz" name="zahlungszielTage" inputMode="numeric" defaultValue={p?.zahlungszielTage ?? ""} style={{ width: 80 }} /></div>

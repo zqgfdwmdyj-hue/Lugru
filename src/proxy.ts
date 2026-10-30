@@ -66,5 +66,5 @@ export const config = {
   // api/mobil: Handy-Endpunkte (Schnellerfassung, Widget, Fahrt, Scan) – nur mit Geräte-Schlüssel (mk_…).
   // api/sellerboard/callback: Rücksprung landet am Handy oft in einem Fenster ohne Anmeldung; geschützt durch
   // signierten state + serverseitigen PKCE-Prüfwert.
-  matcher: ["/((?!login|sendung/|portal|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/deal-eingang|api/mobil|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
+  matcher: ["/((?!login|sendung/|portal|\\.well-known|api/mcp|api/assistent|api/oauth|api/cron|api/ebay|api/import|api/deal-eingang|api/mobil|api/sms|api/public|api/sellerboard/callback|_next/static|_next/image|favicon.ico|icon.svg|manifest.webmanifest|sw.js|icons/).*)"],
 };

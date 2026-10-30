@@ -160,6 +160,12 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
     const base = (process.env.APP_URL || "").replace(/\/$/, "");
     const lines = high.slice(0, 8).map((c) => `• **${categoryLabel(c.category)}**${c.deadline ? ` (Frist ${fmt(c.deadline)})` : ""}: ${c.summary ?? c.subject}${c.asins.length ? ` – ${c.asins.slice(0, 3).join(", ")}` : ""}`);
     await notifyDiscord(tenantId, [`📋 **${high.length} neue Amazon-ToDo${high.length === 1 ? "" : "s"} mit hoher Priorität**`, ...lines, high.length > 8 ? `… und ${high.length - 8} weitere` : "", base ? `${base}/amazon-todos` : ""].filter(Boolean).join("\n"));
+    // SMS (B13, falls eingerichtet): Konto/Deaktivierung/Marke als rote Meldung – kurz, ohne Kundendaten.
+    const rot = high.filter((c) => /account|konto|deaktiv|compliance|marke|brand|ip_|listing_blocked/i.test(c.category));
+    if (rot.length) {
+      const { smsMelden } = await import("@/lib/mobil/sms");
+      await smsMelden(tenantId, { art: "konto", rot: true, kern: `${rot.length === 1 ? categoryLabel(rot[0].category) : `${rot.length} Konto-/Angebots-Themen`}${rot[0].deadline ? `, Frist ${fmt(rot[0].deadline)}` : ""}`, schluessel: `amazon:${rot.map((c) => c.category).join(",")}:${new Date().toISOString().slice(0, 13)}` }).catch(() => null);
+    }
   }
 
   await refreshTodoTask(tenantId);

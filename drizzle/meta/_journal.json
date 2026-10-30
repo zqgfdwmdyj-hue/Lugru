@@ -729,6 +729,13 @@
       "when": 1793380541100,
       "tag": "0103_mobil_schnellerfassung",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1793381818843,
+      "tag": "0104_handy_tesla",
+      "breakpoints": true
     }
   ]
 }

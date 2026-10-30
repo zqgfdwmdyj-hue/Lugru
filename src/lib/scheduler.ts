@@ -163,6 +163,16 @@ export async function runScheduledJobs(force = false) {
       }
       // Termine im Privatkalender: Vorabend-Erinnerung mit Abfahrt (nur Push an den Inhaber, ab der eingestellten Uhrzeit).
       if (force || due(`${t}:vorabend`, 29)) await step(t, "Termin-Erinnerung (Vorabend)", async () => (await import("@/lib/private/termin-mail-service")).vorabendErinnerung(t));
+      // Handy & Tesla: Verspätungs-Entwurf (alle 5 Min., nur mit Tesla), Fahrten fürs Fahrtenbuch (stündlich),
+      // SMS „Frist morgen“ (einmal am Tag ab 17 Uhr, nur wenn SMS eingerichtet).
+      if (await has("tesla")) {
+        await step(t, "Tesla: Verspätung", async () => (await import("@/lib/mobil/fahrten")).verspaetungPruefen(t));
+        if (force || due(`${t}:fahrten`, 59)) await step(t, "Tesla: Fahrtenbuch", async () => (await import("@/lib/mobil/fahrten")).fahrtenAbrufen(t));
+      }
+      if (await has("twilio")) {
+        const uhr = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date());
+        if (Number(uhr) >= 17 && (force || due(`${t}:sms-frist`, 179))) await step(t, "SMS: Frist morgen", async () => (await import("@/lib/mobil/sms")).fristMorgenSms(t));
+      }
       // Geburtstage & Jahrestage: 14 und 3 Tage vorher, am Tag selbst (je Stufe einmal, nur Push an Privat-Zugang).
       if (force || due(`${t}:jahrestage`, 179)) await step(t, "Geburtstage & Jahrestage", async () => (await import("@/lib/private/erinnerungen")).jahrestagErinnerungen(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
@@ -190,6 +200,7 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Planung einrichten", () => z.planungEinrichten(t, todayIso()));
         await step(t, "Freie Zeiten", () => z.freieZeitenAnwenden(t, todayIso()));
         await step(t, "Anleitungen prüfen", () => z.anleitungenPruefen(t));
+        await step(t, "Anleitungen Handy & Tesla", async () => (await import("@/lib/mobil/anleitungen")).mobilAnleitungen(t));
         await step(t, "Zuständigkeiten", async () => (await import("@/lib/delegieren/service")).zustaendigkeitenAnwenden(t));
         // EK-Import: am Folgetag EK in sellerboard gegen das System prüfen.
         await step(t, "EK-Gegenprüfung sellerboard", async () => (await import("@/lib/ek-import/service")).ekGegenpruefung(t));

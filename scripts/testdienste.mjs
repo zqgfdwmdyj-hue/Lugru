@@ -229,6 +229,9 @@ function stationKi(text) {
 
 // ---------------------------------------------------------------------------------------------------------
 const lex = { kontakte: new Map(), belege: new Map(), bezahlt: new Set(), nr: 0, gnr: 0 };
+// Tesla Fleet API und SMS (Twilio) – erfunden, nur im Speicher: Navi-Ziele, Klima, Status, Fahrten, gesendete SMS.
+const tesla = { navi: [], klima: 0, ziel: null, minuten: null, fahrten: [] };
+let smsListe = [];
 async function lexoffice(req, p, url, b) {
   const json = (o, code = 200) => [code, o];
   const uuid = () => crypto.randomUUID();
@@ -452,6 +455,31 @@ async function route(req, url, body) {
     if (nr.startsWith("000")) return json({ actionSucceed: false, errorWrappers: [{ error: "MS_UNAVAILABLE" }] });
     const valid = !nr.startsWith("999");
     return json({ countryCode: b.countryCode, vatNumber: nr, requestDate: new Date().toISOString(), valid, requestIdentifier: b.requesterNumber ? `WAPITEST${String(++viesNr).padStart(6, "0")}` : "", name: valid ? `Testhandel ${b.countryCode} SARL` : "---", address: valid ? "1 Rue de l'Exemple, 75000 Paris" : "---" });
+  }
+  // Tesla Fleet API (erfunden): Status, Navi-Ziel, Klima, Fahrten – Schlüssel „test-tesla-token“.
+  if (p.startsWith("/tesla/api/1/vehicles/")) {
+    if ((req.headers.authorization ?? "") !== "Bearer test-tesla-token") return [401, { error: "invalid_token" }];
+    if (p.endsWith("/vehicle_data")) return json({ response: { display_name: "Testwagen (erfunden)", state: "online", drive_state: { active_route_destination: tesla.ziel, active_route_minutes_to_arrival: tesla.minuten, latitude: 50.1, longitude: 8.6 } } });
+    if (p.endsWith("/command/navigation_request")) {
+      const b = parsed();
+      tesla.navi.push(b?.value?.["android.intent.extra.TEXT"] ?? "");
+      return json({ response: { result: true, reason: "" } });
+    }
+    if (p.endsWith("/command/auto_conditioning_start")) {
+      tesla.klima++;
+      return json({ response: { result: true, reason: "" } });
+    }
+    if (p.endsWith("/fahrten")) return json({ response: tesla.fahrten });
+    return [404, { error: "nicht nachgebildet" }];
+  }
+  // Twilio (SMS, erfunden): Senden merkt sich die SMS; Konto-Abfrage für den Verbindungstest.
+  if (p.startsWith("/twilio/2010-04-01/Accounts/")) {
+    if (p.endsWith("/Messages.json") && req.method === "POST") {
+      const f = new URLSearchParams(body);
+      smsListe.push({ an: f.get("To"), von: f.get("From"), text: f.get("Body"), at: new Date().toISOString() });
+      return json({ sid: `SMTEST${String(smsListe.length).padStart(4, "0")}`, status: "queued" });
+    }
+    if (p.endsWith(".json")) return json({ friendly_name: "Testkonto (erfunden)", status: "active" });
   }
   // Lexware Office (Lexoffice): Kontakte, Rechnungen, Zahlungsstand, Gutschriften, PDF – alles nur im Speicher.
   if (p.startsWith("/lexoffice/")) return lexoffice(req, p.slice("/lexoffice".length), url, parsed());
@@ -690,6 +718,16 @@ http
       const name = decodeURIComponent(url.pathname.slice("/discord-cdn/".length));
       return dcVa.anhaenge.has(name) ? send(200, dcVa.anhaenge.get(name), "text/plain") : send(404, "nicht gefunden", "text/plain");
     }
+    // Prüf-Hilfen Tesla/SMS: Zustand ansehen, Navi-Ziel/Ankunft/Fahrten setzen, gesendete SMS ansehen.
+    if (url.pathname === "/__tesla" && req.method === "GET") return send(200, tesla);
+    if (url.pathname === "/__tesla" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if ("ziel" in b) tesla.ziel = b.ziel;
+      if ("minuten" in b) tesla.minuten = b.minuten;
+      if (Array.isArray(b.fahrten)) tesla.fahrten = b.fahrten;
+      return send(200, tesla);
+    }
+    if (url.pathname === "/__sms") return send(200, smsListe);
     // Prüf-Hilfen Lexoffice: Belege ansehen, Rechnungen als bezahlt markieren (wie ein Zahlungseingang).
     if (url.pathname === "/__lexoffice") return send(200, [...lex.belege.values()].map((x) => ({ id: x.id, art: x.art, nummer: x.voucherNumber, brutto: x.totalPrice.totalGrossAmount, netto: x.totalPrice.totalNetAmount, steuerArt: x.taxType, vorgaenger: x.vorgaenger, menge: x.b.lineItems?.[0]?.quantity, bezahlt: lex.bezahlt.has(x.id) })));
     if (url.pathname.startsWith("/__lexoffice/bezahlt/") && req.method === "POST") {
