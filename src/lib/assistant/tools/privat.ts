@@ -110,7 +110,8 @@ export const privatTermin = defineTool({
 export const privatZeit = defineTool({
   name: "privat_zeit",
   title: "Kinderzeit/Auszeit/Paarzeit eintragen",
-  description: "Trägt Kinderzeit, Auszeit, Ausschlafen oder Paarzeit ein (oder ändert mit id). person = Name, „a“ oder „b“ (Kinderzeit auch „beide“); bei Paarzeit keine Person. Zeit mit von/bis oder als Stunden.",
+  description:
+    "Trägt Kinderzeit, Auszeit, Ausschlafen oder Paarzeit ein (oder ändert mit id). person = Name, „a“ oder „b“ (Kinderzeit auch „beide“); bei Paarzeit keine Person. Zeit mit von/bis oder als Stunden. Über mehrere Tage (Übernachtung, z. B. Mo 08:00 – Di 18:00): bis_tag setzen, von = Uhrzeit am ersten, bis = Uhrzeit am letzten Tag. Auszeit mit kinder_beim_partner = true legt zugleich die Kinderzeit des anderen an (ein Vorgang).",
   area: "privat",
   privat: true,
   write: true,
@@ -121,6 +122,8 @@ export const privatZeit = defineTool({
     von: time.optional(),
     bis: time.optional(),
     stunden: z.number().min(0).max(72).optional(),
+    bis_tag: isoDate.optional().describe("Letzter Tag bei Übernachtung/mehreren Tagen (nicht beim Ausschlafen)"),
+    kinder_beim_partner: z.boolean().optional().describe("Nur Auszeit: der andere hat in dieser Zeit die Kinder allein"),
     person: z.string().trim().max(40).optional(),
     was: z.string().trim().max(200).optional().describe("Kinderzeit/Paarzeit: was ihr gemacht habt"),
     notiz: z.string().trim().max(500).optional(),
@@ -135,6 +138,8 @@ export const privatZeit = defineTool({
     set("from", i.von);
     set("to", i.bis);
     set("hours", i.stunden !== undefined ? String(i.stunden) : undefined);
+    set("toDay", i.bis_tag);
+    if (i.art === "auszeit" && i.kinder_beim_partner) set("kidsBy", "partner");
     set("person", await personKey(ctx, i.person));
     set("what", i.was);
     set("note", i.notiz);

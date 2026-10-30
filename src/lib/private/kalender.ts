@@ -210,13 +210,15 @@ export type CalendarInput = {
 };
 
 const edit = (id: string) => `/privat/eintrag/${id}`;
-const span = (e: { from?: string; to?: string }) => ({ ...(e.from ? { from: e.from } : {}), ...(e.to ? { to: e.to } : {}) });
+const span = (e: { day?: string; from?: string; to?: string; toDay?: string }) => ({ ...(e.from ? { from: e.from } : {}), ...(e.to ? { to: e.to } : {}), ...(e.day && e.toDay && e.toDay > e.day ? { endDay: e.toDay } : {}) });
 const rep = (e: { repeatId?: string; exception?: boolean }) => (e.repeatId ? { repeat: true, ...(e.exception ? { exception: true } : {}) } : {});
 
 /** Alle Einträge zwischen `from` und `to` (Tage), eine Liste ohne Duplikate. */
 export function buildCalendarItems(input: CalendarInput, from: string, to: string): CalItem[] {
   const n = input.names;
   const inRange = (d: string) => d >= from && d <= to;
+  /** Auch mehrtägige Einträge (Übernachtung), die vor dem Zeitraum beginnen und hineinreichen. */
+  const overlaps = (e: { day: string; toDay?: string }) => e.day <= to && (e.toDay && e.toDay > e.day ? e.toDay : e.day) >= from;
   const out: CalItem[] = [];
   const who = (p: KidsPerson) => (p === "beide" ? "beide" : n[p]);
   const whom = (p: KidsPerson): PartnerKey[] => (p === "beide" ? ["a", "b"] : [p]);
@@ -242,7 +244,7 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
   const usedKids = new Set<string>();
   for (const a of input.auszeit ?? []) {
     const e = a.data;
-    if (!inRange(e.day)) continue;
+    if (!overlaps(e)) continue;
     const linked = e.linkId ? kidsByLink.get(e.linkId) : undefined;
     if (linked) usedKids.add(linked.id);
     out.push({
@@ -262,7 +264,7 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
   }
   for (const k of input.kinder ?? []) {
     const e = k.data;
-    if (!inRange(e.day) || usedKids.has(k.id)) continue;
+    if (!overlaps(e) || usedKids.has(k.id)) continue;
     out.push({ key: `kinder:${k.id}`, kind: "kinder", id: k.id, day: e.day, ...span(e), title: `Kinderzeit ${e.person === "beide" ? "zusammen" : n[e.person]}${e.what ? ` · ${e.what}` : ""}`, people: whom(e.person), status: statusOf(e), href: edit(k.id), ...origin(e), ...rep(e) });
   }
   for (const s of input.ausschlafen ?? []) {
@@ -272,7 +274,7 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
   }
   for (const p of input.paarzeit ?? []) {
     const e = p.data;
-    if (!inRange(e.day)) continue;
+    if (!overlaps(e)) continue;
     out.push({ key: `paarzeit:${p.id}`, kind: "paarzeit", id: p.id, day: e.day, ...span(e), title: `Paarzeit${e.what ? ` · ${e.what}` : ""}`, people: ["a", "b"], status: statusOf(e), href: edit(p.id), note: e.note, ...origin(e), ...rep(e) });
   }
   for (const x of input.naehe ?? []) {

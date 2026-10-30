@@ -59,8 +59,13 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   const from = time(fd.get("from"));
   const to = time(fd.get("to"));
   const hoursIn = num(fd.get("hours"), 0, 72);
-  const dur = durationOf({ day, from, to, hours: hoursIn }, MAX_HOURS[kind]);
+  // Über mehrere Tage (Übernachtung): „bis Tag“ – nicht beim Ausschlafen.
+  const toDayIn = kind !== "ausschlafen" ? String(fd.get("toDay") ?? "").trim() : "";
+  const dur = durationOf({ day, from, to, hours: hoursIn, toDay: toDayIn || undefined }, MAX_HOURS[kind]);
   if ("error" in dur) return fail(dur.error);
+  const toDay = toDayIn && isDay(toDayIn) && toDayIn > day ? toDayIn : undefined;
+  const spanDays = toDay ? daysBetween(day, toDay) : 0;
+  const toDayOf = (d: string) => (spanDays ? addDays(d, spanDays) : undefined);
   const settings = await privateSettings(session.tenantId);
   const extern = externFrom(fd);
   const hours = from && to ? undefined : dur.hours;
@@ -79,12 +84,12 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
   // … das hier nur für den geöffneten Eintrag (Kosten, Bewertung, Notiz eines Dates).
   const own: Record<string, unknown> = kind === "paarzeit" ? { costEur: num(fd.get("costEur"), 0, 10000), rating: rating(fd.get("rating")), note: clip(fd.get("note"), 500) } : {};
   const OWN_KEYS = Object.keys(own);
-  const build = (d: string, st: EntryStatus, extra: Record<string, unknown>): Record<string, unknown> => compact({ day: d, from, to, hours, status: st, extern, ...shared, ...extra });
+  const build = (d: string, st: EntryStatus, extra: Record<string, unknown>): Record<string, unknown> => compact({ day: d, toDay: toDayOf(d), from, to, hours, status: st, extern, ...shared, ...extra });
   const other = person && person !== "beide" ? otherOf(person) : undefined;
   const linkKind: TimeKind | null = kind === "kinder" ? "auszeit" : kind === "auszeit" ? "kinder" : null;
-  const what = `${dmy(day)}, ${hoursText(dur.hours)}${dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}${status !== "stattgefunden" ? ` (${status})` : ""}`;
+  const what = `${toDay ? `${dmy(day)} ${from} bis ${dmy(toDay)} ${to}` : dmy(day)}, ${hoursText(dur.hours)}${toDay ? `, ${spanDays === 1 ? "eine Übernachtung" : `${spanDays} Übernachtungen`}` : dur.overnight ? ", über Mitternacht" : ""}${dur.clockShift ? `, inkl. Zeitumstellung ${dur.clockShift > 0 ? "+" : "−"}${String(Math.abs(dur.clockShift)).replace(".", ",")} Std` : ""}${status !== "stattgefunden" ? ` (${status})` : ""}`;
   const linkedRows = linkKind ? await loadEntries<Record<string, unknown>>(session, [linkKind]) : [];
-  const linkedEntry = (d: string, st: EntryStatus, linkId: string, rep: Record<string, unknown>) => compact({ day: d, person: other, from, to, hours, status: st, linkId, ...rep });
+  const linkedEntry = (d: string, st: EntryStatus, linkId: string, rep: Record<string, unknown>) => compact({ day: d, toDay: toDayOf(d), person: other, from, to, hours, status: st, linkId, ...rep });
 
   /** Einen Eintrag ändern – samt verknüpfter Kinderzeit/Auszeit. Gibt einen Hinweis zur Verknüpfung zurück. */
   async function editOne(e: { id: string; data: Record<string, unknown> }, data: Record<string, unknown>): Promise<string> {
@@ -111,7 +116,7 @@ export async function saveTimeEntry(session: Session, kind: TimeKind, fd: FormDa
       // einem Personenwechsel. Früher blieb die Person dort stehen: „Auszeit Alexandra · Kinder bei Alexandra“.
       let n = 0;
       for (const x of linkedRows.filter((x) => x.data.linkId === linkId)) {
-        await updateEntry(session, x.id, linkKind, { day: d, from, to, hours, status: st, ...(other ? { person: other } : {}), editedAt: new Date().toISOString() });
+        await updateEntry(session, x.id, linkKind, { day: d, toDay: toDayOf(d), from, to, hours, status: st, ...(other ? { person: other } : {}), editedAt: new Date().toISOString() });
         n++;
       }
       if (n) note = " – verknüpfter Eintrag angepasst";

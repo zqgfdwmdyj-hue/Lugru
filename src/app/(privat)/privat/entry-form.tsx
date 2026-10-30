@@ -69,14 +69,23 @@ function Day({ ctx, name = "day", label = "Tag", max }: { ctx: Ctx; name?: strin
   );
 }
 
-function Times({ ctx, fromLabel = "von", toLabel = "bis", fromDefault }: { ctx: Ctx; fromLabel?: string; toLabel?: string; fromDefault?: string }) {
+function Times({ ctx, fromLabel = "von", toLabel = "bis", fromDefault, mehrtaegig = false }: { ctx: Ctx; fromLabel?: string; toLabel?: string; fromDefault?: string; mehrtaegig?: boolean }) {
   const d = ctx.data ?? {};
   return (
+    <>
+    {mehrtaegig && (
+      <div className="field" data-testid="bis-tag">
+        <label className="label small" htmlFor="f-toDay">bis Tag (bei Übernachtung, optional)</label>
+        <input className="input" id="f-toDay" type="date" name="toDay" defaultValue={(d.toDay as string | undefined) ?? ""} min={(d.day as string | undefined) ?? ctx.day} style={{ maxWidth: 190 }} />
+        <span className="small muted">Z. B. Montag 8:00 bis Dienstag 18:00: Tag = Montag, „bis Tag“ = Dienstag, von 08:00, bis 18:00. Leer = am selben Tag.</span>
+      </div>
+    )}
     <div className="pk-form-grid">
       <div className="field"><label className="label small" htmlFor="f-from">{fromLabel}</label><input className="input" id="f-from" name="from" type="time" defaultValue={(d.from as string) ?? fromDefault} /></div>
       <div className="field"><label className="label small" htmlFor="f-to">{toLabel}</label><input className="input" id="f-to" name="to" type="time" defaultValue={d.to as string | undefined} /></div>
       <div className="field"><label className="label small" htmlFor="f-hours">oder Stunden</label><input className="input" id="f-hours" name="hours" inputMode="decimal" placeholder="z. B. 2,5" defaultValue={d.from && d.to ? undefined : (d.hours as number | undefined)?.toString().replace(".", ",")} /></div>
     </div>
+    </>
   );
 }
 
@@ -178,7 +187,7 @@ function KinderFields({ ctx }: { ctx: Ctx }) {
       <Who ctx={ctx} label="Wer ist mit den Kindern?" both="beide zusammen" />
       <span className="small muted" style={{ marginTop: -6 }}>„beide zusammen“ (z. B. Ausflug, Halloween) zählt nicht als „allein mit den Kindern“.</span>
       <Day ctx={ctx} />
-      <Times ctx={ctx} />
+      <Times ctx={ctx} mehrtaegig />
       <Status ctx={ctx} />
       <Text name="what" label="Was (optional)" ctx={ctx} placeholder="z. B. Spielplatz, Schwimmbad" />
       {ctx.settings.kids.length > 0 && (
@@ -208,7 +217,7 @@ function AuszeitFields({ ctx }: { ctx: Ctx }) {
     <>
       <Who ctx={ctx} label="Wer hat Auszeit?" />
       <Day ctx={ctx} />
-      <Times ctx={ctx} />
+      <Times ctx={ctx} mehrtaegig />
       <Status ctx={ctx} />
       <Text name="note" label="Was (optional)" ctx={ctx} placeholder="z. B. Sport, Freunde" />
       <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }} data-testid="kids-question">
@@ -243,7 +252,7 @@ function PaarzeitFields({ ctx }: { ctx: Ctx }) {
   return (
     <>
       <Day ctx={ctx} />
-      <Times ctx={ctx} />
+      <Times ctx={ctx} mehrtaegig />
       <Status ctx={ctx} />
       <Text name="what" label="Was (optional)" ctx={ctx} placeholder="z. B. Essen gehen, Kino" />
       <Text name="sitter" label="Wer passt auf die Kinder auf? (optional)" ctx={ctx} max={60} />

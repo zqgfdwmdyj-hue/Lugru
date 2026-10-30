@@ -70,7 +70,7 @@ export type IntimEntry = { day: string; time?: string; initiative?: PartnerKey |
 /** „beide“: zusammen mit den Kindern (z. B. Ausflug) – zählt nicht in „allein mit den Kindern“. */
 export type KidsPerson = PartnerKey | "beide";
 /** `fromEvent`: aus einem Familienkalender-Termin übernommen (Kennung des Termins, siehe eventRef). */
-export type KidsEntry = { day: string; person: KidsPerson; from?: string; to?: string; hours?: number; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
+export type KidsEntry = { day: string; person: KidsPerson; from?: string; to?: string; hours?: number; toDay?: string; what?: string; kids?: string[]; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
 export type TaskEntry = {
   title: string;
   source: "ads" | "paar" | "sonst";
@@ -90,10 +90,10 @@ export type TaskEntry = {
  */
 export type AppointmentEntry = { day: string; time?: string; to?: string; with: "ads" | "paar" | "arzt" | "familie" | "privat" | "sonst"; title?: string; person?: PartnerKey | "beide"; notes?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
 /** Paarzeit: zu zweit unterwegs (Date), Kinder bei Babysitterin/Oma … */
-export type DateEntry = { day: string; from?: string; to?: string; hours?: number; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
+export type DateEntry = { day: string; from?: string; to?: string; hours?: number; toDay?: string; what?: string; sitter?: string; costEur?: number; rating?: Ratings; note?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; fromEvent?: string } & RepeatFields;
 /** Ausschlafen: wer durfte wann wie lange länger schlafen (der andere übernimmt die Kinder). */
 /** `kidsBy`: bei Auszeit – wer die Kinder übernimmt, wenn es nicht der Partner ist (dann ohne Kinderzeit-Eintrag). */
-export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string; fromEvent?: string } & RepeatFields;
+export type SleepEntry = { day: string; person: PartnerKey; from?: string; to?: string; hours?: number; toDay?: string; note?: string; linkId?: string; editedAt?: string; status?: EntryStatus; extern?: boolean; kidsBy?: string; fromEvent?: string } & RepeatFields;
 export type TalkEntry = { day: string; appreciationsA?: string; appreciationsB?: string; topic?: string; agreed?: string };
 export type DiaryEntry = {
   day: string;
@@ -268,12 +268,16 @@ export function upcomingClockChange(today: string, withinDays = 7): { day: strin
 }
 
 /** Minuten zwischen von und bis an einem Tag (über Mitternacht: bis am Folgetag) – nach Uhr und tatsächlich vergangen. */
-function spanMinutes(day: string, from: string, to: string): { wall: number; real: number } {
+/** Mehrtägig: `toDay` liegt nach `day` (z. B. Auszeit mit Übernachtung Mo 8:00 – Di 18:00). */
+export const multiDay = (e: { day?: string; toDay?: string }) => Boolean(e.day && e.toDay && isDay(e.toDay) && e.toDay > e.day);
+
+function spanMinutes(day: string, from: string, to: string, toDay?: string): { wall: number; real: number } {
   const toMin = (t: string) => Number(t.split(":")[0]) * 60 + Number(t.split(":")[1]);
-  let wall = toMin(to) - toMin(from);
-  if (wall < 0) wall += 24 * 60;
+  const mehr = multiDay({ day, toDay });
+  let wall = toMin(to) - toMin(from) + (mehr ? daysBetween(day, toDay!) * 24 * 60 : 0);
+  if (!mehr && wall < 0) wall += 24 * 60;
   if (!isDay(day)) return { wall, real: wall };
-  const endDay = toMin(to) < toMin(from) ? addDays(day, 1) : day;
+  const endDay = mehr ? toDay! : toMin(to) < toMin(from) ? addDays(day, 1) : day;
   const real = Math.round((berlinInstant(endDay, to) - berlinInstant(day, from)) / 60_000);
   return { wall, real: real > 0 ? real : wall };
 }
@@ -282,9 +286,9 @@ function spanMinutes(day: string, from: string, to: string): { wall: number; rea
  * Stunden, um die die Zeitumstellung eine von–bis-Spanne verlängert (+1) oder verkürzt (−1) – 0, wenn die
  * Spanne nicht über die Umstellung (2–3 Uhr nachts) geht.
  */
-export function clockShiftHours(e: Pick<KidsEntry, "from" | "to"> & { day?: string }): number {
+export function clockShiftHours(e: Pick<KidsEntry, "from" | "to"> & { day?: string; toDay?: string }): number {
   if (!e.day || !e.from || !e.to || !TIME_RE.test(e.from) || !TIME_RE.test(e.to)) return 0;
-  const { wall, real } = spanMinutes(e.day, e.from, e.to);
+  const { wall, real } = spanMinutes(e.day, e.from, e.to, e.toDay);
   return round1((real - wall) / 60);
 }
 
@@ -296,23 +300,35 @@ const TIME_RE = /^\d{1,2}:\d{2}$/;
  * Dauer in Stunden: aus von–bis (auch über Mitternacht) oder der Angabe „Stunden“. Mit Tag zählt die
  * tatsächlich vergangene Zeit – über die Zeitumstellung hinweg also eine Stunde mehr (Oktober) bzw. weniger (März).
  */
-export function kidsHours(e: Pick<KidsEntry, "from" | "to" | "hours"> & { day?: string }): number {
+export function kidsHours(e: Pick<KidsEntry, "from" | "to" | "hours"> & { day?: string; toDay?: string }): number {
   if (e.from && e.to && TIME_RE.test(e.from) && TIME_RE.test(e.to)) {
-    const { wall, real } = spanMinutes(e.day ?? "", e.from, e.to);
+    const { wall, real } = spanMinutes(e.day ?? "", e.from, e.to, e.toDay);
     return round1((e.day ? real : wall) / 60);
   }
   return e.hours && e.hours > 0 ? round1(e.hours) : 0;
 }
 
 /** Über Mitternacht? (bis früher als von) */
-export const overnight = (e: Pick<KidsEntry, "from" | "to">) => Boolean(e.from && e.to && e.to < e.from);
+export const overnight = (e: Pick<KidsEntry, "from" | "to"> & { day?: string; toDay?: string }) => multiDay(e) || Boolean(e.from && e.to && e.to < e.from);
 
 /**
  * Dauer aus der Eingabe prüfen: von–bis (auch über Mitternacht, dann zählt der Tag des Beginns) oder
  * Stunden. Widersprüchliche Angaben (von–bis und abweichende Stunden), gleiche Zeiten oder nur eine Seite
  * werden mit verständlicher Meldung abgelehnt, statt still eine davon zu nehmen.
  */
-export function durationOf(e: { day?: string; from?: string; to?: string; hours?: number }, maxHours = 16): { hours: number; overnight: boolean; clockShift: number } | { error: string } {
+export function durationOf(e: { day?: string; from?: string; to?: string; hours?: number; toDay?: string }, maxHours = 16): { hours: number; overnight: boolean; clockShift: number } | { error: string } {
+  if (e.toDay !== undefined && e.toDay !== "") {
+    if (!isDay(e.toDay)) return { error: "„bis Tag“ ist kein gültiges Datum." };
+    if (e.day && e.toDay < e.day) return { error: "„bis Tag“ liegt vor dem ersten Tag – bitte prüfen." };
+  }
+  if (multiDay(e)) {
+    // Über mehrere Tage (Übernachtung): Beginn am ersten, Ende am letzten Tag – höchstens 14 Tage.
+    if (!e.from || !e.to || !TIME_RE.test(e.from) || !TIME_RE.test(e.to)) return { error: "Über mehrere Tage bitte „von“ (Uhrzeit am ersten Tag) und „bis“ (Uhrzeit am letzten Tag) angeben." };
+    if (daysBetween(e.day!, e.toDay!) > 14) return { error: "Höchstens 14 Tage am Stück – bitte prüfen." };
+    const h = kidsHours(e);
+    if (h <= 0) return { error: "Das Ende liegt vor dem Beginn – bitte Uhrzeiten prüfen." };
+    return { hours: h, overnight: true, clockShift: clockShiftHours(e) };
+  }
   if ((e.from && !e.to) || (!e.from && e.to)) {
     if (e.hours && e.hours > 0) return { error: "Bitte entweder von–bis vollständig oder nur die Stunden angeben." };
     return { error: e.from ? "Bitte auch „bis“ angeben – oder die Stunden." : "Bitte auch „von“ angeben – oder die Stunden." };
@@ -790,8 +806,9 @@ export type LinkFix = { label: string; changes: LinkChange[] };
 /** Ein Widerspruch in einem verknüpften Vorgang (Auszeit ↔ Kinderzeit) mit Reparatur-Vorschlägen (der erste empfohlen). */
 export type LinkIssue = { key: string; linkId: string; day: string; text: string; auszeitIds: string[]; kinderIds: string[]; fixes: LinkFix[] };
 
-const timeOf = (e: { day: string; from?: string; to?: string; hours?: number; status?: EntryStatus }) => ({ day: e.day, from: e.from, to: e.to, hours: e.hours, status: statusOf(e) });
-const timeText = (e: { day: string; from?: string; to?: string; hours?: number }) => `${e.day.split("-").reverse().join(".")}${e.from && e.to ? ` ${e.from}–${e.to}` : e.hours ? `, ${String(e.hours).replace(".", ",")} Std.` : ""}`;
+const timeOf = (e: { day: string; from?: string; to?: string; hours?: number; toDay?: string; status?: EntryStatus }) => ({ day: e.day, toDay: multiDay(e) ? e.toDay : undefined, from: e.from, to: e.to, hours: e.hours, status: statusOf(e) });
+const timeText = (e: { day: string; from?: string; to?: string; hours?: number; toDay?: string }) =>
+  multiDay(e) ? `${e.day.split("-").reverse().join(".")} ${e.from ?? ""} – ${e.toDay!.split("-").reverse().join(".")} ${e.to ?? ""}`.replace(/\s+/g, " ").trim() : `${e.day.split("-").reverse().join(".")}${e.from && e.to ? ` ${e.from}–${e.to}` : e.hours ? `, ${String(e.hours).replace(".", ",")} Std.` : ""}`;
 const without = (d: Record<string, unknown>, k: string) => Object.fromEntries(Object.entries(d).filter(([x]) => x !== k));
 const compactData = (d: Record<string, unknown>) => Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined));
 

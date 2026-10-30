@@ -86,6 +86,30 @@ test.describe("Privat – Kalender, Serien und Schutz", () => {
     expect(await amTag(page, tage[3], m)).toHaveLength(0);
   });
 
+  test("Auszeit mit Übernachtung (Mo 08:00 – Di 18:00), Kinder beim Partner: ein Vorgang an beiden Tagen", async ({ page }) => {
+    const mo = plus(MONTAG, 35);
+    const di = plus(mo, 1);
+    await anmelden(page, "inhaber");
+    await page.goto(`/privat/eintragen?art=auszeit&tag=${mo}`);
+    await chip(page, "person", "a");
+    await page.fill("#f-toDay", di);
+    await page.fill("#f-from", "08:00");
+    await page.fill("#f-to", "18:00");
+    await chip(page, "kidsBy", "partner");
+    await Promise.all([page.waitForURL(/\/privat\/kalender/), page.click('[data-testid="entry-form"] button[type=submit]')]);
+    await expect(page.locator('[data-testid="pk-saved"]')).toContainText("34 Std.");
+    await expect(page.locator('[data-testid="pk-saved"]')).toContainText("eine Übernachtung");
+    for (const d of [mo, di]) {
+      const it = await amTag(page, d, "Kinder bei");
+      expect(it, `Eintrag am ${d}`).toHaveLength(1);
+    }
+    // Ohne Uhrzeiten über mehrere Tage → klare Meldung, nichts gespeichert
+    await page.goto(`/privat/eintragen?art=paarzeit&tag=${plus(mo, 3)}`);
+    await page.fill("#f-toDay", plus(mo, 4));
+    await page.fill("#f-hours", "30");
+    expect(await speichern(page)).toContain("Über mehrere Tage bitte");
+  });
+
   test("Abendritual als Abfolge: zweimal Streicheln, danach Massage – im Voraus geplant", async ({ page }) => {
     await anmelden(page, "inhaber");
     await page.goto("/privat/ritual");
