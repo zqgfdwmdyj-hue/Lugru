@@ -69,6 +69,7 @@ export const vaNachrichtTool = defineTool({
   area: "start",
   ownerOnly: true,
   write: true,
+  stufe: "gelb",
   input: z.object({ aufgabe_id: uuid.optional(), nachricht_id: uuid.optional(), text: z.string().trim().min(1).max(3800) }),
   summary: (i) => `An die VA: ${i.text.slice(0, 80)}`,
   run: async (ctx, i) => {

@@ -51,6 +51,8 @@ export const bqoolExportErzeugenTool = defineTool({
     "Erzeugt die BQool-Dateien je Land (Format repricing 1.2.5) und gibt Download-Links zurück. Nur auf ausdrücklichen Wunsch. Ändert nichts bei BQool – Ludwig lädt die Dateien selbst hoch. Standard: nur Änderungen.",
   area: "buchhaltung",
   write: true,
+  stufe: "rot",
+  seite: "/repricer/bqool",
   quelle: { text: "Seller-System (EK, Regeln)" },
   input: z.object({ laender: z.array(z.enum(EXPORT_LAENDER)).min(1).default(["DE", "FR", "IT", "ES"]), nur_aenderungen: z.boolean().default(true) }),
   run: async (ctx, i) => {

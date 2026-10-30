@@ -184,8 +184,10 @@ export const aufgabeAnlegen = defineTool({
     notiz: z.string().trim().max(4000).optional(),
     faellig: isoDate.optional(),
     prioritaet: z.enum(["wichtig", "normal", "niedrig"]).default("normal"),
+    zustaendig: z.enum(["va"]).optional().describe("„va“ = an die VA geben: eigener Discord-Thread (auf Englisch, mit Anleitung) – einzeln bestätigen"),
   }),
-  summary: (i) => `Aufgabe „${i.titel}“${i.faellig ? ` (fällig ${i.faellig})` : ""}`,
+  stufe: (i) => (i.zustaendig === "va" ? "gelb" : "gruen"),
+  summary: (i) => `Aufgabe „${i.titel}“${i.faellig ? ` (fällig ${i.faellig})` : ""}${i.zustaendig === "va" ? " → an die VA (Discord)" : ""}`,
   run: async (ctx, i) => {
     const s = ctx.session;
     // Mitarbeiter mit Kalender, aber ohne Startseite: Herkunft Kalender, damit sie die Aufgabe dort sehen.
@@ -195,7 +197,20 @@ export const aufgabeAnlegen = defineTool({
       .values({ tenantId: s.tenantId, title: i.titel, notes: i.notiz ?? null, dueDate: i.faellig ?? null, priority: PRIORITY_IN[i.prioritaet], category: "eigene", link, createdBy: s.userId })
       .returning();
     syncSoon(s.tenantId);
-    return json({ ok: true, meldung: "Aufgabe angelegt.", aufgabe: taskBrief(row, ctx) });
+    let va: string | undefined;
+    if (i.zustaendig === "va") {
+      if (s.role !== "owner") return { text: "An die VA gibt nur der Inhaber Aufgaben.", isError: true };
+      const { anVaGeben } = await import("@/lib/va/service");
+      const r = await anVaGeben(s.tenantId, row.id);
+      va = r.ok ? "an die VA gegeben (Discord-Thread)" : `Aufgabe angelegt, aber nicht an die VA: ${r.fehler}`;
+    }
+    return { text: JSON.stringify({ ok: true, meldung: "Aufgabe angelegt.", va, aufgabe: taskBrief(row, ctx) }), ids: [row.id], undo: { id: row.id } };
+  },
+  undo: async (ctx, d) => {
+    const id = (d as { id?: string }).id;
+    if (id) await db.delete(T).where(and(eq(T.tenantId, ctx.session.tenantId), eq(T.id, id), eq(T.category, "eigene")));
+    syncSoon(ctx.session.tenantId);
+    return "Aufgabe wieder entfernt.";
   },
 });
 

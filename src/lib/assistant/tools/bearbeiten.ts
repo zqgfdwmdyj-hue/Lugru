@@ -20,7 +20,20 @@ export const posteingangArchivieren = defineTool({
   run: async (ctx, i) => {
     const M = schema.emails;
     const done = await db.update(M).set({ archived: true }).where(and(eq(M.tenantId, ctx.session.tenantId), inArray(M.id, i.ids), eq(M.archived, false))).returning({ id: M.id });
-    return json({ ok: true, archiviert: done.length, nicht_gefunden_oder_schon_archiviert: i.ids.length - done.length || undefined, link: abs(ctx, "/posteingang") });
+    const ids = done.map((d) => d.id);
+    return { text: JSON.stringify({ ok: true, archiviert: done.length, nicht_gefunden_oder_schon_archiviert: i.ids.length - done.length || undefined, link: abs(ctx, "/posteingang") }), ids, undo: { ids } };
+  },
+  vorschau: async (ctx, i) => {
+    const M = schema.emails;
+    const rows = await db.select({ subject: M.subject, archived: M.archived }).from(M).where(and(eq(M.tenantId, ctx.session.tenantId), inArray(M.id, i.ids)));
+    const offen = rows.filter((r) => !r.archived);
+    return { anzahl: offen.length, beispiele: offen.slice(0, 5).map((r) => r.subject ?? "(ohne Betreff)"), ausgeschlossen: rows.length - offen.length ? { anzahl: rows.length - offen.length, grund: "schon archiviert", beispiele: [] } : undefined };
+  },
+  undo: async (ctx, d) => {
+    const M = schema.emails;
+    const ids = (d as { ids?: string[] }).ids ?? [];
+    if (ids.length) await db.update(M).set({ archived: false }).where(and(eq(M.tenantId, ctx.session.tenantId), inArray(M.id, ids)));
+    return `${ids.length} Mails zurück im Posteingang.`;
   },
 });
 

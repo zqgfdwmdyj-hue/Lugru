@@ -80,6 +80,15 @@ export const assistantLog = pgTable(
     ok: boolean("ok").notNull(),
     /** Kurzbeschreibung (bei Privat nur die Art, nie Inhalte) – verschlüsselt. */
     summary: encryptedText("summary"),
+    /** Auftragstext der Person (Fragefeld), der zu dieser Änderung geführt hat. */
+    auftrag: encryptedText("auftrag"),
+    /** Betroffene Datensätze (IDs). */
+    ids: jsonb("ids").$type<string[]>().notNull().default([]),
+    /** Stufe beim Ausführen (grün/gelb). */
+    stufe: text("stufe"),
+    /** Daten zum Rückgängigmachen (vorher-Zustand). */
+    undo: encryptedJson<unknown>("undo"),
+    rueckgaengigAm: timestamp("rueckgaengig_am", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index("assistant_log_idx").on(t.tenantId, t.createdAt)],

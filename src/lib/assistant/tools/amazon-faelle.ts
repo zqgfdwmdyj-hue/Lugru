@@ -142,6 +142,7 @@ export const amazonFallAnVaTool = defineTool({
   area: "amazon",
   ownerOnly: true,
   write: true,
+  stufe: "gelb",
   input: z.object({ id: uuid }),
   summary: () => "Amazon-Fall an die VA",
   run: async (ctx, i) => {

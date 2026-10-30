@@ -123,3 +123,21 @@ export function sammelWiederOeffnen(alt: string[], neu: string[]): boolean {
   const a = new Set(alt);
   return neu.some((n) => !a.has(n));
 }
+
+/**
+ * Auswahl für „Amazon-ToDos erledigen“ mit Bedingung „nur, wenn der Auftrag versendet ist“: ToDos mit Bestellnummer
+ * (aus dem Feld oder der Mail), deren Aufträge alle versendet/storniert sind, passen; der Rest wird mit Grund getrennt.
+ */
+export function erledigbarNachVersand(todos: { id: string; subject: string | null; bestellnummern: string[]; bodyShort: string | null }[], auftraege: Pick<AuftragKurz, "externalId" | "status">[]) {
+  const byNr = new Map(auftraege.map((a) => [a.externalId, a]));
+  const passend: string[] = [];
+  const aus: { id: string; grund: "nicht versendet" | "fehlt im Tool" | "ohne Bestellnummer" }[] = [];
+  for (const t of todos) {
+    const nrn = t.bestellnummern.length ? t.bestellnummern : bestellnummernAus(`${t.subject ?? ""}\n${t.bodyShort ?? ""}`);
+    if (!nrn.length) aus.push({ id: t.id, grund: "ohne Bestellnummer" });
+    else if (nrn.some((n) => !byNr.has(n))) aus.push({ id: t.id, grund: "fehlt im Tool" });
+    else if (nrn.every((n) => ERLEDIGT_STATUS.has(byNr.get(n)!.status))) passend.push(t.id);
+    else aus.push({ id: t.id, grund: "nicht versendet" });
+  }
+  return { passend, aus };
+}

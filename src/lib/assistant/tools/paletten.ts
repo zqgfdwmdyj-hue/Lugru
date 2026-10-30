@@ -146,6 +146,7 @@ export const sendungTermin = defineTool({
   description: "Neuer Liefertag und/oder Zeitfenster einer Paletten-Sendung, mit Grund (sieht auch der Kunde im Link). Später als bisher → Status „verzögert“. Alle mit Paletten-Zugriff bekommen eine Meldung.",
   area: "paletten",
   write: true,
+  stufe: "gelb",
   input: z.object({ id: uuid, termin: isoDate.nullable().describe("Neuer Tag; null = Termin offen"), zeitfenster: z.string().trim().max(40).optional(), grund: z.string().trim().max(200).optional() }),
   summary: (i) => `Termin → ${i.termin ?? "offen"}${i.zeitfenster ? ` (${i.zeitfenster})` : ""}${i.grund ? ` – ${i.grund}` : ""}`,
   run: async (ctx, i) => {
@@ -162,6 +163,7 @@ export const sendungStatus = defineTool({
   description: `Status und/oder Stand („wo ist sie gerade“) einer Paletten-Sendung setzen. Status: ${STATUS_TEXT}. Statuswechsel sind Meldungen an alle mit Paletten-Zugriff.`,
   area: "paletten",
   write: true,
+  stufe: "gelb",
   input: z.object({ id: uuid, status: z.enum(SHIPMENT_STATUSES).optional(), stand: z.string().trim().max(300).optional() }),
   summary: (i) => [i.status ? `Status ${i.status}` : null, i.stand ? `Stand „${i.stand}“` : null].filter(Boolean).join(", ") || "Status",
   run: async (ctx, i) => {
@@ -194,6 +196,7 @@ export const sendungKundenlink = defineTool({
   description: "Erstellt einen befristeten Link für den Kunden (ohne Anmeldung): Status, Termin, Spedition, Verfolgungs-Link, Fotos, Verlauf – ohne interne Notizen. Gibt die Adresse zurück, die man dem Kunden schickt.",
   area: "paletten",
   write: true,
+  stufe: "gelb",
   input: z.object({ id: uuid, tage: z.union(LINK_DAYS.map((d) => z.literal(d)) as unknown as [z.ZodLiteral<3>, z.ZodLiteral<7>, z.ZodLiteral<14>, z.ZodLiteral<30>]).default(7), fotos: z.boolean().default(true) }),
   summary: (i) => `Kunden-Link für ${i.tage} Tage${i.fotos ? " mit Fotos" : ""}`,
   run: async (ctx, i) => {

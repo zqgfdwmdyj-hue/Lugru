@@ -219,6 +219,7 @@ export const aufgabeZuweisenTool = defineTool({
   area: ["start", "kalender"],
   ownerOnly: true,
   write: true,
+  stufe: "gelb",
   input: z.object({
     id: uuid,
     person: z.string().trim().min(2).max(60).optional().describe("Name der Person (wie in „aufgaben“ unter zustaendig) oder „niemand“"),

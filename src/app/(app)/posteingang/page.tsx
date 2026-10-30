@@ -8,6 +8,7 @@ import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
 import { mailUpgrades } from "@/lib/inbox/service";
 import { applyMailUpgradesAction, archiveMails } from "./actions";
 import { EmlUpload } from "./inbox-forms";
+import { AuftragAnClaude } from "@/components/auftrag-an-claude";
 import { MailboxStatus } from "./mailbox-manager";
 
 const VIEWS = { wichtig: "Wichtig", kritisch: "Kritisch", handeln: "Handeln", info: "Info", unwichtig: "Unwichtig", archiv: "Archiv" } as const;
@@ -26,6 +27,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
   return (
     <>
       <div className="page-head"><div><div className="crumb">Heute</div><h1>Posteingang</h1></div></div>
+      <div style={{ marginBottom: 12 }}><AuftragAnClaude beispiel="archiviere alle „Amazon hat Ihre Artikel versandt“-Mails" kontext="Posteingang" /></div>
       {sp.verbunden && <div className="notice notice-ok" data-testid="mailbox-verbunden">Postfach {sp.verbunden} verbunden.{sp.hinweis ? ` ${sp.hinweis}` : ""}</div>}
       {sp.fehler && <div className="notice notice-error">{sp.fehler}</div>}
       {sp.hochgestuft && <div className="notice notice-ok" data-testid="mail-upgraded">{sp.hochgestuft === "1" ? "1 Mail" : `${sp.hochgestuft} Mails`} höher eingestuft – sie stehen jetzt unter „Wichtig“, mit Aufgabe auf der Startseite.</div>}

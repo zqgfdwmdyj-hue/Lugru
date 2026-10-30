@@ -708,6 +708,13 @@
       "when": 1793376619548,
       "tag": "0100_va_sprache",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1793378259347,
+      "tag": "0101_assistent_aktionen",
+      "breakpoints": true
     }
   ]
 }

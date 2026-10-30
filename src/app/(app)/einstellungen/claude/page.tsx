@@ -12,7 +12,7 @@ import { scopeText } from "@/lib/assistant/oauth-logic";
 import { ALL_TOOLS } from "@/lib/assistant/registry";
 import { accountRights } from "@/lib/assistant/permissions";
 import { STAFF_AREAS } from "@/lib/auth/areas";
-import { revokeGrantAction } from "./actions";
+import { revokeGrantAction, saveStufenAction } from "./actions";
 import { AssistantSettings, CopyUrl } from "./forms";
 
 const time = (d: Date | null) => (d ? new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(d) : "–");
@@ -160,6 +160,36 @@ export default async function ClaudeSettingsPage() {
             );
           })}
         </div>
+      </section>
+
+      <section className="card card-pad stack" style={{ gap: 8, scrollMarginTop: 70 }} id="stufen" data-testid="assistant-stufen">
+        <h2>Stufen je Aktion (Fragefeld)</h2>
+        <div className="small muted">Grün = nach „Ausführen“ im Chat; gelb = zusätzlich einzeln bestätigen (Außenwirkung, Nachrichten an VA/Kunden); rot = nie durch den Assistenten (nur Hinweis + Link). Über 200 Datensätze immer mit zweiter Bestätigung. <Link href="/assistent-verlauf">Assistent-Verlauf</Link></div>
+        <form action={saveStufenAction} className="stack" style={{ gap: 4 }}>
+          <div className="table-wrap">
+            <table className="table small">
+              <tbody>
+                {ALL_TOOLS.filter((x) => x.write && !x.privat).map((x) => {
+                  const std = typeof x.stufe === "string" ? x.stufe : typeof x.stufe === "function" ? "je nach Eingabe" : "gruen";
+                  return (
+                    <tr key={x.name}>
+                      <td>{x.title} <span className="muted">({x.name})</span></td>
+                      <td>
+                        <select className="select" name={`stufe_${x.name}`} defaultValue={s.assistant.stufen[x.name] ?? ""} aria-label={`Stufe ${x.title}`} style={{ padding: "2px 6px" }}>
+                          <option value="">Standard ({std === "gruen" ? "grün" : std})</option>
+                          <option value="gruen">grün</option>
+                          <option value="gelb">gelb</option>
+                          <option value="rot">rot</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div><button className="btn btn-small" type="submit" data-testid="stufen-speichern">Stufen speichern</button></div>
+        </form>
       </section>
 
       <section className="card" data-testid="assistant-log">

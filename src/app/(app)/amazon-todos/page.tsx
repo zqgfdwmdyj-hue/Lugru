@@ -10,6 +10,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { formatDate } from "@/lib/numbers";
 import { saveNoteAction, setStatusAction } from "./actions";
 import { ImportForm, RefreshButton } from "./forms";
+import { AuftragAnClaude } from "@/components/auftrag-an-claude";
 
 const FILTERS = { offen: "Offene ToDos", alle: "Alle", erledigt: "Erledigt / Infos", ignoriert: "Ignoriert" } as const;
 const SORTS = { prio: "Priorität + Frist", frist: "Frist zuerst", neu: "Eingang neu", alt: "Eingang alt" } as const;
@@ -130,6 +131,7 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
             ))}
           </div>
 
+          <AuftragAnClaude beispiel="alle FBM-ToDos mit versendeten Aufträgen erledigen" kontext="Amazon-ToDos" />
           {logistikAusgeblendet > 0 && (
             <div className="small muted" data-testid="todo-logistik-aus">
               {logistikAusgeblendet} Logistik-Info{logistikAusgeblendet === 1 ? "" : "s"} ausgeblendet – <Link href={href({ kat: "logistik_info" })}>anzeigen</Link>. Bestell-Mails („Verkauft, jetzt liefern“) folgen dem Auftrag und werden nach dem Versand archiviert.

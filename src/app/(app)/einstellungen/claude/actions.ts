@@ -30,3 +30,19 @@ export async function saveAssistantSettings(_prev: ClaudeState, fd: FormData): P
   revalidatePath("/", "layout");
   return { ok: true, message: "Gespeichert." };
 }
+
+/** Stufe je ändernden Werkzeug im Fragefeld (grün/gelb/rot); „Standard“ = Vorgabe des Werkzeugs. */
+export async function saveStufenAction(fd: FormData) {
+  const session = await requireOwner();
+  const { ALL_TOOLS } = await import("@/lib/assistant/registry");
+  const stufen: Record<string, "gruen" | "gelb" | "rot"> = {};
+  for (const t of ALL_TOOLS.filter((x) => x.write)) {
+    const v = String(fd.get(`stufe_${t.name}`) ?? "");
+    if (v === "gruen" || v === "gelb" || v === "rot") stufen[t.name] = v;
+  }
+  await db
+    .update(schema.tenants)
+    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('assistant', coalesce(${schema.tenants.settings}->'assistant', '{}'::jsonb) || jsonb_build_object('stufen', ${JSON.stringify(stufen)}::jsonb))` })
+    .where(eq(schema.tenants.id, session.tenantId));
+  revalidatePath("/einstellungen/claude");
+}

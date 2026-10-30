@@ -226,7 +226,7 @@ export type TenantSettings = {
     lastInventory?: { at: string; scanned: number; found: number; missing: number; unknown: number };
   };
   /** KI-Assistent im Seller-System (Fragefeld oben): an/aus, Modell, Änderungen erlauben. */
-  assistant?: { enabled?: boolean; model?: string; allowWrite?: boolean };
+  assistant?: { enabled?: boolean; model?: string; allowWrite?: boolean; /** Stufe je ändernden Werkzeug (überschreibt den Standard). */ stufen?: Record<string, "gruen" | "gelb" | "rot"> };
   /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
 };

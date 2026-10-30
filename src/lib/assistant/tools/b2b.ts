@@ -280,6 +280,8 @@ export const dealPreisSetzen = defineTool({
   description: "Setzt den Kundenpreis (netto je Stück) eines B2B-Deals und rechnet Gewinn/ROI des Kunden je Land neu; liefert Warnungen (wir im Minus, Kunde unter Mindest-ROI). Gibt es schon Reservierungen, nur mit trotz_reservierungen – deren Preis bleibt.",
   area: "b2b",
   write: true,
+  stufe: "rot",
+  seite: "/b2b",
   input: z.object({ deal: z.string().trim().min(1).max(40).describe("Deal-Nummer oder id"), kundenpreis_netto: z.number().positive().max(100000), trotz_reservierungen: z.boolean().default(false) }),
   summary: (i) => `Kundenpreis Deal ${i.deal}: ${i.kundenpreis_netto.toFixed(2).replace(".", ",")} € netto`,
   run: async (ctx, i) => {
@@ -298,6 +300,7 @@ export const dealFreischalten = defineTool({
   description: "Schaltet einen B2B-Deal im Kundenportal frei (Kunden können reservieren) und meldet ihn im Discord-Kanal. Nur mit Kundenpreis, Frist und Vertriebsfreigabe des Lieferanten. Abo-Mails an Kunden nur, wenn ausdrücklich mails=true. Keine Inhalte aus dem Wissen mit „insider“ (z. B. aus den Wochen-Calls) verwenden – die bleiben intern.",
   area: "b2b",
   write: true,
+  stufe: "gelb",
   input: z.object({ deal: z.string().trim().min(1).max(40).describe("Deal-Nummer oder id"), mails: z.boolean().default(false).describe("Kunden mit passendem Abo per Mail benachrichtigen") }),
   summary: (i) => `Deal ${i.deal} freischalten${i.mails ? " (mit Abo-Mails)" : ""}`,
   run: async (ctx, i) => {

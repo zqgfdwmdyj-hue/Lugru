@@ -7,8 +7,14 @@ import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } fr
 // Änderungen kommen als Rückfrage („Ausführen“ / „Ablehnen“) und werden erst nach Bestätigung gemacht.
 
 type Msg = { role: "user" | "assistant"; text: string };
-type Confirm = { title: string; summary: string }[] | null;
-type Ev = { type: "chat"; id: string } | { type: "status"; text: string } | { type: "confirm"; calls: { title: string; summary: string }[] } | { type: "text"; text: string } | { type: "error"; message: string } | { type: "done" };
+type Vorschau = { anzahl: number; beispiele: string[]; ausgeschlossen?: { anzahl: number; grund: string; beispiele: string[] } };
+type Call = { title: string; summary: string; stufe?: "gruen" | "gelb" | "rot"; vorschau?: Vorschau | null };
+type Confirm = Call[] | null;
+type Ev = { type: "chat"; id: string } | { type: "status"; text: string } | { type: "confirm"; calls: Call[]; grosseMenge?: boolean } | { type: "text"; text: string } | { type: "error"; message: string } | { type: "done" };
+const GROSSE_MENGE = 200;
+
+/** Andere Seiten öffnen das Fragefeld mit einem Auftrag: window.dispatchEvent(new CustomEvent("asst:auftrag", { detail: "…" })). */
+export const ASST_AUFTRAG = "asst:auftrag";
 
 const KEY = "assistent-chat";
 const store = {
@@ -112,6 +118,9 @@ export function AssistantBar({ name }: { name: string }) {
   const [chatId, setChatId] = useState<string | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [grosseMenge, setGrosseMenge] = useState(false);
+  const [mengeOk, setMengeOk] = useState(false);
+  const [einzeln, setEinzeln] = useState<number[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -128,10 +137,11 @@ export function AssistantBar({ name }: { name: string }) {
       store.set(null);
       return;
     }
-    const j = (await r.json()) as { id: string; messages: Msg[]; confirm: Confirm };
+    const j = (await r.json()) as { id: string; messages: Msg[]; confirm: Confirm; grosseMenge?: boolean };
     setChatId(j.id);
     setMsgs(j.messages);
     setConfirm(j.confirm);
+    setGrosseMenge(Boolean(j.grosseMenge));
     store.set(j.id);
   }, []);
   useEffect(() => {
@@ -148,10 +158,13 @@ export function AssistantBar({ name }: { name: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  async function send(body: { text?: string; confirm?: boolean }) {
+  async function send(body: { text?: string; confirm?: boolean; einzeln?: number[]; grosseMenge?: boolean }) {
     setBusy(true);
     setErr(null);
     setConfirm(null);
+    setEinzeln([]);
+    setMengeOk(false);
+    setGrosseMenge(false);
     setStatus("Denke nach …");
     if (body.text) setMsgs((m) => [...m, { role: "user", text: body.text! }]);
     try {
@@ -175,7 +188,10 @@ export function AssistantBar({ name }: { name: string }) {
             store.set(ev.id);
           } else if (ev.type === "status") setStatus(ev.text);
           else if (ev.type === "text") setMsgs((m) => [...m, { role: "assistant", text: ev.text }]);
-          else if (ev.type === "confirm") setConfirm(ev.calls);
+          else if (ev.type === "confirm") {
+            setConfirm(ev.calls);
+            setGrosseMenge(Boolean(ev.grosseMenge));
+          }
           else if (ev.type === "error") setErr(ev.message);
         }
       }
@@ -222,6 +238,24 @@ export function AssistantBar({ name }: { name: string }) {
     if (window.matchMedia("(max-width: 760px)").matches) setOpen(false);
   };
 
+  // „Auftrag an Claude“ aus einer Liste: neues Gespräch mit diesem Auftrag (Vorschau → Bestätigen wie immer).
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    const on = (e: Event) => {
+      const text = String((e as CustomEvent<string>).detail ?? "").trim().slice(0, 4000);
+      if (!text) return;
+      setChatId(null);
+      setMsgs([]);
+      setHistory(null);
+      store.set(null);
+      setOpen(true);
+      void sendRef.current({ text });
+    };
+    window.addEventListener(ASST_AUFTRAG, on);
+    return () => window.removeEventListener(ASST_AUFTRAG, on);
+  }, []);
+
   return (
     <>
       <form className="asst-bar" onSubmit={askFromBar} role="search" data-testid="asst-bar">
@@ -247,6 +281,7 @@ export function AssistantBar({ name }: { name: string }) {
             <strong>✨ Assistent</strong>
             <span style={{ display: "flex", gap: 6 }}>
               <button className="btn btn-small" type="button" onClick={showHistory}>Verlauf</button>
+              <Link className="btn btn-small" href="/assistent-verlauf" onClick={closeOnPhone} data-testid="asst-protokoll">Änderungen</Link>
               <button className="btn btn-small" type="button" onClick={reset} data-testid="asst-new">Neu</button>
               <button className="btn btn-small" type="button" onClick={() => setOpen(false)} aria-label="Schließen">✕</button>
             </span>
@@ -277,9 +312,37 @@ export function AssistantBar({ name }: { name: string }) {
             {confirm && (
               <div className="asst-confirm" data-testid="asst-confirm">
                 <div><strong>Soll ich das ändern?</strong></div>
-                <ul>{confirm.map((c, i) => <li key={i}>{c.title}{c.summary ? `: ${c.summary}` : ""}</li>)}</ul>
+                <ul>
+                  {confirm.map((c, i) => (
+                    <li key={i} data-testid="asst-confirm-call" data-stufe={c.stufe ?? "gruen"}>
+                      {c.stufe === "gelb" && <span className="tag tag-warn" style={{ marginRight: 4 }}>einzeln bestätigen</span>}
+                      {c.title}{c.summary ? `: ${c.summary}` : ""}
+                      {c.vorschau && (
+                        <div className="small" data-testid="asst-vorschau">
+                          <strong>{c.vorschau.anzahl}</strong> {c.vorschau.anzahl === 1 ? "Datensatz" : "Datensätze"}
+                          {c.vorschau.beispiele.length > 0 && <>: {c.vorschau.beispiele.slice(0, 5).join(" · ")}{c.vorschau.anzahl > 5 ? " …" : ""}</>}
+                          {c.vorschau.ausgeschlossen && c.vorschau.ausgeschlossen.anzahl > 0 && (
+                            <div className="muted" data-testid="asst-vorschau-aus">
+                              {c.vorschau.ausgeschlossen.anzahl} nicht: {c.vorschau.ausgeschlossen.grund}{c.vorschau.ausgeschlossen.beispiele.length ? ` (${c.vorschau.ausgeschlossen.beispiele.slice(0, 3).join(", ")})` : ""}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {c.stufe === "gelb" && (
+                        <label className="small" style={{ display: "flex", gap: 6, marginTop: 2 }}>
+                          <input type="checkbox" checked={einzeln.includes(i)} onChange={(e) => setEinzeln((x) => (e.target.checked ? [...x, i] : x.filter((y) => y !== i)))} data-testid="asst-einzeln" /> Ja, genau das ausführen (wirkt nach außen)
+                        </label>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {grosseMenge && (
+                  <label className="small" style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                    <input type="checkbox" checked={mengeOk} onChange={(e) => setMengeOk(e.target.checked)} data-testid="asst-menge" /> Mehr als {GROSSE_MENGE} Datensätze – trotzdem ausführen
+                  </label>
+                )}
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button className="btn btn-small btn-primary" type="button" disabled={busy} onClick={() => void send({ confirm: true })} data-testid="asst-approve">Ausführen</button>
+                  <button className="btn btn-small btn-primary" type="button" disabled={busy || (grosseMenge && !mengeOk)} onClick={() => void send({ confirm: true, einzeln, grosseMenge: mengeOk })} data-testid="asst-approve">Ausführen</button>
                   <button className="btn btn-small" type="button" disabled={busy} onClick={() => void send({ confirm: false })} data-testid="asst-deny">Ablehnen</button>
                 </div>
               </div>
