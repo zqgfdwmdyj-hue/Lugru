@@ -288,7 +288,7 @@ const geprueftOderBearbeitet = () => sql`(${K.verifiedAt} is not null or ${K.upd
  */
 export async function callsDurchsuchen(tenantId: string, suche: string, o: { art?: CallArt; limit?: number } = {}) {
   const rows = await db
-    .select({ id: C.id, titel: C.titel, datum: C.datum, art: C.art, transkript: C.transkript, zusammenfassung: C.zusammenfassung })
+    .select({ id: C.id, titel: C.titel, datum: C.datum, art: C.art, quelle: C.quelle, transkript: C.transkript, zusammenfassung: C.zusammenfassung })
     .from(C)
     .where(and(eq(C.tenantId, tenantId), o.art ? eq(C.art, o.art) : undefined))
     .orderBy(desc(C.datum))
@@ -299,7 +299,7 @@ export async function callsDurchsuchen(tenantId: string, suche: string, o: { art
       const z = c.zusammenfassung;
       const zText = z ? [z.ueberblick, ...z.themen.map((t) => `${t.name}: ${t.punkte.join(" ")}`)].join(" ") : "";
       const r = trefferImText(`${c.titel}\n${zText}\n${c.transkript}`, suche);
-      return { id: c.id, titel: c.titel, datum: c.datum, art: c.art, ...r };
+      return { id: c.id, titel: c.titel, datum: c.datum, art: c.art, quelle: c.quelle, ...r };
     })
     .filter((c) => c.treffer > 0)
     .sort((a, b) => b.woerter - a.woerter || b.treffer - a.treffer || b.datum.localeCompare(a.datum))

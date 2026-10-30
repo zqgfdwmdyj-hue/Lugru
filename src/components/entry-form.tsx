@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ALL_CATEGORIES } from "@/lib/knowledge/categories";
 
 type Anleitung = { zweck: string; wann: string; wer: string; schritte: string[]; zugaenge: string[]; fehler: string[]; aufgabenTypen: string[] };
-type Entry = { id?: string; title: string; category: string; kind: "article" | "snippet" | "anleitung"; body: string; tags: string[]; origin?: "recherche" | "anleitung" | "notiz" | "call"; anleitung?: Anleitung | null };
+type Entry = { id?: string; title: string; category: string; kind: "article" | "snippet" | "anleitung"; body: string; tags: string[]; origin?: "recherche" | "anleitung" | "notiz" | "call" | "chat"; anleitung?: Anleitung | null };
 
 export function EntryForm({
   action,

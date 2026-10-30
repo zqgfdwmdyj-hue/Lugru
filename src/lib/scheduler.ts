@@ -191,6 +191,11 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Verlust-Stopp (Abgleich)", async () => (await import("@/lib/money/verlust-service")).refreshVerlustTasks(t, todayIso()));
       }
       // Call-Archiv: neue Transkripte aus dem Discord-Kanal, einmal pro Woche.
+      // Rechtsfälle (B14): Asana nur lesen alle 30 Min.; „nichts passiert“ einmal am Tag.
+      if (await has("asana")) if (force || due(`${t}:asana`, 29)) await step(t, "Rechtsfälle (Asana)", async () => (await import("@/lib/recht/service")).asanaAbgleich(t));
+      if (force || due(`${t}:recht-stillstand`, 1435)) await step(t, "Rechtsfälle: Stillstand", async () => (await import("@/lib/recht/service")).stillstandPruefen(t));
+      // Discord-Kanäle der Deal-Gruppe (B14): stündlich lesen, Zusammenfassungen nach Rhythmus, Rohtexte nach 30 Tagen weg.
+      if (force || due(`${t}:discord-wissen`, 59)) await step(t, "Gruppen-Kanäle (Discord)", async () => (await import("@/lib/discord-wissen/service")).discordWissenLauf(t));
       if (await has("discord_calls")) if (force || due(`${t}:calls`, 10079)) await step(t, "Call-Archiv (Discord)", async () => (await import("@/lib/calls/service")).discordCallsImport(t, todayIso()));
       // Call-Archiv: noch nicht ausgewertete Calls (Sammel-Import, Discord) nacheinander von der KI auswerten lassen.
       if (force || due(`${t}:call-auswertung`, 29)) await step(t, "Call-Auswertung", async () => (await import("@/lib/calls/service")).offeneCallsAuswerten(t, 20));

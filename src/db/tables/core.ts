@@ -170,6 +170,10 @@ export type TenantSettings = {
   dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string };
   /** Posteingang auf null: automatisch archivieren, Termin-Mails in den Privatkalender, Vorabend-Erinnerung. */
   posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number };
+  /** Rechtsfälle (Anwalt): Absender-Domains, private Asana-Projekte, Vorlauf für Fristen, „nichts passiert“ nach Tagen. */
+  rechtsfaelle?: { anwaltDomains?: string[]; anwaltAdresse?: string; privatProjekte?: string[]; vorlaufTage?: number; stillstandTage?: number };
+  /** Discord-Kanäle der Deal-Gruppe: Rohnachrichten höchstens so viele Tage. */
+  discordWissen?: { rohTage?: number };
   /** Handy & Tesla: Orte, Fahrzeit, SMS (nur eigene Nummer), Verspätung, Fahrzeug. */
   mobil?: {
     orte?: { lager?: string[]; prep?: string[]; palettenlager?: string[]; zuhause?: string };
@@ -537,7 +541,7 @@ export const knowledgeEntries = pgTable(
     body: text("body").notNull().default(""),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz, von der KI aus einem Call gezogen. */
-    origin: text("origin", { enum: ["recherche", "anleitung", "notiz", "call"] }).notNull().default("notiz"),
+    origin: text("origin", { enum: ["recherche", "anleitung", "notiz", "call", "chat"] }).notNull().default("notiz"),
     /** Insider – nicht weitergeben: nur intern verwenden, nie in Texten nach außen (Deal-Blätter, Kundenmails, B2B-Kanal). */
     insider: boolean("insider").notNull().default(false),
     /** Nur bei Herkunft „call“: aus welchem Call, Zitat und Stelle (Zeichen) im Transkript. Kein Fremdschlüssel –

@@ -10,7 +10,7 @@ import { ustvaTermine } from "./fristen-geschaeft-logic";
 // SAS-Programm (Deal-Frist, nächster Termin) und – nur wenn eingestellt – USt-Voranmeldung. Keine Steuerberatung:
 // der Rhythmus kommt aus den Einstellungen (Steuerberater fragen), das System rechnet nur das Datum.
 
-export type GeschaeftsFrist = { datum: string; art: "Anspruch" | "Amazon" | "SAS" | "Steuer"; titel: string; ueberfaellig: boolean; link: string };
+export type GeschaeftsFrist = { datum: string; art: "Anspruch" | "Amazon" | "SAS" | "Steuer" | "Recht"; titel: string; ueberfaellig: boolean; link: string };
 
 export async function geschaeftsFristen(session: Session, heute: string, bis: string): Promise<GeschaeftsFrist[]> {
   const t = session.tenantId;
@@ -39,6 +39,12 @@ export async function geschaeftsFristen(session: Session, heute: string, bis: st
     if (b.ustva && b.ustva.rhythmus !== "aus")
       for (const x of ustvaTermine(heute, bis, b.ustva.rhythmus, b.ustva.dauerfrist))
         out.push({ datum: x.datum, art: "Steuer", titel: `USt-Voranmeldung ${x.zeitraum} (laut Einstellung ${b.ustva.rhythmus}${b.ustva.dauerfrist ? ", Dauerfristverlängerung" : ""})`, ueberfaellig: false, link: "/buchhaltung" });
+  }
+  // Rechtsfristen (B14): nur der Inhaber, nur geschäftliche Fälle (private stehen im Privatbereich).
+  if (session.role === "owner") {
+    const { rechtsfristen } = await import("@/lib/recht/service");
+    const tage = Math.max(0, Math.round((Date.parse(`${bis}T12:00:00Z`) - Date.parse(`${heute}T12:00:00Z`)) / 86_400_000));
+    for (const f of await rechtsfristen(t, heute, tage)) if (f.bereich === "geschaeft") out.push({ datum: f.tag, art: "Recht", titel: `Rechtsfrist: ${f.titel.slice(0, 120)}`, ueberfaellig: false, link: `/rechtsfaelle/${f.fallId}` });
   }
   return out.sort((a, b) => a.datum.localeCompare(b.datum));
 }

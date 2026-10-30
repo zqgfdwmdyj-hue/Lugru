@@ -736,6 +736,13 @@
       "when": 1793381818843,
       "tag": "0104_handy_tesla",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793383329515,
+      "tag": "0105_rechtsfaelle_discord_wissen",
+      "breakpoints": true
     }
   ]
 }

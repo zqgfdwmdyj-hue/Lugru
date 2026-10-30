@@ -43,6 +43,8 @@ export const ueberblick = defineTool({
     const out: Record<string, unknown> = { heute: ctx.today, person: s.name || s.email };
     const signals = await todaySignals(t, ctx.today);
     out.hinweise = signals.filter((x) => linkAllowed(s, x.href)).map((x) => ({ text: x.label, detail: x.detail, anzahl: x.count, stufe: x.level, link: abs(ctx, x.href) }));
+    const recht = await import("@/lib/recht/service").then((x) => x.rechtZeile(s, ctx.today)).catch(() => null);
+    if (recht) (out.hinweise as unknown[]).push({ text: recht.text, anzahl: recht.anzahl, stufe: "warn", link: abs(ctx, recht.link) });
     if (canAccess(s, "start") || canAccess(s, "kalender")) {
       const open = (await db.select().from(T).where(and(eq(T.tenantId, t), eq(T.status, "open"), bindingTask)).orderBy(sql`${T.dueDate} asc nulls last`).limit(400)).filter((x) => visibleTask(s, x));
       out.aufgaben = { offen: open.length, faellig_bis_heute: open.filter((x) => x.dueDate && x.dueDate <= ctx.today).slice(0, 15).map((x) => taskBrief(x, ctx)) };

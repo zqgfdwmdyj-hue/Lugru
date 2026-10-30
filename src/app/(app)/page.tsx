@@ -156,6 +156,9 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   const plan = planDay(open, today);
   const [signals, areas, prefs] = await Promise.all([todaySignals(session.tenantId, today), restricted ? Promise.resolve([]) : dataAreas(session.tenantId), getPrefs(session)]);
   const mySignals = signals.filter((s) => canAccess(session, areaForPath(s.href.split("?")[0])));
+  // Rechtsfristen in 7 Tagen (nur Inhaber): geschäftlich mit Titel, private nur als Anzahl.
+  const recht = await import("@/lib/recht/service").then((x) => x.rechtZeile(session, today)).catch(() => null);
+  if (recht) mySignals.push({ key: "recht", label: recht.text, count: recht.anzahl, href: recht.link, level: "warn" });
 
   const E = schema.calendarEvents;
   const [appointments, [calendarLink]] = await Promise.all([

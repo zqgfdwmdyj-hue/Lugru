@@ -66,7 +66,7 @@ export const dealEingaenge = pgTable(
     id: id(),
     tenantId: tenantId(),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-    weg: text("weg", { enum: ["manuell", "teilen", "kurzbefehl", "mail", "claude", "profitpath"] }).notNull(),
+    weg: text("weg", { enum: ["manuell", "teilen", "kurzbefehl", "mail", "claude", "profitpath", "gruppe"] }).notNull(),
     /** Herkunft für Dubletten: „mail:<Message-ID>“, „pp:<Discord-Nachricht>“. */
     quelleRef: text("quelle_ref"),
     /** Schon strukturiert gelieferte Angebote (ProfitPath, Claude) – dann ohne KI-Erkennung. */

@@ -8,7 +8,7 @@ import { archivImportAction, callImportAction, discordImportAction, sammelImport
 // Text, Discord) und was daraus folgt.
 
 const dmy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", archiv: "altes Call-Archiv", datei: "Datei" } as const;
+const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", archiv: "altes Call-Archiv", datei: "Datei", chat: "Discord-Chat (Zusammenfassung)" } as const;
 
 export default async function CallsPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("amazon");

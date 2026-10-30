@@ -42,6 +42,7 @@ services:
       VIES_URL: http://testdienste:4010/vies
       LEXOFFICE_BASE_URL: http://testdienste:4010/lexoffice
       TESLA_BASE_URL: http://testdienste:4010/tesla
+      ASANA_BASE_URL: http://testdienste:4010/asana
       TWILIO_BASE_URL: http://testdienste:4010/twilio
       GOOGLE_DOCS_BASE_URL: http://testdienste:4010/gdocs
       DISCORD_API_BASE_URL: http://testdienste:4010/discord-api

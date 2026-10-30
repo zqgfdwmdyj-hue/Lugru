@@ -163,13 +163,13 @@ export const wissen = defineTool({
   name: "wissen",
   title: "Wissen durchsuchen",
   description:
-    "Durchsucht die Wissenssammlung (Anleitungen, Notizen, Textbausteine, Recherche und das von der KI aus den Calls gezogene Insider-Wissen der Deal-Gruppe und des Consultants) nach Titel, Inhalt und Stichworten. Für „Wie mache ich …?“, „Was hatten wir zu … notiert?“, „Was wurde in den Calls zu … gesagt?“. Mit herkunft „call“ nur Wissen aus Calls; Details mit „calls_durchsuchen“.",
+    "Durchsucht die Wissenssammlung (Anleitungen, Notizen, Textbausteine, Recherche und das von der KI aus den Calls gezogene Insider-Wissen der Deal-Gruppe und des Consultants) nach Titel, Inhalt und Stichworten. Für „Wie mache ich …?“, „Was hatten wir zu … notiert?“, „Was wurde in den Calls zu … gesagt?“. Mit herkunft „call“ nur Wissen aus Calls, „chat“ nur aus den Gruppen-Chats (Discord-Kanäle der Deal-Gruppe); Details mit „calls_durchsuchen“.",
   area: "wissen",
   write: false,
   quelle: { text: "Wissensdatenbank im Seller-System (Einträge aus Calls: KI-Auszug, ungeprüft, mit Quelle)" },
   input: z.object({
     suche: z.string().trim().min(2).max(100),
-    herkunft: z.enum(["call", "anleitung", "notiz", "recherche"]).optional().describe("nur Einträge dieser Herkunft (call = aus Calls gezogen)"),
+    herkunft: z.enum(["call", "chat", "anleitung", "notiz", "recherche"]).optional().describe("nur Einträge dieser Herkunft (call = aus Calls, chat = aus Gruppen-Chats gezogen)"),
     limit: z.number().int().min(1).max(20).default(8),
   }),
   run: async (ctx, i) => {
@@ -196,7 +196,7 @@ export const wissen = defineTool({
         titel: k.title,
         kategorie: k.category,
         art: k.kind,
-        herkunft: k.origin === "call" ? "aus einem Call (KI-Auszug, ungeprüft)" : k.origin,
+        herkunft: k.origin === "call" ? "call – aus einem Call (KI-Auszug, ungeprüft)" : k.origin === "chat" ? "chat – aus dem Gruppen-Chat (KI-Auszug, ungeprüft)" : k.origin,
         geprueft: k.verifiedAt ? true : undefined,
         insider: k.insider ? "Insider – nicht weitergeben: nur für Ludwig, nie in Texten nach außen (Deal-Blätter, Kundenmails, B2B-Kanal)" : undefined,
         erkenntnis: k.erkenntnis ? ERKENNTNIS_TEXT[k.erkenntnis] : undefined,

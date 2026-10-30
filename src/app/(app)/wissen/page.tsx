@@ -14,10 +14,11 @@ const ORIGIN = {
   notiz: { label: "Eigene Notiz", cls: "tag-neutral" },
   recherche: { label: "Recherche (automatisch, ungeprüft)", cls: "tag-warn" },
   call: { label: "Aus einem Call (ungeprüft)", cls: "tag-info" },
+  chat: { label: "Aus dem Gruppen-Chat (ungeprüft)", cls: "tag-info" },
 } as const;
 type Origin = keyof typeof ORIGIN;
-type Area = "wissen" | "anleitung" | "notiz" | "call" | "recherche" | "alle";
-const AREA_LABEL: Record<Area, string> = { wissen: "Anleitungen & Notizen", anleitung: "Anleitungen", notiz: "Eigene Notizen", call: "Aus Calls", recherche: "Automatische Recherche", alle: "Alles" };
+type Area = "wissen" | "anleitung" | "notiz" | "call" | "chat" | "recherche" | "alle";
+const AREA_LABEL: Record<Area, string> = { wissen: "Anleitungen & Notizen", anleitung: "Anleitungen", notiz: "Eigene Notizen", call: "Aus Calls", chat: "Aus dem Gruppen-Chat", recherche: "Automatische Recherche", alle: "Alles" };
 const AREAS = Object.keys(AREA_LABEL) as Area[];
 
 export default async function WissenPage({
@@ -36,10 +37,10 @@ export default async function WissenPage({
 
   const sichtbar = wissenSichtbar(session);
   const heute = todayIso();
-  const AREAS_SICHTBAR = sichtbar ? AREAS.filter((a) => a !== "call") : AREAS;
+  const AREAS_SICHTBAR = sichtbar ? AREAS.filter((a) => a !== "call" && a !== "chat") : AREAS;
   const where = [eq(K.tenantId, session.tenantId), sichtbar];
   if (bereich === "wissen") where.push(sql`${K.origin} not in ('recherche', 'call')`);
-  if (bereich === "anleitung" || bereich === "notiz" || bereich === "recherche" || bereich === "call") where.push(eq(K.origin, bereich));
+  if (bereich === "anleitung" || bereich === "notiz" || bereich === "recherche" || bereich === "call" || bereich === "chat") where.push(eq(K.origin, bereich));
   if (kat) where.push(eq(K.category, kat));
   // Anleitungen zur Prüfung: nie geprüft oder zuletzt vor mehr als 6 Monaten.
   if (pruefen === "1") where.push(sql`${K.kind} = 'anleitung' and (${K.verifiedAt} is null or ${K.verifiedAt} < now() - interval '183 days')`);
@@ -66,7 +67,7 @@ export default async function WissenPage({
     db.select({ origin: K.origin, n: count() }).from(K).where(and(eq(K.tenantId, session.tenantId), sichtbar)).groupBy(K.origin),
   ]);
   const originCount = new Map(origins.map((o) => [o.origin, o.n]));
-  const areaCount: Record<Area, number> = { wissen: (originCount.get("anleitung") ?? 0) + (originCount.get("notiz") ?? 0), anleitung: originCount.get("anleitung") ?? 0, notiz: originCount.get("notiz") ?? 0, call: originCount.get("call") ?? 0, recherche: originCount.get("recherche") ?? 0, alle: [...originCount.values()].reduce((a, b) => a + b, 0) };
+  const areaCount: Record<Area, number> = { wissen: (originCount.get("anleitung") ?? 0) + (originCount.get("notiz") ?? 0), anleitung: originCount.get("anleitung") ?? 0, notiz: originCount.get("notiz") ?? 0, call: originCount.get("call") ?? 0, chat: originCount.get("chat") ?? 0, recherche: originCount.get("recherche") ?? 0, alle: [...originCount.values()].reduce((a, b) => a + b, 0) };
   // Fehlgeschlagene Recherche (KI hat nichts zusammengefasst) erkennbar machen und ans Ende stellen – nichts wird gelöscht.
   const withFail = entries.map((e) => ({ ...e, failed: e.origin === "recherche" && isFailedResearchBody(e.body) }));
   const failedCount = withFail.filter((e) => e.failed).length;

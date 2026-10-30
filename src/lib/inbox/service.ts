@@ -121,6 +121,15 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   const fromLine = `${m.fromName ?? ""} <${m.fromAddress}>`;
   const quelle = marktplatzQuelle(fromLine);
   const cfg = (await getSettings(tenantId)).posteingang;
+  // Rechtsfälle (B14): Mails vom Anwalt bzw. mit bekanntem Aktenzeichen → in den Verlauf des Falls, nicht hierher.
+  if (!quelle) {
+    const { rechtsMailZuordnen } = await import("@/lib/recht/service");
+    const rf = await rechtsMailZuordnen(tenantId, { messageKey: m.messageKey, fromAddress: m.fromAddress, fromName: m.fromName ?? null, subject: m.subject, text: m.text, receivedAt: m.receivedAt }).catch((e) => {
+      console.error("[Rechtsfall-Mail]", e instanceof Error ? e.message : e);
+      return null;
+    });
+    if (rf) return rf.ergebnis === "bekannt" ? "duplicate" : "new";
+  }
   // Termin-Mails (Arzt, Handwerker, Amt, Schule) sind privat: nur in den Privatkalender des Inhabers, nie hier.
   if (!quelle && cfg.terminMails) {
     const { terminMailUebernehmen, terminMelden } = await import("@/lib/private/termin-mail-service");
@@ -172,6 +181,11 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   if (!row) return "duplicate";
   if (regelZeile) await db.update(schema.mailRegeln).set({ treffer: sql`${schema.mailRegeln.treffer} + 1` }).where(eq(schema.mailRegeln.id, regelZeile.id));
   if (autoArchiv) return "new";
+  // Gericht/Behörde/Gegenseite ohne Fall → Entwurf an den Anwalt + Aufgabe „an Anwalt weitergeben?“ (nie automatisch gesendet).
+  if (!quelle)
+    await import("@/lib/recht/service")
+      .then((x) => x.anAnwaltVorschlagen(tenantId, { id: row.id, fromAddress: m.fromAddress, fromName: m.fromName ?? null, subject: m.subject, text: m.text, receivedAt: m.receivedAt }))
+      .catch((e) => console.error("[An Anwalt weitergeben]", e instanceof Error ? e.message : e));
   // Regel „Aufgabe“/„weiterleiten“: immer als Aufgabe (weiterleiten = mit Zuständigkeit), auch bei „Info“.
   const erzwingen = regel?.aktion === "aufgabe" || regel?.aktion === "weiterleiten";
   await createMailTask(tenantId, { id: row.id, subject: m.subject, fromName: m.fromName ?? null, fromAddress: m.fromAddress, receivedAt: m.receivedAt }, erzwingen && r.category !== "critical" ? { ...r, category: "action" } : r, {

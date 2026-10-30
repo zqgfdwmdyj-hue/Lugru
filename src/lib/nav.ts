@@ -41,6 +41,7 @@ export const NAV: NavSection[] = [
       { href: "/scan", label: "Scan mit Ampel" },
       { href: "/kalender", label: "Termine" },
       { href: "/kalender/fahrten", label: "Fahrtenbuch", owner: true },
+      { href: "/rechtsfaelle", label: "Rechtsfälle (Anwalt)", owner: true },
     ],
   },
   {

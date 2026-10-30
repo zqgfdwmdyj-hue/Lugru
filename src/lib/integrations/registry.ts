@@ -388,6 +388,35 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "asana",
+    name: "Asana (Anwalt) – nur lesen",
+    purpose: "Fälle beim Anwalt (Status, Fristen, Kommentare) als Rechtsfälle im Seller-System – geschäftliche unter „Rechtsfälle“, private nur im Privatbereich. Es wird nie etwas in Asana geschrieben.",
+    fields: [
+      { key: "token", label: "Persönlicher Zugangstoken", secret: true, help: "Nur auf dem Server gespeichert." },
+      { key: "projekte", label: "Projekte (gids, optional)", placeholder: "leer = alle sichtbaren Projekte", help: "Mit Komma getrennt. Private Projekte unter Einstellungen → Rechtsfälle kennzeichnen." },
+    ],
+    setup: [
+      "Einladung des Anwalts in Asana annehmen.",
+      "Asana → Profilbild → Einstellungen → Apps → Entwickler-Apps → „Persönlichen Zugangstoken erstellen“ → hier eintragen.",
+      "„Verbindung testen“ zeigt, wie viele Projekte sichtbar sind. Abruf alle 30 Minuten.",
+    ],
+  },
+  {
+    provider: "discord_wissen",
+    name: "Discord – Gruppen-Kanäle (Wissen) – optional",
+    purpose: "Liest freigegebene Kanäle der Deal-Gruppe (nur lesen): Zusammenfassung je Kanal, Insider-Wissen, Frühwarnung bei gehäuften Problemen, Deals in den Deal-Eingang. Rohnachrichten höchstens 30 Tage.",
+    fields: [
+      { key: "kanaele", label: "Kanäle", multiline: true, placeholder: "123456789012345678 | Amazon | täglich\n234567890123456789 | Temu | wöchentlich", help: "Je Zeile: Kanal-ID | Name | täglich / wöchentlich / aus." },
+      { key: "serverId", label: "Server-ID (für Links zur Nachricht)" },
+      { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie beim VA-Kanal. Nur der Server-Admin lädt ihn ein; nur „View Channel“ und „Read Message History“ – keine Schreibrechte." },
+    ],
+    setup: [
+      "Den Server-Admin bitten, den Bot des Seller-Systems einzuladen – nur Leserechte in den freigegebenen Kanälen. Keine Nutzer-Tokens (Selfbots) – das verstößt gegen die Discord-Regeln.",
+      "Die Gruppe informieren, z. B.: „Ich lasse unsere Kanäle Amazon/eBay/Fragen von einem Lese-Bot zusammenfassen – nur für mich, Rohtexte werden nach 30 Tagen gelöscht.“",
+      "Kanäle hier eintragen und „Verbindung testen“.",
+    ],
+  },
+  {
     provider: "tesla",
     name: "Tesla (Fleet API) – optional",
     purpose: "Navi-Ziel aus dem Seller-System ins Auto („Ins Auto“), Ankunftszeit für Verspätungs-Entwürfe, Fahrten fürs Fahrtenbuch, Vorheizen nur auf Knopfdruck. Kein Laden, keine Fernsteuerung sonst.",

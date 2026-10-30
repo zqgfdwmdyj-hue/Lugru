@@ -158,6 +158,18 @@ function kiAnswer(req, b) {
     else o = { art: "info", titel: n.slice(0, 80), faellig: null, anfrage: null, aufgabe: /aufgabe 1|remission/i.test(n) ? 1 : null };
     return [200, reply(b, [{ type: "text", text: JSON.stringify(o) }], "end_turn")];
   }
+  // Discord-Kanäle (B14): Zusammenfassung mit einer Erkenntnis, deren Titel die erste Nachricht enthält (eindeutig je Lauf).
+  if (/^Fasse die Chat-Nachrichten aus dem Kanal „([^“]+)“/.test(text) && !stale) {
+    const kanal = /^Fasse die Chat-Nachrichten aus dem Kanal „([^“]+)“/.exec(text)[1];
+    const zeilen = text.split("\nNachrichten:\n")[1]?.split("\n").filter(Boolean) ?? [];
+    const erste = (zeilen[0] ?? "").replace(/^Nutzer [A-Z]\d*: /, "").slice(0, 60);
+    const namen = /Nutzer [A-Z]/.test(text);
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ ueberblick: `Test-Zusammenfassung ${kanal}: ${zeilen.length} Nachrichten (erfunden).${namen ? "" : " ohne Namen"}`, themen: [{ name: "Allgemein", punkte: [erste || "–"] }], tipps: ["Test-Tipp: Preise vor dem Einkauf prüfen"], warnungen: [], fragen: [], tools: [], erkenntnisse: [{ titel: `Chat-Tipp ${erste}`, text: `Erfundener Testinhalt aus ${kanal}: ${erste}`, art: "tipp" }] }) }], "end_turn")];
+  }
+  if (/^Fasse den Stand des Rechtsfalls/.test(text) && !stale) {
+    const letzte = text.trim().split("\n").pop() ?? "";
+    return [200, reply(b, [{ type: "text", text: `Stand (Test): ${letzte.replace(/^\d{4}-\d{2}-\d{2}: /, "").slice(0, 120)}` }], "end_turn")];
+  }
   // Wissen aus Calls: zwei erfundene Einträge je Call (Titel mit dem Call-Titel, damit nichts doppelt aussieht).
   if (/Ziehe das Wissen heraus/.test(text) && !stale) {
     const call = /\nCall: (.*) am \d{4}-\d{2}-\d{2}\n/.exec(text)?.[1] ?? "Test-Call";
@@ -232,6 +244,8 @@ const lex = { kontakte: new Map(), belege: new Map(), bezahlt: new Set(), nr: 0,
 // Tesla Fleet API und SMS (Twilio) – erfunden, nur im Speicher: Navi-Ziele, Klima, Status, Fahrten, gesendete SMS.
 const tesla = { navi: [], klima: 0, ziel: null, minuten: null, fahrten: [] };
 let smsListe = [];
+// Asana (B14): zwei Projekte (geschäftlich/privat); Aufgaben und Kommentare legen die Prüfungen über /__asana an.
+let asana = { projekte: [{ gid: "1200000000000101", name: "Mandat LuGru (Test)" }, { gid: "1200000000000102", name: "Privat Grunert (Test)" }], aufgaben: [], kommentare: [], schreibversuche: 0 };
 async function lexoffice(req, p, url, b) {
   const json = (o, code = 200) => [code, o];
   const uuid = () => crypto.randomUUID();
@@ -456,6 +470,27 @@ async function route(req, url, body) {
     const valid = !nr.startsWith("999");
     return json({ countryCode: b.countryCode, vatNumber: nr, requestDate: new Date().toISOString(), valid, requestIdentifier: b.requesterNumber ? `WAPITEST${String(++viesNr).padStart(6, "0")}` : "", name: valid ? `Testhandel ${b.countryCode} SARL` : "---", address: valid ? "1 Rue de l'Exemple, 75000 Paris" : "---" });
   }
+  // Asana (erfunden, NUR LESEN): Projekte, Aufgaben (Fälle), Kommentare – Schlüssel „test-asana-token“.
+  if (p.startsWith("/asana/api/1.0/")) {
+    if ((req.headers.authorization ?? "") !== "Bearer test-asana-token") return [401, { errors: [{ message: "Not Authorized" }] }];
+    if (req.method !== "GET") {
+      asana.schreibversuche++;
+      return [403, { errors: [{ message: "Testdienst: nur lesen" }] }];
+    }
+    const r = p.slice("/asana/api/1.0".length);
+    if (r === "/workspaces") return json({ data: [{ gid: "1200000000000001", name: "Kanzlei (Test)" }] });
+    if (r === "/projects") return json({ data: asana.projekte });
+    let m = /^\/projects\/(\d+)$/.exec(r);
+    if (m) {
+      const pr = asana.projekte.find((x) => x.gid === m[1]);
+      return pr ? json({ data: pr }) : [404, { errors: [{ message: "Unknown object" }] }];
+    }
+    m = /^\/projects\/(\d+)\/tasks$/.exec(r);
+    if (m) return json({ data: asana.aufgaben.filter((a) => a.projekt === m[1]).map(({ projekt, abschnitt, ...a }) => ({ notes: "", completed: false, due_on: null, modified_at: new Date().toISOString(), permalink_url: `https://app.asana.example/0/${projekt}/${a.gid}`, ...a, memberships: [{ project: { gid: projekt }, section: { name: abschnitt ?? "In Bearbeitung" } }] })) });
+    m = /^\/tasks\/(\d+)\/stories$/.exec(r);
+    if (m) return json({ data: [{ gid: `9${m[1]}`, type: "system", text: "hat das Fälligkeitsdatum geändert", created_at: new Date().toISOString() }, ...asana.kommentare.filter((k) => k.aufgabe === m[1]).map(({ aufgabe, ...k }) => ({ type: "comment", created_by: { name: "Kanzlei (Test)" }, ...k }))] });
+    return [404, { errors: [{ message: "nicht nachgebildet" }] }];
+  }
   // Tesla Fleet API (erfunden): Status, Navi-Ziel, Klima, Fahrten – Schlüssel „test-tesla-token“.
   if (p.startsWith("/tesla/api/1/vehicles/")) {
     if ((req.headers.authorization ?? "") !== "Bearer test-tesla-token") return [401, { error: "invalid_token" }];
@@ -664,7 +699,7 @@ function webNachbau(req, res, url, body) {
   return html(200, '<form method="post" enctype="multipart/form-data"><input type="file" name="datei"><button type="submit">Hochladen</button></form>');
 }
 
-const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : "?");
+const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
   .createServer(async (req, res) => {
@@ -728,6 +763,14 @@ http
       return send(200, tesla);
     }
     if (url.pathname === "/__sms") return send(200, smsListe);
+    // Prüf-Hilfen Asana: Zustand ansehen; Aufgaben/Kommentare anlegen bzw. ersetzen (gleiche gid).
+    if (url.pathname === "/__asana" && req.method === "GET") return send(200, asana);
+    if (url.pathname === "/__asana" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      for (const a of b.aufgaben ?? []) asana.aufgaben = [...asana.aufgaben.filter((x) => x.gid !== a.gid), a];
+      for (const k of b.kommentare ?? []) asana.kommentare = [...asana.kommentare.filter((x) => x.gid !== k.gid), k];
+      return send(200, asana);
+    }
     // Prüf-Hilfen Lexoffice: Belege ansehen, Rechnungen als bezahlt markieren (wie ein Zahlungseingang).
     if (url.pathname === "/__lexoffice") return send(200, [...lex.belege.values()].map((x) => ({ id: x.id, art: x.art, nummer: x.voucherNumber, brutto: x.totalPrice.totalGrossAmount, netto: x.totalPrice.totalNetAmount, steuerArt: x.taxType, vorgaenger: x.vorgaenger, menge: x.b.lineItems?.[0]?.quantity, bezahlt: lex.bezahlt.has(x.id) })));
     if (url.pathname.startsWith("/__lexoffice/bezahlt/") && req.method === "POST") {

@@ -15,7 +15,7 @@ export const calls = pgTable(
     tenantId: tenantId(),
     titel: text("titel").notNull(),
     datum: date("datum", { mode: "string" }).notNull(),
-    quelle: text("quelle", { enum: ["text", "google_doc", "discord", "archiv", "datei"] }).notNull(),
+    quelle: text("quelle", { enum: ["text", "google_doc", "discord", "archiv", "datei", "chat"] }).notNull(),
     /** Einzel-Call mit dem Consultant oder Wochen-Call der Deal-Gruppe (andere Auswertung der Aufgaben). */
     art: text("art", { enum: ["consultant", "gruppe"] }).notNull().default("consultant"),
     /** „gdoc:<ID>“, „archiv:<ID>“ bzw. „datei:<Kennung>“ – gegen doppelten Import. */

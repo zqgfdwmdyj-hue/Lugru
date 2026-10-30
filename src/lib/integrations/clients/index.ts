@@ -16,3 +16,4 @@ import "./lugru-deals";
 import "./lexoffice";
 import "./tesla";
 import "./sms";
+import "./asana";

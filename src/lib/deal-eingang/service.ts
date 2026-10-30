@@ -38,7 +38,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 export type EingangDatei = { name: string; mime: string; bytes: Uint8Array };
-export type Weg = "manuell" | "teilen" | "kurzbefehl" | "mail" | "claude" | "profitpath";
+export type Weg = "manuell" | "teilen" | "kurzbefehl" | "mail" | "claude" | "profitpath" | "gruppe";
 
 export class DealEingangFehler extends Error {}
 

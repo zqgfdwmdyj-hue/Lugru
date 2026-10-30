@@ -245,6 +245,10 @@ await integ("discord_va", { serverId: "500000000000000001", kanalId: "8000000000
 await db.update(schema.users).set({ sprache: "de" }).where(eq(schema.users.email, "buero"));
 // ProfitPath-Deals über Discord: ein Kanal (Testdienste), Bot wie beim VA-Kanal.
 await integ("discord_profitpath", { kanalIds: "810000000000000001" }, {});
+// Rechtsfälle (B14): Asana des Anwalts (Testdienste, nur lesen) und erfundene Kanzlei-Domain.
+await integ("asana", {}, { token: "test-asana-token" });
+// Discord-Kanäle der Deal-Gruppe (B14): Fantasie-IDs, Bot wie beim VA-Kanal.
+await integ("discord_wissen", { kanaele: "820000000000000001 | Amazon | täglich\n820000000000000002 | Temu | wöchentlich\n820000000000000003 | Allgemeines | aus", serverId: "500000000000000001" }, {});
 // Ein geprüfter Deal-Eingang (erfunden) – für den Werkzeug-Vertrag (deal_eingang_detail).
 await db.insert(schema.dealEingaenge).values({ tenantId: T, weg: "manuell", quelleRef: "test:eingang-1", quelle: "Testquelle", rohtext: "B0TESTSEED Testware 3,00 netto (erfunden)", inhaltKennung: "test-eingang-1", pruefung: "fertig", status: "neu", geprueftAm: new Date() });
 // Ein Amazon-Vorgang (erfunden) – für den Werkzeug-Vertrag (amazon_fall per Fallnummer).

@@ -140,6 +140,10 @@ export const DEFAULT_SETTINGS = {
    * den Privatkalender des Inhabers statt in den Posteingang; Vorabend-Erinnerung mit Abfahrt (Minuten vorher).
    */
   posteingang: { autoArchiv: true, terminMails: true, vorabendUm: "18:00", abfahrtVorher: 30 },
+  /** Rechtsfälle (B14): Anwalts-Domains für Mails, private Asana-Projekte (gid oder Name), Vorlauf, Stillstand. */
+  rechtsfaelle: { anwaltDomains: [] as string[], anwaltAdresse: "", privatProjekte: [] as string[], vorlaufTage: 3, stillstandTage: 21 },
+  /** Discord-Kanäle (B14): Rohnachrichten höchstens so viele Tage. */
+  discordWissen: { rohTage: 30 },
   /**
    * Handy & Tesla (B13): Orte (Ziel-Erkennung für Briefing und Fahrtenbuch), Fahrzeit vor Terminen mit Ort, Minuten je
    * Anruf, SMS nur an Ludwigs Nummer (Tageslimit, Ruhezeit, Deal-Schwelle), Verspätungs-Toleranz, Tesla-Fahrzeug.
@@ -215,6 +219,8 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     faelle: { ...d.faelle, ...(s.faelle ?? {}), fristen: { ...d.faelle.fristen, ...(s.faelle?.fristen ?? {}) } },
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
     posteingang: { ...d.posteingang, ...(s.posteingang ?? {}) },
+    rechtsfaelle: { ...d.rechtsfaelle, ...(s.rechtsfaelle ?? {}) },
+    discordWissen: { ...d.discordWissen, ...(s.discordWissen ?? {}) },
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
     va: { ...d.va, ...(s.va ?? {}) },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },

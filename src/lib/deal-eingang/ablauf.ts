@@ -19,7 +19,7 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
   const [e] = await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, id)));
   if (!e || e.pruefung !== "fertig" || e.weg === "manuell") return null;
   if (e.pushAm && !o.update) return null;
-  if (e.weg === "profitpath" && e.ampel !== "gruen" && e.ampel !== "gelb") return null;
+  if ((e.weg === "profitpath" || e.weg === "gruppe") && e.ampel !== "gruen" && e.ampel !== "gelb") return null;
   const { empfaenger, melden } = await import("@/lib/push/service");
   const an = await empfaenger(tenantId, "dealeingang");
   const titel = `${o.update ? "Update: " : ""}Deal ${e.ampel ? AMPEL_EMOJI[e.ampel] : "📄"}${e.quelle ? ` · ${e.quelle}` : ""}`;
