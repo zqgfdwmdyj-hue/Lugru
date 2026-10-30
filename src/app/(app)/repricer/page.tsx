@@ -28,7 +28,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <div className="page-head">
-        <div><div className="crumb">Einkauf & Buchhaltung</div><h1>Repricer (BQool)</h1></div>
+        <div><div className="crumb">Amazon</div><h1>Repricer (BQool)</h1></div>
         <div style={{ display: "flex", gap: 8 }}>
           <a className="btn btn-primary" href="/repricer/export?format=bqool" title="Nur Mindestpreise mit echten Gebühren aus der Gebührenvorschau" data-testid="export-exact">BQool-CSV ({cov.exact} mit echten Gebühren)</a>
           {cov.estimated > 0 && <a className="btn" href="/repricer/export?format=bqool&geschaetzt=1" title="Enthält Mindestpreise mit pauschaler FBA-Gebühr bzw. Provision – vor dem Einsatz prüfen" data-testid="export-estimated">inkl. {cov.estimated} geschätzter</a>}
@@ -61,6 +61,11 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
       {cov.estimated > 0 && (
         <div className="notice notice-warn small" data-testid="estimated-warning">
           <strong>{cov.estimated} von {cov.exact + cov.estimated} Mindestpreisen sind geschätzt:</strong> ohne Gebührenvorschau rechnet das System mit pauschal {formatEuro(s.pricing.defaultFbaFee)} FBA-Gebühr bzw. {Math.round(s.pricing.referralRate * 100)} % Provision. Vor dem Einsatz in BQool die <Link href="/import">Gebührenvorschau importieren</Link> – der BQool-Export enthält geschätzte Werte nur, wenn du es ausdrücklich wählst. <Link href="/repricer?nur=geschaetzt">Geschätzte ansehen →</Link>
+        </div>
+      )}
+      {bq.zeilen.length === 0 && (
+        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="bqool-fehlt">
+          <strong>Noch kein BQool-Export hochgeladen.</strong> Ohne ihn fehlen Regel, Min und Max je SKU – im Verlust-Stopp, in der Kapital-Ampel und bei Claude („repricer“). In BQool unter Repricing → Manage Listings je Land exportieren und <a href="#bqool-upload">hier unten hochladen</a>.
         </div>
       )}
       <section className="card card-pad stack" data-testid="bqool-section">
@@ -96,7 +101,7 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
             )}
           </>
         )}
-        <BqoolUpload />
+        <div id="bqool-upload" style={{ scrollMarginTop: 70 }}><BqoolUpload /></div>
       </section>
       <div style={{ display: "flex", gap: 6 }}>
         <Link href="/repricer" className={`chip${!sp.nur ? " active" : ""}`} aria-current={!sp.nur ? "true" : undefined}>Alle</Link>

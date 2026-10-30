@@ -26,9 +26,19 @@ export function fensterTage(heute: string, n: number = VERLUST_REGEL.fenster): s
   return Array.from({ length: n }, (_, i) => minusTage(heute, n - i));
 }
 
-/** Je SKU (Kanäle zusammengezählt) prüfen, ob die Regel greift. */
-export function pruefeVerlust(werte: TagWert[], heute: string, regel: { fenster: number; tage: number; stueck: number } = VERLUST_REGEL): VerlustFall[] {
-  const tage = fensterTage(heute, regel.fenster);
+/**
+ * Das Prüffenster: die letzten n Tage vor heute, für die es Tageswerte gibt (höchstens 7 Tage zurück). sellerboard
+ * liefert manchmal einen Tag später – dann rutscht das Fenster mit, statt leer zu bleiben. Ohne Daten: Kalendertage.
+ */
+export function fensterMitDaten(werte: { day: string }[], heute: string, n: number = VERLUST_REGEL.fenster): string[] {
+  const moeglich = new Set(fensterTage(heute, 7));
+  const tage = [...new Set(werte.map((w) => w.day))].filter((d) => moeglich.has(d)).sort();
+  return tage.length ? tage.slice(-n) : fensterTage(heute, n);
+}
+
+/** Je SKU (Kanäle zusammengezählt) prüfen, ob die Regel greift. „tage“: festes Fenster (sonst Tage mit Daten). */
+export function pruefeVerlust(werte: TagWert[], heute: string, regel: { fenster: number; tage: number; stueck: number } = VERLUST_REGEL, festeTage?: string[]): VerlustFall[] {
+  const tage = festeTage ?? fensterMitDaten(werte, heute, regel.fenster);
   const imFenster = werte.filter((w) => tage.includes(w.day));
   const jeSku = new Map<string, TagWert[]>();
   for (const w of imFenster) jeSku.set(w.sku, [...(jeSku.get(w.sku) ?? []), w]);
@@ -78,7 +88,7 @@ export const ausnahmeAktiv = (a: { bis: string | null }, heute: string) => !a.bi
 /** Aufgabentext: was tun, mit Break-even, Buy Box und Repricer-Regel. */
 export function verlustAufgabe(
   f: VerlustFall,
-  x: { breakEven: number | null; buybox: { preis: number | null; quelle: string; amazon?: boolean } | null; bqool: { regel: string | null; min: number | null; max: number | null; marktplatz: string } | null },
+  x: { breakEven: number | null; buybox: { preis: number | null; quelle: string; amazon?: boolean } | null; bqool: { regel: string | null; min: number | null; max: number | null; marktplatz: string } | null; bqoolExport?: boolean },
 ): { titel: string; notiz: string } {
   const e = (n: number) => n.toFixed(2).replace(".", ",") + " €";
   const zeilen = [
@@ -86,7 +96,11 @@ export function verlustAufgabe(
     f.preis !== null ? `Ø Verkaufspreis ${e(f.preis)}.` : null,
     x.breakEven !== null ? `Break-even ${e(x.breakEven)}${f.preis !== null && f.preis < x.breakEven ? " – Preis liegt darunter" : ""}.` : "Break-even unbekannt (EK oder Gebühren fehlen).",
     x.buybox ? `Buy Box ${x.buybox.preis !== null ? e(x.buybox.preis) : "keine"}${x.buybox.amazon ? " (Amazon selbst)" : ""} laut ${x.buybox.quelle}.` : "Buy Box: keine Keepa-Daten.",
-    x.bqool ? `BQool ${x.bqool.marktplatz}: Regel ${x.bqool.regel ?? "–"}, Min ${x.bqool.min !== null ? e(x.bqool.min) : "–"}, Max ${x.bqool.max !== null ? e(x.bqool.max) : "–"}${x.breakEven !== null && x.bqool.min !== null && x.bqool.min < x.breakEven ? " – Min liegt unter Break-even" : ""}.` : "BQool: SKU nicht im letzten Export.",
+    x.bqool
+      ? `BQool ${x.bqool.marktplatz}: Regel ${x.bqool.regel ?? "–"}, Min ${x.bqool.min !== null ? e(x.bqool.min) : "–"}, Max ${x.bqool.max !== null ? e(x.bqool.max) : "–"}${x.breakEven !== null && x.bqool.min !== null && x.bqool.min < x.breakEven ? " – Min liegt unter Break-even" : ""}.`
+      : x.bqoolExport === false
+        ? "BQool: noch kein Export hochgeladen – unter Amazon → Repricer (BQool) die Datei „Manage Listings“ je Land hochladen."
+        : "BQool: SKU nicht im letzten Export.",
     "Prüfen: Min-Preis im Repricer auf Break-even, Gebühren/EK richtig? Bewusster Abverkauf → als Ausnahme markieren.",
   ];
   return { titel: `Verlust-Stopp: ${f.name ?? f.sku} – ${f.grund}`.slice(0, 200), notiz: zeilen.filter(Boolean).join("\n") };

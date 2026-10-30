@@ -114,7 +114,7 @@ export default async function LiquiditaetPage({ searchParams }: { searchParams: 
         </svg>
         <div style={{ overflowX: "auto" }}>
           <table className="table" style={{ marginTop: 8 }} data-testid="liqui-wochen">
-            <thead><tr><th>Woche ab</th><th className="right">Anfang</th><th className="right">Zuflüsse</th><th className="right">Abflüsse</th><th className="right">Ende</th><th>Ampel</th><th>Posten</th></tr></thead>
+            <thead><tr><th>Woche ab</th><th className="right">Anfang</th><th className="right">Zuflüsse</th><th className="right">Abflüsse</th><th className="right">Ende</th><th>Ampel</th><th className="right" title="Bestellvorschläge, noch nicht im Einkauf angelegt – nicht im Kontostand">mögliche Einkäufe<br /><span className="small muted">nicht freigegeben</span></th><th>Posten</th></tr></thead>
             <tbody>
               {l.wochen.map((w) => (
                 <tr key={w.start} data-woche={w.start}>
@@ -124,7 +124,8 @@ export default async function LiquiditaetPage({ searchParams }: { searchParams: 
                   <td className="num right" style={{ color: "var(--danger)" }}>{formatEuro(-w.ab)}</td>
                   <td className="num right" style={{ fontWeight: 600 }} data-testid="cash-balance">{w.endeSaldo === null ? <span className="muted" style={{ fontWeight: 400 }}>unbekannt</span> : formatEuro(w.endeSaldo)}</td>
                   <td>{w.ampel ? <span className={`tag ${AMPEL[w.ampel][0]}`} data-testid="woche-ampel">{AMPEL[w.ampel][1]}</span> : "–"}{w.ampel && w.ampel !== "gruen" && w.tiefster !== null ? <div className="small muted">tiefster {formatEuro(w.tiefster)}</div> : null}</td>
-                  <td className="small">{w.posten.map((p, i) => <div key={i} style={{ color: p.art === "szenario" ? "var(--warn)" : undefined }}>{formatDate(p.datum).slice(0, 6)} {p.label} <span className="num">{p.geschaetzt ? "≈ " : ""}{formatEuro(p.betrag)}</span> <span className="muted">· {POSTEN_TEXT[p.art]}</span></div>)}</td>
+                  <td className="num right muted" data-testid="woche-moeglich">{w.moeglich ? formatEuro(-w.moeglich) : "–"}</td>
+                  <td className="small">{w.posten.filter((p) => !p.nichtEingerechnet).map((p, i) => <div key={i} style={{ color: p.art === "szenario" ? "var(--warn)" : undefined }}>{formatDate(p.datum).slice(0, 6)} {p.label} <span className="num">{p.geschaetzt ? "≈ " : ""}{formatEuro(p.betrag)}</span> <span className="muted">· {POSTEN_TEXT[p.art]}</span></div>)}</td>
                 </tr>
               ))}
             </tbody>
@@ -176,7 +177,9 @@ export default async function LiquiditaetPage({ searchParams }: { searchParams: 
               <div className="field"><label className="label" htmlFor="li-reserve">Mindestreserve €</label><input className="input num" id="li-reserve" name="reserve" defaultValue={String(s.liquiditaet.reserve).replace(".", ",")} style={{ width: 120 }} data-testid="li-reserve" /></div>
               <div className="field"><span className="label">Kreditkarte (falls nicht im Kontoauszug erkannt)</span><div style={{ display: "flex", gap: 6 }}><input className="input num" name="kk_tag" placeholder="Tag" aria-label="Abbuchungstag" defaultValue={s.liquiditaet.kreditkarte.tag ?? ""} style={{ width: 60 }} /><input className="input num" name="kk_betrag" placeholder="Betrag" aria-label="Betrag" defaultValue={s.liquiditaet.kreditkarte.betrag ?? ""} style={{ width: 110 }} /></div></div>
               <div className="field"><label className="label" htmlFor="li-ziel">Zahlungsziel Lieferanten ohne Profil (Tage, 0 = sofort/Karte)</label><input className="input num" id="li-ziel" name="zahlungsziel" defaultValue={s.liquiditaet.zahlungszielStandard} style={{ width: 70 }} /></div>
-              <label className="check small"><input type="checkbox" name="bestellvorschlaege" defaultChecked={s.liquiditaet.bestellvorschlaege} /> Bestellvorschläge als geplante Einkäufe einrechnen</label>
+              <label className="check small"><input type="checkbox" name="bestellvorschlaege" defaultChecked={s.liquiditaet.bestellvorschlaege} /> Bestellvorschläge als eigene Zeile „mögliche Einkäufe“ zeigen</label>
+              <label className="check small"><input type="checkbox" name="vorschlaege_einrechnen" defaultChecked={s.liquiditaet.vorschlaegeEinrechnen} data-testid="li-vorschlaege-einrechnen" /> … und schon vor der Freigabe in den Kontostand einrechnen (auf „bestellen bis“)</label>
+              <div className="small muted">Freigegeben = im Einkauf angelegt oder bestellt; das zählt immer.</div>
               <div className="field">
                 <span className="label">Steuertermine (Schätzung)</span>
                 {steuerZeilen.map((z, i) => (

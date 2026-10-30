@@ -94,7 +94,27 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
   }
   quellen.push({ name: "Lieferantenrechnungen", status: "ok", hinweis: `${offeneRechnungen} offen (nur Lieferanten mit Zahlungsziel im Profil${L.zahlungszielStandard ? `, sonst ${L.zahlungszielStandard} Tage` : ""})` });
 
-  // Geplante Einkäufe: Bestellvorschläge mit „bestellen bis“
+  // Freigegebene Einkäufe: im Einkauf angelegte bzw. bestellte Ware ohne verknüpfte Rechnung (die Rechnung zählt
+  // sonst schon als Lieferantenrechnung). Datum: Bestelldatum, angelegte Entwürfe ab heute.
+  const PO = schema.purchaseOrders;
+  const POI = schema.purchaseOrderItems;
+  const offeneBestellungen = await db
+    .select({ id: PO.id, nr: PO.number, status: PO.status, datum: PO.orderDate, versand: PO.shippingCostGross, summe: sql<string>`coalesce(sum(${POI.quantity} * ${POI.unitCostGross}), 0)`, asins: sql<string[]>`coalesce(array_agg(${POI.asin}) filter (where ${POI.asin} is not null), '{}')` })
+    .from(PO)
+    .leftJoin(POI, eq(POI.poId, PO.id))
+    .where(and(eq(PO.tenantId, t), inArray(PO.status, ["draft", "ordered", "shipped", "partial"]), sql`${PO.invoiceId} is null`))
+    .groupBy(PO.id);
+  const freigegebeneAsins = new Set<string>();
+  for (const b of offeneBestellungen) {
+    const betrag = Number(b.summe) + Number(b.versand ?? 0);
+    for (const a of b.asins ?? []) freigegebeneAsins.add(a);
+    if (betrag <= 0) continue;
+    posten.push({ datum: b.datum ?? heute, betrag: -Math.round(betrag * 100) / 100, label: `Einkauf ${b.nr}${b.status === "draft" ? " (angelegt)" : ""}`, art: "einkauf", geschaetzt: false });
+  }
+  quellen.push({ name: "Einkäufe (angelegt/bestellt)", status: "ok", hinweis: `${offeneBestellungen.length} offen ohne Rechnung` });
+
+  // Mögliche Einkäufe: Bestellvorschläge mit „bestellen bis“. Vor der Freigabe (= im Einkauf angelegt) nur als
+  // eigene Zeile – sie ändern den Kontostand nicht, außer „Vorschläge einrechnen“ ist eingeschaltet.
   if (L.bestellvorschlaege) {
     const r = await sellerboardReorder(t).catch(() => ({ rows: [], syncedAt: null }));
     // Standard: Artikel mit roter Kapital-Ampel werden nicht nachbestellt → nicht einrechnen.
@@ -102,16 +122,23 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     const weg = o.ausschliessen ?? ((z: { sku: string }) => ampel?.get(z.sku) === "rot");
     let n = 0;
     let rot = 0;
+    let summe = 0;
     for (const z of r.rows) {
       if (!z.regular || z.capital === null || z.capital <= 0) continue;
+      if (z.asin && freigegebeneAsins.has(z.asin)) continue;
       if (weg({ sku: z.sku, asin: z.asin })) {
         rot++;
         continue;
       }
-      posten.push({ datum: z.orderBy && z.orderBy > heute ? z.orderBy : heute, betrag: -z.capital, label: `Einkauf ${z.name ?? z.sku}`.slice(0, 80), art: "einkauf", geschaetzt: true });
+      posten.push({ datum: z.orderBy && z.orderBy > heute ? z.orderBy : heute, betrag: -z.capital, label: `Vorschlag ${z.name ?? z.sku}`.slice(0, 80), art: "vorschlag", geschaetzt: true, nichtEingerechnet: !L.vorschlaegeEinrechnen });
+      summe += z.capital;
       n++;
     }
-    quellen.push({ name: "Bestellvorschläge", status: r.rows.length ? "ok" : "keine_daten", hinweis: `${n} mit EK und Bezugsquelle${rot ? ` · ${rot} mit roter Kapital-Ampel nicht eingerechnet` : ""}` });
+    quellen.push({
+      name: "Bestellvorschläge",
+      status: r.rows.length ? "ok" : "keine_daten",
+      hinweis: `${n} mögliche Einkäufe (${Math.round(summe).toLocaleString("de-DE")} €) ${L.vorschlaegeEinrechnen ? "eingerechnet" : "nur als eigene Zeile – erst im Einkauf angelegt zählen sie"}${rot ? ` · ${rot} mit roter Kapital-Ampel weggelassen` : ""}`,
+    });
   } else quellen.push({ name: "Bestellvorschläge", status: "aus" });
 
   // Kontoauszug: Kreditkarte und Fixkosten

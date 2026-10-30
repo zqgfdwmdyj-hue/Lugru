@@ -58,3 +58,16 @@ describe("laufende Auszahlungen", () => {
     expect(x.map((y) => y.datum)).toEqual(["2026-11-04", "2026-11-11"]);
   });
 });
+
+describe("Bestellvorschläge vor der Freigabe", () => {
+  it("stehen als „mögliche Einkäufe“ in der Woche, ändern aber den Kontostand nicht", () => {
+    const vorschlag = (datum: string, betrag: number): Posten => ({ datum, betrag, label: "Vorschlag Test-Artikel", art: "vorschlag", geschaetzt: true, nichtEingerechnet: true });
+    const w = liquiditaetWochen({ heute: "2026-10-29", wochen: 2, start: 10000, reserve: 5000, posten: [vorschlag("2026-10-01", -90000), vorschlag("2026-11-04", -2000), p("2026-10-30", -1000, "einkauf")] });
+    expect(w[0]).toMatchObject({ moeglich: 90000, ab: 1000, endeSaldo: 9000, ampel: "gruen" });
+    expect(w[1]).toMatchObject({ moeglich: 2000, ab: 0, endeSaldo: 9000 });
+  });
+  it("eingeschaltet „einrechnen“: wie ein normaler Abfluss", () => {
+    const w = liquiditaetWochen({ heute: "2026-10-29", wochen: 1, start: 10000, reserve: 5000, posten: [{ datum: "2026-10-30", betrag: -6000, label: "Vorschlag", art: "vorschlag", geschaetzt: true }] });
+    expect(w[0]).toMatchObject({ moeglich: 0, ab: 6000, ampel: "rot" });
+  });
+});

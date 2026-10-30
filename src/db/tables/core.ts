@@ -166,6 +166,7 @@ export type TenantSettings = {
     kreditkarte?: { tag?: number; betrag?: number };
     ignoriert?: string[];
     bestellvorschlaege?: boolean;
+    vorschlaegeEinrechnen?: boolean;
     zahlungszielStandard?: number;
   };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */

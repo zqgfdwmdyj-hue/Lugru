@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ausnahmeAktiv, fensterTage, pruefeVerlust, verlustAufgabe, wochenSumme, type TagWert } from "@/lib/money/verlust";
+import { ausnahmeAktiv, fensterMitDaten, fensterTage, pruefeVerlust, verlustAufgabe, wochenSumme, type TagWert } from "@/lib/money/verlust";
 
 // Verlust-Stopp: Auslöser 2 von 3 Tagen im Minus oder ≥ 5 Stück mit Verlust. Erfundene Werte.
 
@@ -9,6 +9,18 @@ const HEUTE = "2026-10-29";
 describe("Fenster", () => {
   it("die letzten 3 abgeschlossenen Tage, ältester zuerst", () => {
     expect(fensterTage(HEUTE)).toEqual(["2026-10-26", "2026-10-27", "2026-10-28"]);
+  });
+});
+
+describe("Fenster mit Daten (sellerboard liefert verspätet)", () => {
+  it("die letzten 3 Tage mit Werten, höchstens 7 Tage zurück; ohne Daten die Kalendertage", () => {
+    const werte = ["2026-10-24", "2026-10-25", "2026-10-26", "2026-10-27"].map((d) => w(d, "X", 1, 2));
+    expect(fensterMitDaten(werte, HEUTE)).toEqual(["2026-10-25", "2026-10-26", "2026-10-27"]);
+    expect(fensterMitDaten([w("2026-10-10", "X", 1, 2)], HEUTE)).toEqual(fensterTage(HEUTE));
+  });
+  it("fehlt der letzte Tag noch, prüft der Verlust-Stopp die Tage davor statt nichts", () => {
+    const f = pruefeVerlust([w("2026-10-25", "A", 1, -2), w("2026-10-26", "A", 1, -1), w("2026-10-27", "A", 1, 3)], HEUTE);
+    expect(f[0]).toMatchObject({ sku: "A", verlustTage: 2 });
   });
 });
 
@@ -23,7 +35,9 @@ describe("Auslöser", () => {
     expect(f[0]).toMatchObject({ sku: "B", verlustTage: 1, stueckMitVerlust: 5, grund: "5 Stück mit Verlust" });
   });
   it("1 Tag im Minus mit 4 Stück → kein Fall; Tage außerhalb des Fensters zählen nicht", () => {
-    expect(pruefeVerlust([w("2026-10-28", "C", 4, -4), w("2026-10-25", "C", 9, -20), w("2026-10-29", "C", 9, -20)], HEUTE)).toEqual([]);
+    // andere Artikel haben an allen drei Tagen Werte → Fenster 26.–28.
+    const andere = ["2026-10-26", "2026-10-27", "2026-10-28"].map((d) => w(d, "X", 1, 2));
+    expect(pruefeVerlust([...andere, w("2026-10-28", "C", 4, -4), w("2026-10-25", "C", 9, -20), w("2026-10-29", "C", 9, -20)], HEUTE)).toEqual([]);
   });
   it("Kanäle je Tag zusammengezählt; Tag ohne Gewinnwert zählt nicht als Verlust", () => {
     const f = pruefeVerlust([w("2026-10-27", "D", 1, -3), w("2026-10-27", "D", 1, 5), w("2026-10-28", "D", 1, -1), w("2026-10-26", "D", 2, null)], HEUTE);

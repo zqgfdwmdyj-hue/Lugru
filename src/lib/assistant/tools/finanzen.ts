@@ -1,5 +1,7 @@
 import "server-only";
+import { and, eq, like } from "drizzle-orm";
 import { z } from "zod";
+import { db, schema } from "@/db";
 import { formatDate } from "@/lib/numbers";
 import { ersteRoteWoche, POSTEN_TEXT } from "@/lib/money/liquiditaet";
 import { liquiditaet as liquiditaetBerechnen } from "@/lib/money/liquiditaet-service";
@@ -34,7 +36,18 @@ export const liquiditaet = defineTool({
       mindestreserve: l.reserve,
       erste_woche_unter_reserve: rot ? { ab: rot.start, tiefster_stand: rot.tiefster } : null,
       was_waere_wenn: l.szenario ? { betrag: l.szenario.betrag, datum: l.szenario.datum, ohne_einkauf_erste_rote_woche: l.ohneSzenario ? (ersteRoteWoche(l.ohneSzenario)?.start ?? null) : null } : undefined,
-      wochen: l.wochen.map((w) => ({ ab: w.start, anfang: w.anfang, zufluesse: w.zu, abfluesse: w.ab, ende: w.endeSaldo, tiefster: w.tiefster, ampel: w.ampel, posten: w.posten.map((p) => ({ datum: p.datum, betrag: p.betrag, was: p.label, art: POSTEN_TEXT[p.art], geschaetzt: p.geschaetzt || undefined })) })),
+      wochen: l.wochen.map((w) => ({
+        ab: w.start,
+        anfang: w.anfang,
+        zufluesse: w.zu,
+        abfluesse: w.ab,
+        ende: w.endeSaldo,
+        tiefster: w.tiefster,
+        ampel: w.ampel,
+        moegliche_einkaeufe_nicht_freigegeben: w.moeglich || undefined,
+        posten: w.posten.filter((p) => !p.nichtEingerechnet).map((p) => ({ datum: p.datum, betrag: p.betrag, was: p.label, art: POSTEN_TEXT[p.art], geschaetzt: p.geschaetzt || undefined })),
+      })),
+      hinweis_vorschlaege: "Bestellvorschläge zählen erst, wenn sie im Einkauf angelegt sind; vorher stehen sie nur unter „moegliche_einkaeufe_nicht_freigegeben“ und ändern den Kontostand nicht.",
       quellen: l.quellen.map((q) => ({ name: q.name, status: q.status, hinweis: q.hinweis })),
       link: abs(ctx, `/cashflow${l.szenario ? `?betrag=${l.szenario.betrag}&datum=${l.szenario.datum}` : ""}`),
     });
@@ -101,6 +114,14 @@ export const verlust_stopp = defineTool({
   input: z.object({}),
   run: async (ctx) => {
     const v = await verlustStopp(ctx.session.tenantId, ctx.today);
+    // Dieselbe Quelle wie die Aufgaben „Verlust-Stopp: …“ – offene Aufgaben immer mit ausgeben, damit Werkzeug und
+    // Aufgabenliste nie auseinanderlaufen (z. B. wenn neue Tageswerte noch fehlen).
+    const T = schema.tasks;
+    const offen = await db
+      .select({ titel: T.title, notiz: T.notes, schluessel: T.systemKey, faellig: T.dueDate })
+      .from(T)
+      .where(and(eq(T.tenantId, ctx.session.tenantId), like(T.systemKey, "verlust-%"), eq(T.status, "open")))
+      .limit(50);
     return json({
       regel: `${VERLUST_REGEL.tage} von ${VERLUST_REGEL.fenster} Tagen im Minus oder ≥ ${VERLUST_REGEL.stueck} Stück mit Verlust`,
       zeitraum: { von: v.fenster[0], bis: v.fenster[v.fenster.length - 1], tage_mit_daten: v.tageMitDaten },
@@ -119,7 +140,12 @@ export const verlust_stopp = defineTool({
         link: abs(ctx, `/verlust?q=${encodeURIComponent(f.sku)}`),
       })),
       ausnahmen: v.ausnahmen.map((a) => ({ sku: a.sku, name: a.name ?? undefined, grund: a.grund, bis: a.bis ?? "unbefristet", aktiv: a.aktiv, gewinn_7_tage: a.woche.tageMitDaten ? a.woche.summe : null, stueck_7_tage: a.woche.stueck })),
-      hinweis: v.tageMitDaten.length < v.fenster.length ? "Für einzelne Tage fehlen sellerboard-Tageswerte – kommen mit dem täglichen Komplett-Abgleich." : undefined,
+      offene_aufgaben: offen.map((a) => ({ titel: a.titel, sku: a.schluessel?.replace(/^verlust-/, ""), seit: a.faellig ?? undefined, notiz: a.notiz?.slice(0, 600) ?? undefined })),
+      hinweis: !v.tageMitDaten.length
+        ? `Für die letzten Tage liegen noch keine sellerboard-Tageswerte vor${offen.length ? ` – die ${offen.length} offenen Aufgaben stammen aus dem letzten Abgleich mit Tageswerten` : ""}. Kommen mit dem täglichen Komplett-Abgleich.`
+        : v.tageMitDaten.length < VERLUST_REGEL.fenster
+          ? "Für einzelne Tage fehlen sellerboard-Tageswerte – kommen mit dem täglichen Komplett-Abgleich."
+          : undefined,
       link: abs(ctx, "/verlust"),
     });
   },

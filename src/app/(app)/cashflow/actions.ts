@@ -91,6 +91,7 @@ export async function liquiEinstellungenAction(fd: FormData) {
           steuern,
           kreditkarte: { tag: kTag ? Math.min(28, Math.max(1, Math.round(kTag))) : undefined, betrag: kBetrag ? Math.abs(kBetrag) : undefined },
           bestellvorschlaege: fd.get("bestellvorschlaege") === "on",
+          vorschlaegeEinrechnen: fd.get("vorschlaege_einrechnen") === "on",
           zahlungszielStandard: Math.max(0, Math.round(parseAmount(fd.get("zahlungsziel")) ?? 0)),
         },
       },

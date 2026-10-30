@@ -38,6 +38,11 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
         Je Fall entsteht eine <strong>wichtige Aufgabe</strong> mit Break-even, Buy Box (Keepa) und BQool-Regel. Bewusste Verlustverkäufe (Abverkauf, Liquidation) als Ausnahme markieren.
       </p>
 
+      {!v.bqoolExport && (
+        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="verlust-bqool-fehlt">
+          Noch kein BQool-Export hochgeladen – deshalb fehlen Regel und Mindestpreis je Fall. <Link href="/repricer#bqool-upload">Export „Manage Listings“ hochladen</Link>.
+        </div>
+      )}
       {v.tageMitDaten.length < v.fenster.length && (
         <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="verlust-luecke">
           Tageswerte fehlen für {v.fenster.filter((d) => !v.tageMitDaten.includes(d)).map(dm).join(", ")} – sie kommen mit dem täglichen Komplett-Abgleich (<Link href="/anbindungen#sellerboard">Anbindungen → sellerboard</Link>).

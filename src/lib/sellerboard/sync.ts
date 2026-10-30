@@ -378,6 +378,12 @@ async function syncSkuDays(t: string, now: Date) {
         else Object.assign(cur, { units: cur.units + r.units, sales: add(cur.sales, r.sales), netProfit: add(cur.netProfit, r.netProfit) });
       }
       const rows = [...merged.values()].filter((r) => r.units > 0 || (r.netProfit ?? 0) !== 0);
+      // Leere Antwort für einen Tag, der schon Werte hat: eher ein Aussetzer bei sellerboard als „nichts verkauft“ –
+      // vorhandene Tageswerte nicht löschen (sonst verliert der Verlust-Stopp seine Grundlage).
+      if (!rows.length) {
+        const [alt] = await db.select({ n: sql<number>`count(*)::int` }).from(D).where(and(eq(D.tenantId, t), eq(D.channel, channel), eq(D.day, day.fromDay)));
+        if (alt.n > 0) continue;
+      }
       await db.delete(D).where(and(eq(D.tenantId, t), eq(D.channel, channel), eq(D.day, day.fromDay)));
       for (const part of chunks(rows)) await db.insert(D).values(part.map((r) => ({ tenantId: t, channel, day: day.fromDay, ...r, syncedAt: now })));
       n += rows.length;

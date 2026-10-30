@@ -4,14 +4,15 @@
 import { addDaysIso } from "@/lib/dates";
 import { weekStart } from "./cashflow";
 
-export type PostenArt = "amazon" | "ebay" | "temu" | "b2b" | "rechnung" | "einkauf" | "grosshaendler" | "kreditkarte" | "fixkosten" | "steuer" | "plan" | "szenario";
+export type PostenArt = "amazon" | "ebay" | "temu" | "b2b" | "rechnung" | "einkauf" | "vorschlag" | "grosshaendler" | "kreditkarte" | "fixkosten" | "steuer" | "plan" | "szenario";
 export const POSTEN_TEXT: Record<PostenArt, string> = {
   amazon: "Amazon-Auszahlung",
   ebay: "eBay-Auszahlung",
   temu: "Temu-Auszahlung",
   b2b: "B2B-Forderung",
   rechnung: "Lieferantenrechnung",
-  einkauf: "Geplanter Einkauf",
+  einkauf: "Einkauf (angelegt/bestellt)",
+  vorschlag: "Möglicher Einkauf (nicht freigegeben)",
   grosshaendler: "Großhändler (B2B-Deal)",
   kreditkarte: "Kreditkarte",
   fixkosten: "Fixkosten",
@@ -20,9 +21,11 @@ export const POSTEN_TEXT: Record<PostenArt, string> = {
   szenario: "Was wäre wenn",
 };
 
-export type Posten = { datum: string; betrag: number; label: string; art: PostenArt; geschaetzt: boolean };
+/** „nichtEingerechnet“: nur zur Info in der Woche (z. B. Bestellvorschläge vor der Freigabe) – ändert den Kontostand nicht. */
+export type Posten = { datum: string; betrag: number; label: string; art: PostenArt; geschaetzt: boolean; nichtEingerechnet?: boolean };
 export type Ampel = "gruen" | "gelb" | "rot";
-export type LiqWoche = { start: string; ende: string; anfang: number | null; zu: number; ab: number; endeSaldo: number | null; tiefster: number | null; ampel: Ampel | null; posten: Posten[] };
+/** „moeglich“: Summe der nicht eingerechneten möglichen Einkäufe der Woche (Bestellvorschläge vor der Freigabe). */
+export type LiqWoche = { start: string; ende: string; anfang: number | null; zu: number; ab: number; endeSaldo: number | null; tiefster: number | null; ampel: Ampel | null; posten: Posten[]; moeglich: number };
 
 /**
  * Wochen ab der aktuellen (Mo–So). Posten vor heute zählen nicht (schon gebucht oder überfällig → heute).
@@ -45,8 +48,13 @@ export function liquiditaetWochen(o: { heute: string; wochen: number; start: num
     let tiefster = saldo;
     let zu = 0;
     let ab = 0;
+    let moeglich = 0;
     // Abflüsse eines Tages vor den Zuflüssen desselben Tages – vorsichtig gerechnet.
     for (const p of posten) {
+      if (p.nichtEingerechnet) {
+        moeglich += -p.betrag;
+        continue;
+      }
       if (p.betrag >= 0) zu += p.betrag;
       else ab += -p.betrag;
       if (saldo !== null) {
@@ -56,7 +64,7 @@ export function liquiditaetWochen(o: { heute: string; wochen: number; start: num
     }
     const r2 = (n: number | null) => (n === null ? null : Math.round(n * 100) / 100);
     const ampel: Ampel | null = tiefster === null ? null : tiefster < o.reserve ? "rot" : tiefster < o.reserve * 1.5 ? "gelb" : "gruen";
-    out.push({ start: s, ende: e, anfang: r2(anfang), zu: r2(zu)!, ab: r2(ab)!, endeSaldo: r2(saldo), tiefster: r2(tiefster), ampel, posten });
+    out.push({ start: s, ende: e, anfang: r2(anfang), zu: r2(zu)!, ab: r2(ab)!, endeSaldo: r2(saldo), tiefster: r2(tiefster), ampel, posten, moeglich: r2(moeglich)! });
   }
   return out;
 }

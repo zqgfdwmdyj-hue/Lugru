@@ -9,6 +9,7 @@ import { landVonId } from "@/lib/amazon-markt/logic";
 import { deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
 import { TestButton } from "./test-button";
 import { SellerboardCard } from "./sellerboard-card";
+import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
 
 const MARKT_NAME: Record<keyof typeof MARKT_BERICHTE, string> = { buybox: "Buy-Box-Anteil (Sales and Traffic)", listungen: "Listung (Alle Angebote)", lageralter: "Lageralter (Bestandsplanung)" };
 const AMZ_MSG: Record<string, (n: number) => string> = {
@@ -99,6 +100,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                 <div>
                   <h2>{def.name}</h2>
                   <div className="small muted" style={{ marginTop: 2 }}>{def.purpose}</div>
+                  {!st && FEHLT_OHNE[def.provider] && <div className="small" style={{ marginTop: 4 }} data-testid={`fehlt-${def.provider}`}><strong>Ohne diese Anbindung fehlen:</strong> {FEHLT_OHNE[def.provider]}.</div>}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {st ? <span className="tag tag-ok">EINGERICHTET</span> : <span className="tag tag-neutral">NICHT VERBUNDEN</span>}

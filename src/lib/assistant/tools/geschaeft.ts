@@ -17,6 +17,7 @@ import { BQOOL_MAERKTE, HINWEIS_RANG, HINWEIS_TEXT } from "@/lib/bqool/logic";
 import { bqoolStand } from "@/lib/bqool/service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
+import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
 
 // Lese-Werkzeuge für Auswertungen, die es im Seller-System schon gibt: Hebel, Bestellvorschläge, SAS/Black Week,
 // FBA-Sendungen, Remissionen, Stand der Anbindungen, eine Mail vollständig. Nur lesen.
@@ -263,6 +264,15 @@ export const remissionen = defineTool({
   },
 });
 
+/** Abrufe, die nur beim Einrichten laufen – ihr Datum sagt nichts über den Datenstand. */
+const EINMALIGE_ABRUFE = new Set(["sellerboard: Konto"]);
+
+/** Hinweise zu bekannten Fehlermeldungen einzelner Abrufe. */
+const ABRUF_HINWEIS: Record<string, string> = {
+  "eBay: neue Schnittstelle":
+    "Kein Ausfall: eBay läuft über die bisherige Trading-Schnittstelle weiter. Zum Freischalten der neuen Schnittstelle: auf developer.ebay.com unter Application Keys → OAuth Scopes „sell.listing“ freigeben lassen, dann unter eBay → eBay-Einstellungen → Verbindung mit Häkchen „Neue eBay-Listing-Schnittstelle“ neu verbinden.",
+};
+
 export const anbindungenStatus = defineTool({
   name: "anbindungen_status",
   title: "Stand der Anbindungen",
@@ -290,16 +300,30 @@ export const anbindungenStatus = defineTool({
     const abrufe = jobs
       .map((j) => {
         const fehlerAktuell = Boolean(j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt));
-        const alt = !j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000;
-        return { abruf: j.name, letzter_erfolg: berlinDateTime(j.lastOkAt) ?? "nie", fehler: fehlerAktuell ? (j.lastError ?? "Fehler").slice(0, 300) : undefined, fehler_seit: fehlerAktuell ? (berlinDateTime(j.lastErrorAt) ?? undefined) : undefined, ueber_2_tage_alt: alt || undefined };
+        // Einmalige Schritte (z. B. sellerboard-Konto erkennen) laufen nur beim Einrichten – nie „veraltet“.
+        const einmalig = EINMALIGE_ABRUFE.has(j.name);
+        const alt = !einmalig && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
+        return {
+          abruf: j.name,
+          letzter_erfolg: berlinDateTime(j.lastOkAt) ?? "nie",
+          einmalig: einmalig ? "nur beim Einrichten nötig – kein Hinweis auf alte Daten" : undefined,
+          fehler: fehlerAktuell ? (j.lastError ?? "Fehler").slice(0, 300) : undefined,
+          fehler_seit: fehlerAktuell ? (berlinDateTime(j.lastErrorAt) ?? undefined) : undefined,
+          hinweis: fehlerAktuell ? ABRUF_HINWEIS[j.name] : undefined,
+          ueber_2_tage_alt: alt || undefined,
+        };
       })
       .filter((j) => !i.nur_probleme || j.fehler || j.ueber_2_tage_alt)
       .sort((a, b) => Number(Boolean(b.fehler)) - Number(Boolean(a.fehler)) || a.abruf.localeCompare(b.abruf));
+    // sellerboard insgesamt: neuester Erfolg über alle laufenden Schritte (ohne die einmaligen).
+    const sb = jobs.filter((j) => j.name.startsWith("sellerboard:") && !EINMALIGE_ABRUFE.has(j.name) && j.lastOkAt).map((j) => j.lastOkAt!.getTime());
     return json({
       anbindungen: INTEGRATIONS.map((d) => {
         const s = st.get(d.provider);
-        return { anbindung: d.name, eingerichtet: Boolean(s && (s.secretKeys.length || Object.keys(s.config).length)), geaendert: s ? berlinDateTime(s.updatedAt) : undefined };
+        const eingerichtet = Boolean(s && (s.secretKeys.length || Object.keys(s.config).length));
+        return { anbindung: d.name, eingerichtet, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined };
       }).filter((a) => !i.nur_probleme || !a.eingerichtet),
+      sellerboard_daten_stand: sb.length ? berlinDateTime(new Date(Math.max(...sb))) : "noch kein Abgleich",
       abrufe,
       importe_90_tage: imports.map((r) => ({ bericht: r.typ, weg: r.via === "api" ? "Schnittstelle" : "Datei-Upload", zuletzt: berlinDateTime(new Date(r.am)), anzahl: r.n })).sort((a, b) => a.bericht.localeCompare(b.bericht)),
       probleme: abrufe.filter((j) => j.fehler).length,
@@ -362,7 +386,7 @@ export const repricer = defineTool({
     const zaehle = Object.fromEntries(HINWEIS_RANG.map((h) => [h, zeilen.filter((z) => z.hinweise.includes(h)).length]).filter(([, n]) => n));
     const aeltester = stand.reduce<Date | null>((m, x) => (x.am && (!m || x.am < m) ? x.am : m), null);
     return json({
-      eingelesen: stand.length ? stand.map((x) => ({ marktplatz: x.marktplatz, am: berlinDateTime(x.am) })) : "noch kein BQool-Export hochgeladen – unter Repricer einlesen",
+      eingelesen: stand.length ? stand.map((x) => ({ marktplatz: x.marktplatz, am: berlinDateTime(x.am) })) : "noch kein BQool-Export hochgeladen – in BQool unter Repricing → Manage Listings je Land exportieren und im Seller-System unter Amazon → Repricer (BQool) hochladen",
       anzahl_skus: zeilen.length,
       auffaelligkeiten: zaehle,
       anzahl: list.length,
