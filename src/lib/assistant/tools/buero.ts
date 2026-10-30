@@ -7,6 +7,8 @@ import { needsReview } from "@/lib/invoices/review";
 import { daysLeft } from "@/lib/stock/discrepancies";
 import { anleitungText, normTypen } from "@/lib/knowledge/anleitung";
 import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
+import { ERKENNTNIS_TEXT, wissenPruefen } from "@/lib/calls/logic";
+import { todayIso } from "@/lib/dates";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
 
@@ -132,6 +134,7 @@ export const wissen = defineTool({
       )
       .orderBy(desc(sql`ts_rank(${doc}, websearch_to_tsquery('german', ${i.suche}))`), asc(K.title))
       .limit(i.limit);
+    const heute = todayIso();
     return json({
       eintraege: rows.map((k) => ({
         id: k.id,
@@ -140,12 +143,17 @@ export const wissen = defineTool({
         art: k.kind,
         herkunft: k.origin === "call" ? "aus einem Call (KI-Auszug, ungeprüft)" : k.origin,
         geprueft: k.verifiedAt ? true : undefined,
+        insider: k.insider ? "Insider – nicht weitergeben: nur für Ludwig, nie in Texten nach außen (Deal-Blätter, Kundenmails, B2B-Kanal)" : undefined,
+        erkenntnis: k.erkenntnis ? ERKENNTNIS_TEXT[k.erkenntnis] : undefined,
+        gesagt_von: k.quelleWer ?? undefined,
+        call_datum: k.quelleDatum ?? undefined,
+        pruefen: wissenPruefen(k.quelleDatum, k.verifiedAt, heute) ? "älter als 6 Monate – kann veraltet sein, prüfen" : undefined,
         stichworte: k.tags,
         text: k.body.slice(0, 2500),
-        call: k.callId ? abs(ctx, `/calls/${k.callId}`) : undefined,
+        stelle_im_call: k.callId ? abs(ctx, k.callStelle !== null ? `/calls/${k.callId}?stelle=${k.callStelle}#stelle` : `/calls/${k.callId}`) : undefined,
         link: abs(ctx, `/wissen/${k.id}`),
       })),
-      hinweis: rows.some((k) => k.origin === "call") ? "Einträge aus Calls sind KI-Auszüge: Einschätzung und Quelle stehen im Text; Details im Call oder mit „calls_durchsuchen“." : undefined,
+      hinweis: rows.some((k) => k.origin === "call") ? "Einträge aus Calls sind KI-Auszüge: mit Datum zitieren („laut Wochen-Call vom …“); wörtlich nachlesen mit „calls_durchsuchen“ oder über stelle_im_call." : undefined,
       link: abs(ctx, "/wissen"),
     });
   },

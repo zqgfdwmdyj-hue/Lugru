@@ -113,7 +113,7 @@ export const suche = defineTool({
     if (canAccess(s, "wissen")) {
       const K = schema.knowledgeEntries;
       const rows = await db.select().from(K).where(and(eq(K.tenantId, t), wissenSichtbar(s), or(ilike(K.title, like), ilike(K.body, like)))).limit(5);
-      out.wissen = rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, auszug: k.body.slice(0, 300) }));
+      out.wissen = rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, insider: k.insider ? "Insider – nicht weitergeben" : undefined, call_datum: k.quelleDatum ?? undefined, gesagt_von: k.quelleWer ?? undefined, auszug: k.body.slice(0, 300), link: abs(ctx, `/wissen/${k.id}`) }));
     }
     return json(out);
   },

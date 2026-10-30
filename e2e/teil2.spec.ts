@@ -136,7 +136,9 @@ test.describe("Teil 2 – Team", () => {
     await Promise.all([page.waitForURL(/\/calls\/[0-9a-f-]{36}/), page.getByTestId("calls-import").click()]);
     await expect(page.getByTestId("call-punkt")).toHaveCount(4);
     await expect(page.getByTestId("call-zusammenfassung")).toContainText("Consultant (Test), Ludwig (Test)");
-    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("call-uebernehmen").click()]);
+    // Die Adresse trägt schon die Import-Meldung – deshalb auf die neue Meldung warten, nicht auf „meldung=“.
+    await page.getByTestId("call-uebernehmen").click();
+    await expect(page.locator("[role=status]")).toContainText("übernommen");
     const [t] = await sql<{ title: string; link: string; category: string; due_date: string }>("select title, link, category, due_date::text from tasks where title like 'Liste der zehn Audit-Marken%'");
     expect(t).toMatchObject({ category: "amazon", due_date: "2026-10-23" });
     expect(t.link).toMatch(/^\/calls\/[0-9a-f-]{36}#p-[0-9a-f-]{36}$/);
@@ -221,8 +223,21 @@ test.describe("Teil 2 – Team", () => {
     }).toPass({ timeout: 60_000 });
     await page.getByTestId("call-wissen").getByRole("link", { name: /Black-Week-Deals nur mit Gewinn/ }).click();
     await expect(page.getByTestId("entry-origin")).toContainText("Aus einem Call (ungeprüft)");
-    await expect(page.locator(".article-body")).toContainText("Einschätzung: bestätigt");
-    await expect(page.getByTestId("entry-call").getByRole("link")).toContainText("Wochen-Call Testgruppe 05.09.2026");
+    await expect(page.getByTestId("entry-insider")).toContainText("Insider – nicht weitergeben");
+    await expect(page.locator(".article-body")).toContainText("Regel · gesagt von: Ludwig · Einschätzung: bestätigt");
+    await expect(page.getByTestId("entry-call")).toContainText("Call vom 05.09.2026");
+    await expect(page.getByTestId("entry-call").getByRole("link").first()).toContainText("Wochen-Call Testgruppe 05.09.2026");
+    // Insider-Markierung lässt sich aufheben und wieder setzen
+    await page.getByTestId("entry-insider-umschalten").click();
+    await expect(page.getByTestId("entry-insider")).toHaveCount(0);
+    await page.getByTestId("entry-insider-umschalten").click();
+    await expect(page.getByTestId("entry-insider")).toBeVisible();
+    // Stelle im Transkript (Call aus dem Google Doc – dort steht das Zitat wörtlich)
+    const [eintrag] = await sql<{ id: string }>("select id from knowledge_entries where title = 'Testwissen (Wochen-Call Testgruppe 26.09.2026): Black-Week-Deals nur mit Gewinn'");
+    await page.goto(`/wissen/${eintrag.id}`);
+    await expect(page.getByTestId("entry-call")).toContainText("gesagt von: Ludwig");
+    await page.getByTestId("entry-stelle").click();
+    await expect(page.getByTestId("call-stelle")).toContainText("Black-Week-Deals nur mit Gewinn");
     await page.goto("/wissen?bereich=call");
     await expect(page.getByTestId("wissen-call-hinweis")).toBeVisible();
     await expect(page.getByText("Testwissen (Wochen-Call Testgruppe 12.09.2026): Markenliste vor dem Audit bereithalten")).toBeVisible();

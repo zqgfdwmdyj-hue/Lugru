@@ -6,7 +6,7 @@ import { addDaysIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { driveToken } from "@/lib/integrations/clients/drive";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/knowledge/categories";
-import { bereinigeTranskript, callTitelUndDatum, callWissenText, datumAusText, googleDocId, googleDocLinks, inhaltKennung, istEigeneAufgabe, kiAuftrag, kiWissenAuftrag, trefferImText, leseArchivExport, leseKiPunkte, leseKiWissen, leseKiZusammenfassung, linksMitKontext, zitatPosition, type CallArt, type PunktArt } from "./logic";
+import { bereinigeTranskript, callTitelUndDatum, callWissenText, datumAusText, ERKENNTNIS_TEXT, googleDocId, googleDocLinks, inhaltKennung, istEigeneAufgabe, kiAuftrag, kiWissenAuftrag, trefferImText, leseArchivExport, leseKiPunkte, leseKiWissen, leseKiZusammenfassung, linksMitKontext, zitatPosition, type CallArt, type PunktArt } from "./logic";
 import { textAusCallDateien } from "./dateien";
 
 // Call-Archiv: Import (Text, Google-Doc-Link, Dateien/ZIP, wöchentlich aus einem Discord-Kanal), KI-Auswertung,
@@ -213,7 +213,7 @@ export async function wissenAusCall(tenantId: string, callId: string): Promise<{
       .orderBy(desc(K.updatedAt))
       .limit(200);
     const antwort = await askClaude(k.apiKey, kiWissenAuftrag(c, KNOWLEDGE_CATEGORIES, bekannt.map((b) => b.title)), { model: k.model, task: "simple", maxTokens: 6000, timeoutMs: 180_000 });
-    const wissen = leseKiWissen(antwort.text, KNOWLEDGE_CATEGORIES);
+    const wissen = leseKiWissen(antwort.text, KNOWLEDGE_CATEGORIES, c.art);
     const behalten = await db
       .select({ title: K.title })
       .from(K)
@@ -230,10 +230,15 @@ export async function wissenAusCall(tenantId: string, callId: string): Promise<{
           category: w.kategorie,
           title: w.titel,
           body: callWissenText(w, c),
-          tags: [...new Set([...w.stichworte, marke, ...(w.einschaetzung === "unsicher" ? ["unsicher"] : [])])].slice(0, 10),
+          tags: [...new Set([...w.stichworte, marke, ERKENNTNIS_TEXT[w.art], ...(w.einschaetzung === "unsicher" ? ["unsicher"] : [])])].slice(0, 10),
           origin: "call" as const,
+          insider: true,
           callId,
           callZitat: w.zitat,
+          callStelle: w.zitat ? zitatPosition(c.transkript, w.zitat) : null,
+          quelleDatum: c.datum,
+          quelleWer: w.wer,
+          erkenntnis: w.art,
         })),
       );
     await db.update(C).set({ wissenAm: new Date(), wissenFehler: null }).where(eq(C.id, callId));
@@ -278,7 +283,7 @@ export async function callsDurchsuchen(tenantId: string, suche: string, o: { art
 /** Wissenseinträge eines Calls (für die Call-Seite). */
 export async function wissenZumCall(tenantId: string, callId: string) {
   return db
-    .select({ id: K.id, title: K.title, category: K.category, verifiedAt: K.verifiedAt, tags: K.tags })
+    .select({ id: K.id, title: K.title, category: K.category, verifiedAt: K.verifiedAt, tags: K.tags, erkenntnis: K.erkenntnis, quelleWer: K.quelleWer, callStelle: K.callStelle })
     .from(K)
     .where(and(eq(K.tenantId, tenantId), eq(K.callId, callId), eq(K.origin, "call")))
     .orderBy(K.title);
@@ -301,6 +306,8 @@ export async function wissenNeuAnstossen(tenantId: string, callId: string) {
 /** Titel, Datum und Art von Hand korrigieren (z. B. wenn im Dateinamen kein Datum stand). */
 export async function callBearbeiten(tenantId: string, id: string, e: { titel: string; datum: string; art: CallArt }) {
   await db.update(C).set({ titel: e.titel.slice(0, 200), datum: e.datum, art: e.art }).where(and(eq(C.tenantId, tenantId), eq(C.id, id)));
+  // Das Call-Datum steht auch an den Erkenntnissen (Haltbarkeit) – mitziehen.
+  await db.update(K).set({ quelleDatum: e.datum }).where(and(eq(K.tenantId, tenantId), eq(K.callId, id)));
 }
 
 /** KI zieht Vereinbarungen, Aufgaben, Entscheidungen und offene Fragen. Ersetzt nur unbearbeitete Vorschläge. */

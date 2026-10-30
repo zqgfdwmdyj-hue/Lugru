@@ -1,5 +1,10 @@
+ALTER TABLE "knowledge_entries" ADD COLUMN "insider" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "knowledge_entries" ADD COLUMN "call_id" uuid;--> statement-breakpoint
 ALTER TABLE "knowledge_entries" ADD COLUMN "call_zitat" text;--> statement-breakpoint
+ALTER TABLE "knowledge_entries" ADD COLUMN "call_stelle" integer;--> statement-breakpoint
+ALTER TABLE "knowledge_entries" ADD COLUMN "quelle_datum" date;--> statement-breakpoint
+ALTER TABLE "knowledge_entries" ADD COLUMN "quelle_wer" text;--> statement-breakpoint
+ALTER TABLE "knowledge_entries" ADD COLUMN "erkenntnis" text;--> statement-breakpoint
 ALTER TABLE "calls" ADD COLUMN "wissen_am" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "calls" ADD COLUMN "wissen_fehler" text;--> statement-breakpoint
 CREATE INDEX "knowledge_call_idx" ON "knowledge_entries" USING btree ("tenant_id","call_id");

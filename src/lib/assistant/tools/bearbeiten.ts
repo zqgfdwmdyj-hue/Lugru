@@ -28,7 +28,7 @@ export const posteingangEntwurf = defineTool({
   name: "posteingang_entwurf",
   title: "Antwort-Entwurf",
   description:
-    "Legt zu einer Mail einen Antwort-Entwurf an (Text, optional Betreff und Empfänger; sonst „Re: …“ an den Absender). Der Entwurf erscheint an der Mail im Seller-System – gesendet wird erst, wenn du ihn dort prüfst und auf „Senden“ tippst, nie automatisch. Vorher mit „mail“ den ganzen Text lesen.",
+    "Legt zu einer Mail einen Antwort-Entwurf an (Text, optional Betreff und Empfänger; sonst „Re: …“ an den Absender). Der Entwurf erscheint an der Mail im Seller-System – gesendet wird erst, wenn du ihn dort prüfst und auf „Senden“ tippst, nie automatisch. Vorher mit „mail“ den ganzen Text lesen. Keine Inhalte aus dem Wissen mit „insider“ (z. B. aus den Wochen-Calls) verwenden – die bleiben intern.",
   area: "posteingang",
   write: true,
   input: z.object({

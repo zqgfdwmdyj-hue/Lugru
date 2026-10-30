@@ -88,3 +88,14 @@ export async function verifyEntry(formData: FormData) {
     .where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
   revalidatePath("/wissen", "layout");
 }
+
+/** „Insider – nicht weitergeben“ setzen oder aufheben. */
+export async function insiderUmschalten(formData: FormData) {
+  const session = await requireArea("wissen");
+  const id = z.string().uuid().parse(formData.get("id"));
+  const K = schema.knowledgeEntries;
+  const [e] = await db.select({ insider: K.insider }).from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId), wissenSichtbar(session)));
+  if (!e) return;
+  await db.update(K).set({ insider: !e.insider }).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  revalidatePath("/wissen", "layout");
+}

@@ -503,10 +503,19 @@ export const knowledgeEntries = pgTable(
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz, von der KI aus einem Call gezogen. */
     origin: text("origin", { enum: ["recherche", "anleitung", "notiz", "call"] }).notNull().default("notiz"),
-    /** Nur bei Herkunft „call“: aus welchem Call (Fundstelle im Transkript über „callZitat“). Kein Fremdschlüssel –
+    /** Insider – nicht weitergeben: nur intern verwenden, nie in Texten nach außen (Deal-Blätter, Kundenmails, B2B-Kanal). */
+    insider: boolean("insider").notNull().default(false),
+    /** Nur bei Herkunft „call“: aus welchem Call, Zitat und Stelle (Zeichen) im Transkript. Kein Fremdschlüssel –
      *  die Calls-Tabelle hängt selbst an „core“; gelöschte Calls lassen den Eintrag stehen. */
     callId: uuid("call_id"),
     callZitat: text("call_zitat"),
+    callStelle: integer("call_stelle"),
+    /** Datum des Calls – Tricks und Bezugsquellen veralten: älter als 6 Monate → „prüfen“. */
+    quelleDatum: date("quelle_datum", { mode: "string" }),
+    /** Wer hat es gesagt: „Consultant“, „Gruppe – Name“, „Ludwig“. */
+    quelleWer: text("quelle_wer"),
+    /** Art der Erkenntnis aus dem Call. */
+    erkenntnis: text("erkenntnis", { enum: ["tipp", "quelle", "regel", "warnung", "erfahrung"] }),
     /** Nur bei kind = „anleitung“: Zweck, wann, wer, Schritte, Zugänge, häufige Fehler, Aufgabentypen. */
     anleitung: jsonb("anleitung").$type<AnleitungFelder>(),
     /** Von jemandem als geprüft/verlässlich bestätigt („zuletzt geprüft am“ bei Anleitungen). */

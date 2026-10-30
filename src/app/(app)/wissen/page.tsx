@@ -6,6 +6,8 @@ import { formatDate } from "@/lib/numbers";
 import { KNOWLEDGE_CATEGORIES, SNIPPET_CATEGORIES } from "@/lib/knowledge/categories";
 import { isFailedResearchBody } from "@/lib/research/summary";
 import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
+import { wissenPruefen } from "@/lib/calls/logic";
+import { todayIso } from "@/lib/dates";
 
 const ORIGIN = {
   anleitung: { label: "Anleitung", cls: "tag-ok" },
@@ -33,6 +35,7 @@ export default async function WissenPage({
   const bereich: Area = rawArea && (AREAS as string[]).includes(rawArea) ? (rawArea as Area) : herkunft ? herkunft : kat === "Recherche" ? "recherche" : query || kat ? "alle" : "wissen";
 
   const sichtbar = wissenSichtbar(session);
+  const heute = todayIso();
   const AREAS_SICHTBAR = sichtbar ? AREAS.filter((a) => a !== "call") : AREAS;
   const where = [eq(K.tenantId, session.tenantId), sichtbar];
   if (bereich === "wissen") where.push(sql`${K.origin} not in ('recherche', 'call')`);
@@ -49,7 +52,7 @@ export default async function WissenPage({
 
   const [entries, counts, origins] = await Promise.all([
     db
-      .select({ id: K.id, title: K.title, category: K.category, kind: K.kind, body: K.body, tags: K.tags, updatedAt: K.updatedAt, origin: K.origin, verifiedAt: K.verifiedAt })
+      .select({ id: K.id, title: K.title, category: K.category, kind: K.kind, body: K.body, tags: K.tags, updatedAt: K.updatedAt, origin: K.origin, verifiedAt: K.verifiedAt, insider: K.insider, quelleDatum: K.quelleDatum, quelleWer: K.quelleWer })
       .from(K)
       .where(and(...where))
       .orderBy(
@@ -125,7 +128,7 @@ export default async function WissenPage({
           </div>
           {bereich === "call" && (
             <div className="small muted" style={{ padding: "0 20px 8px" }} data-testid="wissen-call-hinweis">
-              Von der KI aus den Calls gezogen (Deal-Gruppe, Consultant) – mit Quelle und Zitat, ungeprüft. Sichtbar nur für dich und wer die Calls sehen darf. Stimmt etwas nicht: bearbeiten, löschen oder als geprüft markieren.
+              Von der KI aus den Calls gezogen (Deal-Gruppe, Consultant) – mit Call-Datum, wer es gesagt hat, Quelle und Stelle im Transkript; ungeprüft und als <strong>Insider – nicht weitergeben</strong> markiert (Claude verwendet sie nie in Texten nach außen). Älter als 6 Monate → „prüfen“. Sichtbar nur für dich und wer die Calls sehen darf.
             </div>
           )}
           {bereich === "recherche" && (
@@ -140,6 +143,8 @@ export default async function WissenPage({
               <div className="between">
                 <span style={{ fontWeight: 600, fontSize: 15 }}>{e.title}</span>
                 <span style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {e.insider && <span className="tag tag-danger" data-testid="insider-tag">Insider</span>}
+                  {wissenPruefen(e.quelleDatum, e.verifiedAt, heute) && <span className="tag tag-warn">prüfen (älter als 6 Monate)</span>}
                   {e.failed ? <span className="tag tag-danger" data-testid="failed-tag">Recherche fehlgeschlagen</span> : <span className={`tag ${ORIGIN[e.origin].cls}`} data-testid="origin-tag">{ORIGIN[e.origin].label}{e.verifiedAt ? " ✓ geprüft" : ""}</span>}
                   <span className={`tag ${e.kind === "snippet" ? "tag-info" : "tag-neutral"}`}>{e.kind === "snippet" ? "TEXTBAUSTEIN" : e.category.toUpperCase()}</span>
                 </span>
@@ -148,7 +153,7 @@ export default async function WissenPage({
                 {e.body.replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").slice(0, 180) || "–"}
               </div>
               <div className="small muted" style={{ marginTop: 4 }}>
-                {e.category} · aktualisiert {formatDate(e.updatedAt.toISOString())}
+                {e.category} · {e.quelleDatum ? `Call vom ${e.quelleDatum.split("-").reverse().join(".")}${e.quelleWer ? ` (${e.quelleWer})` : ""}` : `aktualisiert ${formatDate(e.updatedAt.toISOString())}`}
                 {e.tags.length > 0 && ` · ${e.tags.join(", ")}`}
               </div>
             </Link>

@@ -1,5 +1,5 @@
 {
-  "id": "a7a269e6-5ffc-4a76-b7e9-18a50c944bda",
+  "id": "2e938e19-b334-4b9d-b91b-cd17daef6633",
   "prevId": "de66b796-8d73-43bb-8220-025651e4c4be",
   "version": "7",
   "dialect": "postgresql",
@@ -624,6 +624,13 @@
           "notNull": true,
           "default": "'notiz'"
         },
+        "insider": {
+          "name": "insider",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "call_id": {
           "name": "call_id",
           "type": "uuid",
@@ -632,6 +639,30 @@
         },
         "call_zitat": {
           "name": "call_zitat",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "call_stelle": {
+          "name": "call_stelle",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quelle_datum": {
+          "name": "quelle_datum",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quelle_wer": {
+          "name": "quelle_wer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "erkenntnis": {
+          "name": "erkenntnis",
           "type": "text",
           "primaryKey": false,
           "notNull": false

@@ -36,6 +36,7 @@ function systemPrompt(ctx: ToolCtx) {
       ? "Ändernde Werkzeuge nur nutzen, wenn die Person das ausdrücklich möchte. Die Person bestätigt jede Änderung selbst im Fragefeld; wurde sie abgelehnt, nicht erneut versuchen, sondern nachfragen."
       : "Diese Person darf über das Fragefeld nichts ändern – nur lesen. Bei Änderungswünschen sagen, wo das im Seller-System geht.",
     "Begriffe: „Prep Center“ = Versanddienstleister, der FBM-Aufträge für uns verschickt. Fragen dazu immer zuerst mit „prep_center“ beantworten (Monat, Sendungen, Stück, Kosten je Monat, wie „verschickt von“ festgelegt wird) – nicht aus Auftragslisten oder Fristen ableiten; einzelne Aufträge über „auftraege“ mit verschickt_von. „Palettenlager“ = Lager für Paletten von Kunden mit Anlieferungen/Speditions-Sendungen (Werkzeuge „paletten“, „sendungen“) – nicht verwechseln. „Sendungen“ ohne Zusatz: nachfragen oder beides prüfen.",
+    "Wissen aus den Calls (Wochen-Calls der Deal-Gruppe, Consultant): „wissen“ (herkunft „call“) und „calls_durchsuchen“ – mit Datum und Sprecher nennen; „insider“-Einträge bleiben intern und kommen nie in Texte nach außen (Kundenmails, Deal-Blätter, B2B-Kanal).",
     "Zum Privatbereich hast du hier keinen Zugriff.",
     "Das heutige Datum steht in der <kontext>-Notiz der jeweils neuesten Nachricht (Europe/Berlin).",
   ].join("\n");

@@ -243,7 +243,7 @@ export const b2bKunden = defineTool({
 export const dealAnlegenTool = defineTool({
   name: "deal_anlegen",
   title: "B2B: Deal anlegen",
-  description: "Legt einen B2B-Deal als Entwurf an (ASIN, EK netto, Lieferant, MOQ, optional Kundenpreis, Frist und Mengengrenzen) und rechnet die Prognose je Land. Freigeschaltet wird separat (deal_freischalten) – erst dann sehen Kunden den Deal. Lieferant per Kürzel oder Name; Angebot aus „preisliste_auswerten“ übernimmt EAN/Titel.",
+  description: "Legt einen B2B-Deal als Entwurf an (ASIN, EK netto, Lieferant, MOQ, optional Kundenpreis, Frist und Mengengrenzen) und rechnet die Prognose je Land. Freigeschaltet wird separat (deal_freischalten) – erst dann sehen Kunden den Deal. Lieferant per Kürzel oder Name; Angebot aus „preisliste_auswerten“ übernimmt EAN/Titel. Keine Inhalte aus dem Wissen mit „insider“ (z. B. aus den Wochen-Calls) verwenden – die bleiben intern.",
   area: "b2b",
   write: true,
   input: z.object({
@@ -295,7 +295,7 @@ export const dealPreisSetzen = defineTool({
 export const dealFreischalten = defineTool({
   name: "deal_freischalten",
   title: "B2B: Deal freischalten",
-  description: "Schaltet einen B2B-Deal im Kundenportal frei (Kunden können reservieren) und meldet ihn im Discord-Kanal. Nur mit Kundenpreis, Frist und Vertriebsfreigabe des Lieferanten. Abo-Mails an Kunden nur, wenn ausdrücklich mails=true.",
+  description: "Schaltet einen B2B-Deal im Kundenportal frei (Kunden können reservieren) und meldet ihn im Discord-Kanal. Nur mit Kundenpreis, Frist und Vertriebsfreigabe des Lieferanten. Abo-Mails an Kunden nur, wenn ausdrücklich mails=true. Keine Inhalte aus dem Wissen mit „insider“ (z. B. aus den Wochen-Calls) verwenden – die bleiben intern.",
   area: "b2b",
   write: true,
   input: z.object({ deal: z.string().trim().min(1).max(40).describe("Deal-Nummer oder id"), mails: z.boolean().default(false).describe("Kunden mit passendem Abo per Mail benachrichtigen") }),

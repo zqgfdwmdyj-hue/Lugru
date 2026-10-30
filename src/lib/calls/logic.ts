@@ -298,7 +298,21 @@ export const istEigeneAufgabe = (p: { art: PunktArt; verantwortlich: string | nu
 // ---- Wissen aus Calls ------------------------------------------------------------------------------------------
 
 /** Ein Wissenseintrag, den die KI aus einem Call zieht (landet ungeprüft im Wissen, mit Quelle). */
-export type CallWissen = { titel: string; inhalt: string; kategorie: string; stichworte: string[]; zitat: string | null; einschaetzung: "bestaetigt" | "einzelmeinung" | "unsicher" };
+export type CallWissen = {
+  titel: string;
+  inhalt: string;
+  kategorie: string;
+  stichworte: string[];
+  zitat: string | null;
+  einschaetzung: "bestaetigt" | "einzelmeinung" | "unsicher";
+  /** Tipp, Bezugsquelle/Lieferant, Regel, Warnung oder Erfahrungswert. */
+  art: Erkenntnis;
+  /** Wer hat es gesagt: „Consultant“, „Gruppe – Name“, „Ludwig“ (oder null, wenn unklar). */
+  wer: string | null;
+};
+export type Erkenntnis = "tipp" | "quelle" | "regel" | "warnung" | "erfahrung";
+export const ERKENNTNIS_TEXT: Record<Erkenntnis, string> = { tipp: "Tipp", quelle: "Quelle/Lieferant", regel: "Regel", warnung: "Warnung", erfahrung: "Erfahrungswert" };
+const ERKENNTNISSE = Object.keys(ERKENNTNIS_TEXT) as Erkenntnis[];
 
 /**
  * KI-Auftrag: Wissen, das über den Call hinaus nützlich ist – vor allem Insider-Wissen. Bekannte Titel werden
@@ -309,7 +323,8 @@ export function kiWissenAuftrag(c: { titel: string; datum: string; art: CallArt;
     `Du liest das Transkript eines ${c.art === "gruppe" ? "Wochen-Calls einer Deal-Gruppe (mehrere Amazon-Händler)" : "Calls mit dem Amazon-Consultant"}. Ludwig (LuGru GmbH, Online-Handel: Amazon, eBay, Temu) möchte das Wissen daraus für später festhalten.`,
     "Ziehe das Wissen heraus, das über diesen Call hinaus nützlich ist – vor allem Insider-Wissen, das man so nicht im Internet findet: konkrete Tricks und Abläufe, Erfahrungswerte und Zahlen, Bezugsquellen, Lieferanten, Dienstleister und Tools, Interna zu Amazon/Temu/eBay (z. B. Account-Sperren, Freischaltungen, Support-Wege, Gebühren), Warnungen und Fehler, die andere gemacht haben.",
     "Nicht aufnehmen: Smalltalk, Allgemeinplätze, reine Termin- und Aufgabenabsprachen, Persönliches über Teilnehmer.",
-    `Antworte NUR mit JSON: {"wissen":[{"titel":"kurze Aussage (max. 120 Zeichen)","inhalt":"2–8 Sätze, konkret, mit Zahlen/Namen wie im Call; wer es gesagt hat, falls genannt","kategorie":"eine aus: ${kategorien.join(" | ")}","stichworte":["max. 6"],"zitat":"wörtlicher kurzer Ausschnitt (max. 160 Zeichen) aus dem Transkript","einschaetzung":"bestaetigt|einzelmeinung|unsicher"}]}`,
+    `Antworte NUR mit JSON: {"wissen":[{"titel":"kurze Aussage (max. 120 Zeichen)","inhalt":"2–8 Sätze, konkret, mit Zahlen/Namen wie im Call","art":"tipp|quelle|regel|warnung|erfahrung","wer":"${c.art === "gruppe" ? "Name des Teilnehmers (oder „gruppe“, wenn unklar) | ludwig" : "consultant | ludwig | Name"}","kategorie":"eine aus: ${kategorien.join(" | ")}","stichworte":["max. 6"],"zitat":"wörtlicher kurzer Ausschnitt (max. 160 Zeichen) aus dem Transkript – genau so, wie er dort steht","einschaetzung":"bestaetigt|einzelmeinung|unsicher"}]}`,
+    "art: tipp = Trick/Vorgehen, quelle = Bezugsquelle, Lieferant, Dienstleister oder Tool, regel = Vorgabe/Richtlinie (z. B. von Amazon), warnung = Risiko oder Fehler, erfahrung = Erfahrungswert/Zahl.",
     "Regeln: nichts erfinden, nur was im Call gesagt wurde; „bestaetigt“ nur, wenn mehrere es bestätigen oder es eigene Erfahrung ist; Gerüchte als „unsicher“; höchstens 25 Einträge; lieber wenige gute als viele dünne.",
     bekannt.length ? `Schon im Wissen (nicht noch einmal anlegen; nur wenn der Call Neues dazu bringt, als eigener Eintrag mit Titel „Ergänzung: …“):\n${bekannt.map((t) => `- ${t}`).join("\n")}` : "",
     `Call: ${c.titel} am ${c.datum}`,
@@ -320,8 +335,18 @@ export function kiWissenAuftrag(c: { titel: string; datum: string; art: CallArt;
     .join("\n");
 }
 
+/** Wer hat es gesagt – einheitlich: Consultant, Ludwig, „Gruppe – Name“ (bei Gruppen-Calls) oder der Name. */
+export function werNormal(wer: unknown, art: CallArt): string | null {
+  const w = str(wer, 60);
+  if (!w || /^(null|unbekannt|unklar)$/i.test(w)) return art === "gruppe" ? "Gruppe" : null;
+  if (/consultant|berater/i.test(w)) return "Consultant";
+  if (/^(ich|ludwig|lugru)\b/i.test(w)) return "Ludwig";
+  if (/^(gruppe|teilnehmer|alle)$/i.test(w)) return "Gruppe";
+  return art === "gruppe" ? `Gruppe – ${w}` : w;
+}
+
 /** KI-Antwort prüfen: nur vollständige Einträge, bekannte Kategorie (sonst „Aus Calls“), höchstens 25. */
-export function leseKiWissen(antwort: string, kategorien: readonly string[]): CallWissen[] {
+export function leseKiWissen(antwort: string, kategorien: readonly string[], callArt: CallArt = "gruppe"): CallWissen[] {
   const json = /\{[\s\S]*\}/.exec(antwort)?.[0];
   if (!json) return [];
   let o: unknown;
@@ -349,6 +374,8 @@ export function leseKiWissen(antwort: string, kategorien: readonly string[]): Ca
       stichworte: [...new Set(liste(e.stichworte).map((s) => str(s, 40)).filter(Boolean))].slice(0, 6),
       zitat: str(e.zitat, 200) || null,
       einschaetzung,
+      art: ERKENNTNISSE.includes(e.art as Erkenntnis) ? (e.art as Erkenntnis) : "tipp",
+      wer: werNormal(e.wer, callArt),
     });
     if (out.length >= 25) break;
   }
@@ -357,10 +384,22 @@ export function leseKiWissen(antwort: string, kategorien: readonly string[]): Ca
 
 export const EINSCHAETZUNG_TEXT: Record<CallWissen["einschaetzung"], string> = { bestaetigt: "bestätigt (mehrere/eigene Erfahrung)", einzelmeinung: "Einzelmeinung", unsicher: "unsicher/Gerücht" };
 
-/** Text des Wissenseintrags: Inhalt, Einschätzung und Quelle (Call, Datum, Zitat). */
+/** Text des Wissenseintrags: Inhalt, Art, wer, Einschätzung und Quelle (Call, Datum, Zitat). */
 export function callWissenText(w: CallWissen, call: { titel: string; datum: string }): string {
   const dmy = call.datum.split("-").reverse().join(".");
-  return [w.inhalt, `Einschätzung: ${EINSCHAETZUNG_TEXT[w.einschaetzung]}`, `Quelle: „${call.titel}“ vom ${dmy}${w.zitat ? ` – „${w.zitat}“` : ""}`].join("\n\n");
+  return [
+    w.inhalt,
+    [`${ERKENNTNIS_TEXT[w.art]}`, w.wer ? `gesagt von: ${w.wer}` : null, `Einschätzung: ${EINSCHAETZUNG_TEXT[w.einschaetzung]}`].filter(Boolean).join(" · "),
+    `Quelle: „${call.titel}“ vom ${dmy}${w.zitat ? ` – „${w.zitat}“` : ""}`,
+  ].join("\n\n");
+}
+
+/** Haltbarkeit: Erkenntnisse aus Calls älter als 6 Monate (und seitdem nicht geprüft) → „prüfen“. */
+export function wissenPruefen(quelleDatum: string | null, verifiedAt: Date | null, heute: string): boolean {
+  if (!quelleDatum) return false;
+  const grenze = new Date(`${heute}T00:00:00Z`).getTime() - 183 * 86_400_000;
+  if (new Date(`${quelleDatum}T00:00:00Z`).getTime() >= grenze) return false;
+  return !verifiedAt || verifiedAt.getTime() < grenze;
 }
 
 /**

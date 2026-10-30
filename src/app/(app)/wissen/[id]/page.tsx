@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { and, arrayOverlaps, eq, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { verifyEntry, deleteEntry } from "@/lib/knowledge/actions";
+import { verifyEntry, deleteEntry, insiderUmschalten } from "@/lib/knowledge/actions";
+import { ERKENNTNIS_TEXT, wissenPruefen } from "@/lib/calls/logic";
+import { todayIso } from "@/lib/dates";
 import { formatDate } from "@/lib/numbers";
 import { pruefungFaellig } from "@/lib/knowledge/anleitung";
 import { CopyButton } from "@/components/copy-button";
@@ -50,9 +52,12 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
               </span>
               {entry.kind === "snippet" ? "Textbaustein" : entry.kind === "anleitung" ? "Anleitung" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
               {entry.kind === "anleitung" && pruefungFaellig(entry.verifiedAt) && <span className="tag tag-warn" style={{ marginLeft: 6 }} data-testid="entry-pruefen">Prüfung fällig</span>}
+              {entry.insider && <span className="tag tag-danger" style={{ marginLeft: 6 }} data-testid="entry-insider" title="Nur intern verwenden – nie in Deal-Blättern, Kundenmails oder im B2B-Kanal">Insider – nicht weitergeben</span>}
+              {wissenPruefen(entry.quelleDatum, entry.verifiedAt, todayIso()) && <span className="tag tag-warn" style={{ marginLeft: 6 }} data-testid="entry-veraltet">älter als 6 Monate – prüfen</span>}
               {entry.anleitung?.wer && <> · zuständig: {entry.anleitung.wer}</>}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <form action={insiderUmschalten}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-insider-umschalten">{entry.insider ? "Insider-Markierung aufheben" : "Als Insider markieren"}</button></form>
               <form action={verifyEntry}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-verify">{entry.verifiedAt ? "Prüfung zurücknehmen" : entry.origin === "recherche" ? "Geprüft – als Anleitung übernehmen" : "Als geprüft markieren"}</button></form>
               {entry.kind === "snippet" && <CopyButton text={entry.body} />}
               <Link className="btn btn-small" href={`/wissen/${entry.id}/bearbeiten`}>Bearbeiten</Link>
@@ -71,9 +76,20 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
           </div>
           {entry.origin === "call" && (
             <div className="small" style={{ marginTop: 14 }} data-testid="entry-call">
+              <div className="muted" style={{ marginBottom: 4 }}>
+                {entry.erkenntnis ? ERKENNTNIS_TEXT[entry.erkenntnis] : "Erkenntnis"}
+                {entry.quelleWer ? ` · gesagt von: ${entry.quelleWer}` : ""}
+                {entry.quelleDatum ? ` · Call vom ${entry.quelleDatum.split("-").reverse().join(".")}` : ""}
+              </div>
               {call ? (
                 <>
-                  Quelle: <Link href={`/calls/${call.id}`}>„{call.titel}“ vom {call.datum.split("-").reverse().join(".")}</Link> – im Call steht die Stelle im Transkript.
+                  Quelle: <Link href={`/calls/${call.id}`}>„{call.titel}“ vom {call.datum.split("-").reverse().join(".")}</Link>
+                  {entry.callStelle !== null && (
+                    <>
+                      {" · "}
+                      <Link href={`/calls/${call.id}?stelle=${entry.callStelle}#stelle`} data-testid="entry-stelle">Stelle im Transkript</Link>
+                    </>
+                  )}
                 </>
               ) : (
                 <span className="muted">Der Call ist nicht mehr im Archiv.</span>

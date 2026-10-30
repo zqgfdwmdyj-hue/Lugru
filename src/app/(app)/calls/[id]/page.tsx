@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
-import { ausschnitt, istEigeneAufgabe, PUNKT_TEXT, type PunktArt } from "@/lib/calls/logic";
+import { ausschnitt, ERKENNTNIS_TEXT, istEigeneAufgabe, PUNKT_TEXT, type PunktArt } from "@/lib/calls/logic";
 import { callDetail, wissenZumCall } from "@/lib/calls/service";
 import { callBearbeitenAction, neuAuswertenAction, punktAnlegenAction, punktStatusAction, uebernehmenAction, wissenNeuAction } from "../actions";
 
@@ -10,7 +10,7 @@ const dmy = (iso: string | null) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7
 const ARTEN: PunktArt[] = ["aufgabe", "vereinbarung", "entscheidung", "frage"];
 const STATUS = { vorschlag: { text: "Vorschlag", tag: "tag-warn" }, uebernommen: { text: "übernommen", tag: "tag-ok" }, verworfen: { text: "verworfen", tag: "" }, geklaert: { text: "geklärt", tag: "tag-ok" } } as const;
 
-export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string }> }) {
+export default async function CallPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string; stelle?: string }> }) {
   const session = await requireArea("amazon");
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) notFound();
@@ -38,6 +38,12 @@ export default async function CallPage({ params, searchParams }: { params: Promi
       {c.auswertung === "fehler" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Auswertung fehlgeschlagen: {c.auswertungFehler}</div>}
       {c.auswertung === "ohne_ki" && <div className="notice notice-warn small" style={{ marginBottom: 12 }}>Ohne KI-Anbindung – Punkte unten von Hand ergänzen (<Link href="/anbindungen#anthropic">Anbindungen → Claude</Link>).</div>}
 
+      {sp.stelle && /^\d+$/.test(sp.stelle) && Number(sp.stelle) < c.transkript.length && (
+        <section id="stelle" className="card card-pad" style={{ marginBottom: 12, borderLeft: "4px solid var(--accent)" }} data-testid="call-stelle">
+          <div className="small muted">Stelle im Transkript</div>
+          <div style={{ whiteSpace: "pre-wrap", marginTop: 6 }}>{ausschnitt(c.transkript, Number(sp.stelle), 900)}</div>
+        </section>
+      )}
       {(c.zusammenfassung || c.quelleUrl) && (
         <section className="card card-pad" style={{ marginBottom: 12 }} data-testid="call-zusammenfassung">
           {c.zusammenfassung?.teilnehmer?.length ? <div className="small muted">Teilnehmer: {c.zusammenfassung.teilnehmer.join(", ")}</div> : null}
@@ -131,7 +137,18 @@ export default async function CallPage({ params, searchParams }: { params: Promi
           <ul className="small" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
             {wissen.map((w) => (
               <li key={w.id}>
-                <Link href={`/wissen/${w.id}`}>{w.title}</Link> <span className="muted">· {w.category}{w.verifiedAt ? " · ✓ geprüft" : ""}</span>
+                <Link href={`/wissen/${w.id}`}>{w.title}</Link>{" "}
+                <span className="muted">
+                  · {w.erkenntnis ? ERKENNTNIS_TEXT[w.erkenntnis] : w.category}
+                  {w.quelleWer ? ` · ${w.quelleWer}` : ""}
+                  {w.verifiedAt ? " · ✓ geprüft" : ""}
+                </span>
+                {w.callStelle !== null && (
+                  <>
+                    {" "}
+                    <Link className="small" href={`/calls/${c.id}?stelle=${w.callStelle}#stelle`}>Stelle</Link>
+                  </>
+                )}
               </li>
             ))}
           </ul>
