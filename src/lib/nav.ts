@@ -112,6 +112,7 @@ export const NAV: NavSection[] = [
     color: "var(--area-einkauf)",
     icon: "🛒",
     items: [
+      { href: "/lieferanten/deal-ampel", label: "Deal-Ampel (Einkauf prüfen)" },
       { href: "/einkauf", label: "Einkauf & Wareneingang" },
       { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
       { href: "/lieferanten", label: "Lieferanten-Feeds" },

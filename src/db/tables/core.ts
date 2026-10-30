@@ -156,6 +156,8 @@ export type TenantSettings = {
    */
   /** Kapital-Ampel: Ziel-Jahresrendite, „gering“, Reichweiten-Grenzen (Tage). */
   kapital?: { zielRendite?: number; geringRendite?: number; gruenReichweite?: number; rotReichweite?: number };
+  /** Deal-Ampel (Einkaufs-Prüfung): Zielmarge %, Abverkauf Tage, max. Angebote, Amazon-Anteil %, Preisverfall %, Nebenkosten €/Stück, Länder. */
+  dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[] };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
   /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */

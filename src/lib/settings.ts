@@ -2,6 +2,7 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { ClaimType, TenantSettings } from "@/db/schema";
+import { DEAL_AMPEL_STANDARD } from "@/lib/deal-ampel/logic";
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   inbound_shortage: "Fehlt beim Wareneingang",
@@ -88,6 +89,8 @@ export const DEFAULT_SETTINGS = {
   },
   /** Kapital-Ampel: Ziel 30 % Jahresrendite auf gebundenes Kapital, gering < 5 %, grün ≤ 60 Tage Reichweite, rot > 120. */
   kapital: { zielRendite: 0.3, geringRendite: 0.05, gruenReichweite: 60, rotReichweite: 120 },
+  /** Deal-Ampel: 15 % Zielmarge, Abverkauf ≤ 45 Tage, ab 15 Angeboten rot, Amazon ≥ 50 % gelb, Preisverfall ≥ 10 % gelb. */
+  dealAmpel: DEAL_AMPEL_STANDARD,
   amazonBusiness: { stufen: [3, 10, 25], rabatte: [3, 5, 8], minGewinn: 1 },
   /** Liquidität: 5.000 € Reserve, Bestellvorschläge einrechnen, Lieferantenrechnungen ohne Zahlungsziel = sofort bezahlt. */
   liquiditaet: { reserve: 5000, steuern: [] as { name: string; betrag: number; monate: number[]; tag: number }[], kreditkarte: {} as { tag?: number; betrag?: number }, ignoriert: [] as string[], bestellvorschlaege: true, vorschlaegeEinrechnen: false, zahlungszielStandard: 0 },
@@ -141,6 +144,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     returns: { ...d.returns, ...(s.returns ?? {}) },
     retourenStation: { ...d.retourenStation, ...(s.retourenStation ?? {}) },
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
+    dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
     amazonBusiness: { ...d.amazonBusiness, ...(s.amazonBusiness ?? {}) },
     liquiditaet: { ...d.liquiditaet, ...(s.liquiditaet ?? {}) },
     b2b: { ...d.b2b, ...(s.b2b ?? {}), firma: { ...d.b2b.firma, ...(s.b2b?.firma ?? {}) } },
