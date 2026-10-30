@@ -82,7 +82,7 @@ export async function empfaenger(tenantId: string, bereich: string): Promise<str
  * Meldung an Personen: speichern, Push anstoßen (abgelaufene Abos werden entfernt). Ohne erfolgreichen Push →
  * Discord-Kanal für Aufgaben (falls eingerichtet). Liefert, wie viele Geräte angestoßen wurden.
  */
-export async function melden(tenantId: string, userIds: string[], m: { titel: string; text: string; link: string | null }): Promise<{ push: number; discord: boolean }> {
+export async function melden(tenantId: string, userIds: string[], m: { titel: string; text: string; link: string | null }, opts: { ohneDiscord?: boolean } = {}): Promise<{ push: number; discord: boolean }> {
   if (!userIds.length) return { push: 0, discord: false };
   await db.insert(M).values(userIds.map((userId) => ({ tenantId, userId, titel: m.titel.slice(0, 120), text: m.text.slice(0, 500), link: m.link })));
   const liste = await db.select().from(P).where(and(eq(P.tenantId, tenantId), inArray(P.userId, userIds), or(isNull(P.fehlerAm), gte(P.fehlerAm, new Date(Date.now() - 7 * 86_400_000)))));
@@ -101,7 +101,8 @@ export async function melden(tenantId: string, userIds: string[], m: { titel: st
     }
   }
   let discord = false;
-  if (!push) {
+  // Private Meldungen (Privatbereich) nie in den gemeinsamen Discord-Kanal.
+  if (!push && !opts.ohneDiscord) {
     const { notifyDiscord } = await import("@/lib/integrations/clients/discord");
     discord = await notifyDiscord(tenantId, `${m.titel}\n${m.text}`).catch(() => false);
   }

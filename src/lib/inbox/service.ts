@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq, gte, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { simpleParser } from "mailparser";
 import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -9,7 +9,8 @@ import { mailboxCredentials } from "@/lib/mail/accounts";
 import { imapFetchRaw, MailFehler } from "@/lib/mail/connect";
 import { empfaengerAus } from "@/lib/mail/ordner";
 import { getSettings } from "@/lib/settings";
-import { classifyMail, MANUAL_RULE, TOPIC_LABEL, type Classification, type Topic } from "./classify";
+import { classifyMail, MANUAL_RULE, marktplatzQuelle, regelFuer, TOPIC_LABEL, type Classification, type Topic } from "./classify";
+import { istBestellMail } from "@/lib/amazon-todos/versand";
 import { noiseReason } from "@/lib/amazon-todos/logic";
 
 export type ParsedMail = {
@@ -117,8 +118,33 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     const { preislisteAusMail } = await import("@/lib/b2b/preislisten-mail");
     await preislisteAusMail(tenantId, { messageKey: m.messageKey, fromAddress: m.fromAddress, subject: m.subject, tabellen: m.tabellen }).catch((e) => console.error("[Preisliste aus Mail]", e instanceof Error ? e.message : e));
   }
-  const c = classifyMail({ from: `${m.fromName ?? ""} <${m.fromAddress}>`, subject: m.subject, body: m.text });
-  if (!c.relevant) return "ignored";
+  const fromLine = `${m.fromName ?? ""} <${m.fromAddress}>`;
+  const quelle = marktplatzQuelle(fromLine);
+  const cfg = (await getSettings(tenantId)).posteingang;
+  // Termin-Mails (Arzt, Handwerker, Amt, Schule) sind privat: nur in den Privatkalender des Inhabers, nie hier.
+  if (!quelle && cfg.terminMails) {
+    const { terminMailUebernehmen, terminMelden } = await import("@/lib/private/termin-mail-service");
+    const t = await terminMailUebernehmen(tenantId, { messageKey: m.messageKey, from: fromLine, subject: m.subject, body: m.text, receivedAt: m.receivedAt }, todayIso()).catch((e) => {
+      console.error("[Termin-Mail]", e instanceof Error ? e.message : e);
+      return null;
+    });
+    if (t) {
+      await terminMelden(tenantId, t);
+      return t.ergebnis === "bekannt" ? "duplicate" : "new";
+    }
+  }
+  // Antworten bekannter Lieferanten (Profil-E-Mail bzw. Firmen-Domain) gelten als wichtig.
+  const lieferant = quelle ? null : await import("@/lib/b2b/preislisten-mail").then((x) => x.lieferantZuAbsender(tenantId, m.fromAddress)).catch(() => null);
+  const c = classifyMail({ from: fromLine, subject: m.subject, body: m.text }, new Date(), { lieferant: Boolean(lieferant) });
+  // Eigene Regeln je Absender/Betreff/Thema: archivieren, als Aufgabe, an Zuständigen.
+  const regeln = await db.select().from(schema.mailRegeln).where(and(eq(schema.mailRegeln.tenantId, tenantId), eq(schema.mailRegeln.aktiv, true))).orderBy(schema.mailRegeln.createdAt);
+  const regel = regeln.length ? regelFuer({ from: fromLine, subject: m.subject, topic: c.relevant ? c.topic : null }, regeln) : null;
+  if (!c.relevant && (!regel || regel.aktion === "archivieren")) return "ignored";
+  const r: Classification = c.relevant ? c : { ...c, relevant: true, category: "action", topic: "other", rule: "eigene Regel", dueInDays: 2 };
+  const regelZeile = regel ? regeln.find((x) => x.id === regel.id)! : null;
+  // Beim Eingang archivieren: eigene Regel „archivieren“ oder (Einstellung) Newsletter und Versand-/Lieferbestätigungen.
+  // Bestell-Mails („Verkauft, jetzt liefern“) bleiben offen – der Versand-Abgleich der Amazon-ToDos braucht sie.
+  const autoArchiv = regel?.aktion === "archivieren" || (cfg.autoArchiv && !regel && (r.topic === "marketing" || (r.topic === "order_info" && !istBestellMail(m.subject))));
   const [row] = await db
     .insert(schema.emails)
     .values({
@@ -134,25 +160,38 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
       bodyText: clip(m.text, 20_000),
       an: m.an ?? null,
       ordner: m.ordner ? clip(m.ordner, 200) : null,
-      category: c.category,
-      topic: c.topic,
-      matchedRule: c.rule,
-      references: c.references,
+      category: r.category,
+      topic: r.topic,
+      matchedRule: regel ? `regel · ${regel.aktion}` : r.rule,
+      references: r.references,
+      archived: autoArchiv,
+      regelId: regel?.id ?? null,
     })
     .onConflictDoNothing()
     .returning();
   if (!row) return "duplicate";
-
-  await createMailTask(tenantId, { id: row.id, subject: m.subject, fromName: m.fromName ?? null, fromAddress: m.fromAddress, receivedAt: m.receivedAt }, c);
+  if (regelZeile) await db.update(schema.mailRegeln).set({ treffer: sql`${schema.mailRegeln.treffer} + 1` }).where(eq(schema.mailRegeln.id, regelZeile.id));
+  if (autoArchiv) return "new";
+  // Regel „Aufgabe“/„weiterleiten“: immer als Aufgabe (weiterleiten = mit Zuständigkeit), auch bei „Info“.
+  const erzwingen = regel?.aktion === "aufgabe" || regel?.aktion === "weiterleiten";
+  await createMailTask(tenantId, { id: row.id, subject: m.subject, fromName: m.fromName ?? null, fromAddress: m.fromAddress, receivedAt: m.receivedAt }, erzwingen && r.category !== "critical" ? { ...r, category: "action" } : r, {
+    erzwingen,
+    zustaendigId: regel?.aktion === "weiterleiten" ? (regelZeile?.zustaendigId ?? null) : null,
+  });
   return "new";
 }
 
 /** Kritische und „Handeln“-Mails als Aufgabe (und ggf. als Fall) anlegen – beim Eingang und beim Hochstufen. */
-async function createMailTask(tenantId: string, mail: { id: string; subject: string; fromName: string | null; fromAddress: string; receivedAt: Date }, c: Pick<Classification, "category" | "topic" | "source" | "references" | "dueInDays">) {
+async function createMailTask(
+  tenantId: string,
+  mail: { id: string; subject: string; fromName: string | null; fromAddress: string; receivedAt: Date },
+  c: Pick<Classification, "category" | "topic" | "source" | "references" | "dueInDays">,
+  opts: { erzwingen?: boolean; zustaendigId?: string | null } = {},
+) {
   // Amazon-Systemmails (Produktsicherheit, Reaktivierung, Echtheitsprüfung …) führt das Modul
   // Amazon-ToDos mit Frist und KI-Einstufung – hier keine zusätzliche Einzelaufgabe.
   const fromLine = `${mail.fromName ?? ""} <${mail.fromAddress}>`;
-  const handledByTodos = noiseReason({ from: fromLine, subject: mail.subject }) === null && !KEEP_AS_TASK.has(c.topic);
+  const handledByTodos = !opts.erzwingen && noiseReason({ from: fromLine, subject: mail.subject }) === null && !KEEP_AS_TASK.has(c.topic);
   if ((c.category === "critical" || c.category === "action") && !handledByTodos) {
     const refs = Object.values(c.references).join(" · ");
     const due = c.dueInDays !== null ? addDaysIso(todayIso(mail.receivedAt), c.dueInDays) : null;
@@ -167,6 +206,7 @@ async function createMailTask(tenantId: string, mail: { id: string; subject: str
         dueDate: due,
         link: `/posteingang/${mail.id}`,
         systemKey: `mail:${mail.id}`,
+        assigneeId: opts.zustaendigId ?? null,
       })
       .returning({ id: schema.tasks.id });
     await db.update(schema.emails).set({ taskId: task.id }).where(eq(schema.emails.id, mail.id));

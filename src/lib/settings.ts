@@ -134,6 +134,12 @@ export const DEFAULT_SETTINGS = {
   va: { zeitzone: "Europe/Berlin", ruheVon: "20:00", ruheBis: "08:00", erinnerungUeberfaellig: true, darfEinkaufsrechnungen: true, sprache: "en" as "de" | "en", glossar: GLOSSAR_STANDARD as Record<string, string>, antwortVorschau: false },
   faelle: { fristen: {} as Record<string, number>, nachfassenTage: 7, betragSchwelle: 200, zustaendig: "va" as "va" | "ludwig" },
   dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "" },
+  /**
+   * Posteingang auf null: Versand-/Lieferbestätigungen und Newsletter beim Eingang archivieren (Bestell-Mails
+   * „Verkauft, jetzt liefern“ bleiben für den Versand-Abgleich); Termin-Mails (Arzt, Handwerker, Amt, Schule) in
+   * den Privatkalender des Inhabers statt in den Posteingang; Vorabend-Erinnerung mit Abfahrt (Minuten vorher).
+   */
+  posteingang: { autoArchiv: true, terminMails: true, vorabendUm: "18:00", abfahrtVorher: 30 },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
   /** Buchhaltung je Firma (nur LuGru/WiGru – nicht AdelPrep): SKR04, DATEV-Nummern vom Steuerberater, Geldkonten. */
@@ -196,6 +202,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
     faelle: { ...d.faelle, ...(s.faelle ?? {}), fristen: { ...d.faelle.fristen, ...(s.faelle?.fristen ?? {}) } },
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
+    posteingang: { ...d.posteingang, ...(s.posteingang ?? {}) },
     va: { ...d.va, ...(s.va ?? {}) },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
     bqool: { ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool,

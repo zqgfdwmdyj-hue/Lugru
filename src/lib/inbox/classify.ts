@@ -23,6 +23,8 @@ export type Topic =
   | "order_info"
   | "payout_info"
   | "marketing"
+  | "behoerde"
+  | "lieferant_antwort"
   | "other";
 
 export const TOPIC_LABEL: Record<Topic, string> = {
@@ -43,6 +45,8 @@ export const TOPIC_LABEL: Record<Topic, string> = {
   order_info: "Bestellung / Versand",
   payout_info: "Auszahlung / Abrechnung",
   marketing: "Werbung / Newsletter",
+  behoerde: "Behörde / Frist",
+  lieferant_antwort: "Antwort eines Lieferanten",
   other: "Sonstiges",
 };
 
@@ -88,6 +92,8 @@ const SOURCES: [Classification["source"], RegExp][] = [
   ["temu", /temu\.com|kuajing/i],
   ["dhl", /dhl\.(de|com)/i],
 ];
+/** Marktplatz bzw. Versanddienst des Absenders (null = sonstiger Absender). */
+export const marktplatzQuelle = (from: string) => SOURCES.find(([, re]) => re.test(from))?.[0] ?? null;
 
 type Rule = {
   topic: Topic;
@@ -132,11 +138,13 @@ const PAYMENT_PROBLEM = new RegExp(
     "update (your )?(payment|billing|card)",
     "(unpaid|outstanding|overdue|negative|past due) (balance|invoice|fees|amount)",
     "insufficient funds|account (is )?past due|final notice",
+    // „Zahlung abgelehnt“ in den EU-Sprachen
+    "pagamento (rifiutato|non riuscito|respinto)|paiement (refusé|rejeté|échoué|a échoué)|pago (rechazado|fallido|denegado)|betaling (geweigerd|mislukt|afgewezen)|płatność (odrzucona|nieudana)|betalning(en)? (nekad|misslyckades|avvisad)",
   ].join("|"),
   "i",
 );
 /** Für den Textanfang nur eindeutige Formulierungen (dort stehen auch „Zahlung erhalten“-Hinweise). */
-const PAYMENT_PROBLEM_STRONG = /zahlung\w*[^.\n]{0,40}(fehlgeschlagen|abgelehnt|zurückgewiesen|konnte nicht)|rücklastschrift|mahnung|inkasso|zahlungsverzug|negative[rn]? (saldo|kontostand)|(saldo|kontostand)[^.\n]{0,40}(negativ|im minus)|(kredit)?karte[^.\n]{0,40}(abgelehnt|abgelaufen)|(lastschrift|abbuchung|einzug)[^.\n]{0,40}(fehlgeschlagen|abgelehnt|nicht möglich)|payment[^.\n]{0,40}(failed|declined|past due|overdue)|insufficient funds|card[^.\n]{0,40}declined|unpaid balance|past due/i;
+const PAYMENT_PROBLEM_STRONG = /pagamento rifiutato|paiement refusé|pago rechazado|betaling geweigerd|płatność odrzucona|zahlung\w*[^.\n]{0,40}(fehlgeschlagen|abgelehnt|zurückgewiesen|konnte nicht)|rücklastschrift|mahnung|inkasso|zahlungsverzug|negative[rn]? (saldo|kontostand)|(saldo|kontostand)[^.\n]{0,40}(negativ|im minus)|(kredit)?karte[^.\n]{0,40}(abgelehnt|abgelaufen)|(lastschrift|abbuchung|einzug)[^.\n]{0,40}(fehlgeschlagen|abgelehnt|nicht möglich)|payment[^.\n]{0,40}(failed|declined|past due|overdue)|insufficient funds|card[^.\n]{0,40}declined|unpaid balance|past due/i;
 /** Letztes Netz: Geld-Wort und Problem-Wort nah beieinander → mindestens „zu erledigen“. */
 const MONEY_SIGNAL = /(zahlung|betrag|gebühr|rechnung|saldo|kontostand|auszahlung|lastschrift|kreditkarte|payment|invoice|balance|payout|fee)[^.\n]{0,60}(fehlgeschlagen|abgelehnt|offen|ausstehend|überfällig|gesperrt|ungültig|problem|failed|declined|overdue|suspended|due)|(fehlgeschlagen|abgelehnt|überfällig|gesperrt|failed|declined|overdue)[^.\n]{0,60}(zahlung|betrag|gebühr|rechnung|auszahlung|payment|invoice|payout)/i;
 
@@ -206,7 +214,16 @@ export function extractDeadlineDays(text: string, today: Date): number | null {
   return null;
 }
 
-export function classifyMail(m: MailInput, today = new Date()): Classification {
+/** Konto gesperrt/eingeschränkt (Bank, PayPal, Zahlungsdienste …). */
+const KONTO_GESPERRT = /konto[^.\n]{0,30}(gesperrt|eingeschränkt|eingefroren|deaktiviert)|account[^.\n]{0,30}(suspended|limited|restricted|locked|frozen|deactivated)|compte[^.\n]{0,20}(suspendu|bloqué|restreint)|conto[^.\n]{0,20}(sospeso|bloccato|limitato)|cuenta[^.\n]{0,20}(suspendida|bloqueada|limitada)/i;
+/** Behörden und Fristen (Finanzamt, Zoll, Gericht, Bescheide, Anhörung, Vollstreckung). */
+const BEHOERDE = /\bfrist(ablauf|setzung|verlängerung)?\b|bescheid|mahnbescheid|vollstreckung|anhörung|finanzamt|zollamt|hauptzollamt|bundeszentralamt|\bbzst\b|elster|gericht|amtsgericht|landratsamt|gewerbeamt|verwaltungsakt|aufforderung zur (stellungnahme|abgabe)|stellungnahme bis/i;
+const ANTWORT = /^\s*(re|aw|antw|antwort|sv|vs|réf|r)\s*:/i;
+
+/** Was die Einstufung zusätzlich wissen kann (aus der Datenbank): bekannte Lieferanten-Absender. */
+export type MailKontext = { lieferant?: boolean };
+
+export function classifyMail(m: MailInput, today = new Date(), kontext: MailKontext = {}): Classification {
   const source = SOURCES.find(([, re]) => re.test(m.from))?.[0] ?? null;
   const text = `${m.subject}\n${m.body}`;
   const references = extractReferences(text);
@@ -217,6 +234,10 @@ export function classifyMail(m: MailInput, today = new Date()): Classification {
       const due = extractDeadlineDays(text, today) ?? 1;
       return { relevant: true, source: null, category: "critical", topic: money, rule: `${money} · Betreff, Absender ohne Marktplatz`, uncertain: false, references, dueInDays: due };
     }
+    if (KONTO_GESPERRT.test(m.subject)) return { relevant: true, source: null, category: "critical", topic: "account_health", rule: "account_health · Konto gesperrt, Absender ohne Marktplatz", uncertain: false, references, dueInDays: extractDeadlineDays(text, today) ?? 1 };
+    if (BEHOERDE.test(m.subject)) return { relevant: true, source: null, category: "critical", topic: "behoerde", rule: "behoerde · Betreff", uncertain: false, references, dueInDays: extractDeadlineDays(text, today) ?? 7 };
+    // Antwort eines bekannten Lieferanten (Profil-E-Mail bzw. Domain) – wichtig, Ludwig hatte angefragt.
+    if (kontext.lieferant) return { relevant: true, source: null, category: ANTWORT.test(m.subject) ? "critical" : "action", topic: "lieferant_antwort", rule: `lieferant_antwort · ${ANTWORT.test(m.subject) ? "Antwort auf Anfrage" : "bekannter Lieferant"}`, uncertain: false, references, dueInDays: 2 };
     return { relevant: false, source: null, category: "info", topic: "other", rule: "kein Marktplatz-Absender", uncertain: false, references, dueInDays: null };
   }
   const head = m.body.slice(0, 600);
@@ -243,4 +264,39 @@ export function classifyMail(m: MailInput, today = new Date()): Classification {
   }
   const noise = /abbestellen|unsubscribe|newsletter/i.test(m.body);
   return { relevant: true, source, category: noise ? "noise" : "info", topic: noise ? "marketing" : "other", rule: noise ? "newsletter-merkmal" : `keine regel ${UNSICHER}`, uncertain: !noise, references, dueInDays: null };
+}
+
+// ---- Vorschlag je Mail (Posteingang auf null) ----------------------------------------------------
+
+export type MailVorschlag = "archivieren" | "aufgabe" | "weiterleiten" | "antworten" | "erledigt";
+export const VORSCHLAG_TEXT: Record<MailVorschlag, string> = { archivieren: "archivieren", aufgabe: "als Aufgabe", weiterleiten: "an Zuständigen", antworten: "antworten", erledigt: "erledigt" };
+
+/**
+ * Was mit einer Mail passieren sollte: Rauschen/Info archivieren; Kunden- und Lieferanten-Nachrichten beantworten;
+ * Kritisches/Handeln als Aufgabe (oder an den Zuständigen, wenn eine Regel das sagt); archiviert = erledigt.
+ */
+export function mailVorschlag(m: { category: string; topic: string | null; archived: boolean; taskId?: string | null; regelAktion?: "archivieren" | "aufgabe" | "weiterleiten" | null }): MailVorschlag {
+  if (m.archived) return "erledigt";
+  if (m.regelAktion) return m.regelAktion;
+  if (m.topic === "buyer_message" || m.topic === "lieferant_antwort") return "antworten";
+  if (m.category === "critical" || m.category === "action") return "aufgabe";
+  return "archivieren";
+}
+
+// ---- Regeln je Absender/Thema ---------------------------------------------------------------------
+
+export type MailRegel = { id: string; absender: string | null; betreff: string | null; thema: string | null; aktion: "archivieren" | "aufgabe" | "weiterleiten"; aktiv: boolean };
+
+/** Erste passende, aktive Regel: Absender (Teil der Adresse/Domain), Betreff (enthält) und Thema – alle angegebenen müssen passen. */
+export function regelFuer(mail: { from: string; subject: string; topic: string | null }, regeln: MailRegel[]): MailRegel | null {
+  const von = mail.from.toLowerCase();
+  const betreff = mail.subject.toLowerCase();
+  for (const r of regeln) {
+    if (!r.aktiv || (!r.absender && !r.betreff && !r.thema)) continue;
+    if (r.absender && !von.includes(r.absender.trim().toLowerCase())) continue;
+    if (r.betreff && !betreff.includes(r.betreff.trim().toLowerCase())) continue;
+    if (r.thema && r.thema !== mail.topic) continue;
+    return r;
+  }
+  return null;
 }

@@ -1,6 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
 import { LOGISTIK_KATEGORIEN } from "@/lib/amazon-todos/versand";
+import { mailVorschlag } from "@/lib/inbox/classify";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
@@ -122,18 +123,39 @@ export const amazonTodos = defineTool({
 export const posteingang = defineTool({
   name: "posteingang",
   title: "Posteingang",
-  description: "Neueste Mails aus den verbundenen Postfächern (nicht archiviert) mit Absender, Empfangsadresse (an), Ordner/Label, Betreff, Einstufung und Vorschau – optional nur wichtige oder nach Text gefiltert.",
+  description:
+    "Neueste Mails aus den verbundenen Postfächern (nicht archiviert) mit Absender, Empfangsadresse (an), Ordner/Label, Betreff, Einstufung, Vorschau und `vorschlag` (archivieren/aufgabe/weiterleiten/antworten) – optional nur wichtige oder nach Text gefiltert. Newsletter und Versand-/Lieferbestätigungen werden beim Eingang archiviert; Termin-Mails (Arzt, Handwerker, Amt, Schule) gehen nicht in den Posteingang, sondern in den Privatkalender (mit Privat-Freigabe als `termin_mails` gezählt).",
   area: "posteingang",
   write: false,
   quelle: { text: "Verbundene Postfächer", jobs: ["Postfächer"] },
   input: z.object({ nur_wichtige: z.boolean().default(false), suche: z.string().trim().max(80).optional(), limit: z.number().int().min(1).max(50).default(20) }),
   run: async (ctx, i) => {
     const M = schema.emails;
+    const R = schema.mailRegeln;
     const where = [eq(M.tenantId, ctx.session.tenantId), eq(M.archived, false)];
     if (i.nur_wichtige) where.push(eq(M.category, "critical"));
     if (i.suche) where.push(or(ilike(M.subject, likeOf(i.suche)), ilike(M.fromAddress, likeOf(i.suche)), ilike(M.fromName, likeOf(i.suche)))!);
-    const rows = await db.select().from(M).where(and(...where)).orderBy(desc(M.receivedAt)).limit(i.limit);
-    return json({ mails: rows.map((m) => ({ id: m.id, von: m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress, an: m.an ?? undefined, ordner: m.ordner ?? undefined, betreff: m.subject, eingegangen: berlinDateTime(m.receivedAt), einstufung: m.category, thema: m.topic, vorschau: m.snippet?.slice(0, 300) })), link: abs(ctx, "/posteingang") });
+    const rows = await db.select({ m: M, regelAktion: R.aktion }).from(M).leftJoin(R, and(eq(R.id, M.regelId), eq(R.tenantId, ctx.session.tenantId))).where(and(...where)).orderBy(desc(M.receivedAt)).limit(i.limit);
+    // Termin-Mails liegen im Privatkalender – nur mit Privat-Freigabe (Claude des Inhabers) als Zahl, ohne Inhalte.
+    const termine = ctx.privat ? await (await import("@/lib/private/termin-mail-service")).terminMailsZuletzt(ctx.session).catch(() => null) : null;
+    return json({
+      mails: rows.map(({ m, regelAktion }) => ({
+        id: m.id,
+        von: m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress,
+        an: m.an ?? undefined,
+        ordner: m.ordner ?? undefined,
+        betreff: m.subject,
+        eingegangen: berlinDateTime(m.receivedAt),
+        einstufung: m.category,
+        thema: m.topic,
+        vorschlag: mailVorschlag({ category: m.category, topic: m.topic, archived: m.archived, taskId: m.taskId, regelAktion }),
+        aufgabe_angelegt: Boolean(m.taskId),
+        link: abs(ctx, `/posteingang/${m.id}`),
+        vorschau: m.snippet?.slice(0, 300),
+      })),
+      ...(termine ? { termin_mails: { letzte_7_tage: termine.anzahl, hinweis: "In den Privatkalender übernommen (Bestätigung, Verschiebung, Absage) – Details mit privat_kalender." } } : {}),
+      link: abs(ctx, "/posteingang"),
+    });
   },
 });
 

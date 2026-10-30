@@ -715,6 +715,13 @@
       "when": 1793378259347,
       "tag": "0101_assistent_aktionen",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1793379480927,
+      "tag": "0102_mail_regeln",
+      "breakpoints": true
     }
   ]
 }

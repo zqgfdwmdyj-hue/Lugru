@@ -161,6 +161,8 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
         await step(t, "Paletten-Sendungen", () => refreshShipments(t, todayIso()));
       }
+      // Termine im Privatkalender: Vorabend-Erinnerung mit Abfahrt (nur Push an den Inhaber, ab der eingestellten Uhrzeit).
+      if (force || due(`${t}:vorabend`, 29)) await step(t, "Termin-Erinnerung (Vorabend)", async () => (await import("@/lib/private/termin-mail-service")).vorabendErinnerung(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).

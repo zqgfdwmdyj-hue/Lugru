@@ -168,6 +168,8 @@ export type TenantSettings = {
   /** Amazon-Fall-Zentrale: Fristen je Phase/Bereich (Tage), Nachfassen ohne Antwort, Betragsschwelle für Info an Ludwig, wer einreicht. */
   faelle?: { fristen?: Record<string, number>; nachfassenTage?: number; betragSchwelle?: number; zustaendig?: "va" | "ludwig" };
   dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string };
+  /** Posteingang auf null: automatisch archivieren, Termin-Mails in den Privatkalender, Vorabend-Erinnerung. */
+  posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number };
   bqool?: { standardRegel?: string; katalog?: { name: string; laender: ("DE" | "FR" | "IT" | "ES")[] | null; strategie: string; staffel: { bisTage: number | null; marge: number; unterregel?: "Sales Booster" | "Equalizer" }[] | null; festeUntergrenze: boolean; risiko: boolean; hinweis: string }[]; abverkaufRegel?: { DE?: string; sonst?: string }; costUst?: number; markenRegeln?: { marke: string; land: "DE" | "FR" | "IT" | "ES" | null; regel: string }[]; elektronikMarken?: string[]; elektronikLaender?: ("DE" | "FR" | "IT" | "ES")[]; maxFaktor?: number; fixGebuehr?: number; zusatzkosten?: number; laender?: ("DE" | "FR" | "IT" | "ES")[]; format?: { channel: Record<"DE" | "FR" | "IT" | "ES", string>; shipping: string; addDelete: string; group: string; enable: string; tabsErsteZeile: number; zeilenende: "\r\n" | "\n"; bom: boolean; schlussUmbruch: boolean; ausVorlage: boolean } | null };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };

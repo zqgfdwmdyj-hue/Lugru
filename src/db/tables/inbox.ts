@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createdAt, id, integrations, tasks, tenantId, updatedAt, users } from "./core";
 
 export const MAIL_CATEGORIES = ["critical", "action", "info", "noise"] as const;
@@ -54,6 +54,8 @@ export const emails = pgTable(
     references: jsonb("references").$type<Record<string, string>>().notNull().default({}),
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     archived: boolean("archived").notNull().default(false),
+    /** Regel (Posteingang auf null), die beim Eingang gegriffen hat. */
+    regelId: uuid("regel_id").references((): AnyPgColumn => mailRegeln.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -87,4 +89,28 @@ export const emailDrafts = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index("email_drafts_email_idx").on(t.tenantId, t.emailId)],
+);
+
+/**
+ * Regeln je Absender/Thema (Posteingang auf null): automatisch archivieren, als Aufgabe anlegen oder an den
+ * Zuständigen weiterleiten (Aufgabe mit Zuständigkeit). Alle angegebenen Bedingungen müssen passen.
+ */
+export const mailRegeln = pgTable(
+  "mail_regeln",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Teil der Absenderadresse bzw. Domain („@dhl.de“, „newsletter@“). */
+    absender: text("absender"),
+    /** Betreff enthält. */
+    betreff: text("betreff"),
+    /** Thema der Einstufung (topic). */
+    thema: text("thema"),
+    aktion: text("aktion", { enum: ["archivieren", "aufgabe", "weiterleiten"] }).notNull(),
+    zustaendigId: uuid("zustaendig_id").references(() => users.id, { onDelete: "set null" }),
+    aktiv: boolean("aktiv").notNull().default(true),
+    treffer: integer("treffer").notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index("mail_regeln_tenant_idx").on(t.tenantId)],
 );

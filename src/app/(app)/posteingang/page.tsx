@@ -3,7 +3,7 @@ import { ordnerName } from "@/lib/mail/ordner";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { TOPIC_LABEL, isUncertainRule, type Topic } from "@/lib/inbox/classify";
+import { TOPIC_LABEL, VORSCHLAG_TEXT, isUncertainRule, mailVorschlag, type Topic } from "@/lib/inbox/classify";
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
 import { mailUpgrades } from "@/lib/inbox/service";
 import { applyMailUpgradesAction, archiveMails } from "./actions";
@@ -22,7 +22,12 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
   const where: SQL[] = [eq(E.tenantId, session.tenantId), eq(E.archived, view === "archiv")];
   const cat = { wichtig: ["critical", "action"], kritisch: ["critical"], handeln: ["action"], info: ["info"], unwichtig: ["noise"], archiv: null }[view];
   if (cat) where.push(inArray(E.category, cat as ("critical" | "action" | "info" | "noise")[]));
-  const [mails, upgrades] = await Promise.all([db.select().from(E).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200), mailUpgrades(session.tenantId)]);
+  const R = schema.mailRegeln;
+  const [mailRows, upgrades] = await Promise.all([
+    db.select({ m: E, regelAktion: R.aktion }).from(E).leftJoin(R, and(eq(R.id, E.regelId), eq(R.tenantId, session.tenantId))).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200),
+    mailUpgrades(session.tenantId),
+  ]);
+  const mails = mailRows.map((r) => ({ ...r.m, vorschlag: mailVorschlag({ category: r.m.category, topic: r.m.topic, archived: r.m.archived, taskId: r.m.taskId, regelAktion: r.regelAktion }) }));
 
   return (
     <>
@@ -57,9 +62,9 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
           </div>
           <form action={archiveMails} className="card" style={{ overflow: "auto" }}>
             <table className="table sticky-head">
-              <thead><tr><th style={{ width: 28 }}></th><th>Einordnung</th><th>Betreff</th><th>Von</th><th>Eingang</th><th>Aufgabe</th></tr></thead>
+              <thead><tr><th style={{ width: 28 }}></th><th>Einordnung</th><th>Betreff</th><th>Von</th><th>Eingang</th><th>Vorschlag</th><th>Aufgabe</th></tr></thead>
               <tbody>
-                {mails.length === 0 && <tr><td colSpan={6} className="muted">Keine Mails in dieser Ansicht.</td></tr>}
+                {mails.length === 0 && <tr><td colSpan={7} className="muted">Keine Mails in dieser Ansicht.</td></tr>}
                 {mails.map((m) => {
                   const [label, cls] = MAIL_CATEGORY_LABEL[m.category];
                   return (
@@ -69,6 +74,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
                       <td style={{ maxWidth: 420 }}><Link href={`/posteingang/${m.id}`} style={{ fontWeight: 600 }}>{m.subject || "(ohne Betreff)"}</Link><div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.snippet}</div></td>
                       <td className="small">{m.fromName ?? m.fromAddress}{(m.an || m.ordner) && <div className="muted" data-testid="mail-an-ordner">{m.an ? `an ${m.an}` : ""}{m.an && m.ordner ? " · " : ""}{m.ordner ? ordnerName(m.ordner) : ""}</div>}</td>
                       <td className="num small">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
+                      <td className="small" data-testid="mail-vorschlag">{VORSCHLAG_TEXT[m.vorschlag]}</td>
                       <td>{m.taskId ? <Link href="/" className="small">✓ To-do</Link> : "–"}</td>
                     </tr>
                   );
@@ -82,6 +88,10 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
         <aside className="col-side">
           <MailboxStatus tenantId={session.tenantId} isOwner={session.role === "owner"} />
           <section className="card card-pad"><EmlUpload /></section>
+          <section className="card card-pad small">
+            <Link href="/posteingang/regeln" data-testid="link-mail-regeln">Regeln je Absender/Thema</Link>
+            <div className="muted">Automatisch archivieren, als Aufgabe oder an Zuständigen. Newsletter und Versand-/Lieferbestätigungen werden beim Eingang archiviert; Termin-Mails (Arzt, Handwerker, Amt, Schule) gehen in den Privatkalender des Inhabers, nicht hierher.</div>
+          </section>
           <section className="card card-pad small muted">
             Kritisch und „Handeln“ werden automatisch zu To-dos. Zahlungsprobleme (Zahlung/Karte/Lastschrift fehlgeschlagen, offene Beträge, Mahnungen, Auszahlung gestoppt) sind immer kritisch – auch von Bank, PayPal oder Hosting-Anbietern. „unsicher“ heißt: nur Absender oder Text passte – in der Mail lässt sich Thema und Wichtigkeit korrigieren. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
           </section>
