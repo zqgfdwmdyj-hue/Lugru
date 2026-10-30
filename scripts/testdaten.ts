@@ -234,6 +234,8 @@ await integ("lexoffice", {}, { apiKey: "test-lexoffice-schluessel" });
 // Browser-Automatik gegen den Web-Nachbau der Testdienste
 await integ("sellerboard_web", { email: "einkauf@example.invalid", loginUrl: `${td}/web-sellerboard/login`, importUrl: `${td}/web-sellerboard/upload` }, { password: "test-passwort" });
 await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload` }, { password: "test-passwort" });
+// VA über Discord: Fantasie-IDs (Testdienste), VA = Konto „buero“ (Bea Büro).
+await integ("discord_va", { serverId: "500000000000000001", kanalId: "800000000000000001", vaDiscordId: "700000000000000001", vaEmail: "buero" }, { botToken: "test-bot-token" });
 const [gh, ghOhne] = await db
   .insert(schema.suppliers)
   .values([

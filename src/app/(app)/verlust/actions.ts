@@ -40,3 +40,15 @@ export async function ausnahmeBeendenAction(fd: FormData) {
   revalidatePath("/verlust");
   redirect(meldung(`Ausnahme für ${sku} beendet – wird wieder geprüft.`));
 }
+
+/** Schwelle für „Kosten ohne Verkauf“ (€ je Artikel und Woche). */
+export async function schwelleAction(fd: FormData) {
+  const session = await requireArea("geld");
+  const n = Number(String(fd.get("schwelle") ?? "").replace(",", "."));
+  if (!Number.isFinite(n) || n < 0 || n > 10_000) redirect(meldung("Schwelle als Betrag in € angeben (z. B. 5)."));
+  const [t] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
+  const alt = t?.settings ?? {};
+  await db.update(schema.tenants).set({ settings: { ...alt, verlust: { ...(alt.verlust ?? {}), kostenOhneVerkaufSchwelle: n } } }).where(eq(schema.tenants.id, session.tenantId));
+  revalidatePath("/verlust");
+  redirect(meldung(`Schwelle „Kosten ohne Verkauf“: ${n.toFixed(2).replace(".", ",")} € je Woche.`));
+}

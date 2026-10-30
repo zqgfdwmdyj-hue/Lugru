@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARBEITSZEIT_STANDARD, freieFenster, planeTag, planeTage, schaetzeAufwand, type PlanAufgabe, type Sperre } from "@/lib/tagesplan/logic";
+import { ARBEITSZEIT_STANDARD, aufgabenTyp, freieFenster, lerneAufwand, naechsterArbeitstag, planeTag, planeTage, schaetzeAufwand, type PlanAufgabe, type Sperre } from "@/lib/tagesplan/logic";
 
 // Tagesplan – erfundene Aufgaben. 2026-11-02 ist ein Montag.
 
@@ -58,5 +58,32 @@ describe("Aufwand vorschätzen", () => {
     expect(schaetzeAufwand("Lieferant XY zurückrufen")).toBe("S");
     expect(schaetzeAufwand("Inventur Lager")).toBe("L");
     expect(schaetzeAufwand("Listing überarbeiten")).toBe("M");
+  });
+});
+
+describe("Befunde 30.10. (B9)", () => {
+  it("verschiebt nie auf Samstag/Sonntag, sondern auf den nächsten Arbeitstag", () => {
+    // Freitag 30.10.2026, nur 1 Std. Platz, zwei Aufgaben → eine passt nicht und rutscht auf Montag 2.11.
+    const r = planeTage({ start: "2026-10-30", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "5": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { faellig: "2026-10-30", aufwand: "M" }), a("2", { faellig: "2026-10-30", aufwand: "M" })] });
+    expect(r.verschoben.map((v) => v.neu)).toEqual(["2026-11-02"]);
+    expect(naechsterArbeitstag("2026-10-30", ARBEITSZEIT_STANDARD, () => [])).toBe("2026-11-02");
+    const montagFrei = (t: string) => (t === "2026-11-02" ? [{ von: "00:00", bis: "23:59", titel: "Urlaub", art: "frei" as const, ganztags: true }] : []);
+    expect(naechsterArbeitstag("2026-10-30", ARBEITSZEIT_STANDARD, montagFrei)).toBe("2026-11-03");
+  });
+
+  it("lernt den Aufwand je Aufgabenart aus Korrekturen und gemessenen Dauern", () => {
+    expect(aufgabenTyp({ title: "Verlust-Stopp: Testsocken DE", systemKey: "verlust:B0TEST0001:DE" })).toBe("k:verlust");
+    expect(aufgabenTyp({ title: "10 Marken für den Audit an den Consultant", systemKey: null })).toBe("t:marken für den");
+    const g = lerneAufwand([
+      { typ: "t:marken für den", manuell: "M", dauerMin: null },
+      { typ: "k:verlust", manuell: null, dauerMin: 10 },
+      { typ: "k:verlust", manuell: null, dauerMin: 25 },
+      { typ: "k:einmal", manuell: null, dauerMin: 20 },
+      { typ: "k:zu-lang", manuell: null, dauerMin: 2000 },
+    ]);
+    expect(g.get("t:marken für den")).toBe("M");
+    expect(g.get("k:verlust")).toBe("S");
+    expect(g.has("k:einmal")).toBe(false); // eine Messung reicht nicht
+    expect(g.has("k:zu-lang")).toBe(false); // über 10 Std. = vergessen abzuhaken
   });
 });

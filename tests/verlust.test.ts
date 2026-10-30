@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ausnahmeAktiv, fensterMitDaten, fensterTage, pruefeVerlust, verlustAufgabe, wochenSumme, type TagWert } from "@/lib/money/verlust";
+import { ausnahmeAktiv, fensterMitDaten, fensterTage, kostenOhneVerkauf, pruefeVerlust, verlustAufgabe, wochenSumme, type TagWert } from "@/lib/money/verlust";
 
 // Verlust-Stopp: Auslöser 2 von 3 Tagen im Minus oder ≥ 5 Stück mit Verlust. Erfundene Werte.
 
@@ -73,5 +73,24 @@ describe("Aufgabentext", () => {
     const ohne = verlustAufgabe(f, { breakEven: null, buybox: null, bqool: null });
     expect(ohne.notiz).toContain("Break-even unbekannt");
     expect(ohne.notiz).toContain("BQool: SKU nicht im letzten Export");
+  });
+});
+
+describe("Tage ohne Verkauf (Meldung 30.10.)", () => {
+  it("Minus ohne verkaufte Einheit ist kein Verlusttag – kein Fall", () => {
+    // wie WELLA EIMI Texture: 27.10. −0,73 €, 28.10. −0,79 €, je 0 Stück, Ø Preis „–“
+    const f = pruefeVerlust([w("2026-10-26", "W", 0, 0, null), w("2026-10-27", "W", 0, -0.73, null), w("2026-10-28", "W", 0, -0.79, null)], HEUTE);
+    expect(f).toEqual([]);
+    // gemischt: ein echter Verlusttag mit Verkauf + ein Kostentag ohne Verkauf → nur 1 Verlusttag → kein Fall
+    expect(pruefeVerlust([w("2026-10-27", "H", 1, -0.5), w("2026-10-28", "H", 0, -0.5, null)], HEUTE)).toEqual([]);
+    // zwei Tage mit Verkauf im Minus → weiterhin ein Fall
+    expect(pruefeVerlust([w("2026-10-27", "V", 1, -0.5), w("2026-10-28", "V", 2, -1)], HEUTE)[0]).toMatchObject({ sku: "V", verlustTage: 2, stueckMitVerlust: 3 });
+  });
+
+  it("Kosten ohne Verkauf getrennt, erst ab der Schwelle je Woche", () => {
+    const werte = [w("2026-10-23", "K", 0, -3, null), w("2026-10-27", "K", 0, -2.5, null), w("2026-10-28", "K", 1, 4), w("2026-10-27", "L", 0, -0.73, null), w("2026-10-28", "L", 0, -0.79, null)];
+    const k = kostenOhneVerkauf(werte, HEUTE, 5);
+    expect(k).toEqual([{ sku: "K", asin: "B0TEST0001", name: "Test K", summe: -5.5, tage: [{ day: "2026-10-23", kosten: -3 }, { day: "2026-10-27", kosten: -2.5 }] }]);
+    expect(kostenOhneVerkauf(werte, HEUTE, 1).map((x) => x.sku)).toEqual(["K", "L"]);
   });
 });

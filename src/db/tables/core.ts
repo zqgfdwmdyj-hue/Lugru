@@ -161,6 +161,10 @@ export type TenantSettings = {
   buchhaltung?: { firmen?: string[]; kontenrahmen?: "SKR04" | "SKR03"; datev?: Record<string, { beraternummer?: string; mandantennummer?: string }>; geldkonten?: { bank?: string; kreditkarte?: string; transit?: string; marktplatz?: string }; wjBeginnMonat?: number };
   tagesplan?: { arbeitszeit?: Record<string, { von: string; bis: string } | null>; personen?: Record<string, Record<string, { von: string; bis: string } | null>>; vorziehen?: number };
   dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[] };
+  /** Verlust-Stopp: Kosten ohne Verkauf erst ab diesem Betrag je SKU und Woche (€) als Hinweis. */
+  verlust?: { kostenOhneVerkaufSchwelle?: number };
+  /** VA über Discord: Zeitzone der VA, Ruhezeiten (keine Erinnerungen), tägliche Erinnerung bei Überfälligem, Einkaufsrechnungen. */
+  va?: { zeitzone?: string; ruheVon?: string; ruheBis?: string; erinnerungUeberfaellig?: boolean; darfEinkaufsrechnungen?: boolean };
   dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string };
   bqool?: { standardRegel?: string; katalog?: { name: string; laender: ("DE" | "FR" | "IT" | "ES")[] | null; strategie: string; staffel: { bisTage: number | null; marge: number; unterregel?: "Sales Booster" | "Equalizer" }[] | null; festeUntergrenze: boolean; risiko: boolean; hinweis: string }[]; abverkaufRegel?: { DE?: string; sonst?: string }; costUst?: number; markenRegeln?: { marke: string; land: "DE" | "FR" | "IT" | "ES" | null; regel: string }[]; elektronikMarken?: string[]; elektronikLaender?: ("DE" | "FR" | "IT" | "ES")[]; maxFaktor?: number; fixGebuehr?: number; zusatzkosten?: number; laender?: ("DE" | "FR" | "IT" | "ES")[]; format?: { channel: Record<"DE" | "FR" | "IT" | "ES", string>; shipping: string; addDelete: string; group: string; enable: string; tabsErsteZeile: number; zeilenende: "\r\n" | "\n"; bom: boolean; schlussUmbruch: boolean; ausVorlage: boolean } | null };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
@@ -482,6 +486,8 @@ export const tasks = pgTable(
     zustaendigExtern: text("zustaendig_extern"),
     /** Aufwand für den Tagesplan: S (15 Min.), M (1 Std.), L (halber Tag); leer = vom System geschätzt. */
     aufwand: text("aufwand", { enum: ["S", "M", "L"] }),
+    /** Angefangen (Board „In Arbeit“) – mit „erledigt“ ergibt das die tatsächliche Dauer zum Lernen des Aufwands. */
+    begonnenAm: timestamp("begonnen_am", { withTimezone: true }),
     createdAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },

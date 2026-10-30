@@ -60,6 +60,9 @@ test.describe("Teil 2 – Geld & Risiko", () => {
     await sql(`insert into sellerboard_sku_months (tenant_id, month, sku, asin, name, units, sales, net_profit, synced_at) values ($1, $2, 'TEST-KAPITAL', 'B0TESTKAP1', 'Testmarke Kapitaltopf (erfunden)', 15, 299.85, 30, now())`, [T, heute().slice(0, 7)]);
     for (const [sku, werte] of [["TEST-VERLUST", [-2, 1, -1.5]], ["TEST-VERLUST2", [-3, -2, -4]]] as const)
       for (const [i, g] of werte.entries()) await sql(`insert into sellerboard_sku_tage (tenant_id, channel, day, sku, asin, name, units, sales, net_profit, avg_price, synced_at) values ($1, 'amazon', $2, $3, null, $4, 2, 25, $5, 12.5, now())`, [T, tag(i - 3), sku, `Testmarke ${sku}`, g]);
+    // Kosten ohne Verkauf (0 Stück, Minus durch Lagergebühr) – kein Verlustfall; eine alte Fehlalarm-Aufgabe schließt sich.
+    for (const i of [0, 1, 2]) await sql(`insert into sellerboard_sku_tage (tenant_id, channel, day, sku, asin, name, units, sales, net_profit, avg_price, synced_at) values ($1, 'amazon', $2, 'TEST-KOSTEN', null, 'Testmarke Lagerdose (erfunden)', 0, 0, -2.1, null, now())`, [T, tag(i - 3)]);
+    await sql(`insert into tasks (tenant_id, system_key, title, priority, category, status) values ($1, 'verlust-TEST-KOSTEN', 'Verlust-Stopp: Testmarke Lagerdose (erfunden)', 'critical', 'geld', 'open')`, [T]);
 
     await anmelden(page, "inhaber");
     await page.goto("/kapital?filter=rot");
@@ -70,6 +73,8 @@ test.describe("Teil 2 – Geld & Risiko", () => {
     await page.goto("/verlust");
     await expect(page.locator('[data-testid="verlust-fall"][data-sku="TEST-VERLUST2"]')).toContainText("3 von 3 Tagen im Minus");
     await expect(page.locator('[data-testid="verlust-fall"][data-sku="TEST-VERLUST"]')).toContainText("2 von 3 Tagen im Minus");
+    await expect(page.locator('[data-testid="verlust-fall"][data-sku="TEST-KOSTEN"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="verlust-kosten-zeile"][data-sku="TEST-KOSTEN"]')).toContainText("-6,30");
     // Bewusster Abverkauf → Ausnahme; die Aufgabe dafür wird erledigt, die andere bleibt wichtig + offen
     const fall = page.locator('[data-testid="verlust-fall"][data-sku="TEST-VERLUST2"]');
     await fall.locator("summary").click();
@@ -79,6 +84,7 @@ test.describe("Teil 2 – Geld & Risiko", () => {
     const tasks = await sql<{ system_key: string; status: string; priority: string }>("select system_key, status, priority from tasks where system_key like 'verlust-%' order by system_key");
     expect(tasks).toContainEqual({ system_key: "verlust-TEST-VERLUST", status: "open", priority: "critical" });
     expect(tasks.find((t) => t.system_key === "verlust-TEST-VERLUST2")).toBeUndefined();
+    expect(tasks.find((t) => t.system_key === "verlust-TEST-KOSTEN")?.status).toBe("done");
   });
 
   test("Echtheits-Ordner: Marke anlegen, Rechnung erkannt, Abdeckung, Audit-Paket (ZIP)", async ({ page, baseURL }) => {

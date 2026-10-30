@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, gte, inArray, lte, or } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lte, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
 import { linkAllowed } from "@/lib/auth/areas";
@@ -12,7 +12,7 @@ import { getSettings } from "@/lib/settings";
 import { bindingTask } from "@/lib/today/service";
 import { bloeckeAm } from "@/lib/zeit/bloecke";
 import { ladeBloecke } from "@/lib/zeit/service";
-import { plusTage, planeTage, schaetzeAufwand, type Arbeitszeit, type PlanAufgabe, type Sperre, type TagPlan, type Verschoben } from "./logic";
+import { aufgabenTyp, lerneAufwand, plusTage, planeTage, schaetzeAufwand, type Arbeitszeit, type PlanAufgabe, type Sperre, type TagPlan, type Verschoben } from "./logic";
 
 // Tagesplan: offene Aufgaben (eigene, ohne Zuständigen beim Inhaber) in die Arbeitszeit legen. Belegt sind Termine
 // aus verbundenen Kalendern, private Einträge (Kinderzeit, Auszeit, Ausschlafen, Paarzeit, private Termine),
@@ -144,7 +144,7 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
   const hinweise: string[] = [];
 
   const offen = await db
-    .select({ id: T.id, title: T.title, dueDate: T.dueDate, priority: T.priority, aufwand: T.aufwand, link: T.link, assigneeId: T.assigneeId, zustaendigExtern: T.zustaendigExtern, createdBy: T.createdBy })
+    .select({ id: T.id, title: T.title, systemKey: T.systemKey, dueDate: T.dueDate, priority: T.priority, aufwand: T.aufwand, link: T.link, assigneeId: T.assigneeId, zustaendigExtern: T.zustaendigExtern, createdBy: T.createdBy })
     .from(T)
     .where(and(eq(T.tenantId, t), eq(T.status, "open"), bindingTask))
     .orderBy(asc(T.dueDate))
@@ -155,10 +155,14 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
   const sperren = await sperrenLaden(session, o.start, ende, o.heute, mitPrivat);
   // Heute: Überfälliges zählt als heute fällig. Blick in die Zukunft: was vorher fällig ist, wird vorher erledigt.
   const imPlan = meine.filter((x) => !x.dueDate || o.start <= o.heute || x.dueDate >= o.start);
+  const gelernt = await gelernterAufwand(t);
   const ergebnis = planeTage({
     start: o.start,
     tage,
-    aufgaben: imPlan.map((x) => ({ id: x.id, titel: x.title, faellig: x.dueDate && x.dueDate < o.start ? o.start : x.dueDate, prioritaet: x.priority, aufwand: x.aufwand ?? schaetzeAufwand(x.title), geschaetzt: !x.aufwand, link: x.link })),
+    aufgaben: imPlan.map((x) => {
+      const g = x.aufwand ? null : (gelernt.get(aufgabenTyp(x)) ?? null);
+      return { id: x.id, titel: x.title, faellig: x.dueDate && x.dueDate < o.start ? o.start : x.dueDate, prioritaet: x.priority, aufwand: x.aufwand ?? g ?? schaetzeAufwand(x.title), geschaetzt: !x.aufwand, gelernt: Boolean(g), link: x.link };
+    }),
     arbeitszeit: az,
     sperrenAm: (tag) => sperren.get(tag) ?? [],
     vorziehen: s.tagesplan.vorziehen,
@@ -189,6 +193,16 @@ export async function aufgabeVerschieben(session: Session, id: string, datum: st
   if (restricted && !(x.link ? linkAllowed(session, x.link) : x.createdBy === session.userId || x.assigneeId === session.userId)) return null;
   await db.update(T).set({ dueDate: datum }).where(and(eq(T.tenantId, session.tenantId), eq(T.id, id)));
   return { titel: x.title, vorher: x.dueDate };
+}
+
+/** Aufwand je Aufgabenart aus den letzten 180 Tagen: von Hand eingetragen oder gemessen (angefangen → erledigt). */
+export async function gelernterAufwand(tenantId: string) {
+  const rows = await db
+    .select({ title: T.title, systemKey: T.systemKey, aufwand: T.aufwand, begonnenAm: T.begonnenAm, completedAt: T.completedAt })
+    .from(T)
+    .where(and(eq(T.tenantId, tenantId), gte(T.createdAt, new Date(Date.now() - 180 * 86_400_000)), or(isNotNull(T.aufwand), and(isNotNull(T.begonnenAm), isNotNull(T.completedAt)))))
+    .limit(5000);
+  return lerneAufwand(rows.map((r) => ({ typ: aufgabenTyp(r), manuell: r.aufwand, dauerMin: r.begonnenAm && r.completedAt ? Math.round((r.completedAt.getTime() - r.begonnenAm.getTime()) / 60_000) : null })));
 }
 
 /** Aufwand einer Aufgabe setzen (S/M/L) oder zurück auf „geschätzt“. */

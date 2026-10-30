@@ -3,7 +3,7 @@ import { KpiMeta } from "@/components/kpi";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { VERLUST_REGEL, verlustStopp } from "@/lib/money/verlust-service";
-import { ausnahmeAction, ausnahmeBeendenAction } from "./actions";
+import { ausnahmeAction, ausnahmeBeendenAction, schwelleAction } from "./actions";
 
 // Verlust-Stopp: Artikel, die gerade mit Verlust verkaufen (2 von 3 Tagen im Minus oder ≥ 5 Stück mit Verlust).
 // Je Fall eine wichtige Aufgabe; bewusste Verlustverkäufe als Ausnahme mit Wochensumme.
@@ -34,7 +34,7 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
       </div>
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
       <p className="small muted" style={{ margin: "0 0 14px", maxWidth: 860 }}>
-        Täglich nach dem sellerboard-Abgleich: Ist-Gewinn je Produkt der letzten {VERLUST_REGEL.fenster} abgeschlossenen Tage. Auslöser: an {VERLUST_REGEL.tage} von {VERLUST_REGEL.fenster} Tagen im Minus oder mindestens {VERLUST_REGEL.stueck} Stück mit Verlust verkauft.
+        Täglich nach dem sellerboard-Abgleich: Ist-Gewinn je Produkt der letzten {VERLUST_REGEL.fenster} abgeschlossenen Tage. Auslöser: an {VERLUST_REGEL.tage} von {VERLUST_REGEL.fenster} Tagen im Minus (nur Tage mit Verkauf) oder mindestens {VERLUST_REGEL.stueck} Stück mit Verlust verkauft. Ein Minus ohne Verkauf (Lagergebühr, Erstattungskosten) steht unten getrennt als „Kosten ohne Verkauf“.
         Je Fall entsteht eine <strong>wichtige Aufgabe</strong> mit Break-even, Buy Box (Keepa) und BQool-Regel. Bewusste Verlustverkäufe (Abverkauf, Liquidation) als Ausnahme markieren.
       </p>
 
@@ -113,6 +113,46 @@ export default async function VerlustPage({ searchParams }: { searchParams: Prom
           ))}
         </div>
       )}
+
+      <h2 style={{ marginTop: 18 }}>Kosten ohne Verkauf</h2>
+      <p className="small muted" style={{ margin: "0 0 8px", maxWidth: 860 }}>
+        Tage ohne verkaufte Einheit, an denen trotzdem Kosten anfielen (Lagergebühr, Erstattungskosten …), letzte 7 Tage – nur Hinweis, keine Aufgabe. Angezeigt ab {eur(v.schwelle)} je Artikel und Woche.
+      </p>
+      {v.kostenOhneVerkauf.length === 0 ? (
+        <div className="card card-pad small muted" data-testid="verlust-kosten-keine">Keine Artikel über der Schwelle.</div>
+      ) : (
+        <div className="table-wrap card">
+          <table className="table" data-testid="verlust-kosten">
+            <thead>
+              <tr>
+                <th>Produkt</th>
+                <th>Tage</th>
+                <th className="right">Kosten 7 Tage</th>
+              </tr>
+            </thead>
+            <tbody>
+              {v.kostenOhneVerkauf.map((k) => (
+                <tr key={k.sku} data-testid="verlust-kosten-zeile" data-sku={k.sku}>
+                  <td>
+                    {k.name ?? k.sku}
+                    <div className="small muted">
+                      {k.sku}
+                      {k.asin ? ` · ${k.asin}` : ""}
+                    </div>
+                  </td>
+                  <td className="small">{k.tage.map((t) => `${dm(t.day)} ${eur(t.kosten)}`).join(" · ")}</td>
+                  <td className="right num" style={{ color: "var(--danger)" }}>{eur(k.summe)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <form action={schwelleAction} className="small" style={{ display: "flex", gap: 6, alignItems: "center", margin: "8px 0 0", flexWrap: "wrap" }}>
+        <label htmlFor="verlust-schwelle">Schwelle je Woche (€)</label>
+        <input id="verlust-schwelle" name="schwelle" defaultValue={String(v.schwelle).replace(".", ",")} size={6} inputMode="decimal" />
+        <button className="btn btn-small" type="submit">Speichern</button>
+      </form>
 
       <h2 style={{ marginTop: 18 }}>Ausnahmen</h2>
       {v.ausnahmen.length === 0 ? (

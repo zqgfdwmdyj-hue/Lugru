@@ -201,7 +201,7 @@ export const aufgabeAnlegen = defineTool({
 export const aufgabeAendern = defineTool({
   name: "aufgabe_aendern",
   title: "Aufgabe ändern / abhaken",
-  description: "Hakt eine Aufgabe ab (erledigt: true), öffnet sie wieder (erledigt: false) oder ändert Titel, Notiz, Fälligkeit, Priorität. Die id kommt aus „aufgaben“ oder „suche“.",
+  description: "Hakt eine Aufgabe ab (erledigt: true), öffnet sie wieder (erledigt: false) oder ändert Titel, Notiz, Fälligkeit, Priorität, Aufwand (S = 15 Min., M = 1 Std., L = halber Tag; null = wieder schätzen – der Tagesplan lernt daraus für Aufgaben gleicher Art). Die id kommt aus „aufgaben“ oder „suche“.",
   area: ["start", "kalender"],
   write: true,
   input: z.object({
@@ -211,8 +211,9 @@ export const aufgabeAendern = defineTool({
     notiz: z.string().trim().max(4000).optional(),
     faellig: isoDate.nullable().optional().describe("Neues Fälligkeitsdatum; null entfernt es"),
     prioritaet: z.enum(["wichtig", "normal", "niedrig"]).optional(),
+    aufwand: z.enum(["S", "M", "L"]).nullable().optional().describe("S = 15 Min., M = 1 Std., L = halber Tag; null = wieder schätzen"),
   }),
-  summary: (i) => [i.erledigt === true ? "abhaken" : i.erledigt === false ? "wieder öffnen" : null, i.titel ? `Titel „${i.titel}“` : null, i.faellig !== undefined ? `fällig ${i.faellig ?? "–"}` : null, i.prioritaet ? `Priorität ${i.prioritaet}` : null].filter(Boolean).join(", ") || "Aufgabe ändern",
+  summary: (i) => [i.erledigt === true ? "abhaken" : i.erledigt === false ? "wieder öffnen" : null, i.titel ? `Titel „${i.titel}“` : null, i.faellig !== undefined ? `fällig ${i.faellig ?? "–"}` : null, i.prioritaet ? `Priorität ${i.prioritaet}` : null, i.aufwand !== undefined ? `Aufwand ${i.aufwand ?? "schätzen"}` : null].filter(Boolean).join(", ") || "Aufgabe ändern",
   run: async (ctx, i) => {
     const s = ctx.session;
     const [task] = await db.select().from(T).where(and(eq(T.tenantId, s.tenantId), eq(T.id, i.id)));
@@ -223,6 +224,7 @@ export const aufgabeAendern = defineTool({
     if (i.notiz !== undefined) patch.notes = i.notiz || null;
     if (i.faellig !== undefined) patch.dueDate = i.faellig;
     if (i.prioritaet) patch.priority = PRIORITY_IN[i.prioritaet];
+    if (i.aufwand !== undefined) patch.aufwand = i.aufwand;
     if (!Object.keys(patch).length) return { text: "Nichts zu ändern angegeben.", isError: true };
     const [row] = await db.update(T).set(patch).where(and(eq(T.tenantId, s.tenantId), eq(T.id, i.id))).returning();
     syncSoon(s.tenantId);

@@ -107,7 +107,7 @@ export const verlust_stopp = defineTool({
   name: "verlust_stopp",
   title: "Verlust-Stopp",
   description:
-    "Artikel, die gerade mit Verlust verkaufen: Ist-Gewinn je Produkt der letzten 3 abgeschlossenen Tage (Amazon + eBay); Auslöser 2 von 3 Tagen im Minus oder mindestens 5 Stück mit Verlust. Je Fall Tageswerte, Ø Preis, Break-even, Buy Box (Keepa) und BQool-Regel/Min; dazu die Ausnahme-Liste (bewusster Abverkauf) mit Gewinn der letzten 7 Tage. Für „Wo verliere ich gerade Geld?“.",
+    "Artikel, die gerade mit Verlust verkaufen: Ist-Gewinn je Produkt der letzten 3 abgeschlossenen Tage (Amazon + eBay); Auslöser 2 von 3 Tagen im Minus (nur Tage mit Verkauf) oder mindestens 5 Stück mit Verlust. Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) stehen getrennt unter kosten_ohne_verkauf (ab Schwelle je Woche). Je Fall Tageswerte, Ø Preis, Break-even, Buy Box (Keepa) und BQool-Regel/Min; dazu die Ausnahme-Liste (bewusster Abverkauf) mit Gewinn der letzten 7 Tage. Für „Wo verliere ich gerade Geld?“.",
   area: "geld",
   write: false,
   quelle: { text: "sellerboard (Gewinn je Produkt und Tag), EK im Seller-System, Keepa, BQool-Export", jobs: ["sellerboard:*"] },
@@ -123,7 +123,7 @@ export const verlust_stopp = defineTool({
       .where(and(eq(T.tenantId, ctx.session.tenantId), like(T.systemKey, "verlust-%"), eq(T.status, "open")))
       .limit(50);
     return json({
-      regel: `${VERLUST_REGEL.tage} von ${VERLUST_REGEL.fenster} Tagen im Minus oder ≥ ${VERLUST_REGEL.stueck} Stück mit Verlust`,
+      regel: `${VERLUST_REGEL.tage} von ${VERLUST_REGEL.fenster} Tagen im Minus (nur Tage mit Verkauf) oder ≥ ${VERLUST_REGEL.stueck} Stück mit Verlust`,
       zeitraum: { von: v.fenster[0], bis: v.fenster[v.fenster.length - 1], tage_mit_daten: v.tageMitDaten },
       stand_sellerboard: berlinDateTime(v.stand) ?? "noch kein Abgleich",
       faelle: v.faelle.map((f) => ({
@@ -139,6 +139,9 @@ export const verlust_stopp = defineTool({
         bqool: f.bqool,
         link: abs(ctx, `/verlust?q=${encodeURIComponent(f.sku)}`),
       })),
+      kosten_ohne_verkauf: v.kostenOhneVerkauf.length
+        ? { schwelle_je_woche: v.schwelle, zeitraum: "letzte 7 Tage", artikel: v.kostenOhneVerkauf.slice(0, 30).map((k) => ({ sku: k.sku, asin: k.asin ?? undefined, name: k.name ?? undefined, summe: k.summe, tage: k.tage.map((x) => ({ tag: x.day, kosten: x.kosten })) })) }
+        : undefined,
       ausnahmen: v.ausnahmen.map((a) => ({ sku: a.sku, name: a.name ?? undefined, grund: a.grund, bis: a.bis ?? "unbefristet", aktiv: a.aktiv, gewinn_7_tage: a.woche.tageMitDaten ? a.woche.summe : null, stueck_7_tage: a.woche.stueck })),
       offene_aufgaben: offen.map((a) => ({ titel: a.titel, sku: a.schluessel?.replace(/^verlust-/, ""), seit: a.faellig ?? undefined, notiz: a.notiz?.slice(0, 600) ?? undefined })),
       hinweis: !v.tageMitDaten.length

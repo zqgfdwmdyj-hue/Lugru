@@ -65,6 +65,20 @@ function kiAnswer(req, b) {
     const m = { ean: finde(/barcode|ean|gtin/i), asin: finde(/amazon|asin/i), supplierSku: finde(/code|art|sku/i), title: finde(/produkt|bezeichnung|name/i), price: finde(/netto|preis|ek/i), stock: finde(/lager|bestand/i), moq: finde(/vpe|mindest|moq/i), url: null };
     return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
   }
+  // VA über Discord: Nachricht der Assistenz einordnen (erfundene Regeln wie eine KI).
+  if (/Ordne die Nachricht der Assistenz/.test(text) && !stale) {
+    const n = (/Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "").trim();
+    const asin = /\b(B0[A-Z0-9]{8})\b/.exec(n)?.[1] ?? null;
+    const marke = asin ? /([A-ZÄÖÜ][\wäöüß]+)\s+B0[A-Z0-9]{8}/.exec(n)?.[1] ?? null : null;
+    const sendung = /\b(FBA[0-9A-Z]{6,12})\b/.exec(n)?.[1] ?? null;
+    let o;
+    if (/rechnung/i.test(n)) o = { art: "bitte", titel: `Rechnung ${[marke, asin].filter(Boolean).join(" ")}`.trim(), faellig: null, anfrage: { typ: "rechnung", asin, sku: null, marke, lieferant: null, sendung: null, auftrag: null, suchtext: null }, aufgabe: null };
+    else if (sendung) o = { art: "frage", titel: `Sendung ${sendung}`, faellig: null, anfrage: { typ: "sendung", asin: null, sku: null, marke: null, lieferant: null, sendung, auftrag: null, suchtext: null }, aufgabe: null };
+    else if (/^(danke|hallo|guten morgen|ok)\b/i.test(n)) o = { art: "smalltalk", titel: "Gruß", faellig: null, anfrage: null, aufgabe: null };
+    else if (/\?/.test(n)) o = { art: "frage", titel: n.replace(/\?.*$/, "").slice(0, 80), faellig: /morgen/i.test(n) ? null : null, anfrage: null, aufgabe: null };
+    else o = { art: "info", titel: n.slice(0, 80), faellig: null, anfrage: null, aufgabe: /aufgabe 1|remission/i.test(n) ? 1 : null };
+    return [200, reply(b, [{ type: "text", text: JSON.stringify(o) }], "end_turn")];
+  }
   // Wissen aus Calls: zwei erfundene Einträge je Call (Titel mit dem Call-Titel, damit nichts doppelt aussieht).
   if (/Ziehe das Wissen heraus/.test(text) && !stale) {
     const call = /\nCall: (.*) am \d{4}-\d{2}-\d{2}\n/.exec(text)?.[1] ?? "Test-Call";
@@ -190,6 +204,70 @@ let discord = [];
 let shopOrder = 900000;
 let shipNo = 3400000000;
 
+// Discord-Nachbau für den VA-Kanal (Kanal-IDs mit „8“ am Anfang): Threads, Nachrichten (JSON oder multipart),
+// Reaktionen, Anhänge. Prüf-Hilfen: /__discord-va (Zustand), /__discord-va/nachricht, /__discord-va/reaktion.
+const DC_BOT = "600000000000000001";
+const DC_VA = "700000000000000001";
+let dcSeq = 910000000000000000n;
+let dcVa = { kanaele: new Map(), nachrichten: [], anhaenge: new Map() };
+const dcId = () => String(++dcSeq);
+const dcKanal = (id) => dcVa.kanaele.get(id) ?? (id.startsWith("8") ? (dcVa.kanaele.set(id, { id, name: "va-test", type: 0, guild_id: "500000000000000001" }), dcVa.kanaele.get(id)) : null);
+function dcNachricht(channel_id, author, content, attachments = []) {
+  const m = { id: dcId(), channel_id, type: 0, content, timestamp: new Date().toISOString(), author, attachments, reactions: [] };
+  dcVa.nachrichten.push(m);
+  return m;
+}
+function discordVa(req, p, url, body) {
+  if (p === "/discord-api/users/@me") return [200, { id: DC_BOT, username: "Seller-Bot (Test)", bot: true }];
+  const t = /^\/discord-api\/channels\/(\d+)(\/.*)?$/.exec(p);
+  if (!t) return null;
+  const k = dcKanal(t[1]);
+  if (!k) return null;
+  const rest = t[2] ?? "";
+  if (!rest) return [200, k];
+  if (rest === "/threads" && req.method === "POST") {
+    const b = JSON.parse(body || "{}");
+    const th = { id: dcId(), name: String(b.name ?? "").slice(0, 100), type: 11, parent_id: k.id, guild_id: k.guild_id };
+    dcVa.kanaele.set(th.id, th);
+    return [201, th];
+  }
+  const ausNachricht = /^\/messages\/(\d+)\/threads$/.exec(rest);
+  if (ausNachricht && req.method === "POST") {
+    if (dcVa.kanaele.has(ausNachricht[1])) return [400, { message: "A thread has already been created for this message", code: 160004 }];
+    const b = JSON.parse(body || "{}");
+    const th = { id: ausNachricht[1], name: String(b.name ?? "").slice(0, 100), type: 11, parent_id: k.id, guild_id: k.guild_id };
+    dcVa.kanaele.set(th.id, th);
+    return [201, th];
+  }
+  if (rest === "/messages" && req.method === "POST") {
+    let b;
+    const dateien = [];
+    if (String(req.headers["content-type"] ?? "").startsWith("multipart/form-data")) {
+      b = JSON.parse(/name="payload_json"\r\n(?:Content-Type:[^\r]*\r\n)?\r\n([\s\S]*?)\r\n--/.exec(body)?.[1] ?? "{}");
+      for (const f of body.matchAll(/filename="([^"]+)"/g)) dateien.push({ id: dcId(), filename: f[1], size: 1 });
+    } else b = JSON.parse(body || "{}");
+    if (String(b.content ?? "").length > 2000) return [400, { message: "Invalid Form Body", code: 50035 }];
+    const m = dcNachricht(k.id, { id: DC_BOT, bot: true, username: "Seller-Bot (Test)" }, String(b.content ?? ""), dateien);
+    m.flags = b.flags ?? 0;
+    m.erwaehnt = b.allowed_mentions?.users ?? [];
+    return [200, m];
+  }
+  if (rest === "/messages" && req.method === "GET") {
+    const nach = url.searchParams.get("after");
+    const limit = Number(url.searchParams.get("limit") ?? 50);
+    let liste = dcVa.nachrichten.filter((m) => m.channel_id === k.id);
+    if (nach) liste = liste.filter((m) => BigInt(m.id) > BigInt(nach)).slice(0, limit);
+    else liste = liste.slice(-limit);
+    return [200, [...liste].reverse()];
+  }
+  const eine = /^\/messages\/(\d+)$/.exec(rest);
+  if (eine && req.method === "GET") {
+    const m = dcVa.nachrichten.find((x) => x.id === eine[1] && x.channel_id === k.id);
+    return m ? [200, m] : [404, { message: "Unknown Message", code: 10008 }];
+  }
+  return [404, { message: "nicht nachgebildet", code: 0 }];
+}
+
 async function route(req, url, body) {
   const p = url.pathname;
   const json = (o) => [200, o];
@@ -279,9 +357,13 @@ async function route(req, url, body) {
     if (!id.startsWith("TESTCALL")) return [302, "", "text/html"];
     return [200, `Consultant-Call (Testdaten, erfunden) ${id}\n\nConsultant: Hallo Ludwig, schön dass es klappt.\nLudwig: Hallo! Wie besprochen habe ich die Markenliste vorbereitet.\nConsultant: Super. Schick mir bis Freitag die Liste der zehn Marken für den Audit.\nLudwig: Mache ich. Gilt der Mindestrabatt auch für Bundles?\nConsultant: Das kläre ich intern und melde mich bis nächste Woche.\nLudwig: Gut, dann machen wir Black-Week-Deals nur mit Gewinn.\nConsultant: Bis dann. (Testnotiz ${id})\n`, "text/plain; charset=utf-8"];
   }
-  // Discord-API (Bot liest den Call-Kanal): eine Nachricht mit Link auf ein Test-Doc.
-  if (p.startsWith("/discord-api/channels/")) {
+  // Discord-API: VA-Kanal (mit Zustand: Threads, Nachrichten, Reaktionen) und Call-Kanal (eine feste Nachricht).
+  if (p.startsWith("/discord-api/")) {
     if (req.headers.authorization !== "Bot test-bot-token") return [401, { message: "401: Unauthorized", code: 0 }];
+    const va = discordVa(req, p, url, body);
+    if (va) return va;
+  }
+  if (p.startsWith("/discord-api/channels/")) {
     if (p.endsWith("/messages")) return json([{ id: "900000000000000001", timestamp: "2026-10-21T15:00:00.000Z", content: "Consultant-Call 21.10.2026 https://docs.google.com/document/d/TESTCALLdiscord0000000001/edit" }]);
     return json({ id: p.split("/")[3], name: "calls-test" });
   }
@@ -465,6 +547,28 @@ http
     if (url.pathname.startsWith("/web-")) return webNachbau(req, res, url, body);
     if (url.pathname === "/__ki") return send(200, ki);
     if (url.pathname === "/__discord") return send(200, discord);
+    if (url.pathname === "/__discord-va") return send(200, { kanaele: [...dcVa.kanaele.values()], nachrichten: dcVa.nachrichten });
+    // Nachricht als VA (im Kanal oder Thread), optional mit Anhang (Text-Inhalt).
+    if (url.pathname === "/__discord-va/nachricht" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (!dcKanal(String(b.kanal))) return send(404, { fehler: "Kanal unbekannt" });
+      const anh = b.anhang ? [{ id: dcId(), filename: b.anhang.name, content_type: b.anhang.typ ?? "text/plain", size: String(b.anhang.inhalt ?? "").length, url: `${SELF}/discord-cdn/${encodeURIComponent(b.anhang.name)}` }] : [];
+      if (b.anhang) dcVa.anhaenge.set(b.anhang.name, String(b.anhang.inhalt ?? ""));
+      return send(200, dcNachricht(String(b.kanal), { id: String(b.autor ?? DC_VA), username: "VA (Test)" }, String(b.text ?? ""), anh));
+    }
+    if (url.pathname === "/__discord-va/reaktion" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      const m = dcVa.nachrichten.find((x) => x.id === String(b.nachricht));
+      if (!m) return send(404, { fehler: "Nachricht unbekannt" });
+      const r = m.reactions.find((x) => x.emoji.name === b.emoji);
+      if (r) r.count++;
+      else m.reactions.push({ emoji: { id: null, name: b.emoji }, count: 1, me: false });
+      return send(200, m);
+    }
+    if (url.pathname.startsWith("/discord-cdn/")) {
+      const name = decodeURIComponent(url.pathname.slice("/discord-cdn/".length));
+      return dcVa.anhaenge.has(name) ? send(200, dcVa.anhaenge.get(name), "text/plain") : send(404, "nicht gefunden", "text/plain");
+    }
     // Prüf-Hilfen Lexoffice: Belege ansehen, Rechnungen als bezahlt markieren (wie ein Zahlungseingang).
     if (url.pathname === "/__lexoffice") return send(200, [...lex.belege.values()].map((x) => ({ id: x.id, art: x.art, nummer: x.voucherNumber, brutto: x.totalPrice.totalGrossAmount, netto: x.totalPrice.totalNetAmount, steuerArt: x.taxType, vorgaenger: x.vorgaenger, menge: x.b.lineItems?.[0]?.quantity, bezahlt: lex.bezahlt.has(x.id) })));
     if (url.pathname.startsWith("/__lexoffice/bezahlt/") && req.method === "POST") {
@@ -475,6 +579,7 @@ http
       log = [];
       ki = [];
       discord = [];
+      dcVa = { kanaele: new Map(), nachrichten: [], anhaenge: new Map() };
       return send(200, { ok: true });
     }
     if (url.pathname === "/__gesund") return send(200, { ok: true });

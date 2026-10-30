@@ -37,6 +37,11 @@ export default async function FeierabendPage({ searchParams }: { searchParams: P
             <h2 style={{ marginTop: 0 }}>✓ Heute erledigt ({f.erledigt.length})</h2>
             {f.erledigt.length === 0 ? <p className="small muted">Heute noch nichts abgehakt.</p> : <ul className="small" style={{ paddingLeft: 18 }}>{f.erledigt.map((e) => <li key={e.id}>{e.link ? <Link href={e.link}>{e.titel}</Link> : e.titel}</li>)}</ul>}
           </div>
+          {f.va && (
+            <div className="card card-pad small" data-testid="fa-va">
+              🤝 {f.va.text} · <Link href="/delegation/va">VA (Discord)</Link>
+            </div>
+          )}
           <div className="card card-pad" data-testid="fa-offen">
             <h2 style={{ marginTop: 0 }}>Noch offen ({f.offen.length})</h2>
             {f.offen.length === 0 ? (

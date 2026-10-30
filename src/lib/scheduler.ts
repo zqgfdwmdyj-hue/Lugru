@@ -169,6 +169,9 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Service", () => refreshServiceTasks(t));
         await step(t, "Rechnungsaufgaben", () => refreshInvoiceTasks(t));
         await step(t, "Import-Erinnerung", () => refreshImportReminder(t, s.importReminderDays));
+        // Verlust-Stopp-Aufgaben mit den vorhandenen Tageswerten abgleichen (schließt z. B. Aufgaben, die nur aus
+        // Tagen ohne Verkauf entstanden sind) – ohne neuen sellerboard-Abruf.
+        await step(t, "Verlust-Stopp (Abgleich)", async () => (await import("@/lib/money/verlust-service")).refreshVerlustTasks(t, todayIso()));
       }
       // Call-Archiv: neue Transkripte aus dem Discord-Kanal, einmal pro Woche.
       if (await has("discord_calls")) if (force || due(`${t}:calls`, 10079)) await step(t, "Call-Archiv (Discord)", async () => (await import("@/lib/calls/service")).discordCallsImport(t, todayIso()));
@@ -192,6 +195,12 @@ export async function runScheduledJobs(force = false) {
 }
 
 let started = false;
+
+async function vaTakt() {
+  const va = await import("@/lib/va/service");
+  // Fehler protokolliert vaAbgleich selbst (job_runs „VA (Discord)“).
+  for (const t of await va.vaMandanten()) await va.vaAbgleich(t).catch(() => null);
+}
 export function startScheduler() {
   if (started || process.env.ENABLE_SCHEDULER === "0") return;
   started = true;
@@ -199,5 +208,7 @@ export function startScheduler() {
   setTimeout(tick, 60_000);
   // Alle 5 Minuten: Bestellungen und Bestandsabgleich (gegen Überverkauf); die übrigen Abrufe haben eigene Abstände.
   setInterval(tick, 5 * 60_000);
+  // VA über Discord: alle 30 Sekunden (Antwort auf Datenfragen in ≤ 1 Minute) – nur mit eingerichtetem VA-Kanal.
+  setInterval(() => void vaTakt().catch((e) => console.error("[VA]", e instanceof Error ? e.message : e)), 30_000);
   console.log("[Hintergrund] Abrufe aktiv (alle 5 Minuten).");
 }

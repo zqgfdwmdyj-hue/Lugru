@@ -125,6 +125,10 @@ export const DEFAULT_SETTINGS = {
     laender: ["DE", "FR", "IT", "ES"] as ExportLand[],
     format: null as BqoolFormat | null,
   },
+  /** Verlust-Stopp: Kosten ohne Verkauf (Lagergebühr, Erstattungskosten) erst ab 5 € je SKU und Woche als Hinweis. */
+  verlust: { kostenOhneVerkaufSchwelle: 5 },
+  /** VA über Discord: Zeitzone, Ruhezeiten, überfällig täglich erinnern, Einkaufsrechnungen automatisch schicken. */
+  va: { zeitzone: "Europe/Berlin", ruheVon: "20:00", ruheBis: "08:00", erinnerungUeberfaellig: true, darfEinkaufsrechnungen: true },
   dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "" },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
@@ -187,6 +191,8 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
+    va: { ...d.va, ...(s.va ?? {}) },
+    verlust: { ...d.verlust, ...(s.verlust ?? {}) },
     bqool: { ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool,
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },

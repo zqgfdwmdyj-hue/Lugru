@@ -330,6 +330,25 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "discord_va",
+    name: "Discord – VA-Kanal (Assistenz) – optional",
+    purpose:
+      "Aufgaben an die VA gehen als eigener Thread in den VA-Kanal (mit Anleitung und Anhängen); ✅ oder „erledigt“ schließt die Aufgabe, Fragen landen als Rückfrage bei dir. Neue Nachrichten der VA ordnet die KI ein und beantwortet Datenfragen (Rechnungen, Sendungen, Ansprüche, Aufträge, Produkte, Anleitungen) direkt im Thread.",
+    fields: [
+      { key: "botToken", label: "Bot-Token", secret: true, help: "Nur auf dem Server gespeichert – erscheint nie in der Oberfläche oder in Protokollen." },
+      { key: "serverId", label: "Server-ID", placeholder: "z. B. 123456789012345678", help: "Rechtsklick auf den Server → „Server-ID kopieren“ (Entwicklermodus an)." },
+      { key: "kanalId", label: "VA-Kanal-ID", placeholder: "z. B. 123456789012345678", help: "Der Bot liest nur diesen Kanal und seine Threads." },
+      { key: "vaDiscordId", label: "Discord-Nutzer-ID der VA", placeholder: "z. B. 123456789012345678", help: "Rechtsklick auf die VA → „Benutzer-ID kopieren“. Nur ihre Nachrichten werden verarbeitet." },
+      { key: "vaEmail", label: "Konto der VA im Seller-System (E-Mail)", help: "Ihre Bereichsrechte gelten auch für Links und automatische Antworten – ohne Privat-, Finanz- und B2B-Kundendaten." },
+    ],
+    setup: [
+      "discord.com/developers → New Application → Bot → „Reset Token“ → Token kopieren und hier eintragen.",
+      "Unter Bot → Privileged Gateway Intents „Message Content Intent“ einschalten (sonst sieht der Bot den Text der VA nicht).",
+      "OAuth2 → URL Generator: „bot“ mit View Channels, Send Messages, Create Public Threads, Send Messages in Threads, Read Message History, Attach Files → Bot auf den Server einladen.",
+      "Den Bot nur im VA-Kanal berechtigen. Aufgaben gibst du über Delegation (Zuständig = VA) oder in Claude mit aufgabe_zuweisen(an=\"va\").",
+    ],
+  },
+  {
     provider: "lugru_deals",
     name: "Lugru Deals (Shop-Monitor) – optional",
     purpose:

@@ -1,5 +1,7 @@
 // Verlust-Stopp – reine Logik: Welche Artikel verkaufen gerade mit Verlust? Auslöser: Ist-Gewinn unter 0 an 2
 // der letzten 3 abgeschlossenen Tage oder mindestens 5 Stück mit Verlust verkauft (in diesen 3 Tagen).
+// Nur Tage mit verkauften Einheiten zählen: ein Minus ohne Verkauf (Lagergebühr, Erstattungskosten …) ist kein
+// Verlustverkauf, sondern erscheint getrennt als „Kosten ohne Verkauf“ ab einer einstellbaren Schwelle je Woche.
 
 export const VERLUST_REGEL = { fenster: 3, tage: 2, stueck: 5 } as const;
 
@@ -50,7 +52,7 @@ export function pruefeVerlust(werte: TagWert[], heute: string, regel: { fenster:
       const mitWert = r.filter((x) => x.netProfit !== null);
       return { day, units, gewinn: mitWert.length ? r2(mitWert.reduce((n, x) => n + (x.netProfit ?? 0), 0)) : null };
     });
-    const verlust = jeTag.filter((t) => t.gewinn !== null && t.gewinn < 0);
+    const verlust = jeTag.filter((t) => t.units > 0 && t.gewinn !== null && t.gewinn < 0);
     const verlustTage = verlust.length;
     const stueckMitVerlust = verlust.reduce((n, t) => n + t.units, 0);
     const summe = r2(jeTag.reduce((n, t) => n + (t.gewinn ?? 0), 0));
@@ -71,6 +73,39 @@ export function pruefeVerlust(werte: TagWert[], heute: string, regel: { fenster:
       preis: stueck > 0 ? r2(umsatz / stueck) : null,
       grund: [nachTagen ? `${verlustTage} von ${regel.fenster} Tagen im Minus` : null, nachStueck ? `${stueckMitVerlust} Stück mit Verlust` : null].filter(Boolean).join(" · "),
     });
+  }
+  return out.sort((a, b) => a.summe - b.summe);
+}
+
+export type KostenOhneVerkauf = { sku: string; asin: string | null; name: string | null; summe: number; tage: { day: string; kosten: number }[] };
+
+/**
+ * Kosten ohne Verkauf: Tage mit 0 verkauften Einheiten und negativem Gewinn (Lagergebühren, Erstattungskosten …) in
+ * den letzten 7 abgeschlossenen Tagen, je SKU summiert; nur ab `schwelle` € (Betrag) je Woche.
+ */
+export function kostenOhneVerkauf(werte: TagWert[], heute: string, schwelle: number): KostenOhneVerkauf[] {
+  const tage = new Set(fensterTage(heute, 7));
+  const jeSkuTag = new Map<string, Map<string, { units: number; gewinn: number; mitWert: boolean }>>();
+  const info = new Map<string, { asin: string | null; name: string | null }>();
+  for (const w of werte) {
+    if (!tage.has(w.day)) continue;
+    const m = jeSkuTag.get(w.sku) ?? new Map();
+    const t = m.get(w.day) ?? { units: 0, gewinn: 0, mitWert: false };
+    t.units += w.units;
+    if (w.netProfit !== null) {
+      t.gewinn += w.netProfit;
+      t.mitWert = true;
+    }
+    m.set(w.day, t);
+    jeSkuTag.set(w.sku, m);
+    const i = info.get(w.sku) ?? { asin: null, name: null };
+    info.set(w.sku, { asin: i.asin ?? w.asin, name: i.name ?? w.name });
+  }
+  const out: KostenOhneVerkauf[] = [];
+  for (const [sku, m] of jeSkuTag) {
+    const k = [...m.entries()].filter(([, t]) => t.units === 0 && t.mitWert && t.gewinn < 0).map(([day, t]) => ({ day, kosten: r2(t.gewinn) })).sort((a, b) => a.day.localeCompare(b.day));
+    const summe = r2(k.reduce((n, x) => n + x.kosten, 0));
+    if (k.length && -summe >= schwelle) out.push({ sku, ...info.get(sku)!, summe, tage: k });
   }
   return out.sort((a, b) => a.summe - b.summe);
 }

@@ -55,6 +55,8 @@ export async function feierabend(session: Session, o: { heute: string; mitPrivat
     morgenAmpel: m.ampel,
     privatDetails: plan.privatDetails,
     rueckblick: o.rueckblick || wochentag(o.heute) === 7 ? await wochenrueckblick(session, o.heute, !!o.mitPrivat) : null,
+    // VA über Discord (nur Inhaber): „VA heute: 6 erledigt, 2 Rückfragen, 3 automatisch beantwortet“.
+    va: session.role === "owner" ? await (await import("@/lib/va/service")).vaHeute(t, o.heute).catch(() => null) : null,
   };
   return out;
 }

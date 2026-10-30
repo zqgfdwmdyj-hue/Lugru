@@ -27,7 +27,7 @@ export async function personen(tenantId: string): Promise<Person[]> {
 }
 
 /** Zuständig setzen: intern (mit Anleitungen) oder extern (nur Name); null = niemand Bestimmtes. */
-export async function zustaendigSetzen(tenantId: string, taskId: string, person: string | null): Promise<{ ok: boolean; name: string | null }> {
+export async function zustaendigSetzen(tenantId: string, taskId: string, person: string | null): Promise<{ ok: boolean; name: string | null; va?: string | null }> {
   const p = person ? personAus(person) : null;
   if (person && !p) return { ok: false, name: null };
   if (p && "userId" in p) {
@@ -35,7 +35,9 @@ export async function zustaendigSetzen(tenantId: string, taskId: string, person:
     if (!r) return { ok: false, name: null };
     await db.update(T).set({ zustaendigExtern: null }).where(and(eq(T.tenantId, tenantId), eq(T.id, taskId)));
     const [u] = await db.select({ name: schema.users.name, email: schema.users.email }).from(schema.users).where(eq(schema.users.id, p.userId));
-    return { ok: true, name: u?.name || u?.email || null };
+    // Geht die Aufgabe an das Konto der VA (Discord eingerichtet) → eigener Thread im VA-Kanal.
+    const va = await (await import("@/lib/va/service")).beiZuweisung(tenantId, taskId, p.userId).catch((e) => ({ ok: false as const, fehler: e instanceof Error ? e.message : String(e) }));
+    return { ok: true, name: u?.name || u?.email || null, va: va ? (va.ok ? "Thread im VA-Kanal angelegt." : `Discord: ${va.fehler}`) : null };
   }
   const [row] = await db
     .update(T)

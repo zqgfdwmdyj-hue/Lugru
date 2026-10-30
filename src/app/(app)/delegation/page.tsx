@@ -27,6 +27,7 @@ export default async function DelegationPage({ searchParams }: { searchParams: P
           <h1>Delegation</h1>
           <div className="small muted">Arbeit abgeben: wer ist zuständig, was läuft automatisch, was ist überfällig. Die Assistenz sieht nur ihre Bereiche – keinen Privatbereich, keine Kontodaten.</div>
         </div>
+        <Link className="btn" href="/delegation/va" data-testid="deleg-va">VA (Discord)</Link>
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
 

@@ -11,7 +11,7 @@ export type Arbeitszeit = Record<string, { von: string; bis: string } | null>;
 export const ARBEITSZEIT_STANDARD: Arbeitszeit = { "1": { von: "09:00", bis: "17:00" }, "2": { von: "09:00", bis: "17:00" }, "3": { von: "09:00", bis: "17:00" }, "4": { von: "09:00", bis: "17:00" }, "5": { von: "09:00", bis: "17:00" }, "6": null, "7": null };
 
 export type Sperre = { von: string; bis: string; titel: string; art: "privat" | "termin" | "frei" | "reserviert"; ganztags?: boolean };
-export type PlanAufgabe = { id: string; titel: string; faellig: string | null; prioritaet: "critical" | "normal" | "low"; aufwand: Aufwand; geschaetzt: boolean; link: string | null };
+export type PlanAufgabe = { id: string; titel: string; faellig: string | null; prioritaet: "critical" | "normal" | "low"; aufwand: Aufwand; geschaetzt: boolean; link: string | null; /** Aufwand aus früheren Aufgaben gleicher Art gelernt. */ gelernt?: boolean };
 export type Geplant = PlanAufgabe & { von: string; bis: string };
 export type Verschoben = PlanAufgabe & { neu: string };
 export type Konflikt = { aufgabeId: string; titel: string; text: string };
@@ -34,6 +34,57 @@ export function schaetzeAufwand(titel: string): Aufwand {
   if (/inventur|buchhaltung|steuererkl|jahresabschluss|umzug|einricht|shooting|recherche|audit|retouren-prüfung|retourenwelle|lager aufräum|workshop|schulung/.test(t)) return "L";
   if (/anruf|anrufen|zurückrufen|mail|antwort|antworten|bestätig|überweis|bezahl|zahlen|nachfass|erinner|weiterleit|kurz|unterschreib|freigeb|hochladen|eintragen|termin (machen|vereinbaren|buchen)/.test(t)) return "S";
   return "M";
+}
+
+/** Art einer Aufgabe zum Lernen des Aufwands: Systemschlüssel ohne Kennung, sonst die ersten Wörter des Titels. */
+export function aufgabenTyp(t: { title: string; systemKey: string | null }): string {
+  if (t.systemKey) return `k:${t.systemKey.split(":")[0].replace(/[-_]?\d[\w-]*$/, "")}`;
+  const w = t.title
+    .toLowerCase()
+    .replace(/[^\p{L}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((x) => x.length >= 3)
+    .slice(0, 3);
+  return `t:${w.join(" ")}`;
+}
+
+/** Tatsächliche Dauer → Aufwand: bis 30 Min. S, bis 2,5 Std. M, sonst L. */
+export const dauerZuAufwand = (min: number): Aufwand => (min <= 30 ? "S" : min <= 150 ? "M" : "L");
+
+/**
+ * Aufwand je Aufgabenart lernen: von Hand eingetragene Aufwände zählen doppelt, gemessene Dauern (angefangen →
+ * erledigt, höchstens 10 Std.) einfach. Ab einer Stimme von Hand oder zwei Messungen gilt die Mehrheit.
+ */
+export function lerneAufwand(rows: { typ: string; manuell: Aufwand | null; dauerMin: number | null }[]): Map<string, Aufwand> {
+  const stimmen = new Map<string, { S: number; M: number; L: number; n: number }>();
+  for (const r of rows) {
+    const z = stimmen.get(r.typ) ?? { S: 0, M: 0, L: 0, n: 0 };
+    if (r.manuell) {
+      z[r.manuell] += 2;
+      z.n += 2;
+    } else if (r.dauerMin !== null && r.dauerMin > 0 && r.dauerMin <= 600) {
+      z[dauerZuAufwand(r.dauerMin)] += 1;
+      z.n += 1;
+    }
+    stimmen.set(r.typ, z);
+  }
+  const out = new Map<string, Aufwand>();
+  for (const [typ, z] of stimmen) {
+    if (z.n < 2) continue;
+    out.set(typ, (["S", "M", "L"] as Aufwand[]).sort((a, b) => z[b] - z[a] || (a === "M" ? -1 : b === "M" ? 1 : 0))[0]);
+  }
+  return out;
+}
+
+/** Nächster Tag mit Arbeitszeit und ohne ganztägige Sperre nach `tag` (höchstens 21 Tage weit). */
+export function naechsterArbeitstag(tag: string, arbeitszeit: Arbeitszeit, sperrenAm: (t: string) => Sperre[]): string {
+  let d = tag;
+  for (let i = 0; i < 21; i++) {
+    d = plusTage(d, 1);
+    const az = arbeitszeit[String(wochentag(d))] ?? null;
+    if (az && !sperrenAm(d).some((x) => x.ganztags && x.art !== "reserviert")) return d;
+  }
+  return plusTage(tag, 1);
 }
 
 /** Freie Fenster (Minuten) in der Arbeitszeit nach Abzug der Sperrzeiten. */
@@ -165,7 +216,9 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
   // Endgültiges neues Datum = der Tag, an dem die Aufgabe dann eingeplant wurde (sonst nach dem Zeitraum).
   const eingeplantAm = new Map<string, string>();
   for (const t of tage) for (const g of t.geplant) eingeplantAm.set(g.id, t.tag);
-  const vers = [...verschoben.values()].map((v) => ({ ...v, neu: eingeplantAm.get(v.id) ?? plusTage(ende, 1) })).filter((v) => v.neu !== v.faellig);
+  // Nicht mehr im Zeitraum untergebracht → nächster Arbeitstag danach (nie Wochenende/freier Tag).
+  const danach = naechsterArbeitstag(ende, o.arbeitszeit, sperren);
+  const vers = [...verschoben.values()].map((v) => ({ ...v, neu: eingeplantAm.get(v.id) ?? danach })).filter((v) => v.neu !== v.faellig);
   return { tage, verschoben: vers, ohneFrist: o.aufgaben.filter((a) => !a.faellig) };
 }
 

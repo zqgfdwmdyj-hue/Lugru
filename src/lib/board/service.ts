@@ -123,7 +123,11 @@ export async function moveTask(tenantId: string, id: string, column: TaskColumnK
   if (!TASK_COLUMNS.some((c) => c.key === column)) throw new Error("Unbekannte Spalte.");
   await db
     .update(T)
-    .set(column === "erledigt" ? { status: "done", completedAt: new Date() } : { status: "open", completedAt: null, boardColumn: column === "offen" ? null : column })
+    .set(
+      column === "erledigt"
+        ? { status: "done", completedAt: new Date() }
+        : { status: "open", completedAt: null, boardColumn: column === "offen" ? null : column, ...(column === "in_arbeit" ? { begonnenAm: sql`coalesce(${T.begonnenAm}, now())` } : {}) },
+    )
     .where(and(eq(T.id, id), eq(T.tenantId, tenantId)));
 }
 

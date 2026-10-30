@@ -4,7 +4,8 @@ import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { breakEvenJeSku } from "./kapital-service";
-import { ausnahmeAktiv, fensterMitDaten, pruefeVerlust, verlustAufgabe, wochenSumme, VERLUST_REGEL, type TagWert, type VerlustFall } from "./verlust";
+import { getSettings } from "@/lib/settings";
+import { ausnahmeAktiv, fensterMitDaten, kostenOhneVerkauf, pruefeVerlust, verlustAufgabe, wochenSumme, VERLUST_REGEL, type KostenOhneVerkauf, type TagWert, type VerlustFall } from "./verlust";
 
 // Verlust-Stopp: täglich nach dem sellerboard-Abgleich. Fälle → wichtige Aufgabe je SKU (mit Break-even, Buy Box,
 // BQool-Regel); bewusste Verlustverkäufe stehen als Ausnahme mit Wochensumme daneben.
@@ -17,7 +18,7 @@ export type VerlustFallMehr = VerlustFall & {
 };
 export type VerlustAusnahme = { sku: string; name: string | null; grund: string; bis: string | null; aktiv: boolean; angelegtAm: Date; woche: { summe: number; stueck: number; tageMitDaten: number } };
 
-export async function verlustStopp(tenantId: string, heute: string): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean }> {
+export async function verlustStopp(tenantId: string, heute: string): Promise<{ faelle: VerlustFallMehr[]; ausnahmen: VerlustAusnahme[]; stand: Date | null; tageMitDaten: string[]; fenster: string[]; bqoolExport: boolean; kostenOhneVerkauf: KostenOhneVerkauf[]; schwelle: number }> {
   const t = tenantId;
   const D = schema.sellerboardSkuTage;
   const rows = await db.select().from(D).where(and(eq(D.tenantId, t), gte(D.day, addDaysIso(heute, -8))));
@@ -52,7 +53,8 @@ export async function verlustStopp(tenantId: string, heute: string): Promise<{ f
   const ausnahmen = ausn
     .map((a) => ({ sku: a.sku, name: namen.get(a.sku) ?? null, grund: a.grund, bis: a.bis, aktiv: ausnahmeAktiv(a, heute), angelegtAm: a.angelegtAm, woche: wochenSumme(werte, a.sku, heute) }))
     .sort((x, y) => x.woche.summe - y.woche.summe);
-  return { faelle, ausnahmen, stand, tageMitDaten, fenster, bqoolExport: bqAlle.n > 0 };
+  const schwelle = (await getSettings(t)).verlust.kostenOhneVerkaufSchwelle;
+  return { faelle, ausnahmen, stand, tageMitDaten, fenster, bqoolExport: bqAlle.n > 0, kostenOhneVerkauf: kostenOhneVerkauf(werte, heute, schwelle).filter((k) => !aktiv.has(k.sku)), schwelle };
 }
 
 /**
@@ -70,7 +72,7 @@ export async function refreshVerlustTasks(tenantId: string, heute: string): Prom
     jetzt.add(key);
     await upsertSystemTask(db, tenantId, key, { title: `Verlust-Stopp: ${f.name ?? f.sku}`.slice(0, 200), notes: f.aufgabe.notiz, priority: "critical", category: "geld", link: `/verlust?q=${encodeURIComponent(f.sku)}`, dueDate: heute });
     const alt = offen.find((o) => o.key === key);
-    const letzterVerlust = [...f.tage].reverse().find((x) => x.gewinn !== null && x.gewinn < 0)?.day;
+    const letzterVerlust = [...f.tage].reverse().find((x) => x.units > 0 && x.gewinn !== null && x.gewinn < 0)?.day;
     if (alt?.status === "done" && alt.completedAt && letzterVerlust && alt.completedAt < new Date(`${letzterVerlust}T00:00:00Z`)) {
       await db.update(T).set({ status: "open", completedAt: null }).where(and(eq(T.tenantId, tenantId), eq(T.systemKey, key)));
     }

@@ -106,7 +106,7 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
                           {hidden}
                           <input type="hidden" name="id" value={g.id} />
                           <select name="aufwand" defaultValue={g.geschaetzt ? "" : g.aufwand} aria-label="Aufwand">
-                            <option value="">{`geschätzt: ${g.aufwand}`}</option>
+                            <option value="">{`${g.gelernt ? "gelernt" : "geschätzt"}: ${g.aufwand}`}</option>
                             {(["S", "M", "L"] as const).map((a) => <option key={a} value={a}>{AUFWAND_TEXT[a]}</option>)}
                           </select>
                           <button className="btn btn-small" type="submit">OK</button>

@@ -4,6 +4,7 @@ import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
 import { buchhaltungStatus } from "@/lib/buchhaltung/service";
 import { personen, zustaendigSetzen } from "@/lib/delegieren/service";
+import { anVaGeben } from "@/lib/va/service";
 import { feierabend } from "@/lib/feierabend/service";
 import { addDaysIso } from "@/lib/dates";
 import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
@@ -96,7 +97,7 @@ export const tagesplanTool = defineTool({
         auslastung_prozent: t.auslastung,
         ampel: t.ampel,
         sperrzeiten: t.sperren.map((s) => ({ von: s.ganztags ? "ganztägig" : s.von, bis: s.ganztags ? undefined : s.bis, art: s.art, titel: s.titel })),
-        geplant: t.geplant.map((g) => ({ id: g.id, von: g.von, bis: g.bis, titel: g.titel, prioritaet: PRIORITY_OUT[g.prioritaet], aufwand: AUFWAND_TEXT[g.aufwand], aufwand_geschaetzt: g.geschaetzt || undefined, frist: g.faellig, link: link(g.link) })),
+        geplant: t.geplant.map((g) => ({ id: g.id, von: g.von, bis: g.bis, titel: g.titel, prioritaet: PRIORITY_OUT[g.prioritaet], aufwand: AUFWAND_TEXT[g.aufwand], aufwand_geschaetzt: g.geschaetzt || undefined, aufwand_gelernt: g.gelernt || undefined, frist: g.faellig, link: link(g.link) })),
         konflikte: t.konflikte.length ? t.konflikte.map((k) => ({ aufgabe_id: k.aufgabeId, titel: k.titel, konflikt: k.text })) : undefined,
       })),
       verschoben: p.verschoben.map((v) => ({ id: v.id, titel: v.titel, frist: v.faellig, neues_datum: v.neu, prioritaet: PRIORITY_OUT[v.prioritaet] })),
@@ -208,26 +209,37 @@ export const aufgabeZuweisenTool = defineTool({
   name: "aufgabe_zuweisen",
   title: "Aufgabe zuweisen",
   description:
-    "Setzt die Zuständigkeit einer Aufgabe: interne Person mit Konto (z. B. Assistenz – passende Anleitungen hängen automatisch an) oder extern (Prep Center, Steuerberater, eigener Name), „niemand“ entfernt sie. Nur auf ausdrücklichen Wunsch benutzen.",
+    "Setzt die Zuständigkeit einer Aufgabe: interne Person mit Konto (z. B. Assistenz – passende Anleitungen hängen automatisch an) oder extern (Prep Center, Steuerberater, eigener Name), „niemand“ entfernt sie. Mit an=\"va\" geht die Aufgabe an die VA im Discord-Kanal: eigener Thread mit Titel, Frist, Priorität, Anleitung, Anhängen und optionaler notiz. Nur auf ausdrücklichen Wunsch benutzen.",
   area: ["start", "kalender"],
   ownerOnly: true,
   write: true,
-  input: z.object({ id: uuid, person: z.string().trim().min(2).max(60).describe("Name der Person (wie in „aufgaben“ unter zustaendig) oder „niemand“") }),
-  summary: (i) => `Aufgabe → ${i.person}`,
+  input: z.object({
+    id: uuid,
+    person: z.string().trim().min(2).max(60).optional().describe("Name der Person (wie in „aufgaben“ unter zustaendig) oder „niemand“"),
+    an: z.enum(["va"]).optional().describe("„va“ = an die VA im Discord-Kanal (statt person)"),
+    notiz: z.string().trim().max(1500).optional().describe("Nur mit an=va: Notiz für die VA im Thread"),
+  }),
+  summary: (i) => (i.an === "va" ? `Aufgabe → VA (Discord)${i.notiz ? ` mit Notiz` : ""}` : `Aufgabe → ${i.person ?? "?"}`),
   run: async (ctx, i) => {
     const t = ctx.session.tenantId;
+    if (i.an === "va") {
+      const r = await anVaGeben(t, i.id, i.notiz);
+      if (!r.ok) return { text: r.fehler, isError: true };
+      return json({ ok: true, meldung: r.neu ? "An die VA gegeben – Thread im VA-Kanal angelegt." : "An die VA gegeben – im bestehenden Thread erneut gemeldet.", link: abs(ctx, "/delegation/va") });
+    }
+    if (!i.person) return { text: "person oder an=\"va\" angeben.", isError: true };
     let key: string | null = null;
     if (i.person.toLowerCase() !== "niemand") {
       const ps = await personen(t);
-      const exakt = ps.find((p) => p.name.toLowerCase() === i.person.toLowerCase());
-      const teil = ps.filter((p) => p.name.toLowerCase().includes(i.person.toLowerCase()));
+      const exakt = ps.find((p) => p.name.toLowerCase() === i.person!.toLowerCase());
+      const teil = ps.filter((p) => p.name.toLowerCase().includes(i.person!.toLowerCase()));
       const p = exakt ?? (teil.length === 1 ? teil[0] : null);
       if (!p) return { text: teil.length > 1 ? `Mehrdeutig: ${teil.map((x) => x.name).join(", ")}.` : `Keine Person „${i.person}“. Bekannt: ${ps.map((x) => x.name).join(", ")} (externe Namen unter Delegation pflegen).`, isError: true };
       key = p.key;
     }
     const r = await zustaendigSetzen(t, i.id, key);
     if (!r.ok) return { text: "Aufgabe nicht gefunden.", isError: true };
-    return json({ ok: true, meldung: r.name ? `Zuständig: ${r.name}.` : "Zuständigkeit entfernt.", link: abs(ctx, "/delegation") });
+    return json({ ok: true, meldung: r.name ? `Zuständig: ${r.name}.${r.va ? ` ${r.va}` : ""}` : "Zuständigkeit entfernt.", link: abs(ctx, "/delegation") });
   },
 });
 
@@ -257,6 +269,7 @@ export const feierabendTool = defineTool({
         konflikte: f.morgenKonflikte.length ? f.morgenKonflikte.map((k) => `${k.titel}: ${k.text}`) : undefined,
       },
       wochenrueckblick: f.rueckblick ?? undefined,
+      va: f.va ? { text: f.va.text, erledigt: f.va.erledigt, rueckfragen: f.va.rueckfragen, automatisch_beantwortet: f.va.auto, unbeantwortet: f.va.offen } : undefined,
       hinweis: f.offen.length ? "Verschieben nur auf Wunsch: aufgabe_verschieben oder im Seller-System „Auf morgen schieben“." : undefined,
       link: abs(ctx, "/kalender/feierabend"),
     });
