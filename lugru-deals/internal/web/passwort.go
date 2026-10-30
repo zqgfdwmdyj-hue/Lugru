@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/trinkfreunde/lugru-deal-discord/internal/store"
 )
 
 // MitPasswort schützt die ganze Oberfläche mit Benutzername und Passwort,
@@ -25,7 +28,11 @@ import (
 // Schlüssel aus Benutzer und Passwort signiert: wer das Passwort ändert,
 // meldet damit alle Geräte ab. Benutzername und Passwort im Kopf der Anfrage
 // (HTTP Basic Auth) gelten weiterhin, etwa für Skripte.
-func MitPasswort(h http.Handler, benutzer, passwort string) http.Handler {
+//
+// Der Zugang aus LUGRU_BENUTZER/LUGRU_PASSWORT ist der Admin. Weitere
+// Benutzer legt der Admin unter /benutzer an (gespeichert in st). Wer
+// angemeldet ist, steht danach im Kontext der Anfrage (siehe angemeldet).
+func MitPasswort(h http.Handler, benutzer, passwort string, st *store.Store) http.Handler {
 	if passwort == "" {
 		return h
 	}
@@ -36,6 +43,8 @@ func MitPasswort(h http.Handler, benutzer, passwort string) http.Handler {
 		sollB:      sha256.Sum256([]byte(benutzer)),
 		sollP:      sha256.Sum256([]byte(passwort)),
 		schluessel: sha256.Sum256([]byte("lugru-sitzung|" + benutzer + "|" + passwort)),
+		adminName:  benutzer,
+		st:         st,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -48,12 +57,14 @@ func MitPasswort(h http.Handler, benutzer, passwort string) http.Handler {
 		case r.URL.Path == "/abmelden":
 			http.SetCookie(w, &http.Cookie{Name: sitzungsCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 			http.Redirect(w, r, "/anmelden", http.StatusSeeOther)
-		case a.sitzungGueltig(r, time.Now()):
-			h.ServeHTTP(w, r)
 		default:
+			if wer := a.sitzung(r, time.Now()); wer != nil {
+				h.ServeHTTP(w, mitAnmeldung(r, *wer))
+				return
+			}
 			if b, p, ok := r.BasicAuth(); ok {
-				if a.zugangRichtig(b, p) {
-					h.ServeHTTP(w, r)
+				if wer, ok := a.pruefe(b, p); ok {
+					h.ServeHTTP(w, mitAnmeldung(r, wer))
 					return
 				}
 				w.Header().Set("WWW-Authenticate", `Basic realm="Lugru Deals", charset="UTF-8"`)
@@ -85,6 +96,56 @@ const (
 
 type anmeldung struct {
 	sollB, sollP, schluessel [32]byte
+	adminName                string
+	st                       *store.Store
+}
+
+// Angemeldet beschreibt, wer die Anfrage stellt.
+type Angemeldet struct {
+	Name   string
+	Poster string // vorausgewählter Poster, leer für keinen
+	Admin  bool
+}
+
+type anmeldeSchluessel struct{}
+
+func mitAnmeldung(r *http.Request, wer Angemeldet) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), anmeldeSchluessel{}, wer))
+}
+
+// angemeldet liefert, wer angemeldet ist. ok ist false, wenn die
+// Oberfläche ohne Passwort läuft — dann gibt es niemanden zu erkennen.
+func angemeldet(r *http.Request) (Angemeldet, bool) {
+	wer, ok := r.Context().Value(anmeldeSchluessel{}).(Angemeldet)
+	return wer, ok
+}
+
+// istAdmin: ohne Anmeldung (Betrieb ohne Passwort) darf jeder alles.
+func istAdmin(r *http.Request) bool {
+	wer, ok := angemeldet(r)
+	return !ok || wer.Admin
+}
+
+func (a anmeldung) admin() Angemeldet {
+	wer := Angemeldet{Name: a.adminName, Admin: true}
+	if a.st != nil {
+		wer.Poster = a.st.Einstellung(store.SchluesselAdminPoster)
+	}
+	return wer
+}
+
+// pruefe nimmt erst den Admin, dann die weiteren Benutzer.
+func (a anmeldung) pruefe(b, p string) (Angemeldet, bool) {
+	if a.zugangRichtig(b, p) {
+		return a.admin(), true
+	}
+	if a.st == nil || strings.EqualFold(strings.TrimSpace(b), a.adminName) {
+		return Angemeldet{}, false
+	}
+	if bn, ok := a.st.BenutzerPruefen(b, p); ok {
+		return Angemeldet{Name: bn.Name, Poster: bn.Poster}, true
+	}
+	return Angemeldet{}, false
 }
 
 // zugangRichtig vergleicht Hashes gleicher Länge in konstanter Zeit: so
@@ -94,29 +155,59 @@ func (a anmeldung) zugangRichtig(b, p string) bool {
 	return subtle.ConstantTimeCompare(istB[:], a.sollB[:])&subtle.ConstantTimeCompare(istP[:], a.sollP[:]) == 1
 }
 
-// sitzungWert ist "<Ablauf als Unix-Zeit>.<Signatur>".
-func (a anmeldung) sitzungWert(ablauf time.Time) string {
+// sitzungWert ist "<Ablauf als Unix-Zeit>.<Signatur>" für den Admin — so
+// bleiben die Cookies von vor den weiteren Benutzern gültig — und
+// "<Name>:<Ablauf>.<Signatur>" für einen weiteren Benutzer, signiert mit
+// dessen eigenem Schlüssel.
+func (a anmeldung) sitzungWert(wer Angemeldet, ablauf time.Time) string {
 	s := strconv.FormatInt(ablauf.Unix(), 10)
-	m := hmac.New(sha256.New, a.schluessel[:])
+	schluessel := a.schluessel[:]
+	if !wer.Admin {
+		_, k, ok := a.st.BenutzerSitzung(wer.Name)
+		if !ok {
+			return ""
+		}
+		schluessel = k
+		s = url.QueryEscape(wer.Name) + ":" + s
+	}
+	m := hmac.New(sha256.New, schluessel)
 	m.Write([]byte(s))
 	return s + "." + hex.EncodeToString(m.Sum(nil))
 }
 
-func (a anmeldung) sitzungGueltig(r *http.Request, jetzt time.Time) bool {
+// sitzung liefert, wem das Sitzungs-Cookie gehört — nil, wenn es fehlt,
+// abgelaufen oder gefälscht ist.
+func (a anmeldung) sitzung(r *http.Request, jetzt time.Time) *Angemeldet {
 	c, err := r.Cookie(sitzungsCookie)
 	if err != nil {
-		return false
+		return nil
 	}
-	s, sig, ok := strings.Cut(c.Value, ".")
+	inhalt, sig, ok := strings.Cut(c.Value, ".")
 	if !ok {
-		return false
+		return nil
 	}
-	ablauf, err := strconv.ParseInt(s, 10, 64)
+	schluessel, wer, zeit := a.schluessel[:], a.admin(), inhalt
+	if name, z, mitName := strings.Cut(inhalt, ":"); mitName {
+		n, err := url.QueryUnescape(name)
+		if err != nil || a.st == nil {
+			return nil
+		}
+		bn, k, ok := a.st.BenutzerSitzung(n)
+		if !ok {
+			return nil
+		}
+		schluessel, wer, zeit = k, Angemeldet{Name: bn.Name, Poster: bn.Poster}, z
+	}
+	ablauf, err := strconv.ParseInt(zeit, 10, 64)
 	if err != nil || jetzt.Unix() > ablauf {
-		return false
+		return nil
 	}
-	_, sollSig, _ := strings.Cut(a.sitzungWert(time.Unix(ablauf, 0)), ".")
-	return hmac.Equal([]byte(sig), []byte(sollSig))
+	m := hmac.New(sha256.New, schluessel)
+	m.Write([]byte(inhalt))
+	if !hmac.Equal([]byte(sig), []byte(hex.EncodeToString(m.Sum(nil)))) {
+		return nil
+	}
+	return &wer
 }
 
 // weiterZiel lässt nur einen Pfad auf dieser Seite zu — kein Sprung auf
@@ -135,13 +226,13 @@ func (a anmeldung) anmelden(w http.ResponseWriter, r *http.Request) {
 	fehler := ""
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if r.Method == http.MethodPost {
-		if a.zugangRichtig(r.PostForm.Get("benutzer"), r.PostForm.Get("passwort")) {
+		if wer, ok := a.pruefe(r.PostForm.Get("benutzer"), r.PostForm.Get("passwort")); ok {
 			c := &http.Cookie{Name: sitzungsCookie, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: r.TLS != nil}
 			if r.PostForm.Get("bleiben") == "1" {
-				c.Value = a.sitzungWert(time.Now().Add(sitzungLang))
+				c.Value = a.sitzungWert(wer, time.Now().Add(sitzungLang))
 				c.MaxAge = int(sitzungLang.Seconds())
 			} else {
-				c.Value = a.sitzungWert(time.Now().Add(sitzungKurz))
+				c.Value = a.sitzungWert(wer, time.Now().Add(sitzungKurz))
 			}
 			http.SetCookie(w, c)
 			http.Redirect(w, r, weiter, http.StatusSeeOther)

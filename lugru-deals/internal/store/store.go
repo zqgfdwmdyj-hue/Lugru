@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS einstellungen (
     wert       TEXT NOT NULL
 );
 
+-- Weitere Benutzer neben dem Admin aus LUGRU_BENUTZER/LUGRU_PASSWORT.
+-- Gespeichert wird nur ein PBKDF2-Hash des Passworts, nie das Passwort.
+CREATE TABLE IF NOT EXISTS benutzer (
+    name   TEXT PRIMARY KEY COLLATE NOCASE,
+    hash   TEXT NOT NULL,
+    salz   TEXT NOT NULL,
+    poster TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS channels (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT    NOT NULL,

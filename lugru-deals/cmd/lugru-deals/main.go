@@ -105,7 +105,7 @@ func laufe() int {
 
 	server := &http.Server{
 		Addr:              k.Adresse,
-		Handler:           web.MitPasswort(srv.Routen(), os.Getenv("LUGRU_BENUTZER"), os.Getenv("LUGRU_PASSWORT")),
+		Handler:           web.MitPasswort(srv.Routen(), os.Getenv("LUGRU_BENUTZER"), os.Getenv("LUGRU_PASSWORT"), s),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

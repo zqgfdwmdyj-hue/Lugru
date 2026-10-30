@@ -270,7 +270,8 @@ func eingabenZumMerken(werte url.Values) url.Values {
 		switch basis {
 		case "vk_wahl", "zielmarge", "masse_l", "masse_b", "masse_h", "masse_g",
 			"gewinn_manuell", "marge_manuell", "gewinn_paneu_manuell", "marge_paneu_manuell",
-			"entwurf_id", "entwurf_schritt", "ohne_chart", "zurueck", "neu_laden":
+			"entwurf_id", "entwurf_schritt", "ohne_chart", "zurueck", "neu_laden",
+			"poster":
 			continue
 		}
 		out[k] = append([]string(nil), v...)

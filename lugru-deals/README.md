@@ -495,7 +495,7 @@ Woher die Zahl im Feld stammt, steht daneben und in der Historie:
 |---|---|---|
 | `LUGRU_ADRESSE` | `127.0.0.1:8080` | Lauschadresse |
 | `LUGRU_PASSWORT` | (leer) | Schützt die Oberfläche mit Anmeldung (Benutzer `lugru`). **Pflicht, sobald das Tool aus dem Netz erreichbar ist.** |
-| `LUGRU_BENUTZER` | `lugru` | Benutzername zur Anmeldung |
+| `LUGRU_BENUTZER` | `lugru` | Benutzername des Admins. Weitere Benutzer (mit eigenem Passwort und vorausgewähltem Poster) legt der Admin unter **Benutzer** an. |
 | `LUGRU_ZEITZONE` | `Europe/Berlin` | Zeitzone für alle angezeigten Zeiten |
 | `LUGRU_DB` | `deals.db` | Pfad zur Datenbank |
 | `LUGRU_CHARTS` | `charts` | Ordner für Chart-Bilder |

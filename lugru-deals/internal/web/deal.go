@@ -251,6 +251,11 @@ func (srv *Server) zeigeDeal(w http.ResponseWriter, r *http.Request) {
 	d := srv.seitenGeruest(schrittQuelle)
 	srv.standardMaerkteSetzen(&d.Formular)
 	d.Formular.EKArt = "brutto"
+	// Vorausgewählt ist, wer angemeldet ist (sonst die letzte Wahl in
+	// diesem Browser). Schritt 4 lässt den Poster weiterhin umstellen.
+	if p, ok := srv.poster(posterVorwahl(r)); ok {
+		d.Formular.Poster = p.Name
+	}
 	d.Entwuerfe = srv.entwurfListe()
 	srv.rendere(w, "deal", d)
 }
