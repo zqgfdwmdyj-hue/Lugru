@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { clockShiftHours, dateReminder, dateStats, kidsHours, overnight, shiftMonth, type DateEntry, type DateIdea } from "@/lib/private/logic";
+import { paarzeitVorschlag } from "@/lib/private/familie-termine";
 import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/service";
 import { addDateAction, addIdeaAction, deleteEntryAction, toggleIdeaAction } from "../../actions";
 import { AddPanel } from "../../add-panel";
@@ -24,6 +25,9 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
   const sitters = [...new Set(["Babysitterin", "Oma", "Opa", ...dates.map((e) => e.data.sitter).filter((x): x is string => Boolean(x))])];
   const ideas = (await loadEntries<DateIdea>(session, ["dateidee"])).sort((a, b) => Number(a.data.done ?? false) - Number(b.data.done ?? false) || b.createdAt.getTime() - a.createdAt.getTime());
   const remind = dateReminder(ds.last, today, s.dateReminderDays);
+  // Modul 9: Vorschlag aus den Date-Ideen + freie Abende (ohne andere Privat-Termine) + Betreuung.
+  const belegt = new Set((await loadEntries<{ day: string; status?: string }>(session, ["termin", "paarzeit", "auszeit"])).filter((e) => e.data.status !== "ausgefallen").map((e) => e.data.day));
+  const vorschlag = paarzeitVorschlag({ letztes: ds.last, geplant: dates.filter((e) => e.data.status === "geplant").map((e) => e.data.day), heute: today, zielTage: s.dateReminderDays, ideen: ideas.map((i) => ({ text: i.data.text, done: i.data.done, angelegt: i.createdAt.getTime() })), belegt, kinder: s.kids.length > 0 });
   const edit = sp.bearbeiten ? dates.find((e) => e.id === sp.bearbeiten) : undefined;
   const v = edit?.data;
   const line = (d: DateEntry) =>
@@ -33,7 +37,18 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
     <>
       <PrivatHead active="paarzeit" title="🥂 Paarzeit" pin={session.privatePin} month={month} sub={<MonthNav path="/privat/paar/paarzeit" month={month} />} />
       <div className="small muted">Dates und Zeit nur für euch beide, während die Kinder bei der Babysitterin, Oma &amp; Co. sind.</div>
-      {remind !== null && <div className="notice notice-info small" data-testid="date-remind">Euer letztes Date ist {remind} Tage her – Zeit, das nächste zu planen? Ideen stehen unten.</div>}
+      {remind !== null && (
+        <div className="notice notice-info small" data-testid="date-remind">
+          Euer letztes Date ist {remind} Tage her – Zeit, das nächste zu planen?
+          {vorschlag ? (
+            <span data-testid="date-vorschlag">
+              {vorschlag.idee ? <> Idee: <strong>{vorschlag.idee}</strong>.</> : " Ideen stehen unten."}
+              {vorschlag.abende.length > 0 && <> Freie Abende: {vorschlag.abende.map((d) => `${weekday(d).slice(0, 2)} ${dm(d)}`).join(", ")}.</>}
+              {vorschlag.hinweis && <> {vorschlag.hinweis}.</>}
+            </span>
+          ) : " Ideen stehen unten."}
+        </div>
+      )}
 
       <section className="card card-pad stack">
         <div className="priv-grid" data-testid="date-stats">

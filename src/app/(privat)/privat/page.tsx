@@ -4,6 +4,7 @@ import { todayIso } from "@/lib/dates";
 import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIssues, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { INTIMATE_KINDS, itemsByDay } from "@/lib/private/kalender";
 import { privateCalendar } from "@/lib/private/calendar-data";
+import { demnaechst, type Jahrestag } from "@/lib/private/familie-termine";
 import { loadEntries, myMedPlan, myPartner, requirePrivate } from "@/lib/private/service";
 import type { FamilienAufgabe } from "@/lib/private/familie-aufgaben";
 import { toggleTaskAction } from "./actions";
@@ -103,6 +104,8 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
   const openTasks = tasks.filter((t) => taskState(t.data, today).open).sort((a, b) => (a.data.repeat === "einmal" ? 1 : 0) - (b.data.repeat === "einmal" ? 1 : 0));
   const ds = dateStats(dates.map((e) => e.data), month, today);
   const remind = family ? null : dateReminder(ds.last, today, s.dateReminderDays);
+  // Geburtstage & Jahrestage in den nächsten 14 Tagen (nur voller Privat-Zugang).
+  const jahrestage = family ? [] : demnaechst(await loadEntries<Jahrestag>(session, ["geburtstag"]), today, 14);
   // Monatszahlen (eingeklappt): nur Stattgefundenes.
   const stats = intimStats(intim.map((e) => e.data), month, today);
   const ko = kidsOverview(kids.map((e) => e.data), month);
@@ -165,6 +168,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
           {careDue.length > 0 && <TodayRow icon="👨‍👩‍👧" label="Familie fällig" href="/privat/familie" testid="today-care" tone="warn" state={careDue.map((t) => t.title).join(", ")} />}
           {!family && <TodayRow icon="💬" label="Paar-Stimmung" href="/privat/paar/wertschaetzung#stimmung" testid="today-mood" tone={moodDone ? "ok" : "muted"} state={moodDone ? "heute eingetragen" : "heute nicht erfasst"} />}
           {remind !== null && <TodayRow icon="🥂" label="Paarzeit" href="/privat/paar/paarzeit#ideen" state={`letztes Date vor ${remind} Tagen`} />}
+          {jahrestage.length > 0 && <TodayRow icon="🎂" label="Geburtstage" href="/privat/geburtstage" testid="today-jahrestage" state={jahrestage.slice(0, 3).map((j) => `${j.data.name} ${j.inTagen === 0 ? "heute" : `in ${j.inTagen} T.`}`).join(", ")} />}
         </ul>
         {!family && <IntakeCard session={session} />}
       </section>

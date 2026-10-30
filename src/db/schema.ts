@@ -40,3 +40,4 @@ export * from "./tables/deal-eingang";
 export * from "./tables/ek-import";
 export * from "./tables/va";
 export * from "./tables/push";
+export * from "./tables/mobil";

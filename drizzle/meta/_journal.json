@@ -722,6 +722,13 @@
       "when": 1793379480927,
       "tag": "0102_mail_regeln",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1793380541100,
+      "tag": "0103_mobil_schnellerfassung",
+      "breakpoints": true
     }
   ]
 }

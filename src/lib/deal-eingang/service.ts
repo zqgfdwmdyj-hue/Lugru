@@ -386,11 +386,11 @@ export async function tokenAnlegen(tenantId: string, userId: string, name: strin
 }
 
 export async function tokenWiderrufen(tenantId: string, userId: string, id: string) {
-  await db.update(TOK).set({ revokedAt: new Date() }).where(and(eq(TOK.tenantId, tenantId), eq(TOK.userId, userId), eq(TOK.id, id), isNull(TOK.revokedAt)));
+  await db.update(TOK).set({ revokedAt: new Date() }).where(and(eq(TOK.tenantId, tenantId), eq(TOK.userId, userId), eq(TOK.id, id), eq(TOK.zweck, "deal_eingang"), isNull(TOK.revokedAt)));
 }
 
 export async function tokens(tenantId: string, userId: string) {
-  return db.select({ id: TOK.id, name: TOK.name, anfang: TOK.anfang, lastUsedAt: TOK.lastUsedAt, revokedAt: TOK.revokedAt, createdAt: TOK.createdAt }).from(TOK).where(and(eq(TOK.tenantId, tenantId), eq(TOK.userId, userId))).orderBy(desc(TOK.createdAt));
+  return db.select({ id: TOK.id, name: TOK.name, anfang: TOK.anfang, lastUsedAt: TOK.lastUsedAt, revokedAt: TOK.revokedAt, createdAt: TOK.createdAt }).from(TOK).where(and(eq(TOK.tenantId, tenantId), eq(TOK.userId, userId), eq(TOK.zweck, "deal_eingang"))).orderBy(desc(TOK.createdAt));
 }
 
 /**
@@ -399,7 +399,7 @@ export async function tokens(tenantId: string, userId: string) {
  */
 export async function tokenPruefen(token: string): Promise<{ ok: true; tenantId: string; userId: string; tokenId: string } | { ok: false; status: number; fehler: string }> {
   if (!/^dk_[A-Za-z0-9_-]{20,}$/.test(token)) return { ok: false, status: 401, fehler: "Ungültiger Schlüssel." };
-  const [t] = await db.select().from(TOK).where(eq(TOK.tokenHash, hash(token)));
+  const [t] = await db.select().from(TOK).where(and(eq(TOK.tokenHash, hash(token)), eq(TOK.zweck, "deal_eingang")));
   if (!t || t.revokedAt) return { ok: false, status: 401, fehler: t ? "Schlüssel widerrufen." : "Ungültiger Schlüssel." };
   const [m] = await db.select({ role: schema.memberships.role, areas: schema.memberships.areas, readOnly: schema.memberships.readOnly }).from(schema.memberships).where(and(eq(schema.memberships.tenantId, t.tenantId), eq(schema.memberships.userId, t.userId)));
   const { canAccess } = await import("@/lib/auth/areas");

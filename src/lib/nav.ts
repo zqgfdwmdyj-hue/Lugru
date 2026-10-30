@@ -37,6 +37,7 @@ export const NAV: NavSection[] = [
       { href: "/kalender/feierabend", label: "Feierabend" },
       { href: "/uploads", label: "Uploads (alles hochladen)" },
       { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
+      { href: "/schnell", label: "Schnellerfassung (Sprache)" },
       { href: "/kalender", label: "Termine" },
     ],
   },

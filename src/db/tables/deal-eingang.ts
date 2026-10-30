@@ -116,7 +116,8 @@ export const apiTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    zweck: text("zweck", { enum: ["deal_eingang"] }).notNull().default("deal_eingang"),
+    /** deal_eingang = Kurzbefehl „Deal prüfen“ (dk_…); mobil = Handy-Endpunkte /api/mobil/* (mk_…). */
+    zweck: text("zweck", { enum: ["deal_eingang", "mobil"] }).notNull().default("deal_eingang"),
     tokenHash: text("token_hash").notNull(),
     /** Die ersten Zeichen zum Wiedererkennen („dk_Ab3x…“). */
     anfang: text("anfang").notNull(),

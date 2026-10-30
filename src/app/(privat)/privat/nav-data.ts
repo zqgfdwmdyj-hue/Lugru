@@ -29,6 +29,7 @@ export const GROUPS = [
       { key: "ritual", href: "/privat/ritual", label: "Abendritual" },
       { key: "paarzeit", href: "/privat/paar/paarzeit", label: "Paarzeit", month: true },
       { key: "danke", href: "/privat/paar/wertschaetzung", label: "Wertschätzung" },
+      { key: "geburtstage", href: "/privat/geburtstage", label: "Geburtstage & Jahrestage" },
       { key: "gespraech", href: "/privat/paar/gespraech", label: "Paar-Gespräch" },
     ],
   },
@@ -41,6 +42,7 @@ export const GROUPS = [
       { key: "auszeit", href: "/privat/auszeit", label: "Auszeit", month: true },
       { key: "familie", href: "/privat/familie", label: "Wer kümmert sich" },
       { key: "familienaufgaben", href: "/privat/familienaufgaben", label: "Familien-Aufgaben" },
+      { key: "schulbriefe", href: "/privat/schulbriefe", label: "Briefe Schule/Kita" },
     ],
   },
   {

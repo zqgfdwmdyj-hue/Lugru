@@ -163,6 +163,8 @@ export async function runScheduledJobs(force = false) {
       }
       // Termine im Privatkalender: Vorabend-Erinnerung mit Abfahrt (nur Push an den Inhaber, ab der eingestellten Uhrzeit).
       if (force || due(`${t}:vorabend`, 29)) await step(t, "Termin-Erinnerung (Vorabend)", async () => (await import("@/lib/private/termin-mail-service")).vorabendErinnerung(t));
+      // Geburtstage & Jahrestage: 14 und 3 Tage vorher, am Tag selbst (je Stufe einmal, nur Push an Privat-Zugang).
+      if (force || due(`${t}:jahrestage`, 179)) await step(t, "Geburtstage & Jahrestage", async () => (await import("@/lib/private/erinnerungen")).jahrestagErinnerungen(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).

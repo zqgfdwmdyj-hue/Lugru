@@ -89,6 +89,25 @@ function kiAnswer(req, b) {
     }
     return [200, reply(b, [{ type: "text", text: JSON.stringify({ quelle, angebote }) }], "end_turn")];
   }
+  // Briefe von Schule/Kita (Modul 8): erfundene Testbilder tragen den Text hinter „TESTOCR“; je Zeile mit Datum ein
+  // Vorschlag – „bis“/„mitbringen“/„Unterschrift“ = Aufgabe, sonst Termin; „Kind A“ wird erkannt.
+  if (/^Lies den Brief der Schule bzw\. Kita/m.test(text) && !stale) {
+    const roh = parts
+      .filter((p) => (p.type === "image" || p.type === "document") && p.source?.data)
+      .map((p) => /TESTOCR\n([\s\S]*)$/.exec(Buffer.from(p.source.data, "base64").toString("latin1"))?.[1] ?? "")
+      .join("\n");
+    const vorschlaege = [];
+    for (const z of Buffer.from(roh, "latin1").toString("utf8").split("\n")) {
+      const d = /(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(z);
+      if (!d) continue;
+      const tag = `${d[3]}-${d[2].padStart(2, "0")}-${d[1].padStart(2, "0")}`;
+      const uhr = /(\d{1,2}):(\d{2})/.exec(z.slice(d.index + d[0].length));
+      const aufgabe = /\bbis\b|mitbringen|unterschr/i.test(z);
+      const titel = z.replace(d[0], "").replace(/\b(am|bis|um)\b/gi, "").replace(/\d{1,2}:\d{2}( Uhr)?/, "").replace(/Kind A:?/, "").replace(/\s+/g, " ").replace(/[,:\s]+$/, "").trim();
+      vorschlaege.push({ art: aufgabe ? "aufgabe" : "termin", titel, tag, uhrzeit: uhr ? `${uhr[1].padStart(2, "0")}:${uhr[2]}` : null, kind: /Kind A/.test(z) ? "Kind A" : null, notiz: /mitbringen/i.test(z) ? z.split(/,\s*/).find((x) => /mitbringen/i.test(x)) ?? null : null });
+    }
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ vorschlaege }) }], "end_turn")];
+  }
   // Übersetzen (VA Deutsch ↔ Englisch): feste erfundene Regeln wie eine KI; Platzhalter ⟦n⟧ bleiben erhalten.
   if (/^Übersetze den Text ins (Englisch|Deutsch)/.test(text) && !stale) {
     const nachEn = /^Übersetze den Text ins Englisch/.test(text);
