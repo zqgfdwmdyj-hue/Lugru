@@ -10,6 +10,7 @@ export type UploadArt =
   | "ust_bericht"
   | "bqool"
   | "bqool_datei"
+  | "ek_liste"
   | "amazon_business"
   | "call_archiv"
   | "call"
@@ -23,6 +24,7 @@ export const UPLOAD_ART: Record<UploadArt, { text: string; bereich: AreaKey; lin
   ust_bericht: { text: "Amazon-Umsatzsteuerbericht", bereich: "geld", link: "/buchhaltung" },
   bqool: { text: "BQool-Export (Repricer)", bereich: "buchhaltung", link: "/repricer" },
   bqool_datei: { text: "BQool-Repricing-Datei (Ist-Stand je Land)", bereich: "buchhaltung", link: "/repricer/bqool" },
+  ek_liste: { text: "EK-Liste (ArbitrageOne für sellerboard)", bereich: "wawi", link: "/einkauf/ek-import" },
   amazon_business: { text: "Amazon-Business-Bericht", bereich: "amazon", link: "/amazon-business" },
   call_archiv: { text: "Call-Archiv (JSON-Export)", bereich: "amazon", link: "/calls" },
   call: { text: "Call-Transkript", bereich: "amazon", link: "/calls" },

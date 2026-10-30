@@ -181,6 +181,8 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Freie Zeiten", () => z.freieZeitenAnwenden(t, todayIso()));
         await step(t, "Anleitungen prüfen", () => z.anleitungenPruefen(t));
         await step(t, "Zuständigkeiten", async () => (await import("@/lib/delegieren/service")).zustaendigkeitenAnwenden(t));
+        // EK-Import: am Folgetag EK in sellerboard gegen das System prüfen.
+        await step(t, "EK-Gegenprüfung sellerboard", async () => (await import("@/lib/ek-import/service")).ekGegenpruefung(t));
       }
     }
     return { skipped: false };

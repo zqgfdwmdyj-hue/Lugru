@@ -39,6 +39,15 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
   const e = artNachEndung(name);
   if (e) return e;
   if (istBqoolDatei(bytes)) return "bqool_datei";
+  // ArbitrageOne-Liste für sellerboard (ASIN | SKU | Cost) → EK-Import mit Vorschau statt direkt übernehmen
+  if ([".xls", ".xlsx", ".csv"].includes(endung(name))) {
+    try {
+      const { parseArbitrageOne, readSheet } = await import("@/lib/imports/arbitrageone");
+      if (parseArbitrageOne(readSheet(bytes)).source === "sellerboard") return "ek_liste";
+    } catch {
+      // kein ArbitrageOne-Format – weiter unten erkennen
+    }
+  }
   if (endung(name) === ".json") {
     try {
       return jsonArt(JSON.parse(new TextDecoder().decode(bytes))) ?? "tabelle";
@@ -54,7 +63,7 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
   }
 }
 
-async function verarbeiten(session: Session, name: string, bytes: Uint8Array, art: UploadArt, o: UploadOptionen): Promise<Omit<UploadErgebnis, "datei" | "art" | "artText" | "link">> {
+async function verarbeiten(session: Session, name: string, bytes: Uint8Array, art: UploadArt, o: UploadOptionen): Promise<Omit<UploadErgebnis, "datei" | "art" | "artText" | "link"> & { link?: string }> {
   const wer = { tenantId: session.tenantId, userId: session.userId, name: session.name, email: session.email };
   switch (art) {
     case "kontoauszug": {
@@ -77,6 +86,11 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
       const { bqoolDateiEinlesen } = await import("@/lib/bqool/export-service");
       const r = await bqoolDateiEinlesen(session.tenantId, name, bytes);
       return { ok: r.ok, text: r.message, hinweise: r.ok ? ["Soll-Regeln und Export unter Repricer → BQool-Dateien."] : [] };
+    }
+    case "ek_liste": {
+      const { ekImportVorschau } = await import("@/lib/ek-import/service");
+      const r = await ekImportVorschau(session.tenantId, session.userId, name, bytes);
+      return { ok: true, text: `Vorschau: ${r.zeilen} SKUs – ${r.anzahl.geaendert} geändert, ${r.anzahl.neu} neu, ${r.anzahl.gleich} unverändert, ${r.anzahl.unbekannt} unbekannt${r.anzahl.warnungen ? `, ${r.anzahl.warnungen} mit Warnung` : ""}. Noch nichts übernommen – bitte prüfen und übernehmen.`, hinweise: [], link: `/einkauf/ek-import?id=${r.id}` };
     }
     case "amazon_business":
       return { ok: false, text: "Amazon-Business-Bericht erkannt – der Bericht enthält keinen Zeitraum. Bitte unter Amazon Business mit Land und Zeitraum hochladen.", hinweise: [] };
@@ -145,13 +159,13 @@ export async function dateiHochladen(session: Session, name: string, bytes: Uint
   if (!canAccess(session, info.bereich) || session.readOnly) {
     return [await mitProtokoll(session, { datei: name, art, artText: info.text, ok: false, text: session.readOnly ? "Nur-ansehen-Konto – Hochladen nicht möglich." : `Erkannt als ${info.text} – dafür fehlt dir der Zugriff auf diesen Bereich.`, hinweise: [], link: null }, bytes.length)];
   }
-  let r: Omit<UploadErgebnis, "datei" | "art" | "artText" | "link">;
+  let r: Omit<UploadErgebnis, "datei" | "art" | "artText" | "link"> & { link?: string };
   try {
     r = await verarbeiten(session, name, bytes, art, o);
   } catch (e) {
     r = { ok: false, text: `Die Datei konnte nicht verarbeitet werden – ${lesbarerFehler(e, 400)}`, hinweise: [] };
   }
-  return [await mitProtokoll(session, { datei: name, art, artText: info.text, ...r, link: info.link }, bytes.length)];
+  return [await mitProtokoll(session, { datei: name, art, artText: info.text, ok: r.ok, text: r.text, hinweise: r.hinweise, link: r.link ?? info.link }, bytes.length)];
 }
 
 async function mitProtokoll(session: Session, e: UploadErgebnis, groesse: number) {

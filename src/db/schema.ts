@@ -36,3 +36,4 @@ export * from "./tables/zeit";
 export * from "./tables/calls";
 export * from "./tables/buchhaltung";
 export * from "./tables/deal-eingang";
+export * from "./tables/ek-import";

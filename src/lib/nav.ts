@@ -118,6 +118,7 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/lieferanten/deal-ampel", label: "Deal-Ampel (Einkauf prüfen)" },
       { href: "/einkauf", label: "Einkauf & Wareneingang" },
+      { href: "/einkauf/ek-import", label: "EK-Import (→ sellerboard)" },
       { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
       { href: "/lieferanten", label: "Lieferanten-Feeds" },
       { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
