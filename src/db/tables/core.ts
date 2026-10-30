@@ -94,7 +94,7 @@ export type TenantSettings = {
     kleinpaketMaxKg?: number;
   };
   /** Prep Center: wer standardmäßig verschickt und welche Gebühren es berechnet (für den Rechnungsabgleich). */
-  prep?: { name?: string; defaultShipper?: "self" | "prep"; feeShipment?: number; feeExtraItem?: number };
+  prep?: { name?: string; defaultShipper?: "self" | "prep"; feeShipment?: number; feeExtraItem?: number; preisliste?: { name: string; preis: number; einheit: "stueck" | "sendung" | "karton" | "palette_monat" | "stunde"; b2b: boolean }[] };
   /** Deutsche Post INTERNETMARKE (Warensendung): Produkt/Preis laut PPL, Druckformat, Gewicht je Stück für DHL. */
   post?: {
     productCode?: number;
@@ -160,7 +160,7 @@ export type TenantSettings = {
   delegieren?: { extern?: string[]; regeln?: { typ: string; person: `user:${string}` | `extern:${string}`; bestaetigt: boolean }[]; ausnahmen?: string[] };
   buchhaltung?: { firmen?: string[]; kontenrahmen?: "SKR04" | "SKR03"; datev?: Record<string, { beraternummer?: string; mandantennummer?: string }>; geldkonten?: { bank?: string; kreditkarte?: string; transit?: string; marktplatz?: string }; wjBeginnMonat?: number; /** USt-Voranmeldung für die Fristenliste (Angabe vom Steuerberater). */ ustva?: { rhythmus: "monatlich" | "quartal" | "aus"; dauerfrist: boolean } };
   tagesplan?: { arbeitszeit?: Record<string, { von: string; bis: string } | null>; personen?: Record<string, Record<string, { von: string; bis: string } | null>>; vorziehen?: number };
-  dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[] };
+  dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[]; profitgoVorlage?: string };
   /** Verlust-Stopp: Kosten ohne Verkauf erst ab diesem Betrag je SKU und Woche (€) als Hinweis. */
   verlust?: { kostenOhneVerkaufSchwelle?: number };
   /** VA über Discord: Zeitzone der VA, Ruhezeiten (keine Erinnerungen), tägliche Erinnerung bei Überfälligem, Einkaufsrechnungen. */

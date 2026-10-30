@@ -7,6 +7,7 @@ import { GELDKONTEN_STANDARD } from "@/lib/buchhaltung/kontierung";
 import { DEAL_AMPEL_STANDARD } from "@/lib/deal-ampel/logic";
 import { STANDARD_EXTERN, type Regel } from "@/lib/delegieren/logic";
 import { ARBEITSZEIT_STANDARD, type Arbeitszeit } from "@/lib/tagesplan/logic";
+import type { PrepPosten } from "@/lib/shipping/prep";
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   inbound_shortage: "Fehlt beim Wareneingang",
@@ -63,7 +64,7 @@ export const DEFAULT_SETTINGS = {
     kleinpaketMaxKg: 1,
   },
   /** Prep Center: Standard „ich verschicke selbst“; Gebühren 0 = nicht hinterlegt (nur zählen, nicht rechnen). */
-  prep: { name: "Prep Center", defaultShipper: "self" as "self" | "prep", feeShipment: 0, feeExtraItem: 0 },
+  prep: { name: "Prep Center", defaultShipper: "self" as "self" | "prep", feeShipment: 0, feeExtraItem: 0, preisliste: [] as PrepPosten[] },
   /** Warensendung (PPL 290, bis 1.000 g) – Preis ändert sich mit der Preisliste der Post; Format 1 = DIN A4 Normalpapier. */
   /** Fragefeld „Frag das Seller-System“: Claude Opus 5.5, Änderungen nur nach Bestätigung. */
   assistant: { enabled: true, model: "claude-opus-5-5", allowWrite: true },

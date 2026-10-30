@@ -9,6 +9,7 @@ import { econOf } from "@/lib/suppliers/offer-econ";
 import { kundeAusPrognose, MWST } from "./logic";
 import { inEurMit, KEEPA_LAENDER, keepaEintrag } from "./prognose";
 import { kundenpreisVorschlag, type Ampel } from "./preislisten-logik";
+import { b2bPrepJeStueck } from "@/lib/shipping/prep";
 
 // Preislisten-Scanner für B2B-Deals: jedes Angebot einer Preisliste je Marktplatz bewerten – Buy Box (aktuell,
 // Ø 90 T., Tief 12 M.), Verkäufe/Monat, Angebote, Amazon-Anteil, Gebühren, Gewinn/ROI beim EK, Kundenpreis-
@@ -103,7 +104,7 @@ export async function preislisteAuswerten(tenantId: string, feedId: string, o: {
         const gebuehren = k.vkEur !== null ? Math.round((k.vkEur * provision + fba) * 100) / 100 : null;
         const mwst = MWST[land] ?? 0.19;
         const beiEk = ek !== null ? kundeAusPrognose({ vkEur: k.vkEur, mwstSatz: mwst, gebuehren }, ek, 0) : { gewinn: null, roi: null, marge: null };
-        const vorschlag = kundenpreisVorschlag({ vkEur: k.vkEur, land, gebuehren, minRoi: s.b2b.minKundenRoi, prep: s.b2b.prepGebuehr, ek: ek ?? 0, versandAnteil: s.b2b.versandAnteil, minMargeProzent: s.b2b.minMarge * 100, amazonProzent: k.amazonProzent });
+        const vorschlag = kundenpreisVorschlag({ vkEur: k.vkEur, land, gebuehren, minRoi: s.b2b.minKundenRoi, prep: b2bPrepJeStueck(s.b2b.prepGebuehr, s.prep.preisliste).betrag, ek: ek ?? 0, versandAnteil: s.b2b.versandAnteil, minMargeProzent: s.b2b.minMarge * 100, amazonProzent: k.amazonProzent });
         ls.push({ land, vk: k.vk, vkEur: k.vkEur, waehrung: k.waehrung, vk90: k.vk90, tief12: k.tief12, verkaeufe: k.verkaeufeMonat, angebote: k.angeboteFba === null && k.angeboteFbm === null ? null : (k.angeboteFba ?? 0) + (k.angeboteFbm ?? 0), amazonProzent: k.amazonProzent, gebuehren, mwst, gewinnBeiEk: beiEk.gewinn, roiBeiEk: beiEk.roi, margeBeiEk: beiEk.marge, aktionsmuster: k.aktionsmuster, vorschlag });
       }
     const bester = [...ls].sort((a, b) => (b.vorschlag.marge ?? -Infinity) - (a.vorschlag.marge ?? -Infinity))[0] ?? null;

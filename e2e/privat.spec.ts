@@ -183,6 +183,10 @@ test.describe("Privat – Kalender, Serien und Schutz", () => {
     expect(await ohne.call("privat_kalender", { von, bis })).toContain("nicht freigegeben");
     const mit = await mcpVerbinden(browser, baseURL!, "inhaber", { privat: true });
     expect(mit.scope).toContain("privat");
-    expect(await mit.call("kalender", { von, bis })).toContain(GEHEIM);
+    // Mit Freigabe: „kalender“ zeigt private Termine nur als „Termin außer Haus“ + Uhrzeit, Einzelheiten nur privat_kalender
+    const kal = await mit.call("kalender", { von, bis });
+    expect(kal).not.toContain(GEHEIM);
+    expect(kal).toContain("Termin außer Haus");
+    expect(await mit.call("privat_kalender", { von, bis })).toContain(GEHEIM);
   });
 });

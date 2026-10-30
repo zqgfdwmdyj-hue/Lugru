@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
-import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
+import { AMPEL_TEXT, profitgoLink } from "@/lib/deal-ampel/logic";
+import { getSettings } from "@/lib/settings";
 import { dealPruefen } from "@/lib/deal-ampel/service";
 import { buchhaltungStatus } from "@/lib/buchhaltung/service";
 import { personen, zustaendigSetzen } from "@/lib/delegieren/service";
@@ -64,6 +65,7 @@ export const dealPruefenTool = defineTool({
       eigener_bestand: r.eigen ?? undefined,
       gebuehren_pauschale: { provision_prozent: Math.round(r.gebuehren.provision * 100), fba: r.gebuehren.fba, geschaetzt: r.gebuehren.geschaetzt || undefined },
       hinweise: r.hinweise.length ? r.hinweise : undefined,
+      profitgo_link: profitgoLink((await getSettings(ctx.session.tenantId)).dealAmpel.profitgoVorlage, r.asin) ?? undefined,
       link: abs(ctx, `/lieferanten/deal-ampel?code=${encodeURIComponent(r.asin)}&ek=${encodeURIComponent(String(i.ek).replace(".", ","))}&netto=${i.ek_ist_netto ? "1" : "0"}${i.menge ? `&menge=${i.menge}` : ""}`),
     });
   },

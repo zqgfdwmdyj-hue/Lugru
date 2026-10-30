@@ -15,6 +15,7 @@ import { loadSalesOverview } from "@/lib/sellerboard/sales";
 import { getIntegration } from "@/lib/integrations/store";
 import { bindingTask, todaySignals } from "@/lib/today/service";
 import { privateCalendar } from "@/lib/private/calendar-data";
+import type { CalKind } from "@/lib/private/kalender";
 import { privateSettings } from "@/lib/private/service";
 import { defineTool, type ToolCtx } from "../types";
 import { PRIORITY_IN, abs, berlinDateTime, isoDate, json, likeOf, round2, taskBrief, uuid, visibleTask } from "./common";
@@ -234,11 +235,14 @@ export const aufgabeAendern = defineTool({
 
 // ---- Kalender ------------------------------------------------------------------------------------------
 
+const AUSSER_HAUS = "Termin außer Haus";
+const PRIVAT_ALS_ZEIT: Partial<Record<CalKind, string>> = { termin: AUSSER_HAUS, kinder: "privat geblockt", auszeit: "privat geblockt" };
+
 export const kalender = defineTool({
   name: "kalender",
   title: "Kalender ansehen",
   description:
-    "Termine im Zeitraum: Fristen, Versandtage, Aufgaben mit Datum, Paletten-Anlieferungen, Termine aus den verbundenen Kalendern – und bei freigegebenem Privatbereich auch private Einträge (Kinderzeit, Auszeit, Paarzeit, private Termine). Für „Was steht nächste Woche an?“, „Wann kommt …?“.",
+    "Termine im Zeitraum: Fristen, Versandtage, Aufgaben mit Datum, Paletten-Anlieferungen, Termine aus den verbundenen Geschäftskalendern. Bei freigegebenem Privatbereich zusätzlich private Termine und Familienkalender nur als „Termin außer Haus“ mit Uhrzeit (Kinderzeit/Auszeit als „privat geblockt“) – Einzelheiten nur über privat_kalender. Für „Was steht nächste Woche an?“, „Wann kommt …?“, „Wann bin ich unterwegs?“.",
   area: "kalender",
   write: false,
   quelle: { text: "Kalender im Seller-System und verbundene Kalender", jobs: ["Kalender"] },
@@ -257,15 +261,21 @@ export const kalender = defineTool({
     const events = (await db.select().from(E).where(and(eq(E.tenantId, t), gte(E.day, von), lte(E.day, to))).orderBy(asc(E.startsAt)))
       // Ohne Privat-Freigabe nur geschäftliche Kalender – Familientermine gehen sonst nicht an die KI.
       .filter((e) => calendarVisible(s, e.calendarName, staffCalendars) && (ctx.privat || isBusinessCalendar(e.calendarName, staffCalendars, pushName)));
+    const zeit = (e: (typeof events)[number]) => ({ tag: e.day, beginn: e.allDay ? "ganztägig" : berlinDateTime(e.startsAt), ende: e.endsAt && !e.allDay ? berlinDateTime(e.endsAt) : undefined });
     const out: Record<string, unknown> = {
       zeitraum: { von, bis: to },
       system: system.map((d) => ({ tag: d.date, titel: d.title, art: d.category, link: abs(ctx, d.link) })).sort((a, b) => a.tag.localeCompare(b.tag)),
-      kalender_termine: events.map((e) => ({ tag: e.day, beginn: e.allDay ? "ganztägig" : berlinDateTime(e.startsAt), ende: e.endsAt && !e.allDay ? berlinDateTime(e.endsAt) : undefined, titel: e.title, kalender: e.calendarName, ort: e.location ?? undefined })),
+      // Familienkalender (nur mit Privat-Freigabe) ohne Titel, Kalender und Ort – nur „Termin außer Haus“ mit Uhrzeit.
+      kalender_termine: events.map((e) => (isBusinessCalendar(e.calendarName, staffCalendars, pushName) ? { ...zeit(e), titel: e.title, kalender: e.calendarName, ort: e.location ?? undefined } : { ...zeit(e), titel: AUSSER_HAUS })),
     };
     if (ctx.privat && s.privateAccess) {
+      // Private Einträge nur als belegte Zeit: Termine → „Termin außer Haus“, Kinderzeit/Auszeit → „privat geblockt“.
+      // Familienkalender stehen schon oben, Intimes und Periode gar nicht. Einzelheiten nur über privat_kalender.
       const pc = await privateCalendar(s, von, to, ctx.today);
-      const names = pc.settings.partners;
-      out.privat = pc.items.map((x) => ({ id: x.id, tag: x.day, bis_tag: x.endDay, von: x.from, bis: x.to, art: x.kind, titel: x.title, personen: x.people.map((p) => names[p]), status: x.status, notiz: x.note }));
+      out.privat = pc.items
+        .filter((x) => PRIVAT_ALS_ZEIT[x.kind] && !x.skipped && x.status !== "ausgefallen")
+        .map((x) => ({ tag: x.day, bis_tag: x.endDay, von: x.from, bis: x.to, titel: PRIVAT_ALS_ZEIT[x.kind] }));
+      out.privat_hinweis = "Private Termine nur als belegte Zeit. Einzelheiten (Titel, Personen, Ort) nur auf ausdrückliche Frage über privat_kalender.";
     }
     return json(out);
   },

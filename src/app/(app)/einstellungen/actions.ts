@@ -12,6 +12,7 @@ import { requireOwner } from "@/lib/auth/session";
 import { isEmailLogin, loginNameError, normalizeLogin, passwordError } from "@/lib/auth/username";
 import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
+import { preislisteAusZeilen } from "@/lib/shipping/prep";
 
 const num = (fd: FormData, key: string) => {
   const v = parseAmount(fd.get(key));
@@ -122,6 +123,7 @@ export async function saveSettings(fd: FormData) {
       defaultShipper: fd.get("prep_default") === "prep" ? "prep" : "self",
       feeShipment: num(fd, "prep_feeShipment"),
       feeExtraItem: num(fd, "prep_feeExtraItem"),
+      preisliste: !fd.has("prep_pl_n") ? undefined : preislisteAusZeilen(Array.from({ length: Number(fd.get("prep_pl_n") ?? 0) || 0 }, (_, i) => ({ name: str(fd, `prep_pl_name_${i}`), preis: num(fd, `prep_pl_preis_${i}`), einheit: str(fd, `prep_pl_einheit_${i}`), b2b: fd.get(`prep_pl_b2b_${i}`) === "1" })).slice(0, 40)),
     },
     pricing: {
       referralRate: pct(fd, "referralRate"),

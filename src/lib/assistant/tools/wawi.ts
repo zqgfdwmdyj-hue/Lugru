@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
@@ -7,9 +7,10 @@ import { searchOrderIds } from "@/lib/orders/search";
 import { loadOrder } from "@/lib/orders/service";
 import { productSearch } from "@/lib/products/service";
 import { sellerboardRange } from "@/lib/sellerboard/sales";
+import { verkaeufeJeAsin } from "@/lib/sellerboard/verkaeufe";
 import { stockLevels } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { monthsBack, parseMonthParam, prepExplain, prepSummary } from "@/lib/shipping/prep";
+import { b2bPrepJeStueck, monthsBack, parseMonthParam, PREP_EINHEITEN, prepExplain, prepSummary } from "@/lib/shipping/prep";
 import { prepMonthRows, unassignedMonthRows } from "@/lib/shipping/prep-service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, dmy, isoDate, json, round2, uuid } from "./common";
@@ -119,6 +120,11 @@ export const prepCenter = defineTool({
         standard_versender: settings.prep.defaultShipper === "prep" ? settings.prep.name || "Prep Center" : "ich selbst",
         gebuehr_je_sendung: settings.prep.feeShipment || undefined,
         gebuehr_je_weiteres_stueck: settings.prep.feeExtraItem || undefined,
+        preisliste: settings.prep.preisliste.length ? settings.prep.preisliste.map((x) => ({ posten: x.name, preis: x.preis, einheit: PREP_EINHEITEN[x.einheit], b2b: x.b2b || undefined })) : "keine Preisliste hinterlegt (Einstellungen → Prep Center)",
+        b2b_prep_je_stueck: (() => {
+          const b = b2bPrepJeStueck(settings.b2b.prepGebuehr, settings.prep.preisliste);
+          return b.quelle === "keine" ? "nicht hinterlegt" : { betrag: b.betrag, quelle: b.quelle === "einstellung" ? "fester Wert (Einstellungen → B2B-Deals)" : `Summe der B2B-Posten: ${b.posten.join(", ")}` };
+        })(),
       },
       monat: month,
       sendungen: sum.shipments,
@@ -279,5 +285,54 @@ export const umsatz = defineTool({
   },
 });
 
-export const WAWI = [auftraege, auftrag, auftragNotiz, prepCenter, produkte, umsatz];
+export const verkaeufeAsin = defineTool({
+  name: "verkaeufe_je_asin",
+  title: "Verkaufte Stück je ASIN",
+  description:
+    "Verkaufte Stück je ASIN an einem Tag (Standard: gestern) laut sellerboard – mit Umsatz, Nettogewinn, Erstattungen, Kanal (Amazon/eBay) und SKUs; mehrere SKUs einer ASIN zusammengezählt, meistverkaufte zuerst. Für den Morgenbericht und „Was hat sich gestern verkauft?“. Tageswerte der letzten 21 Tage; der Vortag steht nach dem nächtlichen sellerboard-Abgleich bereit. Nur lesen.",
+  area: "geld",
+  write: false,
+  quelle: { text: "sellerboard (Tageswerte je SKU)", jobs: ["sellerboard:*"] },
+  input: z.object({
+    tag: isoDate.optional().describe("Tag (JJJJ-MM-TT), Standard gestern"),
+    asin: z.string().trim().regex(/^[A-Za-z0-9]{10}$/).optional().describe("Nur diese ASIN"),
+    kanal: z.enum(["alle", "amazon", "ebay"]).default("alle"),
+    max: z.number().int().min(1).max(500).default(100).describe("Höchstens so viele ASINs"),
+  }),
+  run: async (ctx, i) => {
+    const t = ctx.session.tenantId;
+    const tag = i.tag ?? addDaysIso(ctx.today, -1);
+    const D = schema.sellerboardSkuTage;
+    const rows = await db
+      .select({ channel: D.channel, sku: D.sku, asin: D.asin, name: D.name, units: D.units, sales: D.sales, netProfit: D.netProfit, refunds: D.refunds, syncedAt: D.syncedAt })
+      .from(D)
+      .where(and(eq(D.tenantId, t), eq(D.day, tag), i.kanal === "alle" ? undefined : eq(D.channel, i.kanal), i.asin ? sql`upper(${D.asin}) = ${i.asin.toUpperCase()}` : undefined));
+    const num = (v: string | number | null) => (v === null ? null : Number(v));
+    const liste = verkaeufeJeAsin(rows.map((r) => ({ ...r, sales: num(r.sales), netProfit: num(r.netProfit) })));
+    const [letzter] = await db.select({ day: sql<string | null>`max(${D.day})::text` }).from(D).where(and(eq(D.tenantId, t), lte(D.day, ctx.today)));
+    const abgleich = rows.reduce<Date | null>((m, r) => (!m || r.syncedAt > m ? r.syncedAt : m), null);
+    const datenstand = {
+      quelle: "sellerboard (Tageswerte je SKU)",
+      stand: abgleich ? `Abgleich ${berlinDateTime(abgleich)}` : letzter?.day ? `letzter Tag mit Werten: ${dmy(letzter.day)}` : "noch keine Tageswerte",
+      abgerufen: berlinDateTime(new Date()) ?? "",
+    };
+    if (!liste.length) {
+      const hinweis = !letzter?.day ? "Noch keine Tageswerte je SKU – sellerboard nicht verbunden oder noch nicht abgeglichen." : letzter.day < tag ? `Für ${dmy(tag)} liegen noch keine Werte vor (letzter Tag: ${dmy(letzter.day)}); der nächtliche sellerboard-Abgleich holt den Vortag.` : `Am ${dmy(tag)} keine Verkäufe${i.asin ? ` für ${i.asin.toUpperCase()}` : ""}${i.kanal !== "alle" ? ` (${i.kanal})` : ""}.`;
+      return json({ tag, asins: [], hinweis, link: abs(ctx, "/gewinn"), datenstand });
+    }
+    const summe = liste.reduce<{ stueck: number; umsatz: number; nettogewinn: number }>((s, x) => ({ stueck: s.stueck + x.stueck, umsatz: Math.round((s.umsatz + (x.umsatz ?? 0)) * 100) / 100, nettogewinn: Math.round((s.nettogewinn + (x.nettogewinn ?? 0)) * 100) / 100 }), { stueck: 0, umsatz: 0, nettogewinn: 0 });
+    return json({
+      tag,
+      datum: dmy(tag),
+      summe: { ...summe, asins: liste.length },
+      asins: liste.slice(0, i.max).map((x) => ({ ...x, link: x.asin ? abs(ctx, `/produkte?q=${x.asin}`) : undefined })),
+      weitere: liste.length > i.max ? liste.length - i.max : undefined,
+      legende: { umsatz: "brutto laut sellerboard", nettogewinn: "laut sellerboard (nach Gebühren, EK, Werbung)", kanaele: "amazon = alle Amazon-Marktplätze des sellerboard-Kontos" },
+      link: abs(ctx, "/gewinn"),
+      datenstand,
+    });
+  },
+});
+
+export const WAWI = [auftraege, auftrag, auftragNotiz, prepCenter, produkte, umsatz, verkaeufeAsin];
 

@@ -5,6 +5,8 @@
 import { kundenGewinn, type KundenRechnung } from "@/lib/b2b/logic";
 
 export type DealAmpelEinstellungen = {
+  /** Adressmuster für „in ProfitGo öffnen“ mit {asin}; leer = kein Link. */
+  profitgoVorlage: string;
   /** Zielmarge in % vom Netto-Verkaufspreis. */
   zielMarge: number;
   /** Abverkauf der Menge höchstens in so vielen Tagen. */
@@ -20,7 +22,22 @@ export type DealAmpelEinstellungen = {
   laender: string[];
 };
 
-export const DEAL_AMPEL_STANDARD: DealAmpelEinstellungen = { zielMarge: 15, maxAbverkaufTage: 45, maxAngebote: 15, amazonMaxProzent: 50, preisverfallProzent: 10, nebenkosten: 0, laender: ["DE", "FR", "IT", "ES"] };
+export const DEAL_AMPEL_STANDARD: DealAmpelEinstellungen = { zielMarge: 15, maxAbverkaufTage: 45, maxAngebote: 15, amazonMaxProzent: 50, preisverfallProzent: 10, nebenkosten: 0, laender: ["DE", "FR", "IT", "ES"], profitgoVorlage: "" };
+
+/**
+ * Schnelllink „in ProfitGo öffnen“ (ProfitGo hat keine API): Adressmuster aus den Einstellungen mit {asin} als
+ * Platzhalter, nur https. Leer oder ungültig → null (dann wird kein Link gezeigt).
+ */
+export function profitgoLink(vorlage: string | null | undefined, asin: string | null | undefined): string | null {
+  const v = (vorlage ?? "").trim();
+  if (!v || !asin || !/^[A-Za-z0-9]{10}$/.test(asin) || !v.includes("{asin}")) return null;
+  try {
+    const u = new URL(v.replaceAll("{asin}", asin.toUpperCase()));
+    return u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 export type LandMarkt = {
   land: string;

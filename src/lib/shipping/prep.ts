@@ -32,6 +32,36 @@ export type PrepRow = {
 };
 
 export type PrepFees = { feeShipment: number; feeExtraItem: number };
+
+// ---- Preisliste des Prep Centers (z. B. AdelPrep) ----------------------------------------------------
+
+export const PREP_EINHEITEN = { stueck: "je Stück", sendung: "je Sendung", karton: "je Karton", palette_monat: "je Palette und Monat", stunde: "je Stunde" } as const;
+export type PrepEinheit = keyof typeof PREP_EINHEITEN;
+/** Ein Posten der Preisliste; „b2b“ = gehört zur Prep-Gebühr je Stück, die B2B-Kunden zahlen. */
+export type PrepPosten = { name: string; preis: number; einheit: PrepEinheit; b2b: boolean };
+
+/** Preisliste aus Formularzeilen (Name + Preis nötig, Preis ≥ 0, höchstens 30 Posten). */
+export function preislisteAusZeilen(zeilen: { name?: string | null; preis?: number | null; einheit?: string | null; b2b?: boolean }[]): PrepPosten[] {
+  const out: PrepPosten[] = [];
+  for (const z of zeilen) {
+    const name = (z.name ?? "").trim().slice(0, 80);
+    if (!name || z.preis == null || !Number.isFinite(z.preis) || z.preis < 0) continue;
+    const einheit = (z.einheit && z.einheit in PREP_EINHEITEN ? z.einheit : "stueck") as PrepEinheit;
+    out.push({ name, preis: Math.round(z.preis * 100) / 100, einheit, b2b: Boolean(z.b2b) && einheit === "stueck" });
+  }
+  return out.slice(0, 30);
+}
+
+/**
+ * Prep-Gebühr je Stück für B2B-Deals: der feste Wert aus den B2B-Einstellungen, wenn eingetragen – sonst die Summe
+ * der Preislisten-Posten „je Stück“, die für B2B markiert sind. 0 = nichts hinterlegt.
+ */
+export function b2bPrepJeStueck(festwert: number, preisliste: PrepPosten[] | undefined): { betrag: number; quelle: "einstellung" | "preisliste" | "keine"; posten: string[] } {
+  if (festwert > 0) return { betrag: festwert, quelle: "einstellung", posten: [] };
+  const p = (preisliste ?? []).filter((x) => x.b2b && x.einheit === "stueck");
+  const summe = Math.round(p.reduce((a, x) => a + x.preis, 0) * 100) / 100;
+  return summe > 0 ? { betrag: summe, quelle: "preisliste", posten: p.map((x) => x.name) } : { betrag: 0, quelle: "keine", posten: [] };
+}
 export type PrepSummary = { shipments: number; units: number; byProduct: { product: string; shipments: number; units: number }[]; expected: number | null };
 
 /** Summen je Monat; erwartete Kosten nur, wenn Gebühren hinterlegt sind (je Sendung + je weiteres Stück). */

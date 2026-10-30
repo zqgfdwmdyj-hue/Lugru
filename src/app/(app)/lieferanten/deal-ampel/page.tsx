@@ -1,5 +1,5 @@
 import { requireArea } from "@/lib/auth/session";
-import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
+import { AMPEL_TEXT, profitgoLink } from "@/lib/deal-ampel/logic";
 import { dealPruefen, type DealPruefung } from "@/lib/deal-ampel/service";
 import { parseAmount } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
@@ -62,6 +62,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
               <strong>{r.titel ?? r.asin}</strong>
               <a className="small" href={`https://www.amazon.de/dp/${r.asin}`} target="_blank" rel="noreferrer noopener">{r.asin}</a>
               <a className="small" href={`https://keepa.com/#!product/3-${r.asin}`} target="_blank" rel="noreferrer noopener">Keepa</a>
+              {profitgoLink(s.dealAmpel.profitgoVorlage, r.asin) && <a className="small" href={profitgoLink(s.dealAmpel.profitgoVorlage, r.asin)!} target="_blank" rel="noreferrer noopener" data-testid="deal-ampel-profitgo">in ProfitGo öffnen</a>}
             </div>
             <p style={{ margin: "10px 0 0", maxWidth: 880 }} data-testid="deal-ampel-begruendung">{r.begruendung}</p>
             <div className="small muted" style={{ marginTop: 6 }}>
@@ -122,6 +123,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
             <label className="small">Preisverfall ab % gelb<input name="preisverfallProzent" defaultValue={s.dealAmpel.preisverfallProzent} style={{ width: 70 }} /></label>
             <label className="small">Nebenkosten €/Stück<input name="nebenkosten" defaultValue={String(s.dealAmpel.nebenkosten).replace(".", ",")} style={{ width: 80 }} /></label>
             <label className="small">Länder<input name="laender" defaultValue={s.dealAmpel.laender.join(" ")} style={{ width: 140 }} /></label>
+            <label className="small" style={{ flexBasis: "100%" }}>ProfitGo-Link (optional, Adresse mit {"{asin}"}; leer = kein Link)<input name="profitgoVorlage" defaultValue={s.dealAmpel.profitgoVorlage} placeholder="https://…{asin}…" style={{ width: "100%", maxWidth: 480 }} data-testid="deal-ampel-profitgo-vorlage" /></label>
             <button className="btn" type="submit">Speichern</button>
           </form>
         </details>

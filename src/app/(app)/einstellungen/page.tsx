@@ -16,6 +16,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { imCreds, imPageFormats, type ImPageFormat } from "@/lib/integrations/clients/deutschepost";
 import { isLabelPrinterFormat } from "@/lib/shipping/internetmarke";
 import { AddressCheck } from "./address-check";
+import { b2bPrepJeStueck, PREP_EINHEITEN } from "@/lib/shipping/prep";
 
 function Field({ label, name, value, suffix, help, type = "text", width = 160 }: { label: string; name: string; value?: string | number; suffix?: string; help?: string; type?: string; width?: number }) {
   return (
@@ -160,7 +161,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
             <Field label="Unsere Mindestmarge" name="b2b_minMarge" value={pct(s.b2b.minMarge)} suffix="% auf EK" width={70} help="Ampel im Preislisten-Scanner" />
             <Field label="Mengenfaktor" name="b2b_mengenFaktor" value={dec(s.b2b.mengenFaktor)} suffix="× Verkäufe/Monat" width={70} help="Vorschlag max. Gesamtmenge je Deal" />
             <Field label="Max. Kunden je ASIN" name="b2b_maxKundenProAsin" value={s.b2b.maxKundenProAsin} width={70} />
-            <Field label="Prep-Gebühr je Stück" name="b2b_prepGebuehr" value={dec(s.b2b.prepGebuehr)} suffix="€" width={70} help="In der Kundenrechnung" />
+            <Field label="Prep-Gebühr je Stück" name="b2b_prepGebuehr" value={dec(s.b2b.prepGebuehr)} suffix="€" width={70} help="In der Kundenrechnung; 0 = Summe der B2B-Posten aus der Prep-Preisliste" />
             <Field label="Versandanteil je Stück" name="b2b_versandAnteil" value={dec(s.b2b.versandAnteil)} suffix="€" width={70} help="Großhändler → Prep, in unserem Verdienst" />
             <Field label="„Fast weg“ ab" name="b2b_fastWegProzent" value={pct(s.b2b.fastWegProzent)} suffix="% vergeben" width={70} />
             <Field label="USt-Satz Inland" name="b2b_ustSatz" value={pct(s.b2b.ustSatz)} suffix="%" width={70} />
@@ -240,6 +241,25 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
             </div>
             <Field label="Gebühr je Sendung" name="prep_feeShipment" value={dec(s.prep.feeShipment)} suffix="€" width={90} help="0 = nur zählen" />
             <Field label="je weiteres Stück" name="prep_feeExtraItem" value={dec(s.prep.feeExtraItem)} suffix="€" width={90} help="ab dem 2. Stück einer Sendung" />
+          </div>
+          <div className="stack" style={{ gap: 6 }} data-testid="prep-preisliste">
+            <strong className="small">Preisliste (z. B. laut AdelPrep)</strong>
+            <span className="small muted">Posten mit Preis und Einheit. „B2B“ = gehört zur Prep-Gebühr je Stück, die B2B-Kunden zahlen (wird verwendet, solange unter B2B-Deals keine feste Prep-Gebühr steht). Leere Zeilen werden ignoriert, zum Entfernen den Namen leeren.</span>
+            <input type="hidden" name="prep_pl_n" value={s.prep.preisliste.length + 4} />
+            {[...s.prep.preisliste, ...Array.from({ length: 4 }, () => null)].map((x, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input className="input" name={`prep_pl_name_${i}`} defaultValue={x?.name ?? ""} placeholder="Posten, z. B. Etikettieren" aria-label={`Posten ${i + 1}`} style={{ width: 220 }} />
+                <input className="input num" name={`prep_pl_preis_${i}`} defaultValue={x ? dec(x.preis) : ""} placeholder="0,00" inputMode="decimal" aria-label={`Preis ${i + 1}`} style={{ width: 90 }} />
+                <select className="select" name={`prep_pl_einheit_${i}`} defaultValue={x?.einheit ?? "stueck"} aria-label={`Einheit ${i + 1}`} style={{ width: 190 }}>
+                  {Object.entries(PREP_EINHEITEN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <label className="check small"><input type="checkbox" name={`prep_pl_b2b_${i}`} value="1" defaultChecked={x?.b2b ?? false} /> B2B</label>
+              </div>
+            ))}
+            {(() => {
+              const b = b2bPrepJeStueck(s.b2b.prepGebuehr, s.prep.preisliste);
+              return <span className="small" data-testid="prep-b2b-summe">B2B-Prep-Gebühr je Stück: {b.quelle === "keine" ? "nicht hinterlegt" : `${dec(b.betrag)} € (${b.quelle === "einstellung" ? "fester Wert unter B2B-Deals" : `Summe aus ${b.posten.join(", ")}`})`}</span>;
+            })()}
           </div>
         </section>
 

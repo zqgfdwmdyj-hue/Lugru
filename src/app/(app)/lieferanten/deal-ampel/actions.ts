@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
 import { requireOwner } from "@/lib/auth/session";
+import { profitgoLink } from "@/lib/deal-ampel/logic";
 import { parseAmount } from "@/lib/numbers";
 
 /** Ziele der Deal-Ampel speichern (nur Inhaber). */
@@ -35,6 +36,10 @@ export async function dealAmpelEinstellungenAction(fd: FormData) {
           preisverfallProzent: zahl("preisverfallProzent", 1, 80),
           nebenkosten: zahl("nebenkosten", 0, 100),
           ...(laender.length ? { laender } : {}),
+          ...(fd.has("profitgoVorlage") ? { profitgoVorlage: (() => {
+            const v = String(fd.get("profitgoVorlage") ?? "").trim().slice(0, 300);
+            return v === "" || profitgoLink(v, "B000000000") ? v : (alt.dealAmpel?.profitgoVorlage ?? "");
+          })() } : {}),
         },
       },
     })

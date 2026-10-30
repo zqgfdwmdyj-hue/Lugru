@@ -11,6 +11,7 @@ import { todayIso } from "@/lib/dates";
 import type { DealEingabe } from "./eingabe";
 import { besterMarkt, dealBlattText, preisWarnungen, reservierbar, unserVerdienst, vergebenAnteil, type Warnung } from "./logic";
 import { dealPrognose, prognoseMitPreis } from "./prognose";
+import { b2bPrepJeStueck } from "@/lib/shipping/prep";
 
 // Deals im Seller-System: Laden, Vertriebsfreigabe prüfen, Freischalten/Schließen, Discord-Meldungen, Deal-Blatt.
 // Alle Abfragen filtern nach tenant_id.
@@ -157,7 +158,7 @@ export async function dealAnlegen(tenantId: string, userId: string | null, e: De
           nurRestmenge: e.nurRestmenge || bestand > 0,
           eigenerBestand: bestand,
           versandAnteil: e.versandAnteil ?? s.b2b.versandAnteil,
-          prepGebuehr: e.prepGebuehr ?? s.b2b.prepGebuehr,
+          prepGebuehr: e.prepGebuehr ?? b2bPrepJeStueck(s.b2b.prepGebuehr, s.prep.preisliste).betrag,
           hinweis: e.hinweis ?? null,
           angelegtVon: userId,
         })

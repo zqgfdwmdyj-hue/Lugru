@@ -6,6 +6,8 @@ import { getSettings } from "@/lib/settings";
 import { SubmitButton } from "@/components/submit-button";
 import { preislisteAuswerten } from "@/lib/b2b/scanner";
 import { nachladenAction } from "../actions";
+import { b2bPrepJeStueck } from "@/lib/shipping/prep";
+import { profitgoLink } from "@/lib/deal-ampel/logic";
 
 const eur = (n: number | null | undefined, w = "EUR") => (n === null || n === undefined ? "–" : `${n.toFixed(2).replace(".", ",")} ${w === "EUR" ? "€" : w === "GBP" ? "£" : w}`);
 const AMPEL = { gruen: ["tag-ok", "grün"], gelb: ["tag-warn", "gelb"], rot: ["tag-danger", "rot"] } as const;
@@ -63,7 +65,7 @@ export default async function ScannerPage({ params, searchParams }: { params: Pr
                 <td><span className={`tag ${AMPEL[z.ampel][0]}`}>{AMPEL[z.ampel][1]}</span></td>
                 <td style={{ maxWidth: 300 }}>
                   <div style={{ fontWeight: 600 }}>{z.titel}</div>
-                  <div className="small muted num">{z.asin ? <a href={`https://www.amazon.de/dp/${z.asin}`} target="_blank" rel="noreferrer">{z.asin}</a> : "keine ASIN"}{z.ean ? ` · ${z.ean}` : ""}{z.bestand !== null ? ` · Bestand ${z.bestand}` : ""}{z.moq ? ` · MOQ ${z.moq}` : ""}</div>
+                  <div className="small muted num">{z.asin ? <a href={`https://www.amazon.de/dp/${z.asin}`} target="_blank" rel="noreferrer">{z.asin}</a> : "keine ASIN"}{profitgoLink(s.dealAmpel.profitgoVorlage, z.asin) && <> · <a href={profitgoLink(s.dealAmpel.profitgoVorlage, z.asin)!} target="_blank" rel="noreferrer noopener" data-testid="scan-profitgo">ProfitGo</a></>}{z.ean ? ` · ${z.ean}` : ""}{z.bestand !== null ? ` · Bestand ${z.bestand}` : ""}{z.moq ? ` · MOQ ${z.moq}` : ""}</div>
                   {z.warnungen.map((w) => <div key={w} className="small" style={{ color: "var(--warn)" }}>{w}</div>)}
                   {z.fehlend.length > 0 && <div className="small muted">Marktdaten fehlen: {z.fehlend.join(", ")}</div>}
                 </td>
@@ -81,7 +83,7 @@ export default async function ScannerPage({ params, searchParams }: { params: Pr
           </tbody>
         </table>
       </section>
-      <div className="small muted">Kundenpreis-Vorschlag: höchster Preis, bei dem der Kunde im Land noch {Math.round(s.b2b.minKundenRoi * 100)} % ROI hat (inkl. Prep {eur(s.b2b.prepGebuehr)}). Ampel grün: unsere Marge ≥ {Math.round(s.b2b.minMarge * 100)} % und Amazon selten in der Buy Box; gelb: knapp, Amazon stark oder Warnungen; rot: kein Spielraum. Gebühren aus Keepa bzw. Standard (Einstellungen). Marktdaten höchstens 24 Std. alt.</div>
+      <div className="small muted">Kundenpreis-Vorschlag: höchster Preis, bei dem der Kunde im Land noch {Math.round(s.b2b.minKundenRoi * 100)} % ROI hat (inkl. Prep {eur(b2bPrepJeStueck(s.b2b.prepGebuehr, s.prep.preisliste).betrag)}). Ampel grün: unsere Marge ≥ {Math.round(s.b2b.minMarge * 100)} % und Amazon selten in der Buy Box; gelb: knapp, Amazon stark oder Warnungen; rot: kein Spielraum. Gebühren aus Keepa bzw. Standard (Einstellungen). Marktdaten höchstens 24 Std. alt.</div>
     </>
   );
 }
