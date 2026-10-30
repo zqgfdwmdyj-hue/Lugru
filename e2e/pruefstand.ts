@@ -13,7 +13,13 @@ const FRUEHER = "vor dem 28.10.2026";
 
 /** Schlüssel = Pfad aus der Navigation (src/lib/nav.ts) bzw. ein Name für Bereiche ohne eigenen Menüpunkt. */
 export const PRUEFSTAND: Record<string, Reiter> = {
-  "/": { offen: ["Aufgaben anlegen, erledigen, verschieben", "Tageskennzahlen"] },
+  "/": {
+    abläufe: [
+      { ablauf: "B15.2 Privater Kalender auf der Startseite", erwartet: "nur „Privat belegt“ + Uhrzeit, nie Titel, Ort oder Betrag; Assistenz sieht nichts", tests: ["b15-sofort.spec.ts › Startseite"] },
+      { ablauf: "B15.1 FBM-Versandbestätigung offen", erwartet: "Alarm mit Frist, Datei für Seller Central, „Verkauft, jetzt liefern“ erst nach Bestätigung erledigt", tests: ["amazon-todos-versand.spec.ts › Bestell-Mails folgen dem Auftrag"] },
+    ],
+    offen: ["Aufgaben anlegen, erledigen, verschieben", "Tageskennzahlen"],
+  },
   "/posteingang": {
     abläufe: [
       { ablauf: ".eml-Datei hochladen", erwartet: "Rückmeldung, Dateiauswahl danach leer", tests: ["formulare.spec.ts › Posteingang: .eml hochladen"] },
@@ -98,6 +104,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] },
       { ablauf: "BQool-Export „Manage Listings“ hochladen", erwartet: "Rückmeldung mit Anzahl je Marktplatz, Auffälligkeiten (ohne Min, pausiert, ohne Regel) in der Tabelle und im Werkzeug „repricer“", tests: ["geschaeft.spec.ts › BQool-Export"] },
+      { ablauf: "B15.11 Übersicht je Regel, Filter, alle Länder", erwartet: "Regel mit DE/FR, aktiv/pausiert richtig (Angebotsstatus „Inactive“ ≠ pausiert); Filter Land und Status", tests: ["b15-anzeige.spec.ts › Repricer"] },
     ],
     offen: ["Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen"],
   },
@@ -105,9 +112,11 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl, keine kaputten Werte", tests: ["kennzahlen.spec.ts › Bestand"] },
       { ablauf: "Inventur scannen", erwartet: "bucht +1, Feld leert sich für den nächsten Scan", tests: ["formulare.spec.ts › Inventur-Scanner"] },
+      { ablauf: "B15.3 Prep Center verschickt", erwartet: "eigenes Lager unverändert; alte Fehlbuchung als Vorschlag, Zurückbuchen nur auf Klick", tests: ["b15-sofort.spec.ts › Prep Center"] },
     ],
   },
   "/inbound": { abläufe: [{ ablauf: "FBA-Sendung scannen", erwartet: "unbekannter Code → Fehler; gültiger Code bucht; Karton-Auswahl bleibt", tests: ["formulare.spec.ts › Scanner: unbekannter Code"] }] },
+  "/paletten": { abläufe: [{ ablauf: "B15.13 Palette ohne Kunde", erwartet: "Warnung mit Palettennummer, Filter „ohne Kunde“", tests: ["b15-anzeige.spec.ts › Palettenlager"] }] },
   "/paletten/sendungen": {
     abläufe: [
       { ablauf: "Anlegen, verschieben, Meldung an alle, Kunden-Link, abgelaufen, zurückgezogen", erwartet: "Meldung im System + Mail (abgefangen), Kunden sieht nur Freigegebenes, Links verfallen", tests: ["sendungen.spec.ts › Anlegen"] },
@@ -124,6 +133,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   },
   "/b2b": {
     abläufe: [
+      { ablauf: "B15.12 SKU-Kürzel in der Lieferantenliste", erwartet: "Kürzel in eigener Liste, nicht bei den Freigaben; „Ist ein Lieferant“ nur auf Klick", tests: ["b15-anzeige.spec.ts › Lieferanten"] },
       { ablauf: "Deal anlegen, Prognose je Land, Rechenhilfe, Freischalten nur mit Vertriebsfreigabe, Discord", erwartet: "Prognose DE/FR/IT/ES (Keepa) und NL (Amazon live); Warnung bei negativem Verdienst; ohne Freigabe des Lieferanten kein Freischalten; Discord „neu“, „fast weg“, „geschlossen“", tests: ["b2b-deals.spec.ts › Freischalten nur mit Vertriebsfreigabe", "b2b-deals.spec.ts › Abnahme"] },
       { ablauf: "Abnahme: 1 Deal, 3 Kunden, 1 Fehlmenge", erwartet: "VIES → Reverse Charge nur FR; Mengengrenzen im Portal; Vorkasse-Rechnungen (Lexoffice), Zahlungsabgleich, Bestellung Entwurf → Freigabe → Senden nur mit Haken; Wareneingang 54/60 → anteilig 18/27/9, 3 Gutschriften, Reklamation; Export CSV/XLSX/PDF; verteilt → erledigt", tests: ["b2b-deals.spec.ts › Abnahme"] },
       { ablauf: "Kundenportal getrennt", erwartet: "eigene Anmeldung (Einladungs-Link, einmalig); nur eigene Reservierungen und Belege; kein Zugang ins Seller-System, Mitarbeiter-Anmeldung gilt im Portal nicht", tests: ["b2b-deals.spec.ts › Abnahme", "b2b-deals.spec.ts › Portal"] },
@@ -143,7 +153,13 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Als eingereicht markieren (über Claude)", erwartet: "nur mit Freigabe „ändern“; Status, Fallnummer, Zeitpunkt und Protokolleintrag „über Claude“; zweiter Aufruf ändert nichts Falsches", tests: ["geschaeft.spec.ts › Archivieren und „Anspruch eingereicht“"] },
     ],
   },
-  "/gewinn": { abläufe: [{ ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand; keine kaputten Werte", tests: ["kennzahlen.spec.ts › Gewinn"] }] },
+  "/gewinn": {
+    abläufe: [
+      { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand; keine kaputten Werte", tests: ["kennzahlen.spec.ts › Gewinn"] },
+      { ablauf: "B15.4 Quelle je Zeile, sellerboard als Ersatz, Amazon-Zeile", erwartet: "Abrechnung nur bis Monatsmitte → Amazon aus sellerboard; ohne sellerboard Hinweis „Zeitraum danach fehlt“; USt.-Zeilen und Rücklagen nicht im Ergebnis", tests: ["b15-zahlen.spec.ts › Gewinn"] },
+    ],
+    offen: ["Amazon-Zeile mit echten Abrechnungen gegen sellerboard vergleichen (−525 € laut Testbericht)"],
+  },
   "/cashflow": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Schätzungen mit „≈“, „keine Daten“ statt 0", tests: ["kennzahlen.spec.ts › Cash Flow"] },
