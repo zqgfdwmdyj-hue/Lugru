@@ -7,6 +7,7 @@ import { notifyDiscord } from "@/lib/integrations/clients/discord";
 import { getIntegration } from "@/lib/integrations/store";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { BATCH_SIZE, categoryLabel, deadlineFromText, extractAsins, extractSkus, kontozustandLink, marktplatzAus, MAX_TOKENS, noiseReason, parseTriage, pflichtRegel, todosClosedBy, triageByRules, triagePrompt, type TriageMail, type TriageResult } from "./logic";
+import { altToDosSchliessen, bestellMailsAbgleichen, bestellnummernAus, istBestellMail, istFbaVersandMail, SAMMEL, sammelWiederOeffnen, ueberfaellig, versandfrist, type AuftragKurz } from "./versand";
 
 // Amazon-ToDos: Amazon-Systemmails aus allen verbundenen Postfächern einstufen und als Aufgaben
 // mit Frist führen. Läuft nach jedem Postfach-Abruf; die Erledigung passiert im Seller Central.
@@ -15,7 +16,7 @@ const T = schema.amazonTodos;
 const SEEN = schema.amazonMailSeen;
 const E = schema.emails;
 
-export type RunResult = { checked: number; created: number; irrelevant: number; filtered: number; high: number; closedAuto: number; errors: string[]; ai: boolean };
+export type RunResult = { checked: number; created: number; irrelevant: number; filtered: number; high: number; closedAuto: number; errors: string[]; ai: boolean; versand?: VersandErgebnis };
 
 const running = new Map<string, Promise<RunResult>>();
 
@@ -32,6 +33,11 @@ export const isRunning = (tenantId: string) => running.has(tenantId);
 
 async function runOnce(tenantId: string, sinceDays: number, max: number): Promise<RunResult> {
   const result: RunResult = { checked: 0, created: 0, irrelevant: 0, filtered: 0, high: 0, closedAuto: 0, errors: [], ai: false };
+  try {
+    result.versand = await versandAbgleich(tenantId);
+  } catch (e) {
+    result.errors.push(`Versand-Abgleich: ${e instanceof Error ? e.message : String(e)}`);
+  }
   const since = new Date(Date.now() - sinceDays * 86400_000);
   // Bekannte Mails (schon Aufgabe oder schon verworfen) überspringen.
   const candidates = await db
@@ -51,7 +57,8 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
   result.checked = candidates.length;
 
   // 0. Pflicht-ToDos (Deaktivierung, Dokumente, Compliance in allen EU-Sprachen) – immer, ohne KI.
-  const pflicht = candidates.map((c) => ({ c, p: /marketplace\.amazon/i.test(c.fromAddress ?? "") ? null : pflichtRegel({ subject: c.subject ?? "", text: c.body ?? "" }) })).filter((x) => x.p);
+  // Bestell- und FBA-Versand-Mails sind nie Pflicht-ToDos (z. B. „Verkauft, jetzt liefern: … Batterien AA“).
+  const pflicht = candidates.map((c) => ({ c, p: /marketplace\.amazon/i.test(c.fromAddress ?? "") || istBestellMail(c.subject) || istFbaVersandMail(c.subject) ? null : pflichtRegel({ subject: c.subject ?? "", text: c.body ?? "" }) })).filter((x) => x.p);
   const pflichtKeys = new Set(pflicht.map((x) => x.c.key));
   const pflichtResults: TriageResult[] = pflicht.map(({ c, p }) => ({
     key: c.key,
@@ -125,6 +132,7 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
         asins: r.asins,
         skus: extractSkus(`${mail.subject ?? ""}\n${mail.body ?? ""}`),
         marktplatz: marktplatzAus(mail.fromAddress ?? "", mail.body ?? "").land,
+        bestellnummern: bestellnummernAus(`${mail.subject ?? ""}\n${mail.body ?? ""}`),
         link: kontozustandLink(marktplatzAus(mail.fromAddress ?? "", mail.body ?? "").tld),
         bodyShort: (mail.body ?? "").slice(0, 1500),
         status: r.actionNeeded ? "open" : "done",
@@ -236,4 +244,79 @@ export async function todoDeadlines(tenantId: string, from: string, to: string) 
     .from(T)
     .where(and(eq(T.tenantId, tenantId), eq(T.status, "open"), isNotNull(T.deadline), gte(T.deadline, from), lte(T.deadline, to)))
     .groupBy(T.deadline, T.category);
+}
+
+// ---- Versand-Abgleich (B10) -------------------------------------------------------------------
+// Bestell-Mails („Verkauft, jetzt liefern“) sind keine ToDos: Sie folgen dem Auftrag. Ist er versendet (Label,
+// Sendungsnummer, Prep Center, von Hand) oder storniert, wird die Mail archiviert; FBA-Versandinfos sofort.
+// Echte Probleme stehen in je EINEM Sammel-ToDo: FBM-Aufträge nach Versandfrist offen, Mail ohne Auftrag im Tool.
+
+export type VersandErgebnis = { archiviert: number; ueberfaellig: number; fehlend: number; altGeschlossen: number };
+
+export async function versandAbgleich(tenantId: string, now = Date.now()): Promise<VersandErgebnis> {
+  const O = schema.orders;
+  const seit = new Date(now - 30 * 86_400_000);
+  // Bestell- und FBA-Versand-Mails der letzten 30 Tage, die noch im Posteingang liegen
+  const roh = await db
+    .select({ id: E.id, subject: E.subject, receivedAt: E.receivedAt, body: sql<string>`left(coalesce(${E.bodyText}, ''), 4000)` })
+    .from(E)
+    .where(and(eq(E.tenantId, tenantId), eq(E.archived, false), gte(E.receivedAt, seit), ilike(E.fromAddress, "%amazon.%")));
+  const mails = roh.filter((m) => istBestellMail(m.subject) || istFbaVersandMail(m.subject));
+  const offeneTodos = await db.select({ id: T.id, subject: T.subject, category: T.category, bodyShort: T.bodyShort }).from(T).where(and(eq(T.tenantId, tenantId), eq(T.status, "open")));
+  const alt = offeneTodos.filter((t) => istBestellMail(t.subject) || istFbaVersandMail(t.subject));
+  const nummern = [...new Set([...mails.flatMap((m) => bestellnummernAus(`${m.subject ?? ""}\n${m.body}`)), ...alt.flatMap((t) => bestellnummernAus(`${t.subject ?? ""}\n${t.bodyShort ?? ""}`))])];
+  const auftragSpalten = { id: O.id, externalId: O.externalId, status: O.status, fulfillment: O.fulfillment, shipBy: O.shipBy, orderDate: O.orderDate };
+  const kurz = (r: { id: string; externalId: string; status: string; fulfillment: string; shipBy: Date | null; orderDate: Date }): AuftragKurz => ({ ...r, shipBy: r.shipBy?.toISOString() ?? null, orderDate: r.orderDate.toISOString() });
+  const zuMails = nummern.length ? (await db.select(auftragSpalten).from(O).where(and(eq(O.tenantId, tenantId), eq(O.channel, "amazon"), inArray(O.externalId, nummern)))).map(kurz) : [];
+  // Offene Amazon-FBM-Aufträge der letzten 30 Tage für „nach Versandfrist noch offen“
+  const offen = (await db.select(auftragSpalten).from(O).where(and(eq(O.tenantId, tenantId), eq(O.channel, "amazon"), eq(O.fulfillment, "FBM"), eq(O.status, "open"), gte(O.orderDate, seit)))).map(kurz);
+
+  const ab = bestellMailsAbgleichen(mails.map((m) => ({ emailId: m.id, subject: m.subject ?? "", text: m.body, receivedAt: m.receivedAt.toISOString() })), zuMails, now);
+  if (ab.archivieren.length) await db.update(E).set({ archived: true }).where(and(eq(E.tenantId, tenantId), inArray(E.id, ab.archivieren)));
+
+  // Altbestand: einzelne ToDos aus Bestell-/FBA-Versand-Mails schließen
+  const zu = altToDosSchliessen(alt, zuMails);
+  for (const z of zu) await db.update(T).set({ status: "done", closedAt: new Date(now), closedBy: z.grund, updatedAt: new Date(now) }).where(and(eq(T.tenantId, tenantId), eq(T.id, z.id), eq(T.status, "open")));
+
+  const ueber = ueberfaellig(offen, now);
+  const dmy = (iso: string) => new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
+  await sammelToDo(tenantId, now, {
+    ...SAMMEL.ueberfaellig,
+    nummern: ueber.map((a) => a.externalId),
+    titel: (n) => `${n} FBM-Auftr${n === 1 ? "ag" : "äge"} nach Versandfrist noch offen`,
+    priority: "high",
+    deadline: ueber[0] ? ueber[0].frist.slice(0, 10) : null,
+    text: ueber.map((a) => `${a.externalId} – Versandfrist ${dmy(versandfrist(a))}`).join("\n"),
+  });
+  await sammelToDo(tenantId, now, {
+    ...SAMMEL.fehlt,
+    nummern: ab.fehlend.map((f) => f.bestellnummer),
+    titel: (n) => `${n} Bestell-Mail${n === 1 ? "" : "s"} zu Bestellungen, die im Tool fehlen (Import-Lücke)`,
+    priority: "medium",
+    deadline: null,
+    text: ab.fehlend.map((f) => `${f.bestellnummer} – Mail vom ${dmy(f.receivedAt)}: ${f.subject.slice(0, 80)}`).join("\n"),
+  });
+  if (zu.length || ab.archivieren.length) await refreshTodoTask(tenantId);
+  return { archiviert: ab.archivieren.length, ueberfaellig: ueber.length, fehlend: ab.fehlend.length, altGeschlossen: zu.length };
+}
+
+async function sammelToDo(
+  tenantId: string,
+  now: number,
+  o: { key: string; category: string; nummern: string[]; titel: (n: number) => string; priority: "high" | "medium"; deadline: string | null; text: string },
+) {
+  const [alt] = await db.select().from(T).where(and(eq(T.tenantId, tenantId), eq(T.messageKey, o.key)));
+  const jetzt = new Date(now);
+  if (!o.nummern.length) {
+    // Nichts mehr offen: schließen und die Liste leeren (eine neue Nummer öffnet es später wieder).
+    if (alt && (alt.status === "open" || alt.bestellnummern.length)) await db.update(T).set({ ...(alt.status === "open" ? { status: "done" as const, closedAt: jetzt, closedBy: `automatisch: nichts mehr offen (zuletzt ${alt.bestellnummern.slice(0, 10).join(", ")})` } : {}), bestellnummern: [], updatedAt: jetzt }).where(eq(T.id, alt.id));
+    return;
+  }
+  const werte = { subject: o.titel(o.nummern.length), summary: o.titel(o.nummern.length), category: o.category, priority: o.priority, deadline: o.deadline, bestellnummern: o.nummern.slice(0, 200), bodyShort: o.text.slice(0, 4000), updatedAt: jetzt };
+  if (!alt) {
+    await db.insert(T).values({ tenantId, messageKey: o.key, receivedAt: jetzt, sender: "Seller-System (Versand-Abgleich)", source: "rules", status: "open", ...werte }).onConflictDoNothing();
+    return;
+  }
+  const oeffnen = alt.status !== "open" && sammelWiederOeffnen(alt.bestellnummern, o.nummern);
+  await db.update(T).set({ ...werte, ...(oeffnen ? { status: "open" as const, closedAt: null, closedBy: null, receivedAt: jetzt } : {}) }).where(eq(T.id, alt.id));
 }

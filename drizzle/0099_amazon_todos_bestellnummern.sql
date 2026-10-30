@@ -1,0 +1,1 @@
+ALTER TABLE "amazon_todos" ADD COLUMN "bestellnummern" jsonb DEFAULT '[]'::jsonb NOT NULL;

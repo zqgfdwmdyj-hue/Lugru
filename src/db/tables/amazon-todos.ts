@@ -28,6 +28,8 @@ export const amazonTodos = pgTable(
     skus: jsonb("skus").$type<string[]>().notNull().default([]),
     marktplatz: text("marktplatz"),
     link: text("link"),
+    /** Amazon-Bestellnummern aus der Mail (bzw. Liste im Sammel-ToDo) – verlinken den Auftrag. */
+    bestellnummern: jsonb("bestellnummern").$type<string[]>().notNull().default([]),
     summary: text("summary"),
     bodyShort: text("body_short"),
     status: text("status", { enum: AMAZON_TODO_STATUSES }).notNull().default("open"),

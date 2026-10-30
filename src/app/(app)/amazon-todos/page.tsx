@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, notInArray, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireOwner } from "@/lib/auth/session";
 import { categoryLabel } from "@/lib/amazon-todos/logic";
 import { isRunning, todoStats } from "@/lib/amazon-todos/service";
+import { LOGISTIK_KATEGORIEN } from "@/lib/amazon-todos/versand";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { formatDate } from "@/lib/numbers";
@@ -15,6 +16,7 @@ const SORTS = { prio: "Priorität + Frist", frist: "Frist zuerst", neu: "Eingang
 type Filter = keyof typeof FILTERS;
 type Sort = keyof typeof SORTS;
 
+const ORDER_STATUS_LABEL: Record<string, string> = { open: "offen", label_created: "Label erstellt", shipped: "versendet", delivered: "zugestellt", cancelled: "storniert", returned: "zurück" };
 const PRIO_LABEL = { high: ["Hoch", "tag-danger"], medium: ["Mittel", "tag-warn"], low: ["Niedrig", "tag-neutral"] } as const;
 
 function countdown(deadline: string | null, today: string): { text: string; urgent: boolean } | null {
@@ -39,13 +41,17 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
   if (filter === "erledigt") where.push(eq(T.status, "done"));
   if (filter === "ignoriert") where.push(eq(T.status, "ignored"));
   if (sp.kat) where.push(eq(T.category, sp.kat));
+  // Logistik-Infos standardmäßig ausgeblendet (über die Kategorie wieder sichtbar)
+  else if (filter === "offen") where.push(notInArray(T.category, [...LOGISTIK_KATEGORIEN]));
   if (q) {
     const like = `%${q.replace(/[%_]/g, "")}%`;
     where.push(or(ilike(T.subject, like), ilike(T.summary, like), ilike(T.bodyShort, like), ilike(T.note, like), sql`${T.asins}::text ilike ${like}`)!);
   }
   const prioOrder = sql`case ${T.priority} when 'high' then 0 when 'medium' then 1 else 2 end`;
+  // Compliance/Konto vor Versand-Sammel-ToDos vor Logistik-Infos
+  const katOrder = sql`case when ${T.category} in ('logistik_info') then 2 when ${T.category} in ('versand_ueberfaellig', 'import_luecke') then 1 else 0 end`;
   const orderBy =
-    sort === "prio" ? [prioOrder, sql`${T.deadline} asc nulls last`, desc(T.receivedAt)]
+    sort === "prio" ? [katOrder, prioOrder, sql`${T.deadline} asc nulls last`, desc(T.receivedAt)]
     : sort === "frist" ? [sql`${T.deadline} asc nulls last`, prioOrder, desc(T.receivedAt)]
     : sort === "alt" ? [asc(T.receivedAt)]
     : [desc(T.receivedAt)];
@@ -63,6 +69,12 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
     getIntegration(t, "discord"),
   ]);
   const today = todayIso();
+  const nummern = [...new Set(todos.flatMap((x) => x.bestellnummern))];
+  const O = schema.orders;
+  const auftragVon = new Map(
+    nummern.length ? (await db.select({ id: O.id, ext: O.externalId, status: O.status }).from(O).where(and(eq(O.tenantId, t), inArray(O.externalId, nummern)))).map((o) => [o.ext, o] as const) : [],
+  );
+  const logistikAusgeblendet = filter === "offen" && !sp.kat ? cats.filter((c) => (LOGISTIK_KATEGORIEN as readonly string[]).includes(c.category)).reduce((n, c) => n + c.n, 0) : 0;
   const href = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     const merged = { filter, sort, q: q || undefined, kat: sp.kat, ...patch };
@@ -84,7 +96,7 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
       </div>
       <p className="muted" style={{ margin: 0, maxWidth: 900 }}>
         Aus den Amazon-Systemmails aller verbundenen Postfächer: Rauschen fällt weg, der Rest wird {ai?.apiKey ? "von der KI" : "nach Regeln (ohne KI-Schlüssel)"} eingestuft – Kategorie, Priorität, Frist, ASINs.
-        Erledigen im Seller Central, danach hier „✓ erledigt“. Freigabe-Mails zur selben ASIN („Bestand freigegeben“, „Angebot wieder aktiv“) haken ältere Aufgaben automatisch ab.
+        Erledigen im Seller Central, danach hier „✓ erledigt“. Freigabe-Mails zur selben ASIN („Bestand freigegeben“, „Angebot wieder aktiv“) haken ältere Aufgaben automatisch ab. Bestell-Mails sind keine ToDos: Ist der Auftrag versendet, wird die Mail archiviert; nur überfällige oder fehlende Aufträge stehen gebündelt in je einem ToDo.
         {!discord?.webhookUrl && <> Neue hohe Prioritäten können auch nach <Link href="/anbindungen?p=discord#discord">Discord</Link> gemeldet werden.</>}
       </p>
 
@@ -118,6 +130,11 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
             ))}
           </div>
 
+          {logistikAusgeblendet > 0 && (
+            <div className="small muted" data-testid="todo-logistik-aus">
+              {logistikAusgeblendet} Logistik-Info{logistikAusgeblendet === 1 ? "" : "s"} ausgeblendet – <Link href={href({ kat: "logistik_info" })}>anzeigen</Link>. Bestell-Mails („Verkauft, jetzt liefern“) folgen dem Auftrag und werden nach dem Versand archiviert.
+            </div>
+          )}
           {todos.length === 0 && <div className="card card-pad muted">Keine Aufgaben in dieser Ansicht.</div>}
           {todos.map((x) => {
             const cd = x.status === "open" ? countdown(x.deadline, today) : null;
@@ -139,6 +156,19 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
                       <a key={a} className="chip num" href={`https://sellercentral.amazon.de/myinventory/inventory?searchField=all&searchTerm=${a}`} target="_blank" rel="noopener" style={{ fontSize: 12 }}>{a} ↗</a>
                     ))}
                     {x.asins.length > 20 && <span className="small muted">+{x.asins.length - 20} weitere</span>}
+                  </div>
+                )}
+                {x.bestellnummern.length > 0 && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="todo-bestellungen">
+                    {x.bestellnummern.slice(0, 30).map((n) => {
+                      const o = auftragVon.get(n);
+                      return o ? (
+                        <Link key={n} className="chip num" href={`/auftraege/${o.id}`} style={{ fontSize: 12 }}>{n} · {ORDER_STATUS_LABEL[o.status] ?? o.status}</Link>
+                      ) : (
+                        <span key={n} className="chip num" style={{ fontSize: 12 }} title="Auftrag nicht im Tool">{n} · fehlt im Tool</span>
+                      );
+                    })}
+                    {x.bestellnummern.length > 30 && <span className="small muted">+{x.bestellnummern.length - 30} weitere</span>}
                   </div>
                 )}
                 {(x.skus.length > 0 || x.marktplatz || x.link) && (

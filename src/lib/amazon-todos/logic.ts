@@ -1,6 +1,8 @@
 // Amazon-ToDos: Grobfilter, KI-Auftrag und -Antwort, Einstufung ohne KI, automatisches Erledigen.
 // Ohne Server-Abhängigkeiten, damit alles mit Beispielmails testbar ist.
 
+import { BESTELL_MAIL_RE, FBA_VERSAND_RE } from "./versand";
+
 export type TodoPriority = "high" | "medium" | "low";
 
 export type TriageMail = { key: string; from: string; subject: string; date: string; text: string };
@@ -46,6 +48,9 @@ export const NOISE_SUBJ: RegExp[] = [
 
 export function noiseReason(m: { from: string; subject: string }): string | null {
   if (!isAmazonSystemMail(m.from)) return "kein Amazon-Systemabsender";
+  // Bestell-Mails folgen dem Auftrag (Versand-Abgleich), FBA-Versandinfos werden archiviert – nie ein ToDo.
+  if (BESTELL_MAIL_RE.test(m.subject)) return "Bestell-Mail – folgt dem Auftrag";
+  if (FBA_VERSAND_RE.test(m.subject)) return "FBA-Versandinfo";
   const f = NOISE_FROM.find((r) => r.test(m.from));
   if (f) return `Absender-Muster ${f.source.slice(0, 40)}`;
   const s = NOISE_SUBJ.find((r) => r.test(m.subject));
@@ -216,6 +221,8 @@ export const CATEGORY_LABEL: Record<string, string> = {
   konto: "Konto",
   freigabe_info: "Freigabe",
   logistik_info: "Logistik-Info",
+  versand_ueberfaellig: "Versandfrist abgelaufen (FBM)",
+  import_luecke: "Bestellung fehlt im Tool",
   auto_remission: "Automatische Remission",
   sonstiges: "Sonstiges",
 };

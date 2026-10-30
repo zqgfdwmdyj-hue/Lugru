@@ -1,5 +1,6 @@
 import "server-only";
-import { and, asc, desc, eq, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
+import { LOGISTIK_KATEGORIEN } from "@/lib/amazon-todos/versand";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { addDaysIso } from "@/lib/dates";
@@ -73,16 +74,48 @@ export const amazonTodos = defineTool({
   ownerOnly: true,
   write: false,
   quelle: { text: "Amazon-ToDos aus Seller-Central-Mails", jobs: ["Amazon-ToDos"] },
-  input: z.object({ limit: z.number().int().min(1).max(100).default(30) }),
+  input: z.object({
+    kategorie: z.string().trim().max(40).optional().describe("Nur diese Kategorie, z. B. logistik_info, versand_ueberfaellig, compliance_epr; „alle“ = auch Logistik-Infos. Standard: alles außer Logistik-Infos"),
+    limit: z.number().int().min(1).max(100).default(30),
+  }),
   run: async (ctx, i) => {
     const A = schema.amazonTodos;
+    const t = ctx.session.tenantId;
+    const where = [eq(A.tenantId, t), eq(A.status, "open")];
+    if (i.kategorie && i.kategorie !== "alle") where.push(eq(A.category, i.kategorie));
+    else if (!i.kategorie) where.push(notInArray(A.category, [...LOGISTIK_KATEGORIEN]));
     const rows = await db
       .select()
       .from(A)
-      .where(and(eq(A.tenantId, ctx.session.tenantId), eq(A.status, "open")))
-      .orderBy(sql`case ${A.priority} when 'high' then 0 when 'normal' then 1 else 2 end`, sql`${A.deadline} asc nulls last`)
+      .where(and(...where))
+      // Compliance/Konto vor Versand-Sammel-ToDos vor Logistik; dann Priorität und Frist
+      .orderBy(sql`case when ${A.category} in ('logistik_info') then 2 when ${A.category} in ('versand_ueberfaellig', 'import_luecke') then 1 else 0 end`, sql`case ${A.priority} when 'high' then 0 when 'medium' then 1 else 2 end`, sql`${A.deadline} asc nulls last`)
       .limit(i.limit);
-    return json({ anzahl: rows.length, todos: rows.map((x) => ({ id: x.id, betreff: x.subject, kategorie: x.category, prioritaet: x.priority, frist: x.deadline, zusammenfassung: x.summary, asins: x.asins, skus: x.skus.length ? x.skus : undefined, marktplatz: x.marktplatz ?? undefined, kontozustand: x.link ?? undefined, eingegangen: berlinDateTime(x.receivedAt) })), link: abs(ctx, "/amazon-todos") });
+    const [ausgeblendet] = i.kategorie ? [undefined] : await db.select({ n: sql<number>`count(*)::int` }).from(A).where(and(eq(A.tenantId, t), eq(A.status, "open"), inArray(A.category, [...LOGISTIK_KATEGORIEN])));
+    const nummern = [...new Set(rows.flatMap((x) => x.bestellnummern))];
+    const O = schema.orders;
+    const auftraege = new Map(nummern.length ? (await db.select({ id: O.id, ext: O.externalId, status: O.status }).from(O).where(and(eq(O.tenantId, t), inArray(O.externalId, nummern)))).map((o) => [o.ext, o] as const) : []);
+    return json({
+      anzahl: rows.length,
+      sortierung: "Compliance/Konto zuerst, dann Versand-Sammel-ToDos, dann Logistik; je Gruppe Priorität und Frist",
+      logistik_ausgeblendet: ausgeblendet?.n || undefined,
+      todos: rows.map((x) => ({
+        id: x.id,
+        betreff: x.subject,
+        kategorie: x.category,
+        prioritaet: x.priority,
+        frist: x.deadline,
+        zusammenfassung: x.summary,
+        asins: x.asins,
+        skus: x.skus.length ? x.skus : undefined,
+        bestellungen: x.bestellnummern.length ? x.bestellnummern.slice(0, 50).map((n) => { const o = auftraege.get(n); return o ? { bestellnummer: n, status: o.status, link: abs(ctx, `/auftraege/${o.id}`) } : { bestellnummer: n, status: "fehlt im Tool" }; }) : undefined,
+        marktplatz: x.marktplatz ?? undefined,
+        kontozustand: x.link ?? undefined,
+        eingegangen: berlinDateTime(x.receivedAt),
+      })),
+      hinweis: "Bestell-Mails („Verkauft, jetzt liefern“) sind keine ToDos: Sie folgen dem Auftrag und werden nach dem Versand archiviert. Überfällige FBM-Aufträge und Bestellungen, die im Tool fehlen, stehen gebündelt in je einem ToDo.",
+      link: abs(ctx, "/amazon-todos"),
+    });
   },
 });
 
