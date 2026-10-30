@@ -70,3 +70,14 @@ describe("Artikelstamm als Bereich", () => {
     expect(ca({ role: "staff", areas: ["marken"] }, "artikel")).toBe(false);
   });
 });
+
+describe("Deal-Eingang nur mit ausdrücklicher Freigabe", () => {
+  it("Inhaber ja; „alle Bereiche“ nein; ausdrücklich freigegeben ja; Nur-ansehen nein", () => {
+    expect(canAccess({ role: "owner", areas: null }, "dealeingang")).toBe(true);
+    expect(canAccess({ role: "staff", areas: null }, "dealeingang")).toBe(false);
+    expect(canAccess({ role: "staff", areas: ["start", "amazon"] }, "dealeingang")).toBe(false);
+    expect(canAccess({ role: "staff", areas: ["dealeingang"] }, "dealeingang")).toBe(true);
+    expect(canAccess({ role: "staff", areas: ["dealeingang"], readOnly: true }, "dealeingang")).toBe(false);
+    expect(areaForPath("/deal-eingang/123")).toBe("dealeingang");
+  });
+});

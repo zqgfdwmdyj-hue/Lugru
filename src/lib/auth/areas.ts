@@ -2,7 +2,7 @@
 // alles oder nur die freigegebenen Bereiche (und bei „Marken“ ggf. nur bestimmte Marken).
 // Ohne Server-Abhängigkeiten – wird in proxy.ts, Seiten und Server Actions genutzt.
 
-export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld" | "b2b" | "privat";
+export type AreaKey = "start" | "posteingang" | "kalender" | "wissen" | "wawi" | "paletten" | "artikel" | "lieferanten" | "marken" | "ebay" | "amazon" | "buchhaltung" | "service" | "geld" | "b2b" | "dealeingang" | "privat";
 
 export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string }[] = [
   { key: "start", label: "Start & Aufgaben", paths: ["/"], home: "/" },
@@ -20,6 +20,8 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "service", label: "Service (Retouren, Fälle, Bewertungen)", paths: ["/retouren", "/faelle", "/bewertungen"], home: "/retouren" },
   { key: "geld", label: "Geld (Gewinn, Liquidität, Hebel, Kapital, Verlust-Stopp, Buchhaltung)", paths: ["/gewinn", "/cashflow", "/hebel", "/kapital", "/verlust", "/buchhaltung"], home: "/gewinn" },
   { key: "b2b", label: "B2B-Deals (Deals für Prep-Kunden, B2B-Kunden, Sammelbestellungen)", paths: ["/b2b"], home: "/b2b" },
+  // Nur mit ausdrücklicher Freigabe – nicht Teil von „alle Bereiche“ (WhatsApp-Angebote mit Daten Dritter, Insider-Preise).
+  { key: "dealeingang", label: "Deal-Eingang (geteilte Angebote aus WhatsApp prüfen) – nur mit ausdrücklicher Freigabe", paths: ["/deal-eingang"], home: "/deal-eingang" },
   // Eigenes Recht (memberships.privateAccess) – nie Teil von „alle Bereiche“, auch nicht beim Inhaber.
   { key: "privat", label: "Privat (Paar, Kinder, Therapie, Tagebuch)", paths: ["/privat"], home: "/privat" },
 ];
@@ -44,6 +46,8 @@ export type Access = { role: "owner" | "staff"; areas: string[] | null; privateA
 export function canAccess(a: Access, area: AreaKey | null): boolean {
   // Nur-ansehen-Konten (Prüfer, Testzugang) nie – auch wenn „Privat“ versehentlich freigegeben ist.
   if (area === "privat") return a.privateAccess === true && a.readOnly !== true;
+  // Deal-Eingang: Inhaber und ausdrücklich freigegebene Mitarbeiter (z. B. Chris) – kein VA über „alle Bereiche“, kein Nur-ansehen-Konto.
+  if (area === "dealeingang") return a.role === "owner" || (a.readOnly !== true && Array.isArray(a.areas) && a.areas.includes("dealeingang"));
   if (area === null || a.role === "owner" || a.areas === null) return true;
   // Lieferanten-Feeds und Artikelstamm hängen an der WaWi – wer WaWi hat, sieht sie mit.
   return a.areas.includes(area) || ((area === "lieferanten" || area === "artikel") && a.areas.includes("wawi"));

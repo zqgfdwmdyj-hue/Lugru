@@ -94,6 +94,11 @@ export const DEFAULT_SETTINGS = {
   kapital: { zielRendite: 0.3, geringRendite: 0.05, gruenReichweite: 60, rotReichweite: 120 },
   /** Deal-Ampel: 15 % Zielmarge, Abverkauf ≤ 45 Tage, ab 15 Angeboten rot, Amazon ≥ 50 % gelb, Preisverfall ≥ 10 % gelb. */
   dealAmpel: DEAL_AMPEL_STANDARD,
+  /**
+   * Deal-Eingang (WhatsApp teilen → prüfen): Ziel-ROI für den max. EK, Reichweite der empfohlenen Menge, Löschfrist,
+   * ab wie vielen Zeilen es eine Preisliste ist, Mail-Adresse für Weiterleitungen, iCloud-Link des Kurzbefehls.
+   */
+  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "" },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
   /** Buchhaltung je Firma (nur LuGru/WiGru – nicht AdelPrep): SKR04, DATEV-Nummern vom Steuerberater, Geldkonten. */
@@ -154,6 +159,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     retourenStation: { ...d.retourenStation, ...(s.retourenStation ?? {}) },
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
+    dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },

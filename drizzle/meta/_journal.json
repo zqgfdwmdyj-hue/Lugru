@@ -624,6 +624,13 @@
       "when": 1793354384129,
       "tag": "0088_calls_gruppe_wissen",
       "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1793355002239,
+      "tag": "0089_deal_eingang",
+      "breakpoints": true
     }
   ]
 }

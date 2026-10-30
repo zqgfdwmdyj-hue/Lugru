@@ -161,6 +161,7 @@ export type TenantSettings = {
   buchhaltung?: { firmen?: string[]; kontenrahmen?: "SKR04" | "SKR03"; datev?: Record<string, { beraternummer?: string; mandantennummer?: string }>; geldkonten?: { bank?: string; kreditkarte?: string; transit?: string; marktplatz?: string }; wjBeginnMonat?: number };
   tagesplan?: { arbeitszeit?: Record<string, { von: string; bis: string } | null>; personen?: Record<string, Record<string, { von: string; bis: string } | null>>; vorziehen?: number };
   dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[] };
+  dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
   /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */

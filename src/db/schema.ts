@@ -35,3 +35,4 @@ export * from "./tables/echtheit";
 export * from "./tables/zeit";
 export * from "./tables/calls";
 export * from "./tables/buchhaltung";
+export * from "./tables/deal-eingang";
