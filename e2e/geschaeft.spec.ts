@@ -53,6 +53,10 @@ test.describe("Claude & KI-Assistent – Posteingang und Ansprüche", () => {
 
   test("Archivieren und „Anspruch eingereicht“ über Claude; ohne Freigabe „ändern“ abgewiesen; Protokoll am Anspruch", async ({ browser, baseURL }) => {
     const m = marke();
+    // Testanspruch aus den Testdaten – Importe in früheren Prüfungen (Nachbearbeitung „Ansprüche“) können ihn entfernen.
+    await sql(
+      "insert into claims (tenant_id, type, status, detection_key, title, sku, fnsku, asin, quantity, unit_cost, expected_amount, event_date, deadline) select tenant_id, 'lost_warehouse', 'detected', 'test-verloren-1', 'Testanspruch: 3 Testsocken im Lager verloren (erfunden)', 'TEST-SOCKEN', 'X00TEST0001', 'B0TEST0001', 3, 2.1, 29.97, current_date - 20, current_date + 5 from lots where sku = 'TEST-SOCKEN' and not exists (select 1 from claims where detection_key = 'test-verloren-1') limit 1",
+    );
     const [claim] = await sql<{ id: string }>("select id from claims where detection_key = 'test-verloren-1'");
     const lesen = await mcpVerbinden(browser, baseURL!, "inhaber");
     expect(await lesen.tools()).not.toContain("anspruch_eingereicht");
