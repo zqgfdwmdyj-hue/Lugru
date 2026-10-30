@@ -23,13 +23,20 @@ async function inhaber() {
 export async function handySpeichern(fd: FormData) {
   const s = await inhaber();
   const nummer = String(fd.get("nummer") ?? "").replace(/[^\d+]/g, "").slice(0, 20);
+  const alt = (await (await import("@/lib/settings")).getSettings(s.tenantId)).mobil;
   const mobil = {
     orte: { lager: zeilen(fd.get("lager")), prep: zeilen(fd.get("prep")), palettenlager: zeilen(fd.get("palettenlager")), zuhause: String(fd.get("zuhause") ?? "").trim().slice(0, 200) },
     fahrzeitMin: zahl(fd.get("fahrzeitMin"), 0, 180, 20),
     jeAnrufMin: zahl(fd.get("jeAnrufMin"), 1, 60, 5),
     sms: { an: fd.get("smsAn") === "on" && nummer.length >= 8, nummer, limit: zahl(fd.get("limit"), 1, 50, 10), ruheVon: zeit(fd.get("ruheVon"), "20:00"), ruheBis: zeit(fd.get("ruheBis"), "07:30"), dealSchwelle: zahl(fd.get("dealSchwelle"), 0, 100000, 100) },
     verspaetungToleranz: zahl(fd.get("toleranz"), 0, 120, 10),
-    tesla: { vin: String(fd.get("vin") ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 17), vorheizen: false },
+    tesla: {
+      ...alt.tesla,
+      vin: String(fd.get("vin") ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 17),
+      vorheizen: fd.get("vorheizen") === "on",
+      vorheizMin: zahl(fd.get("vorheizMin"), 1, 60, 10),
+      zielTemp: zahl(fd.get("zielTemp"), 15, 28, 21),
+    },
   };
   await db.update(schema.tenants).set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('mobil', ${JSON.stringify(mobil)}::jsonb)` }).where(eq(schema.tenants.id, s.tenantId));
   revalidatePath("/einstellungen/handy");
@@ -49,4 +56,13 @@ export async function teslaTest() {
   const { testIntegration } = await import("@/lib/integrations/test");
   const r = await testIntegration(s.tenantId, "tesla");
   redirect(ziel(r.message));
+}
+
+/** Heim-Standort = aktueller Standort des Autos (für „nur vorheizen, wenn das Auto zu Hause steht“). */
+export async function heimStandort() {
+  const s = await inhaber();
+  const { heimUebernehmen } = await import("@/lib/mobil/auto");
+  const m = await heimUebernehmen(s).catch((e) => (e instanceof Error ? e.message : "Tesla nicht erreichbar."));
+  revalidatePath("/einstellungen/handy");
+  redirect(ziel(m));
 }

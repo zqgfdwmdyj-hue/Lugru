@@ -15,10 +15,11 @@ test.describe("Amazon-ToDos mit dem Versand abgleichen", () => {
     const z = String(Date.now()).slice(-7);
     const nr = (n: number) => `30${n}-${z}-000000${n}`;
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
-    // Aufträge: 1 versendet (Prep Center), 2 mit Label, 3 offen und Versandfrist gestern abgelaufen
+    // Aufträge: 1 versendet (selbst – nicht Prep Center, damit die Prep-Center-Monatszahlen anderer Prüfungen stimmen),
+    // 2 mit Label, 3 offen und Versandfrist gestern abgelaufen
     const auftrag = (n: number, status: string, shipByStd: number, shippedBy: string | null = null) =>
       sql("insert into orders (tenant_id, channel, external_id, order_date, fulfillment, status, ship_by, shipped_by, buyer_name, total) values ($1, 'amazon', $2, now() - interval '2 days', 'FBM', $3, now() + ($4 || ' hours')::interval, $5, 'Testkunde (erfunden)', 19.9)", [T, nr(n), status, String(shipByStd), shippedBy]);
-    await auftrag(1, "shipped", -20, "prep");
+    await auftrag(1, "shipped", -20, "self");
     await auftrag(2, "label_created", 10);
     await auftrag(3, "open", -24);
     // Altbestand: ein offenes ToDo aus einer Bestell-Mail (vor der Umstellung entstanden)

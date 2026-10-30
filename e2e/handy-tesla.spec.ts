@@ -102,5 +102,28 @@ test.describe("Handy & Tesla", () => {
     expect(fb.vorlesen).toContain("Offene Bestellvorschläge");
     const aa = JSON.parse(await claude.call("anruf_aufgaben"));
     expect(aa.anrufe.some((a: { name: string }) => a.name === `DHL Geschäftskunden ${m}`)).toBe(true);
+
+    // 9) Modul 12: auto_status (Akku, Reichweite, Standort grob, Fahrtenbuch) und auto_klima an/aus mit Temperatur
+    expect(await claude.tools()).toEqual(expect.arrayContaining(["auto_status", "auto_klima"]));
+    const as = JSON.parse(await claude.call("auto_status"));
+    expect(as).toMatchObject({ verbunden: true, akku: 78, reichweite_km: 350, verriegelt: true, fenster_offen: false });
+    expect(as.vorlesen).toMatch(/^Akku 78 Prozent, 350 Kilometer Reichweite\./);
+    expect(as.fahrten.length).toBeGreaterThanOrEqual(1);
+    expect(JSON.parse(await claude.call("auto_klima", { an: true, temperatur: 22 }))).toMatchObject({ ok: true, vorlesen: "Klima an, 22 Grad." });
+    let st = (await (await fetch(`${TD}/__tesla`)).json()) as { temp: number; klimaAn: boolean };
+    expect(st).toMatchObject({ temp: 22, klimaAn: true });
+    expect(JSON.parse(await claude.call("auto_klima", { an: false }))).toMatchObject({ ok: true });
+    st = (await (await fetch(`${TD}/__tesla`)).json()) as { temp: number; klimaAn: boolean };
+    expect(st.klimaAn).toBe(false);
+    // Tagesplan: Status erst auf Knopfdruck
+    await page.goto("/kalender/tagesplan");
+    await page.getByTestId("auto-status").getByRole("button").click();
+    await expect(page.getByTestId("auto-status").getByRole("status")).toContainText("Akku 78 Prozent");
+
+    // 10) Öffentlicher Schlüssel für Tesla unter /.well-known (nur ein öffentlicher Schlüssel wird ausgeliefert)
+    await sql("update integrations set config = config || $1::jsonb where provider = 'tesla'", [JSON.stringify({ publicKey: "-----BEGIN PUBLIC KEY-----\nTESTSCHLUESSELERFUNDEN\n-----END PUBLIC KEY-----" })]);
+    const pem = await fetch(`${B}/.well-known/appspecific/com.tesla.3p.public-key.pem`);
+    expect(pem.status).toBe(200);
+    expect(await pem.text()).toContain("TESTSCHLUESSELERFUNDEN");
   });
 });

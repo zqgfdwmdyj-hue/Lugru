@@ -168,6 +168,8 @@ export async function runScheduledJobs(force = false) {
       if (await has("tesla")) {
         await step(t, "Tesla: Verspätung", async () => (await import("@/lib/mobil/fahrten")).verspaetungPruefen(t));
         if (force || due(`${t}:fahrten`, 59)) await step(t, "Tesla: Fahrtenbuch", async () => (await import("@/lib/mobil/fahrten")).fahrtenAbrufen(t));
+        // Vorheizen vor Terminen mit Ort (nur wenn eingeschaltet; fragt das Auto nur, wenn ein Termin ansteht).
+        if (force || due(`${t}:vorheizen`, 4)) await step(t, "Tesla: Vorheizen", async () => (await import("@/lib/mobil/auto")).vorheizenPruefen(t));
       }
       if (await has("twilio")) {
         const uhr = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", hour12: false }).format(new Date());

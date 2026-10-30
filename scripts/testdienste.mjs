@@ -493,7 +493,16 @@ async function route(req, url, body) {
   // Tesla Fleet API (erfunden): Status, Navi-Ziel, Klima, Fahrten – Schlüssel „test-tesla-token“.
   if (p.startsWith("/tesla/api/1/vehicles/")) {
     if ((req.headers.authorization ?? "") !== "Bearer test-tesla-token") return [401, { error: "invalid_token" }];
-    if (p.endsWith("/vehicle_data")) return json({ response: { display_name: "Testwagen (erfunden)", state: "online", drive_state: { active_route_destination: tesla.ziel, active_route_minutes_to_arrival: tesla.minuten, latitude: 50.1, longitude: 8.6 } } });
+    if (p.endsWith("/vehicle_data")) return json({ response: { display_name: "Testwagen (erfunden)", state: "online", drive_state: { active_route_destination: tesla.ziel, active_route_minutes_to_arrival: tesla.minuten, latitude: tesla.lat ?? 50.1, longitude: tesla.lon ?? 8.6 }, charge_state: { battery_level: 78, battery_range: 217.5 }, climate_state: { inside_temp: 17.5, is_climate_on: tesla.klimaAn ?? false }, vehicle_state: { locked: true, fd_window: 0, fp_window: 0, rd_window: 0, rp_window: 0, tpms_soft_warning_fl: false, tpms_soft_warning_fr: false, tpms_soft_warning_rl: false, tpms_soft_warning_rr: false, software_update: { status: "" } } } });
+    if (p.endsWith("/command/set_temps")) {
+      tesla.temp = parsed()?.driver_temp ?? null;
+      return json({ response: { result: true, reason: "" } });
+    }
+    if (p.endsWith("/command/auto_conditioning_stop")) {
+      tesla.klimaAn = false;
+      tesla.klimaAus = (tesla.klimaAus ?? 0) + 1;
+      return json({ response: { result: true, reason: "" } });
+    }
     if (p.endsWith("/command/navigation_request")) {
       const b = parsed();
       tesla.navi.push(b?.value?.["android.intent.extra.TEXT"] ?? "");
@@ -501,6 +510,7 @@ async function route(req, url, body) {
     }
     if (p.endsWith("/command/auto_conditioning_start")) {
       tesla.klima++;
+      tesla.klimaAn = true;
       return json({ response: { result: true, reason: "" } });
     }
     if (p.endsWith("/fahrten")) return json({ response: tesla.fahrten });
@@ -759,6 +769,8 @@ http
       if ("ziel" in b) tesla.ziel = b.ziel;
       if ("minuten" in b) tesla.minuten = b.minuten;
       if (Array.isArray(b.fahrten)) tesla.fahrten = b.fahrten;
+      if ("lat" in b) tesla.lat = b.lat;
+      if ("lon" in b) tesla.lon = b.lon;
       return send(200, tesla);
     }
     if (url.pathname === "/__sms") return send(200, smsListe);

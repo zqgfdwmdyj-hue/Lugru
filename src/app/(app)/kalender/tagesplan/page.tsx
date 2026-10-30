@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
+import { AutoStatus } from "@/components/auto-status";
+import { getIntegration } from "@/lib/integrations/store";
 import { todayIso } from "@/lib/dates";
 import { AUFWAND_TEXT, plusTage, wochentag, type TagPlan } from "@/lib/tagesplan/logic";
 import { privatDetailsErlaubt, tagesplan } from "@/lib/tagesplan/service";
@@ -23,6 +25,8 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
   const mitPrivat = darfPrivat && sp.privat === "1";
   const p = await tagesplan(session, { start: tag, tage: 7, mitPrivat, heute });
   const d: TagPlan = p.tage[0];
+  // Fahrzeugstatus (Modul 12) nur für den Inhaber und nur, wenn Tesla verbunden ist.
+  const auto = session.role === "owner" && Boolean((await getIntegration(session.tenantId, "tesla"))?.accessToken);
   const hidden = (
     <>
       <input type="hidden" name="tag" value={tag} />
@@ -38,6 +42,7 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
           <div className="crumb">Heute</div>
           <h1>Tagesplan</h1>
           <div className="small muted">Arbeitszeit minus Termine, Familienzeit und freie Zeiten – darin die Aufgaben nach Priorität und Frist.</div>
+          {auto && <div style={{ marginTop: 6 }}><AutoStatus /></div>}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <Link className="btn" href={`/kalender/tagesplan?tag=${plusTage(tag, -1)}${mitPrivat ? "&privat=1" : ""}`}>‹</Link>

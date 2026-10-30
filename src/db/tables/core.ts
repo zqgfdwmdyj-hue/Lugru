@@ -181,7 +181,7 @@ export type TenantSettings = {
     jeAnrufMin?: number;
     sms?: { an?: boolean; nummer?: string; limit?: number; ruheVon?: string; ruheBis?: string; dealSchwelle?: number };
     verspaetungToleranz?: number;
-    tesla?: { vin?: string; vorheizen?: boolean };
+    tesla?: { vin?: string; vorheizen?: boolean; vorheizMin?: number; zielTemp?: number; heimLat?: number | null; heimLon?: number | null };
   };
   bqool?: { standardRegel?: string; katalog?: { name: string; laender: ("DE" | "FR" | "IT" | "ES")[] | null; strategie: string; staffel: { bisTage: number | null; marge: number; unterregel?: "Sales Booster" | "Equalizer" }[] | null; festeUntergrenze: boolean; risiko: boolean; hinweis: string }[]; abverkaufRegel?: { DE?: string; sonst?: string }; costUst?: number; markenRegeln?: { marke: string; land: "DE" | "FR" | "IT" | "ES" | null; regel: string }[]; elektronikMarken?: string[]; elektronikLaender?: ("DE" | "FR" | "IT" | "ES")[]; maxFaktor?: number; fixGebuehr?: number; zusatzkosten?: number; laender?: ("DE" | "FR" | "IT" | "ES")[]; format?: { channel: Record<"DE" | "FR" | "IT" | "ES", string>; shipping: string; addDelete: string; group: string; enable: string; tabsErsteZeile: number; zeilenende: "\r\n" | "\n"; bom: boolean; schlussUmbruch: boolean; ausVorlage: boolean } | null };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */

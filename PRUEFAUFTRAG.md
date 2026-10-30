@@ -117,3 +117,108 @@ Fundstellen relativ zum Repository. Echte Geschäftsdaten stehen hier bewusst ni
 | 21 Familien-Aufgaben + Zugang Alexandra | ✅ | `src/lib/private/familie-aufgaben.ts` |
 | 22 Feste freie Zeiten | ✅ | `src/lib/zeit/*` |
 | 23 Privates Geld | ✅ | `src/lib/private/geld*.ts` |
+
+---
+
+# Stand nach dem Nachbau (30.10.2026)
+
+Zeichen wie oben. 🟡 heißt hier fast immer: im Code fertig und mit Testdiensten geprüft, live fehlt nur eine
+Anbindung oder Angabe von Ludwig (siehe „To-dos für Ludwig“). Ablaufprüfungen: `e2e/*.spec.ts`, Ergebnis unten.
+
+## Vorher → nachher
+
+| Punkt | vorher | nachher | Wo / Prüfung |
+|---|---|---|---|
+| `tagesplan`, `aufgabe_verschieben` (Modul 1) | ❌ | ✅ | `src/lib/tagesplan/*`, `/kalender/tagesplan`; e2e `herzstueck` |
+| `aufgabe_zuweisen`, Zuständig extern, Regeln, Wochenübersicht (Modul 2) | ❌/🟡 | ✅ | `src/lib/delegieren/*`, `/delegation`; e2e `herzstueck` |
+| `deal_pruefen` + Formular (Modul 4) | ❌ | ✅ | `src/lib/deal-ampel/*`; Gebühren je Land live über SP-API, sonst Schätzung (gekennzeichnet) |
+| `buchhaltung_status`, Amex, Abgleich, SKR04, DATEV, USt-Bericht, je Firma (Modul 5) | ❌ | ✅ | `src/lib/buchhaltung/*`; keine Steuerberatung, Rhythmus aus den Einstellungen |
+| `fristen` (Modul 7) inkl. Rechtsfristen | ❌ | ✅ | `src/lib/fristen-geschaeft.ts`, `src/lib/private/fristen*.ts` |
+| `feierabend` (Modul 10) | ❌ | ✅ | `src/lib/feierabend/*` |
+| `auto_status`, `auto_klima`, Vorheizen nach Kalender (Modul 12) | ❌ | ✅ | `src/lib/mobil/auto.ts`, `vorheizen.ts`; Schlüssel unter `/.well-known/appspecific/com.tesla.3p.public-key.pem`; e2e `handy-tesla` |
+| A1 Liquidität: Bestellvorschläge | 🐞 | ✅ | eigene Zeile, erst nach Freigabe eingerechnet |
+| A2 Verlust-Stopp: Tageswerte | 🐞 | ✅ | leere Antwort löscht nichts; Fenster = Tage mit Daten; Verkauf getrennt von Erstattung/Abschreibung/Lager (B9.6) |
+| A3 BQool-Export | 🟡 | ✅ | Hinweise in Verlust-Stopp/Repricer/Start; Dateien je Land aus dem System (`bqool_export_*`) |
+| A4 SP-API-Status, sellerboard „Konto“ | 🟡 | ✅ | richtiger Status je Funktion; Live-Daten brauchen die SP-API-Anbindung |
+| A5 `amazon_listungen` | 🟡 | 🟡 | gebaut; wartet auf SP-API |
+| A6 Kapital-Ampel Preis 0 / USt je Land | 🐞 | ✅ | `src/lib/money/kapital.ts` |
+| A7 Keepa älter als 48 h | 🟡 | ✅ | Hinweis + Nachladen |
+| A8 eBay Listing-API-Berechtigung | 🟡 | ✅ | Scope beim Verbinden + Hinweis; einmal neu verbinden |
+| B1 Calls: Export ohne Transkript, Nachladen, Gruppen-Call | 🟡 | ✅ | `src/lib/calls/*` |
+| B3 Tesla | ❌ | ✅ | siehe Modul 12 und B13 |
+| B4 Stück je ASIN gestern | ❌ | ✅ | `verkaeufe_je_asin` |
+| B4 `kalender` privat nur „Termin außer Haus“ | 🐞 | ✅ | `src/lib/assistant/tools/allgemein.ts` |
+| B5 Buchhaltung nur LuGru/WiGru | ❌ | ✅ | Feld Firma (`src/lib/buchhaltung/service.ts`) |
+| B5 Prep-Center-Gebühren, ProfitGo-Link | 🟡/❌ | ✅ | Preisliste je Leistung; ProfitGo-Adresse trägt Ludwig ein |
+| Modul 3 Posteingang auf null (Regeln, Vorschlag, Zahlungen DE/IT/FR) | ❌/🟡 | ✅ | e2e `posteingang-null` |
+| Modul 6 Termin-Mails → Privatkalender, Vorabend | ❌ | ✅ | e2e `posteingang-null` |
+| Modul 8 Schulbriefe, Modul 9 Geburtstage/Paarzeit, Modul 11 Schnellerfassung | ❌/🟡 | ✅ | e2e `schnell-familie` |
+| B8 Amazon-Fall-Zentrale | – | ✅ | `src/lib/amazon-faelle/*`; einreichen nur in Seller Central; e2e `amazon-faelle` |
+| B9 Befunde Herzstück, Postfach IMAP | – | ✅ | e2e `herzstueck`, `postfach` |
+| B10 Amazon-ToDos mit Versand abgleichen | – | ✅ | e2e `amazon-todos-versand` |
+| B11 Assistent-Aktionen (Vorschau, Stufen, Rückgängig) | – | ✅ | e2e `assistent-aktionen` |
+| B12 `privat_eintrag_anlegen` | – | ✅ | e2e `privat-anlegen` |
+| B13 Handy & Tesla | – | ✅ | e2e `handy-tesla` |
+| B14 Rechtsfälle (Asana nur lesen) + Discord-Wissen | – | ✅ | e2e `recht-discord` |
+| VA nur Englisch, Rückmeldungen deutsch mit Original | – | ✅ | e2e `va-discord` |
+| Retouren-Station SP-API-Berichte, LPN ≥ 95 % | 🟡 | 🟡 | wartet auf SP-API bzw. nur live am Arbeitsplatz prüfbar |
+| B2B: Schnittstelle zum Prep-Tool | 🟡 | 🟡 | Export fertig; API wartet auf Adresse + Beschreibung |
+
+## Neue Claude-Werkzeuge (40) und `notifications/tools/list_changed`
+
+Lesend: `amazon_faelle`, `amazon_fall`, `anruf_aufgaben`, `auto_status`, `bqool_export_vorschau`, `buchhaltung_status`,
+`deal_eingang`, `deal_eingang_detail`, `deal_pruefen`, `deal_quellen`, `erstattungen_abgleich`, `fahrt_briefing`,
+`feierabend`, `freischaltungen`, `fristen`, `rechtsfaelle`, `rechtsfall`, `rechtsfristen`, `scan_pruefen`, `tagesplan`,
+`va_aufgaben`, `va_nachrichten`, `verkaeufe_je_asin`.
+
+Ändernd (nur auf ausdrücklichen Wunsch, im Fragefeld mit Vorschau und Stufe): `amazon_fall_an_va`, `amazon_fall_status`,
+`amazon_todo_erledigen`, `anruf_erledigt`, `aufgabe_verschieben`, `aufgabe_zuweisen`, `auftrag_status`, `auto_klima`,
+`auto_navi`, `bqool_export_erzeugen`, `deal_eingang_pruefen`, `deal_eingang_status`, `mail_markieren`,
+`privat_eintrag_anlegen`, `rechtsfall_mail_entwurf`, `va_nachricht`, `verlust_ausnahme`.
+
+Geändert: `wissen` und `calls_durchsuchen` (Herkunft `chat|call`), `ueberblick` (Rechtsfristen in 7 Tagen, privat nur
+Anzahl), `kalender` (privat nur „Termin außer Haus“), `posteingang` (Vorschlag, Termin-Mails), `anbindungen_status`,
+`keepa_produkt` (Alter), `kapital_ampel`, `liquiditaet`, `verlust_stopp`.
+
+Der Konnektor meldet `listChanged: true` und schickt beim Verbinden `notifications/tools/list_changed`
+(`src/lib/assistant/mcp.ts`, `src/app/api/mcp/route.ts`) – laufende Chats sehen die neuen Werkzeuge ohne Neustart;
+sonst einmal den Konnektor in claude.ai trennen und neu verbinden.
+
+## To-dos für Ludwig (damit alles live läuft)
+
+Alles Folgende sind Angaben bzw. Freigaben, die nur Ludwig machen kann. Zugangsdaten nur in Anbindungen eintragen,
+nie in Chats oder Mails.
+
+1. **Server aktualisieren** (wie gewohnt). Die neuen Tabellen legt der Start selbst an. `APP_SECRET` nie ändern.
+2. **Amazon SP-API** unter Anbindungen eintragen – dann laufen Listungen je Land, Gebühren je Land in der Deal-Ampel,
+   Retouren-/Remissions-Berichte und die Übertragung bei Amazon Business.
+3. **eBay** einmal neu verbinden (Berechtigung für die Listing-API).
+4. **Postfächer (IMAP)**: je Postfach das App-Passwort eintragen und „Verbindung testen“.
+5. **Rechtsfälle**:
+   - In Asana einen persönlichen Zugangstoken anlegen und unter Anbindungen → Asana eintragen (nur lesen).
+   - Auf der Seite „Rechtsfälle“ eintragen: Absender-Domain des Anwalts, seine Mail-Adresse und private Asana-Projekte.
+6. **Discord-Gruppen-Kanäle**:
+   - Den Server-Admin der Deal-Gruppe bitten, den Bot einzuladen. Er braucht nur „Kanal ansehen“ und „Verlauf lesen“.
+   - Kanal-IDs mit Rhythmus eintragen.
+   - Die Gruppe informieren (Text steht auf der Calls-Seite).
+7. **SMS (Twilio)**:
+   - Konto und Absender eintragen.
+   - Die Antwort-Adresse `/api/sms/antwort` in Twilio als Webhook setzen.
+   - Unter Einstellungen → Handy die eigene Nummer eintragen und „SMS an“ setzen.
+8. **Tesla**:
+   - App im Tesla-Entwicklerkonto registrieren und ein Schlüsselpaar erzeugen.
+   - Den öffentlichen Schlüssel unter Anbindungen → Tesla eintragen. Das System veröffentlicht ihn unter `/.well-known/appspecific/com.tesla.3p.public-key.pem`.
+   - Den virtuellen Schlüssel im Auto koppeln.
+   - Bei neueren Fahrzeugen den „Vehicle Command Proxy“ eintragen.
+   - Die Fahrgestellnummer (VIN) eintragen.
+   - Wenn das Auto zu Hause steht: „Heim-Standort = Standort des Autos“, dann Vorheizen einschalten.
+9. **Handy**: Unter „Schnellerfassung“ einen Handy-Schlüssel anlegen und das Widget bzw. die Kurzbefehle einrichten (Anleitung unter Hilfe).
+10. **BQool**: Die Abverkaufs-Regeln je Land auf das Soll umstellen (4/3/2/1/0 %). Das System meldet danach Abweichungen je SKU.
+11. **ProfitGo**: Die eigene Adresse für den Schnelllink eintragen.
+12. **Steuerberater**:
+    - Fahrtenbuch oder Pauschale? Gegebenenfalls einen GoBD-konformen Anbieter klären.
+    - Den USt-Voranmeldungs-Rhythmus in den Einstellungen bestätigen.
+    - Das System berät nicht steuerlich.
+13. **Prep-Tool**: Die API-Adresse und die Beschreibung schicken. Bis dahin gibt es den Export je Kunde.
+14. **Verlust-Stopp**: Nach dem ersten Amazon-Transaktionsbericht die Zerlegung (Verkauf / Erstattung / Abschreibung / Lager) einmal gegen sellerboard ansehen.
+15. **Claude**: Falls neue Werkzeuge fehlen, den Konnektor in claude.ai einmal trennen und neu verbinden.

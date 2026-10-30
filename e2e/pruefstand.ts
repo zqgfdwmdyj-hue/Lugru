@@ -18,8 +18,23 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: ".eml-Datei hochladen", erwartet: "Rückmeldung, Dateiauswahl danach leer", tests: ["formulare.spec.ts › Posteingang: .eml hochladen"] },
       { ablauf: "Antwort-Entwurf (über Claude) prüfen und senden", erwartet: "Entwurf an der Mail; ohne Häkchen „Geprüft“ wird nicht gesendet; mit Häkchen landet die Mail in den Test-Mails und der Entwurf ist als gesendet markiert", tests: ["geschaeft.spec.ts › Antwort-Entwurf"] },
+      { ablauf: "Posteingang auf null: Regel an Zuständigen, Auto-Archiv, Zahlung abgelehnt (IT), Termin-Mail → Privatkalender, Vorschlag für Claude", erwartet: "Aufgabe für die Zuständige, Newsletter archiviert, Zahlung kritisch mit Aufgabe, Termin nur im Privatkalender (nie im Posteingang)", tests: ["posteingang-null.spec.ts › Regel an Zuständigen"] },
+      { ablauf: "Gerichts-/Behörden-Mail und Anwalts-Mails (B14)", erwartet: "Behörde: Entwurf an den Anwalt (nicht gesendet) + Aufgabe; Anwalt mit Aktenzeichen: in den Fall statt in den Posteingang", tests: ["recht-discord.spec.ts › Teil A"] },
     ],
     offen: ["Mails abrufen (nur echte Postfächer)", "Entwurf echt senden (nur mit echtem Postfach)", "Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test"],
+  },
+  "/rechtsfaelle": {
+    abläufe: [
+      { ablauf: "Asana-Fall (nur lesen) mit Kommentar „Bitte bis … Unterlagen senden“, privater Fall, Anwalts-Mails, Claude", erwartet: "Status und Frist im Fall, wir am Zug, Aufgabe 3 Tage vorher (Kalender), privater Fall nur im Privatbereich, Startseite nur mit Anzahl, Entwurf nie gesendet, Asana nie beschrieben", tests: ["recht-discord.spec.ts › Teil A"] },
+    ],
+    offen: ["Echter Asana-Zugang (Token) beim Anwalt; ob Webhooks für Gäste gehen", "Echte Anwalts-Mails (Domain, Aktenzeichen-Format)"],
+  },
+  "/schnell": {
+    abläufe: [
+      { ablauf: "Diktat per Handy-Schlüssel: Aufgabe, Eingangsliste, Privates nur mit Zugang, Widerruf", erwartet: "richtig eingeordnet, widerrufener Schlüssel → 401", tests: ["schnell-familie.spec.ts › Diktat per Schlüssel"] },
+      { ablauf: "Widget, Anrufe in der Fahrzeit, Briefing je Ziel, SMS-Codes, Ins Auto, Fahrtenbuch, Scan, Auto-Status/Klima", erwartet: "Werte mit Satz zum Vorlesen; „KAUFEN“ nur Entwurf; Navi-Ziel und Klima im (erfundenen) Auto; Fahrt als geschäftlich vorgeschlagen; Tesla-Schlüssel unter /.well-known", tests: ["handy-tesla.spec.ts › Widget"] },
+    ],
+    offen: ["Echtes Handy (Kurzbefehle/Widget)", "Echter Tesla (Fleet-API-App, virtueller Schlüssel, Befehls-Proxy)", "Echte SMS über Twilio"],
   },
   "/posteingang/verbinden": {
     abläufe: [
@@ -162,8 +177,9 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal", erwartet: "4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, Zusammenfassung mit Teilnehmern, 1 neuer Call aus Discord", tests: ["teil2.spec.ts › Call-Archiv"] },
       { ablauf: "Umzug aus dem bisherigen Call-Archiv: Export (JSON) hochladen, zweimal", erwartet: "Call mit Zusammenfassung und Google-Doc-Link, 3 Vorschläge; zweiter Import: „1 waren schon da“", tests: ["teil2.spec.ts › Umzug aus dem bisherigen Call-Archiv"] },
       { ablauf: "Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen", erwartet: "4 Calls mit Datum aus Dateiname/Kopfzeile, KI im Hintergrund fertig, Wissen aus dem Call im Wissen (Quelle, Einschätzung, Suche), Datum geändert; zweites Hochladen: Kopie (gleicher Inhalt) und Link übersprungen", tests: ["teil2.spec.ts › Wochen-Calls der Deal-Gruppe"] },
+      { ablauf: "Gruppen-Kanäle (Discord, nur lesen): Nachrichten mehrerer Nutzer, Deal, Kanal „aus“, alter Rohtext", erwartet: "Tageszusammenfassung (Quelle Chat), Insider-Wissen mit Link, Frühwarnung mit eigenem Abgleich, Deal im Deal-Eingang, Kanal „aus“ nicht gelesen, Bot schreibt nie, keine Namen an die KI, Rohtext > 30 Tage gelöscht", tests: ["recht-discord.spec.ts › Teil B"] },
     ],
-    offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs", "Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)"],
+    offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs", "Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)", "Gruppen-Kanäle: Bot vom Server-Admin der Deal-Gruppe eingeladen (nur Leserechte)"],
   },
   "/wissen": {
     abläufe: [

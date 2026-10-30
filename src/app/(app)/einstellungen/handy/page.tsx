@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
-import { handySpeichern, teslaTest, testSms } from "./actions";
+import { handySpeichern, heimStandort, teslaTest, testSms } from "./actions";
 
 // Handy & Tesla (B13): Orte für Briefing/Fahrtenbuch, Fahrzeit, SMS (nur eigene Nummer), Verspätung, Fahrzeug.
 
@@ -49,7 +49,13 @@ export default async function HandyPage({ searchParams }: { searchParams: Promis
             <div className="small muted">In Familienzeit (Tagesplan) und Ruhezeit nur rote Konto-Themen. Antworten: VA / SPÄTER / OK / KAUFEN n – „KAUFEN“ legt nur einen Einkaufsentwurf an.</div>
             <h2 style={{ margin: "8px 0 0" }}>Tesla</h2>
             <div className="field"><label className="label" htmlFor="h-vin">Fahrgestellnummer (VIN)</label><input className="input" id="h-vin" name="vin" defaultValue={s.tesla.vin} disabled={!owner} /></div>
-            <div className="small muted">Tokens stehen nur in der Anbindung (Anbindungen → Tesla), nie hier. Kein Laden; Klima nur auf Knopfdruck.</div>
+            <label className="small"><input type="checkbox" name="vorheizen" defaultChecked={s.tesla.vorheizen} disabled={!owner} data-testid="h-vorheizen" /> Vor Terminen mit Ort vorheizen/-kühlen (nur wenn das Auto zu Hause steht; Ausnahme: „#nichtheizen“, „ohne Auto“, „mit der Bahn“ im Termin)</label>
+            <div className="grid-2" style={{ gap: 8 }}>
+              <div className="field"><label className="label" htmlFor="h-vhm">Minuten vor Abfahrt</label><input className="input" id="h-vhm" name="vorheizMin" type="number" min={1} max={60} defaultValue={s.tesla.vorheizMin} disabled={!owner} /></div>
+              <div className="field"><label className="label" htmlFor="h-temp">Zieltemperatur (°C)</label><input className="input" id="h-temp" name="zielTemp" type="number" min={15} max={28} defaultValue={s.tesla.zielTemp} disabled={!owner} /></div>
+            </div>
+            <div className="small muted">Heim-Standort: {s.tesla.heimLat !== null && s.tesla.heimLon !== null ? "gespeichert" : "noch nicht gespeichert – ohne ihn wird nie vorgeheizt"}. Abfahrt = Termin minus Fahrzeit (oben).</div>
+            <div className="small muted">Tokens stehen nur in der Anbindung (Anbindungen → Tesla), nie hier. Kein Laden; Klima sonst nur auf Knopfdruck oder ausdrücklichen Wunsch.</div>
             {owner && <div><button className="btn btn-primary btn-small" type="submit">Speichern</button></div>}
           </form>
         </div>
@@ -57,6 +63,7 @@ export default async function HandyPage({ searchParams }: { searchParams: Promis
           <section className="card card-pad small stack" style={{ gap: 6 }}>
             <div>Tesla: <strong>{tesla?.accessToken ? "verbunden" : "nicht verbunden"}</strong> · SMS: <strong>{twilio?.accountSid ? (s.sms.an ? "an" : "eingerichtet, aus") : "nicht eingerichtet"}</strong></div>
             {owner && <form action={teslaTest}><button className="btn btn-small" type="submit">Tesla prüfen</button></form>}
+            {owner && tesla?.accessToken && <form action={heimStandort}><button className="btn btn-small" type="submit">Heim-Standort = Standort des Autos</button></form>}
             {owner && <form action={testSms}><button className="btn btn-small" type="submit">Test-SMS senden</button></form>}
             <Link href="/schnell">Handy-Schlüssel (Kurzbefehle, Widget)</Link>
             <Link href="/kalender/fahrten">Fahrtenbuch</Link>

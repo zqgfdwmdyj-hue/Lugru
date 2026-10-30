@@ -428,6 +428,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       { key: "vin", label: "Fahrgestellnummer (VIN)", placeholder: "z. B. XP7Y…" },
       { key: "region", label: "Region", options: [{ value: "eu", label: "Europa" }, { value: "na", label: "Nordamerika" }] },
       { key: "befehlsProxy", label: "Befehls-Proxy (optional)", placeholder: "https://…", help: "Adresse des „Tesla Vehicle Command Proxy“ – neuere Fahrzeuge (z. B. Model Y Juniper) nehmen Befehle nur signiert an." },
+      { key: "publicKey", label: "Öffentlicher Schlüssel (PEM)", multiline: true, placeholder: "-----BEGIN PUBLIC KEY-----\n…\n-----END PUBLIC KEY-----", help: "Wird unter /.well-known/appspecific/com.tesla.3p.public-key.pem veröffentlicht (verlangt Tesla bei der App-Registrierung). Nur den öffentlichen Teil eintragen – den privaten Schlüssel nie hier." },
     ],
     setup: [
       "developer.tesla.com → Anwendung registrieren (Fleet API), Scopes: Fahrzeuginformationen, Fahrzeugstandort, Fahrzeugbefehle (ohne Laden).",

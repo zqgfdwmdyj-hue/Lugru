@@ -83,4 +83,37 @@ const scanPruefenTool = defineTool({
   },
 });
 
-export const MOBIL = [fahrtBriefingTool, anrufAufgabenTool, anrufErledigtTool, autoNaviTool, scanPruefenTool];
+const autoStatusTool = defineTool({
+  name: "auto_status",
+  title: "Auto-Status (Tesla)",
+  description:
+    "Status des Teslas jetzt: Akku, Reichweite, Standort grob (zu Hause / unterwegs nach …), Innentemperatur, Klima, verriegelt, Fenster, Reifendruck-Warnung, Software-Update, Navi-Ziel, dazu die letzten Fahrten aus dem Fahrtenbuch. Nur Inhaber. Jede Abfrage kostet bei Tesla – nur bei Bedarf. Feld `vorlesen` für den Sprachmodus.",
+  area: null,
+  ownerOnly: true,
+  write: false,
+  quelle: { text: "Tesla Fleet API (Abfrage jetzt) und Fahrtenbuch im Seller-System" },
+  input: z.object({}),
+  run: async (ctx) => {
+    const { autoStatus } = await import("@/lib/mobil/auto");
+    return json({ ...(await autoStatus(ctx.session)), link: abs(ctx, "/kalender/fahrten") });
+  },
+});
+
+const autoKlimaTool = defineTool({
+  name: "auto_klima",
+  title: "Auto-Klima an/aus (Tesla)",
+  description: "Schaltet die Klimaanlage des Teslas an (optional mit Zieltemperatur) oder aus. Nur auf ausdrücklichen Wunsch und nur für den Inhaber. Kein Laden, keine anderen Befehle.",
+  area: null,
+  ownerOnly: true,
+  write: true,
+  stufe: "gelb",
+  input: z.object({ an: z.boolean().describe("true = an, false = aus"), temperatur: z.number().min(15).max(28).optional().describe("Zieltemperatur in °C (nur bei an)") }),
+  summary: (i) => `Auto-Klima ${i.an ? `an${i.temperatur ? ` (${i.temperatur} °C)` : ""}` : "aus"}`,
+  run: async (ctx, i) => {
+    const { autoKlima } = await import("@/lib/mobil/auto");
+    const r = await autoKlima(ctx.session, i.an, i.an ? (i.temperatur ?? null) : null);
+    return { text: JSON.stringify(r), isError: !r.ok };
+  },
+});
+
+export const MOBIL = [fahrtBriefingTool, anrufAufgabenTool, anrufErledigtTool, autoNaviTool, scanPruefenTool, autoStatusTool, autoKlimaTool];

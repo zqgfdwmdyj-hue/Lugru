@@ -80,3 +80,29 @@ describe("SMS, Verspätung, Fahrtenbuch, Scan", () => {
     expect(scanAnsage({ ampel: "rot", land: null, gewinnStueck: null, roi: null, angebote: null, menge: null, grund: "Bestand reicht 140 Tage" })).toBe("Rot. Bestand reicht 140 Tage.");
   });
 });
+
+import { entfernungM, heizAusnahme, standortGrob, statusSatz, vorheizFaellig, zuHause } from "@/lib/mobil/vorheizen";
+
+describe("Tesla vorheizen (Modul 12)", () => {
+  const jetzt = new Date("2026-11-02T08:00:00Z");
+  const t = (min: number, o: Partial<{ ort: string | null; titel: string; notiz: string }> = {}) => ({ key: `k${min}`, titel: o.titel ?? "Termin", start: new Date(jetzt.getTime() + min * 60_000), ort: o.ort === undefined ? "Musterweg 1, 12345 Musterstadt" : o.ort, notiz: o.notiz ?? null, privat: false });
+  it("heizt X Minuten vor der Abfahrt (Termin − Fahrzeit), nicht zu früh und nicht nach der Abfahrt", () => {
+    const o = { fahrzeitMin: 20, vorlaufMin: 10 };
+    expect(vorheizFaellig([t(25)], jetzt, o)?.key).toBe("k25"); // Abfahrt in 5 Min. → heizen
+    expect(vorheizFaellig([t(45)], jetzt, o)).toBeNull(); // Abfahrt in 25 Min. → noch nicht
+    expect(vorheizFaellig([t(15)], jetzt, o)).toBeNull(); // Abfahrt war vor 5 Min.
+    expect(vorheizFaellig([t(25, { ort: null })], jetzt, o)).toBeNull(); // ohne Ort
+    expect(vorheizFaellig([t(25, { notiz: "#nichtheizen" })], jetzt, o)).toBeNull();
+    expect(vorheizFaellig([t(25, { titel: "Termin (mit der Bahn)" })], jetzt, o)).toBeNull();
+  });
+  it("Ausnahmen, zu Hause, Standort grob, Satz", () => {
+    expect(heizAusnahme("Zoom mit Lieferant")).toBe(true);
+    expect(heizAusnahme("Arzt Dr. Test")).toBe(false);
+    expect(Math.round(entfernungM({ lat: 50, lon: 8 }, { lat: 50.001, lon: 8 }))).toBe(111);
+    expect(zuHause({ lat: 50.1, lon: 8.6 }, { lat: 50.1005, lon: 8.6 })).toBe(true);
+    expect(zuHause({ lat: 50.2, lon: 8.6 }, { lat: 50.1, lon: 8.6 })).toBe(false);
+    expect(zuHause({ lat: 50.2, lon: 8.6 }, { lat: null, lon: null })).toBeNull();
+    expect(standortGrob({ lat: 50.2, lon: 8.6, ziel: "Handelsallee 3, 54321 Musterort" }, { lat: 50.1, lon: 8.6 })).toBe("unterwegs nach Handelsallee 3");
+    expect(statusSatz({ akku: 78, reichweiteKm: 350, innenTemp: 18.4, verriegelt: false, fensterOffen: false, reifenWarnung: false, update: null }, "zu Hause")).toBe("Akku 78 Prozent, 350 Kilometer Reichweite. Auto zu Hause. Innen 18 Grad. Achtung: nicht verriegelt.");
+  });
+});

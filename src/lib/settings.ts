@@ -154,7 +154,8 @@ export const DEFAULT_SETTINGS = {
     jeAnrufMin: 5,
     sms: { an: false, nummer: "", limit: 10, ruheVon: "20:00", ruheBis: "07:30", dealSchwelle: 100 },
     verspaetungToleranz: 10,
-    tesla: { vin: "", vorheizen: false },
+    /** Vorheizen vor Terminen mit Ort: aus bis eingeschaltet; Minuten vor Abfahrt, Zieltemperatur, Standort „zu Hause“ (vom Auto übernommen). */
+    tesla: { vin: "", vorheizen: false, vorheizMin: 10, zielTemp: 21, heimLat: null as number | null, heimLon: null as number | null },
   },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
