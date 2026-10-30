@@ -208,6 +208,8 @@ export type KeepaStand = {
   titel: string | null;
   /** Wann Keepa das Produkt zuletzt aktualisiert hat (ISO). */
   keepa_aktualisiert: string | null;
+  /** Beim Abruf wurde Keepa um frische Daten gebeten (Parameter „update“). */
+  update_angefordert?: boolean;
   aktuell: {
     buybox: number | null;
     amazon: number | null;
@@ -305,4 +307,36 @@ export function standAusKeepa(p: Record<string, unknown> | null | undefined, mp:
     buybox_verlauf: bbReihe(p.buyBoxSellerIdHistory).filter(([t]) => t >= now - VERLAUF_TAGE * TAG - 30 * TAG),
     buybox_stats: bbStats,
   };
+}
+
+// ---- Alter der Keepa-Daten ---------------------------------------------------------------------
+
+/** Ab diesem Alter (Stunden seit Keepas letzter Aktualisierung) gelten die Werte als veraltet. */
+export const KEEPA_VERALTET_STUNDEN = 48;
+
+/** Stunden seit Keepas letzter Aktualisierung; null, wenn Keepa keinen Zeitpunkt nennt. */
+export function keepaAlterStunden(keepaAktualisiert: string | null | undefined, now: number): number | null {
+  const t = keepaAktualisiert ? Date.parse(keepaAktualisiert) : NaN;
+  return Number.isFinite(t) ? Math.max(0, (now - t) / 3_600_000) : null;
+}
+
+/** Hinweis für das Ergebnis, wenn Keepas Werte älter als 48 Stunden sind – sonst undefined. */
+export function keepaAlterHinweis(keepaAktualisiert: string | null | undefined, now: number): string | undefined {
+  const h = keepaAlterStunden(keepaAktualisiert, now);
+  if (h === null || h <= KEEPA_VERALTET_STUNDEN) return undefined;
+  const d = new Date(Date.parse(keepaAktualisiert!));
+  const datum = d.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" });
+  const alt = h >= 72 ? `${Math.floor(h / 24)} Tage` : `${Math.round(h)} Std.`;
+  return `Keepa-Daten vom ${datum} (${alt} alt, älter als ${KEEPA_VERALTET_STUNDEN} Std.) – Keepa konnte das Produkt nicht neu abrufen; Preise, Angebote und Rang können veraltet sein. Vor dem Einkauf auf der Amazon-Seite gegenprüfen.`;
+}
+
+/**
+ * Muss der Zwischenspeicher neu bei Keepa abgefragt werden? Ja, wenn er älter als maxAlterStunden ist – oder wenn
+ * Keepas eigene Werte älter als 48 Std. sind und beim letzten Abruf noch keine Aktualisierung angefordert wurde.
+ */
+export function keepaNeuAbrufen(row: { abgerufenAm: Date; stand: Pick<KeepaStand, "keepa_aktualisiert" | "update_angefordert"> | null } | undefined, now: number, maxAlterStunden: number): boolean {
+  if (!row) return true;
+  if (now - row.abgerufenAm.getTime() >= maxAlterStunden * 3_600_000) return true;
+  const h = keepaAlterStunden(row.stand?.keepa_aktualisiert, now);
+  return h !== null && h > KEEPA_VERALTET_STUNDEN && !row.stand?.update_angefordert;
 }

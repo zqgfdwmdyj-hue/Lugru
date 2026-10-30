@@ -1,4 +1,5 @@
 import "server-only";
+import { UST_LAND } from "./kapital";
 import { and, eq, gte, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { skuCostMap } from "@/lib/money/costs";
@@ -58,6 +59,7 @@ export async function kapitalAmpel(tenantId: string, heute: string): Promise<{ z
         aeltesteTage: alt.length ? Math.max(...alt) : null,
         preis,
         breakEven: breakEven({ ek, fba: fbaFee, provision: prov, mwst }),
+        breakEvenLaender: Object.fromEntries((Object.keys(UST_LAND) as (keyof typeof UST_LAND)[]).map((l) => [l, breakEven({ ek, fba: fbaFee, provision: prov, mwst: UST_LAND[l] })])),
         trendProzent: asin ? (trend.get(asin) ?? null) : null,
       },
       z,

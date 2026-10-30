@@ -66,8 +66,13 @@ export type KapitalEingabe = {
   aeltesteTage: number | null;
   preis: number | null;
   breakEven: number | null;
+  /** Break-even je Land mit dessen USt (DE 19, FR 20, IT 22, ES 21 %). */
+  breakEvenLaender?: Partial<Record<"DE" | "FR" | "IT" | "ES", number | null>>;
   trendProzent: number | null;
 };
+
+/** USt je Land für den Break-even (wie BQool-Export). */
+export const UST_LAND = { DE: 0.19, FR: 0.2, IT: 0.22, ES: 0.21 } as const;
 
 export type KapitalZeile = KapitalEingabe & {
   kapital: number | null;
@@ -75,6 +80,8 @@ export type KapitalZeile = KapitalEingabe & {
   umschlag: number | null;
   reichweite: number | null;
   unterBreakEven: boolean;
+  /** Preis 0 (bzw. ≤ 0): kein aktives Angebot – nicht „unter Break-even“. */
+  keinAngebot: boolean;
   ampel: Ampel;
   gruende: string[];
   vorschlaege: string[];
@@ -86,14 +93,18 @@ export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIEL
   const rendite = kapital && kapital > 0 && e.tageDaten >= 30 ? r2((e.gewinn90 * (365 / Math.max(e.tageDaten, 1))) / kapital) : null;
   const umschlag = e.stueck > 0 && e.tageDaten >= 30 ? r2((e.stueck90 * (365 / Math.max(e.tageDaten, 1))) / e.stueck) : null;
   const reichweite = e.verkaufProTag && e.verkaufProTag > 0 ? Math.round(e.stueck / e.verkaufProTag) : e.stueck > 0 ? 9999 : 0;
-  const unterBreakEven = e.preis !== null && e.breakEven !== null && e.preis < e.breakEven;
+  // Preis 0: es gibt gerade kein aktives Angebot (Buy Box/sellerboard ohne Preis) – das ist kein Verlustverkauf.
+  const keinAngebot = e.preis !== null && e.preis <= 0;
+  const unterBreakEven = !keinAngebot && e.preis !== null && e.breakEven !== null && e.preis < e.breakEven;
   const gruende: string[] = [];
   if (unterBreakEven) gruende.push(`Preis ${e.preis!.toFixed(2).replace(".", ",")} € unter Break-even ${e.breakEven!.toFixed(2).replace(".", ",")} €`);
   if (rendite !== null && rendite < z.geringRendite) gruende.push(rendite < 0 ? "negative Rendite" : `geringe Rendite (${Math.round(rendite * 100)} %/Jahr)`);
   if (reichweite > z.rotReichweite) gruende.push(reichweite >= 9999 ? "keine Verkäufe" : `Reichweite ${reichweite} Tage`);
   const rot = gruende.length > 0;
-  const gruen = !rot && rendite !== null && rendite >= z.zielRendite && reichweite <= z.gruenReichweite;
+  const gruen = !rot && !keinAngebot && rendite !== null && rendite >= z.zielRendite && reichweite <= z.gruenReichweite;
   const ampel: Ampel = rot ? "rot" : gruen ? "gruen" : "gelb";
+  // Hinweis, kein eigener Grund für Rot (Preis fehlt nur gerade).
+  if (keinAngebot && e.stueck > 0) gruende.unshift("kein aktives Angebot (Preis 0)");
   if (!rot && !gruen) {
     if (rendite === null) gruende.push(e.ek === null ? "EK fehlt" : "zu wenig Verkaufsdaten");
     else if (rendite < z.zielRendite) gruende.push(`Rendite ${Math.round(rendite * 100)} % unter Ziel ${Math.round(z.zielRendite * 100)} %`);
@@ -102,10 +113,12 @@ export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIEL
   const vorschlaege: string[] = [];
   if (rot) {
     vorschlaege.push("Nicht nachbestellen");
+    if (keinAngebot) vorschlaege.push("Angebot prüfen und wieder aktivieren (Bestand ohne Angebot)");
     if (unterBreakEven) vorschlaege.push("Repricer-Untergrenze auf Break-even prüfen (BQool)");
     if (reichweite > z.rotReichweite) vorschlaege.push("Abverkauf-Regel im Repricer (schrittweise senken bis Break-even)");
     if ((e.aeltesteTage ?? 0) >= 180) vorschlaege.push("Liquidation/Abverkauf über Amazon (Lagerzuschlag droht)");
     if (e.stueck >= 5) vorschlaege.push("Teil über anderen Kanal verkaufen (eBay/B2B-Deal)");
   }
-  return { ...e, kapital, rendite, umschlag, reichweite, unterBreakEven, ampel, gruende, vorschlaege };
+  if (!rot && keinAngebot && e.stueck > 0) vorschlaege.push("Angebot prüfen und wieder aktivieren (Bestand ohne Angebot)");
+  return { ...e, kapital, rendite, umschlag, reichweite, unterBreakEven, keinAngebot, ampel, gruende, vorschlaege };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buyboxAnteile, fenster, keepaMs, MARKTPLAETZE, reihe, standAusKeepa, tagesende, wertBei } from "@/lib/keepa/auswertung";
+import { buyboxAnteile, fenster, keepaAlterHinweis, keepaAlterStunden, keepaMs, keepaNeuAbrufen, MARKTPLAETZE, reihe, standAusKeepa, tagesende, wertBei } from "@/lib/keepa/auswertung";
 
 // Erfundene Keepa-Antworten (Aufbau wie bei der Keepa-API: Keepa-Minuten, Cent, −1 = nicht verfügbar).
 const NOW = Date.parse("2026-10-28T12:00:00Z");
@@ -126,5 +126,34 @@ describe("Stand aus einem Keepa-Produkt", () => {
     expect(ohne.kennzahlen["30"].amazon_nicht_auf_lager_prozent).toBeNull();
     expect(standAusKeepa({ asin: "B0TEST0003", csv: [] }, "DE", NOW)).toBeNull();
     expect(standAusKeepa(null, "DE", NOW)).toBeNull();
+  });
+});
+
+describe("Keepa-Daten älter als 48 Stunden", () => {
+  const vor = (stunden: number) => new Date(NOW - stunden * 3_600_000).toISOString();
+  it("Alter in Stunden; ohne Zeitpunkt null", () => {
+    expect(keepaAlterStunden(vor(30), NOW)).toBeCloseTo(30);
+    expect(keepaAlterStunden(null, NOW)).toBeNull();
+    expect(keepaAlterStunden("kaputt", NOW)).toBeNull();
+  });
+  it("Hinweis erst ab mehr als 48 Std., mit Datum und Tagen", () => {
+    expect(keepaAlterHinweis(vor(47), NOW)).toBeUndefined();
+    expect(keepaAlterHinweis(vor(48), NOW)).toBeUndefined();
+    expect(keepaAlterHinweis(vor(60), NOW)).toContain("60 Std.");
+    // wie im Prüfauftrag: Stand 08.10.2026, drei Wochen alt
+    const h = keepaAlterHinweis("2026-10-08T10:00:00Z", NOW)!;
+    expect(h).toContain("08.10.2026");
+    expect(h).toContain("20 Tage");
+    expect(h).toContain("gegenprüfen");
+  });
+  it("Zwischenspeicher: neu abrufen, wenn älter als 6 Std. – oder Keepa-Werte alt und noch kein „update“ angefordert", () => {
+    const row = (abgerufenVorStd: number, keepaVorStd: number | null, update?: boolean) => ({ abgerufenAm: new Date(NOW - abgerufenVorStd * 3_600_000), stand: { keepa_aktualisiert: keepaVorStd === null ? null : vor(keepaVorStd), update_angefordert: update } });
+    expect(keepaNeuAbrufen(undefined, NOW, 6)).toBe(true);
+    expect(keepaNeuAbrufen(row(7, 1), NOW, 6)).toBe(true);
+    expect(keepaNeuAbrufen(row(1, 1), NOW, 6)).toBe(false);
+    expect(keepaNeuAbrufen(row(1, 500), NOW, 6)).toBe(true); // alter Stand ohne „update“ → einmal frisch anfordern
+    expect(keepaNeuAbrufen(row(1, 500, true), NOW, 6)).toBe(false); // schon angefordert → kein Token-Verbrauch in Schleife
+    expect(keepaNeuAbrufen(row(1, null), NOW, 6)).toBe(false);
+    expect(keepaNeuAbrufen({ abgerufenAm: new Date(NOW - 3_600_000), stand: null }, NOW, 6)).toBe(false);
   });
 });

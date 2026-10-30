@@ -56,3 +56,22 @@ describe("Hilfen", () => {
     expect(aeltesteTage({})).toBeNull();
   });
 });
+
+// A6: Preis 0 = kein aktives Angebot (nicht „unter Break-even“); Break-even je Land mit dessen USt.
+describe("Preis 0 und Break-even je Land", () => {
+  it("Preis 0 → „kein aktives Angebot“, nicht unter Break-even, nicht grün", () => {
+    const z = bewerteKapital({ ...basis, preis: 0 });
+    expect(z.keinAngebot).toBe(true);
+    expect(z.unterBreakEven).toBe(false);
+    expect(z.gruende[0]).toBe("kein aktives Angebot (Preis 0)");
+    expect(z.gruende.join(" ")).not.toContain("unter Break-even");
+    expect(z.ampel).not.toBe("gruen");
+    expect(z.vorschlaege).toContain("Angebot prüfen und wieder aktivieren (Bestand ohne Angebot)");
+  });
+  it("Break-even steigt mit der USt (DE 19 % < FR 20 % < ES 21 % < IT 22 %)", () => {
+    const be = (mwst: number) => breakEven({ ek: 5, fba: 3, provision: 0.15, mwst })!;
+    expect(be(0.19)).toBeLessThan(be(0.2));
+    expect(be(0.2)).toBeLessThan(be(0.21));
+    expect(be(0.21)).toBeLessThan(be(0.22));
+  });
+});

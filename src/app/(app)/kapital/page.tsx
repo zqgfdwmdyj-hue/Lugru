@@ -136,8 +136,9 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
                       <td className="right num">{z.reichweite === null ? "–" : z.reichweite >= 9999 ? <span className="muted">keine Verkäufe</span> : `${z.reichweite} T`}</td>
                       <td className="right num">{z.aeltesteTage === null ? <span className="muted">–</span> : `ab ${z.aeltesteTage} T`}</td>
                       <td className="right num">
-                        {z.preis !== null ? eur2(z.preis) : <span className="muted">–</span>}
-                        <div className={`small ${z.unterBreakEven ? "" : "muted"}`} style={z.unterBreakEven ? { color: "var(--danger)" } : undefined}>BE {z.breakEven !== null ? eur2(z.breakEven) : "–"}</div>
+                        {z.keinAngebot ? <span className="tag tag-warn" data-testid="kapital-kein-angebot">kein aktives Angebot</span> : z.preis !== null ? eur2(z.preis) : <span className="muted">–</span>}
+                        <div className={`small ${z.unterBreakEven ? "" : "muted"}`} style={z.unterBreakEven ? { color: "var(--danger)" } : undefined} title={z.breakEvenLaender ? Object.entries(z.breakEvenLaender).map(([l, b]) => `${l} ${b !== null && b !== undefined ? eur2(b) : "–"}`).join(" · ") : undefined}>BE {z.breakEven !== null ? eur2(z.breakEven) : "–"}</div>
+                        {z.breakEvenLaender && <div className="small muted" data-testid="kapital-be-laender">{Object.entries(z.breakEvenLaender).filter(([l]) => l !== "DE").map(([l, b]) => `${l} ${b !== null && b !== undefined ? eur2(b) : "–"}`).join(" · ")}</div>}
                       </td>
                       <td className="right num">{z.trendProzent === null ? <span className="muted">–</span> : `${z.trendProzent > 0 ? "+" : ""}${z.trendProzent.toLocaleString("de-DE")} %`}</td>
                       <td className="small">

@@ -91,6 +91,8 @@ export const kapital_ampel = defineTool({
         lageralter_ab_tage: z.aeltesteTage ?? undefined,
         preis: z.preis,
         break_even: z.breakEven,
+        break_even_je_land: z.breakEvenLaender,
+        kein_aktives_angebot: z.keinAngebot || undefined,
         trend_30_zu_90_prozent: z.trendProzent ?? undefined,
         gruende: z.gruende,
         vorschlaege: z.vorschlaege.length ? z.vorschlaege : undefined,

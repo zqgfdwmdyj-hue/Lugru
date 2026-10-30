@@ -10,7 +10,8 @@ import { defineTool, type ToolCtx } from "../types";
 import { abs, berlinDateTime, json, round2 } from "./common";
 
 // Keepa für Claude: Preis-, Angebots- und Rang-Verlauf je ASIN und Marktplatz. Nur lesen. Zuerst aus dem
-// Zwischenspeicher (jünger als 6 Stunden), sonst bei Keepa (je Marktplatz 3 Tokens, ohne „offers“).
+// Zwischenspeicher (jünger als 6 Stunden), sonst bei Keepa (je Marktplatz 3 Tokens, ohne „offers“). Sind Keepas
+// Werte älter als 48 Std., fordert der Abruf frische Daten an; bleiben sie alt, steht „hinweis“ im Ergebnis.
 
 const TAG = 86_400_000;
 const asinSchema = z.string().trim().regex(/^[A-Za-z0-9]{10}$/, "ASIN mit 10 Zeichen, z. B. B0C1234567");
@@ -69,6 +70,7 @@ export const keepaProdukt = defineTool({
       stand: standText(r),
       abgerufen: berlinDateTime(new Date()) ?? "",
       keepa_aktualisiert: r.stand?.keepa_aktualisiert ? berlinDateTime(new Date(r.stand.keepa_aktualisiert)) : undefined,
+      keepa_veraltet: r.alterHinweis,
       tokens_uebrig: r.tokensUebrig ?? undefined,
       letzter_fehler: r.warnung,
     };
@@ -82,6 +84,7 @@ export const keepaProdukt = defineTool({
       asin,
       marktplatz: mp,
       gefunden: true,
+      hinweis: r.alterHinweis,
       titel: s.titel,
       waehrung: s.waehrung,
       eigenes_produkt: eigen,
@@ -140,6 +143,8 @@ export const keepaVergleich = defineTool({
         amazon: s.aktuell.amazon_status,
         amazon_seite: links(ctx, asin, r.marktplatz).amazon_seite,
         stand: berlinDateTime(r.abgerufen),
+        keepa_aktualisiert: s.keepa_aktualisiert ? berlinDateTime(new Date(s.keepa_aktualisiert)) : undefined,
+        hinweis: r.alterHinweis,
       };
     });
     // Meiste Verkäufe zuerst (ohne Angabe ans Ende), dann bester Rang.
@@ -165,6 +170,7 @@ export const keepaVergleich = defineTool({
         abgerufen: berlinDateTime(new Date()) ?? "",
         tokens_uebrig: tokens.length ? Math.min(...tokens) : undefined,
         letzter_fehler: ok.map((r) => r.warnung).filter(Boolean).join(" ") || undefined,
+        keepa_veraltet: ok.filter((r) => r.alterHinweis).map((r) => r.marktplatz).join(", ") ? `Keepa-Werte älter als 48 Std. bei: ${ok.filter((r) => r.alterHinweis).map((r) => r.marktplatz).join(", ")} (siehe „hinweis“ je Land)` : undefined,
       },
     });
   },

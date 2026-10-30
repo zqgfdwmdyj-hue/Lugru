@@ -47,6 +47,14 @@ test.describe("Claude & KI-Assistent – Keepa-Werkzeuge", () => {
     expect(f).toMatchObject({ gefunden: false });
     expect(f.hinweis).toContain("amazon.fr");
     expect(await c.call("keepa_produkt", { asin: "123" })).toMatch(/ASIN/);
+
+    // Keepa-Stand älter als 48 Std.: Abruf mit „update“ → frische Werte, kein Hinweis; bleibt er alt → Hinweis
+    const frisch = JSON.parse(await c.call("keepa_produkt", { asin: "B0ALT00001", marktplatz: "DE" }));
+    expect(frisch.hinweis).toBeUndefined();
+    expect(frisch.datenstand.keepa_veraltet).toBeUndefined();
+    const alt = JSON.parse(await c.call("keepa_produkt", { asin: "B0ALTFEST1", marktplatz: "DE" }));
+    expect(alt.hinweis).toContain("älter als 48 Std.");
+    expect(alt.datenstand.keepa_veraltet).toContain("Tage alt");
   });
 
   test("keepa_vergleich: 5 Länder nach Verkäufen sortiert, UK auch in EUR, NL/BE/PL/SE als nicht erfasst", async ({ browser, baseURL }) => {

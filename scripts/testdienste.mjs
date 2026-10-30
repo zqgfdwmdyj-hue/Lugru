@@ -426,6 +426,7 @@ async function route(req, url, body) {
 
 // Keepa-Nachbau: erfundener Verlauf über 365 Tage je ASIN und Land (Amazon zeitweise nicht auf Lager, Buy Box
 // wechselt zwischen Amazon, einem FBA- und einem FBM-Händler). ASINs, die mit „B0FEHLT“ beginnen, kennt Keepa nicht.
+// „B0ALT…“: Keepas Stand ist 21 Tage alt, solange kein „update“ angefordert wird; „B0ALTFEST…“ bleibt auch dann alt.
 let keepaTokens = 1200;
 const KEEPA_LAND = {
   3: { basis: 1999, verkauft: 50, amazon: "A3JWKAKR8XB7XF" },
@@ -463,7 +464,7 @@ function keepaProdukte(url) {
         csv: Array.from({ length: 36 }, (_, i) => csv[i] ?? null),
         availabilityAmazon: 0,
         monthlySold: land.verkauft,
-        lastUpdate: km(now - 3600000),
+        lastUpdate: km(now - (asin.startsWith("B0ALTFEST") || (asin.startsWith("B0ALT") && url.searchParams.get("update") === null) ? 21 * 86400000 : 3600000)),
         stats: { outOfStockPercentage30: [17], outOfStockPercentage90: [17], outOfStockPercentageInInterval: [17], buyBoxStats: { [land.amazon]: { percentageWon: 67, isFBA: true }, A1TESTFBA00001: { percentageWon: 17, isFBA: true }, A2TESTFBM00002: { percentageWon: 16, isFBA: false } } },
         buyBoxSellerIdHistory: bbHist,
       };

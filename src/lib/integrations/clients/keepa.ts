@@ -114,10 +114,13 @@ export async function keepaSellerDetails(apiKey: string, ids: string[]): Promise
 
 /**
  * Ein Produkt mit Verlauf für die Claude-Werkzeuge: 365 Tage Verlauf, Kennzahlen über 180 Tage und Buy-Box-Daten
- * (Preis, Verkäufer-Verlauf, Anteile). Kosten: 1 Token + 2 für die Buy Box. Ohne „offers“ (wäre deutlich teurer).
+ * (Preis, Verkäufer-Verlauf, Anteile). Kosten: 1 Token + 2 für die Buy Box (+1, wenn „update“ einen Neuabruf auslöst).
+ * Ohne „offers“ (wäre deutlich teurer).
  */
-export async function keepaProduktVerlauf(apiKey: string, asin: string, domain: number): Promise<{ product: Record<string, unknown> | null; tokensLeft: number | null }> {
-  const json = await keepaGet(`${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${domain}&asin=${encodeURIComponent(asin)}&stats=180&days=365&history=1&buybox=1`);
+export async function keepaProduktVerlauf(apiKey: string, asin: string, domain: number, opts: { updateStunden?: number } = {}): Promise<{ product: Record<string, unknown> | null; tokensLeft: number | null }> {
+  // update=N: Keepa holt das Produkt frisch von Amazon, wenn sein letzter Stand älter als N Stunden ist (+1 Token nur dann).
+  const update = opts.updateStunden !== undefined ? `&update=${Math.max(0, Math.round(opts.updateStunden))}` : "";
+  const json = await keepaGet(`${BASE()}/product?key=${encodeURIComponent(apiKey)}&domain=${domain}&asin=${encodeURIComponent(asin)}&stats=180&days=365&history=1&buybox=1${update}`);
   const products = (json.products as Record<string, unknown>[] | undefined) ?? [];
   return { product: products.find((p) => p.asin === asin) ?? null, tokensLeft: tokensOf(json) };
 }
