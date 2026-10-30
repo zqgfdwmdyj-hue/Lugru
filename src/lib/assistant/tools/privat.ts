@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { saveAppointment, saveTimeEntry, setStatus } from "@/lib/private/save";
+import { ANLEGBARE_ARTEN, privatEintragAnlegen as eintragAnlegen } from "@/lib/private/anlegen";
 import { loadEntries, privateSettings, type PrivateKind } from "@/lib/private/service";
 import { privatFinanzen as finanzenLaden } from "@/lib/private/geld-service";
 import type { Anlage, Einkommen, Erinnerung, Fixkosten, Steuerfrage } from "@/lib/private/geld";
@@ -149,6 +150,33 @@ export const privatZeit = defineTool({
   },
 });
 
+export const privatEintragAnlegen = defineTool({
+  name: "privat_eintrag_anlegen",
+  title: "Privat-Eintrag anlegen (übrige Arten)",
+  description:
+    "Legt einen Privat-Eintrag der übrigen Arten an: intim (Nähe; person = Initiative a/b/beide, wert = Nähe 1–5), zuwendung (Streicheln/Massage; variante, person = wer gibt, wert = Minuten), tagebuch (eigener Eintrag je Tag; text = Notiz, wert = Stimmung 1–5), beobachtung (an_person = über wen, text), gespraech (Paar-Gespräch; text = Thema), danke (text; person = von wem), stimmung (wert 1–5, text), dateidee (text), aufgabe (text = Aufgabe; person = für wen, tag = fällig). Termine und Kinderzeit/Auszeit/Paarzeit über privat_termin bzw. privat_zeit. Vertraulich wie der Privatbereich: nur mit Privat-Freigabe, nie für VA oder Konten „nur Familie“. Nur auf ausdrücklichen Wunsch.",
+  area: "privat",
+  privat: true,
+  write: true,
+  input: z.object({
+    art: z.enum(ANLEGBARE_ARTEN),
+    tag: isoDate.optional().describe("Standard heute"),
+    uhrzeit: time.optional(),
+    person: z.string().trim().max(40).optional().describe("Name, „a“, „b“ oder „beide“"),
+    an_person: z.string().trim().max(40).optional().describe("Bei Beobachtung: über wen (Name, „a“ oder „b“)"),
+    text: z.string().trim().max(2000).optional(),
+    wert: z.number().min(0).max(600).optional(),
+    variante: z.enum(["streicheln", "massage"]).optional().describe("Nur zuwendung"),
+  }),
+  summary: (i) => `Privat: ${i.art}`,
+  run: async (ctx, i) => {
+    const p = await personKey(ctx, i.person);
+    const an = await personKey(ctx, i.an_person);
+    const r = await eintragAnlegen(ctx.session, { art: i.art, tag: i.tag, uhrzeit: i.uhrzeit, person: p === "a" || p === "b" || p === "beide" ? p : undefined, anPerson: an === "a" || an === "b" ? an : undefined, text: i.text, wert: i.wert, variante: i.variante });
+    return r.ok ? json({ ok: true, meldung: r.message, id: r.id, link: r.id ? abs(ctx, `/privat/eintrag/${r.id}`) : abs(ctx, "/privat") }) : { text: r.message, isError: true };
+  },
+});
+
 export const privatStatus = defineTool({
   name: "privat_status",
   title: "Privat-Status setzen",
@@ -195,4 +223,4 @@ export const privatFinanzen = defineTool({
   },
 });
 
-export const PRIVAT = [privatFinanzen, privatKalender, privatEintraege, privatTermin, privatZeit, privatStatus];
+export const PRIVAT = [privatFinanzen, privatKalender, privatEintraege, privatTermin, privatZeit, privatEintragAnlegen, privatStatus];
