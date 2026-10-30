@@ -15,7 +15,7 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "frist" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
 const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode", "privatgeld"]);
 /** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */

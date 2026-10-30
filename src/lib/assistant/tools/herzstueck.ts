@@ -2,6 +2,9 @@ import "server-only";
 import { z } from "zod";
 import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
+import { addDaysIso } from "@/lib/dates";
+import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
+import { fristenListe } from "@/lib/private/fristen-service";
 import { AUFWAND_TEXT } from "@/lib/tagesplan/logic";
 import { aufgabeVerschieben, tagesplan } from "@/lib/tagesplan/service";
 import { defineTool } from "../types";
@@ -117,4 +120,43 @@ export const aufgabeVerschiebenTool = defineTool({
   },
 });
 
-export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool];
+// ---- Modul 7: Vorsorge, Fristen & Verträge (Privatbereich) ---------------------------------------------
+
+export const fristenTool = defineTool({
+  name: "fristen",
+  title: "Fristen, Vorsorge & Verträge",
+  description:
+    "Fristen aus dem Privatbereich bis zu einem Datum: Vorsorge je Person (Zahnarzt, Check-up, Impfungen …), Ablauf von Ausweis/Reisepass/Führerschein, TÜV und Reifenwechsel, Garantien, Verträge & Abos mit letztem Kündigungstag; dazu Vorschläge („fällig in 3 Wochen – buchen?“) und Fixkosten je Monat aus Verträgen. bereich „geschaeft“ = nur Einträge mit Firmen-Kennzeichen, „privat“ = ohne. Überfällige und Einträge im Erinnerungs-Vorlauf sind immer dabei.",
+  area: "privat",
+  privat: true,
+  write: false,
+  quelle: { text: "Privatbereich → Fristen & Verträge (eigene Einträge)" },
+  input: z.object({
+    bis_datum: isoDate.optional().describe("Standard: heute + 90 Tage"),
+    bereich: z.enum(["privat", "geschaeft", "alle"]).default("alle"),
+  }),
+  run: async (ctx, i) => {
+    if (ctx.session.privateScope === "familie") return { text: "Fristen & Verträge gehören nicht zum Familien-Zugang.", isError: true };
+    const bis = i.bis_datum ?? addDaysIso(ctx.today, 90);
+    const r = await fristenListe(ctx.session, ctx.today, bis, i.bereich);
+    return json({
+      zeitraum: { von: ctx.today, bis },
+      bereich: i.bereich,
+      eintraege_gesamt: r.anzahl,
+      fristen: r.liste.map((x) => ({
+        datum: x.frist.datum,
+        art: FRIST_TYP_TEXT[x.typ],
+        titel: x.frist.titel,
+        stand: x.frist.text,
+        jetzt_kuemmern: x.frist.erinnern || undefined,
+        ueberfaellig: x.frist.ueberfaellig || undefined,
+        vorschlag: x.frist.vorschlag ?? undefined,
+        firma: x.frist.firma || undefined,
+      })),
+      fixkosten_vertraege_je_monat: i.bereich === "geschaeft" ? r.fixkosten.firma : i.bereich === "privat" ? r.fixkosten.privat : r.fixkosten,
+      link: abs(ctx, "/privat/fristen"),
+    });
+  },
+});
+
+export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool];

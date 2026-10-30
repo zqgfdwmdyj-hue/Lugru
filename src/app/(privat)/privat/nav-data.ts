@@ -18,6 +18,7 @@ export const GROUPS = [
       { key: "start", href: "/privat", label: "Heute" },
       { key: "aufgaben", href: "/privat/aufgaben", label: "Aufgaben & Termine" },
       { key: "routinen", href: "/privat/routinen", label: "Routinen" },
+      { key: "fristen", href: "/privat/fristen", label: "Fristen & Verträge" },
     ],
   },
   {

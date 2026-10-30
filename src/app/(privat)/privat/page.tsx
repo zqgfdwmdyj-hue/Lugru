@@ -1,3 +1,4 @@
+import { fristenLaden } from "@/lib/private/fristen-service";
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIssues, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
@@ -29,6 +30,19 @@ function TodayRow({ icon, label, state, tone = "muted", href, testid, children }
  * Privat-Startseite: nur „Heute“, „Diese Woche“ und ein zentraler Knopf „Eintragen“. Monatszahlen und
  * Erklärungen eingeklappt darunter. Alles kommt aus dem gemeinsamen Privatkalender.
  */
+/** Fristen & Verträge im Erinnerungs-Vorlauf (nur voller Umfang). */
+async function FristenJetzt({ session, today }: { session: Awaited<ReturnType<typeof requirePrivate>>; today: string }) {
+  if (session.privateScope === "familie") return null;
+  const jetzt = (await fristenLaden(session, today)).jetzt;
+  if (!jetzt.length) return null;
+  return (
+    <div className="notice notice-info small" data-testid="start-fristen">
+      ⏰ {jetzt.slice(0, 3).map((e) => e.frist!.vorschlag ?? e.frist!.titel).join(" · ")}
+      {jetzt.length > 3 ? ` · +${jetzt.length - 3}` : ""} <Link href="/privat/fristen">Fristen →</Link>
+    </div>
+  );
+}
+
 /** Fällige Familien-Aufgaben (überfällig, heute, nächste 3 Tage) – auch für den Familien-Zugang. */
 async function FamilienAufgabenHeute({ session, today }: { session: Awaited<ReturnType<typeof requirePrivate>>; today: string }) {
   const liste = (await loadEntries<FamilienAufgabe>(session, ["familienaufgabe"])).filter((e) => !e.data.abgeschlossen && e.data.faellig && e.data.faellig <= addDays(today, 3)).sort((a, b) => a.data.faellig!.localeCompare(b.data.faellig!));
@@ -104,6 +118,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
       {!myPartner(s, session) && <WhoAmI partners={s.partners} account={session.name ?? session.email} tenantId={session.tenantId} userId={session.userId} userPartner={s.userPartner} />}
       {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
       <FamilienAufgabenHeute session={session} today={today} />
+      <FristenJetzt session={session} today={today} />
 
       {linkProblems.length > 0 && (
         <div className="notice notice-warn small" data-testid="link-warning">
