@@ -163,8 +163,7 @@ function kiAnswer(req, b) {
     const kanal = /^Fasse die Chat-Nachrichten aus dem Kanal „([^“]+)“/.exec(text)[1];
     const zeilen = text.split("\nNachrichten:\n")[1]?.split("\n").filter(Boolean) ?? [];
     const erste = (zeilen[0] ?? "").replace(/^Nutzer [A-Z]\d*: /, "").slice(0, 60);
-    const namen = /Nutzer [A-Z]/.test(text);
-    return [200, reply(b, [{ type: "text", text: JSON.stringify({ ueberblick: `Test-Zusammenfassung ${kanal}: ${zeilen.length} Nachrichten (erfunden).${namen ? "" : " ohne Namen"}`, themen: [{ name: "Allgemein", punkte: [erste || "–"] }], tipps: ["Test-Tipp: Preise vor dem Einkauf prüfen"], warnungen: [], fragen: [], tools: [], erkenntnisse: [{ titel: `Chat-Tipp ${erste}`, text: `Erfundener Testinhalt aus ${kanal}: ${erste}`, art: "tipp" }] }) }], "end_turn")];
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ ueberblick: `Test-Zusammenfassung ${kanal}: ${zeilen.length} Nachrichten (erfunden).`, themen: [{ name: "Allgemein", punkte: [erste || "–"] }], tipps: ["Test-Tipp: Preise vor dem Einkauf prüfen"], warnungen: [], fragen: [], tools: [], erkenntnisse: [{ titel: `Chat-Tipp ${erste}`, text: `Erfundener Testinhalt aus ${kanal}: ${erste}`, art: "tipp" }] }) }], "end_turn")];
   }
   if (/^Fasse den Stand des Rechtsfalls/.test(text) && !stale) {
     const letzte = text.trim().split("\n").pop() ?? "";

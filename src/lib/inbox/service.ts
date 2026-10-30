@@ -148,12 +148,14 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   // Eigene Regeln je Absender/Betreff/Thema: archivieren, als Aufgabe, an Zuständigen.
   const regeln = await db.select().from(schema.mailRegeln).where(and(eq(schema.mailRegeln.tenantId, tenantId), eq(schema.mailRegeln.aktiv, true))).orderBy(schema.mailRegeln.createdAt);
   const regel = regeln.length ? regelFuer({ from: fromLine, subject: m.subject, topic: c.relevant ? c.topic : null }, regeln) : null;
-  if (!c.relevant && (!regel || regel.aktion === "archivieren")) return "ignored";
-  const r: Classification = c.relevant ? c : { ...c, relevant: true, category: "action", topic: "other", rule: "eigene Regel", dueInDays: 2 };
+  // Gericht/Behörde/Gegenseite (B14) ist nie unwichtig – auch von unbekannten Absendern.
+  const behoerde = !quelle && (await import("@/lib/recht/logic")).behoerdenMail({ from: fromLine, subject: m.subject, body: m.text });
+  if (!c.relevant && !behoerde && (!regel || regel.aktion === "archivieren")) return "ignored";
+  const r: Classification = c.relevant ? c : { ...c, relevant: true, category: "action", topic: "other", rule: behoerde && !regel ? "Gericht/Behörde" : "eigene Regel", dueInDays: behoerde && !regel ? 1 : 2 };
   const regelZeile = regel ? regeln.find((x) => x.id === regel.id)! : null;
   // Beim Eingang archivieren: eigene Regel „archivieren“ oder (Einstellung) Newsletter und Versand-/Lieferbestätigungen.
   // Bestell-Mails („Verkauft, jetzt liefern“) bleiben offen – der Versand-Abgleich der Amazon-ToDos braucht sie.
-  const autoArchiv = regel?.aktion === "archivieren" || (cfg.autoArchiv && !regel && (r.topic === "marketing" || (r.topic === "order_info" && !istBestellMail(m.subject))));
+  const autoArchiv = !behoerde && (regel?.aktion === "archivieren" || (cfg.autoArchiv && !regel && (r.topic === "marketing" || (r.topic === "order_info" && !istBestellMail(m.subject)))));
   const [row] = await db
     .insert(schema.emails)
     .values({
@@ -182,10 +184,16 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
   if (regelZeile) await db.update(schema.mailRegeln).set({ treffer: sql`${schema.mailRegeln.treffer} + 1` }).where(eq(schema.mailRegeln.id, regelZeile.id));
   if (autoArchiv) return "new";
   // Gericht/Behörde/Gegenseite ohne Fall → Entwurf an den Anwalt + Aufgabe „an Anwalt weitergeben?“ (nie automatisch gesendet).
-  if (!quelle)
-    await import("@/lib/recht/service")
+  // Dann keine zweite, allgemeine Mail-Aufgabe.
+  if (behoerde && !regel) {
+    const ok = await import("@/lib/recht/service")
       .then((x) => x.anAnwaltVorschlagen(tenantId, { id: row.id, fromAddress: m.fromAddress, fromName: m.fromName ?? null, subject: m.subject, text: m.text, receivedAt: m.receivedAt }))
-      .catch((e) => console.error("[An Anwalt weitergeben]", e instanceof Error ? e.message : e));
+      .catch((e) => {
+        console.error("[An Anwalt weitergeben]", e instanceof Error ? e.message : e);
+        return false;
+      });
+    if (ok) return "new";
+  }
   // Regel „Aufgabe“/„weiterleiten“: immer als Aufgabe (weiterleiten = mit Zuständigkeit), auch bei „Info“.
   const erzwingen = regel?.aktion === "aufgabe" || regel?.aktion === "weiterleiten";
   await createMailTask(tenantId, { id: row.id, subject: m.subject, fromName: m.fromName ?? null, fromAddress: m.fromAddress, receivedAt: m.receivedAt }, erzwingen && r.category !== "critical" ? { ...r, category: "action" } : r, {

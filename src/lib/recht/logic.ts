@@ -39,6 +39,7 @@ export const AM_ZUG_TEXT: Record<AmZug, string> = { anwalt: "Anwalt", wir: "wir"
 
 /** Wer ist am Zug? „Bitte senden Sie …“/„benötigen Ihre Entscheidung“ → wir; Gericht/Verhandlung → Gericht. */
 export function amZugAus(text: string): AmZug {
+  if (/\bbitte\b[^!?\n]{0,60}?\b(senden|übersenden|schicken|einreichen|nachreichen|unterschreiben|mitteilen|zukommen lassen|bestätigen|entscheiden)\b/i.test(text)) return "wir";
   if (/\b(bitte (senden|übersenden|schicken|reichen|teilen|geben)|benötige[n]? (noch )?(ihre|die|folgende)|ihre (rückmeldung|entscheidung|freigabe|zustimmung|unterlagen)|wir benötigen|bitte um (rückmeldung|ihre)|unterschreiben sie)\b/i.test(text)) return "wir";
   if (/\b(gericht|verhandlung|termin zur mündlichen|urteil|beschluss)\b/i.test(text)) return "gericht";
   if (/\b(gegenseite|gegnerisch|gegner hat|abmahner)\b/i.test(text)) return "gegenseite";

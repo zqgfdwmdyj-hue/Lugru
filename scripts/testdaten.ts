@@ -247,6 +247,8 @@ await db.update(schema.users).set({ sprache: "de" }).where(eq(schema.users.email
 await integ("discord_profitpath", { kanalIds: "810000000000000001" }, {});
 // Rechtsfälle (B14): Asana des Anwalts (Testdienste, nur lesen) und erfundene Kanzlei-Domain.
 await integ("asana", {}, { token: "test-asana-token" });
+// Ein geschäftlicher Rechtsfall von Hand (erfunden) – für den Werkzeug-Vertrag (rechtsfall).
+await db.insert(schema.rechtsfaelle).values({ tenantId: T, quelle: "hand", titel: "Testfall Markenrecht (erfunden)", aktenzeichen: "TEST-1/26", bereich: "geschaeft", firma: "LuGru", status: "offen", letzteBewegung: new Date() });
 // Discord-Kanäle der Deal-Gruppe (B14): Fantasie-IDs, Bot wie beim VA-Kanal.
 await integ("discord_wissen", { kanaele: "820000000000000001 | Amazon | täglich\n820000000000000002 | Temu | wöchentlich\n820000000000000003 | Allgemeines | aus", serverId: "500000000000000001" }, {});
 // Ein geprüfter Deal-Eingang (erfunden) – für den Werkzeug-Vertrag (deal_eingang_detail).

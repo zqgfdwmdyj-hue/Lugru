@@ -2,7 +2,9 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { callsListe, wissenStand } from "@/lib/calls/service";
 import { getIntegration } from "@/lib/integrations/store";
-import { archivImportAction, callImportAction, discordImportAction, sammelImportAction, wissenNachholenAction } from "./actions";
+import { archivImportAction, callImportAction, discordImportAction, gruppenKanaeleAction, rohTageAction, sammelImportAction, wissenNachholenAction } from "./actions";
+import { kanalStaende } from "@/lib/discord-wissen/service";
+import { getSettings } from "@/lib/settings";
 
 // Call-Archiv: Calls mit dem Amazon-Consultant und Wochen-Calls der Deal-Gruppe – Import (Dateien/ZIP, Links,
 // Text, Discord) und was daraus folgt.
@@ -15,6 +17,8 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const [liste, discord, wissen] = await Promise.all([callsListe(session.tenantId), getIntegration(session.tenantId, "discord_calls"), wissenStand(session.tenantId)]);
   const wartend = liste.filter((c) => c.auswertung === "offen").length;
+  const inhaber = session.role === "owner";
+  const [gruppe, gruppeCfg, rohTage] = inhaber ? await Promise.all([kanalStaende(session.tenantId), getIntegration(session.tenantId, "discord_wissen"), getSettings(session.tenantId).then((x) => x.discordWissen.rohTage)]) : [null, null, 30];
 
   return (
     <>
@@ -45,6 +49,31 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
             </form>
           )}
         </div>
+      )}
+
+      {inhaber && (
+        <details className="card card-pad" style={{ marginBottom: 14 }} data-testid="gruppen-kanaele">
+          <summary><strong>Gruppen-Kanäle (Discord, nur lesen)</strong> <span className="small muted">– {gruppeCfg ? `${gruppe?.staende.length ?? 0} Kanäle, ${gruppe?.rohNachrichten ?? 0} Rohnachrichten (werden nach ${rohTage} Tagen gelöscht)` : "nicht eingerichtet"}</span></summary>
+          <div className="stack small" style={{ gap: 8, marginTop: 10 }}>
+            {gruppe && gruppe.staende.length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {gruppe.staende.map((k) => <li key={k.id}>{k.name} ({k.rhythmus === "taeglich" ? "täglich" : k.rhythmus === "woechentlich" ? "wöchentlich" : "aus"}) – letzte Zusammenfassung {k.letzteZusammenfassung ? k.letzteZusammenfassung.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "noch keine"}</li>)}
+              </ul>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+              <form action={gruppenKanaeleAction}><button className="btn" type="submit" data-testid="gruppen-lesen">Jetzt lesen</button></form>
+              <form action={rohTageAction} style={{ display: "flex", gap: 6, alignItems: "end" }}>
+                <label className="small">Rohtexte löschen nach (Tagen)<input className="input" name="rohTage" type="number" min={1} max={90} defaultValue={rohTage} style={{ width: 90 }} /></label>
+                <button className="btn btn-small" type="submit">Speichern</button>
+              </form>
+              <Link href="/wissen?herkunft=chat">Wissen aus den Chats</Link>
+            </div>
+            <p className="muted" style={{ margin: 0 }}>
+              Der Bot liest nur freigegebene Kanäle und schreibt nie in die Gruppe. Nur ein Bot, den der Server-Admin einlädt – keine Nutzer-Token. Text für die Gruppe:
+              „Ich lasse unsere Kanäle Amazon/eBay/Fragen von einem Lese-Bot zusammenfassen – nur für mich, ohne Namen, Rohtexte werden nach {rohTage} Tagen gelöscht.“
+            </p>
+          </div>
+        </details>
       )}
 
       <details className="card card-pad" style={{ marginBottom: 14 }} open={liste.length === 0}>

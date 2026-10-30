@@ -167,3 +167,35 @@ export async function wissenNachholenAction() {
   after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
   redirect(zurueck("/calls", "Läuft im Hintergrund – die KI zieht das Wissen Call für Call (je etwa eine Minute)."));
 }
+
+/** Gruppen-Kanäle (B14) jetzt lesen – sonst stündlich im Hintergrund. Nur Inhaber. */
+export async function gruppenKanaeleAction() {
+  const { requireOwner } = await import("@/lib/auth/session");
+  const session = await requireOwner();
+  const { discordWissenLauf } = await import("@/lib/discord-wissen/service");
+  let m: string;
+  try {
+    const r = await discordWissenLauf(session.tenantId);
+    m = r
+      ? `Gruppen-Kanäle: ${r.gelesen} neue Nachrichten, ${r.zusammenfassungen} Zusammenfassung${r.zusammenfassungen === 1 ? "" : "en"}, ${r.wissen} Wissens-Einträge, ${r.warnungen} Frühwarnung${r.warnungen === 1 ? "" : "en"}, ${r.deals} Deal${r.deals === 1 ? "" : "s"}, ${r.geloescht} alte Rohtexte gelöscht.${r.fehler.length ? ` Fehler: ${r.fehler.join("; ")}` : ""}`
+      : "Gruppen-Kanäle sind noch nicht eingerichtet (Anbindungen → Discord – Gruppen-Kanäle).";
+  } catch (e) {
+    m = `Gruppen-Kanäle: ${e instanceof Error ? e.message : "Fehler"}`;
+  }
+  revalidatePath("/calls");
+  redirect(zurueck("/calls", m));
+}
+
+/** Wie lange Rohnachrichten bleiben (Tage, 1–90). Nur Inhaber. */
+export async function rohTageAction(fd: FormData) {
+  const { requireOwner } = await import("@/lib/auth/session");
+  const session = await requireOwner();
+  const n = Math.max(1, Math.min(90, Math.round(Number(fd.get("rohTage")) || 30)));
+  const { db, schema } = await import("@/db");
+  const { eq, sql } = await import("drizzle-orm");
+  await db
+    .update(schema.tenants)
+    .set({ settings: sql`${schema.tenants.settings} || jsonb_build_object('discordWissen', ${JSON.stringify({ rohTage: n })}::jsonb)` })
+    .where(eq(schema.tenants.id, session.tenantId));
+  redirect(zurueck("/calls", `Rohnachrichten werden nach ${n} Tagen gelöscht.`));
+}

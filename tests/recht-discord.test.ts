@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aktenzeichenAus, amZugAus, fristenAus, istAnwalt, istPrivat, morgenZeile, nachfrageEntwurf, passtZuFall, stillstand, statusAus } from "@/lib/recht/logic";
+import { aktenzeichenAus, amZugAus, behoerdenMail, fristenAus, unterlagenVorschlag, istAnwalt, istPrivat, morgenZeile, nachfrageEntwurf, passtZuFall, stillstand, statusAus } from "@/lib/recht/logic";
 import { anonym, dublette, fruehwarnungen, istDeal, kanaeleAus, zusammenfassungFaellig, zusammenfassungLesen } from "@/lib/discord-wissen/logic";
 
 // Erfundene Fälle, Kanzleien und Chat-Nachrichten.
@@ -18,6 +18,12 @@ describe("Rechtsfälle", () => {
     expect(f).toEqual([{ tag: "2026-11-14", text: "Bitte senden Sie uns die Unterlagen bis 14.11. zu." }]);
     expect(fristenAus("Wir hatten am 14.11. telefoniert.", H)).toEqual([]);
     expect(amZugAus("Bitte senden Sie uns die Rechnungen.")).toBe("wir");
+    expect(amZugAus("Bitte bis 14.11. Unterlagen senden.")).toBe("wir");
+    expect(amZugAus("Wir haben den Schriftsatz eingereicht.")).toBe("anwalt");
+    expect(behoerdenMail({ from: "Amtsgericht Teststadt <poststelle@ag-test.example>", subject: "Ladung", body: "" })).toBe(true);
+    expect(behoerdenMail({ from: "Kanzlei X <a@x.example>", subject: "Abmahnung wegen Markenverletzung", body: "" })).toBe(true);
+    expect(behoerdenMail({ from: "Lieferant <a@y.example>", subject: "Preisliste November", body: "Anbei die Liste." })).toBe(false);
+    expect(unterlagenVorschlag("Bitte Rechnungen und Nachweise zur Lieferkette der Marke senden").map((u) => u.link)).toEqual(["/rechnungen", "/echtheit"]);
     expect(amZugAus("Die mündliche Verhandlung beim Gericht ist am 3.12.")).toBe("gericht");
     expect(amZugAus("Ich habe die Gegenseite angeschrieben.")).toBe("gegenseite");
     expect(amZugAus("Ich prüfe das.")).toBe("anwalt");
