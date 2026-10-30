@@ -19,7 +19,23 @@ test.describe("Schnellerfassung, Geburtstage, Schulbriefe", () => {
     expect(token).toMatch(/^mk_/);
 
     const senden = (text: string, t = token) => fetch(`${B}/api/mobil/erfassen`, { method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-    expect((await senden("Aufgabe: x", "mk_falsch_falsch_falsch_falsch")).status).toBe(401);
+    // Fehler immer als JSON mit passendem Status und vorlesbarer „antwort“
+    const falsch = await senden("Aufgabe: x", "mk_falsch_falsch_falsch_falsch");
+    expect(falsch.status).toBe(401);
+    expect(falsch.headers.get("content-type")).toContain("application/json");
+    expect(await falsch.json()).toEqual({ ok: false, error: "Ungültiger Schlüssel.", antwort: "Ungültiger Schlüssel." });
+    const ohne = await fetch(`${B}/api/mobil/erfassen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: "Aufgabe: x" }) });
+    expect(ohne.status).toBe(401);
+    expect((await ohne.json()).ok).toBe(false);
+    const get = await fetch(`${B}/api/mobil/erfassen`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(get.status).toBe(405);
+    expect(await get.json()).toMatchObject({ ok: false, antwort: expect.stringContaining("POST") });
+    const kaputt = await fetch(`${B}/api/mobil/erfassen`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: "{text:" });
+    expect(kaputt.status).toBe(400);
+    expect((await kaputt.json()).error).toContain("Ungültiges JSON");
+    const leer = await senden("");
+    expect(leer.status).toBe(400);
+    expect(await leer.json()).toMatchObject({ ok: false, antwort: "Bitte etwas diktieren." });
 
     // Geschäftliche Aufgabe mit Frist → sofort angelegt, kurze Antwort zum Vorlesen
     const a = await (await senden(`Aufgabe: morgen DHL Geschäftskunden anrufen ${m}`)).json();
@@ -49,7 +65,7 @@ test.describe("Schnellerfassung, Geburtstage, Schulbriefe", () => {
     expect((await (await senden(`Paarzeit am Samstag ab 19 Uhr ${m}`)).json()).angelegt).toBe(false);
 
     // Protokoll je Aufruf; Diktate verschlüsselt (kein Klartext in der Datenbank)
-    expect((await sql<{ n: number }>("select count(*)::int as n from mobil_protokoll p join api_tokens t on t.id = p.token_id where t.name = $1", [`Test-Handy ${m}`]))[0].n).toBe(4);
+    expect((await sql<{ n: number }>("select count(*)::int as n from mobil_protokoll p join api_tokens t on t.id = p.token_id where t.name = $1", [`Test-Handy ${m}`]))[0].n).toBe(6);
     expect((await sql("select 1 from schnell_eingaenge where daten::text like $1", [`%${m}%`])).length).toBe(0);
 
     // Widerrufen → 401

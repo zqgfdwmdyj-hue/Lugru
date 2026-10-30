@@ -1,3 +1,4 @@
+import { mobilFehler } from "@/lib/mobil/antwort";
 import { mobilPruefen } from "@/lib/mobil/token";
 import { fahrtBriefing } from "@/lib/mobil/service";
 
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const p = await mobilPruefen(request, "fahrt");
-  if (!p.ok) return Response.json({ error: p.fehler }, { status: p.status });
+  if (!p.ok) return mobilFehler(p.status, p.fehler);
   const u = new URL(request.url);
   const min = Number(u.searchParams.get("minuten"));
   const r = await fahrtBriefing(p.session, { ziel: u.searchParams.get("ziel"), minuten: Number.isFinite(min) && min > 0 ? Math.min(240, Math.round(min)) : null });

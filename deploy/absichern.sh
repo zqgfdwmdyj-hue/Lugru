@@ -99,6 +99,11 @@ check_caddy() {
     local p; p="$(val PUBLIC_URL)"
     if [ -n "$p" ] && curl -fsS --max-time 10 "$p/.well-known/oauth-protected-resource/api/mcp" 2>/dev/null | grep -q "\"resource\":\"$p/api/mcp\""; then ok "Claude-Freigabe $p findet den Konnektor"; else warn "Claude-Freigabe $p antwortet nicht wie erwartet"; fi
     if [ -n "$p" ] && [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$p/auftraege")" = "404" ]; then ok "$p/auftraege ist gesperrt (404 „Nicht freigegeben“)"; elif [ -n "$p" ]; then warn "$p/auftraege ist NICHT gesperrt"; fi
+    # Handy-Kurzbefehle: erreichbar, aber nur mit Geräte-Schlüssel (ohne Schlüssel 401 als JSON).
+    if [ -n "$p" ]; then
+      local mc; mc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$p/api/mobil/erfassen")"
+      if [ "$mc" = "401" ]; then ok "$p/api/mobil/* erreichbar und geschützt (ohne Schlüssel 401)"; else warn "$p/api/mobil/erfassen antwortet mit $mc – Handy-Kurzbefehle gehen nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
+    fi
   fi
 }
 

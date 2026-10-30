@@ -3,8 +3,10 @@
 #
 # Claude ruft den Konnektor aus dem Internet auf und verlangt https://. Freigegeben werden NUR: Login,
 # Freigabe-Seite für Claude, der Konnektor (/api/mcp, nur mit Zugangs-Token), die Metadaten (/.well-known),
-# Skripte/Logo der Login-Seite und die befristeten Kunden-Links für Sendungen. Alles andere (Aufträge,
-# Einstellungen, Privatbereich …) antwortet unter dieser Adresse mit „nicht freigegeben“.
+# Skripte/Logo der Login-Seite, die befristeten Kunden-Links für Sendungen und die Handy-Endpunkte
+# (/api/mobil/*: Kurzbefehle, Widget – nur mit Geräte-Schlüssel mk_…, Rate-Limit und Protokoll im Seller-System).
+# Alles andere (Aufträge, Einstellungen, Privatbereich …) antwortet unter dieser Adresse mit „nicht freigegeben“
+# (unter /api/* als JSON, damit Kurzbefehle und Skripte eine lesbare Fehlermeldung bekommen).
 #
 # Aufruf als root auf dem Server – je nach Server eine der Varianten:
 #   bash /opt/seller-system/deploy/claude-oeffentlich.sh domain claude.deine-domain.de
@@ -14,6 +16,7 @@
 #        Server im Tailscale-Netz: Tailscale Funnel (Port 8443, anderer Port: CLAUDE_PORT=10000 …).
 #   bash /opt/seller-system/deploy/claude-oeffentlich.sh url https://seller.deine-domain.de
 #        Das ganze Seller-System läuft schon unter einer https-Adresse: nur diese Adresse eintragen.
+#   bash /opt/seller-system/deploy/claude-oeffentlich.sh aktualisieren   # nach einem Update: Freigabe neu schreiben
 #   bash /opt/seller-system/deploy/claude-oeffentlich.sh status
 #   bash /opt/seller-system/deploy/claude-oeffentlich.sh aus      # Freigabe wieder schließen
 set -euo pipefail
@@ -23,7 +26,7 @@ MODE="${1:-}"
 ARG="${2:-}"
 CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
 TS_PORT="${CLAUDE_PORT:-8443}"
-PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung)
+PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil)
 BEGIN="# seller-system-claude BEGIN"
 END="# seller-system-claude END"
 
@@ -65,6 +68,23 @@ done_msg() {
   echo "  $1/api/mcp"
   echo "(Steht auch im Seller-System unter Einstellungen → Claude & KI-Assistent.)"
   echo "Wieder schließen:  bash /opt/seller-system/deploy/claude-oeffentlich.sh aus"
+}
+# Freigabe-Block für Caddy. /api/mobil/* prüft das Seller-System selbst (Geräte-Schlüssel, Nur-ansehen-Konten,
+# Rate-Limit, Protokoll); gesperrte /api/*-Pfade antworten als JSON, alles andere als Text.
+caddy_block() {
+  local domain="$1"
+  printf '\n%s – Freigabe für den Claude-Konnektor und die Handy-Endpunkte (deploy/claude-oeffentlich.sh), nur diese Pfade\n' "$BEGIN"
+  printf '%s {\n' "$domain"
+  printf '\tencode gzip\n'
+  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/*\n'
+  printf '\thandle @frei {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$APP_PORT"
+  printf '\t@api path /api/*\n'
+  printf '\thandle @api {\n'
+  printf '\t\theader Content-Type "application/json; charset=utf-8"\n'
+  printf '\t\trespond `{"ok":false,"error":"Über diese Adresse nicht freigegeben.","antwort":"Über diese Adresse nicht freigegeben."}` 404\n'
+  printf '\t}\n'
+  printf '\thandle {\n\t\trespond "Nicht freigegeben" 404\n\t}\n'
+  printf '}\n%s\n' "$END"
 }
 caddy_remove_block() {
   [ -f "$CADDYFILE" ] && grep -qF "$BEGIN" "$CADDYFILE" || return 1
@@ -123,21 +143,7 @@ case "$MODE" in
     bak="backups/Caddyfile-$(date +%Y-%m-%d_%H-%M-%S)"; cp "$CADDYFILE" "$bak"
     echo "==> Trage $DOMAIN in $CADDYFILE ein (Sicherung: $bak)"
     caddy_remove_block || true
-    {
-      echo ""
-      echo "$BEGIN – Freigabe für den Claude-Konnektor (deploy/claude-oeffentlich.sh), nur diese Pfade"
-      echo "$DOMAIN {"
-      echo "	encode gzip"
-      echo "	@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/*"
-      echo "	handle @frei {"
-      echo "		reverse_proxy 127.0.0.1:$APP_PORT"
-      echo "	}"
-      echo "	handle {"
-      echo "		respond \"Nicht freigegeben\" 404"
-      echo "	}"
-      echo "}"
-      echo "$END"
-    } >> "$CADDYFILE"
+    caddy_block "$DOMAIN" >> "$CADDYFILE"
     caddy_reload "$bak"
     PUBLIC="https://$DOMAIN"
     set_env PUBLIC_URL "$PUBLIC"
@@ -154,6 +160,30 @@ case "$MODE" in
     restart_app
     check_public "$PUBLIC"
     done_msg "$PUBLIC"
+    ;;
+
+  aktualisieren)
+    # Nach einem Update: bestehende Freigabe mit den aktuellen Pfaden neu schreiben (gleiche Adresse, kein Neustart).
+    if [ -f "$CADDYFILE" ] && grep -qF "$BEGIN" "$CADDYFILE"; then
+      DOMAIN="$(sed -n "/^$BEGIN/,/^$END/p" "$CADDYFILE" | sed -n 's/^\([^[:space:]#][^[:space:]]*\) {$/\1/p' | head -1)"
+      [ -n "$DOMAIN" ] || { echo "ABBRUCH: Adresse im Caddy-Block nicht gefunden – „domain <adresse>“ erneut ausführen."; exit 1; }
+      bak="backups/Caddyfile-$(date +%Y-%m-%d_%H-%M-%S)"; cp "$CADDYFILE" "$bak"
+      caddy_remove_block
+      caddy_block "$DOMAIN" >> "$CADDYFILE"
+      caddy_reload "$bak"
+      echo "Caddy-Freigabe für $DOMAIN aktualisiert (Sicherung: $bak)."
+      PUBLIC="https://$DOMAIN"
+      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$PUBLIC/api/mobil/erfassen" || true)"
+      if [ "$code" = "401" ]; then echo "    ok – Handy-Endpunkte erreichbar und geschützt (ohne Schlüssel 401)."; else echo "    Hinweis: $PUBLIC/api/mobil/erfassen antwortet mit $code statt 401."; fi
+    elif command -v tailscale >/dev/null && tailscale funnel status 2>/dev/null | grep -q "/api/mcp"; then
+      BIND_IP="$(val BIND_IP)"; [ -z "$BIND_IP" ] || [ "$BIND_IP" = "0.0.0.0" ] && BIND_IP=127.0.0.1
+      YES=(); tailscale funnel --help 2>&1 | grep -q -- "-yes" && YES=(--yes)
+      for p in "${PATHS[@]}"; do tailscale funnel --bg "${YES[@]}" --https="$TS_PORT" --set-path="$p" "http://$BIND_IP:$APP_PORT$p"; done
+      echo "Tailscale-Freigabe aktualisiert: ${PATHS[*]}"
+    else
+      echo "Keine Freigabe eingerichtet – zuerst „domain …“, „tailscale“ oder „url …“ ausführen."
+      exit 1
+    fi
     ;;
 
   tailscale)

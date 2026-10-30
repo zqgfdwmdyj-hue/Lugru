@@ -1,3 +1,4 @@
+import { mobilFehler } from "@/lib/mobil/antwort";
 import { mobilPruefen } from "@/lib/mobil/token";
 import { kurzWerte } from "@/lib/mobil/service";
 
@@ -8,6 +9,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const p = await mobilPruefen(request, "kurz");
-  if (!p.ok) return Response.json({ error: p.fehler }, { status: p.status });
+  if (!p.ok) return mobilFehler(p.status, p.fehler);
   return Response.json(await kurzWerte(p.session), { headers: { "Cache-Control": "no-store" } });
 }

@@ -259,5 +259,8 @@ nie in Chats oder Mails.
     - Palettenlager: Paletten ohne Kunde nachtragen.
 18. **Handy-Ansicht (B15.16)**: einmal mit dem eigenen iPhone durchklicken (Startseite, Tagesplan, Scanner, Widget) und
     Auffälligkeiten melden – das geht nur am echten Gerät.
-19. **Testbericht**: Die Datei `Seller-System_Testbericht_2026-10-30.md` nachreichen, falls darin mehr steht als im
+19. **Handy-Kurzbefehle über die öffentliche Adresse**: Nach dem Update einmal
+    `bash /opt/seller-system/deploy/claude-oeffentlich.sh aktualisieren` – erst dann lässt die Freigabe `/api/mobil/*`
+    durch (vorher antwortete der Webserver selbst mit „Nicht freigegeben“). Die Prüfung im Skript meldet „ohne Schlüssel 401“.
+20. **Testbericht**: Die Datei `Seller-System_Testbericht_2026-10-30.md` nachreichen, falls darin mehr steht als im
     Prüfauftrag (B15) – dann gleiche ich die Punkte noch einmal ab.

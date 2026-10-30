@@ -1,3 +1,4 @@
+import { mobilFehler } from "@/lib/mobil/antwort";
 import { mobilPruefen } from "@/lib/mobil/token";
 import { scanPruefen } from "@/lib/mobil/service";
 
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const p = await mobilPruefen(request, "scan");
-  if (!p.ok) return Response.json({ error: p.fehler }, { status: p.status });
+  if (!p.ok) return mobilFehler(p.status, p.fehler);
   const b = (await request.json().catch(() => ({}))) as { ean?: unknown; preis?: unknown; menge?: unknown; netto?: unknown };
   const ean = typeof b.ean === "string" || typeof b.ean === "number" ? String(b.ean).trim() : "";
   const preis = Number(String(b.preis ?? "").replace(",", "."));
