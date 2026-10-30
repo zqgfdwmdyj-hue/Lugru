@@ -6,7 +6,7 @@ import { addDaysIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { driveToken } from "@/lib/integrations/clients/drive";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/knowledge/categories";
-import { bereinigeTranskript, callTitelUndDatum, callWissenText, datumAusText, ERKENNTNIS_TEXT, googleDocId, googleDocLinks, inhaltKennung, istEigeneAufgabe, kiAuftrag, kiWissenAuftrag, trefferImText, leseArchivExport, leseKiPunkte, leseKiWissen, leseKiZusammenfassung, linksMitKontext, zitatPosition, type CallArt, type PunktArt } from "./logic";
+import { bereinigeTranskript, KEIN_TRANSKRIPT, ohneTranskript, zusammenfassungAlsText, callTitelUndDatum, callWissenText, datumAusText, ERKENNTNIS_TEXT, googleDocId, googleDocLinks, inhaltKennung, istEigeneAufgabe, kiAuftrag, kiWissenAuftrag, trefferImText, leseArchivExport, leseKiPunkte, leseKiWissen, leseKiZusammenfassung, linksMitKontext, zitatPosition, type CallArt, type PunktArt } from "./logic";
 import { textAusCallDateien } from "./dateien";
 
 // Call-Archiv: Import (Text, Google-Doc-Link, Dateien/ZIP, wöchentlich aus einem Discord-Kanal), KI-Auswertung,
@@ -41,8 +41,8 @@ async function ki(tenantId: string) {
 }
 
 /** Gibt es diesen Call schon (gleiche Quelle oder gleicher Inhalt aus einer anderen Quelle)? */
-async function vorhandenerCall(tenantId: string, ref: string | null, kennung: string | null): Promise<{ id: string; titel: string; datum: string } | null> {
-  const felder = { id: C.id, titel: C.titel, datum: C.datum };
+async function vorhandenerCall(tenantId: string, ref: string | null, kennung: string | null): Promise<{ id: string; titel: string; datum: string; transkript: string } | null> {
+  const felder = { id: C.id, titel: C.titel, datum: C.datum, transkript: C.transkript };
   if (ref) {
     const [a] = await db.select(felder).from(C).where(and(eq(C.tenantId, tenantId), eq(C.quelleRef, ref)));
     if (a) return a;
@@ -55,6 +55,14 @@ async function vorhandenerCall(tenantId: string, ref: string | null, kennung: st
 }
 
 /** Call anlegen (Doppel über Quelle und Inhalt verhindern) und gleich auswerten – bei „auswerten: false“ später im Hintergrund. */
+/**
+ * Ein Call ohne Transkript (z. B. Archiv-Export nur mit Zusammenfassung) bekommt das Transkript nachgetragen –
+ * statt „schon vorhanden“. Danach wird das Wissen neu gezogen (aus dem Transkript statt der Zusammenfassung).
+ */
+async function transkriptNachtragen(tenantId: string, callId: string, transkript: string): Promise<void> {
+  await db.update(C).set({ transkript, inhaltKennung: inhaltKennung(transkript), wissenAm: null, wissenFehler: null }).where(and(eq(C.tenantId, tenantId), eq(C.id, callId)));
+}
+
 export async function callImportieren(
   tenantId: string,
   e: { titel: string; datum: string; text?: string; link?: string; quelle: "text" | "google_doc" | "discord" | "datei"; quelleRef?: string | null; art?: CallArt; auswerten?: boolean },
@@ -66,14 +74,22 @@ export async function callImportieren(
     if (!docId) throw new Error("Kein Google-Docs-Link erkannt (…docs.google.com/document/d/…).");
     ref = ref ?? `gdoc:${docId}`;
     const alt = await vorhandenerCall(tenantId, ref, null);
-    if (alt) return { id: alt.id, neu: false, punkte: 0, fehler: null };
+    if (alt && !ohneTranskript(alt.transkript)) return { id: alt.id, neu: false, punkte: 0, fehler: null };
     text = await holeGoogleDoc(tenantId, docId);
+    if (alt) {
+      const t = bereinigeTranskript(text);
+      if (t.length >= 20) await transkriptNachtragen(tenantId, alt.id, t);
+      return { id: alt.id, neu: false, punkte: 0, fehler: null };
+    }
   }
   const transkript = bereinigeTranskript(text);
   if (transkript.length < 20) throw new Error("Das Transkript ist leer oder zu kurz.");
   const kennung = inhaltKennung(transkript);
   const doppelt = await vorhandenerCall(tenantId, ref, kennung);
-  if (doppelt) return { id: doppelt.id, neu: false, punkte: 0, fehler: null };
+  if (doppelt) {
+    if (ohneTranskript(doppelt.transkript)) await transkriptNachtragen(tenantId, doppelt.id, transkript);
+    return { id: doppelt.id, neu: false, punkte: 0, fehler: null };
+  }
   const [row] = await db
     .insert(C)
     .values({ tenantId, titel: e.titel.slice(0, 200), datum: e.datum, art: e.art ?? "consultant", quelle: e.quelle, quelleRef: ref, inhaltKennung: kennung, quelleUrl: e.link && googleDocId(e.link) ? `https://docs.google.com/document/d/${googleDocId(e.link)}/edit` : null, transkript })
@@ -96,8 +112,9 @@ export async function callImportieren(
 export async function callsSammelImport(
   tenantId: string,
   e: { art: CallArt; bezeichnung: string | null; linkText: string; dateien: { name: string; daten: Uint8Array }[]; heute: string },
-): Promise<{ neu: number; vorhanden: string[]; fehler: string[]; ohneDatum: number }> {
+): Promise<{ neu: number; vorhanden: string[]; fehler: string[]; ohneDatum: number; nachgetragen: number }> {
   let neu = 0;
+  let nachgetragen = 0;
   let ohneDatum = 0;
   const vorhanden: string[] = [];
   const fehler: string[] = [];
@@ -112,7 +129,10 @@ export async function callsSammelImport(
     const ref = quelle.ref.startsWith("datei:") && kennung ? `datei:${kennung}` : quelle.ref;
     const alt = await vorhandenerCall(tenantId, ref, kennung);
     if (alt) {
-      vorhanden.push(`${quelle.name} (= „${alt.titel}“ vom ${dmy(alt.datum)})`);
+      if (ohneTranskript(alt.transkript)) {
+        await transkriptNachtragen(tenantId, alt.id, transkript);
+        nachgetragen++;
+      } else vorhanden.push(`${quelle.name} (= „${alt.titel}“ vom ${dmy(alt.datum)})`);
       return;
     }
     const t = callTitelUndDatum({ name: quelle.quelle === "datei" ? quelle.name : null, titelHinweis: quelle.titelHinweis, datumHinweis: quelle.datumHinweis, text: transkript, bezeichnung: e.bezeichnung, art: e.art, ersatzDatum: e.heute, geaendert: quelle.geaendert });
@@ -133,7 +153,7 @@ export async function callsSammelImport(
     const ref = `gdoc:${l.docId}`;
     const name = `Google Doc ${l.docId.slice(0, 8)}…`;
     const alt = await vorhandenerCall(tenantId, ref, null);
-    if (alt) {
+    if (alt && !ohneTranskript(alt.transkript)) {
       vorhanden.push(`${name} (= „${alt.titel}“ vom ${dmy(alt.datum)})`);
       continue;
     }
@@ -150,7 +170,7 @@ export async function callsSammelImport(
   for (const d of gelesen.dateien) {
     await anlegen({ name: d.name, ref: `datei:${d.name}`, text: d.text, url: null, titelHinweis: null, datumHinweis: null, geaendert: d.geaendert, quelle: "datei" });
   }
-  return { neu, vorhanden, fehler, ohneDatum };
+  return { neu, vorhanden, fehler, ohneDatum, nachgetragen };
 }
 
 const LAEUFT = ((globalThis as { __callAuswertung?: Map<string, Promise<number>> }).__callAuswertung ??= new Map());
@@ -201,9 +221,16 @@ export async function wissenAusCall(tenantId: string, callId: string): Promise<{
   if (!c) return { eintraege: 0, fehler: "Call nicht gefunden" };
   const k = await ki(tenantId);
   if (!k) return { eintraege: 0, fehler: "Keine KI-Anbindung (Anbindungen → Claude)" };
-  if (c.transkript.replace(/\s+/g, "").length < 200) {
-    await db.update(C).set({ wissenAm: new Date(), wissenFehler: "Transkript zu kurz" }).where(eq(C.id, callId));
-    return { eintraege: 0, fehler: "Transkript zu kurz" };
+  // Ohne Transkript: Wissen aus Zusammenfassung und Punkten ziehen (Export nur mit Zusammenfassung).
+  const ausZusammenfassung = ohneTranskript(c.transkript);
+  let grundlage = c.transkript;
+  if (ausZusammenfassung) {
+    const punkte = await db.select({ art: P.art, text: P.text }).from(P).where(and(eq(P.tenantId, tenantId), eq(P.callId, callId)));
+    grundlage = zusammenfassungAlsText(c.zusammenfassung, punkte);
+    if (grundlage.replace(/\s+/g, "").length < 120) {
+      await db.update(C).set({ wissenAm: new Date(), wissenFehler: "Weder Transkript noch Zusammenfassung" }).where(eq(C.id, callId));
+      return { eintraege: 0, fehler: "Weder Transkript noch Zusammenfassung" };
+    }
   }
   try {
     const bekannt = await db
@@ -212,7 +239,7 @@ export async function wissenAusCall(tenantId: string, callId: string): Promise<{
       .where(and(eq(K.tenantId, tenantId), eq(K.origin, "call"), andererCall(callId)))
       .orderBy(desc(K.updatedAt))
       .limit(200);
-    const antwort = await askClaude(k.apiKey, kiWissenAuftrag(c, KNOWLEDGE_CATEGORIES, bekannt.map((b) => b.title)), { model: k.model, task: "simple", maxTokens: 6000, timeoutMs: 180_000 });
+    const antwort = await askClaude(k.apiKey, kiWissenAuftrag({ ...c, transkript: grundlage }, KNOWLEDGE_CATEGORIES, bekannt.map((b) => b.title), ausZusammenfassung ? "zusammenfassung" : "transkript"), { model: k.model, task: "simple", maxTokens: 6000, timeoutMs: 180_000 });
     const wissen = leseKiWissen(antwort.text, KNOWLEDGE_CATEGORIES, c.art);
     const behalten = await db
       .select({ title: K.title })
@@ -230,12 +257,12 @@ export async function wissenAusCall(tenantId: string, callId: string): Promise<{
           category: w.kategorie,
           title: w.titel,
           body: callWissenText(w, c),
-          tags: [...new Set([...w.stichworte, marke, ERKENNTNIS_TEXT[w.art], ...(w.einschaetzung === "unsicher" ? ["unsicher"] : [])])].slice(0, 10),
+          tags: [...new Set([...w.stichworte, marke, ERKENNTNIS_TEXT[w.art], ...(w.einschaetzung === "unsicher" ? ["unsicher"] : []), ...(ausZusammenfassung ? ["aus Zusammenfassung"] : [])])].slice(0, 10),
           origin: "call" as const,
           insider: true,
           callId,
           callZitat: w.zitat,
-          callStelle: w.zitat ? zitatPosition(c.transkript, w.zitat) : null,
+          callStelle: w.zitat && !ausZusammenfassung ? zitatPosition(c.transkript, w.zitat) : null,
           quelleDatum: c.datum,
           quelleWer: w.wer,
           erkenntnis: w.art,
@@ -350,13 +377,15 @@ export async function archivImportieren(tenantId: string, roh: unknown): Promise
     const ref = docId ? `gdoc:${docId}` : `archiv:${a.externeId}`;
     const transkript = bereinigeTranskript(a.transkript);
     const kennung = inhaltKennung(transkript);
-    if (await vorhandenerCall(tenantId, ref, kennung)) {
+    const alt = await vorhandenerCall(tenantId, ref, kennung);
+    if (alt) {
+      if (transkript && !ohneTranskript(transkript) && ohneTranskript(alt.transkript)) await transkriptNachtragen(tenantId, alt.id, transkript);
       vorhanden++;
       continue;
     }
     const [row] = await db
       .insert(C)
-      .values({ tenantId, titel: a.titel, datum: a.datum, quelle: "archiv", quelleRef: ref, inhaltKennung: kennung, quelleUrl: a.quelleUrl, transkript: transkript || "(Im Export war kein Transkript enthalten.)", zusammenfassung: a.zusammenfassung, auswertung: "fertig" })
+      .values({ tenantId, titel: a.titel, datum: a.datum, art: a.art, quelle: "archiv", quelleRef: ref, inhaltKennung: kennung, quelleUrl: a.quelleUrl, transkript: transkript || KEIN_TRANSKRIPT, zusammenfassung: a.zusammenfassung, auswertung: "fertig" })
       .onConflictDoNothing()
       .returning({ id: C.id });
     if (!row) {

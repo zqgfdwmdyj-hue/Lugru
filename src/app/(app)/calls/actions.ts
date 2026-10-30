@@ -68,10 +68,11 @@ export async function sammelImportAction(fd: FormData) {
   }
   if (!dateien.length && !/docs\.google\.com\/document/.test(linkText)) redirect(zurueck("/calls", "Bitte Dateien auswählen oder Google-Docs-Links einfügen."));
   const r = await callsSammelImport(session.tenantId, { art, bezeichnung, linkText, dateien, heute: todayIso() });
-  if (r.neu) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
+  if (r.neu || r.nachgetragen) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
   revalidatePath("/calls");
   const teile = [
     `${r.neu} Calls übernommen${r.neu ? " – die KI wertet sie nacheinander aus" : ""}.`,
+    r.nachgetragen ? `${r.nachgetragen} Transkript${r.nachgetragen === 1 ? "" : "e"} bei vorhandenen Calls (bisher nur Zusammenfassung) nachgetragen – das Wissen wird neu gezogen.` : "",
     r.ohneDatum ? `${r.ohneDatum} ohne erkennbares Datum (heute eingetragen – im Call unter „Titel und Datum ändern“ korrigieren).` : "",
     r.vorhanden.length ? `${r.vorhanden.length} waren schon da: ${r.vorhanden.slice(0, 5).join(" · ")}${r.vorhanden.length > 5 ? " …" : ""}.` : "",
     r.fehler.length ? `Nicht übernommen: ${r.fehler.slice(0, 5).join(" · ")}${r.fehler.length > 5 ? ` … (+${r.fehler.length - 5})` : ""}.` : "",

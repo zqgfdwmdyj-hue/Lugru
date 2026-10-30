@@ -83,7 +83,8 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
       const { callsSammelImport, offeneCallsAuswerten } = await import("@/lib/calls/service");
       const r = await callsSammelImport(session.tenantId, { art: "gruppe", bezeichnung: null, linkText: "", dateien: [{ name, daten: bytes }], heute: todayIso() });
       if (r.neu) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
-      return { ok: r.neu > 0, text: r.neu ? `Call übernommen – die KI wertet ihn aus.` : r.vorhanden.length ? "War schon im Call-Archiv." : r.fehler[0] ?? "Nicht übernommen.", hinweise: r.ohneDatum ? ["Ohne erkennbares Datum – im Call korrigieren."] : [] };
+      if (r.nachgetragen) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
+      return { ok: r.neu + r.nachgetragen > 0, text: r.neu ? `Call übernommen – die KI wertet ihn aus.` : r.nachgetragen ? "Transkript beim vorhandenen Call nachgetragen." : r.vorhanden.length ? "War schon im Call-Archiv." : r.fehler[0] ?? "Nicht übernommen.", hinweise: r.ohneDatum ? ["Ohne erkennbares Datum – im Call korrigieren."] : [] };
     }
     case "beleg": {
       const buf = Buffer.from(bytes);

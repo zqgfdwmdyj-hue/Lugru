@@ -198,7 +198,7 @@ export function fristAus(v: unknown, callDatum: string): string | null {
   return null;
 }
 
-export type ArchivCall = { externeId: string; datum: string; titel: string; quelleUrl: string | null; transkript: string; zusammenfassung: ReturnType<typeof normZusammenfassung>; punkte: Punkt[] };
+export type ArchivCall = { externeId: string; datum: string; art: CallArt; titel: string; quelleUrl: string | null; transkript: string; zusammenfassung: ReturnType<typeof normZusammenfassung>; punkte: Punkt[] };
 
 /**
  * Export aus dem bisherigen Call-Archiv (claude.ai-Seite) lesen: ein Call, eine Liste oder {calls, chunks}.
@@ -214,7 +214,8 @@ export function leseArchivExport(roh: unknown): { calls: ArchivCall[]; fehler: s
     const c = (x ?? {}) as Record<string, unknown>;
     const datum = str(c.date ?? c.datum, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(datum)) continue;
-    const id = str(c.id ?? c.externeId, 80) || `ohne-id-${datum}`;
+    const docId = str(c.sourceDocId ?? c.docId, 120).replace(/[^A-Za-z0-9_-]/g, "");
+    const id = str(c.id ?? c.externeId, 80) || docId || `ohne-id-${datum}`;
     const eigene = liste(c.chunks).length ? liste(c.chunks) : chunks.filter((k) => k.callId === c.id);
     const teile = eigene.map((k, i) => (typeof k === "string" ? { n: i, text: k } : { n: Number((k as Record<string, unknown>).n ?? i), text: typeof (k as Record<string, unknown>).text === "string" ? ((k as Record<string, unknown>).text as string).slice(0, 200_000) : "" }));
     const transkript = str(c.transcript ?? c.transkript ?? c.text, 400_000) || teile.sort((a, b) => a.n - b.n).map((t) => t.text).join("");
@@ -227,13 +228,17 @@ export function leseArchivExport(roh: unknown): { calls: ArchivCall[]; fehler: s
       ...liste(s.decisions).map((d) => ({ art: "entscheidung" as const, text: str(d, 400), verantwortlich: null, frist: null, zitat: null })),
       ...liste(s.open_questions).map((q) => ({ art: "frage" as const, text: str(q, 400), verantwortlich: null, frist: null, zitat: null })),
     ].filter((p) => p.text.length >= 3);
+    const zusammenfassung = normZusammenfassung(s.overview ?? s.ueberblick, s.participants ?? s.teilnehmer ?? c.participants ?? c.teilnehmer, s.topics ?? s.themen);
+    const art = c.art === "gruppe" || c.art === "consultant" ? (c.art as CallArt) : artAusTeilnehmern(zusammenfassung?.teilnehmer.length ?? 0);
+    const url = str(c.sourceUrl ?? c.quelleUrl, 500);
     calls.push({
       externeId: id,
       datum,
-      titel: str(c.title ?? c.titel, 200) || str(s.title, 200) || `Consultant-Call ${datum.split("-").reverse().join(".")}`,
-      quelleUrl: /^https:\/\/docs\.google\.com\//.test(str(c.sourceUrl ?? c.quelleUrl, 500)) ? str(c.sourceUrl ?? c.quelleUrl, 500) : null,
+      art,
+      titel: str(c.title ?? c.titel, 200) || str(s.title, 200) || `${art === "gruppe" ? "Deal-Gruppe" : "Consultant-Call"} ${datum.split("-").reverse().join(".")}`,
+      quelleUrl: /^https:\/\/docs\.google\.com\//.test(url) ? url : docId.length >= 20 ? `https://docs.google.com/document/d/${docId}/edit` : null,
       transkript,
-      zusammenfassung: normZusammenfassung(s.overview ?? s.ueberblick, s.participants ?? s.teilnehmer, s.topics ?? s.themen),
+      zusammenfassung,
       punkte,
     });
   }
@@ -318,9 +323,28 @@ const ERKENNTNISSE = Object.keys(ERKENNTNIS_TEXT) as Erkenntnis[];
  * KI-Auftrag: Wissen, das über den Call hinaus nützlich ist – vor allem Insider-Wissen. Bekannte Titel werden
  * mitgegeben, damit nichts doppelt angelegt wird (Neues zu einem bekannten Thema kommt als „Ergänzung: …“).
  */
-export function kiWissenAuftrag(c: { titel: string; datum: string; art: CallArt; transkript: string }, kategorien: readonly string[], bekannt: string[]): string {
+/** Platzhalter, wenn ein Archiv-Export nur die Zusammenfassung enthielt. */
+export const KEIN_TRANSKRIPT = "(Im Export war kein Transkript enthalten.)";
+/** Kein brauchbares Transkript (nur Platzhalter oder sehr kurz). */
+export const ohneTranskript = (t: string) => t.trim() === KEIN_TRANSKRIPT || t.replace(/\s+/g, "").length < 200;
+/** Ab drei Teilnehmern ist es ein Gruppen-Call (Deal-Gruppe), sonst der Consultant-Call. */
+export const artAusTeilnehmern = (n: number): CallArt => (n >= 3 ? "gruppe" : "consultant");
+
+/** Zusammenfassung + Punkte als Text – Grundlage fürs Wissen, wenn kein Transkript da ist. */
+export function zusammenfassungAlsText(z: { ueberblick: string; themen: { name: string; punkte: string[] }[]; teilnehmer: string[] } | null, punkte: { art: string; text: string }[]): string {
+  if (!z && !punkte.length) return "";
+  const teile: string[] = [];
+  if (z?.ueberblick) teile.push(`Überblick: ${z.ueberblick}`);
+  if (z?.teilnehmer.length) teile.push(`Teilnehmer: ${z.teilnehmer.join(", ")}`);
+  for (const t of z?.themen ?? []) teile.push(`Thema „${t.name}“:\n${t.punkte.map((p) => `- ${p}`).join("\n")}`);
+  const art: Record<string, string> = { aufgabe: "To-do", entscheidung: "Entscheidung", frage: "Offene Frage" };
+  if (punkte.length) teile.push(`Punkte:\n${punkte.map((p) => `- ${art[p.art] ?? p.art}: ${p.text}`).join("\n")}`);
+  return teile.join("\n\n");
+}
+
+export function kiWissenAuftrag(c: { titel: string; datum: string; art: CallArt; transkript: string }, kategorien: readonly string[], bekannt: string[], quelle: "transkript" | "zusammenfassung" = "transkript"): string {
   return [
-    `Du liest das Transkript eines ${c.art === "gruppe" ? "Wochen-Calls einer Deal-Gruppe (mehrere Amazon-Händler)" : "Calls mit dem Amazon-Consultant"}. Ludwig (LuGru GmbH, Online-Handel: Amazon, eBay, Temu) möchte das Wissen daraus für später festhalten.`,
+    `Du liest ${quelle === "zusammenfassung" ? "die Zusammenfassung (ein Transkript gibt es nicht)" : "das Transkript"} eines ${c.art === "gruppe" ? "Wochen-Calls einer Deal-Gruppe (mehrere Amazon-Händler)" : "Calls mit dem Amazon-Consultant"}. Ludwig (LuGru GmbH, Online-Handel: Amazon, eBay, Temu) möchte das Wissen daraus für später festhalten.`,
     "Ziehe das Wissen heraus, das über diesen Call hinaus nützlich ist – vor allem Insider-Wissen, das man so nicht im Internet findet: konkrete Tricks und Abläufe, Erfahrungswerte und Zahlen, Bezugsquellen, Lieferanten, Dienstleister und Tools, Interna zu Amazon/Temu/eBay (z. B. Account-Sperren, Freischaltungen, Support-Wege, Gebühren), Warnungen und Fehler, die andere gemacht haben.",
     "Nicht aufnehmen: Smalltalk, Allgemeinplätze, reine Termin- und Aufgabenabsprachen, Persönliches über Teilnehmer.",
     `Antworte NUR mit JSON: {"wissen":[{"titel":"kurze Aussage (max. 120 Zeichen)","inhalt":"2–8 Sätze, konkret, mit Zahlen/Namen wie im Call","art":"tipp|quelle|regel|warnung|erfahrung","wer":"${c.art === "gruppe" ? "Name des Teilnehmers (oder „gruppe“, wenn unklar) | ludwig" : "consultant | ludwig | Name"}","kategorie":"eine aus: ${kategorien.join(" | ")}","stichworte":["max. 6"],"zitat":"wörtlicher kurzer Ausschnitt (max. 160 Zeichen) aus dem Transkript – genau so, wie er dort steht","einschaetzung":"bestaetigt|einzelmeinung|unsicher"}]}`,
@@ -328,7 +352,7 @@ export function kiWissenAuftrag(c: { titel: string; datum: string; art: CallArt;
     "Regeln: nichts erfinden, nur was im Call gesagt wurde; „bestaetigt“ nur, wenn mehrere es bestätigen oder es eigene Erfahrung ist; Gerüchte als „unsicher“; höchstens 25 Einträge; lieber wenige gute als viele dünne.",
     bekannt.length ? `Schon im Wissen (nicht noch einmal anlegen; nur wenn der Call Neues dazu bringt, als eigener Eintrag mit Titel „Ergänzung: …“):\n${bekannt.map((t) => `- ${t}`).join("\n")}` : "",
     `Call: ${c.titel} am ${c.datum}`,
-    "Transkript:",
+    quelle === "zusammenfassung" ? "Zusammenfassung (zitat: wörtlich aus dieser Zusammenfassung):" : "Transkript:",
     c.transkript,
   ]
     .filter(Boolean)

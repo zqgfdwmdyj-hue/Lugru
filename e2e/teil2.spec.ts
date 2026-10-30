@@ -182,6 +182,28 @@ test.describe("Teil 2 – Team", () => {
     await expect(page.locator("[role=status]")).toContainText("1 waren schon da");
   });
 
+  test("B1: Export nur mit Zusammenfassung → Gruppen-Call (4 Teilnehmer); späterer Google-Doc-Link trägt das Transkript nach", async ({ page }) => {
+    const doc = "TESTCALLb1archiv0000000001";
+    const exportDatei = { date: "2026-09-10", sourceDocId: doc, summary: { overview: "Erfundener Wochen-Call der Deal-Gruppe ohne Transkript.", participants: ["Anna Test", "Ben Test", "Cora Test", "Ludwig (Test)"], topics: [{ name: "Testmarke", points: ["Preise stabil"] }], decisions: ["Testentscheidung B1"] } };
+    await anmelden(page, "inhaber");
+    await page.goto("/calls");
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.getByTestId("calls-archiv-datei").setInputFiles({ name: "b1-export.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(exportDatei)) });
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-archiv-import").click()]);
+    await expect(page.locator("[role=status]")).toContainText("1 Calls übernommen");
+    const [c] = await sql<{ id: string; art: string; titel: string }>("select id, art, titel from calls where quelle_ref = $1", [`gdoc:${doc}`]);
+    expect(c).toMatchObject({ art: "gruppe", titel: "Deal-Gruppe 10.09.2026" });
+    // Später: der Link aus Discord bzw. von Hand → Transkript wird nachgetragen statt „schon vorhanden“
+    await page.goto("/calls");
+    await page.locator("details", { hasText: "Calls importieren" }).first().evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await page.getByTestId("calls-links").fill(`https://docs.google.com/document/d/${doc}/edit`);
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("calls-sammel-import").click()]);
+    await expect(page.locator("[role=status]")).toContainText("1 Transkript bei vorhandenen Calls");
+    expect((await sql<{ n: number }>("select count(*)::int as n from calls where quelle_ref = $1", [`gdoc:${doc}`]))[0].n).toBe(1);
+    await page.goto(`/calls/${c.id}`);
+    await expect(page.locator("body")).toContainText(`Testnotiz ${doc}`);
+  });
+
   test("Wochen-Calls der Deal-Gruppe auf einmal: Word, ZIP (Text + Untertitel), Link → Auswertung im Hintergrund, kein Doppel", async ({ page }) => {
     // erfundene Transkripte – lang genug für die Inhalts-Kennung
     const transkript = (thema: string) => Array.from({ length: 12 }, (_, i) => `Sprecher ${i % 3} (Test): ${thema} – Testsatz ${i} über Deals, Retouren und Lager.`).join("\n");
