@@ -13,7 +13,7 @@ import { importAnyFile } from "@/lib/imports/dispatch";
 import { readTable } from "@/lib/tabular";
 import { leseZip } from "@/lib/zip-lesen";
 import { lesbarerFehler } from "@/lib/fehler-text";
-import { artNachEndung, endung, istPdf, istZip, jsonArt, pdfArt, tabellenArt, UPLOAD_ART, type UploadArt } from "./erkennen";
+import { artNachEndung, endung, istBqoolDatei, istPdf, istZip, jsonArt, pdfArt, tabellenArt, UPLOAD_ART, type UploadArt } from "./erkennen";
 
 // Zentrale Uploads: jede Datei erkennen und mit demselben Code verarbeiten wie im jeweiligen Bereich. Rechte je
 // Art (z. B. Kontoauszüge nur mit Bereich „Geld“). Private Kontoauszüge gehören in den Privatbereich, nicht hierher.
@@ -38,6 +38,7 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
   if (istPdf(bytes)) return pdfArt(await pdfText(bytes));
   const e = artNachEndung(name);
   if (e) return e;
+  if (istBqoolDatei(bytes)) return "bqool_datei";
   if (endung(name) === ".json") {
     try {
       return jsonArt(JSON.parse(new TextDecoder().decode(bytes))) ?? "tabelle";
@@ -71,6 +72,11 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
     case "bqool": {
       const r = await importBqool(session.tenantId, bytes, name, null);
       return { ok: r.ok, text: r.message, hinweise: [] };
+    }
+    case "bqool_datei": {
+      const { bqoolDateiEinlesen } = await import("@/lib/bqool/export-service");
+      const r = await bqoolDateiEinlesen(session.tenantId, name, bytes);
+      return { ok: r.ok, text: r.message, hinweise: r.ok ? ["Soll-Regeln und Export unter Repricer → BQool-Dateien."] : [] };
     }
     case "amazon_business":
       return { ok: false, text: "Amazon-Business-Bericht erkannt – der Bericht enthält keinen Zeitraum. Bitte unter Amazon Business mit Land und Zeitraum hochladen.", hinweise: [] };

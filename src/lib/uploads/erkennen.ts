@@ -9,6 +9,7 @@ export type UploadArt =
   | "amex"
   | "ust_bericht"
   | "bqool"
+  | "bqool_datei"
   | "amazon_business"
   | "call_archiv"
   | "call"
@@ -21,6 +22,7 @@ export const UPLOAD_ART: Record<UploadArt, { text: string; bereich: AreaKey; lin
   amex: { text: "American Express", bereich: "geld", link: "/buchhaltung" },
   ust_bericht: { text: "Amazon-Umsatzsteuerbericht", bereich: "geld", link: "/buchhaltung" },
   bqool: { text: "BQool-Export (Repricer)", bereich: "buchhaltung", link: "/repricer" },
+  bqool_datei: { text: "BQool-Repricing-Datei (Ist-Stand je Land)", bereich: "buchhaltung", link: "/repricer/bqool" },
   amazon_business: { text: "Amazon-Business-Bericht", bereich: "amazon", link: "/amazon-business" },
   call_archiv: { text: "Call-Archiv (JSON-Export)", bereich: "amazon", link: "/calls" },
   call: { text: "Call-Transkript", bereich: "amazon", link: "/calls" },
@@ -81,4 +83,10 @@ export function artNachEndung(name: string): UploadArt | null {
   if ([".vtt", ".srt", ".docx", ".odt"].includes(e)) return "call";
   if (e === ".xml") return "kontoauszug";
   return null;
+}
+
+/** BQool-Repricing-Datei (Vorlage „Listings_…txt“ bzw. ArbitrageOne-Datei): erste Zeile „FileType = repricing“. */
+export function istBqoolDatei(bytes: Uint8Array): boolean {
+  const anfang = new TextDecoder("utf-8").decode(bytes.subarray(0, 80));
+  return /^\uFEFF?FileType\s*=\s*repricing/i.test(anfang);
 }

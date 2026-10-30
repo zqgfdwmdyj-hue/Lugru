@@ -29,8 +29,9 @@ export default async function RepricerPage({ searchParams }: { searchParams: Pro
     <>
       <div className="page-head">
         <div><div className="crumb">Amazon</div><h1>Repricer (BQool)</h1></div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <a className="btn btn-primary" href="/repricer/export?format=bqool" title="Nur Mindestpreise mit echten Gebühren aus der Gebührenvorschau" data-testid="export-exact">BQool-CSV ({cov.exact} mit echten Gebühren)</a>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link className="btn btn-primary" href="/repricer/bqool" data-testid="link-bqool-dateien">BQool-Dateien je Land (Freigabe)</Link>
+          <a className="btn" href="/repricer/export?format=bqool" title="Nur Mindestpreise mit echten Gebühren aus der Gebührenvorschau" data-testid="export-exact">BQool-CSV ({cov.exact} mit echten Gebühren)</a>
           {cov.estimated > 0 && <a className="btn" href="/repricer/export?format=bqool&geschaetzt=1" title="Enthält Mindestpreise mit pauschaler FBA-Gebühr bzw. Provision – vor dem Einsatz prüfen" data-testid="export-estimated">inkl. {cov.estimated} geschätzter</a>}
           <a className="btn" href="/repricer/export?format=de">Als Tabelle (deutsch)</a>
         </div>

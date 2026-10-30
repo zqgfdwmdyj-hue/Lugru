@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireArea } from "@/lib/auth/session";
 import { BQOOL_MAERKTE, type BqoolMarkt } from "@/lib/bqool/logic";
 import { importBqool } from "@/lib/bqool/service";
+import { istBqoolDatei } from "@/lib/uploads/erkennen";
 
 export type BqoolState = { ok: boolean; message: string; erkannt?: string[] } | null;
 
@@ -17,7 +18,15 @@ export async function importBqoolAction(_prev: BqoolState, fd: FormData): Promis
   const m = String(fd.get("markt") ?? "");
   const markt = (BQOOL_MAERKTE as readonly string[]).includes(m) ? (m as BqoolMarkt) : null;
   try {
-    const r = await importBqool(session.tenantId, new Uint8Array(await file.arrayBuffer()), file.name, markt);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // BQool-Repricing-Datei (Vorlage je Land) statt „Manage Listings“-Export → Ist-Stand für die BQool-Dateien.
+    if (istBqoolDatei(bytes)) {
+      const { bqoolDateiEinlesen } = await import("@/lib/bqool/export-service");
+      const b = await bqoolDateiEinlesen(session.tenantId, file.name, bytes);
+      if (b.ok) revalidatePath("/repricer");
+      return { ok: b.ok, message: b.message };
+    }
+    const r = await importBqool(session.tenantId, bytes, file.name, markt);
     if (r.ok) revalidatePath("/repricer");
     return r.ok ? { ok: true, message: r.message, erkannt: r.erkannt } : { ok: false, message: r.message };
   } catch (e) {

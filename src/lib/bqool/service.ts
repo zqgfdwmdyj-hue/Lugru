@@ -2,6 +2,9 @@ import "server-only";
 import { and, eq, inArray, max } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { repricerRows } from "@/lib/repricer";
+import { aeltesteTage } from "@/lib/money/kapital";
+import { getSettings } from "@/lib/settings";
+import { buyboxErklaerung, effektiverMin, katalogRegel, UST, type ExportLand } from "./export-logic";
 import { readTable } from "@/lib/tabular";
 import { leseBqool, pruefe, type BqoolMarkt, type BqoolZeile, type Hinweis } from "./logic";
 
@@ -30,19 +33,30 @@ export async function importBqool(tenantId: string, bytes: Uint8Array, datei: st
   return { ok: true as const, message: `${unique.size} SKUs eingelesen (${je}).${warn ? ` Hinweis: ${warn}.` : ""}`, erkannt: r.erkannt };
 }
 
-export type BqoolAnsicht = BqoolZeile & { untergrenze: number | null; ek: number | null; hinweise: Hinweis[]; eingelesenAm: Date; datei: string | null };
+export type BqoolAnsicht = BqoolZeile & { untergrenze: number | null; ek: number | null; hinweise: Hinweis[]; eingelesenAm: Date; datei: string | null; effMin: number | null; marge: number | null; unterregel: string | null; erklaerung: string | null };
 
 export async function bqoolStand(tenantId: string) {
   const L = schema.bqoolListings;
-  const [rows, sys] = await Promise.all([db.select().from(L).where(eq(L.tenantId, tenantId)), repricerRows(tenantId)]);
+  const [rows, sys, s] = await Promise.all([db.select().from(L).where(eq(L.tenantId, tenantId)), repricerRows(tenantId), getSettings(tenantId)]);
   const bySku = new Map(sys.map((r) => [r.sku, r]));
+  const skus = [...new Set(rows.map((r) => r.sku))];
+  const alter = skus.length ? await db.select({ sku: schema.amazonLageralter.sku, alter: schema.amazonLageralter.alter }).from(schema.amazonLageralter).where(and(eq(schema.amazonLageralter.tenantId, tenantId), inArray(schema.amazonLageralter.sku, skus))) : [];
+  const alterJe = new Map<string, number>();
+  for (const a of alter) {
+    const t = aeltesteTage(a.alter as Record<string, number>);
+    if (t !== null) alterJe.set(a.sku, Math.max(alterJe.get(a.sku) ?? 0, t));
+  }
   const mitRegel = new Set(rows.filter((r) => r.regel).map((r) => r.marktplatz));
   const zeilen: BqoolAnsicht[] = rows.map((r) => {
-    const s = bySku.get(r.sku);
+    const sy = bySku.get(r.sku);
     const z: BqoolZeile = { marktplatz: r.marktplatz as BqoolMarkt, sku: r.sku, asin: r.asin, titel: r.titel, versand: r.versand as BqoolZeile["versand"], preis: r.preis, min: r.min, max: r.max, regel: r.regel, status: r.status as BqoolZeile["status"], buyboxPreis: r.buyboxPreis, buyboxGewinner: r.buyboxGewinner, eigeneBuybox: r.eigeneBuybox, niedrigsterPreis: r.niedrigsterPreis, angebote: r.angebote, bestand: r.bestand, zusatz: r.zusatz };
     // Mindestpreis des Seller-Systems rechnet mit Gebühren/USt wie in DE – für andere Länder ein Richtwert.
-    const untergrenze = s?.min ?? null;
-    return { ...z, untergrenze, ek: s?.unitCost ?? null, hinweise: pruefe(z, untergrenze, mitRegel.has(r.marktplatz)), eingelesenAm: r.eingelesenAm, datei: r.datei };
+    const untergrenze = sy?.min ?? null;
+    // Effektiver Mindestpreis laut Regel-Katalog (Marge der Altersstufe, landeseigene USt) und Erklärung zur Buy Box.
+    const kat = katalogRegel(s.bqool.katalog, r.regel);
+    const eff = sy?.unitCost != null ? effektiverMin({ regel: kat, untergrenze: r.min, ek: sy.unitCost, fba: sy.fbaFee, fix: s.bqool.fixGebuehr, zusatz: s.bqool.zusatzkosten, ust: UST[r.marktplatz as ExportLand] ?? 0.2, provision: sy.referralRate, alterTage: alterJe.get(r.sku) ?? null }) : null;
+    const erklaerung = eff ? buyboxErklaerung({ buybox: r.buyboxPreis, effMin: eff.min, unterregel: eff.unterregel }) : null;
+    return { ...z, untergrenze, ek: sy?.unitCost ?? null, hinweise: pruefe(z, untergrenze, mitRegel.has(r.marktplatz)), eingelesenAm: r.eingelesenAm, datei: r.datei, effMin: eff?.min ?? null, marge: eff?.marge ?? null, unterregel: eff?.unterregel ?? null, erklaerung };
   });
   const stand = await db.select({ markt: L.marktplatz, am: max(L.eingelesenAm) }).from(L).where(eq(L.tenantId, tenantId)).groupBy(L.marktplatz);
   return { zeilen, stand: stand.map((s) => ({ marktplatz: s.markt, am: s.am })) };

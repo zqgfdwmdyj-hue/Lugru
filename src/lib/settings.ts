@@ -1,3 +1,4 @@
+import { KATALOG_STANDARD, type BqoolFormat, type ExportLand, type MarkenRegel } from "@/lib/bqool/export-logic";
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -98,6 +99,32 @@ export const DEFAULT_SETTINGS = {
    * Deal-Eingang (WhatsApp teilen → prüfen): Ziel-ROI für den max. EK, Reichweite der empfohlenen Menge, Löschfrist,
    * ab wie vielen Zeilen es eine Preisliste ist, Mail-Adresse für Weiterleitungen, iCloud-Link des Kurzbefehls.
    */
+  /**
+   * BQool-Dateien aus dem System: Standardregel „ia“, Regel-Katalog (spiegelt BQool), Abverkauf-Regelnamen je Land,
+   * Markenregeln (z. B. Philips in DE → „Abverkauf“), Max = Ø Buy Box 90 T × Faktor, Fix- und Zusatzkosten je Stück,
+   * Format aus Ludwigs Vorlage (null = Annahme bis zur Vorlage).
+   */
+  bqool: {
+    standardRegel: "ia",
+    /** Regel-Katalog, der BQool spiegelt (Repricer → Regeln). */
+    katalog: KATALOG_STANDARD,
+    abverkaufRegel: { DE: "Abverkauf DE", sonst: "Abverkauf" },
+    /** „Cost“ = EK netto × (1 + costUst) – so stehen die Werte in den bisherigen BQool-Dateien. */
+    costUst: 0.19,
+    /** Ausnahmen je Land: ASIN oder Marke/Produktname im Titel → Regel (Stand Bauauftrag 30.10.). */
+    markenRegeln: [
+      { marke: "B0DT6N95XH", land: "DE", regel: "Abverkauf" },
+      ...(["FR", "IT"] as const).flatMap((land) => ["Philips i9000", "Galaxy Watch Ultra", "PS5 Access Controller", "Angelcare"].map((marke) => ({ marke, land, regel: "Abverkauf" }))),
+    ] as MarkenRegel[],
+    /** Teure Elektronik → „Abverkauf“ in diesen Ländern. */
+    elektronikMarken: ["Zyxel", "JBL", "MSI", "Garmin", "DJI", "Gardena"] as string[],
+    elektronikLaender: ["FR", "IT", "ES"] as ExportLand[],
+    maxFaktor: 1.3,
+    fixGebuehr: 0,
+    zusatzkosten: 0,
+    laender: ["DE", "FR", "IT", "ES"] as ExportLand[],
+    format: null as BqoolFormat | null,
+  },
   dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "" },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
@@ -160,6 +187,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
+    bqool: { ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool,
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },
