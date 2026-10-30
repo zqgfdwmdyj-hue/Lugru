@@ -346,7 +346,20 @@ export default async function BuchhaltungPage({ searchParams }: { searchParams: 
               <label>Geldtransit<input name="transit" defaultValue={settings.buchhaltung.geldkonten.transit} style={{ width: 70 }} /></label>
               <label>Marktplatz-Verrechnung<input name="marktplatz" defaultValue={settings.buchhaltung.geldkonten.marktplatz} style={{ width: 70 }} /></label>
             </div>
-            <div className="muted">Konten mit dem Steuerberater abstimmen. AdelPrep (Wittmann & Grunert) läuft über Lexoffice und gehört nicht hierher.</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
+              <label>
+                USt-Voranmeldung (für die Fristenliste)
+                <select name="ustva" defaultValue={settings.buchhaltung.ustva.rhythmus}>
+                  <option value="aus">nicht anzeigen</option>
+                  <option value="monatlich">monatlich</option>
+                  <option value="quartal">vierteljährlich</option>
+                </select>
+              </label>
+              <label>
+                <input type="checkbox" name="dauerfrist" defaultChecked={settings.buchhaltung.ustva.dauerfrist} /> Dauerfristverlängerung
+              </label>
+            </div>
+            <div className="muted">Konten und Rhythmus mit dem Steuerberater abstimmen – das System rechnet nur das Datum. AdelPrep (Wittmann & Grunert) läuft über Lexoffice und gehört nicht hierher.</div>
             <button className="btn" type="submit">Speichern</button>
           </form>
         </details>

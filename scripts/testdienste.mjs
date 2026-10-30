@@ -346,6 +346,18 @@ async function route(req, url, body) {
   if (kat && req.method === "GET") return json({ asin: kat[1], images: [{ marketplaceId: url.searchParams.get("marketplaceIds") ?? "A1PA6795UKMFR9", images: [{ variant: "MAIN", link: `${SELF}/amazon-bild/${kat[1]}.jpg`, height: 1000, width: 1000 }] }] });
   // Erfundenes „Produktbild“ (JPEG-Kopf genügt dem Nachbau)
   if (p.startsWith("/amazon-bild/")) return [200, Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 0xff, 0xd9]), "image/jpeg"];
+  // Gebühren je ASIN und Land (erfunden): Provision 15 % (ASINs mit „ELEK“ 8 %), FBA 3,20 € (DE) bzw. 3,60 € (sonst).
+  const fee = /^\/amazon\/products\/fees\/v0\/items\/([^/]+)\/feesEstimate$/.exec(p);
+  if (fee && req.method === "POST") {
+    const asin = decodeURIComponent(fee[1]);
+    const b = parsed().FeesEstimateRequest ?? {};
+    const preis = Number(b.PriceToEstimateFees?.ListingPrice?.Amount ?? 0);
+    const cur = b.PriceToEstimateFees?.ListingPrice?.CurrencyCode ?? "EUR";
+    if (asin.startsWith("B0FEHLT")) return [400, { errors: [{ code: "InvalidInput", message: "ASIN unbekannt (Test)" }] }];
+    const ref = Math.round(preis * (asin.includes("ELEK") ? 0.08 : 0.15) * 100) / 100;
+    const fba = b.MarketplaceId === "A1PA6795UKMFR9" ? 3.2 : 3.6;
+    return json({ payload: { FeesEstimateResult: { Status: "Success", FeesEstimateIdentifier: { SellerInputIdentifier: b.Identifier }, FeesEstimate: { TotalFeesEstimate: { CurrencyCode: cur, Amount: Math.round((ref + fba) * 100) / 100 }, FeeDetailList: [{ FeeType: "ReferralFee", FinalFee: { CurrencyCode: cur, Amount: ref } }, { FeeType: "FBAFees", FinalFee: { CurrencyCode: cur, Amount: fba } }] } } } });
+  }
   const off = /^\/amazon\/products\/pricing\/v0\/items\/([^/]+)\/offers$/.exec(p);
   if (off && req.method === "GET") return angebote(decodeURIComponent(off[1]), url.searchParams.get("MarketplaceId") ?? "");
   if (p.startsWith("/amazon/")) {

@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { DealPrognose, OfferMarket } from "@/db/schema";
 import { eurRates } from "@/lib/fx/ecb";
-import { itemOffers } from "@/lib/integrations/clients/amazon";
+import { amazonVerbunden, feesSchaetzung, itemOffers } from "@/lib/integrations/clients/amazon";
 import { MARKTPLATZ_IDS, verdichteAngebote, type Land } from "@/lib/amazon-markt/logic";
 import { buyboxAnteile, MARKTPLAETZE, type KeepaStand, type Marktplatz } from "@/lib/keepa/auswertung";
 import { keepaMarkt } from "@/lib/keepa/markt";
@@ -63,14 +63,15 @@ export const inEurMit = (kurse: Record<string, number>) => (betrag: number | nul
 export type PrognoseErgebnis = { prognose: DealPrognose; titel: string | null; hinweise: string[] };
 
 /** Prognose für alle gewählten Länder. Fehler eines Landes stehen im Feld `fehler`, die anderen laufen weiter. */
-export async function dealPrognose(tenantId: string, asin: string, o: { laender: string[]; kundenpreis: number | null; prepGebuehr: number | null; market?: OfferMarket | null }, now = Date.now()): Promise<PrognoseErgebnis> {
+export async function dealPrognose(tenantId: string, asin: string, o: { laender: string[]; kundenpreis: number | null; prepGebuehr: number | null; market?: OfferMarket | null; /** Gebühren je Land live bei Amazon schätzen (Deal-Ampel; nicht beim Massen-Scan). */ amazonGebuehren?: boolean }, now = Date.now()): Promise<PrognoseErgebnis> {
   const geb = await gebuehrenFuer(tenantId, asin, o.market);
   const kurse = await eurRates();
   const inEur = inEurMit(kurse);
   const prognose: DealPrognose = {};
   const hinweise: string[] = [];
   let titel: string | null = null;
-  if (geb.geschaetzt) hinweise.push(`Gebühren geschätzt (Provision ${Math.round(geb.provision * 100)} %, FBA ${geb.fba.toFixed(2).replace(".", ",")} € aus den Einstellungen) – FBA-Gebühren je Land weichen ab.`);
+  const amazonLive = Boolean(o.amazonGebuehren) && (await amazonVerbunden(tenantId));
+  const pauschalIn: string[] = [];
 
   for (const land of o.laender) {
     const mwstSatz = MWST[land] ?? 0.2;
@@ -106,13 +107,33 @@ export async function dealPrognose(tenantId: string, asin: string, o: { laender:
     } catch (err) {
       e = { ...leer, fehler: (err instanceof Error ? err.message : String(err)).slice(0, 200) };
     }
-    if (e.vkEur !== null) e.gebuehren = r2(e.vkEur * geb.provision + geb.fba);
+    if (e.vkEur !== null) {
+      // Gebühren je ASIN und Land von Amazon (Provision je Kategorie, FBA je Größe/Land); Pauschale nur als Notlösung.
+      let live: { provisionSatz: number; fbaEur: number } | null = null;
+      if (amazonLive && land in MARKTPLATZ_IDS && e.vk !== null && e.vk > 0) {
+        const f = await feesSchaetzung(tenantId, asin, land as Land, e.vk, e.waehrung).catch(() => null);
+        const fbaEur = f ? inEur(f.fba, f.waehrung) : null;
+        if (f && fbaEur !== null) live = { provisionSatz: Math.round((f.provision / e.vk) * 10000) / 10000, fbaEur: r2(fbaEur) };
+      }
+      if (live) {
+        e.gebuehren = r2(e.vkEur * live.provisionSatz + live.fbaEur);
+        e.gebuehrenGeschaetzt = false;
+        e.gebuehrenLive = live;
+      } else {
+        e.gebuehren = r2(e.vkEur * geb.provision + geb.fba);
+        if (geb.geschaetzt) pauschalIn.push(land);
+      }
+    }
     const k = kundeAusPrognose(e, o.kundenpreis, o.prepGebuehr);
     e.gewinnKunde = k.gewinn;
     e.roiKunde = k.roi;
     if (e.vk !== null && e.vkEur === null) e.fehler = `Kein Kurs für ${e.waehrung} – Gewinn nicht berechnet.`;
     prognose[land] = e;
   }
+  if (pauschalIn.length)
+    hinweise.push(
+      `Gebühren ${amazonLive ? `in ${pauschalIn.join(", ")} ` : ""}pauschal geschätzt (Provision ${Math.round(geb.provision * 100)} %, FBA ${geb.fba.toFixed(2).replace(".", ",")} € aus den Einstellungen) – Notlösung${amazonLive ? ", Amazon lieferte dort keine Schätzung" : ", ohne Amazon-Anbindung keine Gebühren je ASIN und Land"}; bei Elektronik oft deutlich anders.`,
+    );
   return { prognose, titel, hinweise };
 }
 

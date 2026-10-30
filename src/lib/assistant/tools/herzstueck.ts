@@ -9,6 +9,7 @@ import { feierabend } from "@/lib/feierabend/service";
 import { addDaysIso } from "@/lib/dates";
 import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
 import { fristenListe } from "@/lib/private/fristen-service";
+import { geschaeftsFristen } from "@/lib/fristen-geschaeft";
 import { AUFWAND_TEXT } from "@/lib/tagesplan/logic";
 import { aufgabeVerschieben, tagesplan } from "@/lib/tagesplan/service";
 import { defineTool } from "../types";
@@ -53,14 +54,15 @@ export const dealPruefenTool = defineTool({
         gewinn_schnitt_90: l.schnitt90?.gewinn ?? null,
         marge_schnitt_90_prozent: l.schnitt90?.marge ?? null,
         roi_schnitt_90_prozent: l.schnitt90?.roi ?? null,
-        verkaeufe_monat: l.verkaeufeMonat,
+        verkaeufe_monat: l.verkaeufeMonat ?? (r.verkaeufeGeschaetzt && l.land === r.bestes?.land ? `${r.verkaeufeGeschaetzt.wert} (geschätzt aus ${r.verkaeufeGeschaetzt.aus})` : null),
         angebote: l.angebote,
         amazon_prozent: l.amazonProzent,
+        gebuehren: l.gebuehren ? { quelle: "Amazon (je ASIN und Land)", provision_prozent: Math.round(l.gebuehren.provision * 1000) / 10, fba: l.gebuehren.fba } : { quelle: "Pauschale (Notlösung)" },
         aktionsmuster: l.aktionsmuster ?? undefined,
         fehler: l.fehler ?? undefined,
       })),
       eigener_bestand: r.eigen ?? undefined,
-      gebuehren: { provision_prozent: Math.round(r.gebuehren.provision * 100), fba: r.gebuehren.fba, geschaetzt: r.gebuehren.geschaetzt || undefined },
+      gebuehren_pauschale: { provision_prozent: Math.round(r.gebuehren.provision * 100), fba: r.gebuehren.fba, geschaetzt: r.gebuehren.geschaetzt || undefined },
       hinweise: r.hinweise.length ? r.hinweise : undefined,
       link: abs(ctx, `/lieferanten/deal-ampel?code=${encodeURIComponent(r.asin)}&ek=${encodeURIComponent(String(i.ek).replace(".", ","))}&netto=${i.ek_ist_netto ? "1" : "0"}${i.menge ? `&menge=${i.menge}` : ""}`),
     });
@@ -130,7 +132,7 @@ export const fristenTool = defineTool({
   name: "fristen",
   title: "Fristen, Vorsorge & Verträge",
   description:
-    "Fristen aus dem Privatbereich bis zu einem Datum: Vorsorge je Person (Zahnarzt, Check-up, Impfungen …), Ablauf von Ausweis/Reisepass/Führerschein, TÜV und Reifenwechsel, Garantien, Verträge & Abos mit letztem Kündigungstag; dazu Vorschläge („fällig in 3 Wochen – buchen?“) und Fixkosten je Monat aus Verträgen. bereich „geschaeft“ = nur Einträge mit Firmen-Kennzeichen, „privat“ = ohne. Überfällige und Einträge im Erinnerungs-Vorlauf sind immer dabei.",
+    "Fristen aus dem Privatbereich bis zu einem Datum: Vorsorge je Person (Zahnarzt, Check-up, Impfungen …), Ablauf von Ausweis/Reisepass/Führerschein, TÜV und Reifenwechsel, Garantien, Verträge & Abos mit letztem Kündigungstag; dazu Vorschläge („fällig in 3 Wochen – buchen?“) und Fixkosten je Monat aus Verträgen. bereich „geschaeft“ = nur Einträge mit Firmen-Kennzeichen, „privat“ = ohne; bei „geschaeft“/„alle“ zusätzlich automatisch: Einreichfristen offener Ansprüche, Amazon-ToDos mit Frist, SAS-Termine und (falls eingestellt) USt-Voranmeldung. Überfällige und Einträge im Erinnerungs-Vorlauf sind immer dabei.",
   area: "privat",
   privat: true,
   write: false,
@@ -143,6 +145,7 @@ export const fristenTool = defineTool({
     if (ctx.session.privateScope === "familie") return { text: "Fristen & Verträge gehören nicht zum Familien-Zugang.", isError: true };
     const bis = i.bis_datum ?? addDaysIso(ctx.today, 90);
     const r = await fristenListe(ctx.session, ctx.today, bis, i.bereich);
+    const auto = i.bereich === "privat" ? [] : await geschaeftsFristen(ctx.session, ctx.today, bis);
     return json({
       zeitraum: { von: ctx.today, bis },
       bereich: i.bereich,
@@ -158,6 +161,7 @@ export const fristenTool = defineTool({
         firma: x.frist.firma || undefined,
       })),
       fixkosten_vertraege_je_monat: i.bereich === "geschaeft" ? r.fixkosten.firma : i.bereich === "privat" ? r.fixkosten.privat : r.fixkosten,
+      geschaeftlich_automatisch: auto.length ? auto.map((x) => ({ datum: x.datum, art: x.art, titel: x.titel, ueberfaellig: x.ueberfaellig || undefined, link: abs(ctx, x.link) })) : undefined,
       link: abs(ctx, "/privat/fristen"),
     });
   },

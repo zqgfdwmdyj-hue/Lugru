@@ -128,6 +128,8 @@ export type DealPrognose = Record<
     /** Amazon-Gebühren je Stück in EUR (Provision + FBA). */
     gebuehren: number | null;
     gebuehrenGeschaetzt?: boolean;
+    /** Gebühren laut Amazon (getMyFeesEstimateForASIN): Provisionssatz und FBA-Gebühr in EUR – sonst Pauschale. */
+    gebuehrenLive?: { provisionSatz: number; fbaEur: number } | null;
     mwstSatz: number;
     waehrung: string;
     /** Gewinn/ROI für den Kunden beim Kundenpreis (Prognose, ohne Garantie). */

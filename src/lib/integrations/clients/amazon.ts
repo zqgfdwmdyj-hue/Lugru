@@ -250,6 +250,46 @@ export async function itemOffers(tenantId: string, asin: string, land: Land): Pr
   return { payload: data, eigeneId: c.sellerId, abgerufen: new Date(), ausSpeicher: false };
 }
 
+// --- Gebühren je ASIN und Land (Product Fees API) -------------------------------------------
+
+const feeCache = new Map<string, { at: number; wert: AmazonGebuehren | null }>();
+export type AmazonGebuehren = { gesamt: number; provision: number; fba: number; waehrung: string };
+
+/**
+ * Amazon-Gebühren für einen Verkauf zum Preis `preis` (brutto, Landeswährung) mit FBA: Provision, FBA-Gebühr und
+ * Summe (getMyFeesEstimateForASIN). 24 Std. je Preis-Stufe gemerkt; null = Amazon kennt die ASIN dort nicht.
+ */
+export async function feesSchaetzung(tenantId: string, asin: string, land: Land, preis: number, waehrung: string): Promise<AmazonGebuehren | null> {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden (Anbindungen → Amazon).");
+  const key = `${tenantId}|${asin}|${land}|${Math.round(preis)}`;
+  const hit = feeCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600_000) return hit.wert;
+  const body = { FeesEstimateRequest: { MarketplaceId: MARKTPLATZ_IDS[land], IsAmazonFulfilled: true, PriceToEstimateFees: { ListingPrice: { CurrencyCode: waehrung, Amount: Math.round(preis * 100) / 100 } }, Identifier: `${asin}-${land}` } };
+  type Antwort = { payload?: { FeesEstimateResult?: { Status?: string; FeesEstimate?: { TotalFeesEstimate?: { Amount?: number; CurrencyCode?: string }; FeeDetailList?: { FeeType?: string; FinalFee?: { Amount?: number } }[] } } } };
+  const r = await sp<Antwort>(c, "POST", `/products/fees/v0/items/${encodeURIComponent(asin)}/feesEstimate`, body).catch((e) => {
+    if (/→ (400|404)/.test(e instanceof Error ? e.message : "")) return null;
+    throw e;
+  });
+  const est = r?.payload?.FeesEstimateResult;
+  const fe = est?.Status === "Success" ? est.FeesEstimate : undefined;
+  const gesamt = fe?.TotalFeesEstimate?.Amount;
+  const wert =
+    typeof gesamt === "number"
+      ? {
+          gesamt: Math.round(gesamt * 100) / 100,
+          provision: Math.round((fe?.FeeDetailList ?? []).filter((x) => /Referral|VariableClosing|PerItem/i.test(x.FeeType ?? "")).reduce((n, x) => n + (x.FinalFee?.Amount ?? 0), 0) * 100) / 100,
+          fba: Math.round((fe?.FeeDetailList ?? []).filter((x) => /FBA/i.test(x.FeeType ?? "")).reduce((n, x) => n + (x.FinalFee?.Amount ?? 0), 0) * 100) / 100,
+          waehrung: fe?.TotalFeesEstimate?.CurrencyCode ?? waehrung,
+        }
+      : null;
+  feeCache.set(key, { at: Date.now(), wert });
+  return wert;
+}
+
+/** Ist Amazon (SP-API) angebunden? */
+export const amazonVerbunden = async (tenantId: string) => Boolean(await creds(tenantId));
+
 // --- Produktbild (Katalog) ------------------------------------------------------------
 
 const bildCache = new Map<string, { at: number; url: string | null }>();

@@ -181,6 +181,7 @@ export async function einstellungenAction(fd: FormData) {
           ...(firmen.length ? { firmen } : {}),
           datev,
           geldkonten: { ...(bh.geldkonten ?? {}), bank: konto("bank"), kreditkarte: konto("kreditkarte"), transit: konto("transit"), marktplatz: konto("marktplatz") },
+          ...(fd.has("ustva") ? { ustva: { rhythmus: (["monatlich", "quartal"].includes(String(fd.get("ustva"))) ? String(fd.get("ustva")) : "aus") as "monatlich" | "quartal" | "aus", dauerfrist: fd.get("dauerfrist") === "on" } } : {}),
         },
       },
     })

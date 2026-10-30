@@ -26,6 +26,7 @@ export type DealPruefung = {
   gelb: string[];
   begruendung: string;
   abverkauf: { unsProMonat: number | null; empfohlen: { von: number; bis: number } | null; tage: number | null };
+  verkaeufeGeschaetzt: { wert: number; aus: string } | null;
   eigen: { bestand: number; unterwegs: number; proTag: number | null } | null;
   gebuehren: { provision: number; fba: number; geschaetzt: boolean };
   hinweise: string[];
@@ -50,7 +51,7 @@ export async function dealPruefen(tenantId: string, e: { code: string; ek: numbe
   const { asin, andere } = "asin" in code ? { asin: code.asin, andere: [] } : await asinZuEan(tenantId, code.ean);
   const ekNetto = ekNettoAus(e.ek, e.ekIstNetto, s.vatRate);
   const laender = (e.laender?.length ? e.laender : cfg.laender).map((l) => l.toUpperCase()).slice(0, 8);
-  const [p, geb] = await Promise.all([dealPrognose(tenantId, asin, { laender, kundenpreis: ekNetto, prepGebuehr: cfg.nebenkosten }, now), gebuehrenFuer(tenantId, asin)]);
+  const [p, geb] = await Promise.all([dealPrognose(tenantId, asin, { laender, kundenpreis: ekNetto, prepGebuehr: cfg.nebenkosten, amazonGebuehren: true }, now), gebuehrenFuer(tenantId, asin)]);
   const hinweise = [...p.hinweise];
   const ergebnisse: LandErgebnis[] = Object.entries(p.prognose).map(([land, x]) => {
     // Ø 90 Tage und Tief in Landeswährung → EUR mit demselben Kurs wie der aktuelle Preis.
@@ -58,7 +59,7 @@ export async function dealPruefen(tenantId: string, e: { code: string; ek: numbe
     const zuEur = (v: number | null) => (v === null || kurs === null ? null : r2(v * kurs));
     if (x.abgerufen && now - Date.parse(x.abgerufen) > STD48) hinweise.push(`${land}: Keepa-Werte vom ${new Date(x.abgerufen).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} – älter als 48 Stunden.`);
     return rechneLand(
-      { land, vkEur: x.vkEur, vk90Eur: zuEur(x.vk90), tief12Eur: zuEur(x.tief12), mwstSatz: x.mwstSatz, verkaeufeMonat: x.verkaeufeMonat, angebote: x.angeboteFba === null && x.angeboteFbm === null ? null : (x.angeboteFba ?? 0) + (x.angeboteFbm ?? 0), amazonProzent: x.amazonProzent, aktionsmuster: x.aktionsmuster ?? null, fehler: x.fehler ?? null },
+      { land, vkEur: x.vkEur, vk90Eur: zuEur(x.vk90), tief12Eur: zuEur(x.tief12), mwstSatz: x.mwstSatz, verkaeufeMonat: x.verkaeufeMonat, angebote: x.angeboteFba === null && x.angeboteFbm === null ? null : (x.angeboteFba ?? 0) + (x.angeboteFbm ?? 0), amazonProzent: x.amazonProzent, aktionsmuster: x.aktionsmuster ?? null, fehler: x.fehler ?? null, gebuehren: x.gebuehrenLive ? { provision: x.gebuehrenLive.provisionSatz, fba: x.gebuehrenLive.fbaEur } : null },
       geb,
       ekNetto,
       cfg.nebenkosten,
@@ -76,5 +77,5 @@ export async function dealPruefen(tenantId: string, e: { code: string; ek: numbe
   if (eigen) hinweise.push(`Wir führen die ASIN schon: ${eigen.bestand} auf Lager${eigen.unterwegs ? `, ${eigen.unterwegs} unterwegs` : ""}${eigen.proTag !== null ? `, ${eigen.proTag} verkauft je Tag` : ""}.`);
   if (andere.length) hinweise.push(`Zur EAN gibt es weitere ASINs (Packungsgröße prüfen): ${andere.join(", ")}.`);
   const [prod] = await db.select({ title: schema.products.title }).from(schema.products).where(and(eq(schema.products.tenantId, tenantId), eq(schema.products.asin, asin))).limit(1);
-  return { asin, titel: p.titel ?? prod?.title ?? null, andereAsins: andere, ekNetto, menge: e.menge, laender: ergebnisse, ampel: a.ampel, bestes: a.bestes, rot: a.rot, gelb: a.gelb, begruendung: a.begruendung, abverkauf: a.abverkauf, eigen, gebuehren: geb, hinweise };
+  return { asin, titel: p.titel ?? prod?.title ?? null, andereAsins: andere, ekNetto, menge: e.menge, laender: ergebnisse, ampel: a.ampel, bestes: a.bestes, rot: a.rot, gelb: a.gelb, begruendung: a.begruendung, abverkauf: a.abverkauf, verkaeufeGeschaetzt: a.verkaeufeGeschaetzt, eigen, gebuehren: geb, hinweise };
 }

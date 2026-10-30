@@ -133,7 +133,7 @@ export const DEFAULT_SETTINGS = {
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
   /** Buchhaltung je Firma (nur LuGru/WiGru – nicht AdelPrep): SKR04, DATEV-Nummern vom Steuerberater, Geldkonten. */
-  buchhaltung: { firmen: ["LuGru", "WiGru"], kontenrahmen: "SKR04" as "SKR04" | "SKR03", datev: {} as Record<string, { beraternummer?: string; mandantennummer?: string }>, geldkonten: GELDKONTEN_STANDARD, wjBeginnMonat: 1 },
+  buchhaltung: { firmen: ["LuGru", "WiGru"], kontenrahmen: "SKR04" as "SKR04" | "SKR03", datev: {} as Record<string, { beraternummer?: string; mandantennummer?: string }>, geldkonten: GELDKONTEN_STANDARD, wjBeginnMonat: 1, ustva: { rhythmus: "aus", dauerfrist: false } as { rhythmus: "monatlich" | "quartal" | "aus"; dauerfrist: boolean } },
   /** Tagesplan: Arbeitszeit je Wochentag (Mo–Fr 9–17 Uhr), je Person abweichend; Aufgaben der nächsten 2 Tage vorziehen. */
   tagesplan: { arbeitszeit: ARBEITSZEIT_STANDARD, personen: {} as Record<string, Arbeitszeit>, vorziehen: 2 },
   amazonBusiness: { stufen: [3, 10, 25], rabatte: [3, 5, 8], minGewinn: 1 },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abverkauf, DEAL_AMPEL_STANDARD, dealAmpel, ekNettoAus, leseCode, rechneLand, type LandMarkt } from "@/lib/deal-ampel/logic";
+import { abverkauf, DEAL_AMPEL_STANDARD, dealAmpel, ekNettoAus, leseCode, rechneLand, verkaeufeSchaetzen, type LandMarkt } from "@/lib/deal-ampel/logic";
 
 // Deal-Ampel – erfundene Marktwerte.
 
@@ -66,5 +66,34 @@ describe("Ampel", () => {
     const a = dealAmpel([rechneLand(markt({ land: "DE", fehler: "Keepa kennt die ASIN hier nicht." }), geb, 20, 0)], null, DEAL_AMPEL_STANDARD);
     expect(a).toMatchObject({ ampel: "rot", bestes: null });
     expect(a.begruendung).toMatch(/Keepa kennt die ASIN/);
+  });
+});
+
+describe("Befunde 30.10. (B9)", () => {
+  it("Gebühren je Land von Amazon statt Pauschale (Elektronik: 8 % statt 15 %)", () => {
+    const pauschal = rechneLand(markt({ land: "DE", vkEur: 119, vk90Eur: 119 }), geb, 60, 0);
+    const live = rechneLand(markt({ land: "DE", vkEur: 119, vk90Eur: 119, gebuehren: { provision: 0.08, fba: 3.2 } }), geb, 60, 0);
+    expect(live.aktuell!.gewinn).toBeGreaterThan(pauschal.aktuell!.gewinn!);
+    // 100 netto − 9,52 Provision − 3,20 FBA − 60 EK = 27,28
+    expect(live.aktuell!.gewinn).toBeCloseTo(27.28, 1);
+  });
+
+  it("Verkäufe im besten Land unbekannt → aus DE über die Marktgröße geschätzt und gekennzeichnet", () => {
+    expect(verkaeufeSchaetzen("ES", [{ land: "DE", verkaeufeMonat: 200 }, { land: "ES", verkaeufeMonat: null }])).toEqual({ wert: 70, aus: "DE" });
+    expect(verkaeufeSchaetzen("ES", [{ land: "ES", verkaeufeMonat: null }])).toBeNull();
+    const l = [rechneLand(markt({ land: "DE", vkEur: 100, vk90Eur: 100, verkaeufeMonat: 200, angebote: 4 }), geb, 30, 0), rechneLand(markt({ land: "ES", vkEur: 140, vk90Eur: 140, mwstSatz: 0.21, angebote: 4 }), geb, 30, 0)];
+    const a = dealAmpel(l, 10, DEAL_AMPEL_STANDARD);
+    expect(a.bestes?.land).toBe("ES");
+    expect(a.verkaeufeGeschaetzt).toEqual({ wert: 70, aus: "DE" });
+    expect(a.begruendung).toContain("geschätzt aus DE");
+    expect(a.gelb.join(" ")).not.toContain("Verkäufe je Monat unbekannt");
+  });
+
+  it("hoher Amazon-Anteil in einem anderen Land → mindestens Gelb", () => {
+    const l = [rechneLand(markt({ land: "DE", vkEur: 150, vk90Eur: 150, verkaeufeMonat: 300, angebote: 3, amazonProzent: 0 }), geb, 40, 0), rechneLand(markt({ land: "IT", vkEur: 120, vk90Eur: 120, mwstSatz: 0.22, verkaeufeMonat: 100, angebote: 3, amazonProzent: 84.7 }), geb, 40, 0)];
+    const a = dealAmpel(l, 10, DEAL_AMPEL_STANDARD);
+    expect(a.bestes?.land).toBe("DE");
+    expect(a.ampel).not.toBe("gruen");
+    expect(a.gelb.join(" ")).toContain("Amazon hält in IT die Buy Box 84,7 %");
   });
 });
