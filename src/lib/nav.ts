@@ -1,4 +1,5 @@
-// Navigation: sieben Hauptbereiche, Privat als eigener Bereich und feste Hilfsfunktionen.
+// Navigation: Hauptbereiche nach Arbeitsabläufen (Versand, Amazon, eBay & Temu, B2B, Lager, Einkauf, Service,
+// Finanzen, Marken), Privat als eigener Bereich und feste Hilfsfunktionen.
 // Eine Quelle für Seitenleiste, Bereichs-Reiter und Handy-Menü. Ohne Server-Abhängigkeiten.
 
 export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number; pallets: number };
@@ -36,14 +37,39 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    // Nur was mit dem Verschicken von Aufträgen zu tun hat – Marktplätze und Amazon haben eigene Bereiche.
     key: "verkauf",
-    label: "Verkauf & Versand",
+    label: "Aufträge & Versand",
     color: "var(--area-verkauf)",
     icon: "🚚",
     items: [
-      { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
+      { href: "/auftraege", label: "Aufträge", badge: "orders", short: "Versand" },
       { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
       { href: "/auftraege/prep-center", label: "Prep Center: Versand je Monat" },
+    ],
+  },
+  {
+    key: "amazon",
+    label: "Amazon",
+    color: "var(--area-amazon)",
+    icon: "🅰️",
+    items: [
+      { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
+      { href: "/inbound", label: "FBA-Inbound" },
+      { href: "/sas", label: "SAS-Programm" },
+      { href: "/repricer", label: "Repricer (BQool)" },
+      { href: "/amazon-business", label: "Amazon Business" },
+      { href: "/echtheit", label: "Echtheits-Ordner" },
+      { href: "/calls", label: "Calls (Consultant & Gruppe)" },
+    ],
+  },
+  {
+    // Angebote auf den Marktplätzen (eBay, Temu) – gleiche Farbfamilie wie „Aufträge & Versand“ (Verkauf).
+    key: "marktplaetze",
+    label: "eBay & Temu",
+    color: "var(--area-verkauf)",
+    icon: "🏷️",
+    items: [
       { href: "/listings", label: "Angebote (alle Kanäle)" },
       { href: "/ebay", label: "Neues eBay-Angebot" },
       { href: "/ebay/pruefen", label: "eBay-Angebote prüfen" },
@@ -51,12 +77,20 @@ export const NAV: NavSection[] = [
       { href: "/ebay?ansicht=verlauf", label: "eBay-Verlauf" },
       { href: "/listings/temu", label: "eBay → Temu / Wawi" },
       { href: "/listings/temu#rechner", label: "Temu-Rechner" },
-      { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
-      { href: "/sas", label: "Amazon SAS-Programm" },
-      { href: "/calls", label: "Calls (Consultant & Gruppe)" },
-      { href: "/echtheit", label: "Echtheits-Ordner" },
-      { href: "/amazon-business", label: "Amazon Business" },
-      { href: "/repricer", label: "Repricer (BQool)" },
+    ],
+  },
+  {
+    // Deals für Prep-Kunden: eigener Geschäftszweig – gleiche Farbfamilie wie „Einkauf“.
+    key: "b2b",
+    label: "B2B-Handel",
+    color: "var(--area-einkauf)",
+    icon: "🤝",
+    items: [
+      { href: "/b2b", label: "Deals" },
+      { href: "/b2b/preislisten", label: "Preislisten je Land" },
+      { href: "/b2b/kunden", label: "B2B-Kunden" },
+      { href: "/b2b/lieferanten", label: "Lieferanten-Freigaben" },
+      { href: "/b2b/bilanz", label: "Bilanz" },
     ],
   },
   {
@@ -69,8 +103,7 @@ export const NAV: NavSection[] = [
       { href: "/chargen", label: "Chargen" },
       { href: "/bestand", label: "Bestand & Inventur" },
       { href: "/artikel", label: "Artikelstamm (eigene Marken)" },
-      { href: "/inbound", label: "FBA-Inbound" },
-      { href: "/paletten", label: "Paletten-Lager", badge: "pallets", alert: true, short: "Paletten-Meldungen" },
+      { href: "/paletten", label: "Paletten-Lager (Kunden)", badge: "pallets", alert: true, short: "Paletten-Meldungen" },
     ],
   },
   {
@@ -85,7 +118,6 @@ export const NAV: NavSection[] = [
       { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
       { href: "/lieferanten/chancen", label: "Chancen" },
       { href: "/lieferanten/finden", label: "Großhändler finden" },
-      { href: "/b2b", label: "B2B-Deals" },
       { href: "/board", label: "Kontakt-Board" },
     ],
   },
@@ -131,8 +163,8 @@ export const NAV: NavSection[] = [
       { href: "/marken", label: "Ideen & Saison" },
       { href: "/marken/content", label: "Content-Plan" },
       { href: "/marken/shop", label: "Shop-Analyse" },
-      { href: "/marken/uhren", label: "Uhren: Buy & Flip" },
       { href: "/marken/profile", label: "Markenprofile" },
+      { href: "/marken/uhren", label: "Uhren: Buy & Flip" },
     ],
   },
   { key: "privat", label: "Privat", color: "var(--area-privat)", icon: "🔒", items: [{ href: "/privat", label: "Privat" }] },

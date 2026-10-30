@@ -15,14 +15,23 @@ describe("aktiver Menüpunkt", () => {
     expect(act("/")).toBe("heute › Tagesübersicht");
     expect(act("/?ansicht=liste&zeit=heute")).toBe("heute › Alle Aufgaben");
     expect(act("/?kat=geld")).toBe("heute › Alle Aufgaben");
-    expect(act("/ebay")).toBe("verkauf › Neues eBay-Angebot");
-    expect(act("/ebay?ansicht=artikel")).toBe("verkauf › eBay-Artikel & Gewinn");
+    expect(act("/ebay")).toBe("marktplaetze › Neues eBay-Angebot");
+    expect(act("/ebay?ansicht=artikel")).toBe("marktplaetze › eBay-Artikel & Gewinn");
     expect(act("/ebay?ansicht=rechnungen")).toBe("finanzen › eBay-Rechnungen");
-    expect(act("/ebay/pruefen/123")).toBe("verkauf › eBay-Angebote prüfen");
+    expect(act("/ebay/pruefen/123")).toBe("marktplaetze › eBay-Angebote prüfen");
     expect(act("/rechnungen/abc")).toBe("finanzen › Eingangsrechnungen");
     expect(act("/rechnungen/ausgang/neu")).toBe("finanzen › Ausgangsrechnungen");
-    expect(act("/listings/temu")).toBe("verkauf › eBay → Temu / Wawi");
-    expect(act("/listings/xyz")).toBe("verkauf › Angebote (alle Kanäle)");
+    expect(act("/listings/temu")).toBe("marktplaetze › eBay → Temu / Wawi");
+    expect(act("/listings/xyz")).toBe("marktplaetze › Angebote (alle Kanäle)");
+    expect(act("/auftraege/123")).toBe("verkauf › Aufträge");
+    expect(act("/auftraege/lieferschein")).toBe("verkauf › Labels: Warensendung & DHL");
+    expect(act("/sas")).toBe("amazon › SAS-Programm");
+    expect(act("/inbound/abc")).toBe("amazon › FBA-Inbound");
+    expect(act("/repricer")).toBe("amazon › Repricer (BQool)");
+    expect(act("/calls/offen")).toBe("amazon › Calls (Consultant & Gruppe)");
+    expect(act("/b2b/neu")).toBe("b2b › Deals");
+    expect(act("/b2b/kunden")).toBe("b2b › B2B-Kunden");
+    expect(act("/paletten/sendungen")).toBe("produkte › Paletten-Lager (Kunden)");
     expect(act("/einkauf/beschaffungsanalyse")).toBe("einkauf › Dropship-Trackings");
     expect(act("/einkauf/123")).toBe("einkauf › Einkauf & Wareneingang");
     expect(act("/marken/ideen/5")).toBe("marken › Ideen & Saison");
@@ -48,6 +57,16 @@ describe("Sichtbarkeit", () => {
     expect(sections.find((s) => s.key === "verkauf")).toBeUndefined();
     // Wissen und Importe sind eigene Bereiche, Einstellungen nur für Inhaber – also keine Hilfsfunktionen.
     expect(sections.find((s) => s.key === "hilfe")).toBeUndefined();
+  });
+  it("Aufträge & Versand enthält nur Versand – Amazon, eBay/Temu und B2B haben eigene Bereiche", () => {
+    const labels = (k: string) => NAV.find((s) => s.key === k)!.items.map((i) => i.label);
+    expect(labels("verkauf")).toEqual(["Aufträge", "Labels: Warensendung & DHL", "Prep Center: Versand je Monat"]);
+    expect(labels("amazon")).toContain("SAS-Programm");
+    expect(labels("marktplaetze")).toContain("Neues eBay-Angebot");
+    expect(labels("einkauf")).not.toContain("B2B-Deals");
+    const amazonStaff = visibleNav((p) => canAccess({ role: "staff", areas: ["amazon"] }, areaForPath(p)), false);
+    expect(amazonStaff.find((s) => s.key === "amazon")!.items.map((i) => i.label)).toEqual(["FBA-Inbound", "SAS-Programm", "Amazon Business", "Echtheits-Ordner", "Calls (Consultant & Gruppe)"]);
+    expect(amazonStaff.some((s) => s.key === "verkauf" || s.key === "marktplaetze")).toBe(false);
   });
   it("jede Adresse kommt nur einmal vor", () => {
     const hrefs = NAV.flatMap((s) => s.items.map((i) => i.href));

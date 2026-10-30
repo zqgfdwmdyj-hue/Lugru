@@ -33,6 +33,8 @@
   --area-service: #57534e;    /* Schiefergrau */
   --area-marken: #db2777;     /* Magenta */
   --area-privat: #881337;     /* Beere (Privat) */
+  --area-amazon: #787800;     /* Oliv – größter Abstand zu allen anderen Bereichs- und Statusfarben */
+  /* Verwandte Bereiche teilen eine Farbfamilie: eBay & Temu → Verkauf, B2B-Handel → Einkauf, Hilfsfunktionen → Service. */
   --area-hilfe: #57534e;
   --area: #57534e;
   /* Rahmen von Eingabefeldern, Nebenaktionen und Auswahl-Chips: mindestens 3:1 gegen Weiß. */
@@ -899,6 +901,9 @@ h2 { font-size: 16px; margin: 0; }
    ===================================================================================================== */
 .main:has(> .area-bar[data-area="heute"]) { --area: var(--area-heute); }
 .main:has(> .area-bar[data-area="verkauf"]) { --area: var(--area-verkauf); }
+.main:has(> .area-bar[data-area="marktplaetze"]) { --area: var(--area-verkauf); }
+.main:has(> .area-bar[data-area="amazon"]) { --area: var(--area-amazon); }
+.main:has(> .area-bar[data-area="b2b"]) { --area: var(--area-einkauf); }
 .main:has(> .area-bar[data-area="produkte"]) { --area: var(--area-produkte); }
 .main:has(> .area-bar[data-area="einkauf"]) { --area: var(--area-einkauf); }
 .main:has(> .area-bar[data-area="service"]) { --area: var(--area-service); }
