@@ -71,4 +71,28 @@ test.describe("Uploads", () => {
     await va.getByTestId("upload-los").click();
     await expect(va.getByTestId("upload-ergebnis")).toContainText("fehlt dir der Zugriff");
   });
+
+  test("Amazon-Remissionsaufträge (TXT und CSV) mit mehreren Zeilen je Auftrag + SKU werden übernommen", async ({ page }) => {
+    const m = marke();
+    const kopf = ["request-date", "order-id", "order-source", "order-type", "service-speed", "order-status", "last-updated-date", "sku", "fnsku", "disposition", "requested-quantity", "cancelled-quantity", "disposed-quantity", "shipped-quantity", "in-process-quantity", "removal-fee", "currency"];
+    const z = (o: string, disp: string, fee: string) => ["2026-09-01T10:00:00+00:00", o, "", "Return", "Standard", "Completed", "2026-09-05T08:00:00+00:00", `TEST-REM-${m}`, "X00TEST001", disp, "1", "0", "0", "1", "0", fee, "EUR"];
+    const zeilen = [z(`REM1-${m}`, "Sellable", "0.50"), z(`REM1-${m}`, "Sellable", "0.75"), z(`REM1-${m}`, "Unsellable", "0.50"), z(`REM2-${m}`, "Sellable", "0.50")];
+    const txt = [kopf, ...zeilen].map((r) => r.join("\t")).join("\r\n");
+    const csv = [kopf, ...zeilen].map((r) => r.map((x) => `"${x}"`).join(",")).join("\n");
+    await anmelden(page, "inhaber");
+    await page.goto("/uploads");
+    await page.getByTestId("upload-dateien").setInputFiles([{ name: `remissionen-${m}.txt`, mimeType: "text/plain", buffer: Buffer.from(txt, "utf8") }]);
+    await page.getByTestId("upload-los").click();
+    const e1 = page.getByTestId("upload-ergebnis");
+    await expect(e1).toContainText("Remissionsaufträge (Details): 4 Zeilen gelesen, 3 neu", { timeout: 60_000 });
+    const r = await sql("select requested_quantity, removal_fee from amazon_removal_orders where order_id = $1 and disposition = 'Sellable'", [`REM1-${m}`]);
+    expect(r).toHaveLength(1);
+    expect(Number(r[0].requested_quantity)).toBe(2);
+    expect(Number(r[0].removal_fee)).toBe(1.25);
+    // Derselbe Bericht als CSV (Download-Variante) → nichts doppelt
+    await page.goto("/uploads");
+    await page.getByTestId("upload-dateien").setInputFiles([{ name: `remissionen-${m}.csv`, mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") }]);
+    await page.getByTestId("upload-los").click();
+    await expect(page.getByTestId("upload-ergebnis")).toContainText("4 Zeilen gelesen, 0 neu", { timeout: 60_000 });
+  });
 });

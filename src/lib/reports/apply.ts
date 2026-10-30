@@ -13,7 +13,7 @@ import {
   parseLedger,
   parseOrdersReport,
   parseReimbursements,
-  parseRemovalOrders,
+  mergeRemovalOrders, parseRemovalOrders,
   parseRemovalShipments,
   parseSettlement,
   REPORT_KINDS,
@@ -112,8 +112,9 @@ export async function applyReport(opts: {
       break;
     }
     case "removalOrders": {
-      const parsed = parseRemovalOrders(table);
-      rows = parsed.length;
+      const roh = parseRemovalOrders(table);
+      rows = roh.length;
+      const parsed = mergeRemovalOrders(roh);
       const R = schema.amazonRemovalOrders;
       for (const part of chunks(withTenant(parsed))) {
         const res = await db

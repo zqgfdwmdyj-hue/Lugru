@@ -172,6 +172,36 @@ export function parseRemovalOrders(table: Table) {
   });
 }
 
+/**
+ * Mehrere Zeilen zu demselben Auftrag + SKU + Zustand (Amazon führt Einheiten mit unterschiedlicher Gebühr einzeln)
+ * zu einer zusammenfassen: Mengen und Gebühren addieren, Status vom zuletzt aktualisierten Stand. Sonst bricht der
+ * Import ab, weil die Datenbank dieselbe Zeile in einem Schritt zweimal ändern müsste.
+ */
+export function mergeRemovalOrders<T extends ReturnType<typeof parseRemovalOrders>[number]>(rows: T[]): T[] {
+  const out = new Map<string, T>();
+  for (const r of rows) {
+    const key = `${r.orderId}\u0001${r.sku}\u0001${r.disposition}`;
+    const a = out.get(key);
+    if (!a) {
+      out.set(key, { ...r });
+      continue;
+    }
+    const neuer = (r.lastUpdated ?? "") > (a.lastUpdated ?? "");
+    out.set(key, {
+      ...a,
+      ...(neuer ? { orderStatus: r.orderStatus, lastUpdated: r.lastUpdated } : {}),
+      fnsku: a.fnsku ?? r.fnsku,
+      requestedQuantity: a.requestedQuantity + r.requestedQuantity,
+      cancelledQuantity: a.cancelledQuantity + r.cancelledQuantity,
+      disposedQuantity: a.disposedQuantity + r.disposedQuantity,
+      shippedQuantity: a.shippedQuantity + r.shippedQuantity,
+      inProcessQuantity: a.inProcessQuantity + r.inProcessQuantity,
+      removalFee: a.removalFee === null && r.removalFee === null ? null : Math.round(((a.removalFee ?? 0) + (r.removalFee ?? 0)) * 100) / 100,
+    });
+  }
+  return [...out.values()];
+}
+
 /** Spaltennamen des Berichts „Remissionssendungen“ – englisch (Flatfile) und deutsch (Seller Central). */
 const RS = {
   orderId: ["order-id", "Auftragsnummer", "Remissionsauftragsnummer", "Bestellnummer", "Auftrags-ID"],

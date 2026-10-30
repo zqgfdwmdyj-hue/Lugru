@@ -12,6 +12,7 @@ import { todayIso } from "@/lib/dates";
 import { importAnyFile } from "@/lib/imports/dispatch";
 import { readTable } from "@/lib/tabular";
 import { leseZip } from "@/lib/zip-lesen";
+import { lesbarerFehler } from "@/lib/fehler-text";
 import { artNachEndung, endung, istPdf, istZip, jsonArt, pdfArt, tabellenArt, UPLOAD_ART, type UploadArt } from "./erkennen";
 
 // Zentrale Uploads: jede Datei erkennen und mit demselben Code verarbeiten wie im jeweiligen Bereich. Rechte je
@@ -142,7 +143,7 @@ export async function dateiHochladen(session: Session, name: string, bytes: Uint
   try {
     r = await verarbeiten(session, name, bytes, art, o);
   } catch (e) {
-    r = { ok: false, text: e instanceof Error ? e.message.slice(0, 400) : "Die Datei konnte nicht verarbeitet werden.", hinweise: [] };
+    r = { ok: false, text: `Die Datei konnte nicht verarbeitet werden – ${lesbarerFehler(e, 400)}`, hinweise: [] };
   }
   return [await mitProtokoll(session, { datei: name, art, artText: info.text, ...r, link: info.link }, bytes.length)];
 }
