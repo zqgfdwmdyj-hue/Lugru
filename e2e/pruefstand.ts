@@ -33,6 +33,13 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“", erwartet: "Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung", tests: ["postfach.spec.ts › Anbindungen, Verbinden"] },
     ],
   },
+  "/amazon-faelle": {
+    abläufe: [
+      { ablauf: "Amazon-Mails einordnen: Freischaltung abgelehnt, Fall „Antwort nötig“ (2 Mails, gleiche Fall-ID), Freischaltung entzogen, unsichere Mail", erwartet: "Paket mit Rechnung ≤ 180 Tage und ≥ 10 Stück, VA-Thread; ein Vorgang mit Antwort DE/EN inkl. Sendung, POD als „fehlt“; Entzug rot mit Meldung an Ludwig und Bestand in €; Einordnung von Hand lernt; Claude-Werkzeuge", tests: ["amazon-faelle.spec.ts › Freischaltung abgelehnt"] },
+      { ablauf: "20 erfundene Amazon-Mails in 8 Sprachen einordnen (Unit-Test)", erwartet: "≥ 18 richtig (Bereich und Phase), Fall-ID/ASIN/Frist erkannt", tests: [] },
+    ],
+    offen: ["Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)", "SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung"],
+  },
   "/deal-eingang": {
     abläufe: [
       { ablauf: "Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge", erwartet: "Ampel je Angebot mit Gründen; Push ≤ 60 s nur bei Grün/Gelb (ProfitPath); widerrufener Schlüssel abgelehnt; gleiche ASIN/EK zusammengefasst, neuer EK = Update; Einkaufsentwurf und B2B-Entwurf angelegt", tests: ["deal-eingang.spec.ts › Text, Screenshot"] },

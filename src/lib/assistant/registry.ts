@@ -25,6 +25,7 @@ import { HERZSTUECK } from "./tools/herzstueck";
 import { BQOOL } from "./tools/bqool";
 import { VA } from "./tools/va";
 import { DEAL_EINGANG } from "./tools/deal-eingang";
+import { AMAZON_FAELLE } from "./tools/amazon-faelle";
 import { berlinDateTime } from "./tools/common";
 import { jobStand } from "@/lib/today/jobs";
 import { withStand, type Datenstand } from "./stand";
@@ -33,7 +34,7 @@ export { withStand };
 // Alle Werkzeuge an einer Stelle: wer darf was (Bereich, Inhaber, Privat, Ändern), Eingabe prüfen,
 // ausführen und protokollieren. Claude-Konnektor und Fragefeld rufen nur hierüber auf.
 
-export const ALL_TOOLS: ToolDef[] = [...ALLGEMEIN, ...WAWI, ...BESTAND, ...GESCHAEFT, ...BEARBEITEN, ...AMAZON_MARKT, ...RETOUREN_STATION, ...B2B, ...FINANZEN, ...ECHTHEIT, ...AMAZON_BUSINESS, ...CALLS, ...KEEPA, ...PALETTEN, ...BUERO, ...PRIVAT, ...HERZSTUECK, ...BQOOL, ...VA, ...DEAL_EINGANG];
+export const ALL_TOOLS: ToolDef[] = [...ALLGEMEIN, ...WAWI, ...BESTAND, ...GESCHAEFT, ...BEARBEITEN, ...AMAZON_MARKT, ...RETOUREN_STATION, ...B2B, ...FINANZEN, ...ECHTHEIT, ...AMAZON_BUSINESS, ...CALLS, ...KEEPA, ...PALETTEN, ...BUERO, ...PRIVAT, ...HERZSTUECK, ...BQOOL, ...VA, ...DEAL_EINGANG, ...AMAZON_FAELLE];
 
 /** Antworten nicht beliebig groß werden lassen (Kosten, Kontext). */
 const MAX_TEXT = 60_000;

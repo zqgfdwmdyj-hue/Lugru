@@ -85,6 +85,7 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Antworten auf Einkaufsanfragen", () => detectReplies(t));
         await step(t, "Nachfassen bei Einkaufsanfragen", () => autoFollowUps(t));
         await step(t, "Amazon-ToDos", () => runAmazonTodos(t, { sinceDays: 3, max: 40 }));
+        await step(t, "Amazon-Fall-Zentrale", async () => (await import("@/lib/amazon-faelle/service")).faelleAbgleich(t, { sinceDays: 30 }));
       }
       if (await has("amazon_sp")) {
         if (force || due(`${t}:amz-orders`, 4)) await step(t, "Amazon-Bestellungen", () => syncFbmOrders(t));

@@ -68,7 +68,7 @@ export const ansprueche = defineTool({
 export const amazonTodos = defineTool({
   name: "amazon_todos",
   title: "Amazon-ToDos",
-  description: "Offene ToDos aus Amazon-Systemmails (Kontozustand, Angebote gesperrt, Dokumente angefordert …) mit Priorität und Frist.",
+  description: "Offene ToDos aus Amazon-Systemmails (Kontozustand, Angebote gesperrt, Dokumente angefordert …) mit Priorität und Frist – die einzelnen Aufforderungen. Zusammengefasst als Vorgang mit Verlauf und Paket: amazon_faelle.",
   area: "amazon",
   ownerOnly: true,
   write: false,

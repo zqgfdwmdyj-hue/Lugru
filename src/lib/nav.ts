@@ -58,6 +58,7 @@ export const NAV: NavSection[] = [
     color: "var(--area-amazon)",
     icon: "🅰️",
     items: [
+      { href: "/amazon-faelle", label: "Fall-Zentrale", owner: true },
       { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
       { href: "/inbound", label: "FBA-Inbound" },
       { href: "/sas", label: "SAS-Programm" },

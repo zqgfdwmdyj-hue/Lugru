@@ -129,6 +129,7 @@ export const DEFAULT_SETTINGS = {
   verlust: { kostenOhneVerkaufSchwelle: 5 },
   /** VA über Discord: Zeitzone, Ruhezeiten, überfällig täglich erinnern, Einkaufsrechnungen automatisch schicken. */
   va: { zeitzone: "Europe/Berlin", ruheVon: "20:00", ruheBis: "08:00", erinnerungUeberfaellig: true, darfEinkaufsrechnungen: true },
+  faelle: { fristen: {} as Record<string, number>, nachfassenTage: 7, betragSchwelle: 200, zustaendig: "va" as "va" | "ludwig" },
   dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "" },
   /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
   delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
@@ -190,6 +191,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     retourenStation: { ...d.retourenStation, ...(s.retourenStation ?? {}) },
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
+    faelle: { ...d.faelle, ...(s.faelle ?? {}), fristen: { ...d.faelle.fristen, ...(s.faelle?.fristen ?? {}) } },
     dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
     va: { ...d.va, ...(s.va ?? {}) },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },

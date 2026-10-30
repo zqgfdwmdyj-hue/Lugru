@@ -240,6 +240,8 @@ await integ("discord_va", { serverId: "500000000000000001", kanalId: "8000000000
 await integ("discord_profitpath", { kanalIds: "810000000000000001" }, {});
 // Ein geprüfter Deal-Eingang (erfunden) – für den Werkzeug-Vertrag (deal_eingang_detail).
 await db.insert(schema.dealEingaenge).values({ tenantId: T, weg: "manuell", quelleRef: "test:eingang-1", quelle: "Testquelle", rohtext: "B0TESTSEED Testware 3,00 netto (erfunden)", inhaltKennung: "test-eingang-1", pruefung: "fertig", status: "neu", geprueftAm: new Date() });
+// Ein Amazon-Vorgang (erfunden) – für den Werkzeug-Vertrag (amazon_fall per Fallnummer).
+await db.insert(schema.amazonVorgaenge).values({ tenantId: T, bereich: "fall", phase: "offen", status: "offen", dringlichkeit: "grau", titel: "Testfall Seller Support (erfunden)", fallnummer: "1000000001", marktplatz: "DE", ersteMailAm: new Date(), letzteMailAm: new Date() });
 const [gh, ghOhne] = await db
   .insert(schema.suppliers)
   .values([
