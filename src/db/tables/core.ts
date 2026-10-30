@@ -353,6 +353,10 @@ export const suppliers = pgTable(
     tenantId: tenantId(),
     code: text("code").notNull(),
     name: text("name"),
+    /** B15.12: nur ein Kürzel aus Artikelnummern (z. B. „MUE“ in MUE_…) – kein eigener Lieferant. */
+    skuKuerzel: boolean("sku_kuerzel").notNull().default(false),
+    /** Kürzel → echter Lieferant (optional, von Hand zugeordnet). */
+    gehoertZu: uuid("gehoert_zu"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("suppliers_tenant_code_uq").on(t.tenantId, t.code)],

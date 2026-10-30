@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
@@ -52,7 +52,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
     }
   }
   const [tenant] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
-  const suppliers = await db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code));
+  const suppliers = await db.select().from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, session.tenantId), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code));
   const pairs = similarSuppliers(suppliers);
   // Wie oft wird ein Shop verwendet (Chargen, Rechnungen)? Hilft bei der Entscheidung, welcher bleibt.
   const usage = new Map(

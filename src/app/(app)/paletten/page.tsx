@@ -15,6 +15,8 @@ import { ShipmentNotices } from "./sendungen/notices";
 
 const kg = (n: number | null) => (n ? `${String(n).replace(".", ",")} kg` : "");
 
+const OHNE_KUNDE = "__ohne";
+
 export default async function PalettenPage({ searchParams }: { searchParams: Promise<{ monat?: string; kunde?: string; platz?: string; aktion?: string; code?: string }> }) {
   const session = await requireArea("paletten");
   const t = session.tenantId;
@@ -28,7 +30,9 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
   const rates = { ...ctx.settings, capacity: ctx.settings.capacity || (ctx.settings.locations?.length ?? 0) };
 
   const allOpen = await db.select().from(P).where(and(eq(P.tenantId, t), isNull(P.outAt), isNull(P.cancelledAt))).orderBy(P.inAt, P.code);
-  const open = kunde ? allOpen.filter((p) => customerKey(p.customer) === customerKey(kunde)) : allOpen;
+  // B15.13: Paletten ohne Kunde können nicht abgerechnet werden – Warnung und eigener Filter.
+  const ohneKunde = allOpen.filter((p) => !p.customer?.trim());
+  const open = kunde === OHNE_KUNDE ? ohneKunde : kunde ? allOpen.filter((p) => customerKey(p.customer) === customerKey(kunde)) : allOpen;
   const recentOut = await db.select().from(P).where(and(eq(P.tenantId, t), isNotNull(P.outAt))).orderBy(desc(P.updatedAt)).limit(30);
   const pickups = await activePickupsFor(t, recentOut.filter((p) => !p.cancelledAt).map((p) => p.id));
   const used = (await db.selectDistinct({ c: P.customer }).from(P).where(and(eq(P.tenantId, t), isNotNull(P.customer)))).map((r) => r.c!.trim());
@@ -56,6 +60,13 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
       </div>
 
       <ShipmentNotices session={session} />
+
+      {ohneKunde.length > 0 && (
+        <div className="notice notice-warn small" data-testid="pal-ohne-kunde" style={{ marginBottom: 12 }}>
+          <strong>{ohneKunde.length} Palette{ohneKunde.length === 1 ? "" : "n"} ohne Kunde</strong> – {ohneKunde.length === 1 ? "sie wird" : "sie werden"} nicht abgerechnet: {ohneKunde.slice(0, 8).map((p) => p.code).join(", ")}{ohneKunde.length > 8 ? " …" : ""}.{" "}
+          <Link href={`/paletten?kunde=${OHNE_KUNDE}#lager`}>Anzeigen und Kunde nachtragen →</Link>
+        </div>
+      )}
 
       <nav className="pal-actions" aria-label="Lagerarbeit" data-testid="pal-actions">
         <Link href="/paletten?aktion=ein#scan" className={`pal-action${mode === "ein" ? " active" : ""}`} aria-current={mode === "ein" ? "true" : undefined}><span aria-hidden="true">⬇</span>Einlagern</Link>
@@ -94,6 +105,7 @@ export default async function PalettenPage({ searchParams }: { searchParams: Pro
             <label className="sr-only" htmlFor="f-kunde">Kunde</label>
             <select className="select" id="f-kunde" name="kunde" defaultValue={kunde}>
               <option value="">Alle Kunden</option>
+              {ohneKunde.length > 0 && <option value={OHNE_KUNDE}>ohne Kunde ({ohneKunde.length})</option>}
               {customers.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             <button className="btn btn-small" type="submit">Filtern</button>

@@ -84,3 +84,26 @@ describe("BQool: Prüfen gegen den Mindestpreis des Seller-Systems", () => {
   it("„ohne Regel“ nur, wenn der Export überhaupt Regeln enthält", () => expect(pruefe({ ...ok, regel: null }, null, false)).toEqual([]));
   it("Min über Max und Preis über Max", () => expect(pruefe({ ...ok, min: 16, preis: 20 }, null, true)).toEqual(["min_ueber_max", "preis_ueber_max"]));
 });
+
+describe("B15.11: Repricer – Status-Spalte, Übersicht je Regel, Filter", () => {
+  it("„Repricing Status“ hat Vorrang vor dem allgemeinen „Status“ (Amazon-Angebot inaktiv ≠ pausiert)", async () => {
+    const { leseBqool } = await import("@/lib/bqool/logic");
+    const r = leseBqool(["SKU", "Status", "Strategy Name", "Min Price", "Repricing Status"], [["TEST-A", "Inactive", "ia", "9,90", "On"]], "DE");
+    expect(r.zeilen[0]).toMatchObject({ regel: "ia", status: "aktiv" });
+    const nurAllgemein = leseBqool(["SKU", "Status", "Strategy Name"], [["TEST-B", "Inactive", "ia"], ["TEST-C", "Paused", "ia"]], "DE");
+    expect(nurAllgemein.zeilen.map((z) => z.status)).toEqual([null, "pausiert"]);
+  });
+
+  it("Übersicht je Regel über alle Länder und Filter", async () => {
+    const { regelUebersicht, filterBqool } = await import("@/lib/bqool/logic");
+    const z = (sku: string, marktplatz: "DE" | "FR", regel: string | null, status: "aktiv" | "pausiert" | null, hinweise: ("pausiert" | "ohne_min")[] = []) => ({ sku, asin: null, titel: null, marktplatz, regel, status, hinweise });
+    const zeilen = [z("A", "DE", "ia", "aktiv"), z("A", "FR", "ia", "pausiert", ["pausiert"]), z("B", "DE", "Liquidation", "aktiv"), z("C", "DE", null, null, ["ohne_min"])];
+    const u = regelUebersicht(zeilen);
+    expect(u[0]).toMatchObject({ regel: "ia", gesamt: 2, aktiv: 1, pausiert: 1, mitHinweis: 1, laender: { DE: 1, FR: 1 } });
+    expect(u.find((x) => x.regel === "(ohne Regel)")).toMatchObject({ gesamt: 1, unbekannt: 1 });
+    expect(filterBqool(zeilen, { land: "FR" }).map((x) => x.sku)).toEqual(["A"]);
+    expect(filterBqool(zeilen, { regel: "ia", status: "aktiv" }).map((x) => `${x.sku}${x.marktplatz}`)).toEqual(["ADE"]);
+    expect(filterBqool(zeilen, { nurAuffaellig: true }).map((x) => x.sku).sort()).toEqual(["A", "C"]);
+    expect(filterBqool(zeilen, { hinweis: "ohne_min" }).map((x) => x.sku)).toEqual(["C"]);
+  });
+});

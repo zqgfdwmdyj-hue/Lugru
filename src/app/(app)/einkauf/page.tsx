@@ -34,7 +34,7 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
       .where(and(eq(PO.tenantId, t), statuses ? inArray(PO.status, statuses as (typeof schema.PO_STATUSES)[number][]) : undefined))
       .orderBy(desc(PO.createdAt))
       .limit(300),
-    db.select({ code: schema.suppliers.code, name: schema.suppliers.name }).from(schema.suppliers).where(eq(schema.suppliers.tenantId, t)).orderBy(asc(schema.suppliers.code)),
+    db.select({ code: schema.suppliers.code, name: schema.suppliers.name }).from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, t), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code)),
   ]);
   const today = todayIso();
 

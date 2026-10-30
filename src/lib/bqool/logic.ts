@@ -39,7 +39,8 @@ const SPALTEN: Record<Feld, string[]> = {
   min: ["minprice", "minimumprice", "min", "floorprice", "mindestpreis", "minpreis"],
   max: ["maxprice", "maximumprice", "max", "ceilingprice", "maximalpreis", "hochstpreis", "maxpreis"],
   regel: ["strategy", "strategyname", "repricingstrategy", "rule", "rulename", "repricingrule", "regel", "strategie"],
-  status: ["repricingstatus", "status", "repricing", "reprice", "active", "repricerstatus", "aktiv"],
+  // Reihenfolge = Vorrang: erst die Repricing-Spalte, erst danach ein allgemeines „Status“ (oft der Amazon-Angebotsstatus).
+  status: ["repricingstatus", "repricerstatus", "repricing", "reprice", "status", "active", "aktiv"],
   bbPreis: ["buyboxprice", "bbprice", "buyboxpreis", "featuredofferprice"],
   bbGewinner: ["buyboxwinner", "buyboxowner", "buyboxseller", "buyboxeligibility", "buyboxgewinner", "buyboxinhaber"],
   eigeneBb: ["isbuyboxwinner", "ownbuybox", "youownbuybox", "winningbuybox", "inbuybox", "buyboxwon", "buybox"],
@@ -48,7 +49,10 @@ const SPALTEN: Record<Feld, string[]> = {
   bestand: ["quantity", "inventory", "available", "stock", "qty", "fulfillablequantity", "bestand", "menge"],
 };
 
-/** Spalte je Feld: erst genaue Treffer, dann „enthält“ – jede Spalte höchstens einmal. */
+/**
+ * Spalte je Feld: erst genaue Treffer (in der Reihenfolge der Aliase – B15.11: sonst gewann bei „Status“ und
+ * „Repricing Status“ die erste Spalte der Datei), dann „enthält“ – jede Spalte höchstens einmal.
+ */
 export function spaltenZuordnung(headers: string[]): Partial<Record<Feld, number>> {
   const n = headers.map(norm);
   const out: Partial<Record<Feld, number>> = {};
@@ -58,8 +62,13 @@ export function spaltenZuordnung(headers: string[]): Partial<Record<Feld, number
     used.add(i);
   };
   for (const f of Object.keys(SPALTEN) as Feld[]) {
-    const i = n.findIndex((h, j) => !used.has(j) && SPALTEN[f].includes(h));
-    if (i >= 0) take(f, i);
+    for (const alias of SPALTEN[f]) {
+      const i = n.findIndex((h, j) => !used.has(j) && h === alias);
+      if (i >= 0) {
+        take(f, i);
+        break;
+      }
+    }
   }
   // „enthält“ nur für eindeutige Wörter (nicht „price“/„min“/„max“ – sonst verwechselt man Min Price mit Price)
   const contains: [Feld, string[]][] = [
@@ -117,9 +126,12 @@ const jaNein = (v: string | undefined): boolean | null => {
   if (["no", "nein", "false", "0", "n", "lost", "-"].includes(s)) return false;
   return null;
 };
-const statusAus = (v: string | undefined): BqoolZeile["status"] => {
+const statusAus = (v: string | undefined, allgemein = false): BqoolZeile["status"] => {
   if (v === undefined || !v.trim()) return null;
   const s = norm(v);
+  // Allgemeine „Status“-Spalte: „Inactive“/„Incomplete“ ist meist der Amazon-Angebotsstatus (z. B. kein Bestand),
+  // nicht „Repricing pausiert“ – dann unbekannt statt „pausiert“.
+  if (allgemein && ["inactive", "incomplete", "outofstock", "suppressed"].includes(s)) return null;
   if (["on", "active", "aktiv", "enabled", "yes", "ja", "true", "1", "repricing"].includes(s)) return "aktiv";
   if (["off", "paused", "pausiert", "inactive", "disabled", "stopped", "no", "nein", "false", "0", "aus"].includes(s)) return "pausiert";
   return null;
@@ -135,6 +147,7 @@ export function leseBqool(headers: string[], rows: string[][], standardMarkt: Bq
   const sp = spaltenZuordnung(headers);
   const known = new Set(Object.values(sp));
   const get = (r: string[], f: Feld) => (sp[f] === undefined ? undefined : r[sp[f]!]?.trim());
+  const statusAllgemein = sp.status !== undefined && ["status", "active", "aktiv"].includes(norm(headers[sp.status]));
   let ohneSku = 0;
   let ohneMarkt = 0;
   const zeilen: BqoolZeile[] = [];
@@ -162,7 +175,7 @@ export function leseBqool(headers: string[], rows: string[][], standardMarkt: Bq
       min: zahl(get(r, "min")),
       max: zahl(get(r, "max")),
       regel: get(r, "regel") || null,
-      status: statusAus(get(r, "status")),
+      status: statusAus(get(r, "status"), statusAllgemein),
       buyboxPreis: zahl(get(r, "bbPreis")),
       buyboxGewinner: bbGewinner,
       eigeneBuybox: jaNein(get(r, "eigeneBb")) ?? (bbGewinner && /^(you|me|yes|ja|own|eigene?)$/i.test(bbGewinner) ? true : null),
@@ -214,4 +227,43 @@ export function pruefe(z: Pick<BqoolZeile, "min" | "max" | "preis" | "status" | 
   if (z.eigeneBuybox === false) h.push("buybox_verloren");
   if (regelSpalte && !z.regel) h.push("ohne_regel");
   return HINWEIS_RANG.filter((x) => h.includes(x));
+}
+
+
+// ---- Übersicht und Filter (B15.11) -------------------------------------------------------------
+
+export type RegelUebersicht = { regel: string; gesamt: number; aktiv: number; pausiert: number; unbekannt: number; mitHinweis: number; laender: Partial<Record<BqoolMarkt, number>> };
+
+/** Je Regel: wie viele SKUs, aktiv/pausiert, mit Auffälligkeit, je Land (über alle Länder). */
+export function regelUebersicht(zeilen: (Pick<BqoolZeile, "regel" | "status" | "marktplatz"> & { hinweise?: Hinweis[] })[]): RegelUebersicht[] {
+  const m = new Map<string, RegelUebersicht>();
+  for (const z of zeilen) {
+    const k = z.regel?.trim() || "(ohne Regel)";
+    const r = m.get(k) ?? { regel: k, gesamt: 0, aktiv: 0, pausiert: 0, unbekannt: 0, mitHinweis: 0, laender: {} };
+    r.gesamt++;
+    if (z.status === "aktiv") r.aktiv++;
+    else if (z.status === "pausiert") r.pausiert++;
+    else r.unbekannt++;
+    if (z.hinweise?.length) r.mitHinweis++;
+    r.laender[z.marktplatz] = (r.laender[z.marktplatz] ?? 0) + 1;
+    m.set(k, r);
+  }
+  return [...m.values()].sort((a, b) => b.gesamt - a.gesamt || a.regel.localeCompare(b.regel));
+}
+
+export type BqoolFilter = { land?: string; regel?: string; hinweis?: string; status?: string; q?: string; nurAuffaellig?: boolean };
+
+export function filterBqool<T extends Pick<BqoolZeile, "regel" | "status" | "marktplatz" | "sku" | "asin" | "titel"> & { hinweise: Hinweis[] }>(zeilen: T[], f: BqoolFilter): T[] {
+  const q = f.q?.trim().toLowerCase();
+  return zeilen
+    .filter((z) => {
+      if (f.nurAuffaellig && !z.hinweise.length) return false;
+      if (f.land && z.marktplatz !== f.land) return false;
+      if (f.regel && (z.regel?.trim() || "(ohne Regel)") !== f.regel) return false;
+      if (f.hinweis && !z.hinweise.includes(f.hinweis as Hinweis)) return false;
+      if (f.status && (f.status === "unbekannt" ? z.status !== null : z.status !== f.status)) return false;
+      if (q && ![z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))) return false;
+      return true;
+    })
+    .sort((a, b) => b.hinweise.length - a.hinweise.length || a.marktplatz.localeCompare(b.marktplatz) || a.sku.localeCompare(b.sku));
 }

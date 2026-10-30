@@ -60,3 +60,26 @@ export async function profilSpeichernAction(fd: FormData) {
   revalidatePath(`/b2b/lieferanten/${supplierId}`);
   redirect(`/b2b/lieferanten/${supplierId}?meldung=gespeichert`);
 }
+
+/**
+ * B15.12: SKU-Kürzel einem echten Lieferanten zuordnen – oder doch als eigenen Lieferanten führen.
+ * Nur auf Klick; nichts wird gelöscht.
+ */
+export async function kuerzelZuordnenAction(fd: FormData) {
+  const session = await requireArea("b2b");
+  const S = schema.suppliers;
+  const id = z.string().uuid().parse(fd.get("kuerzelId"));
+  const ziel = String(fd.get("gehoertZu") ?? "");
+  if (fd.get("alsLieferant") === "1") {
+    await db.update(S).set({ skuKuerzel: false, gehoertZu: null }).where(and(eq(S.tenantId, session.tenantId), eq(S.id, id)));
+  } else {
+    const zielId = ziel ? z.string().uuid().parse(ziel) : null;
+    if (zielId) {
+      const [ok] = await db.select({ id: S.id }).from(S).where(and(eq(S.tenantId, session.tenantId), eq(S.id, zielId), eq(S.skuKuerzel, false)));
+      if (!ok) redirect("/b2b/lieferanten");
+    }
+    await db.update(S).set({ skuKuerzel: true, gehoertZu: zielId }).where(and(eq(S.tenantId, session.tenantId), eq(S.id, id)));
+  }
+  revalidatePath("/b2b/lieferanten");
+  redirect("/b2b/lieferanten?meldung=Gespeichert#kuerzel");
+}

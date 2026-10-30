@@ -153,7 +153,9 @@ export function planeTag(tag: string, kandidaten: PlanAufgabe[], az: { von: stri
   }
   const belegt = kapazitaet - frei;
   const auslastung = kapazitaet > 0 ? Math.round((belegt / kapazitaet) * 100) : null;
-  const ampel = !az || kapazitaet === 0 ? "frei" : rest.length ? "rot" : (auslastung ?? 0) > 80 ? "gelb" : "gruen";
+  // B15.10: „überbucht“ (rot) nur, wenn Wichtiges heute nicht mehr passt (siehe planeTage); ohne freie Zeit nie rot.
+  // Was sonst nicht passt, wird verschoben – der Tag ist dann „voll“.
+  const ampel = !az || kapazitaet === 0 ? "frei" : rest.length || (auslastung ?? 0) > 80 ? "gelb" : "gruen";
   return { plan: { tag, arbeitszeit: az, sperren, kapazitaet, geplant, belegt, auslastung, ampel, konflikte: [] }, rest };
 }
 

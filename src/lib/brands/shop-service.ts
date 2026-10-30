@@ -1,6 +1,7 @@
 import "server-only";
-import { and, asc, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { TikTokMarketItem } from "@/db/tables/brands";
 import { askClaude, modelFor } from "@/lib/ai/claude";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
@@ -86,6 +87,44 @@ export async function productHistory(tenantId: string, productId: string) {
     .from(SNAP)
     .where(and(eq(SNAP.tenantId, tenantId), eq(SNAP.productId, productId), gte(SNAP.day, new Date(Date.now() - 120 * 86400_000).toISOString().slice(0, 10))))
     .orderBy(asc(SNAP.day));
+}
+
+/** B15.15: Verlauf aller Produkte einer Marke in einer Abfrage (statt einer je Produkt). */
+export async function productHistories(tenantId: string, productIds: string[]) {
+  const out = new Map<string, (typeof SNAP.$inferSelect)[]>(productIds.map((id) => [id, []]));
+  if (!productIds.length) return out;
+  const rows = await db
+    .select()
+    .from(SNAP)
+    .where(and(eq(SNAP.tenantId, tenantId), inArray(SNAP.productId, productIds), gte(SNAP.day, new Date(Date.now() - 120 * 86400_000).toISOString().slice(0, 10))))
+    .orderBy(asc(SNAP.day));
+  for (const r of rows) out.get(r.productId)?.push(r);
+  return out;
+}
+
+type TikTokSort = "sales" | "revenue" | "videos";
+type TikTokAnsicht = { id: string; fileName: string | null; createdAt: Date; meta: (typeof MI.$inferSelect)["meta"]; anzahl: number; top: Record<TikTokSort, TikTokMarketItem[]> };
+/** Aufbereitete Importe (unveränderlich je ID) – große Exporte werden nicht bei jedem Aufruf neu gelesen und sortiert. */
+const tiktokCache = new Map<string, Omit<TikTokAnsicht, "id" | "fileName" | "createdAt" | "meta">>();
+
+/**
+ * B15.15: Letzter TikTok-Import einer Marke, fertig sortiert (je 40 nach Verkäufen, Umsatz, Videos). Erst nur Kopfdaten
+ * lesen; die Produktliste nur beim ersten Aufruf je Import. Unsichere Umsätze zählen beim Sortieren nach Umsatz nicht.
+ */
+export async function tiktokAnsicht(tenantId: string, brandId: string): Promise<TikTokAnsicht | null> {
+  const [kopf] = await db.select({ id: MI.id, fileName: MI.fileName, createdAt: MI.createdAt, meta: MI.meta }).from(MI).where(and(eq(MI.tenantId, tenantId), eq(MI.brandId, brandId), eq(MI.source, "helium10-tiktok"))).orderBy(desc(MI.createdAt)).limit(1);
+  if (!kopf) return null;
+  let a = tiktokCache.get(kopf.id);
+  if (!a) {
+    const [r] = await db.select({ items: MI.items }).from(MI).where(and(eq(MI.tenantId, tenantId), eq(MI.id, kopf.id)));
+    const items = r?.items ?? [];
+    const wert = (i: TikTokMarketItem, k: TikTokSort) => (k === "revenue" && i.revenueSuspect ? 0 : (i[k] ?? 0));
+    const sortiert = (k: TikTokSort) => [...items].sort((x, y) => wert(y, k) - wert(x, k)).slice(0, 40);
+    a = { anzahl: items.length, top: { sales: sortiert("sales"), revenue: sortiert("revenue"), videos: sortiert("videos") } };
+    if (tiktokCache.size >= 30) tiktokCache.delete(tiktokCache.keys().next().value!);
+    tiktokCache.set(kopf.id, a);
+  }
+  return { ...kopf, ...a };
 }
 
 export async function latestTikTokImport(tenantId: string, brandId: string) {

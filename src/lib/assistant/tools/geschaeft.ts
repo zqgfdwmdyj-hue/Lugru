@@ -12,7 +12,7 @@ import { CHECK_LABEL, filterReorder, KAPITALBEDARF_DEFINITION, reorderTotals, UR
 import { daysUntil, MODULE_LABEL, WAITING_LABEL } from "@/lib/sas/logic";
 import { getProgram, loadBrands, loadDeals, loadItems } from "@/lib/sas/service";
 import { getSettings } from "@/lib/settings";
-import { BQOOL_MAERKTE, HINWEIS_RANG, HINWEIS_TEXT } from "@/lib/bqool/logic";
+import { BQOOL_MAERKTE, HINWEIS_RANG, HINWEIS_TEXT, regelUebersicht } from "@/lib/bqool/logic";
 import { bqoolStand } from "@/lib/bqool/service";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
@@ -395,6 +395,7 @@ export const repricer = defineTool({
     ansicht: z.enum(["probleme", "alle"]).default("probleme"),
     marktplatz: z.enum(["alle", ...BQOOL_MAERKTE]).default("alle"),
     hinweis: z.enum(["alle", ...HINWEIS_RANG]).default("alle").describe("Nur eine Art von Auffälligkeit"),
+    regel: z.string().trim().max(60).optional().describe("Nur diese BQool-Regel/Strategie (z. B. „ia“, „Liquidation“; „(ohne Regel)“ für SKUs ohne Regel)"),
     suche: z.string().trim().max(60).optional().describe("SKU, ASIN oder Titel"),
     limit: z.number().int().min(1).max(300).default(80),
   }),
@@ -402,7 +403,7 @@ export const repricer = defineTool({
     const { zeilen, stand } = await bqoolStand(ctx.session.tenantId);
     const q = i.suche?.toLowerCase();
     const list = zeilen
-      .filter((z) => (i.marktplatz === "alle" || z.marktplatz === i.marktplatz) && (i.ansicht === "alle" || z.hinweise.length) && (i.hinweis === "alle" || z.hinweise.includes(i.hinweis as (typeof HINWEIS_RANG)[number])) && (!q || [z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))))
+      .filter((z) => (i.marktplatz === "alle" || z.marktplatz === i.marktplatz) && (i.ansicht === "alle" || z.hinweise.length) && (i.hinweis === "alle" || z.hinweise.includes(i.hinweis as (typeof HINWEIS_RANG)[number])) && (!i.regel || (z.regel?.trim() || "(ohne Regel)").toLowerCase() === i.regel.toLowerCase()) && (!q || [z.sku, z.asin ?? "", z.titel ?? ""].some((x) => x.toLowerCase().includes(q))))
       .sort((a, b) => (a.hinweise[0] ? HINWEIS_RANG.indexOf(a.hinweise[0]) : 99) - (b.hinweise[0] ? HINWEIS_RANG.indexOf(b.hinweise[0]) : 99) || a.sku.localeCompare(b.sku));
     const zaehle = Object.fromEntries(HINWEIS_RANG.map((h) => [h, zeilen.filter((z) => z.hinweise.includes(h)).length]).filter(([, n]) => n));
     const aeltester = stand.reduce<Date | null>((m, x) => (x.am && (!m || x.am < m) ? x.am : m), null);
@@ -410,6 +411,7 @@ export const repricer = defineTool({
       eingelesen: stand.length ? stand.map((x) => ({ marktplatz: x.marktplatz, am: berlinDateTime(x.am) })) : "noch kein BQool-Export hochgeladen – in BQool unter Repricing → Manage Listings je Land exportieren und im Seller-System unter Amazon → Repricer (BQool) hochladen",
       anzahl_skus: zeilen.length,
       auffaelligkeiten: zaehle,
+      je_regel: regelUebersicht(zeilen).map((u) => ({ regel: u.regel, skus: u.gesamt, aktiv: u.aktiv, pausiert: u.pausiert, status_unbekannt: u.unbekannt || undefined, auffaellig: u.mitHinweis, je_land: u.laender })),
       anzahl: list.length,
       zeilen: list.slice(0, i.limit).map((z) => ({
         marktplatz: z.marktplatz,

@@ -743,6 +743,13 @@
       "when": 1793383329515,
       "tag": "0105_rechtsfaelle_discord_wissen",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793389439029,
+      "tag": "0106_lieferanten_sku_kuerzel",
+      "breakpoints": true
     }
   ]
 }

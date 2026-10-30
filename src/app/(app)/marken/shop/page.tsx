@@ -3,7 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { visibleBrands } from "@/lib/brands/access";
-import { latestTikTokImport, productHistory } from "@/lib/brands/shop-service";
+import { productHistories, tiktokAnsicht } from "@/lib/brands/shop-service";
 import { productHints } from "@/lib/brands/shop";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
@@ -22,14 +22,14 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   if (!brand) return <div className="card card-pad muted">Keine Marke freigegeben.</div>;
   const [products, tiktok, hasKeepa] = await Promise.all([
     db.select().from(schema.brandProducts).where(and(eq(schema.brandProducts.tenantId, t), eq(schema.brandProducts.brandId, brand.id))).orderBy(asc(schema.brandProducts.createdAt)),
-    latestTikTokImport(t, brand.id),
+    // B15.15: aufbereitet und zwischengespeichert (große Exporte nicht bei jedem Aufruf neu lesen und sortieren).
+    tiktokAnsicht(t, brand.id),
     keepaKey(t).then(Boolean),
   ]);
-  const histories = new Map(await Promise.all(products.map(async (p) => [p.id, await productHistory(t, p.id)] as const)));
+  const histories = await productHistories(t, products.map((p) => p.id));
   const sortKey = sp.sort === "umsatz" ? "revenue" : sp.sort === "videos" ? "videos" : "sales";
-  // Unsichere Umsätze (passen nicht zu Preis × Verkäufe) zählen beim Sortieren nach Umsatz nicht.
-  const val = (i: NonNullable<typeof tiktok>["items"][number]) => (sortKey === "revenue" && i.revenueSuspect ? 0 : (i[sortKey] ?? 0));
-  const tiktokItems = tiktok ? [...tiktok.items].sort((a, b) => val(b) - val(a)).slice(0, 40) : [];
+  // Unsichere Umsätze (passen nicht zu Preis × Verkäufe) zählen beim Sortieren nach Umsatz nicht (in tiktokAnsicht).
+  const tiktokItems = tiktok ? tiktok.top[sortKey] : [];
   const tiktokAge = tiktok ? Math.floor((Date.now() - tiktok.createdAt.getTime()) / 86_400_000) : 0;
   const cur = tiktok?.meta?.currency ?? "EUR";
   const money = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: cur === "USD" || cur === "GBP" ? cur : "EUR" });
@@ -119,7 +119,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
           ) : (
             <section className="card" style={{ overflow: "auto" }}>
               <div className="card-pad small muted" style={{ paddingBottom: 0 }}>
-                Import „{tiktok.fileName}“ vom {tiktok.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} ({tiktokAge === 0 ? "heute" : `vor ${tiktokAge} Tag${tiktokAge === 1 ? "" : "en"}`}) · {tiktok.items.length} Produkte · sortiert nach{" "}
+                Import „{tiktok.fileName}“ vom {tiktok.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} ({tiktokAge === 0 ? "heute" : `vor ${tiktokAge} Tag${tiktokAge === 1 ? "" : "en"}`}) · {tiktok.anzahl} Produkte · sortiert nach{" "}
                 <Link href={`/marken/shop?marke=${brand.id}&sort=verkauf`}>Verkäufen</Link> · <Link href={`/marken/shop?marke=${brand.id}&sort=umsatz`}>Umsatz</Link> · <Link href={`/marken/shop?marke=${brand.id}&sort=videos`}>Videos</Link>
               </div>
               {tiktok.meta?.columns && (

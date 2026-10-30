@@ -92,7 +92,16 @@ export async function refreshVerlustTasks(tenantId: string, heute: string): Prom
   for (const f of v.faelle) {
     const key = `verlust-${f.sku}`.slice(0, 200);
     jetzt.add(key);
-    await upsertSystemTask(db, tenantId, key, { title: `Verlust-Stopp: ${f.name ?? f.sku}`.slice(0, 200), notes: f.aufgabe.notiz, priority: "critical", category: "geld", link: `/verlust?q=${encodeURIComponent(f.sku)}`, dueDate: heute });
+    // B15.9: Liquidation/Abverkauf laut BQool ist meist gewollt – nicht als „kritisch“, sondern als Rückfrage
+    // („als Ausnahme übernehmen?“). Echte Verluste bleiben kritisch.
+    await upsertSystemTask(db, tenantId, key, {
+      title: (f.liquidation ? `Verlust-Stopp prüfen (BQool „${f.bqool?.regel ?? "Liquidation"}“ – gewollt?): ${f.name ?? f.sku}` : `Verlust-Stopp: ${f.name ?? f.sku}`).slice(0, 200),
+      notes: f.liquidation ? `Die BQool-Regel „${f.bqool?.regel ?? "Liquidation"}“ deutet auf bewussten Abverkauf hin. Wenn gewollt: auf der Seite Verlust-Stopp als Ausnahme übernehmen – dann verschwindet diese Aufgabe.\n\n${f.aufgabe.notiz}` : f.aufgabe.notiz,
+      priority: f.liquidation ? "normal" : "critical",
+      category: "geld",
+      link: `/verlust?q=${encodeURIComponent(f.sku)}`,
+      dueDate: heute,
+    });
     const alt = offen.find((o) => o.key === key);
     const letzterVerlust = [...f.tage].reverse().find((x) => x.units > 0 && x.verkauf !== null && x.verkauf < 0)?.day;
     if (alt?.status === "done" && alt.completedAt && letzterVerlust && alt.completedAt < new Date(`${letzterVerlust}T00:00:00Z`)) {

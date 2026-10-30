@@ -87,3 +87,24 @@ describe("Befunde 30.10. (B9)", () => {
     expect(g.has("k:zu-lang")).toBe(false); // über 10 Std. = vergessen abzuhaken
   });
 });
+
+describe("B15.10: Kapazität 0 ist nie „überbucht“", () => {
+  it("Arbeitszeit ganz durch reservierte Stunden belegt + wichtige Frist → frei (keine freie Zeit), Konflikt bleibt sichtbar", () => {
+    const r = planeTage({
+      start: "2026-11-02",
+      tage: 1,
+      arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "17:00" } },
+      sperrenAm: () => [{ von: "00:00", bis: "08:00", titel: "Retouren-Prüfung (8 Std. reserviert)", art: "reserviert" }],
+      aufgaben: [a("1", { prioritaet: "critical", aufwand: "S" }), a("2", { aufwand: "M" })],
+    });
+    expect(r.tage[0].kapazitaet).toBe(0);
+    expect(r.tage[0].ampel).toBe("frei");
+    expect(r.tage[0].auslastung).toBeNull();
+    expect(r.tage[0].konflikte.length).toBeGreaterThan(0);
+  });
+  it("normale Aufgaben passen nicht ganz → „voll“ (verschoben), nicht „überbucht“", () => {
+    const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { aufwand: "M" }), a("2", { aufwand: "M" })] });
+    expect(r.tage[0].ampel).toBe("gelb");
+    expect(r.verschoben.map((v) => v.id)).toEqual(["2"]);
+  });
+});

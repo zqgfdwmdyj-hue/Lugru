@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { qcol } from "@/db/qcol";
 import { spellingGroups } from "@/lib/masterdata";
@@ -12,7 +12,7 @@ export default async function LieferantenPage() {
   const F = schema.supplierFeeds;
   const [feeds, suppliers] = await Promise.all([
     db.select({ f: F, offers: sql<number>`(select count(*)::int from supplier_offers o where o.feed_id = ${qcol(F.id)})` }).from(F).where(eq(F.tenantId, session.tenantId)).orderBy(desc(F.createdAt)),
-    db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code)),
+    db.select().from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, session.tenantId), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code)),
   ]);
   return (
     <>

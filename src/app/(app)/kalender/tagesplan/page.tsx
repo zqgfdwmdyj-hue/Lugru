@@ -67,8 +67,8 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
         {p.tage.map((t) => (
           <Link key={t.tag} href={q({ tag: t.tag })} className="small" style={{ display: "block", padding: 8, borderRadius: 8, border: t.tag === tag ? "2px solid var(--accent)" : "1px solid var(--border)", textDecoration: "none", color: "inherit" }} data-ampel={t.ampel}>
             <div><strong>{dm(t.tag)}</strong></div>
-            <span className={`tag ${AMPEL[t.ampel][0]}`}>{AMPEL[t.ampel][1]}</span>
-            <div className="muted" style={{ marginTop: 4 }}>{t.kapazitaet ? `${std(t.belegt)} von ${std(t.kapazitaet)}` : "keine Arbeitszeit"}</div>
+            <span className={`tag ${AMPEL[t.ampel][0]}`} data-testid="tagesplan-ampel">{t.ampel === "frei" && t.arbeitszeit ? "keine freie Zeit" : AMPEL[t.ampel][1]}</span>
+            <div className="muted" style={{ marginTop: 4 }}>{t.kapazitaet ? `${std(t.belegt)} von ${std(t.kapazitaet)}` : t.arbeitszeit ? "Arbeitszeit belegt" : "keine Arbeitszeit"}</div>
             {t.konflikte.length > 0 && <div style={{ color: "var(--danger)" }}>{t.konflikte.length} Konflikt{t.konflikte.length === 1 ? "" : "e"}</div>}
           </Link>
         ))}

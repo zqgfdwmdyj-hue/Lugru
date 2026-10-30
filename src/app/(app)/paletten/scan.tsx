@@ -201,6 +201,7 @@ export function PalletScan({ customers, locations, today, free = [], plan = [], 
               <label className="label" htmlFor="pal-customer">Kunde</label>
               <input className="input" id="pal-customer" name="customer" list="pal-customers" autoComplete="off" />
               <datalist id="pal-customers">{customers.map((c) => <option key={c} value={c} />)}</datalist>
+              <div className="small muted" style={{ marginTop: 2 }}>Ohne Kunde wird die Palette nicht abgerechnet.</div>
             </div>
             <div className="field">
               <label className="label" htmlFor="pal-location">Stellplatz</label>
