@@ -157,6 +157,7 @@ export type TenantSettings = {
   /** Kapital-Ampel: Ziel-Jahresrendite, „gering“, Reichweiten-Grenzen (Tage). */
   kapital?: { zielRendite?: number; geringRendite?: number; gruenReichweite?: number; rotReichweite?: number };
   /** Deal-Ampel (Einkaufs-Prüfung): Zielmarge %, Abverkauf Tage, max. Angebote, Amazon-Anteil %, Preisverfall %, Nebenkosten €/Stück, Länder. */
+  tagesplan?: { arbeitszeit?: Record<string, { von: string; bis: string } | null>; personen?: Record<string, Record<string, { von: string; bis: string } | null>>; vorziehen?: number };
   dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[] };
   /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
   amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
@@ -473,6 +474,10 @@ export const tasks = pgTable(
     assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
     /** Beim Zuweisen automatisch angehängte Anleitungen (Wissens-Einträge). */
     anleitungIds: jsonb("anleitung_ids").$type<string[]>().notNull().default([]),
+    /** Zuständig außerhalb des Systems (Prep Center, Steuerberater, externer Name); intern über `assigneeId`. */
+    zustaendigExtern: text("zustaendig_extern"),
+    /** Aufwand für den Tagesplan: S (15 Min.), M (1 Std.), L (halber Tag); leer = vom System geschätzt. */
+    aufwand: text("aufwand", { enum: ["S", "M", "L"] }),
     createdAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },

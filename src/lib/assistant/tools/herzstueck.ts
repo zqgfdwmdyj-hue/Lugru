@@ -2,8 +2,10 @@ import "server-only";
 import { z } from "zod";
 import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
+import { AUFWAND_TEXT } from "@/lib/tagesplan/logic";
+import { aufgabeVerschieben, tagesplan } from "@/lib/tagesplan/service";
 import { defineTool } from "../types";
-import { abs, json } from "./common";
+import { PRIORITY_OUT, abs, dmy, isoDate, json, uuid } from "./common";
 
 // Herzstück-Werkzeuge (Bauauftrag Modul 1–12): Deal-Ampel, Tagesplan, Fristen, Buchhaltung, Delegieren, Feierabend.
 
@@ -58,4 +60,61 @@ export const dealPruefenTool = defineTool({
   },
 });
 
-export const HERZSTUECK = [dealPruefenTool];
+// ---- Modul 1: Tagesplan ----------------------------------------------------------------------------------
+
+export const tagesplanTool = defineTool({
+  name: "tagesplan",
+  title: "Tagesplan",
+  description:
+    "Realistischer Tagesplan: Arbeitszeit minus Termine, Familienzeit (Kinderzeit, Auszeit, Paarzeit, Ausschlafen, private Termine) und freie Zeiten = Kapazität; darin die eigenen Aufgaben nach Priorität und Frist mit Zeitfenster. Dazu: bewusst verschobene Aufgaben mit neuem Datum, Konflikte (z. B. Frist fällt in Auszeit), Ampel je Tag, „wartet auf …“ (an andere abgegeben). Private Sperrzeiten nur als „Privat belegt“ – Details nur mit mit_privat: true. Für „Was schaffe ich heute?“, „Wie voll ist die Woche?“.",
+  area: "kalender",
+  write: false,
+  quelle: { text: "Aufgaben, Kalender und Privatbereich im Seller-System", jobs: ["Kalender"] },
+  input: z.object({
+    datum: isoDate.optional().describe("Tag (Standard heute)"),
+    tage: z.number().int().min(1).max(14).default(1).describe("Anzahl Tage ab datum (Woche = 7)"),
+    mit_privat: z.boolean().default(false).describe("Private Sperrzeiten mit Details zeigen (nur mit Privat-Freigabe)"),
+  }),
+  run: async (ctx, i) => {
+    const start = i.datum ?? ctx.today;
+    const p = await tagesplan(ctx.session, { start, tage: i.tage, mitPrivat: i.mit_privat && ctx.privat, heute: ctx.today });
+    const link = (l: string | null) => (l ? abs(ctx, l) : undefined);
+    return json({
+      zeitraum: { von: start, bis: p.tage[p.tage.length - 1]?.tag },
+      private_details: p.privatDetails,
+      tage: p.tage.map((t) => ({
+        tag: t.tag,
+        arbeitszeit: t.arbeitszeit ? `${t.arbeitszeit.von}–${t.arbeitszeit.bis}` : "kein Arbeitstag",
+        kapazitaet_min: t.kapazitaet,
+        eingeplant_min: t.belegt,
+        auslastung_prozent: t.auslastung,
+        ampel: t.ampel,
+        sperrzeiten: t.sperren.map((s) => ({ von: s.ganztags ? "ganztägig" : s.von, bis: s.ganztags ? undefined : s.bis, art: s.art, titel: s.titel })),
+        geplant: t.geplant.map((g) => ({ id: g.id, von: g.von, bis: g.bis, titel: g.titel, prioritaet: PRIORITY_OUT[g.prioritaet], aufwand: AUFWAND_TEXT[g.aufwand], aufwand_geschaetzt: g.geschaetzt || undefined, frist: g.faellig, link: link(g.link) })),
+        konflikte: t.konflikte.length ? t.konflikte.map((k) => ({ aufgabe_id: k.aufgabeId, titel: k.titel, konflikt: k.text })) : undefined,
+      })),
+      verschoben: p.verschoben.map((v) => ({ id: v.id, titel: v.titel, frist: v.faellig, neues_datum: v.neu, prioritaet: PRIORITY_OUT[v.prioritaet] })),
+      ohne_frist: p.ohneFrist.length,
+      wartet_auf: p.wartetAuf.length ? p.wartetAuf.map((w) => ({ person: w.person, offen: w.aufgaben.length, ueberfaellig: w.aufgaben.filter((a) => a.ueberfaellig).length, aufgaben: w.aufgaben.slice(0, 10).map((a) => ({ id: a.id, titel: a.titel, frist: a.faellig })) })) : undefined,
+      hinweise: p.hinweise.length ? p.hinweise : undefined,
+      link: abs(ctx, `/kalender/tagesplan${i.datum ? `?tag=${i.datum}` : ""}`),
+    });
+  },
+});
+
+export const aufgabeVerschiebenTool = defineTool({
+  name: "aufgabe_verschieben",
+  title: "Aufgabe verschieben",
+  description: "Setzt die Frist einer Aufgabe auf ein neues Datum (z. B. den Vorschlag aus „tagesplan“). Nur auf ausdrücklichen Wunsch benutzen.",
+  area: "kalender",
+  write: true,
+  input: z.object({ id: uuid, datum: isoDate }),
+  summary: (i) => `Aufgabe → ${dmy(i.datum)}`,
+  run: async (ctx, i) => {
+    const r = await aufgabeVerschieben(ctx.session, i.id, i.datum);
+    if (!r) return { text: "Aufgabe nicht gefunden.", isError: true };
+    return json({ ok: true, meldung: `„${r.titel}“ von ${dmy(r.vorher) ?? "ohne Frist"} auf ${dmy(i.datum)} verschoben.`, link: abs(ctx, `/kalender/tagesplan?tag=${i.datum}`) });
+  },
+});
+
+export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool];
