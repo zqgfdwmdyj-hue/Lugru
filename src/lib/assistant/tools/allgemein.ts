@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { canAccess, linkAllowed } from "@/lib/auth/areas";
@@ -19,6 +19,7 @@ import { privateSettings } from "@/lib/private/service";
 import { defineTool, type ToolCtx } from "../types";
 import { PRIORITY_IN, abs, berlinDateTime, isoDate, json, likeOf, round2, taskBrief, uuid, visibleTask } from "./common";
 import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
+import { personen } from "@/lib/delegieren/service";
 
 const T = schema.tasks;
 const PS = schema.palletShipments;
@@ -134,11 +135,27 @@ export const aufgaben = defineTool({
     faellig_bis: isoDate.optional().describe("Nur Aufgaben, die bis zu diesem Tag fällig sind"),
     kategorie: z.enum(schema.TASK_CATEGORIES).optional(),
     auch_ideen: z.boolean().default(false).describe("Auch unverbindliche, automatisch erzeugte Ideen zeigen"),
+    zustaendig: z.string().trim().max(60).optional().describe("Filter Zuständigkeit: „ich“, „niemand“, „extern“ oder Name (z. B. Assistenz, Steuerberater)"),
     limit: z.number().int().min(1).max(100).default(40),
   }),
   run: async (ctx, i) => {
     const s = ctx.session;
     const where = [eq(T.tenantId, s.tenantId), eq(T.status, i.status === "erledigt" ? "done" : "open")];
+    const ps = await personen(s.tenantId);
+    const nameVon = new Map(ps.map((p) => [p.key, p.name]));
+    if (i.zustaendig) {
+      const z = i.zustaendig.toLowerCase();
+      if (z === "ich") where.push(s.role === "owner" ? or(eq(T.assigneeId, s.userId), and(isNull(T.assigneeId), isNull(T.zustaendigExtern)))! : eq(T.assigneeId, s.userId));
+      else if (z === "niemand") where.push(and(isNull(T.assigneeId), isNull(T.zustaendigExtern))!);
+      else if (z === "extern") where.push(isNotNull(T.zustaendigExtern));
+      else {
+        const treffer = ps.filter((p) => p.name.toLowerCase().includes(z));
+        const ids = treffer.filter((p) => p.art === "intern").map((p) => p.key.slice(5));
+        const ext = treffer.filter((p) => p.art === "extern").map((p) => p.key.slice(7));
+        if (!ids.length && !ext.length) return { text: `Keine Person „${i.zustaendig}“ gefunden. Bekannt: ${ps.map((p) => p.name).join(", ")}.`, isError: true };
+        where.push(or(ids.length ? inArray(T.assigneeId, ids) : undefined, ext.length ? inArray(T.zustaendigExtern, ext) : undefined)!);
+      }
+    }
     if (!i.auch_ideen) where.push(bindingTask);
     if (i.suche) where.push(or(ilike(T.title, likeOf(i.suche)), ilike(T.notes, likeOf(i.suche)))!);
     if (i.faellig_bis) where.push(and(isNotNull(T.dueDate), lte(T.dueDate, i.faellig_bis))!);
@@ -150,7 +167,8 @@ export const aufgaben = defineTool({
       .orderBy(i.status === "erledigt" ? desc(T.completedAt) : sql`${T.dueDate} asc nulls last`)
       .limit(400);
     const vis = rows.filter((x) => visibleTask(s, x));
-    return json({ anzahl: vis.length, aufgaben: vis.slice(0, i.limit).map((x) => taskBrief(x, ctx)), link: abs(ctx, "/?ansicht=liste") });
+    const zustaendig = (x: (typeof vis)[number]) => (x.assigneeId ? (nameVon.get(`user:${x.assigneeId}`) ?? "andere Person") : x.zustaendigExtern ? `${x.zustaendigExtern} (extern)` : undefined);
+    return json({ anzahl: vis.length, aufgaben: vis.slice(0, i.limit).map((x) => ({ ...taskBrief(x, ctx), zustaendig: zustaendig(x) })), link: abs(ctx, "/?ansicht=liste") });
   },
 });
 

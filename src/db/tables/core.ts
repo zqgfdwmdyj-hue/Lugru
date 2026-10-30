@@ -157,6 +157,7 @@ export type TenantSettings = {
   /** Kapital-Ampel: Ziel-Jahresrendite, „gering“, Reichweiten-Grenzen (Tage). */
   kapital?: { zielRendite?: number; geringRendite?: number; gruenReichweite?: number; rotReichweite?: number };
   /** Deal-Ampel (Einkaufs-Prüfung): Zielmarge %, Abverkauf Tage, max. Angebote, Amazon-Anteil %, Preisverfall %, Nebenkosten €/Stück, Länder. */
+  delegieren?: { extern?: string[]; regeln?: { typ: string; person: `user:${string}` | `extern:${string}`; bestaetigt: boolean }[]; ausnahmen?: string[] };
   buchhaltung?: { firmen?: string[]; kontenrahmen?: "SKR04" | "SKR03"; datev?: Record<string, { beraternummer?: string; mandantennummer?: string }>; geldkonten?: { bank?: string; kreditkarte?: string; transit?: string; marktplatz?: string }; wjBeginnMonat?: number };
   tagesplan?: { arbeitszeit?: Record<string, { von: string; bis: string } | null>; personen?: Record<string, Record<string, { von: string; bis: string } | null>>; vorziehen?: number };
   dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[] };

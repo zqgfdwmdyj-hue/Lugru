@@ -180,6 +180,7 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Planung einrichten", () => z.planungEinrichten(t, todayIso()));
         await step(t, "Freie Zeiten", () => z.freieZeitenAnwenden(t, todayIso()));
         await step(t, "Anleitungen prüfen", () => z.anleitungenPruefen(t));
+        await step(t, "Zuständigkeiten", async () => (await import("@/lib/delegieren/service")).zustaendigkeitenAnwenden(t));
       }
     }
     return { skipped: false };

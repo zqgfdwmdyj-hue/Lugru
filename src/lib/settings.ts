@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import type { ClaimType, TenantSettings } from "@/db/schema";
 import { GELDKONTEN_STANDARD } from "@/lib/buchhaltung/kontierung";
 import { DEAL_AMPEL_STANDARD } from "@/lib/deal-ampel/logic";
+import { STANDARD_EXTERN, type Regel } from "@/lib/delegieren/logic";
 import { ARBEITSZEIT_STANDARD, type Arbeitszeit } from "@/lib/tagesplan/logic";
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
@@ -93,6 +94,8 @@ export const DEFAULT_SETTINGS = {
   kapital: { zielRendite: 0.3, geringRendite: 0.05, gruenReichweite: 60, rotReichweite: 120 },
   /** Deal-Ampel: 15 % Zielmarge, Abverkauf ≤ 45 Tage, ab 15 Angeboten rot, Amazon ≥ 50 % gelb, Preisverfall ≥ 10 % gelb. */
   dealAmpel: DEAL_AMPEL_STANDARD,
+  /** Delegieren: externe Zuständige (nur Name), Regeln Aufgabentyp → Person, Ausnahmen („mache ich selbst“). */
+  delegieren: { extern: STANDARD_EXTERN, regeln: [] as Regel[], ausnahmen: [] as string[] },
   /** Buchhaltung je Firma (nur LuGru/WiGru – nicht AdelPrep): SKR04, DATEV-Nummern vom Steuerberater, Geldkonten. */
   buchhaltung: { firmen: ["LuGru", "WiGru"], kontenrahmen: "SKR04" as "SKR04" | "SKR03", datev: {} as Record<string, { beraternummer?: string; mandantennummer?: string }>, geldkonten: GELDKONTEN_STANDARD, wjBeginnMonat: 1 },
   /** Tagesplan: Arbeitszeit je Wochentag (Mo–Fr 9–17 Uhr), je Person abweichend; Aufgaben der nächsten 2 Tage vorziehen. */
@@ -151,6 +154,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     retourenStation: { ...d.retourenStation, ...(s.retourenStation ?? {}) },
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
+    delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },
     amazonBusiness: { ...d.amazonBusiness, ...(s.amazonBusiness ?? {}) },

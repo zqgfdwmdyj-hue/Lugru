@@ -3,6 +3,7 @@ import { z } from "zod";
 import { AMPEL_TEXT } from "@/lib/deal-ampel/logic";
 import { dealPruefen } from "@/lib/deal-ampel/service";
 import { buchhaltungStatus } from "@/lib/buchhaltung/service";
+import { personen, zustaendigSetzen } from "@/lib/delegieren/service";
 import { addDaysIso } from "@/lib/dates";
 import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
 import { fristenListe } from "@/lib/private/fristen-service";
@@ -200,4 +201,33 @@ export const buchhaltungStatusTool = defineTool({
   },
 });
 
-export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool, buchhaltungStatusTool];
+// ---- Modul 2: Delegieren --------------------------------------------------------------------------------
+
+export const aufgabeZuweisenTool = defineTool({
+  name: "aufgabe_zuweisen",
+  title: "Aufgabe zuweisen",
+  description:
+    "Setzt die Zuständigkeit einer Aufgabe: interne Person mit Konto (z. B. Assistenz – passende Anleitungen hängen automatisch an) oder extern (Prep Center, Steuerberater, eigener Name), „niemand“ entfernt sie. Nur auf ausdrücklichen Wunsch benutzen.",
+  area: ["start", "kalender"],
+  ownerOnly: true,
+  write: true,
+  input: z.object({ id: uuid, person: z.string().trim().min(2).max(60).describe("Name der Person (wie in „aufgaben“ unter zustaendig) oder „niemand“") }),
+  summary: (i) => `Aufgabe → ${i.person}`,
+  run: async (ctx, i) => {
+    const t = ctx.session.tenantId;
+    let key: string | null = null;
+    if (i.person.toLowerCase() !== "niemand") {
+      const ps = await personen(t);
+      const exakt = ps.find((p) => p.name.toLowerCase() === i.person.toLowerCase());
+      const teil = ps.filter((p) => p.name.toLowerCase().includes(i.person.toLowerCase()));
+      const p = exakt ?? (teil.length === 1 ? teil[0] : null);
+      if (!p) return { text: teil.length > 1 ? `Mehrdeutig: ${teil.map((x) => x.name).join(", ")}.` : `Keine Person „${i.person}“. Bekannt: ${ps.map((x) => x.name).join(", ")} (externe Namen unter Delegation pflegen).`, isError: true };
+      key = p.key;
+    }
+    const r = await zustaendigSetzen(t, i.id, key);
+    if (!r.ok) return { text: "Aufgabe nicht gefunden.", isError: true };
+    return json({ ok: true, meldung: r.name ? `Zuständig: ${r.name}.` : "Zuständigkeit entfernt.", link: abs(ctx, "/delegation") });
+  },
+});
+
+export const HERZSTUECK = [dealPruefenTool, tagesplanTool, aufgabeVerschiebenTool, fristenTool, buchhaltungStatusTool, aufgabeZuweisenTool];

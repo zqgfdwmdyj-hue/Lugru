@@ -40,7 +40,8 @@ export async function zuweisenAction(fd: FormData) {
   const session = await requireArea("start");
   const id = uuid.parse(fd.get("id"));
   const wer = String(fd.get("wer") ?? "");
-  const { aufgabeZuweisen } = await import("@/lib/zeit/service");
-  await aufgabeZuweisen(session.tenantId, id, wer ? uuid.parse(wer) : null);
+  const { zustaendigSetzen } = await import("@/lib/delegieren/service");
+  // Interne Person (Konto-ID) oder extern („extern:Steuerberater“); leer = niemand Bestimmtes.
+  await zustaendigSetzen(session.tenantId, id, !wer ? null : wer.startsWith("extern:") ? wer : `user:${uuid.parse(wer)}`);
   redirect(`/board?b=todos${fd.get("alle") === "1" ? "&alle=1" : ""}`);
 }
