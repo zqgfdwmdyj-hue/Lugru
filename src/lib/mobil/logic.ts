@@ -155,7 +155,7 @@ export function briefingText(d: BriefingDaten): string {
 
 // ---- SMS mit Antwort-Codes -----------------------------------------------------------------------------------
 
-export type SmsCode = { code: "VA" | "SPAETER" | "OK" | "KAUFEN" | "unklar"; menge: number | null; ref: string | null };
+export type SmsCode = { code: "VA" | "SPAETER" | "OK" | "KAUFEN" | "GEKAUFT" | "unklar"; menge: number | null; ref: string | null; preis?: number | null };
 
 /** Antwort lesen: „VA“, „später“, „ok“, „kaufen 20“ – optional mit Kurz-Code „[F12]“ bzw. „F12“. */
 export function smsAntwort(text: string): SmsCode {
@@ -164,6 +164,9 @@ export function smsAntwort(text: string): SmsCode {
   if (/^va\b/.test(t)) return { code: "VA", menge: null, ref };
   if (/^(später|spaeter|morgen)\b/.test(t)) return { code: "SPAETER", menge: null, ref };
   if (/^(ok|okay|gelesen|danke)\b/.test(t)) return { code: "OK", menge: null, ref };
+  // „gekauft 60 zu 19,50“: Ludwig meldet einen selbst getätigten Kauf (Abschnitt 10) – bestellt wird nie automatisch.
+  const g = /^gekauft\s*(\d{1,5})?(?:\s*(?:stk|stück)?\.?)?(?:\s*(?:zu|à|a|je|für)?\s*(\d{1,5}(?:[.,]\d{1,2})?))?/.exec(t);
+  if (g) return { code: "GEKAUFT", menge: g[1] ? Number(g[1]) : null, ref, preis: g[2] ? Number(g[2].replace(",", ".")) : null };
   const k = /^kaufen\s*(\d{1,5})?/.exec(t);
   if (k) return { code: "KAUFEN", menge: k[1] ? Number(k[1]) : null, ref };
   return { code: "unklar", menge: null, ref };

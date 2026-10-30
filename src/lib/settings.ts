@@ -133,7 +133,8 @@ export const DEFAULT_SETTINGS = {
   /** VA: Sprache (der VA spricht Englisch), Glossar für Fachbegriffe, Antworten vor dem Senden auf Englisch zeigen. */
   va: { zeitzone: "Europe/Berlin", ruheVon: "20:00", ruheBis: "08:00", erinnerungUeberfaellig: true, darfEinkaufsrechnungen: true, sprache: "en" as "de" | "en", glossar: GLOSSAR_STANDARD as Record<string, string>, antwortVorschau: false },
   faelle: { fristen: {} as Record<string, number>, nachfassenTage: 7, betragSchwelle: 200, zustaendig: "va" as "va" | "ludwig" },
-  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "" },
+  // Abschnitt 10/11: Budget-Grenzen (0 = keine), Deal-Wert-Schwelle für die Kauf-Meldung und Ziel für „Treffer“.
+  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "", budgetJeDeal: 0, budgetJeTag: 0, budgetJeWoche: 0, wertSchwelle: 70 },
   /**
    * Posteingang auf null: Versand-/Lieferbestätigungen und Newsletter beim Eingang archivieren (Bestell-Mails
    * „Verkauft, jetzt liefern“ bleiben für den Versand-Abgleich); Termin-Mails (Arzt, Handwerker, Amt, Schule) in

@@ -61,7 +61,7 @@ export async function abos(tenantId: string, userId: string) {
 /** Neueste Meldung der letzten Stunde (holt der Service Worker nach dem Anstoß ab). */
 export async function neuesteMeldung(tenantId: string, userId: string) {
   const [m] = await db
-    .select({ id: M.id, titel: M.titel, text: M.text, link: M.link })
+    .select({ id: M.id, titel: M.titel, text: M.text, link: M.link, aktionen: M.aktionen })
     .from(M)
     .where(and(eq(M.tenantId, tenantId), eq(M.userId, userId), gte(M.createdAt, new Date(Date.now() - 3600_000))))
     .orderBy(desc(M.createdAt))
@@ -82,9 +82,13 @@ export async function empfaenger(tenantId: string, bereich: string): Promise<str
  * Meldung an Personen: speichern, Push anstoßen (abgelaufene Abos werden entfernt). Ohne erfolgreichen Push →
  * Discord-Kanal für Aufgaben (falls eingerichtet). Liefert, wie viele Geräte angestoßen wurden.
  */
-export async function melden(tenantId: string, userIds: string[], m: { titel: string; text: string; link: string | null }, opts: { ohneDiscord?: boolean } = {}): Promise<{ push: number; discord: boolean }> {
+export type MeldungAktion = { aktion: string; titel: string; link: string };
+
+export async function melden(tenantId: string, userIds: string[], m: { titel: string; text: string; link: string | null; aktionen?: MeldungAktion[] | null }, opts: { ohneDiscord?: boolean } = {}): Promise<{ push: number; discord: boolean }> {
   if (!userIds.length) return { push: 0, discord: false };
-  await db.insert(M).values(userIds.map((userId) => ({ tenantId, userId, titel: m.titel.slice(0, 120), text: m.text.slice(0, 500), link: m.link })));
+  // Knöpfe in der Benachrichtigung (Android/Desktop; iOS zeigt nur den Haupt-Link): höchstens zwei.
+  const aktionen = m.aktionen?.length ? m.aktionen.slice(0, 2).map((a) => ({ aktion: a.aktion.slice(0, 30), titel: a.titel.slice(0, 40), link: a.link.slice(0, 500) })) : null;
+  await db.insert(M).values(userIds.map((userId) => ({ tenantId, userId, titel: m.titel.slice(0, 120), text: m.text.slice(0, 500), link: m.link, aktionen })));
   const liste = await db.select().from(P).where(and(eq(P.tenantId, tenantId), inArray(P.userId, userIds), or(isNull(P.fehlerAm), gte(P.fehlerAm, new Date(Date.now() - 7 * 86_400_000)))));
   let push = 0;
   if (liste.length) {

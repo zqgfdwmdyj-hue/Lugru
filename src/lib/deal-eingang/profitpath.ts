@@ -43,7 +43,7 @@ export async function profitPathAbgleich(tenantId: string, jetzt = new Date()): 
         const cursor = letzte.reduce((mx, m) => (BigInt(m.id) > BigInt(mx) ? m.id : mx), "0");
         [k] = await db.insert(K).values({ tenantId, kanalId, name: info?.name ?? kanalId, cursor }).onConflictDoNothing().returning();
         // Meldungen der letzten Stunde gleich mitnehmen (Anbindung frisch eingerichtet).
-        for (const m of letzte.filter((x) => vomProfitPath(x, cfg.botId) && x.timestamp && jetzt.getTime() - Date.parse(x.timestamp) < 3600_000).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1))) await meldung(tenantId, k?.name ?? kanalId, m, z, jetzt);
+        for (const m of letzte.filter((x) => vomProfitPath(x, cfg.botId) && x.timestamp && jetzt.getTime() - Date.parse(x.timestamp) < 3600_000).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1))) await meldung(tenantId, k?.name ?? kanalId, m, z, jetzt, kanalId);
         continue;
       }
       const neu = await dc.neue(kanalId, k.cursor ?? "0");
@@ -55,7 +55,7 @@ export async function profitPathAbgleich(tenantId: string, jetzt = new Date()): 
           z.uebersprungen++;
           continue;
         }
-        await meldung(tenantId, k.name ?? kanalId, m, z, jetzt).catch((e) => console.error("[ProfitPath]", e instanceof Error ? e.message : e));
+        await meldung(tenantId, k.name ?? kanalId, m, z, jetzt, kanalId).catch((e) => console.error("[ProfitPath]", e instanceof Error ? e.message : e));
       }
       if (cursor !== k.cursor) await db.update(K).set({ cursor }).where(eq(K.id, k.id));
     }
@@ -86,7 +86,7 @@ export function _ppZuruecksetzen() {
   laeuft = new Set();
 }
 
-async function meldung(tenantId: string, kanalName: string, m: { id: string; content?: string; embeds?: Parameters<typeof profitPathAngebot>[0]["embeds"]; author?: { bot?: boolean } }, z: { neu: number; updates: number; uebersprungen: number }, jetzt: Date) {
+async function meldung(tenantId: string, kanalName: string, m: { id: string; content?: string; embeds?: Parameters<typeof profitPathAngebot>[0]["embeds"]; author?: { bot?: boolean } }, z: { neu: number; updates: number; uebersprungen: number }, jetzt: Date, kanalId?: string) {
   const pp = profitPathAngebot({ id: m.id, content: m.content, embeds: m.embeds });
   if (!pp) {
     z.uebersprungen++;
@@ -121,6 +121,8 @@ async function meldung(tenantId: string, kanalName: string, m: { id: string; con
     z.uebersprungen++;
     return;
   }
+  // Abschnitt 11: 👍/👎 als Reaktion auf diese Discord-Nachricht zählt als Bewertung.
+  if (kanalId) await db.update(E).set({ discordRef: `${kanalId}/${m.id}` }).where(eq(E.id, r.id));
   await eingangPruefen(tenantId, r.id);
   z.neu++;
 }

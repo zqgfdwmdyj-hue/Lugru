@@ -92,6 +92,7 @@ type monitorDaten struct {
 	TagZeit        string
 	EbayAppID      string
 	EbaySellerURL  string
+	SellerDeals    sellerStand
 	SpotifyID      string
 	SpotifyDa      bool
 	EbaySellerDa   bool
@@ -160,6 +161,7 @@ func (srv *Server) monitorDaten() monitorDaten {
 	d.TagZeit = srv.store.Einstellung(store.SchluesselMonitorTagZeit)
 	d.EbayAppID = srv.store.Einstellung(store.SchluesselEbayAppID)
 	d.EbaySellerURL = srv.store.Einstellung(store.SchluesselEbaySellerURL)
+	d.SellerDeals = srv.sellerStand()
 	d.SpotifyID = srv.store.Einstellung(store.SchluesselSpotifyID)
 	d.SpotifyDa = srv.store.Einstellung(store.SchluesselSpotifySecret) != ""
 	d.EbaySellerDa = srv.store.Einstellung(store.SchluesselEbaySellerKey) != ""

@@ -108,6 +108,16 @@ export async function smsAntwortVerarbeiten(tenantId: string, body: string): Pro
     ergebnis = "auf morgen gelegt";
   } else if (a.code === "OK") {
     ergebnis = "gelesen";
+  } else if (a.code === "GEKAUFT") {
+    // Ludwig hat selbst gekauft → Deal „gekauft“ (Menge, Preis), Bestellung „bestellt“; ohne Menge nur Aufgabe.
+    if (dealId && a.menge) {
+      const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
+      const r = await alsGekauft(tenantId, dealId, { menge: a.menge, preis: a.preis ?? null, weg: "sms", ref: `sms:${m?.ref ?? ""}` }).catch((e) => ({ fehler: e instanceof Error ? e.message : String(e) }));
+      ergebnis = "fehler" in r ? `Nicht gespeichert: ${r.fehler}`.slice(0, 200) : `als gekauft gespeichert (${a.menge} Stück)`;
+    } else {
+      await aufgabeAus(tenantId, `Kauf eintragen: ${a.menge ?? "?"} Stück (per SMS)`, `${kern}\nAntwort: ${body}`, heute);
+      ergebnis = "Aufgabe angelegt – Menge bzw. Deal unklar";
+    }
   } else {
     // KAUFEN n: nur Entwurf
     if (dealId) {

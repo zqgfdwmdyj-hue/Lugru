@@ -115,6 +115,9 @@ func laufe() int {
 	// Liest regelmäßig die Reaktionen (✅/❌) unter den Posts, sobald ein
 	// Bot-Token eingetragen ist.
 	srv.StarteReaktionsAbgleich(ctx)
+	// Schickt die Deals samt Reaktionen (nur als Anzahl) ans Lugru-Seller-
+	// System, sobald dessen Adresse und Verbindungsschlüssel eingetragen sind.
+	srv.StarteSellerAbgleich(ctx)
 	// Der Shop-Monitor prüft im Hintergrund die beobachteten Produkte bei
 	// billiger.de — nur, solange er unter Monitor eingeschaltet ist.
 	srv.StarteMonitor(ctx)

@@ -18,12 +18,24 @@ self.addEventListener("push", (e) => {
     fetch("/api/push/neueste", { credentials: "include", cache: "no-store" })
       .then((r) => r.json())
       .catch(() => ({ titel: "Seller-System", text: "Neue Meldung – bitte öffnen.", link: "/" }))
-      .then((m) => self.registration.showNotification(m.titel || "Seller-System", { body: m.text || "", tag: m.id || "meldung", data: { link: m.link || "/" }, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png" })),
+      .then((m) => {
+        // Knöpfe (z. B. „Zum Angebot“, „Gekauft …“) – je Knopf ein eigener Link.
+        const aktionen = Array.isArray(m.aktionen) ? m.aktionen.slice(0, 2) : [];
+        const links = {};
+        for (const a of aktionen) links[a.aktion] = a.link;
+        return self.registration.showNotification(m.titel || "Seller-System", { body: m.text || "", tag: m.id || "meldung", data: { link: m.link || "/", links }, actions: aktionen.map((a) => ({ action: a.aktion, title: a.titel })), icon: "/icons/icon-192.png", badge: "/icons/icon-192.png" });
+      }),
   );
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const link = (e.notification.data && e.notification.data.link) || "/";
+  const d = e.notification.data || {};
+  const link = (e.action && d.links && d.links[e.action]) || d.link || "/";
+  // Externe Links (Shop) im neuen Fenster, eigene Seiten im offenen Seller-System.
+  if (/^https?:\/\//.test(link) && !link.startsWith(self.location.origin)) {
+    e.waitUntil(self.clients.openWindow(link));
+    return;
+  }
   e.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
       for (const c of cs) if ("focus" in c) return c.navigate(link).then((w) => (w || c).focus());

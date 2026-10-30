@@ -1,5 +1,5 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { createdAt, id, tenantId, users } from "./core";
+import { bigint, boolean, index, integer, jsonb, pgTable, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { createdAt, id, money, tenantId, users } from "./core";
 import { encryptedText } from "./encrypted";
 
 // Deal-Eingang: Angebote, die Ludwig aus WhatsApp (oder Mail, Kurzbefehl, von Hand) teilt. Rohtext verschlüsselt,
@@ -58,7 +58,81 @@ export type DealEingangZeile = {
   hinweise: string[];
   fehler: string | null;
   geprueftAm: string;
+  /** Abschnitt 11: Keepa-Schnappschuss und Kontext beim Eingang (Grundlage für den Deal-Wert). */
+  merkmale?: DealMerkmale | null;
+  /** Abschnitt 11: persönlicher Deal-Wert (0–100) mit Begründung und ähnlichen früheren Deals. */
+  wert?: DealWert | null;
 };
+
+/** Merkmale eines Deals beim Eingang (Keepa DE bzw. bestes Land + Rechnung + Kontext). null = unbekannt. */
+export type DealMerkmale = {
+  land: string | null;
+  bbJetzt: number | null;
+  bb30: number | null;
+  bb90: number | null;
+  bb180: number | null;
+  /** Buy Box jetzt gegenüber Ø 90 Tage in % (−15 = 15 % unter dem Schnitt). */
+  bbAbweichung90: number | null;
+  /** Schwankung der Buy Box über 90 Tage (Variationskoeffizient in %). */
+  schwankung90: number | null;
+  /** Preiseinbrüche (≥ 15 % unter Ø 30 Tage davor) in 180 Tagen. */
+  einbrueche180: number | null;
+  tief12: number | null;
+  /** EK-Abstand zum 12-Monats-Tief der Buy Box (Verhältnis EK ÷ Tief in %). */
+  ekZuTief: number | null;
+  angebote: number | null;
+  /** Angebote jetzt gegenüber vor 30 Tagen in %. */
+  angeboteTrend30: number | null;
+  fbaAnteil: number | null;
+  amazonAnteil: number | null;
+  amazonOos90: number | null;
+  rang: number | null;
+  /** Rang jetzt gegenüber Ø 90 Tage in % (negativ = besser). */
+  rangTrend: number | null;
+  monatlichVerkauft: number | null;
+  /** Rang im selben Monat vor einem Jahr ÷ Ø Rang des Vorjahres (unter 1 = Saisonhoch). */
+  saison: number | null;
+  roi: number | null;
+  marge: number | null;
+  marke: string | null;
+  kategorie: string | null;
+  quelle: string | null;
+  weg: string;
+  wochentag: number;
+  stunde: number;
+  kapitalAmpel: "gruen" | "gelb" | "rot" | null;
+  bestand: number | null;
+};
+
+export type DealAehnlich = { id: string | null; quelle: "eigen" | "lugru"; titel: string | null; asin: string | null; datum: string; ergebnis: string; abstand: number };
+export type DealWert = {
+  wert: number;
+  /** „Passt zu dir (78/100): … Gegen: …“ */
+  begruendung: string;
+  dafuer: string[];
+  dagegen: string[];
+  aehnliche: DealAehnlich[];
+  /** kennzahlen = gewichtete Kennzahlen + ähnliche Deals; modell = zusätzlich gelerntes Modell (ab 100 Deals mit Ergebnis). */
+  verfahren: "kennzahlen" | "modell";
+  /** Ampel rot: Wert gedeckelt – der Deal-Wert ersetzt keine Prüfung. */
+  gedeckelt: boolean;
+};
+
+/** Reales Ergebnis eines gekauften Deals (sellerboard je Charge, ab Wareneingang). */
+export type DealErgebnis = {
+  wareneingang: string | null;
+  tage: number;
+  verkauft: number;
+  erstattet: number;
+  oVk: number | null;
+  realerGewinn: number | null;
+  realerRoi: number | null;
+  /** Tage vom Wareneingang bis 90 % der gekauften Menge verkauft (null = noch nicht). */
+  tageBisAbverkauf: number | null;
+  stand: string;
+};
+
+export const DAUMEN_GRUENDE = ["zu viele Angebote", "Chart instabil", "Amazon drin", "Marke gesperrt", "Kapital", "Saison", "sonstiges"] as const;
 
 export const dealEingaenge = pgTable(
   "deal_eingaenge",
@@ -98,6 +172,21 @@ export const dealEingaenge = pgTable(
     pushAm: timestamp("push_am", { withTimezone: true }),
     geprueftAm: timestamp("geprueft_am", { withTimezone: true }),
     entschiedenAm: timestamp("entschieden_am", { withTimezone: true }),
+    /** Abschnitt 11: 👍/👎 mit Kurzgrund – aus Seite, Push, Discord (Reaktion) oder Claude. */
+    daumen: text("daumen", { enum: ["hoch", "runter"] }),
+    daumenGrund: text("daumen_grund"),
+    daumenWeg: text("daumen_weg", { enum: ["tool", "push", "discord", "claude"] }),
+    daumenAm: timestamp("daumen_am", { withTimezone: true }),
+    /** Abschnitt 10: gekauft (Menge, Preis netto je Stück) – Knopf, Bestellbestätigungs-Mail, Sprache/SMS oder Claude. */
+    gekauftMenge: integer("gekauft_menge"),
+    gekauftPreis: money("gekauft_preis"),
+    gekauftAm: timestamp("gekauft_am", { withTimezone: true }),
+    gekauftWeg: text("gekauft_weg", { enum: ["knopf", "mail", "sprache", "claude", "sms"] }),
+    gekauftRef: text("gekauft_ref"),
+    /** Discord-Nachricht des Eingangs (ProfitPath: „kanal/nachricht“) – für 👍/👎 als Reaktion. */
+    discordRef: text("discord_ref"),
+    /** Reales Ergebnis (sellerboard, 30/60/90 Tage nach Wareneingang). */
+    ergebnis: jsonb("ergebnis").$type<DealErgebnis | null>(),
     createdAt: createdAt(),
   },
   (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung), uniqueIndex("deal_eingaenge_ref_uq").on(t.tenantId, t.quelleRef)],
@@ -140,4 +229,40 @@ export const dealEingangKanaele = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("deal_eingang_kanaele_uq").on(t.tenantId, t.kanalId)],
+);
+
+
+/**
+ * Abschnitt 11: History der Deals, die Lugru Deals (Shop-Monitor) in der Deal-Gruppe gepostet hat – nur Zahlen je
+ * Deal und Reaktionen als Anzahl (✅ gekauft / ❌ nicht verfügbar), keine Profile einzelner Mitglieder. Schwaches
+ * Signal für den Deal-Wert; eine fehlende Reaktion heißt nicht „nicht gekauft“.
+ */
+export const lugruDealsHistorie = pgTable(
+  "lugru_deals_historie",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    externId: bigint("extern_id", { mode: "number" }).notNull(),
+    asin: text("asin").notNull(),
+    titel: text("titel"),
+    quellmarkt: text("quellmarkt"),
+    zielmarkt: text("zielmarkt"),
+    ekEur: money("ek_eur"),
+    vkEur: money("vk_eur"),
+    gewinnEur: money("gewinn_eur"),
+    margeProzent: real("marge_prozent"),
+    verkaeufeMonat: integer("verkaeufe_monat"),
+    gruppe: text("gruppe"),
+    kanal: text("kanal"),
+    status: text("status"),
+    kaeufe: integer("kaeufe").notNull().default(0),
+    nichtVerfuegbar: integer("nicht_verfuegbar").notNull().default(0),
+    reaktionenAm: timestamp("reaktionen_am", { withTimezone: true }),
+    gepostetAm: timestamp("gepostet_am", { withTimezone: true }).notNull(),
+    /** Hat sich der Deal real bewährt (Keepa danach: Preis hielt, Angebote stiegen nicht stark)? null = unbekannt. */
+    bewaehrt: boolean("bewaehrt"),
+    bewaehrtGrund: text("bewaehrt_grund"),
+    aktualisiertAm: timestamp("aktualisiert_am", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("lugru_deals_historie_uq").on(t.tenantId, t.externId), index("lugru_deals_historie_asin_idx").on(t.tenantId, t.asin)],
 );

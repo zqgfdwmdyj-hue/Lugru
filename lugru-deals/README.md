@@ -288,6 +288,15 @@ Ohne Seller-System gehen auch eigene App ID und Cert ID. Der
 Marktpreis wird je EAN 30 Minuten gemerkt. Verkaufte Artikel liefert die API
 nicht, und die Seite dafür blockt eBay für Server.
 
+**Deals ans Seller-System:** Mit derselben Adresse und demselben Schlüssel
+gehen die geposteten Deals ans Seller-System (`POST
+/api/public/lugru-deals/deals`) – beim ersten Mal die ganze History, danach
+stündlich die letzten 30 Tage. Der Deal-Eingang dort lernt daraus, welche
+Deals gekauft wurden („Lernender Deal-Wert“). Gesendet werden nur die Zahlen
+eines Deals und die Reaktionen als Anzahl (✅/❌) – kein Nachrichtentext, kein
+Poster, keine Namen. Ein Deal in mehreren Channels zählt einmal. Stand und
+Fehler stehen unter Monitor → Einstellungen → eBay.
+
 **Tageszusammenfassung:** täglich zur eingestellten Uhrzeit die fünf besten
 Deals der letzten 24 Stunden mit Gewinn und Käufen.
 

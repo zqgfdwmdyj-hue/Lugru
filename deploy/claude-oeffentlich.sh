@@ -4,7 +4,9 @@
 # Claude ruft den Konnektor aus dem Internet auf und verlangt https://. Freigegeben werden NUR: Login,
 # Freigabe-Seite für Claude, der Konnektor (/api/mcp, nur mit Zugangs-Token), die Metadaten (/.well-known),
 # Skripte/Logo der Login-Seite, die befristeten Kunden-Links für Sendungen und die Handy-Endpunkte
-# (/api/mobil/*: Kurzbefehle, Widget – nur mit Geräte-Schlüssel mk_…, Rate-Limit und Protokoll im Seller-System).
+# (/api/mobil/*: Kurzbefehle, Widget – nur mit Geräte-Schlüssel mk_…, Rate-Limit und Protokoll im Seller-System),
+# der Deal-Kurzbefehl (/api/deal-eingang, Schlüssel dk_…) und Lugru Deals (/api/public/lugru-deals/*,
+# Verbindungsschlüssel).
 # Alles andere (Aufträge, Einstellungen, Privatbereich …) antwortet unter dieser Adresse mit „nicht freigegeben“
 # (unter /api/* als JSON, damit Kurzbefehle und Skripte eine lesbare Fehlermeldung bekommen).
 #
@@ -26,7 +28,7 @@ MODE="${1:-}"
 ARG="${2:-}"
 CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
 TS_PORT="${CLAUDE_PORT:-8443}"
-PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil)
+PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil /api/deal-eingang /api/public/lugru-deals)
 BEGIN="# seller-system-claude BEGIN"
 END="# seller-system-claude END"
 
@@ -70,13 +72,15 @@ done_msg() {
   echo "Wieder schließen:  bash /opt/seller-system/deploy/claude-oeffentlich.sh aus"
 }
 # Freigabe-Block für Caddy. /api/mobil/* prüft das Seller-System selbst (Geräte-Schlüssel, Nur-ansehen-Konten,
-# Rate-Limit, Protokoll); gesperrte /api/*-Pfade antworten als JSON, alles andere als Text.
+# Rate-Limit, Protokoll), ebenso /api/deal-eingang (Deal-Kurzbefehl: Schlüssel dk_… oder Anmeldung) und
+# /api/public/lugru-deals/* (Lugru Deals: Verbindungsschlüssel); gesperrte /api/*-Pfade antworten als JSON, alles
+# andere als Text.
 caddy_block() {
   local domain="$1"
   printf '\n%s – Freigabe für den Claude-Konnektor und die Handy-Endpunkte (deploy/claude-oeffentlich.sh), nur diese Pfade\n' "$BEGIN"
   printf '%s {\n' "$domain"
   printf '\tencode gzip\n'
-  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/*\n'
+  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/* /api/deal-eingang /api/public/lugru-deals/*\n'
   printf '\thandle @frei {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$APP_PORT"
   printf '\t@api path /api/*\n'
   printf '\thandle @api {\n'
@@ -175,6 +179,10 @@ case "$MODE" in
       PUBLIC="https://$DOMAIN"
       code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$PUBLIC/api/mobil/erfassen" || true)"
       if [ "$code" = "401" ]; then echo "    ok – Handy-Endpunkte erreichbar und geschützt (ohne Schlüssel 401)."; else echo "    Hinweis: $PUBLIC/api/mobil/erfassen antwortet mit $code statt 401."; fi
+      for p in /api/deal-eingang /api/public/lugru-deals/deals; do
+        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$PUBLIC$p" || true)"
+        if [ "$code" = "401" ]; then echo "    ok – $p erreichbar und geschützt (ohne Schlüssel 401)."; else echo "    Hinweis: $PUBLIC$p antwortet mit $code statt 401."; fi
+      done
     elif command -v tailscale >/dev/null && tailscale funnel status 2>/dev/null | grep -q "/api/mcp"; then
       BIND_IP="$(val BIND_IP)"; [ -z "$BIND_IP" ] || [ "$BIND_IP" = "0.0.0.0" ] && BIND_IP=127.0.0.1
       YES=(); tailscale funnel --help 2>&1 | grep -q -- "-yes" && YES=(--yes)

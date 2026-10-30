@@ -113,6 +113,10 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
     return null;
   });
   if (deal) return deal === "neu" ? "new" : "duplicate";
+  // Abschnitt 10: Bestellbestätigung (Amazon/Shop) zu einem offenen Deal → als gekauft markieren; die Mail läuft normal weiter.
+  await import("@/lib/deal-eingang/kauf")
+    .then((k) => k.gekauftAusMail(tenantId, { messageKey: m.messageKey, fromAddress: m.fromAddress, fromName: m.fromName ?? null, subject: m.subject, text: m.text }))
+    .catch((e) => console.error("[Deal-Eingang] Bestellbestätigung:", e instanceof Error ? e.message : e));
   // Preisliste eines bekannten Lieferanten im Anhang → in dessen „per Mail“-Preisliste übernehmen (B2B-Deals).
   if (m.tabellen?.length) {
     const { preislisteAusMail } = await import("@/lib/b2b/preislisten-mail");

@@ -1,6 +1,8 @@
 import "server-only";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import type { DealEingangZeile } from "@/db/tables/deal-eingang";
+import { db, schema } from "@/db";
+import { DAUMEN_GRUENDE, type DealEingangZeile } from "@/db/tables/deal-eingang";
 import { AMPEL_EMOJI, antwortEntwurf } from "@/lib/deal-eingang/logic";
 import { eingaenge, eingang, eingangAnlegen, eingangPruefen, quellen, statusSetzen, STATUS_TEXT } from "@/lib/deal-eingang/service";
 import { defineTool } from "../types";
@@ -161,4 +163,118 @@ export const dealEingangStatusTool = defineTool({
   },
 });
 
-export const DEAL_EINGANG = [dealEingangTool, dealEingangDetailTool, dealQuellenTool, dealEingangPruefenTool, dealEingangStatusTool];
+// ---- Abschnitt 10/11: Deal-Wert, Lernbericht, 👍/👎, gekauft ------------------------------------------------------
+
+const QUELLE_WERT = { text: "Deal-Eingang: Deal-Wert aus Kennzahlen (Keepa-Zwischenspeicher), ähnlichen früheren Deals (eigene + Lugru-Deals-Gruppe, nur Anzahlen) und ab 100 eigenen Deals mit Ergebnis einem Lernmodell" };
+
+export const dealWertTool = defineTool({
+  name: "deal_wert",
+  title: "Deal-Wert",
+  description:
+    "Wie gut passt ein Deal zu Ludwig (0–100) mit Begründung („Passt zu dir (78/100): … Gegen: …“), Pro/Contra und ähnlichen früheren Deals (eigene Käufe/👍/👎/reale Ergebnisse, Lugru-Gruppe). deal_id = gespeicherter Wert eines Deal-Eingangs (je Angebot); asin = Markt-Sicht ohne EK. Rote Ampel deckelt auf 30 – der Wert ersetzt keine Prüfung.",
+  area: "dealeingang",
+  write: false,
+  quelle: QUELLE_WERT,
+  input: z.object({ deal_id: uuid.optional(), asin: z.string().trim().regex(/^[A-Za-z0-9]{10}$/).optional() }),
+  run: async (ctx, i) => {
+    if (!i.deal_id && !i.asin) return { text: "deal_id oder asin angeben.", isError: true };
+    const { dealWertFuer } = await import("@/lib/deal-eingang/wert");
+    const r = await dealWertFuer(ctx.session.tenantId, { dealId: i.deal_id, asin: i.asin?.toUpperCase() });
+    if (!r) return { text: "Deal-Eingang nicht gefunden.", isError: true };
+    const aehnlich = (w: { aehnliche: { id: string | null; quelle: string; titel: string | null; asin: string | null; datum: string; ergebnis: string }[] }) =>
+      w.aehnliche.map((a) => ({ quelle: a.quelle === "eigen" ? "eigener Deal" : "Lugru-Gruppe", titel: a.titel ?? undefined, asin: a.asin ?? undefined, datum: a.datum, ergebnis: a.ergebnis, link: a.id ? abs(ctx, `/deal-eingang/${a.id}`) : undefined }));
+    if (r.art === "eingang") {
+      if (!r.zeilen.length) return json({ deal_id: r.deal_id, hinweis: "Für diesen Eingang wurde noch kein Deal-Wert berechnet (vor Abschnitt 11 geprüft oder ohne ASIN) – im Deal-Eingang „Neu rechnen“.", link: abs(ctx, `/deal-eingang/${r.deal_id}`) });
+      return json({
+        deal_id: r.deal_id,
+        angebote: r.zeilen.map((z) => ({ nr: z.nr, asin: z.asin, titel: z.titel, ampel: AMPEL[z.ampel], deal_wert: z.wert.wert, begruendung: z.wert.begruendung, dafuer: z.wert.dafuer, dagegen: z.wert.dagegen, verfahren: z.wert.verfahren, gedeckelt_wegen_rot: z.wert.gedeckelt || undefined, aehnliche_deals: aehnlich(z.wert) })),
+        link: abs(ctx, `/deal-eingang/${r.deal_id}`),
+      });
+    }
+    return json({ asin: r.asin, ohne_ek: true, hinweis: "Ohne EK nur Markt-Sicht (Keepa) und ähnliche Deals – für die volle Prüfung deal_eingang_pruefen mit EK.", deal_wert: r.wert.wert, begruendung: r.wert.begruendung, dafuer: r.wert.dafuer, dagegen: r.wert.dagegen, verfahren: r.wert.verfahren, aehnliche_deals: aehnlich(r.wert), link: abs(ctx, "/deal-eingang") });
+  },
+});
+
+const vormonat = (heute: string) => {
+  const d = new Date(`${heute.slice(0, 7)}-01T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString().slice(0, 7);
+};
+
+export const dealLernenBerichtTool = defineTool({
+  name: "deal_lernen_bericht",
+  title: "Deal-Wert: Monatsbericht",
+  description:
+    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle und danach gekauft/gut bzw. 👍), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History. monat = YYYY-MM, Standard Vormonat.",
+  area: "dealeingang",
+  write: false,
+  quelle: QUELLE_WERT,
+  input: z.object({ monat: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional() }),
+  run: async (ctx, i) => {
+    const monat = i.monat ?? vormonat(ctx.today);
+    const { lernBerichtFuer } = await import("@/lib/deal-eingang/wert");
+    const b = await lernBerichtFuer(ctx.session.tenantId, monat);
+    return json({
+      monat: b.monat,
+      deals: b.deals,
+      mit_deal_wert: b.mitWert,
+      ueber_schwelle: b.ueberSchwelle,
+      schwelle: b.schwelle,
+      trefferquote_prozent: b.trefferquote,
+      treffer_basis: b.trefferBasis,
+      verpasst: b.verpasst.map((d) => ({ titel: d.titel, datum: d.datum, deal_wert: d.wert, link: abs(ctx, `/deal-eingang/${d.id}`) })),
+      fehlkaeufe: b.fehlkaeufe.map((d) => ({ titel: d.titel, datum: d.datum, deal_wert: d.wert, realer_roi_prozent: d.realerRoi, link: abs(ctx, `/deal-eingang/${d.id}`) })),
+      verfahren: b.verfahren,
+      wichtigste_merkmale: b.wichtigsteMerkmale ?? undefined,
+      lugru_history: { deals: b.lugru.deals, mit_kauf_reaktion: b.lugru.mitKauf, kauf_reaktionen: b.lugru.kaeufe, stand: b.lugru.zuletzt?.toISOString() ?? null },
+      link: abs(ctx, `/deal-eingang/lernen?monat=${monat}`),
+    });
+  },
+});
+
+export const dealBewertenTool = defineTool({
+  name: "deal_bewerten",
+  title: "Deal bewerten (👍/👎)",
+  description: `Speichert 👍 (hoch) oder 👎 (runter) zu einem Deal-Eingang, optional mit Kurzgrund aus der festen Liste (${DAUMEN_GRUENDE.join(", ")}). Fließt in den Deal-Wert ein. Lässt sich 7 Tage rückgängig machen. Nur auf ausdrücklichen Wunsch.`,
+  area: "dealeingang",
+  write: true,
+  input: z.object({ deal_id: uuid, daumen: z.enum(["hoch", "runter"]), grund: z.enum(DAUMEN_GRUENDE).optional() }),
+  summary: (i) => `Deal ${i.daumen === "hoch" ? "👍" : "👎"}${i.grund ? ` (${i.grund})` : ""}`,
+  run: async (ctx, i) => {
+    const E = schema.dealEingaenge;
+    const [vorher] = await db.select({ daumen: E.daumen, grund: E.daumenGrund, weg: E.daumenWeg, am: E.daumenAm }).from(E).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, i.deal_id)));
+    if (!vorher) return { text: "Deal-Eingang nicht gefunden.", isError: true };
+    const { bewerten } = await import("@/lib/deal-eingang/wert");
+    await bewerten(ctx.session.tenantId, i.deal_id, { daumen: i.daumen, grund: i.grund ?? null, weg: "claude" });
+    return { text: JSON.stringify({ ok: true, gespeichert: i.daumen === "hoch" ? "👍" : "👎", grund: i.grund, link: abs(ctx, `/deal-eingang/${i.deal_id}`) }), ids: [i.deal_id], undo: { id: i.deal_id, vorher: { ...vorher, am: vorher.am?.toISOString() ?? null } } };
+  },
+  undo: async (ctx, d) => {
+    const E = schema.dealEingaenge;
+    const x = d as { id: string; vorher: { daumen: "hoch" | "runter" | null; grund: string | null; weg: "tool" | "push" | "discord" | "claude" | null; am: string | null } };
+    await db.update(E).set({ daumen: x.vorher.daumen, daumenGrund: x.vorher.grund, daumenWeg: x.vorher.weg, daumenAm: x.vorher.am ? new Date(x.vorher.am) : null }).where(and(eq(E.tenantId, ctx.session.tenantId), eq(E.id, x.id)));
+    return "Bewertung zurückgenommen.";
+  },
+});
+
+export const dealGekauftTool = defineTool({
+  name: "deal_gekauft",
+  title: "Deal als gekauft markieren",
+  description:
+    "Markiert einen Deal-Eingang als gekauft (Menge, Preis netto je Stück): legt die Einkaufs-Bestellung als „bestellt“ an, Wareneingang und Rechnung werden erwartet. Kauft NICHTS ein – nur erfassen, was Ludwig selbst gekauft hat. Einzeln bestätigen. Nur auf ausdrücklichen Wunsch.",
+  area: "dealeingang",
+  write: true,
+  stufe: "gelb",
+  input: z.object({ deal_id: uuid, menge: z.number().int().positive().max(100_000), preis: z.number().positive().max(100_000).optional().describe("EK netto je Stück; leer = EK aus der Prüfung"), nr: z.number().int().positive().max(500).optional().describe("Angebot im Eingang (Nr.)") }),
+  summary: (i) => `Deal gekauft: ${i.menge} Stk${i.preis ? ` zu ${i.preis.toFixed(2).replace(".", ",")} € netto` : ""}`,
+  run: async (ctx, i) => {
+    const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
+    try {
+      const r = await alsGekauft(ctx.session.tenantId, i.deal_id, { menge: i.menge, preis: i.preis ?? null, nr: i.nr ?? null, weg: "claude" }, ctx.session.userId);
+      return { text: JSON.stringify({ ok: true, menge: i.menge, angebot_nr: r.zeile, bestellung: r.bestellungId ? abs(ctx, `/einkauf/${r.bestellungId}`) : null, hinweis: r.bestellungId ? "Bestellung „bestellt“ – Wareneingang und Rechnung werden erwartet." : undefined, link: abs(ctx, `/deal-eingang/${i.deal_id}`) }), ids: [i.deal_id] };
+    } catch (e) {
+      return { text: e instanceof Error ? e.message : String(e), isError: true };
+    }
+  },
+});
+
+export const DEAL_EINGANG = [dealEingangTool, dealEingangDetailTool, dealQuellenTool, dealEingangPruefenTool, dealEingangStatusTool, dealWertTool, dealLernenBerichtTool, dealBewertenTool, dealGekauftTool];

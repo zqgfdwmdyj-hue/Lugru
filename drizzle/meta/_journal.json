@@ -750,6 +750,13 @@
       "when": 1793389439029,
       "tag": "0106_lieferanten_sku_kuerzel",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793397697169,
+      "tag": "0107_deal_wert_kaufen",
+      "breakpoints": true
     }
   ]
 }

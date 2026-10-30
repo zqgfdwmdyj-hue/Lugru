@@ -126,10 +126,77 @@ export async function profitPathAction() {
   try {
     const { profitPathAbgleich } = await import("@/lib/deal-eingang/profitpath");
     const z = await profitPathAbgleich(s.tenantId);
-    m = z ? `ProfitPath: ${z.neu} neu, ${z.updates} Updates, ${z.uebersprungen} übersprungen.` : "ProfitPath ist nicht eingerichtet oder läuft gerade.";
+    // Abschnitt 11: 👍/👎 unter den ProfitPath-Nachrichten gleich mit abholen (sonst alle 15 Minuten).
+    const { discordDaumen } = await import("@/lib/deal-eingang/wert");
+    const daumen = await discordDaumen(s.tenantId).catch(() => 0);
+    m = z ? `ProfitPath: ${z.neu} neu, ${z.updates} Updates, ${z.uebersprungen} übersprungen${daumen ? `, ${daumen} Bewertung${daumen === 1 ? "" : "en"} (👍/👎) aus Discord` : ""}.` : "ProfitPath ist nicht eingerichtet oder läuft gerade.";
   } catch (e) {
     m = `ProfitPath: ${e instanceof Error ? e.message : String(e)}`;
   }
   revalidatePath(PFAD);
   redirect(mit(PFAD, m));
+}
+
+/** Abschnitt 10: „Gekauft: Menge, Preis“ – legt die Bestellung als „bestellt“ an (Wareneingang und Rechnung erwartet). */
+export async function gekauftAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  const menge = Math.round(Number(String(fd.get("menge") ?? "").replace(",", ".")));
+  const preis = parseAmount(fd.get("preis"));
+  const nr = Number(fd.get("nr")) || null;
+  let ziel: string;
+  try {
+    const { alsGekauft } = await import("@/lib/deal-eingang/kauf");
+    const r = await alsGekauft(s.tenantId, id, { menge, preis, nr, weg: "knopf" }, s.userId);
+    ziel = mit(`${PFAD}/${id}`, `Als gekauft gespeichert: ${menge} Stk${r.bestellungId ? " – Bestellung angelegt, Wareneingang und Rechnung werden erwartet" : ""}.`);
+  } catch (e) {
+    ziel = mit(`${PFAD}/${id}`, e instanceof DealEingangFehler ? e.message : `Nicht gespeichert – ${lesbarerFehler(e)}`);
+  }
+  revalidatePath(PFAD);
+  redirect(ziel);
+}
+
+/** Abschnitt 11: 👍/👎 mit Kurzgrund (feste Auswahl). */
+export async function bewertenAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  const daumen = fd.get("daumen") === "hoch" ? "hoch" : fd.get("daumen") === "runter" ? "runter" : null;
+  if (!daumen) redirect(mit(`${PFAD}/${id}`, "Bitte 👍 oder 👎 wählen."));
+  const { bewerten } = await import("@/lib/deal-eingang/wert");
+  await bewerten(s.tenantId, id, { daumen, grund: String(fd.get("grund") ?? "") || null, weg: fd.get("weg") === "push" ? "push" : "tool" });
+  revalidatePath(PFAD);
+  redirect(mit(`${PFAD}/${id}`, daumen === "hoch" ? "👍 gespeichert." : "👎 gespeichert."));
+}
+
+/** Einstellungen (nur Inhaber): Ziel-ROI, Budget je Deal/Tag/Woche, Schwelle des Deal-Werts für die Kauf-Meldung. */
+export async function einstellungenAction(fd: FormData) {
+  const s = await schreibend();
+  if (s.role !== "owner") redirect(mit(PFAD, "Nur der Inhaber ändert die Einstellungen."));
+  const { db, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const [t] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, s.tenantId));
+  const alt = t?.settings?.dealEingang ?? {};
+  const euro = (k: string) => Math.max(0, Math.min(10_000_000, Math.round(parseAmount(fd.get(k)) ?? 0)));
+  const dealEingang = {
+    ...alt,
+    zielRoi: Math.max(1, Math.min(500, Math.round(parseAmount(fd.get("zielRoi")) ?? alt.zielRoi ?? 20))),
+    budgetJeDeal: euro("budgetJeDeal"),
+    budgetJeTag: euro("budgetJeTag"),
+    budgetJeWoche: euro("budgetJeWoche"),
+    wertSchwelle: Math.max(0, Math.min(100, Math.round(parseAmount(fd.get("wertSchwelle")) ?? alt.wertSchwelle ?? 70))),
+  };
+  await db.update(schema.tenants).set({ settings: { ...(t?.settings ?? {}), dealEingang } }).where(eq(schema.tenants.id, s.tenantId));
+  revalidatePath(PFAD);
+  redirect(mit(PFAD, "Einstellungen gespeichert."));
+}
+
+/** Abschnitt 11: reale Ergebnisse gekaufter Deals (30/60/90 Tage nach Wareneingang) und „bewährt?“ der Lugru-Deals jetzt rechnen. */
+export async function ergebnisseAction(fd: FormData) {
+  const s = await schreibend();
+  const monat = String(fd.get("monat") ?? "");
+  const { ergebnisseAktualisieren, lugruBewaehrtPruefen } = await import("@/lib/deal-eingang/wert");
+  const n = await ergebnisseAktualisieren(s.tenantId);
+  const b = await lugruBewaehrtPruefen(s.tenantId);
+  revalidatePath(PFAD);
+  redirect(mit(`${PFAD}/lernen${/^\d{4}-\d{2}$/.test(monat) ? `?monat=${monat}` : ""}`, `${n} Ergebnis${n === 1 ? "" : "se"} zugeordnet, ${b} Lugru-Deal${b === 1 ? "" : "s"} geprüft.`));
 }

@@ -103,6 +103,10 @@ check_caddy() {
     if [ -n "$p" ]; then
       local mc; mc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$p/api/mobil/erfassen")"
       if [ "$mc" = "401" ]; then ok "$p/api/mobil/* erreichbar und geschützt (ohne Schlüssel 401)"; else warn "$p/api/mobil/erfassen antwortet mit $mc – Handy-Kurzbefehle gehen nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
+      local dc; dc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$p/api/deal-eingang")"
+      if [ "$dc" = "401" ]; then ok "$p/api/deal-eingang erreichbar und geschützt (ohne Schlüssel 401)"; else warn "$p/api/deal-eingang antwortet mit $dc – Deal-Kurzbefehl geht nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
+      local lc; lc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$p/api/public/lugru-deals/deals")"
+      if [ "$lc" = "401" ]; then ok "$p/api/public/lugru-deals/* erreichbar und geschützt (ohne Schlüssel 401)"; else warn "$p/api/public/lugru-deals/deals antwortet mit $lc – Lugru Deals erreicht das Seller-System nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
     fi
   fi
 }

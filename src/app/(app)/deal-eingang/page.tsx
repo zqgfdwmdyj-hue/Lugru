@@ -4,7 +4,9 @@ import { AMPEL_EMOJI } from "@/lib/deal-eingang/logic";
 import { eingaenge, quellen, STATUS_TEXT } from "@/lib/deal-eingang/service";
 import { PushSchalter } from "@/components/push-schalter";
 import { AutoRefresh } from "../lieferanten/finden/refresh";
-import { eingangAction, profitPathAction } from "./actions";
+import { einstellungenAction, eingangAction, profitPathAction } from "./actions";
+import { getSettings } from "@/lib/settings";
+import { budgetVerbraucht } from "@/lib/deal-eingang/kauf";
 import { profitPathKonfig } from "@/lib/deal-eingang/profitpath";
 
 // Deal-Eingang: Angebote aus WhatsApp & Co. einfügen bzw. teilen → KI erkennt → Deal-Ampel je Angebot.
@@ -14,7 +16,8 @@ const WEG = { manuell: "von Hand", teilen: "geteilt", kurzbefehl: "Kurzbefehl", 
 export default async function DealEingangPage({ searchParams }: { searchParams: Promise<{ meldung?: string; quelle?: string; ampel?: string; status?: string }> }) {
   const session = await requireArea("dealeingang");
   const sp = await searchParams;
-  const [liste, q, pp] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId)]);
+  const [liste, q, pp, st, verbraucht] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId), getSettings(session.tenantId), budgetVerbraucht(session.tenantId)]);
+  const de = st.dealEingang;
   const laeuft = liste.some((e) => e.pruefung === "offen" || e.pruefung === "laeuft");
   return (
     <>
@@ -83,6 +86,25 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
           </table>
         </section>
       )}
+
+      <section className="card card-pad stack" style={{ marginTop: 12 }} data-testid="de-einstellungen">
+        <h2 style={{ margin: 0 }}>Kaufen mit einem Tap: Budget und Deal-Wert</h2>
+        <div className="small muted">
+          Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
+          {" "}Diese Woche gekauft: {verbraucht.woche.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}{de.budgetJeWoche ? ` von ${de.budgetJeWoche.toLocaleString("de-DE")} €` : ""}.
+          {" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>
+        </div>
+        {session.role === "owner" && !session.readOnly && (
+          <form action={einstellungenAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} data-testid="de-einstellungen-form">
+            <label className="field">Ziel-ROI %<input className="input" name="zielRoi" inputMode="numeric" defaultValue={de.zielRoi} style={{ width: 80 }} /></label>
+            <label className="field">max. € je Deal<input className="input" name="budgetJeDeal" inputMode="numeric" defaultValue={de.budgetJeDeal || ""} placeholder="0" style={{ width: 100 }} /></label>
+            <label className="field">je Tag<input className="input" name="budgetJeTag" inputMode="numeric" defaultValue={de.budgetJeTag || ""} placeholder="0" style={{ width: 100 }} /></label>
+            <label className="field">je Woche<input className="input" name="budgetJeWoche" inputMode="numeric" defaultValue={de.budgetJeWoche || ""} placeholder="0" style={{ width: 100 }} /></label>
+            <label className="field">Deal-Wert ab<input className="input" name="wertSchwelle" inputMode="numeric" defaultValue={de.wertSchwelle} style={{ width: 70 }} /></label>
+            <button className="btn btn-small" type="submit">Speichern</button>
+          </form>
+        )}
+      </section>
     </>
   );
 }

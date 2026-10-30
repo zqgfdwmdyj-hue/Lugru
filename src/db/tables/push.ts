@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tenantId, users } from "./core";
 import { encryptedText } from "./encrypted";
 
@@ -32,6 +32,8 @@ export const meldungen = pgTable(
     titel: text("titel").notNull(),
     text: text("text").notNull(),
     link: text("link"),
+    /** Knöpfe in der Benachrichtigung (z. B. „Zum Angebot“, „Gekauft“) – je Knopf ein Link. */
+    aktionen: jsonb("aktionen").$type<{ aktion: string; titel: string; link: string }[] | null>(),
     createdAt: createdAt(),
   },
   (t) => [index("meldungen_user_idx").on(t.tenantId, t.userId, t.createdAt)],

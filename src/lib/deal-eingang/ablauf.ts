@@ -23,7 +23,18 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
   const { empfaenger, melden } = await import("@/lib/push/service");
   const an = await empfaenger(tenantId, "dealeingang");
   const titel = `${o.update ? "Update: " : ""}Deal ${e.ampel ? AMPEL_EMOJI[e.ampel] : "📄"}${e.quelle ? ` · ${e.quelle}` : ""}`;
-  const r = await melden(tenantId, an, { titel, text: e.zusammenfassung ?? "Geprüft – bitte im Deal-Eingang ansehen.", link: `/deal-eingang/${e.id}` });
+  // Abschnitt 10: Bei Grün (bzw. Deal-Wert über der Schwelle) Kauf-Meldung mit Direktlink, Menge, max. EK, Restbudget
+  // und den Knöpfen „Zum Angebot“ / „Gekauft …“. Gekauft wird nie automatisch.
+  const { kaufMeldung } = await import("./kauf");
+  const kauf = e.zeilen.length === 1 || e.ampel === "gruen" ? await kaufMeldung(e).catch(() => null) : null;
+  const text = kauf && e.zeilen.length === 1 ? kauf.text : [e.zusammenfassung ?? "Geprüft – bitte im Deal-Eingang ansehen.", kauf ? kauf.text : null].filter(Boolean).join("\n");
+  // Ohne Kauf-Knöpfe (gelb, unter der Schwelle): 👍/👎 direkt aus der Meldung – öffnet die Seite mit vorgewählter
+  // Bewertung (Grund wählbar), gespeichert erst mit dem Knopf dort.
+  const bewerten = [
+    { aktion: "hoch", titel: "👍", link: `/deal-eingang/${e.id}?daumen=hoch#bewerten` },
+    { aktion: "runter", titel: "👎", link: `/deal-eingang/${e.id}?daumen=runter#bewerten` },
+  ];
+  const r = await melden(tenantId, an, { titel, text, link: `/deal-eingang/${e.id}`, aktionen: kauf?.aktionen ?? bewerten });
   await db.update(E).set({ pushAm: new Date() }).where(eq(E.id, e.id));
   // SMS (B13, falls eingerichtet): nur grüne Deals, deren Gewinn (empfohlene Menge × Gewinn/Stück) über der Schwelle liegt.
   if (e.ampel === "gruen" && !o.update) {
@@ -33,7 +44,7 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
     const summe = best ? (best.gewinn ?? 0) * (best.empfohlen ?? 1) : 0;
     if (best && summe >= schwelle) {
       const { smsMelden } = await import("@/lib/mobil/sms");
-      await smsMelden(tenantId, { art: "deal", kern: `Grüner Deal${e.quelle ? ` (${e.quelle})` : ""}: ${best.bestesLand ?? ""} ${(best.gewinn ?? 0).toFixed(2).replace(".", ",")} € je Stück, ROI ${Math.round(best.roi ?? 0)} %${best.empfohlen ? `, empfohlen ${best.empfohlen} Stück` : ""}`.replace(/\s+/g, " "), schluessel: `deal:${e.id}`, bezug: `deal:${e.id}`, codes: ["KAUFEN n", "SPÄTER", "OK"] }).catch(() => null);
+      await smsMelden(tenantId, { art: "deal", kern: `Grüner Deal${e.quelle ? ` (${e.quelle})` : ""}: ${best.bestesLand ?? ""} ${(best.gewinn ?? 0).toFixed(2).replace(".", ",")} € je Stück, ROI ${Math.round(best.roi ?? 0)} %${best.empfohlen ? `, empfohlen ${best.empfohlen} Stück` : ""}`.replace(/\s+/g, " "), schluessel: `deal:${e.id}`, bezug: `deal:${e.id}`, codes: ["GEKAUFT n", "KAUFEN n", "SPÄTER"] }).catch(() => null);
     }
   }
   return r;

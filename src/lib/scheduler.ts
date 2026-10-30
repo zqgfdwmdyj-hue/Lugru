@@ -181,6 +181,14 @@ export async function runScheduledJobs(force = false) {
       // B15.1: Erinnerung „Versandbestätigung bei Amazon hochladen“, solange versendete Aufträge nicht gemeldet sind.
       if (force || due(`${t}:amazon-bestaetigung`, 59)) await step(t, "Amazon: Versandbestätigung", async () => (await import("@/lib/orders/bestaetigung")).bestaetigungErinnern(t));
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
+      // Lernender Deal-Wert: 👍/👎 unter den ProfitPath-Nachrichten in Discord (alle 15 Min.), reales Ergebnis gekaufter
+      // Deals 30/60/90 Tage nach Wareneingang und „bewährt?“ der Lugru-Deals aus dem Keepa-Zwischenspeicher (täglich).
+      if (force || due(`${t}:deal-daumen`, 14)) await step(t, "Deal-Wert: 👍/👎 aus Discord", async () => (await import("@/lib/deal-eingang/wert")).discordDaumen(t));
+      if (force || due(`${t}:deal-ergebnis`, 1435)) {
+        const w = await import("@/lib/deal-eingang/wert");
+        await step(t, "Deal-Wert: Ergebnisse je Kauf", () => w.ergebnisseAktualisieren(t));
+        await step(t, "Deal-Wert: Lugru bewährt?", () => w.lugruBewaehrtPruefen(t));
+      }
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).
       if (force || due("medien-aufraeumen", 1435)) await step(t, "Retouren-Station: Medien aufräumen", async () => (await import("@/lib/retouren-station/fall")).medienAufraeumen());
       if (force || due(`${t}:tasks`, 59)) {
