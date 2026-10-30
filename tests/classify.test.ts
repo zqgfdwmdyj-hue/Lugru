@@ -13,7 +13,7 @@ describe("classifyMail", () => {
     ["Kunde <abc@marketplace.amazon.de>", "Frage zum Artikel", "action", "buyer_message"],
     [amazon, "Problem mit Ihrer Sendung FBA15ABCDEFG – Abweichung beim Wareneingang", "action", "inbound_problem"],
     [amazon, "Ihre Auszahlung ist unterwegs", "info", "payout_info"],
-    [amazon, "Verkauft, jetzt versenden: Bestellung 302-1234567-1234567", "info", "order_info"],
+    [amazon, "Verkauft, jetzt versenden: Bestellung 302-1234567-1234567", "noise", "order_info"],
     [amazon, "Seller University: Webinar zum Prime Day", "noise", "marketing"],
   ])("%s / %s → %s", (from, subject, category, topic) => {
     const c = classifyMail({ from, subject, body: "" });
@@ -95,5 +95,33 @@ describe("classifyMail", () => {
     const today = new Date("2026-09-27T00:00:00Z");
     expect(extractDeadlineDays("Bitte antworten Sie innerhalb von 3 Tagen", today)).toBe(3);
     expect(extractDeadlineDays("bis zum 30.09.2026 einreichen", today)).toBe(3);
+  });
+});
+
+// B9.8: Deaktivierung/Dokumente/Compliance in allen EU-Sprachen → kritisch; Routinemails → Rauschen (gebündelt).
+describe("classifyMail – mehrsprachige Pflicht- und Routinemails", () => {
+  const nl = "Amazon <seller-notification@amazon.nl>";
+  const fr = "Amazon <seller-notification@amazon.fr>";
+  it.each([
+    [nl, "Opnieuw indienen van document vereist"],
+    [nl, "Verstrek gegevens voor de EU-gegevenswet om deactivering van uw aanbiedingen te voorkomen"],
+    [amazon, "Address pricing errors to reinstate deactivated listings"],
+    [amazon, "Submit trademark authorization to reactivate listings"],
+    [fr, "Action requise : numéros d'enregistrement EPR pour les batteries"],
+    [amazon, "GPSR: Sicherheitsinformationen fehlen – Angebote werden deaktiviert"],
+    ["Amazon <seller-notification@amazon.it>", "Le tue offerte sono state disattivate: errore di prezzo"],
+  ])("%s / %s → kritisch", (from, subject) => {
+    const c = classifyMail({ from, subject, body: "" });
+    expect(c.category).toBe("critical");
+  });
+
+  it.each([
+    [amazon, "Amazon hat Ihre Artikel versandt"],
+    [amazon, "Verkauft, jetzt liefern: Testsocken (erfunden)"],
+    [amazon, "Neue Kapazitätslimits für Ihr Versand-durch-Amazon-Lager"],
+    ["Amazon <seller-notification@amazon.co.uk>", "Sold, ship now: Test mug (fictional)"],
+  ])("%s / %s → Rauschen", (from, subject) => {
+    const c = classifyMail({ from, subject, body: "" });
+    expect([c.category, c.topic]).toEqual(["noise", "order_info"]);
   });
 });

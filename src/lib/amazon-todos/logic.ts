@@ -41,6 +41,7 @@ export const NOISE_SUBJ: RegExp[] = [
   /vielen dank|danke für|thank you for/i,
   /\bprime\b|prime day|webinar|seminar|\bdeal(s)?\b|blitzangebot|angebotstipp|verkaufschancen|wachstumschancen|tipps? für|empfehlungen für ihr/i,
   /automatische remission|automated removal|automatische rücksendung/i, // Inhaber-Entscheidung: ignorieren
+  /amazon hat ihre artikel versandt|verkauft[,!]? jetzt (liefern|versenden)|sold[,!]? ship now|kapazitätslimit|capacity limit|inventory (storage )?limits?/i, // Routine
 ];
 
 export function noiseReason(m: { from: string; subject: string }): string | null {
@@ -187,7 +188,7 @@ export function triageByRules(m: TriageMail): TriageResult {
 // ---- Automatisch erledigen ----------------------------------------------------------------
 
 /** Kategorien, die eine Freigabe-Mail zur selben ASIN erledigt. */
-export const CLOSABLE = new Set(["reaktivierung", "echtheitspruefung", "entsorgung_drohung", "produktsicherheit", "remission_aufforderung", "konto", "sonstiges"]);
+export const CLOSABLE = new Set(["reaktivierung", "echtheitspruefung", "entsorgung_drohung", "produktsicherheit", "remission_aufforderung", "konto", "sonstiges", "compliance_epr", "compliance_daten", "preisfehler", "marke", "dokument"]);
 
 /** Welche offenen Aufgaben schließt eine neue Freigabe-Mail? Nur ältere mit gemeinsamer ASIN. */
 export function todosClosedBy(info: { category: string; asins: string[]; receivedAt: string }, open: { id: string; category: string; asins: string[]; receivedAt: string }[]): string[] {
@@ -200,6 +201,11 @@ export function todosClosedBy(info: { category: string; asins: string[]; receive
 
 export const CATEGORY_LABEL: Record<string, string> = {
   produktsicherheit: "Produktsicherheit",
+  compliance_epr: "Compliance: EPR / Batterien / Verpackung",
+  compliance_daten: "Compliance: EU-Datengesetz",
+  preisfehler: "Preisfehler",
+  marke: "Marke / Markenautorisierung",
+  dokument: "Dokument einreichen",
   reaktivierung: "Reaktivierung",
   echtheitspruefung: "Echtheitsprüfung",
   entsorgung_drohung: "Entsorgungsdrohung",
@@ -215,3 +221,57 @@ export const CATEGORY_LABEL: Record<string, string> = {
 };
 
 export const categoryLabel = (c: string) => CATEGORY_LABEL[c] ?? c.replace(/_/g, " ").replace(/^./, (x) => x.toUpperCase());
+
+// ---- Pflicht-ToDos: Deaktivierung, Dokumente, Compliance (alle EU-Sprachen) ----------------------------------
+// Diese Mails werden nie der KI überlassen: sie ergeben immer ein Amazon-ToDo (hohe Priorität) mit ASINs/SKUs,
+// Marktplatz und Link „Kontozustand“ – Grundlage für die Amazon-Fall-Zentrale.
+
+const PFLICHT: { category: string; re: RegExp }[] = [
+  // Batterien/EPR, Verpackung, WEEE – Registrierungsnummern
+  { category: "compliance_epr", re: /\bEPR\b|batter(y|ies|ie|ij|ia|ías?|ien)|batteri(er|e)|registration numbers?|registrierungsnummer|registratienummer|numéro d'enregistrement|numero di registrazione|número de registro|numer rejestrow|registreringsnummer|\bWEEE\b|\bLUCID\b|verpackungsregister/i },
+  // EU-Datengesetz (Data Act)
+  { category: "compliance_daten", re: /data act|datengesetz|gegevenswet|loi sur les données|legge sui dati|ley de datos|akt o danych|dataförordning|eu-?gegevens|daten(gesetz|verordnung)/i },
+  // Produktsicherheit (GPSR)
+  { category: "produktsicherheit", re: /\bGPSR\b|product safety|produktsicherheit|productveiligheid|sécurité (générale )?des produits|sicurezza (generale )?dei prodotti|seguridad (general )?de (los )?productos|bezpieczeństw\w* produkt|produktsäkerhet|safety (information|attributes)|sicherheitsinformationen/i },
+  // Preisfehler
+  { category: "preisfehler", re: /pric(e|ing) errors?|preisfehler|potenziell(er|e) preisfehler|prijsfout|erreur(s)? de prix|errore (di|nel) prezzo|error(es)? de precio|błęd\w* cen|prisfel/i },
+  // Marke / Markenautorisierung
+  { category: "marke", re: /trademark|brand authori[sz]ation|markenautori|marken(genehmigung|nachweis)|merkautori|autorisation de (la )?marque|autorizzazione (del )?marchio|autorización de (la )?marca|autoryzacj\w* mark|varumärkes/i },
+  // Dokument/Unterlagen einreichen bzw. erneut einreichen
+  { category: "dokument", re: /(re)?submit (a |the |your )?(document|invoice|information)|document(s|ation)? (required|requested)|resubmission|unterlagen (einreichen|nachreichen|erforderlich)|dokument\w* (erforderlich|einreichen|nachreichen|erneut)|opnieuw indienen|document\w* vereist|verstrek gegevens|indienen van|documents? requis|soumettre|fournir (les|des) (documents|informations)|documento? richiest|invia(re)? (i |il )?document|fornire (i |le )?(document|informazion)|documentaci[oó]n (requerida|necesaria)|enviar (los |la )?document|proporcion(ar|e) (la )?informaci|wymagan\w* dokument|prześlij|dokument (krävs|begärs)|skicka in/i },
+  // Deaktivierung / Reaktivierung / Entfernung von Angeboten
+  { category: "reaktivierung", re: /deactivat|reactivat|reinstat|suppress|listings? (removed|blocked|inactive)|deaktivier|reaktivier|gesperrt|entfernt|gedeactiveerd|deactiver|deactivering|heractiver|opnieuw activeren|verwijderd|désactiv|réactiv|supprim|disattiv|riattiv|rimoss|desactiv|reactiv|eliminad|dezaktyw|reaktyw|usunięt|inaktiver|avaktiver|återaktiver|borttag/i },
+];
+
+const TLD_LAND: Record<string, string> = { de: "DE", fr: "FR", it: "IT", es: "ES", nl: "NL", "com.be": "BE", pl: "PL", se: "SE", "co.uk": "UK", ie: "IE", ae: "AE", sa: "SA", "com.tr": "TR", eg: "EG", com: "US" };
+
+/** Marktplatz aus der Absender-Domain (amazon.nl → NL), sonst aus Hinweisen im Text. */
+export function marktplatzAus(from: string, text = ""): { land: string | null; tld: string | null } {
+  const m = /amazon\.(com\.be|co\.uk|com\.tr|de|fr|it|es|nl|pl|se|ie|ae|sa|eg|com)\b/i.exec(from) ?? /sellercentral\.amazon\.(com\.be|co\.uk|com\.tr|de|fr|it|es|nl|pl|se|ie|ae|sa|eg|com)\b/i.exec(text);
+  if (!m) return { land: null, tld: null };
+  const tld = m[1].toLowerCase();
+  return { land: TLD_LAND[tld] ?? null, tld };
+}
+
+/** Link „Kontozustand“ in Seller Central des Marktplatzes (Europa: amazon.de als Standard). */
+export const kontozustandLink = (tld: string | null) => `https://sellercentral.amazon.${tld && tld !== "com" ? tld : "de"}/performance/account/health`;
+
+export function extractSkus(text: string): string[] {
+  const out = new Set<string>();
+  // Satzzeichen am Ende („SKU: ABC-1.“) gehören nicht zur SKU.
+  for (const m of text.matchAll(/\b(?:SKU|Händler-SKU|Seller SKU|MSKU)\s*[:#]?\s*([A-Za-z0-9][\w.\-/]{2,39})/gi)) {
+    const sku = m[1].replace(/[.\-/]+$/, "");
+    if (sku.length >= 3) out.add(sku);
+  }
+  return [...out].slice(0, 30);
+}
+
+/** Pflicht-Muster: Kategorie (Compliance vor Deaktivierung), sonst null. */
+export function pflichtRegel(m: { subject: string; text: string }): { category: string } | null {
+  const hay = `${m.subject}\n${m.text.slice(0, 3000)}`;
+  // Reine Freigaben („wieder aktiv“) sind keine Pflicht-ToDos.
+  if (/(wieder aktiv|reactivated successfully|has been reinstated|wurde reaktiviert|is weer actief|est de nouveau actif|è di nuovo attiv|vuelve a estar activ)/i.test(m.subject)) return null;
+  for (const p of PFLICHT) if (p.re.test(m.subject)) return { category: p.category };
+  for (const p of PFLICHT.slice(0, 5)) if (p.re.test(hay) && /(deactivat|deaktivier|gedeactiveerd|deactivering|désactiv|disattiv|desactiv|dezaktyw|inaktiver|remov|entfernt|required|erforderlich|vereist|requis|richiest|requerid|wymagan|krävs)/i.test(hay)) return { category: p.category };
+  return null;
+}

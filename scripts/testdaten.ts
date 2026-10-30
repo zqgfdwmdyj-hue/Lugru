@@ -236,6 +236,10 @@ await integ("sellerboard_web", { email: "einkauf@example.invalid", loginUrl: `${
 await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload` }, { password: "test-passwort" });
 // VA über Discord: Fantasie-IDs (Testdienste), VA = Konto „buero“ (Bea Büro).
 await integ("discord_va", { serverId: "500000000000000001", kanalId: "800000000000000001", vaDiscordId: "700000000000000001", vaEmail: "buero" }, { botToken: "test-bot-token" });
+// ProfitPath-Deals über Discord: ein Kanal (Testdienste), Bot wie beim VA-Kanal.
+await integ("discord_profitpath", { kanalIds: "810000000000000001" }, {});
+// Ein geprüfter Deal-Eingang (erfunden) – für den Werkzeug-Vertrag (deal_eingang_detail).
+await db.insert(schema.dealEingaenge).values({ tenantId: T, weg: "manuell", quelleRef: "test:eingang-1", quelle: "Testquelle", rohtext: "B0TESTSEED Testware 3,00 netto (erfunden)", inhaltKennung: "test-eingang-1", pruefung: "fertig", status: "neu", geprueftAm: new Date() });
 const [gh, ghOhne] = await db
   .insert(schema.suppliers)
   .values([

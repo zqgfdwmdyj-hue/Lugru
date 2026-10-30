@@ -277,7 +277,7 @@ export const anbindungenStatus = defineTool({
   name: "anbindungen_status",
   title: "Stand der Anbindungen",
   description:
-    "Ob die Daten aktuell sind: je Anbindung (Amazon, eBay, sellerboard, Keepa, Postfächer …) ob eingerichtet, und je Hintergrund-Abruf der letzte Erfolg und ein aktueller Fehler; dazu die letzten Datei-Importe (Amazon-Berichte). Für „Warum ist das nicht aktuell?“, „Läuft der Amazon-Abruf?“.",
+    "Ob die Daten aktuell sind: je Anbindung (Amazon, eBay, sellerboard, Keepa …) ob eingerichtet, je Hintergrund-Abruf der letzte Erfolg und ein aktueller Fehler, die Postfächer (Art, Ordner, letzter Abruf, Fehlerart, letzte Amazon-Mail, Warnung „7 Tage keine Mail von *@amazon.*“) und die letzten Datei-Importe. Für „Warum ist das nicht aktuell?“, „Kommen die Seller-Central-Mails an?“.",
   area: null,
   ownerOnly: true,
   write: false,
@@ -287,7 +287,8 @@ export const anbindungenStatus = defineTool({
     const t = ctx.session.tenantId;
     const J = schema.jobRuns;
     const RI = schema.reportImports;
-    const [st, jobs, imports] = await Promise.all([
+    const { postfachStand } = await import("@/lib/mail/status");
+    const [st, jobs, imports, pf] = await Promise.all([
       integrationStatus(t),
       db.select().from(J).where(eq(J.tenantId, t)),
       db
@@ -295,6 +296,7 @@ export const anbindungenStatus = defineTool({
         .from(RI)
         .where(and(eq(RI.tenantId, t), gt(RI.createdAt, new Date(Date.now() - 90 * 86_400_000))))
         .groupBy(RI.reportType, RI.via),
+      postfachStand(t),
     ]);
     const now = Date.now();
     const abrufe = jobs
@@ -321,12 +323,28 @@ export const anbindungenStatus = defineTool({
       anbindungen: INTEGRATIONS.map((d) => {
         const s = st.get(d.provider);
         const eingerichtet = Boolean(s && (s.secretKeys.length || Object.keys(s.config).length));
-        return { anbindung: d.name, eingerichtet, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined };
-      }).filter((a) => !i.nur_probleme || !a.eingerichtet),
+        // Google/Microsoft-App nur für die optionale OAuth-Anmeldung von Postfächern – Standard ist IMAP mit App-Passwort.
+        const optional = d.provider === "google" || d.provider === "microsoft";
+        return { anbindung: d.name, eingerichtet, optional: optional && !eingerichtet ? "nur für Postfach-Anmeldung per OAuth nötig – Postfächer laufen über IMAP mit App-Passwort" : undefined, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined };
+      }).filter((a) => !i.nur_probleme || (!a.eingerichtet && !a.optional)),
+      postfaecher: pf.postfaecher
+        .map((b) => ({
+          adresse: b.adresse,
+          art: b.art,
+          aktiv: b.aktiv,
+          nur_abruf: b.nurAbruf || undefined,
+          ordner: b.imap ? (b.ordner ?? "automatisch (Gmail: Alle Nachrichten, sonst Posteingang + Archiv)") : undefined,
+          letzter_abruf: berlinDateTime(b.letzterAbruf) ?? "nie",
+          fehler: b.fehler ?? undefined,
+          fehlerart: b.fehlerArt ?? undefined,
+          letzte_amazon_mail: berlinDateTime(b.letzteAmazonMail) ?? "keine",
+        }))
+        .filter((b) => !i.nur_probleme || b.fehler || !b.aktiv),
+      amazon_mail_warnung: pf.warnung ?? undefined,
       sellerboard_daten_stand: sb.length ? berlinDateTime(new Date(Math.max(...sb))) : "noch kein Abgleich",
       abrufe,
       importe_90_tage: imports.map((r) => ({ bericht: r.typ, weg: r.via === "api" ? "Schnittstelle" : "Datei-Upload", zuletzt: berlinDateTime(new Date(r.am)), anzahl: r.n })).sort((a, b) => a.bericht.localeCompare(b.bericht)),
-      probleme: abrufe.filter((j) => j.fehler).length,
+      probleme: abrufe.filter((j) => j.fehler).length + pf.postfaecher.filter((b) => b.fehler).length + (pf.warnung ? 1 : 0),
       link: abs(ctx, "/anbindungen"),
     });
   },
@@ -349,6 +367,8 @@ export const mail = defineTool({
     return json({
       id: m.id,
       von: m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress,
+      an: m.an ?? undefined,
+      ordner: m.ordner ?? undefined,
       betreff: m.subject,
       eingegangen: berlinDateTime(m.receivedAt),
       einstufung: m.category,

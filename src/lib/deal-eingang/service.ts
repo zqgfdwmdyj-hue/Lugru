@@ -38,7 +38,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 export type EingangDatei = { name: string; mime: string; bytes: Uint8Array };
-export type Weg = "manuell" | "teilen" | "kurzbefehl" | "mail" | "claude";
+export type Weg = "manuell" | "teilen" | "kurzbefehl" | "mail" | "claude" | "profitpath";
 
 export class DealEingangFehler extends Error {}
 
@@ -48,11 +48,15 @@ const istTabelle = (d: { name: string; mime: string }) => /\.(xlsx|xls|csv)$/i.t
 // ---- Anlegen -----------------------------------------------------------------------------------------------------
 
 /** Eingang speichern. Derselbe Inhalt innerhalb von 24 Stunden wird nicht doppelt angelegt. */
-export async function eingangAnlegen(tenantId: string, userId: string | null, e: { weg: Weg; text: string; dateien?: EingangDatei[]; quelle?: string | null; tokenId?: string | null }): Promise<{ id: string; neu: boolean }> {
+export async function eingangAnlegen(tenantId: string, userId: string | null, e: { weg: Weg; text: string; dateien?: EingangDatei[]; quelle?: string | null; tokenId?: string | null; quelleRef?: string | null; angebote?: Angebot[] | null }): Promise<{ id: string; neu: boolean }> {
   const text = (e.text ?? "").trim().slice(0, 50_000);
   const dateien = (e.dateien ?? []).filter((d) => d.bytes.length > 0).slice(0, 10);
   if (!text && !dateien.length) throw new DealEingangFehler("Bitte Text einfügen oder eine Datei (Screenshot, PDF, Tabelle) anhängen.");
   for (const d of dateien) if (d.bytes.length > 20 * 1024 * 1024) throw new DealEingangFehler(`${d.name} ist größer als 20 MB.`);
+  if (e.quelleRef) {
+    const [schon] = await db.select({ id: E.id }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.quelleRef, e.quelleRef)));
+    if (schon) return { id: schon.id, neu: false };
+  }
   const h = createHash("sha256").update(text);
   for (const d of dateien) h.update(d.bytes);
   const kennung = h.digest("hex");
@@ -61,7 +65,7 @@ export async function eingangAnlegen(tenantId: string, userId: string | null, e:
   const ids: string[] = [];
   for (const d of dateien) ids.push(await storeFile(tenantId, d.name.slice(0, 200), d.mime || "application/octet-stream", Buffer.from(d.bytes)));
   const quelle = (e.quelle?.trim() || quelleAusText(text) || null)?.slice(0, 80) ?? null;
-  const [row] = await db.insert(E).values({ tenantId, userId, weg: e.weg, tokenId: e.tokenId ?? null, quelle, rohtext: text, dateiIds: ids, dateiNamen: dateien.map((d) => d.name.slice(0, 200)), inhaltKennung: kennung }).returning({ id: E.id });
+  const [row] = await db.insert(E).values({ tenantId, userId, weg: e.weg, tokenId: e.tokenId ?? null, quelle, rohtext: text, dateiIds: ids, dateiNamen: dateien.map((d) => d.name.slice(0, 200)), inhaltKennung: kennung, quelleRef: e.quelleRef ?? null, angebote: e.angebote?.length ? e.angebote : null }).returning({ id: E.id });
   return { id: row.id, neu: true };
 }
 
@@ -251,7 +255,12 @@ export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lag
 }
 
 /** Eingang prüfen: erkennen → (Preisliste?) → je Angebot prüfen → Liquidität → speichern. Fehler landen im Eingang. */
-export async function eingangPruefen(tenantId: string, id: string, o: { heute?: string; now?: number } = {}): Promise<void> {
+async function meldenNachPruefung(tenantId: string, id: string, update?: boolean) {
+  const { benachrichtigen } = await import("./ablauf");
+  await benachrichtigen(tenantId, id, { update }).catch((e) => console.error("[Deal-Eingang] Meldung:", e instanceof Error ? e.message : e));
+}
+
+export async function eingangPruefen(tenantId: string, id: string, o: { heute?: string; now?: number; update?: boolean } = {}): Promise<void> {
   const [e] = await db.select().from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, id)));
   if (!e) return;
   await db.update(E).set({ pruefung: "laeuft", fehler: null }).where(eq(E.id, id));
@@ -259,12 +268,14 @@ export async function eingangPruefen(tenantId: string, id: string, o: { heute?: 
     const s = await getSettings(tenantId);
     const dateien = await dateienLaden(tenantId, e.dateiIds);
     const tabellen = dateien.filter(istTabelle);
-    const k = tabellen.length ? { quelle: null, angebote: [] as Angebot[], ohneKi: false } : await erkennen(tenantId, e.rohtext, dateien);
+    // Schon strukturiert geliefert (ProfitPath, Claude) → keine KI-Erkennung nötig.
+    const k = e.angebote?.length ? { quelle: null, angebote: e.angebote, ohneKi: false } : tabellen.length ? { quelle: null, angebote: [] as Angebot[], ohneKi: false } : await erkennen(tenantId, e.rohtext, dateien);
     const quelle = e.quelle ?? k.quelle;
     if (istPreisliste({ zeilen: k.angebote.length, tabellen: tabellen.length, ab: s.dealEingang.preislisteAbZeilen })) {
       const { alsPreisliste } = await import("./preisliste");
       const r = await alsPreisliste(tenantId, { quelle, tabellen, angebote: k.angebote });
       await db.update(E).set({ pruefung: "fertig", status: "preisliste", quelle, preislisteId: r.feedId, zusammenfassung: r.text, ohneKi: k.ohneKi, geprueftAm: new Date() }).where(eq(E.id, id));
+      await meldenNachPruefung(tenantId, id, o.update);
       return;
     }
     if (!k.angebote.length) {
@@ -278,6 +289,7 @@ export async function eingangPruefen(tenantId: string, id: string, o: { heute?: 
     await liquiditaetPruefen(tenantId, zeilen, heute);
     const a = eingangAmpel(zeilen);
     await db.update(E).set({ pruefung: "fertig", quelle, zeilen, ampel: a.ampel, zusammenfassung: pushText(zeilen.map((z) => ({ ...z, name: z.angebot.name }))), ohneKi: k.ohneKi, geprueftAm: new Date() }).where(eq(E.id, id));
+    await meldenNachPruefung(tenantId, id, o.update);
   } catch (err) {
     await db.update(E).set({ pruefung: "fehler", fehler: err instanceof Error ? err.message.slice(0, 500) : String(err) }).where(eq(E.id, id));
   }
@@ -340,8 +352,14 @@ export async function statusSetzen(tenantId: string, id: string, status: keyof t
 }
 
 export async function quellen(tenantId: string) {
-  const rows = await db.select({ quelle: E.quelle, status: E.status, zeilen: E.zeilen }).from(E).where(eq(E.tenantId, tenantId));
-  return trefferquote(rows.map((r) => ({ quelle: r.quelle, status: r.status, zeilen: r.zeilen.map((z) => ({ ampel: z.ampel, roi: z.roi })) })));
+  const rows = await db.select({ id: E.id, quelle: E.quelle, status: E.status, zeilen: E.zeilen, entschiedenAm: E.entschiedenAm }).from(E).where(eq(E.tenantId, tenantId));
+  const { realerRoi } = await import("./ablauf");
+  const real = await realerRoi(tenantId, rows.filter((r) => r.status === "gekauft" || r.status === "bestellvorschlag"));
+  const quote = trefferquote(rows.map((r) => ({ quelle: r.quelle, status: r.status, zeilen: r.zeilen.map((z) => ({ ampel: z.ampel, roi: z.roi })) })));
+  return quote.map((q) => {
+    const werte = rows.filter((r) => (r.quelle?.trim() || "unbekannt") === q.quelle && real.has(r.id)).map((r) => real.get(r.id)!);
+    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length };
+  });
 }
 
 /** Aufbewahrung: Eingänge (mit Dateien) nach N Monaten löschen. */

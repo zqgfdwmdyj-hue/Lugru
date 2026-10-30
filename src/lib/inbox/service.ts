@@ -6,7 +6,9 @@ import { db, schema } from "@/db";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { gmailFetchRaw, graphFetch, type GraphMessage } from "@/lib/integrations/clients/mail";
 import { mailboxCredentials } from "@/lib/mail/accounts";
-import { imapFetchRaw } from "@/lib/mail/connect";
+import { imapFetchRaw, MailFehler } from "@/lib/mail/connect";
+import { empfaengerAus } from "@/lib/mail/ordner";
+import { getSettings } from "@/lib/settings";
 import { classifyMail, MANUAL_RULE, TOPIC_LABEL, type Classification, type Topic } from "./classify";
 import { noiseReason } from "@/lib/amazon-todos/logic";
 
@@ -20,6 +22,12 @@ export type ParsedMail = {
   text: string;
   /** Tabellen-Anhänge (CSV/Excel) – für Preislisten von Lieferanten (B2B-Deals); werden nicht gespeichert. */
   tabellen?: { name: string; data: Uint8Array }[];
+  /** Weitere Anhänge (Bilder, PDF, Tabellen) – nur für den Deal-Eingang, sonst nicht gespeichert. */
+  anhaenge?: { name: string; mime: string; data: Uint8Array }[];
+  /** Empfangsadresse (Delivered-To bzw. „An“). */
+  an?: string | null;
+  /** Ordner/Label, aus dem die Mail kam. */
+  ordner?: string | null;
 };
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s);
@@ -40,9 +48,12 @@ function htmlToText(html: string) {
     .trim();
 }
 
-export async function parseRaw(raw: Buffer, providerMessageId?: string): Promise<ParsedMail> {
+const headerTexte = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).map((x) => (typeof x === "string" ? x : ((x as { text?: string } | null)?.text ?? ""))).filter(Boolean);
+
+export async function parseRaw(raw: Buffer, providerMessageId?: string, ordner?: string | null): Promise<ParsedMail> {
   const m = await simpleParser(raw);
   const from = m.from?.value?.[0];
+  const an = empfaengerAus([...headerTexte(m.headers.get("delivered-to")), ...headerTexte(m.headers.get("x-original-to"))], (Array.isArray(m.to) ? m.to : m.to ? [m.to] : []).flatMap((t) => t.value.map((v) => v.address ?? "")));
   const text = m.text?.trim() || (typeof m.html === "string" ? htmlToText(m.html) : "");
   return {
     messageKey: m.messageId ?? createHash("sha1").update(raw).digest("hex"),
@@ -56,6 +67,12 @@ export async function parseRaw(raw: Buffer, providerMessageId?: string): Promise
       .filter((a) => /\.(csv|xlsx|xls)$/i.test(a.filename ?? "") && a.size <= 5_000_000)
       .slice(0, 3)
       .map((a) => ({ name: a.filename ?? "Preisliste", data: new Uint8Array(a.content) })),
+    anhaenge: (m.attachments ?? [])
+      .filter((a) => (/^image\//.test(a.contentType) || a.contentType === "application/pdf" || /\.(csv|xlsx|xls)$/i.test(a.filename ?? "")) && a.size <= 10_000_000)
+      .slice(0, 5)
+      .map((a) => ({ name: a.filename ?? "Anhang", mime: a.contentType, data: new Uint8Array(a.content) })),
+    an,
+    ordner: ordner ?? null,
   };
 }
 
@@ -69,6 +86,8 @@ function fromGraph(g: GraphMessage): ParsedMail {
     subject: g.subject ?? "",
     receivedAt: new Date(g.receivedDateTime),
     text: body,
+    an: empfaengerAus([], (g.toRecipients ?? []).map((r) => r.emailAddress?.address ?? "")),
+    ordner: "Outlook (alle Ordner)",
   };
 }
 
@@ -86,6 +105,13 @@ const CASE_TYPE: Partial<Record<Topic, (typeof schema.CASE_TYPES)[number]>> = {
 const KEEP_AS_TASK = new Set<Topic>(["a_to_z", "chargeback", "case_update", "return_request", "buyer_message", "registration", "payment_problem"]);
 
 export async function ingestMail(tenantId: string, mailboxId: string | null, m: ParsedMail): Promise<"new" | "duplicate" | "ignored"> {
+  // Deal-Eingang: eigenes Deal-Postfach (Einstellung) oder Betreff mit „#deal“ / „Deal prüfen“ → dorthin statt in den Posteingang.
+  const { ausMail } = await import("@/lib/deal-eingang/mail");
+  const deal = await ausMail(tenantId, mailboxId, m).catch((e) => {
+    console.error("[Deal-Eingang] Mail:", e instanceof Error ? e.message : e);
+    return null;
+  });
+  if (deal) return deal === "neu" ? "new" : "duplicate";
   // Preisliste eines bekannten Lieferanten im Anhang → in dessen „per Mail“-Preisliste übernehmen (B2B-Deals).
   if (m.tabellen?.length) {
     const { preislisteAusMail } = await import("@/lib/b2b/preislisten-mail");
@@ -106,6 +132,8 @@ export async function ingestMail(tenantId: string, mailboxId: string | null, m: 
       receivedAt: m.receivedAt,
       snippet: clip(m.text.replace(/\s+/g, " "), 300),
       bodyText: clip(m.text, 20_000),
+      an: m.an ?? null,
+      ordner: m.ordner ? clip(m.ordner, 200) : null,
       category: c.category,
       topic: c.topic,
       matchedRule: c.rule,
@@ -207,16 +235,18 @@ export async function syncMailbox(tenantId: string, mailboxId: string) {
   let count = 0;
   try {
     const creds = await mailboxCredentials(mb);
+    // Deal-Postfach (Einstellung Deal-Eingang): alle Absender abrufen, nicht nur Marktplätze.
+    const dealAdresse = (await getSettings(tenantId)).dealEingang.mailAdresse?.trim().toLowerCase();
     const mails =
       creds.kind === "gmail"
-        ? await Promise.all((await gmailFetchRaw(creds.accessToken, Math.floor(since.getTime() / 1000))).map((r) => parseRaw(r.raw, r.id)))
+        ? await Promise.all((await gmailFetchRaw(creds.accessToken, Math.floor(since.getTime() / 1000))).map((r) => parseRaw(r.raw, r.id, "Alle Nachrichten (Gmail)")))
         : creds.kind === "outlook"
           ? (await graphFetch(creds.accessToken, since)).map(fromGraph)
-          : await Promise.all((await imapFetchRaw(creds.account, since)).map((r) => parseRaw(r.raw, r.id)));
+          : await Promise.all((await imapFetchRaw(creds.account, since, { ordner: mb.ordner, alleAbsender: Boolean(dealAdresse) && mb.address.trim().toLowerCase() === dealAdresse })).map((r) => parseRaw(r.raw, r.id, r.ordner)));
     for (const m of mails) if ((await ingestMail(tenantId, mb.id, m)) === "new") count++;
-    await db.update(schema.mailboxes).set({ lastSyncAt: new Date(), lastError: null, updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
+    await db.update(schema.mailboxes).set({ lastSyncAt: new Date(), lastError: null, fehlerArt: null, updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
   } catch (e) {
-    await db.update(schema.mailboxes).set({ lastError: e instanceof Error ? e.message : String(e), updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
+    await db.update(schema.mailboxes).set({ lastError: e instanceof Error ? e.message : String(e), fehlerArt: e instanceof MailFehler ? e.art : "sonst", updatedAt: new Date() }).where(eq(schema.mailboxes.id, mb.id));
     throw e;
   }
   return { new: count };

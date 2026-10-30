@@ -19,6 +19,12 @@ export const mailboxes = pgTable("mailboxes", {
   fromName: text("from_name"),
   /** Eigene Signatur – wird an Einkaufsanfragen und Nachfass-Mails angehängt. */
   signature: text("signature"),
+  /** IMAP: abgerufene Ordner/Labels. Leer = automatisch (Gmail „Alle Nachrichten“, sonst Posteingang + Archiv). */
+  ordner: jsonb("ordner").$type<string[] | null>(),
+  /** Nur abrufen, nicht darüber senden (SMTP gesperrt oder nicht gewünscht). */
+  nurAbruf: boolean("nur_abruf").notNull().default(false),
+  /** Art des letzten Fehlers: anmeldung, imap_aus, port, server, tls, sonst. */
+  fehlerArt: text("fehler_art"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -38,6 +44,10 @@ export const emails = pgTable(
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
     snippet: text("snippet"),
     bodyText: text("body_text"),
+    /** Empfangsadresse (Delivered-To bzw. „An“) – zeigt, an welche Adresse/welchen Alias Amazon schreibt. */
+    an: text("an"),
+    /** Ordner/Label, aus dem die Mail abgerufen wurde („[Gmail]/Alle Nachrichten“, „INBOX“, „Upload“). */
+    ordner: text("ordner"),
     category: text("category", { enum: MAIL_CATEGORIES }).notNull().default("info"),
     topic: text("topic"),
     matchedRule: text("matched_rule"),

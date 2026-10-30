@@ -82,7 +82,7 @@ export function describeRule(rule: string | null | undefined): string {
 }
 
 const SOURCES: [Classification["source"], RegExp][] = [
-  ["amazon", /amazon\.(de|com|co\.uk|fr|it|es|nl|pl|se|com\.be)|marketplace\.amazon/i],
+  ["amazon", /amazon\.(de|com|co\.uk|fr|it|es|nl|pl|se|com\.be|ie|ae|sa|com\.tr|eg)\b|marketplace\.amazon/i],
   ["ebay", /ebay\.(de|com|at|co\.uk)|@members\.ebay/i],
   ["tiktok", /tiktok/i],
   ["temu", /temu\.com|kuajing/i],
@@ -140,8 +140,19 @@ const PAYMENT_PROBLEM_STRONG = /zahlung\w*[^.\n]{0,40}(fehlgeschlagen|abgelehnt|
 /** Letztes Netz: Geld-Wort und Problem-Wort nah beieinander → mindestens „zu erledigen“. */
 const MONEY_SIGNAL = /(zahlung|betrag|gebühr|rechnung|saldo|kontostand|auszahlung|lastschrift|kreditkarte|payment|invoice|balance|payout|fee)[^.\n]{0,60}(fehlgeschlagen|abgelehnt|offen|ausstehend|überfällig|gesperrt|ungültig|problem|failed|declined|overdue|suspended|due)|(fehlgeschlagen|abgelehnt|überfällig|gesperrt|failed|declined|overdue)[^.\n]{0,60}(zahlung|betrag|gebühr|rechnung|auszahlung|payment|invoice|payout)/i;
 
+/**
+ * Deaktivierung, Dokumente, Compliance (EPR/Batterien, EU-Datengesetz, GPSR, Preisfehler, Marke) in allen
+ * EU-Sprachen – immer „kritisch“; die Amazon-ToDos legen dazu immer eine Aufgabe mit Marktplatz und Link an.
+ */
+const COMPLIANCE = /deactivat|reactivat|reinstat|deaktivier|reaktivier|gedeactiveerd|deactivering|heractiver|opnieuw (activeren|indienen)|désactiv|réactiv|disattiv|riattiv|desactiv|reactivar|dezaktyw|reaktyw|inaktiver|avaktiver|återaktiver|document\w* (required|requested|vereist|requis|richiest|requerid)|(re)?submit (a |the |your )?(document|invoice|trademark|information)|resubmission|unterlagen (einreichen|nachreichen)|verstrek gegevens|indienen van|soumettre|fournir (les|des) (documents|informations)|fornire (i |le )?(document|informazion)|proporcion(ar|e) (la )?informaci|prześlij|skicka in|\bEPR\b|batter(y|ies|ij|ie)\b|registration numbers?|registrierungsnummer|registratienummer|data act|datengesetz|gegevenswet|\bGPSR\b|productveiligheid|sécurité des produits|sicurezza dei prodotti|seguridad de (los )?productos|pric(e|ing) errors?|preisfehler|prijsfout|erreur de prix|errore di prezzo|error de precio|trademark authori[sz]ation|markenautori|merkautori/i;
+
+/** Routinemails ohne Handlungsbedarf („versandt“, „Verkauft, jetzt liefern“, Kapazitätslimits) – gebündelt als Rauschen. */
+const ROUTINE = /amazon hat ihre artikel versandt|ihre artikel wurden versandt|verkauft[,!]? jetzt (liefern|versenden)|sold[,!]? ship now|vendu[,!]? expédiez|venduto[,!]? spedisci|vendido[,!]? envía|verkocht[,!]? nu verzenden|kapazitätslimit|capacity limit|limites? de capacité|limite di capacità|límite de capacidad|capaciteitslimiet|bestandslimit|inventory (storage )?limits?/i;
+
 // Reihenfolge = Priorität. Die erste passende Regel gewinnt.
 const RULES: Rule[] = [
+  { topic: "order_info", category: "noise", subject: ROUTINE },
+  { topic: "listing_blocked", category: "critical", subject: COMPLIANCE, dueInDays: 2 },
   { topic: "account_health", category: "critical", subject: /kontozustand|account health|(konto|account).*(deaktivier|gesperrt|sperrung|suspend)|(deaktivier|sperrung).*(konto|verkaufsrecht)|verkäuferkonto.*(eingeschränkt|überprüf)|richtlinienversto|policy violation|handlungsbedarf|action required/i, dueInDays: 1 },
   { topic: "payment_hold", category: "critical", subject: PAYOUT_PROBLEM, dueInDays: 1 },
   { topic: "payment_problem", category: "critical", subject: PAYMENT_PROBLEM, head: PAYMENT_PROBLEM_STRONG, dueInDays: 1 },

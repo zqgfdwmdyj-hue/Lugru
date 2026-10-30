@@ -59,3 +59,21 @@ registerTester("discord_va", async (v, tenantId) => {
   }
   return `Verbunden – Kanal „${k.name ?? v.kanalId}“ ist lesbar.${konto}`;
 });
+
+registerTester("discord_profitpath", async (v, tenantId) => {
+  const ids = (v.kanalIds ?? "").split(/[\s,;]+/).filter((x) => /^\d{15,25}$/.test(x));
+  if (!ids.length) throw new Error("Mindestens eine Kanal-ID (nur Ziffern) eintragen.");
+  let token = v.botToken;
+  if (!token) token = ((await getIntegration(tenantId, "discord_va")) as { botToken?: string } | null)?.botToken ?? "";
+  if (!token) throw new Error("Bot-Token eintragen oder zuerst „Discord – VA-Kanal“ einrichten (derselbe Bot).");
+  const base = (process.env.DISCORD_API_BASE_URL || "https://discord.com/api/v10").replace(/\/$/, "");
+  const zeilen: string[] = [];
+  const { letzteProfitPathNachricht } = await import("@/lib/deal-eingang/profitpath");
+  const botId = /^\d{15,25}$/.test(v.ppBotId ?? "") ? v.ppBotId : null;
+  for (const id of ids) {
+    const r = await fetch(`${base}/channels/${id}`, { headers: { Authorization: `Bot ${token}` }, signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) throw new Error(`Kanal ${id}: Discord hat abgelehnt (${r.status}) – ist der Bot im Server und darf den Kanal sehen („View Channel“)?`);
+    zeilen.push(await letzteProfitPathNachricht(token, id, botId));
+  }
+  return `Verbunden – letzte ProfitPath-Nachricht je Kanal: ${zeilen.join(" | ")}`;
+});

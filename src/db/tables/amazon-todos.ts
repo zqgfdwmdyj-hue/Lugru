@@ -24,6 +24,10 @@ export const amazonTodos = pgTable(
     priority: text("priority", { enum: AMAZON_TODO_PRIORITIES }).notNull().default("medium"),
     deadline: date("deadline", { mode: "string" }),
     asins: jsonb("asins").$type<string[]>().notNull().default([]),
+    /** Händler-SKUs aus der Mail, Marktplatz (aus der Absender-Domain) und Link „Kontozustand“. */
+    skus: jsonb("skus").$type<string[]>().notNull().default([]),
+    marktplatz: text("marktplatz"),
+    link: text("link"),
     summary: text("summary"),
     bodyShort: text("body_short"),
     status: text("status", { enum: AMAZON_TODO_STATUSES }).notNull().default("open"),

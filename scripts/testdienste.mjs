@@ -68,7 +68,12 @@ function kiAnswer(req, b) {
   // Deal-Eingang: Angebote aus der Nachricht – je Zeile mit Preis ein Angebot (wie eine KI, erfundene Regeln):
   // ASIN/EAN übernehmen, Preis vor „netto/brutto/€“, „ab N“ = Mindestmenge, „6x/6er“ = Packung; Absender aus „Name:“.
   if (/Erkenne die Angebote in dieser Nachricht/.test(text) && !stale) {
-    const nachricht = /Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "";
+    // „Screenshot lesen“: erfundene Testbilder tragen den sichtbaren Text hinter der Marke TESTOCR.
+    const bildText = parts
+      .filter((p) => p.type === "image" && p.source?.data)
+      .map((p) => /TESTOCR\n([\s\S]*)$/.exec(Buffer.from(p.source.data, "base64").toString("latin1"))?.[1] ?? "")
+      .join("\n");
+    const nachricht = [/Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "", bildText].filter(Boolean).join("\n");
     const angebote = [];
     let quelle = null;
     for (const roh of nachricht.split("\n")) {
@@ -220,6 +225,7 @@ async function lexoffice(req, p, url, b) {
 const carts = new Map();
 let viesNr = 0;
 let discord = [];
+let pushes = [];
 let shopOrder = 900000;
 let shipNo = 3400000000;
 
@@ -590,6 +596,12 @@ http
     if (url.pathname.startsWith("/web-")) return webNachbau(req, res, url, body);
     if (url.pathname === "/__ki") return send(200, ki);
     if (url.pathname === "/__discord") return send(200, discord);
+    // Web-Push-Dienst (Nachbau): nimmt Anstöße an, merkt sich Adresse und VAPID-Kopf.
+    if (url.pathname.startsWith("/push/") && req.method === "POST") {
+      pushes.push({ at: new Date().toISOString(), pfad: url.pathname, vapid: String(req.headers.authorization ?? "").startsWith("vapid t="), laenge: body.length });
+      return send(201, "");
+    }
+    if (url.pathname === "/__push") return send(200, pushes);
     if (url.pathname === "/__discord-va") return send(200, { kanaele: [...dcVa.kanaele.values()], nachrichten: dcVa.nachrichten });
     // Nachricht als VA (im Kanal oder Thread), optional mit Anhang (Text-Inhalt).
     if (url.pathname === "/__discord-va/nachricht" && req.method === "POST") {
@@ -598,6 +610,16 @@ http
       const anh = b.anhang ? [{ id: dcId(), filename: b.anhang.name, content_type: b.anhang.typ ?? "text/plain", size: String(b.anhang.inhalt ?? "").length, url: `${SELF}/discord-cdn/${encodeURIComponent(b.anhang.name)}` }] : [];
       if (b.anhang) dcVa.anhaenge.set(b.anhang.name, String(b.anhang.inhalt ?? ""));
       return send(200, dcNachricht(String(b.kanal), { id: String(b.autor ?? DC_VA), username: "VA (Test)" }, String(b.text ?? ""), anh));
+    }
+    // ProfitPath-Bot: Meldung mit Embed (Titel, Amazon-Link, Felder) in einen Kanal (IDs mit „8“ am Anfang).
+    if (url.pathname === "/__discord-va/profitpath" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      const k = dcKanal(String(b.kanal));
+      if (!k) return send(404, { fehler: "Kanal unbekannt" });
+      if (b.name) k.name = b.name;
+      const m = dcNachricht(k.id, { id: "650000000000000001", bot: true, username: "ProfitPath (Test)" }, "", []);
+      m.embeds = [{ title: b.titel, url: `https://www.amazon.de/dp/${b.asin}`, fields: [{ name: "Buy Cost", value: b.ek }, { name: "Sell Price", value: b.vk ?? "€29,90" }, { name: "Profit", value: b.gewinn ?? "€5,00" }, { name: "ROI", value: b.roi ?? "30%" }, { name: "Store", value: "Testshop" }] }];
+      return send(200, m);
     }
     if (url.pathname === "/__discord-va/reaktion" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
@@ -623,6 +645,7 @@ http
       ki = [];
       discord = [];
       dcVa = { kanaele: new Map(), nachrichten: [], anhaenge: new Map() };
+      pushes = [];
       return send(200, { ok: true });
     }
     if (url.pathname === "/__gesund") return send(200, { ok: true });

@@ -3,6 +3,7 @@ import { resolveMx } from "node:dns/promises";
 import { ImapFlow } from "imapflow";
 import nodemailer from "nodemailer";
 import { assertOutbound } from "@/lib/testenv";
+import { ABSENDER_FILTER, mailFehlerArt, smtpAusweich, standardOrdner, type ImapOrdner, type MailFehlerArt } from "./ordner";
 import { domainOf, explainMailError, parseAutoconfig, presetForDomain, presetForMx, type ServerSettings } from "./servers";
 
 // IMAP/SMTP mit Passwort bzw. App-Passwort: Einstellungen ermitteln, prüfen, abrufen, senden.
@@ -71,57 +72,109 @@ function smtp(a: Account) {
   });
 }
 
-/** Prüft Abruf und Versand; wirft mit verständlicher Meldung. */
-export async function testAccount(a: Account): Promise<void> {
-  const c = imap(a);
-  try {
-    await c.connect();
-    await c.logout();
-  } catch (e) {
-    c.close();
-    throw new Error(explainMailError(e, "IMAP"));
-  }
-  try {
-    await smtp(a).verify();
-  } catch (e) {
-    throw new Error(explainMailError(e, "SMTP"));
+export class MailFehler extends Error {
+  constructor(
+    msg: string,
+    public art: MailFehlerArt,
+  ) {
+    super(msg);
   }
 }
 
-/** Rohdaten (RFC 822) der Nachrichten im Posteingang seit `since`, neueste zuerst, höchstens `max`. */
-export async function imapFetchRaw(a: Account, since: Date, max = 150): Promise<{ id: string; raw: Buffer }[]> {
+const fehler = (e: unknown, where: "IMAP" | "SMTP", port?: number) => new MailFehler(explainMailError(e, where, port), mailFehlerArt(e));
+
+export type TestErgebnis = {
+  /** Ordner/Labels des Postfachs (für die Auswahl). */
+  ordner: ImapOrdner[];
+  /** SMTP: ok, übersprungen (nur Abruf) oder Fehlermeldung. */
+  smtp: { ok: true; port: number; ausweich: boolean } | { ok: false; meldung: string; art: MailFehlerArt } | { ok: null };
+  /** Bei geglücktem Ausweichen (465 → 587) die Einstellungen zum Speichern. */
+  einstellungen: ServerSettings;
+};
+
+async function smtpPruefen(a: Account): Promise<void> {
+  await smtp(a).verify();
+}
+
+/**
+ * Prüft Abruf (IMAP, wirft MailFehler) und – außer bei „nur abrufen“ – Versand. Ist der SMTP-Port gesperrt oder
+ * läuft in eine Zeitüberschreitung, wird automatisch 587/STARTTLS (bzw. 465/SSL) versucht.
+ */
+export async function testAccount(a: Account, o: { nurAbruf?: boolean } = {}): Promise<TestErgebnis> {
+  const ordner = await imapOrdnerListe(a);
+  const { password: _pw, address: _ad, ...einstellungen } = a;
+  if (o.nurAbruf) return { ordner, smtp: { ok: null }, einstellungen };
+  try {
+    await smtpPruefen(a);
+    return { ordner, smtp: { ok: true, port: a.smtpPort, ausweich: false }, einstellungen };
+  } catch (e) {
+    const art = mailFehlerArt(e);
+    const alt = art === "port" || art === "tls" ? smtpAusweich(a.smtpPort, a.smtpSecure) : null;
+    if (alt) {
+      const b = { ...a, ...alt };
+      const ok = await smtpPruefen(b).then(() => true, () => false);
+      if (ok) return { ordner, smtp: { ok: true, port: b.smtpPort, ausweich: true }, einstellungen: { ...einstellungen, ...alt } };
+    }
+    return { ordner, smtp: { ok: false, meldung: explainMailError(e, "SMTP", a.smtpPort), art }, einstellungen };
+  }
+}
+
+/** Ordner/Labels des Postfachs (IMAP LIST). Wirft MailFehler. */
+export async function imapOrdnerListe(a: Account): Promise<ImapOrdner[]> {
   const c = imap(a);
   try {
     await c.connect();
   } catch (e) {
     c.close();
-    throw new Error(explainMailError(e, "IMAP"));
+    throw fehler(e, "IMAP", a.imapPort);
   }
-  const out: { id: string; raw: Buffer }[] = [];
   try {
-    // Google: „Alle Nachrichten“, damit auch archivierte oder per Filter einsortierte Mails ankommen.
-    let folder = "INBOX";
-    if (/gmail\.com$/i.test(a.imapHost)) {
-      const all = (await c.list()).find((b) => b.specialUse === "\\All" || /^(\[gmail\]\/)?(alle nachrichten|all mail)$/i.test(b.path));
-      if (all) folder = all.path;
-    }
-    const lock = await c.getMailboxLock(folder);
-    try {
-      // Nur Mails von Marktplätzen und Versanddiensten – der Posteingang wertet ohnehin nur diese aus.
-      const senders = ["amazon", "ebay", "tiktok", "temu", "kuajing", "dhl"].map((from) => ({ from }));
-      const uids = ((await c.search({ since, or: senders }, { uid: true })) || []).sort((x, y) => y - x).slice(0, max);
-      if (uids.length > 0) {
-        for await (const m of c.fetch(uids, { uid: true, source: true }, { uid: true })) {
-          if (m.source) out.push({ id: `imap:${m.uid}`, raw: m.source });
+    const liste = (await c.list()).filter((b) => !b.flags?.has("\\Noselect")).map((b) => ({ path: b.path, name: b.name, specialUse: b.specialUse || undefined }));
+    await c.logout();
+    return liste;
+  } catch (e) {
+    c.close();
+    throw fehler(e, "IMAP", a.imapPort);
+  }
+}
+
+/**
+ * Rohdaten (RFC 822) seit `since`, neueste zuerst, höchstens `max` je Ordner. Ordner: eigene Auswahl, sonst
+ * automatisch (Gmail „Alle Nachrichten“, sonst Posteingang + Archiv). Nur Marktplätze/Versanddienste und
+ * Deal-Weiterleitungen – im Deal-Postfach (`alleAbsender`) alles.
+ */
+export async function imapFetchRaw(a: Account, since: Date, o: { max?: number; ordner?: string[] | null; alleAbsender?: boolean } = {}): Promise<{ id: string; raw: Buffer; ordner: string }[]> {
+  const max = o.max ?? 150;
+  const c = imap(a);
+  try {
+    await c.connect();
+  } catch (e) {
+    c.close();
+    throw fehler(e, "IMAP", a.imapPort);
+  }
+  const out: { id: string; raw: Buffer; ordner: string }[] = [];
+  try {
+    const liste = (await c.list()).map((b) => ({ path: b.path, name: b.name, specialUse: b.specialUse || undefined }));
+    const vorhanden = new Set(liste.map((b) => b.path));
+    const ordner = (o.ordner?.length ? o.ordner : standardOrdner(liste, a.imapHost)).filter((p) => p.toUpperCase() === "INBOX" || vorhanden.has(p));
+    const filter = o.alleAbsender ? { since } : { since, or: [...ABSENDER_FILTER.map((from) => ({ from })), { subject: "deal" }] };
+    for (const pfad of ordner) {
+      const lock = await c.getMailboxLock(pfad);
+      try {
+        const uids = ((await c.search(filter, { uid: true })) || []).sort((x, y) => y - x).slice(0, max);
+        if (uids.length > 0) {
+          for await (const m of c.fetch(uids, { uid: true, source: true }, { uid: true })) {
+            if (m.source) out.push({ id: `imap:${pfad}:${m.uid}`, raw: m.source, ordner: pfad });
+          }
         }
+      } finally {
+        lock.release();
       }
-    } finally {
-      lock.release();
     }
     await c.logout();
   } catch (e) {
     c.close();
-    throw new Error(explainMailError(e, "IMAP"));
+    throw fehler(e, "IMAP", a.imapPort);
   }
   return out;
 }
@@ -131,7 +184,7 @@ export async function smtpSend(a: Account, raw: Buffer, envelope: { from: string
   try {
     await smtp(a).sendMail({ envelope, raw });
   } catch (e) {
-    throw new Error(explainMailError(e, "SMTP"));
+    throw fehler(e, "SMTP", a.smtpPort);
   }
   if (/gmail\.com$/i.test(a.smtpHost)) return;
   const c = imap(a);

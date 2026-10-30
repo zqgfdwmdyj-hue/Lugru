@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ordnerName } from "@/lib/mail/ordner";
 import { notFound } from "next/navigation";
 import { and, eq, ilike, or } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -47,6 +48,7 @@ export default async function MailPage({ params, searchParams }: { params: Promi
           <div className="between"><span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}><span className={`tag ${cls}`}>{label}</span><span className="tag tag-neutral">{TOPIC_LABEL[topic] ?? topic}</span>{uncertain && <span className="tag tag-warn" data-testid="mail-uncertain">unsicher</span>}</span><span className="small muted">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</span></div>
           <h1 style={{ fontSize: 20, marginTop: 10 }}>{m.subject}</h1>
           <div className="small muted" style={{ marginTop: 4 }}>{m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress}</div>
+          {(m.an || m.ordner) && <div className="small muted" style={{ marginTop: 2 }} data-testid="mail-an-ordner">{m.an ? `An: ${m.an}` : ""}{m.an && m.ordner ? " · " : ""}{m.ordner ? `Ordner: ${ordnerName(m.ordner)}` : ""}</div>}
           <div className="small muted" style={{ marginTop: 2 }} data-testid="mail-rule">Einordnung: {describeRule(m.matchedRule)}{uncertain ? " – bitte prüfen und rechts korrigieren" : ""}</div>
           <div className="article-body" style={{ marginTop: 16, fontSize: 14 }}>{m.bodyText}</div>
           {(drafts.length > 0 || draftMsg) && (

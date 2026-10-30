@@ -19,7 +19,10 @@ export function ImapForm() {
         <input className="input" id="password" name="password" type="password" required autoComplete="new-password" />
         <span className="small muted">{state ? "Bitte erneut eingeben. " : ""}Wird verschlüsselt gespeichert und nie wieder angezeigt.</span>
       </div>
-      {state && !state.ok && <div className="notice notice-warn small">{state.message}</div>}
+      <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input type="checkbox" name="nurAbruf" data-testid="imap-nur-abruf" /> Nur abrufen (nicht über dieses Postfach senden)
+      </label>
+      {state && !state.ok && <div className="notice notice-warn small" data-testid="imap-fehler">{state.message}</div>}
       {state?.hint && <div className="notice notice-info small">{state.hint}</div>}
       <details open={Boolean(state?.manual)} key={state ? JSON.stringify(s) : "leer"}>
         <summary className="small" style={{ cursor: "pointer" }}>Server selbst eintragen {s?.provider ? `(erkannt: ${s.provider})` : "(sonst automatisch)"}</summary>

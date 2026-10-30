@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ordnerName } from "@/lib/mail/ordner";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
@@ -12,7 +13,7 @@ import { MailboxStatus } from "./mailbox-manager";
 const VIEWS = { wichtig: "Wichtig", kritisch: "Kritisch", handeln: "Handeln", info: "Info", unwichtig: "Unwichtig", archiv: "Archiv" } as const;
 type View = keyof typeof VIEWS;
 
-export default async function PosteingangPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; verbunden?: string; fehler?: string; hochgestuft?: string }> }) {
+export default async function PosteingangPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; verbunden?: string; hinweis?: string; fehler?: string; hochgestuft?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "wichtig";
@@ -25,7 +26,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
   return (
     <>
       <div className="page-head"><div><div className="crumb">Heute</div><h1>Posteingang</h1></div></div>
-      {sp.verbunden && <div className="notice notice-ok">Postfach {sp.verbunden} verbunden.</div>}
+      {sp.verbunden && <div className="notice notice-ok" data-testid="mailbox-verbunden">Postfach {sp.verbunden} verbunden.{sp.hinweis ? ` ${sp.hinweis}` : ""}</div>}
       {sp.fehler && <div className="notice notice-error">{sp.fehler}</div>}
       {sp.hochgestuft && <div className="notice notice-ok" data-testid="mail-upgraded">{sp.hochgestuft === "1" ? "1 Mail" : `${sp.hochgestuft} Mails`} höher eingestuft – sie stehen jetzt unter „Wichtig“, mit Aufgabe auf der Startseite.</div>}
       {upgrades.length > 0 && (
@@ -64,7 +65,7 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
                       <td><input type="checkbox" name="ids" value={m.id} aria-label="Auswählen" /></td>
                       <td><span className={`tag ${cls}`}>{label}</span>{isUncertainRule(m.matchedRule) && <> <span className="tag tag-warn" title="Nur Absender oder Text passte – bitte prüfen" data-testid="mail-uncertain">unsicher</span></>}<div className="small muted">{TOPIC_LABEL[(m.topic ?? "other") as Topic] ?? m.topic}</div></td>
                       <td style={{ maxWidth: 420 }}><Link href={`/posteingang/${m.id}`} style={{ fontWeight: 600 }}>{m.subject || "(ohne Betreff)"}</Link><div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.snippet}</div></td>
-                      <td className="small">{m.fromName ?? m.fromAddress}</td>
+                      <td className="small">{m.fromName ?? m.fromAddress}{(m.an || m.ordner) && <div className="muted" data-testid="mail-an-ordner">{m.an ? `an ${m.an}` : ""}{m.an && m.ordner ? " · " : ""}{m.ordner ? ordnerName(m.ordner) : ""}</div>}</td>
                       <td className="num small">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
                       <td>{m.taskId ? <Link href="/" className="small">✓ To-do</Link> : "–"}</td>
                     </tr>

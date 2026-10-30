@@ -38,3 +38,4 @@ export * from "./tables/buchhaltung";
 export * from "./tables/deal-eingang";
 export * from "./tables/ek-import";
 export * from "./tables/va";
+export * from "./tables/push";

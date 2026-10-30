@@ -10,7 +10,9 @@ import { requireArea } from "@/lib/auth/session";
 import { rememberLeadSender } from "@/lib/leads/service";
 import { MANUAL_RULE, TOPICS, TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
 import { applyMailUpgrades, ingestMail, parseRaw, syncAllMailboxes } from "@/lib/inbox/service";
-import { sendMail, setDefaultSender } from "@/lib/mail/accounts";
+import { mailboxCredentials, sendMail, setDefaultSender } from "@/lib/mail/accounts";
+import { imapOrdnerListe, MailFehler, testAccount } from "@/lib/mail/connect";
+import { gueltigeOrdner } from "@/lib/mail/ordner";
 
 export type InboxState = { ok: boolean; message: string } | null;
 const uuid = z.string().uuid();
@@ -24,7 +26,7 @@ export async function uploadEml(_prev: InboxState, fd: FormData): Promise<InboxS
   const counts = { new: 0, duplicate: 0, ignored: 0 };
   for (const f of files) {
     try {
-      counts[await ingestMail(session.tenantId, box.id, await parseRaw(Buffer.from(await f.arrayBuffer())))]++;
+      counts[await ingestMail(session.tenantId, box.id, await parseRaw(Buffer.from(await f.arrayBuffer()), undefined, "Upload"))]++;
     } catch {
       counts.ignored++;
     }
@@ -180,4 +182,72 @@ export async function draftAction(fd: FormData) {
   }
   revalidatePath("/posteingang");
   back(ok ? "gesendet" : "fehler");
+}
+
+/** „Verbindung testen“ je Postfach: IMAP (Ordner) und SMTP (mit Ausweichen auf 587); Fehlerart wird gespeichert. */
+export async function testMailboxAction(_prev: InboxState, fd: FormData): Promise<InboxState> {
+  const session = await requireArea("posteingang");
+  const id = uuid.parse(fd.get("id"));
+  const M = schema.mailboxes;
+  const [box] = await db.select().from(M).where(and(eq(M.id, id), eq(M.tenantId, session.tenantId)));
+  if (!box) return { ok: false, message: "Postfach nicht gefunden." };
+  try {
+    const creds = await mailboxCredentials(box);
+    if (creds.kind !== "imap") {
+      await db.update(M).set({ lastError: null, fehlerArt: null, updatedAt: new Date() }).where(eq(M.id, box.id));
+      return { ok: true, message: `Anmeldung bei ${creds.kind === "gmail" ? "Google" : "Microsoft"} klappt.` };
+    }
+    const r = await testAccount(creds.account, { nurAbruf: box.nurAbruf });
+    await db.update(M).set({ lastError: null, fehlerArt: null, updatedAt: new Date() }).where(eq(M.id, box.id));
+    const teile = [`Abruf (IMAP) klappt – ${r.ordner.length} Ordner`];
+    if (r.smtp.ok === null) teile.push("Versand aus (nur Abruf)");
+    else if (r.smtp.ok) {
+      teile.push(`Versand (SMTP) klappt über Port ${r.smtp.port}${r.smtp.ausweich ? " – automatisch umgestellt, weil der bisherige Port gesperrt war" : ""}`);
+      if (r.smtp.ausweich && box.integrationId) await db.update(schema.integrations).set({ config: r.einstellungen, updatedAt: new Date() }).where(and(eq(schema.integrations.id, box.integrationId), eq(schema.integrations.tenantId, session.tenantId)));
+    } else teile.push(`${r.smtp.meldung} Tipp: „Nur abrufen“ einschalten, wenn über dieses Postfach nicht gesendet werden muss.`);
+    revalidatePath("/", "layout");
+    return { ok: r.smtp.ok !== false, message: `${teile.join(" · ")}.` };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await db.update(M).set({ lastError: message, fehlerArt: e instanceof MailFehler ? e.art : "sonst", updatedAt: new Date() }).where(eq(M.id, box.id));
+    revalidatePath("/", "layout");
+    return { ok: false, message };
+  }
+}
+
+/** Ordner/Labels eines IMAP-Postfachs wählen (leer bzw. „Automatisch“ = Gmail „Alle Nachrichten“, sonst Posteingang + Archiv). */
+export async function ordnerAction(fd: FormData) {
+  const session = await requireArea("posteingang");
+  const id = uuid.parse(fd.get("id"));
+  const M = schema.mailboxes;
+  const [box] = await db.select().from(M).where(and(eq(M.id, id), eq(M.tenantId, session.tenantId)));
+  if (!box || box.provider !== "imap") return;
+  const zurueck = (m: string) => redirect(`/posteingang/postfaecher/${box.id}?meldung=${encodeURIComponent(m)}#ordner`);
+  if (fd.get("op") === "automatisch") {
+    await db.update(M).set({ ordner: null, updatedAt: new Date() }).where(eq(M.id, box.id));
+    revalidatePath("/", "layout");
+    zurueck("Ordner: automatisch.");
+  }
+  let liste: Awaited<ReturnType<typeof imapOrdnerListe>> = [];
+  try {
+    const c = await mailboxCredentials(box);
+    if (c.kind === "imap") liste = await imapOrdnerListe(c.account);
+  } catch (e) {
+    zurueck(`Ordner nicht gespeichert – ${e instanceof Error ? e.message : String(e)}`);
+  }
+  const wahl = gueltigeOrdner(fd.getAll("ordner").map(String), liste);
+  await db.update(M).set({ ordner: wahl.length ? wahl : null, updatedAt: new Date() }).where(eq(M.id, box.id));
+  revalidatePath("/", "layout");
+  zurueck(wahl.length ? `${wahl.length} Ordner gespeichert – beim nächsten Abruf werden sie gelesen.` : "Keine Auswahl – Ordner: automatisch.");
+}
+
+/** „Nur abrufen“ ein/aus: Postfach wird dann nicht zum Senden benutzt. */
+export async function nurAbrufAction(fd: FormData) {
+  const session = await requireArea("posteingang");
+  const id = uuid.parse(fd.get("id"));
+  const M = schema.mailboxes;
+  const [box] = await db.select().from(M).where(and(eq(M.id, id), eq(M.tenantId, session.tenantId)));
+  if (!box) return;
+  await db.update(M).set({ nurAbruf: !box.nurAbruf, updatedAt: new Date() }).where(eq(M.id, box.id));
+  revalidatePath("/", "layout");
 }

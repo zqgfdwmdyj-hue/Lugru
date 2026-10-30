@@ -6,7 +6,7 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { notifyDiscord } from "@/lib/integrations/clients/discord";
 import { getIntegration } from "@/lib/integrations/store";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
-import { BATCH_SIZE, categoryLabel, MAX_TOKENS, noiseReason, parseTriage, todosClosedBy, triageByRules, triagePrompt, type TriageMail, type TriageResult } from "./logic";
+import { BATCH_SIZE, categoryLabel, deadlineFromText, extractAsins, extractSkus, kontozustandLink, marktplatzAus, MAX_TOKENS, noiseReason, parseTriage, pflichtRegel, todosClosedBy, triageByRules, triagePrompt, type TriageMail, type TriageResult } from "./logic";
 
 // Amazon-ToDos: Amazon-Systemmails aus allen verbundenen Postfächern einstufen und als Aufgaben
 // mit Frist führen. Läuft nach jedem Postfach-Abruf; die Erledigung passiert im Seller Central.
@@ -50,15 +50,29 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
     .limit(500);
   result.checked = candidates.length;
 
+  // 0. Pflicht-ToDos (Deaktivierung, Dokumente, Compliance in allen EU-Sprachen) – immer, ohne KI.
+  const pflicht = candidates.map((c) => ({ c, p: /marketplace\.amazon/i.test(c.fromAddress ?? "") ? null : pflichtRegel({ subject: c.subject ?? "", text: c.body ?? "" }) })).filter((x) => x.p);
+  const pflichtKeys = new Set(pflicht.map((x) => x.c.key));
+  const pflichtResults: TriageResult[] = pflicht.map(({ c, p }) => ({
+    key: c.key,
+    relevant: true,
+    actionNeeded: true,
+    category: p!.category,
+    priority: "high",
+    deadline: deadlineFromText(c.body ?? "", c.receivedAt.toISOString()),
+    asins: extractAsins(`${c.subject ?? ""} ${c.body ?? ""}`),
+    summary: c.subject ?? "",
+  }));
+
   // 1. Grobfilter ohne KI.
-  const noise = candidates.map((c) => ({ c, reason: noiseReason({ from: `${c.fromName ?? ""} <${c.fromAddress ?? ""}>`, subject: c.subject ?? "" }) }));
+  const noise = candidates.filter((c) => !pflichtKeys.has(c.key)).map((c) => ({ c, reason: noiseReason({ from: `${c.fromName ?? ""} <${c.fromAddress ?? ""}>`, subject: c.subject ?? "" }) }));
   const filtered = noise.filter((n) => n.reason);
   if (filtered.length) {
     await db.insert(SEEN).values(filtered.map((n) => ({ tenantId, messageKey: n.c.key, reason: `Grobfilter: ${n.reason}` }))).onConflictDoNothing();
     result.filtered = filtered.length;
   }
   const todo = noise.filter((n) => !n.reason).map((n) => n.c).slice(0, max);
-  if (todo.length === 0) {
+  if (todo.length === 0 && pflicht.length === 0) {
     await refreshTodoTask(tenantId);
     return result;
   }
@@ -85,10 +99,10 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
     results.push(...mails.map(triageByRules));
   }
 
-  // 3. Speichern.
-  const byKey = new Map(todo.map((c) => [c.key, c]));
+  // 3. Speichern (Pflicht-ToDos zuerst).
+  const byKey = new Map([...todo, ...pflicht.map((x) => x.c)].map((c) => [c.key, c]));
   const created: (typeof T.$inferSelect)[] = [];
-  for (const r of results) {
+  for (const r of [...pflichtResults, ...results]) {
     const mail = byKey.get(r.key);
     if (!mail) continue;
     if (!r.relevant) {
@@ -109,13 +123,15 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
         priority: r.priority,
         deadline: r.deadline,
         asins: r.asins,
-        summary: r.summary,
+        skus: extractSkus(`${mail.subject ?? ""}\n${mail.body ?? ""}`),
+        marktplatz: marktplatzAus(mail.fromAddress ?? "", mail.body ?? "").land,
+        link: kontozustandLink(marktplatzAus(mail.fromAddress ?? "", mail.body ?? "").tld),
         bodyShort: (mail.body ?? "").slice(0, 1500),
         status: r.actionNeeded ? "open" : "done",
         infoOnly: !r.actionNeeded,
         closedBy: r.actionNeeded ? null : "nur Info",
         closedAt: r.actionNeeded ? null : new Date(),
-        source: result.ai ? "ai" : "rules",
+        source: pflichtKeys.has(r.key) || !result.ai ? "rules" : "ai",
       })
       .onConflictDoNothing()
       .returning();

@@ -13,6 +13,7 @@ export type DcNachricht = {
   attachments?: { id: string; filename: string; url: string; content_type?: string; size?: number }[];
   reactions?: { emoji: { name: string | null }; count: number; me?: boolean }[];
   thread?: { id: string };
+  embeds?: { title?: string; url?: string; description?: string; fields?: { name: string; value: string }[]; footer?: { text?: string } }[];
 };
 
 export type DcDatei = { name: string; daten: Buffer; typ: string };

@@ -66,7 +66,11 @@ export const dealEingaenge = pgTable(
     id: id(),
     tenantId: tenantId(),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-    weg: text("weg", { enum: ["manuell", "teilen", "kurzbefehl", "mail", "claude"] }).notNull(),
+    weg: text("weg", { enum: ["manuell", "teilen", "kurzbefehl", "mail", "claude", "profitpath"] }).notNull(),
+    /** Herkunft für Dubletten: „mail:<Message-ID>“, „pp:<Discord-Nachricht>“. */
+    quelleRef: text("quelle_ref"),
+    /** Schon strukturiert gelieferte Angebote (ProfitPath, Claude) – dann ohne KI-Erkennung. */
+    angebote: jsonb("angebote").$type<DealAngebot[] | null>(),
     /** Geräte-Schlüssel, über den der Eingang kam (Kurzbefehl) – für Rate-Limit und Widerruf. */
     tokenId: uuid("token_id"),
     /** Absender/Quelle (z. B. „Konrad“) – von Hand oder aus dem Text erraten. */
@@ -96,7 +100,7 @@ export const dealEingaenge = pgTable(
     entschiedenAm: timestamp("entschieden_am", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung)],
+  (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung), uniqueIndex("deal_eingaenge_ref_uq").on(t.tenantId, t.quelleRef)],
 );
 
 /**
@@ -121,4 +125,18 @@ export const apiTokens = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("api_tokens_hash_uq").on(t.tokenHash), index("api_tokens_user_idx").on(t.tenantId, t.userId)],
+);
+
+/** ProfitPath über Discord: gelesene Kanäle (Modul/Alarmgruppe) mit Lesestand. */
+export const dealEingangKanaele = pgTable(
+  "deal_eingang_kanaele",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kanalId: text("kanal_id").notNull(),
+    name: text("name"),
+    cursor: text("cursor"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("deal_eingang_kanaele_uq").on(t.tenantId, t.kanalId)],
 );

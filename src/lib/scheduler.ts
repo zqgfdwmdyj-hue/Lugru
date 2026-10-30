@@ -160,6 +160,8 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Paletten-Monatsaufstellungen", () => autoSendStatements(t, todayIso()));
         await step(t, "Paletten-Sendungen", () => refreshShipments(t, todayIso()));
       }
+      // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
+      if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).
       if (force || due("medien-aufraeumen", 1435)) await step(t, "Retouren-Station: Medien aufräumen", async () => (await import("@/lib/retouren-station/fall")).medienAufraeumen());
       if (force || due(`${t}:tasks`, 59)) {
@@ -196,10 +198,22 @@ export async function runScheduledJobs(force = false) {
 
 let started = false;
 
+let takt = 0;
 async function vaTakt() {
   const va = await import("@/lib/va/service");
   // Fehler protokolliert vaAbgleich selbst (job_runs „VA (Discord)“).
   for (const t of await va.vaMandanten()) await va.vaAbgleich(t).catch(() => null);
+  // ProfitPath-Kanäle jede Minute (jeder zweite Takt).
+  if (takt++ % 2 === 0) {
+    const pp = await import("@/lib/deal-eingang/profitpath");
+    for (const t of await pp.profitPathMandanten()) {
+      const t0 = Date.now();
+      await pp
+        .profitPathAbgleich(t)
+        .then((z) => z && recordJob(t, "ProfitPath (Discord)", null, Date.now() - t0))
+        .catch((e) => recordJob(t, "ProfitPath (Discord)", e instanceof Error ? e.message : String(e), Date.now() - t0));
+    }
+  }
 }
 export function startScheduler() {
   if (started || process.env.ENABLE_SCHEDULER === "0") return;

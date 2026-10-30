@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireArea } from "@/lib/auth/session";
 import { syncMailbox } from "@/lib/inbox/service";
 import { saveImapMailbox } from "@/lib/mail/accounts";
-import { detectServers, testAccount, type Account } from "@/lib/mail/connect";
+import { detectServers, MailFehler, testAccount, type Account, type TestErgebnis } from "@/lib/mail/connect";
 import { domainOf, type ServerSettings } from "@/lib/mail/servers";
 import { finishMailOAuth, parsePastedRedirect, PASTE_REDIRECT } from "@/lib/oauth/mail-flow";
 import { verifyState } from "@/lib/oauth/state";
@@ -56,21 +56,34 @@ async function tryConnect(fd: FormData): Promise<ConnectState> {
     if (!settings.imapHost || !settings.smtpHost) return { ok: false, manual: true, message: "Bitte die Server unten ergänzen.", hint: settings.hint, settings };
   }
 
+  const nurAbruf = fd.get("nurAbruf") === "on";
   let account: Account = { ...settings, address, password };
+  let r: TestErgebnis;
   try {
-    await testAccount(account);
+    r = await testAccount(account, { nurAbruf });
   } catch (e) {
     // Manche Anbieter wollen die volle Adresse als Benutzernamen, andere nur den Teil vor dem @.
-    const authFailed = e instanceof Error && /Anmeldung abgelehnt/.test(e.message);
-    const alt = !authFailed || settings.user === address ? null : { ...account, user: address };
-    const ok = alt && (await testAccount(alt).then(() => true, () => false));
-    if (!ok) return { ok: false, manual: true, message: e instanceof Error ? e.message : String(e), hint: settings.hint, settings };
+    const art = e instanceof MailFehler ? e.art : "sonst";
+    const alt = art !== "anmeldung" || settings.user === address ? null : { ...account, user: address };
+    const r2 = alt ? await testAccount(alt, { nurAbruf }).catch(() => null) : null;
+    if (!alt || !r2) return { ok: false, manual: art !== "anmeldung" && art !== "imap_aus", message: e instanceof Error ? e.message : String(e), hint: settings.hint, settings };
     account = alt;
+    r = r2;
   }
-  const id = await saveImapMailbox(session.tenantId, account);
+  // SMTP gesperrt (auch 587 nicht) → trotzdem verbinden, aber nur zum Abrufen – Amazon-Mails sind das Wichtigste.
+  const nurAbrufGespeichert = nurAbruf || r.smtp.ok === false;
+  const id = await saveImapMailbox(session.tenantId, { ...account, ...r.einstellungen, user: account.user }, { nurAbruf: nurAbrufGespeichert });
   await syncMailbox(session.tenantId, id).catch(() => undefined);
   revalidatePath("/", "layout");
-  redirect(`/posteingang?verbunden=${encodeURIComponent(address)}`);
+  const hinweis =
+    r.smtp.ok === false
+      ? `Nur Abruf: ${r.smtp.meldung} Senden über dieses Postfach ist aus.`
+      : r.smtp.ok && r.smtp.ausweich
+        ? `Versand läuft über Port ${r.smtp.port} (STARTTLS), weil der Standard-Port gesperrt war.`
+        : nurAbruf
+          ? "Nur Abruf (ohne Versand)."
+          : "";
+  redirect(`/posteingang?verbunden=${encodeURIComponent(address)}${hinweis ? `&hinweis=${encodeURIComponent(hinweis)}` : ""}`);
 }
 
 export type PasteState = { ok: boolean; message: string } | null;

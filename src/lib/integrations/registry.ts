@@ -349,6 +349,25 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "discord_profitpath",
+    name: "Discord – ProfitPath-Deals (Dealwatch, SpySearch, A2A) – optional",
+    purpose:
+      "Der Bot des Seller-Systems liest die ProfitPath-Kanäle in deinem Discord-Server mit. Jede Meldung landet im Deal-Eingang und wird gegengeprüft (echte Gebühren je Land, eigener Bestand, Kapital-Ampel, Amazon-Anteil, Liquidität). Push nur bei Grün/Gelb; Trefferquote je Modul.",
+    fields: [
+      { key: "kanalIds", label: "ProfitPath-Kanäle (IDs, mit Komma getrennt)", placeholder: "123456789012345678, 234567890123456789", help: "Je Modul/Alarmgruppe ein Kanal. Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
+      { key: "ppBotId", label: "Nutzer-ID des ProfitPath-Bots", placeholder: "z. B. 123456789012345678", help: "Rechtsklick auf den ProfitPath-Bot → „Benutzer-ID kopieren“. Dann werden nur seine Nachrichten verarbeitet (leer = alle Bot-Nachrichten in den Kanälen)." },
+      { key: "serverId", label: "Server-ID (optional)" },
+      { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie beim VA-Kanal. Nur auf dem Server gespeichert." },
+    ],
+    setup: [
+      "Den Bot des Seller-Systems (siehe „Discord – VA-Kanal“) in den Server mit den ProfitPath-Kanälen einladen – in diesen Kanälen „View Channel“ und „Read Message History“; im Developer Portal unter Bot → Privileged Gateway Intents „Message Content Intent“ einschalten.",
+      "„Verbindung testen“ liest die letzte ProfitPath-Nachricht je Kanal und zeigt, was erkannt wurde (ASIN, EK).",
+      "Fällt der Abruf aus, holt das System verpasste Meldungen der letzten 24 Stunden nach.",
+      "Wichtig: Discord-Meldungen kommen aus den Alert-Einstellungen in ProfitPath (je Alarmgruppe ein Kanal), nicht aus Presets/Filtern.",
+      "Beim ersten Abgleich merkt sich das System nur den Stand je Kanal; ab dann kommen neue Meldungen in den Deal-Eingang.",
+    ],
+  },
+  {
     provider: "lugru_deals",
     name: "Lugru Deals (Shop-Monitor) – optional",
     purpose:

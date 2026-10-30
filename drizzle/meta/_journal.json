@@ -659,6 +659,27 @@
       "when": 1793364140148,
       "tag": "0093_aufgaben_begonnen",
       "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1793365986166,
+      "tag": "0094_deal_eingang_fertig",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1793367361160,
+      "tag": "0095_amazon_todos_markt",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1793368046646,
+      "tag": "0096_postfach_ordner",
+      "breakpoints": true
     }
   ]
 }

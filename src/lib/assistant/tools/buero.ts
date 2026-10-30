@@ -82,14 +82,14 @@ export const amazonTodos = defineTool({
       .where(and(eq(A.tenantId, ctx.session.tenantId), eq(A.status, "open")))
       .orderBy(sql`case ${A.priority} when 'high' then 0 when 'normal' then 1 else 2 end`, sql`${A.deadline} asc nulls last`)
       .limit(i.limit);
-    return json({ anzahl: rows.length, todos: rows.map((x) => ({ id: x.id, betreff: x.subject, kategorie: x.category, prioritaet: x.priority, frist: x.deadline, zusammenfassung: x.summary, asins: x.asins, eingegangen: berlinDateTime(x.receivedAt) })), link: abs(ctx, "/amazon-todos") });
+    return json({ anzahl: rows.length, todos: rows.map((x) => ({ id: x.id, betreff: x.subject, kategorie: x.category, prioritaet: x.priority, frist: x.deadline, zusammenfassung: x.summary, asins: x.asins, skus: x.skus.length ? x.skus : undefined, marktplatz: x.marktplatz ?? undefined, kontozustand: x.link ?? undefined, eingegangen: berlinDateTime(x.receivedAt) })), link: abs(ctx, "/amazon-todos") });
   },
 });
 
 export const posteingang = defineTool({
   name: "posteingang",
   title: "Posteingang",
-  description: "Neueste Mails aus den verbundenen Postfächern (nicht archiviert) mit Absender, Betreff, Einstufung und Vorschau – optional nur wichtige oder nach Text gefiltert.",
+  description: "Neueste Mails aus den verbundenen Postfächern (nicht archiviert) mit Absender, Empfangsadresse (an), Ordner/Label, Betreff, Einstufung und Vorschau – optional nur wichtige oder nach Text gefiltert.",
   area: "posteingang",
   write: false,
   quelle: { text: "Verbundene Postfächer", jobs: ["Postfächer"] },
@@ -100,7 +100,7 @@ export const posteingang = defineTool({
     if (i.nur_wichtige) where.push(eq(M.category, "critical"));
     if (i.suche) where.push(or(ilike(M.subject, likeOf(i.suche)), ilike(M.fromAddress, likeOf(i.suche)), ilike(M.fromName, likeOf(i.suche)))!);
     const rows = await db.select().from(M).where(and(...where)).orderBy(desc(M.receivedAt)).limit(i.limit);
-    return json({ mails: rows.map((m) => ({ id: m.id, von: m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress, betreff: m.subject, eingegangen: berlinDateTime(m.receivedAt), einstufung: m.category, thema: m.topic, vorschau: m.snippet?.slice(0, 300) })), link: abs(ctx, "/posteingang") });
+    return json({ mails: rows.map((m) => ({ id: m.id, von: m.fromName ? `${m.fromName} <${m.fromAddress}>` : m.fromAddress, an: m.an ?? undefined, ordner: m.ordner ?? undefined, betreff: m.subject, eingegangen: berlinDateTime(m.receivedAt), einstufung: m.category, thema: m.topic, vorschau: m.snippet?.slice(0, 300) })), link: abs(ctx, "/posteingang") });
   },
 });
 

@@ -2,6 +2,7 @@
 // und MX-Einträge der Domain. Ohne Server-Abhängigkeiten – die Netzabfragen stehen in connect.ts.
 
 import { findAll, parseXml, textOf, type XmlNode } from "@/lib/calendar/xml";
+import { mailFehlerText } from "./ordner";
 
 export type ServerSettings = {
   imapHost: string;
@@ -25,12 +26,12 @@ type Preset = Omit<ServerSettings, "user">;
 const GOOGLE: Preset = {
   imapHost: "imap.gmail.com", imapPort: 993, imapSecure: true, smtpHost: "smtp.gmail.com", smtpPort: 465, smtpSecure: true,
   provider: "Google (Gmail / Workspace)",
-  hint: "Google verlangt ein App-Passwort: myaccount.google.com → Sicherheit → Bestätigung in zwei Schritten einschalten → App-Passwörter → neues anlegen (16 Zeichen). Alternativ „Mit Google anmelden“.",
+  hint: "Google verlangt ein App-Passwort: myaccount.google.com → Sicherheit → Bestätigung in zwei Schritten einschalten → App-Passwörter → neues anlegen (16 Zeichen). IMAP muss in Gmail an sein (Einstellungen → Weiterleitung und POP/IMAP).",
 };
 const MICROSOFT: Preset = {
   imapHost: "outlook.office365.com", imapPort: 993, imapSecure: true, smtpHost: "smtp.office365.com", smtpPort: 587, smtpSecure: false,
   provider: "Microsoft (Outlook / Microsoft 365)",
-  hint: "Microsoft erlaubt die Anmeldung mit Passwort meist nicht mehr – besser „Mit Microsoft anmelden“ verwenden.",
+  hint: "Microsoft: App-Kennwort verwenden (mysignins.microsoft.com → Sicherheitsinformationen → Methode hinzufügen → App-Kennwort; geht nur mit Zwei-Faktor-Anmeldung). Hat der Admin IMAP/SMTP mit Passwort abgeschaltet, unter „Erweitert“ mit Microsoft anmelden.",
 };
 const ICLOUD: Preset = {
   imapHost: "imap.mail.me.com", imapPort: 993, imapSecure: true, smtpHost: "smtp.mail.me.com", smtpPort: 587, smtpSecure: false,
@@ -54,6 +55,9 @@ const PRESETS: Record<string, Preset> = {
   "mac.com": ICLOUD,
   "gmx.de": { imapHost: "imap.gmx.net", imapPort: 993, imapSecure: true, smtpHost: "mail.gmx.net", smtpPort: 465, smtpSecure: true, provider: "GMX", hint: "In den GMX-Einstellungen „POP3/IMAP Abruf“ erlauben." },
   "gmx.net": { imapHost: "imap.gmx.net", imapPort: 993, imapSecure: true, smtpHost: "mail.gmx.net", smtpPort: 465, smtpSecure: true, provider: "GMX", hint: "In den GMX-Einstellungen „POP3/IMAP Abruf“ erlauben." },
+  "gmx.at": { imapHost: "imap.gmx.net", imapPort: 993, imapSecure: true, smtpHost: "mail.gmx.net", smtpPort: 465, smtpSecure: true, provider: "GMX", hint: "In den GMX-Einstellungen „POP3/IMAP Abruf“ erlauben." },
+  "gmx.ch": { imapHost: "imap.gmx.net", imapPort: 993, imapSecure: true, smtpHost: "mail.gmx.net", smtpPort: 465, smtpSecure: true, provider: "GMX", hint: "In den GMX-Einstellungen „POP3/IMAP Abruf“ erlauben." },
+  "gmx.com": { imapHost: "imap.gmx.com", imapPort: 993, imapSecure: true, smtpHost: "mail.gmx.com", smtpPort: 465, smtpSecure: true, provider: "GMX", hint: "In den GMX-Einstellungen „POP3/IMAP Abruf“ erlauben." },
   "web.de": { imapHost: "imap.web.de", imapPort: 993, imapSecure: true, smtpHost: "smtp.web.de", smtpPort: 587, smtpSecure: false, provider: "WEB.DE", hint: "In den WEB.DE-Einstellungen „POP3/IMAP Abruf“ erlauben." },
   "t-online.de": { imapHost: "secureimap.t-online.de", imapPort: 993, imapSecure: true, smtpHost: "securesmtp.t-online.de", smtpPort: 465, smtpSecure: true, provider: "Telekom", hint: "Telekom verlangt ein eigenes E-Mail-Passwort (Kundencenter → E-Mail-Passwort)." },
   "posteo.de": { imapHost: "posteo.de", imapPort: 993, imapSecure: true, smtpHost: "posteo.de", smtpPort: 465, smtpSecure: true, provider: "Posteo" },
@@ -125,15 +129,7 @@ export function parseAutoconfig(xml: string, address: string): ServerSettings | 
   };
 }
 
-/** Fehlermeldungen der Mailserver in verständliches Deutsch übersetzen. */
-export function explainMailError(e: unknown, where: "IMAP" | "SMTP"): string {
-  const err = e as { message?: string; code?: string; responseText?: string; response?: string; authenticationFailed?: boolean };
-  const raw = [err?.responseText, err?.response, err?.message].filter(Boolean).join(" ");
-  if (err?.authenticationFailed || /auth|535|534|invalid credentials|login failed|LOGIN|password/i.test(raw)) {
-    return `${where}: Anmeldung abgelehnt – E-Mail-Adresse/Passwort prüfen. Viele Anbieter (Google, Apple, Yahoo) verlangen ein App-Passwort statt des normalen Passworts.`;
-  }
-  if (/ENOTFOUND|EAI_AGAIN/.test(raw + (err?.code ?? ""))) return `${where}: Server nicht gefunden – Servername prüfen.`;
-  if (/ECONNREFUSED|ETIMEDOUT|timeout|ECONNRESET/i.test(raw + (err?.code ?? ""))) return `${where}: Server nicht erreichbar – Server und Port prüfen.`;
-  if (/certificate|self.signed|TLS|SSL/i.test(raw)) return `${where}: Verschlüsselung passt nicht – SSL/TLS bzw. STARTTLS und Port prüfen.`;
-  return `${where}: ${raw || String(e)}`;
+/** Fehlermeldungen der Mailserver in verständliches Deutsch übersetzen (Fehlerarten in ordner.ts). */
+export function explainMailError(e: unknown, where: "IMAP" | "SMTP", port?: number): string {
+  return mailFehlerText(e, where, port);
 }

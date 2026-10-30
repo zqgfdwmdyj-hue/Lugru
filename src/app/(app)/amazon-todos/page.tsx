@@ -141,6 +141,13 @@ export default async function AmazonTodosPage({ searchParams }: { searchParams: 
                     {x.asins.length > 20 && <span className="small muted">+{x.asins.length - 20} weitere</span>}
                   </div>
                 )}
+                {(x.skus.length > 0 || x.marktplatz || x.link) && (
+                  <div className="small" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="todo-pflicht">
+                    {x.marktplatz && <span className="tag tag-neutral">Marktplatz {x.marktplatz}</span>}
+                    {x.skus.length > 0 && <span className="muted">SKU: {x.skus.slice(0, 10).join(", ")}{x.skus.length > 10 ? ` +${x.skus.length - 10}` : ""}</span>}
+                    {x.link && <a href={x.link} target="_blank" rel="noopener">Kontozustand ↗</a>}
+                  </div>
+                )}
                 {x.closedBy && x.status !== "open" && <div className="small muted">{x.closedBy}{x.closedAt ? ` · ${x.closedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}` : ""}</div>}
                 {x.bodyShort && (
                   <details className="small">

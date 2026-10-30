@@ -84,3 +84,52 @@ export async function tokenWiderrufenAction(fd: FormData) {
   await tokenWiderrufen(s.tenantId, s.userId, String(fd.get("id")));
   redirect(mit(`${PFAD}/kurzbefehl`, "Schlüssel widerrufen – das Gerät kann nichts mehr senden."));
 }
+
+/** „In Bestellvorschläge übernehmen“: Einkaufsentwurf mit empfohlener Menge (zählt in der Liquidität als freigegeben). */
+export async function bestellvorschlagAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  const nr = Number(fd.get("nr")) || null;
+  let m: string;
+  try {
+    const { inBestellvorschlaege } = await import("@/lib/deal-eingang/ablauf");
+    const r = await inBestellvorschlaege(s.tenantId, s.userId, id, nr);
+    m = `${r.zeilen} Zeile${r.zeilen === 1 ? "" : "n"} als Einkaufsentwurf angelegt – unter Einkauf prüfen und bestellen.`;
+  } catch (e) {
+    m = e instanceof DealEingangFehler ? e.message : `Fehler: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  revalidatePath(PFAD);
+  redirect(mit(`${PFAD}/${id}`, m));
+}
+
+/** „Als B2B-Deal anlegen“: Entwurf (nicht freigeschaltet) – Preis je Kunde im B2B-Bereich. */
+export async function b2bAction(fd: FormData) {
+  const s = await schreibend();
+  const id = String(fd.get("id"));
+  const nr = Number(fd.get("nr")) || null;
+  let m: string;
+  try {
+    const { alsB2bDeal } = await import("@/lib/deal-eingang/ablauf");
+    const r = await alsB2bDeal(s.tenantId, s.userId, id, nr);
+    m = `B2B-Deal Nr. ${r.nr} als Entwurf angelegt – Preis je Kunde festlegen, dann freischalten.`;
+  } catch (e) {
+    m = e instanceof DealEingangFehler ? e.message : `Fehler: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  revalidatePath(PFAD);
+  redirect(mit(`${PFAD}/${id}`, m));
+}
+
+/** ProfitPath-Kanäle sofort abrufen (sonst jede Minute automatisch). */
+export async function profitPathAction() {
+  const s = await schreibend();
+  let m: string;
+  try {
+    const { profitPathAbgleich } = await import("@/lib/deal-eingang/profitpath");
+    const z = await profitPathAbgleich(s.tenantId);
+    m = z ? `ProfitPath: ${z.neu} neu, ${z.updates} Updates, ${z.uebersprungen} übersprungen.` : "ProfitPath ist nicht eingerichtet oder läuft gerade.";
+  } catch (e) {
+    m = `ProfitPath: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  revalidatePath(PFAD);
+  redirect(mit(PFAD, m));
+}

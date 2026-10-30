@@ -21,6 +21,29 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     ],
     offen: ["Mails abrufen (nur echte Postfächer)", "Entwurf echt senden (nur mit echtem Postfach)", "Einstufung „kritisch“ bei Zahlungsproblemen – nur als Unit-Test"],
   },
+  "/posteingang/verbinden": {
+    abläufe: [
+      { ablauf: "Postfach verbinden: App-Passwort zuerst, Anleitung (Google, Microsoft 365, GMX/WEB.DE, IONOS/STRATO), „Nur abrufen“, OAuth nur unter „Erweitert“", erwartet: "IMAP-Formular sichtbar, Erweitert zugeklappt", tests: ["postfach.spec.ts › Anbindungen, Verbinden"] },
+      { ablauf: "Mails hochladen: niederländische Compliance-Mail und Routinemail „Verkauft, jetzt liefern“", erwartet: "Compliance kritisch, Routine unwichtig; Empfänger (Delivered-To) und Ordner „Upload“ an der Mail; Amazon-ToDo mit Marktplatz NL, SKU, ASIN und Link „Kontozustand“; Claude: posteingang/mail mit an + ordner", tests: ["postfach.spec.ts › Anbindungen, Verbinden"] },
+    ],
+    offen: ["IMAP mit echtem Postfach: Ordnerauswahl (Gmail „Alle Nachrichten“), Test-Knopf, SMTP 465 → 587, Fehlerarten (Anmeldung, IMAP aus, Port) – nur live mit Nur-ansehen-Daten"],
+  },
+  "/anbindungen": {
+    abläufe: [
+      { ablauf: "Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“", erwartet: "Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung", tests: ["postfach.spec.ts › Anbindungen, Verbinden"] },
+    ],
+  },
+  "/deal-eingang": {
+    abläufe: [
+      { ablauf: "Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge", erwartet: "Ampel je Angebot mit Gründen; Push ≤ 60 s nur bei Grün/Gelb (ProfitPath); widerrufener Schlüssel abgelehnt; gleiche ASIN/EK zusammengefasst, neuer EK = Update; Einkaufsentwurf und B2B-Entwurf angelegt", tests: ["deal-eingang.spec.ts › Text, Screenshot"] },
+    ],
+    offen: ["ProfitPath mit echtem Discord-Bot (Message Content Intent, Rechte „Kanal ansehen“ + „Nachrichtenverlauf lesen“) – nur live"],
+  },
+  "/delegation": {
+    abläufe: [
+      { ablauf: "Aufgabe an die VA über Discord: Thread mit Anleitung und Datei, ✅ erledigt, Rechnungsfrage automatisch beantwortet, Rückfrage → Antwort im Thread", erwartet: "Thread je Aufgabe, Status übernommen, keine Privat-/Finanzdaten an die VA", tests: ["va-discord.spec.ts › Aufgabe → Thread"] },
+    ],
+  },
   "/kalender": {
     abläufe: [{ ablauf: "Geschäftskalender als Büro-Konto und als Inhaberin", erwartet: "keine privaten Einträge (Testwort PRIVATGEHEIM erscheint nicht)", tests: ["privat.spec.ts › Privates bleibt privat"] }],
   },

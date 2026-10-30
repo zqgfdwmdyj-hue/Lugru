@@ -2,24 +2,34 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { AMPEL_EMOJI } from "@/lib/deal-eingang/logic";
 import { eingaenge, quellen, STATUS_TEXT } from "@/lib/deal-eingang/service";
+import { PushSchalter } from "@/components/push-schalter";
 import { AutoRefresh } from "../lieferanten/finden/refresh";
-import { eingangAction } from "./actions";
+import { eingangAction, profitPathAction } from "./actions";
+import { profitPathKonfig } from "@/lib/deal-eingang/profitpath";
 
 // Deal-Eingang: Angebote aus WhatsApp & Co. einfügen bzw. teilen → KI erkennt → Deal-Ampel je Angebot.
 
-const WEG = { manuell: "von Hand", teilen: "geteilt", kurzbefehl: "Kurzbefehl", mail: "Mail", claude: "Claude" } as const;
+const WEG = { manuell: "von Hand", teilen: "geteilt", kurzbefehl: "Kurzbefehl", mail: "Mail", claude: "Claude", profitpath: "ProfitPath" } as const;
 
 export default async function DealEingangPage({ searchParams }: { searchParams: Promise<{ meldung?: string; quelle?: string; ampel?: string; status?: string }> }) {
   const session = await requireArea("dealeingang");
   const sp = await searchParams;
-  const [liste, q] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId)]);
+  const [liste, q, pp] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId)]);
   const laeuft = liste.some((e) => e.pruefung === "offen" || e.pruefung === "laeuft");
   return (
     <>
       <AutoRefresh active={laeuft} />
       <div className="page-head">
         <div><div className="crumb">Einkauf</div><h1>Deal-Eingang</h1></div>
-        <Link className="btn" href="/deal-eingang/kurzbefehl">iPhone-Kurzbefehl &amp; Teilen</Link>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <PushSchalter text="Deal-Push" />
+          {pp && !session.readOnly && (
+            <form action={profitPathAction}>
+              <button className="btn" type="submit" data-testid="de-profitpath" title={`${pp.kanaele.length} ProfitPath-Kanal/Kanäle – sonst jede Minute automatisch`}>ProfitPath abrufen</button>
+            </form>
+          )}
+          <Link className="btn" href="/deal-eingang/kurzbefehl">iPhone-Kurzbefehl &amp; Teilen</Link>
+        </div>
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
       {!session.readOnly && (
@@ -61,12 +71,13 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
 
       {q.length > 0 && (
         <section className="card card-pad" style={{ marginTop: 12 }} data-testid="de-quellen">
-          <h2 style={{ marginTop: 0 }}>Trefferquote je Absender</h2>
+          <h2 style={{ marginTop: 0 }}>Trefferquote je Absender bzw. ProfitPath-Modul</h2>
+          <p className="small muted">ProfitPath: Was in Discord ankommt, hängt an den Alert-Einstellungen in ProfitPath (je Alarmgruppe ein Kanal), nicht an Presets/Filtern – dort nachschärfen, wenn ein Modul wenig Grün liefert.</p>
           <table className="table small">
-            <thead><tr><th>Absender</th><th>Eingänge</th><th>Angebote</th><th>grün</th><th>gekauft</th><th>verworfen</th><th>Ø ROI (Prognose)</th></tr></thead>
+            <thead><tr><th>Absender / Modul</th><th>gemeldet</th><th>Angebote</th><th>grün</th><th>gekauft</th><th>verworfen</th><th>Ø ROI (Prognose)</th><th>Ø ROI real</th></tr></thead>
             <tbody>
               {q.map((x) => (
-                <tr key={x.quelle}><td><Link href={`?quelle=${encodeURIComponent(x.quelle)}`}>{x.quelle}</Link></td><td>{x.eingaenge}</td><td>{x.angebote}</td><td>{x.gruen}</td><td>{x.gekauft}</td><td>{x.verworfen}</td><td>{x.roiPrognose !== null ? `${x.roiPrognose} %` : "–"}</td></tr>
+                <tr key={x.quelle}><td><Link href={`?quelle=${encodeURIComponent(x.quelle)}`}>{x.quelle}</Link></td><td>{x.eingaenge}</td><td>{x.angebote}</td><td>{x.gruen}</td><td>{x.gekauft}</td><td>{x.verworfen}</td><td>{x.roiPrognose !== null ? `${x.roiPrognose} %` : "–"}</td><td title="Gewinn laut sellerboard je eingesetztem EK, ab 30 Tage nach dem Kauf">{x.roiReal !== null ? `${x.roiReal} % (${x.roiRealN})` : "–"}</td></tr>
               ))}
             </tbody>
           </table>

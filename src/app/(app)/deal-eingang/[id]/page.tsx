@@ -5,7 +5,7 @@ import { AMPEL_EMOJI, antwortEntwurf } from "@/lib/deal-eingang/logic";
 import { eingang, STATUS_TEXT } from "@/lib/deal-eingang/service";
 import { formatEuro } from "@/lib/numbers";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
-import { neuPruefenAction, statusAction, zeileAction } from "../actions";
+import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction } from "../actions";
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : formatEuro(n));
 const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${String(Math.round(n * 10) / 10).replace(".", ",")} %`);
@@ -86,9 +86,9 @@ export default async function DealEingangDetail({ params, searchParams }: { para
 
       {schreiben && e.pruefung === "fertig" && (
         <section className="card card-pad row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap", alignItems: "center" }} data-testid="de-entscheidung">
-          {(["gekauft", "bestellvorschlag", "b2b"] as const).map((st) => (
-            <form key={st} action={statusAction}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="status" value={st} /><button className="btn btn-sm" type="submit">{st === "gekauft" ? "Gekauft" : st === "bestellvorschlag" ? "In Bestellvorschläge" : "Als B2B-Deal"}</button></form>
-          ))}
+          <form action={statusAction}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="status" value="gekauft" /><button className="btn btn-sm" type="submit">Gekauft</button></form>
+          <form action={bestellvorschlagAction}><input type="hidden" name="id" value={e.id} /><button className="btn btn-sm" type="submit" data-testid="de-bestellvorschlag" title="Einkaufsentwurf beim Lieferanten (Quelle) mit der empfohlenen Menge – alle nicht roten Zeilen mit ASIN (sind alle rot: alle)">In Bestellvorschläge übernehmen</button></form>
+          <form action={b2bAction}><input type="hidden" name="id" value={e.id} /><button className="btn btn-sm" type="submit" data-testid="de-b2b" title="Entwurf eines B2B-Deals (beste Zeile) – Preis je Kunde und Freischalten im B2B-Bereich">Als B2B-Deal anlegen</button></form>
           <form action={statusAction} className="row" style={{ gap: 6 }}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="status" value="verworfen" /><input name="grund" placeholder="Grund" style={{ width: 200 }} /><button className="btn btn-sm" type="submit">Verworfen</button></form>
         </section>
       )}

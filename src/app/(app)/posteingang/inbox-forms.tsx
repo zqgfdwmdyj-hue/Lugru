@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { useKeepForm } from "@/components/keep-form";
-import { sendTestMail, syncNow, uploadEml, type InboxState } from "./actions";
+import { sendTestMail, syncNow, testMailboxAction, uploadEml, type InboxState } from "./actions";
 
 export function SyncButton() {
   const [state, action, pending] = useActionState<InboxState, FormData>(syncNow, null);
@@ -34,6 +34,18 @@ export function TestMailButton({ id }: { id: string }) {
       <input type="hidden" name="id" value={id} />
       <button className="btn-link small" type="submit" disabled={pending}>{pending ? "Sende …" : "Test-Mail"}</button>
       {state && <div className={`small`} style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</div>}
+    </form>
+  );
+}
+
+/** „Verbindung testen“: Abruf und Versand prüfen, Fehlerart anzeigen. */
+export function TestVerbindungButton({ id }: { id: string }) {
+  const [state, action, pending] = useActionState<InboxState, FormData>(testMailboxAction, null);
+  return (
+    <form action={action} style={{ display: "inline" }} data-testid="mailbox-test">
+      <input type="hidden" name="id" value={id} />
+      <button className="btn-link small" type="submit" disabled={pending}>{pending ? "Teste …" : "Verbindung testen"}</button>
+      {state && <div className="small" role="status" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</div>}
     </form>
   );
 }

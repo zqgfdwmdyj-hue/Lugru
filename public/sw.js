@@ -11,3 +11,23 @@ self.addEventListener("fetch", (e) => {
   if (e.request.mode !== "navigate") return;
   e.respondWith(fetch(e.request).catch(() => new Response(OFFLINE, { headers: { "Content-Type": "text/html; charset=utf-8" } })));
 });
+
+// Push ohne Inhalt: Meldung beim Seller-System abholen (mit Anmeldung) und anzeigen; Klick öffnet den Link.
+self.addEventListener("push", (e) => {
+  e.waitUntil(
+    fetch("/api/push/neueste", { credentials: "include", cache: "no-store" })
+      .then((r) => r.json())
+      .catch(() => ({ titel: "Seller-System", text: "Neue Meldung – bitte öffnen.", link: "/" }))
+      .then((m) => self.registration.showNotification(m.titel || "Seller-System", { body: m.text || "", tag: m.id || "meldung", data: { link: m.link || "/" }, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png" })),
+  );
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const link = (e.notification.data && e.notification.data.link) || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((cs) => {
+      for (const c of cs) if ("focus" in c) return c.navigate(link).then((w) => (w || c).focus());
+      return self.clients.openWindow(link);
+    }),
+  );
+});
