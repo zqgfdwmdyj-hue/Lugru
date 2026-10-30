@@ -11,6 +11,8 @@ import { publicUrl } from "@/lib/public-url";
 import { berlinMidnight } from "@/lib/today/service";
 import { anhangLaden, discord, DiscordFehler, type DcDatei, type DcNachricht } from "./discord";
 import * as L from "./logic";
+import { BOT, notizFuerSprache, type Sprache } from "./sprache";
+import { uebersetzen, vaSprache } from "./uebersetzen";
 
 // VA über Discord: Aufgabe zuweisen → eigener Thread (Anleitung, Anhänge, Erwähnung der VA); Abgleich alle 30 s:
 // Kanal (neue Nachrichten der VA einordnen, Datenfragen automatisch beantworten, sonst Aufgabe für Ludwig),
@@ -87,6 +89,21 @@ async function notizDateien(tenantId: string, notes: string | null): Promise<DcD
   return f.filter((x) => x.size <= 8 * 1024 * 1024).map((x) => ({ name: x.name, typ: x.typ, daten: Buffer.from(x.data) }));
 }
 
+type AnlRow = { id: string; title: string; anleitung: AnleitungFelder | null; titleEn: string | null; anleitungEn: AnleitungFelder | null; freigegeben: boolean };
+type AnleitungFelder = NonNullable<(typeof K.$inferSelect)["anleitung"]>;
+
+/** Englische Fassung einer Anleitung: gespeicherte (freigegeben oder automatisch), sonst jetzt übersetzen und als „automatisch“ speichern. */
+export async function anleitungEnglisch(tenantId: string, a: AnlRow): Promise<L.AnleitungKurz & { autoUebersetzt: boolean }> {
+  if (a.anleitungEn && a.titleEn) return { titel: a.titleEn, zweck: a.anleitungEn.zweck, schritte: a.anleitungEn.schritte ?? [], zugaenge: a.anleitungEn.zugaenge, fehler: a.anleitungEn.fehler, autoUebersetzt: !a.freigegeben };
+  const de = a.anleitung ?? ({ schritte: [] } as unknown as AnleitungFelder);
+  const tr = async (x: string | undefined | null) => (x ? (await uebersetzen(tenantId, x, "en", { quelle: "de" })).text : x ?? undefined);
+  const liste = async (l: string[] | undefined) => (l ? Promise.all(l.map(async (x) => (await tr(x)) ?? x)) : l);
+  const en = { ...de, zweck: await tr(de.zweck), wann: await tr(de.wann), wer: await tr(de.wer), schritte: (await liste(de.schritte)) ?? [], zugaenge: await liste(de.zugaenge), fehler: await liste(de.fehler) } as AnleitungFelder;
+  const titleEn = (await tr(a.title)) ?? a.title;
+  await db.update(K).set({ anleitungEn: en, titleEn, anleitungEnFreigegeben: false }).where(and(eq(K.tenantId, tenantId), eq(K.id, a.id)));
+  return { titel: titleEn, zweck: en.zweck, schritte: en.schritte ?? [], zugaenge: en.zugaenge, fehler: en.fehler, autoUebersetzt: true };
+}
+
 // ---- Ludwig → VA --------------------------------------------------------------------------------------
 
 export type ZuweisenErgebnis = { ok: true; threadId: string; neu: boolean } | { ok: false; fehler: string };
@@ -98,30 +115,36 @@ export async function aufgabeAnVa(tenantId: string, taskId: string, o: { notiz?:
   const [task] = await db.select().from(T).where(and(eq(T.tenantId, tenantId), eq(T.id, taskId)));
   if (!task) return { ok: false, fehler: "Aufgabe nicht gefunden." };
   const [va, { ruhe }] = await Promise.all([vaSession(tenantId, cfg), vaEinstellungen(tenantId)]);
-  const anl = task.anleitungIds.length ? await db.select({ title: K.title, anleitung: K.anleitung }).from(K).where(and(eq(K.tenantId, tenantId), inArray(K.id, task.anleitungIds))) : [];
+  const sprache = await vaSprache(tenantId, va?.userId ?? null);
+  const anl = task.anleitungIds.length ? await db.select({ id: K.id, title: K.title, anleitung: K.anleitung, titleEn: K.titleEn, anleitungEn: K.anleitungEn, freigegeben: K.anleitungEnFreigegeben }).from(K).where(and(eq(K.tenantId, tenantId), inArray(K.id, task.anleitungIds))) : [];
   // Link nur, wenn die VA den Bereich sehen darf; sonst Inhalt ohne Beträge.
   const linkOk = Boolean(task.link && va && linkAllowed(va, task.link));
-  const notiz = task.notes ? (linkOk || !task.link ? task.notes : L.ohneBetraege(task.notes)) : null;
+  const notizRoh = task.notes ? (linkOk || !task.link ? task.notes : L.ohneBetraege(task.notes)) : null;
   const dateien = await notizDateien(tenantId, task.notes);
+  // Englischsprachige VA: Titel, Notizen und Zusatz übersetzen (Nummern/Beträge/Links bleiben), Anleitungen auf Englisch.
+  const tr = async (x: string | null) => (x && sprache !== "de" ? (await uebersetzen(tenantId, x, sprache, { quelle: "de" })).text : x);
+  const titel = (await tr(task.title)) ?? task.title;
+  const anleitungen = sprache === "de" ? anl.map((a) => ({ titel: a.title, zweck: a.anleitung?.zweck, schritte: a.anleitung?.schritte ?? [], zugaenge: a.anleitung?.zugaenge, fehler: a.anleitung?.fehler })) : await Promise.all(anl.map((a) => anleitungEnglisch(tenantId, a)));
   const text = L.aufgabenText({
-    titel: task.title,
+    titel,
     faellig: task.dueDate,
     prioritaet: task.priority,
-    notiz,
-    zusatz: o.notiz ?? null,
+    notiz: await tr(notizRoh ? notizFuerSprache(notizRoh, sprache) : null),
+    zusatz: await tr(o.notiz ?? null),
     link: linkOk ? `${basisUrl()}${task.link}` : null,
-    anleitungen: anl.map((a) => ({ titel: a.title, zweck: a.anleitung?.zweck, schritte: a.anleitung?.schritte ?? [], zugaenge: a.anleitung?.zugaenge, fehler: a.anleitung?.fehler })),
+    anleitungen,
     anhaenge: dateien.map((d) => d.name),
     vaId: cfg.vaDiscordId,
+    sprache,
   });
   const dc = discord(cfg.botToken);
   const [alt] = await db.select().from(VT).where(and(eq(VT.tenantId, tenantId), eq(VT.taskId, taskId), eq(VT.art, "aufgabe"))).orderBy(desc(VT.createdAt)).limit(1);
   if (alt && alt.status !== "erledigt") {
-    await dc.senden(alt.threadId, `🔁 Erneut zugewiesen:\n${text}`, { erwaehnen: cfg.vaDiscordId, still: ruhe, dateien });
+    await dc.senden(alt.threadId, `${BOT[sprache].erneut}\n${text}`, { erwaehnen: cfg.vaDiscordId, still: ruhe, dateien });
     await db.update(VT).set({ status: "offen" }).where(eq(VT.id, alt.id));
     return { ok: true, threadId: alt.threadId, neu: false };
   }
-  const thread = await dc.threadAnlegen(cfg.kanalId, L.threadName(task.title));
+  const thread = await dc.threadAnlegen(cfg.kanalId, L.threadName(titel));
   const start = await dc.senden(thread.id, text, { erwaehnen: cfg.vaDiscordId, still: ruhe, dateien });
   await db.insert(VT).values({ tenantId, art: "aufgabe", taskId, threadId: thread.id, startNachrichtId: start, cursor: start, status: "offen" });
   await db.insert(VN).values({ tenantId, discordId: start, kanalId: thread.id, threadId: thread.id, von: "bot", text: text.slice(0, 4000), art: "aufgabe", taskId, gesendetAm: new Date() }).onConflictDoNothing();
@@ -160,7 +183,7 @@ export async function beiZuweisung(tenantId: string, taskId: string, userId: str
 
 // ---- Abgleich ---------------------------------------------------------------------------------------------
 
-type Ctx = { t: string; cfg: VaCfg; dc: ReturnType<typeof discord>; va: Session | null; s: Awaited<ReturnType<typeof vaEinstellungen>>["s"]; heute: string; ruhe: boolean; jetzt: Date; z: Zaehler };
+type Ctx = { t: string; cfg: VaCfg; dc: ReturnType<typeof discord>; va: Session | null; s: Awaited<ReturnType<typeof vaEinstellungen>>["s"]; heute: string; ruhe: boolean; jetzt: Date; z: Zaehler; sprache: Sprache };
 type Zaehler = { nachrichten: number; erledigt: number; rueckfragen: number; auto: number; erinnerungen: number; fehler: string[] };
 
 const vonVa = (cfg: VaCfg, m: DcNachricht) => m.author?.id === cfg.vaDiscordId && !m.author.bot && (m.type === undefined || m.type === 0 || m.type === 19);
@@ -177,7 +200,8 @@ export async function vaAbgleich(tenantId: string, jetzt = new Date()): Promise<
   const t0 = Date.now();
   const { recordJob } = await import("@/lib/today/jobs");
   const { s, lok, ruhe } = await vaEinstellungen(tenantId, jetzt);
-  const c: Ctx = { t: tenantId, cfg, dc: discord(cfg.botToken), va: await vaSession(tenantId, cfg), s, heute: lok.datum, ruhe, jetzt, z: { nachrichten: 0, erledigt: 0, rueckfragen: 0, auto: 0, erinnerungen: 0, fehler: [] } };
+  const va = await vaSession(tenantId, cfg);
+  const c: Ctx = { t: tenantId, cfg, dc: discord(cfg.botToken), va, s, heute: lok.datum, ruhe, jetzt, z: { nachrichten: 0, erledigt: 0, rueckfragen: 0, auto: 0, erinnerungen: 0, fehler: [] }, sprache: await vaSprache(tenantId, va?.userId ?? null) };
   try {
     await kanalAbgleichen(c);
     await threadsAbgleichen(c);
@@ -253,6 +277,13 @@ async function vaOffene(t: string) {
     .limit(30);
 }
 
+/** Text der VA auf Deutsch (Original nur, wenn übersetzt wurde). */
+async function alsDeutsch(t: string, roh: string): Promise<{ text: string; original: string | null; sprache: string | null }> {
+  if (!roh) return { text: roh, original: null, sprache: null };
+  const u = await uebersetzen(t, roh, "de");
+  return u.uebersetzt ? { text: u.text, original: roh, sprache: u.von } : { text: roh, original: null, sprache: u.von };
+}
+
 async function einordnen(t: string, text: string, offen: string[], heute: string): Promise<L.Einordnung> {
   const ai = (await getIntegration(t, "anthropic")) as { apiKey?: string; tier?: string; model?: string } | null;
   if (ai?.apiKey) {
@@ -274,11 +305,15 @@ async function einordnen(t: string, text: string, offen: string[], heute: string
 async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; threadId: string } | null) {
   if (await schonDa(c.t, m.id)) return;
   c.z.nachrichten++;
-  const text = (m.content ?? "").trim();
+  const roh = (m.content ?? "").trim();
   const dateien = await anhaengeSpeichern(c.t, m);
   const offen = await vaOffene(c.t);
-  const e = await einordnen(c.t, text || "(Datei ohne Text)", offen.map((o) => o.title), c.heute);
-  const basis = { tenantId: c.t, discordId: m.id, kanalId: imThread?.threadId ?? c.cfg.kanalId, threadId: imThread?.threadId ?? null, von: "va" as const, text: text || "(Datei)", anfrage: e.anfrage, dateiIds: dateien.map((d) => d.id), gesendetAm: zeitVon(m) };
+  // Nachrichten der VA (meist Englisch) für Ludwig auf Deutsch speichern, Original bleibt aufklappbar.
+  const de = await alsDeutsch(c.t, roh);
+  const text = de.text;
+  const e = await einordnen(c.t, roh || "(Datei ohne Text)", offen.map((o) => o.title), c.heute);
+  if (de.original) e.titel = (await uebersetzen(c.t, e.titel, "de")).text.slice(0, 80);
+  const basis = { tenantId: c.t, discordId: m.id, kanalId: imThread?.threadId ?? c.cfg.kanalId, threadId: imThread?.threadId ?? null, von: "va" as const, text: text || "(Datei)", original: de.original, sprache: de.sprache, anfrage: e.anfrage, dateiIds: dateien.map((d) => d.id), gesendetAm: zeitVon(m) };
 
   if (e.art === "smalltalk") {
     await db.insert(VN).values({ ...basis, art: "smalltalk" }).onConflictDoNothing();
@@ -287,14 +322,14 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
   if (e.art === "info" || e.art === "erledigt") {
     const ziel = e.aufgabe ? offen[e.aufgabe - 1] : undefined;
     await db.insert(VN).values({ ...basis, art: e.art, taskId: ziel?.id ?? null }).onConflictDoNothing();
-    if (ziel) await notizAnhaengen(c.t, ziel.id, `VA (${datumDe(zeitVon(m))}, Kanal): ${text}${dateien.length ? `\n${dateiZeilen(dateien)}` : ""}`);
+    if (ziel) await notizAnhaengen(c.t, ziel.id, `VA (${datumDe(zeitVon(m))}, Kanal): ${text}${de.original ? `\nOriginal (EN): ${de.original}` : ""}${dateien.length ? `\n${dateiZeilen(dateien)}` : ""}`);
     return;
   }
 
   // Bitte/Frage: zuerst selbst beantworten, wenn es Daten aus dem System sind.
   let gefunden: string | null = null;
   if (e.anfrage) {
-    const r = await autoAntwort(c, e.anfrage, text).catch((x) => ({ ok: false as const, gefunden: `Fehler beim Suchen: ${x instanceof Error ? x.message : String(x)}` }));
+    const r = await autoAntwort(c, e.anfrage, roh).catch((x) => ({ ok: false as const, gefunden: `Fehler beim Suchen: ${x instanceof Error ? x.message : String(x)}` }));
     if (r.ok) {
       const threadId = imThread?.threadId ?? (await c.dc.threadAnNachricht(c.cfg.kanalId, m.id, L.threadName(e.titel))).id;
       const antwortId = await c.dc.senden(threadId, r.text, { still: c.ruhe, dateien: r.dateien });
@@ -314,7 +349,7 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
       tenantId: c.t,
       systemKey: `va-nachricht:${m.id}`,
       title: `VA: ${e.titel}`.slice(0, 200),
-      notes: [text, dateien.length ? dateiZeilen(dateien) : null, gefunden ? `Gefunden: ${gefunden}` : null, "Antwort unter Delegation → VA (Discord); sie erscheint im Thread der VA."].filter(Boolean).join("\n\n"),
+      notes: [text, de.original ? `Original (EN): ${de.original}` : null, dateien.length ? dateiZeilen(dateien) : null, gefunden ? `Gefunden: ${gefunden}` : null, "Antwort unter Delegation → VA (Discord); sie erscheint im Thread der VA."].filter(Boolean).join("\n\n"),
       dueDate: faellig,
       priority: "normal",
       category: "eigene",
@@ -325,7 +360,7 @@ async function kanalNachricht(c: Ctx, m: DcNachricht, imThread: { id: string; th
   let threadId = imThread?.threadId ?? null;
   try {
     if (!threadId) threadId = (await c.dc.threadAnNachricht(c.cfg.kanalId, m.id, L.threadName(e.titel))).id;
-    const hinweis = await c.dc.senden(threadId, "📌 Ist bei Ludwig angekommen – die Antwort kommt hier in diesen Thread.", { still: true });
+    const hinweis = await c.dc.senden(threadId, BOT[c.sprache].angekommen, { still: true });
     if (!imThread) await db.insert(VT).values({ tenantId: c.t, art: "vom_va", taskId: lt?.id ?? null, threadId, startNachrichtId: m.id, cursor: hinweis, status: "offen" }).onConflictDoNothing();
     else if (lt) await db.update(VT).set({ taskId: lt.id, status: "offen", erledigtAm: null }).where(and(eq(VT.tenantId, c.t), eq(VT.id, imThread.id)));
   } catch (x) {
@@ -382,7 +417,7 @@ async function threadAbgleichen(c: Ctx, th: ThreadRow, taskStatus: string | null
   const vaId = c.va?.userId ?? null;
   if (taskStatus === "done" || taskStatus === null || (vaId && assignee !== vaId && assignee !== null)) {
     await db.update(VT).set({ status: "erledigt", erledigtAm: new Date() }).where(eq(VT.id, th.id));
-    await c.dc.senden(th.threadId, taskStatus === "done" ? "✅ Im Seller-System erledigt – danke!" : "ℹ️ Diese Aufgabe liegt jetzt bei jemand anderem.", { still: true }).catch(() => "");
+    await c.dc.senden(th.threadId, taskStatus === "done" ? BOT[c.sprache].imSystemErledigt : BOT[c.sprache].andereZustaendig, { still: true }).catch(() => "");
     return;
   }
   if (!th.startNachrichtId) return;
@@ -399,15 +434,17 @@ async function threadAbgleichen(c: Ctx, th: ThreadRow, taskStatus: string | null
 async function threadNachricht(c: Ctx, th: ThreadRow, m: DcNachricht, taskTitle: string | null): Promise<ThreadRow["status"]> {
   if (await schonDa(c.t, m.id)) return th.status;
   c.z.nachrichten++;
-  const text = (m.content ?? "").trim();
+  const roh = (m.content ?? "").trim();
   const dateien = await anhaengeSpeichern(c.t, m);
-  const art = text ? L.threadAntwortArt(text) : "notiz";
+  const art = roh ? L.threadAntwortArt(roh) : "notiz";
+  const de = await alsDeutsch(c.t, roh);
+  const text = de.text;
   const [row] = await db
     .insert(VN)
-    .values({ tenantId: c.t, discordId: m.id, kanalId: th.threadId, threadId: th.threadId, von: "va", text: text || "(Datei)", art, taskId: th.art === "aufgabe" ? th.taskId : null, ludwigTaskId: th.art === "vom_va" ? th.taskId : null, dateiIds: dateien.map((d) => d.id), gesendetAm: zeitVon(m) })
+    .values({ tenantId: c.t, discordId: m.id, kanalId: th.threadId, threadId: th.threadId, von: "va", text: text || "(Datei)", original: de.original, sprache: de.sprache, art, taskId: th.art === "aufgabe" ? th.taskId : null, ludwigTaskId: th.art === "vom_va" ? th.taskId : null, dateiIds: dateien.map((d) => d.id), gesendetAm: zeitVon(m) })
     .onConflictDoNothing()
     .returning({ id: VN.id });
-  if (th.taskId && (text || dateien.length)) await notizAnhaengen(c.t, th.taskId, `VA (${datumDe(zeitVon(m))}): ${text}${dateien.length ? `${text ? "\n" : ""}${dateiZeilen(dateien)}` : ""}`);
+  if (th.taskId && (text || dateien.length)) await notizAnhaengen(c.t, th.taskId, `VA (${datumDe(zeitVon(m))}): ${text}${de.original ? `\nOriginal (EN): ${de.original}` : ""}${dateien.length ? `${text ? "\n" : ""}${dateiZeilen(dateien)}` : ""}`);
   if (th.art === "vom_va") {
     // Nachfrage zur eigenen Anfrage: Ludwigs Aufgabe wieder öffnen, wenn schon beantwortet.
     if (art === "rueckfrage" && th.taskId) {
@@ -432,7 +469,7 @@ async function alsErledigt(c: Ctx, th: ThreadRow, text: string | null) {
   if (th.taskId) await db.update(T).set({ status: "done", completedAt: new Date() }).where(and(eq(T.tenantId, c.t), eq(T.id, th.taskId), eq(T.status, "open")));
   await db.update(VT).set({ status: "erledigt", erledigtAm: new Date() }).where(eq(VT.id, th.id));
   c.z.erledigt++;
-  await c.dc.senden(th.threadId, `👍 Danke – als erledigt abgehakt${text ? " (deine Nachricht steht als Notiz an der Aufgabe)" : ""}.`, { still: true }).catch(() => "");
+  await c.dc.senden(th.threadId, BOT[c.sprache].erledigtDanke(Boolean(text)), { still: true }).catch(() => "");
 }
 
 async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: string | null, taskTitle: string | null) {
@@ -447,7 +484,7 @@ async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: stri
   else if (!nachrichtId && lt)
     await db.insert(VN).values({ tenantId: c.t, discordId: `reaktion:${th.id}`, kanalId: th.threadId, threadId: th.threadId, von: "va", text: "❓ (Reaktion)", art: "rueckfrage", taskId: th.taskId, ludwigTaskId: lt.id, gesendetAm: new Date() }).onConflictDoNothing();
   c.z.rueckfragen++;
-  await c.dc.senden(th.threadId, "📌 Rückfrage ist bei Ludwig – die Antwort kommt hier.", { still: true }).catch(() => "");
+  await c.dc.senden(th.threadId, BOT[c.sprache].rueckfrageBeiLudwig, { still: true }).catch(() => "");
   const { notifyDiscord } = await import("@/lib/integrations/clients/discord");
   await notifyDiscord(c.t, `❓ Rückfrage der VA zu „${taskTitle ?? "Aufgabe"}“: ${text.slice(0, 300)}`).catch(() => false);
 }
@@ -462,7 +499,8 @@ async function erinnern(c: Ctx) {
     const art = L.erinnerungFaellig({ faellig: r.faellig, heute: c.heute, letzte: r.th.letzteErinnerung, ruhe: c.ruhe, ueberfaelligTaeglich: c.s.erinnerungUeberfaellig });
     if (!art || !r.faellig) continue;
     try {
-      await c.dc.senden(r.th.threadId, L.erinnerungText(art, r.titel, r.faellig, c.cfg.vaDiscordId), { erwaehnen: c.cfg.vaDiscordId });
+      const titel = c.sprache === "de" ? r.titel : (await uebersetzen(c.t, r.titel, c.sprache, { quelle: "de" })).text;
+      await c.dc.senden(r.th.threadId, L.erinnerungText(art, titel, r.faellig, c.cfg.vaDiscordId, c.sprache), { erwaehnen: c.cfg.vaDiscordId });
       await db.update(VT).set({ letzteErinnerung: c.heute }).where(eq(VT.id, r.th.id));
       c.z.erinnerungen++;
     } catch (e) {
@@ -487,7 +525,7 @@ async function autoAntwort(c: Ctx, a: L.Einordnung["anfrage"] & object, text: st
       : [];
     const dateien = files.filter((f) => f.size <= 8 * 1024 * 1024).map((f) => ({ name: f.name, typ: f.typ, daten: Buffer.from(f.data) }));
     const zeilen = r.liste.map((x) => ({ datum: x.invoiceDate, lieferant: x.vendor, nummer: x.invoiceNumber, datei: x.fileName }));
-    return { ok: true, text: L.rechnungenText(r.wofuer, zeilen, dateien.length), dateien };
+    return { ok: true, text: L.rechnungenText(r.wofuer, zeilen, dateien.length, c.sprache), dateien };
   }
   if (!c.va) return { ok: false, gefunden: "Kein Konto der VA hinterlegt (Anbindung → „Konto der VA“) – ohne ihre Rechte keine automatische Antwort." };
   const such = a.sendung ?? a.auftrag ?? a.asin ?? a.sku ?? a.suchtext ?? a.marke ?? null;
@@ -518,7 +556,11 @@ async function autoAntwort(c: Ctx, a: L.Einordnung["anfrage"] & object, text: st
   if (urteil === "keins") return { ok: false, gefunden: `Nichts gefunden (${L.ANFRAGE_TEXT[a.typ]}${such ? ` „${such}“` : ""}).` };
   if (urteil === "mehrdeutig") return { ok: false, gefunden: `${liste.length} Treffer – nicht eindeutig:\n${zeilen.slice(0, 3).join("\n")}` };
   const kopf = { sendung: "📦", anspruch: "💶", auftrag: "🧾", produkt: "🏷️", anleitung: "📖" }[a.typ];
-  return { ok: true, text: `${kopf} ${L.ANFRAGE_TEXT[a.typ]}${such ? ` zu „${such}“` : ""}:\n${zeilen.join("\n")}`, dateien: [] };
+  const antwort = `${kopf} ${L.ANFRAGE_TEXT[a.typ]}${such ? ` zu „${such}“` : ""}:\n${zeilen.join("\n")}`;
+  if (c.sprache === "de") return { ok: true, text: antwort, dateien: [] };
+  // Für die englischsprachige VA: Kopf auf Englisch, Trefferzeilen übersetzt (Nummern und Beträge bleiben).
+  const zeilenEn = (await uebersetzen(c.t, zeilen.join("\n"), c.sprache, { quelle: "de" })).text;
+  return { ok: true, text: `${kopf} ${L.ANFRAGE_TEXT_EN[a.typ]}${such ? ` for “${such}”` : ""}:\n${zeilenEn}`, dateien: [] };
 }
 
 /** Einkaufsrechnungen zu ASIN/SKU (über Chargen und Rechnungstext), Lieferant oder Marke (Echtheits-Ordner bzw. Text). */
@@ -578,11 +620,14 @@ export async function rechnungenFuer(t: string, a: { asin: string | null; sku: s
  * Antwort an die VA: in den Thread der Nachricht bzw. der Aufgabe (ohne beides: in den Kanal). Beantwortete
  * Rückfragen/Anfragen werden abgehakt.
  */
-export async function antwortAnVa(tenantId: string, ziel: { nachrichtId?: string | null; taskId?: string | null }, text: string, absender: string | null): Promise<{ ok: true; wo: "thread" | "kanal" } | { ok: false; fehler: string }> {
+export async function antwortAnVa(tenantId: string, ziel: { nachrichtId?: string | null; taskId?: string | null }, text: string, absender: string | null, o: { englisch?: string | null } = {}): Promise<{ ok: true; wo: "thread" | "kanal"; gesendet: string } | { ok: false; fehler: string }> {
   const cfg = await vaKonfig(tenantId);
   if (!cfg) return { ok: false, fehler: "Discord – VA-Kanal ist nicht eingerichtet." };
   const inhalt = text.trim().slice(0, 3800);
   if (!inhalt) return { ok: false, fehler: "Text fehlt." };
+  // Ludwig schreibt Deutsch; an eine englischsprachige VA geht die (ggf. von Hand bearbeitete) englische Fassung.
+  const sprache = await vaSprache(tenantId, (await vaSession(tenantId, cfg))?.userId ?? null);
+  const senden = sprache === "de" ? inhalt : o.englisch?.trim().slice(0, 3800) || (await uebersetzen(tenantId, inhalt, sprache, { quelle: "de" })).text;
   let threadId: string | null = null;
   let nachrichten: { id: string; ludwigTaskId: string | null }[] = [];
   if (ziel.nachrichtId) {
@@ -611,7 +656,7 @@ export async function antwortAnVa(tenantId: string, ziel: { nachrichtId?: string
     nachrichten = [...nachrichten, ...offen.filter((o) => !nachrichten.some((n) => n.id === o.id))];
   }
   const dc = discord(cfg.botToken);
-  await dc.senden(threadId ?? cfg.kanalId, `<@${cfg.vaDiscordId}> 💬 ${absender ?? "Ludwig"}: ${inhalt}`, { erwaehnen: cfg.vaDiscordId });
+  await dc.senden(threadId ?? cfg.kanalId, `<@${cfg.vaDiscordId}> 💬 ${absender ?? "Ludwig"}: ${senden}`, { erwaehnen: cfg.vaDiscordId });
   const jetzt = new Date();
   for (const n of nachrichten) {
     await db.update(VN).set({ antwort: inhalt, beantwortetAm: jetzt }).where(and(eq(VN.tenantId, tenantId), eq(VN.id, n.id)));
@@ -622,7 +667,22 @@ export async function antwortAnVa(tenantId: string, ziel: { nachrichtId?: string
     if (th?.art === "aufgabe" && th.status === "rueckfrage") await db.update(VT).set({ status: "offen" }).where(eq(VT.id, th.id));
     if (th?.art === "vom_va" && th.status !== "erledigt") await db.update(VT).set({ status: "erledigt", erledigtAm: jetzt }).where(eq(VT.id, th.id));
   }
-  return { ok: true, wo: threadId ? "thread" : "kanal" };
+  return { ok: true, wo: threadId ? "thread" : "kanal", gesendet: senden };
+}
+
+/** Sprache der VA, wie sie gerade gilt (Konto, sonst Einstellung). */
+export async function vaSpracheAktuell(tenantId: string): Promise<Sprache> {
+  const cfg = await vaKonfig(tenantId);
+  return vaSprache(tenantId, cfg ? ((await vaSession(tenantId, cfg))?.userId ?? null) : null);
+}
+
+/** Vorschau: so geht Ludwigs Antwort an die VA (bei englischsprachiger VA übersetzt). */
+export async function antwortVorschau(tenantId: string, text: string): Promise<{ sprache: Sprache; text: string; uebersetzt: boolean }> {
+  const cfg = await vaKonfig(tenantId);
+  const sprache = await vaSprache(tenantId, cfg ? ((await vaSession(tenantId, cfg))?.userId ?? null) : null);
+  if (sprache === "de") return { sprache, text, uebersetzt: false };
+  const u = await uebersetzen(tenantId, text, sprache, { quelle: "de" });
+  return { sprache, text: u.text, uebersetzt: u.uebersetzt };
 }
 
 // ---- Lesen: Übersicht, Feierabend, MCP --------------------------------------------------------------------

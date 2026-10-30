@@ -164,7 +164,7 @@ export type TenantSettings = {
   /** Verlust-Stopp: Kosten ohne Verkauf erst ab diesem Betrag je SKU und Woche (€) als Hinweis. */
   verlust?: { kostenOhneVerkaufSchwelle?: number };
   /** VA über Discord: Zeitzone der VA, Ruhezeiten (keine Erinnerungen), tägliche Erinnerung bei Überfälligem, Einkaufsrechnungen. */
-  va?: { zeitzone?: string; ruheVon?: string; ruheBis?: string; erinnerungUeberfaellig?: boolean; darfEinkaufsrechnungen?: boolean };
+  va?: { zeitzone?: string; ruheVon?: string; ruheBis?: string; erinnerungUeberfaellig?: boolean; darfEinkaufsrechnungen?: boolean; sprache?: "de" | "en"; glossar?: Record<string, string>; antwortVorschau?: boolean };
   /** Amazon-Fall-Zentrale: Fristen je Phase/Bereich (Tage), Nachfassen ohne Antwort, Betragsschwelle für Info an Ludwig, wer einreicht. */
   faelle?: { fristen?: Record<string, number>; nachfassenTage?: number; betragSchwelle?: number; zustaendig?: "va" | "ludwig" };
   dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string };
@@ -256,6 +256,8 @@ export const users = pgTable(
     email: text("email").notNull(),
     name: text("name"),
     passwordHash: text("password_hash").notNull(),
+    /** Sprache für Texte an diese Person (Discord-Threads, Übersetzungen): de/en; null = Standard (VA: Einstellung „Sprache der VA“). */
+    sprache: text("sprache", { enum: ["de", "en"] }),
     /** Letzte erfolgreiche Anmeldung und letzte Aktivität (höchstens alle 5 Minuten nachgeführt). */
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
@@ -538,6 +540,11 @@ export const knowledgeEntries = pgTable(
     erkenntnis: text("erkenntnis", { enum: ["tipp", "quelle", "regel", "warnung", "erfahrung"] }),
     /** Nur bei kind = „anleitung“: Zweck, wann, wer, Schritte, Zugänge, häufige Fehler, Aufgabentypen. */
     anleitung: jsonb("anleitung").$type<AnleitungFelder>(),
+    /** Englische Fassung der Anleitung (aus der deutschen übersetzt); geht an englischsprachige VA. */
+    anleitungEn: jsonb("anleitung_en").$type<AnleitungFelder>(),
+    /** Englische Fassung von Ludwig freigegeben (sonst „automatisch übersetzt“). */
+    anleitungEnFreigegeben: boolean("anleitung_en_freigegeben").notNull().default(false),
+    titleEn: text("title_en"),
     /** Von jemandem als geprüft/verlässlich bestätigt („zuletzt geprüft am“ bei Anleitungen). */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     verifiedBy: uuid("verified_by").references(() => users.id, { onDelete: "set null" }),

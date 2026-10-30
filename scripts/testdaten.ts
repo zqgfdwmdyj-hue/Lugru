@@ -7,7 +7,7 @@
 // Ohne TESTDATEN_PASSWORT wird ein zufälliges Passwort erzeugt und am Ende ausgegeben (gilt für alle Testkonten).
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
@@ -236,6 +236,8 @@ await integ("sellerboard_web", { email: "einkauf@example.invalid", loginUrl: `${
 await integ("bqool_web", { email: "repricer@example.invalid", loginUrl: `${td}/web-bqool/login`, uploadUrl: `${td}/web-bqool/upload` }, { password: "test-passwort" });
 // VA über Discord: Fantasie-IDs (Testdienste), VA = Konto „buero“ (Bea Büro).
 await integ("discord_va", { serverId: "500000000000000001", kanalId: "800000000000000001", vaDiscordId: "700000000000000001", vaEmail: "buero" }, { botToken: "test-bot-token" });
+// Bea schreibt im Test Deutsch (die echte VA: Englisch – Standard „Sprache der VA“); der Sprach-Test stellt um.
+await db.update(schema.users).set({ sprache: "de" }).where(eq(schema.users.email, "buero"));
 // ProfitPath-Deals über Discord: ein Kanal (Testdienste), Bot wie beim VA-Kanal.
 await integ("discord_profitpath", { kanalIds: "810000000000000001" }, {});
 // Ein geprüfter Deal-Eingang (erfunden) – für den Werkzeug-Vertrag (deal_eingang_detail).

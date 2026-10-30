@@ -290,6 +290,18 @@ export async function updateAccess(_prev: UserState, fd: FormData): Promise<User
   return { ok: true, message: (areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.`) + ro };
 }
 
+/** Sprache für Texte an diese Person (de/en, leer = Standard). Nur Konten dieser Firma. */
+export async function setUserSprache(fd: FormData) {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  const v = String(fd.get("sprache") ?? "");
+  const sprache = v === "de" || v === "en" ? v : null;
+  const [m] = await db.select({ userId: schema.memberships.userId }).from(schema.memberships).where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  if (!m) return;
+  await db.update(schema.users).set({ sprache }).where(eq(schema.users.id, userId));
+  revalidatePath("/einstellungen");
+}
+
 /**
  * Zugang zum Bereich „Privat“: aus, nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten) oder voll –
  * auch für Inhaber nur ausdrücklich. Nur-ansehen-Konten bekommen ihn nie.

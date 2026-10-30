@@ -34,7 +34,7 @@ export const vaAufgabenTool = defineTool({
 export const vaNachrichtenTool = defineTool({
   name: "va_nachrichten",
   title: "Nachrichten der VA",
-  description: "Nachrichten der VA aus dem Discord-Kanal und den Aufgaben-Threads mit Einordnung (Bitte, Frage, Info, erledigt, Rückfrage), automatischer Antwort und ob Ludwigs Antwort noch fehlt. Standard: letzte 7 Tage.",
+  description: "Nachrichten der VA aus dem Discord-Kanal und den Aufgaben-Threads mit Einordnung (Bitte, Frage, Info, erledigt, Rückfrage), automatischer Antwort und ob Ludwigs Antwort noch fehlt. Text auf Deutsch (englische Nachrichten übersetzt, Original im Feld „original“). Standard: letzte 7 Tage.",
   area: "start",
   ownerOnly: true,
   write: false,
@@ -49,6 +49,7 @@ export const vaNachrichtenTool = defineTool({
         id: n.id,
         zeit: n.gesendetAm.toISOString(),
         text: n.text.slice(0, 500),
+        original: n.original ? { sprache: n.sprache ?? "en", text: n.original.slice(0, 500) } : undefined,
         art: VN_ART[n.art] ?? n.art,
         aufgabe: aufgabe ?? undefined,
         automatisch_beantwortet: n.autoBeantwortet || undefined,
@@ -64,7 +65,7 @@ export const vaNachrichtenTool = defineTool({
 export const vaNachrichtTool = defineTool({
   name: "va_nachricht",
   title: "Nachricht an die VA",
-  description: "Schreibt der VA im Discord: mit aufgabe_id in den Thread dieser Aufgabe (beantwortet offene Rückfragen dort und hakt Ludwigs Rückfrage-Aufgabe ab), mit nachricht_id als Antwort auf eine bestimmte Nachricht (aus va_nachrichten), sonst in den VA-Kanal. Nur auf ausdrücklichen Wunsch benutzen.",
+  description: "Schreibt der VA im Discord: mit aufgabe_id in den Thread dieser Aufgabe (beantwortet offene Rückfragen dort und hakt Ludwigs Rückfrage-Aufgabe ab), mit nachricht_id als Antwort auf eine bestimmte Nachricht (aus va_nachrichten), sonst in den VA-Kanal. Text auf Deutsch – an eine englischsprachige VA geht er automatisch übersetzt (Glossar; Nummern, Beträge und Links unverändert). Nur auf ausdrücklichen Wunsch benutzen.",
   area: "start",
   ownerOnly: true,
   write: true,

@@ -89,6 +89,42 @@ function kiAnswer(req, b) {
     }
     return [200, reply(b, [{ type: "text", text: JSON.stringify({ quelle, angebote }) }], "end_turn")];
   }
+  // Übersetzen (VA Deutsch ↔ Englisch): feste erfundene Regeln wie eine KI; Platzhalter ⟦n⟧ bleiben erhalten.
+  if (/^Übersetze den Text ins (Englisch|Deutsch)/.test(text) && !stale) {
+    const nachEn = /^Übersetze den Text ins Englisch/.test(text);
+    let t = (/\nText:\n([\s\S]*)$/.exec(text)?.[1] ?? "").trim();
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const regeln = nachEn
+      ? [
+          [/Anspruch für Sendung (⟦\d+⟧) einreichen, Frist (\d{1,2})\.(\d{1,2})\.?/g, (_m, s, d, mo) => `File reimbursement claim for shipment ${s}, due ${MON[Number(mo) - 1]} ${Number(d)}`],
+          [/Ja, bitte eskalieren/g, "Yes, please escalate"],
+          [/Erfundene Testaufgabe/g, "Fictional test task"],
+          [/Erfundene Testanleitung/g, "Fictional test instructions"],
+          [/Testanleitung/g, "Test instructions"],
+          [/Bericht öffnen/g, "Open report"],
+          [/Pakete zählen/g, "Count parcels"],
+          [/Bitte heute/g, "Please today"],
+          [/Rechnungen/g, "Invoices"],
+          [/Rechnung/g, "invoice"],
+          [/Sendung/g, "shipment"],
+          [/Anspruch/g, "reimbursement claim"],
+          [/prüfen/g, "check"],
+          [/Testantwort/g, "test answer"],
+        ]
+      : [
+          [/Can you send me the invoice for (⟦\d+⟧)\?/g, "Kannst du mir die Rechnung für $1 schicken?"],
+          [/Also please check the case (⟦\d+⟧)\./g, "Bitte prüfe auch den Fall $1."],
+          [/Should I escalate the case/gi, "Soll ich den Fall eskalieren"],
+          [/\bdone\b/gi, "erledigt"],
+          [/\binvoice\b/gi, "Rechnung"],
+          [/\bshipment\b/gi, "Sendung"],
+          [/\bplease\b/gi, "bitte"],
+        ];
+    const vorher = t;
+    for (const [re, zu] of regeln) t = t.replace(re, zu);
+    if (t === vorher) t = `${nachEn ? "[EN]" : "[DE]"} ${t}`;
+    return [200, reply(b, [{ type: "text", text: t }], "end_turn")];
+  }
   // VA über Discord: Nachricht der Assistenz einordnen (erfundene Regeln wie eine KI).
   if (/Ordne die Nachricht der Assistenz/.test(text) && !stale) {
     const n = (/Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "").trim();
@@ -96,7 +132,7 @@ function kiAnswer(req, b) {
     const marke = asin ? /([A-ZÄÖÜ][\wäöüß]+)\s+B0[A-Z0-9]{8}/.exec(n)?.[1] ?? null : null;
     const sendung = /\b(FBA[0-9A-Z]{6,12})\b/.exec(n)?.[1] ?? null;
     let o;
-    if (/rechnung/i.test(n)) o = { art: "bitte", titel: `Rechnung ${[marke, asin].filter(Boolean).join(" ")}`.trim(), faellig: null, anfrage: { typ: "rechnung", asin, sku: null, marke, lieferant: null, sendung: null, auftrag: null, suchtext: null }, aufgabe: null };
+    if (/rechnung|invoice/i.test(n)) o = { art: "bitte", titel: `Rechnung ${[marke, asin].filter(Boolean).join(" ")}`.trim(), faellig: null, anfrage: { typ: "rechnung", asin, sku: null, marke, lieferant: null, sendung: null, auftrag: null, suchtext: null }, aufgabe: null };
     else if (sendung) o = { art: "frage", titel: `Sendung ${sendung}`, faellig: null, anfrage: { typ: "sendung", asin: null, sku: null, marke: null, lieferant: null, sendung, auftrag: null, suchtext: null }, aufgabe: null };
     else if (/^(danke|hallo|guten morgen|ok)\b/i.test(n)) o = { art: "smalltalk", titel: "Gruß", faellig: null, anfrage: null, aufgabe: null };
     else if (/\?/.test(n)) o = { art: "frage", titel: n.replace(/\?.*$/, "").slice(0, 80), faellig: /morgen/i.test(n) ? null : null, anfrage: null, aufgabe: null };

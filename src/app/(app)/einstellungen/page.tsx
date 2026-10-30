@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
-import { mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess } from "./actions";
+import { mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess, setUserSprache } from "./actions";
 import { similarSuppliers } from "@/lib/suppliers/duplicates";
 import { ConfirmButton } from "@/components/confirm-button";
 import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
@@ -65,7 +65,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   );
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly, sprache: schema.users.sprache })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -406,6 +406,16 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                       <button className="btn btn-small" type="submit">ändern</button>
                     </form>
                   )}
+                  <form action={setUserSprache} style={{ marginBottom: 4, display: "inline-flex", gap: 4, alignItems: "center", marginLeft: 6 }} data-testid="user-sprache">
+                    <input type="hidden" name="userId" value={m.userId} />
+                    <label className="small muted" htmlFor={`sp-${m.userId}`}>Sprache</label>
+                    <select className="select" id={`sp-${m.userId}`} name="sprache" defaultValue={m.sprache ?? ""} style={{ padding: "3px 6px", fontSize: 13 }} title="Sprache für Texte an diese Person (z. B. Discord-Threads der VA). Standard: Deutsch, für das Konto der VA die Einstellung unter Delegation → VA.">
+                      <option value="">Standard</option>
+                      <option value="de">Deutsch</option>
+                      <option value="en">Englisch</option>
+                    </select>
+                    <button className="btn btn-small" type="submit">ändern</button>
+                  </form>
                   {m.userId !== session.userId && (
                     <div className="stack" style={{ gap: 4, alignItems: "flex-end" }}>
                       <SetPasswordForm userId={m.userId} login={m.email} />

@@ -2,6 +2,8 @@
 // (✅/„erledigt“, ❓/Frage), neue Nachrichten im Kanal einordnen (KI-Auftrag + Regeln als Rückfall),
 // Fälligkeit aus dem Text, Ruhezeiten/Zeitzone, Erinnerungen und die Feierabend-Zeile.
 
+import { BOT, datum, type Sprache } from "./sprache";
+
 export const DISCORD_MAX = 2000;
 
 /** Text in Discord-taugliche Stücke teilen (an Zeilenenden, notfalls hart). */
@@ -31,38 +33,39 @@ export const threadName = (titel: string) => (titel.replace(/\s+/g, " ").trim() 
 /** Beträge entfernen, wenn die VA den Bereich der Aufgabe nicht sehen darf („Inhalt ohne sensible Felder“). */
 export const ohneBetraege = (text: string) => text.replace(/-?\d{1,3}(?:[.\s]\d{3})*(?:,\d{1,2})?\s?(?:€|EUR)|(?:€|EUR)\s?-?\d[\d.,]*/gi, "[Betrag]");
 
-const PRIO: Record<string, string> = { critical: "🔴 wichtig", normal: "normal", low: "niedrig" };
 const datumDe = (iso: string) => iso.split("-").reverse().join(".");
 
 export type AnleitungKurz = { titel: string; zweck?: string; schritte: string[]; zugaenge?: string[]; fehler?: string[] };
 
-export function aufgabenText(a: { titel: string; faellig: string | null; prioritaet: string; notiz: string | null; zusatz: string | null; link: string | null; anleitungen: AnleitungKurz[]; anhaenge: string[]; vaId?: string | null }): string {
+export function aufgabenText(a: { titel: string; faellig: string | null; prioritaet: string; notiz: string | null; zusatz: string | null; link: string | null; anleitungen: (AnleitungKurz & { autoUebersetzt?: boolean })[]; anhaenge: string[]; vaId?: string | null; sprache?: Sprache }): string {
+  const sp = a.sprache ?? "de";
+  const B = BOT[sp];
   const zeilen = [
-    `${a.vaId ? `<@${a.vaId}> ` : ""}📋 **Neue Aufgabe: ${a.titel}**`,
-    `Fällig: ${a.faellig ? datumDe(a.faellig) : "ohne Frist"} · Priorität: ${PRIO[a.prioritaet] ?? a.prioritaet}`,
+    `${a.vaId ? `<@${a.vaId}> ` : ""}📋 **${B.neueAufgabe}: ${a.titel}**`,
+    `${B.faellig}: ${a.faellig ? datum(a.faellig, sp) : B.ohneFrist} · ${B.prioritaet}: ${B.prio[a.prioritaet] ?? a.prioritaet}`,
   ];
   if (a.zusatz?.trim()) zeilen.push("", `📝 ${a.zusatz.trim()}`);
   if (a.notiz?.trim()) zeilen.push("", a.notiz.trim().slice(0, 1500));
   if (a.link) zeilen.push("", `🔗 ${a.link}`);
   for (const an of a.anleitungen) {
-    zeilen.push("", `📖 **Anleitung: ${an.titel}**`);
+    zeilen.push("", `📖 **${B.anleitung}: ${an.titel}**${an.autoUebersetzt ? B.autoUebersetzt : ""}`);
     if (an.zweck) zeilen.push(an.zweck);
-    an.schritte.forEach((s, i) => zeilen.push(`${i + 1}. ${s}`));
-    if (an.zugaenge?.length) zeilen.push(`Zugänge: ${an.zugaenge.join(", ")}`);
-    if (an.fehler?.length) zeilen.push(`Typische Fehler: ${an.fehler.join("; ")}`);
+    an.schritte.forEach((x, i) => zeilen.push(`${i + 1}. ${x}`));
+    if (an.zugaenge?.length) zeilen.push(`${B.zugaenge}: ${an.zugaenge.join(", ")}`);
+    if (an.fehler?.length) zeilen.push(`${B.fehler}: ${an.fehler.join("; ")}`);
   }
-  if (a.anhaenge.length) zeilen.push("", `📎 Anhänge: ${a.anhaenge.join(", ")}`);
-  zeilen.push("", "Wenn fertig: ✅ auf diese Nachricht oder „erledigt“ schreiben. Frage? ❓ oder einfach hier fragen.");
+  if (a.anhaenge.length) zeilen.push("", `📎 ${B.anhaenge}: ${a.anhaenge.join(", ")}`);
+  zeilen.push("", B.fertig);
   return zeilen.join("\n");
 }
 
-const NEIN = /\b(nicht|noch nicht|kein|keine|nie)\s+(\w+\s+){0,2}(erledigt|fertig|gemacht|done)\b/i;
-const ERLEDIGT = /(✅|☑️|✔️|\b(erledigt|fertig|done|ist raus|hab ich gemacht|habe ich gemacht|abgeschlossen)\b)/i;
+const NEIN = /\b(nicht|noch nicht|kein|keine|nie|not|not yet|never)\s+(\w+\s+){0,2}(erledigt|fertig|gemacht|done|finished|completed)\b/i;
+const ERLEDIGT = /(✅|☑️|✔️|\b(erledigt|fertig|done|ist raus|hab ich gemacht|habe ich gemacht|abgeschlossen|finished|completed|all set)\b)/i;
 
 /** Antwort der VA im Aufgaben-Thread: erledigt, Rückfrage oder Notiz. */
 export function threadAntwortArt(text: string): "erledigt" | "rueckfrage" | "notiz" {
   const t = text.trim();
-  if (/❓|\?\s*$|\?\s/.test(t) || /^(wie|was|wo|wann|warum|wieso|welche[rsn]?|soll|sollen|kann|darf|muss|brauche|gibt es)\b/i.test(t)) return "rueckfrage";
+  if (/❓|\?\s*$|\?\s/.test(t) || /^(wie|was|wo|wann|warum|wieso|welche[rsn]?|soll|sollen|kann|darf|muss|brauche|gibt es|how|what|where|when|why|which|should|shall|can|could|may|must|do i|do you|is there|are there|i need)\b/i.test(t)) return "rueckfrage";
   if (ERLEDIGT.test(t) && !NEIN.test(t)) return "erledigt";
   return "notiz";
 }
@@ -88,7 +91,7 @@ export type Einordnung = {
 export function kiEinordnenAuftrag(text: string, offeneAufgaben: string[], heute: string): string {
   return [
     "Ordne die Nachricht der Assistenz (VA) aus dem Discord-Kanal ein. Antworte nur mit JSON:",
-    '{"art":"bitte|frage|info|erledigt|smalltalk","titel":"kurzer Aufgabentitel (max. 80 Zeichen)","faellig":"YYYY-MM-DD oder null","anfrage":null oder {"typ":"rechnung|sendung|anspruch|auftrag|produkt|anleitung","asin":null,"sku":null,"marke":null,"lieferant":null,"sendung":null,"auftrag":null,"suchtext":null},"aufgabe":null oder Nummer}',
+    '{"art":"bitte|frage|info|erledigt|smalltalk","titel":"kurzer Aufgabentitel auf Deutsch (max. 80 Zeichen)","faellig":"YYYY-MM-DD oder null","anfrage":null oder {"typ":"rechnung|sendung|anspruch|auftrag|produkt|anleitung","asin":null,"sku":null,"marke":null,"lieferant":null,"sendung":null,"auftrag":null,"suchtext":null},"aufgabe":null oder Nummer}',
     "Regeln:",
     "- bitte = die VA bittet um etwas oder braucht etwas; frage = sie fragt nach einer Entscheidung oder Auskunft; info = reine Mitteilung; erledigt = sie meldet etwas als erledigt; smalltalk = Gruß, Dank, Emoji ohne Inhalt.",
     "- anfrage nur, wenn sie Daten aus dem System haben will: Rechnung(en) zu ASIN/SKU/Marke/Lieferant, Sendung/Shipment-ID und Fehlmengen, Ansprüche (Claims), Aufträge/Bestellungen, Produktdaten (EAN, FNSKU, EK, Bestand) oder eine Anleitung. Entscheidungsfragen („Soll ich …?“) haben keine anfrage.",
@@ -153,15 +156,15 @@ export function regelEinordnung(text: string, heute: string, offeneAufgaben: str
   else if (auftrag || /\b(auftrag|bestellung|order)\b/i.test(t)) anfrage = { typ: "auftrag", ...basis };
   else if (/\b(ean|fnsku|ek|einkaufspreis|bestand|lagerbestand)\b/i.test(t) && (asin || basis.sku)) anfrage = { typ: "produkt", ...basis };
   else if (/\banleitung|\bwie (geht|mache|funktioniert)/i.test(t)) anfrage = { typ: "anleitung", ...basis, suchtext: t.replace(/^.*?(anleitung( für| zu)?|wie (geht|mache ich|funktioniert))\s*/i, "").replace(/[?!.]+$/, "").slice(0, 80) || null };
-  const entscheidung = /^(soll|sollen|darf|dürfen|kann ich|können wir|muss ich)\b/i.test(t);
+  const entscheidung = /^(soll|sollen|darf|dürfen|kann ich|können wir|muss ich|should i|should we|shall i|can i|may i|do you want)\b/i.test(t);
   if (entscheidung) anfrage = null;
   const frage = /\?|❓/.test(t) || entscheidung;
   const kurz = t.replace(/[^\p{L}\p{N}]/gu, "").length;
   let art: Einordnung["art"];
-  if (!anfrage && (kurz < 3 || /^(danke|dankeschön|vielen dank|hallo|hi|hey|guten (morgen|abend|tag)|gute nacht|ok|okay|alles klar|super|top|perfekt|👍|🙏)[\s!.😊🙂👍🙏]*$/i.test(t))) art = "smalltalk";
+  if (!anfrage && (kurz < 3 || /^(danke|dankeschön|vielen dank|hallo|hi|hey|guten (morgen|abend|tag)|gute nacht|ok|okay|alles klar|super|top|perfekt|thanks|thank you|hello|good (morning|evening|night)|great|perfect|noted|👍|🙏)[\s!.😊🙂👍🙏]*$/i.test(t))) art = "smalltalk";
   else if (anfrage) art = "bitte";
   else if (frage) art = "frage";
-  else if (/\b(brauche|bitte|kannst du|könntest du)\b/i.test(t)) art = "bitte";
+  else if (/\b(brauche|bitte|kannst du|könntest du|please|can you|could you|i need)\b/i.test(t)) art = "bitte";
   else if (ERLEDIGT.test(t) && !NEIN.test(t)) art = "erledigt";
   else art = "info";
   return { art, titel: titelAus(t), faellig: faelligAus(t, heute), anfrage, aufgabe: art === "info" || art === "erledigt" ? passendeAufgabe(t, offeneAufgaben) : null };
@@ -193,9 +196,9 @@ export function naechsterWerktag(heute: string): string {
 /** Termin aus dem Text („heute“, „morgen“, „bis Freitag“, „05.11.“); null = keiner genannt. */
 export function faelligAus(text: string, heute: string): string | null {
   const t = text.toLowerCase();
-  if (/\b(heute|asap|sofort|dringend)\b/.test(t)) return heute;
-  if (/\bübermorgen\b/.test(t)) return plus(heute, 2);
-  if (/\bmorgen\b/.test(t)) return plus(heute, 1);
+  if (/\b(heute|asap|sofort|dringend|today|urgent)\b/.test(t)) return heute;
+  if (/\bübermorgen\b|day after tomorrow/.test(t)) return plus(heute, 2);
+  if (/\bmorgen\b|\btomorrow\b/.test(t)) return plus(heute, 1);
   const d = /\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})?/.exec(t);
   if (d) {
     const jahr = d[3] ? (d[3].length === 2 ? `20${d[3]}` : d[3]) : heute.slice(0, 4);
@@ -238,8 +241,9 @@ export function erinnerungFaellig(o: { faellig: string | null; heute: string; le
   return null;
 }
 
-export function erinnerungText(art: "heute" | "ueberfaellig", titel: string, faellig: string, vaId: string | null): string {
+export function erinnerungText(art: "heute" | "ueberfaellig", titel: string, faellig: string, vaId: string | null, sprache: Sprache = "de"): string {
   const an = vaId ? `<@${vaId}> ` : "";
+  if (sprache === "en") return art === "heute" ? `${an}⏰ Due today: **${titel}**` : `${an}⏰ Overdue since ${datum(faellig, "en")}: **${titel}** – please finish it or write here what is missing.`;
   return art === "heute" ? `${an}⏰ Heute fällig: **${titel}**` : `${an}⏰ Überfällig seit ${datumDe(faellig)}: **${titel}** – bitte erledigen oder hier kurz schreiben, was fehlt.`;
 }
 
@@ -306,13 +310,16 @@ export function eindeutig(anzahl: number, genau: boolean): "keins" | "ok" | "meh
 
 export type RechnungKurz = { datum: string | null; lieferant: string | null; nummer: string | null; datei: string | null };
 
-export function rechnungenText(wofuer: string, r: RechnungKurz[], mitDateien: number): string {
-  const z = [`🧾 Rechnungen für ${wofuer}: ${r.length}`];
-  for (const x of r.slice(0, 8)) z.push(`• ${x.datum ? datumDe(x.datum) : "ohne Datum"} · ${x.lieferant ?? "Lieferant unbekannt"} · Nr. ${x.nummer ?? "–"}${x.datei ? ` · ${x.datei}` : ""}`);
-  if (r.length > 8) z.push(`… und ${r.length - 8} weitere`);
-  if (mitDateien) z.push(`📎 ${mitDateien === 1 ? "Datei hängt an" : `${mitDateien} Dateien hängen an`}.`);
+export function rechnungenText(wofuer: string, r: RechnungKurz[], mitDateien: number, sprache: Sprache = "de"): string {
+  const en = sprache === "en";
+  const z = [en ? `🧾 Invoices for ${wofuer}: ${r.length}` : `🧾 Rechnungen für ${wofuer}: ${r.length}`];
+  for (const x of r.slice(0, 8)) z.push(`• ${x.datum ? (en ? datum(x.datum, "en") : datumDe(x.datum)) : en ? "no date" : "ohne Datum"} · ${x.lieferant ?? (en ? "supplier unknown" : "Lieferant unbekannt")} · ${en ? "No." : "Nr."} ${x.nummer ?? "–"}${x.datei ? ` · ${x.datei}` : ""}`);
+  if (r.length > 8) z.push(en ? `… and ${r.length - 8} more` : `… und ${r.length - 8} weitere`);
+  if (mitDateien) z.push(en ? `📎 ${mitDateien === 1 ? "File attached" : `${mitDateien} files attached`}.` : `📎 ${mitDateien === 1 ? "Datei hängt an" : `${mitDateien} Dateien hängen an`}.`);
   return z.join("\n");
 }
+
+export const ANFRAGE_TEXT_EN: Record<AnfrageTyp, string> = { rechnung: "Invoices", sendung: "Shipment", anspruch: "Reimbursement claims", auftrag: "Orders", produkt: "Product data", anleitung: "Instructions" };
 
 export const ANFRAGE_TEXT: Record<AnfrageTyp, string> = {
   rechnung: "Rechnungen",

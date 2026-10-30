@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { and, arrayOverlaps, eq, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { verifyEntry, deleteEntry, insiderUmschalten } from "@/lib/knowledge/actions";
+import { verifyEntry, deleteEntry, insiderUmschalten, anleitungEnErzeugen, anleitungEnFreigeben } from "@/lib/knowledge/actions";
 import { ERKENNTNIS_TEXT, wissenPruefen } from "@/lib/calls/logic";
 import { todayIso } from "@/lib/dates";
 import { formatDate } from "@/lib/numbers";
@@ -74,6 +74,26 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
           <div className={entry.kind === "snippet" ? "snippet article-body" : "article-body"} style={{ marginTop: 18 }}>
             {entry.body ? <Linkify text={entry.body} /> : <span className="muted">Noch kein Inhalt.</span>}
           </div>
+          {entry.kind === "anleitung" && session.role === "owner" && (
+            <section className="card card-pad small stack" style={{ marginTop: 16, gap: 6 }} data-testid="entry-englisch">
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <strong>English version (für die VA)</strong>
+                {entry.anleitungEn ? <span className={`tag ${entry.anleitungEnFreigegeben ? "tag-ok" : "tag-warn"}`} data-testid="entry-englisch-status">{entry.anleitungEnFreigegeben ? "freigegeben" : "automatisch übersetzt – bitte prüfen"}</span> : <span className="tag tag-neutral">noch keine – entsteht beim ersten Senden an die VA</span>}
+              </div>
+              {entry.anleitungEn && (
+                <div>
+                  <div style={{ fontWeight: 600 }}>{entry.titleEn}</div>
+                  {entry.anleitungEn.zweck && <div>{entry.anleitungEn.zweck}</div>}
+                  <ol style={{ margin: "4px 0 0", paddingLeft: 18 }}>{(entry.anleitungEn.schritte ?? []).map((x, i) => <li key={i}>{x}</li>)}</ol>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <form action={anleitungEnErzeugen}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-englisch-erzeugen">{entry.anleitungEn ? "Neu übersetzen" : "Jetzt übersetzen"}</button></form>
+                {entry.anleitungEn && <form action={anleitungEnFreigeben}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-englisch-freigeben">{entry.anleitungEnFreigegeben ? "Freigabe zurücknehmen" : "Freigeben"}</button></form>}
+              </div>
+              <span className="muted">An eine englischsprachige VA geht immer diese Fassung. Ändert sich die deutsche Anleitung, wird sie neu erzeugt.</span>
+            </section>
+          )}
           {entry.origin === "call" && (
             <div className="small" style={{ marginTop: 14 }} data-testid="entry-call">
               <div className="muted" style={{ marginBottom: 4 }}>

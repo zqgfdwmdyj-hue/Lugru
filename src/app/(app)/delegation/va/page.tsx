@@ -2,7 +2,9 @@ import Link from "next/link";
 import { requireOwner } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
-import { vaAufgaben, vaAuswahl, vaHeute, vaNachrichtenListe, vaStatus, VN_ART, VT_STATUS } from "@/lib/va/service";
+import { vaAufgaben, vaAuswahl, vaHeute, vaNachrichtenListe, vaSpracheAktuell, vaStatus, VN_ART, VT_STATUS } from "@/lib/va/service";
+import { glossarAlsText } from "@/lib/va/sprache";
+import { AntwortForm } from "./antwort-form";
 import { abgleichAction, antwortAction, anVaAction, einstellungenAction } from "./actions";
 
 // VA über Discord: Status, offene Fragen der VA (Antwort geht in ihren Thread), Aufgabe abgeben, Aufgaben bei der
@@ -17,7 +19,7 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
   const sp = await searchParams;
   const heute = todayIso();
   const seit = new Date(Date.now() - 7 * 86_400_000);
-  const [st, offen, aufgaben, nachrichten, auswahl, tag, s] = await Promise.all([vaStatus(t), vaNachrichtenListe(t, { nurOffen: true, limit: 50 }), vaAufgaben(t), vaNachrichtenListe(t, { seit, limit: 60 }), vaAuswahl(t), vaHeute(t, heute), getSettings(t)]);
+  const [st, offen, aufgaben, nachrichten, auswahl, tag, s, vaSpr] = await Promise.all([vaStatus(t), vaNachrichtenListe(t, { nurOffen: true, limit: 50 }), vaAufgaben(t), vaNachrichtenListe(t, { seit, limit: 60 }), vaAuswahl(t), vaHeute(t, heute), getSettings(t), vaSpracheAktuell(t)]);
 
   return (
     <>
@@ -71,6 +73,12 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
                       {aufgabe ? ` · ${aufgabe}` : ""}
                     </div>
                     <div style={{ whiteSpace: "pre-wrap", margin: "4px 0 8px" }}>{n.text}</div>
+                    {n.original && (
+                      <details className="small" style={{ marginBottom: 6 }} data-testid="va-original">
+                        <summary style={{ cursor: "pointer" }}>Original ({(n.sprache ?? "en").toUpperCase()})</summary>
+                        <div style={{ whiteSpace: "pre-wrap", color: "var(--ink-2)" }}>{n.original}</div>
+                      </details>
+                    )}
                     {n.dateiIds.length > 0 && (
                       <div className="small">
                         {n.dateiIds.map((d, i) => (
@@ -80,13 +88,7 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
                         ))}
                       </div>
                     )}
-                    <form action={antwortAction} className="stack" style={{ gap: 6 }}>
-                      <input type="hidden" name="nachricht" value={n.id} />
-                      <textarea name="text" rows={2} required placeholder="Antwort – erscheint im Thread der VA" data-testid="va-antwort-text" />
-                      <div>
-                        <button className="btn btn-primary btn-small" type="submit" data-testid="va-antwort-senden">Antwort senden</button>
-                      </div>
-                    </form>
+                    <AntwortForm nachrichtId={n.id} englisch={vaSpr !== "de"} vorschauOffen={s.va.antwortVorschau} />
                   </div>
                 ))}
               </div>
@@ -142,6 +144,12 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
                         </td>
                         <td>
                           {n.text.slice(0, 300)}
+                          {n.original && (
+                            <details>
+                              <summary style={{ cursor: "pointer" }} className="muted">Original ({(n.sprache ?? "en").toUpperCase()})</summary>
+                              <div style={{ whiteSpace: "pre-wrap" }}>{n.original.slice(0, 600)}</div>
+                            </details>
+                          )}
                           {aufgabe && <div className="muted">→ {aufgabe}</div>}
                           {n.antwort && <div className="muted" style={{ whiteSpace: "pre-wrap" }}>↳ {n.antwort.slice(0, 300)}</div>}
                         </td>
@@ -199,6 +207,22 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
               <label className="small">
                 <input type="checkbox" name="darfEinkaufsrechnungen" defaultChecked={s.va.darfEinkaufsrechnungen} /> VA darf Einkaufsrechnungen sehen (automatisch schicken)
               </label>
+              <label className="small">
+                Sprache der VA
+                <select name="sprache" defaultValue={s.va.sprache} data-testid="va-sprache">
+                  <option value="en">Englisch</option>
+                  <option value="de">Deutsch</option>
+                </select>
+              </label>
+              <div className="small muted">Gilt, wenn am Konto der VA keine eigene Sprache steht (Einstellungen → Benutzer). Aktuell: {vaSpr === "en" ? "Englisch" : "Deutsch"}.</div>
+              <label className="small">
+                <input type="checkbox" name="antwortVorschau" defaultChecked={s.va.antwortVorschau} /> Antworten vor dem Senden auf Englisch zeigen
+              </label>
+              <label className="small">
+                Glossar (Deutsch = Englisch, je Zeile)
+                <textarea name="glossar" rows={6} defaultValue={glossarAlsText(s.va.glossar)} data-testid="va-glossar" />
+              </label>
+              <div className="small muted">SKUs, ASINs, Bestell- und Fallnummern, Beträge und Links werden nie übersetzt.</div>
               <button className="btn" type="submit">Speichern</button>
               <div className="small muted">In der Ruhezeit keine Erinnerungen; neue Nachrichten gehen dann ohne Benachrichtigung raus.</div>
             </form>

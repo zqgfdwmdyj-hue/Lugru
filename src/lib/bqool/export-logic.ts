@@ -257,7 +257,23 @@ export const KATALOG_STANDARD: KatalogRegel[] = [
     risiko: false,
     hinweis: "271–365 T in BQool noch 1 % – Ludwig stellt auf 0 %",
   },
-  { name: "Abverkauf", laender: ["FR", "IT", "ES", "DE"], strategie: "je Land eigene Regel (BQool-ID FR 48 · IT 50 · ES 49; + Ausnahmen DE)", staffel: [{ bisTage: 90, marge: 4 }, { bisTage: 180, marge: 3 }, { bisTage: 270, marge: 2 }, { bisTage: 365, marge: 1 }, { bisTage: null, marge: 0 }], festeUntergrenze: false, risiko: false, hinweis: "geplant 4/3/2/1/0 % – Altersstufen und Strategie je Land noch aus BQool auslesen" },
+  // Soll laut Ludwig (30.10.): je Land eigene Regel (BQool-ID FR 48 · IT 50 · ES 49), alle Stufen AI Win Sales Booster,
+  // Mindestmarge 0–30 T 4 % (nur mit ≥ 1 Stück verfügbar) · 31–60 T 3 % · 61–90 T 2 % · 91–180 T 1 % · ab 181 T 0 %.
+  {
+    name: "Abverkauf",
+    laender: ["FR", "IT", "ES", "DE"],
+    strategie: "AI Win Sales Booster je Land (BQool-ID FR 48 · IT 50 · ES 49)",
+    staffel: [
+      { bisTage: 30, marge: 4, unterregel: "Sales Booster" },
+      { bisTage: 60, marge: 3, unterregel: "Sales Booster" },
+      { bisTage: 90, marge: 2, unterregel: "Sales Booster" },
+      { bisTage: 180, marge: 1, unterregel: "Sales Booster" },
+      { bisTage: null, marge: 0, unterregel: "Sales Booster" },
+    ],
+    festeUntergrenze: false,
+    risiko: false,
+    hinweis: "Soll 4/3/2/1/0 % (0–30 T nur mit ≥ 1 verfügbar). Ist 30.10.: 7/5/3/1/0/1/0 %, Strategien gemischt (z. T. „Tiefstpreis + x %“) – Ludwig stellt in BQool um; das Seller-System rechnet mit dem Soll und meldet abweichende Regeln je SKU nach dem nächsten BQool-Export.",
+  },
   { name: "Liquidation", laender: null, strategie: "AI Win Sales Booster, fester Min aus Upload (BQool-ID 43)", staffel: null, festeUntergrenze: true, risiko: false, hinweis: "Min Price je SKU und Land maßgeblich" },
   { name: "mbb", laender: null, strategie: "Match Buy Box (BQool-ID 33)", staffel: null, festeUntergrenze: false, risiko: true, hinweis: "nur hochgeladener Min, keine Marge – Ziel: auf ia umstellen" },
 ];

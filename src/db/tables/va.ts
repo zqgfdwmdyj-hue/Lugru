@@ -1,4 +1,4 @@
-import { boolean, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, tasks, tenantId, tenants } from "./core";
 
 // VA über Discord: ein Thread je zugewiesener Aufgabe (bzw. je Anfrage der VA), alle Nachrichten der VA mit
@@ -39,6 +39,10 @@ export const vaNachrichten = pgTable(
     threadId: text("thread_id"),
     von: text("von", { enum: ["va", "bot"] }).notNull(),
     text: text("text").notNull(),
+    /** Originaltext, wenn die Nachricht übersetzt gespeichert ist (z. B. Englisch der VA → Deutsch). */
+    original: text("original"),
+    /** Erkannte Sprache des Originals (de/en/…). */
+    sprache: text("sprache"),
     art: text("art", { enum: ["erledigt", "rueckfrage", "notiz", "bitte", "frage", "info", "smalltalk", "aufgabe", "antwort", "erinnerung", "auto"] }).notNull(),
     anfrage: jsonb("anfrage").$type<VaAnfrage | null>(),
     /** Aufgabe der VA, zu der die Nachricht gehört. */
@@ -64,3 +68,18 @@ export const vaStand = pgTable("va_stand", {
   letzterAbgleich: timestamp("letzter_abgleich", { withTimezone: true }),
   letzterFehler: text("letzter_fehler"),
 });
+
+/** Übersetzungen zwischenspeichern (gleiche Textbausteine nicht erneut an die KI). */
+export const uebersetzungen = pgTable(
+  "uebersetzungen",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    hash: text("hash").notNull(),
+    nach: text("nach").notNull(),
+    text: text("text").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.hash, t.nach] })],
+);

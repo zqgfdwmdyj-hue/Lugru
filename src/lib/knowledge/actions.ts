@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { requireArea } from "@/lib/auth/session";
+import { requireArea, requireOwner } from "@/lib/auth/session";
 import { anleitungText, leseAnleitung } from "./anleitung";
 import { wissenSichtbar } from "./sichtbar";
 
@@ -58,7 +58,8 @@ export async function updateEntry(formData: FormData) {
   const data = read(formData);
   await db
     .update(schema.knowledgeEntries)
-    .set({ ...data, tags: splitTags(data.tags), updatedBy: session.userId, updatedAt: new Date() })
+    // Deutsche Anleitung geändert → englische Fassung neu erzeugen lassen (beim nächsten Senden an die VA bzw. per Knopf).
+    .set({ ...data, ...(data.kind === "anleitung" ? { anleitungEn: null, titleEn: null, anleitungEnFreigegeben: false } : {}), tags: splitTags(data.tags), updatedBy: session.userId, updatedAt: new Date() })
     .where(and(eq(schema.knowledgeEntries.id, id), eq(schema.knowledgeEntries.tenantId, session.tenantId), wissenSichtbar(session)));
   revalidatePath("/wissen");
   redirect(`/wissen/${id}`);
@@ -98,4 +99,27 @@ export async function insiderUmschalten(formData: FormData) {
   if (!e) return;
   await db.update(K).set({ insider: !e.insider }).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
   revalidatePath("/wissen", "layout");
+}
+
+/** Englische Fassung einer Anleitung (für die VA) neu übersetzen – danach wieder „automatisch übersetzt“. Nur Inhaber. */
+export async function anleitungEnErzeugen(formData: FormData) {
+  const session = await requireOwner();
+  const id = z.string().uuid().parse(formData.get("id"));
+  const K = schema.knowledgeEntries;
+  const [e] = await db.select({ id: K.id, title: K.title, anleitung: K.anleitung }).from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId), eq(K.kind, "anleitung")));
+  if (!e) return;
+  const { anleitungEnglisch } = await import("@/lib/va/service");
+  await anleitungEnglisch(session.tenantId, { ...e, titleEn: null, anleitungEn: null, freigegeben: false });
+  revalidatePath(`/wissen/${id}`);
+}
+
+/** Englische Fassung freigeben (bzw. Freigabe zurücknehmen). Nur Inhaber. */
+export async function anleitungEnFreigeben(formData: FormData) {
+  const session = await requireOwner();
+  const id = z.string().uuid().parse(formData.get("id"));
+  const K = schema.knowledgeEntries;
+  const [e] = await db.select({ f: K.anleitungEnFreigegeben, en: K.anleitungEn }).from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  if (!e?.en) return;
+  await db.update(K).set({ anleitungEnFreigegeben: !e.f }).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  revalidatePath(`/wissen/${id}`);
 }
