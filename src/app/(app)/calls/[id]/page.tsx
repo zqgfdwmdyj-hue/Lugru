@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { ausschnitt, istEigeneAufgabe, PUNKT_TEXT, type PunktArt } from "@/lib/calls/logic";
-import { callDetail } from "@/lib/calls/service";
-import { callBearbeitenAction, neuAuswertenAction, punktAnlegenAction, punktStatusAction, uebernehmenAction } from "../actions";
+import { callDetail, wissenZumCall } from "@/lib/calls/service";
+import { callBearbeitenAction, neuAuswertenAction, punktAnlegenAction, punktStatusAction, uebernehmenAction, wissenNeuAction } from "../actions";
 
 const dmy = (iso: string | null) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : null);
 const ARTEN: PunktArt[] = ["aufgabe", "vereinbarung", "entscheidung", "frage"];
@@ -18,6 +18,7 @@ export default async function CallPage({ params, searchParams }: { params: Promi
   const d = await callDetail(session.tenantId, id);
   if (!d) notFound();
   const { call: c, punkte } = d;
+  const wissen = await wissenZumCall(session.tenantId, c.id);
   const vorschlaege = punkte.filter((p) => p.status === "vorschlag");
 
   return (
@@ -112,6 +113,30 @@ export default async function CallPage({ params, searchParams }: { params: Promi
             ))}
         </div>
       )}
+
+      <section className="card card-pad" style={{ marginBottom: 14 }} data-testid="call-wissen">
+        <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+          <h2 style={{ margin: 0 }}>Wissen aus diesem Call</h2>
+          <form action={wissenNeuAction}>
+            <input type="hidden" name="id" value={c.id} />
+            <button className="btn btn-small" type="submit" title="Ungeprüfte, unbearbeitete Einträge dieses Calls werden ersetzt; Geprüftes und Bearbeitetes bleibt.">Wissen neu ziehen</button>
+          </form>
+        </div>
+        {c.wissenFehler && <div className="small" style={{ color: "var(--danger)", marginTop: 6 }}>Letzter Versuch fehlgeschlagen: {c.wissenFehler}</div>}
+        {!c.wissenAm ? (
+          <div className="small muted" style={{ marginTop: 6 }}>Steht noch aus – die KI zieht Tipps und Insider-Wissen im Hintergrund ins Wissen.</div>
+        ) : wissen.length === 0 ? (
+          <div className="small muted" style={{ marginTop: 6 }}>Kein neues Wissen gefunden.</div>
+        ) : (
+          <ul className="small" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+            {wissen.map((w) => (
+              <li key={w.id}>
+                <Link href={`/wissen/${w.id}`}>{w.title}</Link> <span className="muted">· {w.category}{w.verifiedAt ? " · ✓ geprüft" : ""}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <details className="card card-pad" style={{ marginBottom: 14 }} data-testid="call-bearbeiten">
         <summary><strong>Titel und Datum ändern</strong></summary>

@@ -23,6 +23,7 @@ function instructions(ctx: Pick<ToolCtx, "session" | "canWrite" | "privat" | "to
     "Antworte auf Deutsch. Nutze „ueberblick“ als Einstieg, „suche“ wenn unklar ist, wo etwas steht.",
     "Bei Zahlen immer Zeitraum und Datenstand nennen (Feld „datenstand“: Quelle, letzter Abruf, ggf. „letzter_fehler“) und die Links aus den Ergebnissen verwenden. Nur beschreiben, was die Werkzeuge liefern.",
     "Begriffe: „Prep Center“ = Versanddienstleister für FBM-Aufträge – Fragen dazu immer zuerst mit „prep_center“ beantworten (Sendungen, Stück, Kosten je Monat, „verschickt von“), nicht aus Auftragslisten ableiten; „Palettenlager“ = Paletten von Kunden mit Speditions-Sendungen („paletten“, „sendungen“) – nicht verwechseln.",
+    "Erfahrungen, Tipps und Insider-Wissen aus den Wochen-Calls der Deal-Gruppe und den Consultant-Calls: zuerst „wissen“ (herkunft „call“), wörtlich nachlesen mit „calls_durchsuchen“; Quelle (Call, Datum) nennen und sagen, dass es KI-Auszüge bzw. Aussagen aus Calls sind.",
     ctx.canWrite ? "Ändernde Werkzeuge nur auf ausdrücklichen Wunsch und mit genau den genannten Angaben benutzen; im Zweifel vorher nachfragen." : "Diese Verbindung darf nur lesen.",
     ctx.privat ? "Der Privatbereich ist freigegeben (privat_*): vertraulich behandeln, nicht ungefragt mit Geschäftlichem vermischen." : "",
     `Heute ist ${ctx.today}. Links in den Antworten führen ins Seller-System.`,

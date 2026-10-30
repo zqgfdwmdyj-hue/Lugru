@@ -501,8 +501,12 @@ export const knowledgeEntries = pgTable(
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
-    /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz. */
-    origin: text("origin", { enum: ["recherche", "anleitung", "notiz"] }).notNull().default("notiz"),
+    /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz, von der KI aus einem Call gezogen. */
+    origin: text("origin", { enum: ["recherche", "anleitung", "notiz", "call"] }).notNull().default("notiz"),
+    /** Nur bei Herkunft „call“: aus welchem Call (Fundstelle im Transkript über „callZitat“). Kein Fremdschlüssel –
+     *  die Calls-Tabelle hängt selbst an „core“; gelöschte Calls lassen den Eintrag stehen. */
+    callId: uuid("call_id"),
+    callZitat: text("call_zitat"),
     /** Nur bei kind = „anleitung“: Zweck, wann, wer, Schritte, Zugänge, häufige Fehler, Aufgabentypen. */
     anleitung: jsonb("anleitung").$type<AnleitungFelder>(),
     /** Von jemandem als geprüft/verlässlich bestätigt („zuletzt geprüft am“ bei Anleitungen). */
@@ -514,6 +518,7 @@ export const knowledgeEntries = pgTable(
   },
   (t) => [
     index("knowledge_tenant_idx").on(t.tenantId, t.category),
+    index("knowledge_call_idx").on(t.tenantId, t.callId),
     index("knowledge_search_idx").using(
       "gin",
       sql`to_tsvector('german', ${t.title} || ' ' || ${t.body})`,

@@ -6,6 +6,7 @@ import { addDaysIso } from "@/lib/dates";
 import { needsReview } from "@/lib/invoices/review";
 import { daysLeft } from "@/lib/stock/discrepancies";
 import { anleitungText, normTypen } from "@/lib/knowledge/anleitung";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 import { defineTool } from "../types";
 import { abs, berlinDateTime, json, likeOf, round2 } from "./common";
 
@@ -104,21 +105,49 @@ export const posteingang = defineTool({
 export const wissen = defineTool({
   name: "wissen",
   title: "Wissen durchsuchen",
-  description: "Durchsucht die Wissenssammlung (Anleitungen, Notizen, Textbausteine, Recherche) nach Titel und Inhalt. Für „Wie mache ich …?“, „Was hatten wir zu … notiert?“.",
+  description:
+    "Durchsucht die Wissenssammlung (Anleitungen, Notizen, Textbausteine, Recherche und das von der KI aus den Calls gezogene Insider-Wissen der Deal-Gruppe und des Consultants) nach Titel, Inhalt und Stichworten. Für „Wie mache ich …?“, „Was hatten wir zu … notiert?“, „Was wurde in den Calls zu … gesagt?“. Mit herkunft „call“ nur Wissen aus Calls; Details mit „calls_durchsuchen“.",
   area: "wissen",
   write: false,
-  quelle: { text: "Wissensdatenbank im Seller-System" },
-  input: z.object({ suche: z.string().trim().min(2).max(100), limit: z.number().int().min(1).max(20).default(8) }),
+  quelle: { text: "Wissensdatenbank im Seller-System (Einträge aus Calls: KI-Auszug, ungeprüft, mit Quelle)" },
+  input: z.object({
+    suche: z.string().trim().min(2).max(100),
+    herkunft: z.enum(["call", "anleitung", "notiz", "recherche"]).optional().describe("nur Einträge dieser Herkunft (call = aus Calls gezogen)"),
+    limit: z.number().int().min(1).max(20).default(8),
+  }),
   run: async (ctx, i) => {
     const K = schema.knowledgeEntries;
     const like = likeOf(i.suche);
+    const doc = sql`to_tsvector('german', ${K.title} || ' ' || ${K.body})`;
     const rows = await db
       .select()
       .from(K)
-      .where(and(eq(K.tenantId, ctx.session.tenantId), or(ilike(K.title, like), ilike(K.body, like), sql`exists (select 1 from unnest(${K.tags}) tg where tg ilike ${like})`)))
-      .orderBy(asc(K.title))
+      .where(
+        and(
+          eq(K.tenantId, ctx.session.tenantId),
+          wissenSichtbar(ctx.session),
+          i.herkunft ? eq(K.origin, i.herkunft) : undefined,
+          or(sql`${doc} @@ websearch_to_tsquery('german', ${i.suche})`, ilike(K.title, like), ilike(K.body, like), sql`exists (select 1 from unnest(${K.tags}) tg where tg ilike ${like})`),
+        ),
+      )
+      .orderBy(desc(sql`ts_rank(${doc}, websearch_to_tsquery('german', ${i.suche}))`), asc(K.title))
       .limit(i.limit);
-    return json({ eintraege: rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, art: k.kind, herkunft: k.origin, stichworte: k.tags, text: k.body.slice(0, 2500), link: abs(ctx, `/wissen/${k.id}`) })), link: abs(ctx, "/wissen") });
+    return json({
+      eintraege: rows.map((k) => ({
+        id: k.id,
+        titel: k.title,
+        kategorie: k.category,
+        art: k.kind,
+        herkunft: k.origin === "call" ? "aus einem Call (KI-Auszug, ungeprüft)" : k.origin,
+        geprueft: k.verifiedAt ? true : undefined,
+        stichworte: k.tags,
+        text: k.body.slice(0, 2500),
+        call: k.callId ? abs(ctx, `/calls/${k.callId}`) : undefined,
+        link: abs(ctx, `/wissen/${k.id}`),
+      })),
+      hinweis: rows.some((k) => k.origin === "call") ? "Einträge aus Calls sind KI-Auszüge: Einschätzung und Quelle stehen im Text; Details im Call oder mit „calls_durchsuchen“." : undefined,
+      link: abs(ctx, "/wissen"),
+    });
   },
 });
 

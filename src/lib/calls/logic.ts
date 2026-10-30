@@ -294,3 +294,103 @@ export function ausschnitt(transkript: string, pos: number | null, breite = 300)
 
 /** Wer ist „ich“? Aufgaben für den Consultant werden keine eigenen Aufgaben, sondern offene Punkte. */
 export const istEigeneAufgabe = (p: { art: PunktArt; verantwortlich: string | null }) => p.art === "aufgabe" && !/consultant|amazon|berater/i.test(p.verantwortlich ?? "");
+
+// ---- Wissen aus Calls ------------------------------------------------------------------------------------------
+
+/** Ein Wissenseintrag, den die KI aus einem Call zieht (landet ungeprüft im Wissen, mit Quelle). */
+export type CallWissen = { titel: string; inhalt: string; kategorie: string; stichworte: string[]; zitat: string | null; einschaetzung: "bestaetigt" | "einzelmeinung" | "unsicher" };
+
+/**
+ * KI-Auftrag: Wissen, das über den Call hinaus nützlich ist – vor allem Insider-Wissen. Bekannte Titel werden
+ * mitgegeben, damit nichts doppelt angelegt wird (Neues zu einem bekannten Thema kommt als „Ergänzung: …“).
+ */
+export function kiWissenAuftrag(c: { titel: string; datum: string; art: CallArt; transkript: string }, kategorien: readonly string[], bekannt: string[]): string {
+  return [
+    `Du liest das Transkript eines ${c.art === "gruppe" ? "Wochen-Calls einer Deal-Gruppe (mehrere Amazon-Händler)" : "Calls mit dem Amazon-Consultant"}. Ludwig (LuGru GmbH, Online-Handel: Amazon, eBay, Temu) möchte das Wissen daraus für später festhalten.`,
+    "Ziehe das Wissen heraus, das über diesen Call hinaus nützlich ist – vor allem Insider-Wissen, das man so nicht im Internet findet: konkrete Tricks und Abläufe, Erfahrungswerte und Zahlen, Bezugsquellen, Lieferanten, Dienstleister und Tools, Interna zu Amazon/Temu/eBay (z. B. Account-Sperren, Freischaltungen, Support-Wege, Gebühren), Warnungen und Fehler, die andere gemacht haben.",
+    "Nicht aufnehmen: Smalltalk, Allgemeinplätze, reine Termin- und Aufgabenabsprachen, Persönliches über Teilnehmer.",
+    `Antworte NUR mit JSON: {"wissen":[{"titel":"kurze Aussage (max. 120 Zeichen)","inhalt":"2–8 Sätze, konkret, mit Zahlen/Namen wie im Call; wer es gesagt hat, falls genannt","kategorie":"eine aus: ${kategorien.join(" | ")}","stichworte":["max. 6"],"zitat":"wörtlicher kurzer Ausschnitt (max. 160 Zeichen) aus dem Transkript","einschaetzung":"bestaetigt|einzelmeinung|unsicher"}]}`,
+    "Regeln: nichts erfinden, nur was im Call gesagt wurde; „bestaetigt“ nur, wenn mehrere es bestätigen oder es eigene Erfahrung ist; Gerüchte als „unsicher“; höchstens 25 Einträge; lieber wenige gute als viele dünne.",
+    bekannt.length ? `Schon im Wissen (nicht noch einmal anlegen; nur wenn der Call Neues dazu bringt, als eigener Eintrag mit Titel „Ergänzung: …“):\n${bekannt.map((t) => `- ${t}`).join("\n")}` : "",
+    `Call: ${c.titel} am ${c.datum}`,
+    "Transkript:",
+    c.transkript,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** KI-Antwort prüfen: nur vollständige Einträge, bekannte Kategorie (sonst „Aus Calls“), höchstens 25. */
+export function leseKiWissen(antwort: string, kategorien: readonly string[]): CallWissen[] {
+  const json = /\{[\s\S]*\}/.exec(antwort)?.[0];
+  if (!json) return [];
+  let o: unknown;
+  try {
+    o = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  const roh = liste((o as Record<string, unknown>)?.wissen);
+  const out: CallWissen[] = [];
+  const titel = new Set<string>();
+  for (const x of roh) {
+    if (!x || typeof x !== "object") continue;
+    const e = x as Record<string, unknown>;
+    const t = str(e.titel, 160);
+    const inhalt = str(e.inhalt, 4000);
+    if (t.length < 5 || inhalt.length < 20 || titel.has(t.toLowerCase())) continue;
+    titel.add(t.toLowerCase());
+    const kat = str(e.kategorie, 80);
+    const einschaetzung = e.einschaetzung === "bestaetigt" || e.einschaetzung === "unsicher" ? e.einschaetzung : "einzelmeinung";
+    out.push({
+      titel: t,
+      inhalt,
+      kategorie: kategorien.find((k) => k.toLowerCase() === kat.toLowerCase()) ?? "Aus Calls",
+      stichworte: [...new Set(liste(e.stichworte).map((s) => str(s, 40)).filter(Boolean))].slice(0, 6),
+      zitat: str(e.zitat, 200) || null,
+      einschaetzung,
+    });
+    if (out.length >= 25) break;
+  }
+  return out;
+}
+
+export const EINSCHAETZUNG_TEXT: Record<CallWissen["einschaetzung"], string> = { bestaetigt: "bestätigt (mehrere/eigene Erfahrung)", einzelmeinung: "Einzelmeinung", unsicher: "unsicher/Gerücht" };
+
+/** Text des Wissenseintrags: Inhalt, Einschätzung und Quelle (Call, Datum, Zitat). */
+export function callWissenText(w: CallWissen, call: { titel: string; datum: string }): string {
+  const dmy = call.datum.split("-").reverse().join(".");
+  return [w.inhalt, `Einschätzung: ${EINSCHAETZUNG_TEXT[w.einschaetzung]}`, `Quelle: „${call.titel}“ vom ${dmy}${w.zitat ? ` – „${w.zitat}“` : ""}`].join("\n\n");
+}
+
+/**
+ * Volltextsuche in einem Transkript: wie viele Suchwörter vorkommen, wie oft, und bis zu drei Ausschnitte an den
+ * Stellen, wo die meisten Suchwörter beieinanderstehen. Groß-/Kleinschreibung egal.
+ */
+export function trefferImText(text: string, suche: string, o: { ausschnitte?: number; breite?: number } = {}): { woerter: number; treffer: number; ausschnitte: string[] } {
+  const breite = o.breite ?? 320;
+  const t = text.replace(/\s+/g, " ");
+  const klein = t.toLowerCase();
+  const woerter = [...new Set(suche.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2))].slice(0, 8);
+  if (!woerter.length) return { woerter: 0, treffer: 0, ausschnitte: [] };
+  const stellen: { pos: number; wort: string }[] = [];
+  for (const w of woerter) {
+    let i = klein.indexOf(w);
+    let n = 0;
+    while (i >= 0 && n < 200) {
+      stellen.push({ pos: i, wort: w });
+      i = klein.indexOf(w, i + w.length);
+      n++;
+    }
+  }
+  const gefunden = new Set(stellen.map((s) => s.wort));
+  const bewertet = stellen
+    .map((s) => ({ pos: s.pos, wert: new Set(stellen.filter((x) => Math.abs(x.pos - s.pos) <= breite / 2).map((x) => x.wort)).size }))
+    .sort((a, b) => b.wert - a.wert || a.pos - b.pos);
+  const gewaehlt: number[] = [];
+  for (const b of bewertet) {
+    if (gewaehlt.length >= (o.ausschnitte ?? 3)) break;
+    if (gewaehlt.every((p) => Math.abs(p - b.pos) > breite)) gewaehlt.push(b.pos);
+  }
+  return { woerter: gefunden.size, treffer: stellen.length, ausschnitte: gewaehlt.sort((a, b) => a - b).map((p) => ausschnitt(t, p, breite)!) };
+}

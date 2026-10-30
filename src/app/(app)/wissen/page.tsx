@@ -5,15 +5,17 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/numbers";
 import { KNOWLEDGE_CATEGORIES, SNIPPET_CATEGORIES } from "@/lib/knowledge/categories";
 import { isFailedResearchBody } from "@/lib/research/summary";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 const ORIGIN = {
   anleitung: { label: "Anleitung", cls: "tag-ok" },
   notiz: { label: "Eigene Notiz", cls: "tag-neutral" },
   recherche: { label: "Recherche (automatisch, ungeprüft)", cls: "tag-warn" },
+  call: { label: "Aus einem Call (ungeprüft)", cls: "tag-info" },
 } as const;
 type Origin = keyof typeof ORIGIN;
-type Area = "wissen" | "anleitung" | "notiz" | "recherche" | "alle";
-const AREA_LABEL: Record<Area, string> = { wissen: "Anleitungen & Notizen", anleitung: "Anleitungen", notiz: "Eigene Notizen", recherche: "Automatische Recherche", alle: "Alles" };
+type Area = "wissen" | "anleitung" | "notiz" | "call" | "recherche" | "alle";
+const AREA_LABEL: Record<Area, string> = { wissen: "Anleitungen & Notizen", anleitung: "Anleitungen", notiz: "Eigene Notizen", call: "Aus Calls", recherche: "Automatische Recherche", alle: "Alles" };
 const AREAS = Object.keys(AREA_LABEL) as Area[];
 
 export default async function WissenPage({
@@ -30,9 +32,11 @@ export default async function WissenPage({
   // Getrennte Einstiege: Anleitungen & Notizen (Standard), nur Anleitungen, nur Notizen, automatische Recherche, alles (Suche).
   const bereich: Area = rawArea && (AREAS as string[]).includes(rawArea) ? (rawArea as Area) : herkunft ? herkunft : kat === "Recherche" ? "recherche" : query || kat ? "alle" : "wissen";
 
-  const where = [eq(K.tenantId, session.tenantId)];
-  if (bereich === "wissen") where.push(sql`${K.origin} <> 'recherche'`);
-  if (bereich === "anleitung" || bereich === "notiz" || bereich === "recherche") where.push(eq(K.origin, bereich));
+  const sichtbar = wissenSichtbar(session);
+  const AREAS_SICHTBAR = sichtbar ? AREAS.filter((a) => a !== "call") : AREAS;
+  const where = [eq(K.tenantId, session.tenantId), sichtbar];
+  if (bereich === "wissen") where.push(sql`${K.origin} not in ('recherche', 'call')`);
+  if (bereich === "anleitung" || bereich === "notiz" || bereich === "recherche" || bereich === "call") where.push(eq(K.origin, bereich));
   if (kat) where.push(eq(K.category, kat));
   // Anleitungen zur Prüfung: nie geprüft oder zuletzt vor mehr als 6 Monaten.
   if (pruefen === "1") where.push(sql`${K.kind} = 'anleitung' and (${K.verifiedAt} is null or ${K.verifiedAt} < now() - interval '183 days')`);
@@ -51,15 +55,15 @@ export default async function WissenPage({
       .orderBy(
         ...(query ? [desc(sql`ts_rank(${doc}, websearch_to_tsquery('german', ${query}))`)] : []),
         // Verbindliches zuerst: Anleitungen, dann eigene Notizen, automatische Recherche zuletzt.
-        sql`case ${K.origin} when 'anleitung' then 0 when 'notiz' then 1 else 2 end`,
+        sql`case ${K.origin} when 'anleitung' then 0 when 'notiz' then 1 when 'call' then 2 else 3 end`,
         desc(K.updatedAt),
       )
       .limit(100),
-    db.select({ category: K.category, n: count() }).from(K).where(eq(K.tenantId, session.tenantId)).groupBy(K.category),
-    db.select({ origin: K.origin, n: count() }).from(K).where(eq(K.tenantId, session.tenantId)).groupBy(K.origin),
+    db.select({ category: K.category, n: count() }).from(K).where(and(eq(K.tenantId, session.tenantId), sichtbar)).groupBy(K.category),
+    db.select({ origin: K.origin, n: count() }).from(K).where(and(eq(K.tenantId, session.tenantId), sichtbar)).groupBy(K.origin),
   ]);
   const originCount = new Map(origins.map((o) => [o.origin, o.n]));
-  const areaCount: Record<Area, number> = { wissen: (originCount.get("anleitung") ?? 0) + (originCount.get("notiz") ?? 0), anleitung: originCount.get("anleitung") ?? 0, notiz: originCount.get("notiz") ?? 0, recherche: originCount.get("recherche") ?? 0, alle: [...originCount.values()].reduce((a, b) => a + b, 0) };
+  const areaCount: Record<Area, number> = { wissen: (originCount.get("anleitung") ?? 0) + (originCount.get("notiz") ?? 0), anleitung: originCount.get("anleitung") ?? 0, notiz: originCount.get("notiz") ?? 0, call: originCount.get("call") ?? 0, recherche: originCount.get("recherche") ?? 0, alle: [...originCount.values()].reduce((a, b) => a + b, 0) };
   // Fehlgeschlagene Recherche (KI hat nichts zusammengefasst) erkennbar machen und ans Ende stellen – nichts wird gelöscht.
   const withFail = entries.map((e) => ({ ...e, failed: e.origin === "recherche" && isFailedResearchBody(e.body) }));
   const failedCount = withFail.filter((e) => e.failed).length;
@@ -115,10 +119,15 @@ export default async function WissenPage({
             <span className="small muted">{shown.length} Einträge</span>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 20px 8px" }} data-testid="wissen-areas">
-            {AREAS.map((a) => (
+            {AREAS_SICHTBAR.map((a) => (
               <Link key={a} className={`chip${bereich === a ? " active" : ""}`} aria-current={bereich === a ? "true" : undefined} href={catLink(a === "recherche" ? undefined : kat, a)} data-testid={`wissen-area-${a}`}>{AREA_LABEL[a]} · {areaCount[a]}</Link>
             ))}
           </div>
+          {bereich === "call" && (
+            <div className="small muted" style={{ padding: "0 20px 8px" }} data-testid="wissen-call-hinweis">
+              Von der KI aus den Calls gezogen (Deal-Gruppe, Consultant) – mit Quelle und Zitat, ungeprüft. Sichtbar nur für dich und wer die Calls sehen darf. Stimmt etwas nicht: bearbeiten, löschen oder als geprüft markieren.
+            </div>
+          )}
           {bereich === "recherche" && (
             <div className="small muted" style={{ padding: "0 20px 8px" }}>
               Automatisch gefunden und ungeprüft – keine Anleitung. Wichtiges in einen eigenen Eintrag übernehmen oder als geprüft markieren.

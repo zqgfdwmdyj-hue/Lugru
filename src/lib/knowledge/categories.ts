@@ -10,6 +10,7 @@ export const KNOWLEDGE_CATEGORIES = [
   "Tools & Abläufe",
   "Anleitungen",
   "Recherche",
+  "Aus Calls",
   "Eigene Notizen",
 ] as const;
 

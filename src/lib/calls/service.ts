@@ -1,11 +1,12 @@
 import "server-only";
-import { and, desc, eq, gte, inArray, isNotNull, lte } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { askClaude, modelFor } from "@/lib/ai/claude";
 import { addDaysIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { driveToken } from "@/lib/integrations/clients/drive";
-import { bereinigeTranskript, callTitelUndDatum, datumAusText, googleDocId, googleDocLinks, inhaltKennung, istEigeneAufgabe, kiAuftrag, leseArchivExport, leseKiPunkte, leseKiZusammenfassung, linksMitKontext, zitatPosition, type CallArt, type PunktArt } from "./logic";
+import { KNOWLEDGE_CATEGORIES } from "@/lib/knowledge/categories";
+import { bereinigeTranskript, callTitelUndDatum, callWissenText, datumAusText, googleDocId, googleDocLinks, inhaltKennung, istEigeneAufgabe, kiAuftrag, kiWissenAuftrag, trefferImText, leseArchivExport, leseKiPunkte, leseKiWissen, leseKiZusammenfassung, linksMitKontext, zitatPosition, type CallArt, type PunktArt } from "./logic";
 import { textAusCallDateien } from "./dateien";
 
 // Call-Archiv: Import (Text, Google-Doc-Link, Dateien/ZIP, wöchentlich aus einem Discord-Kanal), KI-Auswertung,
@@ -154,7 +155,11 @@ export async function callsSammelImport(
 
 const LAEUFT = ((globalThis as { __callAuswertung?: Map<string, Promise<number>> }).__callAuswertung ??= new Map());
 
-/** Offene Calls nacheinander auswerten (höchstens „max“); läuft je Firma nur einmal gleichzeitig. */
+/**
+ * Im Hintergrund: offene Calls auswerten, danach das Wissen aus Calls ziehen, bei denen es noch aussteht (auch
+ * ältere Calls) – älteste zuerst, damit Spätere als „Ergänzung“ erkannt werden. Höchstens „max“ KI-Aufrufe je
+ * Lauf; läuft je Firma nur einmal gleichzeitig.
+ */
 export function offeneCallsAuswerten(tenantId: string, max = 60): Promise<number> {
   const laufend = LAEUFT.get(tenantId);
   if (laufend) return laufend;
@@ -166,10 +171,131 @@ export function offeneCallsAuswerten(tenantId: string, max = 60): Promise<number
       erledigt.add(c.id);
       await callAuswerten(tenantId, c.id);
     }
-    return erledigt.size;
+    if (!(await ki(tenantId))) return erledigt.size;
+    const wissen = new Set<string>();
+    while (erledigt.size + wissen.size < max) {
+      const [c] = await db
+        .select({ id: C.id })
+        .from(C)
+        .where(and(eq(C.tenantId, tenantId), isNull(C.wissenAm), ne(C.auswertung, "offen")))
+        .orderBy(C.datum, C.createdAt)
+        .limit(1);
+      if (!c || wissen.has(c.id)) break;
+      wissen.add(c.id);
+      await wissenAusCall(tenantId, c.id);
+    }
+    return erledigt.size + wissen.size;
   })().finally(() => LAEUFT.delete(tenantId));
   LAEUFT.set(tenantId, lauf);
   return lauf;
+}
+
+const K = schema.knowledgeEntries;
+
+/**
+ * Wissen aus einem Call ins Wissen ziehen (ungeprüft, Herkunft „call“, mit Quelle und Zitat). Bei erneutem Lauf
+ * werden nur die Einträge dieses Calls ersetzt, die noch niemand geprüft oder bearbeitet hat.
+ */
+export async function wissenAusCall(tenantId: string, callId: string): Promise<{ eintraege: number; fehler: string | null }> {
+  const [c] = await db.select().from(C).where(and(eq(C.tenantId, tenantId), eq(C.id, callId)));
+  if (!c) return { eintraege: 0, fehler: "Call nicht gefunden" };
+  const k = await ki(tenantId);
+  if (!k) return { eintraege: 0, fehler: "Keine KI-Anbindung (Anbindungen → Claude)" };
+  if (c.transkript.replace(/\s+/g, "").length < 200) {
+    await db.update(C).set({ wissenAm: new Date(), wissenFehler: "Transkript zu kurz" }).where(eq(C.id, callId));
+    return { eintraege: 0, fehler: "Transkript zu kurz" };
+  }
+  try {
+    const bekannt = await db
+      .select({ title: K.title })
+      .from(K)
+      .where(and(eq(K.tenantId, tenantId), eq(K.origin, "call"), andererCall(callId)))
+      .orderBy(desc(K.updatedAt))
+      .limit(200);
+    const antwort = await askClaude(k.apiKey, kiWissenAuftrag(c, KNOWLEDGE_CATEGORIES, bekannt.map((b) => b.title)), { model: k.model, task: "simple", maxTokens: 6000, timeoutMs: 180_000 });
+    const wissen = leseKiWissen(antwort.text, KNOWLEDGE_CATEGORIES);
+    const behalten = await db
+      .select({ title: K.title })
+      .from(K)
+      .where(and(eq(K.tenantId, tenantId), eq(K.callId, callId), eq(K.origin, "call"), geprueftOderBearbeitet()));
+    const vorhandeneTitel = new Set(behalten.map((b) => b.title.toLowerCase()));
+    await db.delete(K).where(and(eq(K.tenantId, tenantId), eq(K.callId, callId), eq(K.origin, "call"), isNull(K.verifiedAt), isNull(K.updatedBy)));
+    const neu = wissen.filter((w) => !vorhandeneTitel.has(w.titel.toLowerCase()));
+    const marke = c.art === "gruppe" ? "Deal-Gruppe" : "Consultant-Call";
+    if (neu.length)
+      await db.insert(K).values(
+        neu.map((w) => ({
+          tenantId,
+          kind: "article" as const,
+          category: w.kategorie,
+          title: w.titel,
+          body: callWissenText(w, c),
+          tags: [...new Set([...w.stichworte, marke, ...(w.einschaetzung === "unsicher" ? ["unsicher"] : [])])].slice(0, 10),
+          origin: "call" as const,
+          callId,
+          callZitat: w.zitat,
+        })),
+      );
+    await db.update(C).set({ wissenAm: new Date(), wissenFehler: null }).where(eq(C.id, callId));
+    return { eintraege: neu.length, fehler: null };
+  } catch (e) {
+    const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+    await db.update(C).set({ wissenAm: new Date(), wissenFehler: msg }).where(eq(C.id, callId));
+    return { eintraege: 0, fehler: msg };
+  }
+}
+
+/** Einträge anderer Calls (oder ohne Call) – als „schon bekannt“ für die KI. */
+const andererCall = (callId: string) => sql`(${K.callId} is null or ${K.callId} <> ${callId})`;
+/** Geprüft oder von Hand bearbeitet – bleibt bei „Wissen neu ziehen“ stehen. */
+const geprueftOderBearbeitet = () => sql`(${K.verifiedAt} is not null or ${K.updatedBy} is not null)`;
+
+/**
+ * Volltextsuche über alle Calls (Transkript und Zusammenfassung): zuerst Calls mit allen Suchwörtern, dann die
+ * mit den meisten; je Call bis zu drei Ausschnitte.
+ */
+export async function callsDurchsuchen(tenantId: string, suche: string, o: { art?: CallArt; limit?: number } = {}) {
+  const rows = await db
+    .select({ id: C.id, titel: C.titel, datum: C.datum, art: C.art, transkript: C.transkript, zusammenfassung: C.zusammenfassung })
+    .from(C)
+    .where(and(eq(C.tenantId, tenantId), o.art ? eq(C.art, o.art) : undefined))
+    .orderBy(desc(C.datum))
+    .limit(1000);
+  const gesucht = new Set(suche.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2)).size;
+  return rows
+    .map((c) => {
+      const z = c.zusammenfassung;
+      const zText = z ? [z.ueberblick, ...z.themen.map((t) => `${t.name}: ${t.punkte.join(" ")}`)].join(" ") : "";
+      const r = trefferImText(`${c.titel}\n${zText}\n${c.transkript}`, suche);
+      return { id: c.id, titel: c.titel, datum: c.datum, art: c.art, ...r };
+    })
+    .filter((c) => c.treffer > 0)
+    .sort((a, b) => b.woerter - a.woerter || b.treffer - a.treffer || b.datum.localeCompare(a.datum))
+    .slice(0, o.limit ?? 5)
+    .map((c) => ({ ...c, alleWoerter: c.woerter >= gesucht }));
+}
+
+/** Wissenseinträge eines Calls (für die Call-Seite). */
+export async function wissenZumCall(tenantId: string, callId: string) {
+  return db
+    .select({ id: K.id, title: K.title, category: K.category, verifiedAt: K.verifiedAt, tags: K.tags })
+    .from(K)
+    .where(and(eq(K.tenantId, tenantId), eq(K.callId, callId), eq(K.origin, "call")))
+    .orderBy(K.title);
+}
+
+/** Wie viel Wissen aus Calls es gibt und wie viele Calls noch ausstehen (für die Calls-Seite). */
+export async function wissenStand(tenantId: string): Promise<{ eintraege: number; ausstehend: number }> {
+  const [[e], [a]] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(K).where(and(eq(K.tenantId, tenantId), eq(K.origin, "call"))),
+    db.select({ n: sql<number>`count(*)::int` }).from(C).where(and(eq(C.tenantId, tenantId), isNull(C.wissenAm))),
+  ]);
+  return { eintraege: e.n, ausstehend: a.n };
+}
+
+/** „Wissen neu ziehen“ für einen Call: wieder als ausstehend markieren – der Hintergrund holt es nach. */
+export async function wissenNeuAnstossen(tenantId: string, callId: string) {
+  await db.update(C).set({ wissenAm: null, wissenFehler: null }).where(and(eq(C.tenantId, tenantId), eq(C.id, callId)));
 }
 
 /** Titel, Datum und Art von Hand korrigieren (z. B. wenn im Dateinamen kein Datum stand). */

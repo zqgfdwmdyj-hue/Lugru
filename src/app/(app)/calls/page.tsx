@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
-import { callsListe } from "@/lib/calls/service";
+import { callsListe, wissenStand } from "@/lib/calls/service";
 import { getIntegration } from "@/lib/integrations/store";
-import { archivImportAction, callImportAction, discordImportAction, sammelImportAction } from "./actions";
+import { archivImportAction, callImportAction, discordImportAction, sammelImportAction, wissenNachholenAction } from "./actions";
 
 // Call-Archiv: Calls mit dem Amazon-Consultant und Wochen-Calls der Deal-Gruppe – Import (Dateien/ZIP, Links,
 // Text, Discord) und was daraus folgt.
@@ -13,7 +13,7 @@ const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", arc
 export default async function CallsPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireArea("amazon");
   const sp = await searchParams;
-  const [liste, discord] = await Promise.all([callsListe(session.tenantId), getIntegration(session.tenantId, "discord_calls")]);
+  const [liste, discord, wissen] = await Promise.all([callsListe(session.tenantId), getIntegration(session.tenantId, "discord_calls"), wissenStand(session.tenantId)]);
   const wartend = liste.filter((c) => c.auswertung === "offen").length;
 
   return (
@@ -30,6 +30,20 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
       {wartend > 0 && (
         <div className="notice small" style={{ marginBottom: 12 }} data-testid="calls-wartend">
           {wartend} {wartend === 1 ? "Call wartet" : "Calls warten"} auf die KI-Auswertung – läuft nacheinander im Hintergrund (je Call etwa eine Minute). <Link href="/calls">Neu laden</Link>
+        </div>
+      )}
+
+      {liste.length > 0 && (
+        <div className="small" style={{ marginBottom: 12, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }} data-testid="calls-wissen">
+          <span>
+            <strong>Wissen aus Calls:</strong> <Link href="/wissen?bereich=call">{wissen.eintraege} Einträge im Wissen</Link>
+            {wissen.ausstehend > 0 && <span className="muted"> · {wissen.ausstehend} {wissen.ausstehend === 1 ? "Call wartet" : "Calls warten"} noch auf den Auszug</span>}
+          </span>
+          {wissen.ausstehend > 0 && (
+            <form action={wissenNachholenAction} style={{ display: "inline" }}>
+              <button className="btn-link small" type="submit" data-testid="calls-wissen-nachholen">jetzt nachholen</button>
+            </form>
+          )}
         </div>
       )}
 

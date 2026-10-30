@@ -7,7 +7,7 @@ import { z } from "zod";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { parseDate } from "@/lib/numbers";
-import { archivImportieren, callAuswerten, callBearbeiten, callImportieren, callsSammelImport, discordCallsImport, offeneCallsAuswerten, punktAnlegen, punkteUebernehmen, punktStatus } from "@/lib/calls/service";
+import { archivImportieren, callAuswerten, callBearbeiten, callImportieren, callsSammelImport, discordCallsImport, offeneCallsAuswerten, punktAnlegen, punkteUebernehmen, punktStatus, wissenNeuAnstossen } from "@/lib/calls/service";
 import { datumAusText, type CallArt } from "@/lib/calls/logic";
 
 const ID = z.string().uuid();
@@ -32,6 +32,7 @@ export async function callImportAction(fd: FormData) {
   } catch (e) {
     redirect(zurueck("/calls", e instanceof Error ? e.message : String(e)));
   }
+  if (r.neu) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
   revalidatePath("/calls");
   redirect(zurueck(`/calls/${r.id}`, !r.neu ? "Dieser Call ist schon im Archiv." : r.fehler ? `Importiert – Auswertung: ${r.fehler}` : `Importiert – ${r.punkte} Punkte zur Prüfung.`));
 }
@@ -144,6 +145,24 @@ export async function archivImportAction(fd: FormData) {
     redirect(zurueck("/calls", "Die Datei ist kein gültiges JSON."));
   }
   const r = await archivImportieren(session.tenantId, roh);
+  if (r.neu) after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
   revalidatePath("/calls");
   redirect(zurueck("/calls", r.fehler ?? `${r.neu} Calls übernommen${r.vorhanden ? `, ${r.vorhanden} waren schon da` : ""}. To-dos, Entscheidungen und Fragen stehen zur Prüfung im Call.`));
+}
+
+/** Wissen aus einem Call neu ziehen lassen (ungeprüfte, unbearbeitete Einträge werden ersetzt). */
+export async function wissenNeuAction(fd: FormData) {
+  const session = await requireArea("amazon");
+  const id = ID.parse(fd.get("id"));
+  await wissenNeuAnstossen(session.tenantId, id);
+  after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
+  revalidatePath(`/calls/${id}`);
+  redirect(zurueck(`/calls/${id}`, "Das Wissen wird im Hintergrund neu gezogen – Seite in etwa einer Minute neu laden."));
+}
+
+/** Ausstehendes Wissen aus älteren Calls jetzt nachholen (sonst alle 30 Minuten automatisch). */
+export async function wissenNachholenAction() {
+  const session = await requireArea("amazon");
+  after(() => offeneCallsAuswerten(session.tenantId).then(() => undefined));
+  redirect(zurueck("/calls", "Läuft im Hintergrund – die KI zieht das Wissen Call für Call (je etwa eine Minute)."));
 }

@@ -18,6 +18,7 @@ import { privateCalendar } from "@/lib/private/calendar-data";
 import { privateSettings } from "@/lib/private/service";
 import { defineTool, type ToolCtx } from "../types";
 import { PRIORITY_IN, abs, berlinDateTime, isoDate, json, likeOf, round2, taskBrief, uuid, visibleTask } from "./common";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 const T = schema.tasks;
 const PS = schema.palletShipments;
@@ -111,7 +112,7 @@ export const suche = defineTool({
     }
     if (canAccess(s, "wissen")) {
       const K = schema.knowledgeEntries;
-      const rows = await db.select().from(K).where(and(eq(K.tenantId, t), or(ilike(K.title, like), ilike(K.body, like)))).limit(5);
+      const rows = await db.select().from(K).where(and(eq(K.tenantId, t), wissenSichtbar(s), or(ilike(K.title, like), ilike(K.body, like)))).limit(5);
       out.wissen = rows.map((k) => ({ id: k.id, titel: k.title, kategorie: k.category, auszug: k.body.slice(0, 300) }));
     }
     return json(out);

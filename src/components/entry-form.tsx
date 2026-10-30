@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ALL_CATEGORIES } from "@/lib/knowledge/categories";
 
 type Anleitung = { zweck: string; wann: string; wer: string; schritte: string[]; zugaenge: string[]; fehler: string[]; aufgabenTypen: string[] };
-type Entry = { id?: string; title: string; category: string; kind: "article" | "snippet" | "anleitung"; body: string; tags: string[]; origin?: "recherche" | "anleitung" | "notiz"; anleitung?: Anleitung | null };
+type Entry = { id?: string; title: string; category: string; kind: "article" | "snippet" | "anleitung"; body: string; tags: string[]; origin?: "recherche" | "anleitung" | "notiz" | "call"; anleitung?: Anleitung | null };
 
 export function EntryForm({
   action,
@@ -34,6 +34,7 @@ export function EntryForm({
             <option value="notiz">Eigene Notiz</option>
             <option value="anleitung">Anleitung (verbindlich)</option>
             <option value="recherche">Recherche (ungeprüft)</option>
+            {entry?.origin === "call" && <option value="call">Aus einem Call (ungeprüft)</option>}
           </select>
         </div>
         <div className="field">

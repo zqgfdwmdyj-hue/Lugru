@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // die neuen Lese-Werkzeuge sind registriert (erscheinen ohne Neustart über tools/list).
 vi.mock("server-only", () => ({}));
 
-const NEU = ["liquiditaet", "kapital_ampel", "verlust_stopp", "marken_belege", "b2b_auswertung", "calls", "call_aufgaben", "privat_finanzen"];
+const NEU = ["liquiditaet", "kapital_ampel", "verlust_stopp", "marken_belege", "b2b_auswertung", "calls", "call_aufgaben", "calls_durchsuchen", "privat_finanzen"];
 
 describe("Teil 2 – Werkzeuge und Rechte", async () => {
   const { ALL_TOOLS } = await import("@/lib/assistant/registry");
@@ -21,8 +21,13 @@ describe("Teil 2 – Werkzeuge und Rechte", async () => {
   it("Assistenz: keine Geld- und Privatwerkzeuge, aber Calls/Echtheit (Amazon)", () => {
     const erlaubt = ALL_TOOLS.filter((t) => toolAllowed({ session: va, canWrite: true, privat: false }, t)).map((t) => t.name);
     for (const n of ["liquiditaet", "kapital_ampel", "verlust_stopp", "privat_finanzen"]) expect(erlaubt, n).not.toContain(n);
-    for (const n of ["calls", "call_aufgaben", "marken_belege", "b2b_auswertung"]) expect(erlaubt, n).toContain(n);
+    for (const n of ["calls", "call_aufgaben", "calls_durchsuchen", "marken_belege", "b2b_auswertung"]) expect(erlaubt, n).toContain(n);
     expect(ALL_TOOLS.filter((t) => t.area === "privat").every((t) => !toolAllowed({ session: va, canWrite: true, privat: true }, t))).toBe(true);
+  });
+  it("Volltextsuche in Calls nur mit Bereich Amazon", () => {
+    const suche = ALL_TOOLS.find((t) => t.name === "calls_durchsuchen")!;
+    const ohneAmazon = { role: "staff" as const, areas: ["start", "wissen"], readOnly: false, privateAccess: false };
+    expect(toolAllowed({ session: ohneAmazon, canWrite: false, privat: false }, suche)).toBe(false);
   });
   it("privat_finanzen nur über die Privat-Freigabe", () => {
     const pf = ALL_TOOLS.find((t) => t.name === "privat_finanzen")!;

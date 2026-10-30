@@ -4,13 +4,14 @@ import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { updateEntry } from "@/lib/knowledge/actions";
 import { EntryForm } from "@/components/entry-form";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 export default async function BearbeitenPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const K = schema.knowledgeEntries;
-  const [entry] = await db.select().from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  const [entry] = await db.select().from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId), wissenSichtbar(session)));
   if (!entry) notFound();
   return (
     <>

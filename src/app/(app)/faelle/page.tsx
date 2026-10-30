@@ -7,6 +7,7 @@ import { addDaysIso, todayIso } from "@/lib/dates";
 import { CASE_STATUS_LABEL, CASE_TYPE_LABEL, CHANNEL_LABEL } from "@/lib/labels";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { createCase, updateCase } from "./actions";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 export default async function FaellePage({ searchParams }: { searchParams: Promise<{ ansicht?: string; id?: string }> }) {
   const session = await requireSession();
@@ -16,7 +17,7 @@ export default async function FaellePage({ searchParams }: { searchParams: Promi
   const where: SQL[] = [eq(C.tenantId, session.tenantId), open ? inArray(C.status, ["open", "waiting"]) : inArray(C.status, ["won", "lost", "closed"])];
   const [cases, snippets] = await Promise.all([
     db.select().from(C).where(and(...where)).orderBy(open ? sql`${C.deadline} asc nulls last` : desc(C.resolvedAt)).limit(300),
-    db.select({ id: schema.knowledgeEntries.id, title: schema.knowledgeEntries.title }).from(schema.knowledgeEntries).where(and(eq(schema.knowledgeEntries.tenantId, session.tenantId), or(eq(schema.knowledgeEntries.kind, "snippet"), ilike(schema.knowledgeEntries.category, "%fälle%")))).orderBy(asc(schema.knowledgeEntries.title)),
+    db.select({ id: schema.knowledgeEntries.id, title: schema.knowledgeEntries.title }).from(schema.knowledgeEntries).where(and(eq(schema.knowledgeEntries.tenantId, session.tenantId), wissenSichtbar(session), or(eq(schema.knowledgeEntries.kind, "snippet"), ilike(schema.knowledgeEntries.category, "%fälle%")))).orderBy(asc(schema.knowledgeEntries.title)),
   ]);
   const today = todayIso();
   const current = sp.id ? cases.find((c) => c.id === sp.id) : undefined;

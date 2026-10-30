@@ -65,6 +65,15 @@ function kiAnswer(req, b) {
     const m = { ean: finde(/barcode|ean|gtin/i), asin: finde(/amazon|asin/i), supplierSku: finde(/code|art|sku/i), title: finde(/produkt|bezeichnung|name/i), price: finde(/netto|preis|ek/i), stock: finde(/lager|bestand/i), moq: finde(/vpe|mindest|moq/i), url: null };
     return [200, reply(b, [{ type: "text", text: JSON.stringify(m) }], "end_turn")];
   }
+  // Wissen aus Calls: zwei erfundene Einträge je Call (Titel mit dem Call-Titel, damit nichts doppelt aussieht).
+  if (/Ziehe das Wissen heraus/.test(text) && !stale) {
+    const call = /\nCall: (.*) am \d{4}-\d{2}-\d{2}\n/.exec(text)?.[1] ?? "Test-Call";
+    const wissen = [
+      { titel: `Testwissen (${call}): Black-Week-Deals nur mit Gewinn`, inhalt: "Erfundener Testinhalt: In der Black Week nur Deals fahren, die nach allen Gebühren noch Gewinn bringen.", kategorie: "Amazon-Richtlinien", stichworte: ["Black Week", "Test"], zitat: "Black-Week-Deals nur mit Gewinn", einschaetzung: "bestaetigt" },
+      { titel: `Testwissen (${call}): Markenliste vor dem Audit bereithalten`, inhalt: "Erfundener Testinhalt: Für den Marken-Audit vorab eine Liste der zehn wichtigsten Marken vorbereiten.", kategorie: "Tools & Abläufe", stichworte: ["Audit"], zitat: "Liste der zehn Marken", einschaetzung: "einzelmeinung" },
+    ];
+    return [200, reply(b, [{ type: "text", text: JSON.stringify({ wissen }) }], "end_turn")];
+  }
   // Call-Archiv: Punkte aus dem Test-Transkript (wörtliche Zitate, damit die Call-Stelle gefunden wird).
   if (/Du liest das Transkript eines (Calls mit dem Amazon-Consultant|Wochen-Calls einer Deal-Gruppe)/.test(text) && !stale) {
     const punkte = [

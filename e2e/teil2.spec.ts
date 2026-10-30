@@ -213,6 +213,23 @@ test.describe("Teil 2 – Team", () => {
     await page.getByTestId("calls-zeile").filter({ hasText: "Wochen-Call Testgruppe 05.09.2026" }).getByRole("link").first().click();
     await expect(page.getByTestId("call-zusammenfassung")).toContainText("Consultant (Test), Ludwig (Test)");
     await expect(page.getByTestId("call-punkt").first()).toBeVisible();
+    // Wissen aus dem Call: von der KI (Testdienst) ins Wissen gezogen, mit Quelle zurück zum Call
+    const callUrl = page.url();
+    await expect(async () => {
+      await page.reload();
+      await expect(page.getByTestId("call-wissen")).toContainText("Testwissen (Wochen-Call Testgruppe 05.09.2026): Black-Week-Deals nur mit Gewinn");
+    }).toPass({ timeout: 60_000 });
+    await page.getByTestId("call-wissen").getByRole("link", { name: /Black-Week-Deals nur mit Gewinn/ }).click();
+    await expect(page.getByTestId("entry-origin")).toContainText("Aus einem Call (ungeprüft)");
+    await expect(page.locator(".article-body")).toContainText("Einschätzung: bestätigt");
+    await expect(page.getByTestId("entry-call").getByRole("link")).toContainText("Wochen-Call Testgruppe 05.09.2026");
+    await page.goto("/wissen?bereich=call");
+    await expect(page.getByTestId("wissen-call-hinweis")).toBeVisible();
+    await expect(page.getByText("Testwissen (Wochen-Call Testgruppe 12.09.2026): Markenliste vor dem Audit bereithalten")).toBeVisible();
+    // Suche im Wissen findet es auch
+    await page.goto(`/wissen?q=${encodeURIComponent("Black-Week")}`);
+    await expect(page.getByText("Testwissen (Wochen-Call Testgruppe 19.09.2026): Black-Week-Deals nur mit Gewinn")).toBeVisible();
+    await page.goto(callUrl);
     // Titel und Datum von Hand ändern
     await page.getByTestId("call-bearbeiten").locator("summary").click();
     await page.getByTestId("call-bearbeiten").locator('input[name="datum"]').fill("06.09.2026");

@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { PUNKT_TEXT } from "@/lib/calls/logic";
-import { callDetail, callsListe } from "@/lib/calls/service";
+import { callDetail, callsDurchsuchen, callsListe } from "@/lib/calls/service";
 import { defineTool } from "../types";
 import { abs, json } from "./common";
 
@@ -54,4 +54,28 @@ export const callAufgaben = defineTool({
   },
 });
 
-export const CALLS = [calls, callAufgaben];
+export const callsSuchen = defineTool({
+  name: "calls_durchsuchen",
+  title: "In allen Calls suchen",
+  description:
+    "Volltextsuche über alle Call-Transkripte und Zusammenfassungen (Wochen-Calls der Deal-Gruppe, Consultant-Calls): Was wurde wann zu einem Thema, Anbieter, Tool oder Trick gesagt? Liefert je Call Datum, Titel und wörtliche Ausschnitte mit Link. Für zusammengefasstes Wissen zuerst „wissen“ (herkunft call).",
+  area: "amazon",
+  write: false,
+  quelle: { text: "Call-Archiv im Seller-System (Transkripte, wörtlich)" },
+  input: z.object({
+    suche: z.string().trim().min(2).max(100).describe("Suchwörter, z. B. „Temu Sperre“ oder ein Anbietername"),
+    art: z.enum(["consultant", "gruppe"]).optional().describe("nur Consultant-Calls oder nur Wochen-Calls der Deal-Gruppe"),
+    limit: z.number().int().min(1).max(10).default(5),
+  }),
+  run: async (ctx, i) => {
+    const treffer = await callsDurchsuchen(ctx.session.tenantId, i.suche, { art: i.art, limit: i.limit });
+    return json({
+      suche: i.suche,
+      calls: treffer.map((c) => ({ call_id: c.id, datum: c.datum, titel: c.titel, art: c.art === "gruppe" ? "Wochen-Call Deal-Gruppe" : "Consultant-Call", alle_suchwoerter: c.alleWoerter, treffer: c.treffer, ausschnitte: c.ausschnitte, link: abs(ctx, `/calls/${c.id}`) })),
+      hinweis: treffer.length ? "Ausschnitte sind wörtlich aus dem Transkript (automatische Mitschrift – Namen und Zahlen können falsch erkannt sein)." : "Nichts gefunden – andere Wörter oder „wissen“ versuchen.",
+      link: abs(ctx, "/calls"),
+    });
+  },
+});
+
+export const CALLS = [calls, callAufgaben, callsSuchen];

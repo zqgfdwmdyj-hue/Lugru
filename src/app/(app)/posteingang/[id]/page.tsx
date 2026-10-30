@@ -8,6 +8,7 @@ import { TOPICS, TOPIC_LABEL, describeRule, isUncertainRule, type Topic } from "
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
 import { archiveMails, correctMail, createTaskFromMail, draftAction } from "../actions";
 import { desc } from "drizzle-orm";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 const TOPIC_SEARCH: Partial<Record<Topic, string>> = { a_to_z: "A-bis-Z", buyer_message: "Kunde", ebay_case: "eBay", return_request: "Rücksendung", inbound_problem: "Wareneingang", listing_blocked: "Rechnung", negative_feedback: "Bewertung" };
 
@@ -31,7 +32,7 @@ export default async function MailPage({ params, searchParams }: { params: Promi
   const topic = (m.topic ?? "other") as Topic;
   const term = TOPIC_SEARCH[topic];
   const snippets = term
-    ? await db.select({ id: schema.knowledgeEntries.id, title: schema.knowledgeEntries.title }).from(schema.knowledgeEntries).where(and(eq(schema.knowledgeEntries.tenantId, session.tenantId), or(ilike(schema.knowledgeEntries.title, `%${term}%`), ilike(schema.knowledgeEntries.category, `%${term}%`)))).limit(5)
+    ? await db.select({ id: schema.knowledgeEntries.id, title: schema.knowledgeEntries.title }).from(schema.knowledgeEntries).where(and(eq(schema.knowledgeEntries.tenantId, session.tenantId), wissenSichtbar(session), or(ilike(schema.knowledgeEntries.title, `%${term}%`), ilike(schema.knowledgeEntries.category, `%${term}%`)))).limit(5)
     : [];
   const [label, cls] = MAIL_CATEGORY_LABEL[m.category];
   const drafts = await db.select().from(schema.emailDrafts).where(and(eq(schema.emailDrafts.tenantId, session.tenantId), eq(schema.emailDrafts.emailId, m.id))).orderBy(desc(schema.emailDrafts.createdAt));

@@ -8,6 +8,7 @@ import { verifyEntry, deleteEntry } from "@/lib/knowledge/actions";
 import { formatDate } from "@/lib/numbers";
 import { pruefungFaellig } from "@/lib/knowledge/anleitung";
 import { CopyButton } from "@/components/copy-button";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -16,8 +17,10 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const K = schema.knowledgeEntries;
-  const [entry] = await db.select().from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  const sichtbar = wissenSichtbar(session);
+  const [entry] = await db.select().from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId), sichtbar));
   if (!entry) notFound();
+  const [call] = entry.callId ? await db.select({ id: schema.calls.id, titel: schema.calls.titel, datum: schema.calls.datum }).from(schema.calls).where(and(eq(schema.calls.id, entry.callId), eq(schema.calls.tenantId, session.tenantId))) : [];
 
   const related = await db
     .select({ id: K.id, title: K.title })
@@ -25,6 +28,7 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
     .where(
       and(
         eq(K.tenantId, session.tenantId),
+        sichtbar,
         ne(K.id, entry.id),
         entry.tags.length ? or(eq(K.category, entry.category), arrayOverlaps(K.tags, entry.tags)) : eq(K.category, entry.category),
       ),
@@ -40,8 +44,8 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
         <article className="card" style={{ flexGrow: 1, minWidth: 0, padding: "26px 34px" }}>
           <div className="between" style={{ alignItems: "flex-start" }}>
             <div className="small muted">
-              <span className={`tag ${entry.origin === "anleitung" ? "tag-ok" : entry.origin === "recherche" ? "tag-warn" : "tag-neutral"}`} data-testid="entry-origin" style={{ marginRight: 6 }}>
-                {entry.origin === "anleitung" ? "Anleitung" : entry.origin === "recherche" ? "Recherche (automatisch, ungeprüft)" : "Eigene Notiz"}
+              <span className={`tag ${entry.origin === "anleitung" ? "tag-ok" : entry.origin === "recherche" ? "tag-warn" : entry.origin === "call" ? "tag-info" : "tag-neutral"}`} data-testid="entry-origin" style={{ marginRight: 6 }}>
+                {entry.origin === "anleitung" ? "Anleitung" : entry.origin === "recherche" ? "Recherche (automatisch, ungeprüft)" : entry.origin === "call" ? "Aus einem Call (ungeprüft)" : "Eigene Notiz"}
                 {entry.verifiedAt ? ` ✓ geprüft am ${formatDate(entry.verifiedAt.toISOString())}` : ""}
               </span>
               {entry.kind === "snippet" ? "Textbaustein" : entry.kind === "anleitung" ? "Anleitung" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
@@ -65,6 +69,17 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
           <div className={entry.kind === "snippet" ? "snippet article-body" : "article-body"} style={{ marginTop: 18 }}>
             {entry.body ? <Linkify text={entry.body} /> : <span className="muted">Noch kein Inhalt.</span>}
           </div>
+          {entry.origin === "call" && (
+            <div className="small" style={{ marginTop: 14 }} data-testid="entry-call">
+              {call ? (
+                <>
+                  Quelle: <Link href={`/calls/${call.id}`}>„{call.titel}“ vom {call.datum.split("-").reverse().join(".")}</Link> – im Call steht die Stelle im Transkript.
+                </>
+              ) : (
+                <span className="muted">Der Call ist nicht mehr im Archiv.</span>
+              )}
+            </div>
+          )}
           <form action={deleteEntry} style={{ marginTop: 28 }}>
             <input type="hidden" name="id" value={entry.id} />
             <button type="submit" className="btn-link" style={{ color: "var(--danger)", fontSize: 13 }}>Eintrag löschen</button>

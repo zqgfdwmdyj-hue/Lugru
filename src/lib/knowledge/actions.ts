@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { anleitungText, leseAnleitung } from "./anleitung";
+import { wissenSichtbar } from "./sichtbar";
 
 const entry = z.object({
   title: z.string().trim().min(1, "Titel fehlt").max(200),
@@ -14,7 +15,7 @@ const entry = z.object({
   kind: z.enum(["article", "snippet", "anleitung"]),
   body: z.string().max(50_000),
   tags: z.string().max(500),
-  origin: z.enum(["recherche", "anleitung", "notiz"]).catch("notiz"),
+  origin: z.enum(["recherche", "anleitung", "notiz", "call"]).catch("notiz"),
 });
 
 function read(formData: FormData) {
@@ -58,7 +59,7 @@ export async function updateEntry(formData: FormData) {
   await db
     .update(schema.knowledgeEntries)
     .set({ ...data, tags: splitTags(data.tags), updatedBy: session.userId, updatedAt: new Date() })
-    .where(and(eq(schema.knowledgeEntries.id, id), eq(schema.knowledgeEntries.tenantId, session.tenantId)));
+    .where(and(eq(schema.knowledgeEntries.id, id), eq(schema.knowledgeEntries.tenantId, session.tenantId), wissenSichtbar(session)));
   revalidatePath("/wissen");
   redirect(`/wissen/${id}`);
 }
@@ -68,7 +69,7 @@ export async function deleteEntry(formData: FormData) {
   const id = z.string().uuid().parse(formData.get("id"));
   await db
     .delete(schema.knowledgeEntries)
-    .where(and(eq(schema.knowledgeEntries.id, id), eq(schema.knowledgeEntries.tenantId, session.tenantId)));
+    .where(and(eq(schema.knowledgeEntries.id, id), eq(schema.knowledgeEntries.tenantId, session.tenantId), wissenSichtbar(session)));
   revalidatePath("/wissen");
   redirect("/wissen");
 }
@@ -78,7 +79,7 @@ export async function verifyEntry(formData: FormData) {
   const session = await requireArea("wissen");
   const id = z.string().uuid().parse(formData.get("id"));
   const K = schema.knowledgeEntries;
-  const [e] = await db.select({ origin: K.origin, verifiedAt: K.verifiedAt }).from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  const [e] = await db.select({ origin: K.origin, verifiedAt: K.verifiedAt }).from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId), wissenSichtbar(session)));
   if (!e) return;
   const on = !e.verifiedAt;
   await db

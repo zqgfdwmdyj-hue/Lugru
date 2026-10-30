@@ -28,6 +28,9 @@ export const calls = pgTable(
     transkript: encryptedText("transkript").notNull(),
     auswertung: text("auswertung", { enum: ["offen", "fertig", "fehler", "ohne_ki"] }).notNull().default("offen"),
     auswertungFehler: text("auswertung_fehler"),
+    /** Wann die KI das Wissen (Tipps, Insider-Wissen) aus dem Call ins Wissen gezogen hat – null = steht noch aus. */
+    wissenAm: timestamp("wissen_am", { withTimezone: true }),
+    wissenFehler: text("wissen_fehler"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("calls_quelle_uq").on(t.tenantId, t.quelleRef), index("calls_datum_idx").on(t.tenantId, t.datum), index("calls_inhalt_idx").on(t.tenantId, t.inhaltKennung)],
