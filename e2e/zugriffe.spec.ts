@@ -75,4 +75,42 @@ test.describe("Zugriffsrechte (B19.2)", () => {
     await fp.goto(href!);
     await expect(fp.locator("body")).not.toContainText(`Paartermin ${m}`);
   });
+
+  test("B20.1: Privat „voll“ nur für Inhaber, Warn-Dialog beim Anmelden, Konto deaktivieren sperrt den Login", async ({ page, browser }) => {
+    const m = marke().toLowerCase();
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const pw = `Erfunden-${m}-Passwort`;
+    const [u] = await sql<{ id: string }>("insert into users (email, name, password_hash) values ($1, $2, $3) returning id", [`b20-${m}`, `B20 Konto ${m}`, await bcrypt.hash(pw, 4)]);
+    await sql("insert into memberships (tenant_id, user_id, role, areas, read_only, private_access, private_scope) values ($1, $2, 'staff', '[\"start\"]'::jsonb, false, true, 'voll')", [T, u.id]);
+
+    // (c) Inhaber meldet sich an → Dialog einmal, „Später“ schließt ihn
+    await anmelden(page, "inhaber");
+    await expect(page.getByTestId("privat-warn-dialog")).toBeVisible();
+    await expect(page.getByTestId("privat-warn-dialog")).toContainText(`b20-${m}`);
+    await page.getByTestId("privat-warn-dialog").getByRole("link", { name: "Später" }).click();
+    await expect(page.getByTestId("privat-warn-dialog")).toHaveCount(0);
+
+    // (a) Auswahl „voll“ ist bei Mitarbeitern gesperrt – auch ein umgangener Aufruf ändert nichts
+    await page.goto("/einstellungen#benutzer");
+    const zeile = page.locator("tr", { hasText: `b20-${m}` });
+    await expect(zeile.getByTestId("private-access").locator('option[value="voll"]')).toBeDisabled();
+    await zeile.getByTestId("private-access").locator("select").selectOption("familie");
+    await Promise.all([aktion(page), zeile.getByTestId("private-access").getByRole("button", { name: "ändern" }).click()]);
+    await expect.poll(async () => (await sql<{ private_scope: string }>("select private_scope from memberships where user_id = $1", [u.id]))[0].private_scope).toBe("familie");
+
+    // Deaktivieren: Login gesperrt mit Hinweis, „Wieder aktivieren“ hebt es auf
+    await page.reload();
+    await Promise.all([aktion(page), page.locator("tr", { hasText: `b20-${m}` }).getByTestId("user-aktiv-knopf").click()]);
+    await expect(page.locator("tr", { hasText: `b20-${m}` }).getByTestId("user-deaktiviert")).toBeVisible();
+    const ctx = await browser.newContext();
+    const p2 = await ctx.newPage();
+    await p2.goto("/login");
+    await p2.fill('input[name="email"]', `b20-${m}`);
+    await p2.fill('input[name="password"]', pw);
+    await p2.click('button[type="submit"]');
+    await expect(p2.locator("main, body")).toContainText("Dieses Konto ist deaktiviert");
+    await ctx.close();
+    await Promise.all([aktion(page), page.locator("tr", { hasText: `b20-${m}` }).getByTestId("user-aktiv-knopf").click()]);
+    await expect.poll(async () => (await sql<{ deaktiviert_am: Date | null }>("select deaktiviert_am from memberships where user_id = $1", [u.id]))[0].deaktiviert_am).toBeNull();
+  });
 });

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES, type TenantSettings } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
+import { privatStufeErlaubt } from "@/lib/auth/rollen";
 import { isEmailLogin, loginNameError, normalizeLogin, passwordError } from "@/lib/auth/username";
 import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
@@ -249,7 +250,7 @@ export async function addUser(_prev: UserState, fd: FormData): Promise<UserState
 async function vorlageAnwenden(tenantId: string, userId: string, v: import("@/lib/auth/rollen").RollenVorlage) {
   const { vorlageFelder } = await import("@/lib/auth/rollen");
   const M = schema.memberships;
-  const [m] = await db.select({ role: M.role, areas: M.areas }).from(M).where(and(eq(M.tenantId, tenantId), eq(M.userId, userId)));
+  const [m] = await db.select({ role: M.role, areas: M.areas, privateAccess: M.privateAccess, privateScope: M.privateScope }).from(M).where(and(eq(M.tenantId, tenantId), eq(M.userId, userId)));
   if (!m) return false;
   const f = vorlageFelder(v, m);
   await db
@@ -291,6 +292,21 @@ export async function removeUser(fd: FormData) {
   await db
     .delete(schema.memberships)
     .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  revalidatePath("/einstellungen");
+}
+
+/** B20.1: Konto deaktivieren bzw. wieder aktivieren (nie das eigene). Deaktiviert = kein Login, keine Sitzung, kein Konnektor. */
+export async function kontoAktivAction(fd: FormData) {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  if (userId === session.userId) return;
+  const aktiv = fd.get("aktiv") === "1";
+  const M = schema.memberships;
+  await db
+    .update(M)
+    .set(aktiv ? { deaktiviertAm: null, deaktiviertGrund: null } : { deaktiviertAm: new Date(), deaktiviertGrund: `von Hand deaktiviert (${session.name ?? session.email})`.slice(0, 200) })
+    .where(and(eq(M.tenantId, session.tenantId), eq(M.userId, userId)));
+  if (!aktiv) await db.delete(schema.sessions).where(and(eq(schema.sessions.tenantId, session.tenantId), eq(schema.sessions.userId, userId)));
   revalidatePath("/einstellungen");
 }
 
@@ -346,6 +362,8 @@ export async function setPrivateAccess(fd: FormData) {
     .from(schema.memberships)
     .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
   if (!m) return;
+  // B20.1: Privat „voll“ nur für Inhaber – Mitarbeiter/VA höchstens „nur Familie“ (auch wenn die Auswahl umgangen wird).
+  if (!privatStufeErlaubt(m.role, level)) return;
   const on = level !== "aus" && !(m.role === "staff" && m.readOnly);
   await db
     .update(schema.memberships)

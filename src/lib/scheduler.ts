@@ -181,6 +181,8 @@ export async function runScheduledJobs(force = false) {
       // B15.1: Erinnerung „Versandbestätigung bei Amazon hochladen“, solange versendete Aufträge nicht gemeldet sind.
       if (force || due(`${t}:amazon-bestaetigung`, 59)) await step(t, "Amazon: Versandbestätigung", async () => (await import("@/lib/orders/bestaetigung")).bestaetigungErinnern(t));
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
+      // B20.1: Konten, die sich nie angemeldet haben und älter als 30 Tage sind, deaktivieren (mit Aufgabe als Hinweis).
+      if (force || due(`${t}:konten-nie-angemeldet`, 1435)) await step(t, "Konten: nie angemeldet → deaktivieren", async () => (await import("@/lib/auth/konten")).nieAngemeldeteDeaktivieren(t));
       // Lernender Deal-Wert: 👍/👎 unter den ProfitPath-Nachrichten in Discord (alle 15 Min.), reales Ergebnis gekaufter
       // Deals 30/60/90 Tage nach Wareneingang und „bewährt?“ der Lugru-Deals aus dem Keepa-Zwischenspeicher (täglich).
       if (force || due(`${t}:deal-daumen`, 14)) await step(t, "Deal-Wert: 👍/👎 aus Discord", async () => (await import("@/lib/deal-eingang/wert")).discordDaumen(t));

@@ -37,7 +37,7 @@ export async function sitzungFuer(tenantId: string, userId: string, tokenId: str
     .from(M)
     .innerJoin(schema.users, eq(schema.users.id, M.userId))
     .innerJoin(schema.tenants, eq(schema.tenants.id, M.tenantId))
-    .where(and(eq(M.tenantId, tenantId), eq(M.userId, userId)));
+    .where(and(eq(M.tenantId, tenantId), eq(M.userId, userId), isNull(M.deaktiviertAm)));
   if (!r) return null;
   return {
     userId,

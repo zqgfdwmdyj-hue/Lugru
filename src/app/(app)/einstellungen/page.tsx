@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
-import { mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess, setRolleAction, setUserSprache } from "./actions";
+import { kontoAktivAction, mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess, setRolleAction, setUserSprache } from "./actions";
 import { PRIVAT_LABEL, ROLLEN_LABEL, rolleVon, zugriffsWarnungen, type RollenVorlage } from "@/lib/auth/rollen";
 import { similarSuppliers } from "@/lib/suppliers/duplicates";
 import { ConfirmButton } from "@/components/confirm-button";
@@ -68,7 +68,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
   // Konto der VA (Discord-Anbindung) – für die Warnung „ohne Rolle VA“.
   const vaLogin = ((await getIntegration(session.tenantId, "discord_va")) as { vaEmail?: string } | null)?.vaEmail ?? null;
   const members = await db
-    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly, sprache: schema.users.sprache })
+    .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly, sprache: schema.users.sprache, deaktiviertAm: schema.memberships.deaktiviertAm, deaktiviertGrund: schema.memberships.deaktiviertGrund })
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .where(eq(schema.memberships.tenantId, session.tenantId));
@@ -358,7 +358,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
       </section>
 
       <section className="card card-pad stack" style={{ gap: 14 }}>
-        <h2>Benutzer</h2>
+        <h2 id="benutzer">Benutzer</h2>
         {(() => {
           const last = members.filter((m) => m.lastLoginAt && m.userId !== session.userId).sort((a, b) => b.lastLoginAt!.getTime() - a.lastLoginAt!.getTime())[0];
           const online = members.filter((m) => isOnline(m.lastSeenAt) && m.userId !== session.userId);
@@ -385,7 +385,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           <tbody>
             {members.map((m) => (
               <tr key={m.userId}>
-                <td>{m.email}</td><td>{m.name ?? "–"}</td>
+                <td>{m.email}{m.deaktiviertAm && <div><span className="tag tag-neutral" data-testid="user-deaktiviert" title={m.deaktiviertGrund ?? undefined}>deaktiviert {m.deaktiviertAm.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span>{m.deaktiviertGrund && <div className="small muted">{m.deaktiviertGrund}</div>}</div>}</td><td>{m.name ?? "–"}</td>
                 <td className="small" data-testid="user-last-login">
                   {isOnline(m.lastSeenAt) && <span className="tag tag-ok" style={{ marginRight: 6 }}>aktiv</span>}
                   {formatSeen(m.lastLoginAt)}
@@ -428,7 +428,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                       <select className="select" id={`pa-${m.userId}`} name="level" defaultValue={m.privateAccess ? m.privateScope : "aus"} style={{ padding: "3px 6px", fontSize: 13 }} title="Bereich „Privat“ – wird einzeln vergeben, auch für Inhaber. „Nur Familie“: Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten – nichts aus Partnerschaft, Gesundheit oder Therapie.">
                         <option value="aus">kein Zugang</option>
                         <option value="familie">nur Familie</option>
-                        <option value="voll">voll</option>
+                        <option value="voll" disabled={m.role !== "owner"}>{m.role === "owner" ? "voll" : "voll (nur Inhaber)"}</option>
                       </select>
                       <button className="btn btn-small" type="submit">ändern</button>
                     </form>
@@ -446,6 +446,7 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                   {m.userId !== session.userId && (
                     <div className="stack" style={{ gap: 4, alignItems: "flex-end" }}>
                       <SetPasswordForm userId={m.userId} login={m.email} />
+                      <form action={kontoAktivAction}><input type="hidden" name="userId" value={m.userId} /><input type="hidden" name="aktiv" value={m.deaktiviertAm ? "1" : "0"} /><button className="btn-link small" data-testid="user-aktiv-knopf">{m.deaktiviertAm ? "Wieder aktivieren" : "Deaktivieren"}</button></form>
                       <form action={removeUser}><input type="hidden" name="userId" value={m.userId} /><button className="btn-link small danger">Entfernen</button></form>
                     </div>
                   )}

@@ -154,7 +154,7 @@ async function ZeitHeute({ tenantId, userId, today }: { tenantId: string; userId
   );
 }
 
-export default async function StartPage({ searchParams }: { searchParams: Promise<{ kat?: string; ansicht?: string; zeit?: string; tel?: string; nr?: string; nrq?: string }> }) {
+export default async function StartPage({ searchParams }: { searchParams: Promise<{ kat?: string; ansicht?: string; zeit?: string; tel?: string; nr?: string; nrq?: string; privatwarnung?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const filter = FILTERS.includes(sp.kat as (typeof FILTERS)[number]) ? sp.kat! : "alle";
@@ -284,6 +284,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   return (
     <>
       {head}
+      {sp.privatwarnung === "1" && session.role === "owner" && <PrivatWarnDialog tenantId={session.tenantId} />}
       <PrivateHint session={session} />
       <ZeitHeute tenantId={session.tenantId} userId={session.userId} today={today} />
 
@@ -467,5 +468,31 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * B20.1: Einmal je Anmeldung eines Inhabers, solange ein Nicht-Inhaber Privat „voll“ hat – als Dialog (schließbar,
+ * kein JavaScript nötig: „Später“ lädt die Startseite ohne den Hinweis).
+ */
+async function PrivatWarnDialog({ tenantId }: { tenantId: string }) {
+  const M = schema.memberships;
+  const rows = await db
+    .select({ email: schema.users.email, name: schema.users.name, role: M.role, privateAccess: M.privateAccess, privateScope: M.privateScope, readOnly: M.readOnly, deaktiviertAm: M.deaktiviertAm })
+    .from(M)
+    .innerJoin(schema.users, eq(schema.users.id, M.userId))
+    .where(eq(M.tenantId, tenantId));
+  const betroffen = rows.filter((m) => !m.deaktiviertAm && m.role === "staff" && m.privateAccess && m.privateScope === "voll" && !m.readOnly);
+  if (!betroffen.length) return null;
+  return (
+    <dialog open className="card card-pad" data-testid="privat-warn-dialog" aria-labelledby="privat-warn-titel" style={{ position: "fixed", top: "12vh", zIndex: 1000, maxWidth: 520, width: "calc(100% - 32px)", border: "2px solid var(--danger)", boxShadow: "0 10px 40px rgba(0,0,0,.3)" }}>
+      <h2 id="privat-warn-titel" style={{ marginTop: 0 }}>🔴 Privat „voll“ bei Nicht-Inhaber</h2>
+      <p className="small" style={{ margin: "0 0 8px" }}>Diese Konten sehen Partnerschaft, Therapie und Tagebuch:</p>
+      <ul className="small" style={{ margin: "0 0 10px", paddingLeft: 18 }}>{betroffen.map((m) => <li key={m.email}>{m.name ? `${m.name} (${m.email})` : m.email}</li>)}</ul>
+      <div className="row" style={{ gap: 8 }}>
+        <Link className="btn btn-primary" href="/einstellungen#benutzer">Jetzt umstellen</Link>
+        <Link className="btn" href="/">Später</Link>
+      </div>
+    </dialog>
   );
 }

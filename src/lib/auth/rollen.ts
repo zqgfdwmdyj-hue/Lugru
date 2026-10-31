@@ -29,11 +29,12 @@ export type Mitglied = {
 };
 
 /** Felder, die eine Vorlage setzt. Mitarbeiter: Bereiche bleiben (vom Inhaber kommend: keine – bitte freigeben). */
-export function vorlageFelder(v: RollenVorlage, vorher: Pick<Mitglied, "role" | "areas">): { role: "owner" | "staff"; areas: string[] | null; readOnly: boolean; privateAccess?: boolean; privateScope?: "voll" | "familie" } {
+export function vorlageFelder(v: RollenVorlage, vorher: Pick<Mitglied, "role" | "areas"> & Partial<Pick<Mitglied, "privateAccess" | "privateScope">>): { role: "owner" | "staff"; areas: string[] | null; readOnly: boolean; privateAccess?: boolean; privateScope?: "voll" | "familie" } {
   if (v === "inhaber") return { role: "owner", areas: null, readOnly: false };
   if (v === "va") return { role: "staff", areas: [...VA_BEREICHE], readOnly: false, privateAccess: false };
   if (v === "familie") return { role: "staff", areas: [], readOnly: false, privateAccess: true, privateScope: "familie" };
-  return { role: "staff", areas: vorher.role === "owner" ? [] : vorher.areas, readOnly: false };
+  // B20.1: Mitarbeiter nie mit Privat „voll“ – wer vorher „voll“ hatte (z. B. als Inhaber), verliert den Privat-Zugang.
+  return { role: "staff", areas: vorher.role === "owner" ? [] : vorher.areas, readOnly: false, ...(vorher.privateAccess && vorher.privateScope === "voll" ? { privateAccess: false } : {}) };
 }
 
 /** Welche Vorlage passt zum heutigen Stand? (für die Auswahl in der Liste) */
@@ -70,3 +71,27 @@ export function zugriffsWarnungen(ms: Mitglied[], ich: string, o: { jetzt?: Date
 }
 
 export const PRIVAT_LABEL = (m: Pick<Mitglied, "privateAccess" | "privateScope" | "readOnly">) => (m.readOnly ? "gesperrt (nur ansehen)" : !m.privateAccess ? "kein" : m.privateScope === "familie" ? "nur Familie" : "voll");
+
+/** B20.1: Privat „voll“ nur für Inhaber – Mitarbeiter- und VA-Konten höchstens „nur Familie“. */
+export function privatStufeErlaubt(role: "owner" | "staff", stufe: "aus" | "familie" | "voll"): boolean {
+  return stufe !== "voll" || role === "owner";
+}
+
+export const NIE_ANGEMELDET_TAGE = 30;
+
+/**
+ * B20.1: Konten, die sich nie angemeldet haben und älter als 30 Tage sind → deaktivieren. Nie das eigene Konto, nie
+ * bereits deaktivierte, und es bleibt immer ein aktives Inhaber-Konto, das sich schon angemeldet hat.
+ */
+export function nieAngemeldetZuDeaktivieren(ms: { userId: string; role: "owner" | "staff"; lastLoginAt: Date | null; createdAt: Date; deaktiviertAm: Date | null }[], o: { jetzt?: Date; ich?: string | null } = {}): string[] {
+  const jetzt = o.jetzt ?? new Date();
+  const grenze = jetzt.getTime() - NIE_ANGEMELDET_TAGE * TAG;
+  const kandidaten = ms.filter((m) => !m.deaktiviertAm && !m.lastLoginAt && m.createdAt.getTime() < grenze && m.userId !== o.ich);
+  const aktiveInhaber = ms.filter((m) => m.role === "owner" && !m.deaktiviertAm && m.lastLoginAt);
+  return aktiveInhaber.length ? kandidaten.map((m) => m.userId) : kandidaten.filter((m) => m.role !== "owner").map((m) => m.userId);
+}
+
+/** B20.1: Rote Privat-Warnungen (Nicht-Inhaber mit Privat „voll“) – für den Dialog beim Anmelden eines Inhabers. */
+export function privatVollBeiNichtInhaber(ms: Pick<Mitglied, "role" | "privateAccess" | "privateScope" | "readOnly">[]): number {
+  return ms.filter((m) => m.role === "staff" && m.privateAccess && m.privateScope === "voll" && !m.readOnly).length;
+}

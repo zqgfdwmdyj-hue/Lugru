@@ -785,6 +785,13 @@
       "when": 1793449815284,
       "tag": "0111_lugru_historie",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1793456957540,
+      "tag": "0112_konten_deaktiviert",
+      "breakpoints": true
     }
   ]
 }

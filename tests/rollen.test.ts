@@ -55,3 +55,47 @@ describe("Warnungen in der Benutzerliste", () => {
     expect(PRIVAT_LABEL(m({}))).toBe("kein");
   });
 });
+
+describe("B20.1 – Zugriffsrechte hart", () => {
+  it("Privat „voll“ nur für Inhaber", async () => {
+    const { privatStufeErlaubt } = await import("@/lib/auth/rollen");
+    expect(privatStufeErlaubt("owner", "voll")).toBe(true);
+    expect(privatStufeErlaubt("staff", "voll")).toBe(false);
+    expect(privatStufeErlaubt("staff", "familie")).toBe(true);
+    expect(privatStufeErlaubt("staff", "aus")).toBe(true);
+  });
+
+  it("Mitarbeiter-Vorlage nimmt Privat „voll“ weg, „nur Familie“ bleibt", async () => {
+    const { vorlageFelder } = await import("@/lib/auth/rollen");
+    expect(vorlageFelder("mitarbeiter", { role: "owner", areas: null, privateAccess: true, privateScope: "voll" }).privateAccess).toBe(false);
+    expect(vorlageFelder("mitarbeiter", { role: "staff", areas: ["start"], privateAccess: true, privateScope: "familie" }).privateAccess).toBeUndefined();
+  });
+
+  it("nie angemeldet und älter als 30 Tage → deaktivieren; ein aktiver Inhaber bleibt immer", async () => {
+    const { nieAngemeldetZuDeaktivieren } = await import("@/lib/auth/rollen");
+    const jetzt = new Date("2026-10-31T12:00:00Z");
+    const alt = new Date("2026-09-01T12:00:00Z");
+    const neu = new Date("2026-10-20T12:00:00Z");
+    const ms = [
+      { userId: "ich", role: "owner" as const, lastLoginAt: jetzt, createdAt: alt, deaktiviertAm: null },
+      { userId: "test", role: "staff" as const, lastLoginAt: null, createdAt: alt, deaktiviertAm: null },
+      { userId: "frisch", role: "staff" as const, lastLoginAt: null, createdAt: neu, deaktiviertAm: null },
+      { userId: "genutzt", role: "staff" as const, lastLoginAt: alt, createdAt: alt, deaktiviertAm: null },
+      { userId: "schon", role: "staff" as const, lastLoginAt: null, createdAt: alt, deaktiviertAm: alt },
+      { userId: "inhaber2", role: "owner" as const, lastLoginAt: null, createdAt: alt, deaktiviertAm: null },
+    ];
+    expect(nieAngemeldetZuDeaktivieren(ms, { jetzt }).sort()).toEqual(["inhaber2", "test"]);
+    // Ohne aktiven, schon angemeldeten Inhaber: kein Inhaber-Konto deaktivieren
+    expect(nieAngemeldetZuDeaktivieren(ms.filter((m) => m.userId !== "ich"), { jetzt })).toEqual(["test"]);
+  });
+
+  it("Dialog-Zähler: nur Nicht-Inhaber mit Privat „voll“ (nicht nur-ansehen)", async () => {
+    const { privatVollBeiNichtInhaber } = await import("@/lib/auth/rollen");
+    expect(privatVollBeiNichtInhaber([
+      { role: "owner", privateAccess: true, privateScope: "voll", readOnly: false },
+      { role: "staff", privateAccess: true, privateScope: "voll", readOnly: false },
+      { role: "staff", privateAccess: true, privateScope: "voll", readOnly: true },
+      { role: "staff", privateAccess: true, privateScope: "familie", readOnly: false },
+    ])).toBe(1);
+  });
+});

@@ -499,7 +499,7 @@ export async function tokenPruefen(token: string): Promise<{ ok: true; tenantId:
   if (!/^dk_[A-Za-z0-9_-]{20,}$/.test(token)) return { ok: false, status: 401, fehler: "Ungültiger Schlüssel." };
   const [t] = await db.select().from(TOK).where(and(eq(TOK.tokenHash, hash(token)), eq(TOK.zweck, "deal_eingang")));
   if (!t || t.revokedAt) return { ok: false, status: 401, fehler: t ? "Schlüssel widerrufen." : "Ungültiger Schlüssel." };
-  const [m] = await db.select({ role: schema.memberships.role, areas: schema.memberships.areas, readOnly: schema.memberships.readOnly }).from(schema.memberships).where(and(eq(schema.memberships.tenantId, t.tenantId), eq(schema.memberships.userId, t.userId)));
+  const [m] = await db.select({ role: schema.memberships.role, areas: schema.memberships.areas, readOnly: schema.memberships.readOnly }).from(schema.memberships).where(and(eq(schema.memberships.tenantId, t.tenantId), eq(schema.memberships.userId, t.userId), isNull(schema.memberships.deaktiviertAm)));
   const { canAccess } = await import("@/lib/auth/areas");
   if (!m || !canAccess({ role: m.role, areas: m.areas ?? null, readOnly: m.role === "staff" && m.readOnly }, "dealeingang")) return { ok: false, status: 403, fehler: "Kein Zugriff auf den Deal-Eingang." };
   const [{ kurz, tag }] = (

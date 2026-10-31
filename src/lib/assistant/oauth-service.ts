@@ -134,7 +134,7 @@ export async function grantFromAccessToken(token: string | null): Promise<{ gran
     .from(schema.memberships)
     .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
     .innerJoin(schema.tenants, eq(schema.tenants.id, schema.memberships.tenantId))
-    .where(and(eq(schema.memberships.userId, g.userId), eq(schema.memberships.tenantId, g.tenantId)));
+    .where(and(eq(schema.memberships.userId, g.userId), eq(schema.memberships.tenantId, g.tenantId), isNull(schema.memberships.deaktiviertAm)));
   if (!row) return null;
   if (Date.now() - (touched.get(g.id) ?? 0) > 5 * 60_000) {
     touched.set(g.id, Date.now());

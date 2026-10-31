@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
@@ -83,6 +83,8 @@ export const getSession = cache(async (): Promise<Session | null> => {
       and(
         eq(schema.memberships.userId, schema.sessions.userId),
         eq(schema.memberships.tenantId, schema.sessions.tenantId),
+        // B20.1: deaktivierte Konten haben keine gültige Sitzung mehr.
+        isNull(schema.memberships.deaktiviertAm),
       ),
     )
     .where(and(eq(schema.sessions.id, hash(token)), gt(schema.sessions.expiresAt, new Date())));

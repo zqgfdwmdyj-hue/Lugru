@@ -322,6 +322,9 @@ export const memberships = pgTable(
     prefs: jsonb("prefs").$type<MemberPrefs>().notNull().default({}),
     /** Optionale PIN für „Privat“ (bcrypt). */
     privatePinHash: text("private_pin_hash"),
+    /** B20.1: deaktiviert (kein Login, keine Sitzung, kein Konnektor) – z. B. automatisch nach 30 Tagen „nie angemeldet“. */
+    deaktiviertAm: timestamp("deaktiviert_am", { withTimezone: true }),
+    deaktiviertGrund: text("deaktiviert_grund"),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
