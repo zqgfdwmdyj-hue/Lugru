@@ -18,7 +18,7 @@ import { artNachEndung, endung, istBqoolDatei, istPdf, istZip, jsonArt, pdfArt, 
 // Zentrale Uploads: jede Datei erkennen und mit demselben Code verarbeiten wie im jeweiligen Bereich. Rechte je
 // Art (z. B. Kontoauszüge nur mit Bereich „Geld“). Private Kontoauszüge gehören in den Privatbereich, nicht hierher.
 
-export type UploadErgebnis = { datei: string; art: UploadArt | null; artText: string; ok: boolean; text: string; hinweise: string[]; link: string | null };
+export type UploadErgebnis = { datei: string; art: UploadArt | null; artText: string; ok: boolean; text: string; hinweise: string[]; link: string | null; /** Zahlen für den Datei-Import (nicht gespeichert). */ details?: Record<string, unknown> };
 export type UploadOptionen = { firma: string | null; saldo: number | null };
 
 const MAX = 25 * 1024 * 1024;
@@ -68,15 +68,15 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
   switch (art) {
     case "kontoauszug": {
       const r = await sparkasseImportieren(wer, o.firma, { name, bytes }, o.saldo);
-      return { ok: true, text: `${r.firma}: ${importMeldung(r.bank)}`, hinweise: [] };
+      return { ok: true, text: `${r.firma}: ${importMeldung(r.bank)}`, hinweise: [], details: { konto: { firma: r.firma, buchungen_neu: r.neu, schon_vorhanden: r.doppelt, von: r.von, bis: r.bis, kontostand: r.endsaldo, kontostand_datum: r.bank.endsaldo?.datum ?? r.bis } } };
     }
     case "amex": {
       const r = await amexImportieren(wer, o.firma, { name, bytes });
-      return { ok: true, text: `${r.firma}: ${r.neu} neue Umsätze${r.doppelt ? `, ${r.doppelt} schon vorhanden` : ""} · Belastungen ${r.belastungen.toFixed(2).replace(".", ",")} €.`, hinweise: [] };
+      return { ok: true, text: `${r.firma}: ${r.neu} neue Umsätze${r.doppelt ? `, ${r.doppelt} schon vorhanden` : ""} · Belastungen ${r.belastungen.toFixed(2).replace(".", ",")} €.`, hinweise: [], details: { konto: { firma: r.firma, buchungen_neu: r.neu, schon_vorhanden: r.doppelt, belastungen: r.belastungen } } };
     }
     case "ust_bericht": {
       const r = await ustBerichtImportieren(wer, o.firma, { name, bytes });
-      return { ok: true, text: `Monat ${r.monat}: ${r.auswertung.zeilen.length} Summenzeilen.`, hinweise: r.auswertung.hinweise };
+      return { ok: true, text: `Perioden ${r.perioden.map((p) => `${p.monat} (${p.zeilen} Zeilen)`).join(", ")} – je Periode zusammengeführt.`, hinweise: r.auswertung.hinweise, details: { ust: { perioden: r.perioden } } };
     }
     case "bqool": {
       const r = await importBqool(session.tenantId, bytes, name, null);
@@ -90,7 +90,7 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
     case "ek_liste": {
       const { ekImportVorschau } = await import("@/lib/ek-import/service");
       const r = await ekImportVorschau(session.tenantId, session.userId, name, bytes);
-      return { ok: true, text: `Vorschau: ${r.zeilen} SKUs – ${r.anzahl.geaendert} geändert, ${r.anzahl.neu} neu, ${r.anzahl.gleich} unverändert, ${r.anzahl.unbekannt} unbekannt${r.anzahl.warnungen ? `, ${r.anzahl.warnungen} mit Warnung` : ""}. Noch nichts übernommen – bitte prüfen und übernehmen.`, hinweise: [], link: `/einkauf/ek-import?id=${r.id}` };
+      return { ok: true, text: `Vorschau: ${r.zeilen} SKUs – ${r.anzahl.geaendert} geändert, ${r.anzahl.neu} neu, ${r.anzahl.gleich} unverändert, ${r.anzahl.unbekannt} unbekannt${r.anzahl.warnungen ? `, ${r.anzahl.warnungen} mit Warnung` : ""}. Noch nichts übernommen – bitte prüfen und übernehmen.`, hinweise: [], link: `/einkauf/ek-import?id=${r.id}`, details: { ek: { id: r.id, zeilen: r.zeilen, ...r.anzahl } } };
     }
     case "amazon_business":
       return { ok: false, text: "Amazon-Business-Bericht erkannt – der Bericht enthält keinen Zeitraum. Bitte unter Amazon Business mit Land und Zeitraum hochladen.", hinweise: [] };
@@ -126,7 +126,7 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
         const { runAfterImport } = await import("@/lib/hooks");
         await runAfterImport(session.tenantId);
       }
-      return { ok: r.ok, text: `${r.label ? `${r.label}: ` : ""}${r.summary}`, hinweise: r.hints ?? [] };
+      return { ok: r.ok, text: `${r.label ? `${r.label}: ` : ""}${r.summary}`, hinweise: r.hints ?? [], details: r.report ? { report: r.report } : undefined };
     }
     case "zip":
       return { ok: false, text: "ZIP", hinweise: [] };
@@ -165,7 +165,7 @@ export async function dateiHochladen(session: Session, name: string, bytes: Uint
   } catch (e) {
     r = { ok: false, text: `Die Datei konnte nicht verarbeitet werden – ${lesbarerFehler(e, 400)}`, hinweise: [] };
   }
-  return [await mitProtokoll(session, { datei: name, art, artText: info.text, ok: r.ok, text: r.text, hinweise: r.hinweise, link: r.link ?? info.link }, bytes.length)];
+  return [{ ...(await mitProtokoll(session, { datei: name, art, artText: info.text, ok: r.ok, text: r.text, hinweise: r.hinweise, link: r.link ?? info.link }, bytes.length)), details: r.details }];
 }
 
 async function mitProtokoll(session: Session, e: UploadErgebnis, groesse: number) {

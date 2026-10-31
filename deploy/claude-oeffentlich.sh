@@ -28,7 +28,7 @@ MODE="${1:-}"
 ARG="${2:-}"
 CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
 TS_PORT="${CLAUDE_PORT:-8443}"
-PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil /api/deal-eingang /api/public/lugru-deals)
+PATHS=(/.well-known /api/mcp /oauth/authorize /login /_next /icons /sendung /api/public/sendung /api/mobil /api/deal-eingang /api/public/lugru-deals /api/import/upload)
 BEGIN="# seller-system-claude BEGIN"
 END="# seller-system-claude END"
 
@@ -80,7 +80,7 @@ caddy_block() {
   printf '\n%s – Freigabe für den Claude-Konnektor und die Handy-Endpunkte (deploy/claude-oeffentlich.sh), nur diese Pfade\n' "$BEGIN"
   printf '%s {\n' "$domain"
   printf '\tencode gzip\n'
-  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/* /api/deal-eingang /api/public/lugru-deals/*\n'
+  printf '\t@frei path /.well-known/* /api/mcp /api/mcp/* /oauth/authorize /login /_next/* /icons/* /sendung/* /api/public/sendung/* /api/mobil/* /api/deal-eingang /api/public/lugru-deals/* /api/import/upload/*\n'
   printf '\thandle @frei {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$APP_PORT"
   printf '\t@api path /api/*\n'
   printf '\thandle @api {\n'
@@ -183,6 +183,8 @@ case "$MODE" in
         code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$PUBLIC$p" || true)"
         if [ "$code" = "401" ]; then echo "    ok – $p erreichbar und geschützt (ohne Schlüssel 401)."; else echo "    Hinweis: $PUBLIC$p antwortet mit $code statt 401."; fi
       done
+      code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X PUT --data-binary 'x' "$PUBLIC/api/import/upload/ungueltiger-token-zum-pruefen-0000000000" || true)"
+      if [ "$code" = "404" ]; then echo "    ok – Datei-Import erreichbar und geschützt (ungültige Adresse 404)."; else echo "    Hinweis: $PUBLIC/api/import/upload/… antwortet mit $code statt 404."; fi
     elif command -v tailscale >/dev/null && tailscale funnel status 2>/dev/null | grep -q "/api/mcp"; then
       BIND_IP="$(val BIND_IP)"; [ -z "$BIND_IP" ] || [ "$BIND_IP" = "0.0.0.0" ] && BIND_IP=127.0.0.1
       YES=(); tailscale funnel --help 2>&1 | grep -q -- "-yes" && YES=(--yes)

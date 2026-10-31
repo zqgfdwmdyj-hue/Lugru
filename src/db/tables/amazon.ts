@@ -216,6 +216,8 @@ export const amazonSettlementLines = pgTable(
     postedDate: date("posted_date", { mode: "string" }),
     sku: text("sku"),
     quantity: integer("quantity"),
+    /** Herkunft: Abrechnungsbericht (Flat File V2) oder aus dem Transaktionsbericht abgeleitet (wird beim Eintreffen des Abrechnungsberichts ersetzt). */
+    quelle: text("quelle", { enum: ["abrechnung", "transaktionen"] }).notNull().default("abrechnung"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -337,4 +339,29 @@ export const amazonRemovalShipmentMarks = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("removal_ship_mark_uq").on(t.tenantId, t.orderId, t.trackingNumber)],
+);
+
+/** Monatliche FBA-Lagergebühren (Bericht „Monthly Storage Fees“) je ASIN/FNSKU, Lager und Land – zur Auswertung je Artikel. */
+export const amazonLagergebuehren = pgTable(
+  "amazon_lagergebuehren",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    monat: text("monat").notNull(),
+    asin: text("asin").notNull(),
+    fnsku: text("fnsku").notNull().default(""),
+    lager: text("lager").notNull().default(""),
+    land: text("land").notNull().default(""),
+    titel: text("titel"),
+    groesse: text("groesse"),
+    bestandSchnitt: money("bestand_schnitt"),
+    volumenM3: money("volumen_m3"),
+    gebuehr: money("gebuehr").notNull(),
+    zuschlag: money("zuschlag"),
+    waehrung: text("waehrung").notNull().default("EUR"),
+    kategorie: text("kategorie"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("amz_lager_geb_uq").on(t.tenantId, t.monat, t.asin, t.fnsku, t.lager, t.land), index("amz_lager_geb_asin_idx").on(t.tenantId, t.asin)],
 );

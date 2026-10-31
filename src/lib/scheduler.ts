@@ -202,6 +202,8 @@ export async function runScheduledJobs(force = false) {
         if (force || due(`${t}:lugru-kategorie`, 59)) await step(t, "Lugru Deals: Kategorie aus Keepa", () => lg.lugruKategorieNachholen(t, 20));
         if (force || due(`${t}:lugru-kauf`, 1435)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
       }
+      // Datei-Import (Konnektor): Dateien nach 90 Tagen aus der Ablage löschen (Ergebnis bleibt), abgelaufene Aufträge schließen.
+      if (force || due("datei-importe-aufraeumen", 1435)) await step(t, "Datei-Importe aufräumen", async () => (await import("@/lib/datei-import/service")).importeAufraeumen());
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).
       if (force || due("medien-aufraeumen", 1435)) await step(t, "Retouren-Station: Medien aufräumen", async () => (await import("@/lib/retouren-station/fall")).medienAufraeumen());
       if (force || due(`${t}:tasks`, 59)) {

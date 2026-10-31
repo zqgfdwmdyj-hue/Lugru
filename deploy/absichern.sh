@@ -107,6 +107,8 @@ check_caddy() {
       if [ "$dc" = "401" ]; then ok "$p/api/deal-eingang erreichbar und geschützt (ohne Schlüssel 401)"; else warn "$p/api/deal-eingang antwortet mit $dc – Deal-Kurzbefehl geht nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
       local lc; lc="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$p/api/public/lugru-deals/deals")"
       if [ "$lc" = "401" ]; then ok "$p/api/public/lugru-deals/* erreichbar und geschützt (ohne Schlüssel 401)"; else warn "$p/api/public/lugru-deals/deals antwortet mit $lc – Lugru Deals erreicht das Seller-System nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
+      local ic; ic="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X PUT --data-binary 'x' "$p/api/import/upload/ungueltiger-token-zum-pruefen-0000000000")"
+      if [ "$ic" = "404" ]; then ok "$p/api/import/upload/* erreichbar und geschützt (ungültige Adresse 404)"; else warn "$p/api/import/upload/… antwortet mit $ic – Datei-Import über Claude geht nicht: bash deploy/claude-oeffentlich.sh aktualisieren"; fi
     fi
   fi
 }

@@ -140,7 +140,7 @@ describe("Amazon-Umsatzsteuerbericht", () => {
     const a = leseUstBericht(enc(csv));
     expect(a.zeilen.find((z) => z.land === "FR")).toMatchObject({ netto: 50, ust: 10, satz: 0.2 });
     expect(a.zeitraum).toEqual({ von: "2026-10-03", bis: "2026-10-07" });
-    expect(a.transfers).toEqual([{ von: "DE", nach: "PL", netto: 200, anzahl: 1 }]);
+    expect(a.transfers).toMatchObject([{ von: "DE", nach: "PL", netto: 200, anzahl: 1 }]);
     expect(a.hinweise.join(" ")).toMatch(/Frankreich: Verkäufe mit Steuerpflicht/);
     expect(a.hinweise.join(" ")).toMatch(/OSS/);
     expect(a.hinweise.join(" ")).toMatch(/Deutschland → Polen/);

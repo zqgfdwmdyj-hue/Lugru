@@ -3,7 +3,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Table } from "@/lib/tabular";
 import { todayIso } from "@/lib/dates";
+import { abrechnungAusTransaktionen } from "./transaktionen";
 import {
+  classifyTransaction,
   parseCustomerReturns,
   parseFbmReturns,
   parseTransactions,
@@ -16,11 +18,12 @@ import {
   mergeRemovalOrders, parseRemovalOrders,
   parseRemovalShipments,
   parseSettlement,
+  parseStorageFees,
   REPORT_KINDS,
   type ReportKind,
 } from "./amazon";
 
-export type ReportResult = { kind: ReportKind; label: string; rows: number; inserted: number; message?: string };
+export type ReportResult = { kind: ReportKind; label: string; rows: number; inserted: number; message?: string; details?: Record<string, unknown> };
 
 const CHUNK = 400;
 const chunks = <T,>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / CHUNK) }, (_, i) => xs.slice(i * CHUNK, (i + 1) * CHUNK));
@@ -47,6 +50,7 @@ export async function applyReport(opts: {
   let rows = 0;
   let inserted = 0;
   let message: string | undefined;
+  let details: Record<string, unknown> | undefined;
 
   switch (kind) {
     case "ledger": {
@@ -61,12 +65,34 @@ export async function applyReport(opts: {
       inserted = await insertIgnore(schema.amazonReimbursements, withTenant(parsed));
       break;
     }
+    case "storageFees": {
+      const parsed = parseStorageFees(table);
+      rows = parsed.length;
+      const LG = schema.amazonLagergebuehren;
+      for (const part of chunks(withTenant(parsed))) {
+        const res = await db
+          .insert(LG)
+          .values(part)
+          .onConflictDoUpdate({
+            target: [LG.tenantId, LG.monat, LG.asin, LG.fnsku, LG.lager, LG.land],
+            set: { gebuehr: sql`excluded.gebuehr`, zuschlag: sql`excluded.zuschlag`, bestandSchnitt: sql`excluded.bestand_schnitt`, volumenM3: sql`excluded.volumen_m3`, titel: sql`coalesce(excluded.titel, ${LG.titel})`, groesse: sql`excluded.groesse`, kategorie: sql`excluded.kategorie`, updatedAt: sql`now()` },
+          })
+          .returning({ inserted: sql<boolean>`(xmax = 0)` });
+        inserted += res.filter((r) => r.inserted).length;
+      }
+      const monate = [...new Set(parsed.map((p) => p.monat))].sort();
+      const summe = Math.round(parsed.reduce((n, p) => n + p.gebuehr, 0) * 100) / 100;
+      message = `${monate.join(", ") || "kein Monat"}: ${summe.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € Lagergebühren (geschätzt laut Amazon), ${new Set(parsed.map((p) => p.asin)).size} ASINs`;
+      break;
+    }
     case "transactions": {
       const parsed = parseTransactions(table);
       rows = parsed.length;
       inserted = await insertIgnore(schema.amazonTransactions, withTenant(parsed));
       const kinds = parsed.reduce<Record<string, number>>((m, p) => ({ ...m, [p.kind]: (m[p.kind] ?? 0) + 1 }), {});
       message = `${kinds.sale ?? 0} Verkäufe, ${kinds.refund ?? 0} Erstattungen an Kunden, ${(kinds.reimb ?? 0) + (kinds.safet ?? 0)} Zahlungen von Amazon`;
+      details = await transaktionenAbleiten(tenantId, table);
+      if (details.abrechnungenNeu) message += `; ${details.abrechnungenNeu} Abrechnungen aus dem Transaktionsbericht ergänzt (Gewinn-Seite)`;
       break;
     }
     case "fbmReturns": {
@@ -191,6 +217,9 @@ export async function applyReport(opts: {
     case "settlement": {
       const { headers, lines } = parseSettlement(table);
       rows = lines.length;
+      // Aus dem Transaktionsbericht abgeleitete Zeilen dieser Abrechnungen durch die echten ersetzen (nie doppelt).
+      const ids = [...new Set(lines.map((l) => l.settlementId))];
+      if (ids.length) await db.delete(schema.amazonSettlementLines).where(and(eq(schema.amazonSettlementLines.tenantId, tenantId), eq(schema.amazonSettlementLines.quelle, "transaktionen"), inArray(schema.amazonSettlementLines.settlementId, ids)));
       for (const h of headers) {
         await db
           .insert(schema.amazonSettlements)
@@ -287,7 +316,7 @@ export async function applyReport(opts: {
     message: message ?? null,
   });
 
-  return { kind, label: REPORT_KINDS[kind], rows, inserted, message };
+  return { kind, label: REPORT_KINDS[kind], rows, inserted, message, details };
 }
 
 export function mapAmazonStatus(external: string | null, fulfillment: "FBA" | "FBM") {
@@ -306,4 +335,34 @@ export async function lotIdsBySku(tenantId: string, skus: string[]) {
     .from(schema.lots)
     .where(and(eq(schema.lots.tenantId, tenantId), inArray(schema.lots.sku, skus)));
   return new Map(rows.map((r) => [r.sku, r.id]));
+}
+
+/**
+ * Transaktionsbericht → Abrechnungen für Gewinn-Seite und Liquidität: Kopf (Zeitraum, Auszahlung = „Übertrag“) für jede
+ * Abrechnung; Zeilen nur für Abrechnungen ohne echten Abrechnungsbericht (Quelle „transaktionen“, werden beim
+ * Eintreffen des Abrechnungsberichts ersetzt). Doppelte Zeilen über den Zeilen-Hash ausgeschlossen.
+ */
+async function transaktionenAbleiten(tenantId: string, table: Table) {
+  const { abrechnungen, zeilen } = abrechnungAusTransaktionen(table, (typ, b) => ["reimb", "safet"].includes(classifyTransaction(typ, b)));
+  if (!abrechnungen.length) return { abrechnungenNeu: 0, zeilenNeu: 0, auszahlungen: 0, mitAbrechnungsbericht: 0 };
+  const S = schema.amazonSettlements;
+  const L = schema.amazonSettlementLines;
+  const ids = abrechnungen.map((x) => x.settlementId);
+  const echte = new Set(
+    (await db.selectDistinct({ id: L.settlementId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.quelle, "abrechnung"), inArray(L.settlementId, ids)))).map((r) => r.id),
+  );
+  const vorher = new Set((await db.select({ id: S.settlementId }).from(S).where(and(eq(S.tenantId, tenantId), inArray(S.settlementId, ids)))).map((r) => r.id));
+  for (const k of abrechnungen) {
+    await db
+      .insert(S)
+      .values({ ...k, tenantId })
+      .onConflictDoUpdate({
+        target: [S.tenantId, S.settlementId],
+        // Werte aus dem Abrechnungsbericht haben Vorrang; der Transaktionsbericht füllt nur Lücken.
+        set: { startDate: sql`coalesce(${S.startDate}, excluded.start_date)`, endDate: sql`coalesce(${S.endDate}, excluded.end_date)`, depositDate: sql`coalesce(${S.depositDate}, excluded.deposit_date)`, totalAmount: sql`coalesce(${S.totalAmount}, excluded.total_amount)` },
+      });
+  }
+  const neu = zeilen.filter((z) => !echte.has(z.settlementId)).map((z) => ({ ...z, tenantId }));
+  const zeilenNeu = await insertIgnore(L, neu);
+  return { abrechnungenNeu: ids.filter((id) => !vorher.has(id)).length, zeilenNeu, auszahlungen: abrechnungen.filter((k) => k.depositDate).length, mitAbrechnungsbericht: echte.size };
 }

@@ -14,6 +14,8 @@ export type FileResult = {
   label?: string;
   summary: string;
   hints?: string[];
+  /** Amazon-Bericht: Art und Zahlen für den Datei-Import (import_status). */
+  report?: { kind: string; rows: number; inserted: number; details?: Record<string, unknown> };
 };
 
 const A1_LABEL = { sellerboard: "Arbitrage One – Sellerboard-Export", accountone: "Arbitrage One – AccountOne COG", template: "Arbitrage One – eigene Vorlage" };
@@ -55,6 +57,7 @@ export async function importAnyFile(opts: { tenantId: string; userId: string; fi
       ok: true,
       label: REPORT_KINDS[kind],
       summary: `${r.rows} Zeilen gelesen, ${r.inserted} neu.${r.message ? ` ${r.message}.` : ""}`,
+      report: { kind, rows: r.rows, inserted: r.inserted, details: r.details },
     };
   }
 

@@ -86,6 +86,7 @@ export const REPORT_TYPES: Record<Exclude<ReportKind, "settlement">, string> = {
   fees: "GET_FBA_ESTIMATED_FBA_FEES_TXT_DATA",
   transactions: "GET_DATE_RANGE_FINANCIAL_TRANSACTION_DATA",
   fbmReturns: "GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE",
+  storageFees: "GET_FBA_STORAGE_FEE_CHARGES_DATA",
 };
 const KIND_BY_TYPE = new Map<string, ReportKind>([...Object.entries(REPORT_TYPES).map(([k, v]) => [v, k as ReportKind] as const), ["GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2", "settlement"]]);
 

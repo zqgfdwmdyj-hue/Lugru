@@ -18,6 +18,7 @@ export const REPORT_KINDS = {
   fees: "FBA-Gebührenvorschau",
   transactions: "Transaktionen (Datumsbereich)",
   fbmReturns: "Retourenbericht Händlerversand",
+  storageFees: "Lagergebühren je Monat (Monthly Storage Fees)",
 } as const;
 export type ReportKind = keyof typeof REPORT_KINDS;
 
@@ -25,6 +26,7 @@ type Acc = ReturnType<typeof columnAccessor>;
 
 export function detectReport(table: Table): ReportKind | null {
   const a = columnAccessor(table.headers);
+  if (a.has("month-of-charge") && a.hasAny("estimated-monthly-storage-fee", "monthly-storage-fee")) return "storageFees";
   if (a.has("event-type") || a.has("ereignistyp")) return "ledger";
   if (a.has("reimbursement-id")) return "reimbursements";
   if (a.has("return-date") && a.hasAny("license-plate-number", "detailed-disposition")) return "customerReturns";
@@ -519,6 +521,34 @@ export function parseFbmReturns(table: Table) {
       orderAmount: parseAmount(a.get(r, ...FBM.orderAmount)),
       refundedAmount: parseAmount(a.get(r, ...FBM.refunded)),
       safetClaimId: orNull(a.get(r, ...FBM.safet)),
+    };
+  });
+}
+
+// --- Lagergebühren je Monat (Monthly Storage Fees) ------------------------------------------
+
+/** Ein Monat Lagergebühren je ASIN/FNSKU/Lager/Land. Zahlen mit Punkt (wie im Bericht). */
+export function parseStorageFees(table: Table) {
+  return each(table, (r, a) => {
+    const asin = a.get(r, "asin").toUpperCase();
+    const monat = a.get(r, "month-of-charge").slice(0, 7);
+    const gebuehr = parseAmount(a.get(r, "estimated-monthly-storage-fee", "monthly-storage-fee"));
+    if (!asin || !/^\d{4}-\d{2}$/.test(monat) || gebuehr === null) return null;
+    const num = (...k: string[]) => parseAmount(a.get(r, ...k));
+    return {
+      monat,
+      asin,
+      fnsku: a.get(r, "fnsku"),
+      lager: a.get(r, "fulfillment-center"),
+      land: a.get(r, "country-code").toUpperCase(),
+      titel: orNull(a.get(r, "product-name")),
+      groesse: orNull(a.get(r, "product-size-tier")),
+      bestandSchnitt: num("average-quantity-on-hand"),
+      volumenM3: num("estimated-total-item-volume"),
+      gebuehr,
+      zuschlag: num("est-sus"),
+      waehrung: a.get(r, "currency") || "EUR",
+      kategorie: orNull(a.get(r, "category")),
     };
   });
 }
