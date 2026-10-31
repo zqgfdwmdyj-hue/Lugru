@@ -5,6 +5,7 @@ import type { DealEingangZeile } from "@/db/tables/deal-eingang";
 import { addDaysIso, todayIso } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import { angebotsLink, bestellbestaetigung, budgetPruefen, kaufText, passtZuDeal, type Budget } from "./kauf-logic";
+import { wertSchwelleFuer } from "./logic";
 import { DealEingangFehler } from "./service";
 
 // Abschnitt 10 „Kaufen mit einem Tap“: Budget-Grenzen in der Prüfung, Kauf-Meldung mit Direktlink, „gekauft“ per
@@ -64,7 +65,8 @@ export async function budgetAnwenden(tenantId: string, zeilen: DealEingangZeile[
  */
 export async function kaufMeldung(e: typeof E.$inferSelect): Promise<{ text: string; aktionen: { aktion: string; titel: string; link: string }[] } | null> {
   const s = (await getSettings(e.tenantId)).dealEingang;
-  const kandidaten = e.zeilen.filter((z) => z.asin && (z.ampel === "gruen" || (z.ampel !== "rot" && (z.wert?.wert ?? 0) >= (s.wertSchwelle ?? 70))));
+  const schwelle = wertSchwelleFuer(e.quelle, s);
+  const kandidaten = e.zeilen.filter((z) => z.asin && (z.ampel === "gruen" || (z.ampel !== "rot" && (z.wert?.wert ?? 0) >= schwelle)));
   const z = kandidaten.sort((a, b) => (b.gewinn ?? 0) * (b.empfohlen ?? 1) - (a.gewinn ?? 0) * (a.empfohlen ?? 1))[0];
   if (!z) return null;
   const b = await budgetEinstellung(e.tenantId);
@@ -138,7 +140,7 @@ export async function gekauftAusMail(tenantId: string, m: { messageKey: string; 
   const offen = await db
     .select()
     .from(E)
-    .where(and(eq(E.tenantId, tenantId), inArray(E.status, ["neu", "bestellvorschlag"]), isNull(E.gekauftAm), gte(E.createdAt, new Date(Date.now() - 14 * 86_400_000))))
+    .where(and(eq(E.tenantId, tenantId), inArray(E.status, ["neu", "bestellvorschlag"]), eq(E.historisch, false), isNull(E.gekauftAm), gte(E.createdAt, new Date(Date.now() - 14 * 86_400_000))))
     .orderBy(desc(E.createdAt))
     .limit(200);
   for (const pos of b.positionen) {

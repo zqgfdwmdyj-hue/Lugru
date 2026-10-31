@@ -28,6 +28,7 @@ import {
   type Angebot,
 } from "./logic";
 import { risikoPruefen, type RisikoDaten } from "./risiko-logic";
+import { TEST_KANAL_SQL as TEST_KANAL_RE } from "@/lib/lugru-deals/historie-logic";
 import type { VerlaufZeile } from "./chart-logic";
 
 // Deal-Eingang: geteilte Nachricht/Screenshot/Datei speichern, Angebote erkennen (KI, sonst Regeln), je Angebot ASIN
@@ -370,13 +371,20 @@ export async function zeileAendern(tenantId: string, id: string, nr: number, aen
 
 // ---- Lesen und Entscheiden ---------------------------------------------------------------------------------------
 
-export async function eingaenge(tenantId: string, f: { status?: string; quelle?: string; ampel?: string; seit?: Date; limit?: number } = {}) {
+/**
+ * Eingänge (neueste zuerst). Quelle: genau oder als Gruppe („Lugru Deals“ trifft auch „Lugru Deals · #kanal“).
+ * Aus der Lugru-History nachgetragene Eingänge (historisch) nur mit Quellen-Filter oder mitHistorie – sonst würden
+ * Tausende alte Deals den Posteingang füllen.
+ */
+export async function eingaenge(tenantId: string, f: { status?: string; quelle?: string; ampel?: string; seit?: Date; limit?: number; mitHistorie?: boolean } = {}) {
   const w = [eq(E.tenantId, tenantId)];
   if (f.status) w.push(eq(E.status, f.status as (typeof E.status.enumValues)[number]));
   if (f.ampel) w.push(eq(E.ampel, f.ampel as "gruen" | "gelb" | "rot"));
-  if (f.quelle) w.push(sql`lower(${E.quelle}) = lower(${f.quelle})`);
+  const q = f.quelle?.trim();
+  if (q) w.push(sql`(lower(${E.quelle}) = lower(${q}) or lower(${E.quelle}) like lower(${q.replace(/[%_\\]/g, "")}) || ' · %')`);
+  if (!q && !f.mitHistorie) w.push(eq(E.historisch, false));
   if (f.seit) w.push(gte(E.createdAt, f.seit));
-  return db.select({ id: E.id, weg: E.weg, quelle: E.quelle, status: E.status, pruefung: E.pruefung, ampel: E.ampel, zusammenfassung: E.zusammenfassung, zeilen: E.zeilen, dateiNamen: E.dateiNamen, fehler: E.fehler, preislisteId: E.preislisteId, grund: E.grund, createdAt: E.createdAt }).from(E).where(and(...w)).orderBy(desc(E.createdAt)).limit(f.limit ?? 50);
+  return db.select({ id: E.id, weg: E.weg, quelle: E.quelle, status: E.status, pruefung: E.pruefung, ampel: E.ampel, zusammenfassung: E.zusammenfassung, zeilen: E.zeilen, dateiNamen: E.dateiNamen, fehler: E.fehler, preislisteId: E.preislisteId, grund: E.grund, historisch: E.historisch, createdAt: E.createdAt }).from(E).where(and(...w)).orderBy(desc(E.createdAt)).limit(f.limit ?? 50);
 }
 
 export async function eingang(tenantId: string, id: string) {
@@ -392,13 +400,14 @@ export async function statusSetzen(tenantId: string, id: string, status: keyof t
 }
 
 export async function quellen(tenantId: string) {
-  const rows = await db.select({ id: E.id, quelle: E.quelle, status: E.status, zeilen: E.zeilen, entschiedenAm: E.entschiedenAm }).from(E).where(eq(E.tenantId, tenantId));
+  // Trefferquote je Absender aus echten Eingängen; die Lugru-History steht unten als eigene Zeile „Lugru Deals“.
+  const rows = await db.select({ id: E.id, quelle: E.quelle, status: E.status, zeilen: E.zeilen, entschiedenAm: E.entschiedenAm }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.historisch, false)));
   const { realerRoi } = await import("./ablauf");
   const real = await realerRoi(tenantId, rows.filter((r) => r.status === "gekauft" || r.status === "bestellvorschlag"));
   const quote = trefferquote(rows.map((r) => ({ quelle: r.quelle, status: r.status, zeilen: r.zeilen.map((z) => ({ ampel: z.ampel, roi: z.roi })) })));
   const liste = quote.map((q) => {
     const werte = rows.filter((r) => (r.quelle?.trim() || "unbekannt") === q.quelle && real.has(r.id)).map((r) => real.get(r.id)!);
-    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length, gruppenKaeufe: undefined as number | undefined };
+    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length, gruppenKaeufe: undefined as number | undefined, link: `/deal-eingang?quelle=${encodeURIComponent(q.quelle)}`, testAusgeblendet: undefined as number | undefined };
   });
   // Lugru Deals als eine Quelle über alle Posts (auch History ohne Eingang): gemeldet, grün, eigene Käufe, Gruppen-✅.
   const L = schema.lugruDealsHistorie;
@@ -409,13 +418,16 @@ export async function quellen(tenantId: string) {
       gekauft: sql<number>`count(*) filter (where ${L.gekauftErkannt} or exists (select 1 from deal_eingaenge e where e.id = ${L.eingangId} and e.status in ('gekauft', 'b2b', 'bestellvorschlag')))::int`,
       verworfen: sql<number>`count(*) filter (where exists (select 1 from deal_eingaenge e where e.id = ${L.eingangId} and e.status = 'verworfen'))::int`,
       kaeufe: sql<number>`coalesce(sum(${L.kaeufe}), 0)::int`,
+      mitEingang: sql<number>`count(${L.eingangId})::int`,
     })
     .from(L)
-    .where(eq(L.tenantId, tenantId));
+    .where(and(eq(L.tenantId, tenantId), sql`coalesce(btrim(${L.kanal}), '') !~* ${TEST_KANAL_RE}`));
+  const [{ test }] = await db.select({ test: sql<number>`count(*)::int` }).from(L).where(and(eq(L.tenantId, tenantId), sql`coalesce(btrim(${L.kanal}), '') ~* ${TEST_KANAL_RE}`));
   if (lg && lg.n > 0) {
     const lugruReal = liste.filter((q) => q.quelle.startsWith("Lugru Deals")).flatMap((q) => (q.roiReal !== null ? [{ roi: q.roiReal, n: q.roiRealN }] : []));
     const n = lugruReal.reduce((a, b) => a + b.n, 0);
-    liste.unshift({ quelle: "Lugru Deals", eingaenge: lg.n, angebote: lg.n, gruen: lg.gruen, gekauft: lg.gekauft, verworfen: lg.verworfen, roiPrognose: null, roiReal: n ? Math.round(lugruReal.reduce((a, b) => a + b.roi * b.n, 0) / n) : null, roiRealN: n, gruppenKaeufe: lg.kaeufe });
+    // Link: Deal-Eingang mit Filter „Lugru Deals“, solange dort noch nichts steht die Lugru-Deals-Seite.
+    liste.unshift({ quelle: "Lugru Deals", eingaenge: lg.n, angebote: lg.n, gruen: lg.gruen, gekauft: lg.gekauft, verworfen: lg.verworfen, roiPrognose: null, roiReal: n ? Math.round(lugruReal.reduce((a, b) => a + b.roi * b.n, 0) / n) : null, roiRealN: n, gruppenKaeufe: lg.kaeufe, link: lg.mitEingang > 0 ? `/deal-eingang?quelle=${encodeURIComponent("Lugru Deals")}` : "/deal-eingang/lugru", testAusgeblendet: test || undefined });
   }
   return liste;
 }
@@ -428,7 +440,11 @@ export async function aufraeumen(tenantId: string, now = new Date()) {
   const alt = await db.select({ id: E.id, dateiIds: E.dateiIds }).from(E).where(and(eq(E.tenantId, tenantId), lt(E.createdAt, grenze)));
   const dateiIds = alt.flatMap((a) => a.dateiIds);
   if (dateiIds.length) await db.delete(schema.files).where(and(eq(schema.files.tenantId, tenantId), inArray(schema.files.id, dateiIds)));
-  if (alt.length) await db.delete(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, alt.map((a) => a.id))));
+  if (alt.length) {
+    // Lugru-Deals verweisen dann auf keinen Eingang mehr (der Deal selbst bleibt in der Lugru-History).
+    await db.update(schema.lugruDealsHistorie).set({ eingangId: null }).where(and(eq(schema.lugruDealsHistorie.tenantId, tenantId), inArray(schema.lugruDealsHistorie.eingangId, alt.map((a) => a.id))));
+    await db.delete(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, alt.map((a) => a.id))));
+  }
   return alt.length;
 }
 

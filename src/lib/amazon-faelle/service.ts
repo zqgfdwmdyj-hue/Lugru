@@ -7,6 +7,7 @@ import { getSettings } from "@/lib/settings";
 import {
   BEREICH_LABEL,
   dringlichkeitVon,
+  echterFall,
   einordnen,
   fallAntwort,
   freischaltungsPaket,
@@ -39,6 +40,27 @@ const uniq = <T,>(a: T[]) => [...new Set(a)];
 export class FallFehler extends Error {}
 
 /** Inhaber (Ludwig) – Empfänger der Meldungen bei Entzug und Markenbeschwerde. */
+/**
+ * B19.4: „Zahlung abgelehnt“ (z. B. 18× „Pagamento rifiutato“ zur selben Bestellung) ist kein Fall, sondern genau eine
+ * Aufgabe je Bestellung – weitere Mails zählen nur hoch. Erledigte Aufgaben bleiben erledigt.
+ */
+async function zahlungsAufgabe(tenantId: string, m: { bestellnummer: string | null; betreff: string; am: Date }): Promise<void> {
+  const ref = m.bestellnummer ?? musterVon(m.betreff).slice(0, 60);
+  const key = `amazon-zahlung:${ref}`;
+  const T = schema.tasks;
+  const [t] = await db.select({ id: T.id, status: T.status, notes: T.notes }).from(T).where(and(eq(T.tenantId, tenantId), eq(T.systemKey, key)));
+  if (t) {
+    if (t.status === "done") return;
+    const n = Number(/(\d+) Mails?/.exec(t.notes ?? "")?.[1] ?? "1") + 1;
+    await db.update(T).set({ notes: `${n} Mails „Zahlung abgelehnt“ zu ${m.bestellnummer ? `Bestellung ${m.bestellnummer}` : "dieser Zahlung"}, zuletzt ${m.am.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}: „${m.betreff.slice(0, 120)}“. Zahlungsmittel bei Amazon prüfen – kein Amazon-Fall.` }).where(eq(T.id, t.id));
+    return;
+  }
+  await db
+    .insert(T)
+    .values({ tenantId, title: `Zahlung abgelehnt${m.bestellnummer ? ` – Bestellung ${m.bestellnummer}` : ""}: Zahlungsmittel prüfen`, notes: `1 Mail „Zahlung abgelehnt“ zu ${m.bestellnummer ? `Bestellung ${m.bestellnummer}` : "dieser Zahlung"}, ${m.am.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}: „${m.betreff.slice(0, 120)}“. Zahlungsmittel bei Amazon prüfen – kein Amazon-Fall.`, priority: "normal", category: "amazon", systemKey: key })
+    .onConflictDoNothing();
+}
+
 async function inhaber(tenantId: string): Promise<string[]> {
   const M = schema.memberships;
   const r = await db.select({ userId: M.userId }).from(M).where(and(eq(M.tenantId, tenantId), eq(M.role, "owner")));
@@ -106,6 +128,7 @@ async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string
     // Bestell-/Versand-/Zahlungsmails sind nie ein Fall; Routinemails ohne Vorgangsbezug (Newsletter) auch nicht.
     if (e.routine || (m.category === "noise" && (e.bereich === "info" || e.bereich === "sonstiges") && !e.fallnummer)) {
       await db.insert(U).values({ tenantId, emailId: m.id, grund: e.routine ? "routine" : "noise" }).onConflictDoNothing();
+      if (e.routineArt === "zahlung_fehler") await zahlungsAufgabe(tenantId, { bestellnummer: e.bestellnummer, betreff: m.subject ?? "", am: m.receivedAt });
       erg.uebersprungen++;
       continue;
     }
@@ -169,7 +192,8 @@ async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string
         frist: status === "offen" ? e.frist : null,
         ablehnungsgruende: e.ablehnungsgruende,
         verlangt: e.verlangt,
-        zustaendig: settings.faelle.zustaendig,
+        // B19.4: „zuständig: VA“ nur bei echten Fällen – nicht bei Info, „Sonstiges“ oder „bitte prüfen“.
+        zustaendig: echterFall({ status, bereich: e.bereich, unsicher: e.sicherheit < UNSICHER_AB }) ? settings.faelle.zustaendig : null,
         runden: e.phase === "geschlossen_ohne" ? 1 : 0,
         ersteMailAm: m.receivedAt,
         letzteMailAm: m.receivedAt,
@@ -226,7 +250,7 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
     const gruende: string[] = [];
     if (ein.every((e) => e.routine) && !vonHand) {
       if (v.status !== "info" || v.bereich !== "info") {
-        Object.assign(set, { bereich: "info", phase: "info", status: "info", dringlichkeit: "grau", frist: null, unsicher: false });
+        Object.assign(set, { bereich: "info", phase: "info", status: "info", dringlichkeit: "grau", frist: null, unsicher: false, ...(v.zustaendig === "va" && !v.taskId ? { zustaendig: null } : {}) });
         gruende.push("Routine-Mail (Bestellung/Versand/Zahlung) – kein Fall");
       }
     } else if (!vonHand) {
@@ -245,6 +269,12 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
         if (frist !== v.frist && !gruende.length) gruende.push(frist ? `Frist ${frist}` : "keine Frist in der Mail – Standardfrist entfernt");
         else if (dringlichkeit !== v.dringlichkeit && !gruende.length) gruende.push(`Dringlichkeit ${v.dringlichkeit} → ${dringlichkeit}`);
       }
+    }
+    // B19.4: „zuständig: VA“ nur bei echten Fällen (ohne VA-Aufgabe und ohne Handarbeit zurücknehmen).
+    const nachher = { status: (set.status ?? v.status) as string, bereich: (set.bereich ?? v.bereich) as string, unsicher: set.unsicher ?? v.unsicher };
+    if (v.zustaendig === "va" && !v.taskId && !vonHand && !echterFall(nachher) && set.zustaendig === undefined) {
+      set.zustaendig = null;
+      gruende.push("zuständig: VA entfernt – kein echter Fall");
     }
     if (marktplatz !== v.marktplatz && (marktplatz || v.marktplatz === "US")) {
       set.marktplatz = marktplatz;
@@ -606,7 +636,7 @@ export async function freischaltungen(tenantId: string, f: { marke?: string | nu
   const genehmigtAsins = uniq(rows.filter((r) => r.phase === "genehmigt").flatMap((r) => r.asins));
   const deals = genehmigtAsins.length ? await db.select({ asin: schema.deals.asin }).from(schema.deals).where(and(eq(schema.deals.tenantId, tenantId), inArray(schema.deals.asin, genehmigtAsins))) : [];
   const eingaenge = genehmigtAsins.length
-    ? await db.select({ zeilen: schema.dealEingaenge.zeilen }).from(schema.dealEingaenge).where(and(eq(schema.dealEingaenge.tenantId, tenantId), eq(schema.dealEingaenge.status, "neu")))
+    ? await db.select({ zeilen: schema.dealEingaenge.zeilen }).from(schema.dealEingaenge).where(and(eq(schema.dealEingaenge.tenantId, tenantId), eq(schema.dealEingaenge.status, "neu"), eq(schema.dealEingaenge.historisch, false)))
     : [];
   const einkaufbar = new Set([...deals.map((d) => d.asin), ...eingaenge.flatMap((e) => e.zeilen.map((z) => z.asin))].filter((a): a is string => !!a && genehmigtAsins.includes(a)));
   return { liste, quote, einkaufbar: [...einkaufbar] };

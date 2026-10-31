@@ -187,6 +187,8 @@ export const dealEingaenge = pgTable(
     discordRef: text("discord_ref"),
     /** Reales Ergebnis (sellerboard, 30/60/90 Tage nach Wareneingang). */
     ergebnis: jsonb("ergebnis").$type<DealErgebnis | null>(),
+    /** B19.1: aus der Lugru-History nachgetragen (Ampel aus Post-Zahlen + Keepa beim Posten, kein Push). */
+    historisch: boolean("historisch").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung), uniqueIndex("deal_eingaenge_ref_uq").on(t.tenantId, t.quelleRef)],
@@ -312,6 +314,8 @@ export type LugruKeepa = {
   gekauftImMonat: number | null;
   marke: string | null;
   kategorie: string | null;
+  /** B19.1: Kategorie bei Keepa nachgefragt (auch wenn Keepa keine kennt). */
+  kategorieAm?: string;
 };
 
 /** Deal-Kanäle der Lugru-Gruppe, die das Seller-System liest (Weg B): Stand live und Fortschritt der History. */

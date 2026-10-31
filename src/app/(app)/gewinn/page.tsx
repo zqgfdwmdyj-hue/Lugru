@@ -5,7 +5,7 @@ import { CHANNEL_LABEL } from "@/lib/labels";
 import { Kpi } from "@/components/kpi";
 import { skuCostMap } from "@/lib/money/costs";
 import { amazonProfit, dataStand, orderLines } from "@/lib/money/profit";
-import { amazonQuelle, FEE_FREE_CHANNELS, mitAmazonErsatz, summarizeAmazon, summarizeChannels, totalsOf } from "@/lib/money/profit-logic";
+import { amazonQuelle, FEE_FREE_CHANNELS, gewinnBasis, mitAmazonErsatz, summarizeAmazon, summarizeChannels, totalsOf, ueberleitung } from "@/lib/money/profit-logic";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
 import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
@@ -21,12 +21,13 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 export default async function GewinnPage({ searchParams }: { searchParams: Promise<{ zeitraum?: string; sort?: string }> }) {
   const session = await requireArea("geld");
   const sp = await searchParams;
-  const r: Range = sp.zeitraum && sp.zeitraum in RANGES ? (sp.zeitraum as Range) : "30";
+  // B19.3: Standard „Dieser Monat“ (ab dem 1.) – wie die Kennzahlen auf der Startseite.
+  const r: Range = sp.zeitraum && sp.zeitraum in RANGES ? (sp.zeitraum as Range) : "monat";
   const [from, to] = rangeOf(r, todayIso());
   const t = session.tenantId;
   const settings = await getSettings(t);
   const costs = await skuCostMap(t);
-  const [{ skus, nonSku, transfers }, lines, stand, sbAmazon] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to), dataStand(t), sellerboardRange(t, from, to, "amazon")]);
+  const [{ skus, nonSku, transfers }, lines, stand, sbAmazon, sbEbay] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to), dataStand(t), sellerboardRange(t, from, to, "amazon"), sellerboardRange(t, from, to, "ebay")]);
 
   const nonSkuTotal = nonSku.reduce((n, x) => n + x.amount, 0);
   const amazon = skus.length || nonSku.length
@@ -40,6 +41,8 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   // B15.4: Quelle je Zeile – Amazon aus der Abrechnung, solange sie den Zeitraum abdeckt, sonst sellerboard.
   const aq = amazonQuelle({ abrechnungBis: stand.settlement, bis: to, hatAbrechnung: Boolean(amazon), sb: sbAmazon });
   const ersatz = aq.art === "sellerboard" && sbAmazon ? mitAmazonErsatz(tot, amazon, sbAmazon, settings.vatRate) : null;
+  // B19.3: eine Basis für Kopf, Überleitung und Gewinnwerte (nicht mehr Kopf aus sellerboard, Tabelle aus der Abrechnung).
+  const basis = gewinnBasis(tot, amazon, ersatz, Boolean(sbAmazon?.complete && !sbAmazon.missingCost));
   const kanalQuelle = (c: string) => `Aufträge (${CHANNEL_LABEL[c] ?? c}, Stand ${dt(stand.orders.get(c))})`;
   const fees = skus.reduce((n, s) => n + s.fees, 0);
   const cogs = skus.reduce((n, s) => n + (s.cogs ?? 0), 0) + channels.reduce((n, c) => n + c.cogsKnown, 0);
@@ -60,9 +63,15 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
     ? new Map((await db.select().from(schema.sellerboardSkuMonths).where(and(eq(schema.sellerboardSkuMonths.tenantId, t), eq(schema.sellerboardSkuMonths.month, calMonth)))).map((x) => [x.sku, x]))
     : null;
   const sbThis = calMonth ? sbMonths.find((m) => m.month === calMonth) ?? null : null;
-  // Überleitung zur Startseite (sellerboard) – gleicher Zeitraum, andere Quelle und anderer Umfang.
+  // Überleitung zur Startseite (sellerboard) je Kanal – aus denselben Zahlen wie der Kopf (B19.3).
   const sbR = await sellerboardRange(t, from, to);
-  const vatPct = Math.round(settings.vatRate * 100);
+  const bridge = ueberleitung({
+    vatRate: settings.vatRate,
+    sbAmazon,
+    sbEbay,
+    amazon: ersatz ? { revenueNet: ersatz.amazonRevenueNet, ergebnis: ersatz.amazonResult, aus: "sellerboard", text: aq.text } : amazon ? { revenueNet: amazon.revenueNet, ergebnis: amazon.provisional, aus: "abrechnung", text: aq.text } : null,
+    kanaele: channels.map((c) => ({ channel: c.channel, label: CHANNEL_LABEL[c.channel] ?? c.channel, revenueNet: c.revenueNet, provisional: c.provisional })),
+  });
 
   return (
     <>
@@ -88,14 +97,14 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       )}
 
       <div className="grid-kpi">
-        <Kpi testid="kpi-revenue" label="Umsatz netto (alle Kanäle)" value={formatEuro(ersatz ? ersatz.revenueNet : tot.revenueNet)} note={ersatz ? "Amazon laut sellerboard (Abrechnung fehlt noch)" : undefined} state={tot.missing.priceLines ? "unvollstaendig" : "ok"} missing={tot.missing.priceLines ? [`Preis für ${plural(tot.missing.priceLines, "Position", "Positionen")}`] : undefined} fixHref={`${fix}#preis`} period={period} source="Amazon-Abrechnungen, Aufträge" stand={stand.settlement ? formatDate(stand.settlement) : undefined} />
+        <Kpi testid="kpi-revenue" label="Umsatz netto (alle Kanäle)" value={formatEuro(basis.revenueNet)} note={ersatz ? "Amazon laut sellerboard (Abrechnung fehlt noch)" : undefined} state={tot.missing.priceLines ? "unvollstaendig" : "ok"} missing={tot.missing.priceLines ? [`Preis für ${plural(tot.missing.priceLines, "Position", "Positionen")}`] : undefined} fixHref={`${fix}#preis`} period={period} source="Amazon-Abrechnungen, Aufträge" stand={stand.settlement ? formatDate(stand.settlement) : undefined} />
         <Kpi
           testid="kpi-provisional"
           label="Vorläufiges Ergebnis"
-          value={formatEuro(ersatz ? ersatz.provisional : tot.provisional)}
-          danger={(ersatz ? ersatz.provisional : tot.provisional) < 0}
+          value={formatEuro(basis.provisional)}
+          danger={basis.provisional < 0}
           state={tot.complete ? "ok" : "unvollstaendig"}
-          note={ersatz ? `Amazon: Gewinn laut sellerboard (${aq.text}); übrige Kanäle: Umsatz minus bekannte Kosten` : "Umsatz minus bekannte Kosten (Gebühren, EK, sonstige)"}
+          note={ersatz ? `Amazon: Nettogewinn laut sellerboard (${aq.text}; mit Erstattungen, Werbung, Fixkosten aus sellerboard); übrige Kanäle: Umsatz minus bekannte Kosten (ohne Fixkosten)` : "Umsatz minus bekannte Kosten aus der Amazon-Abrechnung und den Aufträgen (mit Erstattungen, ohne Fixkosten)"}
           missing={missing}
           fixHref={fix}
           period={period}
@@ -103,13 +112,13 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
         <Kpi
           testid="kpi-profit"
           label="Gewinn aus vollständig erfassten Verkäufen"
-          value={tot.completeRevenueNet > 0 || tot.complete ? formatEuro(tot.completeProfit) : "nicht berechenbar"}
-          danger={tot.completeProfit < 0}
-          state={tot.complete ? "ok" : tot.coverage > 0 ? "unvollstaendig" : "fehlt"}
-          note={tot.complete ? `Marge ${tot.revenueNet ? `${((tot.completeProfit / tot.revenueNet) * 100).toFixed(1).replace(".", ",")} %` : "–"}` : tot.completeRevenueNet > 0 ? `umfasst nur ${tot.coverage} % des Umsatzes (${formatEuro(tot.completeRevenueNet)}) – Verkäufe mit Preis, EK und Gebühren` : "kein Verkauf mit Preis, EK und Gebühren – erst nach dem Nachtragen berechenbar"}
+          value={basis.completeRevenueNet > 0 || tot.complete ? formatEuro(basis.completeProfit) : "nicht berechenbar"}
+          danger={basis.completeProfit < 0}
+          state={basis.coverage >= 100 ? "ok" : basis.coverage > 0 ? "unvollstaendig" : "fehlt"}
+          note={`${basis.coverage >= 100 ? `Marge ${basis.revenueNet ? `${((basis.completeProfit / basis.revenueNet) * 100).toFixed(1).replace(".", ",")} %` : "–"}` : basis.completeRevenueNet > 0 ? `umfasst ${basis.coverage} % des Umsatzes (${formatEuro(basis.completeRevenueNet)})` : "kein Verkauf mit Preis, EK und Gebühren – erst nach dem Nachtragen berechenbar"}${ersatz ? " · Amazon: sellerboard-Gewinn, übrige Kanäle: nur Positionen mit Preis, EK und Gebühr" : " · nur Positionen mit Preis, EK und Gebühr"}`}
           period={period}
         />
-        <Kpi testid="kpi-costs" label="Bekannte Kosten" value={formatEuro(neg(fees) + cogs + neg(nonSkuTotal) + channels.reduce((n, c) => n + c.feesKnown, 0))} note={`Amazon-Gebühren ${formatEuro(neg(fees))} · Wareneinsatz ${formatEuro(cogs)} · Kanalgebühren ${formatEuro(channels.reduce((n, c) => n + c.feesKnown, 0))} · sonstige ${formatEuro(neg(nonSkuTotal))}`} period={period} />
+        <Kpi testid="kpi-costs" label="Bekannte Kosten" value={formatEuro(neg(fees) + cogs + neg(nonSkuTotal) + channels.reduce((n, c) => n + c.feesKnown, 0))} note={`${ersatz ? `Amazon nur bis zur Abrechnung (${stand.settlement ? formatDate(stand.settlement) : "–"}), danach im sellerboard-Gewinn enthalten · ` : ""}Amazon-Gebühren ${formatEuro(neg(fees))} · Wareneinsatz ${formatEuro(cogs)} · Kanalgebühren ${formatEuro(channels.reduce((n, c) => n + c.feesKnown, 0))} · sonstige ${formatEuro(neg(nonSkuTotal))}`} period={period} />
       </div>
       <details className="small muted">
         <summary style={{ cursor: "pointer" }}>Datenstand und Rechenweg</summary>
@@ -122,29 +131,58 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       </details>
 
 
+      <section className="card card-pad small" data-testid="profit-werte">
+        <h2 style={{ marginTop: 0 }}>Welche Gewinnzahl ist welche? ({period})</h2>
+        <table className="table small">
+          <thead><tr><th>Wert</th><th className="right">Betrag</th><th>Quelle und was drin ist</th></tr></thead>
+          <tbody>
+            <tr data-testid="wert-vorlaeufig"><td>Vorläufiges Ergebnis (Kachel oben)</td><td className="num right">{formatEuro(basis.provisional)}</td><td>{ersatz ? <>Amazon: <strong>Nettogewinn laut sellerboard</strong> ({aq.text}) – mit Erstattungen, Werbung und Fixkosten aus sellerboard; übrige Kanäle aus den Aufträgen: Umsatz − bekannte Gebühren − EK, ohne Fixkosten.</> : <>Amazon-Abrechnung + Aufträge: Umsatz − bekannte Kosten; Erstattungen abgezogen, ohne Fixkosten und ohne Werbung außerhalb der Abrechnung.</>}</td></tr>
+            <tr data-testid="wert-vollstaendig"><td>Gewinn aus vollständig erfassten Verkäufen (Kachel oben)</td><td className="num right">{basis.completeRevenueNet > 0 || tot.complete ? formatEuro(basis.completeProfit) : "nicht berechenbar"}</td><td>Wie „vorläufig“, aber nur Verkäufe mit Preis, EK und Gebühr ({basis.coverage} % des Umsatzes){ersatz ? "; Amazon als sellerboard-Gewinn" : ""}.</td></tr>
+            {sbR && <tr data-testid="wert-sb-netto"><td>sellerboard Nettogewinn (Startseite)</td><td className="num right">{formatEuro(sbR.netProfit)}</td><td>sellerboard-Dashboard ({sbR.channels.map((c) => (c === "ebay" ? "eBay" : "Amazon")).join(" + ")}) – mit Erstattungen, Werbung und Fixkosten; EK aus sellerboard{sbR.ebayOwnCost ? " (eBay: EK aus dem Seller-System)" : ""}.</td></tr>}
+            {sbR && <tr data-testid="wert-sb-db"><td>sellerboard Deckungsbeitrag</td><td className="num right">{formatEuro(sbR.grossProfit)}</td><td>wie sellerboard Nettogewinn, aber <strong>ohne Fixkosten</strong>.</td></tr>}
+            {sbThis && <tr data-testid="wert-sb-monat"><td>sellerboard Monatswert (Tabelle unten)</td><td className="num right">{formatEuro(sbThis.netProfit)}</td><td>Nettogewinn laut sellerboard-Monatsabgleich (Stand {sbThis.syncedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}) – zu einem anderen Zeitpunkt abgerufen als die Startseite, daher kleine Abweichungen möglich.</td></tr>}
+          </tbody>
+        </table>
+      </section>
+
       <section className="card" id="ueberleitung" data-testid="profit-bridge" style={{ overflow: "auto" }}>
-        <div className="card-head"><h2>Überleitung: sellerboard (Startseite) ↔ Seller-System (diese Seite)</h2></div>
+        <div className="card-head"><h2>Überleitung je Kanal: sellerboard (Startseite) ↔ diese Seite</h2></div>
         {!sbR ? (
           <div className="card-pad small muted" style={{ paddingTop: 0 }} data-testid="profit-bridge-none">
-            Für {period} liegen keine sellerboard-Werte vor (gespeichert sind die letzten 30 Tage, dieser und letzter Monat). Vergleich bei „Letzte 30 Tage“, „Dieser Monat“ oder „Letzter Monat“.
+            Für {period} liegen keine sellerboard-Werte vor (gespeichert sind die letzten 30 Tage, dieser und letzter Monat). Vergleich bei „Dieser Monat“, „Letzte 30 Tage“ oder „Letzter Monat“.
           </div>
         ) : (
           <>
+            <div className="card-pad small muted" style={{ paddingTop: 0 }}>
+              Gleicher Zeitraum ({period}{sbR.complete ? "" : ` – sellerboard nur ${sbR.daysCovered} von ${sbR.daysWanted} Tagen`}), dieselben Zahlen wie oben. Umsatz netto = sellerboard brutto ÷ {(1 + settings.vatRate).toLocaleString("de-DE")}.
+            </div>
             <table className="table">
-              <thead><tr><th></th><th className="right">sellerboard (Startseite)</th><th className="right">Seller-System (diese Seite)</th></tr></thead>
+              <thead><tr><th>Kanal</th><th className="right">sellerboard netto</th><th className="right">diese Seite netto</th><th className="right">Abweichung</th><th className="right">sellerboard Gewinn</th><th className="right">diese Seite Ergebnis</th><th>Warum</th></tr></thead>
               <tbody>
-                <tr><td>Quelle</td><td className="right small">sellerboard-Dashboard ({sbR.channels.map((c) => (c === "ebay" ? "eBay" : "Amazon")).join(" + ")})</td><td className="right small">Amazon-Abrechnungen + Aufträge ({[amazon ? "Amazon" : null, ...channels.map((c) => CHANNEL_LABEL[c.channel] ?? c.channel)].filter(Boolean).join(", ") || "–"})</td></tr>
-                <tr><td>Zeitraum</td><td className="right small">{formatDate(sbR.from)} – {formatDate(sbR.to)} (sellerboard-Tage, UTC){sbR.complete ? "" : ` – nur ${sbR.daysCovered} von ${sbR.daysWanted} Tagen vorhanden`}</td><td className="right small">{period}</td></tr>
-                <tr><td>Umfang</td><td className="right small">alle Bestellungen, sobald sie eingehen</td><td className="right small">Amazon erst mit der Abrechnung ({stand.settlement ? `bis ${formatDate(stand.settlement)}` : "keine Abrechnung"}); vollständig berechnet: {tot.coverage} % des Umsatzes</td></tr>
-                <tr data-testid="bridge-sales"><td>Umsatz</td><td className="num right">{formatEuro(sbR.sales)} <span className="small muted">brutto</span><div className="small muted">≈ {formatEuro(sbR.sales / (1 + settings.vatRate))} netto (÷ {(1 + settings.vatRate).toLocaleString("de-DE")}, gerundet)</div></td><td className="num right">{formatEuro(tot.revenueNet)} <span className="small muted">netto</span></td></tr>
-                <tr data-testid="bridge-profit"><td>Ergebnis</td><td className="num right">{formatEuro(sbR.netProfit)} <span className="small muted">Gewinn</span><div className="small muted">Deckungsbeitrag {formatEuro(sbR.grossProfit)}</div></td><td className="num right">{formatEuro(tot.provisional)} <span className="small muted">vorläufig</span><div className="small muted">vollständig erfasst: {tot.completeRevenueNet > 0 || tot.complete ? formatEuro(tot.completeProfit) : "nicht berechenbar"}</div></td></tr>
-                <tr><td>EK</td><td className="right small">Amazon: EK in sellerboard{sbR.ebayOwnCost ? "; eBay: gültiger EK aus dem Seller-System" : ""}{sbR.missingCost ? " – teils fehlend" : ""}</td><td className="right small">gültiger EK aus dem Seller-System{tot.missing.costSkus ? ` – fehlt für ${tot.missing.costSkus} SKU${tot.missing.costSkus === 1 ? "" : "s"}` : ""}</td></tr>
-                <tr data-testid="bridge-diff"><td>Abweichung Umsatz netto</td><td className="num right" colSpan={2}>{formatEuro(sbR.sales / (1 + settings.vatRate) - tot.revenueNet)}</td></tr>
+                {bridge.zeilen.map((z) => (
+                  <tr key={z.kanal} data-testid={`bridge-${z.kanal.toLowerCase()}`}>
+                    <td>{z.kanal}</td>
+                    <td className="num right">{z.sbNetto === null ? <span className="muted">–</span> : formatEuro(z.sbNetto)}</td>
+                    <td className="num right">{z.sysNetto === null ? <span className="muted">–</span> : formatEuro(z.sysNetto)}</td>
+                    <td className="num right" style={{ color: z.diffNetto && Math.abs(z.diffNetto) >= 1 ? "var(--warn)" : undefined }}>{z.diffNetto === null ? "–" : formatEuro(z.diffNetto)}</td>
+                    <td className="num right">{z.sbGewinn === null ? <span className="muted">–</span> : formatEuro(z.sbGewinn)}</td>
+                    <td className="num right">{z.sysErgebnis === null ? <span className="muted">–</span> : formatEuro(z.sysErgebnis)}</td>
+                    <td className="small muted">{z.hinweis}</td>
+                  </tr>
+                ))}
+                <tr data-testid="bridge-summe" style={{ fontWeight: 600 }}>
+                  <td>Summe</td>
+                  <td className="num right" data-testid="bridge-sales">{formatEuro(bridge.summe.sbNetto)}</td>
+                  <td className="num right" data-testid="bridge-sys-sales">{formatEuro(bridge.summe.sysNetto)}</td>
+                  <td className="num right" data-testid="bridge-diff">{formatEuro(bridge.summe.diffNetto)}</td>
+                  <td className="num right" data-testid="bridge-profit">{formatEuro(bridge.summe.sbGewinn)}</td>
+                  <td className="num right" data-testid="bridge-sys-profit">{formatEuro(bridge.summe.sysErgebnis)}</td>
+                  <td className="small muted">Summe „diese Seite“ = Kacheln oben (Umsatz netto, vorläufiges Ergebnis)</td>
+                </tr>
               </tbody>
             </table>
             <div className="card-pad small muted">
-              Warum die Zahlen abweichen: sellerboard zählt Amazon-Bestellungen sofort, das Seller-System erst mit der Amazon-Abrechnung (alle ~14 Tage); sellerboard rechnet Umsatz brutto inkl. {vatPct} % USt. (bei Auslandsverkäufen andere Sätze);
-              sellerboard zieht Werbung, Fixkosten und seinen eigenen EK ab, das Seller-System den gültigen EK und nur bekannte Kosten; sellerboard-Tage sind UTC-Tage. Kleine Abweichungen sind normal – große deuten auf fehlende Abrechnungen oder EK hin.
+              Abweichungen entstehen nur, wo die Quelle verschieden ist: Amazon, solange die Abrechnung den Zeitraum nicht abdeckt (dann gilt oben ohnehin sellerboard), eBay (sellerboard-Dashboard ↔ eBay-Aufträge), Kanäle, die sellerboard nicht kennt (Temu, Manuell), und Auslandsverkäufe mit anderer USt.
             </div>
           </>
         )}

@@ -206,6 +206,9 @@ export type KeepaStand = {
   marktplatz: Marktplatz;
   waehrung: "EUR" | "GBP";
   titel: string | null;
+  /** Marke und oberste Kategorie laut Keepa (fehlt bei älteren Zwischenspeicher-Ständen). */
+  marke?: string | null;
+  kategorie?: string | null;
   /** Wann Keepa das Produkt zuletzt aktualisiert hat (ISO). */
   keepa_aktualisiert: string | null;
   /** Beim Abruf wurde Keepa um frische Daten gebeten (Parameter „update“). */
@@ -232,6 +235,13 @@ const preis = (cent: number | null | undefined) => (cent == null ? null : Math.r
 const ganz = (n: number | null | undefined) => (n == null ? null : Math.round(n));
 const statWert = (arr: unknown, i: number) => (Array.isArray(arr) && typeof arr[i] === "number" && arr[i] >= 0 ? (arr[i] as number) : null);
 const statProzent = (arr: unknown, i: number) => (Array.isArray(arr) && typeof arr[i] === "number" && arr[i] >= 0 ? (arr[i] as number) : null);
+
+/** Oberste Kategorie aus Keepas categoryTree ([{catId, name}, …], Wurzel zuerst). */
+export function kategorieAus(tree: unknown): string | null {
+  if (!Array.isArray(tree)) return null;
+  const n = (tree[0] as { name?: unknown } | undefined)?.name;
+  return typeof n === "string" && n.trim() ? n.trim().slice(0, 120) : null;
+}
 
 /** Keepa-Produkt → kompakter Stand; null, wenn Keepa zur ASIN nichts hat. */
 export function standAusKeepa(p: Record<string, unknown> | null | undefined, mp: Marktplatz, now: number): KeepaStand | null {
@@ -291,6 +301,8 @@ export function standAusKeepa(p: Record<string, unknown> | null | undefined, mp:
     marktplatz: mp,
     waehrung: MARKTPLAETZE[mp].waehrung,
     titel: typeof p.title === "string" ? p.title.slice(0, 200) : null,
+    marke: typeof p.brand === "string" && p.brand.trim() ? p.brand.trim().slice(0, 120) : null,
+    kategorie: kategorieAus(p.categoryTree),
     keepa_aktualisiert: lu,
     aktuell: {
       buybox: preis(jetzt(bb, K.BUY_BOX)),

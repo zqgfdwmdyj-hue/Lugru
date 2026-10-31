@@ -130,7 +130,7 @@ export function SalesOverviewSection({ data }: { data: SalesOverview }) {
         <span className="muted">
           Gewinn laut sellerboard (nach Gebühren, Werbung und EK{data.ebayOwnCost ? "; eBay mit deinem EK aus dem Seller-System" : ""}).
         </span>
-        <Link href="/gewinn?zeitraum=30#ueberleitung" data-testid="sales-bridge-link">Zum Gewinn aus Abrechnungen &amp; Aufträgen (andere Quelle, Überleitung) →</Link>
+        <Link href="/gewinn?zeitraum=monat#ueberleitung" data-testid="sales-bridge-link">Zum Gewinn aus Abrechnungen &amp; Aufträgen (andere Quelle, Überleitung) →</Link>
       </div>
       <details className="sales-more" data-testid="sales-more">
         <summary>Alle Kennzahlen, Verlauf 30 Tage und Top-Produkte</summary>

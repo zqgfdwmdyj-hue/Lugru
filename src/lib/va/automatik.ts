@@ -8,6 +8,7 @@ import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { todayIso } from "@/lib/dates";
 import * as A from "./automatik-logic";
 import { discord, type DcDatei, type DcNachricht } from "./discord";
+import { echterFall } from "@/lib/amazon-faelle/logic";
 import * as L from "./logic";
 import { datum } from "./sprache";
 import { uebersetzen } from "./uebersetzen";
@@ -240,7 +241,8 @@ type Vorgang = typeof schema.amazonVorgaenge.$inferSelect;
  * Eine Entscheidung je Vorgang, Phase und Mail-Tag.
  */
 export async function fallAutomatik(tenantId: string, v: Vorgang, jetzt = new Date()): Promise<void> {
-  if (v.status !== "offen") return;
+  // B19.4: nur echte Fälle – nicht Info, „Sonstiges“ oder „bitte prüfen“ (erst Ludwig sieht sie sich an).
+  if (!echterFall(v)) return;
   const s = (await getSettings(tenantId)).va;
   const a = s.automatik;
   if (a.modus === "aus") return;

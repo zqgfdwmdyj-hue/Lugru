@@ -223,6 +223,61 @@ export function totalsOf(amazon: ReturnType<typeof summarizeAmazon> | null, chan
   };
 }
 
+// ---- B19.3: eine Quelle für alle Zahlen, Überleitung je Kanal --------------------------------------------------
+
+export type SbKanal = { sales: number; netProfit: number; grossProfit: number } | null;
+
+/**
+ * Basis der Seite: dieselben Zahlen für Kopf, Überleitung und Gewinnwerte. Amazon aus der Abrechnung, solange sie den
+ * Zeitraum abdeckt, sonst aus sellerboard (Ersatz) – dann auch „vollständig“ mit dem sellerboard-Gewinn für Amazon
+ * (sellerboard kennt alle Bestellungen samt Kosten), übrige Kanäle aus den Aufträgen.
+ */
+export function gewinnBasis(tot: Totals, amazon: ReturnType<typeof summarizeAmazon> | null, ersatz: ReturnType<typeof mitAmazonErsatz> | null, sbAmazonVollstaendig: boolean) {
+  if (!ersatz) return { revenueNet: tot.revenueNet, provisional: tot.provisional, completeProfit: tot.completeProfit, completeRevenueNet: tot.completeRevenueNet, coverage: tot.coverage, amazonAus: amazon ? ("abrechnung" as const) : ("keine" as const) };
+  const ohneAmazonRev = tot.completeRevenueNet - (amazon?.completeRevenueNet ?? 0);
+  const ohneAmazonGewinn = tot.completeProfit - (amazon?.completeProfit ?? 0);
+  const completeRevenueNet = round2(ohneAmazonRev + (sbAmazonVollstaendig ? ersatz.amazonRevenueNet : 0));
+  return {
+    revenueNet: ersatz.revenueNet,
+    provisional: ersatz.provisional,
+    completeProfit: round2(ohneAmazonGewinn + (sbAmazonVollstaendig ? ersatz.amazonResult : 0)),
+    completeRevenueNet,
+    coverage: ersatz.revenueNet > 0 ? Math.min(100, Math.round((completeRevenueNet / ersatz.revenueNet) * 100)) : 0,
+    amazonAus: "sellerboard" as const,
+  };
+}
+
+export type UeberleitungZeile = { kanal: string; sbNetto: number | null; sbGewinn: number | null; sysNetto: number | null; sysErgebnis: number | null; diffNetto: number | null; diffErgebnis: number | null; hinweis: string };
+
+/**
+ * Überleitung je Kanal aus denselben Daten wie der Kopf: sellerboard (Startseite, Umsatz brutto → netto) neben dem
+ * Seller-System. Kommt Amazon hier aus sellerboard, ist die Amazon-Zeile gleich und Unterschiede liegen nur bei
+ * eBay/Temu/Manuell.
+ */
+export function ueberleitung(o: { vatRate: number; sbAmazon: SbKanal; sbEbay: SbKanal; amazon: { revenueNet: number; ergebnis: number; aus: "abrechnung" | "sellerboard" | "keine"; text: string } | null; kanaele: { channel: string; label: string; revenueNet: number; provisional: number }[] }) {
+  const netto = (b: number) => round2(b / (1 + o.vatRate));
+  const diff = (a: number | null, b: number | null) => (a === null && b === null ? null : round2((a ?? 0) - (b ?? 0)));
+  const zeilen: UeberleitungZeile[] = [];
+  const am = o.amazon;
+  const sbA = o.sbAmazon ? netto(o.sbAmazon.sales) : null;
+  zeilen.push({
+    kanal: "Amazon",
+    sbNetto: sbA,
+    sbGewinn: o.sbAmazon ? round2(o.sbAmazon.netProfit) : null,
+    sysNetto: am ? round2(am.revenueNet) : null,
+    sysErgebnis: am ? round2(am.ergebnis) : null,
+    diffNetto: diff(sbA, am?.revenueNet ?? null),
+    diffErgebnis: diff(o.sbAmazon?.netProfit ?? null, am?.ergebnis ?? null),
+    hinweis: !am ? "keine Amazon-Daten im Seller-System" : am.aus === "sellerboard" ? `gleiche Quelle (${am.text})` : `Seller-System: ${am.text} – sellerboard zählt Bestellungen sofort`,
+  });
+  const ebay = o.kanaele.find((k) => k.channel === "ebay");
+  const sbE = o.sbEbay ? netto(o.sbEbay.sales) : null;
+  if (ebay || o.sbEbay) zeilen.push({ kanal: "eBay", sbNetto: sbE, sbGewinn: o.sbEbay ? round2(o.sbEbay.netProfit) : null, sysNetto: ebay ? round2(ebay.revenueNet) : null, sysErgebnis: ebay ? round2(ebay.provisional) : null, diffNetto: diff(sbE, ebay?.revenueNet ?? null), diffErgebnis: diff(o.sbEbay?.netProfit ?? null, ebay?.provisional ?? null), hinweis: "sellerboard: eBay-Dashboard; Seller-System: eBay-Aufträge (Gebühren je Bestellung)" });
+  for (const k of o.kanaele.filter((x) => x.channel !== "ebay")) zeilen.push({ kanal: k.label, sbNetto: null, sbGewinn: null, sysNetto: round2(k.revenueNet), sysErgebnis: round2(k.provisional), diffNetto: diff(null, k.revenueNet), diffErgebnis: diff(null, k.provisional), hinweis: "nicht in sellerboard – nur im Seller-System" });
+  const summe = (f: (z: UeberleitungZeile) => number | null) => round2(zeilen.reduce((n, z) => n + (f(z) ?? 0), 0));
+  return { zeilen, summe: { sbNetto: summe((z) => z.sbNetto), sbGewinn: summe((z) => z.sbGewinn), sysNetto: summe((z) => z.sysNetto), sysErgebnis: summe((z) => z.sysErgebnis), diffNetto: summe((z) => z.diffNetto), diffErgebnis: summe((z) => z.diffErgebnis) } };
+}
+
 // ---- Lagerwert ---------------------------------------------------------------------------------
 
 export type StockLine = { sku: string; units: number; own: number };

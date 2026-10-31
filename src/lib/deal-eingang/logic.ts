@@ -227,6 +227,29 @@ export function empfohleneMenge(unsProMonat: number | null, tage: number, eigen:
 }
 
 /** Ampel einer Zeile aus roten und gelben Gründen. */
+/**
+ * Deal-Wert-Schwelle für die Kauf-Meldung je Quelle (B19.1): eigene Schwelle für eine Quelle („Lugru Deals“ gilt auch
+ * für „Lugru Deals · #kanal“), sonst die allgemeine.
+ */
+export function wertSchwelleFuer(quelle: string | null | undefined, s: { wertSchwelle?: number; wertSchwelleJe?: Record<string, number> }): number {
+  const q = (quelle ?? "").trim().toLowerCase();
+  const je = Object.entries(s.wertSchwelleJe ?? {}).sort((a, b) => b[0].length - a[0].length);
+  const treffer = q ? je.find(([k]) => q === k.trim().toLowerCase() || q.startsWith(`${k.trim().toLowerCase()} · `)) : undefined;
+  return treffer ? treffer[1] : (s.wertSchwelle ?? 70);
+}
+
+/** „Lugru Deals=60; ProfitPath=65“ → { "Lugru Deals": 60, "ProfitPath": 65 } (0–100, höchstens 20 Quellen). */
+export function wertSchwellenLesen(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const teil of text.split(/[;\n]/)) {
+    const m = teil.match(/^\s*(.+?)\s*[=:]\s*(\d{1,3})\s*$/);
+    if (!m) continue;
+    const name = m[1].replace(/\s+/g, " ").slice(0, 80);
+    if (name && Object.keys(out).length < 20) out[name] = Math.max(0, Math.min(100, Number(m[2])));
+  }
+  return out;
+}
+
 export function zeilenAmpel(rot: string[], gelb: string[]): Ampel {
   return rot.length ? "rot" : gelb.length ? "gelb" : "gruen";
 }

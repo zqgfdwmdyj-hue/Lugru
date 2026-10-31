@@ -36,7 +36,7 @@ export const dealEingangTool = defineTool({
   name: "deal_eingang",
   title: "Deal-Eingang",
   description:
-    "Geprüfte Deal-Eingänge (geteilt aus WhatsApp, iPhone-Kurzbefehl, Mail, ProfitPath, von Claude) mit Ampel und Kurzbegründung. Filter: status (neu, gekauft, bestellvorschlag, b2b, verworfen, preisliste), quelle (Absender bzw. „ProfitPath · Modul“), ampel, seit (YYYY-MM-DD). Für den Morgenbericht: seit = gestern, ampel grün/gelb.",
+    "Geprüfte Deal-Eingänge (geteilt aus WhatsApp, iPhone-Kurzbefehl, Mail, ProfitPath, Lugru Deals, von Claude) mit Ampel und Kurzbegründung. Filter: status (neu, gekauft, bestellvorschlag, b2b, verworfen, preisliste), quelle (Absender bzw. „ProfitPath · Modul“; „Lugru Deals“ trifft alle Lugru-Kanäle), ampel, seit (YYYY-MM-DD). Aus der Lugru-History nachgetragene Eingänge (historisch: true, Ampel aus Post + Keepa beim Posten, kein Push) nur mit quelle oder mit_historie. Für den Morgenbericht: seit = gestern, ampel grün/gelb.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE,
@@ -45,10 +45,11 @@ export const dealEingangTool = defineTool({
     quelle: z.string().trim().min(1).max(80).optional(),
     ampel: z.enum(["gruen", "gelb", "rot"]).optional(),
     seit: isoDate.optional(),
+    mit_historie: z.boolean().default(false).describe("auch aus der Lugru-History nachgetragene Eingänge"),
     limit: z.number().int().min(1).max(100).default(30),
   }),
   run: async (ctx, i) => {
-    const rows = await eingaenge(ctx.session.tenantId, { status: i.status, quelle: i.quelle, ampel: i.ampel, seit: i.seit ? new Date(`${i.seit}T00:00:00Z`) : undefined, limit: i.limit });
+    const rows = await eingaenge(ctx.session.tenantId, { status: i.status, quelle: i.quelle, ampel: i.ampel, seit: i.seit ? new Date(`${i.seit}T00:00:00Z`) : undefined, limit: i.limit, mitHistorie: i.mit_historie });
     return json({
       eingaenge: rows.map((e) => ({
         id: e.id,
@@ -60,6 +61,7 @@ export const dealEingangTool = defineTool({
         ampel: e.ampel ? `${AMPEL_EMOJI[e.ampel]} ${AMPEL[e.ampel]}` : null,
         kurz: e.zusammenfassung ?? e.fehler ?? undefined,
         angebote: e.zeilen.length || undefined,
+        historisch: e.historisch || undefined,
         fristen: e.zeilen.map((z) => z.angebot.gueltigBis).filter(Boolean).length ? e.zeilen.map((z) => z.angebot.gueltigBis).filter(Boolean) : undefined,
         link: abs(ctx, `/deal-eingang/${e.id}`),
       })),
@@ -108,7 +110,7 @@ export const dealQuellenTool = defineTool({
   input: z.object({}),
   run: async (ctx) => {
     const q = await quellen(ctx.session.tenantId);
-    return json({ quellen: q.map((x) => ({ quelle: x.quelle, gemeldet: x.eingaenge, angebote: x.angebote, gruen: x.gruen, gekauft: x.gekauft, verworfen: x.verworfen, roi_prognose_prozent: x.roiPrognose, roi_real_prozent: x.roiReal, roi_real_aus: x.roiRealN || undefined, gruppen_kaeufe: x.gruppenKaeufe })), link: abs(ctx, "/deal-eingang") });
+    return json({ quellen: q.map((x) => ({ quelle: x.quelle, gemeldet: x.eingaenge, angebote: x.angebote, gruen: x.gruen, gekauft: x.gekauft, verworfen: x.verworfen, roi_prognose_prozent: x.roiPrognose, roi_real_prozent: x.roiReal, roi_real_aus: x.roiRealN || undefined, gruppen_kaeufe: x.gruppenKaeufe, ohne_testkanaele: x.testAusgeblendet ? `${x.testAusgeblendet} Deals aus Testkanälen nicht gezählt` : undefined, link: abs(ctx, x.link) })), link: abs(ctx, "/deal-eingang") });
   },
 });
 

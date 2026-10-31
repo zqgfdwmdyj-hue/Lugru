@@ -11,6 +11,8 @@ export type KeepaLite = {
   aktuell: { buybox: number | null; angebote_neu: number | null; angebote_fba: number | null; angebote_fbm: number | null; verkaufsrang: number | null; monatlich_verkauft: number | null };
   kennzahlen: Record<"30" | "90" | "180", { buybox: { schnitt: number | null }; rang: { schnitt: number | null }; amazon_nicht_auf_lager_prozent: number | null }>;
   verlauf: Verlauf[];
+  marke?: string | null;
+  kategorie?: string | null;
 };
 
 const r1 = (n: number) => Math.round(n * 10) / 10;

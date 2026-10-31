@@ -132,3 +132,40 @@ describe("B15.4: Amazon-Zeile und Quelle je Zeile", () => {
     expect(e).toEqual({ amazonRevenueNet: 2000, amazonResult: -525, revenueNet: 2500, provisional: -304 });
   });
 });
+
+describe("B19.3: eine Quelle für Kopf und Überleitung", () => {
+  it("Amazon aus sellerboard: Kopf, Überleitung und „vollständig“ rechnen mit denselben Zahlen", async () => {
+    const { gewinnBasis, mitAmazonErsatz, ueberleitung } = await import("@/lib/money/profit-logic");
+    // erfundene Zahlen: Abrechnung bis Monatsmitte 1.000 € netto, eBay 500 € netto; sellerboard Amazon 2.380 € brutto
+    const amazon = { revenueNet: 1000, provisional: 379, completeRevenueNet: 1000, completeProfit: 379, missingCostSkus: [], missingCostRevenue: 0 };
+    const tot = { revenueNet: 1500, provisional: 600, completeProfit: 550, completeRevenueNet: 1400, coverage: 93, complete: false, missing: { costSkus: 0, costLines: 1, feeOrders: 0, priceLines: 0 } };
+    const ersatz = mitAmazonErsatz(tot, amazon, { sales: 2380, netProfit: 420 }, 0.19);
+    const b = gewinnBasis(tot, amazon, ersatz, true);
+    expect(b).toMatchObject({ revenueNet: 2500, provisional: 641, amazonAus: "sellerboard" });
+    // vollständig: eBay-Anteil (1.400 − 1.000 = 400 € Umsatz, 550 − 379 = 171 € Gewinn) + sellerboard Amazon (2.000 € / 420 €)
+    expect(b.completeRevenueNet).toBe(2400);
+    expect(b.completeProfit).toBe(591);
+    expect(b.coverage).toBe(96);
+    const u = ueberleitung({ vatRate: 0.19, sbAmazon: { sales: 2380, netProfit: 420, grossProfit: 600 }, sbEbay: { sales: 595, netProfit: 90, grossProfit: 100 }, amazon: { revenueNet: ersatz.amazonRevenueNet, ergebnis: ersatz.amazonResult, aus: "sellerboard", text: "sellerboard – Amazon-Abrechnung bis 15.10." }, kanaele: [{ channel: "ebay", label: "eBay", revenueNet: 500, provisional: 221 }] });
+    const am = u.zeilen.find((z) => z.kanal === "Amazon")!;
+    expect(am).toMatchObject({ sbNetto: 2000, sysNetto: 2000, diffNetto: 0, diffErgebnis: 0 });
+    expect(am.hinweis).toMatch(/gleiche Quelle/);
+    expect(u.zeilen.find((z) => z.kanal === "eBay")).toMatchObject({ sbNetto: 500, sysNetto: 500, diffNetto: 0, sbGewinn: 90, sysErgebnis: 221, diffErgebnis: -131 });
+    // Summe „diese Seite“ = Kopf
+    expect(u.summe.sysNetto).toBe(b.revenueNet);
+    expect(u.summe.sysErgebnis).toBe(b.provisional);
+  });
+
+  it("Abrechnung deckt den Zeitraum: Basis = Abrechnung; Temu steht nur im Seller-System", async () => {
+    const { gewinnBasis, ueberleitung } = await import("@/lib/money/profit-logic");
+    const tot = { revenueNet: 1200, provisional: 300, completeProfit: 280, completeRevenueNet: 1150, coverage: 96, complete: false, missing: { costSkus: 1, costLines: 1, feeOrders: 0, priceLines: 0 } };
+    const amazon = { revenueNet: 1000, provisional: 250, completeRevenueNet: 950, completeProfit: 230, missingCostSkus: ["X"], missingCostRevenue: 50 };
+    expect(gewinnBasis(tot, amazon, null, false)).toMatchObject({ revenueNet: 1200, provisional: 300, completeProfit: 280, coverage: 96, amazonAus: "abrechnung" });
+    const u = ueberleitung({ vatRate: 0.19, sbAmazon: { sales: 1309, netProfit: 240, grossProfit: 300 }, sbEbay: null, amazon: { revenueNet: 1000, ergebnis: 250, aus: "abrechnung", text: "Amazon-Abrechnung (bis 31.10.)" }, kanaele: [{ channel: "temu", label: "Temu", revenueNet: 200, provisional: 50 }] });
+    expect(u.zeilen.map((z) => z.kanal)).toEqual(["Amazon", "Temu"]);
+    expect(u.zeilen[0]).toMatchObject({ sbNetto: 1100, sysNetto: 1000, diffNetto: 100 });
+    expect(u.zeilen[1]).toMatchObject({ sbNetto: null, sysNetto: 200, diffNetto: -200 });
+    expect(u.zeilen[1].hinweis).toMatch(/nicht in sellerboard/);
+    expect(u.summe.sysNetto).toBe(1200);
+  });
+});

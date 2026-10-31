@@ -163,4 +163,94 @@ test.describe("Lugru Deals über Discord", () => {
     await page.goto(`/deal-eingang/${e.id}`);
     await expect(page.locator("body")).toContainText("direkt von der Lugru-Deals-Seite");
   });
+
+  // B19.1: alte Deals (Weg A) bekommen Ampel + Eingang „Historie“ (ohne Push), Kanäle getrimmt, Testkanäle ausgeblendet,
+  // Reaktionen ✅/❌ statt {}, Gesamtzahl neben dem Zeitraum, Weg A klar angezeigt, Deal-Wert-Schwelle je Quelle.
+  test("History in den Deal-Eingang: Ampel, Historie ohne Push, Testkanal draußen, Reaktionen ehrlich, Weg A", async ({ page, browser, baseURL }) => {
+    test.setTimeout(150_000);
+    const m = marke();
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    await anmelden(page, "inhaber");
+    const SCHL = `test-historie-${m}-0123456789abcdefghij`;
+    await page.goto("/anbindungen?p=lugru_deals#lugru_deals");
+    const karte = page.locator("#lugru_deals");
+    await karte.locator('input[name="schluessel"]').fill(SCHL);
+    await Promise.all([aktion(page), karte.getByRole("button", { name: "Speichern", exact: true }).click()]);
+    const basis = Number(Date.now() % 1_000_000_000) + 1000;
+    const vor = (tage: number) => new Date(Date.now() - tage * 86_400_000).toISOString();
+    const gemein = { quellmarkt: "DE", zielmarkt: "DE", verkaeufe_monat: 200, status: "aktiv", ek_art: "netto", shop: "testshop.example" };
+    const deals = [
+      { ...gemein, id: basis, asin: "B0TESTHI01", titel: `Testmarke Historie gut ${m}`, ek_eur: 6, vk_eur: 29.9, gewinn_eur: 11.5, marge_prozent: 46, kanal: "B low Marge ", kaeufe: 2, nicht_verfuegbar: 1, gepostet_am: vor(5) },
+      { ...gemein, id: basis + 1, asin: "B0TESTHI02", titel: `Testmarke Historie duenn ${m}`, ek_eur: 20, vk_eur: 25, gewinn_eur: 0.8, marge_prozent: 4, kanal: "B low Marge ", kaeufe: 0, nicht_verfuegbar: 0, gepostet_am: vor(6) },
+      { ...gemein, id: basis + 2, asin: "B0TESTHI03", titel: `Testmarke Historie Testkanal ${m}`, ek_eur: 6, vk_eur: 29.9, gewinn_eur: 11.5, marge_prozent: 46, kanal: "test1", kaeufe: 0, nicht_verfuegbar: 0, gepostet_am: vor(7) },
+    ];
+    const r = await (await fetch(`${baseURL}/api/public/lugru-deals/deals`, { method: "POST", headers: { Authorization: `Bearer ${SCHL}`, "Content-Type": "application/json" }, body: JSON.stringify({ deals }) })).json();
+    expect(r).toMatchObject({ ok: true, neu: 3, eingaenge: 0 });
+    // Kanalname ohne Leerzeichen am Ende
+    expect((await sql<{ kanal: string }>("select kanal from lugru_deals_historie where tenant_id = $1 and extern_id = $2", [T, basis]))[0].kanal).toBe("B low Marge");
+
+    // Lugru-Seite: Weg A klar, kein „Noch nicht eingerichtet“, Gesamtzahl neben dem Zeitraum, Testkanal ausgeblendet
+    await page.goto("/deal-eingang/lugru");
+    await expect(page.getByTestId("lg-weg-a")).toContainText("Weg A aktiv");
+    await expect(page.getByTestId("lg-einrichten")).toHaveCount(0);
+    await expect(page.getByTestId("lg-gesamt")).toContainText("insgesamt");
+    await expect(page.getByTestId("lg-kachel-deals")).toContainText("Deals im Zeitraum");
+    const optionen = await page.locator('select[name="kanal"] option').allTextContents();
+    expect(optionen).toContain("#B low Marge");
+    expect(optionen).not.toContain("#test1");
+    await page.goto("/deal-eingang/lugru?test=1");
+    expect(await page.locator('select[name="kanal"] option').allTextContents()).toContain("#test1");
+
+    // Nachtragen (sonst alle 5 Min. im Hintergrund): Eingang „Historie“ mit Ampel, ohne Push, Datum = Posten
+    await page.goto("/deal-eingang/lugru");
+    await Promise.all([aktion(page), page.getByTestId("lg-nachtragen").click()]);
+    await expect(page.getByTestId("lg-meldung")).toContainText("in den Deal-Eingang nachgetragen");
+    const eing = async (id: number) => (await sql<{ id: string; historisch: boolean; pruefung: string; push_am: Date | null; ampel: string; quelle: string; tage: number }>("select id, historisch, pruefung, push_am, ampel, quelle, round(extract(epoch from now() - created_at) / 86400)::int as tage from deal_eingaenge where tenant_id = $1 and quelle_ref = $2", [T, `lugru-app:${id}`]))[0];
+    const gut = await eing(basis);
+    expect(gut).toMatchObject({ historisch: true, pruefung: "fertig", push_am: null, quelle: "Lugru Deals · #B low Marge", tage: 5 });
+    expect(gut.ampel).toBe("gelb"); // ohne Keepa-Stand höchstens gelb
+    expect((await eing(basis + 1)).ampel).toBe("rot"); // 4 % Marge
+    expect(await eing(basis + 2)).toBeUndefined(); // Testkanal
+    const [lh] = await sql<{ eingang_id: string; ampel: string }>("select eingang_id, ampel from lugru_deals_historie where tenant_id = $1 and extern_id = $2", [T, basis]);
+    expect(lh).toEqual({ eingang_id: gut.id, ampel: "gelb" });
+
+    // Deal-Eingang: Historie nicht im normalen Posteingang, aber mit Filter „Lugru Deals“ (mit Kennzeichnung)
+    await page.goto("/deal-eingang");
+    await expect(page.getByTestId("de-liste")).not.toContainText(`Historie gut ${m}`);
+    await page.goto(`/deal-eingang?quelle=${encodeURIComponent("Lugru Deals")}`);
+    const zeile = page.getByTestId("de-eintrag").filter({ hasText: `Historie gut ${m}` });
+    await expect(zeile).toHaveCount(1);
+    await expect(zeile.getByTestId("de-historie")).toBeVisible();
+    await expect(page.getByTestId("de-quellen").getByTestId("de-quelle-link").filter({ hasText: /^Lugru Deals$/ })).toHaveAttribute("href", /quelle=Lugru%20Deals/);
+
+    // Werkzeuge: Reaktionen ✅/❌ statt {}, Gesamtzahl und Zeitraum, Testkanal nur auf Wunsch, Eingänge mit historisch
+    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber");
+    const liste = JSON.parse(await mcp.call("lugru_deals", { suche: m, limit: 50 })) as { gesamt: number; deals: { asin: string; reaktionen: Record<string, number>; reaktionen_hinweis?: string; ampel: string; eingang_id: string | null }[]; import: { weg: string } };
+    expect(liste.gesamt).toBe(2);
+    const lg = liste.deals.find((d) => d.asin === "B0TESTHI01")!;
+    expect(lg.reaktionen).toEqual({ "✅": 2, "❌": 1 });
+    expect(lg.reaktionen_hinweis).toMatch(/nur ✅/);
+    expect(lg).toMatchObject({ ampel: "gelb", eingang_id: gut.id });
+    expect(liste.import.weg).toMatch(/^A/);
+    expect((JSON.parse(await mcp.call("lugru_deals", { suche: m, mit_test: true })) as { gesamt: number }).gesamt).toBe(3);
+    const st = JSON.parse(await mcp.call("lugru_statistik", {})) as { zeitraum: { von: string; bis: string }; gesamt: { deals: number }; emojis: { emoji: string }[] };
+    expect(st.zeitraum.von).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(st.gesamt.deals).toBeGreaterThanOrEqual(2);
+    expect(st.emojis.map((e) => e.emoji)).toContain("✅");
+    const de = JSON.parse(await mcp.call("deal_eingang", { quelle: "Lugru Deals", limit: 100 })) as { eingaenge: { id: string; historisch?: boolean }[] };
+    expect(de.eingaenge.find((x) => x.id === gut.id)?.historisch).toBe(true);
+    const normal = JSON.parse(await mcp.call("deal_eingang", { limit: 100 })) as { eingaenge: { id: string }[] };
+    expect(normal.eingaenge.some((x) => x.id === gut.id)).toBe(false);
+
+    // Deal-Wert-Schwelle je Quelle (Ludwig entscheidet; hier nur Speichern und Zurücksetzen geprüft)
+    await page.goto("/deal-eingang");
+    const form = page.getByTestId("de-einstellungen-form");
+    await form.getByTestId("de-schwelle-je").fill("Lugru Deals=60");
+    await Promise.all([aktion(page), form.getByRole("button", { name: "Speichern" }).click()]);
+    await expect.poll(async () => (await sql<{ s: unknown }>("select settings -> 'dealEingang' -> 'wertSchwelleJe' as s from tenants where id = $1", [T]))[0].s).toEqual({ "Lugru Deals": 60 });
+    await page.goto("/deal-eingang");
+    await page.getByTestId("de-einstellungen-form").getByTestId("de-schwelle-je").fill("");
+    await Promise.all([aktion(page), page.getByTestId("de-einstellungen-form").getByRole("button", { name: "Speichern" }).click()]);
+    await expect.poll(async () => (await sql<{ s: unknown }>("select settings -> 'dealEingang' -> 'wertSchwelleJe' as s from tenants where id = $1", [T]))[0].s).toEqual({});
+  });
 });

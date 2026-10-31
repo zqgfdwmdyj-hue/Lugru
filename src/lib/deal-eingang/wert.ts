@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { DAUMEN_GRUENDE, type DealEingangZeile, type DealErgebnis, type DealMerkmale } from "@/db/tables/deal-eingang";
 import { getSettings } from "@/lib/settings";
 import { bewaehrt, dealWert, eigenesLabel, lernBericht, lugruLabel, lugruMerkmale, merkmaleAus, modellLernen, modellMerkmale, type HistorieDeal, type KeepaLite, type Modell } from "./wert-logic";
+import { kanalName } from "@/lib/lugru-deals/historie-logic";
 
 // Abschnitt 11 „Lernender Deal-Wert“: Merkmale beim Eingang (Keepa aus dem Zwischenspeicher, keine Extra-Tokens),
 // Historie aus eigenen Deals (Kauf, 👍/👎, reales Ergebnis) und – schwach gewichtet – der Lugru-Deals-History
@@ -72,7 +73,7 @@ export async function wertAnhaengen(tenantId: string, zeilen: DealEingangZeile[]
   for (const z of zeilen) {
     if (!z.asin) continue;
     const k = await keepaLite(tenantId, z.asin, z.bestesLand, o.jetzt);
-    z.merkmale = merkmaleAus(k, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote }, { marke: z.angebot.marke, kategorie: null, quelle: o.quelle, weg: o.weg, jetzt: o.jetzt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null });
+    z.merkmale = merkmaleAus(k, { land: z.bestesLand, ekNetto: z.ekNetto, roi: z.roi, marge: z.marge, amazonProzent: z.amazonProzent, angebote: z.angebote }, { marke: z.angebot.marke ?? k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: o.quelle, weg: o.weg, jetzt: o.jetzt, kapitalAmpel: z.eigen?.kapitalAmpel ?? null, bestand: z.eigen?.bestand ?? null });
     z.wert = dealWert(z.merkmale, { zielRoi, ampel: z.ampel, historie: h.filter((x) => x.asin !== z.asin || x.quelle === "lugru"), modell });
   }
 }
@@ -88,7 +89,7 @@ export async function dealWertFuer(tenantId: string, q: { asin?: string; dealId?
   const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
   const h = await historie(tenantId, zielRoi);
   const k = await keepaLite(tenantId, q.asin, "DE", jetzt);
-  const m = merkmaleAus(k, { land: "DE", ekNetto: null, roi: null, marge: null, amazonProzent: null, angebote: null }, { marke: null, kategorie: null, quelle: null, weg: "claude", jetzt, kapitalAmpel: null, bestand: null });
+  const m = merkmaleAus(k, { land: "DE", ekNetto: null, roi: null, marge: null, amazonProzent: null, angebote: null }, { marke: k?.marke ?? null, kategorie: k?.kategorie ?? null, quelle: null, weg: "claude", jetzt, kapitalAmpel: null, bestand: null });
   return { art: "asin" as const, asin: q.asin, ohne_ek: true, wert: dealWert(m, { zielRoi, ampel: "gelb", historie: h.filter((x) => x.asin !== q.asin || x.quelle === "lugru"), modell: await modellFuer(tenantId, h) }), merkmale: m };
 }
 
@@ -219,7 +220,7 @@ export async function lugruImport(tenantId: string, deals: LugruDealImport[], je
       margeProzent: zahl(d.marge_prozent),
       verkaeufeMonat: zahl(d.verkaeufe_monat) !== null ? Math.round(d.verkaeufe_monat!) : null,
       gruppe: d.gruppe ? String(d.gruppe).slice(0, 80) : null,
-      kanal: d.kanal ? String(d.kanal).slice(0, 80) : null,
+      kanal: d.kanal ? kanalName(String(d.kanal))?.slice(0, 80) ?? null : null,
       status: d.status ? String(d.status).slice(0, 20) : null,
       kaeufe: Math.max(0, Math.round(zahl(d.kaeufe) ?? 0)),
       nichtVerfuegbar: Math.max(0, Math.round(zahl(d.nicht_verfuegbar) ?? 0)),

@@ -195,6 +195,9 @@ export async function runScheduledJobs(force = false) {
         const lg = await import("@/lib/lugru-deals/discord");
         if (force || due(`${t}:lugru-historie`, 4)) await step(t, "Lugru Deals: History", () => lg.lugruHistorie(t, { seiten: 5 }));
         if (force || due(`${t}:lugru-keepa`, 59)) await step(t, "Lugru Deals: Keepa-Schnappschuss", () => lg.lugruKeepaNachholen(t, 20));
+        // B19.1: History in den Deal-Eingang (Ampel aus Post + Keepa-Schnappschuss, kein Push) – neueste zuerst.
+        if (force || due(`${t}:lugru-eingaenge`, 4)) await step(t, "Lugru Deals: History → Deal-Eingang", async () => (await import("@/lib/lugru-deals/historie")).lugruHistorieEingaenge(t, 500));
+        if (force || due(`${t}:lugru-kategorie`, 59)) await step(t, "Lugru Deals: Kategorie aus Keepa", () => lg.lugruKategorieNachholen(t, 20));
         if (force || due(`${t}:lugru-kauf`, 1435)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
       }
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).

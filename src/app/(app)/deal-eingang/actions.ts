@@ -7,6 +7,7 @@ import { requireArea } from "@/lib/auth/session";
 import { DealEingangFehler, eingangAnlegen, eingangPruefen, statusSetzen, STATUS_TEXT, tokenAnlegen, tokenWiderrufen, zeileAendern, type EingangDatei } from "@/lib/deal-eingang/service";
 import { lesbarerFehler } from "@/lib/fehler-text";
 import { parseAmount } from "@/lib/numbers";
+import { wertSchwellenLesen } from "@/lib/deal-eingang/logic";
 
 const PFAD = "/deal-eingang";
 const mit = (pfad: string, meldung: string) => `${pfad}${pfad.includes("?") ? "&" : "?"}meldung=${encodeURIComponent(meldung)}`;
@@ -185,6 +186,8 @@ export async function einstellungenAction(fd: FormData) {
     budgetJeTag: fd.has("budgetJeTag") ? euro("budgetJeTag") : alt.budgetJeTag,
     budgetJeWoche: fd.has("budgetJeWoche") ? euro("budgetJeWoche") : alt.budgetJeWoche,
     wertSchwelle: fd.has("wertSchwelle") ? Math.max(0, Math.min(100, Math.round(parseAmount(fd.get("wertSchwelle")) ?? alt.wertSchwelle ?? 70))) : alt.wertSchwelle,
+    // B19.1: eigene Schwelle je Quelle, z. B. „Lugru Deals=60“
+    wertSchwelleJe: fd.has("wertSchwelleJe") ? wertSchwellenLesen(String(fd.get("wertSchwelleJe") ?? "")) : alt.wertSchwelleJe,
   };
   // Weitere Einstellungen (nur wenn das Formular sie mitschickt): Aufbewahrung, Preislisten-Weiche, Reichweite,
   // eigene Mail-Adresse für Weiterleitungen, iCloud-Link zum fertigen Kurzbefehl.
@@ -232,6 +235,21 @@ export async function lugruAbrufenAction() {
     text = !z ? "Nicht abgerufen – Anbindung „Lugru Deals“ (Kanal-IDs, Bot) fehlt oder ein Abruf läuft gerade." : `${z.gelesen} Nachrichten gelesen, ${z.erkannt} Deals erkannt (${z.neu} neu, ${z.eingaenge} in den Deal-Eingang${z.zusammengefasst ? `, ${z.zusammengefasst} zusammengefasst` : ""}), ${z.reaktionen} mit neuen Reaktionen.`;
   } catch (e) {
     text = `Abruf fehlgeschlagen – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(LUGRU);
+  redirect(mit(LUGRU, text));
+}
+
+/** B19.1: Lugru-Deals ohne Eingang jetzt in den Deal-Eingang nachtragen (sonst automatisch alle 5 Min., ohne Push). */
+export async function lugruEingaengeAction() {
+  const s = await schreibend();
+  const { lugruHistorieEingaenge } = await import("@/lib/lugru-deals/historie");
+  let text: string;
+  try {
+    const r = await lugruHistorieEingaenge(s.tenantId, 1000);
+    text = `${r.neu} Lugru-Deals in den Deal-Eingang nachgetragen${r.verknuepft ? `, ${r.verknuepft} mit vorhandenen Eingängen verknüpft` : ""} (ohne Push)${r.offen ? ` – noch ${r.offen} offen, läuft automatisch weiter` : " – alle drin"}.`;
+  } catch (e) {
+    text = `Nachtragen fehlgeschlagen – ${lesbarerFehler(e)}`;
   }
   revalidatePath(LUGRU);
   redirect(mit(LUGRU, text));

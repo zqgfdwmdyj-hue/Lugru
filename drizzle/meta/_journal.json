@@ -778,6 +778,13 @@
       "when": 1793444330445,
       "tag": "0110_va_automatik",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1793449815284,
+      "tag": "0111_lugru_historie",
+      "breakpoints": true
     }
   ]
 }

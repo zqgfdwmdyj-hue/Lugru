@@ -162,7 +162,7 @@ export const DEFAULT_SETTINGS = {
   },
   faelle: { fristen: {} as Record<string, number>, nachfassenTage: 7, betragSchwelle: 200, zustaendig: "va" as "va" | "ludwig" },
   // Abschnitt 10/11: Budget-Grenzen (0 = keine), Deal-Wert-Schwelle für die Kauf-Meldung und Ziel für „Treffer“.
-  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "", budgetJeDeal: 0, budgetJeTag: 0, budgetJeWoche: 0, wertSchwelle: 70 },
+  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "", budgetJeDeal: 0, budgetJeTag: 0, budgetJeWoche: 0, wertSchwelle: 70, wertSchwelleJe: {} as Record<string, number> },
   /**
    * Posteingang auf null: Versand-/Lieferbestätigungen und Newsletter beim Eingang archivieren (Bestell-Mails
    * „Verkauft, jetzt liefern“ bleiben für den Versand-Abgleich); Termin-Mails (Arzt, Handwerker, Amt, Schule) in

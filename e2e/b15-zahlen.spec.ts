@@ -47,6 +47,18 @@ test.describe("B15 Zahlen", () => {
       await expect(page.getByTestId("channel-amazon-quelle")).toContainText(`sellerboard – Amazon-Abrechnung bis ${mitte.slice(8, 10)}.${mitte.slice(5, 7)}.`);
       await expect(amazon).toContainText("525,00");
       await expect(amazon).toContainText("2.000,00"); // 2.380 € brutto ÷ 1,19
+      // B19.3: Überleitung aus denselben Zahlen wie der Kopf – Amazon-Zeile gleich, Summe = Kachel „Umsatz netto“
+      const bruecke = page.getByTestId("bridge-amazon");
+      await expect(bruecke).toContainText("gleiche Quelle");
+      await expect(bruecke.locator("td").nth(3)).toHaveText(/^-?0,00\s€$/);
+      const kopf = ((await page.getByTestId("kpi-revenue").locator(".kpi-value").textContent()) ?? "").trim();
+      await expect(page.getByTestId("bridge-sys-sales")).toHaveText(kopf);
+      const ergebnis = ((await page.getByTestId("kpi-provisional").locator(".kpi-value").textContent()) ?? "").trim();
+      await expect(page.getByTestId("bridge-sys-profit")).toHaveText(ergebnis);
+      // Jeder Gewinnwert mit Quelle beschriftet
+      await expect(page.getByTestId("wert-vorlaeufig")).toContainText("Nettogewinn laut sellerboard");
+      await expect(page.getByTestId("wert-sb-netto")).toContainText("mit Erstattungen, Werbung und Fixkosten");
+      await expect(page.getByTestId("wert-sb-db")).toContainText("ohne Fixkosten");
       // Rücklage nur als Geldbewegung, nicht in den Kosten ohne SKU
       await expect(page.getByTestId("profit-transfers")).toContainText("Previous Reserve Amount Balance");
 

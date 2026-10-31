@@ -87,6 +87,8 @@ export type Einordnung = {
   verlangt: Verlangt[];
   /** Bestell-/Versand-/Zahlungsmail – nie ein Vorgang. */
   routine: boolean;
+  /** B19.4: welche Routine – „zahlung_fehler“ (Zahlung abgelehnt) wird eine Aufgabe je Bestellung, der Rest archiviert. */
+  routineArt: RoutineArt | null;
   /** Woher die Frist stammt: aus der Mail oder Standardfrist (Tage je Bereich/Phase). */
   fristQuelle: "mail" | "standard" | null;
 };
@@ -160,7 +162,40 @@ const ROUTINE_RE = [
   /\bauszahlung\b|\bdisbursement\b|zahlung (?:wurde )?(?:überwiesen|veranlasst)|abrechnung (?:ist )?verfügbar|settlement report|virement (?:envoyé|effectué)|transferencia (?:enviada|realizada)|bonifico (?:inviato|effettuato)/i,
 ];
 
-export const istRoutineMail = (betreff: string) => ROUTINE_RE.some((re) => re.test(betreff));
+/** B19.4: eigene Einkäufe (auch Amazon Business), Versand in allen EU-Sprachen, Zahlungen (bestätigt oder abgelehnt). */
+const EINKAUF_RE = /amazon business[^\n]{0,40}(?:bestellung|order|ordine|commande|pedido|bestelling|zamówieni|beställning)|(?:bestellung|order|ordine|commande|pedido|bestelling|zamówieni|beställning)[^\n]{0,40}amazon business|(?:ihre|deine|your|votre|ta|tu|il tuo|la tua|uw|je|twoje|din) (?:amazon(?:\.[a-z.]+)?[- ]?)?(?:bestellung|order|commande|pedido|ordine|bestelling|zamówienie|beställning)\b/i;
+/** Wort-Grenzen auch für Umlaute/Akzente („expédié“, „płatność“) – \b kennt nur ASCII. */
+const wort = (muster: string) => new RegExp(muster.replace(/\\b/g, "(?:(?<![\\p{L}\\p{N}])(?=[\\p{L}\\p{N}])|(?<=[\\p{L}\\p{N}])(?![\\p{L}\\p{N}]))"), "iu");
+const VERSAND_RE = wort(String.raw`\ba expédié\b|\bexpédiée?s?\b|\bè stat[oa] spedit[oa]\b|\bspedit[oa]\b|\bha sido enviad[oa]\b|\bse ha enviado\b|\bis verzonden\b|\bzostał[oa]? wysłan[aey]?\b|\bhar skickats\b|\bist unterwegs\b|\bon (?:its|the) way\b|\bout for delivery\b|\ben cours de livraison\b|\bin consegna\b|\ben reparto\b`);
+const ZAHLUNG = String.raw`\b(?:pagamento|payment|zahlung|paiement|pago|betaling|płatność|betalning)\b[^\n]{0,30}`;
+const ZAHLUNG_FEHLER_RE = wort(String.raw`${ZAHLUNG}\b(?:rifiutat[oa]|non riuscit[oa]|declined|failed|abgelehnt|fehlgeschlagen|refusé|échoué|rechazad[oa]|fallid[oa]|geweigerd|mislukt|odrzucon[aey]|nieudan[aey]|nekad|misslyckad)\b`);
+const ZAHLUNG_OK_RE = wort(String.raw`${ZAHLUNG}\b(?:elaborat[oa]|riuscit[oa]|ricevut[oa]|confermat[oa]|received|processed|successful|confirmed|erfolgreich|eingegangen|bestätigt|verarbeitet|reçu|accepté|effectué|réussi|recibid[oa]|procesad[oa]|realizad[oa]|confirmad[oa]|ontvangen|geslaagd|verwerkt|przyjęt[aey]|zrealizowan[aey]|mottagen|genomförd)\b|\bcon successo\b|\berfolgreich (?:verarbeitet|abgeschlossen)\b|\bsuccessfully processed\b|\btraité avec succès\b|\bprocesado correctamente\b`);
+/** „erfolgreich/elaborato/successo“ – nie A-bis-z (B19.4). */
+export const ERFOLG_RE = wort(String.raw`\berfolgreich\b|\belaborat[oa]\b|\bsuccess(?:o|ful(?:ly)?)?\b|\bréussi\b|\bavec succès\b|\bexitos[oa]\b|\bcorrectamente\b|\bgeslaagd\b`);
+
+export type RoutineArt = "bestellung" | "versand" | "zahlung" | "zahlung_fehler" | "auszahlung";
+
+/** Echte Fall-Themen im Betreff gehen vor Routine (A-bis-z zu „your order“ bleibt ein Fall). */
+const FALL_IM_BETREFF = (b: string) => RE.a_bis_z.test(b) || RE.marke.test(b) || RE.kontozustand.test(b) || RE.freischaltung.test(b) || RE.entschaedigung.test(b);
+
+/** Welche Routine-Mail (nur Betreff) – null = keine. */
+export function routineArt(betreff: string): RoutineArt | null {
+  if (ZAHLUNG_FEHLER_RE.test(betreff)) return "zahlung_fehler";
+  if (ZAHLUNG_OK_RE.test(betreff)) return "zahlung";
+  if (ROUTINE_RE[4].test(betreff) || ROUTINE_RE[3].test(betreff)) return "auszahlung";
+  if (FALL_IM_BETREFF(betreff)) return null;
+  if (ROUTINE_RE[1].test(betreff) || VERSAND_RE.test(betreff) || /versandbestätigung|has shipped|wurde (?:versandt|zugestellt)|\bzugestellt\b|\bdelivered\b/i.test(betreff)) return "versand";
+  if (ROUTINE_RE.some((re) => re.test(betreff)) || EINKAUF_RE.test(betreff)) return "bestellung";
+  return null;
+}
+
+export const istRoutineMail = (betreff: string) => routineArt(betreff) !== null;
+
+/**
+ * B19.4: Ist der Vorgang ein echter Fall (für „zuständig: VA“ und die VA-Automatik)? Nicht bei Info/Routine, nicht bei
+ * „Sonstiges“ und nicht, solange er als „bitte prüfen“ (unsicher) markiert ist.
+ */
+export const echterFall = (v: { status: string; bereich: string; unsicher: boolean }) => v.status === "offen" && !v.unsicher && v.bereich !== "info" && v.bereich !== "sonstiges";
 
 /** Steuer-/VAT-Hinweise (USt, TVA, IVA, BTW, Moms) – Info, außer die Mail nennt selbst eine Frist. */
 export const STEUER_RE = /\b(?:vat|ust(?:-id(?:nr)?)?|umsatzsteuer|mehrwertsteuer|tva|iva|btw|moms|vat-?nummer)\b/i;
@@ -219,7 +254,8 @@ export function einordnen(
   const asins = extractAsins(hay);
   const skus = extractSkus(hay);
   const { land } = marktplatzAus(m.from, `${m.subject}\n${m.text}`);
-  const routine = !fallnummer && istRoutineMail(m.subject);
+  const rArt = fallnummer ? null : routineArt(m.subject);
+  const routine = rArt !== null;
   const bestellnummer = /\b\d{3}-\d{7}-\d{7}\b/.exec(hay)?.[0] ?? null;
   const shipmentId = /\bFBA[A-Z0-9]{8,10}\b/.exec(hay)?.[0] ?? null;
   const betrag = betragAus(hay);
@@ -245,6 +281,11 @@ export function einordnen(
     } else if (imText) {
       bereich = imText;
       sicherheit = 0.7;
+    }
+    // B19.4: „Zahlung erfolgreich / elaborato con successo“ ist nie A-bis-z (A-bis-z-Hinweis steht oft nur in der Fußzeile).
+    if (bereich === "a_bis_z" && ERFOLG_RE.test(m.subject)) {
+      bereich = "info";
+      sicherheit = 0.9;
     }
     // Fall-Mails (mit Fall-ID) ohne eigenes Thema: Seller Support.
     if (fallnummer && (bereich === "sonstiges" || bereich === "info")) {
@@ -304,6 +345,7 @@ export function einordnen(
     ablehnungsgruende: bereich === "freischaltung" && (phase === "abgelehnt" || phase === "nachreichen" || phase === "entzogen") ? ablehnungsgruende(hay) : [],
     verlangt: phase === "antwort_noetig" ? verlangtAus(hay) : [],
     routine,
+    routineArt: rArt,
     fristQuelle: ausText ? "mail" : frist ? "standard" : null,
   };
 }
@@ -344,13 +386,16 @@ export function zuordnen(e: Pick<Einordnung, "bereich" | "fallnummer" | "asins" 
     const f = vorgaenge.find((v) => v.fallnummer === e.fallnummer);
     if (f) return f.id;
   }
-  if (e.bereich === "info" || e.bereich === "sonstiges") return null;
+  if (e.bereich === "info") return null;
   const grenze = plusTage(mailDatum, -60);
-  const kandidaten = vorgaenge
-    .filter((v) => v.bereich === e.bereich && v.letzteMailAm.slice(0, 10) >= grenze)
-    .filter((v) => (e.asins.length && v.asins.some((a) => e.asins.includes(a))) || (e.shipmentId && v.shipmentId === e.shipmentId) || (e.bestellnummer && v.bestellnummer === e.bestellnummer))
-    .sort((a, b) => b.letzteMailAm.localeCompare(a.letzteMailAm));
-  return kandidaten[0]?.id ?? null;
+  const neueste = (xs: VorgangKurz[]) => xs.sort((a, b) => b.letzteMailAm.localeCompare(a.letzteMailAm))[0]?.id ?? null;
+  const jung = vorgaenge.filter((v) => v.letzteMailAm.slice(0, 10) >= grenze);
+  if (e.bereich !== "sonstiges") {
+    const gleich = neueste(jung.filter((v) => v.bereich === e.bereich).filter((v) => (e.asins.length && v.asins.some((a) => e.asins.includes(a))) || (e.shipmentId && v.shipmentId === e.shipmentId) || (e.bestellnummer && v.bestellnummer === e.bestellnummer)));
+    if (gleich) return gleich;
+  }
+  // B19.4: Mails zur selben Bestellnummer gehören zusammen – auch „Sonstiges“ und über Bereiche hinweg.
+  return e.bestellnummer ? neueste(jung.filter((v) => v.bereich !== "info" && v.bestellnummer === e.bestellnummer)) : null;
 }
 
 /** Status eines Vorgangs nach der Phase: erledigt (genehmigt, gelöst), Info oder offen. */

@@ -44,7 +44,7 @@ export async function kurzWerte(session: Session, heute = todayIso()) {
   const gruen = await db
     .select({ n: count() })
     .from(DE)
-    .where(and(eq(DE.tenantId, t), eq(DE.ampel, "gruen"), gte(DE.createdAt, new Date(Date.now() - 24 * 3_600_000))))
+    .where(and(eq(DE.tenantId, t), eq(DE.ampel, "gruen"), eq(DE.historisch, false), gte(DE.createdAt, new Date(Date.now() - 24 * 3_600_000))))
     .then((r) => r[0]?.n ?? 0)
     .catch(() => 0);
   return {

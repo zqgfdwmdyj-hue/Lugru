@@ -62,14 +62,17 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
                   <td>{e.ampel ? AMPEL_EMOJI[e.ampel] : e.pruefung === "fehler" ? "⚠️" : "⏳"}</td>
                   <td><Link href={`/deal-eingang/${e.id}`}>{e.pruefung === "fertig" ? (e.zusammenfassung ?? "–") : e.pruefung === "fehler" ? `Fehler: ${e.fehler ?? ""}` : "wird geprüft …"}</Link></td>
                   <td>{e.quelle ?? "–"}</td>
-                  <td className="muted">{WEG[e.weg]} · {STATUS_TEXT[e.status]}</td>
+                  <td className="muted">{WEG[e.weg]} · {STATUS_TEXT[e.status]}{e.historisch && <span className="tag" style={{ marginLeft: 6 }} data-testid="de-historie" title="Aus der Lugru-History nachgetragen: Ampel aus den Zahlen des Posts und dem Keepa-Stand beim Posten, kein Push">Historie</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        ) : sp.quelle && /^lugru deals/i.test(sp.quelle) ? (
+          <div className="small muted">Noch keine Lugru-Deals im Deal-Eingang – sie werden im Hintergrund nachgetragen (neueste zuerst). Alle Lugru-Deals: <Link href="/deal-eingang/lugru">Lugru Deals</Link>.</div>
         ) : (
           <div className="small muted">Noch keine Eingänge.</div>
         )}
+        {sp.quelle && liste.some((e) => e.historisch) && <div className="small muted" style={{ marginTop: 6 }}>„Historie“ = aus der Lugru-History nachgetragen: Ampel nach denselben Regeln aus den Zahlen des Posts und dem Keepa-Stand beim Posten, ohne Push. Vor einem Kauf heute neu prüfen.</div>}
       </section>
 
       {q.length > 0 && (
@@ -80,7 +83,7 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
             <thead><tr><th>Absender / Modul</th><th>gemeldet</th><th>Angebote</th><th>grün</th><th>gekauft</th><th>verworfen</th><th>Ø ROI (Prognose)</th><th>Ø ROI real</th></tr></thead>
             <tbody>
               {q.map((x) => (
-                <tr key={x.quelle}><td><Link href={`?quelle=${encodeURIComponent(x.quelle)}`}>{x.quelle}</Link></td><td>{x.eingaenge}</td><td>{x.angebote}</td><td>{x.gruen}</td><td>{x.gekauft}</td><td>{x.verworfen}</td><td>{x.roiPrognose !== null ? `${x.roiPrognose} %` : "–"}</td><td title="Gewinn laut sellerboard je eingesetztem EK, ab 30 Tage nach dem Kauf">{x.roiReal !== null ? `${x.roiReal} % (${x.roiRealN})` : "–"}</td></tr>
+                <tr key={x.quelle}><td><Link href={x.link} data-testid="de-quelle-link">{x.quelle}</Link>{x.testAusgeblendet ? <span className="small muted"> (ohne {x.testAusgeblendet} aus Testkanälen)</span> : null}</td><td>{x.eingaenge}</td><td>{x.angebote}</td><td>{x.gruen}</td><td>{x.gekauft}</td><td>{x.verworfen}</td><td>{x.roiPrognose !== null ? `${x.roiPrognose} %` : "–"}</td><td title="Gewinn laut sellerboard je eingesetztem EK, ab 30 Tage nach dem Kauf">{x.roiReal !== null ? `${x.roiReal} % (${x.roiRealN})` : "–"}</td></tr>
               ))}
             </tbody>
           </table>
@@ -90,7 +93,7 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
       <section className="card card-pad stack" style={{ marginTop: 12 }} data-testid="de-einstellungen">
         <h2 style={{ margin: 0 }}>Kaufen mit einem Tap: Budget und Deal-Wert</h2>
         <div className="small muted">
-          Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
+          Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100{Object.keys(de.wertSchwelleJe ?? {}).length ? `, ${Object.entries(de.wertSchwelleJe).map(([k, v]) => `${k} ab ${v}`).join(", ")}` : ""}) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
           {" "}Diese Woche gekauft: {verbraucht.woche.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}{de.budgetJeWoche ? ` von ${de.budgetJeWoche.toLocaleString("de-DE")} €` : ""}.
           {" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>{" "}<Link href="/deal-eingang/lugru" data-testid="de-lugru-link">Lugru Deals →</Link>
         </div>
@@ -101,6 +104,7 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
             <label className="field">je Tag<input className="input" name="budgetJeTag" inputMode="numeric" defaultValue={de.budgetJeTag || ""} placeholder="0" style={{ width: 100 }} /></label>
             <label className="field">je Woche<input className="input" name="budgetJeWoche" inputMode="numeric" defaultValue={de.budgetJeWoche || ""} placeholder="0" style={{ width: 100 }} /></label>
             <label className="field">Deal-Wert ab<input className="input" name="wertSchwelle" inputMode="numeric" defaultValue={de.wertSchwelle} style={{ width: 70 }} /></label>
+            <label className="field" title="Eigene Schwelle je Quelle, z. B. „Lugru Deals=60“ (gilt für alle Lugru-Kanäle); mehrere mit ; trennen">je Quelle<input className="input" name="wertSchwelleJe" data-testid="de-schwelle-je" defaultValue={Object.entries(de.wertSchwelleJe ?? {}).map(([k, v]) => `${k}=${v}`).join("; ")} placeholder="Lugru Deals=60" style={{ width: 200 }} /></label>
             <button className="btn btn-small" type="submit">Speichern</button>
           </form>
         )}

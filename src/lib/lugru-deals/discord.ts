@@ -6,6 +6,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { discord, type DcNachricht } from "@/lib/va/discord";
 import { kaufZuDeal, keepaSchnappschuss } from "./auswertung-logic";
 import { kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
+import { kanalName } from "./historie-logic";
 
 // Lugru Deals → Seller-System über Discord (Weg B): Der Bot des Seller-Systems liest die Deal-Kanäle der Gruppe – neue
 // Posts jede Minute (→ Deal-Eingang mit Ampel, Push bei Grün/Gelb), Reaktionen in den ersten 48 Std. alle 5 Min., bis
@@ -62,7 +63,7 @@ function werteAus(p: LugruPost, m: DcNachricht, k: { kanalId: string; name: stri
     margeProzent: p.margeProzent,
     verkaeufeMonat: p.verkaeufeMonat,
     maxMenge: p.maxMenge,
-    kanal: k.name,
+    kanal: kanalName(k.name),
     status: p.ausverkauft ? "ausverkauft" : "aktiv",
     reaktionen,
     kaeufe: z.kaeufe,
@@ -158,7 +159,7 @@ async function kanalZeile(tenantId: string, kanalId: string, dc: ReturnType<type
   const [k] = await db.select().from(K).where(and(eq(K.tenantId, tenantId), eq(K.kanalId, kanalId)));
   if (k) return { k, neu: false };
   const info = await dc.kanal(kanalId);
-  const [n] = await db.insert(K).values({ tenantId, kanalId, name: info.name ?? kanalId, guildId: info.guild_id ?? null }).onConflictDoNothing().returning();
+  const [n] = await db.insert(K).values({ tenantId, kanalId, name: kanalName(info.name) ?? kanalId, guildId: info.guild_id ?? null }).onConflictDoNothing().returning();
   return { k: n ?? (await db.select().from(K).where(and(eq(K.tenantId, tenantId), eq(K.kanalId, kanalId))))[0], neu: true };
 }
 
@@ -351,8 +352,10 @@ export async function lugruKeepaNachholen(tenantId: string, max = 20, jetzt = ne
     try {
       const k = await keepaMarkt(tenantId, r.asin, mp, jetzt.getTime());
       if (!k.stand) continue;
-      const snap = keepaSchnappschuss(k.stand.verlauf, r.gepostetAm, { art: "verlauf", jetzt, gekauftImMonat: jetzt.getTime() - r.gepostetAm.getTime() < 3 * 86_400_000 ? k.stand.aktuell.monatlich_verkauft : null });
-      await db.update(L).set({ keepa: snap ?? { stand: jetzt.toISOString(), art: "heute", buyBox: k.stand.aktuell.buybox, buyBox30: k.stand.kennzahlen["30"]?.buybox?.schnitt ?? null, buyBox90: k.stand.kennzahlen["90"]?.buybox?.schnitt ?? null, buyBox180: k.stand.kennzahlen["180"]?.buybox?.schnitt ?? null, einbrueche12: null, angebote: k.stand.aktuell.angebote_neu, angeboteTrend30: null, amazonAnteil: null, rang: k.stand.aktuell.verkaufsrang, gekauftImMonat: k.stand.aktuell.monatlich_verkauft, marke: null, kategorie: null } }).where(eq(L.id, r.id));
+      const marke = k.stand.marke ?? null;
+      const kategorie = k.stand.kategorie ?? null;
+      const snap = keepaSchnappschuss(k.stand.verlauf, r.gepostetAm, { art: "verlauf", jetzt, gekauftImMonat: jetzt.getTime() - r.gepostetAm.getTime() < 3 * 86_400_000 ? k.stand.aktuell.monatlich_verkauft : null, marke, kategorie });
+      await db.update(L).set({ keepa: snap ?? { stand: jetzt.toISOString(), art: "heute", buyBox: k.stand.aktuell.buybox, buyBox30: k.stand.kennzahlen["30"]?.buybox?.schnitt ?? null, buyBox90: k.stand.kennzahlen["90"]?.buybox?.schnitt ?? null, buyBox180: k.stand.kennzahlen["180"]?.buybox?.schnitt ?? null, einbrueche12: null, angebote: k.stand.aktuell.angebote_neu, angeboteTrend30: null, amazonAnteil: null, rang: k.stand.aktuell.verkaufsrang, gekauftImMonat: k.stand.aktuell.monatlich_verkauft, marke, kategorie } }).where(eq(L.id, r.id));
       n++;
     } catch {
       break; // Keepa nicht verbunden oder Tokens leer – beim nächsten Lauf weiter
@@ -361,11 +364,58 @@ export async function lugruKeepaNachholen(tenantId: string, max = 20, jetzt = ne
   return n;
 }
 
+/**
+ * B19.1: Marke und Kategorie für Keepa-Schnappschüsse ohne Kategorie nachziehen – erst aus dem Keepa-Zwischenspeicher
+ * (kostenlos), sonst höchstens `max` Keepa-Abrufe je Lauf. Gilt für alle Deals derselben ASIN; „kategorieAm“ merkt
+ * sich den Versuch, damit ASINs ohne Kategorie bei Keepa nicht immer wieder abgefragt werden.
+ */
+export async function lugruKategorieNachholen(tenantId: string, max = 20, jetzt = new Date()): Promise<number> {
+  const ohne = sql`${L.keepa} is not null and ${L.keepa} ->> 'kategorie' is null and not (${L.keepa} ? 'kategorieAm')`;
+  const asins = await db
+    .select({ asin: L.asin, zielmarkt: sql<string | null>`max(${L.zielmarkt})`, zuletzt: sql<Date>`max(${L.gepostetAm})` })
+    .from(L)
+    .where(and(eq(L.tenantId, tenantId), ohne, gte(L.gepostetAm, new Date(jetzt.getTime() - 365 * 86_400_000))))
+    .groupBy(L.asin)
+    .orderBy(sql`max(${L.gepostetAm}) desc`)
+    .limit(max * 5);
+  if (!asins.length) return 0;
+  const C = schema.keepaCache;
+  const cache = await db.select({ asin: C.asin, stand: C.stand }).from(C).where(and(eq(C.tenantId, tenantId), inArray(C.asin, asins.map((a) => a.asin))));
+  const { keepaMarkt } = await import("@/lib/keepa/markt");
+  const { MARKTPLAETZE } = await import("@/lib/keepa/auswertung");
+  let abrufe = 0;
+  let n = 0;
+  for (const a of asins) {
+    let st = cache.map((c) => c.stand).find((x) => x && "kategorie" in x) ?? null;
+    if (!st) {
+      if (abrufe >= max) continue;
+      const mp = (a.zielmarkt && a.zielmarkt in MARKTPLAETZE ? a.zielmarkt : "DE") as keyof typeof MARKTPLAETZE;
+      try {
+        abrufe++;
+        const k = await keepaMarkt(tenantId, a.asin, mp, jetzt.getTime());
+        st = k.stand && "kategorie" in k.stand ? k.stand : null;
+      } catch {
+        break; // Keepa nicht verbunden oder Tokens leer – beim nächsten Lauf weiter
+      }
+    }
+    if (!st) continue;
+    const kat = st.kategorie ?? null;
+    const marke = st.marke ?? null;
+    await db
+      .update(L)
+      .set({ keepa: sql`${L.keepa} || jsonb_build_object('kategorie', ${kat}::text, 'kategorieAm', ${jetzt.toISOString()}::text) || case when ${L.keepa} ->> 'marke' is null and ${marke}::text is not null then jsonb_build_object('marke', ${marke}::text) else '{}'::jsonb end` })
+      .where(and(eq(L.tenantId, tenantId), eq(L.asin, a.asin), ohne));
+    if (kat) n++;
+  }
+  return n;
+}
+
 /** Fortschritt je Kanal (für Seite, Anbindungen und MCP). */
 export async function lugruKanalStand(tenantId: string) {
   const ks = await db.select().from(K).where(eq(K.tenantId, tenantId)).orderBy(K.createdAt);
-  const [z] = await db.select({ n: sql<number>`count(*)::int`, discord: sql<number>`count(*) filter (where ${L.quelle} = 'discord')::int` }).from(L).where(eq(L.tenantId, tenantId));
-  return { kanaele: ks.map((k) => ({ kanal: k.name ?? k.kanalId, kanalId: k.kanalId, gelesen: k.gelesen, erkannt: k.erkannt, historieFertig: k.historieFertig, historieBis: k.historieBis?.toISOString() ?? null, letzterLauf: k.letzterLauf?.toISOString() ?? null, fehler: k.fehler })), deals: z?.n ?? 0, ausDiscord: z?.discord ?? 0 };
+  const [z] = await db.select({ n: sql<number>`count(*)::int`, discord: sql<number>`count(*) filter (where ${L.quelle} = 'discord')::int`, appZuletzt: sql<Date | null>`max(${L.aktualisiertAm}) filter (where ${L.quelle} = 'app')`, appGepostet: sql<Date | null>`max(${L.gepostetAm}) filter (where ${L.quelle} = 'app')` }).from(L).where(eq(L.tenantId, tenantId));
+  const iso = (d: Date | string | null | undefined) => (d ? new Date(d).toISOString() : null);
+  return { appZuletzt: iso(z?.appZuletzt), appNeuesterPost: iso(z?.appGepostet), kanaele: ks.map((k) => ({ kanal: kanalName(k.name) ?? k.kanalId, kanalId: k.kanalId, gelesen: k.gelesen, erkannt: k.erkannt, historieFertig: k.historieFertig, historieBis: k.historieBis?.toISOString() ?? null, letzterLauf: k.letzterLauf?.toISOString() ?? null, fehler: k.fehler })), deals: z?.n ?? 0, ausDiscord: z?.discord ?? 0 };
 }
 
 export function _lugruZuruecksetzen() {

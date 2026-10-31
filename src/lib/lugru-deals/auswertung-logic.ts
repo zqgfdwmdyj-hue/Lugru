@@ -86,6 +86,19 @@ export type StatDeal = {
   titel: string | null;
 };
 
+/** Hinweis, wenn nur ✅/❌ bekannt sind (Weg A). */
+export const NUR_KAUFZEICHEN = "Lugru Deals überträgt nur ✅ (gekauft) und ❌ (nicht verfügbar) – andere Emojis sind nicht verfügbar.";
+
+/**
+ * Reaktionen je Emoji (nur Anzahl). Aus Discord gelesen: wie gezählt. Von Lugru Deals übertragen (Weg A): die App zählt
+ * nur ✅ und ❌ – dann genau diese zwei statt eines leeren Objekts, mit Hinweis.
+ */
+export function reaktionenVon(z: { reaktionen: Record<string, number> | null; quelle: "app" | "discord"; kaeufe: number; nichtVerfuegbar: number }): { reaktionen: Record<string, number>; nurKaufzeichen: boolean } {
+  const r = z.reaktionen ?? {};
+  if (Object.keys(r).length || z.quelle === "discord") return { reaktionen: r, nurKaufzeichen: false };
+  return { reaktionen: { "✅": z.kaeufe, "❌": z.nichtVerfuegbar }, nurKaufzeichen: true };
+}
+
 /** Marke grob aus dem Titel (erstes Wort), wenn Keepa keine liefert. */
 export const markeAusTitel = (titel: string | null) => {
   const w = (titel ?? "").trim().split(/\s+/)[0]?.replace(/[^\p{L}\p{N}&+-]/gu, "") ?? "";

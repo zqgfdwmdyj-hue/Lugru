@@ -197,3 +197,55 @@ describe("B17 – Routinemails, Marke, Marktplatz, Steuer-Hinweise", () => {
     expect(mit.sicherheit).toBeLessThan(0.6);
   });
 });
+
+describe("B19.4: Einkauf/Versand/Zahlung sind keine Fälle, Gruppierung je Bestellung, VA nur bei echten Fällen", () => {
+  const mail = (subject: string, text = "Garanzia dalla A alla Z – Informationen in der Fußzeile.") => einordnen({ from: "Amazon <no-reply@amazon.it>", subject, text, date: "2026-10-30T10:00:00Z" }, { heute: "2026-10-31" });
+
+  it("Amazon-Business-Einkauf, „Amazon a expédié“, „Pagamento rifiutato“ → Routine, kein Fall", async () => {
+    const { routineArt } = await import("@/lib/amazon-faelle/logic");
+    expect(mail("Ihre Amazon Business-Bestellung #302-1234567-1234567").routine).toBe(true);
+    expect(mail("Your Amazon Business order has been placed").routine).toBe(true);
+    expect(mail("Amazon a expédié votre colis").routine).toBe(true);
+    expect(routineArt("Amazon a expédié votre colis")).toBe("versand");
+    expect(routineArt("Il tuo ordine è stato spedito")).toBe("versand");
+    const abgelehnt = mail("Pagamento rifiutato per l'ordine 405-1234567-7654321");
+    expect(abgelehnt.routine).toBe(true);
+    expect(abgelehnt.routineArt).toBe("zahlung_fehler");
+    expect(abgelehnt.bestellnummer).toBe("405-1234567-7654321");
+    expect(routineArt("Zahlung abgelehnt")).toBe("zahlung_fehler");
+    expect(routineArt("Votre paiement a été refusé")).toBe("zahlung_fehler");
+    expect(routineArt("Paiement refusé")).toBe("zahlung_fehler");
+  });
+
+  it("„Pagamento elaborato con successo“ ist nie A-bis-z", () => {
+    const e = mail("Pagamento elaborato con successo", "Il tuo pagamento è stato elaborato. Garanzia dalla A alla Z: ...");
+    expect(e.bereich).not.toBe("a_bis_z");
+    expect(e.routine).toBe(true);
+    expect(e.routineArt).toBe("zahlung");
+    // auch ohne Zahlungswort im Betreff: „erfolgreich“ + A-bis-z-Text → kein A-bis-z
+    const f = einordnen({ from: "Amazon <seller@amazon.de>", subject: "Vorgang erfolgreich abgeschlossen", text: "A-bis-z-Garantie: Ihr Antrag …", date: "2026-10-30T10:00:00Z" }, { heute: "2026-10-31" });
+    expect(f.bereich).not.toBe("a_bis_z");
+  });
+
+  it("echter A-bis-z-Fall zu „Ihre Bestellung“ bleibt ein Fall", () => {
+    const e = einordnen({ from: "Amazon <seller@amazon.de>", subject: "A-bis-z-Garantieantrag zu Ihrer Bestellung 302-1111111-2222222", text: "Ein Käufer hat einen A-bis-z-Garantieantrag gestellt. Bitte antworten Sie bis 03.11.2026.", date: "2026-10-30T10:00:00Z" }, { heute: "2026-10-31" });
+    expect(e.routine).toBe(false);
+    expect(e.bereich).toBe("a_bis_z");
+  });
+
+  it("Mails zur selben Bestellnummer landen im selben Vorgang – auch „Sonstiges“", () => {
+    const v: VorgangKurz[] = [{ id: "v1", bereich: "sonstiges", status: "offen", fallnummer: null, asins: [], shipmentId: null, bestellnummer: "405-1234567-7654321", letzteMailAm: "2026-10-29T10:00:00Z" }];
+    expect(zuordnen({ bereich: "sonstiges", fallnummer: null, asins: [], shipmentId: null, bestellnummer: "405-1234567-7654321" }, v, "2026-10-30")).toBe("v1");
+    // über Bereiche hinweg (Erstattung zur selben Bestellung)
+    expect(zuordnen({ bereich: "erstattung_kunde", fallnummer: null, asins: [], shipmentId: null, bestellnummer: "405-1234567-7654321" }, v, "2026-10-30")).toBe("v1");
+    expect(zuordnen({ bereich: "sonstiges", fallnummer: null, asins: [], shipmentId: null, bestellnummer: "405-0000000-0000000" }, v, "2026-10-30")).toBeNull();
+  });
+
+  it("zuständig VA nur bei echten Fällen", async () => {
+    const { echterFall } = await import("@/lib/amazon-faelle/logic");
+    expect(echterFall({ status: "offen", bereich: "a_bis_z", unsicher: false })).toBe(true);
+    expect(echterFall({ status: "offen", bereich: "sonstiges", unsicher: false })).toBe(false);
+    expect(echterFall({ status: "offen", bereich: "fall", unsicher: true })).toBe(false);
+    expect(echterFall({ status: "info", bereich: "info", unsicher: false })).toBe(false);
+  });
+});

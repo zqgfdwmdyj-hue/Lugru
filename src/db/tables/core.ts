@@ -178,7 +178,7 @@ export type TenantSettings = {
   };
   /** Amazon-Fall-Zentrale: Fristen je Phase/Bereich (Tage), Nachfassen ohne Antwort, Betragsschwelle für Info an Ludwig, wer einreicht. */
   faelle?: { fristen?: Record<string, number>; nachfassenTage?: number; betragSchwelle?: number; zustaendig?: "va" | "ludwig" };
-  dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string; budgetJeDeal?: number; budgetJeTag?: number; budgetJeWoche?: number; wertSchwelle?: number };
+  dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string; budgetJeDeal?: number; budgetJeTag?: number; budgetJeWoche?: number; wertSchwelle?: number; wertSchwelleJe?: Record<string, number> };
   /** Posteingang auf null: automatisch archivieren, Termin-Mails in den Privatkalender, Vorabend-Erinnerung. */
   posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number };
   /** Rechtsfälle (Anwalt): Absender-Domains, private Asana-Projekte, Vorlauf für Fristen, „nichts passiert“ nach Tagen. */
