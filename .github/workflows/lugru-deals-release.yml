@@ -1,9 +1,10 @@
-# Lugru Deals: baut bei jedem Tag "lugru-deals-v<Version>" alle Programme und
-# legt sie als GitHub-Release ab. Von dort holen update-github.ps1 (Windows)
+# Lugru Deals: baut alle Programme und legt sie als GitHub-Release
+# "lugru-deals-v<Version>" ab. Von dort holen update-github.ps1 (Windows)
 # und update-github.sh (Linux) die neueste Version mit einem Befehl.
 #
-# Neue Version veröffentlichen:
-#   git tag lugru-deals-v2026-11-01.1 && git push origin lugru-deals-v2026-11-01.1
+# Neue Version veröffentlichen: die Versionsnummer in lugru-deals/VERSION
+# ändern und pushen (main oder claude/lugru-deals). Das Release samt Tag legt
+# der Workflow selbst an; gibt es die Version schon, passiert nichts.
 #
 # Reihenfolge: Tests → Bauen → Release. Schlagen die Tests fehl, wird nichts
 # veröffentlicht.
@@ -11,8 +12,9 @@ name: Lugru Deals Release
 
 on:
   push:
-    tags:
-      - 'lugru-deals-v*'
+    branches: [main, claude/lugru-deals]
+    paths: ['lugru-deals/VERSION']
+  workflow_dispatch:
 
 concurrency:
   group: lugru-deals-release
@@ -30,20 +32,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Version lesen
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="$(tr -d '[:space:]' < VERSION)"
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "lugru-deals-v$V" >/dev/null 2>&1; then
+            echo "Release lugru-deals-v$V gibt es schon — nichts zu tun."
+            echo "neu=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "neu=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-go@v5
+        if: steps.version.outputs.neu == 'true'
         with:
           go-version-file: lugru-deals/go.mod
           cache-dependency-path: lugru-deals/go.sum
 
       - name: Tests
+        if: steps.version.outputs.neu == 'true'
         run: go test ./...
 
       - name: Programme bauen
+        if: steps.version.outputs.neu == 'true'
         env:
           CGO_ENABLED: '0'
+          V: ${{ steps.version.outputs.v }}
         run: |
           set -euo pipefail
-          V="${GITHUB_REF_NAME#lugru-deals-v}"
           LD="-s -w -X github.com/trinkfreunde/lugru-deal-discord/internal/web.Version=$V"
           mkdir -p dist
           for a in amd64 arm64; do
@@ -59,11 +78,13 @@ jobs:
           (cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS)
 
       - name: Release anlegen
+        if: steps.version.outputs.neu == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.version.outputs.v }}
         run: |
-          V="${GITHUB_REF_NAME#lugru-deals-v}"
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          gh release create "lugru-deals-v$V" dist/* \
+            --target "$GITHUB_SHA" \
             --title "Lugru Deals $V" \
             --latest=false \
             --notes "Lugru Deals $V. Update unter Windows: update-github.cmd im Installationsordner doppelklicken. Linux: scripts/linux/update-github.sh."

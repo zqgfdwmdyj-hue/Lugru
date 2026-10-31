@@ -31,9 +31,9 @@ curl -fsSL https://raw.githubusercontent.com/zqgfdwmdyj-hue/Lugru/main/lugru-dea
 ```
 
 Beides holt die neueste Version aus den GitHub-Releases. Eine neue Version
-veröffentlichen: Tag `lugru-deals-v<Version>` pushen — der Workflow
+veröffentlichen: die Nummer in `VERSION` ändern und pushen — der Workflow
 `.github/workflows/lugru-deals-release.yml` (im Repo-Root) testet, baut alle
-Programme und legt das Release an.
+Programme und legt das Release samt Tag `lugru-deals-v<Version>` an.
 
 Es ist kein Go, kein Git und kein `make` nötig — das Release-ZIP enthält
 die vorgebaute `lugru-deals.exe`, alle PowerShell-Skripte und einen
