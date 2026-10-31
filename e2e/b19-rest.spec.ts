@@ -79,8 +79,10 @@ test.describe("B19.5–B19.8", () => {
   test("Retouren-Station: LPN von Hand; Handy-Anleitung „Deal prüfen“", async ({ page }) => {
     await anmelden(page, "inhaber");
     await page.goto("/remissionen/station");
-    await expect(page.getByTestId("station-lpn")).toBeVisible();
-    await expect(page.getByTestId("station-lpn")).toBeDisabled();
+    await expect(page.getByTestId("station-lpn-eingabe")).toBeVisible();
+    await expect(page.getByTestId("station-lpn-eingabe")).toBeDisabled();
+    await page.getByTestId("station-start").click();
+    await expect(page.getByTestId("station-lpn-eingabe")).toBeEnabled();
     await page.goto("/einstellungen/handy");
     await expect(page.getByTestId("handy-deal-pruefen")).toHaveAttribute("href", "/deal-eingang/kurzbefehl");
     await page.goto("/schnell");

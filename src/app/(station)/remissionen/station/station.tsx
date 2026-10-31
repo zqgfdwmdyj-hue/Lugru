@@ -461,8 +461,8 @@ export function Station({ initial }: { initial: StationStand }) {
           style={{ display: "flex", gap: 6 }}
           data-testid="station-lpn-form"
         >
-          <label className="sr-only" htmlFor="station-lpn">LPN eingeben</label>
-          <input id="station-lpn" className="input" value={lpn} onChange={(e) => setLpn(e.target.value)} placeholder="LPN / FNSKU / EAN" style={{ width: 170 }} disabled={!gestartet} autoComplete="off" inputMode="text" data-testid="station-lpn" />
+          <label className="sr-only" htmlFor="station-lpn-eingabe">LPN eingeben</label>
+          <input id="station-lpn-eingabe" className="input" value={lpn} onChange={(e) => setLpn(e.target.value)} placeholder="LPN / FNSKU / EAN" style={{ width: 170 }} disabled={!gestartet} autoComplete="off" inputMode="text" data-testid="station-lpn-eingabe" />
           <button className="btn btn-small" type="submit" disabled={!gestartet || !lpn.trim()}>LPN übernehmen</button>
         </form>
       </footer>
