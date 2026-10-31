@@ -15,7 +15,8 @@
 #   verglichen — eine PID allein reicht nicht, weil PIDs recycelt werden.
 #
 # Env-Auflösung:
-#   KEEPA_API_KEY, LUGRU_ADRESSE, LUGRU_DB, LUGRU_CHARTS, LUGRU_BROWSER
+#   KEEPA_API_KEY, LUGRU_ADRESSE, LUGRU_DB, LUGRU_CHARTS, LUGRU_BROWSER,
+#   LUGRU_BENUTZER, LUGRU_PASSWORT, LUGRU_ZEITZONE
 #   werden aus der *persistenten* User-Variable in der Windows-Registry
 #   gelesen und an den gestarteten Prozess weitergereicht. Damit greifen
 #   Änderungen an den Windows-Umgebungsvariablen auch dann, wenn die
@@ -137,7 +138,7 @@ $ArgLine = Format-CmdLine $ExeArgs
 # ---- Env-Auflösung: aktuelle Shell-Variablen lesen, fehlende aus der
 # persistenten User-Registry nachladen. Wir loggen nie Werte — nur das
 # *Vorhandensein* der Variablen wird gemeldet.
-$EnvVarsToCarry = @('KEEPA_API_KEY','LUGRU_ADRESSE','LUGRU_DB','LUGRU_CHARTS','LUGRU_BROWSER')
+$EnvVarsToCarry = @('KEEPA_API_KEY','LUGRU_ADRESSE','LUGRU_DB','LUGRU_CHARTS','LUGRU_BROWSER','LUGRU_BENUTZER','LUGRU_PASSWORT','LUGRU_ZEITZONE')
 foreach ($name in $EnvVarsToCarry) {
     # Wenn im aktuellen Prozess vorhanden → bevorzugen (manueller Start)
     $cur = [Environment]::GetEnvironmentVariable($name, 'Process')

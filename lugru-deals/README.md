@@ -15,10 +15,25 @@ Kurzfassung für Geübte:
 ### Schnellstart
 
 ```powershell
-# ZIP aus https://github.com/trinkfreunde/lugru-deal-discord/releases/latest
-# herunterladen und entpacken, dann in der entpackten PowerShell:
+# ZIP aus https://github.com/zqgfdwmdyj-hue/Lugru/releases ("Lugru Deals …",
+# LugruDeals-Windows-x64.zip oder -ARM64.zip) herunterladen und entpacken,
+# dann in der entpackten PowerShell:
 .\install.ps1 -StartNow
 ```
+
+### Update mit einem Befehl
+
+Windows: `update-github.cmd` im Installationsordner doppelklicken. Linux
+(im Ordner mit dem Programm):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zqgfdwmdyj-hue/Lugru/main/lugru-deals/scripts/linux/update-github.sh | bash
+```
+
+Beides holt die neueste Version aus den GitHub-Releases. Eine neue Version
+veröffentlichen: Tag `lugru-deals-v<Version>` pushen — der Workflow
+`.github/workflows/lugru-deals-release.yml` (im Repo-Root) testet, baut alle
+Programme und legt das Release an.
 
 Es ist kein Go, kein Git und kein `make` nötig — das Release-ZIP enthält
 die vorgebaute `lugru-deals.exe`, alle PowerShell-Skripte und einen

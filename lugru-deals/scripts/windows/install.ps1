@@ -99,6 +99,8 @@ $FilesToCopy = @(
     @{ Src = (Join-Path $SourceRoot 'scripts\windows\install.ps1');   Dest = 'install.ps1' }
     @{ Src = (Join-Path $SourceRoot 'scripts\windows\install.cmd');   Dest = 'install.cmd' }
     @{ Src = (Join-Path $SourceRoot 'scripts\windows\uninstall.cmd'); Dest = 'uninstall.cmd' }
+    @{ Src = (Join-Path $SourceRoot 'scripts\windows\update-github.ps1'); Dest = 'update-github.ps1' }
+    @{ Src = (Join-Path $SourceRoot 'scripts\windows\update-github.cmd'); Dest = 'update-github.cmd' }
 )
 # Wenn ZIP-Layout: Skripte liegen direkt nebeneinander, nicht unter scripts\windows\
 if ($SourceLayout -eq 'zip') {
@@ -109,6 +111,8 @@ if ($SourceLayout -eq 'zip') {
     $FilesToCopy[5].Src = Join-Path $SourceRoot 'install.ps1'
     $FilesToCopy[6].Src = Join-Path $SourceRoot 'install.cmd'
     $FilesToCopy[7].Src = Join-Path $SourceRoot 'uninstall.cmd'
+    $FilesToCopy[8].Src = Join-Path $SourceRoot 'update-github.ps1'
+    $FilesToCopy[9].Src = Join-Path $SourceRoot 'update-github.cmd'
 }
 
 foreach ($f in $FilesToCopy) {

@@ -1,0 +1,69 @@
+# Lugru Deals: baut bei jedem Tag "lugru-deals-v<Version>" alle Programme und
+# legt sie als GitHub-Release ab. Von dort holen update-github.ps1 (Windows)
+# und update-github.sh (Linux) die neueste Version mit einem Befehl.
+#
+# Neue Version veröffentlichen:
+#   git tag lugru-deals-v2026-11-01.1 && git push origin lugru-deals-v2026-11-01.1
+#
+# Reihenfolge: Tests → Bauen → Release. Schlagen die Tests fehl, wird nichts
+# veröffentlicht.
+name: Lugru Deals Release
+
+on:
+  push:
+    tags:
+      - 'lugru-deals-v*'
+
+concurrency:
+  group: lugru-deals-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lugru-deals
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: lugru-deals/go.mod
+          cache-dependency-path: lugru-deals/go.sum
+
+      - name: Tests
+        run: go test ./...
+
+      - name: Programme bauen
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#lugru-deals-v}"
+          LD="-s -w -X github.com/trinkfreunde/lugru-deal-discord/internal/web.Version=$V"
+          mkdir -p dist
+          for a in amd64 arm64; do
+            GOOS=linux GOARCH=$a go build -trimpath -ldflags "$LD" -o dist/lugru-deals-linux-$a ./cmd/lugru-deals
+          done
+          for a in amd64 arm64; do
+            if [ "$a" = arm64 ]; then n=ARM64; else n=x64; fi
+            rm -rf pak && mkdir -p pak/lugru-win
+            cp scripts/windows/* pak/lugru-win/
+            GOOS=windows GOARCH=$a go build -trimpath -ldflags "$LD" -o pak/lugru-win/lugru-deals.exe ./cmd/lugru-deals
+            (cd pak && zip -qr "../dist/LugruDeals-Windows-$n.zip" lugru-win)
+          done
+          (cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#lugru-deals-v}"
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Lugru Deals $V" \
+            --latest=false \
+            --notes "Lugru Deals $V. Update unter Windows: update-github.cmd im Installationsordner doppelklicken. Linux: scripts/linux/update-github.sh."
