@@ -162,13 +162,36 @@ export function reorderTotals(rows: ReorderRow[]) {
  * Kapital-Ampel und Claude rechnen gleich und zeigen diesen Text als Erklärung.
  */
 export const KAPITALBEDARF_DEFINITION =
-  "Kapitalbedarf netto (ohne USt.) = vorgeschlagene Menge laut sellerboard × gültiger EK. Ware unterwegs zu Amazon ist in der Menge schon berücksichtigt. Nicht enthalten: Artikel mit roter Kapital-Ampel (nicht nachbestellen), Retouren, Artikel ohne EK (gezählt, nicht als 0 €) und Artikel, die schon im Einkauf angelegt oder bestellt sind.";
+  "Kapitalbedarf netto (ohne USt.) = vorgeschlagene Menge laut sellerboard × gültiger EK. Ware unterwegs zu Amazon ist in der Menge schon berücksichtigt. Nicht enthalten: Artikel mit roter Kapital-Ampel (nicht nachbestellen), Retouren, Artikel ohne EK (gezählt, nicht als 0 €), Artikel, die schon im Einkauf angelegt oder bestellt sind, und Artikel mit Minus-Marge oder Kaufquote 0 % (getrennt als „prüfen“).";
 
-export type Kapitalbedarf = ReturnType<typeof reorderTotals> & { rows: ReorderRow[]; rote: number; angelegt: number };
+export type Kapitalbedarf = ReturnType<typeof reorderTotals> & { rows: ReorderRow[]; rote: number; angelegt: number; pruefen: { row: ReorderRow; grund: string }[]; pruefenKapital: number };
 
 /** Gemeinsame Rechnung: rote Ampel (bzw. `weg`) und schon angelegte Einkäufe (ASIN) heraus, dann Summen. */
-export function kapitalbedarf(rows: ReorderRow[], o: { weg?: (r: ReorderRow) => boolean; angelegteAsins?: Set<string> } = {}): Kapitalbedarf {
+/** Kaufquote je SKU aus sellerboard (letzte 30 Tage): % Einheiten je Besuch und Anzahl Besuche. */
+export type Kaufquote = { conversion: number | null; sessions: number | null };
+
+/**
+ * B19.8: Artikel, die man vor dem Nachbestellen prüfen sollte – Minus-Marge (30 Tage) oder Kaufquote 0 % bei
+ * vorhandenen Besuchen. Sie zählen nicht in die Summe, sondern stehen getrennt als „prüfen“. null = unauffällig.
+ */
+export function pruefGrund(r: Pick<ReorderRow, "margin">, k: Kaufquote | undefined): string | null {
+  if (r.margin !== null && r.margin < 0) return `Minus-Marge (${String(r.margin).replace(".", ",")} % in 30 Tagen)`;
+  if (k && k.conversion !== null && k.conversion <= 0 && (k.sessions ?? 0) > 0) return `Kaufquote 0 % (${k.sessions} Besuche in 30 Tagen)`;
+  return null;
+}
+
+export function kapitalbedarf(rows: ReorderRow[], o: { weg?: (r: ReorderRow) => boolean; angelegteAsins?: Set<string>; kaufquoten?: Map<string, Kaufquote> } = {}): Kapitalbedarf {
   const ohneRot = o.weg ? rows.filter((r) => !o.weg!(r)) : rows;
-  const offen = o.angelegteAsins?.size ? ohneRot.filter((r) => !(r.asin && o.angelegteAsins!.has(r.asin))) : ohneRot;
-  return { ...reorderTotals(offen), rows: offen, rote: rows.length - ohneRot.length, angelegt: ohneRot.length - offen.length };
+  const offenAlle = o.angelegteAsins?.size ? ohneRot.filter((r) => !(r.asin && o.angelegteAsins!.has(r.asin))) : ohneRot;
+  const pruefen = offenAlle.map((r) => ({ row: r, grund: pruefGrund(r, o.kaufquoten?.get(r.sku)) })).filter((x): x is { row: ReorderRow; grund: string } => x.grund !== null);
+  const pruefSkus = new Set(pruefen.map((x) => x.row.sku));
+  const offen = offenAlle.filter((r) => !pruefSkus.has(r.sku));
+  return {
+    ...reorderTotals(offen),
+    rows: offen,
+    rote: rows.length - ohneRot.length,
+    angelegt: ohneRot.length - offenAlle.length,
+    pruefen,
+    pruefenKapital: Math.round(pruefen.reduce((n, x) => n + (x.row.isReturn ? 0 : (x.row.capital ?? 0)), 0) * 100) / 100,
+  };
 }

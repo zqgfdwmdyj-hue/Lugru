@@ -66,6 +66,7 @@ export default async function HandyPage({ searchParams }: { searchParams: Promis
             {owner && tesla?.accessToken && <form action={heimStandort}><button className="btn btn-small" type="submit">Heim-Standort = Standort des Autos</button></form>}
             {owner && <form action={testSms}><button className="btn btn-small" type="submit">Test-SMS senden</button></form>}
             <Link href="/schnell">Handy-Schlüssel (Kurzbefehle, Widget)</Link>
+            <Link href="/deal-eingang/kurzbefehl" data-testid="handy-deal-pruefen">Anleitung: Kurzbefehl „Deal prüfen“ (WhatsApp → Ampel)</Link>
             <Link href="/kalender/fahrten">Fahrtenbuch</Link>
             <Link href="/scan">Scan mit Ampel</Link>
           </section>

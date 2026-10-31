@@ -109,7 +109,7 @@ export default async function ClaudeSettingsPage() {
           Oben auf jeder Seite: Frage eintippen, Antwort kommt direkt – mit den Daten, die die Person sehen darf (Bereiche wie bei den Benutzern). Den Privatbereich gibt es hier nie. Abgerechnet über den KI-Schlüssel (Anbindungen → KI), pro Frage meist wenige Cent.
         </p>
         <AssistantSettings v={s.assistant} hasKey={Boolean(key?.apiKey)} />
-        <div className="small muted" data-testid="assistant-usage">Diesen Monat: {usage?.chats ?? 0} Gespräche · {(usage?.inTok ?? 0).toLocaleString("de-DE")} Eingabe- und {(usage?.outTok ?? 0).toLocaleString("de-DE")} Ausgabe-Tokens.</div>
+        <div className="small muted" data-testid="assistant-usage">Diesen Monat: {usage?.chats ?? 0} Gespräche · {(usage?.inTok ?? 0).toLocaleString("de-DE")} Eingabe- (inkl. Zwischenspeicher) und {(usage?.outTok ?? 0).toLocaleString("de-DE")} Ausgabe-Tokens. Gespräche vor dem 01.11.2026 zählen nur den nicht zwischengespeicherten Teil der Eingabe (daher sehr kleine Werte).</div>
       </section>
 
       <section className="card card-pad stack" style={{ gap: 12 }} data-testid="rights">

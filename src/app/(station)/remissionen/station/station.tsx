@@ -39,6 +39,8 @@ export function Station({ initial }: { initial: StationStand }) {
   const [aufnahme, setAufnahme] = useState(false);
   const [blitz, setBlitz] = useState(false);
   const [tippen, setTippen] = useState("");
+  // B19.8: eigenes LPN-Feld (LPN, FNSKU, ASIN oder EAN von Hand) – gleicher Weg wie der Handscanner.
+  const [lpn, setLpn] = useState("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -449,6 +451,19 @@ export function Station({ initial }: { initial: StationStand }) {
         >
           <label className="sr-only" htmlFor="station-tippen">Befehl tippen</label>
           <input id="station-tippen" className="input" value={tippen} onChange={(e) => setTippen(e.target.value)} placeholder="Befehl tippen, z. B. Notiz …" style={{ width: 220 }} disabled={!gestartet} />
+        </form>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (lpn.trim()) gescannt(lpn.trim());
+            setLpn("");
+          }}
+          style={{ display: "flex", gap: 6 }}
+          data-testid="station-lpn-form"
+        >
+          <label className="sr-only" htmlFor="station-lpn">LPN eingeben</label>
+          <input id="station-lpn" className="input" value={lpn} onChange={(e) => setLpn(e.target.value)} placeholder="LPN / FNSKU / EAN" style={{ width: 170 }} disabled={!gestartet} autoComplete="off" inputMode="text" data-testid="station-lpn" />
+          <button className="btn btn-small" type="submit" disabled={!gestartet || !lpn.trim()}>LPN übernehmen</button>
         </form>
       </footer>
     </div>

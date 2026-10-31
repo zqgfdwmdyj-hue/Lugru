@@ -53,8 +53,23 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     .groupBy(K.channel);
   for (const kanal of ["ebay", "temu"] as const) {
     const k = kpi.find((x) => x.channel === kanal);
-    if (k && k.tage >= 7 && k.payout > 0) posten.push(...woechentlich({ betragProWoche: (k.payout / k.tage) * 7, heute, wochen, label: `${kanal === "ebay" ? "eBay" : "Temu"}-Auszahlungen (Ø 28 Tage)`, art: kanal }));
-    quellen.push({ name: kanal === "ebay" ? "eBay" : "Temu", status: k && k.tage >= 7 ? "ok" : "keine_daten", hinweis: k ? `${k.tage} Tage sellerboard` : "keine sellerboard-Tageswerte" });
+    if (k && k.tage >= 7 && k.payout > 0) {
+      posten.push(...woechentlich({ betragProWoche: (k.payout / k.tage) * 7, heute, wochen, label: `${kanal === "ebay" ? "eBay" : "Temu"}-Auszahlungen (Ø 28 Tage)`, art: kanal }));
+      quellen.push({ name: kanal === "ebay" ? "eBay" : "Temu", status: "ok", hinweis: `${k.tage} Tage sellerboard` });
+      continue;
+    }
+    // B19.8: Temu kennt sellerboard meist nicht – Ersatz aus den Temu-Aufträgen im System (Basispreis = Auszahlung, ohne Gebühr).
+    if (kanal === "temu") {
+      const { orderLines } = await import("./profit");
+      const zeilen = (await orderLines(t, addDaysIso(heute, -28), addDaysIso(heute, -1)).catch(() => [])).filter((z) => z.channel === "temu" && z.price !== null);
+      const summe = zeilen.reduce((n, z) => n + Number(z.price) * z.qty, 0);
+      if (summe > 0) {
+        posten.push(...woechentlich({ betragProWoche: summe / 4, heute, wochen, label: "Temu-Auszahlungen (Ø Temu-Aufträge 28 Tage, geschätzt)", art: "temu" }));
+        quellen.push({ name: "Temu", status: "ok", hinweis: `aus ${new Set(zeilen.map((z) => z.orderId)).size} Temu-Aufträgen der letzten 28 Tage (Basispreis, geschätzt)` });
+        continue;
+      }
+    }
+    quellen.push({ name: kanal === "ebay" ? "eBay" : "Temu", status: "keine_daten", hinweis: k ? `nur ${k.tage} Tage sellerboard` : kanal === "temu" ? "keine sellerboard-Tageswerte und keine Temu-Aufträge der letzten 28 Tage – Temu fehlt in der Prognose" : "keine sellerboard-Tageswerte" });
   }
 
   // B2B: offene Vorkasse-Rechnungen (Zahlung binnen 7 Tagen erwartet)
@@ -126,7 +141,9 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     const weg = o.ausschliessen ?? ((z: { sku: string }) => ampel?.get(z.sku) === "rot");
     const angelegt = r.rows.length ? await angelegteAsins(t).catch(() => new Set<string>()) : new Set<string>();
     for (const a of freigegebeneAsins) angelegt.add(a);
-    const k = kapitalbedarf(r.rows, { weg: (z) => weg({ sku: z.sku, asin: z.asin }), angelegteAsins: angelegt });
+    const { kaufquotenJeSku } = await import("@/lib/purchasing/reorder");
+    const kaufquoten = r.rows.length ? await kaufquotenJeSku(t).catch(() => new Map()) : new Map();
+    const k = kapitalbedarf(r.rows, { weg: (z) => weg({ sku: z.sku, asin: z.asin }), angelegteAsins: angelegt, kaufquoten });
     const rot = k.rote;
     let n = 0;
     let summe = 0;

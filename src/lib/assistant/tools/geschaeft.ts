@@ -115,6 +115,8 @@ export const bestellvorschlaege = defineTool({
       })),
       hinweis: list.length > i.limit ? `Nur die ersten ${i.limit} von ${list.length}.` : undefined,
       rote_kapital_ampel_ausgeblendet: !i.rote_zeigen && rote ? rote : undefined,
+      // B19.8: Minus-Marge oder Kaufquote 0 % – nicht in der Summe, getrennt zum Prüfen.
+      zu_pruefen: k.pruefen.length ? { anzahl: k.pruefen.length, kapital_netto: k.pruefenKapital, artikel: k.pruefen.slice(0, 30).map(({ row: r, grund }) => ({ sku: r.sku, name: r.name ?? undefined, grund, menge: r.qtyToReorder, kapital_netto: r.capital })) } : undefined,
       definition: KAPITALBEDARF_DEFINITION,
       legende: { kapital_netto: "gültiger EK × Menge; null = EK fehlt oder Retoure", ek_netto: "null = kein gültiger EK", kapital_ampel: "rot = Geld liegt mit zu wenig Rendite / Preis unter Break-even – nicht nachbestellen (Werkzeug kapital_ampel)" },
       link: abs(ctx, "/einkauf/vorschlaege"),
@@ -340,8 +342,12 @@ export const anbindungenStatus = defineTool({
         const eingerichtet = Boolean(s && (s.secretKeys.length || Object.keys(s.config).length));
         // Google/Microsoft-App nur für die optionale OAuth-Anmeldung von Postfächern – Standard ist IMAP mit App-Passwort.
         const optional = d.provider === "google" || d.provider === "microsoft";
-        return { anbindung: d.name, eingerichtet, optional: optional && !eingerichtet ? "nur für Postfach-Anmeldung per OAuth nötig – Postfächer laufen über IMAP mit App-Passwort" : undefined, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined };
-      }).filter((a) => !i.nur_probleme || (!a.eingerichtet && !a.optional)),
+        // B19.8: aktueller Fehler des letzten Abgleichs direkt an der Anbindung (z. B. sellerboard), nicht nur unter „abrufe“.
+        const fehlerJob = jobs
+          .filter((j) => (j.name.toLowerCase().startsWith(`${d.provider.toLowerCase()}:`) || j.name.toLowerCase().startsWith(d.name.toLowerCase())) && j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt))
+          .sort((a, b) => b.lastErrorAt!.getTime() - a.lastErrorAt!.getTime())[0];
+        return { anbindung: d.name, eingerichtet, optional: optional && !eingerichtet ? "nur für Postfach-Anmeldung per OAuth nötig – Postfächer laufen über IMAP mit App-Passwort" : undefined, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined, letzter_fehler: fehlerJob ? { text: (fehlerJob.lastError ?? "Fehler").slice(0, 300), seit: berlinDateTime(fehlerJob.lastErrorAt), abruf: fehlerJob.name, hinweis: ABRUF_HINWEIS[fehlerJob.name] } : undefined };
+      }).filter((a) => !i.nur_probleme || (!a.eingerichtet && !a.optional) || a.letzter_fehler),
       // Immer eine Übersicht – auch wenn „nur_probleme“ alle Postfächer ohne Fehler ausblendet (B17).
       postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),
       postfaecher_hinweis: i.nur_probleme && pf.postfaecher.length && !pf.postfaecher.some((b) => b.fehler || !b.aktiv || postfachVeraltet(b, now)) ? `${pf.postfaecher.length} Postfach/Postfächer rufen ohne Fehler ab – mit „nur_probleme“ ausgeblendet.` : !pf.postfaecher.length ? "Kein Postfach mit Abruf hinterlegt (Posteingang → Postfächer)." : undefined,
@@ -361,6 +367,7 @@ export const anbindungenStatus = defineTool({
         .filter((b) => !i.nur_probleme || b.fehler || !b.aktiv || b.seit_24_h_kein_abruf),
       amazon_mail_warnung: pf.warnung ?? undefined,
       sellerboard_daten_stand: sb.length ? berlinDateTime(new Date(Math.max(...sb))) : "noch kein Abgleich",
+      sellerboard_letzter_fehler: abrufe.find((j) => j.abruf.startsWith("sellerboard:") && j.fehler)?.fehler,
       abrufe,
       importe_90_tage: imports.map((r) => ({ bericht: r.typ, weg: r.via === "api" ? "Schnittstelle" : "Datei-Upload", zuletzt: berlinDateTime(new Date(r.am)), anzahl: r.n })).sort((a, b) => a.bericht.localeCompare(b.bericht)),
       probleme: abrufe.filter((j) => j.fehler).length + pf.postfaecher.filter((b) => b.fehler).length + (pf.warnung ? 1 : 0),

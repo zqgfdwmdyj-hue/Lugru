@@ -261,9 +261,22 @@ export const aufgabeAendern = defineTool({
     if (i.aufwand !== undefined) patch.aufwand = i.aufwand;
     if (i.telefon !== undefined) patch.telefon = i.telefon ? (telefonAus(i.telefon) ?? i.telefon) : null;
     if (!Object.keys(patch).length) return { text: "Nichts zu ändern angegeben.", isError: true };
+    // B19.5: alte Werte der geänderten Felder für „Rückgängig“ (7 Tage) merken.
+    const vorher = Object.fromEntries(Object.keys(patch).map((k) => [k, (task as Record<string, unknown>)[k] ?? null]));
     const [row] = await db.update(T).set(patch).where(and(eq(T.tenantId, s.tenantId), eq(T.id, i.id))).returning();
     syncSoon(s.tenantId);
-    return json({ ok: true, meldung: "Aufgabe geändert.", aufgabe: taskBrief(row, ctx) });
+    return { text: json({ ok: true, meldung: "Aufgabe geändert.", aufgabe: taskBrief(row, ctx) }), ids: [row.id], undo: { id: row.id, vorher } };
+  },
+  undo: async (ctx, d) => {
+    const { id, vorher } = d as { id?: string; vorher?: Record<string, unknown> };
+    if (!id || !vorher) throw new Error("Keine alten Werte gespeichert.");
+    const erlaubt = ["status", "completedAt", "title", "notes", "dueDate", "priority", "aufwand", "telefon"];
+    const patch = Object.fromEntries(Object.entries(vorher).filter(([k]) => erlaubt.includes(k)).map(([k, v]) => [k, k === "completedAt" && typeof v === "string" ? new Date(v) : v])) as Partial<typeof T.$inferInsert>;
+    if (!Object.keys(patch).length) throw new Error("Keine alten Werte gespeichert.");
+    const r = await db.update(T).set(patch).where(and(eq(T.tenantId, ctx.session.tenantId), eq(T.id, id))).returning({ id: T.id });
+    if (!r.length) throw new Error("Aufgabe gibt es nicht mehr.");
+    syncSoon(ctx.session.tenantId);
+    return "Aufgabe wieder wie vorher.";
   },
 });
 

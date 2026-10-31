@@ -102,15 +102,26 @@ describe("B15.10: Kapazität 0 ist nie „überbucht“", () => {
     expect(r.tage[0].auslastung).toBeNull();
     expect(r.tage[0].konflikte.length).toBeGreaterThan(0);
   });
-  it("normale Aufgaben passen nicht ganz → „voll“ (verschoben), nicht „überbucht“", () => {
+  // B19.7 (ersetzt B15.10): fällige Aufgaben brauchen mehr Zeit als frei ist → „überbucht – x Min. zu viel“
+  // (der Rest wird weiterhin verschoben).
+  it("fällige Aufgaben brauchen 120 Min., frei sind 60 → „überbucht – 60 Min. zu viel“, eine verschoben", () => {
     const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { aufwand: "M" }), a("2", { aufwand: "M" })] });
-    expect(r.tage[0].ampel).toBe("gelb");
+    expect(r.tage[0].ampel).toBe("rot");
+    expect(r.tage[0]).toMatchObject({ bedarf: 120, kapazitaet: 60, zuViel: 60 });
+    expect(ampelText(r.tage[0])).toBe("überbucht – 60 Min. zu viel (60 Min. frei)");
     expect(r.verschoben.map((v) => v.id)).toEqual(["2"]);
+  });
+
+  it("vorgezogene (noch nicht fällige) Aufgaben machen keinen Tag „überbucht“", () => {
+    const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:15" } }, sperrenAm: () => [], aufgaben: [a("1", { aufwand: "M" }), a("2", { aufwand: "M", faellig: "2026-11-03" })] });
+    expect(r.tage[0].zuViel).toBe(0);
+    expect(r.tage[0].ampel).not.toBe("rot");
   });
 });
 
 describe("Kaum freie Zeit (Umsetzungsstand 31.10.: Mo 2.11. rot bei 0 von 30 Min.)", () => {
-  it("Privat ab 10:00 bis Abend, nur 30 Min. frei, wichtige Frist (1 Std.) → „kaum freie Zeit“, nicht überbucht; Konflikt nennt den Grund", () => {
+  // B19.7 (ersetzt B17/M1): auch an Tagen mit wenig freier Zeit zeigt die Ampel „überbucht“ mit der Zahl.
+  it("Privat ab 10:00 bis Abend, nur 30 Min. frei, wichtige Frist (1 Std.) → „überbucht – 30 Min. zu viel (30 Min. frei)“; Konflikt nennt den Grund", () => {
     const r = planeTage({
       start: "2026-11-02",
       tage: 2,
@@ -121,9 +132,17 @@ describe("Kaum freie Zeit (Umsetzungsstand 31.10.: Mo 2.11. rot bei 0 von 30 Min
     const mo = r.tage[0];
     expect(mo.kapazitaet).toBe(30);
     expect(mo.belegt).toBe(0);
-    expect(mo.ampel).toBe("frei");
-    expect(ampelText(mo)).toBe("kaum freie Zeit (30 Min.)");
+    expect(mo.ampel).toBe("rot");
+    expect(ampelText(mo)).toBe("überbucht – 30 Min. zu viel (30 Min. frei)");
     expect(mo.konflikte[0].text).toContain("nur 30 Min. freier Zeit");
     expect(r.tage[1].geplant.map((g) => g.id)).toEqual(["1"]);
+  });
+});
+
+describe("B19.7: ohne fällige Aufgaben bleibt ein knapper Tag „kaum freie Zeit“", () => {
+  it("30 Min. frei, nichts fällig → frei/kaum freie Zeit", () => {
+    const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:30", bis: "18:00" } }, sperrenAm: () => [{ von: "10:00", bis: "23:59", titel: "Privat belegt", art: "privat" }], aufgaben: [] });
+    expect(r.tage[0].ampel).toBe("frei");
+    expect(ampelText(r.tage[0])).toBe("kaum freie Zeit (30 Min.)");
   });
 });

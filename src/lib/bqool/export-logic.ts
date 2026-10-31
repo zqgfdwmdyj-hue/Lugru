@@ -268,6 +268,8 @@ export function abverkaufVorschlagen(k: { ampel: "gruen" | "gelb" | "rot"; reich
 // ---- Regel-Katalog (spiegelt BQool; die Logik der Regeln steht nur in BQool) -------------------------------------
 
 export type KatalogRegel = {
+  /** Weitere Namen, unter denen BQool die Regel exportiert (B19.8: „AI Win Sales Booster“ = Liquidation). */
+  aliase?: string[];
   /** Name exakt wie in BQool. */
   name: string;
   /** null = alle Länder. */
@@ -320,11 +322,15 @@ export const KATALOG_STANDARD: KatalogRegel[] = [
     risiko: false,
     hinweis: "Soll 4/3/2/1/0 % (0–30 T nur mit ≥ 1 verfügbar). Ist 30.10.: 7/5/3/1/0/1/0 %, Strategien gemischt (z. T. „Tiefstpreis + x %“) – Ludwig stellt in BQool um; das Seller-System rechnet mit dem Soll und meldet abweichende Regeln je SKU nach dem nächsten BQool-Export.",
   },
-  { name: "Liquidation", laender: null, strategie: "AI Win Sales Booster, fester Min aus Upload (BQool-ID 43)", staffel: null, festeUntergrenze: true, risiko: false, hinweis: "Min Price je SKU und Land maßgeblich" },
+  { name: "Liquidation", aliase: ["AI Win Sales Booster"], laender: null, strategie: "AI Win Sales Booster, fester Min aus Upload (BQool-ID 43)", staffel: null, festeUntergrenze: true, risiko: false, hinweis: "Min Price je SKU und Land maßgeblich" },
   { name: "mbb", laender: null, strategie: "Match Buy Box (BQool-ID 33)", staffel: null, festeUntergrenze: false, risiko: true, hinweis: "nur hochgeladener Min, keine Marge – Ziel: auf ia umstellen" },
 ];
 
-export const katalogRegel = (katalog: KatalogRegel[], name: string | null | undefined) => (name ? (katalog.find((k) => k.name.trim().toLowerCase() === name.trim().toLowerCase()) ?? null) : null);
+export const katalogRegel = (katalog: KatalogRegel[], name: string | null | undefined) => {
+  if (!name) return null;
+  const n = name.trim().toLowerCase();
+  return katalog.find((k) => k.name.trim().toLowerCase() === n || (k.aliase ?? []).some((a) => a.trim().toLowerCase() === n)) ?? null;
+};
 
 /**
  * Mindestpreis für die Datei: Liquidation = feste Untergrenze; Margen-Regeln = Break-even ohne Marge als

@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { correctedProfit } from "@/lib/hebel/rules";
 import { skuCostMap } from "@/lib/money/costs";
-import { buildReorderRows, kapitalbedarf, type ReorderRow } from "./reorder-logic";
+import { buildReorderRows, kapitalbedarf, type Kaufquote, type ReorderRow } from "./reorder-logic";
 
 // Nachbestellen laut sellerboard – angereichert mit dem gültigen EK, Retouren-Zuordnung, Bezugsquelle und Marge.
 
@@ -99,10 +99,18 @@ export async function angelegteAsins(tenantId: string): Promise<Set<string>> {
  * B15.5: Bestellvorschläge mit der gemeinsamen Kapitalbedarf-Rechnung (überall gleich). `rotZeigen` blendet Artikel
  * mit roter Kapital-Ampel wieder ein (nur Anzeige auf Wunsch).
  */
+/** B19.8: Kaufquote je SKU (sellerboard, Amazon, letzte 30 Tage) – für „prüfen“ statt Summe. */
+export async function kaufquotenJeSku(tenantId: string): Promise<Map<string, Kaufquote>> {
+  const S = schema.sellerboardSkuStats;
+  const rows = await db.select({ sku: S.sku, conversion: S.conversion, sessions: S.sessions }).from(S).where(and(eq(S.tenantId, tenantId), eq(S.channel, "amazon")));
+  return new Map(rows.map((r) => [r.sku, { conversion: r.conversion === null ? null : Number(r.conversion), sessions: r.sessions }]));
+}
+
 export async function bestellvorschlaegeGemeinsam(tenantId: string, heute = todayIso(), o: { rotZeigen?: boolean } = {}) {
   const { ampelJeSku } = await import("@/lib/money/kapital-service");
   const sb = await sellerboardReorder(tenantId);
   const [ampel, angelegt] = sb.rows.length ? await Promise.all([ampelJeSku(tenantId, heute).catch(() => new Map<string, "gruen" | "gelb" | "rot">()), angelegteAsins(tenantId)]) : [new Map<string, "gruen" | "gelb" | "rot">(), new Set<string>()];
-  const k = kapitalbedarf(sb.rows, { weg: o.rotZeigen ? undefined : (r) => ampel.get(r.sku) === "rot", angelegteAsins: angelegt });
+  const kaufquoten = sb.rows.length ? await kaufquotenJeSku(tenantId) : new Map();
+  const k = kapitalbedarf(sb.rows, { weg: o.rotZeigen ? undefined : (r) => ampel.get(r.sku) === "rot", angelegteAsins: angelegt, kaufquoten });
   return { ...k, alle: sb.rows, syncedAt: sb.syncedAt, ampel, roteGesamt: sb.rows.filter((r) => ampel.get(r.sku) === "rot").length };
 }

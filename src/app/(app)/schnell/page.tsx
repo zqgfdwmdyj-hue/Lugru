@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import { mobilProtokollListe, mobilTokens } from "@/lib/mobil/token";
 import { publicUrl } from "@/lib/public-url";
@@ -70,6 +71,7 @@ export default async function SchnellPage({ searchParams }: { searchParams: Prom
               <li>Aktion „Inhalte von URL abrufen“: <code>{basis || "https://<deine Adresse>"}/api/mobil/erfassen</code>, POST, Header <code>Authorization</code> = <code>Bearer &lt;Schlüssel&gt;</code>, JSON-Feld <code>text</code> = diktierter Text.</li>
               <li>Aktion „Text sprechen“ mit dem Feld <code>antwort</code> aus dem Ergebnis.</li>
             </ol>
+            <div className="muted" data-testid="schnell-deal-pruefen">Deals aus WhatsApp prüfen (Kurzbefehl „Deal prüfen“, eigener dk_-Schlüssel): <Link href="/deal-eingang/kurzbefehl">Anleitung</Link>.</div>
             <SchluesselForm />
             {schluessel.length > 0 && (
               <table className="table small">

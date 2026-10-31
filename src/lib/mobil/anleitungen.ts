@@ -45,6 +45,26 @@ const ANL: { titel: string; a: AnleitungFelder }[] = [
     },
   },
   {
+    titel: "Kurzbefehl „Deal prüfen“ (WhatsApp → Ampel)",
+    a: {
+      zweck: "Deal aus WhatsApp, Mail oder Browser teilen und nach höchstens einer Minute die Ampel als Mitteilung bekommen – der Deal landet im Deal-Eingang.",
+      wann: "Einmal je iPhone einrichten; danach bei jedem Deal über „Teilen“.",
+      wer: "Ludwig",
+      schritte: [
+        "Seller-System → Deal-Eingang → „iPhone-Kurzbefehl & Teilen“ (/deal-eingang/kurzbefehl) → Schlüssel für dieses iPhone erzeugen und kopieren (beginnt mit dk_).",
+        "Ist dort ein iCloud-Link hinterlegt: Kurzbefehl laden, Schlüssel eintragen, fertig.",
+        "Sonst: Kurzbefehle → „+“ → Name „Deal prüfen“ → Details: „Im Share-Sheet anzeigen“ an, Typen Text, Bilder, PDF, Dateien.",
+        "Aktion „Inhalte von URL abrufen“: POST https://<deine Adresse>/api/deal-eingang, Header Authorization = Bearer dk_…, Haupttext Formular, Feld text = Kurzbefehleingabe (bei Bildern/PDF Feld datei).",
+        "Aktion „Mitteilung anzeigen“ mit dem Wörterbuchwert „text“ aus der Antwort.",
+        "Testen: in WhatsApp Nachricht lange drücken → Teilen → „Deal prüfen“.",
+        "Android: Seller-System in Chrome „Zum Startbildschirm hinzufügen“, dann in WhatsApp Teilen → „Seller“.",
+      ],
+      zugaenge: ["Deal-Eingang-Schlüssel (dk_…, je Gerät, widerrufbar unter Deal-Eingang → iPhone-Kurzbefehl)"],
+      fehler: ["401: Schlüssel falsch oder widerrufen – neu erzeugen.", "Mehr als 20 Eingänge in 10 Minuten je Schlüssel werden abgelehnt.", "Keine Mitteilung: im Kurzbefehl den Wert „text“ der Antwort wählen, nicht die ganze Antwort.", "Es wird nie automatisch gekauft – die Ampel ist nur eine Einschätzung."],
+      aufgabenTypen: [],
+    },
+  },
+  {
     titel: "Sperrbildschirm-Widget einrichten",
     a: {
       zweck: "Umsatz, Gewinn gestern, FBM mit Frist heute, wichtige ToDos, nächster Termin und grüne Deals auf einen Blick.",

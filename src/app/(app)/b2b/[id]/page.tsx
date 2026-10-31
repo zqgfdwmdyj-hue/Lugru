@@ -78,6 +78,7 @@ export default async function DealPage({ params, searchParams }: { params: Promi
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <a className="btn" href={`/b2b/${d.id}/blatt`} target="_blank" rel="noreferrer">Deal-Blatt (PDF)</a>
+          <a className="btn" href={`/b2b/${d.id}/blatt?format=svg`} target="_blank" rel="noreferrer" data-testid="deal-blatt-bild">Deal-Blatt (Bild)</a>
           {offen && (
             <form action={prognoseAction}><input type="hidden" name="id" value={d.id} /><SubmitButton className="btn" label="Prognose aktualisieren" pendingLabel="Frage ab …" /></form>
           )}

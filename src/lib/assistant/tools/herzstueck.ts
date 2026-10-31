@@ -98,6 +98,8 @@ export const tagesplanTool = defineTool({
         arbeitszeit: t.arbeitszeit ? `${t.arbeitszeit.von}–${t.arbeitszeit.bis}` : "kein Arbeitstag",
         kapazitaet_min: t.kapazitaet,
         eingeplant_min: t.belegt,
+        faellig_min: t.bedarf,
+        zu_viel_min: t.zuViel || undefined,
         auslastung_prozent: t.auslastung,
         ampel: t.ampel,
         ampel_text: ampelText(t),

@@ -16,12 +16,28 @@ export type Geplant = PlanAufgabe & { von: string; bis: string };
 export type Verschoben = PlanAufgabe & { neu: string };
 export type Konflikt = { aufgabeId: string; titel: string; text: string };
 /** Anzeige der Tages-Ampel („frei“ mit Arbeitszeit = keine bzw. kaum freie Zeit). */
-export function ampelText(p: Pick<TagPlan, "ampel" | "arbeitszeit" | "kapazitaet">): string {
+export function ampelText(p: Pick<TagPlan, "ampel" | "arbeitszeit" | "kapazitaet"> & { zuViel?: number }): string {
   if (p.ampel === "frei") return !p.arbeitszeit ? "frei" : p.kapazitaet > 0 ? `kaum freie Zeit (${p.kapazitaet} Min.)` : "keine freie Zeit";
+  // B19.7: überbucht mit Zahl – fällige Aufgaben brauchen mehr Zeit, als frei ist.
+  if (p.ampel === "rot" && p.zuViel) return `überbucht – ${p.zuViel} Min. zu viel (${p.kapazitaet} Min. frei)`;
   return { gruen: "passt", gelb: "voll", rot: "überbucht" }[p.ampel];
 }
 
-export type TagPlan = { tag: string; arbeitszeit: { von: string; bis: string } | null; sperren: Sperre[]; kapazitaet: number; geplant: Geplant[]; belegt: number; auslastung: number | null; ampel: "gruen" | "gelb" | "rot" | "frei"; konflikte: Konflikt[] };
+export type TagPlan = {
+  tag: string;
+  arbeitszeit: { von: string; bis: string } | null;
+  sperren: Sperre[];
+  kapazitaet: number;
+  geplant: Geplant[];
+  belegt: number;
+  auslastung: number | null;
+  ampel: "gruen" | "gelb" | "rot" | "frei";
+  konflikte: Konflikt[];
+  /** B19.7: Minuten der an diesem Tag fälligen (und überfälligen) offenen Aufgaben. */
+  bedarf?: number;
+  /** B19.7: Bedarf über der freien Zeit (0 = passt). */
+  zuViel?: number;
+};
 
 const min = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -162,7 +178,8 @@ export function planeTag(tag: string, kandidaten: PlanAufgabe[], az: { von: stri
   // B15.10: „überbucht“ (rot) nur, wenn Wichtiges heute nicht mehr passt (siehe planeTage); ohne freie Zeit nie rot.
   // Was sonst nicht passt, wird verschoben – der Tag ist dann „voll“.
   const ampel = !az || kapazitaet === 0 ? "frei" : rest.length || (auslastung ?? 0) > 80 ? "gelb" : "gruen";
-  return { plan: { tag, arbeitszeit: az, sperren, kapazitaet, geplant, belegt, auslastung, ampel, konflikte: [] }, rest };
+  const bedarf = kandidaten.reduce((n, a) => n + AUFWAND_MIN[a.aufwand], 0);
+  return { plan: { tag, arbeitszeit: az, sperren, kapazitaet, geplant, belegt, auslastung, ampel, konflikte: [], bedarf, zuViel: Math.max(0, bedarf - kapazitaet) }, rest };
 }
 
 /**
@@ -234,9 +251,14 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
 /** Unter dieser freien Zeit (z. B. Privat ab 10 Uhr) gilt ein Tag als „kaum freie Zeit“ – nie „überbucht“ (B17/M1). */
 export const KAUM_ZEIT_MIN = 60;
 
-/** Ampel nach Vorziehen neu bestimmen. */
+/**
+ * Ampel nach Vorziehen neu bestimmen. B19.7: „überbucht“, sobald die fälligen Aufgaben mehr Minuten brauchen als frei
+ * sind (mit „x Min. zu viel“) – auch an Tagen mit wenig freier Zeit; nur ohne Arbeitszeit/freie Zeit bleibt es „frei“.
+ */
 function tages(p: TagPlan) {
-  if (!p.arbeitszeit || p.kapazitaet === 0 || (p.kapazitaet < KAUM_ZEIT_MIN && p.belegt === 0)) p.ampel = "frei";
+  if (!p.arbeitszeit || p.kapazitaet === 0) p.ampel = "frei";
+  else if ((p.zuViel ?? 0) > 0) p.ampel = "rot";
+  else if (p.kapazitaet < KAUM_ZEIT_MIN && p.belegt === 0) p.ampel = "frei";
   else if (p.konflikte.some((k) => k.text.startsWith("Wichtig"))) p.ampel = "rot";
   else if ((p.auslastung ?? 0) > 80) p.ampel = p.ampel === "rot" ? "rot" : "gelb";
 }

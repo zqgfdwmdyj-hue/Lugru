@@ -63,6 +63,8 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
         <PrivatHead active="rueckblick" title="Monatsrückblick" pin={session.privatePin} month={month} sub={
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <MonthNav path="/privat/rueckblick" month={month} />
+            <Link className="btn" href="/privat/rueckblick/woche" data-testid="link-wochenrueckblick">Wochenrückblick</Link>
+            <Link className="btn" href="/privat/beobachtungen" data-testid="link-beobachtungen">Beobachtungen</Link>
             <Link className="btn" href="/privat/therapie-bogen" data-testid="link-therapie-bogen">Therapie-Bogen</Link>
             <PrintButton label="Drucken / PDF" />
           </div>

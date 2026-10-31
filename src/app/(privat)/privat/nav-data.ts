@@ -32,6 +32,7 @@ export const GROUPS = [
       { key: "danke", href: "/privat/paar/wertschaetzung", label: "Wertschätzung" },
       { key: "geburtstage", href: "/privat/geburtstage", label: "Geburtstage & Jahrestage" },
       { key: "gespraech", href: "/privat/paar/gespraech", label: "Paar-Gespräch" },
+      { key: "beobachtungen", href: "/privat/beobachtungen", label: "Beobachtungen" },
       { key: "therapiebogen", href: "/privat/therapie-bogen", label: "Therapie-Bogen" },
     ],
   },
@@ -62,7 +63,8 @@ export const GROUPS = [
     tabs: [
       { key: "kalender", href: "/privat/kalender", label: "Kalender" },
       { key: "eintragen", href: "/privat/eintragen", label: "Eintragen" },
-      { key: "rueckblick", href: "/privat/rueckblick", label: "Rückblick", month: true },
+      { key: "rueckblick", href: "/privat/rueckblick", label: "Monatsrückblick", month: true },
+      { key: "wochenrueckblick", href: "/privat/rueckblick/woche", label: "Wochenrückblick" },
       { key: "wissen", href: "/privat/wissen", label: "Wissen" },
       { key: "geld", href: "/privat/geld", label: "Geld" },
       { key: "einstellungen", href: "/privat/einstellungen", label: "Einstellungen" },

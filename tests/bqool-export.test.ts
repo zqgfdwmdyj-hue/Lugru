@@ -147,7 +147,7 @@ describe("Regel-Katalog", () => {
   it("Abgleich Ist ↔ Soll: unbekannte Regel, ohne Regel, Risiko, Liquidation abweichend", () => {
     const f = abgleich(
       [
-        { land: "DE", sku: "A", regel: "AI Win Sales Booster" },
+        { land: "DE", sku: "A", regel: "Eigene Testregel" },
         { land: "DE", sku: "B", regel: null },
         { land: "FR", sku: "C", regel: "mbb" },
         { land: "IT", sku: "D", regel: "ia" },
@@ -213,5 +213,16 @@ describe("B17 – Soll-Regel aus BQool-Ist und Katalog", () => {
     expect(minBlockiertBuybox({ istMin: 21, effMin: 19.8, buybox: 22.5 })).toBeNull();
     expect(minBlockiertBuybox({ istMin: 25, effMin: 25, buybox: 22.5 })).toBeNull();
     expect(minBlockiertBuybox({ istMin: 25, effMin: 19, buybox: null })).toBeNull();
+  });
+});
+
+describe("B19.8: „AI Win Sales Booster“ im Regel-Katalog", () => {
+  it("gehört zu Liquidation – kein „Regel nicht im Katalog“ mehr", () => {
+    const k = katalogRegel(KATALOG_STANDARD, "AI Win Sales Booster");
+    expect(k?.name).toBe("Liquidation");
+    expect(k?.festeUntergrenze).toBe(true);
+    const f = abgleich([{ land: "DE", sku: "TEST-SKU-1", regel: "AI Win Sales Booster" }], new Map([["DE|TEST-SKU-1", "Liquidation"]]), KATALOG_STANDARD);
+    expect(f.filter((x) => x.art === "unbekannte_regel")).toEqual([]);
+    expect(f.filter((x) => x.art.startsWith("liquidation"))).toEqual([]);
   });
 });

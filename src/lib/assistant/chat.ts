@@ -7,6 +7,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { getSettings } from "@/lib/settings";
 import { inputSchema, logNotRun, prepareCall, runTool, stufeVon, toolsFor } from "./registry";
 import type { Stufe, ToolCtx, Vorschau } from "./types";
+import { eingabeTokens } from "./verlauf-logic";
 
 // Fragefeld im Seller-System: Claude-API (offizielle Bibliothek) mit den gemeinsamen Werkzeugen.
 // Lesen läuft sofort; Werkzeuge, die etwas ändern, warten auf „Ausführen“ im Fragefeld (Bestätigung).
@@ -182,7 +183,8 @@ export async function* chatTurn(ctx: ToolCtx, opts: { chatId?: string | null; te
       await save();
       return yield { type: "error", message: friendlyError(e) };
     }
-    inTok += res.usage.input_tokens ?? 0;
+    // B19.5: mit Zwischenspeicher (cache_control) steckt der Großteil in cache_read/cache_creation.
+    inTok += eingabeTokens(res.usage);
     outTok += res.usage.output_tokens ?? 0;
     if (res.stop_reason === "refusal") {
       await save();

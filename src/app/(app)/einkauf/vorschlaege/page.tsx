@@ -2,9 +2,9 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { purchaseSuggestions } from "@/lib/purchasing/service";
-import { angelegteAsins, sellerboardReorder } from "@/lib/purchasing/reorder";
+import { angelegteAsins, kaufquotenJeSku, sellerboardReorder } from "@/lib/purchasing/reorder";
 import { ampelJeSku } from "@/lib/money/kapital-service";
-import { CHECK_LABEL, filterReorder, KAPITALBEDARF_DEFINITION, kapitalbedarf, reorderTotals, URGENCY_LABEL, type ReorderCheck, type ReorderFilter, type Urgency } from "@/lib/purchasing/reorder-logic";
+import { CHECK_LABEL, filterReorder, KAPITALBEDARF_DEFINITION, kapitalbedarf, reorderTotals, URGENCY_LABEL, type Kaufquote, type ReorderCheck, type ReorderFilter, type Urgency } from "@/lib/purchasing/reorder-logic";
 import { COST_SOURCE_LABEL } from "@/lib/money/profit-logic";
 import { reachText } from "@/lib/stock/breakdown";
 import { getSettings } from "@/lib/settings";
@@ -33,7 +33,7 @@ function href(base: SP, patch: Partial<SP>) {
 export default async function VorschlaegePage({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const [sb, settings, ampel, angelegt] = await Promise.all([sellerboardReorder(session.tenantId), getSettings(session.tenantId), ampelJeSku(session.tenantId, todayIso()).catch(() => new Map<string, "gruen" | "gelb" | "rot">()), angelegteAsins(session.tenantId).catch(() => new Set<string>())]);
+  const [sb, settings, ampel, angelegt, kaufquoten] = await Promise.all([sellerboardReorder(session.tenantId), getSettings(session.tenantId), ampelJeSku(session.tenantId, todayIso()).catch(() => new Map<string, "gruen" | "gelb" | "rot">()), angelegteAsins(session.tenantId).catch(() => new Set<string>()), kaufquotenJeSku(session.tenantId).catch(() => new Map())]);
   const weg = sp.weg === "wawi" || sp.weg === "sellerboard" ? sp.weg : sb.rows.length ? "sellerboard" : "wawi";
   const leadDays = clampInt(sp.lieferzeit, 14, 0, 120);
   const coverDays = clampInt(sp.reichweite, 30, 7, 365);
@@ -51,12 +51,12 @@ export default async function VorschlaegePage({ searchParams }: { searchParams: 
         <Link href={href({ weg: "sellerboard" }, {})} className={`chip${weg === "sellerboard" ? " active" : ""}`} aria-current={weg === "sellerboard" ? "true" : undefined} data-testid="way-sellerboard">A · Nachbestellen laut sellerboard ({sb.rows.length})</Link>
         <Link href={href({ weg: "wawi" }, {})} className={`chip${weg === "wawi" ? " active" : ""}`} aria-current={weg === "wawi" ? "true" : undefined} data-testid="way-wawi">B · Eigene WaWi-Rechnung</Link>
       </nav>
-      {weg === "sellerboard" ? <SellerboardWay sp={sp} data={sb} ampel={ampel} angelegt={angelegt} /> : <WawiWay tenantId={session.tenantId} sp={sp} leadDays={leadDays} coverDays={coverDays} vatRate={settings.vatRate} />}
+      {weg === "sellerboard" ? <SellerboardWay sp={sp} data={sb} ampel={ampel} angelegt={angelegt} kaufquoten={kaufquoten} /> : <WawiWay tenantId={session.tenantId} sp={sp} leadDays={leadDays} coverDays={coverDays} vatRate={settings.vatRate} />}
     </>
   );
 }
 
-function SellerboardWay({ sp, data, ampel, angelegt }: { sp: SP; data: Awaited<ReturnType<typeof sellerboardReorder>>; ampel: Map<string, "gruen" | "gelb" | "rot">; angelegt: Set<string> }) {
+function SellerboardWay({ sp, data, ampel, angelegt, kaufquoten }: { sp: SP; data: Awaited<ReturnType<typeof sellerboardReorder>>; ampel: Map<string, "gruen" | "gelb" | "rot">; angelegt: Set<string>; kaufquoten: Map<string, Kaufquote> }) {
   const base: SP = { weg: "sellerboard", q: sp.q, dring: sp.dring, pruefen: sp.pruefen, marge: sp.marge, kapital: sp.kapital, sort: sp.sort, rot: sp.rot };
   const f: ReorderFilter = {
     q: sp.q,
@@ -69,7 +69,7 @@ function SellerboardWay({ sp, data, ampel, angelegt }: { sp: SP; data: Awaited<R
   // Kapital-Ampel rot (Geld liegt, Rendite gering, Preis unter Break-even) → nicht vorschlagen; auf Wunsch zeigen.
   // B15.5: Summe mit der gemeinsamen Rechnung (wie Startseite, Liquidität, Claude); angelegte Einkäufe zählen nicht.
   const rote = data.rows.filter((r) => ampel.get(r.sku) === "rot");
-  const k = kapitalbedarf(data.rows, { weg: sp.rot === "1" ? undefined : (r) => ampel.get(r.sku) === "rot", angelegteAsins: angelegt });
+  const k = kapitalbedarf(data.rows, { weg: sp.rot === "1" ? undefined : (r) => ampel.get(r.sku) === "rot", angelegteAsins: angelegt, kaufquoten });
   const all = k.rows;
   const t = k;
   const list = filterReorder(all, f);
@@ -108,13 +108,26 @@ function SellerboardWay({ sp, data, ampel, angelegt }: { sp: SP; data: Awaited<R
         </div>
         <div className="card card-pad">
           <div className="kpi-label">Nicht enthalten</div>
-          <div className="small" style={{ marginTop: 6 }} data-testid="sb-reorder-excluded">{t.noEk} ohne EK · {t.returns} Retouren{sp.rot === "1" ? "" : ` · ${rote.length} rote Kapital-Ampel`}{k.angelegt ? ` · ${k.angelegt} schon im Einkauf angelegt` : ""}</div>
+          <div className="small" style={{ marginTop: 6 }} data-testid="sb-reorder-excluded">{t.noEk} ohne EK · {t.returns} Retouren{sp.rot === "1" ? "" : ` · ${rote.length} rote Kapital-Ampel`}{k.angelegt ? ` · ${k.angelegt} schon im Einkauf angelegt` : ""}{k.pruefen.length ? ` · ${k.pruefen.length} zum Prüfen (${eur0(k.pruefenKapital)})` : ""}</div>
         </div>
         <div className="card card-pad">
           <div className="kpi-label">Dringlichkeit</div>
           <div className="small" style={{ marginTop: 6 }}>{t.byUrgency.ueberfaellig} überfällig · {t.byUrgency.jetzt} jetzt · {t.byUrgency.bald} bald</div>
         </div>
       </div>
+      {k.pruefen.length > 0 && (
+        <div className="card card-pad small" data-testid="reorder-pruefen">
+          <strong>Prüfen – nicht in der Summe ({k.pruefen.length} Artikel, {eur0(k.pruefenKapital)}):</strong> Minus-Marge oder Kaufquote 0 % in den letzten 30 Tagen. Erst Preis/Listing/Nachfrage prüfen, dann bewusst nachbestellen.
+          <table className="table small" style={{ marginTop: 6 }}>
+            <thead><tr><th>Artikel</th><th>Grund</th><th className="right">Menge</th><th className="right">Kapital netto</th></tr></thead>
+            <tbody>
+              {k.pruefen.slice(0, 50).map(({ row: r, grund }) => (
+                <tr key={r.sku} data-testid="reorder-pruefen-zeile"><td><Link href={`/produkte/sku/${encodeURIComponent(r.sku)}`}>{r.name ?? r.sku}</Link><div className="muted">{r.sku}</div></td><td>{grund}</td><td className="num right">{r.qtyToReorder}</td><td className="num right">{r.capital === null ? "–" : eur0(r.capital)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="card card-pad" data-testid="reorder-checks">
         <div className="small" style={{ marginBottom: 6 }}><strong>Prüfliste</strong> – Fälle, die nicht einfach nachbestellt werden sollten:</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

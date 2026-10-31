@@ -9,7 +9,7 @@ import { DealEingabe } from "@/lib/b2b/eingabe";
 import { dealBilanzen } from "@/lib/b2b/kontrolle";
 import { besterMarkt, DEAL_STATUS_TEXT, preisWarnungen, RES_STATUS_TEXT, reservierungAktiv, unserVerdienst } from "@/lib/b2b/logic";
 import { preislisteAuswerten } from "@/lib/b2b/scanner";
-import { dealAnlegen, dealReservierungen, freischalten, freischaltHindernisse, ladeDeal, preisSetzen, prognoseAktualisieren, vertriebsfreigabe, type Deal } from "@/lib/b2b/service";
+import { dealAnlegen, dealReservierungen, freischalten, freischaltHindernisse, ladeDeal, preisSetzen, prognoseAktualisieren, vertriebsfreigabe, type Deal, dealBlatt } from "@/lib/b2b/service";
 import { defineTool, type ToolCtx } from "../types";
 import { abs, berlinDateTime, json, round2 } from "./common";
 
@@ -155,7 +155,7 @@ export const deals = defineTool({
 export const deal = defineTool({
   name: "deal",
   title: "B2B: Deal im Detail",
-  description: "Ein B2B-Deal im Detail: Artikel, Lieferant und Vertriebsfreigabe, EK/Staffel, Kundenpreis und unser Verdienst, Prognose je Land (Buy Box, Ø 90 Tage, Tief 12 Monate, Verkäufe, Angebote, Amazon-Anteil, Gewinn/ROI des Kunden, Aktionsmuster), Reservierungen je Kunde mit Status/Rechnung, Bestellstand und was vor dem Freischalten fehlt. Ohne Angabe der neueste Deal.",
+  description: "Ein B2B-Deal im Detail: Artikel, Lieferant und Vertriebsfreigabe, EK/Staffel, Kundenpreis und unser Verdienst, Prognose je Land (Buy Box, Ø 90 Tage, Tief 12 Monate, Verkäufe, Angebote, Amazon-Anteil, Gewinn/ROI des Kunden, Aktionsmuster), Reservierungen je Kunde mit Status/Rechnung, Bestellstand, was vor dem Freischalten fehlt, Deal-Blatt (Text, PDF, Bild – für Kunden, ohne EK), Sammelbestellung und Export fürs Prep-Tool je Kunde. Ohne Angabe der neueste Deal.",
   area: "b2b",
   write: false,
   quelle: QUELLE_DEALS,
@@ -187,6 +187,13 @@ export const deal = defineTool({
       reservierungen: res.map(({ r, firma }) => ({ kunde: firma, menge: r.menge, zugeteilt: r.zugeteilt ?? undefined, preis_netto: r.preisNetto, status: RES_STATUS_TEXT[r.status], reverse_charge: r.reverseCharge || undefined, rechnung: r.rechnungNr ?? undefined, gutschrift: r.gutschriftBetrag ?? undefined })),
       reserviert: res.filter((x) => reservierungAktiv(x.r.status)).reduce((n, x) => n + x.r.menge, 0),
       bestellung: bs ? { bestellbar: bs.bestellMenge, faellig: bs.faellig.faellig ? (bs.faellig.grund === "moq" ? "MOQ erreicht" : "Frist vorbei") : "noch nicht", status: bs.bestellung?.status ?? "kein Entwurf" } : undefined,
+      // B19.6: Deal-Blatt (Text/PDF/Bild – ohne EK und Verdienst), Sammelbestellung und Export fürs Prep-Tool je Kunde.
+      deal_blatt: { text: (await dealBlatt(t, d)).text, pdf: abs(ctx, `/b2b/${d.id}/blatt`), bild: abs(ctx, `/b2b/${d.id}/blatt?format=svg`) },
+      sammelbestellung: bs ? { menge: bs.bestellMenge, status: bs.bestellung?.status ?? "noch kein Entwurf – entsteht, wenn MOQ erreicht oder Frist vorbei", freigabe: "Bestellung beim Lieferanten nur nach Freigabe auf der Deal-Seite", link: abs(ctx, `/b2b/${d.id}#ablauf`) } : { status: "erst nach dem Freischalten" },
+      export_prep_tool: res
+        .filter(({ r }) => ["angekommen", "an_prep", "erledigt"].includes(r.status))
+        .map(({ r, firma }) => ({ kunde: firma, csv: abs(ctx, `/b2b/${d.id}/export?format=csv&kunde=${r.kundeId}`), xlsx: abs(ctx, `/b2b/${d.id}/export?format=xlsx&kunde=${r.kundeId}`), pdf: abs(ctx, `/b2b/${d.id}/export?format=pdf&kunde=${r.kundeId}`), exportiert: r.exportiertAm?.toISOString() ?? undefined })),
+      export_hinweis: res.some(({ r }) => ["angekommen", "an_prep", "erledigt"].includes(r.status)) ? undefined : "Export fürs Prep-Tool je Kunde, sobald die Ware angekommen ist (Wareneingang auf der Deal-Seite).",
     });
   },
 });

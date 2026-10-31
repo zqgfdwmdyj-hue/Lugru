@@ -36,10 +36,13 @@ export const paletten = defineTool({
     const rows = await db.select().from(P).where(and(...where)).orderBy(asc(P.inAt), asc(P.code));
     const perCustomer = new Map<string, number>();
     for (const p of rows) if (!p.outAt) perCustomer.set(p.customer?.trim() || "ohne Kunde", (perCustomer.get(p.customer?.trim() || "ohne Kunde") ?? 0) + 1);
+    // B19.8: Paletten ohne Kunde werden nicht abgerechnet – deutlich melden (Ludwig ordnet zu).
+    const ohneKunde = rows.filter((p) => !p.outAt && !p.customer?.trim());
     return json({
       anzahl: rows.length,
       eingelagert_je_kunde: Object.fromEntries(perCustomer),
-      paletten: rows.slice(0, i.limit).map((p) => ({ id: p.id, nummer: p.code, kunde: p.customer, stellplatz: p.location, inhalt: p.contents, gewicht_kg: p.weightKg, eingelagert: p.inAt, ausgelagert: p.outAt, lagertage: storedDays(p, ctx.today), notiz: p.note, link: abs(ctx, `/paletten/${p.id}`) })),
+      nicht_abgerechnet: ohneKunde.length ? { anzahl: ohneKunde.length, paletten: ohneKunde.slice(0, 30).map((p) => p.code), hinweis: "Ohne Kunde – diese Paletten werden nicht abgerechnet. Auf der Paletten-Seite einem Kunden zuordnen.", link: abs(ctx, "/paletten?kunde=__ohne") } : undefined,
+      paletten: rows.slice(0, i.limit).map((p) => ({ id: p.id, nummer: p.code, kunde: p.customer, nicht_abgerechnet: !p.outAt && !p.customer?.trim() ? true : undefined, stellplatz: p.location, inhalt: p.contents, gewicht_kg: p.weightKg, eingelagert: p.inAt, ausgelagert: p.outAt, lagertage: storedDays(p, ctx.today), notiz: p.note, link: abs(ctx, `/paletten/${p.id}`) })),
     });
   },
 });

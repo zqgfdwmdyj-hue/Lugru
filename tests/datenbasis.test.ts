@@ -94,6 +94,28 @@ describe("Nachbestellen laut sellerboard", () => {
     expect(KAPITALBEDARF_DEFINITION).toMatch(/netto.*Menge laut sellerboard × gültiger EK.*roter Kapital-Ampel.*schon im Einkauf angelegt/);
   });
 
+  it("B19.8: Kaufquote 0 % oder Minus-Marge nicht in der Summe, getrennt als „prüfen“", async () => {
+    const { kapitalbedarf, pruefGrund, KAPITALBEDARF_DEFINITION } = await import("@/lib/purchasing/reorder-logic");
+    const costs = new Map([
+      ["AMZ_A", { cost: 10, source: "charge" as const }],
+      ["AMZ_B", { cost: 5, source: "charge" as const }],
+      ["AMZ_C", { cost: 2, source: "charge" as const }],
+    ]);
+    const rows = buildReorderRows(
+      [row({ sku: "AMZ_A", asin: "B0TESTA001", qtyToReorder: 3 }), row({ sku: "AMZ_B", asin: "B0TESTB002", qtyToReorder: 4 }), row({ sku: "AMZ_C", asin: "B0TESTC003", qtyToReorder: 10 })],
+      ctx({ costs, margin: new Map([["AMZ_A", 18.5], ["AMZ_B", -31], ["AMZ_C", 12]]) }),
+    );
+    const kaufquoten = new Map([["AMZ_A", { conversion: 12, sessions: 300 }], ["AMZ_C", { conversion: 0, sessions: 120 }]]);
+    const k = kapitalbedarf(rows, { kaufquoten });
+    expect(k.capital).toBe(30); // nur AMZ_A
+    expect(k.rows.map((r) => r.sku)).toEqual(["AMZ_A"]);
+    expect(k.pruefen.map((x) => [x.row.sku, x.grund])).toEqual([["AMZ_B", "Minus-Marge (-31 % in 30 Tagen)"], ["AMZ_C", "Kaufquote 0 % (120 Besuche in 30 Tagen)"]]);
+    expect(k.pruefenKapital).toBe(20 + 20);
+    // ohne Besuche ist 0 % keine Aussage
+    expect(pruefGrund({ margin: 10 }, { conversion: 0, sessions: 0 })).toBeNull();
+    expect(KAPITALBEDARF_DEFINITION).toMatch(/Minus-Marge oder Kaufquote 0 %/);
+  });
+
   it("Kapital mit gültigem EK netto, nicht mit dem sellerboard-Platzhalter", () => {
     const [r] = buildReorderRows([row({ sbCost: 0.01 })], ctx());
     expect(r.capital).toBe(30);
