@@ -48,7 +48,7 @@ test.describe("B21 – Call-Transkripte live aus Discord", () => {
       const msg = await td<{ id: string }>("/__discord-va/nachricht", { kanal, text: `Consultant-Call 30.10.2026 ${m}`, anhang: { name: `call-${m}.vtt`, inhalt: VTT(m) } });
 
       // Innerhalb weniger Sekunden (Ziel ≤ 5 Min.): Call im Archiv und ausgewertet
-      const call = async () => (await sql<{ id: string; titel: string; datum: string; auswertung: string; wissen_am: Date | null; inhalt_kennung: string }>("select id, titel, datum::text as datum, auswertung, wissen_am, inhalt_kennung from calls where tenant_id = $1 and quelle_ref = $2", [T, `discord:${msg.id}`]))[0];
+      const call = async () => (await sql<{ id: string; titel: string; datum: string; auswertung: string; wissen_am: Date | null; transkript: string }>("select id, titel, datum::text as datum, auswertung, wissen_am, transkript from calls where tenant_id = $1 and quelle_ref = $2", [T, `discord:${msg.id}`]))[0];
       await expect.poll(async () => (await call())?.auswertung ?? null, { timeout: 60_000 }).toBe("fertig");
       const c = (await call())!;
       expect(c.titel).toContain(m);
@@ -63,7 +63,9 @@ test.describe("B21 – Call-Transkripte live aus Discord", () => {
 
       // Bearbeitet (Anhang ersetzt) → derselbe Eintrag mit neuem Inhalt, nicht doppelt
       await td("/__discord-va/bearbeiten", { nachricht: msg.id, anhang: { name: `call-${m}-v2.txt`, inhalt: `Consultant: Neue Fassung ${m}. Schick mir bis Freitag die Liste der zehn Marken für den Audit.\nLudwig: Mache ich, Black-Week-Deals nur mit Gewinn.\nConsultant: Das kläre ich intern.` } });
-      await expect.poll(async () => (await call())?.inhalt_kennung, { timeout: 60_000 }).not.toBe(c.inhalt_kennung);
+      // Transkript ist verschlüsselt gespeichert: neuer Schlüsseltext = ersetzt; der Inhalt wird unten über calls_durchsuchen geprüft
+      await expect.poll(async () => (await call())?.transkript, { timeout: 60_000 }).not.toBe(c.transkript);
+      expect((await call())!.id).toBe(c.id);
       const [{ n }] = await sql<{ n: number }>("select count(*)::int as n from calls where tenant_id = $1 and titel like $2", [T, `%${m}%`]);
       expect(n).toBe(1);
 
@@ -90,6 +92,8 @@ test.describe("B21 – Call-Transkripte live aus Discord", () => {
       expect(calls.discord.zuletzt_empfangen).not.toBeNull();
       expect(calls.discord.letzter_lauf).not.toBeNull();
       expect(calls.calls.some((x) => x.titel.includes(m))).toBe(true);
+      const suche = JSON.parse(await mcp.call("calls_durchsuchen", { suche: `Neue Fassung ${m}` })) as { calls: { call_id: string }[] };
+      expect(suche.calls.map((x) => x.call_id)).toEqual([c.id]);
       const st = JSON.parse(await mcp.call("anbindungen_status", {})) as { discord_call_kanal: { ausloeser: string; zuletzt_empfangen: string }; abrufe: { abruf: string; ausloeser: string; naechster_lauf: string }[] };
       expect(st.discord_call_kanal.ausloeser).toBe("live (Discord)");
       expect(st.discord_call_kanal.zuletzt_empfangen).not.toBe("noch nichts");

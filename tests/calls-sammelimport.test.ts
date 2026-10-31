@@ -113,7 +113,7 @@ describe("Dateien lesen", () => {
     expect(r.dateien.map((d) => d.name)).toEqual(["Call 2026-09-05.docx", "Call 2026-09-12.txt", "Call 2026-09-19.pdf"]);
     expect(r.dateien[0].text.trim()).toBe("Transkript eins");
     expect(r.dateien[2].text).toContain("Wochen-Call Testtranskript im PDF");
-    expect(r.fehler).toEqual(["bild.png: Dateiart nicht unterstützt (Word, PDF, Text, Untertitel oder ZIP)"]);
+    expect(r.fehler).toEqual(["bild.png: Dateiart nicht unterstützt (Word, PDF, Text, Untertitel, JSON oder ZIP)"]);
   });
   it("kaputte Datei: Fehler je Datei, der Rest geht weiter", async () => {
     const r = await textAusCallDateien([

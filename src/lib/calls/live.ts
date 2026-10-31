@@ -72,7 +72,7 @@ export async function callNachrichtVerarbeiten(tenantId: string, m: DiscordNachr
   LAEUFT.set(sperre, new Promise((r) => (fertig = r)));
   const t0 = Date.now();
   try {
-    const [alt] = await db.select({ id: C.id, kennung: C.inhaltKennung }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.quelleRef, ref))).limit(1);
+    const [alt] = await db.select({ id: C.id, kennung: C.inhaltKennung, transkript: C.transkript }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.quelleRef, ref))).limit(1);
     if (alt && !o.bearbeitet) return { status: "schon_da", callId: alt.id };
     // Ältere Google-Doc-Importe (gleiches Dokument) nicht noch einmal anlegen.
     if (!alt && !o.bearbeitet && k.links.length && !k.anhaenge.length && !k.langerText) {
@@ -139,7 +139,7 @@ export async function callNachrichtVerarbeiten(tenantId: string, m: DiscordNachr
     if (alt) {
       // Bearbeitete Nachricht: gleichen Eintrag ersetzen – nur wenn sich der Inhalt geändert hat.
       const kennung = inhaltKennung(transkript);
-      if (kennung && kennung === alt.kennung) return { status: "schon_da", callId: alt.id };
+      if (transkript === alt.transkript || (kennung && kennung === alt.kennung)) return { status: "schon_da", callId: alt.id };
       await db.update(C).set({ titel: titel.slice(0, 200), datum, transkript, inhaltKennung: kennung, auswertung: "offen", auswertungFehler: null, wissenAm: null, wissenFehler: null }).where(eq(C.id, alt.id));
       callId = alt.id;
       status = "ersetzt";

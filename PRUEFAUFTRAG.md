@@ -506,15 +506,17 @@ AI Win Sales Booster), `amazon-faelle`, `herzstueck`, `lugru-deals`, `deal-einga
 |---|---|---|---|---|
 | 21.1 | Auslöser statt Zeitplan | ❌ (wöchentlich, nur Google-Doc-Links) | ✅ | Live-Verbindung zu Discord (Gateway, `src/lib/discord/gateway.ts`): `MESSAGE_CREATE` im Call-Kanal sofort verarbeitet. Erkennung `transkriptKandidat` (`src/lib/calls/live-logic.ts`): Anhang .txt/.md/.vtt/.srt/.json/.docx/.pdf (auch .odt), Text > 2.000 Zeichen oder Link auf Google Doc, Notion, Fireflies, tl;dv, Otter; mehrere Anhänge = ein Call |
 | 21.2 | Eine Kette ≤ 5 Min. | ❌ | ✅ | `callNachrichtVerarbeiten` (`src/lib/calls/live.ts`): Datei holen → Call-Archiv (Datum/Titel aus der Nachricht, Sprecher erkannt) → KI-Auswertung (Punkte) → Wissen (mit Insider-Kennzeichen wie bisher) → Push an die Inhaber „Call vom … ausgewertet: x Wissenseinträge, y Aufgaben“. Im Test wenige Sekunden |
-| 21.3 | Bearbeitete Nachricht | ❌ | ✅ | `MESSAGE_UPDATE` → derselbe Call (Kennung `discord:<Nachricht>`) wird ersetzt und neu ausgewertet, nicht doppelt |
+| 21.3 | Bearbeitete Nachricht | ❌ | ✅ | `MESSAGE_UPDATE` → derselbe Call (Kennung `discord:<Nachricht>`) wird ersetzt und neu ausgewertet, nicht doppelt. Kommt die Bearbeitung, während die erste Verarbeitung noch läuft, wartet sie darauf und wird danach verarbeitet (nicht verworfen); unveränderter Inhalt → nichts zu tun |
 | 21.4 | Zeitplan nur Sicherheitsnetz | ❌ | ✅ | Täglich 06:00 die letzten 7 Tage nachlesen (`callsSicherheitsnetz`); VA-, Gruppen- und Lugru-Kanäle lesen ab der zuletzt gelesenen Nachricht weiter (lückenlos nach Ausfall) und laufen um 06:00 zusätzlich einmal („Discord-Kanäle: Nachlese 06:00“) |
 | 21.5 | Anbindungen: Auslöser, letzter/nächster Lauf | ❌ | ✅ | Anbindungen → Hintergrund-Abrufe: „Discord – Call-Kanal: Auslöser: live (Discord) – verbunden seit … · zuletzt empfangen …“, Tabelle je Abruf mit Auslöser, letztem und nächstem Lauf (`ABRUF_PLAN`, `naechsterText` in `src/lib/today/abruf-plan.ts`); dieselben Felder in `anbindungen_status` und `calls` |
 | 21.6 | Fehler → Aufgabe | ❌ | ✅ | Datei nicht lesbar, > 25 MB, kein Text erkannt, Link verlangt Anmeldung → Aufgabe „Call-Transkript aus Discord nicht verarbeitet“ mit Link zur Nachricht (eine je Nachricht) |
 
 Abnahme: Unit `calls-live` (Erkennung, Titel/Sprecher, JSON-Export, nächster Lauf); e2e `b21-calls-live` gegen den
 Discord-Nachbau mit echter WebSocket-Verbindung: Transkript (.vtt) hochladen → Call ausgewertet, Wissen und Aufgaben da,
-Meldung an den Inhaber; Anhang ersetzt → derselbe Call neu; 30-MB-PDF → Aufgabe mit Link; Anbindungen, `calls` und
-`anbindungen_status` zeigen „live“ und den Zeitpunkt. **Voraussetzung live:** im Discord-Entwicklerportal beim Bot
+Meldung an den Inhaber; Anhang ersetzt → derselbe Call neu (neuer Inhalt per `calls_durchsuchen` gefunden); 30-MB-PDF →
+Aufgabe mit Link; Anbindungen, `calls` und `anbindungen_status` zeigen „live“ und den Zeitpunkt. Ergebnis 31.10.: e2e
+`b21-calls-live` grün (17 s), dazu `teil2`, `werkzeuge`, `va-discord`, `lugru-deals`, `deal-eingang` grün; Unit 2001/2001.
+**Voraussetzung live:** im Discord-Entwicklerportal beim Bot
 „Message Content Intent“ einschalten (To-do 53).
 
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
