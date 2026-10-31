@@ -75,7 +75,7 @@ export async function applyReport(opts: {
           .values(part)
           .onConflictDoUpdate({
             target: [LG.tenantId, LG.monat, LG.asin, LG.fnsku, LG.lager, LG.land],
-            set: { gebuehr: sql`excluded.gebuehr`, zuschlag: sql`excluded.zuschlag`, bestandSchnitt: sql`excluded.bestand_schnitt`, volumenM3: sql`excluded.volumen_m3`, titel: sql`coalesce(excluded.titel, ${LG.titel})`, groesse: sql`excluded.groesse`, kategorie: sql`excluded.kategorie`, updatedAt: sql`now()` },
+            set: { gebuehr: sql`excluded.gebuehr`, zuschlag: sql`excluded.zuschlag`, bestandSchnitt: sql`excluded.bestand_schnitt`, volumenM3: sql`excluded.volumen_m3`, laengsteSeiteCm: sql`excluded.laengste_seite_cm`, gewichtKg: sql`excluded.gewicht_kg`, uebergross: sql`excluded.uebergross`, gefahrgut: sql`excluded.gefahrgut`, rabatt: sql`excluded.rabatt`, titel: sql`coalesce(excluded.titel, ${LG.titel})`, groesse: sql`excluded.groesse`, kategorie: sql`excluded.kategorie`, updatedAt: sql`now()` },
           })
           .returning({ inserted: sql<boolean>`(xmax = 0)` });
         inserted += res.filter((r) => r.inserted).length;

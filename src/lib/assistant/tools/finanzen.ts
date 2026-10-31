@@ -94,6 +94,8 @@ export const kapital_ampel = defineTool({
         break_even_je_land: z.breakEvenLaender,
         kein_aktives_angebot: z.keinAngebot || undefined,
         trend_30_zu_90_prozent: z.trendProzent ?? undefined,
+        lagergebuehr: z.lager ? { monat: z.lager.monat, je_monat: z.lager.gebuehrMonat, je_stueck_monat: z.lager.jeStueckMonat, uebergross: z.lager.uebergross || undefined, frisst_marge: z.lagerMarge?.frisstMarge || undefined, bis_verkauf_je_stueck: z.lagerMarge?.kostenBisVerkauf } : undefined,
+        remission: z.remission ?? undefined,
         gruende: z.gruende,
         vorschlaege: z.vorschlaege.length ? z.vorschlaege : undefined,
         link: abs(ctx, `/kapital?q=${encodeURIComponent(z.sku)}`),

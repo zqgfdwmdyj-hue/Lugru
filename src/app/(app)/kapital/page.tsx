@@ -55,7 +55,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
       <p className="small muted" style={{ margin: "0 0 14px", maxWidth: 860 }}>
         Je Produkt: gebundenes Kapital (Bestand bei Amazon inkl. unterwegs + eigenes Lager × gültiger EK), Gewinn der letzten 90 Tage (sellerboard je Monat), Jahresrendite = Gewinn 90 T × 365/90 ÷ gebundenes Kapital,
-        Reichweite, ältestes Lageralter (Amazon-Bericht) und Preis gegen Break-even. <strong>Rot</strong> wird bei den <Link href="/einkauf/vorschlaege">Bestellvorschlägen</Link> nicht mehr vorgeschlagen und in der <Link href="/cashflow">Liquidität</Link> nicht eingerechnet.
+        Reichweite, ältestes Lageralter (Amazon-Bericht) und Preis gegen Break-even, dazu die FBA-Lagergebühr laut Bericht („Lagergebühr frisst Marge“, „Remission prüfen“). <strong>Rot</strong> wird bei den <Link href="/einkauf/vorschlaege">Bestellvorschlägen</Link> nicht mehr vorgeschlagen und in der <Link href="/cashflow">Liquidität</Link> nicht eingerechnet.
       </p>
 
       {data.zeilen.length === 0 ? (
@@ -87,7 +87,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
                 <div className="small muted">{anzahl("gruen")} Produkte</div>
               </div>
             </div>
-            <KpiMeta period="Gewinn: letzte 90 Tage · Bestand: aktuell" source="sellerboard (Bestand, Gewinn je Monat), eigenes Lager, EK im Seller-System, Amazon-Lageralter, Keepa (Buy Box)" stand={stand} />
+            <KpiMeta period="Gewinn: letzte 90 Tage · Bestand: aktuell" source="sellerboard (Bestand, Gewinn je Monat), eigenes Lager, EK im Seller-System, Amazon-Lageralter und Lagergebühren-Bericht, Keepa (Buy Box)" stand={stand} />
           </div>
 
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "12px 0" }} data-testid="kapital-filter">
@@ -147,6 +147,7 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
                       <td className="right num">{z.trendProzent === null ? <span className="muted">–</span> : `${z.trendProzent > 0 ? "+" : ""}${z.trendProzent.toLocaleString("de-DE")} %`}</td>
                       <td className="small">
                         {z.gruende.length > 0 && <div>{z.gruende.join(" · ")}</div>}
+                        {z.lager && <div className="muted" data-testid="kapital-lager">Lagergebühr {z.lager.monat}: {eur2(z.lager.gebuehrMonat)}/Monat{z.lager.jeStueckMonat !== null ? ` · ${eur2(z.lager.jeStueckMonat)} je Stück` : ""}{z.lager.uebergross ? " · übergroß" : ""}</div>}
                         {z.vorschlaege.length > 0 && <ul style={{ margin: "4px 0 0", paddingLeft: 16 }} data-testid="kapital-vorschlaege">{z.vorschlaege.map((v) => <li key={v}>{v}</li>)}</ul>}
                       </td>
                     </tr>

@@ -9,7 +9,7 @@ import { amazonQuelle, FEE_FREE_CHANNELS, gewinnBasis, mitAmazonErsatz, summariz
 import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
 import { RANGES, rangeOf, type Range } from "@/lib/money/ranges";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { sellerboardRange } from "@/lib/sellerboard/sales";
 import { db, schema } from "@/db";
 
@@ -29,6 +29,10 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   const costs = await skuCostMap(t);
   const [{ skus, nonSku, transfers }, lines, stand, sbAmazon, sbEbay] = await Promise.all([amazonProfit(t, from, to, settings.vatRate, costs), orderLines(t, from, to), dataStand(t), sellerboardRange(t, from, to, "amazon"), sellerboardRange(t, from, to, "ebay")]);
 
+  // FBA-Lagergebühr laut Bericht „Monthly Storage Fees“ für die Monate des Zeitraums – nur zur Info (steckt in der Abrechnung).
+  const LG = schema.amazonLagergebuehren;
+  const lagerMonate = await db.select({ monat: LG.monat, summe: sql<number>`sum(${LG.gebuehr})::float` }).from(LG).where(and(eq(LG.tenantId, t), gte(LG.monat, from.slice(0, 7)), lte(LG.monat, to.slice(0, 7)))).groupBy(LG.monat).orderBy(LG.monat);
+  const lagerSumme = Math.round(lagerMonate.reduce((n, m) => n + m.summe, 0) * 100) / 100;
   const nonSkuTotal = nonSku.reduce((n, x) => n + x.amount, 0);
   const amazon = skus.length || nonSku.length
     ? summarizeAmazon(
@@ -141,6 +145,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
             {sbR && <tr data-testid="wert-sb-netto"><td>sellerboard Nettogewinn (Startseite)</td><td className="num right">{formatEuro(sbR.netProfit)}</td><td>sellerboard-Dashboard ({sbR.channels.map((c) => (c === "ebay" ? "eBay" : "Amazon")).join(" + ")}) – mit Erstattungen, Werbung und Fixkosten; EK aus sellerboard{sbR.ebayOwnCost ? " (eBay: EK aus dem Seller-System)" : ""}.</td></tr>}
             {sbR && <tr data-testid="wert-sb-db"><td>sellerboard Deckungsbeitrag</td><td className="num right">{formatEuro(sbR.grossProfit)}</td><td>wie sellerboard Nettogewinn, aber <strong>ohne Fixkosten</strong>.</td></tr>}
             {sbThis && <tr data-testid="wert-sb-monat"><td>sellerboard Monatswert (Tabelle unten)</td><td className="num right">{formatEuro(sbThis.netProfit)}</td><td>Nettogewinn laut sellerboard-Monatsabgleich (Stand {sbThis.syncedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}) – zu einem anderen Zeitpunkt abgerufen als die Startseite, daher kleine Abweichungen möglich.</td></tr>}
+            <tr data-testid="wert-lagergebuehr"><td>darin: FBA-Lagergebühr</td><td className="num right">{lagerMonate.length ? formatEuro(neg(lagerSumme)) : <span className="muted">keine Daten</span>}</td><td>{lagerMonate.length ? <>laut Amazon-Bericht „Monthly Storage Fees“ ({lagerMonate.map((m) => m.monat).join(", ")}) – steckt bereits in der Amazon-Abrechnung bzw. im sellerboard-Gewinn und wird <strong>nicht zusätzlich</strong> abgezogen. Je Artikel in der <Link href="/kapital">Kapital-Ampel</Link>.</> : <>Bericht „Monthly Storage Fees“ für diesen Zeitraum noch nicht hochgeladen (<Link href="/uploads">Uploads</Link>).</>}</td></tr>
           </tbody>
         </table>
       </section>

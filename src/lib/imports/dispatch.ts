@@ -4,7 +4,8 @@ import { ImportFormatError, parseArbitrageOne, readSheet } from "@/lib/imports/a
 import { detectReport, REPORT_KINDS } from "@/lib/reports/amazon";
 import { applyReport } from "@/lib/reports/apply";
 import { getSettings } from "@/lib/settings";
-import { normHeader, readTable } from "@/lib/tabular";
+import { formatVorschlag, spaltenProtokoll, vorschlagText } from "@/lib/reports/format-vorschlag";
+import { readTable } from "@/lib/tabular";
 import "@/lib/hooks-registry";
 import { detectOwnImport, applyOwnImport } from "./own-formats";
 
@@ -65,10 +66,12 @@ export async function importAnyFile(opts: { tenantId: string; userId: string; fi
   const own = detectOwnImport(table);
   if (own) return applyOwnImport({ tenantId, userId, fileName, table, kind: own });
 
+  const vorschlag = formatVorschlag(table.headers);
   return {
     fileName,
     ok: false,
-    summary: "Format nicht erkannt.",
-    hints: [`Spalten in der Datei: ${table.headers.slice(0, 12).map(normHeader).join(", ")}${table.headers.length > 12 ? " …" : ""}`],
+    summary: `Format nicht erkannt.${vorschlag ? ` ${vorschlagText(vorschlag)}` : ""}`,
+    // Vollständige Spaltenliste fürs Protokoll unbekannter Formate (Uploads → „Unbekannte Formate“), damit die Art nachgebaut werden kann.
+    hints: [spaltenProtokoll(table.headers)],
   };
 }

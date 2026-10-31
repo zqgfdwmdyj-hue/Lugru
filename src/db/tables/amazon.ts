@@ -1,4 +1,4 @@
-import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, id, money, tenantId, updatedAt } from "./core";
 
 // Daten aus Amazon-Reports (Seller Central Download oder SP-API). Jede Zeile trägt einen
@@ -356,6 +356,11 @@ export const amazonLagergebuehren = pgTable(
     groesse: text("groesse"),
     bestandSchnitt: money("bestand_schnitt"),
     volumenM3: money("volumen_m3"),
+    laengsteSeiteCm: money("laengste_seite_cm"),
+    gewichtKg: money("gewicht_kg"),
+    uebergross: boolean("uebergross").notNull().default(false),
+    gefahrgut: text("gefahrgut"),
+    rabatt: money("rabatt"),
     gebuehr: money("gebuehr").notNull(),
     zuschlag: money("zuschlag"),
     waehrung: text("waehrung").notNull().default("EUR"),

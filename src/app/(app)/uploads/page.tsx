@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings";
 import { UPLOAD_ART, type UploadArt } from "@/lib/uploads/erkennen";
-import { uploadVerlauf } from "@/lib/uploads/service";
+import { unbekannteFormate, uploadVerlauf } from "@/lib/uploads/service";
 import { UploadForm } from "./upload-form";
 
 // Zentrale Uploads: eine Stelle für alle Dateien – das System erkennt die Art und verarbeitet sie wie im Bereich.
@@ -11,6 +11,7 @@ const ERKENNT: { was: string; wohin: string }[] = [
   { was: "Kontoauszug Sparkasse (CSV-CAMT, CAMT-XML oder PDF)", wohin: "Buchhaltung + Liquidität" },
   { was: "American Express (CSV)", wohin: "Buchhaltung" },
   { was: "Amazon-Umsatzsteuerbericht", wohin: "Buchhaltung → Auslandsumsätze" },
+  { was: "Monatliche Lagergebühren (Monthly Storage Fees, .csv oder .txt)", wohin: "Kapital-Ampel, Gewinn (Info)" },
   { was: "Amazon-Berichte (Abrechnung, Bestand, Retouren, Erstattungen, Transaktionen …)", wohin: "Daten/Amazon" },
   { was: "Arbitrage One / sellerboard-Export, eigene Vorlagen", wohin: "WaWi" },
   { was: "BQool „Manage Listings“", wohin: "Repricer" },
@@ -20,7 +21,7 @@ const ERKENNT: { was: string; wohin: string }[] = [
 
 export default async function UploadsPage() {
   const session = await requireSession();
-  const [verlauf, s] = await Promise.all([uploadVerlauf(session.tenantId), getSettings(session.tenantId)]);
+  const [verlauf, s, unbekannt] = await Promise.all([uploadVerlauf(session.tenantId), getSettings(session.tenantId), unbekannteFormate(session.tenantId)]);
   return (
     <>
       <div className="page-head">
@@ -54,6 +55,27 @@ export default async function UploadsPage() {
               </tbody>
             </table>
           </div>
+          {unbekannt.length > 0 && (
+            <div className="card table-wrap" style={{ marginTop: 14 }} data-testid="upload-unbekannt">
+              <div className="card-head"><h2>Unbekannte Formate</h2></div>
+              <div className="card-pad small muted" style={{ paddingTop: 0 }}>Dateien, die das System nicht zuordnen konnte – mit Vorschlag und allen Spalten, damit die Art nachgebaut werden kann.</div>
+              <table className="table small">
+                <thead>
+                  <tr><th>Zeit</th><th>Datei</th><th>Vorschlag</th><th>Spalten</th></tr>
+                </thead>
+                <tbody>
+                  {unbekannt.map((u) => (
+                    <tr key={u.id} data-testid="upload-unbekannt-zeile">
+                      <td style={{ whiteSpace: "nowrap" }}>{u.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
+                      <td style={{ overflowWrap: "anywhere" }}>{u.dateiname}</td>
+                      <td>{u.zusammenfassung.replace(/^.*?Format nicht erkannt\.\s*/, "") || <span className="muted">keine ähnliche Art</span>}</td>
+                      <td className="muted" style={{ overflowWrap: "anywhere" }}>{(u.hinweise as string[] | null)?.find((h) => h.startsWith("Spalten")) ?? "–"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
         <aside className="col-side">
           <div className="card card-pad small">

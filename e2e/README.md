@@ -42,7 +42,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `zugriffe.spec.ts` | B19.2: Benutzerliste mit Spalte Privat-Zugriff und Warnungen, Rolle „VA“, neues Konto „Nur Familie“ sieht nur Familien-Termine und Schulbriefe |
 | `lugru-deals.spec.ts` | Lugru Deals über Discord und direkt von der Seite; B19.1: History mit Ampel ohne Push, Testkanal draußen, Reaktionen, Weg A |
 | `b19-rest.spec.ts` | B19.5–B19.8: Tagesplan „überbucht – x Min. zu viel“, Assistent-Verlauf, Deal-Blatt als Bild, Beobachtungen/Wochenrückblick, LPN, Handy-Anleitung, Werkzeug-Felder |
-| `datei-import.spec.ts` | Datei-Import über den Konnektor: Upload-Link, Status mit absoluten Links, Übersicht; Büro bekommt die Werkzeuge nicht |
+| `datei-import.spec.ts` | Datei-Import über den Konnektor: Upload-Link, Status mit absoluten Links, Übersicht; Lagergebühren (übergroß, Abgleich, Filter Land/Sortierung), USt je Periode/OSS; unbekanntes Format mit Vorschlag + Protokoll; Büro bekommt die Werkzeuge nicht |
 | `b20-lugru.spec.ts` | B20.1/B20.2: Lugru-Nachtrag ohne 1.000er-Grenze, eine Zählbasis überall, Ampel-Regeln v2 (Amazon > 90 % rot, Angebote gelb), gerundete Prozente |
 | `b20-faelle.spec.ts` | B20.5: Auszahlungsmitteilung schließt den Fall und landet in der Liquidität; Buy-Box-Hinweis als ToDo je Land, Bewertungs-/Versandmails archiviert |
 | `b20-einkauf.spec.ts` | B20.8: Kaufquote 0 % über die ASIN, Posten über 10.000 € unter „prüfen“, Startseite „+ x zu prüfen (y €)“ |

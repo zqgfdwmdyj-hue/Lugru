@@ -489,9 +489,16 @@ AI Win Sales Booster), `amazon-faelle`, `herzstueck`, `lugru-deals`, `deal-einga
 | DI-2 | Gleiche Verarbeitung wie der Upload | – | ✅ | `importVerarbeiten` in `src/lib/datei-import/service.ts` nutzt die zentrale Erkennung (`dateiArt`, `detectReport`, `applyReport`); falsche Art → klarer Fehler |
 | DI-3 | Dieselbe Datei zweimal | – | ✅ | SHA-256 → „bereits importiert“, nichts doppelt |
 | DI-4 | Transaktionsbericht → Abrechnungen, Auszahlungen | ❌ | ✅ | `src/lib/reports/transaktionen.ts`: Abrechnungen und Zeilen aus dem Bericht (werden ersetzt, sobald die echte Flat File kommt), „x neu, y bereits vorhanden“, Lücken-Hinweis |
-| DI-5 | Lagergebühren je Monat | ❌ (Datei unbekannt) | ✅ | Berichtsart „Monthly Storage Fees“, Tabelle `amazon_lagergebuehren`, Werkzeug `lagergebuehren` (nicht zusätzlich zum Gewinn) |
+| DI-5 | Lagergebühren je Monat | ❌ (Datei unbekannt) | ✅ | Berichtsart „Monthly Storage Fees“ (.csv oder .txt, Erkennung an den Spalten – alle fünf hochgeladenen Dateien werden erkannt), Tabelle `amazon_lagergebuehren`; gleiche Datei → übersprungen, gleicher Monat aus zweiter Datei → ergänzt |
 | DI-6 | USt-Transaktionsbericht je Periode, OSS | 🟡 (ein Monat) | ✅ | `leseUstBerichtJePeriode`, Zusammenführen je Periode per Datei-Prüfsumme, Werkzeuge `umsatzsteuer` und `umsatzsteuer_oss` – nur Zahlen, keine Steuerberatung |
 | DI-7 | Sicherheit | – | ✅ | Nur Inhaber; VA/Familie nie (auch nicht im Fragefeld); Token gehasht, einmalig; Dateien verschlüsselt abgelegt und nach 90 Tagen gelöscht; Caddy-Freigabe nur für `/api/import/upload/*` |
+| DI-8 | Lagergebühren: Maße, übergroß, Ergebnis-Block | 🟡 (nur Summen) | ✅ | `src/lib/reports/lagergebuehren-logic.ts`: cm/inch, kg/lb, m³/ft³ umgerechnet, übergroß aus Größenklasse oder längster Seite > 45 cm, Gefahrgut, Rabatt (Migration `0115`). `import_status`: Monate, Länder, Anzahl ASINs, davon übergroß, Top 10, Abgleich |
+| DI-9 | Werkzeug `amazon_lagergebuehren(monat?, land?, asin?, sortierung)` | 🟡 (hieß `lagergebuehren`, ohne Land/Sortierung) | ✅ | Umbenannt wie im Bauauftrag; je ASIN Gebühr, Ø Bestand, je Stück, Volumen, Größenklasse, Reichweite, „Remission prüfen“; Abgleich mit Amazon-Abrechnung (Folgemonat) und sellerboard-Fixkosten „Lager…“ (`lagerAbgleich` in `src/lib/reports/lagergebuehren.ts`) |
+| DI-10 | Nutzen: Kapital-Ampel, Abverkauf, Remission | ❌ | ✅ | `bewerteKapital`: „Lagergebühr frisst Marge“ (Gebühr bis zum Verkauf ≥ 50 % vom Gewinn je Stück → nicht grün) mit Vorschlag Abverkauf/Remission; „Remission prüfen“ bei übergroß bzw. ≥ 0,1 m³ + Reichweite ≥ 180 Tage + ≥ 5 €/Monat; Werkzeug `kapital_ampel` mit `lagergebuehr`/`remission` |
+| DI-11 | Nutzen: Gewinn/Liquidität als Fixkostenposten | ❌ | ✅ / 👤 | Gewinn-Seite: Zeile „darin: FBA-Lagergebühr“ je Monat des Zeitraums. **Nicht** zusätzlich abgezogen und nicht als eigene Ausgabe in der Liquidität, weil Amazon die Gebühr schon von der Auszahlung abzieht (sonst doppelt) – To-do 51 |
+| DI-12 | Nutzen: Größenklasse im B2B-Scanner | ❌ | ✅ | `fbaNachGroesse`: ohne Keepa-/Artikelgebühr Ø FBA-Gebühr eigener Artikel derselben Größenklasse (ab 3 Artikeln), als Warnung „geschätzt nach Größenklasse“ (`src/lib/b2b/scanner.ts`, `gebuehrenFuer`) |
+| DI-13 | „Format nicht erkannt“ mit Vorschlag + Protokoll | 🟡 (nur 12 Spalten) | ✅ | `formatVorschlag` in `src/lib/reports/format-vorschlag.ts`: „Sieht aus wie „Monatliche Lagergebühren“ (8 von 10 typischen Spalten; es fehlen: …) – als diese Art importieren: … import_link art=…“; alle Spalten im Upload-Verlauf, Liste „Unbekannte Formate“ auf `/uploads` |
+| DI-14 | USt-Bericht in `buchhaltung_status` und Monatsdatei | ❌ | ✅ | `buchhaltungStatus` → `ust` (importiert ja/nein, Brutto, Steuerländer, Verbringungen, ohne Steuerland); „CSV + Belege (ZIP)“ für den Steuerberater enthält `Amazon-Umsatzsteuer_JJJJ-MM.csv` (`ustMonatsdatei`). Keine Steuerberatung |
 
 ## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
 
@@ -515,7 +522,9 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 
 Neu am 31.10. (Datei-Import, 6 Werkzeuge): `import_link` (ändernd, nur Inhaber: einmalige Upload-Adresse),
 `import_status` und `importe` (nur Inhaber), `umsatzsteuer` (je Periode JJJJ-MM), `umsatzsteuer_oss` (je Quartal) und
-`lagergebuehren` (je Monat/ASIN). Geändert (B20, keine weiteren neuen Werkzeuge): `lugru_deals`/`lugru_statistik`
+`amazon_lagergebuehren` (je Monat/Land/ASIN, Sortierung nach Gebühr oder Volumen; vorher `lagergebuehren`). Geändert
+(Datei-Import-Nachbau): `kapital_ampel` (`lagergebuehr`, `remission`), `buchhaltung_status` (`amazon_umsatzsteuer`),
+`import_status` (Lagergebühren mit übergroß und Abgleich; Vorschlag bei unbekanntem Format). Geändert (B20, keine weiteren neuen Werkzeuge): `lugru_deals`/`lugru_statistik`
 (Zählbasis „im Deal-Eingang mit Ampel“, `fortschritt` „x / gesamt“ mit Zeitpunkt, Marge gerundet), `deal_quellen`
 (eine Zeile „Lugru Deals“ mit `gemeldet` = Zählbasis und `gepostet`), `tagesplan` (`nicht_eingeplant` mit Vorschlag,
 Konflikte nur an Arbeitstagen), `bestellvorschlaege` (`zu_pruefen` auch Kaufquote 0 % über die ASIN und Posten über
@@ -716,3 +725,7 @@ nie in Chats oder Mails.
     115,52 €) mit Verlaufseintrag, bucht sie in die Liquidität und legt je Land ein ToDo „Buy-Box-Berechtigung prüfen“ an.
 50. **Lugru-Nachtrag**: läuft nach dem Update im Hintergrund weiter, bis alle Deals im Deal-Eingang sind (Fortschritt
     „x / gesamt“ auf der Lugru-Seite); alte Ampeln werden dabei nach den neuen Regeln neu bewertet.
+51. **Lagergebühr als Fixkostenposten?** Die Gewinn-Seite zeigt sie als „darin enthalten“, weil Amazon sie schon von
+    der Auszahlung abzieht. Soll sie trotzdem als eigener Posten in der Liquidität stehen (dann muss die Auszahlungs-
+    Schätzung um sie gekürzt werden), bitte sagen. Nach dem Update die Lagergebühren-Dateien einmal neu hochladen –
+    dann sind auch Maße, Gewicht und Gefahrgut gefüllt (übergroß wird aus der Größenklasse schon nachgetragen).

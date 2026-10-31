@@ -3,6 +3,7 @@ import { UST_LAND } from "./kapital";
 import { and, eq, gte, inArray } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { skuCostMap } from "@/lib/money/costs";
+import { lagerJeAsin } from "@/lib/reports/lagergebuehren";
 import { getSettings } from "@/lib/settings";
 import { aeltesteTage, bewerteKapital, breakEven, letzte90, type Ampel, type KapitalZeile } from "./kapital";
 
@@ -27,6 +28,7 @@ export async function kapitalAmpel(tenantId: string, heute: string): Promise<{ z
   ]);
   const asins = [...new Set(inv.map((r) => r.asin).filter((a): a is string => !!a))];
   const keepa = asins.length ? await db.select({ asin: schema.keepaCache.asin, stand: schema.keepaCache.stand }).from(schema.keepaCache).where(and(eq(schema.keepaCache.tenantId, t), eq(schema.keepaCache.marktplatz, "DE"), inArray(schema.keepaCache.asin, asins))) : [];
+  const lagerKosten = await lagerJeAsin(t, asins);
   const trend = new Map(keepa.map((k) => [k.asin, k.stand ? pct(k.stand.kennzahlen["30"].buybox.schnitt, k.stand.kennzahlen["90"].buybox.schnitt) : null]));
   const keepaPreis = new Map(keepa.map((k) => [k.asin, k.stand?.aktuell.buybox ?? null]));
   const z = { zielRendite: s.kapital.zielRendite, geringRendite: s.kapital.geringRendite, gruenReichweite: s.kapital.gruenReichweite, rotReichweite: s.kapital.rotReichweite };
@@ -61,6 +63,7 @@ export async function kapitalAmpel(tenantId: string, heute: string): Promise<{ z
         breakEven: breakEven({ ek, fba: fbaFee, provision: prov, mwst }),
         breakEvenLaender: Object.fromEntries((Object.keys(UST_LAND) as (keyof typeof UST_LAND)[]).map((l) => [l, breakEven({ ek, fba: fbaFee, provision: prov, mwst: UST_LAND[l] })])),
         trendProzent: asin ? (trend.get(asin) ?? null) : null,
+        lager: asin && lagerKosten.has(asin) ? (({ monat, gebuehr, jeStueck, uebergross, volumenM3 }) => ({ monat, gebuehrMonat: gebuehr, jeStueckMonat: jeStueck, uebergross, volumenM3 }))(lagerKosten.get(asin)!) : null,
       },
       z,
     );

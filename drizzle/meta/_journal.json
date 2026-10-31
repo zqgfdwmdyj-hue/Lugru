@@ -806,6 +806,13 @@
       "when": 1793459855758,
       "tag": "0114_auszahlung_meldungen",
       "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1793462917697,
+      "tag": "0115_lagergebuehren_masse",
+      "breakpoints": true
     }
   ]
 }

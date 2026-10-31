@@ -1,10 +1,9 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, schema } from "@/db";
 import { IMPORT_ARTEN, IMPORT_ART_KEYS, GUELTIG_MIN, MAX_MB } from "@/lib/datei-import/logic";
 import { importeListe, importLinkAnlegen, importStatus } from "@/lib/datei-import/service";
 import { umsatzsteuerBlock, umsatzsteuerOss } from "@/lib/datei-import/umsatzsteuer";
+import { lagergebuehrenUebersicht } from "@/lib/reports/lagergebuehren";
 import { defineTool } from "../types";
 import { abs, json, uuid } from "./common";
 
@@ -35,7 +34,7 @@ const importLink = defineTool({
 const importStatusTool = defineTool({
   name: "import_status",
   title: "Datei-Import: Stand und Ergebnis",
-  description: "Stand eines Datei-Imports (wartet_auf_datei | verarbeitet | fertig | fehler) mit Fortschritt und – wenn fertig – Ergebnis je Art: beim Amazon-Transaktionsbericht Zeitraum, Marktplätze, Zeilen, Abrechnungen, Summen je Typ, Auszahlungen (Übertrag) und was sich im System geändert hat (neu / bereits vorhanden, Abrechnungen ergänzt); beim Kontoauszug Kontostand und Buchungen; bei der EK-Liste neu/geändert/gleich mit Link; beim USt-Bericht der Block je Periode; bei Lagergebühren Monate, Länder, teuerste ASINs.",
+  description: "Stand eines Datei-Imports (wartet_auf_datei | verarbeitet | fertig | fehler) mit Fortschritt und – wenn fertig – Ergebnis je Art: beim Amazon-Transaktionsbericht Zeitraum, Marktplätze, Zeilen, Abrechnungen, Summen je Typ, Auszahlungen (Übertrag) und was sich im System geändert hat (neu / bereits vorhanden, Abrechnungen ergänzt); beim Kontoauszug Kontostand und Buchungen; bei der EK-Liste neu/geändert/gleich mit Link; beim USt-Bericht der Block je Periode; bei Lagergebühren Monate, Länder, Anzahl ASINs, davon übergroß, teuerste ASINs und Abgleich mit Abrechnung/sellerboard.",
   area: null,
   ownerOnly: true,
   write: false,
@@ -83,37 +82,27 @@ const umsatzsteuerOssTool = defineTool({
 });
 
 const lagergebuehren = defineTool({
-  name: "lagergebuehren",
+  name: "amazon_lagergebuehren",
   title: "FBA-Lagergebühren je Monat",
-  description: "Monatliche FBA-Lagergebühren aus dem Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload): Summe je Monat und Land, teuerste ASINs, je ASIN Gebühr, Ø Bestand und Gebühr je Stück. Die Gebühren stecken schon in der Amazon-Abrechnung – zur Auswertung je Artikel, nicht zusätzlich zum Gewinn. Filter: monat (JJJJ-MM), asin.",
+  description: "Monatliche FBA-Lagergebühren aus dem Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload): Summe je Monat und Land, Anzahl ASINs, davon übergroß/Gefahrgut, je ASIN Gebühr, Ø Bestand, Gebühr je Stück, Lagervolumen, Größenklasse, Reichweite und „Remission prüfen“ (übergroß bzw. viel Volumen + langsam drehend). Abgleich mit der Amazon-Abrechnung (Folgemonat) und einer sellerboard-Fixkosten-Position „Lager…“. Die Gebühren stecken schon in der Amazon-Abrechnung – nicht zusätzlich vom Gewinn abziehen. Filter: monat (JJJJ-MM, Standard letzter), land, asin; sortierung gebuehr|volumen.",
   area: "amazon",
   write: false,
-  quelle: { text: "Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload)", importe: true },
-  input: z.object({ monat: z.string().regex(/^\d{4}-\d{2}$/).optional(), asin: z.string().max(12).optional(), limit: z.number().int().min(1).max(100).default(15) }),
+  quelle: { text: "Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload), Amazon-Abrechnung, sellerboard-Fixkosten", importe: true },
+  input: z.object({
+    monat: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    land: z.string().regex(/^[A-Za-z]{2}$/).optional(),
+    asin: z.string().max(12).optional(),
+    sortierung: z.enum(["gebuehr", "volumen"]).default("gebuehr"),
+    limit: z.number().int().min(1).max(100).default(15),
+  }),
   run: async (ctx, i) => {
-    const L = schema.amazonLagergebuehren;
-    const t = ctx.session.tenantId;
-    const monate = await db.select({ monat: L.monat, summe: sql<number>`sum(${L.gebuehr})::float`, asins: sql<number>`count(distinct ${L.asin})::int` }).from(L).where(eq(L.tenantId, t)).groupBy(L.monat).orderBy(desc(L.monat));
-    if (!monate.length) return json({ hinweis: "Noch keine Lagergebühren importiert – Bericht „Monthly Storage Fees“ hochladen (Upload-Seite oder import_link art=amazon_lagergebuehren).", link: abs(ctx, "/uploads") });
-    const monat = i.monat ?? monate[0].monat;
-    const wo = and(eq(L.tenantId, t), eq(L.monat, monat), i.asin ? eq(L.asin, i.asin.toUpperCase()) : undefined);
-    const [laender, asins] = await Promise.all([
-      db.select({ land: L.land, summe: sql<number>`sum(${L.gebuehr})::float` }).from(L).where(wo).groupBy(L.land).orderBy(desc(sql`sum(${L.gebuehr})`)),
-      db
-        .select({ asin: L.asin, titel: sql<string | null>`max(${L.titel})`, summe: sql<number>`sum(${L.gebuehr})::float`, bestand: sql<number>`sum(coalesce(${L.bestandSchnitt}, 0))::float`, zuschlag: sql<number>`sum(coalesce(${L.zuschlag}, 0))::float` })
-        .from(L)
-        .where(wo)
-        .groupBy(L.asin)
-        .orderBy(desc(sql`sum(${L.gebuehr})`))
-        .limit(i.limit),
-    ]);
-    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const u = await lagergebuehrenUebersicht(ctx.session.tenantId, { monat: i.monat ?? null, land: i.land ?? null, asin: i.asin ?? null, sortierung: i.sortierung, limit: i.limit });
+    if (!u) return json({ hinweis: "Noch keine Lagergebühren importiert – Bericht „Monthly Storage Fees“ hochladen (Upload-Seite oder import_link art=amazon_lagergebuehren).", link: abs(ctx, "/uploads") });
     return json({
-      monat,
-      monate: monate.map((m) => ({ monat: m.monat, gebuehr: r2(m.summe), asins: m.asins })),
-      laender: laender.map((l) => ({ land: l.land, gebuehr: r2(l.summe) })),
-      asins: asins.map((a) => ({ asin: a.asin, titel: a.titel ?? undefined, gebuehr: r2(a.summe), bestand_schnitt: r2(a.bestand), je_stueck: a.bestand > 0 ? r2(a.summe / a.bestand) : null, zuschlag_auslastung: a.zuschlag ? r2(a.zuschlag) : undefined, link: abs(ctx, `/produkte?q=${a.asin}`) })),
+      ...u,
+      asins: u.asins.map((a) => ({ ...a, titel: a.titel ?? undefined, remission: a.remission ?? undefined, link: abs(ctx, `/produkte?q=${a.asin}`) })),
       hinweis: "Geschätzte Gebühren laut Amazon (Bericht „Monthly Storage Fees“); bereits in der Amazon-Abrechnung enthalten.",
+      link: abs(ctx, "/kapital"),
     });
   },
 });

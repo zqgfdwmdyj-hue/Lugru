@@ -1,4 +1,5 @@
 import "server-only";
+import { fbaNachGroesse } from "@/lib/reports/lagergebuehren";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { DealPrognose, OfferMarket } from "@/db/schema";
@@ -17,7 +18,7 @@ import { aktionsmuster, kundeAusPrognose, MWST, tief12 } from "./logic";
 const TAG = 86_400_000;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export type Gebuehren = { provision: number; fba: number; geschaetzt: boolean };
+export type Gebuehren = { provision: number; fba: number; geschaetzt: boolean; /** FBA-Gebühr nach Größenklasse (Lagergebühren-Bericht) geschätzt. */ nachGroesse?: string };
 
 /** Provision und FBA-Gebühr: eigener Artikel (Report) → Angebot aus der Preisliste (Keepa) → Standard aus den Einstellungen. */
 export async function gebuehrenFuer(tenantId: string, asin: string, market?: OfferMarket | null): Promise<Gebuehren> {
@@ -26,9 +27,10 @@ export async function gebuehrenFuer(tenantId: string, asin: string, market?: Off
   const s = await getSettings(tenantId);
   const fbaEigen = p?.fba !== null && p?.fba !== undefined ? Number(p.fba) : null;
   const refEigen = p?.ref !== null && p?.ref !== undefined ? Number(p.ref) : null;
-  const fba = fbaEigen ?? market?.fbaFee ?? s.pricing.defaultFbaFee;
+  const groesse = fbaEigen === null && !market?.fbaFee ? (await fbaNachGroesse(tenantId, [asin])).get(asin) : undefined;
+  const fba = fbaEigen ?? market?.fbaFee ?? groesse?.fba ?? s.pricing.defaultFbaFee;
   const provision = refEigen ?? (market?.referralPct ? market.referralPct / 100 : null) ?? s.pricing.referralRate;
-  return { provision, fba, geschaetzt: fbaEigen === null && !market?.fbaFee };
+  return { provision, fba, geschaetzt: fbaEigen === null && !market?.fbaFee, ...(groesse ? { nachGroesse: groesse.groesse } : {}) };
 }
 
 export const KEEPA_LAENDER = new Set(Object.keys(MARKTPLAETZE));

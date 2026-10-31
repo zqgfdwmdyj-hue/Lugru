@@ -2,7 +2,7 @@
 // import_status; gleiche Datei noch einmal → „bereits importiert“; Abrechnungen + Auszahlungen aus dem
 // Transaktionsbericht; importe(); abgelaufene/benutzte/unbekannte Adresse → klare Fehler; Lagergebühren; USt-Bericht
 // je Periode + OSS; falsche Art; nur Inhaber.
-import { alsPerson, expect, marke, mcpVerbinden, sql, test, testdienste } from "./helfer";
+import { alsPerson, anmelden, expect, marke, mcpVerbinden, sql, test, testdienste } from "./helfer";
 
 type Link = { import_id: string; upload_url: string; gueltig_bis: string; max_mb: number; methode: string; content_type: string };
 const berlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
@@ -34,7 +34,7 @@ function transaktionen(m: string) {
 }
 
 const LAGER_KOPF = "asin,fnsku,product_name,fulfillment_center,country_code,longest_side,median_side,shortest_side,measurement_units,weight,weight_units,item_volume,volume_units,product_size_tier,average_quantity_on_hand,average_quantity_pending_removal,estimated_total_item_volume,month_of_charge,storage_utilization_ratio,storage_utilization_ratio_units,base_rate,utilization_surcharge_rate,avg_qty_for_sus,est_vol_for_sus,est_base_msf,est_sus,currency,estimated_monthly_storage_fee,category,eligible_for_inventory_discount,qualifies_for_inventory_discount,total_incentive_fee_amount,breakdown_incentive_fee_amount,average_quantity_customer_orders";
-const lager = (asin: string, land: string, fee: string) => `${asin},X00TEST,Testartikel (erfunden),TST1,${land},10,5,2,centimeters,0.2,kilograms,0.0001,cubic meters,Standard,4,0,0.0004,2026-05,1.2,weeks,27.54,0,0,0,0.01,0,EUR,${fee},Testkategorie,N,N,0,,0`;
+const lager = (asin: string, land: string, fee: string, stufe = "Standard") => `${asin},X00TEST,Testartikel (erfunden),TST1,${land},10,5,2,centimeters,0.2,kilograms,0.0001,cubic meters,${stufe},4,0,0.0004,2026-05,1.2,weeks,27.54,0,0,0,0.01,0,EUR,${fee},Testkategorie,N,N,0,,0`;
 
 const UST_KOPF = ["UNIQUE_ACCOUNT_IDENTIFIER", "ACTIVITY_PERIOD", "SALES_CHANNEL", "MARKETPLACE", "PROGRAM_TYPE", "TRANSACTION_TYPE", "TRANSACTION_EVENT_ID", "TRANSACTION_COMPLETE_DATE", "SELLER_SKU", "ASIN", "QTY", "DEPARTURE_COUNTRY", "ARRIVAL_COUNTRY", "TAXABLE_JURISDICTION", "TAX_REPORTING_SCHEME", "TOTAL_ACTIVITY_VALUE_AMT_VAT_EXCL", "TOTAL_ACTIVITY_VALUE_VAT_AMT", "TOTAL_ACTIVITY_VALUE_AMT_VAT_INCL", "PRICE_OF_ITEMS_VAT_RATE_PERCENT", "TRANSACTION_CURRENCY_CODE"];
 const ust = (p: string, typ: string, d: string, von: string, nach: string, land: string, s: string, n: string, u: string, b: string, satz: string, q = "1") => ["A1", p, "AFN", "amazon.de", "REGULAR", typ, "302-0000000-0000009", d, "TEST-SOCKEN", "B0TEST0001", q, von, nach, land, s, n, u, b, satz, "EUR"].join("\t");
@@ -45,7 +45,7 @@ test.describe("Datei-Import über den Konnektor", () => {
     const m = marke();
     const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
     const tools = await mcp.tools();
-    expect(tools).toEqual(expect.arrayContaining(["import_link", "import_status", "importe", "umsatzsteuer", "umsatzsteuer_oss", "lagergebuehren"]));
+    expect(tools).toEqual(expect.arrayContaining(["import_link", "import_status", "importe", "umsatzsteuer", "umsatzsteuer_oss", "amazon_lagergebuehren"]));
     const link = async (art: string, dateiname: string, hinweis?: string) => JSON.parse(await mcp.call("import_link", { art, dateiname, hinweis })) as Link;
     const status = async (id: string) => JSON.parse(await mcp.call("import_status", { import_id: id })) as { status: string; ergebnis?: Record<string, unknown>; fehler_text?: string; bereits_importiert?: boolean };
     const fertig = async (id: string) => {
@@ -115,16 +115,21 @@ test.describe("Datei-Import über den Konnektor", () => {
       await expect.poll(async () => JSON.parse(await mcp.call("import_status", { import_id: id })).status, { timeout: 60_000 }).toMatch(/fertig|fehler/);
       return JSON.parse(await mcp.call("import_status", { import_id: id })) as { status: string; ergebnis?: Record<string, unknown>; fehler_text?: string };
     };
-    const lagerCsv = [LAGER_KOPF, lager("B0TEST0001", "DE", "1.25"), lager("B0TEST0001", "FR", "0.50"), lager("B0TEST0002", "DE", "0.10")].join("\n");
+    const lagerCsv = [LAGER_KOPF, lager("B0TEST0001", "DE", "1.25"), lager("B0TEST0001", "FR", "0.50"), lager("B0TEST0002", "DE", "0.10", "Oversize")].join("\n");
 
     // Lagergebühren (Monthly Storage Fees)
     const l1 = await link("amazon_lagergebuehren", "1689635020757.csv");
     expect((await fetch(l1.upload_url, { method: "PUT", body: lagerCsv })).status).toBe(202);
     const s1 = await fertig(l1.import_id);
     expect(s1.status, s1.fehler_text).toBe("fertig");
-    expect(s1.ergebnis).toMatchObject({ monate: [{ monat: "2026-05", gebuehr: 1.85 }] });
-    const lg = JSON.parse(await mcp.call("lagergebuehren", { monat: "2026-05" })) as { asins: { asin: string; gebuehr: number }[] };
+    expect(s1.ergebnis).toMatchObject({ monate: [{ monat: "2026-05", gebuehr: 1.85 }], anzahl_asins: 2, anzahl_uebergross: 1 });
+    expect((s1.ergebnis as { abgleich: { sellerboard_fixkosten: unknown }[] }).abgleich[0].sellerboard_fixkosten).toBeTruthy();
+    const lg = JSON.parse(await mcp.call("amazon_lagergebuehren", { monat: "2026-05" })) as { asins: { asin: string; gebuehr: number }[]; anzahl_uebergross: number; abgleich: { hinweis: string } };
     expect(lg.asins[0]).toMatchObject({ asin: "B0TEST0001", gebuehr: 1.75 });
+    expect(lg.anzahl_uebergross).toBeGreaterThanOrEqual(1);
+    expect(lg.abgleich.hinweis).toContain("nicht zusätzlich");
+    const fr = JSON.parse(await mcp.call("amazon_lagergebuehren", { monat: "2026-05", land: "FR", sortierung: "volumen" })) as { laender: { land: string }[] };
+    expect(fr.laender.map((l) => l.land)).toEqual(["FR"]);
 
     // Falsche Art: Lagergebühren-Datei als Transaktionsbericht angekündigt
     const l2 = await link("amazon_transaktionen", "falsch.csv");
@@ -171,5 +176,37 @@ test.describe("Datei-Import über den Konnektor", () => {
     const angeboten = (await testdienste.kiZu(`${m}-B1`))!.tools;
     expect(angeboten.filter((t) => ["import_link", "import_status", "importe"].includes(t))).toEqual([]);
     expect(await fragen(`werkzeug:import_link {"art":"sonstiges","dateiname":"x.txt"} ${m}-B2`)).toContain("nicht freigegeben");
+  });
+
+  test("Unbekanntes Format: Vorschlag + Protokoll; Lagergebühr in Gewinn, Kapital-Ampel und buchhaltung_status", async ({ page, browser, baseURL }) => {
+    test.setTimeout(120_000);
+    const m = marke();
+    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
+    // Lagergebühren-Datei ohne Gebühren-Spalten → als Lagergebühren angekündigt: Fehler mit Vorschlag
+    const kopf = "asin,fnsku,product_name,fulfillment_center,country_code,product_size_tier,average_quantity_on_hand,month_of_charge";
+    const csv = `${kopf}\nB0TEST0001,X00TEST,Testartikel (erfunden),TST1,DE,Standard,4,2026-05\n`;
+    const l = JSON.parse(await mcp.call("import_link", { art: "amazon_lagergebuehren", dateiname: `ohne-gebuehr-${m}.csv` })) as Link;
+    await fetch(l.upload_url, { method: "PUT", body: csv });
+    await expect.poll(async () => JSON.parse(await mcp.call("import_status", { import_id: l.import_id })).status, { timeout: 60_000 }).toBe("fehler");
+    expect(JSON.parse(await mcp.call("import_status", { import_id: l.import_id })).fehler_text).toContain("Sieht aus wie „Monatliche Lagergebühren");
+
+    // Dieselbe Datei über die Upload-Seite → „Format nicht erkannt“ mit Vorschlag, Liste „Unbekannte Formate“ mit allen Spalten
+    await anmelden(page, "inhaber");
+    await page.goto("/uploads");
+    await page.getByTestId("upload-dateien").setInputFiles([{ name: `unbekannt-${m}.csv`, mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") }]);
+    await page.getByTestId("upload-los").click();
+    await expect(page.getByTestId("upload-ergebnis")).toContainText("Sieht aus wie", { timeout: 60_000 });
+    await page.goto("/uploads");
+    const zeile = page.getByTestId("upload-unbekannt-zeile").filter({ hasText: `unbekannt-${m}.csv` });
+    await expect(zeile).toContainText("Monatliche Lagergebühren");
+    await expect(zeile).toContainText("month-of-charge");
+
+    // Gewinn-Seite: Zeile „darin: FBA-Lagergebühr“ (nie zusätzlich abgezogen)
+    await page.goto("/gewinn");
+    await expect(page.getByTestId("wert-lagergebuehr")).toContainText("FBA-Lagergebühr");
+
+    // buchhaltung_status nennt den USt-Bericht (importiert ja/nein)
+    const b = JSON.parse(await mcp.call("buchhaltung_status", { monat: "2026-07" })) as { amazon_umsatzsteuer: { importiert: boolean } };
+    expect(typeof b.amazon_umsatzsteuer.importiert).toBe("boolean");
   });
 });

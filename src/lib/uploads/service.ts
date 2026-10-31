@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ilike } from "drizzle-orm";
 import { after } from "next/server";
 import { db, schema } from "@/db";
 import { canAccess } from "@/lib/auth/areas";
@@ -175,4 +175,15 @@ async function mitProtokoll(session: Session, e: UploadErgebnis, groesse: number
 
 export async function uploadVerlauf(tenantId: string, limit = 50) {
   return db.select().from(schema.uploads).where(eq(schema.uploads.tenantId, tenantId)).orderBy(desc(schema.uploads.createdAt)).limit(limit);
+}
+
+/** Protokoll unbekannter Formate: Uploads mit „Format nicht erkannt“ samt Spaltenliste – zum Nachbauen als neue Art. */
+export async function unbekannteFormate(tenantId: string, limit = 20) {
+  const U = schema.uploads;
+  return db
+    .select({ id: U.id, createdAt: U.createdAt, dateiname: U.dateiname, zusammenfassung: U.zusammenfassung, hinweise: U.hinweise })
+    .from(U)
+    .where(and(eq(U.tenantId, tenantId), eq(U.ok, false), ilike(U.zusammenfassung, "%Format nicht erkannt%")))
+    .orderBy(desc(U.createdAt))
+    .limit(limit);
 }

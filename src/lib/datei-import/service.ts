@@ -9,6 +9,7 @@ import { loeschen, lesen, neuerSchluessel, speichern } from "@/lib/medien/ablage
 import { sitzungFuer } from "@/lib/mobil/token";
 import { publicUrl } from "@/lib/public-url";
 import { detectReport, parseStorageFees, REPORT_KINDS } from "@/lib/reports/amazon";
+import { formatVorschlag, spaltenProtokoll, vorschlagText } from "@/lib/reports/format-vorschlag";
 import { transaktionsAuswertung } from "@/lib/reports/transaktionen";
 import { readTable } from "@/lib/tabular";
 import { dateiArt, dateiHochladen } from "@/lib/uploads/service";
@@ -113,7 +114,10 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     }
     if (!table.headers.length || !table.rows.length) throw new ImportFehler("Die Datei ist leer.");
     const kind = detectReport(table);
-    if (kind !== def.bericht) throw new ImportFehler(`Falsche Art: erwartet ${def.text}, die Spalten passen dazu nicht${kind ? ` (sieht aus wie „${REPORT_KINDS[kind]}“ – dann import_link mit der passenden Art)` : ""}.`);
+    if (kind !== def.bericht) {
+      const v = kind ? null : formatVorschlag(table.headers);
+      throw new ImportFehler(`Falsche Art: erwartet ${def.text}, die Spalten passen dazu nicht${kind ? ` (sieht aus wie „${REPORT_KINDS[kind]}“ – dann import_link mit der passenden Art)` : v ? `. ${vorschlagText(v)}` : `. ${spaltenProtokoll(table.headers)}`}.`.replace(/\.\.$/, "."));
+    }
     const vorherBis = kind === "transactions" ? (await db.select({ bis: max(schema.amazonTransactions.date) }).from(schema.amazonTransactions).where(eq(schema.amazonTransactions.tenantId, t)))[0]?.bis ?? null : null;
     await fortschritt(30);
     const r = await zentral(session, name, bytes);
@@ -149,7 +153,19 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     if (kind === "storageFees") {
       const p = parseStorageFees(table);
       const je = (k: (x: (typeof p)[number]) => string) => [...p.reduce((m, x) => m.set(k(x), r2((m.get(k(x)) ?? 0) + x.gebuehr)), new Map<string, number>())].map(([schluessel, summe]) => ({ schluessel, summe })).sort((x, y) => y.summe - x.summe);
-      return { ...basis, monate: je((x) => x.monat).map((x) => ({ monat: x.schluessel, gebuehr: x.summe })), laender: je((x) => x.land).map((x) => ({ land: x.schluessel, gebuehr: x.summe })), teuerste_asins: je((x) => x.asin).slice(0, 10).map((x) => ({ asin: x.schluessel, gebuehr: x.summe })), hinweis: "Geschätzte Lagergebühren laut Amazon – stecken bereits in der Amazon-Abrechnung, daher nur zur Auswertung je Artikel (nicht zusätzlich im Gewinn)." };
+      const monate = je((x) => x.monat).map((x) => ({ monat: x.schluessel, gebuehr: x.summe }));
+      const { lagerAbgleich } = await import("@/lib/reports/lagergebuehren");
+      return {
+        ...basis,
+        monate,
+        laender: je((x) => x.land).map((x) => ({ land: x.schluessel, gebuehr: x.summe })),
+        anzahl_asins: new Set(p.map((x) => x.asin)).size,
+        anzahl_uebergross: new Set(p.filter((x) => x.uebergross).map((x) => x.asin)).size,
+        teuerste_asins: je((x) => x.asin).slice(0, 10).map((x) => ({ asin: x.schluessel, gebuehr: x.summe })),
+        abgleich: await Promise.all(monate.map(async (m) => ({ monat: m.monat, ...(await lagerAbgleich(t, m.monat, m.gebuehr)) }))),
+        hinweis: "Geschätzte Lagergebühren laut Amazon – stecken bereits in der Amazon-Abrechnung, daher nur zur Auswertung je Artikel (Kapital-Ampel, Remission) und nicht zusätzlich im Gewinn.",
+        links: { werkzeug: "amazon_lagergebuehren", kapital: "/kapital" },
+      };
     }
     return basis;
   }

@@ -1,4 +1,5 @@
 import "server-only";
+import { fbaNachGroesse } from "@/lib/reports/lagergebuehren";
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { eurRates } from "@/lib/fx/ecb";
@@ -77,6 +78,8 @@ export async function preislisteAuswerten(tenantId: string, feedId: string, o: {
   const deals = asins.length ? await db.select({ id: schema.deals.id, asin: schema.deals.asin }).from(schema.deals).where(and(eq(schema.deals.tenantId, tenantId), inArray(schema.deals.asin, asins), sql`${schema.deals.status} not in ('verfallen')`)) : [];
   const dealZu = new Map(deals.map((d) => [d.asin, d.id]));
   const inEur = inEurMit(await eurRates());
+  // Solange die SP-API fehlt: FBA-Gebühr nach Größenklasse aus dem Lagergebühren-Bericht (Ø eigener Artikel derselben Klasse).
+  const nachGroesse = await fbaNachGroesse(tenantId, asins.filter((a) => !offers.some((o) => asinVon(o) === a && o.market?.fbaFee)));
   const now = Date.now();
   const costPct = Number(feed.mapping.costPct ?? 0) || 0;
   const vatPct = feed.mapping.vatPct ? Number(feed.mapping.vatPct) || null : null;
@@ -89,7 +92,9 @@ export async function preislisteAuswerten(tenantId: string, feedId: string, o: {
     if (e.caseQty > 1) warnungen.push(`Liste nennt Karton/Gebinde à ${e.caseQty} – Preis je Einheit umgerechnet.`);
     if (e.implausible) warnungen.push("ROI unplausibel hoch – Packungsgröße prüfen.");
     const provision = of.market?.referralPct ? of.market.referralPct / 100 : s.pricing.referralRate;
-    const fba = of.market?.fbaFee ?? s.pricing.defaultFbaFee;
+    const groesse = asin ? nachGroesse.get(asin) : undefined;
+    const fba = of.market?.fbaFee ?? groesse?.fba ?? s.pricing.defaultFbaFee;
+    if (!of.market?.fbaFee && groesse) warnungen.push(`FBA-Gebühr geschätzt nach Größenklasse „${groesse.groesse}“ (Ø eigener Artikel, Lagergebühren-Bericht): ${groesse.fba.toFixed(2).replace(".", ",")} €.`);
     const fehlend: string[] = [];
     const ls: ScanLand[] = [];
     if (asin)

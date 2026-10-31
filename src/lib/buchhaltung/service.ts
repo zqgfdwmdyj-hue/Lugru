@@ -13,7 +13,7 @@ import { abgleichen, abstimmungsgrad, type Abrechnung, type Beleg, type Vorschla
 import { leseAmex } from "./amex";
 import { alsCp1252, datevBuchungsstapel, type DatevZeile } from "./datev";
 import { kontoVorschlag, regelSchluessel, ustSatzAus, wirktEu, type Geldkonten } from "./kontierung";
-import { leseUstBerichtJePeriode, ustZusammenfuehren, type UstAuswertung } from "./ust-bericht";
+import { leseUstBerichtJePeriode, umsatzJeSteuerland, ustZusammenfuehren, type UstAuswertung } from "./ust-bericht";
 
 // Buchhaltung je Firma (nur LuGru/WiGru – AdelPrep läuft über Lexoffice): Kontoauszüge und Amex-CSV mit
 // Saldo-Kontrolle, Abgleich Zahlung ↔ Beleg, Vorkontierung SKR04, Festschreibung, DATEV-Export, Protokoll (GoBD).
@@ -390,8 +390,10 @@ export async function belegeZip(wer: Wer, firma: string | null, monat: string): 
     : [];
   const csv = ["Datum;Betrag;S/H;Konto;Gegenkonto;BU;Belegnummer;Buchungstext;Status", ...rows.map((r) => [r.datum, r.betrag.toFixed(2).replace(".", ","), r.sollHaben, r.konto, r.gegenkonto, r.buSchluessel ?? "", r.belegfeld1, `"${r.buchungstext.replace(/"/g, '""')}"`, r.status].join(";"))].join("\r\n");
   const genutzt = new Set<string>();
+  const ust = await ustMonatsdatei(wer.tenantId, f.firma, monat);
   const files = [
     { name: `Buchungen_${f.firma}_${monat}.csv`, data: `﻿${csv}\r\n` },
+    ...(ust ? [{ name: `Amazon-Umsatzsteuer_${monat}.csv`, data: ust }] : []),
     ...dateien.map((d) => {
       const ext = (/\.[a-z0-9]{2,5}$/i.exec(d.name)?.[0] ?? ".pdf").toLowerCase();
       let n = `Belege/${(d.nummer || d.id).replace(/[^A-Za-z0-9._-]+/g, "_")}${ext}`;
@@ -432,6 +434,8 @@ export async function buchhaltungStatus(tenantId: string, monat: string, firma?:
   const exporte = await db.select().from(schema.buchhaltungExporte).where(and(eq(schema.buchhaltungExporte.tenantId, tenantId), eq(schema.buchhaltungExporte.firma, f.firma), eq(schema.buchhaltungExporte.monat, monat))).orderBy(desc(schema.buchhaltungExporte.createdAt));
   const importe = await db.select().from(schema.buchhaltungImporte).where(and(eq(schema.buchhaltungImporte.tenantId, tenantId), eq(schema.buchhaltungImporte.firma, f.firma))).orderBy(desc(schema.buchhaltungImporte.createdAt)).limit(10);
   const anzahl = (s: string) => buchungen.find((b) => b.status === s)?.n ?? 0;
+  const [ustP] = await ustPerioden(tenantId, f.firma, [monat]);
+  const ustLaender = ustP ? umsatzJeSteuerland(ustP.daten) : [];
   const unsicher = belegeMonat.filter((b) => b.status === "review" || (b.checks && (b.checks.date || b.checks.docType || (b.checks.duplicateOf?.length && !b.checks.notDuplicate))));
   return {
     firma: f.firma,
@@ -449,7 +453,29 @@ export async function buchhaltungStatus(tenantId: string, monat: string, firma?:
     },
     importe,
     exporte,
+    ust: ustP
+      ? { vorhanden: true, stand: ustP.stand, dateien: ustP.dateien, brutto: r2(ustLaender.reduce((n, l) => n + l.brutto, 0)), steuerlaender: ustLaender.length, verbringungen: ustP.daten.transfers.length, ohneSteuerland: (ustP.daten.ohneSteuerland ?? []).length, hinweise: ustP.daten.hinweise.length, imExport: true }
+      : { vorhanden: false },
   };
+}
+
+/** Monatsdatei für den Steuerberater: Umsatz je Steuerland (OSS/lokal), Verbringungen, INVOICE/CREDIT_NOTE ohne Steuerland. Nur Zahlen. */
+export async function ustMonatsdatei(tenantId: string, firma: string | null, monat: string): Promise<string | null> {
+  const [p] = await ustPerioden(tenantId, firma, [monat]);
+  if (!p) return null;
+  const z = (n: number) => n.toFixed(2).replace(".", ",");
+  const zeilen = [
+    `Amazon-Umsatzsteuer-Transaktionsbericht ${monat} (aus dem Seller-System; nur Zahlen, keine Steuerberatung)`,
+    "",
+    "Steuerland;Netto;USt;Brutto;davon OSS netto;davon lokal netto",
+    ...umsatzJeSteuerland(p.daten).map((l) => [l.land, z(l.netto), z(l.ust), z(l.brutto), z(l.oss), z(l.lokal)].join(";")),
+    "",
+    "Verbringungen (kein Umsatz);von;nach;Stück;Netto",
+    ...p.daten.transfers.map((t) => ["", t.von, t.nach, String(t.stueck ?? t.anzahl), z(t.netto ?? 0)].join(";")),
+    ...((p.daten.ohneSteuerland ?? []).length ? ["", "INVOICE/CREDIT_NOTE ohne Steuerland (nicht im Umsatz, bitte prüfen);Netto;USt;Brutto;Vorgänge", ...(p.daten.ohneSteuerland ?? []).map((x) => [x.vorgang, z(x.netto), z(x.ust), z(x.brutto), String(x.anzahl)].join(";"))] : []),
+    ...(p.daten.hinweise.length ? ["", "Hinweise", ...p.daten.hinweise] : []),
+  ];
+  return `﻿${zeilen.join("\r\n")}\r\n`;
 }
 
 export async function buchungenListe(tenantId: string, firma: string, monat: string) {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseAmount, parseDate, parseDateTime } from "@/lib/numbers";
 import { columnAccessor, type Table } from "@/lib/tabular";
+import { inCm, inKg, inM3, istUebergross } from "./lagergebuehren-logic";
 
 // Erkennt und liest Amazon-Reports (Download aus Seller Central oder per SP-API).
 // Spaltennamen werden vereinheitlicht; deutsche Varianten sind mit aufgenommen.
@@ -544,7 +545,12 @@ export function parseStorageFees(table: Table) {
       titel: orNull(a.get(r, "product-name")),
       groesse: orNull(a.get(r, "product-size-tier")),
       bestandSchnitt: num("average-quantity-on-hand"),
-      volumenM3: num("estimated-total-item-volume"),
+      volumenM3: inM3(num("estimated-total-item-volume"), a.get(r, "volume-units")),
+      laengsteSeiteCm: inCm(num("longest-side"), a.get(r, "measurement-units")),
+      gewichtKg: inKg(num("weight"), a.get(r, "weight-units")),
+      uebergross: istUebergross(orNull(a.get(r, "product-size-tier")), inCm(num("longest-side"), a.get(r, "measurement-units"))),
+      gefahrgut: orNull(a.get(r, "dangerous-goods-storage-type")),
+      rabatt: num("total-incentive-fee-amount", "total-incentive-fee-discount"),
       gebuehr,
       zuschlag: num("est-sus"),
       waehrung: a.get(r, "currency") || "EUR",

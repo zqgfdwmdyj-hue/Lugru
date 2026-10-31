@@ -1,6 +1,8 @@
 // Kapital-Ampel je Produkt – reine Logik: gebundenes Kapital, Gewinn 90 Tage, Umschlag, Jahresrendite auf das
 // gebundene Kapital, Reichweite, Lageralter, Preis gegen Break-even → Ampel und Vorschläge.
 
+import { lagerMarge as lagerMargeRechnen, remissionPruefen, type LagerMarge } from "@/lib/reports/lagergebuehren-logic";
+
 export type KapitalZiele = { zielRendite: number; geringRendite: number; gruenReichweite: number; rotReichweite: number };
 export const KAPITAL_ZIELE: KapitalZiele = { zielRendite: 0.3, geringRendite: 0.05, gruenReichweite: 60, rotReichweite: 120 };
 
@@ -69,6 +71,8 @@ export type KapitalEingabe = {
   /** Break-even je Land mit dessen USt (DE 19, FR 20, IT 22, ES 21 %). */
   breakEvenLaender?: Partial<Record<"DE" | "FR" | "IT" | "ES", number | null>>;
   trendProzent: number | null;
+  /** FBA-Lagergebühr laut Bericht „Monthly Storage Fees“ (letzter Monat, alle Länder). */
+  lager?: { monat: string; gebuehrMonat: number; jeStueckMonat: number | null; uebergross: boolean; volumenM3: number } | null;
 };
 
 /** USt je Land für den Break-even (wie BQool-Export). */
@@ -85,6 +89,10 @@ export type KapitalZeile = KapitalEingabe & {
   ampel: Ampel;
   gruende: string[];
   vorschlaege: string[];
+  /** „Lagergebühr frisst Marge“ – Lagergebühr bis zum Verkauf gegen Gewinn je Stück. */
+  lagerMarge: LagerMarge | null;
+  /** „Remission prüfen“ (übergroß bzw. viel Volumen, langsam drehend). */
+  remission: string | null;
 };
 
 export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIELE): KapitalZeile {
@@ -101,7 +109,10 @@ export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIEL
   if (rendite !== null && rendite < z.geringRendite) gruende.push(rendite < 0 ? "negative Rendite" : `geringe Rendite (${Math.round(rendite * 100)} %/Jahr)`);
   if (reichweite > z.rotReichweite) gruende.push(reichweite >= 9999 ? "keine Verkäufe" : `Reichweite ${reichweite} Tage`);
   const rot = gruende.length > 0;
-  const gruen = !rot && !keinAngebot && rendite !== null && rendite >= z.zielRendite && reichweite <= z.gruenReichweite;
+  const lagerMarge = e.lager ? lagerMargeRechnen({ gebuehrJeStueckMonat: e.lager.jeStueckMonat, gewinnJeStueck: e.stueck90 > 0 ? e.gewinn90 / e.stueck90 : null, reichweiteTage: reichweite }) : null;
+  const frisst = !!lagerMarge?.frisstMarge;
+  const remission = e.lager ? remissionPruefen({ uebergross: e.lager.uebergross, volumenM3: e.lager.volumenM3, gebuehrMonat: e.lager.gebuehrMonat, reichweiteTage: e.stueck > 0 ? reichweite : null }) : null;
+  const gruen = !rot && !frisst && !keinAngebot && rendite !== null && rendite >= z.zielRendite && reichweite <= z.gruenReichweite;
   const ampel: Ampel = rot ? "rot" : gruen ? "gruen" : "gelb";
   // Hinweis, kein eigener Grund für Rot (Preis fehlt nur gerade).
   if (keinAngebot && e.stueck > 0) gruende.unshift("kein aktives Angebot (Preis 0)");
@@ -110,6 +121,7 @@ export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIEL
     else if (rendite < z.zielRendite) gruende.push(`Rendite ${Math.round(rendite * 100)} % unter Ziel ${Math.round(z.zielRendite * 100)} %`);
     if (reichweite > z.gruenReichweite && reichweite <= z.rotReichweite) gruende.push(`Reichweite ${reichweite} Tage`);
   }
+  if (frisst) gruende.push(lagerMarge!.text);
   const vorschlaege: string[] = [];
   if (rot) {
     vorschlaege.push("Nicht nachbestellen");
@@ -120,5 +132,7 @@ export function bewerteKapital(e: KapitalEingabe, z: KapitalZiele = KAPITAL_ZIEL
     if (e.stueck >= 5) vorschlaege.push("Teil über anderen Kanal verkaufen (eBay/B2B-Deal)");
   }
   if (!rot && keinAngebot && e.stueck > 0) vorschlaege.push("Angebot prüfen und wieder aktivieren (Bestand ohne Angebot)");
-  return { ...e, kapital, rendite, umschlag, reichweite, unterBreakEven, keinAngebot, ampel, gruende, vorschlaege };
+  if (frisst) vorschlaege.push("Bestand an Amazon verringern: Abverkauf beschleunigen oder Teil ins eigene Lager/remittieren (Lagergebühr)");
+  if (remission) vorschlaege.push(remission);
+  return { ...e, kapital, rendite, umschlag, reichweite, unterBreakEven, keinAngebot, ampel, gruende, vorschlaege, lagerMarge, remission };
 }
