@@ -12,25 +12,52 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <script src="/static/htmx.min.js"></script>
 </head><body>
-<nav aria-label="Hauptnavigation">
-  <span class="marke">Lugru Deals</span>
-  <div class="reiter">
+{{/* Auf dem Telefon klappt die Seitenleiste über den Knopf in der
+     Kopfleiste auf — ohne Skript, über dieses Kästchen. */}}
+<input type="checkbox" id="menue-schalter" class="menue-schalter" aria-hidden="true" tabindex="-1">
+<header class="kopfleiste">
+  <label for="menue-schalter" class="menue-knopf" aria-label="Menü öffnen">☰</label>
+  <a href="/" class="marke">Lugru Deals</a>
+  <span class="kopf-titel">{{.Titel}}</span>
+</header>
+<nav aria-label="Hauptnavigation" class="seitenleiste">
+  <a href="/" class="marke" data-icon="logo">Lugru Deals</a>
   {{/* Der aktive Zustand entsteht aus dem Seitentitel: alle Seitendaten
        tragen .Titel, und die Werte sind wörtlich die Beschriftungen
        hier. Ein eigenes Feld je Seite wäre eine zweite Wahrheit, die
-       auseinanderlaufen kann. */}}
-  <a href="/"              {{if eq .Titel "Neuer Deal"}}class="aktiv"{{end}}>Neuer Deal</a>
-  <a href="/historie"      {{if eq .Titel "Historie"}}class="aktiv"{{end}}>Historie</a>
-  <a href="/statistik"     {{if eq .Titel "Statistik"}}class="aktiv"{{end}}>Statistik</a>
-  <a href="/monitor"       {{if eq .Titel "Monitor"}}class="aktiv"{{end}}>Monitor</a>
-  <a href="/channels"      {{if eq .Titel "Channels"}}class="aktiv"{{end}}>Channels</a>
-  <a href="/tags"          {{if eq .Titel "Tags"}}class="aktiv"{{end}}>Tags</a>
-  <a href="/tarife"        {{if eq .Titel "Versandtarife"}}class="aktiv"{{end}}>Tarife</a>
-  <a href="/einstellungen" {{if eq .Titel "Einstellungen"}}class="aktiv"{{end}}>Einstellungen</a>
+       auseinanderlaufen kann. Die Symbole kommen aus dem Stylesheet
+       (data-icon), damit die Beschriftung reiner Text bleibt. */}}
+  <div class="nav-gruppe">Deals</div>
+  <a href="/"              data-icon="neu"       {{if eq .Titel "Neuer Deal"}}class="aktiv"{{end}}>Neuer Deal</a>
+  <a href="/historie"      data-icon="historie"  {{if eq .Titel "Historie"}}class="aktiv"{{end}}>Historie</a>
+  <a href="/statistik"     data-icon="statistik" {{if eq .Titel "Statistik"}}class="aktiv"{{end}}>Statistik</a>
+  {{if eq .Titel "Statistik"}}<div class="nav-unter">
+    <a href="/statistik">Übersicht</a>
+    <a href="/statistik/rueckblick">Rückblick mit Keepa</a>
+  </div>{{end}}
+  <div class="nav-gruppe">Automatik</div>
+  <a href="/monitor"       data-icon="monitor"   {{if eq .Titel "Monitor"}}class="aktiv"{{end}}>Monitor</a>
+  <div class="nav-unter">
+    <a href="/monitor#produkte">Produkte</a>
+    <a href="/monitor#asins">ASIN-Liste</a>
+    <a href="/monitor#keepadeals">Keepa-Preisstürze</a>
+    <a href="/monitor#regeln">Regeln</a>
+    <a href="/monitor#quellen">Feeds &amp; Podcasts</a>
+    <a href="/monitor#auswertung">Auswertung</a>
+    <a href="/monitor#einstellungen">Monitor-Einstellungen</a>
   </div>
-  {{if .TokenText}}<span class="token">{{.TokenText}}</span>{{end}}
-  <a href="/abmelden" class="abmelden">Abmelden</a>
+  <div class="nav-gruppe">Verwaltung</div>
+  <a href="/channels"      data-icon="channels"  {{if eq .Titel "Channels"}}class="aktiv"{{end}}>Channels</a>
+  <a href="/tags"          data-icon="tags"      {{if eq .Titel "Tags"}}class="aktiv"{{end}}>Tags</a>
+  <a href="/tarife"        data-icon="tarife"    {{if eq .Titel "Versandtarife"}}class="aktiv"{{end}}>Tarife</a>
+  <a href="/einstellungen" data-icon="einstellungen" {{if eq .Titel "Einstellungen"}}class="aktiv"{{end}}>Einstellungen</a>
+  <a href="/benutzer"      data-icon="benutzer"  {{if eq .Titel "Benutzer"}}class="aktiv"{{end}}>Benutzer</a>
+  <div class="nav-fuss">
+    {{if .TokenText}}<span class="token">{{.TokenText}}</span>{{end}}
+    <a href="/abmelden" class="abmelden" data-icon="abmelden">Abmelden</a>
+  </div>
 </nav>
+<label for="menue-schalter" class="menue-schleier" aria-hidden="true"></label>
 <main>{{end}}
 
 {{define "fuss"}}</main><footer class="version">Lugru Deals · Version {{version}}</footer></body></html>{{end}}

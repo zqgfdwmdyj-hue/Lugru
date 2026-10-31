@@ -7,6 +7,7 @@
 package podcast
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -163,43 +164,94 @@ func (c Client) FeedAdresse(ctx context.Context, id string) (string, string, err
 	return r.Ergebnisse[0].Feed, r.Ergebnisse[0].Name, nil
 }
 
+// maxFolgen: mehr Folgen liest der Monitor je Feed nicht. Feeds nennen die
+// neuesten zuerst; ein täglicher Podcast hat über zehn Jahre aber leicht
+// 30 MB Feed — der Rest wird gar nicht erst geladen.
+const maxFolgen = 50
+
 // Folgen liest die neuesten Folgen eines Feeds.
 func (c Client) Folgen(ctx context.Context, feed string) ([]Folge, error) {
 	u, err := url.Parse(feed)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 		return nil, fmt.Errorf("keine gültige Feed-Adresse")
 	}
-	roh, err := c.hole(ctx, feed)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed, nil)
 	if err != nil {
-		return nil, fmt.Errorf("Feed: %w", err)
+		return nil, err
 	}
-	return LiesFolgen(roh)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; LugruDeals/1.0)")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("Feed: nicht erreichbar: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Feed: HTTP %d", resp.StatusCode)
+	}
+	return liesFolgen(io.LimitReader(resp.Body, 64<<20))
 }
 
-func LiesFolgen(roh []byte) ([]Folge, error) {
-	var r struct {
-		Kanal struct {
-			Titel string `xml:"title"`
-			Items []struct {
-				Titel string `xml:"title"`
-				Link  string `xml:"link"`
-				GUID  string `xml:"guid"`
-				Datum string `xml:"pubDate"`
-				Dauer string `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd duration"`
-				Datei struct {
-					URL string `xml:"url,attr"`
-				} `xml:"enclosure"`
-			} `xml:"item"`
-		} `xml:"channel"`
-	}
-	d := xml.NewDecoder(strings.NewReader(string(roh)))
+// LiesFolgen liest einen Feed aus dem Speicher.
+func LiesFolgen(roh []byte) ([]Folge, error) { return liesFolgen(bytes.NewReader(roh)) }
+
+type rohFolge struct {
+	Titel string `xml:"title"`
+	Link  string `xml:"link"`
+	GUID  string `xml:"guid"`
+	Datum string `xml:"pubDate"`
+	Dauer string `xml:"http://www.itunes.com/dtds/podcast-1.0.dtd duration"`
+	Datei struct {
+		URL string `xml:"url,attr"`
+	} `xml:"enclosure"`
+}
+
+// liesFolgen geht den Feed Element für Element durch und hört nach
+// maxFolgen Folgen auf.
+func liesFolgen(r io.Reader) ([]Folge, error) {
+	d := xml.NewDecoder(r)
 	d.Strict = false
-	if err := d.Decode(&r); err != nil {
-		return nil, fmt.Errorf("Feed nicht lesbar: %w", err)
+	podcastName := ""
+	var roh []rohFolge
+	tiefe := 0
+	for len(roh) < maxFolgen {
+		tok, err := d.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			if len(roh) > 0 {
+				break // Rest kaputt oder abgeschnitten — die neuesten haben wir
+			}
+			return nil, fmt.Errorf("Feed nicht lesbar: %w", err)
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			tiefe++
+			switch {
+			case t.Name.Local == "item":
+				var it rohFolge
+				if err := d.DecodeElement(&it, &t); err != nil {
+					if len(roh) > 0 {
+						break
+					}
+					return nil, fmt.Errorf("Feed nicht lesbar: %w", err)
+				}
+				tiefe--
+				roh = append(roh, it)
+			case t.Name.Local == "title" && tiefe == 3 && podcastName == "":
+				var titel string
+				if err := d.DecodeElement(&titel, &t); err == nil {
+					podcastName = strings.TrimSpace(titel)
+				}
+				tiefe--
+			}
+		case xml.EndElement:
+			tiefe--
+		}
 	}
 	var out []Folge
-	for _, it := range r.Kanal.Items {
-		f := Folge{Titel: strings.TrimSpace(it.Titel), Link: strings.TrimSpace(it.Link), Podcast: strings.TrimSpace(r.Kanal.Titel),
+	for _, it := range roh {
+		f := Folge{Titel: strings.TrimSpace(it.Titel), Link: strings.TrimSpace(it.Link), Podcast: podcastName,
 			Dauer: dauerText(it.Dauer)}
 		f.ID = strings.TrimSpace(it.GUID)
 		if f.ID == "" {

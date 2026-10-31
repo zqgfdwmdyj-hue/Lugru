@@ -12,14 +12,14 @@ import (
 func TestMitPasswort(t *testing.T) {
 	innen := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
 
-	offen := MitPasswort(innen, "", "")
+	offen := MitPasswort(innen, "", "", nil)
 	w := httptest.NewRecorder()
 	offen.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/", nil))
 	if w.Code != http.StatusOK {
 		t.Errorf("ohne Passwort: %d", w.Code)
 	}
 
-	geschuetzt := MitPasswort(innen, "", "geheim")
+	geschuetzt := MitPasswort(innen, "", "geheim", nil)
 	for _, fall := range []struct {
 		b, p string
 		mit  bool
@@ -54,7 +54,7 @@ func anmeldenMit(t *testing.T, h http.Handler, werte url.Values) *httptest.Respo
 
 func TestAnmeldenUndAngemeldetBleiben(t *testing.T) {
 	innen := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) })
-	h := MitPasswort(innen, "team", "geheim")
+	h := MitPasswort(innen, "team", "geheim", nil)
 
 	// Ohne Anmeldung: Weiterleitung mit Rücksprungziel.
 	w := httptest.NewRecorder()
@@ -96,7 +96,7 @@ func TestAnmeldenUndAngemeldetBleiben(t *testing.T) {
 	}
 
 	// Ein anderes Passwort meldet alle ab.
-	h2 := MitPasswort(innen, "team", "neu")
+	h2 := MitPasswort(innen, "team", "neu", nil)
 	r = httptest.NewRequest(http.MethodGet, "/monitor", nil)
 	r.AddCookie(cs[0])
 	w = httptest.NewRecorder()
@@ -115,11 +115,11 @@ func TestAnmeldenUndAngemeldetBleiben(t *testing.T) {
 func TestSitzungLaeuftAb(t *testing.T) {
 	a := anmeldung{schluessel: [32]byte{1}}
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.AddCookie(&http.Cookie{Name: sitzungsCookie, Value: a.sitzungWert(time.Now().Add(time.Hour))})
-	if !a.sitzungGueltig(r, time.Now()) {
+	r.AddCookie(&http.Cookie{Name: sitzungsCookie, Value: a.sitzungWert(Angemeldet{Admin: true}, time.Now().Add(time.Hour))})
+	if a.sitzung(r, time.Now()) == nil {
 		t.Error("gültige Sitzung abgelehnt")
 	}
-	if a.sitzungGueltig(r, time.Now().Add(2*time.Hour)) {
+	if a.sitzung(r, time.Now().Add(2*time.Hour)) != nil {
 		t.Error("abgelaufene Sitzung angenommen")
 	}
 }
@@ -139,7 +139,7 @@ func TestWeiterZielBleibtAufDerSeite(t *testing.T) {
 }
 
 func TestHtmxOhneAnmeldungWechseltDieSeite(t *testing.T) {
-	h := MitPasswort(http.NotFoundHandler(), "", "geheim")
+	h := MitPasswort(http.NotFoundHandler(), "", "geheim", nil)
 	r := httptest.NewRequest(http.MethodPost, "/deal/laden", nil)
 	r.Header.Set("HX-Request", "true")
 	w := httptest.NewRecorder()

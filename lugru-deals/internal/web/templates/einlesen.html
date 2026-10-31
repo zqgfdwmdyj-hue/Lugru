@@ -32,7 +32,7 @@
     <tr><td><input type="checkbox" name="nachricht" value="{{.NachrichtID}}" checked></td>
         <td>{{.Datum}}</td>
         <td class="artikel">{{.Titel}} <small>{{.ASIN}}</small>{{if .Ausverkauft}} <span class="status ausverkauft">ausverkauft</span>{{end}}</td>
-        <td>#{{.Channel}}</td><td>{{if .Poster}}@{{.Poster}}{{end}}</td>
+        <td><span class="kanal {{kanalfarbe .Channel}}">#{{.Channel}}</span></td><td>{{if .Poster}}@{{.Poster}}{{end}}</td>
         <td class="zahl">{{.EK}}</td><td class="zahl">{{.VK}}</td>
         <td class="zahl">{{if .PanEU}}<span class="status paneu">Pan-EU</span> {{end}}<span class="chip {{.Klasse}}">{{.Gewinn}}</span></td>
         <td class="zahl">{{.Marge}}</td><td class="zahl">{{.Kaeufe}}</td></tr>

@@ -18,6 +18,94 @@ type Channel struct {
 	// Gruppe fasst Channels zusammen, etwa alle eines Discord-Servers.
 	// Leer heißt: keiner Gruppe zugeordnet.
 	Gruppe string
+
+	// Farbe ist eine der Kanalfarben (siehe Farben), leer heißt: aus dem
+	// Namen abgeleitet.
+	Farbe string
+}
+
+// Farben sind die Kanalfarben der Oberfläche, in fester Reihenfolge.
+var Farben = []string{"blau", "gruen", "orange", "rot", "lila", "tuerkis", "pink", "gelb", "grau"}
+
+// FarbeOderAuto liefert die gewählte Farbe oder eine, die sich stabil aus
+// dem Namen ergibt — so hat jeder Channel von Anfang an eine eigene.
+func (c Channel) FarbeOderAuto() string {
+	for _, f := range Farben {
+		if c.Farbe == f {
+			return f
+		}
+	}
+	return FarbeFuerName(c.Name)
+}
+
+// FarbeFuerName leitet eine Farbe aus dem Namen ab; Wörter wie „b2b“,
+// „admin“ oder „reisen“ bekommen eine feste.
+func FarbeFuerName(name string) string {
+	n := strings.ToLower(name)
+	for _, k := range []struct{ wort, farbe string }{
+		{"admin", "grau"}, {"log", "grau"}, {"b2b", "lila"}, {"ankauf", "orange"},
+		{"reise", "tuerkis"}, {"leasing", "tuerkis"}, {"podcast", "pink"}, {"vip", "gelb"},
+		{"high", "gruen"}, {"low", "rot"},
+	} {
+		if strings.Contains(n, k.wort) {
+			return k.farbe
+		}
+	}
+	h := 0
+	for _, r := range n {
+		h = h*31 + int(r)
+	}
+	if h < 0 {
+		h = -h
+	}
+	return Farben[h%(len(Farben)-1)] // ohne Grau
+}
+
+// ChannelFarbeSetzen speichert die Farbe eines Channels (leer = automatisch).
+func (s *Store) ChannelFarbeSetzen(id int64, farbe string) error {
+	ok := farbe == ""
+	for _, f := range Farben {
+		ok = ok || f == farbe
+	}
+	if !ok {
+		return fmt.Errorf("unbekannte Farbe %q", farbe)
+	}
+	_, err := s.db.Exec(`UPDATE channels SET farbe = ? WHERE id = ?`, farbe, id)
+	return err
+}
+
+// KanalNutzung zählt je Channel die Posts der letzten 30 Tage (Deals und
+// Ankaufs-Posts des Monitors) und den letzten Post.
+type KanalNutzung struct {
+	Posts30 int
+	Zuletzt time.Time
+}
+
+func (s *Store) KanalNutzungen(seit time.Time) (map[int64]KanalNutzung, error) {
+	out := map[int64]KanalNutzung{}
+	zeilen, err := s.db.Query(`
+		SELECT channel_id, SUM(CASE WHEN gepostet_am >= ? THEN 1 ELSE 0 END), MAX(gepostet_am) FROM (
+			SELECT channel_id, gepostet_am FROM deals WHERE status <> 'geloescht'
+			UNION ALL SELECT channel_id, gepostet_am FROM monitor_posts WHERE channel_id <> 0
+		) GROUP BY channel_id`, seit.UTC().Format(time.RFC3339))
+	if err != nil {
+		return out, err
+	}
+	defer zeilen.Close()
+	for zeilen.Next() {
+		var id int64
+		var n int
+		var letzt string
+		if err := zeilen.Scan(&id, &n, &letzt); err != nil {
+			return out, err
+		}
+		t, err := time.Parse(time.RFC3339Nano, letzt)
+		if err != nil {
+			t, _ = time.Parse(time.RFC3339, letzt)
+		}
+		out[id] = KanalNutzung{Posts30: n, Zuletzt: t}
+	}
+	return out, zeilen.Err()
 }
 
 func (s *Store) ChannelAnlegen(c Channel) (int64, error) {
@@ -104,7 +192,7 @@ func (s *Store) ChannelLoeschen(id int64) error {
 	return err
 }
 
-const channelSpalten = `id, name, webhook_url, mention_typ, rollen_id, defekt, angelegt_am, gruppe`
+const channelSpalten = `id, name, webhook_url, mention_typ, rollen_id, defekt, angelegt_am, gruppe, farbe`
 
 func (s *Store) Channel(id int64) (Channel, error) {
 	zeile := s.db.QueryRow(`SELECT `+channelSpalten+` FROM channels WHERE id = ?`, id)
@@ -135,7 +223,7 @@ func scanChannel(z scanner) (Channel, error) {
 	var c Channel
 	var defekt int
 	var angelegt string
-	if err := z.Scan(&c.ID, &c.Name, &c.WebhookURL, &c.MentionTyp, &c.RollenID, &defekt, &angelegt, &c.Gruppe); err != nil {
+	if err := z.Scan(&c.ID, &c.Name, &c.WebhookURL, &c.MentionTyp, &c.RollenID, &defekt, &angelegt, &c.Gruppe, &c.Farbe); err != nil {
 		return Channel{}, err
 	}
 	c.Defekt = defekt != 0

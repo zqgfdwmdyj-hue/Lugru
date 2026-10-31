@@ -15,10 +15,25 @@ Kurzfassung für Geübte:
 ### Schnellstart
 
 ```powershell
-# ZIP aus https://github.com/trinkfreunde/lugru-deal-discord/releases/latest
-# herunterladen und entpacken, dann in der entpackten PowerShell:
+# ZIP aus https://github.com/zqgfdwmdyj-hue/Lugru/releases ("Lugru Deals …",
+# LugruDeals-Windows-x64.zip oder -ARM64.zip) herunterladen und entpacken,
+# dann in der entpackten PowerShell:
 .\install.ps1 -StartNow
 ```
+
+### Update mit einem Befehl
+
+Windows: `update-github.cmd` im Installationsordner doppelklicken. Linux
+(im Ordner mit dem Programm):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zqgfdwmdyj-hue/Lugru/main/lugru-deals/scripts/linux/update-github.sh | bash
+```
+
+Beides holt die neueste Version aus den GitHub-Releases. Eine neue Version
+veröffentlichen: die Nummer in `VERSION` ändern und pushen — der Workflow
+`.github/workflows/lugru-deals-release.yml` (im Repo-Root) testet, baut alle
+Programme und legt das Release samt Tag `lugru-deals-v<Version>` an.
 
 Es ist kein Go, kein Git und kein `make` nötig — das Release-ZIP enthält
 die vorgebaute `lugru-deals.exe`, alle PowerShell-Skripte und einen
@@ -236,6 +251,35 @@ gelassen liegt der Preiswecker bei 95 % des Ankaufspreises. Der Post nennt
 Shop, EK, Ankauf, Gewinn je Stück, Marge und den Hinweis, aber keine Namen
 von Ankäufern. Mit Kategorien („Konsolen“, „Starlink“ …) und der Art in den
 Regeln lassen sich die Treffer auf eigene Channels verteilen.
+
+**Mehrere Verkaufswege:** Amazon, Ankauf und eBay sind Häkchen. Ein Produkt
+mit mehreren Häkchen wird für jeden Weg einzeln bewertet und gepostet, mit
+eigener Sperrzeit je Weg — es muss nicht doppelt angelegt werden. Wer
+dieselbe Preisliste noch einmal anlegt, ergänzt nur den Verkaufsweg.
+
+**Amazon-ASIN-Liste:** Unter *Monitor → Produkte → ASIN-Liste hochladen*
+eine Liste von ASINs einfügen oder einen Keepa-Export (CSV) hochladen,
+Einkaufsmärkte (Amazon DE/FR/IT/ES) und Verkaufswege anhaken, auf Wunsch
+gleich eine Regel mit Channel und Mindestmarge (Vorgabe 10 %) anlegen.
+Eingekauft wird zum günstigsten Neupreis (Amazon, FBA- oder Händlerangebot
+inkl. Versand). Gepostet wird nur bei echten Preissenkungen: dieselbe ASIN
+kommt sieben Tage lang nur wieder, wenn sie günstiger wird. Keepa kostet ein
+Token je ASIN und Markt und Prüfung; die Liste hat darum ein eigenes
+Intervall (Vorgabe 60 Minuten), holt je Markt 100 ASINs in einer Abfrage und
+pausiert, solange das Kontingent leer ist. Den geschätzten Verbrauch in
+Token je Minute zeigt die Seite.
+
+**Keepa-Preisstürze:** Unter *Monitor → Produkte → Keepa-Suche anlegen*
+fragt der Monitor Keepa regelmäßig (Vorgabe alle 5 Minuten, frühestens alle
+2), welche Artikel auf einem Amazon-Markt gerade im Preis gefallen sind —
+bis zu 150 je Abfrage für wenige Token, gefiltert nach Preisart (Amazon,
+FBA, alle Neuangebote, Warehouse), Mindest-Preissturz, Zeitraum, Preis,
+Verkaufsrang, Titel und Keepa-Kategorien. Jeder neue Preissturz wird wie
+die ASIN-Liste durchgerechnet (ein Token je Markt, höchstens so viele je
+Abfrage wie eingestellt) und gepostet, wenn eine Regel für die Kategorie
+der Suche passt; die Suche kann diese Regel gleich mit anlegen. Derselbe
+Preissturz wird nur einmal gerechnet. So schnell wie Keepa selbst, also
+Minuten.
 
 **Weitere Bausteine des Monitors** (alle unter *Monitor*):
 
@@ -475,7 +519,7 @@ Woher die Zahl im Feld stammt, steht daneben und in der Historie:
 |---|---|---|
 | `LUGRU_ADRESSE` | `127.0.0.1:8080` | Lauschadresse |
 | `LUGRU_PASSWORT` | (leer) | Schützt die Oberfläche mit Anmeldung (Benutzer `lugru`). **Pflicht, sobald das Tool aus dem Netz erreichbar ist.** |
-| `LUGRU_BENUTZER` | `lugru` | Benutzername zur Anmeldung |
+| `LUGRU_BENUTZER` | `lugru` | Benutzername des Admins. Weitere Benutzer (mit eigenem Passwort und vorausgewähltem Poster) legt der Admin unter **Benutzer** an. |
 | `LUGRU_ZEITZONE` | `Europe/Berlin` | Zeitzone für alle angezeigten Zeiten |
 | `LUGRU_DB` | `deals.db` | Pfad zur Datenbank |
 | `LUGRU_CHARTS` | `charts` | Ordner für Chart-Bilder |

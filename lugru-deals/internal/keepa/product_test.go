@@ -2,6 +2,7 @@ package keepa
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -204,5 +205,18 @@ func TestFehlendeMasseWerdenNull(t *testing.T) {
 	}
 	if m.Vollstaendig() {
 		t.Error("Vollstaendig() = true, will false")
+	}
+}
+
+func TestVerkaufsverlaufOhneBuyBox(t *testing.T) {
+	roh := `{"products":[{"asin":"B1","csv":[[100, 50000, 200, -1, 300, 52000],null,null,null,null,null,null,null,null,null,[150, 49000, 250, 51000]]}]}`
+	a, err := ParseAntwort([]byte(roh))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := a.Produkt.Verkaufsverlauf()
+	want := []Punkt{{100, 50000}, {150, 49000}, {250, 51000}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("got %v, want %v", got, want)
 	}
 }

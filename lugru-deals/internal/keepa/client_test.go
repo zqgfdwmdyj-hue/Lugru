@@ -3,6 +3,7 @@ package keepa
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -138,5 +139,37 @@ func TestProduktServerfehler(t *testing.T) {
 
 	if _, _, err := c.Produkt(context.Background(), "B01636IZ0G", 3); err == nil {
 		t.Error("Fehler erwartet, kam keiner")
+	}
+}
+
+func TestProdukteImStapel(t *testing.T) {
+	var gefragt string
+	ks := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gefragt = r.URL.Query().Get("asin")
+		fmt.Fprint(w, `{"tokensLeft": 50, "tokensConsumed": 2, "refillRate": 20, "products": [
+			{"asin": "B000000001", "title": "Eins", "eanList": ["4001"], "csv": [[1, 100]],
+			 "stats": {"current": [5000, -1, -1, -1, -1, -1, -1, 4800, -1, -1, 4900], "avg90": [5500, -1, -1, -1, -1, -1, -1, -1, -1, -1, 5200]}},
+			{"asin": "B000000002", "csv": null}]}`)
+	}))
+	defer ks.Close()
+	c := NeuerClient("k")
+	c.BasisURL = ks.URL
+	st, err := c.Produkte(context.Background(), []string{"B000000001", "B000000002"}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gefragt != "B000000001,B000000002" || len(st.Produkte) != 1 || st.RefillRate != 20 {
+		t.Fatalf("gefragt %q, %+v", gefragt, st)
+	}
+	p := st.Produkte[0]
+	if ek, wer := p.Einkaufspreis(); ek.Cents != 4800 || wer != "Händler" {
+		t.Errorf("Einkauf %v %s", ek, wer)
+	}
+	if p.AmazonFBAAvg90.Cents != 5200 || len(p.EANs) != 1 {
+		t.Errorf("%+v", p)
+	}
+	a, err := ParseAntwort(st.Einzeln[0])
+	if err != nil || a.Produkt.ASIN != "B000000001" {
+		t.Errorf("Einzelantwort: %v %+v", err, a.Produkt)
 	}
 }

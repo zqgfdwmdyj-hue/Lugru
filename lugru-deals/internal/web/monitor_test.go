@@ -471,3 +471,40 @@ func TestMonitorSammelseiteZeigtVarianten(t *testing.T) {
 		t.Error("Sammelseite als Produkt angelegt")
 	}
 }
+
+// Ein Produkt mit zwei Verkaufswegen wird für jeden einzeln bewertet und
+// gepostet — ohne es doppelt anzulegen.
+func TestMonitorMehrereVerkaufswege(t *testing.T) {
+	a := neuerMonitorAufbau(t, "OTTO")
+	p := a.produkt(t)
+	p.Modus, p.Ankauf = store.ModiNormal("ankauf", "amazon"), 14000
+	_ = a.s.MonitorProduktAendern(p)
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.hoch, Modus: store.ModusAmazon, Aktiv: true})
+	_, _ = a.s.MonitorRegelAnlegen(store.MonitorRegel{ChannelID: a.normal, Modus: store.ModusAnkauf, Aktiv: true})
+
+	b := a.srv.monitorPruefe(context.Background(), a.produkt(t), false)
+	if !b.Gepostet || !strings.Contains(b.Status, "Amazon: gepostet") || !strings.Contains(b.Status, "Ankauf: gepostet") {
+		t.Fatalf("Status: %s", b.Status)
+	}
+	if len(a.posts("/hoch")) != 1 || len(a.posts("/normal")) != 1 {
+		t.Fatalf("Posts: Amazon %d, Ankauf %d", len(a.posts("/hoch")), len(a.posts("/normal")))
+	}
+	if !strings.Contains(a.posts("/normal")[0], "🤝 Ankauf: 140,00 €") {
+		t.Errorf("Ankaufs-Post: %s", a.posts("/normal")[0])
+	}
+	b = a.srv.monitorPruefe(context.Background(), a.produkt(t), false)
+	if b.Gepostet || len(a.posts("/hoch")) != 1 || len(a.posts("/normal")) != 1 {
+		t.Errorf("zweite Prüfung postet erneut: %s", b.Status)
+	}
+
+	// Dieselbe Preisliste noch einmal mit „eBay“ angelegt: kein zweites
+	// Produkt, sondern der Verkaufsweg kommt dazu.
+	w := hole(t, a.srv, http.MethodPost, "/monitor/produkte", url.Values{"url": {p.URL}, "modus": {"ebay"}}.Encode())
+	if !strings.Contains(w.Body.String(), "Verkaufswege sind dort ergänzt") {
+		t.Fatalf("Antwort: %s", w.Body.String())
+	}
+	alle, _ := a.s.MonitorProdukte()
+	if len(alle) != 1 || alle[0].Modus != "amazon,ankauf,ebay" {
+		t.Fatalf("Produkte: %+v", alle)
+	}
+}
