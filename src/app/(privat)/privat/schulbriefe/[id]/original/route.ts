@@ -7,7 +7,7 @@ import type { Schulbrief } from "../../actions";
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requirePrivate({ full: true });
+  const session = await requirePrivate();
   const { id } = await params;
   const e = /^[0-9a-f-]{36}$/.test(id) ? await loadEntry<Schulbrief>(session, id) : null;
   if (!e || e.kind !== "schulbrief") return new Response("Nicht gefunden.", { status: 404 });

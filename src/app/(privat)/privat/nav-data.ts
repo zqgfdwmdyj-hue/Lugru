@@ -71,4 +71,4 @@ export const GROUPS = [
 ] as const;
 export type PrivatTab = (typeof GROUPS)[number]["tabs"][number]["key"];
 /** Seiten für Personen mit Umfang „familie“ (nur gemeinsame Familieninfos). */
-export const FAMILY_TABS = new Set<PrivatTab>(["start", "kalender", "eintragen", "kinder", "ausschlafen", "auszeit", "familie", "familienaufgaben", "einstellungen"]);
+export const FAMILY_TABS = new Set<PrivatTab>(["start", "kalender", "eintragen", "kinder", "ausschlafen", "auszeit", "familie", "familienaufgaben", "schulbriefe", "einstellungen"]);

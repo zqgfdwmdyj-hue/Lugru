@@ -14,7 +14,7 @@ const ziel = (m: string, id?: string) => `/privat/schulbriefe?${id ? `brief=${id
 const MAX = 15 * 1024 * 1024;
 
 export async function schulbriefHochladenAction(fd: FormData) {
-  const session = await requirePrivate({ full: true });
+  const session = await requirePrivate();
   const f = fd.get("datei");
   if (!(f instanceof File) || !f.size) redirect(ziel("Bitte ein Foto oder PDF wählen."));
   if (f.size > MAX) redirect(ziel("Zu groß (höchstens 15 MB)."));
@@ -44,7 +44,7 @@ export async function schulbriefHochladenAction(fd: FormData) {
 
 /** Ausgewählte Vorschläge übernehmen: Termine in den Privatkalender, Aufgaben als Privat-Aufgaben – mit Link zum Original. */
 export async function schulbriefUebernehmenAction(fd: FormData) {
-  const session = await requirePrivate({ full: true });
+  const session = await requirePrivate();
   const id = String(fd.get("id") ?? "");
   const e = await loadEntry<Schulbrief>(session, id);
   if (!e || e.kind !== "schulbrief") redirect(ziel("Brief nicht gefunden."));
@@ -72,6 +72,11 @@ export async function schulbriefUebernehmenAction(fd: FormData) {
         neu[i] = { ...v, uebernommen: r.id };
         n++;
       }
+    } else if (session.privateScope === "familie") {
+      // Umfang „familie“: Aufgabe auf die Familien-Liste (Privat-Aufgaben gehören nicht dazu).
+      const fid = await addEntry(session, "familienaufgabe", { titel: `${v.kind ? `${v.kind}: ` : ""}${titel}`.slice(0, 200), zustaendig: "beide", faellig: tag ?? null, wiederholung: "einmal", kategorie: "kinder", erledigt: [], notiz: [v.notiz ?? "", `Brief: ${original}`].filter(Boolean).join("\n").slice(0, 1000) });
+      neu[i] = { ...v, uebernommen: fid };
+      n++;
     } else {
       const r = await privatEintragAnlegen(session, { art: "aufgabe", tag: tag ?? undefined, text: `${v.kind ? `${v.kind}: ` : ""}${titel}${v.notiz ? ` – ${v.notiz}` : ""} (Brief: ${original})` });
       if (r.ok && r.id) {

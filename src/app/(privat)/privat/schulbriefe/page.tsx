@@ -5,7 +5,7 @@ import { schulbriefHochladenAction, schulbriefUebernehmenAction, type Schulbrief
 // Briefe von Schule/Kita per Foto (Modul 8): hochladen → Vorschläge prüfen → in Privatkalender/Privat-Aufgaben.
 
 export default async function SchulbriefePage({ searchParams }: { searchParams: Promise<{ meldung?: string; brief?: string }> }) {
-  const session = await requirePrivate({ full: true });
+  const session = await requirePrivate();
   const sp = await searchParams;
   const briefe = (await loadEntries<Schulbrief>(session, ["schulbrief"])).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   const aktiv = briefe.find((b) => b.id === sp.brief) ?? briefe.find((b) => b.data.vorschlaege.some((v) => !v.uebernommen)) ?? briefe[0];

@@ -198,8 +198,10 @@ export async function addUser(_prev: UserState, fd: FormData): Promise<UserState
   const login = normalizeLogin(fd.get("login") ?? fd.get("email"));
   const loginError = loginNameError(login);
   if (loginError) return { ok: false, message: loginError };
-  const role = z.enum(["owner", "staff"]).safeParse(fd.get("role"));
-  if (!role.success) return { ok: false, message: "Bitte Rolle wählen." };
+  // Rollen-Vorlagen (B19.2): Inhaber, Mitarbeiter, VA, Nur Familie – neue Konten nie mit Privat-Zugang außer „Nur Familie“.
+  const vorlage = z.enum(["owner", "staff", "va", "familie"]).safeParse(fd.get("role"));
+  if (!vorlage.success) return { ok: false, message: "Bitte Rolle wählen." };
+  const role = { success: true as const, data: vorlage.data === "owner" ? ("owner" as const) : ("staff" as const) };
   const name = String(fd.get("name") ?? "").trim().slice(0, 100);
   const typed = String(fd.get("password") ?? "");
   if (typed) {
@@ -216,6 +218,7 @@ export async function addUser(_prev: UserState, fd: FormData): Promise<UserState
         .update(schema.memberships)
         .set({ role: role.data })
         .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, existing.id)));
+      if (vorlage.data === "va" || vorlage.data === "familie") await vorlageAnwenden(session.tenantId, existing.id, vorlage.data);
       const pwError = typed ? await setMemberPassword(session.tenantId, session.userId, existing.id, typed) : null;
       revalidatePath("/einstellungen");
       if (pwError) return { ok: false, message: `${login} gibt es schon. ${pwError}` };
@@ -224,6 +227,7 @@ export async function addUser(_prev: UserState, fd: FormData): Promise<UserState
     // Benutzernamen sind eindeutig: ein fremdes Konto nur über seine E-Mail-Adresse dazunehmen.
     if (!isEmailLogin(login)) return { ok: false, message: `Benutzername „${login}“ ist schon vergeben – bitte einen anderen wählen.` };
     await db.insert(schema.memberships).values({ tenantId: session.tenantId, userId: existing.id, role: role.data }).onConflictDoNothing();
+    if (vorlage.data === "va" || vorlage.data === "familie") await vorlageAnwenden(session.tenantId, existing.id, vorlage.data);
     revalidatePath("/einstellungen");
     return { ok: true, message: `${login} hatte schon ein Konto und wurde hinzugefügt – das Passwort bleibt wie bisher.` };
   }
@@ -234,10 +238,37 @@ export async function addUser(_prev: UserState, fd: FormData): Promise<UserState
     .values({ email: login, name: name || null, passwordHash: await bcrypt.hash(password, 12) })
     .returning();
   await db.insert(schema.memberships).values({ tenantId: session.tenantId, userId: user.id, role: role.data });
+  if (vorlage.data === "va" || vorlage.data === "familie") await vorlageAnwenden(session.tenantId, user.id, vorlage.data);
   revalidatePath("/einstellungen");
   return typed
     ? { ok: true, message: `Angelegt: ${login} meldet sich mit dem vergebenen Passwort an.` }
     : { ok: true, message: `Angelegt. Einmal-Passwort für ${login}: ${password}` };
+}
+
+/** Rollen-Vorlage auf ein Konto dieser Firma anwenden (Rolle, Bereiche, nur ansehen, Privat-Zugang). */
+async function vorlageAnwenden(tenantId: string, userId: string, v: import("@/lib/auth/rollen").RollenVorlage) {
+  const { vorlageFelder } = await import("@/lib/auth/rollen");
+  const M = schema.memberships;
+  const [m] = await db.select({ role: M.role, areas: M.areas }).from(M).where(and(eq(M.tenantId, tenantId), eq(M.userId, userId)));
+  if (!m) return false;
+  const f = vorlageFelder(v, m);
+  await db
+    .update(M)
+    .set({ role: f.role, areas: f.areas, readOnly: f.readOnly, ...(f.privateAccess === false ? { privateAccess: false, privatePinHash: null } : f.privateAccess ? { privateAccess: true, privateScope: f.privateScope } : {}), ...(v === "va" || v === "familie" ? { brandIds: null } : {}) })
+    .where(and(eq(M.tenantId, tenantId), eq(M.userId, userId)));
+  if (f.privateAccess === false) await db.update(schema.sessions).set({ privateUnlockedUntil: null }).where(and(eq(schema.sessions.tenantId, tenantId), eq(schema.sessions.userId, userId)));
+  return true;
+}
+
+/** Rolle eines anderen Kontos ändern (Vorlage). Nie das eigene Konto; es bleibt immer mindestens ein Inhaber. */
+export async function setRolleAction(fd: FormData) {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  const v = z.enum(["inhaber", "mitarbeiter", "va", "familie"]).parse(fd.get("rolle"));
+  if (userId === session.userId) return;
+  await vorlageAnwenden(session.tenantId, userId, v);
+  revalidatePath("/einstellungen");
+  revalidatePath("/", "layout");
 }
 
 /** Inhaber vergibt einem Benutzer ein neues Passwort (z. B. vergessen oder neuer Mitarbeiter). */

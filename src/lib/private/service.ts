@@ -20,12 +20,23 @@ export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "aus
 const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode", "privatgeld"]);
 /** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
 const PERSONAL_KINDS = new Set<string>(["medplan", "routine", "privatgeld"]);
-/** Was Personen mit Umfang „familie“ sehen und eintragen dürfen – gemeinsame Familieninfos, sonst nichts. */
-export const FAMILY_KINDS = new Set<PrivateKind>(["kinder", "ausschlafen", "auszeit", "zustaendig", "familienaufgabe"]);
+/**
+ * Was Personen mit Umfang „familie“ sehen und eintragen dürfen – gemeinsame Familieninfos (Kinderzeit, Familienliste,
+ * Briefe von Schule/Kita, Familien-Termine), sonst nichts. Termine nur mit „mit: Familie“ (`familieDarf`) – nie
+ * Paar-, Arzt-, Therapie- oder private Termine.
+ */
+export const FAMILY_KINDS = new Set<PrivateKind>(["kinder", "ausschlafen", "auszeit", "zustaendig", "familienaufgabe", "schulbrief", "termin"]);
 
 /** Darf diese Sitzung Einträge dieser Art sehen bzw. anlegen? (Umfang „familie“ nur Familieninfos.) */
 export function kindAllowed(session: Pick<Session, "privateScope">, kind: PrivateKind): boolean {
   return session.privateScope !== "familie" || FAMILY_KINDS.has(kind);
+}
+
+/** Einzelner Eintrag mit Umfang „familie“: Art erlaubt und – bei Terminen – nur Familien-Termine. */
+export function familieDarf(session: Pick<Session, "privateScope">, kind: string, data: unknown): boolean {
+  if (session.privateScope !== "familie") return true;
+  if (!FAMILY_KINDS.has(kind as PrivateKind)) return false;
+  return kind !== "termin" || (data as { with?: unknown } | null)?.with === "familie";
 }
 
 /**
@@ -103,7 +114,7 @@ export function myPartner(s: PrivateSettings, session: Pick<Session, "userId">):
 type Row = typeof E.$inferSelect;
 /** Sichtbarkeit eines Eintrags für diese Sitzung (nach dem Entschlüsseln). */
 function visibleTo(session: Session, r: Row, diaryShared: string[]): boolean {
-  if (!kindAllowed(session, r.kind as PrivateKind)) return false;
+  if (!kindAllowed(session, r.kind as PrivateKind) || !familieDarf(session, r.kind, r.data)) return false;
   if (PERSONAL_KINDS.has(r.kind)) return r.userId === session.userId;
   if (r.kind === "tagebuch") return r.userId === session.userId || diaryShared.includes(r.userId);
   if (r.kind === "beobachtung") return r.userId === session.userId || (r.data as { aboutUserId?: string }).aboutUserId === session.userId;
@@ -144,7 +155,7 @@ export async function loadEntry<T = Record<string, unknown>>(session: Session, i
 export const canEdit = (session: Pick<Session, "userId">, e: Pick<Entry, "kind" | "userId">) => !OWN_KINDS.has(e.kind) || e.userId === session.userId;
 
 export async function addEntry(session: Session, kind: PrivateKind, data: Record<string, unknown>) {
-  if (!kindAllowed(session, kind)) throw new Error("Dafür reicht der Privat-Zugang nicht.");
+  if (!kindAllowed(session, kind) || !familieDarf(session, kind, data)) throw new Error("Dafür reicht der Privat-Zugang nicht.");
   const [row] = await db.insert(E).values({ tenantId: session.tenantId, userId: session.userId, kind, data }).returning({ id: E.id });
   return row.id;
 }
@@ -154,6 +165,7 @@ async function ownEntry(session: Session, id: string, kind: PrivateKind) {
   const [row] = await db.select().from(E).where(and(eq(E.id, id), eq(E.tenantId, session.tenantId), eq(E.kind, kind)));
   if (!row) return null;
   if (OWN_KINDS.has(kind) && row.userId !== session.userId) return null;
+  if (!familieDarf(session, kind, row.data)) return null;
   return row;
 }
 
@@ -161,6 +173,8 @@ export async function updateEntry(session: Session, id: string, kind: PrivateKin
   const row = await ownEntry(session, id, kind);
   if (!row) return false;
   const data = replace ? patch : { ...(row.data as Record<string, unknown>), ...patch };
+  // Umfang „familie“: aus einem Familien-Termin darf kein anderer Termin werden.
+  if (!familieDarf(session, kind, data)) return false;
   await db.update(E).set({ data, updatedAt: new Date() }).where(eq(E.id, row.id));
   return true;
 }
@@ -177,7 +191,7 @@ export async function deleteEntry(session: Session, id: string, kind: PrivateKin
  * Verfasser und Anlegezeitpunkt. Nur wenn die ID frei ist; Rechte prüft der Aufrufer.
  */
 export async function restoreEntry(session: Session, e: { id: string; userId: string; kind: PrivateKind; data: Record<string, unknown>; createdAt?: string }) {
-  if (!kindAllowed(session, e.kind)) return false;
+  if (!kindAllowed(session, e.kind) || !familieDarf(session, e.kind, e.data)) return false;
   const [schon] = await db.select({ id: E.id }).from(E).where(eq(E.id, e.id));
   if (schon) return false;
   await db.insert(E).values({ id: e.id, tenantId: session.tenantId, userId: e.userId, kind: e.kind, data: e.data, ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {}) });

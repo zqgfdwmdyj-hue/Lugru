@@ -14,7 +14,8 @@ import { KIND_STYLE } from "@/lib/private/kind-style";
 
 type View = "woche" | "monat" | "tag";
 const ALL_KINDS: CalKind[] = ["termin", "kinder", "auszeit", "ausschlafen", "paarzeit", "naehe", "streicheln", "massage", "periode", "extern"];
-const FAMILY_KINDS: CalKind[] = ["kinder", "auszeit", "ausschlafen", "extern"];
+// Umfang „familie“: Termine nur „mit: Familie“ (Filter in loadEntries) – nie Paar, Arzt, Therapie.
+const FAMILY_KINDS: CalKind[] = ["termin", "kinder", "auszeit", "ausschlafen", "extern"];
 const WD = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 type SP = { ansicht?: string; tag?: string; person?: string; art?: string; neu?: string; ok?: string };

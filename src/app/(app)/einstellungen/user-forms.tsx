@@ -16,11 +16,11 @@ export function AddUserForm() {
         <div className="field"><label className="label" htmlFor="u-name">Name (optional)</label><input className="input" id="u-name" name="name" /></div>
         <div className="field"><label className="label" htmlFor="u-password">Passwort</label><input className="input" id="u-password" name="password" type="text" minLength={8} autoComplete="new-password" placeholder="leer = wird erzeugt" {...noAutoFix} /></div>
         <div className="field"><label className="label" htmlFor="u-role">Rolle</label>
-          <select className="select" id="u-role" name="role" defaultValue="staff"><option value="staff">Mitarbeiter</option><option value="owner">Inhaber</option></select>
+          <select className="select" id="u-role" name="role" defaultValue="staff" data-testid="add-user-rolle"><option value="staff">Mitarbeiter</option><option value="va">VA (Aufgaben, Fälle, Ansprüche, Retouren)</option><option value="familie">Nur Familie</option><option value="owner">Inhaber</option></select>
         </div>
         <button className="btn" type="submit" disabled={pending}>Hinzufügen</button>
       </div>
-      <p className="small muted" style={{ margin: 0 }}>Angemeldet wird mit Benutzername und Passwort – eine E-Mail-Adresse ist nicht nötig. Passwort mindestens 8 Zeichen; leer lassen, dann wird eins erzeugt und hier einmal angezeigt.</p>
+      <p className="small muted" style={{ margin: 0 }}>Angemeldet wird mit Benutzername und Passwort – eine E-Mail-Adresse ist nicht nötig. Passwort mindestens 8 Zeichen; leer lassen, dann wird eins erzeugt und hier einmal angezeigt. Neue Konten bekommen nie Zugang zu „Privat“ – außer mit der Rolle „Nur Familie“ (Familienliste, Kinder-Termine, Schulbriefe).</p>
       {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-error"}`} data-testid="add-user-result">{state.message}</div>}
     </form>
   );

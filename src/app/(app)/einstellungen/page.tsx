@@ -4,7 +4,8 @@ import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
-import { mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess, setUserSprache } from "./actions";
+import { mergeSuppliersAction, removeUser, saveSettings, saveSupplierName, setPrivateAccess, setRolleAction, setUserSprache } from "./actions";
+import { PRIVAT_LABEL, ROLLEN_LABEL, rolleVon, zugriffsWarnungen, type RollenVorlage } from "@/lib/auth/rollen";
 import { similarSuppliers } from "@/lib/suppliers/duplicates";
 import { ConfirmButton } from "@/components/confirm-button";
 import { AccessForm, AddUserForm, PasswordForm, SetPasswordForm } from "./user-forms";
@@ -64,6 +65,8 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
     ).rows.map((r) => [r.id, r]),
   );
   const brands = await db.select({ id: schema.brands.id, name: schema.brands.name }).from(schema.brands).where(eq(schema.brands.tenantId, session.tenantId)).orderBy(asc(schema.brands.name));
+  // Konto der VA (Discord-Anbindung) – für die Warnung „ohne Rolle VA“.
+  const vaLogin = ((await getIntegration(session.tenantId, "discord_va")) as { vaEmail?: string } | null)?.vaEmail ?? null;
   const members = await db
     .select({ userId: schema.users.id, email: schema.users.email, name: schema.users.name, lastLoginAt: schema.users.lastLoginAt, lastSeenAt: schema.users.lastSeenAt, privateAccess: schema.memberships.privateAccess, privateScope: schema.memberships.privateScope, role: schema.memberships.role, areas: schema.memberships.areas, brandIds: schema.memberships.brandIds, readOnly: schema.memberships.readOnly, sprache: schema.users.sprache })
     .from(schema.memberships)
@@ -366,8 +369,19 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
             </div>
           );
         })()}
+        {(() => {
+          // B19.2: Warnungen zu Zugriffen (Privat „voll“ bei Nicht-Inhaber, weitere Inhaber, alle Bereiche, Konto der VA).
+          const w = zugriffsWarnungen(members, session.userId, { vaLogin });
+          if (!w.length) return null;
+          return (
+            <div className={`notice ${w.some((x) => x.stufe === "rot") ? "notice-error" : "notice-warn"} small`} data-testid="zugriff-warnungen">
+              <strong>Zugriffe prüfen:</strong>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{w.map((x, i) => <li key={i}>{x.stufe === "rot" ? "🔴 " : "🟡 "}{x.text}</li>)}</ul>
+            </div>
+          );
+        })()}
         <table className="table users-table">
-          <thead><tr><th>Benutzer</th><th>Name</th><th>Zuletzt angemeldet</th><th>Rolle / Zugriff</th><th></th></tr></thead>
+          <thead><tr><th>Benutzer</th><th>Name</th><th>Zuletzt angemeldet</th><th>Rolle / Zugriff</th><th>Privat-Zugriff</th><th></th></tr></thead>
           <tbody>
             {members.map((m) => (
               <tr key={m.userId}>
@@ -378,7 +392,16 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                   {m.lastSeenAt && !isOnline(m.lastSeenAt) && m.lastLoginAt && m.lastSeenAt.getTime() - m.lastLoginAt.getTime() > 5 * 60_000 && <div className="muted">zuletzt aktiv {formatSeen(m.lastSeenAt)}</div>}
                 </td>
                 <td>
-                  {m.role === "owner" ? "Inhaber (alles)" : (
+                  {m.userId !== session.userId && (
+                    <form action={setRolleAction} style={{ display: "inline-flex", gap: 4, alignItems: "center", marginBottom: 4 }} data-testid="user-rolle">
+                      <input type="hidden" name="userId" value={m.userId} />
+                      <select className="select" name="rolle" defaultValue={rolleVon(m)} aria-label={`Rolle von ${m.email}`} style={{ padding: "3px 6px", fontSize: 13, maxWidth: 230 }}>
+                        {(Object.keys(ROLLEN_LABEL) as RollenVorlage[]).map((r) => <option key={r} value={r}>{ROLLEN_LABEL[r]}</option>)}
+                      </select>
+                      <button className="btn btn-small" type="submit">Rolle setzen</button>
+                    </form>
+                  )}
+                  {m.role === "owner" ? <div>Inhaber (alles)</div> : (
                     <details>
                       <summary style={{ cursor: "pointer" }}>
                         Mitarbeiter · {m.areas === null ? "alle Bereiche" : m.areas.length ? AREAS.filter((a) => m.areas!.includes(a.key)).map((a) => a.label.split(" (")[0]).join(", ") : "kein Bereich"}
@@ -388,6 +411,10 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
                       <AccessForm userId={m.userId} areas={m.areas} brandIds={m.brandIds} readOnly={m.readOnly} allAreas={AREAS.map((a) => ({ key: a.key, label: a.label }))} brands={brands} />
                     </details>
                   )}
+                </td>
+                <td data-testid="user-privat">
+                  <span className={m.role === "staff" && m.privateAccess && m.privateScope === "voll" && !m.readOnly ? "tag tag-critical" : m.privateAccess && !m.readOnly ? "tag tag-warn" : "tag"}>{PRIVAT_LABEL(m)}</span>
+                  {m.role === "staff" && m.privateAccess && m.privateScope === "voll" && !m.readOnly && <div className="small" style={{ color: "var(--danger)" }}>⚠ Privat voll bei Nicht-Inhaber</div>}
                 </td>
                 <td className="right">
                   {m.readOnly ? (
