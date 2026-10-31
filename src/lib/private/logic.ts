@@ -127,7 +127,8 @@ export type DiaryEntry = {
   hard?: string;
   note?: string;
 };
-export type ObservationEntry = { day: string; aboutUserId: string; text: string };
+/** Beobachtung (Therapie-Bogen): `text` immer gefüllt; die drei Felder des Papierbogens optional (ältere Einträge nur Text). */
+export type ObservationEntry = { day: string; aboutUserId: string; text: string; situation?: string; problematik?: string; veraenderung?: string };
 
 export const SIDE_EFFECTS = [
   "Kopfschmerzen",

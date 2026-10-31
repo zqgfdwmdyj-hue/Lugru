@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { feierabend } from "@/lib/feierabend/service";
+import { VERGLEICH_TEXT } from "@/lib/private/rueckblick-logic";
 import { AUFWAND_TEXT, wochentag } from "@/lib/tagesplan/logic";
 import { privatDetailsErlaubt } from "@/lib/tagesplan/service";
 import { aufMorgenAction } from "./actions";
@@ -84,14 +85,90 @@ export default async function FeierabendPage({ searchParams }: { searchParams: P
           <p className="small muted">{f.rueckblick.geschaeft.zeitraum.von.split("-").reverse().join(".")} – {f.rueckblick.geschaeft.zeitraum.bis.split("-").reverse().join(".")}: {f.rueckblick.geschaeft.erledigtGesamt} Aufgaben erledigt.</p>
           <ul className="small" style={{ paddingLeft: 18 }}>{f.rueckblick.geschaeft.erledigtJePerson.map((p) => <li key={p.person}>{p.person}: {p.anzahl}</li>)}</ul>
           {f.rueckblick.privat ? (
-            <div className="small">
-              <strong>Familie:</strong> {String(f.rueckblick.privat.familienzeitStunden).replace(".", ",")} Std. Familienzeit{f.rueckblick.privat.familienzeitOhneUhrzeit ? ` (+ ${f.rueckblick.privat.familienzeitOhneUhrzeit} Einträge ohne Uhrzeit)` : ""} · Paarzeit: {f.rueckblick.privat.paarzeit ? `ja (${f.rueckblick.privat.paarzeitAnzahl}×)` : "nein"}
-            </div>
+            <PrivatWoche p={f.rueckblick.privat} />
           ) : (
-            privatDetailsErlaubt(session) && <div className="small muted">Familienzeit und Paarzeit: „Privates zeigen“.</div>
+            privatDetailsErlaubt(session) && <div className="small muted">Familienzeit, Paarzeit, Beobachtungen, Zuwendung und mehr: „Privates zeigen“.</div>
           )}
         </section>
       )}
     </>
+  );
+}
+
+const datum = (d: string) => d.split("-").reverse().join(".");
+const zahl = (n: number) => String(n).replace(".", ",");
+const ART: Record<string, string> = { streicheln: "Streicheln", massage: "Massage" };
+type Privat = NonNullable<NonNullable<Awaited<ReturnType<typeof feierabend>>["rueckblick"]>["privat"]>;
+
+/** Privater Teil des Wochenrückblicks (nur mit Privat-Freigabe und vollem Umfang – das prüft der Service). */
+function PrivatWoche({ p }: { p: Privat }) {
+  return (
+    <div className="stack small" style={{ gap: 10 }} data-testid="fa-privat">
+      <div>
+        <strong>Familie:</strong> {zahl(p.familienzeitStunden)} Std. Familienzeit{p.familienzeitOhneUhrzeit ? ` (+ ${p.familienzeitOhneUhrzeit} Einträge ohne Uhrzeit)` : ""} · Paarzeit: {p.paarzeit ? `ja (${p.paarzeitAnzahl}×)` : "nein"}
+      </div>
+
+      <div data-testid="fa-beobachtungen">
+        <strong>Beobachtungen ({p.beobachtungen.length})</strong> · <Link href={p.therapieBogen}>Therapie-Bogen seit letzter Sitzung →</Link>
+        {p.beobachtungen.length === 0 ? (
+          <div className="muted">Diese Woche keine eigenen Beobachtungen.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="table" style={{ marginTop: 4 }}>
+              <thead><tr><th>Tag</th><th>Situation</th><th>Problematik</th><th>Gewünschte Veränderung</th></tr></thead>
+              <tbody>
+                {p.beobachtungen.map((b, i) => (
+                  <tr key={i} data-testid="fa-beobachtung">
+                    <td style={{ whiteSpace: "nowrap" }}>{datum(b.tag)}</td>
+                    <td>{b.situation}{b.unvollstaendig && <> <span className="tag tag-warn" data-testid="fa-unvollstaendig">enthält [?] – unvollständig</span></>}</td>
+                    <td>{b.problematik ?? "–"}</td>
+                    <td>{b.veraenderung ?? "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div data-testid="fa-zuwendung">
+        <strong>Zuwendung/Nähe:</strong>{" "}
+        {p.zuwendung.every((z) => z.anzahl === 0) ? <span className="muted">keine eingetragen</span> : p.zuwendung.filter((z) => z.anzahl > 0).map((z, i) => (
+          <span key={z.art}>{i > 0 && " · "}{ART[z.art] ?? z.art} {z.anzahl}× ({z.wer.map((w) => `${w.richtung}: ${w.anzahl}`).join(", ")})</span>
+        ))}
+        {p.zuwendungAusgefallen > 0 && <span className="muted"> · {p.zuwendungAusgefallen} ausgefallen</span>}
+      </div>
+
+      <div data-testid="fa-gespraeche">
+        <strong>Paar-Gespräche:</strong>{" "}
+        {p.gespraeche.length === 0 ? <span className="muted">keine</span> : p.gespraeche.map((g, i) => <span key={i}>{i > 0 && " · "}{datum(g.tag)}{g.thema ? ` – ${g.thema}` : ""}{g.vereinbart ? ` (vereinbart: ${g.vereinbart})` : ""}</span>)}
+      </div>
+
+      <div data-testid="fa-danke">
+        <strong>Danke ({p.danke.length}):</strong>{" "}
+        {p.danke.length === 0 ? <span className="muted">keine</span> : p.danke.map((d, i) => <span key={i}>{i > 0 && " · "}{datum(d.tag)} {d.von}: „{d.text}“</span>)}
+      </div>
+
+      <div data-testid="fa-stimmung">
+        <strong>Stimmung:</strong>{" "}
+        {p.stimmung.schnitt === null ? <span className="muted">nicht eingetragen</span> : <>Ø {zahl(p.stimmung.schnitt)} · Verlauf {p.stimmung.verlauf.map((v) => `${datum(v.tag).slice(0, 6)} ${v.wert}`).join(" → ")}</>}
+      </div>
+
+      <div data-testid="fa-dateideen">
+        <strong>Dateideen:</strong>{" "}
+        {p.dateideen.length === 0 ? <span className="muted">keine neuen</span> : p.dateideen.map((d, i) => <span key={i}>{i > 0 && " · "}{d.text}{d.umgesetzt ? " ✓" : ""}</span>)}
+      </div>
+
+      <div data-testid="fa-aufgaben">
+        <strong>Private Aufgaben:</strong> erledigt {p.aufgaben.erledigt.length}{p.aufgaben.erledigt.length ? ` (${p.aufgaben.erledigt.join(", ")})` : ""} · offen {p.aufgaben.offen.length}{p.aufgaben.offen.length ? ` (${p.aufgaben.offen.join(", ")})` : ""}
+      </div>
+
+      <div data-testid="fa-vergleich">
+        <strong>Vergleich zur Vorwoche:</strong>{" "}
+        {p.vergleichVorwoche.length === 0 ? <span className="muted">keine Werte</span> : p.vergleichVorwoche.map((v, i) => (
+          <span key={v.was}>{i > 0 && " · "}{VERGLEICH_TEXT[v.was] ?? v.was} {zahl(v.diese)} {v.tendenz === "mehr" ? "↑ mehr" : v.tendenz === "weniger" ? "↓ weniger" : "= gleich"} (Vorwoche {zahl(v.vorwoche)})</span>
+        ))}
+      </div>
+    </div>
   );
 }

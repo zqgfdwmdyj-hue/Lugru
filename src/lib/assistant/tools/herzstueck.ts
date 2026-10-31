@@ -256,7 +256,7 @@ export const feierabendTool = defineTool({
   name: "feierabend",
   title: "Feierabend-Check",
   description:
-    "Abend-Check: heute erledigt, noch offen (rutscht auf morgen), morgen Termine, Top-3-Aufgaben und Sperrzeiten (privat nur „Privat belegt“, außer mit_privat). Mit rueckblick: true (sonntags automatisch) Wochenrückblick – erledigte Aufgaben je Person, mit Privat-Freigabe auch Familienzeit-Stunden und Paarzeit ja/nein.",
+    "Abend-Check: heute erledigt, noch offen (rutscht auf morgen), morgen Termine, Top-3-Aufgaben und Sperrzeiten (privat nur „Privat belegt“, außer mit_privat). Mit rueckblick: true (sonntags automatisch) Wochenrückblick – erledigte Aufgaben je Person. Mit mit_privat und Privat-Freigabe (nur eigene Person, voller Umfang) zusätzlich: Familienzeit-Stunden, Paarzeit, eigene Beobachtungen der Woche als Therapie-Bogen (Situation | Problematik | gewünschte Veränderung, „unvollstaendig“ bei [?]), Zuwendung je Art mit Richtung (wer gibt/empfängt), Paar-Gespräche, Danke, eigene Stimmung (Ø + Verlauf), Dateideen, private Aufgaben erledigt/offen, Vergleich zur Vorwoche und Link zum Therapie-Bogen seit letzter Sitzung (Druck/PDF).",
   area: "kalender",
   write: false,
   quelle: { text: "Aufgaben, Kalender und Privatbereich im Seller-System" },
@@ -275,7 +275,7 @@ export const feierabendTool = defineTool({
         top3: f.morgenTop3.map((g) => ({ titel: g.titel, von: g.von, aufwand: AUFWAND_TEXT[g.aufwand] })),
         konflikte: f.morgenKonflikte.length ? f.morgenKonflikte.map((k) => `${k.titel}: ${k.text}`) : undefined,
       },
-      wochenrueckblick: f.rueckblick ?? undefined,
+      wochenrueckblick: f.rueckblick ? { ...f.rueckblick, privat: f.rueckblick.privat ? { ...f.rueckblick.privat, therapieBogen: abs(ctx, f.rueckblick.privat.therapieBogen) } : null } : undefined,
       va: f.va ? { text: f.va.text, erledigt: f.va.erledigt, rueckfragen: f.va.rueckfragen, automatisch_beantwortet: f.va.auto, unbeantwortet: f.va.offen } : undefined,
       hinweis: f.offen.length ? "Verschieben nur auf Wunsch: aufgabe_verschieben oder im Seller-System „Auf morgen schieben“." : undefined,
       link: abs(ctx, "/kalender/feierabend"),

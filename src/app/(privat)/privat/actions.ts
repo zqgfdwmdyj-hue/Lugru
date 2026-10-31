@@ -5,9 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, memberLabels, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, memberLabels, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type ObservationEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
 import { deleteEntries, saveTimeEntry as saveTime, TIME_KINDS, type TimeKind } from "@/lib/private/save";
 import { exportTargetProblem } from "@/lib/private/export-sync";
+import { beobachtungText } from "@/lib/private/rueckblick-logic";
 import { addEntry, deleteAllPrivate, loadEntries, lockPrivate, myMedPlan, myPartner, nowTime, privateMembers, privateSettings, requirePrivate, savePrivateSettings, setPin, unlockPrivate, updateEntry, type PrivateKind } from "@/lib/private/service";
 
 export type FormState = { ok: boolean; message: string } | null;
@@ -291,14 +292,41 @@ export async function saveDiaryAction(_prev: FormState, fd: FormData): Promise<F
   return done(`Tagebuch für ${day.split("-").reverse().join(".")} gespeichert.`);
 }
 
+/** Beobachtung im Format des Therapie-Bogens: Situation (Pflicht), Problematik, gewünschte Veränderung. Ältere
+ * Formulare schicken nur `text`. `text` wird immer mitgeschrieben (für Arztbericht und ältere Leser). */
+function beobachtungAusFormular(fd: FormData) {
+  const situation = clip(fd.get("situation"), 1000);
+  const problematik = clip(fd.get("problematik"), 1000);
+  const veraenderung = clip(fd.get("veraenderung"), 1000);
+  if (situation) return { text: beobachtungText(situation, problematik, veraenderung), situation, problematik: problematik || undefined, veraenderung: veraenderung || undefined };
+  const text = clip(fd.get("text"), 2000);
+  return text ? { text } : null;
+}
+
 export async function addObservationAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const session = await requirePrivate();
   const about = uuid.safeParse(fd.get("about"));
-  const text = clip(fd.get("text"), 2000);
-  if (!about.success || !text) return fail("Bitte die Beobachtung aufschreiben.");
+  const b = beobachtungAusFormular(fd);
+  if (!about.success || !b) return fail("Bitte die Beobachtung aufschreiben (mindestens die Situation).");
   if (!(await privateMembers(session.tenantId)).some((m) => m.userId === about.data)) return fail("Diese Person hat keinen Privat-Zugang.");
-  await addEntry(session, "beobachtung", { day: dayOr(fd.get("day")), aboutUserId: about.data, text });
+  await addEntry(session, "beobachtung", { day: dayOr(fd.get("day")), aboutUserId: about.data, ...b });
   return done("Beobachtung gespeichert.");
+}
+
+/** Eigene Beobachtung korrigieren (ersetzt/veraltet). Nur der Verfasser – das prüft updateEntry. */
+export async function updateObservationAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate({ full: true });
+  const id = uuid.safeParse(fd.get("id"));
+  const b = beobachtungAusFormular(fd);
+  if (!id.success || !b) return fail("Bitte mindestens die Situation ausfüllen.");
+  const day = isDay(fd.get("day")) && String(fd.get("day")) <= todayIso() ? String(fd.get("day")) : undefined;
+  // Felder ersetzen (nicht anhängen): geleerte Problematik/Veränderung sollen wirklich weg sein.
+  const alt = (await loadEntries<ObservationEntry>(session, ["beobachtung"])).find((e) => e.id === id.data && e.userId === session.userId);
+  if (!alt) return fail("Diese Beobachtung gibt es nicht (mehr) oder sie ist nicht von dir.");
+  const ok = await updateEntry(session, id.data, "beobachtung", { day: day ?? alt.data.day, aboutUserId: alt.data.aboutUserId, ...b }, true);
+  if (!ok) return fail("Diese Beobachtung kann nur ihr Verfasser ändern.");
+  revalidatePath("/privat", "layout");
+  return done("Beobachtung geändert.");
 }
 
 // ---- Löschen (alle Arten) ----------------------------------------------------------------------------

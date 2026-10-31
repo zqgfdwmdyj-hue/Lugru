@@ -180,7 +180,15 @@ export async function rueckgaengig(ctx: ToolCtx, logId: string): Promise<{ ok: b
   const tool = toolByName(row.tool);
   if (!tool?.undo || row.undo === null || row.undo === undefined) return { ok: false, meldung: "Für diese Änderung gibt es kein Rückgängig." };
   if (row.stufe && row.stufe !== "gruen") return { ok: false, meldung: "Nur einfache (grüne) Änderungen lassen sich mit einem Klick zurücknehmen." };
-  const text = await tool.undo(ctx, row.undo);
+  // Privat: nur die Person selbst (auch der Inhaber nicht für andere) und nur mit vollem Privat-Zugang.
+  if (tool.privat && (row.userId !== ctx.session.userId || !ctx.session.privateAccess || ctx.session.privateScope !== "voll")) return { ok: false, meldung: "Private Änderungen kann nur die Person zurücknehmen, die sie gemacht hat." };
+  let text: string;
+  try {
+    text = await tool.undo(ctx, row.undo);
+  } catch (e) {
+    // Abgelehnt (z. B. Eintrag inzwischen anders vorhanden): nicht als zurückgenommen markieren.
+    return { ok: false, meldung: e instanceof Error ? e.message : "Nicht zurückgenommen." };
+  }
   await db.update(L).set({ rueckgaengigAm: new Date() }).where(eq(L.id, row.id));
   await db.insert(L).values({ tenantId: ctx.session.tenantId, userId: ctx.session.userId, channel: ctx.channel, tool: row.tool, write: true, ok: true, summary: `Rückgängig: ${row.summary ?? tool.title}`, ids: row.ids });
   return { ok: true, meldung: text };

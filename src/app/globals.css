@@ -806,6 +806,16 @@ h2 { font-size: 16px; margin: 0; }
 @media (display-mode: standalone) { .ptop { top: env(safe-area-inset-top); } }
 @media print { .ptop { display: none !important; } }
 
+/* ---- Therapie-Bogen: Tabelle wie der Papierbogen (Linien, Zeilen nicht trennen) ---- */
+.tb-bogen td, .tb-bogen th { vertical-align: top; }
+@media print {
+  [data-testid="therapie-bogen"] { break-inside: auto; }
+  .tb-bogen { border-collapse: collapse; width: 100%; font-size: 11pt; }
+  .tb-bogen th, .tb-bogen td { border: 1px solid #555; padding: 6px 8px; }
+  .tb-bogen tr { break-inside: avoid; }
+  .tb-bogen thead { display: table-header-group; }
+}
+
 /* ---- Privatkalender ---- */
 .pk-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
 .pk-seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }

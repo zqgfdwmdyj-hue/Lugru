@@ -172,6 +172,18 @@ export async function deleteEntry(session: Session, id: string, kind: PrivateKin
   return true;
 }
 
+/**
+ * Gelöschten Eintrag wiederherstellen (Rückgängig des Assistenten, 7 Tage) – mit derselben ID, demselben
+ * Verfasser und Anlegezeitpunkt. Nur wenn die ID frei ist; Rechte prüft der Aufrufer.
+ */
+export async function restoreEntry(session: Session, e: { id: string; userId: string; kind: PrivateKind; data: Record<string, unknown>; createdAt?: string }) {
+  if (!kindAllowed(session, e.kind)) return false;
+  const [schon] = await db.select({ id: E.id }).from(E).where(eq(E.id, e.id));
+  if (schon) return false;
+  await db.insert(E).values({ id: e.id, tenantId: session.tenantId, userId: e.userId, kind: e.kind, data: e.data, ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {}) });
+  return true;
+}
+
 // ---- PIN ---------------------------------------------------------------------------------------------
 
 const pinTries = new Map<string, { count: number; until: number }>();

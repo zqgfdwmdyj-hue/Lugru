@@ -32,6 +32,7 @@ export const GROUPS = [
       { key: "danke", href: "/privat/paar/wertschaetzung", label: "Wertschätzung" },
       { key: "geburtstage", href: "/privat/geburtstage", label: "Geburtstage & Jahrestage" },
       { key: "gespraech", href: "/privat/paar/gespraech", label: "Paar-Gespräch" },
+      { key: "therapiebogen", href: "/privat/therapie-bogen", label: "Therapie-Bogen" },
     ],
   },
   {

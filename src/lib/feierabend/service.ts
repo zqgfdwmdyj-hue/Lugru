@@ -4,7 +4,10 @@ import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
 import { linkAllowed } from "@/lib/auth/areas";
 import { privateCalendar } from "@/lib/private/calendar-data";
-import { myPartner, privateSettings } from "@/lib/private/service";
+import type { TouchEntry } from "@/lib/private/kalender";
+import type { DateIdea, MoodEntry, ObservationEntry, TalkEntry, TaskEntry, ThanksEntry } from "@/lib/private/logic";
+import { vergleichVorwoche, wochePrivat } from "@/lib/private/rueckblick-logic";
+import { loadEntries, myPartner, privateSettings } from "@/lib/private/service";
 import { plusTage, wochentag } from "@/lib/tagesplan/logic";
 import { tagesplan } from "@/lib/tagesplan/service";
 import { berlinMidnight, bindingTask } from "@/lib/today/service";
@@ -75,7 +78,11 @@ export async function offeneAufMorgen(session: Session, heute: string): Promise<
   return { verschoben: schieben.length, wichtigGeblieben: offen.length - schieben.length };
 }
 
-/** Wochenrückblick (letzte 7 Tage): erledigt je Person; privat nur mit Freigabe (Familienzeit-Stunden, Paarzeit). */
+/**
+ * Wochenrückblick (letzte 7 Tage): erledigt je Person; privat nur mit Freigabe und vollem Umfang – Familienzeit,
+ * Paarzeit, eigene Beobachtungen (Therapie-Bogen), Zuwendung, Gespräche, Danke, eigene Stimmung, Dateideen,
+ * private Aufgaben und Vergleich zur Vorwoche.
+ */
 export async function wochenrueckblick(session: Session, heute: string, mitPrivat: boolean) {
   const t = session.tenantId;
   const von = plusTage(heute, -6);
@@ -100,6 +107,27 @@ export async function wochenrueckblick(session: Session, heute: string, mitPriva
   const beiMir = ich ? `Kinder bei ${ps.partners[ich]}` : "Kinder bei";
   const kinder = stattgefunden.filter((x) => x.kind === "kinder" || (x.kind === "auszeit" && x.title.includes(beiMir)));
   const paar = stattgefunden.filter((x) => x.kind === "paarzeit");
+  // B16: übrige Privat-Einträge der Woche – Beobachtungen nur die eigenen, Stimmung nur die eigene Person.
+  const [beob, zuwendung, gespraeche, danke, stimmung, ideen, aufgaben] = await Promise.all([
+    loadEntries<ObservationEntry>(session, ["beobachtung"]),
+    loadEntries<TouchEntry>(session, ["zuwendung"]),
+    loadEntries<TalkEntry>(session, ["gespraech"]),
+    loadEntries<ThanksEntry>(session, ["danke"]),
+    loadEntries<MoodEntry>(session, ["stimmung"]),
+    loadEntries<DateIdea>(session, ["dateidee"]),
+    loadEntries<TaskEntry>(session, ["aufgabe"]),
+  ]);
+  const daten = {
+    beobachtungen: beob.filter((e) => e.userId === session.userId).map((e) => e.data),
+    zuwendung: zuwendung.map((e) => e.data),
+    gespraeche: gespraeche.map((e) => e.data),
+    danke: danke.map((e) => e.data),
+    stimmung: stimmung.map((e) => e.data),
+    dateideen: ideen.map((e) => ({ data: e.data, createdAt: e.createdAt })),
+    aufgaben: aufgaben.map((e) => e.data),
+  };
+  const woche = wochePrivat(daten, { von, bis: heute, ich, namen: ps.partners });
+  const vorwoche = wochePrivat(daten, { von: plusTage(von, -7), bis: plusTage(von, -1), ich, namen: ps.partners });
   return {
     geschaeft,
     privat: {
@@ -107,6 +135,16 @@ export async function wochenrueckblick(session: Session, heute: string, mitPriva
       familienzeitOhneUhrzeit: kinder.filter((x) => !x.from || !x.to).length,
       paarzeit: paar.length > 0,
       paarzeitAnzahl: paar.length,
+      beobachtungen: woche.beobachtungen,
+      zuwendung: woche.zuwendung,
+      zuwendungAusgefallen: woche.zuwendungAusgefallen,
+      gespraeche: woche.gespraeche,
+      danke: woche.danke,
+      stimmung: woche.stimmung,
+      dateideen: woche.dateideen,
+      aufgaben: woche.aufgaben,
+      vergleichVorwoche: vergleichVorwoche(woche, vorwoche),
+      therapieBogen: "/privat/therapie-bogen",
     },
   };
 }

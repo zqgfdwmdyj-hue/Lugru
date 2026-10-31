@@ -3,6 +3,7 @@ import { z } from "zod";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { saveAppointment, saveTimeEntry, setStatus } from "@/lib/private/save";
 import { ANLEGBARE_ARTEN, privatEintragAnlegen as eintragAnlegen } from "@/lib/private/anlegen";
+import { privatEintragAendern as aendern, privatEintragLoeschen as loeschen, privatRueckgaengig } from "@/lib/private/aendern";
 import { loadEntries, privateSettings, type PrivateKind } from "@/lib/private/service";
 import { privatFinanzen as finanzenLaden } from "@/lib/private/geld-service";
 import type { Anlage, Einkommen, Erinnerung, Fixkosten, Steuerfrage } from "@/lib/private/geld";
@@ -177,6 +178,52 @@ export const privatEintragAnlegen = defineTool({
   },
 });
 
+export const privatEintragAendern = defineTool({
+  name: "privat_eintrag_aendern",
+  title: "Privat-Eintrag ändern",
+  description:
+    "Ändert einen bestehenden Privat-Eintrag (id aus privat_eintraege) – z. B. eine ersetzte oder veraltete Beobachtung. Arten: beobachtung (situation, problematik, veraenderung – leer = Feld entfernen – oder text; tag), tagebuch (text = Notiz, wert = Stimmung 1–5), stimmung (wert 1–5, text), intim (wert = Nähe 1–5, text), zuwendung (wert = Minuten, text, tag), gespraech (text = Thema, vereinbart), danke (text), dateidee (text, erledigt), aufgabe (text = Titel, tag = fällig, erledigt). Tagebuch, Beobachtung und Stimmung nur die eigenen. Termine/Zeiten über privat_termin bzw. privat_zeit. Nur auf ausdrücklichen Wunsch und mit genau den genannten Angaben; 7 Tage rückgängig machbar.",
+  area: "privat",
+  privat: true,
+  write: true,
+  input: z.object({
+    id: uuid,
+    tag: isoDate.optional(),
+    text: z.string().max(2000).optional(),
+    situation: z.string().max(1000).optional().describe("Nur Beobachtung"),
+    problematik: z.string().max(1000).optional().describe("Nur Beobachtung; leer = entfernen"),
+    veraenderung: z.string().max(1000).optional().describe("Nur Beobachtung: gewünschte Veränderung; leer = entfernen"),
+    vereinbart: z.string().max(500).optional().describe("Nur Paar-Gespräch"),
+    wert: z.number().min(0).max(600).optional(),
+    erledigt: z.boolean().optional().describe("Nur Aufgabe (einmalig) und Date-Idee"),
+  }),
+  // Protokoll: nur dass geändert wurde und welche Angaben – nie Inhalte.
+  summary: (i) => `Privat-Eintrag geändert (${["tag", "text", "situation", "problematik", "veraenderung", "vereinbart", "wert", "erledigt"].filter((k) => (i as Record<string, unknown>)[k] !== undefined).join(", ") || "–"})`,
+  run: async (ctx, i) => {
+    const { id, ...a } = i;
+    const r = await aendern(ctx.session, id, a);
+    return r.ok ? { text: JSON.stringify({ ok: true, meldung: r.meldung, id, art: r.art, link: abs(ctx, `/privat/eintrag/${id}`) }, null, 2), ids: [id], undo: r.undo } : { text: r.meldung, isError: true };
+  },
+  undo: (ctx, d) => privatRueckgaengig(ctx.session, d),
+});
+
+export const privatEintragLoeschen = defineTool({
+  name: "privat_eintrag_loeschen",
+  title: "Privat-Eintrag löschen",
+  description:
+    "Löscht einen Privat-Eintrag (id aus privat_eintraege) der Arten beobachtung, tagebuch, stimmung, intim, zuwendung, gespraech, danke, dateidee, aufgabe – z. B. eine ersetzte Beobachtung. Tagebuch, Beobachtung und Stimmung nur die eigenen. Nur auf ausdrücklichen Wunsch für genau diesen Eintrag; 7 Tage rückgängig machbar (Assistent-Verlauf).",
+  area: "privat",
+  privat: true,
+  write: true,
+  input: z.object({ id: uuid }),
+  summary: () => "Privat-Eintrag gelöscht",
+  run: async (ctx, i) => {
+    const r = await loeschen(ctx.session, i.id);
+    return r.ok ? { text: JSON.stringify({ ok: true, meldung: r.meldung, id: i.id, art: r.art, rueckgaengig: "7 Tage im Assistent-Verlauf", link: abs(ctx, "/assistent-verlauf") }, null, 2), ids: [i.id], undo: r.undo } : { text: r.meldung, isError: true };
+  },
+  undo: (ctx, d) => privatRueckgaengig(ctx.session, d),
+});
+
 export const privatStatus = defineTool({
   name: "privat_status",
   title: "Privat-Status setzen",
@@ -223,4 +270,4 @@ export const privatFinanzen = defineTool({
   },
 });
 
-export const PRIVAT = [privatFinanzen, privatKalender, privatEintraege, privatTermin, privatZeit, privatEintragAnlegen, privatStatus];
+export const PRIVAT = [privatFinanzen, privatKalender, privatEintraege, privatTermin, privatZeit, privatEintragAnlegen, privatEintragAendern, privatEintragLoeschen, privatStatus];

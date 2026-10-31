@@ -41,7 +41,7 @@ export default async function AssistentVerlaufPage({ searchParams }: { searchPar
         <div className="stack" style={{ gap: 8 }} data-testid="verlauf-liste">
           {rows.map((r) => {
             const tool = toolByName(r.tool);
-            const kann = r.ok && !r.zurueck && r.undo !== null && r.undo !== undefined && Boolean(tool?.undo) && (r.stufe ?? "gruen") === "gruen" && r.at.getTime() >= grenze && (session.role === "owner" || r.userId === session.userId) && !session.readOnly;
+            const kann = r.ok && !r.zurueck && r.undo !== null && r.undo !== undefined && Boolean(tool?.undo) && (r.stufe ?? "gruen") === "gruen" && r.at.getTime() >= grenze && (tool?.privat ? r.userId === session.userId : session.role === "owner" || r.userId === session.userId) && !session.readOnly;
             const st = STUFE[(r.stufe ?? "gruen") as keyof typeof STUFE] ?? STUFE.gruen;
             return (
               <div key={r.id} className="card card-pad small" data-testid="verlauf-eintrag" data-tool={r.tool}>

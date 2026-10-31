@@ -82,6 +82,12 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/kalender": {
     abläufe: [{ ablauf: "Geschäftskalender als Büro-Konto und als Inhaberin", erwartet: "keine privaten Einträge (Testwort PRIVATGEHEIM erscheint nicht)", tests: ["privat.spec.ts › Privates bleibt privat"] }],
   },
+  "/kalender/feierabend": {
+    abläufe: [
+      { ablauf: "Feierabend: erledigt/offen, auf morgen schieben, morgen Top 3", erwartet: "wichtige bleiben stehen", tests: ["herzstueck.spec.ts › Feierabend"] },
+      { ablauf: "Wochenrückblick mit „Privates zeigen“ (B16)", erwartet: "Beobachtungen (Bogen-Format, „unvollständig“), Zuwendung je Art und Richtung, Gespräche, Danke, Stimmung, Dateideen, Aufgaben, Vorwochen-Vergleich; ohne Freigabe nichts Privates", tests: ["privat-rueckblick.spec.ts › Beobachtung anlegen"] },
+    ],
+  },
   "/auftraege": {
     abläufe: [
       { ablauf: "Labels kaufen und alle als versendet melden (Amazon, simuliert)", erwartet: "Versandbestätigung je Amazon-Auftrag an den Testdienst; eBay ohne Verbindung als Meldung", tests: ["labels.spec.ts › Offene Aufträge"] },
@@ -209,6 +215,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/kalender/zeiten": { abläufe: [{ ablauf: "Freier Tag → Aufgabe wandert auf den nächsten Arbeitstag; Wochenrückblick", erwartet: "Fälligkeit verschoben, Rückblick sichtbar", tests: ["teil2.spec.ts › Feste freie Zeiten"] }] },
   "/board": { abläufe: [{ ablauf: "Aufgabe zuweisen hängt passende Anleitung an; zugewiesene Person sieht sie", erwartet: "📘-Link auf der Karte, auch bei der Assistenz", tests: ["teil2.spec.ts › Anleitung im Wissen"] }] },
   "/privat/familienaufgaben": { abläufe: [{ ablauf: "Familien-Zugang: Aufgabe anlegen, Fairness aus; kein Geld/Tagebuch/Geschäft", erwartet: "nur Familienliste + Familienkalender", tests: ["teil2.spec.ts › Familien-Zugang"] }] },
+  "/privat/therapie-bogen": { abläufe: [{ ablauf: "Therapie-Bogen seit letzter Sitzung (B16): Beobachtung mit 3 Feldern und „[?]“, Zeitraum wählen, Beobachtung ändern/löschen per Formular und Claude, rückgängig", erwartet: "Beginn = letzter Paartherapie-Termin; Tabelle Datum | Situation | Problematik | gewünschte Veränderung; „unvollständig“ markiert; Protokoll ohne Inhalte", tests: ["privat-rueckblick.spec.ts › Beobachtung anlegen"] }] },
   "/privat/geld": { abläufe: [{ ablauf: "Frage für den Steuerberater, nur für die eigene Person", erwartet: "Hinweis „keine Steuerberatung“, Familien-Zugang gesperrt", tests: ["teil2.spec.ts › Privates Geld"] }] },
   "/rechnungen": { abläufe: [{ ablauf: "Rechnung hochladen, Sammelbearbeitung", erwartet: "Upload leert nach Erfolg; Auswahl bleibt bei Fehlschlag; Rückfrage abgelehnt = nichts passiert", tests: ["formulare.spec.ts › Rechnungen"] }] },
   "/import": { abläufe: [{ ablauf: "Unbekannte Datei importieren", erwartet: "Fehler, Datei bleibt ausgewählt", tests: ["formulare.spec.ts › Import"] }] },

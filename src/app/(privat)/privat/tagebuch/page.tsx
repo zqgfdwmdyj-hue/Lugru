@@ -4,7 +4,8 @@ import { todayIso } from "@/lib/dates";
 import { RATING_FIELDS, SIDE_EFFECTS, addDays, diarySeries, intakeStatus, isDay, memberLabels, planFor, sideEffectState, type DiaryEntry, type ObservationEntry } from "@/lib/private/logic";
 import { Disclosure } from "@/components/disclosure";
 import { loadEntries, myMedPlan, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
-import { addObservationAction, deleteEntryAction, saveDiaryAction } from "../actions";
+import { beobachtungTeile } from "@/lib/private/rueckblick-logic";
+import { addObservationAction, deleteEntryAction, saveDiaryAction, updateObservationAction } from "../actions";
 import { StateForm } from "../state-form";
 import { IntakeCard } from "../intake";
 import { PrivatHead, Rating, dm, dmy, weekday } from "../ui";
@@ -214,23 +215,57 @@ export default async function TagebuchPage({ searchParams }: { searchParams: Pro
               </div>
               <div className="field"><label className="label" htmlFor="o-day">Tag</label><input className="input" id="o-day" name="day" type="date" defaultValue={today} max={today} /></div>
             </div>
-            <textarea className="input" name="text" rows={2} placeholder="z. B. Mittags viel ruhiger, ab 17 Uhr gereizt" required />
+            <BeobachtungFelder />
           </StateForm>
         )}
+        <div className="small"><Link href="/privat/therapie-bogen" data-testid="link-therapie-bogen">Therapie-Bogen seit letzter Sitzung (Drucken/PDF) →</Link></div>
         {byMe.length > 0 && (
           <details>
             <summary className="small" style={{ cursor: "pointer" }}>Meine Beobachtungen ({byMe.length})</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-              {byMe.slice(0, 30).map((o) => (
-                <li key={o.id} className="small">
-                  <strong>{dm(o.data.day)}</strong> über {nameOf(o.data.aboutUserId)}: {o.data.text}
-                  <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="beobachtung" /><input type="hidden" name="id" value={o.id} /><button className="btn-link small danger" type="submit">löschen</button></form>
-                </li>
-              ))}
+              {byMe.slice(0, 30).map((o) => {
+                const t = beobachtungTeile(o.data);
+                return (
+                  <li key={o.id} className="small" data-testid="observation-mine">
+                    <strong>{dm(o.data.day)}</strong> über {nameOf(o.data.aboutUserId)}: {o.data.text}
+                    {t.unvollstaendig && <> <span className="tag tag-warn">enthält [?] – unvollständig</span></>}
+                    <form action={deleteEntryAction} style={{ display: "inline", marginLeft: 6 }}><input type="hidden" name="kind" value="beobachtung" /><input type="hidden" name="id" value={o.id} /><button className="btn-link small danger" type="submit" data-testid="observation-delete">löschen</button></form>
+                    <details style={{ marginTop: 4 }}>
+                      <summary className="btn-link small" style={{ cursor: "pointer" }} data-testid="observation-edit">bearbeiten</summary>
+                      <StateForm action={updateObservationAction} submit="Änderung speichern" testid="observation-edit-form">
+                        <input type="hidden" name="id" value={o.id} />
+                        <div className="field"><label className="label" htmlFor={`oe-day-${o.id}`}>Tag</label><input className="input" id={`oe-day-${o.id}`} name="day" type="date" defaultValue={o.data.day} max={today} /></div>
+                        <BeobachtungFelder id={o.id} werte={t} />
+                      </StateForm>
+                    </details>
+                  </li>
+                );
+              })}
             </ul>
           </details>
         )}
       </section>
+    </>
+  );
+}
+
+/** Die drei Spalten des Therapie-Bogens. „[?]“ im Text markiert eine Stelle als noch unvollständig. */
+function BeobachtungFelder({ id = "neu", werte }: { id?: string; werte?: { situation: string; problematik: string | null; veraenderung: string | null } }) {
+  return (
+    <>
+      <div className="field">
+        <label className="label" htmlFor={`o-sit-${id}`}>Situation</label>
+        <textarea className="input" id={`o-sit-${id}`} name="situation" rows={2} maxLength={1000} placeholder="z. B. Abendessen, Kinder müde, ab 17 Uhr gereizt" defaultValue={werte?.situation ?? ""} required />
+      </div>
+      <div className="field">
+        <label className="label" htmlFor={`o-pro-${id}`}>Problematik <span className="muted">(optional)</span></label>
+        <textarea className="input" id={`o-pro-${id}`} name="problematik" rows={2} maxLength={1000} placeholder="Was war schwierig?" defaultValue={werte?.problematik ?? ""} />
+      </div>
+      <div className="field">
+        <label className="label" htmlFor={`o-ver-${id}`}>Gewünschte Veränderung <span className="muted">(optional)</span></label>
+        <textarea className="input" id={`o-ver-${id}`} name="veraenderung" rows={2} maxLength={1000} placeholder="Was wünschst du dir stattdessen?" defaultValue={werte?.veraenderung ?? ""} />
+      </div>
+      <div className="small muted">Noch unsicher? „[?]“ an die Stelle schreiben – im Therapie-Bogen steht dann „unvollständig“.</div>
     </>
   );
 }
