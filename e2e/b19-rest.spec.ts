@@ -36,12 +36,18 @@ test.describe("B19.5–B19.8", () => {
     await page.goto(`/kalender/tagesplan?tag=${DIENSTAG}`);
     const tag = page.getByTestId("tagesplan-woche").locator("a").first();
     await expect(tag).toHaveAttribute("data-ampel", "rot");
-    await expect(tag.getByTestId("tagesplan-ampel")).toContainText(/überbucht – \d+ Min\. zu viel \(\d+ Min\. frei\)/);
+    // B20.7: eingeplant nur bis zur Kapazität, Rest „nicht eingeplant (x Aufgaben, y Min.)“ mit Vorschlag
+    await expect(tag.getByTestId("tagesplan-ampel")).toContainText(/überbucht – \d+ Aufgaben? \(\d+ Min\.\) nicht eingeplant \(\d+ Min\. frei\)/);
+    await expect(page.getByTestId("tagesplan-nicht-eingeplant")).toContainText(/Nicht eingeplant \(\d+ Aufgaben?, \d+ Min\.\)/);
+    await expect(page.getByTestId("tagesplan-nicht-eingeplant")).toContainText(/Vorschlag: auf (Mo|Di|Mi|Do|Fr)\/(Mo|Di|Mi|Do|Fr) verteilen/);
     const mcp = await mcpVerbinden(browser, baseURL!, "inhaber");
-    const r = JSON.parse(await mcp.call("tagesplan", { datum: DIENSTAG })) as { tage: { tag: string; faellig_min?: number; zu_viel_min?: number }[] };
+    const r = JSON.parse(await mcp.call("tagesplan", { datum: DIENSTAG })) as { tage: { tag: string; faellig_min?: number; zu_viel_min?: number; kapazitaet_min: number; eingeplant_min: number; nicht_eingeplant?: { aufgaben: number; minuten: number; vorschlag?: string } }[] };
     const d = r.tage.find((x) => x.tag === DIENSTAG)!;
     expect(d.zu_viel_min).toBeGreaterThan(0);
     expect(d.faellig_min).toBeGreaterThanOrEqual(3 * 240);
+    expect(d.eingeplant_min).toBeLessThanOrEqual(d.kapazitaet_min);
+    expect(d.nicht_eingeplant!.aufgaben).toBeGreaterThanOrEqual(1);
+    expect(d.nicht_eingeplant!.vorschlag).toMatch(/verteilen/);
   });
 
   test("Assistent-Verlauf: Regel für Rückgängig, Tokenzähler mit Zwischenspeicher", async ({ page }) => {

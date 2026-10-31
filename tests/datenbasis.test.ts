@@ -113,7 +113,29 @@ describe("Nachbestellen laut sellerboard", () => {
     expect(k.pruefenKapital).toBe(20 + 20);
     // ohne Besuche ist 0 % keine Aussage
     expect(pruefGrund({ margin: 10 }, { conversion: 0, sessions: 0 })).toBeNull();
-    expect(KAPITALBEDARF_DEFINITION).toMatch(/Minus-Marge oder Kaufquote 0 %/);
+    expect(KAPITALBEDARF_DEFINITION).toMatch(/Minus-Marge, Kaufquote 0 % oder über 10\.000 €/);
+  });
+
+  it("B20.8: Kaufquote über die ASIN (andere SKU als in der Statistik) und Posten über 10.000 € → „prüfen“", async () => {
+    const { kapitalbedarf } = await import("@/lib/purchasing/reorder-logic");
+    const costs = new Map([
+      ["MSI-FBA-1", { cost: 400, source: "charge" as const }],
+      ["BRO-1", { cost: 377, source: "charge" as const }],
+      ["KLEIN-1", { cost: 5, source: "charge" as const }],
+    ]);
+    const rows = buildReorderRows(
+      [row({ sku: "MSI-FBA-1", asin: "B0TESTMSI1", qtyToReorder: 72 }), row({ sku: "BRO-1", asin: "B0TESTBRO1", qtyToReorder: 80 }), row({ sku: "KLEIN-1", asin: "B0TESTKL01", qtyToReorder: 10 })],
+      ctx({ costs, margin: new Map([["MSI-FBA-1", 9], ["BRO-1", 11], ["KLEIN-1", 20]]) }),
+    );
+    // Statistik nur unter einer anderen SKU derselben ASIN (wie auf der Hebel-Seite: 0 % bei 400 Besuchen)
+    const kaufquoten = new Map([["asin:B0TESTMSI1", { conversion: 0, sessions: 400 }]]);
+    const k = kapitalbedarf(rows, { kaufquoten });
+    expect(k.rows.map((r) => r.sku)).toEqual(["KLEIN-1"]);
+    expect(k.capital).toBe(50);
+    const gruende = Object.fromEntries(k.pruefen.map((x) => [x.row.sku, x.grund]));
+    expect(gruende["MSI-FBA-1"]).toBe("Kaufquote 0 % (400 Besuche in 30 Tagen)");
+    expect(gruende["BRO-1"]).toBe("Posten über 10.000 € (30.160 €) – vor dem Bestellen prüfen");
+    expect(k.pruefenKapital).toBe(28800 + 30160);
   });
 
   it("Kapital mit gültigem EK netto, nicht mit dem sellerboard-Platzhalter", () => {

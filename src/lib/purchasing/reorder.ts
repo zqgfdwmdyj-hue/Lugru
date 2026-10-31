@@ -102,8 +102,19 @@ export async function angelegteAsins(tenantId: string): Promise<Set<string>> {
 /** B19.8: Kaufquote je SKU (sellerboard, Amazon, letzte 30 Tage) – für „prüfen“ statt Summe. */
 export async function kaufquotenJeSku(tenantId: string): Promise<Map<string, Kaufquote>> {
   const S = schema.sellerboardSkuStats;
-  const rows = await db.select({ sku: S.sku, conversion: S.conversion, sessions: S.sessions }).from(S).where(and(eq(S.tenantId, tenantId), eq(S.channel, "amazon")));
-  return new Map(rows.map((r) => [r.sku, { conversion: r.conversion === null ? null : Number(r.conversion), sessions: r.sessions }]));
+  const rows = await db.select({ sku: S.sku, asin: S.asin, conversion: S.conversion, sessions: S.sessions }).from(S).where(and(eq(S.tenantId, tenantId), eq(S.channel, "amazon")));
+  const m = new Map<string, Kaufquote>();
+  for (const r of rows) {
+    const k = { conversion: r.conversion === null ? null : Number(r.conversion), sessions: r.sessions };
+    m.set(r.sku, k);
+    // B20.8: auch je ASIN (Bestellvorschlag unter anderer SKU als die Statistik) – die SKU mit den meisten Besuchen zählt.
+    if (r.asin) {
+      const key = `asin:${r.asin}`;
+      const alt = m.get(key);
+      if (!alt || (k.sessions ?? 0) > (alt.sessions ?? 0)) m.set(key, k);
+    }
+  }
+  return m;
 }
 
 export async function bestellvorschlaegeGemeinsam(tenantId: string, heute = todayIso(), o: { rotZeigen?: boolean } = {}) {

@@ -162,7 +162,7 @@ export function reorderTotals(rows: ReorderRow[]) {
  * Kapital-Ampel und Claude rechnen gleich und zeigen diesen Text als Erklärung.
  */
 export const KAPITALBEDARF_DEFINITION =
-  "Kapitalbedarf netto (ohne USt.) = vorgeschlagene Menge laut sellerboard × gültiger EK. Ware unterwegs zu Amazon ist in der Menge schon berücksichtigt. Nicht enthalten: Artikel mit roter Kapital-Ampel (nicht nachbestellen), Retouren, Artikel ohne EK (gezählt, nicht als 0 €), Artikel, die schon im Einkauf angelegt oder bestellt sind, und Artikel mit Minus-Marge oder Kaufquote 0 % (getrennt als „prüfen“).";
+  "Kapitalbedarf netto (ohne USt.) = vorgeschlagene Menge laut sellerboard × gültiger EK. Ware unterwegs zu Amazon ist in der Menge schon berücksichtigt. Nicht enthalten: Artikel mit roter Kapital-Ampel (nicht nachbestellen), Retouren, Artikel ohne EK (gezählt, nicht als 0 €), Artikel, die schon im Einkauf angelegt oder bestellt sind, und Artikel mit Minus-Marge, Kaufquote 0 % oder über 10.000 € je Posten (getrennt als „prüfen“).";
 
 export type Kapitalbedarf = ReturnType<typeof reorderTotals> & { rows: ReorderRow[]; rote: number; angelegt: number; pruefen: { row: ReorderRow; grund: string }[]; pruefenKapital: number };
 
@@ -170,20 +170,28 @@ export type Kapitalbedarf = ReturnType<typeof reorderTotals> & { rows: ReorderRo
 /** Kaufquote je SKU aus sellerboard (letzte 30 Tage): % Einheiten je Besuch und Anzahl Besuche. */
 export type Kaufquote = { conversion: number | null; sessions: number | null };
 
+/** B20.8: Posten ab diesem Kapitalbedarf (netto) immer erst prüfen – nie automatisch in der Summe. */
+export const PRUEFEN_AB_EUR = 10_000;
+
 /**
- * B19.8: Artikel, die man vor dem Nachbestellen prüfen sollte – Minus-Marge (30 Tage) oder Kaufquote 0 % bei
- * vorhandenen Besuchen. Sie zählen nicht in die Summe, sondern stehen getrennt als „prüfen“. null = unauffällig.
+ * B19.8/B20.8: Artikel, die man vor dem Nachbestellen prüfen sollte – Minus-Marge (30 Tage), Kaufquote 0 % bei
+ * vorhandenen Besuchen (wie auf der Hebel-Seite) oder ein Posten über 10.000 €. Sie zählen nicht in die Summe, sondern
+ * stehen getrennt als „prüfen“. null = unauffällig.
  */
-export function pruefGrund(r: Pick<ReorderRow, "margin">, k: Kaufquote | undefined): string | null {
+export function pruefGrund(r: Pick<ReorderRow, "margin"> & { capital?: number | null; isReturn?: boolean }, k: Kaufquote | undefined): string | null {
   if (r.margin !== null && r.margin < 0) return `Minus-Marge (${String(r.margin).replace(".", ",")} % in 30 Tagen)`;
   if (k && k.conversion !== null && k.conversion <= 0 && (k.sessions ?? 0) > 0) return `Kaufquote 0 % (${k.sessions} Besuche in 30 Tagen)`;
+  if (!r.isReturn && (r.capital ?? 0) > PRUEFEN_AB_EUR) return `Posten über ${PRUEFEN_AB_EUR.toLocaleString("de-DE")} € (${Math.round(r.capital!).toLocaleString("de-DE")} €) – vor dem Bestellen prüfen`;
   return null;
 }
+
+/** Kaufquote zu einer Zeile: zuerst die SKU, sonst die ASIN (gleiche Zahl wie auf der Hebel-Seite). */
+export const kaufquoteFuer = (r: Pick<ReorderRow, "sku" | "asin">, kaufquoten: Map<string, Kaufquote> | undefined) => kaufquoten?.get(r.sku) ?? (r.asin ? kaufquoten?.get(`asin:${r.asin}`) : undefined);
 
 export function kapitalbedarf(rows: ReorderRow[], o: { weg?: (r: ReorderRow) => boolean; angelegteAsins?: Set<string>; kaufquoten?: Map<string, Kaufquote> } = {}): Kapitalbedarf {
   const ohneRot = o.weg ? rows.filter((r) => !o.weg!(r)) : rows;
   const offenAlle = o.angelegteAsins?.size ? ohneRot.filter((r) => !(r.asin && o.angelegteAsins!.has(r.asin))) : ohneRot;
-  const pruefen = offenAlle.map((r) => ({ row: r, grund: pruefGrund(r, o.kaufquoten?.get(r.sku)) })).filter((x): x is { row: ReorderRow; grund: string } => x.grund !== null);
+  const pruefen = offenAlle.map((r) => ({ row: r, grund: pruefGrund(r, kaufquoteFuer(r, o.kaufquoten)) })).filter((x): x is { row: ReorderRow; grund: string } => x.grund !== null);
   const pruefSkus = new Set(pruefen.map((x) => x.row.sku));
   const offen = offenAlle.filter((r) => !pruefSkus.has(r.sku));
   return {

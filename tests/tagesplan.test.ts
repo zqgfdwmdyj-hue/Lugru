@@ -108,7 +108,9 @@ describe("B15.10: Kapazität 0 ist nie „überbucht“", () => {
     const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { aufwand: "M" }), a("2", { aufwand: "M" })] });
     expect(r.tage[0].ampel).toBe("rot");
     expect(r.tage[0]).toMatchObject({ bedarf: 120, kapazitaet: 60, zuViel: 60 });
-    expect(ampelText(r.tage[0])).toBe("überbucht – 60 Min. zu viel (60 Min. frei)");
+    // B20.7: eingeplant nur bis zur Kapazität, der Rest steht als „nicht eingeplant“
+    expect(ampelText(r.tage[0])).toBe("überbucht – 1 Aufgabe (60 Min.) nicht eingeplant (60 Min. frei)");
+    expect(r.tage[0].nichtEingeplant).toEqual({ anzahl: 1, minuten: 60, ids: ["2"] });
     expect(r.verschoben.map((v) => v.id)).toEqual(["2"]);
   });
 
@@ -133,7 +135,7 @@ describe("Kaum freie Zeit (Umsetzungsstand 31.10.: Mo 2.11. rot bei 0 von 30 Min
     expect(mo.kapazitaet).toBe(30);
     expect(mo.belegt).toBe(0);
     expect(mo.ampel).toBe("rot");
-    expect(ampelText(mo)).toBe("überbucht – 30 Min. zu viel (30 Min. frei)");
+    expect(ampelText(mo)).toBe("überbucht – 1 Aufgabe (60 Min.) nicht eingeplant (30 Min. frei)");
     expect(mo.konflikte[0].text).toContain("nur 30 Min. freier Zeit");
     expect(r.tage[1].geplant.map((g) => g.id)).toEqual(["1"]);
   });
@@ -144,5 +146,44 @@ describe("B19.7: ohne fällige Aufgaben bleibt ein knapper Tag „kaum freie Zei
     const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:30", bis: "18:00" } }, sperrenAm: () => [{ von: "10:00", bis: "23:59", titel: "Privat belegt", art: "privat" }], aufgaben: [] });
     expect(r.tage[0].ampel).toBe("frei");
     expect(ampelText(r.tage[0])).toBe("kaum freie Zeit (30 Min.)");
+  });
+});
+
+describe("B20.7: nur bis zur Kapazität, Rest mit Vorschlag, Konflikte nur an Arbeitstagen", () => {
+  it("Mo mit 60 Min. frei, 5 Aufgaben à 1 Std. → 1 eingeplant, 4 nicht eingeplant (240 Min.), Vorschlag „auf Di/Mi verteilen oder an die VA geben“", () => {
+    const r = planeTage({
+      start: "2026-11-02",
+      tage: 1,
+      arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:00" } },
+      sperrenAm: () => [],
+      aufgaben: ["1", "2", "3", "4", "5"].map((id) => a(id, { aufwand: "M" })),
+      vaVorhanden: true,
+    });
+    const mo = r.tage[0];
+    expect(mo.belegt).toBeLessThanOrEqual(mo.kapazitaet);
+    expect(mo.geplant).toHaveLength(1);
+    expect(mo.nichtEingeplant).toMatchObject({ anzahl: 4, minuten: 240 });
+    expect(mo.vorschlag).toBe("auf Di/Mi verteilen oder an die VA geben");
+    expect(ampelText(mo)).toBe("überbucht – 4 Aufgaben (240 Min.) nicht eingeplant (60 Min. frei)");
+  });
+  it("ohne VA nur „verteilen“; Freitag → Vorschlag Mo/Di (Wochenende übersprungen)", () => {
+    const r = planeTage({ start: "2026-11-06", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "5": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { faellig: "2026-11-06" }), a("2", { faellig: "2026-11-06" })] });
+    expect(r.tage[0].vorschlag).toBe("auf Mo/Di verteilen");
+  });
+  it("Fristen am freien Samstag: keine Konflikte am Samstag, kein „nicht eingeplant“ an freien Tagen", () => {
+    const r = planeTage({
+      start: "2026-11-07",
+      tage: 3,
+      arbeitszeit: ARBEITSZEIT_STANDARD,
+      sperrenAm: () => [],
+      aufgaben: Array.from({ length: 22 }, (_, i) => a(`s${i}`, { faellig: "2026-11-07", prioritaet: i % 2 ? "critical" : "normal", aufwand: "S" })),
+    });
+    const [sa, so, mo] = r.tage;
+    expect(sa.konflikte).toEqual([]);
+    expect(so.konflikte).toEqual([]);
+    expect(sa.nichtEingeplant).toBeUndefined();
+    expect(sa.ampel).toBe("frei");
+    // Montag nimmt die Aufgaben auf (22 × 15 Min. = 330 Min. passen in 8 Std.)
+    expect(mo.geplant.length).toBe(22);
   });
 });

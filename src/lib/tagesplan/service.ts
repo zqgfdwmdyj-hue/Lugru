@@ -163,6 +163,8 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
   // Heute: Überfälliges zählt als heute fällig. Blick in die Zukunft: was vorher fällig ist, wird vorher erledigt.
   const imPlan = meine.filter((x) => !x.dueDate || o.start <= o.heute || x.dueDate >= o.start);
   const gelernt = await gelernterAufwand(t);
+  // B20.7: Vorschlag „an die VA“ nur, wenn die VA (Discord) eingerichtet ist.
+  const vaVorhanden = Boolean(await (await import("@/lib/va/service")).vaKonfig(t).catch(() => null));
   const ergebnis = planeTage({
     start: o.start,
     tage,
@@ -173,6 +175,7 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
     arbeitszeit: az,
     sperrenAm: (tag) => sperren.get(tag) ?? [],
     vorziehen: s.tagesplan.vorziehen,
+    vaVorhanden,
   });
   const ueberfaellig = o.start <= o.heute ? meine.filter((x) => x.dueDate && x.dueDate < o.start).length : 0;
   if (ueberfaellig) hinweise.push(`${ueberfaellig} überfällige Aufgabe${ueberfaellig === 1 ? "" : "n"} zählt als heute fällig.`);

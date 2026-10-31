@@ -91,7 +91,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       {noData && <div className="notice notice-warn">Keine Abrechnungen und keine Aufträge in diesem Zeitraum. Amazon: Settlement-Reports unter „Daten importieren“; eBay/Temu kommen über die Anbindungen.</div>}
       {!noData && !tot.complete && (
         <div className="notice notice-warn" data-testid="profit-incomplete">
-          <strong>Unvollständige Daten:</strong> {missing.join(", ")} fehlen. Der „vorläufige“ Wert enthält nur bekannte Kosten; der Gewinn aus vollständig erfassten Verkäufen umfasst nur {tot.coverage} % des Umsatzes.{" "}
+          <strong>Unvollständige Daten:</strong> {missing.join(", ")} fehlen. Der „vorläufige“ Wert enthält nur bekannte Kosten; der Gewinn aus vollständig erfassten Verkäufen umfasst nur {basis.coverage} % des Umsatzes (gleiche Zahl wie in der Kachel).{" "}
           <Link href={fix}>Fehlende Werte nachtragen →</Link>
         </div>
       )}

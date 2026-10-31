@@ -44,6 +44,28 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
   for (const p of projectPayouts(verlauf, heute, ende)) posten.push({ datum: p.date, betrag: p.amount, label: "Amazon-Auszahlung (Ø letzte Abrechnungen)", art: "amazon", geschaetzt: true });
   quellen.push({ name: "Amazon-Auszahlungen", status: verlauf.length >= 2 ? "ok" : "keine_daten", hinweis: verlauf.length >= 2 ? `${verlauf.length} Abrechnungen` : "Abrechnungen (Settlement) importieren" });
 
+  // B20.5: Auszahlungsmitteilungen („Ihre Auszahlung ist unterwegs“ …) = konkreter Eingang in 3–5 Tagen. Ersetzt die
+  // nächstliegende geschätzte Amazon-Auszahlung (±7 Tage); fällt weg, sobald eine passende Gutschrift auf dem Konto ist.
+  const AZ = schema.amazonAuszahlungMeldungen;
+  const meldungen = await db.select().from(AZ).where(and(eq(AZ.tenantId, t), isNotNull(AZ.betrag), eq(AZ.waehrung, "EUR"), gte(AZ.erwartetBis, addDaysIso(heute, -7)))).orderBy(AZ.erwartetBis);
+  if (meldungen.length) {
+    const gutschriften = (await umsaetzeSeit(t, "geschaeft", null, addDaysIso(heute, -40))).filter((u) => u.betrag > 0);
+    const tage = (a: string, b: string) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86_400_000;
+    const dmy = (iso: string) => iso.slice(0, 10).split("-").reverse().join(".");
+    let offen = 0;
+    for (const a of meldungen) {
+      const gemeldet = a.gemeldetAm.toISOString().slice(0, 10);
+      const angekommen = gutschriften.some((u) => u.buchungstag >= gemeldet && Math.abs(u.betrag - a.betrag!) <= Math.max(0.5, a.betrag! * 0.005));
+      if (angekommen) continue;
+      const datum = a.erwartetBis < heute ? heute : a.erwartetBis;
+      const i = posten.findIndex((p) => p.art === "amazon" && p.geschaetzt && tage(p.datum, datum) <= 7);
+      if (i >= 0) posten.splice(i, 1);
+      posten.push({ datum, betrag: a.betrag!, label: `Amazon-Auszahlung${a.marktplatz ? ` ${a.marktplatz}` : ""} laut Mitteilung vom ${dmy(gemeldet)}${a.kontoEndung ? ` (Konto …${a.kontoEndung})` : ""} – erwartet ${dmy(a.erwartetVon)}–${dmy(a.erwartetBis)}`, art: "amazon", geschaetzt: false });
+      offen++;
+    }
+    quellen.push({ name: "Amazon-Auszahlungsmitteilungen", status: "ok", hinweis: offen ? `${offen} angekündigte Auszahlung${offen === 1 ? "" : "en"} noch nicht auf dem Konto (ersetzt die Schätzung)` : "alle angekündigten Auszahlungen sind auf dem Konto" });
+  }
+
   // eBay/Temu: Ø Auszahlung je Woche der letzten 28 Tage (sellerboard)
   const K = schema.sellerboardKpis;
   const kpi = await db
@@ -58,14 +80,29 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
       quellen.push({ name: kanal === "ebay" ? "eBay" : "Temu", status: "ok", hinweis: `${k.tage} Tage sellerboard` });
       continue;
     }
-    // B19.8: Temu kennt sellerboard meist nicht – Ersatz aus den Temu-Aufträgen im System (Basispreis = Auszahlung, ohne Gebühr).
+    // B19.8/B20.9: Temu kennt sellerboard meist nicht – Ersatz aus denselben Temu-Aufträgen wie auf der Gewinn-Seite
+    // (Positionspreis = Auszahlung ohne Gebühr; fehlt er, der Auftragsbetrag aus dem Temu-Export bzw. der Anbindung).
     if (kanal === "temu") {
       const { orderLines } = await import("./profit");
-      const zeilen = (await orderLines(t, addDaysIso(heute, -28), addDaysIso(heute, -1)).catch(() => [])).filter((z) => z.channel === "temu" && z.price !== null);
-      const summe = zeilen.reduce((n, z) => n + Number(z.price) * z.qty, 0);
+      const alle = (await orderLines(t, addDaysIso(heute, -28), addDaysIso(heute, -1)).catch(() => [])).filter((z) => /temu/i.test(z.channel));
+      const mitPreis = alle.filter((z) => z.price !== null);
+      let summe = mitPreis.reduce((n, z) => n + Number(z.price) * z.qty, 0);
+      const ohnePreis = [...new Set(alle.filter((z) => z.price === null).map((z) => z.orderId))];
+      let ausBetrag = 0;
+      if (ohnePreis.length) {
+        const O = schema.orders;
+        const [b] = await db.select({ summe: sql<number>`coalesce(sum(${O.total}), 0)::float`, n: sql<number>`count(${O.total})::int` }).from(O).where(and(eq(O.tenantId, t), inArray(O.id, ohnePreis)));
+        summe += b?.summe ?? 0;
+        ausBetrag = b?.n ?? 0;
+      }
+      const auftraege = new Set(alle.map((z) => z.orderId)).size;
       if (summe > 0) {
         posten.push(...woechentlich({ betragProWoche: summe / 4, heute, wochen, label: "Temu-Auszahlungen (Ø Temu-Aufträge 28 Tage, geschätzt)", art: "temu" }));
-        quellen.push({ name: "Temu", status: "ok", hinweis: `aus ${new Set(zeilen.map((z) => z.orderId)).size} Temu-Aufträgen der letzten 28 Tage (Basispreis, geschätzt)` });
+        quellen.push({ name: "Temu", status: "ok", hinweis: `aus ${auftraege} Temu-Aufträgen der letzten 28 Tage (Basispreis${ausBetrag ? `, ${ausBetrag} davon aus dem Auftragsbetrag` : ""}, geschätzt) – gleiche Aufträge wie auf der Gewinn-Seite` });
+        continue;
+      }
+      if (auftraege) {
+        quellen.push({ name: "Temu", status: "keine_daten", hinweis: `${auftraege} Temu-Aufträge der letzten 28 Tage, aber ohne Preis und Betrag – Temu-Bestellexport hochladen, dann fließen sie ein` });
         continue;
       }
     }

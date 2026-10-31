@@ -16,8 +16,11 @@ export type Geplant = PlanAufgabe & { von: string; bis: string };
 export type Verschoben = PlanAufgabe & { neu: string };
 export type Konflikt = { aufgabeId: string; titel: string; text: string };
 /** Anzeige der Tages-Ampel („frei“ mit Arbeitszeit = keine bzw. kaum freie Zeit). */
-export function ampelText(p: Pick<TagPlan, "ampel" | "arbeitszeit" | "kapazitaet"> & { zuViel?: number }): string {
+export function ampelText(p: Pick<TagPlan, "ampel" | "arbeitszeit" | "kapazitaet"> & { zuViel?: number; nichtEingeplant?: TagPlan["nichtEingeplant"] }): string {
   if (p.ampel === "frei") return !p.arbeitszeit ? "frei" : p.kapazitaet > 0 ? `kaum freie Zeit (${p.kapazitaet} Min.)` : "keine freie Zeit";
+  // B20.7: eingeplant wird nur bis zur Kapazität – der Rest steht als „nicht eingeplant (x Aufgaben, y Min.)“.
+  const n = p.nichtEingeplant;
+  if (p.ampel === "rot" && n?.anzahl) return `überbucht – ${n.anzahl} Aufgabe${n.anzahl === 1 ? "" : "n"} (${n.minuten} Min.) nicht eingeplant (${p.kapazitaet} Min. frei)`;
   // B19.7: überbucht mit Zahl – fällige Aufgaben brauchen mehr Zeit, als frei ist.
   if (p.ampel === "rot" && p.zuViel) return `überbucht – ${p.zuViel} Min. zu viel (${p.kapazitaet} Min. frei)`;
   return { gruen: "passt", gelb: "voll", rot: "überbucht" }[p.ampel];
@@ -37,7 +40,13 @@ export type TagPlan = {
   bedarf?: number;
   /** B19.7: Bedarf über der freien Zeit (0 = passt). */
   zuViel?: number;
+  /** B20.7: fällige Aufgaben, die an diesem Arbeitstag nicht mehr in die freie Zeit passen (nur an Arbeitstagen). */
+  nichtEingeplant?: { anzahl: number; minuten: number; ids: string[] };
+  /** B20.7: Vorschlag für den Rest, z. B. „auf Mi/Do verteilen oder an die VA geben“. */
+  vorschlag?: string;
 };
+
+const TAG_KURZ = ["", "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 const min = (hhmm: string) => {
   const [h, m] = hhmm.split(":").map(Number);
@@ -188,7 +197,7 @@ export function planeTag(tag: string, kandidaten: PlanAufgabe[], az: { von: stri
  * mit neuem Datum). Konflikte: Frist fällt auf einen Tag ohne Kapazität (z. B. Auszeit) oder wichtige Aufgabe passt
  * heute nicht mehr.
  */
-export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgabe[]; arbeitszeit: Arbeitszeit; sperrenAm: (tag: string) => Sperre[]; vorziehen?: number }): { tage: TagPlan[]; verschoben: Verschoben[]; ohneFrist: PlanAufgabe[] } {
+export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgabe[]; arbeitszeit: Arbeitszeit; sperrenAm: (tag: string) => Sperre[]; vorziehen?: number; vaVorhanden?: boolean }): { tage: TagPlan[]; verschoben: Verschoben[]; ohneFrist: PlanAufgabe[] } {
   const vorziehen = o.vorziehen ?? 2;
   const offen = new Map(o.aufgaben.filter((a) => a.faellig).map((a) => [a.id, a]));
   const tage: TagPlan[] = [];
@@ -201,6 +210,8 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
   for (const a of offen.values()) {
     if (!a.faellig || a.faellig < o.start || a.faellig > ende) continue;
     const az = o.arbeitszeit[String(wochentag(a.faellig))] ?? null;
+    // B20.7: Konflikte nur an Arbeitstagen – eine Frist am freien Samstag ist kein Konflikt (erledigt wird sie vorher/danach).
+    if (!az) continue;
     const s = sperren(a.faellig);
     const ganz = s.find((x) => x.ganztags && x.art !== "reserviert");
     if (ganz || !az || !freieFenster(az, s).length) {
@@ -230,9 +241,16 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
     }
     if (plan.kapazitaet > 0) plan.auslastung = Math.round((plan.belegt / plan.kapazitaet) * 100);
     for (const g of plan.geplant) offen.delete(g.id);
+    // B20.7: was an einem Arbeitstag nicht mehr passt, steht als „nicht eingeplant“ mit Vorschlag (verteilen / an die VA).
+    if (az && rest.length) {
+      plan.nichtEingeplant = { anzahl: rest.length, minuten: rest.reduce((n, r) => n + AUFWAND_MIN[r.aufwand], 0), ids: rest.map((r) => r.id) };
+      const t1 = naechsterArbeitstag(tag, o.arbeitszeit, sperren);
+      const t2 = naechsterArbeitstag(t1, o.arbeitszeit, sperren);
+      plan.vorschlag = `auf ${TAG_KURZ[wochentag(t1)]}/${TAG_KURZ[wochentag(t2)]} verteilen${o.vaVorhanden ? " oder an die VA geben" : ""}`;
+    }
     for (const r of rest) {
       if (!verschoben.has(r.id)) verschoben.set(r.id, { ...r, neu: plusTage(tag, 1) });
-      if (r.prioritaet === "critical" && r.faellig === tag)
+      if (az && r.prioritaet === "critical" && r.faellig === tag)
         plan.konflikte.push({ aufgabeId: r.id, titel: r.titel, text: plan.kapazitaet < KAUM_ZEIT_MIN ? `Frist fällt auf einen Tag mit nur ${plan.kapazitaet} Min. freier Zeit – verschoben` : "Wichtig und heute fällig, passt aber nicht mehr in den Tag" });
     }
     plan.konflikte.push(...(konfliktAm.get(tag) ?? []));

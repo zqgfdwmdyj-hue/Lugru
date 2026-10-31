@@ -39,6 +39,12 @@ export async function TodayInsights({ session }: { session: Session }) {
             {reorder.byUrgency.ueberfaellig + reorder.byUrgency.jetzt} jetzt bzw. überfällig · {reorder.byUrgency.bald} bald ·{" "}
             <span title={KAPITALBEDARF_DEFINITION} data-testid="reorder-teaser-capital" style={{ textDecoration: "underline dotted", cursor: "help" }}>Kapitalbedarf netto <strong>{eur0(reorder.capital)}</strong></span> ({reorder.withCapital} Artikel mit gültigem EK{reorder.rote ? ` · ${reorder.rote} mit roter Kapital-Ampel nicht gezählt` : ""}{reorder.angelegt ? ` · ${reorder.angelegt} schon angelegt` : ""})
           </div>
+          {reorder.pruefen.length > 0 && (
+            <div className="small" style={{ marginTop: 4 }} data-testid="reorder-teaser-pruefen">
+              <Link href="/einkauf/vorschlaege?weg=sellerboard#pruefen">+ {reorder.pruefen.length} zu prüfen ({eur0(reorder.pruefenKapital)})</Link>
+              <span className="muted"> – Minus-Marge, Kaufquote 0 % oder über 10.000 €, nicht in der Summe</span>
+            </div>
+          )}
           {(reorder.noEk > 0 || reorder.returns > 0 || reorder.noSource > 0) && (
             <div className="small" style={{ marginTop: 4 }}>
               <span className="muted">Prüfen: </span>

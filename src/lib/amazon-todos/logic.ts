@@ -1,6 +1,7 @@
 // Amazon-ToDos: Grobfilter, KI-Auftrag und -Antwort, Einstufung ohne KI, automatisches Erledigen.
 // Ohne Server-Abhängigkeiten, damit alles mit Beispielmails testbar ist.
 
+import { AUSZAHLUNG_BETREFF_RE, BEWERTUNG_RE, BUYBOX_RE } from "./mail-muster";
 import { BESTELL_MAIL_RE, FBA_VERSAND_RE } from "./versand";
 
 export type TodoPriority = "high" | "medium" | "low";
@@ -46,8 +47,21 @@ export const NOISE_SUBJ: RegExp[] = [
   /amazon hat ihre artikel versandt|verkauft[,!]? jetzt (liefern|versenden)|sold[,!]? ship now|kapazitätslimit|capacity limit|inventory (storage )?limits?/i, // Routine
 ];
 
-export function noiseReason(m: { from: string; subject: string }): string | null {
+/**
+ * B20.5: Mails, die die Fall-Zentrale selbst erledigt – Auszahlung → Liquidität, Bewertungsanfrage → Archiv,
+ * Buy-Box-Hinweis → ein Sammel-ToDo je Land. Weder Einzel-ToDo noch Posteingangs-Aufgabe.
+ */
+export function vonFallZentraleErledigt(m: { subject: string; text?: string | null }): string | null {
+  if (AUSZAHLUNG_BETREFF_RE.test(m.subject)) return "Auszahlungsmitteilung – Liquidität";
+  if (BEWERTUNG_RE.test(m.subject)) return "Bewertungsanfrage – Archiv";
+  if (BUYBOX_RE.test(`${m.subject}\n${(m.text ?? "").slice(0, 600)}`)) return "Buy-Box-Hinweis – Sammel-ToDo je Land";
+  return null;
+}
+
+export function noiseReason(m: { from: string; subject: string; text?: string | null }): string | null {
   if (!isAmazonSystemMail(m.from)) return "kein Amazon-Systemabsender";
+  const b20 = vonFallZentraleErledigt(m);
+  if (b20) return b20;
   // Bestell-Mails folgen dem Auftrag (Versand-Abgleich), FBA-Versandinfos werden archiviert – nie ein ToDo.
   if (BESTELL_MAIL_RE.test(m.subject)) return "Bestell-Mail – folgt dem Auftrag";
   if (FBA_VERSAND_RE.test(m.subject)) return "FBA-Versandinfo";

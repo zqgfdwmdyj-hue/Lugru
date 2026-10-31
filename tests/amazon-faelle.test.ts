@@ -249,3 +249,68 @@ describe("B19.4: Einkauf/Versand/Zahlung sind keine Fälle, Gruppierung je Beste
     expect(echterFall({ status: "info", bereich: "info", unsicher: false })).toBe(false);
   });
 });
+
+// B20.5: Auszahlungen, Bewertungsanfragen, Versandmails, Buy-Box-Hinweise und „bitte prüfen“ (erfundene Mails).
+import { routineArt } from "@/lib/amazon-faelle/logic";
+import { auszahlungAus } from "@/lib/amazon-todos/mail-muster";
+import { noiseReason } from "@/lib/amazon-todos/logic";
+
+describe("B20.5 Fall-Zentrale-Regeln", () => {
+  const fr = "Amazon <donotreply@amazon.com>";
+  it("Auszahlungsmitteilung in allen Sprachen → Routine „auszahlung“, nie A-bis-z (auch mit A-bis-z-Fußzeile)", () => {
+    const e = einordnen({ from: fr, subject: "Votre paiement est en cours", text: "Montant : 369,71 € vers le compte bancaire se terminant par 123. Le versement devrait arriver dans 3 à 5 jours ouvrables.\n\nGarantie de A à Z : en savoir plus.", date: D }, { heute: HEUTE });
+    expect(e).toMatchObject({ routine: true, routineArt: "auszahlung", bereich: "info" });
+    expect(e.bereich).not.toBe("a_bis_z");
+    expect(e.frist).toBeNull();
+    for (const b of ["Ihre Auszahlung ist unterwegs", "Your payment is on its way", "Il tuo pagamento è in corso", "Tu pago está en camino", "Tentative de versement"]) expect(routineArt(b, fr)).toBe("auszahlung");
+  });
+  it("Betrag, Konto-Endung und erwarteter Eingang (3–5 Tage) aus der Mitteilung", () => {
+    expect(auszahlungAus({ subject: "Votre paiement est en cours", text: "Montant : 369,71 € vers le compte se terminant par 123.", date: "2026-10-31T08:00:00Z" })).toEqual({ betrag: 369.71, waehrung: "EUR", kontoEndung: "123", datum: "2026-10-31", erwartetVon: "2026-11-03", erwartetBis: "2026-11-05" });
+    expect(auszahlungAus({ subject: "Your payment is on its way", text: "Amount: EUR 1,115.52 to the bank account ending in 4711", date: "2026-10-31T08:00:00Z" })).toMatchObject({ betrag: 1115.52, kontoEndung: "4711" });
+    expect(auszahlungAus({ subject: "Ihre Auszahlung ist unterwegs", text: "Betrag 115,52 € auf das Konto ****4711", date: "2026-10-31T08:00:00Z" })).toMatchObject({ betrag: 115.52, kontoEndung: "4711" });
+  });
+  it("„paiement en cours / Zahlung wird bearbeitet“ ohne Auszahlungs-Absender → Info, nicht A-bis-z", () => {
+    expect(routineArt("Paiement en cours pour la commande 405-1234567-1234567", "Amazon <seller-notification@amazon.fr>")).toBe("zahlung");
+    const e = einordnen({ from: de, subject: "Zahlung wird bearbeitet", text: "Ihre Zahlung wird bearbeitet. Informationen zur A-bis-z-Garantie finden Sie hier.", date: D }, { heute: HEUTE });
+    expect(e).toMatchObject({ routine: true, bereich: "info" });
+  });
+  it("Bewertungsanfragen → Routine „bewertung“, nie „Antwort nötig“ – auch mit Fall-ID", () => {
+    for (const s of ["Transaktion bewerten", "Recensione del tuo ordine", "How did we do? Rate your support experience"]) {
+      const e = einordnen({ from: de, subject: s, text: "Bitte antworten Sie auf diese kurze Umfrage.", date: D }, { heute: HEUTE });
+      expect(e.routineArt).toBe("bewertung");
+      expect(e.phase).not.toBe("antwort_noetig");
+    }
+    const mitFall = einordnen({ from: "Amazon Seller Support <sellersupport@amazon.de>", subject: "Bewerten Sie Ihre Erfahrung – Fall-ID 12345678901", text: "Bitte antworten Sie mit einer Bewertung.", date: D }, { heute: HEUTE });
+    expect(mitFall).toMatchObject({ routine: true, routineArt: "bewertung" });
+  });
+  it("„Versendet:“, „expédié“, „Spedito“ → Versand (Archiv)", () => {
+    for (const s of ["Versendet: „Erfundo Pfanne 28 cm“", "Votre colis a été expédié", "Spedito: Erfundo Pfanne"]) expect(routineArt(s)).toBe("versand");
+  });
+  it("Buy-Box-Hinweis in allen Sprachen → „buybox“ (ein ToDo je Land, kein Fall)", () => {
+    const faelle = [
+      { from: de, subject: "Ihr Angebot ist nicht für das Einkaufswagen-Feld berechtigt", text: "SKU TEST-BB-1 · ASIN B0TESTBB01" },
+      { from: "Amazon <seller-notification@amazon.co.uk>", subject: "Action may be needed", text: "Your offer for ASIN B0TESTBB02 is not eligible for the Featured Offer (Buy Box)." },
+      { from: "Amazon <seller-notification@amazon.fr>", subject: "Votre offre n'est pas éligible à l'offre mise en avant", text: "ASIN B0TESTBB03" },
+      { from: "Amazon <seller-notification@amazon.it>", subject: "La tua offerta non è idonea per l'offerta in evidenza", text: "ASIN B0TESTBB04" },
+      { from: "Amazon <seller-notification@amazon.es>", subject: "Tu oferta no es apta para la oferta destacada", text: "ASIN B0TESTBB05" },
+    ];
+    for (const m of faelle) {
+      const e = einordnen({ ...m, date: D }, { heute: HEUTE });
+      expect(e.routineArt, m.subject).toBe("buybox");
+      expect(e.routine).toBe(true);
+    }
+    expect(einordnen({ ...faelle[2], date: D }, { heute: HEUTE }).marktplatz).toBe("FR");
+  });
+  it("A-bis-z/Kontozustand nur im Text (Fußzeile) → „bitte prüfen“ in Sonstiges, ohne Standardfrist", () => {
+    const fuell = "Allgemeine Informationen zu Ihrem Verkäuferkonto und zu neuen Funktionen in Seller Central. ".repeat(8);
+    const e = einordnen({ from: de, subject: "Hinweis zu Ihrem Konto", text: `${fuell}\n\nMehr zur A-bis-z-Garantie und zum Kontozustand finden Sie in Seller Central.`, date: D }, { heute: HEUTE });
+    expect(e.bereich).toBe("sonstiges");
+    expect(e.sicherheit).toBeLessThan(0.6);
+    expect(e.fristQuelle).not.toBe("standard");
+  });
+  it("Amazon-ToDos legen dafür keine Einzel-ToDos an", () => {
+    expect(noiseReason({ from: fr, subject: "Votre paiement est en cours" })).toMatch(/Auszahlung/);
+    expect(noiseReason({ from: de, subject: "Transaktion bewerten" })).toMatch(/Bewertung/);
+    expect(noiseReason({ from: de, subject: "Wichtige Information", text: "Ihr Angebot ist nicht für das Einkaufswagen-Feld berechtigt." })).toMatch(/Buy-Box/);
+  });
+});

@@ -69,6 +69,7 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
             <div><strong>{dm(t.tag)}</strong></div>
             <span className={`tag ${AMPEL[t.ampel][0]}`} data-testid="tagesplan-ampel">{ampelText(t)}</span>
             <div className="muted" style={{ marginTop: 4 }}>{t.kapazitaet ? `${std(t.belegt)} von ${std(t.kapazitaet)}` : t.arbeitszeit ? "Arbeitszeit belegt" : "keine Arbeitszeit"}</div>
+            {t.nichtEingeplant && <div className="muted" data-testid="tagesplan-nicht-eingeplant-kurz">{t.nichtEingeplant.anzahl} nicht eingeplant</div>}
             {t.konflikte.length > 0 && <div style={{ color: "var(--danger)" }}>{t.konflikte.length} Konflikt{t.konflikte.length === 1 ? "" : "e"}</div>}
           </Link>
         ))}
@@ -84,6 +85,12 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
               Kapazität {std(d.kapazitaet)} · eingeplant {std(d.belegt)}
               {d.auslastung !== null ? ` (${d.auslastung} %)` : ""}
             </div>
+            {d.nichtEingeplant && (
+              <div className="notice notice-info small" style={{ margin: "10px 0" }} data-testid="tagesplan-nicht-eingeplant">
+                <strong>Nicht eingeplant ({d.nichtEingeplant.anzahl} Aufgabe{d.nichtEingeplant.anzahl === 1 ? "" : "n"}, {d.nichtEingeplant.minuten} Min.)</strong> – passt nicht mehr in die freie Zeit ({d.kapazitaet} Min.).
+                {d.vorschlag ? <> Vorschlag: {d.vorschlag}{p.verschoben.length ? <> – <a href="#verschoben">neue Termine übernehmen</a></> : null}.</> : null}
+              </div>
+            )}
             {d.konflikte.length > 0 && (
               <ul className="notice notice-warn small" style={{ margin: "10px 0", paddingLeft: 24 }} data-testid="tagesplan-konflikte">
                 {d.konflikte.map((k, i) => (
@@ -133,7 +140,7 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
           </div>
 
           {p.verschoben.length > 0 && (
-            <div className="card card-pad" data-testid="tagesplan-verschoben">
+            <div className="card card-pad" id="verschoben" data-testid="tagesplan-verschoben">
               <h3 style={{ marginTop: 0 }}>Bewusst verschoben ({p.verschoben.length})</h3>
               <div className="small muted">Passt nicht mehr in den Tag – vorgeschlagen ist der nächste Tag mit Platz.</div>
               <table className="table" style={{ marginTop: 8 }}>

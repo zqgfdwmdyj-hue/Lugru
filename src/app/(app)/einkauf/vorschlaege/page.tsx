@@ -116,8 +116,8 @@ function SellerboardWay({ sp, data, ampel, angelegt, kaufquoten }: { sp: SP; dat
         </div>
       </div>
       {k.pruefen.length > 0 && (
-        <div className="card card-pad small" data-testid="reorder-pruefen">
-          <strong>Prüfen – nicht in der Summe ({k.pruefen.length} Artikel, {eur0(k.pruefenKapital)}):</strong> Minus-Marge oder Kaufquote 0 % in den letzten 30 Tagen. Erst Preis/Listing/Nachfrage prüfen, dann bewusst nachbestellen.
+        <div className="card card-pad small" id="pruefen" data-testid="reorder-pruefen">
+          <strong>Prüfen – nicht in der Summe ({k.pruefen.length} Artikel, {eur0(k.pruefenKapital)}):</strong> Minus-Marge oder Kaufquote 0 % in den letzten 30 Tagen (gleiche Zahl wie auf der Hebel-Seite) oder ein Posten über 10.000 €. Erst Preis/Listing/Nachfrage prüfen, dann bewusst nachbestellen.
           <table className="table small" style={{ marginTop: 6 }}>
             <thead><tr><th>Artikel</th><th>Grund</th><th className="right">Menge</th><th className="right">Kapital netto</th></tr></thead>
             <tbody>

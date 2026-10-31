@@ -4,6 +4,7 @@
 
 import { deadlineFromText, extractAsins, extractSkus, marktplatzAus } from "@/lib/amazon-todos/logic";
 import { BESTELL_MAIL_RE, FBA_VERSAND_RE } from "@/lib/amazon-todos/versand";
+import { AUSZAHLUNG_ABSENDER_RE, AUSZAHLUNG_BETREFF_RE, BEWERTUNG_RE, BUYBOX_RE, ZAHLUNG_IN_BEARBEITUNG_RE } from "@/lib/amazon-todos/mail-muster";
 
 export const BEREICHE = ["freischaltung", "fall", "erstattung_kunde", "entschaedigung", "marke", "angebot", "kontozustand", "a_bis_z", "fba_sendung", "info", "sonstiges"] as const;
 export type Bereich = (typeof BEREICHE)[number];
@@ -166,22 +167,27 @@ const ROUTINE_RE = [
 const EINKAUF_RE = /amazon business[^\n]{0,40}(?:bestellung|order|ordine|commande|pedido|bestelling|zamówieni|beställning)|(?:bestellung|order|ordine|commande|pedido|bestelling|zamówieni|beställning)[^\n]{0,40}amazon business|(?:ihre|deine|your|votre|ta|tu|il tuo|la tua|uw|je|twoje|din) (?:amazon(?:\.[a-z.]+)?[- ]?)?(?:bestellung|order|commande|pedido|ordine|bestelling|zamówienie|beställning)\b/i;
 /** Wort-Grenzen auch für Umlaute/Akzente („expédié“, „płatność“) – \b kennt nur ASCII. */
 const wort = (muster: string) => new RegExp(muster.replace(/\\b/g, "(?:(?<![\\p{L}\\p{N}])(?=[\\p{L}\\p{N}])|(?<=[\\p{L}\\p{N}])(?![\\p{L}\\p{N}]))"), "iu");
-const VERSAND_RE = wort(String.raw`\ba expédié\b|\bexpédiée?s?\b|\bè stat[oa] spedit[oa]\b|\bspedit[oa]\b|\bha sido enviad[oa]\b|\bse ha enviado\b|\bis verzonden\b|\bzostał[oa]? wysłan[aey]?\b|\bhar skickats\b|\bist unterwegs\b|\bon (?:its|the) way\b|\bout for delivery\b|\ben cours de livraison\b|\bin consegna\b|\ben reparto\b`);
+const VERSAND_RE = wort(String.raw`\bversendet\b|\ba expédié\b|\bexpédiée?s?\b|\bè stat[oa] spedit[oa]\b|\bspedit[oa]\b|\bha sido enviad[oa]\b|\bse ha enviado\b|\bis verzonden\b|\bzostał[oa]? wysłan[aey]?\b|\bhar skickats\b|\bist unterwegs\b|\bon (?:its|the) way\b|\bout for delivery\b|\ben cours de livraison\b|\bin consegna\b|\ben reparto\b`);
 const ZAHLUNG = String.raw`\b(?:pagamento|payment|zahlung|paiement|pago|betaling|płatność|betalning)\b[^\n]{0,30}`;
 const ZAHLUNG_FEHLER_RE = wort(String.raw`${ZAHLUNG}\b(?:rifiutat[oa]|non riuscit[oa]|declined|failed|abgelehnt|fehlgeschlagen|refusé|échoué|rechazad[oa]|fallid[oa]|geweigerd|mislukt|odrzucon[aey]|nieudan[aey]|nekad|misslyckad)\b`);
 const ZAHLUNG_OK_RE = wort(String.raw`${ZAHLUNG}\b(?:elaborat[oa]|riuscit[oa]|ricevut[oa]|confermat[oa]|received|processed|successful|confirmed|erfolgreich|eingegangen|bestätigt|verarbeitet|reçu|accepté|effectué|réussi|recibid[oa]|procesad[oa]|realizad[oa]|confirmad[oa]|ontvangen|geslaagd|verwerkt|przyjęt[aey]|zrealizowan[aey]|mottagen|genomförd)\b|\bcon successo\b|\berfolgreich (?:verarbeitet|abgeschlossen)\b|\bsuccessfully processed\b|\btraité avec succès\b|\bprocesado correctamente\b`);
 /** „erfolgreich/elaborato/successo“ – nie A-bis-z (B19.4). */
 export const ERFOLG_RE = wort(String.raw`\berfolgreich\b|\belaborat[oa]\b|\bsuccess(?:o|ful(?:ly)?)?\b|\bréussi\b|\bavec succès\b|\bexitos[oa]\b|\bcorrectamente\b|\bgeslaagd\b`);
 
-export type RoutineArt = "bestellung" | "versand" | "zahlung" | "zahlung_fehler" | "auszahlung";
+/** B20.5: „bewertung“ (Bewertungsanfrage → Archiv), „buybox“ (Buy-Box-Hinweis → ein ToDo je Land, kein Fall). */
+export type RoutineArt = "bestellung" | "versand" | "zahlung" | "zahlung_fehler" | "auszahlung" | "bewertung" | "buybox";
 
 /** Echte Fall-Themen im Betreff gehen vor Routine (A-bis-z zu „your order“ bleibt ein Fall). */
 const FALL_IM_BETREFF = (b: string) => RE.a_bis_z.test(b) || RE.marke.test(b) || RE.kontozustand.test(b) || RE.freischaltung.test(b) || RE.entschaedigung.test(b);
 
-/** Welche Routine-Mail (nur Betreff) – null = keine. */
-export function routineArt(betreff: string): RoutineArt | null {
+/** Welche Routine-Mail (Betreff, beim Zahlungsstatus auch der Absender) – null = keine. */
+export function routineArt(betreff: string, absender?: string | null): RoutineArt | null {
   if (ZAHLUNG_FEHLER_RE.test(betreff)) return "zahlung_fehler";
+  // B20.5: Auszahlungsmitteilungen → Liquidität; „Zahlung wird bearbeitet / paiement en cours“ → Info, nie A-bis-z.
+  if (AUSZAHLUNG_BETREFF_RE.test(betreff)) return "auszahlung";
+  if (ZAHLUNG_IN_BEARBEITUNG_RE.test(betreff)) return absender && AUSZAHLUNG_ABSENDER_RE.test(absender) ? "auszahlung" : "zahlung";
   if (ZAHLUNG_OK_RE.test(betreff)) return "zahlung";
+  if (BEWERTUNG_RE.test(betreff)) return "bewertung";
   if (ROUTINE_RE[4].test(betreff) || ROUTINE_RE[3].test(betreff)) return "auszahlung";
   if (FALL_IM_BETREFF(betreff)) return null;
   if (ROUTINE_RE[1].test(betreff) || VERSAND_RE.test(betreff) || /versandbestätigung|has shipped|wurde (?:versandt|zugestellt)|\bzugestellt\b|\bdelivered\b/i.test(betreff)) return "versand";
@@ -254,7 +260,8 @@ export function einordnen(
   const asins = extractAsins(hay);
   const skus = extractSkus(hay);
   const { land } = marktplatzAus(m.from, `${m.subject}\n${m.text}`);
-  const rArt = fallnummer ? null : routineArt(m.subject);
+  // B20.5: Bewertungsanfragen auch mit Fall-ID nie als Antwort im Fall; Buy-Box-Hinweise → ein ToDo je Land statt Fall.
+  const rArt: RoutineArt | null = fallnummer ? (BEWERTUNG_RE.test(m.subject) ? "bewertung" : null) : (routineArt(m.subject, m.from) ?? (BUYBOX_RE.test(kopf) ? "buybox" : null));
   const routine = rArt !== null;
   const bestellnummer = /\b\d{3}-\d{7}-\d{7}\b/.exec(hay)?.[0] ?? null;
   const shipmentId = /\bFBA[A-Z0-9]{8,10}\b/.exec(hay)?.[0] ?? null;
@@ -281,6 +288,12 @@ export function einordnen(
     } else if (imText) {
       bereich = imText;
       sicherheit = 0.7;
+    }
+    // B20.5: Kategorien mit harter Frist (A-bis-z, Kontozustand) nur, wenn das Thema im Betreff/Anfang steht – ein
+    // Treffer nur im Text (oft Fußzeile/Links) wird „bitte prüfen“ in „Sonstiges“, ohne Standardfrist und ohne VA.
+    if (!imKopf && !fallnummer && (bereich === "a_bis_z" || bereich === "kontozustand")) {
+      bereich = "sonstiges";
+      sicherheit = 0.4;
     }
     // B19.4: „Zahlung erfolgreich / elaborato con successo“ ist nie A-bis-z (A-bis-z-Hinweis steht oft nur in der Fußzeile).
     if (bereich === "a_bis_z" && ERFOLG_RE.test(m.subject)) {

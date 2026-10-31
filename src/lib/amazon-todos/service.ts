@@ -72,7 +72,7 @@ async function runOnce(tenantId: string, sinceDays: number, max: number): Promis
   }));
 
   // 1. Grobfilter ohne KI.
-  const noise = candidates.filter((c) => !pflichtKeys.has(c.key)).map((c) => ({ c, reason: noiseReason({ from: `${c.fromName ?? ""} <${c.fromAddress ?? ""}>`, subject: c.subject ?? "" }) }));
+  const noise = candidates.filter((c) => !pflichtKeys.has(c.key)).map((c) => ({ c, reason: noiseReason({ from: `${c.fromName ?? ""} <${c.fromAddress ?? ""}>`, subject: c.subject ?? "", text: c.body }) }));
   const filtered = noise.filter((n) => n.reason);
   if (filtered.length) {
     await db.insert(SEEN).values(filtered.map((n) => ({ tenantId, messageKey: n.c.key, reason: `Grobfilter: ${n.reason}` }))).onConflictDoNothing();

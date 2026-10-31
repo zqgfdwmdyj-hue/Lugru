@@ -11,7 +11,7 @@ import { empfaengerAus } from "@/lib/mail/ordner";
 import { getSettings } from "@/lib/settings";
 import { classifyMail, MANUAL_RULE, marktplatzQuelle, regelFuer, TOPIC_LABEL, type Classification, type Topic } from "./classify";
 import { istBestellMail } from "@/lib/amazon-todos/versand";
-import { noiseReason } from "@/lib/amazon-todos/logic";
+import { isAmazonSystemMail, noiseReason, vonFallZentraleErledigt } from "@/lib/amazon-todos/logic";
 
 export type ParsedMail = {
   messageKey: string;
@@ -217,7 +217,8 @@ async function createMailTask(
   // Amazon-Systemmails (Produktsicherheit, Reaktivierung, Echtheitsprüfung …) führt das Modul
   // Amazon-ToDos mit Frist und KI-Einstufung – hier keine zusätzliche Einzelaufgabe.
   const fromLine = `${mail.fromName ?? ""} <${mail.fromAddress}>`;
-  const handledByTodos = !opts.erzwingen && noiseReason({ from: fromLine, subject: mail.subject }) === null && !KEEP_AS_TASK.has(c.topic);
+  // B20.5: Auszahlung, Bewertungsanfrage, Buy-Box-Hinweis erledigt die Fall-Zentrale – auch keine Einzelaufgabe.
+  const handledByTodos = !opts.erzwingen && ((noiseReason({ from: fromLine, subject: mail.subject }) === null && !KEEP_AS_TASK.has(c.topic)) || (isAmazonSystemMail(fromLine) && vonFallZentraleErledigt({ subject: mail.subject }) !== null));
   if ((c.category === "critical" || c.category === "action") && !handledByTodos) {
     const refs = Object.values(c.references).join(" · ");
     const due = c.dueInDays !== null ? addDaysIso(todayIso(mail.receivedAt), c.dueInDays) : null;

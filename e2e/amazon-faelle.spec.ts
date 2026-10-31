@@ -134,11 +134,11 @@ test.describe("Amazon-Fall-Zentrale", () => {
     await expect(page.getByTestId("faelle-meldung")).toContainText("neu eingestuft");
     // Keine Vorgänge aus Bestell-/Zahlungsmails; beim nächsten Lauf werden sie nicht erneut gelesen.
     expect((await sql<{ n: string }>("select count(*) n from amazon_vorgaenge where tenant_id = $1 and (titel like $2 or titel like $3)", [T, `Verkauft, Jetzt liefern%${m}`, `Tu pago%${m}`]))[0].n).toBe("0");
-    expect((await sql<{ n: string }>("select count(*) n from amazon_mail_uebersprungen u join emails e on e.id = u.email_id where u.tenant_id = $1 and e.subject like $2 and u.grund = 'routine'", [T, `%${m}`]))[0].n).toBe("2");
-    // Altlast: kein Fall mehr, grau, Marktplatz FR, Verlauf nennt den Grund
+    expect((await sql<{ n: string }>("select count(*) n from amazon_mail_uebersprungen u join emails e on e.id = u.email_id where u.tenant_id = $1 and e.subject like $2 and u.grund like 'routine%'", [T, `%${m}`]))[0].n).toBe("2");
+    // Altlast: kein Fall mehr, grau, Marktplatz FR, Verlauf nennt den Grund (B20.5: Versandmail → Archiv, erledigt)
     const [neu] = await sql<{ bereich: string; status: string; dringlichkeit: string; marktplatz: string | null; frist: string | null }>("select bereich, status, dringlichkeit, marktplatz, frist from amazon_vorgaenge where id = $1", [alt.id]);
-    expect(neu).toMatchObject({ bereich: "info", status: "info", dringlichkeit: "grau", marktplatz: "FR", frist: null });
+    expect(neu).toMatchObject({ bereich: "info", status: "erledigt", dringlichkeit: "grau", marktplatz: "FR", frist: null });
     await page.goto(`/amazon-faelle/${alt.id}`);
-    await expect(page.locator("body")).toContainText("Routine-Mail (Bestellung/Versand/Zahlung) – kein Fall");
+    await expect(page.locator("body")).toContainText("Versandmail – kein Fall, archiviert");
   });
 });

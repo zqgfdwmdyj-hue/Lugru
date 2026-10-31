@@ -22,8 +22,10 @@ import {
   type Ablehnungsgrund,
   type Bereich,
   type Phase,
+  type RoutineArt,
   type Verlangt,
 } from "./logic";
+import { auszahlungAus } from "@/lib/amazon-todos/mail-muster";
 
 // Amazon-Fall-Zentrale: Amazon-Mails aus allen Postfächern → Vorgänge mit Verlauf, Frist, Dringlichkeit und
 // vorbereitetem Paket; Übergabe an die VA (Discord) als Aufgabe. Eingereicht wird immer in Seller Central.
@@ -59,6 +61,53 @@ async function zahlungsAufgabe(tenantId: string, m: { bestellnummer: string | nu
     .insert(T)
     .values({ tenantId, title: `Zahlung abgelehnt${m.bestellnummer ? ` – Bestellung ${m.bestellnummer}` : ""}: Zahlungsmittel prüfen`, notes: `1 Mail „Zahlung abgelehnt“ zu ${m.bestellnummer ? `Bestellung ${m.bestellnummer}` : "dieser Zahlung"}, ${m.am.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}: „${m.betreff.slice(0, 120)}“. Zahlungsmittel bei Amazon prüfen – kein Amazon-Fall.`, priority: "normal", category: "amazon", systemKey: key })
     .onConflictDoNothing();
+}
+
+// ---- B20.5: Auszahlungen → Liquidität, Buy-Box-Hinweise → ein ToDo je Land, Routine → Archiv ------------------
+
+/** Routine-Arten, deren Mails archiviert werden (Versand, Bewertungsanfrage, Auszahlung, Buy-Box-Hinweis). */
+const ARCHIV_ARTEN = new Set<RoutineArt>(["versand", "bewertung", "auszahlung", "buybox"]);
+
+async function mailsArchivieren(tenantId: string, ids: string[]) {
+  if (ids.length) await db.update(E).set({ archived: true }).where(and(eq(E.tenantId, tenantId), inArray(E.id, ids), eq(E.archived, false)));
+}
+
+/** Auszahlungsmitteilung merken (einmal je Mail) → erwarteter Zahlungseingang in der Liquidität. */
+async function auszahlungMerken(tenantId: string, m: { id: string; subject: string | null; body: string | null; from: string | null; receivedAt: Date; marktplatz: string | null }, vorgangId: string | null = null) {
+  const a = auszahlungAus({ subject: m.subject ?? "", text: m.body ?? "", date: m.receivedAt.toISOString() });
+  const AZ = schema.amazonAuszahlungMeldungen;
+  const [neu] = await db
+    .insert(AZ)
+    .values({ tenantId, emailId: m.id, kennung: `mail:${m.id}`, betrag: a.betrag, waehrung: a.waehrung, marktplatz: m.marktplatz, kontoEndung: a.kontoEndung, gemeldetAm: m.receivedAt, erwartetVon: a.erwartetVon, erwartetBis: a.erwartetBis, vorgangId })
+    .onConflictDoUpdate({ target: [AZ.tenantId, AZ.kennung], set: vorgangId ? { vorgangId } : { kennung: sql`excluded.kennung` } })
+    .returning();
+  return neu ?? null;
+}
+
+/** Buy-Box-Hinweis („nicht berechtigt für das Einkaufswagen-Feld“) → ein offenes ToDo je Land statt eines Falls. */
+async function buyBoxTodo(tenantId: string, m: { id: string; subject: string | null; receivedAt: Date; from: string | null; land: string | null; asins: string[]; skus: string[] }) {
+  const T = schema.amazonTodos;
+  const land = m.land ?? "EU";
+  const key = `buybox-berechtigung:${land}`;
+  const [alt] = await db.select().from(T).where(and(eq(T.tenantId, tenantId), eq(T.messageKey, key)));
+  const n = (alt ? Number(/(\d+) Hinweis/.exec(alt.bodyShort ?? "")?.[1] ?? "1") : 0) + 1;
+  const asins = uniq([...(alt?.asins ?? []), ...m.asins]).slice(0, 100);
+  const skus = uniq([...(alt?.skus ?? []), ...m.skus]).slice(0, 100);
+  const bodyShort = clip(`${n} Hinweis${n === 1 ? "" : "e"} „nicht berechtigt für das Einkaufswagen-Feld (Buy Box)“, zuletzt ${m.receivedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}: „${(m.subject ?? "").slice(0, 120)}“. Preis, Zustand, Versandzeit und Kontozustand je Angebot prüfen – kein Amazon-Fall.`, 600);
+  if (alt) {
+    const neuer = m.receivedAt > alt.receivedAt;
+    await db
+      .update(T)
+      .set({ asins, skus, bodyShort, ...(neuer ? { receivedAt: m.receivedAt, emailId: m.id, subject: clip(m.subject ?? alt.subject ?? "", 300) } : {}), ...(neuer && alt.status !== "open" ? { status: "open", closedAt: null, closedBy: null } : {}), updatedAt: new Date() })
+      .where(eq(T.id, alt.id));
+    return alt.id;
+  }
+  const [t] = await db
+    .insert(T)
+    .values({ tenantId, messageKey: key, emailId: m.id, receivedAt: m.receivedAt, sender: m.from, subject: clip(m.subject ?? "Buy-Box-Hinweis", 300), category: "buybox_berechtigung", priority: "medium", asins, skus, marktplatz: m.land, summary: `Buy-Box-Berechtigung prüfen (${land})`, bodyShort, source: "rules" })
+    .onConflictDoNothing()
+    .returning({ id: T.id });
+  return t?.id ?? null;
 }
 
 async function inhaber(tenantId: string): Promise<string[]> {
@@ -127,8 +176,12 @@ async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string
     const e = einordnen({ from: `${m.fromName ?? ""} <${m.from ?? ""}>`, subject: m.subject ?? "", text: m.body ?? "", date: datum }, { heute, fristen: settings.faelle.fristen, gelernt });
     // Bestell-/Versand-/Zahlungsmails sind nie ein Fall; Routinemails ohne Vorgangsbezug (Newsletter) auch nicht.
     if (e.routine || (m.category === "noise" && (e.bereich === "info" || e.bereich === "sonstiges") && !e.fallnummer)) {
-      await db.insert(U).values({ tenantId, emailId: m.id, grund: e.routine ? "routine" : "noise" }).onConflictDoNothing();
+      await db.insert(U).values({ tenantId, emailId: m.id, grund: e.routine ? `routine${e.routineArt ? `:${e.routineArt}` : ""}` : "noise" }).onConflictDoNothing();
       if (e.routineArt === "zahlung_fehler") await zahlungsAufgabe(tenantId, { bestellnummer: e.bestellnummer, betreff: m.subject ?? "", am: m.receivedAt });
+      // B20.5: Auszahlung → Liquidität (nie Fall, nie VA); Buy-Box-Hinweis → ein ToDo je Land; Versand/Bewertung → Archiv.
+      if (e.routineArt === "auszahlung") await auszahlungMerken(tenantId, { ...m, marktplatz: e.marktplatz });
+      if (e.routineArt === "buybox") await buyBoxTodo(tenantId, { id: m.id, subject: m.subject, receivedAt: m.receivedAt, from: m.from, land: e.marktplatz, asins: e.asins, skus: e.skus });
+      if (e.routineArt && ARCHIV_ARTEN.has(e.routineArt)) await mailsArchivieren(tenantId, [m.id]);
       erg.uebersprungen++;
       continue;
     }
@@ -230,7 +283,7 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
   if (!kandidaten.length) return 0;
   const ids = kandidaten.map((v) => v.id);
   const eintraege = await db
-    .select({ vorgangId: EI.vorgangId, art: EI.art, von: EI.von, am: EI.am, from: E.fromAddress, fromName: E.fromName, subject: E.subject, body: E.bodyText, receivedAt: E.receivedAt })
+    .select({ vorgangId: EI.vorgangId, art: EI.art, von: EI.von, am: EI.am, emailId: EI.emailId, from: E.fromAddress, fromName: E.fromName, subject: E.subject, body: E.bodyText, receivedAt: E.receivedAt })
     .from(EI)
     .leftJoin(E, eq(E.id, EI.emailId))
     .where(and(eq(EI.tenantId, tenantId), inArray(EI.vorgangId, ids)))
@@ -243,22 +296,53 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
     if (!mails.length) continue;
     const vonHand = eig.some((x) => x.art !== "mail" && x.von !== "System");
     const ein = mails.map((x) => einordnen({ from: `${x.fromName ?? ""} <${x.from ?? ""}>`, subject: x.subject ?? "", text: x.body ?? "", date: x.receivedAt!.toISOString() }, { heute, fristen: settings.faelle.fristen, gelernt }));
-    const erste = ein[0];
-    const letzte = ein[ein.length - 1];
     const marktplatz = ein.map((e) => e.marktplatz).find(Boolean) ?? null;
     const set: Partial<typeof V.$inferInsert> = {};
     const gruende: string[] = [];
-    if (ein.every((e) => e.routine) && !vonHand) {
-      if (v.status !== "info" || v.bereich !== "info") {
+    const arten = ein.map((e) => e.routineArt);
+    const alleRoutine = ein.every((e) => e.routine);
+    // B20.5: Auszahlungsmitteilungen sind nie ein Fall – ausdrücklich angeordnet: auch angefasste Vorgänge schließen.
+    const auszahlung = alleRoutine && arten.includes("auszahlung") && arten.every((a) => a === "auszahlung" || a === "zahlung");
+    if (auszahlung) {
+      if (v.status !== "erledigt") {
+        const gebucht: { betrag: number | null; marktplatz: string | null; erwartetBis: string }[] = [];
+        for (let i = 0; i < mails.length; i++) {
+          const x = mails[i];
+          if (arten[i] !== "auszahlung" || !x.emailId) continue;
+          const az = await auszahlungMerken(tenantId, { id: x.emailId, subject: x.subject, body: x.body, from: x.from, receivedAt: x.receivedAt!, marktplatz: ein[i].marktplatz ?? v.marktplatz }, v.id);
+          if (az) gebucht.push({ betrag: az.betrag, marktplatz: az.marktplatz, erwartetBis: az.erwartetBis });
+        }
+        await mailsArchivieren(tenantId, mails.map((x) => x.emailId).filter((x): x is string => !!x));
+        Object.assign(set, { bereich: "info", phase: "info", status: "erledigt", dringlichkeit: "grau", frist: null, unsicher: false, zustaendig: null });
+        const g = gebucht[0];
+        gruende.push(`Auszahlungsmitteilung – kein Fall, automatisch geschlossen${g ? `; Zahlungseingang ${g.betrag !== null ? `${g.betrag.toLocaleString("de-DE", { minimumFractionDigits: 2 })} €` : "(Betrag nicht lesbar)"}${g.marktplatz ? ` (${g.marktplatz})` : ""} in der Liquidität, erwartet bis ${g.erwartetBis.split("-").reverse().join(".")}` : ""}`);
+      }
+    } else if (alleRoutine && !vonHand) {
+      if (arten.every((a) => a !== null && ARCHIV_ARTEN.has(a))) {
+        // Buy-Box-Hinweise → ToDo je Land; Versand- und Bewertungsmails → Archiv. Vorgang erledigt (kein Fall).
+        if (v.status !== "erledigt") {
+          for (let i = 0; i < mails.length; i++) {
+            const x = mails[i];
+            if (arten[i] === "buybox" && x.emailId) await buyBoxTodo(tenantId, { id: x.emailId, subject: x.subject, receivedAt: x.receivedAt!, from: x.from, land: ein[i].marktplatz ?? v.marktplatz, asins: ein[i].asins, skus: ein[i].skus });
+          }
+          await mailsArchivieren(tenantId, mails.map((x) => x.emailId).filter((x): x is string => !!x));
+          Object.assign(set, { bereich: "info", phase: "info", status: "erledigt", dringlichkeit: "grau", frist: null, unsicher: false, ...(v.taskId ? {} : { zustaendig: null }) });
+          gruende.push(arten.includes("buybox") ? "Buy-Box-Hinweis – kein Fall: ToDo „Buy-Box-Berechtigung prüfen“ je Land, Mail archiviert" : arten.includes("bewertung") ? "Bewertungsanfrage – kein Fall, archiviert" : "Versandmail – kein Fall, archiviert");
+        }
+      } else if (v.status !== "info" || v.bereich !== "info") {
         Object.assign(set, { bereich: "info", phase: "info", status: "info", dringlichkeit: "grau", frist: null, unsicher: false, ...(v.zustaendig === "va" && !v.taskId ? { zustaendig: null } : {}) });
         gruende.push("Routine-Mail (Bestellung/Versand/Zahlung) – kein Fall");
       }
     } else if (!vonHand) {
-      // Bereich der ersten Mail, Phase/Frist der letzten (wie beim Abgleich).
+      // Bereich der ersten Mail, Phase/Frist der letzten (wie beim Abgleich). B20.5: Routine-Mails im Vorgang (z. B. eine
+      // Bewertungsanfrage nach dem Fall) ändern Phase und Frist nicht.
+      const echte = ein.filter((e) => !e.routine);
+      const erste = echte[0];
+      const letzte = echte[echte.length - 1];
       const bereich = erste.bereich;
       const status = statusVonPhase(letzte.phase);
       // Frist wie beim Abgleich fortschreiben: neue Frist aus der Mail, sonst die bisherige; erledigt → keine.
-      const frist = ein.reduce<string | null>((f, e) => (statusVonPhase(e.phase) === "offen" ? (e.frist ?? f) : null), null);
+      const frist = echte.reduce<string | null>((f, e) => (statusVonPhase(e.phase) === "offen" ? (e.frist ?? f) : null), null);
       const dringlichkeit = status === "offen" ? dringlichkeitVon(bereich, letzte.phase, frist, heute) : "grau";
       if (bereich !== v.bereich) {
         set.bereich = bereich;
@@ -269,6 +353,8 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
         if (frist !== v.frist && !gruende.length) gruende.push(frist ? `Frist ${frist}` : "keine Frist in der Mail – Standardfrist entfernt");
         else if (dringlichkeit !== v.dringlichkeit && !gruende.length) gruende.push(`Dringlichkeit ${v.dringlichkeit} → ${dringlichkeit}`);
       }
+      // B20.5: „bitte prüfen“ nie mit Zuständigkeit (nur Sonstiges/Info ohne VA).
+      if ((set.unsicher ?? v.unsicher) && v.zustaendig && !v.taskId) set.zustaendig = null;
     }
     // B19.4: „zuständig: VA“ nur bei echten Fällen (ohne VA-Aufgabe und ohne Handarbeit zurücknehmen).
     const nachher = { status: (set.status ?? v.status) as string, bereich: (set.bereich ?? v.bereich) as string, unsicher: set.unsicher ?? v.unsicher };
@@ -284,7 +370,7 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
     await db.update(V).set({ ...set, updatedAt: new Date() }).where(eq(V.id, v.id));
     await db.insert(EI).values({ tenantId, vorgangId: v.id, art: "status", phase: set.phase ?? null, text: clip(`Neu eingestuft: ${gruende.join(" · ")}`, 500), von: "System", am: new Date() });
     // Zum Routine-Vorgang angelegte System-Aufgabe schließen (nur die eigene, offene).
-    if (set.status === "info" && v.taskId) await db.update(schema.tasks).set({ status: "done", completedAt: new Date() }).where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.id, v.taskId), eq(schema.tasks.systemKey, `amazon-fall:${v.id}`), sql`${schema.tasks.status} <> 'done'`));
+    if ((set.status === "info" || set.status === "erledigt") && v.taskId) await db.update(schema.tasks).set({ status: "done", completedAt: new Date() }).where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.id, v.taskId), eq(schema.tasks.systemKey, `amazon-fall:${v.id}`), sql`${schema.tasks.status} <> 'done'`));
     n++;
   }
   if (n) console.log(`[Fall-Zentrale] ${n} Vorgänge neu eingestuft`);

@@ -101,3 +101,29 @@ export const amazonMailUebersprungen = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.emailId] })],
 );
+
+/**
+ * B20.5: Auszahlungsmitteilungen von Amazon („Votre paiement est en cours“, „Ihre Auszahlung ist unterwegs“ …):
+ * Betrag, Konto-Endung und Marktplatz → erwarteter Zahlungseingang in der Liquidität (3–5 Tage). Nie ein Fall.
+ */
+export const amazonAuszahlungMeldungen = pgTable(
+  "amazon_auszahlung_meldungen",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    emailId: uuid("email_id").references(() => emails.id, { onDelete: "set null" }),
+    /** Kennung gegen doppelte Einträge (Mail-ID). */
+    kennung: text("kennung").notNull(),
+    betrag: money("betrag"),
+    waehrung: text("waehrung").notNull().default("EUR"),
+    marktplatz: text("marktplatz"),
+    kontoEndung: text("konto_endung"),
+    gemeldetAm: timestamp("gemeldet_am", { withTimezone: true }).notNull(),
+    erwartetVon: date("erwartet_von", { mode: "string" }).notNull(),
+    erwartetBis: date("erwartet_bis", { mode: "string" }).notNull(),
+    /** Vorgang, der deswegen automatisch geschlossen wurde (alte Einstufung als Fall). */
+    vorgangId: uuid("vorgang_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("amazon_auszahlung_meldungen_uq").on(t.tenantId, t.kennung), index("amazon_auszahlung_meldungen_erwartet_idx").on(t.tenantId, t.erwartetBis)],
+);

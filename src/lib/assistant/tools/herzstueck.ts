@@ -105,6 +105,7 @@ export const tagesplanTool = defineTool({
         ampel_text: ampelText(t),
         sperrzeiten: t.sperren.map((s) => ({ von: s.ganztags ? "ganztägig" : s.von, bis: s.ganztags ? undefined : s.bis, art: s.art, titel: s.titel })),
         geplant: t.geplant.map((g) => ({ id: g.id, von: g.von, bis: g.bis, titel: g.titel, prioritaet: PRIORITY_OUT[g.prioritaet], aufwand: AUFWAND_TEXT[g.aufwand], aufwand_geschaetzt: g.geschaetzt || undefined, aufwand_gelernt: g.gelernt || undefined, frist: g.faellig, link: link(g.link) })),
+        nicht_eingeplant: t.nichtEingeplant ? { aufgaben: t.nichtEingeplant.anzahl, minuten: t.nichtEingeplant.minuten, vorschlag: t.vorschlag } : undefined,
         konflikte: t.konflikte.length ? t.konflikte.map((k) => ({ aufgabe_id: k.aufgabeId, titel: k.titel, konflikt: k.text })) : undefined,
       })),
       verschoben: p.verschoben.map((v) => ({ id: v.id, titel: v.titel, frist: v.faellig, neues_datum: v.neu, prioritaet: PRIORITY_OUT[v.prioritaet] })),
