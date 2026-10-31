@@ -12,6 +12,8 @@ import { SellerboardCard } from "./sellerboard-card";
 import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
 import { ordnerName } from "@/lib/mail/ordner";
 import { postfachStand } from "@/lib/mail/status";
+import { discordLiveStatus } from "@/lib/discord/gateway";
+import { ABRUF_PLAN, naechsterText } from "@/lib/today/abruf-plan";
 
 /** Anmeldung per OAuth für Postfächer – nur optional („Erweitert“); Standard ist IMAP mit App-Passwort. */
 const OAUTH_POSTFACH = new Set(["google", "microsoft"]);
@@ -34,10 +36,30 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
   const session = await requireOwner();
   const { p, sellerboard, amz, n } = await searchParams;
   const status = await integrationStatus(session.tenantId);
-  const [reports, postfach] = await Promise.all([
+  const [reports, postfach, jobs, live] = await Promise.all([
     db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12),
     postfachStand(session.tenantId),
+    db.select().from(schema.jobRuns).where(eq(schema.jobRuns.tenantId, session.tenantId)),
+    discordLiveStatus(session.tenantId),
   ]);
+  const jetzt = new Date();
+  const abrufe = jobs
+    .map((j) => {
+      const plan = ABRUF_PLAN[j.name];
+      const letzter = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
+      return { name: j.name, plan, letzter, fehler: j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) ? j.lastError : null, naechster: naechsterText(plan, letzter, jetzt) };
+    })
+    .sort((a, b) => Number(b.plan?.ausloeser === "live") - Number(a.plan?.ausloeser === "live") || Number(/discord/i.test(b.name)) - Number(/discord/i.test(a.name)) || a.name.localeCompare(b.name));
+  const discordAbrufe = abrufe.filter((a) => /discord|call/i.test(a.name));
+  const uebrigeAbrufe = abrufe.filter((a) => !/discord|call/i.test(a.name));
+  const abrufZeile = (a: (typeof abrufe)[number]) => (
+    <tr key={a.name} data-testid="abruf-zeile">
+      <td>{a.name}</td>
+      <td className="small">{a.plan?.text ?? "Zeitplan: laut Plan"}</td>
+      <td className="small num">{zeit(a.letzter) ?? "–"}{a.fehler && <div style={{ color: "var(--danger)" }}>Fehler: {a.fehler.slice(0, 160)}</div>}</td>
+      <td className="small">{a.naechster}</td>
+    </tr>
+  );
 
   return (
     <>
@@ -77,6 +99,28 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
             <form action={fetchAmazonReportsNow}><button className="btn btn-small" type="submit">Fertige Berichte abholen</button></form>
             {amz && AMZ_MSG[amz] && <div className={`notice ${amz === "fehler" ? "notice-warn" : amz === "abgeholt" && Number(n) > 0 ? "notice-ok" : "notice-info"}`} data-testid="amazon-berichte-msg" role="status">{AMZ_MSG[amz](Number(n) || 0)}</div>}
           </div>
+        )}
+        {(status.get("discord_calls") || discordAbrufe.length > 0) && (
+          <div className="small" data-testid="discord-live-status">
+            <strong>Discord – Call-Kanal:</strong>{" "}
+            {live.aktiv ? (live.zustand === "verbunden" ? <>Auslöser: live (Discord) – verbunden seit {zeit(live.seit)}</> : live.zustand === "verbinde" ? <>Auslöser: live (Discord) – verbindet …</> : <span style={{ color: "var(--danger)" }}>Live-Verbindung {live.zustand === "fehler" ? "abgelehnt" : "getrennt"}: {live.fehler}</span>) : <>Live-Verbindung aus – Sicherheitsnetz täglich 06:00</>}
+            {" · "}zuletzt empfangen: <span data-testid="discord-zuletzt-empfangen">{zeit(live.zuletztEmpfangen) ?? "noch nichts"}</span> · Sicherheitsnetz: täglich 06:00 (letzte 7 Tage)
+          </div>
+        )}
+        {discordAbrufe.length > 0 && (
+          <table className="table small" data-testid="abrufe-discord">
+            <thead><tr><th>Abruf</th><th>Auslöser</th><th>letzter Lauf</th><th>nächster Lauf</th></tr></thead>
+            <tbody>{discordAbrufe.map(abrufZeile)}</tbody>
+          </table>
+        )}
+        {uebrigeAbrufe.length > 0 && (
+          <details>
+            <summary className="small" style={{ cursor: "pointer" }}>Alle übrigen Abrufe ({uebrigeAbrufe.length}) mit letztem und nächstem Lauf</summary>
+            <table className="table small" data-testid="abrufe-alle">
+              <thead><tr><th>Abruf</th><th>Auslöser</th><th>letzter Lauf</th><th>nächster Lauf</th></tr></thead>
+              <tbody>{uebrigeAbrufe.map(abrufZeile)}</tbody>
+            </table>
+          </details>
         )}
         {reports.length > 0 && (
           <table className="table">

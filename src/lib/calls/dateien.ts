@@ -1,10 +1,11 @@
 import { extractText, getDocumentProxy } from "unpdf";
+import { jsonTranskriptText } from "./live-logic";
 import { leseZip } from "@/lib/zip-lesen";
 
 // Call-Transkripte aus Dateien: Word (.docx), OpenDocument (.odt), PDF, Text/Markdown, Untertitel (.vtt/.srt) –
 // einzeln oder als ZIP (z. B. Google-Drive-Ordner „Herunterladen“). Liefert nur Text, speichert nichts.
 
-export const CALL_DATEI_ENDUNGEN = [".docx", ".odt", ".pdf", ".txt", ".md", ".vtt", ".srt", ".zip"] as const;
+export const CALL_DATEI_ENDUNGEN = [".docx", ".odt", ".pdf", ".txt", ".md", ".vtt", ".srt", ".json", ".zip"] as const;
 const MAX_DATEIEN = 200;
 
 const entities = (s: string) =>
@@ -111,8 +112,9 @@ export async function textAusCallDateien(dateien: { name: string; daten: Uint8Ar
       else if (e === ".pdf") text = await pdfText(d.daten);
       else if (e === ".vtt" || e === ".srt") text = untertitelText(textDatei(d.daten));
       else if (e === ".txt" || e === ".md") text = textDatei(d.daten);
+      else if (e === ".json") text = jsonTranskriptText(textDatei(d.daten));
       else {
-        fehler.push(`${name}: Dateiart nicht unterstützt (Word, PDF, Text, Untertitel oder ZIP)`);
+        fehler.push(`${name}: Dateiart nicht unterstützt (Word, PDF, Text, Untertitel, JSON oder ZIP)`);
         continue;
       }
       out.push({ name, text, geaendert: d.geaendert });

@@ -1,4 +1,5 @@
 import "server-only";
+import { taeglichFaellig } from "@/lib/today/abruf-plan";
 import { db, schema } from "@/db";
 import { syncClaims } from "@/lib/claims/service";
 import { syncAllMailboxes } from "@/lib/inbox/service";
@@ -46,6 +47,14 @@ const lastRun = new Map<string, number>();
 const due = (key: string, minutes: number) => {
   const last = lastRun.get(key) ?? 0;
   if (Date.now() - last < minutes * 60_000) return false;
+  lastRun.set(key, Date.now());
+  return true;
+};
+
+/** „Täglich um HH:MM“ (Berlin): fällig, sobald die Uhrzeit erreicht ist und es heute noch nicht lief. */
+const taeglich = (key: string, hhmm: string) => {
+  const last = lastRun.get(key);
+  if (!taeglichFaellig(hhmm, last ? new Date(last) : null)) return false;
   lastRun.set(key, Date.now());
   return true;
 };
@@ -223,13 +232,24 @@ export async function runScheduledJobs(force = false) {
         // Tagen ohne Verkauf entstanden sind) – ohne neuen sellerboard-Abruf.
         await step(t, "Verlust-Stopp (Abgleich)", async () => (await import("@/lib/money/verlust-service")).refreshVerlustTasks(t, todayIso()));
       }
-      // Call-Archiv: neue Transkripte aus dem Discord-Kanal, einmal pro Woche.
       // Rechtsfälle (B14): Asana nur lesen alle 30 Min.; „nichts passiert“ einmal am Tag.
       if (await has("asana")) if (force || due(`${t}:asana`, 29)) await step(t, "Rechtsfälle (Asana)", async () => (await import("@/lib/recht/service")).asanaAbgleich(t));
       if (force || due(`${t}:recht-stillstand`, 1435)) await step(t, "Rechtsfälle: Stillstand", async () => (await import("@/lib/recht/service")).stillstandPruefen(t));
       // Discord-Kanäle der Deal-Gruppe (B14): stündlich lesen, Zusammenfassungen nach Rhythmus, Rohtexte nach 30 Tagen weg.
       if (force || due(`${t}:discord-wissen`, 59)) await step(t, "Gruppen-Kanäle (Discord)", async () => (await import("@/lib/discord-wissen/service")).discordWissenLauf(t));
-      if (await has("discord_calls")) if (force || due(`${t}:calls`, 10079)) await step(t, "Call-Archiv (Discord)", async () => (await import("@/lib/calls/service")).discordCallsImport(t, todayIso()));
+      // B21: Call-Transkripte kommen live über die Discord-Verbindung (sofort beim Hochladen). Der Zeitplan ist nur
+      // Sicherheitsnetz: täglich 06:00 die letzten 7 Tage nachlesen und verarbeiten, was fehlt (z. B. Bot war offline).
+      if (await has("discord_calls")) if (force || taeglich(`${t}:calls-netz`, "06:00")) await step(t, "Call-Archiv (Discord, Sicherheitsnetz)", async () => (await import("@/lib/calls/live")).callsSicherheitsnetz(t, 7));
+      // Gleiches Sicherheitsnetz für VA-, Gruppen- und Lugru-Kanäle: sie lesen ab der zuletzt gelesenen Nachricht weiter
+      // (lückenlos nach einem Ausfall); um 06:00 läuft je Kanal ein zusätzlicher Lauf mit Protokoll.
+      if (force || taeglich(`${t}:discord-nachlese`, "06:00"))
+        await step(t, "Discord-Kanäle: Nachlese 06:00", async () => {
+          await (await import("@/lib/discord-wissen/service")).discordWissenLauf(t);
+          const va = await import("@/lib/va/service");
+          if ((await va.vaMandanten()).includes(t)) await va.vaAbgleich(t);
+          const lg = await import("@/lib/lugru-deals/discord");
+          if ((await lg.lugruMandanten()).includes(t)) await lg.lugruAbgleich(t);
+        });
       // Call-Archiv: noch nicht ausgewertete Calls (Sammel-Import, Discord) nacheinander von der KI auswerten lassen.
       if (force || due(`${t}:call-auswertung`, 29)) await step(t, "Call-Auswertung", async () => (await import("@/lib/calls/service")).offeneCallsAuswerten(t, 20));
       // Planung: Standard-Freizeiten/Retourenwelle einmalig, Aufgaben aus freien Tagen schieben, Anleitungen prüfen.

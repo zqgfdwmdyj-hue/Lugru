@@ -7,5 +7,10 @@ export async function register() {
     startPerfMonitor();
     const { startScheduler } = await import("./lib/scheduler");
     startScheduler();
+    // B21: Discord-Call-Kanal live lesen (eigener Schalter, damit es auch ohne Zeitplan – z. B. in den Prüfungen – läuft).
+    if (process.env.DISCORD_LIVE !== "0" && (process.env.ENABLE_SCHEDULER !== "0" || process.env.DISCORD_LIVE === "1")) {
+      const { startDiscordLive } = await import("./lib/discord/gateway");
+      startDiscordLive();
+    }
   }
 }

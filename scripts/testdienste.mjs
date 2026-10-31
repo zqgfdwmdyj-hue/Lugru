@@ -313,7 +313,57 @@ const dcKanal = (id) => dcVa.kanaele.get(id) ?? (id.startsWith("8") ? (dcVa.kana
 function dcNachricht(channel_id, author, content, attachments = []) {
   const m = { id: dcId(), channel_id, type: 0, content, timestamp: new Date().toISOString(), author, attachments, reactions: [] };
   dcVa.nachrichten.push(m);
+  gwSenden("MESSAGE_CREATE", { ...m, guild_id: "500000000000000001" });
   return m;
+}
+
+// Discord-Gateway (WebSocket) – Nachbau nur so weit wie nötig: Hello, Identify → READY, Herzschlag, Resume,
+// MESSAGE_CREATE/MESSAGE_UPDATE an alle verbundenen Bots. Prüf-Hilfe: /__discord-gateway (Verbindungen, Intents).
+const gw = { sockets: new Set(), seq: 0, identify: [] };
+function wsRahmen(text) {
+  const daten = Buffer.from(text, "utf8");
+  const kopf = daten.length < 126 ? Buffer.from([0x81, daten.length]) : daten.length < 65536 ? Buffer.from([0x81, 126, daten.length >> 8, daten.length & 255]) : (() => { const b = Buffer.alloc(10); b[0] = 0x81; b[1] = 127; b.writeBigUInt64BE(BigInt(daten.length), 2); return b; })();
+  return Buffer.concat([kopf, daten]);
+}
+function wsSenden(sock, obj) {
+  try {
+    sock.write(wsRahmen(JSON.stringify(obj)));
+  } catch {
+    /* Verbindung weg */
+  }
+}
+function gwSenden(t, d) {
+  for (const sock of gw.sockets) if (sock.bereit) wsSenden(sock, { op: 0, t, s: ++gw.seq, d });
+}
+function wsLesen(sock, puffer) {
+  // Client-Rahmen sind maskiert; nur Text (0x1) und Schließen (0x8).
+  let buf = Buffer.concat([sock.rest ?? Buffer.alloc(0), puffer]);
+  while (buf.length >= 2) {
+    const op = buf[0] & 0x0f;
+    let laenge = buf[1] & 0x7f;
+    let pos = 2;
+    if (laenge === 126) { if (buf.length < 4) break; laenge = buf.readUInt16BE(2); pos = 4; }
+    else if (laenge === 127) { if (buf.length < 10) break; laenge = Number(buf.readBigUInt64BE(2)); pos = 10; }
+    const maske = (buf[1] & 0x80) !== 0;
+    if (buf.length < pos + (maske ? 4 : 0) + laenge) break;
+    const key = maske ? buf.subarray(pos, pos + 4) : null;
+    pos += maske ? 4 : 0;
+    const daten = Buffer.from(buf.subarray(pos, pos + laenge));
+    if (key) for (let i = 0; i < daten.length; i++) daten[i] ^= key[i % 4];
+    buf = buf.subarray(pos + laenge);
+    if (op === 0x8) { sock.end(); gw.sockets.delete(sock); return; }
+    if (op !== 0x1) continue;
+    let p;
+    try { p = JSON.parse(daten.toString("utf8")); } catch { continue; }
+    if (p.op === 1) wsSenden(sock, { op: 11, d: null });
+    else if (p.op === 2) {
+      gw.identify.push({ at: new Date().toISOString(), intents: p.d?.intents ?? null, token: p.d?.token === "test-bot-token" });
+      if (p.d?.token !== "test-bot-token") { sock.end(Buffer.from([0x88, 2, 0x0f, 0xa4])); gw.sockets.delete(sock); return; }
+      sock.bereit = true;
+      wsSenden(sock, { op: 0, t: "READY", s: ++gw.seq, d: { v: 10, session_id: `test-session-${gw.identify.length}`, resume_gateway_url: SELF.replace(/^http/, "ws") + "/discord-gateway", user: { id: DC_BOT, username: "Seller-Bot (Test)", bot: true } } });
+    } else if (p.op === 6) { sock.bereit = true; wsSenden(sock, { op: 0, t: "RESUMED", s: ++gw.seq, d: null }); }
+  }
+  sock.rest = buf;
 }
 function discordVa(req, p, url, body) {
   if (p === "/discord-api/users/@me") return [200, { id: DC_BOT, username: "Seller-Bot (Test)", bot: true }];
@@ -540,6 +590,7 @@ async function route(req, url, body) {
   // Discord-API: VA-Kanal (mit Zustand: Threads, Nachrichten, Reaktionen) und Call-Kanal (eine feste Nachricht).
   if (p.startsWith("/discord-api/")) {
     if (req.headers.authorization !== "Bot test-bot-token") return [401, { message: "401: Unauthorized", code: 0 }];
+    if (p === "/discord-api/gateway/bot") return [200, { url: SELF.replace(/^http/, "ws") + "/discord-gateway", shards: 1, session_start_limit: { total: 1000, remaining: 999, reset_after: 0, max_concurrency: 1 } }];
     const va = discordVa(req, p, url, body);
     if (va) return va;
   }
@@ -739,7 +790,7 @@ http
     if (url.pathname === "/__discord-va/nachricht" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
       if (!dcKanal(String(b.kanal))) return send(404, { fehler: "Kanal unbekannt" });
-      const anh = b.anhang ? [{ id: dcId(), filename: b.anhang.name, content_type: b.anhang.typ ?? "text/plain", size: String(b.anhang.inhalt ?? "").length, url: `${SELF}/discord-cdn/${encodeURIComponent(b.anhang.name)}` }] : [];
+      const anh = b.anhang ? [{ id: dcId(), filename: b.anhang.name, content_type: b.anhang.typ ?? "text/plain", size: b.anhang.groesse ?? String(b.anhang.inhalt ?? "").length, url: `${SELF}/discord-cdn/${encodeURIComponent(b.anhang.name)}` }] : [];
       if (b.anhang) dcVa.anhaenge.set(b.anhang.name, String(b.anhang.inhalt ?? ""));
       return send(200, dcNachricht(String(b.kanal), { id: String(b.autor ?? DC_VA), username: "VA (Test)" }, String(b.text ?? ""), anh));
     }
@@ -770,6 +821,21 @@ http
       }
       return send(200, m);
     }
+    // Nachricht bearbeiten (Text und/oder Anhang ersetzen) → MESSAGE_UPDATE an verbundene Bots.
+    if (url.pathname === "/__discord-va/bearbeiten" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      const m = dcVa.nachrichten.find((x) => x.id === String(b.nachricht));
+      if (!m) return send(404, { fehler: "Nachricht unbekannt" });
+      if (typeof b.text === "string") m.content = b.text;
+      if (b.anhang) {
+        dcVa.anhaenge.set(b.anhang.name, String(b.anhang.inhalt ?? ""));
+        m.attachments = [{ id: dcId(), filename: b.anhang.name, content_type: b.anhang.typ ?? "text/plain", size: b.anhang.groesse ?? String(b.anhang.inhalt ?? "").length, url: `${SELF}/discord-cdn/${encodeURIComponent(b.anhang.name)}` }];
+      }
+      m.edited_timestamp = new Date().toISOString();
+      gwSenden("MESSAGE_UPDATE", { ...m, guild_id: "500000000000000001" });
+      return send(200, m);
+    }
+    if (url.pathname === "/__discord-gateway") return send(200, { verbunden: [...gw.sockets].filter((x) => x.bereit).length, identify: gw.identify });
     if (url.pathname === "/__discord-va/reaktion" && req.method === "POST") {
       const b = JSON.parse(body || "{}");
       const m = dcVa.nachrichten.find((x) => x.id === String(b.nachricht));
@@ -827,5 +893,16 @@ http
       remember(log, { at: new Date().toISOString(), dienst: dienstOf(url.pathname), method: req.method, path: url.pathname, status: 500, simuliert: false });
       send(500, { title: "Testdienst-Fehler", detail: String(e?.message ?? e) });
     }
+  })
+  .on("upgrade", (req, sock) => {
+    if (!String(req.url ?? "").startsWith("/discord-gateway")) return sock.destroy();
+    const key = String(req.headers["sec-websocket-key"] ?? "");
+    const accept = createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+    sock.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    gw.sockets.add(sock);
+    sock.on("data", (d) => wsLesen(sock, d));
+    sock.on("close", () => gw.sockets.delete(sock));
+    sock.on("error", () => gw.sockets.delete(sock));
+    wsSenden(sock, { op: 10, d: { heartbeat_interval: 41250 } });
   })
   .listen(PORT, () => console.log(`Testdienste bereit auf Port ${PORT}`));

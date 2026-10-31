@@ -500,6 +500,23 @@ AI Win Sales Booster), `amazon-faelle`, `herzstueck`, `lugru-deals`, `deal-einga
 | DI-13 | „Format nicht erkannt“ mit Vorschlag + Protokoll | 🟡 (nur 12 Spalten) | ✅ | `formatVorschlag` in `src/lib/reports/format-vorschlag.ts`: „Sieht aus wie „Monatliche Lagergebühren“ (8 von 10 typischen Spalten; es fehlen: …) – als diese Art importieren: … import_link art=…“; alle Spalten im Upload-Verlauf, Liste „Unbekannte Formate“ auf `/uploads` |
 | DI-14 | USt-Bericht in `buchhaltung_status` und Monatsdatei | ❌ | ✅ | `buchhaltungStatus` → `ust` (importiert ja/nein, Brutto, Steuerländer, Verbringungen, ohne Steuerland); „CSV + Belege (ZIP)“ für den Steuerberater enthält `Amazon-Umsatzsteuer_JJJJ-MM.csv` (`ustMonatsdatei`). Keine Steuerberatung |
 
+## B21 – Call-Transkripte sofort beim Eintreffen verarbeiten (31.10., 17:15)
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 21.1 | Auslöser statt Zeitplan | ❌ (wöchentlich, nur Google-Doc-Links) | ✅ | Live-Verbindung zu Discord (Gateway, `src/lib/discord/gateway.ts`): `MESSAGE_CREATE` im Call-Kanal sofort verarbeitet. Erkennung `transkriptKandidat` (`src/lib/calls/live-logic.ts`): Anhang .txt/.md/.vtt/.srt/.json/.docx/.pdf (auch .odt), Text > 2.000 Zeichen oder Link auf Google Doc, Notion, Fireflies, tl;dv, Otter; mehrere Anhänge = ein Call |
+| 21.2 | Eine Kette ≤ 5 Min. | ❌ | ✅ | `callNachrichtVerarbeiten` (`src/lib/calls/live.ts`): Datei holen → Call-Archiv (Datum/Titel aus der Nachricht, Sprecher erkannt) → KI-Auswertung (Punkte) → Wissen (mit Insider-Kennzeichen wie bisher) → Push an die Inhaber „Call vom … ausgewertet: x Wissenseinträge, y Aufgaben“. Im Test wenige Sekunden |
+| 21.3 | Bearbeitete Nachricht | ❌ | ✅ | `MESSAGE_UPDATE` → derselbe Call (Kennung `discord:<Nachricht>`) wird ersetzt und neu ausgewertet, nicht doppelt |
+| 21.4 | Zeitplan nur Sicherheitsnetz | ❌ | ✅ | Täglich 06:00 die letzten 7 Tage nachlesen (`callsSicherheitsnetz`); VA-, Gruppen- und Lugru-Kanäle lesen ab der zuletzt gelesenen Nachricht weiter (lückenlos nach Ausfall) und laufen um 06:00 zusätzlich einmal („Discord-Kanäle: Nachlese 06:00“) |
+| 21.5 | Anbindungen: Auslöser, letzter/nächster Lauf | ❌ | ✅ | Anbindungen → Hintergrund-Abrufe: „Discord – Call-Kanal: Auslöser: live (Discord) – verbunden seit … · zuletzt empfangen …“, Tabelle je Abruf mit Auslöser, letztem und nächstem Lauf (`ABRUF_PLAN`, `naechsterText` in `src/lib/today/abruf-plan.ts`); dieselben Felder in `anbindungen_status` und `calls` |
+| 21.6 | Fehler → Aufgabe | ❌ | ✅ | Datei nicht lesbar, > 25 MB, kein Text erkannt, Link verlangt Anmeldung → Aufgabe „Call-Transkript aus Discord nicht verarbeitet“ mit Link zur Nachricht (eine je Nachricht) |
+
+Abnahme: Unit `calls-live` (Erkennung, Titel/Sprecher, JSON-Export, nächster Lauf); e2e `b21-calls-live` gegen den
+Discord-Nachbau mit echter WebSocket-Verbindung: Transkript (.vtt) hochladen → Call ausgewertet, Wissen und Aufgaben da,
+Meldung an den Inhaber; Anhang ersetzt → derselbe Call neu; 30-MB-PDF → Aufgabe mit Link; Anbindungen, `calls` und
+`anbindungen_status` zeigen „live“ und den Zeitpunkt. **Voraussetzung live:** im Discord-Entwicklerportal beim Bot
+„Message Content Intent“ einschalten (To-do 53).
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -746,3 +763,6 @@ nie in Chats oder Mails.
 52. **Babysitter & Putzhilfe**: Privat → Familienalltag → „Babysitter & Putzhilfe“ → unten den Stundenlohn der Putzfrau
     eintragen und die Sätze der Babysitterin prüfen (vorbelegt 20 € wach / 17 € schlafend ab 20:00). Stehen die Termine
     im Familienkalender unter einem anderen Wort (z. B. dem Vornamen), das Wort bei „Begriffe im Kalender“ ergänzen.
+53. **Call-Kanal live (B21)**: discord.com/developers → eure Bot-Anwendung → Bot → „Privileged Gateway Intents“ →
+    **Message Content Intent** einschalten und speichern. Nach dem Update steht unter Anbindungen → Hintergrund-Abrufe
+    „Auslöser: live (Discord) – verbunden seit …“. Steht dort „abgelehnt“, fehlt genau dieser Schalter.

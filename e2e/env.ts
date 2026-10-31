@@ -12,6 +12,8 @@ export const E2E_ENV: Record<string, string> = {
   TESTDATEN_PASSWORT: PASSWORT,
   TESTUMGEBUNG: "1",
   ENABLE_SCHEDULER: "0",
+  // B21: Discord-Call-Kanal live lesen (Gateway gegen den Discord-Nachbau), auch ohne Zeitplan.
+  DISCORD_LIVE: "1",
   TESTDIENSTE_URL: TD,
   ANTHROPIC_BASE_URL: `${TD}/anthropic`,
   INTERNETMARKE_BASE_URL: `${TD}/im`,

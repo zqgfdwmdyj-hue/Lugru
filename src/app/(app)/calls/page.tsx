@@ -141,7 +141,7 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
               <button className="btn-link small" type="submit" name="nachholen" value="1" data-testid="calls-discord-nachholen">Ältere Nachrichten nachholen (bis 2.000)</button>
             </form>
           ) : (
-            <>Wöchentlich automatisch aus dem Discord-Kanal: <Link href="/anbindungen#discord_calls">Anbindungen → Discord – Call-Kanal</Link>.</>
+            <>Sofort beim Hochladen in den Discord-Call-Kanal (live, Sicherheitsnetz täglich 06:00): <Link href="/anbindungen#discord_calls">Anbindungen → Discord – Call-Kanal</Link>.</>
           )}
         </div>
       </details>

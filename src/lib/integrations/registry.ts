@@ -310,7 +310,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
   {
     provider: "discord_calls",
     name: "Discord – Call-Kanal (Consultant- oder Gruppen-Calls) – optional",
-    purpose: "Einmal pro Woche neue Google-Docs-Transkripte aus dem Discord-Kanal ins Call-Archiv holen; die KI zieht daraus Vereinbarungen, Aufgaben, Entscheidungen und offene Fragen.",
+    purpose: "Transkripte aus dem Discord-Call-Kanal sofort beim Hochladen ins Call-Archiv holen (Datei .txt/.md/.vtt/.srt/.json/.docx/.pdf, langer Text oder Link auf Google Doc, Notion, Fireflies, tl;dv, Otter); die KI zieht daraus Wissen, Aufgaben, Vereinbarungen und offene Fragen, danach kommt ein Push. Sicherheitsnetz täglich 06:00.",
     fields: [
       {
         key: "art",
@@ -325,6 +325,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
     setup: [
       "discord.com/developers → New Application → Bot → „Reset Token“ → Token kopieren und hier eintragen.",
+      "Bot → Privileged Gateway Intents → „Message Content Intent“ einschalten (sonst kann der Bot Nachrichten und Anhänge nicht live lesen).",
       "OAuth2 → URL Generator: „bot“ mit „View Channels“ und „Read Message History“ → Bot auf den Server einladen.",
       "Die Google Docs müssen für „Jeder mit dem Link“ lesbar sein – oder die Drive-Anbindung mit Dienstkonto hat Zugriff.",
     ],

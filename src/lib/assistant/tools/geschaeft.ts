@@ -1,4 +1,6 @@
 import "server-only";
+import { discordLiveStatus } from "@/lib/discord/gateway";
+import { ABRUF_PLAN, naechsterText } from "@/lib/today/abruf-plan";
 import { and, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -322,8 +324,12 @@ export const anbindungenStatus = defineTool({
         // Einmalige Schritte (z. B. sellerboard-Konto erkennen) laufen nur beim Einrichten – nie „veraltet“.
         const einmalig = EINMALIGE_ABRUFE.has(j.name);
         const alt = !einmalig && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
+        const plan = ABRUF_PLAN[j.name];
+        const letzterLauf = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
         return {
           abruf: j.name,
+          ausloeser: plan?.text ?? "Zeitplan: laut Plan",
+          naechster_lauf: naechsterText(plan, letzterLauf),
           letzter_erfolg: berlinDateTime(j.lastOkAt) ?? "nie",
           einmalig: einmalig ? "nur beim Einrichten nötig – kein Hinweis auf alte Daten" : undefined,
           fehler: fehlerAktuell ? (j.lastError ?? "Fehler").slice(0, 300) : undefined,
@@ -349,6 +355,12 @@ export const anbindungenStatus = defineTool({
         return { anbindung: d.name, eingerichtet, optional: optional && !eingerichtet ? "nur für Postfach-Anmeldung per OAuth nötig – Postfächer laufen über IMAP mit App-Passwort" : undefined, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined, letzter_fehler: fehlerJob ? { text: (fehlerJob.lastError ?? "Fehler").slice(0, 300), seit: berlinDateTime(fehlerJob.lastErrorAt), abruf: fehlerJob.name, hinweis: ABRUF_HINWEIS[fehlerJob.name] } : undefined };
       }).filter((a) => !i.nur_probleme || (!a.eingerichtet && !a.optional) || a.letzter_fehler),
       // Immer eine Übersicht – auch wenn „nur_probleme“ alle Postfächer ohne Fehler ausblendet (B17).
+      discord_call_kanal: st.get("discord_calls")
+        ? await (async () => {
+            const l = await discordLiveStatus(t);
+            return { ausloeser: l.aktiv ? "live (Discord)" : "Zeitplan (Live-Verbindung aus)", verbindung: l.zustand, verbunden_seit: berlinDateTime(l.seit) ?? undefined, zuletzt_empfangen: berlinDateTime(l.zuletztEmpfangen) ?? "noch nichts", fehler: l.fehler ?? undefined, sicherheitsnetz: "täglich 06:00 (letzte 7 Tage)" };
+          })()
+        : undefined,
       postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),
       postfaecher_hinweis: i.nur_probleme && pf.postfaecher.length && !pf.postfaecher.some((b) => b.fehler || !b.aktiv || postfachVeraltet(b, now)) ? `${pf.postfaecher.length} Postfach/Postfächer rufen ohne Fehler ab – mit „nur_probleme“ ausgeblendet.` : !pf.postfaecher.length ? "Kein Postfach mit Abruf hinterlegt (Posteingang → Postfächer)." : undefined,
       postfaecher: pf.postfaecher

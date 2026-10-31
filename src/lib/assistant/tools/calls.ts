@@ -2,6 +2,9 @@ import "server-only";
 import { z } from "zod";
 import { PUNKT_TEXT } from "@/lib/calls/logic";
 import { callDetail, callsDurchsuchen, callsListe } from "@/lib/calls/service";
+import { LIVE_JOB, NETZ_JOB } from "@/lib/calls/live";
+import { discordLiveStatus } from "@/lib/discord/gateway";
+import { jobStand } from "@/lib/today/jobs";
 import { defineTool } from "../types";
 import { abs, json } from "./common";
 
@@ -11,7 +14,7 @@ export const calls = defineTool({
   name: "calls",
   title: "Calls (Consultant & Deal-Gruppe)",
   description:
-    "Liste der Calls im Call-Archiv – Calls mit dem Amazon-Consultant (SAS-Programm) und Wochen-Calls der Deal-Gruppe: Datum, Titel, Art, Quelle, Überblick, wie viele Punkte noch zu prüfen sind, Aufgaben und offene Fragen. Optional Zeitraum und Art. Für Details und Punkte eines Calls „call_aufgaben“ mit der call_id.",
+    "Liste der Calls im Call-Archiv – Calls mit dem Amazon-Consultant (SAS-Programm) und Wochen-Calls der Deal-Gruppe: Datum, Titel, Art, Quelle, Überblick, wie viele Punkte noch zu prüfen sind, Aufgaben und offene Fragen; dazu wie Transkripte aus Discord ankommen (live, zuletzt empfangen, letzter Lauf, Sicherheitsnetz). Optional Zeitraum und Art. Für Details und Punkte eines Calls „call_aufgaben“ mit der call_id.",
   area: "amazon",
   write: false,
   quelle: { text: "Call-Archiv im Seller-System (Import aus Google Docs/Discord, KI-Auswertung)" },
@@ -22,8 +25,10 @@ export const calls = defineTool({
   }),
   run: async (ctx, i) => {
     const liste = await callsListe(ctx.session.tenantId, { von: i.von, bis: i.bis, art: i.art });
+    const [live, jobs] = await Promise.all([discordLiveStatus(ctx.session.tenantId), jobStand(ctx.session.tenantId, [LIVE_JOB, NETZ_JOB])]);
     return json({
       zeitraum: i.von || i.bis ? { von: i.von ?? "Anfang", bis: i.bis ?? "heute" } : "alle",
+      discord: { ausloeser: live.aktiv ? "live (Discord) – sofort beim Hochladen" : "Zeitplan (Live-Verbindung aus)", verbindung: live.zustand, zuletzt_empfangen: live.zuletztEmpfangen?.toISOString() ?? null, letzter_lauf: jobs.at?.toISOString() ?? null, letzter_fehler: jobs.fehler ?? undefined, sicherheitsnetz: "täglich 06:00 (letzte 7 Tage)" },
       calls: liste.map((c) => ({ call_id: c.id, datum: c.datum, titel: c.titel, art: c.art === "gruppe" ? "Wochen-Call Deal-Gruppe" : "Consultant-Call", quelle: c.quelle, teilnehmer: c.zusammenfassung?.teilnehmer?.length ? c.zusammenfassung.teilnehmer : undefined, ueberblick: c.zusammenfassung?.ueberblick || undefined, auswertung: c.auswertung, zu_pruefen: c.vorschlaege, aufgaben: c.aufgaben, offene_fragen: c.fragenOffen, link: abs(ctx, `/calls/${c.id}`) })),
       offene_punkte: abs(ctx, "/calls/offen"),
       link: abs(ctx, "/calls"),

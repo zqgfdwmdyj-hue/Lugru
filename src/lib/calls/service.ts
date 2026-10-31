@@ -498,42 +498,20 @@ export async function offenePunkte(tenantId: string, heute: string) {
 
 // ---- Discord-Kanal (wöchentlich)
 
-type DiscordMsg = { id: string; content?: string; timestamp?: string; embeds?: { url?: string; title?: string; description?: string }[] };
-
 /**
- * Google-Doc-Links aus dem Call-Kanal importieren. Wöchentlich reichen die letzten 50 Nachrichten; „nachholen“ liest
- * bis zu 2.000 ältere (seitenweise je 100). Legt nur an – die KI wertet danach im Hintergrund aus.
+ * Call-Kanal von Hand nachlesen (Calls → „Aus Discord abrufen“ / „nachholen“): dieselbe Verarbeitung wie live
+ * (Anhänge, lange Texte, Transkript-Links). Legt nur an – die KI wertet danach im Hintergrund aus.
  */
 export async function discordCallsImport(tenantId: string, heute: string, o: { nachrichten?: number } = {}): Promise<{ neu: number; fehler: string[]; gelesen: number }> {
-  const cfg = await getIntegration(tenantId, "discord_calls");
-  if (!cfg?.botToken || !cfg.kanalId) return { neu: 0, fehler: [], gelesen: 0 };
-  const art: CallArt = cfg.art === "consultant" ? "consultant" : "gruppe";
-  const ziel = Math.min(Math.max(o.nachrichten ?? 50, 1), 2000);
-  const msgs: DiscordMsg[] = [];
-  let vor: string | null = null;
-  while (msgs.length < ziel) {
-    const limit = Math.min(100, ziel - msgs.length);
-    const r = await fetch(`${DISCORD()}/channels/${encodeURIComponent(cfg.kanalId)}/messages?limit=${limit}${vor ? `&before=${vor}` : ""}`, { headers: { Authorization: `Bot ${cfg.botToken}` }, signal: AbortSignal.timeout(20_000) });
-    if (!r.ok) throw new Error(`Discord: Kanal nicht lesbar (${r.status}) – Bot-Token, Kanal-ID und Leserechte des Bots prüfen.`);
-    const seite = (await r.json()) as DiscordMsg[];
-    msgs.push(...seite);
-    if (seite.length < limit) break;
-    vor = seite[seite.length - 1].id;
-  }
+  void heute;
+  const { kanalNachrichten, callNachrichtVerarbeiten } = await import("./live");
+  const msgs = await kanalNachrichten(tenantId, { max: o.nachrichten ?? 50 });
   let neu = 0;
   const fehler: string[] = [];
   for (const m of [...msgs].reverse()) {
-    const text = [m.content ?? "", ...(m.embeds ?? []).flatMap((e) => [e.url ?? "", e.title ?? "", e.description ?? ""])].join("\n");
-    for (const docId of googleDocLinks(text)) {
-      const ersteZeile = (m.content ?? "").split("\n")[0].replace(/https?:\/\/\S+/g, "").trim();
-      const datum = datumAusText(`${ersteZeile} ${m.content ?? ""}`, m.timestamp ? m.timestamp.slice(0, 10) : heute);
-      try {
-        const res = await callImportieren(tenantId, { titel: ersteZeile || `${art === "gruppe" ? "Wochen-Call Deal-Gruppe" : "Consultant-Call"} ${datum.split("-").reverse().join(".")}`, datum, link: `https://docs.google.com/document/d/${docId}/edit`, quelle: "discord", quelleRef: `gdoc:${docId}`, art, auswerten: false });
-        if (res.neu) neu++;
-      } catch (e) {
-        fehler.push(`${docId.slice(0, 8)}…: ${e instanceof Error ? e.message : String(e)}`.slice(0, 200));
-      }
-    }
+    const r = await callNachrichtVerarbeiten(tenantId, m, { auswerten: false, quelle: "hand" });
+    if (r.status === "neu" || r.status === "ersetzt") neu++;
+    if (r.fehler) fehler.push(...r.fehler.map((f) => f.slice(0, 200)));
   }
   return { neu, fehler, gelesen: msgs.length };
 }

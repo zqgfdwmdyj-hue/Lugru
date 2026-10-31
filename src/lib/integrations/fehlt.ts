@@ -5,7 +5,7 @@ export const FEHLT_OHNE: Record<string, string> = {
   keepa: "Preisverlauf und Verkäufe je Monat, Deal-Ampel, Preis-Trend der Kapital-Ampel, B2B-Scanner",
   anthropic: "KI-Auswertungen: Calls und Wissen aus Calls, Rechnungen auslesen, Retouren-Station, Preislisten-Spalten",
   lexoffice: "B2B-Rechnungen und Zahlungsabgleich der Deals",
-  discord_calls: "wöchentlicher Import der Calls aus dem Discord-Kanal",
+  discord_calls: "Call-Transkripte live aus dem Discord-Kanal (sofort beim Hochladen)",
   discord_profitpath: "ProfitPath-Deals automatisch in den Deal-Eingang (mit Gegenprüfung und Push bei Grün/Gelb)",
   discord_va: "Aufgaben an die VA als Discord-Thread, Rückfragen und automatische Antworten auf Datenfragen der VA",
   sellerboard_web: "EK automatisch zu sellerboard übertragen (sonst Importdatei herunterladen)",
