@@ -31,15 +31,40 @@ export default async function KurzbefehlPage({ searchParams }: { searchParams: P
         {s.dealEingang.kurzbefehlLink ? (
           <p className="small" style={{ margin: 0 }}>Fertigen Kurzbefehl laden: <a href={s.dealEingang.kurzbefehlLink}>iCloud-Link</a> – danach nur noch den Schlüssel eintragen.</p>
         ) : (
-          <p className="small muted" style={{ margin: 0 }}>iCloud-Link zum fertigen Kurzbefehl: noch nicht hinterlegt (Einstellungen → Deal-Eingang).</p>
+          <p className="small muted" style={{ margin: 0 }}>iCloud-Link zum fertigen Kurzbefehl: noch nicht hinterlegt (Deal-Eingang → „Weitere Einstellungen“).</p>
         )}
-        <ol className="small" style={{ margin: 0 }}>
-          <li>Unten einen Schlüssel für dieses iPhone erzeugen und kopieren.</li>
-          <li>App „Kurzbefehle“ → „+“ → Name „Deal prüfen“ → Einstellungen (i): „Im Share-Sheet anzeigen“ an, Typen: Text, Bilder, PDF, Dateien.</li>
-          <li>Aktion „Inhalte von URL abrufen“: URL <code>{basis || "https://<deine Adresse>"}/api/deal-eingang</code>, Methode POST, Header <code>Authorization</code> = <code>Bearer &lt;Schlüssel&gt;</code>, Text: „Formular“ mit Feld <code>text</code> = Kurzbefehleingabe (bei Bildern/PDF: Feld <code>datei</code> als Datei).</li>
-          <li>Aktion „Mitteilung anzeigen“ mit dem Ergebnis (Feld <code>text</code> aus der Antwort).</li>
-          <li>Testen: in WhatsApp Nachricht teilen → „Deal prüfen“. Das Ergebnis erscheint im Deal-Eingang.</li>
+        <ol className="small stack" style={{ margin: 0, gap: 10 }} data-testid="de-anleitung">
+          <li>
+            Unten einen Schlüssel für dieses iPhone erzeugen und kopieren (beginnt mit <code>dk_</code>).
+          </li>
+          <li>
+            App „Kurzbefehle“ → „+“ → Name „Deal prüfen“ → Einstellungen (ⓘ): „Im Share-Sheet anzeigen“ an, Typen: Text, Bilder, PDF, Dateien.
+            <Skizze titel="Details" zeilen={[["Im Share-Sheet anzeigen", "an"], ["Typen", "Text · Bilder · PDF · Dateien"]]} />
+          </li>
+          <li>
+            Aktion „Inhalte von URL abrufen“ hinzufügen und so ausfüllen:
+            <Skizze
+              titel="🌐 Inhalte von URL abrufen"
+              zeilen={[
+                ["URL", `${basis || "https://<deine Adresse>"}/api/deal-eingang`],
+                ["Methode", "POST"],
+                ["Header", "Authorization = Bearer dk_…"],
+                ["Haupttext", "Formular"],
+                ["Feld", "text = Kurzbefehleingabe"],
+                ["bei Bildern/PDF", "Feld datei = Kurzbefehleingabe (Datei)"],
+              ]}
+            />
+          </li>
+          <li>
+            Aktion „Mitteilung anzeigen“ mit dem Feld <code>text</code> aus der Antwort:
+            <Skizze titel="💬 Mitteilung anzeigen" zeilen={[["Inhalt", "Wörterbuchwert „text“ in Inhalte von URL"]]} />
+          </li>
+          <li>
+            Testen: in WhatsApp eine Nachricht lange drücken → Teilen → „Deal prüfen“. Nach höchstens einer Minute kommt die Mitteilung mit der Ampel.
+            <Skizze titel="Mitteilung" zeilen={[["Deal prüfen", "Wird geprüft – Ergebnis gleich als Mitteilung bzw. im Deal-Eingang."]]} />
+          </li>
         </ol>
+        <p className="small muted" style={{ margin: 0 }}>Die Bilder sind Skizzen der Kurzbefehle-App, keine Bildschirmfotos – Beschriftungen können je nach iOS-Version leicht abweichen.</p>
         <TokenForm />
         {liste.length > 0 && (
           <table className="table small" data-testid="de-tokens">
@@ -58,5 +83,20 @@ export default async function KurzbefehlPage({ searchParams }: { searchParams: P
         <p className="small muted" style={{ margin: 0 }}>Je Gerät ein eigener Schlüssel. Widerrufen wirkt sofort. Höchstens 20 Eingänge in 10 Minuten je Schlüssel.</p>
       </section>
     </>
+  );
+}
+
+/** Skizze einer Kurzbefehle-Aktion (graue Karte wie in der App) – statt Bildschirmfotos, die je iOS-Version abweichen. */
+function Skizze({ titel, zeilen }: { titel: string; zeilen: [string, string][] }) {
+  return (
+    <div aria-hidden="true" data-testid="de-skizze" style={{ marginTop: 6, maxWidth: 420, border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)", padding: "8px 12px", fontFamily: "var(--sans)" }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{titel}</div>
+      {zeilen.map(([k, v]) => (
+        <div key={k} className="row" style={{ gap: 8, justifyContent: "space-between", borderTop: "1px solid var(--border)", padding: "4px 0" }}>
+          <span className="muted">{k}</span>
+          <span style={{ color: "var(--link)", textAlign: "right", overflowWrap: "anywhere" }}>{v}</span>
+        </div>
+      ))}
+    </div>
   );
 }

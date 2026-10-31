@@ -179,12 +179,29 @@ export async function einstellungenAction(fd: FormData) {
   const euro = (k: string) => Math.max(0, Math.min(10_000_000, Math.round(parseAmount(fd.get(k)) ?? 0)));
   const dealEingang = {
     ...alt,
-    zielRoi: Math.max(1, Math.min(500, Math.round(parseAmount(fd.get("zielRoi")) ?? alt.zielRoi ?? 20))),
-    budgetJeDeal: euro("budgetJeDeal"),
-    budgetJeTag: euro("budgetJeTag"),
-    budgetJeWoche: euro("budgetJeWoche"),
-    wertSchwelle: Math.max(0, Math.min(100, Math.round(parseAmount(fd.get("wertSchwelle")) ?? alt.wertSchwelle ?? 70))),
+    // Jedes Formular schickt nur seine Felder – fehlende bleiben, wie sie sind.
+    zielRoi: fd.has("zielRoi") ? Math.max(1, Math.min(500, Math.round(parseAmount(fd.get("zielRoi")) ?? alt.zielRoi ?? 20))) : alt.zielRoi,
+    budgetJeDeal: fd.has("budgetJeDeal") ? euro("budgetJeDeal") : alt.budgetJeDeal,
+    budgetJeTag: fd.has("budgetJeTag") ? euro("budgetJeTag") : alt.budgetJeTag,
+    budgetJeWoche: fd.has("budgetJeWoche") ? euro("budgetJeWoche") : alt.budgetJeWoche,
+    wertSchwelle: fd.has("wertSchwelle") ? Math.max(0, Math.min(100, Math.round(parseAmount(fd.get("wertSchwelle")) ?? alt.wertSchwelle ?? 70))) : alt.wertSchwelle,
   };
+  // Weitere Einstellungen (nur wenn das Formular sie mitschickt): Aufbewahrung, Preislisten-Weiche, Reichweite,
+  // eigene Mail-Adresse für Weiterleitungen, iCloud-Link zum fertigen Kurzbefehl.
+  const zahl = (k: string, min: number, max: number, alt?: number) => (fd.has(k) ? Math.max(min, Math.min(max, Math.round(parseAmount(fd.get(k)) ?? alt ?? min))) : alt);
+  if (fd.has("aufbewahrungMonate")) {
+    const mail = String(fd.get("mailAdresse") ?? "").trim().toLowerCase();
+    const link = String(fd.get("kurzbefehlLink") ?? "").trim();
+    if (mail && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(mail)) redirect(mit(PFAD, "Mail-Adresse ungültig – nicht gespeichert."));
+    if (link && !/^https:\/\/(www\.)?icloud\.com\/shortcuts\/[A-Za-z0-9]+/.test(link)) redirect(mit(PFAD, "Der Kurzbefehl-Link muss mit https://www.icloud.com/shortcuts/ beginnen – nicht gespeichert."));
+    Object.assign(dealEingang, {
+      aufbewahrungMonate: zahl("aufbewahrungMonate", 1, 60, alt.aufbewahrungMonate ?? 12),
+      preislisteAbZeilen: zahl("preislisteAbZeilen", 3, 200, alt.preislisteAbZeilen ?? 15),
+      maxReichweiteTage: zahl("maxReichweiteTage", 7, 365, alt.maxReichweiteTage ?? 60),
+      mailAdresse: mail,
+      kurzbefehlLink: link,
+    });
+  }
   await db.update(schema.tenants).set({ settings: { ...(t?.settings ?? {}), dealEingang } }).where(eq(schema.tenants.id, s.tenantId));
   revalidatePath(PFAD);
   redirect(mit(PFAD, "Einstellungen gespeichert."));

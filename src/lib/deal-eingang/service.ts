@@ -27,6 +27,8 @@ import {
   zeilenAmpel,
   type Angebot,
 } from "./logic";
+import { risikoPruefen, type RisikoDaten } from "./risiko-logic";
+import type { VerlaufZeile } from "./chart-logic";
 
 // Deal-Eingang: geteilte Nachricht/Screenshot/Datei speichern, Angebote erkennen (KI, sonst Regeln), je Angebot ASIN
 // finden (ASIN → EAN → Titelsuche), Deal-Ampel (Modul 4) rechnen, eigene Lage (Bestand, Reichweite, Kapital-Ampel,
@@ -137,7 +139,7 @@ async function asinFinden(tenantId: string, a: Angebot): Promise<{ asin: string 
 
 // ---- Eigene Lage -------------------------------------------------------------------------------------------------
 
-type Lage = { kapital: Map<string, { ampel: "gruen" | "gelb" | "rot"; reichweite: number | null; gruende: string[]; ek: number | null }>; verlust: Map<string, string>; vorschlag: Set<string> };
+type Lage = { kapital: Map<string, { ampel: "gruen" | "gelb" | "rot"; reichweite: number | null; gruende: string[]; ek: number | null }>; verlust: Map<string, string>; vorschlag: Set<string>; risiko?: RisikoDaten };
 
 async function eigeneLage(tenantId: string, heute: string): Promise<Lage> {
   const kapital = new Map<string, { ampel: "gruen" | "gelb" | "rot"; reichweite: number | null; gruende: string[]; ek: number | null }>();
@@ -158,12 +160,36 @@ async function eigeneLage(tenantId: string, heute: string): Promise<Lage> {
   } catch {
     // ohne Nachbestell-Daten
   }
-  return { kapital, verlust, vorschlag };
+  return { kapital, verlust, vorschlag, risiko: await risikoDaten(tenantId).catch(() => undefined) };
+}
+
+/** Daten für die Risiko-Prüfung: Gefahrgut (Produktstamm), Rechteinhaber-Fälle, Echtheits-Ordner, Vertriebsfreigaben. */
+async function risikoDaten(tenantId: string): Promise<RisikoDaten> {
+  const P = schema.products;
+  const V = schema.amazonVorgaenge;
+  const EM = schema.echtheitMarken;
+  const EB = schema.echtheitBelege;
+  const LP = schema.lieferantenProfile;
+  const S = schema.suppliers;
+  const [haz, ip, marken, belege, profile] = await Promise.all([
+    db.select({ asin: P.asin }).from(P).where(and(eq(P.tenantId, tenantId), eq(P.isHazmat, true))),
+    db.select({ asins: V.asins, marke: V.marke, status: V.status, fallnummer: V.fallnummer }).from(V).where(and(eq(V.tenantId, tenantId), eq(V.bereich, "marke"))).limit(500),
+    db.select({ id: EM.id, marke: EM.marke, aliase: EM.aliase }).from(EM).where(eq(EM.tenantId, tenantId)),
+    db.select({ markeId: EB.markeId, n: sql<number>`count(*)::int` }).from(EB).where(and(eq(EB.tenantId, tenantId), eq(EB.urteil, "stimmt"))).groupBy(EB.markeId),
+    db.select({ name: S.name, code: S.code, marken: LP.marken, wiederverkauf: LP.wiederverkaufErlaubt, marktplatz: LP.marktplatzErlaubt }).from(LP).innerJoin(S, eq(S.id, LP.supplierId)).where(eq(LP.tenantId, tenantId)),
+  ]);
+  const anzahl = new Map(belege.map((b) => [b.markeId, b.n]));
+  return {
+    hazmat: new Set(haz.map((h) => h.asin)),
+    ip: ip.map((v) => ({ asins: v.asins ?? [], marke: v.marke, offen: v.status === "offen", fallnummer: v.fallnummer })),
+    echtheit: marken.map((m) => ({ marke: m.marke, aliase: m.aliase ?? [], belege: anzahl.get(m.id) ?? 0 })),
+    vertrieb: profile.map((p) => ({ lieferant: p.name || p.code, marken: p.marken ?? [], wiederverkaufErlaubt: p.wiederverkauf, marktplatzErlaubt: p.marktplatz })),
+  };
 }
 
 // ---- Prüfen ------------------------------------------------------------------------------------------------------
 
-export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lage: Lage, o: { now?: number } = {}): Promise<DealEingangZeile> {
+export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lage: Lage, o: { now?: number; quelle?: string | null } = {}): Promise<DealEingangZeile> {
   const s = await getSettings(tenantId);
   const de = s.dealEingang;
   const leer = (fehler: string | null, extra: Partial<DealEingangZeile> = {}): DealEingangZeile => ({ nr, angebot: a, asin: null, zuordnung: "keine", vorschlaege: [], titel: null, ampel: "gelb", gruende: [], bestesLand: null, ekNetto: null, gewinn: null, roi: null, marge: null, angebote: null, amazonProzent: null, verkaeufeMonat: null, empfohlen: null, kapitalbedarf: null, maxEk: [], laender: [], eigen: null, risiken: [], hinweise: [], fehler, geprueftAm: new Date().toISOString(), ...extra });
@@ -220,6 +246,14 @@ export async function zeilePruefen(tenantId: string, nr: number, a: Angebot, lag
     if (r && !r.ok) rot.unshift(`Marke gesperrt: ${r.reason ?? "Freischaltung erforderlich"}.`);
   } catch {
     risiken.push("Verkaufsfreigabe nicht geprüft (SP-API nicht verbunden).");
+  }
+  // Gefahrgut, Rechteinhaber-Beschwerden, Echtheits-Ordner, selektiver Vertrieb
+  if (lage.risiko) {
+    const r = risikoPruefen({ asin: z.asin, titel, marke: a.marke, quelle: o.quelle ?? null }, lage.risiko);
+    rot.push(...r.rot);
+    // Risiken vor Markt-Hinweisen, damit sie in den drei Gründen nicht abgeschnitten werden
+    gelb.unshift(...r.gelb);
+    risiken.push(...r.hinweise);
   }
   risiken.push("Rechnung als Echtheitsnachweis tauglich? (Händler mit Anschrift, Artikel und Menge)");
 
@@ -285,7 +319,7 @@ export async function eingangPruefen(tenantId: string, id: string, o: { heute?: 
     const heute = o.heute ?? new Date().toISOString().slice(0, 10);
     const lage = await eigeneLage(tenantId, heute);
     const zeilen: DealEingangZeile[] = [];
-    for (const [i, a] of k.angebote.slice(0, s.dealEingang.preislisteAbZeilen).entries()) zeilen.push(await zeilePruefen(tenantId, i + 1, a, lage, o));
+    for (const [i, a] of k.angebote.slice(0, s.dealEingang.preislisteAbZeilen).entries()) zeilen.push(await zeilePruefen(tenantId, i + 1, a, lage, { ...o, quelle }));
     await liquiditaetPruefen(tenantId, zeilen, heute);
     // Abschnitt 10: Budget-Grenzen (je Deal/Tag/Woche) – darüber höchstens Gelb.
     const { budgetAnwenden } = await import("./kauf");
@@ -327,7 +361,7 @@ export async function zeileAendern(tenantId: string, id: string, nr: number, aen
   const alt = e.zeilen.find((z) => z.nr === nr);
   const a: Angebot = { ...(alt?.angebot ?? { asin: null, ean: null, name: null, marke: null, ek: null, ekNetto: true, waehrung: "EUR", menge: null, moq: null, staffel: null, versand: null, lieferzeit: null, zahlung: null, gueltigBis: null, zustand: null, packung: null }), ...aenderung };
   const lage = await eigeneLage(tenantId, new Date().toISOString().slice(0, 10));
-  const neu = await zeilePruefen(tenantId, nr, a, lage);
+  const neu = await zeilePruefen(tenantId, nr, a, lage, { quelle: e.quelle });
   const zeilen = [...e.zeilen.filter((z) => z.nr !== nr), neu].sort((x, y) => x.nr - y.nr);
   const amp = eingangAmpel(zeilen);
   await db.update(E).set({ zeilen, ampel: amp.ampel, zusammenfassung: pushText(zeilen.map((z) => ({ ...z, name: z.angebot.name }))), pruefung: "fertig" }).where(eq(E.id, id));
@@ -378,6 +412,30 @@ export async function aufraeumen(tenantId: string, now = new Date()) {
   if (dateiIds.length) await db.delete(schema.files).where(and(eq(schema.files.tenantId, tenantId), inArray(schema.files.id, dateiIds)));
   if (alt.length) await db.delete(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, alt.map((a) => a.id))));
   return alt.length;
+}
+
+// ---- Detailseite: Keepa-Verlauf und Originaldateien -------------------------------------------------------------
+
+/** Keepa-Verlauf einer ASIN aus dem Zwischenspeicher (bestes Land, sonst DE) – ohne neue Abfrage, keine Tokens. */
+export async function keepaVerlaufAusCache(tenantId: string, asin: string, land: string | null): Promise<{ verlauf: VerlaufZeile[]; land: string; stand: Date } | null> {
+  const C = schema.keepaCache;
+  const mps = [...new Set([(land ?? "DE").toUpperCase(), "DE"])];
+  const rows = await db.select({ mp: C.marktplatz, stand: C.stand, am: C.abgerufenAm }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.asin, asin), inArray(C.marktplatz, mps)));
+  for (const mp of mps) {
+    const r = rows.find((x) => x.mp === mp);
+    const verlauf = (r?.stand as { verlauf?: VerlaufZeile[] } | null)?.verlauf;
+    if (r && verlauf?.length) return { verlauf, land: mp, stand: r.am };
+  }
+  return null;
+}
+
+/** Originaldatei eines Eingangs (Screenshot, PDF, Tabelle) – nur, wenn sie zu diesem Eingang des Mandanten gehört. */
+export async function eingangDatei(tenantId: string, id: string, fileId: string): Promise<{ name: string; mimeType: string; data: Buffer } | null> {
+  const [e] = await db.select({ ids: E.dateiIds }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, id)));
+  if (!e?.ids.includes(fileId)) return null;
+  const F = schema.files;
+  const [f] = await db.select({ name: F.name, mimeType: F.mimeType, data: F.data }).from(F).where(and(eq(F.tenantId, tenantId), eq(F.id, fileId)));
+  return f ? { name: f.name, mimeType: f.mimeType, data: f.data as Buffer } : null;
 }
 
 // ---- Geräte-Schlüssel (iPhone-Kurzbefehl) -------------------------------------------------------------------------

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireArea } from "@/lib/auth/session";
 import { AMPEL_EMOJI, antwortEntwurf } from "@/lib/deal-eingang/logic";
-import { eingang, STATUS_TEXT } from "@/lib/deal-eingang/service";
+import { eingang, keepaVerlaufAusCache, STATUS_TEXT } from "@/lib/deal-eingang/service";
+import { miniChart, type MiniChart } from "@/lib/deal-eingang/chart-logic";
 import { formatEuro } from "@/lib/numbers";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
 import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction, gekauftAction, bewertenAction } from "../actions";
@@ -21,6 +22,19 @@ export default async function DealEingangDetail({ params, searchParams }: { para
   if (!e) notFound();
   const laeuft = e.pruefung === "offen" || e.pruefung === "laeuft";
   const schreiben = !session.readOnly;
+  // Keepa-Mini-Chart 90 Tage je Angebot – nur aus dem Zwischenspeicher (keine Tokens beim Ansehen).
+  const heute = new Date().toISOString().slice(0, 10);
+  const charts = new Map<number, { chart: MiniChart; land: string; stand: Date }>();
+  await Promise.all(
+    e.zeilen
+      .filter((z) => z.asin)
+      .map(async (z) => {
+        const v = await keepaVerlaufAusCache(session.tenantId, z.asin!, z.bestesLand).catch(() => null);
+        const chart = v ? miniChart(v.verlauf, { bis: heute }) : null;
+        if (v && chart) charts.set(z.nr, { chart, land: v.land, stand: v.stand });
+      }),
+  );
+  const bilder = e.dateiIds.map((fid, i) => ({ id: fid, name: e.dateiNamen[i] ?? `Datei ${i + 1}` }));
   return (
     <>
       <AutoRefresh active={laeuft} everyMs={3000} />
@@ -36,7 +50,20 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         <details>
           <summary className="small">Originalnachricht{e.dateiNamen.length ? ` + ${e.dateiNamen.length} Datei(en)` : ""}</summary>
           <pre className="small" style={{ whiteSpace: "pre-wrap" }}>{e.rohtext || "–"}</pre>
-          {e.dateiNamen.length > 0 && <div className="small muted">{e.dateiNamen.join(", ")}</div>}
+          {bilder.length > 0 && (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }} data-testid="de-dateien">
+              {bilder.map((b) =>
+                /\.(png|jpe?g|gif|webp|heic)$/i.test(b.name) ? (
+                  <a key={b.id} href={`/deal-eingang/${e.id}/datei/${b.id}`} target="_blank" rel="noreferrer" title={b.name}>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- geschützte Datei, kein öffentliches Bild */}
+                    <img src={`/deal-eingang/${e.id}/datei/${b.id}`} alt={b.name} style={{ maxWidth: 220, maxHeight: 320, border: "1px solid var(--border)", borderRadius: 8 }} data-testid="de-bild" />
+                  </a>
+                ) : (
+                  <a key={b.id} className="small" href={`/deal-eingang/${e.id}/datei/${b.id}`} target="_blank" rel="noreferrer">{b.name}</a>
+                ),
+              )}
+            </div>
+          )}
         </details>
         <div className="small muted">Status: {STATUS_TEXT[e.status]}{e.grund ? ` – ${e.grund}` : ""}</div>
         {e.gekauftAm && <div className="small" data-testid="de-gekauft">Gekauft: {e.gekauftMenge} Stk{e.gekauftPreis !== null ? ` zu ${eur(e.gekauftPreis)} netto` : ""} am {e.gekauftAm.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} ({e.gekauftWeg === "mail" ? "Bestellbestätigung per Mail" : e.gekauftWeg === "claude" ? "über Claude" : e.gekauftWeg === "sprache" || e.gekauftWeg === "sms" ? "per Sprache/SMS" : "von Hand"}){e.bestellungId ? <> · <Link href={`/einkauf/${e.bestellungId}`}>Bestellung (Wareneingang, Rechnung)</Link></> : null}</div>}
@@ -65,6 +92,7 @@ export default async function DealEingangDetail({ params, searchParams }: { para
               )}
             </div>
           )}
+          {charts.has(z.nr) && <KeepaMini {...charts.get(z.nr)!} />}
           {z.maxEk.length > 0 && <div className="small" data-testid="de-maxek">Max. EK für Ziel-ROI: {z.maxEk.map((m) => `${m.land} ${eur(m.ek)}`).join(" · ")}</div>}
           {z.eigen && <div className="small muted">Eigene Lage: {z.eigen.bestand} auf Lager{z.eigen.unterwegs ? `, ${z.eigen.unterwegs} unterwegs` : ""}{z.eigen.reichweite !== null ? `, Reichweite ${z.eigen.reichweite >= 9999 ? "∞" : `${z.eigen.reichweite} T`}` : ""}{z.eigen.kapitalAmpel ? `, Kapital-Ampel ${AMPEL_EMOJI[z.eigen.kapitalAmpel]}` : ""}{z.eigen.letzterEk ? `, letzter EK ${eur(z.eigen.letzterEk)}` : ""}{z.eigen.bestellvorschlag ? ", Bestellvorschlag offen" : ""}{z.eigen.verlustStopp ? `, ${z.eigen.verlustStopp}` : ""}</div>}
           {z.laender.length > 0 && (
@@ -141,5 +169,23 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         </section>
       )}
     </>
+  );
+}
+
+/** Buy Box der letzten 90 Tage (Linie), Amazon gestrichelt; darunter Ø, Tief, Hoch, aktuell und Datenstand. */
+function KeepaMini({ chart, land, stand }: { chart: MiniChart; land: string; stand: Date }) {
+  const w = 280;
+  const h = 60;
+  return (
+    <figure style={{ margin: 0 }} data-testid="de-chart" data-land={land}>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={`Buy Box ${land} der letzten ${chart.tage} Tage`} style={{ maxWidth: 420, height: 60, display: "block", background: "var(--surface-2)", borderRadius: 6 }}>
+        {chart.amazonPfad && <path d={chart.amazonPfad} fill="none" stroke="var(--c-amazon, #ff9900)" strokeWidth="1" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />}
+        <path d={chart.pfad} fill="none" stroke="var(--accent, #0f766e)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <figcaption className="small muted">
+        Keepa {land}, Buy Box {chart.von.slice(5).split("-").reverse().join(".")}–{chart.bis.slice(5).split("-").reverse().join(".")}: aktuell {eur(chart.letzter)} · Ø {eur(chart.schnitt)} · Tief {eur(chart.min)} · Hoch {eur(chart.max)}
+        {chart.amazonPfad ? " · gestrichelt: Amazon" : ""} · Stand {stand.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}
+      </figcaption>
+    </figure>
   );
 }

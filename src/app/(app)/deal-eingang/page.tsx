@@ -104,6 +104,21 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
             <button className="btn btn-small" type="submit">Speichern</button>
           </form>
         )}
+        {session.role === "owner" && !session.readOnly && (
+          <details data-testid="de-weitere">
+            <summary className="small">Weitere Einstellungen: Aufbewahrung, Mail-Adresse, Kurzbefehl-Link, Preislisten-Weiche</summary>
+            <form action={einstellungenAction} className="stack small" style={{ gap: 8, marginTop: 8, maxWidth: 560 }} data-testid="de-weitere-form">
+              <label className="field">Eingänge löschen nach (Monaten)<input className="input" name="aufbewahrungMonate" inputMode="numeric" defaultValue={de.aufbewahrungMonate} style={{ width: 80 }} /><span className="muted">WhatsApp-Inhalte enthalten Namen und Nummern Dritter – Standard 12 Monate.</span></label>
+              <label className="field">Eigene Adresse für weitergeleitete Deals<input className="input" name="mailAdresse" type="email" defaultValue={de.mailAdresse ?? ""} placeholder="deals@deine-domain.de" /><span className="muted">Mails an diese Adresse (über ein verbundenes Postfach) landen hier; sonst „Deal prüfen“ bzw. „#deal“ im Betreff.</span></label>
+              <label className="field">iCloud-Link zum fertigen iPhone-Kurzbefehl<input className="input" name="kurzbefehlLink" defaultValue={de.kurzbefehlLink ?? ""} placeholder="https://www.icloud.com/shortcuts/…" /><span className="muted">Erscheint in der Anleitung „Teilen aus WhatsApp“.</span></label>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <label className="field">Als Preisliste ab Zeilen<input className="input" name="preislisteAbZeilen" inputMode="numeric" defaultValue={de.preislisteAbZeilen} style={{ width: 80 }} /></label>
+                <label className="field">Empfohlene Menge: Reichweite bis (Tage)<input className="input" name="maxReichweiteTage" inputMode="numeric" defaultValue={de.maxReichweiteTage} style={{ width: 80 }} /></label>
+              </div>
+              <div><button className="btn btn-small" type="submit">Speichern</button></div>
+            </form>
+          </details>
+        )}
       </section>
     </>
   );
