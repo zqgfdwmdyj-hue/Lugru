@@ -19,7 +19,7 @@ export const LIVE_JOB = "Call-Archiv (Discord live)";
 export const NETZ_JOB = "Call-Archiv (Discord, Sicherheitsnetz)";
 
 /** Gerade in Arbeit (gleiche Nachricht nicht zweimal gleichzeitig). */
-const LAEUFT = new Set<string>();
+const LAEUFT = new Map<string, Promise<unknown>>();
 
 export type LiveErgebnis = { status: "kein_transkript" | "schon_da" | "neu" | "ersetzt" | "fehler"; callId?: string; wissen?: number; aufgaben?: number; fehler?: string[] };
 
@@ -63,8 +63,13 @@ export async function callNachrichtVerarbeiten(tenantId: string, m: DiscordNachr
   if (!k) return { status: "kein_transkript" };
   const ref = `discord:${m.id}`;
   const sperre = `${tenantId}:${m.id}`;
-  if (LAEUFT.has(sperre)) return { status: "schon_da" };
-  LAEUFT.add(sperre);
+  // Läuft dieselbe Nachricht gerade: neue Nachricht doppelt → überspringen; bearbeitet → danach verarbeiten.
+  for (let laufend = LAEUFT.get(sperre); laufend; laufend = LAEUFT.get(sperre)) {
+    if (!o.bearbeitet) return { status: "schon_da" };
+    await laufend.catch(() => null);
+  }
+  let fertig: (v?: unknown) => void = () => undefined;
+  LAEUFT.set(sperre, new Promise((r) => (fertig = r)));
   const t0 = Date.now();
   try {
     const [alt] = await db.select({ id: C.id, kennung: C.inhaltKennung }).from(C).where(and(eq(C.tenantId, tenantId), eq(C.quelleRef, ref))).limit(1);
@@ -153,6 +158,7 @@ export async function callNachrichtVerarbeiten(tenantId: string, m: DiscordNachr
     return { status: "fehler", fehler: [msg] };
   } finally {
     LAEUFT.delete(sperre);
+    fertig();
   }
 }
 
