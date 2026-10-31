@@ -383,6 +383,56 @@ Abnahme B18 (e2e `va-automatik.spec.ts`, 3 Abläufe; Unit `va-automatik`): Anspr
 overview“ auf Englisch mit Thread-Links, einmal am Tag; Mo–Fr und Feiertage im Unit-Test ✅ · Frist verpasst → Liste an
 Ludwig, Zeile rot ✅ · Tagesgrenze → Sammel-Thread, „#n case …“ ✅.
 
+## B19 – Browser-Test Teil 2 und Lugru (Nachtrag 31.10.)
+
+Reihenfolge wie im Nachtrag: B19.2 → B19.1 → B19.3 → B19.4 → Rest. Status: ✅ gebaut · 🟡 teilweise · ❌ fehlt ·
+👤 entscheidet Ludwig.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 19.2a | Neue Konten bekommen nie Privat-Zugang | 🐞 (Vorgabe „voll“ möglich) | ✅ | `src/lib/auth/rollen.ts` (Vorlagen VA / Nur Familie / Mitarbeiter / Inhaber), `addUser` in `src/app/(app)/einstellungen/actions.ts`: Privat nur mit Vorlage „Nur Familie“ (dann eng) |
+| 19.2b | Benutzerliste: Spalte „Privat-Zugriff“, Warnungen | ❌ | ✅ | `zugriffsWarnungen`: Privat voll bei Nicht-Inhaber (rot), weiteres/ungenutztes Inhaber-Konto, Mitarbeiter mit allen Bereichen, VA ohne VA-Rolle; Rolle je Konto umstellbar (`setRolleAction`), Konto entfernen wie bisher |
+| 19.2c | „Nur Familie“ sieht nie Beobachtungen, Therapie, Tagebuch, Finanzen | 🟡 | ✅ | `familieDarf` in `src/lib/private/service.ts`: nur Termine mit „Familie“ und Schulbriefe – kein Tagebuch, Therapie-Bogen, Geld, keine Paar-/Arzttermine, auch nicht per direktem Link; e2e `zugriffe.spec.ts` |
+| 19.2d | Live-Konten (test, Partnerin, va@va.de, du@firma.de) | – | 👤 | Das System ändert keine Live-Konten selbst – To-dos 37–38 |
+| 19.1a | Alle Lugru-Deals mit Ampel und Eingang „Lugru Deals“ | ❌ (nur neue Posts) | ✅ | `src/lib/lugru-deals/historie.ts` + `historie-logic.ts`: Hintergrund alle 5 Min., erst die letzten 90 Tage, dann rückwärts bis zur Aufbewahrungsfrist; Ampel nach den Regeln der Deal-Ampel aus Post-Zahlen und Keepa-Schnappschuss (keine neuen Keepa-Abrufe), Eingang „historisch“ ohne Push, nicht im normalen Posteingang und nicht in Kauf-Meldungen (Migration `0111`); Knopf „Jetzt nachtragen“ |
+| 19.1b | Trefferquote-Link führt ins Leere (Filter leer) | 🐞 | ✅ | `quellen` in `src/lib/deal-eingang/service.ts`: Filter „Lugru Deals“ trifft alle Lugru-Kanäle; solange dort nichts steht, Link auf `/deal-eingang/lugru` |
+| 19.1c | Weg A zeigt „Noch nicht eingerichtet“ | 🐞 | ✅ | `lugruKanalStand` in `src/lib/lugru-deals/discord.ts`: „Weg A – direkt von der Lugru-Seite“ mit zuletzt übertragen; Warnung erst nach 24 Std. ohne Post |
+| 19.1d | Reaktionen `{}` | 🐞 | ✅ | `reaktionenVon` in `auswertung-logic.ts`: je Emoji (Discord); bei Weg A, wo die Seite nur Kaufzeichen schickt, ✅ = Käufe und ❌ = „nicht verfügbar“ mit Hinweis „nur Kaufzeichen“ statt `{}` |
+| 19.1e | Zeitraum und Gesamtzahl | ❌ | ✅ | Seite und `lugru_statistik`/`lugru_deals`: Zeitraum von–bis und `gesamt` |
+| 19.1f | Kanalnamen mit Leerzeichen, Testkanäle | 🐞 | ✅ | `kanalName` (trimmt, auch rückwirkend per Migration `0111`), Schalter „Testkanäle ausblenden“ (Standard an), `mit_test` im Werkzeug |
+| 19.1g | Kategorie leer | ❌ | ✅ | `kategorieAus` in `src/lib/keepa/auswertung.ts`; alte Schnappschüsse werden gedrosselt nachgezogen (`lugruKategorieNachholen`) |
+| 19.1h | Schwelle je Quelle (Lugru = 60) | ❌ | ✅ / 👤 | `wertSchwelleFuer` in `src/lib/deal-eingang/logic.ts`, Feld „je Quelle“ im Kasten „Kaufen mit einem Tap: Budget und Deal-Wert“ auf der Deal-Eingang-Seite; den Wert 60 setzt Ludwig (To-do 39) |
+| 19.3a | Kopf und Überleitung aus verschiedenen Quellen | 🐞 | ✅ | `gewinnBasis` + `ueberleitung` in `src/lib/money/profit-logic.ts`: eine Basis für Kacheln, Gewinnwerte und Überleitung je Kanal; Summe „diese Seite“ = Kacheln |
+| 19.3b | Jeder Gewinnwert beschriftet | ❌ | ✅ | Kasten „Welche Gewinnzahl ist welche?“ in `src/app/(app)/gewinn/page.tsx` (vorläufig, vollständig erfasst, sellerboard Netto/DB/Monatswert mit Quelle) |
+| 19.3c | Zeitraum ab 01.10. | 🐞 (30 Tage) | ✅ | Standard „Dieser Monat“; Link von der Startseite mit `zeitraum=monat` |
+| 19.4a | Einkaufs-, Versand- und Zahlungsmails als Fälle | 🐞 | ✅ | `routineArt` in `src/lib/amazon-faelle/logic.ts` (auch Amazon Business, alle EU-Sprachen, Unicode-Wortgrenzen): nie ein Fall; „Zahlung abgelehnt“ = eine Aufgabe je Bestellung (`zahlungsAufgabe`) |
+| 19.4b | Gruppierung nach Bestellnummer | ❌ | ✅ | `zuordnen`: Mails mit derselben Bestellnummer landen im selben Vorgang |
+| 19.4c | „erfolgreich / elaborato / successo“ als A-bis-z | 🐞 | ✅ | `ERFOLG_RE`: nie A-bis-z |
+| 19.4d | „zuständig: VA“ bei Routine | 🐞 | ✅ | `echterFall`: VA-Zuständigkeit und VA-Automatik (`src/lib/va/automatik.ts`) nur bei echten Fällen; `neuEinstufen` nimmt die VA bei bestehenden Routine-Vorgängen heraus – nichts gelöscht, Verlauf |
+| 19.5a | „Rückgängig“ versprochen, aber kein Knopf | 🐞 | ✅ | Assistent-Verlauf: Regel oben (welche Werkzeuge, 7 Tage, nur grün) und je Eintrag der Grund, warum es keinen Knopf gibt (`keinRueckgaengigGrund` in `src/lib/assistant/verlauf-logic.ts`); `aufgabe_aendern` jetzt rückgängig machbar |
+| 19.5b | Tokenzähler zu niedrig | 🐞 | ✅ | Zwischengespeicherte Eingabe zählt mit (`eingabeTokens`: input + cache_creation + cache_read) in `src/lib/assistant/chat.ts`; Hinweis unter Einstellungen → Claude, dass ältere Gespräche zu klein gezählt sind |
+| 19.6a | Deal-Blatt als Bild | ❌ (nur PDF/Text) | ✅ | `src/lib/b2b/blatt-bild.ts`, `/b2b/[id]/blatt?format=svg`, Knopf „Deal-Blatt (Bild)“; ohne EK und Verdienst |
+| 19.6b | Sammelbestellung, Export fürs Prep-Tool | 🟡 (gebaut, nicht im Werkzeug) | ✅ | Gebaut seit B2B-5 (Deal-Seite, Freigabe nötig); neu im Werkzeug `deal`: `deal_blatt`, `sammelbestellung`, `export_prep_tool` je Kunde. PrepTool-API selbst ❌ – wartet auf Unterlagen (To-do 13) |
+| 19.7a | „überbucht“ ohne Zahl | 🐞 | ✅ | `planeTag`/`tages` in `src/lib/tagesplan/logic.ts`: „überbucht – x Min. zu viel (y Min. frei)“, sobald fällige und überfällige Aufgaben mehr Zeit brauchen als frei ist; `tagesplan` liefert `faellig_min`, `zu_viel_min` |
+| 19.7b | Wöchentlicher Rückblick | 🟡 (nur im Feierabend-Werkzeug) | ✅ | Seite `/privat/rueckblick/woche` (nur mit vollem Privat-Zugang, für die eigene Person) |
+| 19.7c | Bereich „Beobachtungen“ | 🟡 (im Tagebuch versteckt) | ✅ | Reiter `/privat/beobachtungen`: eigene + über mich, drei Felder, bearbeiten/löschen, Link zum Therapie-Bogen |
+| 19.8a | LPN-Feld an der Retouren-Station | ❌ | ✅ | Eingabe „LPN / FNSKU / EAN“ + „LPN übernehmen“ in `src/app/(station)/remissionen/station/station.tsx` (wie ein Scan) |
+| 19.8b | Handy-Anleitung Kurzbefehl „Deal prüfen“ | 🟡 (nur im Deal-Eingang) | ✅ | Anleitung im Wissen (`src/lib/mobil/anleitungen.ts`), Links unter Einstellungen → Handy & Tesla und Schnellerfassung auf `/deal-eingang/kurzbefehl` |
+| 19.8c | „AI Win Sales Booster“ = Liquidation | 🐞 (unbekannte Regel) | ✅ | Alias im Regel-Katalog `src/lib/bqool/export-logic.ts` |
+| 19.8d | Bestellvorschläge mit 0 % Kaufquote oder negativer Marge in der Summe | 🐞 | ✅ | `pruefGrund` in `src/lib/purchasing/reorder-logic.ts`: eigener Kasten „Erst prüfen“, nicht im Kapitalbedarf; `bestellvorschlaege.zu_pruefen`; gilt auch in der Liquidität |
+| 19.8e | Paletten ohne Kunde | 🟡 | ✅ | `paletten` meldet `nicht_abgerechnet` mit Link `/paletten?kunde=__ohne` |
+| 19.8f | sellerboard-Fehler unsichtbar | 🐞 | ✅ | `anbindungen_status`: `letzter_fehler` je Abruf und `sellerboard_letzter_fehler` |
+| 19.8g | Liquidität: Temu fehlt | 🐞 | ✅ | Ersatz aus den Temu-Aufträgen der letzten 28 Tage, als „geschätzt“ beschriftet (`src/lib/money/liquiditaet-service.ts`) |
+| 19.8h | Liquidität: Steuertermine | ❌ | 👤 | Warnung bleibt, bis Ludwig die Termine einträgt (To-do 40); keine Steuerberatung durch das System |
+
+Abnahme B19 (Unit 1944 Tests grün, darunter `rollen`, `lugru-historie`, `profit-logic`, `amazon-faelle`,
+`assistent-verlauf`, `b2b-blatt-bild`, `tagesplan`, `bqool-export`, `datenbasis`; e2e `zugriffe`, `lugru-deals`
+(History mit Ampel, ohne Push, Testkanal draußen, Weg A), `b15-zahlen` (eine Basis, Überleitung je Kanal), `herzstueck`,
+`b19-rest`): „Nur Familie“ öffnet Tagebuch, Therapie-Bogen und Geld nicht – auch nicht per Link ✅ · History-Deal hat
+Ampel und Eingang, kein Push ✅ · Trefferquote-Link → Lugru-Seite ✅ · Gewinn-Kopf = Summe der Überleitung ✅ ·
+Bestell-/Versand-/Zahlungsmail → kein Fall, zwei Mails einer Bestellung → ein Vorgang ✅ · drei halbe Tage Arbeit an einem
+Tag → „überbucht – … Min. zu viel“ ✅ · Deal-Blatt als SVG ohne EK ✅ · LPN-Feld, Handy-Anleitung, Werkzeug-Felder ✅.
+
 ## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
 
 Der Umsetzungsstand wurde über die Werkzeuge auf dem Server geprüft. Was dort als ❌ steht, ist zum großen Teil gebaut,
@@ -402,6 +452,17 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (49) und `notifications/tools/list_changed`
+
+Geändert am 31.10. (B19, keine neuen Werkzeuge): `lugru_deals` (`mit_test`, Gesamtzahl, Reaktionen je Emoji bzw.
+„nur Kaufzeichen“, getrimmte Kanäle, Eingang auch für History-Deals), `lugru_statistik` (Zeitraum und `gesamt`,
+Testkanäle ausgeblendet), `deal_eingang` (`mit_historie`, Feld `historisch`), `deal_quellen` (Link auf die Lugru-Seite,
+solange der Filter leer ist; Testkanäle ausgeblendet), `deal` (`deal_blatt` mit Text/PDF/Bild, `sammelbestellung`,
+`export_prep_tool`), `tagesplan` (`faellig_min`, `zu_viel_min`, „überbucht – x Min. zu viel“), `bestellvorschlaege`
+(`zu_pruefen` mit Grund, nicht in der Summe), `anbindungen_status` (`letzter_fehler` je Abruf,
+`sellerboard_letzter_fehler`), `paletten` (`nicht_abgerechnet`), `aufgabe_aendern` (jetzt rückgängig machbar),
+`amazon_faelle`/`amazon_fall` (Einkauf/Versand/Zahlung kein Fall, Gruppierung nach Bestellnummer, VA nur bei echten
+Fällen), `liquiditaet` (Temu aus Aufträgen, Bestellvorschläge „prüfen“ nicht eingerechnet). Neue Felder brauchen kein
+Neuverbinden; `notifications/tools/list_changed` geht wie bisher beim Verbinden raus.
 
 Geändert am 31.10. (B18, keine neuen Werkzeuge): `va_aufgaben` (Ansprüche bei der VA mit Frist/Fallnummer/„Frist
 verpasst“, Abschnitt `automatik` mit Modus und Tageszahlen, Status „überfällig“, `fristen_verpasst`), `ueberblick` (Feld
@@ -550,3 +611,21 @@ nie in Chats oder Mails.
     Arbeitstage und die Feiertage der VA (Philippinen) stehen im selben Kasten.
 36. **Anleitung „File reimbursement claim“** im Wissen anlegen (Art „Anleitung“, englische Fassung prüfen und freigeben).
     Bis dahin bekommt die VA eine allgemeine Standard-Anleitung im Anspruchs-Thread.
+37. **Konten prüfen (B19.2)**: Einstellungen → Benutzer. Rote Warnungen zuerst: Konto „test“ und das Konto der Partnerin
+    – Rolle wählen (Partnerin: „Nur Familie“ oder voller Privat-Zugang, das entscheidest du), `va@va.de` auf die
+    Vorlage „VA“ stellen. Das System ändert Live-Konten nicht selbst.
+38. **`du@firma.de` entfernen**, falls es ein altes Beispielkonto ist (Knopf „Entfernen“ in der Benutzerliste).
+39. **Schwelle für Lugru Deals**: Deal-Eingang → Kasten „Kaufen mit einem Tap: Budget und Deal-Wert“ → Feld „je Quelle“
+    `Lugru Deals=60` eintragen und speichern (sonst gilt die allgemeine Schwelle 70).
+40. **Steuertermine** auf der Liquiditäts-Seite unten unter „Steuertermine (Schätzung)“ eintragen (USt-Voranmeldung,
+    Vorauszahlungen). Bis dahin steht bei den Quellen „Steuertermine: keine Daten“ und die Vorschau ist zu optimistisch;
+    das System berät nicht steuerlich.
+41. **Paletten ohne Kunde** (zuletzt 11): Palettenlager → Filter „ohne Kunde“ → je Palette den Kunden eintragen – sonst
+    werden sie nicht abgerechnet.
+42. **Lugru Deals sendet noch?** Deal-Eingang → „Lugru Deals“: Weg A zeigt „zuletzt übertragen“. Steht dort eine
+    Warnung (über 24 Std. kein Post), auf dem PC prüfen, ob das Lugru-Programm läuft (To-do 29).
+43. **Nach dem Update einmal**: Fall-Zentrale „↻ Amazon-Mails einordnen“ (nimmt Einkaufs-/Versand-/Zahlungsmails aus den
+    Fällen und die VA aus Routine-Vorgängen) und Deal-Eingang → „Lugru Deals“ → „Jetzt nachtragen“ (History mit Ampel;
+    läuft danach alle 5 Minuten weiter).
+44. **Kurzbefehl „Deal prüfen“** auf dem iPhone einrichten: Einstellungen → Handy & Tesla → „Anleitung: Kurzbefehl
+    ‚Deal prüfen‘“.

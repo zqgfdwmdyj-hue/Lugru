@@ -39,6 +39,9 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `oberflaeche.spec.ts` | **alle** Menüseiten: Status mit Text, aktive Auswahl markiert, deaktiviert erkennbar, Kontrast, Handy ohne Querscrollen |
 | `testumgebung.spec.ts` | Banner, Sperre nach außen, Übersicht der abgefangenen Mails |
 | `teil2.spec.ts` | Liquidität (Kontoauszug, Amex, Reserve rot), Kapital-Ampel, Verlust-Stopp mit Ausnahme, Echtheits-Ordner + ZIP, Amazon Business (Bericht, Staffelpreise, Freigabe, Datei), Call-Archiv (Google Doc, KI-Punkte, Aufgaben, Discord), Anleitungen beim Zuweisen, freie Zeiten, Familien-Zugang, Assistenz ohne Finanzdaten, privates Geld |
+| `zugriffe.spec.ts` | B19.2: Benutzerliste mit Spalte Privat-Zugriff und Warnungen, Rolle „VA“, neues Konto „Nur Familie“ sieht nur Familien-Termine und Schulbriefe |
+| `lugru-deals.spec.ts` | Lugru Deals über Discord und direkt von der Seite; B19.1: History mit Ampel ohne Push, Testkanal draußen, Reaktionen, Weg A |
+| `b19-rest.spec.ts` | B19.5–B19.8: Tagesplan „überbucht – x Min. zu viel“, Assistent-Verlauf, Deal-Blatt als Bild, Beobachtungen/Wochenrückblick, LPN, Handy-Anleitung, Werkzeug-Felder |
 
 Testkonten (Passwort aus `TESTDATEN_PASSWORT`, in den Prüfungen fest): `inhaber` (Inhaberin, Privat voll),
 `lager` (nur Palettenlager), `buero` (Büro), `pruefer` (nur ansehen), `familie` (nur Privat „Familie“).
