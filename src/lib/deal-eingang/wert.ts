@@ -184,7 +184,7 @@ export async function ergebnisseAktualisieren(tenantId: string, jetzt = new Date
 
 // ---- Lugru Deals (Shop-Monitor) ----------------------------------------------------------------------------------
 
-export type LugruDealImport = { id: number; asin: string; titel?: string | null; quellmarkt?: string | null; zielmarkt?: string | null; ek_eur?: number | null; vk_eur?: number | null; gewinn_eur?: number | null; marge_prozent?: number | null; verkaeufe_monat?: number | null; gruppe?: string | null; kanal?: string | null; status?: string | null; kaeufe?: number; nicht_verfuegbar?: number; reaktionen_am?: string | null; gepostet_am: string };
+export type LugruDealImport = { id: number; asin: string; titel?: string | null; quellmarkt?: string | null; zielmarkt?: string | null; ek_eur?: number | null; vk_eur?: number | null; gewinn_eur?: number | null; marge_prozent?: number | null; verkaeufe_monat?: number | null; gruppe?: string | null; kanal?: string | null; status?: string | null; kaeufe?: number; nicht_verfuegbar?: number; reaktionen_am?: string | null; gepostet_am: string; discord_kanal_id?: string | null; discord_nachricht_id?: string | null };
 
 /** Rückwirkender bzw. laufender Import aus Lugru Deals: je Deal Zahlen und Reaktionen als Anzahl (keine Personen). */
 export async function lugruImport(tenantId: string, deals: LugruDealImport[]): Promise<{ neu: number; aktualisiert: number; ungueltig: number }> {
@@ -222,9 +222,21 @@ export async function lugruImport(tenantId: string, deals: LugruDealImport[]): P
       gepostetAm: new Date(am),
       aktualisiertAm: new Date(),
     };
+    // Schon vom Seller-System in Discord gelesen (Weg B)? Dann diese Zeile ergänzen statt eine zweite anzulegen –
+    // die Zahlen aus Lugru Deals sind genauer, die Reaktionen aus Discord bleiben die jüngeren.
+    const nachricht = typeof d.discord_nachricht_id === "string" && /^\d{15,25}$/.test(d.discord_nachricht_id) ? d.discord_nachricht_id : null;
+    if (nachricht) {
+      const [ausDiscord] = await db.select({ id: L.id, externId: L.externId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.discordNachrichtId, nachricht)));
+      if (ausDiscord && (ausDiscord.externId === null || ausDiscord.externId === d.id)) {
+        const { kaeufe: _k, nichtVerfuegbar: _n, reaktionenAm: _r, kanal: _c, status: _s, ...zahlen } = werte;
+        await db.update(L).set({ externId: d.id, ...zahlen }).where(eq(L.id, ausDiscord.id));
+        aktualisiert++;
+        continue;
+      }
+    }
     const r = await db
       .insert(L)
-      .values({ tenantId, externId: d.id, ...werte })
+      .values({ tenantId, externId: d.id, ...werte, ...(nachricht ? { discordNachrichtId: nachricht, discordKanalId: typeof d.discord_kanal_id === "string" ? d.discord_kanal_id.slice(0, 30) : null } : {}) })
       .onConflictDoUpdate({ target: [L.tenantId, L.externId], set: werte })
       .returning({ neu: sql<boolean>`xmax = 0` });
     if (r[0]?.neu) neu++;
@@ -288,3 +300,42 @@ export async function lernBerichtFuer(tenantId: string, monat: string) {
 }
 
 export type { DealMerkmale };
+
+/**
+ * Deal-Wert für Lugru-Deals (auch History ohne Eingang): Zahlen aus dem Post (ROI, Marge, Verkäufe) plus
+ * Keepa-Schnappschuss zum Zeitpunkt des Postens, verglichen mit früheren Deals (ohne den Deal selbst).
+ * Ohne Keepa-Abruf – günstig auch für Listen.
+ */
+export async function lugruWerte(tenantId: string, rows: { id: string; asin: string; gepostetAm: Date; ampel: "gruen" | "gelb" | "rot" | null; ekEur: number | null; gewinnEur: number | null; margeProzent: number | null; verkaeufeMonat: number | null; keepa: import("@/db/schema").LugruKeepa | null }[]) {
+  const out = new Map<string, import("@/db/tables/deal-eingang").DealWert>();
+  if (!rows.length) return out;
+  const zielRoi = (await getSettings(tenantId)).dealEingang.zielRoi;
+  const h = await historie(tenantId, zielRoi);
+  const modell = await modellFuer(tenantId, h);
+  for (const r of rows) {
+    const k = r.keepa;
+    const m: Partial<DealMerkmale> = {
+      ...lugruMerkmale(r),
+      ...(k
+        ? {
+            bbJetzt: k.buyBox,
+            bb30: k.buyBox30,
+            bb90: k.buyBox90,
+            bb180: k.buyBox180,
+            bbAbweichung90: k.buyBox !== null && k.buyBox90 ? Math.round(((k.buyBox - k.buyBox90) / k.buyBox90) * 1000) / 10 : null,
+            einbrueche180: k.einbrueche12,
+            angebote: k.angebote,
+            angeboteTrend30: k.angeboteTrend30,
+            amazonAnteil: k.amazonAnteil,
+            rang: k.rang,
+            monatlichVerkauft: k.gekauftImMonat ?? r.verkaeufeMonat,
+            marke: k.marke,
+            kategorie: k.kategorie,
+          }
+        : {}),
+    };
+    const tag = r.gepostetAm.toISOString().slice(0, 10);
+    out.set(r.id, dealWert(m, { zielRoi, ampel: r.ampel ?? "gelb", historie: h.filter((x) => !(x.asin === r.asin && x.datum === tag)), modell }));
+  }
+  return out;
+}

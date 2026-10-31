@@ -757,6 +757,20 @@
       "when": 1793397697169,
       "tag": "0107_deal_wert_kaufen",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793438519567,
+      "tag": "0108_lugru_discord",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1793440380103,
+      "tag": "0109_amazon_mail_uebersprungen",
+      "breakpoints": true
     }
   ]
 }

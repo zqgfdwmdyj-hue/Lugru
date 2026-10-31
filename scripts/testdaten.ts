@@ -253,6 +253,8 @@ await db.insert(schema.rechtsfaelle).values({ tenantId: T, quelle: "hand", titel
 await integ("discord_wissen", { kanaele: "820000000000000001 | Amazon | täglich\n820000000000000002 | Temu | wöchentlich\n820000000000000003 | Allgemeines | aus", serverId: "500000000000000001" }, {});
 // Ein geprüfter Deal-Eingang (erfunden) – für den Werkzeug-Vertrag (deal_eingang_detail).
 await db.insert(schema.dealEingaenge).values({ tenantId: T, weg: "manuell", quelleRef: "test:eingang-1", quelle: "Testquelle", rohtext: "B0TESTSEED Testware 3,00 netto (erfunden)", inhaltKennung: "test-eingang-1", pruefung: "fertig", status: "neu", geprueftAm: new Date() });
+// Ein Lugru-Deal (erfunden, wie aus Discord gelesen) – für den Werkzeug-Vertrag (lugru_deal).
+await db.insert(schema.lugruDealsHistorie).values({ tenantId: T, quelle: "discord", discordKanalId: "830000000000000099", discordNachrichtId: "830000000000000999", asin: "B0TESTSEED", titel: "Testmarke Seed-Deal (erfunden)", quellmarkt: "DE", zielmarkt: "DE", shop: "testshop.de", ekEur: 5, vkEur: 19.9, gewinnEur: 6.1, margeProzent: 30.7, verkaeufeMonat: 80, kanal: "lugru-seed", status: "aktiv", reaktionen: {}, kaeufe: 0, gepostetAm: new Date(Date.now() - 3 * 86400_000) });
 // Ein Amazon-Vorgang (erfunden) – für den Werkzeug-Vertrag (amazon_fall per Fallnummer).
 await db.insert(schema.amazonVorgaenge).values({ tenantId: T, bereich: "fall", phase: "offen", status: "offen", dringlichkeit: "grau", titel: "Testfall Seller Support (erfunden)", fallnummer: "1000000001", marktplatz: "DE", ersteMailAm: new Date(), letzteMailAm: new Date() });
 const [gh, ghOhne] = await db

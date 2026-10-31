@@ -369,22 +369,27 @@ export const INTEGRATIONS: IntegrationDef[] = [
   },
   {
     provider: "lugru_deals",
-    name: "Lugru Deals (Shop-Monitor) – optional",
+    name: "Lugru Deals (Deal-Kanäle in Discord + Shop-Monitor) – optional",
     purpose:
-      "Lugru Deals holt sich hier das eBay-Zugangstoken für Deals, die auf eBay verkauft werden. Die eBay-Schlüssel bleiben im Seller-System; Lugru Deals bekommt nur ein kurzlebiges Token.",
+      "Das Seller-System liest die Deal-Kanäle der Lugru-Gruppe in Discord selbst: neue Posts in 1–2 Minuten in den Deal-Eingang (Ampel, Deal-Wert, Push bei Grün/Gelb), die ganze History einmalig rückwärts, Reaktionen (✅ gekauft, ❌ weg) nur als Anzahl – nie Namen. Läuft auf dem Server, unabhängig davon, ob der PC mit Lugru Deals an ist. Optional: Lugru Deals holt sich hier außerdem das eBay-Zugangstoken.",
     fields: [
+      { key: "kanalIds", label: "Deal-Kanäle (Kanal-IDs)", multiline: true, placeholder: "123456789012345678\n234567890123456789", help: "Die Discord-Kanäle, in die Lugru Deals postet (je Zeile eine ID; Rechtsklick auf den Kanal → „Kanal-ID kopieren“, Entwicklermodus an)." },
+      { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie bei „Discord-Kanäle der Deal-Gruppe“ bzw. „VA-Kanal“. Geht auch: der Reaktions-Bot aus Lugru Deals (er ist schon im Server). Nur „View Channel“ und „Read Message History“, „Message Content Intent“ an." },
+      { key: "emojiGekauft", label: "Weitere Emojis für „gekauft“ (optional)", placeholder: "lugru_gekauft", help: "✅ zählt immer; eigene Server-Emojis mit Namen ergänzen (mit Komma getrennt)." },
+      { key: "emojiWeg", label: "Weitere Emojis für „nicht mehr verfügbar“ (optional)", placeholder: "weg", help: "❌ zählt immer." },
       {
         key: "schluessel",
-        label: "Verbindungsschlüssel",
+        label: "Verbindungsschlüssel für Lugru Deals (optional)",
         secret: true,
         placeholder: "mindestens 32 zufällige Zeichen",
-        help: "Frei wählen, z. B. aus einem Passwort-Generator. Denselben Schlüssel in Lugru Deals unter Monitor → Einstellungen → eBay eintragen.",
+        help: "Nur für das eBay-Token und die Übertragung aus Lugru Deals (Weg A, ergänzend). Denselben Schlüssel in Lugru Deals unter Monitor → Einstellungen → eBay eintragen.",
       },
     ],
     setup: [
-      "Die eBay-Anbindung (Client ID und Client Secret) muss im Seller-System eingerichtet sein.",
-      "Hier einen zufälligen Verbindungsschlüssel mit mindestens 32 Zeichen eintragen und „Verbindung testen“.",
-      "In Lugru Deals unter Monitor → Einstellungen → eBay die Adresse dieses Seller-Systems und denselben Schlüssel eintragen.",
+      "Den Bot in den Discord-Server der Deal-Gruppe einladen (Server-Admin) und in den Deal-Kanälen „View Channel“ + „Read Message History“ geben; im Developer Portal unter Bot → Privileged Gateway Intents „Message Content Intent“ einschalten.",
+      "Die IDs der Deal-Kanäle eintragen und „Verbindung testen“ – der Test zeigt den letzten erkannten Deal je Kanal.",
+      "Danach unter Deal-Eingang → Lugru Deals „History importieren“; neue Posts kommen von selbst.",
+      "Optional (eBay-Token, Übertragung aus Lugru Deals): Verbindungsschlüssel eintragen und in Lugru Deals unter Monitor → Einstellungen → eBay Adresse und Schlüssel hinterlegen.",
     ],
   },
   {

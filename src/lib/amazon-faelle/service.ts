@@ -6,6 +6,7 @@ import { todayIso } from "@/lib/dates";
 import { getSettings } from "@/lib/settings";
 import {
   BEREICH_LABEL,
+  dringlichkeitVon,
   einordnen,
   fallAntwort,
   freischaltungsPaket,
@@ -30,6 +31,7 @@ const V = schema.amazonVorgaenge;
 const EI = schema.amazonVorgangEintraege;
 const R = schema.amazonEinordnungRegeln;
 const E = schema.emails;
+const U = schema.amazonMailUebersprungen;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const uniq = <T,>(a: T[]) => [...new Set(a)];
@@ -53,7 +55,7 @@ async function markeIm(tenantId: string, text: string): Promise<string | null> {
 
 // ---- Abgleich: Mails → Vorgänge -----------------------------------------------------------------------------
 
-export type AbgleichErgebnis = { geprueft: number; neu: number; zugeordnet: number; unsicher: number; gemeldet: number; nachgefasst: number };
+export type AbgleichErgebnis = { geprueft: number; neu: number; zugeordnet: number; unsicher: number; gemeldet: number; nachgefasst: number; uebersprungen: number; neuEingestuft: number };
 
 const laufend = new Map<string, Promise<AbgleichErgebnis>>();
 
@@ -67,7 +69,11 @@ export function faelleAbgleich(tenantId: string, o: { sinceDays?: number; heute?
 }
 
 async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string): Promise<AbgleichErgebnis> {
-  const erg: AbgleichErgebnis = { geprueft: 0, neu: 0, zugeordnet: 0, unsicher: 0, gemeldet: 0, nachgefasst: 0 };
+  const erg: AbgleichErgebnis = { geprueft: 0, neu: 0, zugeordnet: 0, unsicher: 0, gemeldet: 0, nachgefasst: 0, uebersprungen: 0, neuEingestuft: 0 };
+  erg.neuEingestuft = await neuEinstufen(tenantId, heute).catch((e) => {
+    console.error("[Fall-Zentrale] Neu einstufen:", e instanceof Error ? e.message : e);
+    return 0;
+  });
   const settings = await getSettings(tenantId);
   const seit = new Date(Date.now() - sinceDays * 86_400_000);
   const mails = await db
@@ -80,6 +86,7 @@ async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string
         ilike(E.fromAddress, "%amazon.%"),
         sql`${E.fromAddress} !~* 'marketplace\\.amazon'`,
         notExists(db.select({ x: sql`1` }).from(EI).where(and(eq(EI.tenantId, tenantId), eq(EI.emailId, E.id)))),
+        notExists(db.select({ x: sql`1` }).from(U).where(and(eq(U.tenantId, tenantId), eq(U.emailId, E.id)))),
       ),
     )
     .orderBy(asc(E.receivedAt))
@@ -96,8 +103,10 @@ async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string
   for (const m of mails) {
     const datum = m.receivedAt.toISOString();
     const e = einordnen({ from: `${m.fromName ?? ""} <${m.from ?? ""}>`, subject: m.subject ?? "", text: m.body ?? "", date: datum }, { heute, fristen: settings.faelle.fristen, gelernt });
-    // Routinemails ohne Vorgangsbezug (Versandbestätigungen, Newsletter) nicht als Vorgang führen.
-    if (m.category === "noise" && (e.bereich === "info" || e.bereich === "sonstiges") && !e.fallnummer) {
+    // Bestell-/Versand-/Zahlungsmails sind nie ein Fall; Routinemails ohne Vorgangsbezug (Newsletter) auch nicht.
+    if (e.routine || (m.category === "noise" && (e.bereich === "info" || e.bereich === "sonstiges") && !e.fallnummer)) {
+      await db.insert(U).values({ tenantId, emailId: m.id, grund: e.routine ? "routine" : "noise" }).onConflictDoNothing();
+      erg.uebersprungen++;
       continue;
     }
     const zuId = zuordnen(e, kurz, datum.slice(0, 10));
@@ -179,6 +188,78 @@ async function abgleichEinmal(tenantId: string, sinceDays: number, heute: string
 }
 
 type Vorgang = typeof V.$inferSelect;
+
+/**
+ * Bestehende Vorgänge mit den aktuellen Regeln neu einstufen (B17): Bestell-/Versand-/Zahlungsmails → kein Fall
+ * (Status „Info“), Markenbeschwerde nur bei echten Rechte-/Echtheitsmails, Marktplatz aus Absender/Inhalt statt „US“,
+ * keine erfundenen Standardfristen bei „Sonstiges“. Von Hand bearbeitete Vorgänge (Status, Notiz, VA) behalten
+ * Bereich und Phase – dort wird nur der Marktplatz berichtigt. Nichts wird gelöscht; jede Änderung steht im Verlauf.
+ */
+export async function neuEinstufen(tenantId: string, heute = todayIso()): Promise<number> {
+  const settings = await getSettings(tenantId);
+  const kandidaten = await db
+    .select()
+    .from(V)
+    .where(and(eq(V.tenantId, tenantId), inArray(V.status, ["offen", "info"])))
+    .orderBy(desc(V.letzteMailAm))
+    .limit(500);
+  if (!kandidaten.length) return 0;
+  const ids = kandidaten.map((v) => v.id);
+  const eintraege = await db
+    .select({ vorgangId: EI.vorgangId, art: EI.art, von: EI.von, am: EI.am, from: E.fromAddress, fromName: E.fromName, subject: E.subject, body: E.bodyText, receivedAt: E.receivedAt })
+    .from(EI)
+    .leftJoin(E, eq(E.id, EI.emailId))
+    .where(and(eq(EI.tenantId, tenantId), inArray(EI.vorgangId, ids)))
+    .orderBy(asc(EI.am));
+  const gelernt = (await db.select().from(R).where(eq(R.tenantId, tenantId))).map((g) => ({ muster: g.muster, bereich: g.bereich as Bereich, phase: g.phase as Phase }));
+  let n = 0;
+  for (const v of kandidaten) {
+    const eig = eintraege.filter((x) => x.vorgangId === v.id);
+    const mails = eig.filter((x) => x.art === "mail" && x.receivedAt);
+    if (!mails.length) continue;
+    const vonHand = eig.some((x) => x.art !== "mail" && x.von !== "System");
+    const ein = mails.map((x) => einordnen({ from: `${x.fromName ?? ""} <${x.from ?? ""}>`, subject: x.subject ?? "", text: x.body ?? "", date: x.receivedAt!.toISOString() }, { heute, fristen: settings.faelle.fristen, gelernt }));
+    const erste = ein[0];
+    const letzte = ein[ein.length - 1];
+    const marktplatz = ein.map((e) => e.marktplatz).find(Boolean) ?? null;
+    const set: Partial<typeof V.$inferInsert> = {};
+    const gruende: string[] = [];
+    if (ein.every((e) => e.routine) && !vonHand) {
+      if (v.status !== "info" || v.bereich !== "info") {
+        Object.assign(set, { bereich: "info", phase: "info", status: "info", dringlichkeit: "grau", frist: null, unsicher: false });
+        gruende.push("Routine-Mail (Bestellung/Versand/Zahlung) – kein Fall");
+      }
+    } else if (!vonHand) {
+      // Bereich der ersten Mail, Phase/Frist der letzten (wie beim Abgleich).
+      const bereich = erste.bereich;
+      const status = statusVonPhase(letzte.phase);
+      // Frist wie beim Abgleich fortschreiben: neue Frist aus der Mail, sonst die bisherige; erledigt → keine.
+      const frist = ein.reduce<string | null>((f, e) => (statusVonPhase(e.phase) === "offen" ? (e.frist ?? f) : null), null);
+      const dringlichkeit = status === "offen" ? dringlichkeitVon(bereich, letzte.phase, frist, heute) : "grau";
+      if (bereich !== v.bereich) {
+        set.bereich = bereich;
+        gruende.push(`${BEREICH_LABEL[v.bereich as Bereich] ?? v.bereich} → ${BEREICH_LABEL[bereich]}`);
+      }
+      if (bereich !== v.bereich || frist !== v.frist || dringlichkeit !== v.dringlichkeit) {
+        Object.assign(set, { phase: letzte.phase, status, frist, dringlichkeit, unsicher: erste.sicherheit < UNSICHER_AB });
+        if (frist !== v.frist && !gruende.length) gruende.push(frist ? `Frist ${frist}` : "keine Frist in der Mail – Standardfrist entfernt");
+        else if (dringlichkeit !== v.dringlichkeit && !gruende.length) gruende.push(`Dringlichkeit ${v.dringlichkeit} → ${dringlichkeit}`);
+      }
+    }
+    if (marktplatz !== v.marktplatz && (marktplatz || v.marktplatz === "US")) {
+      set.marktplatz = marktplatz;
+      gruende.push(`Marktplatz ${v.marktplatz ?? "–"} → ${marktplatz ?? "offen"}`);
+    }
+    if (!Object.keys(set).length) continue;
+    await db.update(V).set({ ...set, updatedAt: new Date() }).where(eq(V.id, v.id));
+    await db.insert(EI).values({ tenantId, vorgangId: v.id, art: "status", phase: set.phase ?? null, text: clip(`Neu eingestuft: ${gruende.join(" · ")}`, 500), von: "System", am: new Date() });
+    // Zum Routine-Vorgang angelegte System-Aufgabe schließen (nur die eigene, offene).
+    if (set.status === "info" && v.taskId) await db.update(schema.tasks).set({ status: "done", completedAt: new Date() }).where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.id, v.taskId), eq(schema.tasks.systemKey, `amazon-fall:${v.id}`), sql`${schema.tasks.status} <> 'done'`));
+    n++;
+  }
+  if (n) console.log(`[Fall-Zentrale] ${n} Vorgänge neu eingestuft`);
+  return n;
+}
 
 /** Nach jeder neuen Mail: Paket vorbereiten (wo nötig), Entzug/Markenbeschwerde sofort an Ludwig melden. */
 async function nachMail(tenantId: string, v: Vorgang, heute: string, erg: AbgleichErgebnis) {

@@ -61,7 +61,7 @@ export async function kurzWerte(session: Session, heute = todayIso()) {
 
 // ---- Anrufe ------------------------------------------------------------------------------------------------
 
-export async function anrufAufgaben(session: Session): Promise<(AnrufAufgabe & { name: string })[]> {
+export async function anrufAufgaben(session: Session, o: { vorschlaege?: boolean } = {}): Promise<(AnrufAufgabe & { name: string; telefonVorschlag?: { nummer: string; quelle: string } | null })[]> {
   const rows = await db
     .select({ id: T.id, titel: T.title, notes: T.notes, prioritaet: T.priority, faellig: T.dueDate, telefon: T.telefon })
     .from(T)
@@ -70,13 +70,19 @@ export async function anrufAufgaben(session: Session): Promise<(AnrufAufgabe & {
     .limit(500);
   const L = schema.lieferantenProfile;
   const tel = await db.select({ name: schema.suppliers.name, code: schema.suppliers.code, telefon: L.telefon }).from(L).innerJoin(schema.suppliers, eq(schema.suppliers.id, L.supplierId)).where(and(eq(L.tenantId, session.tenantId), sql`${L.telefon} is not null`));
-  return rows
+  const liste = rows
     .filter((r) => istAnruf(r.titel))
     .map((r) => {
       const name = anrufName(r.titel);
       const ausLieferant = tel.find((x) => [x.name, x.code].some((n) => n && name.toLowerCase().includes(n.toLowerCase())))?.telefon ?? null;
       return { id: r.id, titel: r.titel, name, prioritaet: r.prioritaet as AnrufAufgabe["prioritaet"], faellig: r.faellig, telefon: r.telefon ?? telefonAus(r.notes ?? "") ?? ausLieferant };
     });
+  if (!o.vorschlaege) return liste;
+  // Ohne Nummer: Vorschlag aus Kontakten/Mail-Signaturen (keine Websuche – die nur auf Knopfdruck).
+  const { telefonVorschlag } = await import("./telefon");
+  const { canAccess } = await import("@/lib/auth/areas");
+  const mitMails = canAccess(session, "posteingang");
+  return Promise.all(liste.map(async (a) => (a.telefon ? a : { ...a, telefonVorschlag: await telefonVorschlag(session.tenantId, a.name, { mails: mitMails }).catch(() => null) })));
 }
 
 /** Anruf erledigen: per ID oder per Satz „Anruf erledigt: Konrad, Notiz: …“. Notiz an die Aufgabe; Folgeaufgabe nur als Vorschlag. */

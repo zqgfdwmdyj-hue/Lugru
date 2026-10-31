@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abgleich, abverkaufVorschlagen, buyboxErklaerung, BQOOL_ERSTE_ZEILE, bqoolCost, bqoolDatei, breakEvenMin, dateiMin, effektiverMin, FORMAT_STANDARD, KATALOG_STANDARD, katalogRegel, landAus, liesBqoolDatei, margeNachAlter, maxPreis, regelFuer, UST, vergleiche, warnungen, type ExportZeile } from "@/lib/bqool/export-logic";
+import { abgleich, abverkaufVorschlagen, minBlockiertBuybox, regelNameFuerLand, buyboxErklaerung, BQOOL_ERSTE_ZEILE, bqoolCost, bqoolDatei, breakEvenMin, dateiMin, effektiverMin, FORMAT_STANDARD, KATALOG_STANDARD, katalogRegel, landAus, liesBqoolDatei, margeNachAlter, maxPreis, regelFuer, UST, vergleiche, warnungen, type ExportZeile } from "@/lib/bqool/export-logic";
 
 // BQool-Dateien aus dem System – erfundene SKUs und Preise.
 
@@ -181,3 +181,37 @@ describe("Ausnahmen je ASIN", () => {
   });
 });
 
+
+// B17: Soll-Regeln aus dem letzten BQool-Ist (Liquidation/Abverkauf bleiben), Regelnamen je Land laut Katalog,
+// Warnung „Min aus Upload blockiert Buy Box“. Erfundene SKUs/ASINs.
+describe("B17 – Soll-Regel aus BQool-Ist und Katalog", () => {
+  const basis = { titel: null, zuweisung: null, markenRegeln: [{ marke: "B0TESTPH09", land: "DE" as const, regel: "Abverkauf" }], aufAbverkaufsListe: false, abverkaufRegel: { DE: "Abverkauf DE", sonst: "Abverkauf" }, standard: "ia", katalog: KATALOG_STANDARD };
+  it("Regelnamen je Land: DE „Abverkauf DE“, FR/IT/ES „Abverkauf“", () => {
+    expect(regelNameFuerLand("Abverkauf", "DE", KATALOG_STANDARD)).toBe("Abverkauf DE");
+    expect(regelNameFuerLand("Abverkauf DE", "FR", KATALOG_STANDARD)).toBe("Abverkauf");
+    expect(regelNameFuerLand("Abverkauf", "ES", KATALOG_STANDARD)).toBe("Abverkauf");
+    expect(regelNameFuerLand("Liquidation", "DE", KATALOG_STANDARD)).toBe("Liquidation");
+    expect(regelNameFuerLand("Unbekannt X", "DE", KATALOG_STANDARD)).toBe("Unbekannt X");
+  });
+  it("Markenregel „Abverkauf“ in DE wird „Abverkauf DE“ (Philips-Fall)", () => {
+    expect(regelFuer({ ...basis, land: "DE", asin: "B0TESTPH09" }).regel).toBe("Abverkauf DE");
+  });
+  it("Liquidation laut BQool-Ist bleibt (mit Min als Untergrenze) – auch gegen Abverkaufs-Liste/Markenregel", () => {
+    expect(regelFuer({ ...basis, land: "FR", aufAbverkaufsListe: true, ist: { regel: "Liquidation", min: 14.9 } })).toEqual({ regel: "Liquidation", quelle: "ist", untergrenze: 14.9 });
+    expect(regelFuer({ ...basis, land: "DE", asin: "B0TESTPH09", ist: { regel: "Liquidation", min: 9.5 } }).regel).toBe("Liquidation");
+  });
+  it("„Abverkauf DE“ laut BQool-Ist bleibt, „ia“/mbb laut Ist ergeben den Standard", () => {
+    expect(regelFuer({ ...basis, land: "DE", ist: { regel: "Abverkauf DE", min: 20 } })).toEqual({ regel: "Abverkauf DE", quelle: "ist", untergrenze: null });
+    expect(regelFuer({ ...basis, land: "DE", ist: { regel: "ia", min: 20 } }).regel).toBe("ia");
+    expect(regelFuer({ ...basis, land: "DE", ist: { regel: "mbb", min: 20 } }).regel).toBe("ia");
+  });
+  it("Feste Zuweisung geht weiter vor dem Ist", () => {
+    expect(regelFuer({ ...basis, land: "DE", ist: { regel: "Liquidation", min: 9 }, zuweisung: { regel: "ia", untergrenze: null, quelle: "hand" } }).regel).toBe("ia");
+  });
+  it("Warnung: Min aus Upload über Buy Box, effektiver Min darunter", () => {
+    expect(minBlockiertBuybox({ istMin: 25, effMin: 19.8, buybox: 22.5 })).toMatch(/^Min aus Upload blockiert Buy Box – neuer Upload mit Min = effektiver Min empfohlen/);
+    expect(minBlockiertBuybox({ istMin: 21, effMin: 19.8, buybox: 22.5 })).toBeNull();
+    expect(minBlockiertBuybox({ istMin: 25, effMin: 25, buybox: 22.5 })).toBeNull();
+    expect(minBlockiertBuybox({ istMin: 25, effMin: 19, buybox: null })).toBeNull();
+  });
+});

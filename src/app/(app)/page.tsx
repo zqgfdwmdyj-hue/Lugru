@@ -21,7 +21,8 @@ import { PrivateHint } from "@/app/(privat)/privat/hint";
 import { TaskNotes } from "@/components/task-notes";
 import { Suspense } from "react";
 import { TodayInsights } from "./today-insights";
-import { toggleCalendarAction } from "./start-actions";
+import { anrufTelefonAction, anrufTelefonSuchenAction, toggleCalendarAction } from "./start-actions";
+import type { AnrufHinweis } from "@/lib/mobil/telefon";
 
 const CATEGORY_LABEL: Record<string, string> = {
   amazon: "Amazon",
@@ -40,7 +41,28 @@ const BUCKETS: Bucket[] = ["ueberfaellig", "heute", "woche", "spaeter", "ohne"];
 
 type Task = typeof schema.tasks.$inferSelect;
 
-function TaskRow({ task, today, step = false, idea = false }: { task: Task | TaskLite; today: string; step?: boolean; idea?: boolean }) {
+/** Anruf ohne Nummer: Vorschlag (Kontakte/Mails, auf Knopfdruck Web), eintippen oder bestätigen – gespeichert wird erst hier. */
+function AnrufTelefon({ id, hinweis }: { id: string; hinweis: AnrufHinweis }) {
+  const v = hinweis.vorschlag;
+  return (
+    <details className="small" data-testid="anruf-telefon" style={{ marginTop: 2 }}>
+      <summary style={{ color: "var(--warn)", cursor: "pointer" }}>📞 Nummer fehlt{v ? ` – Vorschlag ${v.nummer}` : ""}</summary>
+      {v && <div className="muted" data-testid="anruf-telefon-quelle">aus {v.quelle}</div>}
+      <form action={anrufTelefonAction} style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+        <input type="hidden" name="id" value={id} />
+        <label className="sr-only" htmlFor={`tel-${id}`}>Telefonnummer</label>
+        <input className="input" id={`tel-${id}`} name="telefon" defaultValue={v?.nummer ?? ""} placeholder="Telefonnummer" required style={{ maxWidth: 200 }} />
+        <button className="btn btn-small" type="submit" data-testid="anruf-telefon-speichern">{v ? "Übernehmen" : "Speichern"}</button>
+      </form>
+      <form action={anrufTelefonSuchenAction} style={{ marginTop: 4 }}>
+        <input type="hidden" name="id" value={id} />
+        <button className="btn-link" type="submit" data-testid="anruf-telefon-web">Nummer im Web suchen</button>
+      </form>
+    </details>
+  );
+}
+
+function TaskRow({ task, today, step = false, idea = false, anruf }: { task: Task | TaskLite; today: string; step?: boolean; idea?: boolean; anruf?: AnrufHinweis }) {
   const done = "status" in task && task.status === "done";
   // Ideen haben höchstens ein vorgeschlagenes Datum – nie „überfällig“.
   const overdue = !idea && !done && task.dueDate !== null && task.dueDate < today;
@@ -61,6 +83,7 @@ function TaskRow({ task, today, step = false, idea = false }: { task: Task | Tas
       <div style={{ flexGrow: 1, minWidth: 0 }}>
         <div className="todo-title">{task.link && !done ? <Link href={task.link} style={{ color: "inherit", textDecoration: "none" }}>{task.title}</Link> : task.title}</div>
         <TaskNotes notes={task.notes} />
+        {anruf && !done && <AnrufTelefon id={task.id} hinweis={anruf} />}
       </div>
       <div className="todo-meta">
         <span className={tagClass}>{task.priority === "critical" ? "KRITISCH" : (CATEGORY_LABEL[task.category] ?? task.category).toUpperCase()}</span>
@@ -131,7 +154,7 @@ async function ZeitHeute({ tenantId, userId, today }: { tenantId: string; userId
   );
 }
 
-export default async function StartPage({ searchParams }: { searchParams: Promise<{ kat?: string; ansicht?: string; zeit?: string }> }) {
+export default async function StartPage({ searchParams }: { searchParams: Promise<{ kat?: string; ansicht?: string; zeit?: string; tel?: string; nr?: string; nrq?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const filter = FILTERS.includes(sp.kat as (typeof FILTERS)[number]) ? sp.kat! : "alle";
@@ -157,6 +180,9 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   if (restricted || brandLimited) for (const list of [open, recentlyDone]) list.splice(0, list.length, ...list.filter(visibleTask));
 
   const plan = planDay(open, today);
+  // Anruf-Aufgaben ohne Telefonnummer: Vorschlag aus Kontakten/Mails; Ergebnis einer Websuche kommt über die Adresse.
+  const anrufInfo = await import("@/lib/mobil/telefon").then((m) => m.anrufHinweise(session.tenantId, open, { mails: canAccess(session, "posteingang") })).catch(() => new Map<string, AnrufHinweis>());
+  if (sp.tel && anrufInfo.has(sp.tel)) anrufInfo.set(sp.tel, { vorschlag: sp.nr ? { nummer: sp.nr.slice(0, 40), quelle: (sp.nrq ?? "Websuche").slice(0, 200), art: "web" } : anrufInfo.get(sp.tel)!.vorschlag });
   const [signals, areas, prefs] = await Promise.all([todaySignals(session.tenantId, today), restricted ? Promise.resolve([]) : dataAreas(session.tenantId), getPrefs(session)]);
   const mySignals = signals.filter((s) => canAccess(session, areaForPath(s.href.split("?")[0])));
   // Rechtsfristen in 7 Tagen (nur Inhaber): geschäftlich mit Titel, private nur als Anzahl.
@@ -230,20 +256,20 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
             return (
               <div key={b} data-testid={`bucket-${b}`}>
                 <div className="section-label" style={{ color: b === "ueberfaellig" ? "var(--danger)" : "var(--muted)" }}>{BUCKET_LABEL[b].toUpperCase()} · {list.length}</div>
-                {list.map((t) => <TaskRow key={t.id} task={t} today={today} />)}
+                {list.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} />)}
               </div>
             );
           })}
           {ideaTasks.length > 0 && !zeit && (
             <div data-testid="bucket-ideen">
               <div className="section-label muted">IDEEN & VORSCHLÄGE (UNVERBINDLICH) · {ideaTasks.length}</div>
-              {ideaTasks.map((t) => <TaskRow key={t.id} task={t} today={today} idea />)}
+              {ideaTasks.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} idea />)}
             </div>
           )}
           {recentlyDone.length > 0 && !zeit && (
             <>
               <div className="section-label muted">ZULETZT ERLEDIGT</div>
-              {recentlyDone.map((t) => <TaskRow key={t.id} task={t} today={today} />)}
+              {recentlyDone.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} />)}
             </>
           )}
         </section>
@@ -275,7 +301,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                     <span className="signal-go">→</span>
                   </Link>
                 ))}
-                {plan.critical.map((t) => <TaskRow key={t.id} task={t} today={today} step />)}
+                {plan.critical.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} step />)}
               </div>
             )}
           </section>
@@ -294,7 +320,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
             {plan.top.length === 0 && plan.soonElsewhere === 0 ? (
               <div className="card-pad small muted" style={{ paddingTop: 0 }} data-testid="next-empty">Keine Aufgaben fällig bis in 7 Tagen{plan.noDate.length ? " – unten „Ohne Datum“ ansehen" : ""}.</div>
             ) : (
-              plan.top.map((t) => <TaskRow key={t.id} task={t} today={today} step />)
+              plan.top.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} step />)
             )}
             {plan.soonElsewhere > 0 && (
               <div className="card-pad small" style={{ paddingTop: plan.top.length ? 8 : 0 }} data-testid="next-elsewhere">
@@ -320,7 +346,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                       <span className="small muted">{b.overdue ? <span style={{ color: "var(--danger)" }}>{b.overdue} überfällig</span> : b.next ? `nächste ${dueLabel(b.next, today)}` : "ohne Datum"}</span>
                       <Link className="btn btn-small" href={b.href}>Abarbeiten →</Link>
                     </summary>
-                    <div>{b.tasks.map((t) => <TaskRow key={t.id} task={t} today={today} />)}</div>
+                    <div>{b.tasks.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} />)}</div>
                   </details>
                 ))}
               </div>
@@ -337,19 +363,19 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
           <section className="card" data-testid="today-later">
             <details className="bundle">
               <summary><span className="bundle-label"><strong>Später</strong> <span className="num">· {plan.later.length}</span></span><span className="small muted">fällig in mehr als 7 Tagen</span></summary>
-              <div>{plan.later.length ? plan.later.map((t) => <TaskRow key={t.id} task={t} today={today} />) : <div className="card-pad small muted">Nichts.</div>}</div>
+              <div>{plan.later.length ? plan.later.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} />) : <div className="card-pad small muted">Nichts.</div>}</div>
             </details>
             <details className="bundle">
               <summary><span className="bundle-label"><strong>Ohne Datum</strong> <span className="num">· {plan.noDate.length}</span></span><span className="small muted">keine Fälligkeit</span></summary>
-              <div>{plan.noDate.length ? plan.noDate.map((t) => <TaskRow key={t.id} task={t} today={today} />) : <div className="card-pad small muted">Nichts.</div>}</div>
+              <div>{plan.noDate.length ? plan.noDate.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} />) : <div className="card-pad small muted">Nichts.</div>}</div>
             </details>
             <details className="bundle">
               <summary><span className="bundle-label"><strong>Ideen, Saison & Content</strong> <span className="num">· {plan.ideas.length}</span></span><span className="small muted">unverbindliche Vorschläge – zählen nicht als fällig</span></summary>
-              <div>{plan.ideas.length ? plan.ideas.map((t) => <TaskRow key={t.id} task={t} today={today} idea />) : <div className="card-pad small muted">Nichts.</div>}</div>
+              <div>{plan.ideas.length ? plan.ideas.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} idea />) : <div className="card-pad small muted">Nichts.</div>}</div>
             </details>
             <details className="bundle">
               <summary><span className="bundle-label"><strong>Zuletzt erledigt</strong> <span className="num">· {recentlyDone.length}</span></span></summary>
-              <div>{recentlyDone.length ? recentlyDone.map((t) => <TaskRow key={t.id} task={t} today={today} />) : <div className="card-pad small muted">Noch nichts erledigt.</div>}</div>
+              <div>{recentlyDone.length ? recentlyDone.map((t) => <TaskRow key={t.id} task={t} today={today} anruf={anrufInfo.get(t.id)} />) : <div className="card-pad small muted">Noch nichts erledigt.</div>}</div>
             </details>
           </section>
         </div>

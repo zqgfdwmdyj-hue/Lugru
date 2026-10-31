@@ -104,4 +104,41 @@ test.describe("Amazon-Fall-Zentrale", () => {
     const er = JSON.parse(await mcp.call("erstattungen_abgleich", {}));
     expect(er.link).toContain("/retouren");
   });
+
+  test("B17: Bestell-/Versand-/Zahlungsmails nie als Fall, Marktplatz aus dem Inhalt, alte Fehlzuordnung neu eingestuft", async ({ page }) => {
+    test.setTimeout(90_000);
+    const m = marke();
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const fuss = "\n\n© 2026 Amazon.com, Inc. Copyright, Marken und Patente siehe Nutzungsbedingungen.";
+    await anmelden(page, "inhaber");
+    await page.goto("/posteingang");
+    const form = page.getByTestId("eml-upload").first();
+    await form.locator("input[type=file]").setInputFiles([
+      { name: `r1-${m}.eml`, mimeType: "message/rfc822", buffer: eml({ von: "donotreply@amazon.com", betreff: `Verkauft, Jetzt liefern: Testartikel ${m}`, text: `Bestellnummer 302-1234567-${String(Date.now()).slice(-7)}. Bitte versenden Sie den Artikel.${fuss}`, id: `fz-r1-${m}` }) },
+      { name: `r2-${m}.eml`, mimeType: "message/rfc822", buffer: eml({ von: "donotreply@amazon.com", betreff: `Tu pago está en camino ${m}`, text: `Hemos enviado tu pago.${fuss}`, id: `fz-r2-${m}` }) },
+      { name: `r3-${m}.eml`, mimeType: "message/rfc822", buffer: eml({ von: "donotreply@amazon.com", betreff: `Amazon a expédié vos articles ${m}`, text: `Votre commande a été expédiée.${fuss}`, id: `fz-r3-${m}`, tageZurueck: 3 }) },
+    ]);
+    await form.getByRole("button", { name: "Hochladen", exact: true }).click();
+    await expect(form).toContainText(/neu/);
+    // Altlast nachstellen: r3 wurde früher als „Markenbeschwerde“, rot, Marktplatz US eingeordnet.
+    const [r3] = await sql<{ id: string }>("select id from emails where tenant_id = $1 and subject = $2", [T, `Amazon a expédié vos articles ${m}`]);
+    const [alt] = await sql<{ id: string }>(
+      "insert into amazon_vorgaenge (tenant_id, bereich, phase, status, dringlichkeit, titel, marktplatz, zustaendig, frist, erste_mail_am, letzte_mail_am) values ($1, 'marke', 'offen', 'offen', 'rot', $2, 'US', 'va', current_date + 2, now() - interval '3 days', now() - interval '3 days') returning id",
+      [T, `Amazon a expédié vos articles ${m}`],
+    );
+    await sql("insert into amazon_vorgang_eintraege (tenant_id, vorgang_id, email_id, art, phase, text, am) values ($1, $2, $3, 'mail', 'offen', 'alt', now() - interval '3 days')", [T, alt.id, r3.id]);
+
+    await page.goto("/amazon-faelle");
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("faelle-abgleich").click()]);
+    await expect(page.getByTestId("faelle-meldung")).toContainText("Routine-Mails");
+    await expect(page.getByTestId("faelle-meldung")).toContainText("neu eingestuft");
+    // Keine Vorgänge aus Bestell-/Zahlungsmails; beim nächsten Lauf werden sie nicht erneut gelesen.
+    expect((await sql<{ n: string }>("select count(*) n from amazon_vorgaenge where tenant_id = $1 and (titel like $2 or titel like $3)", [T, `Verkauft, Jetzt liefern%${m}`, `Tu pago%${m}`]))[0].n).toBe("0");
+    expect((await sql<{ n: string }>("select count(*) n from amazon_mail_uebersprungen u join emails e on e.id = u.email_id where u.tenant_id = $1 and e.subject like $2 and u.grund = 'routine'", [T, `%${m}`]))[0].n).toBe("2");
+    // Altlast: kein Fall mehr, grau, Marktplatz FR, Verlauf nennt den Grund
+    const [neu] = await sql<{ bereich: string; status: string; dringlichkeit: string; marktplatz: string | null; frist: string | null }>("select bereich, status, dringlichkeit, marktplatz, frist from amazon_vorgaenge where id = $1", [alt.id]);
+    expect(neu).toMatchObject({ bereich: "info", status: "info", dringlichkeit: "grau", marktplatz: "FR", frist: null });
+    await page.goto(`/amazon-faelle/${alt.id}`);
+    await expect(page.locator("body")).toContainText("Routine-Mail (Bestellung/Versand/Zahlung) – kein Fall");
+  });
 });

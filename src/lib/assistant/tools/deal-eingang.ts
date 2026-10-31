@@ -101,14 +101,14 @@ export const dealEingangDetailTool = defineTool({
 export const dealQuellenTool = defineTool({
   name: "deal_quellen",
   title: "Deal-Eingang: Trefferquote je Quelle",
-  description: "Trefferquote je Absender bzw. ProfitPath-Modul: gemeldet, Angebote, grün, gekauft, verworfen, Ø ROI laut Prüfung und Ø realer ROI (sellerboard, ab 30 Tagen nach dem Kauf).",
+  description: "Trefferquote je Absender bzw. ProfitPath-Modul und „Lugru Deals“ (alle Posts der Gruppe inkl. History; je Kanal zusätzlich „Lugru Deals · #kanal“): gemeldet, Angebote, grün, gekauft, verworfen, Ø ROI laut Prüfung, Ø realer ROI (sellerboard, ab 30 Tagen nach dem Kauf), bei Lugru auch ✅-Käufe der Gruppe als Anzahl.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE,
   input: z.object({}),
   run: async (ctx) => {
     const q = await quellen(ctx.session.tenantId);
-    return json({ quellen: q.map((x) => ({ quelle: x.quelle, gemeldet: x.eingaenge, angebote: x.angebote, gruen: x.gruen, gekauft: x.gekauft, verworfen: x.verworfen, roi_prognose_prozent: x.roiPrognose, roi_real_prozent: x.roiReal, roi_real_aus: x.roiRealN || undefined })), link: abs(ctx, "/deal-eingang") });
+    return json({ quellen: q.map((x) => ({ quelle: x.quelle, gemeldet: x.eingaenge, angebote: x.angebote, gruen: x.gruen, gekauft: x.gekauft, verworfen: x.verworfen, roi_prognose_prozent: x.roiPrognose, roi_real_prozent: x.roiReal, roi_real_aus: x.roiRealN || undefined, gruppen_kaeufe: x.gruppenKaeufe })), link: abs(ctx, "/deal-eingang") });
   },
 });
 

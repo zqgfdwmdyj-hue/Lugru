@@ -136,3 +136,64 @@ describe("Pakete", () => {
     expect(q[0]).toMatchObject({ marke: "Testmarke", genehmigt: 1, abgelehnt: 2, haeufigsteGruende: ["Rechnung zu alt (> 180 Tage)", "Menge zu gering (< 10 Stück)"] });
   });
 });
+
+// B17: Routinemails nie als Fall, Marke nur bei echten Rechte-/Echtheitsmails, Marktplatz aus Absender/Inhalt.
+describe("B17 – Routinemails, Marke, Marktplatz, Steuer-Hinweise", () => {
+  const com = "Amazon <donotreply@amazon.com>";
+  const fuss = "\n\n© 2026 Amazon.com, Inc. oder Tochtergesellschaften. Copyright, Marken und Patente siehe Nutzungsbedingungen.\nAbmelden";
+  const ROUTINE = [
+    { from: com, subject: "Verkauft, Jetzt liefern: Testartikel", text: `Bestellnummer 302-5555555-6666666. Bitte versenden Sie den Artikel.${fuss}`, land: "DE" },
+    { from: com, subject: "Amazon hat Ihren Artikel versandt", text: `Ihre Artikel sind unterwegs.${fuss}`, land: "DE" },
+    { from: com, subject: "Amazon a expédié vos articles", text: `Votre commande a été expédiée. Authenticité garantie.${fuss}`, land: "FR" },
+    { from: com, subject: "Amazon ha enviado tus artículos", text: `Tu pedido está en camino.${fuss}`, land: "ES" },
+    { from: com, subject: "Tu pago está en camino", text: `Hemos enviado tu pago. Puede tardar unos días.${fuss}`, land: "ES" },
+    { from: com, subject: "Ihre Auszahlung wurde veranlasst", text: `Die Zahlung ist unterwegs.${fuss}`, land: "DE" },
+  ];
+
+  it("Bestell-, Versand- und Zahlungsmails: Routine, Info, nie Marke/rot, Marktplatz nicht US", () => {
+    for (const m of ROUTINE) {
+      const e = einordnen({ ...m, date: D }, { heute: HEUTE });
+      expect(e.routine, m.subject).toBe(true);
+      expect(e.bereich, m.subject).toBe("info");
+      expect(e.dringlichkeit, m.subject).toBe("grau");
+      expect(e.marktplatz, m.subject).toBe(m.land);
+    }
+  });
+
+  it("Fußzeile mit Copyright/Patent macht keine Markenbeschwerde", () => {
+    const e = einordnen({ from: com, subject: "Neue Funktionen in Seller Central", text: `Entdecken Sie neue Berichte.${fuss}`, date: D }, { heute: HEUTE });
+    expect(e.bereich).not.toBe("marke");
+    expect(e.dringlichkeit).not.toBe("rot");
+  });
+
+  it("Echte Rechte-/Echtheitsmails bleiben Markenbeschwerde (rot)", () => {
+    for (const m of [
+      { from: "Amazon <seller-performance@amazon.de>", subject: "Hinweis: Richtlinienwarnung", text: "Wir haben eine Mitteilung über eine Markenrechtsverletzung zu ASIN B0TESTIP03 erhalten. Rechteinhaber: Testmarke." },
+      { from: "Amazon <seller-performance@amazon.com>", subject: "Notice: Policy Warning", text: "We received a report of intellectual property infringement (copyright infringement) for ASIN B0TESTIP04 on www.amazon.fr." },
+      { from: "Amazon <seller-performance@amazon.it>", subject: "Reclamo per contraffazione", text: "Abbiamo ricevuto un reclamo per contraffazione relativo all'ASIN B0TESTIP05." },
+    ]) {
+      const e = einordnen({ ...m, date: D }, { heute: HEUTE });
+      expect(e.bereich, m.subject).toBe("marke");
+      expect(e.dringlichkeit, m.subject).toBe("rot");
+    }
+  });
+
+  it("Marktplatz: amazon.com-Absender → Inhalt (Domain oder Sprache), sonst offen statt US", () => {
+    expect(einordnen({ from: com, subject: "Notice", text: "See https://sellercentral.amazon.it/home for details.", date: D }).marktplatz).toBe("IT");
+    expect(einordnen({ from: com, subject: "Update on your account", text: "Please review the details in Seller Central.", date: D }).marktplatz).toBeNull();
+    expect(einordnen({ from: com, subject: "Order shipped", text: "Total US$ 12.00 – sellercentral.amazon.com", date: D }).marktplatz).toBe("US");
+    expect(einordnen({ from: "Amazon <seller-notification@amazon.nl>", subject: "Info", text: "", date: D }).marktplatz).toBe("NL");
+    expect(einordnen({ from: com, subject: "Your listing update", text: "Your offer price AED 120.00 is now live in the United Arab Emirates store.", date: D }).marktplatz).toBe("AE");
+  });
+
+  it("VAT-Hinweis ohne Frist in der Mail: Info ohne erfundene Frist; mit Frist: prüfen mit Frist aus der Mail", () => {
+    const ohne = einordnen({ from: com, subject: "Wichtige Informationen zu Ihrer VAT auf Amazon.de", text: "Ab dem nächsten Quartal berechnet Amazon die Umsatzsteuer für bestimmte Verkäufe. Bitte prüfen Sie Ihre Einstellungen.", date: "2026-10-02T08:00:00Z" }, { heute: "2026-10-02" });
+    expect(ohne.bereich).toBe("info");
+    expect(ohne.frist).toBeNull();
+    expect(ohne.marktplatz).toBe("DE");
+    const mit = einordnen({ from: com, subject: "Wichtige Informationen zu Ihrer VAT auf Amazon.de", text: "Bitte hinterlegen Sie Ihre USt-IdNr. bis zum 20.10.2026, damit die Umsatzsteuer korrekt berechnet wird.", date: "2026-10-02T08:00:00Z" }, { heute: "2026-10-02" });
+    expect(mit.frist).toBe("2026-10-20");
+    expect(mit.fristQuelle).toBe("mail");
+    expect(mit.sicherheit).toBeLessThan(0.6);
+  });
+});

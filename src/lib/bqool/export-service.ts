@@ -22,6 +22,7 @@ import {
   katalogRegel,
   liesBqoolDatei,
   maxPreis,
+  minBlockiertBuybox,
   regelFuer,
   titelHatMarke,
   UST,
@@ -47,7 +48,7 @@ const E = schema.bqoolExporte;
 export type VorschauZeile = ExportZeile & {
   titel: string | null;
   asin: string | null;
-  quelle: "zuweisung" | "marke" | "abverkauf" | "standard";
+  quelle: "zuweisung" | "ist" | "marke" | "abverkauf" | "standard";
   effMin: number | null;
   marge: number | null;
   buybox: number | null;
@@ -154,7 +155,8 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
         ekFehlt.push({ land, sku: r.sku, titel: r.title });
         continue;
       }
-      const rf = regelFuer({ land, titel: r.title, asin: r.asin, zuweisung: zuwJe.get(`${land}|${r.sku}`) ?? null, markenRegeln: b.markenRegeln, aufAbverkaufsListe: b.elektronikLaender.includes(land) && b.elektronikMarken.some((m) => titelHatMarke(r.title, m)), abverkaufRegel: b.abverkaufRegel, standard: b.standardRegel });
+      const i = istJe.get(r.sku);
+      const rf = regelFuer({ land, titel: r.title, asin: r.asin, zuweisung: zuwJe.get(`${land}|${r.sku}`) ?? null, markenRegeln: b.markenRegeln, aufAbverkaufsListe: b.elektronikLaender.includes(land) && b.elektronikMarken.some((m) => titelHatMarke(r.title, m)), abverkaufRegel: b.abverkaufRegel, standard: b.standardRegel, ist: i ? { regel: i.regel, min: i.min } : null, katalog: b.katalog });
       soll.set(`${land}|${r.sku}`, rf.regel);
       const kat = katalogRegel(b.katalog, rf.regel);
       const kosten = { ek: r.unitCost, fba: r.fbaFee, fix: b.fixGebuehr, zusatz: b.zusatzkosten, ust: UST[land], provision: r.referralRate };
@@ -164,12 +166,13 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       const k = r.asin ? keepaJe.get(`${r.asin}|${land}`) : null;
       const bb90 = k?.kennzahlen?.["90"]?.buybox?.schnitt ?? null;
       const max = maxPreis({ min, bb90, faktor: b.maxFaktor, listenpreis: null, ersatzFaktor: s.pricing.maxPriceFactor });
-      const i = istJe.get(r.sku);
       const enable = (i?.zusatz as Record<string, string> | undefined)?.enable || (i?.status === "aktiv" ? "1" : i?.status === "pausiert" ? "0" : f.enable);
       const eff = effektiverMin({ regel: kat, untergrenze: rf.untergrenze, ...kosten, alterTage: alterJe.get(r.sku) ?? null });
       const buybox = i?.buyboxPreis ?? k?.aktuell?.buybox ?? null;
       const w = warnungen({ min: eff.min ?? min, max }, { buybox, breakEven: kat?.festeUntergrenze ? be0 : null });
       if (!kat) w.push(`Regel „${rf.regel}“ steht nicht im Katalog`);
+      const blockiert = minBlockiertBuybox({ istMin: i?.min ?? null, effMin: eff.min, buybox });
+      if (blockiert) w.push(blockiert);
       zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: rf.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null });
     }
     // Vergleich: hochgeladener BQool-Stand, sonst letzter eigener Export.

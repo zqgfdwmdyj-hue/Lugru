@@ -274,6 +274,20 @@ const ABRUF_HINWEIS: Record<string, string> = {
     "Kein Ausfall: eBay läuft über die bisherige Trading-Schnittstelle weiter. Zum Freischalten der neuen Schnittstelle: auf developer.ebay.com unter Application Keys → OAuth Scopes „sell.listing“ freigeben lassen, dann unter eBay → eBay-Einstellungen → Verbindung mit Häkchen „Neue eBay-Listing-Schnittstelle“ neu verbinden.",
 };
 
+/** Aktives Postfach ohne Abruf seit über 24 Stunden. */
+const postfachVeraltet = (b: { aktiv: boolean; letzterAbruf: Date | null }, now: number) => b.aktiv && (!b.letzterAbruf || now - b.letzterAbruf.getTime() > 86_400_000);
+
+function postfachUebersicht(boxes: { aktiv: boolean; fehler: string | null; letzterAbruf: Date | null }[], now: number) {
+  const letzte = boxes.map((b) => b.letzterAbruf?.getTime() ?? 0).filter(Boolean);
+  return {
+    gesamt: boxes.length,
+    aktiv: boxes.filter((b) => b.aktiv).length,
+    rufen_ab_ohne_fehler: boxes.filter((b) => b.aktiv && !b.fehler && !postfachVeraltet(b, now)).length,
+    mit_fehler: boxes.filter((b) => b.fehler).length,
+    letzter_abruf: letzte.length ? berlinDateTime(new Date(Math.max(...letzte))) : "nie",
+  };
+}
+
 export const anbindungenStatus = defineTool({
   name: "anbindungen_status",
   title: "Stand der Anbindungen",
@@ -328,6 +342,9 @@ export const anbindungenStatus = defineTool({
         const optional = d.provider === "google" || d.provider === "microsoft";
         return { anbindung: d.name, eingerichtet, optional: optional && !eingerichtet ? "nur für Postfach-Anmeldung per OAuth nötig – Postfächer laufen über IMAP mit App-Passwort" : undefined, geaendert: s ? berlinDateTime(s.updatedAt) : undefined, ohne_fehlt: !eingerichtet ? FEHLT_OHNE[d.provider] : undefined };
       }).filter((a) => !i.nur_probleme || (!a.eingerichtet && !a.optional)),
+      // Immer eine Übersicht – auch wenn „nur_probleme“ alle Postfächer ohne Fehler ausblendet (B17).
+      postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),
+      postfaecher_hinweis: i.nur_probleme && pf.postfaecher.length && !pf.postfaecher.some((b) => b.fehler || !b.aktiv || postfachVeraltet(b, now)) ? `${pf.postfaecher.length} Postfach/Postfächer rufen ohne Fehler ab – mit „nur_probleme“ ausgeblendet.` : !pf.postfaecher.length ? "Kein Postfach mit Abruf hinterlegt (Posteingang → Postfächer)." : undefined,
       postfaecher: pf.postfaecher
         .map((b) => ({
           adresse: b.adresse,
@@ -339,8 +356,9 @@ export const anbindungenStatus = defineTool({
           fehler: b.fehler ?? undefined,
           fehlerart: b.fehlerArt ?? undefined,
           letzte_amazon_mail: berlinDateTime(b.letzteAmazonMail) ?? "keine",
+          seit_24_h_kein_abruf: postfachVeraltet(b, now) || undefined,
         }))
-        .filter((b) => !i.nur_probleme || b.fehler || !b.aktiv),
+        .filter((b) => !i.nur_probleme || b.fehler || !b.aktiv || b.seit_24_h_kein_abruf),
       amazon_mail_warnung: pf.warnung ?? undefined,
       sellerboard_daten_stand: sb.length ? berlinDateTime(new Date(Math.max(...sb))) : "noch kein Abgleich",
       abrufe,

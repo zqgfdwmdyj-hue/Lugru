@@ -11,7 +11,7 @@ import { addDaysIso } from "@/lib/dates";
 import { FRIST_TYP_TEXT } from "@/lib/private/fristen";
 import { fristenListe } from "@/lib/private/fristen-service";
 import { geschaeftsFristen } from "@/lib/fristen-geschaeft";
-import { AUFWAND_TEXT } from "@/lib/tagesplan/logic";
+import { ampelText, AUFWAND_TEXT } from "@/lib/tagesplan/logic";
 import { aufgabeVerschieben, tagesplan } from "@/lib/tagesplan/service";
 import { defineTool } from "../types";
 import { PRIORITY_OUT, abs, dmy, isoDate, json, uuid } from "./common";
@@ -100,6 +100,7 @@ export const tagesplanTool = defineTool({
         eingeplant_min: t.belegt,
         auslastung_prozent: t.auslastung,
         ampel: t.ampel,
+        ampel_text: ampelText(t),
         sperrzeiten: t.sperren.map((s) => ({ von: s.ganztags ? "ganztägig" : s.von, bis: s.ganztags ? undefined : s.bis, art: s.art, titel: s.titel })),
         geplant: t.geplant.map((g) => ({ id: g.id, von: g.von, bis: g.bis, titel: g.titel, prioritaet: PRIORITY_OUT[g.prioritaet], aufwand: AUFWAND_TEXT[g.aufwand], aufwand_geschaetzt: g.geschaetzt || undefined, aufwand_gelernt: g.gelernt || undefined, frist: g.faellig, link: link(g.link) })),
         konflikte: t.konflikte.length ? t.konflikte.map((k) => ({ aufgabe_id: k.aufgabeId, titel: k.titel, konflikt: k.text })) : undefined,

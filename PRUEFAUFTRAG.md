@@ -288,7 +288,75 @@ Seite wie /schnell zeigt dort „Nicht freigegeben“. Der Link geht deshalb auf
 Abnahme (Unit `schnell`, `link-basis`; e2e `schnell-familie`): Siri-Satz mit Weckwort → Aufgabe für morgen „Retouren“
 ✅ · Link ohne localhost ✅ · Befehl ohne Inhalt → Rückfrage ✅ · Unklares → Eingangsliste ✅ · Privat-Zeit nie direkt ✅.
 
-## Neue Claude-Werkzeuge (46) und `notifications/tools/list_changed`
+## Lugru Deals → Seller-System (Bauauftrag 31.10., zweiter Anlauf)
+
+**Schritt 0 – Bericht.** Lugru Deals ist eigene Software (Go, Ordner `lugru-deals/` im Repo), läuft als Programm auf
+Ludwigs PC (nicht auf dem Server) und postet die Deals als **Klartext über Discord-Webhooks** in die Deal-Kanäle. Ein
+eigener Reaktions-Bot setzt ✅ = gekauft und ❌ = nicht (mehr) verfügbar. Die History liegt in der SQLite-Datenbank des
+Programms (Tabelle `deals` mit Discord-Kanal-/Nachrichten-ID) **und** in Discord. Die bisherige Anbindung
+„Lugru Deals (Shop-Monitor)“ war nur der eBay-Schlüssel des Programms plus ein Push-Endpunkt
+`/api/public/lugru-deals/deals`, der nur Daten bekommt, wenn das Programm auf dem PC läuft und aktualisiert ist – deshalb
+kam nichts an. **Gewählt: Weg B** (das Seller-System liest die Deal-Kanäle selbst über einen Bot mit Leserechten) als
+Hauptweg; Weg A (Push aus dem Programm) bleibt als Ergänzung und wird über die Discord-Nachrichten-ID zusammengeführt.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| L.1 | Datenmodell: Herkunft (Discord-Nachricht, Kanal, Link), Produkt (ASIN bzw. „unsicher“), Shop, Preise, Reaktionen je Emoji, Gruppen-Käufe, ausverkauft, Stand | 🟡 nur Push-Felder | ✅ | `src/db/tables/deal-eingang.ts` (`lugruDealsHistorie`, `lugruKanaele`), Migration `drizzle/0108_lugru_discord.sql` |
+| L.2 | Keepa-Schnappschuss zum Zeitpunkt des Postens (History: aus dem Keepa-Verlauf) | ❌ | ✅ | `keepaSchnappschuss` in `src/lib/lugru-deals/auswertung-logic.ts`; Nachholen stündlich (`lugruKeepaNachholen`) |
+| L.3 | Ampel zum Zeitpunkt des Postens, Entscheidung (gekauft/verworfen), Ergebnis nach Kauf | ❌ | ✅ | Live-Deals laufen durch den Deal-Eingang (Ampel, Entscheidung, reales Ergebnis); `lugruDeal` zeigt alles zusammen |
+| L.4 | Live: neuer Post → Deal-Eingang „Lugru Deals · #kanal“ → Deal-Ampel → Push bei Grün/Gelb, ≤ 2 Min. | ❌ | ✅ | `src/lib/lugru-deals/discord.ts` (`lugruAbgleich`, jede Minute im Scheduler); Post-Leser `src/lib/lugru-deals/post-logic.ts` |
+| L.5 | Reaktionen nachziehen: in den ersten 48 h alle 5 Min., danach stündlich (bis 30 Tage) | ❌ | ✅ | `reaktionenFaellig`, `tiefAbgleich` |
+| L.6 | Doppelte Deals (gleiche ASIN + Shop < 24 h) zusammenfassen | ❌ | ✅ | `dublettenSchluessel` – zweiter Post hängt am ersten Eingang |
+| L.7 | History-Import: wiederaufnehmbar, rückwärts je Kanal, Fortschritt in der Oberfläche | ❌ | ✅ | `lugruHistorie` (5 Seiten je Lauf im Hintergrund, Knopf „History importieren“), Stand je Kanal auf der Seite |
+| L.8 | Eigene Käufe automatisch erkennen (Bestellung mit gleicher ASIN ≤ 14 Tage nach dem Post), Kennzeichen „automatisch erkannt“ | ❌ | ✅ | `lugruKaufAbgleich` + `kaufZuDeal`; täglich |
+| L.9 | Deal-Wert 0–100 mit Begründung, dafür/dagegen, ähnliche frühere Deals, Gruppen-Käufe anonym; Rot-Kriterien gelten immer | 🟡 nur für Eingänge | ✅ | `lugruWerte` in `src/lib/deal-eingang/wert.ts` (gleiche Logik wie der Deal-Eingang, gedeckelt bei Rot) |
+| L.10 | Seite „Lugru Deals“: Liste mit Filtern (Zeitraum, Kanal, Ampel, Deal-Wert, gekauft), Detail mit Keepa-Mini-Chart, Reaktionen, Ergebnis; Kacheln (Deals/Woche, Ø Reaktionen, Anteil grün, gekauft, Ø realer ROI, beste Marken/Kategorien) | ❌ | ✅ | `src/app/(app)/deal-eingang/lugru/page.tsx`, `…/lugru/[id]/page.tsx`; Link im Deal-Eingang |
+| L.11 | MCP `lugru_deals`, `lugru_deal`, `lugru_statistik`; `deal_quellen` zeigt „Lugru Deals“ (gemeldet/grün/gekauft/Gruppen-Käufe) | ❌ | ✅ | `src/lib/assistant/tools/lugru.ts`, `deal_quellen` in `src/lib/deal-eingang/service.ts` |
+| L.12 | Keine Mitglieder-Namen oder -IDs | – | ✅ | Gespeichert werden nur Anzahlen je Emoji; Text und Autor des Posts nicht (nur die ausgelesenen Zahlen) |
+| L.13 | Anbindung: Kanal-IDs, Bot-Token (eigener oder der Discord-Bot des Seller-Systems), Emojis für „gekauft“/„weg“, „Verbindung testen“ liest je Kanal den letzten Deal | 🟡 nur eBay-Schlüssel | ✅ | `src/lib/integrations/registry.ts` (Karte „Lugru Deals“), `src/lib/integrations/clients/lugru-deals.ts` |
+
+Abnahme 1–7 (e2e `lugru-deals` mit erfundenen Posts im Discord-Nachbau, Unit `lugru-post`):
+1. Bericht Schritt 0 ✅ (oben).
+2. History: alte Posts mehrerer Kanäle importiert, je Deal Reaktionen sichtbar, `lugru_statistik` liefert Summen ✅ –
+   live erst nach Bot-Einladung (To-do 29).
+3. Live: Test-Post erscheint nach „Jetzt abrufen“ (im Betrieb jede Minute) im Deal-Eingang mit Ampel; Push nur bei
+   Grün/Gelb ✅.
+4. Reaktion hinzugefügt → Gruppen-Käufe im Seller-System aktualisiert ✅.
+5. `deal_quellen` zeigt „Lugru Deals“ (gemeldet, grün, gekauft) und „Lugru Deals · #kanal“ ✅.
+6. Jeder Lugru-Deal hat Deal-Wert mit Begründung und ähnlichen Deals (`lugru_deals`: alle mit `deal_wert`) ✅.
+7. Keine Namen/IDs von Mitgliedern in der Datenbank (Prüfung im Test) ✅.
+
+## B17 – Befunde aus dem Werkzeug-Test vom 31.10.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 17.1 | Lugru Deals kommen nicht an | 🐞 | ✅ | siehe Abschnitt oben |
+| 17.2a | Fall-Zentrale: „Verkauft, Jetzt liefern“, „Amazon hat … versandt / a expédié / ha enviado“, „Tu pago está en camino“ als „Markenbeschwerde“, rot | 🐞 | ✅ | `istRoutineMail` in `src/lib/amazon-faelle/logic.ts` (nur Betreff, alle EU-Sprachen): nie ein Vorgang; geprüfte Mails stehen in `amazon_mail_uebersprungen` (Migration `0109`) und werden nicht erneut gelesen |
+| 17.2b | Ursache „Marke“: nackte Wörter wie „Copyright“, „Patent“, „Echtheit“ aus der Fußzeile | 🐞 | ✅ | Fußzeilen (©, „Alle Rechte vorbehalten“, Abmelden) zählen nicht (`ohneFusszeile`); Marke nur bei echten Rechte-/Echtheitsmails (Rechteinhaber, Markenrechts-/Urheberrechtsverletzung, Fälschung, IP-Beschwerde in allen Sprachen) |
+| 17.2c | Marktplatz „US“ bei Absender amazon.com | 🐞 | ✅ | `marktplatzAus` in `src/lib/amazon-todos/logic.ts`: amazon.com ist allgemeiner Absender → Domain im Text (amazon.fr, sellercentral.amazon.es), sonst Sprache der Mail; „US“ nur mit klarem Hinweis, sonst offen. Gilt auch für Amazon-ToDos |
+| 17.2d | Bestehende Fehlzuordnungen neu einstufen | ❌ | ✅ | `neuEinstufen` in `src/lib/amazon-faelle/service.ts` läuft vor jedem Abgleich: Routine → „Info“ (grau, ohne Frist, eigene System-Aufgabe geschlossen), Bereich/Frist neu, Marktplatz berichtigt; von Hand bearbeitete Vorgänge behalten Bereich und Phase. Nichts wird gelöscht; jede Änderung steht im Verlauf („Neu eingestuft: …“) |
+| 17.2e | 2× „Wichtige Informationen zu Ihrer VAT auf Amazon.de“ (02.10., Frist 05.10.) | ❓ | ✅ geklärt | Die Frist 05.10. stand **nicht** in der Mail – es war die Standardfrist „Antwort nötig“ (+3 Tage). Neu: Steuer-/VAT-Hinweise ohne eigene Frist in der Mail sind „Info“ ohne Frist; nennt die Mail selbst ein Datum („bis zum …“), gilt dieses und der Vorgang ist „bitte prüfen“. „Sonstiges“ bekommt keine Standardfrist mehr. Inhaltlich bitte selbst lesen (keine Steuerberatung durch das System) – To-do 31 |
+| 17.3 | BQool-Vorschau: Soll-Regeln falsch (Tefal B0DGLJPK7Y, Lierac sollen Liquidation bleiben; DJI B0CFF4RYDM DE „Abverkauf DE“; Philips DE nur „Abverkauf DE“) | 🐞 | ✅ | `regelFuer` in `src/lib/bqool/export-logic.ts`: Liquidation laut letztem BQool-Ist bleibt (Min als feste Untergrenze), andere Nicht-Standard-Regeln laut Ist („Abverkauf DE“) bleiben, Regelnamen je Land aus dem Katalog (`regelNameFuerLand`: DE „Abverkauf DE“, FR/IT/ES „Abverkauf“); Katalog „Abverkauf“ nur FR/IT/ES. Reihenfolge: feste Zuweisung → Liquidation (Ist) → Markenregel → Abverkaufs-Liste → Ist → „ia“ |
+| 17.4 | Min aus dem Upload vom 28.10. über der Buy Box (min_ist > effektiver Min) | ❌ | ✅ | `minBlockiertBuybox`: eigene Warnung je Zeile „Min aus Upload blockiert Buy Box – neuer Upload mit Min = effektiver Min empfohlen (…)“ in Vorschau und `bqool_export_vorschau` |
+| 17.5 | Anruf „DHL Geschäftskunden …“ ohne Telefonnummer | ❌ | ✅ | `src/lib/mobil/telefon.ts`: Vorschlag aus Lieferanten-Profil → Kontakten → Signatur in Mails des Absenders → auf Knopfdruck Websuche; nie von selbst gespeichert. Startseite: „📞 Nummer fehlt – Vorschlag …“ mit „Übernehmen“/„Nummer im Web suchen“; `aufgabe_anlegen` fragt nach (`rueckfrage`, `telefon_vorschlag`), `aufgabe_aendern(telefon)` speichert; Siri-Antwort nennt die fehlende Nummer |
+| 17.6 | `anbindungen_status.postfaecher` leer, obwohl 2 Postfächer abrufen | 🐞 | ✅ | Mit `nur_probleme` wurden fehlerfreie Postfächer ausgeblendet, ohne Hinweis. Neu: immer `postfaecher_uebersicht` (gesamt, aktiv, rufen ab ohne Fehler, mit Fehler, letzter Abruf) und `postfaecher_hinweis`; „seit 24 h kein Abruf“ zählt als Problem (`src/lib/assistant/tools/geschaeft.ts`) |
+
+Abnahme B17 (Unit `amazon-faelle`, `amazon-todos`, `bqool-export`, `mobil-logic`; e2e `amazon-faelle`, `handy-tesla`,
+`bqool-dateien`, `werkzeuge`): Routine-Mails in DE/FR/ES/EN → kein Vorgang, grau, Marktplatz aus Inhalt ✅ · Fußzeile mit
+„Copyright/Patent“ → keine Markenbeschwerde ✅ · echte IP-/Fälschungsmails weiter rot ✅ · alter Fehl-Vorgang (Marke, rot,
+US) → Info, FR, Verlauf „Routine-Mail … kein Fall“ ✅ · VAT ohne Frist → Info ohne Frist ✅ · BQool: Liquidation/„Abverkauf
+DE“ laut Ist bleiben, Markenregel „Abverkauf“ in DE → „Abverkauf DE“ ✅ · Min-Warnung ✅ · Anruf ohne Nummer → Rückfrage,
+Vorschlag aus Mail-Signatur, auf der Startseite übernommen ✅.
+
+## Neue Claude-Werkzeuge (49) und `notifications/tools/list_changed`
+
+Neu am 31.10. (Lugru-Bauauftrag, lesend): `lugru_deals(seit?, bis?, kanal?, ampel?, gekauft?, min_wert?, suche?, limit?)`,
+`lugru_deal(id)`, `lugru_statistik(von?, bis?)`. Geändert am 31.10.: `deal_quellen` (Quelle „Lugru Deals“ mit
+Gruppen-Käufen), `anruf_aufgaben` (`telefon_vorschlag`, `rueckfrage`, optional `websuche`), `aufgabe_anlegen` (`telefon`,
+Rückfrage bei Anruf ohne Nummer), `aufgabe_aendern` (`telefon`), `anbindungen_status` (`postfaecher_uebersicht`,
+`postfaecher_hinweis`), `bqool_export_vorschau` (Soll aus BQool-Ist, Warnung „Min aus Upload blockiert Buy Box“),
+`amazon_faelle`/`amazon_fall` (Routine-Mails nie ein Fall, Marktplatz aus Inhalt).
+
 
 Lesend: `amazon_faelle`, `amazon_fall`, `anruf_aufgaben`, `auto_status`, `bqool_export_vorschau`, `buchhaltung_status`,
 `deal_eingang`, `deal_eingang_detail`, `deal_lernen_bericht`, `deal_pruefen`, `deal_quellen`, `deal_wert`,
@@ -385,3 +453,24 @@ nie in Chats oder Mails.
     erscheinen): Konnektor in claude.ai einmal trennen und neu verbinden; Privat-Freigabe dabei angehakt lassen.
 28. **Siri-Link**: Prüfen, dass `APP_URL` in der Server-`.env` die normale https-Adresse des Seller-Systems ist (nicht
     localhost) – Einstellungen → Adressen-Check zeigt es. Dorthin zeigt künftig der Link in der Siri-Antwort.
+29. **Lugru Deals über Discord (neu)**:
+    - Einen Bot mit Leserechten in den Discord-Server der Deal-Gruppe bringen. Am einfachsten der Discord-Bot, den das
+      Seller-System schon hat (VA bzw. Discord-Kanäle) – oder der Lugru-Reaktions-Bot. Er braucht nur „Kanal ansehen“
+      und „Nachrichtenverlauf lesen“; im Entwicklerportal muss „Message Content Intent“ an sein.
+    - Unter Anbindungen → „Lugru Deals“ die IDs der Deal-Kanäle eintragen (je Zeile eine; Rechtsklick auf den Kanal →
+      „Kanal-ID kopieren“). Bot-Token nur eintragen, wenn es ein anderer Bot ist als der schon hinterlegte.
+    - „Verbindung testen“ – zeigt je Kanal den letzten erkannten Deal.
+    - Deal-Eingang → „Lugru Deals“ → „History importieren“. Der Import läuft danach im Hintergrund weiter, bis alle
+      Kanäle fertig sind (Stand je Kanal auf der Seite).
+    - Neue Posts kommen danach von selbst (jede Minute); der PC mit dem Lugru-Programm muss dafür nicht laufen.
+30. **Fall-Zentrale nach dem Update**: einmal „↻ Amazon-Mails einordnen“ klicken. Das stuft die bisherigen Vorgänge neu
+    ein (Bestell-/Versand-/Zahlungsmails werden „Info“, Marktplatz aus dem Inhalt); die Meldung nennt die Anzahl.
+    Vorgänge, die von Hand bearbeitet wurden, behalten Bereich und Phase.
+31. **VAT-Mails vom 02.10.** („Wichtige Informationen zu Ihrer VAT auf Amazon.de“): die Frist 05.10. kam vom System
+    (Standard +3 Tage), nicht aus der Mail. Bitte die Mail selbst lesen bzw. dem Steuerberater geben, ob etwas zu tun
+    ist – das System berät nicht steuerlich.
+32. **BQool vor dem nächsten Export**: die aktuellen BQool-Dateien je Land neu hochladen (Repricer → BQool). Das System
+    übernimmt daraus Liquidation und „Abverkauf DE“ als Soll. Zeilen mit „Min aus Upload blockiert Buy Box“ zuerst
+    ansehen – dort empfiehlt sich ein neuer Upload mit dem effektiven Min.
+33. **Anruf „DHL Geschäftskunden“**: auf der Startseite bei der Aufgabe „📞 Nummer fehlt“ öffnen, Vorschlag prüfen oder
+    die Nummer eintragen („Nummer im Web suchen“ braucht den Claude-Schlüssel unter Anbindungen).

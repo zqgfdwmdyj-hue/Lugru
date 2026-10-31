@@ -22,15 +22,25 @@ const fahrtBriefingTool = defineTool({
 const anrufAufgabenTool = defineTool({
   name: "anruf_aufgaben",
   title: "Anruf-Aufgaben",
-  description: "Offene Aufgaben vom Typ „Anruf“ (anrufen, zurückrufen, telefonieren) mit Telefonnummer (aus Aufgabe, Notiz oder Lieferanten-Profil), wichtige zuerst. Feld `vorlesen` für den Sprachmodus.",
+  description:
+    "Offene Aufgaben vom Typ „Anruf“ (anrufen, zurückrufen, telefonieren) mit Telefonnummer (aus Aufgabe, Notiz oder Lieferanten-Profil), wichtige zuerst. Fehlt die Nummer: `telefon_vorschlag` aus Kontakten/Mail-Signaturen (nicht gespeichert – erst nach Bestätigung mit aufgabe_aendern(telefon)); mit `websuche: true` zusätzlich Websuche für Anrufe ohne Nummer. Feld `vorlesen` für den Sprachmodus.",
   area: null,
   write: false,
-  input: z.object({}),
-  run: async (ctx) => {
+  input: z.object({ websuche: z.boolean().default(false).describe("Für Anrufe ohne Nummer und ohne Vorschlag im Web suchen (kostet je Anruf eine Suche)") }),
+  run: async (ctx, i) => {
     const { anrufAufgaben } = await import("@/lib/mobil/service");
-    const { fahrtAnsage } = await import("@/lib/mobil/logic");
-    const a = await anrufAufgaben(ctx.session);
-    return json({ anzahl: a.length, anrufe: a.slice(0, 20).map((x) => ({ id: x.id, name: x.name, titel: x.titel, telefon: x.telefon, faellig: x.faellig, wichtig: x.prioritaet === "critical" })), vorlesen: fahrtAnsage(null, a.slice(0, 5)).replace(/^Gute Fahrt\. /, ""), link: abs(ctx, "/?ansicht=liste") });
+    const { fahrtAnsage, telefonRueckfrage } = await import("@/lib/mobil/logic");
+    const a = await anrufAufgaben(ctx.session, { vorschlaege: true });
+    if (i.websuche) {
+      const { telefonVorschlag } = await import("@/lib/mobil/telefon");
+      for (const x of a.filter((y) => !y.telefon && !y.telefonVorschlag).slice(0, 3)) x.telefonVorschlag = await telefonVorschlag(ctx.session.tenantId, x.name, { web: true, mails: false }).catch(() => null);
+    }
+    return json({
+      anzahl: a.length,
+      anrufe: a.slice(0, 20).map((x) => ({ id: x.id, name: x.name, titel: x.titel, telefon: x.telefon, telefon_vorschlag: x.telefon ? undefined : (x.telefonVorschlag ?? null), rueckfrage: x.telefon ? undefined : telefonRueckfrage(x.name, x.telefonVorschlag ?? null), faellig: x.faellig, wichtig: x.prioritaet === "critical" })),
+      vorlesen: fahrtAnsage(null, a.slice(0, 5)).replace(/^Gute Fahrt\. /, ""),
+      link: abs(ctx, "/?ansicht=liste"),
+    });
   },
 });
 

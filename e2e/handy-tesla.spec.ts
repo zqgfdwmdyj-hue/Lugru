@@ -126,4 +126,35 @@ test.describe("Handy & Tesla", () => {
     expect(pem.status).toBe(200);
     expect(await pem.text()).toContain("TESTSCHLUESSELERFUNDEN");
   });
+
+  test("B17: Anruf ohne Nummer – Rückfrage beim Anlegen, Vorschlag aus Mail-Signatur, auf der Startseite übernehmen", async ({ page, browser, baseURL }) => {
+    test.setTimeout(90_000);
+    const m = marke();
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const firma = `Paketdienst${m}`;
+    // Erfundene Mail mit Signatur (Telefon) – Quelle für den Vorschlag
+    await sql("insert into emails (tenant_id, message_key, from_address, from_name, subject, received_at, body_text) values ($1, $2, $3, $4, 'Ihre Anfrage', now() - interval '2 days', $5)", [T, `tel-${m}`, `service@${firma.toLowerCase()}.example`, `${firma} Kundenservice`, "Guten Tag,\nvielen Dank für Ihre Anfrage zu Bestellung 302-1111111-2222222.\n\nMit freundlichen Grüßen\nIhr Team\nTel.: 0228 555 0100\nFax: 0228 555 0199"]);
+    const claude = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
+    const neu = JSON.parse(await claude.call("aufgabe_anlegen", { titel: `${firma} Geschäftskunden anrufen` }));
+    expect(neu.rueckfrage).toContain("fehlt");
+    expect(neu.telefon_vorschlag).toMatchObject({ nummer: "02285550100" });
+    const [t] = await sql<{ id: string; telefon: string | null }>("select id, telefon from tasks where tenant_id = $1 and title = $2", [T, `${firma} Geschäftskunden anrufen`]);
+    expect(t.telefon).toBeNull(); // Vorschlag wird nicht von selbst gespeichert
+    const aa = JSON.parse(await claude.call("anruf_aufgaben", {}));
+    const a = aa.anrufe.find((x: { id: string }) => x.id === t.id);
+    expect(a.telefon_vorschlag.quelle).toContain("Signatur");
+    // Startseite: „Nummer fehlt“ mit Vorschlag → übernehmen
+    await anmelden(page, "inhaber");
+    await page.goto("/?ansicht=liste");
+    const zeile = page.getByTestId("task-row").filter({ hasText: `${firma} Geschäftskunden anrufen` });
+    await zeile.getByTestId("anruf-telefon").locator("summary").click();
+    await expect(zeile.getByTestId("anruf-telefon-quelle")).toContainText("Signatur");
+    await Promise.all([page.waitForURL(/ansicht=liste/), zeile.getByTestId("anruf-telefon-speichern").click()]);
+    expect((await sql<{ telefon: string | null }>("select telefon from tasks where id = $1", [t.id]))[0].telefon).toBe("02285550100");
+    await expect(page.getByTestId("task-row").filter({ hasText: `${firma} Geschäftskunden anrufen` }).getByTestId("anruf-telefon")).toHaveCount(0);
+    // Mit Nummer im Text: direkt gespeichert, keine Rückfrage
+    const mit = JSON.parse(await claude.call("aufgabe_anlegen", { titel: `${firma} Lager anrufen`, telefon: "0228 555 0111" }));
+    expect(mit.rueckfrage).toBeUndefined();
+    expect(mit.aufgabe.telefon).toBe("02285550111");
+  });
 });

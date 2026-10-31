@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARBEITSZEIT_STANDARD, aufgabenTyp, freieFenster, lerneAufwand, naechsterArbeitstag, planeTag, planeTage, schaetzeAufwand, type PlanAufgabe, type Sperre } from "@/lib/tagesplan/logic";
+import { ampelText, ARBEITSZEIT_STANDARD, aufgabenTyp, freieFenster, lerneAufwand, naechsterArbeitstag, planeTag, planeTage, schaetzeAufwand, type PlanAufgabe, type Sperre } from "@/lib/tagesplan/logic";
 
 // Tagesplan – erfundene Aufgaben. 2026-11-02 ist ein Montag.
 
@@ -106,5 +106,24 @@ describe("B15.10: Kapazität 0 ist nie „überbucht“", () => {
     const r = planeTage({ start: "2026-11-02", tage: 1, arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:00", bis: "10:00" } }, sperrenAm: () => [], aufgaben: [a("1", { aufwand: "M" }), a("2", { aufwand: "M" })] });
     expect(r.tage[0].ampel).toBe("gelb");
     expect(r.verschoben.map((v) => v.id)).toEqual(["2"]);
+  });
+});
+
+describe("Kaum freie Zeit (Umsetzungsstand 31.10.: Mo 2.11. rot bei 0 von 30 Min.)", () => {
+  it("Privat ab 10:00 bis Abend, nur 30 Min. frei, wichtige Frist (1 Std.) → „kaum freie Zeit“, nicht überbucht; Konflikt nennt den Grund", () => {
+    const r = planeTage({
+      start: "2026-11-02",
+      tage: 2,
+      arbeitszeit: { ...ARBEITSZEIT_STANDARD, "1": { von: "09:30", bis: "18:00" }, "2": { von: "09:00", bis: "17:00" } },
+      sperrenAm: (t) => (t === "2026-11-02" ? [{ von: "10:00", bis: "23:59", titel: "Privat belegt", art: "privat" }] : []),
+      aufgaben: [a("1", { prioritaet: "critical", aufwand: "M", faellig: "2026-11-02" })],
+    });
+    const mo = r.tage[0];
+    expect(mo.kapazitaet).toBe(30);
+    expect(mo.belegt).toBe(0);
+    expect(mo.ampel).toBe("frei");
+    expect(ampelText(mo)).toBe("kaum freie Zeit (30 Min.)");
+    expect(mo.konflikte[0].text).toContain("nur 30 Min. freier Zeit");
+    expect(r.tage[1].geplant.map((g) => g.id)).toEqual(["1"]);
   });
 });

@@ -15,6 +15,12 @@ export type PlanAufgabe = { id: string; titel: string; faellig: string | null; p
 export type Geplant = PlanAufgabe & { von: string; bis: string };
 export type Verschoben = PlanAufgabe & { neu: string };
 export type Konflikt = { aufgabeId: string; titel: string; text: string };
+/** Anzeige der Tages-Ampel („frei“ mit Arbeitszeit = keine bzw. kaum freie Zeit). */
+export function ampelText(p: Pick<TagPlan, "ampel" | "arbeitszeit" | "kapazitaet">): string {
+  if (p.ampel === "frei") return !p.arbeitszeit ? "frei" : p.kapazitaet > 0 ? `kaum freie Zeit (${p.kapazitaet} Min.)` : "keine freie Zeit";
+  return { gruen: "passt", gelb: "voll", rot: "überbucht" }[p.ampel];
+}
+
 export type TagPlan = { tag: string; arbeitszeit: { von: string; bis: string } | null; sperren: Sperre[]; kapazitaet: number; geplant: Geplant[]; belegt: number; auslastung: number | null; ampel: "gruen" | "gelb" | "rot" | "frei"; konflikte: Konflikt[] };
 
 const min = (hhmm: string) => {
@@ -209,7 +215,8 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
     for (const g of plan.geplant) offen.delete(g.id);
     for (const r of rest) {
       if (!verschoben.has(r.id)) verschoben.set(r.id, { ...r, neu: plusTage(tag, 1) });
-      if (r.prioritaet === "critical" && r.faellig === tag) plan.konflikte.push({ aufgabeId: r.id, titel: r.titel, text: "Wichtig und heute fällig, passt aber nicht mehr in den Tag" });
+      if (r.prioritaet === "critical" && r.faellig === tag)
+        plan.konflikte.push({ aufgabeId: r.id, titel: r.titel, text: plan.kapazitaet < KAUM_ZEIT_MIN ? `Frist fällt auf einen Tag mit nur ${plan.kapazitaet} Min. freier Zeit – verschoben` : "Wichtig und heute fällig, passt aber nicht mehr in den Tag" });
     }
     plan.konflikte.push(...(konfliktAm.get(tag) ?? []));
     tages(plan);
@@ -224,9 +231,12 @@ export function planeTage(o: { start: string; tage: number; aufgaben: PlanAufgab
   return { tage, verschoben: vers, ohneFrist: o.aufgaben.filter((a) => !a.faellig) };
 }
 
+/** Unter dieser freien Zeit (z. B. Privat ab 10 Uhr) gilt ein Tag als „kaum freie Zeit“ – nie „überbucht“ (B17/M1). */
+export const KAUM_ZEIT_MIN = 60;
+
 /** Ampel nach Vorziehen neu bestimmen. */
 function tages(p: TagPlan) {
-  if (!p.arbeitszeit || p.kapazitaet === 0) p.ampel = "frei";
+  if (!p.arbeitszeit || p.kapazitaet === 0 || (p.kapazitaet < KAUM_ZEIT_MIN && p.belegt === 0)) p.ampel = "frei";
   else if (p.konflikte.some((k) => k.text.startsWith("Wichtig"))) p.ampel = "rot";
   else if ((p.auslastung ?? 0) > 80) p.ampel = p.ampel === "rot" ? "rot" : "gelb";
 }

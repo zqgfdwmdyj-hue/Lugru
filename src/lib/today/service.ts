@@ -86,6 +86,16 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
     });
   }
   if (expired.n) out.push({ key: "abgelaufen", label: `${expired.n} Anspr${expired.n === 1 ? "uch" : "üche"} mit abgelaufener Frist, nicht eingereicht`, count: expired.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
+  // Liquidität: alter oder fehlender Geschäfts-Kontostand – sonst ist die Prognose zu optimistisch (Umsetzungsstand 31.10.).
+  const kb = await import("@/lib/bank/service").then((x) => x.kontostand(tenantId, "geschaeft", null, today)).catch(() => undefined);
+  if (kb !== undefined) {
+    const alter = kb?.stand ? Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${kb.stand.slice(0, 10)}T12:00:00Z`)) / 86_400_000) : null;
+    if (!kb) out.push({ key: "kontostand", label: "Kein Geschäfts-Kontostand – Liquidität ohne Startwert", detail: "Kontoauszug (Sparkasse/Amex) unter Uploads hochladen", count: 1, href: "/cashflow", level: "warn" });
+    else if (alter !== null && alter > 7) {
+      const dmy = `${kb.stand.slice(8, 10)}.${kb.stand.slice(5, 7)}.`;
+      out.push({ key: "kontostand", label: `Kontostand vom ${dmy} (${alter} Tage alt) – Liquidität ungenau`, detail: "Neuen Kontoauszug hochladen, dann stimmt die Prognose wieder", count: alter, href: "/cashflow", level: alter > 21 ? "danger" : "warn" });
+    }
+  }
   return out;
 }
 

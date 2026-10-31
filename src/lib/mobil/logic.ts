@@ -15,6 +15,29 @@ export function telefonAus(text: string): string | null {
   return roh.replace(/\D/g, "").length >= 7 ? roh : null;
 }
 
+/** Telefonnummer aus einer Mail-Signatur: nur Zeilen mit „Tel/Telefon/Phone/Hotline/Fon/Mobil“ (keine Bestellnummern). */
+export function telefonAusSignatur(text: string): string | null {
+  const zeilen = text.split(/\r?\n/).slice(-80);
+  for (const z of zeilen.reverse()) {
+    if (!/\b(tel(?:efon)?|phone|hotline|fon|mobil|mobile|handy|service-?nummer)\b\.?/i.test(z)) continue;
+    if (/\bfax\b/i.test(z) && !/\btel/i.test(z)) continue;
+    const n = telefonAus(z.replace(/^.*?\b(?:tel(?:efon)?|phone|hotline|fon|mobil|mobile|handy|service-?nummer)\b\.?\s*[:.]?/i, ""));
+    if (n) return n;
+  }
+  return null;
+}
+
+/** Suchwort für den Namen („DHL Geschäftskunden“ → „DHL“): erstes Wort mit mind. 3 Zeichen. */
+export function namensKern(name: string): string | null {
+  const w = name.split(/[\s,/–-]+/).find((x) => x.replace(/[^\p{L}\p{N}]/gu, "").length >= 3);
+  return w ? w.replace(/[^\p{L}\p{N}&.]/gu, "") : null;
+}
+
+/** Rückfrage beim Anlegen einer Anruf-Aufgabe ohne Nummer. */
+export function telefonRueckfrage(name: string, vorschlag: { nummer: string; quelle: string } | null): string {
+  return vorschlag ? `Telefonnummer für „${name}“ fehlt – Vorschlag: ${vorschlag.nummer} (${vorschlag.quelle}). Bitte bestätigen oder richtige Nummer nennen.` : `Telefonnummer für „${name}“ fehlt – bitte nennen (oder „Nummer im Web suchen“).`;
+}
+
 /** Wen anrufen? „DHL Geschäftskunden anrufen“ → „DHL Geschäftskunden“, „Konrad zurückrufen wegen …“ → „Konrad“. */
 export function anrufName(titel: string): string {
   const t = titel.replace(/^(bitte\s+)?(anrufen|zurückrufen|telefonieren)\s*[:-]?\s*/i, "").replace(/\s*\b(wegen|zu|zum|zur|bzgl\.?|betreffend)\b.*$/i, "");

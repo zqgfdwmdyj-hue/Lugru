@@ -87,3 +87,17 @@ export const amazonEinordnungRegeln = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.muster] })],
 );
+
+/** Amazon-Mails, die geprüft wurden, aber kein Vorgang sind (Bestellung/Versand/Zahlung, Newsletter) – damit sie nicht bei jedem Lauf erneut gelesen werden. */
+export const amazonMailUebersprungen = pgTable(
+  "amazon_mail_uebersprungen",
+  {
+    tenantId: tenantId(),
+    emailId: uuid("email_id")
+      .notNull()
+      .references(() => emails.id, { onDelete: "cascade" }),
+    grund: text("grund").notNull(),
+    am: timestamp("am", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.emailId] })],
+);

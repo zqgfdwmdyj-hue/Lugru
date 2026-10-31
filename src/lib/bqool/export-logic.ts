@@ -105,10 +105,6 @@ export function maxPreis(o: { min: number; bb90: number | null; faktor: number; 
 export type Zuweisung = { regel: string; untergrenze: number | null; quelle: "vorlage" | "hand" | "kapital" };
 export type MarkenRegel = { marke: string; land: ExportLand | null; regel: string };
 
-/**
- * Regel je SKU und Land. Reihenfolge: feste Zuweisung (Vorlage, von Hand, freigegebener Kapital-Vorschlag) →
- * Markenregel (z. B. Philips DE → „Abverkauf“) → Abverkaufs-Liste (DE „Abverkauf DE“, sonst „Abverkauf“) → Standard „ia“.
- */
 /** Marke als ganzes Wort im Titel (Produkte haben kein eigenes Markenfeld). */
 export function titelHatMarke(titel: string | null, marke: string): boolean {
   const m = marke.trim();
@@ -122,12 +118,50 @@ export function ausnahmeTrifft(r: MarkenRegel, asin: string | null, titel: strin
   return /^B0[A-Z0-9]{8}$/i.test(m) ? (asin ?? "").toUpperCase() === m.toUpperCase() : titelHatMarke(titel, m);
 }
 
-export function regelFuer(o: { land: ExportLand; titel: string | null; asin?: string | null; zuweisung: Zuweisung | null; markenRegeln: MarkenRegel[]; aufAbverkaufsListe: boolean; abverkaufRegel: { DE: string; sonst: string }; standard: string }): { regel: string; quelle: "zuweisung" | "marke" | "abverkauf" | "standard"; untergrenze: number | null } {
-  if (o.zuweisung) return { regel: o.zuweisung.regel, quelle: "zuweisung", untergrenze: o.zuweisung.untergrenze };
+/**
+ * Regel je SKU und Land. Reihenfolge: feste Zuweisung (Vorlage, von Hand, freigegebener Kapital-Vorschlag) →
+ * Liquidation laut letztem BQool-Ist (Min als feste Untergrenze) → Markenregel (z. B. Philips DE) → Abverkaufs-Liste →
+ * andere Nicht-Standard-Regel laut BQool-Ist (z. B. „Abverkauf DE“) → Standard „ia“. Der Regelname wird zum Schluss
+ * auf den Namen gebracht, den es im Land laut Katalog gibt (DE „Abverkauf DE“, FR/IT/ES „Abverkauf“).
+ */
+export function regelFuer(o: {
+  land: ExportLand;
+  titel: string | null;
+  asin?: string | null;
+  zuweisung: Zuweisung | null;
+  markenRegeln: MarkenRegel[];
+  aufAbverkaufsListe: boolean;
+  abverkaufRegel: { DE: string; sonst: string };
+  standard: string;
+  /** Letzter BQool-Ist-Stand der SKU im Land. */
+  ist?: { regel: string | null; min: number | null } | null;
+  katalog?: KatalogRegel[];
+}): { regel: string; quelle: "zuweisung" | "ist" | "marke" | "abverkauf" | "standard"; untergrenze: number | null } {
+  const name = (r: string) => (o.katalog ? regelNameFuerLand(r, o.land, o.katalog) : r);
+  if (o.zuweisung) return { regel: name(o.zuweisung.regel), quelle: "zuweisung", untergrenze: o.zuweisung.untergrenze };
+  const istKat = o.katalog && o.ist?.regel ? katalogRegel(o.katalog, o.ist.regel) : null;
+  if (istKat?.festeUntergrenze) return { regel: istKat.name, quelle: "ist", untergrenze: o.ist?.min ?? null };
   const mr = o.markenRegeln.find((r) => (r.land === null || r.land === o.land) && ausnahmeTrifft(r, o.asin ?? null, o.titel));
-  if (mr) return { regel: mr.regel, quelle: "marke", untergrenze: null };
-  if (o.aufAbverkaufsListe) return { regel: o.land === "DE" ? o.abverkaufRegel.DE : o.abverkaufRegel.sonst, quelle: "abverkauf", untergrenze: null };
+  if (mr) return { regel: name(mr.regel), quelle: "marke", untergrenze: null };
+  if (o.aufAbverkaufsListe) return { regel: name(o.land === "DE" ? o.abverkaufRegel.DE : o.abverkaufRegel.sonst), quelle: "abverkauf", untergrenze: null };
+  if (istKat && !istKat.risiko && istKat.name.trim().toLowerCase() !== o.standard.trim().toLowerCase()) return { regel: name(istKat.name), quelle: "ist", untergrenze: null };
   return { regel: o.standard, quelle: "standard", untergrenze: null };
+}
+
+/**
+ * Regelname, den es im Land laut Katalog gibt: „Abverkauf“ in DE → „Abverkauf DE“ (wenn im Katalog), „Abverkauf DE“ in
+ * FR/IT/ES → „Abverkauf“. Unbekannte Namen bleiben, wie sie sind (der Abgleich meldet sie).
+ */
+export function regelNameFuerLand(regel: string, land: ExportLand, katalog: KatalogRegel[]): string {
+  const gilt = (k: KatalogRegel | null) => !!k && (!k.laender || k.laender.includes(land));
+  const basis = regel.trim().replace(/\s+(DE|FR|IT|ES)$/i, "");
+  const eigene = katalogRegel(katalog, `${basis} ${land}`);
+  if (gilt(eigene)) return eigene!.name;
+  const k = katalogRegel(katalog, regel);
+  if (gilt(k)) return k!.name;
+  const grund = katalogRegel(katalog, basis);
+  if (gilt(grund)) return grund!.name;
+  return k?.name ?? regel.trim();
 }
 
 export type ExportZeile = { land: ExportLand; sku: string; cost: number; zusatz: number; regel: string; min: number; max: number; /** „1“/„0“ – Ist-Wert aus BQool, neue SKUs Standard. */ enable?: string };
@@ -215,6 +249,17 @@ export function warnungen(z: Pick<ExportZeile, "min" | "max">, o: { buybox: numb
   return w;
 }
 
+/**
+ * Min aus dem letzten BQool-Upload liegt über der Buy Box, der effektive Min aber darunter: der alte Upload blockiert
+ * die Buy Box (B17).
+ */
+export function minBlockiertBuybox(o: { istMin: number | null; effMin: number | null; buybox: number | null }): string | null {
+  if (o.istMin === null || o.effMin === null || o.buybox === null) return null;
+  if (!(o.istMin > o.buybox + 0.005 && o.effMin < o.istMin - 0.005)) return null;
+  const f = (n: number) => n.toFixed(2).replace(".", ",");
+  return `Min aus Upload blockiert Buy Box – neuer Upload mit Min = effektiver Min empfohlen (Min ${f(o.istMin)} > Buy Box ${f(o.buybox)}; effektiver Min ${f(o.effMin)})`;
+}
+
 /** Kapital-Ampel-Vorschlag: Rot und Reichweite über der Grenze → „Abverkauf“ (gilt erst nach Freigabe). */
 export function abverkaufVorschlagen(k: { ampel: "gruen" | "gelb" | "rot"; reichweite: number | null } | null, rotReichweite: number): boolean {
   return !!k && k.ampel === "rot" && k.reichweite !== null && k.reichweite > rotReichweite;
@@ -261,7 +306,8 @@ export const KATALOG_STANDARD: KatalogRegel[] = [
   // Mindestmarge 0–30 T 4 % (nur mit ≥ 1 Stück verfügbar) · 31–60 T 3 % · 61–90 T 2 % · 91–180 T 1 % · ab 181 T 0 %.
   {
     name: "Abverkauf",
-    laender: ["FR", "IT", "ES", "DE"],
+    // In BQool DE gibt es nur „Abverkauf DE“.
+    laender: ["FR", "IT", "ES"],
     strategie: "AI Win Sales Booster je Land (BQool-ID FR 48 · IT 50 · ES 49)",
     staffel: [
       { bisTage: 30, marge: 4, unterregel: "Sales Booster" },

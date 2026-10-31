@@ -19,15 +19,25 @@ async function personen(tenantId: string) {
 const privatVoll = (s: Session) => s.privateAccess && s.privateScope === "voll";
 
 /** Anlegen nach Einordnung. Liefert die ID des Angelegten oder einen Fehlertext. */
-async function anlegen(session: Session, e: Einordnung, text: string): Promise<{ id: string; zustaendig: string | null } | { fehler: string }> {
+async function anlegen(session: Session, e: Einordnung, text: string): Promise<{ id: string; zustaendig: string | null; telefonHinweis?: string } | { fehler: string }> {
   const t = session.tenantId;
   const kann = (bereich: Parameters<typeof import("@/lib/auth/areas").canAccess>[1]) => import("@/lib/auth/areas").then((m) => m.canAccess({ role: session.role, areas: session.areas, readOnly: session.readOnly, privateAccess: session.privateAccess }, bereich));
   if (e.art === "aufgabe" || e.art === "termin") {
     const titel = e.art === "termin" && e.uhrzeit ? `${e.uhrzeit} ${e.titel}` : e.titel;
+    // Anruf-Aufgabe: Nummer aus dem Diktat übernehmen; fehlt sie, in der Antwort nachfragen (mit Vorschlag).
+    const { anrufName, istAnruf, telefonAus, telefonRueckfrage } = await import("@/lib/mobil/logic");
+    const anruf = istAnruf(titel);
+    const telefon = anruf ? telefonAus(text) : null;
     const [row] = await db
       .insert(schema.tasks)
-      .values({ tenantId: t, title: titel.slice(0, 280), notes: `Per Sprache erfasst: „${text.slice(0, 400)}“`, dueDate: e.tag, priority: "normal", category: "eigene", createdBy: session.userId, assigneeId: e.zustaendigId })
+      .values({ tenantId: t, title: titel.slice(0, 280), notes: `Per Sprache erfasst: „${text.slice(0, 400)}“`, dueDate: e.tag, priority: "normal", category: "eigene", createdBy: session.userId, assigneeId: e.zustaendigId, telefon })
       .returning({ id: schema.tasks.id });
+    let telefonHinweis: string | undefined;
+    if (anruf && !telefon) {
+      const mails = await kann("posteingang");
+      const v = await import("@/lib/mobil/telefon").then((m) => m.telefonVorschlag(t, anrufName(titel), { mails })).catch(() => null);
+      if (v?.art !== "lieferant") telefonHinweis = telefonRueckfrage(anrufName(titel), v);
+    }
     let zustaendig: string | null = null;
     if (e.zustaendigId) {
       // Zuweisung wie im Seller-System (VA bekommt den Discord-Thread auf Englisch).
@@ -35,7 +45,7 @@ async function anlegen(session: Session, e: Einordnung, text: string): Promise<{
       const [u] = await db.select({ name: schema.users.name, email: schema.users.email }).from(schema.users).where(eq(schema.users.id, e.zustaendigId));
       zustaendig = u ? (u.name ?? u.email) : null;
     }
-    return { id: row.id, zustaendig };
+    return { id: row.id, zustaendig, telefonHinweis };
   }
   if (e.art === "notiz") {
     if (!(await kann("wissen"))) return { fehler: "Kein Zugriff auf das Wissen." };
@@ -96,7 +106,7 @@ export async function erfassen(session: Session, textIn: string, o: { tokenId?: 
   if (e.sicher && !session.readOnly) {
     const r = await anlegen(session, e, text);
     if ("id" in r) {
-      const antwort = antwortText(e, true, r.zustaendig);
+      const antwort = `${antwortText(e, true, r.zustaendig)}${r.telefonHinweis ? ` ${r.telefonHinweis}` : ""}`;
       const [row] = await db.insert(S).values({ tenantId: session.tenantId, userId: session.userId, tokenId: o.tokenId ?? null, daten: { text, einordnung, ergebnis: antwort }, status: "angelegt", art: e.art, zielId: r.id, erledigtAt: new Date() }).returning({ id: S.id });
       return { angelegt: true, art: e.art, antwort, id: row.id };
     }

@@ -8,7 +8,7 @@ export const BESTELL_MAIL_RE =
 
 /** FBA-Info „Amazon hat Ihre Artikel versandt“ – nur Info, sofort archivieren. */
 export const FBA_VERSAND_RE =
-  /amazon hat ihre artikel versandt|amazon has shipped your (item|order)|amazon a exp[ée]di[ée] vos articles|amazon ha spedito i tuoi articoli|amazon ha enviado tus art[ií]culos|amazon heeft (je|uw) artikel(en)? verzonden|amazon wys[łl]a[łl]/i;
+  /amazon hat ihre artikel versandt|amazon has shipped your (item|order)|amazon a exp[ée]di[ée] vos articles|amazon ha spedito i tuoi articoli|amazon ha enviado tus art[ií]culos|amazon heeft (je|uw) artikel(en)? verzonden|amazon wys[łl]a[łl]|amazon (?:hat|has|a|ha|heeft|har)\b[^\n]{0,60}?\b(?:versandt|verschickt|shipped|exp[ée]di[ée]e?s?|spedit[oaie]|enviado|verzonden|skickat)\b/i;
 
 export const istBestellMail = (subject: string | null | undefined) => BESTELL_MAIL_RE.test(subject ?? "");
 export const istFbaVersandMail = (subject: string | null | undefined) => FBA_VERSAND_RE.test(subject ?? "");

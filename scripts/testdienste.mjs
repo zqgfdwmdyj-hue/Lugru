@@ -305,6 +305,8 @@ let shipNo = 3400000000;
 const DC_BOT = "600000000000000001";
 const DC_VA = "700000000000000001";
 let dcSeq = 910000000000000000n;
+// Ältere Nachrichten (History): IDs unterhalb aller übrigen, absteigend vergeben.
+let dcAlt = 900000000000000000n;
 let dcVa = { kanaele: new Map(), nachrichten: [], anhaenge: new Map() };
 const dcId = () => String(++dcSeq);
 const dcKanal = (id) => dcVa.kanaele.get(id) ?? (id.startsWith("8") ? (dcVa.kanaele.set(id, { id, name: "va-test", type: 0, guild_id: "500000000000000001" }), dcVa.kanaele.get(id)) : null);
@@ -350,9 +352,11 @@ function discordVa(req, p, url, body) {
   }
   if (rest === "/messages" && req.method === "GET") {
     const nach = url.searchParams.get("after");
+    const vor = url.searchParams.get("before");
     const limit = Number(url.searchParams.get("limit") ?? 50);
     let liste = dcVa.nachrichten.filter((m) => m.channel_id === k.id);
     if (nach) liste = liste.filter((m) => BigInt(m.id) > BigInt(nach)).slice(0, limit);
+    else if (vor) liste = liste.filter((m) => BigInt(m.id) < BigInt(vor)).slice(-limit);
     else liste = liste.slice(-limit);
     return [200, [...liste].reverse()];
   }
@@ -747,6 +751,23 @@ http
       if (b.name) k.name = b.name;
       const m = dcNachricht(k.id, { id: "650000000000000001", bot: true, username: "ProfitPath (Test)" }, "", []);
       m.embeds = [{ title: b.titel, url: `https://www.amazon.de/dp/${b.asin}`, fields: [{ name: "Buy Cost", value: b.ek }, { name: "Sell Price", value: b.vk ?? "€29,90" }, { name: "Profit", value: b.gewinn ?? "€5,00" }, { name: "ROI", value: b.roi ?? "30%" }, { name: "Store", value: "Testshop" }] }];
+      return send(200, m);
+    }
+    // Lugru Deals: Post als Webhook (reiner Text im Lugru-Format); „alt“ = älter als die übrigen (für die History).
+    if (url.pathname === "/__discord-va/lugru" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      const k = dcKanal(String(b.kanal));
+      if (!k) return send(404, { fehler: "Kanal unbekannt" });
+      if (b.name) k.name = b.name;
+      const m = dcNachricht(k.id, { id: "660000000000000001", bot: true, username: "Lugru Deals (Test)" }, String(b.text ?? ""), []);
+      m.webhook_id = "660000000000000001";
+      if (b.alt) {
+        // Ältere Snowflake (vor allen bisherigen) und Zeitstempel in der Vergangenheit.
+        const tage = Number(b.alt) || 30;
+        m.id = String(--dcAlt);
+        m.timestamp = new Date(Date.now() - tage * 86400000).toISOString();
+        dcVa.nachrichten.sort((x, y) => (BigInt(x.id) < BigInt(y.id) ? -1 : 1));
+      }
       return send(200, m);
     }
     if (url.pathname === "/__discord-va/reaktion" && req.method === "POST") {

@@ -253,12 +253,55 @@ const PFLICHT: { category: string; re: RegExp }[] = [
 
 const TLD_LAND: Record<string, string> = { de: "DE", fr: "FR", it: "IT", es: "ES", nl: "NL", "com.be": "BE", pl: "PL", se: "SE", "co.uk": "UK", ie: "IE", ae: "AE", sa: "SA", "com.tr": "TR", eg: "EG", com: "US" };
 
-/** Marktplatz aus der Absender-Domain (amazon.nl → NL), sonst aus Hinweisen im Text. */
+const LAND_TLD: Record<string, string> = Object.fromEntries(Object.entries(TLD_LAND).map(([t, l]) => [l, t]));
+
+// Sprache der Mail → Marktplatz (nur EU-Sprachen; Englisch bleibt offen, weil UK/IE/US/EU-Englisch).
+const SPRACHE_LAND: [string, RegExp][] = [
+  ["DE", /\b(?:ihre?|ihr|ihren|bestellung|versandt|zahlung|auszahlung|verkauft|jetzt|liefern|wichtige|informationen|artikel)\b/gi],
+  ["FR", /\b(?:votre|vos|commande|exp[ée]di[ée]e?s?|paiement|vendu|livrer|maintenant|articles?)\b/gi],
+  ["ES", /\b(?:tu|tus|pedido|enviado|est[áa]|pago|vendido|ahora|camino|art[íi]culos?)\b/gi],
+  ["IT", /\b(?:tuo|tuoi|ordine|spedit[oi]|pagamento|venduto|spedisci|arrivo|articoli)\b/gi],
+  ["NL", /\b(?:uw|bestelling|verzonden|betaling|verkocht|onderweg|artikelen)\b/gi],
+  ["PL", /\b(?:twoje?|zam[óo]wienie|wys[łl]an[oay]?|p[łl]atno[śs][ćc]|sprzedano)\b/gi],
+  ["SE", /\b(?:din|ditt|best[äa]llning|skickat|betalning|s[åa]ld|p[åa] v[äa]g)\b/gi],
+];
+
+/** Sprache aus Betreff + Textanfang: Land mit den meisten Treffern (mind. 2, eindeutig), sonst null. */
+export function landAusSprache(text: string): string | null {
+  const t = text.slice(0, 800);
+  const z = SPRACHE_LAND.map(([land, re]) => [land, (t.match(re) ?? []).length] as const).sort((a, b) => b[1] - a[1]);
+  return z[0][1] >= 2 && z[0][1] > z[1][1] ? z[0][0] : null;
+}
+
+/**
+ * Marktplatz aus der Absender-Domain (amazon.nl → NL). amazon.com ist auch ein allgemeiner Absender für EU-Mails –
+ * dann zählt der Inhalt (amazon.fr/sellercentral.amazon.es im Text, sonst die Sprache). „US“ nur mit klarem Hinweis
+ * (sellercentral.amazon.com oder Dollarbetrag), sonst bleibt der Marktplatz offen.
+ */
 export function marktplatzAus(from: string, text = ""): { land: string | null; tld: string | null } {
-  const m = /amazon\.(com\.be|co\.uk|com\.tr|de|fr|it|es|nl|pl|se|ie|ae|sa|eg|com)\b/i.exec(from) ?? /sellercentral\.amazon\.(com\.be|co\.uk|com\.tr|de|fr|it|es|nl|pl|se|ie|ae|sa|eg|com)\b/i.exec(text);
-  if (!m) return { land: null, tld: null };
-  const tld = m[1].toLowerCase();
-  return { land: TLD_LAND[tld] ?? null, tld };
+  const DOM = /amazon\.(com\.be|co\.uk|com\.tr|de|fr|it|es|nl|pl|se|ie|ae|sa|eg|com)\b/i;
+  const ab = DOM.exec(from);
+  const absTld = ab?.[1].toLowerCase() ?? null;
+  if (absTld && absTld !== "com") return { land: TLD_LAND[absTld] ?? null, tld: absTld };
+  const spez = /(?:sellercentral\.|www\.|\b)amazon\.(com\.be|co\.uk|com\.tr|de|fr|it|es|nl|pl|se|ie|ae|sa|eg)\b/i.exec(text);
+  if (spez) {
+    const tld = spez[1].toLowerCase();
+    return { land: TLD_LAND[tld] ?? null, tld };
+  }
+  // Land/Währung im Text (z. B. UAE-Mail von amazon.com: „AED“, „United Arab Emirates“).
+  const hinweis: [string, RegExp][] = [
+    // Währungskürzel nur in Großbuchstaben („try“ ist ein englisches Wort).
+    ["AE", /\bAED\b|\bUAE\b|[Uu]nited [Aa]rab [Ee]mirates|[Vv]ereinigte [Aa]rabische [Ee]mirate/],
+    ["SA", /\bSAR\b|[Ss]audi[ -][Aa]rabi(?:a|en)/],
+    ["UK", /£\s?\d|\bGBP\b|[Uu]nited [Kk]ingdom/],
+    ["TR", /\bTRY\b|[Tt]ürkiye|amazon\.com\.tr/],
+  ];
+  const hw = hinweis.find(([, re]) => re.test(text));
+  if (hw) return { land: hw[0], tld: LAND_TLD[hw[0]] ?? null };
+  const sprache = landAusSprache(text);
+  if (sprache) return { land: sprache, tld: LAND_TLD[sprache] ?? null };
+  if (/sellercentral\.amazon\.com\b(?!\.)|(?:US\$|\$\s?\d)/i.test(text)) return { land: "US", tld: "com" };
+  return { land: null, tld: absTld };
 }
 
 /** Link „Kontozustand“ in Seller Central des Marktplatzes (Europa: amazon.de als Standard). */

@@ -11,7 +11,7 @@ import { profitPathKonfig } from "@/lib/deal-eingang/profitpath";
 
 // Deal-Eingang: Angebote aus WhatsApp & Co. einfügen bzw. teilen → KI erkennt → Deal-Ampel je Angebot.
 
-const WEG = { manuell: "von Hand", teilen: "geteilt", kurzbefehl: "Kurzbefehl", mail: "Mail", claude: "Claude", profitpath: "ProfitPath", gruppe: "Gruppen-Chat" } as const;
+const WEG = { manuell: "von Hand", teilen: "geteilt", kurzbefehl: "Kurzbefehl", mail: "Mail", claude: "Claude", profitpath: "ProfitPath", gruppe: "Gruppen-Chat", lugru: "Lugru Deals" } as const;
 
 export default async function DealEingangPage({ searchParams }: { searchParams: Promise<{ meldung?: string; quelle?: string; ampel?: string; status?: string }> }) {
   const session = await requireArea("dealeingang");
@@ -92,7 +92,7 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
         <div className="small muted">
           Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
           {" "}Diese Woche gekauft: {verbraucht.woche.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}{de.budgetJeWoche ? ` von ${de.budgetJeWoche.toLocaleString("de-DE")} €` : ""}.
-          {" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>
+          {" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>{" "}<Link href="/deal-eingang/lugru" data-testid="de-lugru-link">Lugru Deals →</Link>
         </div>
         {session.role === "owner" && !session.readOnly && (
           <form action={einstellungenAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} data-testid="de-einstellungen-form">

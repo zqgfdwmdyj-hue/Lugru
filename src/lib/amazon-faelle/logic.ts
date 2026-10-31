@@ -3,6 +3,7 @@
 // (DE, EN, FR, IT, ES, NL, PL, SV). Ohne Datenbank – getestet in tests/amazon-faelle.test.ts.
 
 import { deadlineFromText, extractAsins, extractSkus, marktplatzAus } from "@/lib/amazon-todos/logic";
+import { BESTELL_MAIL_RE, FBA_VERSAND_RE } from "@/lib/amazon-todos/versand";
 
 export const BEREICHE = ["freischaltung", "fall", "erstattung_kunde", "entschaedigung", "marke", "angebot", "kontozustand", "a_bis_z", "fba_sendung", "info", "sonstiges"] as const;
 export type Bereich = (typeof BEREICHE)[number];
@@ -84,6 +85,10 @@ export type Einordnung = {
   frist: string | null;
   ablehnungsgruende: Ablehnungsgrund[];
   verlangt: Verlangt[];
+  /** Bestell-/Versand-/Zahlungsmail – nie ein Vorgang. */
+  routine: boolean;
+  /** Woher die Frist stammt: aus der Mail oder Standardfrist (Tage je Bereich/Phase). */
+  fristQuelle: "mail" | "standard" | null;
 };
 
 export const UNSICHER_AB = 0.6;
@@ -98,7 +103,8 @@ const FALLNUMMER = [
 
 const RE = {
   freischaltung: /approval|freischalt|verkaufsgenehmigung|genehmigung zum verkauf|zulassung (?:zum verkauf|der marke|der kategorie)|selling application|ungat|restricted (?:brand|category|product)|eingeschränkte (?:marke|kategorie)|demande d'approbation|approbation pour vendre|richiesta di approvazione|approvazione (?:alla vendita|per vendere)|solicitud de aprobaci[oó]n|aprobaci[oó]n para vender|goedkeuring (?:aanvragen|om te verkopen|voor)|verkoopgoedkeuring|zatwierdzeni[ae] (?:do sprzedaży|sprzedaży)|wniosek o zatwierdzenie|godkännande (?:för att sälja|att sälja)|ansökan om godkännande/i,
-  marke: /rechteinhaber|rights owner|intellectual property|geistige[sn]? eigentum|markenrecht|trademark infringement|markenverletzung|urheberrecht|copyright|patent|counterfeit|fälschung|gefälscht|inauthentic|nicht authentisch|authenticity|echtheit|contrefaçon|propriété intellectuelle|contraffa|propriet[aà] intellettuale|falsificaci[oó]n|propiedad intelectual|namaak|intellectueel eigendom|podróbk|własność intelektualn|förfalskning|immateriell/i,
+  // Nur echte Rechte-/Echtheitsmails – keine nackten Wörter wie „copyright“/„patent“, die in Fußzeilen stehen.
+  marke: /rechteinhaber|rights owner|intellectual property (?:complaint|rights?|violation|infringement|policy)|notice of (?:claimed )?infringement|(?:verletzung|verstoß) (?:von |gegen )?(?:geistige|marken|urheber|patent)|geistige[sn]? eigentum(?:s)?(?:srecht)?[^.\n]{0,40}(?:verletz|beschwerde)|markenrechtsverletzung|markenrecht(?:e|s)? (?:verletz|beschwerde)|trademark (?:infringement|complaint)|markenverletzung|urheberrechtsverletzung|copyright (?:infringement|complaint|violation)|patent ?(?:infringement|complaint|violation)|patentverletzung|counterfeit|fälschung|gefälscht|inauthentic|nicht authentisch|authenticity (?:complaint|concern|issue|of)|echtheitsbeschwerde|echtheit (?:der|ihrer|von|des)|(?:beschwerde|bedenken) (?:wegen|über|zur|bezüglich) (?:der )?echtheit|contrefaçon|atteinte (?:à la|aux droits de) propriété intellectuelle|contraffa|violazione (?:della |dei diritti di )?propriet[aà] intellettuale|falsificaci[oó]n|infracci[oó]n de (?:la )?propiedad intelectual|namaak|inbreuk op (?:het )?intellectueel eigendom|podróbk|naruszeni[ae] własności intelektualnej|förfalskning|intrång i immateriell/i,
   kontozustand: /kontozustand|account health|verkäuferkonto (?:wurde )?(?:deaktiviert|gesperrt|eingeschränkt)|account (?:has been )?(?:deactivated|suspended|at risk)|richtlinienversto|policy violation|santé du compte|salute dell'account|estado de la cuenta|accountstatus|kondycja konta|kontohälsa/i,
   a_bis_z: /a-bis-z|a-to-z|a-z-garantie|garantie de a à z|garanzia dalla a alla z|garant[ií]a de la a a la z|a-tot-z|gwarancja od a do z|a-till-ö|rückbelastung|chargeback|zahlungsstreit|rétrofacturation|riaddebito|contracargo|terugboeking|obciążenie zwrotne|återdebitering/i,
   entschaedigung: /reimbursement|entschädigung|erstattung (?:für|von) (?:verlorene|beschädigte)|fba-erstattung|indemnisation|remboursement fba|rimborso (?:fba|per)|reembolso (?:de )?fba|vergoeding|rekompensat|ersättning/i,
@@ -142,6 +148,31 @@ const VERLANGT_RE: [Verlangt, RegExp][] = [
   ["tracking", /tracking|sendungsverfolgung|trackingnummer|suivi|tracciamento|seguimiento|track ?& ?trace|śledzenie|spårning/i],
 ];
 
+/**
+ * Routinemails (Bestellung, Versand, Zahlung) sind nie ein Fall – egal was in der Fußzeile steht (B10/B17).
+ * Geprüft wird nur der Betreff.
+ */
+const ROUTINE_RE = [
+  BESTELL_MAIL_RE,
+  FBA_VERSAND_RE,
+  /bestellbestätigung|versandbestätigung|ihre bestellung (?:wurde|ist)|order confirmation|has shipped|wurde (?:versandt|zugestellt)|\bzugestellt\b|\bdelivered\b|confirmation de commande|conferma (?:dell'ordine|d'ordine)|confirmaci[oó]n (?:del|de) pedido|orderbevestiging/i,
+  /(?:tu|ihre?|your|votre|il tuo|uw|je|twoja|din) (?:pago|zahlung|auszahlung|payment|paiement|pagamento|betaling|p[łl]atno[śs][ćc]|utbetalning|betalning)\b[^\n]{0,40}(?:est[áa] en camino|ist unterwegs|wurde (?:veranlasst|überwiesen|gesendet)|is on (?:its|the) way|has been sent|est en route|a été envoyé|è in arrivo|è stato inviato|is onderweg|is verzonden|jest w drodze|została wysłana|är på väg|har skickats)/i,
+  /\bauszahlung\b|\bdisbursement\b|zahlung (?:wurde )?(?:überwiesen|veranlasst)|abrechnung (?:ist )?verfügbar|settlement report|virement (?:envoyé|effectué)|transferencia (?:enviada|realizada)|bonifico (?:inviato|effettuato)/i,
+];
+
+export const istRoutineMail = (betreff: string) => ROUTINE_RE.some((re) => re.test(betreff));
+
+/** Steuer-/VAT-Hinweise (USt, TVA, IVA, BTW, Moms) – Info, außer die Mail nennt selbst eine Frist. */
+export const STEUER_RE = /\b(?:vat|ust(?:-id(?:nr)?)?|umsatzsteuer|mehrwertsteuer|tva|iva|btw|moms|vat-?nummer)\b/i;
+
+/** Fußzeilen (Copyright, Rechtehinweis, Abmelden) – zählen nicht für die Einordnung. */
+export function ohneFusszeile(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((z) => !/©|\bcopyright\s*(?:\(c\)\s*)?\d{4}|all rights reserved|alle rechte vorbehalten|tous droits réservés|todos los derechos reservados|tutti i diritti riservati|alle rechten voorbehouden|wszelkie prawa zastrzeżone|med ensamrätt|amazon\.com,? inc\.? (?:or its affiliates|und verbundene|oder (?:seine|ihre) tochter)|abmelden|unsubscribe|se désabonner|cancelar (?:la )?suscripci[oó]n|annulla l'iscrizione|afmelden/i.test(z))
+    .join("\n");
+}
+
 /** Fall-ID (8–12 Ziffern) aus Betreff und Text. */
 export function fallnummerAus(text: string): string | null {
   for (const re of FALLNUMMER) {
@@ -181,12 +212,14 @@ export function einordnen(
   o: { heute?: string; fristen?: Record<string, number>; gelernt?: { muster: string; bereich: Bereich; phase: Phase }[] } = {},
 ): Einordnung {
   const heute = o.heute ?? m.date.slice(0, 10);
-  const hay = `${m.subject}\n${m.text.slice(0, 6000)}`;
-  const kopf = `${m.subject}\n${m.text.slice(0, 600)}`;
+  const text = ohneFusszeile(m.text);
+  const hay = `${m.subject}\n${text.slice(0, 6000)}`;
+  const kopf = `${m.subject}\n${text.slice(0, 600)}`;
   const fallnummer = fallnummerAus(hay);
   const asins = extractAsins(hay);
   const skus = extractSkus(hay);
-  const { land } = marktplatzAus(m.from, m.text);
+  const { land } = marktplatzAus(m.from, `${m.subject}\n${m.text}`);
+  const routine = !fallnummer && istRoutineMail(m.subject);
   const bestellnummer = /\b\d{3}-\d{7}-\d{7}\b/.exec(hay)?.[0] ?? null;
   const shipmentId = /\bFBA[A-Z0-9]{8,10}\b/.exec(hay)?.[0] ?? null;
   const betrag = betragAus(hay);
@@ -198,6 +231,9 @@ export function einordnen(
   if (gelernt) {
     bereich = gelernt.bereich;
     sicherheit = 1;
+  } else if (routine) {
+    bereich = "info";
+    sicherheit = 0.95;
   } else {
     // Reihenfolge = Vorrang: Entzug/Freischaltung vor Angebot; Marke/Konto vor allem Übrigen.
     const reihenfolge: Bereich[] = ["kontozustand", "marke", "freischaltung", "a_bis_z", "entschaedigung", "erstattung_kunde", "fba_sendung", "angebot", "info"];
@@ -214,6 +250,12 @@ export function einordnen(
     if (fallnummer && (bereich === "sonstiges" || bereich === "info")) {
       bereich = "fall";
       sicherheit = 0.85;
+    }
+    // Steuer-/VAT-Hinweise ohne eigene Frist in der Mail: Info (keine Steuerberatung, keine erfundene Frist).
+    if (!fallnummer && (bereich === "sonstiges" || bereich === "info") && STEUER_RE.test(m.subject)) {
+      const eigeneFrist = deadlineFromText(text, m.date);
+      bereich = eigeneFrist ? "sonstiges" : "info";
+      sicherheit = eigeneFrist ? 0.5 : 0.8;
     }
   }
 
@@ -239,9 +281,10 @@ export function einordnen(
     else phase = PHASE_RE.antwort_noetig.test(hay) ? "antwort_noetig" : "offen";
   }
 
-  const ausText = deadlineFromText(m.text, m.date);
+  const ausText = deadlineFromText(text, m.date);
   const fristTage = { ...STANDARD_FRISTEN, ...(o.fristen ?? {}) };
-  const std = fristTage[phase] ?? fristTage[bereich];
+  // „Sonstiges“ bekommt keine Standardfrist – nur eine Frist, die in der Mail steht.
+  const std = bereich === "sonstiges" ? undefined : (fristTage[phase] ?? fristTage[bereich]);
   const offen = !["genehmigt", "geloest", "info", "beantragt", "beantwortet"].includes(phase);
   const frist = ausText ?? (offen && std ? plusTage(m.date, std) : null);
 
@@ -260,6 +303,8 @@ export function einordnen(
     frist,
     ablehnungsgruende: bereich === "freischaltung" && (phase === "abgelehnt" || phase === "nachreichen" || phase === "entzogen") ? ablehnungsgruende(hay) : [],
     verlangt: phase === "antwort_noetig" ? verlangtAus(hay) : [],
+    routine,
+    fristQuelle: ausText ? "mail" : frist ? "standard" : null,
   };
 }
 

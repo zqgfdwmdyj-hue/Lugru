@@ -1,4 +1,5 @@
 import "server-only";
+import { anrufName, istAnruf, telefonAus, telefonRueckfrage } from "@/lib/mobil/logic";
 import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -187,6 +188,7 @@ export const aufgabeAnlegen = defineTool({
     faellig: isoDate.optional(),
     prioritaet: z.enum(["wichtig", "normal", "niedrig"]).default("normal"),
     zustaendig: z.enum(["va"]).optional().describe("„va“ = an die VA geben: eigener Discord-Thread (auf Englisch, mit Anleitung) – einzeln bestätigen"),
+    telefon: z.string().trim().max(40).optional().describe("Bei Anruf-Aufgaben: Telefonnummer (nur wenn genannt oder ausdrücklich bestätigt)"),
   }),
   stufe: (i) => (i.zustaendig === "va" ? "gelb" : "gruen"),
   summary: (i) => `Aufgabe „${i.titel}“${i.faellig ? ` (fällig ${i.faellig})` : ""}${i.zustaendig === "va" ? " → an die VA (Discord)" : ""}`,
@@ -196,9 +198,17 @@ export const aufgabeAnlegen = defineTool({
     const link = s.role === "staff" && s.areas !== null && !canAccess(s, "start") ? "/kalender" : null;
     const [row] = await db
       .insert(T)
-      .values({ tenantId: s.tenantId, title: i.titel, notes: i.notiz ?? null, dueDate: i.faellig ?? null, priority: PRIORITY_IN[i.prioritaet], category: "eigene", link, createdBy: s.userId })
+      .values({ tenantId: s.tenantId, title: i.titel, notes: i.notiz ?? null, dueDate: i.faellig ?? null, priority: PRIORITY_IN[i.prioritaet], category: "eigene", link, createdBy: s.userId, telefon: i.telefon ? (telefonAus(i.telefon) ?? i.telefon) : istAnruf(i.titel) ? telefonAus(i.notiz ?? "") : null })
       .returning();
     syncSoon(s.tenantId);
+    // Anruf ohne Nummer: nachfragen, mit Vorschlag aus Kontakten/Mails (wird nicht von selbst gespeichert).
+    let rueckfrage: string | undefined;
+    let telefonVorschlagWert: { nummer: string; quelle: string } | null | undefined;
+    if (istAnruf(i.titel) && !row.telefon) {
+      const { telefonVorschlag } = await import("@/lib/mobil/telefon");
+      telefonVorschlagWert = await telefonVorschlag(s.tenantId, anrufName(i.titel), { mails: canAccess(s, "posteingang") }).catch(() => null);
+      rueckfrage = telefonRueckfrage(anrufName(i.titel), telefonVorschlagWert);
+    }
     let va: string | undefined;
     if (i.zustaendig === "va") {
       if (s.role !== "owner") return { text: "An die VA gibt nur der Inhaber Aufgaben.", isError: true };
@@ -206,7 +216,7 @@ export const aufgabeAnlegen = defineTool({
       const r = await anVaGeben(s.tenantId, row.id);
       va = r.ok ? "an die VA gegeben (Discord-Thread)" : `Aufgabe angelegt, aber nicht an die VA: ${r.fehler}`;
     }
-    return { text: JSON.stringify({ ok: true, meldung: "Aufgabe angelegt.", va, aufgabe: taskBrief(row, ctx) }), ids: [row.id], undo: { id: row.id } };
+    return { text: JSON.stringify({ ok: true, meldung: "Aufgabe angelegt.", va, rueckfrage, telefon_vorschlag: telefonVorschlagWert, aufgabe: { ...taskBrief(row, ctx), telefon: row.telefon ?? undefined } }), ids: [row.id], undo: { id: row.id } };
   },
   undo: async (ctx, d) => {
     const id = (d as { id?: string }).id;
@@ -230,8 +240,9 @@ export const aufgabeAendern = defineTool({
     faellig: isoDate.nullable().optional().describe("Neues Fälligkeitsdatum; null entfernt es"),
     prioritaet: z.enum(["wichtig", "normal", "niedrig"]).optional(),
     aufwand: z.enum(["S", "M", "L"]).nullable().optional().describe("S = 15 Min., M = 1 Std., L = halber Tag; null = wieder schätzen"),
+    telefon: z.string().trim().max(40).nullable().optional().describe("Telefonnummer der Anruf-Aufgabe (z. B. bestätigter Vorschlag); null entfernt sie"),
   }),
-  summary: (i) => [i.erledigt === true ? "abhaken" : i.erledigt === false ? "wieder öffnen" : null, i.titel ? `Titel „${i.titel}“` : null, i.faellig !== undefined ? `fällig ${i.faellig ?? "–"}` : null, i.prioritaet ? `Priorität ${i.prioritaet}` : null, i.aufwand !== undefined ? `Aufwand ${i.aufwand ?? "schätzen"}` : null].filter(Boolean).join(", ") || "Aufgabe ändern",
+  summary: (i) => [i.erledigt === true ? "abhaken" : i.erledigt === false ? "wieder öffnen" : null, i.titel ? `Titel „${i.titel}“` : null, i.faellig !== undefined ? `fällig ${i.faellig ?? "–"}` : null, i.prioritaet ? `Priorität ${i.prioritaet}` : null, i.aufwand !== undefined ? `Aufwand ${i.aufwand ?? "schätzen"}` : null, i.telefon !== undefined ? `Telefon ${i.telefon ?? "–"}` : null].filter(Boolean).join(", ") || "Aufgabe ändern",
   run: async (ctx, i) => {
     const s = ctx.session;
     const [task] = await db.select().from(T).where(and(eq(T.tenantId, s.tenantId), eq(T.id, i.id)));
@@ -243,6 +254,7 @@ export const aufgabeAendern = defineTool({
     if (i.faellig !== undefined) patch.dueDate = i.faellig;
     if (i.prioritaet) patch.priority = PRIORITY_IN[i.prioritaet];
     if (i.aufwand !== undefined) patch.aufwand = i.aufwand;
+    if (i.telefon !== undefined) patch.telefon = i.telefon ? (telefonAus(i.telefon) ?? i.telefon) : null;
     if (!Object.keys(patch).length) return { text: "Nichts zu ändern angegeben.", isError: true };
     const [row] = await db.update(T).set(patch).where(and(eq(T.tenantId, s.tenantId), eq(T.id, i.id))).returning();
     syncSoon(s.tenantId);

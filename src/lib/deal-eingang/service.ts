@@ -40,7 +40,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const eur = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 export type EingangDatei = { name: string; mime: string; bytes: Uint8Array };
-export type Weg = "manuell" | "teilen" | "kurzbefehl" | "mail" | "claude" | "profitpath" | "gruppe";
+export type Weg = "manuell" | "teilen" | "kurzbefehl" | "mail" | "claude" | "profitpath" | "gruppe" | "lugru";
 
 export class DealEingangFehler extends Error {}
 
@@ -396,10 +396,28 @@ export async function quellen(tenantId: string) {
   const { realerRoi } = await import("./ablauf");
   const real = await realerRoi(tenantId, rows.filter((r) => r.status === "gekauft" || r.status === "bestellvorschlag"));
   const quote = trefferquote(rows.map((r) => ({ quelle: r.quelle, status: r.status, zeilen: r.zeilen.map((z) => ({ ampel: z.ampel, roi: z.roi })) })));
-  return quote.map((q) => {
+  const liste = quote.map((q) => {
     const werte = rows.filter((r) => (r.quelle?.trim() || "unbekannt") === q.quelle && real.has(r.id)).map((r) => real.get(r.id)!);
-    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length };
+    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length, gruppenKaeufe: undefined as number | undefined };
   });
+  // Lugru Deals als eine Quelle über alle Posts (auch History ohne Eingang): gemeldet, grün, eigene Käufe, Gruppen-✅.
+  const L = schema.lugruDealsHistorie;
+  const [lg] = await db
+    .select({
+      n: sql<number>`count(*)::int`,
+      gruen: sql<number>`count(*) filter (where ${L.ampel} = 'gruen')::int`,
+      gekauft: sql<number>`count(*) filter (where ${L.gekauftErkannt} or exists (select 1 from deal_eingaenge e where e.id = ${L.eingangId} and e.status in ('gekauft', 'b2b', 'bestellvorschlag')))::int`,
+      verworfen: sql<number>`count(*) filter (where exists (select 1 from deal_eingaenge e where e.id = ${L.eingangId} and e.status = 'verworfen'))::int`,
+      kaeufe: sql<number>`coalesce(sum(${L.kaeufe}), 0)::int`,
+    })
+    .from(L)
+    .where(eq(L.tenantId, tenantId));
+  if (lg && lg.n > 0) {
+    const lugruReal = liste.filter((q) => q.quelle.startsWith("Lugru Deals")).flatMap((q) => (q.roiReal !== null ? [{ roi: q.roiReal, n: q.roiRealN }] : []));
+    const n = lugruReal.reduce((a, b) => a + b.n, 0);
+    liste.unshift({ quelle: "Lugru Deals", eingaenge: lg.n, angebote: lg.n, gruen: lg.gruen, gekauft: lg.gekauft, verworfen: lg.verworfen, roiPrognose: null, roiReal: n ? Math.round(lugruReal.reduce((a, b) => a + b.roi * b.n, 0) / n) : null, roiRealN: n, gruppenKaeufe: lg.kaeufe });
+  }
+  return liste;
 }
 
 /** Aufbewahrung: Eingänge (mit Dateien) nach N Monaten löschen. */

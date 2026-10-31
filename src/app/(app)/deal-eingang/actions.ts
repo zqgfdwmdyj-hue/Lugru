@@ -217,3 +217,39 @@ export async function ergebnisseAction(fd: FormData) {
   revalidatePath(PFAD);
   redirect(mit(`${PFAD}/lernen${/^\d{4}-\d{2}$/.test(monat) ? `?monat=${monat}` : ""}`, `${n} Ergebnis${n === 1 ? "" : "se"} zugeordnet, ${b} Lugru-Deal${b === 1 ? "" : "s"} geprüft.`));
 }
+
+// ---- Lugru Deals (Deal-Kanäle in Discord) --------------------------------------------------------------------
+
+const LUGRU = `${PFAD}/lugru`;
+
+/** Neue Posts und Reaktionen sofort abrufen (sonst jede Minute bzw. alle 5 Min. automatisch). */
+export async function lugruAbrufenAction() {
+  const s = await schreibend();
+  const { lugruAbgleich } = await import("@/lib/lugru-deals/discord");
+  let text: string;
+  try {
+    const z = await lugruAbgleich(s.tenantId, new Date(), { erzwingen: true });
+    text = !z ? "Nicht abgerufen – Anbindung „Lugru Deals“ (Kanal-IDs, Bot) fehlt oder ein Abruf läuft gerade." : `${z.gelesen} Nachrichten gelesen, ${z.erkannt} Deals erkannt (${z.neu} neu, ${z.eingaenge} in den Deal-Eingang${z.zusammengefasst ? `, ${z.zusammengefasst} zusammengefasst` : ""}), ${z.reaktionen} mit neuen Reaktionen.`;
+  } catch (e) {
+    text = `Abruf fehlgeschlagen – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(LUGRU);
+  redirect(mit(LUGRU, text));
+}
+
+/** History einlesen bzw. fortsetzen (je Klick bis zu 2.000 Nachrichten je Kanal; sonst automatisch alle 5 Min.). */
+export async function lugruHistorieAction(fd: FormData) {
+  const s = await schreibend();
+  const lg = await import("@/lib/lugru-deals/discord");
+  if (fd.get("neu") === "1") await lg.lugruHistorieNeu(s.tenantId);
+  let text: string;
+  try {
+    const r = await lg.lugruHistorie(s.tenantId, { seiten: 20 });
+    const k = await lg.lugruKaufAbgleich(s.tenantId);
+    text = !r ? "Anbindung „Lugru Deals“ fehlt (Kanal-IDs, Bot)." : `History: ${r.gelesen} Nachrichten gelesen, ${r.erkannt} Deals erkannt (${r.neu} neu)${r.fertig ? " – fertig" : " – läuft weiter (automatisch alle 5 Min.)"}; ${k} eigene Käufe erkannt.`;
+  } catch (e) {
+    text = `History fehlgeschlagen – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(LUGRU);
+  redirect(mit(LUGRU, text));
+}

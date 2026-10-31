@@ -106,3 +106,20 @@ describe("Tesla vorheizen (Modul 12)", () => {
     expect(statusSatz({ akku: 78, reichweiteKm: 350, innenTemp: 18.4, verriegelt: false, fensterOffen: false, reifenWarnung: false, update: null }, "zu Hause")).toBe("Akku 78 Prozent, 350 Kilometer Reichweite. Auto zu Hause. Innen 18 Grad. Achtung: nicht verriegelt.");
   });
 });
+
+// B17: Telefonnummer für Anruf-Aufgaben – Signatur, Suchwort, Rückfrage. Erfundene Nummern.
+describe("Anruf-Telefonnummer (B17)", () => {
+  it("Nummer nur aus Signaturzeilen, nicht aus Bestellnummern", async () => {
+    const { telefonAusSignatur } = await import("@/lib/mobil/logic");
+    expect(telefonAusSignatur("Ihre Bestellung 302-1234567-7654321\n\nMit freundlichen Grüßen\nTestservice\nTel.: 0228 555 0100\nFax: 0228 555 0199")).toBe("02285550100");
+    expect(telefonAusSignatur("Bestellung 302-1234567-7654321 wurde versandt.")).toBeNull();
+    expect(telefonAusSignatur("Hotline: +49 30 5550 1234")).toBe("+493055501234");
+  });
+  it("Suchwort und Rückfrage", async () => {
+    const { namensKern, telefonRueckfrage } = await import("@/lib/mobil/logic");
+    expect(namensKern("DHL Geschäftskunden")).toBe("DHL");
+    expect(namensKern("Testlieferant GmbH")).toBe("Testlieferant");
+    expect(telefonRueckfrage("DHL Geschäftskunden", null)).toContain("fehlt – bitte nennen");
+    expect(telefonRueckfrage("DHL Geschäftskunden", { nummer: "02285550100", quelle: "Signatur einer Mail" })).toContain("Vorschlag: 02285550100");
+  });
+});

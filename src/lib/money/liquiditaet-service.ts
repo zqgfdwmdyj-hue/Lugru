@@ -185,9 +185,36 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
       .select({ summe: sql<number>`coalesce(sum(${I.totalGross}), 0)::float`, n: sql<number>`count(*)::int` })
       .from(I)
       .where(and(eq(I.tenantId, t), eq(I.kind, "goods"), ne(I.status, "ignored"), gte(I.invoiceDate, addDaysIso(heute, -56)), lte(I.invoiceDate, heute)));
-    const proWoche = w.n >= 2 ? w.summe / 8 : 0;
+    let proWoche = w.n >= 2 ? w.summe / 8 : 0;
+    let woher = `${w.n} Warenrechnungen`;
+    // Zu wenige Rechnungen: Ø aus Chargen (Kaufdatum, EK netto + 19 %), sonst aus eigenen Bestellungen – damit die
+    // Prognose den laufenden Einkauf nicht ganz weglässt (Umsetzungsstand 31.10.: „Prognose zu optimistisch“).
+    if (!proWoche) {
+      const LO = schema.lots;
+      const [l] = await db
+        .select({ summe: sql<number>`coalesce(sum(${LO.quantity} * ${LO.unitCostNet}), 0)::float * 1.19`, n: sql<number>`count(*)::int` })
+        .from(LO)
+        .where(and(eq(LO.tenantId, t), eq(LO.kind, "purchase"), isNotNull(LO.unitCostNet), isNotNull(LO.quantity), gte(LO.purchaseDate, addDaysIso(heute, -56)), lte(LO.purchaseDate, heute)));
+      if (l.n >= 2 && l.summe > 0) {
+        proWoche = l.summe / 8;
+        woher = `${l.n} Chargen (Kaufdatum, EK netto + 19 % USt)`;
+      }
+    }
+    if (!proWoche) {
+      const PO = schema.purchaseOrders;
+      const POI = schema.purchaseOrderItems;
+      const [b] = await db
+        .select({ summe: sql<number>`coalesce(sum(${POI.quantity} * ${POI.unitCostGross}), 0)::float`, n: sql<number>`count(distinct ${PO.id})::int` })
+        .from(POI)
+        .innerJoin(PO, eq(PO.id, POI.poId))
+        .where(and(eq(POI.tenantId, t), eq(PO.tenantId, t), inArray(PO.status, ["ordered", "shipped", "partial", "received"]), sql`coalesce(${PO.orderDate}, ${PO.createdAt}::date) between ${addDaysIso(heute, -56)}::date and ${heute}::date`));
+      if (b.n >= 2 && b.summe > 0) {
+        proWoche = b.summe / 8;
+        woher = `${b.n} eigenen Bestellungen`;
+      }
+    }
     posten.push(...wareneinkaufPlan({ proWoche, heute, wochen, konkret: posten }));
-    quellen.push({ name: "Wareneinkauf (Ø Rechnungen)", status: proWoche > 0 ? "ok" : "keine_daten", hinweis: proWoche > 0 ? `Ø ${Math.round(proWoche).toLocaleString("de-DE")} € je Woche aus ${w.n} Warenrechnungen (8 Wochen) – abzüglich konkret angelegter Einkäufe` : "noch zu wenige Warenrechnungen (Eingangsrechnungen) für einen Durchschnitt" });
+    quellen.push({ name: "Wareneinkauf (Ø Rechnungen)", status: proWoche > 0 ? "ok" : "keine_daten", hinweis: proWoche > 0 ? `Ø ${Math.round(proWoche).toLocaleString("de-DE")} € je Woche aus ${woher} (8 Wochen) – abzüglich konkret angelegter Einkäufe` : "keine Warenrechnungen, Chargen oder Bestellungen der letzten 8 Wochen – Einkauf fehlt in der Prognose (zu optimistisch)" });
   }
 
   // Steuertermine (Schätzung aus den Einstellungen)

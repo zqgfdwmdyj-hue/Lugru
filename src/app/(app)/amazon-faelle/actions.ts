@@ -16,7 +16,7 @@ export async function abgleichAction() {
   const s = await requireOwner();
   const r = await faelleAbgleich(s.tenantId, { sinceDays: 60 });
   revalidatePath(PFAD);
-  redirect(mit(PFAD, `${r.geprueft} Amazon-Mails geprüft: ${r.neu} neue Vorgänge, ${r.zugeordnet} zu bestehenden zugeordnet${r.unsicher ? `, ${r.unsicher} bitte prüfen` : ""}${r.gemeldet ? `, ${r.gemeldet} an Ludwig gemeldet` : ""}.`));
+  redirect(mit(PFAD, `${r.geprueft} Amazon-Mails geprüft: ${r.neu} neue Vorgänge, ${r.zugeordnet} zu bestehenden zugeordnet${r.unsicher ? `, ${r.unsicher} bitte prüfen` : ""}${r.gemeldet ? `, ${r.gemeldet} an Ludwig gemeldet` : ""}${r.uebersprungen ? `, ${r.uebersprungen} Routine-Mails (Bestellung/Versand/Zahlung) übersprungen` : ""}${r.neuEingestuft ? `, ${r.neuEingestuft} bestehende Vorgänge neu eingestuft` : ""}.`));
 }
 
 export async function statusAction(fd: FormData) {

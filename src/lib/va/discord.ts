@@ -97,6 +97,10 @@ export function discord(token: string) {
       return alle;
     },
     nachricht: (kanalId: string, id: string) => anfrage<DcNachricht>("GET", `/channels/${encodeURIComponent(kanalId)}/messages/${encodeURIComponent(id)}`),
+    /** Die neuesten Nachrichten (höchstens 100, mit Reaktionen) – für das Nachziehen der Reaktionen frischer Posts. */
+    neueste: (kanalId: string, limit = 100) => anfrage<DcNachricht[]>("GET", `/channels/${encodeURIComponent(kanalId)}/messages?limit=${Math.min(100, Math.max(1, limit))}`),
+    /** Eine Seite älterer Nachrichten vor `vor` (History rückwärts), absteigend sortiert. */
+    vor: (kanalId: string, vor: string, limit = 100) => anfrage<DcNachricht[]>("GET", `/channels/${encodeURIComponent(kanalId)}/messages?before=${encodeURIComponent(vor)}&limit=${Math.min(100, Math.max(1, limit))}`),
   };
 }
 

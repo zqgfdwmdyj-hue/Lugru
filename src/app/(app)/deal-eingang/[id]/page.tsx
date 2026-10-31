@@ -4,6 +4,7 @@ import { requireArea } from "@/lib/auth/session";
 import { AMPEL_EMOJI, antwortEntwurf } from "@/lib/deal-eingang/logic";
 import { eingang, keepaVerlaufAusCache, STATUS_TEXT } from "@/lib/deal-eingang/service";
 import { miniChart, type MiniChart } from "@/lib/deal-eingang/chart-logic";
+import { KeepaMini } from "../keepa-mini";
 import { formatEuro } from "@/lib/numbers";
 import { AutoRefresh } from "../../lieferanten/finden/refresh";
 import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction, gekauftAction, bewertenAction } from "../actions";
@@ -173,19 +174,3 @@ export default async function DealEingangDetail({ params, searchParams }: { para
 }
 
 /** Buy Box der letzten 90 Tage (Linie), Amazon gestrichelt; darunter Ø, Tief, Hoch, aktuell und Datenstand. */
-function KeepaMini({ chart, land, stand }: { chart: MiniChart; land: string; stand: Date }) {
-  const w = 280;
-  const h = 60;
-  return (
-    <figure style={{ margin: 0 }} data-testid="de-chart" data-land={land}>
-      <svg width="100%" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" role="img" aria-label={`Buy Box ${land} der letzten ${chart.tage} Tage`} style={{ maxWidth: 420, height: 60, display: "block", background: "var(--surface-2)", borderRadius: 6 }}>
-        {chart.amazonPfad && <path d={chart.amazonPfad} fill="none" stroke="var(--c-amazon, #ff9900)" strokeWidth="1" strokeDasharray="3 2" vectorEffect="non-scaling-stroke" />}
-        <path d={chart.pfad} fill="none" stroke="var(--accent, #0f766e)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <figcaption className="small muted">
-        Keepa {land}, Buy Box {chart.von.slice(5).split("-").reverse().join(".")}–{chart.bis.slice(5).split("-").reverse().join(".")}: aktuell {eur(chart.letzter)} · Ø {eur(chart.schnitt)} · Tief {eur(chart.min)} · Hoch {eur(chart.max)}
-        {chart.amazonPfad ? " · gestrichelt: Amazon" : ""} · Stand {stand.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}
-      </figcaption>
-    </figure>
-  );
-}

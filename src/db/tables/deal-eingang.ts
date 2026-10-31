@@ -140,7 +140,7 @@ export const dealEingaenge = pgTable(
     id: id(),
     tenantId: tenantId(),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-    weg: text("weg", { enum: ["manuell", "teilen", "kurzbefehl", "mail", "claude", "profitpath", "gruppe"] }).notNull(),
+    weg: text("weg", { enum: ["manuell", "teilen", "kurzbefehl", "mail", "claude", "profitpath", "gruppe", "lugru"] }).notNull(),
     /** Herkunft für Dubletten: „mail:<Message-ID>“, „pp:<Discord-Nachricht>“. */
     quelleRef: text("quelle_ref"),
     /** Schon strukturiert gelieferte Angebote (ProfitPath, Claude) – dann ohne KI-Erkennung. */
@@ -242,27 +242,100 @@ export const lugruDealsHistorie = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    externId: bigint("extern_id", { mode: "number" }).notNull(),
+    /** ID in Lugru Deals (Weg A, Übertragung vom PC); null bei Deals, die das Seller-System in Discord gelesen hat. */
+    externId: bigint("extern_id", { mode: "number" }),
+    /** Woher: „app“ = von Lugru Deals übertragen, „discord“ = vom Seller-System in den Deal-Kanälen gelesen. */
+    quelle: text("quelle", { enum: ["app", "discord"] }).notNull().default("app"),
+    discordKanalId: text("discord_kanal_id"),
+    discordNachrichtId: text("discord_nachricht_id"),
+    discordGuildId: text("discord_guild_id"),
     asin: text("asin").notNull(),
+    /** ASIN nicht aus einem Amazon-Link, sondern frei im Text gefunden. */
+    asinUnsicher: boolean("asin_unsicher").notNull().default(false),
     titel: text("titel"),
     quellmarkt: text("quellmarkt"),
     zielmarkt: text("zielmarkt"),
+    shop: text("shop"),
+    shopUrl: text("shop_url"),
     ekEur: money("ek_eur"),
+    ekNetto: boolean("ek_netto"),
     vkEur: money("vk_eur"),
     gewinnEur: money("gewinn_eur"),
     margeProzent: real("marge_prozent"),
     verkaeufeMonat: integer("verkaeufe_monat"),
+    maxMenge: integer("max_menge"),
     gruppe: text("gruppe"),
     kanal: text("kanal"),
     status: text("status"),
+    /** Reaktionen der Mitglieder als Anzahl je Emoji – nie Namen oder IDs. */
+    reaktionen: jsonb("reaktionen").$type<Record<string, number>>().notNull().default({}),
     kaeufe: integer("kaeufe").notNull().default(0),
     nichtVerfuegbar: integer("nicht_verfuegbar").notNull().default(0),
     reaktionenAm: timestamp("reaktionen_am", { withTimezone: true }),
+    ausverkauftAm: timestamp("ausverkauft_am", { withTimezone: true }),
     gepostetAm: timestamp("gepostet_am", { withTimezone: true }).notNull(),
+    /** Eintrag im Deal-Eingang (live gelesene Deals) – dort Ampel, Deal-Wert, Entscheidung. */
+    eingangId: uuid("eingang_id"),
+    ampel: text("ampel", { enum: ["gruen", "gelb", "rot"] }),
+    /** Keepa-Schnappschuss zum Zeitpunkt des Postens (bei der History so nah wie möglich). */
+    keepa: jsonb("keepa").$type<LugruKeepa | null>(),
+    /** Eigener Kauf automatisch erkannt (Bestellung/Rechnung mit gleicher ASIN in den 14 Tagen nach dem Posten). */
+    gekauftErkannt: boolean("gekauft_erkannt").notNull().default(false),
+    gekauftErkanntRef: text("gekauft_erkannt_ref"),
     /** Hat sich der Deal real bewährt (Keepa danach: Preis hielt, Angebote stiegen nicht stark)? null = unbekannt. */
     bewaehrt: boolean("bewaehrt"),
     bewaehrtGrund: text("bewaehrt_grund"),
     aktualisiertAm: timestamp("aktualisiert_am", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("lugru_deals_historie_uq").on(t.tenantId, t.externId), index("lugru_deals_historie_asin_idx").on(t.tenantId, t.asin)],
+  (t) => [
+    uniqueIndex("lugru_deals_historie_uq").on(t.tenantId, t.externId),
+    uniqueIndex("lugru_deals_historie_discord_uq").on(t.tenantId, t.discordNachrichtId),
+    index("lugru_deals_historie_asin_idx").on(t.tenantId, t.asin),
+    index("lugru_deals_historie_gepostet_idx").on(t.tenantId, t.gepostetAm),
+  ],
+);
+
+/** Keepa-Werte zum Zeitpunkt des Postens (Euro bzw. Anzahl; null = unbekannt). */
+export type LugruKeepa = {
+  stand: string;
+  /** „posten“ = live beim Eingang, „verlauf“ = nachträglich aus dem Keepa-Verlauf, „heute“ = nur aktuelle Werte. */
+  art: "posten" | "verlauf" | "heute";
+  buyBox: number | null;
+  buyBox30: number | null;
+  buyBox90: number | null;
+  buyBox180: number | null;
+  einbrueche12: number | null;
+  angebote: number | null;
+  angeboteTrend30: number | null;
+  amazonAnteil: number | null;
+  rang: number | null;
+  gekauftImMonat: number | null;
+  marke: string | null;
+  kategorie: string | null;
+};
+
+/** Deal-Kanäle der Lugru-Gruppe, die das Seller-System liest (Weg B): Stand live und Fortschritt der History. */
+export const lugruKanaele = pgTable(
+  "lugru_kanaele",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kanalId: text("kanal_id").notNull(),
+    name: text("name"),
+    guildId: text("guild_id"),
+    /** Neueste verarbeitete Nachricht (live). */
+    cursor: text("cursor"),
+    /** Älteste verarbeitete Nachricht (History rückwärts); null = noch nicht begonnen. */
+    historieVor: text("historie_vor"),
+    historieFertig: boolean("historie_fertig").notNull().default(false),
+    historieBis: timestamp("historie_bis", { withTimezone: true }),
+    gelesen: integer("gelesen").notNull().default(0),
+    erkannt: integer("erkannt").notNull().default(0),
+    reaktionenAm: timestamp("reaktionen_am", { withTimezone: true }),
+    tiefAbgleichAm: timestamp("tief_abgleich_am", { withTimezone: true }),
+    letzterLauf: timestamp("letzter_lauf", { withTimezone: true }),
+    fehler: text("fehler"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("lugru_kanaele_uq").on(t.tenantId, t.kanalId)],
 );

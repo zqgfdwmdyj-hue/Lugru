@@ -189,6 +189,14 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Deal-Wert: Ergebnisse je Kauf", () => w.ergebnisseAktualisieren(t));
         await step(t, "Deal-Wert: Lugru bewährt?", () => w.lugruBewaehrtPruefen(t));
       }
+      // Lugru Deals über Discord: History in Schritten rückwärts (bis fertig), Keepa-Schnappschüsse der History (stündlich,
+      // Tokens schonen) und eigene Käufe erkennen (täglich). Neue Posts liest der Discord-Takt jede Minute.
+      if (await has("lugru_deals")) {
+        const lg = await import("@/lib/lugru-deals/discord");
+        if (force || due(`${t}:lugru-historie`, 4)) await step(t, "Lugru Deals: History", () => lg.lugruHistorie(t, { seiten: 5 }));
+        if (force || due(`${t}:lugru-keepa`, 59)) await step(t, "Lugru Deals: Keepa-Schnappschuss", () => lg.lugruKeepaNachholen(t, 20));
+        if (force || due(`${t}:lugru-kauf`, 1435)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
+      }
       // Retouren-Station: Fotos/Videos nach der Aufbewahrungsfrist löschen (offene Fälle behalten ihre Beweise).
       if (force || due("medien-aufraeumen", 1435)) await step(t, "Retouren-Station: Medien aufräumen", async () => (await import("@/lib/retouren-station/fall")).medienAufraeumen());
       if (force || due(`${t}:tasks`, 59)) {
@@ -236,8 +244,16 @@ async function vaTakt() {
   const va = await import("@/lib/va/service");
   // Fehler protokolliert vaAbgleich selbst (job_runs „VA (Discord)“).
   for (const t of await va.vaMandanten()) await va.vaAbgleich(t).catch(() => null);
-  // ProfitPath-Kanäle jede Minute (jeder zweite Takt).
+  // ProfitPath-Kanäle und Lugru-Deal-Kanäle jede Minute (jeder zweite Takt).
   if (takt++ % 2 === 0) {
+    const lg = await import("@/lib/lugru-deals/discord");
+    for (const t of await lg.lugruMandanten()) {
+      const t0 = Date.now();
+      await lg
+        .lugruAbgleich(t)
+        .then((z) => z && recordJob(t, "Lugru Deals (Discord)", null, Date.now() - t0))
+        .catch((e) => recordJob(t, "Lugru Deals (Discord)", e instanceof Error ? e.message : String(e), Date.now() - t0));
+    }
     const pp = await import("@/lib/deal-eingang/profitpath");
     for (const t of await pp.profitPathMandanten()) {
       const t0 = Date.now();

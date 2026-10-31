@@ -62,6 +62,10 @@ type sellerDeal struct {
 	NichtVerfuegbar int      `json:"nicht_verfuegbar"`
 	ReaktionenAm    string   `json:"reaktionen_am,omitempty"`
 	GepostetAm      string   `json:"gepostet_am"`
+	// Discord-Nachricht des Posts: Das Seller-System liest die Deal-Kanäle auch selbst und führt
+	// beide Quellen über diese ID zusammen (kein Deal doppelt).
+	DiscordKanalID     string `json:"discord_kanal_id,omitempty"`
+	DiscordNachrichtID string `json:"discord_nachricht_id,omitempty"`
 }
 
 func euro(c int64) *float64 {
@@ -93,7 +97,8 @@ func sellerDeals(deals []store.Deal, haupt func(id int64) (store.Deal, bool)) []
 			EKEur: euro(int64(d.EKCent)), VKEur: euro(int64(d.VKCent)), GewinnEur: euro(gewinn),
 			Gruppe: d.Gruppe, Kanal: d.ChannelName, Status: d.Status,
 			Kaeufe: d.Kaeufe, NichtVerfuegbar: d.NichtVerfuegbar,
-			GepostetAm: d.GepostetAm.UTC().Format(time.RFC3339),
+			GepostetAm:     d.GepostetAm.UTC().Format(time.RFC3339),
+			DiscordKanalID: d.DiscordKanalID, DiscordNachrichtID: d.DiscordNachrichtID,
 		}
 		if sd.Status == store.StatusAktiv {
 			sd.Status = "aktiv"
