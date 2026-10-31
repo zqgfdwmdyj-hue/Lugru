@@ -1,4 +1,8 @@
-import { KATALOG_STANDARD, type BqoolFormat, type ExportLand, type MarkenRegel } from "@/lib/bqool/export-logic";
+import { AI_WIN_SALES_BOOSTER, KATALOG_STANDARD, type BqoolFormat, type ExportLand, type MarkenRegel } from "@/lib/bqool/export-logic";
+
+/** B20.9: gespeicherte Regel-Kataloge bekommen die Strategie „AI Win Sales Booster“, falls sie fehlt. */
+const mitStandardStrategien = <T extends { katalog: (typeof KATALOG_STANDARD)[number][] }>(b: T): T =>
+  b.katalog.some((k) => k.name.trim().toLowerCase() === AI_WIN_SALES_BOOSTER.name.toLowerCase()) ? b : { ...b, katalog: [...b.katalog, AI_WIN_SALES_BOOSTER] };
 import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -254,7 +258,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
     va: { ...d.va, ...(s.va ?? {}), automatik: { ...d.va.automatik, ...(s.va?.automatik ?? {}), regeln: { ...d.va.automatik.regeln, ...(s.va?.automatik?.regeln ?? {}) } } },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
-    bqool: { ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool,
+    bqool: mitStandardStrategien({ ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool),
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },
     buchhaltung: { ...d.buchhaltung, ...(s.buchhaltung ?? {}), geldkonten: { ...d.buchhaltung.geldkonten, ...(s.buchhaltung?.geldkonten ?? {}) }, datev: { ...(s.buchhaltung?.datev ?? {}) } },
     tagesplan: { ...d.tagesplan, ...(s.tagesplan ?? {}), arbeitszeit: { ...d.tagesplan.arbeitszeit, ...(s.tagesplan?.arbeitszeit ?? {}) } },

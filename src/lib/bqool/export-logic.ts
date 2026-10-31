@@ -284,6 +284,20 @@ export type KatalogRegel = {
   hinweis: string;
 };
 
+/**
+ * B20.9: „AI Win Sales Booster“ als eigene Strategie im Katalog – BQool-KI, die den Preis so setzt, dass die Buy Box
+ * gewonnen und der Abverkauf beschleunigt wird; sie geht bis zum Min Price herunter, nie darunter.
+ */
+export const AI_WIN_SALES_BOOSTER: KatalogRegel = {
+  name: "AI Win Sales Booster",
+  laender: null,
+  strategie: "BQool-KI: Buy Box gewinnen und Abverkauf beschleunigen (Basis der Liquidation)",
+  staffel: null,
+  festeUntergrenze: true,
+  risiko: false,
+  hinweis: "Die KI senkt den Preis Schritt für Schritt bis zum Min Price, wenn die Buy Box fehlt oder sich nichts verkauft, und hebt ihn wieder, sobald es läuft. Der Min Price je SKU und Land ist die feste Untergrenze – deshalb Min = Break-even bzw. Liquidationspreis bewusst setzen.",
+};
+
 /** Startwerte laut Bauauftrag – einmal mit BQool abgleichen (Altersstufen der Abverkauf-Regeln prüfen). */
 export const KATALOG_STANDARD: KatalogRegel[] = [
   { name: "ia", laender: null, strategie: "Strategie nach FBA-Lageralter (BQool-ID 37)", staffel: MARGE_NACH_ALTER, festeUntergrenze: false, risiko: false, hinweis: "Standard; 0–30 T nur wenn ≥ 1 Stück verfügbar" },
@@ -324,12 +338,14 @@ export const KATALOG_STANDARD: KatalogRegel[] = [
   },
   { name: "Liquidation", aliase: ["AI Win Sales Booster"], laender: null, strategie: "AI Win Sales Booster, fester Min aus Upload (BQool-ID 43)", staffel: null, festeUntergrenze: true, risiko: false, hinweis: "Min Price je SKU und Land maßgeblich" },
   { name: "mbb", laender: null, strategie: "Match Buy Box (BQool-ID 33)", staffel: null, festeUntergrenze: false, risiko: true, hinweis: "nur hochgeladener Min, keine Marge – Ziel: auf ia umstellen" },
+  AI_WIN_SALES_BOOSTER,
 ];
 
 export const katalogRegel = (katalog: KatalogRegel[], name: string | null | undefined) => {
   if (!name) return null;
   const n = name.trim().toLowerCase();
-  return katalog.find((k) => k.name.trim().toLowerCase() === n || (k.aliase ?? []).some((a) => a.trim().toLowerCase() === n)) ?? null;
+  // Exakter Name vor Alias („AI Win Sales Booster“ ist eigene Strategie und zugleich Alias der Liquidation).
+  return katalog.find((k) => k.name.trim().toLowerCase() === n) ?? katalog.find((k) => (k.aliase ?? []).some((a) => a.trim().toLowerCase() === n)) ?? null;
 };
 
 /**

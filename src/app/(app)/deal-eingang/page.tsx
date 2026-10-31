@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
-import { AMPEL_EMOJI } from "@/lib/deal-eingang/logic";
+import { AMPEL_EMOJI, wertSchwelleFuer } from "@/lib/deal-eingang/logic";
 import { eingaenge, quellen, STATUS_TEXT } from "@/lib/deal-eingang/service";
 import { PushSchalter } from "@/components/push-schalter";
 import { AutoRefresh } from "../lieferanten/finden/refresh";
@@ -19,6 +19,9 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const [liste, q, pp, st, verbraucht] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId), getSettings(session.tenantId), budgetVerbraucht(session.tenantId)]);
   const de = st.dealEingang;
+  // B20.3: gültige Deal-Wert-Schwelle je Quelle (eigene Schwelle, sonst die allgemeine).
+  const quellNamen = [...new Set(["Lugru Deals", ...Object.keys(de.wertSchwelleJe ?? {}), ...q.map((x) => x.quelle.split(" · ")[0].trim()).filter(Boolean)])].slice(0, 8);
+  const schwellenGilt = quellNamen.map((quelle) => ({ quelle, wert: wertSchwelleFuer(quelle, de), eigen: Object.keys(de.wertSchwelleJe ?? {}).some((k) => k.trim().toLowerCase() === quelle.toLowerCase()) }));
   // B20.2: beim Filter „Lugru Deals“ dieselbe Zählung wie Lugru-Seite und Trefferquote über der Liste.
   const lugruZahl = sp.quelle && /^lugru deals/i.test(sp.quelle) && !sp.ampel && !sp.status ? await lugruZaehlung(session.tenantId) : null;
   const laeuft = liste.some((e) => e.pruefung === "offen" || e.pruefung === "laeuft");
@@ -114,7 +117,11 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
             <label className="field">je Tag<input className="input" name="budgetJeTag" inputMode="numeric" defaultValue={de.budgetJeTag || ""} placeholder="0" style={{ width: 100 }} /></label>
             <label className="field">je Woche<input className="input" name="budgetJeWoche" inputMode="numeric" defaultValue={de.budgetJeWoche || ""} placeholder="0" style={{ width: 100 }} /></label>
             <label className="field">Deal-Wert ab<input className="input" name="wertSchwelle" inputMode="numeric" defaultValue={de.wertSchwelle} style={{ width: 70 }} /></label>
-            <label className="field" title="Eigene Schwelle je Quelle, z. B. „Lugru Deals=60“ (gilt für alle Lugru-Kanäle); mehrere mit ; trennen">je Quelle<input className="input" name="wertSchwelleJe" data-testid="de-schwelle-je" defaultValue={Object.entries(de.wertSchwelleJe ?? {}).map(([k, v]) => `${k}=${v}`).join("; ")} placeholder="Lugru Deals=60" style={{ width: 200 }} /></label>
+            <label className="field" title="Eigene Schwelle je Quelle, z. B. „Lugru Deals=60“ (gilt für alle Lugru-Kanäle); mehrere mit ; trennen">je Quelle<input className="input" name="wertSchwelleJe" data-testid="de-schwelle-je" defaultValue={Object.entries(de.wertSchwelleJe ?? {}).map(([k, v]) => `${k}=${v}`).join("; ")} placeholder={`leer = überall ${de.wertSchwelle} (Beispiel: Quelle=60)`} style={{ width: 240 }} /></label>
+            {/* B20.3: gültige Schwelle je Quelle sichtbar – der Platzhalter ist kein Wert. */}
+            <div className="small muted" style={{ flexBasis: "100%" }} data-testid="de-schwelle-gilt">
+              gilt: {schwellenGilt.map((x, i) => <span key={x.quelle}>{i ? " · " : ""}{x.quelle} <strong>{x.wert}</strong>{x.eigen ? "" : " (allgemein)"}</span>)}
+            </div>
             <button className="btn btn-small" type="submit">Speichern</button>
           </form>
         )}

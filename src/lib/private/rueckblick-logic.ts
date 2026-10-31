@@ -48,10 +48,13 @@ export const beobachtungText = (situation: string, problematik?: string | null, 
 
 /** Letzter Paartherapie-Termin (Beginn des Therapie-Bogens): vor heute und nicht ausgefallen – heute nur, wenn er
  * schon als „stattgefunden“ markiert ist (sonst steht die Sitzung noch bevor). */
+/** B20.9: Paartherapie-Termin – Art „Paartherapie“ oder ein entsprechender Titel (z. B. aus dem externen Kalender). */
+export const istPaartherapie = (x: Pick<AppointmentEntry, "with" | "title">) => x.with === "paar" || /paar\s*-?\s*(?:therapie|beratung|coaching|sitzung)|couples?\s*(?:therap|counsel)|eheberatung/i.test(x.title ?? "");
+
 export function letzteSitzung(termine: AppointmentEntry[], heute: string): string | null {
   return (
     termine
-      .filter((x) => x.with === "paar" && x.status !== "ausgefallen" && (x.day < heute || (x.day === heute && x.status === "stattgefunden")))
+      .filter((x) => istPaartherapie(x) && x.status !== "ausgefallen" && (x.day < heute || (x.day === heute && x.status === "stattgefunden")))
       .map((x) => x.day)
       .sort()
       .at(-1) ?? null

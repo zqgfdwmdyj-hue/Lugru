@@ -19,6 +19,9 @@ const STATUS_TAG: Record<string, string> = { gesendet: "tag-ok", sammel: "tag-ok
 const dmy = (iso: string | null) => (iso ? iso.split("-").reverse().join(".") : "–");
 const zeit = (d: Date) => d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
+/** B20.9: Sprachkennzeichen je VA-Nachricht – übersetzte Nachrichten „EN → DE“, sonst die Sprache der Nachricht. */
+const spracheTag = (n: { original: string | null; sprache: string | null }) => (n.original ? `${(n.sprache ?? "en").toUpperCase()} → DE` : (n.sprache ?? "de").toUpperCase());
+
 export default async function VaPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
   const session = await requireOwner();
   const t = session.tenantId;
@@ -89,7 +92,7 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
                   <div key={n.id} className="card card-pad" data-testid="va-frage">
                     <div className="small muted">
                       {zeit(n.gesendetAm)} · {VN_ART[n.art] ?? n.art}
-                      {aufgabe ? ` · ${aufgabe}` : ""}
+                      {aufgabe ? ` · ${aufgabe}` : ""} <span className="tag" data-testid="va-sprache-tag" title="Sprache der Nachricht (übersetzt → Deutsch)">{spracheTag(n)}</span>
                     </div>
                     <div style={{ whiteSpace: "pre-wrap", margin: "4px 0 8px" }}>{n.text}</div>
                     {n.original && (
@@ -250,6 +253,7 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
                         <td style={{ whiteSpace: "nowrap" }}>{zeit(n.gesendetAm)}</td>
                         <td>
                           <span className="tag">{VN_ART[n.art] ?? n.art}</span>
+                          <span className="tag" data-testid="va-sprache-tag" title="Sprache der Nachricht (übersetzt → Deutsch)">{spracheTag(n)}</span>
                           {n.autoBeantwortet && <span className="tag tag-ok">automatisch beantwortet</span>}
                         </td>
                         <td>

@@ -217,10 +217,13 @@ describe("B17 – Soll-Regel aus BQool-Ist und Katalog", () => {
 });
 
 describe("B19.8: „AI Win Sales Booster“ im Regel-Katalog", () => {
-  it("gehört zu Liquidation – kein „Regel nicht im Katalog“ mehr", () => {
+  it("eigene Strategie mit Erklärung (B20.9), verhält sich wie Liquidation – kein „Regel nicht im Katalog“", () => {
     const k = katalogRegel(KATALOG_STANDARD, "AI Win Sales Booster");
-    expect(k?.name).toBe("Liquidation");
+    expect(k?.name).toBe("AI Win Sales Booster");
+    expect(k?.hinweis).toMatch(/Min Price/);
     expect(k?.festeUntergrenze).toBe(true);
+    // Liquidation bleibt unter ihrem Namen erreichbar
+    expect(katalogRegel(KATALOG_STANDARD, "Liquidation")?.name).toBe("Liquidation");
     const f = abgleich([{ land: "DE", sku: "TEST-SKU-1", regel: "AI Win Sales Booster" }], new Map([["DE|TEST-SKU-1", "Liquidation"]]), KATALOG_STANDARD);
     expect(f.filter((x) => x.art === "unbekannte_regel")).toEqual([]);
     expect(f.filter((x) => x.art.startsWith("liquidation"))).toEqual([]);

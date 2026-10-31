@@ -38,6 +38,14 @@ describe("Therapie-Bogen", () => {
     expect(letzteSitzung([...termine, { day: "2026-10-31", with: "paar", status: "stattgefunden" }], "2026-10-31")).toBe("2026-10-31");
     expect(letzteSitzung([], "2026-10-31")).toBeNull();
   });
+  it("B20.9: Sitzung auch an einem Termin mit Titel „Paartherapie“ (z. B. aus dem externen Kalender) erkennen", () => {
+    const termine = [
+      { day: "2026-10-01", with: "paar" as const },
+      { day: "2026-10-22", with: "privat" as const, title: "Paartherapie bei Frau Test", extern: true },
+      { day: "2026-10-25", with: "sonst" as const, title: "Zahnarzt" },
+    ];
+    expect(letzteSitzung(termine, "2026-10-31")).toBe("2026-10-22");
+  });
   it("Zeilen im Zeitraum, nach Tag sortiert", () => {
     const b = [
       { day: "2026-10-28", aboutUserId: "u", text: "später" },

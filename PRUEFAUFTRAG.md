@@ -435,6 +435,64 @@ Bestell-/Versand-/Zahlungsmail → kein Fall, zwei Mails einer Bestellung → ei
 Tag → „überbucht – … Min. zu viel“ ✅ · Deal-Blatt als SVG ohne EK ✅ · LPN-Feld, Handy-Anleitung, Werkzeug-Felder ✅.
 Gesamtlauf aller Ablaufprüfungen (Desktop): 115 von 115 grün.
 
+## B20 – Browser-Test Teil 3 (Nachtrag 31.10., 16:00)
+
+Reihenfolge wie im Nachtrag: B20.1 → B20.2 → B20.5 → B20.8 → B20.7 → Rest. Status: ✅ gebaut · 🟡 teilweise ·
+❌ fehlt · 👤 entscheidet Ludwig.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 20.1a | Mitarbeiter/VA können Privat nicht auf „voll“ setzen | 🐞 | ✅ | `privatStufeErlaubt` in `src/lib/auth/rollen.ts`; Auswahl „voll (nur Inhaber)“ gesperrt, Server lehnt ab (`setPrivateAccess`) |
+| 20.1b | „Nie angemeldet“ > 30 Tage automatisch deaktivieren | ❌ | ✅ | `nieAngemeldeteDeaktivieren` in `src/lib/auth/konten.ts` (täglich, mit Aufgabe als Hinweis; ein angemeldeter Inhaber bleibt immer aktiv); Login, Sitzung, Token und Konnektor prüfen `deaktiviertAm` |
+| 20.1c | 🔴-Warnung als Dialog beim Inhaber-Login | ❌ | ✅ | `PrivatWarnDialog` auf der Startseite, solange ein Nicht-Inhaber Privat „voll“ hat |
+| 20.1d | Live-Konten umstellen | – | 👤 | To-dos 37–38 |
+| 20.2a | Nachtrag stoppt bei 1.000 | 🐞 (Aufbewahrungsgrenze 12 Monate) | ✅ | `lugruHistorieEingaenge` in `src/lib/lugru-deals/historie.ts` ohne Zeitgrenze; Lugru-Eingänge fallen nicht unter die Aufbewahrung (`aufraeumen`); Fortschritt „x / gesamt“ mit Zeitpunkt des letzten Laufs |
+| 20.2b | Vier Zahlen widersprechen sich | 🐞 | ✅ | Eine Zählbasis `lugruZaehlung` („Deals im Deal-Eingang mit Ampel“) für Lugru-Seite, Kachel „Anteil grün“ (mit Zeitraum), Trefferquote (eine Zeile „Lugru Deals“, dazu „von x gepostet“), Deal-Eingang-Liste und Werkzeuge |
+| 20.2c | ROI/Marge „11,136491 %“ | 🐞 | ✅ | `runde1`/`prozentText` in `src/lib/numbers.ts`; Import der Lugru-App rundet auf eine Stelle |
+| 20.2d | Ampel zu streng („Für alle Quellen“, Entscheidung Ludwig) | 🐞 | ✅ | `dealAmpel` in `src/lib/deal-ampel/logic.ts`: mehr Angebote als eingestellt → Gelb; Amazon > 90 % in der Buy Box → Rot. Alte Historie-Ampeln werden im Hintergrund neu bewertet (`lugruHistorieNeuBewerten`, Regel-Stand je Zeile) |
+| 20.3 | Platzhalter „Lugru Deals=60“ sieht wie ein Wert aus | 🐞 | ✅ / 👤 | Platzhalter „leer = überall 70 (Beispiel: Quelle=60)“, darunter „gilt: Lugru Deals 70 (allgemein) · …“ je Quelle; den Wert trägt Ludwig ein (To-do 39) |
+| 20.4a | „85 % des Umsatzes“ vs. Kachel „99 %“ | 🐞 | ✅ | Warnhinweis auf `/gewinn` nutzt dieselbe Basis wie die Kachel (`basis.coverage`) |
+| 20.4b | „Abrechnung fehlt noch“ | 🟡 | ✅ nach Import | Der Transaktionsbericht über den Datei-Import (unten) liefert die Abrechnungen; danach rechnet Amazon aus der Abrechnung (To-do 47) |
+| 20.5a | Buy-Box-Hinweise als Fälle | 🐞 | ✅ | `BUYBOX_RE` in `src/lib/amazon-todos/mail-muster.ts` (alle EU-Sprachen) → ein ToDo „Buy-Box-Berechtigung prüfen (Land)“ je Land (`buyBoxTodo`), kein Fall, Mail archiviert |
+| 20.5b | Bewertungsanfragen mit „Antwort nötig“ | 🐞 | ✅ | `BEWERTUNG_RE` → Archiv, auch mit Fall-ID nie Antwort im Fall; Routine-Mails ändern Phase/Frist echter Fälle nicht mehr (`neuEinstufen`) |
+| 20.5c | „Versendet:“/„expédié“/„Spedito“ | 🐞 | ✅ | `VERSAND_RE` um „versendet“ ergänzt → Archiv (Vorgang erledigt) |
+| 20.5d | „paiement en cours“/„Zahlung wird bearbeitet“ als A-bis-z | 🐞 | ✅ | `ZAHLUNG_IN_BEARBEITUNG_RE` → Info |
+| 20.5e | Auszahlungsmitteilungen → Liquidität | ❌ | ✅ | `auszahlungAus` (Betrag, Konto-Endung, Datum) + Marktplatz → Tabelle `amazon_auszahlung_meldungen` (Migration `0114`) → Liquidität „Amazon-Auszahlung FR laut Mitteilung … erwartet 3.–5. Tag“, ersetzt die Schätzung und fällt mit der passenden Gutschrift weg; Mail archiviert; nie Fall/A-bis-z/VA |
+| 20.5f | Fälle 369,71 € und 115,52 € schließen | – | ✅ | Ausdrücklich angeordnet: `neuEinstufen` schließt Auszahlungs-Vorgänge automatisch (auch wenn angefasst), mit Verlaufseintrag und Buchung in der Liquidität – läuft beim nächsten Abgleich nach dem Update |
+| 20.5g | „keine passende Regel“ in Frist-Kategorie | 🐞 | ✅ | A-bis-z/Kontozustand nur, wenn das Thema im Betreff/Anfang steht; sonst „bitte prüfen“ in Sonstiges ohne Standardfrist und ohne Zuständigkeit |
+| 20.6 | Rückgängig-Knopf nirgends sichtbar | 🟡 (alte Einträge ohne Vorher-Werte) | ✅ | Abnahme als Ablaufprüfung: neuer Aufruf `mail_markieren` → „↩ Rückgängig“ im Verlauf → Mail wieder offen (`e2e/b20-rest.spec.ts`) |
+| 20.7a | Tagesplan legt zu viel auf kleine Tage | 🐞 | ✅ | `planeTage` in `src/lib/tagesplan/logic.ts`: eingeplant nur bis zur Kapazität; Rest „nicht eingeplant (x Aufgaben, y Min.)“ mit Vorschlag „auf Mi/Do verteilen“ bzw. „oder an die VA geben“ (wenn die VA eingerichtet ist); Seite + Werkzeug `tagesplan` (`nicht_eingeplant`) |
+| 20.7b | 22 Konflikte am freien Samstag | 🐞 | ✅ | Konflikte nur an Arbeitstagen |
+| 20.8a | MSI-Monitor (Kaufquote 0 %) und Brother in der Summe | 🐞 | ✅ | `kaufquoteFuer` (SKU, sonst ASIN – wie die Hebel-Seite) und `PRUEFEN_AB_EUR` (10.000 €) in `src/lib/purchasing/reorder-logic.ts` → „prüfen“, nicht im Kapitalbedarf |
+| 20.8b | Startseite nennt die Prüffälle nicht | ❌ | ✅ | Zeile „+ x zu prüfen (y €)“ im Kasten „Nachbestellen“ mit Link auf den Prüfblock |
+| 20.9a | Therapie-Bogen fest 30 Tage | 🐞 | ✅ | `istPaartherapie` in `src/lib/private/rueckblick-logic.ts`: Sitzung auch an Terminen mit Titel „Paartherapie/Paarberatung“ (z. B. aus dem externen Kalender) – dann gilt „seit letzter Sitzung“ |
+| 20.9b | VA-Nachrichten ohne Sprachkennzeichen | ❌ | ✅ | Tag je Nachricht auf `/delegation/va` („EN → DE“ bei übersetzten, sonst „DE“/„EN“) |
+| 20.9c | Liquidität: Temu „keine“, Gewinn-Seite zeigt Temu | 🐞 | ✅ | Gleiche Aufträge wie die Gewinn-Seite (alle Temu-Kanäle); fehlt der Positionspreis, zählt der Auftragsbetrag; ohne beides klarer Hinweis „Temu-Bestellexport hochladen“ |
+| 20.9d | „AI Win Sales Booster“ als Strategie | 🟡 (nur Alias) | ✅ | Eigene Zeile mit Erklärung im Regel-Katalog (`AI_WIN_SALES_BOOSTER`, auch in gespeicherten Katalogen ergänzt); verhält sich wie Liquidation (feste Untergrenze) |
+| 20.9e | B2B: Deal-Blatt, Sammelbestellung, Prep-Export | „offen“ | ✅ gebaut (B19.6) | Seit B19 im Code (Deal-Blatt als Bild/PDF/Text, Sammelbestellung mit Freigabe, Export je Kunde; Werkzeug `deal`); auf dem Server erst nach dem Update sichtbar |
+| B15.3 | Bestand −144 (8U-P4IG-LL5O) | 🟡 | 🟡 / 👤 | Reparatur gebaut; alte Prep-Center-Buchungen werden nur auf ausdrücklichen Klick zurückgebucht (keine automatische Datenänderung) – To-do 48 |
+
+Abnahme B20 (Unit 1977 Tests grün, darunter `deal-ampel`, `lugru-historie`, `amazon-faelle`, `tagesplan`,
+`datenbasis`, `privat-rueckblick`, `bqool-export`; e2e `zugriffe` (B20.1), `b20-lugru` (Deal von vor 400 Tagen im
+Eingang, alte Ampel „rot wegen 30 Angeboten“ → gelb, gleiche Zahl auf Lugru-Seite/Werkzeug/Trefferquote/Deal-Eingang,
+Marge 11,1 %), `b20-faelle` (Auszahlung 369,71 € → Liquidität, Konto …123, FR, 3–5 Tage; alter A-bis-z-Fall 115,52 €
+geschlossen; Buy-Box → ein ToDo DE mit beiden ASINs; Bewertung/Versand archiviert; Fußzeile → bitte prüfen ohne Frist),
+`b20-einkauf` (Kaufquote 0 % über die ASIN, 30.160 € → prüfen, Startseite „+ 2 zu prüfen“), `b19-rest` (Tagesplan
+„nicht eingeplant“ mit Vorschlag), `b20-rest` (Schwelle „gilt“, Rückgängig nach `mail_markieren`, Sprachkennzeichen,
+AI Win Sales Booster), `amazon-faelle`, `herzstueck`, `lugru-deals`, `deal-eingang`.
+
+## Datei-Import über den Konnektor (Bauauftrag „Datei-Import-Werkzeug“)
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| DI-1 | Datei ins System laden ohne Oberfläche | ❌ | ✅ | `import_link` (nur Inhaber, ändernd) → einmalige Upload-Adresse `…/api/import/upload/<token>` (15 Min., 50 MB, PUT/POST) → `import_status`, `importe` |
+| DI-2 | Gleiche Verarbeitung wie der Upload | – | ✅ | `importVerarbeiten` in `src/lib/datei-import/service.ts` nutzt die zentrale Erkennung (`dateiArt`, `detectReport`, `applyReport`); falsche Art → klarer Fehler |
+| DI-3 | Dieselbe Datei zweimal | – | ✅ | SHA-256 → „bereits importiert“, nichts doppelt |
+| DI-4 | Transaktionsbericht → Abrechnungen, Auszahlungen | ❌ | ✅ | `src/lib/reports/transaktionen.ts`: Abrechnungen und Zeilen aus dem Bericht (werden ersetzt, sobald die echte Flat File kommt), „x neu, y bereits vorhanden“, Lücken-Hinweis |
+| DI-5 | Lagergebühren je Monat | ❌ (Datei unbekannt) | ✅ | Berichtsart „Monthly Storage Fees“, Tabelle `amazon_lagergebuehren`, Werkzeug `lagergebuehren` (nicht zusätzlich zum Gewinn) |
+| DI-6 | USt-Transaktionsbericht je Periode, OSS | 🟡 (ein Monat) | ✅ | `leseUstBerichtJePeriode`, Zusammenführen je Periode per Datei-Prüfsumme, Werkzeuge `umsatzsteuer` und `umsatzsteuer_oss` – nur Zahlen, keine Steuerberatung |
+| DI-7 | Sicherheit | – | ✅ | Nur Inhaber; VA/Familie nie (auch nicht im Fragefeld); Token gehasht, einmalig; Dateien verschlüsselt abgelegt und nach 90 Tagen gelöscht; Caddy-Freigabe nur für `/api/import/upload/*` |
+
 ## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
 
 Der Umsetzungsstand wurde über die Werkzeuge auf dem Server geprüft. Was dort als ❌ steht, ist zum großen Teil gebaut,
@@ -450,10 +508,20 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M1 Tagesplan: Mo 2.11. „rot“ bei 0 von 30 Min. (privat 10:00–23:59) | ✅ | `KAUM_ZEIT_MIN` (60 Min.) in `src/lib/tagesplan/logic.ts`: Tag mit weniger freier Zeit heißt „kaum freie Zeit (30 Min.)“, nie „überbucht“; die wichtige Aufgabe wird verschoben, Konflikt „Frist fällt auf einen Tag mit nur 30 Min. freier Zeit“; `tagesplan` liefert `ampel_text` |
 | M13 Liquidität: Kontostand vom 30.09., kein Wareneinkauf → zu optimistisch | ✅ | Startseite und `ueberblick`: „Kontostand vom 30.09. (31 Tage alt) – Liquidität ungenau“ (ab 8 Tagen, ab 22 Tagen rot; ohne Kontostand eigener Hinweis). Wareneinkauf: Ø Warenrechnungen, sonst Ø Chargen (Kaufdatum × EK netto + 19 %), sonst Ø eigene Bestellungen (`src/lib/money/liquiditaet-service.ts`); ohne alles steht „Einkauf fehlt in der Prognose (zu optimistisch)“ |
 | B10: UAE-Mail als „US“ | ✅ | `marktplatzAus`: AED/UAE/„United Arab Emirates“ → AE, ebenso SA, UK (£/GBP), TR |
-| B15.3 Bestand −144 (8U-P4IG-LL5O) | 🟡 Reparatur gebaut, wartet auf Klick | Seit B15 bucht das Prep Center nicht mehr vom eigenen Lager; alte Buchungen werden nur auf ausdrücklichen Klick zurückgebucht (Bestand → „Prep-Center-Fehlbuchungen“, `prepAbbuchungenZurueck`). Zeigt der Vorschlag 0 Aufträge, liegt die Ursache woanders (z. B. Auftrag nicht als „Prep Center“ markiert) – dann bitte melden |
+| B15.3 Bestand −144 (8U-P4IG-LL5O) | 🟡 Reparatur gebaut, wartet auf Klick | Seit B15 bucht das Prep Center nicht mehr vom eigenen Lager; alte Buchungen werden nur auf ausdrücklichen Klick zurückgebucht (Bestand → Kachel „Eigenes Lager“ → „Zurückbuchen“, `prepAbbuchungenZurueck`). Zeigt der Vorschlag 0 Aufträge, liegt die Ursache woanders (z. B. Auftrag nicht als „Prep Center“ markiert) – dann bitte melden |
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
-## Neue Claude-Werkzeuge (49) und `notifications/tools/list_changed`
+## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Neu am 31.10. (Datei-Import, 6 Werkzeuge): `import_link` (ändernd, nur Inhaber: einmalige Upload-Adresse),
+`import_status` und `importe` (nur Inhaber), `umsatzsteuer` (je Periode JJJJ-MM), `umsatzsteuer_oss` (je Quartal) und
+`lagergebuehren` (je Monat/ASIN). Geändert (B20, keine weiteren neuen Werkzeuge): `lugru_deals`/`lugru_statistik`
+(Zählbasis „im Deal-Eingang mit Ampel“, `fortschritt` „x / gesamt“ mit Zeitpunkt, Marge gerundet), `deal_quellen`
+(eine Zeile „Lugru Deals“ mit `gemeldet` = Zählbasis und `gepostet`), `tagesplan` (`nicht_eingeplant` mit Vorschlag,
+Konflikte nur an Arbeitstagen), `bestellvorschlaege` (`zu_pruefen` auch Kaufquote 0 % über die ASIN und Posten über
+10.000 €), `liquiditaet` (Amazon-Auszahlungen laut Mitteilung, Temu wie Gewinn-Seite), `amazon_faelle`/`amazon_fall`
+(Auszahlungen, Buy-Box, Bewertung, Versand nie als Fall). `notifications/tools/list_changed` geht beim Verbinden raus –
+für die neuen Werkzeuge Claude einmal neu verbinden (To-do 46).
 
 Geändert am 31.10. (B19, keine neuen Werkzeuge): `lugru_deals` (`mit_test`, Gesamtzahl, Reaktionen je Emoji bzw.
 „nur Kaufzeichen“, getrimmte Kanäle, Eingang auch für History-Deals), `lugru_statistik` (Zeitraum und `gesamt`,
@@ -545,7 +613,7 @@ nie in Chats oder Mails.
 16. **Versandbestätigung (B15.1)**: Solange die SP-API fehlt, täglich unter Aufträge → „Meldung offen“ die Datei laden,
     in Seller Central unter Bestellungen → Bestellberichte hochladen und danach „Hochgeladen“ klicken.
 17. **Nach dem Update einmal**:
-    - Bestand → „Prep-Center-Fehlbuchungen“ ansehen und nur passende zurückbuchen.
+    - Bestand → Kachel „Eigenes Lager“ → Hinweis zu Prep-Center-Aufträgen ansehen und nur passende zurückbuchen.
     - BQool-Export je Land neu hochladen (richtige Status-Spalte).
     - B2B → Lieferanten-Freigaben → „SKU-Kürzel“ prüfen: einem Lieferanten zuordnen oder „Ist ein Lieferant“.
     - Palettenlager: Paletten ohne Kunde nachtragen.
@@ -635,3 +703,16 @@ nie in Chats oder Mails.
     „Eigene Käufe abgleichen“ klicken. Erkannt wird ein Kauf, wenn eine Charge (SKU mit Kaufdatum) oder Bestellung mit
     derselben ASIN bis 14 Tage nach dem Post angelegt ist. Bleibt ein bekannter Kauf unerkannt, bitte ASIN und Kaufdatum
     nennen – dann prüfe ich, wo der Kauf steht (z. B. SKU ohne Datum oder andere ASIN).
+46. **Nach dem Update: Claude neu verbinden** (Einstellungen → Claude), damit die 6 neuen Werkzeuge erscheinen, und auf dem
+    Server einmal `bash deploy/claude-oeffentlich.sh aktualisieren` ausführen – sonst lehnt der Server die Upload-Adresse
+    `/api/import/upload/…` ab.
+47. **Dateien einspielen** (Upload-Seite oder im Chat mit `import_link`): Amazon-Transaktionsbericht (Zahlungen →
+    Transaktionsansicht, damit „Abrechnung fehlt noch“ verschwindet), die Lagergebühren-Dateien (Monthly Storage Fees)
+    und die USt-Transaktionsberichte je Monat.
+48. **Bestand −144 (8U-P4IG-LL5O)**: Bestand → Kachel „Eigenes Lager“ → Hinweis „x Prep-Center-Aufträge haben … vom
+    eigenen Lager abgebucht“ → „Zurückbuchen“ klicken (das System ändert alte Buchungen nicht selbst). Fehlt der
+    Hinweis, liegt die Ursache woanders – dann bitte melden.
+49. **Fall-Zentrale nach dem Update**: einmal „↻ Amazon-Mails einordnen“ – schließt die Auszahlungs-Fälle (369,71 € und
+    115,52 €) mit Verlaufseintrag, bucht sie in die Liquidität und legt je Land ein ToDo „Buy-Box-Berechtigung prüfen“ an.
+50. **Lugru-Nachtrag**: läuft nach dem Update im Hintergrund weiter, bis alle Deals im Deal-Eingang sind (Fortschritt
+    „x / gesamt“ auf der Lugru-Seite); alte Ampeln werden dabei nach den neuen Regeln neu bewertet.
