@@ -108,12 +108,15 @@ test.describe("Lugru Deals über Discord", () => {
     expect(st.deals).toBeGreaterThanOrEqual(6);
     expect(st.gruppenKaeufe).toBeGreaterThanOrEqual(5);
     expect(st.kanaele.map((k) => k.kanal)).toEqual(expect.arrayContaining(["lugru-deals-test", "lugru-pan-eu"]));
-    const q = JSON.parse(await mcp.call("deal_quellen", {})) as { quellen: { quelle: string; gemeldet: number; gruen: number; gekauft: number; gruppen_kaeufe?: number }[] };
+    const q = JSON.parse(await mcp.call("deal_quellen", {})) as { quellen: { quelle: string; gemeldet: number; gepostet?: number; gruen: number; gekauft: number; gruppen_kaeufe?: number }[] };
     const lq = q.quellen.find((x) => x.quelle === "Lugru Deals");
     expect(lq).toBeTruthy();
-    expect(lq!.gemeldet).toBeGreaterThanOrEqual(6);
+    // B20.2: gemeldet = Zählbasis (im Deal-Eingang mit Ampel), gepostet = alle Posts; eine Zeile für die ganze Gruppe
+    expect(lq!.gepostet).toBeGreaterThanOrEqual(6);
+    expect(lq!.gemeldet).toBeGreaterThanOrEqual(1);
+    expect(lq!.gemeldet).toBeLessThanOrEqual(lq!.gepostet!);
     expect(lq!.gruppen_kaeufe).toBeGreaterThanOrEqual(5);
-    expect(q.quellen.some((x) => x.quelle === "Lugru Deals · #lugru-deals-test")).toBe(true);
+    expect(q.quellen.some((x) => x.quelle.startsWith("Lugru Deals · "))).toBe(false);
 
     // Eigener Kauf erkannt: Bestellung mit gleicher ASIN wenige Tage nach dem Posten → „gekauft (automatisch erkannt)“
     const [po] = await sql<{ id: string }>("insert into purchase_orders (tenant_id, number, status, created_at) values ($1, $2, 'ordered', now() - interval '18 days') returning id", [T, `EK-LG-${m}`]);

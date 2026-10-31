@@ -44,7 +44,8 @@ const importStatusTool = defineTool({
     const s = await importStatus(ctx.session.tenantId, i.import_id);
     if (!s) return { text: json({ fehler: "Import nicht gefunden." }), isError: true };
     const link = (s.ergebnis as { link?: string } | undefined)?.link;
-    return json({ ...s, link: link ? abs(ctx, link) : abs(ctx, "/uploads") });
+    const ergebnis = s.ergebnis && link ? { ...(s.ergebnis as Record<string, unknown>), link: abs(ctx, link) } : s.ergebnis;
+    return json({ ...s, ergebnis, link: link ? abs(ctx, link) : abs(ctx, "/uploads") });
   },
 });
 

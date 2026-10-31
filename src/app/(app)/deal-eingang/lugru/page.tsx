@@ -72,7 +72,7 @@ export default async function LugruDealsPage({ searchParams }: { searchParams: P
       <section className="grid-kpi" style={{ marginBottom: 14 }} data-testid="lg-kacheln">
         <div className="card card-pad" data-testid="lg-kachel-deals"><div className="kpi-label">Deals im Zeitraum {tag(stat.zeitraum.von)}–{tag(stat.zeitraum.bis)}</div><div className="kpi-value">{stat.deals.toLocaleString("de-DE")}</div><div className="kpi-label">{zahl(stat.dealsJeWoche)} je Woche · <span data-testid="lg-gesamt">insgesamt {stat.gesamt.deals.toLocaleString("de-DE")}{stat.gesamt.seit ? ` seit ${tag(stat.gesamt.seit)}` : ""}</span></div></div>
         <div className="card card-pad"><div className="kpi-label">Reaktionen ({tag(stat.zeitraum.von)}–{tag(stat.zeitraum.bis)})</div><div className="kpi-value">{zahl(stat.reaktionenSchnitt)}</div><div className="kpi-label" title={stat.reaktionenHinweis ?? undefined}>Ø je Deal · {stat.gruppenKaeufe.toLocaleString("de-DE")}× ✅ im Zeitraum, {stat.gesamt.gruppenKaeufe.toLocaleString("de-DE")}× insgesamt</div></div>
-        <div className="card card-pad"><div className="kpi-label">Anteil grün</div><div className="kpi-value">{stat.anteilGruen === null ? "–" : `${stat.anteilGruen} %`}</div><div className="kpi-label">von {stat.mitAmpel} geprüften</div></div>
+        <div className="card card-pad" data-testid="lg-kachel-gruen"><div className="kpi-label">Anteil grün ({tag(stat.zeitraum.von)}–{tag(stat.zeitraum.bis)})</div><div className="kpi-value">{stat.anteilGruen === null ? "–" : `${stat.anteilGruen} %`}</div><div className="kpi-label">{stat.gruen.toLocaleString("de-DE")} grün von {stat.mitAmpel.toLocaleString("de-DE")} {stat.zaehlbasis}</div></div>
         <div className="card card-pad"><div className="kpi-label">Selbst gekauft</div><div className="kpi-value" data-testid="lg-gekauft">{stat.gekauft}</div><div className="kpi-label">Ø realer ROI {stat.realerRoiSchnitt === null ? "– (noch kein Ergebnis)" : `${zahl(stat.realerRoiSchnitt)} % aus ${stat.mitErgebnis}`}</div><div className="kpi-label" data-testid="lg-gekauft-regel">erkannt an Charge (SKU-Kaufdatum), Einkaufs-Bestellung oder „gekauft“ im Deal-Eingang – gleiche ASIN, bis 14 Tage nach dem Post</div>{!session.readOnly && <form action={lugruKaufAction} style={{ marginTop: 4 }}><button className="btn btn-small" type="submit" data-testid="lg-kauf-abgleich">Eigene Käufe abgleichen</button></form>}</div>
       </section>
       {(stat.besteMarken.length > 0 || stat.emojis.length > 0) && (
@@ -83,11 +83,15 @@ export default async function LugruDealsPage({ searchParams }: { searchParams: P
         </section>
       )}
       <section className="card card-pad small" style={{ marginBottom: 14 }} data-testid="lg-eingang-stand">
-        <strong>Im Deal-Eingang:</strong> {imEingang.imEingang.toLocaleString("de-DE")} von {imEingang.gesamt.toLocaleString("de-DE")} Deals, {imEingang.mitAmpel.toLocaleString("de-DE")} mit Ampel
-        {imEingang.imEingang < imEingang.gesamt ? " – ältere werden im Hintergrund nachgetragen (neueste zuerst, ohne Push; Ampel aus den Zahlen des Posts und dem Keepa-Stand beim Posten)." : "."}{" "}
+        <strong>Im Deal-Eingang mit Ampel:</strong> <span data-testid="lg-fortschritt">{imEingang.mitAmpel.toLocaleString("de-DE")} / {imEingang.gesamt.toLocaleString("de-DE")}</span>
+        {" "}(🟢 {imEingang.gruen.toLocaleString("de-DE")} · 🟡 {imEingang.gelb.toLocaleString("de-DE")} · 🔴 {imEingang.rot.toLocaleString("de-DE")}) · <span data-testid="lg-fortschritt-stand">{imEingang.stand ? `Stand ${datum(imEingang.stand.toISOString())} (letzter Lauf des Nachtrags)` : "Nachtrag noch nicht gelaufen"}</span>
+        {imEingang.fehler && <span className="tag tag-warn" style={{ marginLeft: 6 }}>letzter Lauf: {imEingang.fehler}</span>}
+        {imEingang.mitAmpel < imEingang.gesamt ? " – der Rest wird im Hintergrund nachgetragen, bis alle drin sind (neueste zuerst, ohne Push; Ampel aus den Zahlen des Posts und dem Keepa-Stand beim Posten)." : " – alle drin."}
+        {imEingang.alteRegeln > 0 && <span className="muted"> {imEingang.alteRegeln.toLocaleString("de-DE")} Ampeln werden nach den neuen Regeln neu bewertet (zu viele Angebote = gelb, Amazon über 90 % in der Buy Box = rot).</span>}{" "}
+        <span className="muted">Alle Lugru-Zahlen (Kachel, Trefferquote, Deal-Eingang) zählen dieselbe Basis: Deals im Deal-Eingang mit Ampel.</span>{" "}
         {imEingang.imEingang > 0 && <Link href={`/deal-eingang?quelle=${encodeURIComponent("Lugru Deals")}`}>im Deal-Eingang ansehen</Link>}
         {!mitTest && stat.gesamt.testAusgeblendet > 0 && <span className="muted"> · {stat.gesamt.testAusgeblendet} Deals aus Testkanälen ausgeblendet</span>}
-        {!session.readOnly && imEingang.imEingang < imEingang.gesamt && (
+        {!session.readOnly && (imEingang.mitAmpel < imEingang.gesamt || imEingang.alteRegeln > 0) && (
           <form action={lugruEingaengeAction} style={{ marginTop: 6 }}>
             <button className="btn btn-small" type="submit" data-testid="lg-nachtragen" title="Bis zu 1.000 Deals auf einmal, neueste zuerst – ohne Push">Jetzt nachtragen</button>
           </form>

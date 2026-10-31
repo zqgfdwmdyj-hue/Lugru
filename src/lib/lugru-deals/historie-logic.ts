@@ -3,9 +3,10 @@
 // Post (EK, VK, Gewinn, Verkäufe) und dem Keepa-Schnappschuss beim Posten. Kein Push. Getestet in tests/lugru-historie.test.ts.
 
 import type { DealEingangZeile, DealLandZeile, LugruKeepa } from "@/db/tables/deal-eingang";
-import { dealAmpel, ekNettoAus, rechneLand, type DealAmpelEinstellungen, type LandMarkt } from "@/lib/deal-ampel/logic";
+import { AMPEL_REGELN, dealAmpel, ekNettoAus, rechneLand, type DealAmpelEinstellungen, type LandMarkt } from "@/lib/deal-ampel/logic";
 import { MWST } from "@/lib/b2b/logic";
 import { dreiGruende, maxEk, pushText } from "@/lib/deal-eingang/logic";
+import { prozentText } from "@/lib/numbers";
 
 export const HISTORIE_HINWEIS = "Historie: Ampel aus den Zahlen des Posts und dem Keepa-Stand beim Posten – nicht neu bei Keepa geprüft. Vor einem Kauf heute neu prüfen.";
 
@@ -96,7 +97,7 @@ export function historienZeile(d: HistorienDeal, cfg: DealAmpelEinstellungen, o:
   const mEk = basis ? maxEk({ vkNetto: basis.vkNetto, gebuehren: basis.gebuehren, prep: cfg.nebenkosten, zielRoi: o.zielRoi }) : null;
   const landZeile: DealLandZeile = { land, vkEur: vk, vk90Eur: markt.vk90Eur, tief12Eur: null, verkaeufeMonat: markt.verkaeufeMonat, angebote: markt.angebote, amazonProzent: markt.amazonProzent, gewinn: l.schnitt90?.gewinn ?? null, gewinnAktuell: l.aktuell?.gewinn ?? null, roi: l.schnitt90?.roi ?? null, marge: l.schnitt90?.marge ?? null, maxEk: mEk, fehler };
   const hinweise = [HISTORIE_HINWEIS, geb.ausPost ? "Gebühren aus dem Gewinn im Post abgeleitet." : "Gebühren pauschal (Einstellungen), im Post stand kein Gewinn."];
-  if (d.gewinnEur !== null || d.margeProzent !== null) hinweise.push(`Laut Post: ${d.gewinnEur !== null ? `Gewinn ${String(d.gewinnEur).replace(".", ",")} €` : ""}${d.gewinnEur !== null && d.margeProzent !== null ? " · " : ""}${d.margeProzent !== null ? `Marge ${String(d.margeProzent).replace(".", ",")} %` : ""}.`);
+  if (d.gewinnEur !== null || d.margeProzent !== null) hinweise.push(`Laut Post: ${d.gewinnEur !== null ? `Gewinn ${String(d.gewinnEur).replace(".", ",")} €` : ""}${d.gewinnEur !== null && d.margeProzent !== null ? " · " : ""}${d.margeProzent !== null ? `Marge ${prozentText(d.margeProzent)} %` : ""}.`);
   return {
     nr: 1,
     angebot: { asin: d.asin, ean: null, name: d.titel, marke: k?.marke ?? null, ek, ekNetto: d.ekNetto, waehrung: "EUR", menge: null, moq: null, staffel: null, versand: null, lieferzeit: null, zahlung: null, gueltigBis: null, zustand: "neu", packung: null },
@@ -123,6 +124,7 @@ export function historienZeile(d: HistorienDeal, cfg: DealAmpelEinstellungen, o:
     hinweise,
     fehler: null,
     geprueftAm: o.jetzt.toISOString(),
+    regeln: AMPEL_REGELN,
   };
 }
 

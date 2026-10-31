@@ -243,12 +243,17 @@ export async function lugruAbrufenAction() {
 /** B19.1: Lugru-Deals ohne Eingang jetzt in den Deal-Eingang nachtragen (sonst automatisch alle 5 Min., ohne Push). */
 export async function lugruEingaengeAction() {
   const s = await schreibend();
-  const { lugruHistorieEingaenge } = await import("@/lib/lugru-deals/historie");
+  const { lugruHistorieEingaenge, lugruHistorieNeuBewerten, NACHTRAG_JOB } = await import("@/lib/lugru-deals/historie");
+  const { recordJob } = await import("@/lib/today/jobs");
   let text: string;
+  const t0 = Date.now();
   try {
     const r = await lugruHistorieEingaenge(s.tenantId, 1000);
-    text = `${r.neu} Lugru-Deals in den Deal-Eingang nachgetragen${r.verknuepft ? `, ${r.verknuepft} mit vorhandenen Eingängen verknüpft` : ""} (ohne Push)${r.offen ? ` – noch ${r.offen} offen, läuft automatisch weiter` : " – alle drin"}.`;
+    const nb = r.neu + r.verknuepft < 1000 ? await lugruHistorieNeuBewerten(s.tenantId, 1000) : null;
+    void recordJob(s.tenantId, NACHTRAG_JOB, null, Date.now() - t0);
+    text = `${r.neu} Lugru-Deals in den Deal-Eingang nachgetragen${r.verknuepft ? `, ${r.verknuepft} mit vorhandenen Eingängen verknüpft` : ""} (ohne Push)${r.offen ? ` – noch ${r.offen} offen, läuft automatisch weiter` : " – alle drin"}${nb?.neu ? `; ${nb.neu} Ampeln nach den neuen Regeln neu bewertet${nb.offen ? ` (noch ${nb.offen})` : ""}` : ""}.`;
   } catch (e) {
+    void recordJob(s.tenantId, NACHTRAG_JOB, lesbarerFehler(e), Date.now() - t0);
     text = `Nachtragen fehlgeschlagen – ${lesbarerFehler(e)}`;
   }
   revalidatePath(LUGRU);

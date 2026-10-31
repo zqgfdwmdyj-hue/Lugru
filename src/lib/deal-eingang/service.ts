@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { DealEingangZeile, DealLandZeile } from "@/db/tables/deal-eingang";
 import { askClaude, modelFor, type AiContent } from "@/lib/ai/claude";
@@ -407,37 +407,43 @@ export async function quellen(tenantId: string) {
   const quote = trefferquote(rows.map((r) => ({ quelle: r.quelle, status: r.status, zeilen: r.zeilen.map((z) => ({ ampel: z.ampel, roi: z.roi })) })));
   const liste = quote.map((q) => {
     const werte = rows.filter((r) => (r.quelle?.trim() || "unbekannt") === q.quelle && real.has(r.id)).map((r) => real.get(r.id)!);
-    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length, gruppenKaeufe: undefined as number | undefined, link: `/deal-eingang?quelle=${encodeURIComponent(q.quelle)}`, testAusgeblendet: undefined as number | undefined };
+    return { ...q, roiReal: werte.length ? Math.round(werte.reduce((a, b) => a + b, 0) / werte.length) : null, roiRealN: werte.length, gruppenKaeufe: undefined as number | undefined, link: `/deal-eingang?quelle=${encodeURIComponent(q.quelle)}`, testAusgeblendet: undefined as number | undefined, gepostet: undefined as number | undefined };
   });
-  // Lugru Deals als eine Quelle über alle Posts (auch History ohne Eingang): gemeldet, grün, eigene Käufe, Gruppen-✅.
+  // Lugru Deals als eine Quelle (B20.2: Zählbasis „im Deal-Eingang mit Ampel“ wie auf der Lugru-Seite): gemeldet und grün
+  // aus der Zählbasis, dazu eigene Käufe, Verworfene und Gruppen-✅ über alle Posts.
   const L = schema.lugruDealsHistorie;
   const [lg] = await db
     .select({
       n: sql<number>`count(*)::int`,
-      gruen: sql<number>`count(*) filter (where ${L.ampel} = 'gruen')::int`,
       gekauft: sql<number>`count(*) filter (where ${L.gekauftErkannt} or exists (select 1 from deal_eingaenge e where e.id = ${L.eingangId} and e.status in ('gekauft', 'b2b', 'bestellvorschlag')))::int`,
       verworfen: sql<number>`count(*) filter (where exists (select 1 from deal_eingaenge e where e.id = ${L.eingangId} and e.status = 'verworfen'))::int`,
       kaeufe: sql<number>`coalesce(sum(${L.kaeufe}), 0)::int`,
-      mitEingang: sql<number>`count(${L.eingangId})::int`,
     })
     .from(L)
     .where(and(eq(L.tenantId, tenantId), sql`coalesce(btrim(${L.kanal}), '') !~* ${TEST_KANAL_RE}`));
   const [{ test }] = await db.select({ test: sql<number>`count(*)::int` }).from(L).where(and(eq(L.tenantId, tenantId), sql`coalesce(btrim(${L.kanal}), '') ~* ${TEST_KANAL_RE}`));
   if (lg && lg.n > 0) {
+    const { lugruZaehlung } = await import("@/lib/lugru-deals/historie");
+    const zl = await lugruZaehlung(tenantId);
     const lugruReal = liste.filter((q) => q.quelle.startsWith("Lugru Deals")).flatMap((q) => (q.roiReal !== null ? [{ roi: q.roiReal, n: q.roiRealN }] : []));
     const n = lugruReal.reduce((a, b) => a + b.n, 0);
+    // Live-Eingänge je Lugru-Kanal stecken schon in der Lugru-Zeile – nicht noch einmal einzeln zählen.
+    for (let i = liste.length - 1; i >= 0; i--) if (liste[i].quelle.startsWith("Lugru Deals")) liste.splice(i, 1);
     // Link: Deal-Eingang mit Filter „Lugru Deals“, solange dort noch nichts steht die Lugru-Deals-Seite.
-    liste.unshift({ quelle: "Lugru Deals", eingaenge: lg.n, angebote: lg.n, gruen: lg.gruen, gekauft: lg.gekauft, verworfen: lg.verworfen, roiPrognose: null, roiReal: n ? Math.round(lugruReal.reduce((a, b) => a + b.roi * b.n, 0) / n) : null, roiRealN: n, gruppenKaeufe: lg.kaeufe, link: lg.mitEingang > 0 ? `/deal-eingang?quelle=${encodeURIComponent("Lugru Deals")}` : "/deal-eingang/lugru", testAusgeblendet: test || undefined });
+    liste.unshift({ quelle: "Lugru Deals", eingaenge: zl.basis, angebote: zl.basis, gruen: zl.gruen, gekauft: lg.gekauft, verworfen: lg.verworfen, roiPrognose: null, roiReal: n ? Math.round(lugruReal.reduce((a, b) => a + b.roi * b.n, 0) / n) : null, roiRealN: n, gruppenKaeufe: lg.kaeufe, link: zl.basis > 0 ? `/deal-eingang?quelle=${encodeURIComponent("Lugru Deals")}` : "/deal-eingang/lugru", testAusgeblendet: test || undefined, gepostet: lg.n });
   }
   return liste;
 }
 
-/** Aufbewahrung: Eingänge (mit Dateien) nach N Monaten löschen. */
+/**
+ * Aufbewahrung: Eingänge (mit Dateien) nach N Monaten löschen. Lugru-Deals bleiben (B20.2): sie enthalten keine
+ * WhatsApp-Inhalte Dritter, nur den Post der Gruppe, und sonst würde der Nachtrag ältere Deals nie vollständig haben.
+ */
 export async function aufraeumen(tenantId: string, now = new Date()) {
   const s = await getSettings(tenantId);
   const grenze = new Date(now);
   grenze.setMonth(grenze.getMonth() - s.dealEingang.aufbewahrungMonate);
-  const alt = await db.select({ id: E.id, dateiIds: E.dateiIds }).from(E).where(and(eq(E.tenantId, tenantId), lt(E.createdAt, grenze)));
+  const alt = await db.select({ id: E.id, dateiIds: E.dateiIds }).from(E).where(and(eq(E.tenantId, tenantId), lt(E.createdAt, grenze), ne(E.weg, "lugru")));
   const dateiIds = alt.flatMap((a) => a.dateiIds);
   if (dateiIds.length) await db.delete(schema.files).where(and(eq(schema.files.tenantId, tenantId), inArray(schema.files.id, dateiIds)));
   if (alt.length) {

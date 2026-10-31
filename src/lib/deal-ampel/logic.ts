@@ -11,9 +11,9 @@ export type DealAmpelEinstellungen = {
   zielMarge: number;
   /** Abverkauf der Menge höchstens in so vielen Tagen. */
   maxAbverkaufTage: number;
-  /** Ab so vielen Angeboten (FBA + FBM) rot. */
+  /** Mehr Angebote (FBA + FBM) → gelb (B20.2: kein Rot-Grund mehr). */
   maxAngebote: number;
-  /** Amazon selbst hält die Buy Box in so viel % der Zeit → gelb; ab 80 % rot. */
+  /** Amazon selbst hält die Buy Box in so viel % der Zeit → gelb; über 90 % rot. */
   amazonMaxProzent: number;
   /** Aktueller Preis so viel % unter dem 90-Tage-Mittel → gelb, doppelt so viel → rot. */
   preisverfallProzent: number;
@@ -104,9 +104,14 @@ export function bestesLand(l: LandErgebnis[]): LandErgebnis | null {
   return l.filter((x) => wert(x) !== null).sort((a, b) => wert(b)! - wert(a)!)[0] ?? null;
 }
 
+/** Amazon hält die Buy Box mehr als so viel % der Zeit → rot (B20.2, für alle Quellen). */
+export const AMAZON_ROT_PROZENT = 90;
+/** Stand der Ampel-Regeln (B20.2) – gespeicherte Historie-Zeilen mit älterem Stand werden neu bewertet. */
+export const AMPEL_REGELN = 2;
+
 /**
- * Ampel: Rot bei Marge unter Ziel beim 90-Tage-Mittel, Amazon dauerhaft in der Buy Box (≥ 80 %), starkem Preisverfall
- * oder zu vielen Angeboten. Grün nur, wenn Marge ≥ Ziel (auch aktuell), Abverkauf in der Frist und kein Preisverfall.
+ * Ampel: Rot bei Marge unter Ziel beim 90-Tage-Mittel, Amazon dauerhaft in der Buy Box (> 90 %) oder starkem
+ * Preisverfall. Zu viele Angebote → Gelb (B20.2: sonst wäre fast jeder Gruppen-Deal rot). Grün nur, wenn Marge ≥ Ziel (auch aktuell), Abverkauf in der Frist und kein Preisverfall.
  * Sonst Gelb. Begründung in 2–3 Sätzen.
  */
 export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: DealAmpelEinstellungen): { ampel: Ampel; bestes: LandErgebnis | null; rot: string[]; gelb: string[]; begruendung: string; abverkauf: ReturnType<typeof abverkauf>; verkaeufeGeschaetzt: { wert: number; aus: string } | null } {
@@ -121,7 +126,7 @@ export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: Deal
   const mAkt = b.aktuell ?? m90;
   if ((m90.marge ?? -999) < e.zielMarge) rot.push(`Marge beim 90-Tage-Mittel nur ${pz(m90.marge)} % (Ziel ${e.zielMarge} %).`);
   else if ((mAkt.marge ?? -999) < e.zielMarge) gelb.push(`Beim aktuellen Preis nur ${pz(mAkt.marge)} % Marge – der Preis liegt gerade unter dem Mittel.`);
-  if (b.amazonProzent !== null && b.amazonProzent >= 80) rot.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
+  if (b.amazonProzent !== null && b.amazonProzent > AMAZON_ROT_PROZENT) rot.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
   else if (b.amazonProzent !== null && b.amazonProzent >= e.amazonMaxProzent) gelb.push(`Amazon hält die Buy Box ${pz(b.amazonProzent)} % der Zeit.`);
   // Hoher Amazon-Anteil in einem anderen Land: mindestens Gelb (Amazon drückt den Preis oft EU-weit).
   for (const l of laender) if (l.land !== b.land && l.amazonProzent !== null && l.amazonProzent >= Math.max(e.amazonMaxProzent, 80)) gelb.push(`Amazon hält in ${l.land} die Buy Box ${pz(l.amazonProzent)} % der Zeit.`);
@@ -130,7 +135,7 @@ export function dealAmpel(laender: LandErgebnis[], menge: number | null, e: Deal
     if (verfall >= e.preisverfallProzent * 2) rot.push(`Starker Preisverfall: aktuell ${pz(verfall)} % unter dem 90-Tage-Mittel.`);
     else if (verfall >= e.preisverfallProzent) gelb.push(`Preis ${pz(verfall)} % unter dem 90-Tage-Mittel.`);
   }
-  if (b.angebote !== null && b.angebote > e.maxAngebote) rot.push(`${b.angebote} Angebote (mehr als ${e.maxAngebote}).`);
+  if (b.angebote !== null && b.angebote > e.maxAngebote) gelb.push(`${b.angebote} Angebote (mehr als ${e.maxAngebote}) – Abverkauf genau prüfen.`);
   // Aktionspreise in irgendeinem Land drücken den Preis auch anderswo – alle nennen.
   for (const l of laender) if (l.aktionsmuster) gelb.push(`Aktionsmuster ${l.land}: ${l.aktionsmuster}`);
   const geschaetzt = b.verkaeufeMonat === null ? verkaeufeSchaetzen(b.land, laender) : null;

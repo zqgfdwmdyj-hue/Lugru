@@ -86,3 +86,12 @@ export function formatDate(iso: string | null | undefined): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
   return `${d}.${m}.${y}`;
 }
+
+/** Prozentwert auf eine Nachkommastelle runden (B20.2: „11,1 %“ statt „11,136491 %“); null bleibt null. */
+export const runde1 = (n: number | null | undefined): number | null => (n === null || n === undefined || !Number.isFinite(n) ? null : Math.round(n * 10) / 10);
+
+/** Prozentwert deutsch mit höchstens einer Nachkommastelle, ohne Zeichen („11,1“); null → „–“. */
+export const prozentText = (n: number | null | undefined): string => {
+  const r = runde1(n);
+  return r === null ? "–" : String(r).replace(".", ",");
+};

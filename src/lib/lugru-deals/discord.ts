@@ -7,6 +7,7 @@ import { discord, type DcNachricht } from "@/lib/va/discord";
 import { kaufZuDeal, keepaSchnappschuss, type EigenerKauf } from "./auswertung-logic";
 import { kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
 import { kanalName } from "./historie-logic";
+import { prozentText } from "@/lib/numbers";
 
 // Lugru Deals → Seller-System über Discord (Weg B): Der Bot des Seller-Systems liest die Deal-Kanäle der Gruppe – neue
 // Posts jede Minute (→ Deal-Eingang mit Ampel, Push bei Grün/Gelb), Reaktionen in den ersten 48 Std. alle 5 Min., bis
@@ -98,7 +99,7 @@ async function verarbeiten(tenantId: string, k: { kanalId: string; name: string 
   if (!id || !o.live || alt?.eingangId || p.ausverkauft) return;
   const kopf = [
     `Lugru Deals (#${k.name ?? k.kanalId})${p.shop ? ` · Shop: ${p.shop}` : ""}`,
-    `Laut Post: EK ${p.ekEur ?? "–"} € ${p.ekNetto ? "netto" : "brutto"} · VK ${p.vkEur ?? "–"} € (${p.zielmarkt}) · Gewinn ${p.gewinnEur} € · Marge ${p.margeProzent} %${p.verkaeufeMonat ? ` · ${p.verkaeufeMonat}+ Verkäufe/Monat` : ""}${p.maxMenge ? ` · max. ${p.maxMenge} Stück` : ""}`,
+    `Laut Post: EK ${p.ekEur ?? "–"} € ${p.ekNetto ? "netto" : "brutto"} · VK ${p.vkEur ?? "–"} € (${p.zielmarkt}) · Gewinn ${p.gewinnEur} € · Marge ${prozentText(p.margeProzent)} %${p.verkaeufeMonat ? ` · ${p.verkaeufeMonat}+ Verkäufe/Monat` : ""}${p.maxMenge ? ` · max. ${p.maxMenge} Stück` : ""}`,
     p.asinUnsicher ? "ASIN unsicher – frei im Text gefunden, nicht aus einem Amazon-Link." : null,
     p.shopUrl ? `Einkauf: ${p.shopUrl}` : null,
   ]

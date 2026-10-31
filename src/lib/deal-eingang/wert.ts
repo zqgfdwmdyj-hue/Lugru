@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from "dr
 import { db, schema } from "@/db";
 import { DAUMEN_GRUENDE, type DealEingangZeile, type DealErgebnis, type DealMerkmale } from "@/db/tables/deal-eingang";
 import { getSettings } from "@/lib/settings";
+import { prozentText, runde1 } from "@/lib/numbers";
 import { bewaehrt, dealWert, eigenesLabel, lernBericht, lugruLabel, lugruMerkmale, merkmaleAus, modellLernen, modellMerkmale, type HistorieDeal, type KeepaLite, type Modell } from "./wert-logic";
 import { kanalName } from "@/lib/lugru-deals/historie-logic";
 
@@ -217,7 +218,7 @@ export async function lugruImport(tenantId: string, deals: LugruDealImport[], je
       ekEur: zahl(d.ek_eur),
       vkEur: zahl(d.vk_eur),
       gewinnEur: zahl(d.gewinn_eur),
-      margeProzent: zahl(d.marge_prozent),
+      margeProzent: runde1(zahl(d.marge_prozent)),
       verkaeufeMonat: zahl(d.verkaeufe_monat) !== null ? Math.round(d.verkaeufe_monat!) : null,
       gruppe: d.gruppe ? String(d.gruppe).slice(0, 80) : null,
       kanal: d.kanal ? kanalName(String(d.kanal))?.slice(0, 80) ?? null : null,
@@ -266,7 +267,7 @@ export async function lugruImport(tenantId: string, deals: LugruDealImport[], je
       const text = [
         `Lugru Deals (#${z.kanal ?? "deals"}) – direkt von der Lugru-Deals-Seite${z.shop ? ` · Shop: ${z.shop}` : ""}`,
         `${d.titel ?? ""}`.trim() || null,
-        `Laut Lugru Deals: EK ${d.ek_eur ?? "–"} € ${z.ekNetto ? "netto" : "brutto"} · VK ${d.vk_eur ?? "–"} €${d.zielmarkt ? ` (${d.zielmarkt})` : ""}${d.gewinn_eur != null ? ` · Gewinn ${d.gewinn_eur} €` : ""}${d.marge_prozent != null ? ` · Marge ${d.marge_prozent} %` : ""}${d.verkaeufe_monat ? ` · ${d.verkaeufe_monat}+ Verkäufe/Monat` : ""}${d.max_menge ? ` · max. ${d.max_menge} Stück` : ""}`,
+        `Laut Lugru Deals: EK ${d.ek_eur ?? "–"} € ${z.ekNetto ? "netto" : "brutto"} · VK ${d.vk_eur ?? "–"} €${d.zielmarkt ? ` (${d.zielmarkt})` : ""}${d.gewinn_eur != null ? ` · Gewinn ${d.gewinn_eur} €` : ""}${d.marge_prozent != null ? ` · Marge ${prozentText(d.marge_prozent)} %` : ""}${d.verkaeufe_monat ? ` · ${d.verkaeufe_monat}+ Verkäufe/Monat` : ""}${d.max_menge ? ` · max. ${d.max_menge} Stück` : ""}`,
         `ASIN ${x.asin}`,
         z.shopUrl ? `Einkauf: ${z.shopUrl}` : null,
       ]

@@ -108,7 +108,7 @@ test.describe("Zugriffsrechte (B19.2)", () => {
     await p2.fill('input[name="email"]', `b20-${m}`);
     await p2.fill('input[name="password"]', pw);
     await p2.click('button[type="submit"]');
-    await expect(p2.locator("main, body")).toContainText("Dieses Konto ist deaktiviert");
+    await expect(p2.locator("body")).toContainText("Dieses Konto ist deaktiviert");
     await ctx.close();
     await Promise.all([aktion(page), page.locator("tr", { hasText: `b20-${m}` }).getByTestId("user-aktiv-knopf").click()]);
     await expect.poll(async () => (await sql<{ deaktiviert_am: Date | null }>("select deaktiviert_am from memberships where user_id = $1", [u.id]))[0].deaktiviert_am).toBeNull();

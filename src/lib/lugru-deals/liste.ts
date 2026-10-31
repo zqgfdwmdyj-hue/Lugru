@@ -4,6 +4,7 @@ import { db, schema } from "@/db";
 import { lugruStatistik, NUR_KAUFZEICHEN, reaktionenVon, type StatDeal } from "./auswertung-logic";
 import { kanalName, TEST_KANAL_SQL } from "./historie-logic";
 import { nachrichtLink } from "./post-logic";
+import { runde1 } from "@/lib/numbers";
 
 // Lugru Deals im Seller-System: Liste mit Filtern, Detail und Statistik – aus der Tabelle lugru_deals_historie
 // (Discord gelesen bzw. aus Lugru Deals übertragen) plus Deal-Eingang (Ampel, Entscheidung, reales Ergebnis).
@@ -56,7 +57,7 @@ function zeileAus(z: Zeile, e: Eingang | undefined, wert: number | null) {
     vk: z.vkEur,
     zielmarkt: z.zielmarkt,
     gewinn: z.gewinnEur,
-    marge: z.margeProzent,
+    marge: runde1(z.margeProzent),
     verkaeufe_monat: z.verkaeufeMonat,
     max_menge: z.maxMenge,
     status: z.status,
@@ -69,7 +70,7 @@ function zeileAus(z: Zeile, e: Eingang | undefined, wert: number | null) {
     deal_wert: wert,
     gekauft: gekauftVon(z, e),
     gekauft_quelle: e?.status === "gekauft" ? "Deal-Eingang" : z.gekauftErkannt ? `automatisch erkannt (${z.gekauftErkanntRef ?? "Bestellung"})` : null,
-    realer_roi: e?.ergebnis?.realerRoi ?? null,
+    realer_roi: runde1(e?.ergebnis?.realerRoi),
     eingang_id: z.eingangId,
     quelle: z.quelle,
     link_discord: z.discordKanalId && z.discordNachrichtId ? nachrichtLink(z.discordGuildId, z.discordKanalId, z.discordNachrichtId) : null,
@@ -139,8 +140,15 @@ export async function lugruStatistikFuer(tenantId: string, o: { von?: string | n
   });
   const nurKaufzeichen = rows.some((z) => reaktionenVon(z).nurKaufzeichen);
   const gesamt = (g?.n ?? 0) - (o.mitTest ? 0 : (g?.test ?? 0));
+  // B20.2: „Anteil grün“ aus derselben Zählbasis wie Lugru-Seite, Trefferquote und Deal-Eingang (im Eingang mit Ampel).
+  const { lugruZaehlung, ZAEHLBASIS } = await import("./historie");
+  const zl = await lugruZaehlung(tenantId, { von, bis, mitTest: o.mitTest });
   return {
     ...lugruStatistik(deals, von, bis),
+    anteilGruen: zl.anteilGruen,
+    mitAmpel: zl.basis,
+    gruen: zl.gruen,
+    zaehlbasis: ZAEHLBASIS,
     /** Alle Deals seit dem ersten Post (Zeitraum oben gilt nur für die übrigen Zahlen). */
     gesamt: { deals: gesamt, seit: g?.erster ? new Date(g.erster).toISOString().slice(0, 10) : null, gruppenKaeufe: (g?.kaeufe ?? 0) - (o.mitTest ? 0 : (g?.kaeufeTest ?? 0)), testAusgeblendet: o.mitTest ? 0 : (g?.test ?? 0) },
     reaktionenHinweis: nurKaufzeichen ? NUR_KAUFZEICHEN : null,

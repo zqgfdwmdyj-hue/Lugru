@@ -198,7 +198,13 @@ export async function runScheduledJobs(force = false) {
         if (force || due(`${t}:lugru-historie`, 4)) await step(t, "Lugru Deals: History", () => lg.lugruHistorie(t, { seiten: 5 }));
         if (force || due(`${t}:lugru-keepa`, 59)) await step(t, "Lugru Deals: Keepa-Schnappschuss", () => lg.lugruKeepaNachholen(t, 20));
         // B19.1: History in den Deal-Eingang (Ampel aus Post + Keepa-Schnappschuss, kein Push) – neueste zuerst.
-        if (force || due(`${t}:lugru-eingaenge`, 4)) await step(t, "Lugru Deals: History → Deal-Eingang", async () => (await import("@/lib/lugru-deals/historie")).lugruHistorieEingaenge(t, 500));
+        // B20.2: läuft weiter, bis alle Lugru-Deals im Deal-Eingang sind; danach alte Historie-Ampeln neu bewerten.
+        if (force || due(`${t}:lugru-eingaenge`, 4))
+          await step(t, "Lugru Deals: History → Deal-Eingang", async () => {
+            const h = await import("@/lib/lugru-deals/historie");
+            const r = await h.lugruHistorieEingaenge(t, 500);
+            if (r.neu + r.verknuepft < 500) await h.lugruHistorieNeuBewerten(t, 1000);
+          });
         if (force || due(`${t}:lugru-kategorie`, 59)) await step(t, "Lugru Deals: Kategorie aus Keepa", () => lg.lugruKategorieNachholen(t, 20));
         if (force || due(`${t}:lugru-kauf`, 1435)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
       }

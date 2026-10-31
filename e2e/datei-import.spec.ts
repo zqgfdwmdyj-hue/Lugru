@@ -2,7 +2,7 @@
 // import_status; gleiche Datei noch einmal → „bereits importiert“; Abrechnungen + Auszahlungen aus dem
 // Transaktionsbericht; importe(); abgelaufene/benutzte/unbekannte Adresse → klare Fehler; Lagergebühren; USt-Bericht
 // je Periode + OSS; falsche Art; nur Inhaber.
-import { expect, marke, mcpVerbinden, sql, test } from "./helfer";
+import { alsPerson, expect, marke, mcpVerbinden, sql, test, testdienste } from "./helfer";
 
 type Link = { import_id: string; upload_url: string; gueltig_bis: string; max_mb: number; methode: string; content_type: string };
 const berlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
@@ -108,6 +108,7 @@ test.describe("Datei-Import über den Konnektor", () => {
 
   test("Lagergebühren, falsche Art, USt-Bericht je Periode + OSS, nur Inhaber", async ({ browser, baseURL }) => {
     test.setTimeout(150_000);
+    const m = marke();
     const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
     const link = async (art: string, dateiname: string, hinweis?: string) => JSON.parse(await mcp.call("import_link", { art, dateiname, hinweis })) as Link;
     const fertig = async (id: string) => {
@@ -154,10 +155,21 @@ test.describe("Datei-Import über den Konnektor", () => {
     const oss = JSON.parse(await mcp.call("umsatzsteuer_oss", { quartal: "2026-Q3" })) as { zeilen: { land: string; netto: number }[] };
     expect(oss.zeilen).toEqual([expect.objectContaining({ land: "AT", netto: 50 })]);
 
-    // Nur Inhaber: Büro-Konto (mit Buchhaltung) bekommt das Upload-Werkzeug nicht
-    const buero = await mcpVerbinden(browser, baseURL!, "buero", { write: true });
-    const bt = await buero.tools();
-    expect(bt).not.toContain("import_link");
-    expect(bt).not.toContain("importe");
+    // Nur Inhaber: Claude verbinden darf ein Büro-Konto ohnehin nicht (rechte.spec); im Fragefeld bekommt es die
+    // Import-Werkzeuge nicht angeboten, und ein direkter Aufruf wird abgewiesen.
+    const bp = await alsPerson(browser, "buero");
+    const antworten = () => bp.locator('[data-testid="asst-msg-assistant"]').allTextContents();
+    const fragen = async (text: string) => {
+      const n = (await antworten()).length;
+      const feld = (await bp.locator('[data-testid="asst-input2"]').isVisible().catch(() => false)) ? '[data-testid="asst-input2"]' : '[data-testid="asst-input"]';
+      await bp.fill(feld, text);
+      await bp.keyboard.press("Enter");
+      await expect.poll(async () => (await antworten()).length).toBeGreaterThan(n);
+      return (await antworten()).at(-1)!;
+    };
+    await fragen(`umsatzsteuer ${m}-B1`);
+    const angeboten = (await testdienste.kiZu(`${m}-B1`))!.tools;
+    expect(angeboten.filter((t) => ["import_link", "import_status", "importe"].includes(t))).toEqual([]);
+    expect(await fragen(`werkzeug:import_link {"art":"sonstiges","dateiname":"x.txt"} ${m}-B2`)).toContain("nicht freigegeben");
   });
 });

@@ -8,6 +8,7 @@ import { einstellungenAction, eingangAction, profitPathAction } from "./actions"
 import { getSettings } from "@/lib/settings";
 import { budgetVerbraucht } from "@/lib/deal-eingang/kauf";
 import { profitPathKonfig } from "@/lib/deal-eingang/profitpath";
+import { lugruZaehlung } from "@/lib/lugru-deals/historie";
 
 // Deal-Eingang: Angebote aus WhatsApp & Co. einfügen bzw. teilen → KI erkennt → Deal-Ampel je Angebot.
 
@@ -18,6 +19,8 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const [liste, q, pp, st, verbraucht] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId), getSettings(session.tenantId), budgetVerbraucht(session.tenantId)]);
   const de = st.dealEingang;
+  // B20.2: beim Filter „Lugru Deals“ dieselbe Zählung wie Lugru-Seite und Trefferquote über der Liste.
+  const lugruZahl = sp.quelle && /^lugru deals/i.test(sp.quelle) && !sp.ampel && !sp.status ? await lugruZaehlung(session.tenantId) : null;
   const laeuft = liste.some((e) => e.pruefung === "offen" || e.pruefung === "laeuft");
   return (
     <>
@@ -53,6 +56,12 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
           {(["gruen", "gelb", "rot"] as const).map((a) => <Link key={a} href={`?ampel=${a}`}>{AMPEL_EMOJI[a]}</Link>)}
           <Link href="?status=neu">offen</Link>
         </div>
+        {lugruZahl && (
+          <div className="small" style={{ marginBottom: 6 }} data-testid="de-lugru-zaehlung">
+            Lugru Deals im Deal-Eingang mit Ampel: <strong>{lugruZahl.basis.toLocaleString("de-DE")}</strong> (🟢 {lugruZahl.gruen.toLocaleString("de-DE")} · 🟡 {lugruZahl.gelb.toLocaleString("de-DE")} · 🔴 {lugruZahl.rot.toLocaleString("de-DE")}){lugruZahl.gepostet > lugruZahl.basis ? ` von ${lugruZahl.gepostet.toLocaleString("de-DE")} gepostet` : ""}
+            {liste.length >= 60 ? " – unten die 60 neuesten." : "."}
+          </div>
+        )}
         {liste.length ? (
           <table className="table small">
             <tbody>
@@ -78,12 +87,13 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
       {q.length > 0 && (
         <section className="card card-pad" style={{ marginTop: 12 }} data-testid="de-quellen">
           <h2 style={{ marginTop: 0 }}>Trefferquote je Absender bzw. ProfitPath-Modul</h2>
+          <p className="small muted">Lugru Deals: gezählt werden Deals im Deal-Eingang mit Ampel – dieselbe Basis wie auf der Seite <Link href="/deal-eingang/lugru">Lugru Deals</Link>.</p>
           <p className="small muted">ProfitPath: Was in Discord ankommt, hängt an den Alert-Einstellungen in ProfitPath (je Alarmgruppe ein Kanal), nicht an Presets/Filtern – dort nachschärfen, wenn ein Modul wenig Grün liefert.</p>
           <table className="table small">
             <thead><tr><th>Absender / Modul</th><th>gemeldet</th><th>Angebote</th><th>grün</th><th>gekauft</th><th>verworfen</th><th>Ø ROI (Prognose)</th><th>Ø ROI real</th></tr></thead>
             <tbody>
               {q.map((x) => (
-                <tr key={x.quelle}><td><Link href={x.link} data-testid="de-quelle-link">{x.quelle}</Link>{x.testAusgeblendet ? <span className="small muted"> (ohne {x.testAusgeblendet} aus Testkanälen)</span> : null}</td><td>{x.eingaenge}</td><td>{x.angebote}</td><td>{x.gruen}</td><td>{x.gekauft}</td><td>{x.verworfen}</td><td>{x.roiPrognose !== null ? `${x.roiPrognose} %` : "–"}</td><td title="Gewinn laut sellerboard je eingesetztem EK, ab 30 Tage nach dem Kauf">{x.roiReal !== null ? `${x.roiReal} % (${x.roiRealN})` : "–"}</td></tr>
+                <tr key={x.quelle}><td><Link href={x.link} data-testid="de-quelle-link">{x.quelle}</Link>{x.testAusgeblendet ? <span className="small muted"> (ohne {x.testAusgeblendet} aus Testkanälen)</span> : null}</td><td>{x.eingaenge}{x.gepostet !== undefined && x.gepostet > x.eingaenge ? <span className="small muted" title="Zählbasis: Deals im Deal-Eingang mit Ampel; der Rest wird nachgetragen"> von {x.gepostet.toLocaleString("de-DE")} gepostet</span> : null}</td><td>{x.angebote}</td><td>{x.gruen}</td><td>{x.gekauft}</td><td>{x.verworfen}</td><td>{x.roiPrognose !== null ? `${x.roiPrognose} %` : "–"}</td><td title="Gewinn laut sellerboard je eingesetztem EK, ab 30 Tage nach dem Kauf">{x.roiReal !== null ? `${x.roiReal} % (${x.roiRealN})` : "–"}</td></tr>
               ))}
             </tbody>
           </table>

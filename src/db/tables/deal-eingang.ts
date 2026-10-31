@@ -62,6 +62,8 @@ export type DealEingangZeile = {
   merkmale?: DealMerkmale | null;
   /** Abschnitt 11: persönlicher Deal-Wert (0–100) mit Begründung und ähnlichen früheren Deals. */
   wert?: DealWert | null;
+  /** Stand der Ampel-Regeln bei der Prüfung (B20.2: 2 = Angebote gelb, Amazon > 90 % rot); fehlt = alte Regeln. */
+  regeln?: number;
 };
 
 /** Merkmale eines Deals beim Eingang (Keepa DE bzw. bestes Land + Rechnung + Kontext). null = unbekannt. */

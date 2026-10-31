@@ -60,9 +60,19 @@ describe("Lugru-History → Deal-Eingang", () => {
     expect(z.gruende[0]).toMatch(/Marge beim 90-Tage-Mittel/);
   });
 
-  it("zu viele Angebote / Amazon dauerhaft in der Buy Box → rot", () => {
-    expect(historienZeile(deal({ keepa: { ...keepa, angebote: 30 } }), DEAL_AMPEL_STANDARD, { pauschal, zielRoi: 20, jetzt }).ampel).toBe("rot");
-    expect(historienZeile(deal({ keepa: { ...keepa, amazonAnteil: 90 } }), DEAL_AMPEL_STANDARD, { pauschal, zielRoi: 20, jetzt }).ampel).toBe("rot");
+  it("B20.2: zu viele Angebote → gelb; Amazon über 90 % in der Buy Box → rot, 90 % genau → gelb", () => {
+    const viele = historienZeile(deal({ keepa: { ...keepa, angebote: 30 } }), DEAL_AMPEL_STANDARD, { pauschal, zielRoi: 20, jetzt });
+    expect(viele.ampel).toBe("gelb");
+    expect(viele.gruende.join(" ")).toMatch(/30 Angebote/);
+    expect(viele.regeln).toBe(2);
+    expect(historienZeile(deal({ keepa: { ...keepa, amazonAnteil: 95 } }), DEAL_AMPEL_STANDARD, { pauschal, zielRoi: 20, jetzt }).ampel).toBe("rot");
+    expect(historienZeile(deal({ keepa: { ...keepa, amazonAnteil: 90 } }), DEAL_AMPEL_STANDARD, { pauschal, zielRoi: 20, jetzt }).ampel).toBe("gelb");
+  });
+
+  it("B20.2: Marge aus dem Post gerundet (11,1 % statt 11,136491 %)", () => {
+    const z = historienZeile(deal({ margeProzent: 11.136491 }), DEAL_AMPEL_STANDARD, { pauschal, zielRoi: 20, jetzt });
+    expect(z.hinweise.join(" ")).toContain("Marge 11,1 %");
+    expect(z.hinweise.join(" ")).not.toContain("11,136491");
   });
 
   it("ohne Keepa-Stand höchstens gelb, ohne EK rot mit Grund", () => {

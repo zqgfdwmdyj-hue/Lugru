@@ -45,7 +45,9 @@ describe("Ampel", () => {
     expect(a.ampel).toBe("rot");
     expect(a.rot.join(" ")).toMatch(/Marge beim 90-Tage-Mittel/);
     expect(a.bestes!.land).toBe("FR");
-    expect(a.rot.join(" ")).toMatch(/18 Angebote \(mehr als 15\)/);
+    // B20.2: zu viele Angebote sind kein Rot-Grund mehr, sondern Gelb.
+    expect(a.gelb.join(" ")).toMatch(/18 Angebote \(mehr als 15\)/);
+    expect(a.rot.join(" ")).not.toMatch(/Angebote/);
     expect(a.gelb.join(" ")).toMatch(/Aktionsmuster DE: regelmäßige Tiefs um 320–360 €/);
     expect(a.begruendung.split(". ").length).toBeGreaterThanOrEqual(2);
   });
@@ -55,12 +57,21 @@ describe("Ampel", () => {
     expect(a.ampel).toBe("gruen");
     expect(a.abverkauf.empfohlen).toEqual({ von: 40, bis: 60 });
   });
-  it("Preis gerade 12 % unter dem Mittel → Gelb; Amazon 85 % → Rot", () => {
+  it("Preis gerade 12 % unter dem Mittel → Gelb; Amazon 85 % → Gelb, über 90 % → Rot (B20.2)", () => {
     const g = dealAmpel([rechneLand(markt({ land: "DE", vkEur: 52.8, vk90Eur: 60, verkaeufeMonat: 200, angebote: 3 }), geb, 20, 0)], 20, DEAL_AMPEL_STANDARD);
     expect(g.ampel).toBe("gelb");
     expect(g.gelb.join(" ")).toMatch(/12 % unter dem 90-Tage-Mittel/);
-    const r = dealAmpel([rechneLand(markt({ land: "DE", vkEur: 60, vk90Eur: 60, verkaeufeMonat: 200, angebote: 3, amazonProzent: 85 }), geb, 20, 0)], 20, DEAL_AMPEL_STANDARD);
+    const y = dealAmpel([rechneLand(markt({ land: "DE", vkEur: 60, vk90Eur: 60, verkaeufeMonat: 200, angebote: 3, amazonProzent: 85 }), geb, 20, 0)], 20, DEAL_AMPEL_STANDARD);
+    expect(y.ampel).toBe("gelb");
+    const r = dealAmpel([rechneLand(markt({ land: "DE", vkEur: 60, vk90Eur: 60, verkaeufeMonat: 200, angebote: 3, amazonProzent: 91 }), geb, 20, 0)], 20, DEAL_AMPEL_STANDARD);
     expect(r.ampel).toBe("rot");
+    const g90 = dealAmpel([rechneLand(markt({ land: "DE", vkEur: 60, vk90Eur: 60, verkaeufeMonat: 200, angebote: 3, amazonProzent: 90 }), geb, 20, 0)], 20, DEAL_AMPEL_STANDARD);
+    expect(g90.ampel).toBe("gelb");
+  });
+  it("B20.2: gute Marge, aber 40 Angebote → Gelb statt Rot (alle Quellen)", () => {
+    const a = dealAmpel([rechneLand(markt({ land: "DE", vkEur: 59.5, vk90Eur: 59.5, verkaeufeMonat: 2000, angebote: 40, amazonProzent: 10 }), geb, 20, 0)], 10, DEAL_AMPEL_STANDARD);
+    expect(a.ampel).toBe("gelb");
+    expect(a.gelb.join(" ")).toMatch(/40 Angebote/);
   });
   it("ohne Marktdaten → Rot mit Grund", () => {
     const a = dealAmpel([rechneLand(markt({ land: "DE", fehler: "Keepa kennt die ASIN hier nicht." }), geb, 20, 0)], null, DEAL_AMPEL_STANDARD);

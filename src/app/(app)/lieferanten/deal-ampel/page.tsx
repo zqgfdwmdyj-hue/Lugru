@@ -109,7 +109,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
             </table>
           </div>
           <div className="small muted">
-            Gewinn je Stück = Buy Box netto (USt des Landes) − Provision − FBA − EK netto − Nebenkosten. Ampel: Rot bei Marge unter {s.dealAmpel.zielMarge} % beim 90-Tage-Mittel, Amazon ≥ 80 % in der Buy Box, Preisverfall ≥ {s.dealAmpel.preisverfallProzent * 2} % oder mehr als {s.dealAmpel.maxAngebote} Angeboten; Grün nur ohne Warnzeichen und mit Abverkauf ≤ {s.dealAmpel.maxAbverkaufTage} Tagen. <a href="#ziele">Ziele einstellen</a>
+            Gewinn je Stück = Buy Box netto (USt des Landes) − Provision − FBA − EK netto − Nebenkosten. Ampel: Rot bei Marge unter {s.dealAmpel.zielMarge} % beim 90-Tage-Mittel, Amazon über 90 % in der Buy Box oder Preisverfall ≥ {s.dealAmpel.preisverfallProzent * 2} %; Gelb u. a. bei mehr als {s.dealAmpel.maxAngebote} Angeboten; Grün nur ohne Warnzeichen und mit Abverkauf ≤ {s.dealAmpel.maxAbverkaufTage} Tagen. <a href="#ziele">Ziele einstellen</a>
           </div>
         </section>
       )}
@@ -119,7 +119,7 @@ export default async function DealAmpelPage({ searchParams }: { searchParams: Pr
           <form action={dealAmpelEinstellungenAction} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end", marginTop: 8 }}>
             <label className="small">Zielmarge %<input name="zielMarge" defaultValue={s.dealAmpel.zielMarge} style={{ width: 70 }} /></label>
             <label className="small">Abverkauf max. Tage<input name="maxAbverkaufTage" defaultValue={s.dealAmpel.maxAbverkaufTage} style={{ width: 70 }} /></label>
-            <label className="small">Angebote max.<input name="maxAngebote" defaultValue={s.dealAmpel.maxAngebote} style={{ width: 70 }} /></label>
+            <label className="small">Angebote max. (sonst gelb)<input name="maxAngebote" defaultValue={s.dealAmpel.maxAngebote} style={{ width: 70 }} /></label>
             <label className="small">Amazon ab % gelb<input name="amazonMaxProzent" defaultValue={s.dealAmpel.amazonMaxProzent} style={{ width: 70 }} /></label>
             <label className="small">Preisverfall ab % gelb<input name="preisverfallProzent" defaultValue={s.dealAmpel.preisverfallProzent} style={{ width: 70 }} /></label>
             <label className="small">Nebenkosten €/Stück<input name="nebenkosten" defaultValue={String(s.dealAmpel.nebenkosten).replace(".", ",")} style={{ width: 80 }} /></label>

@@ -21,15 +21,19 @@ async function importStand(tenantId: string) {
     aus_app: ausApp,
     aus_discord: stand.ausDiscord,
     zuletzt_von_app: stand.appZuletzt,
-    im_deal_eingang: eingang.imEingang,
-    mit_ampel: eingang.mitAmpel,
+    zaehlbasis: "Deals im Deal-Eingang mit Ampel (gleiche Basis wie Lugru-Seite, Kachel „Anteil grün“, deal_quellen und Deal-Eingang)",
+    im_deal_eingang_mit_ampel: eingang.mitAmpel,
+    fortschritt: `${eingang.mitAmpel} / ${eingang.gesamt}`,
+    fortschritt_stand: eingang.stand ? eingang.stand.toISOString() : null,
+    ampel_im_eingang: { gruen: eingang.gruen, gelb: eingang.gelb, rot: eingang.rot, anteil_gruen_prozent: eingang.anteilGruen },
+    noch_alte_ampel_regeln: eingang.alteRegeln || undefined,
     ohne_testkanaele: eingang.gesamt,
     kanaele: stand.kanaele.length ? stand.kanaele.map((k) => ({ kanal: k.kanal, history_fertig: k.historieFertig, history_bis: k.historieBis, fehler: k.fehler ?? undefined })) : undefined,
     hinweis:
       ausApp === 0 && !stand.kanaele.length
         ? "Noch kein Weg eingerichtet – Anbindungen → „Lugru Deals“: Schlüssel für die Lugru-Deals-App (Weg A) oder Kanal-IDs mit Bot (Weg B)."
-        : eingang.imEingang < eingang.gesamt
-          ? `${eingang.gesamt - eingang.imEingang} ältere Deals werden noch in den Deal-Eingang nachgetragen (neueste zuerst, ohne Push).`
+        : eingang.mitAmpel < eingang.gesamt
+          ? `${eingang.gesamt - eingang.mitAmpel} ältere Deals werden noch in den Deal-Eingang nachgetragen (neueste zuerst, ohne Push, bis alle drin sind).`
           : undefined,
   };
 }
@@ -86,7 +90,7 @@ export const lugruStatistikTool = defineTool({
   name: "lugru_statistik",
   title: "Lugru Deals: Statistik",
   description:
-    "Statistik der Lugru-Deals im Zeitraum (Standard 90 Tage, steht in „zeitraum“): Deals und je Woche, Reaktionen (Summe, Ø je Deal, häufigste Emojis), Gruppen-Käufe (✅), Anteil grün, eigene Käufe, Ø realer ROI (sellerboard), beste Marken/Kategorien (Keepa) und Deals je Kanal; dazu „gesamt“ = alle Deals seit dem ersten Post (wie deal_quellen). Testkanäle nur mit mit_test. Nur Anzahlen, keine Namen.",
+    "Statistik der Lugru-Deals im Zeitraum (Standard 90 Tage, steht in „zeitraum“): Deals und je Woche, Reaktionen (Summe, Ø je Deal, häufigste Emojis), Gruppen-Käufe (✅), Anteil grün (Zählbasis wie Lugru-Seite und deal_quellen: Deals im Deal-Eingang mit Ampel, im Zeitraum), eigene Käufe, Ø realer ROI (sellerboard), beste Marken/Kategorien (Keepa) und Deals je Kanal; dazu „gesamt“ = alle Deals seit dem ersten Post (wie deal_quellen). Testkanäle nur mit mit_test. Nur Anzahlen, keine Namen.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE,
