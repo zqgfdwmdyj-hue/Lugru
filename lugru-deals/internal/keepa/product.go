@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/trinkfreunde/lugru-deal-discord/internal/bild"
@@ -16,6 +18,8 @@ import (
 // Spaltenindizes der csv-Reihen. Die Nummerierung stammt aus Keepas CsvType.
 const (
 	csvAmazon         = 0  // Paare: Zeit, Preis
+	csvNeuFBA         = 10 // Paare: Zeit, Preis (günstigstes FBA-Angebot)
+	csvNeuFBM         = 7  // Dreiergruppen: Zeit, Preis, Versand (günstigster Händlerversand)
 	csvBuyBoxShipping = 18 // Dreiergruppen: Zeit, Preis, Versand
 )
 
@@ -61,6 +65,18 @@ type Product struct {
 	AmazonAktuell Price
 	FBA           Price
 
+	// NeuFBAAktuell ist das günstigste neue FBA-Angebot, NeuFBMAktuell das
+	// günstigste neue Angebot mit Händlerversand (inklusive Versand).
+	// AmazonFBAAvg90 ist der niedrigere der beiden Ø-90-Tage-Preise von
+	// Amazon selbst und dem günstigsten FBA-Angebot — ohne Buy-Box-Daten
+	// (die kosten bei Keepa extra) der beste Ersatz für die Buy Box.
+	NeuFBAAktuell  Price
+	NeuFBMAktuell  Price
+	AmazonFBAAvg90 Price
+
+	// EANs sind die EANs, die Keepa zum Artikel kennt.
+	EANs []string
+
 	// Masse sind die Paketmaße, aus denen sich die EFN-Größenklasse
 	// bestimmt (siehe internal/fba). Keepa nennt für Unbekanntes -1 oder 0;
 	// beides wird hier zu 0, damit der Rest des Programms nur einen Fall
@@ -74,6 +90,12 @@ type Product struct {
 	Masse fba.Masse
 
 	BuyBoxVerlauf []Punkt
+
+	// AmazonVerlauf und FBAVerlauf sind der Preis von Amazon selbst und das
+	// günstigste FBA-Angebot. Anders als die Buy Box liefert Keepa beide
+	// ohne Aufpreis (die Buy-Box-Reihe kostet zwei Token extra).
+	AmazonVerlauf []Punkt
+	FBAVerlauf    []Punkt
 
 	MonthlySold      int
 	RankDrops30      int
@@ -97,12 +119,15 @@ type Antwort struct {
 	TokensLeft     int
 	TokensConsumed int
 	RefillIn       time.Duration
+	// RefillRate sind die Token, die je Minute nachkommen.
+	RefillRate int
 }
 
 type rohAntwort struct {
 	TokensLeft     int          `json:"tokensLeft"`
 	TokensConsumed int          `json:"tokensConsumed"`
 	RefillIn       int          `json:"refillIn"` // Millisekunden
+	RefillRate     int          `json:"refillRate"`
 	Products       []rohProdukt `json:"products"`
 	Error          *rohFehler   `json:"error"`
 }
@@ -118,6 +143,7 @@ type rohProdukt struct {
 	Brand                 string   `json:"brand"`
 	Model                 string   `json:"model"`
 	ImagesCSV             string   `json:"imagesCSV"`
+	EANList               []string `json:"eanList"`
 	MonthlySold           int      `json:"monthlySold"`
 	ReferralFeePercentage *float64 `json:"referralFeePercentage"`
 	FBAFees               *struct {
@@ -148,7 +174,16 @@ func ParseAntwort(roh []byte) (Antwort, error) {
 		return Antwort{}, ErrNichtGefunden
 	}
 
-	rp := r.Products[0]
+	return Antwort{
+		Produkt:        produktAus(r.Products[0]),
+		TokensLeft:     r.TokensLeft,
+		TokensConsumed: r.TokensConsumed,
+		RefillIn:       time.Duration(r.RefillIn) * time.Millisecond,
+		RefillRate:     r.RefillRate,
+	}, nil
+}
+
+func produktAus(rp rohProdukt) Product {
 	p := Product{
 		ASIN:             rp.ASIN,
 		Titel:            rp.Title,
@@ -159,6 +194,8 @@ func ParseAntwort(roh []byte) (Antwort, error) {
 		RankDrops30:      -1,
 		ProvisionProzent: rp.ReferralFeePercentage,
 		BuyBoxVerlauf:    buyBoxVerlauf(rp.CSV),
+		AmazonVerlauf:    paarVerlauf(rp.CSV, csvAmazon),
+		FBAVerlauf:       paarVerlauf(rp.CSV, csvNeuFBA),
 		Masse: fba.Masse{
 			LaengeMM: mass(rp.PackageLength),
 			BreiteMM: mass(rp.PackageWidth),
@@ -174,14 +211,45 @@ func ParseAntwort(roh []byte) (Antwort, error) {
 		p.BuyBoxAvg90 = ausReihe(rp.Stats.Avg90, csvBuyBoxShipping)
 		p.BuyBoxAktuell = ausReihe(rp.Stats.Current, csvBuyBoxShipping)
 		p.AmazonAktuell = ausReihe(rp.Stats.Current, csvAmazon)
+		p.NeuFBAAktuell = ausReihe(rp.Stats.Current, csvNeuFBA)
+		p.NeuFBMAktuell = ausReihe(rp.Stats.Current, csvNeuFBM)
+		p.AmazonFBAAvg90 = niedriger(ausReihe(rp.Stats.Avg90, csvAmazon), ausReihe(rp.Stats.Avg90, csvNeuFBA))
 	}
+	for _, e := range rp.EANList {
+		if e = strings.TrimSpace(e); e != "" {
+			p.EANs = append(p.EANs, e)
+		}
+	}
+	return p
+}
 
-	return Antwort{
-		Produkt:        p,
-		TokensLeft:     r.TokensLeft,
-		TokensConsumed: r.TokensConsumed,
-		RefillIn:       time.Duration(r.RefillIn) * time.Millisecond,
-	}, nil
+// niedriger ist der kleinere zweier Preise; fehlt einer, gilt der andere.
+func niedriger(a, b Price) Price {
+	switch {
+	case !a.OK:
+		return b
+	case !b.OK:
+		return a
+	case b.Cents < a.Cents:
+		return b
+	}
+	return a
+}
+
+// Einkaufspreis ist der günstigste Preis, zu dem man den Artikel gerade neu
+// kaufen kann: bei Amazon selbst, beim günstigsten FBA-Händler oder beim
+// günstigsten Händler mit eigenem Versand (inklusive Versand).
+func (p Product) Einkaufspreis() (Price, string) {
+	best, wer := Price{}, ""
+	for _, k := range []struct {
+		p   Price
+		wer string
+	}{{p.AmazonAktuell, "Amazon"}, {p.NeuFBAAktuell, "FBA-Händler"}, {p.NeuFBMAktuell, "Händler"}} {
+		if k.p.OK && k.p.Cents > 0 && (!best.OK || k.p.Cents < best.Cents) {
+			best, wer = k.p, k.wer
+		}
+	}
+	return best, wer
 }
 
 // mass macht aus Keepas Ganzzahl ein Maß. Keepa schreibt für "nicht
@@ -234,4 +302,68 @@ func buyBoxVerlauf(csv [][]int) []Punkt {
 		punkte = append(punkte, Punkt{Minute: minute, Gesamt: money.Cents(p + versand)})
 	}
 	return punkte
+}
+
+// paarVerlauf liest eine Reihe aus Paaren (Zeit, Preis). Ein negativer
+// Preis heißt „kein Angebot“ und bleibt als Lücke (OK false) erhalten,
+// damit ein ausverkaufter Zeitraum nicht den letzten Preis weiterführt.
+func paarVerlauf(csv [][]int, index int) []Punkt {
+	if index >= len(csv) {
+		return nil
+	}
+	roh := csv[index]
+	var punkte []Punkt
+	for i := 0; i+1 < len(roh); i += 2 {
+		p := roh[i+1]
+		if p < 0 {
+			p = -1
+		}
+		punkte = append(punkte, Punkt{Minute: roh[i], Gesamt: money.Cents(p)})
+	}
+	return punkte
+}
+
+// Verkaufsverlauf ist der Preis, zu dem sich der Artikel verkaufen ließ: der
+// Buy-Box-Verlauf, wenn Keepa ihn geliefert hat, sonst zu jedem Zeitpunkt
+// der niedrigere von Amazon-Preis und günstigstem FBA-Angebot — gegen
+// diese beiden tritt ein FBA-Verkäufer an, und aus ihnen ergibt sich meist
+// die Buy Box.
+func (p Product) Verkaufsverlauf() []Punkt {
+	if len(p.BuyBoxVerlauf) > 0 {
+		return p.BuyBoxVerlauf
+	}
+	type ereignis struct {
+		minute int
+		reihe  int
+		preis  money.Cents
+	}
+	var alle []ereignis
+	for r, reihe := range [][]Punkt{p.AmazonVerlauf, p.FBAVerlauf} {
+		for _, pt := range reihe {
+			alle = append(alle, ereignis{pt.Minute, r, pt.Gesamt})
+		}
+	}
+	sort.SliceStable(alle, func(i, j int) bool { return alle[i].minute < alle[j].minute })
+	stand := [2]money.Cents{-1, -1}
+	var out []Punkt
+	for i, e := range alle {
+		stand[e.reihe] = e.preis
+		if i+1 < len(alle) && alle[i+1].minute == e.minute {
+			continue
+		}
+		best := money.Cents(-1)
+		for _, v := range stand {
+			if v >= 0 && (best < 0 || v < best) {
+				best = v
+			}
+		}
+		if best < 0 {
+			continue
+		}
+		if n := len(out); n > 0 && out[n-1].Gesamt == best {
+			continue
+		}
+		out = append(out, Punkt{Minute: e.minute, Gesamt: best})
+	}
+	return out
 }

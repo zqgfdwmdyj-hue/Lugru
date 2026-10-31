@@ -51,8 +51,8 @@ Es gibt drei Wege, die du je nach Werkzeugkasten wählst:
 ### Aus dem Release-ZIP *(empfohlen, kein Go-Toolchain nötig)*
 
 ```powershell
-# Im Browser: Release-ZIP "lugru-deals-windows.zip" aus
-# https://github.com/trinkfreunde/lugru-deal-discord/releases
+# Im Browser: Release-ZIP "LugruDeals-Windows-x64.zip" (bzw. -ARM64.zip) aus
+# https://github.com/zqgfdwmdyj-hue/Lugru/releases (Releases "Lugru Deals …")
 # herunterladen, in einem beliebigen Ordner entpacken.
 # NICHT "Source code (zip)" nehmen — darin fehlt die EXE.
 # Die ZIP wirklich entpacken (Rechtsklick → "Alle extrahieren…"); install.cmd
@@ -64,6 +64,17 @@ Es gibt drei Wege, die du je nach Werkzeugkasten wählst:
 # Option B — PowerShell, schoener Output:
 Expand-Archive .\lugru-deals-windows.zip -DestinationPath "$env:LOCALAPPDATA\Programs\LuGruDeals"
 & "$env:LOCALAPPDATA\Programs\LuGruDeals\install.ps1" -StartNow
+```
+
+### Update mit einem Befehl
+
+Ist Lugru Deals einmal installiert, holt **`update-github.cmd`** im
+Installationsordner (Doppelklick) die neueste Version von GitHub — passend
+für x64 oder ARM64 —, sichert die Datenbank, tauscht die EXE und startet neu.
+In PowerShell dasselbe:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\LuGruDeals\update-github.ps1"
 ```
 
 Drei Schritte, kein Go, kein Git, kein `make`. Den Keepa-Key trägst du

@@ -117,12 +117,13 @@ func (srv *Server) monitorAnkauf(ctx context.Context, p store.MonitorProdukt, li
 
 	sperre := srv.monitorSperre()
 	if !test {
-		if p.BewertetShop == bester.Shop && p.BewertetCent == bester.Gesamt && jetzt.Sub(p.BewertetAm) < sperre {
+		if srv.store.SchonGemeldet(bewertetSchluessel(p, bester), jetzt.Add(-sperre)) {
 			b.Status = "unverändert: " + kennzahlen
 			return
 		}
+		_ = srv.store.Gemeldet(bewertetSchluessel(p, bester), jetzt)
 		_ = srv.store.MonitorBewertet(p.ID, bester.Shop, bester.Gesamt, jetzt)
-		if g, ok := srv.store.MonitorZuletztGepostet(p.ID, jetzt.Add(-sperre)); ok && bester.Gesamt >= g.Gesamt {
+		if g, ok := srv.store.MonitorZuletztGepostet(p.ID, p.Modus, jetzt.Add(-srv.postSperre(p))); ok && bester.Gesamt >= g.Gesamt {
 			b.Status = fmt.Sprintf("schon gepostet (%s bei %s um %s)", g.Gesamt.Euro(), g.Shop, g.Zeit.Local().Format("15:04"))
 			return
 		}

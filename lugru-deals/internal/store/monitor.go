@@ -68,9 +68,11 @@ type MonitorProdukt struct {
 	BewertetCent money.Cents
 	BewertetAm   time.Time
 
-	// Modus ist ModusAmazon (Gewinn gegen den Verkaufspreis bei Amazon, über
-	// Keepa) oder ModusAnkauf (Gewinn gegen einen festen Ankaufspreis, ohne
-	// Keepa). Im Ankaufs-Modus ist MaxEK der Preiswecker.
+	// Modus sind die Verkaufswege, gegen die gerechnet wird, als Liste mit
+	// Komma: ModusAmazon (Verkaufspreis bei Amazon über Keepa), ModusAnkauf
+	// (fester Ankaufspreis) und ModusEbay (Marktpreis bei eBay). Ein Produkt
+	// kann mehrere zugleich haben; jeder wird für sich bewertet und gepostet.
+	// Mit Ankauf ist MaxEK der Preiswecker.
 	Modus  string
 	Ankauf money.Cents
 	// Hinweis steht im Ankaufs-Post, etwa „1180 € ab 6 Stk“.
@@ -85,6 +87,16 @@ type MonitorProdukt struct {
 	Stichworte string
 	// Notiz ist nur für euch, etwa die Ankäufer aus dem Listen-Import.
 	Notiz string
+
+	// Einkauf sind die Amazon-Märkte, auf denen eingekauft wird, als Liste
+	// mit Komma („DE,FR,IT,ES“). Leer heißt: Einkauf bei den Shops von
+	// billiger.de (URL ist dann die Preisliste). Sonst ist URL die
+	// Produktseite bei Amazon und die Preise kommen von Keepa.
+	Einkauf string
+
+	// Herkunft ist HerkunftKeepaDeal, wenn die Keepa-Suche nach Preisstürzen
+	// das Produkt angelegt hat; leer bei allem, was von Hand kam.
+	Herkunft string
 
 	// Nur während einer Prüfung im Modus eBay gesetzt, nicht gespeichert:
 	// Marktpreis, aus wie vielen Angeboten er stammt, und die Suche bei eBay.
@@ -116,23 +128,61 @@ const (
 	ModusEbay = "ebay"
 )
 
-// IstAnkauf sagt, ob das Produkt im Ankaufs-Modus läuft.
-func (p MonitorProdukt) IstAnkauf() bool { return p.Modus == ModusAnkauf }
+// AlleModi sind die Verkaufswege in fester Reihenfolge.
+var AlleModi = []string{ModusAmazon, ModusAnkauf, ModusEbay}
 
-func modusOderAmazon(m string) string {
-	switch m {
-	case ModusAnkauf, ModusEbay:
-		return m
+// ModiNormal macht aus einer Liste von Verkaufswegen (mit Komma) die
+// geordnete Liste ohne Doppelte und Unbekanntes; leer heißt Amazon.
+func ModiNormal(roh ...string) string {
+	gewaehlt := map[string]bool{}
+	for _, r := range roh {
+		for _, m := range strings.Split(r, ",") {
+			gewaehlt[strings.TrimSpace(strings.ToLower(m))] = true
+		}
 	}
-	return ModusAmazon
+	var out []string
+	for _, m := range AlleModi {
+		if gewaehlt[m] {
+			out = append(out, m)
+		}
+	}
+	if len(out) == 0 {
+		return ModusAmazon
+	}
+	return strings.Join(out, ",")
 }
 
-// IstEbay sagt, ob das Produkt gegen den eBay-Preis rechnet.
-func (p MonitorProdukt) IstEbay() bool { return p.Modus == ModusEbay }
+func modusOderAmazon(m string) string { return ModiNormal(m) }
+
+// Modi sind die Verkaufswege des Produkts.
+func (p MonitorProdukt) Modi() []string { return strings.Split(ModiNormal(p.Modus), ",") }
+
+func (p MonitorProdukt) hatModus(m string) bool {
+	for _, x := range p.Modi() {
+		if x == m {
+			return true
+		}
+	}
+	return false
+}
+
+// IstAmazon sagt, ob gegen den Verkaufspreis bei Amazon gerechnet wird.
+func (p MonitorProdukt) IstAmazon() bool { return p.hatModus(ModusAmazon) }
+
+// IstAnkauf sagt, ob gegen einen Ankaufspreis gerechnet wird.
+func (p MonitorProdukt) IstAnkauf() bool { return p.hatModus(ModusAnkauf) }
+
+// IstEbay sagt, ob gegen den eBay-Preis gerechnet wird.
+func (p MonitorProdukt) IstEbay() bool { return p.hatModus(ModusEbay) }
 
 // IstFestpreis: Ankauf und eBay rechnen beide gegen einen festen Erlös statt
-// über Keepa und posten im selben Format.
-func (p MonitorProdukt) IstFestpreis() bool { return p.IstAnkauf() || p.IstEbay() }
+// über Keepa und posten im selben Format. Gilt nur für eine Prüfung mit
+// genau einem Verkaufsweg — so läuft jede Bewertung (siehe Modi).
+func (p MonitorProdukt) IstFestpreis() bool { return p.Modus == ModusAnkauf || p.Modus == ModusEbay }
+
+// IstAmazonQuelle sagt, ob bei Amazon eingekauft wird statt bei den Shops
+// von billiger.de.
+func (p MonitorProdukt) IstAmazonQuelle() bool { return strings.TrimSpace(p.Einkauf) != "" }
 
 // ShopListe liefert die Shops als bereinigte Liste.
 func ShopListe(roh string) []string {
@@ -178,7 +228,7 @@ func shopSchluessel(s string) string {
 
 const monitorProduktSpalten = `id, name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv,
 	angelegt_am, geprueft_am, status, bester_shop, bester_cent, bewertet_shop, bewertet_cent, bewertet_am,
-	modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz`
+	modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz, einkauf, herkunft`
 
 func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var p MonitorProdukt
@@ -186,7 +236,7 @@ func scanMonitorProdukt(z scanner) (MonitorProdukt, error) {
 	var angelegt, geprueft, bewertet string
 	if err := z.Scan(&p.ID, &p.Name, &p.URL, &p.EAN, &p.ASIN, &p.Maerkte, &p.MaxEK, &p.Shops, &verz, &aktiv,
 		&angelegt, &geprueft, &p.Status, &p.BesterShop, &p.BesterCent, &p.BewertetShop, &p.BewertetCent, &bewertet,
-		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie, &p.Prio, &p.Stichworte, &p.Notiz); err != nil {
+		&p.Modus, &p.Ankauf, &p.Hinweis, &p.Kategorie, &p.Prio, &p.Stichworte, &p.Notiz, &p.Einkauf, &p.Herkunft); err != nil {
 		return MonitorProdukt{}, err
 	}
 	p.AuchVerzoegert, p.Aktiv = verz != 0, aktiv != 0
@@ -207,28 +257,24 @@ func jaNein(b bool) int {
 // (Amazon, Ankauf) nur einmal.
 func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 	var vorhanden int64
-	// Dasselbe Produkt darf je Art einmal da sein: als Ankauf und als
-	// Amazon-Deal zugleich, jedes mit eigenen Zahlen und eigener Sperrzeit.
-	err := s.db.QueryRow(`SELECT id FROM monitor_produkte WHERE url = ? AND modus = ?`, p.URL, modusOderAmazon(p.Modus)).Scan(&vorhanden)
+	// Jedes Produkt gibt es einmal; weitere Verkaufswege werden dort
+	// angehakt statt doppelt angelegt.
+	err := s.db.QueryRow(`SELECT id FROM monitor_produkte WHERE url = ?`, p.URL).Scan(&vorhanden)
 	if err == nil {
-		art := "Amazon"
-		if modusOderAmazon(p.Modus) == ModusAnkauf {
-			art = "Ankauf"
-		}
-		return 0, fmt.Errorf("dieses Produkt wird als %s schon beobachtet", art)
+		return 0, fmt.Errorf("dieses Produkt wird schon beobachtet — weitere Verkaufswege bitte dort unter „Bearbeiten“ anhaken")
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return 0, err
 	}
 	erg, err := s.db.Exec(`
 		INSERT INTO monitor_produkte (name, url, ean, asin, maerkte, max_ek_cent, shops, auch_verzoegert, aktiv, angelegt_am,
-			modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			modus, ankauf_cent, hinweis, kategorie, prio, stichworte, notiz, einkauf, herkunft)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		strings.TrimSpace(p.Name), p.URL, strings.TrimSpace(p.EAN), strings.ToUpper(strings.TrimSpace(p.ASIN)),
 		p.Maerkte, int64(p.MaxEK), strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert), jaNein(p.Aktiv),
 		time.Now().UTC().Format(time.RFC3339),
 		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie),
-		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz))
+		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz), strings.TrimSpace(p.Einkauf), p.Herkunft)
 	if err != nil {
 		return 0, fmt.Errorf("store: Monitor-Produkt nicht anlegbar: %w", err)
 	}
@@ -241,15 +287,23 @@ func (s *Store) MonitorProduktAnlegen(p MonitorProdukt) (int64, error) {
 func (s *Store) MonitorProduktAendern(p MonitorProdukt) error {
 	_, err := s.db.Exec(`
 		UPDATE monitor_produkte SET name = ?, asin = ?, maerkte = ?, max_ek_cent = ?, shops = ?, auch_verzoegert = ?,
-			modus = ?, ankauf_cent = ?, hinweis = ?, kategorie = ?, prio = ?, stichworte = ?, notiz = ?,
+			modus = ?, ankauf_cent = ?, hinweis = ?, kategorie = ?, prio = ?, stichworte = ?, notiz = ?, einkauf = ?,
 			bewertet_shop = '', bewertet_cent = 0, bewertet_am = ''
 		WHERE id = ?`,
 		strings.TrimSpace(p.Name), strings.ToUpper(strings.TrimSpace(p.ASIN)), p.Maerkte, int64(p.MaxEK),
 		strings.TrimSpace(p.Shops), jaNein(p.AuchVerzoegert),
 		modusOderAmazon(p.Modus), int64(p.Ankauf), strings.TrimSpace(p.Hinweis), strings.TrimSpace(p.Kategorie),
-		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz), p.ID)
+		prioOderNormal(p.Prio), strings.TrimSpace(p.Stichworte), strings.TrimSpace(p.Notiz), strings.TrimSpace(p.Einkauf), p.ID)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`DELETE FROM monitor_gemeldet WHERE schluessel LIKE ?`, BewertetPraefix(p.ID)+"%")
 	return err
 }
+
+// BewertetPraefix beginnt die Schlüssel, unter denen sich der Monitor je
+// Verkaufsweg den zuletzt bewerteten Einkauf merkt (siehe Gemeldet).
+func BewertetPraefix(id int64) string { return fmt.Sprintf("bewertet:%d:", id) }
 
 func (s *Store) MonitorProduktAktiv(id int64, aktiv bool) error {
 	_, err := s.db.Exec(`UPDATE monitor_produkte SET aktiv = ? WHERE id = ?`, jaNein(aktiv), id)
@@ -424,6 +478,8 @@ type MonitorTreffer struct {
 	Ergebnis     string
 	DealID       int64
 	Zeit         time.Time
+	// Modus ist der Verkaufsweg, mit dem bewertet wurde.
+	Modus string
 }
 
 func (s *Store) MonitorTrefferAnlegen(t MonitorTreffer) error {
@@ -431,10 +487,10 @@ func (s *Store) MonitorTrefferAnlegen(t MonitorTreffer) error {
 		t.Zeit = time.Now()
 	}
 	_, err := s.db.Exec(`
-		INSERT INTO monitor_treffer (produkt_id, titel, shop, gesamt_cent, gewinn_cent, marge_prozent, sales, gepostet, ergebnis, deal_id, zeit)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO monitor_treffer (produkt_id, titel, shop, gesamt_cent, gewinn_cent, marge_prozent, sales, gepostet, ergebnis, deal_id, zeit, modus)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.ProduktID, t.Titel, t.Shop, int64(t.Gesamt), int64(t.Gewinn), t.MargeProzent, t.Sales, jaNein(t.Gepostet),
-		t.Ergebnis, t.DealID, t.Zeit.UTC().Format(time.RFC3339))
+		t.Ergebnis, t.DealID, t.Zeit.UTC().Format(time.RFC3339), t.Modus)
 	if err != nil {
 		return err
 	}
@@ -471,15 +527,26 @@ func (s *Store) MonitorLetzteTreffer(n int) ([]MonitorTreffer, error) {
 // MonitorZuletztGepostet liefert den letzten geposteten Deal eines Produkts
 // seit seit. Preissturz-Meldungen zählen nicht: sie gehen in einen eigenen
 // Channel und dürfen den eigentlichen Deal nicht sperren.
-func (s *Store) MonitorZuletztGepostet(produktID int64, seit time.Time) (MonitorTreffer, bool) {
+//
+// modus ist der Verkaufsweg: ein Ankaufs-Post sperrt keinen Amazon-Post
+// desselben Produkts. Ältere Einträge ohne Verkaufsweg zählen für jeden.
+func (s *Store) MonitorZuletztGepostet(produktID int64, modus string, seit time.Time) (MonitorTreffer, bool) {
 	var t MonitorTreffer
 	var zeit string
 	err := s.db.QueryRow(`SELECT shop, gesamt_cent, zeit FROM monitor_treffer
-		WHERE produkt_id = ? AND gepostet = 1 AND zeit >= ? AND ergebnis NOT LIKE 'Preissturz%' ORDER BY id DESC LIMIT 1`,
-		produktID, seit.UTC().Format(time.RFC3339)).Scan(&t.Shop, &t.Gesamt, &zeit)
+		WHERE produkt_id = ? AND gepostet = 1 AND zeit >= ? AND ergebnis NOT LIKE 'Preissturz%' AND (modus = ? OR modus = '')
+		ORDER BY id DESC LIMIT 1`,
+		produktID, seit.UTC().Format(time.RFC3339), modus).Scan(&t.Shop, &t.Gesamt, &zeit)
 	if err != nil {
 		return MonitorTreffer{}, false
 	}
 	t.Zeit, _ = time.Parse(time.RFC3339, zeit)
 	return t, true
+}
+
+// MonitorProduktZuURL liefert das Produkt mit dieser Preisliste bzw.
+// Amazon-Seite, falls es schon beobachtet wird.
+func (s *Store) MonitorProduktZuURL(url string) (MonitorProdukt, bool) {
+	p, err := scanMonitorProdukt(s.db.QueryRow(`SELECT `+monitorProduktSpalten+` FROM monitor_produkte WHERE url = ? ORDER BY id LIMIT 1`, url))
+	return p, err == nil
 }

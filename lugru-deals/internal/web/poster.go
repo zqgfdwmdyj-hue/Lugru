@@ -62,6 +62,15 @@ func (p posterEintrag) posterText() string {
 	return "@" + p.Name
 }
 
+// posterVorwahl ist der Poster, der im Deal vorausgewählt ist: der des
+// angemeldeten Benutzers, sonst der zuletzt in diesem Browser gewählte.
+func posterVorwahl(r *http.Request) string {
+	if wer, ok := angemeldet(r); ok && wer.Poster != "" {
+		return wer.Poster
+	}
+	return posterAusCookie(r)
+}
+
 func posterAusCookie(r *http.Request) string {
 	if c, err := r.Cookie(posterCookie); err == nil {
 		return c.Value

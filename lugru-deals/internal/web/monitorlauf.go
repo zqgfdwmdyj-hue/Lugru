@@ -85,11 +85,14 @@ func (srv *Server) StarteMonitor(ctx context.Context) {
 				log.Printf("Monitor: %v", err)
 				continue
 			}
+			// Die fälligen ASINs der Amazon-Liste je Markt in Stapeln holen.
+			srv.amazonVorladen(ctx, faellig)
 			for i, p := range faellig {
 				if ctx.Err() != nil {
 					return
 				}
-				if i > 0 && !warteKurz(ctx, monitorPause) {
+				// Die Pause schont billiger.de; ASINs kommen aus dem Cache.
+				if i > 0 && !p.IstAmazonQuelle() && !warteKurz(ctx, monitorPause) {
 					return
 				}
 				b := srv.monitorPruefe(ctx, p, false)
@@ -122,6 +125,9 @@ func (srv *Server) monitorIntervall() time.Duration {
 
 // prioIntervall ist die Prüfzeit eines Produkts nach seiner Prio-Stufe.
 func (srv *Server) prioIntervall(p store.MonitorProdukt) time.Duration {
+	if p.IstAmazonQuelle() {
+		return srv.amazonIntervall(p)
+	}
 	sek := 0
 	switch p.Prio {
 	case store.PrioHoch:
@@ -140,6 +146,24 @@ func (srv *Server) prioIntervall(p store.MonitorProdukt) time.Duration {
 
 func (srv *Server) monitorSperre() time.Duration {
 	return time.Duration(srv.store.EinstellungZahl(store.SchluesselMonitorSperre)) * time.Minute
+}
+
+// postSperre ist, wie lange ein geposteter Deal nur dann erneut kommt, wenn
+// er günstiger wird. Bei der Amazon-ASIN-Liste sind das sieben Tage: dort
+// gibt es nur bei echten Preissenkungen einen Ping.
+func (srv *Server) postSperre(p store.MonitorProdukt) time.Duration {
+	s := srv.monitorSperre()
+	if p.IstAmazonQuelle() && s < 7*24*time.Hour {
+		s = 7 * 24 * time.Hour
+	}
+	return s
+}
+
+// bewertetSchluessel merkt sich je Verkaufsweg den zuletzt bewerteten
+// Einkauf: ist er unverändert, wird innerhalb der Sperrzeit nicht neu
+// gerechnet (und Keepa nicht neu gefragt).
+func bewertetSchluessel(p store.MonitorProdukt, a billiger.Angebot) string {
+	return store.BewertetPraefix(p.ID) + p.Modus + ":" + a.Shop + ":" + a.Gesamt.String()
 }
 
 func (srv *Server) monitorClient() *http.Client {
@@ -201,11 +225,19 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 		_ = srv.store.MonitorGeprueft(p.ID, jetzt, b.Status, shop, cent, name, ean, asin)
 	}()
 
-	liste, err := billiger.Hole(ctx, srv.monitorClient(), p.URL)
+	var liste billiger.Preisliste
+	var err error
+	if p.IstAmazonQuelle() {
+		liste, err = srv.amazonListe(ctx, p)
+	} else {
+		liste, err = billiger.Hole(ctx, srv.monitorClient(), p.URL)
+	}
 	liste.Angebote = srv.rabatteAnwenden(liste.Angebote)
 	if err != nil {
 		b.Status = "Fehler: " + sicherFehlertext(err.Error())
-		if !test {
+		if p.IstAmazonQuelle() {
+			b.Status = sicherFehlertext(err.Error())
+		} else if !test {
 			srv.adminMelden(ctx, "billiger", "⚠️ Monitor: billiger.de antwortet nicht wie erwartet ("+p.Name+"): "+sicherFehlertext(err.Error()))
 		}
 		return b
@@ -233,7 +265,7 @@ func (srv *Server) monitorPruefe(ctx context.Context, p store.MonitorProdukt, te
 		_ = srv.store.MonitorPreisMerken(p.ID, bester.Gesamt, bester.Shop, jetzt)
 		srv.preissturzPruefen(ctx, p, liste, bester, jetzt)
 	}
-	b = srv.monitorAngebot(ctx, p, liste, bester, test, jetzt)
+	b = srv.monitorAngebotAlle(ctx, p, liste, bester, test, jetzt)
 	if b.Angebot == nil {
 		b.Angebot = &bester
 	}
@@ -291,13 +323,14 @@ func (srv *Server) monitorAngebot(ctx context.Context, p store.MonitorProdukt, l
 		// Dasselbe Angebot wurde eben schon bewertet: Keepa nicht erneut
 		// fragen. Nach Ablauf der Sperre wird neu bewertet — der
 		// Verkaufspreis bei Amazon kann sich inzwischen geändert haben.
-		if p.BewertetShop == bester.Shop && p.BewertetCent == bester.Gesamt && jetzt.Sub(p.BewertetAm) < sperre {
+		if srv.store.SchonGemeldet(bewertetSchluessel(p, bester), jetzt.Add(-sperre)) {
 			b.Status = fmt.Sprintf("unverändert: %s bei %s", bester.Gesamt.Euro(), bester.Shop)
 			return b
 		}
 		// Schon gepostet und seitdem nicht günstiger geworden.
-		if g, ok := srv.store.MonitorZuletztGepostet(p.ID, jetzt.Add(-sperre)); ok && bester.Gesamt >= g.Gesamt {
-			b.Status = fmt.Sprintf("schon gepostet (%s bei %s um %s)", g.Gesamt.Euro(), g.Shop, g.Zeit.Local().Format("15:04"))
+		if g, ok := srv.store.MonitorZuletztGepostet(p.ID, p.Modus, jetzt.Add(-srv.postSperre(p))); ok && bester.Gesamt >= g.Gesamt {
+			b.Status = fmt.Sprintf("schon gepostet (%s bei %s am %s)", g.Gesamt.Euro(), g.Shop, g.Zeit.Local().Format("02.01. 15:04"))
+			_ = srv.store.Gemeldet(bewertetSchluessel(p, bester), jetzt)
 			_ = srv.store.MonitorBewertet(p.ID, bester.Shop, bester.Gesamt, jetzt)
 			return b
 		}
@@ -336,6 +369,7 @@ func (srv *Server) monitorAngebot(ctx context.Context, p store.MonitorProdukt, l
 	b.Gewinn, b.Marge, b.Sales = leit.Ergebnis.Gewinn, leit.Ergebnis.MargeProzent, leit.Sales
 	b.Channels = srv.monitorChannels(p, bester.Shop, b)
 	if !test {
+		_ = srv.store.Gemeldet(bewertetSchluessel(p, bester), jetzt)
 		_ = srv.store.MonitorBewertet(p.ID, bester.Shop, bester.Gesamt, jetzt)
 	}
 
@@ -405,7 +439,7 @@ func (srv *Server) monitorProtokoll(p store.MonitorProdukt, titel string, a bill
 	t := store.MonitorTreffer{
 		ProduktID: p.ID, Titel: titel, Shop: a.Shop, Gesamt: a.Gesamt,
 		Gewinn: b.Gewinn, MargeProzent: b.Marge, Sales: b.Sales,
-		Gepostet: gepostet, Ergebnis: ergebnis,
+		Gepostet: gepostet, Ergebnis: ergebnis, Modus: p.Modus,
 	}
 	if ergebnis == "" {
 		t.Ergebnis = b.Status
@@ -446,12 +480,19 @@ func monitorFormularWerte(p store.MonitorProdukt, liste billiger.Preisliste, a b
 	if a.Status == billiger.Verzoegert && a.Lieferzeit != "" {
 		notiz += " · Lieferzeit: " + a.Lieferzeit
 	}
+	einkauf, quelle, quellURL := liste.URL, marketplace.DE, liste.URL
+	if m, ok := amazonMarktAusShop(a.Shop); ok {
+		// Einkauf bei Amazon: der Link geht auf die Produktseite dieses
+		// Marktes, die Vorsteuer ist die dieses Landes.
+		einkauf, quelle, quellURL = m.ProductURL(asin), m.Code, ""
+		notiz = einkaufsText(a)
+	}
 	w := url.Values{
-		"einkaufslink":    {liste.URL},
-		"link_bestaetigt": {liste.URL},
-		"quell_url":       {liste.URL},
+		"einkaufslink":    {einkauf},
+		"link_bestaetigt": {einkauf},
+		"quell_url":       {quellURL},
 		"asin":            {asin},
-		"quellmarkt":      {string(marketplace.DE)},
+		"quellmarkt":      {string(quelle)},
 		"ek":              {a.Effektiv().String()},
 		"ek_art":          {"brutto"},
 		"ek_notiz":        {notiz},
@@ -551,4 +592,50 @@ func (srv *Server) asinZuEAN(ctx context.Context, ean string, m marketplace.Mark
 func idAusPfad(r *http.Request) int64 {
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	return id
+}
+
+// modusName ist der Verkaufsweg, wie er im Status steht.
+func modusName(m string) string {
+	switch m {
+	case store.ModusAnkauf:
+		return "Ankauf"
+	case store.ModusEbay:
+		return "eBay"
+	}
+	return "Amazon"
+}
+
+// monitorAngebotAlle bewertet ein Angebot für jeden Verkaufsweg des
+// Produkts einzeln — Amazon, Ankauf und eBay können alle angehakt sein, ohne
+// dass das Produkt mehrfach angelegt werden muss. Jeder Weg hat seine eigene
+// Sperre und seine eigenen Regeln (Regel-Art).
+func (srv *Server) monitorAngebotAlle(ctx context.Context, p store.MonitorProdukt, liste billiger.Preisliste, bester billiger.Angebot, test bool, jetzt time.Time) monitorBericht {
+	modi := p.Modi()
+	if len(modi) == 1 {
+		p.Modus = modi[0]
+		return srv.monitorAngebot(ctx, p, liste, bester, test, jetzt)
+	}
+	var gesamt monitorBericht
+	var status []string
+	haupt := -1
+	for i, m := range modi {
+		pm := p
+		pm.Modus = m
+		b := srv.monitorAngebot(ctx, pm, liste, bester, test, jetzt)
+		status = append(status, modusName(m)+": "+b.Status)
+		// Für Anzeige und Test zählt der erste Weg, der gepostet wurde
+		// oder würde — sonst der erste überhaupt.
+		if haupt < 0 || (len(b.Channels) > 0 && len(gesamt.Channels) == 0) {
+			haupt = i
+			gepostet := gesamt.Gepostet
+			gesamt = b
+			gesamt.Gepostet = gepostet
+		}
+		gesamt.Gepostet = gesamt.Gepostet || b.Gepostet
+		if gesamt.asin == "" {
+			gesamt.asin = b.asin
+		}
+	}
+	gesamt.Status = strings.Join(status, " · ")
+	return gesamt
 }

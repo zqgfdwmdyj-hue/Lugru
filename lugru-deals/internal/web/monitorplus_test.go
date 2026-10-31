@@ -253,7 +253,7 @@ func TestDirekterShopLink(t *testing.T) {
 	kurz := post[i+len("http://91.99.29.165:8080/go/") : i+len("http://91.99.29.165:8080/go/")+8]
 
 	// Der Link geht auch ohne Anmeldung, und zwar zum Shop.
-	h := MitPasswort(a.srv.Routen(), "", "geheim")
+	h := MitPasswort(a.srv.Routen(), "", "geheim", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/go/"+kurz, nil))
 	if w.Code != http.StatusFound || w.Header().Get("Location") != "https://cmodul.solutenetwork.com/cmodul?mid=otto" {

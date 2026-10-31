@@ -29,6 +29,9 @@ const (
 	// Öffentliche Adresse dieses Servers für die direkten Shop-Links,
 	// etwa "http://91.99.29.165:8080". Leer: kein direkter Link.
 	SchluesselMonitorBasisURL = "monitor.basis_url"
+	// Prüfintervall der Amazon-ASIN-Liste in Minuten: je Prüfung kostet
+	// jede ASIN ein Keepa-Token je Markt.
+	SchluesselMonitorAmazonMin = "monitor.amazon_minuten"
 )
 
 func init() {
@@ -38,6 +41,7 @@ func init() {
 	vorgaben[SchluesselMonitorSturzChannel] = "0"
 	vorgaben[SchluesselMonitorAdminChannel] = "0"
 	vorgaben[SchluesselMonitorMydealz] = "1"
+	vorgaben[SchluesselMonitorAmazonMin] = "60"
 	vorgaben[SchluesselMonitorAusverkauft] = "1"
 	vorgaben[SchluesselMonitorBasisURL] = ""
 }

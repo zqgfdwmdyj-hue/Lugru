@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS einstellungen (
     wert       TEXT NOT NULL
 );
 
+-- Weitere Benutzer neben dem Admin aus LUGRU_BENUTZER/LUGRU_PASSWORT.
+-- Gespeichert wird nur ein PBKDF2-Hash des Passworts, nie das Passwort.
+CREATE TABLE IF NOT EXISTS benutzer (
+    name   TEXT PRIMARY KEY COLLATE NOCASE,
+    hash   TEXT NOT NULL,
+    salz   TEXT NOT NULL,
+    poster TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS channels (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT    NOT NULL,
@@ -35,7 +44,8 @@ CREATE TABLE IF NOT EXISTS channels (
     rollen_id   TEXT    NOT NULL DEFAULT '',
     defekt      INTEGER NOT NULL DEFAULT 0,
     angelegt_am TEXT    NOT NULL,
-    gruppe      TEXT    NOT NULL DEFAULT ''
+    gruppe      TEXT    NOT NULL DEFAULT '',
+    farbe       TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS deals (
@@ -226,7 +236,9 @@ CREATE TABLE IF NOT EXISTS monitor_produkte (
     kategorie      TEXT    NOT NULL DEFAULT '',
     prio           TEXT    NOT NULL DEFAULT 'normal',
     stichworte     TEXT    NOT NULL DEFAULT '',
-    notiz          TEXT    NOT NULL DEFAULT ''
+    notiz          TEXT    NOT NULL DEFAULT '',
+    einkauf        TEXT    NOT NULL DEFAULT '',
+    herkunft       TEXT    NOT NULL DEFAULT ''
 );
 
 -- produkt_id 0 heißt: die Regel gilt für jedes Produkt. shops leer heißt:
@@ -258,7 +270,8 @@ CREATE TABLE IF NOT EXISTS monitor_treffer (
     gepostet      INTEGER NOT NULL DEFAULT 0,
     ergebnis      TEXT    NOT NULL DEFAULT '',
     deal_id       INTEGER NOT NULL DEFAULT 0,
-    zeit          TEXT    NOT NULL
+    zeit          TEXT    NOT NULL,
+    modus         TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_treffer ON monitor_treffer(produkt_id, zeit DESC);
 
@@ -392,6 +405,49 @@ CREATE TABLE IF NOT EXISTS monitor_gemeldet (
     schluessel TEXT PRIMARY KEY,
     zeit       TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS keepa_suchen (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    markt        TEXT    NOT NULL DEFAULT 'DE',
+    preisart     INTEGER NOT NULL DEFAULT 0,
+    min_rabatt   INTEGER NOT NULL DEFAULT 20,
+    zeitraum     INTEGER NOT NULL DEFAULT 0,
+    min_preis    INTEGER NOT NULL DEFAULT 0,
+    max_preis    INTEGER NOT NULL DEFAULT 0,
+    max_rang     INTEGER NOT NULL DEFAULT 0,
+    suchbegriff  TEXT    NOT NULL DEFAULT '',
+    kategorien   TEXT    NOT NULL DEFAULT '',
+    ausschluss   TEXT    NOT NULL DEFAULT '',
+    maerkte      TEXT    NOT NULL DEFAULT '',
+    modus        TEXT    NOT NULL DEFAULT 'amazon',
+    minuten      INTEGER NOT NULL DEFAULT 5,
+    max_je_lauf  INTEGER NOT NULL DEFAULT 20,
+    aktiv        INTEGER NOT NULL DEFAULT 1,
+    geprueft_am  TEXT    NOT NULL DEFAULT '',
+    status       TEXT    NOT NULL DEFAULT '',
+    angelegt_am  TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS keepa_kategorien (
+    markt TEXT    NOT NULL,
+    id    INTEGER NOT NULL,
+    name  TEXT    NOT NULL,
+    PRIMARY KEY (markt, id)
+);
+
+CREATE TABLE IF NOT EXISTS deal_rueckblick (
+    deal_id     INTEGER PRIMARY KEY,
+    geprueft_am TEXT    NOT NULL,
+    daten       INTEGER NOT NULL DEFAULT 0,
+    vk_jetzt    INTEGER NOT NULL DEFAULT 0,
+    vk_tief     INTEGER NOT NULL DEFAULT 0,
+    tief_am     TEXT    NOT NULL DEFAULT '',
+    vk_30       INTEGER NOT NULL DEFAULT 0,
+    vk_90       INTEGER NOT NULL DEFAULT 0,
+    erholt_am   TEXT    NOT NULL DEFAULT '',
+    fehler      TEXT    NOT NULL DEFAULT ''
+);
 `
 
 // Open öffnet die Datenbank und legt Schema und Chart-Ordner an, falls sie
@@ -491,6 +547,7 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	// Statistik lässt sich danach trennen. Am Deal steht sie zusätzlich,
 	// damit sie das Löschen eines Channels überlebt — wie channel_name.
 	{"channels", "gruppe", `TEXT NOT NULL DEFAULT ''`},
+	{"channels", "farbe", `TEXT NOT NULL DEFAULT ''`},
 	{"deals", "gruppe", `TEXT NOT NULL DEFAULT ''`},
 	// "ermaessigt", wenn der Deal mit dem ermäßigten Umsatzsteuersatz
 	// gerechnet wurde (etwa 7 % statt 19 %); leer für den normalen.
@@ -524,6 +581,9 @@ var ergaenzungen = []struct{ tabelle, spalte, definition string }{
 	{"monitor_produkte", "prio", `TEXT NOT NULL DEFAULT 'normal'`},
 	{"monitor_produkte", "stichworte", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_produkte", "notiz", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_produkte", "einkauf", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_produkte", "herkunft", `TEXT NOT NULL DEFAULT ''`},
+	{"monitor_treffer", "modus", `TEXT NOT NULL DEFAULT ''`},
 	// Discord-Channel der Nachricht und ✅ darunter, für die Auswertung.
 	{"monitor_posts", "kanal_id", `TEXT NOT NULL DEFAULT ''`},
 	{"monitor_posts", "kaeufe", `INTEGER NOT NULL DEFAULT 0`},

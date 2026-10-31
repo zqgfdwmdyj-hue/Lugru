@@ -3,8 +3,10 @@ package web
 import (
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/trinkfreunde/lugru-deal-discord/internal/discord"
 	"github.com/trinkfreunde/lugru-deal-discord/internal/store"
@@ -13,6 +15,20 @@ import (
 type channelAnzeige struct {
 	store.Channel
 	WebhookMaskiert string
+	// FarbeAnzeige ist die gewählte oder automatische Farbe.
+	FarbeAnzeige string
+	Posts30      int
+	Zuletzt      string
+	// Verwendung sagt, wofür der Channel benutzt wird: Regeln, Feeds,
+	// Podcasts, Preisstürze …
+	Verwendung []string
+}
+
+// channelGruppe ist eine Karte der Channel-Seite: alle Channels einer
+// Gruppe (etwa eines Discord-Servers).
+type channelGruppe struct {
+	Name     string
+	Channels []channelAnzeige
 }
 
 type channelDaten struct {
@@ -23,6 +39,11 @@ type channelDaten struct {
 	Channels  []channelAnzeige
 	// Gruppen sind die schon vergebenen Gruppen, als Vorschlagsliste.
 	Gruppen []string
+	// Karten sind die Channels nach Gruppe, Farben die wählbaren Farben.
+	Karten []channelGruppe
+	Farben []string
+	// Defekt zählt die Channels, deren Webhook zuletzt scheiterte.
+	Defekt int
 }
 
 func itoa(i int64) string { return strconv.FormatInt(i, 10) }
@@ -81,9 +102,39 @@ func (srv *Server) channelDaten() channelDaten {
 		d.Fehler = "Channels nicht lesbar: " + sicherFehlertext(err.Error())
 		return d
 	}
+	d.Farben = store.Farben
+	nutzung, _ := srv.store.KanalNutzungen(time.Now().AddDate(0, 0, -30))
+	verwendung := srv.kanalVerwendung()
+	karteIdx := map[string]int{}
 	for _, c := range cs {
-		d.Channels = append(d.Channels, channelAnzeige{Channel: c, WebhookMaskiert: maskiere(c.WebhookURL)})
+		a := channelAnzeige{Channel: c, WebhookMaskiert: maskiere(c.WebhookURL), FarbeAnzeige: c.FarbeOderAuto(),
+			Verwendung: verwendung[c.ID]}
+		if n, ok := nutzung[c.ID]; ok {
+			a.Posts30 = n.Posts30
+			if !n.Zuletzt.IsZero() {
+				a.Zuletzt = n.Zuletzt.Local().Format("02.01.06 15:04")
+			}
+		}
+		if c.Defekt {
+			d.Defekt++
+		}
+		d.Channels = append(d.Channels, a)
+		name := c.Gruppe
+		if name == "" {
+			name = "Ohne Gruppe"
+		}
+		i, da := karteIdx[name]
+		if !da {
+			i = len(d.Karten)
+			karteIdx[name] = i
+			d.Karten = append(d.Karten, channelGruppe{Name: name})
+		}
+		d.Karten[i].Channels = append(d.Karten[i].Channels, a)
 	}
+	// „Ohne Gruppe“ ans Ende.
+	sort.SliceStable(d.Karten, func(i, j int) bool {
+		return d.Karten[i].Name != "Ohne Gruppe" && d.Karten[j].Name == "Ohne Gruppe"
+	})
 	d.Gruppen, _ = srv.store.Gruppen()
 	return d
 }
@@ -251,4 +302,109 @@ func (srv *Server) speichereChannelMention(w http.ResponseWriter, r *http.Reques
 		d.Meldung = "Mention gespeichert."
 	}
 	srv.rendere(w, "channels", d)
+}
+
+// kanalVerwendung sammelt je Channel, wofür ihn Monitor und Einstellungen
+// benutzen.
+func (srv *Server) kanalVerwendung() map[int64][]string {
+	out := map[int64][]string{}
+	zaehle := map[int64]map[string]int{}
+	plus := func(id int64, was string) {
+		if id == 0 {
+			return
+		}
+		if zaehle[id] == nil {
+			zaehle[id] = map[string]int{}
+		}
+		zaehle[id][was]++
+	}
+	if rs, err := srv.store.MonitorRegeln(); err == nil {
+		for _, r := range rs {
+			plus(r.ChannelID, "Monitor-Regel")
+		}
+	}
+	if fs, err := srv.store.Feeds(); err == nil {
+		for _, f := range fs {
+			plus(f.ChannelID, "Feed")
+		}
+	}
+	if ps, err := srv.store.Podcasts(); err == nil {
+		for _, p := range ps {
+			plus(p.ChannelID, "Podcasts")
+		}
+	}
+	for schluessel, was := range map[string]string{
+		store.SchluesselMonitorSturzChannel: "Preisstürze",
+		store.SchluesselMonitorAdminChannel: "Admin-Meldungen",
+		store.SchluesselMonitorTagChannel:   "Tageszusammenfassung",
+	} {
+		plus(int64(srv.store.EinstellungZahl(schluessel)), was)
+	}
+	if b2b, err := srv.store.B2BChannels(); err == nil {
+		for _, c := range b2b {
+			plus(c.ID, "B2B")
+		}
+	}
+	for id, m := range zaehle {
+		var teile []string
+		for _, was := range []string{"Monitor-Regel", "Feed", "Podcasts", "Preisstürze", "Admin-Meldungen", "Tageszusammenfassung", "B2B"} {
+			switch n := m[was]; {
+			case n == 1:
+				teile = append(teile, was)
+			case n > 1:
+				teile = append(teile, strconv.Itoa(n)+" × "+was)
+			}
+		}
+		out[id] = teile
+	}
+	return out
+}
+
+// speichereChannelFarbe setzt die Farbe eines Channels.
+func (srv *Server) speichereChannelFarbe(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		srv.fehler(w, http.StatusBadRequest, "ungültige Channel-ID")
+		return
+	}
+	_ = r.ParseForm()
+	if err := srv.store.ChannelFarbeSetzen(id, r.PostForm.Get("farbe")); err != nil {
+		d := srv.channelDaten()
+		d.Fehler = sicherFehlertext(err.Error())
+		srv.rendere(w, "channels", d)
+		return
+	}
+	srv.kanalFarbenLeeren()
+	d := srv.channelDaten()
+	d.Meldung = "Farbe gespeichert."
+	srv.rendere(w, "channels", d)
+}
+
+// kanalfarbe ist die Farbe eines Channels nach Namen — für die Vorlagen,
+// wo nur der Name bekannt ist (Historie, Monitor). Die Zuordnung wird kurz
+// zwischengespeichert, damit eine lange Tabelle nicht je Zeile die
+// Datenbank fragt.
+func (srv *Server) kanalfarbe(name string) string {
+	name = strings.TrimPrefix(strings.TrimSpace(name), "#")
+	srv.farbenMu.Lock()
+	defer srv.farbenMu.Unlock()
+	if srv.farben == nil || time.Since(srv.farbenStand) > 10*time.Second {
+		srv.farben = map[string]string{}
+		if cs, err := srv.store.Channels(); err == nil {
+			for _, c := range cs {
+				srv.farben[strings.ToLower(c.Name)] = c.FarbeOderAuto()
+			}
+		}
+		srv.farbenStand = time.Now()
+	}
+	if f, ok := srv.farben[strings.ToLower(name)]; ok {
+		return "kf-" + f
+	}
+	return "kf-" + store.FarbeFuerName(name)
+}
+
+func (srv *Server) kanalFarbenLeeren() {
+	srv.farbenMu.Lock()
+	srv.farben = nil
+	srv.farbenMu.Unlock()
 }

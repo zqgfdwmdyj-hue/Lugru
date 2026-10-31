@@ -1,6 +1,7 @@
 package keepa
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -118,12 +120,29 @@ func (c *Client) Produkt(ctx context.Context, asin string, domain int) (Antwort,
 // Antwortkörper. Key, Kontingent und HTTP-Fehler behandelt sie für alle
 // Anfragen gleich; q bringt nur die fachlichen Parameter mit.
 func (c *Client) abfrage(ctx context.Context, q url.Values) ([]byte, error) {
-	q.Set("key", c.Key)
-	ziel := c.BasisURL + "/product?" + q.Encode()
+	return c.senden(ctx, "product", q, nil)
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ziel, nil)
+// senden schickt eine Anfrage an einen Endpunkt der Keepa-API; mit Körper
+// als POST mit JSON, sonst als GET.
+func (c *Client) senden(ctx context.Context, pfad string, q url.Values, koerperRaus []byte) ([]byte, error) {
+	if q == nil {
+		q = url.Values{}
+	}
+	q.Set("key", c.Key)
+	ziel := c.BasisURL + "/" + pfad + "?" + q.Encode()
+
+	methode := http.MethodGet
+	var rein io.Reader
+	if koerperRaus != nil {
+		methode, rein = http.MethodPost, bytes.NewReader(koerperRaus)
+	}
+	req, err := http.NewRequestWithContext(ctx, methode, ziel, rein)
 	if err != nil {
 		return nil, fmt.Errorf("keepa: Anfrage nicht baubar: %w", ohneKey(err))
+	}
+	if koerperRaus != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -159,4 +178,64 @@ func (c *Client) abfrage(ctx context.Context, q url.Values) ([]byte, error) {
 	}
 
 	return koerper, nil
+}
+
+// MaxJeAbfrage ist die größte Zahl ASINs, die Keepa in einer Abfrage nimmt.
+const MaxJeAbfrage = 100
+
+// Stapel ist das Ergebnis einer Abfrage mehrerer ASINs: je gefundenem
+// Artikel das Produkt und seine Antwort in der Form einer Einzelabfrage
+// (für den Cache, siehe store.CacheSchreiben).
+type Stapel struct {
+	Produkte       []Product
+	Einzeln        [][]byte
+	TokensLeft     int
+	TokensConsumed int
+	RefillRate     int
+}
+
+// Produkte holt bis zu MaxJeAbfrage ASINs eines Marktes in einer Abfrage —
+// es kostet dasselbe wie einzeln (ein Token je ASIN), spart aber Zeit und
+// Anfragen.
+func (c *Client) Produkte(ctx context.Context, asins []string, domain int) (Stapel, error) {
+	if len(asins) == 0 || len(asins) > MaxJeAbfrage {
+		return Stapel{}, fmt.Errorf("keepa: 1 bis %d ASINs je Abfrage", MaxJeAbfrage)
+	}
+	koerper, err := c.abfrage(ctx, url.Values{
+		"domain":  {strconv.Itoa(domain)},
+		"asin":    {strings.Join(asins, ",")},
+		"stats":   {"90"},
+		"history": {"1"},
+	})
+	if err != nil {
+		return Stapel{}, err
+	}
+	var r struct {
+		TokensLeft     int               `json:"tokensLeft"`
+		TokensConsumed int               `json:"tokensConsumed"`
+		RefillRate     int               `json:"refillRate"`
+		Products       []json.RawMessage `json:"products"`
+		Error          *rohFehler        `json:"error"`
+	}
+	if err := json.Unmarshal(koerper, &r); err != nil {
+		return Stapel{}, fmt.Errorf("keepa: Antwort nicht lesbar: %w", err)
+	}
+	if r.Error != nil && r.Error.Type != "" {
+		return Stapel{}, fmt.Errorf("keepa: %s: %s", r.Error.Type, r.Error.Message)
+	}
+	st := Stapel{TokensLeft: r.TokensLeft, TokensConsumed: r.TokensConsumed, RefillRate: r.RefillRate}
+	for _, roh := range r.Products {
+		var rp rohProdukt
+		if json.Unmarshal(roh, &rp) != nil || rp.ASIN == "" {
+			continue
+		}
+		// Keepa liefert unbekannte ASINs als fast leeres Produkt ohne Titel
+		// und ohne Verlauf.
+		if rp.Title == "" && len(rp.CSV) == 0 {
+			continue
+		}
+		st.Produkte = append(st.Produkte, produktAus(rp))
+		st.Einzeln = append(st.Einzeln, append(append([]byte(`{"products":[`), roh...), []byte(`]}`)...))
+	}
+	return st, nil
 }

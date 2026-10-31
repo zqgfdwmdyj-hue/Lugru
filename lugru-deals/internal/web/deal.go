@@ -251,6 +251,11 @@ func (srv *Server) zeigeDeal(w http.ResponseWriter, r *http.Request) {
 	d := srv.seitenGeruest(schrittQuelle)
 	srv.standardMaerkteSetzen(&d.Formular)
 	d.Formular.EKArt = "brutto"
+	// Vorausgewählt ist, wer angemeldet ist (sonst die letzte Wahl in
+	// diesem Browser). Schritt 4 lässt den Poster weiterhin umstellen.
+	if p, ok := srv.poster(posterVorwahl(r)); ok {
+		d.Formular.Poster = p.Name
+	}
 	d.Entwuerfe = srv.entwurfListe()
 	srv.rendere(w, "deal", d)
 }
@@ -614,6 +619,9 @@ func (srv *Server) uebernehmeKeepa(d *dealSeite, m marketplace.Marketplace, prod
 	}{
 		{"avg90", "Ø 90 Tage Buy Box", produkt.BuyBoxAvg90},
 		{"median90", "Median 90 Tage Buy Box", median},
+		// Ohne Buy-Box-Daten (die kosten bei Keepa zwei Token extra) ist
+		// der niedrigere Ø-Preis von Amazon und FBA-Angebot der beste Ersatz.
+		{"avg90fba", "Ø 90 Tage Amazon/FBA", produkt.AmazonFBAAvg90},
 		{"aktuell", "Buy Box aktuell", produkt.BuyBoxAktuell},
 		{"amazon", "Amazon aktuell", produkt.AmazonAktuell},
 	} {
@@ -798,10 +806,13 @@ func (srv *Server) holeProduktCtx(ctx context.Context, asin string, ziel marketp
 
 	a, roh, err := keepaClient.Produkt(ctx, asin, ziel.KeepaDomain)
 	if err != nil {
+		// Ein leeres Kontingent hält auch die ASIN-Liste an.
+		srv.keepaPausieren(err)
 		return keepa.Product{}, keepaFehler(err, asin, ziel)
 	}
 
 	srv.merkeToken(a.TokensLeft, a.TokensConsumed)
+	srv.merkeRate(a.RefillRate)
 	// Erst mit diesem Schreibzugriff wird der Cache tatsächlich befüllt —
 	// vorher las CacheLesen oben immer ins Leere, und jeder Klick auf
 	// "Laden" verbrauchte ein Token, obwohl die Einstellung "Keepa-Cache in

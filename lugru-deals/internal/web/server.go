@@ -47,6 +47,11 @@ type Server struct {
 	tokenMu         sync.Mutex
 	tokenLinks      int
 	tokenVerbraucht int
+	// tokenRate sind die Keepa-Token, die je Minute nachkommen (0 =
+	// unbekannt); keepaPauseBis hält die ASIN-Liste an, solange das
+	// Kontingent leer ist. Beide schützt tokenMu.
+	tokenRate     int
+	keepaPauseBis time.Time
 
 	// reaktionen ist der Hintergrund-Abgleich der Discord-Reaktionen.
 	reaktionen *abgleich
@@ -64,6 +69,15 @@ type Server struct {
 	// im Hintergrund und die per Knopf „Testen" sollen sich nicht
 	// überholen und denselben Deal nicht zweimal posten.
 	monitorMu sync.Mutex
+	// rueckblickMu schützt rueckblickLauf, den Stand des Keepa-Abgleichs
+	// für den Rückblick (siehe rueckblick.go).
+	// farben ist die Zuordnung Channel-Name → Farbe für die Vorlagen.
+	farbenMu    sync.Mutex
+	farben      map[string]string
+	farbenStand time.Time
+
+	rueckblickMu   sync.Mutex
+	rueckblickLauf rueckblickStand
 	// monitorHTTP ersetzt in Tests den Client für billiger.de; nil heißt
 	// srv.http.
 	monitorHTTP *http.Client
@@ -96,20 +110,19 @@ type Server struct {
 var Version = "Entwicklung"
 
 func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *Server {
-	return &Server{
+	srv := &Server{
 		store:       s,
 		keepa:       k,
 		http:        hc,
 		envKeepaKey: envKeepaKey,
 		reaktionen:  &abgleich{anstoss: make(chan struct{}, 1)},
 		seller:      &sellerAbgleich{anstoss: make(chan struct{}, 1)},
-		// Die Vorlagen kennen eine einzige eigene Funktion: fahne liefert das
-		// Länder-SVG der Marktübersicht. Es als Zeichenkette durch die
-		// Seitendaten zu reichen hieße, Markup in Go-Strukturen zu tragen,
-		// die sonst nur fertige Zahlen führen.
-		tmpl: template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode, "tabelle": auswertungTabelle}).
-			ParseFS(vorlagenFS, "templates/*.html")),
 	}
+	// Eigene Funktionen der Vorlagen: fahne liefert das Länder-SVG der
+	// Marktübersicht, kanalfarbe die Farbklasse eines Channels.
+	srv.tmpl = template.Must(template.New("").Funcs(template.FuncMap{"fahne": fahne, "version": func() string { return Version }, "contains": enthaeltCode, "tabelle": auswertungTabelle, "kanalfarbe": srv.kanalfarbe}).
+		ParseFS(vorlagenFS, "templates/*.html"))
+	return srv
 }
 
 // eigeneTypen sind die Endungen, für die Go von sich aus keinen Inhaltstyp
@@ -194,6 +207,8 @@ func (srv *Server) Routen() http.Handler {
 
 	mux.HandleFunc("GET /statistik", srv.zeigeStatistik)
 	mux.HandleFunc("GET /statistik/bild", srv.zeigeStatistikBild)
+	mux.HandleFunc("GET /statistik/rueckblick", srv.zeigeRueckblick)
+	mux.HandleFunc("POST /statistik/rueckblick/abgleichen", srv.starteRueckblick)
 	mux.HandleFunc("GET /einlesen", srv.zeigeEinlesen)
 	mux.HandleFunc("POST /einlesen/start", srv.starteEinlesen)
 	mux.HandleFunc("POST /einlesen/uebernehmen", srv.uebernehmeEinlesen)
@@ -207,6 +222,7 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /channels/{id}/test", srv.testeChannel)
 	mux.HandleFunc("POST /channels/{id}/gruppe", srv.speichereChannelGruppe)
 	mux.HandleFunc("POST /channels/{id}/mention", srv.speichereChannelMention)
+	mux.HandleFunc("POST /channels/{id}/farbe", srv.speichereChannelFarbe)
 
 	mux.HandleFunc("GET /tags", srv.zeigeTags)
 	mux.HandleFunc("POST /tags", srv.speichereTag)
@@ -242,8 +258,17 @@ func (srv *Server) Routen() http.Handler {
 	mux.HandleFunc("POST /monitor/feeds/{id}/aktiv", srv.schalteFeed)
 	mux.HandleFunc("POST /monitor/feeds/{id}/loeschen", srv.loescheFeed)
 	mux.HandleFunc("POST /monitor/import", srv.zeigeImport)
+	mux.HandleFunc("POST /monitor/asins", srv.speichereAsinListe)
+	mux.HandleFunc("POST /monitor/keepa", srv.speichereKeepaSuche)
+	mux.HandleFunc("POST /monitor/keepa/{id}/aktiv", srv.schalteKeepaSuche)
+	mux.HandleFunc("POST /monitor/keepa/{id}/loeschen", srv.loescheKeepaSuche)
+	mux.HandleFunc("POST /monitor/keepa/{id}/ausschluss", srv.speichereKeepaAusschluss)
+	mux.HandleFunc("POST /monitor/keepa/kategorien", srv.ladeKeepaKategorien)
 	mux.HandleFunc("POST /monitor/import/uebernehmen", srv.uebernehmeImport)
 
+	mux.HandleFunc("GET /benutzer", srv.zeigeBenutzer)
+	mux.HandleFunc("POST /benutzer", srv.speichereBenutzer)
+	mux.HandleFunc("POST /benutzer/{name}/loeschen", srv.loescheBenutzer)
 	mux.HandleFunc("GET /einstellungen", srv.zeigeEinstellungen)
 	mux.HandleFunc("POST /einstellungen", srv.speichereEinstellungen)
 	mux.HandleFunc("POST /einstellungen/vorschau", srv.vorschauVorlage)

@@ -54,6 +54,10 @@ const (
 	// echten Discord-Erwähnung (ohne Ping).
 	SchluesselPoster = "deal.poster"
 
+	// SchluesselAdminPoster ist der Poster, der für den Admin (Anmeldung
+	// aus LUGRU_BENUTZER) vorausgewählt wird.
+	SchluesselAdminPoster = "zugang.admin_poster"
+
 	// SchluesselStueckStandard ist die Stückzahl je Deal für den Gewinn mit
 	// Cart-Limit, wenn der Deal kein Cart-Limit nennt.
 	SchluesselStueckStandard = "statistik.stueck_standard"
@@ -110,6 +114,7 @@ var vorgaben = map[string]string{
 	SchluesselTelegramChat:        "",
 	SchluesselTelegramAktiv:       "0",
 	SchluesselPoster:              "ludwig\nk95\nmarkah",
+	SchluesselAdminPoster:         "ludwig",
 	SchluesselStueckStandard:      "6",
 	SchluesselB2BChannels:         "auto",
 	SchluesselUStPrefix + "DE":    "190",

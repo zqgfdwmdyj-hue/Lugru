@@ -84,7 +84,8 @@ func (srv *Server) podcastPruefen(ctx context.Context, q store.PodcastQuelle, je
 		return
 	}
 	client := srv.podcastClient()
-	gepostet, fehler := 0, 0
+	gepostet, fehler, neuGemerkt := 0, 0, 0
+	var neueste podcast.Folge
 	for _, feed := range feeds {
 		var folgen []podcast.Folge
 		var err error
@@ -97,7 +98,15 @@ func (srv *Server) podcastPruefen(ctx context.Context, q store.PodcastQuelle, je
 			fehler++
 			continue
 		}
+		for _, f := range folgen {
+			if f.Zeit.After(neueste.Zeit) {
+				neueste = f
+			}
+		}
 		bekannt := srv.store.SchonGemeldet(fmt.Sprintf("podfeed:%d:%s", q.ID, feed), jetzt.AddDate(-1, 0, 0))
+		if !bekannt {
+			neuGemerkt++
+		}
 		_ = srv.store.Gemeldet(fmt.Sprintf("podfeed:%d:%s", q.ID, feed), jetzt)
 		for _, f := range folgen {
 			schluessel := fmt.Sprintf("pod:%d:%s:%s", q.ID, feed, f.ID)
@@ -130,6 +139,12 @@ func (srv *Server) podcastPruefen(ctx context.Context, q store.PodcastQuelle, je
 	}
 	if fehler > 0 {
 		status += fmt.Sprintf(", %d Feeds nicht lesbar", fehler)
+	}
+	if neuGemerkt > 0 {
+		status += fmt.Sprintf(" — %d zum ersten Mal gesehen: vorhandene Folgen nur gemerkt, ab jetzt kommt jede neue", neuGemerkt)
+	}
+	if !neueste.Zeit.IsZero() {
+		status += " · neueste Folge: " + neueste.Podcast + ", " + neueste.Zeit.Local().Format("02.01. 15:04") + " Uhr"
 	}
 	_ = srv.store.PodcastGeprueft(q.ID, jetzt, status)
 }

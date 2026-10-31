@@ -332,7 +332,7 @@ func formularLesen(r *http.Request) dealFormular {
 			if p := strings.TrimSpace(r.PostForm.Get("poster")); r.PostForm.Has("poster") {
 				return p
 			}
-			return posterAusCookie(r)
+			return posterVorwahl(r)
 		}(),
 		BildKennung: gepruefteBildKennung(r.PostForm.Get("bild_kennung")),
 		Masse: fba.Masse{

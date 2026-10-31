@@ -57,7 +57,7 @@
           ><img class="gross" src="{{.BildGross}}" alt="" loading="lazy"
         ></span>{{end}}<span>{{.Titel}}{{if eq .Status "ausverkauft"}} <span class="status ausverkauft">ausverkauft</span>{{else if eq .Status "geloescht"}} <span class="status geloescht">gelöscht</span>{{end}}{{if .Importiert}} <span class="status" title="Aus einem alten Discord-Post eingelesen — die Zahlen stammen aus dem Post">aus Discord</span>{{end}}
         {{if .Reaktionen}}<span class="reaktionen" title="Reaktionen in Discord">{{$.EmojiGekauft}} {{.Kaeufe}} · {{$.EmojiWeg}} {{.NichtVerfuegbar}}</span>{{end}}</span></td>
-      <td>{{.ChannelName}}{{if .Poster}}<br><small>von {{.Poster}}</small>{{end}}</td>
+      <td><span class="kanal {{kanalfarbe .ChannelName}}">#{{.ChannelName}}</span>{{if .Poster}}<br><small>von {{.Poster}}</small>{{end}}</td>
       <td class="zahl">{{.EK}}</td><td class="zahl">{{.VK}}</td>
       <td class="zahl">{{if .PanEU}}<span class="status paneu" title="Gerechnet mit Pan-EU (Ware im Zielland) — per EFN wären es {{.GewinnEFN}}">Pan-EU</span> {{end}}<span class="chip {{.GewinnKlasse}}">{{.Gewinn}}</span></td>
       <td class="zahl"><span class="chip {{.MargeKlasse}}">{{.Marge}}</span></td></tr>

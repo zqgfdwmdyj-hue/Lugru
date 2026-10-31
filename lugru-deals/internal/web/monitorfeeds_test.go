@@ -80,3 +80,30 @@ func TestLeasingFeedPostet(t *testing.T) {
 		}
 	}
 }
+
+// Ein Trending-Deal steht schon mit 177° im Feed und wird erst später heiß
+// genug — dann muss er noch gepostet werden, und zwar nur einmal je Channel.
+func TestTrendingDealWirdSpaeterHeiss(t *testing.T) {
+	a := neuerMonitorAufbau(t, "")
+	roh, _ := os.ReadFile("../mydealz/testdata/trending.xml")
+	a.setzeSeite("/rss/trending", string(roh))
+
+	hole(t, a.srv, http.MethodPost, "/monitor/feeds", url.Values{"channel_id": {itoa(a.normal)}, "vorlage": {"eigen"}}.Encode())
+	w := hole(t, a.srv, http.MethodPost, "/monitor/feeds", url.Values{"channel_id": {itoa(a.normal)}, "vorlage": {"eigen"}}.Encode())
+	if !strings.Contains(w.Body.String(), "gibt es in dem Channel schon") {
+		t.Fatalf("doppelter Feed angelegt: %s", w.Body.String())
+	}
+	jetzt := time.Now()
+	a.srv.feedsPruefen(context.Background(), jetzt)
+	if n := len(a.posts("/normal")); n != 0 {
+		t.Fatalf("%d Posts beim ersten Abruf", n)
+	}
+	heiss := strings.Replace(string(roh), "177° - Direktflüge", "231° - Direktflüge", 1)
+	a.setzeSeite("/rss/trending", heiss)
+	a.srv.feedsPruefen(context.Background(), jetzt.Add(3*time.Minute))
+	a.srv.feedsPruefen(context.Background(), jetzt.Add(6*time.Minute))
+	posts := a.posts("/normal")
+	if len(posts) != 1 || !strings.Contains(posts[0], "Seychellen") {
+		t.Fatalf("Posts: %q", posts)
+	}
+}

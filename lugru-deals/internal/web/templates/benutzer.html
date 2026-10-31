@@ -1,0 +1,73 @@
+{{define "benutzer"}}
+{{template "kopf" .}}
+<h1>Benutzer</h1>
+{{if .Fehler}}<p class="fehler">{{.Fehler}}</p>{{end}}
+
+{{if not .Erlaubt}}
+<p class="leer">Benutzer verwaltet nur der Admin.{{if .Ich}} Du bist angemeldet als <b>{{.Ich}}</b>.{{end}}</p>
+{{else}}
+{{if .OhnePasswort}}<p class="fehler">Die Oberfläche läuft ohne Passwort (LUGRU_PASSWORT ist nicht gesetzt) —
+  die Benutzer hier können sich erst anmelden, wenn es gesetzt ist.</p>{{end}}
+
+<p class="hinweis">Jeder Benutzer meldet sich mit eigenem Namen und Passwort an. Der Poster ist der Name,
+der im Deal nach der Anmeldung vorausgewählt ist — er lässt sich dort weiterhin umstellen.
+Die Namen der Poster stehen unter <a href="/einstellungen">Einstellungen</a>.</p>
+
+<div class="tabellenkarte">
+<table>
+  <thead><tr><th>Benutzer</th><th>Poster</th><th>Neues Passwort</th><th></th></tr></thead>
+  <tbody>
+  <tr>
+    <td><b>{{if .AdminName}}{{.AdminName}}{{else}}Admin{{end}}</b> <span class="chip akzent">Admin</span></td>
+    <td colspan="2">
+      <form method="post" action="/benutzer" class="zeile">
+        <input type="hidden" name="admin" value="1">
+        <select name="poster">{{$ap := .AdminPoster}}
+          <option value="">— keiner —</option>
+          {{range .Poster}}<option value="{{.Name}}" {{if eq .Name $ap}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        <button type="submit">Speichern</button>
+      </form>
+      <small class="leise">Passwort über LUGRU_PASSWORT beim Start</small>
+    </td>
+    <td></td>
+  </tr>
+  {{range .Benutzer}}{{$p := .Poster}}
+  <tr>
+    <td><b>{{.Name}}</b></td>
+    <td colspan="2">
+      <form method="post" action="/benutzer" class="zeile">
+        <input type="hidden" name="name" value="{{.Name}}">
+        <select name="poster">
+          <option value="">— keiner —</option>
+          {{range $.Poster}}<option value="{{.Name}}" {{if eq .Name $p}}selected{{end}}>{{.Name}}</option>{{end}}
+        </select>
+        <input type="password" name="passwort" placeholder="leer = bleibt" autocomplete="new-password">
+        <button type="submit">Speichern</button>
+      </form>
+    </td>
+    <td class="aktionen">
+      <form method="post" action="/benutzer/{{.Name}}/loeschen" onsubmit="return confirm('{{.Name}} wirklich löschen?')">
+        <button type="submit" class="gefahr">Löschen</button></form>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Neuer Benutzer</h2>
+<form method="post" action="/benutzer" class="karte">
+  <label>Benutzername <input name="name" required autocomplete="off" autocapitalize="none" placeholder="Mark"></label>
+  <label>Passwort <small>mindestens 8 Zeichen</small>
+    <input type="password" name="passwort" required minlength="8" autocomplete="new-password"></label>
+  <label>Poster <small>wird nach der Anmeldung im Deal vorausgewählt</small>
+    <select name="poster">
+      <option value="">— keiner —</option>
+      {{range .Poster}}<option value="{{.Name}}">{{.Name}}</option>{{end}}
+    </select></label>
+  <button type="submit" class="primaer">Anlegen</button>
+</form>
+{{end}}
+{{template "fuss" .}}
+{{end}}
