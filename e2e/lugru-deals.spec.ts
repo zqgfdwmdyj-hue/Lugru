@@ -131,4 +131,36 @@ test.describe("Lugru Deals über Discord", () => {
       expect(r.t).not.toContain("700000000000000001");
     }
   });
+
+  test("Direkt von der Lugru-Deals-Seite: frischer Deal sofort im Deal-Eingang mit Ampel, keine Doppelung", async ({ page, baseURL }) => {
+    test.setTimeout(120_000);
+    const m = marke();
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    await anmelden(page, "inhaber");
+    const SCHL = `test-direkt-${m}-0123456789abcdefghij`;
+    await page.goto("/anbindungen?p=lugru_deals#lugru_deals");
+    const karte = page.locator("#lugru_deals");
+    await karte.locator('input[name="schluessel"]').fill(SCHL);
+    await Promise.all([aktion(page), karte.getByRole("button", { name: "Speichern", exact: true }).click()]);
+    const id = Number(Date.now() % 1_000_000_000) + 7;
+    const nachricht = `84${String(Date.now()).padStart(16, "0")}`;
+    const deal = { id, asin: "B0TESTDI01", titel: `Testmarke Direktdeal (${m})`, quellmarkt: "DE", zielmarkt: "DE", ek_eur: 4.2, vk_eur: 24.9, gewinn_eur: 8.1, marge_prozent: 32.5, verkaeufe_monat: 300, kanal: "lugru-direkt", status: "aktiv", kaeufe: 0, nicht_verfuegbar: 0, gepostet_am: new Date(Date.now() - 60_000).toISOString(), discord_kanal_id: "830000000000000077", discord_nachricht_id: nachricht, shop: "testshop.example", einkaufslink: "https://www.testshop.example/p/1", ek_art: "netto", max_menge: 5 };
+    const senden = (deals: unknown[]) => fetch(`${baseURL}/api/public/lugru-deals/deals`, { method: "POST", headers: { Authorization: `Bearer ${SCHL}`, "Content-Type": "application/json" }, body: JSON.stringify({ deals }) });
+    const r1 = await (await senden([deal])).json();
+    expect(r1).toMatchObject({ ok: true, neu: 1, eingaenge: 1 });
+    const [e] = await sql<{ id: string; weg: string; quelle: string; quelle_ref: string; pruefung: string }>("select id, weg, quelle, quelle_ref, pruefung from deal_eingaenge where tenant_id = $1 and quelle_ref = $2", [T, `lugru:${nachricht}`]);
+    expect(e).toMatchObject({ weg: "lugru", quelle: "Lugru Deals · #lugru-direkt" });
+    const [z] = await sql<{ eingang_id: string; ampel: string | null; shop: string; shop_url: string; ek_netto: boolean; max_menge: number; quelle: string }>("select eingang_id, ampel, shop, shop_url, ek_netto, max_menge, quelle from lugru_deals_historie where tenant_id = $1 and extern_id = $2", [T, id]);
+    expect(z).toMatchObject({ eingang_id: e.id, shop: "testshop.example", shop_url: "https://www.testshop.example/p/1", ek_netto: true, max_menge: 5, quelle: "app" });
+    expect(["gruen", "gelb", "rot"]).toContain(z.ampel);
+    // Zweites Senden (stündlicher Abgleich, neue Reaktionen): aktualisiert, kein zweiter Eingang
+    const r2 = await (await senden([{ ...deal, kaeufe: 2 }])).json();
+    expect(r2).toMatchObject({ ok: true, neu: 0, aktualisiert: 1, eingaenge: 0 });
+    expect((await sql<{ n: string }>("select count(*) n from deal_eingaenge where tenant_id = $1 and quelle_ref = $2", [T, `lugru:${nachricht}`]))[0].n).toBe("1");
+    // Alter Deal (History) geht nicht in den Deal-Eingang
+    const r3 = await (await senden([{ ...deal, id: id + 1, asin: "B0TESTDI02", discord_nachricht_id: undefined, gepostet_am: new Date(Date.now() - 5 * 86_400_000).toISOString() }])).json();
+    expect(r3).toMatchObject({ ok: true, neu: 1, eingaenge: 0 });
+    await page.goto(`/deal-eingang/${e.id}`);
+    await expect(page.locator("body")).toContainText("direkt von der Lugru-Deals-Seite");
+  });
 });

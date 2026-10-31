@@ -122,3 +122,43 @@ func TestDealsGehenAnsSellerSystemNurZahlenUndAnzahlen(t *testing.T) {
 		t.Errorf("Monitor-Seite zeigt den Fehler nicht")
 	}
 }
+
+func TestNachDemPostenGehtDerDealSofortAnsSellerSystem(t *testing.T) {
+	srv, s := testServer(t)
+	stub, ss := neuerSellerStub(t)
+	_ = s.SetzeEinstellung(store.SchluesselEbaySellerURL, ss.URL)
+	_ = s.SetzeEinstellung(store.SchluesselEbaySellerKey, "test-schluessel")
+	_ = s.SetzeEinstellung(sellerVollStand, time.Now().UTC().Format(time.RFC3339))
+	alt := sellerSofortWarten
+	sellerSofortWarten = 50 * time.Millisecond
+	t.Cleanup(func() { sellerSofortWarten = alt })
+
+	_, err := s.DealAnlegen(store.Deal{ASIN: "B0TEST0003", Titel: "Frisch", QuellURL: "https://www.testshop.example/p/1", EKCent: money.Cents(1190), EKArt: "netto", MaxMenge: 5, ChannelName: "deals"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv.StarteSellerAbgleich(ctx)
+	srv.stosseSellerAn()
+	srv.stosseSellerAn() // zweiter Anstoß in der Wartezeit ergibt keinen zweiten Lauf
+	frist := time.Now().Add(5 * time.Second)
+	for {
+		stub.mu.Lock()
+		n := stub.aufrufe
+		stub.mu.Unlock()
+		if n > 0 || time.Now().After(frist) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	if stub.aufrufe != 1 || len(stub.pakete[0]) != 1 {
+		t.Fatalf("nicht sofort gesendet: aufrufe=%d", stub.aufrufe)
+	}
+	d := stub.pakete[0][0]
+	if d["shop"] != "testshop.example" || d["einkaufslink"] != "https://www.testshop.example/p/1" || d["ek_art"] != "netto" || d["max_menge"].(float64) != 5 {
+		t.Errorf("Felder für den Live-Eingang fehlen: %v", d)
+	}
+}

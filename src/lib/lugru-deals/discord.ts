@@ -5,7 +5,7 @@ import type { LugruKeepa } from "@/db/schema";
 import { getIntegration } from "@/lib/integrations/store";
 import { discord, type DcNachricht } from "@/lib/va/discord";
 import { kaufZuDeal, keepaSchnappschuss } from "./auswertung-logic";
-import { dublettenSchluessel, kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
+import { kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
 
 // Lugru Deals → Seller-System über Discord (Weg B): Der Bot des Seller-Systems liest die Deal-Kanäle der Gruppe – neue
 // Posts jede Minute (→ Deal-Eingang mit Ampel, Push bei Grün/Gelb), Reaktionen in den ersten 48 Std. alle 5 Min., bis
@@ -95,23 +95,6 @@ async function verarbeiten(tenantId: string, k: { kanalId: string; name: string 
     if (id) z.neu++;
   }
   if (!id || !o.live || alt?.eingangId || p.ausverkauft) return;
-  // Doppelt gepostet (gleiche ASIN + Shop < 24 Std.): denselben Eingang verwenden, nicht erneut prüfen/pushen.
-  const schluessel = dublettenSchluessel(p);
-  if (schluessel) {
-    const seit = new Date(w.gepostetAm.getTime() - 24 * 3600_000);
-    const kandidaten = await db
-      .select({ eingangId: L.eingangId, shop: L.shop })
-      .from(L)
-      .where(and(eq(L.tenantId, tenantId), eq(L.asin, p.asin), gte(L.gepostetAm, seit), sql`${L.eingangId} is not null`, sql`${L.id} <> ${id}`))
-      .limit(5);
-    const gleich = kandidaten.find((x) => (x.shop ?? "").toLowerCase() === (p.shop ?? "").toLowerCase());
-    if (gleich?.eingangId) {
-      await db.update(L).set({ eingangId: gleich.eingangId }).where(eq(L.id, id));
-      z.zusammengefasst++;
-      return;
-    }
-  }
-  const { eingangAnlegen, eingangPruefen } = await import("@/lib/deal-eingang/service");
   const kopf = [
     `Lugru Deals (#${k.name ?? k.kanalId})${p.shop ? ` · Shop: ${p.shop}` : ""}`,
     `Laut Post: EK ${p.ekEur ?? "–"} € ${p.ekNetto ? "netto" : "brutto"} · VK ${p.vkEur ?? "–"} € (${p.zielmarkt}) · Gewinn ${p.gewinnEur} € · Marge ${p.margeProzent} %${p.verkaeufeMonat ? ` · ${p.verkaeufeMonat}+ Verkäufe/Monat` : ""}${p.maxMenge ? ` · max. ${p.maxMenge} Stück` : ""}`,
@@ -120,13 +103,40 @@ async function verarbeiten(tenantId: string, k: { kanalId: string; name: string 
   ]
     .filter(Boolean)
     .join("\n");
-  const angebot = { asin: p.asin, ean: null, name: p.titel, marke: null, ek: p.ekEur, ekNetto: p.ekNetto, waehrung: "EUR", menge: null, moq: null, staffel: null, versand: null, lieferzeit: null, zahlung: null, gueltigBis: null, zustand: "neu", packung: null };
-  const r = await eingangAnlegen(tenantId, null, { weg: "lugru", text: `${kopf}\n\n${(m.content ?? "").slice(0, 4000)}`, quelle: `Lugru Deals · #${k.name ?? "deals"}`.slice(0, 80), quelleRef: `lugru:${m.id}`, angebote: [angebot] });
+  const r = await lugruLiveEingang(tenantId, id, { asin: p.asin, titel: p.titel, shop: p.shop, ekEur: p.ekEur, ekNetto: p.ekNetto, gepostetAm: w.gepostetAm, kanal: k.name ?? "deals", text: `${kopf}\n\n${(m.content ?? "").slice(0, 4000)}`, quelleRef: `lugru:${m.id}` });
+  if (r === "zusammengefasst") z.zusammengefasst++;
+  if (r === "neu") z.eingaenge++;
+}
+
+/**
+ * Frischer Lugru-Deal → Deal-Eingang „Lugru Deals · #kanal“ mit Deal-Ampel (Push bei Grün/Gelb wie jeder Eingang).
+ * Gemeinsam für beide Wege: gelesen aus Discord oder direkt von der Lugru-Deals-Seite geschickt. Doppelt gepostet
+ * (gleiche ASIN + Shop < 24 Std.) → derselbe Eingang, nicht erneut prüfen/pushen.
+ */
+export async function lugruLiveEingang(
+  tenantId: string,
+  id: string,
+  d: { asin: string; titel: string | null; shop: string | null; ekEur: number | null; ekNetto: boolean; gepostetAm: Date; kanal: string; text: string; quelleRef: string },
+): Promise<"neu" | "zusammengefasst" | "vorhanden"> {
+  const seit = new Date(d.gepostetAm.getTime() - 24 * 3600_000);
+  const kandidaten = await db
+    .select({ eingangId: L.eingangId, shop: L.shop })
+    .from(L)
+    .where(and(eq(L.tenantId, tenantId), eq(L.asin, d.asin), gte(L.gepostetAm, seit), sql`${L.eingangId} is not null`, sql`${L.id} <> ${id}`))
+    .limit(5);
+  const gleich = kandidaten.find((x) => (x.shop ?? "").toLowerCase() === (d.shop ?? "").toLowerCase());
+  if (gleich?.eingangId) {
+    await db.update(L).set({ eingangId: gleich.eingangId }).where(eq(L.id, id));
+    return "zusammengefasst";
+  }
+  const { eingangAnlegen, eingangPruefen } = await import("@/lib/deal-eingang/service");
+  const angebot = { asin: d.asin, ean: null, name: d.titel, marke: null, ek: d.ekEur, ekNetto: d.ekNetto, waehrung: "EUR", menge: null, moq: null, staffel: null, versand: null, lieferzeit: null, zahlung: null, gueltigBis: null, zustand: "neu", packung: null };
+  const r = await eingangAnlegen(tenantId, null, { weg: "lugru", text: d.text, quelle: `Lugru Deals · #${d.kanal}`.slice(0, 80), quelleRef: d.quelleRef, angebote: [angebot] });
   await db.update(L).set({ eingangId: r.id }).where(eq(L.id, id));
-  if (!r.neu) return;
-  z.eingaenge++;
+  if (!r.neu) return "vorhanden";
   await eingangPruefen(tenantId, r.id);
   await ausEingangUebernehmen(tenantId, id);
+  return "neu";
 }
 
 /** Ampel und Keepa-Schnappschuss aus dem geprüften Eingang an den Lugru-Deal übernehmen. */

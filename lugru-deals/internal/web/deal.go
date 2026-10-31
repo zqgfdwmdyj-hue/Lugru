@@ -1075,6 +1075,9 @@ func (srv *Server) posten(ctx context.Context, f dealFormular, erg dealErgebnis,
 	// Und derselbe Post zusätzlich an Telegram, falls eingeschaltet — nur
 	// einmal, auch wenn der Deal in mehrere Channels geht.
 	srv.anTelegram(erg.Text, png)
+	// Gleich ans Seller-System (Deal-Eingang mit Ampel) – nicht erst beim
+	// stündlichen Abgleich.
+	srv.stosseSellerAn()
 
 	// Weitere Channels: derselbe Deal mit demselben Chart, jeweils mit der
 	// Erwähnung des Channels. Jeder Post steht für sich in der Historie und

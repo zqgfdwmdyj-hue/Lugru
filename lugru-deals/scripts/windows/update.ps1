@@ -16,11 +16,20 @@
 param(
     [Parameter(Mandatory)]
     [string]$SourceDir,
-    [string]$InstallDir = 'C:\Tools\LuGruDeals',
+    [string]$InstallDir = '',
     [string]$DataDir    = (Join-Path $env:LOCALAPPDATA 'LuGruDeals')
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Ohne -InstallDir: der Ordner von install.ps1 (%LOCALAPPDATA%\Programs\LuGruDeals),
+# sonst der frühere Standard C:\Tools\LuGruDeals.
+if (-not $InstallDir) {
+    $InstallDir = Join-Path $env:LOCALAPPDATA 'Programs\LuGruDeals'
+    if (-not (Test-Path -LiteralPath $InstallDir) -and (Test-Path -LiteralPath 'C:\Tools\LuGruDeals')) {
+        $InstallDir = 'C:\Tools\LuGruDeals'
+    }
+}
 
 $SourceExe = Join-Path $SourceDir 'lugru-deals.exe'
 if (-not (Test-Path -LiteralPath $SourceExe)) {

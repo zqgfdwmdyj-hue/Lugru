@@ -184,13 +184,18 @@ export async function ergebnisseAktualisieren(tenantId: string, jetzt = new Date
 
 // ---- Lugru Deals (Shop-Monitor) ----------------------------------------------------------------------------------
 
-export type LugruDealImport = { id: number; asin: string; titel?: string | null; quellmarkt?: string | null; zielmarkt?: string | null; ek_eur?: number | null; vk_eur?: number | null; gewinn_eur?: number | null; marge_prozent?: number | null; verkaeufe_monat?: number | null; gruppe?: string | null; kanal?: string | null; status?: string | null; kaeufe?: number; nicht_verfuegbar?: number; reaktionen_am?: string | null; gepostet_am: string; discord_kanal_id?: string | null; discord_nachricht_id?: string | null };
+export type LugruDealImport = { id: number; asin: string; titel?: string | null; quellmarkt?: string | null; zielmarkt?: string | null; ek_eur?: number | null; vk_eur?: number | null; gewinn_eur?: number | null; marge_prozent?: number | null; verkaeufe_monat?: number | null; gruppe?: string | null; kanal?: string | null; status?: string | null; kaeufe?: number; nicht_verfuegbar?: number; reaktionen_am?: string | null; gepostet_am: string; discord_kanal_id?: string | null; discord_nachricht_id?: string | null; shop?: string | null; einkaufslink?: string | null; ek_art?: string | null; max_menge?: number | null };
+
+/** Live-Eingang nur für Deals, die höchstens so alt sind (direkt nach dem Posten von der Lugru-Deals-Seite). */
+const LIVE_STUNDEN = 2;
 
 /** Rückwirkender bzw. laufender Import aus Lugru Deals: je Deal Zahlen und Reaktionen als Anzahl (keine Personen). */
-export async function lugruImport(tenantId: string, deals: LugruDealImport[]): Promise<{ neu: number; aktualisiert: number; ungueltig: number }> {
+export async function lugruImport(tenantId: string, deals: LugruDealImport[], jetzt = new Date()): Promise<{ neu: number; aktualisiert: number; ungueltig: number; eingaenge: number }> {
   let neu = 0;
   let aktualisiert = 0;
   let ungueltig = 0;
+  // Frische Deals (direkt nach dem Posten geschickt) → Deal-Eingang mit Ampel, wie beim Lesen aus Discord.
+  const live: { id: string; d: LugruDealImport; asin: string; am: Date }[] = [];
   const zahl = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
   for (const d of deals.slice(0, 1000)) {
     if (!d || typeof d !== "object") {
@@ -221,7 +226,12 @@ export async function lugruImport(tenantId: string, deals: LugruDealImport[]): P
       reaktionenAm: d.reaktionen_am && Number.isFinite(Date.parse(d.reaktionen_am)) ? new Date(d.reaktionen_am) : null,
       gepostetAm: new Date(am),
       aktualisiertAm: new Date(),
+      ...(d.shop ? { shop: String(d.shop).slice(0, 120) } : {}),
+      ...(d.einkaufslink && /^https?:\/\//i.test(String(d.einkaufslink)) ? { shopUrl: String(d.einkaufslink).slice(0, 500) } : {}),
+      ...(d.ek_art === "netto" || d.ek_art === "brutto" ? { ekNetto: d.ek_art === "netto" } : {}),
+      ...(zahl(d.max_menge) ? { maxMenge: Math.round(d.max_menge!) } : {}),
     };
+    const frisch = am >= jetzt.getTime() - LIVE_STUNDEN * 3600_000 && (werte.status ?? "aktiv") === "aktiv";
     // Schon vom Seller-System in Discord gelesen (Weg B)? Dann diese Zeile ergänzen statt eine zweite anzulegen –
     // die Zahlen aus Lugru Deals sind genauer, die Reaktionen aus Discord bleiben die jüngeren.
     const nachricht = typeof d.discord_nachricht_id === "string" && /^\d{15,25}$/.test(d.discord_nachricht_id) ? d.discord_nachricht_id : null;
@@ -231,19 +241,45 @@ export async function lugruImport(tenantId: string, deals: LugruDealImport[]): P
         const { kaeufe: _k, nichtVerfuegbar: _n, reaktionenAm: _r, kanal: _c, status: _s, ...zahlen } = werte;
         await db.update(L).set({ externId: d.id, ...zahlen }).where(eq(L.id, ausDiscord.id));
         aktualisiert++;
+        if (frisch) live.push({ id: ausDiscord.id, d, asin, am: new Date(am) });
         continue;
       }
     }
     const r = await db
       .insert(L)
-      .values({ tenantId, externId: d.id, ...werte, ...(nachricht ? { discordNachrichtId: nachricht, discordKanalId: typeof d.discord_kanal_id === "string" ? d.discord_kanal_id.slice(0, 30) : null } : {}) })
+      .values({ tenantId, externId: d.id, quelle: "app", ...werte, ...(nachricht ? { discordNachrichtId: nachricht, discordKanalId: typeof d.discord_kanal_id === "string" ? d.discord_kanal_id.slice(0, 30) : null } : {}) })
       .onConflictDoUpdate({ target: [L.tenantId, L.externId], set: werte })
-      .returning({ neu: sql<boolean>`xmax = 0` });
+      .returning({ id: L.id, neu: sql<boolean>`xmax = 0` });
     if (r[0]?.neu) neu++;
     else aktualisiert++;
+    if (frisch && r[0]) live.push({ id: r[0].id, d, asin, am: new Date(am) });
   }
   if (neu + aktualisiert) modelle.delete(tenantId);
-  return { neu, aktualisiert, ungueltig };
+  let eingaenge = 0;
+  if (live.length) {
+    const { lugruLiveEingang } = await import("@/lib/lugru-deals/discord");
+    for (const x of live.slice(0, 20)) {
+      const [z] = await db.select({ eingangId: L.eingangId, shop: L.shop, shopUrl: L.shopUrl, ekNetto: L.ekNetto, kanal: L.kanal, ausverkauftAm: L.ausverkauftAm }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.id, x.id)));
+      if (!z || z.eingangId || z.ausverkauftAm) continue;
+      const d = x.d;
+      const text = [
+        `Lugru Deals (#${z.kanal ?? "deals"}) – direkt von der Lugru-Deals-Seite${z.shop ? ` · Shop: ${z.shop}` : ""}`,
+        `${d.titel ?? ""}`.trim() || null,
+        `Laut Lugru Deals: EK ${d.ek_eur ?? "–"} € ${z.ekNetto ? "netto" : "brutto"} · VK ${d.vk_eur ?? "–"} €${d.zielmarkt ? ` (${d.zielmarkt})` : ""}${d.gewinn_eur != null ? ` · Gewinn ${d.gewinn_eur} €` : ""}${d.marge_prozent != null ? ` · Marge ${d.marge_prozent} %` : ""}${d.verkaeufe_monat ? ` · ${d.verkaeufe_monat}+ Verkäufe/Monat` : ""}${d.max_menge ? ` · max. ${d.max_menge} Stück` : ""}`,
+        `ASIN ${x.asin}`,
+        z.shopUrl ? `Einkauf: ${z.shopUrl}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const nachricht = typeof d.discord_nachricht_id === "string" && /^\d{15,25}$/.test(d.discord_nachricht_id) ? d.discord_nachricht_id : null;
+      const r = await lugruLiveEingang(tenantId, x.id, { asin: x.asin, titel: d.titel ?? null, shop: z.shop, ekEur: typeof d.ek_eur === "number" ? d.ek_eur : null, ekNetto: z.ekNetto ?? false, gepostetAm: x.am, kanal: z.kanal ?? "deals", text, quelleRef: nachricht ? `lugru:${nachricht}` : `lugru-app:${d.id}` }).catch((e) => {
+        console.error("[Lugru Deals] Live-Eingang:", e instanceof Error ? e.message : e);
+        return null;
+      });
+      if (r === "neu") eingaenge++;
+    }
+  }
+  return { neu, aktualisiert, ungueltig, eingaenge };
 }
 
 /** Bewährt? Nur aus dem Keepa-Zwischenspeicher (keine neuen Abfragen), Deals 21–120 Tage nach dem Posten. */

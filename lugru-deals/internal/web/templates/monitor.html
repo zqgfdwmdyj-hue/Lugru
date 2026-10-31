@@ -117,8 +117,9 @@ Auswahl prüfen — „nicht anlegen“ überspringt die Zeile. Die Ankäufer au
     <label>Adresse des Seller-Systems <input name="ebay_seller_url" value="{{.EbaySellerURL}}" placeholder="https://seller.example.de"></label>
     <label>Verbindungsschlüssel <small>{{if .EbaySellerDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}noch keiner{{end}}</small>
       <input name="ebay_seller_schluessel" type="password" autocomplete="off"></label>
-    <p><small>Mit Adresse und Schlüssel gehen die geposteten Deals stündlich ans Seller-System (Deal-Eingang lernt daraus) —
-      nur Zahlen und Reaktionen als Anzahl, kein Text, keine Namen.
+    <p><small>Mit Adresse und Schlüssel geht jeder Deal gleich nach dem Posten ans Seller-System (Deal-Eingang mit Ampel),
+      dazu stündlich die letzten 30 Tage mit den Reaktionen – nur Zahlen, Shop/Einkaufslink und Reaktionen als Anzahl,
+      kein Text, keine Namen.
       {{if .SellerDeals.Zuletzt}}Zuletzt {{.SellerDeals.Zuletzt}}: {{.SellerDeals.Anzahl}} Deals.{{end}}
       {{if .SellerDeals.Fehler}}<strong>{{.SellerDeals.Fehler}}</strong>{{end}}</small></p>
     <p><small>Oder ohne Seller-System: eigene Schlüssel aus dem eBay-Entwicklerkonto.</small></p>

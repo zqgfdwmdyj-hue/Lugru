@@ -102,7 +102,7 @@ func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *
 		http:        hc,
 		envKeepaKey: envKeepaKey,
 		reaktionen:  &abgleich{anstoss: make(chan struct{}, 1)},
-		seller:      &sellerAbgleich{},
+		seller:      &sellerAbgleich{anstoss: make(chan struct{}, 1)},
 		// Die Vorlagen kennen eine einzige eigene Funktion: fahne liefert das
 		// Länder-SVG der Marktübersicht. Es als Zeichenkette durch die
 		// Seitendaten zu reichen hieße, Markup in Go-Strukturen zu tragen,

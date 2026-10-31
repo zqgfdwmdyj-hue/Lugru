@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -24,15 +25,23 @@ import (
 // beim ersten Post zusammengezählt.
 //
 // Beim ersten Lauf geht die ganze History hinüber (in Paketen), danach
-// stündlich die Deals der letzten sellerTage. Ohne Seller-Adresse und
+// stündlich die Deals der letzten sellerTage. Zusätzlich gleich nach jedem
+// Posten (und nach Ausverkauft/Bearbeiten/neuen Reaktionen) die Deals der
+// letzten sellerTageSofort – so steht ein neuer Deal nach Sekunden im
+// Deal-Eingang des Seller-Systems. Ohne Seller-Adresse und
 // Verbindungsschlüssel (Monitor → Einstellungen → eBay) geschieht nichts.
 
 const (
-	sellerAlle      = time.Hour
-	sellerTage      = 30
-	sellerPaket     = 500
-	sellerVollStand = "seller.deals_voll"
+	sellerAlle       = time.Hour
+	sellerTage       = 30
+	sellerPaket      = 500
+	sellerVollStand  = "seller.deals_voll"
+	sellerTageSofort = 2
 )
+
+// sellerSofortWarten: nach dem Posten kurz warten, damit Folge-Posts in
+// weitere Channels im selben Paket mitgehen (Variable nur für Tests).
+var sellerSofortWarten = 10 * time.Second
 
 type sellerAbgleich struct {
 	mu      sync.Mutex
@@ -40,6 +49,20 @@ type sellerAbgleich struct {
 	zuletzt time.Time
 	anzahl  int
 	fehler  string
+	// anstoss weckt den Abgleich sofort (nach dem Posten). Gepuffert mit 1:
+	// mehrere Anstöße hintereinander ergeben einen Lauf.
+	anstoss chan struct{}
+}
+
+// stosseSellerAn weckt den Abgleich ans Seller-System, ohne zu warten.
+func (srv *Server) stosseSellerAn() {
+	if srv.seller == nil {
+		return
+	}
+	select {
+	case srv.seller.anstoss <- struct{}{}:
+	default:
+	}
 }
 
 // sellerDeal ist ein Deal, wie ihn das Seller-System erwartet
@@ -66,6 +89,21 @@ type sellerDeal struct {
 	// beide Quellen über diese ID zusammen (kein Deal doppelt).
 	DiscordKanalID     string `json:"discord_kanal_id,omitempty"`
 	DiscordNachrichtID string `json:"discord_nachricht_id,omitempty"`
+	// Für den Live-Eingang im Seller-System: Shop und Einkaufslink (leer bei
+	// Amazon-Einkauf), wie der EK eingegeben wurde, Höchstmenge je Bestellung.
+	Shop         string `json:"shop,omitempty"`
+	Einkaufslink string `json:"einkaufslink,omitempty"`
+	EKArt        string `json:"ek_art,omitempty"`
+	MaxMenge     int    `json:"max_menge,omitempty"`
+}
+
+// shopAus liefert den Shop-Namen aus dem Einkaufslink („www.shop.de/…“ → „shop.de“).
+func shopAus(link string) string {
+	u, err := url.Parse(strings.TrimSpace(link))
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 }
 
 func euro(c int64) *float64 {
@@ -99,6 +137,7 @@ func sellerDeals(deals []store.Deal, haupt func(id int64) (store.Deal, bool)) []
 			Kaeufe: d.Kaeufe, NichtVerfuegbar: d.NichtVerfuegbar,
 			GepostetAm:     d.GepostetAm.UTC().Format(time.RFC3339),
 			DiscordKanalID: d.DiscordKanalID, DiscordNachrichtID: d.DiscordNachrichtID,
+			Shop: shopAus(d.QuellURL), Einkaufslink: strings.TrimSpace(d.QuellURL), EKArt: d.EKArt, MaxMenge: d.MaxMenge,
 		}
 		if sd.Status == store.StatusAktiv {
 			sd.Status = "aktiv"
@@ -165,13 +204,26 @@ func (srv *Server) StarteSellerAbgleich(ctx context.Context) {
 		takt := time.NewTicker(sellerAlle)
 		defer takt.Stop()
 		for {
+			tage := sellerTage
 			select {
 			case <-ctx.Done():
 				return
 			case <-erster.C:
 			case <-takt.C:
+			case <-srv.seller.anstoss:
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(sellerSofortWarten):
+				}
+				// Was in der Wartezeit dazukam, geht im selben Lauf mit.
+				select {
+				case <-srv.seller.anstoss:
+				default:
+				}
+				tage = sellerTageSofort
 			}
-			if n, err := srv.dealsAnsSeller(ctx); err != nil {
+			if n, err := srv.dealsAnsSellerTage(ctx, tage); err != nil {
 				log.Printf("Deals ans Seller-System: %s", sicherFehlertext(err.Error()))
 			} else if n > 0 {
 				log.Printf("Deals ans Seller-System: %d gesendet", n)
@@ -185,6 +237,12 @@ var errSellerFehlt = errors.New("kein Seller-System hinterlegt")
 // dealsAnsSeller sendet die Deals (beim ersten Mal alle, sonst die der
 // letzten sellerTage) und liefert die Anzahl der gesendeten Deals.
 func (srv *Server) dealsAnsSeller(ctx context.Context) (int, error) {
+	return srv.dealsAnsSellerTage(ctx, sellerTage)
+}
+
+// dealsAnsSellerTage wie dealsAnsSeller, aber mit wählbarem Zeitraum (nach
+// dem Posten nur die jüngsten Tage).
+func (srv *Server) dealsAnsSellerTage(ctx context.Context, tage int) (int, error) {
 	url := strings.TrimRight(strings.TrimSpace(srv.store.Einstellung(store.SchluesselEbaySellerURL)), "/")
 	key := strings.TrimSpace(srv.store.Einstellung(store.SchluesselEbaySellerKey))
 	if url == "" || key == "" {
@@ -198,7 +256,7 @@ func (srv *Server) dealsAnsSeller(ctx context.Context) (int, error) {
 	srv.seller.laeuft = true
 	srv.seller.mu.Unlock()
 
-	n, err := srv.sellerDurchgang(ctx, url, key)
+	n, err := srv.sellerDurchgang(ctx, url, key, tage)
 
 	srv.seller.mu.Lock()
 	srv.seller.laeuft = false
@@ -212,11 +270,11 @@ func (srv *Server) dealsAnsSeller(ctx context.Context) (int, error) {
 	return n, err
 }
 
-func (srv *Server) sellerDurchgang(ctx context.Context, url, key string) (int, error) {
+func (srv *Server) sellerDurchgang(ctx context.Context, url, key string, tage int) (int, error) {
 	voll := srv.store.Einstellung(sellerVollStand) == ""
 	f := store.DealFilter{Status: "alle", Limit: sellerPaket}
 	if !voll {
-		f.Von = time.Now().AddDate(0, 0, -sellerTage)
+		f.Von = time.Now().AddDate(0, 0, -tage)
 	}
 	var alle []store.Deal
 	for {

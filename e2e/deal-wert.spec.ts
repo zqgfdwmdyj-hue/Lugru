@@ -40,9 +40,9 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     const senden = (deals: unknown[]) => fetch(`${baseURL}/api/public/lugru-deals/deals`, { method: "POST", headers: { Authorization: `Bearer ${SCHL}`, "Content-Type": "application/json" }, body: JSON.stringify({ deals }) });
     const imp = await senden(lugru);
     expect(imp.status).toBe(200);
-    expect(await imp.json()).toEqual({ ok: true, neu: 2, aktualisiert: 0, ungueltig: 1 });
+    expect(await imp.json()).toEqual({ ok: true, neu: 2, aktualisiert: 0, ungueltig: 1, eingaenge: 0 });
     lugru[0].kaeufe = 6;
-    expect(await (await senden(lugru.slice(0, 2))).json()).toEqual({ ok: true, neu: 0, aktualisiert: 2, ungueltig: 0 });
+    expect(await (await senden(lugru.slice(0, 2))).json()).toEqual({ ok: true, neu: 0, aktualisiert: 2, ungueltig: 0, eingaenge: 0 });
     const hist = await sql<{ asin: string; kaeufe: number; nicht_verfuegbar: number }>("select asin, kaeufe, nicht_verfuegbar from lugru_deals_historie where tenant_id = $1 and extern_id in ($2, $3) order by extern_id", [T, basisId + 1, basisId + 2]);
     expect(hist).toEqual([{ asin: "B0TESTLG01", kaeufe: 6, nicht_verfuegbar: 1 }, { asin: "B0TESTLG02", kaeufe: 0, nicht_verfuegbar: 3 }]);
 

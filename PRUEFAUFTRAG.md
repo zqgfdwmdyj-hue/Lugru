@@ -296,8 +296,14 @@ eigener Reaktions-Bot setzt ✅ = gekauft und ❌ = nicht (mehr) verfügbar. Die
 Programms (Tabelle `deals` mit Discord-Kanal-/Nachrichten-ID) **und** in Discord. Die bisherige Anbindung
 „Lugru Deals (Shop-Monitor)“ war nur der eBay-Schlüssel des Programms plus ein Push-Endpunkt
 `/api/public/lugru-deals/deals`, der nur Daten bekommt, wenn das Programm auf dem PC läuft und aktualisiert ist – deshalb
-kam nichts an. **Gewählt: Weg B** (das Seller-System liest die Deal-Kanäle selbst über einen Bot mit Leserechten) als
-Hauptweg; Weg A (Push aus dem Programm) bleibt als Ergänzung und wird über die Discord-Nachrichten-ID zusammengeführt.
+kam nichts an. **Gewählt: beide Wege, zusammengeführt über die Discord-Nachrichten-ID** (kein Deal doppelt):
+- **Weg A – direkt von der Lugru-Deals-Seite (Hauptweg, Nachtrag 31.10. auf Ludwigs Hinweis):** Jeder Deal wird über
+  die Seite gepostet – die Seite schickt ihn jetzt **sofort nach dem Posten** ans Seller-System (nicht mehr nur
+  stündlich), ebenso nach „ausverkauft“, „bearbeiten“ und neuen Reaktionen. Ein frischer Deal (≤ 2 Std.) läuft dort
+  sofort in den Deal-Eingang mit Ampel und Push. Läuft, sobald das Programm aktualisiert ist und Seller-Adresse +
+  Verbindungsschlüssel eingetragen sind.
+- **Weg B – Seller-System liest die Deal-Kanäle selbst (optional, Rückfall):** Bot mit Leserechten; fängt Reaktionen
+  auch dann auf, wenn der PC mit der Lugru-Seite aus ist.
 
 | # | Punkt | vorher | nachher | Fundstelle |
 |---|---|---|---|---|
@@ -313,6 +319,7 @@ Hauptweg; Weg A (Push aus dem Programm) bleibt als Ergänzung und wird über die
 | L.10 | Seite „Lugru Deals“: Liste mit Filtern (Zeitraum, Kanal, Ampel, Deal-Wert, gekauft), Detail mit Keepa-Mini-Chart, Reaktionen, Ergebnis; Kacheln (Deals/Woche, Ø Reaktionen, Anteil grün, gekauft, Ø realer ROI, beste Marken/Kategorien) | ❌ | ✅ | `src/app/(app)/deal-eingang/lugru/page.tsx`, `…/lugru/[id]/page.tsx`; Link im Deal-Eingang |
 | L.11 | MCP `lugru_deals`, `lugru_deal`, `lugru_statistik`; `deal_quellen` zeigt „Lugru Deals“ (gemeldet/grün/gekauft/Gruppen-Käufe) | ❌ | ✅ | `src/lib/assistant/tools/lugru.ts`, `deal_quellen` in `src/lib/deal-eingang/service.ts` |
 | L.12 | Keine Mitglieder-Namen oder -IDs | – | ✅ | Gespeichert werden nur Anzahlen je Emoji; Text und Autor des Posts nicht (nur die ausgelesenen Zahlen) |
+| L.14 | Direkt von der Lugru-Deals-Seite: sofort nach dem Posten senden (Folge-Posts in weitere Channels im selben Paket), auch nach Ausverkauft/Bearbeiten/neuen Reaktionen; Shop, Einkaufslink, EK netto/brutto, Max-Menge mitsenden | 🟡 nur stündlich, ohne Live-Eingang | ✅ | `lugru-deals/internal/web/sellerdeals.go` (`stosseSellerAn`, Aufrufe in `deal.go`, `postaktionen.go`, `reaktionen.go`); Seller: `lugruImport` legt für frische Deals den Eingang an (`lugruLiveEingang` in `src/lib/lugru-deals/discord.ts`, gemeinsam mit Weg B); Go-Test `TestNachDemPostenGehtDerDealSofortAnsSellerSystem`, e2e „Direkt von der Lugru-Deals-Seite“ |
 | L.13 | Anbindung: Kanal-IDs, Bot-Token (eigener oder der Discord-Bot des Seller-Systems), Emojis für „gekauft“/„weg“, „Verbindung testen“ liest je Kanal den letzten Deal | 🟡 nur eBay-Schlüssel | ✅ | `src/lib/integrations/registry.ts` (Karte „Lugru Deals“), `src/lib/integrations/clients/lugru-deals.ts` |
 
 Abnahme 1–7 (e2e `lugru-deals` mit erfundenen Posts im Discord-Nachbau, Unit `lugru-post`):
@@ -472,7 +479,15 @@ nie in Chats oder Mails.
     erscheinen): Konnektor in claude.ai einmal trennen und neu verbinden; Privat-Freigabe dabei angehakt lassen.
 28. **Siri-Link**: Prüfen, dass `APP_URL` in der Server-`.env` die normale https-Adresse des Seller-Systems ist (nicht
     localhost) – Einstellungen → Adressen-Check zeigt es. Dorthin zeigt künftig der Link in der Siri-Antwort.
-29. **Lugru Deals über Discord (neu)**:
+29. **Lugru Deals direkt von der Seite (Hauptweg)**:
+    - Das Lugru-Programm auf dem PC aktualisieren: neue `lugru-deals.exe` (ZIP aus dem Chat) entpacken, dann in
+      PowerShell im entpackten Ordner `.\update.ps1 -SourceDir .` (stoppt, ersetzt, startet neu; die Daten bleiben).
+    - In der Lugru-Seite unter Monitor → Einstellungen → eBay „Adresse des Seller-Systems“ (die öffentliche Adresse) und den
+      Verbindungsschlüssel eintragen – derselbe wie im Seller-System unter Anbindungen → „Lugru Deals“.
+    - Danach geht beim ersten Start die ganze History hinüber, und jeder neue Post steht nach Sekunden im Deal-Eingang.
+      Den PC mit der Lugru-Seite einfach wie gewohnt zum Posten benutzen.
+    - Optional zusätzlich der Discord-Weg (nächster Punkt), damit Reaktionen auch bei ausgeschaltetem PC ankommen.
+29b. **Lugru Deals über Discord (optional)**:
     - Einen Bot mit Leserechten in den Discord-Server der Deal-Gruppe bringen. Am einfachsten der Discord-Bot, den das
       Seller-System schon hat (VA bzw. Discord-Kanäle) – oder der Lugru-Reaktions-Bot. Er braucht nur „Kanal ansehen“
       und „Nachrichtenverlauf lesen“; im Entwicklerportal muss „Message Content Intent“ an sein.
