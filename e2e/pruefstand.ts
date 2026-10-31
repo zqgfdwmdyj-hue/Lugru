@@ -77,7 +77,11 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/delegation": {
     abläufe: [
       { ablauf: "Aufgabe an die VA über Discord: Thread mit Anleitung und Datei, ✅ erledigt, Rechnungsfrage automatisch beantwortet, Rückfrage → Antwort im Thread", erwartet: "Thread je Aufgabe, Status übernommen, keine Privat-/Finanzdaten an die VA", tests: ["va-discord.spec.ts › Aufgabe → Thread"] },
+      { ablauf: "B18: Anspruch mit Frist in 8 Tagen, Frist rückt auf 7/5/3/1 Tage, VA antwortet „case 12345678901“, Anspruch mit Frist heute, dann abgelaufen; Claude va_aufgaben/ueberblick", erwartet: "Thread sofort (Englisch, Art, SKU, Sendung, Menge, Betrag, Frist, Anleitung); Erinnerung nur an −7/−3/−1; eingereicht mit Fallnummer; Fristtag → Meldung an Ludwig; verpasst → Liste „Premium-Support/PSTAM“, Zeile „N Fristen verpasst“ rot (VA-Seite, Feierabend, ueberblick); „Daily overview“ einmal am Tag mit Thread-Links", tests: ["va-automatik.spec.ts › Anspruch: Thread sofort"] },
+      { ablauf: "B18: Amazon-Mails Markenbeschwerde, Fall „Antwort nötig“ 120 €, Fall 800 €, Fallnummer im Fall-Thread, „An die VA“ von Hand, Modus „Vorschlag“, Regel je Kategorie ändern", erwartet: "Marke nur Ludwig; 120 € automatisch Thread; 800 € erst Ludwig (Meldung, Knopf); Vorgang „eingereicht“; im Vorschlag kein Thread, tägliche Aufgabe; Regel gespeichert", tests: ["va-automatik.spec.ts › Fall-Zentrale: Marke nur Ludwig"] },
+      { ablauf: "B18: Tagesgrenze erreicht, zwei neue Ansprüche, VA antwortet „#n case …“ im Sammel-Thread", erwartet: "beide im Sammel-Thread (#1, #2), nur der genannte eingereicht", tests: ["va-automatik.spec.ts › Tagesgrenze"] },
     ],
+    offen: ["VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen"],
   },
   "/kalender": {
     abläufe: [{ ablauf: "Geschäftskalender als Büro-Konto und als Inhaberin", erwartet: "keine privaten Einträge (Testwort PRIVATGEHEIM erscheint nicht)", tests: ["privat.spec.ts › Privates bleibt privat"] }],

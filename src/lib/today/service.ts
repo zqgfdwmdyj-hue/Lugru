@@ -86,6 +86,9 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
     });
   }
   if (expired.n) out.push({ key: "abgelaufen", label: `${expired.n} Anspr${expired.n === 1 ? "uch" : "üche"} mit abgelaufener Frist, nicht eingereicht`, count: expired.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
+  // VA (B18): heute verpasste Fristen (Aufgaben überfällig geworden, Ansprüche ohne Einreichung abgelaufen) – rot.
+  const va = await import("@/lib/va/service").then((x) => x.vaHeute(tenantId, today)).catch(() => null);
+  if (va?.fristenVerpasst) out.push({ key: "va-verpasst", label: `VA: ${va.fristenVerpasst} ${va.fristenVerpasst === 1 ? "Frist" : "Fristen"} heute verpasst`, detail: va.text, count: va.fristenVerpasst, href: "/delegation/va", level: "danger" });
   // Liquidität: alter oder fehlender Geschäfts-Kontostand – sonst ist die Prognose zu optimistisch (Umsetzungsstand 31.10.).
   const kb = await import("@/lib/bank/service").then((x) => x.kontostand(tenantId, "geschaeft", null, today)).catch(() => undefined);
   if (kb !== undefined) {

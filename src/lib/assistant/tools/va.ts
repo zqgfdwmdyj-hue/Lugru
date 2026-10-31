@@ -11,7 +11,8 @@ const QUELLE = { text: "Discord VA-Kanal (Abgleich alle 30 Sekunden)", jobs: ["V
 export const vaAufgabenTool = defineTool({
   name: "va_aufgaben",
   title: "Aufgaben bei der VA",
-  description: "Aufgaben, die per Discord an die VA gegeben wurden: Titel, Frist, Status (offen, Rückfrage, erledigt), seit wann, letzte Erinnerung. Dazu die Tageszeile „VA heute: … erledigt, … Rückfragen, … automatisch beantwortet“.",
+  description:
+    "Aufgaben, die per Discord an die VA gegeben wurden: Titel, Frist, Status (offen, Rückfrage, erledigt, überfällig), seit wann, letzte Erinnerung; Ansprüche bei der VA (Frist, eingereicht/Fallnummer, verpasst); VA-Automatik (Modus Vorschlag/automatisch, heute: neue Threads, Vorschläge, Sammel-Thread, erst Ludwig). Dazu die Tageszeile „VA heute: … erledigt, … Rückfragen, … automatisch beantwortet, … Fristen verpasst“.",
   area: "start",
   ownerOnly: true,
   write: false,
@@ -21,11 +22,21 @@ export const vaAufgabenTool = defineTool({
     const t = ctx.session.tenantId;
     const [st, rows, heute] = await Promise.all([vaStatus(t), vaAufgaben(t, i.status ?? null), vaHeute(t, ctx.today)]);
     if (!st.eingerichtet) return json({ eingerichtet: false, hinweis: "Anbindung „Discord – VA-Kanal“ fehlt (Einstellungen → Anbindungen).", link: abs(ctx, "/einstellungen/anbindungen") });
+    const { anspruecheBeiVa, automatikHeute } = await import("@/lib/va/automatik");
+    const { getSettings } = await import("@/lib/settings");
+    const va = (await getSettings(t)).va;
+    const [ansprueche, auto] = await Promise.all([anspruecheBeiVa(t), automatikHeute(t, va.zeitzone)]);
     return json({
       heute: heute?.text,
+      fristen_verpasst: heute?.fristenVerpasst ?? 0,
+      automatik: { modus: va.automatik.modus, seit: va.automatik.seit, heute_neue_threads: auto.threads, max_threads_tag: va.automatik.maxThreadsTag, vorschlaege_heute: auto.vorschlag, sammel_heute: auto.sammel, erst_ludwig_heute: auto.ludwig, schwelle_eur: va.automatik.schwelle, zeitzone: va.zeitzone, uhrzeit: va.automatik.uhrzeit },
+      ansprueche: ansprueche
+        .filter((x) => !i.status || (i.status === "erledigt" ? x.status === "erledigt" : x.status === i.status))
+        .slice(0, 50)
+        .map((x) => ({ id: x.claimId, titel: x.titel, frist: x.frist, betrag: x.betrag === null ? null : Number(x.betrag), status: x.claimStatus === "submitted" ? "eingereicht" : x.verpasstAm ? "Frist verpasst" : VT_STATUS[x.status], fallnummer: x.fallnummer ?? undefined, letzte_erinnerung: x.letzteErinnerung ?? undefined, link: abs(ctx, `/ansprueche/${x.claimId}`) })),
       letzter_abgleich: st.letzterAbgleich?.toISOString() ?? null,
       letzter_fehler: st.letzterFehler ?? undefined,
-      aufgaben: rows.map((r) => ({ id: r.taskId, titel: r.titel, frist: r.faellig, status: VT_STATUS[r.status], im_system: r.taskStatus === "done" ? "erledigt" : "offen", seit: r.seit.toISOString().slice(0, 10), erledigt_am: r.erledigtAm?.toISOString().slice(0, 10), letzte_erinnerung: r.letzteErinnerung ?? undefined })),
+      aufgaben: rows.map((r) => ({ id: r.taskId, titel: r.titel, frist: r.faellig, status: r.status !== "erledigt" && r.faellig && r.faellig < ctx.today ? "überfällig" : VT_STATUS[r.status], im_system: r.taskStatus === "done" ? "erledigt" : "offen", seit: r.seit.toISOString().slice(0, 10), erledigt_am: r.erledigtAm?.toISOString().slice(0, 10), letzte_erinnerung: r.letzteErinnerung ?? undefined })),
       link: abs(ctx, "/delegation/va"),
     });
   },

@@ -33,7 +33,7 @@ export const ueberblick = defineTool({
   name: "ueberblick",
   title: "Tagesüberblick",
   description:
-    "Überblick für heute: was ansteht (Versand, Fristen, Ansprüche, Fälle), offene und bis heute fällige Aufgaben, Paletten-Sendungen heute/überfällig, Umsatz heute/gestern/Monat. Nimm das als Einstieg bei Fragen wie „Was steht heute an?“, „Was ist offen?“, „Wie läuft es?“.",
+    "Überblick für heute: was ansteht (Versand, Fristen, Ansprüche, Fälle), offene und bis heute fällige Aufgaben, Paletten-Sendungen heute/überfällig, Umsatz heute/gestern/Monat, für den Inhaber die Zeile „VA heute“ (erledigt, Rückfragen, automatisch beantwortet, Fristen verpasst = rot). Nimm das als Einstieg bei Fragen wie „Was steht heute an?“, „Was ist offen?“, „Wie läuft es?“.",
   area: null,
   write: false,
   quelle: { text: "Seller-System: Aufgaben, Aufträge, Paletten, Posteingang", jobs: ["Amazon-Bestellungen", "eBay-Bestellungen", "Postfächer"] },
@@ -61,6 +61,11 @@ export const ueberblick = defineTool({
         neue_meldungen: notices.count,
         heute_morgen_oder_ueberfaellig: due.map((x) => ({ id: x.id, richtung: x.direction === "ein" ? "Anlieferung" : "Versand", titel: x.title, termin: x.plannedDate, status: statusLabel(x.status, x.direction), spedition: carrierLabel(x.carrier, x.carrierName), link: abs(ctx, `/paletten/sendungen/${x.id}`) })),
       };
+    }
+    // VA (B18): Zeile für den Morgenbericht – „N Fristen verpasst“ ist rot.
+    if (s.role === "owner") {
+      const va = await import("@/lib/va/service").then((x) => x.vaHeute(t, ctx.today)).catch(() => null);
+      if (va) out.va = { text: va.text, erledigt: va.erledigt, rueckfragen: va.rueckfragen, automatisch_beantwortet: va.auto, fristen_verpasst: va.fristenVerpasst, stufe: va.stufe, link: abs(ctx, "/delegation/va") };
     }
     if (s.role === "owner" || canAccess(s, "geld")) {
       const so = await loadSalesOverview(t).catch(() => null);

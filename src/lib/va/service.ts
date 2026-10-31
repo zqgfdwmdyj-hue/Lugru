@@ -152,19 +152,24 @@ export async function aufgabeAnVa(tenantId: string, taskId: string, o: { notiz?:
   return { ok: true, threadId: thread.id, neu: true };
 }
 
+/** Aufgabe der VA zuordnen (Konto der VA mit Anleitungen, sonst extern „VA“) – ohne Thread. */
+export async function vaZustaendigSetzen(tenantId: string, cfg: VaCfg, taskId: string): Promise<boolean> {
+  const va = await vaSession(tenantId, cfg);
+  if (va) {
+    const { aufgabeZuweisen } = await import("@/lib/zeit/service");
+    if (!(await aufgabeZuweisen(tenantId, taskId, va.userId))) return false;
+    await db.update(T).set({ zustaendigExtern: null }).where(and(eq(T.tenantId, tenantId), eq(T.id, taskId)));
+    return true;
+  }
+  const [r] = await db.update(T).set({ assigneeId: null, anleitungIds: [], zustaendigExtern: "VA" }).where(and(eq(T.tenantId, tenantId), eq(T.id, taskId))).returning({ id: T.id });
+  return Boolean(r);
+}
+
 /** „An die VA geben“ (Knopf, Claude): zuständig setzen (Konto der VA mit Anleitungen, sonst extern „VA“) und Thread. */
 export async function anVaGeben(tenantId: string, taskId: string, notiz?: string | null): Promise<ZuweisenErgebnis> {
   const cfg = await vaKonfig(tenantId);
   if (!cfg) return { ok: false, fehler: "Discord – VA-Kanal ist nicht eingerichtet (Einstellungen → Anbindungen)." };
-  const va = await vaSession(tenantId, cfg);
-  if (va) {
-    const { aufgabeZuweisen } = await import("@/lib/zeit/service");
-    if (!(await aufgabeZuweisen(tenantId, taskId, va.userId))) return { ok: false, fehler: "Aufgabe nicht gefunden." };
-    await db.update(T).set({ zustaendigExtern: null }).where(and(eq(T.tenantId, tenantId), eq(T.id, taskId)));
-  } else {
-    const [r] = await db.update(T).set({ assigneeId: null, anleitungIds: [], zustaendigExtern: "VA" }).where(and(eq(T.tenantId, tenantId), eq(T.id, taskId))).returning({ id: T.id });
-    if (!r) return { ok: false, fehler: "Aufgabe nicht gefunden." };
-  }
+  if (!(await vaZustaendigSetzen(tenantId, cfg, taskId))) return { ok: false, fehler: "Aufgabe nicht gefunden." };
   return aufgabeAnVa(tenantId, taskId, { notiz });
 }
 
@@ -183,16 +188,19 @@ export async function beiZuweisung(tenantId: string, taskId: string, userId: str
 
 // ---- Abgleich ---------------------------------------------------------------------------------------------
 
-type Ctx = { t: string; cfg: VaCfg; dc: ReturnType<typeof discord>; va: Session | null; s: Awaited<ReturnType<typeof vaEinstellungen>>["s"]; heute: string; ruhe: boolean; jetzt: Date; z: Zaehler; sprache: Sprache };
-type Zaehler = { nachrichten: number; erledigt: number; rueckfragen: number; auto: number; erinnerungen: number; fehler: string[] };
+export type Ctx = { t: string; cfg: VaCfg; dc: ReturnType<typeof discord>; va: Session | null; s: Awaited<ReturnType<typeof vaEinstellungen>>["s"]; heute: string; zeit: string; ruhe: boolean; jetzt: Date; z: Zaehler; sprache: Sprache; manuell: boolean };
+export type Zaehler = { nachrichten: number; erledigt: number; rueckfragen: number; auto: number; erinnerungen: number; anVa: number; verpasst: number; fehler: string[] };
 
 const vonVa = (cfg: VaCfg, m: DcNachricht) => m.author?.id === cfg.vaDiscordId && !m.author.bot && (m.type === undefined || m.type === 0 || m.type === 19);
 const zeitVon = (m: DcNachricht) => (m.timestamp ? new Date(m.timestamp) : new Date());
 
 let laeuft = new Set<string>();
 
-/** Ein Abgleich: Kanal, offene Threads, Erinnerungen. Läuft je Mandant höchstens einmal gleichzeitig. */
-export async function vaAbgleich(tenantId: string, jetzt = new Date()): Promise<Zaehler | null> {
+/**
+ * Ein Abgleich: Kanal, offene Threads, Erinnerungen, VA-Automatik (Ansprüche, Fristen, „Daily overview“). Läuft je
+ * Mandant höchstens einmal gleichzeitig. `manuell` (Knopf „Jetzt abgleichen“): auch die seltenen Schritte sofort.
+ */
+export async function vaAbgleich(tenantId: string, jetzt = new Date(), o: { manuell?: boolean } = {}): Promise<Zaehler | null> {
   if (laeuft.has(tenantId)) return null;
   const cfg = await vaKonfig(tenantId);
   if (!cfg) return null;
@@ -201,11 +209,12 @@ export async function vaAbgleich(tenantId: string, jetzt = new Date()): Promise<
   const { recordJob } = await import("@/lib/today/jobs");
   const { s, lok, ruhe } = await vaEinstellungen(tenantId, jetzt);
   const va = await vaSession(tenantId, cfg);
-  const c: Ctx = { t: tenantId, cfg, dc: discord(cfg.botToken), va, s, heute: lok.datum, ruhe, jetzt, z: { nachrichten: 0, erledigt: 0, rueckfragen: 0, auto: 0, erinnerungen: 0, fehler: [] }, sprache: await vaSprache(tenantId, va?.userId ?? null) };
+  const c: Ctx = { t: tenantId, cfg, dc: discord(cfg.botToken), va, s, heute: lok.datum, zeit: lok.zeit, ruhe, jetzt, z: { nachrichten: 0, erledigt: 0, rueckfragen: 0, auto: 0, erinnerungen: 0, anVa: 0, verpasst: 0, fehler: [] }, sprache: await vaSprache(tenantId, va?.userId ?? null), manuell: Boolean(o.manuell) };
   try {
     await kanalAbgleichen(c);
     await threadsAbgleichen(c);
     if (!ruhe) await erinnern(c);
+    await (await import("./automatik")).automatikTakt(c);
     await db.insert(schema.vaStand).values({ tenantId, letzterAbgleich: new Date(), letzterFehler: c.z.fehler[0] ?? null }).onConflictDoUpdate({ target: schema.vaStand.tenantId, set: { letzterAbgleich: new Date(), letzterFehler: c.z.fehler[0] ?? null } });
     await recordJob(tenantId, "VA (Discord)", c.z.fehler[0] ?? null, Date.now() - t0);
     return c.z;
@@ -246,13 +255,13 @@ async function kanalAbgleichen(c: Ctx) {
   await db.insert(schema.vaStand).values({ tenantId: c.t, kanalCursor: cursor }).onConflictDoUpdate({ target: schema.vaStand.tenantId, set: { kanalCursor: cursor } });
 }
 
-async function schonDa(t: string, discordId: string) {
+export async function schonDa(t: string, discordId: string) {
   const [r] = await db.select({ id: VN.id }).from(VN).where(and(eq(VN.tenantId, t), eq(VN.discordId, discordId)));
   return Boolean(r);
 }
 
 /** Anhänge der VA speichern (Dateiablage, verschlüsselt). */
-async function anhaengeSpeichern(t: string, m: DcNachricht): Promise<{ id: string; name: string }[]> {
+export async function anhaengeSpeichern(t: string, m: DcNachricht): Promise<{ id: string; name: string }[]> {
   const out: { id: string; name: string }[] = [];
   const { storeFile } = await import("@/lib/orders/service");
   for (const a of (m.attachments ?? []).slice(0, 10)) {
@@ -264,7 +273,7 @@ async function anhaengeSpeichern(t: string, m: DcNachricht): Promise<{ id: strin
   return out;
 }
 
-const dateiZeilen = (d: { id: string; name: string }[]) => d.map((x) => `📎 ${x.name}: /datei/${x.id}`).join("\n");
+export const dateiZeilen = (d: { id: string; name: string }[]) => d.map((x) => `📎 ${x.name}: /datei/${x.id}`).join("\n");
 
 /** Offene Aufgaben der VA (für die Einordnung von Infos). */
 async function vaOffene(t: string) {
@@ -278,7 +287,7 @@ async function vaOffene(t: string) {
 }
 
 /** Text der VA auf Deutsch (Original nur, wenn übersetzt wurde). */
-async function alsDeutsch(t: string, roh: string): Promise<{ text: string; original: string | null; sprache: string | null }> {
+export async function alsDeutsch(t: string, roh: string): Promise<{ text: string; original: string | null; sprache: string | null }> {
   if (!roh) return { text: roh, original: null, sprache: null };
   const u = await uebersetzen(t, roh, "de");
   return u.uebersetzt ? { text: u.text, original: roh, sprache: u.von } : { text: roh, original: null, sprache: u.von };
@@ -395,7 +404,7 @@ async function threadsAbgleichen(c: Ctx) {
   }
 }
 
-type ThreadRow = typeof VT.$inferSelect;
+export type ThreadRow = typeof VT.$inferSelect;
 
 async function threadAbgleichen(c: Ctx, th: ThreadRow, taskStatus: string | null, taskTitle: string | null, assignee: string | null) {
   const neu = await c.dc.neue(th.threadId, th.cursor ?? th.startNachrichtId ?? "0");
@@ -407,6 +416,11 @@ async function threadAbgleichen(c: Ctx, th: ThreadRow, taskStatus: string | null
     if (th.art === "vom_va" && !th.taskId) {
       // Folgefrage in einem automatisch beantworteten Thread – wie eine neue Nachricht behandeln.
       await kanalNachricht(c, m, { id: th.id, threadId: th.threadId });
+      continue;
+    }
+    if (th.art === "anspruch" || th.art === "sammel") {
+      // Ansprüche/Sammel-Thread (B18): Fallnummer → eingereicht, Fragen an Ludwig.
+      status = await (await import("./automatik")).automatikAntwort(c, { ...th, status }, m);
       continue;
     }
     status = await threadNachricht(c, { ...th, status }, m, taskTitle);
@@ -454,6 +468,7 @@ async function threadNachricht(c: Ctx, th: ThreadRow, m: DcNachricht, taskTitle:
     }
     return th.status;
   }
+  if (th.taskId && roh) await fallnummerAnFall(c, th.taskId, roh);
   if (art === "erledigt") {
     await alsErledigt(c, th, text);
     return "erledigt";
@@ -465,6 +480,18 @@ async function threadNachricht(c: Ctx, th: ThreadRow, m: DcNachricht, taskTitle:
   return th.status;
 }
 
+/** Aufgabe aus der Fall-Zentrale (amazon-fall:<id>): nennt die VA eine Fallnummer, steht der Vorgang auf „eingereicht“. */
+async function fallnummerAnFall(c: Ctx, taskId: string, roh: string) {
+  const { fallnummerInAntwort } = await import("./automatik-logic");
+  const fall = fallnummerInAntwort(roh);
+  if (!fall) return;
+  const [t] = await db.select({ key: T.systemKey }).from(T).where(and(eq(T.tenantId, c.t), eq(T.id, taskId)));
+  const vorgangId = /^amazon-fall:([0-9a-f-]{36})$/.exec(t?.key ?? "")?.[1];
+  if (!vorgangId) return;
+  const { fallStatusSetzen } = await import("@/lib/amazon-faelle/service");
+  await fallStatusSetzen(c.t, vorgangId, { phase: "eingereicht", fallnummer: fall }, "VA (Discord)").catch((e) => c.z.fehler.push(e instanceof Error ? e.message : String(e)));
+}
+
 async function alsErledigt(c: Ctx, th: ThreadRow, text: string | null) {
   if (th.taskId) await db.update(T).set({ status: "done", completedAt: new Date() }).where(and(eq(T.tenantId, c.t), eq(T.id, th.taskId), eq(T.status, "open")));
   await db.update(VT).set({ status: "erledigt", erledigtAm: new Date() }).where(eq(VT.id, th.id));
@@ -472,7 +499,7 @@ async function alsErledigt(c: Ctx, th: ThreadRow, text: string | null) {
   await c.dc.senden(th.threadId, BOT[c.sprache].erledigtDanke(Boolean(text)), { still: true }).catch(() => "");
 }
 
-async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: string | null, taskTitle: string | null) {
+export async function rueckfrage(c: Ctx, th: ThreadRow, text: string, nachrichtId: string | null, taskTitle: string | null) {
   await db.update(VT).set({ status: "rueckfrage" }).where(eq(VT.id, th.id));
   const key = `va-rueckfrage:${nachrichtId ?? `${th.id}:reaktion`}`;
   const [lt] = await db
@@ -672,7 +699,7 @@ export async function antwortAnVa(tenantId: string, ziel: { nachrichtId?: string
   }
   if (threadId) {
     const [th] = await db.select().from(VT).where(and(eq(VT.tenantId, tenantId), eq(VT.threadId, threadId)));
-    if (th?.art === "aufgabe" && th.status === "rueckfrage") await db.update(VT).set({ status: "offen" }).where(eq(VT.id, th.id));
+    if ((th?.art === "aufgabe" || th?.art === "anspruch" || th?.art === "sammel") && th.status === "rueckfrage") await db.update(VT).set({ status: "offen" }).where(eq(VT.id, th.id));
     if (th?.art === "vom_va" && th.status !== "erledigt") await db.update(VT).set({ status: "erledigt", erledigtAm: jetzt }).where(eq(VT.id, th.id));
   }
   return { ok: true, wo: threadId ? "thread" : "kanal", gesendet: senden };
@@ -699,14 +726,20 @@ export async function vaHeute(tenantId: string, heute: string) {
   if (!(await vaKonfig(tenantId))) return null;
   const von = berlinMidnight(heute);
   const bis = berlinMidnight(new Date(Date.parse(`${heute}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10));
-  const [[erl], [rf], [auto], [offen]] = await Promise.all([
+  const CE = schema.claimEvents;
+  const [[erl], [rf], [auto], [offen], [verpasstAufg], [verpasstAnspr], [eingereicht]] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(VT).where(and(eq(VT.tenantId, tenantId), eq(VT.art, "aufgabe"), gte(VT.erledigtAm, von), lt(VT.erledigtAm, bis))),
     db.select({ n: sql<number>`count(*)::int` }).from(VN).where(and(eq(VN.tenantId, tenantId), eq(VN.von, "va"), isNotNull(VN.ludwigTaskId), gte(VN.gesendetAm, von), lt(VN.gesendetAm, bis))),
     db.select({ n: sql<number>`count(*)::int` }).from(VN).where(and(eq(VN.tenantId, tenantId), eq(VN.autoBeantwortet, true), gte(VN.gesendetAm, von), lt(VN.gesendetAm, bis))),
     db.select({ n: sql<number>`count(*)::int` }).from(VN).where(and(eq(VN.tenantId, tenantId), eq(VN.von, "va"), isNotNull(VN.ludwigTaskId), isNull(VN.beantwortetAm))),
+    // Fristen verpasst: Aufgaben der VA heute überfällig geworden, Ansprüche ohne Einreichung abgelaufen (B18).
+    db.select({ n: sql<number>`count(*)::int` }).from(VT).where(and(eq(VT.tenantId, tenantId), eq(VT.art, "aufgabe"), gte(VT.verpasstAm, von), lt(VT.verpasstAm, bis))),
+    db.select({ n: sql<number>`count(*)::int` }).from(CE).where(and(eq(CE.tenantId, tenantId), eq(CE.action, "Frist bei der VA verpasst"), gte(CE.createdAt, von), lt(CE.createdAt, bis))),
+    // Von der VA eingereichte Ansprüche (Fallnummer im Thread) zählen als erledigt.
+    db.select({ n: sql<number>`count(*)::int` }).from(CE).where(and(eq(CE.tenantId, tenantId), ilike(CE.action, "%über VA (Discord)"), gte(CE.createdAt, von), lt(CE.createdAt, bis))),
   ]);
-  const z = { erledigt: erl?.n ?? 0, rueckfragen: rf?.n ?? 0, auto: auto?.n ?? 0, offen: offen?.n ?? 0 };
-  return { ...z, text: L.vaHeuteText(z) };
+  const z = { erledigt: (erl?.n ?? 0) + (eingereicht?.n ?? 0), rueckfragen: rf?.n ?? 0, auto: auto?.n ?? 0, offen: offen?.n ?? 0, fristenVerpasst: (verpasstAufg?.n ?? 0) + (verpasstAnspr?.n ?? 0) };
+  return { ...z, stufe: z.fristenVerpasst > 0 ? ("rot" as const) : ("ok" as const), text: L.vaHeuteText(z) };
 }
 
 export const VT_STATUS: Record<string, string> = { offen: "offen", rueckfrage: "Rückfrage", erledigt: "erledigt" };

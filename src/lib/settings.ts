@@ -9,6 +9,7 @@ import { STANDARD_EXTERN, type Regel } from "@/lib/delegieren/logic";
 import { ARBEITSZEIT_STANDARD, type Arbeitszeit } from "@/lib/tagesplan/logic";
 import type { PrepPosten } from "@/lib/shipping/prep";
 import { GLOSSAR_STANDARD } from "@/lib/va/sprache";
+import { VA_REGEL_STANDARD, type VaZiel } from "@/lib/va/automatik-logic";
 
 export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   inbound_shortage: "Fehlt beim Wareneingang",
@@ -131,7 +132,34 @@ export const DEFAULT_SETTINGS = {
   verlust: { kostenOhneVerkaufSchwelle: 5 },
   /** VA über Discord: Zeitzone, Ruhezeiten, überfällig täglich erinnern, Einkaufsrechnungen automatisch schicken. */
   /** VA: Sprache (der VA spricht Englisch), Glossar für Fachbegriffe, Antworten vor dem Senden auf Englisch zeigen. */
-  va: { zeitzone: "Europe/Berlin", ruheVon: "20:00", ruheBis: "08:00", erinnerungUeberfaellig: true, darfEinkaufsrechnungen: true, sprache: "en" as "de" | "en", glossar: GLOSSAR_STANDARD as Record<string, string>, antwortVorschau: false },
+  /**
+   * VA-Automatik (B18): Ansprüche und Fälle je Kategorie an die VA (Modus „Vorschlag“ bis die Fall-Zentrale sicher
+   * einstuft), Betrag über der Schwelle erst an Ludwig, höchstens N neue Threads am Tag (darüber Sammel-Thread),
+   * Erinnerungen vor der Frist und „Daily overview“ um die Uhrzeit der VA an ihren Arbeitstagen (1 = Mo … 7 = So).
+   */
+  va: {
+    zeitzone: "Asia/Manila",
+    ruheVon: "20:00",
+    ruheBis: "08:00",
+    erinnerungUeberfaellig: true,
+    darfEinkaufsrechnungen: true,
+    sprache: "en" as "de" | "en",
+    glossar: GLOSSAR_STANDARD as Record<string, string>,
+    antwortVorschau: false,
+    automatik: {
+      modus: "vorschlag" as "aus" | "vorschlag" | "automatisch",
+      /** Seit wann „automatisch“ gilt (ISO-Zeit) – ältere Ansprüche gehen nicht von selbst an die VA. */
+      seit: null as string | null,
+      schwelle: 500,
+      maxThreadsTag: 30,
+      uhrzeit: "09:00",
+      erinnerungTage: [7, 3, 1] as number[],
+      arbeitstage: [1, 2, 3, 4, 5] as number[],
+      feiertage: [] as string[],
+      tagesuebersicht: true,
+      regeln: VA_REGEL_STANDARD as Record<string, VaZiel>,
+    },
+  },
   faelle: { fristen: {} as Record<string, number>, nachfassenTage: 7, betragSchwelle: 200, zustaendig: "va" as "va" | "ludwig" },
   // Abschnitt 10/11: Budget-Grenzen (0 = keine), Deal-Wert-Schwelle für die Kauf-Meldung und Ziel für „Treffer“.
   dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "", budgetJeDeal: 0, budgetJeTag: 0, budgetJeWoche: 0, wertSchwelle: 70 },
@@ -224,7 +252,7 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     rechtsfaelle: { ...d.rechtsfaelle, ...(s.rechtsfaelle ?? {}) },
     discordWissen: { ...d.discordWissen, ...(s.discordWissen ?? {}) },
     mobil: { ...d.mobil, ...(s.mobil ?? {}), orte: { ...d.mobil.orte, ...(s.mobil?.orte ?? {}) }, sms: { ...d.mobil.sms, ...(s.mobil?.sms ?? {}) }, tesla: { ...d.mobil.tesla, ...(s.mobil?.tesla ?? {}) } },
-    va: { ...d.va, ...(s.va ?? {}) },
+    va: { ...d.va, ...(s.va ?? {}), automatik: { ...d.va.automatik, ...(s.va?.automatik ?? {}), regeln: { ...d.va.automatik.regeln, ...(s.va?.automatik?.regeln ?? {}) } } },
     verlust: { ...d.verlust, ...(s.verlust ?? {}) },
     bqool: { ...d.bqool, ...(s.bqool ?? {}), abverkaufRegel: { ...d.bqool.abverkaufRegel, ...(s.bqool?.abverkaufRegel ?? {}) } } as typeof d.bqool,
     delegieren: { ...d.delegieren, ...(s.delegieren ?? {}) },

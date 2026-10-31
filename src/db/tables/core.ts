@@ -164,7 +164,18 @@ export type TenantSettings = {
   /** Verlust-Stopp: Kosten ohne Verkauf erst ab diesem Betrag je SKU und Woche (€) als Hinweis. */
   verlust?: { kostenOhneVerkaufSchwelle?: number };
   /** VA über Discord: Zeitzone der VA, Ruhezeiten (keine Erinnerungen), tägliche Erinnerung bei Überfälligem, Einkaufsrechnungen. */
-  va?: { zeitzone?: string; ruheVon?: string; ruheBis?: string; erinnerungUeberfaellig?: boolean; darfEinkaufsrechnungen?: boolean; sprache?: "de" | "en"; glossar?: Record<string, string>; antwortVorschau?: boolean };
+  va?: {
+    zeitzone?: string;
+    ruheVon?: string;
+    ruheBis?: string;
+    erinnerungUeberfaellig?: boolean;
+    darfEinkaufsrechnungen?: boolean;
+    sprache?: "de" | "en";
+    glossar?: Record<string, string>;
+    antwortVorschau?: boolean;
+    /** VA-Automatik (B18). */
+    automatik?: { modus?: "aus" | "vorschlag" | "automatisch"; seit?: string | null; schwelle?: number; maxThreadsTag?: number; uhrzeit?: string; erinnerungTage?: number[]; arbeitstage?: number[]; feiertage?: string[]; tagesuebersicht?: boolean; regeln?: Record<string, "va" | "ludwig" | "nie"> };
+  };
   /** Amazon-Fall-Zentrale: Fristen je Phase/Bereich (Tage), Nachfassen ohne Antwort, Betragsschwelle für Info an Ludwig, wer einreicht. */
   faelle?: { fristen?: Record<string, number>; nachfassenTage?: number; betragSchwelle?: number; zustaendig?: "va" | "ludwig" };
   dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string; budgetJeDeal?: number; budgetJeTag?: number; budgetJeWoche?: number; wertSchwelle?: number };

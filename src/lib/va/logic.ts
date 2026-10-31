@@ -247,9 +247,10 @@ export function erinnerungText(art: "heute" | "ueberfaellig", titel: string, fae
   return art === "heute" ? `${an}⏰ Heute fällig: **${titel}**` : `${an}⏰ Überfällig seit ${datumDe(faellig)}: **${titel}** – bitte erledigen oder hier kurz schreiben, was fehlt.`;
 }
 
-/** Feierabend-Zeile für Ludwig. */
-export function vaHeuteText(z: { erledigt: number; rueckfragen: number; auto: number; offen?: number }): string {
-  return `VA heute: ${z.erledigt} erledigt, ${z.rueckfragen} ${z.rueckfragen === 1 ? "Rückfrage" : "Rückfragen"}, ${z.auto} automatisch beantwortet${z.offen ? ` · ${z.offen} unbeantwortet` : ""}`;
+/** Feierabend-/Morgenbericht-Zeile für Ludwig (B18: mit „N Fristen verpasst“, in der Anzeige rot ab 1). */
+export function vaHeuteText(z: { erledigt: number; rueckfragen: number; auto: number; offen?: number; fristenVerpasst?: number }): string {
+  const n = z.fristenVerpasst ?? 0;
+  return `VA heute: ${z.erledigt} erledigt, ${z.rueckfragen} ${z.rueckfragen === 1 ? "Rückfrage" : "Rückfragen"}, ${z.auto} automatisch beantwortet, ${n} ${n === 1 ? "Frist" : "Fristen"} verpasst${z.offen ? ` · ${z.offen} unbeantwortet` : ""}`;
 }
 
 // ---- Antworten aus Werkzeug-Ergebnissen -------------------------------------------------------------

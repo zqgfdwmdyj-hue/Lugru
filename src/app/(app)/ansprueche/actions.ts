@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES } from "@/db/schema";
-import { requireArea } from "@/lib/auth/session";
+import { requireArea, requireOwner } from "@/lib/auth/session";
 import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
 import { addDaysIso, todayIso } from "@/lib/dates";
@@ -167,4 +167,15 @@ export async function setClaimEventDate(fd: FormData) {
   await db.update(schema.claims).set({ eventDate: date, deadline, updatedAt: new Date() }).where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)));
   await log(session.tenantId, id, session.userId, "Ereignisdatum gesetzt", `${date.split("-").reverse().join(".")} → Frist ${deadline.split("-").reverse().join(".")}`);
   revalidatePath("/", "layout");
+}
+
+/** Anspruch als eigener Thread an die VA (Englisch, mit Frist, Belegen, Anleitung). */
+export async function anspruchAnVaAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = uuid.parse(fd.get("id"));
+  const { anspruchAnVa } = await import("@/lib/va/automatik");
+  const r = await anspruchAnVa(s.tenantId, id, { userId: s.userId });
+  if (!r.ok) await log(s.tenantId, id, s.userId, "an die VA fehlgeschlagen", r.fehler);
+  revalidatePath(`/ansprueche/${id}`);
+  revalidatePath("/delegation/va");
 }

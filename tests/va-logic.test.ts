@@ -129,7 +129,7 @@ describe("VA – Zeiten und Erinnerungen", () => {
   });
 
   it("Feierabend-Zeile", () => {
-    expect(vaHeuteText({ erledigt: 6, rueckfragen: 2, auto: 3 })).toBe("VA heute: 6 erledigt, 2 Rückfragen, 3 automatisch beantwortet");
+    expect(vaHeuteText({ erledigt: 6, rueckfragen: 2, auto: 3 })).toBe("VA heute: 6 erledigt, 2 Rückfragen, 3 automatisch beantwortet, 0 Fristen verpasst");
     expect(vaHeuteText({ erledigt: 0, rueckfragen: 1, auto: 0, offen: 1 })).toContain("1 Rückfrage,");
   });
 });

@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
@@ -20,10 +20,10 @@ export async function abgleichAction() {
   const s = await requireOwner();
   let m: string;
   try {
-    const z = await vaAbgleich(s.tenantId);
+    const z = await vaAbgleich(s.tenantId, new Date(), { manuell: true });
     m = !z
       ? "Abgleich läuft gerade oder der VA-Kanal ist nicht eingerichtet."
-      : `Abgeglichen: ${z.nachrichten} neue Nachrichten, ${z.erledigt} erledigt, ${z.rueckfragen} Rückfragen, ${z.auto} automatisch beantwortet${z.erinnerungen ? `, ${z.erinnerungen} Erinnerungen` : ""}${z.fehler.length ? ` – Fehler: ${z.fehler[0]}` : ""}.`;
+      : `Abgeglichen: ${z.nachrichten} neue Nachrichten, ${z.erledigt} erledigt, ${z.rueckfragen} Rückfragen, ${z.auto} automatisch beantwortet${z.erinnerungen ? `, ${z.erinnerungen} Erinnerungen` : ""}${z.anVa ? `, ${z.anVa} automatisch an die VA` : ""}${z.verpasst ? `, ${z.verpasst} Fristen verpasst` : ""}${z.fehler.length ? ` – Fehler: ${z.fehler[0]}` : ""}.`;
   } catch (e) {
     m = `Abgleich fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`;
   }
@@ -94,4 +94,67 @@ export async function vorschauAction(text: string): Promise<{ text: string; hinw
   const v = await antwortVorschau(s.tenantId, t);
   if (v.sprache === "de") return { text: t, hinweis: "Die VA ist auf Deutsch eingestellt – wird so gesendet." };
   return { text: v.text, hinweis: v.uebersetzt ? "Automatisch übersetzt – bei Bedarf anpassen." : "Übersetzung nicht möglich (KI-Schlüssel fehlt?) – bitte selbst auf Englisch schreiben." };
+}
+
+// ---- VA-Automatik (B18) ----------------------------------------------------------------------------------
+
+const MODI = ["aus", "vorschlag", "automatisch"] as const;
+
+export async function automatikEinstellungenAction(fd: FormData) {
+  const s = await requireOwner();
+  const { VA_KATEGORIEN, feiertageAusText } = await import("@/lib/va/automatik-logic");
+  const modus = String(fd.get("modus") ?? "");
+  if (!(MODI as readonly string[]).includes(modus)) zurueck("Modus wählen.");
+  const uhrzeit = String(fd.get("uhrzeit") ?? "");
+  if (!UHR.test(uhrzeit)) zurueck("Uhrzeit als HH:MM angeben (z. B. 09:00).");
+  const schwelle = Number(String(fd.get("schwelle") ?? "").replace(",", "."));
+  const maxThreadsTag = Number(fd.get("maxThreadsTag"));
+  if (!Number.isFinite(schwelle) || schwelle < 0 || schwelle > 1_000_000) zurueck("Schwelle in € (0 = keine).");
+  if (!Number.isInteger(maxThreadsTag) || maxThreadsTag < 1 || maxThreadsTag > 500) zurueck("Höchstens 1–500 neue Threads am Tag.");
+  const erinnerungTage = [...new Set(String(fd.get("erinnerungTage") ?? "").split(/[^\d]+/).filter(Boolean).map(Number).filter((n) => n >= 0 && n <= 90))].sort((a, b) => b - a).slice(0, 6);
+  const arbeitstage = fd.getAll("arbeitstag").map(Number).filter((n) => n >= 1 && n <= 7);
+  const regeln: Record<string, "va" | "ludwig" | "nie"> = {};
+  for (const k of VA_KATEGORIEN) {
+    const v = String(fd.get(`regel_${k}`) ?? "");
+    if (v === "va" || v === "ludwig" || v === "nie") regeln[k] = v;
+  }
+  const [t] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, s.tenantId));
+  const alt = t?.settings ?? {};
+  const vorher = alt.va?.automatik ?? {};
+  // „seit“: ab dem Umschalten auf „automatisch“ – ältere Ansprüche gehen nicht von selbst an die VA.
+  const seit = modus === "automatisch" ? (vorher.modus === "automatisch" && vorher.seit ? vorher.seit : new Date().toISOString()) : null;
+  await db
+    .update(schema.tenants)
+    .set({
+      settings: {
+        ...alt,
+        va: {
+          ...(alt.va ?? {}),
+          automatik: { ...vorher, modus: modus as (typeof MODI)[number], seit, schwelle, maxThreadsTag, uhrzeit, erinnerungTage, arbeitstage, feiertage: feiertageAusText(String(fd.get("feiertage") ?? "")), tagesuebersicht: fd.get("tagesuebersicht") === "on", regeln },
+        },
+      },
+    })
+    .where(eq(schema.tenants.id, s.tenantId));
+  zurueck(modus === "automatisch" && vorher.modus !== "automatisch" ? "Automatik ist an – neue Ansprüche und Fälle gehen ab jetzt nach den Regeln an die VA." : "Automatik gespeichert.");
+}
+
+/** Einzelne Entscheidung von Hand an die VA geben („erst Ludwig“ bzw. Vorschlag). */
+export async function automatikAnVaAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("id") ?? "");
+  if (!ID.test(id)) zurueck("Eintrag fehlt.");
+  const [e] = await db.select().from(schema.vaAutomatik).where(and(eq(schema.vaAutomatik.tenantId, s.tenantId), eq(schema.vaAutomatik.id, id)));
+  if (!e) zurueck("Eintrag nicht gefunden.");
+  let m: string;
+  if (e!.typ === "anspruch") {
+    const { anspruchAnVa } = await import("@/lib/va/automatik");
+    const r = await anspruchAnVa(s.tenantId, e!.bezugId, { userId: s.userId }).catch((x) => ({ ok: false as const, fehler: x instanceof Error ? x.message : String(x) }));
+    m = r.ok ? "Anspruch ist bei der VA (eigener Thread)." : r.fehler;
+  } else {
+    const { fallAnVa } = await import("@/lib/amazon-faelle/service");
+    const r = await fallAnVa(s.tenantId, e!.bezugId, s.userId).catch((x) => ({ ok: false as const, fehler: x instanceof Error ? x.message : String(x) }));
+    m = r.ok ? "Fall ist bei der VA (Thread mit Paket)." : r.fehler;
+  }
+  revalidatePath("/");
+  zurueck(m);
 }

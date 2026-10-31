@@ -771,6 +771,13 @@
       "when": 1793440380103,
       "tag": "0109_amazon_mail_uebersprungen",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1793444330445,
+      "tag": "0110_va_automatik",
+      "breakpoints": true
     }
   ]
 }

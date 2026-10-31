@@ -40,7 +40,7 @@ export default async function FeierabendPage({ searchParams }: { searchParams: P
           </div>
           {f.va && (
             <div className="card card-pad small" data-testid="fa-va">
-              🤝 {f.va.text} · <Link href="/delegation/va">VA (Discord)</Link>
+              🤝 <span className={f.va.fristenVerpasst > 0 ? "tag tag-critical" : undefined} data-testid="fa-va-text">{f.va.text}</span> · <Link href="/delegation/va">VA (Discord)</Link>
             </div>
           )}
           <div className="card card-pad" data-testid="fa-offen">

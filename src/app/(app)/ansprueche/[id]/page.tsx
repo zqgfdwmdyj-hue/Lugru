@@ -9,7 +9,7 @@ import { formatDate, formatEuro } from "@/lib/numbers";
 import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
 import { CopyButton } from "@/components/copy-button";
 import { AiCaseText } from "./ai-text";
-import { dismissClaim, escalateClaim, queueClaim, reopenClaim, resolveClaim, saveClaimNotes, setClaimEventDate, submitClaim } from "../actions";
+import { anspruchAnVaAction, dismissClaim, escalateClaim, queueClaim, reopenClaim, resolveClaim, saveClaimNotes, setClaimEventDate, submitClaim } from "../actions";
 
 export default async function ClaimPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireArea("amazon");
@@ -21,6 +21,9 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
   const settings = await getSettings(session.tenantId);
   const windowDays = settings.claims.windowDays[claim.type];
   const placeholder = Boolean(claim.deadline) && (!claim.eventDate || (!claim.detectionKey && claim.eventDate === claim.createdAt.toISOString().slice(0, 10)));
+  // VA (B18): Anspruch als Thread an die VA – nur Inhaber, VA-Kanal eingerichtet, noch kein offener Thread.
+  const vaThread = session.role === "owner" ? (await db.select({ threadId: schema.vaThreads.threadId, status: schema.vaThreads.status }).from(schema.vaThreads).where(and(eq(schema.vaThreads.tenantId, session.tenantId), eq(schema.vaThreads.claimId, id))).orderBy(desc(schema.vaThreads.createdAt)).limit(1))[0] ?? null : null;
+  const vaBereit = session.role === "owner" && Boolean(await (await import("@/lib/va/service")).vaKonfig(session.tenantId));
   const [events, invoices] = await Promise.all([
     db
       .select({ at: schema.claimEvents.createdAt, action: schema.claimEvents.action, note: schema.claimEvents.note, user: schema.users.name })
@@ -106,6 +109,13 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
         <aside className="col-side">
           <section className="card card-pad stack">
             <h2>Bearbeiten</h2>
+            {vaBereit && (claim.status === "detected" || claim.status === "queued") && (!vaThread || vaThread.status === "erledigt") && (
+              <form action={anspruchAnVaAction}>
+                <input type="hidden" name="id" value={claim.id} />
+                <button className="btn" type="submit" style={{ width: "100%" }} data-testid="claim-an-va">An die VA (Discord-Thread)</button>
+              </form>
+            )}
+            {vaThread && vaThread.status !== "erledigt" && <div className="small muted" data-testid="claim-bei-va">Bei der VA (Discord-Thread{vaThread.status === "rueckfrage" ? ", Rückfrage" : ""}) – Fallnummer im Thread setzt „eingereicht“.</div>}
             {claim.status === "detected" && <form action={queueClaim}><input type="hidden" name="id" value={claim.id} /><button className="btn btn-primary" type="submit" style={{ width: "100%" }}>Zum Einreichen vormerken</button></form>}
             {open && (
               <form action={submitClaim} className="stack" style={{ gap: 6 }}>

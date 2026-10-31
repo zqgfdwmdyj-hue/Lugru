@@ -282,6 +282,9 @@ async function nachMail(tenantId: string, v: Vorgang, heute: string, erg: Abglei
     await db.update(V).set({ gemeldetAm: new Date() }).where(eq(V.id, v.id));
     erg.gemeldet++;
   }
+  // VA-Automatik (B18): je Kategorie an die VA, erst an Ludwig oder nie (Modus „Vorschlag“: nur vormerken).
+  const { fallAutomatik } = await import("@/lib/va/automatik");
+  await fallAutomatik(tenantId, v).catch((e) => console.error("[Fall-Zentrale] VA-Automatik:", e instanceof Error ? e.message : e));
 }
 
 /** Nach dem Einreichen ohne Antwort von Amazon nach X Tagen: Nachfass-Text an die VA (einmal je X Tage). */
@@ -453,10 +456,10 @@ export async function einordnungKorrigieren(tenantId: string, id: string, bereic
   }
 }
 
-/** Paket als Aufgabe an die VA (Discord-Thread mit Text DE/EN, Checkliste, Rechnungen als Anhang). */
-export async function fallAnVa(tenantId: string, id: string, userId: string | null): Promise<{ ok: true; taskId: string } | { ok: false; fehler: string }> {
+/** Aufgabe zum Vorgang anlegen bzw. auffrischen (Paket, Notiz für die VA, Frist) – ohne Thread. */
+export async function fallAufgabe(tenantId: string, id: string, userId: string | null): Promise<{ v: Vorgang; taskId: string; notiz: string } | null> {
   const [v] = await db.select().from(V).where(and(eq(V.tenantId, tenantId), eq(V.id, id)));
-  if (!v) return { ok: false, fehler: "Vorgang nicht gefunden." };
+  if (!v) return null;
   let paket = v.paket;
   if (!paket) {
     paket = await paketFuer(tenantId, v);
@@ -472,17 +475,27 @@ export async function fallAnVa(tenantId: string, id: string, userId: string | nu
       .returning({ id: schema.tasks.id });
     taskId = t.id;
   }
+  await db.update(V).set({ taskId, zustaendig: "va", updatedAt: new Date() }).where(eq(V.id, id));
+  return { v, taskId, notiz };
+}
+
+/** Paket als Aufgabe an die VA (Discord-Thread mit Text DE/EN, Checkliste, Rechnungen als Anhang). */
+export async function fallAnVa(tenantId: string, id: string, userId: string | null, o: { von?: string } = {}): Promise<{ ok: true; taskId: string; threadId: string; neu: boolean } | { ok: false; fehler: string }> {
+  const a = await fallAufgabe(tenantId, id, userId);
+  if (!a) return { ok: false, fehler: "Vorgang nicht gefunden." };
+  const { v, taskId } = a;
   const { anVaGeben } = await import("@/lib/va/service");
   const r = await anVaGeben(tenantId, taskId);
-  await db.update(V).set({ taskId, zustaendig: "va", updatedAt: new Date() }).where(eq(V.id, id));
-  await db.insert(EI).values({ tenantId, vorgangId: id, art: "va", text: r.ok ? `An die VA übergeben (Discord-Thread${r.neu ? " neu" : ", erneut"})` : `An die VA: ${r.fehler}`, von: "Ludwig", am: new Date() });
+  await db.insert(EI).values({ tenantId, vorgangId: id, art: "va", text: r.ok ? `An die VA übergeben (Discord-Thread${r.neu ? " neu" : ", erneut"})` : `An die VA: ${r.fehler}`, von: o.von ?? "Ludwig", am: new Date() });
+  // Von Hand übergeben: Entscheidung der Automatik („erst Ludwig“ bzw. Vorschlag) als übernommen markieren.
+  if (r.ok && userId) await db.update(schema.vaAutomatik).set({ status: "uebernommen", threadId: r.threadId }).where(and(eq(schema.vaAutomatik.tenantId, tenantId), eq(schema.vaAutomatik.typ, "fall"), eq(schema.vaAutomatik.bezugId, id), inArray(schema.vaAutomatik.status, ["ludwig", "vorschlag"])));
   // Größerer Betrag: zusätzlich Info an Ludwig.
   const schwelle = (await getSettings(tenantId)).faelle.betragSchwelle;
   if (r.ok && v.betrag !== null && v.betrag > schwelle) {
     const { melden } = await import("@/lib/push/service");
     await melden(tenantId, await inhaber(tenantId), { titel: `Amazon-Fall über ${schwelle} € an VA`, text: `${v.titel} – ${v.betrag.toFixed(2).replace(".", ",")} €`, link: `/amazon-faelle/${v.id}` });
   }
-  return r.ok ? { ok: true, taskId } : { ok: false, fehler: r.fehler };
+  return r.ok ? { ok: true, taskId, threadId: r.threadId, neu: r.neu } : { ok: false, fehler: r.fehler };
 }
 
 /** Text für die VA: nur was sie braucht (keine Privat-/Finanzdaten; Rechnungen als Anhang über /datei/…). */

@@ -355,6 +355,34 @@ US) → Info, FR, Verlauf „Routine-Mail … kein Fall“ ✅ · VAT ohne Frist
 DE“ laut Ist bleiben, Markenregel „Abverkauf“ in DE → „Abverkauf DE“ ✅ · Min-Warnung ✅ · Anruf ohne Nummer → Rückfrage,
 Vorschlag aus Mail-Signatur, auf der Startseite übernommen ✅.
 
+## B18 – VA-Automatik: Ansprüche, Fristen, Fälle, Tagesübersicht (Ergänzung 31.10.)
+
+Teil 1–3 des Bauauftrags „VA-Discord, EK-Sync, BQool“ waren schon gebaut (VA-1, VA-2, VA-Sprache, EK-1, BQ-1, AU-1).
+Neu war nur der Abschnitt „Automatik“. Alles Neue steht in `src/lib/va/automatik.ts` (Ablauf) und
+`src/lib/va/automatik-logic.ts` (Regeln, Texte; Unit-Test `tests/va-automatik.test.ts`), Migration `0110`.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 18.0 | VA-Zeitzone Asia/Manila, VA spricht nur Englisch | 🟡 Standard „Europe/Berlin“ | ✅ | Standard `Asia/Manila` (`src/lib/settings.ts`); ist noch Berlin gespeichert, zeigt die VA-Seite einen Hinweis (To-do 34). Alles an die VA ist Englisch |
+| 18.1a | Jeder neue Anspruch → Thread mit Art, SKU/ASIN/FNSKU, Sendung/Bestellung, Menge, erwartetem Betrag, Frist, Belegen, Anleitung „File reimbursement claim“ | ❌ (nur Aufgaben gingen an die VA) | ✅ | `anspruchAnVa`: Thread „Claim: …“, Falltext auf Englisch, Rechnungen als Anhang nur mit „VA darf Einkaufsrechnungen sehen“ (sonst ohne EK); Anleitung aus dem Wissen, sonst Standard-Anleitung. Anspruch wird „vorgemerkt“. Von Hand: Knopf „An die VA“ auf der Anspruchs-Seite |
+| 18.1b | Erinnerungen 7, 3 und 1 Tag vor der Frist um 09:00 Manila | ❌ (nur Fälligkeitstag/überfällig) | ✅ | `fristErinnerung`/`anspruchFristen`: einmal am Tag ab der Uhrzeit (VA-Zeit), nie in der Ruhezeit; Tage und Uhrzeit einstellbar |
+| 18.1c | Am Fristtag Info an Ludwig | ❌ | ✅ | Meldung „Anspruch: Frist heute – noch nicht eingereicht“ (Push/Discord), einmal je Anspruch |
+| 18.1d | Fallnummer der VA → `anspruch_eingereicht` automatisch | 🟡 (nur von Hand bzw. über Claude) | ✅ | `fallnummerInAntwort` → `markiereEingereicht` (Verlauf „… über VA (Discord)“), Bestätigung im Thread. Auch im Sammel-Thread („#3 case …“) und im Fall-Thread der Fall-Zentrale (Vorgang → „eingereicht“) |
+| 18.1e | Abgelaufene Ansprüche ohne Einreichung → Liste an Ludwig (Premium-Support/PSTAM), nicht mehr an die VA | 🟡 (nur allgemeine Aufgabe „über der Frist“) | ✅ | Thread wird mit Hinweis an die VA geschlossen; Aufgabe „N Ansprüche: Frist bei der VA verpasst – Premium-Support/PSTAM versuchen“ mit Liste und Summe; abgelaufene Ansprüche gehen nie an die VA |
+| 18.2a | Regeln je Kategorie (an die VA / erst Ludwig / nie) | ❌ („zuständig VA“ war nur ein Etikett) | ✅ | `fallKategorie` + `vaEntscheidung` nach der Tabelle des Auftrags; je Kategorie änderbar unter Delegation → VA → „Automatik – Regeln“; Ergebnis je Fall in der Liste „Automatik“ mit Grund |
+| 18.2b | Alles mit Betrag > 500 € erst an Ludwig (Einstellung), Knopf „an VA geben“ | 🟡 (ab 200 € nur Zusatz-Info) | ✅ | `va.automatik.schwelle`; Meldung „Amazon-Fall erst bei dir“ bzw. „Anspruch erst bei dir“; Knopf „An die VA“ in der Liste und auf der Fall-Seite |
+| 18.2c | Modus „Vorschlag“, bis B17.2 behoben ist | ❌ | ✅ Standard | Nichts geht von selbst an die VA; Liste „wäre an die VA gegangen“ und tägliche Aufgabe „VA-Automatik (Vorschlag): …“. Beim Umschalten auf „automatisch“ gilt ab dann (`seit`) – Altes geht nicht von selbst raus |
+| 18.2d | Höchstens 30 neue Threads am Tag (Einstellung), darüber Sammel-Thread | ❌ | ✅ | Zählung je VA-Tag; darüber ein Sammel-Thread „More tasks – …“ mit nummerierten Einträgen; Antworten „#n case …“ / „#n done“; Erinnerungen und „verpasst“ auch dort |
+| 18.3 | „Daily overview“ jeden Arbeitstag 09:00 Manila (Englisch): neu seit gestern, Fristen heute/morgen, überfällig, offene Rückfragen, je mit Thread-Link | ❌ | ✅ | `tagesuebersicht` im VA-Kanal, Links als `<#thread>`; Arbeitstage (Standard Mo–Fr) und Feiertage einstellbar; einmal am Tag |
+| 18.4 | Zeile „VA heute: X erledigt, Y Rückfragen, Z automatisch beantwortet, N Fristen verpasst“ (rot) im Feierabend-Check und Morgenbericht | 🟡 (ohne „Fristen verpasst“) | ✅ | `vaHeute`: verpasst = Aufgabe der VA heute überfällig geworden + Anspruch bei der VA ohne Einreichung abgelaufen; rot im Feierabend, auf der VA-Seite und auf der Startseite („VA: N Fristen heute verpasst“); Morgenbericht über `ueberblick.va`, dazu `va_aufgaben` |
+
+Abnahme B18 (e2e `va-automatik.spec.ts`, 3 Abläufe; Unit `va-automatik`): Anspruch mit Frist in 8 Tagen → Thread sofort ✅
+· Erinnerung an Tag −7, −3, −1, an Tag −5 keine (09:00 Manila = 02:00 Berlin im Unit-Test) ✅ · „Submitted, case
+12345678901“ im Thread → Anspruch „eingereicht“ mit Fallnummer ✅ · Markenbeschwerde → nur bei Ludwig, kein Thread ✅ · Fall
+„Antwort nötig“ mit 120 € → automatisch bei der VA ✅ · Fall mit 800 € → erst bei Ludwig, Knopf „An die VA“ ✅ · „Daily
+overview“ auf Englisch mit Thread-Links, einmal am Tag; Mo–Fr und Feiertage im Unit-Test ✅ · Frist verpasst → Liste an
+Ludwig, Zeile rot ✅ · Tagesgrenze → Sammel-Thread, „#n case …“ ✅.
+
 ## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
 
 Der Umsetzungsstand wurde über die Werkzeuge auf dem Server geprüft. Was dort als ❌ steht, ist zum großen Teil gebaut,
@@ -374,6 +402,11 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (49) und `notifications/tools/list_changed`
+
+Geändert am 31.10. (B18, keine neuen Werkzeuge): `va_aufgaben` (Ansprüche bei der VA mit Frist/Fallnummer/„Frist
+verpasst“, Abschnitt `automatik` mit Modus und Tageszahlen, Status „überfällig“, `fristen_verpasst`), `ueberblick` (Feld
+`va` für den Morgenbericht, `stufe` „rot“ bei verpassten Fristen), `feierabend` (VA-Zeile mit „N Fristen verpasst“),
+`amazon_fall_an_va` (wie bisher; von Hand übergebene „erst Ludwig“-Fälle stehen in der Automatik als „von Hand an die VA“).
 
 Neu am 31.10. (Lugru-Bauauftrag, lesend): `lugru_deals(seit?, bis?, kanal?, ampel?, gekauft?, min_wert?, suche?, limit?)`,
 `lugru_deal(id)`, `lugru_statistik(von?, bis?)`. Geändert am 31.10.: `deal_quellen` (Quelle „Lugru Deals“ mit
@@ -508,3 +541,12 @@ nie in Chats oder Mails.
     ansehen – dort empfiehlt sich ein neuer Upload mit dem effektiven Min.
 33. **Anruf „DHL Geschäftskunden“**: auf der Startseite bei der Aufgabe „📞 Nummer fehlt“ öffnen, Vorschlag prüfen oder
     die Nummer eintragen („Nummer im Web suchen“ braucht den Claude-Schlüssel unter Anbindungen).
+34. **VA-Zeitzone**: Delegation → VA → Einstellungen → „Zeitzone der VA“ auf `Asia/Manila` setzen, falls dort noch
+    „Europe/Berlin“ steht (ein gespeicherter Wert geht vor dem neuen Standard). Die Ruhezeit 20:00–08:00 gilt dann in
+    Manila.
+35. **VA-Automatik**: erst im Modus „Vorschlag“ lassen und einige Tage die Liste „Automatik“ auf der VA-Seite ansehen
+    (dazu kommt täglich die Aufgabe „VA-Automatik (Vorschlag)“). Passt die Einstufung – nach dem Update und To-do 30 –,
+    dort auf „automatisch“ umstellen. Regeln je Kategorie, Schwelle (500 €), Grenze (30 Threads/Tag), Uhrzeit,
+    Arbeitstage und die Feiertage der VA (Philippinen) stehen im selben Kasten.
+36. **Anleitung „File reimbursement claim“** im Wissen anlegen (Art „Anleitung“, englische Fassung prüfen und freigeben).
+    Bis dahin bekommt die VA eine allgemeine Standard-Anleitung im Anspruchs-Thread.
