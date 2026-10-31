@@ -1,3 +1,4 @@
+import { linkBasis } from "@/lib/public-url";
 import { mobilFehler, mobilNurPost, mobilOk } from "@/lib/mobil/antwort";
 import { mobilPruefen } from "@/lib/mobil/token";
 import { erfassen } from "@/lib/schnell/service";
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
   if (t.text.trim().length < 3) return mobilFehler(400, "Bitte etwas diktieren.");
   try {
     const r = await erfassen(p.session, t.text, { tokenId: p.tokenId });
-    return mobilOk({ angelegt: r.angelegt, art: r.art, antwort: r.antwort, link: `${new URL(request.url).origin}/schnell` });
+    return mobilOk({ angelegt: r.angelegt, art: r.art, antwort: r.antwort, link: `${linkBasis(request)}/schnell` });
   } catch (e) {
     console.error("[Schnellerfassung]", e instanceof Error ? e.message : e);
     return mobilFehler(500, "Konnte nicht gespeichert werden.");

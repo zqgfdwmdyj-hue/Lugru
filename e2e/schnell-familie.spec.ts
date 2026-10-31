@@ -44,6 +44,17 @@ test.describe("Schnellerfassung, Geburtstage, Schulbriefe", () => {
     const [t] = await sql<{ due_date: string; category: string }>("select due_date::text, category from tasks where title like $1", [`%DHL Geschäftskunden anrufen ${m}%`]);
     expect(t).toMatchObject({ due_date: tagPlus(1), category: "eigene" });
 
+    // Siri mit Weckwort: „Seller-System, erinnere mich morgen an …“ → direkt angelegt, Titel ohne Befehl/Zeit;
+    // Link für das Handy über die Adresse, unter der die Anfrage ankam – nicht localhost
+    const siri = await fetch(`${B}/api/mobil/erfassen`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "X-Forwarded-Host": "seller.example.invalid", "X-Forwarded-Proto": "https" }, body: JSON.stringify({ text: `Seller-System, erinnere mich morgen an die Retouren ${m}` }) }).then((r) => r.json());
+    expect(siri).toMatchObject({ ok: true, angelegt: true, art: "aufgabe", link: "https://seller.example.invalid/schnell" });
+    expect(siri.antwort).toBe(`Aufgabe angelegt für ${tagPlus(1).slice(8, 10)}.${tagPlus(1).slice(5, 7)}.: Retouren ${m}`);
+    expect((await sql<{ due_date: string }>("select due_date::text from tasks where title = $1", [`Retouren ${m}`]))[0]?.due_date).toBe(tagPlus(1));
+    // Befehl ohne Inhalt → Rückfrage statt leerer Aufgabe
+    const ohneInhalt = await (await senden("Erstelle morgen um 10 Uhr eine Aufgabe")).json();
+    expect(ohneInhalt.angelegt).toBe(false);
+    expect(ohneInhalt.antwort).toMatch(/^Was soll die Aufgabe sein\?/);
+
     // Privat-Aufgabe (Inhaber hat vollen Privat-Zugang) → angelegt, ohne Inhalt in der Antwort
     const p = await (await senden(`Zahnarzt für Kind A anrufen ${m}`)).json();
     expect(p).toMatchObject({ angelegt: true, art: "privat_aufgabe" });
@@ -65,7 +76,7 @@ test.describe("Schnellerfassung, Geburtstage, Schulbriefe", () => {
     expect((await (await senden(`Paarzeit am Samstag ab 19 Uhr ${m}`)).json()).angelegt).toBe(false);
 
     // Protokoll je Aufruf; Diktate verschlüsselt (kein Klartext in der Datenbank)
-    expect((await sql<{ n: number }>("select count(*)::int as n from mobil_protokoll p join api_tokens t on t.id = p.token_id where t.name = $1", [`Test-Handy ${m}`]))[0].n).toBe(6);
+    expect((await sql<{ n: number }>("select count(*)::int as n from mobil_protokoll p join api_tokens t on t.id = p.token_id where t.name = $1", [`Test-Handy ${m}`]))[0].n).toBe(8);
     expect((await sql("select 1 from schnell_eingaenge where daten::text like $1", [`%${m}%`])).length).toBe(0);
 
     // Widerrufen → 401

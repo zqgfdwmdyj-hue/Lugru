@@ -1,3 +1,4 @@
+import { linkBasis } from "@/lib/public-url";
 import { after } from "next/server";
 import { canAccess } from "@/lib/auth/areas";
 import { getSession } from "@/lib/auth/session";
@@ -45,7 +46,7 @@ export async function POST(request: Request) {
   try {
     const r = await eingangAnlegen(wer.tenantId, wer.userId, { weg: wer.weg, text, dateien, quelle, tokenId: wer.tokenId });
     if (r.neu) after(() => eingangPruefen(wer.tenantId, r.id));
-    const link = `${new URL(request.url).origin}/deal-eingang/${r.id}`;
+    const link = `${linkBasis(request)}/deal-eingang/${r.id}`;
     // Kurzbefehl zeigt die Antwort als Text an; Teilen-Ziel (Formular) springt zur Detailseite.
     if (wer.weg === "teilen" && !typ.includes("application/json")) return Response.redirect(link, 303);
     return Response.json({ ok: true, id: r.id, neu: r.neu, text: r.neu ? "Wird geprüft – Ergebnis gleich als Mitteilung bzw. im Deal-Eingang." : "Schon da – wird nicht doppelt geprüft.", link });

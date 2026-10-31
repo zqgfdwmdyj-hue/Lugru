@@ -41,6 +41,26 @@ export function claudeReachable(base: string): { ok: boolean; reason?: string } 
 
 const PRIVATE_HOST = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)/;
 
+/**
+ * Basis für Links, die am Handy aufgehen sollen (Seiten mit Anmeldung, z. B. /schnell): die eingestellte Adresse
+ * (APP_URL), sonst die Adresse, unter der die Anfrage ankam (X-Forwarded-Host) – nie „localhost“ oder ein internes
+ * Netz, solange es eine öffentliche gibt. `request.url` taugt hinter dem Webserver nicht (zeigt den internen Port).
+ * PUBLIC_URL (Claude-Adresse) nur als letzte Wahl: dort sind die Seiten absichtlich nicht freigegeben.
+ */
+export function linkBasis(request: Request, env: Record<string, string | undefined> = process.env): string {
+  const kandidaten: (string | null)[] = [];
+  const app = origin(env.APP_URL);
+  if (app) kandidaten.push(`${app.protocol}//${app.host}`);
+  const h = request.headers;
+  const proto = (h.get("x-forwarded-proto") ?? "").split(",")[0].trim() || "https";
+  for (const host of [h.get("x-forwarded-host"), h.get("host")]) {
+    const x = (host ?? "").split(",")[0].trim();
+    if (x && /^[a-z0-9.-]+(:\d+)?$/i.test(x)) kandidaten.push(`${proto === "http" ? "http" : "https"}://${x}`);
+  }
+  const offen = kandidaten.find((k) => k && !PRIVATE_HOST.test(new URL(k).hostname) && (!publicUrl(env) || new URL(k).host !== new URL(publicUrl(env)!).host));
+  return offen ?? kandidaten.find((k) => k && !PRIVATE_HOST.test(new URL(k).hostname)) ?? publicUrl(env) ?? kandidaten[0] ?? new URL(request.url).origin;
+}
+
 export type AddressFinding = { ok: boolean; text: string };
 export type AddressReport = {
   appUrl: string | null;

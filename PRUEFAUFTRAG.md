@@ -267,6 +267,27 @@ Danke, Stimmung, Vorwochen-Vergleich ✅ · ohne Privat-Freigabe `privat: null` 
 Paartherapie-Termin, Zeitraum wählbar ✅ · ändern per Claude und per Formular ✅ · löschen per Claude, im Assistent-Verlauf
 rückgängig mit derselben ID ✅ · Protokoll ohne Inhalte ✅ · Konto „nur Familie“ ohne `feierabend`, Löschen abgelehnt ✅.
 
+## Siri-Schnellerfassung – Befund vom 31.10.
+
+Befund: „Hey Siri, Seller-System, erinnere mich morgen an die Retouren“ kam an, landete aber als `art: unklar`,
+`angelegt: false` in der Eingangsliste; der Link in der Antwort zeigte auf `https://localhost:3000/schnell`.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| S.1 | Weckwort/Anrede vorne („Seller-System, …“, „Hey Siri, …“, „Kannst du …“) verhinderte die Erkennung | 🐞 | ✅ | `src/lib/schnell/logic.ts` (`ohneWeckwort`) |
+| S.2 | Eindeutige Befehle direkt anlegen: „erinner(e) mich …“, „erstelle/leg (morgen um 10 Uhr) eine Aufgabe …“, „neue Aufgabe …“, „denk dran …“ | 🟡 nur wenige Formen | ✅ | `befehlRest`; Antwort zum Vorlesen z. B. „Aufgabe angelegt für 01.11.: Retouren“ |
+| S.3 | Titel ohne Befehl, Zeitangaben und zuständige Person („erinnere mich morgen an die Retouren“ → „Retouren“) | 🟡 | ✅ | `titelAus`, `ohneZeitangaben`; Uhrzeit steht in der Antwort und vor dem Titel |
+| S.4 | Befehl ohne Inhalt („Erstelle morgen eine Aufgabe“) | 🟡 landete unklar in der Liste | ✅ | Rückfrage „Was soll die Aufgabe sein?“ statt leerer Aufgabe |
+| S.5 | Unklares weiter zur Bestätigung; Privates nur mit vollem Privat-Zugang, Privat-Zeiten immer bestätigen | ✅ | ✅ | unverändert (`einordnen`, KI nur bei „unklar“, legt nur geschäftliche Aufgaben/Notizen direkt an) |
+| S.6 | Link fürs Handy zeigte `https://localhost:3000/schnell` | 🐞 | ✅ | `linkBasis` in `src/lib/public-url.ts`: Hauptadresse (APP_URL), sonst die Adresse der Anfrage – nie localhost; gilt auch für den Deal-Kurzbefehl |
+
+Hinweis zum Link: Die Claude-Adresse lässt absichtlich nur Claude, Anmeldung und die Handy-Schnittstellen durch – eine
+Seite wie /schnell zeigt dort „Nicht freigegeben“. Der Link geht deshalb auf die normale Adresse des Seller-Systems
+(APP_URL), unter der man im Browser angemeldet ist.
+
+Abnahme (Unit `schnell`, `link-basis`; e2e `schnell-familie`): Siri-Satz mit Weckwort → Aufgabe für morgen „Retouren“
+✅ · Link ohne localhost ✅ · Befehl ohne Inhalt → Rückfrage ✅ · Unklares → Eingangsliste ✅ · Privat-Zeit nie direkt ✅.
+
 ## Neue Claude-Werkzeuge (46) und `notifications/tools/list_changed`
 
 Lesend: `amazon_faelle`, `amazon_fall`, `anruf_aufgaben`, `auto_status`, `bqool_export_vorschau`, `buchhaltung_status`,
@@ -362,3 +383,5 @@ nie in Chats oder Mails.
     Feldern erfassen; „[?]“ markiert Unklares, der Bogen zeigt dann „unvollständig“.
 27. **Claude neu verbinden** (falls die zwei neuen Werkzeuge `privat_eintrag_aendern`/`privat_eintrag_loeschen` nicht
     erscheinen): Konnektor in claude.ai einmal trennen und neu verbinden; Privat-Freigabe dabei angehakt lassen.
+28. **Siri-Link**: Prüfen, dass `APP_URL` in der Server-`.env` die normale https-Adresse des Seller-Systems ist (nicht
+    localhost) – Einstellungen → Adressen-Check zeigt es. Dorthin zeigt künftig der Link in der Siri-Antwort.
