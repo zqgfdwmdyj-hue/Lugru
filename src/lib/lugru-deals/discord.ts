@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import type { LugruKeepa } from "@/db/schema";
 import { getIntegration } from "@/lib/integrations/store";
 import { discord, type DcNachricht } from "@/lib/va/discord";
-import { kaufZuDeal, keepaSchnappschuss } from "./auswertung-logic";
+import { kaufZuDeal, keepaSchnappschuss, type EigenerKauf } from "./auswertung-logic";
 import { kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
 import { kanalName } from "./historie-logic";
 
@@ -297,26 +297,42 @@ export async function lugruHistorieNeu(tenantId: string) {
 }
 
 /**
- * Eigene Käufe erkennen: Bestellung (bzw. „gekauft“ im Deal-Eingang) mit gleicher ASIN in den 14 Tagen nach dem
- * Posten → „gekauft (automatisch erkannt)“. Nur ergänzend, nie zurückgesetzt.
+ * Eigene Käufe erkennen: Charge mit Kaufdatum (SKU bzw. EK-Import), Einkaufs-Bestellung oder „gekauft“ im Deal-Eingang
+ * mit gleicher ASIN in den 14 Tagen nach dem Posten → „gekauft (automatisch erkannt)“. Nur ergänzend, nie
+ * zurückgesetzt. Alle offenen Deals der letzten 400 Tage, neueste zuerst.
  */
 export async function lugruKaufAbgleich(tenantId: string, jetzt = new Date()): Promise<number> {
   const seit = new Date(jetzt.getTime() - 400 * 86_400_000);
-  const offen = await db.select({ id: L.id, asin: L.asin, gepostetAm: L.gepostetAm, eingangId: L.eingangId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.gekauftErkannt, false), gte(L.gepostetAm, seit))).limit(5000);
+  const offen = await db
+    .select({ id: L.id, asin: L.asin, gepostetAm: L.gepostetAm, eingangId: L.eingangId })
+    .from(L)
+    .where(and(eq(L.tenantId, tenantId), eq(L.gekauftErkannt, false), gte(L.gepostetAm, seit)))
+    .orderBy(desc(L.gepostetAm));
   if (!offen.length) return 0;
-  const asins = [...new Set(offen.map((o) => o.asin))];
+  const asins = [...new Set(offen.map((o) => o.asin.toUpperCase()))];
   const PO = schema.purchaseOrders;
   const POI = schema.purchaseOrderItems;
-  const pos = await db
-    .select({ asin: POI.asin, am: PO.createdAt, nr: PO.number, status: PO.status })
-    .from(POI)
-    .innerJoin(PO, eq(PO.id, POI.poId))
-    .where(and(eq(POI.tenantId, tenantId), inArray(POI.asin, asins), gte(PO.createdAt, seit)));
+  const LO = schema.lots;
+  const P = schema.products;
+  const kaeufe: EigenerKauf[] = [];
+  for (let i = 0; i < asins.length; i += 1000) {
+    const teil = asins.slice(i, i + 1000);
+    const pos = await db
+      .select({ asin: POI.asin, am: PO.createdAt, nr: PO.number, status: PO.status })
+      .from(POI)
+      .innerJoin(PO, eq(PO.id, POI.poId))
+      .where(and(eq(POI.tenantId, tenantId), inArray(POI.asin, teil), gte(PO.createdAt, seit)));
+    kaeufe.push(...pos.filter((p) => p.asin && p.status !== "draft" && p.status !== "cancelled").map((p) => ({ asin: p.asin!, am: p.am, ref: `Bestellung ${p.nr}` })));
+    // Chargen: Kaufdatum aus der SKU bzw. dem EK-Import – dort stehen die eigenen Käufe meistens (Rücksendungen zählen nicht).
+    const chargen = await db
+      .select({ asin: P.asin, tag: LO.purchaseDate, sku: LO.sku })
+      .from(LO)
+      .innerJoin(P, eq(P.id, LO.productId))
+      .where(and(eq(LO.tenantId, tenantId), sql`${LO.kind} <> 'return'`, inArray(P.asin, teil), gte(LO.purchaseDate, seit.toISOString().slice(0, 10))));
+    kaeufe.push(...chargen.filter((c) => c.tag).map((c) => ({ asin: c.asin, am: new Date(`${c.tag}T12:00:00Z`), ref: `Charge ${c.sku}`, nurTag: true })));
+  }
   const eingaenge = await db.select({ id: E.id, angebote: E.angebote, am: E.gekauftAm }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.status, "gekauft"), gte(E.createdAt, seit)));
-  const kaeufe = [
-    ...pos.filter((p) => p.asin && p.status !== "draft" && p.status !== "cancelled").map((p) => ({ asin: p.asin!, am: p.am, ref: `Bestellung ${p.nr}` })),
-    ...eingaenge.flatMap((e) => (e.angebote ?? []).filter((a) => a.asin && e.am).map((a) => ({ asin: a.asin!, am: e.am!, ref: `Deal-Eingang ${e.id.slice(0, 8)}` }))),
-  ];
+  kaeufe.push(...eingaenge.flatMap((e) => (e.angebote ?? []).filter((a) => a.asin && e.am).map((a) => ({ asin: a.asin!, am: e.am!, ref: `Deal-Eingang ${e.id.slice(0, 8)}` }))));
   let n = 0;
   for (const d of offen) {
     const eigenerEingang = d.eingangId ? eingaenge.find((e) => e.id === d.eingangId) : null;

@@ -255,6 +255,20 @@ export async function lugruEingaengeAction() {
   redirect(mit(LUGRU, text));
 }
 
+/** Eigene Käufe zu Lugru-Deals jetzt erkennen (sonst einmal am Tag): Chargen, Einkaufs-Bestellungen, Deal-Eingang „gekauft“. */
+export async function lugruKaufAction() {
+  const s = await schreibend();
+  let text: string;
+  try {
+    const k = await (await import("@/lib/lugru-deals/discord")).lugruKaufAbgleich(s.tenantId);
+    text = k ? `${k} eigene Käufe neu erkannt.` : "Keine weiteren eigenen Käufe gefunden (gleiche ASIN, 14 Tage nach dem Posten).";
+  } catch (e) {
+    text = `Abgleich fehlgeschlagen – ${lesbarerFehler(e)}`;
+  }
+  revalidatePath(LUGRU);
+  redirect(mit(LUGRU, text));
+}
+
 /** History einlesen bzw. fortsetzen (je Klick bis zu 2.000 Nachrichten je Kanal; sonst automatisch alle 5 Min.). */
 export async function lugruHistorieAction(fd: FormData) {
   const s = await schreibend();

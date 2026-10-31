@@ -4,7 +4,7 @@ import { lugruKanalStand } from "@/lib/lugru-deals/discord";
 import { lugruKanalNamen, lugruListe, lugruStatistikFuer } from "@/lib/lugru-deals/liste";
 import { getIntegration } from "@/lib/integrations/store";
 import { lugruHistorieStand } from "@/lib/lugru-deals/historie";
-import { lugruAbrufenAction, lugruEingaengeAction, lugruHistorieAction } from "../actions";
+import { lugruAbrufenAction, lugruEingaengeAction, lugruHistorieAction, lugruKaufAction } from "../actions";
 
 // Lugru Deals: alle in der Deal-Gruppe geposteten Deals (vom Seller-System in Discord gelesen bzw. aus Lugru Deals
 // übertragen) mit Reaktionen (nur Anzahl), Ampel, Deal-Wert und eigenen Käufen; Statistik-Kacheln und Import-Stand.
@@ -73,7 +73,7 @@ export default async function LugruDealsPage({ searchParams }: { searchParams: P
         <div className="card card-pad" data-testid="lg-kachel-deals"><div className="kpi-label">Deals im Zeitraum {tag(stat.zeitraum.von)}–{tag(stat.zeitraum.bis)}</div><div className="kpi-value">{stat.deals.toLocaleString("de-DE")}</div><div className="kpi-label">{zahl(stat.dealsJeWoche)} je Woche · <span data-testid="lg-gesamt">insgesamt {stat.gesamt.deals.toLocaleString("de-DE")}{stat.gesamt.seit ? ` seit ${tag(stat.gesamt.seit)}` : ""}</span></div></div>
         <div className="card card-pad"><div className="kpi-label">Reaktionen ({tag(stat.zeitraum.von)}–{tag(stat.zeitraum.bis)})</div><div className="kpi-value">{zahl(stat.reaktionenSchnitt)}</div><div className="kpi-label" title={stat.reaktionenHinweis ?? undefined}>Ø je Deal · {stat.gruppenKaeufe.toLocaleString("de-DE")}× ✅ im Zeitraum, {stat.gesamt.gruppenKaeufe.toLocaleString("de-DE")}× insgesamt</div></div>
         <div className="card card-pad"><div className="kpi-label">Anteil grün</div><div className="kpi-value">{stat.anteilGruen === null ? "–" : `${stat.anteilGruen} %`}</div><div className="kpi-label">von {stat.mitAmpel} geprüften</div></div>
-        <div className="card card-pad"><div className="kpi-label">Selbst gekauft</div><div className="kpi-value" data-testid="lg-gekauft">{stat.gekauft}</div><div className="kpi-label">Ø realer ROI {stat.realerRoiSchnitt === null ? "– (noch kein Ergebnis)" : `${zahl(stat.realerRoiSchnitt)} % aus ${stat.mitErgebnis}`}</div></div>
+        <div className="card card-pad"><div className="kpi-label">Selbst gekauft</div><div className="kpi-value" data-testid="lg-gekauft">{stat.gekauft}</div><div className="kpi-label">Ø realer ROI {stat.realerRoiSchnitt === null ? "– (noch kein Ergebnis)" : `${zahl(stat.realerRoiSchnitt)} % aus ${stat.mitErgebnis}`}</div><div className="kpi-label" data-testid="lg-gekauft-regel">erkannt an Charge (SKU-Kaufdatum), Einkaufs-Bestellung oder „gekauft“ im Deal-Eingang – gleiche ASIN, bis 14 Tage nach dem Post</div>{!session.readOnly && <form action={lugruKaufAction} style={{ marginTop: 4 }}><button className="btn btn-small" type="submit" data-testid="lg-kauf-abgleich">Eigene Käufe abgleichen</button></form>}</div>
       </section>
       {(stat.besteMarken.length > 0 || stat.emojis.length > 0) && (
         <section className="card card-pad small" style={{ marginBottom: 14 }} data-testid="lg-beste">

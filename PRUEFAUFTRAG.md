@@ -402,6 +402,7 @@ Reihenfolge wie im Nachtrag: B19.2 → B19.1 → B19.3 → B19.4 → Rest. Statu
 | 19.1f | Kanalnamen mit Leerzeichen, Testkanäle | 🐞 | ✅ | `kanalName` (trimmt, auch rückwirkend per Migration `0111`), Schalter „Testkanäle ausblenden“ (Standard an), `mit_test` im Werkzeug |
 | 19.1g | Kategorie leer | ❌ | ✅ | `kategorieAus` in `src/lib/keepa/auswertung.ts`; alte Schnappschüsse werden gedrosselt nachgezogen (`lugruKategorieNachholen`) |
 | 19.1h | Schwelle je Quelle (Lugru = 60) | ❌ | ✅ / 👤 | `wertSchwelleFuer` in `src/lib/deal-eingang/logic.ts`, Feld „je Quelle“ im Kasten „Kaufen mit einem Tap: Budget und Deal-Wert“ auf der Deal-Eingang-Seite; den Wert 60 setzt Ludwig (To-do 39) |
+| 19.1i | „Selbst gekauft“ = 0, obwohl gekauft (Rückmeldung 31.10.) | 🐞 | ✅ | `lugruKaufAbgleich` in `src/lib/lugru-deals/discord.ts` suchte nur Einkaufs-Bestellungen des Seller-Systems und „gekauft“ im Deal-Eingang. Neu: auch Chargen mit Kaufdatum (aus der SKU bzw. dem EK-Import, ohne Rücksendungen), Vergleich je Tag ab dem Tag des Posts (`kaufZuDeal`), alle offenen Deals neueste zuerst (vorher höchstens 5.000 in beliebiger Reihenfolge). Knopf „Eigene Käufe abgleichen“ an der Kachel, sonst täglich; Unit `lugru-kauf`, e2e `b19-rest` |
 | 19.3a | Kopf und Überleitung aus verschiedenen Quellen | 🐞 | ✅ | `gewinnBasis` + `ueberleitung` in `src/lib/money/profit-logic.ts`: eine Basis für Kacheln, Gewinnwerte und Überleitung je Kanal; Summe „diese Seite“ = Kacheln |
 | 19.3b | Jeder Gewinnwert beschriftet | ❌ | ✅ | Kasten „Welche Gewinnzahl ist welche?“ in `src/app/(app)/gewinn/page.tsx` (vorläufig, vollständig erfasst, sellerboard Netto/DB/Monatswert mit Quelle) |
 | 19.3c | Zeitraum ab 01.10. | 🐞 (30 Tage) | ✅ | Standard „Dieser Monat“; Link von der Startseite mit `zeitraum=monat` |
@@ -630,3 +631,7 @@ nie in Chats oder Mails.
     läuft danach alle 5 Minuten weiter).
 44. **Kurzbefehl „Deal prüfen“** auf dem iPhone einrichten: Einstellungen → Handy & Tesla → „Anleitung: Kurzbefehl
     ‚Deal prüfen‘“.
+45. **Lugru „selbst gekauft“** nach dem Update: Deal-Eingang → „Lugru Deals“ → an der Kachel „Selbst gekauft“ einmal
+    „Eigene Käufe abgleichen“ klicken. Erkannt wird ein Kauf, wenn eine Charge (SKU mit Kaufdatum) oder Bestellung mit
+    derselben ASIN bis 14 Tage nach dem Post angelegt ist. Bleibt ein bekannter Kauf unerkannt, bitte ASIN und Kaufdatum
+    nennen – dann prüfe ich, wo der Kauf steht (z. B. SKU ohne Datum oder andere ASIN).

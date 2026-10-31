@@ -53,7 +53,7 @@ export default async function LugruDealPage({ params }: { params: Promise<{ id: 
           <div style={{ fontSize: 20 }}>{Object.entries(d.reaktionen).map(([e, n]) => `${e} ${n}`).join("  ") || "noch keine"}</div>
           <div className="muted">✅ gekauft: {d.gruppen_kaeufe} · ❌ weg: {d.nicht_verfuegbar} · nur Anzahlen, keine Namen. Fehlende Reaktion heißt nicht „nicht gekauft“.</div>
           <h3>Eigene Entscheidung</h3>
-          <div data-testid="lgd-gekauft">{d.gekauft ? `✓ gekauft – ${d.gekauft_quelle}` : d.entscheidung ? `Deal-Eingang: ${d.entscheidung.status}` : "nicht gekauft (keine Bestellung mit dieser ASIN in den 14 Tagen nach dem Posten)"}</div>
+          <div data-testid="lgd-gekauft">{d.gekauft ? `✓ gekauft – ${d.gekauft_quelle}` : d.entscheidung ? `Deal-Eingang: ${d.entscheidung.status}` : "nicht gekauft (keine Charge, Einkaufs-Bestellung oder Deal-Eingang „gekauft“ mit dieser ASIN in den 14 Tagen nach dem Posten)"}</div>
           {d.realer_roi !== null && <div>Realer ROI (sellerboard): {z(d.realer_roi, " %")}</div>}
         </section>
       </div>

@@ -64,11 +64,28 @@ export function keepaSchnappschuss(verlauf: VerlaufZeile[], am: Date, o: { art?:
   };
 }
 
-/** Eigener Kauf zu einem geposteten Deal: gleiche ASIN, bestellt in den 14 Tagen nach dem Posten (frühester Treffer). */
-export function kaufZuDeal(deal: { asin: string; gepostetAm: Date }, kaeufe: { asin: string; am: Date; ref: string }[]): { ref: string; am: Date } | null {
+const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
+
+/** Ein eigener Kauf als Beleg: `nurTag` = nur das Datum ist bekannt (Charge mit Kaufdatum aus der SKU bzw. dem EK-Import). */
+export type EigenerKauf = { asin: string; am: Date; ref: string; nurTag?: boolean };
+
+/**
+ * Eigener Kauf zu einem geposteten Deal: gleiche ASIN, gekauft in den 14 Tagen nach dem Posten (frühester Treffer).
+ * Belege mit Uhrzeit ab 1 Std. vor dem Post; Belege nur mit Datum (Chargen) ab dem Tag des Posts (Berlin).
+ */
+export function kaufZuDeal(deal: { asin: string; gepostetAm: Date }, kaeufe: EigenerKauf[]): { ref: string; am: Date } | null {
   const von = deal.gepostetAm.getTime() - 3600_000;
   const bis = deal.gepostetAm.getTime() + 14 * TAG;
-  const t = kaeufe.filter((k) => k.asin === deal.asin && k.am.getTime() >= von && k.am.getTime() <= bis).sort((a, b) => a.am.getTime() - b.am.getTime())[0];
+  const vonTag = tagBerlin(deal.gepostetAm);
+  const bisTag = tagBerlin(new Date(bis));
+  const asin = deal.asin.toUpperCase();
+  const passt = (k: EigenerKauf) => {
+    if (k.asin.toUpperCase() !== asin) return false;
+    if (!k.nurTag) return k.am.getTime() >= von && k.am.getTime() <= bis;
+    const t = tagBerlin(k.am);
+    return t >= vonTag && t <= bisTag;
+  };
+  const t = kaeufe.filter(passt).sort((a, b) => a.am.getTime() - b.am.getTime())[0];
   return t ? { ref: t.ref, am: t.am } : null;
 }
 

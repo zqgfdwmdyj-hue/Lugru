@@ -104,4 +104,21 @@ test.describe("B19.5–B19.8", () => {
     const a = JSON.parse(await mcp.call("anbindungen_status", {})) as Record<string, unknown>;
     expect(a).toBeTruthy();
   });
+
+  test("Lugru: selbst gekauft aus Charge (Kaufdatum nach dem Post) erkannt", async ({ page }) => {
+    const m = marke();
+    const T = await tenant();
+    const asin = `B0KF${m}X`;
+    const [d] = await sql<{ id: string }>("insert into lugru_deals_historie (tenant_id, quelle, asin, titel, kanal, gepostet_am) values ($1, 'app', $2, $3, 'lugru-b19', now() - interval '2 days') returning id", [T, asin, `Testmarke Kaufabgleich ${m}`]);
+    const [p] = await sql<{ id: string }>("insert into products (tenant_id, asin, title) values ($1, $2, 'Testartikel Kaufabgleich (erfunden)') returning id", [T, asin]);
+    await sql("insert into lots (tenant_id, product_id, sku, kind, sku_schema, purchase_date, quantity, unit_cost_net) values ($1, $2, $3, 'purchase', 'test', current_date - 1, 4, '7.00')", [T, p.id, `TEST-KAUF-${m}`]);
+    await anmelden(page, "inhaber");
+    await page.goto("/deal-eingang/lugru");
+    await expect(page.getByTestId("lg-gekauft-regel")).toContainText("Charge");
+    await Promise.all([page.waitForURL(/meldung=/), page.getByTestId("lg-kauf-abgleich").click()]);
+    await expect(page.getByTestId("lg-meldung")).toContainText("eigene Käufe neu erkannt");
+    const [r] = await sql<{ gekauft_erkannt: boolean; gekauft_erkannt_ref: string }>("select gekauft_erkannt, gekauft_erkannt_ref from lugru_deals_historie where id = $1", [d.id]);
+    expect(r).toMatchObject({ gekauft_erkannt: true, gekauft_erkannt_ref: `Charge TEST-KAUF-${m}` });
+    expect(Number(await page.getByTestId("lg-gekauft").innerText())).toBeGreaterThanOrEqual(1);
+  });
 });
