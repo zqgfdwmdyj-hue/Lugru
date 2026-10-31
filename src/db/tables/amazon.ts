@@ -173,6 +173,8 @@ export const amazonInventory = pgTable(
     /** Seit wann ist unverkäuflicher Bestand da (vom System beobachtet). */
     unsellableSince: date("unsellable_since", { mode: "string" }),
     snapshotDate: date("snapshot_date", { mode: "string" }).notNull(),
+    /** Woher der Stand kommt: FBA-Bestandsbericht (Datei/SP-API) oder sellerboard. */
+    source: text("source", { enum: ["report", "sellerboard"] }).notNull().default("report"),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("amz_inv_sku_uq").on(t.tenantId, t.sku)],

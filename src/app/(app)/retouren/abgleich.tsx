@@ -113,8 +113,8 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
     <>
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${fba ? " active" : ""}`} href="/retouren?ansicht=abgleich&modus=fba">Versand durch Amazon (FBA)</Link>
-          <Link className={`chip${!fba ? " active" : ""}`} href="/retouren?ansicht=abgleich&modus=fbm">Händlerversand (FBM)</Link>
+          <Link className={`chip${fba ? " active" : ""}`} aria-current={fba ? "true" : undefined} href="/retouren?ansicht=abgleich&modus=fba">Versand durch Amazon (FBA)</Link>
+          <Link className={`chip${!fba ? " active" : ""}`} aria-current={!fba ? "true" : undefined} href="/retouren?ansicht=abgleich&modus=fbm">Händlerversand (FBM)</Link>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <form action={redetect}><button className="btn btn-small" type="submit" title="Ansprüche nach geänderten Einstellungen neu berechnen">Neu prüfen</button></form>
@@ -123,11 +123,33 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
         </div>
       </div>
 
-      {R.length === 0 && (
-        <div className="notice">
-          Noch keine Daten. Unter <Link href="/import">Daten importieren</Link> hochladen:{" "}
-          {fba ? "Transaktionen (Berichte › Zahlungen › Berichts-Repository), FBA-Kundenrücksendungen und Erstattungen." : "Retourenbericht (Berichte › Retourenberichte) und Transaktionen."}{" "}
-          Überlappende Zeiträume sind kein Problem, doppelte Zeilen werden erkannt.
+      {(R.length === 0 || !view.sources.refunds || !view.sources.returns || view.sources.payments === 0) && (
+        <div className={`notice${R.length === 0 ? "" : " notice-info"} small`} data-testid="return-sources">
+          <div style={{ marginBottom: 4 }}>
+            <strong>{R.length === 0 ? "Abgleich noch leer – " : ""}Datenstand je Bericht:</strong>
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {(fba
+              ? [
+                  { label: "Erstattungen an Kunden (Transaktionen oder Abrechnungen)", n: view.sources.refunds, need: "Startpunkt des Abgleichs – ohne ihn bleibt die Liste leer" },
+                  { label: "FBA-Kundenrücksendungen", n: view.sources.returns, need: "zeigt, was zurückgekommen ist" },
+                  { label: "Erstattungen von Amazon (Reimbursements)", n: view.sources.payments ?? 0, need: "zeigt, ob Amazon nicht Zurückgekommenes bezahlt hat" },
+                ]
+              : [
+                  { label: "Erstattungen an Kunden (Transaktionen oder Abrechnungen)", n: view.sources.refunds, need: "Startpunkt des Abgleichs – ohne ihn bleibt die Liste leer" },
+                  { label: "Retourenbericht (Händlerversand)", n: view.sources.returns, need: "Rücksendeanfragen, Sendungsverfolgung" },
+                ]
+            ).map((x) => (
+              <li key={x.label} data-testid="return-source" data-present={x.n > 0 ? "1" : "0"}>
+                {x.n > 0 ? <span style={{ color: "var(--ok)" }}>✓ vorhanden</span> : <span className="tag tag-missing">fehlt</span>} – {x.label}
+                {x.n > 0 ? <span className="muted"> ({x.n.toLocaleString("de-DE")} Zeilen)</span> : <span className="muted"> – {x.need}</span>}
+              </li>
+            ))}
+          </ul>
+          <div style={{ marginTop: 4 }}>
+            Fehlendes unter <Link href="/import">Daten importieren</Link> hochladen
+            {fba ? " (Transaktionen: Berichte › Zahlungen › Berichts-Repository)" : " (Retourenbericht: Berichte › Retourenberichte)"}. Überlappende Zeiträume sind kein Problem, doppelte Zeilen werden erkannt.
+          </div>
         </div>
       )}
       {fba && R.length > 0 && !view.paymentsKnown && (
@@ -187,7 +209,7 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
       <div className="between" style={{ flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {filters.map((f) => (
-            <Link key={f.id} href={link({ filter: f.id })} className={`chip${current === f.id ? " active" : ""}`}>{f.label} <span style={{ opacity: 0.6 }}>{f.n}</span></Link>
+            <Link key={f.id} href={link({ filter: f.id })} className={`chip${current === f.id ? " active" : ""}`} aria-current={current === f.id ? "true" : undefined}>{f.label} <span style={{ opacity: 0.6 }}>{f.n}</span></Link>
           ))}
         </div>
         <form style={{ display: "flex", gap: 6 }}>
@@ -207,7 +229,7 @@ export function Abgleich({ view, mode, filter, q, marketplace }: { view: ReturnV
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={fba ? 7 : 6} className="muted">{R.length ? "Keine Einträge für diesen Filter." : "Noch keine Daten."}</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={fba ? 7 : 6} className="muted">{R.length ? "Keine Einträge für diesen Filter." : view.sources.refunds ? "Keine Erstattungen zum Abgleichen." : "Erstattungen an Kunden fehlen – siehe Datenstand oben."}</td></tr>}
             {rows.map((r) => (
               <tr key={`${r.orderId}|${r.sku}`} style={{ opacity: r.resolved ? 0.55 : undefined, verticalAlign: "top" }}>
                 <td style={{ width: 180, maxWidth: 180 }}>

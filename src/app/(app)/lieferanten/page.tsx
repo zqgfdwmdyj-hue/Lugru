@@ -1,6 +1,9 @@
 import Link from "next/link";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
+import { spellingGroups } from "@/lib/masterdata";
+import { SpellingCheck, suspiciousOf } from "./spelling-check";
 import { requireArea } from "@/lib/auth/session";
 import { createFeed } from "./actions";
 
@@ -8,8 +11,8 @@ export default async function LieferantenPage() {
   const session = await requireArea("lieferanten");
   const F = schema.supplierFeeds;
   const [feeds, suppliers] = await Promise.all([
-    db.select({ f: F, offers: sql<number>`(select count(*)::int from supplier_offers o where o.feed_id = ${F.id})` }).from(F).where(eq(F.tenantId, session.tenantId)).orderBy(desc(F.createdAt)),
-    db.select().from(schema.suppliers).where(eq(schema.suppliers.tenantId, session.tenantId)).orderBy(asc(schema.suppliers.code)),
+    db.select({ f: F, offers: sql<number>`(select count(*)::int from supplier_offers o where o.feed_id = ${qcol(F.id)})` }).from(F).where(eq(F.tenantId, session.tenantId)).orderBy(desc(F.createdAt)),
+    db.select().from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, session.tenantId), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code)),
   ]);
   return (
     <>
@@ -20,9 +23,10 @@ export default async function LieferantenPage() {
           <Link className="btn btn-primary" href="/lieferanten/chancen">Chancen</Link>
         </div>
       </div>
+      <SpellingCheck title="Lieferanten-Stammdaten prüfen" groups={spellingGroups(suppliers.map((x) => x.name ?? x.code))} suspicious={suspiciousOf(suppliers.map((x) => x.name))} />
       <div className="row">
         <section className="card" style={{ flexGrow: 1, overflow: "auto" }}>
-          <table className="table">
+          <table className="table sticky-head">
             <thead><tr><th>Feed</th><th className="right">Angebote</th><th>Letzter Import</th><th>Abruf</th></tr></thead>
             <tbody>
               {feeds.length === 0 && <tr><td colSpan={4} className="muted">Noch keine Feeds. Rechts einen anlegen – danach Preislisten (CSV/Excel) hochladen oder Shop-Seiten, Fotos und PDFs scannen.</td></tr>}

@@ -1,0 +1,58 @@
+# Prüft jeden neuen Stand automatisch: Typen, Unit-Tests, Build und die Ablaufprüfungen (e2e/) gegen eine frische
+# Test-Datenbank mit erfundenen Daten. Nichts davon berührt das echte System. Ergebnis: grüner Haken bzw. rotes X am
+# Commit auf GitHub; Prüfstand je Reiter direkt in der Zusammenfassung des Laufs, Bericht mit Bildschirmfotos unter
+# „Actions → Lauf → Artifacts → pruefbericht“.
+name: Prüfung
+on:
+  push:
+    branches: [main, ueberarbeitung]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  pruefung:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: seller
+          POSTGRES_PASSWORD: seller
+          POSTGRES_DB: seller_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U seller" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typprüfung
+        run: npx tsc --noEmit
+      - name: Unit-Tests
+        run: npx vitest run
+      - name: Bauen
+        run: npx next build
+      - name: Browser für die Ablaufprüfungen
+        run: npx playwright install --with-deps chromium
+      - name: Ablaufprüfungen (Testumgebung, erfundene Daten)
+        run: npx playwright test
+      - name: Prüfstand je Reiter (automatisch / live / offen)
+        if: always()
+        run: |
+          npx tsx scripts/pruefstand.ts || true
+          cat PRUEFSTAND.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Bericht aufheben
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pruefbericht
+          path: |
+            PRUEFSTAND.md
+            playwright-report/
+            test-results/
+          retention-days: 14

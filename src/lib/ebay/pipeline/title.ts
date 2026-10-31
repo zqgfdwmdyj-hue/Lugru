@@ -39,3 +39,41 @@ export function truncateTitle(title: string): string {
   const lastSpace = cut.lastIndexOf(' ');
   return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim();
 }
+
+/**
+ * Ein Katalogtitel ist „dünn“, wenn er kaum etwas über das Produkt sagt: nur die Marke, weniger als drei Wörter
+ * oder unter 20 Zeichen (z. B. eBay-Katalog „Tefal“ für ein Kochmesser).
+ */
+export function isThinTitle(title: string, brand?: string): boolean {
+  const t = title.trim();
+  const words = t.split(/\s+/).filter((w) => w.length > 1);
+  if (words.length < 3 || t.length < 20) return true;
+  return Boolean(brand && t.toLowerCase() === brand.trim().toLowerCase());
+}
+
+export type TitleSource = 'catalog' | 'listing' | 'facts';
+
+/**
+ * Titel für den Entwurf: der Katalogtitel, solange er aussagekräftig ist. Ist er dünn, gewinnt der Titel mit den
+ * meisten Wörtern aus Angebot (Suchtreffer), Fakten-Titel und Katalogtitel – ein unvollständiger Katalogtitel
+ * überschreibt so nie still einen aussagekräftigen Angebotstitel.
+ */
+export function chooseTitle(
+  catalogTitle: string,
+  listingTitle: string | undefined,
+  factTitle: string,
+  brand?: string
+): { title: string; source: TitleSource } {
+  const catalog = truncateTitle(catalogTitle ?? '');
+  if (catalog && !isThinTitle(catalog, brand)) return { title: catalog, source: 'catalog' };
+  const wordCount = (t: string) => t.split(/\s+/).filter((w) => w.length > 1).length;
+  const all: { title: string; source: TitleSource }[] = [
+    { title: truncateTitle(listingTitle ?? ''), source: 'listing' },
+    { title: factTitle, source: 'facts' },
+    { title: catalog, source: 'catalog' },
+  ];
+  const candidates = all.filter((c) => c.title !== '');
+  if (!candidates.length) return { title: '', source: 'catalog' };
+  return candidates.reduce((best, c) => (wordCount(c.title) > wordCount(best.title) ? c : best));
+}
+

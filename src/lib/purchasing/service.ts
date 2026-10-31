@@ -5,6 +5,9 @@ import { db, schema, type Tx } from "@/db";
 import { todayIso } from "@/lib/dates";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { buildSku, netFromGross, statusAfterReceipt, suggest, supplierCode } from "./calc";
+import { skuCostMap } from "@/lib/money/costs";
+import { isReturnSku } from "@/lib/money/ek-logic";
+import type { CostSource } from "@/lib/money/profit-logic";
 
 // Einkauf: Lieferantenbestellungen anlegen, Lieferung verfolgen, Wareneingang buchen.
 // Beim Wareneingang entsteht je Position eine Charge (SKU nach Schema C) und der Bestand im
@@ -244,9 +247,19 @@ export type SuggestionRow = {
   lastSupplier: string | null;
   lastDate: string | null;
   bestOffer: { supplier: string; price: number; stock: number | null } | null;
+  /** Gültiger EK netto (gleicher Rechenweg wie überall) und die SKU, von der er stammt. */
+  ekNet: number | null;
+  ekSource: CostSource | null;
+  ekSku: string | null;
+  /** Nur Retouren-Ware zu dieser ASIN, kein Einkauf und kein Lieferanten-Angebot – Beschaffung prüfen. */
+  returnOnly: boolean;
+  /** Bezugsquelle bekannt (früherer Einkauf oder Lieferanten-Angebot). */
+  sourceKnown: boolean;
   daily: number;
   daysLeft: number | null;
   need: number;
+  /** Fehlbestand in Stück (Bestand + bestellt unter 0) – sofort prüfen. */
+  shortfall: number;
 };
 
 export async function purchaseSuggestions(tenantId: string, opts: { leadDays: number; coverDays: number; all?: boolean }): Promise<SuggestionRow[]> {
@@ -332,16 +345,45 @@ export async function purchaseSuggestions(tenantId: string, opts: { leadDays: nu
     if (!cur || o.price < cur.price) best.set(o.asin, { supplier: o.feed, price: o.price, stock: o.stock });
   }
 
+  // SKUs je ASIN (Chargen zuerst, jüngster Einkauf vorn) – für den gültigen EK und die Retouren-Erkennung.
+  const [costs, skuRows] = await Promise.all([
+    skuCostMap(t),
+    asins.length
+      ? db.execute<{ sku: string; asin: string; kind: string | null; d: string | null }>(sql`
+          select l.sku, p.asin, l.kind, l.purchase_date::text as d from lots l join products p on p.id = l.product_id
+           where l.tenant_id = ${t} and p.asin in (${sql.join(asins.map((a) => sql`${a}`), sql`, `)})
+          union all
+          select ai.sku, ai.asin, null, null from amazon_inventory ai
+           where ai.tenant_id = ${t} and ai.asin in (${sql.join(asins.map((a) => sql`${a}`), sql`, `)})`)
+      : Promise.resolve({ rows: [] as { sku: string; asin: string; kind: string | null; d: string | null }[] }),
+  ]);
+  const skusOf = new Map<string, { sku: string; kind: string | null; d: string | null }[]>();
+  for (const r of skuRows.rows) skusOf.set(r.asin, [...(skusOf.get(r.asin) ?? []), r]);
+
   const out: SuggestionRow[] = rows.rows.map((r) => {
     const sold30 = Math.max(r.o30, r.s30);
     const sold90 = Math.max(r.o90, r.s90);
     const stock = r.fba + r.inbound + r.own;
     const s = suggest({ sold30, sold90, stock, onOrder: r.on_order, leadDays: opts.leadDays, coverDays: opts.coverDays });
-    return { asin: r.asin, title: r.title, sold30, sold90, fba: r.fba, inbound: r.inbound, own: r.own, onOrder: r.on_order, lastCostNet: r.last_cost, lastSupplier: r.last_supplier, lastDate: r.last_date, bestOffer: best.get(r.asin) ?? null, ...s };
+    const list = skusOf.get(r.asin) ?? [];
+    const isRet = (x: { sku: string; kind: string | null }) => x.kind === "return" || isReturnSku(x.sku);
+    // Gültiger EK: jüngste Einkaufs-Charge, sonst jede andere Nicht-Retouren-SKU, zuletzt eine Retoure.
+    const ordered = [...list.filter((x) => x.kind === "purchase").sort((a, b) => (b.d ?? "").localeCompare(a.d ?? "")), ...list.filter((x) => x.kind !== "purchase" && !isRet(x)), ...list.filter(isRet)];
+    const hit = ordered.find((x) => costs.has(x.sku));
+    const ek = hit ? costs.get(hit.sku)! : null;
+    const offer = best.get(r.asin) ?? null;
+    const returnOnly = list.length > 0 && list.every(isRet) && !offer;
+    return {
+      asin: r.asin, title: r.title, sold30, sold90, fba: r.fba, inbound: r.inbound, own: r.own, onOrder: r.on_order,
+      lastCostNet: r.last_cost, lastSupplier: r.last_supplier, lastDate: r.last_date, bestOffer: offer,
+      ekNet: ek?.cost ?? null, ekSource: ek?.source ?? null, ekSku: hit?.sku ?? null,
+      returnOnly, sourceKnown: Boolean(offer || r.last_supplier || list.some((x) => x.kind === "purchase")),
+      ...s,
+    };
   });
   return out
     .filter((r) => opts.all || r.need > 0)
-    .sort((a, b) => (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || b.daily - a.daily);
+    .sort((a, b) => b.shortfall - a.shortfall || (a.daysLeft ?? 1e9) - (b.daysLeft ?? 1e9) || b.daily - a.daily);
 }
 
 /** Vorschläge je Lieferant als Bestellentwürfe anlegen (bestehende Entwürfe werden ergänzt). */

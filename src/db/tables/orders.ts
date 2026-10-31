@@ -1,4 +1,4 @@
-import { index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { encryptedJson, encryptedText } from "./encrypted";
 import { type Address, createdAt, files, id, lots, money, tenantId, updatedAt } from "./core";
 
@@ -6,6 +6,9 @@ export const CHANNELS = ["amazon", "ebay", "tiktok", "temu", "kaufland", "shop",
 export type Channel = (typeof CHANNELS)[number];
 
 export const ORDER_STATUSES = ["open", "label_created", "shipped", "delivered", "cancelled", "returned"] as const;
+/** Wer verschickt: „self“ = selbst, „prep“ = Prep Center. */
+export const SHIPPERS = ["self", "prep"] as const;
+export type Shipper = (typeof SHIPPERS)[number];
 
 export const orders = pgTable(
   "orders",
@@ -22,10 +25,19 @@ export const orders = pgTable(
     buyerName: encryptedText("buyer_name"),
     shipTo: encryptedJson<Address>("ship_to"),
     total: money("total"),
+    /**
+     * Kanalgebühren der Bestellung (z. B. eBay „totalMarketplaceFee“), netto wie geliefert. null = unbekannt –
+     * wird in der Gewinnrechnung als „fehlt“ geführt, nie als 0 €.
+     */
+    fees: money("fees"),
+    /** Woher die Gebühr stammt: „api“ (vom Kanal geliefert) oder „manuell“. */
+    feesSource: text("fees_source"),
     currency: text("currency").notNull().default("EUR"),
     shipBy: timestamp("ship_by", { withTimezone: true }),
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
     carrier: text("carrier"),
+    /** Wer packt und verschickt: selbst oder das Prep Center (für die Monatsabrechnung). null = nicht festgelegt. */
+    shippedBy: text("shipped_by", { enum: SHIPPERS }),
     trackingNumber: text("tracking_number"),
     trackingUploadedAt: timestamp("tracking_uploaded_at", { withTimezone: true }),
     trackingUploadError: text("tracking_upload_error"),
@@ -76,4 +88,23 @@ export const parcels = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("parcels_order_idx").on(t.tenantId, t.orderId)],
+);
+
+/**
+ * Versandangaben je Artikel (Wawi-SKU) – einmal eingetragen, gelten für alle Kanäle (Amazon, eBay …):
+ * Versandgewicht je Stück inkl. Verpackung (Sendung = Stück × Gewicht) und wie viele Stück in eine
+ * Warensendung passen (höchstens 35,3 × 25 × 5 cm): null = nicht festgelegt, 0 = nie, n = bis n Stück.
+ */
+export const skuWeights = pgTable(
+  "sku_weights",
+  {
+    tenantId: tenantId(),
+    sku: text("sku").notNull(),
+    grams: integer("grams"),
+    wsMax: integer("ws_max"),
+    /** Wer diesen Artikel normalerweise verschickt (liegt bei mir / im Prep Center); null = Standard aus den Einstellungen. */
+    shipFrom: text("ship_from", { enum: SHIPPERS }),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.sku] })],
 );

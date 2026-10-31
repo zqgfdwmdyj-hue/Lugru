@@ -166,6 +166,10 @@ func (srv *Server) gleicheReaktionenAbSeit(ctx context.Context, seit time.Time) 
 	if fehler != "" {
 		log.Printf("Reaktionen: %s", fehler)
 	}
+	// Neue Reaktionszahlen gleich ans Seller-System.
+	if anzahl > 0 {
+		srv.stosseSellerAn()
+	}
 }
 
 // abgleichDurchgang liefert, bei wie vielen Posts die Reaktionen gelesen

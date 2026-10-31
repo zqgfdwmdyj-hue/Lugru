@@ -1,7 +1,7 @@
 import type { Db } from '../db/db';
 import { getToken, saveToken } from '../db/db';
 import type { Settings } from '../types';
-import { apiBase, consentBase, SCOPES_APP, SCOPES_USER, SCOPES_USER_LEGACY, SCOPES_USER_READONLY } from './config';
+import { apiBase, consentBase, SCOPE_ANALYTICS, SCOPE_LISTING, SCOPES_APP, SCOPES_USER, SCOPES_USER_LEGACY, SCOPES_USER_READONLY } from './config';
 
 const EXPIRY_SKEW_MS = 5 * 60_000;
 
@@ -14,7 +14,7 @@ export function isExpired(expiresAtIso: string, skewMs: number = EXPIRY_SKEW_MS)
  * Berechtigung zum Lesen von Bestellungen weg — für Entwicklerzugänge, bei
  * denen eBay sie ablehnt; alles außer den Rechnungen funktioniert dann trotzdem.
  */
-export function buildConsentUrl(settings: Settings, opts: { withOrders?: boolean } = {}): string {
+export function buildConsentUrl(settings: Settings, opts: { withOrders?: boolean; withAnalytics?: boolean; withListing?: boolean } = {}): string {
   requireKeys(settings);
   if (!settings.ruName || settings.ruName.trim() === '') {
     throw new Error(
@@ -22,7 +22,8 @@ export function buildConsentUrl(settings: Settings, opts: { withOrders?: boolean
         'Du findest ihn auf developer.ebay.com unter Application Keys → User Tokens → „Get a Token from eBay via Your Application" → eBay Redirect URL (siehe SETUP.md, Schritt 3).'
     );
   }
-  const scopes = opts.withOrders === false ? SCOPES_USER_LEGACY : SCOPES_USER;
+  const base = opts.withOrders === false ? SCOPES_USER_LEGACY : SCOPES_USER;
+  const scopes = [...base, ...(opts.withAnalytics === false ? [] : [SCOPE_ANALYTICS]), ...(opts.withListing === false ? [] : [SCOPE_LISTING])];
   // Von Hand zusammengesetzt statt über URLSearchParams: das kodiert Leerzeichen
   // als „+", eBays Beispiele trennen die Scopes aber mit %20.
   const params = [
@@ -48,7 +49,12 @@ export const CONSENT_REJECTED_HELP =
   '     (nicht der Anzeigename und nicht die „auth accepted URL").\n' +
   '  2. Die Berechtigung „Bestellungen lesen" (für Rechnungen) ist für deinen Entwicklerzugang nicht freigegeben.\n' +
   '     Dann ohne diese Berechtigung verbinden — alles außer Rechnungen funktioniert.\n' +
-  '  3. Client ID aus der falschen Umgebung (Sandbox statt Production).';
+  '  3. Client ID aus der falschen Umgebung (Sandbox statt Production).\n' +
+  '  4. Die Berechtigung „Verkehrsdaten" ist für deinen Entwicklerzugang nicht freigegeben.\n' +
+  '     Dann das Häkchen „Verkehrsdaten" entfernen – „Angebote prüfen" zeigt dann nur keine Einblendungen/Klicks.\n' +
+  '  5. Die Berechtigung „Neue Listing-Schnittstelle" (sell.listing) ist für deinen Entwicklerzugang noch nicht\n' +
+  '     freigegeben (developer.ebay.com → Application Keys → OAuth Scopes). Dann dieses Häkchen entfernen –\n' +
+  '     ältere Angebote laufen dann weiter über die bisherige Trading-Schnittstelle.';
 
 export class ConsentRejectedError extends Error {
   constructor() {
@@ -143,6 +149,22 @@ export async function exchangeCode(db: Db, settings: Settings, code: string): Pr
   });
 }
 
+// Je Grundumfang: mit Listing + Verkehrsdaten, nur Listing, nur Verkehrsdaten, ohne beides.
+const SCOPE_CHAIN = [SCOPES_USER, SCOPES_USER_READONLY, SCOPES_USER_LEGACY].flatMap((s) => [[...s, SCOPE_LISTING, SCOPE_ANALYTICS], [...s, SCOPE_LISTING], [...s, SCOPE_ANALYTICS], s]);
+const workingScopes = new Map<string, number>();
+
+/** Erlaubt die Verbindung die neue Listing-API? null = noch nicht erneuert (unbekannt). */
+export function listingGranted(settings: Settings, refreshToken: string): boolean | null {
+  const i = workingScopes.get(`${settings.env}:${settings.clientId}:${refreshToken.slice(-16)}`);
+  return i === undefined ? null : SCOPE_CHAIN[i].includes(SCOPE_LISTING);
+}
+
+/** Erlaubt die Verbindung Verkehrsdaten? null = noch nicht erneuert (unbekannt). */
+export function analyticsGranted(settings: Settings, refreshToken: string): boolean | null {
+  const i = workingScopes.get(`${settings.env}:${settings.clientId}:${refreshToken.slice(-16)}`);
+  return i === undefined ? null : SCOPE_CHAIN[i].includes(SCOPE_ANALYTICS);
+}
+
 export async function refreshUserToken(db: Db, settings: Settings): Promise<string> {
   const stored = await getToken(db, settings.env, 'user');
   if (!stored?.refreshToken) throw new Error('NOT_CONNECTED');
@@ -155,11 +177,15 @@ export async function refreshUserToken(db: Db, settings: Settings): Promise<stri
   // Die Verbindung kann aus verschiedenen Zeiten stammen: mit Schreibrecht für Bestellungen
   // (Seller-System), nur lesend (Rechnungen im bisherigen Tool) oder ganz ohne Bestellungen.
   // eBay lehnt einen Refresh mit mehr Scopes als zugestimmt ab — deshalb der Reihe nach.
+  // Jeweils mit und ohne Verkehrsdaten. Was einmal geklappt hat, wird für diesen Refresh-Token gemerkt.
+  const memoKey = `${settings.env}:${settings.clientId}:${stored.refreshToken.slice(-16)}`;
   let t: TokenResponse | undefined;
   let lastErr: unknown;
-  for (const scopes of [SCOPES_USER, SCOPES_USER_READONLY, SCOPES_USER_LEGACY]) {
+  const start = workingScopes.get(memoKey) ?? 0;
+  for (let i = start; i < SCOPE_CHAIN.length; i++) {
     try {
-      t = await refresh(scopes);
+      t = await refresh(SCOPE_CHAIN[i]);
+      workingScopes.set(memoKey, i);
       break;
     } catch (err) {
       lastErr = err;

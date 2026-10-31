@@ -27,6 +27,18 @@ describe("Bereiche und Rechte", () => {
   });
 });
 
+describe("Paletten-Lager", () => {
+  it("ist ein eigener Bereich und muss einzeln freigegeben werden", () => {
+    expect(areaForPath("/paletten")).toBe("paletten");
+    expect(areaForPath("/paletten/export")).toBe("paletten");
+    expect(areaForPath("/etikett/palette")).toBe("paletten");
+    expect(canAccess({ role: "staff", areas: ["wawi"] }, "paletten")).toBe(false);
+    expect(canAccess({ role: "staff", areas: ["paletten"] }, "paletten")).toBe(true);
+    expect(canAccess({ role: "staff", areas: null }, "paletten")).toBe(true);
+    expect(homeFor({ role: "staff", areas: ["paletten"] })).toBe("/paletten");
+  });
+});
+
 describe("Einträge mit Links", () => {
   it("prüft Bereich und Marke", async () => {
     const { linkAllowed } = await import("@/lib/auth/areas");
@@ -56,5 +68,16 @@ describe("Artikelstamm als Bereich", () => {
     expect(ca({ role: "staff", areas: ["wawi"] }, "artikel")).toBe(true);
     expect(ca({ role: "staff", areas: ["marken", "artikel"] }, "artikel")).toBe(true);
     expect(ca({ role: "staff", areas: ["marken"] }, "artikel")).toBe(false);
+  });
+});
+
+describe("Deal-Eingang nur mit ausdrücklicher Freigabe", () => {
+  it("Inhaber ja; „alle Bereiche“ nein; ausdrücklich freigegeben ja; Nur-ansehen nein", () => {
+    expect(canAccess({ role: "owner", areas: null }, "dealeingang")).toBe(true);
+    expect(canAccess({ role: "staff", areas: null }, "dealeingang")).toBe(false);
+    expect(canAccess({ role: "staff", areas: ["start", "amazon"] }, "dealeingang")).toBe(false);
+    expect(canAccess({ role: "staff", areas: ["dealeingang"] }, "dealeingang")).toBe(true);
+    expect(canAccess({ role: "staff", areas: ["dealeingang"], readOnly: true }, "dealeingang")).toBe(false);
+    expect(areaForPath("/deal-eingang/123")).toBe("dealeingang");
   });
 });

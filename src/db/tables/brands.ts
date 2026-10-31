@@ -172,7 +172,9 @@ export const productSnapshots = pgTable(
   (t) => [primaryKey({ columns: [t.productId, t.day] })],
 );
 
-export type TikTokMarketItem = { title: string; shop: string | null; price: number | null; sales: number | null; revenue: number | null; rating: number | null; reviews: number | null; videos: number | null; creators: number | null; url: string | null };
+export type TikTokMarketItem = { title: string; shop: string | null; price: number | null; sales: number | null; revenue: number | null; rating: number | null; reviews: number | null; videos: number | null; creators: number | null; url: string | null; /** Umsatz passt nicht zu Preis × Verkäufe (z. B. Spalte vertauscht). */ revenueSuspect?: boolean };
+/** Was beim Import erkannt wurde: Spalten (Überschrift je Feld), Währung. */
+export type MarketImportMeta = { columns?: Record<string, string | null>; currency?: string | null };
 
 /** Importe aus Helium 10 (TikTok-Erweiterung), je Marke – Grundlage für Ideen und Shop-Optimierung. */
 export const marketImports = pgTable(
@@ -186,6 +188,7 @@ export const marketImports = pgTable(
     source: text("source").notNull(),
     fileName: text("file_name"),
     items: jsonb("items").$type<TikTokMarketItem[]>().notNull().default([]),
+    meta: jsonb("meta").$type<MarketImportMeta>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [index("market_imports_brand_idx").on(t.tenantId, t.brandId, t.createdAt)],

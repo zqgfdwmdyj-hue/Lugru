@@ -21,6 +21,13 @@ export type Session = {
   brandIds: string[] | null;
   /** Nur ansehen: Server Actions werden abgewiesen (siehe requireSession), schreibende Anfragen im Proxy. */
   readOnly: boolean;
+  /** Zugang zu „Privat“; mit PIN nur offen, solange `privateUnlockedUntil` in der Zukunft liegt. */
+  privateAccess: boolean;
+  /** „voll“ oder nur „familie“ (gemeinsame Familieninfos). */
+  privateScope: "voll" | "familie";
+  privatePin: boolean;
+  privateUnlockedUntil: Date | null;
+  sessionId: string;
   email: string;
   name: string | null;
   tenantName: string;
@@ -62,6 +69,11 @@ export const getSession = cache(async (): Promise<Session | null> => {
       areas: schema.memberships.areas,
       brandIds: schema.memberships.brandIds,
       readOnly: schema.memberships.readOnly,
+      privateAccess: schema.memberships.privateAccess,
+      privateScope: schema.memberships.privateScope,
+      privatePinHash: schema.memberships.privatePinHash,
+      privateUnlockedUntil: schema.sessions.privateUnlockedUntil,
+      sessionId: schema.sessions.id,
     })
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
@@ -74,9 +86,26 @@ export const getSession = cache(async (): Promise<Session | null> => {
       ),
     )
     .where(and(eq(schema.sessions.id, hash(token)), gt(schema.sessions.expiresAt, new Date())));
-  // Inhaber sind nie „nur ansehen“.
-  return row ? { ...row, readOnly: row.role === "staff" && row.readOnly } : null;
+  if (!row) return null;
+  touchLastSeen(row.userId);
+  const { privatePinHash, ...rest } = row;
+  // Inhaber sind nie „nur ansehen“. Nur-ansehen-Konten bekommen „Privat“ nie (auch nicht mit Freigabe).
+  const readOnly = row.role === "staff" && row.readOnly;
+  return { ...rest, privatePin: Boolean(privatePinHash), readOnly, privateAccess: row.privateAccess && !readOnly };
 });
+
+// „Zuletzt aktiv“ höchstens alle 5 Minuten je Benutzer schreiben – nicht bei jeder Anfrage.
+const lastTouch = new Map<string, number>();
+function touchLastSeen(userId: string) {
+  const now = Date.now();
+  if (now - (lastTouch.get(userId) ?? 0) < 5 * 60_000) return;
+  lastTouch.set(userId, now);
+  void db
+    .update(schema.users)
+    .set({ lastSeenAt: new Date(now) })
+    .where(eq(schema.users.id, userId))
+    .catch(() => lastTouch.delete(userId));
+}
 
 /** Hinweis in der Adresse, wenn eine Aktion für ein Nur-ansehen-Konto nicht ausgeführt wurde. */
 export const READ_ONLY_PARAM = "nurlesen";
@@ -122,6 +151,6 @@ export async function requireArea(...areas: AreaKey[]): Promise<Session> {
 /** Nur für Inhaber (Einstellungen, Anbindungen, Benutzer). */
 export async function requireOwner(): Promise<Session> {
   const session = await requireSession();
-  if (session.role !== "owner") redirect("/");
+  if (session.role !== "owner") redirect(`${homeFor(session)}?gesperrt=inhaber`);
   return session;
 }

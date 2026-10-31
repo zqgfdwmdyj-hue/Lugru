@@ -1,6 +1,8 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db, schema, type Db, type Tx } from "@/db";
+import { todayIso } from "@/lib/dates";
+import { ausweichDatum } from "@/lib/zeit/ausweich";
 
 type SystemTask = {
   title: string;
@@ -21,6 +23,9 @@ export async function upsertSystemTask(
   key: string,
   task: SystemTask,
 ) {
+  // Feste freie Tage: Fälligkeit auf den nächsten Arbeitstag (außer heute + wichtig).
+  const dueDate = await ausweichDatum(tenantId, task.dueDate, task.priority, todayIso()).catch(() => task.dueDate ?? null);
+  task = { ...task, dueDate };
   await conn
     .insert(schema.tasks)
     .values({
@@ -73,8 +78,8 @@ export async function refreshImportReminder(tenantId: string, reminderDays: numb
     await upsertSystemTask(db, tenantId, "import-reminder", {
       title: "Arbitrage-One-Export hochladen",
       notes: lastAt
-        ? `Letzter Import am ${lastAt.toLocaleDateString("de-DE")}. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.`
-        : "Noch kein Import. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.",
+        ? `Letzter Arbitrage-One-Upload am ${lastAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} (automatische Amazon-Berichte zählen hier nicht). Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.`
+        : "Noch kein Arbitrage-One-Upload. Vorlage „Tool“ oder AccountOne COG exportieren und hochladen.",
       category: "einkauf",
       link: "/import",
       dueDate: new Date().toISOString().slice(0, 10),

@@ -21,7 +21,11 @@ describe("Einkauf", () => {
     expect(s.daily).toBeCloseTo(0.87, 2);
     expect(s.need).toBe(24); // ceil(0,8667·44) = 39 − 15
     expect(s.daysLeft).toBe(17);
-    expect(suggest({ sold30: 0, sold90: 0, stock: 3, onOrder: 0, leadDays: 14, coverDays: 30 })).toEqual({ daily: 0, daysLeft: null, need: 0 });
+    expect(suggest({ sold30: 0, sold90: 0, stock: 3, onOrder: 0, leadDays: 14, coverDays: 30 })).toEqual({ daily: 0, daysLeft: null, need: 0, shortfall: 0 });
+    // Negativer Bestand: Fehlbestand statt „Reicht −41 Tage“.
+    const neg = suggest({ sold30: 1, sold90: 3, stock: -1, onOrder: 0, leadDays: 14, coverDays: 30 });
+    expect(neg.daysLeft).toBe(0);
+    expect(neg.shortfall).toBe(1);
     expect(suggest({ sold30: 3, sold90: 9, stock: 100, onOrder: 0, leadDays: 14, coverDays: 30 }).need).toBe(0);
   });
 

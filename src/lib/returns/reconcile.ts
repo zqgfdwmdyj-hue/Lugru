@@ -98,9 +98,40 @@ export const REASON_LABEL: Record<string, string> = {
   UNDELIVERABLE_REFUSED: "Annahme verweigert",
   PART_NOT_COMPATIBLE: "Nicht kompatibel",
 };
+/** Weitere Schreibweisen von Amazon (z. B. „CR-…“, „AMZ-PG-…“) auf die Grundcodes abbilden. */
+const REASON_ALIAS: Record<string, string> = {
+  "AMZ-PG-BAD-DESC": "NOT_AS_DESCRIBED",
+  "AMZ-PG-APP-TOO-SMALL": "APPAREL_TOO_SMALL",
+  "AMZ-PG-APP-TOO-LARGE": "APPAREL_TOO_LARGE",
+  "AMZ-PG-APP-STYLE": "APPAREL_STYLE",
+  "AMZ-PG-MISORDERED": "ORDERED_WRONG_ITEM",
+  "AMZ-PG-BETTER-PRICE": "FOUND_BETTER_PRICE",
+  "AMZ-PG-DEFECTIVE": "DEFECTIVE",
+  "AMZ-PG-DAMAGED": "DAMAGED_BY_CARRIER",
+};
 export const reasonLabel = (code: string | null) => {
   const c = (code ?? "").trim();
-  return c ? (REASON_LABEL[c.toUpperCase()] ?? c) : "";
+  if (!c) return "";
+  const up = c.toUpperCase();
+  const base = REASON_ALIAS[up] ?? up.replace(/^CR-/, "");
+  return REASON_LABEL[base] ?? c;
+};
+
+/** Zustand der Rücksendung (Disposition) aus dem FBA-Kundenrücksendebericht. */
+export const DISPOSITION_LABEL: Record<string, string> = {
+  SELLABLE: "Verkaufsfähig",
+  UNSELLABLE: "Nicht verkaufsfähig",
+  DAMAGED: "Beschädigt",
+  CUSTOMER_DAMAGED: "Vom Kunden beschädigt",
+  DEFECTIVE: "Defekt",
+  CARRIER_DAMAGED: "Beim Transport beschädigt",
+  DISTRIBUTOR_DAMAGED: "Vom Lieferanten beschädigt",
+  WAREHOUSE_DAMAGED: "Im Amazon-Lager beschädigt",
+  EXPIRED: "Abgelaufen",
+};
+export const dispositionLabel = (code: string | null) => {
+  const c = (code ?? "").trim();
+  return c ? (DISPOSITION_LABEL[c.toUpperCase()] ?? c) : "";
 };
 
 const AMAZON_FAULT = new Set(["CARRIER_DAMAGED", "DISTRIBUTOR_DAMAGED", "WAREHOUSE_DAMAGED"]);

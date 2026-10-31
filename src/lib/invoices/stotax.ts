@@ -41,7 +41,7 @@ export function stotaxMail(d: InvoiceData) {
   return {
     subject: `${kind} ${d.number} – ${d.buyer.name} – ${euro(d.totalGross)}`,
     text: [
-      `${kind} ${d.number} vom ${new Date(d.date).toLocaleDateString("de-DE")} (${source})`,
+      `${kind} ${d.number} vom ${new Date(d.date).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} (${source})`,
       d.cancels ? `Storno zu Rechnung ${d.cancels}` : "",
       `Kunde: ${d.buyer.name}`,
       `Netto: ${euro(d.totalNet)} · USt: ${euro(d.totalVat)} · Brutto: ${euro(d.totalGross)}`,

@@ -29,6 +29,13 @@ export async function refreshAction(_prev: TodoState): Promise<TodoState> {
     revalidatePath("/", "layout");
     const parts = [`${r.checked} Amazon-Mails geprüft`, `${r.created} neue Aufgaben`, `${r.irrelevant} unwichtig`, `${r.filtered} vom Grobfilter aussortiert`];
     if (r.closedAuto) parts.push(`${r.closedAuto} automatisch erledigt`);
+    if (r.versand) {
+      const v = r.versand;
+      if (v.archiviert) parts.push(`${v.archiviert} Bestell-/Versand-Mails archiviert (Auftrag versendet)`);
+      if (v.altGeschlossen) parts.push(`${v.altGeschlossen} alte Bestell-ToDos geschlossen`);
+      if (v.ueberfaellig) parts.push(`${v.ueberfaellig} FBM-Aufträge nach Versandfrist offen`);
+      if (v.fehlend) parts.push(`${v.fehlend} Bestellungen fehlen im Tool`);
+    }
     if (!r.ai) parts.push("ohne KI eingestuft (kein Claude-Schlüssel unter Anbindungen)");
     if (r.errors.length) parts.push(`Fehler: ${r.errors[0]}`);
     return { ok: r.errors.length === 0, message: `${parts.join(" · ")}. Postfächer vorher unter Posteingang abrufen, falls neue Mails fehlen.` };

@@ -32,3 +32,18 @@ export async function summarize(apiKey: string, input: SummaryInput, model = DEF
     throw new Error((e instanceof Error ? e.message : String(e)).replace("KI-Aufruf fehlgeschlagen", "KI-Zusammenfassung fehlgeschlagen"));
   }
 }
+
+/**
+ * Hat die KI statt einer Zusammenfassung abgelehnt bzw. nichts geliefert („Ich kann diese Zusammenfassung
+ * nicht erstellen …“)? Dann ist die Recherche fehlgeschlagen – kein Wissenseintrag daraus.
+ */
+export const FAILED_SUMMARY_RE = /^\s*(ich kann (diese|die|keine|leider)|ich bin (leider )?nicht in der lage|leider kann ich|es tut mir leid|entschuldigung|i can(no|')t|i am unable|i'm unable|sorry)/i;
+export function isFailedSummary(text: string | null | undefined): boolean {
+  const t = (text ?? "").trim();
+  return !t || FAILED_SUMMARY_RE.test(t) || /zusammenfassung (nicht|kann nicht) erstell/i.test(t.slice(0, 200));
+}
+/** Gilt für schon gespeicherte Einträge: Zusammenfassungsteil ist eine Ablehnung. */
+export function isFailedResearchBody(body: string): boolean {
+  const m = /ZUSAMMENFASSUNG \(KI\)\s*\n([\s\S]{0,400})/.exec(body);
+  return m ? isFailedSummary(m[1]) : FAILED_SUMMARY_RE.test(body.trim());
+}

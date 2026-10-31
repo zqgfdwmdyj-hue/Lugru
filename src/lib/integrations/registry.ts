@@ -77,6 +77,34 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "dhl_tracking",
+    name: "DHL Sendungsverfolgung (Paletten-Sendungen)",
+    purpose: "Sendungen im Palettenlager mit DHL (Paket, Express, Freight) automatisch verfolgen: Ort, neuer Liefertag, Zustellung – mit Meldung an alle.",
+    fields: [{ key: "apiKey", label: "API-Key (developer.dhl.com)", secret: true }],
+    setup: [
+      "developer.dhl.com → App öffnen (oder neu anlegen) → API „Shipment Tracking – Unified“ hinzufügen → API-Key kopieren. Ist es dieselbe App wie für den DHL-Versand, ist es auch derselbe Key.",
+      "Hier eintragen und „Verbindung testen“.",
+      "Danach fragt das System für offene DHL-Sendungen im Palettenlager etwa alle 3 Stunden den Stand ab.",
+    ],
+  },
+  {
+    provider: "deutschepost",
+    name: "Deutsche Post INTERNETMARKE (Warensendung)",
+    purpose: "Porto mit Anschrift kaufen – z. B. Warensendung für Lieferscheine mit einem Stück. Bezahlt wird aus der Portokasse.",
+    fields: [
+      { key: "clientId", label: "Client-ID / API-Key (developer.dhl.com)", secret: true },
+      { key: "clientSecret", label: "Client-Secret", secret: true },
+      { key: "username", label: "Portokasse – E-Mail" },
+      { key: "password", label: "Portokasse – Passwort", secret: true },
+    ],
+    setup: [
+      "developer.dhl.com → App anlegen → API „Deutsche Post INTERNETMARKE (Post & Parcel Germany)“ hinzufügen und freischalten lassen (Formular deutschepost.de/formular-ima) → Client-ID (API-Key) und Client-Secret kopieren.",
+      "Portokasse (portokasse.deutschepost.de) mit Guthaben; dort unter „Meine Daten → Geschäftsanwendungen“ die Anwendung freigeben – sonst lehnt die Post die Anmeldung ab.",
+      "Hier eintragen und „Verbindung testen“ – angezeigt wird das Guthaben der Portokasse.",
+      "Produkt, Preis und Druckformat unter Einstellungen → Versand (Vorgabe: Warensendung 290, 2,70 €).",
+    ],
+  },
+  {
     provider: "google",
     name: "Google (Gmail-Postfächer)",
     purpose: "Nur nötig für „Mit Google anmelden“ – einfacher geht es mit App-Passwort unter Posteingang → Postfach verbinden.",
@@ -189,6 +217,20 @@ export const INTEGRATIONS: IntegrationDef[] = [
     ],
   },
   {
+    provider: "lexoffice",
+    name: "Lexoffice / Lexware Office (Rechnungen B2B-Deals)",
+    purpose: "Vorkasse-Rechnungen und Gutschriften für B2B-Deals im Namen der Deal-Firma (Einstellungen → B2B-Deals), Zahlungseingang zurück ins Seller-System.",
+    fields: [{ key: "apiKey", label: "API-Schlüssel", secret: true, help: "Schlüssel der Firma, auf die die Deals laufen (z. B. Wittmann & Grunert GmbH)." }],
+    setup: ["In Lexware Office (Lexoffice) → Erweiterungen → „Public API“ → Schlüssel erzeugen und hier eintragen.", "„Verbindung testen“ zeigt den Firmennamen des Kontos – er muss zur Deal-Firma passen."],
+  },
+  {
+    provider: "discord_b2b",
+    name: "Discord – B2B-Deal-Kanal",
+    purpose: "Neue Deals, „fast weg“ und „geschlossen“ automatisch als Nachricht in den B2B-Kanal der Deal-Gruppe (mit Link ins Kundenportal).",
+    fields: [{ key: "webhookUrl", label: "Webhook-Adresse", secret: true, placeholder: "https://discord.com/api/webhooks/…" }],
+    setup: ["Discord → Kanal-Einstellungen → Integrationen → Webhooks → Neuer Webhook → „Webhook-URL kopieren“ und hier eintragen."],
+  },
+  {
     provider: "keepa",
     name: "Keepa (Amazon-Marktdaten)",
     purpose: "Für Ideen und Kalkulationen: ähnliche Produkte auf amazon.de mit Preis, FBA-Gebühr, Provision und Verkäufen im Monat. Auch für Amazon-Bilder im eBay-Tool.",
@@ -234,23 +276,186 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: ["Discord → Server-Einstellungen → Integrationen → Webhooks → „Neuer Webhook“ → Kanal wählen (z. B. „todo“) → „Webhook-URL kopieren“ → hier einfügen und testen."],
   },
   {
-    provider: "lugru_deals",
-    name: "Lugru Deals (Shop-Monitor) – optional",
-    purpose:
-      "Lugru Deals holt sich hier das eBay-Zugangstoken für Deals, die auf eBay verkauft werden. Die eBay-Schlüssel bleiben im Seller-System; Lugru Deals bekommt nur ein kurzlebiges Token.",
+    provider: "sellerboard_web",
+    name: "sellerboard – Anmeldung für den Kostenimport (Browser-Automatik) – optional",
+    purpose: "EK nach dem EK-Import auf Knopfdruck zu sellerboard übertragen (Produkte → Kosten importieren). Ohne diese Anbindung: Importdatei herunterladen und selbst hochladen.",
+    fields: [
+      { key: "email", label: "Anmelde-E-Mail" },
+      { key: "password", label: "Passwort", secret: true },
+      { key: "loginUrl", label: "Anmeldeseite", placeholder: "https://app.sellerboard.com/de/auth/login" },
+      { key: "importUrl", label: "Seite „Kosten importieren“", help: "In sellerboard die Seite zum Kostenimport öffnen und die Adresse aus der Adresszeile hier einfügen." },
+    ],
+    setup: [
+      "Am besten einen eigenen sellerboard-Benutzer ohne Zwei-Faktor-Anmeldung nur für den Import anlegen – mit Zwei-Faktor bricht die Automatik ab und legt eine Aufgabe an.",
+      "Die Automatik läuft nur auf Knopfdruck, nie von selbst; jeder Schritt wird mit Bildschirmfoto protokolliert.",
+      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+    ],
+  },
+  {
+    provider: "bqool_web",
+    name: "BQool – Anmeldung für den Datei-Upload (Browser-Automatik) – optional",
+    purpose: "Freigegebene BQool-Dateien je Land auf Knopfdruck bei BQool hochladen. Ohne diese Anbindung: ZIP herunterladen und selbst hochladen.",
+    fields: [
+      { key: "email", label: "Anmelde-E-Mail" },
+      { key: "password", label: "Passwort", secret: true },
+      { key: "loginUrl", label: "Anmeldeseite", placeholder: "https://www.bqool.com/login" },
+      { key: "uploadUrl", label: "Seite „Repricing-Datei hochladen“", help: "In BQool die Upload-Seite öffnen und die Adresse aus der Adresszeile hier einfügen." },
+    ],
+    setup: [
+      "Mit Zwei-Faktor-Anmeldung bricht die Automatik ab und legt eine Aufgabe an – dann die Dateien als ZIP herunterladen.",
+      "Preise ändern sich erst nach Freigabe auf der Seite „BQool-Dateien“ und einem Klick auf „An BQool übertragen“.",
+      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+    ],
+  },
+  {
+    provider: "discord_calls",
+    name: "Discord – Call-Kanal (Consultant- oder Gruppen-Calls) – optional",
+    purpose: "Einmal pro Woche neue Google-Docs-Transkripte aus dem Discord-Kanal ins Call-Archiv holen; die KI zieht daraus Vereinbarungen, Aufgaben, Entscheidungen und offene Fragen.",
     fields: [
       {
+        key: "art",
+        label: "Art der Calls",
+        options: [
+          { value: "gruppe", label: "Wochen-Calls der Deal-Gruppe" },
+          { value: "consultant", label: "Calls mit dem Consultant" },
+        ],
+      },
+      { key: "botToken", label: "Bot-Token", secret: true, help: "Discord-Bot mit dem Recht „Nachrichtenverlauf lesen“ in diesem Kanal." },
+      { key: "kanalId", label: "Kanal-ID", placeholder: "z. B. 123456789012345678", help: "Discord → Einstellungen → Erweitert → Entwicklermodus an → Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
+    ],
+    setup: [
+      "discord.com/developers → New Application → Bot → „Reset Token“ → Token kopieren und hier eintragen.",
+      "OAuth2 → URL Generator: „bot“ mit „View Channels“ und „Read Message History“ → Bot auf den Server einladen.",
+      "Die Google Docs müssen für „Jeder mit dem Link“ lesbar sein – oder die Drive-Anbindung mit Dienstkonto hat Zugriff.",
+    ],
+  },
+  {
+    provider: "discord_va",
+    name: "Discord – VA-Kanal (Assistenz) – optional",
+    purpose:
+      "Aufgaben an die VA gehen als eigener Thread in den VA-Kanal (mit Anleitung und Anhängen); ✅ oder „erledigt“ schließt die Aufgabe, Fragen landen als Rückfrage bei dir. Neue Nachrichten der VA ordnet die KI ein und beantwortet Datenfragen (Rechnungen, Sendungen, Ansprüche, Aufträge, Produkte, Anleitungen) direkt im Thread.",
+    fields: [
+      { key: "botToken", label: "Bot-Token", secret: true, help: "Nur auf dem Server gespeichert – erscheint nie in der Oberfläche oder in Protokollen." },
+      { key: "serverId", label: "Server-ID", placeholder: "z. B. 123456789012345678", help: "Rechtsklick auf den Server → „Server-ID kopieren“ (Entwicklermodus an)." },
+      { key: "kanalId", label: "VA-Kanal-ID", placeholder: "z. B. 123456789012345678", help: "Der Bot liest nur diesen Kanal und seine Threads." },
+      { key: "vaDiscordId", label: "Discord-Nutzer-ID der VA", placeholder: "z. B. 123456789012345678", help: "Rechtsklick auf die VA → „Benutzer-ID kopieren“. Nur ihre Nachrichten werden verarbeitet." },
+      { key: "vaEmail", label: "Konto der VA im Seller-System (E-Mail)", help: "Ihre Bereichsrechte gelten auch für Links und automatische Antworten – ohne Privat-, Finanz- und B2B-Kundendaten." },
+    ],
+    setup: [
+      "discord.com/developers → New Application → Bot → „Reset Token“ → Token kopieren und hier eintragen.",
+      "Unter Bot → Privileged Gateway Intents „Message Content Intent“ einschalten (sonst sieht der Bot den Text der VA nicht).",
+      "OAuth2 → URL Generator: „bot“ mit View Channels, Send Messages, Create Public Threads, Send Messages in Threads, Read Message History, Attach Files → Bot auf den Server einladen.",
+      "Den Bot nur im VA-Kanal berechtigen. Aufgaben gibst du über Delegation (Zuständig = VA) oder in Claude mit aufgabe_zuweisen(an=\"va\").",
+    ],
+  },
+  {
+    provider: "discord_profitpath",
+    name: "Discord – ProfitPath-Deals (Dealwatch, SpySearch, A2A) – optional",
+    purpose:
+      "Der Bot des Seller-Systems liest die ProfitPath-Kanäle in deinem Discord-Server mit. Jede Meldung landet im Deal-Eingang und wird gegengeprüft (echte Gebühren je Land, eigener Bestand, Kapital-Ampel, Amazon-Anteil, Liquidität). Push nur bei Grün/Gelb; Trefferquote je Modul.",
+    fields: [
+      { key: "kanalIds", label: "ProfitPath-Kanäle (IDs, mit Komma getrennt)", placeholder: "123456789012345678, 234567890123456789", help: "Je Modul/Alarmgruppe ein Kanal. Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
+      { key: "ppBotId", label: "Nutzer-ID des ProfitPath-Bots", placeholder: "z. B. 123456789012345678", help: "Rechtsklick auf den ProfitPath-Bot → „Benutzer-ID kopieren“. Dann werden nur seine Nachrichten verarbeitet (leer = alle Bot-Nachrichten in den Kanälen)." },
+      { key: "serverId", label: "Server-ID (optional)" },
+      { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie beim VA-Kanal. Nur auf dem Server gespeichert." },
+    ],
+    setup: [
+      "Den Bot des Seller-Systems (siehe „Discord – VA-Kanal“) in den Server mit den ProfitPath-Kanälen einladen – in diesen Kanälen „View Channel“ und „Read Message History“; im Developer Portal unter Bot → Privileged Gateway Intents „Message Content Intent“ einschalten.",
+      "„Verbindung testen“ liest die letzte ProfitPath-Nachricht je Kanal und zeigt, was erkannt wurde (ASIN, EK).",
+      "Fällt der Abruf aus, holt das System verpasste Meldungen der letzten 24 Stunden nach.",
+      "Wichtig: Discord-Meldungen kommen aus den Alert-Einstellungen in ProfitPath (je Alarmgruppe ein Kanal), nicht aus Presets/Filtern.",
+      "Beim ersten Abgleich merkt sich das System nur den Stand je Kanal; ab dann kommen neue Meldungen in den Deal-Eingang.",
+    ],
+  },
+  {
+    provider: "lugru_deals",
+    name: "Lugru Deals (Deal-Kanäle in Discord + Shop-Monitor) – optional",
+    purpose:
+      "Das Seller-System liest die Deal-Kanäle der Lugru-Gruppe in Discord selbst: neue Posts in 1–2 Minuten in den Deal-Eingang (Ampel, Deal-Wert, Push bei Grün/Gelb), die ganze History einmalig rückwärts, Reaktionen (✅ gekauft, ❌ weg) nur als Anzahl – nie Namen. Läuft auf dem Server, unabhängig davon, ob der PC mit Lugru Deals an ist. Optional: Lugru Deals holt sich hier außerdem das eBay-Zugangstoken.",
+    fields: [
+      { key: "kanalIds", label: "Deal-Kanäle (Kanal-IDs)", multiline: true, placeholder: "123456789012345678\n234567890123456789", help: "Die Discord-Kanäle, in die Lugru Deals postet (je Zeile eine ID; Rechtsklick auf den Kanal → „Kanal-ID kopieren“, Entwicklermodus an)." },
+      { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie bei „Discord-Kanäle der Deal-Gruppe“ bzw. „VA-Kanal“. Geht auch: der Reaktions-Bot aus Lugru Deals (er ist schon im Server). Nur „View Channel“ und „Read Message History“, „Message Content Intent“ an." },
+      { key: "emojiGekauft", label: "Weitere Emojis für „gekauft“ (optional)", placeholder: "lugru_gekauft", help: "✅ zählt immer; eigene Server-Emojis mit Namen ergänzen (mit Komma getrennt)." },
+      { key: "emojiWeg", label: "Weitere Emojis für „nicht mehr verfügbar“ (optional)", placeholder: "weg", help: "❌ zählt immer." },
+      {
         key: "schluessel",
-        label: "Verbindungsschlüssel",
+        label: "Verbindungsschlüssel für Lugru Deals (optional)",
         secret: true,
         placeholder: "mindestens 32 zufällige Zeichen",
-        help: "Frei wählen, z. B. aus einem Passwort-Generator. Denselben Schlüssel in Lugru Deals unter Monitor → Einstellungen → eBay eintragen.",
+        help: "Nur für das eBay-Token und die Übertragung aus Lugru Deals (Weg A, ergänzend). Denselben Schlüssel in Lugru Deals unter Monitor → Einstellungen → eBay eintragen.",
       },
     ],
     setup: [
-      "Die eBay-Anbindung (Client ID und Client Secret) muss im Seller-System eingerichtet sein.",
-      "Hier einen zufälligen Verbindungsschlüssel mit mindestens 32 Zeichen eintragen und „Verbindung testen“.",
-      "In Lugru Deals unter Monitor → Einstellungen → eBay die Adresse dieses Seller-Systems und denselben Schlüssel eintragen.",
+      "Den Bot in den Discord-Server der Deal-Gruppe einladen (Server-Admin) und in den Deal-Kanälen „View Channel“ + „Read Message History“ geben; im Developer Portal unter Bot → Privileged Gateway Intents „Message Content Intent“ einschalten.",
+      "Die IDs der Deal-Kanäle eintragen und „Verbindung testen“ – der Test zeigt den letzten erkannten Deal je Kanal.",
+      "Danach unter Deal-Eingang → Lugru Deals „History importieren“; neue Posts kommen von selbst.",
+      "Optional (eBay-Token, Übertragung aus Lugru Deals): Verbindungsschlüssel eintragen und in Lugru Deals unter Monitor → Einstellungen → eBay Adresse und Schlüssel hinterlegen.",
+    ],
+  },
+  {
+    provider: "asana",
+    name: "Asana (Anwalt) – nur lesen",
+    purpose: "Fälle beim Anwalt (Status, Fristen, Kommentare) als Rechtsfälle im Seller-System – geschäftliche unter „Rechtsfälle“, private nur im Privatbereich. Es wird nie etwas in Asana geschrieben.",
+    fields: [
+      { key: "token", label: "Persönlicher Zugangstoken", secret: true, help: "Nur auf dem Server gespeichert." },
+      { key: "projekte", label: "Projekte (gids, optional)", placeholder: "leer = alle sichtbaren Projekte", help: "Mit Komma getrennt. Private Projekte unter Einstellungen → Rechtsfälle kennzeichnen." },
+    ],
+    setup: [
+      "Einladung des Anwalts in Asana annehmen.",
+      "Asana → Profilbild → Einstellungen → Apps → Entwickler-Apps → „Persönlichen Zugangstoken erstellen“ → hier eintragen.",
+      "„Verbindung testen“ zeigt, wie viele Projekte sichtbar sind. Abruf alle 30 Minuten.",
+    ],
+  },
+  {
+    provider: "discord_wissen",
+    name: "Discord – Gruppen-Kanäle (Wissen) – optional",
+    purpose: "Liest freigegebene Kanäle der Deal-Gruppe (nur lesen): Zusammenfassung je Kanal, Insider-Wissen, Frühwarnung bei gehäuften Problemen, Deals in den Deal-Eingang. Rohnachrichten höchstens 30 Tage.",
+    fields: [
+      { key: "kanaele", label: "Kanäle", multiline: true, placeholder: "123456789012345678 | Amazon | täglich\n234567890123456789 | Temu | wöchentlich", help: "Je Zeile: Kanal-ID | Name | täglich / wöchentlich / aus. (Grauer Text ist nur ein Beispiel.) Kanal-ID: Discord → Einstellungen → Erweitert → Entwicklermodus an, dann Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
+      { key: "serverId", label: "Server-ID (für Links zur Nachricht)" },
+      { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie beim VA-Kanal. Nur der Server-Admin lädt ihn ein; nur „View Channel“ und „Read Message History“ – keine Schreibrechte." },
+    ],
+    setup: [
+      "Noch kein Bot? discord.com/developers → „New Application“ → „Bot“ → Token kopieren und hier eintragen (oder leer lassen, wenn der VA-Kanal schon einen Bot hat). Dort „Message Content Intent“ einschalten.",
+      "Einladung: OAuth2 → URL Generator → Scope „bot“, Rechte nur „View Channels“ und „Read Message History“ → den Link dem Server-Admin der Deal-Gruppe schicken. Keine Nutzer-Tokens (Selfbots) – das verstößt gegen die Discord-Regeln.",
+      "Die Gruppe informieren, z. B.: „Ich lasse unsere Kanäle Amazon/eBay/Fragen von einem Lese-Bot zusammenfassen – nur für mich, Rohtexte werden nach 30 Tagen gelöscht.“",
+      "Kanal-IDs hier eintragen (je Zeile „ID | Name | täglich“), speichern und „Verbindung testen“ – zeigt je Kanal, ob er lesbar ist.",
+    ],
+  },
+  {
+    provider: "tesla",
+    name: "Tesla (Fleet API) – optional",
+    purpose: "Navi-Ziel aus dem Seller-System ins Auto („Ins Auto“), Ankunftszeit für Verspätungs-Entwürfe, Fahrten fürs Fahrtenbuch, Vorheizen nur auf Knopfdruck. Kein Laden, keine Fernsteuerung sonst.",
+    fields: [
+      { key: "accessToken", label: "Access-Token", secret: true, help: "Nur auf dem Server gespeichert – nie in der Oberfläche oder in Protokollen." },
+      { key: "refreshToken", label: "Refresh-Token", secret: true },
+      { key: "clientId", label: "Client-ID (Tesla-Entwicklerkonto)" },
+      { key: "clientSecret", label: "Client-Secret", secret: true },
+      { key: "vin", label: "Fahrgestellnummer (VIN)", placeholder: "z. B. XP7Y…" },
+      { key: "region", label: "Region", options: [{ value: "eu", label: "Europa" }, { value: "na", label: "Nordamerika" }] },
+      { key: "befehlsProxy", label: "Befehls-Proxy (optional)", placeholder: "https://…", help: "Adresse des „Tesla Vehicle Command Proxy“ – neuere Fahrzeuge (z. B. Model Y Juniper) nehmen Befehle nur signiert an." },
+      { key: "publicKey", label: "Öffentlicher Schlüssel (PEM)", multiline: true, placeholder: "-----BEGIN PUBLIC KEY-----\n…\n-----END PUBLIC KEY-----", help: "Wird unter /.well-known/appspecific/com.tesla.3p.public-key.pem veröffentlicht (verlangt Tesla bei der App-Registrierung). Nur den öffentlichen Teil eintragen – den privaten Schlüssel nie hier." },
+    ],
+    setup: [
+      "developer.tesla.com → Anwendung registrieren (Fleet API), Scopes: Fahrzeuginformationen, Fahrzeugstandort, Fahrzeugbefehle (ohne Laden).",
+      "Öffentlichen Schlüssel unter https://<deine Adresse>/.well-known/appspecific/com.tesla.3p.public-key.pem bereitstellen und den Schlüssel im Auto koppeln (Tesla-App → Sicherheit).",
+      "Für signierte Befehle den „Vehicle Command Proxy“ auf dem Server starten und oben als Befehls-Proxy eintragen.",
+      "Token per OAuth holen und hier eintragen, „Verbindung testen“ zeigt den Fahrzeugnamen.",
+    ],
+  },
+  {
+    provider: "twilio",
+    name: "SMS (Twilio) – optional",
+    purpose: "Nur Wichtiges als SMS an deine Nummer (Konto/Angebot deaktiviert, Frist morgen, grüner Deal über Schwelle, VA-Rückfrage) – der Tesla liest sie vor; Antwort per Sprache: VA / SPÄTER / OK / KAUFEN n.",
+    fields: [
+      { key: "accountSid", label: "Account SID", placeholder: "AC…" },
+      { key: "authToken", label: "Auth-Token", secret: true, help: "Prüft auch die Antworten (Signatur)." },
+      { key: "absender", label: "Absender-Nummer", placeholder: "+49…" },
+    ],
+    setup: [
+      "twilio.com → Konto (Region Irland/EU wählen) → Nummer mit SMS kaufen → Account SID, Auth-Token und Nummer hier eintragen.",
+      "Bei der Nummer unter „Messaging → A message comes in“ den Webhook https://<deine Adresse>/api/sms/antwort (POST) eintragen.",
+      "Deine Handynummer und das Tageslimit stehen unter Einstellungen → Handy & Tesla. Keine Kunden- oder Privatdaten in SMS.",
     ],
   },
   {

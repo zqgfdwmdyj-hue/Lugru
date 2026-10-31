@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { sendTestMail, syncNow, uploadEml, type InboxState } from "./actions";
+import { useKeepForm } from "@/components/keep-form";
+import { sendTestMail, syncNow, testMailboxAction, uploadEml, type InboxState } from "./actions";
 
 export function SyncButton() {
   const [state, action, pending] = useActionState<InboxState, FormData>(syncNow, null);
@@ -15,11 +16,12 @@ export function SyncButton() {
 
 export function EmlUpload() {
   const [state, action, pending] = useActionState<InboxState, FormData>(uploadEml, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} className="stack" style={{ gap: 6 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 6 }} data-testid="eml-upload">
       <label className="label" htmlFor="eml">Mails als .eml hochladen (zum Testen)</label>
       <input className="input" id="eml" name="files" type="file" accept=".eml,message/rfc822" multiple required />
-      <button className="btn btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>
+      <button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Lese …" : "Hochladen"}</button>
       {state && <div className={`notice small ${state.ok ? "notice-ok" : "notice-error"}`}>{state.message}</div>}
     </form>
   );
@@ -32,6 +34,18 @@ export function TestMailButton({ id }: { id: string }) {
       <input type="hidden" name="id" value={id} />
       <button className="btn-link small" type="submit" disabled={pending}>{pending ? "Sende …" : "Test-Mail"}</button>
       {state && <div className={`small`} style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</div>}
+    </form>
+  );
+}
+
+/** „Verbindung testen“: Abruf und Versand prüfen, Fehlerart anzeigen. */
+export function TestVerbindungButton({ id }: { id: string }) {
+  const [state, action, pending] = useActionState<InboxState, FormData>(testMailboxAction, null);
+  return (
+    <form action={action} style={{ display: "inline" }} data-testid="mailbox-test">
+      <input type="hidden" name="id" value={id} />
+      <button className="btn-link small" type="submit" disabled={pending}>{pending ? "Teste …" : "Verbindung testen"}</button>
+      {state && <div className="small" role="status" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</div>}
     </form>
   );
 }

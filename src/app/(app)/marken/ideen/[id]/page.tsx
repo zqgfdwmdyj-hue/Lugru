@@ -76,7 +76,7 @@ export default async function IdeaPage({ params, searchParams }: { params: Promi
           {article ? (
             <Link className="btn" href={`/artikel/${article.id}`}>Artikelstamm: {article.sku}</Link>
           ) : (
-            <form action={ideaToArticleAction}><input type="hidden" name="id" value={i.id} /><button className="btn" type="submit">In Artikelstamm übernehmen</button></form>
+            <form action={ideaToArticleAction}><input type="hidden" name="id" value={i.id} /><button className="btn btn-primary" type="submit">In Artikelstamm übernehmen</button></form>
           )}
           {(NEXT[i.status] ?? []).map(([s, text], n) => (
             <form key={s} action={setIdeaStatusAction}><input type="hidden" name="id" value={i.id} /><input type="hidden" name="status" value={s} /><button className={`btn${n === 0 ? " btn-primary" : ""}`} type="submit">{text}</button></form>
@@ -95,7 +95,7 @@ export default async function IdeaPage({ params, searchParams }: { params: Promi
                   <select className="input" id="kind" name="kind" defaultValue={i.kind}><option value="box">Box / Set</option><option value="product">Produkt</option><option value="other">Sonstiges</option></select></div>
                 <div className="field"><label className="label" htmlFor="occasion">Anlass</label>
                   <select className="input" id="occasion" name="occasion" defaultValue={i.occasion ?? ""}><option value="">ganzjährig</option>{OCCASIONS.map((o) => <option key={o.key} value={o.key}>{o.name}</option>)}</select></div>
-                <div className="field"><label className="label" htmlFor="launchDate">Launch</label><input className="input" id="launchDate" name="launchDate" type="date" defaultValue={i.launchDate ?? ""} /></div>
+                <div className="field"><label className="label" htmlFor="launchDate">{["planned", "in_progress", "live"].includes(i.status) ? "Launch (Termin)" : "Wunsch-Launch (unverbindlich)"}</label><input className="input" id="launchDate" name="launchDate" type="date" defaultValue={i.launchDate ?? ""} /></div>
               </div>
               <div className="field"><label className="label" htmlFor="concept">Konzept</label><textarea className="textarea" id="concept" name="concept" defaultValue={i.concept ?? ""} style={{ minHeight: 80 }} /></div>
               <div className="field"><label className="label" htmlFor="contents">{i.kind === "product" ? "Merkmale" : "Inhalt"} – eine Zeile je Teil</label><textarea className="textarea" id="contents" name="contents" defaultValue={i.contents.join("\n")} style={{ minHeight: 110 }} /></div>

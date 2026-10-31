@@ -107,12 +107,12 @@ export default async function ChargenPage({
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {(Object.keys(FILTERS) as Filter[]).map((f) => (
-          <Link key={f} href={link({ filter: f })} className={`chip${filter === f ? " active" : ""}`}>{FILTERS[f]}</Link>
+          <Link key={f} href={link({ filter: f })} className={`chip${filter === f ? " active" : ""}`} aria-current={filter === f ? "true" : undefined}>{FILTERS[f]}</Link>
         ))}
       </div>
 
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead>
             <tr>
               <th>SKU</th><th>ASIN</th><th>Shop</th><th>Datum</th><th>Art</th><th className="right">EK netto</th><th>Quelle</th>
@@ -136,7 +136,7 @@ export default async function ChargenPage({
                   {r.kind === "return" ? <span className="tag tag-info">RETOURE</span> : r.kind === "unknown" ? <span className="tag tag-warn">UNBEKANNT</span> : <span className="tag tag-neutral">EINKAUF {r.skuSchema}</span>}
                 </td>
                 <td className="num right" style={{ color: r.cost === null ? "var(--danger)" : undefined }}>
-                  {r.cost === null ? "fehlt" : formatEuro(r.cost)}
+                  {r.cost === null ? <span className="tag tag-missing">fehlt</span> : formatEuro(r.cost)}
                 </td>
                 <td className="small">{r.source ? COST_SOURCE_LABEL[r.source] : "–"}</td>
               </tr>

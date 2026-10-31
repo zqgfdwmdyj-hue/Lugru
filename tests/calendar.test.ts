@@ -4,7 +4,7 @@ import { hashDesired, planCalendarChanges, planPush, uidFor, type DesiredItem, t
 import { parseMultistatus } from "@/lib/calendar/xml";
 import { expandCalendar } from "@/lib/calendar/recur";
 import { parseFeedList } from "@/lib/calendar/feeds";
-import { monthGrid, parseMonth, shiftMonth, spreadDays } from "@/lib/calendar/month";
+import { monthGrid, parseMonth, parseView, shiftMonth, spreadDays, weekDays, weekTitle } from "@/lib/calendar/month";
 
 const desired = (over: Partial<DesiredItem> = {}): DesiredItem => ({ key: "task:1", title: "Rechnung anfordern", date: "2026-10-02", description: "", link: "/", category: "Aufgabe", taskId: "t1", remind: true, ...over });
 const stored = (over: Partial<StoredItem> = {}): StoredItem => ({ id: "s1", sourceKey: "task:1", uid: "u1", href: "/cal/u1.ics", etag: '"1"', hash: hashDesired(desired()), date: "2026-10-02", title: "Rechnung anfordern", taskId: "t1", ...over });
@@ -155,5 +155,27 @@ describe("Kalender per Link", () => {
       { name: "Familie", url: "https://calendar.google.com/x/basic.ics", color: "#F59E0B" },
       { name: null, url: "https://outlook.office365.com/owa/calendar/y/calendar.ics", color: "#8B5CF6" },
     ]);
+  });
+});
+
+describe("Wochen- und Agendaansicht", () => {
+  it("Ansicht aus der Adresse, unbekannt → Monat", () => {
+    expect(parseView("woche")).toBe("woche");
+    expect(parseView("agenda")).toBe("agenda");
+    expect(parseView(undefined)).toBe("monat");
+    expect(parseView("jahr")).toBe("monat");
+  });
+  it("Woche läuft Montag bis Sonntag, auch über Monats- und Jahresgrenzen", () => {
+    expect(weekDays("2026-10-27")).toEqual(["2026-10-26", "2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01"]);
+    expect(weekDays("2026-11-01")[0]).toBe("2026-10-26");
+    expect(weekDays("2026-10-26")[6]).toBe("2026-11-01");
+    expect(weekTitle(weekDays("2026-10-27"))).toBe("26.10.–1.11.2026");
+    expect(weekTitle(weekDays("2026-12-30"))).toBe("28.12.2026–3.1.2027");
+  });
+  it("das Monatsraster enthält jede Woche eines Tages im Monat vollständig", () => {
+    for (const day of ["2026-10-01", "2026-10-27", "2026-10-31", "2026-02-01", "2026-03-31"]) {
+      const grid = monthGrid(day.slice(0, 7));
+      for (const d of weekDays(day)) expect(grid).toContain(d);
+    }
   });
 });

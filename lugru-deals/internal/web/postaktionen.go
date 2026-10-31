@@ -100,6 +100,7 @@ func (srv *Server) setzePostStatus(ctx context.Context, deal store.Deal, status 
 	if err := srv.store.DealStatusSetzen(deal.ID, status); err != nil {
 		return errors.New("In Discord geändert, aber nicht in der Historie gespeichert: " + sicherFehlertext(err.Error()))
 	}
+	srv.stosseSellerAn()
 	return nil
 }
 
@@ -238,5 +239,6 @@ func (srv *Server) speicherePostBearbeiten(w http.ResponseWriter, r *http.Reques
 		nochmal("In Discord geändert, aber nicht in der Historie gespeichert: " + sicherFehlertext(err.Error()))
 		return
 	}
+	srv.stosseSellerAn()
 	zurueckMit(w, r, historieRuecksprung(seite.Zurueck), "meldung", "Post in Discord geändert.")
 }

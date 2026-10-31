@@ -9,6 +9,8 @@ import { splitStreet } from "@/lib/shipping/countries";
 import { registerStockPusher } from "@/lib/stock/channel-sync";
 import { registerTrackingUploader } from "@/lib/orders/service";
 import { getIntegration } from "../store";
+import { berichtVonTyp, MARKT_BERICHTE, speichereMarktBericht, type MarktBericht } from "@/lib/amazon-markt/store";
+import { landVonId, MARKTPLATZ_IDS, type Land } from "@/lib/amazon-markt/logic";
 import { registerTester } from "../test";
 
 // Amazon Selling Partner API (Europa). Seit 2023 genügt das LWA-Token, keine AWS-Signatur.
@@ -126,6 +128,15 @@ export async function processPendingReports(tenantId: string) {
         await db.update(schema.apiReportRequests).set({ status: r.processingStatus === "CANCELLED" ? "done" : "error", error: r.processingStatus, processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
         continue;
       }
+      // Berichte je Land („TYP@Marktplatz-ID“): Buy Box, Listung, Lageralter.
+      const [typ, mpId] = p.reportType.split("@");
+      const markt = mpId ? berichtVonTyp(typ) : null;
+      if (markt && landVonId(mpId)) {
+        await speichereMarktBericht(tenantId, markt, landVonId(mpId)!, await downloadDocument(c, r.reportDocumentId));
+        await db.update(schema.apiReportRequests).set({ status: "done", processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
+        processed++;
+        continue;
+      }
       const kind = KIND_BY_TYPE.get(p.reportType)!;
       await applyReport({ tenantId, kind, table: readTable(await downloadDocument(c, r.reportDocumentId)), fileName: `SP-API ${p.reportType}`, via: "api" });
       await db.update(schema.apiReportRequests).set({ status: "done", processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
@@ -167,6 +178,136 @@ export async function scheduleReports(tenantId: string) {
       .where(and(eq(schema.apiReportRequests.tenantId, tenantId), eq(schema.apiReportRequests.reportType, REPORT_TYPES[kind]), gte(schema.apiReportRequests.requestedAt, new Date(Date.now() - hours * 3600_000))));
     if (recent.n === 0) await requestReport(tenantId, kind).catch((e) => console.error("Report-Anforderung", kind, e));
   }
+}
+
+// --- Berichte je Land: Buy-Box-Anteil, Listung, Lageralter ------------------------------
+
+const MARKT_ABSTAND_STD: Record<MarktBericht, number> = { buybox: 24, listungen: 24, lageralter: 24 };
+const berlinTag = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
+
+/** Länder der Anbindung (Marktplatz-IDs unter Anbindungen → Amazon). */
+export async function amazonLaender(tenantId: string): Promise<Land[]> {
+  const c = await creds(tenantId);
+  return c ? c.marketplaceIds.map(landVonId).filter((l): l is Land => l !== null) : [];
+}
+
+/** Fordert einen Bericht für ein Land an (Buy Box: letzte 30 Tage je ASIN). */
+export async function requestMarktBericht(tenantId: string, bericht: MarktBericht, land: Land) {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden.");
+  const body: Record<string, unknown> = { reportType: MARKT_BERICHTE[bericht], marketplaceIds: [MARKTPLATZ_IDS[land]] };
+  if (bericht === "buybox") {
+    body.dataStartTime = berlinTag(new Date(Date.now() - 30 * 86400_000));
+    body.dataEndTime = berlinTag(new Date(Date.now() - 86400_000));
+    body.reportOptions = { dateGranularity: "DAY", asinGranularity: "CHILD" };
+  }
+  const r = await sp<{ reportId: string }>(c, "POST", "/reports/2021-06-30/reports", body);
+  await db.insert(schema.apiReportRequests).values({ tenantId, reportType: `${MARKT_BERICHTE[bericht]}@${MARKTPLATZ_IDS[land]}`, reportId: r.reportId }).onConflictDoNothing();
+  return r.reportId;
+}
+
+/**
+ * Berichte je Land nach Plan anfordern – höchstens `max` je Lauf (Amazon erlaubt nur wenige Anforderungen je
+ * Minute), die ältesten zuerst.
+ */
+export async function scheduleMarktBerichte(tenantId: string, max = 4) {
+  const laender = await amazonLaender(tenantId);
+  if (!laender.length) return { angefordert: 0 };
+  const R = schema.apiReportRequests;
+  const recent = await db.select({ t: R.reportType, at: R.requestedAt }).from(R).where(and(eq(R.tenantId, tenantId), gte(R.requestedAt, new Date(Date.now() - 48 * 3600_000))));
+  const last = new Map<string, number>();
+  for (const r of recent) last.set(r.t, Math.max(last.get(r.t) ?? 0, r.at.getTime()));
+  const due = laender
+    .flatMap((land) => (Object.keys(MARKT_BERICHTE) as MarktBericht[]).map((b) => ({ land, b, at: last.get(`${MARKT_BERICHTE[b]}@${MARKTPLATZ_IDS[land]}`) ?? 0 })))
+    .filter((x) => Date.now() - x.at > MARKT_ABSTAND_STD[x.b] * 3600_000)
+    .sort((a, b) => a.at - b.at)
+    .slice(0, max);
+  let n = 0;
+  for (const x of due) {
+    try {
+      await requestMarktBericht(tenantId, x.b, x.land);
+      n++;
+    } catch (e) {
+      console.error("Bericht je Land", x.b, x.land, e instanceof Error ? e.message : e);
+    }
+  }
+  return { angefordert: n };
+}
+
+// --- Angebote live (Pricing-API) ----------------------------------------------------------
+
+const offerCache = new Map<string, { at: number; data: unknown }>();
+
+/** Aktuelle Angebote zu einer ASIN (getItemOffers, Zustand neu). 10 Min. zwischengespeichert – Amazon erlaubt ca. 1 Abfrage je 2 s. */
+export async function itemOffers(tenantId: string, asin: string, land: Land): Promise<{ payload: unknown; eigeneId: string | null; abgerufen: Date; ausSpeicher: boolean }> {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden (Anbindungen → Amazon).");
+  const key = `${tenantId}|${asin}|${land}`;
+  const hit = offerCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return { payload: hit.data, eigeneId: c.sellerId, abgerufen: new Date(hit.at), ausSpeicher: true };
+  const data = await sp<unknown>(c, "GET", `/products/pricing/v0/items/${encodeURIComponent(asin)}/offers?MarketplaceId=${MARKTPLATZ_IDS[land]}&ItemCondition=New`);
+  offerCache.set(key, { at: Date.now(), data });
+  return { payload: data, eigeneId: c.sellerId, abgerufen: new Date(), ausSpeicher: false };
+}
+
+// --- Gebühren je ASIN und Land (Product Fees API) -------------------------------------------
+
+const feeCache = new Map<string, { at: number; wert: AmazonGebuehren | null }>();
+export type AmazonGebuehren = { gesamt: number; provision: number; fba: number; waehrung: string };
+
+/**
+ * Amazon-Gebühren für einen Verkauf zum Preis `preis` (brutto, Landeswährung) mit FBA: Provision, FBA-Gebühr und
+ * Summe (getMyFeesEstimateForASIN). 24 Std. je Preis-Stufe gemerkt; null = Amazon kennt die ASIN dort nicht.
+ */
+export async function feesSchaetzung(tenantId: string, asin: string, land: Land, preis: number, waehrung: string): Promise<AmazonGebuehren | null> {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden (Anbindungen → Amazon).");
+  const key = `${tenantId}|${asin}|${land}|${Math.round(preis)}`;
+  const hit = feeCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600_000) return hit.wert;
+  const body = { FeesEstimateRequest: { MarketplaceId: MARKTPLATZ_IDS[land], IsAmazonFulfilled: true, PriceToEstimateFees: { ListingPrice: { CurrencyCode: waehrung, Amount: Math.round(preis * 100) / 100 } }, Identifier: `${asin}-${land}` } };
+  type Antwort = { payload?: { FeesEstimateResult?: { Status?: string; FeesEstimate?: { TotalFeesEstimate?: { Amount?: number; CurrencyCode?: string }; FeeDetailList?: { FeeType?: string; FinalFee?: { Amount?: number } }[] } } } };
+  const r = await sp<Antwort>(c, "POST", `/products/fees/v0/items/${encodeURIComponent(asin)}/feesEstimate`, body).catch((e) => {
+    if (/→ (400|404)/.test(e instanceof Error ? e.message : "")) return null;
+    throw e;
+  });
+  const est = r?.payload?.FeesEstimateResult;
+  const fe = est?.Status === "Success" ? est.FeesEstimate : undefined;
+  const gesamt = fe?.TotalFeesEstimate?.Amount;
+  const wert =
+    typeof gesamt === "number"
+      ? {
+          gesamt: Math.round(gesamt * 100) / 100,
+          provision: Math.round((fe?.FeeDetailList ?? []).filter((x) => /Referral|VariableClosing|PerItem/i.test(x.FeeType ?? "")).reduce((n, x) => n + (x.FinalFee?.Amount ?? 0), 0) * 100) / 100,
+          fba: Math.round((fe?.FeeDetailList ?? []).filter((x) => /FBA/i.test(x.FeeType ?? "")).reduce((n, x) => n + (x.FinalFee?.Amount ?? 0), 0) * 100) / 100,
+          waehrung: fe?.TotalFeesEstimate?.CurrencyCode ?? waehrung,
+        }
+      : null;
+  feeCache.set(key, { at: Date.now(), wert });
+  return wert;
+}
+
+/** Ist Amazon (SP-API) angebunden? */
+export const amazonVerbunden = async (tenantId: string) => Boolean(await creds(tenantId));
+
+// --- Produktbild (Katalog) ------------------------------------------------------------
+
+const bildCache = new Map<string, { at: number; url: string | null }>();
+
+/** Hauptbild einer ASIN aus dem Amazon-Katalog (für den KI-Abgleich an der Retouren-Station). 24 Std. gemerkt. */
+export async function katalogBild(tenantId: string, asin: string): Promise<string | null> {
+  const c = await creds(tenantId);
+  if (!c) return null;
+  const key = `${tenantId}|${asin}`;
+  const hit = bildCache.get(key);
+  if (hit && Date.now() - hit.at < 24 * 3600_000) return hit.url;
+  const r = await sp<{ images?: { marketplaceId?: string; images?: { variant?: string; link?: string; width?: number }[] }[] }>(c, "GET", `/catalog/2022-04-01/items/${encodeURIComponent(asin)}?marketplaceIds=${c.marketplaceIds[0]}&includedData=images`).catch(() => null);
+  const bilder = (r?.images ?? []).flatMap((x) => x.images ?? []);
+  // MAIN in mittlerer Größe (~1000 px) genügt fürs Vergleichen.
+  const main = bilder.filter((b) => b.variant === "MAIN" && b.link).sort((a, b) => Math.abs((a.width ?? 0) - 1000) - Math.abs((b.width ?? 0) - 1000))[0];
+  const url = main?.link ?? bilder.find((b) => b.link)?.link ?? null;
+  bildCache.set(key, { at: Date.now(), url });
+  return url;
 }
 
 // --- Bestellungen (FBM) mit Adresse -------------------------------------------------
@@ -240,8 +381,9 @@ registerTrackingUploader("amazon", async (tenantId, order, items) => {
     packageDetail: {
       packageReferenceId: "1",
       carrierCode: order.carrier ?? "DHL",
-      shippingMethod: "Paket",
-      trackingNumber: order.trackingNumber,
+      // Warensendung (Deutsche Post) hat keine Sendungsnummer – dann ohne melden.
+      shippingMethod: order.carrier === "Deutsche Post" ? "Warensendung" : "Paket",
+      ...(order.trackingNumber ? { trackingNumber: order.trackingNumber } : {}),
       shipDate: (order.shippedAt ?? new Date()).toISOString(),
       orderItems: items.map((i) => ({ orderItemId: i.externalItemId, quantity: i.quantity })),
     },

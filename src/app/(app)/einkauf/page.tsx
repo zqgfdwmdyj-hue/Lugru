@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { formatDate, formatEuro } from "@/lib/numbers";
@@ -23,17 +24,17 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
       .select({
         po: PO,
         supplier: sql<string | null>`coalesce(${schema.suppliers.name}, ${schema.suppliers.code})`,
-        items: sql<number>`(select count(*)::int from purchase_order_items i where i.po_id = ${PO.id})`,
-        qty: sql<number>`(select coalesce(sum(i.quantity), 0)::int from purchase_order_items i where i.po_id = ${PO.id})`,
-        received: sql<number>`(select coalesce(sum(i.received), 0)::int from purchase_order_items i where i.po_id = ${PO.id})`,
-        total: sql<number>`(select coalesce(sum(i.quantity * i.unit_cost_gross), 0)::float from purchase_order_items i where i.po_id = ${PO.id})`,
+        items: sql<number>`(select count(*)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        qty: sql<number>`(select coalesce(sum(i.quantity), 0)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        received: sql<number>`(select coalesce(sum(i.received), 0)::int from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
+        total: sql<number>`(select coalesce(sum(i.quantity * i.unit_cost_gross), 0)::float from purchase_order_items i where i.po_id = ${qcol(PO.id)})`,
       })
       .from(PO)
       .leftJoin(schema.suppliers, eq(schema.suppliers.id, PO.supplierId))
       .where(and(eq(PO.tenantId, t), statuses ? inArray(PO.status, statuses as (typeof schema.PO_STATUSES)[number][]) : undefined))
       .orderBy(desc(PO.createdAt))
       .limit(300),
-    db.select({ code: schema.suppliers.code, name: schema.suppliers.name }).from(schema.suppliers).where(eq(schema.suppliers.tenantId, t)).orderBy(asc(schema.suppliers.code)),
+    db.select({ code: schema.suppliers.code, name: schema.suppliers.name }).from(schema.suppliers).where(and(eq(schema.suppliers.tenantId, t), eq(schema.suppliers.skuKuerzel, false))).orderBy(asc(schema.suppliers.code)),
   ]);
   const today = todayIso();
 
@@ -49,10 +50,10 @@ export default async function EinkaufPage({ searchParams }: { searchParams: Prom
       <div className="row">
         <div className="stack" style={{ flexGrow: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/einkauf?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/einkauf?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
           </div>
           <section className="card" style={{ overflow: "auto" }}>
-            <table className="table">
+            <table className="table sticky-head">
               <thead><tr><th>Nummer</th><th>Lieferant</th><th>Status</th><th>Bestellt</th><th>Erwartet</th><th className="right">Menge</th><th className="right">Summe brutto</th></tr></thead>
               <tbody>
                 {orders.length === 0 && <tr><td colSpan={7} className="muted">Keine Bestellungen in dieser Ansicht.</td></tr>}

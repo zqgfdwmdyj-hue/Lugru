@@ -2,14 +2,17 @@
 
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { CLAIM_TYPES, type TenantSettings } from "@/db/schema";
 import { requireOwner } from "@/lib/auth/session";
+import { isEmailLogin, loginNameError, normalizeLogin, passwordError } from "@/lib/auth/username";
 import { syncClaims } from "@/lib/claims/service";
 import { parseAmount } from "@/lib/numbers";
+import { preislisteAusZeilen } from "@/lib/shipping/prep";
 
 const num = (fd: FormData, key: string) => {
   const v = parseAmount(fd.get(key));
@@ -23,6 +26,60 @@ const str = (fd: FormData, key: string) => {
   const v = String(fd.get(key) ?? "").trim();
   return v === "" ? undefined : v;
 };
+
+/** B2B-Deals: Firma, Marktplätze, Grenzen. Leere Felder fallen auf den Standard zurück. */
+function b2bSettings(fd: FormData): NonNullable<TenantSettings["b2b"]> {
+  const t = (k: string, max = 120) => str(fd, k)?.slice(0, max);
+  const ganz = (k: string, min: number) => {
+    const v = num(fd, k);
+    return v === undefined ? undefined : Math.max(min, Math.round(v));
+  };
+  const mp = fd.getAll("b2b_mp").map(String).filter((m) => /^(DE|FR|IT|ES|NL|BE|PL|SE|UK)$/.test(m));
+  const regel = str(fd, "b2b_fehlmengenRegel");
+  return {
+    firma: {
+      name: t("b2b_firma_name"),
+      handelsname: t("b2b_firma_handelsname"),
+      strasse: t("b2b_firma_strasse"),
+      plz: t("b2b_firma_plz", 12),
+      ort: t("b2b_firma_ort"),
+      land: t("b2b_firma_land", 2)?.toUpperCase(),
+      ustId: t("b2b_firma_ustId", 20)?.toUpperCase().replace(/\s/g, ""),
+      email: t("b2b_firma_email"),
+      telefon: t("b2b_firma_telefon", 40),
+    },
+    marktplaetze: mp.length ? mp : undefined,
+    minKundenRoi: pct(fd, "b2b_minKundenRoi"),
+    mengenFaktor: num(fd, "b2b_mengenFaktor"),
+    maxKundenProAsin: ganz("b2b_maxKundenProAsin", 1),
+    nurBezahlteBestellen: fd.get("b2b_nurBezahlteBestellen") === "on",
+    fehlmengenRegel: regel === "zeitpunkt" ? "zeitpunkt" : "anteilig",
+    prepGebuehr: num(fd, "b2b_prepGebuehr"),
+    versandAnteil: num(fd, "b2b_versandAnteil"),
+    fastWegProzent: pct(fd, "b2b_fastWegProzent"),
+    ustSatz: pct(fd, "b2b_ustSatz"),
+    lieferadresse: str(fd, "b2b_lieferadresse")?.slice(0, 500),
+    minMarge: pct(fd, "b2b_minMarge"),
+  };
+}
+
+/** Warensendung: Produkt, Preis, Druckformat („id:spalten:zeilen:name“ aus der Auswahl oder nur die Nummer). */
+function postSettings(fd: FormData): NonNullable<TenantSettings["post"]> {
+  const fmt = str(fd, "post_pageFormat");
+  const m = fmt ? /^(\d+):(\d+):(\d+)(?::(.*))?$/.exec(fmt) : null;
+  const id = m ? Number(m[1]) : num(fd, "post_pageFormatId");
+  const code = num(fd, "post_productCode");
+  const grams = num(fd, "post_itemGrams");
+  return {
+    productCode: code !== undefined ? Math.round(code) : undefined,
+    price: num(fd, "post_price"),
+    pageFormatId: id !== undefined ? Math.round(id) : undefined,
+    labelX: m ? Number(m[2]) : id !== undefined ? 1 : undefined,
+    labelY: m ? Number(m[3]) : id !== undefined ? 1 : undefined,
+    pageFormatName: m?.[4]?.slice(0, 120) || undefined,
+    itemGrams: grams !== undefined ? Math.round(grams) : undefined,
+  };
+}
 
 export async function saveSettings(fd: FormData) {
   const session = await requireOwner();
@@ -60,6 +117,14 @@ export async function saveSettings(fd: FormData) {
       labelFormat: str(fd, "dhl_labelFormat"),
       kleinpaketMaxKg: num(fd, "dhl_kleinpaketMaxKg"),
     },
+    post: postSettings(fd),
+    prep: {
+      name: str(fd, "prep_name")?.slice(0, 60),
+      defaultShipper: fd.get("prep_default") === "prep" ? "prep" : "self",
+      feeShipment: num(fd, "prep_feeShipment"),
+      feeExtraItem: num(fd, "prep_feeExtraItem"),
+      preisliste: !fd.has("prep_pl_n") ? undefined : preislisteAusZeilen(Array.from({ length: Number(fd.get("prep_pl_n") ?? 0) || 0 }, (_, i) => ({ name: str(fd, `prep_pl_name_${i}`), preis: num(fd, `prep_pl_preis_${i}`), einheit: str(fd, `prep_pl_einheit_${i}`), b2b: fd.get(`prep_pl_b2b_${i}`) === "1" })).slice(0, 40)),
+    },
     pricing: {
       referralRate: pct(fd, "referralRate"),
       minProfit: num(fd, "minProfit"),
@@ -78,6 +143,16 @@ export async function saveSettings(fd: FormData) {
       graceFbm: num(fd, "returns_graceFbm"),
       marketplace: [str(fd, "returns_marketplace")].find((m) => m && /^sellercentral[a-z-]*\.amazon\.[a-z.]+$/.test(m)),
     },
+    retourenStation: {
+      minBetrag: num(fd, "rs_minBetrag"),
+      aufbewahrungTage: (() => {
+        const v = num(fd, "rs_aufbewahrungTage");
+        return v === undefined ? undefined : Math.max(7, Math.round(v));
+      })(),
+      aktivierungswort: str(fd, "rs_aktivierungswort")?.slice(0, 30),
+      aktivierungAn: fd.get("rs_aktivierungAn") === "on",
+    },
+    b2b: b2bSettings(fd),
   };
   const name = str(fd, "tenantName");
   await db
@@ -103,29 +178,79 @@ export async function saveSupplierName(fd: FormData) {
 
 export type UserState = { ok: boolean; message: string } | null;
 
+/**
+ * Passwort eines anderen Benutzers dieser Firma setzen. Nicht bei Konten, die auch zu einer anderen
+ * Firma gehören – deren Passwort ändert nur der Benutzer selbst. Danach sind seine Geräte abgemeldet.
+ */
+async function setMemberPassword(tenantId: string, actorId: string, userId: string, password: string): Promise<string | null> {
+  if (userId === actorId) return "Das eigene Passwort bitte unten unter „Eigenes Passwort“ ändern.";
+  const ms = await db.select({ tenantId: schema.memberships.tenantId }).from(schema.memberships).where(eq(schema.memberships.userId, userId));
+  if (!ms.some((m) => m.tenantId === tenantId)) return "Benutzer nicht gefunden.";
+  if (ms.some((m) => m.tenantId !== tenantId)) return "Dieses Konto gehört auch zu einer anderen Firma – das Passwort kann nur der Benutzer selbst ändern.";
+  await db.update(schema.users).set({ passwordHash: await bcrypt.hash(password, 12) }).where(eq(schema.users.id, userId));
+  await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+  return null;
+}
+
+/** Benutzer anlegen: Benutzername (oder E-Mail) und – wenn angegeben – das Passwort vom Inhaber. */
 export async function addUser(_prev: UserState, fd: FormData): Promise<UserState> {
   const session = await requireOwner();
-  const parsed = z
-    .object({ email: z.string().trim().toLowerCase().email(), name: z.string().trim().max(100), role: z.enum(["owner", "staff"]) })
-    .safeParse({ email: fd.get("email"), name: fd.get("name") ?? "", role: fd.get("role") });
-  if (!parsed.success) return { ok: false, message: "Bitte gültige E-Mail angeben." };
-  const password = randomBytes(9).toString("base64url");
-  const hash = await bcrypt.hash(password, 12);
-  let [user] = await db.select().from(schema.users).where(eq(sql`lower(${schema.users.email})`, parsed.data.email));
-  if (!user) {
-    [user] = await db
-      .insert(schema.users)
-      .values({ email: parsed.data.email, name: parsed.data.name || null, passwordHash: hash })
-      .returning();
+  const login = normalizeLogin(fd.get("login") ?? fd.get("email"));
+  const loginError = loginNameError(login);
+  if (loginError) return { ok: false, message: loginError };
+  const role = z.enum(["owner", "staff"]).safeParse(fd.get("role"));
+  if (!role.success) return { ok: false, message: "Bitte Rolle wählen." };
+  const name = String(fd.get("name") ?? "").trim().slice(0, 100);
+  const typed = String(fd.get("password") ?? "");
+  if (typed) {
+    const pwError = passwordError(typed);
+    if (pwError) return { ok: false, message: pwError };
   }
-  await db
-    .insert(schema.memberships)
-    .values({ tenantId: session.tenantId, userId: user.id, role: parsed.data.role })
-    .onConflictDoUpdate({ target: [schema.memberships.tenantId, schema.memberships.userId], set: { role: parsed.data.role } });
+
+  const [existing] = await db.select().from(schema.users).where(eq(sql`lower(${schema.users.email})`, login));
+  if (existing) {
+    const ms = await db.select({ tenantId: schema.memberships.tenantId }).from(schema.memberships).where(eq(schema.memberships.userId, existing.id));
+    if (existing.id === session.userId) return { ok: false, message: "Das bist du selbst." };
+    if (ms.some((m) => m.tenantId === session.tenantId)) {
+      await db
+        .update(schema.memberships)
+        .set({ role: role.data })
+        .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, existing.id)));
+      const pwError = typed ? await setMemberPassword(session.tenantId, session.userId, existing.id, typed) : null;
+      revalidatePath("/einstellungen");
+      if (pwError) return { ok: false, message: `${login} gibt es schon. ${pwError}` };
+      return { ok: true, message: `${login} gibt es schon – Rolle gespeichert${typed ? ", Passwort neu gesetzt" : ""}.` };
+    }
+    // Benutzernamen sind eindeutig: ein fremdes Konto nur über seine E-Mail-Adresse dazunehmen.
+    if (!isEmailLogin(login)) return { ok: false, message: `Benutzername „${login}“ ist schon vergeben – bitte einen anderen wählen.` };
+    await db.insert(schema.memberships).values({ tenantId: session.tenantId, userId: existing.id, role: role.data }).onConflictDoNothing();
+    revalidatePath("/einstellungen");
+    return { ok: true, message: `${login} hatte schon ein Konto und wurde hinzugefügt – das Passwort bleibt wie bisher.` };
+  }
+
+  const password = typed || randomBytes(9).toString("base64url");
+  const [user] = await db
+    .insert(schema.users)
+    .values({ email: login, name: name || null, passwordHash: await bcrypt.hash(password, 12) })
+    .returning();
+  await db.insert(schema.memberships).values({ tenantId: session.tenantId, userId: user.id, role: role.data });
   revalidatePath("/einstellungen");
-  return user.passwordHash === hash
-    ? { ok: true, message: `Angelegt. Einmal-Passwort für ${user.email}: ${password}` }
-    : { ok: true, message: `${user.email} hatte schon ein Konto und wurde hinzugefügt.` };
+  return typed
+    ? { ok: true, message: `Angelegt: ${login} meldet sich mit dem vergebenen Passwort an.` }
+    : { ok: true, message: `Angelegt. Einmal-Passwort für ${login}: ${password}` };
+}
+
+/** Inhaber vergibt einem Benutzer ein neues Passwort (z. B. vergessen oder neuer Mitarbeiter). */
+export async function setUserPassword(_prev: UserState, fd: FormData): Promise<UserState> {
+  const session = await requireOwner();
+  const userId = z.string().uuid().safeParse(fd.get("userId"));
+  if (!userId.success) return { ok: false, message: "Benutzer nicht gefunden." };
+  const password = String(fd.get("password") ?? "");
+  const pwError = passwordError(password);
+  if (pwError) return { ok: false, message: pwError };
+  const error = await setMemberPassword(session.tenantId, session.userId, userId.data, password);
+  if (error) return { ok: false, message: error };
+  return { ok: true, message: "Passwort gesetzt – ab jetzt gilt das neue." };
 }
 
 export async function removeUser(fd: FormData) {
@@ -163,4 +288,66 @@ export async function updateAccess(_prev: UserState, fd: FormData): Promise<User
   revalidatePath("/einstellungen");
   const ro = fd.get("readOnly") === "on" ? " Nur ansehen (kann nichts ändern)." : "";
   return { ok: true, message: (areas === null ? "Gespeichert – Zugriff auf alle Bereiche." : `Gespeichert – ${areas.length} Bereich${areas.length === 1 ? "" : "e"} freigegeben. Gilt spätestens nach 30 Sekunden.`) + ro };
+}
+
+/** Sprache für Texte an diese Person (de/en, leer = Standard). Nur Konten dieser Firma. */
+export async function setUserSprache(fd: FormData) {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  const v = String(fd.get("sprache") ?? "");
+  const sprache = v === "de" || v === "en" ? v : null;
+  const [m] = await db.select({ userId: schema.memberships.userId }).from(schema.memberships).where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  if (!m) return;
+  await db.update(schema.users).set({ sprache }).where(eq(schema.users.id, userId));
+  revalidatePath("/einstellungen");
+}
+
+/**
+ * Zugang zum Bereich „Privat“: aus, nur Familie (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten) oder voll –
+ * auch für Inhaber nur ausdrücklich. Nur-ansehen-Konten bekommen ihn nie.
+ */
+export async function setPrivateAccess(fd: FormData) {
+  const session = await requireOwner();
+  const userId = z.string().uuid().parse(fd.get("userId"));
+  const level = z.enum(["aus", "familie", "voll"]).parse(fd.get("level") ?? (fd.get("on") === "1" ? "voll" : "aus"));
+  const [m] = await db
+    .select({ role: schema.memberships.role, readOnly: schema.memberships.readOnly })
+    .from(schema.memberships)
+    .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  if (!m) return;
+  const on = level !== "aus" && !(m.role === "staff" && m.readOnly);
+  await db
+    .update(schema.memberships)
+    .set({ privateAccess: on, ...(on ? { privateScope: level as "familie" | "voll" } : { privatePinHash: null }) })
+    .where(and(eq(schema.memberships.tenantId, session.tenantId), eq(schema.memberships.userId, userId)));
+  if (!on) await db.update(schema.sessions).set({ privateUnlockedUntil: null }).where(and(eq(schema.sessions.tenantId, session.tenantId), eq(schema.sessions.userId, userId)));
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Zwei Shops/Lieferanten zusammenführen (von Hand, nach Prüfung): alle Verweise (Chargen, Rechnungen,
+ * Regeln, Bestellungen, Feeds, Großhändler-Kontakte) auf den behaltenen Eintrag, dann den doppelten entfernen.
+ */
+export async function mergeSuppliersAction(fd: FormData) {
+  const session = await requireOwner();
+  const keep = z.string().uuid().parse(fd.get("keep"));
+  const drop = z.string().uuid().parse(fd.get("drop"));
+  if (keep === drop) return;
+  const t = session.tenantId;
+  const S = schema.suppliers;
+  const rows = await db.select().from(S).where(and(eq(S.tenantId, t), inArray(S.id, [keep, drop])));
+  const k = rows.find((r) => r.id === keep);
+  const d = rows.find((r) => r.id === drop);
+  if (!k || !d) return;
+  let moved = 0;
+  await db.transaction(async (tx) => {
+    for (const tbl of [schema.lots, schema.invoices, schema.invoiceSourceRules, schema.purchaseOrders, schema.supplierFeeds, schema.supplierLeads]) {
+      const r = await tx.update(tbl).set({ supplierId: keep }).where(and(eq(tbl.tenantId, t), eq(tbl.supplierId, drop))).returning({ x: tbl.supplierId });
+      moved += r.length;
+    }
+    if (!k.name && d.name) await tx.update(S).set({ name: d.name }).where(and(eq(S.id, keep), eq(S.tenantId, t)));
+    await tx.delete(S).where(and(eq(S.id, drop), eq(S.tenantId, t)));
+  });
+  revalidatePath("/", "layout");
+  redirect(`/einstellungen?${new URLSearchParams({ meldung: `„${d.code}“ in „${k.code}“ zusammengeführt – ${moved} Verweise übernommen.` })}#shops`);
 }

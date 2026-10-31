@@ -1,29 +1,53 @@
 "use client";
 
 import { useActionState } from "react";
-import { addUser, changePassword, updateAccess, type UserState } from "./actions";
+import { useKeepForm } from "@/components/keep-form";
+import { addUser, changePassword, setUserPassword, updateAccess, type UserState } from "./actions";
+
+const noAutoFix = { autoCapitalize: "none", autoCorrect: "off", spellCheck: false } as const;
 
 export function AddUserForm() {
   const [state, action, pending] = useActionState<UserState, FormData>(addUser, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} className="stack" style={{ gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 140px auto", gap: 8, alignItems: "end" }}>
-        <div className="field"><label className="label" htmlFor="u-email">E-Mail</label><input className="input" id="u-email" name="email" type="email" required /></div>
-        <div className="field"><label className="label" htmlFor="u-name">Name</label><input className="input" id="u-name" name="name" /></div>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10 }} data-testid="add-user">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, alignItems: "end" }}>
+        <div className="field"><label className="label" htmlFor="u-login">Benutzername</label><input className="input" id="u-login" name="login" required minLength={3} maxLength={60} autoComplete="off" placeholder="z. B. lager1" {...noAutoFix} /></div>
+        <div className="field"><label className="label" htmlFor="u-name">Name (optional)</label><input className="input" id="u-name" name="name" /></div>
+        <div className="field"><label className="label" htmlFor="u-password">Passwort</label><input className="input" id="u-password" name="password" type="text" minLength={8} autoComplete="new-password" placeholder="leer = wird erzeugt" {...noAutoFix} /></div>
         <div className="field"><label className="label" htmlFor="u-role">Rolle</label>
           <select className="select" id="u-role" name="role" defaultValue="staff"><option value="staff">Mitarbeiter</option><option value="owner">Inhaber</option></select>
         </div>
         <button className="btn" type="submit" disabled={pending}>Hinzufügen</button>
       </div>
-      {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-error"}`}>{state.message}</div>}
+      <p className="small muted" style={{ margin: 0 }}>Angemeldet wird mit Benutzername und Passwort – eine E-Mail-Adresse ist nicht nötig. Passwort mindestens 8 Zeichen; leer lassen, dann wird eins erzeugt und hier einmal angezeigt.</p>
+      {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-error"}`} data-testid="add-user-result">{state.message}</div>}
     </form>
+  );
+}
+
+/** Inhaber vergibt einem Benutzer ein neues Passwort. */
+export function SetPasswordForm({ userId, login }: { userId: string; login: string }) {
+  const [state, action, pending] = useActionState<UserState, FormData>(setUserPassword, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
+  return (
+    <details data-testid="set-password">
+      <summary className="small" style={{ cursor: "pointer" }}>Passwort vergeben</summary>
+      <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", paddingTop: 6, justifyContent: "flex-end" }}>
+        <input type="hidden" name="userId" value={userId} />
+        <input className="input" name="password" type="text" required minLength={8} autoComplete="new-password" aria-label={`Neues Passwort für ${login}`} placeholder="neues Passwort" style={{ width: 170, padding: "5px 8px", fontSize: 13 }} {...noAutoFix} />
+        <button className="btn btn-small" type="submit" disabled={pending}>Setzen</button>
+        {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</span>}
+      </form>
+    </details>
   );
 }
 
 export function PasswordForm() {
   const [state, action, pending] = useActionState<UserState, FormData>(changePassword, null);
+  const keep = useKeepForm(state, action, { resetOnSuccess: true });
   return (
-    <form action={action} style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap" }}>
       <div className="field" style={{ width: 280 }}><label className="label" htmlFor="pw">Neues Passwort</label><input className="input" id="pw" name="password" type="password" autoComplete="new-password" required minLength={10} /></div>
       <button className="btn" type="submit" disabled={pending}>Ändern</button>
       {state && <div className={`notice ${state.ok ? "notice-ok" : "notice-error"}`}>{state.message}</div>}
@@ -33,8 +57,9 @@ export function PasswordForm() {
 
 export function AccessForm({ userId, areas, brandIds, readOnly, allAreas, brands }: { userId: string; areas: string[] | null; brandIds: string[] | null; readOnly: boolean; allAreas: { key: string; label: string }[]; brands: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState<UserState, FormData>(updateAccess, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 10, padding: "10px 0" }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 10, padding: "10px 0" }}>
       <input type="hidden" name="userId" value={userId} />
       <div className="stack" style={{ gap: 4 }}>
         <strong className="small">Bereiche</strong>
@@ -67,7 +92,7 @@ export function AccessForm({ userId, areas, brandIds, readOnly, allAreas, brands
         <span><strong>Nur ansehen</strong> – sieht die freigegebenen Bereiche, kann aber nichts ändern, senden, hochladen oder bei Keepa/Amazon/eBay abfragen (z. B. für Prüfer oder einen Testzugang).</span>
       </label>
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button className="btn btn-small" type="submit" disabled={pending}>Rechte speichern</button>
+        <button className="btn btn-primary btn-small" type="submit" disabled={pending}>Rechte speichern</button>
         {state && <span className="small" style={{ color: state.ok ? "var(--ok)" : "var(--danger)" }}>{state.message}</span>}
       </div>
     </form>

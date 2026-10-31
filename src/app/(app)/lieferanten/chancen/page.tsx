@@ -49,6 +49,12 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       select count(*)::int as total, count(*) filter (where market is null)::int as unchecked, max(scanned_at)::text as last
         from supplier_offers where tenant_id = ${t} and origin = 'scan' and active`)
   ).rows[0];
+  // Datenbasis der aktuellen Quelle: ohne Produkte bzw. ohne Amazon-Daten ist „keine Treffer“ irreführend.
+  const base = (
+    await db.execute<{ total: number; priced: number }>(sql`
+      select count(*)::int as total, count(*) filter (where (market->>'price') is not null)::int as priced
+        from supplier_offers where tenant_id = ${t} and origin = ${origin} and active`)
+  ).rows[0];
   const mrun = manual ? manualCheckStatus(t) : null;
   const backlog = manual ? await manualBacklog(t) : null;
   const res = await db.execute<Row>(sql`
@@ -122,8 +128,8 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} data-testid="chancen-tabs">
-        <Link href={qs({ quelle: "", lf: "" })} className={`chip${!manual ? " active" : ""}`}>Listen (automatisch, alle 24 Std.)</Link>
-        <Link href={qs({ quelle: "manuell", lf: "" })} className={`chip${manual ? " active" : ""}`}>Manuell gezogen (Seller-Knopf){scanStats.total ? ` · ${scanStats.total}` : ""}</Link>
+        <Link href={qs({ quelle: "", lf: "" })} className={`chip${!manual ? " active" : ""}`} aria-current={!manual ? "true" : undefined}>Listen (automatisch, alle 24 Std.)</Link>
+        <Link href={qs({ quelle: "manuell", lf: "" })} className={`chip${manual ? " active" : ""}`} aria-current={manual ? "true" : undefined}>Manuell gezogen (Seller-Knopf){scanStats.total ? ` · ${scanStats.total}` : ""}</Link>
       </div>
       {sp.meldung && <div className="notice notice-info" data-testid="chancen-msg">{sp.meldung}</div>}
       <AutoRefresh active={Boolean(mrun?.running)} everyMs={3000} />
@@ -175,11 +181,11 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       </form>
       {feeds.length > 1 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <Link href={qs({ lf: "" })} className={`chip${only.length === 0 ? " active" : ""}`}>Alle Lieferanten</Link>
+          <Link href={qs({ lf: "" })} className={`chip${only.length === 0 ? " active" : ""}`} aria-current={only.length === 0 ? "true" : undefined}>Alle Lieferanten</Link>
           {feeds.map((f) => {
             const on = only.includes(f.id);
             const next = on ? only.filter((x) => x !== f.id) : [...only, f.id];
-            return <Link key={f.id} href={qs({ lf: next.join(",") })} className={`chip${on ? " active" : ""}`}>{f.name}</Link>;
+            return <Link key={f.id} href={qs({ lf: next.join(",") })} className={`chip${on ? " active" : ""}`} aria-current={on ? "true" : undefined}>{f.name}</Link>;
           })}
         </div>
       )}
@@ -207,10 +213,33 @@ export default async function ChancenPage({ searchParams }: { searchParams: Prom
       )}
 
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Produkt</th><th>Günstigster Lieferant</th><th className="right">EK je Verkauf</th><th className="right">Amazon</th><th className="right">Gewinn</th><th className="right">ROI</th><th className="right">Verk./Mon.</th><th>EK-Verlauf</th><th>VK 30 T</th></tr></thead>
           <tbody>
-            {shown.length === 0 && <tr><td colSpan={9} className="muted">{nur === "pruefen" ? "Nichts zu prüfen." : nur === "falsch" ? "Nichts als falsch markiert." : manual ? "Nichts Lohnenswertes unter dem von Hand Gezogenen (oder noch nichts gezogen). Lieferant öffnen → „Seite oder Liste scannen“ mit dem Seller-Knopf." : "Keine Treffer für diese Filter. Listen hochladen bzw. Links hinterlegen – Keepa prüft dann stündlich neue und geänderte Preise."}</td></tr>}
+            {shown.length === 0 && (
+              <tr><td colSpan={9}>
+                {nur === "pruefen" ? <span className="muted">Nichts zu prüfen.</span>
+                  : nur === "falsch" ? <span className="muted">Nichts als falsch markiert.</span>
+                  : base.total === 0 ? (
+                    <div className="stack" style={{ gap: 6 }} data-testid="chancen-empty-nodata">
+                      <strong>{manual ? "Noch nichts von Hand gezogen – es gibt noch keine Datenbasis." : feeds.length === 0 ? "Noch keine Lieferanten-Liste vorhanden – es gibt noch keine Datenbasis." : "Die Listen enthalten noch keine Produkte – es gibt noch keine Datenbasis."}</strong>
+                      <span className="muted">{manual ? "Lieferant öffnen → „Seite oder Liste scannen“ (Seller-Knopf/Lesezeichen, Link, Foto). Danach wird einmal bei Keepa geprüft." : "Das ist kein Suchergebnis: Erst eine Preisliste (CSV/Excel) hochladen oder einen Link hinterlegen, dann gleicht Keepa stündlich ab und hier erscheinen die Chancen."}</span>
+                      <span><Link className="btn btn-primary btn-small" href={!manual && feeds.length === 1 ? `/lieferanten/${feeds[0].id}` : "/lieferanten"} data-testid="chancen-import-link">{manual ? "Zu den Lieferanten →" : feeds.length === 0 ? "Liste anlegen und importieren →" : "Preisliste importieren →"}</Link></span>
+                    </div>
+                  ) : base.priced === 0 ? (
+                    <div className="stack" style={{ gap: 6 }} data-testid="chancen-empty-waiting">
+                      <strong>{base.total.toLocaleString("de-DE")} {base.total === 1 ? "Produkt" : "Produkte"} eingelesen, aber noch ohne Amazon-Daten – noch nichts zum Vergleichen.</strong>
+                      <span className="muted">{manual ? "„Ungeprüfte jetzt prüfen“ startet die Prüfung sofort." : "„Keepa jetzt abgleichen“ startet sofort; sonst läuft der Abgleich stündlich."} Das ist kein Suchergebnis.</span>
+                    </div>
+                  ) : (
+                    <div className="stack" style={{ gap: 6 }} data-testid="chancen-empty-filter">
+                      <strong>Keine passenden Treffer für diese Filter.</strong>
+                      <span className="muted">{best.size.toLocaleString("de-DE")} {best.size === 1 ? "Produkt" : "Produkte"} mit Amazon-Daten vorhanden, aber keins erfüllt ROI ab {minRoi} %, Gewinn ab {formatEuro(minProfit)}{minSales ? `, ab ${minSales} Verk./Monat` : ""}{nur === "gefallen" ? ", EK gefallen" : nur === "neu" ? ", neu (7 T)" : ""}{only.length ? ", gewählte Lieferanten" : ""}.</span>
+                      <span><Link className="btn btn-small" href={manual ? "/lieferanten/chancen?quelle=manuell" : "/lieferanten/chancen"} data-testid="chancen-reset">Filter zurücksetzen</Link></span>
+                    </div>
+                  )}
+              </td></tr>
+            )}
             {shown.map(({ r, e, alt }) => {
               const h = hist.get(r.id) ?? [];
               const hint = priceHint(priceStats(h, r.price, today));

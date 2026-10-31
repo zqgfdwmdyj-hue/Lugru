@@ -1,17 +1,31 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { batchLabels, type BatchState } from "./actions";
 
 /** Umschließt die Auftragstabelle; erzeugt Labels für die ausgewählten Aufträge. */
 export function BatchForm({ children }: { children: React.ReactNode }) {
   const [state, action, pending] = useActionState<BatchState, FormData>(batchLabels, null);
+  const keepAction = useKeepForm(state, action);
   const ok = state?.results.filter((r) => r.ok) ?? [];
   return (
-    <form action={action} className="stack">
+    <form action={action} ref={keepAction.ref} onSubmit={keepAction.onSubmit} className="stack">
       {children}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn btn-primary" type="submit" disabled={pending}>{pending ? "Erstelle Labels …" : "DHL-Labels für Auswahl erstellen"}</button>
+        <button
+          className="btn btn-primary"
+          type="button"
+          data-testid="auto-labels"
+          onClick={(e) => {
+            const ids = [...(e.currentTarget.form?.querySelectorAll<HTMLInputElement>('input[name="ids"]:checked') ?? [])].map((c) => c.value);
+            if (!ids.length) return alert("Bitte Aufträge auswählen.");
+            window.location.href = `/auftraege/lieferschein?ids=${ids.join(",")}`;
+          }}
+        >
+          Labels automatisch (Warensendung, wenn sie passt – sonst DHL) …
+        </button>
+        <button className="btn" type="submit" disabled={pending}>{pending ? "Erstelle Labels …" : "Nur DHL-Labels für Auswahl"}</button>
         <span className="small muted">Gewicht aus den Artikeldaten + 150 g Verpackung; bis zur Kleinpaket-Grenze automatisch als Kleinpaket.</span>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

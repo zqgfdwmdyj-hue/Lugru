@@ -37,6 +37,7 @@ const SYM: Record<string, string> = { USD: "$", GBP: "£" };
 
 export default async function FeedPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ nur?: string; q?: string; abruf?: string; freigabe?: string; alle?: string }> }) {
   const session = await requireArea("lieferanten");
+  const b2bErlaubt = canAccess(session, "b2b");
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
@@ -182,6 +183,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                         {sel && !sel.ok && sel.link && <div><a href={sel.link} target="_blank" rel="noreferrer">Freischaltung beantragen ↗</a></div>}
                         {r.market?.amazonSells && <div><span className="tag tag-warn" title="Amazon verkauft selbst – Buy Box schwer zu bekommen">Amazon verkauft selbst</span></div>}
                         {r.market?.offers ? <div className="muted">{r.market.offers} Anbieter</div> : null}
+                        {b2bErlaubt && <div><Link href={`/b2b/neu?angebot=${r.id}`} data-testid="als-deal">Als B2B-Deal →</Link></div>}
                       </td>
                     </tr>
                   );
@@ -214,7 +216,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
                 <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" name="pricesGross" defaultChecked={feed.pricesGross} /> Preise sind brutto</label>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button className="btn" type="submit">Speichern</button>
+                <button className="btn btn-primary" type="submit">Speichern</button>
                 <button className="btn btn-primary" type="submit" formAction={pullNowAction}>Speichern &amp; jetzt abrufen</button>
               </div>
             </form>
@@ -234,7 +236,7 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
               </div>
             </div>
             <div className="small muted">Aufschlag auf den EK für Fracht, Zoll und Einfuhrkosten (US-Ware grob 30–50 %). Süßigkeiten: 7 % USt. Großhandelspreise gelten meist je Karton („24 x 9g“) – das System teilt durch die Kartongröße und rechnet Gewinn je Einheit gegen den Amazon-Preis.</div>
-            <button className="btn btn-small" type="submit">Speichern</button>
+            <button className="btn btn-primary btn-small" type="submit">Speichern</button>
           </form>
           <FeedUpload feedId={feed.id} mapping={feed.mapping} />
           {rows.length > 0 && (
@@ -246,10 +248,10 @@ export default async function FeedPage({ params, searchParams }: { params: Promi
       </div>
       <div className="stack">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href={chip()} className={`chip${!sp.nur ? " active" : ""}`}>Alle</Link>
-            <Link href={chip("amazon")} className={`chip${sp.nur === "amazon" ? " active" : ""}`}>Auf Amazon</Link>
-            <Link href={chip("gewinn")} className={`chip${sp.nur === "gewinn" ? " active" : ""}`}>Mit Gewinn</Link>
-            <Link href={chip("treffer")} className={`chip${sp.nur === "treffer" ? " active" : ""}`}>Passt zu meinen Artikeln</Link>
+            <Link href={chip()} className={`chip${!sp.nur ? " active" : ""}`} aria-current={!sp.nur ? "true" : undefined}>Alle</Link>
+            <Link href={chip("amazon")} className={`chip${sp.nur === "amazon" ? " active" : ""}`} aria-current={sp.nur === "amazon" ? "true" : undefined}>Auf Amazon</Link>
+            <Link href={chip("gewinn")} className={`chip${sp.nur === "gewinn" ? " active" : ""}`} aria-current={sp.nur === "gewinn" ? "true" : undefined}>Mit Gewinn</Link>
+            <Link href={chip("treffer")} className={`chip${sp.nur === "treffer" ? " active" : ""}`} aria-current={sp.nur === "treffer" ? "true" : undefined}>Passt zu meinen Artikeln</Link>
             <form style={{ marginLeft: "auto" }}>
               {sp.nur && <input type="hidden" name="nur" value={sp.nur} />}
               <input className="input" name="q" defaultValue={sp.q ?? ""} placeholder="Suchen …" style={{ width: 180 }} />

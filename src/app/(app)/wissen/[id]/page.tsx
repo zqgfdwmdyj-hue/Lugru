@@ -4,9 +4,13 @@ import { notFound } from "next/navigation";
 import { and, arrayOverlaps, eq, ne, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { deleteEntry } from "@/lib/knowledge/actions";
+import { verifyEntry, deleteEntry, insiderUmschalten, anleitungEnErzeugen, anleitungEnFreigeben } from "@/lib/knowledge/actions";
+import { ERKENNTNIS_TEXT, wissenPruefen } from "@/lib/calls/logic";
+import { todayIso } from "@/lib/dates";
 import { formatDate } from "@/lib/numbers";
+import { pruefungFaellig } from "@/lib/knowledge/anleitung";
 import { CopyButton } from "@/components/copy-button";
+import { wissenSichtbar } from "@/lib/knowledge/sichtbar";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -15,8 +19,10 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const K = schema.knowledgeEntries;
-  const [entry] = await db.select().from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId)));
+  const sichtbar = wissenSichtbar(session);
+  const [entry] = await db.select().from(K).where(and(eq(K.id, id), eq(K.tenantId, session.tenantId), sichtbar));
   if (!entry) notFound();
+  const [call] = entry.callId ? await db.select({ id: schema.calls.id, titel: schema.calls.titel, datum: schema.calls.datum }).from(schema.calls).where(and(eq(schema.calls.id, entry.callId), eq(schema.calls.tenantId, session.tenantId))) : [];
 
   const related = await db
     .select({ id: K.id, title: K.title })
@@ -24,6 +30,7 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
     .where(
       and(
         eq(K.tenantId, session.tenantId),
+        sichtbar,
         ne(K.id, entry.id),
         entry.tags.length ? or(eq(K.category, entry.category), arrayOverlaps(K.tags, entry.tags)) : eq(K.category, entry.category),
       ),
@@ -39,9 +46,19 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
         <article className="card" style={{ flexGrow: 1, minWidth: 0, padding: "26px 34px" }}>
           <div className="between" style={{ alignItems: "flex-start" }}>
             <div className="small muted">
-              {entry.kind === "snippet" ? "Textbaustein" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
+              <span className={`tag ${entry.origin === "anleitung" ? "tag-ok" : entry.origin === "recherche" ? "tag-warn" : entry.origin === "call" ? "tag-info" : "tag-neutral"}`} data-testid="entry-origin" style={{ marginRight: 6 }}>
+                {entry.origin === "anleitung" ? "Anleitung" : entry.origin === "recherche" ? "Recherche (automatisch, ungeprüft)" : entry.origin === "call" ? "Aus einem Call (ungeprüft)" : "Eigene Notiz"}
+                {entry.verifiedAt ? ` ✓ geprüft am ${formatDate(entry.verifiedAt.toISOString())}` : ""}
+              </span>
+              {entry.kind === "snippet" ? "Textbaustein" : entry.kind === "anleitung" ? "Anleitung" : "Wissen"} · aktualisiert am {formatDate(entry.updatedAt.toISOString())}
+              {entry.kind === "anleitung" && pruefungFaellig(entry.verifiedAt) && <span className="tag tag-warn" style={{ marginLeft: 6 }} data-testid="entry-pruefen">Prüfung fällig</span>}
+              {entry.insider && <span className="tag tag-danger" style={{ marginLeft: 6 }} data-testid="entry-insider" title="Nur intern verwenden – nie in Deal-Blättern, Kundenmails oder im B2B-Kanal">Insider – nicht weitergeben</span>}
+              {wissenPruefen(entry.quelleDatum, entry.verifiedAt, todayIso()) && <span className="tag tag-warn" style={{ marginLeft: 6 }} data-testid="entry-veraltet">älter als 6 Monate – prüfen</span>}
+              {entry.anleitung?.wer && <> · zuständig: {entry.anleitung.wer}</>}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <form action={insiderUmschalten}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-insider-umschalten">{entry.insider ? "Insider-Markierung aufheben" : "Als Insider markieren"}</button></form>
+              <form action={verifyEntry}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-verify">{entry.verifiedAt ? "Prüfung zurücknehmen" : entry.origin === "recherche" ? "Geprüft – als Anleitung übernehmen" : "Als geprüft markieren"}</button></form>
               {entry.kind === "snippet" && <CopyButton text={entry.body} />}
               <Link className="btn btn-small" href={`/wissen/${entry.id}/bearbeiten`}>Bearbeiten</Link>
             </div>
@@ -57,6 +74,48 @@ export default async function EintragPage({ params }: { params: Promise<{ id: st
           <div className={entry.kind === "snippet" ? "snippet article-body" : "article-body"} style={{ marginTop: 18 }}>
             {entry.body ? <Linkify text={entry.body} /> : <span className="muted">Noch kein Inhalt.</span>}
           </div>
+          {entry.kind === "anleitung" && session.role === "owner" && (
+            <section className="card card-pad small stack" style={{ marginTop: 16, gap: 6 }} data-testid="entry-englisch">
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <strong>English version (für die VA)</strong>
+                {entry.anleitungEn ? <span className={`tag ${entry.anleitungEnFreigegeben ? "tag-ok" : "tag-warn"}`} data-testid="entry-englisch-status">{entry.anleitungEnFreigegeben ? "freigegeben" : "automatisch übersetzt – bitte prüfen"}</span> : <span className="tag tag-neutral">noch keine – entsteht beim ersten Senden an die VA</span>}
+              </div>
+              {entry.anleitungEn && (
+                <div>
+                  <div style={{ fontWeight: 600 }}>{entry.titleEn}</div>
+                  {entry.anleitungEn.zweck && <div>{entry.anleitungEn.zweck}</div>}
+                  <ol style={{ margin: "4px 0 0", paddingLeft: 18 }}>{(entry.anleitungEn.schritte ?? []).map((x, i) => <li key={i}>{x}</li>)}</ol>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <form action={anleitungEnErzeugen}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-englisch-erzeugen">{entry.anleitungEn ? "Neu übersetzen" : "Jetzt übersetzen"}</button></form>
+                {entry.anleitungEn && <form action={anleitungEnFreigeben}><input type="hidden" name="id" value={entry.id} /><button className="btn btn-small" type="submit" data-testid="entry-englisch-freigeben">{entry.anleitungEnFreigegeben ? "Freigabe zurücknehmen" : "Freigeben"}</button></form>}
+              </div>
+              <span className="muted">An eine englischsprachige VA geht immer diese Fassung. Ändert sich die deutsche Anleitung, wird sie neu erzeugt.</span>
+            </section>
+          )}
+          {entry.origin === "call" && (
+            <div className="small" style={{ marginTop: 14 }} data-testid="entry-call">
+              <div className="muted" style={{ marginBottom: 4 }}>
+                {entry.erkenntnis ? ERKENNTNIS_TEXT[entry.erkenntnis] : "Erkenntnis"}
+                {entry.quelleWer ? ` · gesagt von: ${entry.quelleWer}` : ""}
+                {entry.quelleDatum ? ` · Call vom ${entry.quelleDatum.split("-").reverse().join(".")}` : ""}
+              </div>
+              {call ? (
+                <>
+                  Quelle: <Link href={`/calls/${call.id}`}>„{call.titel}“ vom {call.datum.split("-").reverse().join(".")}</Link>
+                  {entry.callStelle !== null && (
+                    <>
+                      {" · "}
+                      <Link href={`/calls/${call.id}?stelle=${entry.callStelle}#stelle`} data-testid="entry-stelle">Stelle im Transkript</Link>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span className="muted">Der Call ist nicht mehr im Archiv.</span>
+              )}
+            </div>
+          )}
           <form action={deleteEntry} style={{ marginTop: 28 }}>
             <input type="hidden" name="id" value={entry.id} />
             <button type="submit" className="btn-link" style={{ color: "var(--danger)", fontSize: 13 }}>Eintrag löschen</button>

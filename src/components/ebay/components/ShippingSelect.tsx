@@ -1,18 +1,11 @@
 import { useEffect, useState } from 'react';
-import { api, formatPrice, type Attempt } from '../api';
+import { api, type Attempt } from '../api';
+import { shippingPolicyLabel, type ShippingPolicyInfo } from '@/lib/ebay/policy-label';
 
-interface ShippingPolicy {
-  id: string;
-  name: string;
-  cost?: number;
-  freeShipping?: boolean;
-  handlingDays?: number;
-}
+type ShippingPolicy = ShippingPolicyInfo;
 
-function label(p: ShippingPolicy): string {
-  const cost = p.freeShipping ? 'kostenlos' : p.cost !== undefined ? formatPrice(p.cost) : undefined;
-  return cost ? `${p.name} — ${cost}` : p.name;
-}
+/** Dienstleister · Preis · Bearbeitungszeit statt technischem Profilnamen. */
+const label = (p: ShippingPolicy): string => shippingPolicyLabel(p);
 
 /**
  * Versandprofil je Angebot. Die Profile kommen live von eBay — so stehen hier
@@ -58,7 +51,7 @@ export function ShippingSelect({ attempt, editable, onChange }: {
             : fallback ? `Standard: ${label(fallback)}` : 'Standard aus den Einstellungen'}
         </option>
         {(policies ?? []).map((p) => (
-          <option key={p.id} value={p.id}>{label(p)}</option>
+          <option key={p.id} value={p.id} title={p.name}>{label(p)}</option>
         ))}
         {unknown && <option value={selected}>Profil {selected} (bei eBay nicht mehr vorhanden)</option>}
       </select>

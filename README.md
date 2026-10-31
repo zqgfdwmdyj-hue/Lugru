@@ -46,7 +46,7 @@ Voraussetzungen: Node.js 20.9+, PostgreSQL 14+.
 cp .env.example .env          # DATABASE_URL und APP_SECRET eintragen
 npm install
 npm run db:migrate
-npm run user:create -- --email du@firma.de --name "Dein Name" --firma "Deine Firma"
+npm run user:create -- --benutzer ludwig --name "Dein Name" --firma "Deine Firma"
 npm run dev                   # http://localhost:3000
 ```
 

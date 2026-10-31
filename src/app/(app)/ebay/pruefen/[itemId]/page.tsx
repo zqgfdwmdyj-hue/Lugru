@@ -1,0 +1,185 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireArea } from "@/lib/auth/session";
+import { GTIN_ASPECT } from "@/lib/ebay/pipeline/aspects";
+import { ISSUE_KIND_LABEL, issueKind, PRIORITY_LABEL, type IssueKind } from "@/lib/ebay-review/logic";
+import { reviewDetail } from "@/lib/ebay-review/service";
+import { aiSuggestAction, recheckOneAction } from "../actions";
+import { ContentEditor } from "../content-editor";
+import { ActionButton } from "../forms";
+import { euro, issueTag, scoreClass } from "../ui";
+
+const dateDe = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
+
+export default async function ReviewDetailPage({ params }: { params: Promise<{ itemId: string }> }) {
+  const session = await requireArea("ebay");
+  const { itemId } = await params;
+  if (!/^\d{6,20}$/.test(itemId)) notFound();
+  const d = await reviewDetail(session.tenantId, itemId);
+  if (!d) notFound();
+  const { row, defs } = d;
+  const f = row.facts;
+  const m = row.market;
+  const t = row.traffic && "impressions" in row.traffic ? row.traffic : null;
+  const trafficNote = row.traffic && "unavailable" in row.traffic ? row.traffic.unavailable : null;
+  const lastAi = row.ai;
+  const applied0 = row.applied as { at?: string } | null;
+  // Ein Vorschlag, der älter ist als die letzte Änderung bei eBay, ist übernommen bzw. überholt – nicht erneut eintragen.
+  const ai = lastAi && (!applied0?.at || Date.parse(lastAi.at) > Date.parse(applied0.at)) ? lastAi : null;
+  const aiCount = ai ? [ai.title && ai.title !== f?.title ? "Titel" : null, Object.keys(ai.aspects ?? {}).length ? `${Object.keys(ai.aspects).length} Merkmal${Object.keys(ai.aspects).length === 1 ? "" : "e"}` : null, ai.description ? "Beschreibung" : null].filter(Boolean) : [];
+  const applied = row.applied as { at?: string; changes?: string[] } | null;
+  // Nach dem Senden lädt die Seite neu – die Rückmeldung bleibt eine Weile am Editor stehen.
+  const recentApplied = applied?.at && Date.now() - Date.parse(applied.at) < 15 * 60_000 ? (applied.changes ?? []).join(" · ") : null;
+
+  return (
+    <>
+      <div className="page-head">
+        <div style={{ minWidth: 0 }}>
+          <div className="crumb"><Link href="/ebay/pruefen">eBay · Angebote prüfen</Link></div>
+          <h1 style={{ overflowWrap: "anywhere" }}>{row.title}</h1>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {row.url && <a className="btn" href={row.url} target="_blank" rel="noreferrer">Bei eBay ansehen</a>}
+          <ActionButton action={recheckOneAction} itemId={itemId} label="Neu prüfen" pending="Prüfe …" testid="recheck" />
+        </div>
+      </div>
+
+      <section className="card card-pad stack" data-testid="review-detail">
+        <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+          {row.image && <img src={row.image} alt="" className="rev-thumb rev-thumb-lg" />}
+          <div>
+            <div className="kpi-label">Punkte</div>
+            <div className="kpi-value"><span className={`tag ${scoreClass(row.score)}`} style={{ fontSize: 22 }} data-testid="detail-score">{row.score ?? "–"}</span> <span className="small muted">von 100</span></div>
+            <div className="small muted">
+              Art.-Nr. {itemId}{row.sku ? ` · SKU ${row.sku}` : ""} · {row.source === "tool" ? "aus dem eBay-Tool" : "direkt bei eBay eingestellt"} · geprüft {row.checkedAt ? new Date(row.checkedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : "noch nicht"}
+            </div>
+          </div>
+        </div>
+        {row.status === "fehler" && <div className="notice notice-error small">{row.message}</div>}
+        {applied?.at && <div className="notice notice-info small" data-testid="applied">Zuletzt bei eBay geändert am {dateDe(applied.at)}: {(applied.changes ?? []).join(" · ")}</div>}
+        {row.issues.length === 0 && row.score !== null && <div className="small" style={{ color: "var(--ok)" }}>Nichts zu verbessern – gut gemacht.</div>}
+        {(["fehler", "pflicht", "empfehlung"] as IssueKind[]).map((k) => {
+          const list = row.issues.filter((i) => issueKind(i.key) === k);
+          if (!list.length) return null;
+          return (
+            <div key={k} className="stack" style={{ gap: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>{ISSUE_KIND_LABEL[k]} ({list.length})</h3>
+              {k === "empfehlung" && <div className="small muted">Freiwillig – das Angebot ist auch ohne diese Punkte gültig. Priorität: hoch, mittel, niedrig.</div>}
+              <ul className="rev-issues" data-testid={`issues-${k}`}>
+                {list.map((i) => (
+                  <li key={i.key}>
+                    <span className={`tag ${issueTag(i)}`}>{i.area}{k === "empfehlung" ? ` · ${PRIORITY_LABEL[i.level]}` : ""}</span> {i.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </section>
+
+      {f && (
+        <section className="card card-pad stack">
+          <h2>Auf einen Blick</h2>
+          <div className="rev-grid small">
+            <div><div className="kpi-label">Preis</div>{euro(f.price)}{f.shippingCost !== null ? ` + ${f.shippingCost ? euro(f.shippingCost) : "kostenloser"} Versand` : ""}</div>
+            <div><div className="kpi-label">Menge / verkauft</div>{f.quantity} / {f.sold}</div>
+            <div><div className="kpi-label">Beobachter</div>{f.watchers ?? "–"}</div>
+            <div><div className="kpi-label">Online seit</div>{dateDe(f.startTime)}</div>
+            <div><div className="kpi-label">Kategorie</div>{f.categoryName ?? f.categoryId ?? "–"}</div>
+            <div><div className="kpi-label">EAN</div>{f.ean ?? "–"}</div>
+            <div><div className="kpi-label">Bilder</div>{f.images.length}</div>
+            <div><div className="kpi-label">Bearbeitungszeit</div>{f.dispatchDays !== null ? `${f.dispatchDays} Tag${f.dispatchDays === 1 ? "" : "e"}` : "–"}</div>
+            <div><div className="kpi-label">Rücknahme</div>{f.returnsAccepted === false ? "keine" : f.returnDays !== null ? `${f.returnDays} Tage${f.freeReturns ? ", kostenlos" : ""}` : "–"}</div>
+            <div><div className="kpi-label">Preisvorschlag</div>{f.bestOffer ? "an" : "aus"}</div>
+          </div>
+        </section>
+      )}
+
+      {(t || trafficNote) && (
+        <section className="card card-pad stack">
+          <h2>Einblendungen und Klicks (30 Tage)</h2>
+          {t ? (
+            <div className="rev-grid" data-testid="traffic">
+              <div><div className="kpi-label">Einblendungen</div><div className="kpi-value">{t.impressions}</div><div className="small muted">davon {t.searchImpressions} in der Suche</div></div>
+              <div><div className="kpi-label">Klickrate Suche</div><div className="kpi-value">{t.ctr === null ? "–" : `${String(t.ctr).replace(".", ",")} %`}</div></div>
+              <div><div className="kpi-label">Aufrufe</div><div className="kpi-value">{t.views}</div></div>
+              <div><div className="kpi-label">Käufe</div><div className="kpi-value">{t.sales}</div><div className="small muted">{t.conversion === null ? "" : `${String(t.conversion).replace(".", ",")} % der Aufrufe`}</div></div>
+            </div>
+          ) : (
+            <div className="small muted">{trafficNote}</div>
+          )}
+        </section>
+      )}
+
+      {m && (
+        <section className="card card-pad stack">
+          <h2>{m.basis === "ean" ? "Gleiche EAN bei anderen Verkäufern" : "Ähnliche Angebote (nach Titel)"}</h2>
+          <div className="small" data-testid="market">
+            Dein Preis inkl. Versand: <strong>{euro(m.ownTotal)}</strong>
+            {m.rank !== null ? ` · Platz ${m.rank} von ${m.count + 1}` : ""}
+            {m.cheapest !== null ? ` · günstigstes ${euro(m.cheapest)}` : ""}
+            {m.median !== null ? ` · Mittel ${euro(m.median)}` : ""}
+            {m.basis === "titel" && <span className="muted"> – nach Titel gefunden, nicht unbedingt dasselbe Produkt.</span>}
+          </div>
+          <div className="rev-table">
+            <table className="table">
+              <thead><tr><th>Angebot</th><th className="right">Preis</th><th className="right">Versand</th><th className="right">Gesamt</th></tr></thead>
+              <tbody>
+                {m.items.slice(0, 8).map((c) => (
+                  <tr key={c.itemId}>
+                    <td style={{ maxWidth: 380, overflowWrap: "anywhere" }}>{c.url ? <a href={c.url} target="_blank" rel="noreferrer">{c.title}</a> : c.title}<div className="small muted">{c.seller ?? ""}</div></td>
+                    <td className="num right">{euro(c.price)}</td>
+                    <td className="num right">{c.shipping === null ? "?" : c.shipping ? euro(c.shipping) : "frei"}</td>
+                    <td className="num right">{euro(c.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {f && (
+        <section className="card card-pad stack" id="inhalte">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <h2 style={{ margin: 0 }}>Verbessern</h2>
+            <ActionButton action={aiSuggestAction} itemId={itemId} label={lastAi ? "Neuen KI-Vorschlag holen" : "KI-Vorschlag holen"} pending="KI arbeitet … (bis zu 1 Minute)" testid="ai-suggest" />
+          </div>
+          {ai ? (
+            <div className="notice notice-info small stack" style={{ gap: 4 }} data-testid="ai-box">
+              <div>
+                <strong>KI-Vorschlag vom {dateDe(ai.at)}</strong> – {aiCount.length ? <>unten eingetragen: {aiCount.join(", ")}. Mit <span className="tag tag-info">KI</span> markierte Felder prüfen, dann „Bei eBay ändern“.</> : "die KI hatte nichts zu verbessern."}
+              </div>
+              {ai.hints.length > 0 && <div>Tipps, die die KI nicht selbst eintragen kann: {ai.hints.join(" · ")}</div>}
+            </div>
+          ) : lastAi ? (
+            <div className="small muted" data-testid="ai-used">Der KI-Vorschlag vom {dateDe(lastAi.at)} ist übernommen bzw. durch deine Änderung überholt – bei Bedarf einen neuen holen.</div>
+          ) : (
+            <div className="small muted">
+              Die KI trägt alles ein, was sich aus dem Angebot verbessern lässt: Titel, fehlende und ungenaue Merkmale und – wenn nötig – eine übersichtlichere Beschreibung. Nichts wird erfunden, nichts geht ohne deine Bestätigung zu eBay. Kosten: wenige Cent je Vorschlag.
+            </div>
+          )}
+          <div className="small muted">Bilder ordnen, entfernen, per Link oder Datei hinzufügen oder von Amazon übernehmen. Versand und Rücknahme änderst du in den Versand-/Rückgabeprofilen bei eBay.</div>
+          <ContentEditor
+            key={`${row.checkedAt ?? ""}|${applied?.at ?? ""}|${ai?.at ?? ""}`}
+            itemId={itemId}
+            images={f.images}
+            descriptionHtml={f.descriptionHtml ?? null}
+            aspects={f.aspects}
+            defs={(defs ?? []).filter((x) => !GTIN_ASPECT.test(x.name)).map((x) => ({ name: x.name, required: x.required, recommended: x.recommended, values: x.values, multi: x.multi }))}
+            ean={f.ean}
+            title={f.title}
+            price={f.price}
+            suggestedPrice={m?.suggestedPrice ?? null}
+            canPrice={f.variations === 0}
+            bestOffer={f.bestOffer}
+            canBestOffer={f.variations === 0 && f.listingType === "FixedPriceItem"}
+            ai={ai ? { at: ai.at, title: ai.title ?? null, aspects: ai.aspects ?? {}, description: ai.description ?? null } : null}
+            recentApplied={recentApplied}
+            disabled={session.readOnly}
+          />
+        </section>
+      )}
+    </>
+  );
+}

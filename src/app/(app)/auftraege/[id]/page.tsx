@@ -1,12 +1,18 @@
 import Link from "next/link";
+import { ConfirmButton } from "@/components/confirm-button";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { CHANNEL_LABEL, ORDER_STATUS_LABEL } from "@/lib/labels";
 import { formatEuro } from "@/lib/numbers";
-import { estimateWeightKg, loadOrder } from "@/lib/orders/service";
+import { loadOrder } from "@/lib/orders/service";
+import { orderShipWeight, skuShippingMap } from "@/lib/shipping/weights-service";
+import { WS_OPTIONS, warensendungCheck } from "@/lib/shipping/warensendung";
+import { wawiSku } from "@/lib/stock/channel-sync";
 import { getSettings } from "@/lib/settings";
-import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress } from "../actions";
+import { cancelLabelAction, cancelOrder, markShippedAction, retryTracking, saveAddress, saveShipperAction, saveSkuWeightAction } from "../actions";
 import { LabelForm } from "./label-form";
+import { PostFormatHint } from "../post-format-hint";
+import { postFormatInfo } from "@/lib/shipping/internetmarke";
 
 export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
@@ -16,7 +22,14 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
   if (!data) notFound();
   const { order, items, parcels } = data;
   const settings = await getSettings(session.tenantId);
-  const weight = estimateWeightKg(items);
+  // Versandgewicht: einmal je Artikel eingetragen × Stück, sonst Artikeldaten + Verpackung (Schätzwert nicht vorbelegen).
+  const sw = await orderShipWeight(session.tenantId, data);
+  const weight = sw.source === "geschaetzt" ? null : sw.kg;
+  // Versandgewicht je Stück pro Position (an der Lager-SKU) – hier direkt eintragbar.
+  const keys = await Promise.all(items.map((i) => (i.item.sku ? wawiSku(session.tenantId, order.channel, i.item.sku) : Promise.resolve(null))));
+  const skuInfo = await skuShippingMap(session.tenantId, keys.filter((k): k is string => Boolean(k)));
+  const ws = warensendungCheck({ country: order.shipTo?.country, items: sw.items, weightKg: sw.kg });
+  const kgText = (g: number) => (g / 1000).toLocaleString("de-DE", { maximumFractionDigits: 3 });
   const a = order.shipTo ?? {};
   const f = (name: keyof typeof a, label: string, width?: number) => (
     <div className="field" style={width ? { width } : undefined}>
@@ -42,19 +55,42 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           <section className="card" style={{ overflow: "hidden" }}>
             <div className="card-head"><h2>Artikel</h2><span className="num">{formatEuro(order.total)}</span></div>
             <table className="table">
-              <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Menge</th><th className="right">Preis</th><th className="right">Gewicht</th></tr></thead>
+              <thead><tr><th>SKU</th><th>Artikel</th><th className="right">Menge</th><th className="right">Preis</th><th className="right">Je Stück: Gewicht · Warensendung</th></tr></thead>
               <tbody>
-                {items.map(({ item, weightGrams, productTitle }) => (
-                  <tr key={item.id}>
-                    <td className="num">{item.sku ?? "–"}</td>
-                    <td>{item.title ?? productTitle ?? item.asin ?? "–"}</td>
-                    <td className="num right">{item.quantity}</td>
-                    <td className="num right">{formatEuro(item.price)}</td>
-                    <td className="num right">{weightGrams ? `${weightGrams} g` : <span style={{ color: "var(--warn)" }}>fehlt</span>}</td>
-                  </tr>
-                ))}
+                {items.map(({ item, weightGrams, productTitle }, n) => {
+                  const key = keys[n];
+                  const g = key ? skuInfo.get(key)?.grams ?? null : null;
+                  const wsMax = key ? skuInfo.get(key)?.wsMax ?? null : null;
+                  return (
+                    <tr key={item.id}>
+                      <td className="num">{item.sku ?? "–"}</td>
+                      <td>{item.title ?? productTitle ?? item.asin ?? <span className="muted">Name unbekannt</span>}</td>
+                      <td className="num right">{item.quantity}</td>
+                      <td className="num right">{formatEuro(item.price)}</td>
+                      <td className="right">
+                        {key ? (
+                          <form action={saveSkuWeightAction} style={{ display: "inline-flex", gap: 4, alignItems: "center", justifyContent: "flex-end" }} data-testid="item-weight">
+                            <input type="hidden" name="orderId" value={order.id} />
+                            <input type="hidden" name="sku" value={key} />
+                            <input className="input" name="kg" defaultValue={g !== null ? kgText(g) : ""} placeholder={weightGrams ? kgText(weightGrams) : "0,3"} inputMode="decimal" aria-label={`Versandgewicht je Stück ${item.sku}`} style={{ width: 70, padding: "4px 6px" }} />
+                            <span className="small muted">kg</span>
+                            <select className="select" name="ws" defaultValue={wsMax === null ? "" : String(wsMax)} aria-label={`Warensendung bis … Stück ${item.sku}`} style={{ padding: "4px 6px", maxWidth: 150 }} data-testid="item-ws">
+                              {WS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value === "" ? "Warensendung: ?" : o.value === "0" ? "Warensendung: nie" : `Warensendung ${o.label}`}</option>)}
+                            </select>
+                            <button className="btn btn-small" type="submit">Speichern</button>
+                          </form>
+                        ) : (
+                          <span className="muted">–</span>
+                        )}
+                        {key && g === null && <div className="small" style={{ color: "var(--warn)" }}>{weightGrams ? `Artikeldaten ${weightGrams} g + Verpackung` : "fehlt – wird geschätzt"}</div>}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            <div className="small muted" style={{ padding: "8px 14px" }} data-testid="order-weight-sum">Sendung: {sw.note} · gilt für alle Aufträge mit diesem Artikel (Amazon und eBay)</div>
+            <div className="small" style={{ padding: "0 14px 10px", color: ws.ok ? "var(--ok)" : ws.needsSetup ? "var(--warn)" : "var(--muted)" }} data-testid="order-ws">Warensendung: {ws.ok ? "ja – " : "nein – "}{ws.reason}</div>
           </section>
 
           {order.fulfillment === "FBM" && (
@@ -71,7 +107,7 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                 {f("email", "E-Mail", 260)}{f("phone", "Telefon", 180)}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <button className="btn" type="submit">Adresse speichern</button>
+                <button className="btn btn-primary" type="submit">Adresse speichern</button>
                 <a className="btn" href={`/auftraege/adressetiketten?ids=${order.id}`} target="_blank" rel="noreferrer" data-testid="address-label" title="Nur Name und Anschrift – Brother QL-800, Papier 62 mm × 29 mm, Skalierung 100 %">Adressetikett 62 × 29 mm</a>
               </div>
             </form>
@@ -82,12 +118,27 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
           {order.fulfillment === "FBM" && (
             <section className="card card-pad stack">
               <h2>Versand</h2>
+              <form action={saveShipperAction} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }} data-testid="order-shipper">
+                <input type="hidden" name="orderId" value={order.id} />
+                <label className="small" htmlFor="shipper">Verschickt von</label>
+                <select className="select" id="shipper" name="shipper" defaultValue={order.shippedBy ?? sw.shipper} style={{ padding: "4px 6px" }}>
+                  <option value="self">ich selbst</option>
+                  <option value="prep">{settings.prep.name || "Prep Center"}</option>
+                </select>
+                <button className="btn btn-small" type="submit">Speichern</button>
+                {!order.shippedBy && <span className="small muted">Vorschlag – noch nicht gespeichert</span>}
+              </form>
               {order.status === "open" && <LabelForm orderId={order.id} weightKg={weight} suggestKlein={weight !== null && weight <= settings.dhl.kleinpaketMaxKg} disabled={false} />}
+              {order.status === "open" && weight !== null && <div className="small muted" data-testid="order-weight-note">Gewicht: {sw.note}</div>}
+              {order.status === "open" && (
+                <Link className="btn btn-small" href={`/auftraege/lieferschein?ids=${order.id}`} data-testid="order-warensendung">Als Warensendung / automatisch …</Link>
+              )}
+              {order.status === "open" && <PostFormatHint {...postFormatInfo(settings.post)} compact />}
               {settings.dhl.sandbox && <div className="small muted">DHL-Sandbox aktiv – Labels sind Testlabels.</div>}
               {parcels.map((p) => (
                 <div key={p.id} style={{ borderTop: "1px solid var(--border)", paddingTop: 8, fontSize: 13 }}>
                   <div className="between">
-                    <span className="num">{p.trackingNumber ?? "–"}</span>
+                    <span className="num">{p.carrier !== "DHL" ? `${p.carrier}${p.trackingNumber ? ` · Frankier-ID ${p.trackingNumber}` : ""}` : p.trackingNumber ?? "–"}</span>
                     <span className={`tag ${p.status === "created" ? "tag-ok" : p.status === "error" ? "tag-critical" : "tag-neutral"}`}>{p.status === "created" ? "LABEL" : p.status === "error" ? "FEHLER" : "STORNIERT"}</span>
                   </div>
                   <div className="small muted">{p.product} · {p.weightKg} kg · {p.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</div>
@@ -95,7 +146,11 @@ export default async function OrderPage({ params }: { params: Promise<{ id: stri
                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                     {p.labelFileId && <a className="btn btn-small" href={`/datei/${p.labelFileId}`} target="_blank" rel="noreferrer">Label drucken</a>}
                     {p.status === "created" && order.status === "label_created" && (
-                      <form action={cancelLabelAction}><input type="hidden" name="parcelId" value={p.id} /><button className="btn btn-small" type="submit">Stornieren</button></form>
+                      p.carrier !== "DHL" ? (
+                        <form action={cancelLabelAction}><input type="hidden" name="parcelId" value={p.id} /><ConfirmButton className="btn btn-small" confirm={`Warensendung verwerfen? Der Auftrag ist danach wieder offen. Das Porto erstattet die Post nicht automatisch – Erstattung in der Portokasse beantragen${p.trackingNumber ? ` (Frankier-ID ${p.trackingNumber})` : ""}.`}>Verwerfen</ConfirmButton></form>
+                      ) : (
+                        <form action={cancelLabelAction}><input type="hidden" name="parcelId" value={p.id} /><button className="btn btn-small" type="submit">Stornieren</button></form>
+                      )
                     )}
                   </div>
                 </div>

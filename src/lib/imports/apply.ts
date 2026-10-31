@@ -59,7 +59,8 @@ export async function applyImport(opts: {
     for (const part of chunks(codes)) {
       await tx
         .insert(schema.suppliers)
-        .values(part.map((code) => ({ tenantId, code })))
+        // B15.12: Kürzel aus der Artikelnummer – kein eigener Lieferant (bestehende Einträge bleiben unverändert).
+        .values(part.map((code) => ({ tenantId, code, skuKuerzel: true })))
         .onConflictDoNothing();
     }
     const supplierIds = new Map(

@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { publicUrl } from "@/lib/public-url";
 
 // Signierter OAuth-„state“: schützt den Rückruf vor Fälschung und trägt Mandant/Benutzer.
 
@@ -29,6 +30,26 @@ export function verifyState(value: string | null): State | null {
   return s.exp > Date.now() ? s : null;
 }
 
+/**
+ * Adresse, unter der der Browser das System gerade aufruft (hinter Caddy aus X-Forwarded-*). Für Anbindungen, die
+ * ihre Rücksprung-Adresse selbst registrieren (sellerboard): APP_URL ist bei der internen Installation die
+ * Tailscale-Adresse – die erreicht ein Handy ohne Tailscale nicht.
+ */
+export function requestOrigin(request: Request): string {
+  const h = request.headers;
+  const host = (h.get("x-forwarded-host") ?? h.get("host") ?? "").split(",")[0].trim();
+  let proto = (h.get("x-forwarded-proto") ?? "").split(",")[0].trim().toLowerCase();
+  if (!proto) {
+    try {
+      proto = new URL(request.url).protocol.replace(":", "");
+    } catch {
+      proto = "";
+    }
+  }
+  if (/^[a-z0-9.-]+(:\d{1,5})?$/i.test(host) && (proto === "http" || proto === "https")) return `${proto}://${host}`;
+  return appUrl(request);
+}
+
 /** Öffentliche Adresse der App (für Weiterleitungs-URIs). */
 export function appUrl(request?: Request): string {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
@@ -40,3 +61,12 @@ export function appUrl(request?: Request): string {
   }
   return "http://localhost:3000";
 }
+
+/**
+ * Adresse, unter der Claude den Konnektor erreicht (Metadaten, Anmeldung, /api/mcp): die öffentliche PUBLIC_URL,
+ * wenn gesetzt (App sonst nur im privaten Netz), sonst die normale Adresse.
+ */
+export function claudeBaseUrl(request?: Request): string {
+  return publicUrl() ?? appUrl(request);
+}
+

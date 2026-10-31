@@ -47,6 +47,8 @@ export const CLAIM_TYPES = [
   "removal_shipment_stuck",
   "return_damaged",
   "return_wrong_item",
+  /** An der Retouren-Station geprüft: leer, benutzt, beschädigt oder unvollständig zurückgekommen. */
+  "return_condition",
   "refund_too_high",
   "fbm_safet",
   "other",
@@ -91,6 +93,18 @@ export type TenantSettings = {
     labelFormat?: string;
     kleinpaketMaxKg?: number;
   };
+  /** Prep Center: wer standardmäßig verschickt und welche Gebühren es berechnet (für den Rechnungsabgleich). */
+  prep?: { name?: string; defaultShipper?: "self" | "prep"; feeShipment?: number; feeExtraItem?: number; preisliste?: { name: string; preis: number; einheit: "stueck" | "sendung" | "karton" | "palette_monat" | "stunde"; b2b: boolean }[] };
+  /** Deutsche Post INTERNETMARKE (Warensendung): Produkt/Preis laut PPL, Druckformat, Gewicht je Stück für DHL. */
+  post?: {
+    productCode?: number;
+    price?: number;
+    pageFormatId?: number;
+    pageFormatName?: string;
+    labelX?: number;
+    labelY?: number;
+    itemGrams?: number;
+  };
   pricing?: {
     referralRate?: number;
     minProfit?: number;
@@ -108,9 +122,86 @@ export type TenantSettings = {
   drive?: { folderId?: string };
   /** Retouren-Abgleich: Wartezeiten in Tagen. */
   returns?: { graceFba?: number; claimFba?: number; graceFbm?: number; marketplace?: string };
+  /**
+   * Retouren-Station: Fall erst ab diesem an den Kunden erstatteten Betrag, Aufbewahrung von Fotos/Videos in Tagen
+   * (danach automatisch gelöscht, solange kein offener Anspruch daran hängt), optionales Aktivierungswort.
+   */
+  retourenStation?: { minBetrag?: number; aufbewahrungTage?: number; aktivierungswort?: string; aktivierungAn?: boolean };
+  /**
+   * B2B-Deals: verkaufende Firma (Rechnungen über Lexoffice), Marktplätze der Auswertung, Mindest-ROI für Kunden,
+   * Mengenfaktor gegen Preiskampf, max. Kunden je ASIN, nur bezahlte Reservierungen bestellen, Fehlmengen-Regel,
+   * Prep-Gebühr und Versandanteil je Stück, „fast weg“-Schwelle, USt-Satz.
+   */
+  b2b?: {
+    firma?: { name?: string; handelsname?: string; strasse?: string; plz?: string; ort?: string; land?: string; ustId?: string; email?: string; telefon?: string };
+    marktplaetze?: string[];
+    minKundenRoi?: number;
+    mengenFaktor?: number;
+    maxKundenProAsin?: number;
+    nurBezahlteBestellen?: boolean;
+    fehlmengenRegel?: "anteilig" | "zeitpunkt";
+    prepGebuehr?: number;
+    versandAnteil?: number;
+    fastWegProzent?: number;
+    ustSatz?: number;
+    /** Lieferanschrift für Großhändler-Bestellungen (Prep Center), mehrzeilig. */
+    lieferadresse?: string;
+    /** Unsere Mindestmarge auf den EK für die Ampel im Preislisten-Scanner (0.1 = 10 %). */
+    minMarge?: number;
+  };
   cash?: { startBalance?: number; asOf?: string };
+  /**
+   * Liquiditätsvorschau: Mindestreserve, Steuertermine (Schätzung), Kreditkarte (Abbuchungstag/Betrag, falls nicht aus
+   * dem Kontoauszug erkannt), ignorierte wiederkehrende Abbuchungen (Prüfwerte), Bestellvorschläge einrechnen.
+   */
+  /** Kapital-Ampel: Ziel-Jahresrendite, „gering“, Reichweiten-Grenzen (Tage). */
+  kapital?: { zielRendite?: number; geringRendite?: number; gruenReichweite?: number; rotReichweite?: number };
+  /** Deal-Ampel (Einkaufs-Prüfung): Zielmarge %, Abverkauf Tage, max. Angebote, Amazon-Anteil %, Preisverfall %, Nebenkosten €/Stück, Länder. */
+  delegieren?: { extern?: string[]; regeln?: { typ: string; person: `user:${string}` | `extern:${string}`; bestaetigt: boolean }[]; ausnahmen?: string[] };
+  buchhaltung?: { firmen?: string[]; kontenrahmen?: "SKR04" | "SKR03"; datev?: Record<string, { beraternummer?: string; mandantennummer?: string }>; geldkonten?: { bank?: string; kreditkarte?: string; transit?: string; marktplatz?: string }; wjBeginnMonat?: number; /** USt-Voranmeldung für die Fristenliste (Angabe vom Steuerberater). */ ustva?: { rhythmus: "monatlich" | "quartal" | "aus"; dauerfrist: boolean } };
+  tagesplan?: { arbeitszeit?: Record<string, { von: string; bis: string } | null>; personen?: Record<string, Record<string, { von: string; bis: string } | null>>; vorziehen?: number };
+  dealAmpel?: { zielMarge?: number; maxAbverkaufTage?: number; maxAngebote?: number; amazonMaxProzent?: number; preisverfallProzent?: number; nebenkosten?: number; laender?: string[]; profitgoVorlage?: string };
+  /** Verlust-Stopp: Kosten ohne Verkauf erst ab diesem Betrag je SKU und Woche (€) als Hinweis. */
+  verlust?: { kostenOhneVerkaufSchwelle?: number };
+  /** VA über Discord: Zeitzone der VA, Ruhezeiten (keine Erinnerungen), tägliche Erinnerung bei Überfälligem, Einkaufsrechnungen. */
+  va?: { zeitzone?: string; ruheVon?: string; ruheBis?: string; erinnerungUeberfaellig?: boolean; darfEinkaufsrechnungen?: boolean; sprache?: "de" | "en"; glossar?: Record<string, string>; antwortVorschau?: boolean };
+  /** Amazon-Fall-Zentrale: Fristen je Phase/Bereich (Tage), Nachfassen ohne Antwort, Betragsschwelle für Info an Ludwig, wer einreicht. */
+  faelle?: { fristen?: Record<string, number>; nachfassenTage?: number; betragSchwelle?: number; zustaendig?: "va" | "ludwig" };
+  dealEingang?: { zielRoi?: number; maxReichweiteTage?: number; aufbewahrungMonate?: number; preislisteAbZeilen?: number; mailAdresse?: string; kurzbefehlLink?: string; budgetJeDeal?: number; budgetJeTag?: number; budgetJeWoche?: number; wertSchwelle?: number };
+  /** Posteingang auf null: automatisch archivieren, Termin-Mails in den Privatkalender, Vorabend-Erinnerung. */
+  posteingang?: { autoArchiv?: boolean; terminMails?: boolean; vorabendUm?: string; abfahrtVorher?: number };
+  /** Rechtsfälle (Anwalt): Absender-Domains, private Asana-Projekte, Vorlauf für Fristen, „nichts passiert“ nach Tagen. */
+  rechtsfaelle?: { anwaltDomains?: string[]; anwaltAdresse?: string; privatProjekte?: string[]; vorlaufTage?: number; stillstandTage?: number };
+  /** Discord-Kanäle der Deal-Gruppe: Rohnachrichten höchstens so viele Tage. */
+  discordWissen?: { rohTage?: number };
+  /** Handy & Tesla: Orte, Fahrzeit, SMS (nur eigene Nummer), Verspätung, Fahrzeug. */
+  mobil?: {
+    orte?: { lager?: string[]; prep?: string[]; palettenlager?: string[]; zuhause?: string };
+    fahrzeitMin?: number;
+    jeAnrufMin?: number;
+    sms?: { an?: boolean; nummer?: string; limit?: number; ruheVon?: string; ruheBis?: string; dealSchwelle?: number };
+    verspaetungToleranz?: number;
+    tesla?: { vin?: string; vorheizen?: boolean; vorheizMin?: number; zielTemp?: number; heimLat?: number | null; heimLon?: number | null };
+  };
+  bqool?: { standardRegel?: string; katalog?: { name: string; laender: ("DE" | "FR" | "IT" | "ES")[] | null; strategie: string; staffel: { bisTage: number | null; marge: number; unterregel?: "Sales Booster" | "Equalizer" }[] | null; festeUntergrenze: boolean; risiko: boolean; hinweis: string }[]; abverkaufRegel?: { DE?: string; sonst?: string }; costUst?: number; markenRegeln?: { marke: string; land: "DE" | "FR" | "IT" | "ES" | null; regel: string }[]; elektronikMarken?: string[]; elektronikLaender?: ("DE" | "FR" | "IT" | "ES")[]; maxFaktor?: number; fixGebuehr?: number; zusatzkosten?: number; laender?: ("DE" | "FR" | "IT" | "ES")[]; format?: { channel: Record<"DE" | "FR" | "IT" | "ES", string>; shipping: string; addDelete: string; group: string; enable: string; tabsErsteZeile: number; zeilenende: "\r\n" | "\n"; bom: boolean; schlussUmbruch: boolean; ausVorlage: boolean } | null };
+  /** Amazon Business: Staffeln (ab Stück), Rabatt je Staffel in %, Mindestgewinn je Stück in €. */
+  amazonBusiness?: { stufen?: number[]; rabatte?: number[]; minGewinn?: number };
+  /** Einmalige Einrichtungen (Standard-Freizeiten, Retourenwelle). */
+  planung?: { standardFrei?: boolean; retourenwelle?: boolean };
+  liquiditaet?: {
+    reserve?: number;
+    steuern?: { name: string; betrag: number; monate: number[]; tag: number }[];
+    kreditkarte?: { tag?: number; betrag?: number };
+    ignoriert?: string[];
+    bestellvorschlaege?: boolean;
+    vorschlaegeEinrechnen?: boolean;
+    zahlungszielStandard?: number;
+    /** Üblichen Wareneinkauf je Woche (Ø Warenrechnungen) als Planposten einrechnen (Standard: an). */
+    wareneinkaufPlanen?: boolean;
+  };
   /** Zustand des Kalender-Abgleichs (vom System gepflegt). */
-  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[] };
+  /** `staffCalendars`: eigene Kalender, die Mitarbeiter ohne Privat-Zugang sehen dürfen (sonst keine). */
+  calendar?: { href?: string; lastSync?: string; lastError?: string | null; calendars?: string[]; read?: { name: string; events: number; error?: string }[]; staffCalendars?: string[] };
   /** E-Mail-Versand: Standard-Absenderpostfach (Rechnungen, Nachrichten). */
   /** `leadSenderId`: zuletzt benutztes Postfach für Einkaufsanfragen (Vorgabe im Schreibfenster). */
   mail?: { defaultSenderId?: string; leadSenderId?: string };
@@ -129,8 +220,43 @@ export type TenantSettings = {
   };
   /** Themen-Recherche für die Wissensdatenbank. */
   research?: { topics?: string[]; feeds?: string[]; intervalDays?: number; lastRun?: string | null; lastError?: string | null };
+  /**
+   * Palettenlager: Standard je Stellplatz und Monat, kostenfreie Tage, Abrechnungsart, Gebühr je
+   * Ein-/Auslagerung, Stellplätze gesamt, Erinnerungen und Zusatzleistungen mit Preis.
+   */
+  pallets?: {
+    pricePerMonth?: number;
+    freeDays?: number;
+    mode?: "monat" | "anteilig";
+    inFee?: number;
+    outFee?: number;
+    capacity?: number;
+    longStayDays?: number;
+    remindFreeEnd?: boolean;
+    /** Meldungen zu Speditions-Sendungen zusätzlich per E-Mail an alle mit Zugriff aufs Palettenlager. */
+    shipmentMail?: boolean;
+    services?: { name: string; price: number }[];
+    /** Stellplätze laut Lagerplan (z. B. aus „A-01..A-20“). */
+    locations?: string[];
+    locationsSpec?: string;
+    /** Letzte Inventur. */
+    lastInventory?: { at: string; scanned: number; found: number; missing: number; unknown: number };
+  };
+  /** KI-Assistent im Seller-System (Fragefeld oben): an/aus, Modell, Änderungen erlauben. */
+  assistant?: { enabled?: boolean; model?: string; allowWrite?: boolean; /** Stufe je ändernden Werkzeug (überschreibt den Standard). */ stufen?: Record<string, "gruen" | "gelb" | "rot"> };
   /** Temu-Angebote: zuletzt benutzter Preisrechner (Faktor, Food) und Standardpaket. */
   temu?: { factor?: number; food?: boolean; pack?: { weightG?: number; lengthCm?: number; widthCm?: number; heightCm?: number } };
+};
+
+export type Favorite = { href: string; label: string };
+/** Persönliche Einstellungen (memberships.prefs). */
+export type MemberPrefs = {
+  /** Favoriten in der Navigation und auf der Startseite (Pfad mit Abfrage, Bezeichnung). */
+  favorites?: Favorite[];
+  /** Kalender, die auf der Startseite nicht erscheinen sollen (z. B. private). */
+  hiddenCalendars?: string[];
+  /** Meldungen zu Speditions-Sendungen bis hierhin gesehen (ISO-Zeitpunkt). */
+  shipmentNoticesSeenAt?: string;
 };
 
 export const tenants = pgTable("tenants", {
@@ -147,6 +273,11 @@ export const users = pgTable(
     email: text("email").notNull(),
     name: text("name"),
     passwordHash: text("password_hash").notNull(),
+    /** Sprache für Texte an diese Person (Discord-Threads, Übersetzungen): de/en; null = Standard (VA: Einstellung „Sprache der VA“). */
+    sprache: text("sprache", { enum: ["de", "en"] }),
+    /** Letzte erfolgreiche Anmeldung und letzte Aktivität (höchstens alle 5 Minuten nachgeführt). */
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`)],
@@ -166,6 +297,20 @@ export const memberships = pgTable(
     brandIds: jsonb("brand_ids").$type<string[] | null>(),
     /** Nur ansehen: Mitarbeiter kann nichts ändern, senden oder abfragen (z. B. Prüfer, Testzugang). */
     readOnly: boolean("read_only").notNull().default(false),
+    /**
+     * Zugang zum Bereich „Privat“ (Paar, Kinder, Therapie, Tagebuch). Gilt auch für Inhaber nur,
+     * wenn ausdrücklich vergeben – „alle Bereiche“ schließt ihn nicht ein.
+     */
+    privateAccess: boolean("private_access").notNull().default(false),
+    /**
+     * Umfang von „Privat“: „voll“ = alles (Partnerschaft, Gesundheit, Therapie, Familie),
+     * „familie“ = nur gemeinsame Familieninfos (Kinderzeit, Ausschlafen, Auszeit, Zuständigkeiten).
+     */
+    privateScope: text("private_scope", { enum: ["voll", "familie"] }).notNull().default("voll"),
+    /** Persönliche Einstellungen je Person und Firma: Favoriten, ausgeblendete Kalender auf der Startseite. */
+    prefs: jsonb("prefs").$type<MemberPrefs>().notNull().default({}),
+    /** Optionale PIN für „Privat“ (bcrypt). */
+    privatePinHash: text("private_pin_hash"),
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.userId] })],
@@ -179,6 +324,8 @@ export const sessions = pgTable("sessions", {
     .references(() => users.id, { onDelete: "cascade" }),
   tenantId: tenantId(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  /** Bis wann „Privat“ nach PIN-Eingabe in dieser Sitzung offen ist. */
+  privateUnlockedUntil: timestamp("private_unlocked_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -206,6 +353,10 @@ export const suppliers = pgTable(
     tenantId: tenantId(),
     code: text("code").notNull(),
     name: text("name"),
+    /** B15.12: nur ein Kürzel aus Artikelnummern (z. B. „MUE“ in MUE_…) – kein eigener Lieferant. */
+    skuKuerzel: boolean("sku_kuerzel").notNull().default(false),
+    /** Kürzel → echter Lieferant (optional, von Hand zugeordnet). */
+    gehoertZu: uuid("gehoert_zu"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("suppliers_tenant_code_uq").on(t.tenantId, t.code)],
@@ -352,6 +503,18 @@ export const tasks = pgTable(
     systemKey: text("system_key"),
     link: text("link"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    /** Zuständig (z. B. Assistenz/VA); leer = niemand Bestimmtes. */
+    assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
+    /** Beim Zuweisen automatisch angehängte Anleitungen (Wissens-Einträge). */
+    anleitungIds: jsonb("anleitung_ids").$type<string[]>().notNull().default([]),
+    /** Zuständig außerhalb des Systems (Prep Center, Steuerberater, externer Name); intern über `assigneeId`. */
+    zustaendigExtern: text("zustaendig_extern"),
+    /** Aufwand für den Tagesplan: S (15 Min.), M (1 Std.), L (halber Tag); leer = vom System geschätzt. */
+    aufwand: text("aufwand", { enum: ["S", "M", "L"] }),
+    /** Angefangen (Board „In Arbeit“) – mit „erledigt“ ergibt das die tatsächliche Dauer zum Lernen des Aufwands. */
+    begonnenAm: timestamp("begonnen_am", { withTimezone: true }),
+    /** Anruf-Aufgaben (B13): Telefonnummer – aus Lieferant/Kunde/Kontakt oder von Hand; für „Anrufe in der Fahrzeit“. */
+    telefon: text("telefon"),
     createdAt: createdAt(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
@@ -361,25 +524,95 @@ export const tasks = pgTable(
   ],
 );
 
+export type AnleitungFelder = {
+  zweck: string;
+  wann: string;
+  /** Zuständig (Name oder Rolle, z. B. „Assistenz“). */
+  wer: string;
+  schritte: string[];
+  zugaenge: string[];
+  fehler: string[];
+  /** Aufgabentypen, an die die Anleitung beim Zuweisen angehängt wird: „kategorie:amazon“, „schluessel:verlust“, „titel:Remission“. */
+  aufgabenTypen: string[];
+};
+
 export const knowledgeEntries = pgTable(
   "knowledge_entries",
   {
     id: id(),
     tenantId: tenantId(),
-    kind: text("kind", { enum: ["article", "snippet"] }).notNull().default("article"),
+    kind: text("kind", { enum: ["article", "snippet", "anleitung"] }).notNull().default("article"),
     category: text("category").notNull(),
     title: text("title").notNull(),
     body: text("body").notNull().default(""),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    /** Herkunft: automatische Recherche (ungeprüft), Anleitung, eigene Notiz, von der KI aus einem Call gezogen. */
+    origin: text("origin", { enum: ["recherche", "anleitung", "notiz", "call", "chat"] }).notNull().default("notiz"),
+    /** Insider – nicht weitergeben: nur intern verwenden, nie in Texten nach außen (Deal-Blätter, Kundenmails, B2B-Kanal). */
+    insider: boolean("insider").notNull().default(false),
+    /** Nur bei Herkunft „call“: aus welchem Call, Zitat und Stelle (Zeichen) im Transkript. Kein Fremdschlüssel –
+     *  die Calls-Tabelle hängt selbst an „core“; gelöschte Calls lassen den Eintrag stehen. */
+    callId: uuid("call_id"),
+    callZitat: text("call_zitat"),
+    callStelle: integer("call_stelle"),
+    /** Datum des Calls – Tricks und Bezugsquellen veralten: älter als 6 Monate → „prüfen“. */
+    quelleDatum: date("quelle_datum", { mode: "string" }),
+    /** Wer hat es gesagt: „Consultant“, „Gruppe – Name“, „Ludwig“. */
+    quelleWer: text("quelle_wer"),
+    /** Art der Erkenntnis aus dem Call. */
+    erkenntnis: text("erkenntnis", { enum: ["tipp", "quelle", "regel", "warnung", "erfahrung"] }),
+    /** Nur bei kind = „anleitung“: Zweck, wann, wer, Schritte, Zugänge, häufige Fehler, Aufgabentypen. */
+    anleitung: jsonb("anleitung").$type<AnleitungFelder>(),
+    /** Englische Fassung der Anleitung (aus der deutschen übersetzt); geht an englischsprachige VA. */
+    anleitungEn: jsonb("anleitung_en").$type<AnleitungFelder>(),
+    /** Englische Fassung von Ludwig freigegeben (sonst „automatisch übersetzt“). */
+    anleitungEnFreigegeben: boolean("anleitung_en_freigegeben").notNull().default(false),
+    titleEn: text("title_en"),
+    /** Von jemandem als geprüft/verlässlich bestätigt („zuletzt geprüft am“ bei Anleitungen). */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    verifiedBy: uuid("verified_by").references(() => users.id, { onDelete: "set null" }),
     updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("knowledge_tenant_idx").on(t.tenantId, t.category),
+    index("knowledge_call_idx").on(t.tenantId, t.callId),
     index("knowledge_search_idx").using(
       "gin",
       sql`to_tsvector('german', ${t.title} || ' ' || ${t.body})`,
     ),
   ],
+);
+
+/** Hintergrund-Abrufe: wann zuletzt erfolgreich, wann zuletzt mit Fehler – für den Datenstand je Bereich. */
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    /** Dauer des letzten Laufs (ms) – zeigt, welcher Abruf den Server wie lange beschäftigt. */
+    lastDurationMs: integer("last_duration_ms"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.name] })],
+);
+
+/**
+ * Einmal-Schlüssel für Formulare: Doppeltipp oder erneutes Absenden derselben Eingabe bucht nicht doppelt –
+ * die zweite Anfrage bekommt das Ergebnis der ersten. Einträge sind kurzlebig (werden nach 2 Tagen entfernt).
+ */
+export const formSubmissions = pgTable(
+  "form_submissions",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    key: text("key").notNull(),
+    result: jsonb("result"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("form_submissions_key_uq").on(t.tenantId, t.key)],
 );

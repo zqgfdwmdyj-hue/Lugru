@@ -1,17 +1,20 @@
 import Link from "next/link";
+import { ordnerName } from "@/lib/mail/ordner";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
-import { TOPIC_LABEL, type Topic } from "@/lib/inbox/classify";
+import { TOPIC_LABEL, VORSCHLAG_TEXT, isUncertainRule, mailVorschlag, type Topic } from "@/lib/inbox/classify";
 import { MAIL_CATEGORY_LABEL } from "@/lib/labels";
-import { senderMailboxes } from "@/lib/mail/accounts";
-import { archiveMails, removeMailbox, setDefaultSenderAction, toggleMailbox } from "./actions";
-import { EmlUpload, SyncButton, TestMailButton } from "./inbox-forms";
+import { mailUpgrades } from "@/lib/inbox/service";
+import { applyMailUpgradesAction, archiveMails } from "./actions";
+import { EmlUpload } from "./inbox-forms";
+import { AuftragAnClaude } from "@/components/auftrag-an-claude";
+import { MailboxStatus } from "./mailbox-manager";
 
 const VIEWS = { wichtig: "Wichtig", kritisch: "Kritisch", handeln: "Handeln", info: "Info", unwichtig: "Unwichtig", archiv: "Archiv" } as const;
 type View = keyof typeof VIEWS;
 
-export default async function PosteingangPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; verbunden?: string; fehler?: string }> }) {
+export default async function PosteingangPage({ searchParams }: { searchParams: Promise<{ ansicht?: string; verbunden?: string; hinweis?: string; fehler?: string; hochgestuft?: string }> }) {
   const session = await requireSession();
   const sp = await searchParams;
   const view: View = sp.ansicht && sp.ansicht in VIEWS ? (sp.ansicht as View) : "wichtig";
@@ -19,38 +22,59 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
   const where: SQL[] = [eq(E.tenantId, session.tenantId), eq(E.archived, view === "archiv")];
   const cat = { wichtig: ["critical", "action"], kritisch: ["critical"], handeln: ["action"], info: ["info"], unwichtig: ["noise"], archiv: null }[view];
   if (cat) where.push(inArray(E.category, cat as ("critical" | "action" | "info" | "noise")[]));
-  const [mails, boxes, senders] = await Promise.all([
-    db.select().from(E).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200),
-    db.select().from(schema.mailboxes).where(eq(schema.mailboxes.tenantId, session.tenantId)).orderBy(schema.mailboxes.createdAt),
-    senderMailboxes(session.tenantId),
+  const R = schema.mailRegeln;
+  const [mailRows, upgrades] = await Promise.all([
+    db.select({ m: E, regelAktion: R.aktion }).from(E).leftJoin(R, and(eq(R.id, E.regelId), eq(R.tenantId, session.tenantId))).where(and(...where)).orderBy(desc(E.receivedAt)).limit(200),
+    mailUpgrades(session.tenantId),
   ]);
-  const PROVIDER_TAG = { gmail: "GOOGLE", outlook: "MICROSOFT", imap: "IMAP", upload: "" } as const;
+  const mails = mailRows.map((r) => ({ ...r.m, vorschlag: mailVorschlag({ category: r.m.category, topic: r.m.topic, archived: r.m.archived, taskId: r.m.taskId, regelAktion: r.regelAktion }) }));
 
   return (
     <>
-      <div className="page-head"><div><div className="crumb">Start</div><h1>Posteingang</h1></div></div>
-      {sp.verbunden && <div className="notice notice-ok">Postfach {sp.verbunden} verbunden.</div>}
+      <div className="page-head"><div><div className="crumb">Heute</div><h1>Posteingang</h1></div></div>
+      <div style={{ marginBottom: 12 }}><AuftragAnClaude beispiel="archiviere alle „Amazon hat Ihre Artikel versandt“-Mails" kontext="Posteingang" /></div>
+      {sp.verbunden && <div className="notice notice-ok" data-testid="mailbox-verbunden">Postfach {sp.verbunden} verbunden.{sp.hinweis ? ` ${sp.hinweis}` : ""}</div>}
       {sp.fehler && <div className="notice notice-error">{sp.fehler}</div>}
+      {sp.hochgestuft && <div className="notice notice-ok" data-testid="mail-upgraded">{sp.hochgestuft === "1" ? "1 Mail" : `${sp.hochgestuft} Mails`} höher eingestuft – sie stehen jetzt unter „Wichtig“, mit Aufgabe auf der Startseite.</div>}
+      {upgrades.length > 0 && (
+        <div className="notice notice-warn" data-testid="mail-upgrades">
+          <strong>{upgrades.length === 1 ? "1 Mail der letzten 60 Tage würde" : `${upgrades.length} Mails der letzten 60 Tage würden`} mit den aktuellen Regeln höher eingestuft</strong> (z. B. Zahlungsprobleme, die als „Info“ ankamen):
+          <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
+            {upgrades.slice(0, 5).map(({ r, c }) => (
+              <li key={r.id}>
+                <Link href={`/posteingang/${r.id}`}>{r.subject || "(ohne Betreff)"}</Link>{" "}
+                <span className="small muted">{MAIL_CATEGORY_LABEL[r.category][0]} → <strong>{MAIL_CATEGORY_LABEL[c.category][0]}</strong> · {TOPIC_LABEL[c.topic]}</span>
+              </li>
+            ))}
+          </ul>
+          {upgrades.length > 5 && <div className="small muted">… und {upgrades.length - 5} weitere.</div>}
+          <form action={applyMailUpgradesAction} style={{ marginTop: 6 }}>
+            <button className="btn btn-small btn-primary" type="submit" data-testid="mail-upgrades-apply">Höher einstufen und Aufgaben anlegen</button>
+            <span className="small muted" style={{ marginLeft: 8 }}>Nur hochstufen – von Hand korrigierte Mails bleiben, wie sie sind.</span>
+          </form>
+        </div>
+      )}
 
       <div className="row">
         <div style={{ flexGrow: 1, minWidth: 0 }} className="stack">
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/posteingang?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`}>{VIEWS[v]}</Link>)}
+            {(Object.keys(VIEWS) as View[]).map((v) => <Link key={v} href={`/posteingang?ansicht=${v}`} className={`chip${view === v ? " active" : ""}`} aria-current={view === v ? "true" : undefined}>{VIEWS[v]}</Link>)}
           </div>
           <form action={archiveMails} className="card" style={{ overflow: "auto" }}>
-            <table className="table">
-              <thead><tr><th style={{ width: 28 }}></th><th>Einordnung</th><th>Betreff</th><th>Von</th><th>Eingang</th><th>Aufgabe</th></tr></thead>
+            <table className="table sticky-head">
+              <thead><tr><th style={{ width: 28 }}></th><th>Einordnung</th><th>Betreff</th><th>Von</th><th>Eingang</th><th>Vorschlag</th><th>Aufgabe</th></tr></thead>
               <tbody>
-                {mails.length === 0 && <tr><td colSpan={6} className="muted">Keine Mails in dieser Ansicht.</td></tr>}
+                {mails.length === 0 && <tr><td colSpan={7} className="muted">Keine Mails in dieser Ansicht.</td></tr>}
                 {mails.map((m) => {
                   const [label, cls] = MAIL_CATEGORY_LABEL[m.category];
                   return (
                     <tr key={m.id}>
                       <td><input type="checkbox" name="ids" value={m.id} aria-label="Auswählen" /></td>
-                      <td><span className={`tag ${cls}`}>{label}</span><div className="small muted">{TOPIC_LABEL[(m.topic ?? "other") as Topic]}</div></td>
+                      <td><span className={`tag ${cls}`}>{label}</span>{isUncertainRule(m.matchedRule) && <> <span className="tag tag-warn" title="Nur Absender oder Text passte – bitte prüfen" data-testid="mail-uncertain">unsicher</span></>}<div className="small muted">{TOPIC_LABEL[(m.topic ?? "other") as Topic] ?? m.topic}</div></td>
                       <td style={{ maxWidth: 420 }}><Link href={`/posteingang/${m.id}`} style={{ fontWeight: 600 }}>{m.subject || "(ohne Betreff)"}</Link><div className="small muted" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.snippet}</div></td>
-                      <td className="small">{m.fromName ?? m.fromAddress}</td>
+                      <td className="small">{m.fromName ?? m.fromAddress}{(m.an || m.ordner) && <div className="muted" data-testid="mail-an-ordner">{m.an ? `an ${m.an}` : ""}{m.an && m.ordner ? " · " : ""}{m.ordner ? ordnerName(m.ordner) : ""}</div>}</td>
                       <td className="num small">{m.receivedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</td>
+                      <td className="small" data-testid="mail-vorschlag">{VORSCHLAG_TEXT[m.vorschlag]}</td>
                       <td>{m.taskId ? <Link href="/" className="small">✓ To-do</Link> : "–"}</td>
                     </tr>
                   );
@@ -62,37 +86,14 @@ export default async function PosteingangPage({ searchParams }: { searchParams: 
         </div>
 
         <aside className="col-side">
-          <section className="card card-pad stack">
-            <h2>Postfächer</h2>
-            {boxes.filter((b) => b.provider !== "upload").length === 0 && <div className="small muted">Noch keins verbunden.</div>}
-            {boxes.filter((b) => b.provider !== "upload").map((b) => (
-              <div key={b.id} style={{ fontSize: 13, borderBottom: "1px solid var(--row)", paddingBottom: 8 }}>
-                <div className="between" style={{ gap: 8 }}>
-                  <strong style={{ overflowWrap: "anywhere" }}>{b.address}</strong>
-                  <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                    {senders.defaultId === b.id && <span className="tag tag-ok">ABSENDER</span>}
-                    <span className="tag tag-neutral">{PROVIDER_TAG[b.provider]}</span>
-                  </span>
-                </div>
-                {(b.fromName || b.signature) && <div className="small muted">{b.fromName ?? ""}{b.fromName && b.signature ? " · " : ""}{b.signature ? "mit Signatur" : ""}</div>}
-                <div className="small muted">{b.lastSyncAt ? `Zuletzt: ${b.lastSyncAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}` : "Noch nicht abgerufen"}{!b.active && " · pausiert"}</div>
-                {b.lastError && <div className="small" style={{ color: "var(--danger)" }}>{b.lastError}</div>}
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
-                  <form action={toggleMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">{b.active ? "Pausieren" : "Aktivieren"}</button></form>
-                  {b.active && senders.defaultId !== b.id && <form action={setDefaultSenderAction}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit">Als Absender</button></form>}
-                  {b.active && <TestMailButton id={b.id} />}
-                  <Link className="btn-link small" href={`/posteingang/postfaecher/${b.id}`} data-testid="mailbox-profile">Name & Signatur</Link>
-                  <form action={removeMailbox}><input type="hidden" name="id" value={b.id} /><button className="btn-link small" type="submit" style={{ color: "var(--danger)" }}>Entfernen</button></form>
-                </div>
-              </div>
-            ))}
-            <div><Link className="btn btn-small btn-primary" href="/posteingang/verbinden">+ Postfach verbinden</Link></div>
-            <div className="small muted">Mit Passwort/App-Passwort oder per Google-/Microsoft-Anmeldung. Neue Mails werden alle 15 Minuten abgerufen; über das Absender-Postfach verschickt das System E-Mails (z. B. eBay-Rechnungen).</div>
-            <SyncButton />
-          </section>
+          <MailboxStatus tenantId={session.tenantId} isOwner={session.role === "owner"} />
           <section className="card card-pad"><EmlUpload /></section>
+          <section className="card card-pad small">
+            <Link href="/posteingang/regeln" data-testid="link-mail-regeln">Regeln je Absender/Thema</Link>
+            <div className="muted">Automatisch archivieren, als Aufgabe oder an Zuständigen. Newsletter und Versand-/Lieferbestätigungen werden beim Eingang archiviert; Termin-Mails (Arzt, Handwerker, Amt, Schule) gehen in den Privatkalender des Inhabers, nicht hierher.</div>
+          </section>
           <section className="card card-pad small muted">
-            Kritisch und „Handeln“ werden automatisch zu To-dos. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
+            Kritisch und „Handeln“ werden automatisch zu To-dos. Zahlungsprobleme (Zahlung/Karte/Lastschrift fehlgeschlagen, offene Beträge, Mahnungen, Auszahlung gestoppt) sind immer kritisch – auch von Bank, PayPal oder Hosting-Anbietern. „unsicher“ heißt: nur Absender oder Text passte – in der Mail lässt sich Thema und Wichtigkeit korrigieren. A-bis-Z, eBay-Fälle und Rücksendeanfragen landen zusätzlich unter „Fälle“. Mails mit derselben Message-ID aus mehreren Postfächern erscheinen nur einmal.
           </section>
         </aside>
       </div>

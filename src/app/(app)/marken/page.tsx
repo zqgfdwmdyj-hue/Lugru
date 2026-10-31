@@ -2,7 +2,6 @@ import Link from "next/link";
 import { and, desc, eq, inArray, isNotNull, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
-import { IDEA_STATUS_LABEL } from "@/lib/brands/ai";
 import { occasionByKey, upcomingOccasions } from "@/lib/brands/occasions";
 import { visibleBrands } from "@/lib/brands/access";
 import { todayIso } from "@/lib/dates";
@@ -12,6 +11,7 @@ import { createIdeaAction } from "./actions";
 import { SuggestIdeas } from "./forms";
 import { BoxSuggest } from "../lieferanten/[id]/scan-form";
 import { getSettings } from "@/lib/settings";
+import { ideaDateKind, ideaPhase, ideaUnaccepted, isOverdue, PHASE_LABEL, PHASES, phaseOrder } from "@/lib/brands/phases";
 
 const COLUMNS = ["idea", "review", "planned", "in_progress", "live"] as const;
 
@@ -44,7 +44,7 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <div className="page-head">
-        <div><div className="crumb">Marken</div><h1>Ideen & Saison</h1></div>
+        <div><div className="crumb">Marken & Content</div><h1>Ideen & Saison</h1></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link className="btn" href="/marken/content">Content-Plan</Link>
           <Link className="btn" href="/marken/profile">Markenprofile</Link>
@@ -57,15 +57,59 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
       )}
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <Link href={href({ marke: undefined })} className={`chip${!brand ? " active" : ""}`}>Alle Marken</Link>
+        <Link href={href({ marke: undefined })} className={`chip${!brand ? " active" : ""}`} aria-current={!brand ? "true" : undefined}>Alle Marken</Link>
         {brands.map((b) => (
-          <Link key={b.id} href={href({ marke: b.id })} className={`chip${brand?.id === b.id ? " active" : ""}`}>
+          <Link key={b.id} href={href({ marke: b.id })} className={`chip${brand?.id === b.id ? " active" : ""}`} aria-current={brand?.id === b.id ? "true" : undefined}>
             <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: b.color ?? "var(--accent)", marginRight: 6 }} />
             {b.name}
           </Link>
         ))}
         {sp.anlass && <Link href={href({ anlass: undefined })} className="chip active">Anlass: {occasionByKey(sp.anlass)?.name ?? sp.anlass} ✕</Link>}
       </div>
+
+      {/* Projekte nach Phasen – eigene vor KI-Vorschlägen, Überfälliges zuerst */}
+        <div className="stack" data-testid="idea-board">
+          <div className="between">
+            <h2>{sp.verworfen ? "Verworfene Ideen" : "Projekte"}</h2>
+            <Link className="small" href={href({ verworfen: sp.verworfen ? undefined : "1" })}>{sp.verworfen ? "← zurück zu den Projekten" : "Verworfene anzeigen"}</Link>
+          </div>
+          <div className="idea-board">
+            {(sp.verworfen ? [null] : PHASES).map((phase) => {
+              const list = phaseOrder(
+                ideas.filter((i) => (phase ? i.status !== "rejected" && ideaPhase(i.status) === phase : i.status === "rejected")).map((i) => ({ ...i, date: i.launchDate, done: i.status === "live" || ideaUnaccepted(i.status) })),
+                today,
+              );
+              return (
+                <div key={phase ?? "rejected"} className="idea-col" data-testid={`phase-${phase ?? "verworfen"}`}>
+                  <div className="idea-col-head">{phase ? PHASE_LABEL[phase] : "Verworfen"} <span className="muted">{list.length}</span></div>
+                  {list.map((i) => {
+                    const b = brandById.get(i.brandId);
+                    const margin = i.targetPrice && i.costEstimate ? Number(i.targetPrice) - Number(i.costEstimate) : null;
+                    const done = i.checklist.filter((c) => c.done).length;
+                    const late = isOverdue(i.launchDate, i.status === "live" || ideaUnaccepted(i.status), today);
+                    return (
+                      <Link key={i.id} href={`/marken/ideen/${i.id}`} className="idea-card" data-testid="idea-card">
+                        <div className="small muted">
+                          {b && <span className="brand-dot" style={{ background: b.color ?? "var(--area)" }} aria-hidden="true" />}{b?.name}{i.occasion ? ` · ${occasionByKey(i.occasion)?.name ?? i.occasion}` : ""}
+                          {i.status === "review" && <span className="tag tag-warn" style={{ marginLeft: 6 }}>prüfen</span>}
+                          {i.source === "ai" && <span className="tag tag-neutral" style={{ marginLeft: 6 }}>KI-Vorschlag</span>}
+                          {late && <span className="tag tag-danger" style={{ marginLeft: 6 }} data-testid="idea-overdue">überfällig</span>}
+                        </div>
+                        <div style={{ fontWeight: 600 }}>{i.title}</div>
+                        {i.concept && <div className="small" style={{ color: "var(--ink-2)" }}>{i.concept.slice(0, 140)}{i.concept.length > 140 ? " …" : ""}</div>}
+                        <div className="small muted">
+                          {i.targetPrice ? `VK ${formatEuro(Number(i.targetPrice))}` : ""}{margin !== null ? ` · Marge ca. ${formatEuro(margin)}` : ""}
+                          {i.checklist.length && ["planned", "in_progress"].includes(i.status) ? ` · ${done}/${i.checklist.length} erledigt` : ""}
+                          {i.launchDate ? <span style={{ color: late ? "var(--danger)" : undefined }} data-kind={ideaDateKind(i.status)}> · {ideaDateKind(i.status) === "termin" ? `Launch ${formatDate(i.launchDate)}` : `Wunsch-Launch ${formatDate(i.launchDate)} (unverbindlich)`}</span> : ""}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
       {/* Saisonplaner */}
       <section className="card card-pad stack">
@@ -123,8 +167,8 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
             />
           )}
           {ai?.apiKey && (
-            <section className="card card-pad stack">
-              <h2>Ideen auf Zuruf</h2>
+            <details className="card card-pad stack">
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>KI: Ideen auf Zuruf</summary>
               <div className="small muted">Ohne festen Anlass – z. B. neue Box-Themen, Trend-Produkte oder Zubehör für ein geplantes Video.</div>
               {shown.map((b) => (
                 <div key={b.id} className="stack" style={{ gap: 4 }}>
@@ -132,44 +176,9 @@ export default async function MarkenPage({ searchParams }: { searchParams: Promi
                   <SuggestIdeas brandId={b.id} withWish label={`KI: Ideen für ${b.name}`} />
                 </div>
               ))}
-            </section>
+            </details>
           )}
       </div>
-
-      {/* Ideen-Board */}
-        <div className="stack">
-          <div className="between">
-            <h2>{sp.verworfen ? "Verworfene Ideen" : "Ideen-Board"}</h2>
-            <Link className="small" href={href({ verworfen: sp.verworfen ? undefined : "1" })}>{sp.verworfen ? "← zurück zum Board" : "Verworfene anzeigen"}</Link>
-          </div>
-          <div className="idea-board">
-            {(sp.verworfen ? (["rejected"] as const) : COLUMNS).map((col) => {
-              const list = ideas.filter((i) => i.status === col);
-              return (
-                <div key={col} className="idea-col">
-                  <div className="idea-col-head">{IDEA_STATUS_LABEL[col][0]} <span className="muted">{list.length}</span></div>
-                  {list.map((i) => {
-                    const b = brandById.get(i.brandId);
-                    const margin = i.targetPrice && i.costEstimate ? Number(i.targetPrice) - Number(i.costEstimate) : null;
-                    const done = i.checklist.filter((c) => c.done).length;
-                    return (
-                      <Link key={i.id} href={`/marken/ideen/${i.id}`} className="idea-card" style={{ borderLeftColor: b?.color ?? "var(--accent)" }}>
-                        <div className="small muted">{b?.name}{i.occasion ? ` · ${occasionByKey(i.occasion)?.name ?? i.occasion}` : ""}{i.source === "ai" ? " · KI" : ""}</div>
-                        <div style={{ fontWeight: 600 }}>{i.title}</div>
-                        {i.concept && <div className="small" style={{ color: "var(--ink-2)" }}>{i.concept.slice(0, 140)}{i.concept.length > 140 ? " …" : ""}</div>}
-                        <div className="small muted">
-                          {i.targetPrice ? `VK ${formatEuro(Number(i.targetPrice))}` : ""}{margin !== null ? ` · Marge ca. ${formatEuro(margin)}` : ""}
-                          {i.checklist.length && ["planned", "in_progress"].includes(i.status) ? ` · ${done}/${i.checklist.length} erledigt` : ""}
-                          {i.launchDate ? ` · Launch ${formatDate(i.launchDate)}` : ""}
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
     </>
   );

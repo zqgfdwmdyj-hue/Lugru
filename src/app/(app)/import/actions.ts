@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { lesbarerFehler } from "@/lib/fehler-text";
 import { requireArea } from "@/lib/auth/session";
 import { runAfterImport } from "@/lib/hooks";
 import { importAnyFile, type FileResult } from "@/lib/imports/dispatch";
@@ -29,7 +30,7 @@ export async function importFiles(_prev: ImportAllState, formData: FormData): Pr
       );
     } catch (e) {
       console.error("Import fehlgeschlagen", file.name, e);
-      results.push({ fileName: file.name, ok: false, summary: "Die Datei konnte nicht verarbeitet werden." });
+      results.push({ fileName: file.name, ok: false, summary: `Die Datei konnte nicht verarbeitet werden – ${lesbarerFehler(e)}` });
     }
   }
   if (results.some((r) => r.ok)) await runAfterImport(session.tenantId);

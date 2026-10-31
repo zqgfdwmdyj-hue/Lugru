@@ -45,7 +45,7 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                 <td className="small" style={{ maxWidth: 260 }}>{r.textExcerpt ?? ""}</td>
                 <td className="small" style={{ maxWidth: 240 }}>
                   {r.stotaxSentAt ? (
-                    <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE")}`}>übertragen</span>
+                    <span className="tag tag-ok" title={`gesendet ${new Date(r.stotaxSentAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}`}>übertragen</span>
                   ) : cfg ? (
                     <form action={resendAction} style={{ display: "inline" }}>
                       <input type="hidden" name="id" value={r.id} />
@@ -57,7 +57,7 @@ export default async function BelegePage({ searchParams }: { searchParams: Promi
                 <td style={{ whiteSpace: "nowrap" }}>
                   {r.fileId && <a className="btn btn-small" href={`/datei/${r.fileId}`} target="_blank" rel="noreferrer">PDF</a>}
                   {!r.stotaxSentAt && (
-                    <form action={deleteAction} style={{ display: "inline" }}><input type="hidden" name="id" value={r.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 6, color: "var(--muted)" }}>löschen</button></form>
+                    <form action={deleteAction} style={{ display: "inline" }}><input type="hidden" name="id" value={r.id} /><button className="btn-link small danger" type="submit" style={{ marginLeft: 6 }}>löschen</button></form>
                   )}
                 </td>
               </tr>

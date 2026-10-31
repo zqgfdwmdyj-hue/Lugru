@@ -1,0 +1,1 @@
+ALTER TABLE "memberships" ADD COLUMN "private_scope" text DEFAULT 'voll' NOT NULL;

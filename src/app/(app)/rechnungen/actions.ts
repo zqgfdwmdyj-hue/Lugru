@@ -1,14 +1,15 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, schema } from "@/db";
-import { INVOICE_KINDS } from "@/db/schema";
+import { DOC_TYPES, INVOICE_KINDS, type InvoiceChecks } from "@/db/schema";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount, parseDate } from "@/lib/numbers";
 import { sendInvoiceToStotax } from "@/lib/invoices/receipts";
 import { autoMatch, ingestInvoice, refreshInvoiceTasks, syncDrive } from "@/lib/invoices/service";
+import { recheckInvoices } from "@/lib/invoices/review";
 
 export type InvState = { ok: boolean; message: string } | null;
 const uuid = z.string().uuid();
@@ -50,13 +51,24 @@ export async function saveInvoice(fd: FormData) {
   const id = uuid.parse(fd.get("id"));
   const inv = await own(session.tenantId, id);
   const kind = z.enum(INVOICE_KINDS).parse(fd.get("kind"));
+  const docType = z.enum(DOC_TYPES).catch(inv.docType).parse(fd.get("docType") ?? inv.docType);
   const supplierId = uuid.safeParse(fd.get("supplierId")).success ? String(fd.get("supplierId")) : null;
+  const invoiceDate = parseDate(String(fd.get("invoiceDate") ?? "")) ?? inv.invoiceDate;
+  // Wer speichert, hat Datum und Belegart gesehen: diese Hinweise sind erledigt und kommen nicht wieder.
+  const manual = new Set(inv.checks.manual ?? []);
+  manual.add("date");
+  manual.add("docType");
+  const checks: InvoiceChecks = { ...inv.checks, manual: [...manual] };
+  delete checks.date;
+  delete checks.docType;
   await db
     .update(schema.invoices)
     .set({
       kind,
+      docType,
+      checks,
       supplierId,
-      invoiceDate: parseDate(String(fd.get("invoiceDate") ?? "")) ?? inv.invoiceDate,
+      invoiceDate,
       invoiceNumber: String(fd.get("invoiceNumber") ?? "").trim() || null,
       orderNumber: String(fd.get("orderNumber") ?? "").trim() || null,
       totalGross: parseAmount(fd.get("totalGross")),
@@ -120,4 +132,72 @@ export async function stotaxInvoiceAction(fd: FormData) {
     // Fehler steht an der Rechnung (stotax_error) und wird auf der Seite angezeigt.
   }
   revalidatePath(`/rechnungen/${id}`);
+}
+
+export type BulkState = { ok: boolean; message: string } | null;
+const BULK_OPS = ["ware", "kosten", "ignorieren", "datum", "kein-duplikat", "pruefen"] as const;
+
+/** Sammelbearbeitung in der Liste: Art setzen, ignorieren, Datumsvorschläge übernehmen, Duplikat-Hinweis erledigen. */
+export async function bulkInvoiceAction(_prev: BulkState, fd: FormData): Promise<BulkState> {
+  const session = await requireArea("buchhaltung");
+  const op = z.enum(BULK_OPS).safeParse(fd.get("op"));
+  const ids = fd.getAll("ids").map(String).filter((x) => uuid.safeParse(x).success).slice(0, 500);
+  if (!op.success) return { ok: false, message: "Unbekannte Aktion." };
+  if (!ids.length) return { ok: false, message: "Bitte zuerst Rechnungen auswählen." };
+  const I = schema.invoices;
+  const rows = await db.select().from(I).where(and(eq(I.tenantId, session.tenantId), inArray(I.id, ids)));
+  let n = 0;
+  for (const r of rows) {
+    if (op.data === "ware" || op.data === "kosten") {
+      const kind = op.data === "ware" ? "goods" : "expense";
+      await db.update(I).set({ kind, status: kind === "expense" ? "matched" : r.status === "ignored" || r.status === "review" ? "new" : r.status, updatedAt: new Date() }).where(eq(I.id, r.id));
+      if (kind === "goods") await autoMatch(session.tenantId, r.id);
+      n++;
+    } else if (op.data === "ignorieren") {
+      await db.update(I).set({ status: "ignored", updatedAt: new Date() }).where(eq(I.id, r.id));
+      n++;
+    } else if (op.data === "datum") {
+      const s = r.checks.date?.suggestion;
+      if (!s) continue;
+      const checks: InvoiceChecks = { ...r.checks, manual: [...new Set([...(r.checks.manual ?? []), "date" as const])] };
+      delete checks.date;
+      await db.update(I).set({ invoiceDate: s, checks, updatedAt: new Date() }).where(eq(I.id, r.id));
+      n++;
+    } else if (op.data === "kein-duplikat") {
+      if (!r.checks.duplicateOf) continue;
+      const checks: InvoiceChecks = { ...r.checks, notDuplicate: true };
+      delete checks.duplicateOf;
+      await db.update(I).set({ checks }).where(eq(I.id, r.id));
+      n++;
+    }
+  }
+  if (op.data === "pruefen") n = (await recheckInvoices(session.tenantId, { ids: rows.map((r) => r.id) })).checked;
+  await refreshInvoiceTasks(session.tenantId);
+  revalidatePath("/", "layout");
+  const what: Record<(typeof BULK_OPS)[number], string> = { ware: "als Wareneinkauf eingeordnet", kosten: "als Betriebskosten eingeordnet", ignorieren: "ignoriert (bleiben gespeichert)", datum: "mit dem vorgeschlagenen Datum gespeichert", "kein-duplikat": "als „kein Duplikat“ bestätigt", pruefen: "neu geprüft" };
+  const skipped = rows.length - n;
+  return { ok: n > 0, message: `${n} Rechnung${n === 1 ? "" : "en"} ${what[op.data]}.${skipped > 0 ? ` ${skipped} übersprungen (kein Vorschlag bzw. kein Hinweis).` : ""}` };
+}
+
+/** Einzelner Prüfhinweis an der Rechnung: Vorschlag übernehmen, Datum bestätigen, Duplikat-Hinweis erledigen. */
+export async function resolveCheckAction(fd: FormData) {
+  const session = await requireArea("buchhaltung");
+  const id = uuid.parse(fd.get("id"));
+  const inv = await own(session.tenantId, id);
+  const op = z.enum(["datum-uebernehmen", "datum-ok", "kein-duplikat", "duplikat-ignorieren"]).parse(fd.get("op"));
+  const checks: InvoiceChecks = { ...inv.checks };
+  const set: Partial<typeof schema.invoices.$inferInsert> = { updatedAt: new Date() };
+  if (op === "datum-uebernehmen" || op === "datum-ok") {
+    if (op === "datum-uebernehmen" && inv.checks.date?.suggestion) set.invoiceDate = inv.checks.date.suggestion;
+    checks.manual = [...new Set([...(checks.manual ?? []), "date" as const])];
+    delete checks.date;
+  } else if (op === "kein-duplikat") {
+    checks.notDuplicate = true;
+    delete checks.duplicateOf;
+  } else {
+    set.status = "ignored";
+  }
+  await db.update(schema.invoices).set({ ...set, checks }).where(and(eq(schema.invoices.id, id), eq(schema.invoices.tenantId, session.tenantId)));
+  await refreshInvoiceTasks(session.tenantId);
+  revalidatePath("/", "layout");
 }

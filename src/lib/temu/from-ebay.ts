@@ -121,7 +121,7 @@ export async function temuPanel(tenantId: string, a: ListingAttempt): Promise<Te
 export type TemuPublishInput = { factor: number; food?: boolean; prices?: Record<string, number>; weightG: number; lengthCm: number; widthCm: number; heightCm: number };
 
 /** Angebot bei Temu anlegen und je SKU ein Wawi-Angebot (Kanal Temu, Entwurf bis zur Freigabe). */
-export async function publishListingToTemu(tenantId: string, a: ListingAttempt, input: TemuPublishInput, src: TemuSource): Promise<{ goodsId: string; skus: number }> {
+export async function publishListingToTemu(tenantId: string, a: ListingAttempt, input: TemuPublishInput, src: TemuSource): Promise<{ goodsId: string; skus: number; quantity: number; fromWawi: boolean }> {
   if (a.status !== "published" || !a.sku) throw new Error("Erst auf eBay veröffentlichen – dann liegen die Bilder öffentlich bei eBay und Temu kann sie laden.");
   if (a.condition !== "NEW") throw new Error("Nur Neuware – Gebrauchtes braucht bei Temu einen eigenen Gebrauchtwaren-Shop.");
   const key = temuGoodsKey(a, src);
@@ -181,7 +181,7 @@ export async function publishListingToTemu(tenantId: string, a: ListingAttempt, 
   // Gleich nachsehen, wo Temu das Produkt einsortiert hat (aktiv, unvollständig, Entwurf …).
   const ids = (await temuRows(tenantId, key)).map((r) => r.id);
   await refreshTemuListings(tenantId, ids).catch(() => 0);
-  return { goodsId, skus: goods.skus.length };
+  return { goodsId, skus: goods.skus.length, quantity: goods.skus.reduce((n, x) => n + x.quantity, 0), fromWawi: Object.keys(quantities).length > 0 };
 }
 
 export async function publishAttemptToTemu(tenantId: string, a: ListingAttempt, input: TemuPublishInput): Promise<TemuPanel> {

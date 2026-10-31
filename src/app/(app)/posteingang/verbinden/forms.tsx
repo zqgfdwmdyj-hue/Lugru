@@ -1,13 +1,15 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { connectImap, finishPaste, type ConnectState, type PasteState } from "./actions";
 
 export function ImapForm() {
   const [state, action, pending] = useActionState<ConnectState, FormData>(connectImap, null);
+  const keep = useKeepForm(state, action);
   const s = state?.settings;
   return (
-    <form action={action} className="stack" style={{ gap: 12 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 12 }}>
       <div className="field">
         <label className="label" htmlFor="address">E-Mail-Adresse</label>
         <input className="input" id="address" name="address" type="email" required autoComplete="off" placeholder="info@deine-firma.de" defaultValue={state?.address ?? ""} key={state?.address ?? ""} />
@@ -17,7 +19,10 @@ export function ImapForm() {
         <input className="input" id="password" name="password" type="password" required autoComplete="new-password" />
         <span className="small muted">{state ? "Bitte erneut eingeben. " : ""}Wird verschlüsselt gespeichert und nie wieder angezeigt.</span>
       </div>
-      {state && !state.ok && <div className="notice notice-warn small">{state.message}</div>}
+      <label className="small" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <input type="checkbox" name="nurAbruf" data-testid="imap-nur-abruf" /> Nur abrufen (nicht über dieses Postfach senden)
+      </label>
+      {state && !state.ok && <div className="notice notice-warn small" data-testid="imap-fehler">{state.message}</div>}
       {state?.hint && <div className="notice notice-info small">{state.hint}</div>}
       <details open={Boolean(state?.manual)} key={state ? JSON.stringify(s) : "leer"}>
         <summary className="small" style={{ cursor: "pointer" }}>Server selbst eintragen {s?.provider ? `(erkannt: ${s.provider})` : "(sonst automatisch)"}</summary>
@@ -46,8 +51,9 @@ export function ImapForm() {
 
 export function PasteForm({ provider }: { provider: "google" | "microsoft" }) {
   const [state, action, pending] = useActionState<PasteState, FormData>(finishPaste, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="stack" style={{ gap: 8 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="stack" style={{ gap: 8 }}>
       <label className="label" htmlFor={`url-${provider}`}>2. Adresse aus der Browserzeile hier einfügen</label>
       <input className="input" id={`url-${provider}`} name="url" required placeholder="http://localhost/?state=…&code=…" style={{ fontFamily: "var(--mono)", fontSize: 12 }} />
       <div><button className="btn btn-primary btn-small" type="submit" disabled={pending}>{pending ? "Verbinde …" : "Verbinden"}</button></div>

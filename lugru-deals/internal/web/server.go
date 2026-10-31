@@ -55,6 +55,8 @@ type Server struct {
 
 	// reaktionen ist der Hintergrund-Abgleich der Discord-Reaktionen.
 	reaktionen *abgleich
+	// seller ist das Senden der Deals ans Lugru-Seller-System (sellerdeals.go).
+	seller *sellerAbgleich
 	// botBasisURL ersetzt Discords API in Tests; leer heißt Discord selbst.
 	botBasisURL string
 
@@ -114,6 +116,7 @@ func Neu(s *store.Store, k *keepa.Client, hc *http.Client, envKeepaKey string) *
 		http:        hc,
 		envKeepaKey: envKeepaKey,
 		reaktionen:  &abgleich{anstoss: make(chan struct{}, 1)},
+		seller:      &sellerAbgleich{anstoss: make(chan struct{}, 1)},
 	}
 	// Eigene Funktionen der Vorlagen: fahne liefert das Länder-SVG der
 	// Marktübersicht, kanalfarbe die Farbklasse eines Channels.

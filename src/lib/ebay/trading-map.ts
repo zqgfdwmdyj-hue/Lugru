@@ -32,6 +32,23 @@ export function tradingBody(xml: string, call: string): XmlObject {
   return body;
 }
 
+/**
+ * eBay lehnt Trading-Änderungen (ReviseFixedPriceItem, ReviseInventoryStatus) an Angeboten ab, die über die
+ * Inventory API angelegt wurden („warenbestandsbasierte Angebotsverwaltung … nicht unterstützt“). Die lassen
+ * sich nur über die Inventory API ändern.
+ */
+export function isInventoryManagedError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  // eBays Fehlernummer dafür ist 21919474 – unabhängig von der Sprache der Meldung.
+  if (e instanceof TradingError && e.codes.includes(INVENTORY_MANAGED_CODE)) return true;
+  // Text vereinheitlichen: weiche Trennstriche, unsichtbare Zeichen und geschützte Leerzeichen stören den Vergleich.
+  const msg = e.message.normalize("NFKC").replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, "").replace(/\s+/g, " ");
+  return /warenbestands[- ]?basiert|inventory[- ]?based listing|not allowed for inventory items|nicht für (?:Bestands|Inventar)artikel/i.test(msg);
+}
+
+/** eBay-Fehlernummer „Inventory-based listing management is not currently supported by this tool“. */
+export const INVENTORY_MANAGED_CODE = "21919474";
+
 export const escXml = (s: string) => s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 const num = (v: XmlValue | undefined) => {

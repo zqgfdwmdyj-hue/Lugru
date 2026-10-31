@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeItems, conditionOf, inventoryStatusXml, legacyItem, matchSpecifics, realGtin, tradingBody, TradingError } from "@/lib/ebay/trading-map";
+import { activeItems, conditionOf, inventoryStatusXml, isInventoryManagedError, legacyItem, matchSpecifics, realGtin, tradingBody, TradingError } from "@/lib/ebay/trading-map";
 import { parseXml, xmlAt, xmlList, xmlText } from "@/lib/xml";
 
 // Ältere eBay-Angebote über die Trading API. Fiktive Angebote, Firmen und Nummern.
@@ -113,5 +113,27 @@ describe("eBay Trading API – ältere Angebote", () => {
     expect(matchSpecifics(stored, [{ name: "Größe", value: "L" }, { name: "Farbe", value: "blau" }])).toBe(true);
     expect(matchSpecifics(stored, [{ name: "Farbe", value: "Rot" }, { name: "Größe", value: "L" }])).toBe(false);
     expect(matchSpecifics([], [])).toBe(true);
+  });
+});
+
+describe("Angebote aus der Inventory API (anderes Programm)", () => {
+  it("erkennt eBays Ablehnung beim Ändern über die Trading API – deutsch und englisch", () => {
+    const de = `<ReviseFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack><Errors><ShortMessage>Warenbestandsbasierte Angebote</ShortMessage><LongMessage>Die warenbestandsbasierte Angebotsverwaltung wird derzeit von diesem Tool nicht unterstützt. Bitte probieren Sie es mit dem Tool, in dem Sie das Angebot erstellt haben.</LongMessage><ErrorCode>99999</ErrorCode><SeverityCode>Error</SeverityCode></Errors></ReviseFixedPriceItemResponse>`;
+    let err: unknown;
+    try {
+      tradingBody(de, "ReviseFixedPriceItem");
+    } catch (e) {
+      err = e;
+    }
+    expect(isInventoryManagedError(err)).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseInventoryStatus): Inventory-based listing management is not currently supported by this tool.", []))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Der Titel ist zu lang.", []))).toBe(false);
+    expect(isInventoryManagedError("warenbestandsbasiert")).toBe(false);
+  });
+  it("erkennt die Ablehnung auch an eBays Fehlernummer und trotz unsichtbarer Zeichen", () => {
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Vorgang nicht möglich.", ["21919474"]))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Die warenbestands\u00ADbasierte Angebotsverwaltung wird derzeit nicht unterstützt.", []))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): This operation is not allowed for inventory items.", []))).toBe(true);
+    expect(isInventoryManagedError(new TradingError("eBay (ReviseFixedPriceItem): Der Preis ist zu niedrig.", ["21919999"]))).toBe(false);
   });
 });

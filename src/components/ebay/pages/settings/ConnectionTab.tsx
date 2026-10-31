@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api';
-import type { TabContext } from './types';
+import type { StatusData, TabContext } from './types';
 
 
 function formatDate(iso: string | null): string {
@@ -8,7 +8,27 @@ function formatDate(iso: string | null): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime())
     ? ''
-    : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    : d.toLocaleDateString('de-DE', { timeZone: "Europe/Berlin", day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+const dateTime = (iso: string) =>
+  new Date(iso).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+/** Läuft die neue eBay-Listing-Schnittstelle – oder fällt das System auf die bisherige zurück? */
+function ListingApiNote({ a }: { a: NonNullable<StatusData['listingApi']> }) {
+  const failing = a.lastErrorAt && (!a.lastOkAt || a.lastErrorAt > a.lastOkAt);
+  let tag: [string, string];
+  let text: string;
+  if (a.tradingOnly) [tag, text] = [['tag-warn', 'abgeschaltet'], 'Per Notschalter abgeschaltet – alles läuft über die bisherige Trading-Schnittstelle.'];
+  else if (a.granted === false) [tag, text] = [['tag-warn', 'nicht freigegeben'], 'Diese Verbindung erlaubt die neue Schnittstelle noch nicht. Unten mit Häkchen „Neue eBay-Listing-Schnittstelle“ einmal neu verbinden. Bis dahin läuft alles wie bisher.'];
+  else if (failing) [tag, text] = [['tag-warn', 'Rückfall'], `Zuletzt am ${dateTime(a.lastErrorAt!)} auf die bisherige Schnittstelle ausgewichen: ${a.lastError ?? ''}`];
+  else if (a.lastOkAt) [tag, text] = [['tag-ok', 'aktiv'], `Zuletzt genutzt am ${dateTime(a.lastOkAt)}.`];
+  else [tag, text] = [['tag-missing', 'noch nicht genutzt'], 'Wird beim nächsten Abruf genutzt; klappt es nicht, springt die bisherige Schnittstelle ein.'];
+  return (
+    <p className="small" data-testid="ebay-listing-api">
+      <strong>Neue eBay-Schnittstelle:</strong> <span className={`tag ${tag[0]}`}>{tag[1]}</span> {text}
+    </p>
+  );
 }
 
 export function ConnectionTab({ ctx }: { ctx: TabContext }) {
@@ -17,6 +37,9 @@ export function ConnectionTab({ ctx }: { ctx: TabContext }) {
   const [redirectUrl, setRedirectUrl] = useState('');
   /** Bestellungen lesen (für Rechnungen) mit anfragen — abschaltbar, falls eBay die Anmeldung damit ablehnt. */
   const [withOrders, setWithOrders] = useState(true);
+  const [withAnalytics, setWithAnalytics] = useState(true);
+  /** Neue Listing-Schnittstelle (sell.listing) – abschaltbar, falls eBay sie für den Entwicklerzugang noch nicht freigibt. */
+  const [withListing, setWithListing] = useState(true);
 
   const until = formatDate(status?.connectionExpiresAt ?? null);
   /** Zugangsdaten der gewählten Umgebung – im bisherigen Tool per setup.cmd, hier im Formular. */
@@ -96,6 +119,7 @@ export function ConnectionTab({ ctx }: { ctx: TabContext }) {
                 : 'Mit eBay verbunden'
               : 'Noch nicht mit eBay verbunden.'}
           </div>
+          {status.connected && status.listingApi && <ListingApiNote a={status.listingApi} />}
           <p className="muted">
             Die Verbindung erneuert sich von selbst. Läuft sie ab oder wechselst du das eBay-Konto,
             hier neu verbinden.
@@ -105,15 +129,24 @@ export function ConnectionTab({ ctx }: { ctx: TabContext }) {
             <input type="checkbox" checked={withOrders} onChange={(e) => setWithOrders(e.target.checked)} />
             Bestellungen lesen erlauben (nötig für Rechnungen)
           </label>
+          <label className="check">
+            <input type="checkbox" checked={withAnalytics} onChange={(e) => setWithAnalytics(e.target.checked)} />
+            Verkehrsdaten lesen erlauben (Einblendungen, Klicks, Käufe für „Angebote prüfen")
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={withListing} onChange={(e) => setWithListing(e.target.checked)} />
+            Neue eBay-Listing-Schnittstelle erlauben (ersetzt die alte Trading-Schnittstelle für Angebotsliste, Prüfen, Ändern und Mengen)
+          </label>
           <p className="muted small">
-            Zeigt eBay schon vor der Anmeldung „invalid_request", das Häkchen entfernen und erneut verbinden.
+            Zeigt eBay schon vor der Anmeldung „invalid_request", erst das Häkchen „Neue Listing-Schnittstelle", dann „Verkehrsdaten", dann „Bestellungen" entfernen und erneut verbinden.
             Klappt es dann, ist die Bestell-Berechtigung für deinen Entwicklerzugang nicht freigegeben;
             sonst passt der RuName nicht zur Client ID (oben prüfen).
           </p>
           <button
             onClick={() =>
               run(async () => {
-                const r = await api<{ url: string }>(`/auth/url${withOrders ? '' : '?orders=0'}`);
+                const q = [withOrders ? '' : 'orders=0', withAnalytics ? '' : 'analytics=0', withListing ? '' : 'listing=0'].filter(Boolean).join('&');
+                const r = await api<{ url: string }>(`/auth/url${q ? `?${q}` : ''}`);
                 setConsentUrl(r.url);
                 window.open(r.url, '_blank');
               }, 'eBay-Anmeldung geöffnet.')

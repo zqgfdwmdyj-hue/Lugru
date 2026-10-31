@@ -34,3 +34,14 @@ export async function feedFromLeadAction(fd: FormData) {
   const feedId = await feedFromLead(session.tenantId, uuid.parse(fd.get("id")));
   redirect(`/lieferanten/${feedId}`);
 }
+
+/** Zuständig setzen (oder entfernen); passende Anleitungen hängen automatisch an. */
+export async function zuweisenAction(fd: FormData) {
+  const session = await requireArea("start");
+  const id = uuid.parse(fd.get("id"));
+  const wer = String(fd.get("wer") ?? "");
+  const { zustaendigSetzen } = await import("@/lib/delegieren/service");
+  // Interne Person (Konto-ID) oder extern („extern:Steuerberater“); leer = niemand Bestimmtes.
+  await zustaendigSetzen(session.tenantId, id, !wer ? null : wer.startsWith("extern:") ? wer : `user:${uuid.parse(wer)}`);
+  redirect(`/board?b=todos${fd.get("alle") === "1" ? "&alle=1" : ""}`);
+}

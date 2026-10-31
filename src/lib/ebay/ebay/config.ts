@@ -32,6 +32,29 @@ export const SCOPES_USER_READONLY = [
  * „Aufträge" und das Zurückmelden der Sendungsnummer.
  */
 export const SCOPES_USER = [...SCOPES_USER_LEGACY, 'https://api.ebay.com/oauth/api_scope/sell.fulfillment'];
+/**
+ * Verkehrsdaten der Angebote (Einblendungen, Aufrufe, Käufe) für „Angebote prüfen". Nur lesend und
+ * optional: ältere Verbindungen ohne diese Zustimmung laufen weiter, nur ohne Verkehrsdaten.
+ */
+export const SCOPE_ANALYTICS = 'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly';
+/**
+ * Neue eBay-Listing-API (GraphQL, ersetzt Trading GetItem/GetMyeBaySelling/ReviseFixedPriceItem/
+ * ReviseInventoryStatus). Optional wie die Verkehrsdaten: ältere Verbindungen ohne diese Zustimmung laufen
+ * über die Trading API weiter, bis einmal neu verbunden wird.
+ */
+export const SCOPE_LISTING = 'https://api.ebay.com/oauth/api_scope/sell.listing';
+
+/** eBay GraphQL (Listing API). Tests leiten über EBAY_GRAPHQL_URL auf einen Mock um. */
+export function graphqlUrl(env: Env): string {
+  if (process.env.EBAY_GRAPHQL_URL) return process.env.EBAY_GRAPHQL_URL;
+  return env === 'production' ? 'https://graphqlapi.ebay.com/graphql' : 'https://graphqlapi.sandbox.ebay.com/graphql';
+}
+
+/** Media API (Bilder zu eBay hochladen). In der Sandbox nicht verfügbar – dort bleibt der alte Weg. */
+export function mediaBase(env: Env): string | null {
+  if (process.env.EBAY_MEDIA_URL) return process.env.EBAY_MEDIA_URL;
+  return env === 'production' ? 'https://apim.ebay.com/commerce/media/v1_beta' : null;
+}
 
 export function apiBase(env: Env): string {
   // Nur für Tests: eBay-Aufrufe auf einen Mock umleiten. In Betrieb nicht gesetzt.

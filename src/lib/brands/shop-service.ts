@@ -1,11 +1,12 @@
 import "server-only";
-import { and, asc, desc, eq, gte, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { db, schema } from "@/db";
+import type { TikTokMarketItem } from "@/db/tables/brands";
 import { askClaude, modelFor } from "@/lib/ai/claude";
 import { todayIso } from "@/lib/dates";
 import { getIntegration } from "@/lib/integrations/store";
 import { keepaKey, keepaProducts, keepaSellerNames } from "@/lib/integrations/clients/keepa";
-import { asinFrom, listingPrompt, parseKeepaOwn, parseTikTokExport } from "./shop";
+import { asinFrom, listingPrompt, parseKeepaOwn, parseTikTokImport } from "./shop";
 
 const P = schema.brandProducts;
 const SNAP = schema.productSnapshots;
@@ -88,6 +89,44 @@ export async function productHistory(tenantId: string, productId: string) {
     .orderBy(asc(SNAP.day));
 }
 
+/** B15.15: Verlauf aller Produkte einer Marke in einer Abfrage (statt einer je Produkt). */
+export async function productHistories(tenantId: string, productIds: string[]) {
+  const out = new Map<string, (typeof SNAP.$inferSelect)[]>(productIds.map((id) => [id, []]));
+  if (!productIds.length) return out;
+  const rows = await db
+    .select()
+    .from(SNAP)
+    .where(and(eq(SNAP.tenantId, tenantId), inArray(SNAP.productId, productIds), gte(SNAP.day, new Date(Date.now() - 120 * 86400_000).toISOString().slice(0, 10))))
+    .orderBy(asc(SNAP.day));
+  for (const r of rows) out.get(r.productId)?.push(r);
+  return out;
+}
+
+type TikTokSort = "sales" | "revenue" | "videos";
+type TikTokAnsicht = { id: string; fileName: string | null; createdAt: Date; meta: (typeof MI.$inferSelect)["meta"]; anzahl: number; top: Record<TikTokSort, TikTokMarketItem[]> };
+/** Aufbereitete Importe (unveränderlich je ID) – große Exporte werden nicht bei jedem Aufruf neu gelesen und sortiert. */
+const tiktokCache = new Map<string, Omit<TikTokAnsicht, "id" | "fileName" | "createdAt" | "meta">>();
+
+/**
+ * B15.15: Letzter TikTok-Import einer Marke, fertig sortiert (je 40 nach Verkäufen, Umsatz, Videos). Erst nur Kopfdaten
+ * lesen; die Produktliste nur beim ersten Aufruf je Import. Unsichere Umsätze zählen beim Sortieren nach Umsatz nicht.
+ */
+export async function tiktokAnsicht(tenantId: string, brandId: string): Promise<TikTokAnsicht | null> {
+  const [kopf] = await db.select({ id: MI.id, fileName: MI.fileName, createdAt: MI.createdAt, meta: MI.meta }).from(MI).where(and(eq(MI.tenantId, tenantId), eq(MI.brandId, brandId), eq(MI.source, "helium10-tiktok"))).orderBy(desc(MI.createdAt)).limit(1);
+  if (!kopf) return null;
+  let a = tiktokCache.get(kopf.id);
+  if (!a) {
+    const [r] = await db.select({ items: MI.items }).from(MI).where(and(eq(MI.tenantId, tenantId), eq(MI.id, kopf.id)));
+    const items = r?.items ?? [];
+    const wert = (i: TikTokMarketItem, k: TikTokSort) => (k === "revenue" && i.revenueSuspect ? 0 : (i[k] ?? 0));
+    const sortiert = (k: TikTokSort) => [...items].sort((x, y) => wert(y, k) - wert(x, k)).slice(0, 40);
+    a = { anzahl: items.length, top: { sales: sortiert("sales"), revenue: sortiert("revenue"), videos: sortiert("videos") } };
+    if (tiktokCache.size >= 30) tiktokCache.delete(tiktokCache.keys().next().value!);
+    tiktokCache.set(kopf.id, a);
+  }
+  return { ...kopf, ...a };
+}
+
 export async function latestTikTokImport(tenantId: string, brandId: string) {
   const [r] = await db.select().from(MI).where(and(eq(MI.tenantId, tenantId), eq(MI.brandId, brandId), eq(MI.source, "helium10-tiktok"))).orderBy(desc(MI.createdAt)).limit(1);
   return r ?? null;
@@ -104,10 +143,10 @@ export async function tiktokTopSellers(tenantId: string, brandId: string, n = 15
 }
 
 export async function importTikTok(tenantId: string, brandId: string, fileName: string, rows: string[][]) {
-  const items = parseTikTokExport(rows);
+  const { items, columns, currency } = parseTikTokImport(rows);
   if (!items.length) throw new Error("In der Datei wurden keine Produkte gefunden.");
-  await db.insert(MI).values({ tenantId, brandId, source: "helium10-tiktok", fileName, items });
-  return items.length;
+  await db.insert(MI).values({ tenantId, brandId, source: "helium10-tiktok", fileName, items, meta: { columns, currency } });
+  return { n: items.length, columns, currency, suspect: items.filter((i) => i.revenueSuspect).length };
 }
 
 export async function suggestListing(tenantId: string, productId: string) {

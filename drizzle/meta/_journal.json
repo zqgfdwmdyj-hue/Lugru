@@ -295,6 +295,482 @@
       "when": 1792339876815,
       "tag": "0041_content_wochenplan",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1792664248520,
+      "tag": "0042_paletten",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792674682830,
+      "tag": "0043_paletten_plus",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1792675997373,
+      "tag": "0044_letzte_anmeldung",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1792824378115,
+      "tag": "0045_privat",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1792825795915,
+      "tag": "0046_paletten_abholung",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792832120116,
+      "tag": "0047_ebay_pruefen",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792833497433,
+      "tag": "0048_privat_umfang",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792834145121,
+      "tag": "0049_kennzahlen",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792834909069,
+      "tag": "0050_job_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792834964820,
+      "tag": "0051_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792838751649,
+      "tag": "0052_rechnungen_pruefen",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792840193349,
+      "tag": "0053_wissen_herkunft",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792845257126,
+      "tag": "0054_paletten_verlauf",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1792957070919,
+      "tag": "0055_einmal_absenden",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793027444356,
+      "tag": "0056_sellerboard",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793038993252,
+      "tag": "0057_sellerboard_verkauf",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1793041950164,
+      "tag": "0058_hebel",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1793042980662,
+      "tag": "0059_sas_programm",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793114559956,
+      "tag": "0060_perf_messung",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793131497153,
+      "tag": "0061_uhren_flip",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793134598241,
+      "tag": "0062_market_import_meta",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793170135822,
+      "tag": "0063_sku_weights",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793183642825,
+      "tag": "0064_sku_warensendung",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793185933063,
+      "tag": "0065_prep_center",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1793187814496,
+      "tag": "0066_pallet_shipments",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793191221879,
+      "tag": "0067_assistant",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793193785142,
+      "tag": "0068_sas_pruefung",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793212635769,
+      "tag": "0069_testumgebung",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1793227522163,
+      "tag": "0070_keepa_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1793240268802,
+      "tag": "0071_email_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1793240452412,
+      "tag": "0072_bqool_listings",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1793240728388,
+      "tag": "0073_amazon_markt",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1793289833532,
+      "tag": "0074_retouren_station",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1793293323990,
+      "tag": "0075_b2b_deals",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793298150564,
+      "tag": "0076_bank_liquiditaet",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1793299024080,
+      "tag": "0077_verlust_stopp",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793299377612,
+      "tag": "0078_echtheit_ordner",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1793299787557,
+      "tag": "0079_amazon_business",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1793300394302,
+      "tag": "0080_zeit_anleitungen",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1793300760809,
+      "tag": "0081_call_archiv",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1793302238348,
+      "tag": "0082_calls_archiv_felder",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1793307711676,
+      "tag": "0083_calls_sammelimport",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1793343171726,
+      "tag": "0084_wissen_aus_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1793350667436,
+      "tag": "0085_tagesplan_zustaendig",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1793351680984,
+      "tag": "0086_buchhaltung",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1793353785729,
+      "tag": "0087_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1793354384129,
+      "tag": "0088_calls_gruppe_wissen",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1793355002239,
+      "tag": "0089_deal_eingang",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1793356873695,
+      "tag": "0090_bqool_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1793357946511,
+      "tag": "0091_ek_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1793362532593,
+      "tag": "0092_va_discord",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1793364140148,
+      "tag": "0093_aufgaben_begonnen",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1793365986166,
+      "tag": "0094_deal_eingang_fertig",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1793367361160,
+      "tag": "0095_amazon_todos_markt",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1793368046646,
+      "tag": "0096_postfach_ordner",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1793369313000,
+      "tag": "0097_verlust_zerlegung",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1793373308679,
+      "tag": "0098_amazon_faelle",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1793375856913,
+      "tag": "0099_amazon_todos_bestellnummern",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1793376619548,
+      "tag": "0100_va_sprache",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1793378259347,
+      "tag": "0101_assistent_aktionen",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1793379480927,
+      "tag": "0102_mail_regeln",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1793380541100,
+      "tag": "0103_mobil_schnellerfassung",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1793381818843,
+      "tag": "0104_handy_tesla",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1793383329515,
+      "tag": "0105_rechtsfaelle_discord_wissen",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793389439029,
+      "tag": "0106_lieferanten_sku_kuerzel",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793397697169,
+      "tag": "0107_deal_wert_kaufen",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1793438519567,
+      "tag": "0108_lugru_discord",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1793440380103,
+      "tag": "0109_amazon_mail_uebersprungen",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import type { FeedMapping } from "@/db/schema";
 import { uploadFeed, type FeedState } from "../actions";
 
@@ -8,9 +9,10 @@ const FIELDS: [keyof FeedMapping, string][] = [["supplierSku", "Artikelnummer Li
 
 export function FeedUpload({ feedId, mapping }: { feedId: string; mapping: FeedMapping }) {
   const [state, action, pending] = useActionState<FeedState, FormData>(uploadFeed, null);
+  const keepAction = useKeepForm(state, action);
   const headers = state?.headers;
   return (
-    <form action={action} className="card card-pad stack" style={{ gap: 10 }}>
+    <form action={action} ref={keepAction.ref} onSubmit={keepAction.onSubmit} className="card card-pad stack" style={{ gap: 10 }}>
       <input type="hidden" name="feedId" value={feedId} />
       <h2>Feed hochladen (CSV/XLSX)</h2>
       <input className="input" name="file" type="file" accept=".csv,.txt,.xls,.xlsx" required aria-label="Feed-Datei" />

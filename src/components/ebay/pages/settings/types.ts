@@ -29,6 +29,14 @@ export interface StatusData {
   connectionExpiresAt: string | null;
   policiesOk: boolean;
   locationOk: boolean;
+  /** Neue eBay-Listing-Schnittstelle: freigegeben (null = noch unbekannt) und letzter Erfolg bzw. Rückfall. */
+  listingApi?: {
+    granted: boolean | null;
+    tradingOnly?: boolean;
+    lastOkAt?: string | null;
+    lastErrorAt?: string | null;
+    lastError?: string | null;
+  } | null;
 }
 
 export interface PolicyLists {

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { reasonLabel } from "@/lib/returns/reconcile";
 import { formatEuro } from "@/lib/numbers";
 import type { Mode, SkuStat } from "@/lib/returns/reconcile";
 
@@ -32,8 +33,8 @@ export function Artikel({ stats, mode, sort, dir, q }: { stats: SkuStat[]; mode:
     <>
       <div className="between" style={{ flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${mode === "fba" ? " active" : ""}`} href="/retouren?ansicht=artikel&modus=fba">Versand durch Amazon (FBA)</Link>
-          <Link className={`chip${mode === "fbm" ? " active" : ""}`} href="/retouren?ansicht=artikel&modus=fbm">Händlerversand (FBM)</Link>
+          <Link className={`chip${mode === "fba" ? " active" : ""}`} aria-current={mode === "fba" ? "true" : undefined} href="/retouren?ansicht=artikel&modus=fba">Versand durch Amazon (FBA)</Link>
+          <Link className={`chip${mode === "fbm" ? " active" : ""}`} aria-current={mode === "fbm" ? "true" : undefined} href="/retouren?ansicht=artikel&modus=fbm">Händlerversand (FBM)</Link>
         </div>
         <form style={{ display: "flex", gap: 6 }}>
           <input type="hidden" name="ansicht" value="artikel" />
@@ -70,7 +71,7 @@ export function Artikel({ stats, mode, sort, dir, q }: { stats: SkuStat[]; mode:
                 <td className="num right">{n1(s.notReturned)}</td>
                 <td className="num right">{formatEuro(s.refundAmount)}</td>
                 <td className="num right">{s.open ? formatEuro(s.open) : "–"}</td>
-                <td className="small">{s.topReasons.map((x) => `${x.reason} (${n1(x.count)})`).join(", ") || "–"}</td>
+                <td className="small">{s.topReasons.map((x) => `${reasonLabel(x.reason)} (${n1(x.count)})`).join(", ") || "–"}</td>
               </tr>
             ))}
           </tbody>

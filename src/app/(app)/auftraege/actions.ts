@@ -9,7 +9,11 @@ import { CHANNELS } from "@/db/schema";
 import { syncChannelStock, syncSoon } from "@/lib/stock/channel-sync";
 import { requireArea } from "@/lib/auth/session";
 import { parseAmount } from "@/lib/numbers";
-import { cancelLabel, createLabel, estimateWeightKg, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
+import { cancelLabel, createLabel, loadOrder, markShipped, uploadTracking } from "@/lib/orders/service";
+import { orderShipWeight, saveSkuShipping } from "@/lib/shipping/weights-service";
+import { ensureShipper } from "@/lib/shipping/slip-service";
+import { parseWsMax } from "@/lib/shipping/warensendung";
+import { parseWeightInput } from "@/lib/shipping/weight";
 import { getSettings } from "@/lib/settings";
 import { TEMU_MASKED_NOTE } from "@/lib/orders/temu";
 
@@ -24,6 +28,7 @@ export async function createLabelAction(_prev: LabelState, fd: FormData): Promis
   const product = fd.get("product") === "kleinpaket" ? "kleinpaket" : "paket";
   try {
     const r = await createLabel({ tenantId: session.tenantId, orderId, weightKg, product });
+    await ensureShipper(session.tenantId, orderId);
     revalidatePath("/auftraege", "layout");
     return { ok: true, message: `Label erstellt: ${r.trackingNumber}${r.sandbox ? " (Sandbox – Testlabel)" : ""}${r.warnings.length ? ` · Hinweise: ${r.warnings.join("; ")}` : ""}`, fileId: r.fileId };
   } catch (e) {
@@ -48,13 +53,16 @@ export async function batchLabels(_prev: BatchState, fd: FormData): Promise<Batc
       results.push({ id, ref, ok: false, message: "hat schon ein Label oder ist versandt" });
       continue;
     }
-    const w = estimateWeightKg(data.items);
-    if (w === null) {
-      results.push({ id, ref, ok: false, message: "Artikelgewicht fehlt – im Auftrag von Hand angeben" });
+    // Versandgewicht je Artikel (einmal eingetragen) × Stück, sonst Artikeldaten + Verpackung; Schätzwert nicht.
+    const sw = await orderShipWeight(session.tenantId, data);
+    if (sw.source === "geschaetzt") {
+      results.push({ id, ref, ok: false, message: "Gewicht fehlt – unter „Labels: Warensendung & DHL“ einmal je Artikel eintragen oder im Auftrag angeben" });
       continue;
     }
+    const w = sw.kg;
     try {
       const r = await createLabel({ tenantId: session.tenantId, orderId: id, weightKg: w, product: w <= settings.dhl.kleinpaketMaxKg ? "kleinpaket" : "paket" });
+      await ensureShipper(session.tenantId, id);
       results.push({ id, ref, ok: true, message: `${r.trackingNumber} (${w} kg)`, fileId: r.fileId });
     } catch (e) {
       results.push({ id, ref, ok: false, message: e instanceof Error ? e.message : String(e) });
@@ -147,4 +155,40 @@ export async function fetchOrdersNow() {
   const r = await syncChannelStock(t);
   msgs.push(`Bestandsabgleich: ${r.pushed} Mengen übertragen${r.manual ? `, ${r.manual} von Hand` : ""}${r.oversold.length ? `, ÜBERVERKAUF ${r.oversold.join(", ")}` : ""}`);
   redirect(`/auftraege?${new URLSearchParams({ meldung: msgs.join(" · ") })}`);
+}
+
+/** Versandgewicht je Stück für einen Artikel (Lager-SKU) – aus dem Auftrag heraus; leer = löschen. */
+export async function saveSkuWeightAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const orderId = uuid.parse(fd.get("orderId"));
+  const sku = String(fd.get("sku") ?? "").trim();
+  const raw = String(fd.get("kg") ?? "").trim();
+  const grams = raw === "" ? 0 : parseWeightInput(raw);
+  const ws = fd.has("ws") ? parseWsMax(String(fd.get("ws") ?? "")) : undefined;
+  if (sku) await saveSkuShipping(session.tenantId, sku, { ...(grams !== null ? { grams: grams || null } : {}), ...(ws !== undefined ? { wsMax: ws } : {}) });
+  revalidatePath(`/auftraege/${orderId}`);
+}
+
+/** Wer verschickt diesen Auftrag (ich / Prep Center) – für die Monatsübersicht des Prep Centers. */
+export async function saveShipperAction(fd: FormData) {
+  const session = await requireArea("wawi");
+  const orderId = uuid.parse(fd.get("orderId"));
+  const v = String(fd.get("shipper") ?? "");
+  const neu = v === "self" || v === "prep" ? v : null;
+  await db.update(schema.orders).set({ shippedBy: neu, updatedAt: new Date() }).where(and(eq(schema.orders.id, orderId), eq(schema.orders.tenantId, session.tenantId)));
+  // Schon versendet: Lager passend umbuchen (Prep Center = nicht vom eigenen Lager).
+  await import("@/lib/orders/service").then((x) => x.versenderUmbuchen(session.tenantId, orderId, neu, session.userId));
+  revalidatePath(`/auftraege/${orderId}`);
+}
+
+/** B15.1: Versandbestätigung in Seller Central hochgeladen → Aufträge gelten als an Amazon gemeldet; ToDos/Erinnerung folgen. */
+export async function bestaetigungHochgeladen(fd: FormData) {
+  const session = await requireArea("wawi");
+  const ids = fd.getAll("id").map(String).filter((x) => uuid.safeParse(x).success);
+  const { alsHochgeladenMarkieren, bestaetigungErinnern } = await import("@/lib/orders/bestaetigung");
+  const n = await alsHochgeladenMarkieren(session.tenantId, ids);
+  await bestaetigungErinnern(session.tenantId).catch(() => null);
+  await import("@/lib/amazon-todos/service").then((x) => x.versandAbgleich(session.tenantId)).catch(() => null);
+  revalidatePath("/auftraege");
+  redirect(`/auftraege?ansicht=fehler&meldung=${encodeURIComponent(`${n} Auftr${n === 1 ? "ag" : "äge"} als an Amazon gemeldet markiert.`)}`);
 }

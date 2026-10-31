@@ -177,7 +177,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
                     {n === 0 ? <span className="small muted">Hauptbild</span> : (
                       <form action={imageAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="imageId" value={img.id} /><input type="hidden" name="op" value="main" /><button className="btn-link small" type="submit">als Hauptbild</button></form>
                     )}
-                    <form action={imageAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="imageId" value={img.id} /><input type="hidden" name="op" value="delete" /><button className="btn-link small muted" type="submit" aria-label="Bild löschen">×</button></form>
+                    <form action={imageAction}><input type="hidden" name="id" value={a.id} /><input type="hidden" name="imageId" value={img.id} /><input type="hidden" name="op" value="delete" /><button className="btn-link x-danger" type="submit" aria-label="Bild löschen">×</button></form>
                   </div>
                 </div>
               ))}

@@ -39,7 +39,7 @@ export function ideasPrompt(input: { brand: BrandProfile; occasion: { name: stri
     .join("\n");
 }
 
-export function contentPrompt(input: { brand: BrandProfile; subject: { title: string; concept: string | null; contents: string[] }; platform: string; count: number; occasion: string | null; avoid?: string[] }): string {
+export function contentPrompt(input: { brand: BrandProfile; subject: { title: string; concept: string | null; contents: string[] }; platform: string; count: number; occasion: string | null; avoid?: string[]; year?: number }): string {
   return [
     `Du bist Social-Media-Producer für ${input.platform === "youtube" ? "YouTube (Shorts und Videos)" : input.platform === "instagram" ? "Instagram Reels" : "TikTok (inkl. TikTok Shop)"}.`,
     profile(input.brand),
@@ -49,6 +49,7 @@ export function contentPrompt(input: { brand: BrandProfile; subject: { title: st
     "",
     `Entwirf ${input.count} unterschiedliche Kurzvideo-Ideen (15–45 Sekunden), die mit Handy und wenig Aufwand drehbar sind: z. B. Unboxing, Geschmackstest/Reaktion, „Packt mit mir“, Vorher/Nachher, Fakten, POV, Trend-Format.`,
     "Starker Hook in den ersten 2 Sekunden, deutsch, zur Tonalität passend, keine gesundheits- oder wettbewerbsrechtlich heiklen Aussagen.",
+    `Aktuelles Jahr: ${input.year ?? new Date().getFullYear()}. Jahreszahlen (auch in Hashtags wie #halloween${input.year ?? new Date().getFullYear()}) nur mit diesem Jahr – nie ein vergangenes Jahr.`,
     'Antworte NUR mit einem JSON-Array: [{"format":"…","hook":"erster Satz/Einblendung","skript":"gesprochener Text bzw. Ablauf","szenen":["Einstellung 1","…"],"caption":"…","hashtags":"#… #…","sound":"Musik-/Sound-Idee"}]',
   ]
     .filter((l) => l !== "")
@@ -131,7 +132,7 @@ export const CONTENT_STATUS_LABEL: Record<string, [string, string]> = {
   idea: ["Idee", "tag-neutral"],
   filmed: ["Gedreht", "tag-info"],
   edited: ["Geschnitten", "tag-info"],
-  scheduled: ["Geplant", "tag-warn"],
+  scheduled: ["Fester Termin", "tag-warn"],
   published: ["Veröffentlicht", "tag-ok"],
 };
 

@@ -607,6 +607,11 @@ Preis und nennt den Rabatt im Post. Gutscheincodes aus mydealz-Deals kommen auto
     <label>Adresse des Seller-Systems <input name="ebay_seller_url" value="{{.EbaySellerURL}}" placeholder="https://seller.example.de"></label>
     <label>Verbindungsschlüssel <small>{{if .EbaySellerDa}}gespeichert — leer lassen, um ihn zu behalten{{else}}im Seller-System unter Anbindungen → „Lugru Deals“ festlegen{{end}}</small>
       <input name="ebay_seller_schluessel" type="password" autocomplete="off"></label>
+    <p><small>Mit Adresse und Schlüssel geht jeder Deal gleich nach dem Posten ans Seller-System (Deal-Eingang mit Ampel),
+      dazu stündlich die letzten 30 Tage mit den Reaktionen – nur Zahlen, Shop/Einkaufslink und Reaktionen als Anzahl,
+      kein Text, keine Namen.
+      {{if .SellerDeals.Zuletzt}}Zuletzt {{.SellerDeals.Zuletzt}}: {{.SellerDeals.Anzahl}} Deals.{{end}}
+      {{if .SellerDeals.Fehler}}<strong>{{.SellerDeals.Fehler}}</strong>{{end}}</small></p>
     <div class="paar drei">
       <label>Gebühr % <input name="ebay_gebuehr" value="{{.EbayGebuehr}}"></label>
       <label>Fix € <input name="ebay_fix" value="{{.EbayFix}}"></label>

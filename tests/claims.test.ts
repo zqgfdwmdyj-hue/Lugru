@@ -114,10 +114,70 @@ describe("detectClaims", () => {
     expect(detectClaims(d, settings, today)[0]).toMatchObject({ type: "inbound_shortage", quantity: 3, expectedAmount: 30 });
   });
 
+  it("Wareneingang laut sellerboard: verschickt minus empfangen, nur abgeschlossen, eigener Scan hat Vorrang", () => {
+    const d = base();
+    const line = { sku: "SKU-1", fnsku: "X001TEST01", asin: "B0TEST0001", units: 10, received: 7 };
+    d.sbShipments = [
+      { amazonId: "FBA9", name: "SB", status: "CLOSED", createdOn: "2026-09-01", lastUpdate: "2026-09-20", lines: [line] },
+      { amazonId: "FBA8", name: "läuft", status: "RECEIVING", createdOn: "2026-09-20", lastUpdate: "2026-09-25", lines: [line] },
+    ];
+    // Amazon hat schon 1 Stück erstattet (Grund „inbound“)
+    d.reimbursements = [{ reimbursementId: "R1", date: "2026-09-22", reason: "Lost_Inbound", sku: "SKU-1", fnsku: "X001TEST01", orderId: null, caseId: null, amountPerUnit: 10, amountTotal: 10, quantityCash: 1, quantityTotal: 1 }] as ClaimData["reimbursements"];
+    const out = detectClaims(d, settings, today).filter((c) => c.type === "inbound_shortage");
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ key: "inbound-sb:FBA9:X001TEST01", quantity: 2, expectedAmount: 20, reference: "FBA9" });
+    // gleiche Sendung im eigenen Inbound-Scan → nur die eigene Prüfung zählt
+    d.inbound = [{ id: "s1", name: "eigen", amazonShipmentId: "FBA9", shippedAt: "2026-09-01", items: [{ sku: "SKU-1", fnsku: "X001TEST01", asin: "B0TEST0001", scanned: 10 }] }];
+    expect(detectClaims(d, settings, today).filter((c) => c.key.startsWith("inbound-sb:"))).toHaveLength(0);
+  });
+
   it("Kleinstbeträge werden ignoriert", () => {
     const d = base();
     d.costBySku.set("SKU-1", 0.5);
     d.adjustments = [adj("2026-07-01", -1, "M")];
     expect(detectClaims(d, settings, today)).toHaveLength(0);
+  });
+});
+
+describe("Retouren-Station: geprüfte Kundenretoure", () => {
+  const fall = (over: Partial<NonNullable<ClaimData["stationFaelle"]>[number]> = {}) => ({
+    id: "pos-1",
+    key: "station:pos-1",
+    type: "return_condition" as const,
+    orderId: "302-0000000-0000001",
+    sku: "SKU-1",
+    fnsku: "X001TEST01",
+    asin: "B0TEST0001",
+    lpn: "LPNHK535208835",
+    title: "Testartikel",
+    returnDate: "2026-09-01",
+    inspectedAt: "2026-09-20",
+    refund: 34.99,
+    befund: "leer (kein Artikel in der Verpackung)",
+    notiz: "Karton offen",
+    remissionId: "ZtestRem01",
+    ...over,
+  });
+
+  it("eigener Anspruch: Betrag = Erstattung an den Kunden, Frist ab Rückgabedatum, Nachweise für den Falltext", () => {
+    const c = detectClaims({ ...base(), stationFaelle: [fall()] }, settings, today);
+    expect(c).toHaveLength(1);
+    expect(c[0]).toMatchObject({ key: "station:pos-1", type: "return_condition", expectedAmount: 34.99, reference: "302-0000000-0000001", deadline: "2026-10-31", quantity: 1 });
+    expect(c[0].title).toBe("Retoure leer – Bestellung 302-0000000-0000001");
+    const labels = c[0].evidence.map((e) => e.label);
+    expect(labels).toEqual(expect.arrayContaining(["Befund (Prüfung bei Eingang)", "LPN", "Kunde erstattet", "Remission", "Fotos"]));
+  });
+
+  it("gleiche Bestellung wie „Anderer Artikel zurück“ aus dem Retouren-Abgleich → ein Anspruch mit beiden Nachweisen", () => {
+    const rc = { key: "retwrong:302-0000000-0000001:SKU-1", type: "return_wrong_item" as const, title: "Anderer Artikel zurückgeschickt", sku: "SKU-1", quantity: 1, refundValue: 34.99, moneyOnly: false, reference: "302-0000000-0000001", eventDate: "2026-09-01", evidence: [{ label: "Rücksendegrund", value: "SWITCHEROO" }] };
+    const c = detectClaims({ ...base(), returnClaims: [rc], stationFaelle: [fall({ type: "return_wrong_item", befund: "falsches Produkt zurückgeschickt" })] }, settings, today);
+    expect(c).toHaveLength(1);
+    expect(c[0].key).toBe("retwrong:302-0000000-0000001:SKU-1");
+    expect(c[0].evidence.map((e) => e.label)).toEqual(expect.arrayContaining(["Rücksendegrund", "Befund (Prüfung bei Eingang)", "LPN"]));
+  });
+
+  it("Frist je Art aus den Einstellungen", () => {
+    const c = detectClaims({ ...base(), stationFaelle: [fall()] }, { ...settings, windowDays: { ...windowDays, return_condition: 30 } }, today);
+    expect(c[0].deadline).toBe("2026-10-01");
   });
 });

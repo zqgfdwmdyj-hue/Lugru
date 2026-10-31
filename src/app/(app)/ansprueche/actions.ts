@@ -98,7 +98,8 @@ export async function createManualClaim(fd: FormData) {
   if (!title) return;
   const qty = Math.max(1, Math.round(parseAmount(fd.get("quantity")) ?? 1));
   const unitCost = parseAmount(fd.get("unitCost"));
-  const eventDate = String(fd.get("eventDate") || todayIso());
+  // Ohne Ereignisdatum: Frist nur als Platzhalter ab heute (wird in der Liste so markiert).
+  const entered = /^\d{4}-\d{2}-\d{2}$/.test(String(fd.get("eventDate") ?? "")) ? String(fd.get("eventDate")) : null;
   const [row] = await db
     .insert(schema.claims)
     .values({
@@ -111,8 +112,8 @@ export async function createManualClaim(fd: FormData) {
       quantity: qty,
       unitCost,
       expectedAmount: unitCost === null ? null : Math.round(unitCost * qty * 100) / 100,
-      eventDate,
-      deadline: addDaysIso(eventDate, settings.claims.windowDays[type]),
+      eventDate: entered,
+      deadline: addDaysIso(entered ?? todayIso(), settings.claims.windowDays[type]),
     })
     .returning({ id: schema.claims.id });
   await log(session.tenantId, row.id, session.userId, "von Hand angelegt");
@@ -151,4 +152,19 @@ export async function aiCaseTextAction(_prev: AiCaseState, fd: FormData): Promis
   } catch (e) {
     return { ok: false, message: `KI nicht erreichbar: ${(e as Error).message}` };
   }
+}
+
+/** Ereignisdatum eintragen bzw. korrigieren – die Frist wird nach der Regel der Art neu berechnet. */
+export async function setClaimEventDate(fd: FormData) {
+  const session = await requireArea("amazon");
+  const id = uuid.parse(fd.get("id"));
+  const date = String(fd.get("eventDate") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const [claim] = await db.select().from(schema.claims).where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)));
+  if (!claim) return;
+  const settings = await getSettings(session.tenantId);
+  const deadline = addDaysIso(date, settings.claims.windowDays[claim.type]);
+  await db.update(schema.claims).set({ eventDate: date, deadline, updatedAt: new Date() }).where(and(eq(schema.claims.id, id), eq(schema.claims.tenantId, session.tenantId)));
+  await log(session.tenantId, id, session.userId, "Ereignisdatum gesetzt", `${date.split("-").reverse().join(".")} → Frist ${deadline.split("-").reverse().join(".")}`);
+  revalidatePath("/", "layout");
 }

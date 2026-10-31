@@ -1,5 +1,7 @@
 // Lädt alle API-Clients, damit sie ihre Verbindungstests registrieren.
 import "./dhl";
+import "./dhl-tracking";
+import "./deutschepost";
 import "./mail";
 import "./drive";
 import "./amazon";
@@ -11,3 +13,7 @@ import "./discord";
 import "./keepa";
 import "./stotax";
 import "./lugru-deals";
+import "./lexoffice";
+import "./tesla";
+import "./sms";
+import "./asana";

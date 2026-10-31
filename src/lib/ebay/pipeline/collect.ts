@@ -5,7 +5,7 @@ import type { CatalogMatch, CatalogProduct, Condition, EanLookupResult, Gpsr, Li
 import { buildDescription } from './describe';
 import { isRealGtin, sameGtin } from './gtin';
 import { MAX_IMAGES } from './images';
-import { buildFactTitle, truncateTitle } from './title';
+import { buildFactTitle, chooseTitle } from './title';
 
 /** Produktdatenquelle als Interface — hier kann später z.B. Keepa einsteigen. */
 export interface CollectSources {
@@ -13,7 +13,7 @@ export interface CollectSources {
   fetchItemByRef(
     ref: string,
     epidHint?: string
-  ): Promise<{ product: CatalogProduct | null; gpsr: Gpsr | null; gtins?: string[]; listingImages?: string[] }>;
+  ): Promise<{ product: CatalogProduct | null; gpsr: Gpsr | null; gtins?: string[]; listingImages?: string[]; listingTitle?: string }>;
 }
 
 export const GPSR_WARNING =
@@ -35,6 +35,14 @@ export const NO_CATALOG_INFO =
 
 /** Label im Treffer-Umschalter, wenn weder Katalog- noch Fakten-Titel etwas hergeben. */
 const UNTITLED_MATCH = 'Angebot ohne Titel';
+
+/** Der Katalog liefert nur einen dünnen Titel (z. B. nur die Marke) – übernommen wurde ein aussagekräftigerer. */
+export function thinCatalogTitleInfo(catalogTitle: string, source: 'listing' | 'facts'): string {
+  return (
+    `Der eBay-Katalog nennt als Titel nur „${catalogTitle}“ – übernommen wurde ${source === 'listing' ? 'der Titel des gewählten Angebots' : 'ein Titel aus den Produktmerkmalen'}. ` +
+    'Bitte in der Vorschau prüfen und bei Bedarf anpassen.'
+  );
+}
 
 export const TITLE_MISSING_WARNING =
   'Es konnte kein Titel aus den Produktdaten erzeugt werden — bitte in der Vorschau einen Titel eingeben.';
@@ -123,6 +131,7 @@ export async function collectFromSelection(
     product: item.product,
     gpsr,
     listingImages: item.listingImages,
+    listingTitle: item.listingTitle,
     articleKey: articleKey({ ean, epid: item.product.epid, id: attempt.id }),
   });
 }
@@ -149,7 +158,7 @@ export async function recollectWithMatch(
 export async function applyFetchedItem(
   db: Db,
   id: number,
-  data: { ref: string; product: CatalogProduct | null; gpsr: Gpsr | null; listingImages?: string[] }
+  data: { ref: string; product: CatalogProduct | null; gpsr: Gpsr | null; listingImages?: string[]; listingTitle?: string }
 ): Promise<ListingAttempt> {
   const attempt = await getAttempt(db, id);
   if (!attempt) throw new Error(`Listing-Versuch ${id} nicht gefunden.`);
@@ -161,7 +170,7 @@ async function mergeFetchedItem(
   id: number,
   attempt: ListingAttempt,
   ref: string,
-  item: { product: CatalogProduct | null; gpsr: Gpsr | null; listingImages?: string[] }
+  item: { product: CatalogProduct | null; gpsr: Gpsr | null; listingImages?: string[]; listingTitle?: string }
 ): Promise<ListingAttempt> {
   if (!item.product) throw new Error(NO_ITEM_DATA_ERROR);
   return await applyProduct(db, id, {
@@ -170,6 +179,7 @@ async function mergeFetchedItem(
     product: item.product,
     gpsr: attempt.gpsr ?? item.gpsr,
     listingImages: item.listingImages,
+    listingTitle: item.listingTitle,
   });
 }
 
@@ -184,6 +194,8 @@ async function applyProduct(
     product: CatalogProduct;
     gpsr: Gpsr | null;
     listingImages?: string[];
+    /** Titel des gewählten Angebots (Suchtreffer) – Ersatz, wenn der Katalogtitel dünn ist. */
+    listingTitle?: string;
     /** Nur beim Anlegen gesetzt; ein Treffer-Wechsel darf den Artikel nicht verschieben. */
     articleKey?: string;
   }
@@ -194,17 +206,20 @@ async function applyProduct(
   for (const url of [...product.imageUrls, ...(data.listingImages ?? [])]) {
     if (!imageUrls.includes(url) && imageUrls.length < MAX_IMAGES) imageUrls.push(url);
   }
-  const title = product.title ? truncateTitle(product.title) : buildFactTitle(product.brand, product.aspects);
+  const factTitle = buildFactTitle(product.brand, product.aspects);
+  const chosen = chooseTitle(product.title, data.listingTitle, factTitle, product.brand);
+  const title = chosen.title;
   // Ohne eigene Bilder ist das Listing nur mit ePID-Referenz möglich (eBay ergänzt die Katalogbilder).
   const blocked = imageUrls.length === 0 && !product.epid;
   // Im Umschalter steht der Katalogtitel; ohne ihn der erzeugte Fakten-Titel.
   const matches = [
     ...(data.previousMatches ?? []).filter((m) => m.ref !== data.ref),
-    { ref: data.ref, epid: product.epid, title: product.title || title || UNTITLED_MATCH },
+    { ref: data.ref, epid: product.epid, title: (chosen.source === 'catalog' && product.title) || title || UNTITLED_MATCH },
   ];
 
   const warnings: string[] = [];
   if (product.origin === 'listing') warnings.push(NO_CATALOG_INFO);
+  if (product.title.trim() && chosen.source !== 'catalog') warnings.push(thinCatalogTitleInfo(product.title.trim(), chosen.source));
   if (!gpsr) warnings.push(GPSR_WARNING);
   if (!blocked && imageUrls.length === 0) warnings.push(EPID_ADOPTION_INFO);
   if (!blocked && title === '') warnings.push(TITLE_MISSING_WARNING);

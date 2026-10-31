@@ -4,7 +4,7 @@ import {
   getAttempt, getSetting, getSettings, getToken, listAttempts, listUnconfirmedPurchases, setSetting, updateAttempt,
 } from '../db/db';
 import { getPolicies, getShippingPolicies, optInToBusinessPolicies } from '../ebay/account';
-import { buildConsentUrl, exchangeCode, extractCodeFromRedirectUrl, isExpired } from '../ebay/auth';
+import { buildConsentUrl, exchangeCode, extractCodeFromRedirectUrl, isExpired, listingGranted } from '../ebay/auth';
 import { fetchItemByLegacyId, fetchItemByRef, fetchItemGroup, lookupByEan, searchListings } from '../ebay/browse';
 import { listingUrl } from '../ebay/config';
 import { makeInventoryApi } from '../ebay/inventory';
@@ -154,6 +154,10 @@ export interface ApiHooks {
     panel: (attempt: ListingAttempt) => Promise<unknown>;
     publish: (attempt: ListingAttempt, input: { factor: number; food: boolean; prices: Record<string, number>; weightG: number; lengthCm: number; widthCm: number; heightCm: number }) => Promise<unknown>;
   };
+  /** Nach dem (Neu-)Verbinden mit eBay, z. B. Verkehrsdaten nachladen. Läuft im Hintergrund. */
+  onConnected?: () => void;
+  /** Letzter Erfolg bzw. Rückfall der neuen eBay-Listing-Schnittstelle (für die Verbindungsseite). */
+  modernStatus?: () => Promise<{ tradingOnly: boolean; lastOkAt: string | null; lastErrorAt: string | null; lastError: string | null }>;
 }
 
 export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
@@ -563,7 +567,8 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   r.get('/policies', h(async (_req, res) => {
     const settings = await getSettings(db);
     const [fulfillment, payment, ret] = await Promise.all([
-      getPolicies(db, settings, 'fulfillment'),
+      // Versandprofile mit Dienstleister, Preis und Bearbeitungszeit – für eine verständliche Auswahl.
+      getShippingPolicies(db, settings),
       getPolicies(db, settings, 'payment'),
       getPolicies(db, settings, 'return'),
     ]);
@@ -593,13 +598,15 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
   // --- eBay-Verbindung ---
 
   r.get('/auth/url', h(async (req, res) => {
-    res.json({ url: buildConsentUrl(await getSettings(db), { withOrders: req.query.orders !== '0' }) });
+    res.json({ url: buildConsentUrl(await getSettings(db), { withOrders: req.query.orders !== '0', withAnalytics: req.query.analytics !== '0', withListing: req.query.listing !== '0' }) });
   }));
 
   r.post('/auth/code', h(async (req, res) => {
     const redirectUrl = String(req.body?.redirectUrl ?? '');
     const code = extractCodeFromRedirectUrl(redirectUrl);
     await exchangeCode(db, await getSettings(db), code);
+    // Neue Berechtigungen (z. B. Verkehrsdaten) gleich nutzen – nicht erst bei der nächsten Wochenprüfung.
+    hooks.onConnected?.();
     res.json({ ok: true });
   }));
 
@@ -616,6 +623,9 @@ export function apiRouter(db: Db, hooks: ApiHooks = {}): Router {
       connectionExpiresAt: connected ? userToken?.refreshExpiresAt ?? null : null,
       policiesOk: Boolean(s.fulfillmentPolicyId && s.paymentPolicyId && s.returnPolicyId),
       locationOk: Boolean(s.merchantLocationKey),
+      listingApi: connected && hooks.modernStatus
+        ? { granted: listingGranted(s, userToken!.refreshToken!), ...(await hooks.modernStatus().catch(() => null)) }
+        : null,
     });
   }));
 

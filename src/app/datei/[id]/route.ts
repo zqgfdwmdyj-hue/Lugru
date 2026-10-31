@@ -13,7 +13,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return new Response(new Uint8Array(f.data), {
     headers: {
       "Content-Type": f.mimeType,
-      "Content-Disposition": `inline; filename="${f.name.replace(/"/g, "")}"`,
+      // CSV (z. B. Adressdatei für die Internetmarke) herunterladen statt im Browser anzeigen – unverändert lassen.
+      "Content-Disposition": `${f.mimeType.startsWith("text/csv") ? "attachment" : "inline"}; filename="${f.name.replace(/"/g, "")}"`,
       "Cache-Control": "private, max-age=3600",
       "X-Content-Type-Options": "nosniff",
     },

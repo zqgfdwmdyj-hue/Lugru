@@ -9,3 +9,13 @@ next-env.d.ts
 
 # Datensicherungen (enthalten Geschäftsdaten)
 /backups/
+
+# Programmstand, schreibt deploy/update.sh
+/VERSION
+
+# Automatische Ablaufprüfungen (npm run e2e)
+/test-results/
+/playwright-report/
+/blob-report/
+/medien
+/.e2e-medien

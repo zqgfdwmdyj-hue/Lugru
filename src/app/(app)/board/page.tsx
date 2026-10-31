@@ -1,11 +1,13 @@
+import { getSettings } from "@/lib/settings";
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
 import { canAccess } from "@/lib/auth/areas";
 import { daysSince, FOLLOW_UP_DAYS, LEAD_COLUMNS, TASK_COLUMNS } from "@/lib/board/logic";
-import { leadBoard, taskBoard } from "@/lib/board/service";
+import { leadBoard, taskBoard, teamMitglieder } from "@/lib/board/service";
+import { anleitungTitel } from "@/lib/zeit/service";
 import { FINDING_LABEL } from "@/lib/leads/labels";
 import { Kanban, type KanbanColumn } from "@/components/kanban";
-import { addTaskAction, feedFromLeadAction, moveLeadAction, moveTaskAction } from "./actions";
+import { addTaskAction, feedFromLeadAction, moveLeadAction, moveTaskAction, zuweisenAction } from "./actions";
 
 const MAX_CARDS = 60;
 
@@ -46,8 +48,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
                   {[...new Set(l.findings.map((f) => f.source))].map((s) => <span key={s} className="tag tag-neutral">{FINDING_LABEL[s]}</span>)}
                   {l.status === "entwurf" && <span className="tag tag-info">Entwurf</span>}
                   {c.key === "angeschrieben" && days !== null && <span className={`tag ${days >= FOLLOW_UP_DAYS ? "tag-warn" : "tag-neutral"}`}>vor {days} T. angeschrieben</span>}
-                  {c.key === "follow_up" && (l.followUpAt ? <span className="tag tag-neutral">nachgefasst {l.followUpAt.toLocaleDateString("de-DE")}</span> : <span className="tag tag-warn">nachfassen</span>)}
-                  {l.repliedAt && <span className="tag tag-ok">Antwort {l.repliedAt.toLocaleDateString("de-DE")}</span>}
+                  {c.key === "follow_up" && (l.followUpAt ? <span className="tag tag-neutral">nachgefasst {l.followUpAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span> : <span className="tag tag-warn">nachfassen</span>)}
+                  {l.repliedAt && <span className="tag tag-ok">Antwort {l.repliedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</span>}
                   {l.supplierId && <span className="tag tag-ok">Lieferant</span>}
                 </div>
                 {c.key === "preisliste" && (
@@ -60,7 +62,12 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
       };
     });
   } else {
-    const cols = await taskBoard(session.tenantId, all);
+    const cols = await taskBoard(session.tenantId, all, session.userId);
+    const team = await teamMitglieder(session.tenantId);
+    const nameVon = new Map(team.map((m) => [m.id, m.name || m.email]));
+    const extern = (await getSettings(session.tenantId)).delegieren.extern;
+    const alleIds = [...new Set([...cols.values()].flat().flatMap((t) => t.anleitungIds))];
+    const anlTitel = await anleitungTitel(session.tenantId, alleIds);
     columns = TASK_COLUMNS.map((c) => {
       const rows = cols.get(c.key) ?? [];
       return {
@@ -90,7 +97,26 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
                   {t.dueDate && <span className={`tag ${overdue ? "tag-danger" : "tag-neutral"}`}>fällig {t.dueDate.split("-").reverse().join(".")}</span>}
                   {t.priority === "critical" && <span className="tag tag-danger">wichtig</span>}
                   {t.category !== "eigene" && <span className="tag tag-neutral">{t.category}</span>}
+                  {t.assigneeId && <span className="tag tag-neutral" data-testid="task-zustaendig">→ {nameVon.get(t.assigneeId) ?? "?"}</span>}
+                  {t.zustaendigExtern && <span className="tag tag-neutral" data-testid="task-zustaendig">→ {t.zustaendigExtern} (extern)</span>}
                 </div>
+                {t.anleitungIds.length > 0 && (
+                  <div className="small" data-testid="task-anleitungen">
+                    {t.anleitungIds.filter((a) => anlTitel.has(a)).map((a) => <div key={a}>📘 <Link href={`/wissen/${a}`} draggable={false}>{anlTitel.get(a)}</Link></div>)}
+                  </div>
+                )}
+                {(team.length > 1 || extern.length > 0) && t.status === "open" && (
+                  <form action={zuweisenAction} style={{ display: "flex", gap: 4 }}>
+                    <input type="hidden" name="id" value={t.id} />
+                    {all && <input type="hidden" name="alle" value="1" />}
+                    <select className="select" name="wer" defaultValue={t.assigneeId ?? (t.zustaendigExtern ? `extern:${t.zustaendigExtern}` : "")} aria-label="Zuständig" style={{ height: 28, fontSize: 12, flex: 1 }} data-testid="task-wer">
+                      <option value="">niemand Bestimmtes</option>
+                      {team.map((m) => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+                      {extern.map((n) => <option key={n} value={`extern:${n}`}>{n} (extern)</option>)}
+                    </select>
+                    <button className="btn btn-small" type="submit" data-testid="task-zuweisen">zuweisen</button>
+                  </form>
+                )}
               </>
             ),
           };
@@ -105,8 +131,8 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
         <div><div className="crumb">Übersicht</div><h1>Board</h1></div>
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        {leadsAllowed && <Link href="/board" className={`chip${board === "grosshandel" ? " active" : ""}`}>Großhändler</Link>}
-        {tasksAllowed && <Link href="/board?b=todos" className={`chip${board === "todos" ? " active" : ""}`}>Meine To-dos</Link>}
+        {leadsAllowed && <Link href="/board" className={`chip${board === "grosshandel" ? " active" : ""}`} aria-current={board === "grosshandel" ? "true" : undefined}>Großhändler</Link>}
+        {tasksAllowed && <Link href="/board?b=todos" className={`chip${board === "todos" ? " active" : ""}`} aria-current={board === "todos" ? "true" : undefined}>Meine To-dos</Link>}
         {board === "todos" && <Link href={all ? "/board?b=todos" : "/board?b=todos&alle=1"} className="small" style={{ marginLeft: 8 }}>{all ? "nur eigene Aufgaben" : "alle Aufgaben zeigen"}</Link>}
         <span className="small muted" style={{ marginLeft: "auto" }}>Karten ziehen – oder unten an der Karte „→ Spalte“ wählen.</span>
       </div>

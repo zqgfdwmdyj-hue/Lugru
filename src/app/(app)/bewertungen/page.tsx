@@ -24,8 +24,8 @@ export default async function BewertungenPage({ searchParams }: { searchParams: 
       <div className="page-head">
         <div><div className="crumb">Service</div><h1>Bewertungen</h1></div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${negative ? " active" : ""}`} href="/bewertungen">Neutral & negativ</Link>
-          <Link className={`chip${!negative ? " active" : ""}`} href="/bewertungen?ansicht=alle">Alle</Link>
+          <Link className={`chip${negative ? " active" : ""}`} aria-current={negative ? "true" : undefined} href="/bewertungen">Neutral & negativ</Link>
+          <Link className={`chip${!negative ? " active" : ""}`} aria-current={!negative ? "true" : undefined} href="/bewertungen?ansicht=alle">Alle</Link>
         </div>
       </div>
       <div className="grid-kpi">
@@ -35,7 +35,7 @@ export default async function BewertungenPage({ searchParams }: { searchParams: 
         <div className="card card-pad small"><div style={{ marginBottom: 6 }}>Vorlage Entfernungsantrag (FBA-Versand)</div><CopyButton text={REMOVAL_TEXT} /></div>
       </div>
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Datum</th><th>Sterne</th><th>Kommentar</th><th>Bestellung</th><th>Status</th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={5} className="muted">Keine Bewertungen. Den Feedback-Bericht aus Seller Central importieren.</td></tr>}

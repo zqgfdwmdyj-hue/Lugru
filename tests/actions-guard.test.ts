@@ -5,8 +5,17 @@ import { describe, expect, it } from "vitest";
 // Nur-ansehen-Konten werden in requireSession abgewiesen. Das hält nur, wenn jede Server Action die
 // Sitzung über requireSession/requireArea/requireOwner holt – direkt oder über eine Hilfsfunktion der Datei.
 
-const GUARD = /\brequire(Session|Area|Owner)\(/;
-const FREE = new Set(["src/app/login/actions.ts:login", "src/app/login/actions.ts:logout"]);
+// requirePrivate (src/lib/private/service.ts) ruft selbst requireSession auf, requireFlip
+// (src/lib/watches/service.ts) requireArea("marken"). requirePortal: eigene Anmeldung des Kundenportals (B2B).
+const GUARD = /\brequire(Session|Area|Owner|Private|Flip|Portal)\(/;
+const FREE = new Set([
+  "src/app/login/actions.ts:login",
+  "src/app/login/actions.ts:logout",
+  // Kundenportal: Anmelden, Passwort über Einladungs-Link setzen, Abmelden – vor bzw. ohne Sitzung.
+  "src/app/portal/actions.ts:anmeldenAction",
+  "src/app/portal/actions.ts:einladungAction",
+  "src/app/portal/actions.ts:abmeldenAction",
+]);
 
 function functionBodies(src: string) {
   const out = new Map<string, string>();

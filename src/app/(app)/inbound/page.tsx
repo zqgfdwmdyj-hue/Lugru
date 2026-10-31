@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { qcol } from "@/db/qcol";
 import { requireSession } from "@/lib/auth/session";
 import { INBOUND_STATUS_LABEL } from "@/lib/labels";
 import { createShipment } from "./actions";
@@ -12,9 +13,9 @@ export default async function InboundPage() {
   const rows = await db
     .select({
       s: S,
-      skus: sql<number>`(select count(*)::int from inbound_items i where i.shipment_id = ${S.id})`,
-      units: sql<number>`(select coalesce(sum(scanned_quantity), 0)::int from inbound_items i where i.shipment_id = ${S.id})`,
-      boxes: sql<number>`(select count(*)::int from inbound_boxes b where b.shipment_id = ${S.id})`,
+      skus: sql<number>`(select count(*)::int from inbound_items i where i.shipment_id = ${qcol(S.id)})`,
+      units: sql<number>`(select coalesce(sum(scanned_quantity), 0)::int from inbound_items i where i.shipment_id = ${qcol(S.id)})`,
+      boxes: sql<number>`(select count(*)::int from inbound_boxes b where b.shipment_id = ${qcol(S.id)})`,
     })
     .from(S)
     .where(eq(S.tenantId, session.tenantId))
@@ -32,7 +33,7 @@ export default async function InboundPage() {
         </form>
       </div>
       <section className="card" style={{ overflow: "auto" }}>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Sendung</th><th>Status</th><th>Amazon-ID</th><th className="right">Artikel</th><th className="right">Einheiten</th><th className="right">Kartons</th><th>Angelegt</th></tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={7} className="muted">Noch keine Sendungen.</td></tr>}
@@ -44,7 +45,7 @@ export default async function InboundPage() {
                 <td className="num right">{skus}</td>
                 <td className="num right">{units}</td>
                 <td className="num right">{boxes}</td>
-                <td className="num">{s.createdAt.toLocaleDateString("de-DE")}</td>
+                <td className="num">{s.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}</td>
               </tr>
             ))}
           </tbody>

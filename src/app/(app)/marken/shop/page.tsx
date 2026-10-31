@@ -3,7 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
 import { visibleBrands } from "@/lib/brands/access";
-import { latestTikTokImport, productHistory } from "@/lib/brands/shop-service";
+import { productHistories, tiktokAnsicht } from "@/lib/brands/shop-service";
 import { productHints } from "@/lib/brands/shop";
 import { keepaKey } from "@/lib/integrations/clients/keepa";
 import { formatEuro } from "@/lib/numbers";
@@ -22,12 +22,17 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   if (!brand) return <div className="card card-pad muted">Keine Marke freigegeben.</div>;
   const [products, tiktok, hasKeepa] = await Promise.all([
     db.select().from(schema.brandProducts).where(and(eq(schema.brandProducts.tenantId, t), eq(schema.brandProducts.brandId, brand.id))).orderBy(asc(schema.brandProducts.createdAt)),
-    latestTikTokImport(t, brand.id),
+    // B15.15: aufbereitet und zwischengespeichert (große Exporte nicht bei jedem Aufruf neu lesen und sortieren).
+    tiktokAnsicht(t, brand.id),
     keepaKey(t).then(Boolean),
   ]);
-  const histories = new Map(await Promise.all(products.map(async (p) => [p.id, await productHistory(t, p.id)] as const)));
+  const histories = await productHistories(t, products.map((p) => p.id));
   const sortKey = sp.sort === "umsatz" ? "revenue" : sp.sort === "videos" ? "videos" : "sales";
-  const tiktokItems = tiktok ? [...tiktok.items].sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0)).slice(0, 40) : [];
+  // Unsichere Umsätze (passen nicht zu Preis × Verkäufe) zählen beim Sortieren nach Umsatz nicht (in tiktokAnsicht).
+  const tiktokItems = tiktok ? tiktok.top[sortKey] : [];
+  const tiktokAge = tiktok ? Math.floor((Date.now() - tiktok.createdAt.getTime()) / 86_400_000) : 0;
+  const cur = tiktok?.meta?.currency ?? "EUR";
+  const money = (n: number) => n.toLocaleString("de-DE", { style: "currency", currency: cur === "USD" || cur === "GBP" ? cur : "EUR" });
   const fmtN = (n: number | null | undefined) => (n == null ? "–" : Math.round(n).toLocaleString("de-DE"));
 
   return (
@@ -37,7 +42,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
         {hasKeepa && products.length > 0 && <RefreshButton />}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {brands.map((b) => <Link key={b.id} href={`/marken/shop?marke=${b.id}`} className={`chip${brand.id === b.id ? " active" : ""}`}>{b.name}</Link>)}
+        {brands.map((b) => <Link key={b.id} href={`/marken/shop?marke=${b.id}`} className={`chip${brand.id === b.id ? " active" : ""}`} aria-current={brand.id === b.id ? "true" : undefined}>{b.name}</Link>)}
       </div>
       {!hasKeepa && (
         <div className="notice notice-info small">Für Preise, Rang und Bewertungen der eigenen Produkte unter <Link href="/anbindungen?p=keepa#keepa">Anbindungen → Keepa</Link> den Schlüssel eintragen (oder im eBay-Tool unter Bildquellen).</div>
@@ -61,7 +66,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
                     <div className="small muted num">{p.asin}{p.fetchedAt ? ` · Stand ${p.fetchedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}` : ""}</div>
                     {p.lastError && <div className="small" style={{ color: "var(--danger)" }}>{p.lastError}</div>}
                   </div>
-                  <form action={removeProductAction}><input type="hidden" name="id" value={p.id} /><button className="btn-link small muted" type="submit">Entfernen</button></form>
+                  <form action={removeProductAction}><input type="hidden" name="id" value={p.id} /><button className="btn-link small danger" type="submit">Entfernen</button></form>
                 </div>
                 {d && (
                   <div className="shop-kpis">
@@ -104,7 +109,8 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
             );
           })}
 
-          <h2 style={{ marginTop: 12 }}>TikTok Shop: was sich gerade verkauft</h2>
+          <h2 style={{ marginTop: 12 }} data-testid="tiktok-head">{tiktok ? `TikTok Shop: Bestseller laut Import vom ${tiktok.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}` : "TikTok Shop: Bestseller"}</h2>
+          {tiktok && tiktokAge > 14 && <div className="notice notice-warn small" data-testid="tiktok-stale">Die TikTok-Daten sind {tiktokAge} Tage alt – keine aktuelle Nachfrage. Für eine aktuelle Einschätzung einen neuen Export hochladen.</div>}
           {!tiktok ? (
             <div className="card card-pad muted small">
               Noch kein Import. In Chrome mit der Helium-10-Erweiterung auf TikTok Shop nach deiner Nische suchen (z. B. „american candy“, „watch box“) → Export als CSV → rechts hochladen.
@@ -113,9 +119,14 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
           ) : (
             <section className="card" style={{ overflow: "auto" }}>
               <div className="card-pad small muted" style={{ paddingBottom: 0 }}>
-                Import „{tiktok.fileName}“ vom {tiktok.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} · {tiktok.items.length} Produkte · sortiert nach{" "}
+                Import „{tiktok.fileName}“ vom {tiktok.createdAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })} ({tiktokAge === 0 ? "heute" : `vor ${tiktokAge} Tag${tiktokAge === 1 ? "" : "en"}`}) · {tiktok.anzahl} Produkte · sortiert nach{" "}
                 <Link href={`/marken/shop?marke=${brand.id}&sort=verkauf`}>Verkäufen</Link> · <Link href={`/marken/shop?marke=${brand.id}&sort=umsatz`}>Umsatz</Link> · <Link href={`/marken/shop?marke=${brand.id}&sort=videos`}>Videos</Link>
               </div>
+              {tiktok.meta?.columns && (
+                <div className="card-pad small muted" style={{ paddingTop: 4, paddingBottom: 0 }} data-testid="tiktok-columns">
+                  Spalten laut Datei: Verkäufe = „{tiktok.meta.columns.sales ?? "–"}“ · Umsatz = „{tiktok.meta.columns.revenue ?? "–"}“ · Preis = „{tiktok.meta.columns.price ?? "–"}“{tiktok.meta.currency ? ` · Währung ${tiktok.meta.currency}` : ""}. Zeitraum der Verkäufe wie in der Spaltenüberschrift (Helium 10).
+                </div>
+              )}
               <table className="table" style={{ fontSize: 13 }}>
                 <thead><tr><th>Produkt</th><th>Shop</th><th className="right">Preis</th><th className="right">Verkauft</th><th className="right">Umsatz</th><th className="right">★</th><th className="right">Videos</th><th className="right">Creator</th></tr></thead>
                 <tbody>
@@ -123,9 +134,9 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
                     <tr key={n}>
                       <td style={{ maxWidth: 340 }}>{i.url ? <a href={i.url} target="_blank" rel="noopener">{i.title}</a> : i.title}</td>
                       <td className="small">{i.shop ?? "–"}</td>
-                      <td className="num right">{i.price ? formatEuro(i.price) : "–"}</td>
+                      <td className="num right">{i.price ? money(i.price) : "–"}</td>
                       <td className="num right">{fmtN(i.sales)}</td>
-                      <td className="num right">{i.revenue ? formatEuro(i.revenue) : "–"}</td>
+                      <td className="num right">{i.revenue ? (i.revenueSuspect ? <span className="muted" title={`Unplausibel: ${money(i.revenue)} bei ${fmtN(i.sales)} Verkäufen zu je ${i.price ? money(i.price) : "?"} – Spalte prüfen`} data-testid="tiktok-revenue-suspect">? {money(i.revenue)}</span> : money(i.revenue)) : "–"}</td>
                       <td className="num right">{i.rating?.toLocaleString("de-DE") ?? "–"}</td>
                       <td className="num right">{fmtN(i.videos)}</td>
                       <td className="num right">{fmtN(i.creators)}</td>

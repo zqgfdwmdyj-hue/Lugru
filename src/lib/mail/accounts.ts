@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { gmailSend, googleToken, graphSend, microsoftToken, MS_SCOPES, MS_SCOPES_READONLY } from "@/lib/integrations/clients/mail";
 import { getIntegration } from "@/lib/integrations/store";
 import { smtpSend, type Account } from "./connect";
+import { isTestEnv } from "@/lib/testenv";
 import type { ServerSettings } from "./servers";
 
 // Postfächer als Konten: Zugang lesen (OAuth-Token oder IMAP/SMTP-Passwort) und zentral senden.
@@ -55,24 +56,24 @@ export async function saveOAuthMailbox(tenantId: string, provider: "gmail" | "ou
 }
 
 /** Legt ein IMAP/SMTP-Postfach an (Passwort verschlüsselt, Server als Einstellungen). */
-export async function saveImapMailbox(tenantId: string, account: Account) {
+export async function saveImapMailbox(tenantId: string, account: Account, o: { nurAbruf?: boolean } = {}) {
   const { password, address, ...settings } = account;
-  return upsertMailbox(tenantId, "imap", address, encryptSecret(JSON.stringify({ password })), settings);
+  return upsertMailbox(tenantId, "imap", address, encryptSecret(JSON.stringify({ password })), settings, { nurAbruf: Boolean(o.nurAbruf) });
 }
 
-async function upsertMailbox(tenantId: string, provider: "gmail" | "outlook" | "imap", address: string, sealed: string, config: Record<string, unknown>) {
+async function upsertMailbox(tenantId: string, provider: "gmail" | "outlook" | "imap", address: string, sealed: string, config: Record<string, unknown>, extra: { nurAbruf?: boolean } = {}) {
   const M = schema.mailboxes;
   const [existing] = await db.select().from(M).where(and(eq(M.tenantId, tenantId), eq(M.provider, provider), eq(sql`lower(${M.address})`, address.toLowerCase())));
   if (existing?.integrationId) {
     await db.update(schema.integrations).set({ secretEncrypted: sealed, config, updatedAt: new Date() }).where(and(eq(schema.integrations.id, existing.integrationId), eq(schema.integrations.tenantId, tenantId)));
-    await db.update(M).set({ active: true, lastError: null, updatedAt: new Date() }).where(eq(M.id, existing.id));
+    await db.update(M).set({ active: true, lastError: null, fehlerArt: null, ...extra, updatedAt: new Date() }).where(eq(M.id, existing.id));
     return existing.id;
   }
   const [integ] = await db
     .insert(schema.integrations)
     .values({ tenantId, provider: `mailbox:${provider}:${address.toLowerCase()}`, label: address, config, secretEncrypted: sealed })
     .returning({ id: schema.integrations.id });
-  const [mb] = await db.insert(M).values({ tenantId, provider, address, integrationId: integ.id }).returning({ id: M.id });
+  const [mb] = await db.insert(M).values({ tenantId, provider, address, integrationId: integ.id, ...extra }).returning({ id: M.id });
   return mb.id;
 }
 
@@ -84,14 +85,16 @@ export type OutgoingMail = {
   text: string;
   html?: string;
   replyTo?: string;
+  /** Antwort auf eine Mail: deren Message-ID (hält den Verlauf im Mailprogramm zusammen). */
+  inReplyTo?: string;
   attachments?: { filename: string; content: Buffer | Uint8Array; contentType?: string }[];
 };
 
-/** Postfächer, über die gesendet werden kann – das Standardpostfach zuerst. */
+/** Postfächer, über die gesendet werden kann (ohne „nur abrufen“) – das Standardpostfach zuerst. */
 export async function senderMailboxes(tenantId: string) {
   const M = schema.mailboxes;
   const [boxes, [tenant]] = await Promise.all([
-    db.select().from(M).where(and(eq(M.tenantId, tenantId), eq(M.active, true), inArray(M.provider, ["gmail", "outlook", "imap"]))).orderBy(M.createdAt),
+    db.select().from(M).where(and(eq(M.tenantId, tenantId), eq(M.active, true), eq(M.nurAbruf, false), inArray(M.provider, ["gmail", "outlook", "imap"]))).orderBy(M.createdAt),
     db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId)),
   ]);
   const def = tenant?.settings.mail?.defaultSenderId;
@@ -110,6 +113,8 @@ export async function buildRaw(from: { name?: string; address: string }, mail: O
     from: from.name ? { name: from.name, address: from.address } : from.address,
     to: mail.to,
     replyTo: mail.replyTo,
+    inReplyTo: mail.inReplyTo,
+    references: mail.inReplyTo,
     subject: mail.subject,
     text: mail.text,
     html: mail.html,
@@ -126,6 +131,11 @@ export async function sendMail(tenantId: string, mail: OutgoingMail, opts: { mai
   const { boxes, defaultId } = await senderMailboxes(tenantId);
   const id = opts.mailboxId || defaultId;
   const box = boxes.find((b) => b.id === id);
+  // Testumgebung: nie wirklich senden – die Mail landet unter Einstellungen → Testumgebung.
+  if (isTestEnv()) {
+    await db.insert(schema.testMails).values({ tenantId, to: mail.to.slice(0, 1000), subject: mail.subject.slice(0, 500), text: mail.text, attachments: mail.attachments?.map((a) => a.filename).join(", ") || null });
+    return { from: box?.address ?? "testumgebung@example.invalid" };
+  }
   if (!box) {
     throw new Error(boxes.length === 0 ? "Kein Postfach zum Senden verbunden – bitte unter Posteingang ein Postfach verbinden." : "Das gewählte Absender-Postfach ist nicht mehr verbunden.");
   }

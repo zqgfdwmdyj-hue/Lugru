@@ -43,14 +43,19 @@ export function buyBoxHolder(d: OwnProductData, own: { sellerId: string | null; 
   if (d.buyBoxIsAmazon) return { level: "warn", text: "Die Buy Box hält Amazon selbst." };
   const name = d.buyBoxSellerName ?? d.buyBoxSellerId ?? "unbekannt";
   if (!d.buyBoxSellerId) return { level: "ok", text: "Buy Box vorhanden." };
-  const norm = (x: string) => x.toLowerCase().replace(/gmbh|ug|&|und|\s|[.,-]/g, "");
-  const byName = !own.sellerId && own.sellerName && d.buyBoxSellerName ? norm(own.sellerName) === norm(d.buyBoxSellerName) : null;
-  if (own.sellerId || byName !== null) {
-    return (own.sellerId ? own.sellerId === d.buyBoxSellerId : byName)
+  const fba = d.buyBoxIsFBA ? " (FBA)" : "";
+  // Nur mit bestätigter Verkäufer-ID sicher „ihr“ oder „anderer Verkäufer“ – der Name allein reicht nicht
+  // (Firmenname ≠ Shopname). Bis dahin: eigener Verkäufer noch ungeklärt.
+  if (own.sellerId) {
+    return own.sellerId === d.buyBoxSellerId
       ? { level: "ok", text: `Buy Box bei euch (${own.sellerName ?? name}${d.buyBoxIsFBA ? ", FBA" : ""}).` }
-      : { level: "warn", text: `Die Buy Box hält ein anderer Verkäufer: ${name}${d.buyBoxIsFBA ? " (FBA)" : ""}.` };
+      : { level: "warn", text: `Die Buy Box hält ein anderer Verkäufer: ${name}${fba}.` };
   }
-  return { level: "info", text: `Buy Box hält: ${name}${d.buyBoxIsFBA ? " (FBA)" : ""}.` };
+  const norm = (x: string) => x.toLowerCase().replace(/gmbh|ug|&|und|\s|[.,-]/g, "");
+  if (own.sellerName && d.buyBoxSellerName && norm(own.sellerName) === norm(d.buyBoxSellerName)) {
+    return { level: "info", text: `Buy Box vermutlich bei euch (${name}${fba}) – Name passt, bitte unten bestätigen.` };
+  }
+  return { level: "info", text: `Buy Box hält: ${name}${fba} – eigener Verkäufer noch ungeklärt (unten bestätigen, falls ihr das seid).` };
 }
 
 // ---- Helium 10 TikTok-Erweiterung (CSV-Export) ---------------------------------------------
@@ -84,6 +89,21 @@ function num(v: string | undefined): number | null {
 
 /** Spalten werden am Namen erkannt (englisch oder deutsch). */
 export function parseTikTokExport(rows: string[][]): TikTokMarketItem[] {
+  return parseTikTokImport(rows).items;
+}
+
+/**
+ * Umsatz plausibel? Er sollte grob Preis × Verkäufe sein. Steht dort z. B. genau der Preis bei 100 Verkäufen,
+ * ist vermutlich eine Spalte falsch erkannt – dann nicht als Umsatz anzeigen, sondern kennzeichnen.
+ */
+export function revenuePlausible(i: Pick<TikTokMarketItem, "price" | "sales" | "revenue">): boolean {
+  if (i.revenue === null || i.price === null || i.sales === null || i.price <= 0 || i.sales <= 1) return true;
+  const expected = i.price * i.sales;
+  return i.revenue >= expected * 0.3 && i.revenue <= expected * 3;
+}
+
+/** Import mit erkannten Spalten (Überschrift je Feld) und Währung – zum Nachprüfen der Zuordnung. */
+export function parseTikTokImport(rows: string[][]): { items: TikTokMarketItem[]; columns: Record<string, string | null>; currency: string | null } {
   const head = rows[0] ?? [];
   const c = {
     title: col(head, "Product Name", "Product Title", "Title", "Product", "Produktname", "Produkt"),
@@ -98,8 +118,14 @@ export function parseTikTokExport(rows: string[][]): TikTokMarketItem[] {
     url: col(head, "URL", "Link", "Product URL"),
   };
   if (c.title < 0) throw new Error("In der Datei fehlt eine Spalte mit dem Produktnamen – bitte den TikTok-Export aus Helium 10 verwenden.");
+  // Dieselbe Spalte darf nicht zugleich Preis und Umsatz bzw. Verkäufe sein.
+  if (c.revenue >= 0 && (c.revenue === c.price || c.revenue === c.sales)) c.revenue = -1;
+  if (c.sales >= 0 && c.sales === c.price) c.sales = -1;
   const get = (r: string[], i: number) => (i >= 0 ? r[i] : undefined);
-  return rows
+  const sample = rows.slice(1, 50).flatMap((r) => [get(r, c.price), get(r, c.revenue)]).join(" ");
+  const currency = /\$|USD/.test(sample) ? "USD" : /£|GBP/.test(sample) ? "GBP" : /€|EUR/.test(sample) ? "EUR" : null;
+  const columns = Object.fromEntries(Object.entries(c).map(([k, i]) => [k, i >= 0 ? (head[i] ?? "").trim() || null : null]));
+  const items = rows
     .slice(1)
     .map((r) => ({
       title: (get(r, c.title) ?? "").trim().slice(0, 200),
@@ -114,7 +140,9 @@ export function parseTikTokExport(rows: string[][]): TikTokMarketItem[] {
       url: get(r, c.url)?.trim() || null,
     }))
     .filter((i) => i.title)
-    .slice(0, 500);
+    .slice(0, 500)
+    .map((i) => (revenuePlausible(i) ? i : { ...i, revenueSuspect: true }));
+  return { items, columns, currency };
 }
 
 // ---- Hinweise zur Optimierung ---------------------------------------------------------------

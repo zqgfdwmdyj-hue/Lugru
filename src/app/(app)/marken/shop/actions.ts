@@ -71,9 +71,11 @@ export async function tiktokImportAction(_prev: ShopState, fd: FormData): Promis
     const [b] = await db.select({ id: schema.brands.id }).from(schema.brands).where(and(eq(schema.brands.id, brandId), eq(schema.brands.tenantId, s.tenantId)));
     if (!b) return { ok: false, message: "Marke nicht gefunden." };
     const t = readTable(new Uint8Array(await file.arrayBuffer()));
-    const n = await importTikTok(s.tenantId, brandId, file.name, [t.headers, ...t.rows]);
+    const r = await importTikTok(s.tenantId, brandId, file.name, [t.headers, ...t.rows]);
     revalidatePath("/marken/shop");
-    return { ok: true, message: `${n} TikTok-Produkte übernommen – sie fließen jetzt auch in die KI-Ideen ein.` };
+    const cols = r.columns;
+    const seen = `Erkannt: Verkäufe = „${cols.sales ?? "–"}“, Umsatz = „${cols.revenue ?? "–"}“, Preis = „${cols.price ?? "–"}“${r.currency ? `, Währung ${r.currency}` : ""}.`;
+    return { ok: true, message: `${r.n} TikTok-Produkte übernommen. ${seen}${r.suspect ? ` Bei ${r.suspect} passt der Umsatz nicht zu Preis × Verkäufe – dort als unsicher markiert.` : ""}` };
   } catch (e) {
     return { ok: false, message: msg(e) };
   }

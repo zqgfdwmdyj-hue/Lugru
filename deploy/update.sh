@@ -50,8 +50,11 @@ fi
 # 3. Neuen Stand holen und starten. Die Datenbank-Änderungen (Migrationen) laufen beim Start automatisch
 #    und ergänzen nur – vorhandene Daten bleiben.
 git pull --ff-only
+# Programmstand für die Anzeige in der Seitenleiste („Stand …“).
+TZ=Europe/Berlin git log -1 --format='%h · %cd' --date=format-local:'%d.%m.%Y %H:%M' > VERSION 2>/dev/null || true
 compose up -d --build
 docker image prune -f >/dev/null
 # Build-Reste älter als 3 Tage wegräumen (neuere bleiben, damit das nächste Update schnell baut).
 docker builder prune -f --filter until=72h >/dev/null 2>&1 || true
-echo "Aktualisiert. Daten und Anbindungen sind unverändert."
+echo "Aktualisiert auf Stand $(cat VERSION 2>/dev/null || echo '?'). Daten und Anbindungen sind unverändert."
+echo "Im Seller-System unten links steht jetzt „Stand …“ – sonst Seite neu laden (Strg+F5)."

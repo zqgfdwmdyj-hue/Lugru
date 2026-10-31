@@ -10,6 +10,7 @@ import { linkInvoiceByOrderNo } from "@/lib/purchasing/service";
 import { getSettings } from "@/lib/settings";
 import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
 import { extractInvoiceFacts, guessKind, matchBySum, parseInvoiceFileName } from "./parse";
+import { analyzeNew, duplicatesOf, needsReview, recheckInvoices } from "./review";
 
 export async function pdfText(bytes: Uint8Array): Promise<string> {
   try {
@@ -34,6 +35,8 @@ export async function ingestInvoice(opts: { tenantId: string; source: "drive" | 
     ? await db.select().from(schema.invoiceSourceRules).where(and(eq(schema.invoiceSourceRules.tenantId, tenantId), eq(schema.invoiceSourceRules.sourceKey, name.sourceKey)))
     : [];
   const kind = rule?.kind ?? guessKind(name.sourceKey);
+  // Datum (Text + Dateiname, unsicher statt still vertauscht), Belegart, Hinweise.
+  const found = analyzeNew(text, opts.fileName);
   const fileId = opts.storeBytes ? await storeFile(tenantId, opts.fileName, "application/pdf", opts.bytes) : null;
   const [row] = await db
     .insert(schema.invoices)
@@ -47,14 +50,18 @@ export async function ingestInvoice(opts: { tenantId: string; source: "drive" | 
       supplierId: rule?.supplierId ?? null,
       kind,
       status: kind === "expense" ? "matched" : "new",
-      invoiceDate: facts.invoiceDate ?? name.date,
+      invoiceDate: found.invoiceDate,
+      docType: found.docType,
+      checks: found.checks,
       invoiceNumber: facts.invoiceNumber,
       orderNumber: facts.orderNumber,
       totalGross: facts.totalGross,
       totalNet: facts.totalNet,
       textExcerpt: text.slice(0, 8000),
     })
-    .returning({ id: schema.invoices.id });
+    .returning();
+  const dups = await duplicatesOf(tenantId, row);
+  if (dups.length) await db.update(schema.invoices).set({ checks: { ...found.checks, duplicateOf: dups } }).where(eq(schema.invoices.id, row.id));
   if (kind === "goods") await autoMatch(tenantId, row.id, facts.asins);
   else if (kind === "unknown") await db.update(schema.invoices).set({ status: "review" }).where(eq(schema.invoices.id, row.id));
   if (facts.orderNumber) await linkPurchaseOrders(tenantId, facts.orderNumber);
@@ -65,6 +72,12 @@ export async function ingestInvoice(opts: { tenantId: string; source: "drive" | 
 export async function autoMatch(tenantId: string, invoiceId: string, asinsFromText?: string[]) {
   const [inv] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
   if (!inv || inv.kind !== "goods") return false;
+  // Unsicheres Datum (z. B. 01.12. oder 12.01.?) nicht still für die Zuordnung über Zeitfenster benutzen –
+  // erst bestätigen (Rechnung → Datum), dann ordnet „Neu zuordnen“ bzw. die nächste Prüfung zu.
+  if (inv.checks?.date && !(inv.checks.manual ?? []).includes("date")) {
+    await db.update(schema.invoices).set({ status: "review", updatedAt: new Date() }).where(eq(schema.invoices.id, invoiceId));
+    return false;
+  }
   const settings = await getSettings(tenantId);
   const asins = asinsFromText ?? [...new Set([...(inv.textExcerpt ?? "").matchAll(/\bB0[A-Z0-9]{8}\b/g)].map((m) => m[0]))];
   const day = inv.invoiceDate ?? todayIso(inv.createdAt);
@@ -121,9 +134,11 @@ export async function syncDrive(tenantId: string, max = 150) {
 
 export async function refreshInvoiceTasks(tenantId: string) {
   const I = schema.invoices;
-  const [review] = await db.select({ n: sql<number>`count(*)::int` }).from(I).where(and(eq(I.tenantId, tenantId), eq(I.status, "review")));
+  // Noch nicht mit der aktuellen Logik geprüfte Rechnungen nachprüfen (nur Hinweise, keine Änderung am Datum).
+  await recheckInvoices(tenantId);
+  const [review] = await db.select({ n: sql<number>`count(*)::int` }).from(I).where(and(eq(I.tenantId, tenantId), needsReview));
   if (review.n > 0) {
-    await upsertSystemTask(db, tenantId, "invoices-review", { title: `${review.n} Rechnungen prüfen und zuordnen`, category: "einkauf", link: "/rechnungen?ansicht=pruefen" });
+    await upsertSystemTask(db, tenantId, "invoices-review", { title: `${review.n} Rechnung${review.n === 1 ? "" : "en"} prüfen (Zuordnung, Datum, Belegart, Duplikate)`, category: "einkauf", link: "/rechnungen?ansicht=pruefen" });
   } else await resolveSystemTask(db, tenantId, "invoices-review");
 
   // Einkäufe älter als 14 Tage ohne Rechnung – nur, wenn überhaupt schon Warenrechnungen da sind.

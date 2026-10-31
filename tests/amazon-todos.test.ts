@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deadlineFromText, noiseReason, parseTriage, todosClosedBy, triageByRules, triagePrompt, type TriageMail } from "@/lib/amazon-todos/logic";
+import { deadlineFromText, extractSkus, kontozustandLink, marktplatzAus, noiseReason, parseTriage, pflichtRegel, todosClosedBy, triageByRules, triagePrompt, type TriageMail } from "@/lib/amazon-todos/logic";
 
 // Beispielmails ohne persönliche Daten.
 const mail = (over: Partial<TriageMail> = {}): TriageMail => ({ key: "<a@amazon.de>", from: "Amazon Seller Central <seller-notification@amazon.de>", subject: "Handlungsbedarf", date: "2026-09-01T08:00:00Z", text: "", ...over });
@@ -84,5 +84,43 @@ describe("Übernahme aus dem Retouren-Tool", () => {
     expect(info).toMatchObject({ messageKey: "<x@y>", status: "done", infoOnly: true, deadline: null });
     expect(info!.receivedAt.toISOString()).toBe("2026-08-02T10:00:00.000Z");
     expect(mapLegacyTodo({ message_id: "" })).toBeNull();
+  });
+});
+
+// B9.8: Pflicht-ToDos (Deaktivierung, Dokumente, Compliance) – nie der KI überlassen, immer mit Marktplatz und Link.
+describe("Pflicht-ToDos", () => {
+  it.each([
+    ["Opnieuw indienen van document vereist", "dokument"],
+    ["Verstrek gegevens voor de EU-gegevenswet om deactivering van uw aanbiedingen te voorkomen", "compliance_daten"],
+    ["Address pricing errors to reinstate deactivated listings", "preisfehler"],
+    ["Submit trademark authorization to reactivate listings", "marke"],
+    ["Registrierungsnummern für Batterien (EPR) fehlen", "compliance_epr"],
+    ["GPSR: Produktsicherheitsinformationen erforderlich", "produktsicherheit"],
+    ["Ihre Angebote wurden deaktiviert", "reaktivierung"],
+  ])("%s → %s", (subject, category) => {
+    expect(pflichtRegel({ subject, text: "" })).toEqual({ category });
+  });
+
+  it("Freigaben und Routine sind keine Pflicht-ToDos", () => {
+    expect(pflichtRegel({ subject: "Ihr Angebot ist wieder aktiv", text: "" })).toBeNull();
+    expect(pflichtRegel({ subject: "Amazon hat Ihre Artikel versandt", text: "" })).toBeNull();
+    expect(pflichtRegel({ subject: "Ihre Auszahlung ist unterwegs", text: "" })).toBeNull();
+  });
+
+  it("findet Compliance im Text, wenn dort auch eine Deaktivierung oder Pflicht steht", () => {
+    expect(pflichtRegel({ subject: "Wichtige Mitteilung", text: "Battery registration numbers are required, otherwise listings will be deactivated." })).toEqual({ category: "compliance_epr" });
+    expect(pflichtRegel({ subject: "Wichtige Mitteilung", text: "Informationen zu Batterien finden Sie im Hilfebereich." })).toBeNull();
+  });
+
+  it("Marktplatz aus der Absender-Domain, Link Kontozustand, SKUs", () => {
+    expect(marktplatzAus("seller-notification@amazon.nl")).toEqual({ land: "NL", tld: "nl" });
+    expect(marktplatzAus("seller-notification@amazon.com.be")).toEqual({ land: "BE", tld: "com.be" });
+    expect(marktplatzAus("noreply@example.invalid", "siehe https://sellercentral.amazon.fr/performance")).toEqual({ land: "FR", tld: "fr" });
+    expect(marktplatzAus("noreply@example.invalid")).toEqual({ land: null, tld: null });
+    expect(kontozustandLink("nl")).toBe("https://sellercentral.amazon.nl/performance/account/health");
+    expect(kontozustandLink(null)).toBe("https://sellercentral.amazon.de/performance/account/health");
+    expect(extractSkus("SKU: TEST-SOCKEN-01, Seller SKU TEST-TASSE")).toEqual(["TEST-SOCKEN-01", "TEST-TASSE"]);
+    expect(extractSkus("Betroffen: SKU: TEST-KABEL.2. Bitte prüfen.")).toEqual(["TEST-KABEL.2"]);
+    expect(extractSkus("SKU: TEST-NL-01.")).toEqual(["TEST-NL-01"]);
   });
 });

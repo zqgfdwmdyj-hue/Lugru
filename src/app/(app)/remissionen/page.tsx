@@ -81,8 +81,9 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
       <div className="page-head">
         <div><div className="crumb">Amazon FBA</div><h1>Remissionen</h1></div>
         <div style={{ display: "flex", gap: 6 }}>
-          <Link className={`chip${view === "offen" ? " active" : ""}`} href="/remissionen">Eingang offen</Link>
-          <Link className={`chip${view === "alle" ? " active" : ""}`} href="/remissionen?ansicht=alle">Alle Aufträge</Link>
+          <Link className={`chip${view === "offen" ? " active" : ""}`} aria-current={view === "offen" ? "true" : undefined} href="/remissionen">Eingang offen</Link>
+          <Link className={`chip${view === "alle" ? " active" : ""}`} aria-current={view === "alle" ? "true" : undefined} href="/remissionen?ansicht=alle">Alle Aufträge</Link>
+          <Link className="btn btn-small" href="/remissionen/pruefungen">Retouren-Station & Fälle</Link>
           <Link className="btn btn-primary btn-small" href="/remissionen/erfassen">Tendron-Pakete aus Seller Central holen</Link>
         </div>
       </div>
@@ -92,7 +93,7 @@ export default async function RemissionenPage({ searchParams }: { searchParams: 
           <h2>{view === "offen" ? "Versandt – Eingang bei dir bestätigen" : "Remissions- und Entsorgungsaufträge"}</h2>
           <span className="small muted">Fehlmengen werden automatisch zum Anspruch</span>
         </div>
-        <table className="table">
+        <table className="table sticky-head">
           <thead><tr><th>Auftrag</th><th>Art</th><th>SKU</th><th>Zustand</th><th className="right">Angefordert</th><th className="right">Versandt</th><th className="right">Entsorgt</th><th>Sendung</th><th>Angekommen</th></tr></thead>
           <tbody>
             {orders.length === 0 && <tr><td colSpan={9} className="muted">Keine Aufträge. Remissions-Reports unter „Daten importieren“ hochladen.</td></tr>}

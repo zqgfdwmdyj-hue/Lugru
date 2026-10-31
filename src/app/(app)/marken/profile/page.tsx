@@ -91,7 +91,7 @@ export default async function ProfilePage() {
       ))}
       <form action={createBrandAction} className="card card-pad" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input className="input" name="name" placeholder="Weitere Marke anlegen" style={{ flex: "1 1 200px" }} />
-        <button className="btn" type="submit">Anlegen</button>
+        <button className="btn btn-primary" type="submit">Anlegen</button>
       </form>
     </>
   );

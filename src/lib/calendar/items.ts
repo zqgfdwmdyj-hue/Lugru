@@ -6,6 +6,8 @@ import { addMonthsIso } from "@/lib/money/cashflow";
 import { formatEuro } from "@/lib/numbers";
 import { categoryLabel } from "@/lib/amazon-todos/logic";
 import { todoDeadlines } from "@/lib/amazon-todos/service";
+import { isIdeaTask } from "@/lib/today/logic";
+import { carrierLabel, loadText } from "@/lib/pallets/shipments";
 
 /** Ein Termin, den das System im Kalender haben möchte. */
 export type Desired = {
@@ -41,6 +43,8 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
     .from(T)
     .where(and(eq(T.tenantId, t), eq(T.status, "open"), isNotNull(T.dueDate), gte(T.dueDate, from), lte(T.dueDate, to), or(sql`${T.systemKey} is null`, notInArray(T.systemKey, COVERED_BY_CALENDAR))));
   for (const k of tasks) {
+    // Automatische Ideen sind unverbindlich – nicht in den Kalender (gleiche Regel wie die Startseite).
+    if (isIdeaTask(k)) continue;
     out.push({
       key: `task:${k.id}`,
       title: (k.priority === "critical" ? "‼ " : "") + k.title,
@@ -115,6 +119,25 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
     });
   }
 
+  // Paletten-Sendungen (Spedition/Paketdienst): erwartete Anlieferungen und Versand an Kunden.
+  const PS = schema.palletShipments;
+  const shipments = await db
+    .select()
+    .from(PS)
+    .where(and(eq(PS.tenantId, t), inArray(PS.status, ["geplant", "unterwegs", "verzoegert", "problem"]), isNotNull(PS.plannedDate), gte(PS.plannedDate, from), lte(PS.plannedDate, to)));
+  for (const s of shipments) {
+    const load = loadText(s);
+    out.push({
+      key: `pship:${s.id}`,
+      title: `${s.direction === "ein" ? "Anlieferung" : "Versand"}: ${s.title}${load ? ` (${load})` : ""}${s.status === "verzoegert" ? " – verschoben" : ""}`.slice(0, 200),
+      date: s.plannedDate!,
+      description: [carrierLabel(s.carrier, s.carrierName), s.trackingNo ? `Sendungsnummer ${s.trackingNo}` : null, s.plannedTime ? `Zeitfenster ${s.plannedTime}` : null, s.place, s.location ? `Stand: ${s.location}` : null].filter(Boolean).join("\n"),
+      link: `/paletten/sendungen/${s.id}`,
+      category: "Versand",
+      remind: s.direction === "ein",
+    });
+  }
+
   const M = schema.cashItems;
   const cash = await db.select().from(M).where(and(eq(M.tenantId, t), lte(M.date, cashTo)));
   for (const c of cash) {
@@ -157,7 +180,11 @@ export async function collectDesired(tenantId: string, today = todayIso(), view?
     .from(schema.contentPosts)
     .where(and(eq(schema.contentPosts.tenantId, t), inArray(schema.contentPosts.status, ["idea", "filmed", "edited", "scheduled"]), isNotNull(schema.contentPosts.plannedFor), gte(schema.contentPosts.plannedFor, from), lte(schema.contentPosts.plannedFor, to)));
   for (const p of posts) {
-    out.push({ key: `post:${p.id}`, title: `${p.platform === "youtube" ? "YouTube" : p.platform === "instagram" ? "Instagram" : "TikTok"} (${brandNames.get(p.brandId) ?? ""}): ${p.hook}`.slice(0, 200), date: p.plannedFor!, description: [p.caption, p.hashtags].filter(Boolean).join("\n\n"), link: `/marken/content`, category: "Aufgabe", remind: true });
+    // KI-Vorschläge, die noch niemand angenommen hat (Status „Idee“), sind keine Termine.
+    if (p.source === "ai" && p.status === "idea") continue;
+    // Nur „Fester Termin“ ist verbindlich; sonst ist das Datum ein Wunschdatum (im Titel gekennzeichnet).
+    const fixed = p.status === "scheduled";
+    out.push({ key: `post:${p.id}`, title: `${fixed ? "Veröffentlichung" : "Wunschdatum"} ${p.platform === "youtube" ? "YouTube" : p.platform === "instagram" ? "Instagram" : "TikTok"} (${brandNames.get(p.brandId) ?? ""}): ${p.hook}`.slice(0, 200), date: p.plannedFor!, description: [fixed ? "Fester Veröffentlichungstermin." : "Wunschdatum – unverbindlich, erst mit Status „Fester Termin“ verbindlich.", p.caption, p.hashtags].filter(Boolean).join("\n\n"), link: `/marken/content`, category: "Aufgabe", remind: fixed });
   }
 
   // Fristen der Amazon-ToDos – je Tag ein Sammeltermin.

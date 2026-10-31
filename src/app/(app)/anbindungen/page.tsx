@@ -4,14 +4,40 @@ import { integrationStatus } from "@/lib/integrations/store";
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
-import { deleteIntegrationAction, requestAmazonReport, runAllNow, saveIntegrationAction } from "./actions";
+import { MARKT_BERICHTE, berichtVonTyp } from "@/lib/amazon-markt/store";
+import { landVonId } from "@/lib/amazon-markt/logic";
+import { deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
 import { TestButton } from "./test-button";
+import { SellerboardCard } from "./sellerboard-card";
+import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
+import { ordnerName } from "@/lib/mail/ordner";
+import { postfachStand } from "@/lib/mail/status";
 
-export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string }> }) {
+/** Anmeldung per OAuth für Postfächer – nur optional („Erweitert“); Standard ist IMAP mit App-Passwort. */
+const OAUTH_POSTFACH = new Set(["google", "microsoft"]);
+const zeit = (d: Date | null) => (d ? d.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" }) : null);
+
+const MARKT_NAME: Record<keyof typeof MARKT_BERICHTE, string> = { buybox: "Buy-Box-Anteil (Sales and Traffic)", listungen: "Listung (Alle Angebote)", lageralter: "Lageralter (Bestandsplanung)" };
+const AMZ_MSG: Record<string, (n: number) => string> = {
+  angefordert: (n) => `${n} Bericht${n === 1 ? "" : "e"} je Land angefordert – Amazon braucht meist einige Minuten, dann „Fertige Berichte abholen“.`,
+  fehler: (n) => `${n} angefordert, mindestens eine Anforderung schlug fehl (siehe Liste).`,
+  abgeholt: (n) => (n ? `${n} fertige Bericht${n === 1 ? "" : "e"} übernommen.` : "Noch nichts fertig – in ein paar Minuten erneut versuchen."),
+};
+/** „GET_SALES_AND_TRAFFIC_REPORT@A1PA…“ → „Buy-Box-Anteil (Sales and Traffic) DE“ */
+function berichtName(t: string) {
+  const [typ, mp] = t.split("@");
+  const b = mp ? berichtVonTyp(typ) : null;
+  return b ? `${MARKT_NAME[b]} ${landVonId(mp) ?? mp}` : t;
+}
+
+export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string; amz?: string; n?: string }> }) {
   const session = await requireOwner();
-  const { p } = await searchParams;
+  const { p, sellerboard, amz, n } = await searchParams;
   const status = await integrationStatus(session.tenantId);
-  const reports = await db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12);
+  const [reports, postfach] = await Promise.all([
+    db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12),
+    postfachStand(session.tenantId),
+  ]);
 
   return (
     <>
@@ -30,7 +56,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           <h2>Hintergrund-Abrufe</h2>
           <form action={runAllNow}><button className="btn btn-small" type="submit">Jetzt alles abrufen</button></form>
         </div>
-        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich), Rechnungen stündlich.</div>
+        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich, Buy Box/Listung/Lageralter je Land täglich), Rechnungen stündlich.</div>
         {status.get("amazon_sp") && (
           <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="rk" className="small">Amazon-Report sofort anfordern:</label>
@@ -38,11 +64,25 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
             <button className="btn btn-small" type="submit">Anfordern</button>
           </form>
         )}
+        {status.get("amazon_sp") && (
+          <div id="amazon-berichte" className="stack" style={{ gap: 6 }} data-testid="amazon-berichte">
+            <form action={requestMarktBerichteNow} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <label htmlFor="mb" className="small">Je Land (alle Marktplätze der Anbindung):</label>
+              <select className="select" id="mb" name="bericht" style={{ width: 280, maxWidth: "100%" }}>
+                <option value="alle">Buy Box, Listung und Lageralter</option>
+                {Object.entries(MARKT_NAME).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <button className="btn btn-small" type="submit">Anfordern</button>
+            </form>
+            <form action={fetchAmazonReportsNow}><button className="btn btn-small" type="submit">Fertige Berichte abholen</button></form>
+            {amz && AMZ_MSG[amz] && <div className={`notice ${amz === "fehler" ? "notice-warn" : amz === "abgeholt" && Number(n) > 0 ? "notice-ok" : "notice-info"}`} data-testid="amazon-berichte-msg" role="status">{AMZ_MSG[amz](Number(n) || 0)}</div>}
+          </div>
+        )}
         {reports.length > 0 && (
           <table className="table">
             <tbody>
               {reports.map((r) => (
-                <tr key={r.id}><td className="num small">{r.requestedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</td><td className="small">{r.reportType}</td><td className="small">{r.status === "pending" ? "wartet auf Amazon" : r.status === "done" ? "übernommen" : `Fehler: ${r.error ?? ""}`}</td></tr>
+                <tr key={r.id}><td className="num small">{r.requestedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</td><td className="small">{berichtName(r.reportType)}</td><td className="small">{r.status === "pending" ? "wartet auf Amazon" : r.status === "done" ? "übernommen" : `Fehler: ${r.error ?? ""}`}</td></tr>
               ))}
             </tbody>
           </table>
@@ -59,18 +99,56 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           </div>
           <div className="card-pad small muted">Die eBay-Verbindung wird im eBay-Bereich eingerichtet (Zugang, Anmeldung, Verkaufsprofile, Artikelstandort) und gilt für alles, was mit eBay zu tun hat.</div>
         </section>
-        {INTEGRATIONS.map((def) => {
-          const st = status.get(def.provider);
-          const open = p === def.provider;
-          return (
+        <SellerboardCard tenantId={session.tenantId} message={sellerboard} />
+        <section className="card" id="postfaecher" data-testid="anbindung-postfaecher">
+          <div className="card-head">
+            <div>
+              <h2>Postfächer (IMAP mit App-Passwort)</h2>
+              <div className="small muted" style={{ marginTop: 2 }}>Seller-Central-, eBay- und Kundenmails abrufen und darüber senden. Standard: Adresse + App-Passwort, Server werden erkannt.</div>
+            </div>
+            <a className="btn btn-small" href="/posteingang/verbinden">Postfach verbinden</a>
+          </div>
+          <div className="card-pad stack" style={{ gap: 8 }}>
+            {postfach.warnung && <div className="notice notice-warn small" data-testid="amazon-mail-warnung">{postfach.warnung}</div>}
+            {postfach.postfaecher.map((b) => (
+              <div key={b.id} className="small" data-testid="anbindung-postfach">
+                <strong style={{ overflowWrap: "anywhere" }}>{b.adresse}</strong> <span className="tag tag-neutral">{b.art}</span>{b.nurAbruf && <> <span className="tag tag-neutral">NUR ABRUF</span></>}{!b.aktiv && <> <span className="tag tag-neutral">PAUSIERT</span></>}
+                <div className="muted">
+                  {b.letzterAbruf ? `Zuletzt abgerufen: ${zeit(b.letzterAbruf)}` : "Noch nicht abgerufen"}
+                  {b.imap && ` · Ordner: ${b.ordner ? b.ordner.map(ordnerName).join(", ") : "automatisch"}`}
+                  {` · letzte Amazon-Mail: ${zeit(b.letzteAmazonMail) ?? "keine"}`}
+                </div>
+                {b.fehler && <div style={{ color: "var(--danger)" }}>{b.fehlerArt ? <strong>{b.fehlerArt}: </strong> : null}{b.fehler}</div>}
+              </div>
+            ))}
+            <div><a className="btn-link small" href="/einstellungen#postfaecher">Postfächer verwalten (Ordner, Test, nur Abruf)</a></div>
+          </div>
+        </section>
+        {INTEGRATIONS.filter((d) => !OAUTH_POSTFACH.has(d.provider)).map((def) => karte(def))}
+        <details className="card card-pad" id="erweitert" open={OAUTH_POSTFACH.has(p ?? "")} data-testid="anbindung-erweitert">
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Erweitert: Postfächer per Google-/Microsoft-Anmeldung (OAuth, optional)</summary>
+          <div className="small muted" style={{ margin: "8px 0 12px" }}>
+            {postfach.nurImap ? "Nicht nötig – deine Postfächer laufen über IMAP mit App-Passwort." : "Nur nötig, wenn ein Anbieter keine App-Passwörter erlaubt."}
+          </div>
+          <div className="stack" style={{ gap: 14 }}>{INTEGRATIONS.filter((d) => OAUTH_POSTFACH.has(d.provider)).map((def) => karte(def, true))}</div>
+        </details>
+      </div>
+    </>
+  );
+
+  function karte(def: (typeof INTEGRATIONS)[number], optional = false) {
+    const st = status.get(def.provider);
+    const open = p === def.provider;
+    return (
             <section key={def.provider} className="card" id={def.provider}>
               <div className="card-head">
                 <div>
                   <h2>{def.name}</h2>
                   <div className="small muted" style={{ marginTop: 2 }}>{def.purpose}</div>
+                  {!st && FEHLT_OHNE[def.provider] && <div className="small" style={{ marginTop: 4 }} data-testid={`fehlt-${def.provider}`}><strong>Ohne diese Anbindung fehlen:</strong> {FEHLT_OHNE[def.provider]}.</div>}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  {st ? <span className="tag tag-ok">EINGERICHTET</span> : <span className="tag tag-neutral">NICHT VERBUNDEN</span>}
+                  {st ? <span className="tag tag-ok">EINGERICHTET</span> : <span className="tag tag-neutral">{optional ? "OPTIONAL" : "NICHT VERBUNDEN"}</span>}
                   <a className="btn btn-small" href={open ? "/anbindungen" : `/anbindungen?p=${def.provider}#${def.provider}`}>{open ? "Schließen" : "Bearbeiten"}</a>
                 </div>
               </div>
@@ -120,9 +198,6 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                 </div>
               )}
             </section>
-          );
-        })}
-      </div>
-    </>
-  );
+    );
+  }
 }

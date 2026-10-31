@@ -1,0 +1,173 @@
+import "server-only";
+import { and, eq, gte, lt } from "drizzle-orm";
+import { db, schema } from "@/db";
+import { skuCostMap } from "@/lib/money/costs";
+import { keepaKey, keepaProducts } from "@/lib/integrations/clients/keepa";
+import { parseKeepaOwn } from "@/lib/brands/shop";
+import { resolveSystemTask, upsertSystemTask } from "@/lib/tasks/system";
+import { getSettings } from "@/lib/settings";
+import { computeHebel, hebelTask, summarize, totals, DEFAULT_ASSUMPTIONS, HEBEL_INFO, type Assumptions, type BuyBox, type Hebel, type HebelSummary, type HebelType, type StatInput, type StockInput } from "./rules";
+
+// Hebel laden (für Seite, Startseite und Aufgaben), Buy Box per Keepa nachholen, Aufgaben pflegen.
+
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+export type HebelData = {
+  list: Hebel[];
+  summary: HebelSummary[];
+  totals: ReturnType<typeof totals>;
+  statsFrom: string | null;
+  statsTo: string | null;
+  /** Anzahl Produktzeilen (30 Tage) – 0 = Abgleich „Produkte 30 Tage“ noch nicht gelaufen. */
+  statsCount: number;
+  syncedAt: Date | null;
+  /** Stand des Bestands aus sellerboard (für Ladenhüter). */
+  stockAt: Date | null;
+  /** Letzter Fehler beim Abruf der 30-Tage-Werte. */
+  statsError: string | null;
+  assumptions: Assumptions;
+  dismissed: number;
+};
+
+export async function loadHebel(tenantId: string): Promise<HebelData> {
+  const S = schema.sellerboardSkuStats;
+  const I = schema.sellerboardInventory;
+  const K = schema.hebelKeepa;
+  const D = schema.hebelDismissals;
+  const U = schema.sellerboardEbayUnits;
+  const J = schema.jobRuns;
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+  const [stats, stock, keepa, dism, costs, settings, ebayUnits, [job]] = await Promise.all([
+    db.select().from(S).where(eq(S.tenantId, tenantId)),
+    db.select().from(I).where(and(eq(I.tenantId, tenantId), gte(I.fbaStock, 1))),
+    db.select().from(K).where(eq(K.tenantId, tenantId)),
+    db.select().from(D).where(and(eq(D.tenantId, tenantId), gte(D.until, todayIso()))),
+    skuCostMap(tenantId),
+    getSettings(tenantId),
+    db.select().from(U).where(and(eq(U.tenantId, tenantId), gte(U.day, since))),
+    db.select().from(J).where(and(eq(J.tenantId, tenantId), eq(J.name, "sellerboard: Produkte 30 Tage (Hebel)"))).limit(1),
+  ]);
+  const ownCost = new Map<string, number>();
+  for (const [sku, c] of costs) {
+    // EK aus sellerboard selbst zählt hier nicht als „eigener“ EK (sonst doppelt abgezogen).
+    if (c.source !== "sellerboard" && c.cost > 0) ownCost.set(sku, c.cost);
+  }
+  const statInputs: StatInput[] = stats.map((r) => ({
+    channel: r.channel as StatInput["channel"],
+    sku: r.sku,
+    name: r.name,
+    asin: r.asin,
+    image: r.image,
+    link: r.link,
+    units: r.units,
+    refunds: r.refunds,
+    sales: r.sales,
+    netProfit: r.netProfit,
+    fees: r.fees,
+    productCosts: r.productCosts,
+    advertising: r.advertising,
+    vat: r.vat,
+    refundCost: r.refundCost,
+    price: r.price,
+    sessions: r.sessions,
+    conversion: r.conversion === null ? null : Number(r.conversion),
+    daysLeft: r.daysLeft,
+    timeToReorder: r.timeToReorder,
+    costMissing: r.costMissing,
+  }));
+  // Ladenhüter: je SKU zusammengefasst (mehrere FNSKU/Marktplätze möglich), bewertet mit dem gültigen EK –
+  // nicht mit dem Lagerwert aus sellerboard (der rechnet mit dem EK in sellerboard, ggf. 0,01-€-Platzhalter).
+  const bySku = new Map<string, StockInput>();
+  for (const r of stock) {
+    const cur = bySku.get(r.sku);
+    const v = r.salesVelocity === null ? null : Number(r.salesVelocity);
+    if (!cur) bySku.set(r.sku, { sku: r.sku, name: r.name, asin: r.asin, fbaStock: r.fbaStock, reserved: r.reserved, inbound: r.inbound, daysLeft: r.daysLeft, salesVelocity: v, cost: costs.get(r.sku)?.cost ?? null });
+    else Object.assign(cur, { fbaStock: cur.fbaStock + r.fbaStock, reserved: (cur.reserved ?? 0) + r.reserved, inbound: (cur.inbound ?? 0) + r.inbound, salesVelocity: cur.salesVelocity === null && v === null ? null : (cur.salesVelocity ?? 0) + (v ?? 0), daysLeft: null });
+  }
+  const buyBox = new Map<string, BuyBox>(keepa.map((k) => [k.asin, { price: k.buyBoxPrice, hasBuyBox: k.hasBuyBox, isAmazon: k.buyBoxIsAmazon }]));
+  const first = stats[0];
+  const assumptions: Assumptions = { storagePerUnitMonth: settings.pricing.storageFee ?? DEFAULT_ASSUMPTIONS.storagePerUnitMonth, capitalRatePa: DEFAULT_ASSUMPTIONS.capitalRatePa };
+  const list = computeHebel({ stats: statInputs, stock: [...bySku.values()], ownCost, buyBox, dismissed: new Set(dism.map((d) => d.key)), assumptions, period: { from: first?.fromDay ?? null, to: first?.toDay ?? null } });
+  // eBay-Verkäufe ohne EK (weder sellerboard noch Seller-System) – dieselbe Liste, auf die die Startseite verweist.
+  const known = new Set(list.filter((h) => h.type === "ek_fehlt").map((h) => h.sku));
+  const missing = new Map<string, number>();
+  for (const u of ebayUnits) if (u.units > u.unitsWithCost && !costs.has(u.sku) && !known.has(u.sku)) missing.set(u.sku, (missing.get(u.sku) ?? 0) + u.units - u.unitsWithCost);
+  const dismissed = new Set(dism.map((d) => d.key));
+  for (const [sku, n] of missing) {
+    const key = `ek_fehlt:ebay:${sku}`;
+    if (dismissed.has(key)) continue;
+    const st = stats.find((x) => x.sku === sku);
+    list.push({ key, type: "ek_fehlt", channel: "ebay", sku, name: st?.name ?? null, asin: st?.asin ?? null, image: st?.image ?? null, link: null, impact: 0, contribution: 0, saving: 0, capital: 0, basis: [`${n} Stück auf eBay verkauft (seit ${since.split("-").reverse().join(".")}), weder im Seller-System noch in sellerboard ein EK.`], headline: `Kein EK hinterlegt – ${n} auf eBay verkauft, Gewinn auf der Startseite zu hoch`, action: "EK im Seller-System eintragen (Produkt → Chargen & Einkauf).", facts: [] });
+  }
+  const summary = summarize(list);
+  const jobError = job && job.lastErrorAt && (!job.lastOkAt || job.lastErrorAt > job.lastOkAt) ? job.lastError : null;
+  const stockAt = stock.reduce<Date | null>((m, r) => (!m || r.syncedAt > m ? r.syncedAt : m), null);
+  return { list, summary, totals: totals(summary), statsFrom: first?.fromDay ?? null, statsTo: first?.toDay ?? null, statsCount: stats.length, syncedAt: first?.syncedAt ?? null, stockAt, statsError: jobError, assumptions, dismissed: dism.length };
+}
+
+/** Eine Sammelaufgabe je Hebel-Art (Wirkung ab 20 € bzw. EK fehlt); nichts mehr da → automatisch erledigt. */
+export async function refreshHebelTasks(tenantId: string, opts: { reopen?: boolean } = {}): Promise<number> {
+  const { list, summary } = await loadHebel(tenantId);
+  const types = Object.keys(HEBEL_INFO) as HebelType[];
+  let n = 0;
+  for (const type of types) {
+    const key = `hebel-${type}`;
+    const sum = summary.find((s) => s.type === type);
+    const task = sum && (sum.impact >= 20 || type === "ek_fehlt") ? hebelTask(sum, list.filter((h) => h.type === type)) : null;
+    if (task) {
+      await upsertSystemTask(db, tenantId, key, { title: task.title, notes: task.notes, category: type === "ek_fehlt" ? "einkauf" : "geld", link: `/hebel?typ=${type}`, dueDate: todayIso() });
+      // Ausdrücklich wieder eingeblendet: die Aufgabe gilt wieder (sonst bleibt eine erledigte erledigt).
+      if (opts.reopen) await db.update(schema.tasks).set({ status: "open", completedAt: null }).where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.systemKey, key)));
+      n++;
+    } else await resolveSystemTask(db, tenantId, key);
+  }
+  return n;
+}
+
+/**
+ * Buy Box laut Keepa für die wichtigsten Kandidaten (Verlust, Marge, Kaufquote, knappe Reichweite), höchstens
+ * 30 ASINs am Tag und je ASIN höchstens einmal in 20 Stunden (≈ 3 Tokens je ASIN). Ohne Keepa-Schlüssel: nichts.
+ */
+export async function syncHebelKeepa(tenantId: string): Promise<number> {
+  const key = await keepaKey(tenantId);
+  if (!key) return 0;
+  const S = schema.sellerboardSkuStats;
+  const K = schema.hebelKeepa;
+  const [stats, fresh] = await Promise.all([
+    db.select().from(S).where(and(eq(S.tenantId, tenantId), eq(S.channel, "amazon"))),
+    db.select({ asin: K.asin }).from(K).where(and(eq(K.tenantId, tenantId), gte(K.fetchedAt, new Date(Date.now() - 20 * 3_600_000)))),
+  ]);
+  const skip = new Set(fresh.map((f) => f.asin));
+  const candidates = stats
+    .filter((s) => s.asin && !skip.has(s.asin) && s.units >= 3 && (s.sales ?? 0) > 0)
+    .filter((s) => {
+      const m = ((s.netProfit ?? 0) / (s.sales ?? 1)) * 100;
+      return m < 15 || (s.daysLeft !== null && s.daysLeft <= 21) || (s.sessions ?? 0) >= 300;
+    })
+    .sort((a, b) => (b.sales ?? 0) - (a.sales ?? 0));
+  const asins = [...new Set(candidates.map((c) => c.asin!))].slice(0, 30);
+  if (!asins.length) return 0;
+  const { products } = await keepaProducts(key, asins, { buybox: true });
+  const now = new Date();
+  let n = 0;
+  for (const p of products) {
+    const d = parseKeepaOwn(p);
+    if (!d) continue;
+    const values = { buyBoxPrice: d.hasBuyBox ? d.price : null, hasBuyBox: d.hasBuyBox, buyBoxIsAmazon: d.buyBoxIsAmazon, buyBoxIsFba: d.buyBoxIsFBA, buyBoxSellerId: d.buyBoxSellerId, fetchedAt: now };
+    await db.insert(K).values({ tenantId, asin: d.asin, ...values }).onConflictDoUpdate({ target: [K.tenantId, K.asin], set: values });
+    n++;
+  }
+  await db.delete(K).where(and(eq(K.tenantId, tenantId), lt(K.fetchedAt, new Date(Date.now() - 30 * 86_400_000))));
+  return n;
+}
+
+/** Hebel ausblenden (z. B. erledigt) – nach `days` Tagen erscheint er wieder, falls er dann noch zutrifft. */
+export async function dismissHebel(tenantId: string, key: string, days = 30) {
+  const until = new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const D = schema.hebelDismissals;
+  await db.insert(D).values({ tenantId, key, until }).onConflictDoUpdate({ target: [D.tenantId, D.key], set: { until } });
+}
+
+export async function undismissAll(tenantId: string) {
+  await db.delete(schema.hebelDismissals).where(eq(schema.hebelDismissals.tenantId, tenantId));
+}

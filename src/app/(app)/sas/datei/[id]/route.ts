@@ -1,0 +1,25 @@
+import { z } from "zod";
+import { requireArea } from "@/lib/auth/session";
+import { documentFile } from "@/lib/sas/service";
+
+// Unterlage zum SAS-Programm herunterladen (nur mit Zugriff auf den Bereich Amazon).
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const s = await requireArea("amazon");
+  const { id } = await params;
+  const parsed = z.string().uuid().safeParse(id);
+  if (!parsed.success) return new Response("Nicht gefunden", { status: 404 });
+  const f = await documentFile(s.tenantId, parsed.data);
+  if (!f) return new Response("Nicht gefunden", { status: 404 });
+  const name = encodeURIComponent(f.name);
+  // Nur PDF und Bilder im Browser anzeigen; alles andere (z. B. HTML) nur herunterladen.
+  const inline = /^(application\/pdf|image\/(png|jpeg|gif|webp))$/i.test(f.mimeType);
+  return new Response(new Uint8Array(f.data), {
+    headers: {
+      "Content-Type": inline ? f.mimeType : "application/octet-stream",
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${name}`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      ...(inline ? {} : { "Content-Security-Policy": "sandbox" }),
+    },
+  });
+}

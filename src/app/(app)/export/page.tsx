@@ -27,7 +27,7 @@ export default async function ExportPage() {
           </p>
           <div className={`notice ${s.changedSinceExport ? "notice-warn" : "notice-ok"} small`} data-testid="cog-status">
             {s.lastExportAt
-              ? `Zuletzt heruntergeladen am ${s.lastExportAt.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}${s.changedSinceExport ? ` – seitdem ${s.changedSinceExport} neue/geänderte SKUs mit EK, bitte neu hochladen.` : " – seitdem nichts Neues."}`
+              ? `Zuletzt heruntergeladen am ${s.lastExportAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" })}${s.changedSinceExport ? ` – seitdem ${s.changedSinceExport} neue/geänderte SKUs mit EK, bitte neu hochladen.` : " – seitdem nichts Neues."}`
               : `Noch nie heruntergeladen – ${s.changedSinceExport} SKUs mit EK bereit.`}
           </div>
           <form action="/export/accountone" method="get" className="stack" style={{ gap: 12, maxWidth: 460 }}>

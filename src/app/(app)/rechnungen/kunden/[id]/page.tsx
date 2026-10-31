@@ -40,7 +40,7 @@ export default async function KundePage({ params, searchParams }: { params: Prom
               return (
                 <tr key={r.id}>
                   <td className="num">{r.number}{r.kind === "storno" && <span className="tag tag-critical" style={{ marginLeft: 6 }}>STORNO</span>}{r.cancelledById && <span className="small muted"> · storniert</span>}</td>
-                  <td className="num">{new Date(d.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}</td>
+                  <td className="num">{new Date(d.date).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" })}</td>
                   <td className="num right">{formatEuro(d.totalGross)}</td>
                   <td><a className="btn btn-small" href={`/rechnungen/ausgang/${r.id}/pdf`} target="_blank" rel="noreferrer">PDF</a></td>
                 </tr>

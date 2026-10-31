@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useKeepForm } from "@/components/keep-form";
 import { bookmarkletHref } from "@/lib/suppliers/scan";
 import { keepaFeedAction, scanFeedAction, suggestBoxesAction, type BoxState, type ScanState } from "../actions";
 
@@ -8,6 +9,7 @@ type Mode = "link" | "einfuegen" | "datei";
 
 export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: number | null; hasAi: boolean }) {
   const [state, action, pending] = useActionState<ScanState, FormData>(scanFeedAction, null);
+  const keep = useKeepForm(state, action);
   const [mode, setMode] = useState<Mode>("einfuegen");
   const [copied, setCopied] = useState(false);
   // React setzt javascript:-Links nicht über Props – deshalb direkt am Element, bei jedem Einblenden neu
@@ -29,7 +31,7 @@ export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: 
   };
 
   return (
-    <form action={action} className="card card-pad stack" style={{ gap: 10 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="card card-pad stack" style={{ gap: 10 }}>
       <input type="hidden" name="feedId" value={feedId} />
       <h2>Seite oder Liste scannen</h2>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -40,7 +42,7 @@ export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: 
             ["datei", "Foto / PDF"],
           ] as const
         ).map(([m, l]) => (
-          <button key={m} type="button" className={`chip${mode === m ? " active" : ""}`} onClick={() => setMode(m)}>{l}</button>
+          <button key={m} type="button" className={`chip${mode === m ? " active" : ""}`} aria-pressed={mode === m} onClick={() => setMode(m)}>{l}</button>
         ))}
       </div>
 
@@ -92,8 +94,9 @@ export function ScanForm({ feedId, usdRate, hasAi }: { feedId: string; usdRate: 
 
 export function KeepaCheck({ feedId, hasKeepa, withEan, withoutEan }: { feedId: string; hasKeepa: boolean; withEan: number; withoutEan: number }) {
   const [state, action, pending] = useActionState<ScanState, FormData>(keepaFeedAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="card card-pad stack" style={{ gap: 8 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="card card-pad stack" style={{ gap: 8 }}>
       <input type="hidden" name="feedId" value={feedId} />
       <h2>Lohnt sich das auf Amazon?</h2>
       <div className="small muted">
@@ -114,8 +117,9 @@ export function KeepaCheck({ feedId, hasKeepa, withEan, withoutEan }: { feedId: 
 
 export function BoxSuggest({ feedId, brands, occasions, hasAi, defaultFba, offerCount }: { feedId: string | null; offerCount?: number; brands: { id: string; name: string }[]; occasions: { key: string; name: string }[]; hasAi: boolean; defaultFba: number }) {
   const [state, action, pending] = useActionState<BoxState, FormData>(suggestBoxesAction, null);
+  const keep = useKeepForm(state, action);
   return (
-    <form action={action} className="card card-pad stack" style={{ gap: 8 }}>
+    <form action={action} ref={keep.ref} onSubmit={keep.onSubmit} className="card card-pad stack" style={{ gap: 8 }}>
       {feedId && <input type="hidden" name="feedId" value={feedId} />}
       <h2>{feedId ? "Boxen daraus bauen" : "Boxen aus Lieferanten-Artikeln"}</h2>
       <div className="small muted">

@@ -110,7 +110,7 @@ async function call<T>(c: Conn, type: string, params: Record<string, unknown> = 
 const asList = <T>(r: unknown): T[] => (Array.isArray(r) ? r : ((Object.values((r ?? {}) as object).find(Array.isArray) as T[] | undefined) ?? []));
 
 type TokenInfo = { mallId?: number; regionId?: number; expiredTime?: number; apiScopeList?: string[] };
-const fmtDate = (d: Date) => d.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
+const fmtDate = (d: Date) => d.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" });
 
 registerTester("temu", async (_v, tenantId) => {
   const c = await conn(tenantId);

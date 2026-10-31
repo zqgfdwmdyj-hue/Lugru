@@ -3,13 +3,14 @@
 import { useActionState } from "react";
 import { login, type LoginState } from "./actions";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string | null }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(login, null);
   return (
     <form action={action} className="stack" style={{ gap: 14 }}>
+      {next && <input type="hidden" name="weiter" value={next} />}
       <div className="field">
-        <label className="label" htmlFor="email">E-Mail</label>
-        <input className="input" id="email" name="email" type="email" autoComplete="username" required defaultValue={state?.email} key={state?.email} />
+        <label className="label" htmlFor="email">Benutzername oder E-Mail</label>
+        <input className="input" id="email" name="email" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} required defaultValue={state?.email} key={state?.email} />
       </div>
       <div className="field">
         <label className="label" htmlFor="password">Passwort</label>

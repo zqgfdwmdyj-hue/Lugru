@@ -38,4 +38,4 @@ docker compose -f docker-compose.yml -f deploy/docker-compose.hetzner.yml up -d 
 echo
 echo "Fertig. Adresse: https://$DOMAIN"
 echo "Benutzer anlegen:"
-echo "  cd $DIR && docker compose exec app npm run user:create -- --email du@firma.de --firma \"Deine Firma\""
+echo "  cd $DIR && docker compose exec app npm run user:create -- --benutzer ludwig --firma \"Deine Firma\""

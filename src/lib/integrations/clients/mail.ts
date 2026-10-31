@@ -103,6 +103,7 @@ export type GraphMessage = {
   subject?: string;
   receivedDateTime: string;
   from?: { emailAddress?: { name?: string; address?: string } };
+  toRecipients?: { emailAddress?: { address?: string } }[];
   body?: { contentType: string; content: string };
   bodyPreview?: string;
 };
@@ -110,7 +111,7 @@ export type GraphMessage = {
 export async function graphFetch(accessToken: string, since: Date, max = 150): Promise<GraphMessage[]> {
   const out: GraphMessage[] = [];
   let url: string | null =
-    `https://graph.microsoft.com/v1.0/me/messages?$filter=receivedDateTime ge ${since.toISOString()}&$orderby=receivedDateTime desc&$top=50&$select=id,internetMessageId,subject,receivedDateTime,from,body,bodyPreview`;
+    `https://graph.microsoft.com/v1.0/me/messages?$filter=receivedDateTime ge ${since.toISOString()}&$orderby=receivedDateTime desc&$top=50&$select=id,internetMessageId,subject,receivedDateTime,from,toRecipients,body,bodyPreview`;
   while (url && out.length < max) {
     const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Prefer: 'outlook.body-content-type="text"' } });
     if (!res.ok) throw new Error(`Outlook-Abruf fehlgeschlagen (${res.status})`);

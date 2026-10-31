@@ -96,7 +96,7 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
                     <td className="num"><Link href={`/chargen/${s.id}`}>{s.sku}</Link>{s.parentLotId === l.id && <span className="small muted"> · erbt von hier</span>}</td>
                     <td>{s.kind === "return" ? "Retoure" : "Einkauf"}</td>
                     <td className="num">{formatDate(s.date ?? s.returnDate)}</td>
-                    <td className="num right">{s.cost === null ? "fehlt" : formatEuro(s.cost)}</td>
+                    <td className="num right">{s.cost === null ? <span className="tag tag-missing">fehlt</span> : formatEuro(s.cost)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -108,7 +108,7 @@ export default async function ChargePage({ params }: { params: Promise<{ id: str
           <section className="card card-pad stack">
             <h2>Gültiger EK</h2>
             <div className="num" style={{ fontSize: 28, color: l.unitCostNet === null ? "var(--danger)" : undefined }}>
-              {l.unitCostNet === null ? "fehlt" : formatEuro(l.unitCostNet)}
+              {l.unitCostNet === null ? <span className="tag tag-missing">fehlt</span> : formatEuro(l.unitCostNet)}
             </div>
             <div className="small muted">
               Quelle: {l.unitCostSource ? COST_SOURCE_LABEL[l.unitCostSource] : "–"}

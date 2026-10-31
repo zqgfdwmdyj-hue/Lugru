@@ -129,7 +129,9 @@ describe("Buy Box und Bewertungen (Keepa mit buybox=1, rating=1)", () => {
     const d = { ...parseOwn2(raw)!, buyBoxSellerName: "Wittmann und Kulu GmbH" };
     expect(buyBoxHolder(d, { sellerId: "A1KULU00TEST", sellerName: null })?.level).toBe("ok");
     expect(buyBoxHolder(d, { sellerId: "A9ANDERE0000", sellerName: null })).toMatchObject({ level: "warn", text: expect.stringContaining("Wittmann und Kulu GmbH") });
-    expect(buyBoxHolder(d, { sellerId: null, sellerName: "Wittmann & Kulu GmbH" })?.level).toBe("ok");
+    // Ohne bestätigte Verkäufer-ID nur „vermutlich“ (Name passt) bzw. „noch ungeklärt“ – nie „anderer Verkäufer“.
+    expect(buyBoxHolder(d, { sellerId: null, sellerName: "Wittmann & Kulu GmbH" })).toMatchObject({ level: "info", text: expect.stringContaining("vermutlich bei euch") });
+    expect(buyBoxHolder(d, { sellerId: null, sellerName: "Testfirma GmbH" })).toMatchObject({ level: "info", text: expect.stringContaining("noch ungeklärt") });
     expect(buyBoxHolder(d, { sellerId: null, sellerName: null })?.level).toBe("info");
   });
 });

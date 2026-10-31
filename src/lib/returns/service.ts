@@ -66,8 +66,13 @@ async function loadTx(tenantId: string): Promise<TxRow[]> {
 export type ClaimRef = { id: string; key: string; status: string; amazonCaseId: string | null; type: string };
 const CLOSED = ["reimbursed", "rejected", "dismissed"];
 
+/** Was für den Abgleich vorliegt – je Bericht die Anzahl Zeilen (0 = fehlt). */
+export type ReturnSources = { refunds: number; returns: number; payments: number | null };
+
 export type ReturnView = {
   rows: (ReturnRow & { claims: ClaimRef[]; resolved: boolean })[];
+  /** Je Bericht vorhanden/fehlend – statt pauschal „Noch keine Daten“. */
+  sources: ReturnSources;
   paymentsKnown: boolean;
   tx: TxRow[];
   reasons: { sku: string | null; reason: string | null; quantity: number }[];
@@ -80,6 +85,8 @@ export async function loadReturnRows(tenantId: string, mode: Mode, opts: { withC
   let rows: ReturnRow[];
   let paymentsKnown = true;
   let reasons: ReturnView["reasons"];
+  let sources: ReturnSources;
+  const refundsOf = (ch: "fba" | "fbm") => tx.filter((t) => t.kind === "refund" && (t.channel === ch || t.channel === "")).length;
   if (mode === "fba") {
     const R = schema.amazonCustomerReturns;
     const B = schema.amazonReimbursements;
@@ -98,6 +105,7 @@ export async function loadReturnRows(tenantId: string, mode: Mode, opts: { withC
     rows = res.rows;
     paymentsKnown = res.paymentsKnown;
     reasons = returns;
+    sources = { refunds: refundsOf("fba"), returns: returns.length, payments: payments.length };
   } else {
     const F = schema.amazonFbmReturns;
     const returns = await db.select().from(F).where(eq(F.tenantId, tenantId));
@@ -110,6 +118,7 @@ export async function loadReturnRows(tenantId: string, mode: Mode, opts: { withC
       today,
     );
     reasons = returns;
+    sources = { refunds: refundsOf("fbm"), returns: returns.length, payments: null };
   }
 
   const byRow = new Map<string, ClaimRef[]>();
@@ -133,6 +142,7 @@ export async function loadReturnRows(tenantId: string, mode: Mode, opts: { withC
       const claims = byRow.get(`${r.orderId}|${r.sku || ""}`) ?? [];
       return { ...r, claims, resolved: claims.length > 0 && claims.every((c) => CLOSED.includes(c.status)) };
     }),
+    sources,
     paymentsKnown,
     tx,
     reasons,

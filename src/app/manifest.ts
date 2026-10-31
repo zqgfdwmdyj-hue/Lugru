@@ -19,9 +19,17 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
+    // Teilen-Ziel (Android/Chrome): WhatsApp → Teilen → „Seller“ → Deal-Eingang (prüft die Sitzung selbst).
+    share_target: {
+      action: "/api/deal-eingang",
+      method: "post",
+      enctype: "multipart/form-data",
+      params: { title: "title", text: "text", url: "url", files: [{ name: "datei", accept: ["image/*", "application/pdf", ".xlsx", ".xls", ".csv", "text/csv"] }] },
+    },
     shortcuts: [
       { name: "Start & Aufgaben", url: "/" },
       { name: "Posteingang", url: "/posteingang" },
+      { name: "Deal-Eingang", url: "/deal-eingang" },
       { name: "Aufträge", url: "/auftraege" },
       { name: "Ideen & Saison", url: "/marken" },
     ],

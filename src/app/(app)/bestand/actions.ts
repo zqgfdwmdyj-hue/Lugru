@@ -29,7 +29,7 @@ export async function setOwnStock(fd: FormData) {
 
 export async function createCount(fd: FormData) {
   const session = await requireArea("wawi");
-  const name = String(fd.get("name") ?? "").trim() || `Inventur ${new Date().toLocaleDateString("de-DE")}`;
+  const name = String(fd.get("name") ?? "").trim() || `Inventur ${new Date().toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`;
   const [c] = await db.insert(schema.inventoryCounts).values({ tenantId: session.tenantId, name, createdBy: session.userId }).returning();
   const stock = await db.select().from(schema.ownStock).where(eq(schema.ownStock.tenantId, session.tenantId));
   if (stock.length) await db.insert(schema.inventoryCountLines).values(stock.map((s) => ({ tenantId: session.tenantId, countId: c.id, sku: s.sku, expected: s.quantity, counted: 0 })));
@@ -89,4 +89,13 @@ export async function bookCount(fd: FormData) {
   await db.update(schema.inventoryCounts).set({ status: "booked", bookedAt: new Date() }).where(eq(schema.inventoryCounts.id, countId));
   syncSoon(session.tenantId);
   revalidatePath("/bestand", "layout");
+}
+
+/** B15.3 Reparatur (nur auf Klick): eigene Abbuchungen von Prep-Center-Aufträgen zurückbuchen. */
+export async function prepAbbuchungenZurueckAction() {
+  const session = await requireArea("wawi");
+  const { prepAbbuchungenZurueck } = await import("@/lib/orders/service");
+  const n = await prepAbbuchungenZurueck(session.tenantId, session.userId);
+  revalidatePath("/bestand");
+  redirect(`/bestand?ansicht=negativ&meldung=${encodeURIComponent(`${n} Prep-Center-Auftr${n === 1 ? "ag" : "äge"} zurückgebucht – eigenes Lager korrigiert.`)}`);
 }

@@ -4,7 +4,9 @@ import type { Db } from '@/lib/ebay/db/db';
 import { openMemoryDb } from '@/lib/ebay/db/memory';
 import type { Settings } from '@/lib/ebay/types';
 import {
+  analyticsGranted,
   buildConsentUrl,
+  listingGranted,
   extractCodeFromRedirectUrl,
   isExpired,
   getAppAccessToken,
@@ -35,6 +37,11 @@ describe('buildConsentUrl', () => {
     expect(full).toContain('sell.fulfillment');
     expect(full).not.toContain('sell.fulfillment.readonly');
     expect(buildConsentUrl(settings, { withOrders: false })).not.toContain('sell.fulfillment');
+    expect(buildConsentUrl(settings)).toContain(encodeURIComponent('sell.analytics.readonly'));
+    expect(buildConsentUrl(settings, { withAnalytics: false })).not.toContain('sell.analytics');
+    // Neue Listing-API: standardmäßig mit, auf Wunsch ohne.
+    expect(buildConsentUrl(settings)).toContain(encodeURIComponent('sell.listing'));
+    expect(buildConsentUrl(settings, { withListing: false })).not.toContain('sell.listing');
   });
 
   it('baut die Sandbox-Consent-URL mit RuName und Scopes', async () => {
@@ -173,22 +180,56 @@ describe('getUserAccessToken', () => {
     await saveToken(db, 'sandbox', 'user', {
       accessToken: 'alt',
       accessExpiresAt: new Date(Date.now() - 1000).toISOString(),
-      refreshToken: 'refresh-1',
+      refreshToken: 'refresh-alt-ohne-bestellungen',
     });
     const scopes: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
       const scope = new URLSearchParams(String(init?.body)).get('scope') ?? '';
       scopes.push(scope);
-      if (scope.includes('sell.fulfillment')) {
+      if (scope.includes('sell.fulfillment') || scope.includes('sell.analytics') || scope.includes('sell.listing')) {
         return new Response(JSON.stringify({ error: 'invalid_scope', error_description: 'The requested scope is invalid' }), { status: 400 });
       }
       return tokenResponse({ access_token: 'ohne-bestellungen', expires_in: 7200 });
     }));
     expect(await getUserAccessToken(db, settings)).toBe('ohne-bestellungen');
-    // Erst mit Schreibrecht, dann nur lesend, dann ohne Bestellungen.
-    expect(scopes).toHaveLength(3);
-    expect(scopes[1]).toContain('sell.fulfillment.readonly');
-    expect(scopes[2]).not.toContain('sell.fulfillment');
+    // Je Stufe (Schreibrecht, nur lesend, ohne Bestellungen): mit Listing-API und Verkehrsdaten, nur
+    // Listing-API, nur Verkehrsdaten, ohne beides.
+    expect(scopes).toHaveLength(12);
+    expect(scopes[0]).toContain('sell.analytics.readonly');
+    expect(scopes[0]).toContain('sell.listing');
+    expect(scopes[1]).toContain('sell.listing');
+    expect(scopes[1]).not.toContain('sell.analytics');
+    expect(scopes[2]).not.toContain('sell.listing');
+    expect(scopes[7]).toContain('sell.fulfillment.readonly');
+    expect(scopes[7]).not.toContain('sell.analytics');
+    expect(scopes[7]).not.toContain('sell.listing');
+    expect(scopes[11]).not.toContain('sell.fulfillment');
+    expect(analyticsGranted(settings, 'refresh-alt-ohne-bestellungen')).toBe(false);
+    expect(listingGranted(settings, 'refresh-alt-ohne-bestellungen')).toBe(false);
+
+    // Beim nächsten Erneuern gleich die passende Stufe – kein unnötiger Fehlversuch.
+    await saveToken(db, 'sandbox', 'user', { accessToken: 'alt', accessExpiresAt: new Date(Date.now() - 1000).toISOString(), refreshToken: 'refresh-alt-ohne-bestellungen' });
+    scopes.length = 0;
+    expect(await getUserAccessToken(db, settings)).toBe('ohne-bestellungen');
+    expect(scopes).toHaveLength(1);
+  });
+
+  it('erneuert mit Verkehrsdaten, wenn die Verbindung sie erlaubt', async () => {
+    const db = openMemoryDb();
+    await saveToken(db, 'sandbox', 'user', { accessToken: 'alt', accessExpiresAt: new Date(Date.now() - 1000).toISOString(), refreshToken: 'refresh-mit-verkehrsdaten' });
+    const scopes: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
+      scopes.push(new URLSearchParams(String(init?.body)).get('scope') ?? '');
+      return tokenResponse({ access_token: 'mit-verkehrsdaten', expires_in: 7200 });
+    }));
+    expect(analyticsGranted(settings, 'refresh-mit-verkehrsdaten')).toBeNull();
+    expect(listingGranted(settings, 'refresh-mit-verkehrsdaten')).toBeNull();
+    expect(await getUserAccessToken(db, settings)).toBe('mit-verkehrsdaten');
+    expect(scopes).toHaveLength(1);
+    expect(scopes[0]).toContain('sell.analytics.readonly');
+    expect(scopes[0]).toContain('sell.listing');
+    expect(analyticsGranted(settings, 'refresh-mit-verkehrsdaten')).toBe(true);
+    expect(listingGranted(settings, 'refresh-mit-verkehrsdaten')).toBe(true);
   });
 
   it('nimmt bei Verbindungen des bisherigen Tools die nur lesende Bestell-Berechtigung', async () => {
@@ -196,19 +237,19 @@ describe('getUserAccessToken', () => {
     await saveToken(db, 'sandbox', 'user', {
       accessToken: 'alt',
       accessExpiresAt: new Date(Date.now() - 1000).toISOString(),
-      refreshToken: 'refresh-1',
+      refreshToken: 'refresh-bisheriges-tool',
     });
     const scopes: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (_url: unknown, init?: RequestInit) => {
       const scope = new URLSearchParams(String(init?.body)).get('scope') ?? '';
       scopes.push(scope);
-      if (!scope.includes('sell.fulfillment.readonly')) {
+      if (!scope.includes('sell.fulfillment.readonly') || scope.includes('sell.analytics') || scope.includes('sell.listing')) {
         return new Response(JSON.stringify({ error: 'invalid_scope', error_description: 'The requested scope is invalid' }), { status: 400 });
       }
       return tokenResponse({ access_token: 'nur-lesen', expires_in: 7200 });
     }));
     expect(await getUserAccessToken(db, settings)).toBe('nur-lesen');
-    expect(scopes).toHaveLength(2);
+    expect(scopes).toHaveLength(8);
   });
 
   it('meldet eBay-Fehlerdetails beim Token-Tausch', async () => {

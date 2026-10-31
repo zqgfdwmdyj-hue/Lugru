@@ -8,6 +8,7 @@ import { formatEuro } from "@/lib/numbers";
 import { ebayToolLink } from "@/lib/ebay/tool-link";
 import { availableOf, stockSkuOf, targetQuantity } from "@/lib/stock/channel-logic";
 import { channelsWithStockApi, stockLevels } from "@/lib/stock/channel-sync";
+import { loadSets } from "@/lib/stock/sets";
 import { UNKNOWN_SKU } from "@/lib/stock/ebay-link";
 import { adoptEbayAction, confirmManualAction, deleteListing, draftsFromOwnStock, ebayStockAction, linkAmazonFbmAction, publishAction, saveListing, setListingStockAction, syncNowAction, toggleSyncAction } from "./actions";
 
@@ -20,7 +21,8 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
   const where: SQL[] = [eq(L.tenantId, session.tenantId)];
   if (CHANNELS.includes(sp.kanal as never)) where.push(eq(L.channel, sp.kanal as never));
   const rows = await db.select().from(L).where(and(...where)).orderBy(desc(L.updatedAt)).limit(500);
-  const levels = await stockLevels(session.tenantId);
+  const [levels, sets] = await Promise.all([stockLevels(session.tenantId), loadSets(session.tenantId)]);
+  const setSkus = new Set(sets.map((x) => x.sku));
   const withApi = new Set(await channelsWithStockApi(session.tenantId));
   return (
     <>
@@ -29,7 +31,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         <form action={syncNowAction}><input type="hidden" name="kanal" value={sp.kanal ?? ""} /><button className="btn btn-primary" type="submit">Bestand jetzt abgleichen</button></form>
         <Link className="btn" href="/listings/temu" title="Alle eBay-Angebote (auch ältere) auf Temu einstellen oder in die Wawi übernehmen">eBay-Angebote übernehmen (Temu/Wawi)</Link>
-        <form action={adoptEbayAction}><button className="btn" type="submit" title="Angebote aus dem eBay-Tool in die Wawi holen und fehlenden Wawi-Bestand aus der eBay-Menge anlegen">eBay-Angebote aus dem Tool übernehmen</button></form>
+        <form action={adoptEbayAction}><button className="btn btn-primary" type="submit" title="Angebote aus dem eBay-Tool in die Wawi holen und fehlenden Wawi-Bestand aus der eBay-Menge anlegen">eBay-Angebote aus dem Tool übernehmen</button></form>
         <form action={linkAmazonFbmAction}><button className="btn" type="submit" title="SKUs aus Amazon-FBM-Bestellungen mit eigenem Lager">Amazon FBM verknüpfen</button></form>
         <form action={draftsFromOwnStock} style={{ display: "flex", gap: 6 }}>
           <label htmlFor="dch" className="sr-only">Kanal</label>
@@ -45,13 +47,13 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
         danach gehen alle anderen Kanäle sofort herunter. Kanäle ohne Schnittstelle (TikTok …) bekommen eine Aufgabe mit der Zielmenge.
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <Link href="/listings" className={`chip${!sp.kanal ? " active" : ""}`}>Alle</Link>
-        {CHANNELS.filter((c) => c !== "manual").map((c) => <Link key={c} href={`/listings?kanal=${c}`} className={`chip${sp.kanal === c ? " active" : ""}`}>{CHANNEL_LABEL[c]}</Link>)}
+        <Link href="/listings" className={`chip${!sp.kanal ? " active" : ""}`} aria-current={!sp.kanal ? "true" : undefined}>Alle</Link>
+        {CHANNELS.filter((c) => c !== "manual").map((c) => <Link key={c} href={`/listings?kanal=${c}`} className={`chip${sp.kanal === c ? " active" : ""}`} aria-current={sp.kanal === c ? "true" : undefined}>{CHANNEL_LABEL[c]}</Link>)}
       </div>
       <div className="stack">
         <section className="card" style={{ minWidth: 0, overflow: "auto" }}>
-          <table className="table">
-            <thead><tr><th>Kanal</th><th>SKU</th><th>Titel</th><th className="right">Preis</th><th className="right" title="Eigenes Lager − reserviert">Wawi verfügbar</th><th className="right">Im Kanal</th><th>Abgleich</th><th>Status</th><th></th></tr></thead>
+          <table className="table sticky-head">
+            <thead><tr><th>Kanal</th><th>SKU</th><th>Titel</th><th className="right">Preis</th><th className="right" title="Eigenes Lager − reserviert">Wawi verfügbar</th><th className="right" title="Zuletzt an den Kanal gemeldete Menge (beim Anlegen oder beim Abgleich)">Zuletzt übertragen</th><th>Abgleich</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {rows.length === 0 && <tr><td colSpan={9} className="muted">Noch keine Listings.</td></tr>}
               {rows.map((l) => {
@@ -81,12 +83,18 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                     ) : l.lastError && <div className="small" style={{ color: l.stockSync || l.status !== "active" ? "var(--danger)" : "var(--warn)" }}>{l.lastError}</div>}
                   </td>
                   <td className="num right">{formatEuro(l.price)}</td>
-                  <td className="num right" title={lvl ? `Lager ${lvl.onHand} − reserviert ${lvl.reserved}` : "kein eigener Lagereintrag"}>
+                  <td className="num right" title={lvl ? (setSkus.has(ssku) ? `Set: aus den Bestandteilen bildbar (${lvl.onHand})` : `Eigenes Lager ${lvl.onHand} − reserviert ${lvl.reserved} (Bestand & Inventur)`) : "kein eigener Lagereintrag"}>
                     {lvl ? availableOf(lvl) : "–"}
+                    {lvl && setSkus.has(ssku) && <div className="small muted" data-testid="set-hint">Set aus Bestandteilen</div>}
                     {lvl && lvl.reserved > 0 && <div className="small muted">{lvl.reserved} reserviert</div>}
                     {lvl && lvl.reserved > lvl.onHand && <div className="small" style={{ color: "var(--danger)", fontWeight: 700 }}>Überverkauf</div>}
                   </td>
-                  <td className="num right">{l.pushedQuantity ?? l.quantity}{l.maxQuantity !== null && <div className="small muted">max. {l.maxQuantity}</div>}</td>
+                  <td className="num right">
+                    {l.pushedQuantity ?? <span className="muted">–</span>}
+                    {l.pushedAt && <div className="small muted">{l.pushedAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })}</div>}
+                    {l.status === "draft" && <div className="small muted">Entwurf – Abgleich erst nach Freigabe</div>}
+                    {l.maxQuantity !== null && <div className="small muted">max. {l.maxQuantity}</div>}
+                  </td>
                   <td className="small" style={{ whiteSpace: "nowrap" }}>
                     {l.status !== "active" ? <span className="muted">–</span> : ebayNoStock ? (
                       <form action={ebayStockAction}>
@@ -119,7 +127,7 @@ export default async function ListingsPage({ searchParams }: { searchParams: Pro
                       <form action={publishAction} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn btn-small" type="submit" title={atTemu ? "Schon bei Temu – fragt nur den Stand ab (aktiv, unvollständig, Entwurf)" : undefined}>{atTemu ? "Stand abfragen" : l.status === "active" ? "Aktualisieren" : "Einstellen"}</button></form>
                     )}
                     <Link className="btn-link small" href={`/listings?sku=${encodeURIComponent(l.sku)}&kanal=${l.channel}`} style={{ marginLeft: 8 }}>bearbeiten</Link>
-                    <form action={deleteListing} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn-link small" type="submit" style={{ marginLeft: 8, color: "var(--muted)" }}>×</button></form>
+                    <form action={deleteListing} style={{ display: "inline" }}><input type="hidden" name="id" value={l.id} /><button className="btn-link x-danger" type="submit" style={{ marginLeft: 8 }}>×</button></form>
                   </td>
                 </tr>
                 );

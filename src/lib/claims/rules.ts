@@ -2,9 +2,11 @@
 // sich mit Beispieldaten testen lässt. Grundidee: Jede Einheit muss irgendwo sauber
 // landen. Was nicht aufgeht, wird ein Anspruch.
 
+import { shipmentShortages } from "@/lib/sellerboard/parse";
 import type { ClaimType } from "@/db/schema";
 import { addDaysIso } from "@/lib/dates";
 import type { ReturnClaim } from "@/lib/returns/reconcile";
+import type { StationFall } from "@/lib/retouren-station/fall";
 
 export type LedgerAdjustment = {
   rowHash: string;
@@ -75,11 +77,15 @@ export type ClaimData = {
   reimbursements: Reimbursement[];
   /** Aus dem Retouren-Abgleich (Erstattung ↔ Rücksendung ↔ Zahlung von Amazon). */
   returnClaims: ReturnClaim[];
+  /** An der Retouren-Station geprüft: leer, benutzt, beschädigt, unvollständig oder falsches Produkt (nur „Fall“). */
+  stationFaelle?: StationFall[];
   removals: RemovalOrder[];
   /** Einzelne Pakete der Remissionen (Report „Remissionssendungen“) und deine Einordnung. */
   removalShipments?: RemovalShipmentRow[];
   removalShipmentMarks?: RemovalShipmentMark[];
   inbound: InboundShipment[];
+  /** FBA-Sendungen laut sellerboard (verschickt/empfangen je SKU) – für Sendungen ohne eigenen Inbound-Scan. */
+  sbShipments?: { amazonId: string | null; name: string | null; status: string; createdOn: string | null; lastUpdate: string | null; lines: { sku: string; fnsku: string | null; asin: string | null; units: number; received: number }[] }[];
   costBySku: Map<string, number>;
   costByAsin: Map<string, number>;
   asinBySku: Map<string, string>;
@@ -357,6 +363,40 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
     });
   }
 
+  // --- Retouren-Station: Kundenretoure nicht im erstatteten Zustand -----------------------
+  // Gleiche Bestellung wie ein Anspruch aus dem Retouren-Abgleich (falscher Artikel / beschädigt) → ein Anspruch
+  // mit beiden Nachweisen, kein zweiter Fall bei Amazon.
+  for (const s of d.stationFaelle ?? []) {
+    const datum = (x: string) => x.split("-").reverse().join(".");
+    const ev = [
+      { label: "Befund (Prüfung bei Eingang)", value: `${s.befund}${s.notiz ? ` – ${s.notiz}` : ""}`, source: "Retouren-Station" },
+      { label: "LPN", value: s.lpn ?? "–", source: "FBA-Kundenrücksendungen" },
+      { label: "Kunde erstattet", value: `${s.refund.toFixed(2).replace(".", ",")} €${s.returnDate ? ` · Rückgabe am ${datum(s.returnDate)}` : ""}`, source: "Transaktionen" },
+      ...(s.remissionId ? [{ label: "Remission", value: s.remissionId, source: "Retouren-Station" }] : []),
+      { label: "Fotos", value: "Versandetikett, Lieferschein, Produkt mit LPN, Inhalt (Fall-Paket der Retouren-Station)", source: "Retouren-Station" },
+    ];
+    const gleich = out.find((c) => c.reference === s.orderId && (c.type === s.type || (s.type === "return_condition" && c.type === "return_damaged")) && (!c.sku || !s.sku || c.sku === s.sku));
+    if (gleich) {
+      gleich.evidence = [...gleich.evidence, ...ev];
+      continue;
+    }
+    push({
+      key: s.key,
+      type: s.type,
+      title: `${s.type === "return_wrong_item" ? "Falscher Artikel zurück" : `Retoure ${s.befund.split(" (")[0]}`} – Bestellung ${s.orderId}`,
+      sku: s.sku,
+      fnsku: s.fnsku,
+      asin: s.asin,
+      quantity: 1,
+      unitCost: unitCost(d, s.sku, s.asin),
+      // Amazon soll den an den Kunden erstatteten Betrag ersetzen (Schwelle und Ansage rechnen damit).
+      expectedAmount: round2(s.refund),
+      reference: s.orderId,
+      eventDate: s.returnDate ?? s.inspectedAt,
+      evidence: ev,
+    });
+  }
+
   // --- Remission unvollständig ----------------------------------------------------------
   for (const r of d.removals) {
     // Entsorgungsaufträge: es wird keine Ware zurückerwartet.
@@ -466,6 +506,44 @@ export function detectClaims(d: ClaimData, s: ClaimSettings, today: string): Cla
         evidence: [
           { label: "Gescannt und verschickt", value: `${it.scanned} Einheiten (Sendung „${sh.name}“)`, source: "Inbound-Scan" },
           { label: "Von Amazon eingebucht", value: `${received} Einheiten`, source: "Bestandsprotokoll (Receipts)" },
+          { label: "Bereits erstattet", value: `${reimb}`, source: "Erstattungen" },
+        ],
+      });
+    }
+  }
+
+  // --- Fehlt beim Wareneingang (laut sellerboard) -------------------------------------------
+  // Für Sendungen, die nicht im eigenen FBA-Inbound gescannt wurden: verschickt (Sendungsplan) − von Amazon
+  // empfangen. Erst wenn die Sendung abgeschlossen ist bzw. seit der Wartezeit nichts mehr ankam.
+  const ownRefs = new Set(d.inbound.map((sh) => sh.amazonShipmentId));
+  for (const sh of d.sbShipments ?? []) {
+    if (!sh.amazonId || ownRefs.has(sh.amazonId)) continue;
+    const ref = sh.amazonId;
+    for (const l of shipmentShortages(sh, today, GRACE_DAYS.inbound)) {
+      const ledger = (receivedByShipment.get(`${ref}|${l.fnsku ?? ""}`) ?? 0) + (l.fnsku ? 0 : (receivedByShipment.get(`${ref}|${l.sku}`) ?? 0));
+      const received = Math.max(l.received, ledger);
+      const reimb = d.reimbursements
+        .filter((r) => (r.fnsku === l.fnsku || r.sku === l.sku) && /inbound/i.test(r.reason ?? ""))
+        .reduce((n, r) => n + r.quantityTotal, 0);
+      const missing = l.units - received - reimb;
+      if (missing <= 0) continue;
+      const cost = unitCost(d, l.sku, l.asin);
+      const since = sh.lastUpdate ?? sh.createdOn ?? today;
+      push({
+        key: `inbound-sb:${ref}:${l.fnsku ?? l.sku}`,
+        type: "inbound_shortage",
+        title: `${missing} × fehlt beim Wareneingang – ${ref}`,
+        sku: l.sku,
+        fnsku: l.fnsku,
+        asin: l.asin,
+        quantity: missing,
+        unitCost: cost,
+        expectedAmount: cost === null ? null : round2(cost * missing),
+        reference: ref,
+        eventDate: since,
+        evidence: [
+          { label: "Verschickt laut Sendungsplan", value: `${l.units} Einheiten (Sendung „${sh.name ?? ref}“)`, source: "sellerboard – FBA-Sendungen" },
+          { label: "Von Amazon empfangen", value: `${received} Einheiten · Status ${sh.status}${sh.lastUpdate ? ` seit ${sh.lastUpdate.split("-").reverse().join(".")}` : ""}`, source: ledger > l.received ? "Bestandsprotokoll (Receipts)" : "sellerboard – FBA-Sendungen" },
           { label: "Bereits erstattet", value: `${reimb}`, source: "Erstattungen" },
         ],
       });

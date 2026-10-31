@@ -2,22 +2,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { requireSession } from "@/lib/auth/session";
+import { requireArea } from "@/lib/auth/session";
 import { CLAIM_STATUS_LABEL } from "@/lib/claims/labels";
 import { claimCaseText } from "@/lib/claims/texts";
 import { formatDate, formatEuro } from "@/lib/numbers";
-import { CLAIM_TYPE_LABEL } from "@/lib/settings";
+import { CLAIM_TYPE_LABEL, getSettings } from "@/lib/settings";
 import { CopyButton } from "@/components/copy-button";
 import { AiCaseText } from "./ai-text";
-import { dismissClaim, escalateClaim, queueClaim, reopenClaim, resolveClaim, saveClaimNotes, submitClaim } from "../actions";
+import { dismissClaim, escalateClaim, queueClaim, reopenClaim, resolveClaim, saveClaimNotes, setClaimEventDate, submitClaim } from "../actions";
 
 export default async function ClaimPage({ params }: { params: Promise<{ id: string }> }) {
-  const session = await requireSession();
+  const session = await requireArea("amazon");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const C = schema.claims;
   const [claim] = await db.select().from(C).where(and(eq(C.id, id), eq(C.tenantId, session.tenantId)));
   if (!claim) notFound();
+  const settings = await getSettings(session.tenantId);
+  const windowDays = settings.claims.windowDays[claim.type];
+  const placeholder = Boolean(claim.deadline) && (!claim.eventDate || (!claim.detectionKey && claim.eventDate === claim.createdAt.toISOString().slice(0, 10)));
   const [events, invoices] = await Promise.all([
     db
       .select({ at: schema.claimEvents.createdAt, action: schema.claimEvents.action, note: schema.claimEvents.note, user: schema.users.name })
@@ -56,13 +59,25 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
               <div><div className="kpi-label">Menge</div><div className="kpi-value" style={{ fontSize: 22 }}>{claim.quantity}</div></div>
               <div><div className="kpi-label">EK je Einheit</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatEuro(claim.unitCost)}</div></div>
               <div><div className="kpi-label">Erwarteter Betrag</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatEuro(claim.expectedAmount)}</div></div>
-              <div><div className="kpi-label">Frist</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatDate(claim.deadline)}</div></div>
+              <div data-testid="claim-deadline-basis">
+                <div className="kpi-label">Frist</div><div className="kpi-value" style={{ fontSize: 22 }}>{formatDate(claim.deadline)}</div>
+                <div className="small muted">{placeholder ? <span style={{ color: "var(--warn)" }}>Platzhalter – Ereignisdatum fehlt</span> : `Ereignis ${formatDate(claim.eventDate)} + ${windowDays} Tage`}</div>
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "minmax(110px, 160px) minmax(0, 1fr)", columnGap: 10, rowGap: 6, marginTop: 16, fontSize: 14, overflowWrap: "anywhere" }}>
               <span className="muted">SKU</span><span className="num">{claim.lotId ? <Link href={`/chargen/${claim.lotId}`}>{claim.sku}</Link> : (claim.sku ?? "–")}</span>
               <span className="muted">FNSKU / ASIN</span><span className="num">{claim.fnsku ?? "–"} / {claim.asin ?? "–"}</span>
               <span className="muted">Referenz</span><span className="num">{claim.reference ?? "–"}</span>
-              <span className="muted">Ereignis</span><span>{formatDate(claim.eventDate)}</span>
+              <span className="muted">Ereignis</span>
+              <span>
+                {formatDate(claim.eventDate)}
+                <form action={setClaimEventDate} style={{ display: "inline-flex", gap: 6, marginLeft: 10, alignItems: "center" }} data-testid="claim-event-form">
+                  <input type="hidden" name="id" value={claim.id} />
+                  <label className="sr-only" htmlFor="ev-date">Ereignisdatum</label>
+                  <input className="input" type="date" id="ev-date" name="eventDate" defaultValue={claim.eventDate ?? ""} style={{ width: 150, padding: "4px 8px" }} required />
+                  <button className="btn btn-small" type="submit">{claim.eventDate ? "Ändern" : "Eintragen"}</button>
+                </form>
+              </span>
               <span className="muted">Amazon-Fall</span><span className="num">{claim.amazonCaseId ?? "–"}</span>
               <span className="muted">Erstattet</span><span className="num">{formatEuro(claim.reimbursedAmount)}</span>
               <span className="muted">Rechnungen</span>
@@ -125,7 +140,7 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
               <input type="hidden" name="caseId" value={claim.amazonCaseId ?? ""} />
               <label className="label" htmlFor="notes">Notizen</label>
               <textarea className="textarea" id="notes" name="notes" defaultValue={claim.notes ?? ""} style={{ minHeight: 100 }} />
-              <button className="btn btn-small" type="submit">Speichern</button>
+              <button className="btn btn-primary btn-small" type="submit">Speichern</button>
             </form>
           </section>
 
