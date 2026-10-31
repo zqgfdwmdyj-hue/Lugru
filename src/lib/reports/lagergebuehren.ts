@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, like, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { abrechnungsMonat, istMonatsLagergebuehrText, remissionPruefen, sellerboardLagerFixkosten } from "./lagergebuehren-logic";
 
@@ -31,7 +31,7 @@ export async function lagerAbgleich(tenantId: string, monat: string, berichtSumm
   const zeilen = await db
     .select({ text: sql<string>`coalesce(${S.amountDescription}, '') || ' ' || coalesce(${S.transactionType}, '')`, betrag: S.amount })
     .from(S)
-    .where(and(eq(S.tenantId, tenantId), like(S.postedDate, `${am}-%`), sql`(${S.amountDescription} ~* '(storage|lagergeb)' or ${S.transactionType} ~* '(storage|lagergeb)')`));
+    .where(and(eq(S.tenantId, tenantId), gte(S.postedDate, `${am}-01`), lt(S.postedDate, `${abrechnungsMonat(am)}-01`), sql`(${S.amountDescription} ~* '(storage|lagergeb)' or ${S.transactionType} ~* '(storage|lagergeb)')`));
   const inAbrechnung = zeilen.filter((z) => istMonatsLagergebuehrText(z.text));
   const abrechnung = inAbrechnung.length ? r2(-inAbrechnung.reduce((n, z) => n + Number(z.betrag), 0)) : null;
   const C = schema.cashItems;
