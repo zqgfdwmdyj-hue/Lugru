@@ -348,6 +348,24 @@ US) → Info, FR, Verlauf „Routine-Mail … kein Fall“ ✅ · VAT ohne Frist
 DE“ laut Ist bleiben, Markenregel „Abverkauf“ in DE → „Abverkauf DE“ ✅ · Min-Warnung ✅ · Anruf ohne Nummer → Rückfrage,
 Vorschlag aus Mail-Signatur, auf der Startseite übernommen ✅.
 
+## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
+
+Der Umsetzungsstand wurde über die Werkzeuge auf dem Server geprüft. Was dort als ❌ steht, ist zum großen Teil gebaut,
+aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende auf `ueberarbeitung`).
+
+| Befund | Stand im Code | Fundstelle / was noch fehlt |
+|---|---|---|
+| B6 Lugru Deals ❌ | ✅ gebaut | Abschnitt „Lugru Deals“ oben; live nach Update + To-do 29 |
+| B16 Wochenrückblick privat ❌ | ✅ auf main (seit 31.10.) | Server aktualisieren, Konnektor neu verbinden (To-do 27) |
+| B17 Fall-Zentrale, BQool-Soll ❌ | ✅ gebaut | Abschnitt B17; danach To-dos 30 und 32 |
+| `anbindungen_status.postfaecher` leer 🟡 | ✅ | 17.6 |
+| Anruf-Aufgabe ohne Telefonnummer 🟡 | ✅ | 17.5 |
+| M1 Tagesplan: Mo 2.11. „rot“ bei 0 von 30 Min. (privat 10:00–23:59) | ✅ | `KAUM_ZEIT_MIN` (60 Min.) in `src/lib/tagesplan/logic.ts`: Tag mit weniger freier Zeit heißt „kaum freie Zeit (30 Min.)“, nie „überbucht“; die wichtige Aufgabe wird verschoben, Konflikt „Frist fällt auf einen Tag mit nur 30 Min. freier Zeit“; `tagesplan` liefert `ampel_text` |
+| M13 Liquidität: Kontostand vom 30.09., kein Wareneinkauf → zu optimistisch | ✅ | Startseite und `ueberblick`: „Kontostand vom 30.09. (31 Tage alt) – Liquidität ungenau“ (ab 8 Tagen, ab 22 Tagen rot; ohne Kontostand eigener Hinweis). Wareneinkauf: Ø Warenrechnungen, sonst Ø Chargen (Kaufdatum × EK netto + 19 %), sonst Ø eigene Bestellungen (`src/lib/money/liquiditaet-service.ts`); ohne alles steht „Einkauf fehlt in der Prognose (zu optimistisch)“ |
+| B10: UAE-Mail als „US“ | ✅ | `marktplatzAus`: AED/UAE/„United Arab Emirates“ → AE, ebenso SA, UK (£/GBP), TR |
+| B15.3 Bestand −144 (8U-P4IG-LL5O) | 🟡 Reparatur gebaut, wartet auf Klick | Seit B15 bucht das Prep Center nicht mehr vom eigenen Lager; alte Buchungen werden nur auf ausdrücklichen Klick zurückgebucht (Bestand → „Prep-Center-Fehlbuchungen“, `prepAbbuchungenZurueck`). Zeigt der Vorschlag 0 Aufträge, liegt die Ursache woanders (z. B. Auftrag nicht als „Prep Center“ markiert) – dann bitte melden |
+| M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
+
 ## Neue Claude-Werkzeuge (49) und `notifications/tools/list_changed`
 
 Neu am 31.10. (Lugru-Bauauftrag, lesend): `lugru_deals(seit?, bis?, kanal?, ampel?, gekauft?, min_wert?, suche?, limit?)`,
@@ -355,7 +373,8 @@ Neu am 31.10. (Lugru-Bauauftrag, lesend): `lugru_deals(seit?, bis?, kanal?, ampe
 Gruppen-Käufen), `anruf_aufgaben` (`telefon_vorschlag`, `rueckfrage`, optional `websuche`), `aufgabe_anlegen` (`telefon`,
 Rückfrage bei Anruf ohne Nummer), `aufgabe_aendern` (`telefon`), `anbindungen_status` (`postfaecher_uebersicht`,
 `postfaecher_hinweis`), `bqool_export_vorschau` (Soll aus BQool-Ist, Warnung „Min aus Upload blockiert Buy Box“),
-`amazon_faelle`/`amazon_fall` (Routine-Mails nie ein Fall, Marktplatz aus Inhalt).
+`amazon_faelle`/`amazon_fall` (Routine-Mails nie ein Fall, Marktplatz aus Inhalt), `tagesplan` (`ampel_text`, „kaum freie
+Zeit“), `ueberblick` (Hinweis alter/fehlender Kontostand), `liquiditaet` (Wareneinkauf auch aus Chargen/Bestellungen).
 
 
 Lesend: `amazon_faelle`, `amazon_fall`, `anruf_aufgaben`, `auto_status`, `bqool_export_vorschau`, `buchhaltung_status`,
