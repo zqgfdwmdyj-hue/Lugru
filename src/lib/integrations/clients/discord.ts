@@ -77,3 +77,47 @@ registerTester("discord_profitpath", async (v, tenantId) => {
   }
   return `Verbunden – letzte ProfitPath-Nachricht je Kanal: ${zeilen.join(" | ")}`;
 });
+
+/**
+ * Discord – Gruppen-Kanäle (Wissen): Bot-Token (eigener oder der VA-Bot), jeder eingetragene Kanal sichtbar
+ * („View Channel“), Verlauf lesbar („Read Message History“), richtiger Server; leerer Nachrichtentext → Hinweis auf
+ * „Message Content Intent“. Liest nur, schreibt nichts.
+ */
+registerTester("discord_wissen", async (v, tenantId) => {
+  const { kanaeleAus } = await import("@/lib/discord-wissen/logic");
+  const kanaele = kanaeleAus(String(v.kanaele ?? ""));
+  if (!kanaele.length)
+    throw new Error("Noch kein Kanal eingetragen – je Zeile „Kanal-ID | Name | täglich“ (Kanal-ID: in Discord Einstellungen → Erweitert → Entwicklermodus an, dann Rechtsklick auf den Kanal → „Kanal-ID kopieren“).");
+  let token = v.botToken;
+  if (!token) token = ((await getIntegration(tenantId, "discord_va")) as { botToken?: string } | null)?.botToken ?? "";
+  if (!token) throw new Error("Kein Bot-Token: hier eintragen oder zuerst „Discord – VA-Kanal“ einrichten (derselbe Bot). Noch kein Bot? discord.com/developers → New Application → Bot → Token kopieren; dort „Message Content Intent“ einschalten.");
+  const base = (process.env.DISCORD_API_BASE_URL || "https://discord.com/api/v10").replace(/\/$/, "");
+  const h = { Authorization: `Bot ${token}` };
+  const me = await fetch(`${base}/users/@me`, { headers: h, signal: AbortSignal.timeout(15_000) });
+  if (me.status === 401) throw new Error("Discord kennt das Bot-Token nicht (401) – Token im Entwicklerportal neu kopieren.");
+  const zeilen: string[] = [];
+  const probleme: string[] = [];
+  for (const k of kanaele.slice(0, 20)) {
+    const r = await fetch(`${base}/channels/${k.id}`, { headers: h, signal: AbortSignal.timeout(15_000) });
+    if (!r.ok) {
+      probleme.push(`${k.name}: ${r.status === 404 || r.status === 403 ? "nicht sichtbar – ist der Bot im Server und darf den Kanal sehen („View Channel“)? Kanal-ID prüfen." : `Discord meldet ${r.status}.`}`);
+      continue;
+    }
+    const info = (await r.json()) as { name?: string; guild_id?: string };
+    if (v.serverId && info.guild_id && info.guild_id !== v.serverId.trim()) {
+      probleme.push(`${k.name}: gehört zu einem anderen Server als der eingetragenen Server-ID.`);
+      continue;
+    }
+    const m = await fetch(`${base}/channels/${k.id}/messages?limit=5`, { headers: h, signal: AbortSignal.timeout(15_000) });
+    if (!m.ok) {
+      probleme.push(`#${info.name ?? k.name}: sichtbar, aber der Verlauf ist gesperrt – Recht „Read Message History“ fehlt.`);
+      continue;
+    }
+    const liste = (await m.json()) as { content?: string; author?: { bot?: boolean }; attachments?: unknown[]; embeds?: unknown[] }[];
+    const ohneText = liste.filter((x) => !x.author?.bot && !x.content && !(x.attachments?.length || x.embeds?.length)).length;
+    zeilen.push(`#${info.name ?? k.name} lesbar (${liste.length ? `${liste.length} letzte Nachrichten` : "noch keine Nachrichten"})`);
+    if (liste.length && ohneText === liste.filter((x) => !x.author?.bot).length && ohneText > 0) probleme.push(`#${info.name ?? k.name}: Nachrichten ohne Text – im Entwicklerportal beim Bot „Message Content Intent“ einschalten.`);
+  }
+  if (probleme.length && !zeilen.length) throw new Error(probleme.join(" · "));
+  return `${zeilen.join(" · ")}${probleme.length ? ` – Achtung: ${probleme.join(" · ")}` : ""}`;
+});

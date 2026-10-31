@@ -411,14 +411,15 @@ export const INTEGRATIONS: IntegrationDef[] = [
     name: "Discord – Gruppen-Kanäle (Wissen) – optional",
     purpose: "Liest freigegebene Kanäle der Deal-Gruppe (nur lesen): Zusammenfassung je Kanal, Insider-Wissen, Frühwarnung bei gehäuften Problemen, Deals in den Deal-Eingang. Rohnachrichten höchstens 30 Tage.",
     fields: [
-      { key: "kanaele", label: "Kanäle", multiline: true, placeholder: "123456789012345678 | Amazon | täglich\n234567890123456789 | Temu | wöchentlich", help: "Je Zeile: Kanal-ID | Name | täglich / wöchentlich / aus." },
+      { key: "kanaele", label: "Kanäle", multiline: true, placeholder: "123456789012345678 | Amazon | täglich\n234567890123456789 | Temu | wöchentlich", help: "Je Zeile: Kanal-ID | Name | täglich / wöchentlich / aus. (Grauer Text ist nur ein Beispiel.) Kanal-ID: Discord → Einstellungen → Erweitert → Entwicklermodus an, dann Rechtsklick auf den Kanal → „Kanal-ID kopieren“." },
       { key: "serverId", label: "Server-ID (für Links zur Nachricht)" },
       { key: "botToken", label: "Bot-Token (optional)", secret: true, help: "Leer = derselbe Bot wie beim VA-Kanal. Nur der Server-Admin lädt ihn ein; nur „View Channel“ und „Read Message History“ – keine Schreibrechte." },
     ],
     setup: [
-      "Den Server-Admin bitten, den Bot des Seller-Systems einzuladen – nur Leserechte in den freigegebenen Kanälen. Keine Nutzer-Tokens (Selfbots) – das verstößt gegen die Discord-Regeln.",
+      "Noch kein Bot? discord.com/developers → „New Application“ → „Bot“ → Token kopieren und hier eintragen (oder leer lassen, wenn der VA-Kanal schon einen Bot hat). Dort „Message Content Intent“ einschalten.",
+      "Einladung: OAuth2 → URL Generator → Scope „bot“, Rechte nur „View Channels“ und „Read Message History“ → den Link dem Server-Admin der Deal-Gruppe schicken. Keine Nutzer-Tokens (Selfbots) – das verstößt gegen die Discord-Regeln.",
       "Die Gruppe informieren, z. B.: „Ich lasse unsere Kanäle Amazon/eBay/Fragen von einem Lese-Bot zusammenfassen – nur für mich, Rohtexte werden nach 30 Tagen gelöscht.“",
-      "Kanäle hier eintragen und „Verbindung testen“.",
+      "Kanal-IDs hier eintragen (je Zeile „ID | Name | täglich“), speichern und „Verbindung testen“ – zeigt je Kanal, ob er lesbar ist.",
     ],
   },
   {

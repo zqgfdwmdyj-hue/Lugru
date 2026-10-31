@@ -183,4 +183,13 @@ test.describe("Rechtsfälle und Gruppen-Kanäle", () => {
     const cs = JSON.parse(await c.call("calls_durchsuchen", { suche: `Tipp ${m}` }));
     expect(cs.calls.some((x: { herkunft: string }) => x.herkunft === "chat")).toBe(true);
   });
+
+  test("Gruppen-Kanäle: „Verbindung testen“ prüft jeden Kanal (Bot vom VA-Kanal)", async ({ page }) => {
+    await anmelden(page, "inhaber");
+    await page.goto("/anbindungen?p=discord_wissen#discord_wissen");
+    const karte = page.locator("#discord_wissen");
+    await karte.getByRole("button", { name: /Verbindung testen/ }).click();
+    await expect(karte).toContainText("lesbar", { timeout: 20_000 });
+    await expect(karte).not.toContainText("noch keinen Test");
+  });
 });
