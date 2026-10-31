@@ -45,6 +45,22 @@ async function familyEvents(tenantId: string, from: string, to: string, exportCa
     });
 }
 
+/** Familienkalender-Termine mit Beginn und Ende (Uhrzeit Berlin) – für die Haushaltshilfe (Babysitter, Putzhilfe). */
+export async function familyEventTimes(tenantId: string, from: string, to: string): Promise<{ ref: string; title: string; day: string; from: string | null; to: string | null; calendar: string }[]> {
+  const E = schema.calendarEvents;
+  const settings = await privateSettings(tenantId);
+  const [isFamily, rows] = await Promise.all([
+    familyFilter(tenantId, settings.externSync.enabled ? settings.externSync.calendar : null),
+    db.select().from(E).where(and(eq(E.tenantId, tenantId), gte(E.day, from), lte(E.day, to))).orderBy(E.day, E.startsAt),
+  ]);
+  return rows.filter(isFamily).map((ev) => {
+    const von = ev.allDay ? null : berlinTime(ev.startsAt);
+    // Ende nur am selben Tag oder über Nacht bis zum nächsten Morgen.
+    const bis = !ev.allDay && ev.endsAt && ev.endsAt > ev.startsAt && (berlinDay(ev.endsAt) === ev.day || ev.endsAt.getTime() - ev.startsAt.getTime() < 18 * 3600_000) ? berlinTime(ev.endsAt) : null;
+    return { ref: eventRef(ev.uid, ev.startsAt), title: ev.title, day: ev.day, from: von, to: bis && bis !== von ? bis : null, calendar: ev.calendarName };
+  });
+}
+
 /** Vorbelegung zum Übernehmen eines Familienkalender-Termins (Paarzeit, Kinderzeit …). */
 export type EventPrefill = { ref: string; calendar: string; title: string; day: string; from?: string; to?: string; allDay: boolean };
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { haushaltshilfeKurz } from "@/lib/private/haushaltshilfe-service";
 import { z } from "zod";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { saveAppointment, saveTimeEntry, setStatus } from "@/lib/private/save";
@@ -243,7 +244,7 @@ export const privatFinanzen = defineTool({
   name: "privat_finanzen",
   title: "Privates Geld",
   description:
-    "Privates Geld der angemeldeten Person (nur Privatbereich): Gehalt/Ausschüttung aus der GmbH (geplant/erhalten), private Fixkosten je Monat, Rücklagen-Ziele mit Stand, Anlagen, Monatsübersicht Privatkonto (Einnahmen, Ausgaben, größte Ausgaben), fällige Erinnerungen und offene Fragen für den Steuerberater. Keine Steuerberatung.",
+    "Privates Geld der angemeldeten Person (nur Privatbereich): Gehalt/Ausschüttung aus der GmbH (geplant/erhalten), private Fixkosten je Monat, Rücklagen-Ziele mit Stand, Anlagen, Monatsübersicht Privatkonto (Einnahmen, Ausgaben, größte Ausgaben), fällige Erinnerungen und offene Fragen für den Steuerberater; dazu Babysitter & Putzhilfe des Monats (Einsätze aus dem Familienkalender, Stunden, Kosten nach Stundensatz). Keine Steuerberatung.",
   area: "privat",
   privat: true,
   write: false,
@@ -265,6 +266,10 @@ export const privatFinanzen = defineTool({
       privatkonto: g.konto.letzterImport ? { kontostand: g.konto.stand, monat: g.konto.monat, letzter_import_bis: g.konto.letzterImport.bis } : "noch kein Kontoauszug",
       erinnerungen_faellig: g.faellig.map((e: Erinnerung) => ({ titel: e.titel, faellig: e.faellig })),
       fragen_steuerberater: g.offeneFragen.map((e) => (e.data as Steuerfrage).frage),
+      babysitter_putzhilfe: await (async () => {
+        const k = await haushaltshilfeKurz(ctx.session, g.monat, ctx.today);
+        return k ? { monat: k.monat, einsaetze: k.anzahl, stunden: k.stunden, kosten: k.kosten, noch_nicht_bezahlt: k.offen, ohne_betrag: k.ohneBetrag || undefined, geplant: k.geplant.anzahl ? k.geplant : undefined, je_hilfe: k.jeHilfe, link: abs(ctx, `/privat/haushaltshilfe?monat=${k.monat}`) } : undefined;
+      })(),
       link: abs(ctx, `/privat/geld${i.monat ? `?monat=${i.monat}` : ""}`),
     });
   },

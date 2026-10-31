@@ -1,7 +1,7 @@
 import { todayIso } from "@/lib/dates";
 import { loadEntries, privateSettings, requirePrivate, type PrivateKind } from "@/lib/private/service";
 
-const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "auszeit", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech", "danke", "stimmung", "zustaendig", "dateidee", "routine", "medplan", "periode", "zuwendung", "ritual"];
+const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "auszeit", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech", "danke", "stimmung", "zustaendig", "dateidee", "routine", "medplan", "periode", "zuwendung", "ritual", "haushaltshilfe"];
 
 /** Alles, was ich in „Privat“ sehen darf, als Datei (JSON) – zum Sichern. */
 export async function GET() {

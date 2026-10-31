@@ -1,6 +1,7 @@
 // Bereich „Privat“: Datentypen und Auswertungen – ohne Datenbank, damit testbar.
 
 import type { RepeatFields } from "./serie";
+import type { HaushaltshilfeEinstellungen } from "./haushaltshilfe";
 
 export type PartnerKey = "a" | "b";
 export type Ratings = 1 | 2 | 3 | 4 | 5;
@@ -29,6 +30,8 @@ export type PrivateSettings = {
    * Termin“ (ganztägig, ohne Inhalt), nie Periode, Nähe, Streicheln/Massage. Standard: aus.
    */
   externSync: { enabled: boolean; calendar: string };
+  /** Babysitter, Putzhilfe …: Stundensätze und Begriffe zum Erkennen im Kalender (Seite „Babysitter & Putzhilfe“). */
+  haushaltshilfe?: HaushaltshilfeEinstellungen;
 };
 export type StartHint = "aus" | "link" | "hinweise";
 export const DEFAULT_PRIVATE_SETTINGS: PrivateSettings = {

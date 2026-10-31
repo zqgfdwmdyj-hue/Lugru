@@ -36,7 +36,7 @@ export default async function PaarzeitPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PrivatHead active="paarzeit" title="🥂 Paarzeit" pin={session.privatePin} month={month} sub={<MonthNav path="/privat/paar/paarzeit" month={month} />} />
-      <div className="small muted">Dates und Zeit nur für euch beide, während die Kinder bei der Babysitterin, Oma &amp; Co. sind.</div>
+      <div className="small muted">Dates und Zeit nur für euch beide, während die Kinder bei der Babysitterin, Oma &amp; Co. sind. Babysitter-Kosten aus dem Kalender mit Stundensatz: <Link href={`/privat/haushaltshilfe?monat=${month}`}>Babysitter &amp; Putzhilfe →</Link></div>
       {remind !== null && (
         <div className="notice notice-info small" data-testid="date-remind">
           Euer letztes Date ist {remind} Tage her – Zeit, das nächste zu planen?

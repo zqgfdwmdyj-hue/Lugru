@@ -47,6 +47,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `b20-faelle.spec.ts` | B20.5: Auszahlungsmitteilung schließt den Fall und landet in der Liquidität; Buy-Box-Hinweis als ToDo je Land, Bewertungs-/Versandmails archiviert |
 | `b20-einkauf.spec.ts` | B20.8: Kaufquote 0 % über die ASIN, Posten über 10.000 € unter „prüfen“, Startseite „+ x zu prüfen (y €)“ |
 | `b20-rest.spec.ts` | B20.3/B20.6/B20.9: gültige Schwelle je Quelle, Rückgängig nach `mail_markieren`, Sprachkennzeichen bei VA-Nachrichten, „AI Win Sales Booster“ im Regel-Katalog |
+| `privat-haushaltshilfe.spec.ts` | Babysitter & Putzhilfe aus dem Familienkalender: wach/schlafend, Stundenlohn, Korrektur, von Hand, CSV, „Geld“, Claude; „nur Familie“ ohne Zugang |
 
 Testkonten (Passwort aus `TESTDATEN_PASSWORT`, in den Prüfungen fest): `inhaber` (Inhaberin, Privat voll),
 `lager` (nur Palettenlager), `buero` (Büro), `pruefer` (nur ansehen), `familie` (nur Privat „Familie“).

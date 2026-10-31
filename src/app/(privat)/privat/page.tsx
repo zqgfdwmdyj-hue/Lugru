@@ -1,4 +1,5 @@
 import { fristenLaden } from "@/lib/private/fristen-service";
+import { haushaltshilfeKurz } from "@/lib/private/haushaltshilfe-service";
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIssues, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
@@ -40,6 +41,21 @@ async function FristenJetzt({ session, today }: { session: Awaited<ReturnType<ty
     <div className="notice notice-info small" data-testid="start-fristen">
       ⏰ {jetzt.slice(0, 3).map((e) => e.frist!.vorschlag ?? e.frist!.titel).join(" · ")}
       {jetzt.length > 3 ? ` · +${jetzt.length - 3}` : ""} <Link href="/privat/fristen">Fristen →</Link>
+    </div>
+  );
+}
+
+/** Anfang des Monats: Auswertung Babysitter & Putzhilfe des Vormonats (nur voller Umfang). */
+async function HaushaltshilfeVormonat({ session, today }: { session: Awaited<ReturnType<typeof requirePrivate>>; today: string }) {
+  if (session.privateScope === "familie" || Number(today.slice(8, 10)) > 7) return null;
+  const [j, m] = today.split("-").map(Number);
+  const vormonat = new Date(Date.UTC(j, m - 2, 1)).toISOString().slice(0, 7);
+  const k = await haushaltshilfeKurz(session, vormonat, today);
+  if (!k || (!k.anzahl && !k.ohneBetrag)) return null;
+  return (
+    <div className="notice notice-info small" data-testid="start-haushaltshilfe">
+      🧹 {monthLabel(vormonat)}: {k.jeHilfe.map((h) => `${h.name} ${h.anzahl}×`).join(" · ")} – zusammen {k.kosten.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}
+      {k.offen > 0 ? ` (noch offen ${k.offen.toLocaleString("de-DE", { style: "currency", currency: "EUR" })})` : ""} <Link href={`/privat/haushaltshilfe?monat=${vormonat}`}>Prüfen und exportieren →</Link>
     </div>
   );
 }
@@ -122,6 +138,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
       {blocked && <div className="notice notice-info small">Diese Ansicht gehört zu Partnerschaft oder Gesundheit – dein Zugang umfasst nur die Familieninfos.</div>}
       <FamilienAufgabenHeute session={session} today={today} />
       <FristenJetzt session={session} today={today} />
+      <HaushaltshilfeVormonat session={session} today={today} />
 
       {linkProblems.length > 0 && (
         <div className="notice notice-warn small" data-testid="link-warning">

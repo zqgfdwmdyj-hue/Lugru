@@ -45,6 +45,7 @@ export const GROUPS = [
       { key: "auszeit", href: "/privat/auszeit", label: "Auszeit", month: true },
       { key: "familie", href: "/privat/familie", label: "Wer kümmert sich" },
       { key: "familienaufgaben", href: "/privat/familienaufgaben", label: "Familien-Aufgaben" },
+      { key: "haushaltshilfe", href: "/privat/haushaltshilfe", label: "Babysitter & Putzhilfe", month: true },
       { key: "schulbriefe", href: "/privat/schulbriefe", label: "Briefe Schule/Kita" },
     ],
   },

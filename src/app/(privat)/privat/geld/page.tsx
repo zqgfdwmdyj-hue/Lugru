@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { ANLAGE_TEXT, EINKOMMEN_TEXT, type Anlage, type Einkommen, type Erinnerung, type Fixkosten, type Ruecklage, type Steuerfrage } from "@/lib/private/geld";
 import { privatFinanzen } from "@/lib/private/geld-service";
+import { haushaltshilfeKurz } from "@/lib/private/haushaltshilfe-service";
 import { requirePrivate } from "@/lib/private/service";
 import { PrivatHead, dmy } from "../ui";
 import { anlagenCsvAction, geldAendernAction, geldEintragAction, geldLoeschenAction, privatKontoAction, standardErinnerungenAction } from "./actions";
@@ -25,6 +27,7 @@ export default async function PrivatGeldPage({ searchParams }: { searchParams: P
   const sp = await searchParams;
   const heute = todayIso();
   const g = await privatFinanzen(session, heute, sp.monat);
+  const hh = await haushaltshilfeKurz(session, g.monat, heute);
   const k = g.konto;
 
   return (
@@ -59,6 +62,13 @@ export default async function PrivatGeldPage({ searchParams }: { searchParams: P
           <div className="kpi-label">Anlagen + Rücklagen</div>
           <div className="kpi-value" data-testid="geld-vermoegen">{eur0(g.summen.vermoegen)}</div>
         </div>
+        {hh && (
+          <div className="card card-pad" data-testid="geld-haushaltshilfe">
+            <div className="kpi-label">Babysitter & Putzhilfe {monatText(g.monat)}</div>
+            <div className="kpi-value">{eur0(hh.kosten)}</div>
+            <div className="small muted">{hh.anzahl}× · <Link href={`/privat/haushaltshilfe?monat=${g.monat}`}>Einsätze →</Link></div>
+          </div>
+        )}
         <div className="card card-pad">
           <div className="kpi-label">Privatkonto</div>
           <div className="kpi-value">{k.stand ? eur0(k.stand.saldo) : "–"}</div>

@@ -1,4 +1,5 @@
 import "server-only";
+import { STANDARD_HELFER } from "./haushaltshilfe";
 import bcrypt from "bcryptjs";
 import { and, eq, ne } from "drizzle-orm";
 import { redirect } from "next/navigation";
@@ -15,7 +16,7 @@ const E = schema.privateEntries;
 /** So lange bleibt „Privat“ nach der PIN offen (verlängert sich bei Benutzung). */
 export const UNLOCK_MINUTES = 30;
 
-export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "frist" | "geburtstag" | "schulbrief" | "einstellungen";
+export type PrivateKind = "intim" | "paarzeit" | "kinder" | "ausschlafen" | "auszeit" | "medplan" | "routine" | "danke" | "stimmung" | "zustaendig" | "dateidee" | "aufgabe" | "termin" | "tagebuch" | "beobachtung" | "gespraech" | "periode" | "zuwendung" | "ritual" | "familienaufgabe" | "privatgeld" | "haushaltshilfe" | "frist" | "geburtstag" | "schulbrief" | "einstellungen";
 /** Diese Einträge gehören dem Verfasser – nur er ändert oder löscht sie. */
 const OWN_KINDS = new Set<PrivateKind>(["tagebuch", "beobachtung", "medplan", "routine", "stimmung", "periode", "privatgeld"]);
 /** Nur für den Verfasser sichtbar (Tagebuch zusätzlich, wenn freigegeben). */
@@ -88,6 +89,7 @@ export async function privateSettings(tenantId: string): Promise<PrivateSettings
     startHint: d.startHint ?? {},
     externSync: { ...DEFAULT_PRIVATE_SETTINGS.externSync, ...(d.externSync ?? {}) },
     familienFairness: d.familienFairness ?? false,
+    haushaltshilfe: d.haushaltshilfe ?? { helfer: STANDARD_HELFER },
   };
 }
 

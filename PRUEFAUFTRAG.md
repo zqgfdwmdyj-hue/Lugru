@@ -500,6 +500,20 @@ AI Win Sales Booster), `amazon-faelle`, `herzstueck`, `lugru-deals`, `deal-einga
 | DI-13 | „Format nicht erkannt“ mit Vorschlag + Protokoll | 🟡 (nur 12 Spalten) | ✅ | `formatVorschlag` in `src/lib/reports/format-vorschlag.ts`: „Sieht aus wie „Monatliche Lagergebühren“ (8 von 10 typischen Spalten; es fehlen: …) – als diese Art importieren: … import_link art=…“; alle Spalten im Upload-Verlauf, Liste „Unbekannte Formate“ auf `/uploads` |
 | DI-14 | USt-Bericht in `buchhaltung_status` und Monatsdatei | ❌ | ✅ | `buchhaltungStatus` → `ust` (importiert ja/nein, Brutto, Steuerländer, Verbringungen, ohne Steuerland); „CSV + Belege (ZIP)“ für den Steuerberater enthält `Amazon-Umsatzsteuer_JJJJ-MM.csv` (`ustMonatsdatei`). Keine Steuerberatung |
 
+## Babysitter & Putzhilfe (Wunsch vom 31.10.)
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| HH-1 | Einsätze aus dem Kalender übernehmen | ❌ | ✅ | Familienkalender und Privat-Termine, deren Titel einen Begriff enthält („Babysitter…“, „Putzfrau“, frei einstellbar); Uhrzeit aus dem Termin oder aus dem Titel („17–22 Uhr“) – `helferFuer`, `zeitAusTitel`, `familyEventTimes` |
+| HH-2 | Stundensatz, Babysitter wach/schlafend | ❌ | ✅ | `aufteilen`/`kosten` in `src/lib/private/haushaltshilfe.ts`: Babysitterin bis Schlafenszeit (Standard 20:00) 20 €/Std., danach 17 €/Std. (z. B. 17–22 Uhr = 3 × 20 + 2 × 17 = 94 €); Putzhilfe fester Stundenlohn; alles unter „Stundensätze und Erkennung“ änderbar, weitere Hilfen (z. B. Oma) anlegbar |
+| HH-3 | Genau berechnen per Hand | – | ✅ | Je Einsatz „korrigieren“: von/bis, Stunden wach/schlafend, Betrag (geht vor), ausgefallen, bezahlt, Notiz; „Korrektur zurücknehmen“; Einsatz von Hand für Termine außerhalb des Kalenders |
+| HH-4 | Privat, Ausgaben im Blick | ❌ | ✅ | Seite „Babysitter & Putzhilfe“ unter Familienalltag; Summe in „Privates Geld“; Gespeichertes verschlüsselt als Privat-Eintrag „haushaltshilfe“; **nur voller Privat-Zugang** („nur Familie“ sieht keine Kosten, auch nicht im Export) |
+| HH-5 | Auswertung/Export Ende des Monats | ❌ | ✅ | Monatsauswertung (Einsätze, Stunden, Kosten je Hilfe, noch nicht bezahlt, 12-Monats-Verlauf), CSV `/privat/haushaltshilfe/export?monat=JJJJ-MM`; in den ersten 7 Tagen eines Monats Hinweis auf der Privat-Startseite „Vormonat: … – Prüfen und exportieren“; Claude: `privat_finanzen` → `babysitter_putzhilfe` |
+
+Abnahme: Unit `haushaltshilfe` (wach/schlafend, über Mitternacht, Stundenlohn fehlt, Korrektur, ausgefallen, geplant,
+CSV); e2e `privat-haushaltshilfe` (Babysitterin 17–22 → 94 €, Putzfrau 15 €/Std. → 45 €, Korrektur bis 23 Uhr → 111 €,
+Einsatz von Hand, CSV, „Geld“, `privat_finanzen`, „nur Familie“ ohne Zugang).
+
 ## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
 
 Der Umsetzungsstand wurde über die Werkzeuge auf dem Server geprüft. Was dort als ❌ steht, ist zum großen Teil gebaut,
@@ -729,3 +743,6 @@ nie in Chats oder Mails.
     der Auszahlung abzieht. Soll sie trotzdem als eigener Posten in der Liquidität stehen (dann muss die Auszahlungs-
     Schätzung um sie gekürzt werden), bitte sagen. Nach dem Update die Lagergebühren-Dateien einmal neu hochladen –
     dann sind auch Maße, Gewicht und Gefahrgut gefüllt (übergroß wird aus der Größenklasse schon nachgetragen).
+52. **Babysitter & Putzhilfe**: Privat → Familienalltag → „Babysitter & Putzhilfe“ → unten den Stundenlohn der Putzfrau
+    eintragen und die Sätze der Babysitterin prüfen (vorbelegt 20 € wach / 17 € schlafend ab 20:00). Stehen die Termine
+    im Familienkalender unter einem anderen Wort (z. B. dem Vornamen), das Wort bei „Begriffe im Kalender“ ergänzen.
