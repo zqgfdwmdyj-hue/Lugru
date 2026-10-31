@@ -432,6 +432,7 @@ Abnahme B19 (Unit 1944 Tests grün, darunter `rollen`, `lugru-historie`, `profit
 Ampel und Eingang, kein Push ✅ · Trefferquote-Link → Lugru-Seite ✅ · Gewinn-Kopf = Summe der Überleitung ✅ ·
 Bestell-/Versand-/Zahlungsmail → kein Fall, zwei Mails einer Bestellung → ein Vorgang ✅ · drei halbe Tage Arbeit an einem
 Tag → „überbucht – … Min. zu viel“ ✅ · Deal-Blatt als SVG ohne EK ✅ · LPN-Feld, Handy-Anleitung, Werkzeug-Felder ✅.
+Gesamtlauf aller Ablaufprüfungen (Desktop): 115 von 115 grün.
 
 ## Abgleich mit „Umsetzungsstand 31.10. (11:00)“
 
