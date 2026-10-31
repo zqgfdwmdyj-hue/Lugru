@@ -1,7 +1,7 @@
 // B16: Wochenrückblick privat vollständig (feierabend rueckblick + mit_privat), Therapie-Bogen seit letzter Sitzung,
 // Beobachtungen mit drei Feldern bearbeiten/löschen (UI + privat_eintrag_aendern/_loeschen, 7 Tage rückgängig).
 // Nur mit Privat-Freigabe und vollem Umfang; das Protokoll enthält keine Inhalte. Erfundene Texte.
-import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
+import { aktion, alsPerson, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
 
 const berlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 const plus = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86400_000).toISOString().slice(0, 10);
@@ -97,8 +97,9 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     expect(b?.daten).toMatchObject({ problematik: "laut geworden", veraenderung: "kurz rausgehen", text: `Abendessen ${m} | Problematik: laut geworden | Gewünschte Veränderung: kurz rausgehen` });
     expect(await mcp.call("privat_eintrag_aendern", { id })).toContain("Nichts zu ändern");
     // Protokoll ohne Inhalte; Rückgängig-Daten verschlüsselt
-    const log = await sql<{ summary: string; auftrag: string | null; undo: string | null }>("select summary, auftrag, undo::text as undo from assistant_log where tool = 'privat_eintrag_aendern' order by created_at desc limit 1");
-    expect(log[0].summary).toBe("Privat-Eintrag geändert (problematik, veraenderung)");
+    const log = await sql<{ summary: string; auftrag: string | null; undo: string | null }>("select summary, auftrag, undo::text as undo from assistant_log where tool = 'privat_eintrag_aendern' and ok order by created_at desc limit 1");
+    // Zusammenfassung liegt verschlüsselt in der Datenbank; lesbar nur im Assistent-Verlauf (ohne Inhalte)
+    expect(log[0].summary ?? "").not.toContain(m);
     expect(log[0].auftrag).toBeNull();
     expect(log[0].undo ?? "").not.toContain(m);
     expect(log[0].undo).not.toBeNull();
@@ -123,6 +124,7 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     await page.goto("/privat/therapie-bogen");
     await expect(page.getByTestId("tb-zeile").filter({ hasText: m })).toHaveCount(0);
     await page.goto("/assistent-verlauf");
+    await expect(page.locator('[data-testid="verlauf-eintrag"][data-tool="privat_eintrag_aendern"]').filter({ hasText: "Privat-Eintrag geändert (problematik, veraenderung)" })).toHaveCount(1);
     const eintrag = page.locator('[data-testid="verlauf-eintrag"][data-tool="privat_eintrag_loeschen"]').first();
     await expect(eintrag).toContainText("Privat-Eintrag gelöscht");
     await expect(eintrag).not.toContainText(m);
@@ -132,11 +134,15 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     expect(b?.id).toBe(id);
     expect(b?.daten.situation).toBe(`Abendessen neu ${m}`);
 
-    // Konto „nur Familie“: kein Feierabend-Werkzeug; ändern/löschen privater Einträge abgelehnt
-    const fam = await mcpVerbinden(browser, baseURL!, "familie", { write: true, privat: true });
-    const famTools = await fam.tools();
-    expect(famTools).not.toContain("feierabend");
-    if (famTools.includes("privat_eintrag_loeschen")) expect(await fam.call("privat_eintrag_loeschen", { id })).toMatch(/vollen Privat-Zugang|nicht gefunden/);
+    // Konto „nur Familie“: kommt weder an den Therapie-Bogen noch an Beobachtungen (Claude-Verbindung gibt es für
+    // dieses Konto gar nicht – nach der Anmeldung landet es auf seiner Familienliste)
+    const fp = await alsPerson(browser, "familie");
+    await fp.goto("/privat/therapie-bogen");
+    await expect(fp).toHaveURL(/nurfamilie=1/);
+    await expect(fp.getByTestId("therapie-bogen")).toHaveCount(0);
+    await fp.goto("/kalender/feierabend?rueckblick=1&privat=1");
+    await expect(fp.getByTestId("fa-privat")).toHaveCount(0);
+    await fp.context().close();
     expect(await beobachtung()).toBeDefined();
 
     // Aufräumen (nur eigene Testeinträge dieses Laufs)

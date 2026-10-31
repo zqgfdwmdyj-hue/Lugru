@@ -114,6 +114,8 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     await emlForm.locator("input[type=file]").setInputFiles({ name: `bestellung-${m}.eml`, mimeType: "message/rfc822", buffer: Buffer.from(eml) });
     await emlForm.getByRole("button", { name: "Hochladen", exact: true }).click();
     await expect.poll(async () => (await eingang(idB)).status, { timeout: 30_000 }).toBe("gekauft");
+    // Die Bestellung entsteht direkt nach dem Status „gekauft“ – darauf warten statt sofort zu lesen.
+    await expect.poll(async () => (await eingang(idB)).bestellung_id ?? null, { timeout: 15_000 }).not.toBeNull();
     const eB = await eingang(idB);
     expect(eB).toMatchObject({ gekauft_menge: 12, gekauft_weg: "mail" });
     expect(Number(eB.gekauft_preis)).toBe(3.05);

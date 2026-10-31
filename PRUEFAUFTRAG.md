@@ -265,7 +265,7 @@ Abnahme durchgespielt (e2e `privat-rueckblick`, Unit `privat-rueckblick`, `priva
 und „[?]“ angelegt ✅ · `feierabend` mit Privat liefert Beobachtung (unvollständig), Zuwendung „Ina → Tom“, Gespräch,
 Danke, Stimmung, Vorwochen-Vergleich ✅ · ohne Privat-Freigabe `privat: null` ✅ · Therapie-Bogen beginnt am letzten
 Paartherapie-Termin, Zeitraum wählbar ✅ · ändern per Claude und per Formular ✅ · löschen per Claude, im Assistent-Verlauf
-rückgängig mit derselben ID ✅ · Protokoll ohne Inhalte ✅ · Konto „nur Familie“ ohne `feierabend`, Löschen abgelehnt ✅.
+rückgängig mit derselben ID ✅ · Protokoll ohne Inhalte ✅ · Konto „nur Familie“: keine Claude-Verbindung, Therapie-Bogen und privater Rückblick gesperrt ✅.
 
 ## Siri-Schnellerfassung – Befund vom 31.10.
 
