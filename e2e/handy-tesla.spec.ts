@@ -149,8 +149,9 @@ test.describe("Handy & Tesla", () => {
     const zeile = page.getByTestId("task-row").filter({ hasText: `${firma} Geschäftskunden anrufen` });
     await zeile.getByTestId("anruf-telefon").locator("summary").click();
     await expect(zeile.getByTestId("anruf-telefon-quelle")).toContainText("Signatur");
-    await Promise.all([page.waitForURL(/ansicht=liste/), zeile.getByTestId("anruf-telefon-speichern").click()]);
-    expect((await sql<{ telefon: string | null }>("select telefon from tasks where id = $1", [t.id]))[0].telefon).toBe("02285550100");
+    // Die Adresse enthält „ansicht=liste“ schon vorher – auf die Antwort der Server-Aktion warten, dann prüfen.
+    await Promise.all([aktion(page), zeile.getByTestId("anruf-telefon-speichern").click()]);
+    await expect.poll(async () => (await sql<{ telefon: string | null }>("select telefon from tasks where id = $1", [t.id]))[0].telefon).toBe("02285550100");
     await expect(page.getByTestId("task-row").filter({ hasText: `${firma} Geschäftskunden anrufen` }).getByTestId("anruf-telefon")).toHaveCount(0);
     // Mit Nummer im Text: direkt gespeichert, keine Rückfrage
     const mit = JSON.parse(await claude.call("aufgabe_anlegen", { titel: `${firma} Lager anrufen`, telefon: "0228 555 0111" }));
