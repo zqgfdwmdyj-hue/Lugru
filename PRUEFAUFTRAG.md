@@ -753,6 +753,16 @@ Abnahme: Unit `privat-rueckblick` (Monat wie bisher, von–bis, vertauscht, nur 
 Datum ignoriert, Schnellauswahl); e2e `privat-rueckblick`: zwei Wertschätzungen vor ~400 Tagen → Zeitraum über das
 Formular „2×“, engerer Zeitraum „1×“, Zukunft gekürzt, „Zurück zum Monat“, Wochenrückblick bis frei gewähltem Tag.
 
+## Browser auf dem Server (Befund 01.11.: „Auf dem Server ist kein Browser installiert“)
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Browser-Automatik (sellerboard-Kostenimport, BQool-Upload, ArbitrageOne-Abruf) auf dem Server | ❌ Image ohne Browser gebaut (`MIT_BROWSER=0` Standard, `update.sh` setzt nichts) | ✅ | `Dockerfile`: `ARG MIT_BROWSER=1` (Standard), `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` (fester Ablageort, unabhängig vom Benutzer), apt-Listen danach gelöscht. `docker-compose.yml`: Build-Argument `MIT_BROWSER: ${MIT_BROWSER:-1}` – abschalten nur bei Platzmangel mit `MIT_BROWSER=0` in der `.env`. Meldung in der App nennt jetzt den Weg (nächstes Update) |
+
+Abnahme: Probe-Image auf demselben Basis-Image (`node:22-bookworm-slim`) mit Playwright 1.63.0 und denselben
+Dockerfile-Zeilen gebaut; Chromium startet im Container aus `/ms-playwright/…/chrome` und lädt eine Seite. Das Image
+wird dadurch ca. 400–500 MB größer; die Schicht wird nur neu gebaut, wenn sich `package-lock.json` ändert.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -1105,3 +1115,7 @@ nie in Chats oder Mails.
 77. **B25.10 B2B**: Deal-Blatt, Sammelbestellung und Prep-Export sind da und erscheinen am Deal (Hilfe-Kasten auf der
     B2B-Seite). Zum Ausprobieren einen Test-Deal anlegen. Wenn du B2B vorerst nicht nutzt, sag Bescheid – dann führe
     ich es im Umsetzungsstand als „bewusst zurückgestellt“.
+78. **Browser auf dem Server**: einfach `deploy/update.sh` ausführen – der Browser wird jetzt automatisch mitgebaut
+    (das erste Update dauert ein paar Minuten länger, danach geht es wieder schnell). Danach unter Anbindungen bei
+    sellerboard/BQool/ArbitrageOne „Verbindung testen“ bzw. den Lauf starten. Steht in der `.env` eine Zeile
+    `MIT_BROWSER=0`, diese vorher löschen. Freier Platz auf dem Server: ca. 1 GB mehr einplanen.

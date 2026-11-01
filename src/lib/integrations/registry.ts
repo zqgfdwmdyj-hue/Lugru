@@ -293,7 +293,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
     setup: [
       "Am besten einen eigenen sellerboard-Benutzer ohne Zwei-Faktor-Anmeldung nur für den Import anlegen – mit Zwei-Faktor bricht die Automatik ab und legt eine Aufgabe an.",
       "Die Automatik läuft nur auf Knopfdruck, nie von selbst; jeder Schritt wird mit Bildschirmfoto protokolliert.",
-      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+      "Der Browser wird beim Update automatisch auf dem Server mitgebaut (abschalten nur mit MIT_BROWSER=0 in der .env).",
     ],
   },
   {
@@ -322,7 +322,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "„Verbindung testen“ meldet sich an und ruft je Land die Upload-Seite auf (ohne etwas hochzuladen). Klappt etwas nicht, steht in der Meldung ein Link auf ein Bildschirmfoto der Seite (7 Tage) – daran sieht man, ob ein Cookie-Banner, eine Browser-Prüfung (Captcha) oder ein anders benanntes Feld der Grund ist.",
       "Mit Zwei-Faktor-Anmeldung bricht die Automatik ab und legt eine Aufgabe an – dann die Dateien als ZIP herunterladen.",
       "Preise ändern sich erst nach Freigabe auf der Seite „BQool-Dateien“ und einem Klick auf „An BQool übertragen“.",
-      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+      "Der Browser wird beim Update automatisch auf dem Server mitgebaut (abschalten nur mit MIT_BROWSER=0 in der .env).",
     ],
   },
   {
@@ -352,7 +352,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
       "„Verbindung testen“ meldet sich an und sucht auf der Export-Seite jede Karte (lädt nichts herunter).",
       "Gleiche Datei zweimal wird übersprungen (Prüfsumme). Ergebnis je Abruf unter Anbindungen → Importe – ArbitrageOne; Fehler → Aufgabe.",
       "EK ohne Warnung wird gleich übernommen; EK-Sprünge über 20 % und Platzhalter bleiben als Vorschau zum Prüfen (Aufgabe).",
-      "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",
+      "Der Browser wird beim Update automatisch auf dem Server mitgebaut (abschalten nur mit MIT_BROWSER=0 in der .env).",
     ],
   },
   {

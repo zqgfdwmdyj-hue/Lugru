@@ -33,7 +33,7 @@ export async function browserFehlt(): Promise<string | null> {
     const { chromium } = await import("playwright");
     const pfad = process.env.PLAYWRIGHT_CHROMIUM_PATH || chromium.executablePath();
     const { existsSync } = await import("node:fs");
-    return existsSync(pfad) ? null : "Auf dem Server ist kein Browser installiert (Docker-Build mit MIT_BROWSER=1). Bis dahin die Datei herunterladen und selbst hochladen.";
+    return existsSync(pfad) ? null : "Auf dem Server ist noch kein Browser installiert. Er wird beim nächsten Update (deploy/update.sh) automatisch mitgebaut – steht in der .env „MIT_BROWSER=0“, die Zeile löschen. Bis dahin die Datei herunterladen und selbst hochladen.";
   } catch {
     return "Browser-Automatik ist auf dem Server nicht verfügbar. Bis dahin die Datei herunterladen und selbst hochladen.";
   }

@@ -15,7 +15,11 @@ services:
       interval: 5s
       retries: 10
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # Browser für die Automatik mitbauen (Standard). Nur bei Platzmangel MIT_BROWSER=0 in die .env schreiben.
+        MIT_BROWSER: ${MIT_BROWSER:-1}
     restart: unless-stopped
     depends_on:
       db:
