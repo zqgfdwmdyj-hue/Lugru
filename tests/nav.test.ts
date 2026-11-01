@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { areaForPath, canAccess } from "@/lib/auth/areas";
-import { activeItem, NAV, navCounters, openSections, visibleNav } from "@/lib/nav";
+import { activeItem, HANDY_TABS, MAX_FAVORITEN, NAV, navCounters, offeneAusCookie, startOffen, visibleNav } from "@/lib/nav";
 
-// Navigation: aktiver Bereich und Unterpunkt, Sichtbarkeit nach Rechten.
+// Navigation links: Reihenfolge der Gruppen, aktiver Bereich und Unterpunkt, Sichtbarkeit nach Rechten, gemerkte Gruppen.
 
 const act = (url: string) => {
   const u = new URL(url, "http://x");
@@ -10,34 +10,56 @@ const act = (url: string) => {
   return a && `${a.section.key} › ${a.item.label}`;
 };
 
+describe("Gruppen in der Reihenfolge des Bauauftrags", () => {
+  it("Heute · Einkauf · Amazon · … · Finanzen · Produkte & Lager · B2B · … · Delegation · Wissen & Calls · Privat · Einstellungen", () => {
+    expect(NAV.map((s) => s.label)).toEqual(["Heute", "Einkauf", "Amazon", "eBay & Temu", "Finanzen", "Produkte & Lager", "B2B", "Marken & Content", "Delegation", "Wissen & Calls", "Privat", "Einstellungen"]);
+    const labels = (k: string) => NAV.find((s) => s.key === k)!.items.map((i) => i.label);
+    expect(labels("einkauf").slice(0, 5)).toEqual(["Deal-Eingang", "Lugru Deals", "Bestellvorschläge", "EK-Import (→ sellerboard)", "Scanner (Barcode mit Ampel)"]);
+    expect(labels("amazon").slice(0, 5)).toEqual(["Fall-Zentrale", "Amazon-ToDos", "Repricer (BQool)", "Listungen (alle Kanäle)", "SAS-Programm"]);
+    expect(labels("finanzen").slice(0, 5)).toEqual(["Gewinn", "Liquidität", "Buchhaltung (Abgleich, DATEV)", "Importe (Daten importieren)", "Verlust-Stopp"]);
+    expect(labels("produkte").slice(0, 3)).toEqual(["Bestand & Inventur", "Paletten-Lager (Kunden)", "Retouren-Station & Fälle"]);
+    expect(labels("delegation")).toEqual(["VA & Delegation", "Alle Aufgaben", "Anrufe (im Tagesplan)"]);
+    expect(labels("wissen")).toEqual(["Wissen", "Calls (Consultant & Gruppe)"]);
+    expect(MAX_FAVORITEN).toBe(6);
+    expect(HANDY_TABS.map((t) => t.label)).toEqual(["Heute", "Scan", "Deals", "Aufgaben"]);
+  });
+});
+
 describe("aktiver Menüpunkt", () => {
-  it("längster Pfad und passende Ansicht gewinnen", () => {
+  it("längster Pfad und passende Ansicht gewinnen – alte Adressen bleiben gültig", () => {
     expect(act("/")).toBe("heute › Tagesübersicht");
-    expect(act("/?ansicht=liste&zeit=heute")).toBe("heute › Alle Aufgaben");
-    expect(act("/?kat=geld")).toBe("heute › Alle Aufgaben");
+    expect(act("/?ansicht=liste&zeit=heute")).toBe("delegation › Alle Aufgaben");
+    expect(act("/?kat=geld")).toBe("delegation › Alle Aufgaben");
+    expect(act("/kalender/tagesplan")).toBe("heute › Tagesplan");
+    expect(act("/kalender/tagesplan?anrufe=1")).toBe("delegation › Anrufe (im Tagesplan)");
+    expect(act("/deal-eingang/lugru")).toBe("einkauf › Lugru Deals");
+    expect(act("/deal-eingang/abc")).toBe("einkauf › Deal-Eingang");
+    expect(act("/einkauf/vorschlaege")).toBe("einkauf › Bestellvorschläge");
+    expect(act("/scan")).toBe("einkauf › Scanner (Barcode mit Ampel)");
     expect(act("/ebay")).toBe("marktplaetze › Neues eBay-Angebot");
     expect(act("/ebay?ansicht=artikel")).toBe("marktplaetze › eBay-Artikel & Gewinn");
     expect(act("/ebay?ansicht=rechnungen")).toBe("finanzen › eBay-Rechnungen");
+    expect(act("/ebay?ansicht=einstellungen")).toBe("einstellungen › eBay-Einstellungen");
     expect(act("/ebay/pruefen/123")).toBe("marktplaetze › eBay-Angebote prüfen");
     expect(act("/rechnungen/abc")).toBe("finanzen › Eingangsrechnungen");
     expect(act("/rechnungen/ausgang/neu")).toBe("finanzen › Ausgangsrechnungen");
     expect(act("/listings/temu")).toBe("marktplaetze › eBay → Temu / Wawi");
-    expect(act("/listings/xyz")).toBe("marktplaetze › Angebote (alle Kanäle)");
-    expect(act("/auftraege/123")).toBe("verkauf › Aufträge");
-    expect(act("/auftraege/lieferschein")).toBe("verkauf › Labels: Warensendung & DHL");
+    expect(act("/listings/xyz")).toBe("amazon › Listungen (alle Kanäle)");
+    expect(act("/auftraege/123")).toBe("produkte › Aufträge & Versand");
+    expect(act("/auftraege/lieferschein")).toBe("produkte › Labels: Warensendung & DHL");
+    expect(act("/remissionen/pruefungen/7")).toBe("produkte › Retouren-Station & Fälle");
+    expect(act("/ansprueche")).toBe("amazon › Ansprüche");
     expect(act("/sas")).toBe("amazon › SAS-Programm");
     expect(act("/inbound/abc")).toBe("amazon › FBA-Inbound");
-    expect(act("/repricer")).toBe("amazon › Repricer (BQool)");
-    expect(act("/calls/offen")).toBe("amazon › Calls (Consultant & Gruppe)");
+    expect(act("/calls/offen")).toBe("wissen › Calls (Consultant & Gruppe)");
     expect(act("/b2b/neu")).toBe("b2b › Deals");
-    expect(act("/b2b/kunden")).toBe("b2b › B2B-Kunden");
     expect(act("/paletten/sendungen")).toBe("produkte › Paletten-Lager (Kunden)");
-    expect(act("/einkauf/beschaffungsanalyse")).toBe("einkauf › Dropship-Trackings");
     expect(act("/einkauf/123")).toBe("einkauf › Einkauf & Wareneingang");
     expect(act("/marken/ideen/5")).toBe("marken › Ideen & Saison");
-    expect(act("/lieferanten/finden?land=DE")).toBe("einkauf › Großhändler finden");
-    expect(act("/privat/tagebuch")).toBe("privat › Privat");
-    expect(act("/import")).toBe("hilfe › Daten importieren");
+    expect(act("/privat/tagebuch")).toBe("privat › Übersicht");
+    expect(act("/privat/kalender?ansicht=monat")).toBe("privat › Kalender");
+    expect(act("/import")).toBe("finanzen › Importe (Daten importieren)");
+    expect(act("/einstellungen/shop-profile")).toBe("einstellungen › Shop-Profile & Payback");
     expect(act("/login")).toBeNull();
   });
 });
@@ -48,25 +70,25 @@ describe("Sichtbarkeit", () => {
   it("Inhaber ohne Privat-Recht sieht alle Geschäftsbereiche, Privat nicht", () => {
     const k = keys(true, null);
     expect(k.some((x) => x.startsWith("privat"))).toBe(false);
-    expect(k).toContain("hilfe:8");
+    expect(k).toContain("einstellungen:6");
   });
   it("Mitarbeiter nur mit „Geld“: Finanzen mit Gewinn, Liquidität, Hebel, Kapital-Ampel, Verlust-Stopp und Buchhaltung, keine Inhaber-Punkte", () => {
     const sections = visibleNav((p) => canAccess({ role: "staff", areas: ["geld"] }, areaForPath(p)), false);
     const fin = sections.find((s) => s.key === "finanzen")!;
-    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Hebel: Umsatz & Marge", "Kapital-Ampel", "Verlust-Stopp", "Buchhaltung (Abgleich, DATEV)"]);
-    expect(sections.find((s) => s.key === "verkauf")).toBeUndefined();
-    // Wissen und Importe sind eigene Bereiche, Einstellungen nur für Inhaber – also keine Hilfsfunktionen.
-    expect(sections.find((s) => s.key === "hilfe")).toBeUndefined();
+    expect(fin.items.map((i) => i.label)).toEqual(["Gewinn", "Liquidität", "Buchhaltung (Abgleich, DATEV)", "Verlust-Stopp", "Hebel: Umsatz & Marge", "Kapital-Ampel"]);
+    expect(sections.find((s) => s.key === "produkte")).toBeUndefined();
+    // Einstellungen nur für Inhaber – die Gruppe fehlt ganz.
+    expect(sections.find((s) => s.key === "einstellungen")).toBeUndefined();
+    expect(sections.find((s) => s.key === "privat")).toBeUndefined();
   });
-  it("Aufträge & Versand enthält nur Versand – Amazon, eBay/Temu und B2B haben eigene Bereiche", () => {
-    const labels = (k: string) => NAV.find((s) => s.key === k)!.items.map((i) => i.label);
-    expect(labels("verkauf")).toEqual(["Aufträge", "Labels: Warensendung & DHL", "Prep Center: Versand je Monat"]);
-    expect(labels("amazon")).toContain("SAS-Programm");
-    expect(labels("marktplaetze")).toContain("Neues eBay-Angebot");
-    expect(labels("einkauf")).not.toContain("B2B-Deals");
+  it("Mitarbeiter nur „Amazon“: nur die freigegebenen Amazon-Punkte, keine Inhaber-Punkte", () => {
     const amazonStaff = visibleNav((p) => canAccess({ role: "staff", areas: ["amazon"] }, areaForPath(p)), false);
-    expect(amazonStaff.find((s) => s.key === "amazon")!.items.map((i) => i.label)).toEqual(["FBA-Inbound", "SAS-Programm", "Amazon Business", "Echtheits-Ordner", "Calls (Consultant & Gruppe)"]);
-    expect(amazonStaff.some((s) => s.key === "verkauf" || s.key === "marktplaetze")).toBe(false);
+    expect(amazonStaff.find((s) => s.key === "amazon")!.items.map((i) => i.label)).toEqual(["SAS-Programm", "FBA-Inbound", "Ansprüche", "Amazon Business", "Echtheits-Ordner"]);
+    expect(amazonStaff.some((s) => s.key === "marktplaetze" || s.key === "einstellungen")).toBe(false);
+  });
+  it("Privat-Block nur mit Privat-Zugriff", () => {
+    expect(keys(true, null, true)).toContain("privat:5");
+    expect(keys(false, ["verkauf"], false).some((x) => x.startsWith("privat"))).toBe(false);
   });
   it("jede Adresse kommt nur einmal vor", () => {
     const hrefs = NAV.flatMap((s) => s.items.map((i) => i.href));
@@ -88,10 +110,10 @@ describe("verdichtete Seitenleiste", () => {
     expect(c.some((x) => x.label === "Belege prüfen")).toBe(false);
     expect(c.some((x) => x.label === "Amazon-ToDos")).toBe(false);
   });
-  it("offen ist nur der aktuelle Bereich plus von Hand geöffnete", () => {
-    expect([...openSections("verkauf", new Set(), false)]).toEqual(["verkauf"]);
-    expect([...openSections("verkauf", new Set(["finanzen"]), false)].sort()).toEqual(["finanzen", "verkauf"]);
-    expect([...openSections("verkauf", new Set(), true)]).toEqual([]);
-    expect([...openSections(null, new Set(), false)]).toEqual([]);
+  it("gemerkte Gruppen + aktuelle; im Privatbereich nur der Privat-Block", () => {
+    expect(offeneAusCookie("heute,einkauf,b2b, 1x ,<script>")).toEqual(["heute", "einkauf", "b2b"]);
+    expect([...startOffen(["finanzen"], "amazon", false)].sort()).toEqual(["amazon", "finanzen"]);
+    expect([...startOffen(["finanzen", "privat"], null, false)]).toEqual(["finanzen"]);
+    expect([...startOffen(["finanzen"], "privat", true)]).toEqual(["privat"]);
   });
 });

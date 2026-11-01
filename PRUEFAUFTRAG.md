@@ -579,7 +579,13 @@ kein Headless-Browser für Einkäufe. Das System bereitet den Link vor, Ludwig t
 | 4a | keine Budgetgrenze | ❌ (über Budget → Gelb) | ✅ | `budgetAnwenden` entfernt: Budget ändert die Ampel nie; gespeicherte Grenzen per Migration auf 0 (Standard); Felder zeigen 0, kein Platzhalter |
 | 4b | Monatsrahmen 150.000 € | ❌ | ✅ | `monatEingekauft`: neue sellerboard-SKUs (EK × Menge) + Wareneinkaufs-Rechnungen ohne Charge; „diesen Monat eingekauft: X € von ~150.000 €“ auf der Deal-Eingang-Seite (mit Link zur Liquidität) und im Push; beim Überschreiten nur Hinweis |
 | 4c | unter der Schwelle trotzdem Warenkorb-Link | ❌ | ✅ | jede nicht rote Zeile mit Einkaufs-Shop; Zeile „Unter der Schwelle (55/60) – Details ansehen, du entscheidest“; Rot bleibt Rot |
-| 5 | Navigation links | 🟡 | siehe unten | |
+| 5a | Seitenleiste links, Gruppen in der Reihenfolge | 🟡 (Leiste da, andere Gruppen + Reiterzeile oben) | ✅ | `NAV` in `src/lib/nav.ts`: Heute · Einkauf (Deal-Eingang, Lugru Deals, Bestellvorschläge, EK-Import, Scanner …) · Amazon (Fall-Zentrale, ToDos, Repricer, Listungen, SAS …) · *eBay & Temu* · Finanzen (Gewinn, Liquidität, Buchhaltung, Importe, Verlust-Stopp …) · Produkte & Lager (Bestand, Paletten, Retouren-Station, Aufträge & Versand …) · B2B · *Marken & Content* · Delegation (VA, Aufgaben, Anrufe) · Wissen & Calls · Privat · Einstellungen. Kursiv = nicht im Bauauftrag, damit keine Seite verschwindet |
+| 5b | einklappbar (~240 px), Gruppen auf/zu gemerkt | 🟡 (nicht gemerkt) | ✅ | `AppSidebar`/`SidebarNav`: «/» schmal auf Symbole (Cookie `nav-schmal`), Gruppen-Zustand im Cookie `nav-open` (schon der Server zeichnet ihn), aktuelle Seite hervorgehoben |
+| 5c | Privat-Block nur mit Privat-Zugriff, im Privatbereich offen | ❌ (eigener Rahmen ohne Leiste) | ✅ | Gruppe „Privat“ farblich abgesetzt, nur bei `canAccess(privat)`; `(privat)/layout.tsx` nutzt jetzt denselben Rahmen (`AppShell`): geschäftliche Gruppen zu, Privat-Block offen; „Sperren“ und „Zurück zum Geschäft“ bleiben |
+| 5d | oben nur Suche ⌘K, Glocke, Benutzer – keine zweite Menüzeile | ❌ | ✅ | `TopBar`: ⌘K/Strg+K (`BefehlsSuche`: Seiten sofort, Aufgaben/Produkte/Mails über `GET /api/suche`), Stern, Glocke (letzte Pushs, Zahl neu seit dem letzten Öffnen), Benutzer-Menü; Bereichs-Reiter entfallen (nur Unterseiten wie Paletten bleiben als Reiter) |
+| 5e | Favoriten bis 6, ganz oben | 🟡 (bis 12) | ✅ | Stern oben, höchstens 6 (danach gesperrt, nichts wird verdrängt), bleiben nach Neuladen (`prefs.favorites`) |
+| 5f | Handy: Schublade + Tab-Leiste | 🟡 (nur Schublade) | ✅ | `HandyTabs`: Heute · Scan · Deals · Aufgaben · Mehr (öffnet die Schublade); nur Punkte mit Zugriff |
+| 5g | alte Links gültig | – | ✅ | keine Adresse geändert; nur die Einsortierung im Menü |
 
 Abnahme: Unit `kaufen-tap` (Warenkorb-Link je Land, Rückfall, Profile, Menge, Gutschein, Nummer, Monatsrahmen, Login-Rücksprung)
 und `deal-wert` (Push-Kopfzeile ohne Restbudget); e2e `kaufen-tap`: MediaMarkt-Deal → Push „Produktseite öffnen“ + „Code
@@ -588,6 +594,10 @@ kopieren“, `/k/n` → Produktseite und „Kauf vorbereitet“; Lugru-Deal Amaz
 nach 24 Std. „abgelaufen“); SKU nach dem Vorbereiten → „gekauft (automatisch: sellerboard-SKU)“ mit Menge 3, ohne SKU einmal
 „Deal n noch offen?“; Monatsrahmen; Shop-Profil anlegen (javascript:-Muster abgelehnt); Payback-Schalter;
 `deal_eingang_detail.kauf`. Abnahme 1/3 am echten iPhone (Amazon-App öffnet sich, Watch-Kurzbefehl) siehe To-do 57.
+Abnahme 5: Unit `nav` (Reihenfolge, Zuordnung alter Adressen, Rechte, gemerkte Gruppen); e2e `navigation` (Reihenfolge,
+Gruppe bleibt nach Neuladen offen, Einklappen gemerkt, keine Reiterzeile, Favorit bleibt, max. 6, ⌘K → Seite/Aufgabe →
+Enter öffnet, Glocke zählt und wird gesehen, alte Adressen, Privatbereich mit offenem Privat-Block; Konto ohne Privat sieht
+keinen Privat-Block; Handy: Tab-Leiste + „Mehr“ öffnet die Schublade) und `oberflaeche` (alle Seiten, Kontrast/aktive Auswahl).
 
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
@@ -622,6 +632,12 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 01.11. (Kaufen mit einem Tap, B23, keine neuen Werkzeuge): `deal_eingang_detail` hat jetzt das Feld `kauf`
+(Deal-Nummer, Shop, Menge, „Warenkorb vorbereitet“, Link zum Selbst-Kaufen `/k/<id>`, Gutschein, „Kauf vorbereitet“) –
+gekauft wird nie automatisch; `deal_lernen_bericht` mit Block `lugru_deals` (B22). Neue Handy-Adresse ohne Claude:
+`POST /api/mobil/kaufen` („Kaufen 17“). `notifications/tools/list_changed` geht wie bisher beim Verbinden raus; die
+geänderte Beschreibung sieht Claude nach dem nächsten Verbinden.
 
 Neu am 31.10. (Datei-Import, 6 Werkzeuge): `import_link` (ändernd, nur Inhaber: einmalige Upload-Adresse),
 `import_status` und `importe` (nur Inhaber), `umsatzsteuer` (je Periode JJJJ-MM), `umsatzsteuer_oss` (je Quartal) und
@@ -856,4 +872,8 @@ nie in Chats oder Mails.
     „Payback eingerichtet ✅“, dann verschwindet der Hinweis im Push. Shops mit Payback (z. B. dm, Alternate) dort eintragen.
 59. **Monatsrahmen prüfen**: Deal-Eingang → „diesen Monat eingekauft“ mit deiner eigenen Zahl vergleichen; Rahmen bei Bedarf
     im Formular ändern (Standard 150.000 €). SKUs ohne Menge (noch nicht versendet) zählen erst mit der FBA-Sendung.
+60. **Neues Menü**: Gruppen „eBay & Temu“ und „Marken & Content“ standen nicht im Bauauftrag – sie sind geblieben, damit
+    keine Seite verschwindet. „Anrufe“ öffnet den Tagesplan (eine eigene Anrufe-Seite gibt es nicht). Sag Bescheid, wenn
+    etwas anders einsortiert werden soll. Mehr als 6 alte Favoriten: die ersten 6 erscheinen, der Stern ist gesperrt, bis
+    du einen entfernst.
 

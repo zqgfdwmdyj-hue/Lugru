@@ -203,6 +203,64 @@ h2 { font-size: 16px; margin: 0; }
 .article-title { font-family: var(--serif); font-size: 28px; font-weight: 600; margin: 0; }
 .snippet { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; max-width: 720px; }
 
+/* ---- Navigation links (Bauauftrag 01.11.): einklappbar, Privat-Block, Leiste oben, ⌘K, Glocke, Handy-Tabs ---- */
+.brand-text { flex: 1 1 auto; min-width: 0; }
+.nav-einklappen { flex: none; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2); border-radius: 6px; font-size: 13px; line-height: 1; padding: 4px 7px; cursor: pointer; }
+.nav-einklappen:hover { color: var(--ink); }
+.nav-group.nav-privat { background: #f7e9ef; border-left-color: #be185d; }
+.nav-group.nav-privat.current { background: #f2dce6; }
+.nav-group.nav-privat > .nav-head, .nav-group.nav-privat.current > .nav-head { color: #831843; }
+@media (min-width: 901px) {
+  .sidebar { transition: width .15s ease-out; }
+  .sidebar.schmal { width: 64px; padding: 16px 8px; }
+  .sidebar.schmal .brand { flex-direction: column; padding: 0 0 10px; gap: 8px; }
+  .sidebar.schmal .brand-text, .sidebar.schmal .nav-favs, .sidebar.schmal .nav-counters, .sidebar.schmal .sidebar-foot, .sidebar.schmal .nav-group > div, .sidebar.schmal .nav-head-end { display: none !important; }
+  .sidebar.schmal .nav-group { padding: 0; border-left-width: 3px; }
+  .sidebar.schmal .nav-head { justify-content: center; padding: 8px 0; font-size: 0; }
+  .sidebar.schmal .nav-head .nav-ico { font-size: 18px; margin: 0; }
+}
+.top-bar { display: flex; align-items: center; gap: 10px; margin: -10px 0 -6px; min-width: 0; }
+.top-bar-rechts { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.bs-knopf { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 340px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-2); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
+.bs-knopf:hover { color: var(--ink); border-color: var(--ink-2); }
+.bs-knopf-text { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border-strong); border-radius: 4px; padding: 1px 5px; color: var(--ink-2); background: var(--bg, #f4f3ef); }
+.bs-hinter { position: fixed; inset: 0; z-index: 60; background: rgba(20, 20, 20, .38); display: flex; justify-content: center; align-items: flex-start; padding: 10vh 12px 12px; }
+.bs-box { width: min(640px, 100%); background: var(--surface); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); padding: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 75vh; }
+.bs-input { font-size: 16px; padding: 10px 12px; }
+.bs-liste { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.bs-treffer { width: 100%; display: flex; align-items: baseline; gap: 10px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.bs-treffer.aktiv { background: #e8f2ef; }
+.bs-art { flex: none; width: 74px; font-size: 12px; color: var(--ink-2); }
+.bs-titel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-zusatz { flex: none; font-size: 12px; color: var(--ink-2); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-leer { padding: 8px 10px; }
+.bs-fuss { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--border, #e4e2dc); padding-top: 8px; }
+.glocke, .benutzer { position: relative; }
+.glocke > summary, .benutzer > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 8px; padding: 5px 9px; font-size: 14px; color: var(--ink); }
+.glocke > summary::-webkit-details-marker, .benutzer > summary::-webkit-details-marker { display: none; }
+.glocke-zahl { font-family: var(--mono); font-size: 11px; font-weight: 600; background: var(--danger); color: #fff; border-radius: 9px; padding: 0 6px; }
+.glocke-liste, .benutzer-menue { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+.glocke-liste { width: min(380px, 92vw); max-height: 60vh; overflow-y: auto; }
+.glocke-eintrag { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-bottom: 1px solid var(--border, #e4e2dc); color: var(--ink); text-decoration: none; }
+.glocke-eintrag:hover { background: #f4f3ef; text-decoration: none; }
+.benutzer-menue { min-width: 200px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.benutzer-kreis { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; background: #0e6b5f; color: #fff; font-size: 12px; font-weight: 700; }
+.shell-privat .pshell { min-height: 0; }
+.handy-tabs { display: none; }
+@media (max-width: 900px) {
+  .top-bar { margin: -4px 0 -6px; }
+  .bs-knopf { flex: 1 1 auto; }
+  .bs-kbd, .benutzer-name { display: none; }
+  .nav-einklappen { display: none; }
+  .handy-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border-strong); padding: 4px 4px max(4px, env(safe-area-inset-bottom)); }
+  .handy-tab { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 2px; font-size: 12px; font-weight: 600; color: var(--ink-2); text-decoration: none; border-radius: 8px; cursor: pointer; min-height: 48px; justify-content: center; }
+  .handy-tab.active { color: #0e6b5f; background: #e8f2ef; }
+  .handy-tab > span:first-child { font-size: 18px; line-height: 1.1; }
+  .main { padding-bottom: 84px !important; }
+}
+@media print { .top-bar, .handy-tabs { display: none !important; } }
+
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0; }
 
 @media (max-width: 1100px) {

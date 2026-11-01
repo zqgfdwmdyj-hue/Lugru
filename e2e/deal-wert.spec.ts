@@ -77,7 +77,8 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     // Push: Kauf-Meldung mit Deal-Nummer, „Produktseite öffnen“ (Shop ohne Warenkorb-Link) und „Details“; Menge durch
     // „max. € je Deal“ (10 € ÷ 2,10 €) auf 4 begrenzt; Monatsrahmen als Zeile, kein Restbudget mehr
     await expect.poll(async () => (await sql<{ c: string }>("select count(*) c from deal_eingaenge where id = $1 and push_am is not null", [idA]))[0].c, { timeout: 30_000 }).toBe("1");
-    const neueste = await (await page.request.get("/api/push/neueste")).json();
+    // Meldung genau zu diesem Deal (parallele Tests schicken an dasselbe Konto)
+    const [neueste] = await sql<{ text: string; aktionen: { aktion: string; link: string }[] }>("select text, aktionen from meldungen where tenant_id = $1 and user_id = $2 and (link = $3 or aktionen::text like $4) order by created_at desc limit 1", [T, INH, `/deal-eingang/${idA}`, `%/deal-eingang/${idA}"%`]);
     if (zA.ampel !== "rot") {
       expect(neueste.aktionen.map((a: { aktion: string }) => a.aktion)).toEqual(["produkt", "details"]);
       expect(neueste.aktionen[0].link).toMatch(/^\/k\/\d+$/);
@@ -185,5 +186,7 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     expect(gek.ok).toBe(true);
     expect(gek.bestellung).toMatch(/\/einkauf\/[0-9a-f-]{36}$/);
     expect(await eingang(idC)).toMatchObject({ status: "gekauft", gekauft_menge: 30, gekauft_weg: "claude" });
+    // Aufräumen: Budget-Werte dieses Tests wieder auf den Standard (keine Grenze), Schwelle zurück
+    await sql(`update tenants set settings = jsonb_set(settings, '{dealEingang}', coalesce(settings->'dealEingang', '{}'::jsonb) - 'budgetJeDeal' - 'budgetJeTag' - 'budgetJeWoche' - 'wertSchwelle') where id = $1`, [T]);
   });
 });

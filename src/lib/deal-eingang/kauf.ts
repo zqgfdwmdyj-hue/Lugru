@@ -143,13 +143,19 @@ async function kaufSpeichern(e: Eingang, kauf: Omit<DealKauf, "am">, jetzt = new
     await db.update(E).set({ kauf: k }).where(eq(E.id, e.id));
     return { nr: e.kaufNr, kauf: k };
   }
-  const belegt = await db
-    .select({ nr: E.kaufNr })
-    .from(E)
-    .where(and(eq(E.tenantId, e.tenantId), isNotNull(E.kaufNr), sql`(${E.kauf}->>'am')::timestamptz > ${new Date(jetzt.getTime() - KAUF_NR_STUNDEN * 3600_000).toISOString()}::timestamptz`));
-  const nr = kaufNummerFrei(belegt.map((b) => b.nr!));
+  // Atomar je Firma: zwei gleichzeitig gemeldete Deals (z. B. Lugru-Posts kurz hintereinander) dürfen nie dieselbe
+  // Nummer bekommen – sonst wäre „Kaufen 17“ mehrdeutig.
   const k: DealKauf = { ...kauf, am: jetzt.toISOString() };
-  await db.update(E).set({ kaufNr: nr, kauf: k }).where(eq(E.id, e.id));
+  const nr = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${e.tenantId}:kauf-nr`}))`);
+    const belegt = await tx
+      .select({ nr: E.kaufNr })
+      .from(E)
+      .where(and(eq(E.tenantId, e.tenantId), isNotNull(E.kaufNr), sql`${E.id} <> ${e.id}`, sql`(${E.kauf}->>'am')::timestamptz > ${new Date(jetzt.getTime() - KAUF_NR_STUNDEN * 3600_000).toISOString()}::timestamptz`));
+    const frei = kaufNummerFrei(belegt.map((b) => b.nr!));
+    await tx.update(E).set({ kaufNr: frei, kauf: k }).where(eq(E.id, e.id));
+    return frei;
+  });
   return { nr, kauf: k };
 }
 

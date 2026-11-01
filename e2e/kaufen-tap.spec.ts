@@ -21,14 +21,20 @@ test.describe("Kaufen mit einem Tap", () => {
       await anmelden(page, "inhaber");
       const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true });
       const pruefen = async (text: string) => JSON.parse(await mcp.call("deal_eingang_pruefen", { text, asin: "B0TESTDE01", ek: 2.1, menge: 20, quelle: `KT-Test ${m}` })) as { id: string; pruefung: string; ampel: string | null };
-      const neueste = async () => (await (await page.request.get("/api/push/neueste")).json()) as { titel: string; text: string; link: string; aktionen: { aktion: string; titel: string; link: string }[] | null };
+      // Meldung zu genau diesem Deal (über seine Kauf-Nummer) – parallele Tests schicken an dasselbe Konto
+      type Meldung = { titel: string; text: string; link: string; aktionen: { aktion: string; titel: string; link: string }[] | null };
+      const meldungZu = async (eingangId: string): Promise<Meldung | undefined> => {
+        const [e] = await sql<{ nr: number | null }>("select kauf_nr as nr from deal_eingaenge where id = $1", [eingangId]);
+        if (!e?.nr) return undefined;
+        return (await sql<Meldung>("select titel, text, link, aktionen from meldungen where tenant_id = $1 and user_id = $2 and aktionen::text like $3 order by created_at desc limit 1", [T, INH, `%"/k/${e.nr}"%`]))[0];
+      };
 
       // Abnahme 2: Nicht-Amazon-Deal → Push öffnet die Produktseite, nennt Shop und Gutschein, Code kopierbar
       const produkt = `https://www.mediamarkt.de/de/product/_testartikel-${m.toLowerCase()}.html`;
       const a = await pruefen(`Testdeal ${m} bei MediaMarkt ${produkt} – Code: BLACK${m} im Warenkorb`);
       expect(a.pruefung).toBe("fertig");
       test.skip(a.ampel === "rot", "Testdienste liefern Rot – Kauf-Meldung nur für nicht rote Deals");
-      const pa = await neueste();
+      const pa = (await meldungZu(a.id))!;
       const nrA = Number(/\/k\/(\d+)$/.exec(pa.aktionen?.[0]?.link ?? "")?.[1]);
       expect(nrA).toBeGreaterThan(0);
       expect(pa.titel).toContain(`Nr. ${nrA}`);
@@ -63,8 +69,8 @@ test.describe("Kaufen mit einem Tap", () => {
       await sql("update deal_eingaenge set push_am = null where id = $1", [b.id]);
       await page.goto(`/deal-eingang/${b.id}`);
       await Promise.all([aktion(page), page.getByRole("button", { name: "Neu prüfen" }).click()]);
-      await expect.poll(async () => (await neueste()).aktionen?.[0]?.aktion, { timeout: 30_000 }).toBe("warenkorb");
-      const pb = await neueste();
+      await expect.poll(async () => (await meldungZu(b.id))?.aktionen?.[0]?.aktion, { timeout: 30_000 }).toBe("warenkorb");
+      const pb = (await meldungZu(b.id))!;
       const nrB = Number(/\/k\/(\d+)$/.exec(pb.aktionen![0].link)?.[1]);
       expect(nrB).not.toBe(nrA);
       expect(pb.aktionen!.map((x) => [x.aktion, x.titel])).toEqual([["warenkorb", "In den Warenkorb (3)"], ["details", "Details"]]);
@@ -97,12 +103,14 @@ test.describe("Kaufen mit einem Tap", () => {
       await sql("update deal_eingaenge set kauf_vorbereitet_am = now() - interval '25 hours' where id = any($1::uuid[])", [[a.id, b.id]]);
       const sku = `TESTK_${tagCode(new Date())}_B0TESTDE01_2.50_9.99`;
       await sql("insert into sellerboard_products (tenant_id, sb_id, sku, asin, name, synced_at) values ($1, $2, $3, 'B0TESTDE01', 'Testartikel KT', now())", [T, skuId, sku]);
-      // A ist ebenfalls B0TESTDE01 – damit A „offen“ bleibt, A zuerst vom Abgleich ausnehmen (verworfen), dann wieder neu
+      // A ist ebenfalls B0TESTDE01 – damit A „offen“ bleibt, A zuerst vom Abgleich ausnehmen (verworfen), dann wieder neu.
+      // Lugru-Verknüpfung von B lösen: sonst nimmt der Lugru-Abgleich ggf. eine Test-Bestellung paralleler Tests (gleiche
+      // Test-ASIN) – hier geht es um die 24-Std.-Prüfung über die sellerboard-SKU.
       await sql("update deal_eingaenge set status = 'verworfen' where id = $1", [a.id]);
+      await sql("update lugru_deals_historie set eingang_id = null where eingang_id = $1", [b.id]);
       await page.goto("/deal-eingang/lugru");
       await Promise.all([aktion(page), page.getByTestId("lg-kauf-abgleich").click()]);
-      // Erkennt der Lugru-Kaufabgleich (B22.2, gleiche SKU-Quelle) den Kauf schon, zählt er dort – Ergebnis gleich
-      await expect(page.getByRole("status")).toContainText(/Kauf vorbereitet: 1 als gekauft erkannt \(sellerboard-SKU\)|1 Einträge im Deal-Eingang als gekauft ergänzt/);
+      await expect(page.getByRole("status")).toContainText("Kauf vorbereitet: 1 als gekauft erkannt (sellerboard-SKU)");
       const [eb] = await sql<{ status: string; weg: string; ref: string; menge: number; preis: string }>("select status, gekauft_weg as weg, gekauft_ref as ref, gekauft_menge as menge, gekauft_preis::text as preis from deal_eingaenge where id = $1", [b.id]);
       expect(eb).toMatchObject({ status: "gekauft", weg: "automatisch", ref: `sellerboard-SKU ${sku}`, menge: 3 });
       await page.goto(`/deal-eingang/${b.id}`);
@@ -113,15 +121,17 @@ test.describe("Kaufen mit einem Tap", () => {
       await page.goto("/deal-eingang/lugru");
       await Promise.all([aktion(page), page.getByTestId("lg-kauf-abgleich").click()]);
       await expect(page.getByRole("status")).toContainText("1 Erinnerung(en) „noch offen?“");
-      const er = await neueste();
-      expect(er.titel).toBe(`Deal ${nrA} noch offen?`);
+      const [er] = await sql<Meldung>("select titel, text, link, aktionen from meldungen where tenant_id = $1 and user_id = $2 and titel = $3 order by created_at desc limit 1", [T, INH, `Deal ${nrA} noch offen?`]);
+      expect(er?.titel).toBe(`Deal ${nrA} noch offen?`);
       expect(er.aktionen!.map((x) => x.aktion)).toEqual(["gekauft", "details"]);
       // nur einmal
       await page.goto("/deal-eingang/lugru");
       await Promise.all([aktion(page), page.getByTestId("lg-kauf-abgleich").click()]);
       await expect(page.getByRole("status")).not.toContainText("Erinnerung");
 
-      // §4: keine Budgetgrenze, Monatsrahmen nur als Orientierung (Standard 150.000 €)
+      // §4: keine Budgetgrenze, Monatsrahmen nur als Orientierung (Standard 150.000 €). Standard direkt vorher
+      // herstellen – ein paralleler Test (deal-wert) setzt zwischendurch eigene Budget-Werte.
+      await sql(`update tenants set settings = jsonb_set(settings, '{dealEingang}', coalesce(settings->'dealEingang', '{}'::jsonb) - 'budgetJeDeal' - 'budgetJeTag' - 'budgetJeWoche' - 'monatsrahmen') where id = $1`, [T]);
       await page.goto("/deal-eingang");
       await expect(page.getByTestId("de-monatsrahmen")).toContainText("von ~150.000 €");
       await expect(page.getByTestId("de-einstellungen-form").locator('input[name="budgetJeDeal"]')).toHaveValue("0");

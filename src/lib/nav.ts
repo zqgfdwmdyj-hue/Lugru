@@ -1,10 +1,10 @@
-// Navigation: Hauptbereiche nach Arbeitsabläufen (Versand, Amazon, eBay & Temu, B2B, Lager, Einkauf, Service,
-// Finanzen, Marken), Privat als eigener Bereich und feste Hilfsfunktionen.
-// Eine Quelle für Seitenleiste, Bereichs-Reiter und Handy-Menü. Ohne Server-Abhängigkeiten.
+// Navigation links (Bauauftrag „Navigation: Hauptmenü nach links“): Heute · Einkauf · Amazon · (eBay & Temu) · Finanzen ·
+// Produkte & Lager · B2B · (Marken) · Delegation · Wissen & Calls · Privat · Einstellungen. Eine Quelle für Seitenleiste,
+// ⌘K-Suche, Unterseiten-Reiter und Handy-Leiste. Ohne Server-Abhängigkeiten. Alte Adressen bleiben gültig.
 
 export type NavCounts = { tasks: number; inbox: number; orders: number; claims: number; invoices: number; amazonTodos: number; pallets: number };
 
-/** Aufgeklappte Bereiche als Cookie – so rendert schon der Server den gemerkten Zustand (kein Springen). */
+/** Aufgeklappte Gruppen als Cookie – so zeichnet schon der Server den gemerkten Zustand (kein Springen). */
 export const NAV_OPEN_COOKIE = "nav-open";
 
 export type NavItem = {
@@ -21,7 +21,7 @@ export type NavItem = {
   short?: string;
 };
 
-export type NavSection = { key: string; label: string; color: string; icon?: string; items: NavItem[]; helper?: boolean };
+export type NavSection = { key: string; label: string; color: string; icon?: string; items: NavItem[] };
 
 export const NAV: NavSection[] = [
   {
@@ -31,29 +31,35 @@ export const NAV: NavSection[] = [
     icon: "📋",
     items: [
       { href: "/", label: "Tagesübersicht", badge: "tasks", alert: true, short: "Aufgaben" },
-      { href: "/?ansicht=liste", label: "Alle Aufgaben", also: (p, q) => p === "/" && Boolean(q.get("kat") && q.get("kat") !== "alle") },
       { href: "/kalender/tagesplan", label: "Tagesplan" },
-      { href: "/delegation", label: "Delegation", owner: true },
-      { href: "/kalender/feierabend", label: "Feierabend" },
-      { href: "/uploads", label: "Uploads (alles hochladen)" },
-      { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
-      { href: "/schnell", label: "Schnellerfassung (Sprache)" },
-      { href: "/scan", label: "Scan mit Ampel" },
       { href: "/kalender", label: "Termine" },
+      { href: "/posteingang", label: "Posteingang", badge: "inbox", alert: true },
+      { href: "/uploads", label: "Uploads (alles hochladen)" },
+      { href: "/schnell", label: "Schnellerfassung (Sprache)" },
+      { href: "/kalender/feierabend", label: "Feierabend" },
       { href: "/kalender/fahrten", label: "Fahrtenbuch", owner: true },
       { href: "/rechtsfaelle", label: "Rechtsfälle (Anwalt)", owner: true },
     ],
   },
   {
-    // Nur was mit dem Verschicken von Aufträgen zu tun hat – Marktplätze und Amazon haben eigene Bereiche.
-    key: "verkauf",
-    label: "Aufträge & Versand",
-    color: "var(--area-verkauf)",
-    icon: "🚚",
+    key: "einkauf",
+    label: "Einkauf",
+    color: "var(--area-einkauf)",
+    icon: "🛒",
     items: [
-      { href: "/auftraege", label: "Aufträge", badge: "orders", short: "Versand" },
-      { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
-      { href: "/auftraege/prep-center", label: "Prep Center: Versand je Monat" },
+      { href: "/deal-eingang", label: "Deal-Eingang" },
+      { href: "/deal-eingang/lugru", label: "Lugru Deals" },
+      { href: "/einkauf/vorschlaege", label: "Bestellvorschläge" },
+      { href: "/einkauf/ek-import", label: "EK-Import (→ sellerboard)" },
+      { href: "/scan", label: "Scanner (Barcode mit Ampel)" },
+      { href: "/lieferanten/deal-ampel", label: "Deal-Ampel (Einkauf prüfen)" },
+      { href: "/einkauf", label: "Einkauf & Wareneingang" },
+      { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
+      { href: "/lieferanten", label: "Lieferanten-Feeds" },
+      { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
+      { href: "/lieferanten/chancen", label: "Chancen" },
+      { href: "/lieferanten/finden", label: "Großhändler finden" },
+      { href: "/board", label: "Kontakt-Board" },
     ],
   },
   {
@@ -64,22 +70,24 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/amazon-faelle", label: "Fall-Zentrale", owner: true },
       { href: "/amazon-todos", label: "Amazon-ToDos", badge: "amazonTodos", alert: true, owner: true },
-      { href: "/inbound", label: "FBA-Inbound" },
-      { href: "/sas", label: "SAS-Programm" },
       { href: "/repricer", label: "Repricer (BQool)" },
+      { href: "/listings", label: "Listungen (alle Kanäle)" },
+      { href: "/sas", label: "SAS-Programm" },
+      { href: "/inbound", label: "FBA-Inbound" },
+      { href: "/ansprueche", label: "Ansprüche", badge: "claims" },
+      { href: "/faelle", label: "Fälle & A-bis-Z" },
+      { href: "/bewertungen", label: "Bewertungen" },
       { href: "/amazon-business", label: "Amazon Business" },
       { href: "/echtheit", label: "Echtheits-Ordner" },
-      { href: "/calls", label: "Calls (Consultant & Gruppe)" },
     ],
   },
   {
-    // Angebote auf den Marktplätzen (eBay, Temu) – gleiche Farbfamilie wie „Aufträge & Versand“ (Verkauf).
+    // Weitere Marktplätze – gehören zu keiner der Gruppen im Bauauftrag, bleiben aber erreichbar.
     key: "marktplaetze",
     label: "eBay & Temu",
     color: "var(--area-verkauf)",
     icon: "🏷️",
     items: [
-      { href: "/listings", label: "Angebote (alle Kanäle)" },
       { href: "/ebay", label: "Neues eBay-Angebot" },
       { href: "/ebay/pruefen", label: "eBay-Angebote prüfen" },
       { href: "/ebay?ansicht=artikel", label: "eBay-Artikel & Gewinn" },
@@ -89,9 +97,48 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    // Deals für Prep-Kunden: eigener Geschäftszweig – gleiche Farbfamilie wie „Einkauf“.
+    key: "finanzen",
+    label: "Finanzen",
+    color: "var(--area-finanzen)",
+    icon: "💶",
+    items: [
+      { href: "/gewinn", label: "Gewinn" },
+      { href: "/cashflow", label: "Liquidität" },
+      { href: "/buchhaltung", label: "Buchhaltung (Abgleich, DATEV)" },
+      { href: "/import", label: "Importe (Daten importieren)" },
+      { href: "/verlust", label: "Verlust-Stopp" },
+      { href: "/hebel", label: "Hebel: Umsatz & Marge" },
+      { href: "/kapital", label: "Kapital-Ampel" },
+      { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices", short: "Belege prüfen" },
+      { href: "/rechnungen/belege", label: "Belege scannen" },
+      { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
+      { href: "/ebay?ansicht=rechnungen", label: "eBay-Rechnungen" },
+      { href: "/rechnungen/kunden", label: "Kunden" },
+      { href: "/export", label: "COG-Export" },
+    ],
+  },
+  {
+    key: "produkte",
+    label: "Produkte & Lager",
+    color: "var(--area-produkte)",
+    icon: "📦",
+    items: [
+      { href: "/bestand", label: "Bestand & Inventur" },
+      { href: "/paletten", label: "Paletten-Lager (Kunden)", badge: "pallets", alert: true, short: "Paletten-Meldungen" },
+      { href: "/remissionen/pruefungen", label: "Retouren-Station & Fälle" },
+      { href: "/produkte", label: "Produkte" },
+      { href: "/chargen", label: "Chargen" },
+      { href: "/artikel", label: "Artikelstamm (eigene Marken)" },
+      { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
+      { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
+      { href: "/auftraege/prep-center", label: "Prep Center: Versand je Monat" },
+      { href: "/retouren", label: "Retouren" },
+      { href: "/remissionen", label: "Remissionen" },
+    ],
+  },
+  {
     key: "b2b",
-    label: "B2B-Handel",
+    label: "B2B",
     color: "var(--area-einkauf)",
     icon: "🤝",
     items: [
@@ -103,71 +150,7 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    key: "produkte",
-    label: "Produkte & Lager",
-    color: "var(--area-produkte)",
-    icon: "📦",
-    items: [
-      { href: "/produkte", label: "Produkte" },
-      { href: "/chargen", label: "Chargen" },
-      { href: "/bestand", label: "Bestand & Inventur" },
-      { href: "/artikel", label: "Artikelstamm (eigene Marken)" },
-      { href: "/paletten", label: "Paletten-Lager (Kunden)", badge: "pallets", alert: true, short: "Paletten-Meldungen" },
-    ],
-  },
-  {
-    key: "einkauf",
-    label: "Einkauf & Lieferanten",
-    color: "var(--area-einkauf)",
-    icon: "🛒",
-    items: [
-      { href: "/deal-eingang", label: "Deal-Eingang (WhatsApp teilen)" },
-      { href: "/lieferanten/deal-ampel", label: "Deal-Ampel (Einkauf prüfen)" },
-      { href: "/einkauf", label: "Einkauf & Wareneingang" },
-      { href: "/einkauf/ek-import", label: "EK-Import (→ sellerboard)" },
-      { href: "/einkauf/beschaffungsanalyse", label: "Dropship-Trackings" },
-      { href: "/lieferanten", label: "Lieferanten-Feeds" },
-      { href: "/lieferanten/abfrage", label: "Lieferanten-Abfrage" },
-      { href: "/lieferanten/chancen", label: "Chancen" },
-      { href: "/lieferanten/finden", label: "Großhändler finden" },
-      { href: "/board", label: "Kontakt-Board" },
-    ],
-  },
-  {
-    key: "service",
-    label: "Service & Ansprüche",
-    color: "var(--area-service)",
-    icon: "🛟",
-    items: [
-      { href: "/retouren", label: "Retouren" },
-      { href: "/ansprueche", label: "Ansprüche", badge: "claims" },
-      { href: "/remissionen", label: "Remissionen" },
-      { href: "/remissionen/pruefungen", label: "Retouren-Station & Fälle" },
-      { href: "/faelle", label: "Fälle & A-bis-Z" },
-      { href: "/bewertungen", label: "Bewertungen" },
-    ],
-  },
-  {
-    key: "finanzen",
-    label: "Finanzen",
-    color: "var(--area-finanzen)",
-    icon: "💶",
-    items: [
-      { href: "/gewinn", label: "Gewinn" },
-      { href: "/cashflow", label: "Liquidität" },
-      { href: "/hebel", label: "Hebel: Umsatz & Marge" },
-      { href: "/kapital", label: "Kapital-Ampel" },
-      { href: "/verlust", label: "Verlust-Stopp" },
-      { href: "/buchhaltung", label: "Buchhaltung (Abgleich, DATEV)" },
-      { href: "/rechnungen", label: "Eingangsrechnungen", badge: "invoices", short: "Belege prüfen" },
-      { href: "/rechnungen/belege", label: "Belege scannen" },
-      { href: "/rechnungen/ausgang", label: "Ausgangsrechnungen" },
-      { href: "/ebay?ansicht=rechnungen", label: "eBay-Rechnungen" },
-      { href: "/rechnungen/kunden", label: "Kunden" },
-      { href: "/export", label: "COG-Export" },
-    ],
-  },
-  {
+    // Gehört zu keiner Gruppe im Bauauftrag – bleibt erreichbar.
     key: "marken",
     label: "Marken & Content",
     color: "var(--area-marken)",
@@ -180,16 +163,47 @@ export const NAV: NavSection[] = [
       { href: "/marken/uhren", label: "Uhren: Buy & Flip" },
     ],
   },
-  { key: "privat", label: "Privat", color: "var(--area-privat)", icon: "🔒", items: [{ href: "/privat", label: "Privat" }] },
   {
-    key: "hilfe",
-    label: "Hilfsfunktionen",
+    key: "delegation",
+    label: "Delegation",
+    color: "var(--area-service)",
+    icon: "🧑‍💼",
+    items: [
+      { href: "/delegation", label: "VA & Delegation", owner: true },
+      { href: "/?ansicht=liste", label: "Alle Aufgaben", also: (p, q) => p === "/" && Boolean(q.get("kat") && q.get("kat") !== "alle") },
+      { href: "/kalender/tagesplan?anrufe=1", label: "Anrufe (im Tagesplan)" },
+    ],
+  },
+  {
+    key: "wissen",
+    label: "Wissen & Calls",
     color: "var(--area-hilfe)",
-    icon: "🧰",
-    helper: true,
+    icon: "📚",
     items: [
       { href: "/wissen", label: "Wissen" },
-      { href: "/import", label: "Daten importieren" },
+      { href: "/calls", label: "Calls (Consultant & Gruppe)" },
+    ],
+  },
+  {
+    // Eigener Block, farblich abgesetzt – nur für Konten mit Privat-Zugriff (canAccess „privat“).
+    key: "privat",
+    label: "Privat",
+    color: "var(--area-privat)",
+    icon: "🔒",
+    items: [
+      { href: "/privat", label: "Übersicht" },
+      { href: "/privat/kalender", label: "Kalender" },
+      { href: "/privat/eintragen", label: "Eintragen" },
+      { href: "/privat/rueckblick", label: "Rückblick" },
+      { href: "/privat/einstellungen", label: "Einstellungen" },
+    ],
+  },
+  {
+    key: "einstellungen",
+    label: "Einstellungen",
+    color: "var(--area-hilfe)",
+    icon: "⚙️",
+    items: [
       { href: "/einstellungen", label: "Einstellungen", owner: true },
       { href: "/anbindungen", label: "Anbindungen", owner: true },
       { href: "/einstellungen/claude", label: "Claude & KI-Assistent", owner: true },
@@ -199,6 +213,36 @@ export const NAV: NavSection[] = [
     ],
   },
 ];
+
+/** Höchstens so viele Favoriten (Stern) – ganz oben in der Seitenleiste. */
+export const MAX_FAVORITEN = 6;
+
+/** Tab-Leiste unten am Handy: Heute · Scan · Deals · Aufgaben · Mehr (öffnet die Schublade). */
+export const HANDY_TABS: { href: string; label: string; icon: string }[] = [
+  { href: "/", label: "Heute", icon: "📋" },
+  { href: "/scan", label: "Scan", icon: "📷" },
+  { href: "/deal-eingang", label: "Deals", icon: "🛒" },
+  { href: "/?ansicht=liste", label: "Aufgaben", icon: "✅" },
+];
+
+/** Seitenleiste schmal (nur Symbole) – als Cookie, damit schon der Server richtig zeichnet. */
+export const NAV_SCHMAL_COOKIE = "nav-schmal";
+
+/** Gemerkte offene Gruppen aus dem Cookie („heute,einkauf“). */
+export function offeneAusCookie(wert: string | undefined | null): string[] {
+  return (wert ?? "").split(",").map((s) => s.trim()).filter((s) => /^[a-z][a-z0-9]{1,19}$/.test(s)).slice(0, 20);
+}
+
+/**
+ * Start-Zustand der Gruppen: gemerkte offene Gruppen plus die aktuelle. Im Privatbereich sind die geschäftlichen
+ * Gruppen zu und nur der Privat-Block offen.
+ */
+export function startOffen(gemerkt: string[], aktiv: string | null, privatBereich: boolean): Set<string> {
+  if (privatBereich) return new Set(["privat"]);
+  const out = new Set(gemerkt.filter((k) => k !== "privat"));
+  if (aktiv) out.add(aktiv);
+  return out;
+}
 
 /**
  * Unterseiten einzelner Menüpunkte (dritte Ebene). Sie stehen nur als Reiter über dem Inhalt, nicht in der
@@ -285,14 +329,4 @@ export function navCounters(sections: NavSection[], counts: NavCounts): NavCount
     }
   }
   return out.sort((a, b) => Number(b.alert) - Number(a.alert) || b.n - a.n);
-}
-
-/**
- * Aufgeklappte Bereiche: der aktuelle (außer man hat ihn selbst zugeklappt) und was seit dem letzten
- * Seitenwechsel von Hand geöffnet wurde. Früher besuchte Bereiche bleiben nicht offen – die Leiste bleibt kurz.
- */
-export function openSections(activeKey: string | null, manual: ReadonlySet<string>, closedActive: boolean): Set<string> {
-  const out = new Set(manual);
-  if (activeKey && !closedActive) out.add(activeKey);
-  return out;
 }

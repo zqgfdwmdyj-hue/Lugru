@@ -268,6 +268,8 @@ export type MemberPrefs = {
   hiddenCalendars?: string[];
   /** Meldungen zu Speditions-Sendungen bis hierhin gesehen (ISO-Zeitpunkt). */
   shipmentNoticesSeenAt?: string;
+  /** Glocke oben: Push-Meldungen bis hierhin gesehen (ISO-Zeitpunkt). */
+  meldungenSeenAt?: string;
 };
 
 export const tenants = pgTable("tenants", {
