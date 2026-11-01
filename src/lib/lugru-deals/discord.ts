@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 import type { LugruKeepa } from "@/db/schema";
 import { getIntegration } from "@/lib/integrations/store";
 import { discord, type DcNachricht } from "@/lib/va/discord";
-import { kaufZuDeal, keepaSchnappschuss, type EigenerKauf } from "./auswertung-logic";
+import { kaufZuDeal, keepaSchnappschuss, skuKauf, type EigenerKauf } from "./auswertung-logic";
 import { kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
 import { kanalName } from "./historie-logic";
 import { prozentText } from "@/lib/numbers";
@@ -298,51 +298,118 @@ export async function lugruHistorieNeu(tenantId: string) {
 }
 
 /**
- * Eigene Käufe erkennen: Charge mit Kaufdatum (SKU bzw. EK-Import), Einkaufs-Bestellung oder „gekauft“ im Deal-Eingang
- * mit gleicher ASIN in den 14 Tagen nach dem Posten → „gekauft (automatisch erkannt)“. Nur ergänzend, nie
- * zurückgesetzt. Alle offenen Deals der letzten 400 Tage, neueste zuerst.
+ * Eigene Käufe erkennen (B22.2): gleiche ASIN, gekauft 0–21 Tage nach dem Posten → „gekauft (automatisch erkannt)“.
+ * Belege: sellerboard-SKUs (Produkte, FBA-Bestand, Bestandsbericht – Kaufdatum, EK und Lieferant stehen in der SKU),
+ * Chargen (SKU bzw. EK-Import), Einkaufs-Bestellungen, „gekauft“ im Deal-Eingang; FBA-Sendungen mit gleicher ASIN als
+ * zweites Signal. Der zugehörige Eintrag im Deal-Eingang bekommt Menge, EK netto und Kaufdatum (für das reale
+ * Ergebnis aus sellerboard) – ohne Einkaufs-Bestellung, die Ware ist ja schon da. Nur ergänzend, nie zurückgesetzt.
  */
 export async function lugruKaufAbgleich(tenantId: string, jetzt = new Date()): Promise<number> {
+  return (await lugruKaufAbgleichMitStand(tenantId, jetzt)).neu;
+}
+
+export async function lugruKaufAbgleichMitStand(tenantId: string, jetzt = new Date()): Promise<{ neu: number; eingaenge: number }> {
   const seit = new Date(jetzt.getTime() - 400 * 86_400_000);
-  const offen = await db
-    .select({ id: L.id, asin: L.asin, gepostetAm: L.gepostetAm, eingangId: L.eingangId })
+  const alle = await db
+    .select({ id: L.id, asin: L.asin, gepostetAm: L.gepostetAm, eingangId: L.eingangId, erkannt: L.gekauftErkannt })
     .from(L)
-    .where(and(eq(L.tenantId, tenantId), eq(L.gekauftErkannt, false), gte(L.gepostetAm, seit)))
+    .where(and(eq(L.tenantId, tenantId), gte(L.gepostetAm, seit)))
     .orderBy(desc(L.gepostetAm));
-  if (!offen.length) return 0;
+  if (!alle.length) return { neu: 0, eingaenge: 0 };
+  // Eingänge der Deals: offen = noch nicht als gekauft mit Kaufdatum erfasst
+  const eingangIds = [...new Set(alle.map((a) => a.eingangId).filter((x): x is string => Boolean(x)))];
+  const eing = new Map<string, { status: string; am: Date | null }>();
+  for (let i = 0; i < eingangIds.length; i += 1000) {
+    for (const e of await db.select({ id: E.id, status: E.status, am: E.gekauftAm }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, eingangIds.slice(i, i + 1000))))) eing.set(e.id, { status: e.status, am: e.am });
+  }
+  const eingangOffen = (id: string | null) => {
+    const e = id ? eing.get(id) : undefined;
+    return !!e && !e.am && e.status !== "b2b" && e.status !== "preisliste";
+  };
+  const offen = alle.filter((a) => !a.erkannt || eingangOffen(a.eingangId));
+  if (!offen.length) return { neu: 0, eingaenge: 0 };
+
   const asins = [...new Set(offen.map((o) => o.asin.toUpperCase()))];
   const PO = schema.purchaseOrders;
   const POI = schema.purchaseOrderItems;
   const LO = schema.lots;
   const P = schema.products;
   const kaeufe: EigenerKauf[] = [];
+  // sellerboard-SKUs (alle Quellen, SKU nur einmal): Kaufdatum/EK/Lieferant aus der SKU, Menge aus FBA-Sendungen bzw. Bestand
+  const SBP = schema.sellerboardProducts;
+  const SBI = schema.sellerboardInventory;
+  const AI = schema.amazonInventory;
+  const SBS = schema.sellerboardShipments;
+  const [sbp, sbi, ai, sendungen] = await Promise.all([
+    db.select({ sku: SBP.sku, asin: SBP.asin }).from(SBP).where(eq(SBP.tenantId, tenantId)),
+    db.select({ sku: SBI.sku, asin: SBI.asin, menge: sql<number>`(${SBI.fbaStock} + ${SBI.reserved} + ${SBI.inbound})::int` }).from(SBI).where(eq(SBI.tenantId, tenantId)),
+    db.select({ sku: AI.sku, asin: AI.asin, menge: AI.total }).from(AI).where(eq(AI.tenantId, tenantId)),
+    db.select({ name: SBS.name, am: SBS.createdOn, lines: SBS.lines }).from(SBS).where(and(eq(SBS.tenantId, tenantId), gte(SBS.createdOn, seit.toISOString().slice(0, 10)))),
+  ]);
+  const gesucht = new Set(asins);
+  const versandt = new Map<string, number>();
+  for (const sd of sendungen) for (const l of sd.lines ?? []) versandt.set(l.sku, (versandt.get(l.sku) ?? 0) + (l.units ?? 0));
+  const bestand = new Map<string, number>();
+  for (const r of [...sbi, ...ai]) if (r.menge) bestand.set(r.sku, Math.max(bestand.get(r.sku) ?? 0, r.menge));
+  const skus = new Map<string, string | null>();
+  for (const r of [...sbp, ...sbi, ...ai]) if (!skus.has(r.sku)) skus.set(r.sku, r.asin);
+  for (const [sku, asinSpalte] of skus) {
+    const k = skuKauf(sku, asinSpalte, jetzt);
+    if (!k || !gesucht.has(k.asin)) continue;
+    const menge = versandt.get(sku) || bestand.get(sku) || null;
+    kaeufe.push({ asin: k.asin, am: new Date(`${k.tag}T12:00:00Z`), ref: `sellerboard-SKU ${sku}`, nurTag: true, menge, ekNetto: k.ekNetto, shop: k.shop });
+  }
+  // Zweites Signal: FBA-Sendung mit gleicher ASIN (Datum der Sendung)
+  for (const sd of sendungen) {
+    if (!sd.am) continue;
+    for (const l of sd.lines ?? []) {
+      const a = (l.asin ?? skuKauf(l.sku, null, jetzt)?.asin ?? "").toUpperCase();
+      if (a && gesucht.has(a)) kaeufe.push({ asin: a, am: new Date(`${sd.am}T12:00:00Z`), ref: `FBA-Sendung ${sd.name ?? ""}`.trim(), nurTag: true, menge: l.units || null });
+    }
+  }
   for (let i = 0; i < asins.length; i += 1000) {
     const teil = asins.slice(i, i + 1000);
     const pos = await db
-      .select({ asin: POI.asin, am: PO.createdAt, nr: PO.number, status: PO.status })
+      .select({ asin: POI.asin, am: PO.createdAt, nr: PO.number, status: PO.status, menge: POI.quantity, brutto: POI.unitCostGross, mwst: POI.vatRate })
       .from(POI)
       .innerJoin(PO, eq(PO.id, POI.poId))
       .where(and(eq(POI.tenantId, tenantId), inArray(POI.asin, teil), gte(PO.createdAt, seit)));
-    kaeufe.push(...pos.filter((p) => p.asin && p.status !== "draft" && p.status !== "cancelled").map((p) => ({ asin: p.asin!, am: p.am, ref: `Bestellung ${p.nr}` })));
-    // Chargen: Kaufdatum aus der SKU bzw. dem EK-Import – dort stehen die eigenen Käufe meistens (Rücksendungen zählen nicht).
+    kaeufe.push(...pos.filter((p) => p.asin && p.status !== "draft" && p.status !== "cancelled").map((p) => ({ asin: p.asin!, am: p.am, ref: `Bestellung ${p.nr}`, menge: p.menge ?? null, ekNetto: Math.round((Number(p.brutto) / (1 + Number(p.mwst ?? 19) / 100)) * 100) / 100 })));
+    // Chargen: Kaufdatum aus der SKU bzw. dem EK-Import – Rücksendungen zählen nicht.
     const chargen = await db
-      .select({ asin: P.asin, tag: LO.purchaseDate, sku: LO.sku })
+      .select({ asin: P.asin, tag: LO.purchaseDate, sku: LO.sku, ek: LO.skuCostNet })
       .from(LO)
       .innerJoin(P, eq(P.id, LO.productId))
       .where(and(eq(LO.tenantId, tenantId), sql`${LO.kind} <> 'return'`, inArray(P.asin, teil), gte(LO.purchaseDate, seit.toISOString().slice(0, 10))));
-    kaeufe.push(...chargen.filter((c) => c.tag).map((c) => ({ asin: c.asin, am: new Date(`${c.tag}T12:00:00Z`), ref: `Charge ${c.sku}`, nurTag: true })));
+    kaeufe.push(...chargen.filter((c) => c.tag).map((c) => ({ asin: c.asin, am: new Date(`${c.tag}T12:00:00Z`), ref: `Charge ${c.sku}`, nurTag: true, menge: versandt.get(c.sku) || bestand.get(c.sku) || null, ekNetto: c.ek !== null ? Number(c.ek) : null, shop: skuKauf(c.sku, c.asin, jetzt)?.shop ?? null })));
   }
-  const eingaenge = await db.select({ id: E.id, angebote: E.angebote, am: E.gekauftAm }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.status, "gekauft"), gte(E.createdAt, seit)));
-  kaeufe.push(...eingaenge.flatMap((e) => (e.angebote ?? []).filter((a) => a.asin && e.am).map((a) => ({ asin: a.asin!, am: e.am!, ref: `Deal-Eingang ${e.id.slice(0, 8)}` }))));
-  let n = 0;
+  const gekaufteEingaenge = await db.select({ id: E.id, angebote: E.angebote, am: E.gekauftAm }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.status, "gekauft"), gte(E.createdAt, seit)));
+  kaeufe.push(...gekaufteEingaenge.flatMap((e) => (e.angebote ?? []).filter((a) => a.asin && e.am).map((a) => ({ asin: a.asin!, am: e.am!, ref: `Deal-Eingang ${e.id.slice(0, 8)}` }))));
+
+  let neu = 0;
+  let eingaenge = 0;
   for (const d of offen) {
-    const eigenerEingang = d.eingangId ? eingaenge.find((e) => e.id === d.eingangId) : null;
-    const t = eigenerEingang?.am ? { ref: "im Deal-Eingang als gekauft markiert" } : kaufZuDeal(d, kaeufe);
+    const eigenerEingang = d.eingangId ? gekaufteEingaenge.find((e) => e.id === d.eingangId && e.am) : null;
+    const t = eigenerEingang ? ({ asin: d.asin, am: eigenerEingang.am!, ref: "im Deal-Eingang als gekauft markiert" } as EigenerKauf) : kaufZuDeal(d, kaeufe.filter((k) => !k.ref.startsWith(`Deal-Eingang ${d.eingangId?.slice(0, 8) ?? "-"}`)));
     if (!t) continue;
-    await db.update(L).set({ gekauftErkannt: true, gekauftErkanntRef: t.ref.slice(0, 120) }).where(eq(L.id, d.id));
-    n++;
+    if (!d.erkannt) {
+      await db.update(L).set({ gekauftErkannt: true, gekauftErkanntRef: t.ref.slice(0, 120) }).where(eq(L.id, d.id));
+      neu++;
+    }
+    // Eintrag im Deal-Eingang: als gekauft mit Menge/EK/Kaufdatum (fürs Lernen und das reale Ergebnis)
+    if (d.eingangId && eingangOffen(d.eingangId) && !eigenerEingang) {
+      const r = await db
+        .update(E)
+        .set({ status: "gekauft", gekauftMenge: t.menge ?? 1, gekauftPreis: t.ekNetto ?? null, gekauftAm: t.am, gekauftWeg: "automatisch", gekauftRef: t.ref.slice(0, 200), grund: `Kauf automatisch erkannt (${t.ref})`.slice(0, 300), entschiedenAm: sql`coalesce(${E.entschiedenAm}, now())` })
+        .where(and(eq(E.tenantId, tenantId), eq(E.id, d.eingangId), isNull(E.gekauftAm)))
+        .returning({ id: E.id });
+      if (r.length) {
+        eingaenge++;
+        eing.set(d.eingangId, { status: "gekauft", am: t.am });
+      }
+    }
   }
-  return n;
+  return { neu, eingaenge };
 }
 
 /**

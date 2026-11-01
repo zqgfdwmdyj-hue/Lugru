@@ -183,7 +183,7 @@ export const dealEingaenge = pgTable(
     gekauftMenge: integer("gekauft_menge"),
     gekauftPreis: money("gekauft_preis"),
     gekauftAm: timestamp("gekauft_am", { withTimezone: true }),
-    gekauftWeg: text("gekauft_weg", { enum: ["knopf", "mail", "sprache", "claude", "sms"] }),
+    gekauftWeg: text("gekauft_weg", { enum: ["knopf", "mail", "sprache", "claude", "sms", "automatisch"] }),
     gekauftRef: text("gekauft_ref"),
     /** Discord-Nachricht des Eingangs (ProfitPath: „kanal/nachricht“) – für 👍/👎 als Reaktion. */
     discordRef: text("discord_ref"),
@@ -283,7 +283,7 @@ export const lugruDealsHistorie = pgTable(
     ampel: text("ampel", { enum: ["gruen", "gelb", "rot"] }),
     /** Keepa-Schnappschuss zum Zeitpunkt des Postens (bei der History so nah wie möglich). */
     keepa: jsonb("keepa").$type<LugruKeepa | null>(),
-    /** Eigener Kauf automatisch erkannt (Bestellung/Rechnung mit gleicher ASIN in den 14 Tagen nach dem Posten). */
+    /** Eigener Kauf automatisch erkannt (sellerboard-SKU, Charge, Bestellung oder FBA-Sendung mit gleicher ASIN 0–21 Tage nach dem Posten). */
     gekauftErkannt: boolean("gekauft_erkannt").notNull().default(false),
     gekauftErkanntRef: text("gekauft_erkannt_ref"),
     /** Hat sich der Deal real bewährt (Keepa danach: Preis hielt, Angebote stiegen nicht stark)? null = unbekannt. */

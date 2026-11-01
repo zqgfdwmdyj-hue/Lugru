@@ -3,6 +3,7 @@
 
 import type { LugruKeepa } from "@/db/schema";
 import type { VerlaufZeile } from "@/lib/keepa/auswertung";
+import { parseSku } from "@/lib/sku/parse";
 
 const TAG = 86_400_000;
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -66,16 +67,22 @@ export function keepaSchnappschuss(verlauf: VerlaufZeile[], am: Date, o: { art?:
 
 const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 
-/** Ein eigener Kauf als Beleg: `nurTag` = nur das Datum ist bekannt (Charge mit Kaufdatum aus der SKU bzw. dem EK-Import). */
-export type EigenerKauf = { asin: string; am: Date; ref: string; nurTag?: boolean };
+/**
+ * Ein eigener Kauf als Beleg: `nurTag` = nur das Datum ist bekannt (Charge bzw. sellerboard-SKU mit Kaufdatum).
+ * Menge und EK netto, soweit bekannt (aus der SKU bzw. sellerboard), Lieferantenkürzel = Shop.
+ */
+export type EigenerKauf = { asin: string; am: Date; ref: string; nurTag?: boolean; menge?: number | null; ekNetto?: number | null; shop?: string | null };
+
+/** B22.2: Käufe zählen bis 21 Tage nach dem Posten. */
+export const KAUF_FENSTER_TAGE = 21;
 
 /**
- * Eigener Kauf zu einem geposteten Deal: gleiche ASIN, gekauft in den 14 Tagen nach dem Posten (frühester Treffer).
- * Belege mit Uhrzeit ab 1 Std. vor dem Post; Belege nur mit Datum (Chargen) ab dem Tag des Posts (Berlin).
+ * Eigener Kauf zu einem geposteten Deal: gleiche ASIN, gekauft in den 21 Tagen nach dem Posten (frühester Treffer).
+ * Belege mit Uhrzeit ab 1 Std. vor dem Post; Belege nur mit Datum (Chargen, SKUs) ab dem Tag des Posts (Berlin).
  */
-export function kaufZuDeal(deal: { asin: string; gepostetAm: Date }, kaeufe: EigenerKauf[]): { ref: string; am: Date } | null {
+export function kaufZuDeal(deal: { asin: string; gepostetAm: Date }, kaeufe: EigenerKauf[]): EigenerKauf | null {
   const von = deal.gepostetAm.getTime() - 3600_000;
-  const bis = deal.gepostetAm.getTime() + 14 * TAG;
+  const bis = deal.gepostetAm.getTime() + KAUF_FENSTER_TAGE * TAG;
   const vonTag = tagBerlin(deal.gepostetAm);
   const bisTag = tagBerlin(new Date(bis));
   const asin = deal.asin.toUpperCase();
@@ -85,8 +92,19 @@ export function kaufZuDeal(deal: { asin: string; gepostetAm: Date }, kaeufe: Eig
     const t = tagBerlin(k.am);
     return t >= vonTag && t <= bisTag;
   };
-  const t = kaeufe.filter(passt).sort((a, b) => a.am.getTime() - b.am.getTime())[0];
-  return t ? { ref: t.ref, am: t.am } : null;
+  return kaeufe.filter(passt).sort((a, b) => a.am.getTime() - b.am.getTime())[0] ?? null;
+}
+
+/**
+ * B22.2: Kauf aus einer SKU (Arbitrage-One-Schema): `LIEFERANT_TTMONJJ_ASIN_EK_VK` (neu) bzw.
+ * `LIEFERANT_EK_VK_TTMON_ASIN` / `LIEFERANT_VK_TTMON_ASIN_EK` (alt, Jahr geschätzt). Retouren-SKUs zählen nicht.
+ */
+export function skuKauf(sku: string, asinSpalte: string | null, jetzt: Date): { asin: string; tag: string; ekNetto: number | null; shop: string | null; geschaetzt: boolean } | null {
+  const p = parseSku(sku, { reference: jetzt });
+  if (p.schema === "RET" || p.schema === "UNKNOWN" || !p.date) return null;
+  const asin = (p.asin ?? asinSpalte ?? "").toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(asin)) return null;
+  return { asin, tag: p.date, ekNetto: p.costNet !== null ? r2(p.costNet) : null, shop: p.supplierCode, geschaetzt: p.dateEstimated };
 }
 
 export type StatDeal = {

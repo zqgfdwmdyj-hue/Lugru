@@ -106,7 +106,7 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
       <section className="card card-pad stack" style={{ marginTop: 12 }} data-testid="de-einstellungen">
         <h2 style={{ margin: 0 }}>Kaufen mit einem Tap: Budget und Deal-Wert</h2>
         <div className="small muted">
-          Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100{Object.keys(de.wertSchwelleJe ?? {}).length ? `, ${Object.entries(de.wertSchwelleJe).map(([k, v]) => `${k} ab ${v}`).join(", ")}` : ""}) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
+          Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100{schwellenGilt.some((x) => x.wert !== de.wertSchwelle) ? `, ${schwellenGilt.filter((x) => x.wert !== de.wertSchwelle).map((x) => `${x.quelle} ab ${x.wert}${x.eigen ? "" : " (vorbelegt)"}`).join(", ")}` : ""}) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
           {" "}Diese Woche gekauft: {verbraucht.woche.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}{de.budgetJeWoche ? ` von ${de.budgetJeWoche.toLocaleString("de-DE")} €` : ""}.
           {" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>{" "}<Link href="/deal-eingang/lugru" data-testid="de-lugru-link">Lugru Deals →</Link>
         </div>

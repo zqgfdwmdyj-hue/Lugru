@@ -200,6 +200,11 @@ export async function runScheduledJobs(force = false) {
         await step(t, "Deal-Wert: Ergebnisse je Kauf", () => w.ergebnisseAktualisieren(t));
         await step(t, "Deal-Wert: Lugru bewährt?", () => w.lugruBewaehrtPruefen(t));
       }
+      // B22.2: Deal-Wert für alle Deals im Eingang nachrechnen (ohne Keepa-Abfragen), alle 5 Min. bis nichts mehr offen ist.
+      if (force || due(`${t}:deal-wert`, 4)) {
+        const w = await import("@/lib/deal-eingang/wert");
+        await step(t, w.WERT_JOB, () => w.wertNachholen(t, 300));
+      }
       // Lugru Deals über Discord: History in Schritten rückwärts (bis fertig), Keepa-Schnappschüsse der History (stündlich,
       // Tokens schonen) und eigene Käufe erkennen (täglich). Neue Posts liest der Discord-Takt jede Minute.
       if (await has("lugru_deals")) {
@@ -215,7 +220,8 @@ export async function runScheduledJobs(force = false) {
             if (r.neu + r.verknuepft < 500) await h.lugruHistorieNeuBewerten(t, 1000);
           });
         if (force || due(`${t}:lugru-kategorie`, 59)) await step(t, "Lugru Deals: Kategorie aus Keepa", () => lg.lugruKategorieNachholen(t, 20));
-        if (force || due(`${t}:lugru-kauf`, 1435)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
+        // B22.2: eigene Käufe (sellerboard-SKUs, Chargen, Bestellungen, FBA-Sendungen) alle 6 Std.
+        if (force || due(`${t}:lugru-kauf`, 359)) await step(t, "Lugru Deals: eigene Käufe", () => lg.lugruKaufAbgleich(t));
       }
       // Datei-Import (Konnektor): Dateien nach 90 Tagen aus der Ablage löschen (Ergebnis bleibt), abgelaufene Aufträge schließen.
       if (force || due("datei-importe-aufraeumen", 1435)) await step(t, "Datei-Importe aufräumen", async () => (await import("@/lib/datei-import/service")).importeAufraeumen());

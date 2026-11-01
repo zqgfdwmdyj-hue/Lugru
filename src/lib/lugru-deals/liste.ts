@@ -32,12 +32,12 @@ function bedingungen(tenantId: string, f: LugruFilter): SQL[] {
 }
 
 type Zeile = typeof L.$inferSelect;
-type Eingang = { id: string; status: string; ampel: string | null; gekauftMenge: number | null; gekauftPreis: number | null; ergebnis: { realerRoi: number | null } | null; wert: number | null };
+type Eingang = { id: string; status: string; ampel: string | null; gekauftMenge: number | null; gekauftPreis: number | null; gekauftWeg: string | null; gekauftRef: string | null; ergebnis: { realerRoi: number | null } | null; wert: number | null };
 
 async function eingaengeZu(tenantId: string, ids: string[]): Promise<Map<string, Eingang>> {
   if (!ids.length) return new Map();
-  const rows = await db.select({ id: E.id, status: E.status, ampel: E.ampel, gekauftMenge: E.gekauftMenge, gekauftPreis: E.gekauftPreis, ergebnis: E.ergebnis, zeilen: E.zeilen }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, ids)));
-  return new Map(rows.map((r) => [r.id, { id: r.id, status: r.status, ampel: r.ampel, gekauftMenge: r.gekauftMenge, gekauftPreis: r.gekauftPreis, ergebnis: r.ergebnis ? { realerRoi: r.ergebnis.realerRoi ?? null } : null, wert: r.zeilen?.[0]?.wert?.wert ?? null }]));
+  const rows = await db.select({ id: E.id, status: E.status, ampel: E.ampel, gekauftMenge: E.gekauftMenge, gekauftPreis: E.gekauftPreis, gekauftWeg: E.gekauftWeg, gekauftRef: E.gekauftRef, ergebnis: E.ergebnis, zeilen: E.zeilen }).from(E).where(and(eq(E.tenantId, tenantId), inArray(E.id, ids)));
+  return new Map(rows.map((r) => [r.id, { id: r.id, status: r.status, ampel: r.ampel, gekauftMenge: r.gekauftMenge, gekauftPreis: r.gekauftPreis, gekauftWeg: r.gekauftWeg, gekauftRef: r.gekauftRef, ergebnis: r.ergebnis ? { realerRoi: r.ergebnis.realerRoi ?? null } : null, wert: r.zeilen?.[0]?.wert?.wert ?? null }]));
 }
 
 const gekauftVon = (z: Zeile, e: Eingang | undefined) => z.gekauftErkannt || e?.status === "gekauft";
@@ -69,7 +69,9 @@ function zeileAus(z: Zeile, e: Eingang | undefined, wert: number | null) {
     ampel: z.ampel ?? (e?.ampel as Zeile["ampel"]) ?? null,
     deal_wert: wert,
     gekauft: gekauftVon(z, e),
-    gekauft_quelle: e?.status === "gekauft" ? "Deal-Eingang" : z.gekauftErkannt ? `automatisch erkannt (${z.gekauftErkanntRef ?? "Bestellung"})` : null,
+    gekauft_quelle: e?.status === "gekauft" && e.gekauftWeg !== "automatisch" ? "Deal-Eingang" : z.gekauftErkannt || e?.status === "gekauft" ? `automatisch erkannt (${z.gekauftErkanntRef ?? e?.gekauftRef ?? "Bestellung"})` : null,
+    gekauft_menge: e?.status === "gekauft" ? e.gekauftMenge : null,
+    gekauft_ek_netto: e?.status === "gekauft" ? e.gekauftPreis : null,
     realer_roi: runde1(e?.ergebnis?.realerRoi),
     eingang_id: z.eingangId,
     quelle: z.quelle,

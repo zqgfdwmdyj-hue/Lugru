@@ -233,11 +233,32 @@ export const modellMerkmale = (mo: Modell) => DIMS.map((d, i) => ({ merkmal: d.k
 
 // ---- Deal-Wert ---------------------------------------------------------------------------------------------------
 
+/** B22.2: Vorwissen „Lugru-Deals würde ich nahezu blind kaufen“ – Lugru startet mit Deal-Wert 60. */
+export const LUGRU_START = 60;
+export const istLugruQuelle = (q: string | null | undefined) => /^\s*lugru/i.test(q ?? "");
+
+/**
+ * Harte Rot-Kriterien, die einen Lugru-Deal unter den Startwert drücken dürfen: Amazon hält die Buy Box (> 90 %),
+ * Kapital-Ampel rot (eigener Bestand reicht), Verlust-Stopp-Artikel, Marke mit Beschwerde/Entzug, ROI unter 10 %.
+ * Alles andere (z. B. mehr als 15 Angebote, schwankender Chart) bleibt ein Hinweis.
+ */
+export function lugruHarteGruende(m: Partial<DealMerkmale>, z?: { eigen?: { kapitalAmpel?: string | null; verlustStopp?: string | null } | null; risiken?: string[] | null }): string[] {
+  const g: string[] = [];
+  if (m.amazonAnteil != null && m.amazonAnteil > 90) g.push(`Amazon hält die Buy Box (${Math.round(m.amazonAnteil)} %)`);
+  if ((z?.eigen?.kapitalAmpel ?? m.kapitalAmpel) === "rot") g.push("Kapital-Ampel rot (eigener Bestand reicht)");
+  if (z?.eigen?.verlustStopp === "Verlust-Stopp offen") g.push("Verlust-Stopp-Artikel");
+  const risiko = (z?.risiken ?? []).find((x) => /beschwerde|entzug|rechteinhaber|ip-|markenrecht/i.test(x));
+  if (risiko) g.push(risiko);
+  if (m.roi != null && m.roi < 10) g.push(`ROI nur ${Math.round(m.roi)} %`);
+  return g;
+}
+
 /**
  * Deal-Wert: Kennzahlen (Gewicht 0,5–0,75) + ähnliche frühere Deals (0,25–0,5), ab 100 eigenen Deals mit Ergebnis
- * zusätzlich das Lernmodell. Ampel rot → höchstens 30 (gedeckelt).
+ * zusätzlich das Lernmodell. Lugru-Deals (Quelle „Lugru …“) starten mit 60, nur harte Rot-Kriterien drücken darunter.
+ * Ampel rot → höchstens 30 (gedeckelt).
  */
-export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: "gruen" | "gelb" | "rot"; historie: HistorieDeal[]; modell?: Modell | null }): DealWert {
+export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: "gruen" | "gelb" | "rot"; historie: HistorieDeal[]; modell?: Modell | null; quelle?: string | null; harte?: string[] }): DealWert {
   const kz = kennzahlenWert(m, o.zielRoi);
   const nb = aehnliche(m, o.historie);
   const eigen = nb.filter((x) => x.quelle === "eigen");
@@ -261,6 +282,11 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
     verfahren = "modell";
   }
   wert = Math.round(Math.max(0, Math.min(100, wert)));
+  // Lugru-Vorwissen: Startwert 60, solange kein hartes Rot-Kriterium vorliegt.
+  const lugru0 = istLugruQuelle(o.quelle);
+  const harte = lugru0 ? (o.harte ?? lugruHarteGruende(m)) : [];
+  const vorwissen = lugru0 && !harte.length && o.ampel !== "rot" && wert < LUGRU_START;
+  if (vorwissen) wert = LUGRU_START;
   const gedeckelt = o.ampel === "rot" && wert > 30;
   if (gedeckelt) wert = 30;
 
@@ -273,7 +299,8 @@ export function dealWert(m: Partial<DealMerkmale>, o: { zielRoi: number; ampel: 
     ...(lk ? [`Lugru-Gruppe: ${lk} Käufe bei ähnlichen Deals`] : []),
     ...kz.beitraege.filter((x) => x.punkte > 0).sort((a, b) => b.punkte - a.punkte).map((x) => x.text),
   ];
-  const dagegen = kz.beitraege.filter((x) => x.punkte < 0).sort((a, b) => a.punkte - b.punkte).map((x) => x.text);
+  if (lugru0 && !harte.length && o.ampel !== "rot") dafuer.unshift(`Lugru-Deal: Vorwissen „nahezu blind kaufen“ (Start ${LUGRU_START})`);
+  const dagegen = [...harte, ...kz.beitraege.filter((x) => x.punkte < 0 && !harte.includes(x.text)).sort((a, b) => a.punkte - b.punkte).map((x) => x.text)];
   if (gedeckelt) dagegen.unshift("Ampel rot – der Deal-Wert ersetzt keine Prüfung");
   const begruendung = `Passt zu dir (${wert}/100)${dafuer.length ? `: ${dafuer.slice(0, 3).join(", ")}` : ""}.${dagegen.length ? ` Gegen: ${dagegen.slice(0, 2).join(", ")}.` : ""}`;
   const aehnlicheListe: DealAehnlich[] = nb.slice(0, 5).map((x) => ({ id: x.id, quelle: x.quelle, titel: x.titel, asin: x.asin, datum: x.datum, ergebnis: x.ergebnis, abstand: Math.round(x.abstand * 1000) / 1000 }));
@@ -328,15 +355,19 @@ export function bewaehrt(d: { vkEur: number | null; gepostetAm: string }, k: Pic
 
 // ---- Monatsbericht -----------------------------------------------------------------------------------------------
 
-export type BerichtDeal = { id: string; titel: string | null; datum: string; wert: number | null; status: string; daumen: "hoch" | "runter" | null; realerRoi: number | null };
+export type BerichtDeal = { id: string; titel: string | null; datum: string; wert: number | null; status: string; daumen: "hoch" | "runter" | null; realerRoi: number | null; /** Schwelle der Quelle (sonst die allgemeine). */ schwelle?: number; quelle?: string | null };
 
 /** „Wie gut lag der Deal-Wert?“: Trefferquote, verpasste gute Deals, Fehlkäufe. */
 export function lernBericht(deals: BerichtDeal[], o: { schwelle: number; zielRoi: number }) {
   const mitWert = deals.filter((d) => d.wert !== null);
   const gut = (d: BerichtDeal) => (d.status === "gekauft" && (d.realerRoi === null ? d.daumen !== "runter" : d.realerRoi >= o.zielRoi)) || (d.status !== "gekauft" && d.daumen === "hoch");
-  const hoch = mitWert.filter((d) => d.wert! >= o.schwelle);
+  const hoch = mitWert.filter((d) => d.wert! >= (d.schwelle ?? o.schwelle));
   const mitErgebnis = hoch.filter((d) => d.status === "gekauft" || d.daumen !== null || d.status === "verworfen");
   const treffer = mitErgebnis.filter(gut).length;
+  // B22.2: eigene Auswertung für Lugru-Deals (Vorwissen 60, Käufe automatisch erkannt)
+  const lg = deals.filter((d) => istLugruQuelle(d.quelle));
+  const lgHoch = lg.filter((d) => d.wert !== null && d.wert >= (d.schwelle ?? o.schwelle));
+  const lgErg = lgHoch.filter((d) => d.status === "gekauft" || d.daumen !== null || d.status === "verworfen");
   const verpasst = mitWert.filter((d) => d.wert! < 50 && gut(d));
   const fehlkaeufe = deals.filter((d) => d.status === "gekauft" && d.realerRoi !== null && d.realerRoi < 0);
   return {
@@ -345,6 +376,7 @@ export function lernBericht(deals: BerichtDeal[], o: { schwelle: number; zielRoi
     ueberSchwelle: hoch.length,
     trefferquote: mitErgebnis.length ? Math.round((treffer / mitErgebnis.length) * 100) : null,
     trefferBasis: mitErgebnis.length,
+    lugruDeals: lg.length ? { deals: lg.length, mitWert: lg.filter((d) => d.wert !== null).length, ueberSchwelle: lgHoch.length, gekauft: lg.filter((d) => d.status === "gekauft").length, mitErgebnis: lg.filter((d) => d.status === "gekauft" && d.realerRoi !== null).length, trefferquote: lgErg.length ? Math.round((lgErg.filter(gut).length / lgErg.length) * 100) : null, trefferBasis: lgErg.length } : null,
     verpasst: verpasst.slice(0, 10),
     fehlkaeufe: fehlkaeufe.slice(0, 10),
   };

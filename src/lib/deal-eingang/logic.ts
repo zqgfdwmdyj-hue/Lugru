@@ -231,9 +231,14 @@ export function empfohleneMenge(unsProMonat: number | null, tage: number, eigen:
  * Deal-Wert-Schwelle für die Kauf-Meldung je Quelle (B19.1): eigene Schwelle für eine Quelle („Lugru Deals“ gilt auch
  * für „Lugru Deals · #kanal“), sonst die allgemeine.
  */
+/** B22.2: vorbelegte Schwellen je Quelle (eigene Einstellung geht vor). */
+export const STANDARD_WERT_SCHWELLEN: Record<string, number> = { "Lugru Deals": 60 };
+
 export function wertSchwelleFuer(quelle: string | null | undefined, s: { wertSchwelle?: number; wertSchwelleJe?: Record<string, number> }): number {
   const q = (quelle ?? "").trim().toLowerCase();
-  const je = Object.entries(s.wertSchwelleJe ?? {}).sort((a, b) => b[0].length - a[0].length);
+  const eigene = s.wertSchwelleJe ?? {};
+  const vorbelegt = Object.entries(STANDARD_WERT_SCHWELLEN).filter(([k]) => !Object.keys(eigene).some((e) => e.trim().toLowerCase() === k.toLowerCase()));
+  const je = [...Object.entries(eigene), ...vorbelegt].sort((a, b) => b[0].length - a[0].length);
   const treffer = q ? je.find(([k]) => q === k.trim().toLowerCase() || q.startsWith(`${k.trim().toLowerCase()} · `)) : undefined;
   return treffer ? treffer[1] : (s.wertSchwelle ?? 70);
 }

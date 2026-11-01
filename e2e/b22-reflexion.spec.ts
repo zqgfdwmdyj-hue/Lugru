@@ -31,10 +31,10 @@ test.describe("B22.1 – Beobachtungen und Reflexion sichtbar", () => {
         }
       };
 
-      // Wie am 30.10.: diktierte Zeilen über die Partnerin (an_person b), eine mit „[?]“
+      // Wie am 30.10.: diktierte Zeilen über die andere Person mit Privat-Zugang (Name des Kontos), eine mit „[?]“
       const zeilen = [`Zeile 1 ${m}: Streit beim Frühstück`, `Zeile 2 ${m}: Abholung vergessen [?]`, `Zeile 3 ${m}: Abend ruhig`];
       for (const text of zeilen) {
-        const r = await json<{ ok: boolean; link: string; konto: string }>("privat_eintrag_anlegen", { art: "beobachtung", an_person: "b", tag: gestern, text });
+        const r = await json<{ ok: boolean; link: string; konto: string }>("privat_eintrag_anlegen", { art: "beobachtung", an_person: "Fiona", tag: gestern, text });
         expect(r.ok).toBe(true);
         expect(r.link).toMatch(/\/privat\/beobachtungen$/);
         expect(r.konto).toBeTruthy();

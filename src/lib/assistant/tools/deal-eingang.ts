@@ -207,7 +207,7 @@ export const dealLernenBerichtTool = defineTool({
   name: "deal_lernen_bericht",
   title: "Deal-Wert: Monatsbericht",
   description:
-    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle und danach gekauft/gut bzw. 👍), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History. monat = YYYY-MM, Standard Vormonat.",
+    "Monatsbericht „Wie gut lag der Deal-Wert?“: Deals mit Wert, Anzahl über der Schwelle, Trefferquote (über der Schwelle der jeweiligen Quelle – Lugru Deals 60 vorbelegt – und danach gekauft/gut bzw. 👍), eigener Block lugru_deals (gekauft, mit Ergebnis, Trefferquote), verpasste gute Deals (Wert < 50, aber gekauft/👍), Fehlkäufe (realer ROI < 0), Verfahren (Kennzahlen + ähnliche Deals bzw. Lernmodell ab 100 eigenen Deals mit Ergebnis) und Stand der Lugru-Deals-History. monat = YYYY-MM, Standard Vormonat.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE_WERT,
@@ -228,7 +228,9 @@ export const dealLernenBerichtTool = defineTool({
       fehlkaeufe: b.fehlkaeufe.map((d) => ({ titel: d.titel, datum: d.datum, deal_wert: d.wert, realer_roi_prozent: d.realerRoi, link: abs(ctx, `/deal-eingang/${d.id}`) })),
       verfahren: b.verfahren,
       wichtigste_merkmale: b.wichtigsteMerkmale ?? undefined,
-      lugru_history: { deals: b.lugru.deals, mit_kauf_reaktion: b.lugru.mitKauf, kauf_reaktionen: b.lugru.kaeufe, stand: b.lugru.zuletzt?.toISOString() ?? null },
+      // B22.2: Lugru-Deals des Monats (Schwelle 60 vorbelegt, Käufe automatisch erkannt) mit eigener Trefferquote
+      lugru_deals: b.lugruDeals ? { deals: b.lugruDeals.deals, mit_deal_wert: b.lugruDeals.mitWert, ueber_schwelle: b.lugruDeals.ueberSchwelle, gekauft: b.lugruDeals.gekauft, mit_ergebnis: b.lugruDeals.mitErgebnis, trefferquote_prozent: b.lugruDeals.trefferquote, treffer_basis: b.lugruDeals.trefferBasis } : null,
+      lugru_history: { deals: b.lugru.deals, mit_kauf_reaktion: b.lugru.mitKauf, kauf_reaktionen: b.lugru.kaeufe, selbst_gekauft: b.lugru.selbstGekauft, stand: b.lugru.zuletzt?.toISOString() ?? null },
       link: abs(ctx, `/deal-eingang/lernen?monat=${monat}`),
     });
   },

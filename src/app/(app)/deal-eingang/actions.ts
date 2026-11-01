@@ -251,7 +251,10 @@ export async function lugruEingaengeAction() {
     const r = await lugruHistorieEingaenge(s.tenantId, 1000);
     const nb = r.neu + r.verknuepft < 1000 ? await lugruHistorieNeuBewerten(s.tenantId, 1000) : null;
     void recordJob(s.tenantId, NACHTRAG_JOB, null, Date.now() - t0);
-    text = `${r.neu} Lugru-Deals in den Deal-Eingang nachgetragen${r.verknuepft ? `, ${r.verknuepft} mit vorhandenen Eingängen verknüpft` : ""} (ohne Push)${r.offen ? ` – noch ${r.offen} offen, läuft automatisch weiter` : " – alle drin"}${nb?.neu ? `; ${nb.neu} Ampeln nach den neuen Regeln neu bewertet${nb.offen ? ` (noch ${nb.offen})` : ""}` : ""}.`;
+    // B22.2: danach eigene Käufe abgleichen (neue Eingänge bekommen Menge/EK) und den Deal-Wert nachrechnen
+    const k = await (await import("@/lib/lugru-deals/discord")).lugruKaufAbgleichMitStand(s.tenantId);
+    const w = await (await import("@/lib/deal-eingang/wert")).wertNachholen(s.tenantId, 1000);
+    text = `${r.neu} Lugru-Deals in den Deal-Eingang nachgetragen${r.verknuepft ? `, ${r.verknuepft} mit vorhandenen Eingängen verknüpft` : ""} (ohne Push)${r.offen ? ` – noch ${r.offen} offen, läuft automatisch weiter` : " – alle drin"}${r.fehler ? ` (${r.fehler} nicht lesbar, übersprungen)` : ""}${nb?.neu ? `; ${nb.neu} Ampeln nach den neuen Regeln neu bewertet${nb.offen ? ` (noch ${nb.offen})` : ""}` : ""}; ${k.neu + k.eingaenge ? `${k.neu} eigene Käufe erkannt, ${k.eingaenge} Eingänge als gekauft ergänzt` : "keine neuen eigenen Käufe"}; Deal-Wert für ${w.neu} Deals berechnet${w.offen ? ` (noch ${w.offen})` : ""}.`;
   } catch (e) {
     void recordJob(s.tenantId, NACHTRAG_JOB, lesbarerFehler(e), Date.now() - t0);
     text = `Nachtragen fehlgeschlagen – ${lesbarerFehler(e)}`;
@@ -260,13 +263,13 @@ export async function lugruEingaengeAction() {
   redirect(mit(LUGRU, text));
 }
 
-/** Eigene Käufe zu Lugru-Deals jetzt erkennen (sonst einmal am Tag): Chargen, Einkaufs-Bestellungen, Deal-Eingang „gekauft“. */
+/** Eigene Käufe zu Lugru-Deals jetzt erkennen (sonst alle 6 Std.): sellerboard-SKUs, Chargen, Bestellungen, FBA-Sendungen, Deal-Eingang „gekauft“. */
 export async function lugruKaufAction() {
   const s = await schreibend();
   let text: string;
   try {
-    const k = await (await import("@/lib/lugru-deals/discord")).lugruKaufAbgleich(s.tenantId);
-    text = k ? `${k} eigene Käufe neu erkannt.` : "Keine weiteren eigenen Käufe gefunden (gleiche ASIN, 14 Tage nach dem Posten).";
+    const k = await (await import("@/lib/lugru-deals/discord")).lugruKaufAbgleichMitStand(s.tenantId);
+    text = k.neu || k.eingaenge ? `${k.neu} eigene Käufe neu erkannt${k.eingaenge ? `, ${k.eingaenge} Einträge im Deal-Eingang als gekauft ergänzt (Menge, EK, Kaufdatum)` : ""}.` : "Keine weiteren eigenen Käufe gefunden (gleiche ASIN, 0–21 Tage nach dem Posten; sellerboard-SKUs, Chargen, Bestellungen, FBA-Sendungen).";
   } catch (e) {
     text = `Abgleich fehlgeschlagen – ${lesbarerFehler(e)}`;
   }

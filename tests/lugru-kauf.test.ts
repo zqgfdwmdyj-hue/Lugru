@@ -12,9 +12,9 @@ describe("kaufZuDeal", () => {
     expect(kaufZuDeal(deal, [charge("2026-10-10")])?.ref).toBe("Charge X-2026-10-10");
   });
 
-  it("Charge bis 14 Tage danach zählt, am 15. Tag nicht", () => {
-    expect(kaufZuDeal(deal, [charge("2026-10-24")])).not.toBeNull();
-    expect(kaufZuDeal(deal, [charge("2026-10-25")])).toBeNull();
+  it("Charge bis 21 Tage danach zählt (B22.2), am 22. Tag nicht", () => {
+    expect(kaufZuDeal(deal, [charge("2026-10-31")])).not.toBeNull();
+    expect(kaufZuDeal(deal, [charge("2026-11-01")])).toBeNull();
   });
 
   it("Charge vom Vortag (Altbestand) zählt nicht", () => {

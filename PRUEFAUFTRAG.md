@@ -519,6 +519,30 @@ Aufgabe mit Link; Anbindungen, `calls` und `anbindungen_status` zeigen „live�
 **Voraussetzung live:** im Discord-Entwicklerportal beim Bot
 „Message Content Intent“ einschalten (To-do 53).
 
+## B22 – Reflexion sichtbar, Lugru-Lernen, Apple Watch (Nachtrag 01.11.)
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 22.1a | Beobachtungen über die Partnerin sichtbar | 🟡 (Filter war schon „Verfasser = ich“, aber schwer zu finden; Sitzung nur aus dem Privatkalender) | ✅ | Privat → Partnerschaft → „Beobachtungen & Reflexion“ (`privat/beobachtungen/page.tsx`): alle selbst verfassten Einträge (egal über wen), nach Tag und Eingabereihenfolge (`nachTag`), „[?] unvollständig“. Zusätzlich Hinweis auf der Privat-Startseite, Zeile im Monatsrückblick, Hinweis welches Konto mit Claude verbunden ist (`claudeKonten`) |
+| 22.1b | Wochenrückblick jeden Tag, Woche wählbar | 🟡 (7 Tage bis heute, nur blättern) | ✅ | `privat/rueckblick/woche`: Auswahl Kalenderwoche (`wochenAuswahl`, 12 Wochen) + Vor/Zurück; Feierabend-Seite mit Wochen blättern; Werkzeug `feierabend` mit `woche_bis` |
+| 22.1c | Therapie-Bogen seit letzter Sitzung | 🟡 (nur Privatkalender) | ✅ | `paarSitzungen` (`src/lib/private/sitzungen.ts`): Privatkalender + abgeglichene Kalender (Titel „Paartherapie/Paarberatung“); Spalten Situation · Problematik · gewünschte Veränderung (leer erlaubt); ohne Sitzung 30 Tage mit Hinweis |
+| 22.1d | Art `reflexion` + Block „Für die nächste Sitzung“ | ❌ | ✅ | Formular auf der Beobachtungen-Seite, `privat_eintrag_anlegen(art: reflexion, text, sitzung?)` (Sitzung sonst die nächste laut Kalender), ändern/löschen über `privat_eintrag_aendern/_loeschen`; Block im Wochenrückblick, Therapie-Bogen, Feierabend und `feierabend.fuerNaechsteSitzung`. Nur für den Verfasser sichtbar |
+| 22.1e | Alte Zeilen 2 und 3 löschen | – | offen | Nur auf ausdrücklichen Wunsch per `privat_eintrag_loeschen` (Claude im Gespräch) – nicht automatisch |
+| 22.2a | Eigene Käufe erkennen | ❌ (nur Chargen/Bestellungen, 14 Tage – sellerboard-SKUs wurden nie gelesen) | ✅ | `lugruKaufAbgleich` (`src/lib/lugru-deals/discord.ts`): sellerboard-Produkte, FBA-Bestand und Bestandsbericht; SKU-Muster neu/alt (`skuKauf`), Datum 0–21 Tage nach dem Post (`KAUF_FENSTER_TAGE`); FBA-Sendungen als zweites Signal; Menge aus der Sendung bzw. dem Bestand, EK netto und Lieferant aus der SKU; Eintrag im Deal-Eingang „gekauft (automatisch erkannt – sellerboard-SKU …)“ ohne neue Bestellung; alle 6 Std. und per Knopf |
+| 22.2b | Ergebnis nachziehen | 🟡 | ✅ | `ergebnisseAktualisieren` rechnet für die so erkannten Käufe realen ROI, Tage bis Abverkauf und Erstattungen aus sellerboard (30/60/90 Tage) |
+| 22.2c | Vorwissen Lugru ≥ 60 | ❌ | ✅ | `dealWert(…, quelle)` (`wert-logic.ts`): Lugru startet mit 60; nur harte Rot-Kriterien drücken (`lugruHarteGruende`: Amazon > 90 %, Kapital-Ampel rot, Verlust-Stopp, Marke mit Beschwerde, ROI < 10 %). „Mehr als 15 Angebote“ war und bleibt nur Gelb |
+| 22.2d | Deal-Wert für alle Deals | ❌ (3 von 339) | ✅ | Hintergrund-Job „Deal-Wert: nachrechnen“ (`wertNachholen`, alle 5 Min. bis fertig, ohne Keepa-Abfragen) + Knopf „Jetzt nachtragen“ |
+| 22.2e | Lugru-History komplett | 🟡 (Nachtrag konnte an einem unlesbaren Post hängen bleiben) | ✅ | `lugruHistorieEingaenge`: Fehler je Post werden übersprungen und gezählt, der Rest läuft weiter |
+| 22.2f | Schwelle Lugru = 60 vorbelegt | 🟡 (nur Platzhalter) | ✅ | `STANDARD_WERT_SCHWELLEN` in `deal-eingang/logic.ts`; eigene Einstellung geht vor; Seite zeigt „Lugru Deals ab 60 (vorbelegt)“ |
+| 22.2g | Monatsbericht mit Trefferquote | 🟡 | ✅ | `lernBericht`: Schwelle je Quelle, eigener Block `lugru_deals` (gekauft, mit Ergebnis, Trefferquote) in `deal_lernen_bericht`; `lugru_history.selbst_gekauft` |
+| 22.3 | Apple Watch | ❌ | offen | Abschnitt 10 von „Bauauftrag_Handy-Tesla.md“ liegt nicht vor (hochgeladene Fassung endet bei 9) – wird nach dem Hochladen umgesetzt |
+
+Abnahme: Unit `reflexion` (Sitzungen, Reihenfolge, Zettel offen, Kalenderwoche, Ändern) und `lugru-lernen` (SKU-Muster,
+21-Tage-Fenster, Vorwissen/harte Kriterien, Schwelle, Bericht); e2e `b22-reflexion` (Beobachtungen über die andere
+Person per Claude → Beobachtungen, Wochenrückblick mit Wochenwahl, Therapie-Bogen, Startseite, Monatsrückblick,
+Feierabend; Reflexion per Claude und Oberfläche; Sitzung aus dem Kalender) und `b22-lugru` (SKU im Fenster → gekauft mit
+Menge 4 und EK 120,00 netto, außerhalb nicht; Deal-Wert ≥ 60 mit „Vorwissen“; Liste/Monatsbericht zählen den Kauf).
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -768,3 +792,11 @@ nie in Chats oder Mails.
 53. **Call-Kanal live (B21)**: discord.com/developers → eure Bot-Anwendung → Bot → „Privileged Gateway Intents“ →
     **Message Content Intent** einschalten und speichern. Nach dem Update steht unter Anbindungen → Hintergrund-Abrufe
     „Auslöser: live (Discord) – verbunden seit …“. Steht dort „abgelehnt“, fehlt genau dieser Schalter.
+54. **Beobachtungen vom 30.10.**: die alten Zeilen 2 und 3 (ersetzt durch die korrigierte Zeile 2) bei Bedarf in Claude
+    mit „lösche die Beobachtungen …“ entfernen lassen (7 Tage rückgängig) – das System löscht nichts von selbst. Steht auf
+    der Beobachtungen-Seite der rote Hinweis „Claude ist mit dem Konto … verbunden“, den Konnektor mit dem eigenen Konto
+    neu verbinden.
+55. **Lugru-Lernen anstoßen**: nach dem Update einmal Lugru Deals → „Jetzt nachtragen“ drücken (Deal-Eingang, eigene Käufe,
+    Deal-Wert in einem Schritt); danach läuft alles im Hintergrund. Voraussetzung: sellerboard-Abgleich aktiv (Produkte,
+    Bestand, Sendungen).
+

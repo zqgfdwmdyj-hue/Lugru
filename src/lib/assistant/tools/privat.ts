@@ -165,7 +165,7 @@ export const privatEintragAnlegen = defineTool({
     tag: isoDate.optional().describe("Standard heute"),
     uhrzeit: time.optional(),
     person: z.string().trim().max(40).optional().describe("Name, „a“, „b“ oder „beide“"),
-    an_person: z.string().trim().max(40).optional().describe("Bei Beobachtung: über wen (Name, „a“ oder „b“)"),
+    an_person: z.string().trim().max(40).optional().describe("Bei Beobachtung: über wen (Name, „a“, „b“ oder Name des Kontos mit Privat-Zugang)"),
     text: z.string().trim().max(2000).optional(),
     wert: z.number().min(0).max(600).optional(),
     variante: z.enum(["streicheln", "massage"]).optional().describe("Nur zuwendung"),
@@ -175,7 +175,7 @@ export const privatEintragAnlegen = defineTool({
   run: async (ctx, i) => {
     const p = await personKey(ctx, i.person);
     const an = await personKey(ctx, i.an_person);
-    const r = await eintragAnlegen(ctx.session, { art: i.art, tag: i.tag, uhrzeit: i.uhrzeit, person: p === "a" || p === "b" || p === "beide" ? p : undefined, anPerson: an === "a" || an === "b" ? an : undefined, text: i.text, wert: i.wert, variante: i.variante, sitzung: i.sitzung });
+    const r = await eintragAnlegen(ctx.session, { art: i.art, tag: i.tag, uhrzeit: i.uhrzeit, person: p === "a" || p === "b" || p === "beide" ? p : undefined, anPerson: an === "a" || an === "b" ? an : undefined, anName: an ? undefined : i.an_person, text: i.text, wert: i.wert, variante: i.variante, sitzung: i.sitzung });
     // B22.1: sagen, wo der Eintrag zu finden ist und in welchem Konto er steht (Beobachtungen/Zettel sieht nur der Verfasser).
     const wo = i.art === "beobachtung" ? "/privat/beobachtungen" : i.art === "reflexion" ? "/privat/beobachtungen#reflexion" : r.id ? `/privat/eintrag/${r.id}` : "/privat";
     return r.ok ? json({ ok: true, meldung: r.message, id: r.id, konto: ctx.session.name || ctx.session.email, link: abs(ctx, wo) }) : { text: r.message, isError: true };

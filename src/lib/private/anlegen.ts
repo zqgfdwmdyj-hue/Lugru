@@ -11,7 +11,7 @@ import { addEntry, kindAllowed, loadEntries, myPartner, privateMembers, privateS
 export const ANLEGBARE_ARTEN = ["intim", "zuwendung", "tagebuch", "beobachtung", "reflexion", "gespraech", "danke", "stimmung", "dateidee", "aufgabe"] as const;
 export type AnlegbareArt = (typeof ANLEGBARE_ARTEN)[number];
 
-export type EintragEingabe = { art: AnlegbareArt; tag?: string; uhrzeit?: string; person?: PartnerKey | "beide"; anPerson?: PartnerKey; text?: string; wert?: number; variante?: "streicheln" | "massage"; /** Nur Reflexion: Datum der Sitzung (sonst die nächste laut Kalender). */ sitzung?: string };
+export type EintragEingabe = { art: AnlegbareArt; tag?: string; uhrzeit?: string; person?: PartnerKey | "beide"; anPerson?: PartnerKey; text?: string; wert?: number; variante?: "streicheln" | "massage"; /** Bei Beobachtung: Name des Kontos, über das geschrieben wird (wenn keine Person a/b passt). */ anName?: string; /** Nur Reflexion: Datum der Sitzung (sonst die nächste laut Kalender). */ sitzung?: string };
 
 const dmy = (d: string) => d.split("-").reverse().join(".");
 const fail = (message: string): SaveResult => ({ ok: false, message });
@@ -62,8 +62,12 @@ export async function privatEintragAnlegen(session: Session, e: EintragEingabe):
     case "beobachtung": {
       if (!text) return fail("Bitte die Beobachtung als Text angeben.");
       const ziel = e.anPerson ?? (ich === "a" ? "b" : ich === "b" ? "a" : undefined);
-      const userId = Object.entries(s.userPartner).find(([, k]) => k === ziel)?.[0];
-      if (!userId || !(await privateMembers(session.tenantId)).some((m) => m.userId === userId)) return fail("Über wen? (an_person: Name, „a“ oder „b“ mit Privat-Zugang)");
+      const mitglieder = await privateMembers(session.tenantId);
+      // Person a/b mit Konto – sonst ein Konto mit Privat-Zugang per Name (Vorname, voller Name oder Anmeldename).
+      const n = (e.anName ?? "").trim().toLowerCase();
+      const perName = n && !e.anPerson ? mitglieder.find((m) => m.userId !== session.userId && [m.name ?? "", (m.name ?? "").split(/\s+/)[0], (m.login ?? "").split("@")[0]].some((x) => x && x.toLowerCase() === n)) : undefined;
+      const userId = perName?.userId ?? Object.entries(s.userPartner).find(([, k]) => k === ziel)?.[0];
+      if (!userId || !mitglieder.some((m) => m.userId === userId)) return fail("Über wen? (an_person: Name, „a“ oder „b“ mit Privat-Zugang)");
       const id = await addEntry(session, "beobachtung", { day: tag, aboutUserId: userId, text } satisfies ObservationEntry);
       return { ok: true, message: "Beobachtung gespeichert.", id, day: tag };
     }
