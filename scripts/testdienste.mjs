@@ -766,6 +766,57 @@ function webNachbau(req, res, url, body) {
   return html(200, '<form method="post" enctype="multipart/form-data"><input type="file" name="datei"><button type="submit">Hochladen</button></form>');
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// ArbitrageOne-Nachbau: Export-Seite mit Karten und Download-Knöpfen (Einkäufe mit Zeitraum-Dialog, AccountOne alt + NEU,
+// „Einkäufe“ auch in der Navigation – die Automatik muss die Karte im Hauptbereich finden). Inhalte erfunden; ein Test
+// kann sie über POST /__ao setzen ({ dateien: { key: text }, ohne: [key] }). Downloads stehen unter GET /__ao.
+const AO_STANDARD = {
+  einkaeufe: "ASIN;SKU;Kaufdatum;Menge;EK netto;Lieferant;Rechnungsnummer\nB0AOTEST01;AOT_TEST_01;01.11.2026;2;10,00;Testshop;RE-T1\n",
+  lagerbestand: "ASIN;SKU;Bestand;EK netto;Lagerwert\nB0AOTEST01;AOT_TEST_01;2;10,00;20,00\n",
+  sellerboard: "ASIN;SKU;Cost\nB0AOTEST01;AOT_TEST_01;10,00\n",
+  bqool: "FileType = repricing,  Version = 1.2.5 (Please do not edit this line or this will result in error when uploading)\t\t\t\t\t\t\t\t\t\t\nChannel\tSellerSKU\tCost\tAdditional Cost\tRule Name\tMin Price\tMax Price\tShipping\tadd-delete\tGroup\tEnable Repricing\nAmazon DE\tAOT_TEST_01\t11.90\t\tia\t19.99\t39.98\t0.00\t\t\t1\n",
+  reimbursement: "approval-date\treimbursement-id\tcase-id\tamazon-order-id\treason\tsku\tfnsku\tasin\tproduct-name\tcondition\tcurrency-unit\tamount-per-unit\tamount-total\tquantity-reimbursed-cash\tquantity-reimbursed-inventory\tquantity-reimbursed-total\n2026-10-30\tAOTR1\t\t\tLost_Warehouse\tAOT_TEST_01\tX00AOTEST1\tB0AOTEST01\tTestartikel\tNew\tEUR\t9.00\t9.00\t1\t0\t1\n",
+  accountone: "marketplace_article_nr;article_nr;ek_netto_euro\nB0AOTEST01;AOT_TEST_01;10,00\n",
+};
+const AO_NAMEN = { einkaeufe: "Einkaeufe.csv", lagerbestand: "Lagerbestand_Stichtag.csv", sellerboard: "ArbitrageOne_Sellerboard_Export.csv", bqool: "ArbitrageOne_BQool_Export.txt", reimbursement: "Inventory_Reimbursement.txt", accountone: "AccountOne_COG_NEU.csv" };
+const ao = { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [] };
+function aoNachbau(req, res, url, body) {
+  const seite = /^\/web-arbitrageone\/([a-z]+)/.exec(url.pathname)?.[1];
+  if (seite !== "export" && seite !== "datei") return false;
+  if (!(req.headers.cookie ?? "").includes("sid=ok-arbitrageone")) {
+    res.writeHead(302, { Location: "/web-arbitrageone/login" });
+    res.end();
+    return true;
+  }
+  if (seite === "datei") {
+    const key = url.pathname.split("/")[3];
+    if (!(key in ao.dateien) || ao.ohne.has(key)) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      res.end("nicht gefunden");
+      return true;
+    }
+    ao.downloads.push({ key, at: new Date().toISOString() });
+    res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${AO_NAMEN[key]}"` });
+    res.end(ao.dateien[key]);
+    return true;
+  }
+  const karte = (key, titel, knopf) => (ao.ohne.has(key) ? "" : `<section class="card"><h3>${titel}</h3><p>Export für ${titel}</p>${knopf}</section>`);
+  const link = (key, text = "Download") => `<a href="/web-arbitrageone/datei/${key}">${text}</a>`;
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  res.end(`<!doctype html><html><body><nav><a href="/einkaeufe">Einkäufe</a> <a href="/lager">Lagerbestand</a></nav><main><h1>Export (Testnachbau)</h1>
+${karte("einkaeufe", "Einkäufe", '<button type="button" onclick="document.getElementById(\'dlg\').showModal()">Exportieren</button>')}
+<dialog id="dlg"><p>Zeitraum wählen</p>${link("einkaeufe", "Herunterladen")}</dialog>
+${karte("lagerbestand", "Lagerbestand (Stichtag)", link("lagerbestand"))}
+${karte("sellerboard", "Sellerboard", link("sellerboard"))}
+${karte("stk", "STK", '<a href="/web-arbitrageone/datei/stk">Download</a>')}
+${karte("bqool", "BQool", link("bqool"))}
+${karte("reimbursement", "Inventory Reimbursement", link("reimbursement"))}
+<section class="card"><h3>AccountOne COG</h3><a href="/web-arbitrageone/datei/accountone-alt">Download</a></section>
+${karte("accountone", "AccountOne COG (NEU)", link("accountone"))}
+</main></body></html>`);
+  return true;
+}
+
 const dienstOf = (p) => (p.startsWith("/anthropic") ? "Claude" : p.startsWith("/im") ? "Deutsche Post" : p.startsWith("/dhl-track") ? "DHL Verfolgung" : p.startsWith("/dhl") ? "DHL Paket" : p.startsWith("/amazon") ? "Amazon" : p.startsWith("/ebay") ? "eBay" : p.startsWith("/temu") ? "Temu" : p.startsWith("/keepa") ? "Keepa" : p.startsWith("/ecb") ? "EZB" : p.startsWith("/vies") ? "VIES" : p.startsWith("/discord") ? "Discord" : p.startsWith("/gdocs") ? "Google Docs" : p.startsWith("/lexoffice") ? "Lexoffice" : p.startsWith("/asana") ? "Asana" : "?");
 
 http
@@ -779,6 +830,15 @@ http
     };
     if (url.pathname === "/__log") return send(200, log);
     if (url.pathname === "/__web") return send(200, webUploads);
+    if (url.pathname === "/__ao" && req.method === "POST") {
+      const b = JSON.parse(body || "{}");
+      if (b.zuruecksetzen) Object.assign(ao, { dateien: { ...AO_STANDARD }, ohne: new Set(), downloads: [] });
+      for (const [k, v] of Object.entries(b.dateien ?? {})) ao.dateien[k] = String(v);
+      if (Array.isArray(b.ohne)) ao.ohne = new Set(b.ohne);
+      return send(200, { ok: true });
+    }
+    if (url.pathname === "/__ao") return send(200, { downloads: ao.downloads, ohne: [...ao.ohne] });
+    if (url.pathname.startsWith("/web-arbitrageone/") && aoNachbau(req, res, url, body)) return;
     if (url.pathname.startsWith("/web-")) return webNachbau(req, res, url, body);
     if (url.pathname === "/__ki") return send(200, ki);
     if (url.pathname === "/__discord") return send(200, discord);

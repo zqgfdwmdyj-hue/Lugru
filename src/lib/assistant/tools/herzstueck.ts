@@ -179,7 +179,7 @@ export const buchhaltungStatusTool = defineTool({
   name: "buchhaltung_status",
   title: "Buchhaltung: Stand des Monats",
   description:
-    "Stand der Buchhaltung je Firma (LuGru/WiGru) und Monat: Belege neu/unsicher, Zahlungen ohne Beleg, Belege ohne Zahlung, Abstimmungsgrad in %, offene Zuordnungs- und Buchungsvorschläge, festgeschrieben ja/nein, Export für den Steuerberater erstellt ja/nein, letzte Kontoauszug-Uploads, Amazon-Umsatzsteuer-Transaktionsbericht importiert ja/nein (mit Umsatz je Steuerland in der Monatsdatei). Für „Wie weit ist die Buchhaltung für Oktober?“, „Was fehlt dem Steuerberater?“. Keine Steuerberatung.",
+    "Stand der Buchhaltung je Firma (LuGru/WiGru) und Monat: Belege neu/unsicher, Zahlungen ohne Beleg, Belege ohne Zahlung, Abstimmungsgrad in %, offene Zuordnungs- und Buchungsvorschläge, festgeschrieben ja/nein, Export für den Steuerberater erstellt ja/nein, letzte Kontoauszug-Uploads, Amazon-Umsatzsteuer-Transaktionsbericht importiert ja/nein (mit Umsatz je Steuerland in der Monatsdatei), AccountOne COG aus ArbitrageOne vorhanden ja/nein. Für „Wie weit ist die Buchhaltung für Oktober?“, „Was fehlt dem Steuerberater?“. Keine Steuerberatung.",
   area: "geld",
   write: false,
   quelle: { text: "Kontoauszüge (Sparkasse/Amex-Uploads) und Belege im Seller-System" },
@@ -208,6 +208,9 @@ export const buchhaltungStatusTool = defineTool({
       amazon_umsatzsteuer: s.ust.vorhanden
         ? { importiert: true, stand: s.ust.stand?.toISOString().slice(0, 10), dateien: s.ust.dateien, umsatz_brutto: s.ust.brutto, steuerlaender: s.ust.steuerlaender, verbringungen: s.ust.verbringungen, invoice_credit_note_ohne_steuerland: s.ust.ohneSteuerland || undefined, hinweise: s.ust.hinweise || undefined, im_steuerberater_export: "als Amazon-Umsatzsteuer_JJJJ-MM.csv in „CSV + Belege (ZIP)“", details: "umsatzsteuer(periode)" }
         : { importiert: false, hinweis: "Amazon-Umsatzsteuer-Transaktionsbericht für diesen Monat fehlt (Seller Central → Berichte → Steuerdokumente) – Upload-Seite oder import_link art=amazon_umsatzsteuer_transaktionen." },
+      accountone_cog: s.accountoneCog.vorhanden
+        ? { vorhanden: true, skus: s.accountoneCog.skus, stand: s.accountoneCog.stand?.toISOString().slice(0, 10), im_steuerberater_export: "als AccountOne-COG_JJJJ-MM.csv in „CSV + Belege (ZIP)“" }
+        : { vorhanden: false, hinweis: "AccountOne COG (NEU) für diesen Monat fehlt – kommt mit der ArbitrageOne-Anbindung am 1. des Folgemonats oder per import_link art=ao_accountone_cog." },
       zahlungen_ohne_beleg: s.listen.ohneBeleg.slice(0, 15).map((z) => ({ datum: z.datum, betrag: z.betrag, gegenpartei: z.gegenpartei.slice(0, 60), amex: z.karte || undefined })),
       belege_ohne_zahlung: s.listen.belegeOhneZahlung.slice(0, 15).map((b) => ({ datum: b.datum, offen: b.rest, lieferant: b.lieferant, nummer: b.nummer })),
       hinweis: "Nur Stand und Vorschläge – steuerliche Bewertung beim Steuerberater.",

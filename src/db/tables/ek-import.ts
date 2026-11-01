@@ -22,7 +22,7 @@ export const ekImporte = pgTable(
     tenantId: tenantId(),
     userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
     dateiname: text("dateiname").notNull(),
-    quelle: text("quelle", { enum: ["sellerboard", "accountone", "template"] }).notNull(),
+    quelle: text("quelle", { enum: ["sellerboard", "accountone", "template", "einkaeufe"] }).notNull(),
     /** Gelesene Zeilen wie aus der Datei (für das Übernehmen ohne erneuten Upload). */
     roh: jsonb("roh").$type<{ line: number; asin: string; sku: string; costNet: number | null; fnsku?: string | null; title?: string | null; purchaseDate?: string | null; quantity?: number | null; currency?: string | null }[]>().notNull(),
     zeilen: jsonb("zeilen").$type<EkImportZeile[]>().notNull(),

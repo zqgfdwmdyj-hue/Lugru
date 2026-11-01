@@ -51,6 +51,14 @@ export async function uploadAnnehmen(token: string, bytes: Uint8Array | null, gr
   // Token genau einmal: nur wer ihn als Erster „verbraucht“, darf weiter.
   const [frei] = await db.update(D).set({ benutztAm: new Date() }).where(and(eq(D.id, a.id), sql`${D.benutztAm} is null`)).returning({ id: D.id });
   if (!frei) return { status: 410, body: { fehler: "Diese Upload-Adresse wurde schon benutzt – bitte mit import_link eine neue anfordern.", code: "benutzt" } };
+  const r = await dateiAnnehmen(a, bytes);
+  if (r.bereits) return { status: 200, body: { import_id: a.id, status: "fertig", bereits_importiert: true, hinweis: `Datei bereits importiert am ${r.am} – keine Doppelbuchung.` } };
+  after(() => importVerarbeiten(a.id).catch((e) => console.error("Datei-Import", e instanceof Error ? e.message : e)));
+  return { status: 202, body: { import_id: a.id, status: "verarbeitet", groesse_mb: r2(bytes.length / 1048576), hinweis: "Wird verarbeitet – Ergebnis mit import_status." } };
+}
+
+/** Gleiche Datei schon verarbeitet → „bereits importiert“ (nichts doppelt), sonst verschlüsselt ablegen und auf „verarbeitet“ setzen. */
+async function dateiAnnehmen(a: { id: string; tenantId: string }, bytes: Uint8Array): Promise<{ bereits: true; am: string; ersterId: string } | { bereits: false }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const jetzt = new Date();
   const [schon] = await db
@@ -65,13 +73,34 @@ export async function uploadAnnehmen(token: string, bytes: Uint8Array | null, gr
       .update(D)
       .set({ status: "fertig", fortschritt: 100, groesse: bytes.length, sha256, hochgeladenAm: jetzt, fertigAm: jetzt, bereitsImportId: schon.id, ergebnis: { bereits_importiert: true, bereits_importiert_am: schon.fertigAm?.toISOString() ?? null, erster_import_id: schon.id, aenderungen: `Datei bereits importiert am ${am} – 0 neu, nichts doppelt gebucht.` } })
       .where(eq(D.id, a.id));
-    return { status: 200, body: { import_id: a.id, status: "fertig", bereits_importiert: true, hinweis: `Datei bereits importiert am ${am} – keine Doppelbuchung.` } };
+    return { bereits: true, am, ersterId: schon.id };
   }
   const ablage = neuerSchluessel(a.tenantId, jetzt);
   await speichern(ablage, bytes);
   await db.update(D).set({ status: "verarbeitet", fortschritt: 5, groesse: bytes.length, sha256, ablage, hochgeladenAm: jetzt }).where(eq(D.id, a.id));
-  after(() => importVerarbeiten(a.id).catch((e) => console.error("Datei-Import", e instanceof Error ? e.message : e)));
-  return { status: 202, body: { import_id: a.id, status: "verarbeitet", groesse_mb: r2(bytes.length / 1048576), hinweis: "Wird verarbeitet – Ergebnis mit import_status." } };
+  return { bereits: false };
+}
+
+/**
+ * ArbitrageOne-Abruf: heruntergeladene Datei als Import anlegen und sofort verarbeiten – derselbe Weg wie eine über
+ * import_link hochgeladene Datei (Prüfsumme, Ablage, Verarbeitung je Art). Kein Token, keine Upload-Adresse.
+ */
+export async function aoImportAnlegen(tenantId: string, userId: string, i: { art: ImportArt; quelleExport: string; dateiname: string; hinweis?: string | null }, bytes: Uint8Array): Promise<{ importId: string; status: string; bereits: boolean; text: string; ergebnis: Record<string, unknown> | null }> {
+  const jetzt = new Date();
+  const [row] = await db
+    .insert(D)
+    .values({ tenantId, userId, art: i.art, dateiname: sichererName(i.dateiname), hinweis: i.hinweis?.slice(0, 300) ?? null, tokenHash: `ao:${randomBytes(24).toString("hex")}`, gueltigBis: jetzt, benutztAm: jetzt, herkunft: "arbitrageone", quelleExport: i.quelleExport })
+    .returning({ id: D.id });
+  if (!bytes.length) {
+    await db.update(D).set({ status: "fehler", fertigAm: jetzt, fehlerText: "Die Datei ist leer." }).where(eq(D.id, row.id));
+    return { importId: row.id, status: "fehler", bereits: false, text: "Die Datei ist leer.", ergebnis: null };
+  }
+  const r = await dateiAnnehmen({ id: row.id, tenantId }, bytes);
+  if (r.bereits) return { importId: row.id, status: "fertig", bereits: true, text: `bereits importiert am ${r.am} – nichts doppelt`, ergebnis: null };
+  await importVerarbeiten(row.id);
+  const [x] = await db.select({ status: D.status, fehler: D.fehlerText, ergebnis: D.ergebnis }).from(D).where(eq(D.id, row.id));
+  const kurz = x?.ergebnis ? String((x.ergebnis as { text?: string }).text ?? "") : "";
+  return { importId: row.id, status: x?.status ?? "fehler", bereits: false, text: x?.status === "fertig" ? kurz || "verarbeitet" : (x?.fehler ?? "Verarbeitung fehlgeschlagen"), ergebnis: x?.ergebnis ?? null };
 }
 
 class ImportFehler extends Error {}
@@ -86,7 +115,7 @@ export async function importVerarbeiten(id: string): Promise<void> {
     if (!session || session.role !== "owner") throw new ImportFehler("Das Konto, das den Import angelegt hat, ist kein Inhaber mehr (oder deaktiviert).");
     const bytes = new Uint8Array(await lesen(a.ablage));
     await fortschritt(15);
-    const ergebnis = await nachArt(session, a.art as ImportArt, a.dateiname, a.hinweis, bytes, id, fortschritt);
+    const ergebnis = await nachArt(session, a.art as ImportArt, a.dateiname, a.hinweis, bytes, id, fortschritt, { herkunft: a.herkunft, quelleExport: a.quelleExport, hochgeladenAm: a.hochgeladenAm ?? new Date() });
     await db.update(D).set({ status: "fertig", fortschritt: 100, fertigAm: new Date(), ergebnis, fehlerText: null }).where(eq(D.id, id));
   } catch (e) {
     await db.update(D).set({ status: "fehler", fertigAm: new Date(), fehlerText: e instanceof ImportFehler ? e.message : `Verarbeitung fehlgeschlagen – ${lesbarerFehler(e, 400)}` }).where(eq(D.id, id));
@@ -100,7 +129,9 @@ async function zentral(session: Session, name: string, bytes: Uint8Array) {
   return r;
 }
 
-async function nachArt(session: Session, art: ImportArt, name: string, hinweis: string | null, bytes: Uint8Array, id: string, fortschritt: (p: number) => Promise<unknown>): Promise<Record<string, unknown>> {
+type Herkunft = { herkunft: "claude" | "arbitrageone"; quelleExport: string | null; hochgeladenAm: Date };
+
+async function nachArt(session: Session, art: ImportArt, name: string, hinweis: string | null, bytes: Uint8Array, id: string, fortschritt: (p: number) => Promise<unknown>, h: Herkunft = { herkunft: "claude", quelleExport: null, hochgeladenAm: new Date() }): Promise<Record<string, unknown>> {
   const def = IMPORT_ARTEN[art];
   const t = session.tenantId;
 
@@ -177,6 +208,13 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     await fortschritt(30);
     const r = await zentral(session, name, bytes);
     const basis = { art, text: r.text, hinweise: r.hinweise, link: r.link };
+    // ArbitrageOne-Abruf: EK-Zeilen ohne Warnung gleich übernehmen (Nachtlauf ohne Handarbeit), Rest zur Prüfung.
+    if (art === "ek_liste" && h.herkunft === "arbitrageone") {
+      const ek = (r.details?.ek ?? null) as { id?: string } | null;
+      const { ekImportAutomatisch } = await import("@/lib/ek-import/service");
+      const auto = ek?.id ? await ekImportAutomatisch(t, session.userId, ek.id) : null;
+      return { ...basis, ...(r.details ?? {}), automatisch: auto ?? undefined, text: `${auto?.text ?? "Kein EK je SKU (ohne SKU-Spalte)."}${(r.details?.einkaeufe as { neu?: number; bekannt?: number } | undefined) ? ` Einkäufe: ${(r.details!.einkaeufe as { neu: number }).neu} neu, ${(r.details!.einkaeufe as { bekannt: number }).bekannt} schon bekannt.` : ""}`, link: auto?.vorschauId ? `/einkauf/ek-import?id=${auto.vorschauId}` : r.link };
+    }
     if (art === "amazon_umsatzsteuer_transaktionen") {
       const perioden = ((r.details?.ust as { perioden?: { monat: string; zeilen: number }[] })?.perioden ?? []).map((p) => p.monat);
       const { umsatzsteuerBlock } = await import("./umsatzsteuer");
@@ -190,6 +228,33 @@ async function nachArt(session: Session, art: ImportArt, name: string, hinweis: 
     if (erkannt !== "bqool_datei" && erkannt !== "bqool") throw new ImportFehler(`Falsche Art: erwartet ${def.text}, erkannt wurde „${UPLOAD_ART[erkannt].text}“.`);
     const r = await zentral(session, name, bytes);
     return { art, text: r.text, hinweise: r.hinweise, link: erkannt === "bqool_datei" ? "/repricer/bqool" : "/repricer" };
+  }
+
+  if (art === "ao_accountone_cog") {
+    const { readSheet } = await import("@/lib/imports/arbitrageone");
+    const { aoFormat, accountoneMonat } = await import("@/lib/arbitrageone/logic");
+    let table: unknown[][];
+    try {
+      table = readSheet(bytes);
+    } catch {
+      throw new ImportFehler("Datei nicht lesbar – erwartet CSV oder XLSX.");
+    }
+    if (!table.length || table.length < 2) throw new ImportFehler("Die Datei ist leer.");
+    if (aoFormat(table[0]) !== "accountone") throw new ImportFehler(`Falsche Art: erwartet ${def.text}, die Spalten passen dazu nicht. ${spaltenProtokoll(table[0].map((x) => String(x ?? "")))}`);
+    const monat = /\b(20\d{2})-(0[1-9]|1[0-2])\b/.exec(hinweis ?? "")?.[0] ?? accountoneMonat(h.hochgeladenAm);
+    const { aoAccountoneSpeichern } = await import("@/lib/arbitrageone/service");
+    const c = await aoAccountoneSpeichern(t, monat, table, name, id);
+    if (!c) throw new ImportFehler("Keine Zeilen mit SKU gefunden.");
+    await protokollieren(session, name, bytes.length, true, `AccountOne COG ${monat}: ${c.zeilen} SKUs`, "/buchhaltung");
+    return { art, monat, zeilen: c.zeilen, ohne_ek: c.ohneEk, text: `AccountOne COG ${monat}: ${c.zeilen} SKUs – liegt der Monatsdatei für den Steuerberater bei („CSV + Belege“).`, link: "/buchhaltung" };
+  }
+
+  if (art === "ao_bqool_vergleich") {
+    const { istBqoolDatei } = await import("@/lib/uploads/erkennen");
+    if (!istBqoolDatei(bytes)) throw new ImportFehler(`Falsche Art: erwartet ${def.text} (erste Zeile „FileType = repricing“ fehlt).`);
+    const { aoBqoolVergleichen } = await import("@/lib/arbitrageone/service");
+    const v = await aoBqoolVergleichen(t, new TextDecoder("utf-8").decode(bytes), name);
+    return { art, ...v, link: "/repricer/bqool#ao-vergleich" };
   }
 
   if (art === "amazon_geschaeftsbericht") {
@@ -263,6 +328,7 @@ export async function importeListe(tenantId: string, o: { limit?: number; art?: 
   return rows.map((a) => ({
     import_id: a.id,
     status: a.status === "wartet_auf_datei" && a.gueltigBis.getTime() < Date.now() ? "abgelaufen" : a.status,
+    herkunft: a.herkunft === "arbitrageone" ? `ArbitrageOne-Abruf (${a.quelleExport ?? "?"})` : "Claude (import_link)",
     art: a.art,
     dateiname: a.dateiname,
     angelegt: a.createdAt.toISOString(),

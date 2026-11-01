@@ -31,6 +31,10 @@ export const dateiImporte = pgTable(
     fertigAm: timestamp("fertig_am", { withTimezone: true }),
     fehlerText: text("fehler_text"),
     ergebnis: jsonb("ergebnis").$type<Record<string, unknown> | null>(),
+    /** Woher die Datei kam: claude = import_link, arbitrageone = Abruf der ArbitrageOne-Anbindung. */
+    herkunft: text("herkunft", { enum: ["claude", "arbitrageone"] }).notNull().default("claude"),
+    /** Bei ArbitrageOne: welcher Export (einkaeufe, lagerbestand, sellerboard, bqool, reimbursement, accountone). */
+    quelleExport: text("quelle_export"),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("datei_importe_token_uq").on(t.tokenHash), index("datei_importe_tenant_idx").on(t.tenantId, t.createdAt), index("datei_importe_hash_idx").on(t.tenantId, t.sha256)],

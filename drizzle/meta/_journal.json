@@ -820,6 +820,13 @@
       "when": 1793521340444,
       "tag": "0116_kaufen_mit_einem_tap",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1793527275704,
+      "tag": "0117_ao_anbindung",
+      "breakpoints": true
     }
   ]
 }

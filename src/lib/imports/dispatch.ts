@@ -19,7 +19,7 @@ export type FileResult = {
   report?: { kind: string; rows: number; inserted: number; details?: Record<string, unknown> };
 };
 
-const A1_LABEL = { sellerboard: "Arbitrage One – Sellerboard-Export", accountone: "Arbitrage One – AccountOne COG", template: "Arbitrage One – eigene Vorlage" };
+const A1_LABEL = { sellerboard: "Arbitrage One – Sellerboard-Export", accountone: "Arbitrage One – AccountOne COG", template: "Arbitrage One – eigene Vorlage", einkaeufe: "Arbitrage One – Einkäufe" };
 
 export async function importAnyFile(opts: { tenantId: string; userId: string; fileName: string; bytes: Uint8Array }): Promise<FileResult> {
   const { tenantId, userId, fileName, bytes } = opts;

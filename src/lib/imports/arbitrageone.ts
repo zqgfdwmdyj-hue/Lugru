@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { aoFormat, einkaeufeAus } from "@/lib/arbitrageone/logic";
 import { parseAmount, parseDate } from "@/lib/numbers";
 
 // Liest die Exporte aus Arbitrage One. Erkannt werden:
@@ -6,8 +7,10 @@ import { parseAmount, parseDate } from "@/lib/numbers";
 //  - AccountOne COG (.csv):       marketplace_article_nr | article_nr | ek_netto_euro [| source_account_id]
 //  - Eigene Vorlage (.csv):       ASIN | Seller SKU | FNSKU | Produktname | Kaufdatum |
 //                                 Menge (eingekauft) | EK netto (mit VSK) | Währung | EK netto (Standard)
+//  - Einkäufe (Export „Einkäufe“): ASIN | (SKU) | Kaufdatum | Menge | EK netto | (Lieferant, Rechnung) – Spalten
+//    tolerant erkannt (src/lib/arbitrageone/logic.ts); Zeilen ohne SKU zählen nur als Einkauf (ao_einkaeufe).
 
-export type ImportSource = "sellerboard" | "accountone" | "template";
+export type ImportSource = "sellerboard" | "accountone" | "template" | "einkaeufe";
 
 export type ImportRow = {
   line: number;
@@ -123,9 +126,19 @@ export function parseArbitrageOne(table: unknown[][]): ParsedImport {
       sku: headers.indexOf("sku"),
       cost: headers.indexOf("cost"),
     };
+  } else if (aoFormat(table[0]) === "einkaeufe") {
+    // Export „Einkäufe“: EK je SKU aus den Einkaufszeilen (Zeilen ohne SKU nur als Einkauf, nicht als EK).
+    const e = einkaeufeAus(table);
+    const mitSku = e.zeilen.filter((z) => z.sku);
+    if (!mitSku.length) throw new ImportFormatError("Einkäufe ohne SKU-Spalte – EK je SKU nicht möglich (die Einkäufe selbst werden trotzdem gezählt).");
+    return {
+      source: "einkaeufe",
+      rows: mitSku.map((z, i) => ({ line: i + 2, asin: z.asin, sku: z.sku!, costNet: z.ekNetto, title: z.titel, purchaseDate: z.kaufdatum, quantity: z.menge, currency: z.waehrung })),
+      skipped: e.uebersprungen ? [{ line: 0, reason: `${e.uebersprungen} Zeilen ohne ASIN, Datum oder Menge` }] : [],
+    };
   } else {
     throw new ImportFormatError(
-      "Format nicht erkannt. Unterstützt: Arbitrage-One-Export für Sellerboard, AccountOne COG oder die eigene Vorlage mit ASIN/Seller SKU/FNSKU.",
+      "Format nicht erkannt. Unterstützt: Arbitrage-One-Export für Sellerboard, AccountOne COG, Einkäufe oder die eigene Vorlage mit ASIN/Seller SKU/FNSKU.",
     );
   }
 

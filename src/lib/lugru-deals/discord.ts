@@ -336,6 +336,11 @@ export async function lugruKaufAbgleichMitStand(tenantId: string, jetzt = new Da
   const LO = schema.lots;
   const P = schema.products;
   const kaeufe: EigenerKauf[] = [];
+  // ArbitrageOne-Einkäufe (Nachtlauf bzw. Upload „Einkäufe“): Kaufdatum, Menge, EK, Lieferant je Zeile – zuerst, damit
+  // sie bei gleichem Tag vor SKU/Charge gewinnen (genaue Menge statt Bestand).
+  const { aoEinkaeufeFuer } = await import("@/lib/arbitrageone/service");
+  for (const k of await aoEinkaeufeFuer(tenantId, asins, seit.toISOString().slice(0, 10)))
+    kaeufe.push({ asin: k.asin, am: new Date(`${k.kaufdatum}T12:00:00Z`), ref: `ArbitrageOne-Einkauf ${k.kaufdatum}${k.lieferant ? ` (${k.lieferant})` : ""}`, nurTag: true, menge: k.menge, ekNetto: k.ekNetto, shop: k.lieferant });
   // sellerboard-SKUs (alle Quellen, SKU nur einmal): Kaufdatum/EK/Lieferant aus der SKU, Menge aus FBA-Sendungen bzw. Bestand
   const gesucht = new Set(asins);
   const { kaeufe: skuKaeufe, sendungen, versandt, bestand } = await skuKaeufeLaden(tenantId, jetzt, seit.toISOString().slice(0, 10));

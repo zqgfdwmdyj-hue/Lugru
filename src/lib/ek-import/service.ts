@@ -70,6 +70,39 @@ export async function ekImportUebernehmen(tenantId: string, userId: string, id: 
   return stats;
 }
 
+/**
+ * ArbitrageOne-Abruf (Nachtlauf): Zeilen ohne Warnung sofort übernehmen (wie „Übernehmen“), Zeilen mit Warnung
+ * (z. B. EK-Sprung > 20 %, Platzhalter) bleiben als Vorschau zum Prüfen – mit Aufgabe. Nie stillschweigend alles.
+ */
+export async function ekImportAutomatisch(tenantId: string, userId: string, id: string): Promise<{ uebernommen: number; zurPruefung: number; vorschauId: string | null; text: string }> {
+  const e = await ekImport(tenantId, id);
+  if (!e || e.status !== "vorschau") return { uebernommen: 0, zurPruefung: 0, vorschauId: null, text: "Kein offener Import." };
+  const warn = new Set(e.zeilen.filter((z) => z.warnungen.length).map((z) => z.sku));
+  const sauber = e.roh.filter((r) => !warn.has(r.sku));
+  const pruefen = e.roh.filter((r) => warn.has(r.sku));
+  const zaehlen = (zs: typeof e.zeilen) => {
+    const a: Record<string, number> = { neu: 0, geaendert: 0, gleich: 0, unbekannt: 0, warnungen: 0 };
+    for (const z of zs) {
+      a[z.art]++;
+      if (z.warnungen.length) a.warnungen++;
+    }
+    return a;
+  };
+  let vorschauId: string | null = null;
+  if (pruefen.length) {
+    const zs = e.zeilen.filter((z) => warn.has(z.sku));
+    const [v] = await db.insert(E).values({ tenantId, userId, dateiname: `${e.dateiname} (zur Prüfung)`.slice(0, 200), quelle: e.quelle, roh: pruefen, zeilen: zs, anzahl: zaehlen(zs) }).returning({ id: E.id });
+    vorschauId = v.id;
+    await upsertSystemTask(db, tenantId, `ek-ao-pruefen-${v.id}`, { title: `EK aus ArbitrageOne prüfen: ${pruefen.length} SKU${pruefen.length === 1 ? "" : "s"} mit Warnung`, notes: `${zs.slice(0, 8).map((z) => `${z.sku}: ${z.warnungen.join(", ")}`).join("\n")}${zs.length > 8 ? `\n… und ${zs.length - 8} weitere` : ""}\nDie übrigen Zeilen sind schon übernommen. Diese bitte ansehen und übernehmen oder verwerfen.`, category: "einkauf", link: `/einkauf/ek-import?id=${v.id}` });
+  }
+  const zsSauber = e.zeilen.filter((z) => !warn.has(z.sku));
+  await db.update(E).set({ roh: sauber, zeilen: zsSauber, anzahl: zaehlen(zsSauber) }).where(eq(E.id, id));
+  if (sauber.length) await ekImportUebernehmen(tenantId, userId, id);
+  else await db.update(E).set({ status: "verworfen" }).where(eq(E.id, id));
+  const text = `${sauber.length} SKU${sauber.length === 1 ? "" : "s"} automatisch übernommen${pruefen.length ? `, ${pruefen.length} mit Warnung zur Prüfung` : ""}.`;
+  return { uebernommen: sauber.length, zurPruefung: pruefen.length, vorschauId, text };
+}
+
 export async function ekImportVerwerfen(tenantId: string, id: string) {
   await db.update(E).set({ status: "verworfen" }).where(and(eq(E.tenantId, tenantId), eq(E.id, id), eq(E.status, "vorschau")));
 }

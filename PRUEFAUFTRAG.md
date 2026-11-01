@@ -500,6 +500,48 @@ AI Win Sales Booster), `amazon-faelle`, `herzstueck`, `lugru-deals`, `deal-einga
 | DI-13 | „Format nicht erkannt“ mit Vorschlag + Protokoll | 🟡 (nur 12 Spalten) | ✅ | `formatVorschlag` in `src/lib/reports/format-vorschlag.ts`: „Sieht aus wie „Monatliche Lagergebühren“ (8 von 10 typischen Spalten; es fehlen: …) – als diese Art importieren: … import_link art=…“; alle Spalten im Upload-Verlauf, Liste „Unbekannte Formate“ auf `/uploads` |
 | DI-14 | USt-Bericht in `buchhaltung_status` und Monatsdatei | ❌ | ✅ | `buchhaltungStatus` → `ust` (importiert ja/nein, Brutto, Steuerländer, Verbringungen, ohne Steuerland); „CSV + Belege (ZIP)“ für den Steuerberater enthält `Amazon-Umsatzsteuer_JJJJ-MM.csv` (`ustMonatsdatei`). Keine Steuerberatung |
 
+### Ergänzung 01.11. (08:50): ArbitrageOne – Exporte automatisch abholen
+
+Prüfung zuerst (wie verlangt): ArbitrageOne hat **keine öffentliche API und keine Export-Links mit Token**. Die Doku
+(docs.arbitrageone.de) beschreibt nur den Download-Knopf unter app.arbitrageone.de/export. Die dort verlinkte
+OpenAPI-Datei ist ein Muster der Doku-Plattform („Plant Store“), keine ArbitrageOne-Schnittstelle. Deshalb holt eine
+Browser-Automatik die Dateien ab, im gleichen Muster wie bei BQool.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| AO-1 | Anbindung „ArbitrageOne (Browser-Automatik) – optional“ mit E-Mail, Passwort (nur im Tool, verschlüsselt), Export-Seite | ❌ | ✅ | `arbitrageone_web` in `src/lib/integrations/registry.ts`; Felder auch für abweichende Kartennamen, Nachtlauf an/aus, „sellerboard-Datei weiterreichen“ |
+| AO-2 | „Verbindung testen“ (muss von Anfang an gehen) | ❌ | ✅ | `aoVerbindungTesten` in `src/lib/arbitrageone/abruf.ts`: meldet sich an und sucht jede Karte auf der Export-Seite, ohne etwas herunterzuladen; Zwei-Faktor wird klar gemeldet |
+| AO-3 | Takt: Einkäufe, Lagerbestand und sellerboard-COG täglich 05:30, Reimbursement montags, AccountOne COG am 1. | ❌ | ✅ | `AO_EXPORTE`/`exportFaellig` in `src/lib/arbitrageone/logic.ts`; Nachtlauf `aoNachtlauf` im Hintergrund (`src/lib/scheduler.ts`). Ob heute schon gelaufen, steht in der Datenbank: nach einem Neustart läuft er nur einmal. Ein fehlgeschlagener Export wird am nächsten Tag nachgeholt (Wochen-/Monatsexport auch) |
+| AO-4 | Einkäufe → `ek_liste` | 🟡 (nur Upload von Hand, nur sellerboard-Format) | ✅ | Format „Einkäufe“ wird an den Spalten erkannt (ASIN, Kaufdatum, Menge, EK, optional SKU/Lieferant/Rechnung). Jede Einkaufszeile landet in `ao_einkaeufe`, eine Zeile, die schon bekannt ist, wird übersprungen. EK ohne Warnung wird beim Abruf **sofort übernommen** (`ekImportAutomatisch`); EK-Sprünge über 20 % und Platzhalter bleiben als Vorschau mit Aufgabe |
+| AO-5 | Lugru „gekauft“ aus Einkäufen (B22.2) | 🟡 (SKU/Charge/Sendung) | ✅ | `lugruKaufAbgleichMitStand` nutzt die ArbitrageOne-Einkäufe zuerst (genaue Menge, EK, Lieferant); nach jedem Abruf läuft der Abgleich sofort |
+| AO-6 | Einkaufssumme je Monat (Monatsrahmen) | 🟡 (SKUs + Rechnungen) | ✅ | `monatEingekauft`: Gibt es für den Monat ArbitrageOne-Einkäufe, zählen nur diese, sonst wie bisher (sonst würden dieselben Käufe doppelt gezählt). Die Deal-Eingang-Seite nennt die Quelle |
+| AO-7 | Liquidität: Wareneinkauf | 🟡 (Ø Rechnungen) | ✅ | Ø Wareneinkauf je Woche aus den ArbitrageOne-Einkäufen (vollständiger als Rechnungen), dazu die Zeilen „Wareneinkauf im Monat (ArbitrageOne)“ und „Lagerwert (ArbitrageOne)“ als Anzeige, ohne zusätzliche Zahlungsposten |
+| AO-8 | Lagerbestand (Stichtag) → `ao_lagerbestand` | ❌ | ✅ / 🟡 | Neue Import-Art (Spaltenerkennung, Stichtag aus Spalte oder Dateiname). Abgleich je SKU mit dem eigenen Lager (`aoLagerAbgleich`) im Import-Ergebnis und im Werkzeug `bestandsabweichungen` (nur Anzeige, nichts wird korrigiert). Lagerwert in der Liquidität. **Kapital-Ampel nutzt den Lagerbestand noch nicht** (🟡, To-do 62) |
+| AO-9 | Sellerboard (COG) an die „EK → sellerboard“-Übertragung | 🟡 (nur Knopf) | ✅ | Die Datei von ArbitrageOne läuft als EK-Liste durch (EK übernehmen). Mit „weiterreichen: ja“ geht sie **unverändert** an sellerboard (`anSellerboardDateiUebertragen`), ohne Neubau. Standard ist „nein“ (To-do 61) |
+| AO-10 | AccountOne COG (NEU) → Stotax-Belegübergabe | ❌ | ✅ | Neue Import-Art `ao_accountone_cog` mit Tabelle `ao_accountone_cog` je Monat (am 1. geholt = Stand Ende Vormonat). Liegt als `AccountOne-COG_JJJJ-MM.csv` in „CSV + Belege (ZIP)“; `buchhaltung_status.accountone_cog` |
+| AO-11 | Inventory Reimbursement → `amazon_reimbursements` | 🟡 | ✅ / 👤 | Läuft über die bestehende Berichtsart. Ob der ArbitrageOne-Export dieselben Spalten wie der Amazon-Bericht hat, ist ungeprüft. Wenn nicht: klarer Fehler mit Spaltenliste und Vorschlag, dazu eine Aufgabe (To-do 63) |
+| AO-12 | BQool **nicht** abholen, nur Vergleich | ❌ | ✅ | Neue Import-Art `ao_bqool_vergleich`: Die Datei wird gelesen und je Land mit dem Soll des Seller-Systems verglichen, aber nie als Ist übernommen und nie hochgeladen. Die Seite „BQool-Dateien“ zeigt „Abweichung ArbitrageOne ↔ Seller-System: n SKUs“ mit Beispielen |
+| AO-13 | Gleiche Datei zweimal = überspringen | – | ✅ | Prüfsumme wie beim Datei-Import (`dateiAnnehmen`): „bereits importiert – nichts doppelt“ |
+| AO-14 | Ergebnis je Abruf unter Anbindungen → Importe | ❌ | ✅ | Abschnitt „Importe – ArbitrageOne“ auf /anbindungen: Auslöser „täglich 05:30“, letzter und nächster Lauf, Knopf „Jetzt abholen“, Läufe und Dateien mit Zeilen und neu/geändert. Werkzeuge `importe` (Herkunft) und `anbindungen_status.arbitrageone` |
+| AO-15 | Fehler → Aufgabe, kein stilles Scheitern; 2FA → Abbruch | – | ✅ | Ein fehlgeschlagener Export → Aufgabe „ArbitrageOne-Abruf: … fehlgeschlagen“, die übrigen laufen weiter. Anmeldung oder Zwei-Faktor → Abbruch mit kritischer Aufgabe, ohne Wiederholung. Jeder Schritt mit Bildschirmfoto |
+| AO-16 | Exportvorlagen nicht verändern | – | ✅ | Die Automatik klickt nur Download bzw. Bestätigen im Download-Dialog; sie speichert in ArbitrageOne nichts |
+| AO-17 | Echtheits-Ordner (Lieferant + Rechnung je Marke) | ❌ | 🟡 | Lieferant und Rechnungsnummer stehen je Einkauf in `ao_einkaeufe`, im Echtheits-Ordner werden sie **noch nicht** angezeigt (To-do 62) |
+
+Hinweis zur Regel „Browser-Automatik nur auf Knopfdruck“ (AU-1): Für ArbitrageOne läuft sie auf ausdrücklichen Wunsch
+des Bauauftrags nachts. Sie **liest nur** (lädt herunter). Hochladen zu sellerboard passiert nachts nur, wenn
+„weiterreichen: ja“ eingestellt ist; BQool wird nie automatisch hochgeladen.
+
+**Abnahme (e2e `e2e/arbitrageone.spec.ts`, Test-Nachbau der Export-Seite):** „Verbindung testen“ grün (alle sechs
+Karten gefunden, nichts heruntergeladen) → „Jetzt abholen“ (derselbe Ablauf wie der Nachtlauf) lädt sechs Dateien
+herunter, die Einkäufe über den Zeitraum-Dialog, AccountOne die NEU-Karte statt der alten → Einkäufe gespeichert und
+EK übernommen → Lugru-Deal „gekauft“ (Ref „ArbitrageOne-Einkauf“) → `fehlende_einkaufspreise` ohne die SKU (dieselbe
+EK-Quelle wie die Bestellvorschläge) → Liquidität mit „Wareneinkauf im Monat (ArbitrageOne)“ und Lagerwert →
+Monatsrahmen aus den Einkäufen → BQool-Vergleich sichtbar, nichts als Ist übernommen → `importe`, `buchhaltung_status`,
+`anbindungen_status` → zweiter Abruf „bereits importiert“, nichts doppelt → fehlende Karte → „teilweise“ + Aufgabe →
+Zwei-Faktor → Abbruch + kritische Aufgabe. Der Zeitplan (täglich/montags/am 1., Nachholen) ist als Unit-Test geprüft
+(`tests/arbitrageone.test.ts`), ebenso die Formaterkennung. Die zwei echten ArbitrageOne-Dateien aus den Uploads
+(sellerboard-Export, BQool-Export) werden richtig erkannt; die Probe gab nur Format und Zeilenzahl aus.
+
 ## B21 – Call-Transkripte sofort beim Eintreffen verarbeiten (31.10., 17:15)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -632,6 +674,13 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 01.11. (ArbitrageOne-Anbindung, keine neuen Werkzeuge): `import_link`/`importe` kennen drei neue Arten:
+`ao_lagerbestand`, `ao_accountone_cog` und `ao_bqool_vergleich` (nur Vergleich). Das Eingabe-Schema hat sich damit
+geändert, deshalb ist `notifications/tools/list_changed` nötig. Es geht beim Verbinden raus, Claude sieht die neue
+Liste nach dem nächsten Verbinden. `importe` hat das Feld `herkunft` (Claude bzw. ArbitrageOne-Abruf).
+`anbindungen_status` hat den Block `arbitrageone` (Auslöser, letzter und nächster Lauf).
+`buchhaltung_status.accountone_cog` ist neu, ebenso `bestandsabweichungen.arbitrageone_lager`.
 
 Geändert am 01.11. (Kaufen mit einem Tap, B23, keine neuen Werkzeuge): `deal_eingang_detail` hat jetzt das Feld `kauf`
 (Deal-Nummer, Shop, Menge, „Warenkorb vorbereitet“, Link zum Selbst-Kaufen `/k/<id>`, Gutschein, „Kauf vorbereitet“) –
@@ -876,4 +925,15 @@ nie in Chats oder Mails.
     keine Seite verschwindet. „Anrufe“ öffnet den Tagesplan (eine eigene Anrufe-Seite gibt es nicht). Sag Bescheid, wenn
     etwas anders einsortiert werden soll. Mehr als 6 alte Favoriten: die ersten 6 erscheinen, der Stern ist gesperrt, bis
     du einen entfernst.
+61. **ArbitrageOne verbinden**: Anbindungen → „ArbitrageOne – Exporte automatisch abholen“: E-Mail, Passwort, Export-Seite
+    eintragen, dann „Verbindung testen“. Am besten ein eigenes Konto nur fürs System ohne Zwei-Faktor. Weichen die
+    Kartennamen ab (z. B. „Lagerbestand (Stichtag)“ statt „Lagerbestand“), trägst du sie in den Feldern „Name der Karte“
+    ein. „sellerboard-Datei weiterreichen“ steht auf „nein“. Auf „ja“ stellen, wenn die ersten Abrufe gepasst haben; dann
+    lädt der Nachtlauf die sellerboard-Datei von ArbitrageOne unverändert zu sellerboard hoch.
+62. **Noch offen bei ArbitrageOne**: Kapital-Ampel mit dem ArbitrageOne-Lagerbestand und Lieferant/Rechnung im
+    Echtheits-Ordner sind nicht gebaut. Die Daten liegen schon im System. Sag Bescheid, wenn das als Nächstes kommen soll.
+63. **Formate der Exporte „Einkäufe“, „Lagerbestand“ und „Inventory Reimbursement“**: Davon lag mir keine echte Datei vor
+    (nur sellerboard- und BQool-Export). Die Erkennung ist großzügig gebaut. Passt eine Datei nicht, kommt eine Aufgabe
+    mit Spaltenliste. Bitte einmal je Export eine Datei per Upload-Seite oder import_link schicken (Art `ek_liste`,
+    `ao_lagerbestand`, `amazon_reimbursements`), dann prüfe ich die Spalten.
 

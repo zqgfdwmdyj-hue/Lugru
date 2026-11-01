@@ -39,11 +39,16 @@ export async function dateiArt(name: string, bytes: Uint8Array): Promise<UploadA
   const e = artNachEndung(name);
   if (e) return e;
   if (istBqoolDatei(bytes)) return "bqool_datei";
-  // ArbitrageOne-Liste für sellerboard (ASIN | SKU | Cost) → EK-Import mit Vorschau statt direkt übernehmen
+  // ArbitrageOne: sellerboard-Export (ASIN | SKU | Cost) bzw. „Einkäufe“ → EK-Import mit Vorschau statt direkt
+  // übernehmen; „Lagerbestand“ → Stichtag-Bestand. AccountOne COG bleibt beim bisherigen Import (Tabelle).
   if ([".xls", ".xlsx", ".csv"].includes(endung(name))) {
     try {
-      const { parseArbitrageOne, readSheet } = await import("@/lib/imports/arbitrageone");
-      if (parseArbitrageOne(readSheet(bytes)).source === "sellerboard") return "ek_liste";
+      const { readSheet } = await import("@/lib/imports/arbitrageone");
+      const { aoFormat } = await import("@/lib/arbitrageone/logic");
+      const t = readSheet(bytes);
+      const f = t.length ? aoFormat(t[0]) : null;
+      if (f === "sellerboard" || f === "einkaeufe") return "ek_liste";
+      if (f === "lagerbestand") return "ao_lagerbestand";
     } catch {
       // kein ArbitrageOne-Format – weiter unten erkennen
     }
@@ -88,9 +93,30 @@ async function verarbeiten(session: Session, name: string, bytes: Uint8Array, ar
       return { ok: r.ok, text: r.message, hinweise: r.ok ? ["Soll-Regeln und Export unter Repricer → BQool-Dateien."] : [] };
     }
     case "ek_liste": {
-      const { ekImportVorschau } = await import("@/lib/ek-import/service");
-      const r = await ekImportVorschau(session.tenantId, session.userId, name, bytes);
-      return { ok: true, text: `Vorschau: ${r.zeilen} SKUs – ${r.anzahl.geaendert} geändert, ${r.anzahl.neu} neu, ${r.anzahl.gleich} unverändert, ${r.anzahl.unbekannt} unbekannt${r.anzahl.warnungen ? `, ${r.anzahl.warnungen} mit Warnung` : ""}. Noch nichts übernommen – bitte prüfen und übernehmen.`, hinweise: [], link: `/einkauf/ek-import?id=${r.id}`, details: { ek: { id: r.id, zeilen: r.zeilen, ...r.anzahl } } };
+      const { EkImportFehler, ekImportVorschau } = await import("@/lib/ek-import/service");
+      const { readSheet } = await import("@/lib/imports/arbitrageone");
+      const { einkaeufeAus } = await import("@/lib/arbitrageone/logic");
+      // Einkaufszeilen (Export „Einkäufe“ bzw. Vorlage mit Kaufdatum + Menge) zusätzlich je Zeile merken – für
+      // Lugru „gekauft“, Monatsrahmen und Wareneinkauf in der Liquidität. Dieselbe Zeile zweimal → übersprungen.
+      const kaeufe = einkaeufeAus(readSheet(bytes)).zeilen;
+      const { aoEinkaeufeSpeichern } = await import("@/lib/arbitrageone/service");
+      const ein = kaeufe.length ? await aoEinkaeufeSpeichern(session.tenantId, kaeufe, null) : null;
+      const einText = ein ? ` Einkäufe: ${ein.neu} neu, ${ein.bekannt} schon bekannt (${ein.zeitraum.von ?? "–"} bis ${ein.zeitraum.bis ?? "–"}).` : "";
+      let r: Awaited<ReturnType<typeof ekImportVorschau>>;
+      try {
+        r = await ekImportVorschau(session.tenantId, session.userId, name, bytes);
+      } catch (e) {
+        if (e instanceof EkImportFehler && ein) return { ok: true, text: `${kaeufe.length} Einkäufe gelesen – ohne SKU, daher kein EK je SKU.${einText}`, hinweise: [], details: { einkaeufe: ein } };
+        throw e;
+      }
+      return { ok: true, text: `Vorschau: ${r.zeilen} SKUs – ${r.anzahl.geaendert} geändert, ${r.anzahl.neu} neu, ${r.anzahl.gleich} unverändert, ${r.anzahl.unbekannt} unbekannt${r.anzahl.warnungen ? `, ${r.anzahl.warnungen} mit Warnung` : ""}. Noch nichts übernommen – bitte prüfen und übernehmen.${einText}`, hinweise: [], link: `/einkauf/ek-import?id=${r.id}`, details: { ek: { id: r.id, zeilen: r.zeilen, ...r.anzahl }, ...(ein ? { einkaeufe: ein } : {}) } };
+    }
+    case "ao_lagerbestand": {
+      const { readSheet } = await import("@/lib/imports/arbitrageone");
+      const { aoLagerbestandSpeichern } = await import("@/lib/arbitrageone/service");
+      const l = await aoLagerbestandSpeichern(session.tenantId, name, readSheet(bytes), todayIso(), null);
+      if (!l) return { ok: false, text: "Lagerbestand erkannt, aber keine Zeilen mit SKU/ASIN und Menge.", hinweise: [] };
+      return { ok: true, text: `Lagerbestand ${l.stichtag}: ${l.zeilen} Artikel, ${l.stueck.toLocaleString("de-DE")} Stück, Lagerwert ${l.lagerwert.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €${l.abgleich?.abweichend ? ` · ${l.abgleich.abweichend} SKUs weichen vom eigenen Lager ab` : ""}.`, hinweise: l.ohneWert ? [`${l.ohneWert} Zeilen ohne Wert/EK – Lagerwert unvollständig.`] : [], details: { lagerbestand: l } };
     }
     case "amazon_business":
       return { ok: false, text: "Amazon-Business-Bericht erkannt – der Bericht enthält keinen Zeitraum. Bitte unter Amazon Business mit Land und Zeitraum hochladen.", hinweise: [] };

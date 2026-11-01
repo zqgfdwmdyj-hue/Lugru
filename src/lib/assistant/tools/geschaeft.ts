@@ -361,6 +361,15 @@ export const anbindungenStatus = defineTool({
             return { ausloeser: l.aktiv ? "live (Discord)" : "Zeitplan (Live-Verbindung aus)", verbindung: l.zustand, verbunden_seit: berlinDateTime(l.seit) ?? undefined, zuletzt_empfangen: berlinDateTime(l.zuletztEmpfangen) ?? "noch nichts", fehler: l.fehler ?? undefined, sicherheitsnetz: "täglich 06:00 (letzte 7 Tage)" };
           })()
         : undefined,
+      arbitrageone: st.get("arbitrageone_web")
+        ? await (async () => {
+            const { aoLaeufe } = await import("@/lib/arbitrageone/abruf");
+            const [l] = await aoLaeufe(t, 1);
+            const plan = ABRUF_PLAN["ArbitrageOne: Exporte abholen"];
+            const letzterPlan = (await aoLaeufe(t, 10)).find((x) => x.ausloeser === "zeitplan")?.createdAt ?? null;
+            return { ausloeser: plan.text, naechster_lauf: naechsterText(plan, letzterPlan), letzter_lauf: l ? { am: berlinDateTime(l.createdAt), status: l.status, ergebnis: l.fehler ?? (l.ergebnis.map((x) => `${x.titel}: ${x.ok ? x.text : `Fehler – ${x.text}`}`).join(" · ") || "Nichts fällig") } : "noch keiner", details: "importe" };
+          })()
+        : undefined,
       postfaecher_uebersicht: postfachUebersicht(pf.postfaecher, now),
       postfaecher_hinweis: i.nur_probleme && pf.postfaecher.length && !pf.postfaecher.some((b) => b.fehler || !b.aktiv || postfachVeraltet(b, now)) ? `${pf.postfaecher.length} Postfach/Postfächer rufen ohne Fehler ab – mit „nur_probleme“ ausgeblendet.` : !pf.postfaecher.length ? "Kein Postfach mit Abruf hinterlegt (Posteingang → Postfächer)." : undefined,
       postfaecher: pf.postfaecher

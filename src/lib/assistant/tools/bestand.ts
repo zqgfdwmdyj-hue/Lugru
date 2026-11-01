@@ -13,7 +13,7 @@ export const bestandsabweichungen = defineTool({
   name: "bestandsabweichungen",
   title: "Bestandsabweichungen",
   description:
-    "Wo Soll und Ist beim Bestand nicht zusammenpassen: FBA-Sendungen mit Fehlmenge (verschickt > empfangen), offene Inventuren mit Differenz, negativer Bestand im eigenen Lager, Ware, die Amazon gerade sucht oder die unverkäuflich ist, und Bestand, der sich mangels Zuordnung nicht abgleichen lässt. Größte Differenz zuerst. Nur lesen – korrigiert wird nichts. Für „Wo stimmt der Bestand nicht?“.",
+    "Wo Soll und Ist beim Bestand nicht zusammenpassen: FBA-Sendungen mit Fehlmenge (verschickt > empfangen), offene Inventuren mit Differenz, negativer Bestand im eigenen Lager, Ware, die Amazon gerade sucht oder die unverkäuflich ist, Bestand, der sich mangels Zuordnung nicht abgleichen lässt, und (falls vorhanden) der ArbitrageOne-Lagerbestand gegen das eigene Lager. Größte Differenz zuerst. Nur lesen – korrigiert wird nichts. Für „Wo stimmt der Bestand nicht?“.",
   area: "wawi",
   write: false,
   quelle: { text: "FBA-Sendungen, Inventuren, eigenes Lager, Amazon-Bestandsberichte", jobs: ["Amazon-Reports abholen", "Bestandsabgleich Kanäle"], importe: true },
@@ -48,6 +48,12 @@ export const bestandsabweichungen = defineTool({
       je_art: perKind,
       abweichungen: all.slice(0, i.limit).map((d) => ({ art: DISCREPANCY_LABEL[d.kind], sku: d.sku, titel: d.title ?? undefined, soll: d.expected ?? undefined, ist: d.actual ?? undefined, differenz: d.diff || undefined, hinweis: d.detail, seit: d.since ?? undefined, link: abs(ctx, d.href) })),
       hinweis: all.length > i.limit ? `Nur die ersten ${i.limit} – mit „art“ eingrenzen.` : undefined,
+      arbitrageone_lager: await (async () => {
+        if (i.art !== "alle") return undefined;
+        const { aoLagerAbgleich } = await import("@/lib/arbitrageone/service");
+        const a = await aoLagerAbgleich(t);
+        return a ? { stichtag: a.stichtag, artikel_geprueft: a.geprueft, abweichend: a.abweichend, ohne_sku: a.ohneSku || undefined, beispiele: a.beispiele.slice(0, 10).map((x) => ({ sku: x.sku, titel: x.titel ?? undefined, arbitrageone: x.arbitrageone, eigenes_lager: x.eigenesLager, differenz: x.differenz })), hinweis: "ArbitrageOne-Lagerbestand (Stichtag) gegen das eigene Lager im Seller-System – nur Anzeige, korrigiert wird nichts." } : undefined;
+      })(),
       link: abs(ctx, "/produkte?ansicht=zuordnung"),
     });
   },

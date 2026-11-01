@@ -100,3 +100,12 @@ export async function sellerboardDisconnectAction() {
   await deleteConn(session.tenantId);
   revalidatePath("/anbindungen");
 }
+
+/** ArbitrageOne: alle Exporte jetzt abholen (gleicher Ablauf wie der Nachtlauf, aber ohne Fälligkeit). */
+export async function aoJetztAbholenAction(): Promise<void> {
+  const session = await requireOwner();
+  const { aoAbholen } = await import("@/lib/arbitrageone/abruf");
+  const r = await aoAbholen(session.tenantId, { ausloeser: "knopf" });
+  revalidatePath("/anbindungen");
+  redirect(`/anbindungen?ao=${r.status}#importe-arbitrageone`);
+}

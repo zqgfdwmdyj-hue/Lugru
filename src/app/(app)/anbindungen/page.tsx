@@ -6,7 +6,9 @@ import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { MARKT_BERICHTE, berichtVonTyp } from "@/lib/amazon-markt/store";
 import { landVonId } from "@/lib/amazon-markt/logic";
-import { deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
+import { aoJetztAbholenAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
+import { aoImporte, aoLaeufe } from "@/lib/arbitrageone/abruf";
+import { AO_EXPORTE } from "@/lib/arbitrageone/logic";
 import { TestButton } from "./test-button";
 import { SellerboardCard } from "./sellerboard-card";
 import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
@@ -32,17 +34,25 @@ function berichtName(t: string) {
   return b ? `${MARKT_NAME[b]} ${landVonId(mp) ?? mp}` : t;
 }
 
-export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string; amz?: string; n?: string }> }) {
+const AO_MSG: Record<string, string> = { ok: "ArbitrageOne: alle Exporte abgeholt und verarbeitet.", teilweise: "ArbitrageOne: nicht alle Exporte geklappt – siehe Liste und Aufgabe.", fehler: "ArbitrageOne-Abruf fehlgeschlagen – siehe Liste und Aufgabe." };
+const AO_STATUS: Record<string, string> = { laeuft: "läuft", ok: "ok", teilweise: "teilweise", fehler: "Fehler" };
+
+export default async function AnbindungenPage({ searchParams }: { searchParams: Promise<{ p?: string; sellerboard?: string; amz?: string; n?: string; ao?: string }> }) {
   const session = await requireOwner();
-  const { p, sellerboard, amz, n } = await searchParams;
+  const { p, sellerboard, amz, n, ao } = await searchParams;
   const status = await integrationStatus(session.tenantId);
-  const [reports, postfach, jobs, live, bqExporte] = await Promise.all([
+  const [reports, postfach, jobs, live, bqExporte, aoL, aoI] = await Promise.all([
     db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12),
     postfachStand(session.tenantId),
     db.select().from(schema.jobRuns).where(eq(schema.jobRuns.tenantId, session.tenantId)),
     discordLiveStatus(session.tenantId),
     db.select({ id: schema.bqoolExporte.id, protokoll: schema.bqoolExporte.protokoll }).from(schema.bqoolExporte).where(eq(schema.bqoolExporte.tenantId, session.tenantId)).orderBy(desc(schema.bqoolExporte.createdAt)).limit(10),
+    aoLaeufe(session.tenantId, 8),
+    aoImporte(session.tenantId, 20),
   ]);
+  const aoEingerichtet = status.has("arbitrageone_web");
+  const aoPlan = ABRUF_PLAN["ArbitrageOne: Exporte abholen"];
+  const aoLetzterPlan = aoL.find((l) => l.ausloeser === "zeitplan")?.createdAt ?? null;
   // B23: Protokoll je Upload (Land, Datei, Zeilen, Zeitpunkt, Ergebnis) aus den letzten BQool-Exporten
   const bqUploads = bqExporte
     .flatMap((e) => e.protokoll.filter((p) => p.land).map((p) => ({ ...p, exportId: e.id })))
@@ -138,6 +148,56 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           </table>
         )}
       </section>
+      {(aoEingerichtet || aoI.length > 0) && (
+        <section className="card card-pad stack" id="importe-arbitrageone" data-testid="importe-arbitrageone">
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h2>Importe – ArbitrageOne</h2>
+            {aoEingerichtet && (
+              <form action={aoJetztAbholenAction}>
+                <button className="btn btn-small" type="submit" data-testid="ao-jetzt">Jetzt abholen</button>
+              </form>
+            )}
+          </div>
+          <div className="small" data-testid="ao-plan">
+            {aoPlan.text} · letzter Nachtlauf: {zeit(aoLetzterPlan) ?? "noch keiner"} · nächster: {naechsterText(aoPlan, aoLetzterPlan, jetzt)}
+          </div>
+          <div className="small muted">{AO_EXPORTE.map((e) => `${e.titel}: ${e.taktText}`).join(" · ")}. Gleiche Datei zweimal wird übersprungen.</div>
+          {ao && AO_MSG[ao] && <div className={`notice ${ao === "ok" ? "notice-ok" : "notice-warn"}`} role="status" data-testid="ao-meldung">{AO_MSG[ao]}</div>}
+          {aoL.length > 0 && (
+            <table className="table small" data-testid="ao-laeufe">
+              <thead><tr><th>Zeitpunkt</th><th>Auslöser</th><th>Status</th><th>Ergebnis</th></tr></thead>
+              <tbody>
+                {aoL.map((l) => (
+                  <tr key={l.id} data-testid="ao-lauf">
+                    <td className="num">{zeit(l.createdAt)}</td>
+                    <td>{l.ausloeser === "zeitplan" ? "täglich 05:30" : "Jetzt abholen"}</td>
+                    <td>{l.status === "ok" ? <span className="tag tag-ok">ok</span> : <span style={{ color: l.status === "laeuft" ? undefined : "var(--danger)" }}>{AO_STATUS[l.status]}</span>}</td>
+                    <td>{l.fehler ? <span style={{ color: "var(--danger)" }}>{l.fehler}</span> : l.ergebnis.length ? l.ergebnis.map((x) => `${x.titel}: ${x.ok ? x.text : `Fehler – ${x.text}`}`).join(" · ") : "Nichts fällig"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {aoI.length > 0 && (
+            <table className="table small" data-testid="ao-importe">
+              <thead><tr><th>Zeitpunkt</th><th>Export</th><th>Datei</th><th>Ergebnis</th></tr></thead>
+              <tbody>
+                {aoI.map((x) => {
+                  const e = (x.ergebnis ?? {}) as { text?: string; link?: string };
+                  return (
+                    <tr key={x.id} data-testid="ao-import" data-export={x.quelle ?? ""}>
+                      <td className="num">{zeit(x.am)}</td>
+                      <td>{AO_EXPORTE.find((a) => a.key === x.quelle)?.titel ?? x.quelle}</td>
+                      <td style={{ overflowWrap: "anywhere" }}>{x.dateiname}</td>
+                      <td>{x.status === "fehler" ? <span style={{ color: "var(--danger)" }}>{x.fehler}</span> : x.bereits ? "bereits importiert – nichts doppelt" : <>{e.text ?? "verarbeitet"}{e.link && <> · <a href={e.link}>ansehen</a></>}</>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
+      )}
       {bqUploads.length > 0 && (
         <section className="card card-pad stack" id="importe-exporte" data-testid="importe-exporte">
           <h2>Importe/Exporte – BQool-Uploads</h2>

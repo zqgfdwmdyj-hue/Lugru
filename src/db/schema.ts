@@ -43,3 +43,4 @@ export * from "./tables/push";
 export * from "./tables/mobil";
 export * from "./tables/recht";
 export * from "./tables/datei-import";
+export * from "./tables/arbitrageone";

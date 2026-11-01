@@ -109,7 +109,11 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
         {monat && (
           <div className={monat.rahmen > 0 && monat.summe > monat.rahmen ? "notice notice-warn" : "small"} data-testid="de-monatsrahmen">
             <strong>{monat.text.replace(/^d/, "D")}</strong>
+            {monat.quelle === "arbitrageone" ? (
+              <span className="muted"> · aus {monat.aoZeilen} ArbitrageOne-Einkäufen (EK × Menge, Kaufdatum im Monat). Nur Orientierung – nichts wird gesperrt. <Link href="/cashflow">Liquidität →</Link></span>
+            ) : (
             <span className="muted"> · aus {monat.skus} neuen sellerboard-SKUs ({monat.skuSumme.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}, EK × Menge{monat.skusOhneMenge ? `; ${monat.skusOhneMenge} ohne Menge noch nicht gezählt` : ""}) + {monat.rechnungenAnzahl} Wareneinkaufs-Rechnungen ohne Charge ({monat.rechnungen.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}). Nur Orientierung – nichts wird gesperrt. <Link href="/cashflow">Liquidität →</Link></span>
+            )}
           </div>
         )}
         <div className="small muted">

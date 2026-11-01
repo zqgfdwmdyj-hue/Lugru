@@ -49,7 +49,7 @@ export async function budgetEinstellung(tenantId: string): Promise<Budget> {
   return { jeDeal: d.budgetJeDeal ?? 0, jeTag: d.budgetJeTag ?? 0, jeWoche: d.budgetJeWoche ?? 0 };
 }
 
-export type Monatseinkauf = { monat: string; summe: number; skuSumme: number; skus: number; skusOhneMenge: number; rechnungen: number; rechnungenAnzahl: number; rahmen: number; text: string };
+export type Monatseinkauf = { monat: string; summe: number; skuSumme: number; skus: number; skusOhneMenge: number; rechnungen: number; rechnungenAnzahl: number; rahmen: number; text: string; /** Quelle der Summe: ArbitrageOne-Einkäufe oder sellerboard-SKUs + offene Warenrechnungen. */ quelle: "arbitrageone" | "sku_rechnungen"; aoZeilen?: number };
 
 /**
  * Einkaufssumme dieses Monats als Orientierung (keine Sperre): neue sellerboard-SKUs (EK netto × Menge, Kaufdatum
@@ -78,8 +78,13 @@ export async function monatEingekauft(tenantId: string, jetzt = new Date()): Pro
     .where(and(eq(I.tenantId, tenantId), eq(I.kind, "goods"), eq(I.docType, "rechnung"), notInArray(I.status, ["matched", "ignored"]), gte(I.invoiceDate, ab), sql`${I.invoiceDate} < ${bis}`));
   const rechnungen = r2(Number(re?.summe ?? 0));
   const rahmen = (await getSettings(tenantId)).dealEingang.monatsrahmen ?? 150_000;
+  // ArbitrageOne-Einkäufe (jede Einkaufszeile mit EK × Menge) sind die vollständigste Quelle – wenn es sie für den
+  // Monat gibt, zählen nur sie (sellerboard-SKUs und Rechnungen beschreiben dieselben Käufe, sonst doppelt).
+  const { aoMonatseinkauf } = await import("@/lib/arbitrageone/service");
+  const ao = await aoMonatseinkauf(tenantId, monat);
+  if (ao) return { monat, summe: ao.summe, skuSumme: r2(skuSumme), skus, skusOhneMenge, rechnungen, rechnungenAnzahl: re?.anzahl ?? 0, rahmen, quelle: "arbitrageone" as const, aoZeilen: ao.zeilen, text: monatsrahmenText(ao.summe, rahmen) };
   const summe = r2(skuSumme + rechnungen);
-  return { monat, summe, skuSumme: r2(skuSumme), skus, skusOhneMenge, rechnungen, rechnungenAnzahl: re?.anzahl ?? 0, rahmen, text: monatsrahmenText(summe, rahmen) };
+  return { monat, summe, skuSumme: r2(skuSumme), skus, skusOhneMenge, rechnungen, rechnungenAnzahl: re?.anzahl ?? 0, rahmen, quelle: "sku_rechnungen" as const, text: monatsrahmenText(summe, rahmen) };
 }
 
 /** Shop-Profile: gespeicherte (Einstellungen) überschreiben die Start-Profile. */

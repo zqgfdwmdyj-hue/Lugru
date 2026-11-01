@@ -22,6 +22,7 @@ export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "Kauf vorbereitet: prüfen": { ausloeser: "zeitplan", text: "Zeitplan: stündlich (24 Std. nach dem Öffnen des Warenkorb-Links: sellerboard-SKU → gekauft, sonst Erinnerung)", minuten: 60 },
   "Lugru Deals: eigene Käufe": { ausloeser: "zeitplan", text: "Zeitplan: alle 6 Std. (sellerboard-SKUs, Chargen, Bestellungen)", minuten: 360 },
   "Amazon: Versandbestätigung": { ausloeser: "zeitplan", text: "Zeitplan: stündlich", minuten: 60 },
+  "ArbitrageOne: Exporte abholen": { ausloeser: "zeitplan", text: "Auslöser: täglich 05:30 (Einkäufe, Lagerbestand, sellerboard-COG, BQool-Vergleich; montags Reimbursement; am 1. AccountOne COG)", taeglichUm: "05:30" },
 };
 
 const BERLIN = "Europe/Berlin";

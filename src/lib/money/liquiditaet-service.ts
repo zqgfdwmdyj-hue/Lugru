@@ -241,6 +241,13 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
       .where(and(eq(I.tenantId, t), eq(I.kind, "goods"), ne(I.status, "ignored"), gte(I.invoiceDate, addDaysIso(heute, -56)), lte(I.invoiceDate, heute)));
     let proWoche = w.n >= 2 ? w.summe / 8 : 0;
     let woher = `${w.n} Warenrechnungen`;
+    // ArbitrageOne-Einkäufe (jede Einkaufszeile, auch per Karte bezahlt) sind vollständiger als die Rechnungen.
+    const { aoWareneinkaufJeWoche } = await import("@/lib/arbitrageone/service");
+    const ao = await aoWareneinkaufJeWoche(t, heute);
+    if (ao) {
+      proWoche = ao.proWoche;
+      woher = `${ao.zeilen} ArbitrageOne-Einkäufen (EK netto + 19 % USt)`;
+    }
     // Zu wenige Rechnungen: Ø aus Chargen (Kaufdatum, EK netto + 19 %), sonst aus eigenen Bestellungen – damit die
     // Prognose den laufenden Einkauf nicht ganz weglässt (Umsetzungsstand 31.10.: „Prognose zu optimistisch“).
     if (!proWoche) {
@@ -269,6 +276,15 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
     }
     posten.push(...wareneinkaufPlan({ proWoche, heute, wochen, konkret: posten }));
     quellen.push({ name: "Wareneinkauf (Ø Rechnungen)", status: proWoche > 0 ? "ok" : "keine_daten", hinweis: proWoche > 0 ? `Ø ${Math.round(proWoche).toLocaleString("de-DE")} € je Woche aus ${woher} (8 Wochen) – abzüglich konkret angelegter Einkäufe` : "keine Warenrechnungen, Chargen oder Bestellungen der letzten 8 Wochen – Einkauf fehlt in der Prognose (zu optimistisch)" });
+  }
+  // ArbitrageOne: Wareneinkauf des laufenden Monats und Lagerwert (Stichtag) – nur Anzeige, keine zusätzlichen Posten.
+  {
+    const { aoLagerwert, aoMonatseinkauf } = await import("@/lib/arbitrageone/service");
+    const monat = heute.slice(0, 7);
+    const [m, lw] = await Promise.all([aoMonatseinkauf(t, monat), aoLagerwert(t)]);
+    const eur = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (m) quellen.push({ name: "Wareneinkauf im Monat (ArbitrageOne)", status: "ok", hinweis: `${monat}: ${eur(m.summe)} € netto (EK × Menge) aus ${m.zeilen} Einkäufen, ${m.stueck.toLocaleString("de-DE")} Stück${m.ohneEk ? ` – ${m.ohneEk} ohne EK nicht gezählt` : ""}` });
+    if (lw) quellen.push({ name: "Lagerwert (ArbitrageOne)", status: "ok", hinweis: `Stichtag ${lw.stichtag}: ${eur(lw.wert)} € für ${lw.stueck.toLocaleString("de-DE")} Stück (${lw.skus} Artikel) – gebundenes Kapital, kein Zahlungsposten` });
   }
 
   // Steuertermine (Schätzung aus den Einstellungen)

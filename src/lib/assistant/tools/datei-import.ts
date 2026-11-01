@@ -51,7 +51,7 @@ const importStatusTool = defineTool({
 const importe = defineTool({
   name: "importe",
   title: "Datei-Importe (letzte)",
-  description: "Letzte Datei-Importe über den Konnektor mit Status, Art, Datei, Datum und Kurzfassung des Ergebnisses. Filter: art.",
+  description: "Letzte Datei-Importe mit Herkunft (Claude über import_link oder nächtlicher ArbitrageOne-Abruf), Status, Art, Datei, Datum und Kurzfassung des Ergebnisses. Filter: art.",
   area: null,
   ownerOnly: true,
   write: false,

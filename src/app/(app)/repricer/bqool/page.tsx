@@ -6,6 +6,7 @@ import { formatDate, formatEuro } from "@/lib/numbers";
 import { getSettings } from "@/lib/settings";
 import { getIntegration } from "@/lib/integrations/store";
 import { bqoolUploadAdressen } from "@/lib/automatik/bqool-logic";
+import { letzterBqoolVergleich } from "@/lib/arbitrageone/service";
 import { anBqoolAction, exportErzeugenAction, istUebernehmenAction, katalogAction, vorschlagFreigebenAction, zuweisungAction, zuweisungLoeschenAction } from "./actions";
 
 // BQool-Dateien direkt aus dem System: Ist (BQool) → Soll (Regeln hier), Freigabe vor jedem Export, Download je Land/ZIP.
@@ -16,7 +17,7 @@ const ART_TEXT = { neu: "neu", geaendert: "geändert", gleich: "gleich" } as con
 export default async function BqoolDateienPage({ searchParams }: { searchParams: Promise<{ meldung?: string; export?: string; land?: string }> }) {
   const session = await requireArea("buchhaltung");
   const sp = await searchParams;
-  const [v, s, zuw, exporte, bqWeb] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web")]);
+  const [v, s, zuw, exporte, bqWeb, aoVergleich] = await Promise.all([bqoolVorschau(session.tenantId), getSettings(session.tenantId), zuweisungen(session.tenantId), bqoolExporte(session.tenantId, 5), getIntegration(session.tenantId, "bqool_web"), letzterBqoolVergleich(session.tenantId)]);
   // B23: Upload-Seite je Land (eigene Adresse bzw. aus DE abgeleitet)
   const adressen = bqWeb?.uploadUrl ? bqoolUploadAdressen(bqWeb).filter((a) => (EXPORT_LAENDER as readonly string[]).includes(a.land)) : [];
   const b = s.bqool;
@@ -122,6 +123,24 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
         )}
         <div className="small muted">Regeln in BQool selbst anpassen – das System ändert keine BQool-Regeln.</div>
       </section>
+
+      {aoVergleich && (
+        <section className="card card-pad stack" style={{ marginTop: 12 }} id="ao-vergleich" data-testid="ao-bqool-vergleich">
+          <h2 style={{ margin: 0 }}>Vergleich ArbitrageOne ↔ Seller-System</h2>
+          <div className="small"><strong>{aoVergleich.text}</strong> <span className="muted">(BQool-Export aus ArbitrageOne vom {aoVergleich.am ? formatDate(aoVergleich.am.toISOString().slice(0, 10)) : "–"})</span></div>
+          {(aoVergleich.laender ?? []).some((l) => l.beispiele.length) && (
+            <table className="table small">
+              <thead><tr><th>Land</th><th>SKU</th><th>Abweichung</th><th>ArbitrageOne</th><th>Seller-System</th></tr></thead>
+              <tbody>
+                {(aoVergleich.laender ?? []).flatMap((l) => l.beispiele.slice(0, 15).map((b) => (
+                  <tr key={`${l.land}${b.sku}${b.art}`}><td>{l.land}</td><td>{b.sku}</td><td>{{ nur_arbitrageone: "nur in ArbitrageOne", nur_system: "nur im Seller-System", regel: "andere Regel", min: "anderer Min-Preis", max: "anderer Max-Preis" }[b.art] ?? b.art}</td><td>{b.arbitrageone}</td><td>{b.system}</td></tr>
+                )))}
+              </tbody>
+            </table>
+          )}
+          <div className="small muted">Nur zum Vergleich: Die BQool-Datei aus ArbitrageOne wird nie übernommen oder hochgeladen – maßgeblich sind die Soll-Regeln hier (zwei Quellen würden sich widersprechen).</div>
+        </section>
+      )}
 
       <section className="card card-pad stack" style={{ marginTop: 12 }} data-testid="bq-vorschlaege">
         <h2 style={{ margin: 0 }}>Vorschläge der Kapital-Ampel → „Abverkauf“ ({v.vorschlaege.length})</h2>

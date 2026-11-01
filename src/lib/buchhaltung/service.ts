@@ -391,9 +391,12 @@ export async function belegeZip(wer: Wer, firma: string | null, monat: string): 
   const csv = ["Datum;Betrag;S/H;Konto;Gegenkonto;BU;Belegnummer;Buchungstext;Status", ...rows.map((r) => [r.datum, r.betrag.toFixed(2).replace(".", ","), r.sollHaben, r.konto, r.gegenkonto, r.buSchluessel ?? "", r.belegfeld1, `"${r.buchungstext.replace(/"/g, '""')}"`, r.status].join(";"))].join("\r\n");
   const genutzt = new Set<string>();
   const ust = await ustMonatsdatei(wer.tenantId, f.firma, monat);
+  const { accountoneMonatsdatei } = await import("@/lib/arbitrageone/service");
+  const cog = await accountoneMonatsdatei(wer.tenantId, monat);
   const files = [
     { name: `Buchungen_${f.firma}_${monat}.csv`, data: `﻿${csv}\r\n` },
     ...(ust ? [{ name: `Amazon-Umsatzsteuer_${monat}.csv`, data: ust }] : []),
+    ...(cog ? [{ name: `AccountOne-COG_${monat}.csv`, data: cog }] : []),
     ...dateien.map((d) => {
       const ext = (/\.[a-z0-9]{2,5}$/i.exec(d.name)?.[0] ?? ".pdf").toLowerCase();
       let n = `Belege/${(d.nummer || d.id).replace(/[^A-Za-z0-9._-]+/g, "_")}${ext}`;
@@ -456,6 +459,8 @@ export async function buchhaltungStatus(tenantId: string, monat: string, firma?:
     ust: ustP
       ? { vorhanden: true, stand: ustP.stand, dateien: ustP.dateien, brutto: r2(ustLaender.reduce((n, l) => n + l.brutto, 0)), steuerlaender: ustLaender.length, verbringungen: ustP.daten.transfers.length, ohneSteuerland: (ustP.daten.ohneSteuerland ?? []).length, hinweise: ustP.daten.hinweise.length, imExport: true }
       : { vorhanden: false },
+    // ArbitrageOne: AccountOne COG des Monats (Nachtlauf am 1.) – liegt der Monatsdatei bei.
+    accountoneCog: await (await import("@/lib/arbitrageone/service")).accountoneStand(tenantId, monat).then((c) => (c ? { vorhanden: true, skus: c.zeilen, stand: c.aktualisiertAm, imExport: true } : { vorhanden: false })),
   };
 }
 

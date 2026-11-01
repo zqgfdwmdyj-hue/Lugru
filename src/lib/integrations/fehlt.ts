@@ -10,6 +10,7 @@ export const FEHLT_OHNE: Record<string, string> = {
   discord_va: "Aufgaben an die VA als Discord-Thread, Rückfragen und automatische Antworten auf Datenfragen der VA",
   sellerboard_web: "EK automatisch zu sellerboard übertragen (sonst Importdatei herunterladen)",
   bqool_web: "BQool-Dateien automatisch hochladen (sonst ZIP herunterladen)",
+  arbitrageone_web: "Einkäufe, Lagerbestand, EK und AccountOne COG jede Nacht aus ArbitrageOne (sonst die Exporte selbst hochladen bzw. import_link)",
   discord_b2b: "Meldung neuer Deals im B2B-Kanal",
   google_drive: "Rechnungen aus Google Drive, private Google Docs der Calls",
 };
