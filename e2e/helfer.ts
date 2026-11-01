@@ -57,7 +57,7 @@ export const testdienste = {
   /** Letzte KI-Anfrage, deren Frage `marker` enthält. */
   kiZu: async (marker: string) => (await testdienste.ki()).filter((k) => k.text.includes(marker)).at(-1),
   /** Uploads auf den Web-Nachbau (Browser-Automatik sellerboard/BQool). */
-  web: async (): Promise<{ dienst: string; name: string; groesse: number }[]> => (await fetch(`${TD}/__web`)).json(),
+  web: async (): Promise<{ dienst: string; name: string; groesse: number; land?: string | null }[]> => (await fetch(`${TD}/__web`)).json(),
 };
 
 export const marke = () => Date.now().toString(36).slice(-5).toUpperCase();

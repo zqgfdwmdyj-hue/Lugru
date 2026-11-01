@@ -9,6 +9,8 @@ export type IntegrationField = {
   multiline?: boolean;
   /** Auswahlliste statt Freitext; erster Eintrag = Vorgabe. */
   options?: { value: string; label: string }[];
+  /** Leeres Feld mit einem aus einem anderen Feld abgeleiteten Wert vorbelegen (z. B. BQool amazonde → amazonfr). */
+  vorbelegen?: { aus: string; von: string; nach: string };
 };
 
 export type IntegrationDef = {
@@ -299,9 +301,19 @@ export const INTEGRATIONS: IntegrationDef[] = [
       { key: "email", label: "Anmelde-E-Mail" },
       { key: "password", label: "Passwort", secret: true },
       { key: "loginUrl", label: "Anmeldeseite", placeholder: "https://www.bqool.com/login" },
-      { key: "uploadUrl", label: "Seite „Repricing-Datei hochladen“", help: "In BQool die Upload-Seite öffnen und die Adresse aus der Adresszeile hier einfügen." },
+      { key: "uploadUrl", label: "Upload-Seite DE („Repricing-Datei hochladen“)", help: "In BQool die Upload-Seite für Amazon DE öffnen und die Adresse aus der Adresszeile hier einfügen, z. B. …/repricing/amazonde/upload." },
+      { key: "uploadUrlFR", label: "Upload-Seite FR", help: "Aus der DE-Adresse vorbelegt (amazonde → amazonfr) – nur bei Abweichung ändern.", vorbelegen: { aus: "uploadUrl", von: "amazonde", nach: "amazonfr" } },
+      { key: "uploadUrlIT", label: "Upload-Seite IT", help: "Aus der DE-Adresse vorbelegt (amazonde → amazonit) – nur bei Abweichung ändern.", vorbelegen: { aus: "uploadUrl", von: "amazonde", nach: "amazonit" } },
+      { key: "uploadUrlES", label: "Upload-Seite ES", help: "Aus der DE-Adresse vorbelegt (amazonde → amazones) – nur bei Abweichung ändern.", vorbelegen: { aus: "uploadUrl", von: "amazonde", nach: "amazones" } },
+      { key: "uploadUrlNL", label: "Upload-Seite NL (optional)", help: "Leer = nicht hochladen." },
+      { key: "uploadUrlBE", label: "Upload-Seite BE (optional)", help: "Leer = nicht hochladen." },
+      { key: "uploadUrlPL", label: "Upload-Seite PL (optional)", help: "Leer = nicht hochladen." },
+      { key: "uploadUrlSE", label: "Upload-Seite SE (optional)", help: "Leer = nicht hochladen." },
+      { key: "uploadUrlUK", label: "Upload-Seite UK (optional)", help: "Leer = nicht hochladen." },
     ],
     setup: [
+      "Je Marktplatz hat BQool eine eigene Upload-Seite: DE eintragen, FR/IT/ES werden daraus vorbelegt. „An BQool übertragen“ lädt je Land die passende Datei auf die passende Seite – ein Fehler in einem Land stoppt die anderen nicht.",
+      "„Verbindung testen“ meldet sich an und ruft je Land die Upload-Seite auf (ohne etwas hochzuladen).",
       "Mit Zwei-Faktor-Anmeldung bricht die Automatik ab und legt eine Aufgabe an – dann die Dateien als ZIP herunterladen.",
       "Preise ändern sich erst nach Freigabe auf der Seite „BQool-Dateien“ und einem Klick auf „An BQool übertragen“.",
       "Auf dem Server muss der Browser installiert sein (Docker-Build mit MIT_BROWSER=1).",

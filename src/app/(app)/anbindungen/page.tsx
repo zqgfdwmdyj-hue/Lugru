@@ -36,12 +36,18 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
   const session = await requireOwner();
   const { p, sellerboard, amz, n } = await searchParams;
   const status = await integrationStatus(session.tenantId);
-  const [reports, postfach, jobs, live] = await Promise.all([
+  const [reports, postfach, jobs, live, bqExporte] = await Promise.all([
     db.select().from(schema.apiReportRequests).where(eq(schema.apiReportRequests.tenantId, session.tenantId)).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(12),
     postfachStand(session.tenantId),
     db.select().from(schema.jobRuns).where(eq(schema.jobRuns.tenantId, session.tenantId)),
     discordLiveStatus(session.tenantId),
+    db.select({ id: schema.bqoolExporte.id, protokoll: schema.bqoolExporte.protokoll }).from(schema.bqoolExporte).where(eq(schema.bqoolExporte.tenantId, session.tenantId)).orderBy(desc(schema.bqoolExporte.createdAt)).limit(10),
   ]);
+  // B23: Protokoll je Upload (Land, Datei, Zeilen, Zeitpunkt, Ergebnis) aus den letzten BQool-Exporten
+  const bqUploads = bqExporte
+    .flatMap((e) => e.protokoll.filter((p) => p.land).map((p) => ({ ...p, exportId: e.id })))
+    .sort((a, b) => b.zeit.localeCompare(a.zeit))
+    .slice(0, 20);
   const jetzt = new Date();
   const abrufe = jobs
     .map((j) => {
@@ -132,6 +138,25 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           </table>
         )}
       </section>
+      {bqUploads.length > 0 && (
+        <section className="card card-pad stack" id="importe-exporte" data-testid="importe-exporte">
+          <h2>Importe/Exporte – BQool-Uploads</h2>
+          <table className="table small" data-testid="bq-uploads">
+            <thead><tr><th>Zeitpunkt</th><th>Land</th><th>Datei</th><th className="right">Zeilen</th><th>Ergebnis</th></tr></thead>
+            <tbody>
+              {bqUploads.map((u, i) => (
+                <tr key={i} data-testid="bq-upload-zeile">
+                  <td className="num">{zeit(new Date(u.zeit))}</td>
+                  <td>{u.land}</td>
+                  <td><a href={`/repricer/bqool?export=${u.exportId}`}>{u.datei}</a></td>
+                  <td className="num right">{u.zeilen ?? "–"}</td>
+                  <td>{u.ok ? <span className="tag tag-ok">hochgeladen</span> : <span style={{ color: "var(--danger)" }}>{u.text.replace(/^[A-Z]{2}: [^–]+– /, "")}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
       <div className="stack" style={{ gap: 14 }}>
         <section className="card">
           <div className="card-head">
@@ -214,7 +239,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                           ) : f.multiline ? (
                             <textarea className="textarea" style={{ minHeight: 120, fontFamily: "var(--mono)", fontSize: 12 }} id={`${def.provider}-${f.key}`} name={f.key} placeholder={f.secret && has ? "•••••• (unverändert)" : f.placeholder} />
                           ) : (
-                            <input className="input" id={`${def.provider}-${f.key}`} name={f.key} type={f.secret ? "password" : "text"} autoComplete="off" defaultValue={f.secret ? "" : (st?.config[f.key] ?? "")} placeholder={f.secret && has ? "•••••• (unverändert)" : f.placeholder} />
+                            <input className="input" id={`${def.provider}-${f.key}`} name={f.key} type={f.secret ? "password" : "text"} autoComplete="off" defaultValue={f.secret ? "" : (st?.config[f.key] || (f.vorbelegen && st?.config[f.vorbelegen.aus]?.toLowerCase().includes(f.vorbelegen.von) ? st.config[f.vorbelegen.aus]!.replace(new RegExp(f.vorbelegen.von, "i"), f.vorbelegen.nach) : ""))} placeholder={f.secret && has ? "•••••• (unverändert)" : f.placeholder} />
                           )}
                           {f.help && <span className="small muted">{f.help}</span>}
                         </div>

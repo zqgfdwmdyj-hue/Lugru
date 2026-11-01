@@ -68,8 +68,8 @@ export const bqoolExporte = pgTable(
     zeilen: jsonb("zeilen").$type<BqoolExportZeile[]>().notNull(),
     anzahl: jsonb("anzahl").$type<Record<string, number>>().notNull().default({}),
     /** Übertragung zu BQool (Browser-Automatik) – null = nur Download. */
-    uebertragung: text("uebertragung", { enum: ["laeuft", "fertig", "fehler"] }),
-    protokoll: jsonb("protokoll").$type<{ zeit: string; text: string }[]>().notNull().default([]),
+    uebertragung: text("uebertragung", { enum: ["laeuft", "fertig", "teilweise", "fehler"] }),
+    protokoll: jsonb("protokoll").$type<{ zeit: string; text: string; land?: string; datei?: string; zeilen?: number; ok?: boolean }[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("bqool_exporte_tenant_idx").on(t.tenantId, t.createdAt)],

@@ -755,9 +755,12 @@ function webNachbau(req, res, url, body) {
     res.writeHead(302, { Location: `/web-${dienst}/login` });
     return res.end();
   }
+  // B23: Upload-Seite je Marktplatz (…/upload/amazonde, …/upload/amazonfr …); „kaputt“ = Upload wird abgelehnt.
+  const land = /\/upload\/([a-z]+)/.exec(url.pathname)?.[1] ?? null;
   if (seite === "upload" && req.method === "POST") {
     const name = /filename="([^"]+)"/.exec(body)?.[1] ?? "?";
-    webUploads.push({ dienst, name, groesse: body.length, at: new Date().toISOString() });
+    if (land === "kaputt") return html(200, `<p>Import fehlgeschlagen: ${name} ungültig</p>`);
+    webUploads.push({ dienst, name, land, groesse: body.length, at: new Date().toISOString() });
     return html(200, `<p>Import erfolgreich: ${name} übernommen</p>`);
   }
   return html(200, '<form method="post" enctype="multipart/form-data"><input type="file" name="datei"><button type="submit">Hochladen</button></form>');

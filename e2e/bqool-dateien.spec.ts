@@ -67,7 +67,42 @@ test.describe("BQool-Dateien", () => {
       await expect(page.getByRole("status")).toContainText("2 Dateien bei BQool hochgeladen", { timeout: 90_000 });
       const hoch = (await testdienste.web()).filter((w) => w.dienst === "bqool").slice(vorher);
       expect(hoch.map((w) => w.name.replace(/_\d{4}-\d{2}-\d{2}/, ""))).toEqual(["BQool_DE.txt", "BQool_FR.txt"]);
+      // B23: je Land die eigene Upload-Seite (FR aus der DE-Adresse abgeleitet: amazonde → amazonfr)
+      expect(hoch.map((w) => w.land)).toEqual(["amazonde", "amazonfr"]);
+      await expect(page.getByRole("status")).toContainText("DE: 1 Zeile hochgeladen · FR: 1 Zeile hochgeladen");
       await expect(page.getByTestId("bq-uebertragung")).toContainText("hochgeladen");
+      await expect(page.getByTestId("bq-adressen")).toContainText("FR ✓ (aus DE)");
+
+      // B23: ein Land schlägt fehl → die anderen laufen weiter, Ergebnis je Land, Aufgabe für das fehlende Land
+      await sql("update integrations set config = config || jsonb_build_object('uploadUrlFR', replace(config->>'uploadUrl', 'amazonde', 'kaputt')) where tenant_id = $1 and provider = 'bqool_web'", [T]);
+      try {
+        const vor2 = (await testdienste.web()).filter((w) => w.dienst === "bqool").length;
+        await page.getByTestId("bq-automatik").locator('input[name="bestaetigt"]').check();
+        await Promise.all([aktion(page), page.getByTestId("bq-automatik").getByRole("button").click()]);
+        await expect(page.getByRole("status")).toContainText("1 von 2 Ländern bei BQool hochgeladen", { timeout: 90_000 });
+        await expect(page.getByRole("status")).toContainText("FR: Fehler");
+        expect((await testdienste.web()).filter((w) => w.dienst === "bqool").slice(vor2).map((w) => w.land)).toEqual(["amazonde"]);
+        await expect(page.getByTestId("bq-uebertragung")).toContainText("teilweise");
+        const [aufgabe] = await sql<{ title: string }>("select title from tasks where tenant_id = $1 and system_key like 'automatik-bqool-%' and status = 'open' order by created_at desc limit 1", [T]);
+        expect(aufgabe.title).toContain("FR nicht hochgeladen");
+        // Protokoll je Upload unter Anbindungen → Importe/Exporte
+        await page.goto("/anbindungen");
+        const zeilen = page.getByTestId("bq-upload-zeile");
+        await expect(zeilen.filter({ hasText: "FR" }).first()).toContainText("fehlgeschlagen");
+        await expect(zeilen.filter({ hasText: "DE" }).first()).toContainText("hochgeladen");
+      } finally {
+        await sql("update integrations set config = config - 'uploadUrlFR' where tenant_id = $1 and provider = 'bqool_web'", [T]);
+      }
+      // Formular: FR/IT/ES aus der DE-Adresse vorbelegt; „Verbindung testen“ ruft je Land die Upload-Seite auf
+      await page.goto("/anbindungen?p=bqool_web#bqool_web");
+      await expect(page.locator("#bqool_web-uploadUrlFR")).toHaveValue(/\/upload\/amazonfr$/);
+      await expect(page.locator("#bqool_web-uploadUrlES")).toHaveValue(/\/upload\/amazones$/);
+      await page.locator("#bqool_web").getByRole("button", { name: "Verbindung testen" }).click();
+      const test = page.locator("#bqool_web .notice");
+      await expect(test).toContainText("Anmeldung ok", { timeout: 90_000 });
+      await expect(test).toContainText("DE: Upload-Seite erreichbar");
+      await expect(test).toContainText("FR: Upload-Seite erreichbar (aus DE abgeleitet)");
+      await page.goto("/repricer/bqool");
 
       // Claude: Vorschau lesen
       const c = await mcpVerbinden(browser, baseURL!, "inhaber");

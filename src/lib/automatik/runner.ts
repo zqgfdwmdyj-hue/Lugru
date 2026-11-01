@@ -74,7 +74,7 @@ export async function dateiHochladen(page: Page, o: { url: string; datei: { name
  * Lauf mit Browser: Sperre, Protokoll mit Bildschirmfotos (Tabelle files), Aufgabe bei Abbruch. Gibt das Protokoll
  * zurück; wirft nie – das Ergebnis sagt, ob es geklappt hat.
  */
-export async function mitBrowser(tenantId: string, o: { titel: string; aufgabeKey: string; link: string }, fn: (page: Page, log: (t: string) => Promise<void>) => Promise<void>): Promise<{ ok: boolean; protokoll: Schritt[]; fehler: string | null }> {
+export async function mitBrowser(tenantId: string, o: { titel: string; aufgabeKey: string; link: string; /** Verbindungstest: bei Abbruch keine Aufgabe anlegen. */ ohneAufgabe?: boolean }, fn: (page: Page, log: (t: string) => Promise<void>) => Promise<void>): Promise<{ ok: boolean; protokoll: Schritt[]; fehler: string | null }> {
   const protokoll: Schritt[] = [];
   const fehlt = await browserFehlt();
   if (fehlt) return { ok: false, protokoll: [{ zeit: new Date().toISOString(), text: fehlt }], fehler: fehlt };
@@ -98,7 +98,7 @@ export async function mitBrowser(tenantId: string, o: { titel: string; aufgabeKe
     } catch (e) {
       const grund = e instanceof Error ? e.message.slice(0, 300) : String(e);
       await log(`Abgebrochen: ${grund}`).catch(() => undefined);
-      await upsertSystemTask(db, tenantId, o.aufgabeKey, { title: `${o.titel}: abgebrochen`, notes: `${grund}\nNicht automatisch wiederholt – Datei bitte herunterladen und selbst hochladen oder Zugang prüfen.`, priority: "critical", category: "system", link: o.link });
+      if (!o.ohneAufgabe) await upsertSystemTask(db, tenantId, o.aufgabeKey, { title: `${o.titel}: abgebrochen`, notes: `${grund}\nNicht automatisch wiederholt – Datei bitte herunterladen und selbst hochladen oder Zugang prüfen.`, priority: "critical", category: "system", link: o.link });
       return { ok: false, protokoll, fehler: grund };
     }
   } finally {

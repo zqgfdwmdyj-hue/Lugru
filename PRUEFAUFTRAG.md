@@ -543,6 +543,19 @@ Person per Claude → Beobachtungen, Wochenrückblick mit Wochenwahl, Therapie-B
 Feierabend; Reflexion per Claude und Oberfläche; Sitzung aus dem Kalender) und `b22-lugru` (SKU im Fenster → gekauft mit
 Menge 4 und EK 120,00 netto, außerhalb nicht; Deal-Wert ≥ 60 mit „Vorwissen“; Liste/Monatsbericht zählen den Kauf).
 
+## B23 – BQool-Upload: eine Adresse je Land (01.11.)
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 23.1 | Felder je Land | ❌ (ein Feld, nur DE) | ✅ | Anbindungen → BQool: DE, FR, IT, ES (FR/IT/ES aus der DE-Adresse vorbelegt: amazonde → amazonfr …), NL/BE/PL/SE/UK optional (leer = nicht hochladen); `bqoolUploadAdressen` in `src/lib/automatik/bqool-logic.ts` |
+| 23.2 | Upload je Land mit Ergebnis | ❌ | ✅ | `anBqoolUebertragen`: je Land die passende Datei auf die passende Seite, nacheinander; „DE: 824 Zeilen hochgeladen · FR: Fehler – …“; ein Fehler stoppt die anderen nicht (Status „teilweise“, Aufgabe für die fehlenden Länder) |
+| 23.3 | Verbindung testen | ❌ („noch kein Test“) | ✅ | `bqoolVerbindungTesten` (registriert in `clients/bqool-web.ts`): Anmeldung, je Land Upload-Seite aufrufen (nichts hochladen), Zwei-Faktor klar gemeldet, keine Aufgabe beim Test |
+| 23.4 | Protokoll je Upload | 🟡 (nur am Export) | ✅ | Anbindungen → „Importe/Exporte – BQool-Uploads“: Zeitpunkt, Land, Datei, Zeilen, Ergebnis; BQool-Seite zeigt die Upload-Seite je Land |
+
+Abnahme: Unit `bqool-laender`; e2e `bqool-dateien` gegen den BQool-Nachbau: DE und FR je auf eigener Seite (amazonde/amazonfr),
+FR absichtlich kaputt → „1 von 2 Ländern hochgeladen“, DE trotzdem oben, Aufgabe „FR nicht hochgeladen“, Zeilen im
+Protokoll; Formular mit vorbelegten FR/ES-Adressen; „Verbindung testen“ meldet je Land „Upload-Seite erreichbar“.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -799,4 +812,6 @@ nie in Chats oder Mails.
 55. **Lugru-Lernen anstoßen**: nach dem Update einmal Lugru Deals → „Jetzt nachtragen“ drücken (Deal-Eingang, eigene Käufe,
     Deal-Wert in einem Schritt); danach läuft alles im Hintergrund. Voraussetzung: sellerboard-Abgleich aktiv (Produkte,
     Bestand, Sendungen).
+56. **BQool je Land**: Anbindungen → BQool → Bearbeiten: FR/IT/ES sind aus der DE-Adresse vorbelegt – einmal mit den echten
+    BQool-Upload-Seiten vergleichen, speichern, dann „Verbindung testen“ (meldet je Land „Upload-Seite erreichbar“).
 
