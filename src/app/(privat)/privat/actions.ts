@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
-import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, memberLabels, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type ObservationEntry, type PartnerKey, type Routine, type TaskEntry } from "@/lib/private/logic";
+import { CARE_SUGGESTIONS, SIDE_EFFECTS, changePlan, clip, isDay, memberLabels, intakesAt, isTime, medStock, nextCareDate, num, partnerHolders, parseTimes, planFor, rating, type CareOwner, type CareTask, type DateIdea, type DiaryEntry, type MoodEntry, type ObservationEntry, type PartnerKey, type ReflexionEntry, type Routine, type TaskEntry } from "@/lib/private/logic";
 import { deleteEntries, saveTimeEntry as saveTime, TIME_KINDS, type TimeKind } from "@/lib/private/save";
 import { exportTargetProblem } from "@/lib/private/export-sync";
 import { beobachtungText } from "@/lib/private/rueckblick-logic";
@@ -329,9 +329,34 @@ export async function updateObservationAction(_prev: FormState, fd: FormData): P
   return done("Beobachtung geändert.");
 }
 
+// ---- Reflexion (B22.1): Zettel für die nächste Paar-Sitzung, nur für den Verfasser ------------------------
+
+export async function addReflexionAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate({ full: true });
+  const text = clip(fd.get("text"), 2000);
+  if (!text) return fail("Bitte den Zettel aufschreiben.");
+  const day = isDay(fd.get("day")) && String(fd.get("day")) <= todayIso() ? String(fd.get("day")) : todayIso();
+  const sitzung = isDay(fd.get("sitzung")) ? String(fd.get("sitzung")) : undefined;
+  await addEntry(session, "reflexion", compact({ day, text, sitzung } satisfies ReflexionEntry));
+  return done("Zettel für die Sitzung gespeichert.");
+}
+
+export async function updateReflexionAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const session = await requirePrivate({ full: true });
+  const id = uuid.safeParse(fd.get("id"));
+  const text = clip(fd.get("text"), 2000);
+  if (!id.success || !text) return fail("Bitte den Zettel aufschreiben.");
+  const alt = (await loadEntries<ReflexionEntry>(session, ["reflexion"])).find((e) => e.id === id.data && e.userId === session.userId);
+  if (!alt) return fail("Diesen Zettel gibt es nicht (mehr) oder er ist nicht von dir.");
+  const day = isDay(fd.get("day")) && String(fd.get("day")) <= todayIso() ? String(fd.get("day")) : alt.data.day;
+  const sitzung = isDay(fd.get("sitzung")) ? String(fd.get("sitzung")) : undefined;
+  if (!(await updateEntry(session, id.data, "reflexion", compact({ day, text, sitzung } satisfies ReflexionEntry), true))) return fail("Diesen Zettel kann nur sein Verfasser ändern.");
+  return done("Zettel geändert.");
+}
+
 // ---- Löschen (alle Arten) ----------------------------------------------------------------------------
 
-const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "auszeit", "routine", "danke", "stimmung", "zustaendig", "dateidee", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech", "periode", "zuwendung", "ritual"];
+const KINDS: PrivateKind[] = ["intim", "paarzeit", "kinder", "ausschlafen", "auszeit", "routine", "danke", "stimmung", "zustaendig", "dateidee", "aufgabe", "termin", "tagebuch", "beobachtung", "gespraech", "periode", "zuwendung", "ritual", "reflexion"];
 
 export async function deleteEntryAction(fd: FormData) {
   const session = await requirePrivate();

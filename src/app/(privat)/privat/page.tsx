@@ -2,7 +2,7 @@ import { fristenLaden } from "@/lib/private/fristen-service";
 import { haushaltshilfeKurz } from "@/lib/private/haushaltshilfe-service";
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIssues, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
+import { careOverview, dateReminder, dateStats, intimStats, kidsOverview, linkIssues, nextSleeper, routineState, taskState, weekStart, addDays, type CareTask, type DateEntry, type DiaryEntry, type IntimEntry, type KidsEntry, type MoodEntry, type ObservationEntry, type ReflexionEntry, type Routine, type SleepEntry, type TaskEntry } from "@/lib/private/logic";
 import { INTIMATE_KINDS, itemsByDay } from "@/lib/private/kalender";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { demnaechst, type Jahrestag } from "@/lib/private/familie-termine";
@@ -56,6 +56,21 @@ async function HaushaltshilfeVormonat({ session, today }: { session: Awaited<Ret
     <div className="notice notice-info small" data-testid="start-haushaltshilfe">
       🧹 {monthLabel(vormonat)}: {k.jeHilfe.map((h) => `${h.name} ${h.anzahl}×`).join(" · ")} – zusammen {k.kosten.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}
       {k.offen > 0 ? ` (noch offen ${k.offen.toLocaleString("de-DE", { style: "currency", currency: "EUR" })})` : ""} <Link href={`/privat/haushaltshilfe?monat=${vormonat}`}>Prüfen und exportieren →</Link>
+    </div>
+  );
+}
+
+/** B22.1: Beobachtungen & Reflexion der letzten 7 Tage (nur eigene, nur voller Umfang) – mit Links. */
+async function ReflexionKurz({ session, today }: { session: Awaited<ReturnType<typeof requirePrivate>>; today: string }) {
+  if (session.privateScope === "familie") return null;
+  const von = addDays(today, -6);
+  const [beob, zettel] = await Promise.all([loadEntries<ObservationEntry>(session, ["beobachtung"]), loadEntries<ReflexionEntry>(session, ["reflexion"])]);
+  const b = beob.filter((e) => e.userId === session.userId && e.data.day >= von && e.data.day <= today).length;
+  const z = zettel.filter((e) => e.userId === session.userId && e.data.day >= von && e.data.day <= today).length;
+  if (!b && !z) return null;
+  return (
+    <div className="notice notice-info small" data-testid="start-reflexion">
+      📝 Letzte 7 Tage: {b} {b === 1 ? "Beobachtung" : "Beobachtungen"}{z ? ` · ${z} ${z === 1 ? "Zettel" : "Zettel"} für die Sitzung` : ""} – <Link href="/privat/beobachtungen">Beobachtungen</Link> · <Link href="/privat/rueckblick/woche">Wochenrückblick</Link> · <Link href="/privat/therapie-bogen">Therapie-Bogen</Link>
     </div>
   );
 }
@@ -139,6 +154,7 @@ export default async function PrivatStartPage({ searchParams }: { searchParams: 
       <FamilienAufgabenHeute session={session} today={today} />
       <FristenJetzt session={session} today={today} />
       <HaushaltshilfeVormonat session={session} today={today} />
+      <ReflexionKurz session={session} today={today} />
 
       {linkProblems.length > 0 && (
         <div className="notice notice-warn small" data-testid="link-warning">

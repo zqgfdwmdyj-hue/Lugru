@@ -1,29 +1,33 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
-import { addDays, isDay, type AppointmentEntry, type ObservationEntry } from "@/lib/private/logic";
-import { letzteSitzung, therapieBogen } from "@/lib/private/rueckblick-logic";
+import { addDays, isDay, type ObservationEntry, type ReflexionEntry } from "@/lib/private/logic";
+import { fuerNaechsteSitzung, therapieBogen } from "@/lib/private/rueckblick-logic";
 import { loadEntries, requirePrivate } from "@/lib/private/service";
+import { paarSitzungen } from "@/lib/private/sitzungen";
 import { PrintButton } from "@/components/print-button";
 import { PrivatHead, dm, dmy } from "../ui";
 
 /**
  * Therapie-Bogen: eigene Beobachtungen als Tabelle wie der Papierbogen (Datum | Situation | Problematik |
- * gewünschte Veränderung) – ab der letzten Paartherapie-Sitzung aus dem Privatkalender oder frei gewählt.
- * Nur eigene Einträge, nur mit vollem Privat-Umfang; zum Drucken bzw. als PDF.
+ * gewünschte Veränderung) – ab der letzten Paartherapie-Sitzung (Privatkalender oder abgeglichener Kalender, B22.1)
+ * oder frei gewählt; darunter die Zettel „Für die nächste Sitzung“. Nur eigene Einträge (Verfasser = ich, egal über
+ * wen), nur mit vollem Privat-Umfang; zum Drucken bzw. als PDF.
  */
 export default async function TherapieBogenPage({ searchParams }: { searchParams: Promise<{ ab?: string; bis?: string }> }) {
   const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const heute = todayIso();
-  const [termine, beob] = await Promise.all([
-    loadEntries<AppointmentEntry>(session, ["termin"]),
+  const [sitzungen, beob, zettel] = await Promise.all([
+    paarSitzungen(session, heute),
     loadEntries<ObservationEntry>(session, ["beobachtung"]),
+    loadEntries<ReflexionEntry>(session, ["reflexion"]),
   ]);
-  const sitzung = letzteSitzung(termine.map((t) => t.data), heute);
+  const sitzung = sitzungen.letzte;
   const bis = isDay(sp.bis) && sp.bis! <= heute ? sp.bis! : heute;
   const ab = isDay(sp.ab) && sp.ab! <= bis ? sp.ab! : sitzung && sitzung <= bis ? sitzung : addDays(bis, -29);
   const zeilen = therapieBogen(beob.filter((e) => e.userId === session.userId).map((e) => e.data), ab, bis);
   const offen = zeilen.filter((z) => z.unvollstaendig).length;
+  const naechste = fuerNaechsteSitzung(zettel.filter((z) => z.userId === session.userId), { bis, letzte: sitzung && sitzung <= bis ? sitzung : null });
   const vorschlaege = [
     ...(sitzung ? [{ label: `seit letzter Sitzung (${dm(sitzung)})`, ab: sitzung, bis: heute }] : []),
     { label: "letzte 2 Wochen", ab: addDays(heute, -13), bis: heute },
@@ -44,8 +48,9 @@ export default async function TherapieBogenPage({ searchParams }: { searchParams
             {vorschlaege.map((v) => <Link key={v.label} href={`/privat/therapie-bogen?ab=${v.ab}&bis=${v.bis}`}>{v.label}</Link>)}
           </div>
           <div className="small muted">
-            {sitzung ? <>Letzte Paartherapie-Sitzung laut Privatkalender: {dmy(sitzung)}.</> : <>Kein vergangener Paartherapie-Termin im Privatkalender – Standard sind die letzten 30 Tage.</>}{" "}
-            Beobachtungen ergänzen oder korrigieren: <Link href="/privat/tagebuch#beobachtungen">ADHS-Tagebuch › Beobachtungen</Link>.
+            {sitzung ? <>Zeitraum ab der letzten Paartherapie-Sitzung laut Kalender: {dmy(sitzung)}.</> : <>Kein vergangener Paartherapie-Termin im Kalender gefunden (Privatkalender: Art „Paartherapie“, sonst Titel mit „Paartherapie“/„Paarberatung“) – bis dahin die letzten 30 Tage.</>}
+            {sitzungen.naechste ? <> Nächste Sitzung: {dmy(sitzungen.naechste)}.</> : null}{" "}
+            Beobachtungen ergänzen oder korrigieren: <Link href="/privat/beobachtungen">Partnerschaft › Beobachtungen</Link>.
           </div>
         </form>
         <div className="small muted" style={{ margin: "4px 0" }}>Vorschau – gedruckt wird genau das:</div>
@@ -72,6 +77,12 @@ export default async function TherapieBogenPage({ searchParams }: { searchParams
             ))}
           </tbody>
         </table>
+        <h3 style={{ margin: "8px 0 0", fontSize: 15 }}>Für die nächste Sitzung</h3>
+        {naechste.length === 0 ? <div className="small muted">Keine Zettel. <Link className="no-print" href="/privat/beobachtungen#reflexion">Reflexion notieren</Link></div> : (
+          <ul className="small" style={{ margin: 0, paddingLeft: 18 }} data-testid="tb-reflexion">
+            {naechste.map((r, i) => <li key={r.id ?? i} style={{ whiteSpace: "pre-wrap" }}><strong>{dmy(r.tag)}</strong>: {r.text}</li>)}
+          </ul>
+        )}
       </section>
     </>
   );

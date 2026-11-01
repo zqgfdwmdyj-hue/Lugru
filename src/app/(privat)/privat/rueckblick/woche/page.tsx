@@ -2,34 +2,50 @@ import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { wochenrueckblick } from "@/lib/feierabend/service";
 import { requirePrivate } from "@/lib/private/service";
-import { VERGLEICH_TEXT } from "@/lib/private/rueckblick-logic";
+import { VERGLEICH_TEXT, wochenAuswahl } from "@/lib/private/rueckblick-logic";
 import { PrintButton } from "@/components/print-button";
 import { PrivatHead, dmy } from "../../ui";
 
-// B19.7/B16: Wochenrückblick privat (7 Tage bis zum gewählten Tag) – Familienzeit, Paarzeit, eigene Beobachtungen,
-// Zuwendung, Gespräche, Danke, eigene Stimmung, Dateideen, private Aufgaben und Vergleich zur Vorwoche.
+// B19.7/B16/B22.1: Wochenrückblick privat – jeden Tag abrufbar: die letzten 7 Tage oder eine gewählte Kalenderwoche.
+// Familienzeit, Paarzeit, eigene Beobachtungen (Verfasser = ich, egal über wen), „Für die nächste Sitzung“
+// (Reflexion), Zuwendung, Gespräche, Danke, eigene Stimmung, Dateideen, private Aufgaben, Vergleich zur Vorwoche.
 // Nur mit vollem Privat-Zugang und nur für die eigene Person.
 
 const plus = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
-export default async function WochenRueckblickPage({ searchParams }: { searchParams: Promise<{ bis?: string }> }) {
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+export default async function WochenRueckblickPage({ searchParams }: { searchParams: Promise<{ bis?: string; woche?: string }> }) {
   const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const heute = todayIso();
-  const bis = sp.bis && /^\d{4}-\d{2}-\d{2}$/.test(sp.bis) && sp.bis <= heute ? sp.bis : heute;
-  const { privat: p } = await wochenrueckblick(session, bis, true);
-  const von = plus(bis, -6);
+  // Gewählte Kalenderwoche (Montag) – sonst 7 Tage bis zum gewählten Tag bzw. bis heute.
+  const wahl = sp.woche && ISO.test(sp.woche) && sp.woche <= heute ? sp.woche : null;
+  const bis = wahl ? (plus(wahl, 6) > heute ? heute : plus(wahl, 6)) : sp.bis && ISO.test(sp.bis) && sp.bis <= heute ? sp.bis : heute;
+  const { privat: p } = await wochenrueckblick(session, bis, true, wahl ?? undefined);
+  const von = wahl ?? plus(bis, -6);
+  const wochen = wochenAuswahl(heute, 12);
   return (
     <>
       <div className="no-print">
         <PrivatHead active="wochenrueckblick" title="Wochenrückblick" pin={session.privatePin} sub={
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Link className="btn" href={`/privat/rueckblick/woche?bis=${plus(bis, -7)}`} data-testid="woche-zurueck">‹ Vorwoche</Link>
-            {bis < heute && <Link className="btn" href={`/privat/rueckblick/woche?bis=${plus(bis, 7) > heute ? heute : plus(bis, 7)}`}>Nächste Woche ›</Link>}
+            <Link className="btn" href={wahl ? `/privat/rueckblick/woche?woche=${plus(wahl, -7)}` : `/privat/rueckblick/woche?bis=${plus(bis, -7)}`} data-testid="woche-zurueck">‹ Vorwoche</Link>
+            {bis < heute && <Link className="btn" href={wahl ? `/privat/rueckblick/woche?woche=${plus(wahl, 7)}` : `/privat/rueckblick/woche?bis=${plus(bis, 7) > heute ? heute : plus(bis, 7)}`}>Nächste Woche ›</Link>}
             <Link className="btn" href="/privat/rueckblick">Monatsrückblick</Link>
             <PrintButton label="Drucken / PDF" />
           </div>
         } />
+        <form method="get" className="card card-pad" style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }} data-testid="woche-wahl">
+          <div className="field">
+            <label className="label" htmlFor="woche">Woche wählen</label>
+            <select className="select" id="woche" name="woche" defaultValue={wahl ?? ""}>
+              <option value="">letzte 7 Tage (bis heute)</option>
+              {wochen.map((w) => <option key={w.von} value={w.von}>{w.label}</option>)}
+            </select>
+          </div>
+          <button className="btn" type="submit">Anzeigen</button>
+        </form>
       </div>
       {!p ? (
         <div className="card card-pad small muted">Der Wochenrückblick braucht vollen Privat-Zugang.</div>
@@ -58,8 +74,19 @@ export default async function WochenRueckblickPage({ searchParams }: { searchPar
           {p.beobachtungen.length === 0 ? <div className="small muted">keine in dieser Woche – <Link href="/privat/beobachtungen">Beobachtung eintragen</Link></div> : (
             <table className="table small" data-testid="woche-beobachtungen">
               <thead><tr><th>Datum</th><th>Situation</th><th>Problematik</th><th>Gewünschte Veränderung</th></tr></thead>
-              <tbody>{p.beobachtungen.map((b, i) => <tr key={i}><td>{dmy(b.tag)}</td><td>{b.situation}{b.unvollstaendig ? " [?]" : ""}</td><td>{b.problematik ?? "–"}</td><td>{b.veraenderung ?? "–"}</td></tr>)}</tbody>
+              <tbody>{p.beobachtungen.map((b, i) => <tr key={i} data-testid="woche-beobachtung"><td style={{ whiteSpace: "nowrap" }}>{dmy(b.tag)}</td><td>{b.situation}{b.unvollstaendig && <> <span className="tag tag-warn">[?] unvollständig</span></>}</td><td>{b.problematik ?? "–"}</td><td>{b.veraenderung ?? "–"}</td></tr>)}</tbody>
             </table>
+          )}
+
+          <h3 style={{ margin: "6px 0 0", fontSize: 15 }}>Für die nächste Sitzung ({p.fuerNaechsteSitzung.length})</h3>
+          <div className="small muted">
+            {p.naechsteSitzung ? <>Nächste Paartherapie-Sitzung: {dmy(p.naechsteSitzung)}</> : <>Keine kommende Paartherapie-Sitzung im Kalender</>}
+            {p.letzteSitzung ? <> · letzte: {dmy(p.letzteSitzung)}</> : null}
+          </div>
+          {p.fuerNaechsteSitzung.length === 0 ? <div className="small muted">noch kein Zettel – <Link href="/privat/beobachtungen#reflexion">Reflexion notieren</Link></div> : (
+            <ul className="small" style={{ margin: 0, paddingLeft: 18 }} data-testid="woche-reflexion">
+              {p.fuerNaechsteSitzung.map((r, i) => <li key={r.id ?? i} style={{ whiteSpace: "pre-wrap" }}><strong>{dmy(r.tag)}</strong>{r.sitzung ? <span className="muted"> (für {dmy(r.sitzung)})</span> : null}: {r.text}</li>)}
+            </ul>
           )}
 
           {p.gespraeche.length > 0 && <><h3 style={{ margin: "6px 0 0", fontSize: 15 }}>Paar-Gespräche</h3><ul className="small" style={{ margin: 0, paddingLeft: 18 }}>{p.gespraeche.map((g, i) => <li key={i}>{dmy(g.tag)}: {g.thema ?? "–"}{g.vereinbart ? ` – vereinbart: ${g.vereinbart}` : ""}</li>)}</ul></>}

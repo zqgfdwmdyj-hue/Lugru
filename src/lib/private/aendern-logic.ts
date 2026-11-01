@@ -4,7 +4,7 @@
 import { beobachtungTeile, beobachtungText } from "./rueckblick-logic";
 import { isDay, rating } from "./logic";
 
-export const AENDERBARE_ARTEN = ["intim", "zuwendung", "tagebuch", "beobachtung", "gespraech", "danke", "stimmung", "dateidee", "aufgabe"] as const;
+export const AENDERBARE_ARTEN = ["intim", "zuwendung", "tagebuch", "beobachtung", "reflexion", "gespraech", "danke", "stimmung", "dateidee", "aufgabe"] as const;
 export type AenderbareArt = (typeof AENDERBARE_ARTEN)[number];
 
 export type Aenderung = {
@@ -16,11 +16,13 @@ export type Aenderung = {
   vereinbart?: string;
   wert?: number;
   erledigt?: boolean;
+  /** Nur Reflexion: Datum der Sitzung (leer = entfernen). */
+  sitzung?: string;
 };
 
 /** Wohin „text“ je Art geht. */
-const TEXT_FELD: Record<AenderbareArt, string> = { intim: "note", zuwendung: "note", tagebuch: "note", beobachtung: "text", gespraech: "topic", danke: "text", stimmung: "note", dateidee: "text", aufgabe: "title" };
-const TEXT_MAX: Record<AenderbareArt, number> = { intim: 500, zuwendung: 300, tagebuch: 2000, beobachtung: 2000, gespraech: 500, danke: 300, stimmung: 300, dateidee: 300, aufgabe: 300 };
+const TEXT_FELD: Record<AenderbareArt, string> = { intim: "note", zuwendung: "note", tagebuch: "note", beobachtung: "text", reflexion: "text", gespraech: "topic", danke: "text", stimmung: "note", dateidee: "text", aufgabe: "title" };
+const TEXT_MAX: Record<AenderbareArt, number> = { intim: 500, zuwendung: 300, tagebuch: 2000, beobachtung: 2000, reflexion: 2000, gespraech: 500, danke: 300, stimmung: 300, dateidee: 300, aufgabe: 300 };
 /** Wohin „wert“ je Art geht (1–5 bzw. Minuten). */
 const WERT_FELD: Partial<Record<AenderbareArt, { feld: string; art: "bewertung" | "minuten" }>> = {
   intim: { feld: "closeness", art: "bewertung" },
@@ -46,7 +48,7 @@ export function eintragPatch(art: AenderbareArt, alt: Record<string, unknown>, a
   if (a.tag !== undefined) {
     if (!isDay(a.tag)) return { ok: false, meldung: "tag als JJJJ-MM-TT angeben." };
     if (art === "dateidee") return { ok: false, meldung: "Date-Ideen haben keinen Tag." };
-    if ((art === "tagebuch" || art === "beobachtung" || art === "stimmung") && a.tag > heute) return { ok: false, meldung: "Bitte kein Datum in der Zukunft." };
+    if ((art === "tagebuch" || art === "beobachtung" || art === "stimmung" || art === "reflexion") && a.tag > heute) return { ok: false, meldung: "Bitte kein Datum in der Zukunft." };
     setze(art === "aufgabe" ? "due" : "day", a.tag);
     felder.push("tag");
   }
@@ -68,12 +70,19 @@ export function eintragPatch(art: AenderbareArt, alt: Record<string, unknown>, a
     if (a.text !== undefined) return { ok: false, meldung: "Entweder text oder die drei Felder angeben, nicht beides." };
   } else if (a.text !== undefined) {
     const t = a.text.trim().slice(0, TEXT_MAX[art]);
-    const pflicht = art === "beobachtung" || art === "danke" || art === "dateidee" || art === "aufgabe";
+    const pflicht = art === "beobachtung" || art === "reflexion" || art === "danke" || art === "dateidee" || art === "aufgabe";
     if (pflicht && !t) return { ok: false, meldung: "Der Text darf hier nicht leer sein – zum Entfernen privat_eintrag_loeschen." };
     setze(TEXT_FELD[art], t);
     // Neuer Freitext ersetzt bei Beobachtungen auch die drei Felder (sonst widersprächen sie dem Text).
     if (art === "beobachtung") for (const k of ["situation", "problematik", "veraenderung"]) delete d[k];
     felder.push("text");
+  }
+
+  if (a.sitzung !== undefined) {
+    if (art !== "reflexion") return { ok: false, meldung: "sitzung gibt es nur bei Reflexion." };
+    if (a.sitzung !== "" && !isDay(a.sitzung)) return { ok: false, meldung: "sitzung als JJJJ-MM-TT angeben." };
+    setze("sitzung", a.sitzung);
+    felder.push("sitzung");
   }
 
   if (a.vereinbart !== undefined) {

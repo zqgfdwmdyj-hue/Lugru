@@ -1,17 +1,17 @@
 import "server-only";
 import { todayIso } from "@/lib/dates";
 import type { Session } from "@/lib/auth/session";
-import { clip, isDay, isTime, rating, type DateIdea, type DiaryEntry, type MoodEntry, type ObservationEntry, type PartnerKey, type TalkEntry, type TaskEntry, type ThanksEntry } from "./logic";
+import { clip, isDay, isTime, rating, type DateIdea, type DiaryEntry, type MoodEntry, type ObservationEntry, type PartnerKey, type ReflexionEntry, type TalkEntry, type TaskEntry, type ThanksEntry } from "./logic";
 import { compact, saveNaehe, saveTouches, type SaveResult } from "./save";
 import { addEntry, kindAllowed, loadEntries, myPartner, privateMembers, privateSettings, updateEntry, type PrivateKind } from "./service";
 
 // Privat-Einträge der übrigen Arten anlegen (für Claude: privat_eintrag_anlegen). Gleiche Regeln wie im
 // Privatbereich: nur mit Privat-Zugang, Umfang „nur Familie“ darf diese Arten nicht, Tagebuch/Stimmung je Tag einmal.
 
-export const ANLEGBARE_ARTEN = ["intim", "zuwendung", "tagebuch", "beobachtung", "gespraech", "danke", "stimmung", "dateidee", "aufgabe"] as const;
+export const ANLEGBARE_ARTEN = ["intim", "zuwendung", "tagebuch", "beobachtung", "reflexion", "gespraech", "danke", "stimmung", "dateidee", "aufgabe"] as const;
 export type AnlegbareArt = (typeof ANLEGBARE_ARTEN)[number];
 
-export type EintragEingabe = { art: AnlegbareArt; tag?: string; uhrzeit?: string; person?: PartnerKey | "beide"; anPerson?: PartnerKey; text?: string; wert?: number; variante?: "streicheln" | "massage" };
+export type EintragEingabe = { art: AnlegbareArt; tag?: string; uhrzeit?: string; person?: PartnerKey | "beide"; anPerson?: PartnerKey; text?: string; wert?: number; variante?: "streicheln" | "massage"; /** Nur Reflexion: Datum der Sitzung (sonst die nächste laut Kalender). */ sitzung?: string };
 
 const dmy = (d: string) => d.split("-").reverse().join(".");
 const fail = (message: string): SaveResult => ({ ok: false, message });
@@ -66,6 +66,14 @@ export async function privatEintragAnlegen(session: Session, e: EintragEingabe):
       if (!userId || !(await privateMembers(session.tenantId)).some((m) => m.userId === userId)) return fail("Über wen? (an_person: Name, „a“ oder „b“ mit Privat-Zugang)");
       const id = await addEntry(session, "beobachtung", { day: tag, aboutUserId: userId, text } satisfies ObservationEntry);
       return { ok: true, message: "Beobachtung gespeichert.", id, day: tag };
+    }
+    case "reflexion": {
+      // B22.1: Zettel für die nächste Paar-Sitzung (nur für den Verfasser sichtbar).
+      if (!text) return fail("Bitte den Zettel als Text angeben.");
+      if (session.privateScope !== "voll") return fail("Dafür braucht es den vollen Privat-Zugang.");
+      const sitzung = e.sitzung && isDay(e.sitzung) ? e.sitzung : ((await (await import("./sitzungen")).paarSitzungen(session, tag)).naechste ?? undefined);
+      const id = await addEntry(session, "reflexion", compact({ day: tag > heute ? heute : tag, text, sitzung } satisfies ReflexionEntry));
+      return { ok: true, message: sitzung ? `Zettel für die Sitzung am ${dmy(sitzung)} gespeichert.` : "Zettel für die nächste Sitzung gespeichert (keine Sitzung im Kalender gefunden).", id, day: tag };
     }
     case "gespraech": {
       const id = await addEntry(session, "gespraech", compact({ day: tag, topic: text?.slice(0, 500) } satisfies TalkEntry));

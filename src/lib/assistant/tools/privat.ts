@@ -27,7 +27,7 @@ async function personKey(ctx: ToolCtx, v: string | undefined): Promise<string | 
   return undefined;
 }
 
-const KINDS = ["termin", "kinder", "auszeit", "ausschlafen", "paarzeit", "intim", "zuwendung", "periode", "aufgabe", "tagebuch", "beobachtung", "gespraech", "danke", "stimmung", "dateidee", "zustaendig", "routine", "medplan"] as const;
+const KINDS = ["termin", "kinder", "auszeit", "ausschlafen", "paarzeit", "intim", "zuwendung", "periode", "aufgabe", "tagebuch", "beobachtung", "reflexion", "gespraech", "danke", "stimmung", "dateidee", "zustaendig", "routine", "medplan"] as const;
 
 export const privatKalender = defineTool({
   name: "privat_kalender",
@@ -156,7 +156,7 @@ export const privatEintragAnlegen = defineTool({
   name: "privat_eintrag_anlegen",
   title: "Privat-Eintrag anlegen (übrige Arten)",
   description:
-    "Legt einen Privat-Eintrag der übrigen Arten an: intim (Nähe; person = Initiative a/b/beide, wert = Nähe 1–5), zuwendung (Streicheln/Massage; variante, person = wer gibt, wert = Minuten), tagebuch (eigener Eintrag je Tag; text = Notiz, wert = Stimmung 1–5), beobachtung (an_person = über wen, text), gespraech (Paar-Gespräch; text = Thema), danke (text; person = von wem), stimmung (wert 1–5, text), dateidee (text), aufgabe (text = Aufgabe; person = für wen, tag = fällig). Termine und Kinderzeit/Auszeit/Paarzeit über privat_termin bzw. privat_zeit. Vertraulich wie der Privatbereich: nur mit Privat-Freigabe, nie für VA oder Konten „nur Familie“. Nur auf ausdrücklichen Wunsch.",
+    "Legt einen Privat-Eintrag der übrigen Arten an: intim (Nähe; person = Initiative a/b/beide, wert = Nähe 1–5), zuwendung (Streicheln/Massage; variante, person = wer gibt, wert = Minuten), tagebuch (eigener Eintrag je Tag; text = Notiz, wert = Stimmung 1–5), beobachtung (an_person = über wen, text; erscheint unter Privat › Partnerschaft › Beobachtungen, im Wochenrückblick und im Therapie-Bogen), reflexion (freier Zettel für die nächste Paar-Sitzung, text, sitzung = Datum der Sitzung – sonst die nächste laut Kalender; nur für den Verfasser sichtbar, im Wochenrückblick unter „Für die nächste Sitzung“), gespraech (Paar-Gespräch; text = Thema), danke (text; person = von wem), stimmung (wert 1–5, text), dateidee (text), aufgabe (text = Aufgabe; person = für wen, tag = fällig). Termine und Kinderzeit/Auszeit/Paarzeit über privat_termin bzw. privat_zeit. Vertraulich wie der Privatbereich: nur mit Privat-Freigabe, nie für VA oder Konten „nur Familie“. Nur auf ausdrücklichen Wunsch.",
   area: "privat",
   privat: true,
   write: true,
@@ -169,13 +169,16 @@ export const privatEintragAnlegen = defineTool({
     text: z.string().trim().max(2000).optional(),
     wert: z.number().min(0).max(600).optional(),
     variante: z.enum(["streicheln", "massage"]).optional().describe("Nur zuwendung"),
+    sitzung: isoDate.optional().describe("Nur reflexion: Datum der Paar-Sitzung (Standard: nächste laut Kalender)"),
   }),
   summary: (i) => `Privat: ${i.art}`,
   run: async (ctx, i) => {
     const p = await personKey(ctx, i.person);
     const an = await personKey(ctx, i.an_person);
-    const r = await eintragAnlegen(ctx.session, { art: i.art, tag: i.tag, uhrzeit: i.uhrzeit, person: p === "a" || p === "b" || p === "beide" ? p : undefined, anPerson: an === "a" || an === "b" ? an : undefined, text: i.text, wert: i.wert, variante: i.variante });
-    return r.ok ? json({ ok: true, meldung: r.message, id: r.id, link: r.id ? abs(ctx, `/privat/eintrag/${r.id}`) : abs(ctx, "/privat") }) : { text: r.message, isError: true };
+    const r = await eintragAnlegen(ctx.session, { art: i.art, tag: i.tag, uhrzeit: i.uhrzeit, person: p === "a" || p === "b" || p === "beide" ? p : undefined, anPerson: an === "a" || an === "b" ? an : undefined, text: i.text, wert: i.wert, variante: i.variante, sitzung: i.sitzung });
+    // B22.1: sagen, wo der Eintrag zu finden ist und in welchem Konto er steht (Beobachtungen/Zettel sieht nur der Verfasser).
+    const wo = i.art === "beobachtung" ? "/privat/beobachtungen" : i.art === "reflexion" ? "/privat/beobachtungen#reflexion" : r.id ? `/privat/eintrag/${r.id}` : "/privat";
+    return r.ok ? json({ ok: true, meldung: r.message, id: r.id, konto: ctx.session.name || ctx.session.email, link: abs(ctx, wo) }) : { text: r.message, isError: true };
   },
 });
 
@@ -183,7 +186,7 @@ export const privatEintragAendern = defineTool({
   name: "privat_eintrag_aendern",
   title: "Privat-Eintrag ändern",
   description:
-    "Ändert einen bestehenden Privat-Eintrag (id aus privat_eintraege) – z. B. eine ersetzte oder veraltete Beobachtung. Arten: beobachtung (situation, problematik, veraenderung – leer = Feld entfernen – oder text; tag), tagebuch (text = Notiz, wert = Stimmung 1–5), stimmung (wert 1–5, text), intim (wert = Nähe 1–5, text), zuwendung (wert = Minuten, text, tag), gespraech (text = Thema, vereinbart), danke (text), dateidee (text, erledigt), aufgabe (text = Titel, tag = fällig, erledigt). Tagebuch, Beobachtung und Stimmung nur die eigenen. Termine/Zeiten über privat_termin bzw. privat_zeit. Nur auf ausdrücklichen Wunsch und mit genau den genannten Angaben; 7 Tage rückgängig machbar.",
+    "Ändert einen bestehenden Privat-Eintrag (id aus privat_eintraege) – z. B. eine ersetzte oder veraltete Beobachtung. Arten: beobachtung (situation, problematik, veraenderung – leer = Feld entfernen – oder text; tag), reflexion (text, tag, sitzung), tagebuch (text = Notiz, wert = Stimmung 1–5), stimmung (wert 1–5, text), intim (wert = Nähe 1–5, text), zuwendung (wert = Minuten, text, tag), gespraech (text = Thema, vereinbart), danke (text), dateidee (text, erledigt), aufgabe (text = Titel, tag = fällig, erledigt). Tagebuch, Beobachtung, Reflexion und Stimmung nur die eigenen. Termine/Zeiten über privat_termin bzw. privat_zeit. Nur auf ausdrücklichen Wunsch und mit genau den genannten Angaben; 7 Tage rückgängig machbar.",
   area: "privat",
   privat: true,
   write: true,
@@ -197,9 +200,10 @@ export const privatEintragAendern = defineTool({
     vereinbart: z.string().max(500).optional().describe("Nur Paar-Gespräch"),
     wert: z.number().min(0).max(600).optional(),
     erledigt: z.boolean().optional().describe("Nur Aufgabe (einmalig) und Date-Idee"),
+    sitzung: z.string().max(10).optional().describe("Nur Reflexion: Datum der Sitzung (JJJJ-MM-TT), leer = entfernen"),
   }),
   // Protokoll: nur dass geändert wurde und welche Angaben – nie Inhalte.
-  summary: (i) => `Privat-Eintrag geändert (${["tag", "text", "situation", "problematik", "veraenderung", "vereinbart", "wert", "erledigt"].filter((k) => (i as Record<string, unknown>)[k] !== undefined).join(", ") || "–"})`,
+  summary: (i) => `Privat-Eintrag geändert (${["tag", "text", "situation", "problematik", "veraenderung", "vereinbart", "wert", "erledigt", "sitzung"].filter((k) => (i as Record<string, unknown>)[k] !== undefined).join(", ") || "–"})`,
   run: async (ctx, i) => {
     const { id, ...a } = i;
     const r = await aendern(ctx.session, id, a);
@@ -212,7 +216,7 @@ export const privatEintragLoeschen = defineTool({
   name: "privat_eintrag_loeschen",
   title: "Privat-Eintrag löschen",
   description:
-    "Löscht einen Privat-Eintrag (id aus privat_eintraege) der Arten beobachtung, tagebuch, stimmung, intim, zuwendung, gespraech, danke, dateidee, aufgabe – z. B. eine ersetzte Beobachtung. Tagebuch, Beobachtung und Stimmung nur die eigenen. Nur auf ausdrücklichen Wunsch für genau diesen Eintrag; 7 Tage rückgängig machbar (Assistent-Verlauf).",
+    "Löscht einen Privat-Eintrag (id aus privat_eintraege) der Arten beobachtung, reflexion, tagebuch, stimmung, intim, zuwendung, gespraech, danke, dateidee, aufgabe – z. B. eine ersetzte Beobachtung. Tagebuch, Beobachtung, Reflexion und Stimmung nur die eigenen. Nur auf ausdrücklichen Wunsch für genau diesen Eintrag; 7 Tage rückgängig machbar (Assistent-Verlauf).",
   area: "privat",
   privat: true,
   write: true,

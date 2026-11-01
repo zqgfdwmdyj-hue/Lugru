@@ -170,6 +170,16 @@ export async function listGrants(tenantId: string) {
     .orderBy(desc(G.createdAt));
 }
 
+/** B22.1: Mit welchem Konto ist Claude verbunden? (für den Hinweis, wo über Claude diktierte Privat-Einträge landen) */
+export async function claudeKonten(tenantId: string, userId: string): Promise<{ eigene: number; andere: string[] }> {
+  const rows = await db
+    .select({ userId: G.userId, name: schema.users.name, email: schema.users.email })
+    .from(G)
+    .innerJoin(schema.users, eq(schema.users.id, G.userId))
+    .where(and(eq(G.tenantId, tenantId), isNull(G.revokedAt), gt(G.refreshExpiresAt, new Date())));
+  return { eigene: rows.filter((r) => r.userId === userId).length, andere: [...new Set(rows.filter((r) => r.userId !== userId).map((r) => r.name || r.email))] };
+}
+
 export async function revokeGrant(tenantId: string, id: string) {
   const r = await db.update(G).set({ revokedAt: new Date() }).where(and(eq(G.tenantId, tenantId), eq(G.id, id), isNull(G.revokedAt))).returning({ id: G.id });
   return r.length > 0;

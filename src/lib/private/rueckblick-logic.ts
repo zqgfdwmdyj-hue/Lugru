@@ -2,7 +2,7 @@
 // Einträge sehen darf, entscheidet vorher loadEntries (Privat-Zugang mit vollem Umfang, eigene Beobachtungen).
 
 import type { TouchEntry } from "./kalender";
-import type { AppointmentEntry, DateIdea, MoodEntry, ObservationEntry, PartnerKey, TalkEntry, TaskEntry, ThanksEntry } from "./logic";
+import type { AppointmentEntry, DateIdea, MoodEntry, ObservationEntry, PartnerKey, ReflexionEntry, TalkEntry, TaskEntry, ThanksEntry } from "./logic";
 
 /** Marker für „noch unvollständig / unsicher“ im Text einer Beobachtung. */
 export const UNVOLLSTAENDIG = /\[\?\]/;
@@ -51,7 +51,10 @@ export const beobachtungText = (situation: string, problematik?: string | null, 
 /** B20.9: Paartherapie-Termin – Art „Paartherapie“ oder ein entsprechender Titel (z. B. aus dem externen Kalender). */
 export const istPaartherapie = (x: Pick<AppointmentEntry, "with" | "title">) => x.with === "paar" || /paar\s*-?\s*(?:therapie|beratung|coaching|sitzung)|couples?\s*(?:therap|counsel)|eheberatung/i.test(x.title ?? "");
 
-export function letzteSitzung(termine: AppointmentEntry[], heute: string): string | null {
+/** Paartherapie-Termin aus Privatkalender oder Kalender (dort nur Titel, Art „sonst“). */
+export type SitzungsTermin = Pick<AppointmentEntry, "day" | "with" | "title" | "status">;
+
+export function letzteSitzung(termine: SitzungsTermin[], heute: string): string | null {
   return (
     termine
       .filter((x) => istPaartherapie(x) && x.status !== "ausgefallen" && (x.day < heute || (x.day === heute && x.status === "stattgefunden")))
@@ -59,6 +62,53 @@ export function letzteSitzung(termine: AppointmentEntry[], heute: string): strin
       .sort()
       .at(-1) ?? null
   );
+}
+
+/** B22.1: nächste Paartherapie-Sitzung ab heute (heute zählt, solange sie nicht als stattgefunden markiert ist). */
+export function naechsteSitzung(termine: SitzungsTermin[], heute: string): string | null {
+  return (
+    termine
+      .filter((x) => istPaartherapie(x) && x.status !== "ausgefallen" && (x.day > heute || (x.day === heute && x.status !== "stattgefunden")))
+      .map((x) => x.day)
+      .sort()[0] ?? null
+  );
+}
+
+/** Beobachtungen in der Reihenfolge des Bogens: nach Tag, am selben Tag in der Reihenfolge des Eintragens. */
+export function nachTag<T extends { data: { day: string }; createdAt: Date }>(e: T[]): T[] {
+  return [...e].sort((a, b) => a.data.day.localeCompare(b.data.day) || a.createdAt.getTime() - b.createdAt.getTime());
+}
+
+export type ReflexionZeile = { id?: string; tag: string; text: string; sitzung: string | null };
+
+/**
+ * „Für die nächste Sitzung“ (Stand `bis`): Zettel bis zu diesem Tag, deren Sitzung noch aussteht – ausdrücklich
+ * zugeordnet (Sitzung ≥ bis) oder ohne Zuordnung nach der letzten Sitzung geschrieben.
+ */
+export function fuerNaechsteSitzung<T extends { id?: string; data: ReflexionEntry; createdAt: Date }>(zettel: T[], o: { bis: string; letzte: string | null }): ReflexionZeile[] {
+  return nachTag(zettel.filter((z) => z.data.day <= o.bis && (z.data.sitzung ? z.data.sitzung >= o.bis : !o.letzte || z.data.day >= o.letzte))).map((z) => ({ id: z.id, tag: z.data.day, text: z.data.text, sitzung: z.data.sitzung ?? null }));
+}
+
+const plusT = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+/** ISO-Kalenderwoche eines Tages. */
+export function kalenderwoche(iso: string): number {
+  const d = new Date(`${iso}T12:00:00Z`);
+  const tag = (d.getUTCDay() + 6) % 7; // Mo = 0
+  d.setUTCDate(d.getUTCDate() - tag + 3); // Donnerstag derselben Woche
+  const erster = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  return 1 + Math.round(((d.getTime() - erster.getTime()) / 86_400_000 - 3 + ((erster.getUTCDay() + 6) % 7)) / 7);
+}
+
+/** B22.1: Wochen zur Auswahl (Mo–So, die laufende bis heute), neueste zuerst. `bis` = letzter Tag der Woche. */
+export function wochenAuswahl(heute: string, anzahl = 12): { label: string; von: string; bis: string }[] {
+  const mo = plusT(heute, -((new Date(`${heute}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const dm = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+  return Array.from({ length: anzahl }, (_, i) => {
+    const von = plusT(mo, -7 * i);
+    const so = plusT(von, 6);
+    const bis = so > heute ? heute : so;
+    return { label: `KW ${kalenderwoche(von)} · ${dm(von)}–${dm(so)}${so > heute ? " (laufend)" : ""}`, von, bis };
+  });
 }
 
 export type TherapieZeile = { tag: string; situation: string; problematik: string | null; veraenderung: string | null; unvollstaendig: boolean };

@@ -263,13 +263,13 @@ export const feierabendTool = defineTool({
   name: "feierabend",
   title: "Feierabend-Check",
   description:
-    "Abend-Check: heute erledigt, noch offen (rutscht auf morgen), morgen Termine, Top-3-Aufgaben und Sperrzeiten (privat nur „Privat belegt“, außer mit_privat). Mit rueckblick: true (sonntags automatisch) Wochenrückblick – erledigte Aufgaben je Person. Mit mit_privat und Privat-Freigabe (nur eigene Person, voller Umfang) zusätzlich: Familienzeit-Stunden, Paarzeit, eigene Beobachtungen der Woche als Therapie-Bogen (Situation | Problematik | gewünschte Veränderung, „unvollstaendig“ bei [?]), Zuwendung je Art mit Richtung (wer gibt/empfängt), Paar-Gespräche, Danke, eigene Stimmung (Ø + Verlauf), Dateideen, private Aufgaben erledigt/offen, Vergleich zur Vorwoche und Link zum Therapie-Bogen seit letzter Sitzung (Druck/PDF).",
+    "Abend-Check: heute erledigt, noch offen (rutscht auf morgen), morgen Termine, Top-3-Aufgaben und Sperrzeiten (privat nur „Privat belegt“, außer mit_privat). Mit rueckblick: true (jeden Tag abrufbar, sonntags automatisch; woche_bis = letzter Tag einer früheren Woche) Wochenrückblick – erledigte Aufgaben je Person. Mit mit_privat und Privat-Freigabe (nur eigene Person, voller Umfang) zusätzlich: Familienzeit-Stunden, Paarzeit, eigene Beobachtungen der Woche als Therapie-Bogen (Verfasser = ich, egal über wen; Situation | Problematik | gewünschte Veränderung, „unvollstaendig“ bei [?]), „fuerNaechsteSitzung“ (eigene Reflexions-Zettel für die nächste Paar-Sitzung) mit letzter/nächster Sitzung, Zuwendung je Art mit Richtung (wer gibt/empfängt), Paar-Gespräche, Danke, eigene Stimmung (Ø + Verlauf), Dateideen, private Aufgaben erledigt/offen, Vergleich zur Vorwoche und Link zum Therapie-Bogen seit letzter Sitzung (Druck/PDF).",
   area: "kalender",
   write: false,
   quelle: { text: "Aufgaben, Kalender und Privatbereich im Seller-System" },
-  input: z.object({ rueckblick: z.boolean().default(false), mit_privat: z.boolean().default(false) }),
+  input: z.object({ rueckblick: z.boolean().default(false), mit_privat: z.boolean().default(false), woche_bis: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("Wochenrückblick für die 7 Tage bis zu diesem Tag (z. B. Sonntag einer früheren Woche)") }),
   run: async (ctx, i) => {
-    const f = await feierabend(ctx.session, { heute: ctx.today, mitPrivat: i.mit_privat && ctx.privat, rueckblick: i.rueckblick });
+    const f = await feierabend(ctx.session, { heute: ctx.today, mitPrivat: i.mit_privat && ctx.privat, rueckblick: i.rueckblick, wocheBis: i.woche_bis });
     return json({
       heute: f.heute,
       erledigt: f.erledigt.map((e) => e.titel),

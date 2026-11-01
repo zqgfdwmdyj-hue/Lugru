@@ -132,6 +132,8 @@ export type DiaryEntry = {
 };
 /** Beobachtung (Therapie-Bogen): `text` immer gefüllt; die drei Felder des Papierbogens optional (ältere Einträge nur Text). */
 export type ObservationEntry = { day: string; aboutUserId: string; text: string; situation?: string; problematik?: string; veraenderung?: string };
+/** B22.1: Reflexion – freier Zettel für die nächste Paar-Sitzung (diktiert), nur für den Verfasser sichtbar. */
+export type ReflexionEntry = { day: string; text: string; /** Datum der Sitzung, für die der Zettel gedacht ist. */ sitzung?: string };
 
 export const SIDE_EFFECTS = [
   "Kopfschmerzen",

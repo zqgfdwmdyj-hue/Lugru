@@ -5,7 +5,7 @@ import { AENDERBARE_ARTEN, eintragPatch, type AenderbareArt, type Aenderung } fr
 import { canEdit, deleteEntry, loadEntries, loadEntry, restoreEntry, updateEntry, type PrivateKind } from "./service";
 
 // Privat-Einträge ändern und löschen (für Claude: privat_eintrag_aendern / privat_eintrag_loeschen). Gleiche
-// Regeln wie im Privatbereich: nur sichtbare Einträge, eigene Arten (Tagebuch, Beobachtung, Stimmung) nur der
+// Regeln wie im Privatbereich: nur sichtbare Einträge, eigene Arten (Tagebuch, Beobachtung, Reflexion, Stimmung) nur der
 // Verfasser, Umfang „nur Familie“ gar nicht. Rückgängig-Daten enthalten den alten Stand – sie liegen
 // verschlüsselt im Protokoll und dürfen nur von derselben Person zurückgespielt werden.
 
@@ -15,7 +15,7 @@ export type RueckgaengigDaten =
 
 type Ergebnis = { ok: true; meldung: string; art: AenderbareArt; felder?: string[]; undo: RueckgaengigDaten } | { ok: false; meldung: string };
 
-const ART_TEXT: Record<AenderbareArt, string> = { intim: "Nähe", zuwendung: "Zuwendung", tagebuch: "Tagebuch", beobachtung: "Beobachtung", gespraech: "Paar-Gespräch", danke: "Danke", stimmung: "Stimmung", dateidee: "Date-Idee", aufgabe: "Private Aufgabe" };
+const ART_TEXT: Record<AenderbareArt, string> = { intim: "Nähe", zuwendung: "Zuwendung", tagebuch: "Tagebuch", beobachtung: "Beobachtung", reflexion: "Reflexion", gespraech: "Paar-Gespräch", danke: "Danke", stimmung: "Stimmung", dateidee: "Date-Idee", aufgabe: "Private Aufgabe" };
 const istAenderbar = (k: string): k is AenderbareArt => (AENDERBARE_ARTEN as readonly string[]).includes(k);
 
 async function eintragFuer(session: Session, id: string) {

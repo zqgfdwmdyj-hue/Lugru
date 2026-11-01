@@ -3,7 +3,7 @@ import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { feierabend } from "@/lib/feierabend/service";
 import { VERGLEICH_TEXT } from "@/lib/private/rueckblick-logic";
-import { AUFWAND_TEXT, wochentag } from "@/lib/tagesplan/logic";
+import { AUFWAND_TEXT, plusTage, wochentag } from "@/lib/tagesplan/logic";
 import { privatDetailsErlaubt } from "@/lib/tagesplan/service";
 import { aufMorgenAction } from "./actions";
 
@@ -11,12 +11,15 @@ import { aufMorgenAction } from "./actions";
 
 const WT = ["", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 
-export default async function FeierabendPage({ searchParams }: { searchParams: Promise<{ meldung?: string; rueckblick?: string; privat?: string }> }) {
+export default async function FeierabendPage({ searchParams }: { searchParams: Promise<{ meldung?: string; rueckblick?: string; privat?: string; bis?: string }> }) {
   const session = await requireArea("kalender");
   const sp = await searchParams;
   const heute = todayIso();
   const mitPrivat = privatDetailsErlaubt(session) && sp.privat === "1";
-  const f = await feierabend(session, { heute, mitPrivat, rueckblick: sp.rueckblick === "1" });
+  // B22.1: Wochenrückblick jeden Tag abrufbar, Woche wählbar (7 Tage bis „bis“).
+  const bis = sp.bis && /^\d{4}-\d{2}-\d{2}$/.test(sp.bis) && sp.bis <= heute ? sp.bis : undefined;
+  const f = await feierabend(session, { heute, mitPrivat, rueckblick: sp.rueckblick === "1", wocheBis: bis });
+  const wochenLink = (b: string) => `/kalender/feierabend?rueckblick=1&bis=${b}${mitPrivat ? "&privat=1" : ""}`;
   return (
     <>
       <div className="page-head">
@@ -81,7 +84,13 @@ export default async function FeierabendPage({ searchParams }: { searchParams: P
 
       {f.rueckblick && (
         <section className="card card-pad" style={{ marginTop: 14 }} data-testid="fa-rueckblick">
-          <h2 style={{ marginTop: 0 }}>Wochenrückblick</h2>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "baseline" }}>
+            <h2 style={{ marginTop: 0 }}>Wochenrückblick</h2>
+            <div className="small" style={{ display: "flex", gap: 10 }} data-testid="fa-woche-nav">
+              <Link href={wochenLink(plusTage(f.rueckblick.geschaeft.zeitraum.bis, -7))}>‹ Vorwoche</Link>
+              {f.rueckblick.geschaeft.zeitraum.bis < heute && <Link href={wochenLink(plusTage(f.rueckblick.geschaeft.zeitraum.bis, 7) > heute ? heute : plusTage(f.rueckblick.geschaeft.zeitraum.bis, 7))}>Nächste Woche ›</Link>}
+            </div>
+          </div>
           <p className="small muted">{f.rueckblick.geschaeft.zeitraum.von.split("-").reverse().join(".")} – {f.rueckblick.geschaeft.zeitraum.bis.split("-").reverse().join(".")}: {f.rueckblick.geschaeft.erledigtGesamt} Aufgaben erledigt.</p>
           <ul className="small" style={{ paddingLeft: 18 }}>{f.rueckblick.geschaeft.erledigtJePerson.map((p) => <li key={p.person}>{p.person}: {p.anzahl}</li>)}</ul>
           {f.rueckblick.privat ? (
@@ -128,6 +137,14 @@ function PrivatWoche({ p }: { p: Privat }) {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      <div data-testid="fa-reflexion">
+        <strong>Für die nächste Sitzung ({p.fuerNaechsteSitzung.length})</strong>
+        {p.naechsteSitzung ? <span className="muted"> · Sitzung am {datum(p.naechsteSitzung)}</span> : null}
+        {p.fuerNaechsteSitzung.length === 0 ? <div className="muted">keine Zettel – <Link href="/privat/beobachtungen#reflexion">Reflexion notieren</Link></div> : (
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{p.fuerNaechsteSitzung.map((r, i) => <li key={r.id ?? i} style={{ whiteSpace: "pre-wrap" }}>{datum(r.tag)}: {r.text}</li>)}</ul>
         )}
       </div>
 
