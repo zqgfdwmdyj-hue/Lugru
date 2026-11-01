@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { db, schema } from "@/db";
 import { homeFor } from "@/lib/auth/areas";
 import { privatVollBeiNichtInhaber } from "@/lib/auth/rollen";
+import { privatVollBereinigen } from "@/lib/auth/konten";
 import { createSession, destroySession } from "@/lib/auth/session";
 import { normalizeLogin } from "@/lib/auth/username";
 import { safeNext } from "@/lib/auth/next-path";
@@ -62,9 +63,12 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const home = homeFor({ role: membership.role, areas: membership.areas ?? null, privateAccess: membership.privateAccess, readOnly: membership.role === "staff" && membership.readOnly });
   // B20.1: Inhaber sieht die 🔴-Warnung einmal je Anmeldung als Dialog, solange ein Nicht-Inhaber Privat „voll“ hat.
   if (membership.role === "owner") {
+    // B25.9: bestehende „voll“-Werte bei Nicht-Inhabern gleich hier bereinigen (nicht erst beim nächtlichen Lauf);
+    // der Dialog nennt dann die umgestellten Konten.
+    const bereinigt = await privatVollBereinigen(membership.tenantId).catch(() => 0);
     const M = schema.memberships;
     const andere = await db.select({ role: M.role, privateAccess: M.privateAccess, privateScope: M.privateScope, readOnly: M.readOnly }).from(M).where(and(eq(M.tenantId, membership.tenantId), isNull(M.deaktiviertAm)));
-    if (privatVollBeiNichtInhaber(andere) > 0) redirect(`${home}${home.includes("?") ? "&" : "?"}privatwarnung=1`);
+    if (bereinigt > 0 || privatVollBeiNichtInhaber(andere) > 0) redirect(`${home}${home.includes("?") ? "&" : "?"}privatwarnung=1`);
   }
   redirect(home);
 }

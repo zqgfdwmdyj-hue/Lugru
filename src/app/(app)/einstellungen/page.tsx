@@ -377,7 +377,20 @@ export default async function EinstellungenPage({ searchParams }: { searchParams
           return (
             <div className={`notice ${w.some((x) => x.stufe === "rot") ? "notice-error" : "notice-warn"} small`} data-testid="zugriff-warnungen">
               <strong>Zugriffe prüfen:</strong>
-              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{w.map((x, i) => <li key={i}>{x.stufe === "rot" ? "🔴 " : "🟡 "}{x.text}</li>)}</ul>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {w.map((x, i) => (
+                  <li key={i}>
+                    {x.stufe === "rot" ? "🔴 " : "🟡 "}{x.text}
+                    {x.vaVorschlag && (
+                      <form action={setRolleAction} style={{ display: "inline", marginLeft: 6 }} data-testid="als-va-rolle">
+                        <input type="hidden" name="userId" value={x.userId} />
+                        <input type="hidden" name="rolle" value="va" />
+                        <button className="btn btn-small" type="submit">Als VA-Rolle übernehmen</button>
+                      </form>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
           );
         })()}

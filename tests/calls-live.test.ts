@@ -45,6 +45,6 @@ describe("B21.5 – Auslöser, letzter und nächster Lauf", () => {
   });
   it("Abstand: letzter + Abstand", () => {
     expect(naechsterText(ABRUF_PLAN["Gruppen-Kanäle (Discord)"], new Date("2026-10-31T15:30:00Z"), jetzt)).toBe("heute 17:30");
-    expect(naechsterText(undefined, null, jetzt)).toBe("laut Plan");
+    expect(naechsterText(undefined, null, jetzt)).toBe("nach dem ersten Lauf bekannt");
   });
 });

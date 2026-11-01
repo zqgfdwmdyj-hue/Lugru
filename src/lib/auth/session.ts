@@ -93,7 +93,9 @@ export const getSession = cache(async (): Promise<Session | null> => {
   const { privatePinHash, ...rest } = row;
   // Inhaber sind nie „nur ansehen“. Nur-ansehen-Konten bekommen „Privat“ nie (auch nicht mit Freigabe).
   const readOnly = row.role === "staff" && row.readOnly;
-  return { ...rest, privatePin: Boolean(privatePinHash), readOnly, privateAccess: row.privateAccess && !readOnly };
+  // B25.9: Privat „voll“ gibt es nur für Inhaber – ein alter gespeicherter Wert bei Mitarbeitern wirkt nicht mehr.
+  const privatVollGesperrt = row.role === "staff" && row.privateScope === "voll";
+  return { ...rest, privatePin: Boolean(privatePinHash), readOnly, privateAccess: row.privateAccess && !readOnly && !privatVollGesperrt };
 });
 
 // „Zuletzt aktiv“ höchstens alle 5 Minuten je Benutzer schreiben – nicht bei jeder Anfrage.

@@ -612,6 +612,8 @@ export const jobRuns = pgTable(
     lastError: text("last_error"),
     /** Dauer des letzten Laufs (ms) – zeigt, welcher Abruf den Server wie lange beschäftigt. */
     lastDurationMs: integer("last_duration_ms"),
+    /** B25.12: tatsächlicher Zeitplan des Abrufs (aus dem Hintergrund-Takt), statt „laut Plan“. */
+    zeitplan: jsonb("zeitplan").$type<{ ausloeser: "live" | "zeitplan"; text: string; minuten?: number; taeglichUm?: string }>(),
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.name] })],

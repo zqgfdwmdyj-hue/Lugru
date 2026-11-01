@@ -848,6 +848,13 @@
       "when": 1793537164392,
       "tag": "0120_amazon_berichte",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1793561044277,
+      "tag": "0121_b25_zeitplan",
+      "breakpoints": true
     }
   ]
 }

@@ -85,6 +85,12 @@ export async function todaySignals(tenantId: string, today: string): Promise<Sig
       level: dringend ? "danger" : "warn",
     });
   }
+  // B25.7: Paletten ohne Kunde werden nicht abgerechnet – gehört in „Jetzt dringend“, nicht nur auf die Palettenseite.
+  const [pk] = await db
+    .select({ n: count(), codes: sql<string[]>`(array_agg(${schema.pallets.code} order by ${schema.pallets.inAt}))[1:5]` })
+    .from(schema.pallets)
+    .where(and(eq(schema.pallets.tenantId, tenantId), isNull(schema.pallets.outAt), isNull(schema.pallets.cancelledAt), sql`coalesce(trim(${schema.pallets.customer}), '') = ''`));
+  if (pk?.n) out.push({ key: "paletten-ohne-kunde", label: `${pk.n} Palette${pk.n === 1 ? "" : "n"} ohne Kunde – ${pk.n === 1 ? "wird" : "werden"} nicht abgerechnet`, detail: (pk.codes ?? []).filter(Boolean).join(", ") || undefined, count: pk.n, href: "/paletten?kunde=__ohne", level: "warn" });
   if (expired.n) out.push({ key: "abgelaufen", label: `${expired.n} Anspr${expired.n === 1 ? "uch" : "üche"} mit abgelaufener Frist, nicht eingereicht`, count: expired.n, href: "/ansprueche?ansicht=fristen", level: "warn" });
   // VA (B18): heute verpasste Fristen (Aufgaben überfällig geworden, Ansprüche ohne Einreichung abgelaufen) – rot.
   const va = await import("@/lib/va/service").then((x) => x.vaHeute(tenantId, today)).catch(() => null);

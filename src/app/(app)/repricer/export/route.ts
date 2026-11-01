@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { repricerRows } from "@/lib/repricer";
 import { isEstimated } from "@/lib/repricer-logic";
@@ -7,6 +8,8 @@ export async function GET(request: Request) {
   const session = await getSession();
   if (!session) return new Response("Nicht angemeldet", { status: 401 });
   const url = new URL(request.url);
+  // B25.5: ohne Format ist das ein Seitenaufruf → zur Vorschau mit Warnungen und Freigabe je Land.
+  if (!url.searchParams.has("format")) redirect("/repricer/bqool");
   const format = url.searchParams.get("format") === "de" ? "de" : "bqool";
   // Für BQool standardmäßig nur Mindestpreise mit echten Gebühren; geschätzte nur ausdrücklich (?geschaetzt=1).
   const withEstimated = format === "de" || url.searchParams.get("geschaetzt") === "1";

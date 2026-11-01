@@ -713,6 +713,36 @@ Langzeitlager 3,40 €, Inbound 1,20 €; Aufgaben + Push; USt-Bericht mit Quell
 `amazon_lagergebuehren`; Datei-Import `amazon_gestrandet` ersetzt den Stand. Kleinanzeigen: Block mit Titel ≤ 65,
 Kategorie, Zustand, „25 €“, Text ohne eBay-Sätze, 2 Bilder, ZIP mit 2 Dateien, ohne Anmeldung 403.
 
+## B25 – Browser-Prüfung Teil 4 (Nachtrag 01.11., 12:20)
+
+Reihenfolge wie angeordnet: B25.1 → B25.9 → B25.5 → B25.4 → B25.6 → B25.2/3/7/8 → B25.12. Alle Abnahmen mit
+erfundenen Daten (Unit `tests/b25.test.ts`, e2e `e2e/b25.spec.ts`).
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| B25.1 | Gewinn nutzt die importierte Transaktionsdatei für Abrechnung/Auszahlung (kritisch) | 🟡 (Ableitung nur bei neuen Importen; Hinweis „Abrechnung fehlt“ schon bei einem fehlenden Tag) | ✅ | **Ältere Importe**: `transaktionenNachziehen` (`src/lib/reports/apply.ts`) leitet Abrechnungszeilen aus den gespeicherten Transaktionen ab (`abrechnungAusGespeicherten`, `src/lib/reports/transaktionen.ts`, Kennung `txdb:`) – nach jedem Transaktions-Import und im Zeitplan („Abrechnung aus Transaktionen nachziehen“). Ein neuer Upload ist nicht nötig. Eine spätere Datei, die alle gespeicherten Zeilen einer Abrechnung enthält, **ersetzt** die Ableitung durch die genauere aus der Datei, sonst wird aus allen gespeicherten Zeilen neu abgeleitet. Der echte Abrechnungsbericht ersetzt beides. Typen: Bestellung, Erstattung, Gebühren (je eine Zeile), **Übertrag = Auszahlung** (Kopf der Abrechnung, Liquidität), nie Umsatz. **Abdeckung**: `amazonQuelle` (`profit-logic.ts`) zählt den Zeitraum als gedeckt, wenn die Daten bis gestern reichen (bis 30.10. → Oktober gedeckt am 31.10.). Der Hinweis kommt nur, wenn der Monat wirklich nicht gedeckt ist. **Keine Doppelzählung**: Umsatz bleibt aus sellerboard bzw. Abrechnung je Zeitraum (eine Quelle, B19.3). Die Kachel nennt „Amazon aus dem Transaktionsbericht (Abrechnung folgt)“ |
+| B25.2 | Import-Erkennung: Lagergebühren und USt-Bericht in „Was erkannt wird“, Spalte „Ergebnis/Fehler“ | 🟡 | ✅ | `src/app/(app)/import/page.tsx`: Liste ergänzt um Lagergebühren je Monat, USt-Transaktionsbericht, Gestrandet, Gesperrt, Langzeitlager, Inbound-Mängel. „Letzte Importe“ mit Spalte **Ergebnis / Fehler** (neu/geändert/übersprungen bzw. Meldung des Imports) und zusätzlich fehlgeschlagene Uploads und abgelehnte Schnittstellen-Berichte (rot) |
+| B25.3 | „Lugru Deals=60“ als echter Standardwert | 🟡 (Platzhalter) | ✅ | `src/lib/settings.ts`: `dealEingang.wertSchwelleJe = { "Lugru Deals": 60 }` als Standard, gespeicherte Werte werden darübergelegt (eigener Wert je Quelle bleibt). Feld `de-schwelle-je` zeigt den Wert |
+| B25.4 | Fall-Zentrale: Bestell-/Versandstatus in DE/FR/IT/ES/NL/PL/SE, Prime/Business → Archiv, Buy Box IT | 🟡 | ✅ | `src/lib/amazon-faelle/logic.ts`: `STATUS_BESTELLT_RE` (Bestellt, Commandé, Ordinato, Pedido realizado, Besteld, Zamówiono, Beställt, Ordered), `STATUS_VERSAND_RE`/`VERSAND_PHRASE_RE` (In Zustellung, Versandt, Livraison prévue, Livré, In consegna, Consegnato, Enviado, Entregado, Verzonden, Bezorgd, Wysłano, Dostarczono, Skickat, Levererat …), `PRIME_INFO_RE` → Art „info“ (archiviert, Grund „Prime-/Business-Info – kein Fall“). Buy Box: `BUYBOX_RE` (`mail-muster.ts`) auch „Offerta in evidenza … non sei più idoneo“, „Hai perso la Buy Box“ und DE/EN/FR/ES/NL/PL/SE. Bestehende „bitte prüfen“-Vorgänge werden beim nächsten Abgleich neu eingestuft (`neuEinstufen`); echte Fälle (Fallnummer im Betreff) bleiben Fälle |
+| B25.5 | Repricer-Export-Vorschau | 🟡 (`/repricer/export` = Datei-Download bzw. Umleitung) | ✅ | `/repricer/export` ohne `?format` leitet auf **BQool-Dateien** (`/repricer/bqool`): je Land neu/geändert/gleich, Regelwechsel, Warnungen; neu oben ein Block mit allen Warnungen vor der Freigabe (Min über Buy Box × 1,2, Min unter Break-even, **kein Min in BQool – erst mit diesem Upload abgesichert**). Erst danach „Erzeugen/Freigeben“ bzw. „An BQool übertragen“ (B23). CSV weiter mit `?format=bqool` |
+| B25.6 | Rückgängig für die grünen Werkzeuge | 🟡 (nur `mail_markieren`, `amazon_todo_erledigen`, `verlust_ausnahme`, `privat_eintrag_aendern/_loeschen`) | ✅ | Alte Werte werden **vor** der Änderung gespeichert: `auftrag_status` (Status, Sendungsnummer, Versanddatum), `aufgabe_verschieben` (alte Frist; nur zurück, wenn seitdem niemand die Frist geändert hat), `aufgabe_zuweisen` (Zuständige/r, extern, Anleitungen; nicht bei Übergabe an die VA über Discord – die Nachricht ist schon raus), `privat_eintrag_anlegen` (Eintrag wieder entfernen). Knopf „↩ Rückgängig“ im Assistent-Verlauf. Abnahme mit neuem Testaufruf `aufgabe_verschieben` (e2e) |
+| B25.7 | Startseite „Jetzt dringend“: Paletten ohne Kunde, Versandbestätigungen | 🟡 | ✅ | Neu: Signal „N Paletten ohne Kunde – werden nicht abgerechnet“ mit den ersten Nummern und Link `/paletten?kunde=__ohne` (`src/lib/today/service.ts`). „N Aufträge versendet, aber bei Amazon nicht bestätigt – Frist …“ gibt es seit B15.1 (gleiche Quelle wie die Aufgabe, `offeneBestaetigungen`). Live stand vermutlich noch ein älterer Stand – nach dem Update prüfen |
+| B25.8 | Tagesplan: Fahrzeit aus dem Termin-Ort, Telefonnummer bei Anruf-Aufgaben | 🟡 (Fahrzeit nur bei Tesla-Zielen/fester Zeit) | ✅ | `src/lib/mobil/fahrzeit.ts`: Schätzung aus den Postleitzahlen von Termin-Ort und „zu Hause“ (Einstellungen → Handy & Tesla): gleiche PLZ 10 Min., gleiche ersten 3 Ziffern 20, gleiche Region 30, sonst Luftlinie × 1,3 bei Ø 70 km/h + 10 Min. Puffer (höchstens 4 Std.). Ohne PLZ die Standard-Fahrzeit, Online-Termine (Zoom, Teams, Link) ohne Fahrzeit. Block „Fahrzeit N Min. → Termin (Anrufe möglich)“ vor jedem Termin mit Ort, private nur ohne Titel. Anruf-Aufgaben zeigen im Tagesplan „📞 Nummer“ (tel:-Link; Nummer aus der Aufgabe oder den Notizen) |
+| B25.9 | Benutzer: Privat „voll“ bereinigen, VA-Rolle, nie angemeldete Inhaber | 🟡 (Sperre nur bei Neuwahl) | ✅ | **Sofort wirksam**: `session.ts` behandelt gespeichertes „voll“ bei Nicht-Inhabern als „kein Zugang“. **Bereinigt**: `privatVollBereinigen` (`src/lib/auth/konten.ts`) setzt alle Nicht-Inhaber mit „voll“ auf „kein Zugang“, beim Login eines Inhabers und stündlich im Zeitplan. Hinweis an Ludwig als Aufgabe „Privat-Zugang bereinigt: …“ und als Dialog nach dem Login (welche Konten). Nichts gelöscht. **VA**: Konto mit Adresse va@… bzw. Name „VA“ ohne VA-Rolle → Warnung mit Knopf „Als VA-Rolle übernehmen“ (Einstellungen → Benutzer). **Nie angemeldet**: seit B20.1 nach 30 Tagen automatisch deaktiviert – auch Inhaber, solange ein anderer Inhaber sich schon angemeldet hat (`nieAngemeldetZuDeaktivieren`) |
+| B25.10 | B2B: Deal-Blatt, Sammelbestellung, Prep-Export | 🟡 (gebaut, aber ohne Deal nicht sichtbar) | ✅ (Ludwig entscheidet nur noch, ob er es nutzt) | Vorhanden seit B2B-3/B2B-5: Deal-Blatt als Bild/PDF (`/b2b/[id]/blatt`), Sammelbestellung („2. Sammelbestellung beim Großhändler“ im Ablauf je Deal), Prep-Export je Kunde (`/b2b/[id]/export` CSV/XLSX/PDF). Die drei Prüfungen liefen ohne angelegten Deal – deshalb neu ein Hilfe-Kasten auf `/b2b` („So läuft ein Deal“, offen, solange kein Deal da ist) |
+| B25.11 | Apple Watch | 🟡 | ✅ | Vollständig seit W.1–W.11 (Abschnitt „Apple Watch“ oben): stand, dringend, erledigt, notiz, deal, bestand, tesla |
+| B25.12 | Calls-Suchfeld; Intervall je Anbindung, echte Zeiten; Liquidität Temu + Steuertermine | 🟡 | ✅ | **Calls**: Suchfeld über Titel, Zusammenfassung und Transkript (`callsDurchsuchen`), Treffer mit Ausschnitten. **Anbindungen**: je Karte „Abrufe: Name: alle 15 Min. (zuletzt …)“; jeder Lauf speichert seinen Zeitplan (`job_runs.zeitplan`, Migration 0121) – statt „laut Plan“ steht der echte Takt, statt „unbekannt“ „nach dem ersten Lauf bekannt“; `anbindungen_status` nutzt dieselben Angaben. **Liquidität**: Temu ist eingebunden (Ø Auszahlung je Woche aus sellerboard, B19.8/B20.9). **Steuertermine**: täglich Erinnerung als Aufgabe 7 Tage vorher (≤ 2 Tage: wichtig, Wochenende → Montag), aus Cash Flow → Einstellungen → „Steuertermine“ (jetzt auch ohne Betrag speicherbar – dann nur Erinnerung, nicht in der Vorschau); Text „keine Steuerberatung“ |
+
+Abnahme: Unit `tests/b25.test.ts` (Ableitung ergibt genau „Gesamt“, Übertrag → Auszahlung, Kennung `txdb:`; Abdeckung
+„bis gestern“; Status-Betreffs in 8 Sprachen, Prime/Business → info, Fallnummer bleibt Fall; Buy Box in umgekehrter
+Wortstellung; PLZ/Fahrzeit; Intervall-Texte; Steuertermine; VA-Erkennung) – 2.090 Unit-Tests grün. e2e `b25.spec.ts`:
+Transaktionsbericht importieren → Zeilen gelöscht (wie alter Import) → nächster Import zieht sie aus den gespeicherten
+Transaktionen nach (−33,40 €, Auszahlung 123,45 €) → genauere Datei ersetzt die Ableitung (−30,40 €, keine `txdb:`-Zeilen);
+Import-Seite mit „nachgezogen“ im Ergebnis; „Lugru Deals=60“ im Feld; `/repricer/export` → Vorschau mit Warnblock;
+`aufgabe_verschieben` → Rückgängig stellt die Frist her; Palette ohne Kunde auf der Startseite; Tagesplan mit Fahrzeit vor
+dem Termin mit Ort und 📞-Link; Nicht-Inhaber mit „voll“ → Privatbereich gesperrt, Inhaber-Login bereinigt (Dialog +
+Aufgabe); va@…-Konto → „Als VA-Rolle übernehmen“; Call einfügen und über das Suchfeld finden; Intervall bei Amazon; B2B-Hilfe.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -746,6 +776,11 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 01.11. (B25, keine neuen Werkzeuge): Rückgängig neu bei `auftrag_status`, `aufgabe_verschieben`,
+`aufgabe_zuweisen` und `privat_eintrag_anlegen` (Antwort enthält bei `privat_eintrag_anlegen` den Hinweis „rueckgaengig“).
+`anbindungen_status` nennt bei `ausloeser` den echten Zeitplan des letzten Laufs. Die Eingabe-Schemas sind unverändert,
+`notifications/tools/list_changed` ist dafür nicht nötig (geht beim Verbinden trotzdem raus).
 
 Geändert am 01.11. (Amazon-Berichte 1–4 und Kleinanzeigen, keine neuen Werkzeuge): `import_link`/`importe` kennen vier
 neue Arten: `amazon_gestrandet`, `amazon_gesperrt`, `amazon_langzeitlager` und `amazon_inbound_maengel`. Das
@@ -1048,3 +1083,15 @@ nie in Chats oder Mails.
 72. **Kleinanzeigen**: Im Kleinanzeigen-Konto als **gewerblicher Anbieter** einstellen (Pflicht für Händler). Die
     Kategorie ist nur ein Vorschlag, in der App prüfen. Versand oder Abholung und Preis-Art (Festpreis/VB) in der App
     wählen. Das System stellt nichts selbst ein.
+73. **B25.1 Gewinn**: Nichts neu hochladen – nach dem Update zieht das System die Abrechnung aus dem schon importierten
+    Transaktionsbericht nach (beim nächsten Zeitplan-Lauf oder beim nächsten Upload). Danach Gewinn → Oktober prüfen:
+    Die Amazon-Zeile heißt „Amazon-Abrechnung/Transaktionsbericht (bis 30.10.)“.
+74. **B25.8 Fahrzeit**: Unter Einstellungen → Handy & Tesla bei „zu Hause“ die Adresse **mit PLZ** eintragen. Ohne PLZ
+    gilt überall die Standard-Fahrzeit.
+75. **B25.12 Steuertermine**: Auf der Seite Cash Flow unten bei „Steuertermine“ die Termine eintragen
+    (USt-Voranmeldung, Vorauszahlungen; Betrag darf leer sein). Die Erinnerung kommt 7 Tage vorher als Aufgabe.
+76. **B25.9 Benutzer**: Nach dem ersten Login den Dialog „Privat-Zugang bereinigt“ lesen. Wer Familienzeiten sehen soll,
+    bekommt „nur Familie“. Beim Konto der VA auf „Als VA-Rolle übernehmen“ tippen.
+77. **B25.10 B2B**: Deal-Blatt, Sammelbestellung und Prep-Export sind da und erscheinen am Deal (Hilfe-Kasten auf der
+    B2B-Seite). Zum Ausprobieren einen Test-Deal anlegen. Wenn du B2B vorerst nicht nutzt, sag Bescheid – dann führe
+    ich es im Umsetzungsstand als „bewusst zurückgestellt“.

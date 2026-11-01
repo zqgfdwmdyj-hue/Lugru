@@ -48,6 +48,20 @@ export default async function BqoolDateienPage({ searchParams }: { searchParams:
             </div>
           ))}
         </div>
+        {(() => {
+          // B25.5: Warnungen vor der Freigabe auf einen Blick (Min über Buy Box × 1,2, unter Break-even, kein Min in BQool …)
+          const warn = v.laender.flatMap((l) => l.zeilen.filter((z) => z.warnungen.length).map((z) => ({ land: l.land, sku: z.sku, w: z.warnungen })));
+          if (!warn.length) return <div className="small muted" data-testid="bq-warnungen-keine">Keine Warnungen – Min-Preise liegen zwischen Break-even und Buy Box × 1,2.</div>;
+          return (
+            <div className="notice notice-warn small" data-testid="bq-warnungen">
+              <strong>{warn.length} Warnung{warn.length === 1 ? "" : "en"} vor der Freigabe prüfen:</strong>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                {warn.slice(0, 15).map((x) => <li key={`${x.land}-${x.sku}`}><b>{x.land}</b> {x.sku}: {x.w.join(" · ")}</li>)}
+              </ul>
+              {warn.length > 15 && <div className="muted">… und {warn.length - 15} weitere (unten je Land).</div>}
+            </div>
+          );
+        })()}
         {kannSchreiben && (
           <form action={exportErzeugenAction} className="row" style={{ gap: 12, flexWrap: "wrap", alignItems: "center" }} data-testid="bq-export-form">
             {EXPORT_LAENDER.map((l) => (

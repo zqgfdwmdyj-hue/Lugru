@@ -108,6 +108,20 @@ export const auftragStatus = defineTool({
       .where(and(eq(O.tenantId, ctx.session.tenantId), inArray(O.id, vorher.map((v) => v.id))));
     return { text: JSON.stringify({ ok: true, geaendert: vorher.length, status: STATUS_TEXT[i.status], hinweis: "Nur intern – an den Marktplatz wurde nichts übertragen.", link: abs(ctx, "/auftraege") }), ids: vorher.map((v) => v.id), undo: { vorher: vorher.map((v) => ({ ...v, shippedAt: v.shippedAt?.toISOString() ?? null })) } };
   },
+  // B25.6: alter Status, Sendungsnummer und Versanddatum zurück (die alten Werte wurden vor der Änderung gespeichert).
+  undo: async (ctx, d) => {
+    const u = d as { vorher: { id: string; status: string; trackingNumber: string | null; shippedAt: string | null }[] };
+    let n = 0;
+    for (const v of u.vorher ?? []) {
+      const r = await db
+        .update(O)
+        .set({ status: v.status as typeof O.$inferInsert.status, trackingNumber: v.trackingNumber, shippedAt: v.shippedAt ? new Date(v.shippedAt) : null })
+        .where(and(eq(O.tenantId, ctx.session.tenantId), eq(O.id, v.id)))
+        .returning({ id: O.id });
+      n += r.length;
+    }
+    return `${n} Auftr${n === 1 ? "ag" : "äge"}: alter Status wiederhergestellt.`;
+  },
 });
 
 // ---- verlust_ausnahme ---------------------------------------------------------------------------------------

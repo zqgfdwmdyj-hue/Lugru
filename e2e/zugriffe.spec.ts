@@ -13,10 +13,11 @@ test.describe("Zugriffsrechte (B19.2)", () => {
   test("Benutzerliste: Privat voll bei Nicht-Inhaber rot, Rolle „VA“ setzen, neues Konto „Nur Familie“", async ({ page }) => {
     const m = marke().toLowerCase();
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    // Erst anmelden, dann das Konto anlegen: der Inhaber-Login bereinigt „voll“ sofort (B25.9) – hier soll die Warnung
+    // bis zur nächsten Bereinigung sichtbar sein.
+    await anmelden(page, "inhaber");
     const [u] = await sql<{ id: string }>("insert into users (email, name, password_hash) values ($1, $2, $3) returning id", [`test-${m}`, `Testkonto ${m}`, await bcrypt.hash(`Erfunden-${m}-Passwort`, 4)]);
     await sql("insert into memberships (tenant_id, user_id, role, areas, read_only, private_access, private_scope) values ($1, $2, 'staff', null, false, true, 'voll')", [T, u.id]);
-
-    await anmelden(page, "inhaber");
     await page.goto("/einstellungen");
     await expect(page.getByTestId("zugriff-warnungen")).toContainText(`Testkonto ${m}: Privat „voll“ bei Nicht-Inhaber`);
     await expect(page.getByTestId("zugriff-warnungen")).toContainText(`Testkonto ${m}: Mitarbeiter mit allen Bereichen`);

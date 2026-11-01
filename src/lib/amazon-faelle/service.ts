@@ -66,7 +66,7 @@ async function zahlungsAufgabe(tenantId: string, m: { bestellnummer: string | nu
 // ---- B20.5: Auszahlungen → Liquidität, Buy-Box-Hinweise → ein ToDo je Land, Routine → Archiv ------------------
 
 /** Routine-Arten, deren Mails archiviert werden (Versand, Bewertungsanfrage, Auszahlung, Buy-Box-Hinweis). */
-const ARCHIV_ARTEN = new Set<RoutineArt>(["versand", "bewertung", "auszahlung", "buybox"]);
+const ARCHIV_ARTEN = new Set<RoutineArt>(["versand", "bewertung", "auszahlung", "buybox", "info"]);
 
 async function mailsArchivieren(tenantId: string, ids: string[]) {
   if (ids.length) await db.update(E).set({ archived: true }).where(and(eq(E.tenantId, tenantId), inArray(E.id, ids), eq(E.archived, false)));
@@ -327,7 +327,7 @@ export async function neuEinstufen(tenantId: string, heute = todayIso()): Promis
           }
           await mailsArchivieren(tenantId, mails.map((x) => x.emailId).filter((x): x is string => !!x));
           Object.assign(set, { bereich: "info", phase: "info", status: "erledigt", dringlichkeit: "grau", frist: null, unsicher: false, ...(v.taskId ? {} : { zustaendig: null }) });
-          gruende.push(arten.includes("buybox") ? "Buy-Box-Hinweis – kein Fall: ToDo „Buy-Box-Berechtigung prüfen“ je Land, Mail archiviert" : arten.includes("bewertung") ? "Bewertungsanfrage – kein Fall, archiviert" : "Versandmail – kein Fall, archiviert");
+          gruende.push(arten.includes("buybox") ? "Buy-Box-Hinweis – kein Fall: ToDo „Buy-Box-Berechtigung prüfen“ je Land, Mail archiviert" : arten.includes("bewertung") ? "Bewertungsanfrage – kein Fall, archiviert" : arten.includes("info") ? "Prime-/Business-Info – kein Fall, archiviert" : "Versandmail – kein Fall, archiviert");
         }
       } else if (v.status !== "info" || v.bereich !== "info") {
         Object.assign(set, { bereich: "info", phase: "info", status: "info", dringlichkeit: "grau", frist: null, unsicher: false, ...(v.zustaendig === "va" && !v.taskId ? { zustaendig: null } : {}) });

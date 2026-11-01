@@ -483,7 +483,26 @@ async function PrivatWarnDialog({ tenantId }: { tenantId: string }) {
     .innerJoin(schema.users, eq(schema.users.id, M.userId))
     .where(eq(M.tenantId, tenantId));
   const betroffen = rows.filter((m) => !m.deaktiviertAm && m.role === "staff" && m.privateAccess && m.privateScope === "voll" && !m.readOnly);
-  if (!betroffen.length) return null;
+  if (!betroffen.length) {
+    // B25.9: Beim Anmelden bereinigt – Dialog nennt die umgestellten Konten (Aufgabe von heute, noch offen).
+    const [b] = await db
+      .select({ title: schema.tasks.title, notes: schema.tasks.notes })
+      .from(schema.tasks)
+      .where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.systemKey, `privat-voll-bereinigt:${todayIso()}`), eq(schema.tasks.status, "open")))
+      .limit(1);
+    if (!b) return null;
+    return (
+      <dialog open className="card card-pad" data-testid="privat-warn-dialog" aria-labelledby="privat-warn-titel" style={{ position: "fixed", top: "12vh", zIndex: 1000, maxWidth: 520, width: "calc(100% - 32px)", border: "2px solid var(--warn, #c80)", boxShadow: "0 10px 40px rgba(0,0,0,.3)" }}>
+        <h2 id="privat-warn-titel" style={{ marginTop: 0 }}>Privat-Zugang bereinigt</h2>
+        <p className="small" style={{ margin: "0 0 8px" }}>{b.title}.</p>
+        <p className="small" style={{ margin: "0 0 10px" }} data-testid="privat-bereinigt-konten">{b.notes}</p>
+        <div className="row" style={{ gap: 8 }}>
+          <Link className="btn btn-primary" href="/einstellungen#benutzer">Zugänge ansehen</Link>
+          <Link className="btn" href="/">Später</Link>
+        </div>
+      </dialog>
+    );
+  }
   return (
     <dialog open className="card card-pad" data-testid="privat-warn-dialog" aria-labelledby="privat-warn-titel" style={{ position: "fixed", top: "12vh", zIndex: 1000, maxWidth: 520, width: "calc(100% - 32px)", border: "2px solid var(--danger)", boxShadow: "0 10px 40px rgba(0,0,0,.3)" }}>
       <h2 id="privat-warn-titel" style={{ marginTop: 0 }}>🔴 Privat „voll“ bei Nicht-Inhaber</h2>

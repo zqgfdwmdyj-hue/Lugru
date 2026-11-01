@@ -173,6 +173,8 @@ export async function bqoolVorschau(tenantId: string, o: { laender?: ExportLand[
       if (!kat) w.push(`Regel „${rf.regel}“ steht nicht im Katalog`);
       const blockiert = minBlockiertBuybox({ istMin: i?.min ?? null, effMin: eff.min, buybox });
       if (blockiert) w.push(blockiert);
+      // B25.5: In BQool steht für die SKU kein Mindestpreis – ohne Upload bepreist BQool ohne Untergrenze.
+      if (i && (i.min === null || i.min === undefined || i.min <= 0)) w.push("kein Min in BQool – erst mit diesem Upload abgesichert");
       zeilen.push({ land, sku: r.sku, cost: bqoolCost(r.unitCost, b.costUst), zusatz: b.zusatzkosten, regel: rf.regel, min, max, enable, titel: r.title, asin: r.asin, quelle: rf.quelle, effMin: eff.min, marge: eff.marge, buybox, istRegel: i?.regel ?? null, istMin: i?.min ?? null, erklaerung: buyboxErklaerung({ buybox, effMin: eff.min, unterregel: eff.unterregel }), warnungen: w, art: "neu", regelWechsel: false, minDiff: null });
     }
     // Vergleich: hochgeladener BQool-Stand, sonst letzter eigener Export.

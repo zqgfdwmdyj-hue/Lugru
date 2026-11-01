@@ -4,7 +4,7 @@ import { z } from "zod";
 import { privateCalendar } from "@/lib/private/calendar-data";
 import { saveAppointment, saveTimeEntry, setStatus } from "@/lib/private/save";
 import { ANLEGBARE_ARTEN, privatEintragAnlegen as eintragAnlegen } from "@/lib/private/anlegen";
-import { privatEintragAendern as aendern, privatEintragLoeschen as loeschen, privatRueckgaengig } from "@/lib/private/aendern";
+import { anlegenRueckgaengig, privatEintragAendern as aendern, privatEintragLoeschen as loeschen, privatRueckgaengig } from "@/lib/private/aendern";
 import { loadEntries, privateSettings, type PrivateKind } from "@/lib/private/service";
 import { privatFinanzen as finanzenLaden } from "@/lib/private/geld-service";
 import type { Anlage, Einkommen, Erinnerung, Fixkosten, Steuerfrage } from "@/lib/private/geld";
@@ -178,8 +178,12 @@ export const privatEintragAnlegen = defineTool({
     const r = await eintragAnlegen(ctx.session, { art: i.art, tag: i.tag, uhrzeit: i.uhrzeit, person: p === "a" || p === "b" || p === "beide" ? p : undefined, anPerson: an === "a" || an === "b" ? an : undefined, anName: an ? undefined : i.an_person, text: i.text, wert: i.wert, variante: i.variante, sitzung: i.sitzung });
     // B22.1: sagen, wo der Eintrag zu finden ist und in welchem Konto er steht (Beobachtungen/Zettel sieht nur der Verfasser).
     const wo = i.art === "beobachtung" ? "/privat/beobachtungen" : i.art === "reflexion" ? "/privat/beobachtungen#reflexion" : r.id ? `/privat/eintrag/${r.id}` : "/privat";
-    return r.ok ? json({ ok: true, meldung: r.message, id: r.id, konto: ctx.session.name || ctx.session.email, link: abs(ctx, wo) }) : { text: r.message, isError: true };
+    if (!r.ok) return { text: r.message, isError: true };
+    const undo = anlegenRueckgaengig(ctx.session, r.id, i.art);
+    return { text: json({ ok: true, meldung: r.message, id: r.id, konto: ctx.session.name || ctx.session.email, link: abs(ctx, wo), rueckgaengig: undo ? "7 Tage im Assistent-Verlauf" : undefined }), ids: r.id ? [r.id] : undefined, undo };
   },
+  // B25.6: Anlegen zurücknehmen = Eintrag wieder entfernen (nur Verfasser, voller Privat-Zugang).
+  undo: (ctx, d) => privatRueckgaengig(ctx.session, d),
 });
 
 export const privatEintragAendern = defineTool({

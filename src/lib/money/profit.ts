@@ -119,12 +119,12 @@ export async function orderLines(tenantId: string, from: string, to: string): Pr
 export async function dataStand(tenantId: string) {
   const S = schema.amazonSettlementLines;
   const [[settle], orders] = await Promise.all([
-    db.select({ last: sql<string | null>`max(${S.postedDate})::text` }).from(S).where(eq(S.tenantId, tenantId)),
+    db.select({ last: sql<string | null>`max(${S.postedDate})::text`, lastEcht: sql<string | null>`max(${S.postedDate}) filter (where ${S.quelle} = 'abrechnung')::text` }).from(S).where(eq(S.tenantId, tenantId)),
     db
       .select({ channel: schema.orders.channel, last: sql<Date | null>`max(${schema.orders.updatedAt})` })
       .from(schema.orders)
       .where(eq(schema.orders.tenantId, tenantId))
       .groupBy(schema.orders.channel),
   ]);
-  return { settlement: settle?.last ?? null, orders: new Map<string, Date | null>(orders.map((o) => [o.channel, o.last ? new Date(o.last) : null])) };
+  return { settlement: settle?.last ?? null, settlementAusTransaktionen: Boolean(settle?.last && (!settle.lastEcht || settle.last > settle.lastEcht)), orders: new Map<string, Date | null>(orders.map((o) => [o.channel, o.last ? new Date(o.last) : null])) };
 }

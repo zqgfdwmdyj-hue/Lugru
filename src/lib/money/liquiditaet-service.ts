@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gte, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { addDaysIso } from "@/lib/dates";
+import { addDaysIso, todayIso } from "@/lib/dates";
 import { kontostand, letzterImport, umsaetzeSeit, wiederkehrend } from "@/lib/bank/service";
 import { termineBis } from "@/lib/bank/logic";
 import { ekFuerMenge } from "@/lib/b2b/eingabe";
@@ -295,4 +295,28 @@ export async function liquiditaet(tenantId: string, o: { heute: string; wochen?:
   const basis = { heute, wochen, start, reserve: L.reserve };
   const ohneSzenario = szenario ? liquiditaetWochen({ ...basis, posten }) : null;
   return { wochen: liquiditaetWochen({ ...basis, posten: szenario ? [...posten, szenario] : posten }), start, startStand, kontostandAlterTage: kontostandAlter(startStand, heute), startQuelle: bank ? "bank" : hand !== null ? "hand" : null, reserve: L.reserve, quellen, posten, szenario, ohneSzenario };
+}
+
+/**
+ * B25.12: Erinnerung an Steuertermine aus den Liquiditäts-Einstellungen – 7 Tage vorher eine Aufgabe (wichtig ab
+ * 2 Tagen). Nur Termin und geschätzter Betrag aus den Einstellungen, keine Steuerberatung.
+ */
+export async function steuerErinnern(tenantId: string, heute = todayIso()): Promise<number> {
+  const { steuerTermineBald } = await import("./liquiditaet");
+  const { upsertSystemTask } = await import("@/lib/tasks/system");
+  const L = (await getSettings(tenantId)).liquiditaet;
+  const bald = steuerTermineBald(L.steuern, heute, 7);
+  for (const t of bald) {
+    const dmy = `${t.datum.slice(8, 10)}.${t.datum.slice(5, 7)}.`;
+    const tage = Math.round((Date.parse(`${t.datum}T12:00:00Z`) - Date.parse(`${heute}T12:00:00Z`)) / 86_400_000);
+    await upsertSystemTask(db, tenantId, `steuer:${t.name}:${t.datum}`, {
+      title: `Steuertermin ${dmy}: ${t.name}${t.betrag ? ` (ca. ${t.betrag.toLocaleString("de-DE", { maximumFractionDigits: 0 })} €)` : ""} – Geld auf dem Konto bereithalten`,
+      notes: "Termin und Betrag laut Liquidität → Steuertermine (eigene Schätzung, keine Steuerberatung). Den genauen Betrag mit dem Steuerberater abstimmen.",
+      priority: tage <= 2 ? "critical" : "normal",
+      category: "eigene",
+      link: "/cashflow",
+      dueDate: t.datum,
+    });
+  }
+  return bald.length;
 }

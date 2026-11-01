@@ -324,11 +324,11 @@ export const anbindungenStatus = defineTool({
         // Einmalige Schritte (z. B. sellerboard-Konto erkennen) laufen nur beim Einrichten – nie „veraltet“.
         const einmalig = EINMALIGE_ABRUFE.has(j.name);
         const alt = !einmalig && (!j.lastOkAt || now - j.lastOkAt.getTime() > 2 * 86_400_000);
-        const plan = ABRUF_PLAN[j.name];
+        const plan = ABRUF_PLAN[j.name] ?? j.zeitplan ?? undefined;
         const letzterLauf = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
         return {
           abruf: j.name,
-          ausloeser: plan?.text ?? "Zeitplan: laut Plan",
+          ausloeser: plan?.text ?? "Zeitplan: wird beim nächsten Lauf erfasst",
           naechster_lauf: naechsterText(plan, letzterLauf),
           letzter_erfolg: berlinDateTime(j.lastOkAt) ?? "nie",
           einmalig: einmalig ? "nur beim Einrichten nötig – kein Hinweis auf alte Daten" : undefined,

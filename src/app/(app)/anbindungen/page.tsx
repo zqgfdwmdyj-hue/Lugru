@@ -15,7 +15,7 @@ import { FEHLT_OHNE } from "@/lib/integrations/fehlt";
 import { ordnerName } from "@/lib/mail/ordner";
 import { postfachStand } from "@/lib/mail/status";
 import { discordLiveStatus } from "@/lib/discord/gateway";
-import { ABRUF_PLAN, naechsterText } from "@/lib/today/abruf-plan";
+import { ABRUF_PLAN, ABRUFE_JE_ANBINDUNG, naechsterText } from "@/lib/today/abruf-plan";
 
 /** Anmeldung per OAuth für Postfächer – nur optional („Erweitert“); Standard ist IMAP mit App-Passwort. */
 const OAUTH_POSTFACH = new Set(["google", "microsoft"]);
@@ -71,7 +71,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
   const jetzt = new Date();
   const abrufe = jobs
     .map((j) => {
-      const plan = ABRUF_PLAN[j.name];
+      const plan = ABRUF_PLAN[j.name] ?? j.zeitplan ?? undefined;
       const letzter = j.lastOkAt && (!j.lastErrorAt || j.lastOkAt >= j.lastErrorAt) ? j.lastOkAt : (j.lastErrorAt ?? j.lastOkAt);
       return { name: j.name, plan, letzter, fehler: j.lastErrorAt && (!j.lastOkAt || j.lastErrorAt > j.lastOkAt) ? j.lastError : null, naechster: naechsterText(plan, letzter, jetzt) };
     })
@@ -81,7 +81,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
   const abrufZeile = (a: (typeof abrufe)[number]) => (
     <tr key={a.name} data-testid="abruf-zeile">
       <td>{a.name}</td>
-      <td className="small">{a.plan?.text ?? "Zeitplan: laut Plan"}</td>
+      <td className="small">{a.plan?.text ?? "Zeitplan: wird beim nächsten Lauf erfasst"}</td>
       <td className="small num">{zeit(a.letzter) ?? "–"}{a.fehler && <div style={{ color: "var(--danger)" }}>Fehler: {a.fehler.slice(0, 160)}</div>}</td>
       <td className="small">{a.naechster}</td>
     </tr>
@@ -289,6 +289,15 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                   <h2>{def.name}</h2>
                   <div className="small muted" style={{ marginTop: 2 }}>{def.purpose}</div>
                   {!st && FEHLT_OHNE[def.provider] && <div className="small" style={{ marginTop: 4 }} data-testid={`fehlt-${def.provider}`}><strong>Ohne diese Anbindung fehlen:</strong> {FEHLT_OHNE[def.provider]}.</div>}
+                  {st && (ABRUFE_JE_ANBINDUNG[def.provider] ?? []).length > 0 && (
+                    <div className="small muted" style={{ marginTop: 4 }} data-testid={`intervall-${def.provider}`}>
+                      {(ABRUFE_JE_ANBINDUNG[def.provider] ?? []).map((name) => {
+                        const a = abrufe.find((x) => x.name === name);
+                        const plan = ABRUF_PLAN[name] ?? a?.plan;
+                        return `${name}: ${plan ? plan.text.replace(/^(Zeitplan|Auslöser): /, "") : "noch kein Lauf"}${a?.letzter ? ` (zuletzt ${zeit(a.letzter)})` : ""}`;
+                      }).join(" · ")}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {st ? <span className="tag tag-ok">EINGERICHTET</span> : <span className="tag tag-neutral">{optional ? "OPTIONAL" : "NICHT VERBUNDEN"}</span>}

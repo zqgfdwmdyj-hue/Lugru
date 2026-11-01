@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireArea } from "@/lib/auth/session";
-import { callsListe, wissenStand } from "@/lib/calls/service";
+import { callsDurchsuchen, callsListe, wissenStand } from "@/lib/calls/service";
 import { getIntegration } from "@/lib/integrations/store";
 import { archivImportAction, callImportAction, discordImportAction, gruppenKanaeleAction, rohTageAction, sammelImportAction, wissenNachholenAction } from "./actions";
 import { kanalStaende } from "@/lib/discord-wissen/service";
@@ -12,9 +12,12 @@ import { getSettings } from "@/lib/settings";
 const dmy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 const QUELLE = { text: "Text", google_doc: "Google Doc", discord: "Discord", archiv: "altes Call-Archiv", datei: "Datei", chat: "Discord-Chat (Zusammenfassung)" } as const;
 
-export default async function CallsPage({ searchParams }: { searchParams: Promise<{ meldung?: string }> }) {
+export default async function CallsPage({ searchParams }: { searchParams: Promise<{ meldung?: string; q?: string }> }) {
   const session = await requireArea("amazon");
   const sp = await searchParams;
+  // B25.12: Volltextsuche in Transkripten und Zusammenfassungen (wie das Werkzeug „calls_durchsuchen“).
+  const q = (sp.q ?? "").trim().slice(0, 120);
+  const treffer = q.length >= 2 ? await callsDurchsuchen(session.tenantId, q, { limit: 10 }) : null;
   const [liste, discord, wissen] = await Promise.all([callsListe(session.tenantId), getIntegration(session.tenantId, "discord_calls"), wissenStand(session.tenantId)]);
   const wartend = liste.filter((c) => c.auswertung === "offen").length;
   const inhaber = session.role === "owner";
@@ -31,6 +34,21 @@ export default async function CallsPage({ searchParams }: { searchParams: Promis
         <Link className="btn btn-primary" href="/calls/offen" data-testid="calls-offen-link">Offene Punkte für den nächsten Call</Link>
       </div>
       {sp.meldung && <div className="notice notice-ok small" style={{ marginBottom: 12 }} role="status">{sp.meldung}</div>}
+      <form method="get" action="/calls" className="row" style={{ gap: 8, marginBottom: 12, flexWrap: "wrap" }} data-testid="calls-suche">
+        <input className="input" type="search" name="q" defaultValue={q} placeholder="In Transkripten suchen, z. B. „Ungarn Rabatt“" aria-label="In Transkripten suchen" style={{ flex: 1, minWidth: 200 }} />
+        <button className="btn" type="submit">Suchen</button>
+      </form>
+      {treffer && (
+        <section className="card card-pad stack" style={{ gap: 10, marginBottom: 12 }} data-testid="calls-treffer">
+          <div className="small muted">{treffer.length ? `${treffer.length} Call${treffer.length === 1 ? "" : "s"} mit „${q}“` : `Kein Call enthält „${q}“.`}</div>
+          {treffer.map((t) => (
+            <div key={t.id} data-testid="calls-treffer-zeile">
+              <Link href={`/calls/${t.id}`}><strong>{t.titel}</strong></Link> <span className="small muted">· {dmy(t.datum)}{t.alleWoerter ? "" : " · nicht alle Suchwörter"}</span>
+              {t.ausschnitte.map((a, i) => <div key={i} className="small muted" style={{ marginTop: 2 }}>… {a} …</div>)}
+            </div>
+          ))}
+        </section>
+      )}
       {wartend > 0 && (
         <div className="notice small" style={{ marginBottom: 12 }} data-testid="calls-wartend">
           {wartend} {wartend === 1 ? "Call wartet" : "Calls warten"} auf die KI-Auswertung – läuft nacheinander im Hintergrund (je Call etwa eine Minute). <Link href="/calls">Neu laden</Link>

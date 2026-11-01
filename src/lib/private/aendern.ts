@@ -11,7 +11,13 @@ import { canEdit, deleteEntry, loadEntries, loadEntry, restoreEntry, updateEntry
 
 export type RueckgaengigDaten =
   | { op: "aendern"; by: string; id: string; art: AenderbareArt; alt: Record<string, unknown> }
-  | { op: "loeschen"; by: string; id: string; art: AenderbareArt; userId: string; daten: Record<string, unknown>; createdAt: string };
+  | { op: "loeschen"; by: string; id: string; art: AenderbareArt; userId: string; daten: Record<string, unknown>; createdAt: string }
+  | { op: "anlegen"; by: string; id: string; art: AenderbareArt };
+
+/** B25.6: Rückgängig-Daten für einen neu angelegten Privat-Eintrag (nur änderbare Arten; Termine/Zeiten nicht). */
+export function anlegenRueckgaengig(session: Session, id: string | null | undefined, art: string): RueckgaengigDaten | undefined {
+  return id && istAenderbar(art) ? { op: "anlegen", by: session.userId, id, art } : undefined;
+}
 
 type Ergebnis = { ok: true; meldung: string; art: AenderbareArt; felder?: string[]; undo: RueckgaengigDaten } | { ok: false; meldung: string };
 
@@ -57,6 +63,12 @@ export async function privatRueckgaengig(session: Session, d: unknown): Promise<
   if (!u || typeof u !== "object" || !istAenderbar(u.art)) throw new Error("Keine gültigen Rückgängig-Daten.");
   if (u.by !== session.userId) throw new Error("Private Änderungen kann nur die Person zurücknehmen, die sie gemacht hat.");
   if (!session.privateAccess || session.privateScope !== "voll") throw new Error("Dafür braucht es den vollen Privat-Zugang.");
+  if (u.op === "anlegen") {
+    const e = await loadEntry<Record<string, unknown>>(session, u.id);
+    if (!e || e.kind !== u.art) throw new Error("Eintrag nicht mehr vorhanden – nichts zurückgenommen.");
+    if (!canEdit(session, e) || !(await deleteEntry(session, u.id, u.art as PrivateKind))) throw new Error("Nicht entfernt – keine Berechtigung.");
+    return `${ART_TEXT[u.art]}: Anlegen zurückgenommen (Eintrag entfernt).`;
+  }
   if (u.op === "aendern") {
     if (!(await updateEntry(session, u.id, u.art, u.alt, true))) throw new Error("Eintrag nicht mehr vorhanden – nichts zurückgenommen.");
     return `${ART_TEXT[u.art]}: alter Stand wiederhergestellt.`;

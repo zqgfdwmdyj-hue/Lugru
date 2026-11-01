@@ -73,8 +73,9 @@ export async function liquiEinstellungenAction(fd: FormData) {
   for (let i = 0; i < 8; i++) {
     const name = String(fd.get(`st_name_${i}`) ?? "").trim().slice(0, 60);
     const betrag = parseAmount(fd.get(`st_betrag_${i}`));
-    if (!name || !betrag) continue;
-    steuern.push({ name, betrag: Math.abs(betrag), monate: leseMonate(String(fd.get(`st_monate_${i}`) ?? "alle")), tag: Math.min(28, Math.max(1, Math.round(parseAmount(fd.get(`st_tag_${i}`)) ?? 10))) });
+    // B25.12: auch ohne Betrag speichern – dann nur Erinnerung (Steuertermine), nicht in der Vorschau.
+    if (!name) continue;
+    steuern.push({ name, betrag: Math.abs(betrag ?? 0), monate: leseMonate(String(fd.get(`st_monate_${i}`) ?? "alle")), tag: Math.min(28, Math.max(1, Math.round(parseAmount(fd.get(`st_tag_${i}`)) ?? 10))) });
   }
   const [t] = await db.select().from(schema.tenants).where(eq(schema.tenants.id, session.tenantId));
   const alt = t.settings.liquiditaet ?? {};

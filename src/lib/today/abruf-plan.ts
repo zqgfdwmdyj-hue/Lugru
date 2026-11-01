@@ -25,6 +25,23 @@ export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "ArbitrageOne: Exporte abholen": { ausloeser: "zeitplan", text: "Auslöser: täglich 05:30 (Einkäufe, Lagerbestand, sellerboard-COG, BQool-Vergleich; montags Reimbursement; am 1. AccountOne COG)", taeglichUm: "05:30" },
 };
 
+/** B25.12: Text für einen Abstand in Minuten (Hintergrund-Takt alle 5 Min.: 4 → 5, 59 → 60, 1435 → täglich). */
+export function intervallText(minuten: number): string {
+  const m = Math.max(5, Math.ceil(minuten / 5) * 5);
+  if (m >= 1380) return "täglich";
+  if (m === 60) return "stündlich";
+  if (m > 60 && m % 60 === 0) return `alle ${m / 60} Std.`;
+  return `alle ${m} Min.`;
+}
+
+/** Zeitplan, wie ihn der Hintergrund-Takt meldet: Abstand in Minuten bzw. täglich um. */
+export function planAusTakt(o: { minuten?: number; taeglichUm?: string }): AbrufPlan {
+  if (o.taeglichUm) return { ausloeser: "zeitplan", text: `Zeitplan: täglich ${o.taeglichUm}`, taeglichUm: o.taeglichUm };
+  const roh = Math.max(5, Math.ceil((o.minuten ?? 5) / 5) * 5);
+  const m = roh >= 1380 ? 1440 : roh;
+  return { ausloeser: "zeitplan", text: `Zeitplan: ${intervallText(m)}`, minuten: m };
+}
+
 const BERLIN = "Europe/Berlin";
 const tagBerlin = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: BERLIN }).format(d);
 const zeitBerlin = (d: Date) => new Intl.DateTimeFormat("de-DE", { timeZone: BERLIN, hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
@@ -65,7 +82,7 @@ export function naechsterLauf(plan: AbrufPlan | undefined, letzter: Date | null,
 
 /** Text für „nächster Lauf“. */
 export function naechsterText(plan: AbrufPlan | undefined, letzter: Date | null, jetzt = new Date()): string {
-  if (!plan) return "laut Plan";
+  if (!plan) return "nach dem ersten Lauf bekannt";
   if (plan.ausloeser === "live") return "sofort bei Eingang";
   const n = naechsterLauf(plan, letzter, jetzt);
   if (!n) return "–";
@@ -78,3 +95,23 @@ export function taeglichFaellig(hhmm: string, letzter: Date | null, jetzt = new 
   if (jetzt < berlinZeitpunkt(tagBerlin(jetzt), hhmm)) return false;
   return !letzter || tagBerlin(letzter) !== tagBerlin(jetzt) || letzter < berlinZeitpunkt(tagBerlin(jetzt), hhmm);
 }
+
+/** B25.12: welche Hintergrund-Abrufe zu welcher Anbindung gehören (für das Intervall je Anbindung). */
+export const ABRUFE_JE_ANBINDUNG: Record<string, string[]> = {
+  amazon_sp: ["Amazon-Bestellungen", "Amazon-Reports abholen", "Amazon-Reports anfordern", "Abrechnungen"],
+  temu: ["Temu-Bestellungen", "Temu-Angebote", "Temu-Produkte verknüpfen"],
+  apple_calendar: ["Kalender"],
+  google_drive: ["Rechnungen"],
+  lexoffice: ["B2B-Zahlungen (Lexoffice)"],
+  keepa: ["Keepa-Abgleich Lieferanten", "Eigene Produkte (Keepa)"],
+  stotax: ["Rechnungen an Stotax", "Belege an Stotax"],
+  arbitrageone_web: ["ArbitrageOne: Exporte abholen"],
+  discord_calls: ["Call-Kanal (Discord live): empfangen", "Call-Archiv (Discord, Sicherheitsnetz)"],
+  discord_va: ["VA (Discord)"],
+  discord_profitpath: ["ProfitPath (Discord)"],
+  lugru_deals: ["Lugru Deals (Discord)", "Lugru Deals: History", "Lugru Deals: eigene Käufe"],
+  asana: ["Rechtsfälle (Asana)"],
+  discord_wissen: ["Gruppen-Kanäle (Discord)"],
+  tesla: ["Tesla: Fahrtenbuch", "Tesla: Vorheizen", "Tesla: Verspätung"],
+  twilio: ["SMS: Frist morgen"],
+};

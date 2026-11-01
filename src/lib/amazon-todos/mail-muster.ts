@@ -30,6 +30,16 @@ export const BUYBOX_RE = new RegExp(
     String.raw`niet (?:meer )?in aanmerking[^\n]{0,80}(?:buy box|aanbevolen aanbieding)`,
     String.raw`nie kwalifikuj(?:e|ą) się[^\n]{0,80}(?:buy box|polecan)`,
     String.raw`inte (?:längre )?berättigad[^\n]{0,80}(?:buy box|utvalt erbjudande)`,
+    // B25.4: umgekehrte Wortstellung und „Buy Box verloren“ in allen Sprachen
+    String.raw`offerta in evidenza[^\n]{0,80}non (?:sei |è |sono )?(?:più )?idone`,
+    String.raw`(?:hai perso|perso) (?:la buy box|l'offerta in evidenza)|non (?:hai|detieni) più la buy box`,
+    String.raw`(?:buy box|einkaufswagen-?feld) verloren|nicht mehr (?:im|das) einkaufswagen-?feld`,
+    String.raw`(?:you(?:'ve| have)? lost|lost) the (?:buy box|featured offer)|no longer the featured offer`,
+    String.raw`(?:avez |as )?perdu (?:la buy box|l'offre (?:mise en avant|en vedette))`,
+    String.raw`(?:has |ha )?perdido la (?:buy box|oferta destacada)|ya no (?:eres|es) la oferta destacada`,
+    String.raw`buy box (?:verloren|kwijt)|niet meer de aanbevolen aanbieding`,
+    String.raw`utrac(?:ił|iłeś|iłaś|ono) buy box`,
+    String.raw`förlorat buy box`,
   ].join("|"),
   "i",
 );

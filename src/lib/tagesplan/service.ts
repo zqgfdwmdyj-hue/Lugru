@@ -1,4 +1,5 @@
 import "server-only";
+import { istAnruf, telefonAus } from "@/lib/mobil/logic";
 import { and, asc, eq, gte, inArray, isNotNull, lte, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Session } from "@/lib/auth/session";
@@ -70,7 +71,9 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
   const staffCalendars = tenant?.settings.calendar?.staffCalendars;
   const pushName = (await getIntegration(t, "apple_calendar"))?.calendarName || DEFAULT_CALENDAR_NAME;
   const privat = session.privateAccess ? await privateSettings(t) : null;
-  const fahrzeit = Math.max(0, (await getSettings(t)).mobil.fahrzeitMin);
+  const mobil = (await getSettings(t)).mobil;
+  const fahrzeit = Math.max(0, mobil.fahrzeitMin);
+  const { fahrzeitSchaetzen } = await import("@/lib/mobil/fahrzeit");
   const minuten = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const exportName = privat?.externSync.enabled ? privat.externSync.calendar : null;
 
@@ -92,10 +95,14 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
       const a = tag === startTag ? berlinTime(ev.startsAt) : "00:00";
       const b = ev.endsAt && tag === endeTag ? berlinTime(ev.endsAt) : ev.endsAt ? "23:59" : berlinTime(new Date(ev.startsAt.getTime() + 3600_000));
       add(tag, geschaeft ? { von: a, bis: b, titel: ev.title, art: "termin" } : { von: a, bis: b, titel: mitPrivat ? ev.title : PRIVAT_BELEGT, art: "privat" });
-      // Handy & Tesla (B13): vor geschäftlichen Terminen mit Ort die Fahrzeit blocken – dort passen Anrufe hinein.
-      if (geschaeft && ev.location?.trim() && tag === startTag && a !== "00:00") {
-        const vonFahrt = hhmmPlus("00:00", Math.max(0, minuten(a) - fahrzeit));
-        add(tag, { von: vonFahrt, bis: a, titel: `Fahrzeit → ${ev.title} (Anrufe möglich)`, art: "termin" });
+      // Handy & Tesla (B13) / B25.8: vor jedem Termin mit Ort (auch privat) die Fahrzeit blocken – geschätzt aus der PLZ
+      // von Ort und „zu Hause“, sonst die Standard-Fahrzeit; Online-Termine ohne Fahrzeit. Anrufe passen hinein.
+      if (ev.location?.trim() && tag === startTag && a !== "00:00") {
+        const f = fahrzeitSchaetzen(ev.location, mobil.orte.zuhause, fahrzeit);
+        if (f.minuten > 0) {
+          const vonFahrt = hhmmPlus("00:00", Math.max(0, minuten(a) - f.minuten));
+          add(tag, geschaeft || mitPrivat ? { von: vonFahrt, bis: a, titel: `Fahrzeit ${f.minuten} Min. → ${geschaeft || mitPrivat ? ev.title : "Termin"} (${f.grund}; Anrufe möglich)`, art: "termin" } : { von: vonFahrt, bis: a, titel: `Fahrzeit ${f.minuten} Min. (Anrufe möglich)`, art: "termin" });
+        }
       }
     }
   }
@@ -151,7 +158,7 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
   const hinweise: string[] = [];
 
   const offen = await db
-    .select({ id: T.id, title: T.title, systemKey: T.systemKey, dueDate: T.dueDate, priority: T.priority, aufwand: T.aufwand, link: T.link, assigneeId: T.assigneeId, zustaendigExtern: T.zustaendigExtern, createdBy: T.createdBy })
+    .select({ id: T.id, title: T.title, systemKey: T.systemKey, dueDate: T.dueDate, priority: T.priority, aufwand: T.aufwand, link: T.link, assigneeId: T.assigneeId, zustaendigExtern: T.zustaendigExtern, createdBy: T.createdBy, telefon: T.telefon, notes: T.notes })
     .from(T)
     .where(and(eq(T.tenantId, t), eq(T.status, "open"), bindingTask))
     .orderBy(asc(T.dueDate))
@@ -170,7 +177,7 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
     tage,
     aufgaben: imPlan.map((x) => {
       const g = x.aufwand ? null : (gelernt.get(aufgabenTyp(x)) ?? null);
-      return { id: x.id, titel: x.title, faellig: x.dueDate && x.dueDate < o.start ? o.start : x.dueDate, prioritaet: x.priority, aufwand: x.aufwand ?? g ?? schaetzeAufwand(x.title), geschaetzt: !x.aufwand, gelernt: Boolean(g), link: x.link };
+      return { id: x.id, titel: x.title, faellig: x.dueDate && x.dueDate < o.start ? o.start : x.dueDate, prioritaet: x.priority, aufwand: x.aufwand ?? g ?? schaetzeAufwand(x.title), geschaetzt: !x.aufwand, gelernt: Boolean(g), link: x.link, telefon: istAnruf(x.title) ? (x.telefon ?? telefonAus(x.notes ?? "")) : null };
     }),
     arbeitszeit: az,
     sperrenAm: (tag) => sperren.get(tag) ?? [],

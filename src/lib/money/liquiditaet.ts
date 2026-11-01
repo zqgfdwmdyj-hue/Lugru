@@ -89,6 +89,12 @@ export function leseMonate(roh: string): number[] {
 }
 
 /** Steuertermine im Zeitraum (Tag im Monat, fällt er aufs Wochenende → nächster Montag). */
+/** B25.12: Steuertermine in den nächsten `tage` Tagen (auch ohne Betrag) – für die Erinnerung als Aufgabe. */
+export function steuerTermineBald(termine: SteuerTermin[], heute: string, tage = 7): { datum: string; name: string; betrag: number | null }[] {
+  const posten = steuerPosten(termine.map((t) => ({ ...t, betrag: t.betrag > 0 ? t.betrag : 0.0001 })), heute, addDaysIso(heute, tage));
+  return posten.map((p) => ({ datum: p.datum, name: p.label, betrag: Math.abs(p.betrag) >= 0.01 ? Math.abs(p.betrag) : null }));
+}
+
 export function steuerPosten(termine: SteuerTermin[], von: string, bis: string): Posten[] {
   const out: Posten[] = [];
   const [vj, vm] = von.split("-").map(Number);

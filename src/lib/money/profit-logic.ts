@@ -157,14 +157,24 @@ export const istGeldbewegung = (description: string | null, type: string | null)
  * (zählt Bestellungen sofort). Ohne vollständige sellerboard-Werte bleibt es bei der Abrechnung mit Hinweis.
  */
 export type AmazonQuelle = { art: "abrechnung" | "sellerboard" | "keine"; text: string; unvollstaendig: boolean };
-export function amazonQuelle(o: { abrechnungBis: string | null; bis: string; hatAbrechnung: boolean; sb: { complete: boolean } | null }): AmazonQuelle {
+export function amazonQuelle(o: { abrechnungBis: string | null; bis: string; hatAbrechnung: boolean; sb: { complete: boolean } | null; heute?: string; ausTransaktionen?: boolean }): AmazonQuelle {
   const d = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
-  const bis = o.abrechnungBis ? `Amazon-Abrechnung bis ${d(o.abrechnungBis)}` : "noch keine Amazon-Abrechnung";
-  if (o.abrechnungBis && o.abrechnungBis >= o.bis) return { art: "abrechnung", text: `Amazon-Abrechnung (bis ${d(o.abrechnungBis)})`, unvollstaendig: false };
+  const name = o.ausTransaktionen ? "Amazon-Abrechnung/Transaktionsbericht" : "Amazon-Abrechnung";
+  const bis = o.abrechnungBis ? `${name} bis ${d(o.abrechnungBis)}` : "noch keine Amazon-Abrechnung";
+  // B25.1: Abgedeckt ist der Zeitraum auch, wenn die Daten bis gestern reichen (heute ist nie vollständig).
+  const gestern = o.heute ? vortag(o.heute) : null;
+  const noetigBis = gestern && gestern < o.bis ? gestern : o.bis;
+  if (o.abrechnungBis && o.abrechnungBis >= noetigBis) return { art: "abrechnung", text: `${name} (bis ${d(o.abrechnungBis)})`, unvollstaendig: false };
   if (o.sb?.complete) return { art: "sellerboard", text: `sellerboard – ${bis}`, unvollstaendig: false };
   if (o.hatAbrechnung) return { art: "abrechnung", text: `${bis} – Zeitraum danach fehlt`, unvollstaendig: true };
   return { art: "keine", text: "keine Amazon-Daten", unvollstaendig: true };
 }
+
+const vortag = (iso: string) => {
+  const t = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() - 1);
+  return t.toISOString().slice(0, 10);
+};
 
 /** Summen, wenn die Amazon-Zeile aus sellerboard kommt (Umsatz netto ≈ brutto ÷ (1 + USt.)). */
 export function mitAmazonErsatz(tot: { revenueNet: number; provisional: number }, amazon: { revenueNet: number; provisional: number } | null, sb: { sales: number; netProfit: number }, vatRate: number) {

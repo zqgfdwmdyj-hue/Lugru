@@ -179,3 +179,73 @@ export function abrechnungAusTransaktionen(table: Table, reimb: (typ: string, be
   }
   return { abrechnungen: [...kopf.values()], zeilen };
 }
+
+/** Gespeicherte Transaktionszeile (Tabelle amazon_transactions) – für Dateien, die vor der Ableitung importiert wurden. */
+export type GespeicherteTransaktion = {
+  rowHash: string;
+  date: string | null;
+  type: string | null;
+  kind: string;
+  settlementId: string | null;
+  orderId: string | null;
+  sku: string | null;
+  description: string | null;
+  quantity: number;
+  channel: string;
+  productSales: number | null;
+  shippingCredits: number | null;
+  sellingFees: number | null;
+  fbaFees: number | null;
+  total: number | null;
+};
+
+/** Kennung abgeleiteter Zeilen aus gespeicherten Transaktionen (werden durch die Ableitung aus der Datei ersetzt). */
+export const TX_DB_PREFIX = "txdb:";
+
+/**
+ * B25.1: Abrechnungszeilen aus bereits gespeicherten Transaktionen (Datei vor der Ableitung importiert). Gleiches
+ * Schema wie aus der Datei, nur gröber: Umsatz, Versandgutschrift, Verkaufs- und FBA-Gebühr einzeln, der Rest
+ * (Steuer, Aktionen, sonstige Gebühren) als „Differenz zu Gesamt“ – die Summe ergibt immer genau „Gesamt“.
+ */
+export function abrechnungAusGespeicherten(rows: GespeicherteTransaktion[], reimb: (typ: string, beschreibung: string) => boolean): { abrechnungen: AbgeleiteteAbrechnung[]; zeilen: AbgeleiteteZeile[] } {
+  const kopf = new Map<string, AbgeleiteteAbrechnung>();
+  const zeilen: AbgeleiteteZeile[] = [];
+  for (const r of rows) {
+    const nr = r.settlementId;
+    const typ = (r.type ?? "").trim();
+    if (!nr || !typ || r.total === null) continue;
+    const zeit = r.date ? new Date(`${r.date}T12:00:00Z`) : null;
+    const k = kopf.get(nr) ?? { settlementId: nr, startDate: null, endDate: null, depositDate: null, totalAmount: null, currency: "EUR" };
+    if (zeit && (!k.startDate || zeit < k.startDate)) k.startDate = zeit;
+    if (zeit && (!k.endDate || zeit > k.endDate)) k.endDate = zeit;
+    kopf.set(nr, k);
+    if (istUebertrag(typ)) {
+      k.depositDate = zeit;
+      k.totalAmount = r2((k.totalAmount ?? 0) - r.total);
+      continue;
+    }
+    const gemein = { settlementId: nr, orderId: r.orderId, marketplace: null, fulfillmentId: r.channel === "fba" ? "AFN" : r.channel === "fbm" ? "MFN" : null, postedDate: r.date, sku: r.sku, quelle: "transaktionen" as const };
+    const hash = (teil: string) => `${TX_DB_PREFIX}${createHash("sha1").update(`${r.rowHash}\u0002${teil}`).digest("hex")}`;
+    if (istBestellung(typ) || istErstattung(typ)) {
+      const tt = istBestellung(typ) ? "Order" : "Refund";
+      const teile: [string, string, number | null, boolean][] = [
+        ["ItemPrice", "Principal", r.productSales, true],
+        ["ItemPrice", "Shipping", r.shippingCredits, false],
+        ["ItemFees", "Commission", r.sellingFees, false],
+        ["ItemFees", "FBAPerUnitFulfillmentFee", r.fbaFees, false],
+      ];
+      let summe = 0;
+      for (const [typA, desc, betrag, immer] of teile) {
+        if (betrag === null || (!immer && betrag === 0)) continue;
+        summe += betrag;
+        zeilen.push({ ...gemein, rowHash: hash(`${typA}/${desc}`), transactionType: tt, amountType: typA, amountDescription: desc, amount: r2(betrag), quantity: desc === "Principal" ? Math.abs(Math.round(r.quantity)) : null });
+      }
+      const rest = r2(r.total - summe);
+      if (Math.abs(rest) >= 0.01) zeilen.push({ ...gemein, rowHash: hash("Other/Rest"), transactionType: tt, amountType: "Other", amountDescription: "Differenz zu Gesamt", amount: rest, quantity: null });
+      continue;
+    }
+    const beschreibung = r.description ?? "";
+    zeilen.push({ ...gemein, rowHash: hash("Other/Gesamt"), transactionType: typ, amountType: "Other", amountDescription: (reimb(typ, beschreibung) ? `Reimbursement – ${beschreibung || typ}` : beschreibung || typ).slice(0, 200), amount: r2(r.total), quantity: r.quantity ? Math.abs(Math.round(r.quantity)) : null });
+  }
+  return { abrechnungen: [...kopf.values()], zeilen };
+}

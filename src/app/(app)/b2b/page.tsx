@@ -81,6 +81,17 @@ export default async function B2bDealsPage({ searchParams }: { searchParams: Pro
           </tbody>
         </table>
       </section>
+      {/* B25.10: wo Deal-Blatt, Sammelbestellung und Prep-Export zu finden sind (je Deal auf seiner Seite). */}
+      <details className="card card-pad small" data-testid="b2b-ablauf-hilfe" open={deals.length === 0}>
+        <summary style={{ cursor: "pointer", fontWeight: 600 }}>So läuft ein B2B-Deal – wo finde ich Deal-Blatt, Sammelbestellung und Prep-Export?</summary>
+        <ol style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+          <li><b>Deal anlegen</b> (aus dem Preislisten-Scanner oder „Deal anlegen“) – auf der Deal-Seite oben: <b>Deal-Blatt (PDF)</b> und <b>Deal-Blatt (Bild)</b>, Text zum Kopieren unten.</li>
+          <li><b>Freischalten</b> (braucht die Vertriebsfreigabe des Lieferanten) → Kunden reservieren im Portal, Vorkasse-Rechnungen über Lexoffice.</li>
+          <li>Ist die Mindestmenge erreicht: auf der Deal-Seite unter „Ablauf“ <b>2. Sammelbestellung beim Großhändler</b> – Entwurf prüfen und freigeben.</li>
+          <li>Ware angekommen: je Kunde <b>Export fürs Prep-Tool</b> (CSV, XLSX, PDF) in der Kunden-Tabelle der Deal-Seite.</li>
+        </ol>
+        {deals.length === 0 && <div className="muted" style={{ marginTop: 6 }}>Solange es keinen Deal gibt, erscheinen diese Knöpfe nirgends – sie hängen immer an einem Deal.</div>}
+      </details>
     </>
   );
 }

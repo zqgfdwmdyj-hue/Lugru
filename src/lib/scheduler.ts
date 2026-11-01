@@ -1,5 +1,5 @@
 import "server-only";
-import { taeglichFaellig } from "@/lib/today/abruf-plan";
+import { planAusTakt, taeglichFaellig, type AbrufPlan } from "@/lib/today/abruf-plan";
 import { db, schema } from "@/db";
 import { syncClaims } from "@/lib/claims/service";
 import { syncAllMailboxes } from "@/lib/inbox/service";
@@ -44,10 +44,15 @@ import { jobEnded, jobStarted } from "@/lib/perf";
 // Hintergrund-Abrufe. Läuft im Server-Prozess (alle 15 Minuten) oder per /api/cron.
 
 const lastRun = new Map<string, number>();
+// B25.12: Zeitplan des gerade fälligen Blocks – „step“ speichert ihn je Abruf (Anbindungen zeigen ihn statt „laut Plan“).
+let planJetzt: AbrufPlan | null = null;
+const TAKT_PLAN = planAusTakt({ minuten: 5 });
+
 const due = (key: string, minutes: number) => {
   const last = lastRun.get(key) ?? 0;
   if (Date.now() - last < minutes * 60_000) return false;
   lastRun.set(key, Date.now());
+  planJetzt = planAusTakt({ minuten: minutes });
   return true;
 };
 
@@ -56,19 +61,24 @@ const taeglich = (key: string, hhmm: string) => {
   const last = lastRun.get(key);
   if (!taeglichFaellig(hhmm, last ? new Date(last) : null)) return false;
   lastRun.set(key, Date.now());
+  planJetzt = planAusTakt({ taeglichUm: hhmm });
   return true;
 };
 
+let forceLauf = false;
+
 async function step(tenantId: string, name: string, fn: () => Promise<unknown>) {
+  // Beim „Jetzt alles abrufen“ (force) gibt es keinen Zeitplan – dann bleibt der gespeicherte stehen.
+  const plan = forceLauf ? null : planJetzt;
   const t0 = Date.now();
   jobStarted(name);
   try {
     await fn();
-    void recordJob(tenantId, name, null, Date.now() - t0);
+    void recordJob(tenantId, name, null, Date.now() - t0, plan);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[Hintergrund] ${name}:`, msg);
-    void recordJob(tenantId, name, msg, Date.now() - t0);
+    void recordJob(tenantId, name, msg, Date.now() - t0, plan);
   } finally {
     jobEnded(name);
   }
@@ -79,6 +89,8 @@ let running = false;
 export async function runScheduledJobs(force = false) {
   if (running) return { skipped: true };
   running = true;
+  forceLauf = force;
+  planJetzt = null;
   try {
     const tenants = await db.select({ id: schema.tenants.id }).from(schema.tenants);
     for (const { id: t } of tenants) {
@@ -175,6 +187,7 @@ export async function runScheduledJobs(force = false) {
       // Handy & Tesla: Verspätungs-Entwurf (alle 5 Min., nur mit Tesla), Fahrten fürs Fahrtenbuch (stündlich),
       // SMS „Frist morgen“ (einmal am Tag ab 17 Uhr, nur wenn SMS eingerichtet).
       if (await has("tesla")) {
+        planJetzt = TAKT_PLAN;
         await step(t, "Tesla: Verspätung", async () => (await import("@/lib/mobil/fahrten")).verspaetungPruefen(t));
         if (force || due(`${t}:fahrten`, 59)) await step(t, "Tesla: Fahrtenbuch", async () => (await import("@/lib/mobil/fahrten")).fahrtenAbrufen(t));
         // Vorheizen vor Terminen mit Ort (nur wenn eingeschaltet; fragt das Auto nur, wenn ein Termin ansteht).
@@ -185,6 +198,8 @@ export async function runScheduledJobs(force = false) {
         if (Number(uhr) >= 17 && (force || due(`${t}:sms-frist`, 179))) await step(t, "SMS: Frist morgen", async () => (await import("@/lib/mobil/sms")).fristMorgenSms(t));
       }
       // Geburtstage & Jahrestage: 14 und 3 Tage vorher, am Tag selbst (je Stufe einmal, nur Push an Privat-Zugang).
+      // B25.12: Steuertermine aus der Liquidität 7 Tage vorher als Aufgabe.
+      if (force || due(`${t}:steuertermine`, 719)) await step(t, "Steuertermine: Erinnerung", async () => (await import("@/lib/money/liquiditaet-service")).steuerErinnern(t));
       if (force || due(`${t}:jahrestage`, 179)) await step(t, "Geburtstage & Jahrestage", async () => (await import("@/lib/private/erinnerungen")).jahrestagErinnerungen(t));
       // Deal-Eingang: Eingänge (WhatsApp-Inhalte) nach der Aufbewahrungsfrist löschen.
       // B15.1: Erinnerung „Versandbestätigung bei Amazon hochladen“, solange versendete Aufträge nicht gemeldet sind.
@@ -192,6 +207,8 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:deal-eingang-aufraeumen`, 1435)) await step(t, "Deal-Eingang aufräumen", async () => (await import("@/lib/deal-eingang/service")).aufraeumen(t));
       // B20.1: Konten, die sich nie angemeldet haben und älter als 30 Tage sind, deaktivieren (mit Aufgabe als Hinweis).
       if (force || due(`${t}:konten-nie-angemeldet`, 1435)) await step(t, "Konten: nie angemeldet → deaktivieren", async () => (await import("@/lib/auth/konten")).nieAngemeldeteDeaktivieren(t));
+      // B25.9: alte Privat-„voll“-Werte bei Mitarbeitern bereinigen (beim Start und danach stündlich prüfen).
+      if (force || due(`${t}:privat-voll`, 59)) await step(t, "Konten: Privat „voll“ nur Inhaber", async () => (await import("@/lib/auth/konten")).privatVollBereinigen(t));
       // Lernender Deal-Wert: 👍/👎 unter den ProfitPath-Nachrichten in Discord (alle 15 Min.), reales Ergebnis gekaufter
       // Deals 30/60/90 Tage nach Wareneingang und „bewährt?“ der Lugru-Deals aus dem Keepa-Zwischenspeicher (täglich).
       if (force || due(`${t}:deal-daumen`, 14)) await step(t, "Deal-Wert: 👍/👎 aus Discord", async () => (await import("@/lib/deal-eingang/wert")).discordDaumen(t));
@@ -234,6 +251,8 @@ export async function runScheduledJobs(force = false) {
       if (force || due(`${t}:tasks`, 59)) {
         const s = await getSettings(t);
         await step(t, "Ansprüche", () => syncClaims(t));
+        // B25.1: Transaktionsberichte, die vor der Ableitung importiert wurden → Abrechnungszeilen für die Gewinn-Seite.
+        await step(t, "Abrechnung aus Transaktionen nachziehen", async () => (await import("@/lib/reports/apply")).transaktionenNachziehen(t));
         await step(t, "Bestandswarnungen", () => refreshStockWarnings(t));
         await step(t, "Service", () => refreshServiceTasks(t));
         await step(t, "Rechnungsaufgaben", () => refreshInvoiceTasks(t));

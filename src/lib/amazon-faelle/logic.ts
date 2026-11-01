@@ -174,8 +174,18 @@ const ZAHLUNG_OK_RE = wort(String.raw`${ZAHLUNG}\b(?:elaborat[oa]|riuscit[oa]|ri
 /** „erfolgreich/elaborato/successo“ – nie A-bis-z (B19.4). */
 export const ERFOLG_RE = wort(String.raw`\berfolgreich\b|\belaborat[oa]\b|\bsuccess(?:o|ful(?:ly)?)?\b|\bréussi\b|\bavec succès\b|\bexitos[oa]\b|\bcorrectamente\b|\bgeslaagd\b`);
 
-/** B20.5: „bewertung“ (Bewertungsanfrage → Archiv), „buybox“ (Buy-Box-Hinweis → ein ToDo je Land, kein Fall). */
-export type RoutineArt = "bestellung" | "versand" | "zahlung" | "zahlung_fehler" | "auszahlung" | "bewertung" | "buybox";
+/**
+ * B25.4: Bestell-/Versandstatus als Betreff-Anfang („Bestellt: …“, „In Zustellung: …“, „Livré : …“) in DE/FR/IT/ES/
+ * NL/PL/SE/EN – eigene Einkäufe und Paketstatus, nie ein Fall.
+ */
+const STATUS_BESTELLT_RE = wort(String.raw`^\s*(?:bestellt|commandé|commande passée|ordinato|ordine effettuato|pedido realizado|besteld|bestelling geplaatst|zamówiono|zamówienie złożone|beställt|beställning lagd|ordered|order placed)\b\s*[:：]`);
+const STATUS_VERSAND_RE = wort(String.raw`^\s*(?:versandt|versendet|verschickt|unterwegs|in zustellung|zustellung heute|zugestellt|geliefert|lieferung heute|heute: lieferung|expédié|expédiée|en cours de livraison|livraison prévue|livré|livrée|spedito|spedita|in consegna|consegnato|consegna prevista|enviado|enviada|en reparto|entregado|llega hoy|verzonden|onderweg|bezorgd|wysłano|w doręczeniu|w drodze|dostarczono|skickat|på väg|levererat|shipped|out for delivery|delivered|arriving today|arriving tomorrow)\b`);
+const VERSAND_PHRASE_RE = wort(String.raw`\blivraison prévue\b|\bvotre colis\b|\bin zustellung\b|\bwird heute zugestellt\b|\barriving (?:today|tomorrow)\b|\bil tuo pacco\b|\btu paquete\b|\buw pakket\b|\btwoja przesyłka\b|\bditt paket\b`);
+/** B25.4: Prime-/Business-Infos (Mitgliedschaft, Angebote, Mengenrabatte) – Archiv. */
+const PRIME_INFO_RE = /\bprime[- ]?business\b|\bbusiness prime\b|amazon business[^\n]{0,40}(?:prime|mitgliedschaft|membership|abonnement|abbonamento|suscripci[oó]n|lidmaatschap|członkostwo|medlemskap|mengenrabatt|angebote?|vorteile|tipps?)|\b(?:ihre|deine|your|votre|il tuo|tu|uw|twoje|ditt) prime[- ]?(?:mitgliedschaft|membership|abonnement|abbonamento|suscripci[oó]n|lidmaatschap|członkostwo|medlemskap)\b|\bneu bei amazon business\b/i;
+
+/** B20.5: „bewertung“ (Bewertungsanfrage → Archiv), „buybox“ (Buy-Box-Hinweis → ein ToDo je Land, kein Fall), B25.4: „info“ (Prime/Business → Archiv). */
+export type RoutineArt = "bestellung" | "versand" | "zahlung" | "zahlung_fehler" | "auszahlung" | "bewertung" | "buybox" | "info";
 
 /** Echte Fall-Themen im Betreff gehen vor Routine (A-bis-z zu „your order“ bleibt ein Fall). */
 const FALL_IM_BETREFF = (b: string) => RE.a_bis_z.test(b) || RE.marke.test(b) || RE.kontozustand.test(b) || RE.freischaltung.test(b) || RE.entschaedigung.test(b);
@@ -190,7 +200,9 @@ export function routineArt(betreff: string, absender?: string | null): RoutineAr
   if (BEWERTUNG_RE.test(betreff)) return "bewertung";
   if (ROUTINE_RE[4].test(betreff) || ROUTINE_RE[3].test(betreff)) return "auszahlung";
   if (FALL_IM_BETREFF(betreff)) return null;
-  if (ROUTINE_RE[1].test(betreff) || VERSAND_RE.test(betreff) || /versandbestätigung|has shipped|wurde (?:versandt|zugestellt)|\bzugestellt\b|\bdelivered\b/i.test(betreff)) return "versand";
+  if (PRIME_INFO_RE.test(betreff)) return "info";
+  if (STATUS_BESTELLT_RE.test(betreff)) return "bestellung";
+  if (ROUTINE_RE[1].test(betreff) || VERSAND_RE.test(betreff) || STATUS_VERSAND_RE.test(betreff) || VERSAND_PHRASE_RE.test(betreff) || /versandbestätigung|has shipped|wurde (?:versandt|zugestellt)|\bzugestellt\b|\bdelivered\b/i.test(betreff)) return "versand";
   if (ROUTINE_RE.some((re) => re.test(betreff)) || EINKAUF_RE.test(betreff)) return "bestellung";
   return null;
 }

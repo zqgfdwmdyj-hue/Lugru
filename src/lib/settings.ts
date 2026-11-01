@@ -166,7 +166,7 @@ export const DEFAULT_SETTINGS = {
   },
   faelle: { fristen: {} as Record<string, number>, nachfassenTage: 7, betragSchwelle: 200, zustaendig: "va" as "va" | "ludwig" },
   // Abschnitt 10/11: Budget-Grenzen (0 = keine), Deal-Wert-Schwelle für die Kauf-Meldung und Ziel für „Treffer“.
-  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "", budgetJeDeal: 0, budgetJeTag: 0, budgetJeWoche: 0, wertSchwelle: 70, wertSchwelleJe: {} as Record<string, number>, monatsrahmen: 150_000, paybackEingerichtet: false },
+  dealEingang: { zielRoi: 20, maxReichweiteTage: 60, aufbewahrungMonate: 12, preislisteAbZeilen: 15, mailAdresse: "", kurzbefehlLink: "", budgetJeDeal: 0, budgetJeTag: 0, budgetJeWoche: 0, wertSchwelle: 70, wertSchwelleJe: { "Lugru Deals": 60 } as Record<string, number>, monatsrahmen: 150_000, paybackEingerichtet: false },
   /**
    * Posteingang auf null: Versand-/Lieferbestätigungen und Newsletter beim Eingang archivieren (Bestell-Mails
    * „Verkauft, jetzt liefern“ bleiben für den Versand-Abgleich); Termin-Mails (Arzt, Handwerker, Amt, Schule) in
@@ -251,7 +251,8 @@ export function resolveSettings(s: TenantSettings): ResolvedSettings {
     kapital: { ...d.kapital, ...(s.kapital ?? {}) },
     dealAmpel: { ...d.dealAmpel, ...(s.dealAmpel ?? {}) },
     faelle: { ...d.faelle, ...(s.faelle ?? {}), fristen: { ...d.faelle.fristen, ...(s.faelle?.fristen ?? {}) } },
-    dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}) },
+    // B25.3: „Lugru Deals=60“ ist ein echter Standardwert (im Feld sichtbar und gespeichert), eigene Werte gehen vor.
+    dealEingang: { ...d.dealEingang, ...(s.dealEingang ?? {}), wertSchwelleJe: { ...d.dealEingang.wertSchwelleJe, ...(s.dealEingang?.wertSchwelleJe ?? {}) } },
     posteingang: { ...d.posteingang, ...(s.posteingang ?? {}) },
     rechtsfaelle: { ...d.rechtsfaelle, ...(s.rechtsfaelle ?? {}) },
     discordWissen: { ...d.discordWissen, ...(s.discordWissen ?? {}) },

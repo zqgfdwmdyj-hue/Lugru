@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireSession } from "@/lib/auth/session";
 import { SystemLoad } from "./system-load";
@@ -23,20 +23,37 @@ const SOURCES: { name: string; where: string }[] = [
   { name: REPORT_KINDS.feedback, where: "Leistung → Feedback → Feedback-Manager → Bericht herunterladen" },
   { name: "Aufträge anderer Kanäle (eBay, TikTok, Temu …)", where: "Eigene CSV-Vorlage – siehe Aufträge" },
   { name: "Planposten für den Cash Flow", where: "Eigene CSV-Vorlage – siehe Cash Flow" },
+  // B25.2: über die Upload-Seite bzw. den Konnektor (import_link) erkannt
+  { name: REPORT_KINDS.storageFees, where: "Berichte → Versand durch Amazon → Lagergebühren → Monatliche Lagergebühren (.csv/.txt) – Kapital-Ampel, Gewinn (Info)" },
+  { name: "Umsatzsteuer-Transaktionsbericht (VAT Transactions)", where: "Berichte → Steuerdokumente → Umsatzsteuer-Berechnungsbericht – Buchhaltung je Monat/OSS; kommt mit Steuer-Rolle auch automatisch per Schnittstelle" },
+  { name: REPORT_KINDS.gestrandet, where: "Bestand → Bestandsplanung → Gestrandeter Bestand → Herunterladen – Fall-Zentrale (gebundenes Kapital)" },
+  { name: REPORT_KINDS.gesperrt, where: "Bestand → Angebote verbessern → Unterdrückt → Herunterladen – Fall-Zentrale" },
+  { name: REPORT_KINDS.langzeitlager, where: "Berichte → Versand durch Amazon → Lagergebühren → Langzeit-Lagergebühren – Kapital-Ampel, Verlust-Stopp" },
+  { name: REPORT_KINDS.inboundMaengel, where: "Berichte → Versand durch Amazon → Inbound-Leistung – Fall-Zentrale (weitere Gebühren)" },
 ];
 
 const LABELS: Record<string, string> = { ...REPORT_KINDS, sellerboard: "Arbitrage One – Sellerboard", accountone: "Arbitrage One – AccountOne", template: "Arbitrage One – Vorlage" };
 
 export default async function ImportPage() {
   const session = await requireSession();
-  const [runs, reports, areas] = await Promise.all([
+  const [runs, reports, areas, fehlUploads, fehlApi] = await Promise.all([
     db.select().from(schema.importRuns).where(eq(schema.importRuns.tenantId, session.tenantId)).orderBy(desc(schema.importRuns.createdAt)).limit(15),
     db.select().from(schema.reportImports).where(eq(schema.reportImports.tenantId, session.tenantId)).orderBy(desc(schema.reportImports.createdAt)).limit(30),
     dataAreas(session.tenantId),
+    // B25.2: auch, was nicht geklappt hat – fehlgeschlagene Uploads und abgelehnte Schnittstellen-Berichte
+    db.select().from(schema.uploads).where(and(eq(schema.uploads.tenantId, session.tenantId), eq(schema.uploads.ok, false))).orderBy(desc(schema.uploads.createdAt)).limit(10),
+    db.select().from(schema.apiReportRequests).where(and(eq(schema.apiReportRequests.tenantId, session.tenantId), eq(schema.apiReportRequests.status, "error"))).orderBy(desc(schema.apiReportRequests.requestedAt)).limit(10),
   ]);
-  const history = [
-    ...runs.map((r) => ({ at: r.createdAt, type: r.source, file: r.fileName, rows: (r.stats as { rows?: number }).rows ?? 0, inserted: (r.stats as { created?: number }).created ?? 0, via: "upload" })),
-    ...reports.map((r) => ({ at: r.createdAt, type: r.reportType, file: r.fileName, rows: r.rows, inserted: r.inserted, via: r.via })),
+  type Zeile = { at: Date; type: string; file: string | null; rows: number | null; inserted: number | null; via: string; ergebnis: string | null; fehler: string | null };
+  const runStats = (x: unknown) => x as { rows?: number; created?: number; updated?: number; skipped?: number; errors?: string[] };
+  const history: Zeile[] = [
+    ...runs.map((r) => {
+      const st = runStats(r.stats);
+      return { at: r.createdAt, type: r.source, file: r.fileName, rows: st.rows ?? 0, inserted: st.created ?? 0, via: "upload", ergebnis: [st.created ? `${st.created} neu` : null, st.updated ? `${st.updated} geändert` : null, st.skipped ? `${st.skipped} übersprungen` : null].filter(Boolean).join(", ") || null, fehler: st.errors?.length ? st.errors.slice(0, 2).join(" · ") : null };
+    }),
+    ...reports.map((r) => ({ at: r.createdAt, type: r.reportType, file: r.fileName, rows: r.rows, inserted: r.inserted, via: r.via, ergebnis: r.message, fehler: null })),
+    ...fehlUploads.map((u) => ({ at: u.createdAt, type: u.art ?? "unbekannt", file: u.dateiname, rows: null, inserted: null, via: "upload", ergebnis: null, fehler: u.zusammenfassung })),
+    ...fehlApi.map((x) => ({ at: x.requestedAt, type: x.reportType.split("@")[0], file: null, rows: null, inserted: null, via: "api", ergebnis: null, fehler: x.error ?? "abgelehnt" })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 30);
 
   return (
@@ -82,16 +99,17 @@ export default async function ImportPage() {
             <div className="card-head"><h2>Letzte Importe</h2></div>
             {history.length === 0 ? <div className="card-pad muted">Noch keine Importe.</div> : (
               <table className="table">
-                <thead><tr><th>Zeitpunkt</th><th>Art</th><th>Datei</th><th className="right">Zeilen</th><th className="right">Neu</th><th>Weg</th></tr></thead>
+                <thead><tr><th>Zeitpunkt</th><th>Art</th><th>Datei</th><th className="right">Zeilen</th><th className="right">Neu</th><th>Weg</th><th>Ergebnis / Fehler</th></tr></thead>
                 <tbody>
                   {history.map((h, i) => (
-                    <tr key={i}>
+                    <tr key={i} data-testid="import-zeile">
                       <td className="num">{h.at.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}</td>
                       <td>{LABELS[h.type] ?? h.type}</td>
                       <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.file ?? "–"}</td>
-                      <td className="num right">{h.rows}</td>
-                      <td className="num right">{h.inserted}</td>
+                      <td className="num right">{h.rows ?? "–"}</td>
+                      <td className="num right">{h.inserted ?? "–"}</td>
                       <td>{h.via === "api" ? "Schnittstelle" : "Upload"}</td>
+                      <td className="small" style={{ maxWidth: 360 }} data-testid="import-ergebnis">{h.fehler ? <span style={{ color: "var(--danger)" }}>Fehler: {h.fehler.slice(0, 200)}</span> : (h.ergebnis ?? <span className="muted">–</span>)}</td>
                     </tr>
                   ))}
                 </tbody>

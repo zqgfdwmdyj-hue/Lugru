@@ -31,3 +31,30 @@ export async function nieAngemeldeteDeaktivieren(tenantId: string, jetzt = new D
   });
   return ids.length;
 }
+
+/**
+ * B25.9: Privat „voll“ nur für Inhaber – bestehende Werte bei Mitarbeiter-/VA-Konten auf „kein Zugang“ setzen (die
+ * Sperre galt bisher nur bei der Neuwahl). Hinweis an den Inhaber als Aufgabe; nichts wird gelöscht.
+ */
+export async function privatVollBereinigen(tenantId: string): Promise<number> {
+  const M = schema.memberships;
+  const rows = await db
+    .update(M)
+    .set({ privateAccess: false })
+    .where(and(eq(M.tenantId, tenantId), eq(M.role, "staff"), eq(M.privateAccess, true), eq(M.privateScope, "voll")))
+    .returning({ userId: M.userId });
+  if (!rows.length) return 0;
+  const namen = await db.select({ email: schema.users.email }).from(schema.users).where(inArray(schema.users.id, rows.map((r) => r.userId)));
+  const key = `privat-voll-bereinigt:${todayIso()}`;
+  // Mehrere Bereinigungen am selben Tag: Konten in einer Aufgabe sammeln.
+  const [alt] = await db.select({ notes: schema.tasks.notes }).from(schema.tasks).where(and(eq(schema.tasks.tenantId, tenantId), eq(schema.tasks.systemKey, key))).limit(1);
+  const frueher = alt?.notes ? alt.notes.split(" – ")[0].split(", ").map((x) => x.trim()).filter(Boolean) : [];
+  const alle = [...new Set([...namen.map((n) => n.email), ...frueher])];
+  await upsertSystemTask(db, tenantId, key, {
+    title: `Privat-Zugang bereinigt: ${alle.length} ${alle.length === 1 ? "Konto" : "Konten"} von „voll“ auf „kein Zugang“`,
+    notes: `${alle.join(", ")} – Privat „voll“ ist nur für Inhaber erlaubt. Wer Familienzeiten sehen soll, bekommt unter Einstellungen → Benutzer „nur Familie“.`.slice(0, 480),
+    category: "eigene",
+    link: "/einstellungen#benutzer",
+  });
+  return rows.length;
+}

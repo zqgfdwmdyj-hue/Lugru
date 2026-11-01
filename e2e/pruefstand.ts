@@ -17,6 +17,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "B15.2 Privater Kalender auf der Startseite", erwartet: "nur „Privat belegt“ + Uhrzeit, nie Titel, Ort oder Betrag; Assistenz sieht nichts", tests: ["b15-sofort.spec.ts › Startseite"] },
       { ablauf: "B15.1 FBM-Versandbestätigung offen", erwartet: "Alarm mit Frist, Datei für Seller Central, „Verkauft, jetzt liefern“ erst nach Bestätigung erledigt", tests: ["amazon-todos-versand.spec.ts › Bestell-Mails folgen dem Auftrag"] },
+      { ablauf: "B25.7 Paletten ohne Kunde unter „Jetzt dringend“", erwartet: "Signal „N Paletten ohne Kunde – werden nicht abgerechnet“ mit Link auf den Filter", tests: ["b25.spec.ts › B25.3/B25.5/B25.6/B25.7"] },
     ],
     offen: ["Aufgaben anlegen, erledigen, verschieben", "Tageskennzahlen"],
   },
@@ -52,6 +53,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/anbindungen": {
     abläufe: [
       { ablauf: "Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“", erwartet: "Warnung „Kein Postfach verbunden“; Google-Karte zeigt OPTIONAL; anbindungen_status (nur Probleme) listet Google nicht, liefert Postfächer und Warnung", tests: ["postfach.spec.ts › Anbindungen, Verbinden"] },
+      { ablauf: "B25.12 Intervall je Abruf auf der Karte, echter Zeitplan statt „laut Plan“", erwartet: "z. B. „Amazon-Bestellungen: alle 15 Min.“; Zeitplan aus dem letzten Lauf", tests: ["b25.spec.ts › B25.10/B25.12"] },
     ],
   },
   "/amazon-faelle": {
@@ -64,11 +66,13 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   },
   "/assistent-verlauf": {
     abläufe: [
+      { ablauf: "B25.6 Rückgängig für aufgabe_verschieben (auch aufgabe_zuweisen, auftrag_status, privat_eintrag_anlegen)", erwartet: "neuer Aufruf zeigt „↩ Rückgängig“, Klick stellt die alte Frist her", tests: ["b25.spec.ts › B25.3/B25.5/B25.6/B25.7"] },
       { ablauf: "Auftrag an Claude aus den Amazon-ToDos: „ToDos mit versendetem Auftrag erledigen“ → Vorschau → Ausführen → Verlauf → Rückgängig; gelber Auftragsstatus; Preis ändern; Mail mit „ignore previous instructions“; VA-Konto; gleiche Aktion über den Konnektor", erwartet: "Vorschau nennt 2 passende und 1 getrennt (nicht versendet), ohne Klick keine Änderung; Verlauf mit Auftragstext und Datensätzen, Rückgängig öffnet wieder; gelb nur mit Einzelbestätigung; Preis: Hinweis + Link, keine Ausführung; Mail-Text löst nichts aus; VA ohne Finanzen; Konnektor gleiches Ergebnis", tests: ["assistent-aktionen.spec.ts › Vorschau → Ausführen"] },
     ],
   },
   "/deal-eingang": {
     abläufe: [
+      { ablauf: "B25.3 Schwelle „Lugru Deals=60“", erwartet: "als gespeicherter Wert im Feld, nicht als Platzhalter", tests: ["b25.spec.ts › B25.3/B25.5/B25.6/B25.7"] },
       { ablauf: "Text, Screenshot (3 Angebote), Kurzbefehl mit Geräte-Schlüssel, Kapital-Ampel rot, Preisliste (XLSX 500 Zeilen), Mail „Deal prüfen“, ProfitPath über Discord, Knöpfe Bestellvorschlag/B2B-Deal, Claude-Werkzeuge", erwartet: "Ampel je Angebot mit Gründen; Push ≤ 60 s nur bei Grün/Gelb (ProfitPath); widerrufener Schlüssel abgelehnt; gleiche ASIN/EK zusammengefasst, neuer EK = Update; Einkaufsentwurf und B2B-Entwurf angelegt", tests: ["deal-eingang.spec.ts › Text, Screenshot"] },
       { ablauf: "Abschnitt 10/11: Lugru-Deals-History über den Endpunkt (mit/ohne Schlüssel, erneut senden), Budget-Grenze je Deal, geteilter Deal mit Shop-Link, „Gekauft: Menge, Preis“, Amazon-Bestellbestätigung als .eml, 👎 aus der Push-Meldung mit Grund, 👍 unter der ProfitPath-Nachricht in Discord, Wareneingang + 35 Tage mit sellerboard-Monat, Monatsbericht, Claude-Werkzeuge", erwartet: "History neu/aktualisiert/ungültig gezählt, ohne Schlüssel 401; Deal-Wert „Passt zu dir (X/100)“ mit ähnlichen Deals (Lugru-Gruppe); über Budget höchstens Gelb mit Budget-Grund; Push mit „Zum Angebot“ (Shop-Link) und „Gekauft …“; gekauft → Bestellung „bestellt“ + Aufgabe „Wareneingang buchen“; Mail → gekauft (Menge, Preis, Bestellnummer), Mail bleibt im Posteingang; 👍/👎 mit Weg gespeichert; Ergebnis nach 30 Tagen mit realem ROI; deal_wert/deal_lernen_bericht/deal_bewerten/deal_gekauft", tests: ["deal-wert.spec.ts › History-Import"] },
       { ablauf: "Lücken aus dem Bauauftrag (Abschnitte 2, 4, 5, 7): weitere Einstellungen (ungültiger/gültiger iCloud-Link), Kurzbefehl-Skizzen, offene Rechteinhaber-Beschwerde zur ASIN, Lieferant ohne Marktplatz-Freigabe + Gefahrgut, Keepa-Mini-Chart, Screenshot im Original und fremde Datei", erwartet: "Einstellungen gespeichert, Budget/Ziel-ROI unverändert; Link + 4 Skizzen; Rot mit Fallnummer; Rot „selektiver Vertrieb“ + Gelb Gefahrgut als 2. Grund; Chart mit Ø/Tief/Stand; Bild 200 image/png, Datei über anderen Eingang 404", tests: ["deal-eingang-luecken.spec.ts › Einstellungen"] },
@@ -85,7 +89,10 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     offen: ["VA-Automatik live: Zeitzone „Asia/Manila“ prüfen, einige Tage im Modus „Vorschlag“ beobachten, dann auf „automatisch“ umstellen"],
   },
   "/kalender": {
-    abläufe: [{ ablauf: "Geschäftskalender als Büro-Konto und als Inhaberin", erwartet: "keine privaten Einträge (Testwort PRIVATGEHEIM erscheint nicht)", tests: ["privat.spec.ts › Privates bleibt privat"] }],
+    abläufe: [
+      { ablauf: "Geschäftskalender als Büro-Konto und als Inhaberin", erwartet: "keine privaten Einträge (Testwort PRIVATGEHEIM erscheint nicht)", tests: ["privat.spec.ts › Privates bleibt privat"] },
+      { ablauf: "B25.8 Tagesplan: Termin mit Ort, Anruf-Aufgabe mit Nummer", erwartet: "Fahrzeit-Block vor dem Termin (aus PLZ geschätzt, „Anrufe möglich“); 📞-Link mit tel:", tests: ["b25.spec.ts › B25.8"] },
+    ],
   },
   "/kalender/feierabend": {
     abläufe: [
@@ -118,6 +125,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Kennzahlen", erwartet: "Herkunft je Kennzahl; „Ohne EK“ mit Link zu den betroffenen Artikeln", tests: ["kennzahlen.spec.ts › Repricer"] },
       { ablauf: "BQool-Export „Manage Listings“ hochladen", erwartet: "Rückmeldung mit Anzahl je Marktplatz, Auffälligkeiten (ohne Min, pausiert, ohne Regel) in der Tabelle und im Werkzeug „repricer“", tests: ["geschaeft.spec.ts › BQool-Export"] },
       { ablauf: "B15.11 Übersicht je Regel, Filter, alle Länder", erwartet: "Regel mit DE/FR, aktiv/pausiert richtig (Angebotsstatus „Inactive“ ≠ pausiert); Filter Land und Status", tests: ["b15-anzeige.spec.ts › Repricer"] },
+      { ablauf: "B25.5 /repricer/export ohne Format", erwartet: "leitet auf die Vorschau „BQool-Dateien“ mit Warnungen je Land; CSV nur mit ?format", tests: ["b25.spec.ts › B25.3/B25.5/B25.6/B25.7"] },
     ],
     offen: ["Echter BQool-Export (Spaltennamen der aktuellen BQool-Version) – einmal mit echter Datei prüfen"],
   },
@@ -146,6 +154,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   },
   "/b2b": {
     abläufe: [
+      { ablauf: "B25.10 Wo Deal-Blatt, Sammelbestellung und Prep-Export erscheinen", erwartet: "Hilfe-Kasten auf der B2B-Seite (offen, solange kein Deal da ist)", tests: ["b25.spec.ts › B25.10/B25.12"] },
       { ablauf: "B15.12 SKU-Kürzel in der Lieferantenliste", erwartet: "Kürzel in eigener Liste, nicht bei den Freigaben; „Ist ein Lieferant“ nur auf Klick", tests: ["b15-anzeige.spec.ts › Lieferanten"] },
       { ablauf: "Deal anlegen, Prognose je Land, Rechenhilfe, Freischalten nur mit Vertriebsfreigabe, Discord", erwartet: "Prognose DE/FR/IT/ES (Keepa) und NL (Amazon live); Warnung bei negativem Verdienst; ohne Freigabe des Lieferanten kein Freischalten; Discord „neu“, „fast weg“, „geschlossen“", tests: ["b2b-deals.spec.ts › Freischalten nur mit Vertriebsfreigabe", "b2b-deals.spec.ts › Abnahme"] },
       { ablauf: "Abnahme: 1 Deal, 3 Kunden, 1 Fehlmenge", erwartet: "VIES → Reverse Charge nur FR; Mengengrenzen im Portal; Vorkasse-Rechnungen (Lexoffice), Zahlungsabgleich, Bestellung Entwurf → Freigabe → Senden nur mit Haken; Wareneingang 54/60 → anteilig 18/27/9, 3 Gutschriften, Reklamation; Export CSV/XLSX/PDF; verteilt → erledigt", tests: ["b2b-deals.spec.ts › Abnahme"] },
@@ -170,6 +179,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand; keine kaputten Werte", tests: ["kennzahlen.spec.ts › Gewinn"] },
       { ablauf: "B15.4 Quelle je Zeile, sellerboard als Ersatz, Amazon-Zeile", erwartet: "Abrechnung nur bis Monatsmitte → Amazon aus sellerboard; ohne sellerboard Hinweis „Zeitraum danach fehlt“; USt.-Zeilen und Rücklagen nicht im Ergebnis", tests: ["b15-zahlen.spec.ts › Gewinn"] },
+      { ablauf: "B25.1 Abrechnung aus dem Transaktionsbericht (auch ältere Importe)", erwartet: "fehlende Abrechnungszeilen aus gespeicherten Transaktionen nachgezogen; genauere Datei ersetzt sie; Übertrag = Auszahlung, nie Umsatz; keine Doppelzählung", tests: ["b25.spec.ts › B25.1/B25.2"] },
     ],
     offen: ["Amazon-Zeile mit echten Abrechnungen gegen sellerboard vergleichen (−525 € laut Testbericht)"],
   },
@@ -207,6 +217,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Google-Doc importieren → KI-Punkte → übernehmen → Aufgabe mit Link; Offene Punkte; Discord-Kanal", erwartet: "4 Punkte, Aufgabe (amazon) mit Frist, Fragen/Consultant-Punkte offen, Zusammenfassung mit Teilnehmern, 1 neuer Call aus Discord", tests: ["teil2.spec.ts › Call-Archiv"] },
       { ablauf: "Umzug aus dem bisherigen Call-Archiv: Export (JSON) hochladen, zweimal", erwartet: "Call mit Zusammenfassung und Google-Doc-Link, 3 Vorschläge; zweiter Import: „1 waren schon da“", tests: ["teil2.spec.ts › Umzug aus dem bisherigen Call-Archiv"] },
       { ablauf: "Wochen-Calls der Deal-Gruppe auf einmal: Word + ZIP (Text, Untertitel) + Link aus Discord-Kopie; Titel/Datum ändern; nochmal hochladen", erwartet: "4 Calls mit Datum aus Dateiname/Kopfzeile, KI im Hintergrund fertig, Wissen aus dem Call im Wissen (Quelle, Einschätzung, Suche), Datum geändert; zweites Hochladen: Kopie (gleicher Inhalt) und Link übersprungen", tests: ["teil2.spec.ts › Wochen-Calls der Deal-Gruppe"] },
+      { ablauf: "B25.12 Suchfeld über alle Transkripte", erwartet: "eingefügter Call wird über ein Wort aus dem Transkript gefunden; ohne Treffer „Kein Call enthält …“", tests: ["b25.spec.ts › B25.10/B25.12"] },
       { ablauf: "Gruppen-Kanäle (Discord, nur lesen): Nachrichten mehrerer Nutzer, Deal, Kanal „aus“, alter Rohtext", erwartet: "Tageszusammenfassung (Quelle Chat), Insider-Wissen mit Link, Frühwarnung mit eigenem Abgleich, Deal im Deal-Eingang, Kanal „aus“ nicht gelesen, Bot schreibt nie, keine Namen an die KI, Rohtext > 30 Tage gelöscht", tests: ["recht-discord.spec.ts › Teil B"] },
     ],
     offen: ["Echter Discord-Bot im Call-Kanal (Bot-Token, Kanal-ID) und Freigabe der Google Docs", "Export des bisherigen Call-Archivs auf dem Server hochladen (echte Daten, nicht im Repo)", "Gruppen-Kanäle: Bot vom Server-Admin der Deal-Gruppe eingeladen (nur Leserechte)"],
@@ -226,7 +237,12 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/privat/geld": { abläufe: [{ ablauf: "Frage für den Steuerberater, nur für die eigene Person", erwartet: "Hinweis „keine Steuerberatung“, Familien-Zugang gesperrt", tests: ["teil2.spec.ts › Privates Geld"] }] },
   "/ebay/pruefen": { abläufe: [{ ablauf: "Kleinanzeigen-Entwurf am eBay-Angebot", erwartet: "Titel ≤ 65, Kategorie, Zustand, Preis in ganzen Euro, Text ohne eBay-Sätze, Bilder + ZIP; nichts wird eingestellt", tests: ["amazon-berichte.spec.ts › eBay-Angebot → Titel"] }] },
   "/rechnungen": { abläufe: [{ ablauf: "Rechnung hochladen, Sammelbearbeitung", erwartet: "Upload leert nach Erfolg; Auswahl bleibt bei Fehlschlag; Rückfrage abgelehnt = nichts passiert", tests: ["formulare.spec.ts › Rechnungen"] }] },
-  "/import": { abläufe: [{ ablauf: "Unbekannte Datei importieren", erwartet: "Fehler, Datei bleibt ausgewählt", tests: ["formulare.spec.ts › Import"] }] },
+  "/import": {
+    abläufe: [
+      { ablauf: "Unbekannte Datei importieren", erwartet: "Fehler, Datei bleibt ausgewählt", tests: ["formulare.spec.ts › Import"] },
+      { ablauf: "B25.2 Spalte „Ergebnis / Fehler“, Lagergebühren/USt-Bericht unter „Was erkannt wird“", erwartet: "Ergebnis je Import (auch „nachgezogen“), fehlgeschlagene Uploads und abgelehnte Schnittstellen-Berichte mit Fehler", tests: ["b25.spec.ts › B25.1/B25.2"] },
+    ],
+  },
   "/marken/uhren": {
     abläufe: [
       { ablauf: "Kennzahlen", erwartet: "nur echte Deals, Herkunft angegeben", tests: ["kennzahlen.spec.ts › Uhren"] },
@@ -255,6 +271,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Testumgebung: Banner, Sperre nach außen, Übersicht", erwartet: "Banner auf jeder Seite, Verbindungen nach außen gesperrt, Mails abgefangen", tests: ["testumgebung.spec.ts › Banner"] },
       { ablauf: "Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen", erwartet: "gesperrt, keine Finanz- oder Privatdaten", tests: ["teil2.spec.ts › Assistenz (Büro)"] },
+      { ablauf: "B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle", erwartet: "Privatbereich gesperrt; beim Inhaber-Login auf „kein Zugang“ bereinigt + Dialog + Aufgabe; Knopf „Als VA-Rolle übernehmen“", tests: ["b25.spec.ts › B25.9"] },
     ],
   },
   "/einstellungen/claude": {

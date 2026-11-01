@@ -45,7 +45,10 @@ export function rolleVon(m: Pick<Mitglied, "role" | "areas" | "privateAccess" | 
   return "mitarbeiter";
 }
 
-export type Warnung = { userId: string; stufe: "rot" | "gelb"; text: string };
+export type Warnung = { userId: string; stufe: "rot" | "gelb"; text: string; /** B25.9: Knopf „Als VA-Rolle übernehmen“ anzeigen. */ vaVorschlag?: boolean };
+
+/** B25.9: Sieht nach dem Konto der VA aus (Adresse va@…, …va@…, Name „VA“/„virtuelle Assistenz“)? */
+export const siehtNachVaAus = (m: Pick<Mitglied, "email" | "name">) => /^va[@._-]|[._-]va@|virtual|assistan/i.test(m.email) || /\bVA\b|virtuelle assistenz|virtual assistant/i.test(m.name ?? "");
 
 const TAG = 86_400_000;
 
@@ -65,7 +68,8 @@ export function zugriffsWarnungen(ms: Mitglied[], ich: string, o: { jetzt?: Date
       out.push({ userId: m.userId, stufe: alt ? "rot" : "gelb", text: `${wer}: weiteres Inhaber-Konto – sieht alle Geschäftsbereiche (Geld, B2B, Einstellungen)${alt ? `, ${alt} – entfernen?` : ". Für Familie Rolle „Nur Familie“, für die VA „VA“."}` });
     }
     if (m.role === "staff" && m.areas === null && !m.readOnly) out.push({ userId: m.userId, stufe: "gelb", text: `${wer}: Mitarbeiter mit allen Bereichen – sieht auch Geld und B2B.` });
-    if (o.vaLogin && m.email.toLowerCase() === o.vaLogin.toLowerCase() && rolleVon(m) !== "va") out.push({ userId: m.userId, stufe: "rot", text: `${wer}: Konto der VA ohne Rolle „VA“ – bitte auf „VA“ stellen (kein Privat, kein Geld, keine Einstellungen).` });
+    if (o.vaLogin && m.email.toLowerCase() === o.vaLogin.toLowerCase() && rolleVon(m) !== "va") out.push({ userId: m.userId, stufe: "rot", text: `${wer}: Konto der VA ohne Rolle „VA“ – bitte auf „VA“ stellen (kein Privat, kein Geld, keine Einstellungen).`, vaVorschlag: true });
+    else if (m.role === "staff" && siehtNachVaAus(m) && rolleVon(m) !== "va") out.push({ userId: m.userId, stufe: "gelb", text: `${wer}: sieht nach dem Konto der VA aus, hat aber nicht die Rolle „VA“ – Vorschlag: übernehmen (nur VA-Bereiche, kein Privat, kein Geld).`, vaVorschlag: true });
   }
   return out;
 }

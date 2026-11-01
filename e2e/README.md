@@ -50,6 +50,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `privat-haushaltshilfe.spec.ts` | Babysitter & Putzhilfe aus dem Familienkalender: wach/schlafend, Stundenlohn, Korrektur, von Hand, CSV, „Geld“, Claude; „nur Familie“ ohne Zugang |
 | `b21-calls-live.spec.ts` | B21: Transkript in den Discord-Call-Kanal → über die Live-Verbindung sofort Archiv, Wissen, Aufgaben, Meldung; Bearbeiten ersetzt; zu groß → Aufgabe; Anzeige „live“ |
 | `amazon-berichte.spec.ts` | Amazon-Berichte 1–4: Konto-Berichte anfordern/abholen → Fall-Zentrale (Kontozustand je Land, gestrandet/gesperrt mit gebundenem Kapital, weitere Gebühren), Aufgaben + Push, USt-Bericht per Schnittstelle, Kapital-Hinweis, `amazon_faelle`/`amazon_lagergebuehren`, Datei-Import; Kleinanzeigen-Entwurf am eBay-Angebot mit Bilder-ZIP |
+| `b25.spec.ts` | B25 Browser-Prüfung Teil 4: Abrechnung aus dem Transaktionsbericht (ältere Importe nachgezogen, genauere Datei ersetzt die Ableitung, keine Doppelzählung), Import-Seite „Ergebnis / Fehler“, Lugru-Schwelle 60, `/repricer/export` → BQool-Vorschau, Rückgängig für `aufgabe_verschieben`, Paletten ohne Kunde auf der Startseite, Fahrzeit + 📞 im Tagesplan, Privat „voll“ bei Nicht-Inhabern gesperrt und beim Inhaber-Login bereinigt, „Als VA-Rolle übernehmen“, Calls-Suche, Intervall je Abruf, B2B-Ablauf-Hilfe |
 
 Testkonten (Passwort aus `TESTDATEN_PASSWORT`, in den Prüfungen fest): `inhaber` (Inhaberin, Privat voll),
 `lager` (nur Palettenlager), `buero` (Büro), `pruefer` (nur ansehen), `familie` (nur Privat „Familie“).

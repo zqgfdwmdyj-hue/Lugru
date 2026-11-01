@@ -43,7 +43,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
   const channels = summarizeChannels(lines, costs, settings.vatRate);
   const tot = totalsOf(amazon, channels);
   // B15.4: Quelle je Zeile – Amazon aus der Abrechnung, solange sie den Zeitraum abdeckt, sonst sellerboard.
-  const aq = amazonQuelle({ abrechnungBis: stand.settlement, bis: to, hatAbrechnung: Boolean(amazon), sb: sbAmazon });
+  const aq = amazonQuelle({ abrechnungBis: stand.settlement, bis: to, hatAbrechnung: Boolean(amazon), sb: sbAmazon, heute: todayIso(), ausTransaktionen: stand.settlementAusTransaktionen });
   const ersatz = aq.art === "sellerboard" && sbAmazon ? mitAmazonErsatz(tot, amazon, sbAmazon, settings.vatRate) : null;
   // B19.3: eine Basis für Kopf, Überleitung und Gewinnwerte (nicht mehr Kopf aus sellerboard, Tabelle aus der Abrechnung).
   const basis = gewinnBasis(tot, amazon, ersatz, Boolean(sbAmazon?.complete && !sbAmazon.missingCost));
@@ -101,7 +101,7 @@ export default async function GewinnPage({ searchParams }: { searchParams: Promi
       )}
 
       <div className="grid-kpi">
-        <Kpi testid="kpi-revenue" label="Umsatz netto (alle Kanäle)" value={formatEuro(basis.revenueNet)} note={ersatz ? "Amazon laut sellerboard (Abrechnung fehlt noch)" : undefined} state={tot.missing.priceLines ? "unvollstaendig" : "ok"} missing={tot.missing.priceLines ? [`Preis für ${plural(tot.missing.priceLines, "Position", "Positionen")}`] : undefined} fixHref={`${fix}#preis`} period={period} source="Amazon-Abrechnungen, Aufträge" stand={stand.settlement ? formatDate(stand.settlement) : undefined} />
+        <Kpi testid="kpi-revenue" label="Umsatz netto (alle Kanäle)" value={formatEuro(basis.revenueNet)} note={ersatz ? `Amazon laut sellerboard – ${stand.settlement ? `Abrechnung/Transaktionsbericht nur bis ${formatDate(stand.settlement)}` : "noch keine Abrechnung und kein Transaktionsbericht"}` : aq.art === "abrechnung" && stand.settlementAusTransaktionen ? "Amazon aus dem Transaktionsbericht (Abrechnung folgt)" : undefined} state={tot.missing.priceLines ? "unvollstaendig" : "ok"} missing={tot.missing.priceLines ? [`Preis für ${plural(tot.missing.priceLines, "Position", "Positionen")}`] : undefined} fixHref={`${fix}#preis`} period={period} source="Amazon-Abrechnungen, Aufträge" stand={stand.settlement ? formatDate(stand.settlement) : undefined} />
         <Kpi
           testid="kpi-provisional"
           label="Vorläufiges Ergebnis"

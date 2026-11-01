@@ -110,6 +110,7 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
                       <td className="num" style={{ whiteSpace: "nowrap" }}>{g.von}–{g.bis}</td>
                       <td>
                         {g.link ? <Link href={g.link}>{g.titel}</Link> : g.titel}
+                        {g.telefon && <> · <a href={`tel:${g.telefon.replace(/[^\d+]/g, "")}`} data-testid="tagesplan-telefon">📞 {g.telefon}</a></>}
                         {PRIO[g.prioritaet] && <span className={`tag ${PRIO[g.prioritaet]![0]}`} style={{ marginLeft: 6 }}>{PRIO[g.prioritaet]![1]}</span>}
                         {g.faellig && g.faellig > d.tag && <span className="small muted"> · vorgezogen (Frist {dm(g.faellig)})</span>}
                       </td>

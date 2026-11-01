@@ -3,7 +3,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Table } from "@/lib/tabular";
 import { todayIso } from "@/lib/dates";
-import { abrechnungAusTransaktionen } from "./transaktionen";
+import { abrechnungAusGespeicherten, abrechnungAusTransaktionen, TX_DB_PREFIX, type GespeicherteTransaktion } from "./transaktionen";
 import {
   classifyTransaction,
   parseCustomerReturns,
@@ -113,8 +113,11 @@ export async function applyReport(opts: {
       inserted = await insertIgnore(schema.amazonTransactions, withTenant(parsed));
       const kinds = parsed.reduce<Record<string, number>>((m, p) => ({ ...m, [p.kind]: (m[p.kind] ?? 0) + 1 }), {});
       message = `${kinds.sale ?? 0} Verkäufe, ${kinds.refund ?? 0} Erstattungen an Kunden, ${(kinds.reimb ?? 0) + (kinds.safet ?? 0)} Zahlungen von Amazon`;
-      details = await transaktionenAbleiten(tenantId, table);
+      details = await transaktionenAbleiten(tenantId, table, new Set(parsed.map((p) => p.rowHash)));
       if (details.abrechnungenNeu) message += `; ${details.abrechnungenNeu} Abrechnungen aus dem Transaktionsbericht ergänzt (Gewinn-Seite)`;
+      // B25.1: ältere Importe (vor der Ableitung) gleich mit nachziehen.
+      const alt = await transaktionenNachziehen(tenantId);
+      if (alt.abrechnungen) message += `; ${alt.abrechnungen} ältere Abrechnung${alt.abrechnungen === 1 ? "" : "en"} aus gespeicherten Transaktionen nachgezogen`;
       break;
     }
     case "fbmReturns": {
@@ -364,27 +367,78 @@ export async function lotIdsBySku(tenantId: string, skus: string[]) {
  * Abrechnung; Zeilen nur für Abrechnungen ohne echten Abrechnungsbericht (Quelle „transaktionen“, werden beim
  * Eintreffen des Abrechnungsberichts ersetzt). Doppelte Zeilen über den Zeilen-Hash ausgeschlossen.
  */
-async function transaktionenAbleiten(tenantId: string, table: Table) {
-  const { abrechnungen, zeilen } = abrechnungAusTransaktionen(table, (typ, b) => ["reimb", "safet"].includes(classifyTransaction(typ, b)));
-  if (!abrechnungen.length) return { abrechnungenNeu: 0, zeilenNeu: 0, auszahlungen: 0, mitAbrechnungsbericht: 0 };
+async function transaktionenAbleiten(tenantId: string, table: Table, dateiHashes: Set<string>) {
+  const reimb = (typ: string, b: string) => ["reimb", "safet"].includes(classifyTransaction(typ, b));
+  const { abrechnungen, zeilen } = abrechnungAusTransaktionen(table, reimb);
+  if (!abrechnungen.length) return { abrechnungenNeu: 0, zeilenNeu: 0, auszahlungen: 0, mitAbrechnungsbericht: 0, nachgezogen: 0 };
   const S = schema.amazonSettlements;
   const L = schema.amazonSettlementLines;
+  const T = schema.amazonTransactions;
   const ids = abrechnungen.map((x) => x.settlementId);
   const echte = new Set(
     (await db.selectDistinct({ id: L.settlementId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.quelle, "abrechnung"), inArray(L.settlementId, ids)))).map((r) => r.id),
   );
   const vorher = new Set((await db.select({ id: S.settlementId }).from(S).where(and(eq(S.tenantId, tenantId), inArray(S.settlementId, ids)))).map((r) => r.id));
-  for (const k of abrechnungen) {
-    await db
-      .insert(S)
-      .values({ ...k, tenantId })
-      .onConflictDoUpdate({
-        target: [S.tenantId, S.settlementId],
-        // Werte aus dem Abrechnungsbericht haben Vorrang; der Transaktionsbericht füllt nur Lücken.
-        set: { startDate: sql`coalesce(${S.startDate}, excluded.start_date)`, endDate: sql`coalesce(${S.endDate}, excluded.end_date)`, depositDate: sql`coalesce(${S.depositDate}, excluded.deposit_date)`, totalAmount: sql`coalesce(${S.totalAmount}, excluded.total_amount)` },
-      });
+  for (const k of abrechnungen) await kopfSpeichern(tenantId, k);
+  // B25.1: Abrechnungen, die schon aus gespeicherten Transaktionen (ältere Importe) abgeleitet sind: deckt die Datei alle
+  // gespeicherten Zeilen ab, ersetzt die genauere Ableitung aus der Datei sie; sonst aus allen gespeicherten Zeilen neu.
+  const mitDb = new Set(
+    (await db.selectDistinct({ id: L.settlementId }).from(L).where(and(eq(L.tenantId, tenantId), eq(L.quelle, "transaktionen"), inArray(L.settlementId, ids), sql`${L.rowHash} like ${`${TX_DB_PREFIX}%`}`))).map((r) => r.id),
+  );
+  const ausDb: string[] = [];
+  for (const id of mitDb) {
+    if (echte.has(id)) continue;
+    const gespeichert = await db.select({ h: T.rowHash }).from(T).where(and(eq(T.tenantId, tenantId), eq(T.settlementId, id)));
+    await db.delete(L).where(and(eq(L.tenantId, tenantId), eq(L.settlementId, id), eq(L.quelle, "transaktionen"), sql`${L.rowHash} like ${`${TX_DB_PREFIX}%`}`));
+    if (!gespeichert.every((g) => dateiHashes.has(g.h))) ausDb.push(id);
   }
-  const neu = zeilen.filter((z) => !echte.has(z.settlementId)).map((z) => ({ ...z, tenantId }));
+  const neu = zeilen.filter((z) => !echte.has(z.settlementId) && !ausDb.includes(z.settlementId)).map((z) => ({ ...z, tenantId }));
   const zeilenNeu = await insertIgnore(L, neu);
-  return { abrechnungenNeu: ids.filter((id) => !vorher.has(id)).length, zeilenNeu, auszahlungen: abrechnungen.filter((k) => k.depositDate).length, mitAbrechnungsbericht: echte.size };
+  const n = await transaktionenNachziehen(tenantId, ausDb);
+  return { abrechnungenNeu: ids.filter((id) => !vorher.has(id)).length, zeilenNeu: zeilenNeu + n.zeilen, auszahlungen: abrechnungen.filter((k) => k.depositDate).length, mitAbrechnungsbericht: echte.size, nachgezogen: n.abrechnungen };
+}
+
+/** Kopf einer Abrechnung: Werte aus dem Abrechnungsbericht haben Vorrang; der Transaktionsbericht füllt nur Lücken. */
+async function kopfSpeichern(tenantId: string, k: { settlementId: string; startDate: Date | null; endDate: Date | null; depositDate: Date | null; totalAmount: number | null; currency: string }) {
+  const S = schema.amazonSettlements;
+  await db
+    .insert(S)
+    .values({ ...k, tenantId })
+    .onConflictDoUpdate({
+      target: [S.tenantId, S.settlementId],
+      set: { startDate: sql`coalesce(${S.startDate}, excluded.start_date)`, endDate: sql`coalesce(${S.endDate}, excluded.end_date)`, depositDate: sql`coalesce(${S.depositDate}, excluded.deposit_date)`, totalAmount: sql`coalesce(${S.totalAmount}, excluded.total_amount)` },
+    });
+}
+
+/**
+ * B25.1: Abrechnungen aus gespeicherten Transaktionen nachziehen – für Transaktionsberichte, die importiert wurden,
+ * bevor das System daraus Abrechnungszeilen abgeleitet hat. Nur Abrechnungen ganz ohne Zeilen (bzw. die übergebenen,
+ * deren abgeleitete Zeilen eben entfernt wurden) – nie doppelt, der echte Abrechnungsbericht ersetzt sie später.
+ */
+export async function transaktionenNachziehen(tenantId: string, nurIds?: string[]): Promise<{ abrechnungen: number; zeilen: number }> {
+  const T = schema.amazonTransactions;
+  const ids = nurIds
+    ? nurIds
+    : (
+        await db
+          .selectDistinct({ id: T.settlementId })
+          .from(T)
+          .where(and(eq(T.tenantId, tenantId), sql`${T.settlementId} is not null`, sql`not exists (select 1 from amazon_settlement_lines l where l.tenant_id = ${tenantId} and l.settlement_id = ${T.settlementId})`))
+      )
+        .map((r) => r.id!)
+        .filter(Boolean);
+  let abrechnungen = 0;
+  let zeilen = 0;
+  for (let i = 0; i < ids.length; i += 20) {
+    const teil = ids.slice(i, i + 20);
+    const rows = (await db
+      .select({ rowHash: T.rowHash, date: T.date, type: T.type, kind: T.kind, settlementId: T.settlementId, orderId: T.orderId, sku: T.sku, description: T.description, quantity: T.quantity, channel: T.channel, productSales: T.productSales, shippingCredits: T.shippingCredits, sellingFees: T.sellingFees, fbaFees: T.fbaFees, total: T.total })
+      .from(T)
+      .where(and(eq(T.tenantId, tenantId), inArray(T.settlementId, teil)))) as GespeicherteTransaktion[];
+    const r = abrechnungAusGespeicherten(rows, (typ, b) => ["reimb", "safet"].includes(classifyTransaction(typ, b)));
+    for (const k of r.abrechnungen) await kopfSpeichern(tenantId, k);
+    abrechnungen += r.abrechnungen.length;
+    zeilen += await insertIgnore(schema.amazonSettlementLines, r.zeilen.map((z) => ({ ...z, tenantId })));
+  }
+  return { abrechnungen, zeilen };
 }

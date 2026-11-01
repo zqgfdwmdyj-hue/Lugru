@@ -1,5 +1,7 @@
 import "server-only";
 import { z } from "zod";
+import { and, eq } from "drizzle-orm";
+import { db, schema } from "@/db";
 import { AMPEL_TEXT, profitgoLink } from "@/lib/deal-ampel/logic";
 import { getSettings } from "@/lib/settings";
 import { dealPruefen } from "@/lib/deal-ampel/service";
@@ -128,7 +130,14 @@ export const aufgabeVerschiebenTool = defineTool({
   run: async (ctx, i) => {
     const r = await aufgabeVerschieben(ctx.session, i.id, i.datum);
     if (!r) return { text: "Aufgabe nicht gefunden.", isError: true };
-    return json({ ok: true, meldung: `„${r.titel}“ von ${dmy(r.vorher) ?? "ohne Frist"} auf ${dmy(i.datum)} verschoben.`, link: abs(ctx, `/kalender/tagesplan?tag=${i.datum}`) });
+    return { text: json({ ok: true, meldung: `„${r.titel}“ von ${dmy(r.vorher) ?? "ohne Frist"} auf ${dmy(i.datum)} verschoben.`, link: abs(ctx, `/kalender/tagesplan?tag=${i.datum}`) }), ids: [i.id], undo: { id: i.id, vorher: r.vorher, neu: i.datum } };
+  },
+  // B25.6: alte Frist zurück – nur, wenn seitdem niemand die Frist erneut geändert hat.
+  undo: async (ctx, d) => {
+    const u = d as { id: string; vorher: string | null; neu: string };
+    const [row] = await db.update(schema.tasks).set({ dueDate: u.vorher }).where(and(eq(schema.tasks.tenantId, ctx.session.tenantId), eq(schema.tasks.id, u.id), eq(schema.tasks.dueDate, u.neu))).returning({ title: schema.tasks.title });
+    if (!row) throw new Error("Die Frist wurde inzwischen geändert – nichts zurückgenommen.");
+    return `„${row.title}“ wieder ${u.vorher ? `auf ${dmy(u.vorher)}` : "ohne Frist"}.`;
   },
 });
 
@@ -254,9 +263,17 @@ export const aufgabeZuweisenTool = defineTool({
       if (!p) return { text: teil.length > 1 ? `Mehrdeutig: ${teil.map((x) => x.name).join(", ")}.` : `Keine Person „${i.person}“. Bekannt: ${ps.map((x) => x.name).join(", ")} (externe Namen unter Delegation pflegen).`, isError: true };
       key = p.key;
     }
+    const [vorher] = await db.select({ assigneeId: schema.tasks.assigneeId, zustaendigExtern: schema.tasks.zustaendigExtern, anleitungIds: schema.tasks.anleitungIds }).from(schema.tasks).where(and(eq(schema.tasks.tenantId, t), eq(schema.tasks.id, i.id)));
     const r = await zustaendigSetzen(t, i.id, key);
     if (!r.ok) return { text: "Aufgabe nicht gefunden.", isError: true };
-    return json({ ok: true, meldung: r.name ? `Zuständig: ${r.name}.${r.va ? ` ${r.va}` : ""}` : "Zuständigkeit entfernt.", link: abs(ctx, "/delegation") });
+    // B25.6: Rückgängig nur ohne Discord-Thread (eine Nachricht an die VA lässt sich nicht zurückholen).
+    return { text: json({ ok: true, meldung: r.name ? `Zuständig: ${r.name}.${r.va ? ` ${r.va}` : ""}` : "Zuständigkeit entfernt.", link: abs(ctx, "/delegation") }), ids: [i.id], undo: vorher && !r.va ? { id: i.id, vorher } : undefined };
+  },
+  undo: async (ctx, d) => {
+    const u = d as { id: string; vorher: { assigneeId: string | null; zustaendigExtern: string | null; anleitungIds: string[] | null } };
+    const [row] = await db.update(schema.tasks).set({ assigneeId: u.vorher.assigneeId, zustaendigExtern: u.vorher.zustaendigExtern, anleitungIds: u.vorher.anleitungIds ?? [] }).where(and(eq(schema.tasks.tenantId, ctx.session.tenantId), eq(schema.tasks.id, u.id))).returning({ title: schema.tasks.title });
+    if (!row) throw new Error("Aufgabe nicht mehr vorhanden – nichts zurückgenommen.");
+    return `„${row.title}“: alte Zuständigkeit wiederhergestellt.`;
   },
 });
 
