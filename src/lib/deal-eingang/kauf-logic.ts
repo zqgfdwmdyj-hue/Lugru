@@ -1,4 +1,4 @@
-// Abschnitt 10 „Kaufen mit einem Tap“ – reine Logik: Budget-Grenzen, Direktlink zum Angebot, Kauf-Meldung,
+// Abschnitt 10 „Kaufen mit einem Tap“ – reine Logik: Budget-Hinweis, Direktlink zum Angebot, Kauf-Meldung,
 // Bestellbestätigung aus einer Mail lesen. Es gibt bewusst KEINEN automatischen Kauf: Kauf-Bots verstoßen gegen die
 // Nutzungsbedingungen von Amazon und der meisten Shops (Risiko für Käufer- und verknüpftes Verkäuferkonto).
 
@@ -9,8 +9,9 @@ export type Budget = { jeDeal: number; jeTag: number; jeWoche: number };
 export type BudgetPruefung = { ok: boolean; hinweis: string | null; restWoche: number | null; restTag: number | null };
 
 /**
- * Budget-Grenzen (0 = keine Grenze). Kapital = empfohlene Menge × EK netto des Deals; verbraucht = schon gekaufte
- * Deals heute bzw. in dieser Woche. Darüber wird der Deal höchstens Gelb.
+ * Budget-Grenzen (0 = keine Grenze, Standard). Kapital = empfohlene Menge × EK netto des Deals; verbraucht = schon
+ * gekaufte Deals heute bzw. in dieser Woche. Nur noch Hinweis – blockiert nie den Warenkorb-Link und ändert die Ampel
+ * nicht (Kaufen mit einem Tap §4).
  */
 export function budgetPruefen(kapital: number | null, b: Budget, verbraucht: { tag: number; woche: number }): BudgetPruefung {
   const restWoche = b.jeWoche > 0 ? Math.max(0, Math.round((b.jeWoche - verbraucht.woche) * 100) / 100) : null;
@@ -46,14 +47,20 @@ export function angebotsLink(rohtext: string, asin: string | null, land: string 
 
 export type KaufZeile = { titel: string | null; name: string | null; ekNetto: number | null; bestesLand: string | null; roi: number | null; gewinn: number | null; empfohlen: number | null; kapitalbedarf: number | null; maxEk: { land: string; ek: number }[]; gueltigBis: string | null };
 
-/** Kauf-Meldung bei Grün: Menge, max. EK, Restbudget der Woche, Ablauf des Deals. */
-export function kaufText(z: KaufZeile, o: { restWoche: number | null; wert?: number | null }): string {
-  const teile = [`🟢 ${(z.titel ?? z.name ?? "Deal").slice(0, 40)}`];
+const AMPEL: Record<string, string> = { gruen: "🟢", gelb: "🟡", rot: "🔴" };
+
+/**
+ * Kopfzeile der Kauf-Meldung: „🟢 Deal 17: Galaxy Watch Ultra · EK 299 € · ROI 23 % · Empf. 4 Stk“ plus max. EK,
+ * Frist und Deal-Wert. Budget-Grenzen stehen hier nicht mehr (Kaufen mit einem Tap §4: keine Grenze, nur Monatsrahmen).
+ */
+export function kaufText(z: KaufZeile, o: { nr?: number | null; ampel?: string | null; wert?: number | null; menge?: number | null }): string {
+  const name = (z.titel ?? z.name ?? "Deal").slice(0, 40);
+  const teile = [`${AMPEL[o.ampel ?? "gruen"] ?? "🟢"} ${o.nr ? `Deal ${o.nr}: ` : ""}${name}`];
   if (z.ekNetto !== null) teile.push(`EK ${eur(z.ekNetto)}`);
-  if (z.bestesLand && z.roi !== null) teile.push(`${z.bestesLand}: ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
-  if (z.empfohlen) teile.push(`Empf. ${z.empfohlen} Stk${z.kapitalbedarf ? ` (${eur0(z.kapitalbedarf)})` : ""}`);
+  if (z.roi !== null) teile.push(`${z.bestesLand ? `${z.bestesLand}: ` : ""}ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
+  const menge = o.menge ?? z.empfohlen;
+  if (menge) teile.push(`Empf. ${menge} Stk${z.ekNetto ? ` (${eur0(menge * z.ekNetto)})` : z.kapitalbedarf ? ` (${eur0(z.kapitalbedarf)})` : ""}`);
   if (z.maxEk[0]) teile.push(`max. EK ${eur(z.maxEk[0].ek)}`);
-  if (o.restWoche !== null) teile.push(`Budget Woche noch ${eur0(o.restWoche)}`);
   if (z.gueltigBis) teile.push(`gültig bis ${z.gueltigBis}`);
   if (o.wert !== null && o.wert !== undefined) teile.push(`passt zu dir ${o.wert}/100`);
   return teile.join(" · ");

@@ -31,6 +31,11 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   const d = e.notification.data || {};
   const link = (e.action && d.links && d.links[e.action]) || d.link || "/";
+  // Kauf-Kurzlink (/k/17): eigenes Fenster – leitet zum Amazon-Warenkorb bzw. Shop weiter (öffnet ggf. die Amazon-App).
+  if (/^\/k\//.test(link)) {
+    e.waitUntil(self.clients.openWindow(link));
+    return;
+  }
   // Externe Links (Shop) im neuen Fenster, eigene Seiten im offenen Seller-System.
   if (/^https?:\/\//.test(link) && !link.startsWith(self.location.origin)) {
     e.waitUntil(self.clients.openWindow(link));

@@ -21,7 +21,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "geld", label: "Geld (Gewinn, Liquidität, Hebel, Kapital, Verlust-Stopp, Buchhaltung)", paths: ["/gewinn", "/cashflow", "/hebel", "/kapital", "/verlust", "/buchhaltung"], home: "/gewinn" },
   { key: "b2b", label: "B2B-Deals (Deals für Prep-Kunden, B2B-Kunden, Sammelbestellungen)", paths: ["/b2b"], home: "/b2b" },
   // Nur mit ausdrücklicher Freigabe – nicht Teil von „alle Bereiche“ (WhatsApp-Angebote mit Daten Dritter, Insider-Preise).
-  { key: "dealeingang", label: "Deal-Eingang (geteilte Angebote aus WhatsApp prüfen) – nur mit ausdrücklicher Freigabe", paths: ["/deal-eingang"], home: "/deal-eingang" },
+  { key: "dealeingang", label: "Deal-Eingang (geteilte Angebote aus WhatsApp prüfen) – nur mit ausdrücklicher Freigabe", paths: ["/deal-eingang", "/k"], home: "/deal-eingang" },
   // Eigenes Recht (memberships.privateAccess) – nie Teil von „alle Bereiche“, auch nicht beim Inhaber.
   { key: "privat", label: "Privat (Paar, Kinder, Therapie, Tagebuch)", paths: ["/privat"], home: "/privat" },
 ];

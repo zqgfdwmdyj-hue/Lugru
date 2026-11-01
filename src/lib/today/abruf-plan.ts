@@ -19,6 +19,7 @@ export const ABRUF_PLAN: Record<string, AbrufPlan> = {
   "Lugru Deals: History → Deal-Eingang": { ausloeser: "zeitplan", text: "Zeitplan: alle 5 Min. (bis fertig)", minuten: 5 },
   "Deal-Wert: 👍/👎 aus Discord": { ausloeser: "zeitplan", text: "Zeitplan: alle 15 Min.", minuten: 15 },
   "Deal-Wert: nachrechnen": { ausloeser: "zeitplan", text: "Zeitplan: alle 5 Min. (bis alle Deals einen Wert haben)", minuten: 5 },
+  "Kauf vorbereitet: prüfen": { ausloeser: "zeitplan", text: "Zeitplan: stündlich (24 Std. nach dem Öffnen des Warenkorb-Links: sellerboard-SKU → gekauft, sonst Erinnerung)", minuten: 60 },
   "Lugru Deals: eigene Käufe": { ausloeser: "zeitplan", text: "Zeitplan: alle 6 Std. (sellerboard-SKUs, Chargen, Bestellungen)", minuten: 360 },
   "Amazon: Versandbestätigung": { ausloeser: "zeitplan", text: "Zeitplan: stündlich", minuten: 60 },
 };

@@ -813,6 +813,13 @@
       "when": 1793462917697,
       "tag": "0115_lagergebuehren_masse",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1793521340444,
+      "tag": "0116_kaufen_mit_einem_tap",
+      "breakpoints": true
     }
   ]
 }

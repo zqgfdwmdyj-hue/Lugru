@@ -33,8 +33,8 @@ export async function proxy(request: NextRequest) {
   if (!token) {
     if (path.startsWith("/api/")) return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
     const login = new URL("/login", request.url);
-    // Claude-Freigabe: nach dem Login dorthin zurück.
-    if (path === "/oauth/authorize") login.searchParams.set("weiter", `${path}${request.nextUrl.search}`);
+    // Claude-Freigabe und Kauf-Kurzlink (/k/17 aus dem Push): nach dem Login dorthin zurück.
+    if (path === "/oauth/authorize" || path.startsWith("/k/")) login.searchParams.set("weiter", `${path}${request.nextUrl.search}`);
     return NextResponse.redirect(login);
   }
   const area = areaForPath(path);

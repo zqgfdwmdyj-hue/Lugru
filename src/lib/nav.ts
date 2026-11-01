@@ -194,6 +194,7 @@ export const NAV: NavSection[] = [
       { href: "/anbindungen", label: "Anbindungen", owner: true },
       { href: "/einstellungen/claude", label: "Claude & KI-Assistent", owner: true },
       { href: "/einstellungen/handy", label: "Handy & Tesla", owner: true },
+      { href: "/einstellungen/shop-profile", label: "Shop-Profile & Payback", owner: true },
       { href: "/ebay?ansicht=einstellungen", label: "eBay-Einstellungen", owner: true },
     ],
   },

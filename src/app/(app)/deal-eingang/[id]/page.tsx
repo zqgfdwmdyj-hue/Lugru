@@ -10,11 +10,14 @@ import { AutoRefresh } from "../../lieferanten/finden/refresh";
 import { neuPruefenAction, statusAction, zeileAction, bestellvorschlagAction, b2bAction, gekauftAction, bewertenAction } from "../actions";
 import { DAUMEN_GRUENDE } from "@/db/tables/deal-eingang";
 import { angebotsLink } from "@/lib/deal-eingang/kauf-logic";
+import { kaufVorschlag } from "@/lib/deal-eingang/kauf";
+import { kaufNrGueltig } from "@/lib/deal-eingang/shop-logic";
+import { CopyButton } from "@/components/copy-button";
 
 const eur = (n: number | null | undefined) => (n === null || n === undefined ? "–" : formatEuro(n));
 const pz = (n: number | null | undefined) => (n === null || n === undefined ? "–" : `${String(Math.round(n * 10) / 10).replace(".", ",")} %`);
 
-export default async function DealEingangDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string; zeile?: string; daumen?: string }> }) {
+export default async function DealEingangDetail({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ meldung?: string; zeile?: string; daumen?: string; code?: string; kauf?: string }> }) {
   const session = await requireArea("dealeingang");
   const { id } = await params;
   const sp = await searchParams;
@@ -36,6 +39,10 @@ export default async function DealEingangDetail({ params, searchParams }: { para
       }),
   );
   const bilder = e.dateiIds.map((fid, i) => ({ id: fid, name: e.dateiNamen[i] ?? `Datei ${i + 1}` }));
+  // Kaufen mit einem Tap: vorbereiteter Kauf aus dem Push bzw. jetzt berechnet (Shop-Profil, Menge, Gutschein).
+  const vorschlag = e.pruefung === "fertig" ? await kaufVorschlag(e).catch(() => null) : null;
+  const kauf = vorschlag?.kauf ?? null;
+  const nrGueltig = e.kaufNr && kaufNrGueltig(e.kauf?.am) ? e.kaufNr : null;
   return (
     <>
       <AutoRefresh active={laeuft} everyMs={3000} />
@@ -134,7 +141,24 @@ export default async function DealEingangDetail({ params, searchParams }: { para
         const link = angebotsLink(e.rohtext, z.asin, z.bestesLand);
         return (
           <section className="card card-pad stack" style={{ marginTop: 12, scrollMarginTop: 70 }} id="gekauft" data-testid="de-kaufen">
-            <h2 style={{ margin: 0 }}>Kaufen</h2>
+            <h2 style={{ margin: 0 }}>Kaufen{nrGueltig ? ` · Deal ${nrGueltig}` : ""}</h2>
+            {sp.kauf && <div className="notice notice-warn small" data-testid="de-kauf-hinweis">{sp.kauf === "abgelaufen" ? "Die Deal-Nummer aus dem Push ist abgelaufen (24 Std.) – hier neu öffnen." : sp.kauf === "kein_link" ? "Für diesen Deal ist kein Einkaufs-Shop bekannt – Link aus der Nachricht nutzen." : "Deal-Nummer nicht gefunden."}</div>}
+            {kauf && !e.gekauftAm && (
+              <div className="stack" style={{ gap: 6 }} data-testid="de-kauf-link">
+                <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <a className="btn btn-primary" href={`/k/${e.id}`} target="_blank" rel="noreferrer" data-testid="de-warenkorb">{kauf.warenkorb ? `In den Warenkorb (${kauf.menge})` : "Produktseite öffnen"}</a>
+                  <span className="small">{kauf.shop}{kauf.warenkorb ? " · Warenkorb vorbereitet – „Jetzt kaufen“ tippst du selbst" : kauf.hinweis ? ` · ${kauf.hinweis}` : ""}</span>
+                </div>
+                {kauf.warenkorb && kauf.fallbackUrl && <div className="small muted">Warenkorb leer? <a href={`/k/${e.id}?produkt=1`} target="_blank" rel="noreferrer" data-testid="de-produktseite">Produktseite öffnen (Menge {kauf.menge} wählen)</a></div>}
+                {kauf.gutschein && (
+                  <div className={sp.code === "1" ? "notice notice-ok small row" : "small row"} style={{ gap: 8, alignItems: "center" }} data-testid="de-gutschein">
+                    Gutschein aus dem Post: <code style={{ fontSize: 15 }}>{kauf.gutschein}</code> <CopyButton text={kauf.gutschein} label="Code kopieren" />
+                  </div>
+                )}
+                {kauf.payback && <div className="small muted" data-testid="de-payback">Payback: {kauf.payback}{kauf.kuerzel === "AMZDE" ? <> · <Link href="/einstellungen/shop-profile">eingerichtet?</Link></> : null}</div>}
+              </div>
+            )}
+            {e.kaufVorbereitetAm && !e.gekauftAm && <div className="small" data-testid="de-kauf-vorbereitet">Kauf vorbereitet ({e.kaufVorbereitetMenge ?? "?"} Stk) am {e.kaufVorbereitetAm.toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "short", timeStyle: "short" })} – nach 24 Std. prüft das System die sellerboard-SKUs; gekauft? Dann unten eintragen.</div>}
             <div className="small muted">Gekauft wird nie automatisch (Kauf-Bots verstoßen gegen die Shop-Bedingungen). {link && <a href={link} target="_blank" rel="noreferrer" data-testid="de-angebot-link">Zum Angebot →</a>}{z.maxEk[0] ? ` · max. EK ${eur(z.maxEk[0].ek)}` : ""}{z.angebot.gueltigBis ? ` · gültig bis ${z.angebot.gueltigBis}` : ""}</div>
             <form action={gekauftAction} className="row small" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }} data-testid="de-gekauft-form">
               <input type="hidden" name="id" value={e.id} />

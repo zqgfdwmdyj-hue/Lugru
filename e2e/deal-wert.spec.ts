@@ -1,6 +1,6 @@
 // Deal-Eingang Abschnitt 10 („Kaufen mit einem Tap“) und 11 („Lernender Deal-Wert“) gegen die Testdienste – erfundene
 // ASINs, Händler und Gruppen-Deals. Abnahmen: Lugru-Deals-History inkl. Reaktionen rückwirkend; neuer Deal zeigt den
-// Deal-Wert mit Begründung und ähnlichen früheren Deals; Budget-Grenze → höchstens Gelb; Push mit „Zum Angebot“/„Gekauft“;
+// Deal-Wert mit Begründung und ähnlichen früheren Deals; Budget ändert die Ampel nicht; Push mit Kauf-Link und „Details“;
 // „gekauft“-Knopf → Bestellung bestellt + Wareneingang erwartet; Bestellbestätigungs-Mail → gekauft; 👍/👎 aus Push
 // und Discord gespeichert; nach Wareneingang + 30 Tagen reales Ergebnis; Claude-Werkzeuge.
 import { aktion, anmelden, expect, marke, mcpVerbinden, sql, test } from "./helfer";
@@ -46,7 +46,8 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     const hist = await sql<{ asin: string; kaeufe: number; nicht_verfuegbar: number }>("select asin, kaeufe, nicht_verfuegbar from lugru_deals_historie where tenant_id = $1 and extern_id in ($2, $3) order by extern_id", [T, basisId + 1, basisId + 2]);
     expect(hist).toEqual([{ asin: "B0TESTLG01", kaeufe: 6, nicht_verfuegbar: 1 }, { asin: "B0TESTLG02", kaeufe: 0, nicht_verfuegbar: 3 }]);
 
-    // 2) Budget-Grenzen und Schwelle (nur Inhaber): je Deal 10 € → was sonst Grün wäre, wird höchstens Gelb.
+    // 2) Budget und Schwelle (nur Inhaber). Kaufen mit einem Tap §4: keine Budgetgrenze mehr – „je Deal“ begrenzt nur
+    // die Menge im Kauf-Link, die Ampel bleibt.
     await page.goto("/deal-eingang");
     const ein = page.getByTestId("de-einstellungen-form");
     await ein.locator('input[name="budgetJeDeal"]').fill("10");
@@ -54,7 +55,7 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     await ein.locator('input[name="wertSchwelle"]').fill("1");
     await Promise.all([aktion(page), ein.getByRole("button", { name: "Speichern" }).click()]);
     await expect(page.getByRole("status")).toContainText("Einstellungen gespeichert");
-    await expect(page.getByTestId("de-einstellungen")).toContainText("5.000");
+    await expect(page.getByTestId("de-einstellungen-form").locator('input[name="budgetJeWoche"]')).toHaveValue("5000");
 
     // 3) Neuer Deal (geteilt) → Deal-Wert mit Begründung und ähnlichen früheren Deals (hier: Lugru-Gruppe); Push mit Kauf-Knöpfen.
     const r = await page.request.post("/api/deal-eingang", { multipart: { text: `B0TESTDE01 Testsocken 2,10 netto ab 20 Stk https://shop.example.test/socken-${m}`, quelle: `Testhändler ${m}` }, maxRedirects: 0 });
@@ -67,23 +68,23 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     expect(zA.wert?.begruendung).toMatch(/^Passt zu dir \(\d+\/100\)/);
     expect(zA.wert?.aehnliche.some((a) => a.quelle === "lugru")).toBe(true);
     expect(zA.wert?.dafuer.join(" ")).toContain("Lugru-Gruppe: 6 Käufe");
-    // Budget: über 10 € je Deal (20 × 2,10 €) → nicht Grün, Budget-Hinweis als erster Grund
-    if (zA.ampel !== "rot") {
-      expect(zA.ampel).toBe("gelb");
-      expect(zA.gruende[0]).toMatch(/^Budget: [\d.]+ € über der Grenze je Deal \(10 €\)/);
-    }
+    // Budget ändert die Ampel nie (kein „Budget:“-Grund mehr)
+    expect(zA.gruende.some((g) => g.startsWith("Budget:"))).toBe(false);
     await page.goto(`/deal-eingang/${idA}`);
     await expect(page.getByTestId("de-wert").first()).toContainText("Passt zu dir");
     await expect(page.getByTestId("de-aehnliche").first()).toContainText("Lugru-Gruppe");
     await expect(page.getByTestId("de-angebot-link")).toHaveAttribute("href", `https://shop.example.test/socken-${m}`);
-    // Push: Kauf-Meldung (Deal-Wert über der Schwelle 1) mit „Zum Angebot“ und „Gekauft …“, Text mit Menge/Budget
+    // Push: Kauf-Meldung mit Deal-Nummer, „Produktseite öffnen“ (Shop ohne Warenkorb-Link) und „Details“; Menge durch
+    // „max. € je Deal“ (10 € ÷ 2,10 €) auf 4 begrenzt; Monatsrahmen als Zeile, kein Restbudget mehr
     await expect.poll(async () => (await sql<{ c: string }>("select count(*) c from deal_eingaenge where id = $1 and push_am is not null", [idA]))[0].c, { timeout: 30_000 }).toBe("1");
     const neueste = await (await page.request.get("/api/push/neueste")).json();
     if (zA.ampel !== "rot") {
-      expect(neueste.aktionen.map((a: { aktion: string }) => a.aktion)).toEqual(["angebot", "gekauft"]);
-      expect(neueste.aktionen[0].link).toBe(`https://shop.example.test/socken-${m}`);
-      expect(neueste.aktionen[1].link).toBe(`/deal-eingang/${idA}?zeile=${zA.nr}#gekauft`);
-      expect(neueste.text).toContain("Budget Woche noch 5.000 €");
+      expect(neueste.aktionen.map((a: { aktion: string }) => a.aktion)).toEqual(["produkt", "details"]);
+      expect(neueste.aktionen[0].link).toMatch(/^\/k\/\d+$/);
+      expect(neueste.aktionen[1].link).toBe(`/deal-eingang/${idA}`);
+      expect(neueste.text).toContain("Produktseite öffnen – Menge 4 auf der Seite wählen");
+      expect(neueste.text).toContain("diesen Monat eingekauft:");
+      expect(neueste.text).not.toContain("Budget Woche");
     }
 
     // 4) „Gekauft: Menge, Preis“ → Status gekauft, Bestellung „bestellt“, Aufgabe „Wareneingang buchen“
@@ -100,9 +101,9 @@ test.describe("Deal-Eingang: Kaufen mit einem Tap + lernender Deal-Wert", () => 
     expect((await sql<{ c: string }>("select count(*) c from tasks where tenant_id = $1 and title like $2 and status <> 'done'", [T, `Lieferung ${po.number}%Wareneingang buchen`]))[0].c).toBe("1");
     await page.reload();
     await expect(page.getByTestId("de-gekauft")).toContainText("20");
-    // Budget-Verbrauch dieser Woche steht in den Einstellungen
+    // Monatsrahmen steht auf der Deal-Eingang-Seite (Orientierung, keine Sperre)
     await page.goto("/deal-eingang");
-    await expect(page.getByTestId("de-einstellungen")).toContainText("42");
+    await expect(page.getByTestId("de-monatsrahmen")).toContainText("Diesen Monat eingekauft:");
 
     // 5) Bestellbestätigungs-Mail (Amazon) zu einem offenen Deal → gekauft (Menge, Preis, Bestellnummer)
     const r2 = await page.request.post("/api/deal-eingang", { multipart: { text: `B0TESTDE02 Testtasse 3,10 netto ab 10 Stk ${m}`, quelle: `Testhändler ${m}` }, maxRedirects: 0 });

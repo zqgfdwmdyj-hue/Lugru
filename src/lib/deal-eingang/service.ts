@@ -322,9 +322,7 @@ export async function eingangPruefen(tenantId: string, id: string, o: { heute?: 
     const zeilen: DealEingangZeile[] = [];
     for (const [i, a] of k.angebote.slice(0, s.dealEingang.preislisteAbZeilen).entries()) zeilen.push(await zeilePruefen(tenantId, i + 1, a, lage, { ...o, quelle }));
     await liquiditaetPruefen(tenantId, zeilen, heute);
-    // Abschnitt 10: Budget-Grenzen (je Deal/Tag/Woche) – darüber höchstens Gelb.
-    const { budgetAnwenden } = await import("./kauf");
-    await budgetAnwenden(tenantId, zeilen).catch((err) => console.error("[Deal-Eingang] Budget:", err instanceof Error ? err.message : err));
+    // Kaufen mit einem Tap §4: keine Budget-Grenzen mehr in der Prüfung – sie ändern die Ampel nie (nur Hinweis im Push).
     // Abschnitt 11: Keepa-Merkmale und persönlicher Deal-Wert je Zeile (ersetzt keine Prüfung).
     const { wertAnhaengen } = await import("./wert");
     await wertAnhaengen(tenantId, zeilen, { weg: e.weg, quelle, jetzt: new Date(o.now ?? Date.now()) }).catch((err) => console.error("[Deal-Eingang] Deal-Wert:", err instanceof Error ? err.message : err));

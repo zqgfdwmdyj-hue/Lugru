@@ -191,9 +191,57 @@ export const dealEingaenge = pgTable(
     ergebnis: jsonb("ergebnis").$type<DealErgebnis | null>(),
     /** B19.1: aus der Lugru-History nachgetragen (Ampel aus Post-Zahlen + Keepa beim Posten, kein Push). */
     historisch: boolean("historisch").notNull().default(false),
+    /** Kaufen mit einem Tap: Kauf-Nummer („Kaufen 17“, 24 Std. gültig ab kauf.am) und vorbereiteter Kauf-Link. */
+    kaufNr: integer("kauf_nr"),
+    kauf: jsonb("kauf").$type<DealKauf | null>(),
+    /** „Kauf vorbereitet (Menge)“: Ludwig hat den Warenkorb-/Produkt-Link geöffnet – gekauft ist damit nichts. */
+    kaufVorbereitetAm: timestamp("kauf_vorbereitet_am", { withTimezone: true }),
+    kaufVorbereitetMenge: integer("kauf_vorbereitet_menge"),
+    /** Nach 24 Std. ohne erkannten Kauf: Erinnerung „Deal 17 noch offen?“ (einmal). */
+    kaufErinnertAm: timestamp("kauf_erinnert_am", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung), uniqueIndex("deal_eingaenge_ref_uq").on(t.tenantId, t.quelleRef)],
+  (t) => [index("deal_eingaenge_tenant_idx").on(t.tenantId, t.createdAt), index("deal_eingaenge_quelle_idx").on(t.tenantId, t.quelle), index("deal_eingaenge_kennung_idx").on(t.tenantId, t.inhaltKennung), uniqueIndex("deal_eingaenge_ref_uq").on(t.tenantId, t.quelleRef), index("deal_eingaenge_kauf_nr_idx").on(t.tenantId, t.kaufNr)],
+);
+
+/** Vorbereiteter Kauf (Push „In den Warenkorb (4)“ bzw. „Produktseite öffnen“). */
+export type DealKauf = {
+  /** Vergabe der Kauf-Nummer (ISO). */
+  am: string;
+  zeile: number;
+  asin: string | null;
+  menge: number;
+  shop: string;
+  kuerzel: string | null;
+  url: string;
+  fallbackUrl: string | null;
+  warenkorb: boolean;
+  hinweis: string | null;
+  gutschein: string | null;
+  payback: string | null;
+};
+
+/**
+ * Shop-Profile (Einstellungen → Shop-Profile): je Shop Link-Art, Link-Muster, Hinweis, Lieferantenkürzel und
+ * Payback-Hinweis. Überschreiben die Start-Profile im Code (Amazon je Land mit Warenkorb-Link, sonst Produktseite).
+ */
+export const shopProfile = pgTable(
+  "shop_profil",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kuerzel: text("kuerzel").notNull(),
+    name: text("name").notNull(),
+    domains: jsonb("domains").$type<string[]>().notNull().default([]),
+    linkArt: text("link_art", { enum: ["warenkorb_link", "produktseite", "suche"] }).notNull().default("produktseite"),
+    linkMuster: text("link_muster"),
+    hinweis: text("hinweis"),
+    payback: text("payback"),
+    aktiv: boolean("aktiv").notNull().default(true),
+    createdAt: createdAt(),
+    aktualisiertAm: timestamp("aktualisiert_am", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("shop_profil_uq").on(t.tenantId, t.kuerzel)],
 );
 
 /**

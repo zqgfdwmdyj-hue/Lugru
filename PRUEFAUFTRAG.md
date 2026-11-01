@@ -556,6 +556,39 @@ Abnahme: Unit `bqool-laender`; e2e `bqool-dateien` gegen den BQool-Nachbau: DE u
 FR absichtlich kaputt → „1 von 2 Ländern hochgeladen“, DE trotzdem oben, Aufgabe „FR nicht hochgeladen“, Zeilen im
 Protokoll; Formular mit vorbelegten FR/ES-Adressen; „Verbindung testen“ meldet je Land „Upload-Seite erreichbar“.
 
+## Kaufen mit einem Tap · Shop-Profile · Payback · Navigation links (Bauauftrag 01.11.)
+
+Grundsatz unverändert: kein automatischer Einkauf, kein Kauf-Bot, keine Checkout-Seiten, keine Zahlungsdaten oder Logins,
+kein Headless-Browser für Einkäufe. Das System bereitet den Link vor, Ludwig tippt „Jetzt kaufen“.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 1a | Push mit „In den Warenkorb (n)“ + „Details“ | 🟡 („Zum Angebot“ + „Gekauft …“, nur Grün/≥ Schwelle) | ✅ | `kaufMeldung` in `src/lib/deal-eingang/kauf.ts`: Kopfzeile „🟢 Deal 17: … · EK … · ROI … · Empf. 4 Stk“; Amazon-Warenkorb-Link des Einkaufs-Shops je Land (`/gp/aws/cart/add.html?ASIN.1=…&Quantity.1=n`, .de/.fr/.it/.es); Tippen auf die Meldung (iPhone) öffnet bei Grün/≥ Schwelle direkt den Warenkorb |
+| 1b | Menge = Empfehlung, begrenzt durch max. Stück und Budget je Deal | ❌ | ✅ | `kaufMenge` (`shop-logic.ts`): Lugru „max. Stück“ bzw. angebotene Menge, „max. € je Deal“ nur als Mengen-Deckel (0 = keine Grenze) |
+| 1c | „Kauf vorbereitet (Menge)“ beim Öffnen | ❌ | ✅ | Kurzlink `/k/17` bzw. `/k/<Deal-ID>` (`src/app/k/[nr]/route.ts`) markiert und leitet weiter; Detailseite zeigt „Kauf vorbereitet (3 Stk) am …“ |
+| 1d | nach 24 Std. SKU-Abgleich, sonst Erinnerung | ❌ | ✅ | `kaufVorbereitetPruefen` (stündlich, und mit „Eigene Käufe abgleichen“): sellerboard-SKU gleiche ASIN ab dem Vortag → „gekauft (automatisch: sellerboard-SKU)“ mit Menge/EK; sonst einmal Push „Deal 17 noch offen?“; spätere SKU (bis 21 Tage) zählt trotzdem. Der Lugru-Abgleich (B22.2) übernimmt dabei die vorbereitete Menge |
+| 1e | „Kaufen 17“ (Watch/Siri) | ❌ | ✅ | `POST /api/mobil/kaufen` ({nr} oder {text: "Kaufen 17"}, Handy-Schlüssel) → `url` zum Öffnen; Nummer je Deal 24 Std. gültig (kleinste freie); Anleitung „Kurzbefehl „Kaufen 17““ im Wissen |
+| 1f | Rückfall Produktseite „Menge n wählen“ | ❌ | ✅ | Detailseite „Warenkorb leer? Produktseite öffnen (Menge 3 wählen)“, `/k/17?produkt=1`, Feld `fallback`; Amazon-Profil lässt sich auf „Produktseite“ umstellen |
+| 2a | Tabelle `shop_profil` + Start-Profile | ❌ | ✅ | Migration `0116_kaufen_mit_einem_tap.sql`; Start-Profile im Code (AMZDE/FR/IT/ES Warenkorb-Link; MEDIA, SATUR, NOTIN, DOUGL, FLACO, MUELL, PARFU Produktseite + Hinweis); gespeicherte Profile überschreiben |
+| 2b | Push nennt Shop + Gutschein, „Code kopieren“ | ❌ | ✅ | „MediaMarkt: Produktseite öffnen – Menge 4 auf der Seite wählen · Code: BLACK10“; Knopf „Code kopieren“ → Detailseite mit Code und Kopier-Knopf (`gutscheinAus`) |
+| 2c | Einstellungen → Shop-Profile | ❌ | ✅ | `/einstellungen/shop-profile`: Link-Art, Link-Muster (nur https, bekannte Platzhalter), Hinweis, Payback, aktiv; neue Shops; „Standard“ setzt zurück |
+| 2d | ehrlich: „Warenkorb vorbereitet“ nur Amazon | ❌ | ✅ | Text und Knopf je Profil („Produktseite öffnen“ bei allen anderen) |
+| 3a | Payback-Angebot geprüft | – | ⚠️ | Stand 01.11.2026 (Recherche): **keine feste Verknüpfung im Amazon-Konto** – Punkte nur, wenn der Einkauf in der PAYBACK-App/payback.de startet (Warenkorb leer); Gewerbe- und Großmengenkäufe laut Bedingungen ausgenommen. Der Warenkorb-Link aus dem Push startet nicht über Payback |
+| 3b | Anleitung im Wissen | ❌ | ✅ (ohne Bildschirmfotos) | „Payback bei Amazon.de (Stand November 2026)“ (`mobil/anleitungen.ts`, wird automatisch angelegt); Bildschirmfotos nicht möglich (kein Login in fremde Konten) |
+| 3c | Schalter + Hinweis im Push | ❌ | ✅ | „Payback eingerichtet ✅“ (nur Anzeige) unter Shop-Profile; solange aus: „Payback noch nicht eingerichtet – Punkte nur mit Start in der PAYBACK-App“; keine Payback-Nummer gespeichert; Feld „Payback“ je Shop-Profil |
+| 4a | keine Budgetgrenze | ❌ (über Budget → Gelb) | ✅ | `budgetAnwenden` entfernt: Budget ändert die Ampel nie; gespeicherte Grenzen per Migration auf 0 (Standard); Felder zeigen 0, kein Platzhalter |
+| 4b | Monatsrahmen 150.000 € | ❌ | ✅ | `monatEingekauft`: neue sellerboard-SKUs (EK × Menge) + Wareneinkaufs-Rechnungen ohne Charge; „diesen Monat eingekauft: X € von ~150.000 €“ auf der Deal-Eingang-Seite (mit Link zur Liquidität) und im Push; beim Überschreiten nur Hinweis |
+| 4c | unter der Schwelle trotzdem Warenkorb-Link | ❌ | ✅ | jede nicht rote Zeile mit Einkaufs-Shop; Zeile „Unter der Schwelle (55/60) – Details ansehen, du entscheidest“; Rot bleibt Rot |
+| 5 | Navigation links | 🟡 | siehe unten | |
+
+Abnahme: Unit `kaufen-tap` (Warenkorb-Link je Land, Rückfall, Profile, Menge, Gutschein, Nummer, Monatsrahmen, Login-Rücksprung)
+und `deal-wert` (Push-Kopfzeile ohne Restbudget); e2e `kaufen-tap`: MediaMarkt-Deal → Push „Produktseite öffnen“ + „Code
+kopieren“, `/k/n` → Produktseite und „Kauf vorbereitet“; Lugru-Deal Amazon.FR (max. 3 Stück) → „In den Warenkorb (3)“,
+`/k/n` → amazon.fr-Warenkorb mit 3 Stück, Rückfall Produktseite; „Kaufen n“ mit Handy-Schlüssel (falscher Schlüssel 401,
+nach 24 Std. „abgelaufen“); SKU nach dem Vorbereiten → „gekauft (automatisch: sellerboard-SKU)“ mit Menge 3, ohne SKU einmal
+„Deal n noch offen?“; Monatsrahmen; Shop-Profil anlegen (javascript:-Muster abgelehnt); Payback-Schalter;
+`deal_eingang_detail.kauf`. Abnahme 1/3 am echten iPhone (Amazon-App öffnet sich, Watch-Kurzbefehl) siehe To-do 57.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -814,4 +847,13 @@ nie in Chats oder Mails.
     Bestand, Sendungen).
 56. **BQool je Land**: Anbindungen → BQool → Bearbeiten: FR/IT/ES sind aus der DE-Adresse vorbelegt – einmal mit den echten
     BQool-Upload-Seiten vergleichen, speichern, dann „Verbindung testen“ (meldet je Land „Upload-Seite erreichbar“).
+57. **Kaufen mit einem Tap am iPhone testen**: nächsten Kauf-Push antippen → öffnet sich die Amazon-App mit dem Warenkorb?
+    Falls die Seite nur im Browser bzw. leer aufgeht: Detailseite „Produktseite öffnen“ nutzen und Bescheid geben (dann
+    stellen wir unter Einstellungen → Shop-Profile Amazon auf „Produktseite“). Watch: Kurzbefehl „Kaufen“ nach der Anleitung
+    im Wissen einrichten (Handy-Schlüssel unter Schnellerfassung).
+58. **Payback**: Eine feste Verknüpfung im Amazon-Konto gibt es laut Recherche (01.11.) nicht mehr – Punkte nur mit Start in
+    der PAYBACK-App, Gewerbe-/Großmengenkäufe ausgenommen. Wenn du es trotzdem nutzt: Einstellungen → Shop-Profile →
+    „Payback eingerichtet ✅“, dann verschwindet der Hinweis im Push. Shops mit Payback (z. B. dm, Alternate) dort eintragen.
+59. **Monatsrahmen prüfen**: Deal-Eingang → „diesen Monat eingekauft“ mit deiner eigenen Zahl vergleichen; Rahmen bei Bedarf
+    im Formular ändern (Standard 150.000 €). SKUs ohne Menge (noch nicht versendet) zählen erst mit der FBA-Sendung.
 

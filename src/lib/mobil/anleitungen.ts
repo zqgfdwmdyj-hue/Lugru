@@ -5,7 +5,7 @@ import type { AnleitungFelder } from "@/db/tables/core";
 
 // Anleitungen für Ludwig (B13) im Wissen, Kategorie „Anleitung“ – einmal anlegen, danach nicht überschreiben.
 
-const ANL: { titel: string; a: AnleitungFelder }[] = [
+const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
   {
     titel: "Kurzbefehl „Tesla verbunden“ (Hotspot, Briefing, Anrufe)",
     a: {
@@ -99,6 +99,47 @@ const ANL: { titel: string; a: AnleitungFelder }[] = [
       aufgabenTypen: [],
     },
   },
+  {
+    titel: "Kurzbefehl „Kaufen 17“ (Watch/Siri → Warenkorb)",
+    tags: ["handy", "watch", "kurzbefehl", "einkauf"],
+    a: {
+      zweck: "Jeder Kauf-Push trägt eine Deal-Nummer (24 Std. gültig). „Kaufen 17“ an Watch oder iPhone öffnet auf dem iPhone denselben Warenkorb-Link (bzw. die Produktseite) wie der Knopf im Push. Gekauft wird erst, wenn du in der Amazon-App „Jetzt kaufen“ tippst.",
+      wann: "Einmal einrichten; danach bei jedem Deal-Push mit Nummer.",
+      wer: "Ludwig",
+      schritte: [
+        "Seller-System → Heute → Schnellerfassung (Sprache) → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
+        "Kurzbefehle → neuer Kurzbefehl „Kaufen“ → Aktion „Nach Eingabe fragen“ (Zahl, „Welche Deal-Nummer?“).",
+        "Aktion „Inhalte von URL abrufen“: https://<deine Adresse>/api/mobil/kaufen, Methode POST, Header Authorization = Bearer <Schlüssel>, JSON {\"nr\": Eingabe}.",
+        "Aktion „Wörterbuchwert abrufen“ → Schlüssel „url“ → Aktion „URLs öffnen“ (öffnet die Amazon-App mit dem Warenkorb).",
+        "Optional: „Wörterbuchwert abrufen“ → „antwort“ → „Text sprechen“ (z. B. „Deal 17: Warenkorb mit 4 Stück“).",
+        "Watch: Kurzbefehl in den Details „Auf Apple Watch anzeigen“ – „Hey Siri, Kaufen“ fragt nach der Nummer und öffnet den Link per Handoff auf dem iPhone.",
+        "Ohne Nummer ({}) öffnet der Kurzbefehl den neuesten offenen Deal der letzten 24 Std.",
+      ],
+      zugaenge: ["Handy-Schlüssel (je Gerät, widerrufbar unter Schnellerfassung)", "Konto mit Freigabe „Deal-Eingang“"],
+      fehler: ["„Nummer abgelaufen“: Nummern gelten 24 Std. – Deal im Deal-Eingang öffnen.", "Warenkorb leer: Amazon hat die Adresse geändert – Feld „fallback“ öffnen (Produktseite, Menge selbst wählen) und unter Einstellungen → Shop-Profile Amazon auf „Produktseite“ stellen."],
+      aufgabenTypen: [],
+    },
+  },
+  {
+    titel: "Payback bei Amazon.de (Stand November 2026)",
+    tags: ["einkauf", "payback", "amazon"],
+    a: {
+      zweck: "Geprüft am 01.11.2026: Eine feste Payback-Verknüpfung im Amazon-Konto gibt es nicht (mehr). Punkte gibt es nur, wenn der Einkauf in der PAYBACK-App bzw. auf payback.de startet und von dort zu Amazon weiterleitet. Laut Payback-Bedingungen sind u. a. Gewerbe- und Großmengenkäufe, Geschenkgutscheine, Bücher/preisgebundene Artikel, Vorbestellungen und Amazon-Mitgliedschaften ausgenommen – für Wiederverkaufs-Einkäufe gibt es daher oft keine Punkte. Bedingungen vor größeren Käufen unter payback.de/shop/amazon prüfen.",
+      wann: "Vor privaten bzw. berechtigten Amazon.de-Einkäufen.",
+      wer: "Ludwig",
+      schritte: [
+        "Warenkorb bei Amazon leeren (Artikel, die länger als 24 Std. im Warenkorb liegen, bringen keine Punkte).",
+        "PAYBACK-App öffnen → Partner „Amazon“ → „Jetzt einkaufen“ (ggf. Coupons vorher aktivieren).",
+        "Im so geöffneten Fenster einkaufen; Cookies auf der Amazon-Seite zulassen, sonst reißt die Zuordnung ab.",
+        "Der Warenkorb-Link aus dem Seller-System-Push startet NICHT über Payback – wer Punkte will, startet zuerst die App und sucht den Artikel dann dort.",
+        "Gutschrift: etwa zwei Wochen nach Versand, frei verfügbar erst nach Ablauf der Rückgabefrist.",
+        "Im Seller-System: Einstellungen → Shop-Profile → „Payback eingerichtet ✅“ setzen, dann entfällt der Hinweis im Push. Die Payback-Nummer wird nirgends gespeichert.",
+      ],
+      zugaenge: ["PAYBACK-App mit eigenem Konto (nicht im Seller-System)"],
+      fehler: ["Keine Punkte: Einkauf nicht über die App gestartet, Warenkorb war nicht leer, oder der Artikel ist ausgenommen.", "Bildschirmfotos: nicht automatisch erstellt (kein Login in fremde Konten) – bei Bedarf selbst ergänzen."],
+      aufgabenTypen: [],
+    },
+  },
 ];
 
 export async function mobilAnleitungen(tenantId: string): Promise<number> {
@@ -107,7 +148,7 @@ export async function mobilAnleitungen(tenantId: string): Promise<number> {
   for (const x of ANL) {
     const [da] = await db.select({ id: K.id }).from(K).where(and(eq(K.tenantId, tenantId), eq(K.title, x.titel)));
     if (da) continue;
-    await db.insert(K).values({ tenantId, kind: "anleitung", category: "Anleitung", title: x.titel, body: [x.a.zweck, "", ...x.a.schritte.map((s, i) => `${i + 1}. ${s}`)].join("\n"), tags: ["handy", "tesla", "kurzbefehl"], origin: "anleitung", anleitung: x.a });
+    await db.insert(K).values({ tenantId, kind: "anleitung", category: "Anleitung", title: x.titel, body: [x.a.zweck, "", ...x.a.schritte.map((s, i) => `${i + 1}. ${s}`)].join("\n"), tags: x.tags ?? ["handy", "tesla", "kurzbefehl"], origin: "anleitung", anleitung: x.a });
     n++;
   }
   return n;

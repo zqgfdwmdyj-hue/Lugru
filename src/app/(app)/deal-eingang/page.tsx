@@ -6,7 +6,7 @@ import { PushSchalter } from "@/components/push-schalter";
 import { AutoRefresh } from "../lieferanten/finden/refresh";
 import { einstellungenAction, eingangAction, profitPathAction } from "./actions";
 import { getSettings } from "@/lib/settings";
-import { budgetVerbraucht } from "@/lib/deal-eingang/kauf";
+import { monatEingekauft } from "@/lib/deal-eingang/kauf";
 import { profitPathKonfig } from "@/lib/deal-eingang/profitpath";
 import { lugruZaehlung } from "@/lib/lugru-deals/historie";
 
@@ -14,10 +14,10 @@ import { lugruZaehlung } from "@/lib/lugru-deals/historie";
 
 const WEG = { manuell: "von Hand", teilen: "geteilt", kurzbefehl: "Kurzbefehl", mail: "Mail", claude: "Claude", profitpath: "ProfitPath", gruppe: "Gruppen-Chat", lugru: "Lugru Deals" } as const;
 
-export default async function DealEingangPage({ searchParams }: { searchParams: Promise<{ meldung?: string; quelle?: string; ampel?: string; status?: string }> }) {
+export default async function DealEingangPage({ searchParams }: { searchParams: Promise<{ meldung?: string; quelle?: string; ampel?: string; status?: string; kauf?: string }> }) {
   const session = await requireArea("dealeingang");
   const sp = await searchParams;
-  const [liste, q, pp, st, verbraucht] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId), getSettings(session.tenantId), budgetVerbraucht(session.tenantId)]);
+  const [liste, q, pp, st, monat] = await Promise.all([eingaenge(session.tenantId, { quelle: sp.quelle, ampel: sp.ampel, status: sp.status, limit: 60 }), quellen(session.tenantId), profitPathKonfig(session.tenantId), getSettings(session.tenantId), monatEingekauft(session.tenantId).catch(() => null)]);
   const de = st.dealEingang;
   // B20.3: gültige Deal-Wert-Schwelle je Quelle (eigene Schwelle, sonst die allgemeine).
   const quellNamen = [...new Set(["Lugru Deals", ...Object.keys(de.wertSchwelleJe ?? {}), ...q.map((x) => x.quelle.split(" · ")[0].trim()).filter(Boolean)])].slice(0, 8);
@@ -41,6 +41,7 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
         </div>
       </div>
       {sp.meldung && <div className="notice notice-ok small" role="status" style={{ marginBottom: 12 }}>{sp.meldung}</div>}
+      {sp.kauf && <div className="notice notice-warn small" role="status" style={{ marginBottom: 12 }} data-testid="de-kauf-meldung">{sp.kauf === "abgelaufen" ? "Diese Deal-Nummer ist abgelaufen (24 Std.) – Deal unten öffnen." : "Deal-Nummer nicht gefunden."}</div>}
       {!session.readOnly && (
         <form action={eingangAction} className="card card-pad stack" style={{ gap: 8 }} data-testid="de-form">
           <textarea name="text" rows={4} placeholder="Nachricht aus WhatsApp einfügen (Text, mehrere Angebote möglich) …" style={{ width: "100%" }} />
@@ -104,18 +105,24 @@ export default async function DealEingangPage({ searchParams }: { searchParams: 
       )}
 
       <section className="card card-pad stack" style={{ marginTop: 12 }} data-testid="de-einstellungen">
-        <h2 style={{ margin: 0 }}>Kaufen mit einem Tap: Budget und Deal-Wert</h2>
+        <h2 style={{ margin: 0 }}>Kaufen mit einem Tap: Monatsrahmen und Deal-Wert</h2>
+        {monat && (
+          <div className={monat.rahmen > 0 && monat.summe > monat.rahmen ? "notice notice-warn" : "small"} data-testid="de-monatsrahmen">
+            <strong>{monat.text.replace(/^d/, "D")}</strong>
+            <span className="muted"> · aus {monat.skus} neuen sellerboard-SKUs ({monat.skuSumme.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}, EK × Menge{monat.skusOhneMenge ? `; ${monat.skusOhneMenge} ohne Menge noch nicht gezählt` : ""}) + {monat.rechnungenAnzahl} Wareneinkaufs-Rechnungen ohne Charge ({monat.rechnungen.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}). Nur Orientierung – nichts wird gesperrt. <Link href="/cashflow">Liquidität →</Link></span>
+          </div>
+        )}
         <div className="small muted">
-          Gekauft wird nie automatisch. Bei Grün (bzw. Deal-Wert ab {de.wertSchwelle}/100{schwellenGilt.some((x) => x.wert !== de.wertSchwelle) ? `, ${schwellenGilt.filter((x) => x.wert !== de.wertSchwelle).map((x) => `${x.quelle} ab ${x.wert}${x.eigen ? "" : " (vorbelegt)"}`).join(", ")}` : ""}) kommt eine Meldung mit Direktlink, Menge, max. EK und Restbudget. Über der Budget-Grenze wird ein Deal höchstens Gelb. 0 = keine Grenze.
-          {" "}Diese Woche gekauft: {verbraucht.woche.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}{de.budgetJeWoche ? ` von ${de.budgetJeWoche.toLocaleString("de-DE")} €` : ""}.
-          {" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>{" "}<Link href="/deal-eingang/lugru" data-testid="de-lugru-link">Lugru Deals →</Link>
+          Gekauft wird nie automatisch. Jede nicht rote Meldung mit bekanntem Einkaufs-Shop bekommt eine Deal-Nummer und den Knopf „In den Warenkorb (n)“ (Amazon) bzw. „Produktseite öffnen“ (andere Shops) – auch unter der Schwelle (Deal-Wert ab {de.wertSchwelle}/100{schwellenGilt.some((x) => x.wert !== de.wertSchwelle) ? `, ${schwellenGilt.filter((x) => x.wert !== de.wertSchwelle).map((x) => `${x.quelle} ab ${x.wert}${x.eigen ? "" : " (vorbelegt)"}`).join(", ")}` : ""}), dann als Gelb mit „Details“. Rot bleibt Rot. Es gibt keine Budgetgrenze: „max. € je Deal“ begrenzt höchstens die Menge im Link, Tag/Woche sind nur Hinweise; 0 = keine Grenze.
+          {" "}<Link href="/einstellungen/shop-profile" data-testid="de-shop-profile-link">Shop-Profile & Payback →</Link>{" "}<Link href="/deal-eingang/lernen">Wie gut liegt der Deal-Wert? →</Link>{" "}<Link href="/deal-eingang/lugru" data-testid="de-lugru-link">Lugru Deals →</Link>
         </div>
         {session.role === "owner" && !session.readOnly && (
           <form action={einstellungenAction} className="row small" style={{ gap: 8, flexWrap: "wrap", alignItems: "end" }} data-testid="de-einstellungen-form">
             <label className="field">Ziel-ROI %<input className="input" name="zielRoi" inputMode="numeric" defaultValue={de.zielRoi} style={{ width: 80 }} /></label>
-            <label className="field">max. € je Deal<input className="input" name="budgetJeDeal" inputMode="numeric" defaultValue={de.budgetJeDeal || ""} placeholder="0" style={{ width: 100 }} /></label>
-            <label className="field">je Tag<input className="input" name="budgetJeTag" inputMode="numeric" defaultValue={de.budgetJeTag || ""} placeholder="0" style={{ width: 100 }} /></label>
-            <label className="field">je Woche<input className="input" name="budgetJeWoche" inputMode="numeric" defaultValue={de.budgetJeWoche || ""} placeholder="0" style={{ width: 100 }} /></label>
+            <label className="field">Monatsrahmen €<input className="input" name="monatsrahmen" inputMode="numeric" defaultValue={de.monatsrahmen ?? 150000} style={{ width: 110 }} data-testid="de-monatsrahmen-feld" /></label>
+            <label className="field" title="Begrenzt nur die Menge im Warenkorb-Link – blockiert nie">max. € je Deal<input className="input" name="budgetJeDeal" inputMode="numeric" defaultValue={de.budgetJeDeal ?? 0} style={{ width: 100 }} /></label>
+            <label className="field" title="Nur Hinweis im Push">je Tag<input className="input" name="budgetJeTag" inputMode="numeric" defaultValue={de.budgetJeTag ?? 0} style={{ width: 100 }} /></label>
+            <label className="field" title="Nur Hinweis im Push">je Woche<input className="input" name="budgetJeWoche" inputMode="numeric" defaultValue={de.budgetJeWoche ?? 0} style={{ width: 100 }} /></label>
             <label className="field">Deal-Wert ab<input className="input" name="wertSchwelle" inputMode="numeric" defaultValue={de.wertSchwelle} style={{ width: 70 }} /></label>
             <label className="field" title="Eigene Schwelle je Quelle, z. B. „Lugru Deals=60“ (gilt für alle Lugru-Kanäle); mehrere mit ; trennen">je Quelle<input className="input" name="wertSchwelleJe" data-testid="de-schwelle-je" defaultValue={Object.entries(de.wertSchwelleJe ?? {}).map(([k, v]) => `${k}=${v}`).join("; ")} placeholder={`leer = überall ${de.wertSchwelle} (Beispiel: Quelle=60)`} style={{ width: 240 }} /></label>
             {/* B20.3: gültige Schwelle je Quelle sichtbar – der Platzhalter ist kein Wert. */}

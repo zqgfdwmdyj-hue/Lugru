@@ -73,7 +73,7 @@ export const dealEingangTool = defineTool({
 export const dealEingangDetailTool = defineTool({
   name: "deal_eingang_detail",
   title: "Deal-Eingang: Einzelheiten",
-  description: "Ein Deal-Eingang mit allen erkannten Angeboten: Ampel und bis zu drei Gründe je Angebot, Gewinn/ROI im besten Land, empfohlene Menge, Kapitalbedarf, max. EK je Land, eigener Bestand, Risiken und ein Antwort-Entwurf an den Händler.",
+  description: "Ein Deal-Eingang mit allen erkannten Angeboten: Ampel und bis zu drei Gründe je Angebot, Gewinn/ROI im besten Land, empfohlene Menge, Kapitalbedarf, max. EK je Land, eigener Bestand, Risiken, ein Antwort-Entwurf an den Händler und „kauf“ (Kaufen mit einem Tap: Deal-Nummer, Shop, Menge, Warenkorb- bzw. Produkt-Link zum Selbst-Kaufen, Gutschein, „Kauf vorbereitet“). Gekauft wird nie automatisch.",
   area: "dealeingang",
   write: false,
   quelle: QUELLE,
@@ -95,6 +95,19 @@ export const dealEingangDetailTool = defineTool({
       dateien: e.dateiNamen.length ? e.dateiNamen : undefined,
       angebote: e.zeilen.map(zeileKurz),
       antwort_entwurf: beste ? antwortEntwurf({ name: beste.angebot.name, titel: beste.titel, ampel: beste.ampel, empfohlen: beste.empfohlen, ekNetto: beste.ekNetto, maxEk: beste.maxEk }) : undefined,
+      kauf: e.kauf
+        ? {
+            nr: e.kaufNr && Date.now() - Date.parse(e.kauf.am) < 24 * 3600_000 ? e.kaufNr : null,
+            shop: e.kauf.shop,
+            menge: e.kauf.menge,
+            warenkorb_vorbereitet: e.kauf.warenkorb,
+            link_zum_selbst_kaufen: abs(ctx, `/k/${e.id}`),
+            gutschein: e.kauf.gutschein ?? undefined,
+            hinweis: e.kauf.hinweis ?? undefined,
+            vorbereitet_am: e.kaufVorbereitetAm?.toISOString() ?? null,
+            vorbereitet_menge: e.kaufVorbereitetMenge ?? undefined,
+          }
+        : undefined,
       link: abs(ctx, `/deal-eingang/${e.id}`),
     });
   },

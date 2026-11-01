@@ -23,18 +23,22 @@ export async function benachrichtigen(tenantId: string, id: string, o: { update?
   const { empfaenger, melden } = await import("@/lib/push/service");
   const an = await empfaenger(tenantId, "dealeingang");
   const titel = `${o.update ? "Update: " : ""}Deal ${e.ampel ? AMPEL_EMOJI[e.ampel] : "📄"}${e.quelle ? ` · ${e.quelle}` : ""}`;
-  // Abschnitt 10: Bei Grün (bzw. Deal-Wert über der Schwelle) Kauf-Meldung mit Direktlink, Menge, max. EK, Restbudget
-  // und den Knöpfen „Zum Angebot“ / „Gekauft …“. Gekauft wird nie automatisch.
+  // Kaufen mit einem Tap: Kauf-Meldung mit Warenkorb-Link (Amazon) bzw. Produktseite (Shop-Profil), Kauf-Nummer,
+  // Monatsrahmen; bei Gelb unter der Schwelle trotzdem, sobald ein Einkaufs-Shop bekannt ist. Gekauft wird nie
+  // automatisch – Ludwig tippt „Jetzt kaufen“.
   const { kaufMeldung } = await import("./kauf");
-  const kauf = e.zeilen.length === 1 || e.ampel === "gruen" ? await kaufMeldung(e).catch(() => null) : null;
+  const kauf = await kaufMeldung(e).catch((err) => {
+    console.error("[Deal-Eingang] Kauf-Meldung:", err instanceof Error ? err.message : err);
+    return null;
+  });
   const text = kauf && e.zeilen.length === 1 ? kauf.text : [e.zusammenfassung ?? "Geprüft – bitte im Deal-Eingang ansehen.", kauf ? kauf.text : null].filter(Boolean).join("\n");
-  // Ohne Kauf-Knöpfe (gelb, unter der Schwelle): 👍/👎 direkt aus der Meldung – öffnet die Seite mit vorgewählter
-  // Bewertung (Grund wählbar), gespeichert erst mit dem Knopf dort.
+  // Ohne Kauf-Knöpfe (kein Shop, gelb unter der Schwelle): 👍/👎 direkt aus der Meldung – öffnet die Seite mit
+  // vorgewählter Bewertung (Grund wählbar), gespeichert erst mit dem Knopf dort.
   const bewerten = [
     { aktion: "hoch", titel: "👍", link: `/deal-eingang/${e.id}?daumen=hoch#bewerten` },
     { aktion: "runter", titel: "👎", link: `/deal-eingang/${e.id}?daumen=runter#bewerten` },
   ];
-  const r = await melden(tenantId, an, { titel, text, link: `/deal-eingang/${e.id}`, aktionen: kauf?.aktionen ?? bewerten });
+  const r = await melden(tenantId, an, { titel: `${titel}${kauf?.nr ? ` · Nr. ${kauf.nr}` : ""}`, text, link: kauf?.link ?? `/deal-eingang/${e.id}`, aktionen: kauf?.aktionen ?? bewerten });
   await db.update(E).set({ pushAm: new Date() }).where(eq(E.id, e.id));
   // SMS (B13, falls eingerichtet): nur grüne Deals, deren Gewinn (empfohlene Menge × Gewinn/Stück) über der Schwelle liegt.
   if (e.ampel === "gruen" && !o.update) {

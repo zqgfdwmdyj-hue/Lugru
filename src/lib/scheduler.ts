@@ -205,6 +205,8 @@ export async function runScheduledJobs(force = false) {
         const w = await import("@/lib/deal-eingang/wert");
         await step(t, w.WERT_JOB, () => w.wertNachholen(t, 300));
       }
+      // Kaufen mit einem Tap: 24 Std. nach „Kauf vorbereitet“ mit den sellerboard-SKUs abgleichen, sonst einmal erinnern.
+      if (force || due(`${t}:kauf-vorbereitet`, 59)) await step(t, "Kauf vorbereitet: prüfen", async () => (await import("@/lib/deal-eingang/kauf")).kaufVorbereitetPruefen(t));
       // Lugru Deals über Discord: History in Schritten rückwärts (bis fertig), Keepa-Schnappschüsse der History (stündlich,
       // Tokens schonen) und eigene Käufe erkennen (täglich). Neue Posts liest der Discord-Takt jede Minute.
       if (await has("lugru_deals")) {

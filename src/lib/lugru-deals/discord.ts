@@ -8,6 +8,7 @@ import { kaufZuDeal, keepaSchnappschuss, skuKauf, type EigenerKauf } from "./aus
 import { kaeufeAus, lugruPostLesen, reaktionenFaellig, reaktionenZaehlen, zeitAusId, type LugruPost } from "./post-logic";
 import { kanalName } from "./historie-logic";
 import { prozentText } from "@/lib/numbers";
+import { skuKaeufeLaden } from "@/lib/deal-eingang/sku-kaeufe";
 
 // Lugru Deals → Seller-System über Discord (Weg B): Der Bot des Seller-Systems liest die Deal-Kanäle der Gruppe – neue
 // Posts jede Minute (→ Deal-Eingang mit Ampel, Push bei Grün/Gelb), Reaktionen in den ersten 48 Std. alle 5 Min., bis
@@ -336,29 +337,9 @@ export async function lugruKaufAbgleichMitStand(tenantId: string, jetzt = new Da
   const P = schema.products;
   const kaeufe: EigenerKauf[] = [];
   // sellerboard-SKUs (alle Quellen, SKU nur einmal): Kaufdatum/EK/Lieferant aus der SKU, Menge aus FBA-Sendungen bzw. Bestand
-  const SBP = schema.sellerboardProducts;
-  const SBI = schema.sellerboardInventory;
-  const AI = schema.amazonInventory;
-  const SBS = schema.sellerboardShipments;
-  const [sbp, sbi, ai, sendungen] = await Promise.all([
-    db.select({ sku: SBP.sku, asin: SBP.asin }).from(SBP).where(eq(SBP.tenantId, tenantId)),
-    db.select({ sku: SBI.sku, asin: SBI.asin, menge: sql<number>`(${SBI.fbaStock} + ${SBI.reserved} + ${SBI.inbound})::int` }).from(SBI).where(eq(SBI.tenantId, tenantId)),
-    db.select({ sku: AI.sku, asin: AI.asin, menge: AI.total }).from(AI).where(eq(AI.tenantId, tenantId)),
-    db.select({ name: SBS.name, am: SBS.createdOn, lines: SBS.lines }).from(SBS).where(and(eq(SBS.tenantId, tenantId), gte(SBS.createdOn, seit.toISOString().slice(0, 10)))),
-  ]);
   const gesucht = new Set(asins);
-  const versandt = new Map<string, number>();
-  for (const sd of sendungen) for (const l of sd.lines ?? []) versandt.set(l.sku, (versandt.get(l.sku) ?? 0) + (l.units ?? 0));
-  const bestand = new Map<string, number>();
-  for (const r of [...sbi, ...ai]) if (r.menge) bestand.set(r.sku, Math.max(bestand.get(r.sku) ?? 0, r.menge));
-  const skus = new Map<string, string | null>();
-  for (const r of [...sbp, ...sbi, ...ai]) if (!skus.has(r.sku)) skus.set(r.sku, r.asin);
-  for (const [sku, asinSpalte] of skus) {
-    const k = skuKauf(sku, asinSpalte, jetzt);
-    if (!k || !gesucht.has(k.asin)) continue;
-    const menge = versandt.get(sku) || bestand.get(sku) || null;
-    kaeufe.push({ asin: k.asin, am: new Date(`${k.tag}T12:00:00Z`), ref: `sellerboard-SKU ${sku}`, nurTag: true, menge, ekNetto: k.ekNetto, shop: k.shop });
-  }
+  const { kaeufe: skuKaeufe, sendungen, versandt, bestand } = await skuKaeufeLaden(tenantId, jetzt, seit.toISOString().slice(0, 10));
+  for (const k of skuKaeufe) if (gesucht.has(k.asin)) kaeufe.push({ asin: k.asin, am: k.am, ref: k.ref, nurTag: true, menge: k.menge, ekNetto: k.ekNetto, shop: k.shop });
   // Zweites Signal: FBA-Sendung mit gleicher ASIN (Datum der Sendung)
   for (const sd of sendungen) {
     if (!sd.am) continue;
@@ -400,7 +381,7 @@ export async function lugruKaufAbgleichMitStand(tenantId: string, jetzt = new Da
     if (d.eingangId && eingangOffen(d.eingangId) && !eigenerEingang) {
       const r = await db
         .update(E)
-        .set({ status: "gekauft", gekauftMenge: t.menge ?? 1, gekauftPreis: t.ekNetto ?? null, gekauftAm: t.am, gekauftWeg: "automatisch", gekauftRef: t.ref.slice(0, 200), grund: `Kauf automatisch erkannt (${t.ref})`.slice(0, 300), entschiedenAm: sql`coalesce(${E.entschiedenAm}, now())` })
+        .set({ status: "gekauft", gekauftMenge: t.menge ?? sql`coalesce(${E.kaufVorbereitetMenge}, 1)`, gekauftPreis: t.ekNetto ?? null, gekauftAm: t.am, gekauftWeg: "automatisch", gekauftRef: t.ref.slice(0, 200), grund: `Kauf automatisch erkannt (${t.ref})`.slice(0, 300), entschiedenAm: sql`coalesce(${E.entschiedenAm}, now())` })
         .where(and(eq(E.tenantId, tenantId), eq(E.id, d.eingangId), isNull(E.gekauftAm)))
         .returning({ id: E.id });
       if (r.length) {

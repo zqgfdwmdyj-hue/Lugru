@@ -169,7 +169,7 @@ export async function bewertenAction(fd: FormData) {
   redirect(mit(`${PFAD}/${id}`, daumen === "hoch" ? "👍 gespeichert." : "👎 gespeichert."));
 }
 
-/** Einstellungen (nur Inhaber): Ziel-ROI, Budget je Deal/Tag/Woche, Schwelle des Deal-Werts für die Kauf-Meldung. */
+/** Einstellungen (nur Inhaber): Ziel-ROI, Monatsrahmen, Budget-Hinweise je Deal/Tag/Woche, Schwelle des Deal-Werts. */
 export async function einstellungenAction(fd: FormData) {
   const s = await schreibend();
   if (s.role !== "owner") redirect(mit(PFAD, "Nur der Inhaber ändert die Einstellungen."));
@@ -185,6 +185,7 @@ export async function einstellungenAction(fd: FormData) {
     budgetJeDeal: fd.has("budgetJeDeal") ? euro("budgetJeDeal") : alt.budgetJeDeal,
     budgetJeTag: fd.has("budgetJeTag") ? euro("budgetJeTag") : alt.budgetJeTag,
     budgetJeWoche: fd.has("budgetJeWoche") ? euro("budgetJeWoche") : alt.budgetJeWoche,
+    monatsrahmen: fd.has("monatsrahmen") ? euro("monatsrahmen") : alt.monatsrahmen,
     wertSchwelle: fd.has("wertSchwelle") ? Math.max(0, Math.min(100, Math.round(parseAmount(fd.get("wertSchwelle")) ?? alt.wertSchwelle ?? 70))) : alt.wertSchwelle,
     // B19.1: eigene Schwelle je Quelle, z. B. „Lugru Deals=60“
     wertSchwelleJe: fd.has("wertSchwelleJe") ? wertSchwellenLesen(String(fd.get("wertSchwelleJe") ?? "")) : alt.wertSchwelleJe,
@@ -269,7 +270,10 @@ export async function lugruKaufAction() {
   let text: string;
   try {
     const k = await (await import("@/lib/lugru-deals/discord")).lugruKaufAbgleichMitStand(s.tenantId);
-    text = k.neu || k.eingaenge ? `${k.neu} eigene Käufe neu erkannt${k.eingaenge ? `, ${k.eingaenge} Einträge im Deal-Eingang als gekauft ergänzt (Menge, EK, Kaufdatum)` : ""}.` : "Keine weiteren eigenen Käufe gefunden (gleiche ASIN, 0–21 Tage nach dem Posten; sellerboard-SKUs, Chargen, Bestellungen, FBA-Sendungen).";
+    // Kaufen mit einem Tap: vorbereitete Käufe (> 24 Std.) gleich mit abgleichen bzw. erinnern
+    const v = await (await import("@/lib/deal-eingang/kauf")).kaufVorbereitetPruefen(s.tenantId);
+    const vText = v.gekauft || v.erinnert ? ` Kauf vorbereitet: ${v.gekauft} als gekauft erkannt (sellerboard-SKU)${v.erinnert ? `, ${v.erinnert} Erinnerung(en) „noch offen?“` : ""}.` : "";
+    text = (k.neu || k.eingaenge ? `${k.neu} eigene Käufe neu erkannt${k.eingaenge ? `, ${k.eingaenge} Einträge im Deal-Eingang als gekauft ergänzt (Menge, EK, Kaufdatum)` : ""}.` : "Keine weiteren eigenen Käufe gefunden (gleiche ASIN, 0–21 Tage nach dem Posten; sellerboard-SKUs, Chargen, Bestellungen, FBA-Sendungen).") + vText;
   } catch (e) {
     text = `Abgleich fehlgeschlagen – ${lesbarerFehler(e)}`;
   }
