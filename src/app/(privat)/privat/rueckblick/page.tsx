@@ -5,22 +5,26 @@ import { loadEntries, privateSettings, requirePrivate } from "@/lib/private/serv
 import type { CalKind, TouchEntry } from "@/lib/private/kalender";
 import { KindDot } from "../kalender/items";
 import { PrintButton } from "@/components/print-button";
-import { MonthNav, PrivatHead, hoursLabel, monthLabel, monthParam } from "../ui";
+import { rueckblickZeitraum, zeitraumVorschlaege } from "@/lib/private/rueckblick-logic";
+import { MonthNav, PrivatHead, dmy, hoursLabel, monthLabel } from "../ui";
 
 const euro = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 const num = (v: number | null) => (v === null ? "nicht erfasst" : String(v).replace(".", ","));
 /** Anzahl · Stunden – oder „nicht erfasst“ (fehlende Einträge sind keine Null). */
 const ch = (t: { count: number; hours: number }) => (t.count ? `${t.count}× · ${hoursLabel(t.hours)}` : "nicht erfasst");
 
-/** Eine Seite je Monat – zum Ausdrucken oder als PDF für die Therapie. */
-export default async function RueckblickPage({ searchParams }: { searchParams: Promise<{ monat?: string }> }) {
+/** Eine Seite je Monat oder frei gewähltem Zeitraum – zum Ausdrucken oder als PDF für die Therapie. */
+export default async function RueckblickPage({ searchParams }: { searchParams: Promise<{ monat?: string; von?: string; bis?: string }> }) {
   const session = await requirePrivate({ full: true });
   const sp = await searchParams;
   const today = todayIso();
-  const month = monthParam(sp.monat);
-  const [y, m] = month.split("-").map(Number);
-  const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-  const end = last < today ? last : today;
+  const z = rueckblickZeitraum(sp, today);
+  const month = z.monat;
+  const von = z.von;
+  const end = z.bis;
+  /** Tag im gewählten Zeitraum (Monat bis heute bzw. von–bis). */
+  const drin = (d: string | undefined | null) => !!d && d.slice(0, 10) >= von && d.slice(0, 10) <= end;
+  const zeitraumWort = z.frei ? "im Zeitraum" : "im Monat";
   const s = await privateSettings(session.tenantId);
   const name = s.partners;
   const [intim, dates, kids, sleep, timeout, tasks, care, thanks, moods, diary, touches, beob, zettel] = await Promise.all([
@@ -38,25 +42,26 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
     loadEntries<ObservationEntry>(session, ["beobachtung"]),
     loadEntries<ReflexionEntry>(session, ["reflexion"]),
   ]);
-  // B22.1: eigene Beobachtungen und Zettel im Monat (Verfasser = ich, egal über wen).
-  const beobMonat = beob.filter((e) => e.userId === session.userId && e.data.day.startsWith(month) && e.data.day <= end).length;
-  const zettelMonat = zettel.filter((e) => e.userId === session.userId && e.data.day.startsWith(month) && e.data.day <= end).length;
+  // B22.1: eigene Beobachtungen und Zettel im Zeitraum (Verfasser = ich, egal über wen).
+  const beobMonat = beob.filter((e) => e.userId === session.userId && drin(e.data.day)).length;
+  const zettelMonat = zettel.filter((e) => e.userId === session.userId && drin(e.data.day)).length;
   // Streicheln/Massage: nur bestätigte zählen; ausgefallene getrennt (Geplantes nie).
-  const inMonth = touches.map((t) => t.data).filter((t) => t.day.startsWith(month) && t.day <= end);
+  const inMonth = touches.map((t) => t.data).filter((t) => drin(t.day));
   const touchCount = (k: TouchEntry["kind"], st: TouchEntry["status"]) => inMonth.filter((t) => t.kind === k && t.status === st).length;
-  const ist = intimStats(intim.map((e) => e.data), month, end);
-  const ds = dateStats(dates.map((e) => e.data), month, end);
-  const ko = kidsOverview(kids.map((e) => e.data), month);
-  const so = kidsOverview(sleep.map((e) => e.data), month);
-  const to = kidsOverview(timeout.map((e) => e.data), month);
+  // Die Monats-Auswertungen bekommen nur die Einträge des Zeitraums; Präfix "" = alle davon zählen.
+  const ist = intimStats(intim.map((e) => e.data).filter((e) => drin(e.day)), "", end);
+  const ds = dateStats(dates.map((e) => e.data).filter((e) => drin(e.day)), "", end);
+  const ko = kidsOverview(kids.map((e) => e.data).filter((e) => drin(e.day)), "");
+  const so = kidsOverview(sleep.map((e) => e.data).filter((e) => drin(e.day)), "");
+  const to = kidsOverview(timeout.map((e) => e.data).filter((e) => drin(e.day)), "");
   const careDone = { a: 0, b: 0 };
-  for (const t of care) for (const d of t.data.done ?? []) if (d.day.startsWith(month)) careDone[d.by]++;
+  for (const t of care) for (const d of t.data.done ?? []) if (drin(d.day)) careDone[d.by]++;
   const co = careOverview(care.map((e) => e.data), end);
-  const tasksDone = tasks.filter((t) => (t.data.repeat === "einmal" ? t.data.done && (t.data.doneAt ?? "").startsWith(month) : (t.data.checks ?? []).some((d) => d.startsWith(month)))).length;
+  const tasksDone = tasks.filter((t) => (t.data.repeat === "einmal" ? t.data.done && drin(t.data.doneAt) : (t.data.checks ?? []).some((d) => drin(d)))).length;
   const tasksOpen = tasks.filter((t) => taskState(t.data, end).open).length;
-  const th = { a: thanks.filter((e) => e.data.from === "a" && e.data.day.startsWith(month)).length, b: thanks.filter((e) => e.data.from === "b" && e.data.day.startsWith(month)).length };
-  const mood = { a: avgOf(moods.filter((e) => e.data.person === "a" && e.data.day.startsWith(month)).map((e) => e.data.value)), b: avgOf(moods.filter((e) => e.data.person === "b" && e.data.day.startsWith(month)).map((e) => e.data.value)) };
-  const myDiary = diaryReport(diary.filter((e) => e.userId === session.userId).map((e) => e.data), `${month}-01`, end);
+  const th = { a: thanks.filter((e) => e.data.from === "a" && drin(e.data.day)).length, b: thanks.filter((e) => e.data.from === "b" && drin(e.data.day)).length };
+  const mood = { a: avgOf(moods.filter((e) => e.data.person === "a" && drin(e.data.day)).map((e) => e.data.value)), b: avgOf(moods.filter((e) => e.data.person === "b" && drin(e.data.day)).map((e) => e.data.value)) };
+  const myDiary = diaryReport(diary.filter((e) => e.userId === session.userId).map((e) => e.data), von, end);
 
   const Row = ({ label, a, b, note, icon }: { label: string; a: React.ReactNode; b: React.ReactNode; note?: React.ReactNode; icon?: CalKind }) => (
     <tr><td>{icon && <><KindDot kind={icon} />{" "}</>}{label}</td><td className="num right">{a}</td><td className="num right">{b}</td><td className="small muted">{note}</td></tr>
@@ -65,7 +70,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
   return (
     <>
       <div className="no-print">
-        <PrivatHead active="rueckblick" title="Monatsrückblick" pin={session.privatePin} month={month} sub={
+        <PrivatHead active="rueckblick" title={z.frei ? "Rückblick (Zeitraum)" : "Monatsrückblick"} pin={session.privatePin} month={month} sub={
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <MonthNav path="/privat/rueckblick" month={month} />
             <Link className="btn" href="/privat/rueckblick/woche" data-testid="link-wochenrueckblick">Wochenrückblick</Link>
@@ -74,16 +79,35 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
             <PrintButton label="Drucken / PDF" />
           </div>
         } />
+        {/* Freier Zeitraum (von–bis), z. B. seit der letzten Sitzung oder über mehrere Monate */}
+        <form method="get" action="/privat/rueckblick" className="card card-pad" data-testid="rb-zeitraum" style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+          <div className="field">
+            <label className="label" htmlFor="rb-von">Von</label>
+            <input className="input" type="date" id="rb-von" name="von" max={today} defaultValue={von} required data-testid="rb-von" />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="rb-bis">Bis</label>
+            <input className="input" type="date" id="rb-bis" name="bis" max={today} defaultValue={end} required data-testid="rb-bis" />
+          </div>
+          <button className="btn btn-primary" type="submit" data-testid="rb-zeitraum-anzeigen">Zeitraum anzeigen</button>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {zeitraumVorschlaege(today).map((v) => (
+              <Link key={v.label} className="btn btn-small" href={`/privat/rueckblick?von=${v.von}&bis=${v.bis}`}>{v.label}</Link>
+            ))}
+            {z.frei && <Link className="btn btn-small" href={`/privat/rueckblick?monat=${month}`} data-testid="rb-zurueck-monat">Zurück zum Monat</Link>}
+          </div>
+        </form>
       </div>
 
       <section className="card card-pad stack" data-testid="review">
-        <h2>Rückblick {monthLabel(month)}{end < last ? ` (bis ${end.slice(8, 10)}.${end.slice(5, 7)}.)` : ""}</h2>
+        <h2 data-testid="rb-titel">{z.frei ? `Rückblick ${dmy(von)} – ${dmy(end)}` : `Rückblick ${monthLabel(month)}${z.gekuerzt ? ` (bis ${end.slice(8, 10)}.${end.slice(5, 7)}.)` : ""}`}</h2>
+        {z.frei && z.gekuerzt && <div className="small muted">Ende auf heute gekürzt – Zukünftiges zählt im Rückblick nicht.</div>}
 
         <h3 style={{ margin: "6px 0 0", fontSize: 15 }}>Als Paar</h3>
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
           <li className="rb-li"><KindDot kind="naehe" /> Nähe / Intimität: <strong>{ist.inMonth ? `${ist.inMonth}×` : "nicht erfasst"}</strong></li>
           <li className="rb-li"><KindDot kind="paarzeit" /> Paarzeit: <strong>{ds.inMonth ? `${ds.inMonth}×` : "nicht erfasst"}</strong>{ds.hoursInMonth ? `, ${hoursLabel(ds.hoursInMonth)}` : ""}{ds.costInMonth ? `, Babysitter ${euro(ds.costInMonth)}` : ""}</li>
-          <li>💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a ? `${th.a}×` : "keine notiert"} · ${name.b} ${th.b ? `${th.b}×` : "keine notiert"}` : "nicht erfasst"}</li>
+          <li data-testid="rb-danke">💛 Wertschätzungen notiert: {th.a + th.b ? `${name.a} ${th.a ? `${th.a}×` : "keine notiert"} · ${name.b} ${th.b ? `${th.b}×` : "keine notiert"}` : "nicht erfasst"}</li>
           <li className="rb-li"><KindDot kind="streicheln" /> Streicheln / Massage (bestätigt): {touchCount("streicheln", "stattgefunden") + touchCount("massage", "stattgefunden") ? <strong>{touchCount("streicheln", "stattgefunden")}× Streicheln · {touchCount("massage", "stattgefunden")}× Massage</strong> : "nicht erfasst"}{touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen") ? <span className="muted"> · {touchCount("streicheln", "ausgefallen") + touchCount("massage", "ausgefallen")}× ausgefallen/ausgelassen</span> : null}</li>
           <li>Stimmung als Paar (Ø 1–5): {name.a} {num(mood.a)} · {name.b} {num(mood.b)}</li>
           <li data-testid="rb-beobachtungen">📝 Meine Beobachtungen: {beobMonat ? <strong>{beobMonat}</strong> : "keine"}{zettelMonat ? ` · ${zettelMonat} Zettel für die Sitzung` : ""} <Link className="no-print" href="/privat/beobachtungen">ansehen →</Link></li>
@@ -102,7 +126,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
         </table>
 
         <h3 style={{ margin: "8px 0 0", fontSize: 15 }}>Therapie-Aufgaben</h3>
-        <div className="small">{tasksDone} im Monat erledigt bzw. abgehakt · {tasksOpen} offen</div>
+        <div className="small">{tasksDone} {zeitraumWort} erledigt bzw. abgehakt · {tasksOpen} offen</div>
 
         {myDiary.days > 0 && (
           <>
@@ -112,7 +136,7 @@ export default async function RueckblickPage({ searchParams }: { searchParams: P
               {myDiary.phases.length ? ` · Dosis: ${myDiary.phases.map((p) => (p.doseMg === null ? "–" : `${String(p.doseMg).replace(".", ",")} mg`)).join(" → ")}` : ""}
               {myDiary.sideEffects.length ? ` · Nebenwirkungen: ${myDiary.sideEffects.slice(0, 4).map((x) => `${x.name} ${x.count}×`).join(", ")}` : ""}
             </div>
-            <div className="small muted no-print">Ausführlich: <Link href={`/privat/tagebuch/bericht?ab=${month}-01&bis=${end}`}>Bericht für den Arzttermin</Link></div>
+            <div className="small muted no-print">Ausführlich: <Link href={`/privat/tagebuch/bericht?ab=${von}&bis=${end}`}>Bericht für den Arzttermin</Link></div>
           </>
         )}
       </section>

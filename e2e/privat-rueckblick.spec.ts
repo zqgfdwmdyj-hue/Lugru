@@ -148,4 +148,38 @@ test.describe("Privat – Wochenrückblick und Therapie-Bogen (B16)", () => {
     // Aufräumen (nur eigene Testeinträge dieses Laufs)
     expect(await json<{ ok: boolean }>("privat_eintrag_loeschen", { id })).toMatchObject({ ok: true });
   });
+
+  test("Rückblick mit frei gewähltem Zeitraum (von–bis) und Wochenrückblick bis zu einem beliebigen Tag", async ({ page, browser, baseURL }) => {
+    const m = marke();
+    const mcp = await mcpVerbinden(browser, baseURL!, "inhaber", { write: true, privat: true });
+    // Zwei Wertschätzungen weit in der Vergangenheit (dort liegen keine anderen Testdaten)
+    const t1 = plus(HEUTE, -400);
+    const t2 = plus(HEUTE, -395);
+    for (const tag of [t1, t2]) expect(JSON.parse(await mcp.call("privat_eintrag_anlegen", { art: "danke", text: `Danke Zeitraum ${m}`, tag })).ok).toBe(true);
+
+    await anmelden(page, "inhaber");
+    await page.goto("/privat/rueckblick");
+    await expect(page.getByTestId("rb-titel")).toContainText("Rückblick ");
+    // Zeitraum über das Formular wählen → beide Einträge
+    await page.getByTestId("rb-von").fill(plus(t1, -1));
+    await page.getByTestId("rb-bis").fill(plus(t2, 1));
+    await Promise.all([page.waitForURL(/von=.*bis=/), page.getByTestId("rb-zeitraum-anzeigen").click()]);
+    await expect(page.getByTestId("rb-titel")).toHaveText(`Rückblick ${dmy(plus(t1, -1))} – ${dmy(plus(t2, 1))}`);
+    await expect(page.getByTestId("rb-danke")).toContainText("2×");
+    // Engerer Zeitraum → nur einer; vertauschte Daten werden getauscht
+    await page.goto(`/privat/rueckblick?von=${plus(t2, 1)}&bis=${plus(t2, -1)}`);
+    await expect(page.getByTestId("rb-titel")).toHaveText(`Rückblick ${dmy(plus(t2, -1))} – ${dmy(plus(t2, 1))}`);
+    await expect(page.getByTestId("rb-danke")).toContainText("1×");
+    // Zukunft wird auf heute gekürzt; „Zurück zum Monat“
+    await page.goto(`/privat/rueckblick?von=${plus(HEUTE, -3)}&bis=${plus(HEUTE, 30)}`);
+    await expect(page.getByTestId("rb-titel")).toHaveText(`Rückblick ${dmy(plus(HEUTE, -3))} – ${dmy(HEUTE)}`);
+    await page.getByTestId("rb-zurueck-monat").click();
+    await expect(page).toHaveURL(/monat=/);
+
+    // Wochenrückblick: 7 Tage bis zu einem frei gewählten Tag (weiter zurück als die 12 Wochen der Auswahl)
+    await page.goto("/privat/rueckblick/woche");
+    await page.getByTestId("woche-bis").fill(t2);
+    await Promise.all([page.waitForURL(new RegExp(`bis=${t2}`)), page.getByTestId("woche-datum").getByRole("button", { name: "Anzeigen" }).click()]);
+    await expect(page.getByTestId("wochenrueckblick")).toContainText(`Woche ${dmy(plus(t2, -6))} – ${dmy(t2)}`);
+  });
 });

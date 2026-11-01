@@ -743,6 +743,16 @@ Import-Seite mit „nachgezogen“ im Ergebnis; „Lugru Deals=60“ im Feld; `/
 dem Termin mit Ort und 📞-Link; Nicht-Inhaber mit „voll“ → Privatbereich gesperrt, Inhaber-Login bereinigt (Dialog +
 Aufgabe); va@…-Konto → „Als VA-Rolle übernehmen“; Call einfügen und über das Suchfeld finden; Intervall bei Amazon; B2B-Hilfe.
 
+## Privat-Rückblick: Zeitraum frei wählen (Wunsch 01.11.)
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Individuelles Datum im Rückblick | ❌ (nur ganze Monate bzw. eine der letzten 12 Kalenderwochen) | ✅ | **Rückblick** (`/privat/rueckblick`): Formular „Von / Bis“ mit Datumsfeldern und Schnellauswahl (letzte 30 Tage, letzte 3 Monate, seit Jahresbeginn), Adresse `?von=…&bis=…`, „Zurück zum Monat“. Alle Zahlen (Nähe, Paarzeit, Wertschätzungen, Streicheln/Massage, Stimmung, Beobachtungen, erfasste Zeiten, Familienaufgaben, Therapie-Aufgaben, Tagebuch) zählen nur im Zeitraum; vertauschte Daten werden getauscht, Zukünftiges auf heute gekürzt (`rueckblickZeitraum`, `src/lib/private/rueckblick-logic.ts`). Drucken/PDF wie bisher. **Wochenrückblick**: zusätzlich „… oder 7 Tage bis [Datum]“ (auch weiter zurück als 12 Wochen) und Link „Längerer Zeitraum →“ |
+
+Abnahme: Unit `privat-rueckblick` (Monat wie bisher, von–bis, vertauscht, nur ein Datum, Zukunft gekürzt, ungültiges
+Datum ignoriert, Schnellauswahl); e2e `privat-rueckblick`: zwei Wertschätzungen vor ~400 Tagen → Zeitraum über das
+Formular „2×“, engerer Zeitraum „1×“, Zukunft gekürzt, „Zurück zum Monat“, Wochenrückblick bis frei gewähltem Tag.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beobachtungTeile, beobachtungText, letzteSitzung, therapieBogen, vergleichVorwoche, wochePrivat, type WocheDaten } from "@/lib/private/rueckblick-logic";
+import { beobachtungTeile, beobachtungText, letzteSitzung, rueckblickZeitraum, zeitraumVorschlaege, therapieBogen, vergleichVorwoche, wochePrivat, type WocheDaten } from "@/lib/private/rueckblick-logic";
 
 // Wochenrückblick privat (B16) und Therapie-Bogen – erfundene Namen und Einträge.
 
@@ -105,5 +105,26 @@ describe("Wochenrückblick privat", () => {
     expect(v.find((x) => x.was === "massage")).toEqual({ was: "massage", diese: 1, vorwoche: 2, tendenz: "weniger" });
     expect(v.find((x) => x.was === "stimmung")).toEqual({ was: "stimmung", diese: 3.5, vorwoche: 2, tendenz: "mehr" });
     expect(v.find((x) => x.was === "beobachtungen")?.tendenz).toBe("mehr");
+  });
+});
+
+describe("Rückblick: frei gewählter Zeitraum", () => {
+  const H = "2026-11-01";
+  it("Monat wie bisher, laufender Monat bis heute", () => {
+    expect(rueckblickZeitraum({}, H)).toEqual({ frei: false, von: "2026-11-01", bis: "2026-11-01", monat: "2026-11", gekuerzt: true });
+    expect(rueckblickZeitraum({ monat: "2026-10" }, H)).toEqual({ frei: false, von: "2026-10-01", bis: "2026-10-31", monat: "2026-10", gekuerzt: false });
+    expect(rueckblickZeitraum({ monat: "2026-13" }, H).monat).toBe("2026-11");
+  });
+  it("von–bis frei, vertauscht, nur eines, Zukunft gekürzt, ungültige Tage ignoriert", () => {
+    expect(rueckblickZeitraum({ von: "2026-09-15", bis: "2026-10-20" }, H)).toEqual({ frei: true, von: "2026-09-15", bis: "2026-10-20", monat: "2026-10", gekuerzt: false });
+    expect(rueckblickZeitraum({ von: "2026-10-20", bis: "2026-09-15" }, H)).toMatchObject({ von: "2026-09-15", bis: "2026-10-20" });
+    expect(rueckblickZeitraum({ von: "2026-08-01" }, H)).toMatchObject({ frei: true, von: "2026-08-01", bis: H });
+    expect(rueckblickZeitraum({ bis: "2026-10-10" }, H)).toMatchObject({ frei: true, von: "2026-10-01", bis: "2026-10-10" });
+    expect(rueckblickZeitraum({ von: "2026-10-01", bis: "2026-12-31" }, H)).toMatchObject({ bis: H, gekuerzt: true });
+    expect(rueckblickZeitraum({ von: "2026-12-01", bis: "2026-12-31" }, H)).toMatchObject({ von: H, bis: H });
+    expect(rueckblickZeitraum({ von: "2026-02-31", monat: "2026-09" }, H)).toMatchObject({ frei: false, monat: "2026-09" });
+  });
+  it("Schnellauswahl", () => {
+    expect(zeitraumVorschlaege(H).map((v) => [v.von, v.bis])).toEqual([["2026-10-03", H], ["2026-08-03", H], ["2026-01-01", H]]);
   });
 });

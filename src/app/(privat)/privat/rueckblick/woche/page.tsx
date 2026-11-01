@@ -46,6 +46,15 @@ export default async function WochenRueckblickPage({ searchParams }: { searchPar
           </div>
           <button className="btn" type="submit">Anzeigen</button>
         </form>
+        {/* Freies Datum: die 7 Tage bis zu einem beliebigen Tag (auch weiter zurück als 12 Wochen) */}
+        <form method="get" className="card card-pad" style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }} data-testid="woche-datum">
+          <div className="field">
+            <label className="label" htmlFor="woche-bis">… oder 7 Tage bis</label>
+            <input className="input" type="date" id="woche-bis" name="bis" max={heute} defaultValue={bis} required data-testid="woche-bis" />
+          </div>
+          <button className="btn" type="submit">Anzeigen</button>
+          <Link className="btn btn-small" href={`/privat/rueckblick?von=${von}&bis=${bis}`}>Längerer Zeitraum →</Link>
+        </form>
       </div>
       {!p ? (
         <div className="card card-pad small muted">Der Wochenrückblick braucht vollen Privat-Zugang.</div>

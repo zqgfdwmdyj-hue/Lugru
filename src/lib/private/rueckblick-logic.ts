@@ -199,3 +199,51 @@ export function vergleichVorwoche(jetzt: WochePrivat, vorher: WochePrivat) {
   }
   return out;
 }
+
+// ---- Rückblick: Monat oder frei gewählter Zeitraum ----------------------------------------------------
+
+const ISO_TAG = /^\d{4}-\d{2}-\d{2}$/;
+/** Echtes Kalenderdatum JJJJ-MM-TT (kein 31.02.). */
+const istTag = (s: string | undefined): s is string => !!s && ISO_TAG.test(s) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
+
+export type RueckblickZeitraum = {
+  /** true = frei gewählt (von/bis), false = Kalendermonat. */
+  frei: boolean;
+  von: string;
+  /** Letzter ausgewerteter Tag – nie nach heute. */
+  bis: string;
+  /** Monat für Monatsnavigation und Kopf (beim freien Zeitraum der Monat von „bis“). */
+  monat: string;
+  /** Zeitraum endet eigentlich später (laufender Monat bzw. „bis“ in der Zukunft) und wurde auf heute gekürzt. */
+  gekuerzt: boolean;
+};
+
+/**
+ * Zeitraum des Privat-Rückblicks aus der Adresse: `?von=…&bis=…` (frei, auch nur eines von beiden) oder `?monat=JJJJ-MM`.
+ * Vertauschte Daten werden getauscht, alles nach heute auf heute gekürzt; ohne Angabe der laufende Monat.
+ */
+export function rueckblickZeitraum(p: { monat?: string; von?: string; bis?: string }, heute: string): RueckblickZeitraum {
+  if (istTag(p.von) || istTag(p.bis)) {
+    let bis = istTag(p.bis) ? p.bis : heute;
+    let von = istTag(p.von) ? p.von : `${bis.slice(0, 7)}-01`;
+    if (von > bis) [von, bis] = [bis, von];
+    const gekuerzt = bis > heute;
+    if (gekuerzt) bis = heute;
+    if (von > bis) von = bis;
+    return { frei: true, von, bis, monat: bis.slice(0, 7), gekuerzt };
+  }
+  const monat = p.monat && /^\d{4}-(0[1-9]|1[0-2])$/.test(p.monat) ? p.monat : heute.slice(0, 7);
+  const [y, m] = monat.split("-").map(Number);
+  const letzter = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const bis = letzter < heute ? letzter : heute;
+  return { frei: false, von: `${monat}-01`, bis, monat, gekuerzt: bis < letzter };
+}
+
+/** Schnellauswahl für den freien Zeitraum. */
+export function zeitraumVorschlaege(heute: string): { label: string; von: string; bis: string }[] {
+  return [
+    { label: "Letzte 30 Tage", von: plusT(heute, -29), bis: heute },
+    { label: "Letzte 3 Monate", von: plusT(heute, -90), bis: heute },
+    { label: "Seit Jahresbeginn", von: `${heute.slice(0, 4)}-01-01`, bis: heute },
+  ];
+}
