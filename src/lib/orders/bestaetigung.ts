@@ -65,7 +65,13 @@ export async function bestaetigungErinnern(tenantId: string, jetzt = new Date())
     category: "versand" as const,
     link: "/auftraege?ansicht=fehler",
   };
-  if (!alt) await db.insert(T).values({ tenantId, systemKey: key, ...werte }).onConflictDoNothing();
-  else await db.update(T).set({ ...werte, status: "open", completedAt: null }).where(eq(T.id, alt.id));
+  let neuId: string | null = null;
+  if (!alt) neuId = (await db.insert(T).values({ tenantId, systemKey: key, ...werte }).onConflictDoNothing().returning({ id: T.id }))[0]?.id ?? null;
+  else {
+    await db.update(T).set({ ...werte, status: "open", completedAt: null }).where(eq(T.id, alt.id));
+    if (alt.status !== "open") neuId = alt.id;
+  }
+  // Neu bzw. wieder offen → Push (Apple Watch: „Erledigt“ schließt genau diese Aufgabe).
+  if (neuId) await import("@/lib/push/aufgabe").then((m) => m.aufgabeMelden(tenantId, { id: neuId, title: werte.title, dueDate: werte.dueDate, link: werte.link })).catch(() => null);
   return offen.length;
 }

@@ -116,6 +116,7 @@ function kiAnswer(req, b) {
     const regeln = nachEn
       ? [
           [/Anspruch für Sendung (⟦\d+⟧) einreichen, Frist (\d{1,2})\.(\d{1,2})\.?/g, (_m, s, d, mo) => `File reimbursement claim for shipment ${s}, due ${MON[Number(mo) - 1]} ${Number(d)}`],
+          [/^bitte Rechnung (\S+) prüfen$/gi, "Please check the $1 invoice"],
           [/Ja, bitte eskalieren/g, "Yes, please escalate"],
           [/Erfundene Testaufgabe/g, "Fictional test task"],
           [/Erfundene Testanleitung/g, "Fictional test instructions"],
@@ -743,6 +744,17 @@ function webNachbau(req, res, url, body) {
     res.end(`<!doctype html><html><body><h1>${dienst} (Testnachbau)</h1>${inhalt}</body></html>`);
   };
   const angemeldet = (req.headers.cookie ?? "").includes(`sid=ok-${dienst}`);
+  // B24: Varianten – Browser-Prüfung (Cloudflare), Seite ohne Formular, Cookie-Banner + andere Feldnamen, Felder ohne
+  // erkennbare Namen (nur mit eigenem Selektor zu finden).
+  if (dienst === "captcha") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    return res.end('<!doctype html><html><head><title>Just a moment...</title></head><body><div class="cf-turnstile"></div><p>Checking your browser before accessing.</p></body></html>');
+  }
+  if (dienst === "leer" && seite === "login") return html(200, "<p>Wartungsarbeiten – bitte später wieder versuchen.</p>");
+  if (dienst === "bqoolneu" && seite === "login" && req.method !== "POST")
+    return html(200, '<div id="cookie" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9"><div style="background:#fff;padding:20px;margin:120px auto;width:320px">Wir verwenden Cookies. <button type="button" onclick="document.getElementById(\'cookie\').remove()">Alle akzeptieren</button></div></div><form method="post"><label>E-Mail-Adresse <input type="text" name="login_id" placeholder="Ihre E-Mail"></label><label>Kennwort <input type="password" name="pw"></label><button type="button" onclick="this.form.submit()">Log in</button></form>');
+  if (dienst === "sonder" && seite === "login" && req.method !== "POST")
+    return html(200, '<form method="post"><input name="kennung"><input type="password" name="geheim"><button type="submit">Los</button></form>');
   if (seite === "login" && req.method === "POST") {
     const f = new URLSearchParams(body);
     if ((f.get("email") ?? "").includes("2fa")) return html(200, '<p>Zwei-Faktor-Anmeldung: Bitte Bestätigungscode eingeben</p><form method="post"><input autocomplete="one-time-code" name="code"><button type="submit">Weiter</button></form>');

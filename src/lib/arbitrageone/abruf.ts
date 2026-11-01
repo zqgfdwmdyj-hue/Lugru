@@ -2,7 +2,7 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { and, asc, desc, eq, isNotNull, isNull, max, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { anmelden, AutomatikAbbruch, mitBrowser } from "@/lib/automatik/runner";
+import { anmelden, AutomatikAbbruch, cookiesWeg, mitBrowser } from "@/lib/automatik/runner";
 import { aoImportAnlegen } from "@/lib/datei-import/service";
 import type { ImportArt } from "@/lib/datei-import/logic";
 import { getIntegration } from "@/lib/integrations/store";
@@ -44,6 +44,7 @@ async function karteFinden(page: Page, titel: string) {
 /** Export herunterladen: Knopf in der Karte; öffnet sich ein Dialog (Zeitraum/Format), dessen Bestätigen-Knopf. */
 async function herunterladen(page: Page, url: string, titel: string): Promise<{ name: string; bytes: Uint8Array }> {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await cookiesWeg(page);
   const karte = await karteFinden(page, titel);
   if (!karte) throw new AutomatikAbbruch(`Export „${titel}“ auf der Export-Seite nicht gefunden – Name der Karte unter Anbindungen prüfen.`);
   const knoepfe = karte.locator("button, a[href]");
@@ -111,7 +112,7 @@ export async function aoAbholen(tenantId: string, o: { ausloeser: "zeitplan" | "
   const dateien: { e: AoExport; name: string; bytes: Uint8Array }[] = [];
   const ergebnis: AoExportErgebnis[] = [];
   const r = await mitBrowser(tenantId, { titel: "ArbitrageOne-Abruf", aufgabeKey: "automatik-arbitrageone", link: LINK }, async (page, log) => {
-    await anmelden(page, { loginUrl: cfg.loginUrl || STANDARD_LOGIN, email: cfg.email!, password: cfg.password! }, log);
+    await anmelden(page, { loginUrl: cfg.loginUrl || STANDARD_LOGIN, email: cfg.email!, password: cfg.password!, dienst: "ArbitrageOne", selektoren: { email: cfg.feldEmail, passwort: cfg.feldPasswort, knopf: cfg.feldKnopf } }, log);
     for (const e of faellig) {
       const titel = kartenTitel(cfg, e);
       try {
@@ -177,9 +178,10 @@ export async function aoVerbindungTesten(tenantId: string, cfg: Cfg): Promise<st
   const teile: string[] = [];
   let fehlt = 0;
   const r = await mitBrowser(tenantId, { titel: "ArbitrageOne – Verbindung testen", aufgabeKey: "automatik-arbitrageone-test", link: LINK, ohneAufgabe: true }, async (page, log) => {
-    await anmelden(page, { loginUrl: cfg.loginUrl || STANDARD_LOGIN, email: cfg.email!, password: cfg.password! }, log);
+    await anmelden(page, { loginUrl: cfg.loginUrl || STANDARD_LOGIN, email: cfg.email!, password: cfg.password!, dienst: "ArbitrageOne", selektoren: { email: cfg.feldEmail, passwort: cfg.feldPasswort, knopf: cfg.feldKnopf } }, log);
     teile.push("Anmeldung ok");
     await page.goto(cfg.exportUrl || STANDARD_EXPORT, { waitUntil: "domcontentloaded", timeout: 45_000 });
+    await cookiesWeg(page);
     for (const e of AO_EXPORTE) {
       const titel = kartenTitel(cfg, e);
       const karte = await karteFinden(page, titel);

@@ -50,20 +50,30 @@ export type KaufZeile = { titel: string | null; name: string | null; ekNetto: nu
 const AMPEL: Record<string, string> = { gruen: "🟢", gelb: "🟡", rot: "🔴" };
 
 /**
- * Kopfzeile der Kauf-Meldung: „🟢 Deal 17: Galaxy Watch Ultra · EK 299 € · ROI 23 % · Empf. 4 Stk“ plus max. EK,
+ * Kopfzeile der Kauf-Meldung, das Wichtigste zuerst (Apple Watch zeigt nur ~120 Zeichen):
+ * „🟢 Deal 17: Galaxy Watch Ultra · DE: ROI 23 %, 14,96 €/Stk · Empf. 4 Stk (1.196 €) · EK 299 €“ plus max. EK,
  * Frist und Deal-Wert. Budget-Grenzen stehen hier nicht mehr (Kaufen mit einem Tap §4: keine Grenze, nur Monatsrahmen).
  */
 export function kaufText(z: KaufZeile, o: { nr?: number | null; ampel?: string | null; wert?: number | null; menge?: number | null }): string {
-  const name = (z.titel ?? z.name ?? "Deal").slice(0, 40);
+  const name = kuerzen((z.titel ?? z.name ?? "Deal").trim(), 32);
   const teile = [`${AMPEL[o.ampel ?? "gruen"] ?? "🟢"} ${o.nr ? `Deal ${o.nr}: ` : ""}${name}`];
-  if (z.ekNetto !== null) teile.push(`EK ${eur(z.ekNetto)}`);
   if (z.roi !== null) teile.push(`${z.bestesLand ? `${z.bestesLand}: ` : ""}ROI ${Math.round(z.roi)} %${z.gewinn !== null ? `, ${eur(z.gewinn)}/Stk` : ""}`);
   const menge = o.menge ?? z.empfohlen;
   if (menge) teile.push(`Empf. ${menge} Stk${z.ekNetto ? ` (${eur0(menge * z.ekNetto)})` : z.kapitalbedarf ? ` (${eur0(z.kapitalbedarf)})` : ""}`);
+  if (z.ekNetto !== null) teile.push(`EK ${eur(z.ekNetto)}`);
   if (z.maxEk[0]) teile.push(`max. EK ${eur(z.maxEk[0].ek)}`);
   if (z.gueltigBis) teile.push(`gültig bis ${z.gueltigBis}`);
   if (o.wert !== null && o.wert !== undefined) teile.push(`passt zu dir ${o.wert}/100`);
   return teile.join(" · ");
+}
+
+/** Text auf n Zeichen kürzen, möglichst an einer Wortgrenze, mit „…“. */
+export function kuerzen(t: string, n: number): string {
+  const s = t.replace(/\s+/g, " ").trim();
+  if (s.length <= n) return s;
+  const schnitt = s.slice(0, n - 1);
+  const wort = schnitt.lastIndexOf(" ");
+  return `${(wort > n * 0.6 ? schnitt.slice(0, wort) : schnitt).replace(/[\s·,:;–-]+$/, "")}…`;
 }
 
 // ---- Bestellbestätigung per Mail ---------------------------------------------------------------------------------

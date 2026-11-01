@@ -121,6 +121,35 @@ const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
     },
   },
   {
+    titel: "Handy & Tesla → Apple Watch: Kurzbefehle (Wie läuft's, Was ist dringend, Erledigt …)",
+    tags: ["handy", "tesla", "watch", "apple-watch", "kurzbefehl"],
+    a: {
+      zweck: "Kurzantworten an der Apple Watch per Siri – ohne eigene Watch-App. Jede Antwort hat höchstens 3 Zeilen und 160 Zeichen, „zeige“ fürs Display und „sprich“ zum Vorlesen. Nur „Erledigt“, „Notiz“ und „Bestand“ ändern etwas, alles andere liest nur. In „Wie läuft's“ und „Was ist dringend“ steht nie Privates (private Termine nur als „Termin außer Haus“). Sind die Daten älter als 30 Minuten, steht vorne „Stand 15:12“.",
+      wann: "Einmal je iPhone einrichten (die Watch übernimmt die Kurzbefehle).",
+      wer: "Ludwig",
+      schritte: [
+        "Seller-System → Heute → Schnellerfassung (Sprache) → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
+        "Je Befehl ein Kurzbefehl, Name = Sprachbefehl: „Wie läuft's“ → /api/mobil/watch/stand · „Was ist dringend“ → /api/mobil/watch/dringend · „Erledigt“ → /api/mobil/watch/erledigt · „Notiz“ → /api/mobil/watch/notiz · „Deal prüfen“ → /api/mobil/watch/deal · „Bestand“ → /api/mobil/watch/bestand · „Auto“ → /api/mobil/watch/tesla.",
+        "In jedem Kurzbefehl: Aktion „Inhalte von URL abrufen“: https://<deine Adresse>/api/mobil/watch/<befehl>, Methode POST, Header Authorization = Bearer <Schlüssel>.",
+        "Bei „Erledigt“, „Notiz“, „Deal prüfen“ und „Bestand“ davor „Text diktieren“ und im Abruf JSON {\"text\": Diktierter Text} mitschicken (z. B. „VA bitte Rechnung Tefal prüfen“, „B0… für 19,99“, „Tefal 12 Stück“).",
+        "Danach „Wörterbuchwert abrufen“ → „zeige“ → „Ergebnis anzeigen“ und „Wörterbuchwert abrufen“ → „sprich“ → „Text vorlesen“.",
+        "In den Details jedes Kurzbefehls „Auf Apple Watch anzeigen“ einschalten.",
+        "Komplikation: Zifferblatt bearbeiten → Komplikation „Kurzbefehle“ → „Was ist dringend“ (Standard).",
+        "Rückfragen: Bei mehreren Treffern nennt die Watch „1 … 2 … 3 …“ – dann „Erledigt“ bzw. „Bestand“ erneut und „Nummer 2“ diktieren (10 Minuten gültig).",
+        "„Notiz VA …“ geht als Nachricht an die VA (Englisch). Im Modus „Vorschlag“ wartet sie unter Delegation → VA auf deine Freigabe; „Notiz privat …“ nur auf deinem eigenen Gerät.",
+        "Kaufen: Grüne Deal-Pushs tragen „Deal 17“ – „Hey Siri, Kaufen 17“ über den Kurzbefehl „Kaufen“ (eigene Anleitung).",
+      ],
+      zugaenge: ["Handy-Schlüssel (je Gerät, widerrufbar unter Schnellerfassung)", "Tesla nur, wenn unter Anbindungen verbunden"],
+      fehler: [
+        "„Keine offene Aufgabe aus den Pushs der letzten 24 Stunden“: „Erledigt“ schließt nur, was per Push gemeldet wurde – sonst im Seller-System abhaken.",
+        "Nichts vorgelesen: im Ergebnis das Feld „sprich“ wählen, nicht den ganzen Text.",
+        "401: Schlüssel falsch oder widerrufen – neu erzeugen.",
+        "Bildschirmfotos der Kurzbefehle-App: nicht automatisch erstellt (kein iPhone im System) – bei Bedarf selbst ergänzen.",
+      ],
+      aufgabenTypen: [],
+    },
+  },
+  {
     titel: "Payback bei Amazon.de (Stand November 2026)",
     tags: ["einkauf", "payback", "amazon"],
     a: {

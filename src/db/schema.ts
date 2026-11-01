@@ -44,3 +44,5 @@ export * from "./tables/mobil";
 export * from "./tables/recht";
 export * from "./tables/datei-import";
 export * from "./tables/arbitrageone";
+export * from "./tables/automatik";
+export * from "./tables/apple-watch";

@@ -827,6 +827,20 @@
       "when": 1793527275704,
       "tag": "0117_ao_anbindung",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1793531555167,
+      "tag": "0118_automatik_debug",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1793533007076,
+      "tag": "0119_apple_watch",
+      "breakpoints": true
     }
   ]
 }

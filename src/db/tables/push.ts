@@ -34,6 +34,8 @@ export const meldungen = pgTable(
     link: text("link"),
     /** Knöpfe in der Benachrichtigung (z. B. „Zum Angebot“, „Gekauft“) – je Knopf ein Link. */
     aktionen: jsonb("aktionen").$type<{ aktion: string; titel: string; link: string }[] | null>(),
+    /** Worauf sich die Meldung bezieht (Apple Watch „Erledigt“ schließt genau das; 24 Std. gemerkt). */
+    bezug: jsonb("bezug").$type<{ art: "aufgabe" | "amazon_todo"; id: string; titel: string } | null>(),
     createdAt: createdAt(),
   },
   (t) => [index("meldungen_user_idx").on(t.tenantId, t.userId, t.createdAt)],

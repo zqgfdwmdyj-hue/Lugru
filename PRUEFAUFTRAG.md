@@ -577,7 +577,7 @@ Aufgabe mit Link; Anbindungen, `calls` und `anbindungen_status` zeigen „live�
 | 22.2e | Lugru-History komplett | 🟡 (Nachtrag konnte an einem unlesbaren Post hängen bleiben) | ✅ | `lugruHistorieEingaenge`: Fehler je Post werden übersprungen und gezählt, der Rest läuft weiter |
 | 22.2f | Schwelle Lugru = 60 vorbelegt | 🟡 (nur Platzhalter) | ✅ | `STANDARD_WERT_SCHWELLEN` in `deal-eingang/logic.ts`; eigene Einstellung geht vor; Seite zeigt „Lugru Deals ab 60 (vorbelegt)“ |
 | 22.2g | Monatsbericht mit Trefferquote | 🟡 | ✅ | `lernBericht`: Schwelle je Quelle, eigener Block `lugru_deals` (gekauft, mit Ergebnis, Trefferquote) in `deal_lernen_bericht`; `lugru_history.selbst_gekauft` |
-| 22.3 | Apple Watch | ❌ | offen | Abschnitt 10 von „Bauauftrag_Handy-Tesla.md“ liegt nicht vor (hochgeladene Fassung endet bei 9) – wird nach dem Hochladen umgesetzt |
+| 22.3 | Apple Watch | ❌ | ✅ | Eigener Bauauftrag „Apple Watch – Kurzantworten per Kurzbefehl“ (01.11.) – siehe Abschnitt „Apple Watch“ unten |
 
 Abnahme: Unit `reflexion` (Sitzungen, Reihenfolge, Zettel offen, Kalenderwoche, Ändern) und `lugru-lernen` (SKU-Muster,
 21-Tage-Fenster, Vorwissen/harte Kriterien, Schwelle, Bericht); e2e `b22-reflexion` (Beobachtungen über die andere
@@ -597,6 +597,24 @@ Menge 4 und EK 120,00 netto, außerhalb nicht; Deal-Wert ≥ 60 mit „Vorwissen
 Abnahme: Unit `bqool-laender`; e2e `bqool-dateien` gegen den BQool-Nachbau: DE und FR je auf eigener Seite (amazonde/amazonfr),
 FR absichtlich kaputt → „1 von 2 Ländern hochgeladen“, DE trotzdem oben, Aufgabe „FR nicht hochgeladen“, Zeilen im
 Protokoll; Formular mit vorbelegten FR/ES-Adressen; „Verbindung testen“ meldet je Land „Upload-Seite erreichbar“.
+
+## B24 – Browser-Automatik: Anmeldeformular wird nicht gefunden (01.11., 12:00)
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| 24.1 | Bei jedem Fehlschlag Bildschirmfoto + Seitentitel + Adresse, in der Meldung verlinkt, nur Inhaber, 7 Tage | 🟡 (Bildschirmfotos nur im Lauf-Protokoll, nicht an der Meldung) | ✅ | `debugFesthalten` in `src/lib/automatik/runner.ts`: ganzes Fenster als PNG, verschlüsselt abgelegt, Zeile in `automatik_debug` (Migration `0118`) mit Titel, Adresse **ohne Abfrageteil** (keine Tokens) und Fehler; Meldung „… – Bildschirmfoto: /import/debug/<zeit-dienst>.png (Seite „…“, Adresse)“; Anbindungen machen daraus den Link „Bildschirmfoto öffnen“. Route `src/app/(app)/import/debug/[datei]/route.ts` nur für Inhaber (`requireOwner`, Name streng geprüft, `no-store`); täglicher Schritt „Automatik: Bildschirmfotos aufräumen“ löscht nach 7 Tagen |
+| 24.2 | Felder breiter suchen | ❌ (ein fester Selektor, 30 s) | ✅ | `emailFelder`/`passwortFelder`/`anmeldeKnoepfe`: `type=email`, Name/ID (email, username, login), `autocomplete=username`, Platzhalter „mail/Benutzer“, Beschriftung „E-Mail/Benutzername“, `form input[type=text]`; Passwort `type=password` bzw. Beschriftung; Knopf per Text („Log in“, „Anmelden“, „Sign in“, „Weiter“ …) oder Submit, sonst Enter. Zweistufige Anmeldung (erst E-Mail → „Weiter“ → Passwort) |
+| 24.3 | Cookie-Banner, 60 s Wartezeit, Netzwerk-Ruhe | ❌ | ✅ | `cookiesWeg` („Akzeptieren“, „Alle akzeptieren“, „Accept all“, „Zustimmen“, OneTrust …; nie „Ablehnen/Einstellungen“) vor dem Formular, vor dem Knopf und auf jeder Upload-/Export-Seite; Wartezeit 60 s (`anmeldeWarten`, im Test 5 s), `networkidle` nach dem Laden und nach dem Absenden |
+| 24.4 | Cloudflare/Captcha erkennen, keine Wiederholung | ❌ | ✅ | `browserPruefung`: Titel „Just a moment“, „Attention Required“, „Checking your browser“ bzw. Turnstile/hCaptcha/reCAPTCHA im DOM → „BQool verlangt eine Browser-Prüfung (Cloudflare/Captcha) – Automatik hier nicht möglich, Datei-Weg nutzen“ – sofort, ohne auf Felder zu warten |
+| 24.5 | Ludwigs eigene Feldnamen zuerst | ❌ | ✅ | Anbindungen (sellerboard, BQool, ArbitrageOne): „Feld E-Mail“, „Feld Passwort“, „Anmelde-Knopf“ (CSS-Selektor aus „Rechtsklick → Untersuchen“) – werden vor allen anderen probiert |
+| 24.6 | Gleiche Härtung für ArbitrageOne | ❌ | ✅ | `src/lib/arbitrageone/abruf.ts` nutzt dieselbe Anmeldung (`dienst: "ArbitrageOne"`, eigene Feldnamen), Cookie-Banner auf der Export-Seite; Fehlschläge im Nachtlauf mit Bildschirmfoto-Link in der Aufgabe |
+
+Abnahme: Unit `automatik-login` (Captcha-Titel, Cookie-Knöpfe, Anmelde-Knopf, Bildschirmfoto-Name/-Muster, Adresse ohne
+Abfrageteil, Meldungstext, 7 Tage); e2e `b24-automatik` gegen Nachbauten: Cookie-Banner über dem Formular + Feld nur mit
+Platzhalter + Knopf „Log in“ → „Anmeldung ok“; Felder ohne erkennbare Namen → „nicht gefunden“ mit Bildschirmfoto-Link,
+mit „Feld E-Mail“ → ok; Cloudflare-Seite → klare Meldung in unter 60 s; Seite ohne Formular mit `?token=…` → Meldung mit
+Adresse ohne Token, Bild abrufbar (PNG) für den Inhaber, nicht für Mitarbeiter. Dazu `bqool-dateien`, `arbitrageone`,
+`ek-import` ohne Rückschritt.
 
 ## Kaufen mit einem Tap · Shop-Profile · Payback · Navigation links (Bauauftrag 01.11.)
 
@@ -641,6 +659,35 @@ Gruppe bleibt nach Neuladen offen, Einklappen gemerkt, keine Reiterzeile, Favori
 Enter öffnet, Glocke zählt und wird gesehen, alte Adressen, Privatbereich mit offenem Privat-Block; Konto ohne Privat sieht
 keinen Privat-Block; Handy: Tab-Leiste + „Mehr“ öffnet die Schublade) und `oberflaeche` (alle Seiten, Kontrast/aktive Auswahl).
 
+## Apple Watch – Kurzantworten per Kurzbefehl (Bauauftrag 01.11. = Handy-Tesla Abschnitt 10)
+
+Adresse: `/api/mobil/watch/<befehl>` (im Auftrag „/api/kurzbefehl/…“ – im System heißen alle Kurzbefehl-Endpunkte
+`/api/mobil/…`, gleicher Handy-Schlüssel je Gerät, gleiches Rate-Limit und Protokoll). Jede Antwort: `zeige`, `sprich`,
+`zeilen`, `antwort` (= zeige), höchstens 3 Zeilen / 160 Zeichen, ohne Links und Tabellen (`watchAntwort` in
+`src/lib/mobil/watch-logic.ts`).
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| W.1 | `watch/stand` – „Wie läuft's?“ | ❌ (Widget `/api/mobil/kurz` nur als JSON) | ✅ | `watchStand` (`src/lib/mobil/watch.ts`): Umsatz heute (sellerboard), Umsatz und Nettogewinn Monat, offene rote Fälle (Fall-Zentrale), nächster Termin (`naechsterTermin`, privat nur „Termin außer Haus“) → „Heute 2.680 €, November 100 k€, Gewinn 4,5 k€. / 2 rote Fälle. / 15:00 Termin außer Haus.“ Geld nur mit Bereich „Geld“ |
+| W.2 | `watch/dringend` – „Was ist dringend?“ | ❌ | ✅ | `watchDringend`: dieselben Quellen wie „Jetzt dringend“ auf der Startseite (rote Hinweise, wichtige Aufgaben, dann gelbe), mit denselben Rechten; je Zeile „… – heute/morgen/bis Mi/überfällig/sofort“. Aufgaben sind geschäftlich; Rechtsfristen-Zeile (kann private Fälle zählen) bleibt weg |
+| W.3 | `watch/erledigt` – zuletzt per Push gemeldete Aufgabe | ❌ | ✅ | `meldungen.bezug` (Migration `0119`), `watchErledigt`: neuester Push der letzten 24 Std. mit offener Aufgabe/Amazon-ToDo wird geschlossen („Erledigt: …“); ältere Meldungen ohne Bezug über ihren Link. Unklar (neuester Push ohne Aufgabe oder „welche?“) → „Welche? 1 … 2 … 3 …“, Auswahl „Nummer 2“ (`watch_rueckfragen`, 10 Min.). Damit es Pushs mit Bezug gibt: neue **wichtige** System-Aufgaben (z. B. „Versandbestätigung bei Amazon hochladen“) melden sich jetzt per Push (`src/lib/push/aufgabe.ts`, höchstens 6/Std., nie Discord) |
+| W.4 | `watch/notiz` – Aufgabe; „VA …“ → VA auf Englisch; „privat …“ | ❌ | ✅ | `watchNotiz`: Aufgabe für Ludwig (Datum aus dem Diktat). „VA …“: Text wird übersetzt; Modus „Vorschlag“ (Standard) → Entwurf in `va_entwuerfe` + Aufgabe „VA-Nachricht freigeben“, auf Delegation → VA Block „Von der Watch – wartet auf deine Freigabe“ (Text änderbar, „An die VA senden“ / „Verwerfen“); erst dann geht er in den VA-Kanal. Modus „automatisch“ → sofort. „privat …“ nur Inhaber mit vollem Privat-Zugang |
+| W.5 | `watch/deal` – ASIN/EAN/Name + Preis → Ampel in einer Zeile | ❌ | ✅ | `watchDeal`: „Grün, ROI 28 %, 14,96 €/Stk, Empfehlung 3 Stück.“ (Deal-Ampel über `scanPruefen`); Name → eigene Produkte, bei mehreren ASINs die beste nennen, „n weitere Treffer – Details aufs Handy“. Nur lesen |
+| W.6 | `watch/bestand` – „Tefal 12 Stück“ | ❌ | ✅ | `watchBestand`: eigenes Lager suchen (SKU oder Produktname), bei mehreren Treffern Rückfrage mit Nummer; setzt die gezählte Menge, Antwort „…: 5 → 12 Stück.“, Lagerbewegung „Zählung (Apple Watch)“ + Kanal-Abgleich wie im Bestand. Ohne Menge nur nachsehen |
+| W.7 | `watch/tesla` – Ladestand, Reichweite, Klima | ❌ | ✅ | `watchTesla`: nur lesen (Klima wird von der Watch nicht geschaltet – Regel „alles andere ist lesend“), nur Inhaber, „Tesla ist noch nicht verbunden“ solange keine Anbindung |
+| W.8 | Push ≤ 120 Zeichen, Wichtigstes zuerst | ❌ (bis 500 Zeichen) | ✅ | `neuesteMeldung` gibt dem Service Worker Titel ≤ 60 und Text ≤ 120 Zeichen (`pushKurz`); voller Text bleibt hinter dem Link. Deal-Kopfzeile neu sortiert: „🟢 Deal 17: Name · DE: ROI 36 %, 9,10 €/Stk · Empf. 4 Stk · EK …“ (`kaufText`) |
+| W.9 | Grüne Deal-Pushs mit Nummer → „Kaufen 17“ | 🟡 (Nummer im Titel und Text) | ✅ | Nummer steht vorne im Text; `POST /api/mobil/kaufen` („Kaufen 17“) unverändert |
+| W.10 | Anleitung im Wissen „Handy & Tesla → Apple Watch“ | ❌ | ✅ | `src/lib/mobil/anleitungen.ts`: Kurzbefehle je Sprachbefehl, „Auf Apple Watch anzeigen“, „Ergebnis anzeigen“ + „Text vorlesen“, Komplikation „Was ist dringend“, Rückfragen per Nummer. Bildschirmfotos der Kurzbefehle-App kann das System nicht selbst machen (To-do 65) |
+| W.11 | Regeln: nur erledigt/notiz/bestand ändern; nichts Privates in stand/dringend; „Stand HH:MM“ ab 30 Min. | – | ✅ | Ändernde Befehle nur per POST und nicht mit Nur-ansehen-Konten (`mobilPruefen(…, { schreibend })`); „Stand 15:12:“ vorne, wenn der letzte sellerboard-Abruf älter als 30 Min. ist |
+
+Abnahme: Unit `apple-watch` (Beispiel aus dem Auftrag, 3 Zeilen/160 Zeichen, „Stand“, Vorlesen, Frist, Dringend,
+Sprachbefehle Notiz/Deal/Bestand/Nummer, Deal-Zeile, Push ≤ 120, Deal-Nummer vorne); e2e `apple-watch`:
+(1) „Wie läuft's“ antwortet in < 3 s mit 3 Zeilen; (2) Deal-Push beginnt mit „🟢/🟡 Deal n: … ROI“, „kaufen n“ bestätigt;
+(3) zwei Pushs → „Erledigt“ schließt genau den neuesten, Push ohne Aufgabe → Auswahl, „Nummer 1“ schließt die andere;
+(4) „Notiz VA bitte Rechnung Tefal prüfen“ → „Please check the Tefal invoice“, erst nach „An die VA senden“ im VA-Kanal;
+dazu Bestand mit Rückfrage (5 → 12), Deal, Auto, 401/405/404. Siri und die echte Watch kann der Test nicht bedienen –
+das Vorlesen prüft Ludwig einmal selbst (To-do 64).
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -674,6 +721,12 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 01.11. (B24 + Apple Watch, keine neuen Werkzeuge): Die Watch nutzt keine Claude-Werkzeuge, sondern die
+Handy-Adressen `/api/mobil/watch/{stand,dringend,erledigt,notiz,deal,bestand,tesla}`. An den Werkzeugen ändert sich
+nichts am Schema, `notifications/tools/list_changed` ist dafür nicht nötig. Inhaltlich neu: Deal-Texte (z. B. in
+`deal_eingang_detail`) nennen ROI vor dem EK; Fehlermeldungen der Browser-Automatik in `anbindungen_status` können einen
+Bildschirmfoto-Pfad `/import/debug/….png` enthalten (nur für Inhaber abrufbar).
 
 Geändert am 01.11. (ArbitrageOne-Anbindung, keine neuen Werkzeuge): `import_link`/`importe` kennen drei neue Arten:
 `ao_lagerbestand`, `ao_accountone_cog` und `ao_bqool_vergleich` (nur Vergleich). Das Eingabe-Schema hat sich damit
@@ -936,4 +989,16 @@ nie in Chats oder Mails.
     (nur sellerboard- und BQool-Export). Die Erkennung ist großzügig gebaut. Passt eine Datei nicht, kommt eine Aufgabe
     mit Spaltenliste. Bitte einmal je Export eine Datei per Upload-Seite oder import_link schicken (Art `ek_liste`,
     `ao_lagerbestand`, `amazon_reimbursements`), dann prüfe ich die Spalten.
+64. **Apple Watch einrichten**: Wissen → „Handy & Tesla → Apple Watch: Kurzbefehle“. Je Befehl ein Kurzbefehl mit dem
+    Handy-Schlüssel, „Auf Apple Watch anzeigen“ an, Komplikation „Was ist dringend“. Einmal „Hey Siri, wie läuft's“ an der
+    Watch probieren und sagen, ob das Vorlesen passt (den Teil kann der Test nicht prüfen).
+65. **Bildschirmfotos für die Watch-Anleitung**: Das System hat kein iPhone und macht keine Bildschirmfotos der
+    Kurzbefehle-App. Wenn du welche willst, an den Wissens-Eintrag anhängen.
+66. **Neu: Push bei neuen wichtigen Aufgaben** (damit „Erledigt“ an der Watch etwas zu schließen hat): höchstens 6 je
+    Stunde, nie in Discord. Sag Bescheid, wenn es zu viele werden – dann baue ich einen Schalter.
+67. **VA-Nachrichten von der Watch**: Im Modus „Vorschlag“ (Standard) stehen sie unter Delegation → VA zum Freigeben.
+    Erst „An die VA senden“ schickt sie. Auf „automatisch“ erst stellen, wenn B17.2 für dich erledigt ist.
+68. **BQool/ArbitrageOne-Anmeldung klappt weiter nicht**: In der Fehlermeldung auf „Bildschirmfoto öffnen“ tippen. Steht
+    dort eine Browser-Prüfung (Cloudflare), geht nur der Datei-Weg (ZIP). Heißt das Feld anders, in der Anbindung „Feld
+    E-Mail“ (z. B. `#login-email`) eintragen, Wert per Rechtsklick → Untersuchen.
 

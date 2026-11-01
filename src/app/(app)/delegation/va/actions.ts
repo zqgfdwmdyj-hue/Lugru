@@ -50,6 +50,27 @@ export async function antwortAction(fd: FormData) {
   zurueck(r.ok ? "Antwort ist im Thread der VA." : r.fehler);
 }
 
+/** Apple Watch: Vorschlag an die VA freigeben (erst jetzt geht er in den VA-Kanal) bzw. verwerfen. */
+export async function entwurfSendenAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("id") ?? "");
+  if (!ID.test(id)) zurueck("Entwurf fehlt.");
+  const { vaEntwurfSenden } = await import("@/lib/mobil/watch");
+  const r = await vaEntwurfSenden(s, id, String(fd.get("text") ?? "").slice(0, 3800)).catch((e) => ({ ok: false, message: e instanceof Error ? e.message : String(e) }));
+  revalidatePath("/");
+  zurueck(r.message);
+}
+
+export async function entwurfVerwerfenAction(fd: FormData) {
+  const s = await requireOwner();
+  const id = String(fd.get("id") ?? "");
+  if (!ID.test(id)) zurueck("Entwurf fehlt.");
+  const { vaEntwurfVerwerfen } = await import("@/lib/mobil/watch");
+  await vaEntwurfVerwerfen(s, id);
+  revalidatePath("/");
+  zurueck("Entwurf verworfen – nichts an die VA gesendet.");
+}
+
 const UHR = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export async function einstellungenAction(fd: FormData) {

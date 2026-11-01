@@ -25,6 +25,18 @@ const meine = (s: Session) => (s.role === "owner" ? or(eq(T.assigneeId, s.userId
 
 // ---- Widget ------------------------------------------------------------------------------------------------
 
+/** Nächster Termin heute/morgen: geschäftliche Kalender mit Titel, Privates nur als „Termin außer Haus“. */
+export async function naechsterTermin(session: Session, heute = todayIso()): Promise<{ tag: string; von: string; titel: string } | null> {
+  const { tagesplan } = await import("@/lib/tagesplan/service");
+  const plan = await tagesplan(session, { start: heute, tage: 2, heute }).catch(() => null);
+  const jetzt = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+  return (
+    plan?.tage
+      .flatMap((d) => d.sperren.filter((x) => (x.art === "termin" || x.art === "privat") && !x.ganztags && (d.tag > heute || x.von >= jetzt)).map((x) => ({ tag: d.tag, von: x.von, titel: x.art === "privat" ? "Termin außer Haus" : x.titel })))
+      .sort((a, b) => (a.tag + a.von).localeCompare(b.tag + b.von))[0] ?? null
+  );
+}
+
 export async function kurzWerte(session: Session, heute = todayIso()) {
   const t = session.tenantId;
   const gestern = addDaysIso(heute, -1);
@@ -33,13 +45,7 @@ export async function kurzWerte(session: Session, heute = todayIso()) {
   const O = schema.orders;
   const [{ fbm }] = await db.select({ fbm: count() }).from(O).where(and(eq(O.tenantId, t), eq(O.fulfillment, "FBM"), eq(O.status, "open"), lte(O.shipBy, new Date(`${heute}T23:59:59Z`))));
   const [{ wichtig }] = await db.select({ wichtig: count() }).from(T).where(and(eq(T.tenantId, t), eq(T.status, "open"), eq(T.priority, "critical"), meine(session)));
-  // Nächster Termin heute/morgen: geschäftliche Kalender mit Titel, Privates nur als „Termin außer Haus“.
-  const { tagesplan } = await import("@/lib/tagesplan/service");
-  const plan = await tagesplan(session, { start: heute, tage: 2, heute }).catch(() => null);
-  const jetzt = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
-  const naechster = plan?.tage
-    .flatMap((d) => d.sperren.filter((x) => (x.art === "termin" || x.art === "privat") && !x.ganztags && (d.tag > heute || x.von >= jetzt)).map((x) => ({ tag: d.tag, von: x.von, titel: x.art === "privat" ? "Termin außer Haus" : x.titel })))
-    .sort((a, b) => (a.tag + a.von).localeCompare(b.tag + b.von))[0] ?? null;
+  const naechster = await naechsterTermin(session, heute);
   const DE = schema.dealEingaenge;
   const gruen = await db
     .select({ n: count() })

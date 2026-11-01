@@ -35,6 +35,8 @@ export const E2E_ENV: Record<string, string> = {
   TWILIO_BASE_URL: `${TD}/twilio`,
   ASANA_BASE_URL: `${TD}/asana`,
   NEXT_TELEMETRY_DISABLED: "1",
+  // B24: Wartezeit auf das Anmeldeformular der Browser-Automatik (live 60 s)
+  AUTOMATIK_WARTEN_MS: "5000",
   // Fotos/Videos der Retouren-Station (verschlüsselt) – eigener Ordner nur für die Prüfungen
   MEDIA_DIR: process.env.E2E_MEDIA_DIR || `${process.cwd()}/.e2e-medien`,
 };

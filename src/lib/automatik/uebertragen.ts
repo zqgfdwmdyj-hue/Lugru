@@ -6,7 +6,7 @@ import { sellerboardImportDatei, sellerboardProtokoll } from "@/lib/ek-import/se
 import { getIntegration } from "@/lib/integrations/store";
 import { upsertSystemTask } from "@/lib/tasks/system";
 import { bqoolErgebnisText, bqoolUploadAdressen, bqoolZeilen, zeilenText, type BqoolLandErgebnis } from "./bqool-logic";
-import { anmelden, dateiHochladen, mitBrowser } from "./runner";
+import { anmelden, cookiesWeg, dateiHochladen, mitBrowser } from "./runner";
 
 // Übertragungen per Browser-Automatik – nur auf Knopfdruck aus der Oberfläche.
 
@@ -19,7 +19,7 @@ export async function anSellerboardUebertragen(tenantId: string, ekImportId: str
   const datei = await sellerboardImportDatei(tenantId, ekImportId);
   if (!datei) return { ok: false, text: "Import nicht gefunden." };
   const r = await mitBrowser(tenantId, { titel: "sellerboard-Kostenimport", aufgabeKey: `automatik-sellerboard-${ekImportId}`, link: `/einkauf/ek-import?id=${ekImportId}` }, async (page, log) => {
-    await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password! }, log);
+    await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password!, dienst: "sellerboard", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
     await dateiHochladen(page, { url: z.importUrl!, datei: { name: datei.name, mimeType: "application/vnd.ms-excel", buffer: Buffer.from(datei.bytes) }, erfolg: ERFOLG, fehler: FEHLER }, log);
   });
   const text = r.ok ? `Automatisch zu sellerboard übertragen (${r.protokoll.length} Schritte mit Bildschirmfoto).` : `Automatische Übertragung abgebrochen: ${r.fehler}`;
@@ -36,7 +36,7 @@ export async function anSellerboardDateiUebertragen(tenantId: string, datei: { n
   if (!z?.email || !z.password || !z.importUrl) return { ok: false, text: "sellerboard-Anmeldung für die Automatik fehlt (Anbindungen → sellerboard – Anmeldung) – Datei liegt unter Anbindungen → Importe." };
   const typ = /\.xlsx$/i.test(datei.name) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : /\.csv$/i.test(datei.name) ? "text/csv" : "application/vnd.ms-excel";
   const r = await mitBrowser(tenantId, { titel: "sellerboard-Kostenimport (ArbitrageOne-Datei)", aufgabeKey: "automatik-sellerboard-arbitrageone", link: "/anbindungen?p=arbitrageone_web#arbitrageone_web" }, async (page, log) => {
-    await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password! }, log);
+    await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password!, dienst: "sellerboard", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
     await dateiHochladen(page, { url: z.importUrl!, datei: { name: datei.name, mimeType: typ, buffer: Buffer.from(datei.bytes) }, erfolg: ERFOLG, fehler: FEHLER }, log);
   });
   return r.ok ? { ok: true, text: "unverändert an sellerboard weitergereicht" } : { ok: false, text: `Weitergabe an sellerboard abgebrochen: ${r.fehler}` };
@@ -58,7 +58,7 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
   const ergebnis: BqoolLandErgebnis[] = [];
   const zeiten = new Map<string, string>();
   const r = await mitBrowser(tenantId, { titel: "BQool-Upload", aufgabeKey: `automatik-bqool-${exportId}`, link: `/repricer/bqool?export=${exportId}` }, async (page, log) => {
-    await anmelden(page, { loginUrl: z.loginUrl || "https://www.bqool.com/login", email: z.email!, password: z.password! }, log);
+    await anmelden(page, { loginUrl: z.loginUrl || "https://www.bqool.com/login", email: z.email!, password: z.password!, dienst: "BQool", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
     for (const d of dateien) {
       const zeilen = bqoolZeilen(d.text);
       const url = adressen.get(d.land)?.url ?? null;
@@ -105,11 +105,12 @@ export async function bqoolVerbindungTesten(tenantId: string, z: Record<string, 
   const teile: string[] = [];
   let fehler = 0;
   const r = await mitBrowser(tenantId, { titel: "BQool – Verbindung testen", aufgabeKey: "automatik-bqool-test", link: "/anbindungen?p=bqool_web#bqool_web", ohneAufgabe: true }, async (page, log) => {
-    await anmelden(page, { loginUrl: z.loginUrl || "https://www.bqool.com/login", email: z.email!, password: z.password! }, log);
+    await anmelden(page, { loginUrl: z.loginUrl || "https://www.bqool.com/login", email: z.email!, password: z.password!, dienst: "BQool", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
     teile.push("Anmeldung ok");
     for (const a of adressen) {
       try {
         await page.goto(a.url!, { waitUntil: "domcontentloaded", timeout: 45_000 });
+        await cookiesWeg(page);
         const hatUpload = (await page.locator('input[type="file"]').count()) > 0;
         if (!hatUpload) throw new Error("kein Datei-Feld auf der Seite (Adresse prüfen)");
         teile.push(`${a.land}: Upload-Seite erreichbar${a.abgeleitet ? " (aus DE abgeleitet)" : ""}`);

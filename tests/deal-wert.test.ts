@@ -40,13 +40,13 @@ describe("Direktlink und Kauf-Meldung", () => {
   });
   it("Text: Deal-Nummer, Menge, max. EK, Frist, Deal-Wert – kein Restbudget mehr (keine Budgetgrenze)", () => {
     const t = kaufText({ titel: "Testartikel", name: null, ekNetto: 9.5, bestesLand: "DE", roi: 42, gewinn: 4, empfohlen: 60, kapitalbedarf: 570, maxEk: [{ land: "DE", ek: 12.3 }], gueltigBis: "02.11." }, { nr: 17, ampel: "gruen", wert: 78 });
-    expect(t.startsWith("🟢 Deal 17: Testartikel · EK 9,50 €")).toBe(true);
+    expect(t.startsWith("🟢 Deal 17: Testartikel · DE: ROI 42 %, 4,00 €/Stk · Empf. 60 Stk (570 €) · EK 9,50 €")).toBe(true);
     expect(t).toContain("Empf. 60 Stk (570 €)");
     expect(t).toContain("max. EK 12,30 €");
     expect(t).not.toContain("Budget");
     expect(t).toContain("gültig bis 02.11.");
     expect(t).toContain("passt zu dir 78/100");
-    expect(kaufText({ titel: "Gelber Test", name: null, ekNetto: 10, bestesLand: null, roi: 15, gewinn: null, empfohlen: 8, kapitalbedarf: null, maxEk: [], gueltigBis: null }, { ampel: "gelb", menge: 4 })).toBe("🟡 Gelber Test · EK 10,00 € · ROI 15 % · Empf. 4 Stk (40 €)");
+    expect(kaufText({ titel: "Gelber Test", name: null, ekNetto: 10, bestesLand: null, roi: 15, gewinn: null, empfohlen: 8, kapitalbedarf: null, maxEk: [], gueltigBis: null }, { ampel: "gelb", menge: 4 })).toBe("🟡 Gelber Test · ROI 15 % · Empf. 4 Stk (40 €) · EK 10,00 €");
   });
 });
 

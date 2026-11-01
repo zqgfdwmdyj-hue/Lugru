@@ -7,7 +7,8 @@ import { glossarAlsText } from "@/lib/va/sprache";
 import { anspruecheBeiVa, automatikHeute, automatikListe, VA_STATUS_LABEL } from "@/lib/va/automatik";
 import { VA_KATEGORIE_LABEL, VA_KATEGORIEN, VA_ZIEL_LABEL } from "@/lib/va/automatik-logic";
 import { AntwortForm } from "./antwort-form";
-import { abgleichAction, antwortAction, anVaAction, automatikAnVaAction, automatikEinstellungenAction, einstellungenAction } from "./actions";
+import { vaEntwuerfeOffen } from "@/lib/mobil/watch";
+import { abgleichAction, antwortAction, anVaAction, automatikAnVaAction, automatikEinstellungenAction, einstellungenAction, entwurfSendenAction, entwurfVerwerfenAction } from "./actions";
 
 // VA über Discord: Status, offene Fragen der VA (Antwort geht in ihren Thread), Aufgabe abgeben, Aufgaben bei der
 // VA, letzte Nachrichten mit Einordnung, Einstellungen (Zeitzone, Ruhezeiten, Erinnerungen, Rechnungen),
@@ -28,7 +29,7 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
   const sp = await searchParams;
   const heute = todayIso();
   const seit = new Date(Date.now() - 7 * 86_400_000);
-  const [st, offen, aufgaben, nachrichten, auswahl, tag, s, vaSpr, entscheidungen, ansprueche] = await Promise.all([
+  const [st, offen, aufgaben, nachrichten, auswahl, tag, s, vaSpr, entscheidungen, ansprueche, entwuerfe] = await Promise.all([
     vaStatus(t),
     vaNachrichtenListe(t, { nurOffen: true, limit: 50 }),
     vaAufgaben(t),
@@ -39,6 +40,7 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
     vaSpracheAktuell(t),
     automatikListe(t, { tage: 7, limit: 100 }),
     anspruecheBeiVa(t),
+    vaEntwuerfeOffen(t),
   ]);
   const a = s.va.automatik;
   const zahl = await automatikHeute(t, s.va.zeitzone);
@@ -79,6 +81,32 @@ export default async function VaPage({ searchParams }: { searchParams: Promise<{
           </>
         )}
       </section>
+
+      {entwuerfe.length > 0 && (
+        <section className="card card-pad" id="entwuerfe" style={{ marginBottom: 14 }} data-testid="va-entwuerfe">
+          <h2 style={{ marginTop: 0 }}>Von der Watch – wartet auf deine Freigabe ({entwuerfe.length})</h2>
+          <p className="small muted" style={{ marginTop: 0 }}>Modus „Vorschlag“: Nichts geht von selbst an die VA. So ginge die Nachricht in den VA-Kanal – Text bei Bedarf anpassen, dann senden.</p>
+          <div className="stack" style={{ gap: 10 }}>
+            {entwuerfe.map((e) => (
+              <div key={e.id} className="card card-pad" data-testid="va-entwurf">
+                <div className="small muted">{zeit(e.createdAt)} · diktiert: „{e.textDe}“</div>
+                <form action={entwurfSendenAction} className="stack" style={{ gap: 6, marginTop: 6 }}>
+                  <input type="hidden" name="id" value={e.id} />
+                  <label className="small">
+                    An die VA ({e.sprache.toUpperCase()})
+                    <textarea name="text" defaultValue={e.textVa} rows={2} style={{ width: "100%" }} data-testid="va-entwurf-text" />
+                  </label>
+                  {e.fehler && <div className="notice notice-error small">{e.fehler}</div>}
+                  <div className="row" style={{ gap: 8 }}>
+                    <button className="btn btn-primary btn-small" type="submit" data-testid="va-entwurf-senden">An die VA senden</button>
+                    <button className="btn btn-small" type="submit" formAction={entwurfVerwerfenAction} data-testid="va-entwurf-verwerfen">Verwerfen</button>
+                  </div>
+                </form>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="row">
         <section className="stack" style={{ flex: 1, minWidth: 0, gap: 12 }}>

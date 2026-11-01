@@ -26,7 +26,7 @@ export async function upsertSystemTask(
   // Feste freie Tage: Fälligkeit auf den nächsten Arbeitstag (außer heute + wichtig).
   const dueDate = await ausweichDatum(tenantId, task.dueDate, task.priority, todayIso()).catch(() => task.dueDate ?? null);
   task = { ...task, dueDate };
-  await conn
+  const [r] = await conn
     .insert(schema.tasks)
     .values({
       tenantId,
@@ -49,7 +49,14 @@ export async function upsertSystemTask(
         completedAt: sql`case when ${schema.tasks.title} <> excluded.title then null else ${schema.tasks.completedAt} end`,
         title: sql`excluded.title`,
       },
-    });
+    })
+    .returning({ id: schema.tasks.id, neu: sql<boolean>`(xmax = 0)` });
+  // Neue wichtige Aufgabe → Push an den Inhaber (Apple Watch: „Erledigt“ schließt genau diese). Nicht aus einer
+  // laufenden Transaktion heraus (die Aufgabe könnte noch zurückgerollt werden).
+  if (r?.neu && task.priority === "critical" && conn === db) {
+    const t = { id: r.id, title: task.title, dueDate: task.dueDate ?? null, link: task.link ?? null };
+    void import("@/lib/push/aufgabe").then((m) => m.aufgabeMelden(tenantId, t)).catch(() => null);
+  }
 }
 
 /** Das Problem ist behoben – die Aufgabe wird automatisch erledigt. */
