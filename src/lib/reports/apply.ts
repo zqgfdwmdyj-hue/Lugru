@@ -85,6 +85,28 @@ export async function applyReport(opts: {
       message = `${monate.join(", ") || "kein Monat"}: ${summe.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € Lagergebühren (geschätzt laut Amazon), ${new Set(parsed.map((p) => p.asin)).size} ASINs`;
       break;
     }
+    case "gestrandet":
+    case "gesperrt": {
+      const { leseGestrandet, leseGesperrt } = await import("@/lib/amazon-berichte/logic");
+      const { gestrandetSpeichern } = await import("@/lib/amazon-berichte/service");
+      const zeilen = kind === "gestrandet" ? leseGestrandet(table) : leseGesperrt(table);
+      rows = zeilen.length;
+      inserted = await gestrandetSpeichern(tenantId, kind, zeilen);
+      const stueck = zeilen.reduce((n, z) => n + ("menge" in z ? z.menge : 0), 0);
+      message = kind === "gestrandet" ? `${inserted} SKUs mit ${stueck} Stück gestrandet (Stand ersetzt)` : `${inserted} gesperrte Angebote (Stand ersetzt)`;
+      break;
+    }
+    case "langzeitlager":
+    case "inboundMaengel": {
+      const { leseInboundMaengel, leseLangzeitlager } = await import("@/lib/amazon-berichte/logic");
+      const { zusatzSpeichern } = await import("@/lib/amazon-berichte/service");
+      const zeilen = kind === "langzeitlager" ? leseLangzeitlager(table) : leseInboundMaengel(table, todayIso());
+      rows = zeilen.length;
+      inserted = await zusatzSpeichern(tenantId, zeilen);
+      const summe = Math.round(zeilen.reduce((n, z) => n + z.betrag, 0) * 100) / 100;
+      message = `${zeilen.length} Zeilen, ${summe.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € ${kind === "langzeitlager" ? "Langzeit-Lagergebühren" : "Gebühren für Inbound-Mängel"}`;
+      break;
+    }
     case "transactions": {
       const parsed = parseTransactions(table);
       rows = parsed.length;

@@ -116,7 +116,7 @@ export async function lagergebuehrenUebersicht(tenantId: string, o: { monat?: st
 }
 
 /** Je ASIN der letzte Monat: Gebühr (alle Länder), Ø Bestand, Gebühr je Stück, übergroß, Volumen, Größenklasse. */
-export async function lagerJeAsin(tenantId: string, asins?: string[]): Promise<Map<string, { monat: string; gebuehr: number; jeStueck: number | null; uebergross: boolean; volumenM3: number; groesse: string | null }>> {
+export async function lagerJeAsin(tenantId: string, asins?: string[]): Promise<Map<string, { monat: string; gebuehr: number; jeStueck: number | null; uebergross: boolean; volumenM3: number; groesse: string | null; langzeit?: number }>> {
   if (asins && !asins.length) return new Map();
   const [letzter] = await db.select({ monat: sql<string | null>`max(${L.monat})` }).from(L).where(eq(L.tenantId, tenantId));
   if (!letzter?.monat) return new Map();
@@ -125,7 +125,16 @@ export async function lagerJeAsin(tenantId: string, asins?: string[]): Promise<M
     .from(L)
     .where(and(eq(L.tenantId, tenantId), eq(L.monat, letzter.monat), asins ? inArray(L.asin, asins) : undefined))
     .groupBy(L.asin);
-  return new Map(rows.map((r) => [r.asin, { monat: letzter.monat!, gebuehr: r2(r.gebuehr), jeStueck: r.bestand > 0 ? r2(r.gebuehr / r.bestand) : null, uebergross: r.uebergross, volumenM3: r.volumen, groesse: r.groesse }]));
+  // Amazon-Berichte 4: Langzeit-Lagergebühr / Zuschlag Altbestand des letzten Monats je ASIN kommt dazu.
+  const { langzeitJeAsin } = await import("@/lib/amazon-berichte/service");
+  const lz = await langzeitJeAsin(tenantId, asins).catch(() => new Map<string, { monat: string; betrag: number }>());
+  return new Map(
+    rows.map((r) => {
+      const langzeit = lz.get(r.asin)?.betrag ?? 0;
+      const gebuehr = r2(r.gebuehr + langzeit);
+      return [r.asin, { monat: letzter.monat!, gebuehr, jeStueck: r.bestand > 0 ? r2(gebuehr / r.bestand) : null, uebergross: r.uebergross, volumenM3: r.volumen, groesse: r.groesse, langzeit: r2(langzeit) }];
+    }),
+  );
 }
 
 /**

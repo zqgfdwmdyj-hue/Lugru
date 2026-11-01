@@ -75,6 +75,33 @@ export async function requestMarktBerichteNow(fd: FormData) {
   redirect(`/anbindungen?amz=${fehler ? "fehler" : "angefordert"}&n=${n}#amazon-berichte`);
 }
 
+/** Amazon-Berichte 1–4 sofort anfordern: Kontozustand, gestrandet/gesperrt, Langzeitlager, Inbound-Mängel, USt (laufender Monat). */
+export async function requestKontoBerichteNow() {
+  const session = await requireOwner();
+  const { anforderungFehler, requestKontoBericht, requestReport, REPORT_TYPES } = await import("@/lib/integrations/clients/amazon");
+  let n = 0;
+  let fehler = false;
+  for (const art of ["kontozustand", "ust"] as const) {
+    try {
+      await requestKontoBericht(session.tenantId, art);
+      n++;
+    } catch {
+      fehler = true;
+    }
+  }
+  for (const kind of ["gestrandet", "gesperrt", "langzeitlager", "inboundMaengel"] as const) {
+    try {
+      await requestReport(session.tenantId, kind);
+      n++;
+    } catch (e) {
+      fehler = true;
+      await anforderungFehler(session.tenantId, REPORT_TYPES[kind], e);
+    }
+  }
+  revalidatePath("/anbindungen");
+  redirect(`/anbindungen?amz=${fehler ? "fehler" : "konto"}&n=${n}#amazon-berichte`);
+}
+
 /** Fertige Amazon-Reports jetzt abholen (sonst alle 15 Minuten). */
 export async function fetchAmazonReportsNow() {
   const session = await requireOwner();

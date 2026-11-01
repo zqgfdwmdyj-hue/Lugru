@@ -123,7 +123,7 @@ test.describe("Claude & KI-Assistent – BQool und Amazon je Land", () => {
     await page.goto("/anbindungen");
     const box = page.locator('[data-testid="amazon-berichte"]');
     await box.locator('select[name="bericht"]').selectOption("alle");
-    await Promise.all([page.waitForURL(/amz=angefordert/), box.getByRole("button", { name: "Anfordern" }).click()]);
+    await Promise.all([page.waitForURL(/amz=angefordert/), box.getByRole("button", { name: "Anfordern", exact: true }).click()]);
     await expect(page.locator('[data-testid="amazon-berichte-msg"]')).toContainText("6 Berichte je Land angefordert");
     await Promise.all([page.waitForURL(/amz=abgeholt/), page.getByRole("button", { name: "Fertige Berichte abholen" }).click()]);
     // Die Hintergrund-Abrufe können einzelne Berichte schon vorher abgeholt haben – entscheidend ist, was gespeichert ist.

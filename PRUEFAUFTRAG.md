@@ -688,6 +688,31 @@ Sprachbefehle Notiz/Deal/Bestand/Nummer, Deal-Zeile, Push ≤ 120, Deal-Nummer v
 dazu Bestand mit Rückfrage (5 → 12), Deal, Auto, 401/405/404. Siri und die echte Watch kann der Test nicht bedienen –
 das Vorlesen prüft Ludwig einmal selbst (To-do 64).
 
+## Amazon-Berichte 1–4 und Kleinanzeigen-Entwurf (Vorschlag 01.11., freigegeben mit „Ja, beides“)
+
+Alle vier Berichte kommen über die Amazon-Schnittstelle (Anbindungen → Amazon-Berichte → „Konto-Berichte anfordern“,
+danach „Fertige Berichte abholen“; im Zeitplan automatisch). Gestrandet, gesperrt, Langzeitlager und Inbound-Mängel
+gehen auch als Datei (Upload-Seite bzw. `import_link`). Kein Bericht ändert Bestand oder Preise.
+
+| # | Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|---|
+| AB.1 | Kontozustand als Frühwarnung für die Fall-Zentrale (Bestellmängelquote, Richtlinienverstöße, Markenbeschwerden) | ❌ (nur Amazon-Mails) | ✅ | Bericht `GET_V2_SELLER_PERFORMANCE_REPORT` (täglich) → `leseKontozustand`/`kontoBewerten` (`src/lib/amazon-berichte/logic.ts`): je Marktplatz Kontozustand-Wert, Bestellmängelquote FBA/FBM, verspätete Sendungen, Stornoquote, Sendungsverfolgung, Verstöße (geistiges Eigentum, Echtheit, Richtlinien, Sicherheit …). Stufe **gefährdet** bei Wert < 200 bzw. AT_RISK/CRITICAL oder einer **neuen** schweren Beschwerde gegenüber dem letzten Bericht, **prüfen** bei Kennzahl außerhalb des Ziels. Tabelle `amazon_kontozustand` (Verlauf), Fall-Zentrale oben „Kontozustand“ (`#kontozustand`), Aufgabe „Amazon-Kontozustand gefährdet: …“ (wichtig → Push), wird bei „gut“ automatisch erledigt |
+| AB.2 | Gestrandeter Bestand und gesperrte Angebote (gebundenes Kapital) | ❌ | ✅ | `GET_STRANDED_INVENTORY_UI_DATA` und `GET_MERCHANTS_LISTINGS_FYP_REPORT` (täglich, Stand wird ersetzt) → `amazon_gestrandet`. Fall-Zentrale „Gestrandeter Bestand und gesperrte Angebote“: SKUs, Stück, **gebunden = Menge × EK** (ohne EK gezählt, nicht gerechnet), Grund, Datum der automatischen Entfernung. Aufgaben „Gestrandeter Bestand bei Amazon: … gebunden“ (wichtig, wenn Amazon in ≤ 7 Tagen automatisch entfernt) und „Gesperrte Angebote bei Amazon: …“. Hinweis auf der Kapital-Ampel |
+| AB.3 | Umsatzsteuer-Transaktionsbericht direkt von Amazon (kein Upload mehr nötig) | 🟡 (nur Datei-Upload) | ✅ | `GET_VAT_TRANSACTION_DATA` je Kalendermonat (alle 3 Tage der laufende Monat, in den ersten 10 Tagen auch der Vormonat) → dieselbe Auswertung wie beim Upload (`ustBerichtImportieren(…, { quelle: "api" })`): Summen je Land/OSS in `ust_auswertungen`, Protokoll „Quelle api“. Der Bericht von Amazon **ersetzt** hochgeladene Teile desselben Monats (sonst doppelt). Keine Steuerberatung – nur Zahlen für den Steuerberater |
+| AB.4 | Weitere Gebühren: Langzeit-Lagergebühr, Lagerlimit-Überschreitung, fehlerhafte Sendungen ans Lager | ❌ | ✅ | `GET_FBA_FBA_LONGTERM_STORAGE_FEE_CHARGES_DATA` und `GET_FBA_FULFILLMENT_INBOUND_NONCOMPLIANCE_DATA` (wöchentlich) → `amazon_zusatzgebuehren`; Lagerlimit und Inbound-Platzierung aus dem Transaktionsbericht (`gebuehrArt`, deutsch/englisch). Bericht geht vor Transaktion (nichts doppelt, `weitereJeMonat`). Fall-Zentrale „Weitere Amazon-Gebühren“ (3 Monate je Art). **Kapital-Ampel**: Langzeit-Lagergebühr je ASIN fließt in die Lagergebühr je Stück (`lagerJeAsin`). **Verlust-Stopp**: diese Gebühren zählen als „Lager & Sonstiges“, nicht als Verkauf (`anteilVonTransaktion`) |
+| AB.5 | Fehlende Berechtigung sichtbar statt stiller Fehler | – | ✅ | `anforderungFehler`: Ablehnung (z. B. 403 ohne Steuer-Rolle) steht als Zeile in der Berichtsliste unter Anbindungen mit Hinweis auf die fehlende Rolle; der Zeitplan fragt dann nicht dauernd neu an |
+| KA.1 | Knopf „Kleinanzeigen-Entwurf“ am eBay-Angebot | ❌ | ✅ | eBay → Angebote prüfen → Angebot: aufklappbarer Block (`src/app/(app)/ebay/pruefen/[itemId]/kleinanzeigen.tsx`) mit **Titel** (≤ 65 Zeichen, an der Wortgrenze gekürzt, „Blitzversand/Rechnung mit MwSt“ raus), **Kategorie-Vorschlag** (aus der eBay-Kategorie bzw. dem Titel), **Zustand** (Neu / Sehr gut / Gut / Defekt), **Preis** in ganzen Euro (Festpreis), **Text** (≤ 4.000 Zeichen, eBay-Sätze wie PayPal/Bewertungen/Artikelstandort raus, Merkmale ohne EAN/„Nicht zutreffend“, „Versand möglich“, „Gewerblicher Verkauf“), je ein **Kopieren**-Knopf, bis 20 **Bilder** (antippen und sichern oder „Bilder als ZIP“), Knopf „Kleinanzeigen öffnen“. Logik `src/lib/kleinanzeigen/logic.ts` |
+| KA.2 | Regeln: kein Bot, keine Automatik, kein Login | – | ✅ | Nichts wird eingestellt oder abgeschickt, das System kennt kein Kleinanzeigen-Konto. Die ZIP-Route lädt nur Bilder des Angebots (https, keine internen Adressen, keine Weiterleitungen, höchstens 20 × 8 MB), nur mit Zugang zum eBay-Bereich |
+
+Abnahme: Unit `amazon-berichte` (Kontozustand lesen/bewerten inkl. „neue Beschwerde“, gestrandet/gesperrt
+englisch+deutsch, gebundenes Kapital, Erkennung der Berichte, Langzeitlager zwei Formate, Inbound-Mängel, Gebührenart,
+Bericht vor Transaktion, Verlust-Stopp-Zuordnung) und `kleinanzeigen` (Titel, Preis, Kategorie, Zustand, Text, Optionen);
+e2e `amazon-berichte`: Anfordern → Abholen (6 Berichte in der Liste) → Fall-Zentrale DE „gefährdet“ (neue
+Markenbeschwerde), FR gut; gestrandet 2 SKUs/8 Stück/10,50 € gebunden, 1 ohne EK, 1 bald entfernt; Tasse gesperrt;
+Langzeitlager 3,40 €, Inbound 1,20 €; Aufgaben + Push; USt-Bericht mit Quelle api; Kapital-Hinweis; `amazon_faelle` und
+`amazon_lagergebuehren`; Datei-Import `amazon_gestrandet` ersetzt den Stand. Kleinanzeigen: Block mit Titel ≤ 65,
+Kategorie, Zustand, „25 €“, Text ohne eBay-Sätze, 2 Bilder, ZIP mit 2 Dateien, ohne Anmeldung 403.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -721,6 +746,14 @@ aber noch nicht auf dem Server (B16 liegt auf main; Lugru, B17 und das Folgende 
 | M5/M16/M17, Tesla, SMS, Discord, Asana, Lexoffice | 🔌 | brauchen Uploads bzw. Anbindungen durch Ludwig (To-dos oben) |
 
 ## Neue Claude-Werkzeuge (55) und `notifications/tools/list_changed`
+
+Geändert am 01.11. (Amazon-Berichte 1–4 und Kleinanzeigen, keine neuen Werkzeuge): `import_link`/`importe` kennen vier
+neue Arten: `amazon_gestrandet`, `amazon_gesperrt`, `amazon_langzeitlager` und `amazon_inbound_maengel`. Das
+Eingabe-Schema hat sich geändert, deshalb ist `notifications/tools/list_changed` nötig (geht beim Verbinden raus).
+`amazon_faelle` hat jetzt die Blöcke `kontozustand` (Stufe gut/warnung/kritisch je Marktplatz, Gründe, Verstöße, Link),
+`gestrandet` (SKUs, Stück, `gebunden_eur`, ohne EK, bald entfernt, Top 10) und `gesperrt`. `amazon_lagergebuehren` hat
+den Block `weitere_gebuehren` (Langzeitlager, Lagerlimit, Inbound-Mängel, Inbound-Platzierung, 3 Monate). Der
+Kleinanzeigen-Entwurf hat kein Werkzeug: Er ist nur zum Kopieren gedacht.
 
 Geändert am 01.11. (B24 + Apple Watch, keine neuen Werkzeuge): Die Watch nutzt keine Claude-Werkzeuge, sondern die
 Handy-Adressen `/api/mobil/watch/{stand,dringend,erledigt,notiz,deal,bestand,tesla}`. An den Werkzeugen ändert sich
@@ -1002,3 +1035,16 @@ nie in Chats oder Mails.
     dort eine Browser-Prüfung (Cloudflare), geht nur der Datei-Weg (ZIP). Heißt das Feld anders, in der Anbindung „Feld
     E-Mail“ (z. B. `#login-email`) eintragen, Wert per Rechtsklick → Untersuchen.
 
+69. **Amazon-App: Rollen für die neuen Berichte**: Der USt-Transaktionsbericht braucht in der Seller-Central-App (Apps
+    entwickeln → App bearbeiten) die Rolle „Steuer-Rechnungsstellung“ bzw. „Tax Remittance“, der Kontozustand die Rolle
+    „Verkäuferleistung“/„Selling Partner Insights“. Ohne Rolle steht unter Anbindungen → Amazon-Berichte eine Zeile
+    „abgelehnt – Rolle fehlt“. Nach dem Ergänzen die App einmal neu autorisieren und „Konto-Berichte anfordern“ drücken.
+70. **USt: nicht mehr doppelt hochladen**: Sobald der Bericht von Amazon kommt, ersetzt er hochgeladene Dateien
+    desselben Monats. Den Monats-Upload kannst du dann weglassen. Die Zahlen sind nur für den Steuerberater gedacht.
+71. **Formate von Langzeitlager- und Inbound-Mängel-Bericht prüfen**: Davon lag mir keine echte Datei vor. Beide sind
+    nach der Amazon-Doku gebaut (Spaltennamen englisch, ältere Langzeitlager-Variante mit 6-/12-Monats-Spalten).
+    Stimmt eine Summe nicht mit Seller Central überein, eine Datei auf die Upload-Seite legen. Kommt die Meldung
+    „unbekanntes Format“, sag Bescheid.
+72. **Kleinanzeigen**: Im Kleinanzeigen-Konto als **gewerblicher Anbieter** einstellen (Pflicht für Händler). Die
+    Kategorie ist nur ein Vorschlag, in der App prüfen. Versand oder Abholung und Preis-Art (Festpreis/VB) in der App
+    wählen. Das System stellt nichts selbst ein.

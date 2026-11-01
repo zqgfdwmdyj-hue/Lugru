@@ -84,7 +84,7 @@ const umsatzsteuerOssTool = defineTool({
 const lagergebuehren = defineTool({
   name: "amazon_lagergebuehren",
   title: "FBA-Lagergebühren je Monat",
-  description: "Monatliche FBA-Lagergebühren aus dem Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload): Summe je Monat und Land, Anzahl ASINs, davon übergroß/Gefahrgut, je ASIN Gebühr, Ø Bestand, Gebühr je Stück, Lagervolumen, Größenklasse, Reichweite und „Remission prüfen“ (übergroß bzw. viel Volumen + langsam drehend). Abgleich mit der Amazon-Abrechnung (Folgemonat) und einer sellerboard-Fixkosten-Position „Lager…“. Die Gebühren stecken schon in der Amazon-Abrechnung – nicht zusätzlich vom Gewinn abziehen. Filter: monat (JJJJ-MM, Standard letzter), land, asin; sortierung gebuehr|volumen.",
+  description: "Monatliche FBA-Lagergebühren aus dem Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload): Summe je Monat und Land, Anzahl ASINs, davon übergroß/Gefahrgut, je ASIN Gebühr, Ø Bestand, Gebühr je Stück, Lagervolumen, Größenklasse, Reichweite und „Remission prüfen“ (übergroß bzw. viel Volumen + langsam drehend). Abgleich mit der Amazon-Abrechnung (Folgemonat) und einer sellerboard-Fixkosten-Position „Lager…“. Die Gebühren stecken schon in der Amazon-Abrechnung – nicht zusätzlich vom Gewinn abziehen. Filter: monat (JJJJ-MM, Standard letzter), land, asin; sortierung gebuehr|volumen. Dazu weitere_gebuehren der letzten 3 Monate: Langzeit-Lagergebühr/Zuschlag Altbestand, Lagerlimit-Überschreitung, fehlerhafte Inbound-Sendungen, Inbound-Platzierung.",
   area: "amazon",
   write: false,
   quelle: { text: "Amazon-Bericht „Monthly Storage Fees“ (Datei-Import bzw. Upload), Amazon-Abrechnung, sellerboard-Fixkosten", importe: true },
@@ -97,11 +97,16 @@ const lagergebuehren = defineTool({
   }),
   run: async (ctx, i) => {
     const u = await lagergebuehrenUebersicht(ctx.session.tenantId, { monat: i.monat ?? null, land: i.land ?? null, asin: i.asin ?? null, sortierung: i.sortierung, limit: i.limit });
+    // Amazon-Berichte 4: Langzeitlager, Lagerlimit, Inbound-Mängel/-Platzierung der letzten 3 Monate.
+    const { weitereGebuehren } = await import("@/lib/amazon-berichte/service");
+    const weitere = await weitereGebuehren(ctx.session.tenantId).catch(() => null);
+    if (!u && weitere?.gesamt) return json({ weitere_gebuehren: weitere, hinweis: "Monatliche Lagergebühren noch nicht importiert – Bericht „Monthly Storage Fees“ hochladen. Weitere Gebühren siehe weitere_gebuehren.", link: abs(ctx, "/amazon-faelle#weitere-gebuehren") });
     if (!u) return json({ hinweis: "Noch keine Lagergebühren importiert – Bericht „Monthly Storage Fees“ hochladen (Upload-Seite oder import_link art=amazon_lagergebuehren).", link: abs(ctx, "/uploads") });
     return json({
       ...u,
       asins: u.asins.map((a) => ({ ...a, titel: a.titel ?? undefined, remission: a.remission ?? undefined, link: abs(ctx, `/produkte?q=${a.asin}`) })),
-      hinweis: "Geschätzte Gebühren laut Amazon (Bericht „Monthly Storage Fees“); bereits in der Amazon-Abrechnung enthalten.",
+      weitere_gebuehren: weitere ?? undefined,
+      hinweis: "Geschätzte Gebühren laut Amazon (Bericht „Monthly Storage Fees“); bereits in der Amazon-Abrechnung enthalten. weitere_gebuehren: Langzeitlager, Lagerlimit, Inbound-Mängel/-Platzierung (Berichte bzw. Transaktionsbericht).",
       link: abs(ctx, "/kapital"),
     });
   },

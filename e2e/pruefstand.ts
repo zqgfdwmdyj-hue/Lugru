@@ -58,6 +58,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Amazon-Mails einordnen: Freischaltung abgelehnt, Fall „Antwort nötig“ (2 Mails, gleiche Fall-ID), Freischaltung entzogen, unsichere Mail", erwartet: "Paket mit Rechnung ≤ 180 Tage und ≥ 10 Stück, VA-Thread; ein Vorgang mit Antwort DE/EN inkl. Sendung, POD als „fehlt“; Entzug rot mit Meldung an Ludwig und Bestand in €; Einordnung von Hand lernt; Claude-Werkzeuge", tests: ["amazon-faelle.spec.ts › Freischaltung abgelehnt"] },
       { ablauf: "20 erfundene Amazon-Mails in 8 Sprachen einordnen (Unit-Test)", erwartet: "≥ 18 richtig (Bereich und Phase), Fall-ID/ASIN/Frist erkannt", tests: [] },
+      { ablauf: "Amazon-Berichte 1–4: Konto-Berichte anfordern/abholen, Kontozustand, gestrandet/gesperrt, weitere Gebühren, USt per Schnittstelle, Datei-Import", erwartet: "DE „gefährdet“ (neue Markenbeschwerde), FR gut; 2 SKUs/8 Stück/10,50 € gebunden; Tasse gesperrt; Langzeitlager 3,40 €, Inbound 1,20 €; Aufgaben + Push; USt mit Quelle api; amazon_faelle/amazon_lagergebuehren", tests: ["amazon-berichte.spec.ts › Kontozustand, gestrandet"] },
     ],
     offen: ["Echte Seller-Central-Mails (nur live mit Nur-ansehen-Daten)", "SP-API: Listings Restrictions (Freischaltungsstatus je Marktplatz) – braucht die Amazon-Anbindung"],
   },
@@ -183,6 +184,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
     abläufe: [
       { ablauf: "Ladenhüter (Reichweite > 120 T) wird rot mit Vorschlägen", erwartet: "Ampel rot, „Nicht nachbestellen“", tests: ["teil2.spec.ts › Kapital-Ampel"] },
       { ablauf: "Kennzahlen", erwartet: "Zeitraum, Quelle, Stand", tests: ["kennzahlen.spec.ts › Kapital-Ampel"] },
+      { ablauf: "Hinweis gestrandeter Bestand + weitere Amazon-Gebühren", erwartet: "Stück, gebundenes Kapital, Langzeit-Lagergebühr", tests: ["amazon-berichte.spec.ts › Kontozustand, gestrandet"] },
     ],
   },
   "/verlust": {
@@ -222,6 +224,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/deal-eingang/lugru": { abläufe: [{ ablauf: "Lugru Deals über Discord: History, Live-Post, Reaktion, doppelter Post, eigener Kauf, Statistik, deal_quellen, Deal-Wert", erwartet: "Live-Post im Deal-Eingang mit Ampel (Push nur Grün/Gelb), History mit Reaktionen, Statistik aktualisiert, „Lugru Deals“ in deal_quellen, keine Namen gespeichert", tests: ["lugru-deals.spec.ts › History, Live-Post"] }] },
   "/privat/therapie-bogen": { abläufe: [{ ablauf: "Therapie-Bogen seit letzter Sitzung (B16): Beobachtung mit 3 Feldern und „[?]“, Zeitraum wählen, Beobachtung ändern/löschen per Formular und Claude, rückgängig", erwartet: "Beginn = letzter Paartherapie-Termin; Tabelle Datum | Situation | Problematik | gewünschte Veränderung; „unvollständig“ markiert; Protokoll ohne Inhalte", tests: ["privat-rueckblick.spec.ts › Beobachtung anlegen"] }] },
   "/privat/geld": { abläufe: [{ ablauf: "Frage für den Steuerberater, nur für die eigene Person", erwartet: "Hinweis „keine Steuerberatung“, Familien-Zugang gesperrt", tests: ["teil2.spec.ts › Privates Geld"] }] },
+  "/ebay/pruefen": { abläufe: [{ ablauf: "Kleinanzeigen-Entwurf am eBay-Angebot", erwartet: "Titel ≤ 65, Kategorie, Zustand, Preis in ganzen Euro, Text ohne eBay-Sätze, Bilder + ZIP; nichts wird eingestellt", tests: ["amazon-berichte.spec.ts › eBay-Angebot → Titel"] }] },
   "/rechnungen": { abläufe: [{ ablauf: "Rechnung hochladen, Sammelbearbeitung", erwartet: "Upload leert nach Erfolg; Auswahl bleibt bei Fehlschlag; Rückfrage abgelehnt = nichts passiert", tests: ["formulare.spec.ts › Rechnungen"] }] },
   "/import": { abläufe: [{ ablauf: "Unbekannte Datei importieren", erwartet: "Fehler, Datei bleibt ausgewählt", tests: ["formulare.spec.ts › Import"] }] },
   "/marken/uhren": {

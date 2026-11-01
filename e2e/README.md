@@ -49,6 +49,7 @@ bzw. rotes X am Commit, der Prüfstand steht in der Zusammenfassung des Laufs.
 | `b20-rest.spec.ts` | B20.3/B20.6/B20.9: gültige Schwelle je Quelle, Rückgängig nach `mail_markieren`, Sprachkennzeichen bei VA-Nachrichten, „AI Win Sales Booster“ im Regel-Katalog |
 | `privat-haushaltshilfe.spec.ts` | Babysitter & Putzhilfe aus dem Familienkalender: wach/schlafend, Stundenlohn, Korrektur, von Hand, CSV, „Geld“, Claude; „nur Familie“ ohne Zugang |
 | `b21-calls-live.spec.ts` | B21: Transkript in den Discord-Call-Kanal → über die Live-Verbindung sofort Archiv, Wissen, Aufgaben, Meldung; Bearbeiten ersetzt; zu groß → Aufgabe; Anzeige „live“ |
+| `amazon-berichte.spec.ts` | Amazon-Berichte 1–4: Konto-Berichte anfordern/abholen → Fall-Zentrale (Kontozustand je Land, gestrandet/gesperrt mit gebundenem Kapital, weitere Gebühren), Aufgaben + Push, USt-Bericht per Schnittstelle, Kapital-Hinweis, `amazon_faelle`/`amazon_lagergebuehren`, Datei-Import; Kleinanzeigen-Entwurf am eBay-Angebot mit Bilder-ZIP |
 
 Testkonten (Passwort aus `TESTDATEN_PASSWORT`, in den Prüfungen fest): `inhaber` (Inhaberin, Privat voll),
 `lager` (nur Palettenlager), `buero` (Büro), `pruefer` (nur ansehen), `familie` (nur Privat „Familie“).

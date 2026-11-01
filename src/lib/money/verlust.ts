@@ -1,3 +1,4 @@
+import { gebuehrArt } from "@/lib/amazon-berichte/logic";
 // Verlust-Stopp – reine Logik: Welche Artikel verkaufen gerade mit Verlust? Auslöser: Gewinn aus dem Verkauf unter 0
 // an 2 der letzten 3 abgeschlossenen Tage oder mindestens 5 Stück mit Verlust verkauft (in diesen 3 Tagen).
 // Der Tagesgewinn wird zerlegt in a) Verkauf, b) Erstattungen/Rücksendungen, c) Abschreibung/Entfernung und
@@ -217,6 +218,8 @@ export function anteilVonTransaktion(t: { kind: string; type: string | null; des
   if (t.kind === "refund" || /^(refund|erstattung|rückerstattung)$/i.test(t.type ?? "")) return "erstattungen";
   if (/disposal|removal|entsorg|remission|rücksendung an (den )?verkäufer|liquidat|write.?off|abschreib|verlust.*lager|damaged|beschädigt/i.test(text)) return "abschreibung";
   if (/storage|lagergebühr|lagerung|lagerkosten|inventory fee/i.test(text)) return "lager";
+  // Amazon-Berichte 4: Lagerlimit, Inbound-Mängel und -Platzierung sind keine Verkaufsverluste → wie Lager.
+  if (gebuehrArt(text)) return "lager";
   return null;
 }
 

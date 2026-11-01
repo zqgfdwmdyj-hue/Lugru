@@ -460,6 +460,7 @@ async function route(req, url, body) {
   if (p.startsWith("/amazon-doc/")) {
     const r = berichte.get(p.split("/").pop());
     if (!r) return [404, { errors: [{ code: "NotFound", message: "Dokument unbekannt" }] }];
+    if (KONTO_TYPEN.has(r.typ)) return [200, Buffer.from(kontoBericht(r)), r.typ === "GET_V2_SELLER_PERFORMANCE_REPORT" ? "application/json" : "text/tab-separated-values; charset=utf-8"];
     return [200, r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? gzipSync(Buffer.from(JSON.stringify(salesTraffic(r)))) : Buffer.from(berichtTsv(r)), r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? "application/gzip" : "text/tab-separated-values; charset=utf-8"];
   }
   if (p === "/amazon/reports/2021-06-30/reports" && req.method === "POST") {
@@ -472,7 +473,7 @@ async function route(req, url, body) {
   if (rep && req.method === "GET") {
     const r = berichte.get(rep[2]);
     // Berichte je Land sind sofort fertig; andere Reports kennt der Nachbau nicht (wie bisher).
-    if (r && MARKT_TYPEN.has(r.typ)) return json(rep[1] === "reports" ? { reportId: rep[2], reportType: r.typ, processingStatus: "DONE", reportDocumentId: rep[2] } : { reportDocumentId: rep[2], url: `${SELF}/amazon-doc/${rep[2]}`, ...(r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? { compressionAlgorithm: "GZIP" } : {}) });
+    if (r && (MARKT_TYPEN.has(r.typ) || KONTO_TYPEN.has(r.typ))) return json(rep[1] === "reports" ? { reportId: rep[2], reportType: r.typ, processingStatus: "DONE", reportDocumentId: rep[2] } : { reportDocumentId: rep[2], url: `${SELF}/amazon-doc/${rep[2]}`, ...(r.typ === "GET_SALES_AND_TRAFFIC_REPORT" ? { compressionAlgorithm: "GZIP" } : {}) });
   }
   const kat = /^\/amazon\/catalog\/2022-04-01\/items\/([^/]+)$/.exec(p);
   if (kat && req.method === "GET") return json({ asin: kat[1], images: [{ marketplaceId: url.searchParams.get("marketplaceIds") ?? "A1PA6795UKMFR9", images: [{ variant: "MAIN", link: `${SELF}/amazon-bild/${kat[1]}.jpg`, height: 1000, width: 1000 }] }] });
@@ -661,6 +662,44 @@ function keepaProdukte(url) {
 const berichte = new Map();
 let berichtNr = 0;
 const MARKT_TYPEN = new Set(["GET_SALES_AND_TRAFFIC_REPORT", "GET_MERCHANT_LISTINGS_ALL_DATA", "GET_FBA_INVENTORY_PLANNING_DATA"]);
+// Amazon-Berichte 1–4 (erfunden): Kontozustand (JSON), gestrandet/gesperrt, Langzeitlager, Inbound-Mängel, USt.
+const KONTO_TYPEN = new Set(["GET_V2_SELLER_PERFORMANCE_REPORT", "GET_STRANDED_INVENTORY_UI_DATA", "GET_MERCHANTS_LISTINGS_FYP_REPORT", "GET_FBA_FBA_LONGTERM_STORAGE_FEE_CHARGES_DATA", "GET_FBA_FULFILLMENT_INBOUND_NONCOMPLIANCE_DATA", "GET_VAT_TRANSACTION_DATA"]);
+function kontoBericht(r) {
+  const tsv = (head, rows) => [head, ...rows].map((x) => x.join("\t")).join("\n") + "\n";
+  const tag = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);
+  if (r.typ === "GET_V2_SELLER_PERFORMANCE_REPORT") {
+    const gut = (rate, ziel) => ({ status: "GOOD", rate, targetValue: ziel, targetCondition: "LESS_THAN" });
+    const verstoesse = (ip) => ({ receivedIntellectualPropertyComplaints: { status: ip ? "POOR" : "GOOD", defectsCount: ip, targetValue: 0 }, listingPolicyViolations: { status: "GOOD", defectsCount: 0, targetValue: 0 }, productAuthenticityCustomerComplaints: { status: "GOOD", defectsCount: 0, targetValue: 0 } });
+    return JSON.stringify({
+      performanceMetrics: [
+        { marketplaceId: "A1PA6795UKMFR9", accountHealthRating: { ahrStatus: "GOOD", ahrScore: 230 }, orderDefectRate: { afn: gut(0.002, 0.01), mfn: gut(0.004, 0.01) }, lateShipmentRate: gut(0.01, 0.04), preFulfillmentCancellationRate: gut(0, 0.025), validTrackingRate: { status: "GOOD", rate: 0.99, targetValue: 0.95 }, ...verstoesse(1) },
+        { marketplaceId: "A13V1IB3VIYZZH", accountHealthRating: { ahrStatus: "GREAT", ahrScore: 320 }, orderDefectRate: { afn: gut(0, 0.01), mfn: gut(0, 0.01) }, lateShipmentRate: gut(0, 0.04), ...verstoesse(0) },
+      ],
+    });
+  }
+  if (r.typ === "GET_STRANDED_INVENTORY_UI_DATA")
+    return tsv(["primary-action", "date-stranded", "Date-to-take-auto-removal", "status-primary", "status-secondary", "error-message", "stranded-reason", "asin", "sku", "fnsku", "product-name", "condition", "fulfilled-by", "fulfillable-qty", "your-price", "unfulfillable-qty", "reserved-quantity", "inbound-shipped-qty"], [
+      ["Relist", tag(-12), tag(5), "Stranded", "", "Kein aktives Angebot", "No listing exists", "B0TEST0001", "TEST-SOCKEN", "X00TEST0001", "Testsocken (erfunden)", "New", "Amazon", "5", "9.99", "0", "0", "0"],
+      ["Fix listing", tag(-3), "", "Stranded", "", "Angebot unterdrückt", "Listing suppressed", "B0TESTSTR2", "TEST-OHNE-EK-STR", "X00TESTSTR2", "Teststrand ohne EK (erfunden)", "New", "Amazon", "2", "", "1", "0", "0"],
+    ]);
+  if (r.typ === "GET_MERCHANTS_LISTINGS_FYP_REPORT")
+    return tsv(["Status", "Reason", "SKU", "ASIN", "Product name", "Condition", "Status Change Date", "Issue Description"], [["Search Suppressed", "Missing information", "TEST-TASSE", "B0TEST0002", "Testtasse (erfunden)", "New", tag(-2), "Hauptbild fehlt"]]);
+  if (r.typ === "GET_FBA_FBA_LONGTERM_STORAGE_FEE_CHARGES_DATA")
+    return tsv(["snapshot-date", "sku", "fnsku", "asin", "product-name", "condition", "qty-charged", "per-unit-volume", "currency", "amount-charged", "volume-unit", "country", "surcharge-age-tier", "rate-surcharge"], [[tag(-10), "TEST-SOCKEN", "X00TEST0001", "B0TEST0001", "Testsocken (erfunden)", "New", "4", "0.5", "EUR", "3.40", "liters", "DE", "271-365", "1.70"]]);
+  if (r.typ === "GET_FBA_FULFILLMENT_INBOUND_NONCOMPLIANCE_DATA")
+    return tsv(["date", "problem-type", "shipment-id", "merchant-sku", "fnsku", "asin", "product-name", "problem-quantity", "expected-quantity", "received-quantity", "performance-measurement-unit", "coaching-level", "fee-type", "currency", "fee-total"], [[tag(-6), "Unplanned service: Labeling", "FBA15TESTINB", "TEST-SOCKEN", "X00TEST0001", "B0TEST0001", "Testsocken (erfunden)", "6", "10", "10", "Units", "Warning", "Unplanned prep service fee", "EUR", "1.20"]]);
+  if (r.typ === "GET_VAT_TRANSACTION_DATA") {
+    const kopf = ["UNIQUE_ACCOUNT_IDENTIFIER", "ACTIVITY_PERIOD", "SALES_CHANNEL", "MARKETPLACE", "PROGRAM_TYPE", "TRANSACTION_TYPE", "TRANSACTION_EVENT_ID", "TRANSACTION_COMPLETE_DATE", "SELLER_SKU", "ASIN", "QTY", "DEPARTURE_COUNTRY", "ARRIVAL_COUNTRY", "TAXABLE_JURISDICTION", "TAX_REPORTING_SCHEME", "TOTAL_ACTIVITY_VALUE_AMT_VAT_EXCL", "TOTAL_ACTIVITY_VALUE_VAT_AMT", "TOTAL_ACTIVITY_VALUE_AMT_VAT_INCL", "PRICE_OF_ITEMS_VAT_RATE_PERCENT", "TRANSACTION_CURRENCY_CODE"];
+    const d = (r.von ?? new Date().toISOString()).slice(0, 10);
+    const dm = `${d.slice(8, 10)}-${d.slice(5, 7)}-${d.slice(0, 4)}`;
+    const per = `${d.slice(0, 4)}-${["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][Number(d.slice(5, 7)) - 1]}`;
+    return tsv(kopf, [
+      ["A1", per, "AFN", "amazon.de", "REGULAR", "SALE", "302-0000000-0000101", dm, "TEST-SOCKEN", "B0TEST0001", "2", "DE", "DE", "DE", "REGULAR", "16.80", "3.19", "19.99", "0.19", "EUR"],
+      ["A1", per, "AFN", "amazon.fr", "REGULAR", "SALE", "302-0000000-0000102", dm, "TEST-SOCKEN", "B0TEST0001", "1", "DE", "FR", "FR", "UNION-OSS", "8.33", "1.67", "10.00", "0.20", "EUR"],
+    ]);
+  }
+  return "";
+}
 const MP = {
   A1PA6795UKMFR9: { land: "DE", amazon: "A3JWKAKR8XB7XF", cur: "EUR" },
   A13V1IB3VIYZZH: { land: "FR", amazon: "A1X6FK5RDHNB96", cur: "EUR" },

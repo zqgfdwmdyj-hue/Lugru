@@ -8,6 +8,7 @@ import { aiSuggestAction, recheckOneAction } from "../actions";
 import { ContentEditor } from "../content-editor";
 import { ActionButton } from "../forms";
 import { euro, issueTag, scoreClass } from "../ui";
+import { KleinanzeigenEntwurf } from "./kleinanzeigen";
 
 const dateDe = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", day: "2-digit", month: "2-digit", year: "numeric" }) : "–");
 
@@ -180,6 +181,7 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ i
           />
         </section>
       )}
+      {f && <KleinanzeigenEntwurf itemId={itemId} f={f} />}
     </>
   );
 }

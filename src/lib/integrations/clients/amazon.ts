@@ -87,11 +87,19 @@ export const REPORT_TYPES: Record<Exclude<ReportKind, "settlement">, string> = {
   transactions: "GET_DATE_RANGE_FINANCIAL_TRANSACTION_DATA",
   fbmReturns: "GET_FLAT_FILE_RETURNS_DATA_BY_RETURN_DATE",
   storageFees: "GET_FBA_STORAGE_FEE_CHARGES_DATA",
+  gestrandet: "GET_STRANDED_INVENTORY_UI_DATA",
+  gesperrt: "GET_MERCHANTS_LISTINGS_FYP_REPORT",
+  langzeitlager: "GET_FBA_FBA_LONGTERM_STORAGE_FEE_CHARGES_DATA",
+  inboundMaengel: "GET_FBA_FULFILLMENT_INBOUND_NONCOMPLIANCE_DATA",
 };
+
+/** Amazon-Berichte 1 und 3: kein Tabellen-Import, eigene Übernahme (Kontozustand als JSON, USt in die Buchhaltung). */
+export const KONTO_BERICHTE = { kontozustand: "GET_V2_SELLER_PERFORMANCE_REPORT", ust: "GET_VAT_TRANSACTION_DATA" } as const;
+export type KontoBericht = keyof typeof KONTO_BERICHTE;
 const KIND_BY_TYPE = new Map<string, ReportKind>([...Object.entries(REPORT_TYPES).map(([k, v]) => [v, k as ReportKind] as const), ["GET_V2_SETTLEMENT_REPORT_DATA_FLAT_FILE_V2", "settlement"]]);
 
 /** Wie viele Tage rückwirkend je Report angefordert werden. */
-const LOOKBACK: Partial<Record<ReportKind, number>> = { ledger: 45, reimbursements: 90, customerReturns: 90, removalOrders: 120, removalShipments: 120, orders: 30, feedback: 90, transactions: 90, fbmReturns: 90 };
+const LOOKBACK: Partial<Record<ReportKind, number>> = { ledger: 45, reimbursements: 90, customerReturns: 90, removalOrders: 120, removalShipments: 120, orders: 30, feedback: 90, transactions: 90, fbmReturns: 90, langzeitlager: 60, inboundMaengel: 90 };
 
 export async function requestReport(tenantId: string, kind: Exclude<ReportKind, "settlement">) {
   const c = await creds(tenantId);
@@ -105,6 +113,39 @@ export async function requestReport(tenantId: string, kind: Exclude<ReportKind, 
   const r = await sp<{ reportId: string }>(c, "POST", "/reports/2021-06-30/reports", body);
   await db.insert(schema.apiReportRequests).values({ tenantId, reportType: REPORT_TYPES[kind], reportId: r.reportId }).onConflictDoNothing();
   return r.reportId;
+}
+
+/** Anforderung fehlgeschlagen (z. B. Rolle fehlt in der App): festhalten, damit der Plan nicht minütlich wiederholt und die Liste den Grund zeigt. */
+export async function anforderungFehler(tenantId: string, reportType: string, e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  const hinweis = /403|denied|unauthori[sz]ed|access/i.test(msg) ? " – vermutlich fehlt der App die Berechtigung (Rolle) für diesen Bericht" : "";
+  await db.insert(schema.apiReportRequests).values({ tenantId, reportType, reportId: `fehler-${reportType}-${Date.now()}`, status: "error", error: `${msg}${hinweis}`.slice(0, 500), processedAt: new Date() }).onConflictDoNothing();
+}
+
+/**
+ * Kontozustand bzw. Umsatzsteuer-Transaktionsbericht anfordern. USt je Kalendermonat (`monat` JJJJ-MM, Standard:
+ * laufender Monat bis gestern).
+ */
+export async function requestKontoBericht(tenantId: string, art: KontoBericht, o: { monat?: string } = {}) {
+  const c = await creds(tenantId);
+  if (!c) throw new Error("Amazon ist nicht verbunden.");
+  const body: Record<string, unknown> = { reportType: KONTO_BERICHTE[art], marketplaceIds: c.marketplaceIds };
+  if (art === "ust") {
+    const heute = new Date();
+    const monat = o.monat ?? heute.toISOString().slice(0, 7);
+    const start = new Date(`${monat}-01T00:00:00Z`);
+    const ende = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0, 23, 59, 59));
+    body.dataStartTime = start.toISOString();
+    body.dataEndTime = (ende < heute ? ende : new Date(heute.getTime() - 3600_000)).toISOString();
+  }
+  try {
+    const r = await sp<{ reportId: string }>(c, "POST", "/reports/2021-06-30/reports", body);
+    await db.insert(schema.apiReportRequests).values({ tenantId, reportType: KONTO_BERICHTE[art], reportId: r.reportId }).onConflictDoNothing();
+    return r.reportId;
+  } catch (e) {
+    await anforderungFehler(tenantId, KONTO_BERICHTE[art], e);
+    throw e;
+  }
 }
 
 async function downloadDocument(c: Creds, documentId: string): Promise<Uint8Array> {
@@ -134,6 +175,16 @@ export async function processPendingReports(tenantId: string) {
       const markt = mpId ? berichtVonTyp(typ) : null;
       if (markt && landVonId(mpId)) {
         await speichereMarktBericht(tenantId, markt, landVonId(mpId)!, await downloadDocument(c, r.reportDocumentId));
+        await db.update(schema.apiReportRequests).set({ status: "done", processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
+        processed++;
+        continue;
+      }
+      // Amazon-Berichte 1 und 3: Kontozustand (JSON) und USt (Buchhaltung) – eigene Übernahme.
+      if (p.reportType === KONTO_BERICHTE.kontozustand || p.reportType === KONTO_BERICHTE.ust) {
+        const svc = await import("@/lib/amazon-berichte/service");
+        const bytes = await downloadDocument(c, r.reportDocumentId);
+        if (p.reportType === KONTO_BERICHTE.kontozustand) await svc.kontozustandSpeichern(tenantId, bytes);
+        else await svc.ustVonSchnittstelle(tenantId, bytes);
         await db.update(schema.apiReportRequests).set({ status: "done", processedAt: new Date() }).where(eq(schema.apiReportRequests.id, p.id));
         processed++;
         continue;
@@ -171,13 +222,32 @@ export async function scheduleReports(tenantId: string) {
   if (!(await creds(tenantId))) return;
   const plan: [Exclude<ReportKind, "settlement">, number][] = [
     ["inventory", 4], ["ledger", 24], ["reimbursements", 24], ["customerReturns", 24], ["removalOrders", 24], ["removalShipments", 24], ["fees", 72], ["feedback", 72], ["transactions", 24], ["fbmReturns", 24],
+    // Amazon-Berichte 2 und 4: gestrandet/gesperrt täglich, Langzeitlager und Inbound-Mängel wöchentlich.
+    ["gestrandet", 24], ["gesperrt", 24], ["langzeitlager", 168], ["inboundMaengel", 168],
   ];
-  for (const [kind, hours] of plan) {
+  const kuerzlich = async (typ: string, hours: number) => {
     const [recent] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(schema.apiReportRequests)
-      .where(and(eq(schema.apiReportRequests.tenantId, tenantId), eq(schema.apiReportRequests.reportType, REPORT_TYPES[kind]), gte(schema.apiReportRequests.requestedAt, new Date(Date.now() - hours * 3600_000))));
-    if (recent.n === 0) await requestReport(tenantId, kind).catch((e) => console.error("Report-Anforderung", kind, e));
+      .where(and(eq(schema.apiReportRequests.tenantId, tenantId), eq(schema.apiReportRequests.reportType, typ), gte(schema.apiReportRequests.requestedAt, new Date(Date.now() - hours * 3600_000))));
+    return recent.n > 0;
+  };
+  for (const [kind, hours] of plan) {
+    if (!(await kuerzlich(REPORT_TYPES[kind], hours))) await requestReport(tenantId, kind).catch(async (e) => {
+      console.error("Report-Anforderung", kind, e instanceof Error ? e.message : e);
+      if (kind === "gestrandet" || kind === "gesperrt" || kind === "langzeitlager" || kind === "inboundMaengel") await anforderungFehler(tenantId, REPORT_TYPES[kind], e);
+    });
+  }
+  // Amazon-Berichte 1 und 3: Kontozustand täglich; USt alle 3 Tage für den laufenden Monat, in den ersten 10 Tagen
+  // eines Monats zusätzlich den Vormonat (Amazon ergänzt Buchungen noch einige Tage).
+  if (!(await kuerzlich(KONTO_BERICHTE.kontozustand, 24))) await requestKontoBericht(tenantId, "kontozustand").catch((e) => console.error("Kontozustand anfordern", e instanceof Error ? e.message : e));
+  if (!(await kuerzlich(KONTO_BERICHTE.ust, 72))) {
+    const heute = new Date();
+    await requestKontoBericht(tenantId, "ust").catch((e) => console.error("USt-Bericht anfordern", e instanceof Error ? e.message : e));
+    if (heute.getUTCDate() <= 10) {
+      const vor = new Date(Date.UTC(heute.getUTCFullYear(), heute.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+      await requestKontoBericht(tenantId, "ust", { monat: vor }).catch((e) => console.error("USt-Bericht (Vormonat) anfordern", e instanceof Error ? e.message : e));
+    }
   }
 }
 

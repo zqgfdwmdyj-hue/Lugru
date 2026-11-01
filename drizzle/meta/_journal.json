@@ -841,6 +841,13 @@
       "when": 1793533007076,
       "tag": "0119_apple_watch",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1793537164392,
+      "tag": "0120_amazon_berichte",
+      "breakpoints": true
     }
   ]
 }

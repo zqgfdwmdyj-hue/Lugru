@@ -4,6 +4,7 @@ import { BEREICHE, BEREICH_LABEL, PHASE_LABEL, type Bereich, type Phase } from "
 import { faelleKacheln, faelleListe, freischaltungen, infoDigest } from "@/lib/amazon-faelle/service";
 import { todayIso } from "@/lib/dates";
 import { abgleichAction } from "./actions";
+import { KontoBerichte } from "./konto-berichte";
 
 // Amazon-Fall-Zentrale: alles, was Amazon zu Freischaltungen, Fällen, Erstattungen, Marke, Angeboten und Konto meldet –
 // an einer Stelle, mit Status, Frist, Dringlichkeit und vorbereitetem Paket. Eingereicht wird in Seller Central.
@@ -84,6 +85,8 @@ export default async function AmazonFaellePage({ searchParams }: { searchParams:
           {k.fristBald > 0 && <span className="tag tag-warn">{k.fristBald} mit Frist ≤ 3 Tage</span>}
         </div>
       )}
+
+      <KontoBerichte tenantId={t} />
 
       <form className="small" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "14px 0 8px" }} data-testid="faelle-filter">
         <select className="select" name="bereich" defaultValue={bereich ?? ""} aria-label="Bereich" style={{ maxWidth: 220 }}>

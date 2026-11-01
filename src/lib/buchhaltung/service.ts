@@ -99,7 +99,7 @@ export async function amexImportieren(wer: Wer, firma: string | null, datei: { n
   return { neu, doppelt: werte.length - neu, von: a.von, bis: a.bis, belastungen: a.belastungen, gutschriften: a.gutschriften, firma: f.firma };
 }
 
-export async function ustBerichtImportieren(wer: Wer, firma: string | null, datei: { name: string; bytes: Uint8Array }): Promise<{ monat: string; auswertung: UstAuswertung; perioden: { monat: string; zeilen: number }[] }> {
+export async function ustBerichtImportieren(wer: Wer, firma: string | null, datei: { name: string; bytes: Uint8Array }, o: { quelle?: "datei" | "api" } = {}): Promise<{ monat: string; auswertung: UstAuswertung; perioden: { monat: string; zeilen: number }[] }> {
   const f = await firmaPruefen(wer.tenantId, firma);
   const perioden = leseUstBerichtJePeriode(datei.bytes);
   if (!perioden.length || !perioden.some((p) => monatOk(p.monat))) throw new BuchhaltungFehler("Im Bericht steht kein Datum – ist das der Umsatzsteuer-Transaktionsbericht?");
@@ -111,7 +111,10 @@ export async function ustBerichtImportieren(wer: Wer, firma: string | null, date
   for (const p of perioden.filter((x) => monatOk(x.monat))) {
     const [alt] = await db.select().from(U).where(and(eq(U.tenantId, wer.tenantId), eq(U.firma, f.firma), eq(U.monat, p.monat)));
     const altDaten = alt?.daten as (UstAuswertung & { teile?: Record<string, UstAuswertung> }) | undefined;
-    const teile: Record<string, UstAuswertung> = { ...(altDaten?.teile ?? (altDaten && p.monat !== haupt ? { vorher: altDaten } : {})), [hash]: p.auswertung };
+    // Direkt von Amazon (Schnittstelle): der Bericht umfasst den ganzen Zeitraum aller Marktplätze – er ersetzt die
+    // Teile dieses Monats (hochgeladene Dateien und ältere Abrufe), sonst wäre der Umsatz doppelt.
+    const teile: Record<string, UstAuswertung> =
+      o.quelle === "api" ? { api: p.auswertung } : { ...(altDaten?.teile ?? (altDaten && p.monat !== haupt ? { vorher: altDaten } : {})), [hash]: p.auswertung };
     const daten = { ...ustZusammenfuehren(Object.values(teile)), periode: p.monat, teile };
     await db
       .insert(U)
@@ -119,7 +122,7 @@ export async function ustBerichtImportieren(wer: Wer, firma: string | null, date
       .onConflictDoUpdate({ target: [U.tenantId, U.firma, U.monat], set: { daten, dateiname: datei.name.slice(0, 200), createdAt: new Date() } });
   }
   const gesamt = perioden.find((p) => p.monat === haupt)!.auswertung;
-  await protokoll(db, wer, "ust_bericht", haupt, "import", null, { datei: datei.name, perioden: perioden.map((p) => `${p.monat} (${p.zeilen})`), laender: [...new Set(gesamt.zeilen.map((z) => z.land))] });
+  await protokoll(db, wer, "ust_bericht", haupt, "import", null, { datei: datei.name, quelle: o.quelle ?? "datei", perioden: perioden.map((p) => `${p.monat} (${p.zeilen})`), laender: [...new Set(gesamt.zeilen.map((z) => z.land))] });
   return { monat: haupt, auswertung: gesamt, perioden: perioden.map((p) => ({ monat: p.monat, zeilen: p.zeilen })) };
 }
 

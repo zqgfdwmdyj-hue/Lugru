@@ -6,7 +6,7 @@ import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { MARKT_BERICHTE, berichtVonTyp } from "@/lib/amazon-markt/store";
 import { landVonId } from "@/lib/amazon-markt/logic";
-import { aoJetztAbholenAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
+import { aoJetztAbholenAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
 import { aoImporte, aoLaeufe } from "@/lib/arbitrageone/abruf";
 import { AO_EXPORTE } from "@/lib/arbitrageone/logic";
 import { TestButton } from "./test-button";
@@ -26,12 +26,22 @@ const AMZ_MSG: Record<string, (n: number) => string> = {
   angefordert: (n) => `${n} Bericht${n === 1 ? "" : "e"} je Land angefordert – Amazon braucht meist einige Minuten, dann „Fertige Berichte abholen“.`,
   fehler: (n) => `${n} angefordert, mindestens eine Anforderung schlug fehl (siehe Liste).`,
   abgeholt: (n) => (n ? `${n} fertige Bericht${n === 1 ? "" : "e"} übernommen.` : "Noch nichts fertig – in ein paar Minuten erneut versuchen."),
+  konto: (n) => `${n} Berichte angefordert (Kontozustand, gestrandet/gesperrt, Langzeitlager, Inbound-Mängel, Umsatzsteuer) – in ein paar Minuten „Fertige Berichte abholen“.`,
+};
+/** Amazon-Berichte 1–4: Anzeigename je Berichtstyp. */
+const KONTO_NAME: Record<string, string> = {
+  GET_V2_SELLER_PERFORMANCE_REPORT: "Kontozustand (Leistung des Verkäufers)",
+  GET_VAT_TRANSACTION_DATA: "Umsatzsteuer-Transaktionsbericht",
+  GET_STRANDED_INVENTORY_UI_DATA: "Gestrandeter Bestand",
+  GET_MERCHANTS_LISTINGS_FYP_REPORT: "Gesperrte Angebote",
+  GET_FBA_FBA_LONGTERM_STORAGE_FEE_CHARGES_DATA: "Langzeit-Lagergebühren",
+  GET_FBA_FULFILLMENT_INBOUND_NONCOMPLIANCE_DATA: "Inbound-Mängel (Gebühren)",
 };
 /** „GET_SALES_AND_TRAFFIC_REPORT@A1PA…“ → „Buy-Box-Anteil (Sales and Traffic) DE“ */
 function berichtName(t: string) {
   const [typ, mp] = t.split("@");
   const b = mp ? berichtVonTyp(typ) : null;
-  return b ? `${MARKT_NAME[b]} ${landVonId(mp) ?? mp}` : t;
+  return b ? `${MARKT_NAME[b]} ${landVonId(mp) ?? mp}` : (KONTO_NAME[typ] ?? t);
 }
 
 const AO_MSG: Record<string, string> = { ok: "ArbitrageOne: alle Exporte abgeholt und verarbeitet.", teilweise: "ArbitrageOne: nicht alle Exporte geklappt – siehe Liste und Aufgabe.", fehler: "ArbitrageOne-Abruf fehlgeschlagen – siehe Liste und Aufgabe." };
@@ -94,7 +104,7 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
           <h2>Hintergrund-Abrufe</h2>
           <form action={runAllNow}><button className="btn btn-small" type="submit">Jetzt alles abrufen</button></form>
         </div>
-        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich, Buy Box/Listung/Lageralter je Land täglich), Rechnungen stündlich.</div>
+        <div className="small muted">Amazon- und eBay-Bestellungen plus Bestandsabgleich aller Kanäle alle 5 Minuten, Postfächer alle 15 Minuten, Amazon-Reports nach Plan (Bestand alle 4 Std., Protokolle täglich, Buy Box/Listung/Lageralter je Land täglich, Kontozustand und gestrandet/gesperrt täglich, Umsatzsteuer alle 3 Tage, Langzeitlager und Inbound-Mängel wöchentlich), Rechnungen stündlich.</div>
         {status.get("amazon_sp") && (
           <form action={requestAmazonReport} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <label htmlFor="rk" className="small">Amazon-Report sofort anfordern:</label>
@@ -111,6 +121,10 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                 {Object.entries(MARKT_NAME).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
               <button className="btn btn-small" type="submit">Anfordern</button>
+            </form>
+            <form action={requestKontoBerichteNow} style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <span className="small">Konto &amp; Gebühren: Kontozustand, gestrandet/gesperrt, Langzeitlager, Inbound-Mängel, Umsatzsteuer</span>
+              <button className="btn btn-small" type="submit" data-testid="konto-berichte-anfordern">Konto-Berichte anfordern</button>
             </form>
             <form action={fetchAmazonReportsNow}><button className="btn btn-small" type="submit">Fertige Berichte abholen</button></form>
             {amz && AMZ_MSG[amz] && <div className={`notice ${amz === "fehler" ? "notice-warn" : amz === "abgeholt" && Number(n) > 0 ? "notice-ok" : "notice-info"}`} data-testid="amazon-berichte-msg" role="status">{AMZ_MSG[amz](Number(n) || 0)}</div>}

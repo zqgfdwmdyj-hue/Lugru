@@ -32,7 +32,7 @@ export const amazonFaelleTool = defineTool({
   name: "amazon_faelle",
   title: "Amazon-Fall-Zentrale",
   description:
-    "Vorgänge aus Amazon-Mails: Freischaltungen (beantragt/genehmigt/abgelehnt/entzogen), Seller-Support-Fälle (Antwort nötig, gelöst, geschlossen ohne Lösung), Erstattungen, Markenbeschwerden, deaktivierte Angebote, Kontozustand, A-bis-z, FBA-Sendungen – mit Frist, Dringlichkeit (rot/gelb/grau) und Zuständigkeit. Filter: kategorie, status (offen/erledigt/info), seit (JJJJ-MM-TT), frist_in_tagen. Für den Morgenbericht: seit = gestern bzw. frist_in_tagen = 3.",
+    "Vorgänge aus Amazon-Mails: Freischaltungen (beantragt/genehmigt/abgelehnt/entzogen), Seller-Support-Fälle (Antwort nötig, gelöst, geschlossen ohne Lösung), Erstattungen, Markenbeschwerden, deaktivierte Angebote, Kontozustand, A-bis-z, FBA-Sendungen – mit Frist, Dringlichkeit (rot/gelb/grau) und Zuständigkeit. Filter: kategorie, status (offen/erledigt/info), seit (JJJJ-MM-TT), frist_in_tagen. Für den Morgenbericht: seit = gestern bzw. frist_in_tagen = 3. Dazu immer: Kontozustand je Marktplatz (Leistungsbericht, Stufe gut/prüfen/gefährdet) sowie gestrandeter Bestand (gebundenes Kapital) und gesperrte Angebote.",
   area: "amazon",
   ownerOnly: true,
   write: false,
@@ -47,7 +47,18 @@ export const amazonFaelleTool = defineTool({
   }),
   run: async (ctx, i) => {
     const rows = await faelleListe(ctx.session.tenantId, { bereich: i.kategorie, status: i.status ?? (i.seit ? null : "offen"), seit: i.seit ? new Date(`${i.seit}T00:00:00Z`) : null, fristInTagen: i.frist_in_tagen ?? null, q: i.suche ?? null, limit: i.limit });
-    return json({ anzahl: rows.length, vorgaenge: rows.map((v) => kurz(v, ctx)), hinweis: "Einzelne Aufforderungen stehen zusätzlich unter amazon_todos.", link: abs(ctx, "/amazon-faelle") });
+    // Amazon-Berichte 1 und 2: Kontozustand (Leistungsbericht) und gestrandeter Bestand/gesperrte Angebote dazu.
+    const { kontoBerichte } = await import("@/lib/amazon-berichte/service");
+    const b = await kontoBerichte(ctx.session.tenantId).catch(() => null);
+    return json({
+      anzahl: rows.length,
+      vorgaenge: rows.map((v) => kurz(v, ctx)),
+      kontozustand: b ? { ...b.kontozustand, link: abs(ctx, "/amazon-faelle#kontozustand") } : undefined,
+      gestrandet: b ? { anzahl: b.gestrandet.anzahl, stueck: b.gestrandet.stueck, gebunden_eur: b.gestrandet.gebunden, ohne_ek: b.gestrandet.ohne_ek, entfernung_bald: b.gestrandet.entfernung_bald, top: b.gestrandet.zeilen.slice(0, 10), link: abs(ctx, "/amazon-faelle#gestrandet") } : undefined,
+      gesperrt: b ? { anzahl: b.gesperrt.anzahl, top: b.gesperrt.zeilen.slice(0, 10).map((z) => ({ sku: z.sku, asin: z.asin, grund: z.grund ?? z.status })) } : undefined,
+      hinweis: "Einzelne Aufforderungen stehen zusätzlich unter amazon_todos. Kontozustand und gestrandeter Bestand kommen aus den Amazon-Berichten (Schnittstelle), nicht aus Mails.",
+      link: abs(ctx, "/amazon-faelle"),
+    });
   },
 });
 

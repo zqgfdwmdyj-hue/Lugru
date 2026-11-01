@@ -20,6 +20,10 @@ export const REPORT_KINDS = {
   transactions: "Transaktionen (Datumsbereich)",
   fbmReturns: "Retourenbericht Händlerversand",
   storageFees: "Lagergebühren je Monat (Monthly Storage Fees)",
+  gestrandet: "Gestrandeter Bestand (Stranded Inventory)",
+  gesperrt: "Gesperrte/unterdrückte Angebote (Suppressed Listings)",
+  langzeitlager: "Langzeit-Lagergebühren / Zuschlag Altbestand",
+  inboundMaengel: "Inbound-Mängel mit Gebühren (Inbound Performance)",
 } as const;
 export type ReportKind = keyof typeof REPORT_KINDS;
 
@@ -28,6 +32,11 @@ type Acc = ReturnType<typeof columnAccessor>;
 export function detectReport(table: Table): ReportKind | null {
   const a = columnAccessor(table.headers);
   if (a.has("month-of-charge") && a.hasAny("estimated-monthly-storage-fee", "monthly-storage-fee")) return "storageFees";
+  // Amazon-Berichte 1–4 (vor den allgemeinen Regeln: gestrandeter Bestand hat u. a. auch SKU/ASIN/FNSKU).
+  if (a.hasAny("date-stranded", "stranded-reason", "datum-gestrandet")) return "gestrandet";
+  if (a.hasAny("sku", "seller-sku") && a.hasAny("issue-description", "problembeschreibung", "status-change-date", "datum-der-statusänderung")) return "gesperrt";
+  if (a.hasAny("snapshot-date", "stichtag") && a.hasAny("amount-charged", "12-mo-long-terms-storage-fee", "12-mo-long-term-storage-fee", "6-mo-long-terms-storage-fee", "surcharge-age-tier", "qty-charged-12-mo-long-term-storage-fee")) return "langzeitlager";
+  if (a.hasAny("problem-type", "problemtyp") && a.hasAny("shipment-id", "sendungsnummer")) return "inboundMaengel";
   if (a.has("event-type") || a.has("ereignistyp")) return "ledger";
   if (a.has("reimbursement-id")) return "reimbursements";
   if (a.has("return-date") && a.hasAny("license-plate-number", "detailed-disposition")) return "customerReturns";

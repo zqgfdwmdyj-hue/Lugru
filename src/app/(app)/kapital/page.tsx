@@ -3,6 +3,7 @@ import { KpiMeta } from "@/components/kpi";
 import { requireArea } from "@/lib/auth/session";
 import { todayIso } from "@/lib/dates";
 import { kapitalAmpel } from "@/lib/money/kapital-service";
+import { gestrandetUebersicht, weitereGebuehren } from "@/lib/amazon-berichte/service";
 import type { Ampel } from "@/lib/money/kapital";
 import { getSettings } from "@/lib/settings";
 import { kapitalZieleAction } from "./actions";
@@ -32,7 +33,12 @@ function href(sp: SP, patch: Partial<SP>) {
 export default async function KapitalPage({ searchParams }: { searchParams: Promise<SP> }) {
   const session = await requireArea("geld");
   const sp = await searchParams;
-  const [data, settings] = await Promise.all([kapitalAmpel(session.tenantId, todayIso()), getSettings(session.tenantId)]);
+  const [data, settings, gestrandet, weitere] = await Promise.all([
+    kapitalAmpel(session.tenantId, todayIso()),
+    getSettings(session.tenantId),
+    gestrandetUebersicht(session.tenantId).catch(() => null),
+    weitereGebuehren(session.tenantId).catch(() => null),
+  ]);
   const filter: Ampel | "alle" = sp.filter === "rot" || sp.filter === "gelb" || sp.filter === "gruen" ? sp.filter : "alle";
   const q = (sp.q ?? "").trim().toLowerCase();
   const list = data.zeilen.filter((z) => (filter === "alle" || z.ampel === filter) && (!q || z.sku.toLowerCase().includes(q) || (z.asin ?? "").toLowerCase().includes(q) || (z.name ?? "").toLowerCase().includes(q)));
@@ -57,6 +63,21 @@ export default async function KapitalPage({ searchParams }: { searchParams: Prom
         Je Produkt: gebundenes Kapital (Bestand bei Amazon inkl. unterwegs + eigenes Lager × gültiger EK), Gewinn der letzten 90 Tage (sellerboard je Monat), Jahresrendite = Gewinn 90 T × 365/90 ÷ gebundenes Kapital,
         Reichweite, ältestes Lageralter (Amazon-Bericht) und Preis gegen Break-even, dazu die FBA-Lagergebühr laut Bericht („Lagergebühr frisst Marge“, „Remission prüfen“). <strong>Rot</strong> wird bei den <Link href="/einkauf/vorschlaege">Bestellvorschlägen</Link> nicht mehr vorgeschlagen und in der <Link href="/cashflow">Liquidität</Link> nicht eingerechnet.
       </p>
+
+      {((gestrandet && gestrandet.gestrandet.anzahl > 0) || (weitere && weitere.gesamt > 0)) && (
+        <div className="notice notice-warn small" style={{ marginBottom: 12 }} data-testid="kapital-amazon-berichte">
+          {gestrandet && gestrandet.gestrandet.anzahl > 0 && (
+            <div>
+              Gestrandeter Bestand bei Amazon: <strong>{gestrandet.gestrandet.stueck} Stück</strong> in {gestrandet.gestrandet.anzahl} SKUs, <strong>{eur2(gestrandet.gestrandet.gebunden)}</strong> gebunden und nicht verkäuflich – <Link href="/amazon-faelle#gestrandet">in der Fall-Zentrale ansehen</Link>.
+            </div>
+          )}
+          {weitere && weitere.gesamt > 0 && (
+            <div>
+              Weitere Amazon-Gebühren seit {weitere.ab}: <strong>{eur2(weitere.gesamt)}</strong> ({weitere.je_art.filter((x) => x.summe > 0).map((x) => `${x.text} ${eur2(x.summe)}`).join(" · ")}). Langzeit-Lagergebühren stecken in der Lagergebühr je Produkt.
+            </div>
+          )}
+        </div>
+      )}
 
       {data.zeilen.length === 0 ? (
         <div className="card card-pad" data-testid="kapital-leer">
