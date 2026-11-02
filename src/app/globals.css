@@ -912,6 +912,10 @@ h2 { font-size: 16px; margin: 0; }
 /* Wiederholen: „bis“ nur, wenn eine Wiederholung gewählt ist */
 .pk-repeat:has(input[name="wiederholung"][value=""]:checked) .pk-repeat-bis { display: none; }
 .pk-rep { font-size: 0.9em; margin-left: 2px; }
+/* Vorschau der Apple-Watch-Antwort (Ausprobieren) */
+.watch-face { width: 184px; min-height: 150px; padding: 18px 14px; border-radius: 38px; background: #000; color: #fff; border: 6px solid #2c2c2e; font: 600 14px/1.35 -apple-system, system-ui, sans-serif; display: flex; flex-direction: column; justify-content: center; gap: 4px; word-break: break-word; }
+/* Familienkalender: betrifft nur eine Person („nur Tom“) – als Text, nicht nur Farbe */
+.pk-wer { font-size: 0.85em; font-weight: 600; margin-left: 4px; padding: 0 4px; border-radius: 3px; border: 1px solid currentColor; opacity: .85; white-space: nowrap; }
 /* Abendritual: Tabelle bzw. Abfolge je nach gewähltem Ablauf */
 .ritual-form:has(input[name="modus"][value="abfolge"]:checked) .nur-woche,
 .ritual-form:has(input[name="modus"][value="woche"]:checked) .nur-abfolge { display: none; }

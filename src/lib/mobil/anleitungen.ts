@@ -129,7 +129,8 @@ const ANL: { titel: string; a: AnleitungFelder; tags?: string[] }[] = [
       wer: "Ludwig",
       schritte: [
         "Seller-System → Heute → Schnellerfassung (Sprache) → Handy-Schlüssel erzeugen und kopieren (oder den vorhandenen nehmen).",
-        "Je Befehl ein Kurzbefehl, Name = Sprachbefehl: „Wie läuft's“ → /api/mobil/watch/stand · „Was ist dringend“ → /api/mobil/watch/dringend · „Erledigt“ → /api/mobil/watch/erledigt · „Notiz“ → /api/mobil/watch/notiz · „Deal prüfen“ → /api/mobil/watch/deal · „Bestand“ → /api/mobil/watch/bestand · „Auto“ → /api/mobil/watch/tesla.",
+        "Am einfachsten: EIN Kurzbefehl „Seller“ für alles (Einstellungen → Apple Watch): „Text diktieren“ → „Inhalte von URL abrufen“ https://<deine Adresse>/api/mobil/watch/frage, POST, Header Authorization = Bearer <Schlüssel>, JSON {\"text\": Diktierter Text} → „zeige“ anzeigen, „sprich“ vorlesen. Dann „Hey Siri, Seller“ und frei sprechen („Wie läuft's?“, „Erledigt“, „Bestand Tefal 12 Stück“ …). Auf der Seite „Apple Watch“ lässt sich jede Antwort vorher ausprobieren.",
+        "Alternativ je Befehl ein eigener Kurzbefehl, Name = Sprachbefehl: „Wie läuft's“ → /api/mobil/watch/stand · „Was ist dringend“ → /api/mobil/watch/dringend · „Erledigt“ → /api/mobil/watch/erledigt · „Notiz“ → /api/mobil/watch/notiz · „Deal prüfen“ → /api/mobil/watch/deal · „Bestand“ → /api/mobil/watch/bestand · „Auto“ → /api/mobil/watch/tesla.",
         "In jedem Kurzbefehl: Aktion „Inhalte von URL abrufen“: https://<deine Adresse>/api/mobil/watch/<befehl>, Methode POST, Header Authorization = Bearer <Schlüssel>.",
         "Bei „Erledigt“, „Notiz“, „Deal prüfen“ und „Bestand“ davor „Text diktieren“ und im Abruf JSON {\"text\": Diktierter Text} mitschicken (z. B. „VA bitte Rechnung Tefal prüfen“, „B0… für 19,99“, „Tefal 12 Stück“).",
         "Danach „Wörterbuchwert abrufen“ → „zeige“ → „Ergebnis anzeigen“ und „Wörterbuchwert abrufen“ → „sprich“ → „Text vorlesen“.",

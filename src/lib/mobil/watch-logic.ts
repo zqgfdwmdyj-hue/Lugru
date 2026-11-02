@@ -211,3 +211,30 @@ export function dealZeile(r: { ampel: string; roi: number | null; gewinn: number
   else if (r.menge) teile.push(`Empfehlung ${r.menge} Stück`);
   return `${teile.join(", ")}.`;
 }
+
+// ---- Ein Kurzbefehl für alles („Hey Siri, Seller“ → diktieren → watch/frage) ---------------------------------
+
+export type WatchBefehl = "stand" | "dringend" | "tesla" | "deal" | "erledigt" | "notiz" | "bestand" | "kaufen" | "nummer";
+/** Befehle, die etwas ändern – nur per POST und nicht mit Nur-ansehen-Konten. */
+export const WATCH_AENDERND: readonly WatchBefehl[] = ["erledigt", "notiz", "bestand", "kaufen", "nummer"];
+export const WATCH_HILFE = "Sag z. B.: Wie läuft's? · Was ist dringend? · Erledigt · Notiz … · Bestand Tefal 12 Stück · Deal B0… für 19,99 · Tesla · Kaufen 17";
+
+/**
+ * Freies Diktat einem Watch-Befehl zuordnen. Reihenfolge: Rückfrage-Nummer, ändernde Befehle mit klarem Anfang,
+ * dann Bestand/Deal (Zahlen), Tesla, Dringend, Stand. Unklar → null (dann Hilfe-Antwort).
+ */
+export function watchBefehl(textIn: string): { befehl: WatchBefehl | null; text: string } {
+  const t = (textIn ?? "").replace(/\s+/g, " ").trim().replace(/^hey siri[,]?\s*/i, "").replace(/^(seller|lugru)\b\s*[,:]?\s*/i, "").replace(/[?!.]+$/, "").trim();
+  const l = t.toLowerCase();
+  if (!l) return { befehl: null, text: t };
+  if (auswahlNummer(l) !== null) return { befehl: "nummer", text: t };
+  if (/^(erledigt|fertig|abgehakt|abhaken|done)\b/.test(l)) return { befehl: "erledigt", text: t };
+  if (/^(notiz|notier|merke?|merk dir|va\b|v\.\s?a\.|an die va|assistenz|privat\b)/.test(l)) return { befehl: "notiz", text: t };
+  if (/^kauf(en)?\b/.test(l)) return { befehl: "kaufen", text: t };
+  if (/^(bestand|lager|z[äa]hl)/.test(l) || /\b\d{1,6}\s*(stück|stk\.?)\s*$/.test(l)) return { befehl: "bestand", text: t };
+  if (/^(deal|pr[üu]f)/.test(l) || /\bB0[A-Z0-9]{8}\b/i.test(t) || /\b\d{12,14}\b/.test(t)) return { befehl: "deal", text: t };
+  if (/\b(tesla|auto|akku|ladestand|reichweite|klima)\b/.test(l)) return { befehl: "tesla", text: t };
+  if (/(dringend|was (steht|liegt)( heute| noch)? an|was ist (heute )?(los|zu tun|wichtig)|aufgaben|to-?dos?)/.test(l)) return { befehl: "dringend", text: t };
+  if (/(wie l[äa]uft|wie lauft|stand|umsatz|gewinn|zahlen|[üu]berblick|bilanz)/.test(l)) return { befehl: "stand", text: t };
+  return { befehl: null, text: t };
+}

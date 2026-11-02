@@ -9,6 +9,8 @@ import { getIntegration } from "@/lib/integrations/store";
 import { addDays, type AppointmentEntry, type DateEntry, type IntimEntry, type KidsEntry, type SleepEntry } from "./logic";
 import { buildCalendarItems, eventRef, touchRhythm, type ExternEvent, type PeriodEntry, type RitualEntry, type TouchEntry } from "./kalender";
 import { loadEntries, privateSettings } from "./service";
+import { betrifftKarte } from "./betrifft";
+import { betrifftText } from "./betrifft-logic";
 
 const berlinDay = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
 const berlinTime = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
@@ -36,12 +38,13 @@ async function familyEvents(tenantId: string, from: string, to: string, exportCa
   ]);
   const own = rows.filter(isFamily);
   // Gleiche Farbe und gleiches Kürzel wie im Geschäftskalender (deutlich verschieden von Privat-Arten und anderen Kalendern).
-  const { colors, abbr } = await calendarPalette(tenantId);
+  const [{ colors, abbr }, karte] = await Promise.all([calendarPalette(tenantId), betrifftKarte(tenantId, { uids: own.map((e) => e.uid) })]);
   return own
     .map((ev) => {
       // Ende inklusiv: ganztägig endet iCalendar am Folgetag 00:00, mit Uhrzeit zählt der Tag des Endes.
       const endDay = ev.endsAt ? (ev.allDay ? addDays(ev.endsAt.toISOString().slice(0, 10), -1) : berlinDay(new Date(ev.endsAt.getTime() - 1))) : null;
-      return { id: ev.id, ref: eventRef(ev.uid, ev.startsAt), title: ev.title, day: ev.day, endDay, time: ev.allDay ? null : berlinTime(ev.startsAt), calendar: ev.calendarName, color: colors.get(ev.calendarName) ?? ev.color, abbr: abbr.get(ev.calendarName) };
+      const wer = karte.von(ev).wert;
+      return { id: ev.id, ref: eventRef(ev.uid, ev.startsAt), title: ev.title, day: ev.day, endDay, time: ev.allDay ? null : berlinTime(ev.startsAt), calendar: ev.calendarName, color: colors.get(ev.calendarName) ?? ev.color, abbr: abbr.get(ev.calendarName), betrifft: wer, ...(wer !== "familie" ? { betrifftText: betrifftText(wer, karte.partner) } : {}) };
     });
 }
 
@@ -62,7 +65,7 @@ export async function familyEventTimes(tenantId: string, from: string, to: strin
 }
 
 /** Vorbelegung zum Übernehmen eines Familienkalender-Termins (Paarzeit, Kinderzeit …). */
-export type EventPrefill = { ref: string; calendar: string; title: string; day: string; from?: string; to?: string; allDay: boolean };
+export type EventPrefill = { ref: string; uid: string; calendar: string; title: string; day: string; from?: string; to?: string; allDay: boolean };
 
 /**
  * Ein Termin aus einem Familienkalender (nie ein geschäftlicher) für „Eintragen“: Tag, Uhrzeit und Titel.
@@ -77,7 +80,7 @@ export async function familyEventPrefill(session: Session, id: string): Promise<
     familyFilter(session.tenantId, settings.externSync.enabled ? settings.externSync.calendar : null),
   ]);
   if (!ev || !isFamily(ev)) return null;
-  const base = { ref: eventRef(ev.uid, ev.startsAt), calendar: ev.calendarName, title: ev.title.trim().slice(0, 200), day: ev.day, allDay: ev.allDay };
+  const base = { ref: eventRef(ev.uid, ev.startsAt), uid: ev.uid, calendar: ev.calendarName, title: ev.title.trim().slice(0, 200), day: ev.day, allDay: ev.allDay };
   if (ev.allDay) return base;
   const from = berlinTime(ev.startsAt);
   let to: string | undefined;

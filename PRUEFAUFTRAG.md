@@ -763,6 +763,20 @@ Abnahme: Probe-Image auf demselben Basis-Image (`node:22-bookworm-slim`) mit Pla
 Dockerfile-Zeilen gebaut; Chromium startet im Container aus `/ms-playwright/…/chrome` und lädt eine Seite. Das Image
 wird dadurch ca. 400–500 MB größer; die Schicht wird nur neu gebaut, wenn sich `package-lock.json` ändert.
 
+## Familienkalender „Betrifft“ und Apple-Watch-Seite (Wunsch 02.11.)
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Familienkalender: einstellen, ob ein Termin mich, die Familie oder die Partnerin betrifft | ❌ (jeder Familien-Termin galt für beide und blockte auch den eigenen Tagesplan) | ✅ | Tabelle `kalender_betrifft` (Migration 0122, je Termin-UID = ganze Serie, mandantengetrennt; der Kalender selbst wird nie geändert). **Setzen**: Termin im Privatkalender antippen → Block „Wen betrifft der Termin?“ mit Knöpfen „Ina (ich)“, „Familie / beide“, „Tom“ (+ „Automatisch“). **Automatisch** ohne Auswahl: Vorname im Titel („Tom Zahnarzt“, „Yoga (Ina)“) → diese Person; beide Namen oder „Familie/alle/gemeinsam“ → Familie; sonst Familie (`src/lib/private/betrifft-logic.ts`). **Wirkung**: Termine nur der anderen Person blocken den eigenen **Tagesplan** nicht (keine Fahrzeit, nicht „Privat belegt“; damit auch nicht im „nächsten Termin“ an der Watch), heizen den **Tesla** nicht vor, stehen auf der **Startseite** als „Termin Tom“ statt „Privat belegt“; im **Privatkalender** mit „nur Tom“ und nur im Personenfilter dieser Person |
+| Apple Watch: Teil fehlt scheinbar | 🟡 (alle Befehle gebaut, aber Anleitung nur im Wissen, in den Einstellungen nur „Kaufen“) | ✅ | Neue Seite **Einstellungen → Apple Watch** (`/einstellungen/watch`, auch verlinkt unter Handy & Tesla): Erklärung, Schlüssel-Status, Einrichtung **eines** Kurzbefehls „Seller“ (Diktat → `POST /api/mobil/watch/frage` → „zeige“ anzeigen, „sprich“ vorlesen, `url` öffnen), alle Sätze im Überblick, **Ausprobieren** (zeigt die Antwort wie auf der Uhr; ändernde Befehle laufen dort nicht). Neuer Endpunkt `watch/frage` ordnet freie Sätze zu (`watchBefehl`): Wie läuft's, Was ist dringend, Erledigt, „Nummer 2“ (jüngste offene Rückfrage), Notiz/VA/privat, Bestand, Deal, Tesla, Kaufen n – gleiche Rechte, ändernde nur per POST und nicht mit Nur-ansehen-Konten. Eine eigene App aus dem App Store ist nicht nötig (bräuchte Mac + Xcode + Apple-Entwicklerkonto) |
+
+Abnahme: Unit `betrifft` (Vorname als Wort, beide Namen/„Familie“, gesetzt vor Titel, blockt nur bei mir/Familie) und
+`apple-watch` (freie Sätze → Befehl, ändernde Befehle, Hilfe ≤ 160 Zeichen); e2e `familie-watch`: „Tom Zahnarzt“ blockt
+Inas Tagesplan nicht, Elternabend schon (mit Fahrzeit) → auf „Tom“ gestellt → blockt nicht mehr, Kalender zeigt „nur Tom“ →
+zurück auf Familie → blockt wieder; Apple-Watch-Seite über Handy & Tesla erreichbar, Adresse und Schlüssel angezeigt,
+Ausprobieren „Was ist dringend?“ zeigt die Uhr-Antwort, „Erledigt“ nur erkannt; `watch/frage`: Wie läuft's → stand,
+GET dringend, Notiz per GET 405 / per POST legt die Aufgabe an, „Blumen“ → Hilfe (422), falscher Schlüssel 401.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -1119,3 +1133,9 @@ nie in Chats oder Mails.
     (das erste Update dauert ein paar Minuten länger, danach geht es wieder schnell). Danach unter Anbindungen bei
     sellerboard/BQool/ArbitrageOne „Verbindung testen“ bzw. den Lauf starten. Steht in der `.env` eine Zeile
     `MIT_BROWSER=0`, diese vorher löschen. Freier Platz auf dem Server: ca. 1 GB mehr einplanen.
+79. **Apple Watch**: Einstellungen → Apple Watch öffnen und den einen Kurzbefehl „Seller“ nach der Anleitung anlegen
+    (5 Minuten am iPhone). Vorher im Feld „Ausprobieren“ testen, was die Uhr antworten würde. Danach an der Watch:
+    „Hey Siri, Seller“ → „Wie läuft's?“. Die alten Einzel-Kurzbefehle funktionieren weiter.
+80. **Familienkalender**: Termine deiner Frau einmal antippen und auf ihren Namen stellen – oder ihr Vorname steht im
+    Titel („Tom Zahnarzt“), dann erkennt das System es selbst. Gilt für die ganze Serie. In den Privat-Einstellungen
+    müssen eure Vornamen und „wer bin ich“ stimmen.

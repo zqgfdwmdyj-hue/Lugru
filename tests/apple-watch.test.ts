@@ -104,3 +104,32 @@ describe("Push auf die Watch", () => {
     expect(pushKurz({ titel: "x", text: t }).text).toContain("Deal 17");
   });
 });
+
+describe("Ein Kurzbefehl für alles (watch/frage)", () => {
+  it("ordnet freie Sätze dem richtigen Befehl zu", async () => {
+    const { watchBefehl } = await import("@/lib/mobil/watch-logic");
+    const b = (t: string) => watchBefehl(t).befehl;
+    expect(b("Wie läuft's?")).toBe("stand");
+    expect(b("Hey Siri, Seller, wie läuft es heute")).toBe("stand");
+    expect(b("Was ist dringend")).toBe("dringend");
+    expect(b("Was steht heute an?")).toBe("dringend");
+    expect(b("Erledigt")).toBe("erledigt");
+    expect(b("Nummer 2")).toBe("nummer");
+    expect(b("zwei")).toBe("nummer");
+    expect(b("Notiz Rechnung Tefal prüfen")).toBe("notiz");
+    expect(b("VA bitte Rechnung prüfen")).toBe("notiz");
+    expect(b("Bestand Tefal 12 Stück")).toBe("bestand");
+    expect(b("Tefal Pfanne 12 Stück")).toBe("bestand");
+    expect(b("Deal B0ABC12345 für 19,99")).toBe("deal");
+    expect(b("4006381333931 für 12,50")).toBe("deal");
+    expect(b("Wie ist der Ladestand vom Tesla")).toBe("tesla");
+    expect(b("Kaufen 17")).toBe("kaufen");
+    expect(b("Blumen")).toBeNull();
+    expect(b("")).toBeNull();
+  });
+  it("ändernde Befehle sind gekennzeichnet, Hilfe passt auf die Uhr", async () => {
+    const { WATCH_AENDERND, WATCH_HILFE, watchAntwort } = await import("@/lib/mobil/watch-logic");
+    expect([...WATCH_AENDERND].sort()).toEqual(["bestand", "erledigt", "kaufen", "notiz", "nummer"]);
+    expect(watchAntwort([WATCH_HILFE]).zeige.length).toBeLessThanOrEqual(160);
+  });
+});

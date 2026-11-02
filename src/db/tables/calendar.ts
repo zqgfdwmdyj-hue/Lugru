@@ -48,6 +48,23 @@ export const calendarEvents = pgTable(
   (t) => [uniqueIndex("calendar_events_uq").on(t.tenantId, t.uid, t.startsAt), index("calendar_events_day_idx").on(t.tenantId, t.day)],
 );
 
+/**
+ * Familienkalender: wen ein Termin betrifft (Partner a/b oder „familie“) – je Termin-UID, gilt damit für alle Termine
+ * einer Serie. Der Kalender selbst wird nie geändert; ohne Eintrag erkennt das System den Vornamen im Titel.
+ */
+export const kalenderBetrifft = pgTable(
+  "kalender_betrifft",
+  {
+    id: id(),
+    tenantId: tenantId(),
+    uid: text("uid").notNull(),
+    betrifft: text("betrifft", { enum: ["a", "b", "familie"] }).notNull(),
+    gesetztVon: uuid("gesetzt_von"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("kalender_betrifft_uq").on(t.tenantId, t.uid)],
+);
+
 /** Fundstücke der Themen-Recherche (Nachrichten zu den eingestellten Themen). */
 export const researchItems = pgTable(
   "research_items",

@@ -32,7 +32,9 @@ async function textAus(request: Request): Promise<string> {
 
 async function bearbeiten(request: Request, { params }: { params: Promise<{ aktion: string }> }) {
   const { aktion } = await params;
-  if (!istAktion(aktion)) return mobilFehler(404, "Unbekannter Watch-Befehl. Möglich: stand, dringend, erledigt, notiz, deal, bestand, tesla.");
+  // Ein Kurzbefehl für alles: Diktat → passender Befehl (ändernde nur per POST und nicht mit Nur-ansehen-Konten).
+  if (aktion === "frage") return frage(request);
+  if (!istAktion(aktion)) return mobilFehler(404, "Unbekannter Watch-Befehl. Möglich: frage, stand, dringend, erledigt, notiz, deal, bestand, tesla.");
   const schreibend = (AENDERN as readonly string[]).includes(aktion);
   if (schreibend && request.method !== "POST") return mobilFehler(405, "Bitte als POST senden (Kurzbefehl: Methode POST, JSON-Feld „text“).", { Allow: "POST" });
   const p = await mobilPruefen(request, `watch/${aktion}`, { schreibend });
@@ -64,3 +66,21 @@ async function bearbeiten(request: Request, { params }: { params: Promise<{ akti
 
 export const GET = bearbeiten;
 export const POST = bearbeiten;
+
+async function frage(request: Request) {
+  const text = (await textAus(request)).replace(/\s+/g, " ").trim().slice(0, 600);
+  const { WATCH_AENDERND, watchBefehl } = await import("@/lib/mobil/watch-logic");
+  const { befehl } = watchBefehl(text);
+  const schreibend = !!befehl && WATCH_AENDERND.includes(befehl);
+  if (schreibend && request.method !== "POST") return mobilFehler(405, "Bitte als POST senden (Kurzbefehl: Methode POST, JSON-Feld „text“).", { Allow: "POST" });
+  const p = await mobilPruefen(request, `watch/frage${befehl ? `:${befehl}` : ""}`, { schreibend });
+  if (!p.ok) return mobilFehler(p.status, p.fehler);
+  try {
+    const { watchFrage } = await import("@/lib/mobil/watch-frage");
+    const r = await watchFrage(p.session, text, { tokenId: p.tokenId, aendernErlaubt: request.method === "POST" });
+    return mobilOk({ ...r, antwort: r.zeige }, r.ok ? 200 : 422);
+  } catch (e) {
+    console.error("[Watch frage]", e instanceof Error ? e.message : e);
+    return mobilFehler(500, "Das hat gerade nicht geklappt – bitte gleich noch einmal.");
+  }
+}

@@ -88,12 +88,14 @@ async function termineMitOrt(tenantId: string, jetzt: Date): Promise<HeizTermin[
   const E = schema.calendarEvents;
   const bis = new Date(jetzt.getTime() + 3 * 3_600_000);
   const ev = await db
-    .select({ id: E.id, title: E.title, startsAt: E.startsAt, location: E.location })
+    .select({ id: E.id, uid: E.uid, title: E.title, startsAt: E.startsAt, location: E.location })
     .from(E)
     .where(and(eq(E.tenantId, tenantId), eq(E.allDay, false), isNotNull(E.location), gte(E.startsAt, jetzt), lte(E.startsAt, bis)));
-  const out: HeizTermin[] = ev.map((e) => ({ key: `ev:${e.id}`, titel: e.title, start: e.startsAt, ort: e.location, privat: false }));
   const { inhaberPrivatSitzung } = await import("@/lib/private/termin-mail-service");
   const s = await inhaberPrivatSitzung(tenantId);
+  // Familienkalender: Termine nur der anderen Person (nicht des Inhabers) heizen das Auto nicht vor.
+  const wer = await import("@/lib/private/betrifft").then((x) => x.betrifftKarte(tenantId, { uids: ev.map((e) => e.uid), userId: s?.userId ?? null })).catch(() => null);
+  const out: HeizTermin[] = ev.filter((e) => !wer?.nurAndere(e)).map((e) => ({ key: `ev:${e.id}`, titel: e.title, start: e.startsAt, ort: e.location, privat: false }));
   if (s) {
     const { loadEntries } = await import("@/lib/private/service");
     const heute = todayIso(jetzt);

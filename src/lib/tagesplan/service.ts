@@ -83,11 +83,15 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
     .from(E)
     .where(and(eq(E.tenantId, t), eq(E.allDay, false), lte(E.day, bis), or(gte(E.day, von), gte(E.endsAt, new Date(`${von}T00:00:00Z`)))))
     .orderBy(asc(E.startsAt));
+  // Familienkalender: Termine, die nur die andere Person betreffen (gesetzt oder Vorname im Titel), blocken diesen Tag nicht.
+  const { betrifftKarte } = await import("@/lib/private/betrifft");
+  const wer = await betrifftKarte(t, { uids: events.map((e) => e.uid), userId: session.userId });
   for (const ev of events) {
     const name = ev.calendarName.trim().toLowerCase();
     if (name === pushName.trim().toLowerCase() || (exportName && name === exportName.trim().toLowerCase())) continue;
     if (!calendarVisible(session, ev.calendarName, staffCalendars)) continue;
     const geschaeft = isBusinessCalendar(ev.calendarName, staffCalendars, pushName);
+    if (!geschaeft && wer.nurAndere(ev)) continue;
     const startTag = berlinDay(ev.startsAt);
     const endeTag = ev.endsAt ? berlinDay(new Date(ev.endsAt.getTime() - 1)) : startTag;
     for (let tag = startTag; tag <= endeTag && tag <= bis; tag = plusTage(tag, 1)) {

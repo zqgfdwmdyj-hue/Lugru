@@ -98,15 +98,16 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Delegation | Anrufe (im Tagesplan) `/kalender/tagesplan?anrufe=1` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Wissen & Calls | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Wissen & Calls | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
-| Privat | Übersicht `/privat` | ○ 0/4 Abläufe | – | 2 |
+| Privat | Übersicht `/privat` | ○ 0/5 Abläufe | – | 2 |
 | Privat | Kalender `/privat/kalender` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Eintragen `/privat/eintragen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Einstellungen `/privat/einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
-| Einstellungen | Einstellungen `/einstellungen` | ○ 0/3 Abläufe | – | – |
+| Einstellungen | Einstellungen `/einstellungen` | ○ 0/4 Abläufe | – | – |
 | Einstellungen | Anbindungen `/anbindungen` | ○ 0/2 Abläufe | – | – |
 | Einstellungen | Claude & KI-Assistent `/einstellungen/claude` | ○ 0/8 Abläufe | – | 2 |
 | Einstellungen | Handy & Tesla `/einstellungen/handy` | ○ nur Oberfläche | – | Funktionen ungeprüft |
+| Einstellungen | Apple Watch `/einstellungen/watch` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | Shop-Profile & Payback `/einstellungen/shop-profile` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Einstellungen | eBay-Einstellungen `/ebay?ansicht=einstellungen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Übergreifend | /posteingang/verbinden `/posteingang/verbinden` | ○ 0/2 Abläufe | – | 1 |
@@ -444,6 +445,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen | Ausnahme bleibt bei Serienänderung erhalten; nur die gewählten Termine ändern/verschwinden | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Abendritual als Abfolge „zweimal Streicheln, danach Massage“ | die nächsten Abende im Voraus: S, S, M, S, S, M | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe | nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
+| Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel | Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag | Zählungen nur im Zeitraum; vertauschte Daten getauscht, Zukunft auf heute gekürzt; „Zurück zum Monat“ | ○ im letzten Lauf nicht gelaufen | `privat-rueckblick.spec.ts` |
 
 - – Offen: Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests
@@ -454,6 +456,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Ablauf | Erwartet | Tatsächlich (automatisch) | Prüfung |
 |---|---|---|---|
 | Testumgebung: Banner, Sperre nach außen, Übersicht | Banner auf jeder Seite, Verbindungen nach außen gesperrt, Mails abgefangen | ○ im letzten Lauf nicht gelaufen | `testumgebung.spec.ts` |
+| Apple Watch: Seite mit Anleitung, ein Kurzbefehl für alles (watch/frage), Ausprobieren | über Handy & Tesla erreichbar; Adresse + Schlüssel; Ausprobieren zeigt die Uhr-Antwort; freie Sätze → richtiger Befehl, ändernde nur per POST | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen | gesperrt, keine Finanz- oder Privatdaten | ○ im letzten Lauf nicht gelaufen | `teil2.spec.ts` |
 | B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle | Privatbereich gesperrt; beim Inhaber-Login auf „kein Zugang“ bereinigt + Dialog + Aufgabe; Knopf „Als VA-Rolle übernehmen“ | ○ im letzten Lauf nicht gelaufen | `b25.spec.ts` |
 
@@ -543,7 +546,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (114 Abläufe + Oberfläche auf 106 Seiten): 0 bestanden, 0 fehlgeschlagen, 114 nicht gelaufen.
+**Automatisch** (116 Abläufe + Oberfläche auf 107 Seiten): 0 bestanden, 0 fehlgeschlagen, 116 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -634,8 +637,10 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Übersicht: Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Abendritual als Abfolge „zweimal Streicheln, danach Massage“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe – im letzten Lauf nicht gelaufen
+- ○ Übersicht: Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: Testumgebung: Banner, Sperre nach außen, Übersicht – im letzten Lauf nicht gelaufen
+- ○ Einstellungen: Apple Watch: Seite mit Anleitung, ein Kurzbefehl für alles (watch/frage), Ausprobieren – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle – im letzten Lauf nicht gelaufen
 - ○ Anbindungen: Karte „Postfächer“ und Warnung ohne Amazon-Mail; Google/Microsoft nur optional unter „Erweitert“ – im letzten Lauf nicht gelaufen
@@ -667,9 +672,9 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - Fragefeld: Altes Gespräch fortsetzen (vor dem 28.10.2026, Nutzung im Betrieb) – 400 „thinking block bound to a different conversation“ – behoben, seither automatisch geprüft
 - Server (Port, Adresse, Testumgebung): Erreichbarkeit (vor dem 28.10.2026, Prüfung mit ChatGPT) – Port 3020 offen, APP_URL intern – Skript zum Absichern bereit, auf dem Server noch auszuführen
 
-**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 59 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
+**Noch nicht geprüft** (Funktionen ohne Ablaufprüfung, 60 Reiter – die Seiten selbst laufen in der Oberflächen-Prüfung mit):
 
-Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Bestellvorschläge (`/einkauf/vorschlaege`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Scanner (Barcode mit Ampel) (`/scan`) · Deal-Ampel (Einkauf prüfen) (`/lieferanten/deal-ampel`) · Einkauf & Wareneingang (`/einkauf`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Lieferanten-Feeds (`/lieferanten`) · Lieferanten-Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Fälle & A-bis-Z (`/faelle`) · Bewertungen (`/bewertungen`) · Neues eBay-Angebot (`/ebay`) · eBay-Artikel & Gewinn (`/ebay?ansicht=artikel`) · eBay-Verlauf (`/ebay?ansicht=verlauf`) · eBay → Temu / Wawi (`/listings/temu`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · eBay-Rechnungen (`/ebay?ansicht=rechnungen`) · Kunden (`/rechnungen/kunden`) · COG-Export (`/export`) · Paletten-Lager (Kunden) › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager (Kunden) › Abholung (`/paletten/abholung`) · Paletten-Lager (Kunden) › Inventur (`/paletten/inventur`) · Paletten-Lager (Kunden) › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager (Kunden) › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager (Kunden) › Auswertung (`/paletten/uebersicht`) · Produkte (`/produkte`) · Chargen (`/chargen`) · Artikelstamm (eigene Marken) (`/artikel`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Alle Aufgaben (`/?ansicht=liste`) · Anrufe (im Tagesplan) (`/kalender/tagesplan?anrufe=1`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Handy & Tesla (`/einstellungen/handy`) · Shop-Profile & Payback (`/einstellungen/shop-profile`) · eBay-Einstellungen (`/ebay?ansicht=einstellungen`)
+Tagesplan (`/kalender/tagesplan`) · Uploads (alles hochladen) (`/uploads`) · Fahrtenbuch (`/kalender/fahrten`) · Bestellvorschläge (`/einkauf/vorschlaege`) · EK-Import (→ sellerboard) (`/einkauf/ek-import`) · Scanner (Barcode mit Ampel) (`/scan`) · Deal-Ampel (Einkauf prüfen) (`/lieferanten/deal-ampel`) · Einkauf & Wareneingang (`/einkauf`) · Dropship-Trackings (`/einkauf/beschaffungsanalyse`) · Lieferanten-Feeds (`/lieferanten`) · Lieferanten-Abfrage (`/lieferanten/abfrage`) · Chancen (`/lieferanten/chancen`) · Großhändler finden (`/lieferanten/finden`) · Amazon-ToDos (`/amazon-todos`) · Listungen (alle Kanäle) (`/listings`) · SAS-Programm (`/sas`) · Fälle & A-bis-Z (`/faelle`) · Bewertungen (`/bewertungen`) · Neues eBay-Angebot (`/ebay`) · eBay-Artikel & Gewinn (`/ebay?ansicht=artikel`) · eBay-Verlauf (`/ebay?ansicht=verlauf`) · eBay → Temu / Wawi (`/listings/temu`) · Buchhaltung (Abgleich, DATEV) (`/buchhaltung`) · Belege scannen (`/rechnungen/belege`) · Ausgangsrechnungen (`/rechnungen/ausgang`) · eBay-Rechnungen (`/ebay?ansicht=rechnungen`) · Kunden (`/rechnungen/kunden`) · COG-Export (`/export`) · Paletten-Lager (Kunden) › Lagerplan (`/paletten/lagerplan`) · Paletten-Lager (Kunden) › Abholung (`/paletten/abholung`) · Paletten-Lager (Kunden) › Inventur (`/paletten/inventur`) · Paletten-Lager (Kunden) › Abrechnung (`/paletten/abrechnung`) · Paletten-Lager (Kunden) › Kunden & Preise (`/paletten/kunden`) · Paletten-Lager (Kunden) › Auswertung (`/paletten/uebersicht`) · Produkte (`/produkte`) · Chargen (`/chargen`) · Artikelstamm (eigene Marken) (`/artikel`) · Retouren (`/retouren`) · Remissionen (`/remissionen`) · Preislisten je Land (`/b2b/preislisten`) · B2B-Kunden (`/b2b/kunden`) · Lieferanten-Freigaben (`/b2b/lieferanten`) · Bilanz (`/b2b/bilanz`) · Ideen & Saison (`/marken`) · Content-Plan (`/marken/content`) · Shop-Analyse (`/marken/shop`) · Markenprofile (`/marken/profile`) · Uhren: Buy & Flip › Lernen (`/marken/uhren/lernen`) · Uhren: Buy & Flip › Rechner (`/marken/uhren/rechner`) · Uhren: Buy & Flip › Marktpreise (`/marken/uhren/preise`) · Alle Aufgaben (`/?ansicht=liste`) · Anrufe (im Tagesplan) (`/kalender/tagesplan?anrufe=1`) · Kalender (`/privat/kalender`) · Eintragen (`/privat/eintragen`) · Rückblick (`/privat/rueckblick`) · Einstellungen (`/privat/einstellungen`) · Handy & Tesla (`/einstellungen/handy`) · Apple Watch (`/einstellungen/watch`) · Shop-Profile & Payback (`/einstellungen/shop-profile`) · eBay-Einstellungen (`/ebay?ansicht=einstellungen`)
 
 **Bekannte offene Punkte:**
 

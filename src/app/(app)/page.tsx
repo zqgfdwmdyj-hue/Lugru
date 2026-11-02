@@ -205,6 +205,12 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
   // B15.2: Private/Familien-Kalender auf der Startseite nur als „Privat belegt“ + Uhrzeit – nie Titel, Ort oder Beträge.
   const pushKalender = (await integrationLaden(session.tenantId, "apple_calendar").catch(() => null))?.calendarName || DEFAULT_CALENDAR_NAME;
   const privatTermin = (name: string) => !isBusinessCalendar(name, calState?.staffCalendars, pushKalender);
+  // Familienkalender: Termine nur der anderen Person als „Termin <Name>“ (blockt nicht), sonst „Privat belegt“.
+  const wer = await import("@/lib/private/betrifft").then((x) => x.betrifftKarte(session.tenantId, { uids: shownAppointments.filter((a) => privatTermin(a.calendarName)).map((a) => a.uid), userId: session.userId })).catch(() => null);
+  const privatText = (a: { uid: string; title: string }) => {
+    const w = wer?.von(a).wert;
+    return w && wer?.nurAndere(a) && w !== "familie" ? `Termin ${wer.partner[w]}` : PRIVAT_BELEGT;
+  };
   const timeOf = (d: Date) => d.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" });
   const problems = areas.filter((a) => a.missing || a.stale || a.error);
 
@@ -414,7 +420,7 @@ export default async function StartPage({ searchParams }: { searchParams: Promis
                       <span style={{ minWidth: 0 }}>
                         <b className="cal-abbr" style={{ ["--c" as string]: calColors.get(a.calendarName), ["--t" as string]: textOn(calColors.get(a.calendarName)) }} title={a.calendarName}>{calAbbr.get(a.calendarName)}</b>
                         {!a.allDay && <span className="num muted">{timeOf(a.startsAt)} </span>}
-                        {privatTermin(a.calendarName) ? <span className="muted" data-testid="termin-privat">{PRIVAT_BELEGT}</span> : a.title}
+                        {privatTermin(a.calendarName) ? <span className="muted" data-testid="termin-privat">{privatText(a)}</span> : a.title}
                         {a.location && !privatTermin(a.calendarName) && <span className="muted"> · {a.location}</span>}
                       </span>
                     </div>

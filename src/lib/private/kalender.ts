@@ -179,6 +179,8 @@ export type CalItem = {
   /** Teil einer Serie (Wiederholung); `exception` = dieser Termin wurde einzeln geändert. */
   repeat?: boolean;
   exception?: boolean;
+  /** Familienkalender: betrifft nur eine Person („nur Tom“) – fehlt bei „Familie“. */
+  betrifftText?: string;
 };
 
 type Row<T> = { id: string; data: T };
@@ -186,7 +188,7 @@ type Row<T> = { id: string; data: T };
  * Termin aus einem verbundenen Familienkalender. `id` gilt nur bis zum nächsten Abgleich; `ref` (UID +
  * Beginn) bleibt gleich und verbindet einen übernommenen Privat-Eintrag dauerhaft mit dem Termin.
  */
-export type ExternEvent = { id: string; ref?: string; title: string; day: string; endDay?: string | null; time?: string | null; calendar: string; color?: string | null; abbr?: string };
+export type ExternEvent = { id: string; ref?: string; title: string; day: string; endDay?: string | null; time?: string | null; calendar: string; color?: string | null; abbr?: string; /** Wen der Termin betrifft (fehlt = Familie). */ betrifft?: PartnerKey | "familie"; /** Anzeige, z. B. „nur Tom“ (nur wenn nicht Familie). */ betrifftText?: string };
 
 /** Dauerhafte Kennung eines Kalendertermins (auch bei Serien eindeutig: je Vorkommen eigener Beginn). */
 export const eventRef = (uid: string, startsAt: Date) => `${uid}|${startsAt.toISOString()}`;
@@ -319,7 +321,9 @@ export function buildCalendarItems(input: CalendarInput, from: string, to: strin
     // Schon als Paarzeit, Kinderzeit … übernommen: nur noch der Privat-Eintrag, kein Doppel.
     if (ev.ref && adopted.has(ev.ref)) continue;
     // Antippen → „Eintragen“ mit Tag, Uhrzeit und Titel des Termins (Art wählen, speichern).
-    out.push({ key: `extern:${ev.id}`, kind: "extern", day: ev.day, ...(end ? { endDay: end } : {}), ...(ev.time ? { from: ev.time } : {}), title: ev.title, people: ["a", "b"], href: `/privat/eintragen?vom=${encodeURIComponent(ev.id)}`, calendar: ev.calendar, color: ev.color ?? undefined, ...(ev.abbr ? { abbr: ev.abbr } : {}) });
+    // Wen betrifft der Termin (Familienkalender): nur eine Person → nur in deren Filter; Familie → beide.
+    const people: PartnerKey[] = ev.betrifft === "a" || ev.betrifft === "b" ? [ev.betrifft] : ["a", "b"];
+    out.push({ key: `extern:${ev.id}`, kind: "extern", day: ev.day, ...(end ? { endDay: end } : {}), ...(ev.time ? { from: ev.time } : {}), title: ev.title, people, href: `/privat/eintragen?vom=${encodeURIComponent(ev.id)}`, calendar: ev.calendar, color: ev.color ?? undefined, ...(ev.abbr ? { abbr: ev.abbr } : {}), ...(ev.betrifftText ? { betrifftText: ev.betrifftText } : {}) });
   }
   return out;
 }

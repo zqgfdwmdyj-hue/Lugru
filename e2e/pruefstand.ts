@@ -264,6 +264,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
       { ablauf: "Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen", erwartet: "Ausnahme bleibt bei Serienänderung erhalten; nur die gewählten Termine ändern/verschwinden", tests: ["privat.spec.ts › Serie anlegen"] },
       { ablauf: "Abendritual als Abfolge „zweimal Streicheln, danach Massage“", erwartet: "die nächsten Abende im Voraus: S, S, M, S, S, M", tests: ["privat.spec.ts › Abendritual als Abfolge"] },
       { ablauf: "Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe", erwartet: "nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor", tests: ["privat.spec.ts › Privates bleibt privat"] },
+      { ablauf: "Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel", erwartet: "Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder", tests: ["familie-watch.spec.ts › Familienkalender"] },
       { ablauf: "Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag", erwartet: "Zählungen nur im Zeitraum; vertauschte Daten getauscht, Zukunft auf heute gekürzt; „Zurück zum Monat“", tests: ["privat-rueckblick.spec.ts › Rückblick mit frei gewähltem Zeitraum"] },
     ],
     offen: ["Periode, Nähe, Tagebuch, Aufgaben – nur Unit-Tests", "Live nie prüfen (echte private Daten)"],
@@ -271,6 +272,7 @@ export const PRUEFSTAND: Record<string, Reiter> = {
   "/einstellungen": {
     abläufe: [
       { ablauf: "Testumgebung: Banner, Sperre nach außen, Übersicht", erwartet: "Banner auf jeder Seite, Verbindungen nach außen gesperrt, Mails abgefangen", tests: ["testumgebung.spec.ts › Banner"] },
+      { ablauf: "Apple Watch: Seite mit Anleitung, ein Kurzbefehl für alles (watch/frage), Ausprobieren", erwartet: "über Handy & Tesla erreichbar; Adresse + Schlüssel; Ausprobieren zeigt die Uhr-Antwort; freie Sätze → richtiger Befehl, ändernde nur per POST", tests: ["familie-watch.spec.ts › Apple Watch"] },
       { ablauf: "Zugang Assistenz (Büro): Finanz- und Privatseiten aufrufen", erwartet: "gesperrt, keine Finanz- oder Privatdaten", tests: ["teil2.spec.ts › Assistenz (Büro)"] },
       { ablauf: "B25.9 Privat „voll“ bei Nicht-Inhaber, va@…-Konto ohne VA-Rolle", erwartet: "Privatbereich gesperrt; beim Inhaber-Login auf „kein Zugang“ bereinigt + Dialog + Aufgabe; Knopf „Als VA-Rolle übernehmen“", tests: ["b25.spec.ts › B25.9"] },
     ],

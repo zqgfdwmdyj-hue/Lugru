@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { todayIso } from "@/lib/dates";
 import { familyEventPrefill, type EventPrefill } from "@/lib/private/calendar-data";
+import { betrifftKarte } from "@/lib/private/betrifft";
+import { betrifftAction } from "../eintrag-actions";
 import { defaultStatus, isDay, memberLabels } from "@/lib/private/logic";
 import type { RitualEntry } from "@/lib/private/kalender";
 import { loadEntries, myPartner, privateMembers, privateSettings, requirePrivate } from "@/lib/private/service";
@@ -25,7 +27,7 @@ function adoptData(art: Art, ev: EventPrefill, today: string): Record<string, un
  * `vom`: Termin aus dem Familienkalender übernehmen (z. B. Eishockey als Paarzeit) – Tag, Uhrzeit und Titel
  * sind vorbelegt; danach ersetzt der Privat-Eintrag den Termin im Privatkalender.
  */
-export default async function EintragenPage({ searchParams }: { searchParams: Promise<{ art?: string; tag?: string; vom?: string }> }) {
+export default async function EintragenPage({ searchParams }: { searchParams: Promise<{ art?: string; tag?: string; vom?: string; betrifft?: string }> }) {
   const session = await requirePrivate();
   const sp = await searchParams;
   const today = todayIso();
@@ -36,6 +38,13 @@ export default async function EintragenPage({ searchParams }: { searchParams: Pr
   const art = arten.find((a) => a === sp.art) ?? null;
   const settings = await privateSettings(session.tenantId);
   const me = myPartner(settings, session);
+  // Familienkalender: wen betrifft der Termin (gesetzt, am Namen erkannt oder Familie)?
+  const wer = ev ? (await betrifftKarte(session.tenantId, { uids: [ev.uid] })).von({ uid: ev.uid, title: ev.title }) : null;
+  const werOptionen: { wert: "a" | "b" | "familie"; label: string }[] = [
+    ...(["a", "b"] as const).filter((k) => k === me).map((k) => ({ wert: k, label: `${settings.partners[k]} (ich)` })),
+    { wert: "familie", label: "Familie / beide" },
+    ...(["a", "b"] as const).filter((k) => k !== me).map((k) => ({ wert: k, label: settings.partners[k] })),
+  ];
   const [members, rituals] = await Promise.all([
     art === "periode" ? privateMembers(session.tenantId) : Promise.resolve([]),
     art === "zuwendung" ? loadEntries<RitualEntry>(session, ["ritual"]) : Promise.resolve([]),
@@ -60,6 +69,25 @@ export default async function EintragenPage({ searchParams }: { searchParams: Pr
             <strong>{weekday(ev.day)}, {dmy(ev.day)} · {ev.from ? `${ev.from}${ev.to ? `–${ev.to}` : ""}` : "ganztägig"}</strong> {ev.title}
           </div>
           <div className="small muted">Was ist das für euch? Art wählen – Tag, Uhrzeit und Titel sind schon eingetragen. Danach steht der Termin als diese Art im Privatkalender (ohne Doppel). Im Familienkalender selbst ändert sich nichts.</div>
+        </section>
+      )}
+      {ev && wer && (
+        <section className="card card-pad stack" style={{ gap: 8 }} data-testid="betrifft">
+          {sp.betrifft === "ok" && <div className="notice notice-ok small" role="status" data-testid="betrifft-ok">Gespeichert – gilt für alle Termine dieser Serie.</div>}
+          {sp.betrifft === "fehler" && <div className="notice notice-warn small" role="alert">Konnte nicht gespeichert werden (kein Familienkalender-Termin).</div>}
+          <div className="small">
+            <strong>Wen betrifft der Termin?</strong>{" "}
+            <span data-testid="betrifft-aktuell">{wer.wert === "familie" ? "Familie / beide" : settings.partners[wer.wert]}</span>
+            <span className="muted"> · {wer.quelle === "gesetzt" ? "von Hand gesetzt" : wer.quelle === "titel" ? "am Namen im Titel erkannt" : "Standard"}</span>
+          </div>
+          <form action={betrifftAction} style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <input type="hidden" name="vom" value={sp.vom} />
+            {werOptionen.map((o) => (
+              <button key={o.wert} className={`btn btn-small${wer.wert === o.wert ? " btn-primary" : ""}`} type="submit" name="betrifft" value={o.wert} aria-pressed={wer.wert === o.wert} data-testid={`betrifft-${o.wert}`}>{o.label}</button>
+            ))}
+            {wer.quelle === "gesetzt" && <button className="btn btn-small" type="submit" name="betrifft" value="automatisch" data-testid="betrifft-automatisch">Automatisch</button>}
+          </form>
+          <div className="small muted">Betrifft der Termin nur {me ? settings.partners[me === "a" ? "b" : "a"] : "die andere Person"}, blockt er deinen Tagesplan nicht (keine Fahrzeit, nicht „Privat belegt“) und steht im Kalender mit „nur …“. Ohne Auswahl erkennt das System den Vornamen im Titel (z. B. „{settings.partners.b} Zahnarzt“).</div>
         </section>
       )}
       <section className="card card-pad stack" style={{ gap: 12 }}>

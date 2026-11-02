@@ -94,3 +94,18 @@ export async function repairLinkAction(fd: FormData) {
   revalidatePath("/privat", "layout");
   redirect(`/privat/pruefen?${r.ok ? "ok" : "fehler"}=${encodeURIComponent(r.message.slice(0, 200))}`);
 }
+
+/**
+ * Familienkalender: wen der Termin betrifft (Partner a/b, Familie oder wieder automatisch am Namen im Titel).
+ * Gilt für alle Termine derselben Serie; der Familienkalender selbst bleibt unverändert.
+ */
+export async function betrifftAction(fd: FormData): Promise<void> {
+  const session = await requirePrivate();
+  const vom = uuid.parse(fd.get("vom"));
+  const wert = z.enum(["a", "b", "familie", "automatisch"]).parse(fd.get("betrifft"));
+  const { betrifftSetzen } = await import("@/lib/private/betrifft");
+  const ok = await betrifftSetzen(session, vom, wert);
+  revalidatePath("/privat", "layout");
+  revalidatePath("/kalender/tagesplan");
+  redirect(`/privat/eintragen?vom=${vom}&betrifft=${ok ? "ok" : "fehler"}`);
+}
