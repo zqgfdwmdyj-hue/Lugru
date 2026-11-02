@@ -98,7 +98,7 @@ Zeichen: ✓ automatisch bestanden · ✕ automatisch fehlgeschlagen · ○ im l
 | Delegation | Anrufe (im Tagesplan) `/kalender/tagesplan?anrufe=1` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Wissen & Calls | Wissen `/wissen` | ○ 0/2 Abläufe | – | – |
 | Wissen & Calls | Calls (Consultant & Gruppe) `/calls` | ○ 0/5 Abläufe | – | 3 |
-| Privat | Übersicht `/privat` | ○ 0/5 Abläufe | – | 2 |
+| Privat | Übersicht `/privat` | ○ 0/6 Abläufe | – | 2 |
 | Privat | Kalender `/privat/kalender` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Eintragen `/privat/eintragen` | ○ nur Oberfläche | – | Funktionen ungeprüft |
 | Privat | Rückblick `/privat/rueckblick` | ○ nur Oberfläche | – | Funktionen ungeprüft |
@@ -445,6 +445,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 | Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen | Ausnahme bleibt bei Serienänderung erhalten; nur die gewählten Termine ändern/verschwinden | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Abendritual als Abfolge „zweimal Streicheln, danach Massage“ | die nächsten Abende im Voraus: S, S, M, S, S, M | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
 | Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe | nichts Privates sichtbar; nur mit Privat-Freigabe der Inhaberin im Konnektor | ○ im letzten Lauf nicht gelaufen | `privat.spec.ts` |
+| Familienkalender: „To do Ina: …“ → wichtige Aufgabe | genau eine Aufgabe (wichtig, Ina, Frist = Termintag); erledigt bleibt erledigt | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel | Termin nur der Partnerin blockt den eigenen Tagesplan nicht (keine Fahrzeit), „nur Tom“ im Kalender; Familie blockt wieder | ○ im letzten Lauf nicht gelaufen | `familie-watch.spec.ts` |
 | Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag | Zählungen nur im Zeitraum; vertauschte Daten getauscht, Zukunft auf heute gekürzt; „Zurück zum Monat“ | ○ im letzten Lauf nicht gelaufen | `privat-rueckblick.spec.ts` |
 
@@ -546,7 +547,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 
 ## Getrennt: automatisch · live · noch nicht geprüft
 
-**Automatisch** (116 Abläufe + Oberfläche auf 107 Seiten): 0 bestanden, 0 fehlgeschlagen, 116 nicht gelaufen.
+**Automatisch** (117 Abläufe + Oberfläche auf 107 Seiten): 0 bestanden, 0 fehlgeschlagen, 117 nicht gelaufen.
 
 - ○ Tagesübersicht: B15.2 Privater Kalender auf der Startseite – im letzten Lauf nicht gelaufen
 - ○ Tagesübersicht: B15.1 FBM-Versandbestätigung offen – im letzten Lauf nicht gelaufen
@@ -637,6 +638,7 @@ Für **jede** Seite der Navigation gilt zusätzlich (Desktop und Handy): Seite �
 - ○ Übersicht: Serie (wöchentlich) anlegen, einen Termin einzeln ändern, „dieser und alle folgenden“ ändern, ab hier löschen – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Abendritual als Abfolge „zweimal Streicheln, danach Massage“ – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Schutz: Konto ohne Privat, „nur Familie“, Suche, Fragefeld, Claude ohne Freigabe – im letzten Lauf nicht gelaufen
+- ○ Übersicht: Familienkalender: „To do Ina: …“ → wichtige Aufgabe – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Familienkalender: Wen betrifft der Termin (ich / Familie / Partnerin), Name im Titel – im letzten Lauf nicht gelaufen
 - ○ Übersicht: Rückblick mit frei gewähltem Zeitraum (von–bis, Schnellauswahl) und Wochenrückblick „7 Tage bis“ beliebigem Tag – im letzten Lauf nicht gelaufen
 - ○ Einstellungen: Testumgebung: Banner, Sperre nach außen, Übersicht – im letzten Lauf nicht gelaufen

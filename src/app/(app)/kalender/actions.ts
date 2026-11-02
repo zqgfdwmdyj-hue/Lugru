@@ -13,6 +13,7 @@ export async function syncCalendarNow(_prev: SyncState): Promise<SyncState> {
   try {
     const r = await syncCalendar(session.tenantId);
     revalidatePath("/kalender");
+    revalidatePath("/");
     if (!r) return { ok: false, message: "Kein Kalender verbunden." };
     return { ok: true, message: `Abgeglichen – ${r.appointments} eigene Termine, ${r.created + r.updated} Einträge geschrieben${r.fromCalendar ? `, ${r.fromCalendar} Änderungen aus dem Kalender übernommen` : ""}.` };
   } catch (e) {

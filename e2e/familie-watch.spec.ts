@@ -97,4 +97,36 @@ test.describe("Familienkalender und Apple Watch", () => {
     expect(unklar.r.zeige).toContain("Wie läuft's");
     expect((await page.request.post("/api/mobil/watch/frage", { data: { text: "Wie läuft's" }, headers: { Authorization: "Bearer mk_falsch_00000000000000000000" } })).status()).toBe(401);
   });
+
+  test("Familienkalender: „To do Ina: …“ wird beim Abgleich zur wichtigen Aufgabe von Ina – einmal, erledigt bleibt erledigt", async ({ page }) => {
+    const m = marke();
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const [{ id: INH }] = await sql<{ id: string }>("select id from users where email = 'inhaber'");
+    const morgen = plus(berlin(new Date()), 1);
+    await sql(
+      "insert into calendar_events (tenant_id, calendar_name, uid, title, starts_at, ends_at, all_day, day) values ($1, 'Familie (privat)', $2, $3, ($4::date + time '08:30') at time zone 'Europe/Berlin', ($4::date + time '09:00') at time zone 'Europe/Berlin', false, $4::date)",
+      [T, `fk-todo-${m}`, `To do Ina : Sachen Tafel herrichten ${m}`, morgen],
+    );
+    const aufgabe = async () => (await sql<{ title: string; priority: string; status: string; assignee_id: string | null; due_date: string; notes: string }>("select title, priority, status, assignee_id, due_date::text, notes from tasks where tenant_id = $1 and system_key like $2", [T, `kalender-todo:fk-todo-${m}|%`]));
+    await anmelden(page, "inhaber");
+    // Jede Änderung an Aufgaben stößt den Kalender-Abgleich an (wie im Betrieb zusätzlich alle 14 Min.)
+    const abgleich = async (titel: string) => {
+      await page.goto("/");
+      await page.getByTestId("add-task-toggle").first().click();
+      await page.locator("form.add-task-form #title").first().fill(titel);
+      await Promise.all([page.waitForResponse((r) => r.request().method() === "POST"), page.locator("form.add-task-form button[type=submit]").first().click()]);
+    };
+    await abgleich(`Anstoß ${m}`);
+    await expect.poll(async () => (await aufgabe()).length, { timeout: 20_000 }).toBe(1);
+    const [a] = await aufgabe();
+    expect(a).toMatchObject({ title: `Sachen Tafel herrichten ${m}`, priority: "critical", status: "open", assignee_id: INH });
+    expect(a.notes).toContain("Familie (privat)");
+    // Zweiter Abgleich: keine zweite Aufgabe; erledigt bleibt erledigt
+    await sql("update tasks set status = 'done', completed_at = now() where tenant_id = $1 and system_key like $2", [T, `kalender-todo:fk-todo-${m}|%`]);
+    await abgleich(`Anstoß 2 ${m}`);
+    await page.waitForTimeout(2000);
+    const nachher = await aufgabe();
+    expect(nachher).toHaveLength(1);
+    expect(nachher[0].status).toBe("done");
+  });
 });

@@ -777,6 +777,17 @@ zurück auf Familie → blockt wieder; Apple-Watch-Seite über Handy & Tesla err
 Ausprobieren „Was ist dringend?“ zeigt die Uhr-Antwort, „Erledigt“ nur erkannt; `watch/frage`: Wie läuft's → stand,
 GET dringend, Notiz per GET 405 / per POST legt die Aufgabe an, „Blumen“ → Hilfe (422), falscher Schlüssel 401.
 
+## Familienkalender „To do <Name>: …“ → To-do-Liste (Wunsch 02.11.)
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Termin „To do Ludwig : Sachen Tafel herrichten“ im Familienkalender wird Aufgabe mit höchster Priorität | ❌ | ✅ | Bei jedem Kalender-Abgleich (alle 14 Min., beim „Jetzt abgleichen“ und nach Änderungen an Aufgaben) prüft `kalenderTodosUebernehmen` (`src/lib/calendar/kalender-todos.ts`) alle Kalender außer dem eigenen „Seller-System“-Kalender, von vor 3 bis in 14 Tagen. Erkannt werden „To do / ToDo / To-Do / Aufgabe / Erledigen (für) <Vorname>: …“ und „<Vorname>: To do …“ (`kalenderTodo`, Vorname aus dem Konto und aus den Privat-Einstellungen). Daraus entsteht eine Aufgabe für diese Person: Titel = Text nach dem Doppelpunkt, Priorität **wichtig** (höchste), Frist = Termintag, Notiz mit Kalender, Uhrzeit, Ort. Neue wichtige Aufgaben melden sich per **Push** (Watch: „Erledigt“). Je Termin (bei Serien je Vorkommen) genau einmal, danach nie überschrieben: erledigt bleibt erledigt, eigene Änderungen bleiben. Ohne Namen („To do: Einkaufen“) wird niemandem etwas zugeordnet. Der Kalender selbst wird nicht geändert |
+
+Abnahme: Unit `kalender-todo` (Schreibweisen wie im Familienkalender, ganzer Titel ohne Text, keine Fehltreffer bei
+„Ludwig Zahnarzt“, „Ludwiga“, „Fortbildung Arbeit“, „To do: …“ ohne Namen); e2e `familie-watch`: Termin „To do Ina :
+Sachen Tafel herrichten“ → nach dem Abgleich genau eine Aufgabe „Sachen Tafel herrichten“, wichtig, Ina zugeordnet, Notiz
+mit Kalendername; als erledigt markiert → nächster Abgleich legt nichts neu an und öffnet nichts wieder.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |
@@ -1139,3 +1150,6 @@ nie in Chats oder Mails.
 80. **Familienkalender**: Termine deiner Frau einmal antippen und auf ihren Namen stellen – oder ihr Vorname steht im
     Titel („Tom Zahnarzt“), dann erkennt das System es selbst. Gilt für die ganze Serie. In den Privat-Einstellungen
     müssen eure Vornamen und „wer bin ich“ stimmen.
+81. **„To do Ludwig: …“ im Familienkalender**: Deine Frau (oder du) schreibt einfach „To do Ludwig: …“ in den Titel –
+    beim nächsten Abgleich (spätestens nach 14 Minuten) steht es als wichtige Aufgabe in deiner Liste und kommt als Push.
+    Geht auch „ToDo für Ludwig – …“. Für deine Frau genauso mit ihrem Vornamen, wenn sie ein eigenes Konto hat.

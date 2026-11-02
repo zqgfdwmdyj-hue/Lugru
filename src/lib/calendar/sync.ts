@@ -128,12 +128,18 @@ export async function syncCalendar(tenantId: string): Promise<SyncResult | null>
 async function syncOnce(tenantId: string): Promise<SyncResult | null> {
   const c = await calendarClient(tenantId);
   const hasFeeds = (await calendarFeeds(tenantId)).length > 0;
-  if (!c && !hasFeeds) return null;
+  if (!c && !hasFeeds) {
+    // Ohne Verbindung trotzdem die gespeicherten Termine auf „To do <Name>: …“ prüfen.
+    await import("./kalender-todos").then((m) => m.kalenderTodosUebernehmen(tenantId)).catch((e) => console.error("[Kalender-To-dos]", e instanceof Error ? e.message : e));
+    return null;
+  }
   try {
     const range = ownRange();
     const apple = c ? await runSync(tenantId, c, range) : null;
     const feeds = await readFeeds(tenantId, range);
     await replaceEvents(tenantId, [...(apple?.rows ?? []), ...feeds.rows]);
+    // „To do <Name>: …“ im Familienkalender → wichtige Aufgabe dieser Person (Fehler hier stoppen den Abgleich nicht).
+    await import("./kalender-todos").then((m) => m.kalenderTodosUebernehmen(tenantId)).catch((e) => console.error("[Kalender-To-dos]", e instanceof Error ? e.message : e));
     const read = [...(apple?.read ?? []), ...feeds.read];
     const r: SyncResult = {
       created: apple?.created ?? 0,
