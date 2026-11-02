@@ -810,9 +810,26 @@ function webNachbau(req, res, url, body) {
   const land = /\/upload\/([a-z]+)/.exec(url.pathname)?.[1] ?? null;
   if (seite === "upload" && req.method === "POST") {
     const name = /filename="([^"]+)"/.exec(body)?.[1] ?? "?";
+    // Befund 02.11.: Upload per Skript (wie BQool) – „toast“ = Hinweis nur 0,7 s sichtbar, „still“ = gar keine Meldung,
+    // „ajaxfehler“ = Antwort {success:false}.
+    if (req.headers["x-ajax"]) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (land === "ajaxfehler") return res.end(JSON.stringify({ success: false, message: `Invalid header line in ${name}` }));
+      webUploads.push({ dienst, name, land, groesse: body.length, at: new Date().toISOString() });
+      return res.end(JSON.stringify({ success: true, code: 0 }));
+    }
     if (land === "kaputt") return html(200, `<p>Import fehlgeschlagen: ${name} ungültig</p>`);
     webUploads.push({ dienst, name, land, groesse: body.length, at: new Date().toISOString() });
     return html(200, `<p>Import erfolgreich: ${name} übernommen</p>`);
+  }
+  if (["toast", "still", "ajaxfehler", "nichts"].includes(land ?? "")) {
+    // Feste Verlaufstabelle mit „Completed“/„Failed“ – darf weder als Erfolg noch als Fehler zählen.
+    const verlauf = '<table><tr><td>alt_1.txt</td><td>Completed</td></tr><tr><td>alt_2.txt</td><td>Failed</td></tr></table>';
+    if (land === "nichts") return html(200, `<form><input type="file" name="datei"><button type="button">Hochladen</button></form>${verlauf}`);
+    const toast = land === "toast" ? 'const t = document.createElement("div"); t.textContent = "Your file has been submitted."; document.body.appendChild(t); setTimeout(() => t.remove(), 700);' : "";
+    return html(200, `<form id="f"><input type="file" name="datei"><button type="submit">Upload</button></form>${verlauf}<script>
+document.getElementById("f").addEventListener("submit", async (e) => { e.preventDefault(); const r = await fetch(location.href, { method: "POST", body: new FormData(e.target), headers: { "X-Ajax": "1" } }); await r.json(); ${toast} });
+</script>`);
   }
   return html(200, '<form method="post" enctype="multipart/form-data"><input type="file" name="datei"><button type="submit">Hochladen</button></form>');
 }

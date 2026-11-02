@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import { loeschen, neuerSchluessel, speichern } from "@/lib/medien/ablage";
 import { storeFile } from "@/lib/orders/service";
 import { upsertSystemTask } from "@/lib/tasks/system";
+import { jsonFehler, uploadBewerten, WIE_TEXT, type UploadAntwort } from "./upload-logic";
 import { ANMELDE_KNOPF, anmeldeWarten, CAPTCHA_DOM, CAPTCHA_TITEL, COOKIE_KNOPF, DEBUG_TAGE, debugName, mitBildschirmfoto, seiteOhneQuery } from "./login-logic";
 
 // Browser-Automatik (sellerboard-Kostenimport, BQool-Upload): nur auf Knopfdruck, höchstens ein Lauf gleichzeitig
@@ -138,25 +139,68 @@ export async function anmelden(page: Page, o: { loginUrl: string; email: string;
   await log("Angemeldet");
 }
 
-/** Datei auf einer Upload-Seite hochladen und auf eine Erfolgsmeldung warten. */
-export async function dateiHochladen(page: Page, o: { url: string; datei: { name: string; mimeType: string; buffer: Buffer }; erfolg: RegExp; fehler?: RegExp }, log: (t: string) => Promise<void>) {
+/**
+ * Datei auf einer Upload-Seite hochladen und das Ergebnis erkennen (upload-logic.ts): neuer Erfolgs-/Fehlertext (auch
+ * kurz eingeblendete Hinweise), Dateiname neu in der Liste, Antwort des Servers auf die Upload-Anfrage. Wirft bei
+ * Fehler; „unklar“ (nichts erkannt, aber auch kein Fehler) wird zurückgegeben – der Aufrufer entscheidet.
+ */
+export async function dateiHochladen(page: Page, o: { url: string; datei: { name: string; mimeType: string; buffer: Buffer }; erfolg: RegExp; fehler?: RegExp }, log: (t: string) => Promise<void>): Promise<{ wie: "text" | "liste" | "server" | "unklar"; grund: string }> {
   // Jede Datei auf frisch geladener Upload-Seite (nach dem Hochladen zeigt die Seite oft nur die Erfolgsmeldung).
   await page.goto(o.url, { waitUntil: "domcontentloaded", timeout: 45_000 });
   await cookiesWeg(page);
   await page.locator('input[type="file"]').first().setInputFiles(o.datei, { timeout: 20_000 });
-  const knopf = page.locator('button[type="submit"], input[type="submit"], button:has-text("Import"), button:has-text("Upload"), button:has-text("Hochladen")').first();
-  if (await knopf.count()) await knopf.click();
-  const ende = Date.now() + 60_000;
-  while (Date.now() < ende) {
-    const text = await page.locator("body").innerText().catch(() => "");
-    if (o.fehler?.test(text)) throw new AutomatikAbbruch(`Upload abgelehnt: ${(o.fehler.exec(text)?.[0] ?? "Fehler").slice(0, 160)}`);
-    if (o.erfolg.test(text)) {
-      await log(`${o.datei.name} hochgeladen`);
-      return;
+  await page.waitForTimeout(400);
+  const seitenText = () => page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
+  const vorher = await seitenText();
+  // Kurz eingeblendete Hinweise („Toasts“) festhalten, auch wenn sie gleich wieder verschwinden.
+  // Als Text übergeben (nicht als Funktion), damit der Bundler nichts hineinbaut, was es im Browser nicht gibt.
+  await page
+    .evaluate(
+      `(() => { window.__uploadNeu = ""; const dazu = (t) => { const x = (t || "").trim(); if (x && window.__uploadNeu.length < 20000) window.__uploadNeu += "\\n" + x; };
+        new MutationObserver((ms) => { for (const m of ms) { if (m.type === "characterData") dazu(m.target.textContent); m.addedNodes.forEach((n) => dazu(n.textContent)); } })
+          .observe(document.body, { childList: true, subtree: true, characterData: true }); })()`,
+    )
+    .catch(() => undefined);
+  // Antworten auf Upload-Anfragen (nicht GET, mit der Datei) mitschreiben.
+  const antworten: UploadAntwort[] = [];
+  const marke = Buffer.from(o.datei.name);
+  const mitschreiben = async (r: import("playwright").Response) => {
+    const req = r.request();
+    if (req.method() === "GET") return;
+    const typ = (await req.allHeaders().catch(() => ({}) as Record<string, string>))["content-type"] ?? "";
+    const mitDatei = typ.includes("multipart/form-data") || Boolean(req.postDataBuffer()?.includes(marke));
+    if (!mitDatei) return;
+    let fehlerText: string | null = null;
+    if ((r.headers()["content-type"] ?? "").includes("json")) fehlerText = jsonFehler((await r.text().catch(() => "")).slice(0, 20_000));
+    antworten.push({ methode: req.method(), status: r.status(), mitDatei, fehlerText });
+  };
+  page.on("response", mitschreiben);
+  try {
+    const knopf = page.locator('button[type="submit"], input[type="submit"], button:has-text("Import"), button:has-text("Upload"), button:has-text("Hochladen")').first();
+    if (await knopf.count()) await knopf.click();
+    const start = Date.now();
+    let serverOkSeit: number | null = null;
+    for (;;) {
+      const lange = Date.now() - start > 60_000;
+      // Server hat angenommen: noch 10 s auf eine Text-Meldung warten, dann zählt die Server-Antwort.
+      if (serverOkSeit === null && antworten.some((a) => a.status >= 200 && a.status < 400 && !a.fehlerText)) serverOkSeit = Date.now();
+      const fertig = lange || (serverOkSeit !== null && Date.now() - serverOkSeit > 10_000);
+      const neu = String((await page.evaluate("window.__uploadNeu || ''").catch(() => "")) ?? "");
+      const b = uploadBewerten({ vorher, jetzt: await seitenText(), neu, datei: o.datei.name, antworten, erfolg: o.erfolg, fehler: o.fehler, fertig });
+      if (b.art === "fehler") throw new AutomatikAbbruch(`Upload abgelehnt: ${b.grund ?? "Fehler"}`);
+      if (b.art === "ok") {
+        await log(`${o.datei.name} hochgeladen (${WIE_TEXT[b.wie!]}${b.grund && b.wie === "text" ? `: „${b.grund}“` : ""})`);
+        return { wie: b.wie!, grund: b.grund ?? "" };
+      }
+      if (fertig) {
+        await log(`${o.datei.name}: keine Bestätigung erkannt (${b.grund ?? "–"}) – bitte im Dienst prüfen`);
+        return { wie: "unklar", grund: b.grund ?? "keine Bestätigung erkannt" };
+      }
+      await page.waitForTimeout(300);
     }
-    await page.waitForTimeout(1000);
+  } finally {
+    page.off("response", mitschreiben);
   }
-  throw new AutomatikAbbruch(`Keine Erfolgsmeldung nach dem Hochladen von ${o.datei.name}.`);
 }
 
 /**

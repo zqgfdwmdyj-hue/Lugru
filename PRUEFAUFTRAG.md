@@ -788,6 +788,21 @@ Abnahme: Unit `kalender-todo` (Schreibweisen wie im Familienkalender, ganzer Tit
 Sachen Tafel herrichten“ → nach dem Abgleich genau eine Aufgabe „Sachen Tafel herrichten“, wichtig, Ina zugeordnet, Notiz
 mit Kalendername; als erledigt markiert → nächster Abgleich legt nichts neu an und öffnet nichts wieder.
 
+## BQool-Upload: „Keine Erfolgsmeldung“, obwohl es geklappt hat (Befund 02.11., DE/FR/IT/ES)
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Erfolg erkennen | ❌ (nur feste Wörter im Seitentext innerhalb 60 s; BQool zeigt offenbar keinen davon bzw. nur kurz einen Hinweis → alle vier Länder „Fehler“) | ✅ | `src/lib/automatik/upload-logic.ts` + `dateiHochladen` in `runner.ts`. Es zählt nur, was **nach dem Klick neu** ist (feste Texte wie eine Verlaufstabelle mit „Completed/Failed“ zählen nicht): (1) neuer Fehlertext oder abgelehnte Upload-Anfrage (HTTP ≥ 400 bzw. JSON `success:false`/`error`) → Fehler; (2) neuer Erfolgstext – auch ein Hinweis, der nach einer halben Sekunde wieder weg ist (Beobachter auf der Seite), mehr Wörter („submitted“, „wird verarbeitet“, „queued“ …); (3) Dateiname neu in der Upload-Liste; (4) Server hat die Upload-Anfrage angenommen (HTTP 2xx) und 10 s kommt nichts anderes → „vom Server angenommen“. Das Protokoll nennt den Weg („Bestätigung auf der Seite“ / „Datei in der Upload-Liste“ / „vom Server angenommen“) |
+| Nichts erkannt | ❌ Fehler + wichtige Aufgabe | ✅ | gelb **„bitte in BQool prüfen – keine Bestätigung erkannt“**, Status „hochgeladen – Bestätigung bitte prüfen“, nur eine normale Aufgabe. sellerboard bleibt streng (bricht ohne Bestätigung ab; die Gegenprüfung am Folgetag findet den Rest) |
+| Falsche Meldung korrigieren | ❌ | ✅ | Unter **Anbindungen → Importe/Exporte** an jeder roten/gelben Zeile **„hat geklappt“** (nur Inhaber): Zeile wird „hochgeladen (von Hand bestätigt)“, Vermerk mit Name und Zeit im Protokoll (nichts gelöscht), Status neu berechnet, Aufgabe erledigt, wenn alles hochgeladen ist (`bqoolUploadBestaetigen` in `src/lib/bqool/export-service.ts`) – damit lassen sich auch die vier Einträge vom 02.11. richtigstellen |
+
+Abnahme: Unit `upload-logic` (feste Texte zählen nicht, kurzer Hinweis, Fehler vor Erfolg, Dateiname in Liste,
+Server-Annahme erst am Ende, JSON-Fehler, „nicht erfolgreich“, Status aus Protokoll); e2e `bqool-upload-erkennung`
+(Test-Nachbau: DE Hinweis 0,7 s, FR ohne Meldung, IT JSON-Ablehnung → „2 von 3 Ländern hochgeladen … IT: Fehler … Invalid
+header line“; Seite ohne Upload → „bitte in BQool prüfen“, normale Aufgabe → „hat geklappt“ → von Hand bestätigt, Status
+fertig, Aufgabe erledigt); Regression bqool-dateien, b24-automatik, arbitrageone, teil2, geschaeft, b15-anzeige, b20-rest
+(alle bestanden), Unit 2112 bestanden.
+
 ## Familientermine direkt im Tagesplan und Kalender zuordnen (Wunsch 02.11.: „Fortbildung“ der Partnerin blockt meinen Tag)
 
 | Punkt | vorher | nachher | Fundstelle |

@@ -6,7 +6,7 @@ import { db, schema } from "@/db";
 import { REPORT_KINDS } from "@/lib/reports/amazon";
 import { MARKT_BERICHTE, berichtVonTyp } from "@/lib/amazon-markt/store";
 import { landVonId } from "@/lib/amazon-markt/logic";
-import { aoJetztAbholenAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
+import { aoJetztAbholenAction, bqoolUploadBestaetigenAction, deleteIntegrationAction, fetchAmazonReportsNow, requestAmazonReport, requestKontoBerichteNow, requestMarktBerichteNow, runAllNow, saveIntegrationAction } from "./actions";
 import { aoImporte, aoLaeufe } from "@/lib/arbitrageone/abruf";
 import { AO_EXPORTE } from "@/lib/arbitrageone/logic";
 import { TestButton } from "./test-button";
@@ -224,7 +224,23 @@ export default async function AnbindungenPage({ searchParams }: { searchParams: 
                   <td>{u.land}</td>
                   <td><a href={`/repricer/bqool?export=${u.exportId}`}>{u.datei}</a></td>
                   <td className="num right">{u.zeilen ?? "–"}</td>
-                  <td>{u.ok ? <span className="tag tag-ok">hochgeladen</span> : <span style={{ color: "var(--danger)" }}>{u.text.replace(/^[A-Z]{2}: [^–]+– /, "")}</span>}</td>
+                  <td>
+                    {u.ok ? (
+                      <span className="tag tag-ok">{u.vonHand ? "hochgeladen (von Hand bestätigt)" : "hochgeladen"}</span>
+                    ) : u.unklar ? (
+                      <span className="tag tag-warn" data-testid="bq-upload-pruefen">bitte in BQool prüfen – keine Bestätigung erkannt</span>
+                    ) : (
+                      <span style={{ color: "var(--danger)" }}>{u.text.replace(/^[A-Z]{2}: [^–]+– /, "")}</span>
+                    )}
+                    {!u.ok && (
+                      <form action={bqoolUploadBestaetigenAction} style={{ display: "inline", marginLeft: 6 }}>
+                        <input type="hidden" name="exportId" value={u.exportId} />
+                        <input type="hidden" name="land" value={u.land} />
+                        <input type="hidden" name="zeit" value={u.zeit} />
+                        <button type="submit" className="btn btn-small" title="In BQool nachgesehen: die Datei ist angekommen" data-testid="bq-upload-geklappt">hat geklappt</button>
+                      </form>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

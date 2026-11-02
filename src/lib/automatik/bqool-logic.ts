@@ -36,11 +36,25 @@ export function bqoolZeilen(text: string): number {
   return Math.max(0, text.split("\n").filter((z) => z.trim()).length - 2);
 }
 
-export type BqoolLandErgebnis = { land: string; datei: string; zeilen: number; ok: boolean; fehler?: string };
+export type BqoolLandErgebnis = { land: string; datei: string; zeilen: number; ok: boolean; fehler?: string; /** Hochgeladen, aber keine Bestätigung erkannt – kein Fehler, bitte in BQool prüfen. */ unklar?: boolean; wie?: string };
 
 /** „DE: 824 Zeilen hochgeladen · FR: Fehler Login“ */
 export const zeilenText = (n: number) => `${n.toLocaleString("de-DE")} ${n === 1 ? "Zeile" : "Zeilen"}`;
 
 export function bqoolErgebnisText(r: BqoolLandErgebnis[]): string {
-  return r.map((x) => (x.ok ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen` : `${x.land}: Fehler – ${x.fehler ?? "unbekannt"}`)).join(" · ");
+  return r.map((x) => (x.ok ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen` : x.unklar ? `${x.land}: ${zeilenText(x.zeilen)} hochgeladen, Bestätigung nicht erkannt – bitte in BQool prüfen` : `${x.land}: Fehler – ${x.fehler ?? "unbekannt"}`)).join(" · ");
+}
+
+type ProtokollEintrag = { zeit: string; land?: string; ok?: boolean; unklar?: boolean };
+
+/** Status einer Übertragung aus dem jeweils letzten Upload je Land (nach Bestätigen von Hand neu berechnet). */
+export function bqoolStatusAusProtokoll(protokoll: ProtokollEintrag[]): "fertig" | "teilweise" | "fehler" | "pruefen" | null {
+  const letzte = new Map<string, ProtokollEintrag>();
+  for (const p of [...protokoll].filter((x) => x.land).sort((a, b) => a.zeit.localeCompare(b.zeit))) letzte.set(p.land!, p);
+  const l = [...letzte.values()];
+  if (!l.length) return null;
+  const fehler = l.filter((x) => !x.ok && !x.unklar).length;
+  const ok = l.filter((x) => x.ok).length;
+  if (fehler) return ok || l.some((x) => x.unklar) ? "teilweise" : "fehler";
+  return l.some((x) => x.unklar) ? "pruefen" : "fertig";
 }

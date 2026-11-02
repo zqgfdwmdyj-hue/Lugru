@@ -314,3 +314,26 @@ export async function bqoolEinstellungenSpeichern(tenantId: string, patch: NonNu
     .set({ settings: { ...alt, bqool: { ...(alt.bqool ?? {}), ...patch } } })
     .where(eq(schema.tenants.id, tenantId));
 }
+
+/**
+ * Ein BQool-Upload, den die Automatik nicht bestätigen konnte (oder als Fehler gemeldet hat), von Hand als
+ * hochgeladen bestätigen – z. B. nach einem Blick in BQool. Nichts wird gelöscht: der Eintrag bekommt „von Hand
+ * bestätigt“, ein Vermerk kommt ins Protokoll, der Status wird neu berechnet; ist alles hochgeladen, wird die Aufgabe erledigt.
+ */
+export async function bqoolUploadBestaetigen(tenantId: string, exportId: string, land: string, zeit: string, wer: string): Promise<boolean> {
+  const { bqoolStatusAusProtokoll, zeilenText } = await import("@/lib/automatik/bqool-logic");
+  const E = schema.bqoolExporte;
+  const [e] = await db.select({ protokoll: E.protokoll }).from(E).where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
+  if (!e) return false;
+  const i = e.protokoll.findIndex((p) => p.land === land && p.zeit === zeit && !p.ok);
+  if (i < 0) return false;
+  const jetzt = new Date().toISOString();
+  const alt = e.protokoll[i];
+  const neu = [...e.protokoll];
+  neu[i] = { ...alt, ok: true, unklar: undefined, vonHand: { von: wer, am: jetzt }, text: `${land}: ${alt.datei ?? ""} – ${zeilenText(alt.zeilen ?? 0)} hochgeladen (von Hand bestätigt)` };
+  neu.push({ zeit: jetzt, text: `${land}: von Hand als hochgeladen bestätigt (${wer}) – vorher: ${alt.text.replace(/^[A-Z]{2}: /, "").slice(0, 160)}` });
+  const status = bqoolStatusAusProtokoll(neu);
+  await db.update(E).set({ protokoll: neu, ...(status ? { uebertragung: status } : {}) }).where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
+  if (status === "fertig") await resolveSystemTask(db, tenantId, `automatik-bqool-${exportId}`);
+  return true;
+}

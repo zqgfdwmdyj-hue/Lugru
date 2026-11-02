@@ -136,3 +136,18 @@ export async function aoJetztAbholenAction(): Promise<void> {
   revalidatePath("/anbindungen");
   redirect(`/anbindungen?ao=${r.status}#importe-arbitrageone`);
 }
+
+/** BQool-Upload von Hand als hochgeladen bestätigen („hat geklappt“) – nur der Inhaber. */
+export async function bqoolUploadBestaetigenAction(formData: FormData) {
+  const session = await requireOwner();
+  const exportId = String(formData.get("exportId") ?? "");
+  const land = String(formData.get("land") ?? "");
+  const zeit = String(formData.get("zeit") ?? "");
+  if (/^[0-9a-f-]{36}$/i.test(exportId) && /^[A-Z]{2}$/.test(land) && zeit.length <= 40) {
+    const { bqoolUploadBestaetigen } = await import("@/lib/bqool/export-service");
+    await bqoolUploadBestaetigen(session.tenantId, exportId, land, zeit, session.name || session.email);
+  }
+  revalidatePath("/anbindungen");
+  revalidatePath("/repricer/bqool");
+  redirect("/anbindungen#importe-exporte");
+}

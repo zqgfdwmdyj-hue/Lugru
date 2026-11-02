@@ -6,12 +6,15 @@ import { sellerboardImportDatei, sellerboardProtokoll } from "@/lib/ek-import/se
 import { getIntegration } from "@/lib/integrations/store";
 import { upsertSystemTask } from "@/lib/tasks/system";
 import { bqoolErgebnisText, bqoolUploadAdressen, bqoolZeilen, zeilenText, type BqoolLandErgebnis } from "./bqool-logic";
-import { anmelden, cookiesWeg, dateiHochladen, mitBrowser } from "./runner";
+import { anmelden, AutomatikAbbruch, cookiesWeg, dateiHochladen, mitBrowser } from "./runner";
+import { UPLOAD_ERFOLG as ERFOLG, UPLOAD_FEHLER as FEHLER } from "./upload-logic";
 
 // Übertragungen per Browser-Automatik – nur auf Knopfdruck aus der Oberfläche.
 
-const ERFOLG = /erfolgreich|successfully|success|importiert|imported|uploaded|hochgeladen|abgeschlossen|completed/i;
-const FEHLER = /fehlgeschlagen|failed|ungültig|invalid format|error:/i;
+/** sellerboard: ohne erkannte Bestätigung lieber abbrechen (die Gegenprüfung am Folgetag findet den Rest). */
+const sellerboardBestaetigt = (h: { wie: string; grund: string }, name: string) => {
+  if (h.wie === "unklar") throw new AutomatikAbbruch(`Keine Bestätigung erkannt nach dem Hochladen von ${name} (${h.grund}) – bitte in sellerboard prüfen.`);
+};
 
 export async function anSellerboardUebertragen(tenantId: string, ekImportId: string): Promise<{ ok: boolean; text: string }> {
   const z = await getIntegration(tenantId, "sellerboard_web");
@@ -20,7 +23,7 @@ export async function anSellerboardUebertragen(tenantId: string, ekImportId: str
   if (!datei) return { ok: false, text: "Import nicht gefunden." };
   const r = await mitBrowser(tenantId, { titel: "sellerboard-Kostenimport", aufgabeKey: `automatik-sellerboard-${ekImportId}`, link: `/einkauf/ek-import?id=${ekImportId}` }, async (page, log) => {
     await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password!, dienst: "sellerboard", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
-    await dateiHochladen(page, { url: z.importUrl!, datei: { name: datei.name, mimeType: "application/vnd.ms-excel", buffer: Buffer.from(datei.bytes) }, erfolg: ERFOLG, fehler: FEHLER }, log);
+    sellerboardBestaetigt(await dateiHochladen(page, { url: z.importUrl!, datei: { name: datei.name, mimeType: "application/vnd.ms-excel", buffer: Buffer.from(datei.bytes) }, erfolg: ERFOLG, fehler: FEHLER }, log), datei.name);
   });
   const text = r.ok ? `Automatisch zu sellerboard übertragen (${r.protokoll.length} Schritte mit Bildschirmfoto).` : `Automatische Übertragung abgebrochen: ${r.fehler}`;
   await sellerboardProtokoll(tenantId, ekImportId, r.ok ? "automatik_ok" : "automatik_fehler", text);
@@ -37,7 +40,7 @@ export async function anSellerboardDateiUebertragen(tenantId: string, datei: { n
   const typ = /\.xlsx$/i.test(datei.name) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : /\.csv$/i.test(datei.name) ? "text/csv" : "application/vnd.ms-excel";
   const r = await mitBrowser(tenantId, { titel: "sellerboard-Kostenimport (ArbitrageOne-Datei)", aufgabeKey: "automatik-sellerboard-arbitrageone", link: "/anbindungen?p=arbitrageone_web#arbitrageone_web" }, async (page, log) => {
     await anmelden(page, { loginUrl: z.loginUrl || "https://app.sellerboard.com/de/auth/login", email: z.email!, password: z.password!, dienst: "sellerboard", selektoren: { email: z.feldEmail, passwort: z.feldPasswort, knopf: z.feldKnopf } }, log);
-    await dateiHochladen(page, { url: z.importUrl!, datei: { name: datei.name, mimeType: typ, buffer: Buffer.from(datei.bytes) }, erfolg: ERFOLG, fehler: FEHLER }, log);
+    sellerboardBestaetigt(await dateiHochladen(page, { url: z.importUrl!, datei: { name: datei.name, mimeType: typ, buffer: Buffer.from(datei.bytes) }, erfolg: ERFOLG, fehler: FEHLER }, log), datei.name);
   });
   return r.ok ? { ok: true, text: "unverändert an sellerboard weitergereicht" } : { ok: false, text: `Weitergabe an sellerboard abgebrochen: ${r.fehler}` };
 }
@@ -69,8 +72,9 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
         continue;
       }
       try {
-        await dateiHochladen(page, { url, datei: { name: d.name, mimeType: "text/plain", buffer: Buffer.from(d.text, "utf8") }, erfolg: ERFOLG, fehler: FEHLER }, log);
-        ergebnis.push({ land: d.land, datei: d.name, zeilen, ok: true });
+        const h = await dateiHochladen(page, { url, datei: { name: d.name, mimeType: "text/plain", buffer: Buffer.from(d.text, "utf8") }, erfolg: ERFOLG, fehler: FEHLER }, log);
+        // Nichts erkannt, aber auch kein Fehler → „bitte in BQool prüfen“ (gelb), nicht „Fehler“.
+        ergebnis.push(h.wie === "unklar" ? { land: d.land, datei: d.name, zeilen, ok: false, unklar: true, fehler: h.grund } : { land: d.land, datei: d.name, zeilen, ok: true, wie: h.wie });
       } catch (e) {
         const grund = (e instanceof Error ? e.message : String(e)).slice(0, 200);
         ergebnis.push({ land: d.land, datei: d.name, zeilen, ok: false, fehler: grund });
@@ -79,21 +83,27 @@ export async function anBqoolUebertragen(tenantId: string, exportId: string): Pr
     }
   });
   const okLaender = ergebnis.filter((x) => x.ok);
-  const fehlerLaender = ergebnis.filter((x) => !x.ok);
+  const fehlerLaender = ergebnis.filter((x) => !x.ok && !x.unklar);
+  const unklarLaender = ergebnis.filter((x) => x.unklar);
   const [e] = await db.select({ protokoll: E.protokoll }).from(E).where(eq(E.id, exportId));
-  const jeLand = ergebnis.map((x) => ({ zeit: zeiten.get(x.land) ?? new Date().toISOString(), text: x.ok ? `${x.land}: ${x.datei} – ${zeilenText(x.zeilen)} hochgeladen` : `${x.land}: ${x.datei} – Fehler: ${x.fehler}`, land: x.land, datei: x.datei, zeilen: x.zeilen, ok: x.ok }));
-  const status = !r.ok ? "fehler" : fehlerLaender.length ? (okLaender.length ? "teilweise" : "fehler") : "fertig";
+  const jeLand = ergebnis.map((x) => ({ zeit: zeiten.get(x.land) ?? new Date().toISOString(), text: bqoolErgebnisText([x]).replace(/^([A-Z]{2}): /, `$1: ${x.datei} – `), land: x.land, datei: x.datei, zeilen: x.zeilen, ok: x.ok, ...(x.unklar ? { unklar: true } : {}) }));
+  const status = !r.ok ? "fehler" : fehlerLaender.length ? (okLaender.length || unklarLaender.length ? "teilweise" : "fehler") : unklarLaender.length ? "pruefen" : "fertig";
   await db
     .update(E)
     .set({ uebertragung: status, protokoll: [...(e?.protokoll ?? []), ...r.protokoll.map((p) => ({ zeit: p.zeit, text: p.text })), ...jeLand, { zeit: new Date().toISOString(), text: r.ok ? `Ergebnis: ${bqoolErgebnisText(ergebnis)}` : `Abgebrochen: ${r.fehler}` }] })
     .where(and(eq(E.tenantId, tenantId), eq(E.id, exportId)));
   if (r.ok && fehlerLaender.length) {
-    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${fehlerLaender.map((x) => x.land).join(", ")} nicht hochgeladen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie übrigen Länder sind hochgeladen. Für die fehlenden Länder die Upload-Seite unter Anbindungen → BQool prüfen und erneut übertragen oder die Datei selbst hochladen.`, priority: "critical", category: "system", link: `/repricer/bqool?export=${exportId}` });
+    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${fehlerLaender.map((x) => x.land).join(", ")} nicht hochgeladen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie übrigen Länder sind hochgeladen. Für die fehlenden Länder die Upload-Seite unter Anbindungen → BQool prüfen und erneut übertragen oder die Datei selbst hochladen. Hat es doch geklappt: unter Anbindungen → Importe/Exporte „hat geklappt“ drücken.`, priority: "critical", category: "system", link: `/repricer/bqool?export=${exportId}` });
+  } else if (r.ok && unklarLaender.length) {
+    // Kein Fehler, nur keine Bestätigung erkannt → normale Aufgabe zum kurzen Nachsehen.
+    await upsertSystemTask(db, tenantId, `automatik-bqool-${exportId}`, { title: `BQool-Upload: ${unklarLaender.map((x) => x.land).join(", ")} bitte kurz in BQool prüfen`, notes: `${bqoolErgebnisText(ergebnis)}\nDie Dateien wurden hochgeladen, eine Bestätigung von BQool war aber nicht zu erkennen. In BQool nachsehen; hat es geklappt, unter Anbindungen → Importe/Exporte „hat geklappt“ drücken.`, priority: "normal", category: "system", link: "/anbindungen#importe-exporte" });
   }
   if (!r.ok) return { ok: false, text: `Abgebrochen: ${r.fehler}`, ergebnis };
   const text = fehlerLaender.length
     ? `${okLaender.length} von ${ergebnis.length} Ländern bei BQool hochgeladen – ${bqoolErgebnisText(ergebnis)}.`
-    : `${okLaender.length} Dateien bei BQool hochgeladen – ${bqoolErgebnisText(ergebnis)}.`;
+    : unklarLaender.length
+      ? `${okLaender.length + unklarLaender.length} Dateien bei BQool hochgeladen, ${unklarLaender.length} ohne erkannte Bestätigung – bitte in BQool prüfen: ${bqoolErgebnisText(ergebnis)}.`
+      : `${okLaender.length} Dateien bei BQool hochgeladen – ${bqoolErgebnisText(ergebnis)}.`;
   return { ok: fehlerLaender.length === 0, text, ergebnis };
 }
 
