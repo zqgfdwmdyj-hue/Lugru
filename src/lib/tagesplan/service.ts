@@ -40,7 +40,13 @@ export type Tagesplan = {
   privatDetails: boolean;
   arbeitszeit: Arbeitszeit;
   hinweise: string[];
+  /** Familienkalender (nur mit Privat-Zugang): Namen für die Zuordnungs-Knöpfe und je Tag die Termine, die nur die andere Person betreffen. */
+  familie: FamilieImPlan | null;
 };
+
+/** Familientermin, der nur die andere Person betrifft – blockt diesen Tag nicht. */
+export type AndererTermin = { eventId: string; von: string; bis: string; titel: string; betrifft: "a" | "b"; quelle: "gesetzt" | "titel" | "standard" };
+export type FamilieImPlan = { partner: { a: string; b: string }; ich: "a" | "b" | null; andere: Record<string, AndererTermin[]> };
 
 /** Arbeitszeit dieser Person (eigene Einstellung, sonst die allgemeine). */
 export function arbeitszeitFuer(s: { arbeitszeit: Arbeitszeit; personen: Record<string, Arbeitszeit> }, userId: string): Arbeitszeit {
@@ -63,10 +69,12 @@ async function namen(tenantId: string): Promise<Map<string, string>> {
 }
 
 /** Sperrzeiten je Tag für diese Person. */
-async function sperrenLaden(session: Session, von: string, bis: string, heute: string, mitPrivat: boolean): Promise<Map<string, Sperre[]>> {
+async function sperrenLaden(session: Session, von: string, bis: string, heute: string, mitPrivat: boolean): Promise<{ sperren: Map<string, Sperre[]>; familie: FamilieImPlan | null; todos: number }> {
   const t = session.tenantId;
   const out = new Map<string, Sperre[]>();
   const add = (tag: string, s: Sperre) => out.set(tag, [...(out.get(tag) ?? []), s]);
+  const andere: Record<string, AndererTermin[]> = {};
+  let todos = 0;
   const [tenant] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, t));
   const staffCalendars = tenant?.settings.calendar?.staffCalendars;
   const pushName = (await getIntegration(t, "apple_calendar"))?.calendarName || DEFAULT_CALENDAR_NAME;
@@ -86,19 +94,34 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
   // Familienkalender: Termine, die nur die andere Person betreffen (gesetzt oder Vorname im Titel), blocken diesen Tag nicht.
   const { betrifftKarte } = await import("@/lib/private/betrifft");
   const wer = await betrifftKarte(t, { uids: events.map((e) => e.uid), userId: session.userId });
+  // „To do Tom: …“ im Kalender wird zur Aufgabe (kalender-todos) – als Termin zählt es nicht, sonst wäre die Zeit doppelt weg.
+  const { istKalenderTodo, vornamen } = await import("@/lib/calendar/kalender-todo");
+  const todoNamen = vornamen(...(await namen(t)).values(), wer.partner.a, wer.partner.b);
+  const nameVon = (b: "a" | "b") => (b === "a" ? wer.partner.a : wer.partner.b);
   for (const ev of events) {
     const name = ev.calendarName.trim().toLowerCase();
     if (name === pushName.trim().toLowerCase() || (exportName && name === exportName.trim().toLowerCase())) continue;
     if (!calendarVisible(session, ev.calendarName, staffCalendars)) continue;
+    if (istKalenderTodo(ev.title, todoNamen)) {
+      todos++;
+      continue;
+    }
     const geschaeft = isBusinessCalendar(ev.calendarName, staffCalendars, pushName);
-    if (!geschaeft && wer.nurAndere(ev)) continue;
+    const zu = geschaeft ? null : wer.von(ev);
+    const nurAndere = !geschaeft && wer.nurAndere(ev);
     const startTag = berlinDay(ev.startsAt);
     const endeTag = ev.endsAt ? berlinDay(new Date(ev.endsAt.getTime() - 1)) : startTag;
     for (let tag = startTag; tag <= endeTag && tag <= bis; tag = plusTage(tag, 1)) {
       if (tag < von) continue;
       const a = tag === startTag ? berlinTime(ev.startsAt) : "00:00";
       const b = ev.endsAt && tag === endeTag ? berlinTime(ev.endsAt) : ev.endsAt ? "23:59" : berlinTime(new Date(ev.startsAt.getTime() + 3600_000));
-      add(tag, geschaeft ? { von: a, bis: b, titel: ev.title, art: "termin" } : { von: a, bis: b, titel: mitPrivat ? ev.title : PRIVAT_BELEGT, art: "privat" });
+      // Betrifft nur die andere Person: blockt nicht, steht aber zum Zurückholen in „Blockt nicht“.
+      if (nurAndere && zu && zu.wert !== "familie") {
+        (andere[tag] ??= []).push({ eventId: ev.id, von: a, bis: b, titel: mitPrivat ? ev.title : `Termin ${nameVon(zu.wert)}`, betrifft: zu.wert, quelle: zu.quelle });
+        continue;
+      }
+      const familie = zu && session.privateAccess ? { eventId: ev.id, betrifft: zu.wert, quelle: zu.quelle } : undefined;
+      add(tag, geschaeft ? { von: a, bis: b, titel: ev.title, art: "termin" } : { von: a, bis: b, titel: mitPrivat ? ev.title : PRIVAT_BELEGT, art: "privat", familie });
       // Handy & Tesla (B13) / B25.8: vor jedem Termin mit Ort (auch privat) die Fahrzeit blocken – geschätzt aus der PLZ
       // von Ort und „zu Hause“, sonst die Standard-Fahrzeit; Online-Termine ohne Fahrzeit. Anrufe passen hinein.
       if (ev.location?.trim() && tag === startTag && a !== "00:00") {
@@ -138,7 +161,7 @@ async function sperrenLaden(session: Session, von: string, bis: string, heute: s
       else if (b.stunden) add(tag, { von: "00:00", bis: hhmmPlus("00:00", Math.round(b.stunden * 60)), titel: `${b.titel} (${String(b.stunden).replace(".", ",")} Std. reserviert)`, art: "reserviert" });
     }
   }
-  return out;
+  return { sperren: out, familie: session.privateAccess ? { partner: wer.partner, ich: wer.ich, andere } : null, todos };
 }
 
 const hhmmPlus = (hhmm: string, minuten: number) => {
@@ -170,7 +193,8 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
   const restricted = session.role === "staff" && session.areas !== null;
   const sichtbar = offen.filter((x) => !restricted || (x.link ? linkAllowed(session, x.link) : x.createdBy === session.userId || x.assigneeId === session.userId));
   const meine = sichtbar.filter((x) => (x.assigneeId === session.userId && !x.zustaendigExtern) || (session.role === "owner" && !x.assigneeId && !x.zustaendigExtern));
-  const sperren = await sperrenLaden(session, o.start, ende, o.heute, mitPrivat);
+  const { sperren, familie, todos } = await sperrenLaden(session, o.start, ende, o.heute, mitPrivat);
+  if (todos) hinweise.push(`${todos} Kalender-To-do${todos === 1 ? "" : "s"} („To do <Name>: …“) zählt als Aufgabe, nicht als Termin.`);
   // Heute: Überfälliges zählt als heute fällig. Blick in die Zukunft: was vorher fällig ist, wird vorher erledigt.
   const imPlan = meine.filter((x) => !x.dueDate || o.start <= o.heute || x.dueDate >= o.start);
   const gelernt = await gelernterAufwand(t);
@@ -203,7 +227,7 @@ export async function tagesplan(session: Session, o: { start: string; tage?: num
     }
     for (const [person, aufgaben] of [...gruppen.entries()].sort((a, b) => a[0].localeCompare(b[0]))) wartetAuf.push({ person, aufgaben });
   }
-  return { start: o.start, tage: ergebnis.tage, verschoben: ergebnis.verschoben, ohneFrist: ergebnis.ohneFrist, wartetAuf, privatDetails: mitPrivat, arbeitszeit: az, hinweise };
+  return { start: o.start, tage: ergebnis.tage, verschoben: ergebnis.verschoben, ohneFrist: ergebnis.ohneFrist, wartetAuf, privatDetails: mitPrivat, arbeitszeit: az, hinweise, familie };
 }
 
 /** Aufgabe auf ein Datum verschieben (eigene oder sichtbare Aufgaben). */

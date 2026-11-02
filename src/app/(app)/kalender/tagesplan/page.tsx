@@ -5,6 +5,7 @@ import { getIntegration } from "@/lib/integrations/store";
 import { todayIso } from "@/lib/dates";
 import { ampelText, AUFWAND_TEXT, plusTage, wochentag, type TagPlan } from "@/lib/tagesplan/logic";
 import { privatDetailsErlaubt, tagesplan } from "@/lib/tagesplan/service";
+import { BetrifftKnoepfe } from "@/components/betrifft-knoepfe";
 import { alleVerschiebenAction, arbeitszeitAction, aufwandAction, verschiebenAction } from "./actions";
 
 // Tagesplan: was passt heute rein, was wird bewusst verschoben, welche Konflikte gibt es; Woche mit Ampel je Tag.
@@ -33,6 +34,10 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
       {mitPrivat && <input type="hidden" name="privat" value="1" />}
     </>
   );
+  // Familienkalender: Termine direkt hier zuordnen (ich / beide / andere Person) – mit Titel nur bei privaten Details.
+  const fam = p.familie;
+  const andereHeute = fam?.andere[tag] ?? [];
+  const zuordnenLink = !fam ? null : darfPrivat ? `/kalender/tagesplan?tag=${tag}&privat=1` : session.privatePin && session.privateScope === "voll" ? `/privat/entsperren?zurueck=${encodeURIComponent(`/kalender/tagesplan?tag=${tag}&privat=1`)}` : null;
   const q = (o: Record<string, string>) => `/kalender/tagesplan?${new URLSearchParams({ ...(tag !== heute ? { tag } : {}), ...(mitPrivat ? { privat: "1" } : {}), ...o }).toString()}`;
 
   return (
@@ -190,14 +195,42 @@ export default async function TagesplanPage({ searchParams }: { searchParams: Pr
             ) : (
               <ul className="small" style={{ listStyle: "none", padding: 0, margin: 0 }}>
                 {[...d.sperren].sort((a, b) => a.von.localeCompare(b.von)).map((s, i) => (
-                  <li key={i} style={{ marginBottom: 6 }}>
+                  <li key={i} style={{ marginBottom: 6 }} data-testid={s.familie ? "tagesplan-familientermin" : undefined}>
                     <span className={`tag ${SPERRE[s.art]}`}>{s.ganztags ? "ganztägig" : s.art === "reserviert" ? "reserviert" : `${s.von}–${s.bis}`}</span> {s.titel}
+                    {s.familie && fam && (mitPrivat ? (
+                      <BetrifftKnoepfe eventId={s.familie.eventId} aktuell={s.familie.betrifft} quelle={s.familie.quelle} partner={fam.partner} ich={fam.ich} felder={hidden} />
+                    ) : zuordnenLink ? (
+                      <> · <Link href={zuordnenLink} className="small" data-testid="tagesplan-zuordnen">wen betrifft es?</Link></>
+                    ) : null)}
                   </li>
                 ))}
               </ul>
             )}
-            {!mitPrivat && <div className="small muted" style={{ marginTop: 6 }}>Private Einträge erscheinen nur als „Privat belegt“.</div>}
+            {!mitPrivat && <div className="small muted" style={{ marginTop: 6 }}>Private Einträge erscheinen nur als „Privat belegt“.{zuordnenLink && d.sperren.some((s) => s.familie) ? " Familientermine, die nur deine Partnerin bzw. deinen Partner betreffen, mit „wen betrifft es?“ zuordnen – dann blocken sie deine Zeit nicht mehr." : ""}</div>}
+            {fam && !fam.ich && d.sperren.some((s) => s.familie) && (
+              <div className="small muted" style={{ marginTop: 6 }} data-testid="tagesplan-wer-bin-ich">Dein Konto ist im Privatbereich noch keiner Person zugeordnet – <Link href="/privat">dort festlegen</Link>, dann zählt „nur …“ für dich.</div>
+            )}
           </div>
+
+          {andereHeute.length > 0 && (
+            <div className="card card-pad" data-testid="tagesplan-andere">
+              <h3 style={{ marginTop: 0 }}>Blockt nicht ({andereHeute.length})</h3>
+              <div className="small muted">Familientermine, die nur {fam && fam.ich ? (fam.ich === "a" ? fam.partner.b : fam.partner.a) : "die andere Person"} betreffen – deine Zeit bleibt frei.</div>
+              <ul className="small" style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
+                {andereHeute.map((a, i) => (
+                  <li key={i} style={{ marginBottom: 6 }} data-testid="tagesplan-anderer-termin">
+                    <span className="tag tag-neutral">{a.von}–{a.bis}</span> {a.titel}
+                    {a.quelle === "titel" && <span className="small muted"> · am Namen erkannt</span>}
+                    {fam && (mitPrivat ? (
+                      <BetrifftKnoepfe eventId={a.eventId} aktuell={a.betrifft} quelle={a.quelle} partner={fam.partner} ich={fam.ich} felder={hidden} />
+                    ) : zuordnenLink ? (
+                      <> · <Link href={zuordnenLink} className="small">ändern</Link></>
+                    ) : null)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {p.wartetAuf.length > 0 && (
             <div className="card card-pad" data-testid="tagesplan-wartet">

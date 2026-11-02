@@ -11,6 +11,9 @@ const TRENNER = "\\s*[:\\-–—,]?\\s*";
 /** Vornamen (erstes Wort, mind. 2 Zeichen), ohne Dubletten. */
 export const vornamen = (...namen: (string | null | undefined)[]): string[] => [...new Set(namen.map((n) => (n ?? "").trim().split(/\s+/)[0] ?? "").filter((n) => n.length >= 2))];
 
+/** Ist der Titel ein To-do für eine dieser Personen („To do Tom: …“)? Solche Termine werden Aufgaben und blocken keine Zeit. */
+export const istKalenderTodo = (titel: string, namen: string[]): boolean => namen.length > 0 && kalenderTodo(titel, [{ userId: "", namen }]) !== null;
+
 /** To-do im Kalendertitel erkennen: für wen und was. Ohne Text danach gilt der ganze Titel. */
 export function kalenderTodo(titel: string, personen: TodoPerson[]): { userId: string; text: string } | null {
   const t = (titel ?? "").replace(/\s+/g, " ").trim();

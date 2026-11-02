@@ -35,21 +35,22 @@ export async function betrifftKarte(tenantId: string, opts: { uids?: string[]; u
  * Zuordnung setzen (nur Familienkalender-Termine dieser Firma). „automatisch“ löscht die Zuordnung wieder
  * (dann zählt der Vorname im Titel). Gilt für alle Termine mit derselben UID (ganze Serie).
  */
-export async function betrifftSetzen(session: Session, eventId: string, wert: Betrifft | "automatisch"): Promise<boolean> {
-  if (!session.privateAccess || !/^[0-9a-f-]{36}$/i.test(eventId)) return false;
+export async function betrifftSetzen(session: Session, eventId: string, wert: Betrifft | "automatisch"): Promise<{ titel: string } | null> {
+  if (!session.privateAccess || !/^[0-9a-f-]{36}$/i.test(eventId)) return null;
   const E = schema.calendarEvents;
-  const [ev] = await db.select({ uid: E.uid, calendarName: E.calendarName }).from(E).where(and(eq(E.tenantId, session.tenantId), eq(E.id, eventId)));
-  if (!ev) return false;
+  const [ev] = await db.select({ uid: E.uid, title: E.title }).from(E).where(and(eq(E.tenantId, session.tenantId), eq(E.id, eventId)));
+  if (!ev) return null;
   const { familyEventPrefill } = await import("./calendar-data");
-  if (!(await familyEventPrefill(session, eventId))) return false; // kein Familienkalender (z. B. geschäftlich)
+  if (!(await familyEventPrefill(session, eventId))) return null; // kein Familienkalender (z. B. geschäftlich)
+  const titel = ev.title.trim().slice(0, 80);
   if (wert === "automatisch") {
     await db.delete(B).where(and(eq(B.tenantId, session.tenantId), eq(B.uid, ev.uid)));
-    return true;
+    return { titel };
   }
-  if (!istBetrifft(wert)) return false;
+  if (!istBetrifft(wert)) return null;
   await db
     .insert(B)
     .values({ tenantId: session.tenantId, uid: ev.uid, betrifft: wert, gesetztVon: session.userId })
     .onConflictDoUpdate({ target: [B.tenantId, B.uid], set: { betrifft: wert, gesetztVon: session.userId, updatedAt: new Date() } });
-  return true;
+  return { titel };
 }

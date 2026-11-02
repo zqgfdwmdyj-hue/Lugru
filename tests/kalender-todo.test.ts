@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kalenderTodo, vornamen } from "@/lib/calendar/kalender-todo";
+import { istKalenderTodo, kalenderTodo, vornamen } from "@/lib/calendar/kalender-todo";
 
 // Familienkalender → To-do-Liste. Erfundene Namen.
 const P = [
@@ -27,5 +27,13 @@ describe("To do <Name> im Kalendertitel", () => {
   });
   it("Vornamen: erstes Wort, mindestens 2 Zeichen, ohne Dubletten", () => {
     expect(vornamen("Ludwig Muster", "Ludwig", null, "A")).toEqual(["Ludwig"]);
+  });
+  it("To-do-Termine blocken im Tagesplan keine Zeit (auch für die Partnerin)", () => {
+    const namen = vornamen("Ludwig Muster", "Anna");
+    expect(istKalenderTodo("To do Anna: Geschenk kaufen", namen)).toBe(true);
+    expect(istKalenderTodo("Ludwig – ToDo Garage", namen)).toBe(true);
+    expect(istKalenderTodo("Fortbildung Arbeit", namen)).toBe(false);
+    expect(istKalenderTodo("Anna Seminar Kloster", namen)).toBe(false);
+    expect(istKalenderTodo("To do Anna", [])).toBe(false);
   });
 });

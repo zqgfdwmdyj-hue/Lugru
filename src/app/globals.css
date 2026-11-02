@@ -1174,3 +1174,9 @@ h2 { font-size: 16px; margin: 0; }
   .station-raster { grid-template-columns: 1fr; }
   .station-ansage { font-size: 22px; }
 }
+
+/* Familienkalender: Termin mit einem Tipp zuordnen (Tagesplan, Kalender) */
+.betrifft-knoepfe { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.betrifft-knoepfe .chip { font-size: 12px; padding: 2px 9px; cursor: pointer; }
+.cal-line-andere { opacity: .6; }
+.cal-ev-andere { opacity: .5; }

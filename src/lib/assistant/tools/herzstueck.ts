@@ -79,7 +79,7 @@ export const tagesplanTool = defineTool({
   name: "tagesplan",
   title: "Tagesplan",
   description:
-    "Realistischer Tagesplan: Arbeitszeit minus Termine, Familienzeit (Kinderzeit, Auszeit, Paarzeit, Ausschlafen, private Termine) und freie Zeiten = Kapazität; darin die eigenen Aufgaben nach Priorität und Frist mit Zeitfenster. Dazu: bewusst verschobene Aufgaben mit neuem Datum, Konflikte (z. B. Frist fällt in Auszeit), Ampel je Tag, „wartet auf …“ (an andere abgegeben). Private Sperrzeiten nur als „Privat belegt“ – Details nur mit mit_privat: true. Für „Was schaffe ich heute?“, „Wie voll ist die Woche?“.",
+    "Realistischer Tagesplan: Arbeitszeit minus Termine, Familienzeit (Kinderzeit, Auszeit, Paarzeit, Ausschlafen, private Termine) und freie Zeiten = Kapazität; darin die eigenen Aufgaben nach Priorität und Frist mit Zeitfenster. Dazu: bewusst verschobene Aufgaben mit neuem Datum, Konflikte (z. B. Frist fällt in Auszeit), Ampel je Tag, „wartet auf …“ (an andere abgegeben). Private Sperrzeiten nur als „Privat belegt“ – Details nur mit mit_privat: true. Familienkalender-Termine, die nur die andere Person betreffen, blocken nicht (blockt_nicht); „To do <Name>: …“-Termine zählen als Aufgabe. Für „Was schaffe ich heute?“, „Wie voll ist die Woche?“.",
   area: "kalender",
   write: false,
   quelle: { text: "Aufgaben, Kalender und Privatbereich im Seller-System", jobs: ["Kalender"] },
@@ -109,6 +109,8 @@ export const tagesplanTool = defineTool({
         geplant: t.geplant.map((g) => ({ id: g.id, von: g.von, bis: g.bis, titel: g.titel, prioritaet: PRIORITY_OUT[g.prioritaet], aufwand: AUFWAND_TEXT[g.aufwand], aufwand_geschaetzt: g.geschaetzt || undefined, aufwand_gelernt: g.gelernt || undefined, frist: g.faellig, link: link(g.link) })),
         nicht_eingeplant: t.nichtEingeplant ? { aufgaben: t.nichtEingeplant.anzahl, minuten: t.nichtEingeplant.minuten, vorschlag: t.vorschlag } : undefined,
         konflikte: t.konflikte.length ? t.konflikte.map((k) => ({ aufgabe_id: k.aufgabeId, titel: k.titel, konflikt: k.text })) : undefined,
+        // Familientermine, die nur die andere Person betreffen (blocken nicht) – nur mit Privat-Freigabe.
+        blockt_nicht: ctx.privat && p.familie?.andere[t.tag]?.length ? p.familie.andere[t.tag].map((a) => ({ von: a.von, bis: a.bis, titel: a.titel, betrifft: `nur ${a.betrifft === "a" ? p.familie!.partner.a : p.familie!.partner.b}` })) : undefined,
       })),
       verschoben: p.verschoben.map((v) => ({ id: v.id, titel: v.titel, frist: v.faellig, neues_datum: v.neu, prioritaet: PRIORITY_OUT[v.prioritaet] })),
       ohne_frist: p.ohneFrist.length,

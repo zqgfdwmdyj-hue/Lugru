@@ -52,6 +52,33 @@ export async function alleVerschiebenAction(fd: FormData) {
   redirect(zurueck(fd, `${n} Aufgabe${n === 1 ? "" : "n"} verschoben.`));
 }
 
+/**
+ * Familienkalender-Termin direkt im Tagesplan bzw. Kalender zuordnen: ich / Familie / andere Person (oder wieder
+ * automatisch). Betrifft er nur die andere Person, blockt er die eigene Zeit nicht mehr. Gilt für die ganze Serie.
+ */
+export async function betrifftSchnellAction(fd: FormData) {
+  const session = await requireArea("kalender");
+  const id = z.string().regex(/^[0-9a-f-]{36}$/i).parse(fd.get("eventId"));
+  const wert = z.enum(["a", "b", "familie", "automatisch"]).parse(fd.get("betrifft"));
+  const { betrifftSetzen } = await import("@/lib/private/betrifft");
+  const r = await betrifftSetzen(session, id, wert);
+  let meldung = "Termin nicht zugeordnet (nur Familienkalender, nur mit Privat-Zugang).";
+  if (r) {
+    const { privateSettings } = await import("@/lib/private/service");
+    const p = (await privateSettings(session.tenantId)).partners;
+    const wem = wert === "familie" ? "die Familie (beide)" : wert === "automatisch" ? "wieder automatisch (Vorname im Titel)" : `nur ${wert === "a" ? p.a : p.b}`;
+    meldung = `„${r.titel}“ betrifft jetzt ${wem}.`;
+  }
+  revalidatePath("/kalender/tagesplan");
+  revalidatePath("/kalender");
+  revalidatePath("/privat", "layout");
+  revalidatePath("/");
+  // Zurück zur Seite, von der der Knopf kam (nur Kalender-Seiten).
+  const ziel = String(fd.get("ziel") ?? "");
+  if (/^\/kalender\?[\w=&%.\-]*$/.test(ziel)) redirect(`${ziel}&${new URLSearchParams({ meldung }).toString()}`);
+  redirect(zurueck(fd, meldung));
+}
+
 /** Eigene Arbeitszeit je Wochentag speichern (leer = kein Arbeitstag). */
 export async function arbeitszeitAction(fd: FormData) {
   const session = await requireArea("kalender");

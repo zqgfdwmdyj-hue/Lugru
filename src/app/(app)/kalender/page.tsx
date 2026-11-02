@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { InsAuto } from "@/components/ins-auto";
+import { BetrifftKnoepfe } from "@/components/betrifft-knoepfe";
 import { and, eq, gte, lte, notInArray, or } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireArea } from "@/lib/auth/session";
@@ -38,7 +39,7 @@ const dayLong = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString("de
 
 /** Ein Eintrag als Kästchen (Monat, Woche): Termine gefüllt, Fälligkeiten aus dem System umrandet. */
 function EntryChip({ e, wrap = false }: { e: DayEntry; wrap?: boolean }) {
-  const cls = ["cal-ev", e.time ? "" : "cal-ev-allday", e.system ? "cal-ev-sys" : "", e.overdue ? "cal-ev-overdue" : "", wrap ? "cal-ev-wrap" : ""].filter(Boolean).join(" ");
+  const cls = ["cal-ev", e.time ? "" : "cal-ev-allday", e.system ? "cal-ev-sys" : "", e.overdue ? "cal-ev-overdue" : "", wrap ? "cal-ev-wrap" : "", e.familie?.nurAndere ? "cal-ev-andere" : ""].filter(Boolean).join(" ");
   const body = (
     <>
       {(e.abbr || e.icon) && <b className="cal-abbr" style={{ ["--c" as string]: e.color, ["--t" as string]: textOn(e.color) }} aria-label={e.label}>{e.abbr ?? e.icon}</b>}
@@ -53,23 +54,27 @@ function EntryChip({ e, wrap = false }: { e: DayEntry; wrap?: boolean }) {
   );
 }
 
+type FamZuordnung = { partner: { a: string; b: string }; ich: "a" | "b" | null; ziel: string };
+
 /** Ein Eintrag als Zeile (Tagesliste, Agenda): Uhrzeit, Quelle, voller Titel, Link ins System. */
-function EntryLine({ e, auto = false }: { e: DayEntry; auto?: boolean }) {
+function EntryLine({ e, auto = false, fam }: { e: DayEntry; auto?: boolean; fam?: FamZuordnung | null }) {
+  const wer = e.familie && fam ? (e.familie.betrifft === "familie" ? null : `nur ${fam.partner[e.familie.betrifft]}`) : null;
   return (
-    <div className={`cal-line${e.system ? " cal-line-sys" : ""}`} style={{ ["--c" as string]: e.color }} data-kind={e.system ? "faellig" : "termin"}>
+    <div className={`cal-line${e.system ? " cal-line-sys" : ""}${e.familie?.nurAndere ? " cal-line-andere" : ""}`} style={{ ["--c" as string]: e.color }} data-kind={e.system ? "faellig" : "termin"} data-testid={e.familie ? "cal-familientermin" : undefined}>
       <span className="cal-line-bar" />
       <span style={{ minWidth: 0 }}>
-        <span className="small muted">{(e.abbr || e.icon) && <b className="cal-abbr" style={{ ["--c" as string]: e.color, ["--t" as string]: textOn(e.color) }}>{e.abbr ?? e.icon}</b>}{e.time ?? (e.system ? "fällig" : "ganztägig")} · {e.label}{e.overdue ? " · überfällig" : ""}</span>
+        <span className="small muted">{(e.abbr || e.icon) && <b className="cal-abbr" style={{ ["--c" as string]: e.color, ["--t" as string]: textOn(e.color) }}>{e.abbr ?? e.icon}</b>}{e.time ?? (e.system ? "fällig" : "ganztägig")} · {e.label}{e.overdue ? " · überfällig" : ""}{wer ? ` · ${wer}` : ""}{e.familie?.nurAndere ? " – blockt deine Zeit nicht" : ""}</span>
         <br />
         {e.link ? <Link href={e.link}>{e.title}</Link> : e.title}
         {e.location && <span className="small muted"> · {e.location}</span>}
-        {auto && e.location && !e.system && <> <InsAuto ziel={e.location} /></>}
+        {auto && e.location && !e.system && !e.familie?.nurAndere && <> <InsAuto ziel={e.location} /></>}
+        {e.familie && fam && <BetrifftKnoepfe eventId={e.familie.eventId} aktuell={e.familie.betrifft} quelle={e.familie.quelle} partner={fam.partner} ich={fam.ich} ziel={fam.ziel} />}
       </span>
     </div>
   );
 }
 
-export default async function KalenderPage({ searchParams }: { searchParams: Promise<{ monat?: string; tag?: string; sicht?: string; ansicht?: string }> }) {
+export default async function KalenderPage({ searchParams }: { searchParams: Promise<{ monat?: string; tag?: string; sicht?: string; ansicht?: string; meldung?: string }> }) {
   const session = await requireArea("kalender");
   const sp = await searchParams;
   const today = todayIso();
@@ -131,7 +136,17 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
   const allCalendarNames = [...new Set([...(calState?.read ?? []).map((r) => r.name), ...events.map((e) => e.calendarName)])].sort((a, b) => a.localeCompare(b, "de"));
   // Ähnliche Kalenderfarben (z. B. Familie/Privat beide gelb) bekommen eine deutlich andere Ersatzfarbe, dazu ein Kürzel.
   const { colors: calColors, abbr: calAbbr } = await calendarPalette(session.tenantId);
+  // Familienkalender (nur mit Privat-Zugang): wen betrifft der Termin? Mit einem Tipp zuordnen; „nur die andere Person“ wird blass.
+  const exportCal = session.privateAccess ? await (async () => {
+    const { privateSettings } = await import("@/lib/private/service");
+    const ps = await privateSettings(session.tenantId);
+    return ps.externSync.enabled ? ps.externSync.calendar.trim().toLowerCase() : null;
+  })() : null;
+  const istFamilie = (name: string) => session.privateAccess && !isBusinessCalendar(name, staffCalendars, pushName) && name.trim().toLowerCase() !== exportCal && name.trim().toLowerCase() !== pushName.trim().toLowerCase();
+  const famEvents = visibleEvents.filter((ev) => istFamilie(ev.calendarName));
+  const karte = famEvents.length ? await (await import("@/lib/private/betrifft")).betrifftKarte(session.tenantId, { uids: famEvents.map((e) => e.uid), userId: session.userId }) : null;
   for (const ev of visibleEvents) {
+    const zu = karte && istFamilie(ev.calendarName) ? karte.von(ev) : null;
     const color = calColors.get(ev.calendarName) ?? "#6E6E73";
     calendars.set(ev.calendarName, color);
     const endDay = ev.endsAt ? (ev.allDay ? ev.endsAt.toISOString().slice(0, 10) : addDaysIso(berlinDay(new Date(ev.endsAt.getTime() - 1)), 1)) : null;
@@ -146,6 +161,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
         link: null,
         location: ev.location,
         abbr: calAbbr.get(ev.calendarName),
+        ...(zu && karte ? { familie: { eventId: ev.id, betrifft: zu.wert, quelle: zu.quelle, nurAndere: karte.nurAndere(ev) } } : {}),
       }),
     );
   }
@@ -188,6 +204,8 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
   const href = (m: string, tag?: string, sicht: Scope = scope, ansicht: CalendarView = view) =>
     `/kalender?monat=${m}${tag ? `&tag=${tag}` : ""}${sicht !== "alle" ? `&sicht=${sicht}` : ""}${ansicht !== "monat" ? `&ansicht=${ansicht}` : ""}`;
   const dayList = byDay.get(selected) ?? [];
+  const famDay: FamZuordnung | null = karte ? { partner: karte.partner, ich: karte.ich, ziel: href(month, selected) } : null;
+  const famAgenda = (d: string): FamZuordnung | null => (karte ? { partner: karte.partner, ich: karte.ich, ziel: `${href(month, d)}` } : null);
   const selectedLabel = new Date(`${selected}T12:00:00Z`).toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
   const week = weekDays(selected);
   const agendaDays = grid.filter((d) => d.startsWith(month) && (byDay.get(d)?.length ?? 0) > 0);
@@ -271,6 +289,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
           {session.privateAccess && <Link className="small" href="/privat/kalender">Privatkalender (Kinderzeit, Paarzeit, Termine …) →</Link>}
         </div>
       )}
+      {sp.meldung && <div className="notice notice-ok small" role="status" data-testid="kalender-meldung">{sp.meldung.slice(0, 200)}</div>}
       {hiddenCalendars > 0 && (
         <div className="notice notice-info small" data-testid="calendars-hidden">
           Termine aus {hiddenCalendars} eigenen Kalender{hiddenCalendars === 1 ? "" : "n"} des Inhabers sind für dein Konto ausgeblendet (privat bzw. nicht freigegeben). Fälligkeiten des Systems stehen vollständig hier.
@@ -328,7 +347,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                 <div key={d} className={`cal-agenda-day${d === today ? " cal-agenda-today" : ""}${d < today ? " cal-agenda-past" : ""}`} id={`tag-${d}`} data-day={d}>
                   <h3>{dayLong(d)}{d === today ? " · heute" : ""}</h3>
                   <div className="stack" style={{ gap: 8, fontSize: 14 }}>
-                    {(byDay.get(d) ?? []).map((e) => <EntryLine key={e.id} e={e} auto={session.role === "owner"} />)}
+                    {(byDay.get(d) ?? []).map((e) => <EntryLine key={e.id} e={e} auto={session.role === "owner"} fam={famAgenda(d)} />)}
                   </div>
                 </div>
               ))}
@@ -377,7 +396,7 @@ export default async function KalenderPage({ searchParams }: { searchParams: Pro
                 <div className="small muted">Nichts eingetragen.</div>
               ) : (
                 <div className="stack" style={{ gap: 10, fontSize: 14 }}>
-                  {dayList.map((e) => <EntryLine key={e.id} e={e} auto={session.role === "owner"} />)}
+                  {dayList.map((e) => <EntryLine key={e.id} e={e} auto={session.role === "owner"} fam={famDay} />)}
                 </div>
               )}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>{newTask}</div>

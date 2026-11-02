@@ -10,7 +10,15 @@ export const AUFWAND_TEXT: Record<Aufwand, string> = { S: "S · 15 Min.", M: "M 
 export type Arbeitszeit = Record<string, { von: string; bis: string } | null>;
 export const ARBEITSZEIT_STANDARD: Arbeitszeit = { "1": { von: "09:00", bis: "17:00" }, "2": { von: "09:00", bis: "17:00" }, "3": { von: "09:00", bis: "17:00" }, "4": { von: "09:00", bis: "17:00" }, "5": { von: "09:00", bis: "17:00" }, "6": null, "7": null };
 
-export type Sperre = { von: string; bis: string; titel: string; art: "privat" | "termin" | "frei" | "reserviert"; ganztags?: boolean };
+export type Sperre = {
+  von: string;
+  bis: string;
+  titel: string;
+  art: "privat" | "termin" | "frei" | "reserviert";
+  ganztags?: boolean;
+  /** Familienkalender-Termin: zum Zuordnen (ich / Familie / andere Person) direkt im Tagesplan. */
+  familie?: { eventId: string; betrifft: "a" | "b" | "familie"; quelle: "gesetzt" | "titel" | "standard" };
+};
 export type PlanAufgabe = { id: string; titel: string; faellig: string | null; prioritaet: "critical" | "normal" | "low"; aufwand: Aufwand; geschaetzt: boolean; link: string | null; /** Aufwand aus früheren Aufgaben gleicher Art gelernt. */ gelernt?: boolean; /** B25.8: Telefonnummer bei Anruf-Aufgaben (aus der Aufgabe oder der Notiz). */ telefon?: string | null };
 export type Geplant = PlanAufgabe & { von: string; bis: string };
 export type Verschoben = PlanAufgabe & { neu: string };

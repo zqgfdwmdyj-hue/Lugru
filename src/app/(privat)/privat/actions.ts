@@ -34,7 +34,8 @@ export async function unlockAction(_prev: FormState, fd: FormData): Promise<Form
   const back = String(fd.get("back") ?? "");
   // Rahmen (Navigation) neu aufbauen – im gesperrten Zustand war er leer.
   revalidatePath("/privat", "layout");
-  redirect(back.startsWith("/privat") && !back.startsWith("/privat/entsperren") ? back : "/privat");
+  // Zurück in den Privatbereich – oder in den Tagesplan (Familientermine zuordnen).
+  redirect((back.startsWith("/privat") && !back.startsWith("/privat/entsperren")) || back.startsWith("/kalender/tagesplan") ? back : "/privat");
 }
 
 export async function lockAction() {

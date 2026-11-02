@@ -54,6 +54,62 @@ test.describe("Familienkalender und Apple Watch", () => {
     await expect(page.getByTestId("tagesplan-sperren")).toContainText("10:00");
   });
 
+  test("Familientermine direkt im Tagesplan und Kalender zuordnen: „nur Tom“ macht Platz, zurückholen geht; To-do-Termine blocken nicht", async ({ page }) => {
+    const m = marke();
+    const TAG = plus(DONNERSTAG, 7);
+    const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");
+    const termin = (uid: string, titel: string, von: string, bis: string) =>
+      sql("insert into calendar_events (tenant_id, calendar_name, uid, title, starts_at, ends_at, all_day, day) values ($1, 'Familie (privat)', $2, $3, ($4::date + $5::time) at time zone 'Europe/Berlin', ($4::date + $6::time) at time zone 'Europe/Berlin', false, $4::date)", [T, uid, titel, TAG, von, bis]);
+    await termin(`fk2-fortbildung-${m}`, `Fortbildung Arbeit ${m}`, "09:00", "13:00");
+    await termin(`fk2-todo-${m}`, `To do Ina: Geschenk kaufen ${m}`, "15:00", "16:00");
+    const zuordnung = async () => (await sql<{ betrifft: string }>("select betrifft from kalender_betrifft where tenant_id = $1 and uid = $2", [T, `fk2-fortbildung-${m}`]))[0]?.betrifft ?? null;
+    const kapazitaet = async () => {
+      const t = (await page.getByTestId("tagesplan-kapazitaet").textContent()) ?? "";
+      const k = /Kapazität (\d+)(?::(\d+))? Std\./.exec(t);
+      return k ? Number(k[1]) * 60 + Number(k[2] ?? 0) : 0;
+    };
+    await anmelden(page, "inhaber");
+
+    // Ohne private Details: „Privat belegt“ mit „wen betrifft es?“; der To-do-Termin blockt nicht (wird Aufgabe)
+    await page.goto(`/kalender/tagesplan?tag=${TAG}`);
+    const belegt = page.getByTestId("tagesplan-sperren");
+    await expect(belegt).toContainText("09:00–13:00");
+    await expect(belegt).not.toContainText("15:00–16:00");
+    await expect(page.getByText(/Kalender-To-do.*zählt als Aufgabe/)).toBeVisible();
+    await page.getByTestId("tagesplan-zuordnen").first().click();
+    await expect(page).toHaveURL(/privat=1/);
+
+    // Mit Details: Titel + Knöpfe; „nur Tom“ → blockt nicht mehr, steht unter „Blockt nicht“, mehr Kapazität
+    const fortbildung = page.getByTestId("tagesplan-familientermin").filter({ hasText: `Fortbildung Arbeit ${m}` });
+    await expect(fortbildung.getByTestId("betrifft-schnell-familie")).toHaveAttribute("aria-pressed", "true");
+    const vorher = await kapazitaet();
+    await Promise.all([page.waitForURL(/meldung=/), fortbildung.getByTestId("betrifft-schnell-b").click()]);
+    await expect(page.getByRole("status")).toContainText("betrifft jetzt nur Tom");
+    await expect(page).toHaveURL(/privat=1/);
+    expect(await zuordnung()).toBe("b");
+    await expect(page.getByTestId("tagesplan-sperren")).not.toContainText(`Fortbildung Arbeit ${m}`);
+    const anderer = page.getByTestId("tagesplan-anderer-termin").filter({ hasText: `Fortbildung Arbeit ${m}` });
+    await expect(anderer).toBeVisible();
+    expect(await kapazitaet()).toBeGreaterThan(vorher);
+
+    // Zurückholen: „Ina (ich)“ → blockt wieder; ↺ löscht die Zuordnung (wieder automatisch)
+    await Promise.all([page.waitForURL(/meldung=/), anderer.getByTestId("betrifft-schnell-a").click()]);
+    expect(await zuordnung()).toBe("a");
+    await expect(fortbildung).toBeVisible();
+    expect(await kapazitaet()).toBe(vorher);
+    await Promise.all([page.waitForURL(/meldung=/), fortbildung.getByTestId("betrifft-schnell-automatisch").click()]);
+    expect(await zuordnung()).toBeNull();
+
+    // Kalender-Tagesliste: gleiche Knöpfe; „nur Tom“ wird blass mit Hinweis
+    await page.goto(`/kalender?monat=${TAG.slice(0, 7)}&tag=${TAG}`);
+    const zeile = page.getByTestId("cal-daylist").getByTestId("cal-familientermin").filter({ hasText: `Fortbildung Arbeit ${m}` });
+    await Promise.all([page.waitForURL(/meldung=/), zeile.getByTestId("betrifft-schnell-b").click()]);
+    await expect(page).toHaveURL(new RegExp(`tag=${TAG}`));
+    await expect(page.getByTestId("kalender-meldung")).toContainText("nur Tom");
+    await expect(zeile).toContainText("blockt deine Zeit nicht");
+    expect(await zuordnung()).toBe("b");
+  });
+
   test("Apple Watch: Seite mit Anleitung und Ausprobieren; ein Kurzbefehl für alles (watch/frage)", async ({ page }) => {
     const m = marke();
     const [{ tenant_id: T }] = await sql<{ tenant_id: string }>("select tenant_id from lots where sku = 'TEST-SOCKEN' limit 1");

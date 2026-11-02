@@ -788,6 +788,23 @@ Abnahme: Unit `kalender-todo` (Schreibweisen wie im Familienkalender, ganzer Tit
 Sachen Tafel herrichten“ → nach dem Abgleich genau eine Aufgabe „Sachen Tafel herrichten“, wichtig, Ina zugeordnet, Notiz
 mit Kalendername; als erledigt markiert → nächster Abgleich legt nichts neu an und öffnet nichts wieder.
 
+## Familientermine direkt im Tagesplan und Kalender zuordnen (Wunsch 02.11.: „Fortbildung“ der Partnerin blockt meinen Tag)
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| Auf „Fortbildung“, „Seminar“ usw. drücken und den Familientermin einer Person zuordnen, damit wieder Platz ist | 🟡 (Zuordnung gab es, aber nur versteckt im Privatkalender → Termin öffnen) | ✅ | Neue Knöpfe **„Ina (ich) · Beide · nur Tom“** (+ ↺ = wieder automatisch) direkt an jedem Familientermin: im **Tagesplan** unter „Belegt“ (mit „Private Details zeigen“; ohne Details steht dort „wen betrifft es?“, bei gesperrter PIN führt der Link übers Entsperren zurück) und im **Kalender** in der Tagesliste und der Agenda (`src/components/betrifft-knoepfe.tsx`, Aktion `betrifftSchnellAction` in `src/app/(app)/kalender/tagesplan/actions.ts`, nur mit Privat-Zugang, nur Familienkalender, gilt für die ganze Serie). Nach dem Tipp: Rückmeldung oben, Seite bleibt, wo sie war |
+| Platz für richtige Termine | ❌ | ✅ | „nur Tom“ → der Termin verschwindet aus „Belegt“, die **Kapazität steigt**, er steht im neuen Kasten **„Blockt nicht“** (mit Knöpfen zum Zurückholen). Im Kalender wird er blass mit „· nur Tom – blockt deine Zeit nicht“ (auch in der Monatsansicht blass); kein „Ins Auto“ dafür (`src/lib/tagesplan/service.ts` `sperrenLaden`, `src/app/(app)/kalender/page.tsx`) |
+| „To do <Name>: …“-Termine im Familienkalender blocken die Zeit | ❌ (zählten doppelt: als Termin und als Aufgabe) | ✅ | Werden im Tagesplan nicht mehr als Termin gezählt (Hinweis „Kalender-To-do zählt als Aufgabe“), egal für wen (`istKalenderTodo` in `src/lib/calendar/kalender-todo.ts`) |
+| Claude-Werkzeug `tagesplan` | – | ✅ | je Tag neu `blockt_nicht` (Familientermine nur der anderen Person; nur mit Privat-Freigabe, Titel nur mit `mit_privat`); Beschreibung ergänzt. Kein neues Werkzeug; geänderte Beschreibung kommt über `notifications/tools/list_changed` beim Verbinden an |
+
+Abnahme: Unit `kalender-todo` (To-do-Termine erkennen, auch für die Partnerin; „Fortbildung Arbeit“, „Anna Seminar“ nicht);
+e2e `familie-watch` „Familientermine direkt im Tagesplan und Kalender zuordnen“: Fortbildung 09–13 Uhr und „To do Ina:
+Geschenk kaufen“ 15–16 Uhr → ohne Details „Privat belegt“ 09:00–13:00 mit „wen betrifft es?“, der To-do-Termin fehlt in
+„Belegt“ (Hinweis sichtbar) → Details an → „Beide“ ist markiert → „nur Tom“ → Meldung „betrifft jetzt nur Tom“, Termin
+unter „Blockt nicht“, Kapazität höher → „Ina (ich)“ → blockt wieder, Kapazität wie vorher → ↺ löscht die Zuordnung →
+Kalender-Tagesliste: „nur Tom“ → Meldung, Seite bleibt beim Tag, Zeile „blockt deine Zeit nicht“. Regression: herzstueck,
+handy-tesla, oberflaeche, privat, b19-rest, b20-rest, b25, privat-rueckblick (30 bestanden), Unit 2104 bestanden.
+
 ## Babysitter & Putzhilfe (Wunsch vom 31.10.)
 
 | # | Punkt | vorher | nachher | Fundstelle |

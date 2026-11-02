@@ -18,6 +18,8 @@ export type DayEntry = {
   icon?: string;
   /** Fälligkeit aus dem System (Aufgabe, Frist …) statt eigener Termin – wird umrandet statt gefüllt gezeigt. */
   system?: boolean;
+  /** Familienkalender-Termin (nur mit Privat-Zugang): wen er betrifft – zum Zuordnen mit einem Tipp. */
+  familie?: { eventId: string; betrifft: "a" | "b" | "familie"; quelle: "gesetzt" | "titel" | "standard"; nurAndere: boolean };
 };
 
 export type CalendarView = "monat" | "woche" | "agenda";
