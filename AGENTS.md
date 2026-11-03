@@ -6,6 +6,8 @@
   (`requireSession()`), auch in Server Actions und Route Handlern.
 - Oberfläche und Texte auf Deutsch.
 - Keine echten Geschäftsdaten (Exporte, Rechnungen, SKUs mit echten Preisen) committen.
+- Nach jeder Fertigstellung (Push nach main) in der Abschlussnachricht immer den Update-Befehl für den Server
+  mitschicken: `bash /opt/seller-system/deploy/update.sh` (holt main, sichert vorher die Datenbank, startet neu).
 
 <!-- BEGIN:nextjs-agent-rules -->
 
