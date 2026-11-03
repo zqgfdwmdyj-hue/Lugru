@@ -23,6 +23,9 @@ export const CHANNEL_LABEL: Record<string, string> = {
   kaufland: "Kaufland",
   shop: "Eigener Shop",
   manual: "Manuell",
+  kleinanzeigen: "Kleinanzeigen",
+  whatsapp: "WhatsApp",
+  b2b: "B2B",
 };
 
 export const ORDER_STATUS_LABEL: Record<string, string> = {

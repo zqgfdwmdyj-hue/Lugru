@@ -44,7 +44,7 @@ export function setCostPairs(sets: { sku: string; components: { sku: string; qty
  * Kanäle ohne eigene Gebühr je Bestellung: Temu zahlt den vereinbarten Basispreis aus (Gebühr steckt
  * darin), manuelle Verkäufe haben keine Plattform. Alle anderen brauchen eine Gebührenangabe.
  */
-export const FEE_FREE_CHANNELS = new Set(["temu", "manual"]);
+export const FEE_FREE_CHANNELS = new Set(["temu", "manual", "kleinanzeigen", "whatsapp", "b2b"]);
 
 export type OrderLine = {
   orderId: string;

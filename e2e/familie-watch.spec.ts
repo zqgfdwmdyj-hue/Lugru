@@ -93,12 +93,13 @@ test.describe("Familienkalender und Apple Watch", () => {
     expect(await kapazitaet()).toBeGreaterThan(vorher);
 
     // Zurückholen: „Ina (ich)“ → blockt wieder; ↺ löscht die Zuordnung (wieder automatisch)
-    await Promise.all([page.waitForURL(/meldung=/), anderer.getByTestId("betrifft-schnell-a").click()]);
-    expect(await zuordnung()).toBe("a");
+    // (Die Adresse enthält schon „meldung=“ – deshalb auf die gespeicherte Zuordnung warten.)
+    await anderer.getByTestId("betrifft-schnell-a").click();
+    await expect.poll(zuordnung).toBe("a");
     await expect(fortbildung).toBeVisible();
-    expect(await kapazitaet()).toBe(vorher);
-    await Promise.all([page.waitForURL(/meldung=/), fortbildung.getByTestId("betrifft-schnell-automatisch").click()]);
-    expect(await zuordnung()).toBeNull();
+    await expect.poll(kapazitaet).toBe(vorher);
+    await fortbildung.getByTestId("betrifft-schnell-automatisch").click();
+    await expect.poll(zuordnung).toBeNull();
 
     // Kalender-Tagesliste: gleiche Knöpfe; „nur Tom“ wird blass mit Hinweis
     await page.goto(`/kalender?monat=${TAG.slice(0, 7)}&tag=${TAG}`);
@@ -107,7 +108,7 @@ test.describe("Familienkalender und Apple Watch", () => {
     await expect(page).toHaveURL(new RegExp(`tag=${TAG}`));
     await expect(page.getByTestId("kalender-meldung")).toContainText("nur Tom");
     await expect(zeile).toContainText("blockt deine Zeit nicht");
-    expect(await zuordnung()).toBe("b");
+    await expect.poll(zuordnung).toBe("b");
   });
 
   test("Apple Watch: Seite mit Anleitung und Ausprobieren; ein Kurzbefehl für alles (watch/frage)", async ({ page }) => {

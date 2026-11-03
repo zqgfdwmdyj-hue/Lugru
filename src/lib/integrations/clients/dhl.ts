@@ -51,8 +51,9 @@ function consignee(a: Address) {
 }
 
 export type DhlLabelResult = { shipmentNo: string; labelPdf: Buffer; warnings: string[] };
-
-export async function createDhlLabel(opts: {
+/** Zusatzleistungen (Parcel DE Shipping v2): Alterssichtprüfung, Transportversicherung (Wert in €). */
+export type DhlServices = { visualCheckOfAge?: "A16" | "A18"; additionalInsurance?: number };
+export type DhlSendung = {
   creds: DhlCreds;
   sandbox: boolean;
   product: string;
@@ -62,14 +63,18 @@ export async function createDhlLabel(opts: {
   weightKg: number;
   refNo?: string;
   printFormat?: string;
-}): Promise<DhlLabelResult> {
-  const url = new URL(`${base(opts.sandbox)}/orders`);
-  url.searchParams.set("validate", "false");
-  url.searchParams.set("docFormat", "PDF");
-  url.searchParams.set("includeDocs", "include");
-  url.searchParams.set("combine", "true");
-  if (opts.printFormat) url.searchParams.set("printFormat", opts.printFormat);
-  const body = {
+  services?: DhlServices;
+  /** Maße in cm (Länge, Breite, Höhe). */
+  dimCm?: { l: number; b: number; h: number } | null;
+};
+
+function sendungKoerper(opts: DhlSendung) {
+  const services = {
+    ...(opts.services?.visualCheckOfAge ? { visualCheckOfAge: opts.services.visualCheckOfAge } : {}),
+    ...(opts.services?.additionalInsurance ? { additionalInsurance: { currency: "EUR", value: Math.round(opts.services.additionalInsurance * 100) / 100 } } : {}),
+  };
+  const d = opts.dimCm;
+  return {
     profile: "STANDARD_GRUPPENPROFIL",
     shipments: [
       {
@@ -88,11 +93,40 @@ export async function createDhlLabel(opts: {
           phone: opts.shipper.phone || undefined,
         },
         consignee: consignee(opts.to),
-        details: { weight: { uom: "kg", value: Math.max(0.01, Math.round(opts.weightKg * 1000) / 1000) } },
+        details: {
+          weight: { uom: "kg", value: Math.max(0.01, Math.round(opts.weightKg * 1000) / 1000) },
+          ...(d && d.l > 0 && d.b > 0 && d.h > 0 ? { dim: { uom: "cm", length: Math.round(d.l), width: Math.round(d.b), height: Math.round(d.h) } } : {}),
+        },
+        ...(Object.keys(services).length ? { services } : {}),
       },
     ],
   };
-  const res = await fetch(url, { method: "POST", headers: headers(opts.creds), body: JSON.stringify(body) });
+}
+
+/**
+ * Adress- und Sendungsprüfung bei DHL (validate=true, es entsteht kein Label): Meldungen im Klartext, z. B. „Die
+ * Postleitzahl … ist ungültig“ oder ein Vorschlag zum Ort.
+ */
+export async function pruefeDhlSendung(opts: DhlSendung): Promise<{ ok: boolean; meldungen: string[] }> {
+  const url = new URL(`${base(opts.sandbox)}/orders`);
+  url.searchParams.set("validate", "true");
+  const res = await fetch(url, { method: "POST", headers: headers(opts.creds), body: JSON.stringify(sendungKoerper(opts)), signal: AbortSignal.timeout(20_000) });
+  const json = (await res.json().catch(() => null)) as { status?: { detail?: string; title?: string }; items?: { sstatus?: { title?: string; detail?: string }; validationMessages?: { validationMessage?: string; property?: string; validationState?: string }[] }[] } | null;
+  const item = json?.items?.[0];
+  const meldungen = (item?.validationMessages ?? []).map((m) => m.validationMessage ?? "").filter(Boolean);
+  if (!res.ok) meldungen.unshift(...[item?.sstatus?.detail, json?.status?.detail].filter((x): x is string => Boolean(x)));
+  return { ok: res.ok, meldungen: [...new Set(meldungen)] };
+}
+
+export async function createDhlLabel(opts: DhlSendung): Promise<DhlLabelResult> {
+  const url = new URL(`${base(opts.sandbox)}/orders`);
+  url.searchParams.set("validate", "false");
+  url.searchParams.set("docFormat", "PDF");
+  url.searchParams.set("includeDocs", "include");
+  url.searchParams.set("combine", "true");
+  if (opts.printFormat) url.searchParams.set("printFormat", opts.printFormat);
+  const body = sendungKoerper(opts);
+  const res = await fetch(url, { method: "POST", headers: headers(opts.creds), body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
   const json = (await res.json().catch(() => null)) as {
     status?: { title?: string; detail?: string };
     items?: { shipmentNo?: string; sstatus?: { title?: string; detail?: string; statusCode?: number }; label?: { b64?: string }; validationMessages?: { validationMessage?: string; property?: string }[] }[];

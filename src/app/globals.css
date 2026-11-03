@@ -1180,3 +1180,12 @@ h2 { font-size: 16px; margin: 0; }
 .betrifft-knoepfe .chip { font-size: 12px; padding: 2px 9px; cursor: pointer; }
 .cal-line-andere { opacity: .6; }
 .cal-ev-andere { opacity: .5; }
+
+/* Versand → Label erstellen: Eingabefeld mit Bild-Ablage, Formularraster, unsichere Felder gelb. */
+.label-drop { border: 2px dashed var(--border-strong); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+.label-drop-aktiv { border-color: var(--accent, #0e6b5f); background: var(--surface-2); }
+.label-felder { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.label-felder .label-breit { grid-column: span 2; }
+.label-felder .label-klein { max-width: 120px; }
+@media (max-width: 520px) { .label-felder .label-breit { grid-column: 1 / -1; } .label-felder .label-klein { max-width: none; } }
+.input.feld-unsicher { background: var(--warn-soft); border-color: #ca8a04; }

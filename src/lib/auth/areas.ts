@@ -17,7 +17,7 @@ export const AREAS: { key: AreaKey; label: string; paths: string[]; home: string
   { key: "ebay", label: "eBay", paths: ["/ebay", "/api/ebay"], home: "/ebay" },
   { key: "amazon", label: "Amazon FBA (ToDos, Inbound, Ansprüche, Remissionen, SAS-Programm, Calls, Echtheits-Ordner, Amazon Business)", paths: ["/amazon-todos", "/amazon-faelle", "/inbound", "/ansprueche", "/remissionen", "/sas", "/echtheit", "/amazon-business", "/calls"], home: "/amazon-todos" },
   { key: "buchhaltung", label: "Einkauf & Buchhaltung (Rechnungen, COG-Export, Repricer)", paths: ["/rechnungen", "/export", "/repricer"], home: "/rechnungen" },
-  { key: "service", label: "Service (Retouren, Fälle, Bewertungen)", paths: ["/retouren", "/faelle", "/bewertungen"], home: "/retouren" },
+  { key: "service", label: "Service (Retouren, Fälle, Bewertungen, Label aus Chat)", paths: ["/retouren", "/faelle", "/bewertungen", "/versand"], home: "/retouren" },
   { key: "geld", label: "Geld (Gewinn, Liquidität, Hebel, Kapital, Verlust-Stopp, Buchhaltung)", paths: ["/gewinn", "/cashflow", "/hebel", "/kapital", "/verlust", "/buchhaltung"], home: "/gewinn" },
   { key: "b2b", label: "B2B-Deals (Deals für Prep-Kunden, B2B-Kunden, Sammelbestellungen)", paths: ["/b2b"], home: "/b2b" },
   // Nur mit ausdrücklicher Freigabe – nicht Teil von „alle Bereiche“ (WhatsApp-Angebote mit Daten Dritter, Insider-Preise).

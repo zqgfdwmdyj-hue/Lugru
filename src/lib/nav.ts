@@ -131,6 +131,7 @@ export const NAV: NavSection[] = [
       { href: "/artikel", label: "Artikelstamm (eigene Marken)" },
       { href: "/auftraege", label: "Aufträge & Versand", badge: "orders", short: "Versand" },
       { href: "/auftraege/lieferschein", label: "Labels: Warensendung & DHL" },
+      { href: "/versand/label", label: "Label aus Chat (DHL)", short: "Label erstellen" },
       { href: "/auftraege/prep-center", label: "Prep Center: Versand je Monat" },
       { href: "/retouren", label: "Retouren" },
       { href: "/remissionen", label: "Remissionen" },

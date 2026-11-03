@@ -89,6 +89,36 @@ function kiAnswer(req, b) {
     }
     return [200, reply(b, [{ type: "text", text: JSON.stringify({ quelle, angebote }) }], "end_turn")];
   }
+  // DHL-Label aus Chat: Versandadresse aus Text bzw. Testbild (Text hinter „TESTOCR“) – erfundene Regeln wie eine KI.
+  // „?“ hinter einem Wert = unsicher (gelb). Antwort nur JSON.
+  if (/^Lies die Versandadresse aus/m.test(text) && !stale) {
+    const bildText = parts
+      .filter((p) => p.type === "image" && p.source?.data)
+      .map((p) => Buffer.from(/TESTOCR\n([\s\S]*)$/.exec(Buffer.from(p.source.data, "base64").toString("latin1"))?.[1] ?? "", "latin1").toString("utf8"))
+      .join("\n");
+    const zeilen = [/Nachricht:\n([\s\S]*)$/.exec(text)?.[1] ?? "", bildText]
+      .join("\n")
+      .split("\n")
+      .map((z) => z.replace(/^\s*\[[^\]]*\]\s*/, "").trim())
+      .filter(Boolean);
+    const a = { name: "", name2: "", strasse: "", hausnummer: "", plz: "", ort: "", land: "DE", telefon: "", email: "", packstation: "", postnummer: "", unsicher: [] };
+    for (const z0 of zeilen) {
+      const unsicher = z0.endsWith("?");
+      const z = z0.replace(/\?$/, "").trim();
+      let m;
+      if ((m = /^Postnummer\s*:?\s*(\d{6,10})$/i.exec(z))) { a.postnummer = m[1]; continue; }
+      if ((m = /^Packstation\s*(\d{3})$/i.exec(z))) { a.packstation = `Packstation ${m[1]}`; continue; }
+      const roh = z;
+      const zz = roh.replace(/^(?:PLZ\s*\/\s*Ort|[A-ZÄÖÜ][a-zäöüß]{1,15})\s*:\s+/, "");
+      if (zz !== roh && /^(Name|Empfänger)/i.test(roh) && !a.name) { a.name = zz; continue; }
+      if ((m = /^(?:Tel\.?|Telefon|Handy)?\s*:?\s*(\+?[\d][\d\s/()-]{7,})$/i.exec(zz)) && !/^\d{4,5}\s+\D/.test(zz)) { a.telefon = m[1].replace(/[^\d+]/g, ""); continue; }
+      if ((m = /^(\d{4,5})\s+([^\d].*)$/.exec(zz))) { a.plz = m[1]; a.ort = m[2]; if (unsicher) a.unsicher.push("ort"); continue; }
+      if ((m = /^(.*[a-zäöüß]{3,}.*?)\s+(\d+\s*[a-zA-Z]?)$/.exec(zz))) { a.strasse = m[1]; a.hausnummer = m[2].replace(/\s/g, ""); if (unsicher) a.unsicher.push("hausnummer"); continue; }
+      if ((m = /[\w.+-]+@[\w-]+(\.[\w-]+)+/.exec(zz))) { a.email = m[0]; continue; }
+      if (!a.name && /^[A-ZÄÖÜ][\wäöüß.-]+(\s+[A-ZÄÖÜ][\wäöüß.-]+){1,3}$/.test(zz) && !/^(Hallo|Hi|Danke|Viele|Liebe|Gruß)/.test(zz)) a.name = zz;
+    }
+    return [200, reply(b, [{ type: "text", text: JSON.stringify(a) }], "end_turn")];
+  }
   // Briefe von Schule/Kita (Modul 8): erfundene Testbilder tragen den Text hinter „TESTOCR“; je Zeile mit Datum ein
   // Vorschlag – „bis“/„mitbringen“/„Unterschrift“ = Aufgabe, sonst Termin; „Kind A“ wird erkannt.
   if (/^Lies den Brief der Schule bzw\. Kita/m.test(text) && !stale) {
@@ -442,10 +472,27 @@ async function route(req, url, body) {
   }
   if (p.startsWith("/im/pdf/")) return [200, await pdf((carts.get(p.split("/").pop()) ?? []).map((x) => `Warensendung an ${x}`)), "application/pdf"];
   // DHL Paket (Labels)
+  // Erfundene Prüfregeln: PLZ „00000“ ungültig (abgelehnt), über 31,5 kg abgelehnt; 12345 erwartet „Musterstadt“
+  // (sonst Hinweis mit Vorschlag). validate=true prüft nur (kein Label).
   if (p.startsWith("/dhl/") && p.endsWith("/orders") && req.method === "POST") {
     const items = [];
-    for (const s of parsed().shipments ?? []) items.push({ shipmentNo: String(++shipNo), sstatus: { statusCode: 200 }, label: { b64: (await pdf([`DHL ${s.product} an ${s.consignee?.name1 ?? "?"} ${s.details?.weight?.value ?? "?"} kg`])).toString("base64") } });
-    return json({ items });
+    let fehler = false;
+    for (const s of parsed().shipments ?? []) {
+      const c = s.consignee ?? {};
+      const meldungen = [];
+      if (c.postalCode === "00000") meldungen.push({ property: "consignee.postalCode", validationMessage: "Die Postleitzahl ist ungültig.", validationState: "Error" });
+      if ((s.details?.weight?.value ?? 0) > 31.5) meldungen.push({ property: "details.weight", validationMessage: "Das Gewicht überschreitet das Höchstgewicht des Produkts.", validationState: "Error" });
+      if (c.postalCode === "12345" && c.city && c.city !== "Musterstadt") meldungen.push({ property: "consignee.city", validationMessage: "Der Ort passt nicht zur Postleitzahl – Vorschlag: Musterstadt.", validationState: "Warning" });
+      const err = meldungen.some((m) => m.validationState === "Error");
+      fehler ||= err;
+      if (err) items.push({ sstatus: { title: "Bad Request", statusCode: 400, detail: "Die Sendung ist nicht valide." }, validationMessages: meldungen });
+      else if (url.searchParams.get("validate") === "true") items.push({ sstatus: { title: "OK", statusCode: 200 }, validationMessages: meldungen });
+      else {
+        const zusatz = [s.services?.visualCheckOfAge ? `Alterssicht ${s.services.visualCheckOfAge}` : "", s.services?.additionalInsurance ? `Versichert ${s.services.additionalInsurance.value} EUR` : ""].filter(Boolean).join(" ");
+        items.push({ shipmentNo: String(++shipNo), sstatus: { statusCode: 200 }, validationMessages: meldungen, label: { b64: (await pdf([`DHL ${s.product} an ${c.name1 ?? c.name ?? "?"} ${s.details?.weight?.value ?? "?"} kg ${zusatz}`.trim()])).toString("base64") } });
+      }
+    }
+    return fehler ? [400, { status: { title: "Bad Request", statusCode: 400, detail: "Fehlerhafte Sendung." }, items }] : json({ items });
   }
   // DHL Sendungsverfolgung
   if (p.startsWith("/dhl-track")) {

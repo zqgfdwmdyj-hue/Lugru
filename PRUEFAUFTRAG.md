@@ -788,6 +788,61 @@ Abnahme: Unit `kalender-todo` (Schreibweisen wie im Familienkalender, ganzer Tit
 Sachen Tafel herrichten“ → nach dem Abgleich genau eine Aufgabe „Sachen Tafel herrichten“, wichtig, Ina zugeordnet, Notiz
 mit Kalendername; als erledigt markiert → nächster Abgleich legt nichts neu an und öffnet nichts wieder.
 
+## Bauauftrag Push aufs Handy ohne Discord · DHL-Label aus Chat/Screenshot (03.11.)
+
+### A. Push aufs Handy
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| A1 Web-Push der App: Erlaubnis beim ersten Öffnen am iPhone, Abo speichern (Gerät, Nutzer, Zeitpunkt), VAPID | 🟡 (Push-Schalter und VAPID da, aber nur von Hand einzuschalten; Abo ohne Zustand) | ✅ | Als App vom Home-Bildschirm geöffnet und noch nicht gefragt → Hinweis „Push erlauben“ (iOS fragt nur nach einem Tipp; „Später“ 7 Tage) – `src/components/push-pruefen.tsx` im App-Rahmen. Abo mit Gerätename, Person, Zeitpunkt, letzter Erfolg (`push_abos`, Migration 0124); Versand VAPID (`src/lib/push/service.ts`) |
+| A1 Dreimal Zustellung fehlgeschlagen → „abgelaufen“, beim nächsten Öffnen neu anfordern | ❌ (Fehler nur gemerkt, nach 7 Tagen ignoriert, 404/410 gelöscht) | ✅ | Fehlversuche in Folge zählen; ab 3 (bzw. sofort bei 404/410 vom Push-Dienst) `abgelaufen_am`. Beim Öffnen prüft die App `GET /api/push/abo?endpoint=` → abgelaufen/unbekannt → still neu abonnieren, sonst Hinweis „Neu einrichten“ (`aboStand`, `src/lib/push/client.ts`) |
+| A2 Einstellungen → Benachrichtigungen: je Art an/aus mit Standard (Deal grün/gelb mit „In den Warenkorb“, Amazon kritisch, Frist heute, Paletten-Sendung heute, Morgenbericht, VA-Rückfrage) | ❌ | ✅ | Seite `/einstellungen/benachrichtigungen` (je Person, alle Arten Standard an; dazu „Neue wichtige Aufgabe“, „Sonstiges“). Arten: `MELDE_ARTEN` in `src/lib/push/logic.ts`. Zuordnung: Deal-Eingang/Lugru → `deal` (Knöpfe wie Kaufen-mit-einem-Tap), Amazon-Aufgaben mit Priorität kritisch → `amazon_kritisch`, VA-Rückfrage/VA fragt → `va_rueckfrage` (neu auch als Push), Fristen/Paletten/Morgenbericht morgens |
+| A3 Ruhezeit 22–6 Uhr nur „kritisch“, Rest morgens mit dem Morgenbericht | ❌ | ✅ | `zustellung()` (Art aus → nur Protokoll; Ruhezeit + nicht kritisch → zurückgehalten). Morgens nach Ruhezeit-Ende (Zeitplan alle 9 Min., je Person einmal am Tag): „☀️ Morgenbericht liegt vor“ mit Link + Zahlen (Fristen heute, wichtige Aufgaben, Paletten-Sendungen heute, über Nacht), dann „Frist heute“/„Paletten heute“ und die neueste zurückgehaltene Meldung mit ihren Knöpfen (`morgenAuslieferung`). Knopf „… zurückgehalten – jetzt ausliefern“ auf der Seite. Ruhezeit je Person einstellbar |
+| A4 Discord parallel, Protokoll je Meldung: Discord ja/nein, App-Push gesendet/zugestellt/fehlgeschlagen | ❌ (Discord nur, wenn kein Push ging) | ✅ | Discord läuft jetzt **immer parallel** (außer Privates: „–“). Protokoll auf der Seite: Zeit, Art, Meldung, Discord ja/nein/–, App-Push (gesendet / fehlgeschlagen / kein Gerät / Ruhezeit / Art aus / morgens nachgereicht, mit Geräteanzahl), **Zugestellt** = Uhrzeit, zu der das Gerät die Meldung abgeholt hat (`meldungen.zugestellt_am`) |
+| A5 Prüfseite „Test-Push an dieses Gerät“ mit Zustellzeit | ❌ | ✅ | Knopf auf `/einstellungen/benachrichtigungen` → nur an das Abo dieses Geräts (`POST /api/push/test`), zeigt „Zugestellt um … (nach x s)“ (`GET /api/push/test?id=`). Andere Geräte sehen den Test nicht |
+| A6 Apple Watch über das iPhone, Watch-Endpunkte bleiben | ✅ | ✅ | Unverändert; Hinweis auf der Seite. „Erledigt“ an der Watch schließt weiter die zuletzt gemeldete Aufgabe |
+
+### B. DHL-Label aus Chat oder Screenshot
+
+| Punkt | vorher | nachher | Fundstelle |
+|---|---|---|---|
+| B1 Seite „Versand → Label erstellen“ (auch Handy, „Mehr“), Text einfügen oder Bild (Drag-and-Drop, Einfügen, Kamera, iPhone-Teilen) | ❌ | ✅ | `/versand/label` (Navigation „Produkte & Lager → Label aus Chat (DHL)“, am Handy über „Mehr“). iPhone-Teilen-Menü über Kurzbefehl an `POST /api/mobil/label` (Handy-Schlüssel) → Entwurf, Seite öffnet vorausgefüllt (Anleitung auf der Seite) |
+| B1 KI liest Name, Straße, Hausnr., PLZ, Ort, Land, Telefon, Mail, Packstation/Postnummer; unsichere Felder gelb; DHL-Adressprüfung mit Vorschlag | ❌ | ✅ | `adresseErkennen` (Claude mit Bild bzw. Text; ohne KI nach Regeln, nur Text) – `src/lib/versand-label/service.ts`, Regeln `adresseAusText` in `logic.ts`. Gelb = von der KI unsicher oder Pflichtfeld fehlt. „Adresse prüfen (DHL)“ = Parcel DE Shipping `validate=true` (es entsteht kein Label), Meldungen/Vorschläge im Klartext (`pruefeDhlSendung`) |
+| B1 Artikel frei oder SKU/EAN (Scanner), Gewicht, Maße, Wert | ❌ | ✅ | Felder im Formular; Scanner tippt in „SKU/EAN“ (Enter sendet nicht ab). Maße gehen an DHL mit. Waage: von Hand (keine Waagen-Anbindung) |
+| B2 Produkte: DHL Paket 2/5/10/20/31,5 kg, Päckchen, Warensendung (Internetmarke), Retourenlabel; Services Versicherung bis 2.500 €, Alterssichtprüfung, Packstation; keine Nachnahme/Wunschzeit | ❌ | ✅ | `VERSAND_PRODUKTE`; Gewichtsklasse wird nach Gewicht vorgeschlagen; Päckchen = DHL Kleinpaket (Abrechnungsnummer aus Einstellungen → Versand); Warensendung über die vorhandene Internetmarke; Retoure = Kunde als Absender, ihr als Empfänger (kein Auftrag). Versicherung (`additionalInsurance`, über 500 €) und Alterssicht (A16/A18) in `createDhlLabel`; Packstation über Feld Packstation + Postnummer |
+| B3 Gefahrgut LQ (UN, Menge je Packstück, Klasse), Hinweis nur LQ/EQ, LQ-Raute 100 × 100 mm; Lithium UN3481/UN3091 mit Batterie-Kennzeichen; Klasse 1, 6.2, 7, Vollgefahrgut gesperrt „per Spedition“ | ❌ | ✅ | `gefahrgutPruefen` (Pflichtangaben, LQ höchstens 30 kg, gesperrte Klassen, Vollgefahrgut). Knopf „Label erstellen“ ist bei Sperre aus. Druckseite `/etikett/gefahrgut?art=lq|lithium` (100 × 100 mm, A4, QL-800 62 mm = 50 × 50 mm mit Hinweis) |
+| B4 Label über Parcel DE Shipping, PDF 100 × 200, Auftrag mit Kanal Kleinanzeigen/WhatsApp/B2B (Käufer, Artikel, Preis, Zahlungsart), Tracking-Link kopieren + Textbaustein | ❌ | ✅ | `labelErstellen`: Label-PDF (Druckformat aus Einstellungen → Versand), Auftrag „L-<Sendungsnummer>“ mit neuen Kanälen `kleinanzeigen`/`whatsapp`/`b2b` (ohne Marktplatzgebühren), Position (SKU, Artikel, Menge, Preis), Paket mit Label, Status „Label erstellt“ (Bestand bucht wie gewohnt beim „Versendet“), Versender „selbst“. Knöpfe „Tracking-Link kopieren“ und „Text für WhatsApp/Kleinanzeigen kopieren“ („dein Paket ist unterwegs: …“) |
+| B5 Stammadressen (B2B-Kunden, Palettenkunden); Absender LuGru GmbH, zweiter Absender wählbar | ❌ | ✅ | Auswahl „Stammadresse“: B2B-Kunden (Adresse), Palettenkunden (nur Name – dort ist keine Adresse hinterlegt), zuletzt verwendete Empfänger. **Die VA sieht keine B2B-Kunden**. Zweiter Absender in den Einstellungen unten auf der Seite (nur Inhaber) |
+| B6 DHL lehnt ab → Klartext, Formular bleibt; ohne DHL-Verbindung → Vorlage + Hinweis | ❌ | ✅ | Fehlertext von DHL wird angezeigt, alle Felder bleiben; ohne Zugang/Abrechnungsnummer → „als Vorlage gespeichert“, Liste „Vorlagen und Abgelehntes“ zum Wieder-Öffnen |
+| B7 VA darf Labels erstellen, Ludwig sieht Protokoll (wer, wann, an wen, Kosten laut Preisliste) | ❌ | ✅ | Zugriff über den Bereich „Service“ (in der VA-Rolle enthalten). Protokoll: Inhaber alle Labels mit Wer und Kosten, alle anderen nur die eigenen ohne Kosten. Kosten aus der Preisliste in den Einstellungen (leer = nicht hinterlegt). Tabelle `versand_labels` (Migration 0125, Adresse verschlüsselt; Chat-Text und Bild werden nicht gespeichert) |
+
+### Abnahme
+
+| Abnahme | Ergebnis |
+|---|---|
+| 1. WhatsApp-Screenshot hochladen → Formular gefüllt, Label-PDF < 30 s, Auftrag angelegt | ✅ automatisch (`e2e/label-aus-chat.spec.ts`, Testbild, unsicheres Feld gelb, Zeit gemessen) |
+| 2. Kleinanzeigen-Nachricht als Text → gleiches Ergebnis | ✅ automatisch |
+| 3. Gefahrgut LQ mit UN-Nummer → Label + LQ-Kennzeichen; unzulässige Klasse gesperrt | ✅ automatisch (Klassen 1.4S, 7, 6.2 und Vollgefahrgut gesperrt; LQ- und Batterie-Kennzeichen druckbar) |
+| 4. Test-Push erreicht das iPhone bei geschlossener App; Deal-Push mit Warenkorb-Knopf; Protokoll zeigt Zustellung | ✅ automatisch gegen den Push-Nachbau (`e2e/push-handy.spec.ts`: Test-Push mit Zustellzeit, Deal-Push „In den Warenkorb“ → Amazon-Warenkorb, Protokoll „zugestellt“, Art aus, Ruhezeit → morgens, 3 Fehler = abgelaufen → neu angefordert). **Am echten iPhone bei geschlossener App: von Ludwig zu prüfen** (Prüfseite „Test-Push an dieses Gerät“) |
+
+Claude-Werkzeuge: keine neuen oder geänderten Werkzeuge in diesem Bauauftrag – kein `notifications/tools/list_changed`.
+
+**To-dos für Ludwig:**
+
+1. Discord am iPhone (sofort): Einstellungen → Benachrichtigungen → „Push-Benachrichtigungen“ auf **„Immer“**; Server Lugru →
+   Kanal Deals → Benachrichtigungen **„Alle Nachrichten“**; iPhone-Fokus/„Nicht stören“ prüfen.
+2. Seller-App am iPhone vom **Home-Bildschirm** öffnen → „Push erlauben“ → Einstellungen → Benachrichtigungen →
+   **„Test-Push an dieses Gerät“**, App wegwischen, Mitteilung abwarten (Zustellzeit steht danach auf der Seite).
+3. Arten und Ruhezeit auf derselben Seite prüfen (Standard: alles an, 22–6 Uhr nur kritisch).
+4. Label-Seite, unten „Einstellungen“: **zweiter Absender** (Wittmann & Grunert, Anschrift) und **Preise laut DHL-Vertrag**
+   eintragen (sonst zeigt das Protokoll keine Kosten). Für Päckchen die Abrechnungsnummer Kleinpaket in Einstellungen →
+   Versand eintragen.
+5. **Gefahrgut bei DHL**: prüfen, ob für LQ-Sendungen mit DHL Paket eine Zusatzvereinbarung nötig ist, und das
+   Batterie-Kennzeichen gegen eine offizielle Vorlage abgleichen (die Druckseite ist eine vereinfachte Darstellung).
+6. **QL-800**: druckt höchstens 62 mm breit – die LQ-Raute in 100 × 100 mm geht nur auf A4 bzw. einem 100-mm-Etikettendrucker;
+   50 × 50 mm auf dem QL-800 nur, wenn das Paket für 100 × 100 mm zu klein ist.
+7. Optional iPhone-Kurzbefehl „Label erstellen“ fürs Teilen-Menü einrichten (Anleitung auf der Label-Seite).
+
 ## Nachtrag B27 (03.11.): Nächtliche Automatik – Fehler beheben
 
 | Punkt | vorher | nachher | Fundstelle |

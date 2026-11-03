@@ -2,7 +2,7 @@ import { index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIn
 import { encryptedJson, encryptedText } from "./encrypted";
 import { type Address, createdAt, files, id, lots, money, tenantId, updatedAt } from "./core";
 
-export const CHANNELS = ["amazon", "ebay", "tiktok", "temu", "kaufland", "shop", "manual"] as const;
+export const CHANNELS = ["amazon", "ebay", "tiktok", "temu", "kaufland", "shop", "manual", "kleinanzeigen", "whatsapp", "b2b"] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export const ORDER_STATUSES = ["open", "label_created", "shipped", "delivered", "cancelled", "returned"] as const;

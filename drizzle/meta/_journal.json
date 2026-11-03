@@ -876,6 +876,13 @@
       "when": 1793699756199,
       "tag": "0124_push_protokoll",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1793701907492,
+      "tag": "0125_versand_labels",
+      "breakpoints": true
     }
   ]
 }
