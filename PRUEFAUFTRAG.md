@@ -904,7 +904,8 @@ angepasst: Er räumt jetzt zu Beginn alle Pushs der letzten 24 Std. ab, weil son
 2. Die Rechte des Bots im VA-Kanal prüfen: „Kanal ansehen“, „Nachrichtenverlauf lesen“, „Nachrichten in Threads
    senden“ und „Dateien anhängen“. Sonst sieht er die Threads der VA nicht. Fehler zeigt „Delegation → VA“ als „Threads
    der VA finden: …“.
-3. Unter Anbindung VA muss „VA darf Einkaufsrechnungen sehen“ an sein, sonst geht jede Rechnungsbitte an dich.
+3. Unter Delegation → VA (Discord), Kasten „Einstellungen“, muss „VA darf Einkaufsrechnungen sehen (automatisch
+   schicken)“ angehakt sein (Standard: an). Sonst geht jede Rechnungsbitte an dich.
 4. Nach dem Update einmal „Jetzt abgleichen“ unter Delegation → VA drücken. Das holt die Anfragen aus dem Screenshot
    nach:
    - Rechnungen, die im System sind, gehen sofort in die Threads der VA.
